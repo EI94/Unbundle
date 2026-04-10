@@ -108,6 +108,7 @@ export const reportTypeEnum = pgEnum("report_type", [
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
+  firebaseUid: varchar("firebase_uid", { length: 128 }).unique(),
   name: varchar("name", { length: 255 }),
   email: varchar("email", { length: 255 }).notNull().unique(),
   emailVerified: timestamp("email_verified", { mode: "date" }),

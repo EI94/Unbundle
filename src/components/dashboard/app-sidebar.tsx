@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { signOut } from "firebase/auth";
+import { firebaseAuth } from "@/lib/firebase/client";
 import {
   Sidebar,
   SidebarContent,
@@ -57,7 +59,14 @@ export function AppSidebar({
   user,
 }: AppSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const basePath = workspaceId ? `/dashboard/${workspaceId}` : "/dashboard";
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/session", { method: "DELETE" });
+    await signOut(firebaseAuth).catch(() => {});
+    router.push("/login");
+  };
 
   const workspaceNav = workspaceId
     ? [
@@ -172,19 +181,13 @@ export function AppSidebar({
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem>
-                  <form
-                    action="/api/auth/signout"
-                    method="POST"
-                    className="w-full"
+                  <button
+                    onClick={handleLogout}
+                    className="flex w-full items-center text-sm"
                   >
-                    <button
-                      type="submit"
-                      className="flex w-full items-center text-sm"
-                    >
-                      <LogOut className="mr-2 h-4 w-4" />
-                      Esci
-                    </button>
-                  </form>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Esci
+                  </button>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
