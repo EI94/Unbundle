@@ -12,7 +12,13 @@
     "db:push": "dotenv -e .env.local -- drizzle-kit push",
     "db:generate": "dotenv -e .env.local -- drizzle-kit generate",
     "db:migrate": "dotenv -e .env.local -- drizzle-kit migrate",
-    "db:studio": "dotenv -e .env.local -- drizzle-kit studio"
+    "db:studio": "dotenv -e .env.local -- drizzle-kit studio",
+    "vercel:link": "vercel link --yes",
+    "vercel:pull": "vercel env pull .env.vercel --yes",
+    "vercel:pull:production": "vercel env pull .env.vercel.production --environment production --yes",
+    "vercel:env:sync": "node scripts/sync-vercel-env.mjs",
+    "vercel:deploy": "vercel --prod",
+    "vercel:deploy:preview": "vercel"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.68",
@@ -48,6 +54,7 @@
   "devDependencies": {
     "dotenv-cli": "^11.0.0",
     "drizzle-kit": "^0.31.10",
+    "vercel": "^50.0.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
