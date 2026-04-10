@@ -40,7 +40,6 @@ export default async function DepartmentMappingPage({
     content: m.content,
   }));
 
-  const hasStarted = initialMessages.length > 0;
   const statusLabels: Record<string, string> = {
     not_started: "Non iniziato",
     in_progress: "In corso",
@@ -48,36 +47,52 @@ export default async function DepartmentMappingPage({
     validated: "Validato",
   };
 
+  const welcome = `Iniziamo il mapping delle attività per **${department.name}**${department.teamSize ? ` (${department.teamSize} persone)` : ""}.
+
+L'obiettivo è scomporre il lavoro del dipartimento in unità analizzabili. Per ogni attività raccoglierò:
+- **Cosa** si fa concretamente e con quale **frequenza**
+- **Input e output** del processo
+- **Strumenti** utilizzati
+- **Punti decisionali** dove serve giudizio umano
+- **Pain points** e frizioni
+
+Le attività verranno salvate automaticamente nella sidebar a destra.
+
+**Descrivimi una settimana tipo in ${department.name}: su cosa si passa più tempo?**`;
+
+  const suggestions = [
+    `Le attività principali sono 4-5`,
+    `Passiamo molto tempo su report e analisi`,
+    `Il lavoro è molto frammentato`,
+    `Abbiamo molti processi manuali`,
+  ];
+
   return (
     <div className="flex h-[calc(100vh-1px)] overflow-hidden">
       <div className="flex-1 flex flex-col">
-        <div className="border-b border-border bg-background/80 backdrop-blur-sm px-6 py-4">
+        <div className="border-b border-border px-6 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white shadow-sm">
-              <GitBranch className="h-5 w-5" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white">
+              <GitBranch className="h-4 w-4" />
             </div>
-            <div className="flex-1">
+            <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-lg font-semibold">{department.name}</h1>
-                <Badge variant="secondary" className="text-xs">
+                <h1 className="text-sm font-semibold leading-tight">
+                  {department.name}
+                </h1>
+                <Badge variant="outline" className="text-xs">
                   {statusLabels[department.mappingStatus] ??
                     department.mappingStatus}
                 </Badge>
-                {department.teamSize && (
-                  <Badge variant="outline" className="text-xs gap-1">
-                    <Users className="h-3 w-3" />
-                    {department.teamSize}
-                  </Badge>
-                )}
-                {activities.length > 0 && (
-                  <Badge variant="outline" className="text-xs">
-                    {activities.length} attivit&agrave;
-                  </Badge>
-                )}
               </div>
-              <p className="text-sm text-muted-foreground">
-                {department.description ??
-                  "Leo, il Process Analyst, scompone le attività in unità analizzabili"}
+              <p className="text-xs text-muted-foreground">
+                {department.description ?? "Activity Mapping"}
+                {department.teamSize
+                  ? ` \u00b7 ${department.teamSize} persone`
+                  : ""}
+                {activities.length > 0
+                  ? ` \u00b7 ${activities.length} attivit\u00e0`
+                  : ""}
               </p>
             </div>
           </div>
@@ -87,6 +102,8 @@ export default async function DepartmentMappingPage({
           conversationType="activity_mapping"
           departmentId={deptId}
           initialMessages={initialMessages}
+          welcomeMessage={welcome}
+          suggestions={suggestions}
         />
       </div>
       <ActivitySidebar activities={activities} />

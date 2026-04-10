@@ -2,7 +2,7 @@
 
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useRef, useEffect, useState, useMemo } from "react";
+import { useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -15,14 +15,15 @@ import {
   User,
   Loader2,
   CheckCircle2,
-  Compass,
-  GitBranch,
+  AlertCircle,
 } from "lucide-react";
 
 interface ChatInterfaceProps {
   workspaceId: string;
   conversationType: string;
   departmentId?: string;
+  welcomeMessage?: string;
+  suggestions?: string[];
   initialMessages?: Array<{
     id: string;
     role: "user" | "assistant";
@@ -30,52 +31,59 @@ interface ChatInterfaceProps {
   }>;
 }
 
-const agentConfig: Record<
-  string,
-  { name: string; icon: typeof Compass; color: string; description: string }
-> = {
-  leadership_setup: {
-    name: "Mara — Strategy Architect",
-    icon: Compass,
-    color: "bg-blue-600 text-white",
-    description:
-      "Intervista strategica per definire value thesis, confini del sistema e funzioni prioritarie",
-  },
-  activity_mapping: {
-    name: "Leo — Process Analyst",
-    icon: GitBranch,
-    color: "bg-violet-600 text-white",
-    description:
-      "Scomposizione delle attività lavorative in unità analizzabili per classificazione AI",
-  },
-};
-
 export function ChatInterface({
   workspaceId,
   conversationType,
   departmentId,
+  welcomeMessage,
+  suggestions = [],
   initialMessages = [],
 }: ChatInterfaceProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [hasAutoStarted, setHasAutoStarted] = useState(false);
 
-  const agent = agentConfig[conversationType] ?? {
-    name: "Assistente AI",
-    icon: Bot,
-    color: "bg-primary text-primary-foreground",
-    description: "Conversazione AI",
-  };
-  const AgentIcon = agent.icon;
+  const welcomeMessages: UIMessage[] = [];
+  if (initialMessages.length === 0 && welcomeMessage) {
+    welcomeMessages.push({
+      id: "welcome",
+      role: "assistant",
+      parts: [{ type: "text" as const, text: welcomeMessage }],
+    });
+  }
 
-  const seedMessages: UIMessage[] = initialMessages.map((m) => ({
-    id: m.id,
-    role: m.role,
-    parts: [{ type: "text" as const, text: m.content }],
-  }));
+  const seedMessages: UIMessage[] =
+    initialMessages.length > 0
+      ? initialMessages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          parts: [{ type: "text" as const, text: m.content }],
+        }))
+      : welcomeMessages;
 
   const transport = useMemo(
-    () => new DefaultChatTransport({ api: "/api/ai/chat" }),
-    []
+    () =>
+      new DefaultChatTransport({
+        api: "/api/ai/chat",
+        body: { workspaceId, conversationType, departmentId },
+        prepareSendMessagesRequest: ({ messages, body }) => ({
+          body: {
+            messages: messages.map((m) => ({
+              role: m.role,
+              content:
+                m.parts
+                  ?.filter(
+                    (p): p is { type: "text"; text: string } =>
+                      p.type === "text"
+                  )
+                  .map((p) => p.text)
+                  .join("") ?? "",
+            })),
+            workspaceId: (body as Record<string, unknown>)?.workspaceId ?? workspaceId,
+            conversationType: (body as Record<string, unknown>)?.conversationType ?? conversationType,
+            departmentId: (body as Record<string, unknown>)?.departmentId ?? departmentId,
+          },
+        }),
+      }),
+    [workspaceId, conversationType, departmentId]
   );
 
   const chat = useChat({
@@ -83,28 +91,13 @@ export function ChatInterface({
     messages: seedMessages,
   });
 
-  const { messages, status } = chat;
+  const { messages, status, error } = chat;
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
-
-  useEffect(() => {
-    if (!hasAutoStarted && initialMessages.length === 0 && messages.length === 0) {
-      setHasAutoStarted(true);
-      chat.sendMessage(
-        {
-          role: "user",
-          parts: [{ type: "text", text: "Ciao, iniziamo." }],
-        },
-        {
-          body: { workspaceId, conversationType, departmentId },
-        }
-      );
-    }
-  }, [hasAutoStarted, initialMessages.length, messages.length, chat, workspaceId, conversationType, departmentId]);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isLoading = status === "streaming" || status === "submitted";
@@ -113,18 +106,19 @@ export function ChatInterface({
     e.preventDefault();
     const value = inputRef.current?.value?.trim();
     if (!value || isLoading) return;
-
     if (inputRef.current) inputRef.current.value = "";
+    chat.sendMessage({
+      role: "user",
+      parts: [{ type: "text", text: value }],
+    });
+  };
 
-    chat.sendMessage(
-      {
-        role: "user",
-        parts: [{ type: "text", text: value }],
-      },
-      {
-        body: { workspaceId, conversationType, departmentId },
-      }
-    );
+  const handleSuggestion = (text: string) => {
+    if (isLoading) return;
+    chat.sendMessage({
+      role: "user",
+      parts: [{ type: "text", text }],
+    });
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -134,74 +128,57 @@ export function ChatInterface({
     }
   };
 
-  const getMessageText = (message: UIMessage): string => {
-    return (
-      message.parts
-        ?.filter(
-          (p): p is { type: "text"; text: string } => p.type === "text"
-        )
-        .map((p) => p.text)
-        .join("") ?? ""
-    );
-  };
+  const getMessageText = (message: UIMessage): string =>
+    message.parts
+      ?.filter(
+        (p): p is { type: "text"; text: string } => p.type === "text"
+      )
+      .map((p) => p.text)
+      .join("") ?? "";
 
   const renderContent = (text: string) => {
-    const parts = text.split(/(\*\*[^*]+\*\*)/g);
-    return parts.map((part, i) => {
-      if (part.startsWith("**") && part.endsWith("**")) {
-        return (
-          <strong key={i} className="font-semibold">
-            {part.slice(2, -2)}
-          </strong>
-        );
-      }
-      return <span key={i}>{part}</span>;
+    const lines = text.split("\n");
+    return lines.map((line, li) => {
+      const parts = line.split(/(\*\*[^*]+\*\*)/g);
+      return (
+        <span key={li}>
+          {li > 0 && <br />}
+          {parts.map((part, pi) => {
+            if (part.startsWith("**") && part.endsWith("**")) {
+              return (
+                <strong key={pi} className="font-semibold">
+                  {part.slice(2, -2)}
+                </strong>
+              );
+            }
+            return <span key={pi}>{part}</span>;
+          })}
+        </span>
+      );
     });
   };
 
+  const toolLabels: Record<string, string> = {
+    saveCompanyValueThesis: "Value Thesis salvata",
+    saveSystemBoundary: "Perimetro definito",
+    createDepartment: "Dipartimento creato",
+    saveStrategicGoal: "Obiettivo salvato",
+    saveActivity: "Attivit\u00e0 salvata",
+    updateActivityClassification: "Classificazione aggiornata",
+    linkActivityDependency: "Dipendenza collegata",
+    markDepartmentMapped: "Mapping completato",
+  };
+
+  const showSuggestions =
+    suggestions.length > 0 &&
+    messages.length <= 1 &&
+    !isLoading;
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col bg-background">
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-        <div className="mx-auto max-w-3xl space-y-6">
-          {/* Welcome card — only if truly no messages at all */}
-          {messages.length === 0 && !isLoading && !hasAutoStarted && (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div
-                className={`flex h-16 w-16 items-center justify-center rounded-2xl ${agent.color} mb-5 shadow-lg`}
-              >
-                <AgentIcon className="h-8 w-8" />
-              </div>
-              <h3 className="text-xl font-semibold">{agent.name}</h3>
-              <p className="mt-2 max-w-md text-sm text-muted-foreground leading-relaxed">
-                {agent.description}
-              </p>
-            </div>
-          )}
-
-          {/* Loading state while auto-starting */}
-          {messages.length === 0 && (isLoading || hasAutoStarted) && (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div
-                className={`flex h-16 w-16 items-center justify-center rounded-2xl ${agent.color} mb-5 shadow-lg`}
-              >
-                <AgentIcon className="h-8 w-8" />
-              </div>
-              <h3 className="text-xl font-semibold">{agent.name}</h3>
-              <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Sta preparando l&apos;intervista...
-              </div>
-            </div>
-          )}
-
+        <div className="mx-auto max-w-3xl space-y-5 pb-4">
           {messages.map((message) => {
-            if (
-              message.role === "user" &&
-              getMessageText(message) === "Ciao, iniziamo."
-            ) {
-              return null;
-            }
-
             const text = getMessageText(message);
             const toolParts =
               message.parts?.filter((p) =>
@@ -216,9 +193,9 @@ export function ChatInterface({
                 }`}
               >
                 {message.role === "assistant" && (
-                  <Avatar className="h-9 w-9 shrink-0 shadow-sm">
-                    <AvatarFallback className={agent.color}>
-                      <AgentIcon className="h-4 w-4" />
+                  <Avatar className="h-8 w-8 shrink-0 mt-0.5">
+                    <AvatarFallback className="bg-primary/10 text-primary">
+                      <Bot className="h-4 w-4" />
                     </AvatarFallback>
                   </Avatar>
                 )}
@@ -226,7 +203,7 @@ export function ChatInterface({
                   className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                     message.role === "user"
                       ? "bg-primary text-primary-foreground"
-                      : "bg-muted/80 border border-border/50"
+                      : "bg-muted/70"
                   }`}
                 >
                   {text && (
@@ -234,7 +211,6 @@ export function ChatInterface({
                       {renderContent(text)}
                     </div>
                   )}
-
                   {toolParts.map((part, i) => {
                     const p = part as Record<string, unknown>;
                     const toolName = (p.toolName as string) ?? "tool";
@@ -242,34 +218,25 @@ export function ChatInterface({
                     const output = p.output as
                       | { message?: string }
                       | undefined;
-
-                    const toolLabels: Record<string, string> = {
-                      saveCompanyValueThesis: "Value Thesis salvata",
-                      saveSystemBoundary: "Perimetro definito",
-                      createDepartment: "Dipartimento creato",
-                      saveStrategicGoal: "Obiettivo salvato",
-                      saveActivity: "Attività salvata",
-                      updateActivityClassification: "Classificazione aggiornata",
-                      linkActivityDependency: "Dipendenza collegata",
-                      markDepartmentMapped: "Mapping completato",
-                    };
-
                     return (
                       <Card
                         key={i}
-                        className="mt-3 border-none bg-background/70 p-3"
+                        className="mt-3 border-none bg-background/60 p-2.5"
                       >
                         <div className="flex items-center gap-2 text-xs">
                           {state === "output" ? (
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
                           ) : (
-                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
                           )}
-                          <Badge variant="secondary" className="text-xs font-medium">
+                          <Badge
+                            variant="secondary"
+                            className="text-xs font-medium"
+                          >
                             {toolLabels[toolName] ?? toolName}
                           </Badge>
                           {state === "output" && output?.message && (
-                            <span className="text-muted-foreground">
+                            <span className="text-muted-foreground truncate">
                               {output.message}
                             </span>
                           )}
@@ -279,8 +246,8 @@ export function ChatInterface({
                   })}
                 </div>
                 {message.role === "user" && (
-                  <Avatar className="h-9 w-9 shrink-0 shadow-sm">
-                    <AvatarFallback className="bg-primary/10 text-primary">
+                  <Avatar className="h-8 w-8 shrink-0 mt-0.5">
+                    <AvatarFallback className="bg-foreground/5">
                       <User className="h-4 w-4" />
                     </AvatarFallback>
                   </Avatar>
@@ -293,25 +260,52 @@ export function ChatInterface({
             messages.length > 0 &&
             messages[messages.length - 1]?.role !== "assistant" && (
               <div className="flex gap-3">
-                <Avatar className="h-9 w-9 shrink-0 shadow-sm">
-                  <AvatarFallback className={agent.color}>
-                    <AgentIcon className="h-4 w-4" />
+                <Avatar className="h-8 w-8 shrink-0 mt-0.5">
+                  <AvatarFallback className="bg-primary/10 text-primary">
+                    <Bot className="h-4 w-4" />
                   </AvatarFallback>
                 </Avatar>
-                <div className="rounded-2xl bg-muted/80 border border-border/50 px-4 py-3">
+                <div className="rounded-2xl bg-muted/70 px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                    <span className="text-xs text-muted-foreground">
-                      Sta analizzando...
-                    </span>
+                    <div className="flex gap-1">
+                      <span className="h-2 w-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <span className="h-2 w-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <span className="h-2 w-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
                   </div>
                 </div>
               </div>
             )}
+
+          {error && (
+            <div className="flex gap-3 justify-center">
+              <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>Errore di connessione. Riprova a inviare il messaggio.</span>
+              </div>
+            </div>
+          )}
         </div>
       </ScrollArea>
 
-      <div className="border-t border-border bg-background/80 backdrop-blur-sm p-4">
+      {/* Suggestion chips */}
+      {showSuggestions && (
+        <div className="border-t border-border/50 px-4 py-3">
+          <div className="mx-auto max-w-3xl flex flex-wrap gap-2">
+            {suggestions.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => handleSuggestion(s)}
+                className="rounded-full border border-border bg-background px-4 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="border-t border-border bg-background p-4">
         <form
           onSubmit={handleSubmit}
           className="mx-auto flex max-w-3xl items-end gap-2"
@@ -320,7 +314,7 @@ export function ChatInterface({
             ref={inputRef}
             onKeyDown={onKeyDown}
             placeholder="Scrivi la tua risposta..."
-            className="min-h-[48px] max-h-[200px] resize-none rounded-xl"
+            className="min-h-[48px] max-h-[200px] resize-none rounded-xl border-border/60"
             rows={1}
             disabled={isLoading}
           />
