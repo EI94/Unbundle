@@ -88,19 +88,44 @@ const definitions = [
     getValue: () => vars.DATABASE_URL || null,
   },
   {
-    name: "AUTH_SECRET",
-    sensitive: true,
-    getValue: () => vars.AUTH_SECRET || null,
-  },
-  {
-    name: "AUTH_GOOGLE_ID",
+    name: "NEXT_PUBLIC_FIREBASE_API_KEY",
     sensitive: false,
-    getValue: () => vars.AUTH_GOOGLE_ID || null,
+    getValue: () => vars.NEXT_PUBLIC_FIREBASE_API_KEY || null,
   },
   {
-    name: "AUTH_GOOGLE_SECRET",
+    name: "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+    sensitive: false,
+    getValue: () => vars.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || null,
+  },
+  {
+    name: "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+    sensitive: false,
+    getValue: () => vars.NEXT_PUBLIC_FIREBASE_PROJECT_ID || null,
+  },
+  {
+    name: "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
+    sensitive: false,
+    getValue: () => vars.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || null,
+  },
+  {
+    name: "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+    sensitive: false,
+    getValue: () => vars.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || null,
+  },
+  {
+    name: "NEXT_PUBLIC_FIREBASE_APP_ID",
+    sensitive: false,
+    getValue: () => vars.NEXT_PUBLIC_FIREBASE_APP_ID || null,
+  },
+  {
+    name: "FIREBASE_ADMIN_CLIENT_EMAIL",
     sensitive: true,
-    getValue: () => vars.AUTH_GOOGLE_SECRET || null,
+    getValue: () => vars.FIREBASE_ADMIN_CLIENT_EMAIL || null,
+  },
+  {
+    name: "FIREBASE_ADMIN_PRIVATE_KEY",
+    sensitive: true,
+    getValue: () => vars.FIREBASE_ADMIN_PRIVATE_KEY || null,
   },
   {
     name: "ANTHROPIC_API_KEY",
@@ -157,6 +182,6 @@ for (const env of targets) {
 }
 
 console.log(
-  "\nFatto. Aggiungi in Google Cloud il redirect OAuth per produzione:\n" +
-    `${PRODUCTION_APP_URL}/api/auth/callback/google\n`,
+  "\nFatto. Firebase Auth configurato su Vercel.\n" +
+    `Dominio produzione: ${PRODUCTION_APP_URL}\n`,
 );
