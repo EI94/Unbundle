@@ -2,14 +2,14 @@
 
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { useRef, useEffect, useMemo, useState } from "react";
+import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import {
   Send,
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Globe,
   Search,
+  MessageCircle,
 } from "lucide-react";
 
 interface ChatInterfaceProps {
@@ -25,23 +25,38 @@ interface ChatInterfaceProps {
   }>;
 }
 
-const THINKING_MESSAGES = [
-  "Sto ragionando...",
-  "Analizzo le informazioni...",
-  "Elaboro la risposta...",
-];
-
-const TOOL_THINKING: Record<string, string> = {
-  webSearch: "Cerco informazioni online...",
-  saveCompanyValueThesis: "Salvo la value thesis...",
-  saveSystemBoundary: "Definisco il perimetro...",
-  saveUnitTerminology: "Salvo la terminologia...",
-  createDepartment: "Creo l'unità...",
-  saveStrategicGoal: "Salvo l'obiettivo...",
-  saveActivity: "Salvo l'attività...",
-  updateActivityClassification: "Classifico l'attività...",
-  linkActivityDependency: "Collego la dipendenza...",
-  markDepartmentMapped: "Completo il mapping...",
+const TOOL_LABELS: Record<string, { active: string; done: string }> = {
+  webSearch: { active: "Cerco online", done: "Ricerca completata" },
+  saveCompanyValueThesis: {
+    active: "Salvo la value thesis",
+    done: "Value thesis salvata",
+  },
+  saveSystemBoundary: {
+    active: "Definisco il perimetro",
+    done: "Perimetro definito",
+  },
+  saveUnitTerminology: {
+    active: "Salvo la terminologia",
+    done: "Terminologia salvata",
+  },
+  createDepartment: { active: "Creo l'unità", done: "Unità creata" },
+  saveStrategicGoal: {
+    active: "Salvo l'obiettivo",
+    done: "Obiettivo salvato",
+  },
+  saveActivity: { active: "Salvo l'attività", done: "Attività salvata" },
+  updateActivityClassification: {
+    active: "Classifico",
+    done: "Classificazione aggiornata",
+  },
+  linkActivityDependency: {
+    active: "Collego dipendenza",
+    done: "Dipendenza collegata",
+  },
+  markDepartmentMapped: {
+    active: "Completo mapping",
+    done: "Mapping completato",
+  },
 };
 
 function toolNameFromPart(part: Record<string, unknown>): string {
@@ -52,19 +67,6 @@ function toolNameFromPart(part: Record<string, unknown>): string {
   return "tool";
 }
 
-const TOOL_DONE: Record<string, string> = {
-  webSearch: "Ricerca completata",
-  saveCompanyValueThesis: "Value thesis salvata",
-  saveSystemBoundary: "Perimetro definito",
-  saveUnitTerminology: "Terminologia salvata",
-  createDepartment: "Unità creata",
-  saveStrategicGoal: "Obiettivo salvato",
-  saveActivity: "Attività salvata",
-  updateActivityClassification: "Classificazione aggiornata",
-  linkActivityDependency: "Dipendenza collegata",
-  markDepartmentMapped: "Mapping completato",
-};
-
 export function ChatInterface({
   workspaceId,
   conversationType,
@@ -74,7 +76,10 @@ export function ChatInterface({
   initialMessages = [],
 }: ChatInterfaceProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [waitingSeconds, setWaitingSeconds] = useState(0);
+  const [idleSeconds, setIdleSeconds] = useState(0);
+  const [showNudge, setShowNudge] = useState(false);
 
   const welcomeMessages: UIMessage[] = [];
   if (initialMessages.length === 0 && welcomeMessage) {
@@ -125,60 +130,97 @@ export function ChatInterface({
     [workspaceId, conversationType, departmentId]
   );
 
-  const chat = useChat({
-    transport,
-    messages: seedMessages,
-  });
-
+  const chat = useChat({ transport, messages: seedMessages });
   const { messages, status, error } = chat;
   const isLoading = status === "streaming" || status === "submitted";
-  const isThinking = status === "submitted";
 
+  const isUserTurn =
+    !isLoading &&
+    messages.length > 0 &&
+    messages[messages.length - 1]?.role === "assistant";
+
+  // Scroll automatico
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
 
+  // Timer di attesa AI
   useEffect(() => {
     if (!isLoading) {
       setWaitingSeconds(0);
       return;
     }
     setWaitingSeconds(0);
-    const interval = setInterval(() => {
-      setWaitingSeconds((s) => s + 1);
-    }, 1000);
+    const interval = setInterval(() => setWaitingSeconds((s) => s + 1), 1000);
     return () => clearInterval(interval);
   }, [isLoading]);
 
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const value = inputRef.current?.value?.trim();
-    if (!value || isLoading) return;
-    if (inputRef.current) inputRef.current.value = "";
-    chat.sendMessage({
-      role: "user",
-      parts: [{ type: "text", text: value }],
-    });
-  };
-
-  const handleSuggestion = (text: string) => {
-    if (isLoading) return;
-    chat.sendMessage({
-      role: "user",
-      parts: [{ type: "text", text }],
-    });
-  };
-
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
+  // Timer idle utente: nudge dopo 45s
+  useEffect(() => {
+    if (!isUserTurn) {
+      setIdleSeconds(0);
+      setShowNudge(false);
+      return;
     }
-  };
+    setIdleSeconds(0);
+    setShowNudge(false);
+    const interval = setInterval(() => {
+      setIdleSeconds((s) => {
+        const next = s + 1;
+        if (next >= 45) setShowNudge(true);
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isUserTurn]);
+
+  // Auto-focus input quando è turno utente
+  useEffect(() => {
+    if (isUserTurn && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isUserTurn]);
+
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      const value = inputRef.current?.value?.trim();
+      if (!value || isLoading) return;
+      if (inputRef.current) inputRef.current.value = "";
+      setShowNudge(false);
+      setIdleSeconds(0);
+      chat.sendMessage({
+        role: "user",
+        parts: [{ type: "text", text: value }],
+      });
+    },
+    [isLoading, chat]
+  );
+
+  const handleSuggestion = useCallback(
+    (text: string) => {
+      if (isLoading) return;
+      setShowNudge(false);
+      setIdleSeconds(0);
+      chat.sendMessage({
+        role: "user",
+        parts: [{ type: "text", text }],
+      });
+    },
+    [isLoading, chat]
+  );
+
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit(e);
+      }
+    },
+    [handleSubmit]
+  );
 
   const getMessageText = (message: UIMessage): string =>
     message.parts
@@ -223,13 +265,6 @@ export function ChatInterface({
     });
   };
 
-  const getThinkingMessage = () => {
-    if (waitingSeconds < 3) return THINKING_MESSAGES[0];
-    if (waitingSeconds < 8) return THINKING_MESSAGES[1];
-    if (waitingSeconds < 15) return THINKING_MESSAGES[2];
-    return `Ancora in elaborazione (${waitingSeconds}s)...`;
-  };
-
   const showSuggestions =
     suggestions.length > 0 && messages.length <= 1 && !isLoading;
 
@@ -259,37 +294,39 @@ export function ChatInterface({
                 className="text-sm leading-relaxed text-muted-foreground"
               >
                 {text && (
-                  <div className="whitespace-pre-wrap">{renderMarkdown(text)}</div>
+                  <div className="whitespace-pre-wrap">
+                    {renderMarkdown(text)}
+                  </div>
                 )}
                 {toolParts.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {toolParts.map((part, i) => {
                       const p = part as Record<string, unknown>;
-                      const toolName = toolNameFromPart(p);
+                      const name = toolNameFromPart(p);
                       const state = p.state as string | undefined;
                       const isDone = state === "output";
-                      const isSearch = toolName === "webSearch";
+                      const labels = TOOL_LABELS[name];
 
                       return (
                         <div
                           key={i}
-                          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all ${
                             isDone
-                              ? "border-border text-muted-foreground"
+                              ? "border-border/50 text-muted-foreground/70"
                               : "border-foreground/10 text-foreground animate-pulse"
                           }`}
                         >
                           {isDone ? (
-                            <CheckCircle2 className="h-3 w-3 text-green-500" />
-                          ) : isSearch ? (
+                            <CheckCircle2 className="h-3 w-3 text-green-500/70" />
+                          ) : name === "webSearch" ? (
                             <Search className="h-3 w-3 animate-spin" />
                           ) : (
                             <Loader2 className="h-3 w-3 animate-spin" />
                           )}
                           <span>
                             {isDone
-                              ? TOOL_DONE[toolName] ?? toolName
-                              : TOOL_THINKING[toolName] ?? "Elaboro..."}
+                              ? labels?.done ?? name
+                              : labels?.active ?? "Elaboro..."}
                           </span>
                         </div>
                       );
@@ -300,41 +337,41 @@ export function ChatInterface({
             );
           })}
 
-          {/* Thinking indicator */}
-          {isLoading &&
-            messages.length > 0 &&
-            messages[messages.length - 1]?.role !== "assistant" && (
-              <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce"
-                    style={{ animationDelay: "0ms" }}
-                  />
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce"
-                    style={{ animationDelay: "150ms" }}
-                  />
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce"
-                    style={{ animationDelay: "300ms" }}
-                  />
-                </div>
-                <span className="text-xs">{getThinkingMessage()}</span>
+          {/* AI thinking / streaming indicator */}
+          {isLoading && (
+            <div className="flex items-center gap-3 text-sm text-muted-foreground py-1">
+              <div className="flex items-center gap-1">
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce"
+                  style={{ animationDelay: "150ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce"
+                  style={{ animationDelay: "300ms" }}
+                />
               </div>
-            )}
-
-          {/* Streaming indicator */}
-          {status === "streaming" && waitingSeconds > 20 && (
-            <div className="text-xs text-muted-foreground/60">
-              La risposta sta arrivando, potrebbe richiedere qualche secondo in pi&ugrave;...
+              <span className="text-xs">
+                {waitingSeconds < 5
+                  ? "Sto ragionando..."
+                  : waitingSeconds < 15
+                    ? "Elaboro la risposta..."
+                    : waitingSeconds < 30
+                      ? `Ancora un momento (${waitingSeconds}s)...`
+                      : `Ci sto mettendo un po' (${waitingSeconds}s)...`}
+              </span>
             </div>
           )}
 
+          {/* Errore */}
           {error && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-start gap-2">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium">Si &egrave; verificato un errore</p>
+                <p className="font-medium">Errore</p>
                 <p className="text-xs mt-0.5 opacity-80">
                   {error.message?.includes("fetch")
                     ? "Connessione persa. Controlla la rete e riprova."
@@ -342,7 +379,7 @@ export function ChatInterface({
                       ? "Sessione scaduta. Ricarica la pagina."
                       : error.message?.includes("429")
                         ? "Troppe richieste. Attendi qualche secondo."
-                        : "Errore imprevisto. Riprova a inviare il messaggio."}
+                        : "Errore imprevisto. Riprova."}
                 </p>
               </div>
             </div>
@@ -350,6 +387,22 @@ export function ChatInterface({
         </div>
       </div>
 
+      {/* Nudge quando utente inattivo */}
+      {showNudge && isUserTurn && (
+        <div className="px-6 pb-2">
+          <div className="mx-auto max-w-2xl">
+            <div className="flex items-center gap-2 rounded-lg border border-foreground/10 bg-accent/50 px-4 py-2.5 text-xs text-muted-foreground animate-in fade-in slide-in-from-bottom-2">
+              <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                È il tuo turno — rispondi alla domanda per continuare la
+                Discovery.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Suggestions */}
       {showSuggestions && (
         <div className="px-6 pb-3">
           <div className="mx-auto max-w-2xl flex flex-wrap gap-2">
@@ -366,25 +419,37 @@ export function ChatInterface({
         </div>
       )}
 
+      {/* Input area */}
       <div className="border-t border-border px-6 py-4">
         <form
           onSubmit={handleSubmit}
           className="mx-auto flex max-w-2xl items-end gap-3"
         >
-          <textarea
-            ref={inputRef}
-            onKeyDown={onKeyDown}
-            placeholder={
-              isLoading ? "Attendi la risposta..." : "Scrivi la tua risposta..."
-            }
-            className="flex-1 resize-none rounded-xl border border-border bg-card px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[48px] max-h-[200px] disabled:opacity-50"
-            rows={1}
-            disabled={isLoading}
-          />
+          <div className="relative flex-1">
+            <textarea
+              ref={inputRef}
+              onKeyDown={onKeyDown}
+              placeholder={
+                isLoading
+                  ? "Attendi la risposta..."
+                  : "Scrivi la tua risposta..."
+              }
+              className="w-full resize-none rounded-xl border border-border bg-card px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[48px] max-h-[200px] disabled:opacity-30 disabled:cursor-not-allowed"
+              rows={1}
+              disabled={isLoading}
+            />
+            {isLoading && (
+              <div className="absolute inset-0 rounded-xl bg-card/60 flex items-center justify-center cursor-not-allowed">
+                <span className="text-xs text-muted-foreground/60">
+                  Attendi la risposta...
+                </span>
+              </div>
+            )}
+          </div>
           <button
             type="submit"
             disabled={isLoading}
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-20"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-10 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />

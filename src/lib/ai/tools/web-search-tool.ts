@@ -7,8 +7,7 @@ export function getWebSearchTool() {
       description:
         "Cerca informazioni su internet riguardo un'azienda, un settore, una persona o un trend. " +
         "Usare quando l'utente menziona il nome della propria azienda, il settore in cui opera, " +
-        "competitor, o quando vuoi arricchire la conversazione con dati reali e aggiornati. " +
-        "Esempio: l'utente dice 'Siamo Acme Corp nel settore energy' → cerca 'Acme Corp energy company'.",
+        "competitor, o quando vuoi arricchire la conversazione con dati reali e aggiornati.",
       inputSchema: z.object({
         query: z
           .string()
@@ -16,10 +15,24 @@ export function getWebSearchTool() {
         reason: z
           .string()
           .describe(
-            "Perché stai cercando questa informazione (verrà mostrato all'utente)"
+            "Perché stai cercando questa informazione"
           ),
       }),
       execute: async ({ query, reason }) => {
+        const apiKey = process.env.BRAVE_SEARCH_API_KEY;
+        if (!apiKey) {
+          return {
+            success: false,
+            reason,
+            message:
+              "Web search non configurata. Prosegui con le informazioni che hai.",
+            results: [],
+          };
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+
         try {
           const response = await fetch(
             `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`,
@@ -27,29 +40,33 @@ export function getWebSearchTool() {
               headers: {
                 Accept: "application/json",
                 "Accept-Encoding": "gzip",
-                "X-Subscription-Token": process.env.BRAVE_SEARCH_API_KEY ?? "",
+                "X-Subscription-Token": apiKey,
               },
+              signal: controller.signal,
             }
           );
+
+          clearTimeout(timeout);
 
           if (!response.ok) {
             return {
               success: false,
-              message: "Ricerca non disponibile al momento.",
+              reason,
+              message: "Ricerca non disponibile al momento. Prosegui senza.",
               results: [],
             };
           }
 
           const data = await response.json();
-          const results = (
-            data.web?.results ?? []
-          ).slice(0, 5).map(
-            (r: { title: string; url: string; description: string }) => ({
-              title: r.title,
-              url: r.url,
-              snippet: r.description,
-            })
-          );
+          const results = (data.web?.results ?? [])
+            .slice(0, 5)
+            .map(
+              (r: { title: string; url: string; description: string }) => ({
+                title: r.title,
+                url: r.url,
+                snippet: r.description,
+              })
+            );
 
           return {
             success: true,
@@ -58,9 +75,11 @@ export function getWebSearchTool() {
             message: `Ho trovato ${results.length} risultati per "${query}".`,
           };
         } catch {
+          clearTimeout(timeout);
           return {
             success: false,
-            message: "Ricerca non disponibile al momento.",
+            reason,
+            message: "Ricerca non disponibile al momento. Prosegui senza.",
             results: [],
           };
         }

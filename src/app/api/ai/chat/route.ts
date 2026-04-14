@@ -249,6 +249,9 @@ export async function POST(req: Request) {
     // Default SDK = stepCountIs(1): dopo un tool call lo stream si chiude SENZA secondo round
     // → UI bloccata su "Elaboro...". Serve un budget di step per testo post-tool.
     stopWhen: stepCountIs(20),
+    onError: ({ error }) => {
+      console.error("[chat/route] streamText error:", error);
+    },
     onFinish: async ({ text }) => {
       if (text) {
         await saveMessage({
