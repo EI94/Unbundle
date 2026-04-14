@@ -46,12 +46,10 @@ export async function generateValueMapAction(workspaceId: string) {
 - **X (Maturità/Evolution)**: 0 = Genesis/Sperimentale, 0.25 = Custom, 0.5 = Product, 0.75 = Commodity, 1 = Utility
 - **Y (Valore Strategico)**: 0 = Basso valore, pura esecuzione, 1 = Altissimo valore strategico, differenziante
 
-Considera:
-- Le attività "differentiating" hanno Y alto (0.7-0.95) e X basso-medio (sono custom/product)
-- Le attività "automatable" hanno Y basso (0.1-0.35) e X alto (sono commodity/utility)
-- Le attività "augmentable" sono in mezzo
-- Le attività "emerging_opportunity" hanno X basso (sono nuove) e Y medio-alto
-- Le attività "blocked_by_*" hanno Y variabile ma X medio-basso
+I 3 stream del framework Unbundle:
+- **AUTOMATE** ("Questo lavoro non dovrebbe esistere nella sua forma attuale"): Y basso (0.05-0.35), X alto (0.65-0.95) — sono commodity/utility
+- **DIFFERENTIATE** ("Qui concentrare l'energia umana"): Y alto (0.65-0.95), X basso-medio (0.15-0.55) — sono custom/product, il valore è nel giudizio umano
+- **INNOVATE** ("Questo valore prima non esisteva"): Y medio-alto (0.5-0.85), X molto basso (0.0-0.3) — sono genesis/sperimentali, opportunità emergenti
 
 Value Thesis dell'azienda (usala per capire cosa è davvero strategico): ${JSON.stringify(org?.companyValueThesis ?? {})}`,
     messages: [

@@ -9,14 +9,39 @@ interface WardleyMapProps {
   nodes: ValueMapNode[];
 }
 
-const classificationColors: Record<string, string> = {
-  automatable: "#22c55e",
-  augmentable: "#3b82f6",
-  differentiating: "#8b5cf6",
-  emerging_opportunity: "#f59e0b",
-  blocked_by_system: "#ef4444",
-  blocked_by_governance: "#f97316",
+const STREAM_CONFIG: Record<
+  string,
+  { color: string; label: string; description: string }
+> = {
+  automate: {
+    color: "#22c55e",
+    label: "Automate",
+    description: "Questo lavoro non dovrebbe esistere nella sua forma attuale",
+  },
+  differentiate: {
+    color: "#8b5cf6",
+    label: "Differentiate",
+    description: "Qui concentrare l'energia umana",
+  },
+  innovate: {
+    color: "#f59e0b",
+    label: "Innovate",
+    description: "Questo valore prima non esisteva",
+  },
 };
+
+function normalizeClassification(c: string | null): string | null {
+  if (!c) return null;
+  const map: Record<string, string> = {
+    automatable: "automate",
+    augmentable: "differentiate",
+    differentiating: "differentiate",
+    emerging_opportunity: "innovate",
+    blocked_by_system: "automate",
+    blocked_by_governance: "automate",
+  };
+  return map[c] ?? c;
+}
 
 export function WardleyMap({ activities, nodes }: WardleyMapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -110,7 +135,10 @@ export function WardleyMap({ activities, nodes }: WardleyMapProps) {
 
     const mappedActivities = activities
       .map((a) => ({ activity: a, node: nodeMap.get(a.id) }))
-      .filter((d): d is { activity: typeof d.activity; node: ValueMapNode } => !!d.node);
+      .filter(
+        (d): d is { activity: typeof d.activity; node: ValueMapNode } =>
+          !!d.node
+      );
 
     const nodeGroup = g
       .selectAll(".node")
@@ -118,8 +146,10 @@ export function WardleyMap({ activities, nodes }: WardleyMapProps) {
       .enter()
       .append("g")
       .attr("class", "node")
-      .attr("transform", (d) =>
-        `translate(${xScale(d.node.xMaturity)},${yScale(d.node.yStrategicValue)})`
+      .attr(
+        "transform",
+        (d) =>
+          `translate(${xScale(d.node.xMaturity)},${yScale(d.node.yStrategicValue)})`
       )
       .style("cursor", "pointer")
       .on("mouseenter", function (event, d) {
@@ -143,9 +173,10 @@ export function WardleyMap({ activities, nodes }: WardleyMapProps) {
         const hours = d.activity.timeSpentHoursWeek;
         return hours ? Math.max(5, Math.min(16, hours * 1.2)) : 7;
       })
-      .attr("fill", (d) =>
-        classificationColors[d.activity.classification ?? ""] ?? "#64748b"
-      )
+      .attr("fill", (d) => {
+        const stream = normalizeClassification(d.activity.classification);
+        return STREAM_CONFIG[stream ?? ""]?.color ?? "#64748b";
+      })
       .attr("stroke", "var(--color-background)")
       .attr("stroke-width", 1)
       .attr("opacity", 0.9);
@@ -182,14 +213,21 @@ export function WardleyMap({ activities, nodes }: WardleyMapProps) {
         </button>
       </div>
 
-      <div className="flex gap-3 flex-wrap mb-4">
-        {Object.entries(classificationColors).map(([key, color]) => (
-          <div key={key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <div className="flex gap-6 flex-wrap mb-4">
+        {Object.entries(STREAM_CONFIG).map(([key, cfg]) => (
+          <div key={key} className="flex items-center gap-2">
             <div
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: color }}
+              className="h-3 w-3 rounded-full"
+              style={{ backgroundColor: cfg.color }}
             />
-            <span className="capitalize">{key.replace(/_/g, " ")}</span>
+            <div>
+              <span className="text-xs font-medium text-foreground">
+                {cfg.label}
+              </span>
+              <span className="text-xs text-muted-foreground ml-1.5 hidden sm:inline">
+                {cfg.description}
+              </span>
+            </div>
           </div>
         ))}
       </div>
@@ -210,12 +248,38 @@ export function WardleyMap({ activities, nodes }: WardleyMapProps) {
             {tooltip.activity.departmentName}
           </p>
           <div className="mt-1.5 flex gap-3 text-xs text-muted-foreground">
-            <span>Evolution: {(tooltip.node.xMaturity * 100).toFixed(0)}%</span>
-            <span>Valore: {(tooltip.node.yStrategicValue * 100).toFixed(0)}%</span>
+            <span>
+              Evolution: {(tooltip.node.xMaturity * 100).toFixed(0)}%
+            </span>
+            <span>
+              Valore: {(tooltip.node.yStrategicValue * 100).toFixed(0)}%
+            </span>
           </div>
           {tooltip.activity.classification && (
-            <span className="mt-1 inline-block rounded-full border border-border px-2 py-0.5 text-xs capitalize">
-              {tooltip.activity.classification.replace(/_/g, " ")}
+            <span
+              className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs"
+              style={{
+                color:
+                  STREAM_CONFIG[
+                    normalizeClassification(tooltip.activity.classification) ??
+                      ""
+                  ]?.color,
+              }}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{
+                  backgroundColor:
+                    STREAM_CONFIG[
+                      normalizeClassification(
+                        tooltip.activity.classification
+                      ) ?? ""
+                    ]?.color,
+                }}
+              />
+              {STREAM_CONFIG[
+                normalizeClassification(tooltip.activity.classification) ?? ""
+              ]?.label ?? tooltip.activity.classification}
             </span>
           )}
         </div>

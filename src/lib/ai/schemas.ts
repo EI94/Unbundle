@@ -70,14 +70,7 @@ export const activitySchema = z.object({
 });
 
 export const classificationResultSchema = z.object({
-  classification: z.enum([
-    "automatable",
-    "augmentable",
-    "differentiating",
-    "emerging_opportunity",
-    "blocked_by_system",
-    "blocked_by_governance",
-  ]),
+  classification: z.enum(["automate", "differentiate", "innovate"]),
   confidenceScore: z
     .number()
     .min(0)

@@ -8,8 +8,6 @@ import {
 } from "@/lib/db/queries/conversations";
 import { ChatInterface } from "@/components/agent/chat-interface";
 import { ActivitySidebar } from "@/components/dashboard/activity-sidebar";
-import { Badge } from "@/components/ui/badge";
-import { GitBranch, Users } from "lucide-react";
 
 export default async function DepartmentMappingPage({
   params,
@@ -47,18 +45,24 @@ export default async function DepartmentMappingPage({
     validated: "Validato",
   };
 
-  const welcome = `Iniziamo il mapping delle attività per **${department.name}**${department.teamSize ? ` (${department.teamSize} persone)` : ""}.
+  const statusLabel =
+    statusLabels[department.mappingStatus] ?? department.mappingStatus;
 
-L'obiettivo è scomporre il lavoro del dipartimento in unità analizzabili. Per ogni attività raccoglierò:
-- **Cosa** si fa concretamente e con quale **frequenza**
-- **Input e output** del processo
-- **Strumenti** utilizzati
-- **Punti decisionali** dove serve giudizio umano
-- **Pain points** e frizioni
+  const welcome = `Iniziamo il mapping di **${department.name}**${department.teamSize ? ` (${department.teamSize} persone)` : ""}.
 
-Le attività verranno salvate automaticamente nella sidebar a destra.
+Scomporremo il lavoro in unità analizzabili. Per ogni attività raccoglierò:
+— **Cosa** si fa e con quale **frequenza**
+— **Input/Output** del processo
+— **Strumenti** utilizzati
+— **Decision point** dove serve giudizio umano
+— **Pain point** e frizioni
 
-**Descrivimi una settimana tipo in ${department.name}: su cosa si passa più tempo?**`;
+Ogni attività verrà classificata in uno dei 3 stream:
+— **Automate** — lavoro che non dovrebbe esistere così
+— **Differentiate** — dove concentrare l'energia umana
+— **Innovate** — valore che prima non esisteva
+
+**Descrivimi una settimana tipo: su cosa si passa più tempo?**`;
 
   const suggestions = [
     `Le attività principali sono 4-5`,
@@ -70,31 +74,23 @@ Le attività verranno salvate automaticamente nella sidebar a destra.
   return (
     <div className="flex h-[calc(100vh-1px)] overflow-hidden">
       <div className="flex-1 flex flex-col">
-        <div className="border-b border-border px-6 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white">
-              <GitBranch className="h-4 w-4" />
+        <div className="border-b border-border px-6 py-3.5 flex items-center gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-sm font-medium">{department.name}</h1>
+              <span className="text-xs text-muted-foreground">
+                {statusLabel}
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm font-semibold leading-tight">
-                  {department.name}
-                </h1>
-                <Badge variant="outline" className="text-xs">
-                  {statusLabels[department.mappingStatus] ??
-                    department.mappingStatus}
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {department.description ?? "Activity Mapping"}
-                {department.teamSize
-                  ? ` \u00b7 ${department.teamSize} persone`
-                  : ""}
-                {activities.length > 0
-                  ? ` \u00b7 ${activities.length} attivit\u00e0`
-                  : ""}
-              </p>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              {department.description ?? "Activity Mapping"}
+              {department.teamSize
+                ? ` · ${department.teamSize} persone`
+                : ""}
+              {activities.length > 0
+                ? ` · ${activities.length} attività`
+                : ""}
+            </p>
           </div>
         </div>
         <ChatInterface

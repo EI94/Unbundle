@@ -83,10 +83,13 @@ export async function generateCompetitiveAnalysis(
     .limit(20);
 
   const automatable = allActivities.filter(
-    (a) => a.classification === "automatable"
+    (a) => a.classification === "automate" || a.classification === "automatable"
   );
-  const augmentable = allActivities.filter(
-    (a) => a.classification === "augmentable"
+  const differentiate = allActivities.filter(
+    (a) => a.classification === "differentiate" || a.classification === "differentiating"
+  );
+  const innovate = allActivities.filter(
+    (a) => a.classification === "innovate" || a.classification === "emerging_opportunity"
   );
   const quickWins = allUseCases.filter(
     (uc) => uc.category === "quick_win"
@@ -104,8 +107,9 @@ Analizza i dati del workspace "${workspace?.name ?? "N/D"}" e genera un report d
 
 DATI DEL WORKSPACE:
 - Attivita' totali mappate: ${allActivities.length}
-- Attivita' automatizzabili: ${automatable.length}
-- Attivita' augmentabili: ${augmentable.length}
+- Stream AUTOMATE: ${automatable.length}
+- Stream DIFFERENTIATE: ${differentiate.length}
+- Stream INNOVATE: ${innovate.length}
 - Use case totali: ${allUseCases.length}
 - Quick Wins identificati: ${quickWins.length}
 - Strategic Bets: ${strategicBets.length}

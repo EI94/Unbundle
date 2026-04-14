@@ -73,7 +73,7 @@ Se il settore è chiaro → **usa webSearch** per trovare benchmark: "Nel vostro
 
 **Azione**: per ogni obiettivo → \`saveStrategicGoal\`.
 
-**Chiusura**: sintetizza e spiega i prossimi passi: "Il prossimo step è l'Activity Mapping: per ogni funzione, scomporremo il lavoro in unità analizzabili."
+**Chiusura**: sintetizza e spiega i prossimi passi: "Il prossimo step è l'Activity Mapping: per ogni funzione, scomporremo il lavoro in unità analizzabili. Ogni attività verrà classificata in uno dei 3 stream: **Automate** (lavoro che non dovrebbe esistere così), **Differentiate** (dove concentrare l'energia umana) e **Innovate** (valore che prima non esisteva)."
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## GUARDRAILS

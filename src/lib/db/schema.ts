@@ -56,6 +56,9 @@ export const workTypeEnum = pgEnum("work_type", [
 ]);
 
 export const classificationEnum = pgEnum("classification", [
+  "automate",
+  "differentiate",
+  "innovate",
   "automatable",
   "augmentable",
   "differentiating",

@@ -50,6 +50,24 @@ export default async function WorkspaceOverviewPage({
   );
   const classifiedActivities = activities.filter((a) => a.classification);
 
+  const streamCounts = {
+    automate: activities.filter(
+      (a) =>
+        a.classification === "automate" || a.classification === "automatable"
+    ).length,
+    differentiate: activities.filter(
+      (a) =>
+        a.classification === "differentiate" ||
+        a.classification === "differentiating" ||
+        a.classification === "augmentable"
+    ).length,
+    innovate: activities.filter(
+      (a) =>
+        a.classification === "innovate" ||
+        a.classification === "emerging_opportunity"
+    ).length,
+  };
+
   const hasLeadership = !!workspace.systemBoundary;
   const hasGoals = goals.length > 0;
   const hasDepts = departments.length > 0;
@@ -187,6 +205,44 @@ export default async function WorkspaceOverviewPage({
           })}
         </div>
       </div>
+
+      {/* 3 Streams */}
+      {classifiedActivities.length > 0 && (
+        <div className="mb-14">
+          <p className="text-xs text-muted-foreground mb-4 tracking-wide">
+            Three streams
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4">
+              <div className="text-2xl font-medium tabular-nums text-green-400">
+                {streamCounts.automate}
+              </div>
+              <p className="text-xs font-medium mt-1">Automate</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Non dovrebbe esistere cos&igrave;
+              </p>
+            </div>
+            <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-4">
+              <div className="text-2xl font-medium tabular-nums text-violet-400">
+                {streamCounts.differentiate}
+              </div>
+              <p className="text-xs font-medium mt-1">Differentiate</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Concentrare l&apos;energia umana
+              </p>
+            </div>
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+              <div className="text-2xl font-medium tabular-nums text-amber-400">
+                {streamCounts.innovate}
+              </div>
+              <p className="text-xs font-medium mt-1">Innovate</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Valore che prima non esisteva
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tools */}
       <div>

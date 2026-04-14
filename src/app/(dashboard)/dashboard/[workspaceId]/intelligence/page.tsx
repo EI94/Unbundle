@@ -31,7 +31,7 @@ export default async function IntelligencePage(props: {
   );
 
   const automatable = activities.filter(
-    (a) => a.classification === "automatable"
+    (a) => a.classification === "automate" || a.classification === "automatable"
   );
   const quickWins = useCases.filter(
     (uc) => uc.category === "quick_win"

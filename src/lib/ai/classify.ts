@@ -4,14 +4,7 @@ import { z } from "zod";
 import type { Activity, StrategicGoal } from "@/lib/db/schema";
 
 const classificationSchema = z.object({
-  classification: z.enum([
-    "automatable",
-    "augmentable",
-    "differentiating",
-    "emerging_opportunity",
-    "blocked_by_system",
-    "blocked_by_governance",
-  ]),
+  classification: z.enum(["automate", "differentiate", "innovate"]),
   confidenceScore: z.number().min(0).max(1),
   reasoning: z.string(),
   aiPotential: z.string(),
@@ -29,7 +22,7 @@ export async function classifyActivity(
   const { object } = await generateObject({
     model: anthropic("claude-sonnet-4-20250514"),
     schema: classificationSchema,
-    prompt: `Analizza questa attività lavorativa e classificala secondo il framework Unbundle.
+    prompt: `Analizza questa attività lavorativa e classificala in uno dei 3 stream del framework Unbundle.
 
 ## Attività
 - **Titolo**: ${activity.title}
@@ -49,15 +42,32 @@ ${JSON.stringify(strategicContext.companyValueThesis ?? {}, null, 2)}
 ## Obiettivi strategici
 ${strategicContext.goals.map((g) => `- [${g.type}] ${g.title}`).join("\n")}
 
-## Classificazioni possibili
-- **automatable**: l'attività può essere automatizzata end-to-end con AI/software. Basso giudizio umano richiesto, alta ripetitività, input/output ben definiti.
-- **augmentable**: l'AI può migliorare significativamente l'efficacia umana. Serve ancora giudizio ma l'AI accelera analisi, suggerimenti, qualità.
-- **differentiating**: attività core che crea vantaggio competitivo. Il giudizio umano è il valore. Da proteggere e potenziare, non automatizzare.
-- **emerging_opportunity**: con l'AI emergono possibilità nuove. Prodotti, servizi o insight che prima non erano possibili.
-- **blocked_by_system**: potenzialmente automatizzabile ma bloccata da vincoli tecnici (dati frammentati, sistemi legacy, API mancanti).
-- **blocked_by_governance**: potenzialmente automatizzabile ma bloccata da policy, compliance, qualità dati, privacy.
+## I 3 STREAM
 
-Classifica con il massimo rigore. La confidence score deve riflettere quanto sei sicuro.`,
+### AUTOMATE — "Questo lavoro non dovrebbe esistere nella sua forma attuale."
+Processi da eliminare o ristrutturare. Lavoro dove l'energia umana viene spesa su task che le macchine dovrebbero gestire. Caratteristiche:
+- Alta ripetitività, basso giudizio umano
+- Input/output ben definiti
+- Il valore sta nell'esecuzione veloce e accurata, non nell'interpretazione
+- Spesso source di errori manuali e ritardi
+- Include anche attività "bloccate" da sistemi legacy o governance che, una volta sbloccate, andrebbero automatizzate
+
+### DIFFERENTIATE — "Qui concentrare l'energia umana."
+Dove risiede il vantaggio competitivo. Il lavoro che solo le tue persone possono fare. Caratteristiche:
+- Richiede giudizio, esperienza, relazioni
+- È parte dei nodi strategici della value thesis
+- L'AI può augmentare (assistere, accelerare) ma NON sostituire
+- Se lo automatizzo, perdo vantaggio competitivo
+- Include decision-making strategico, relazioni con clienti, design creativo
+
+### INNOVATE — "Questo valore prima non esisteva."
+Opportunità nuove che emergono dai pattern cross-organizzativi. Revenue stream, prodotti, servizi che diventano possibili quando vedi cosa gli altri non vedono. Caratteristiche:
+- Non è un'attività "corrente" ottimizzabile — è un'opportunità latente
+- Emerge dalla combinazione di dati, processi, competenze già esistenti
+- L'AI abilita insight, prodotti o servizi completamente nuovi
+- Ha potenziale di revenue o di trasformazione del modello di business
+
+Classifica con rigore. Se l'attività è palesemente operativa e ripetitiva → AUTOMATE. Se è il cuore del valore → DIFFERENTIATE. Se nasconde un'opportunità di innovazione → INNOVATE. In caso di dubbio, scegli AUTOMATE (è il default per il lavoro che "c'è ma non dovrebbe esserci così").`,
   });
 
   return object;

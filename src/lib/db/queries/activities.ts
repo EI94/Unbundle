@@ -47,7 +47,7 @@ export async function updateActivity(id: string, data: Partial<NewActivity>) {
 
 export async function updateActivityClassification(
   id: string,
-  classification: "automatable" | "augmentable" | "differentiating" | "emerging_opportunity" | "blocked_by_system" | "blocked_by_governance",
+  classification: "automate" | "differentiate" | "innovate",
   confidenceScore: number
 ) {
   const [activity] = await db
@@ -74,12 +74,9 @@ export async function getActivityStats(workspaceId: string) {
   const result = await db
     .select({
       total: sql<number>`count(*)`,
-      automatable: sql<number>`count(*) filter (where ${activities.classification} = 'automatable')`,
-      augmentable: sql<number>`count(*) filter (where ${activities.classification} = 'augmentable')`,
-      differentiating: sql<number>`count(*) filter (where ${activities.classification} = 'differentiating')`,
-      emergingOpportunity: sql<number>`count(*) filter (where ${activities.classification} = 'emerging_opportunity')`,
-      blockedBySystem: sql<number>`count(*) filter (where ${activities.classification} = 'blocked_by_system')`,
-      blockedByGovernance: sql<number>`count(*) filter (where ${activities.classification} = 'blocked_by_governance')`,
+      automate: sql<number>`count(*) filter (where ${activities.classification} = 'automate')`,
+      differentiate: sql<number>`count(*) filter (where ${activities.classification} = 'differentiate')`,
+      innovate: sql<number>`count(*) filter (where ${activities.classification} = 'innovate')`,
       unclassified: sql<number>`count(*) filter (where ${activities.classification} is null)`,
     })
     .from(activities)
