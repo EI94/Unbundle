@@ -10,6 +10,8 @@ import {
   pgEnum,
   boolean,
   primaryKey,
+  vector,
+  index,
 } from "drizzle-orm/pg-core";
 
 // ─── Enums ──────────────────────────────────────────────────────────
@@ -199,6 +201,10 @@ export const workspaces = pgTable("workspaces", {
   description: text("description"),
   status: workspaceStatusEnum("status").notNull().default("setup"),
   systemBoundary: jsonb("system_boundary"),
+  unitTerminology: jsonb("unit_terminology").$type<{
+    singular: string;
+    plural: string;
+  }>(),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -311,6 +317,10 @@ export const useCases = pgTable("use_cases", {
   feasibilityRisk: real("feasibility_risk"),
   feasibilityTech: real("feasibility_tech"),
   feasibilityTeam: real("feasibility_team"),
+  esgEnvironmental: real("esg_environmental"),
+  esgSocial: real("esg_social"),
+  esgGovernance: real("esg_governance"),
+  overallEsgScore: real("overall_esg_score"),
   overallImpactScore: real("overall_impact_score"),
   overallFeasibilityScore: real("overall_feasibility_score"),
   overallScore: real("overall_score"),
@@ -484,6 +494,47 @@ export const simulations = pgTable("simulations", {
     .notNull(),
 });
 
+// ─── RAG: Document Chunks ────────────────────────────────────────────
+
+export const documentChunks = pgTable(
+  "document_chunks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => uploadedDocuments.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    chunkIndex: integer("chunk_index").notNull(),
+    embedding: vector("embedding", { dimensions: 1536 }),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [index("document_chunks_workspace_idx").on(t.workspaceId)]
+);
+
+// ─── RAG: Conversation Embeddings ────────────────────────────────────
+
+export const conversationEmbeddings = pgTable(
+  "conversation_embeddings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    role: varchar("role", { length: 50 }).notNull(),
+    embedding: vector("embedding", { dimensions: 1536 }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [index("conversation_embeddings_workspace_idx").on(t.workspaceId)]
+);
+
 // ─── Type exports ───────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -510,3 +561,5 @@ export type WeeklySignal = typeof weeklySignals.$inferSelect;
 export type UploadedDocument = typeof uploadedDocuments.$inferSelect;
 export type AgentBlueprint = typeof agentBlueprints.$inferSelect;
 export type Simulation = typeof simulations.$inferSelect;
+export type DocumentChunk = typeof documentChunks.$inferSelect;
+export type ConversationEmbedding = typeof conversationEmbeddings.$inferSelect;

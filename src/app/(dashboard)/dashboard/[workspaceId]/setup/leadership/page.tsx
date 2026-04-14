@@ -14,7 +14,7 @@ const WELCOME = `L'AI sta cambiando le condizioni in cui opera la tua organizzaz
 
 Ti farò domande mirate su 4 aree:
 — **Dove create valore** e quali sono i nodi strategici
-— **Quali funzioni** includere nell'analisi
+— **Quali unità organizzative** includere nell'analisi
 — **Dove il lavoro si blocca** e dove l'AI cambia le regole
 — **Quali obiettivi** guidano le vostre decisioni
 

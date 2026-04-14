@@ -4,6 +4,7 @@ import { uploadedDocuments } from "@/lib/db/schema";
 import { put } from "@vercel/blob";
 import { generateText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { indexDocument } from "@/lib/ai/rag/chunker";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -110,6 +111,12 @@ export async function POST(req: Request) {
         summary,
       })
       .returning();
+
+    if (extractedText && extractedText.length > 100) {
+      indexDocument(doc.id, workspaceId, extractedText).catch((err) =>
+        console.error("RAG indexing failed:", err)
+      );
+    }
 
     return Response.json({
       id: doc.id,

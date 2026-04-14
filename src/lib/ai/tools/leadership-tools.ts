@@ -1,7 +1,12 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { organizations, workspaces, departments, strategicGoals } from "@/lib/db/schema";
+import {
+  organizations,
+  workspaces,
+  departments,
+  strategicGoals,
+} from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { companyValueThesisSchema, systemBoundarySchema } from "../schemas";
 
@@ -45,19 +50,49 @@ export function getLeadershipTools(workspaceId: string, organizationId: string) 
       },
     }),
 
+    saveUnitTerminology: tool({
+      description:
+        "Salva come l'organizzazione chiama le proprie unità organizzative (es. funzioni, aree, divisioni, stream, dipartimenti). Usare nella fase 4 dopo aver chiesto all'utente.",
+      inputSchema: z.object({
+        singular: z
+          .string()
+          .describe(
+            "Termine singolare scelto dall'utente (es. funzione, area, divisione, stream, dipartimento)"
+          ),
+        plural: z
+          .string()
+          .describe(
+            "Termine plurale corrispondente (es. funzioni, aree, divisioni, stream, dipartimenti)"
+          ),
+      }),
+      execute: async ({ singular, plural }) => {
+        await db
+          .update(workspaces)
+          .set({
+            unitTerminology: { singular, plural },
+            updatedAt: new Date(),
+          })
+          .where(eq(workspaces.id, workspaceId));
+        return {
+          success: true,
+          message: `Terminologia salvata: "${singular}" / "${plural}". Da ora userò sempre questi termini.`,
+        };
+      },
+    }),
+
     createDepartment: tool({
       description:
-        "Crea un dipartimento/funzione da mappare. Usare per ogni funzione aziendale che emerge come prioritaria per l'analisi.",
+        "Crea un'unità organizzativa da mappare. Usare per ogni unità che emerge come prioritaria per l'analisi.",
       inputSchema: z.object({
-        name: z.string().describe("Nome del dipartimento/funzione"),
+        name: z.string().describe("Nome dell'unità organizzativa"),
         description: z
           .string()
           .optional()
-          .describe("Descrizione del dipartimento e del suo ruolo"),
+          .describe("Descrizione dell'unità e del suo ruolo"),
         headName: z
           .string()
           .optional()
-          .describe("Nome del responsabile del dipartimento"),
+          .describe("Nome del responsabile"),
         teamSize: z
           .number()
           .optional()
@@ -77,7 +112,7 @@ export function getLeadershipTools(workspaceId: string, organizationId: string) 
         return {
           success: true,
           departmentId: dept.id,
-          message: `Dipartimento "${name}" creato con successo.`,
+          message: `"${name}" creata con successo.`,
         };
       },
     }),

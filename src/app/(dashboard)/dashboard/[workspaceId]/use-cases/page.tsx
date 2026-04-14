@@ -78,7 +78,7 @@ export default async function UseCasesPage({
           <h3 className="text-lg font-semibold">Nessun use case</h3>
           <p className="mt-2 max-w-sm text-sm text-muted-foreground">
             {activities.length === 0
-              ? "Completa prima il mapping delle attivita' per i dipartimenti."
+              ? "Completa prima il mapping delle attivita'."
               : classifiedCount === 0
                 ? "Classifica le attivita' prima di generare use case."
                 : "Clicca 'Genera Use Cases' per analizzare le attivita' e proporre use case AI."}
@@ -131,6 +131,7 @@ export default async function UseCasesPage({
                       <TableHead className="text-center">
                         Fattibilita&apos;
                       </TableHead>
+                      <TableHead className="text-center">ESG</TableHead>
                       <TableHead className="text-center">Score</TableHead>
                       <TableHead>Timeline</TableHead>
                       <TableHead></TableHead>
@@ -165,6 +166,9 @@ export default async function UseCasesPage({
                         </TableCell>
                         <TableCell className="text-center font-mono text-sm">
                           {uc.overallFeasibilityScore?.toFixed(1) ?? "-"}
+                        </TableCell>
+                        <TableCell className="text-center font-mono text-sm text-green-400">
+                          {uc.overallEsgScore?.toFixed(1) ?? "-"}
                         </TableCell>
                         <TableCell className="text-center font-mono text-sm font-semibold">
                           {uc.overallScore?.toFixed(1) ?? "-"}

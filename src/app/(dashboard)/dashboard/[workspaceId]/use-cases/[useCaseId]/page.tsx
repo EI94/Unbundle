@@ -44,7 +44,7 @@ export default async function UseCaseDetailPage({
     { label: "Tempo", value: useCase.impactTime },
     { label: "Qualita'", value: useCase.impactQuality },
     { label: "Coordinamento", value: useCase.impactCoordination },
-    { label: "Sociale/ESG", value: useCase.impactSocial },
+    { label: "Sociale", value: useCase.impactSocial },
   ];
 
   const feasibilityItems = [
@@ -54,6 +54,14 @@ export default async function UseCaseDetailPage({
     { label: "Tech", value: useCase.feasibilityTech },
     { label: "Team", value: useCase.feasibilityTeam },
   ];
+
+  const esgItems = [
+    { label: "Ambientale", value: useCase.esgEnvironmental, color: "text-green-400" },
+    { label: "Sociale", value: useCase.esgSocial, color: "text-blue-400" },
+    { label: "Governance", value: useCase.esgGovernance, color: "text-violet-400" },
+  ];
+
+  const hasEsg = esgItems.some((i) => (i.value ?? 0) > 0);
 
   return (
     <div className="flex-1 p-6 lg:p-8 max-w-4xl">
@@ -77,7 +85,7 @@ export default async function UseCaseDetailPage({
         <p className="mt-2 text-muted-foreground">{useCase.description}</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-4 gap-4 mb-8">
         <Card>
           <CardContent className="pt-4 text-center">
             <div className="text-3xl font-bold text-primary">
@@ -92,6 +100,14 @@ export default async function UseCaseDetailPage({
               {useCase.overallFeasibilityScore?.toFixed(1)}
             </div>
             <p className="text-sm text-muted-foreground">Fattibilita&apos;</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 text-center">
+            <div className="text-3xl font-bold text-green-400">
+              {useCase.overallEsgScore?.toFixed(1) ?? "-"}
+            </div>
+            <p className="text-sm text-muted-foreground">ESG</p>
           </CardContent>
         </Card>
         <Card>
@@ -156,6 +172,35 @@ export default async function UseCaseDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {hasEsg && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">ESG Impact</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {esgItems.map((item) => (
+              <div key={item.label}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className={item.color}>{item.label}</span>
+                  <span className="font-mono">{item.value ?? 0}/5</span>
+                </div>
+                <Progress
+                  value={((item.value ?? 0) / 5) * 100}
+                  className="h-2"
+                />
+              </div>
+            ))}
+            <Separator className="my-2" />
+            <div className="flex justify-between text-sm font-medium">
+              <span>Score ESG complessivo</span>
+              <span className="font-mono">
+                {useCase.overallEsgScore?.toFixed(1) ?? "-"}/5
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {useCase.requirements && (useCase.requirements as string[]).length > 0 && (
         <Card className="mb-6">

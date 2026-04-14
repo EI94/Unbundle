@@ -25,6 +25,7 @@ import {
   TrendingUp,
   Brain,
 } from "lucide-react";
+import { getUnitTerm } from "@/lib/utils/unit-terminology";
 
 export default async function WorkspaceOverviewPage({
   params,
@@ -68,6 +69,7 @@ export default async function WorkspaceOverviewPage({
     ).length,
   };
 
+  const term = getUnitTerm(workspace);
   const hasLeadership = !!workspace.systemBoundary;
   const hasGoals = goals.length > 0;
   const hasDepts = departments.length > 0;
@@ -98,8 +100,8 @@ export default async function WorkspaceOverviewPage({
     {
       label: "Activity mapping",
       sub: hasDepts
-        ? `${mappedDepts.length}/${departments.length} funzioni mappate`
-        : "Scomponi il lavoro funzione per funzione",
+        ? `${mappedDepts.length}/${departments.length} ${term.plural} mappate`
+        : `Scomponi il lavoro ${term.singular} per ${term.singular}`,
       href: `/dashboard/${workspaceId}/mapping`,
       icon: GitBranch,
       done: hasMappedAll,

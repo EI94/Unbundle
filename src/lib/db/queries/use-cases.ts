@@ -21,12 +21,19 @@ export async function createUseCase(data: NewUseCase) {
     data.feasibilityTech ?? 0,
     data.feasibilityTeam ?? 0,
   ];
+  const esgScores = [
+    data.esgEnvironmental ?? 0,
+    data.esgSocial ?? 0,
+    data.esgGovernance ?? 0,
+  ];
 
   const overallImpact =
     impactScores.reduce((a, b) => a + b, 0) / impactScores.length;
   const overallFeasibility =
     feasibilityScores.reduce((a, b) => a + b, 0) / feasibilityScores.length;
-  const overallScore = (overallImpact + overallFeasibility) / 2;
+  const overallEsg =
+    esgScores.reduce((a, b) => a + b, 0) / esgScores.length;
+  const overallScore = (overallImpact + overallFeasibility + overallEsg) / 3;
 
   let category: "quick_win" | "strategic_bet" | "capability_builder" | "not_yet";
   if (overallImpact >= 3.5 && overallFeasibility >= 3.5) {
@@ -43,6 +50,7 @@ export async function createUseCase(data: NewUseCase) {
     .insert(useCases)
     .values({
       ...data,
+      overallEsgScore: overallEsg,
       overallImpactScore: overallImpact,
       overallFeasibilityScore: overallFeasibility,
       overallScore,

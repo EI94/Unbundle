@@ -15,6 +15,7 @@ import {
 import { db } from "@/lib/db";
 import { uploadedDocuments, organizations, activities } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
+import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/retriever";
 
 function extractContent(msg: Record<string, unknown>): string {
   if (typeof msg.content === "string") return msg.content;
@@ -53,11 +54,6 @@ export async function POST(req: Request) {
     content: extractContent(m),
   }));
 
-  const docs = await db
-    .select({ fileName: uploadedDocuments.fileName, summary: uploadedDocuments.summary })
-    .from(uploadedDocuments)
-    .where(eq(uploadedDocuments.workspaceId, workspaceId));
-
   const [org] = await db
     .select()
     .from(organizations)
@@ -66,21 +62,64 @@ export async function POST(req: Request) {
 
   let contextBlock = "";
 
+  const unitTerm = (workspace.unitTerminology as { singular: string; plural: string } | null);
+  if (unitTerm?.singular) {
+    contextBlock += `\n\n--- TERMINOLOGIA ORGANIZZATIVA ---\nL'utente chiama le proprie unità organizzative "${unitTerm.plural}" (singolare: "${unitTerm.singular}"). Usa SEMPRE questi termini, MAI "dipartimento" o "funzione" generici.\n`;
+  }
+
   if (org?.companyValueThesis) {
-    contextBlock += `\n\n--- CONTESTO: VALUE THESIS GIÀ RACCOLTA ---\n${JSON.stringify(org.companyValueThesis, null, 2)}\n`;
+    contextBlock += `\n--- CONTESTO: VALUE THESIS GIÀ RACCOLTA ---\n${JSON.stringify(org.companyValueThesis, null, 2)}\n`;
   }
 
   if (workspace.systemBoundary) {
     contextBlock += `\n--- CONTESTO: SYSTEM BOUNDARY ---\n${JSON.stringify(workspace.systemBoundary, null, 2)}\n`;
   }
 
-  if (docs.length > 0) {
-    contextBlock += `\n--- DOCUMENTI CARICATI DALL'UTENTE (${docs.length}) ---\n`;
-    for (const doc of docs) {
-      contextBlock += `\nDocumento: ${doc.fileName}\n`;
-      if (doc.summary) contextBlock += `Sintesi: ${doc.summary}\n`;
+  const lastUserContent = messages[messages.length - 1]?.content ?? "";
+  let ragChunks: { content: string; source: string }[] = [];
+  try {
+    if (lastUserContent.length > 10) {
+      ragChunks = await retrieveRelevantContext(lastUserContent, workspaceId, {
+        topK: 8,
+        includeConversations: true,
+        minSimilarity: 0.25,
+      });
     }
-    contextBlock += `\nUsa queste informazioni per arricchire le tue domande e risposte. Fai riferimento ai documenti quando pertinente.\n`;
+  } catch {
+    // RAG fallback: se embedding non disponibile, carica doc summaries
+  }
+
+  if (ragChunks.length > 0) {
+    const docChunks = ragChunks.filter((c) => c.source === "document");
+    const convChunks = ragChunks.filter((c) => c.source === "conversation");
+
+    if (docChunks.length > 0) {
+      contextBlock += `\n--- CONTESTO RILEVANTE DAI DOCUMENTI (${docChunks.length} frammenti) ---\n`;
+      for (const chunk of docChunks) {
+        contextBlock += `\n${chunk.content}\n`;
+      }
+    }
+    if (convChunks.length > 0) {
+      contextBlock += `\n--- MEMORIA DA CONVERSAZIONI PRECEDENTI (${convChunks.length} frammenti) ---\n`;
+      for (const chunk of convChunks) {
+        contextBlock += `\n${chunk.content}\n`;
+      }
+    }
+    contextBlock += `\nUsa queste informazioni per arricchire le tue risposte. Fai riferimento a contenuti specifici quando pertinente.\n`;
+  } else {
+    const docs = await db
+      .select({ fileName: uploadedDocuments.fileName, summary: uploadedDocuments.summary })
+      .from(uploadedDocuments)
+      .where(eq(uploadedDocuments.workspaceId, workspaceId));
+
+    if (docs.length > 0) {
+      contextBlock += `\n--- DOCUMENTI CARICATI DALL'UTENTE (${docs.length}) ---\n`;
+      for (const doc of docs) {
+        contextBlock += `\nDocumento: ${doc.fileName}\n`;
+        if (doc.summary) contextBlock += `Sintesi: ${doc.summary}\n`;
+      }
+      contextBlock += `\nUsa queste informazioni per arricchire le tue domande e risposte. Fai riferimento ai documenti quando pertinente.\n`;
+    }
   }
 
   let systemPrompt: string;
@@ -126,7 +165,6 @@ export async function POST(req: Request) {
           .select({
             fileName: uploadedDocuments.fileName,
             summary: uploadedDocuments.summary,
-            extractedText: uploadedDocuments.extractedText,
           })
           .from(uploadedDocuments)
           .where(
@@ -137,14 +175,12 @@ export async function POST(req: Request) {
           );
 
         if (deptDocs.length > 0) {
-          mappingContext += `\n--- DOCUMENTI SPECIFICI DEL DIPARTIMENTO (${deptDocs.length}) ---\n`;
+          mappingContext += `\n--- DOCUMENTI SPECIFICI (${deptDocs.length}) ---\n`;
           for (const doc of deptDocs) {
             mappingContext += `\nDocumento: ${doc.fileName}\n`;
             if (doc.summary) mappingContext += `Sintesi: ${doc.summary}\n`;
-            if (doc.extractedText) {
-              mappingContext += `Contenuto (primi 10000 car.): ${doc.extractedText.slice(0, 10000)}\n`;
-            }
           }
+          mappingContext += `\nI contenuti dettagliati dei documenti sono già inclusi nel contesto RAG sopra, in base alla rilevanza con la domanda dell'utente.\n`;
         }
       }
 
@@ -215,6 +251,22 @@ export async function POST(req: Request) {
           role: "assistant",
           content: text,
         });
+
+        indexConversationMessage(
+          conversation.id,
+          workspaceId,
+          text,
+          "assistant"
+        ).catch(() => {});
+      }
+
+      if (lastUserMessage?.content) {
+        indexConversationMessage(
+          conversation.id,
+          workspaceId,
+          lastUserMessage.content,
+          "user"
+        ).catch(() => {});
       }
     },
   });

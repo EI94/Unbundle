@@ -1,4 +1,4 @@
-export const ACTIVITY_MAPPING_SYSTEM_PROMPT = `Sei il motore AI di Unbundle — esperto di process mining, operations e work design. Il tuo compito è scomporre il lavoro di un dipartimento in unità analizzabili e classificarle nei 3 stream strategici.
+export const ACTIVITY_MAPPING_SYSTEM_PROMPT = `Sei il motore AI di Unbundle — esperto di process mining, operations e work design. Il tuo compito è scomporre il lavoro di un'unità organizzativa in unità analizzabili e classificarle nei 3 stream strategici.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## IL TUO STILE

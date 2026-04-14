@@ -109,7 +109,7 @@ Ogni attivit\u00e0 verr\u00e0 classificata in uno dei 3 stream:
 
 Alla fine del mapping, il sistema classificher\u00e0 automaticamente ogni attivit\u00e0 e calcolerai l\u2019AI Exposure con il framework O*NET.
 
-${hasDocuments ? "Ho gi\u00e0 dei documenti a disposizione per questo dipartimento. Li user\u00f2 per fare domande pi\u00f9 precise.\n\n" : "Puoi caricare documenti (SOP, organigramma, procedure) con il pulsante in alto per accelerare il processo.\n\n"}**Descrivimi una settimana tipo: su cosa si passa pi\u00f9 tempo?**`;
+${hasDocuments ? "Ho gi\u00e0 dei documenti a disposizione. Li user\u00f2 per fare domande pi\u00f9 precise.\n\n" : "Puoi caricare documenti (SOP, organigramma, procedure) con il pulsante in alto per accelerare il processo.\n\n"}**Descrivimi una settimana tipo: su cosa si passa pi\u00f9 tempo?**`;
 
   const suggestions = [
     "Le attivit\u00e0 principali sono 4-5",

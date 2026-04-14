@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Circle,
 } from "lucide-react";
+import { getUnitTerm, capitalize } from "@/lib/utils/unit-terminology";
 
 export async function LeadershipSidebar({
   workspaceId,
@@ -30,6 +31,7 @@ export async function LeadershipSidebar({
 
   const departments = await getDepartmentsByWorkspace(workspaceId);
   const goals = await getStrategicGoalsByWorkspace(workspaceId);
+  const term = getUnitTerm(workspace);
 
   const thesis = org?.companyValueThesis as {
     coreValueProposition?: string;
@@ -89,7 +91,7 @@ export async function LeadershipSidebar({
           <div>
             <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
               <Building2 className="h-4 w-4 text-primary" />
-              Dipartimenti
+              {capitalize(term.plural)}
               {departments.length > 0 && (
                 <Badge variant="outline" className="text-xs">
                   {departments.length}
@@ -115,7 +117,7 @@ export async function LeadershipSidebar({
               </ul>
             ) : (
               <p className="text-xs text-muted-foreground italic">
-                Nessun dipartimento ancora creato
+                Nessuna {term.singular} ancora creata
               </p>
             )}
           </div>

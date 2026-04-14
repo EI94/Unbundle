@@ -11,6 +11,7 @@ import {
   Compass,
   Check,
 } from "lucide-react";
+import { getUnitTerm, capitalize } from "@/lib/utils/unit-terminology";
 
 export default async function MappingPage({
   params,
@@ -33,6 +34,7 @@ export default async function MappingPage({
     })
   );
 
+  const term = getUnitTerm(workspace);
   const totalDepts = departments.length;
   const mappedDepts = departments.filter(
     (d) => d.mappingStatus === "mapped" || d.mappingStatus === "validated"
@@ -52,13 +54,13 @@ export default async function MappingPage({
           Activity mapping
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Scomponi il lavoro di ogni funzione in unit&agrave; analizzabili.
+          Scomponi il lavoro di ogni {term.singular} in unit&agrave; analizzabili.
         </p>
       </div>
 
       {totalDepts > 0 && (
         <div className="mb-8 flex items-center gap-4 text-sm text-muted-foreground">
-          <span>{mappedDepts}/{totalDepts} funzioni mappate</span>
+          <span>{mappedDepts}/{totalDepts} {term.plural} mappate</span>
           <span className="h-1 w-1 rounded-full bg-border" />
           <span>{totalActivities} attivit&agrave; totali</span>
         </div>
@@ -68,7 +70,7 @@ export default async function MappingPage({
         <div className="mt-16 text-center max-w-md mx-auto">
           <h2 className="text-lg font-medium">Prima la Discovery</h2>
           <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-            Le funzioni vengono create durante la Discovery.
+            Le {term.plural} vengono create durante la Discovery.
             Completa quella fase per sbloccare il mapping.
           </p>
           <Link

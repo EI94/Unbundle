@@ -14,6 +14,7 @@ import {
   Compass,
   Check,
 } from "lucide-react";
+import { getUnitTerm, capitalize } from "@/lib/utils/unit-terminology";
 
 export default async function ContextSetupPage({
   params,
@@ -54,6 +55,7 @@ export default async function ContextSetupPage({
     timeHorizon?: string;
   } | null;
 
+  const term = getUnitTerm(workspace);
   const hasData = thesis || boundary || departments.length > 0 || goals.length > 0;
 
   return (
@@ -75,7 +77,7 @@ export default async function ContextSetupPage({
           <h2 className="text-lg font-medium">Nessun dato raccolto</h2>
           <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
             Il contesto viene costruito durante la Discovery.
-            L&apos;AI raccoglie value thesis, perimetro, funzioni e obiettivi.
+            L&apos;AI raccoglie value thesis, perimetro, {term.plural} e obiettivi.
           </p>
           <Link
             href={`/dashboard/${workspaceId}/setup/leadership`}
@@ -203,7 +205,7 @@ export default async function ContextSetupPage({
           {departments.length > 0 && (
             <section>
               <p className="text-xs text-muted-foreground tracking-wide mb-3">
-                Funzioni ({departments.length})
+                {capitalize(term.plural)} ({departments.length})
               </p>
               <div className="space-y-1">
                 {departments.map((d) => (
