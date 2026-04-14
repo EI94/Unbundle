@@ -1,8 +1,6 @@
-import { getWorkspaceById, getDepartmentsByWorkspace, getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
-import { getOrganizationBySlug } from "@/lib/db/queries/organizations";
-import { db } from "@/lib/db";
-import { organizations } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -12,38 +10,71 @@ import {
   MapPin,
   CheckCircle2,
   Circle,
+  Loader2,
 } from "lucide-react";
-import { getUnitTerm, capitalize } from "@/lib/utils/unit-terminology";
 
-export async function LeadershipSidebar({
+interface SidebarData {
+  thesis: {
+    coreValueProposition?: string;
+    strategicNodes?: string[];
+  } | null;
+  departments: Array<{
+    id: string;
+    name: string;
+    mappingStatus: string;
+    teamSize: number | null;
+  }>;
+  goals: Array<{
+    id: string;
+    title: string;
+    type: string;
+  }>;
+  term: { singular: string; plural: string };
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export function LeadershipSidebar({
   workspaceId,
 }: {
   workspaceId: string;
 }) {
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) return null;
+  const [data, setData] = useState<SidebarData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [org] = await db
-    .select()
-    .from(organizations)
-    .where(eq(organizations.id, workspace.organizationId))
-    .limit(1);
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/sidebar-data`);
+      if (res.ok) {
+        const json = await res.json();
+        setData(json);
+      }
+    } catch {
+      // silent retry on next poll
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId]);
 
-  const departments = await getDepartmentsByWorkspace(workspaceId);
-  const goals = await getStrategicGoalsByWorkspace(workspaceId);
-  const term = getUnitTerm(workspace);
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
-  const thesis = org?.companyValueThesis as {
-    coreValueProposition?: string;
-    strategicNodes?: string[];
-    commodityNodes?: string[];
-    marginDrivers?: string[];
-  } | null;
+  if (loading && !data) {
+    return (
+      <div className="w-80 border-l border-border bg-muted/30 flex items-center justify-center">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
-  const boundary = workspace.systemBoundary as {
-    includedFunctions?: string[];
-    rationale?: string;
-  } | null;
+  if (!data) return null;
+
+  const { thesis, departments, goals, term } = data;
 
   return (
     <div className="w-80 border-l border-border bg-muted/30">
@@ -81,7 +112,7 @@ export async function LeadershipSidebar({
               </div>
             ) : (
               <p className="text-xs text-muted-foreground italic">
-                Verra&apos; compilata durante l&apos;intervista
+                Verrà compilata durante la Discovery
               </p>
             )}
           </div>
@@ -106,12 +137,11 @@ export async function LeadershipSidebar({
                     className="text-sm flex items-center justify-between"
                   >
                     <span>{dept.name}</span>
-                    <Badge
-                      variant="outline"
-                      className="text-xs capitalize"
-                    >
-                      {dept.mappingStatus.replace("_", " ")}
-                    </Badge>
+                    {dept.teamSize && (
+                      <span className="text-xs text-muted-foreground">
+                        {dept.teamSize}p
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
