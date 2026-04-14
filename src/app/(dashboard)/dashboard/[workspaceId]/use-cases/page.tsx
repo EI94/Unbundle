@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Lightbulb, ArrowRight } from "lucide-react";
+import { EsgToggle } from "@/components/dashboard/esg-toggle";
 
 const categoryLabels: Record<string, string> = {
   quick_win: "Quick Win",
@@ -54,6 +55,14 @@ export default async function UseCasesPage({
   const classifiedCount = activities.filter((a) => a.classification).length;
   const needsClassification =
     activities.length > 0 && classifiedCount < activities.length;
+  const esgEnabled = workspace.esgEnabled === true;
+  const hasAnyEsg = useCases.some(
+    (uc) =>
+      (uc.esgEnvironmental ?? 0) > 0 ||
+      (uc.esgSocial ?? 0) > 0 ||
+      (uc.esgGovernance ?? 0) > 0
+  );
+  const showEsgColumn = esgEnabled || hasAnyEsg;
 
   return (
     <div className="flex-1 p-6 lg:p-8">
@@ -64,7 +73,11 @@ export default async function UseCasesPage({
             Portfolio di use case AI generati dall&apos;analisi delle attivita&apos;
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-4">
+          <EsgToggle
+            workspaceId={workspaceId}
+            initialEnabled={esgEnabled}
+          />
           {needsClassification && (
             <ClassifyButton workspaceId={workspaceId} />
           )}
@@ -131,7 +144,9 @@ export default async function UseCasesPage({
                       <TableHead className="text-center">
                         Fattibilita&apos;
                       </TableHead>
-                      <TableHead className="text-center">ESG</TableHead>
+                      {showEsgColumn && (
+                        <TableHead className="text-center">ESG</TableHead>
+                      )}
                       <TableHead className="text-center">Score</TableHead>
                       <TableHead>Timeline</TableHead>
                       <TableHead></TableHead>
@@ -167,9 +182,11 @@ export default async function UseCasesPage({
                         <TableCell className="text-center font-mono text-sm">
                           {uc.overallFeasibilityScore?.toFixed(1) ?? "-"}
                         </TableCell>
-                        <TableCell className="text-center font-mono text-sm text-green-400">
-                          {uc.overallEsgScore?.toFixed(1) ?? "-"}
-                        </TableCell>
+                        {showEsgColumn && (
+                          <TableCell className="text-center font-mono text-sm text-green-400">
+                            {uc.overallEsgScore?.toFixed(1) ?? "-"}
+                          </TableCell>
+                        )}
                         <TableCell className="text-center font-mono text-sm font-semibold">
                           {uc.overallScore?.toFixed(1) ?? "-"}
                         </TableCell>

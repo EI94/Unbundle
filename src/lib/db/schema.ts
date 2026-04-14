@@ -10,7 +10,6 @@ import {
   pgEnum,
   boolean,
   primaryKey,
-  vector,
   index,
 } from "drizzle-orm/pg-core";
 
@@ -205,6 +204,7 @@ export const workspaces = pgTable("workspaces", {
     singular: string;
     plural: string;
   }>(),
+  esgEnabled: boolean("esg_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -508,17 +508,16 @@ export const documentChunks = pgTable(
       .references(() => workspaces.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
     chunkIndex: integer("chunk_index").notNull(),
-    embedding: vector("embedding", { dimensions: 1536 }),
     metadata: jsonb("metadata"),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
   (t) => [index("document_chunks_workspace_idx").on(t.workspaceId)]
 );
 
-// ─── RAG: Conversation Embeddings ────────────────────────────────────
+// ─── RAG: Conversation Memory ────────────────────────────────────────
 
-export const conversationEmbeddings = pgTable(
-  "conversation_embeddings",
+export const conversationMemory = pgTable(
+  "conversation_memory",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     conversationId: uuid("conversation_id")
@@ -529,10 +528,9 @@ export const conversationEmbeddings = pgTable(
       .references(() => workspaces.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
     role: varchar("role", { length: 50 }).notNull(),
-    embedding: vector("embedding", { dimensions: 1536 }),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   },
-  (t) => [index("conversation_embeddings_workspace_idx").on(t.workspaceId)]
+  (t) => [index("conversation_memory_workspace_idx").on(t.workspaceId)]
 );
 
 // ─── Type exports ───────────────────────────────────────────────────
@@ -562,4 +560,4 @@ export type UploadedDocument = typeof uploadedDocuments.$inferSelect;
 export type AgentBlueprint = typeof agentBlueprints.$inferSelect;
 export type Simulation = typeof simulations.$inferSelect;
 export type DocumentChunk = typeof documentChunks.$inferSelect;
-export type ConversationEmbedding = typeof conversationEmbeddings.$inferSelect;
+export type ConversationMemory = typeof conversationMemory.$inferSelect;

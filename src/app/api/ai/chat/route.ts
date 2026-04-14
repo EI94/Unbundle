@@ -82,7 +82,6 @@ export async function POST(req: Request) {
       ragChunks = await retrieveRelevantContext(lastUserContent, workspaceId, {
         topK: 8,
         includeConversations: true,
-        minSimilarity: 0.25,
       });
     }
   } catch {

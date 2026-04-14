@@ -1,12 +1,10 @@
-import { embed } from "ai";
-import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
-import { documentChunks, conversationEmbeddings } from "@/lib/db/schema";
-import { eq, sql, and, desc } from "drizzle-orm";
+import { documentChunks, conversationMemory } from "@/lib/db/schema";
+import { eq, sql, desc } from "drizzle-orm";
 
 export interface RetrievedChunk {
   content: string;
-  similarity: number;
+  rank: number;
   source: "document" | "conversation";
   documentId?: string;
   conversationId?: string;
@@ -15,8 +13,16 @@ export interface RetrievedChunk {
 interface RetrieveOptions {
   topK?: number;
   includeConversations?: boolean;
-  minSimilarity?: number;
-  departmentId?: string;
+}
+
+function buildTsQuery(input: string): string {
+  const words = input
+    .replace(/[^\w\sàèéìòùáéíóú]/g, "")
+    .split(/\s+/)
+    .filter((w) => w.length > 2)
+    .slice(0, 15);
+  if (words.length === 0) return "";
+  return words.map((w) => `${w}:*`).join(" | ");
 }
 
 export async function retrieveRelevantContext(
@@ -24,73 +30,68 @@ export async function retrieveRelevantContext(
   workspaceId: string,
   options: RetrieveOptions = {}
 ): Promise<RetrievedChunk[]> {
-  const {
-    topK = 10,
-    includeConversations = true,
-    minSimilarity = 0.3,
-  } = options;
+  const { topK = 10, includeConversations = true } = options;
 
-  const { embedding: queryEmbedding } = await embed({
-    model: openai.embedding("text-embedding-3-small"),
-    value: query,
-  });
-
-  const embeddingStr = `[${queryEmbedding.join(",")}]`;
+  const tsQuery = buildTsQuery(query);
+  if (!tsQuery) return [];
 
   const docResults = await db
     .select({
       content: documentChunks.content,
-      similarity: sql<number>`1 - (${documentChunks.embedding} <=> ${embeddingStr}::vector)`.as(
-        "similarity"
+      rank: sql<number>`ts_rank_cd(to_tsvector('italian', ${documentChunks.content}), to_tsquery('italian', ${tsQuery}))`.as(
+        "rank"
       ),
       documentId: documentChunks.documentId,
     })
     .from(documentChunks)
-    .where(eq(documentChunks.workspaceId, workspaceId))
+    .where(
+      sql`${documentChunks.workspaceId} = ${workspaceId} AND to_tsvector('italian', ${documentChunks.content}) @@ to_tsquery('italian', ${tsQuery})`
+    )
     .orderBy(
-      sql`${documentChunks.embedding} <=> ${embeddingStr}::vector`
+      desc(
+        sql`ts_rank_cd(to_tsvector('italian', ${documentChunks.content}), to_tsquery('italian', ${tsQuery}))`
+      )
     )
     .limit(topK);
 
-  const chunks: RetrievedChunk[] = docResults
-    .filter((r) => r.similarity >= minSimilarity)
-    .map((r) => ({
-      content: r.content,
-      similarity: r.similarity,
-      source: "document" as const,
-      documentId: r.documentId,
-    }));
+  const chunks: RetrievedChunk[] = docResults.map((r) => ({
+    content: r.content,
+    rank: r.rank,
+    source: "document" as const,
+    documentId: r.documentId,
+  }));
 
   if (includeConversations) {
     const convResults = await db
       .select({
-        content: conversationEmbeddings.content,
-        similarity:
-          sql<number>`1 - (${conversationEmbeddings.embedding} <=> ${embeddingStr}::vector)`.as(
-            "similarity"
-          ),
-        conversationId: conversationEmbeddings.conversationId,
+        content: conversationMemory.content,
+        rank: sql<number>`ts_rank_cd(to_tsvector('italian', ${conversationMemory.content}), to_tsquery('italian', ${tsQuery}))`.as(
+          "rank"
+        ),
+        conversationId: conversationMemory.conversationId,
       })
-      .from(conversationEmbeddings)
-      .where(eq(conversationEmbeddings.workspaceId, workspaceId))
+      .from(conversationMemory)
+      .where(
+        sql`${conversationMemory.workspaceId} = ${workspaceId} AND to_tsvector('italian', ${conversationMemory.content}) @@ to_tsquery('italian', ${tsQuery})`
+      )
       .orderBy(
-        sql`${conversationEmbeddings.embedding} <=> ${embeddingStr}::vector`
+        desc(
+          sql`ts_rank_cd(to_tsvector('italian', ${conversationMemory.content}), to_tsquery('italian', ${tsQuery}))`
+        )
       )
       .limit(Math.ceil(topK / 2));
 
     for (const r of convResults) {
-      if (r.similarity >= minSimilarity) {
-        chunks.push({
-          content: r.content,
-          similarity: r.similarity,
-          source: "conversation",
-          conversationId: r.conversationId,
-        });
-      }
+      chunks.push({
+        content: r.content,
+        rank: r.rank,
+        source: "conversation",
+        conversationId: r.conversationId,
+      });
     }
   }
 
-  chunks.sort((a, b) => b.similarity - a.similarity);
+  chunks.sort((a, b) => b.rank - a.rank);
 
   const seen = new Set<string>();
   const deduped: RetrievedChunk[] = [];
@@ -114,17 +115,11 @@ export async function indexConversationMessage(
   if (!content || content.length < 30) return;
 
   try {
-    const { embedding } = await embed({
-      model: openai.embedding("text-embedding-3-small"),
-      value: content.slice(0, 8000),
-    });
-
-    await db.insert(conversationEmbeddings).values({
+    await db.insert(conversationMemory).values({
       conversationId,
       workspaceId,
       content: content.slice(0, 5000),
       role,
-      embedding,
     });
   } catch {
     console.error("Failed to index conversation message");

@@ -1,5 +1,3 @@
-import { embedMany } from "ai";
-import { openai } from "@ai-sdk/openai";
 import { db } from "@/lib/db";
 import { documentChunks } from "@/lib/db/schema";
 
@@ -38,26 +36,6 @@ export function chunkDocument(text: string): string[] {
   return chunks;
 }
 
-export async function embedChunks(
-  chunks: string[]
-): Promise<number[][]> {
-  if (chunks.length === 0) return [];
-
-  const batchSize = 96;
-  const allEmbeddings: number[][] = [];
-
-  for (let i = 0; i < chunks.length; i += batchSize) {
-    const batch = chunks.slice(i, i + batchSize);
-    const { embeddings } = await embedMany({
-      model: openai.embedding("text-embedding-3-small"),
-      values: batch,
-    });
-    allEmbeddings.push(...embeddings);
-  }
-
-  return allEmbeddings;
-}
-
 export async function indexDocument(
   documentId: string,
   workspaceId: string,
@@ -66,18 +44,11 @@ export async function indexDocument(
   const chunks = chunkDocument(text);
   if (chunks.length === 0) return 0;
 
-  const embeddings = await embedChunks(chunks);
-
   const rows = chunks.map((content, i) => ({
     documentId,
     workspaceId,
     content,
     chunkIndex: i,
-    embedding: embeddings[i],
-    metadata: {
-      charStart: 0,
-      chunkLength: content.length,
-    },
   }));
 
   const batchSize = 50;

@@ -85,7 +85,7 @@ export default async function UseCaseDetailPage({
         <p className="mt-2 text-muted-foreground">{useCase.description}</p>
       </div>
 
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className={`grid gap-4 mb-8 ${hasEsg ? "grid-cols-4" : "grid-cols-3"}`}>
         <Card>
           <CardContent className="pt-4 text-center">
             <div className="text-3xl font-bold text-primary">
@@ -102,14 +102,16 @@ export default async function UseCaseDetailPage({
             <p className="text-sm text-muted-foreground">Fattibilita&apos;</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-4 text-center">
-            <div className="text-3xl font-bold text-green-400">
-              {useCase.overallEsgScore?.toFixed(1) ?? "-"}
-            </div>
-            <p className="text-sm text-muted-foreground">ESG</p>
-          </CardContent>
-        </Card>
+        {hasEsg && (
+          <Card>
+            <CardContent className="pt-4 text-center">
+              <div className="text-3xl font-bold text-green-400">
+                {useCase.overallEsgScore?.toFixed(1) ?? "-"}
+              </div>
+              <p className="text-sm text-muted-foreground">ESG</p>
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardContent className="pt-4 text-center">
             <div className="text-3xl font-bold">
