@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Search,
   MessageCircle,
 } from "lucide-react";
 
@@ -26,7 +25,6 @@ interface ChatInterfaceProps {
 }
 
 const TOOL_LABELS: Record<string, { active: string; done: string }> = {
-  webSearch: { active: "Cerco online", done: "Ricerca completata" },
   saveCompanyValueThesis: {
     active: "Salvo la value thesis",
     done: "Value thesis salvata",
@@ -299,13 +297,11 @@ export function ChatInterface({
                   </div>
                 )}
                 {toolParts.length > 0 && (() => {
+                  const HIDDEN_TOOLS = new Set(["webSearch"]);
                   const visibleTools = toolParts.filter((part) => {
                     const p = part as Record<string, unknown>;
                     const name = toolNameFromPart(p);
-                    const state = p.state as string | undefined;
-                    const isDone = state === "output";
-                    if (name === "webSearch" && isDone) return false;
-                    return true;
+                    return !HIDDEN_TOOLS.has(name);
                   });
                   if (visibleTools.length === 0) return null;
                   return (
@@ -314,7 +310,7 @@ export function ChatInterface({
                         const p = part as Record<string, unknown>;
                         const name = toolNameFromPart(p);
                         const state = p.state as string | undefined;
-                        const isDone = state === "output";
+                        const isDone = state === "output" || state === "result";
                         const labels = TOOL_LABELS[name];
 
                         return (
@@ -328,8 +324,6 @@ export function ChatInterface({
                           >
                             {isDone ? (
                               <CheckCircle2 className="h-3 w-3 text-green-500/70" />
-                            ) : name === "webSearch" ? (
-                              <Search className="h-3 w-3 animate-spin" />
                             ) : (
                               <Loader2 className="h-3 w-3 animate-spin" />
                             )}
