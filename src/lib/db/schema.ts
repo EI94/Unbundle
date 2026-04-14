@@ -307,6 +307,12 @@ export const useCases = pgTable("use_cases", {
   businessCase: text("business_case"),
   category: useCaseCategoryEnum("category"),
   status: useCaseStatusEnum("status").notNull().default("draft"),
+  source: varchar("source", { length: 50 }),
+  proposedBy: varchar("proposed_by", { length: 255 }),
+  flowDescription: text("flow_description"),
+  humanInTheLoop: text("human_in_the_loop"),
+  guardrails: text("guardrails"),
+  dataRequirements: text("data_requirements"),
   impactEconomic: real("impact_economic"),
   impactTime: real("impact_time"),
   impactQuality: real("impact_quality"),
@@ -533,6 +539,45 @@ export const conversationMemory = pgTable(
   (t) => [index("conversation_memory_workspace_idx").on(t.workspaceId)]
 );
 
+// ─── Slack Installations (multi-tenant OAuth) ──────────────────────
+
+export const slackInstallations = pgTable("slack_installations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  slackTeamId: varchar("slack_team_id", { length: 100 }).notNull().unique(),
+  slackTeamName: varchar("slack_team_name", { length: 255 }),
+  botToken: text("bot_token").notNull(),
+  notifyChannelId: varchar("notify_channel_id", { length: 100 }),
+  installedBy: varchar("installed_by", { length: 100 }),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+});
+
+// ─── Slack Use Case Drafts ──────────────────────────────────────────
+
+export const slackUseCaseDrafts = pgTable("slack_use_case_drafts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  slackUserId: varchar("slack_user_id", { length: 100 }).notNull(),
+  slackThreadTs: varchar("slack_thread_ts", { length: 100 }),
+  slackTeamId: varchar("slack_team_id", { length: 100 }).notNull(),
+  status: varchar("status", { length: 50 }).notNull().default("drafting"),
+  title: varchar("title", { length: 500 }),
+  problem: text("problem"),
+  flowDescription: text("flow_description"),
+  humanInTheLoop: text("human_in_the_loop"),
+  guardrails: text("guardrails"),
+  expectedImpact: text("expected_impact"),
+  dataRequirements: text("data_requirements"),
+  urgency: varchar("urgency", { length: 50 }),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  submittedAt: timestamp("submitted_at", { mode: "date" }),
+});
+
 // ─── Type exports ───────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -561,3 +606,7 @@ export type AgentBlueprint = typeof agentBlueprints.$inferSelect;
 export type Simulation = typeof simulations.$inferSelect;
 export type DocumentChunk = typeof documentChunks.$inferSelect;
 export type ConversationMemory = typeof conversationMemory.$inferSelect;
+export type SlackInstallation = typeof slackInstallations.$inferSelect;
+export type NewSlackInstallation = typeof slackInstallations.$inferInsert;
+export type SlackUseCaseDraft = typeof slackUseCaseDrafts.$inferSelect;
+export type NewSlackUseCaseDraft = typeof slackUseCaseDrafts.$inferInsert;

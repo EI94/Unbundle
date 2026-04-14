@@ -82,6 +82,7 @@ export function AppSidebar({
         { title: "Blueprints", href: `${basePath}/blueprints`, icon: Bot },
         { title: "Simulazione", href: `${basePath}/simulation`, icon: FlaskConical },
         { title: "Intelligence", href: `${basePath}/intelligence`, icon: Radar },
+        { title: "Integrazioni", href: `${basePath}/settings`, icon: Settings },
       ]
     : [];
 

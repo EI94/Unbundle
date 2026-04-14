@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const categoryLabels: Record<string, string> = {
@@ -80,6 +80,12 @@ export default async function UseCaseDetailPage({
           <Badge variant="secondary" className="text-xs">
             {statusLabels[useCase.status]}
           </Badge>
+          {useCase.source === "slack_proposed" && (
+            <Badge variant="outline" className="text-xs gap-1 border-purple-500/30 text-purple-400">
+              <MessageSquare className="h-3 w-3" />
+              Proposto via Slack
+            </Badge>
+          )}
         </div>
         <h1 className="text-3xl font-bold tracking-tight">{useCase.title}</h1>
         <p className="mt-2 text-muted-foreground">{useCase.description}</p>
@@ -130,6 +136,52 @@ export default async function UseCaseDetailPage({
           <p className="text-sm whitespace-pre-wrap">{useCase.businessCase}</p>
         </CardContent>
       </Card>
+
+      {useCase.flowDescription && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Flusso (As-Is → To-Be)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm whitespace-pre-wrap">{useCase.flowDescription}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {(useCase.humanInTheLoop || useCase.guardrails || useCase.dataRequirements) && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {useCase.humanInTheLoop && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Human in the Loop</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm whitespace-pre-wrap">{useCase.humanInTheLoop}</p>
+              </CardContent>
+            </Card>
+          )}
+          {useCase.guardrails && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Guardrail</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm whitespace-pre-wrap">{useCase.guardrails}</p>
+              </CardContent>
+            </Card>
+          )}
+          {useCase.dataRequirements && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Dati Necessari</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm whitespace-pre-wrap">{useCase.dataRequirements}</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-6 mb-6">
         <Card>

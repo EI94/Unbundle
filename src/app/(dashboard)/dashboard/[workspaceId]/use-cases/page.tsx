@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Lightbulb, ArrowRight } from "lucide-react";
+import { Lightbulb, ArrowRight, MessageSquare } from "lucide-react";
 import { EsgToggle } from "@/components/dashboard/esg-toggle";
 
 const categoryLabels: Record<string, string> = {
@@ -160,7 +160,15 @@ export default async function UseCasesPage({
                         </TableCell>
                         <TableCell>
                           <div>
-                            <p className="font-medium text-sm">{uc.title}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-sm">{uc.title}</p>
+                              {uc.source === "slack_proposed" && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 border-purple-500/30 text-purple-400">
+                                  <MessageSquare className="h-2.5 w-2.5" />
+                                  Slack
+                                </Badge>
+                              )}
+                            </div>
                             <p className="text-xs text-muted-foreground line-clamp-1">
                               {uc.description}
                             </p>
