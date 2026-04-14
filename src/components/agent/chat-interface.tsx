@@ -310,7 +310,7 @@ export function ChatInterface({
                         const p = part as Record<string, unknown>;
                         const name = toolNameFromPart(p);
                         const state = p.state as string | undefined;
-                        const isDone = state === "output" || state === "result";
+                        const isDone = state === "output-available" || state === "error";
                         const labels = TOOL_LABELS[name];
 
                         return (
@@ -318,7 +318,7 @@ export function ChatInterface({
                             key={i}
                             className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all ${
                               isDone
-                                ? "border-border/50 text-muted-foreground/70"
+                                ? "border-border/30 text-muted-foreground/50"
                                 : "border-foreground/10 text-foreground animate-pulse"
                             }`}
                           >
