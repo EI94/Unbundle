@@ -92,20 +92,15 @@ export function AppSidebar({
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-bold text-sm">
-            U
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold text-sidebar-foreground">
-              Unbundle
+        <Link href="/dashboard" className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-sidebar-foreground tracking-wide">
+            Unbundle
+          </span>
+          {workspaceName && (
+            <span className="text-xs text-sidebar-foreground/50 truncate max-w-[160px]">
+              {workspaceName}
             </span>
-            {workspaceName && (
-              <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
-                {workspaceName}
-              </span>
-            )}
-          </div>
+          )}
         </Link>
       </SidebarHeader>
 
