@@ -10,22 +10,23 @@ import { LeadershipSidebar } from "@/components/dashboard/leadership-sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Compass } from "lucide-react";
 
-const WELCOME = `Benvenuto nell'Intervista Strategica. Attraverso questa conversazione definiremo insieme:
+const WELCOME = `L'AI sta cambiando le condizioni in cui opera la tua organizzazione. Attraverso questa conversazione, capiremo dove si sposta il valore e cosa significa per te.
 
-1. **Value Thesis** — dove la tua azienda crea valore e quali nodi sono strategici
-2. **Perimetro di analisi** — cosa includere e cosa escludere
-3. **Funzioni prioritarie** — i dipartimenti su cui concentrare l'analisi
-4. **Obiettivi strategici** — OKR e KPI che guideranno la prioritizzazione
+Ti farò domande mirate su 4 aree:
+— **Dove create valore** e quali sono i nodi strategici
+— **Quali funzioni** includere nell'analisi
+— **Dove il lavoro si blocca** e dove l'AI cambia le regole
+— **Quali obiettivi** guidano le vostre decisioni
 
-Tutte le informazioni che emergeranno verranno salvate automaticamente e utilizzate nelle fasi successive (Activity Mapping, Classificazione, Use Cases).
+Ogni risposta viene salvata e alimenta tutti gli step successivi. Cominciamo.
 
-**Cominciamo: raccontami la tua azienda. Cosa fate, per chi, e come generate valore?**`;
+**Raccontami la tua organizzazione: cosa fate, per chi, e qual è il vostro vantaggio competitivo oggi?**`;
 
 const SUGGESTIONS = [
-  "Siamo un'azienda B2B nel settore energetico",
-  "Siamo una startup SaaS con 50 dipendenti",
-  "Siamo un'azienda manifatturiera con 200+ persone",
-  "Vorrei caricare dei documenti sull'azienda",
+  "Siamo un'azienda B2B con circa 100 persone",
+  "Gestiamo servizi professionali per enterprise",
+  "Siamo una tech company in fase di scaling",
+  "Operiamo nel manifatturiero avanzato",
 ];
 
 export default async function LeadershipSetupPage({
@@ -59,28 +60,16 @@ export default async function LeadershipSetupPage({
   return (
     <div className="flex h-[calc(100vh-1px)] overflow-hidden">
       <div className="flex-1 flex flex-col">
-        <div className="border-b border-border px-6 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Compass className="h-4 w-4" />
-            </div>
-            <div>
-              <h1 className="text-sm font-semibold leading-tight">
-                Intervista Strategica
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                Definisci value thesis, perimetro e funzioni prioritarie
-              </p>
-            </div>
+        <div className="border-b border-border px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Compass className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Intervista strategica</span>
           </div>
-          <Badge
-            variant={hasStarted ? "secondary" : "outline"}
-            className="text-xs"
-          >
-            {hasStarted
-              ? `${initialMessages.length} messaggi`
-              : "Non iniziata"}
-          </Badge>
+          {hasStarted && (
+            <span className="text-xs text-muted-foreground">
+              {initialMessages.length} messaggi
+            </span>
+          )}
         </div>
         <ChatInterface
           workspaceId={workspaceId}

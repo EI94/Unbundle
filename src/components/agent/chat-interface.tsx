@@ -3,19 +3,11 @@
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useRef, useEffect, useMemo } from "react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import {
   Send,
-  Bot,
-  User,
-  Loader2,
   CheckCircle2,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 
 interface ChatInterfaceProps {
@@ -146,7 +138,7 @@ export function ChatInterface({
           {parts.map((part, pi) => {
             if (part.startsWith("**") && part.endsWith("**")) {
               return (
-                <strong key={pi} className="font-semibold">
+                <strong key={pi} className="font-semibold text-foreground">
                   {part.slice(2, -2)}
                 </strong>
               );
@@ -159,9 +151,9 @@ export function ChatInterface({
   };
 
   const toolLabels: Record<string, string> = {
-    saveCompanyValueThesis: "Value Thesis salvata",
+    saveCompanyValueThesis: "Value thesis salvata",
     saveSystemBoundary: "Perimetro definito",
-    createDepartment: "Dipartimento creato",
+    createDepartment: "Funzione creata",
     saveStrategicGoal: "Obiettivo salvato",
     saveActivity: "Attivit\u00e0 salvata",
     updateActivityClassification: "Classificazione aggiornata",
@@ -170,14 +162,13 @@ export function ChatInterface({
   };
 
   const showSuggestions =
-    suggestions.length > 0 &&
-    messages.length <= 1 &&
-    !isLoading;
+    suggestions.length > 0 && messages.length <= 1 && !isLoading;
 
   return (
-    <div className="flex h-full flex-col bg-background">
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-        <div className="mx-auto max-w-3xl space-y-5 pb-4">
+    <div className="flex h-full flex-col">
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-6 py-6" ref={scrollRef}>
+        <div className="mx-auto max-w-2xl space-y-6">
           {messages.map((message) => {
             const text = getMessageText(message);
             const toolParts =
@@ -185,73 +176,41 @@ export function ChatInterface({
                 p.type?.startsWith?.("tool-")
               ) ?? [];
 
-            return (
-              <div
-                key={message.id}
-                className={`flex gap-3 ${
-                  message.role === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
-                {message.role === "assistant" && (
-                  <Avatar className="h-8 w-8 shrink-0 mt-0.5">
-                    <AvatarFallback className="bg-primary/10 text-primary">
-                      <Bot className="h-4 w-4" />
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted/70"
-                  }`}
-                >
-                  {text && (
-                    <div className="whitespace-pre-wrap">
-                      {renderContent(text)}
-                    </div>
-                  )}
-                  {toolParts.map((part, i) => {
-                    const p = part as Record<string, unknown>;
-                    const toolName = (p.toolName as string) ?? "tool";
-                    const state = p.state as string | undefined;
-                    const output = p.output as
-                      | { message?: string }
-                      | undefined;
-                    return (
-                      <Card
-                        key={i}
-                        className="mt-3 border-none bg-background/60 p-2.5"
-                      >
-                        <div className="flex items-center gap-2 text-xs">
-                          {state === "output" ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                          ) : (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                          )}
-                          <Badge
-                            variant="secondary"
-                            className="text-xs font-medium"
-                          >
-                            {toolLabels[toolName] ?? toolName}
-                          </Badge>
-                          {state === "output" && output?.message && (
-                            <span className="text-muted-foreground truncate">
-                              {output.message}
-                            </span>
-                          )}
-                        </div>
-                      </Card>
-                    );
-                  })}
+            if (message.role === "user") {
+              return (
+                <div key={message.id} className="flex justify-end">
+                  <div className="max-w-[80%] rounded-2xl bg-accent px-4 py-3 text-sm">
+                    {text}
+                  </div>
                 </div>
-                {message.role === "user" && (
-                  <Avatar className="h-8 w-8 shrink-0 mt-0.5">
-                    <AvatarFallback className="bg-foreground/5">
-                      <User className="h-4 w-4" />
-                    </AvatarFallback>
-                  </Avatar>
+              );
+            }
+
+            return (
+              <div key={message.id} className="text-sm leading-relaxed text-muted-foreground">
+                {text && (
+                  <div className="whitespace-pre-wrap">
+                    {renderContent(text)}
+                  </div>
                 )}
+                {toolParts.map((part, i) => {
+                  const p = part as Record<string, unknown>;
+                  const toolName = (p.toolName as string) ?? "tool";
+                  const state = p.state as string | undefined;
+                  return (
+                    <div
+                      key={i}
+                      className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs"
+                    >
+                      {state === "output" ? (
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      ) : (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      )}
+                      <span>{toolLabels[toolName] ?? toolName}</span>
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -259,44 +218,31 @@ export function ChatInterface({
           {isLoading &&
             messages.length > 0 &&
             messages[messages.length - 1]?.role !== "assistant" && (
-              <div className="flex gap-3">
-                <Avatar className="h-8 w-8 shrink-0 mt-0.5">
-                  <AvatarFallback className="bg-primary/10 text-primary">
-                    <Bot className="h-4 w-4" />
-                  </AvatarFallback>
-                </Avatar>
-                <div className="rounded-2xl bg-muted/70 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1">
-                      <span className="h-2 w-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="h-2 w-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="h-2 w-2 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "300ms" }} />
-                    </div>
-                  </div>
-                </div>
+              <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
             )}
 
           {error && (
-            <div className="flex gap-3 justify-center">
-              <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>Errore di connessione. Riprova a inviare il messaggio.</span>
-              </div>
+            <div className="rounded-lg border border-destructive/30 px-4 py-3 text-sm text-destructive flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>Errore di connessione. Riprova.</span>
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
-      {/* Suggestion chips */}
+      {/* Suggestions */}
       {showSuggestions && (
-        <div className="border-t border-border/50 px-4 py-3">
-          <div className="mx-auto max-w-3xl flex flex-wrap gap-2">
+        <div className="px-6 pb-3">
+          <div className="mx-auto max-w-2xl flex flex-wrap gap-2">
             {suggestions.map((s, i) => (
               <button
                 key={i}
                 onClick={() => handleSuggestion(s)}
-                className="rounded-full border border-border bg-background px-4 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                className="rounded-full border border-border px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-colors"
               >
                 {s}
               </button>
@@ -305,27 +251,27 @@ export function ChatInterface({
         </div>
       )}
 
-      <div className="border-t border-border bg-background p-4">
+      {/* Input */}
+      <div className="border-t border-border px-6 py-4">
         <form
           onSubmit={handleSubmit}
-          className="mx-auto flex max-w-3xl items-end gap-2"
+          className="mx-auto flex max-w-2xl items-end gap-3"
         >
-          <Textarea
+          <textarea
             ref={inputRef}
             onKeyDown={onKeyDown}
             placeholder="Scrivi la tua risposta..."
-            className="min-h-[48px] max-h-[200px] resize-none rounded-xl border-border/60"
+            className="flex-1 resize-none rounded-xl border border-border bg-card px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[48px] max-h-[200px]"
             rows={1}
             disabled={isLoading}
           />
-          <Button
+          <button
             type="submit"
-            size="icon"
             disabled={isLoading}
-            className="shrink-0 h-12 w-12 rounded-xl"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-30"
           >
             <Send className="h-4 w-4" />
-          </Button>
+          </button>
         </form>
       </div>
     </div>

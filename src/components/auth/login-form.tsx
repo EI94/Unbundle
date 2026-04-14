@@ -107,18 +107,16 @@ export function LoginForm() {
   }
 
   return (
-    <div className="space-y-6">
-      <Button
+    <div className="space-y-5">
+      <button
         onClick={handleGoogle}
         disabled={loading}
-        variant="outline"
-        className="w-full"
-        size="lg"
+        className="w-full flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-3 text-sm font-medium hover:bg-accent transition-colors disabled:opacity-50"
       >
         {loading ? (
-          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
-          <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
+          <svg className="h-4 w-4" viewBox="0 0 24 24">
             <path
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
               fill="#4285F4"
@@ -138,18 +136,18 @@ export function LoginForm() {
           </svg>
         )}
         Continua con Google
-      </Button>
+      </button>
 
       <div className="flex items-center gap-4">
-        <Separator className="flex-1" />
-        <span className="text-xs text-muted-foreground uppercase">oppure</span>
-        <Separator className="flex-1" />
+        <div className="flex-1 h-px bg-border" />
+        <span className="text-xs text-muted-foreground">oppure</span>
+        <div className="flex-1 h-px bg-border" />
       </div>
 
       <form onSubmit={handleEmailSubmit} className="space-y-4">
         {mode === "register" && (
-          <div className="space-y-2">
-            <Label htmlFor="name">Nome</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="name" className="text-xs text-muted-foreground">Nome</Label>
             <Input
               id="name"
               type="text"
@@ -157,12 +155,13 @@ export function LoginForm() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={loading}
+              className="bg-card border-border"
             />
           </div>
         )}
 
-        <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="email" className="text-xs text-muted-foreground">Email</Label>
           <Input
             id="email"
             type="email"
@@ -171,12 +170,13 @@ export function LoginForm() {
             onChange={(e) => setEmail(e.target.value)}
             required
             disabled={loading}
+            className="bg-card border-border"
           />
         </div>
 
         {mode !== "reset" && (
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="password" className="text-xs text-muted-foreground">Password</Label>
             <Input
               id="password"
               type="password"
@@ -186,33 +186,38 @@ export function LoginForm() {
               required
               minLength={6}
               disabled={loading}
+              className="bg-card border-border"
             />
           </div>
         )}
 
-        <Button type="submit" className="w-full" size="lg" disabled={loading}>
-          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full rounded-lg bg-foreground text-background px-4 py-3 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin inline" />}
           {mode === "login"
             ? "Accedi"
             : mode === "register"
               ? "Crea Account"
               : "Invia link di reset"}
-        </Button>
+        </button>
       </form>
 
-      <div className="flex flex-col items-center gap-1 text-sm">
+      <div className="flex flex-col items-center gap-1.5 text-xs">
         {mode === "login" && (
           <>
             <button
               type="button"
-              className="text-muted-foreground hover:text-foreground underline"
+              className="text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setMode("register")}
             >
               Non hai un account? Registrati
             </button>
             <button
               type="button"
-              className="text-muted-foreground hover:text-foreground underline"
+              className="text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setMode("reset")}
             >
               Password dimenticata?
@@ -222,16 +227,16 @@ export function LoginForm() {
         {mode === "register" && (
           <button
             type="button"
-            className="text-muted-foreground hover:text-foreground underline"
+            className="text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => setMode("login")}
           >
-            Hai gia' un account? Accedi
+            Hai gi&agrave; un account? Accedi
           </button>
         )}
         {mode === "reset" && (
           <button
             type="button"
-            className="text-muted-foreground hover:text-foreground underline"
+            className="text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => setMode("login")}
           >
             Torna al login

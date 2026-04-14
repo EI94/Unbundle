@@ -71,15 +71,15 @@ export function AppSidebar({
   const workspaceNav = workspaceId
     ? [
         { title: "Overview", href: basePath, icon: LayoutDashboard },
-        { title: "Setup Leadership", href: `${basePath}/setup/leadership`, icon: Compass },
-        { title: "Contesto Org.", href: `${basePath}/setup/context`, icon: Building2 },
-        { title: "Strategia & OKR", href: `${basePath}/strategy`, icon: Target },
-        { title: "Activity Mapping", href: `${basePath}/mapping`, icon: GitBranch },
-        { title: "Value Map", href: `${basePath}/value-map`, icon: Map },
-        { title: "Use Cases", href: `${basePath}/use-cases`, icon: Lightbulb },
-        { title: "Unbundle Plan", href: `${basePath}/plan`, icon: FileText },
+        { title: "Intervista strategica", href: `${basePath}/setup/leadership`, icon: Compass },
+        { title: "Contesto", href: `${basePath}/setup/context`, icon: Building2 },
+        { title: "Strategia", href: `${basePath}/strategy`, icon: Target },
+        { title: "Activity mapping", href: `${basePath}/mapping`, icon: GitBranch },
+        { title: "Value map", href: `${basePath}/value-map`, icon: Map },
+        { title: "Use cases", href: `${basePath}/use-cases`, icon: Lightbulb },
+        { title: "Piano", href: `${basePath}/plan`, icon: FileText },
         { title: "Report", href: `${basePath}/reports`, icon: FileText },
-        { title: "Agent Blueprints", href: `${basePath}/blueprints`, icon: Bot },
+        { title: "Blueprints", href: `${basePath}/blueprints`, icon: Bot },
         { title: "Simulazione", href: `${basePath}/simulation`, icon: FlaskConical },
         { title: "Intelligence", href: `${basePath}/intelligence`, icon: Radar },
       ]
