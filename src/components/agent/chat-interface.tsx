@@ -44,6 +44,14 @@ const TOOL_THINKING: Record<string, string> = {
   markDepartmentMapped: "Completo il mapping...",
 };
 
+function toolNameFromPart(part: Record<string, unknown>): string {
+  const n = part.toolName;
+  if (typeof n === "string" && n.length > 0) return n;
+  const t = part.type;
+  if (typeof t === "string" && t.startsWith("tool-")) return t.slice(5);
+  return "tool";
+}
+
 const TOOL_DONE: Record<string, string> = {
   webSearch: "Ricerca completata",
   saveCompanyValueThesis: "Value thesis salvata",
@@ -257,7 +265,7 @@ export function ChatInterface({
                   <div className="mt-3 flex flex-wrap gap-2">
                     {toolParts.map((part, i) => {
                       const p = part as Record<string, unknown>;
-                      const toolName = (p.toolName as string) ?? "tool";
+                      const toolName = toolNameFromPart(p);
                       const state = p.state as string | undefined;
                       const isDone = state === "output";
                       const isSearch = toolName === "webSearch";

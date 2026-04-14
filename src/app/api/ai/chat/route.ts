@@ -1,4 +1,4 @@
-import { streamText } from "ai";
+import { streamText, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { auth } from "@/lib/auth";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
@@ -16,6 +16,9 @@ import { db } from "@/lib/db";
 import { uploadedDocuments, organizations, activities } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/retriever";
+
+/** Vercel / Next: consenti più round LLM dopo i tool (webSearch, salvataggi DB, ecc.) */
+export const maxDuration = 120;
 
 function extractContent(msg: Record<string, unknown>): string {
   if (typeof msg.content === "string") return msg.content;
@@ -243,6 +246,9 @@ export async function POST(req: Request) {
     system: systemPrompt,
     messages,
     tools: tools as Parameters<typeof streamText>[0]["tools"],
+    // Default SDK = stepCountIs(1): dopo un tool call lo stream si chiude SENZA secondo round
+    // → UI bloccata su "Elaboro...". Serve un budget di step per testo post-tool.
+    stopWhen: stepCountIs(20),
     onFinish: async ({ text }) => {
       if (text) {
         await saveMessage({
