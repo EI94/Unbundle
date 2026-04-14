@@ -445,6 +445,9 @@ export const uploadedDocuments = pgTable("uploaded_documents", {
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  departmentId: uuid("department_id").references(() => departments.id, {
+    onDelete: "set null",
+  }),
   fileName: varchar("file_name", { length: 500 }).notNull(),
   fileType: varchar("file_type", { length: 100 }).notNull(),
   fileSize: integer("file_size").notNull(),

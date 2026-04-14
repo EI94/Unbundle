@@ -1,14 +1,27 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Upload, FileText, Loader2, Check } from "lucide-react";
+import { Upload, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
+
+interface UploadedDoc {
+  id: string;
+  fileName: string;
+  summary: string;
+  extractedText: string;
+}
 
 interface DocumentUploadProps {
   workspaceId: string;
+  departmentId?: string;
+  onUploaded?: (doc: UploadedDoc) => void;
 }
 
-export function DocumentUpload({ workspaceId }: DocumentUploadProps) {
+export function DocumentUpload({
+  workspaceId,
+  departmentId,
+  onUploaded,
+}: DocumentUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState<string[]>([]);
@@ -24,6 +37,9 @@ export function DocumentUpload({ workspaceId }: DocumentUploadProps) {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("workspaceId", workspaceId);
+        if (departmentId) {
+          formData.append("departmentId", departmentId);
+        }
 
         const res = await fetch("/api/documents/upload", {
           method: "POST",
@@ -39,6 +55,7 @@ export function DocumentUpload({ workspaceId }: DocumentUploadProps) {
         const data = await res.json();
         setUploaded((prev) => [...prev, data.fileName]);
         toast.success(`${data.fileName} caricato e analizzato`);
+        onUploaded?.(data);
       } catch {
         toast.error(`Errore durante l'upload di ${file.name}`);
       }

@@ -14,6 +14,7 @@ export async function POST(req: Request) {
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
   const workspaceId = formData.get("workspaceId") as string | null;
+  const departmentId = formData.get("departmentId") as string | null;
 
   if (!file || !workspaceId) {
     return Response.json({ error: "File and workspaceId required" }, { status: 400 });
@@ -100,6 +101,7 @@ export async function POST(req: Request) {
       .values({
         workspaceId,
         userId: session.user.id,
+        departmentId: departmentId ?? undefined,
         fileName: file.name,
         fileType: file.type,
         fileSize: file.size,
@@ -113,6 +115,7 @@ export async function POST(req: Request) {
       id: doc.id,
       fileName: doc.fileName,
       summary: doc.summary,
+      extractedText: extractedText.slice(0, 100000),
     });
   } catch (err) {
     console.error("Upload error:", err);

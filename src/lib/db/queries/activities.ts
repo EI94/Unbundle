@@ -70,6 +70,19 @@ export async function linkActivityDependency(
   });
 }
 
+export async function getDependenciesByDepartment(departmentId: string) {
+  const deptActivities = await getActivitiesByDepartment(departmentId);
+  const activityIds = deptActivities.map((a) => a.id);
+  if (activityIds.length === 0) return [];
+
+  return db
+    .select()
+    .from(activityDependencies)
+    .where(
+      sql`${activityDependencies.sourceActivityId} = ANY(${activityIds}) OR ${activityDependencies.targetActivityId} = ANY(${activityIds})`
+    );
+}
+
 export async function getActivityStats(workspaceId: string) {
   const result = await db
     .select({

@@ -13,8 +13,8 @@ import {
   createConversation,
 } from "@/lib/db/queries/conversations";
 import { db } from "@/lib/db";
-import { uploadedDocuments, organizations } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { uploadedDocuments, organizations, activities } from "@/lib/db/schema";
+import { eq, and } from "drizzle-orm";
 
 function extractContent(msg: Record<string, unknown>): string {
   if (typeof msg.content === "string") return msg.content;
@@ -94,13 +94,67 @@ export async function POST(req: Request) {
         ...getWebSearchTool(),
       };
       break;
-    case "activity_mapping":
-      systemPrompt = ACTIVITY_MAPPING_SYSTEM_PROMPT + contextBlock;
+    case "activity_mapping": {
+      let mappingContext = contextBlock;
+
+      if (departmentId) {
+        const existingActivities = await db
+          .select({
+            id: activities.id,
+            title: activities.title,
+            description: activities.description,
+            workType: activities.workType,
+            timeSpentHoursWeek: activities.timeSpentHoursWeek,
+          })
+          .from(activities)
+          .where(
+            and(
+              eq(activities.workspaceId, workspaceId),
+              eq(activities.departmentId, departmentId)
+            )
+          );
+
+        if (existingActivities.length > 0) {
+          mappingContext += `\n--- ATTIVITÀ GIÀ SALVATE PER QUESTO DIPARTIMENTO (${existingActivities.length}) ---\n`;
+          for (const act of existingActivities) {
+            mappingContext += `- [${act.id}] "${act.title}" (${act.workType ?? "non classificata"}): ${act.description ?? ""}\n`;
+          }
+          mappingContext += `\nQueste attività sono già nel database. NON ri-salvarle. Usale come base per il deep dive.\n`;
+        }
+
+        const deptDocs = await db
+          .select({
+            fileName: uploadedDocuments.fileName,
+            summary: uploadedDocuments.summary,
+            extractedText: uploadedDocuments.extractedText,
+          })
+          .from(uploadedDocuments)
+          .where(
+            and(
+              eq(uploadedDocuments.workspaceId, workspaceId),
+              eq(uploadedDocuments.departmentId, departmentId)
+            )
+          );
+
+        if (deptDocs.length > 0) {
+          mappingContext += `\n--- DOCUMENTI SPECIFICI DEL DIPARTIMENTO (${deptDocs.length}) ---\n`;
+          for (const doc of deptDocs) {
+            mappingContext += `\nDocumento: ${doc.fileName}\n`;
+            if (doc.summary) mappingContext += `Sintesi: ${doc.summary}\n`;
+            if (doc.extractedText) {
+              mappingContext += `Contenuto (primi 10000 car.): ${doc.extractedText.slice(0, 10000)}\n`;
+            }
+          }
+        }
+      }
+
+      systemPrompt = ACTIVITY_MAPPING_SYSTEM_PROMPT + mappingContext;
       tools = {
         ...getActivityMappingTools(workspaceId, departmentId!),
         ...getWebSearchTool(),
       };
       break;
+    }
     default:
       systemPrompt = DISCOVERY_SYSTEM_PROMPT + contextBlock;
       tools = {
