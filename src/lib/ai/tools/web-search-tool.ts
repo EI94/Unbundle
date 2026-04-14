@@ -22,7 +22,7 @@ export function getWebSearchTool() {
           const { text } = await generateText({
             model: anthropic("claude-sonnet-4-20250514"),
             tools: {
-              web_search: anthropic.tools.webSearch_20260209({
+              web_search: anthropic.tools.webSearch_20250305({
                 maxUses: 3,
               }),
             },
