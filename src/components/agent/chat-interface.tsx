@@ -298,41 +298,52 @@ export function ChatInterface({
                     {renderMarkdown(text)}
                   </div>
                 )}
-                {toolParts.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {toolParts.map((part, i) => {
-                      const p = part as Record<string, unknown>;
-                      const name = toolNameFromPart(p);
-                      const state = p.state as string | undefined;
-                      const isDone = state === "output";
-                      const labels = TOOL_LABELS[name];
+                {toolParts.length > 0 && (() => {
+                  const visibleTools = toolParts.filter((part) => {
+                    const p = part as Record<string, unknown>;
+                    const name = toolNameFromPart(p);
+                    const state = p.state as string | undefined;
+                    const isDone = state === "output";
+                    if (name === "webSearch" && isDone) return false;
+                    return true;
+                  });
+                  if (visibleTools.length === 0) return null;
+                  return (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {visibleTools.map((part, i) => {
+                        const p = part as Record<string, unknown>;
+                        const name = toolNameFromPart(p);
+                        const state = p.state as string | undefined;
+                        const isDone = state === "output";
+                        const labels = TOOL_LABELS[name];
 
-                      return (
-                        <div
-                          key={i}
-                          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all ${
-                            isDone
-                              ? "border-border/50 text-muted-foreground/70"
-                              : "border-foreground/10 text-foreground animate-pulse"
-                          }`}
-                        >
-                          {isDone ? (
-                            <CheckCircle2 className="h-3 w-3 text-green-500/70" />
-                          ) : name === "webSearch" ? (
-                            <Search className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          )}
-                          <span>
-                            {isDone
-                              ? labels?.done ?? name
-                              : labels?.active ?? "Elaboro..."}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        return (
+                          <div
+                            key={i}
+                            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all ${
+                              isDone
+                                ? "border-border/50 text-muted-foreground/70"
+                                : "border-foreground/10 text-foreground animate-pulse"
+                            }`}
+                          >
+                            {isDone ? (
+                              <CheckCircle2 className="h-3 w-3 text-green-500/70" />
+                            ) : name === "webSearch" ? (
+                              <Search className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            )}
+                            <span>
+                              {isDone
+                                ? labels?.done ?? name
+                                : labels?.active ?? "Elaboro..."}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
