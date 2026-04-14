@@ -60,7 +60,7 @@ Questo framework ti aiuta a:
 ## WEB SEARCH
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Hai accesso a internet tramite \`webSearch\`. Usalo quando:
+Hai accesso diretto a internet. Usalo quando:
 - L'utente menziona un tool/software specifico → cerca per capire cosa fa
 - Vuoi trovare best practice di settore per un processo specifico
 - Serve un benchmark per contestualizzare i tempi/costi

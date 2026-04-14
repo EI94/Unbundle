@@ -4,7 +4,6 @@ import { auth } from "@/lib/auth";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getLeadershipTools } from "@/lib/ai/tools/leadership-tools";
 import { getActivityMappingTools } from "@/lib/ai/tools/activity-mapping-tools";
-import { getWebSearchTool } from "@/lib/ai/tools/web-search-tool";
 import { DISCOVERY_SYSTEM_PROMPT } from "@/lib/ai/prompts/discovery";
 import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mapping";
 import {
@@ -132,7 +131,7 @@ export async function POST(req: Request) {
       systemPrompt = DISCOVERY_SYSTEM_PROMPT + contextBlock;
       tools = {
         ...getLeadershipTools(workspaceId, workspace.organizationId),
-        ...getWebSearchTool(),
+        webSearch: anthropic.tools.webSearch_20260209({ maxUses: 5 }),
       };
       break;
     case "activity_mapping": {
@@ -189,7 +188,7 @@ export async function POST(req: Request) {
       systemPrompt = ACTIVITY_MAPPING_SYSTEM_PROMPT + mappingContext;
       tools = {
         ...getActivityMappingTools(workspaceId, departmentId!),
-        ...getWebSearchTool(),
+        webSearch: anthropic.tools.webSearch_20260209({ maxUses: 3 }),
       };
       break;
     }
@@ -197,7 +196,7 @@ export async function POST(req: Request) {
       systemPrompt = DISCOVERY_SYSTEM_PROMPT + contextBlock;
       tools = {
         ...getLeadershipTools(workspaceId, workspace.organizationId),
-        ...getWebSearchTool(),
+        webSearch: anthropic.tools.webSearch_20260209({ maxUses: 5 }),
       };
   }
 
