@@ -66,7 +66,7 @@ export default async function ContextSetupPage({
           Contesto organizzativo
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Dati raccolti durante l&apos;intervista strategica. Alimentano tutti gli step successivi.
+          Dati raccolti durante la Discovery. Alimentano tutti gli step successivi.
         </p>
       </div>
 
@@ -74,14 +74,14 @@ export default async function ContextSetupPage({
         <div className="mt-16 text-center max-w-md mx-auto">
           <h2 className="text-lg font-medium">Nessun dato raccolto</h2>
           <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-            Il contesto viene costruito durante l&apos;intervista strategica.
+            Il contesto viene costruito durante la Discovery.
             L&apos;AI raccoglie value thesis, perimetro, funzioni e obiettivi.
           </p>
           <Link
             href={`/dashboard/${workspaceId}/setup/leadership`}
             className="group mt-6 inline-flex items-center gap-2 text-sm font-medium hover:gap-3 transition-all"
           >
-            Avvia l&apos;intervista
+            Avvia la Discovery
             <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </div>

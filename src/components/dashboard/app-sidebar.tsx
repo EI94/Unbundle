@@ -71,7 +71,7 @@ export function AppSidebar({
   const workspaceNav = workspaceId
     ? [
         { title: "Overview", href: basePath, icon: LayoutDashboard },
-        { title: "Intervista strategica", href: `${basePath}/setup/leadership`, icon: Compass },
+        { title: "Discovery", href: `${basePath}/setup/leadership`, icon: Compass },
         { title: "Contesto", href: `${basePath}/setup/context`, icon: Building2 },
         { title: "Strategia", href: `${basePath}/strategy`, icon: Target },
         { title: "Activity mapping", href: `${basePath}/mapping`, icon: GitBranch },

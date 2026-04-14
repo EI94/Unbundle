@@ -6,8 +6,8 @@ import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { getWorkspaceById, getDepartmentsByWorkspace } from "@/lib/db/queries/workspaces";
 import { db } from "@/lib/db";
-import { organizations } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { organizations, simulations } from "@/lib/db/schema";
+import { eq, desc } from "drizzle-orm";
 import { generateSimulation, type SimulationResult } from "@/lib/ai/generate-simulation";
 
 export async function generateSimulationAction(
@@ -31,10 +31,30 @@ export async function generateSimulationAction(
     getDepartmentsByWorkspace(workspaceId),
   ]);
 
-  return generateSimulation({
+  const result = await generateSimulation({
     useCases,
     activities,
     departments,
     companyValueThesis: org?.companyValueThesis,
   });
+
+  await db.insert(simulations).values({
+    workspaceId,
+    content: result,
+  });
+
+  return result;
+}
+
+export async function getLatestSimulation(
+  workspaceId: string
+): Promise<SimulationResult | null> {
+  const [latest] = await db
+    .select()
+    .from(simulations)
+    .where(eq(simulations.workspaceId, workspaceId))
+    .orderBy(desc(simulations.generatedAt))
+    .limit(1);
+
+  return (latest?.content as SimulationResult) ?? null;
 }

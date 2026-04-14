@@ -432,6 +432,52 @@ export const weeklySignals = pgTable("weekly_signals", {
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
 });
 
+// ─── Uploaded Documents ──────────────────────────────────────────────
+
+export const uploadedDocuments = pgTable("uploaded_documents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  fileName: varchar("file_name", { length: 500 }).notNull(),
+  fileType: varchar("file_type", { length: 100 }).notNull(),
+  fileSize: integer("file_size").notNull(),
+  blobUrl: text("blob_url").notNull(),
+  extractedText: text("extracted_text"),
+  summary: text("summary"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+});
+
+// ─── Agent Blueprints (persisted) ────────────────────────────────────
+
+export const agentBlueprints = pgTable("agent_blueprints", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  content: jsonb("content").notNull(),
+  generatedAt: timestamp("generated_at", { mode: "date" })
+    .defaultNow()
+    .notNull(),
+});
+
+// ─── Simulations (persisted) ─────────────────────────────────────────
+
+export const simulations = pgTable("simulations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  content: jsonb("content").notNull(),
+  generatedAt: timestamp("generated_at", { mode: "date" })
+    .defaultNow()
+    .notNull(),
+});
+
 // ─── Type exports ───────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -455,3 +501,6 @@ export type Report = typeof reports.$inferSelect;
 export type ValueMapNode = typeof valueMapNodes.$inferSelect;
 export type Invitation = typeof invitations.$inferSelect;
 export type WeeklySignal = typeof weeklySignals.$inferSelect;
+export type UploadedDocument = typeof uploadedDocuments.$inferSelect;
+export type AgentBlueprint = typeof agentBlueprints.$inferSelect;
+export type Simulation = typeof simulations.$inferSelect;

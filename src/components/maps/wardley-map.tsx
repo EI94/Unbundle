@@ -2,27 +2,11 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import * as d3 from "d3";
-import type { Activity } from "@/lib/db/schema";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-
-interface WardleyNode {
-  id: string;
-  title: string;
-  x: number;
-  y: number;
-  classification: string | null;
-  workType: string | null;
-  department: string;
-  timeSpent: number | null;
-  aiExposure: number | null;
-  confidenceScore: number | null;
-}
+import type { Activity, ValueMapNode } from "@/lib/db/schema";
 
 interface WardleyMapProps {
   activities: (Activity & { departmentName: string })[];
-  onNodeClick?: (activityId: string) => void;
+  nodes: ValueMapNode[];
 }
 
 const classificationColors: Record<string, string> = {
@@ -34,64 +18,18 @@ const classificationColors: Record<string, string> = {
   blocked_by_governance: "#f97316",
 };
 
-const workTypePositionX: Record<string, number> = {
-  delivery: 0.15,
-  interpretation: 0.4,
-  detection: 0.65,
-  enrichment: 0.85,
-};
-
-function activityToNode(a: Activity & { departmentName: string }): WardleyNode {
-  const baseX = a.workType ? workTypePositionX[a.workType] ?? 0.5 : 0.5;
-  const jitterX = (Math.random() - 0.5) * 0.12;
-
-  let baseY = 0.5;
-  switch (a.classification) {
-    case "differentiating":
-      baseY = 0.85;
-      break;
-    case "emerging_opportunity":
-      baseY = 0.75;
-      break;
-    case "augmentable":
-      baseY = 0.55;
-      break;
-    case "automatable":
-      baseY = 0.3;
-      break;
-    case "blocked_by_system":
-    case "blocked_by_governance":
-      baseY = 0.15;
-      break;
-  }
-  const jitterY = (Math.random() - 0.5) * 0.1;
-
-  return {
-    id: a.id,
-    title: a.title,
-    x: Math.max(0.05, Math.min(0.95, baseX + jitterX)),
-    y: Math.max(0.05, Math.min(0.95, baseY + jitterY)),
-    classification: a.classification,
-    workType: a.workType,
-    department: a.departmentName,
-    timeSpent: a.timeSpentHoursWeek,
-    aiExposure: a.aiExposureScore,
-    confidenceScore: a.confidenceScore,
-  };
-}
-
-export function WardleyMap({ activities, onNodeClick }: WardleyMapProps) {
+export function WardleyMap({ activities, nodes }: WardleyMapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [showLabels, setShowLabels] = useState(true);
-  const [showAiExposure, setShowAiExposure] = useState(false);
   const [tooltip, setTooltip] = useState<{
     x: number;
     y: number;
-    node: WardleyNode;
+    activity: Activity & { departmentName: string };
+    node: ValueMapNode;
   } | null>(null);
 
-  const nodes = activities.map(activityToNode);
+  const nodeMap = new Map(nodes.map((n) => [n.activityId, n]));
 
   const renderMap = useCallback(() => {
     if (!svgRef.current || !containerRef.current) return;
@@ -103,7 +41,6 @@ export function WardleyMap({ activities, onNodeClick }: WardleyMapProps) {
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
-
     svg.attr("width", width).attr("height", height);
 
     const xScale = d3
@@ -123,87 +60,109 @@ export function WardleyMap({ activities, onNodeClick }: WardleyMapProps) {
       .attr("y", margin.top)
       .attr("width", width - margin.left - margin.right)
       .attr("height", height - margin.top - margin.bottom)
-      .attr("fill", "var(--color-muted)")
-      .attr("opacity", 0.3)
-      .attr("rx", 8);
+      .attr("fill", "var(--color-card)")
+      .attr("rx", 4);
 
-    const xLabels = ["Consegna", "Interpretazione", "Rilevazione", "Arricchimento"];
-    xLabels.forEach((label, i) => {
-      const x = xScale(0.15 + i * 0.25);
+    const evolutionLabels = [
+      { x: 0.125, label: "Genesis" },
+      { x: 0.375, label: "Custom" },
+      { x: 0.625, label: "Product" },
+      { x: 0.875, label: "Utility" },
+    ];
+
+    evolutionLabels.forEach(({ x, label }) => {
       g.append("text")
-        .attr("x", x)
-        .attr("y", height - 10)
+        .attr("x", xScale(x))
+        .attr("y", height - 8)
         .attr("text-anchor", "middle")
         .attr("fill", "var(--color-muted-foreground)")
-        .attr("font-size", 11)
+        .attr("font-size", 10)
         .text(label);
+    });
+
+    [0.25, 0.5, 0.75].forEach((x) => {
+      g.append("line")
+        .attr("x1", xScale(x))
+        .attr("x2", xScale(x))
+        .attr("y1", margin.top)
+        .attr("y2", height - margin.bottom)
+        .attr("stroke", "var(--color-border)")
+        .attr("stroke-dasharray", "4,4")
+        .attr("opacity", 0.5);
     });
 
     g.append("text")
       .attr("x", width / 2)
-      .attr("y", height - 0)
+      .attr("y", height)
       .attr("text-anchor", "middle")
       .attr("fill", "var(--color-muted-foreground)")
-      .attr("font-size", 12)
-      .attr("font-weight", "600")
-      .text("Maturita' / Commoditizzazione →");
+      .attr("font-size", 11)
+      .text("Evolution \u2192");
 
     g.append("text")
-      .attr("transform", `rotate(-90)`)
+      .attr("transform", "rotate(-90)")
       .attr("x", -(height / 2))
-      .attr("y", 15)
+      .attr("y", 12)
       .attr("text-anchor", "middle")
       .attr("fill", "var(--color-muted-foreground)")
-      .attr("font-size", 12)
-      .attr("font-weight", "600")
-      .text("← Centralita' Strategica");
+      .attr("font-size", 11)
+      .text("\u2190 Valore Strategico");
+
+    const mappedActivities = activities
+      .map((a) => ({ activity: a, node: nodeMap.get(a.id) }))
+      .filter((d): d is { activity: typeof d.activity; node: ValueMapNode } => !!d.node);
 
     const nodeGroup = g
       .selectAll(".node")
-      .data(nodes)
+      .data(mappedActivities)
       .enter()
       .append("g")
       .attr("class", "node")
-      .attr("transform", (d) => `translate(${xScale(d.x)},${yScale(d.y)})`)
+      .attr("transform", (d) =>
+        `translate(${xScale(d.node.xMaturity)},${yScale(d.node.yStrategicValue)})`
+      )
       .style("cursor", "pointer")
-      .on("click", (_, d) => onNodeClick?.(d.id))
       .on("mouseenter", function (event, d) {
         const rect = container.getBoundingClientRect();
         setTooltip({
           x: event.clientX - rect.left,
           y: event.clientY - rect.top - 10,
-          node: d,
+          activity: d.activity,
+          node: d.node,
         });
-        d3.select(this).select("circle").attr("stroke-width", 3);
+        d3.select(this).select("circle").attr("stroke-width", 2.5);
       })
       .on("mouseleave", function () {
         setTooltip(null);
-        d3.select(this).select("circle").attr("stroke-width", 1.5);
+        d3.select(this).select("circle").attr("stroke-width", 1);
       });
 
     nodeGroup
       .append("circle")
       .attr("r", (d) => {
-        if (showAiExposure && d.aiExposure) return 6 + d.aiExposure * 20;
-        return d.timeSpent ? Math.max(6, Math.min(18, d.timeSpent)) : 8;
+        const hours = d.activity.timeSpentHoursWeek;
+        return hours ? Math.max(5, Math.min(16, hours * 1.2)) : 7;
       })
-      .attr("fill", (d) => classificationColors[d.classification ?? ""] ?? "#94a3b8")
+      .attr("fill", (d) =>
+        classificationColors[d.activity.classification ?? ""] ?? "#64748b"
+      )
       .attr("stroke", "var(--color-background)")
-      .attr("stroke-width", 1.5)
-      .attr("opacity", 0.85);
+      .attr("stroke-width", 1)
+      .attr("opacity", 0.9);
 
     if (showLabels) {
       nodeGroup
         .append("text")
-        .attr("dy", -12)
+        .attr("dy", -10)
         .attr("text-anchor", "middle")
-        .attr("fill", "var(--color-foreground)")
-        .attr("font-size", 10)
-        .text((d) =>
-          d.title.length > 20 ? d.title.slice(0, 18) + "..." : d.title
-        );
+        .attr("fill", "var(--color-muted-foreground)")
+        .attr("font-size", 9)
+        .text((d) => {
+          const t = d.activity.title;
+          return t.length > 22 ? t.slice(0, 20) + "\u2026" : t;
+        });
     }
-  }, [nodes, showLabels, showAiExposure, onNodeClick]);
+  }, [activities, nodes, nodeMap, showLabels]);
 
   useEffect(() => {
     renderMap();
@@ -214,34 +173,20 @@ export function WardleyMap({ activities, onNodeClick }: WardleyMapProps) {
 
   return (
     <div className="relative" ref={containerRef}>
-      <div className="flex items-center gap-6 mb-4">
-        <div className="flex items-center gap-2">
-          <Switch
-            id="labels"
-            checked={showLabels}
-            onCheckedChange={setShowLabels}
-          />
-          <Label htmlFor="labels" className="text-sm">
-            Etichette
-          </Label>
-        </div>
-        <div className="flex items-center gap-2">
-          <Switch
-            id="exposure"
-            checked={showAiExposure}
-            onCheckedChange={setShowAiExposure}
-          />
-          <Label htmlFor="exposure" className="text-sm">
-            AI Exposure (dimensione)
-          </Label>
-        </div>
+      <div className="flex items-center gap-4 mb-4">
+        <button
+          onClick={() => setShowLabels(!showLabels)}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {showLabels ? "Nascondi etichette" : "Mostra etichette"}
+        </button>
       </div>
 
-      <div className="flex gap-2 flex-wrap mb-4">
+      <div className="flex gap-3 flex-wrap mb-4">
         {Object.entries(classificationColors).map(([key, color]) => (
-          <div key={key} className="flex items-center gap-1.5 text-xs">
+          <div key={key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <div
-              className="h-3 w-3 rounded-full"
+              className="h-2.5 w-2.5 rounded-full"
               style={{ backgroundColor: color }}
             />
             <span className="capitalize">{key.replace(/_/g, " ")}</span>
@@ -253,26 +198,25 @@ export function WardleyMap({ activities, onNodeClick }: WardleyMapProps) {
 
       {tooltip && (
         <div
-          className="absolute z-50 rounded-lg border bg-background p-3 shadow-lg text-sm pointer-events-none"
+          className="absolute z-50 rounded-lg border border-border bg-card p-3 shadow-lg text-sm pointer-events-none max-w-xs"
           style={{
             left: tooltip.x,
             top: tooltip.y,
             transform: "translate(-50%, -100%)",
           }}
         >
-          <p className="font-medium">{tooltip.node.title}</p>
-          <p className="text-xs text-muted-foreground">
-            Dipartimento: {tooltip.node.department}
+          <p className="font-medium text-xs">{tooltip.activity.title}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {tooltip.activity.departmentName}
           </p>
-          {tooltip.node.classification && (
-            <Badge variant="outline" className="mt-1 text-xs capitalize">
-              {tooltip.node.classification.replace(/_/g, " ")}
-            </Badge>
-          )}
-          {tooltip.node.aiExposure != null && (
-            <p className="text-xs mt-1">
-              AI Exposure: {(tooltip.node.aiExposure * 100).toFixed(0)}%
-            </p>
+          <div className="mt-1.5 flex gap-3 text-xs text-muted-foreground">
+            <span>Evolution: {(tooltip.node.xMaturity * 100).toFixed(0)}%</span>
+            <span>Valore: {(tooltip.node.yStrategicValue * 100).toFixed(0)}%</span>
+          </div>
+          {tooltip.activity.classification && (
+            <span className="mt-1 inline-block rounded-full border border-border px-2 py-0.5 text-xs capitalize">
+              {tooltip.activity.classification.replace(/_/g, " ")}
+            </span>
           )}
         </div>
       )}

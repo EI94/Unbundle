@@ -66,9 +66,9 @@ export default async function MappingPage({
 
       {departments.length === 0 ? (
         <div className="mt-16 text-center max-w-md mx-auto">
-          <h2 className="text-lg font-medium">Prima l&apos;intervista strategica</h2>
+          <h2 className="text-lg font-medium">Prima la Discovery</h2>
           <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-            Le funzioni vengono create durante l&apos;intervista con la leadership.
+            Le funzioni vengono create durante la Discovery.
             Completa quella fase per sbloccare il mapping.
           </p>
           <Link
@@ -76,7 +76,7 @@ export default async function MappingPage({
             className="group mt-6 inline-flex items-center gap-2 text-sm font-medium hover:gap-3 transition-all"
           >
             <Compass className="h-3.5 w-3.5" />
-            Vai all&apos;intervista
+            Vai alla Discovery
             <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </div>

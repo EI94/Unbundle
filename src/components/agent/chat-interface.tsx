@@ -159,6 +159,7 @@ export function ChatInterface({
     updateActivityClassification: "Classificazione aggiornata",
     linkActivityDependency: "Dipendenza collegata",
     markDepartmentMapped: "Mapping completato",
+    webSearch: "Ricerca web",
   };
 
   const showSuggestions =

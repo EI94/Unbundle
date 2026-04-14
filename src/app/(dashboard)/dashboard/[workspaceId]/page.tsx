@@ -58,7 +58,7 @@ export default async function WorkspaceOverviewPage({
 
   const steps = [
     {
-      label: "Intervista strategica",
+      label: "Discovery",
       sub: hasLeadership
         ? "Value thesis e perimetro definiti"
         : "Dove create valore e cosa cambia con l'AI",

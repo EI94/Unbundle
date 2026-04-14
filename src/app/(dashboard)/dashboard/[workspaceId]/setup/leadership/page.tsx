@@ -7,10 +7,10 @@ import {
 } from "@/lib/db/queries/conversations";
 import { ChatInterface } from "@/components/agent/chat-interface";
 import { LeadershipSidebar } from "@/components/dashboard/leadership-sidebar";
-import { Badge } from "@/components/ui/badge";
+import { DocumentUpload } from "@/components/dashboard/document-upload";
 import { Compass } from "lucide-react";
 
-const WELCOME = `L'AI sta cambiando le condizioni in cui opera la tua organizzazione. Attraverso questa conversazione, capiremo dove si sposta il valore e cosa significa per te.
+const WELCOME = `L'AI sta cambiando le condizioni in cui opera la tua organizzazione. Capiremo dove si sposta il valore e cosa significa per te.
 
 Ti farò domande mirate su 4 aree:
 — **Dove create valore** e quali sono i nodi strategici
@@ -18,15 +18,15 @@ Ti farò domande mirate su 4 aree:
 — **Dove il lavoro si blocca** e dove l'AI cambia le regole
 — **Quali obiettivi** guidano le vostre decisioni
 
-Ogni risposta viene salvata e alimenta tutti gli step successivi. Cominciamo.
+Cercherò informazioni sulla tua azienda online per rendere la conversazione più mirata. Puoi anche caricare documenti (strategia, organigramma, presentazioni) per accelerare il processo.
 
-**Raccontami la tua organizzazione: cosa fate, per chi, e qual è il vostro vantaggio competitivo oggi?**`;
+**Cominciamo: come si chiama la tua organizzazione e cosa fate?**`;
 
 const SUGGESTIONS = [
-  "Siamo un'azienda B2B con circa 100 persone",
+  "Siamo [nome azienda], lavoriamo nel settore...",
   "Gestiamo servizi professionali per enterprise",
   "Siamo una tech company in fase di scaling",
-  "Operiamo nel manifatturiero avanzato",
+  "Vorrei caricare dei documenti prima di iniziare",
 ];
 
 export default async function LeadershipSetupPage({
@@ -63,13 +63,16 @@ export default async function LeadershipSetupPage({
         <div className="border-b border-border px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <Compass className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Intervista strategica</span>
+            <span className="text-sm font-medium">Discovery</span>
           </div>
-          {hasStarted && (
-            <span className="text-xs text-muted-foreground">
-              {initialMessages.length} messaggi
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            <DocumentUpload workspaceId={workspaceId} />
+            {hasStarted && (
+              <span className="text-xs text-muted-foreground">
+                {initialMessages.length} messaggi
+              </span>
+            )}
+          </div>
         </div>
         <ChatInterface
           workspaceId={workspaceId}

@@ -4,13 +4,17 @@ import { auth } from "@/lib/auth";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getLeadershipTools } from "@/lib/ai/tools/leadership-tools";
 import { getActivityMappingTools } from "@/lib/ai/tools/activity-mapping-tools";
-import { LEADERSHIP_SETUP_SYSTEM_PROMPT } from "@/lib/ai/prompts/leadership-setup";
+import { getWebSearchTool } from "@/lib/ai/tools/web-search-tool";
+import { DISCOVERY_SYSTEM_PROMPT } from "@/lib/ai/prompts/discovery";
 import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mapping";
 import {
   saveMessage,
   getActiveConversation,
   createConversation,
 } from "@/lib/db/queries/conversations";
+import { db } from "@/lib/db";
+import { uploadedDocuments, organizations } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 
 function extractContent(msg: Record<string, unknown>): string {
   if (typeof msg.content === "string") return msg.content;
@@ -49,21 +53,60 @@ export async function POST(req: Request) {
     content: extractContent(m),
   }));
 
+  const docs = await db
+    .select({ fileName: uploadedDocuments.fileName, summary: uploadedDocuments.summary })
+    .from(uploadedDocuments)
+    .where(eq(uploadedDocuments.workspaceId, workspaceId));
+
+  const [org] = await db
+    .select()
+    .from(organizations)
+    .where(eq(organizations.id, workspace.organizationId))
+    .limit(1);
+
+  let contextBlock = "";
+
+  if (org?.companyValueThesis) {
+    contextBlock += `\n\n--- CONTESTO: VALUE THESIS GIÀ RACCOLTA ---\n${JSON.stringify(org.companyValueThesis, null, 2)}\n`;
+  }
+
+  if (workspace.systemBoundary) {
+    contextBlock += `\n--- CONTESTO: SYSTEM BOUNDARY ---\n${JSON.stringify(workspace.systemBoundary, null, 2)}\n`;
+  }
+
+  if (docs.length > 0) {
+    contextBlock += `\n--- DOCUMENTI CARICATI DALL'UTENTE (${docs.length}) ---\n`;
+    for (const doc of docs) {
+      contextBlock += `\nDocumento: ${doc.fileName}\n`;
+      if (doc.summary) contextBlock += `Sintesi: ${doc.summary}\n`;
+    }
+    contextBlock += `\nUsa queste informazioni per arricchire le tue domande e risposte. Fai riferimento ai documenti quando pertinente.\n`;
+  }
+
   let systemPrompt: string;
   let tools: Record<string, unknown>;
 
   switch (conversationType) {
     case "leadership_setup":
-      systemPrompt = LEADERSHIP_SETUP_SYSTEM_PROMPT;
-      tools = getLeadershipTools(workspaceId, workspace.organizationId);
+      systemPrompt = DISCOVERY_SYSTEM_PROMPT + contextBlock;
+      tools = {
+        ...getLeadershipTools(workspaceId, workspace.organizationId),
+        ...getWebSearchTool(),
+      };
       break;
     case "activity_mapping":
-      systemPrompt = ACTIVITY_MAPPING_SYSTEM_PROMPT;
-      tools = getActivityMappingTools(workspaceId, departmentId!);
+      systemPrompt = ACTIVITY_MAPPING_SYSTEM_PROMPT + contextBlock;
+      tools = {
+        ...getActivityMappingTools(workspaceId, departmentId!),
+        ...getWebSearchTool(),
+      };
       break;
     default:
-      systemPrompt = LEADERSHIP_SETUP_SYSTEM_PROMPT;
-      tools = getLeadershipTools(workspaceId, workspace.organizationId);
+      systemPrompt = DISCOVERY_SYSTEM_PROMPT + contextBlock;
+      tools = {
+        ...getLeadershipTools(workspaceId, workspace.organizationId),
+        ...getWebSearchTool(),
+      };
   }
 
   let conversation = await getActiveConversation(
@@ -90,7 +133,7 @@ export async function POST(req: Request) {
       departmentId,
       title:
         conversationType === "leadership_setup"
-          ? "Intervista Strategica"
+          ? "Discovery"
           : conversationType === "activity_mapping"
             ? "Activity Mapping"
             : "Conversazione",
