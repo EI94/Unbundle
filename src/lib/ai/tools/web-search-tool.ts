@@ -1,4 +1,5 @@
-import { tool } from "ai";
+import { tool, generateText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 
 export function getWebSearchTool() {
@@ -14,73 +15,32 @@ export function getWebSearchTool() {
           .describe("La query di ricerca da eseguire su internet"),
         reason: z
           .string()
-          .describe(
-            "Perché stai cercando questa informazione"
-          ),
+          .describe("Perché stai cercando questa informazione"),
       }),
       execute: async ({ query, reason }) => {
-        const apiKey = process.env.BRAVE_SEARCH_API_KEY;
-        if (!apiKey) {
-          return {
-            success: false,
-            reason,
-            message:
-              "Web search non configurata. Prosegui con le informazioni che hai.",
-            results: [],
-          };
-        }
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-
         try {
-          const response = await fetch(
-            `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`,
-            {
-              headers: {
-                Accept: "application/json",
-                "Accept-Encoding": "gzip",
-                "X-Subscription-Token": apiKey,
-              },
-              signal: controller.signal,
-            }
-          );
-
-          clearTimeout(timeout);
-
-          if (!response.ok) {
-            return {
-              success: false,
-              reason,
-              message: "Ricerca non disponibile al momento. Prosegui senza.",
-              results: [],
-            };
-          }
-
-          const data = await response.json();
-          const results = (data.web?.results ?? [])
-            .slice(0, 5)
-            .map(
-              (r: { title: string; url: string; description: string }) => ({
-                title: r.title,
-                url: r.url,
-                snippet: r.description,
-              })
-            );
+          const { text } = await generateText({
+            model: anthropic("claude-sonnet-4-20250514"),
+            tools: {
+              web_search: anthropic.tools.webSearch_20260209({
+                maxUses: 3,
+              }),
+            },
+            stopWhen: stepCountIs(5),
+            prompt: `Cerca su internet: "${query}". Motivo: ${reason}. Riporta un riassunto conciso dei risultati trovati (max 5-6 frasi). Includi fatti specifici, numeri e nomi quando disponibili.`,
+          });
 
           return {
             success: true,
             reason,
-            results,
-            message: `Ho trovato ${results.length} risultati per "${query}".`,
+            summary: text || "Nessun risultato rilevante trovato.",
           };
-        } catch {
-          clearTimeout(timeout);
+        } catch (error) {
+          console.error("[web-search-tool] Error:", error);
           return {
             success: false,
             reason,
-            message: "Ricerca non disponibile al momento. Prosegui senza.",
-            results: [],
+            summary: "Ricerca non disponibile al momento. Prosegui senza.",
           };
         }
       },
