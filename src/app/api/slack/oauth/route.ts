@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSlackAdapter } from "@/lib/slack/bot";
+import { getBot, getSlackAdapter } from "@/lib/slack/bot";
 import { upsertSlackInstallation } from "@/lib/db/queries/slack";
 import { getSlackDefaultWorkspaceId } from "@/lib/slack/default-workspace-id";
 import { slackOAuthRedirectUri } from "@/lib/slack/oauth-redirect-uri";
@@ -63,6 +63,8 @@ export async function GET(request: Request) {
   const redirectUri = slackOAuthRedirectUri(request);
 
   try {
+    // handleOAuthCallback → setInstallation richiede adapter.initialize(chat); di solito avviene sui webhook.
+    await getBot().initialize();
     const adapter = getSlackAdapter();
     const { teamId, installation } = await adapter.handleOAuthCallback(
       request,
