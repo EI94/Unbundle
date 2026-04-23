@@ -42,11 +42,11 @@ export default async function LoginPage() {
 
           <p className="mt-10 text-xs text-muted-foreground">
             Accedendo accetti i{" "}
-            <a href="#" className="underline hover:text-foreground">
+            <a href="/legal/terms" className="underline hover:text-foreground">
               Termini di Servizio
             </a>{" "}
             e la{" "}
-            <a href="#" className="underline hover:text-foreground">
+            <a href="/legal/privacy" className="underline hover:text-foreground">
               Privacy Policy
             </a>
           </p>
