@@ -4,69 +4,22 @@ import {
   useCases,
   useCaseKrLinks,
   type NewUseCase,
+  type UseCase,
 } from "../schema";
+import { deriveUseCasePortfolioMetrics } from "../use-case-scoring";
+import {
+  isAllowedStatusTransition,
+  type UseCaseCategoryValue,
+} from "@/lib/use-case-lifecycle";
 
 export async function createUseCase(data: NewUseCase) {
-  const impactScores = [
-    data.impactEconomic ?? 0,
-    data.impactTime ?? 0,
-    data.impactQuality ?? 0,
-    data.impactCoordination ?? 0,
-    data.impactSocial ?? 0,
-  ];
-  const feasibilityScores = [
-    data.feasibilityData ?? 0,
-    data.feasibilityWorkflow ?? 0,
-    data.feasibilityRisk ?? 0,
-    data.feasibilityTech ?? 0,
-    data.feasibilityTeam ?? 0,
-  ];
-
-  const overallImpact =
-    impactScores.reduce((a, b) => a + b, 0) / impactScores.length;
-  const overallFeasibility =
-    feasibilityScores.reduce((a, b) => a + b, 0) / feasibilityScores.length;
-
-  const hasEsg =
-    (data.esgEnvironmental ?? 0) > 0 ||
-    (data.esgSocial ?? 0) > 0 ||
-    (data.esgGovernance ?? 0) > 0;
-
-  let overallEsg: number | null = null;
-  let overallScore: number;
-
-  if (hasEsg) {
-    const esgScores = [
-      data.esgEnvironmental ?? 0,
-      data.esgSocial ?? 0,
-      data.esgGovernance ?? 0,
-    ];
-    overallEsg = esgScores.reduce((a, b) => a + b, 0) / esgScores.length;
-    overallScore = (overallImpact + overallFeasibility + overallEsg) / 3;
-  } else {
-    overallScore = (overallImpact + overallFeasibility) / 2;
-  }
-
-  let category: "quick_win" | "strategic_bet" | "capability_builder" | "not_yet";
-  if (overallImpact >= 3.5 && overallFeasibility >= 3.5) {
-    category = "quick_win";
-  } else if (overallImpact >= 3.5 && overallFeasibility < 3.5) {
-    category = "strategic_bet";
-  } else if (overallImpact >= 2.5) {
-    category = "capability_builder";
-  } else {
-    category = "not_yet";
-  }
+  const derived = deriveUseCasePortfolioMetrics(data);
 
   const [useCase] = await db
     .insert(useCases)
     .values({
       ...data,
-      overallEsgScore: overallEsg,
-      overallImpactScore: overallImpact,
-      overallFeasibilityScore: overallFeasibility,
-      overallScore,
-      category,
+      ...derived,
     })
     .returning();
   return useCase;
@@ -96,6 +49,93 @@ export async function updateUseCase(id: string, data: Partial<NewUseCase>) {
     .where(eq(useCases.id, id))
     .returning();
   return useCase;
+}
+
+const SCORE_KEYS = [
+  "impactEconomic",
+  "impactTime",
+  "impactQuality",
+  "impactCoordination",
+  "impactSocial",
+  "feasibilityData",
+  "feasibilityWorkflow",
+  "feasibilityRisk",
+  "feasibilityTech",
+  "feasibilityTeam",
+  "esgEnvironmental",
+  "esgSocial",
+  "esgGovernance",
+] as const;
+
+export type UseCaseScoresPatch = Partial<
+  Pick<NewUseCase, (typeof SCORE_KEYS)[number]>
+>;
+
+/**
+ * Aggiorna solo i punteggi (1–5 / ESG), ricalcola metriche aggregate e `category`.
+ */
+export async function updateUseCaseScores(
+  useCaseId: string,
+  workspaceId: string,
+  patch: UseCaseScoresPatch
+) {
+  const existing = await getUseCaseById(useCaseId);
+  if (!existing || existing.workspaceId !== workspaceId) return null;
+
+  const merged = { ...existing, ...patch };
+  const derived = deriveUseCasePortfolioMetrics(merged);
+
+  const [row] = await db
+    .update(useCases)
+    .set({
+      ...patch,
+      ...derived,
+      updatedAt: new Date(),
+    })
+    .where(eq(useCases.id, useCaseId))
+    .returning();
+  return row;
+}
+
+export type UpdateUseCaseMutationResult =
+  | { ok: true; useCase: UseCase }
+  | { ok: false; error: string };
+
+export async function updateUseCaseStatus(
+  useCaseId: string,
+  workspaceId: string,
+  nextStatus: UseCase["status"]
+): Promise<UpdateUseCaseMutationResult> {
+  const existing = await getUseCaseById(useCaseId);
+  if (!existing || existing.workspaceId !== workspaceId) {
+    return { ok: false, error: "Use case non trovato" };
+  }
+  if (existing.status === nextStatus) {
+    return { ok: true, useCase: existing };
+  }
+  if (!isAllowedStatusTransition(existing.status, nextStatus)) {
+    return {
+      ok: false,
+      error: `Transizione non consentita: da "${existing.status}" a "${nextStatus}".`,
+    };
+  }
+  const row = await updateUseCase(useCaseId, { status: nextStatus });
+  if (!row) return { ok: false, error: "Aggiornamento fallito" };
+  return { ok: true, useCase: row };
+}
+
+export async function updateUseCaseWaveCategory(
+  useCaseId: string,
+  workspaceId: string,
+  category: UseCaseCategoryValue
+): Promise<UpdateUseCaseMutationResult> {
+  const existing = await getUseCaseById(useCaseId);
+  if (!existing || existing.workspaceId !== workspaceId) {
+    return { ok: false, error: "Use case non trovato" };
+  }
+  const row = await updateUseCase(useCaseId, { category });
+  if (!row) return { ok: false, error: "Aggiornamento fallito" };
+  return { ok: true, useCase: row };
 }
 
 export async function linkUseCaseToKR(

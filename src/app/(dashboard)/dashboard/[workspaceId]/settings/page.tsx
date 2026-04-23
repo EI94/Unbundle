@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EsgToggle } from "@/components/dashboard/esg-toggle";
 import { SlackInstallButton } from "@/components/dashboard/slack-install-button";
+import { SlackNotifyChannelForm } from "@/components/dashboard/slack-notify-channel-form";
 import { MessageSquare, CheckCircle, Leaf } from "lucide-react";
 
 export default async function SettingsPage({
@@ -82,6 +83,10 @@ export default async function SettingsPage({
                 <p className="text-muted-foreground mt-1">
                   Gli utenti possono taggare <span className="font-mono text-purple-400">@unbundle</span> su Slack o scrivere in DM per proporre use case.
                 </p>
+                <SlackNotifyChannelForm
+                  workspaceId={workspaceId}
+                  initialChannelId={slackInstallation.notifyChannelId}
+                />
               </div>
             </CardContent>
           )}

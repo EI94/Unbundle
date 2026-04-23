@@ -14,6 +14,7 @@ const SLACK_SCOPES = [
   "mpim:read",
   "reactions:read",
   "users:read",
+  "users:read.email",
 ].join(",");
 
 export async function GET(request: Request) {

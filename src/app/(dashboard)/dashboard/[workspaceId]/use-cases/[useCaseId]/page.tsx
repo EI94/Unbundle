@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
 import { ArrowLeft, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { UseCasePortfolioActions } from "@/components/dashboard/use-case-portfolio-actions";
 
 const categoryLabels: Record<string, string> = {
   quick_win: "Quick Win",
@@ -90,6 +91,28 @@ export default async function UseCaseDetailPage({
         <h1 className="text-3xl font-bold tracking-tight">{useCase.title}</h1>
         <p className="mt-2 text-muted-foreground">{useCase.description}</p>
       </div>
+
+      <UseCasePortfolioActions
+        workspaceId={workspaceId}
+        useCaseId={useCaseId}
+        initialStatus={useCase.status}
+        initialCategory={useCase.category}
+      />
+
+      {krLinks.length > 0 && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-base">Collegamenti a Key Result</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {krLinks.length === 1
+                ? "Un collegamento a obiettivi strategici (KR)."
+                : `${krLinks.length} collegamenti a obiettivi strategici (KR).`}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <div className={`grid gap-4 mb-8 ${hasEsg ? "grid-cols-4" : "grid-cols-3"}`}>
         <Card>

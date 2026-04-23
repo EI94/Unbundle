@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/weekly-pulse",
       "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/cron/slack-draft-nudge",
+      "schedule": "0 * * * *"
     }
   ]
 }

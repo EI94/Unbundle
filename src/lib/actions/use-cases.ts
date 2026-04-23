@@ -5,7 +5,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { getStrategicGoalsByWorkspace, getWorkspaceById } from "@/lib/db/queries/workspaces";
-import { createUseCase } from "@/lib/db/queries/use-cases";
+import {
+  createUseCase,
+  updateUseCaseStatus,
+  updateUseCaseWaveCategory,
+} from "@/lib/db/queries/use-cases";
+import type { UseCase } from "@/lib/db/schema";
+import type { UseCaseCategoryValue } from "@/lib/use-case-lifecycle";
 import { db } from "@/lib/db";
 import { organizations, workspaces as workspacesTable } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
@@ -55,6 +61,7 @@ export async function generateUseCasesAction(workspaceId: string) {
       title: uc.title as string,
       description: uc.description as string,
       businessCase: uc.businessCase as string,
+      portfolioKind: "use_case_ai",
       impactEconomic: uc.impactEconomic as number,
       impactTime: uc.impactTime as number,
       impactQuality: uc.impactQuality as number,
@@ -94,4 +101,46 @@ export async function toggleEsgAction(workspaceId: string, enabled: boolean) {
     .where(eq(workspacesTable.id, workspaceId));
 
   revalidatePath(`/dashboard/${workspaceId}`);
+}
+
+export async function setUseCaseStatusAction(
+  workspaceId: string,
+  useCaseId: string,
+  nextStatus: UseCase["status"]
+) {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+
+  const workspace = await getWorkspaceById(workspaceId);
+  if (!workspace) throw new Error("Workspace non trovato");
+
+  const result = await updateUseCaseStatus(useCaseId, workspaceId, nextStatus);
+  if (!result.ok) throw new Error(result.error);
+
+  revalidatePath(`/dashboard/${workspaceId}/use-cases`);
+  revalidatePath(`/dashboard/${workspaceId}/use-cases/${useCaseId}`);
+  return { useCase: result.useCase };
+}
+
+export async function setUseCaseWaveCategoryAction(
+  workspaceId: string,
+  useCaseId: string,
+  category: UseCaseCategoryValue
+) {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+
+  const workspace = await getWorkspaceById(workspaceId);
+  if (!workspace) throw new Error("Workspace non trovato");
+
+  const result = await updateUseCaseWaveCategory(
+    useCaseId,
+    workspaceId,
+    category
+  );
+  if (!result.ok) throw new Error(result.error);
+
+  revalidatePath(`/dashboard/${workspaceId}/use-cases`);
+  revalidatePath(`/dashboard/${workspaceId}/use-cases/${useCaseId}`);
+  return { useCase: result.useCase };
 }

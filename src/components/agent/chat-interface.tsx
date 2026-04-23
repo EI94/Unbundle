@@ -25,6 +25,14 @@ interface ChatInterfaceProps {
 }
 
 const TOOL_LABELS: Record<string, { active: string; done: string }> = {
+  confirmContributionKind: {
+    active: "Imposto tipologia contributo",
+    done: "Tipologia impostata",
+  },
+  classifyContributionIntent: {
+    active: "Classifico intent",
+    done: "Intent classificato",
+  },
   saveCompanyValueThesis: {
     active: "Salvo la value thesis",
     done: "Value thesis salvata",

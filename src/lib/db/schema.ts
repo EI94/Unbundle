@@ -305,6 +305,14 @@ export const useCases = pgTable("use_cases", {
   title: varchar("title", { length: 500 }).notNull(),
   description: text("description"),
   businessCase: text("business_case"),
+  /**
+   * Tipologia “portfolio” per contributi bottom-up (spec Slack):
+   * - best_practice
+   * - use_case_ai
+   *
+   * Separata da `category` (wave / priorità) per non rompere scoring e UI esistenti.
+   */
+  portfolioKind: varchar("portfolio_kind", { length: 50 }),
   category: useCaseCategoryEnum("category"),
   status: useCaseStatusEnum("status").notNull().default("draft"),
   source: varchar("source", { length: 50 }),
@@ -563,7 +571,15 @@ export const slackUseCaseDrafts = pgTable("slack_use_case_drafts", {
     .references(() => workspaces.id, { onDelete: "cascade" }),
   slackUserId: varchar("slack_user_id", { length: 100 }).notNull(),
   slackThreadTs: varchar("slack_thread_ts", { length: 100 }),
+  /** Canale Slack (C… / D…) per reminder/cron; valorizzato dall'agente quando disponibile. */
+  slackChannelId: varchar("slack_channel_id", { length: 50 }),
   slackTeamId: varchar("slack_team_id", { length: 100 }).notNull(),
+  /**
+   * Tipo di contributo raccolto via Slack.
+   * - best_practice: adozione già avvenuta
+   * - use_case_ai: idea / candidato trasformazione
+   */
+  contributionKind: varchar("contribution_kind", { length: 50 }),
   status: varchar("status", { length: 50 }).notNull().default("drafting"),
   title: varchar("title", { length: 500 }),
   problem: text("problem"),
@@ -573,6 +589,10 @@ export const slackUseCaseDrafts = pgTable("slack_use_case_drafts", {
   expectedImpact: text("expected_impact"),
   dataRequirements: text("data_requirements"),
   urgency: varchar("urgency", { length: 50 }),
+  /** Un solo promemoria dopo ~24h di inattività sul draft (fase 2 cron). */
+  reminder24hSentAt: timestamp("reminder_24h_sent_at", { mode: "date" }),
+  /** Chiusura automatica draft dopo ~48h senza aggiornamenti. */
+  abandonedAt: timestamp("abandoned_at", { mode: "date" }),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
   submittedAt: timestamp("submitted_at", { mode: "date" }),

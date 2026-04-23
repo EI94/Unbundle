@@ -35,6 +35,27 @@ const categoryColors: Record<string, string> = {
   not_yet: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
 };
 
+const portfolioKindLabels: Record<string, string> = {
+  best_practice: "Best Practice",
+  use_case_ai: "Use Case AI",
+};
+
+const portfolioKindColors: Record<string, string> = {
+  best_practice:
+    "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100",
+  use_case_ai:
+    "bg-cyan-100 text-cyan-900 dark:bg-cyan-950 dark:text-cyan-100",
+};
+
+const statusLabels: Record<string, string> = {
+  draft: "Bozza",
+  proposed: "Proposto",
+  accepted: "Accettato",
+  in_progress: "In corso",
+  implemented: "Implementato",
+  rejected: "Rifiutato",
+};
+
 export default async function UseCasesPage({
   params,
 }: {
@@ -140,6 +161,7 @@ export default async function UseCasesPage({
                       <TableHead>#</TableHead>
                       <TableHead>Use Case</TableHead>
                       <TableHead>Categoria</TableHead>
+                      <TableHead>Stato</TableHead>
                       <TableHead className="text-center">Impatto</TableHead>
                       <TableHead className="text-center">
                         Fattibilita&apos;
@@ -168,6 +190,18 @@ export default async function UseCasesPage({
                                   Slack
                                 </Badge>
                               )}
+                              {uc.portfolioKind && (
+                                <Badge
+                                  variant="secondary"
+                                  className={`text-[10px] px-1.5 py-0 ${
+                                    portfolioKindColors[uc.portfolioKind] ??
+                                    "bg-muted text-muted-foreground"
+                                  }`}
+                                >
+                                  {portfolioKindLabels[uc.portfolioKind] ??
+                                    uc.portfolioKind}
+                                </Badge>
+                              )}
                             </div>
                             <p className="text-xs text-muted-foreground line-clamp-1">
                               {uc.description}
@@ -182,6 +216,11 @@ export default async function UseCasesPage({
                             }`}
                           >
                             {categoryLabels[uc.category ?? "not_yet"]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs font-normal">
+                            {statusLabels[uc.status] ?? uc.status}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center font-mono text-sm">

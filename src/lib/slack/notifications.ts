@@ -3,6 +3,29 @@ import { getSlackInstallationByTeamId } from "@/lib/db/queries/slack";
 import { db } from "@/lib/db";
 import { weeklySignals } from "@/lib/db/schema";
 
+/** URL pubblico dell’app (link nel messaggio admin Slack). */
+function getAppBaseUrl(): string | null {
+  const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) return `https://${vercel.replace(/\/$/, "")}`;
+  return null;
+}
+
+function portfolioHeadline(useCase: UseCase): string {
+  if (useCase.portfolioKind === "best_practice") {
+    return "*Nuova best practice proposta* :white_check_mark:";
+  }
+  if (useCase.portfolioKind === "use_case_ai") {
+    return "*Nuovo use case AI proposto* :sparkles:";
+  }
+  return "*Nuovo contributo portfolio proposto* :sparkles:";
+}
+
+/**
+ * Avvisa il canale admin Slack quando un contributo è stato **creato** (stato proposto).
+ * Chi ha compilato: mention Slack `<@U…>` (Slack mostra il nome visualizzato del membro).
+ */
 export async function notifyNewUseCase(
   useCase: UseCase,
   slackTeamId: string,
@@ -18,13 +41,40 @@ export async function notifyNewUseCase(
     const adapter = getSlackAdapter();
     const channelId = `slack:${installation.notifyChannelId}`;
 
-    const text =
-      `*Nuovo use case proposto* :sparkles:\n\n` +
-      `*${useCase.title}*\n` +
-      `${useCase.description ? useCase.description.slice(0, 200) : "Nessuna descrizione"}` +
-      `${useCase.description && useCase.description.length > 200 ? "..." : ""}\n\n` +
-      `Proposto da: <@${useCase.proposedBy ?? "utente"}>\n` +
-      `Status: \`${useCase.status}\``;
+    const base = getAppBaseUrl();
+    const detailPath = `/dashboard/${workspaceId}/use-cases/${useCase.id}`;
+    const detailUrl = base ? `${base}${detailPath}` : null;
+
+    const proposer =
+      useCase.proposedBy && useCase.proposedBy.startsWith("U")
+        ? `<@${useCase.proposedBy}>`
+        : useCase.proposedBy ?? "Contributore";
+
+    const excerpt = useCase.description
+      ? useCase.description.slice(0, 200) +
+        (useCase.description.length > 200 ? "…" : "")
+      : "Nessuna descrizione";
+
+    const lines = [
+      portfolioHeadline(useCase),
+      "",
+      `*${useCase.title}*`,
+      excerpt ? `_Anteprima:_ ${excerpt}` : "_Anteprima:_ —",
+      "",
+      `*Compilato da:* ${proposer}`,
+      `_Stato in Unbundle:_ \`${useCase.status}\` _(da triage in dashboard)._`,
+    ];
+
+    if (detailUrl) {
+      lines.push("", `*Apri in Unbundle:* ${detailUrl}`);
+    } else {
+      lines.push(
+        "",
+        "_Per il link diretto alla scheda, configura `NEXT_PUBLIC_APP_URL` sul server (o usa il deploy Vercel con `VERCEL_URL`)._"
+      );
+    }
+
+    const text = lines.join("\n");
 
     await adapter.withBotToken(installation.botToken, async () => {
       await adapter.postChannelMessage(channelId, text);

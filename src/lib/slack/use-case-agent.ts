@@ -1,4 +1,4 @@
-import { streamText, tool, stepCountIs } from "ai";
+import { streamText, tool, stepCountIs, generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { toAiMessages } from "chat";
@@ -6,48 +6,141 @@ import type { Thread, Message } from "chat";
 import {
   getOrCreateDraft,
   updateDraft,
-  markDraftSubmitted,
+  getDraftById,
+  getSlackInstallationByTeamId,
 } from "@/lib/db/queries/slack";
-import { createUseCase } from "@/lib/db/queries/use-cases";
-import { notifyNewUseCase } from "./notifications";
+import type { NewSlackUseCaseDraft } from "@/lib/db/schema";
+import { submitSlackContributionDraft, getMissingSlackDraftFields } from "./submit-contribution";
+import { buildContributionReviewBlocks } from "./contribution-review-blocks";
+import { slackChatPostMessage } from "./slack-chat-post";
 
-const SYSTEM_PROMPT = `Sei l'agente AI di Unbundle. Aiuti gli utenti business a proporre use case AI in modo strutturato.
+type SlackPortfolioKind = "best_practice" | "use_case_ai";
 
-## IL TUO RUOLO
-Guidi l'utente passo dopo passo nella compilazione di uno use case AI. Sei amichevole, competente e conciso. Non fai lezioni — fai domande e rielabori le risposte.
+const SYSTEM_PROMPT = `Sei l'agente AI di Unbundle su Slack. Raccogli contributi bottom-up per il portfolio Unbundle.
 
-## TEMPLATE USE CASE
-Devi raccogliere queste informazioni, una alla volta:
+## OBIETTIVO
+Devi distinguere e raccogliere **due tipologie**:
+1) **Best Practice (BP)**: qualcosa che l'utente ha GIÀ fatto con l'AI (prima/dopo, risultato, scaling).
+2) **Use Case AI (UC)**: un'IDEA per applicare l'AI (problema, as-is → to-be, vincoli, impatto atteso).
 
-1. **Titolo**: nome conciso dello use case (es. "Automazione proposte commerciali")
-2. **Problema**: quale problema risolve e perché ora è il momento giusto
-3. **Flusso (as-is → to-be)**: come funziona oggi vs come funzionerebbe con AI
-4. **Human in the Loop**: dove serve intervento umano, chi approva, quando
-5. **Guardrail**: limiti, vincoli, rischi da mitigare
-6. **Impatto atteso**: tempo risparmiato, qualità, revenue, costi
-7. **Dati necessari**: quali dati servono, dove sono, chi li gestisce
-8. **Urgenza**: quick win (settimane) o progetto strutturato (mesi)
+## FLUSSO (sempre)
+1) **ROUTING (prima cosa)**: se non sai ancora la tipologia, fai UNA domanda di smistamento:
+«Vuoi condividere un processo o attività che hai già migliorato con l'AI, oppure vuoi segnalare un'idea per applicare l'AI a un processo, servizio o prodotto?»
+2) Interpreta la risposta in linguaggio naturale. Se è ambigua, fai UNA domanda di chiarimento.
+3) Quando sei sicuro, chiama il tool \`confirmContributionKind\` con \`best_practice\` oppure \`use_case_ai\`.
+4) Solo dopo lo smistamento, raccogli i campi **uno alla volta** usando \`saveDraftField\`.
+5) Quando tutti i campi richiesti sono completi, mostra un riepilogo in chat e chiama **una sola volta** \`publishReviewBlocks\` con il \`draftId\` (aggiunge nel thread i pulsanti Slack *Conferma invio* / *Modifica*).
+6) L'utente può confermare **con i pulsanti** oppure **per iscritto**; dopo conferma esplicita scritta, chiama \`submitUseCase\`.
+
+## TEMPLATE BP (6 campi — mapping su colonne DB)
+1) **Titolo** → campo tool \`title\` (domanda: "Come chiameresti questa pratica?")
+2) **Prima** → campo tool \`problem\` (domanda: "Come funzionava prima dell'AI?")
+3) **Adesso** → campo tool \`flowDescription\` (domanda: "Come funziona adesso? Che strumenti AI usi?")
+4) **Risultato** → campo tool \`expectedImpact\` (domanda: "Che miglioramento hai visto? (tempo, qualità, costo)")
+5) **Beneficiari** → campo tool \`humanInTheLoop\` (domanda: "Chi ne beneficia? Quante persone?")
+6) **Replicabilità** → campo tool \`dataRequirements\` (domanda: "Altri team/funzioni potrebbero adottarla?")
+
+Per BP: **NON** chiedere \`guardrails\` né \`urgency\`.
+
+## TEMPLATE UC (8 campi — mapping su colonne DB)
+1) **Titolo** → \`title\`
+2) **Problema** → \`problem\`
+3) **Flusso as-is → to-be** → \`flowDescription\`
+4) **Human-in-the-loop** → \`humanInTheLoop\`
+5) **Guardrail** → \`guardrails\`
+6) **Impatto atteso** → \`expectedImpact\` (come \`business_case\` al submit)
+7) **Dati necessari** → \`dataRequirements\`
+8) **Urgenza** → \`urgency\` (quick win vs progetto strutturato)
 
 ## REGOLE DI CONVERSAZIONE
 - **UNA domanda per turno.** Mai due contemporaneamente.
 - **Rielabora** sempre quello che l'utente dice prima di passare oltre.
 - **Max 3-4 righe per messaggio.** Sii conciso.
-- Quando un campo è compilato, usa il tool \`saveDraftField\` per salvarlo.
-- Quando tutti i campi sono compilati, mostra un riepilogo e chiedi conferma.
-- Quando l'utente conferma, usa il tool \`submitUseCase\` per sottomettere.
 - **Parla sempre in italiano.**
 
 ## PRIMO MESSAGGIO
-Se l'utente ti tagga senza un contesto specifico, presentati brevemente:
-"Ciao! Sono Unbundle — posso aiutarti a strutturare un'idea di use case AI. Iniziamo dal titolo: come chiameresti questo use case?"
+Se l'utente ti tagga senza contesto, inizia dal ROUTING (domanda di smistamento).
+Se l'utente è già chiarissimo (BP vs UC), salta la domanda generica e chiama subito \`confirmContributionKind\`.`;
 
-Se l'utente arriva già con un'idea, rielabora e parti dal campo più appropriato.`;
+function getUseCaseTools(
+  workspaceId: string,
+  slackUserId: string,
+  slackTeamId: string,
+  threadTs: string | undefined,
+  slackChannelId: string,
+  slackThreadRootTs: string
+) {
+  const slackContextPatch = (): Partial<NewSlackUseCaseDraft> => {
+    const p: Partial<NewSlackUseCaseDraft> = { reminder24hSentAt: null };
+    if (slackChannelId) p.slackChannelId = slackChannelId;
+    if (slackThreadRootTs) p.slackThreadTs = slackThreadRootTs;
+    return p;
+  };
 
-function getUseCaseTools(workspaceId: string, slackUserId: string, slackTeamId: string, threadTs?: string) {
   return {
+    confirmContributionKind: tool({
+      description:
+        "Imposta la tipologia del contributo Slack: best_practice oppure use_case_ai. Chiamalo solo quando sei sicuro.",
+      inputSchema: z.object({
+        kind: z.enum(["best_practice", "use_case_ai"]),
+      }),
+      execute: async ({ kind }) => {
+        const draft = await getOrCreateDraft(
+          workspaceId,
+          slackUserId,
+          slackTeamId,
+          threadTs,
+          null
+        );
+
+        await updateDraft(draft.id, {
+          ...slackContextPatch(),
+          contributionKind: kind,
+          // se cambio percorso, evito mismatch: reset campi opzionali UC-only
+          ...(kind === "best_practice"
+            ? { guardrails: null, urgency: null }
+            : {}),
+        });
+
+        return { success: true, draftId: draft.id, kind };
+      },
+    }),
+
+    classifyContributionIntent: tool({
+      description:
+        "Classifica l'intent dell'utente (BP vs UC) a partire dalla risposta alla domanda di smistamento. Usa questo tool quando vuoi una decisione strutturata.",
+      inputSchema: z.object({
+        userMessage: z.string(),
+      }),
+      execute: async ({ userMessage }) => {
+        const { object } = await generateObject({
+          model: anthropic("claude-sonnet-4-20250514"),
+          schema: z.object({
+            intent: z.enum(["best_practice", "use_case_ai", "ambiguous"]),
+            confidence: z.number().min(0).max(1),
+            rationale: z.string(),
+          }),
+          prompt: `L'utente ha risposto alla domanda:
+"Vuoi condividere un processo o attività che hai già migliorato con l'AI, oppure vuoi segnalare un'idea per applicare l'AI a un processo, servizio o prodotto?"
+
+Risposta utente:
+"""${userMessage}"""
+
+Classifica:
+- best_practice: descrive qualcosa che ha GIÀ fatto / già in uso / risultati già ottenuti
+- use_case_ai: propone un'IDEA / vorrebbe / potremmo / in futuro
+- ambiguous: non è chiaro
+
+Sii conservativo: se non è chiaro, ambiguous.`,
+        });
+
+        return object;
+      },
+    }),
+
     saveDraftField: tool({
       description:
-        "Salva un campo del draft use case. Chiama questo tool ogni volta che l'utente fornisce informazioni su un campo del template.",
+        "Salva un campo del draft. Chiama questo tool solo DOPO aver impostato la tipologia con confirmContributionKind. Chiama ogni volta che l'utente fornisce informazioni su un campo del template.",
       inputSchema: z.object({
         field: z.enum([
           "title",
@@ -62,42 +155,128 @@ function getUseCaseTools(workspaceId: string, slackUserId: string, slackTeamId: 
         value: z.string().describe("Il valore del campo, rielaborato e strutturato"),
       }),
       execute: async ({ field, value }) => {
-        const draft = await getOrCreateDraft(workspaceId, slackUserId, slackTeamId, threadTs);
-        await updateDraft(draft.id, { [field]: value });
+        const draft = await getOrCreateDraft(
+          workspaceId,
+          slackUserId,
+          slackTeamId,
+          threadTs,
+          null
+        );
+
+        if (!draft.contributionKind) {
+          return {
+            success: false,
+            error:
+              "Tipologia non impostata. Prima chiama confirmContributionKind (o chiedi chiarimenti).",
+          };
+        }
+
+        if (draft.contributionKind === "best_practice") {
+          if (field === "guardrails" || field === "urgency") {
+            return {
+              success: false,
+              error:
+                "Per Best Practice non usare guardrails/urgency. Usa i 6 campi del template BP.",
+            };
+          }
+        }
+
+        await updateDraft(draft.id, { ...slackContextPatch(), [field]: value });
         return { success: true, field, draftId: draft.id };
+      },
+    }),
+
+    publishReviewBlocks: tool({
+      description:
+        "Pubblica nel thread Slack un riepilogo Block Kit con pulsanti Conferma/Modifica. Chiama una sola volta quando il draft è completo (dopo getDraftStatus con isComplete true).",
+      inputSchema: z.object({
+        draftId: z.string().describe("ID del draft (da getDraftStatus)"),
+      }),
+      execute: async ({ draftId }) => {
+        const draft = await getDraftById(draftId);
+        if (!draft || draft.slackUserId !== slackUserId || draft.workspaceId !== workspaceId) {
+          return {
+            success: false,
+            error: "Draft non trovato o non appartiene a questa conversazione.",
+          };
+        }
+
+        const kind = draft.contributionKind as SlackPortfolioKind | null;
+        if (!kind) {
+          return { success: false, error: "Tipologia non impostata sul draft." };
+        }
+
+        const missing = getMissingSlackDraftFields(draft, kind);
+        if (missing.length > 0) {
+          return { success: false, error: `Campi mancanti: ${missing.join(", ")}` };
+        }
+
+        if (!slackChannelId || !slackThreadRootTs) {
+          return {
+            success: false,
+            error:
+              "Contesto Slack incompleto (canale/thread). Chiedi all'utente di scrivere dal thread dove ha iniziato la conversazione.",
+          };
+        }
+
+        await updateDraft(draftId, slackContextPatch());
+
+        const installation = await getSlackInstallationByTeamId(slackTeamId);
+        if (!installation?.botToken) {
+          return { success: false, error: "Token Slack workspace non disponibile." };
+        }
+
+        const blocks = buildContributionReviewBlocks({ draft, workspaceId });
+        const summaryText =
+          kind === "best_practice"
+            ? "Riepilogo Best Practice — conferma con i pulsanti qui sotto."
+            : "Riepilogo Use Case AI — conferma con i pulsanti qui sotto.";
+
+        try {
+          await slackChatPostMessage({
+            botToken: installation.botToken,
+            channel: slackChannelId,
+            threadTs: slackThreadRootTs,
+            text: summaryText,
+            blocks: blocks as unknown[],
+          });
+        } catch (e) {
+          console.error("[slack/use-case-agent] publishReviewBlocks:", e);
+          return {
+            success: false,
+            error: "Impossibile pubblicare il riepilogo su Slack. Riprova tra poco.",
+          };
+        }
+
+        return {
+          success: true,
+          message:
+            "Riepilogo pubblicato nel thread con pulsanti. L'utente può confermare da lì o per iscritto.",
+        };
       },
     }),
 
     submitUseCase: tool({
       description:
-        "Sottometti il use case completato. Chiama solo quando l'utente ha confermato tutti i campi.",
+        "Sottometti il use case completato quando l'utente conferma **per iscritto** (se ha usato il pulsante *Conferma invio* su Slack, l'invio è già avvenuto: non richiamare questo tool).",
       inputSchema: z.object({
         draftId: z.string().describe("ID del draft da sottomettere"),
       }),
       execute: async ({ draftId }) => {
-        const draft = await markDraftSubmitted(draftId);
-        if (!draft) return { success: false, error: "Draft non trovato" };
-
-        const useCase = await createUseCase({
-          workspaceId,
-          title: draft.title ?? "Use case senza titolo",
-          description: draft.problem,
-          businessCase: draft.expectedImpact,
-          status: "proposed",
-          source: "slack_proposed",
-          proposedBy: slackUserId,
-          flowDescription: draft.flowDescription,
-          humanInTheLoop: draft.humanInTheLoop,
-          guardrails: draft.guardrails,
-          dataRequirements: draft.dataRequirements,
+        const result = await submitSlackContributionDraft({
+          draftId,
+          actingSlackUserId: slackUserId,
+          expectedWorkspaceId: workspaceId,
         });
 
-        await notifyNewUseCase(useCase, slackTeamId, workspaceId);
+        if (!result.ok) {
+          return { success: false, error: result.error };
+        }
 
         return {
           success: true,
-          useCaseId: useCase.id,
-          title: useCase.title,
+          useCaseId: result.useCaseId,
+          title: result.title,
         };
       },
     }),
@@ -106,32 +285,54 @@ function getUseCaseTools(workspaceId: string, slackUserId: string, slackTeamId: 
       description: "Controlla lo stato attuale del draft per sapere quali campi mancano.",
       inputSchema: z.object({}),
       execute: async () => {
-        const draft = await getOrCreateDraft(workspaceId, slackUserId, slackTeamId, threadTs);
+        const draft = await getOrCreateDraft(
+          workspaceId,
+          slackUserId,
+          slackTeamId,
+          threadTs,
+          null
+        );
 
-        const fields = {
-          title: draft.title,
-          problem: draft.problem,
-          flowDescription: draft.flowDescription,
-          humanInTheLoop: draft.humanInTheLoop,
-          guardrails: draft.guardrails,
-          expectedImpact: draft.expectedImpact,
-          dataRequirements: draft.dataRequirements,
-          urgency: draft.urgency,
-        };
+        const kind = draft.contributionKind as SlackPortfolioKind | null;
+
+        const fields =
+          kind === "best_practice"
+            ? {
+                title: draft.title,
+                problem: draft.problem,
+                flowDescription: draft.flowDescription,
+                expectedImpact: draft.expectedImpact,
+                humanInTheLoop: draft.humanInTheLoop,
+                dataRequirements: draft.dataRequirements,
+              }
+            : kind === "use_case_ai"
+              ? {
+                  title: draft.title,
+                  problem: draft.problem,
+                  flowDescription: draft.flowDescription,
+                  humanInTheLoop: draft.humanInTheLoop,
+                  guardrails: draft.guardrails,
+                  expectedImpact: draft.expectedImpact,
+                  dataRequirements: draft.dataRequirements,
+                  urgency: draft.urgency,
+                }
+              : {};
 
         const completed = Object.entries(fields)
-          .filter(([, v]) => v != null && v.length > 0)
+          .filter(([, v]) => v != null && String(v).length > 0)
           .map(([k]) => k);
 
         const missing = Object.entries(fields)
-          .filter(([, v]) => !v || v.length === 0)
+          .filter(([, v]) => !v || String(v).length === 0)
           .map(([k]) => k);
 
         return {
           draftId: draft.id,
+          kind,
+          needsRouting: !kind,
           completed,
           missing,
-          isComplete: missing.length === 0,
+          isComplete: !!kind && missing.length === 0,
         };
       },
     }),
@@ -144,8 +345,11 @@ export async function handleUseCaseConversation(
   workspaceId: string
 ) {
   const slackUserId = message.author?.userId ?? "unknown";
-  const teamId = (message.raw as Record<string, string>)?.team ?? "";
-  const threadTs = (message.raw as Record<string, string>)?.thread_ts;
+  const raw = message.raw as Record<string, string | undefined>;
+  const teamId = raw.team ?? raw.team_id ?? "";
+  const threadTs = raw.thread_ts;
+  const slackChannelId = raw.channel ?? "";
+  const slackThreadRootTs = raw.thread_ts ?? raw.ts ?? "";
 
   const allMessages: Message[] = [];
   try {
@@ -158,7 +362,14 @@ export async function handleUseCaseConversation(
 
   const history = await toAiMessages(allMessages);
 
-  const tools = getUseCaseTools(workspaceId, slackUserId, teamId, threadTs);
+  const tools = getUseCaseTools(
+    workspaceId,
+    slackUserId,
+    teamId,
+    threadTs,
+    slackChannelId,
+    slackThreadRootTs
+  );
 
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),
