@@ -10,7 +10,7 @@ export function getBot(): Chat {
   if (_bot) return _bot;
 
   const dbUrl = process.env.DATABASE_URL?.trim();
-  const signingSecret = process.env.SLACK_SIGNING_SECRET;
+  const signingSecret = process.env.SLACK_SIGNING_SECRET?.trim();
   if (!dbUrl || !signingSecret) {
     throw new Error(
       "Slack bot non configurato: DATABASE_URL e SLACK_SIGNING_SECRET necessari."
@@ -18,8 +18,8 @@ export function getBot(): Chat {
   }
 
   const slack = createSlackAdapter({
-    clientId: process.env.SLACK_CLIENT_ID,
-    clientSecret: process.env.SLACK_CLIENT_SECRET,
+    clientId: process.env.SLACK_CLIENT_ID?.trim(),
+    clientSecret: process.env.SLACK_CLIENT_SECRET?.trim(),
     signingSecret,
   });
 

@@ -29,10 +29,16 @@ function slackInstallErrorHint(decoded: string): string | null {
       "Se hai rigenerato il secret in Slack, il vecchio su Vercel non funziona più."
     );
   }
-  if (t.includes("bad_redirect_uri") || t.includes("redirect_uri")) {
+  if (
+    t.includes("did not match any configured") ||
+    t.includes("bad_redirect_uri") ||
+    t.includes("redirect_uri")
+  ) {
     return (
-      "Slack rifiuta l’URL di redirect. In OAuth & Permissions aggiungi esattamente l’URL " +
-      "https://…/api/slack/oauth con lo stesso host che usi nel browser (con e senza www se servono entrambi)."
+      "L’URL di callback non è nella lista Slack. Vai su api.slack.com/apps → la tua app → OAuth & Permissions → " +
+      "Redirect URLs e aggiungi **esattamente** l’URL che vedi nell’errore (host + `/api/slack/oauth`). " +
+      "Se installi da un deploy Vercel preview (es. `*.vercel.app`), quell’host va aggiunto **in aggiunta** a " +
+      "produzione (`www.theunbundle.com` / `theunbundle.com`). Slack non accetta wildcard: ogni dominio preview usato va elencato, oppure testa Slack solo da produzione."
     );
   }
   return null;

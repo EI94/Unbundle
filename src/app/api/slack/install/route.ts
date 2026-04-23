@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(login);
   }
 
-  const clientId = process.env.SLACK_CLIENT_ID;
+  const clientId = process.env.SLACK_CLIENT_ID?.trim();
   if (!clientId) {
     return NextResponse.json(
       { error: "SLACK_CLIENT_ID non configurato" },
