@@ -4,6 +4,7 @@ import { getOrganizationsByUser } from "@/lib/db/queries/organizations";
 import { getWorkspacesByOrganization } from "@/lib/db/queries/workspaces";
 import { CreateWorkspaceDialog } from "@/components/dashboard/create-workspace-dialog";
 import { WorkspaceCard } from "@/components/dashboard/workspace-card";
+import { DashboardListShell } from "@/components/dashboard/dashboard-list-shell";
 import { Plus } from "lucide-react";
 
 const SLACK_ERR: Record<string, string> = {
@@ -37,7 +38,14 @@ export default async function DashboardPage({
   );
 
   return (
-    <div className="flex-1 p-8 lg:p-12 max-w-3xl">
+    <DashboardListShell
+      user={{
+        name: session.user.name,
+        email: session.user.email,
+        image: session.user.image,
+      }}
+    >
+      <div className="flex-1 p-8 lg:p-12 max-w-3xl">
       {slackErrMsg ? (
         <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           {slackErrMsg}
@@ -100,6 +108,7 @@ export default async function DashboardPage({
           )}
         </div>
       )}
-    </div>
+      </div>
+    </DashboardListShell>
   );
 }

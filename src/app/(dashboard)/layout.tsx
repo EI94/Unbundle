@@ -1,8 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/dashboard/app-sidebar";
 
+/** Solo auth: la sidebar per `/dashboard` è in `DashboardListShell`; per workspace in `[workspaceId]/layout`. */
 export default async function DashboardRootLayout({
   children,
 }: {
@@ -11,16 +10,5 @@ export default async function DashboardRootLayout({
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  return (
-    <SidebarProvider>
-      <AppSidebar
-        user={{
-          name: session.user.name,
-          email: session.user.email,
-          image: session.user.image,
-        }}
-      />
-      <SidebarInset>{children}</SidebarInset>
-    </SidebarProvider>
-  );
+  return <>{children}</>;
 }
