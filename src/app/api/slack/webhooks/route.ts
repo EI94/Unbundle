@@ -1,9 +1,6 @@
-import {
-  handleSlackWebhookPost,
-  slackWebhookMaxDuration,
-} from "@/lib/slack/slack-webhook-post";
+import { handleSlackWebhookPost } from "@/lib/slack/slack-webhook-post";
 
-export const maxDuration = slackWebhookMaxDuration;
+export const maxDuration = 120;
 
 export async function POST(request: Request) {
   return handleSlackWebhookPost(request);
