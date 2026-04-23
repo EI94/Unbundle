@@ -73,10 +73,23 @@ export default async function SettingsPage({
         </p>
       </div>
 
-      {search.slack === "installed" && (
+      {search.slack === "installed" && isSlackInstalled && (
         <div className="mb-6 flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm text-green-400">
           <CheckCircle className="h-4 w-4" />
           Slack installato con successo!
+        </div>
+      )}
+
+      {search.slack === "installed" && !isSlackInstalled && (
+        <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          <p className="font-medium text-amber-50">OAuth Slack completato, ma questo workspace non risulta collegato</p>
+          <p className="mt-2 text-amber-100/90 leading-relaxed">
+            Succede se l’URL ha <code className="text-amber-50/90">?slack=installed</code> ma sei in un altro
+            workspace Unbundle, oppure se l’installazione è finita su un <strong>database</strong> diverso da
+            quello che usa questa pagina (es. OAuth da preview <code className="text-amber-50/90">*.vercel.app</code>{" "}
+            e DB preview, mentre qui leggi altro). Riprova{" "}
+            <strong>Installa su Slack</strong> da questa pagina, oppure apri Integrazioni dal workspace corretto.
+          </p>
         </div>
       )}
 
@@ -123,6 +136,28 @@ export default async function SettingsPage({
               )}
             </div>
           </CardHeader>
+          {!isSlackInstalled && (
+            <CardContent className="pt-0">
+              <p className="text-xs text-muted-foreground leading-relaxed border-t border-border/60 pt-4">
+                Dopo la connessione potrai impostare qui sotto il <strong>canale per notifiche admin</strong>{" "}
+                (opzionale). In Slack, invita il bot in un canale con{" "}
+                <code className="text-foreground/80">/invite @Unbundle</code> (o il nome della tua app). Se nelle DM
+                compare &quot;invio messaggi disattivato&quot;, in{" "}
+                <a
+                  className="text-purple-400 underline hover:text-purple-300"
+                  href="https://api.slack.com/apps"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  api.slack.com/apps
+                </a>{" "}
+                → <strong>App Home</strong> abilita la scheda Messaggi / messaggi dall’utente. Per le menzioni:
+                <strong> Event Subscriptions</strong> deve usare lo stesso backend che ha salvato il token (URL{" "}
+                <code className="text-foreground/80">…/api/slack/events</code>); Slack consente un solo URL: di
+                solito va quello di <strong>produzione</strong> se il DB è condiviso con OAuth da produzione.
+              </p>
+            </CardContent>
+          )}
           {isSlackInstalled && (
             <CardContent className="pt-0">
               <div className="rounded-lg bg-accent/30 px-4 py-3 text-sm">
@@ -130,7 +165,16 @@ export default async function SettingsPage({
                   Workspace: <span className="text-foreground font-medium">{slackInstallation.slackTeamName ?? slackInstallation.slackTeamId}</span>
                 </p>
                 <p className="text-muted-foreground mt-1">
-                  Gli utenti possono taggare <span className="font-mono text-purple-400">@unbundle</span> su Slack o scrivere in DM per proporre use case.
+                  Nei <strong>canali</strong>, invita il bot (<code className="font-mono text-purple-400">/invite @Unbundle</code>) prima
+                  di menzionarlo. Nelle <strong>DM</strong> con il bot, se Slack blocca l’invio, abilita i messaggi utente
+                  in <strong>App Home</strong> nella configurazione dell’app. Le menzioni richiedono che{" "}
+                  <strong>Event Subscriptions</strong> sia attivo e l’URL punti a questo deploy (stesso database di
+                  questa installazione).
+                </p>
+                <p className="text-muted-foreground mt-2">
+                  Il campo sotto è solo per <strong>notifiche admin</strong> verso un canale (ID che inizia con{" "}
+                  <span className="font-mono">C</span>/<span className="font-mono">G</span>), non sostituisce
+                  l’invito al canale.
                 </p>
                 <SlackNotifyChannelForm
                   workspaceId={workspaceId}
