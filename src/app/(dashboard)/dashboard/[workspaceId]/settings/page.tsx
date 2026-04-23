@@ -9,6 +9,35 @@ import { SlackInstallButton } from "@/components/dashboard/slack-install-button"
 import { SlackNotifyChannelForm } from "@/components/dashboard/slack-notify-channel-form";
 import { MessageSquare, CheckCircle, Leaf } from "lucide-react";
 
+function decodeSlackErrorParam(raw: string | undefined): string {
+  if (!raw) return "";
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, " "));
+  } catch {
+    return raw;
+  }
+}
+
+function slackInstallErrorHint(decoded: string): string | null {
+  const t = decoded.toLowerCase();
+  if (t.includes("bad_client_secret")) {
+    return (
+      "Il valore di SLACK_CLIENT_SECRET su Vercel non corrisponde al Client Secret dell’app Slack " +
+      "(oppure è vuoto o di un’altra app). Apri https://api.slack.com/apps → seleziona l’app Unbundle → " +
+      "Basic Information → App Credentials → copia «Client Secret» e in Vercel (Project → Settings → " +
+      "Environment Variables) imposta SLACK_CLIENT_SECRET per Production, salva e fai Redeploy. " +
+      "Se hai rigenerato il secret in Slack, il vecchio su Vercel non funziona più."
+    );
+  }
+  if (t.includes("bad_redirect_uri") || t.includes("redirect_uri")) {
+    return (
+      "Slack rifiuta l’URL di redirect. In OAuth & Permissions aggiungi esattamente l’URL " +
+      "https://…/api/slack/oauth con lo stesso host che usi nel browser (con e senza www se servono entrambi)."
+    );
+  }
+  return null;
+}
+
 export default async function SettingsPage({
   params,
   searchParams,
@@ -26,6 +55,8 @@ export default async function SettingsPage({
   const search = await searchParams;
   const slackInstallation = await getSlackInstallationByWorkspace(workspaceId);
   const isSlackInstalled = !!slackInstallation;
+  const slackErrDecoded = decodeSlackErrorParam(search.slack_error);
+  const slackErrHint = slackErrDecoded ? slackInstallErrorHint(slackErrDecoded) : null;
 
   return (
     <div className="flex-1 p-6 lg:p-8 max-w-3xl">
@@ -46,22 +77,18 @@ export default async function SettingsPage({
       {search.slack_error && (
         <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
           <p className="font-medium">Installazione Slack non completata</p>
-          <p className="mt-1 text-red-300/90 break-words">
-            {(() => {
-              try {
-                return decodeURIComponent(search.slack_error);
-              } catch {
-                return search.slack_error;
-              }
-            })()}
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            In Slack App → OAuth & Permissions, aggiungi come Redirect URL lo stesso host che usi su
-            Unbundle, percorso <code className="text-foreground/80">/api/slack/oauth</code> (es.{" "}
-            <code className="text-foreground/80">…/api/slack/oauth</code> sia con www sia senza se
-            servono entrambi). Verifica anche <code className="text-foreground/80">SLACK_CLIENT_SECRET</code>{" "}
-            su Vercel.
-          </p>
+          {slackErrHint ? (
+            <p className="mt-2 text-red-200/95 leading-relaxed">{slackErrHint}</p>
+          ) : null}
+          <p className="mt-2 text-xs text-red-300/80 break-words font-mono">{slackErrDecoded}</p>
+          {!slackErrHint ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              In Slack App → OAuth & Permissions controlla le Redirect URL (
+              <code className="text-foreground/80">/api/slack/oauth</code> sullo stesso host di Unbundle)
+              e le variabili <code className="text-foreground/80">SLACK_CLIENT_ID</code> /{" "}
+              <code className="text-foreground/80">SLACK_CLIENT_SECRET</code> su Vercel.
+            </p>
+          ) : null}
         </div>
       )}
 
