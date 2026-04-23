@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { userHasWorkspaceAccess } from "@/lib/slack/install-access";
 import { isUuid } from "@/lib/slack/workspace-context-cookie";
+import { slackOAuthRedirectUri } from "@/lib/slack/oauth-redirect-uri";
 
 const SLACK_SCOPES = [
   "app_mentions:read",
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
       `${baseUrl}/dashboard?slack_error=${encodeURIComponent("forbidden")}`
     );
   }
-  const redirectUri = `${baseUrl}/api/slack/oauth`;
+  const redirectUri = slackOAuthRedirectUri(request);
 
   const installUrl = new URL("https://slack.com/oauth/v2/authorize");
   installUrl.searchParams.set("client_id", clientId);

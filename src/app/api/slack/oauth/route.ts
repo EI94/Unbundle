@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSlackAdapter } from "@/lib/slack/bot";
 import { upsertSlackInstallation } from "@/lib/db/queries/slack";
 import { getSlackDefaultWorkspaceId } from "@/lib/slack/default-workspace-id";
+import { slackOAuthRedirectUri } from "@/lib/slack/oauth-redirect-uri";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,22 +27,21 @@ export async function GET(request: Request) {
   const stateRaw = searchParams.get("state");
   const workspaceId = stateRaw?.trim() ?? "";
   const error = searchParams.get("error");
-  const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ??
-    `${url.protocol}//${url.host}`;
+  /** Stesso host della richiesta così cookie sessione e www/apex restano coerenti. */
+  const appOrigin = url.origin;
 
   if (error) {
     const ws = workspaceId && UUID_RE.test(workspaceId) ? workspaceId : "";
     return NextResponse.redirect(
       ws
-        ? `${baseUrl}/dashboard/${ws}/settings?slack_error=${encodeURIComponent(error)}`
-        : `${baseUrl}/dashboard?slack_error=${encodeURIComponent(error)}`
+        ? `${appOrigin}/dashboard/${ws}/settings?slack_error=${encodeURIComponent(error)}`
+        : `${appOrigin}/dashboard?slack_error=${encodeURIComponent(error)}`
     );
   }
 
   if (!code) {
     return NextResponse.redirect(
-      `${baseUrl}/dashboard?slack_error=${encodeURIComponent("missing_code")}`
+      `${appOrigin}/dashboard?slack_error=${encodeURIComponent("missing_code")}`
     );
   }
 
@@ -54,17 +54,19 @@ export async function GET(request: Request) {
         : "";
 
   if (!effectiveWorkspaceId) {
-    return new NextResponse(oauthMissingStateHtml(baseUrl), {
+    return new NextResponse(oauthMissingStateHtml(appOrigin), {
       status: 400,
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });
   }
 
+  const redirectUri = slackOAuthRedirectUri(request);
+
   try {
     const adapter = getSlackAdapter();
     const { teamId, installation } = await adapter.handleOAuthCallback(
       request,
-      { redirectUri: `${baseUrl}/api/slack/oauth` }
+      { redirectUri }
     );
 
     await upsertSlackInstallation({
@@ -76,12 +78,24 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.redirect(
-      `${baseUrl}/dashboard/${effectiveWorkspaceId}/settings?slack=installed`
+      `${appOrigin}/dashboard/${effectiveWorkspaceId}/settings?slack=installed`
     );
   } catch (err) {
     console.error("[slack/oauth] OAuth callback error:", err);
+    const raw =
+      err instanceof Error
+        ? err.message
+        : typeof err === "object" && err !== null && "message" in err
+          ? String((err as { message: unknown }).message)
+          : "oauth_failed";
+    const safe = raw
+      .slice(0, 160)
+      .replace(/[^\w\s:./-]/g, " ")
+      .trim()
+      .replace(/\s+/g, " ");
+    const q = safe ? encodeURIComponent(safe) : "oauth_failed";
     return NextResponse.redirect(
-      `${baseUrl}/dashboard/${effectiveWorkspaceId}?slack_error=oauth_failed`
+      `${appOrigin}/dashboard/${effectiveWorkspaceId}/settings?slack_error=${q}`
     );
   }
 }

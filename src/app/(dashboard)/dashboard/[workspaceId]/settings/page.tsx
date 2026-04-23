@@ -45,7 +45,23 @@ export default async function SettingsPage({
 
       {search.slack_error && (
         <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
-          Errore durante l&apos;installazione di Slack: {search.slack_error}
+          <p className="font-medium">Installazione Slack non completata</p>
+          <p className="mt-1 text-red-300/90 break-words">
+            {(() => {
+              try {
+                return decodeURIComponent(search.slack_error);
+              } catch {
+                return search.slack_error;
+              }
+            })()}
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            In Slack App → OAuth & Permissions, aggiungi come Redirect URL lo stesso host che usi su
+            Unbundle, percorso <code className="text-foreground/80">/api/slack/oauth</code> (es.{" "}
+            <code className="text-foreground/80">…/api/slack/oauth</code> sia con www sia senza se
+            servono entrambi). Verifica anche <code className="text-foreground/80">SLACK_CLIENT_SECRET</code>{" "}
+            su Vercel.
+          </p>
         </div>
       )}
 
