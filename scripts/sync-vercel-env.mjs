@@ -163,6 +163,11 @@ const definitions = [
     getValue: (env) =>
       env === "production" ? PRODUCTION_APP_URL : null,
   },
+  {
+    name: "SLACK_DEFAULT_WORKSPACE_ID",
+    sensitive: false,
+    getValue: () => vars.SLACK_DEFAULT_WORKSPACE_ID?.trim() || null,
+  },
 ];
 
 const targets = ["production"];

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSlackAdapter } from "@/lib/slack/bot";
 import { upsertSlackInstallation } from "@/lib/db/queries/slack";
+import { getSlackDefaultWorkspaceId } from "@/lib/slack/default-workspace-id";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -12,9 +13,10 @@ function oauthMissingStateHtml(baseUrl: string) {
 <body style="font-family:system-ui,sans-serif;max-width:36rem;margin:2rem auto;padding:0 1rem;line-height:1.5">
 <h1>Installazione non completata</h1>
 <p>Il collegamento a Slack non include il <strong>progetto Unbundle</strong> da associare (<code>state</code> vuoto o non valido).</p>
-<p><strong>Cosa fare:</strong> accedi a Unbundle → apri il <strong>workspace</strong> giusto → <strong>Impostazioni</strong> → clicca <strong>Installa su Slack</strong>. Non usare il solo pulsante “Add to Slack” dalla pagina Slack API senza passare da lì.</p>
-<p>Per installare su un altro workspace Slack (es. NATIVA): nella schermata di consenso Slack scegli il <strong>workspace</strong> dal menu in alto a sinistra prima di “Consenti”.</p>
-<p><a href="${baseUrl}/dashboard">Vai alla dashboard Unbundle</a></p>
+<p><strong>Opzione veloce:</strong> chiedi all’admin di impostare su Vercel <code>SLACK_DEFAULT_WORKSPACE_ID</code> con l’UUID del workspace Unbundle; dopo, il pulsante “Add to Slack” e il callback con <code>state</code> vuoto funzionano.</p>
+<p><strong>Oppure</strong> apri il link unico <a href="${baseUrl}/install/slack"><code>/install/slack</code></a> (stesso effetto, con <code>state</code> già impostato).</p>
+<p>In alternativa: Unbundle → <strong>Impostazioni</strong> → <strong>Installa su Slack</strong>. Su Slack, per NATIVA ecc., scegli il <strong>workspace</strong> dal menu prima di “Consenti”.</p>
+<p><a href="${baseUrl}/dashboard">Dashboard Unbundle</a></p>
 </body></html>`;
 }
 
@@ -44,7 +46,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const fallback = process.env.SLACK_OAUTH_FALLBACK_WORKSPACE_ID?.trim() ?? "";
+  const fallback = getSlackDefaultWorkspaceId();
   const effectiveWorkspaceId =
     workspaceId && UUID_RE.test(workspaceId)
       ? workspaceId
