@@ -1,0 +1,26 @@
+diff --git a/node_modules/@chat-adapter/slack/dist/index.js b/node_modules/@chat-adapter/slack/dist/index.js
+index 48c2453..5d7bd9d 100644
+--- a/node_modules/@chat-adapter/slack/dist/index.js
++++ b/node_modules/@chat-adapter/slack/dist/index.js
+@@ -1473,6 +1473,21 @@ var SlackAdapter = class _SlackAdapter {
+       });
+       return;
+     }
++    if (
++      event.type === "message" &&
++      !event.subtype &&
++      !event.thread_ts &&
++      event.channel_type === "group"
++    ) {
++      const txt = event.text || "";
++      if (/<@[UW][A-Z0-9]+>/.test(txt)) {
++        this.logger.debug(
++          "Skipping top-level private-channel message event (Slack also sends app_mention; chat dedupe uses ts only and can drop the mention if message is processed first)",
++          { channel: event.channel }
++        );
++        return;
++      }
++    }
+     if (!(event.channel && event.ts)) {
+       this.logger.debug("Ignoring event without channel or ts", {
+         channel: event.channel,

@@ -18,7 +18,8 @@
     "vercel:pull:production": "vercel env pull .env.vercel.production --environment production --yes",
     "vercel:env:sync": "node scripts/sync-vercel-env.mjs",
     "vercel:deploy": "vercel --prod",
-    "vercel:deploy:preview": "vercel"
+    "vercel:deploy:preview": "vercel",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.68",
@@ -63,6 +64,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
+    "patch-package": "^8.0.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vercel": "^50.0.0"
