@@ -36,7 +36,10 @@ export async function GET(request: Request) {
     );
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
+  const baseUrl = (
+    process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ??
+    new URL(request.url).origin
+  );
   const redirectUri = `${baseUrl}/api/slack/oauth`;
 
   const installUrl = new URL("https://slack.com/oauth/v2/authorize");
