@@ -382,5 +382,24 @@ export async function handleUseCaseConversation(
     },
   });
 
-  await thread.post(result.textStream);
+  try {
+    // Un messaggio unico via chat.postMessage evita lo streaming nativo Slack
+    // (chatStream / assistant) che richiede recipientUserId+teamId e può fallire
+    // in silenzio su alcuni payload (es. canali privati) lasciando il thread muto.
+    const text = (await result.text).trim();
+    await thread.post(
+      text.length > 0
+        ? text
+        : "Non sono riuscito a generare una risposta. Riprova con un messaggio più breve."
+    );
+  } catch (err) {
+    console.error("[slack/use-case-agent] post reply failed:", err);
+    try {
+      await thread.post(
+        "Si è verificato un errore tecnico. Riprova tra un momento; se il problema persiste, contatta l'admin."
+      );
+    } catch (postErr) {
+      console.error("[slack/use-case-agent] fallback post failed:", postErr);
+    }
+  }
 }
