@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runSlackDraftNudgeCron } from "@/lib/slack/draft-nudge-cron";
 
+/** Schedulato in `vercel.json` al massimo 1×/giorno (limite piano Vercel Hobby). */
 export const maxDuration = 120;
 
 export async function GET(req: Request) {
