@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { safeInternalCallbackUrl } from "@/lib/navigation/safe-callback-url";
 import {
   GoogleAuthProvider,
   signInWithPopup,
@@ -20,8 +21,13 @@ import { toast } from "sonner";
 
 type Mode = "login" | "register" | "reset";
 
-export function LoginForm() {
+function LoginFormInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const afterLogin = useMemo(
+    () => safeInternalCallbackUrl(searchParams.get("callbackUrl")),
+    [searchParams]
+  );
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,7 +53,7 @@ export function LoginForm() {
       const result = await signInWithPopup(firebaseAuth, provider);
       const idToken = await result.user.getIdToken();
       await exchangeToken(idToken);
-      router.push("/dashboard");
+      router.push(afterLogin ?? "/dashboard");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Errore login Google";
       toast.error(msg);
@@ -85,7 +91,7 @@ export function LoginForm() {
 
       const idToken = await cred.user.getIdToken();
       await exchangeToken(idToken);
-      router.push("/dashboard");
+      router.push(afterLogin ?? "/dashboard");
     } catch (err) {
       const code =
         err && typeof err === "object" && "code" in err
@@ -244,5 +250,13 @@ export function LoginForm() {
         )}
       </div>
     </div>
+  );
+}
+
+export function LoginForm() {
+  return (
+    <Suspense fallback={<div className="h-40 flex items-center justify-center text-sm text-muted-foreground">Caricamento…</div>}>
+      <LoginFormInner />
+    </Suspense>
   );
 }

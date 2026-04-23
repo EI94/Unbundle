@@ -12,10 +12,9 @@ function oauthMissingStateHtml(baseUrl: string) {
 <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Installazione Slack</title></head>
 <body style="font-family:system-ui,sans-serif;max-width:36rem;margin:2rem auto;padding:0 1rem;line-height:1.5">
 <h1>Installazione non completata</h1>
-<p>Il collegamento a Slack non include il <strong>progetto Unbundle</strong> da associare (<code>state</code> vuoto o non valido).</p>
-<p><strong>Opzione veloce:</strong> chiedi all’admin di impostare su Vercel <code>SLACK_DEFAULT_WORKSPACE_ID</code> con l’UUID del workspace Unbundle; dopo, il pulsante “Add to Slack” e il callback con <code>state</code> vuoto funzionano.</p>
-<p><strong>Oppure</strong> apri il link unico <a href="${baseUrl}/install/slack"><code>/install/slack</code></a> (stesso effetto, con <code>state</code> già impostato).</p>
-<p>In alternativa: Unbundle → <strong>Impostazioni</strong> → <strong>Installa su Slack</strong>. Su Slack, per NATIVA ecc., scegli il <strong>workspace</strong> dal menu prima di “Consenti”.</p>
+<p>Slack non ha restituito il riferimento al workspace Unbundle (<code>state</code> vuoto o non valido). Succede spesso con il pulsante “Add to Slack” fuori da Unbundle.</p>
+<p><strong>Cosa fare:</strong> accedi a Unbundle, apri il workspace giusto e vai su <strong>Integrazioni</strong> → <strong>Installa su Slack</strong>, oppure apri <a href="${baseUrl}/install/slack"><code>/install/slack</code></a> (dopo il login scegli il workspace se ne hai più di uno).</p>
+<p>Se usi un deploy single-tenant, l’admin può ancora impostare <code>SLACK_DEFAULT_WORKSPACE_ID</code> su Vercel come ripiego.</p>
 <p><a href="${baseUrl}/dashboard">Dashboard Unbundle</a></p>
 </body></html>`;
 }

@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { userHasWorkspaceAccess } from "@/lib/slack/install-access";
+import { isUuid } from "@/lib/slack/workspace-context-cookie";
 
 const SLACK_SCOPES = [
   "app_mentions:read",
@@ -18,6 +21,21 @@ const SLACK_SCOPES = [
 ].join(",");
 
 export async function GET(request: Request) {
+  const reqUrl = new URL(request.url);
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ??
+    reqUrl.origin;
+
+  const session = await auth();
+  if (!session?.user?.id) {
+    const login = new URL("/login", baseUrl);
+    login.searchParams.set(
+      "callbackUrl",
+      `${reqUrl.pathname}${reqUrl.search}`
+    );
+    return NextResponse.redirect(login);
+  }
+
   const clientId = process.env.SLACK_CLIENT_ID;
   if (!clientId) {
     return NextResponse.json(
@@ -26,20 +44,20 @@ export async function GET(request: Request) {
     );
   }
 
-  const { searchParams } = new URL(request.url);
-  const workspaceId = searchParams.get("workspaceId");
+  const workspaceId = reqUrl.searchParams.get("workspaceId")?.trim() ?? "";
 
-  if (!workspaceId) {
-    return NextResponse.json(
-      { error: "workspaceId richiesto" },
-      { status: 400 }
+  if (!isUuid(workspaceId)) {
+    return NextResponse.redirect(
+      `${baseUrl}/dashboard?slack_error=${encodeURIComponent("invalid_workspace")}`
     );
   }
 
-  const baseUrl = (
-    process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ??
-    new URL(request.url).origin
-  );
+  const allowed = await userHasWorkspaceAccess(session.user.id, workspaceId);
+  if (!allowed) {
+    return NextResponse.redirect(
+      `${baseUrl}/dashboard?slack_error=${encodeURIComponent("forbidden")}`
+    );
+  }
   const redirectUri = `${baseUrl}/api/slack/oauth`;
 
   const installUrl = new URL("https://slack.com/oauth/v2/authorize");

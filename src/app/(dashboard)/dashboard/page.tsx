@@ -6,9 +6,22 @@ import { CreateWorkspaceDialog } from "@/components/dashboard/create-workspace-d
 import { WorkspaceCard } from "@/components/dashboard/workspace-card";
 import { Plus } from "lucide-react";
 
-export default async function DashboardPage() {
+const SLACK_ERR: Record<string, string> = {
+  invalid_workspace: "Link Slack non valido. Apri Integrazioni dal workspace e riprova.",
+  forbidden: "Non hai permesso di installare Slack per quel workspace.",
+};
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ slack_error?: string }>;
+}) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
+
+  const sp = searchParams ? await searchParams : {};
+  const slackErrKey = sp.slack_error?.trim() ?? "";
+  const slackErrMsg = SLACK_ERR[slackErrKey] ?? (slackErrKey ? `Slack: ${slackErrKey}` : "");
 
   const userOrgs = await getOrganizationsByUser(session.user.id);
 
@@ -25,6 +38,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex-1 p-8 lg:p-12 max-w-3xl">
+      {slackErrMsg ? (
+        <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          {slackErrMsg}
+        </div>
+      ) : null}
       <div className="mb-10 flex items-center justify-between">
         <div>
           <span className="text-xs text-muted-foreground tracking-wide uppercase">

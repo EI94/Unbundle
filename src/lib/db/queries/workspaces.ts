@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "..";
 import {
   workspaces,
@@ -8,6 +8,7 @@ import {
   type NewDepartment,
   type NewStrategicGoal,
 } from "../schema";
+import { getOrganizationsByUser } from "@/lib/db/queries/organizations";
 
 export async function createWorkspace(data: NewWorkspace) {
   const [workspace] = await db.insert(workspaces).values(data).returning();
@@ -29,6 +30,23 @@ export async function getWorkspaceById(id: string) {
     .where(eq(workspaces.id, id))
     .limit(1);
   return workspace ?? null;
+}
+
+/** Tutti i workspace Unbundle a cui l’utente ha accesso (via organizzazione). */
+export async function getWorkspacesForUser(userId: string) {
+  const orgs = await getOrganizationsByUser(userId);
+  const out: { id: string; name: string; organizationName: string }[] = [];
+  for (const { organization } of orgs) {
+    const wsList = await getWorkspacesByOrganization(organization.id);
+    for (const w of wsList) {
+      out.push({
+        id: w.id,
+        name: w.name,
+        organizationName: organization.name,
+      });
+    }
+  }
+  return out;
 }
 
 export async function updateWorkspaceStatus(
