@@ -31,7 +31,13 @@ export default async function PortfolioPage({
   searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ thanks?: string; created?: string }>;
+  searchParams: Promise<{
+    thanks?: string;
+    created?: string;
+    savedTeam?: string;
+    savedModel?: string;
+    error?: string;
+  }>;
 }) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
@@ -73,6 +79,37 @@ export default async function PortfolioPage({
             <div className="text-muted-foreground">
               Il team {teamName} lo vedrà nell’inbox e potrà valutarlo con l’aiuto dell’AI.
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {sp.savedTeam === "1" && (
+        <Card className="border-green-500/30 bg-green-500/5">
+          <CardContent className="p-4 text-sm">
+            <div className="font-medium">Salvato.</div>
+            <div className="text-muted-foreground">
+              Il nome del team è stato aggiornato.
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {sp.savedModel === "1" && (
+        <Card className="border-green-500/30 bg-green-500/5">
+          <CardContent className="p-4 text-sm">
+            <div className="font-medium">Modello salvato.</div>
+            <div className="text-muted-foreground">
+              Soglie e pesi sono stati aggiornati.
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {typeof sp.error === "string" && sp.error.trim().length > 0 && (
+        <Card className="border-red-500/30 bg-red-500/5">
+          <CardContent className="p-4 text-sm">
+            <div className="font-medium">Non posso salvare.</div>
+            <div className="text-muted-foreground">{sp.error}</div>
           </CardContent>
         </Card>
       )}

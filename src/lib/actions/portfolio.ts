@@ -27,8 +27,12 @@ export async function updateAiTransformationTeamNameAction(
   if (!session?.user?.id) redirect("/login");
 
   const raw = String(formData.get("aiTransformationTeamName") ?? "").trim();
-  await updateWorkspaceAiTransformationTeamName(workspaceId, raw.length ? raw : null);
+  await updateWorkspaceAiTransformationTeamName(
+    workspaceId,
+    raw.length ? raw : null
+  );
   revalidatePath(`/dashboard/${workspaceId}/portfolio`);
+  redirect(`/dashboard/${workspaceId}/portfolio?savedTeam=1`);
 }
 
 export async function updateScoringModelAction(workspaceId: string, formData: FormData) {
@@ -45,31 +49,57 @@ export async function updateScoringModelAction(workspaceId: string, formData: Fo
   const current = await getOrCreateWorkspaceScoringModel(workspaceId);
   const base = current.config ?? DEFAULT_SCORING_MODEL_CONFIG;
 
+  const clamp01 = (v: number) => Math.max(0, v);
+  const clamp05 = (v: number) => Math.max(0, Math.min(5, v));
+  const approxEqual = (a: number, b: number, eps = 1e-6) =>
+    Math.abs(a - b) <= eps;
+
   const config = {
     ...base,
     thresholds: {
-      highImpact: num("threshold_highImpact", base.thresholds.highImpact),
-      highFeasibility: num(
-        "threshold_highFeasibility",
-        base.thresholds.highFeasibility
+      highImpact: clamp05(
+        num("threshold_highImpact", base.thresholds.highImpact)
       ),
-      midImpact: num("threshold_midImpact", base.thresholds.midImpact),
+      highFeasibility: clamp05(
+        num("threshold_highFeasibility", base.thresholds.highFeasibility)
+      ),
+      midImpact: clamp05(num("threshold_midImpact", base.thresholds.midImpact)),
     },
     weights: {
       ...base.weights,
       overall: {
-        impact: num("weight_overallImpact", base.weights.overall.impact),
-        feasibility: num(
+        impact: clamp01(num("weight_overallImpact", base.weights.overall.impact)),
+        feasibility: clamp01(
+          num(
           "weight_overallFeasibility",
           base.weights.overall.feasibility
         ),
-        esgWhenEnabled: num(
+        ),
+        esgWhenEnabled: clamp01(
+          num(
           "weight_overallEsg",
           base.weights.overall.esgWhenEnabled
+        ),
         ),
       },
     },
   } as typeof base;
+
+  // Validazione totali pesi: se Impact Flag engine è OFF → impact+feasibility deve fare 1
+  // se ON → impact+feasibility+esg deve fare 1
+  const wI = config.weights.overall.impact;
+  const wF = config.weights.overall.feasibility;
+  const wE = config.weights.overall.esgWhenEnabled;
+  const sum = impactFlagEnabled ? wI + wF + wE : wI + wF;
+  const expected = 1;
+  if (!approxEqual(sum, expected, 1e-3)) {
+    const msg = impactFlagEnabled
+      ? `I pesi devono sommare a 1 (Impatto + Fattibilità + ESG). Ora sommano a ${sum.toFixed(3)}.`
+      : `I pesi devono sommare a 1 (Impatto + Fattibilità). Ora sommano a ${sum.toFixed(3)}.`;
+    redirect(
+      `/dashboard/${workspaceId}/portfolio?error=${encodeURIComponent(msg)}`
+    );
+  }
 
   await upsertWorkspaceScoringModel({
     workspaceId,
@@ -80,6 +110,7 @@ export async function updateScoringModelAction(workspaceId: string, formData: Fo
 
   revalidatePath(`/dashboard/${workspaceId}/portfolio`);
   revalidatePath(`/dashboard/${workspaceId}/use-cases`);
+  redirect(`/dashboard/${workspaceId}/portfolio?savedModel=1`);
 }
 
 const submitSchema = z.object({
