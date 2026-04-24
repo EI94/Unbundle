@@ -4,6 +4,7 @@ import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getUserMembership } from "@/lib/db/queries/organizations";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
+import { WorkspaceTopbar } from "@/components/portfolio/workspace-topbar";
 
 export default async function WorkspaceLayout({
   children,
@@ -36,7 +37,10 @@ export default async function WorkspaceLayout({
           image: session.user.image,
         }}
       />
-      <SidebarInset>{children}</SidebarInset>
+      <SidebarInset>
+        <WorkspaceTopbar workspaceId={workspaceId} />
+        {children}
+      </SidebarInset>
     </SidebarProvider>
   );
 }

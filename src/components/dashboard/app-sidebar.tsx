@@ -26,7 +26,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   LayoutDashboard,
-  MessageSquare,
   Building2,
   Map,
   Target,
@@ -38,9 +37,9 @@ import {
   Compass,
   GitBranch,
   Bot,
-  Cpu,
   FlaskConical,
   Radar,
+  Inbox,
 } from "lucide-react";
 
 interface AppSidebarProps {
@@ -71,6 +70,7 @@ export function AppSidebar({
   const workspaceNav = workspaceId
     ? [
         { title: "Overview", href: basePath, icon: LayoutDashboard },
+        { title: "Raccolta & ranking", href: `${basePath}/portfolio`, icon: Inbox },
         { title: "Discovery", href: `${basePath}/setup/leadership`, icon: Compass },
         { title: "Contesto", href: `${basePath}/setup/context`, icon: Building2 },
         { title: "Strategia", href: `${basePath}/strategy`, icon: Target },

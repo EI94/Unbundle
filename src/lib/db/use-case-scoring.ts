@@ -1,4 +1,5 @@
 import type { UseCase } from "@/lib/db/schema";
+import type { ScoringModelConfig, ScoringKpi } from "@/lib/db/queries/scoring-model";
 
 export type UseCaseCategory =
   | "quick_win"
@@ -14,32 +15,16 @@ export type DerivedUseCaseScores = {
   category: UseCaseCategory;
 };
 
+/** Alias esposto per retrocompatibilità degli import esterni. */
 export type UseCaseScoringModel = {
   impactFlagEnabled: boolean;
-  /**
-   * Se true e `impactFlagEnabled` è ON, includiamo ESG nell'asse Impatto/Ranking
-   * solo quando il singolo use case ha `impactFlag === true`.
-   */
-  includeEsgWhenImpactFlagged: boolean;
-  config: {
-    weights: {
-      impact: Record<
-        | "economic"
-        | "time"
-        | "quality"
-        | "coordination"
-        | "social",
-        number
-      >;
-      feasibility: Record<"data" | "workflow" | "risk" | "tech" | "team", number>;
-      esg: Record<"environmental" | "social" | "governance", number>;
-      overall: { impact: number; feasibility: number; esgWhenEnabled: number };
-    };
-    thresholds: { highImpact: number; highFeasibility: number; midImpact: number };
-  };
+  config: ScoringModelConfig;
 };
 
-/** Input parziale (insert `NewUseCase` o merge su riga esistente). */
+/**
+ * Input usato per calcolare i punteggi. Contiene sia le colonne storiche
+ * (sub-dimensioni hardcoded) sia i `customScores` jsonb (KPI custom).
+ */
 export type ScoreSource = Partial<
   Pick<
     UseCase,
@@ -56,106 +41,107 @@ export type ScoreSource = Partial<
     | "esgEnvironmental"
     | "esgSocial"
     | "esgGovernance"
+    | "customScores"
   >
 >;
 
 /**
- * Calcola impatto/fattibilità/ESG complessivi e `category` (wave) come in `createUseCase`.
- * Valori mancanti contano come 0 (stesso comportamento dell'insert storico).
+ * Legge il punteggio per un KPI combinando:
+ * 1) `customScores[dim][kpiId]` (nuova via)
+ * 2) mapping 1:1 con le colonne legacy per i kpiId storici (economic/time/data/...)
+ */
+function readKpiScore(
+  data: ScoreSource,
+  dimension: "impact" | "feasibility" | "esg",
+  kpiId: string
+): number {
+  const custom = data.customScores?.[dimension]?.[kpiId];
+  if (typeof custom === "number" && Number.isFinite(custom)) return clamp05(custom);
+
+  const legacyMap: Record<string, keyof ScoreSource | undefined> = {
+    // impact
+    economic: "impactEconomic",
+    time: "impactTime",
+    quality: "impactQuality",
+    coordination: "impactCoordination",
+    social: dimension === "esg" ? "esgSocial" : "impactSocial",
+    // feasibility
+    data: "feasibilityData",
+    workflow: "feasibilityWorkflow",
+    risk: "feasibilityRisk",
+    tech: "feasibilityTech",
+    team: "feasibilityTeam",
+    // esg
+    environmental: "esgEnvironmental",
+    governance: "esgGovernance",
+  };
+  const col = legacyMap[kpiId];
+  if (!col) return 0;
+  const value = data[col];
+  return typeof value === "number" && Number.isFinite(value) ? clamp05(value) : 0;
+}
+
+function clamp05(v: number) {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(5, v));
+}
+
+function weightedAvg(kpis: ScoringKpi[], getScore: (id: string) => number) {
+  if (kpis.length === 0) return 0;
+  const denom = kpis.reduce((s, k) => s + Math.max(0, k.weight ?? 1), 0);
+  if (denom <= 0) return 0;
+  const num = kpis.reduce((s, k) => s + getScore(k.id) * Math.max(0, k.weight ?? 1), 0);
+  return num / denom;
+}
+
+/**
+ * Calcola impatto/fattibilità/ESG complessivi + categoria di matrice usando
+ * il modello KPI custom e il flag ESG del workspace.
+ *
+ * ESG entra nel ranking **solo se** `esgEnabled === true`.
  */
 export function deriveUseCasePortfolioMetrics(
   data: ScoreSource,
   opts?: {
     model?: UseCaseScoringModel | null;
-    /** Se false, ESG non viene mai considerato nel ranking anche se presente. */
     esgEnabled?: boolean;
-    /** Flag opzionale per il singolo use case. */
-    impactFlag?: boolean | null;
   }
 ): DerivedUseCaseScores {
-  const impact = {
-    economic: data.impactEconomic ?? 0,
-    time: data.impactTime ?? 0,
-    quality: data.impactQuality ?? 0,
-    coordination: data.impactCoordination ?? 0,
-    social: data.impactSocial ?? 0,
-  };
-  const feasibility = {
-    data: data.feasibilityData ?? 0,
-    workflow: data.feasibilityWorkflow ?? 0,
-    risk: data.feasibilityRisk ?? 0,
-    tech: data.feasibilityTech ?? 0,
-    team: data.feasibilityTeam ?? 0,
-  };
-  const esg = {
-    environmental: data.esgEnvironmental ?? 0,
-    social: data.esgSocial ?? 0,
-    governance: data.esgGovernance ?? 0,
-  };
+  const config = opts?.model?.config;
+  const impactKpis = config?.dimensions.impact ?? [];
+  const feasibilityKpis = config?.dimensions.feasibility ?? [];
+  const esgKpis = config?.dimensions.esg ?? [];
 
-  const model = opts?.model ?? null;
-  const weights = model?.config.weights;
-  const thresholds = model?.config.thresholds;
+  const overallImpact = weightedAvg(impactKpis, (id) => readKpiScore(data, "impact", id));
+  const overallFeasibility = weightedAvg(feasibilityKpis, (id) =>
+    readKpiScore(data, "feasibility", id)
+  );
 
-  const weightedAverage = (values: Record<string, number>, w?: Record<string, number>) => {
-    const entries = Object.entries(values);
-    const denom = entries.reduce((sum, [k]) => sum + Math.max(0, w?.[k] ?? 1), 0);
-    if (denom <= 0) return 0;
-    const num = entries.reduce(
-      (sum, [k, v]) => sum + (v ?? 0) * Math.max(0, w?.[k] ?? 1),
-      0
-    );
-    return num / denom;
-  };
+  const esgEnabled = opts?.esgEnabled === true;
+  const overallEsg = esgEnabled
+    ? weightedAvg(esgKpis, (id) => readKpiScore(data, "esg", id))
+    : null;
 
-  const overallImpact = weightedAverage(impact, weights?.impact);
-  const overallFeasibility = weightedAverage(feasibility, weights?.feasibility);
+  const ow = config?.overall ?? { impact: 0.5, feasibility: 0.5, esg: 0.2 };
+  const wImpactRaw = Math.max(0, ow.impact);
+  const wFeasibilityRaw = Math.max(0, ow.feasibility);
+  const wEsgRaw = esgEnabled && overallEsg !== null ? Math.max(0, ow.esg ?? 0) : 0;
+  const sum = wImpactRaw + wFeasibilityRaw + wEsgRaw;
+  const wi = sum > 0 ? wImpactRaw / sum : 0.5;
+  const wf = sum > 0 ? wFeasibilityRaw / sum : 0.5;
+  const we = sum > 0 ? wEsgRaw / sum : 0;
 
-  const hasEsg =
-    esg.environmental > 0 || esg.social > 0 || esg.governance > 0;
-
-  let overallEsg: number | null = null;
-  let overallScore: number;
-
-  if (hasEsg) {
-    overallEsg = weightedAverage(esg, weights?.esg);
-  }
-
-  const esgEnabled = opts?.esgEnabled !== false;
-  const impactFlag = opts?.impactFlag ?? null;
-  const shouldIncludeEsgInRanking =
-    esgEnabled &&
-    !!overallEsg &&
-    !!model?.impactFlagEnabled &&
-    (model.includeEsgWhenImpactFlagged ? impactFlag === true : true);
-
-  const overallW = weights?.overall ?? { impact: 0.5, feasibility: 0.5, esgWhenEnabled: 0.2 };
-  const normBase = Math.max(0, overallW.impact) + Math.max(0, overallW.feasibility);
-  const normWithEsg =
-    normBase + (shouldIncludeEsgInRanking ? Math.max(0, overallW.esgWhenEnabled) : 0);
-  const wi = normWithEsg > 0 ? Math.max(0, overallW.impact) / normWithEsg : 0.5;
-  const wf = normWithEsg > 0 ? Math.max(0, overallW.feasibility) / normWithEsg : 0.5;
-  const we =
-    shouldIncludeEsgInRanking && normWithEsg > 0
-      ? Math.max(0, overallW.esgWhenEnabled) / normWithEsg
-      : 0;
-
-  overallScore =
+  const overallScore =
     overallImpact * wi + overallFeasibility * wf + (overallEsg ?? 0) * we;
 
+  const hi = config?.thresholds.highImpact ?? 3.5;
+  const hf = config?.thresholds.highFeasibility ?? 3.5;
+  const mi = config?.thresholds.midImpact ?? 2.5;
   let category: UseCaseCategory;
-  const hi = thresholds?.highImpact ?? 3.5;
-  const hf = thresholds?.highFeasibility ?? 3.5;
-  const mi = thresholds?.midImpact ?? 2.5;
-  if (overallImpact >= hi && overallFeasibility >= hf) {
-    category = "quick_win";
-  } else if (overallImpact >= hi && overallFeasibility < hf) {
-    category = "strategic_bet";
-  } else if (overallImpact >= mi) {
-    category = "capability_builder";
-  } else {
-    category = "not_yet";
-  }
+  if (overallImpact >= hi && overallFeasibility >= hf) category = "quick_win";
+  else if (overallImpact >= hi && overallFeasibility < hf) category = "strategic_bet";
+  else if (overallImpact >= mi) category = "capability_builder";
+  else category = "not_yet";
 
   return {
     overallEsgScore: overallEsg,

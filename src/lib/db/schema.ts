@@ -219,6 +219,12 @@ export const workspaces = pgTable("workspaces", {
   aiTransformationTeamName: varchar("ai_transformation_team_name", {
     length: 255,
   }),
+  /**
+   * URL di webhook generico per inoltrare le notifiche sul gruppo/team
+   * (es. relay WhatsApp via Zapier / Make / Twilio / endpoint custom).
+   * Se impostato, Unbundle POSTa un JSON `{ text, link, event }`.
+   */
+  whatsappWebhookUrl: varchar("whatsapp_webhook_url", { length: 1000 }),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -241,23 +247,28 @@ export const workspaceScoringModels = pgTable("workspace_scoring_models", {
    * - weights: pesi per dimensione (impact/feasibility/esg) + aggregazione
    * - thresholds: soglie matrice (highImpact, highFeasibility, midImpact)
    */
+  /**
+   * Configurazione del modello di ranking.
+   *
+   * `dimensions` è il cuore editabile: l'azienda definisce quali KPI compongono
+   * Impatto / Fattibilità / ESG (id, label, description, peso). ESG è inclusa nel
+   * ranking solo se `workspaces.esg_enabled = true`.
+   *
+   * I campi `weights` (legacy, sub-criteri fissi) restano opzionali per retrocompatibilità;
+   * `dimensions` ha priorità quando presente.
+   */
   config: jsonb("config").$type<{
-    weights: {
-      impact: Record<
-        | "economic"
-        | "time"
-        | "quality"
-        | "coordination"
-        | "social",
-        number
-      >;
-      feasibility: Record<
-        "data" | "workflow" | "risk" | "tech" | "team",
-        number
-      >;
-      esg: Record<"environmental" | "social" | "governance", number>;
-      /** Peso relativo dell'asse impatto vs fattibilità nel ranking finale. */
-      overall: { impact: number; feasibility: number; esgWhenEnabled: number };
+    dimensions?: {
+      impact: Array<{ id: string; label: string; description?: string; weight: number }>;
+      feasibility: Array<{ id: string; label: string; description?: string; weight: number }>;
+      esg: Array<{ id: string; label: string; description?: string; weight: number }>;
+    };
+    weights?: {
+      impact?: Record<string, number>;
+      feasibility?: Record<string, number>;
+      esg?: Record<string, number>;
+      /** Peso relativo dell'asse impatto vs fattibilità vs ESG nel ranking finale. */
+      overall: { impact: number; feasibility: number; esg?: number; esgWhenEnabled?: number };
     };
     thresholds: {
       highImpact: number;
@@ -415,6 +426,20 @@ export const useCases = pgTable("use_cases", {
   esgEnvironmental: real("esg_environmental"),
   esgSocial: real("esg_social"),
   esgGovernance: real("esg_governance"),
+  /**
+   * Punteggi 0–5 per i KPI **custom** definiti dal workspace.
+   * Chiave = KPI id (stesso id usato nel `workspace_scoring_models.config.dimensions`),
+   * Valore = numero in [0,5]. Si appoggia a questa colonna quando il cliente
+   * ha personalizzato i KPI (oltrepassa le 13 sub-dimensioni storiche).
+   *
+   * Formato:
+   * { impact: { [kpiId]: number }, feasibility: { [kpiId]: number }, esg?: { [kpiId]: number } }
+   */
+  customScores: jsonb("custom_scores").$type<{
+    impact?: Record<string, number>;
+    feasibility?: Record<string, number>;
+    esg?: Record<string, number>;
+  }>(),
   overallEsgScore: real("overall_esg_score"),
   overallImpactScore: real("overall_impact_score"),
   overallFeasibilityScore: real("overall_feasibility_score"),

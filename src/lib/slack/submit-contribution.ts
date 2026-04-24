@@ -5,7 +5,7 @@ import {
   updateDraft,
 } from "@/lib/db/queries/slack";
 import type { SlackUseCaseDraft } from "@/lib/db/schema";
-import { notifyNewUseCase } from "./notifications";
+import { dispatchNewPortfolioNotifications } from "@/lib/notifications/portfolio-dispatch";
 
 type SlackPortfolioKind = "best_practice" | "use_case_ai";
 
@@ -103,7 +103,12 @@ export async function submitSlackContributionDraft(params: {
       timeline: kind === "use_case_ai" ? (draft.urgency ?? null) : null,
     });
 
-    await notifyNewUseCase(useCase, draft.slackTeamId, params.expectedWorkspaceId);
+    await dispatchNewPortfolioNotifications({
+      useCase,
+      workspaceId: params.expectedWorkspaceId,
+      source: "slack",
+      slackTeamId: draft.slackTeamId,
+    });
 
     return { ok: true, useCaseId: useCase.id, title: useCase.title };
   } catch (e) {

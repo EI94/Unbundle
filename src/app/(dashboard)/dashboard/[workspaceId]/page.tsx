@@ -107,7 +107,7 @@ export default async function WorkspaceOverviewPage({
       href: `/dashboard/${workspaceId}/mapping`,
       icon: GitBranch,
       done: hasMappedAll,
-      locked: !hasDepts,
+      locked: false,
     },
     {
       label: "Use cases",
@@ -117,20 +117,20 @@ export default async function WorkspaceOverviewPage({
       href: `/dashboard/${workspaceId}/use-cases`,
       icon: Lightbulb,
       done: hasUseCases,
-      locked: activities.length === 0,
+      locked: false,
     },
   ];
 
   const nextStep = steps.find((s) => !s.done && !s.locked);
 
   const tools = [
-    { label: "Value map", href: `/dashboard/${workspaceId}/value-map`, icon: MapPin, ready: classifiedActivities.length > 0 },
-    { label: "Piano", href: `/dashboard/${workspaceId}/plan`, icon: BarChart3, ready: hasUseCases },
-    { label: "Report", href: `/dashboard/${workspaceId}/reports`, icon: FileText, ready: hasUseCases },
-    { label: "Blueprints", href: `/dashboard/${workspaceId}/blueprints`, icon: Zap, ready: hasUseCases },
-    { label: "Simulazione", href: `/dashboard/${workspaceId}/simulation`, icon: TrendingUp, ready: hasUseCases },
-    { label: "Intelligence", href: `/dashboard/${workspaceId}/intelligence`, icon: Brain, ready: true },
     { label: "Raccolta & ranking", href: `/dashboard/${workspaceId}/portfolio`, icon: Inbox, ready: true },
+    { label: "Value map", href: `/dashboard/${workspaceId}/value-map`, icon: MapPin, ready: true },
+    { label: "Piano", href: `/dashboard/${workspaceId}/plan`, icon: BarChart3, ready: true },
+    { label: "Report", href: `/dashboard/${workspaceId}/reports`, icon: FileText, ready: true },
+    { label: "Blueprints", href: `/dashboard/${workspaceId}/blueprints`, icon: Zap, ready: true },
+    { label: "Simulazione", href: `/dashboard/${workspaceId}/simulation`, icon: TrendingUp, ready: true },
+    { label: "Intelligence", href: `/dashboard/${workspaceId}/intelligence`, icon: Brain, ready: true },
     { label: "Integrazioni", href: `/dashboard/${workspaceId}/settings`, icon: Plug, ready: true },
   ];
 

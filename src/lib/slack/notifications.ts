@@ -1,8 +1,6 @@
 import type { UseCase } from "@/lib/db/schema";
 import { getSlackInstallationByTeamId } from "@/lib/db/queries/slack";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
-import { db } from "@/lib/db";
-import { weeklySignals } from "@/lib/db/schema";
 
 /** URL pubblico dell’app (link nel messaggio admin Slack). */
 function getAppBaseUrl(): string | null {
@@ -32,8 +30,6 @@ export async function notifyNewUseCase(
   slackTeamId: string,
   workspaceId: string
 ) {
-  await createSignal(useCase, workspaceId);
-
   const workspace = await getWorkspaceById(workspaceId);
   const teamName =
     workspace?.aiTransformationTeamName?.trim() || "AI Transformation";
@@ -89,19 +85,3 @@ export async function notifyNewUseCase(
   }
 }
 
-async function createSignal(useCase: UseCase, workspaceId: string) {
-  try {
-    await db.insert(weeklySignals).values({
-      workspaceId,
-      signalType: "new_use_case_proposed",
-      title: `Nuovo use case proposto: ${useCase.title}`,
-      description: `Un use case è stato proposto via Slack: "${useCase.title}". ${
-        useCase.description?.slice(0, 150) ?? ""
-      }`,
-      relatedEntityType: "use_case",
-      relatedEntityId: useCase.id,
-    });
-  } catch (error) {
-    console.error("[slack/notifications] Failed to create signal:", error);
-  }
-}

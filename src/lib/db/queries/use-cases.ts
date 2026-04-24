@@ -8,10 +8,7 @@ import {
 } from "../schema";
 import { deriveUseCasePortfolioMetrics } from "../use-case-scoring";
 import { getWorkspaceById } from "./workspaces";
-import {
-  DEFAULT_SCORING_MODEL_CONFIG,
-  getOrCreateWorkspaceScoringModel,
-} from "./scoring-model";
+import { getOrCreateWorkspaceScoringModel } from "./scoring-model";
 import {
   isAllowedStatusTransition,
   type UseCaseCategoryValue,
@@ -21,15 +18,11 @@ export async function createUseCase(data: NewUseCase) {
   const workspace = await getWorkspaceById(data.workspaceId);
   const model = await getOrCreateWorkspaceScoringModel(data.workspaceId);
   const derived = deriveUseCasePortfolioMetrics(data, {
-    model: model
-      ? {
-          impactFlagEnabled: model.impactFlagEnabled,
-          includeEsgWhenImpactFlagged: true,
-          config: (model.config ?? DEFAULT_SCORING_MODEL_CONFIG) as never,
-        }
-      : null,
+    model: {
+      impactFlagEnabled: model.impactFlagEnabled,
+      config: model.resolvedConfig,
+    },
     esgEnabled: workspace?.esgEnabled === true,
-    impactFlag: data.impactFlag ?? null,
   });
 
   const [useCase] = await db
@@ -140,21 +133,48 @@ export async function updateUseCaseScores(
   const model = await getOrCreateWorkspaceScoringModel(workspaceId);
   const merged = { ...existing, ...patch };
   const derived = deriveUseCasePortfolioMetrics(merged, {
-    model: model
-      ? {
-          impactFlagEnabled: model.impactFlagEnabled,
-          includeEsgWhenImpactFlagged: true,
-          config: (model.config ?? DEFAULT_SCORING_MODEL_CONFIG) as never,
-        }
-      : null,
+    model: {
+      impactFlagEnabled: model.impactFlagEnabled,
+      config: model.resolvedConfig,
+    },
     esgEnabled: workspace?.esgEnabled === true,
-    impactFlag: merged.impactFlag ?? null,
   });
 
   const [row] = await db
     .update(useCases)
     .set({
       ...patch,
+      ...derived,
+      updatedAt: new Date(),
+    })
+    .where(eq(useCases.id, useCaseId))
+    .returning();
+  return row;
+}
+
+export async function updateUseCaseCustomScores(
+  useCaseId: string,
+  workspaceId: string,
+  customScores: NonNullable<UseCase["customScores"]>
+) {
+  const existing = await getUseCaseById(useCaseId);
+  if (!existing || existing.workspaceId !== workspaceId) return null;
+
+  const workspace = await getWorkspaceById(workspaceId);
+  const model = await getOrCreateWorkspaceScoringModel(workspaceId);
+  const merged = { ...existing, customScores };
+  const derived = deriveUseCasePortfolioMetrics(merged, {
+    model: {
+      impactFlagEnabled: model.impactFlagEnabled,
+      config: model.resolvedConfig,
+    },
+    esgEnabled: workspace?.esgEnabled === true,
+  });
+
+  const [row] = await db
+    .update(useCases)
+    .set({
+      customScores,
       ...derived,
       updatedAt: new Date(),
     })

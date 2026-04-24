@@ -85,6 +85,18 @@ export async function updateWorkspaceAiTransformationTeamName(
   return workspace;
 }
 
+export async function updateWorkspaceWhatsappWebhook(
+  id: string,
+  whatsappWebhookUrl: string | null
+) {
+  const [workspace] = await db
+    .update(workspaces)
+    .set({ whatsappWebhookUrl, updatedAt: new Date() })
+    .where(eq(workspaces.id, id))
+    .returning();
+  return workspace;
+}
+
 // ─── Departments ────────────────────────────────────────────────────
 
 export async function createDepartment(data: NewDepartment) {
