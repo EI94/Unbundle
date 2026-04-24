@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getBot, getSlackAdapter } from "@/lib/slack/bot";
 import { upsertSlackInstallation } from "@/lib/db/queries/slack";
+import { auth } from "@/lib/auth";
+import { getWorkspaceById } from "@/lib/db/queries/workspaces";
+import { getUserMembership } from "@/lib/db/queries/organizations";
 import { getSlackDefaultWorkspaceId } from "@/lib/slack/default-workspace-id";
 import { slackOAuthRedirectUri } from "@/lib/slack/oauth-redirect-uri";
 
@@ -63,6 +66,41 @@ export async function GET(request: Request) {
   const redirectUri = slackOAuthRedirectUri(request);
 
   try {
+    /**
+     * Hardening multi-tenant:
+     * l'installazione Slack collega un workspace Slack → un workspace Unbundle.
+     * Non cambiamo il flusso UX: se l'utente non è loggato o non ha ruolo adeguato,
+     * reindirizziamo a Settings con errore leggibile.
+     */
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
+    if (!userId) {
+      return NextResponse.redirect(
+        `${appOrigin}/login?next=${encodeURIComponent(
+          `/dashboard/${effectiveWorkspaceId}/settings?slack_error=login_required`
+        )}`
+      );
+    }
+
+    const ws = await getWorkspaceById(effectiveWorkspaceId);
+    if (!ws) {
+      return NextResponse.redirect(
+        `${appOrigin}/dashboard?slack_error=${encodeURIComponent("workspace_not_found")}`
+      );
+    }
+
+    const membership = await getUserMembership(userId, ws.organizationId);
+    const role = membership?.role ?? null;
+    const allowed =
+      role === "exec_sponsor" || role === "transformation_lead" || role === "function_lead";
+    if (!allowed) {
+      return NextResponse.redirect(
+        `${appOrigin}/dashboard/${effectiveWorkspaceId}/settings?slack_error=${encodeURIComponent(
+          "not_authorized"
+        )}`
+      );
+    }
+
     // handleOAuthCallback → setInstallation richiede adapter.initialize(chat); di solito avviene sui webhook.
     await getBot().initialize();
     const adapter = getSlackAdapter();
@@ -76,7 +114,7 @@ export async function GET(request: Request) {
       slackTeamId: teamId,
       slackTeamName: installation.teamName ?? null,
       botToken: installation.botToken,
-      installedBy: null,
+      installedBy: userId,
     });
 
     return NextResponse.redirect(

@@ -46,15 +46,34 @@ function registerHandlers(bot: Chat) {
     await thread.subscribe();
     await thread.startTyping();
 
-    const teamId = (message.raw as Record<string, string>)?.team;
-    if (!teamId) {
+    const raw = message.raw as Record<string, string | undefined>;
+    /**
+     * IMPORTANT (Slack Connect / canali condivisi):
+     * - `team_id` è l'"authed team" (tenant che riceve l'evento / installation owner)
+     * - `team` può rappresentare il team del mittente in contesti cross-org
+     * Per multi-tenant dobbiamo sempre risolvere il workspace da `team_id`.
+     */
+    const authedTeamId = raw.team_id ?? raw.team ?? "";
+    const senderTeamId = raw.team ?? raw.user_team ?? "";
+    const isExternal = !!(senderTeamId && authedTeamId && senderTeamId !== authedTeamId);
+
+    if (!authedTeamId) {
       await thread.post(
         "Non riesco a identificare il tuo workspace. Assicurati che Unbundle sia installato correttamente."
       );
       return;
     }
 
-    const workspaceId = await resolveWorkspaceId(teamId);
+    if (isExternal) {
+      await thread.post(
+        "Sembra un canale condiviso tra organizzazioni (Slack Connect). " +
+          "Per evitare che i dati finiscano nell'istanza sbagliata, posso raccogliere use case solo per i membri del workspace che mi ha installato. " +
+          "Scrivimi in un canale interno del tuo workspace, oppure usa la web app Unbundle della tua azienda."
+      );
+      return;
+    }
+
+    const workspaceId = await resolveWorkspaceId(authedTeamId);
     if (!workspaceId) {
       await thread.post(
         "Questo workspace Slack non è collegato a un progetto Unbundle. " +
@@ -70,13 +89,24 @@ function registerHandlers(bot: Chat) {
     await thread.subscribe();
     await thread.startTyping();
 
-    const teamId = (message.raw as Record<string, string>)?.team;
-    if (!teamId) {
+    const raw = message.raw as Record<string, string | undefined>;
+    const authedTeamId = raw.team_id ?? raw.team ?? "";
+    const senderTeamId = raw.team ?? raw.user_team ?? "";
+    const isExternal = !!(senderTeamId && authedTeamId && senderTeamId !== authedTeamId);
+
+    if (!authedTeamId) {
       await thread.post("Non riesco a identificare il workspace.");
       return;
     }
 
-    const workspaceId = await resolveWorkspaceId(teamId);
+    if (isExternal) {
+      await thread.post(
+        "Sembra un contesto cross-azienda. Per sicurezza posso rispondere solo per il workspace che mi ha installato."
+      );
+      return;
+    }
+
+    const workspaceId = await resolveWorkspaceId(authedTeamId);
     if (!workspaceId) {
       await thread.post(
         "Questo workspace Slack non è collegato a Unbundle. " +
@@ -91,8 +121,20 @@ function registerHandlers(bot: Chat) {
   bot.onSubscribedMessage(async (thread, message) => {
     await thread.startTyping();
 
-    const teamId = (message.raw as Record<string, string>)?.team;
-    const workspaceId = teamId ? await resolveWorkspaceId(teamId) : null;
+    const raw = message.raw as Record<string, string | undefined>;
+    const authedTeamId = raw.team_id ?? raw.team ?? "";
+    const senderTeamId = raw.team ?? raw.user_team ?? "";
+    const isExternal = !!(senderTeamId && authedTeamId && senderTeamId !== authedTeamId);
+
+    if (isExternal) {
+      await thread.post(
+        "Questo thread sembra provenire da un canale condiviso tra organizzazioni. " +
+          "Per evitare cross-tenant, usa un canale interno o la web app Unbundle del tuo team."
+      );
+      return;
+    }
+
+    const workspaceId = authedTeamId ? await resolveWorkspaceId(authedTeamId) : null;
 
     if (!workspaceId) {
       await thread.post("Non riesco a trovare il progetto Unbundle collegato.");

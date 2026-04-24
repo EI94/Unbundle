@@ -346,7 +346,8 @@ export async function handleUseCaseConversation(
 ) {
   const slackUserId = message.author?.userId ?? "unknown";
   const raw = message.raw as Record<string, string | undefined>;
-  const teamId = raw.team ?? raw.team_id ?? "";
+  // `team_id` (authed team) identifica l'installation owner: fondamentale per isolamento multi-tenant.
+  const teamId = raw.team_id ?? raw.team ?? "";
   const threadTs = raw.thread_ts;
   const slackChannelId = raw.channel ?? "";
   const slackThreadRootTs = raw.thread_ts ?? raw.ts ?? "";
