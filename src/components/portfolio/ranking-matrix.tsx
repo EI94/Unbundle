@@ -16,6 +16,11 @@ type MatrixItem = Pick<
  * Visualizzazione semplice Impatto (Y) vs Fattibilità (X) 0–5.
  * Render server-side senza librerie esterne.
  */
+function clampThresh(n: number, fallback: number) {
+  if (typeof n !== "number" || !Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(5, n));
+}
+
 export function RankingMatrix({
   workspaceId,
   items,
@@ -32,13 +37,16 @@ export function RankingMatrix({
   const padT = 14;
   const padB = 32;
 
+  const safeHighImpact = clampThresh(thresholds.highImpact, 3.5);
+  const safeHighFeas = clampThresh(thresholds.highFeasibility, 3.5);
+
   const toX = (v: number) =>
     padL + ((Math.max(0, Math.min(5, v)) / 5) * (width - padL - padR));
   const toY = (v: number) =>
     height - padB - ((Math.max(0, Math.min(5, v)) / 5) * (height - padT - padB));
 
-  const hiX = toX(thresholds.highFeasibility);
-  const hiY = toY(thresholds.highImpact);
+  const hiX = toX(safeHighFeas);
+  const hiY = toY(safeHighImpact);
 
   const positioned = items
     .filter(

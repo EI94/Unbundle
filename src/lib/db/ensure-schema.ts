@@ -18,7 +18,11 @@ import { db } from ".";
  * migrazioni `drizzle/*.sql` restano la source of truth in CI.
  */
 
+/** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
+const ENSURE_VERSION = 2;
+
 let ensurePromise: Promise<void> | null = null;
+let ensureVersionApplied = 0;
 
 async function runOnce(): Promise<void> {
   // Enum portfolio_review_status (creata dalla migration 0003) ─────────────
@@ -43,6 +47,10 @@ async function runOnce(): Promise<void> {
     ALTER TABLE "workspaces"
       ADD COLUMN IF NOT EXISTS "whatsapp_webhook_url" varchar(1000);
   `);
+  await db.execute(sql`
+    ALTER TABLE "workspaces"
+      ADD COLUMN IF NOT EXISTS "unit_terminology" jsonb;
+  `);
 
   // weekly_signals.is_read (se DB molto vecchio) ───────────────────────────
   await db.execute(sql`
@@ -57,6 +65,8 @@ async function runOnce(): Promise<void> {
   `);
 
   // use_cases: colonne del dominio portfolio / ranking / review ────────────
+  await db.execute(sql`ALTER TABLE "use_cases" ADD COLUMN IF NOT EXISTS "source" varchar(50);`);
+  await db.execute(sql`ALTER TABLE "use_cases" ADD COLUMN IF NOT EXISTS "proposed_by" varchar(255);`);
   await db.execute(sql`ALTER TABLE "use_cases" ADD COLUMN IF NOT EXISTS "portfolio_kind" varchar(50);`);
   await db.execute(sql`ALTER TABLE "use_cases" ADD COLUMN IF NOT EXISTS "impact_flag" boolean;`);
   await db.execute(sql`
@@ -136,6 +146,10 @@ async function runOnce(): Promise<void> {
  * viene re-triggered al prossimo caller per non restare in uno stato bloccato).
  */
 export async function ensureDbSchema(): Promise<void> {
+  if (ensureVersionApplied !== ENSURE_VERSION) {
+    ensurePromise = null;
+    ensureVersionApplied = ENSURE_VERSION;
+  }
   if (ensurePromise) return ensurePromise;
   ensurePromise = runOnce().catch((err) => {
     ensurePromise = null;

@@ -6,6 +6,7 @@ import {
   type NewWorkspaceScoringModel,
 } from "../schema";
 import { ensureDbSchema } from "../ensure-schema";
+import { isUuid } from "@/lib/slack/workspace-context-cookie";
 
 export type ScoringKpi = {
   id: string;
@@ -193,6 +194,9 @@ export async function upsertWorkspaceScoringModel(params: {
   updatedByUserId?: string | null;
 }) {
   await ensureDbSchema();
+  const updatedBy = isUuid(params.updatedByUserId ?? null)
+    ? params.updatedByUserId!
+    : null;
   const existing = await getRow(params.workspaceId);
   if (existing) {
     const [row] = await db
@@ -200,7 +204,7 @@ export async function upsertWorkspaceScoringModel(params: {
       .set({
         impactFlagEnabled: params.impactFlagEnabled,
         config: params.config,
-        updatedByUserId: params.updatedByUserId ?? null,
+        updatedByUserId: updatedBy,
         updatedAt: new Date(),
       })
       .where(eq(workspaceScoringModels.id, existing.id))
@@ -213,7 +217,7 @@ export async function upsertWorkspaceScoringModel(params: {
       workspaceId: params.workspaceId,
       impactFlagEnabled: params.impactFlagEnabled,
       config: params.config,
-      updatedByUserId: params.updatedByUserId ?? null,
+      updatedByUserId: updatedBy,
       updatedAt: new Date(),
     })
     .returning();
