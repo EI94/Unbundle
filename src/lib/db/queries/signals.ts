@@ -1,11 +1,13 @@
 import { eq, desc, and } from "drizzle-orm";
 import { db } from "..";
 import { weeklySignals } from "../schema";
+import { ensureDbSchema } from "../ensure-schema";
 
 export async function getSignalsByWorkspace(
   workspaceId: string,
   limit = 50
 ) {
+  await ensureDbSchema();
   return db
     .select()
     .from(weeklySignals)
@@ -15,6 +17,7 @@ export async function getSignalsByWorkspace(
 }
 
 export async function getUnreadSignals(workspaceId: string) {
+  await ensureDbSchema();
   return db
     .select()
     .from(weeklySignals)
@@ -28,6 +31,7 @@ export async function getUnreadSignals(workspaceId: string) {
 }
 
 export async function markSignalRead(signalId: string) {
+  await ensureDbSchema();
   await db
     .update(weeklySignals)
     .set({ isRead: true })

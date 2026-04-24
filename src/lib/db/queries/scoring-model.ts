@@ -5,6 +5,7 @@ import {
   type WorkspaceScoringModel,
   type NewWorkspaceScoringModel,
 } from "../schema";
+import { ensureDbSchema } from "../ensure-schema";
 
 export type ScoringKpi = {
   id: string;
@@ -144,6 +145,7 @@ export type ScoringModelRow = WorkspaceScoringModel & {
 };
 
 async function getRow(workspaceId: string) {
+  await ensureDbSchema();
   const [row] = await db
     .select()
     .from(workspaceScoringModels)
@@ -190,6 +192,7 @@ export async function upsertWorkspaceScoringModel(params: {
   config: ScoringModelConfig;
   updatedByUserId?: string | null;
 }) {
+  await ensureDbSchema();
   const existing = await getRow(params.workspaceId);
   if (existing) {
     const [row] = await db

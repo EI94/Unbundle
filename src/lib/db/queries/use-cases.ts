@@ -9,12 +9,14 @@ import {
 import { deriveUseCasePortfolioMetrics } from "../use-case-scoring";
 import { getWorkspaceById } from "./workspaces";
 import { getOrCreateWorkspaceScoringModel } from "./scoring-model";
+import { ensureDbSchema } from "../ensure-schema";
 import {
   isAllowedStatusTransition,
   type UseCaseCategoryValue,
 } from "@/lib/use-case-lifecycle";
 
 export async function createUseCase(data: NewUseCase) {
+  await ensureDbSchema();
   const workspace = await getWorkspaceById(data.workspaceId);
   const model = await getOrCreateWorkspaceScoringModel(data.workspaceId);
   const derived = deriveUseCasePortfolioMetrics(data, {
@@ -36,6 +38,7 @@ export async function createUseCase(data: NewUseCase) {
 }
 
 export async function getUseCasesByWorkspace(workspaceId: string) {
+  await ensureDbSchema();
   return db
     .select()
     .from(useCases)
@@ -44,6 +47,7 @@ export async function getUseCasesByWorkspace(workspaceId: string) {
 }
 
 export async function getPortfolioContributionsByWorkspace(workspaceId: string) {
+  await ensureDbSchema();
   return db
     .select()
     .from(useCases)
@@ -52,6 +56,7 @@ export async function getPortfolioContributionsByWorkspace(workspaceId: string) 
 }
 
 export async function getUseCaseById(id: string) {
+  await ensureDbSchema();
   const [useCase] = await db
     .select()
     .from(useCases)

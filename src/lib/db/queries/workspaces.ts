@@ -9,6 +9,7 @@ import {
   type NewStrategicGoal,
 } from "../schema";
 import { getOrganizationsByUser } from "@/lib/db/queries/organizations";
+import { ensureDbSchema } from "../ensure-schema";
 
 export async function createWorkspace(data: NewWorkspace) {
   const [workspace] = await db.insert(workspaces).values(data).returning();
@@ -24,6 +25,7 @@ export async function getWorkspacesByOrganization(orgId: string) {
 }
 
 export async function getWorkspaceById(id: string) {
+  await ensureDbSchema();
   const [workspace] = await db
     .select()
     .from(workspaces)
@@ -77,6 +79,7 @@ export async function updateWorkspaceAiTransformationTeamName(
   id: string,
   aiTransformationTeamName: string | null
 ) {
+  await ensureDbSchema();
   const [workspace] = await db
     .update(workspaces)
     .set({ aiTransformationTeamName, updatedAt: new Date() })
@@ -89,6 +92,7 @@ export async function updateWorkspaceWhatsappWebhook(
   id: string,
   whatsappWebhookUrl: string | null
 ) {
+  await ensureDbSchema();
   const [workspace] = await db
     .update(workspaces)
     .set({ whatsappWebhookUrl, updatedAt: new Date() })
