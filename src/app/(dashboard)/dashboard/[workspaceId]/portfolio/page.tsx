@@ -10,9 +10,9 @@ import {
 } from "@/lib/actions/portfolio";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 
 const portfolioKindLabels: Record<string, string> = {
   best_practice: "Best Practice",
@@ -144,9 +144,12 @@ export default async function PortfolioPage({
                   defaultValue={workspace.aiTransformationTeamName ?? ""}
                   placeholder="es. AI Transformation, CoE AI, Digital Factory…"
                 />
-                <Button type="submit" variant="outline" className="w-full">
+                <button
+                  type="submit"
+                  className={cn(buttonVariants({ variant: "outline" }), "w-full")}
+                >
                   Salva
-                </Button>
+                </button>
               </form>
             </CardContent>
           </Card>
@@ -167,9 +170,12 @@ export default async function PortfolioPage({
                       Se ON, quando un use case ha Impact Flag attivo si considera ESG nel ranking.
                     </div>
                   </div>
-                  <Switch
+                  <input
+                    aria-label="Motore Impact Flag"
                     name="impactFlagEnabled"
+                    type="checkbox"
                     defaultChecked={model.impactFlagEnabled === true}
+                    className="h-4 w-4 accent-primary"
                   />
                 </div>
 
@@ -248,9 +254,12 @@ export default async function PortfolioPage({
                   </div>
                 </div>
 
-                <Button type="submit" className="w-full">
+                <button
+                  type="submit"
+                  className={cn(buttonVariants({ variant: "default" }), "w-full")}
+                >
                   Salva modello
-                </Button>
+                </button>
               </form>
 
               <div className="text-xs text-muted-foreground">

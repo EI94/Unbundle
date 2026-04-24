@@ -9,10 +9,10 @@ import {
 } from "@/lib/actions/portfolio";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 const kindLabels: Record<string, string> = {
   best_practice: "Best Practice",
@@ -131,7 +131,13 @@ export default async function PortfolioReviewPage({
                     anche ESG.
                   </div>
                 </div>
-                <Switch name="impactFlag" defaultChecked={useCase.impactFlag === true} />
+                <input
+                  aria-label="Impact Flag"
+                  name="impactFlag"
+                  type="checkbox"
+                  defaultChecked={useCase.impactFlag === true}
+                  className="h-4 w-4 accent-primary"
+                />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -202,7 +208,12 @@ export default async function PortfolioReviewPage({
               </div>
 
               <div className="flex items-center justify-end">
-                <Button type="submit">Salva valutazione</Button>
+                <button
+                  type="submit"
+                  className={cn(buttonVariants({ variant: "default" }))}
+                >
+                  Salva valutazione
+                </button>
               </div>
             </form>
           </CardContent>
