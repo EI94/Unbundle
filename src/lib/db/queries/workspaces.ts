@@ -73,6 +73,18 @@ export async function updateWorkspaceSystemBoundary(
   return workspace;
 }
 
+export async function updateWorkspaceAiTransformationTeamName(
+  id: string,
+  aiTransformationTeamName: string | null
+) {
+  const [workspace] = await db
+    .update(workspaces)
+    .set({ aiTransformationTeamName, updatedAt: new Date() })
+    .where(eq(workspaces.id, id))
+    .returning();
+  return workspace;
+}
+
 // ─── Departments ────────────────────────────────────────────────────
 
 export async function createDepartment(data: NewDepartment) {

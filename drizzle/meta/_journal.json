@@ -29,6 +29,13 @@
       "when": 1776967996831,
       "tag": "0003_slack_draft_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776989000000,
+      "tag": "0004_portfolio_scoring_model",
+      "breakpoints": true
     }
   ]
 }

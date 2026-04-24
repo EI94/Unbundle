@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc, isNotNull } from "drizzle-orm";
 import { db } from "..";
 import {
   useCases,
@@ -7,13 +7,30 @@ import {
   type UseCase,
 } from "../schema";
 import { deriveUseCasePortfolioMetrics } from "../use-case-scoring";
+import { getWorkspaceById } from "./workspaces";
+import {
+  DEFAULT_SCORING_MODEL_CONFIG,
+  getOrCreateWorkspaceScoringModel,
+} from "./scoring-model";
 import {
   isAllowedStatusTransition,
   type UseCaseCategoryValue,
 } from "@/lib/use-case-lifecycle";
 
 export async function createUseCase(data: NewUseCase) {
-  const derived = deriveUseCasePortfolioMetrics(data);
+  const workspace = await getWorkspaceById(data.workspaceId);
+  const model = await getOrCreateWorkspaceScoringModel(data.workspaceId);
+  const derived = deriveUseCasePortfolioMetrics(data, {
+    model: model
+      ? {
+          impactFlagEnabled: model.impactFlagEnabled,
+          includeEsgWhenImpactFlagged: true,
+          config: (model.config ?? DEFAULT_SCORING_MODEL_CONFIG) as never,
+        }
+      : null,
+    esgEnabled: workspace?.esgEnabled === true,
+    impactFlag: data.impactFlag ?? null,
+  });
 
   const [useCase] = await db
     .insert(useCases)
@@ -33,6 +50,14 @@ export async function getUseCasesByWorkspace(workspaceId: string) {
     .orderBy(desc(useCases.overallScore));
 }
 
+export async function getPortfolioContributionsByWorkspace(workspaceId: string) {
+  return db
+    .select()
+    .from(useCases)
+    .where(and(eq(useCases.workspaceId, workspaceId), isNotNull(useCases.portfolioKind)))
+    .orderBy(desc(useCases.createdAt));
+}
+
 export async function getUseCaseById(id: string) {
   const [useCase] = await db
     .select()
@@ -49,6 +74,35 @@ export async function updateUseCase(id: string, data: Partial<NewUseCase>) {
     .where(eq(useCases.id, id))
     .returning();
   return useCase;
+}
+
+export async function updateUseCasePortfolioReview(
+  useCaseId: string,
+  workspaceId: string,
+  patch: Partial<Pick<NewUseCase, "impactFlag" | "portfolioReviewStatus" | "reviewNotes">> & {
+    reviewedBy?: string | null;
+    reviewedAt?: Date | null;
+    submittedAt?: Date | null;
+  }
+) {
+  const existing = await getUseCaseById(useCaseId);
+  if (!existing || existing.workspaceId !== workspaceId) return null;
+
+  const [row] = await db
+    .update(useCases)
+    .set({
+      impactFlag: patch.impactFlag ?? existing.impactFlag,
+      portfolioReviewStatus:
+        patch.portfolioReviewStatus ?? existing.portfolioReviewStatus,
+      reviewNotes: patch.reviewNotes ?? existing.reviewNotes,
+      reviewedBy: patch.reviewedBy ?? existing.reviewedBy,
+      reviewedAt: patch.reviewedAt ?? existing.reviewedAt,
+      submittedAt: patch.submittedAt ?? existing.submittedAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(useCases.id, useCaseId))
+    .returning();
+  return row;
 }
 
 const SCORE_KEYS = [
@@ -82,8 +136,20 @@ export async function updateUseCaseScores(
   const existing = await getUseCaseById(useCaseId);
   if (!existing || existing.workspaceId !== workspaceId) return null;
 
+  const workspace = await getWorkspaceById(workspaceId);
+  const model = await getOrCreateWorkspaceScoringModel(workspaceId);
   const merged = { ...existing, ...patch };
-  const derived = deriveUseCasePortfolioMetrics(merged);
+  const derived = deriveUseCasePortfolioMetrics(merged, {
+    model: model
+      ? {
+          impactFlagEnabled: model.impactFlagEnabled,
+          includeEsgWhenImpactFlagged: true,
+          config: (model.config ?? DEFAULT_SCORING_MODEL_CONFIG) as never,
+        }
+      : null,
+    esgEnabled: workspace?.esgEnabled === true,
+    impactFlag: merged.impactFlag ?? null,
+  });
 
   const [row] = await db
     .update(useCases)

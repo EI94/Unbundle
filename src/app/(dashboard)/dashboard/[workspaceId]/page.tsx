@@ -25,6 +25,7 @@ import {
   TrendingUp,
   Brain,
   Plug,
+  Inbox,
 } from "lucide-react";
 import { getUnitTerm } from "@/lib/utils/unit-terminology";
 
@@ -129,6 +130,7 @@ export default async function WorkspaceOverviewPage({
     { label: "Blueprints", href: `/dashboard/${workspaceId}/blueprints`, icon: Zap, ready: hasUseCases },
     { label: "Simulazione", href: `/dashboard/${workspaceId}/simulation`, icon: TrendingUp, ready: hasUseCases },
     { label: "Intelligence", href: `/dashboard/${workspaceId}/intelligence`, icon: Brain, ready: true },
+    { label: "Raccolta & ranking", href: `/dashboard/${workspaceId}/portfolio`, icon: Inbox, ready: true },
     { label: "Integrazioni", href: `/dashboard/${workspaceId}/settings`, icon: Plug, ready: true },
   ];
 

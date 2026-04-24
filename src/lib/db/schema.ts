@@ -84,6 +84,13 @@ export const useCaseStatusEnum = pgEnum("use_case_status", [
   "rejected",
 ]);
 
+export const portfolioReviewStatusEnum = pgEnum("portfolio_review_status", [
+  "needs_inputs",
+  "in_review",
+  "scored",
+  "archived",
+]);
+
 export const conversationTypeEnum = pgEnum("conversation_type", [
   "leadership_setup",
   "context_setup",
@@ -205,6 +212,62 @@ export const workspaces = pgTable("workspaces", {
     plural: string;
   }>(),
   esgEnabled: boolean("esg_enabled").notNull().default(false),
+  /**
+   * Nome del team che governa triage e valutazione (es. "AI Transformation", "CoE AI").
+   * Usato in copy UI e notifiche Slack.
+   */
+  aiTransformationTeamName: varchar("ai_transformation_team_name", {
+    length: 255,
+  }),
+  createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+});
+
+// ─── Workspace Scoring Model (ranking configurabile) ─────────────────
+
+export const workspaceScoringModels = pgTable("workspace_scoring_models", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspaceId: uuid("workspace_id")
+    .notNull()
+    .references(() => workspaces.id, { onDelete: "cascade" })
+    .unique(),
+  /**
+   * Se ON, l'Impact Flag (opzionale sul singolo use case) entra nel motore e,
+   * quando true, abilita l'inclusione ESG nel calcolo impatto/ranking.
+   */
+  impactFlagEnabled: boolean("impact_flag_enabled").notNull().default(false),
+  /**
+   * Pesi e soglie del modello.
+   * - weights: pesi per dimensione (impact/feasibility/esg) + aggregazione
+   * - thresholds: soglie matrice (highImpact, highFeasibility, midImpact)
+   */
+  config: jsonb("config").$type<{
+    weights: {
+      impact: Record<
+        | "economic"
+        | "time"
+        | "quality"
+        | "coordination"
+        | "social",
+        number
+      >;
+      feasibility: Record<
+        "data" | "workflow" | "risk" | "tech" | "team",
+        number
+      >;
+      esg: Record<"environmental" | "social" | "governance", number>;
+      /** Peso relativo dell'asse impatto vs fattibilità nel ranking finale. */
+      overall: { impact: number; feasibility: number; esgWhenEnabled: number };
+    };
+    thresholds: {
+      highImpact: number;
+      highFeasibility: number;
+      midImpact: number;
+    };
+  }>(),
+  updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -317,6 +380,24 @@ export const useCases = pgTable("use_cases", {
   status: useCaseStatusEnum("status").notNull().default("draft"),
   source: varchar("source", { length: 50 }),
   proposedBy: varchar("proposed_by", { length: 255 }),
+  /**
+   * Flag opzionale a livello use case. Entra nel motore solo se
+   * `workspace_scoring_models.impact_flag_enabled` è ON.
+   */
+  impactFlag: boolean("impact_flag"),
+  /**
+   * Stato di triage/review (governance) per i contributi bottom-up (Slack/web).
+   * Indipendente da `status` (lifecycle delivery).
+   */
+  portfolioReviewStatus: portfolioReviewStatusEnum("portfolio_review_status")
+    .notNull()
+    .default("needs_inputs"),
+  submittedAt: timestamp("submitted_at", { mode: "date" }),
+  reviewedAt: timestamp("reviewed_at", { mode: "date" }),
+  reviewedBy: uuid("reviewed_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  reviewNotes: text("review_notes"),
   flowDescription: text("flow_description"),
   humanInTheLoop: text("human_in_the_loop"),
   guardrails: text("guardrails"),
@@ -607,6 +688,8 @@ export type NewOrganization = typeof organizations.$inferInsert;
 export type Membership = typeof memberships.$inferSelect;
 export type Workspace = typeof workspaces.$inferSelect;
 export type NewWorkspace = typeof workspaces.$inferInsert;
+export type WorkspaceScoringModel = typeof workspaceScoringModels.$inferSelect;
+export type NewWorkspaceScoringModel = typeof workspaceScoringModels.$inferInsert;
 export type StrategicGoal = typeof strategicGoals.$inferSelect;
 export type NewStrategicGoal = typeof strategicGoals.$inferInsert;
 export type Department = typeof departments.$inferSelect;

@@ -11,6 +11,14 @@ import { getDraftById, getSlackInstallationByTeamId } from "@/lib/db/queries/sla
 
 export const maxDuration = 60;
 
+function getAppBaseUrl(): string | null {
+  const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+  const vercel = process.env.VERCEL_URL?.trim();
+  if (vercel) return `https://${vercel.replace(/\/$/, "")}`;
+  return null;
+}
+
 type SlackBlockActionPayload = {
   type: string;
   user?: { id?: string };
@@ -82,11 +90,18 @@ async function handleBlockActions(payload: SlackBlockActionPayload) {
   });
 
   if (result.ok) {
+    const base = getAppBaseUrl();
+    const reviewUrl = base
+      ? `${base}/dashboard/${draft.workspaceId}/portfolio/review/${result.useCaseId}`
+      : null;
     await slackChatPostMessage({
       botToken: installation.botToken,
       channel: channelId,
       threadTs,
-      text: `✅ *Inviato.* Il contributo è stato registrato come use case proposto.\nTitolo: *${result.title}*`,
+      text:
+        `✅ *Grazie!* Ho registrato il contributo.\n` +
+        `Titolo: *${result.title}*\n` +
+        (reviewUrl ? `\n_${"Link per la valutazione in Unbundle"}:_ ${reviewUrl}` : ""),
     }).catch((e) => console.error("[slack/interactivity] postMessage:", e));
   } else {
     await slackChatPostMessage({

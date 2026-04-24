@@ -1,5 +1,6 @@
 import type { UseCase } from "@/lib/db/schema";
 import { getSlackInstallationByTeamId } from "@/lib/db/queries/slack";
+import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { db } from "@/lib/db";
 import { weeklySignals } from "@/lib/db/schema";
 
@@ -33,6 +34,10 @@ export async function notifyNewUseCase(
 ) {
   await createSignal(useCase, workspaceId);
 
+  const workspace = await getWorkspaceById(workspaceId);
+  const teamName =
+    workspace?.aiTransformationTeamName?.trim() || "AI Transformation";
+
   const installation = await getSlackInstallationByTeamId(slackTeamId);
   if (!installation?.notifyChannelId || !installation?.botToken) return;
 
@@ -42,7 +47,7 @@ export async function notifyNewUseCase(
     const channelId = `slack:${installation.notifyChannelId}`;
 
     const base = getAppBaseUrl();
-    const detailPath = `/dashboard/${workspaceId}/use-cases/${useCase.id}`;
+    const detailPath = `/dashboard/${workspaceId}/portfolio/review/${useCase.id}`;
     const detailUrl = base ? `${base}${detailPath}` : null;
 
     const proposer =
@@ -62,11 +67,11 @@ export async function notifyNewUseCase(
       excerpt ? `_Anteprima:_ ${excerpt}` : "_Anteprima:_ —",
       "",
       `*Compilato da:* ${proposer}`,
-      `_Stato in Unbundle:_ \`${useCase.status}\` _(da triage in dashboard)._`,
+      `_Stato in Unbundle:_ \`${useCase.status}\` _(in coda al team ${teamName})._`,
     ];
 
     if (detailUrl) {
-      lines.push("", `*Apri in Unbundle:* ${detailUrl}`);
+      lines.push("", `*Apri per valutazione in Unbundle:* ${detailUrl}`);
     } else {
       lines.push(
         "",
