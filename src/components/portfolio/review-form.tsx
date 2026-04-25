@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import {
   savePortfolioReviewAction,
   suggestPortfolioScoresWithAiAction,
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Sparkles } from "lucide-react";
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 const INITIAL: ActionState = { ok: true };
 
@@ -57,11 +58,21 @@ export function ReviewForm({
 
   const [aiState, setAiState] = useState<ActionState | null>(null);
   const [aiPending, startTransition] = useTransition();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (state.ok && state.message) {
+      router.refresh();
+    }
+  }, [router, state.message, state.ok]);
 
   const handleSuggestAi = () => {
     startTransition(async () => {
       const res = await suggestPortfolioScoresWithAiAction(workspaceId, useCaseId);
       setAiState(res);
+      if (res.ok) {
+        router.refresh();
+      }
     });
   };
 
@@ -220,15 +231,15 @@ function DimensionScoreGrid({
               <Input
                 name={key}
                 type="number"
-                min={0}
+                min={1}
                 max={5}
-                step={0.5}
+                step={1}
                 defaultValue={
                   typeof initial === "number" && Number.isFinite(initial)
                     ? initial
                     : ""
                 }
-                placeholder="0–5"
+                placeholder="1–5"
                 aria-invalid={!!err}
               />
               {err && <p className="text-xs text-red-500">{err}</p>}

@@ -112,6 +112,14 @@ export default async function PortfolioReviewPage({
                 {useCase.dataRequirements ?? "—"}
               </div>
             </div>
+            {esgEnabled && (
+              <div>
+                <div className="font-medium">Impatto ambientale e sociale</div>
+                <div className="text-muted-foreground whitespace-pre-wrap">
+                  {useCase.sustainabilityImpact ?? "—"}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -143,6 +151,7 @@ export default async function PortfolioReviewPage({
               )}
             </div>
             <ReviewForm
+              key={`${useCaseId}:${useCase.updatedAt?.getTime?.() ?? 0}:${JSON.stringify(useCase.customScores ?? {})}`}
               workspaceId={workspaceId}
               useCaseId={useCaseId}
               config={model.resolvedConfig}

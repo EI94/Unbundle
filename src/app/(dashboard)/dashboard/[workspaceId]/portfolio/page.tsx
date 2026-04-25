@@ -5,7 +5,6 @@ import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getPortfolioContributionsByWorkspace } from "@/lib/db/queries/use-cases";
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   TeamNameForm,
@@ -13,18 +12,7 @@ import {
 } from "@/components/portfolio/team-settings-form";
 import { ScoringModelForm } from "@/components/portfolio/scoring-model-form";
 import { RankingMatrix } from "@/components/portfolio/ranking-matrix";
-
-const portfolioKindLabels: Record<string, string> = {
-  best_practice: "Best Practice",
-  use_case_ai: "Use Case AI",
-};
-
-const reviewStatusLabels: Record<string, string> = {
-  needs_inputs: "Dati mancanti",
-  in_review: "In review",
-  scored: "Valutato",
-  archived: "Archiviato",
-};
+import { WavePlanner } from "@/components/portfolio/wave-planner";
 
 export default async function PortfolioPage({
   params,
@@ -49,16 +37,6 @@ export default async function PortfolioPage({
   const esgEnabled = workspace.esgEnabled === true;
   const teamName =
     workspace.aiTransformationTeamName?.trim() || "AI Transformation";
-
-  const scoredItems = contributions.filter(
-    (c) =>
-      typeof c.overallImpactScore === "number" &&
-      typeof c.overallFeasibilityScore === "number" &&
-      (c.overallImpactScore !== 0 || c.overallFeasibilityScore !== 0)
-  );
-  const rankedItems = [...contributions].sort(
-    (a, b) => (b.overallScore ?? 0) - (a.overallScore ?? 0)
-  );
 
   return (
     <div className="flex-1 p-6 lg:p-8 space-y-6">
@@ -98,64 +76,17 @@ export default async function PortfolioPage({
           <CardContent className="space-y-6">
             <RankingMatrix
               workspaceId={workspaceId}
-              items={scoredItems}
+              items={contributions}
               thresholds={model.resolvedConfig.thresholds}
+              config={model.resolvedConfig}
+              esgEnabled={esgEnabled}
             />
-
-            <div>
-              <div className="mb-2 text-xs font-medium text-muted-foreground tracking-wide">
-                Inbox / lista
-              </div>
-              {rankedItems.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  Nessun contributo ancora. Clicca &ldquo;Nuovo contributo&rdquo;
-                  per iniziare.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {rankedItems.map((uc) => (
-                    <div
-                      key={uc.id}
-                      className="flex items-start justify-between gap-4 rounded-lg border p-4"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <div className="font-medium text-sm truncate">
-                            {uc.title}
-                          </div>
-                          {uc.portfolioKind && (
-                            <Badge variant="secondary" className="text-xs">
-                              {portfolioKindLabels[uc.portfolioKind] ?? uc.portfolioKind}
-                            </Badge>
-                          )}
-                          <Badge variant="outline" className="text-xs font-normal">
-                            {reviewStatusLabels[uc.portfolioReviewStatus] ??
-                              uc.portfolioReviewStatus}
-                          </Badge>
-                          {typeof uc.overallScore === "number" && uc.overallScore > 0 && (
-                            <span className="text-xs text-muted-foreground tabular-nums">
-                              score {uc.overallScore.toFixed(2)}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                          {uc.description}
-                        </div>
-                      </div>
-                      <div className="shrink-0 flex items-center gap-2">
-                        <Link
-                          href={`/dashboard/${workspaceId}/portfolio/review/${uc.id}`}
-                        >
-                          <Button variant="outline" size="sm">
-                            Valuta
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <WavePlanner
+              workspaceId={workspaceId}
+              items={contributions}
+              config={model.resolvedConfig}
+              esgEnabled={esgEnabled}
+            />
           </CardContent>
         </Card>
 

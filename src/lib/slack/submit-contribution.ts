@@ -6,6 +6,8 @@ import {
 } from "@/lib/db/queries/slack";
 import type { SlackUseCaseDraft } from "@/lib/db/schema";
 import { dispatchNewPortfolioNotifications } from "@/lib/notifications/portfolio-dispatch";
+import { getWorkspaceById } from "@/lib/db/queries/workspaces";
+import { autoScorePortfolioUseCase } from "@/lib/portfolio/ai-ranking";
 
 type SlackPortfolioKind = "best_practice" | "use_case_ai";
 
@@ -15,7 +17,8 @@ function isNonEmptyString(v: unknown): v is string {
 
 export function getMissingSlackDraftFields(
   draft: SlackUseCaseDraft,
-  kind: SlackPortfolioKind
+  kind: SlackPortfolioKind,
+  opts?: { esgEnabled?: boolean }
 ): string[] {
   const requiredBp = [
     "title",
@@ -35,10 +38,15 @@ export function getMissingSlackDraftFields(
     "dataRequirements",
     "urgency",
   ] as const;
+  const shared = opts?.esgEnabled ? (["sustainabilityImpact"] as const) : [];
 
   return kind === "best_practice"
-    ? requiredBp.filter((k) => !isNonEmptyString((draft as Record<string, unknown>)[k]))
-    : requiredUc.filter((k) => !isNonEmptyString((draft as Record<string, unknown>)[k]));
+    ? [...requiredBp, ...shared].filter(
+        (k) => !isNonEmptyString((draft as Record<string, unknown>)[k])
+      )
+    : [...requiredUc, ...shared].filter(
+        (k) => !isNonEmptyString((draft as Record<string, unknown>)[k])
+      );
 }
 
 export type SubmitSlackContributionResult =
@@ -76,7 +84,9 @@ export async function submitSlackContributionDraft(params: {
     return { ok: false, error: "Tipologia mancante nel draft" };
   }
 
-  const missing = getMissingSlackDraftFields(draft, kind);
+  const workspace = await getWorkspaceById(params.expectedWorkspaceId);
+  const esgEnabled = workspace?.esgEnabled === true;
+  const missing = getMissingSlackDraftFields(draft, kind, { esgEnabled });
   if (missing.length > 0) {
     return { ok: false, error: `Campi mancanti: ${missing.join(", ")}` };
   }
@@ -87,7 +97,7 @@ export async function submitSlackContributionDraft(params: {
   }
 
   try {
-    const useCase = await createUseCase({
+    const createdUseCase = await createUseCase({
       workspaceId: params.expectedWorkspaceId,
       title: draft.title ?? "Contributo senza titolo",
       description: draft.problem,
@@ -100,8 +110,20 @@ export async function submitSlackContributionDraft(params: {
       humanInTheLoop: draft.humanInTheLoop,
       guardrails: kind === "use_case_ai" ? draft.guardrails : null,
       dataRequirements: draft.dataRequirements,
+      sustainabilityImpact: esgEnabled ? draft.sustainabilityImpact : null,
       timeline: kind === "use_case_ai" ? (draft.urgency ?? null) : null,
     });
+
+    let useCase = createdUseCase;
+    try {
+      useCase = await autoScorePortfolioUseCase({
+        workspaceId: params.expectedWorkspaceId,
+        useCaseId: createdUseCase.id,
+        noteLabel: "Auto-ranking Claude",
+      });
+    } catch (error) {
+      console.error("[slack/submit-contribution] autoScorePortfolioUseCase failed:", error);
+    }
 
     await dispatchNewPortfolioNotifications({
       useCase,

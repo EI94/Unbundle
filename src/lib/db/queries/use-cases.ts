@@ -103,25 +103,22 @@ export async function updateUseCasePortfolioReview(
   return row;
 }
 
-const SCORE_KEYS = [
-  "impactEconomic",
-  "impactTime",
-  "impactQuality",
-  "impactCoordination",
-  "impactSocial",
-  "feasibilityData",
-  "feasibilityWorkflow",
-  "feasibilityRisk",
-  "feasibilityTech",
-  "feasibilityTeam",
-  "esgEnvironmental",
-  "esgSocial",
-  "esgGovernance",
-] as const;
+type LegacyScoreKey =
+  | "impactEconomic"
+  | "impactTime"
+  | "impactQuality"
+  | "impactCoordination"
+  | "impactSocial"
+  | "feasibilityData"
+  | "feasibilityWorkflow"
+  | "feasibilityRisk"
+  | "feasibilityTech"
+  | "feasibilityTeam"
+  | "esgEnvironmental"
+  | "esgSocial"
+  | "esgGovernance";
 
-export type UseCaseScoresPatch = Partial<
-  Pick<NewUseCase, (typeof SCORE_KEYS)[number]>
->;
+export type UseCaseScoresPatch = Partial<Pick<NewUseCase, LegacyScoreKey>>;
 
 /**
  * Aggiorna solo i punteggi (1–5 / ESG), ricalcola metriche aggregate e `category`.
@@ -186,6 +183,44 @@ export async function updateUseCaseCustomScores(
     .where(eq(useCases.id, useCaseId))
     .returning();
   return row;
+}
+
+export async function recomputeUseCasePortfolioMetrics(
+  useCaseId: string,
+  workspaceId: string
+) {
+  const existing = await getUseCaseById(useCaseId);
+  if (!existing || existing.workspaceId !== workspaceId) return null;
+
+  const workspace = await getWorkspaceById(workspaceId);
+  const model = await getOrCreateWorkspaceScoringModel(workspaceId);
+  const derived = deriveUseCasePortfolioMetrics(existing, {
+    model: {
+      impactFlagEnabled: model.impactFlagEnabled,
+      config: model.resolvedConfig,
+    },
+    esgEnabled: workspace?.esgEnabled === true,
+  });
+
+  const [row] = await db
+    .update(useCases)
+    .set({
+      ...derived,
+      updatedAt: new Date(),
+    })
+    .where(eq(useCases.id, useCaseId))
+    .returning();
+  return row;
+}
+
+export async function recomputePortfolioMetricsByWorkspace(workspaceId: string) {
+  const contributions = await getPortfolioContributionsByWorkspace(workspaceId);
+  const updated: UseCase[] = [];
+  for (const item of contributions) {
+    const row = await recomputeUseCasePortfolioMetrics(item.id, workspaceId);
+    if (row) updated.push(row);
+  }
+  return updated;
 }
 
 export type UpdateUseCaseMutationResult =

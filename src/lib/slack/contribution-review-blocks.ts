@@ -52,6 +52,11 @@ export function buildContributionReviewSummaryText(draft: SlackUseCaseDraft): st
 
   lines.push(`*Impatto / business case:* ${draft.expectedImpact ? truncate(draft.expectedImpact, 400) : "—"}`);
   lines.push(`*Dati / replicabilità:* ${draft.dataRequirements ? truncate(draft.dataRequirements, 300) : "—"}`);
+  if (draft.sustainabilityImpact) {
+    lines.push(
+      `*Impatto ambientale e sociale:* ${truncate(draft.sustainabilityImpact, 400)}`
+    );
+  }
 
   return lines.join("\n");
 }

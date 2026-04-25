@@ -50,7 +50,7 @@ export type ScoreSource = Partial<
  * 1) `customScores[dim][kpiId]` (nuova via)
  * 2) mapping 1:1 con le colonne legacy per i kpiId storici (economic/time/data/...)
  */
-function readKpiScore(
+export function readUseCaseRawKpiScore(
   data: ScoreSource,
   dimension: "impact" | "feasibility" | "esg",
   kpiId: string
@@ -86,11 +86,25 @@ function clamp05(v: number) {
   return Math.max(0, Math.min(5, v));
 }
 
-function weightedAvg(kpis: ScoringKpi[], getScore: (id: string) => number) {
+export function normalizeKpiScoreForAggregation(score: number, kpi: ScoringKpi) {
+  const raw = clamp05(score);
+  if (kpi.direction === "lower_better") {
+    return raw === 0 ? 0 : clamp05(6 - raw);
+  }
+  return raw;
+}
+
+function weightedAvg(
+  kpis: ScoringKpi[],
+  getScore: (kpi: ScoringKpi) => number
+) {
   if (kpis.length === 0) return 0;
   const denom = kpis.reduce((s, k) => s + Math.max(0, k.weight ?? 1), 0);
   if (denom <= 0) return 0;
-  const num = kpis.reduce((s, k) => s + getScore(k.id) * Math.max(0, k.weight ?? 1), 0);
+  const num = kpis.reduce(
+    (s, k) => s + getScore(k) * Math.max(0, k.weight ?? 1),
+    0
+  );
   return num / denom;
 }
 
@@ -112,14 +126,27 @@ export function deriveUseCasePortfolioMetrics(
   const feasibilityKpis = config?.dimensions.feasibility ?? [];
   const esgKpis = config?.dimensions.esg ?? [];
 
-  const overallImpact = weightedAvg(impactKpis, (id) => readKpiScore(data, "impact", id));
-  const overallFeasibility = weightedAvg(feasibilityKpis, (id) =>
-    readKpiScore(data, "feasibility", id)
+  const overallImpact = weightedAvg(impactKpis, (kpi) =>
+    normalizeKpiScoreForAggregation(
+      readUseCaseRawKpiScore(data, "impact", kpi.id),
+      kpi
+    )
+  );
+  const overallFeasibility = weightedAvg(feasibilityKpis, (kpi) =>
+    normalizeKpiScoreForAggregation(
+      readUseCaseRawKpiScore(data, "feasibility", kpi.id),
+      kpi
+    )
   );
 
   const esgEnabled = opts?.esgEnabled === true;
   const overallEsg = esgEnabled
-    ? weightedAvg(esgKpis, (id) => readKpiScore(data, "esg", id))
+    ? weightedAvg(esgKpis, (kpi) =>
+        normalizeKpiScoreForAggregation(
+          readUseCaseRawKpiScore(data, "esg", kpi.id),
+          kpi
+        )
+      )
     : null;
 
   const ow = config?.overall ?? { impact: 0.5, feasibility: 0.5, esg: 0.2 };

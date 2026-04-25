@@ -19,7 +19,7 @@ import { db } from ".";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 2;
+const ENSURE_VERSION = 3;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -86,6 +86,7 @@ async function runOnce(): Promise<void> {
   await db.execute(sql`ALTER TABLE "use_cases" ADD COLUMN IF NOT EXISTS "human_in_the_loop" text;`);
   await db.execute(sql`ALTER TABLE "use_cases" ADD COLUMN IF NOT EXISTS "guardrails" text;`);
   await db.execute(sql`ALTER TABLE "use_cases" ADD COLUMN IF NOT EXISTS "data_requirements" text;`);
+  await db.execute(sql`ALTER TABLE "use_cases" ADD COLUMN IF NOT EXISTS "sustainability_impact" text;`);
   await db.execute(sql`ALTER TABLE "use_cases" ADD COLUMN IF NOT EXISTS "impact_economic" real;`);
   await db.execute(sql`ALTER TABLE "use_cases" ADD COLUMN IF NOT EXISTS "impact_time" real;`);
   await db.execute(sql`ALTER TABLE "use_cases" ADD COLUMN IF NOT EXISTS "impact_quality" real;`);
@@ -137,6 +138,10 @@ async function runOnce(): Promise<void> {
   await db.execute(sql`
     ALTER TABLE "slack_use_case_drafts"
       ADD COLUMN IF NOT EXISTS "slack_channel_id" varchar(50);
+  `);
+  await db.execute(sql`
+    ALTER TABLE "slack_use_case_drafts"
+      ADD COLUMN IF NOT EXISTS "sustainability_impact" text;
   `);
 }
 

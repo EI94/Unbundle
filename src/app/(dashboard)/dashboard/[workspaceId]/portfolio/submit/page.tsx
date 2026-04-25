@@ -18,6 +18,7 @@ export default async function PortfolioSubmitPage({
 
   const teamName =
     workspace.aiTransformationTeamName?.trim() || "AI Transformation";
+  const esgEnabled = workspace.esgEnabled === true;
 
   return (
     <div className="flex-1 p-6 lg:p-8 space-y-6">
@@ -32,10 +33,10 @@ export default async function PortfolioSubmitPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Seleziona il tipo e rispondi alle domande</CardTitle>
+        <CardTitle>Seleziona il tipo e rispondi alle domande</CardTitle>
         </CardHeader>
         <CardContent>
-          <PortfolioSubmitForm workspaceId={workspaceId} />
+          <PortfolioSubmitForm workspaceId={workspaceId} esgEnabled={esgEnabled} />
         </CardContent>
       </Card>
     </div>

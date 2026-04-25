@@ -68,14 +68,14 @@ export const classificationEnum = pgEnum("classification", [
   "blocked_by_governance",
 ]);
 
-export const useCaseCategoryEnum = pgEnum("use_case_category", [
+export const portfolioCategoryDbEnum = pgEnum("use_case_category", [
   "quick_win",
   "strategic_bet",
   "capability_builder",
   "not_yet",
 ]);
 
-export const useCaseStatusEnum = pgEnum("use_case_status", [
+export const portfolioStatusDbEnum = pgEnum("use_case_status", [
   "draft",
   "proposed",
   "accepted",
@@ -259,9 +259,27 @@ export const workspaceScoringModels = pgTable("workspace_scoring_models", {
    */
   config: jsonb("config").$type<{
     dimensions?: {
-      impact: Array<{ id: string; label: string; description?: string; weight: number }>;
-      feasibility: Array<{ id: string; label: string; description?: string; weight: number }>;
-      esg: Array<{ id: string; label: string; description?: string; weight: number }>;
+      impact: Array<{
+        id: string;
+        label: string;
+        description?: string;
+        weight: number;
+        direction?: "higher_better" | "lower_better";
+      }>;
+      feasibility: Array<{
+        id: string;
+        label: string;
+        description?: string;
+        weight: number;
+        direction?: "higher_better" | "lower_better";
+      }>;
+      esg: Array<{
+        id: string;
+        label: string;
+        description?: string;
+        weight: number;
+        direction?: "higher_better" | "lower_better";
+      }>;
     };
     weights?: {
       impact?: Record<string, number>;
@@ -387,8 +405,8 @@ export const useCases = pgTable("use_cases", {
    * Separata da `category` (wave / priorità) per non rompere scoring e UI esistenti.
    */
   portfolioKind: varchar("portfolio_kind", { length: 50 }),
-  category: useCaseCategoryEnum("category"),
-  status: useCaseStatusEnum("status").notNull().default("draft"),
+  category: portfolioCategoryDbEnum("category"),
+  status: portfolioStatusDbEnum("status").notNull().default("draft"),
   source: varchar("source", { length: 50 }),
   proposedBy: varchar("proposed_by", { length: 255 }),
   /**
@@ -413,6 +431,7 @@ export const useCases = pgTable("use_cases", {
   humanInTheLoop: text("human_in_the_loop"),
   guardrails: text("guardrails"),
   dataRequirements: text("data_requirements"),
+  sustainabilityImpact: text("sustainability_impact"),
   impactEconomic: real("impact_economic"),
   impactTime: real("impact_time"),
   impactQuality: real("impact_quality"),
@@ -694,6 +713,7 @@ export const slackUseCaseDrafts = pgTable("slack_use_case_drafts", {
   guardrails: text("guardrails"),
   expectedImpact: text("expected_impact"),
   dataRequirements: text("data_requirements"),
+  sustainabilityImpact: text("sustainability_impact"),
   urgency: varchar("urgency", { length: 50 }),
   /** Un solo promemoria dopo ~24h di inattività sul draft (fase 2 cron). */
   reminder24hSentAt: timestamp("reminder_24h_sent_at", { mode: "date" }),

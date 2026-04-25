@@ -1,4 +1,4 @@
-import { eq, and, isNull, lt, gte } from "drizzle-orm";
+import { eq, and, lt, gte, desc, isNull } from "drizzle-orm";
 import { db } from "..";
 import {
   slackInstallations,
@@ -58,12 +58,7 @@ export async function getOrCreateDraft(
   slackThreadTs: string | undefined,
   contributionKind: "best_practice" | "use_case_ai" | null
 ) {
-  const kindFilter =
-    contributionKind === null
-      ? isNull(slackUseCaseDrafts.contributionKind)
-      : eq(slackUseCaseDrafts.contributionKind, contributionKind);
-
-  const existing = await db
+  const query = db
     .select()
     .from(slackUseCaseDrafts)
     .where(
@@ -71,10 +66,15 @@ export async function getOrCreateDraft(
         eq(slackUseCaseDrafts.workspaceId, workspaceId),
         eq(slackUseCaseDrafts.slackUserId, slackUserId),
         eq(slackUseCaseDrafts.status, "drafting"),
-        kindFilter
+        ...(contributionKind
+          ? [eq(slackUseCaseDrafts.contributionKind, contributionKind)]
+          : [])
       )
     )
+    .orderBy(desc(slackUseCaseDrafts.updatedAt))
     .limit(1);
+
+  const existing = await query;
 
   if (existing.length > 0) return existing[0];
 

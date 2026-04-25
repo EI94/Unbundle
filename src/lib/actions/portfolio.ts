@@ -12,21 +12,23 @@ import {
 import {
   createUseCase,
   getUseCaseById,
+  recomputePortfolioMetricsByWorkspace,
   updateUseCaseCustomScores,
   updateUseCasePortfolioReview,
 } from "@/lib/db/queries/use-cases";
 import {
   DEFAULT_SCORING_MODEL_CONFIG,
   getOrCreateWorkspaceScoringModel,
-  normalizeScoringConfig,
   upsertWorkspaceScoringModel,
   type ScoringKpi,
   type ScoringModelConfig,
 } from "@/lib/db/queries/scoring-model";
 import { markSignalRead } from "@/lib/db/queries/signals";
 import { dispatchNewPortfolioNotifications } from "@/lib/notifications/portfolio-dispatch";
-import { generateObject } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
+import {
+  autoScorePortfolioUseCase,
+  recalibrateWorkspacePortfolioWithAi,
+} from "@/lib/portfolio/ai-ranking";
 
 // ──────────────────────────────────────────────────────────────────────
 // Tipi risposta usati da useActionState nelle UI client (errori inline).
@@ -127,12 +129,16 @@ const kpiSchema = z
     weight: z
       .number({ message: "Il peso deve essere un numero." })
       .min(0, "Il peso non può essere negativo."),
+    direction: z.enum(["higher_better", "lower_better"]).optional(),
   })
   .transform((k) => ({
     id: k.id,
     label: k.label,
     description: k.description ?? undefined,
     weight: k.weight,
+    direction: (k.direction === "lower_better"
+      ? "lower_better"
+      : "higher_better") as "higher_better" | "lower_better",
   }));
 
 const scoringFormSchema = z.object({
@@ -270,12 +276,14 @@ export async function updateScoringModelAction(
         label: k.label.trim(),
         description: k.description?.trim() || undefined,
         weight: Math.max(0, k.weight),
+        direction: k.direction,
       })),
       feasibility: parsed.data.dimensions.feasibility.map((k) => ({
         id: k.id,
         label: k.label.trim(),
         description: k.description?.trim() || undefined,
         weight: Math.max(0, k.weight),
+        direction: k.direction,
       })),
       esg: esgEnabled
         ? parsed.data.dimensions.esg.map((k) => ({
@@ -283,6 +291,7 @@ export async function updateScoringModelAction(
             label: k.label.trim(),
             description: k.description?.trim() || undefined,
             weight: Math.max(0, k.weight),
+            direction: k.direction,
           }))
         : DEFAULT_SCORING_MODEL_CONFIG.dimensions.esg,
     },
@@ -315,6 +324,8 @@ export async function updateScoringModelAction(
     };
   }
 
+  await recomputePortfolioMetricsByWorkspace(workspaceId);
+
   revalidatePath(`/dashboard/${workspaceId}/portfolio`);
   revalidatePath(`/dashboard/${workspaceId}/use-cases`);
   return {
@@ -336,6 +347,7 @@ const submitSchema = z.object({
   expectedImpact: z.string().trim().min(3, "Scrivi almeno 3 caratteri."),
   humanInTheLoop: z.string().trim().min(3, "Scrivi almeno 3 caratteri."),
   dataRequirements: z.string().trim().min(3, "Scrivi almeno 3 caratteri."),
+  sustainabilityImpact: z.string().optional(),
   guardrails: z.string().optional(),
   urgency: z.string().optional(),
 });
@@ -347,6 +359,11 @@ export async function createPortfolioSubmissionAction(
 ): Promise<ActionState> {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
+  const workspace = await getWorkspaceById(workspaceId);
+  if (!workspace) {
+    return { ok: false, message: "Workspace non trovato.", fieldErrors: {} };
+  }
+  const esgEnabled = workspace.esgEnabled === true;
 
   const parsed = submitSchema.safeParse({
     portfolioKind: String(formData.get("portfolioKind") ?? ""),
@@ -356,6 +373,7 @@ export async function createPortfolioSubmissionAction(
     expectedImpact: String(formData.get("expectedImpact") ?? ""),
     humanInTheLoop: String(formData.get("humanInTheLoop") ?? ""),
     dataRequirements: String(formData.get("dataRequirements") ?? ""),
+    sustainabilityImpact: String(formData.get("sustainabilityImpact") ?? ""),
     guardrails: String(formData.get("guardrails") ?? ""),
     urgency: String(formData.get("urgency") ?? ""),
   });
@@ -371,8 +389,25 @@ export async function createPortfolioSubmissionAction(
     };
   }
 
+  const fieldErrors: FieldErrors = {};
+  if (
+    esgEnabled &&
+    (!parsed.data.sustainabilityImpact ||
+      parsed.data.sustainabilityImpact.trim().length < 3)
+  ) {
+    fieldErrors.sustainabilityImpact =
+      "Con ESG attivo racconta l'impatto ambientale e sociale del processo.";
+  }
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false,
+      message: "Compila tutti i campi richiesti.",
+      fieldErrors,
+    };
+  }
+
   const kind = parsed.data.portfolioKind;
-  const useCase = await createUseCase({
+  const createdUseCase = await createUseCase({
     workspaceId,
     title: parsed.data.title,
     description: parsed.data.problem,
@@ -385,10 +420,26 @@ export async function createPortfolioSubmissionAction(
     humanInTheLoop: parsed.data.humanInTheLoop,
     guardrails: kind === "use_case_ai" ? parsed.data.guardrails ?? null : null,
     dataRequirements: parsed.data.dataRequirements,
+    sustainabilityImpact:
+      esgEnabled && parsed.data.sustainabilityImpact?.trim().length
+        ? parsed.data.sustainabilityImpact.trim()
+        : null,
     timeline: kind === "use_case_ai" ? parsed.data.urgency ?? null : null,
     submittedAt: new Date(),
     portfolioReviewStatus: "needs_inputs",
   });
+
+  let useCase = createdUseCase;
+  try {
+    useCase = await autoScorePortfolioUseCase({
+      workspaceId,
+      useCaseId: createdUseCase.id,
+      reviewedBy: session.user.id,
+      noteLabel: "Auto-ranking Claude",
+    });
+  } catch (error) {
+    console.error("[actions/portfolio] autoScorePortfolioUseCase failed:", error);
+  }
 
   await dispatchNewPortfolioNotifications({
     useCase,
@@ -435,8 +486,8 @@ export async function savePortfolioReviewAction(
     for (const k of kpis) {
       const raw = toFiniteNumber(formData.get(`score__${dim}__${k.id}`));
       if (raw == null) continue;
-      if (raw < 0 || raw > 5) {
-        fieldErrors[`score__${dim}__${k.id}`] = "Il punteggio deve essere tra 0 e 5.";
+      if (raw < 1 || raw > 5) {
+        fieldErrors[`score__${dim}__${k.id}`] = "Il punteggio deve essere tra 1 e 5.";
         continue;
       }
       customScores[dim][k.id] = raw;
@@ -497,69 +548,17 @@ export async function suggestPortfolioScoresWithAiAction(
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const [workspace, model, useCase] = await Promise.all([
-    getWorkspaceById(workspaceId),
-    getOrCreateWorkspaceScoringModel(workspaceId),
-    getUseCaseById(useCaseId),
-  ]);
-  if (!workspace || !useCase || useCase.workspaceId !== workspaceId) {
+  const useCase = await getUseCaseById(useCaseId);
+  if (!useCase || useCase.workspaceId !== workspaceId) {
     return { ok: false, message: "Use case non trovato.", fieldErrors: {} };
   }
-  const esgEnabled = workspace.esgEnabled === true;
-  const cfg = normalizeScoringConfig(model.config);
-
-  const buildDimSchema = (kpis: ScoringKpi[]) => {
-    const shape: Record<string, z.ZodNumber> = {};
-    for (const k of kpis) shape[k.id] = z.number().min(0).max(5);
-    return z.object(shape);
-  };
-  const schemaShape: Record<string, z.ZodTypeAny> = {
-    impact: buildDimSchema(cfg.dimensions.impact),
-    feasibility: buildDimSchema(cfg.dimensions.feasibility),
-    rationale: z.string().min(20),
-  };
-  if (esgEnabled) schemaShape.esg = buildDimSchema(cfg.dimensions.esg);
-  const schema = z.object(schemaShape);
-
-  const describe = (kpis: ScoringKpi[]) =>
-    kpis
-      .map(
-        (k) => `- ${k.id} (${k.label})${k.description ? `: ${k.description}` : ""}`
-      )
-      .join("\n");
-
-  const prompt = [
-    "Sei un reviewer di AI Transformation. Proponi punteggi 0–5 coerenti e motivati per le dimensioni specificate.",
-    "Regole: non inventare; se mancano info, usa valori conservativi (2–3) e spiega nella rationale cosa manca.",
-    "",
-    `Workspace: ${workspace.name}`,
-    `Tipo: ${useCase.portfolioKind ?? "use_case"}`,
-    `Titolo: ${useCase.title}`,
-    `Problema/descrizione: ${useCase.description ?? ""}`,
-    `Flusso: ${useCase.flowDescription ?? ""}`,
-    `Human-in-the-loop: ${useCase.humanInTheLoop ?? ""}`,
-    `Guardrail: ${useCase.guardrails ?? ""}`,
-    `Business case / impatto atteso: ${useCase.businessCase ?? ""}`,
-    `Dati necessari: ${useCase.dataRequirements ?? ""}`,
-    "",
-    "KPI Impatto:",
-    describe(cfg.dimensions.impact),
-    "",
-    "KPI Fattibilità:",
-    describe(cfg.dimensions.feasibility),
-    esgEnabled
-      ? `\nKPI ESG:\n${describe(cfg.dimensions.esg)}\n`
-      : "\nESG disabilitato per questo workspace: NON generare punteggi ESG.",
-  ].join("\n");
-
-  let object: z.infer<typeof schema>;
   try {
-    const result = await generateObject({
-      model: anthropic("claude-sonnet-4-20250514"),
-      schema,
-      prompt,
+    await autoScorePortfolioUseCase({
+      workspaceId,
+      useCaseId,
+      reviewedBy: session.user.id,
+      noteLabel: "Suggerimento Claude",
     });
-    object = result.object as z.infer<typeof schema>;
   } catch (err) {
     console.error("[actions/portfolio] AI suggest failed:", err);
     return {
@@ -569,35 +568,42 @@ export async function suggestPortfolioScoresWithAiAction(
     };
   }
 
-  const impactObj = (object as { impact: Record<string, number> }).impact;
-  const feasibilityObj = (object as { feasibility: Record<string, number> })
-    .feasibility;
-  const esgObj = esgEnabled
-    ? ((object as { esg?: Record<string, number> }).esg ?? {})
-    : {};
-
-  const customScores = {
-    impact: impactObj,
-    feasibility: feasibilityObj,
-    esg: esgObj as Record<string, number>,
-  };
-
-  await updateUseCaseCustomScores(useCaseId, workspaceId, customScores);
-  await updateUseCasePortfolioReview(useCaseId, workspaceId, {
-    reviewNotes:
-      (useCase.reviewNotes ?? "") +
-      (useCase.reviewNotes ? "\n\n" : "") +
-      `Suggerimento AI:\n${(object as { rationale: string }).rationale}`,
-    reviewedBy: session.user.id,
-    reviewedAt: new Date(),
-  });
-
+  revalidatePath(`/dashboard/${workspaceId}/portfolio`);
   revalidatePath(`/dashboard/${workspaceId}/portfolio/review/${useCaseId}`);
   return {
     ok: true,
     message: "Punteggi suggeriti dall'AI applicati (puoi modificarli prima di salvare).",
     fieldErrors: {},
   };
+}
+
+export async function recalibratePortfolioScoresAction(
+  workspaceId: string
+): Promise<ActionState<{ updated: number }>> {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+
+  try {
+    const updated = await recalibrateWorkspacePortfolioWithAi({
+      workspaceId,
+      reviewedBy: session.user.id,
+      noteLabel: "Ricalibrazione Claude",
+    });
+    revalidatePath(`/dashboard/${workspaceId}/portfolio`);
+    return {
+      ok: true,
+      message: `Ricalibrati ${updated.length} contributi con il modello corrente.`,
+      fieldErrors: {},
+      data: { updated: updated.length },
+    };
+  } catch (error) {
+    console.error("[actions/portfolio] recalibratePortfolioScoresAction failed:", error);
+    return {
+      ok: false,
+      message: "Ricalibrazione non riuscita. Riprova tra poco.",
+      fieldErrors: {},
+    };
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────

@@ -1,7 +1,15 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
 import {
+  useActionState,
+  useMemo,
+  useState,
+  useTransition,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
+import {
+  recalibratePortfolioScoresAction,
   updateScoringModelAction,
   type ActionState,
 } from "@/lib/actions/portfolio";
@@ -13,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 const INITIAL: ActionState = { ok: true };
 
@@ -25,11 +34,11 @@ const dimLabels: Record<Dim, string> = {
 
 const dimHelp: Record<Dim, string> = {
   impact:
-    "Cosa rende un use case ad alto impatto per la tua azienda (es. risparmi, tempo, qualità…).",
+    "Cosa rende un contributo ad alto impatto per la tua azienda (es. efficiency, profitability…).",
   feasibility:
-    "Cosa rende un use case fattibile (dati, tecnologia, workflow, rischio, team…).",
+    "Cosa rende un contributo facile o difficile da implementare (es. effort, dati, tecnologia…).",
   esg:
-    "Impatto Environmental, Social, Governance. Attivo solo se hai abilitato ESG in Integrazioni.",
+    "Impatto ambientale e sociale. Attivo solo se hai abilitato ESG in Integrazioni.",
 };
 
 function genId() {
@@ -54,6 +63,9 @@ export function ScoringModelForm({
 }) {
   const boundAction = updateScoringModelAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(boundAction, INITIAL);
+  const [recalibrateState, setRecalibrateState] = useState<ActionState<{ updated: number }> | null>(null);
+  const [recalibrating, startRecalibration] = useTransition();
+  const router = useRouter();
 
   const [impact, setImpact] = useState<ScoringKpi[]>(() =>
     cloneKpis(initialConfig.dimensions.impact)
@@ -67,13 +79,11 @@ export function ScoringModelForm({
   const [overall, setOverall] = useState(initialConfig.overall);
   const [thresholds, setThresholds] = useState(initialConfig.thresholds);
 
-  const setters: Record<Dim, React.Dispatch<React.SetStateAction<ScoringKpi[]>>> = {
+  const setters: Record<Dim, Dispatch<SetStateAction<ScoringKpi[]>>> = {
     impact: setImpact,
     feasibility: setFeasibility,
     esg: setEsg,
   };
-  const lists: Record<Dim, ScoringKpi[]> = { impact, feasibility, esg };
-
   const payload = useMemo(() => {
     return JSON.stringify({
       dimensions: { impact, feasibility, esg },
@@ -85,7 +95,13 @@ export function ScoringModelForm({
   const addKpi = (dim: Dim) =>
     setters[dim]((prev) => [
       ...prev,
-      { id: genId(), label: "", description: "", weight: 1 },
+      {
+        id: genId(),
+        label: "",
+        description: "",
+        weight: 1,
+        direction: "higher_better",
+      },
     ]);
 
   const removeKpi = (dim: Dim, idx: number) =>
@@ -99,6 +115,16 @@ export function ScoringModelForm({
     });
 
   const fe = state.fieldErrors ?? {};
+
+  const handleRecalibration = () => {
+    startRecalibration(async () => {
+      const result = await recalibratePortfolioScoresAction(workspaceId);
+      setRecalibrateState(result);
+      if (result.ok) {
+        router.refresh();
+      }
+    });
+  };
 
   return (
     <form action={formAction} className="space-y-6">
@@ -114,6 +140,19 @@ export function ScoringModelForm({
           role="status"
         >
           {state.message}
+        </div>
+      )}
+
+      {recalibrateState?.message && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            recalibrateState.ok
+              ? "border-green-500/30 bg-green-500/5 text-green-500"
+              : "border-red-500/30 bg-red-500/5 text-red-500"
+          }`}
+          role="status"
+        >
+          {recalibrateState.message}
         </div>
       )}
 
@@ -230,17 +269,22 @@ export function ScoringModelForm({
       </section>
 
       <div className="flex items-center justify-end">
-        <Button type="submit" disabled={pending}>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleRecalibration}
+            disabled={recalibrating}
+          >
+            {recalibrating ? "Ricalibrazione…" : "Ricalibra tutti con Claude"}
+          </Button>
+          <Button type="submit" disabled={pending}>
           {pending ? "Salvataggio…" : "Salva modello"}
-        </Button>
+          </Button>
+        </div>
       </div>
     </form>
   );
-
-  function dimKey(d: Dim) {
-    return d;
-  }
-  void dimKey;
 }
 
 function Dimension({
@@ -286,7 +330,7 @@ function Dimension({
           const weightErr = fieldErrors[`dimensions.${dim}.${i}.weight`];
           return (
             <li key={k.id} className="rounded-md border p-3 space-y-2">
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_110px_auto] gap-2 items-start">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_120px_180px_auto] gap-2 items-start">
                 <div className="space-y-1">
                   <Input
                     placeholder="Nome KPI (es. Tempo liberato, Rischio regolatorio…)"
@@ -315,6 +359,26 @@ function Dimension({
                   {weightErr && (
                     <p className="text-xs text-red-500">{weightErr}</p>
                   )}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">
+                    Direzione ranking
+                  </label>
+                  <select
+                    value={k.direction ?? "higher_better"}
+                    onChange={(e) =>
+                      onPatch(i, {
+                        direction:
+                          e.target.value === "lower_better"
+                            ? "lower_better"
+                            : "higher_better",
+                      })
+                    }
+                    className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none"
+                  >
+                    <option value="higher_better">Piu alto = meglio</option>
+                    <option value="lower_better">Piu basso = meglio</option>
+                  </select>
                 </div>
                 <Button
                   type="button"

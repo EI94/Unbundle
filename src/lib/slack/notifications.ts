@@ -66,6 +66,12 @@ export async function notifyNewUseCase(
       `_Stato in Unbundle:_ \`${useCase.status}\` _(in coda al team ${teamName})._`,
     ];
 
+    if (typeof useCase.overallScore === "number" && useCase.overallScore > 0) {
+      lines.push(
+        `*Ranking AI iniziale:* score ${useCase.overallScore.toFixed(2)} · impact ${useCase.overallImpactScore?.toFixed(1) ?? "-"} · feasibility ${useCase.overallFeasibilityScore?.toFixed(1) ?? "-"}${typeof useCase.overallEsgScore === "number" ? ` · esg ${useCase.overallEsgScore.toFixed(1)}` : ""}`
+      );
+    }
+
     if (detailUrl) {
       lines.push("", `*Apri per valutazione in Unbundle:* ${detailUrl}`);
     } else {
@@ -84,4 +90,3 @@ export async function notifyNewUseCase(
     console.error("[slack/notifications] Failed to post to Slack channel:", error);
   }
 }
-

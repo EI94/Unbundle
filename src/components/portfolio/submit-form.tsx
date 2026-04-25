@@ -14,7 +14,13 @@ const INITIAL: ActionState = { ok: true };
 
 type Kind = "best_practice" | "use_case_ai";
 
-export function PortfolioSubmitForm({ workspaceId }: { workspaceId: string }) {
+export function PortfolioSubmitForm({
+  workspaceId,
+  esgEnabled,
+}: {
+  workspaceId: string;
+  esgEnabled: boolean;
+}) {
   const [tab, setTab] = useState<Kind>("use_case_ai");
   return (
     <Tabs value={tab} onValueChange={(v) => setTab(v as Kind)}>
@@ -24,13 +30,19 @@ export function PortfolioSubmitForm({ workspaceId }: { workspaceId: string }) {
       </TabsList>
 
       <TabsContent value="use_case_ai" className="mt-6">
-        <InnerForm workspaceId={workspaceId} kind="use_case_ai" showGuardrails />
+        <InnerForm
+          workspaceId={workspaceId}
+          kind="use_case_ai"
+          showGuardrails
+          esgEnabled={esgEnabled}
+        />
       </TabsContent>
       <TabsContent value="best_practice" className="mt-6">
         <InnerForm
           workspaceId={workspaceId}
           kind="best_practice"
           showGuardrails={false}
+          esgEnabled={esgEnabled}
         />
       </TabsContent>
     </Tabs>
@@ -41,10 +53,12 @@ function InnerForm({
   workspaceId,
   kind,
   showGuardrails,
+  esgEnabled,
 }: {
   workspaceId: string;
   kind: Kind;
   showGuardrails: boolean;
+  esgEnabled: boolean;
 }) {
   const boundAction = createPortfolioSubmissionAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(boundAction, INITIAL);
@@ -110,6 +124,20 @@ function InnerForm({
         placeholder="Che dati servono? Dove stanno? Sono disponibili?"
         error={fe.dataRequirements}
       />
+      {esgEnabled && (
+        <FieldArea
+          label={
+            kind === "best_practice"
+              ? "Impatto ambientale e sociale (domanda 7)"
+              : "Impatto ambientale e sociale (domanda 9)"
+          }
+          name="sustainabilityImpact"
+          required
+          rows={4}
+          placeholder="Racconta il tipo di impatto ambientale e sociale che questo nuovo processo comporta."
+          error={fe.sustainabilityImpact}
+        />
+      )}
       {kind === "use_case_ai" && (
         <Field
           label="Urgenza"

@@ -101,7 +101,9 @@ export async function dispatchNewPortfolioNotifications(params: {
       : null;
     const text =
       `${kindLabel(useCase.portfolioKind)} in coda al team ${teamName}: ` +
-      `"${useCase.title}" (origine: ${source}). ${link ? `Apri per valutare: ${link}` : ""}`;
+      `"${useCase.title}" (origine: ${source})` +
+      `${typeof useCase.overallScore === "number" && useCase.overallScore > 0 ? `, score iniziale ${useCase.overallScore.toFixed(2)}` : ""}. ` +
+      `${link ? `Apri per valutare: ${link}` : ""}`;
     await postWhatsappWebhook(workspace.whatsappWebhookUrl, {
       text: text.trim(),
       link,

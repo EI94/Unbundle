@@ -9,6 +9,7 @@ import {
   getDraftById,
   getSlackInstallationByTeamId,
 } from "@/lib/db/queries/slack";
+import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import type { NewSlackUseCaseDraft } from "@/lib/db/schema";
 import { submitSlackContributionDraft, getMissingSlackDraftFields } from "./submit-contribution";
 import { buildContributionReviewBlocks } from "./contribution-review-blocks";
@@ -16,7 +17,8 @@ import { slackChatPostMessage } from "./slack-chat-post";
 
 type SlackPortfolioKind = "best_practice" | "use_case_ai";
 
-const SYSTEM_PROMPT = `Sei l'agente AI di Unbundle su Slack. Raccogli contributi bottom-up per il portfolio Unbundle.
+function buildSystemPrompt(esgEnabled: boolean) {
+  return `Sei l'agente AI di Unbundle su Slack. Raccogli contributi bottom-up per il portfolio Unbundle.
 
 ## OBIETTIVO
 Devi distinguere e raccogliere **due tipologie**:
@@ -32,17 +34,18 @@ Devi distinguere e raccogliere **due tipologie**:
 5) Quando tutti i campi richiesti sono completi, mostra un riepilogo in chat e chiama **una sola volta** \`publishReviewBlocks\` con il \`draftId\` (aggiunge nel thread i pulsanti Slack *Conferma invio* / *Modifica*).
 6) L'utente può confermare **con i pulsanti** oppure **per iscritto**; dopo conferma esplicita scritta, chiama \`submitUseCase\`.
 
-## TEMPLATE BP (6 campi — mapping su colonne DB)
+## TEMPLATE BP (${esgEnabled ? "7" : "6"} campi — mapping su colonne DB)
 1) **Titolo** → campo tool \`title\` (domanda: "Come chiameresti questa pratica?")
 2) **Prima** → campo tool \`problem\` (domanda: "Come funzionava prima dell'AI?")
 3) **Adesso** → campo tool \`flowDescription\` (domanda: "Come funziona adesso? Che strumenti AI usi?")
 4) **Risultato** → campo tool \`expectedImpact\` (domanda: "Che miglioramento hai visto? (tempo, qualità, costo)")
 5) **Beneficiari** → campo tool \`humanInTheLoop\` (domanda: "Chi ne beneficia? Quante persone?")
 6) **Replicabilità** → campo tool \`dataRequirements\` (domanda: "Altri team/funzioni potrebbero adottarla?")
+${esgEnabled ? '7) **Impatto ambientale e sociale** → campo tool `sustainabilityImpact` (domanda: "Che tipo di impatto ambientale e sociale comporta questo nuovo processo?")' : ""}
 
 Per BP: **NON** chiedere \`guardrails\` né \`urgency\`.
 
-## TEMPLATE UC (8 campi — mapping su colonne DB)
+## TEMPLATE UC (${esgEnabled ? "9" : "8"} campi — mapping su colonne DB)
 1) **Titolo** → \`title\`
 2) **Problema** → \`problem\`
 3) **Flusso as-is → to-be** → \`flowDescription\`
@@ -51,6 +54,7 @@ Per BP: **NON** chiedere \`guardrails\` né \`urgency\`.
 6) **Impatto atteso** → \`expectedImpact\` (come \`business_case\` al submit)
 7) **Dati necessari** → \`dataRequirements\`
 8) **Urgenza** → \`urgency\` (quick win vs progetto strutturato)
+${esgEnabled ? '9) **Impatto ambientale e sociale** → `sustainabilityImpact` (domanda: "Che tipo di impatto ambientale e sociale comporta questo nuovo processo?")' : ""}
 
 ## REGOLE DI CONVERSAZIONE
 - **UNA domanda per turno.** Mai due contemporaneamente.
@@ -60,7 +64,10 @@ Per BP: **NON** chiedere \`guardrails\` né \`urgency\`.
 
 ## PRIMO MESSAGGIO
 Se l'utente ti tagga senza contesto, inizia dal ROUTING (domanda di smistamento).
-Se l'utente è già chiarissimo (BP vs UC), salta la domanda generica e chiama subito \`confirmContributionKind\`.`;
+Se l'utente è già chiarissimo (BP vs UC), salta la domanda generica e chiama subito \`confirmContributionKind\`.
+
+${esgEnabled ? "## REGOLA ESG\nQuesto workspace ha ESG attivo. Non considerare completo il contributo finche non hai raccolto anche l'ultimo campo `sustainabilityImpact`, subito prima del riepilogo finale e del ringraziamento." : ""}`;
+}
 
 function getUseCaseTools(
   workspaceId: string,
@@ -68,7 +75,8 @@ function getUseCaseTools(
   slackTeamId: string,
   threadTs: string | undefined,
   slackChannelId: string,
-  slackThreadRootTs: string
+  slackThreadRootTs: string,
+  esgEnabled: boolean
 ) {
   const slackContextPatch = (): Partial<NewSlackUseCaseDraft> => {
     const p: Partial<NewSlackUseCaseDraft> = { reminder24hSentAt: null };
@@ -150,6 +158,7 @@ Sii conservativo: se non è chiaro, ambiguous.`,
           "guardrails",
           "expectedImpact",
           "dataRequirements",
+          "sustainabilityImpact",
           "urgency",
         ]),
         value: z.string().describe("Il valore del campo, rielaborato e strutturato"),
@@ -206,7 +215,7 @@ Sii conservativo: se non è chiaro, ambiguous.`,
           return { success: false, error: "Tipologia non impostata sul draft." };
         }
 
-        const missing = getMissingSlackDraftFields(draft, kind);
+        const missing = getMissingSlackDraftFields(draft, kind, { esgEnabled });
         if (missing.length > 0) {
           return { success: false, error: `Campi mancanti: ${missing.join(", ")}` };
         }
@@ -304,6 +313,9 @@ Sii conservativo: se non è chiaro, ambiguous.`,
                 expectedImpact: draft.expectedImpact,
                 humanInTheLoop: draft.humanInTheLoop,
                 dataRequirements: draft.dataRequirements,
+                ...(esgEnabled
+                  ? { sustainabilityImpact: draft.sustainabilityImpact }
+                  : {}),
               }
             : kind === "use_case_ai"
               ? {
@@ -314,6 +326,9 @@ Sii conservativo: se non è chiaro, ambiguous.`,
                   guardrails: draft.guardrails,
                   expectedImpact: draft.expectedImpact,
                   dataRequirements: draft.dataRequirements,
+                  ...(esgEnabled
+                    ? { sustainabilityImpact: draft.sustainabilityImpact }
+                    : {}),
                   urgency: draft.urgency,
                 }
               : {};
@@ -362,6 +377,8 @@ export async function handleUseCaseConversation(
   }
 
   const history = await toAiMessages(allMessages);
+  const workspace = await getWorkspaceById(workspaceId);
+  const esgEnabled = workspace?.esgEnabled === true;
 
   const tools = getUseCaseTools(
     workspaceId,
@@ -369,12 +386,13 @@ export async function handleUseCaseConversation(
     teamId,
     threadTs,
     slackChannelId,
-    slackThreadRootTs
+    slackThreadRootTs,
+    esgEnabled
   );
 
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),
-    system: SYSTEM_PROMPT,
+    system: buildSystemPrompt(esgEnabled),
     messages: history,
     tools,
     stopWhen: stepCountIs(15),

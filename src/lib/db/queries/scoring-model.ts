@@ -14,6 +14,12 @@ export type ScoringKpi = {
   description?: string;
   /** Peso assoluto (0..∞). Si normalizza in fase di calcolo. */
   weight: number;
+  /**
+   * `lower_better` serve per rubriche come Effort, dove 1 = sforzo minimo
+   * e 5 = sforzo molto alto. La UI e l'LLM usano la scala "grezza", mentre
+   * il ranking la inverte in fase di aggregazione per mantenere alta = meglio.
+   */
+  direction?: "higher_better" | "lower_better";
 };
 
 /**
@@ -37,25 +43,52 @@ export type ScoringModelConfig = {
  * (label/descrizione/peso/nuovi KPI) dal cliente via UI.
  */
 export const DEFAULT_IMPACT_KPIS: ScoringKpi[] = [
-  { id: "economic", label: "Impatto economico", description: "Risparmi / ricavi attesi, riduzione costi.", weight: 1 },
-  { id: "time", label: "Tempo liberato", description: "Ore risparmiate per persona/team.", weight: 1 },
-  { id: "quality", label: "Qualità / errore", description: "Riduzione difetti, miglior customer outcome.", weight: 1 },
-  { id: "coordination", label: "Coordinamento", description: "Meno attriti tra team, meno handoff.", weight: 1 },
-  { id: "social", label: "Impatto sulle persone", description: "Riduzione carico cognitivo, benessere.", weight: 1 },
+  {
+    id: "efficiency",
+    label: "Efficiency",
+    description:
+      "Scala 1-5. 1 = impatto nullo: 0-15 minuti risparmiati per esecuzione, qualita invariata. 2 = basso: 15-60 minuti risparmiati, lieve miglioramento qualitativo. 3 = medio: 1-3 ore risparmiate, miglioramento sensibile di completezza/copertura. 4 = alto: 3-8 ore risparmiate, output nettamente superiore. 5 = trasformativo: oltre 8 ore o oltre una giornata, output non raggiungibile manualmente.",
+    weight: 1.2,
+    direction: "higher_better",
+  },
+  {
+    id: "profitability",
+    label: "Profitability",
+    description:
+      "Scala 1-5. 1 = nessun impatto economico tangibile o valore annuo <10k EUR. 2 = upside limitato: 10k-50k EUR tra nuovi ricavi, saving o margine protetto. 3 = upside medio: 50k-150k EUR annui. 4 = upside alto: 150k-500k EUR annui o contributo forte a upsell / retention. 5 = upside trasformativo: oltre 500k EUR annui o nuova linea di valore significativa.",
+    weight: 1,
+    direction: "higher_better",
+  },
 ];
 
 export const DEFAULT_FEASIBILITY_KPIS: ScoringKpi[] = [
-  { id: "data", label: "Dati disponibili", description: "Qualità e accessibilità dei dati necessari.", weight: 1 },
-  { id: "workflow", label: "Chiarezza del workflow", description: "Processo definito, deterministico o ben misurabile.", weight: 1 },
-  { id: "risk", label: "Rischio residuo", description: "Rischio regolatorio, reputazionale, di errore.", weight: 1 },
-  { id: "tech", label: "Tecnologia", description: "Maturità tecnica e integrazione con stack esistente.", weight: 1 },
-  { id: "team", label: "Team & change", description: "Capacità di change management e ownership del team.", weight: 1 },
+  {
+    id: "effort",
+    label: "Effort",
+    description:
+      "Scala 1-5. 1 = nullo/minimo: prompt engineering, meno di 1 settimana. 2 = basso: configurazione tool esistenti, 1-2 settimane. 3 = medio: sviluppo custom leggero, 1-2 mesi. 4 = alto: sviluppo complesso con integrazioni, 2-6 mesi. 5 = molto alto: progetto strutturato, oltre 6 mesi di sviluppo. Attenzione: qui 1 e meglio di 5, quindi il ranking lo inverte automaticamente.",
+    weight: 1,
+    direction: "lower_better",
+  },
 ];
 
 export const DEFAULT_ESG_KPIS: ScoringKpi[] = [
-  { id: "environmental", label: "Environmental", description: "Impatto ambientale (consumi, emissioni, risorse).", weight: 1 },
-  { id: "social", label: "Social", description: "Impatto su persone, comunità, DEI.", weight: 1 },
-  { id: "governance", label: "Governance", description: "Trasparenza, controllo, accountability.", weight: 1 },
+  {
+    id: "environmental",
+    label: "Environmental",
+    description:
+      "Scala 1-5. 1 = impatto ambientale negativo o nullo. 2 = beneficio marginale su consumi/materiali. 3 = riduzione misurabile di sprechi, trasferte o risorse. 4 = beneficio ambientale forte e scalabile. 5 = impatto molto positivo, strutturale e replicabile su emissioni, energia o uso di materiali.",
+    weight: 1,
+    direction: "higher_better",
+  },
+  {
+    id: "social",
+    label: "Social",
+    description:
+      "Scala 1-5. 1 = nessun beneficio sociale o possibile peggioramento. 2 = beneficio limitato per pochi utenti. 3 = beneficio chiaro per un team/processo. 4 = miglioramento forte su benessere, inclusione, sicurezza o accessibilita. 5 = impatto sociale ampio, misurabile e durevole su persone, clienti o comunita interne.",
+    weight: 1,
+    direction: "higher_better",
+  },
 ];
 
 export const DEFAULT_SCORING_MODEL_CONFIG: ScoringModelConfig = {
@@ -64,7 +97,7 @@ export const DEFAULT_SCORING_MODEL_CONFIG: ScoringModelConfig = {
     feasibility: DEFAULT_FEASIBILITY_KPIS,
     esg: DEFAULT_ESG_KPIS,
   },
-  overall: { impact: 0.5, feasibility: 0.5, esg: 0.2 },
+  overall: { impact: 0.5, feasibility: 0.3, esg: 0.2 },
   thresholds: { highImpact: 3.5, highFeasibility: 3.5, midImpact: 2.5 },
 };
 
@@ -104,6 +137,8 @@ export function normalizeScoringConfig(
         label: String(k.label),
         description: k.description ? String(k.description) : undefined,
         weight: Number.isFinite(Number(k.weight)) ? Math.max(0, Number(k.weight)) : 1,
+        direction:
+          k.direction === "lower_better" ? "lower_better" : "higher_better",
       }));
     }
     if (legacy && typeof legacy === "object") {
@@ -175,7 +210,16 @@ export async function getOrCreateWorkspaceScoringModel(
     .values({
       workspaceId,
       impactFlagEnabled: false,
-      config: DEFAULT_SCORING_MODEL_CONFIG,
+      config: {
+        ...DEFAULT_SCORING_MODEL_CONFIG,
+        dimensions: {
+          impact: DEFAULT_SCORING_MODEL_CONFIG.dimensions.impact.map((k) => ({ ...k })),
+          feasibility: DEFAULT_SCORING_MODEL_CONFIG.dimensions.feasibility.map((k) => ({
+            ...k,
+          })),
+          esg: DEFAULT_SCORING_MODEL_CONFIG.dimensions.esg.map((k) => ({ ...k })),
+        },
+      },
       updatedAt: new Date(),
     } satisfies NewWorkspaceScoringModel)
     .returning();
