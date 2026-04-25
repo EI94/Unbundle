@@ -43,8 +43,6 @@ export type ActionState<Data = unknown> = {
   data?: Data;
 };
 
-const EMPTY_OK: ActionState = { ok: true, message: null, fieldErrors: {} };
-
 function formString(form: FormData, key: string): string {
   const v = form.get(key);
   return typeof v === "string" ? v.trim() : "";
@@ -620,5 +618,3 @@ export async function markSignalReadAction(
   revalidatePath(`/dashboard/${workspaceId}`);
   return { ok: true } as const;
 }
-
-export const INITIAL_ACTION_STATE: ActionState = EMPTY_OK;

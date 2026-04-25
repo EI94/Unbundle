@@ -4,6 +4,7 @@ import {
   workspaces,
   departments,
   strategicGoals,
+  uploadedDocuments,
   type NewWorkspace,
   type NewDepartment,
   type NewStrategicGoal,
@@ -32,6 +33,25 @@ export async function getWorkspaceById(id: string) {
     .where(eq(workspaces.id, id))
     .limit(1);
   return workspace ?? null;
+}
+
+export async function deleteWorkspaceById(id: string) {
+  await ensureDbSchema();
+
+  const documents = await db
+    .select({ blobUrl: uploadedDocuments.blobUrl })
+    .from(uploadedDocuments)
+    .where(eq(uploadedDocuments.workspaceId, id));
+
+  const [workspace] = await db
+    .delete(workspaces)
+    .where(eq(workspaces.id, id))
+    .returning();
+
+  return {
+    workspace: workspace ?? null,
+    blobUrls: documents.map((doc) => doc.blobUrl).filter(Boolean),
+  };
 }
 
 /** Tutti i workspace Unbundle a cui l’utente ha accesso (via organizzazione). */

@@ -15,7 +15,7 @@ const SLACK_ERR: Record<string, string> = {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ slack_error?: string }>;
+  searchParams?: Promise<{ slack_error?: string; workspaceDeleted?: string }>;
 }) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
@@ -46,11 +46,16 @@ export default async function DashboardPage({
       }}
     >
       <div className="flex-1 p-8 lg:p-12 max-w-3xl">
-      {slackErrMsg ? (
-        <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          {slackErrMsg}
-        </div>
-      ) : null}
+        {sp.workspaceDeleted === "1" ? (
+          <div className="mb-6 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-500">
+            Workspace eliminato correttamente.
+          </div>
+        ) : null}
+        {slackErrMsg ? (
+          <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            {slackErrMsg}
+          </div>
+        ) : null}
       <div className="mb-10 flex items-center justify-between">
         <div>
           <span className="text-xs text-muted-foreground tracking-wide uppercase">

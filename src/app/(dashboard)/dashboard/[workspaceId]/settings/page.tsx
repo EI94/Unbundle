@@ -2,11 +2,14 @@ import { auth } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getSlackInstallationByWorkspace } from "@/lib/db/queries/slack";
+import { getUserMembership } from "@/lib/db/queries/organizations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EsgToggle } from "@/components/dashboard/esg-toggle";
 import { SlackInstallButton } from "@/components/dashboard/slack-install-button";
 import { SlackNotifyChannelForm } from "@/components/dashboard/slack-notify-channel-form";
+import { DeleteWorkspaceForm } from "@/components/dashboard/delete-workspace-form";
+import { canDeleteWorkspace } from "@/lib/workspace-permissions";
 import { MessageSquare, CheckCircle, Leaf } from "lucide-react";
 
 function decodeSlackErrorParam(raw: string | undefined): string {
@@ -59,8 +62,12 @@ export default async function SettingsPage({
   if (!workspace) notFound();
 
   const search = await searchParams;
-  const slackInstallation = await getSlackInstallationByWorkspace(workspaceId);
+  const [slackInstallation, membership] = await Promise.all([
+    getSlackInstallationByWorkspace(workspaceId),
+    getUserMembership(session.user.id, workspace.organizationId),
+  ]);
   const isSlackInstalled = !!slackInstallation;
+  const canDelete = canDeleteWorkspace(membership?.role);
   const slackErrDecoded = decodeSlackErrorParam(search.slack_error);
   const slackErrHint = slackErrDecoded ? slackInstallErrorHint(slackErrDecoded) : null;
 
@@ -205,6 +212,19 @@ export default async function SettingsPage({
               />
             </div>
           </CardHeader>
+        </Card>
+
+        <Card className="border-red-500/20">
+          <CardHeader>
+            <CardTitle className="text-base">Zona pericolosa</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DeleteWorkspaceForm
+              workspaceId={workspaceId}
+              workspaceName={workspace.name}
+              canDelete={canDelete}
+            />
+          </CardContent>
         </Card>
       </div>
     </div>
