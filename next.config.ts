@@ -1,13 +1,14 @@
 import type { NextConfig } from "next";
 
 /**
- * - Canonical host: theunbundle.com (apex). www.theunbundle.com viene rediretto
- *   con 308 (permanent), preservando il path.
+ * - Canonical host: www.theunbundle.com, allineato al dominio primario
+ *   configurato su Vercel. L'apex theunbundle.com viene rediretto a www con
+ *   308 (permanent), preservando il path.
  *
  *   Eccezione: /api/slack/* NON viene rediretto, perché Slack richiede che
  *   l'host del `redirect_uri` usato in `/api/slack/install` combaci con quello
  *   in `/api/slack/oauth`. Se un workspace ha già installato Slack quando il
- *   redirect_uri puntava a www., un 308 sull'OAuth callback romperebbe
+ *   redirect_uri puntava a un host diverso, un 308 sull'OAuth callback romperebbe
  *   l'install. `slackOAuthRedirectUri()` calcola comunque la URI dall'origin
  *   della request, quindi finché non viene riconfigurato il Slack App il
  *   bypass è prudente.
@@ -43,8 +44,8 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/:path((?!api/slack/).*)",
-        has: [{ type: "host", value: "www.theunbundle.com" }],
-        destination: "https://theunbundle.com/:path",
+        has: [{ type: "host", value: "theunbundle.com" }],
+        destination: "https://www.theunbundle.com/:path",
         permanent: true,
       },
     ];

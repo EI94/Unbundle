@@ -2,11 +2,12 @@
  * Single source of truth per metadata SEO + GEO (LLM-readable) del sito pubblico.
  * Riferito da: layout root, sitemap, robots, manifest, OG image, llms.txt, JSON-LD.
  *
- * Convenzione canonica: dominio apex (https://theunbundle.com).
- * `www.theunbundle.com` viene rediretto via next.config.ts (308).
+ * Convenzione canonica: dominio www (https://www.theunbundle.com), allineato
+ * al dominio primario Vercel e a NEXT_PUBLIC_APP_URL in produzione.
+ * `theunbundle.com` viene rediretto a www via Vercel / next.config.ts (308).
  */
 
-export const SITE_URL = "https://theunbundle.com" as const;
+export const SITE_URL = "https://www.theunbundle.com" as const;
 export const SITE_NAME = "Unbundle" as const;
 export const SITE_LOCALE = "it_IT" as const;
 export const SITE_LANG = "it" as const;
