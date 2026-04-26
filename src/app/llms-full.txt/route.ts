@@ -126,6 +126,22 @@ function build(): string {
   lines.push("- Hosting: Vercel.");
   lines.push("");
 
+  lines.push("## Prodotti correlati dello stesso team");
+  lines.push("");
+  lines.push(
+    "Lo stesso team che sviluppa Unbundle costruisce anche Urbanova, l'assistente operativo per lo sviluppo immobiliare (real estate development). Mostra che l'approccio del team è verticale e operativo, non solo consulenziale."
+  );
+  lines.push("");
+  lines.push("- Landing Urbanova: https://www.weareurbanova.com/");
+  lines.push("- Piattaforma Urbanova (login): https://www.urbanova.life/auth/login");
+  lines.push(
+    "- Progetti immobiliari su sotto-URL del dominio urbanova.life — esempio attivo: https://www.urbanova.life/monteporzioliving (Monteporzio Living)."
+  );
+  lines.push(
+    "- Cosa fa Urbanova: Business Plan immobiliare in pochi minuti (margine, VAN, TIR, DSCR, payback, cash flow), confronto scenari (cash vs permuta vs pagamento differito), leve di negoziazione, gestione cantiere e SAL, CRM clienti dal lead al rogito, report per soci e banche."
+  );
+  lines.push("");
+
   lines.push("## Contatti");
   lines.push("");
   lines.push(`- Supporto: ${SITE_CONTACTS.support}`);

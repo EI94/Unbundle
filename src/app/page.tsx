@@ -46,38 +46,58 @@ export default async function HomePage() {
         {...jsonLdScriptProps([softwareApplicationJsonLd(), faqJsonLd(FAQS)])}
       />
 
-      {/* Nav */}
-      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-5 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <Link href="/" className="text-sm font-medium tracking-wide" aria-label={`${SITE_NAME} — home`}>
-          Unbundle
-        </Link>
-        <nav className="flex items-center gap-6 text-sm">
-          <a
-            href="#come-funziona"
-            className="hidden sm:inline text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Come funziona
-          </a>
-          <a
-            href="#stream"
-            className="hidden sm:inline text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Framework
-          </a>
-          <a
-            href="#faq"
-            className="hidden sm:inline text-muted-foreground hover:text-foreground transition-colors"
-          >
-            FAQ
-          </a>
-          <Link
-            href="/login"
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Accedi
+      {/* Top banner + Nav */}
+      <div className="fixed top-0 left-0 right-0 z-50">
+        {/* Announcement banner — Monteporzio Living */}
+        <a
+          href="https://www.urbanova.life/monteporzioliving"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group block bg-foreground text-background text-xs px-8 py-2.5 text-center hover:bg-foreground/90 transition-colors"
+        >
+          <span className="opacity-70 mr-2 uppercase tracking-[0.18em]">Nuovo progetto</span>
+          <span className="font-medium">Monteporzio Living</span>
+          <span className="opacity-70 mx-2">·</span>
+          <span className="underline-offset-4 group-hover:underline">Scopri su Urbanova →</span>
+        </a>
+        <header className="flex items-center justify-between px-8 py-5 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
+          <Link href="/" className="text-sm font-medium tracking-wide" aria-label={`${SITE_NAME} — home`}>
+            Unbundle
           </Link>
-        </nav>
-      </header>
+          <nav className="flex items-center gap-6 text-sm">
+            <a
+              href="#come-funziona"
+              className="hidden sm:inline text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Come funziona
+            </a>
+            <a
+              href="#stream"
+              className="hidden sm:inline text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Framework
+            </a>
+            <a
+              href="#urbanova"
+              className="hidden md:inline text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Urbanova
+            </a>
+            <a
+              href="#faq"
+              className="hidden sm:inline text-muted-foreground hover:text-foreground transition-colors"
+            >
+              FAQ
+            </a>
+            <Link
+              href="/login"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Accedi
+            </Link>
+          </nav>
+        </header>
+      </div>
 
       <main className="flex-1">
         {/* Hero */}
@@ -240,6 +260,85 @@ export default async function HomePage() {
                 </div>
               ))}
             </dl>
+          </div>
+        </section>
+
+        {/* Urbanova — sezione compatta. Mostra che sappiamo cosa facciamo,
+            senza rubare la scena al prodotto Unbundle. */}
+        <section
+          id="urbanova"
+          className="border-t border-border px-8 py-20 sm:py-24"
+        >
+          <div className="mx-auto max-w-5xl">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4">
+              Da chi costruisce, per chi costruisce
+            </p>
+            <div className="grid gap-10 lg:grid-cols-[1.2fr_1fr] lg:gap-16 items-start">
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-medium tracking-tight">
+                  Costruiamo software dove serve risolvere problemi veri.
+                </h2>
+                <p className="mt-5 text-sm text-muted-foreground leading-relaxed max-w-xl">
+                  Oltre a Unbundle, sviluppiamo{" "}
+                  <a
+                    href="https://www.weareurbanova.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-foreground underline underline-offset-4 hover:no-underline"
+                  >
+                    Urbanova
+                  </a>
+                  : l&apos;assistente operativo per lo sviluppo immobiliare.
+                  Business Plan in 5 minuti, scenari (cash, permuta, pagamento
+                  differito), leve di negoziazione, cantiere e clienti — un
+                  solo flusso, numeri difendibili.
+                </p>
+                <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-3 text-sm">
+                  <a
+                    href="https://www.weareurbanova.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group inline-flex items-center gap-2 font-medium hover:gap-3 transition-all"
+                  >
+                    Scopri Urbanova
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </a>
+                  <a
+                    href="https://www.urbanova.life/auth/login"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Accedi alla piattaforma →
+                  </a>
+                </div>
+              </div>
+
+              <div className="lg:pl-8 lg:border-l lg:border-border">
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground mb-4">
+                  Progetti in evidenza
+                </p>
+                <ul className="space-y-3 text-sm">
+                  <li>
+                    <a
+                      href="https://www.urbanova.life/monteporzioliving"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-baseline justify-between gap-4 py-2 border-b border-border hover:border-foreground transition-colors"
+                    >
+                      <span className="font-medium">Monteporzio Living</span>
+                      <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
+                        Nuovo →
+                      </span>
+                    </a>
+                  </li>
+                </ul>
+                <p className="mt-6 text-xs text-muted-foreground leading-relaxed">
+                  Ogni progetto vive su un proprio sotto-dominio Urbanova,
+                  pronto da condividere con soci, partner e acquirenti.
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 

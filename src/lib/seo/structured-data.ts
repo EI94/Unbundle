@@ -53,6 +53,10 @@ export function organizationJsonLd(): JsonLd {
       },
     ],
     description: SITE_DESCRIPTION,
+    sameAs: [
+      "https://www.weareurbanova.com/",
+      "https://www.urbanova.life/",
+    ],
   };
 }
 
