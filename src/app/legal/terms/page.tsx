@@ -1,13 +1,33 @@
 import type { Metadata } from "next";
+import {
+  breadcrumbJsonLd,
+  jsonLdScriptProps,
+} from "@/lib/seo/structured-data";
 
 export const metadata: Metadata = {
-  title: "Termini di servizio — Unbundle",
-  description: "Termini di servizio dell’applicazione Unbundle.",
+  title: "Termini di servizio",
+  description:
+    "Termini di servizio di Unbundle: uso del servizio, integrazione Slack, limitazione di responsabilità.",
+  alternates: { canonical: "/legal/terms" },
+  openGraph: {
+    title: "Termini di servizio — Unbundle",
+    description:
+      "Termini di servizio di Unbundle e dell'integrazione Slack.",
+    url: "/legal/terms",
+  },
 };
 
 export default function TermsPage() {
   return (
     <article className="space-y-4 text-sm leading-relaxed text-foreground">
+      <script
+        {...jsonLdScriptProps(
+          breadcrumbJsonLd([
+            { name: "Home", url: "/" },
+            { name: "Termini di servizio", url: "/legal/terms" },
+          ])
+        )}
+      />
       <h1 className="text-2xl font-semibold tracking-tight">Termini di servizio</h1>
       <p className="text-muted-foreground">
         Ultimo aggiornamento: aprile 2026. Bozza di riferimento; sostituiscila con

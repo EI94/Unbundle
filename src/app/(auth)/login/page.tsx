@@ -1,6 +1,14 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/auth/login-form";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Accedi",
+  description: "Accedi a Unbundle per gestire la tua AI Transformation.",
+  robots: { index: false, follow: false, nocache: true },
+  alternates: { canonical: "/login" },
+};
 
 export default async function LoginPage() {
   const session = await auth();

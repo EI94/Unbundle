@@ -1,13 +1,33 @@
 import type { Metadata } from "next";
+import {
+  breadcrumbJsonLd,
+  jsonLdScriptProps,
+} from "@/lib/seo/structured-data";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — Unbundle",
-  description: "Informativa sulla privacy dell’app Unbundle e dell’integrazione Slack.",
+  title: "Privacy Policy",
+  description:
+    "Informativa sulla privacy di Unbundle: dati trattati, integrazione Slack, base giuridica, conservazione e diritti degli interessati.",
+  alternates: { canonical: "/legal/privacy" },
+  openGraph: {
+    title: "Privacy Policy — Unbundle",
+    description:
+      "Informativa sulla privacy di Unbundle e dell'integrazione Slack.",
+    url: "/legal/privacy",
+  },
 };
 
 export default function PrivacyPage() {
   return (
     <article className="space-y-4 text-sm leading-relaxed text-foreground">
+      <script
+        {...jsonLdScriptProps(
+          breadcrumbJsonLd([
+            { name: "Home", url: "/" },
+            { name: "Privacy Policy", url: "/legal/privacy" },
+          ])
+        )}
+      />
       <h1 className="text-2xl font-semibold tracking-tight">Privacy Policy</h1>
       <p className="text-muted-foreground">
         Ultimo aggiornamento: aprile 2026. Documento di base per conformità
