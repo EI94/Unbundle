@@ -58,6 +58,33 @@ export function readUseCaseRawKpiScore(
   const custom = data.customScores?.[dimension]?.[kpiId];
   if (typeof custom === "number" && Number.isFinite(custom)) return clamp05(custom);
 
+  if (dimension === "impact" && kpiId === "efficiency") {
+    return (
+      averageLegacyColumns(data, ["impactTime", "impactQuality"]) ??
+      averageLegacyColumns(data, ["impactCoordination", "impactSocial"]) ??
+      readLegacyColumn(data, "impactEconomic") ??
+      0
+    );
+  }
+
+  if (dimension === "impact" && kpiId === "profitability") {
+    return (
+      readLegacyColumn(data, "impactEconomic") ??
+      averageLegacyColumns(data, ["impactQuality", "impactTime"]) ??
+      0
+    );
+  }
+
+  if (dimension === "feasibility" && kpiId === "effort") {
+    const legacyFeasibility = averageLegacyColumns(data, [
+      "feasibilityData",
+      "feasibilityWorkflow",
+      "feasibilityTech",
+      "feasibilityTeam",
+    ]);
+    return legacyFeasibility === null ? 0 : clamp05(6 - legacyFeasibility);
+  }
+
   const legacyMap: Record<string, keyof ScoreSource | undefined> = {
     // impact
     economic: "impactEconomic",
@@ -84,6 +111,21 @@ export function readUseCaseRawKpiScore(
 function clamp05(v: number) {
   if (!Number.isFinite(v)) return 0;
   return Math.max(0, Math.min(5, v));
+}
+
+function readLegacyColumn(data: ScoreSource, col: keyof ScoreSource) {
+  const value = data[col];
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? clamp05(value)
+    : null;
+}
+
+function averageLegacyColumns(data: ScoreSource, cols: (keyof ScoreSource)[]) {
+  const values = cols
+    .map((col) => readLegacyColumn(data, col))
+    .filter((value): value is number => value !== null);
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 export function normalizeKpiScoreForAggregation(score: number, kpi: ScoringKpi) {

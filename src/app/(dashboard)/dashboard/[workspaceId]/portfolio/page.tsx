@@ -46,7 +46,8 @@ export default async function PortfolioPage({
           <p className="mt-1 text-muted-foreground max-w-2xl">
             Raccogli best practice e use case AI anche prima della discovery. Il
             team <strong>{teamName}</strong> li valuta e li posiziona sulla matrice
-            Impatto / Fattibilità con i KPI configurati qui sotto.
+            Impatto / Fattibilità con KPI visibili e modificabili: Efficiency,
+            Profitability, Effort e Sustainability quando ESG è attivo.
           </p>
         </div>
         <div className="flex items-center gap-3">

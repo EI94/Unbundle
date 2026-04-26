@@ -156,6 +156,13 @@ export function ScoringModelForm({
         </div>
       )}
 
+      <ScorecardPreview
+        impact={impact}
+        feasibility={feasibility}
+        esg={esg}
+        esgEnabled={esgEnabled}
+      />
+
       <Dimension
         dim="impact"
         title={dimLabels.impact}
@@ -279,11 +286,99 @@ export function ScoringModelForm({
             {recalibrating ? "Ricalibrazione…" : "Ricalibra tutti con Claude"}
           </Button>
           <Button type="submit" disabled={pending}>
-          {pending ? "Salvataggio…" : "Salva modello"}
+            {pending ? "Salvataggio…" : "Salva modello"}
           </Button>
         </div>
       </div>
     </form>
+  );
+}
+
+function ScorecardPreview({
+  impact,
+  feasibility,
+  esg,
+  esgEnabled,
+}: {
+  impact: ScoringKpi[];
+  feasibility: ScoringKpi[];
+  esg: ScoringKpi[];
+  esgEnabled: boolean;
+}) {
+  const rows = [
+    {
+      title: "Impact",
+      description: "Valore generato dal contributo.",
+      kpis: impact,
+      tone: "from-emerald-500/12 to-lime-500/8",
+    },
+    {
+      title: "Effort",
+      description: "Sforzo di implementazione, invertito nel ranking.",
+      kpis: feasibility,
+      tone: "from-amber-500/14 to-orange-500/8",
+    },
+    {
+      title: "Sustainability",
+      description: esgEnabled
+        ? "Impatto ambientale e sociale incluso nello score."
+        : "Disponibile quando ESG e attivo nel workspace.",
+      kpis: esgEnabled ? esg : [],
+      tone: "from-sky-500/12 to-cyan-500/8",
+    },
+  ];
+
+  return (
+    <section className="rounded-2xl border bg-linear-to-br from-background via-muted/25 to-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Scorecard attiva
+          </p>
+          <h3 className="text-base font-semibold">KPI usati da Claude e dalla matrice</h3>
+        </div>
+        <div className="rounded-full border px-3 py-1 text-[11px] font-medium text-muted-foreground">
+          Scala 1-5
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Questi sono i parametri visibili oggi in Raccolta & Ranking: se li
+        modifichi e salvi, puoi ricalibrare tutti i contributi con Claude.
+      </p>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {rows.map((row) => (
+          <div
+            key={row.title}
+            className={`rounded-xl border bg-linear-to-br ${row.tone} p-3`}
+          >
+            <div className="text-sm font-semibold">{row.title}</div>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {row.description}
+            </p>
+            {row.kpis.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {row.kpis.map((kpi) => (
+                  <span
+                    key={kpi.id}
+                    className="rounded-full border bg-background/80 px-2 py-1 text-[11px] font-medium"
+                    title={kpi.description}
+                  >
+                    {kpi.label}
+                    {kpi.direction === "lower_better" ? " (basso = meglio)" : ""}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-lg border border-dashed p-2 text-[11px] text-muted-foreground">
+                ESG OFF: attivalo in Integrazioni per mostrare Environmental e
+                Social anche qui.
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

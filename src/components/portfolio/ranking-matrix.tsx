@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { UseCase } from "@/lib/db/schema";
 import type { ScoringModelConfig } from "@/lib/db/queries/scoring-model";
+import { readUseCaseRawKpiScore } from "@/lib/db/use-case-scoring";
 import { ReviewForm } from "@/components/portfolio/review-form";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,19 @@ type MatrixItem = Pick<
   | "guardrails"
   | "dataRequirements"
   | "sustainabilityImpact"
+  | "impactEconomic"
+  | "impactTime"
+  | "impactQuality"
+  | "impactCoordination"
+  | "impactSocial"
+  | "feasibilityData"
+  | "feasibilityWorkflow"
+  | "feasibilityRisk"
+  | "feasibilityTech"
+  | "feasibilityTeam"
+  | "esgEnvironmental"
+  | "esgSocial"
+  | "esgGovernance"
   | "overallImpactScore"
   | "overallFeasibilityScore"
   | "overallEsgScore"
@@ -98,6 +112,32 @@ function getSustainabilityBand(
   if (score >= 3.7) return "green";
   if (score >= 2.6) return "yellow";
   return "red";
+}
+
+function buildReviewInitialScores(
+  item: MatrixItem,
+  config: ScoringModelConfig,
+  esgEnabled: boolean
+) {
+  const buildDim = (dim: "impact" | "feasibility" | "esg") => {
+    const scores = { ...(item.customScores?.[dim] ?? {}) };
+    for (const kpi of config.dimensions[dim]) {
+      if (typeof scores[kpi.id] === "number" && Number.isFinite(scores[kpi.id])) {
+        continue;
+      }
+      const fallback = readUseCaseRawKpiScore(item, dim, kpi.id);
+      if (fallback > 0) {
+        scores[kpi.id] = Number(fallback.toFixed(1));
+      }
+    }
+    return scores;
+  };
+
+  return {
+    impact: buildDim("impact"),
+    feasibility: buildDim("feasibility"),
+    esg: esgEnabled ? buildDim("esg") : item.customScores?.esg ?? {},
+  };
 }
 
 export function RankingMatrix({
@@ -587,7 +627,11 @@ export function RankingMatrix({
                   config={config}
                   esgEnabled={esgEnabled}
                   initial={{
-                    customScores: selected.customScores ?? {},
+                    customScores: buildReviewInitialScores(
+                      selected,
+                      config,
+                      esgEnabled
+                    ),
                     portfolioReviewStatus: selected.portfolioReviewStatus,
                     reviewNotes: selected.reviewNotes ?? "",
                   }}

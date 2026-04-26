@@ -101,6 +101,96 @@ export const DEFAULT_SCORING_MODEL_CONFIG: ScoringModelConfig = {
   thresholds: { highImpact: 3.5, highFeasibility: 3.5, midImpact: 2.5 },
 };
 
+const LEGACY_DIMENSION_IDS: Record<keyof ScoringModelConfig["dimensions"], string[]> = {
+  impact: ["economic", "time", "quality", "coordination", "social"],
+  feasibility: ["data", "workflow", "risk", "tech", "team"],
+  esg: ["environmental", "social", "governance"],
+};
+
+function normalizeWeight(value: unknown, fallback = 1) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, n) : fallback;
+}
+
+function normalizeKpi(kpi: ScoringKpi): ScoringKpi {
+  return {
+    id: String(kpi.id),
+    label: String(kpi.label),
+    description: kpi.description ? String(kpi.description) : undefined,
+    weight: normalizeWeight(kpi.weight),
+    direction: kpi.direction === "lower_better" ? "lower_better" : "higher_better",
+  };
+}
+
+function hasOnlyKnownIds(kpis: ScoringKpi[], knownIds: string[]) {
+  const known = new Set(knownIds);
+  return kpis.every((kpi) => known.has(kpi.id));
+}
+
+function isLegacyDefaultDimension(
+  dim: keyof ScoringModelConfig["dimensions"],
+  kpis: ScoringKpi[]
+) {
+  if (kpis.length === 0) return false;
+  const ids = new Set(kpis.map((kpi) => kpi.id));
+  const legacyIds = LEGACY_DIMENSION_IDS[dim];
+  const legacyOnly = hasOnlyKnownIds(kpis, legacyIds);
+
+  if (dim === "impact") {
+    return (
+      legacyOnly &&
+      !ids.has("efficiency") &&
+      !ids.has("profitability") &&
+      legacyIds.some((id) => ids.has(id))
+    );
+  }
+
+  if (dim === "feasibility") {
+    return legacyOnly && !ids.has("effort") && legacyIds.some((id) => ids.has(id));
+  }
+
+  return legacyOnly && ids.has("governance");
+}
+
+function averageLegacyWeight(
+  weights: Map<string, number>,
+  ids: string[],
+  fallback: number
+) {
+  const values = ids
+    .map((id) => weights.get(id))
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (values.length === 0) return fallback;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function migrateLegacyDimension(
+  dim: keyof ScoringModelConfig["dimensions"],
+  defaults: ScoringKpi[],
+  legacyKpis: ScoringKpi[]
+) {
+  const weights = new Map(legacyKpis.map((kpi) => [kpi.id, kpi.weight]));
+
+  return defaults.map((defaultKpi) => {
+    let weight = defaultKpi.weight;
+    if (dim === "impact" && defaultKpi.id === "efficiency") {
+      weight = averageLegacyWeight(weights, ["time", "quality"], defaultKpi.weight);
+    } else if (dim === "impact" && defaultKpi.id === "profitability") {
+      weight = averageLegacyWeight(weights, ["economic"], defaultKpi.weight);
+    } else if (dim === "feasibility" && defaultKpi.id === "effort") {
+      weight = averageLegacyWeight(
+        weights,
+        ["data", "workflow", "tech", "team"],
+        defaultKpi.weight
+      );
+    } else if (dim === "esg") {
+      weight = averageLegacyWeight(weights, [defaultKpi.id], defaultKpi.weight);
+    }
+
+    return { ...defaultKpi, weight };
+  });
+}
+
 /**
  * Normalizza qualsiasi `config` (vecchio o nuovo) nello schema canonico.
  */
@@ -129,30 +219,43 @@ export function normalizeScoringConfig(
   const toKpis = (
     defaults: ScoringKpi[],
     legacy: Record<string, number> | undefined,
-    dimArr: ScoringKpi[] | undefined
+    dimArr: ScoringKpi[] | undefined,
+    dim: keyof ScoringModelConfig["dimensions"]
   ): ScoringKpi[] => {
     if (Array.isArray(dimArr) && dimArr.length > 0) {
-      return dimArr.map((k) => ({
-        id: String(k.id),
-        label: String(k.label),
-        description: k.description ? String(k.description) : undefined,
-        weight: Number.isFinite(Number(k.weight)) ? Math.max(0, Number(k.weight)) : 1,
-        direction:
-          k.direction === "lower_better" ? "lower_better" : "higher_better",
-      }));
+      const normalized = dimArr.map(normalizeKpi);
+      if (isLegacyDefaultDimension(dim, normalized)) {
+        return migrateLegacyDimension(dim, defaults, normalized);
+      }
+      return normalized;
     }
     if (legacy && typeof legacy === "object") {
       return defaults.map((d) => ({
         ...d,
-        weight: Number.isFinite(Number(legacy[d.id])) ? Math.max(0, Number(legacy[d.id])) : d.weight,
+        weight: normalizeWeight(legacy[d.id], d.weight),
       }));
     }
     return defaults;
   };
 
-  const impact = toKpis(DEFAULT_IMPACT_KPIS, cfg.weights?.impact, cfg.dimensions?.impact);
-  const feasibility = toKpis(DEFAULT_FEASIBILITY_KPIS, cfg.weights?.feasibility, cfg.dimensions?.feasibility);
-  const esg = toKpis(DEFAULT_ESG_KPIS, cfg.weights?.esg, cfg.dimensions?.esg);
+  const impact = toKpis(
+    DEFAULT_IMPACT_KPIS,
+    cfg.weights?.impact,
+    cfg.dimensions?.impact,
+    "impact"
+  );
+  const feasibility = toKpis(
+    DEFAULT_FEASIBILITY_KPIS,
+    cfg.weights?.feasibility,
+    cfg.dimensions?.feasibility,
+    "feasibility"
+  );
+  const esg = toKpis(
+    DEFAULT_ESG_KPIS,
+    cfg.weights?.esg,
+    cfg.dimensions?.esg,
+    "esg"
+  );
 
   const ow = cfg.overall ?? cfg.weights?.overall ?? {};
   const overall = {
