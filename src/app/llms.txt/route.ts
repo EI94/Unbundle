@@ -2,7 +2,7 @@ import { SITE_DESCRIPTION_LONG, SITE_NAME, SITE_URL } from "@/lib/seo/site-confi
 
 /**
  * /llms.txt — convenzione llmstxt.org per LLM e AI search engines (Perplexity,
- * ChatGPT browse, Claude Search, etc.).
+ * AI search, browser agents, enterprise knowledge crawlers, etc.).
  * Versione breve: identificazione, value prop, indice di pagine rilevanti.
  * Per il contenuto completo c'è /llms-full.txt.
  *

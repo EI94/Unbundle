@@ -140,7 +140,7 @@ export const FAQS: Array<{ q: string; a: string }> = [
   },
   {
     q: "Come funziona la classificazione delle attività?",
-    a: "Dopo la mapping di ogni dipartimento, un batch classifier basato su Claude assegna automaticamente Automate, Differentiate o Innovate con confidence score. In parallelo, ogni attività viene matchata sui task O*NET e riceve una stima di AI exposure ispirata all'Anthropic Economic Index.",
+    a: "Dopo la mapping di ogni dipartimento, un batch classifier AI assegna automaticamente Automate, Differentiate o Innovate con confidence score. In parallelo, ogni attività viene matchata sui task O*NET e riceve una stima di AI exposure ispirata all'Anthropic Economic Index.",
   },
   {
     q: "Come funziona lo scoring degli use case?",
@@ -156,7 +156,7 @@ export const FAQS: Array<{ q: string; a: string }> = [
   },
   {
     q: "Quali modelli AI usa Unbundle?",
-    a: "La piattaforma è costruita sull'Anthropic SDK con Claude Sonnet come default. Per la Discovery usa la web search nativa di Claude. La RAG è basata su Postgres tsvector full-text search in italiano, non su embedding vettoriali — più veloce, più ispezionabile e zero vendor lock-in sull'embedder.",
+    a: "La piattaforma è costruita su provider LLM enterprise con modelli configurabili. Per la Discovery usa web search controllata. La RAG è basata su Postgres tsvector full-text search in italiano, non su embedding vettoriali — più veloce, più ispezionabile e zero vendor lock-in sull'embedder.",
   },
 ];
 

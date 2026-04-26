@@ -34,11 +34,11 @@ const dimLabels: Record<Dim, string> = {
 
 const dimHelp: Record<Dim, string> = {
   impact:
-    "Cosa rende un contributo ad alto impatto per la tua azienda (es. efficiency, profitability…).",
+    "I criteri che definiscono il valore generato dal contributo.",
   feasibility:
-    "Cosa rende un contributo facile o difficile da implementare (es. effort, dati, tecnologia…).",
+    "Quanto è semplice o complesso portare il contributo in produzione.",
   esg:
-    "Impatto ambientale e sociale. Attivo solo se hai abilitato ESG in Integrazioni.",
+    "Impatto ambientale e sociale, quando ESG è attivo nel workspace.",
 };
 
 function genId() {
@@ -204,76 +204,86 @@ export function ScoringModelForm({
         </div>
       )}
 
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Pesi globali tra dimensioni</h3>
-        <p className="text-xs text-muted-foreground">
-          Non servono somme esatte a 1: Unbundle li normalizza automaticamente.
-          ESG è ignorata se disattivata.
-        </p>
-        {fe["overall"] && (
-          <p className="text-xs text-red-500">{fe["overall"]}</p>
-        )}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <LabeledNumber
-            label="Peso Impatto"
-            value={overall.impact}
-            onChange={(v) => setOverall((o) => ({ ...o, impact: v }))}
-            error={fe["overall.impact"]}
-          />
-          <LabeledNumber
-            label="Peso Fattibilità"
-            value={overall.feasibility}
-            onChange={(v) => setOverall((o) => ({ ...o, feasibility: v }))}
-            error={fe["overall.feasibility"]}
-          />
-          <LabeledNumber
-            label="Peso ESG"
-            value={overall.esg}
-            disabled={!esgEnabled}
-            onChange={(v) => setOverall((o) => ({ ...o, esg: v }))}
-            error={fe["overall.esg"]}
-          />
-        </div>
-      </section>
+      <details className="rounded-2xl border p-4">
+        <summary className="cursor-pointer list-none text-sm font-semibold outline-none marker:hidden">
+          Impostazioni avanzate
+          <span className="ml-2 text-xs font-normal text-muted-foreground">
+            pesi globali e soglie matrice
+          </span>
+        </summary>
+        <div className="mt-4 space-y-5">
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">Pesi globali</h3>
+            <p className="text-xs text-muted-foreground">
+              Servono solo se vuoi dare più importanza a una dimensione rispetto
+              alle altre. Se non sei sicuro, lascia i valori standard.
+            </p>
+            {fe["overall"] && (
+              <p className="text-xs text-red-500">{fe["overall"]}</p>
+            )}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+              <LabeledNumber
+                label="Impatto"
+                value={overall.impact}
+                onChange={(v) => setOverall((o) => ({ ...o, impact: v }))}
+                error={fe["overall.impact"]}
+              />
+              <LabeledNumber
+                label="Fattibilità"
+                value={overall.feasibility}
+                onChange={(v) => setOverall((o) => ({ ...o, feasibility: v }))}
+                error={fe["overall.feasibility"]}
+              />
+              <LabeledNumber
+                label="ESG"
+                value={overall.esg}
+                disabled={!esgEnabled}
+                onChange={(v) => setOverall((o) => ({ ...o, esg: v }))}
+                error={fe["overall.esg"]}
+              />
+            </div>
+          </section>
 
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Soglie della matrice (0–5)</h3>
-        <p className="text-xs text-muted-foreground">
-          Determinano dove ricade un use case: Quick Win, Strategic Bet,
-          Capability Builder, Not Yet.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <LabeledNumber
-            label="High Impact ≥"
-            value={thresholds.highImpact}
-            onChange={(v) => setThresholds((t) => ({ ...t, highImpact: v }))}
-            error={fe["thresholds.highImpact"]}
-            step={0.1}
-            min={0}
-            max={5}
-          />
-          <LabeledNumber
-            label="High Feasibility ≥"
-            value={thresholds.highFeasibility}
-            onChange={(v) =>
-              setThresholds((t) => ({ ...t, highFeasibility: v }))
-            }
-            error={fe["thresholds.highFeasibility"]}
-            step={0.1}
-            min={0}
-            max={5}
-          />
-          <LabeledNumber
-            label="Mid Impact ≥"
-            value={thresholds.midImpact}
-            onChange={(v) => setThresholds((t) => ({ ...t, midImpact: v }))}
-            error={fe["thresholds.midImpact"]}
-            step={0.1}
-            min={0}
-            max={5}
-          />
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">Soglie della matrice (0-5)</h3>
+            <p className="text-xs text-muted-foreground">
+              Determinano i quadranti: Quick Win, Strategic Bet, Capability
+              Builder, Not Yet.
+            </p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <LabeledNumber
+                label="High Impact >="
+                value={thresholds.highImpact}
+                onChange={(v) => setThresholds((t) => ({ ...t, highImpact: v }))}
+                error={fe["thresholds.highImpact"]}
+                step={0.1}
+                min={0}
+                max={5}
+              />
+              <LabeledNumber
+                label="High Feasibility >="
+                value={thresholds.highFeasibility}
+                onChange={(v) =>
+                  setThresholds((t) => ({ ...t, highFeasibility: v }))
+                }
+                error={fe["thresholds.highFeasibility"]}
+                step={0.1}
+                min={0}
+                max={5}
+              />
+              <LabeledNumber
+                label="Mid Impact >="
+                value={thresholds.midImpact}
+                onChange={(v) => setThresholds((t) => ({ ...t, midImpact: v }))}
+                error={fe["thresholds.midImpact"]}
+                step={0.1}
+                min={0}
+                max={5}
+              />
+            </div>
+          </section>
         </div>
-      </section>
+      </details>
 
       <div className="flex items-center justify-end">
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -283,7 +293,7 @@ export function ScoringModelForm({
             onClick={handleRecalibration}
             disabled={recalibrating}
           >
-            {recalibrating ? "Ricalibrazione…" : "Ricalibra tutti con Claude"}
+            {recalibrating ? "Ricalibrazione…" : "Ricalibra tutti con AI"}
           </Button>
           <Button type="submit" disabled={pending}>
             {pending ? "Salvataggio…" : "Salva modello"}
@@ -307,35 +317,32 @@ function ScorecardPreview({
 }) {
   const rows = [
     {
-      title: "Impact",
-      description: "Valore generato dal contributo.",
+      title: "Impatto",
+      description: "Valore creato.",
       kpis: impact,
-      tone: "from-emerald-500/12 to-lime-500/8",
     },
     {
-      title: "Effort",
-      description: "Sforzo di implementazione, invertito nel ranking.",
+      title: "Fattibilità",
+      description: "Sforzo richiesto.",
       kpis: feasibility,
-      tone: "from-amber-500/14 to-orange-500/8",
     },
     {
-      title: "Sustainability",
+      title: "Sostenibilità",
       description: esgEnabled
-        ? "Impatto ambientale e sociale incluso nello score."
-        : "Disponibile quando ESG e attivo nel workspace.",
+        ? "Ambiente e persone."
+        : "Attivabile in Integrazioni.",
       kpis: esgEnabled ? esg : [],
-      tone: "from-sky-500/12 to-cyan-500/8",
     },
   ];
 
   return (
-    <section className="rounded-2xl border bg-linear-to-br from-background via-muted/25 to-background p-4">
+    <section className="rounded-2xl border bg-muted/20 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             Scorecard attiva
           </p>
-          <h3 className="text-base font-semibold">KPI usati da Claude e dalla matrice</h3>
+          <h3 className="text-base font-semibold">KPI usati per il ranking</h3>
         </div>
         <div className="rounded-full border px-3 py-1 text-[11px] font-medium text-muted-foreground">
           Scala 1-5
@@ -343,21 +350,23 @@ function ScorecardPreview({
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
         Questi sono i parametri visibili oggi in Raccolta & Ranking: se li
-        modifichi e salvi, puoi ricalibrare tutti i contributi con Claude.
+        modifichi e salvi, puoi ricalibrare automaticamente tutti i contributi.
       </p>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="mt-4 space-y-3">
         {rows.map((row) => (
           <div
             key={row.title}
-            className={`rounded-xl border bg-linear-to-br ${row.tone} p-3`}
+            className="rounded-xl border bg-background/70 p-3"
           >
-            <div className="text-sm font-semibold">{row.title}</div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {row.description}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="min-w-24 text-sm font-semibold">{row.title}</div>
+              <span className="text-[11px] text-muted-foreground">
+                {row.description}
+              </span>
+            </div>
             {row.kpis.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {row.kpis.map((kpi) => (
                   <span
                     key={kpi.id}
@@ -371,8 +380,8 @@ function ScorecardPreview({
               </div>
             ) : (
               <p className="mt-3 rounded-lg border border-dashed p-2 text-[11px] text-muted-foreground">
-                ESG OFF: attivalo in Integrazioni per mostrare Environmental e
-                Social anche qui.
+                ESG OFF: attivalo in Integrazioni per mostrare anche i KPI
+                ambientali e sociali.
               </p>
             )}
           </div>
@@ -403,7 +412,7 @@ function Dimension({
 }) {
   const dimError = fieldErrors[`dimensions.${dim}`];
   return (
-    <section className="space-y-3 rounded-lg border p-4">
+    <section className="space-y-3 rounded-2xl border p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">{title}</h3>
@@ -424,11 +433,15 @@ function Dimension({
           const labelErr = fieldErrors[`dimensions.${dim}.${i}.label`];
           const weightErr = fieldErrors[`dimensions.${dim}.${i}.weight`];
           return (
-            <li key={k.id} className="rounded-md border p-3 space-y-2">
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_120px_180px_auto] gap-2 items-start">
+            <li key={k.id} className="space-y-3 rounded-xl border bg-muted/15 p-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto] md:items-end">
                 <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-muted-foreground">
+                    KPI
+                  </label>
                   <Input
-                    placeholder="Nome KPI (es. Tempo liberato, Rischio regolatorio…)"
+                    className="h-9"
+                    placeholder="Nome KPI"
                     value={k.label}
                     onChange={(e) => onPatch(i, { label: e.target.value })}
                     aria-invalid={!!labelErr}
@@ -438,25 +451,7 @@ function Dimension({
                   )}
                 </div>
                 <div className="space-y-1">
-                  <Input
-                    type="number"
-                    min={0}
-                    step={0.1}
-                    placeholder="Peso"
-                    value={Number.isFinite(k.weight) ? k.weight : 0}
-                    onChange={(e) =>
-                      onPatch(i, {
-                        weight: Number(e.target.value.replace(",", ".")),
-                      })
-                    }
-                    aria-invalid={!!weightErr}
-                  />
-                  {weightErr && (
-                    <p className="text-xs text-red-500">{weightErr}</p>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[11px] text-muted-foreground">
+                  <label className="text-[11px] font-medium text-muted-foreground">
                     Direzione ranking
                   </label>
                   <select
@@ -469,16 +464,17 @@ function Dimension({
                             : "higher_better",
                       })
                     }
-                    className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none"
+                    className="h-9 w-full rounded-lg border border-input bg-background px-2.5 py-1 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                   >
-                    <option value="higher_better">Piu alto = meglio</option>
-                    <option value="lower_better">Piu basso = meglio</option>
+                    <option value="higher_better">Più alto = meglio</option>
+                    <option value="lower_better">Più basso = meglio</option>
                   </select>
                 </div>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
+                  className="justify-self-start md:justify-self-end"
                   onClick={() => onRemove(i)}
                   aria-label="Rimuovi KPI"
                 >
@@ -486,11 +482,34 @@ function Dimension({
                 </Button>
               </div>
               <Textarea
-                placeholder="Descrizione (opzionale): come si valuta questo KPI? cosa distingue 1 da 5?"
+                placeholder="Rubrica: cosa distingue 1 da 5?"
                 value={k.description ?? ""}
                 onChange={(e) => onPatch(i, { description: e.target.value })}
-                rows={2}
+                rows={3}
               />
+              <details className="rounded-lg border bg-background/60 px-3 py-2">
+                <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground outline-none marker:hidden">
+                  Avanzate: peso relativo{" "}
+                  <span className="tabular-nums">
+                    {Number.isFinite(k.weight) ? k.weight : 1}
+                  </span>
+                </summary>
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Il peso decide quanto questo KPI conta rispetto agli altri
+                    nella stessa sezione. 1 è standard; 2 conta il doppio. Se
+                    non ti serve, lascialo a 1.
+                  </p>
+                  <LabeledNumber
+                    label="Peso relativo"
+                    value={Number.isFinite(k.weight) ? k.weight : 1}
+                    onChange={(value) => onPatch(i, { weight: value })}
+                    error={weightErr}
+                    step={0.1}
+                    min={0}
+                  />
+                </div>
+              </details>
             </li>
           );
         })}

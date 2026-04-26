@@ -142,12 +142,14 @@ function buildReviewInitialScores(
 
 export function RankingMatrix({
   workspaceId,
+  teamName,
   items,
   thresholds,
   config,
   esgEnabled,
 }: {
   workspaceId: string;
+  teamName: string;
   items: MatrixItem[];
   thresholds: { highImpact: number; highFeasibility: number; midImpact: number };
   config: ScoringModelConfig;
@@ -262,8 +264,7 @@ export function RankingMatrix({
   if (positioned.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed p-6 text-sm text-muted-foreground">
-        Appena l&apos;AI Transformation team avra contributi valutati, li vedrai qui
-        sulla matrice.
+        Appena {teamName} avrà contributi valutati, li vedrai qui sulla matrice.
       </div>
     );
   }
@@ -565,7 +566,7 @@ export function RankingMatrix({
               </DialogTitle>
               <DialogDescription>
                 Apri il dettaglio, rileggi il contributo e correggi i punteggi
-                manualmente se non sei d&apos;accordo con il ranking proposto da Claude.
+                manualmente se non sei d&apos;accordo con il ranking proposto.
               </DialogDescription>
             </DialogHeader>
 

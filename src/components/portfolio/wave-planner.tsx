@@ -73,12 +73,12 @@ export function WavePlanner({
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <Waves className="h-4 w-4 text-sky-600" />
-              <h3 className="text-base font-semibold">AI Transformation Waves</h3>
+              <h3 className="text-base font-semibold">Waves di trasformazione</h3>
             </div>
             <p className="max-w-2xl text-sm text-muted-foreground">
               Il piano viene autogenerato combinando ranking corrente, effort
               stimato e valore potenziale. Le stime economiche sono euristiche
-              basate sui punteggi `efficiency`, `profitability` ed `effort`.
+              basate su efficienza, profittabilità ed effort.
             </p>
           </div>
           <Button

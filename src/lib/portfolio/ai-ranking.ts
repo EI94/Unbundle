@@ -175,7 +175,7 @@ export async function autoScorePortfolioUseCase(params: {
     reviewNotes: appendAiRationale(
       useCase.reviewNotes,
       suggestion.rationale,
-      params.noteLabel ?? "Auto-ranking Claude"
+      params.noteLabel ?? "Auto-ranking AI"
     ),
     reviewedBy: params.reviewedBy ?? null,
     reviewedAt: new Date(),
@@ -202,7 +202,7 @@ export async function recalibrateWorkspacePortfolioWithAi(params: {
         workspaceId: params.workspaceId,
         useCaseId: item.id,
         reviewedBy: params.reviewedBy ?? null,
-        noteLabel: params.noteLabel ?? "Ricalibrazione Claude",
+        noteLabel: params.noteLabel ?? "Ricalibrazione AI",
       });
       updated.push(row);
     } catch (error) {

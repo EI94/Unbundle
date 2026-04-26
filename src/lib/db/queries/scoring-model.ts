@@ -45,15 +45,15 @@ export type ScoringModelConfig = {
 export const DEFAULT_IMPACT_KPIS: ScoringKpi[] = [
   {
     id: "efficiency",
-    label: "Efficiency",
+    label: "Efficienza",
     description:
       "Scala 1-5. 1 = impatto nullo: 0-15 minuti risparmiati per esecuzione, qualita invariata. 2 = basso: 15-60 minuti risparmiati, lieve miglioramento qualitativo. 3 = medio: 1-3 ore risparmiate, miglioramento sensibile di completezza/copertura. 4 = alto: 3-8 ore risparmiate, output nettamente superiore. 5 = trasformativo: oltre 8 ore o oltre una giornata, output non raggiungibile manualmente.",
-    weight: 1.2,
+    weight: 1,
     direction: "higher_better",
   },
   {
     id: "profitability",
-    label: "Profitability",
+    label: "Profittabilità",
     description:
       "Scala 1-5. 1 = nessun impatto economico tangibile o valore annuo <10k EUR. 2 = upside limitato: 10k-50k EUR tra nuovi ricavi, saving o margine protetto. 3 = upside medio: 50k-150k EUR annui. 4 = upside alto: 150k-500k EUR annui o contributo forte a upsell / retention. 5 = upside trasformativo: oltre 500k EUR annui o nuova linea di valore significativa.",
     weight: 1,
@@ -75,7 +75,7 @@ export const DEFAULT_FEASIBILITY_KPIS: ScoringKpi[] = [
 export const DEFAULT_ESG_KPIS: ScoringKpi[] = [
   {
     id: "environmental",
-    label: "Environmental",
+    label: "Ambientale",
     description:
       "Scala 1-5. 1 = impatto ambientale negativo o nullo. 2 = beneficio marginale su consumi/materiali. 3 = riduzione misurabile di sprechi, trasferte o risorse. 4 = beneficio ambientale forte e scalabile. 5 = impatto molto positivo, strutturale e replicabile su emissioni, energia o uso di materiali.",
     weight: 1,
@@ -83,7 +83,7 @@ export const DEFAULT_ESG_KPIS: ScoringKpi[] = [
   },
   {
     id: "social",
-    label: "Social",
+    label: "Sociale",
     description:
       "Scala 1-5. 1 = nessun beneficio sociale o possibile peggioramento. 2 = beneficio limitato per pochi utenti. 3 = beneficio chiaro per un team/processo. 4 = miglioramento forte su benessere, inclusione, sicurezza o accessibilita. 5 = impatto sociale ampio, misurabile e durevole su persone, clienti o comunita interne.",
     weight: 1,

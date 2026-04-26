@@ -6,13 +6,9 @@ import { getPortfolioContributionsByWorkspace } from "@/lib/db/queries/use-cases
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  TeamNameForm,
-  WhatsappWebhookForm,
-} from "@/components/portfolio/team-settings-form";
-import { ScoringModelForm } from "@/components/portfolio/scoring-model-form";
 import { RankingMatrix } from "@/components/portfolio/ranking-matrix";
 import { WavePlanner } from "@/components/portfolio/wave-planner";
+import { PortfolioSettingsSheet } from "@/components/portfolio/portfolio-settings-sheet";
 
 export default async function PortfolioPage({
   params,
@@ -51,6 +47,14 @@ export default async function PortfolioPage({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <PortfolioSettingsSheet
+            workspaceId={workspaceId}
+            teamName={teamName}
+            initialTeamName={workspace.aiTransformationTeamName ?? ""}
+            initialWhatsappUrl={workspace.whatsappWebhookUrl ?? ""}
+            initialConfig={model.resolvedConfig}
+            esgEnabled={esgEnabled}
+          />
           <Link href={`/dashboard/${workspaceId}/portfolio/submit`}>
             <Button>Nuovo contributo</Button>
           </Link>
@@ -69,59 +73,27 @@ export default async function PortfolioPage({
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Ranking contributi</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <RankingMatrix
-              workspaceId={workspaceId}
-              items={contributions}
-              thresholds={model.resolvedConfig.thresholds}
-              config={model.resolvedConfig}
-              esgEnabled={esgEnabled}
-            />
-            <WavePlanner
-              workspaceId={workspaceId}
-              items={contributions}
-              config={model.resolvedConfig}
-              esgEnabled={esgEnabled}
-            />
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Chi valuta?</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <TeamNameForm
-                workspaceId={workspaceId}
-                initialName={workspace.aiTransformationTeamName ?? ""}
-              />
-              <WhatsappWebhookForm
-                workspaceId={workspaceId}
-                initialUrl={workspace.whatsappWebhookUrl ?? ""}
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Modello di ranking</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ScoringModelForm
-                workspaceId={workspaceId}
-                initialConfig={model.resolvedConfig}
-                esgEnabled={esgEnabled}
-              />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Ranking contributi</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <RankingMatrix
+            workspaceId={workspaceId}
+            teamName={teamName}
+            items={contributions}
+            thresholds={model.resolvedConfig.thresholds}
+            config={model.resolvedConfig}
+            esgEnabled={esgEnabled}
+          />
+          <WavePlanner
+            workspaceId={workspaceId}
+            items={contributions}
+            config={model.resolvedConfig}
+            esgEnabled={esgEnabled}
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

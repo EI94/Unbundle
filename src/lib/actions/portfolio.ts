@@ -433,7 +433,7 @@ export async function createPortfolioSubmissionAction(
       workspaceId,
       useCaseId: createdUseCase.id,
       reviewedBy: session.user.id,
-      noteLabel: "Auto-ranking Claude",
+      noteLabel: "Auto-ranking AI",
     });
   } catch (error) {
     console.error("[actions/portfolio] autoScorePortfolioUseCase failed:", error);
@@ -555,7 +555,7 @@ export async function suggestPortfolioScoresWithAiAction(
       workspaceId,
       useCaseId,
       reviewedBy: session.user.id,
-      noteLabel: "Suggerimento Claude",
+      noteLabel: "Suggerimento AI",
     });
   } catch (err) {
     console.error("[actions/portfolio] AI suggest failed:", err);
@@ -585,7 +585,7 @@ export async function recalibratePortfolioScoresAction(
     const updated = await recalibrateWorkspacePortfolioWithAi({
       workspaceId,
       reviewedBy: session.user.id,
-      noteLabel: "Ricalibrazione Claude",
+      noteLabel: "Ricalibrazione AI",
     });
     revalidatePath(`/dashboard/${workspaceId}/portfolio`);
     return {

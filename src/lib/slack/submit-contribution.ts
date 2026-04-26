@@ -119,7 +119,7 @@ export async function submitSlackContributionDraft(params: {
       useCase = await autoScorePortfolioUseCase({
         workspaceId: params.expectedWorkspaceId,
         useCaseId: createdUseCase.id,
-        noteLabel: "Auto-ranking Claude",
+        noteLabel: "Auto-ranking AI",
       });
     } catch (error) {
       console.error("[slack/submit-contribution] autoScorePortfolioUseCase failed:", error);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import {
   updateAiTransformationTeamNameAction,
   updateWhatsappWebhookAction,
@@ -8,6 +8,7 @@ import {
 } from "@/lib/actions/portfolio";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 
 const INITIAL: ActionState = { ok: true };
 
@@ -20,6 +21,12 @@ export function TeamNameForm({
 }) {
   const boundAction = updateAiTransformationTeamNameAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(boundAction, INITIAL);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (state.ok && state.message) router.refresh();
+  }, [router, state.message, state.ok]);
+
   return (
     <form action={formAction} className="space-y-3">
       <label className="text-sm font-medium">
@@ -53,6 +60,12 @@ export function WhatsappWebhookForm({
 }) {
   const boundAction = updateWhatsappWebhookAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(boundAction, INITIAL);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (state.ok && state.message) router.refresh();
+  }, [router, state.message, state.ok]);
+
   return (
     <form action={formAction} className="space-y-2">
       <label className="text-sm font-medium">

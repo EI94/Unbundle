@@ -112,7 +112,7 @@ function build(): string {
     "- Database: Postgres (Neon o self-hosted) con Drizzle ORM. RAG via tsvector full-text search in italiano."
   );
   lines.push(
-    "- AI: Anthropic SDK con Claude Sonnet (default). Web search nativa Anthropic. Generatori usano generateObject con schemi Zod."
+    "- AI: provider LLM enterprise con modelli configurabili. Web search controllata. Generatori usano generateObject con schemi Zod."
   );
   lines.push(
     "- Auth: Firebase Auth con session cookie, ruoli: exec_sponsor, transformation_lead, function_lead, contributor, analyst."
