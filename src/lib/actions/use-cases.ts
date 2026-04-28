@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
-import { getStrategicGoalsByWorkspace, getWorkspaceById } from "@/lib/db/queries/workspaces";
+import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import {
   createUseCase,
   updateUseCaseStatus,
@@ -16,13 +16,22 @@ import { db } from "@/lib/db";
 import { organizations, workspaces as workspacesTable } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { generateUseCases } from "@/lib/ai/generate-use-cases";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import {
+  canManageWorkspaceSettings,
+  canReviewWorkspacePortfolio,
+} from "@/lib/workspace-permissions";
 
 export async function generateUseCasesAction(workspaceId: string) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) throw new Error("Workspace non trovato");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) throw new Error("Workspace non trovato");
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    throw new Error("Non hai i permessi per generare use case.");
+  }
+  const { workspace } = access;
 
   const [org] = await db
     .select()
@@ -92,8 +101,11 @@ export async function toggleEsgAction(workspaceId: string, enabled: boolean) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) throw new Error("Workspace non trovato");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) throw new Error("Workspace non trovato");
+  if (!canManageWorkspaceSettings(access.role)) {
+    throw new Error("Non hai i permessi per modificare ESG.");
+  }
 
   await db
     .update(workspacesTable)
@@ -111,8 +123,11 @@ export async function setUseCaseStatusAction(
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) throw new Error("Workspace non trovato");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) throw new Error("Workspace non trovato");
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    throw new Error("Non hai i permessi per modificare use case.");
+  }
 
   const result = await updateUseCaseStatus(useCaseId, workspaceId, nextStatus);
   if (!result.ok) throw new Error(result.error);
@@ -130,8 +145,11 @@ export async function setUseCaseWaveCategoryAction(
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) throw new Error("Workspace non trovato");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) throw new Error("Workspace non trovato");
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    throw new Error("Non hai i permessi per modificare use case.");
+  }
 
   const result = await updateUseCaseWaveCategory(
     useCaseId,

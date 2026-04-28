@@ -1,5 +1,6 @@
-import { eq, and, lt, gte, desc, isNull } from "drizzle-orm";
+import { eq, and, lt, gte, desc, isNull, or } from "drizzle-orm";
 import { db } from "..";
+import { ensureDbSchema } from "../ensure-schema";
 import {
   slackInstallations,
   slackUseCaseDrafts,
@@ -8,6 +9,7 @@ import {
 } from "../schema";
 
 export async function upsertSlackInstallation(data: NewSlackInstallation) {
+  await ensureDbSchema();
   const [row] = await db
     .insert(slackInstallations)
     .values(data)
@@ -24,6 +26,7 @@ export async function upsertSlackInstallation(data: NewSlackInstallation) {
 }
 
 export async function getSlackInstallationByTeamId(slackTeamId: string) {
+  await ensureDbSchema();
   const [row] = await db
     .select()
     .from(slackInstallations)
@@ -33,6 +36,7 @@ export async function getSlackInstallationByTeamId(slackTeamId: string) {
 }
 
 export async function getSlackInstallationByWorkspace(workspaceId: string) {
+  await ensureDbSchema();
   const [row] = await db
     .select()
     .from(slackInstallations)
@@ -45,6 +49,7 @@ export async function updateSlackNotifyChannel(
   installationId: string,
   channelId: string | null
 ) {
+  await ensureDbSchema();
   await db
     .update(slackInstallations)
     .set({ notifyChannelId: channelId?.trim() || null })
@@ -58,25 +63,45 @@ export async function getOrCreateDraft(
   slackThreadTs: string | undefined,
   contributionKind: "best_practice" | "use_case_ai" | null
 ) {
+  await ensureDbSchema();
+  const filters = [
+    eq(slackUseCaseDrafts.workspaceId, workspaceId),
+    eq(slackUseCaseDrafts.slackUserId, slackUserId),
+    eq(slackUseCaseDrafts.slackTeamId, slackTeamId),
+    eq(slackUseCaseDrafts.status, "drafting"),
+    ...(contributionKind
+      ? [eq(slackUseCaseDrafts.contributionKind, contributionKind)]
+      : []),
+  ];
+
+  if (slackThreadTs) {
+    filters.push(
+      or(
+        eq(slackUseCaseDrafts.slackThreadTs, slackThreadTs),
+        isNull(slackUseCaseDrafts.slackThreadTs)
+      )!
+    );
+  } else {
+    filters.push(isNull(slackUseCaseDrafts.slackThreadTs));
+  }
+
   const query = db
     .select()
     .from(slackUseCaseDrafts)
-    .where(
-      and(
-        eq(slackUseCaseDrafts.workspaceId, workspaceId),
-        eq(slackUseCaseDrafts.slackUserId, slackUserId),
-        eq(slackUseCaseDrafts.status, "drafting"),
-        ...(contributionKind
-          ? [eq(slackUseCaseDrafts.contributionKind, contributionKind)]
-          : [])
-      )
-    )
+    .where(and(...filters))
     .orderBy(desc(slackUseCaseDrafts.updatedAt))
     .limit(1);
 
   const existing = await query;
 
-  if (existing.length > 0) return existing[0];
+  if (existing.length > 0) {
+    const draft = existing[0];
+    if (slackThreadTs && !draft.slackThreadTs) {
+      await updateDraft(draft.id, { slackThreadTs }, { touchUpdatedAt: false });
+      return { ...draft, slackThreadTs };
+    }
+    return draft;
+  }
 
   const [row] = await db
     .insert(slackUseCaseDrafts)
@@ -92,11 +117,52 @@ export async function getOrCreateDraft(
   return row;
 }
 
+export async function getLatestOpenDraftForSlackConversation(params: {
+  workspaceId: string;
+  slackUserId: string;
+  slackTeamId: string;
+  slackChannelId: string;
+  updatedAfter: Date;
+}) {
+  await ensureDbSchema();
+  const rows = await db
+    .select()
+    .from(slackUseCaseDrafts)
+    .where(
+      and(
+        eq(slackUseCaseDrafts.workspaceId, params.workspaceId),
+        eq(slackUseCaseDrafts.slackUserId, params.slackUserId),
+        eq(slackUseCaseDrafts.slackTeamId, params.slackTeamId),
+        eq(slackUseCaseDrafts.slackChannelId, params.slackChannelId),
+        eq(slackUseCaseDrafts.status, "drafting"),
+        gte(slackUseCaseDrafts.updatedAt, params.updatedAfter)
+      )
+    )
+    .orderBy(desc(slackUseCaseDrafts.updatedAt))
+    .limit(10);
+
+  return (
+    rows.find(
+      (row) =>
+        row.contributionKind ||
+        row.title ||
+        row.problem ||
+        row.flowDescription ||
+        row.expectedImpact ||
+        row.humanInTheLoop ||
+        row.dataRequirements
+    ) ??
+    rows[0] ??
+    null
+  );
+}
+
 export async function updateDraft(
   draftId: string,
   data: Partial<NewSlackUseCaseDraft>,
   opts?: { touchUpdatedAt?: boolean }
 ) {
+  await ensureDbSchema();
   const touch = opts?.touchUpdatedAt !== false;
   const [row] = await db
     .update(slackUseCaseDrafts)
@@ -107,6 +173,7 @@ export async function updateDraft(
 }
 
 export async function markDraftSubmitted(draftId: string) {
+  await ensureDbSchema();
   const [row] = await db
     .update(slackUseCaseDrafts)
     .set({ status: "submitted", submittedAt: new Date(), updatedAt: new Date() })
@@ -117,6 +184,7 @@ export async function markDraftSubmitted(draftId: string) {
 
 /** Evita doppio submit e race: aggiorna solo se lo stato è ancora `drafting`. */
 export async function markDraftSubmittedIfDrafting(draftId: string) {
+  await ensureDbSchema();
   const [row] = await db
     .update(slackUseCaseDrafts)
     .set({ status: "submitted", submittedAt: new Date(), updatedAt: new Date() })
@@ -131,6 +199,7 @@ export async function markDraftSubmittedIfDrafting(draftId: string) {
 }
 
 export async function getDraftById(draftId: string) {
+  await ensureDbSchema();
   const [row] = await db
     .select()
     .from(slackUseCaseDrafts)
@@ -141,6 +210,7 @@ export async function getDraftById(draftId: string) {
 
 /** Draft inattivi da ≥48h: passa a `abandoned` (non aggiorna `updated_at`). */
 export async function abandonSlackDraftsInactiveSince(cutoff: Date) {
+  await ensureDbSchema();
   return db
     .update(slackUseCaseDrafts)
     .set({
@@ -163,6 +233,7 @@ export async function listSlackDraftsFor24hReminder(
   olderThan: Date,
   notOlderThan: Date
 ) {
+  await ensureDbSchema();
   return db
     .select()
     .from(slackUseCaseDrafts)
@@ -177,6 +248,7 @@ export async function listSlackDraftsFor24hReminder(
 }
 
 export async function markSlackDraftReminderSent(draftId: string) {
+  await ensureDbSchema();
   const [row] = await db
     .update(slackUseCaseDrafts)
     .set({ reminder24hSentAt: new Date() })

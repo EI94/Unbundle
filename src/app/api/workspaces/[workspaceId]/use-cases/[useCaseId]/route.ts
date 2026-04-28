@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
-import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getUseCaseById } from "@/lib/db/queries/use-cases";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 
 export async function GET(
   _req: Request,
@@ -14,8 +14,8 @@ export async function GET(
   }
 
   const { workspaceId, useCaseId } = await params;
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) {
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 

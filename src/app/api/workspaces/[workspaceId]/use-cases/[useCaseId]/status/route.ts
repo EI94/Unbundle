@@ -1,7 +1,8 @@
 import { auth } from "@/lib/auth";
-import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { updateUseCaseStatus } from "@/lib/db/queries/use-cases";
 import { patchUseCaseStatusBodySchema } from "@/lib/api/use-case-status-wave-schema";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function PATCH(
   req: Request,
@@ -15,9 +16,12 @@ export async function PATCH(
   }
 
   const { workspaceId, useCaseId } = await params;
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) {
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) {
     return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   let body: unknown;

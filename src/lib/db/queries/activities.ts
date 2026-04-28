@@ -1,4 +1,4 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "..";
 import {
   activities,
@@ -95,4 +95,25 @@ export async function getActivityStats(workspaceId: string) {
     .from(activities)
     .where(eq(activities.workspaceId, workspaceId));
   return result[0];
+}
+
+export async function getActivityOverviewStats(workspaceId: string) {
+  const [row] = await db
+    .select({
+      total: sql<number>`cast(count(*) as integer)`,
+      classified: sql<number>`cast(count(*) filter (where ${activities.classification} is not null) as integer)`,
+      automate: sql<number>`cast(count(*) filter (where ${activities.classification} in ('automate', 'automatable')) as integer)`,
+      differentiate: sql<number>`cast(count(*) filter (where ${activities.classification} in ('differentiate', 'differentiating', 'augmentable')) as integer)`,
+      innovate: sql<number>`cast(count(*) filter (where ${activities.classification} in ('innovate', 'emerging_opportunity')) as integer)`,
+    })
+    .from(activities)
+    .where(eq(activities.workspaceId, workspaceId));
+
+  return {
+    total: Number(row?.total ?? 0),
+    classified: Number(row?.classified ?? 0),
+    automate: Number(row?.automate ?? 0),
+    differentiate: Number(row?.differentiate ?? 0),
+    innovate: Number(row?.innovate ?? 0),
+  };
 }

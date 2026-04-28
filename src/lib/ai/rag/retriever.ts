@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { documentChunks, conversationMemory } from "@/lib/db/schema";
-import { eq, sql, desc } from "drizzle-orm";
+import { sql, desc } from "drizzle-orm";
 
 export interface RetrievedChunk {
   content: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import * as d3 from "d3";
 import type { Activity, ValueMapNode } from "@/lib/db/schema";
 
@@ -54,7 +54,7 @@ export function WardleyMap({ activities, nodes }: WardleyMapProps) {
     node: ValueMapNode;
   } | null>(null);
 
-  const nodeMap = new Map(nodes.map((n) => [n.activityId, n]));
+  const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.activityId, n])), [nodes]);
 
   const renderMap = useCallback(() => {
     if (!svgRef.current || !containerRef.current) return;
@@ -193,7 +193,7 @@ export function WardleyMap({ activities, nodes }: WardleyMapProps) {
           return t.length > 22 ? t.slice(0, 20) + "\u2026" : t;
         });
     }
-  }, [activities, nodes, nodeMap, showLabels]);
+  }, [activities, nodeMap, showLabels]);
 
   useEffect(() => {
     renderMap();

@@ -1,13 +1,18 @@
 import { eq } from "drizzle-orm";
+import { cache } from "react";
 import { db } from "..";
 import {
   workspaces,
+  organizations,
+  workspaceMemberships,
   departments,
   strategicGoals,
   uploadedDocuments,
   type NewWorkspace,
   type NewDepartment,
   type NewStrategicGoal,
+  type Workspace,
+  type Organization,
 } from "../schema";
 import { getOrganizationsByUser } from "@/lib/db/queries/organizations";
 import { ensureDbSchema } from "../ensure-schema";
@@ -25,7 +30,7 @@ export async function getWorkspacesByOrganization(orgId: string) {
     .orderBy(workspaces.createdAt);
 }
 
-export async function getWorkspaceById(id: string) {
+export const getWorkspaceById = cache(async function getWorkspaceById(id: string) {
   await ensureDbSchema();
   const [workspace] = await db
     .select()
@@ -33,7 +38,7 @@ export async function getWorkspaceById(id: string) {
     .where(eq(workspaces.id, id))
     .limit(1);
   return workspace ?? null;
-}
+});
 
 export async function deleteWorkspaceById(id: string) {
   await ensureDbSchema();
@@ -56,19 +61,87 @@ export async function deleteWorkspaceById(id: string) {
 
 /** Tutti i workspace Unbundle a cui l’utente ha accesso (via organizzazione). */
 export async function getWorkspacesForUser(userId: string) {
-  const orgs = await getOrganizationsByUser(userId);
-  const out: { id: string; name: string; organizationName: string }[] = [];
-  for (const { organization } of orgs) {
+  const groups = await getWorkspaceGroupsForUser(userId);
+  return groups.flatMap((group) =>
+    group.workspaces.map(({ workspace }) => ({
+      id: workspace.id,
+      name: workspace.name,
+      organizationName: group.organization.name,
+    }))
+  );
+}
+
+export type WorkspaceListItem = {
+  workspace: Workspace;
+  accessRole: string;
+  accessSource: "organization" | "workspace";
+};
+
+export type WorkspaceGroup = {
+  organization: Organization;
+  workspaces: WorkspaceListItem[];
+};
+
+/** Workspace visibili in dashboard: membership org + membership workspace-specifica. */
+export async function getWorkspaceGroupsForUser(
+  userId: string
+): Promise<WorkspaceGroup[]> {
+  await ensureDbSchema();
+  const orgRows = await getOrganizationsByUser(userId);
+  const groups = new Map<string, WorkspaceGroup>();
+  const seenWorkspaceIds = new Set<string>();
+
+  for (const { organization, membership } of orgRows) {
     const wsList = await getWorkspacesByOrganization(organization.id);
-    for (const w of wsList) {
-      out.push({
-        id: w.id,
-        name: w.name,
-        organizationName: organization.name,
+    groups.set(organization.id, {
+      organization,
+      workspaces: wsList.map((workspace) => {
+        seenWorkspaceIds.add(workspace.id);
+        return {
+          workspace,
+          accessRole: membership.role,
+          accessSource: "organization" as const,
+        };
+      }),
+    });
+  }
+
+  const sharedRows = await db
+    .select({
+      workspace: workspaces,
+      organization: organizations,
+      membership: workspaceMemberships,
+    })
+    .from(workspaceMemberships)
+    .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
+    .innerJoin(organizations, eq(organizations.id, workspaces.organizationId))
+    .where(eq(workspaceMemberships.userId, userId));
+
+  for (const row of sharedRows) {
+    if (seenWorkspaceIds.has(row.workspace.id)) continue;
+    const existing = groups.get(row.organization.id);
+    const item = {
+      workspace: row.workspace,
+      accessRole: row.membership.role,
+      accessSource: "workspace" as const,
+    };
+    if (existing) {
+      existing.workspaces.push(item);
+    } else {
+      groups.set(row.organization.id, {
+        organization: row.organization,
+        workspaces: [item],
       });
     }
+    seenWorkspaceIds.add(row.workspace.id);
   }
-  return out;
+
+  return [...groups.values()].map((group) => ({
+    ...group,
+    workspaces: group.workspaces.sort(
+      (a, b) => a.workspace.createdAt.getTime() - b.workspace.createdAt.getTime()
+    ),
+  }));
 }
 
 export async function updateWorkspaceStatus(

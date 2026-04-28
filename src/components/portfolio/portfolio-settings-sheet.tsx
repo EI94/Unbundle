@@ -81,6 +81,7 @@ export function PortfolioSettingsSheet({
               </p>
             </div>
             <TeamNameForm
+              key={`team-${initialTeamName}`}
               workspaceId={workspaceId}
               initialName={initialTeamName}
             />
@@ -95,6 +96,7 @@ export function PortfolioSettingsSheet({
             </summary>
             <div className="mt-4">
               <WhatsappWebhookForm
+                key={`whatsapp-${initialWhatsappUrl}`}
                 workspaceId={workspaceId}
                 initialUrl={initialWhatsappUrl}
               />

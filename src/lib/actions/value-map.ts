@@ -3,20 +3,25 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
-import { valueMapNodes, activities, organizations } from "@/lib/db/schema";
+import { valueMapNodes, organizations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function generateValueMapAction(workspaceId: string) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) throw new Error("Workspace non trovato");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) throw new Error("Workspace non trovato");
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    throw new Error("Non hai i permessi per generare la value map.");
+  }
+  const { workspace } = access;
 
   const allActivities = await getActivitiesByWorkspace(workspaceId);
   const classified = allActivities.filter((a) => a.classification);

@@ -5,6 +5,7 @@ import {
   savePortfolioReviewAction,
   suggestPortfolioScoresWithAiAction,
   type ActionState,
+  type PortfolioReviewSaveData,
 } from "@/lib/actions/portfolio";
 import type { ScoringModelConfig, ScoringKpi } from "@/lib/db/queries/scoring-model";
 import { Input } from "@/components/ui/input";
@@ -21,7 +22,7 @@ import { Sparkles } from "lucide-react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-const INITIAL: ActionState = { ok: true };
+const INITIAL_REVIEW: ActionState<PortfolioReviewSaveData> = { ok: true };
 
 type ReviewFormProps = {
   workspaceId: string;
@@ -37,6 +38,7 @@ type ReviewFormProps = {
     portfolioReviewStatus: string;
     reviewNotes: string;
   };
+  onSaved?: (data: PortfolioReviewSaveData) => void;
 };
 
 const statusOptions = [
@@ -52,25 +54,28 @@ export function ReviewForm({
   config,
   esgEnabled,
   initial,
+  onSaved,
 }: ReviewFormProps) {
   const boundAction = savePortfolioReviewAction.bind(null, workspaceId, useCaseId);
-  const [state, formAction, pending] = useActionState(boundAction, INITIAL);
+  const [state, formAction, pending] = useActionState(boundAction, INITIAL_REVIEW);
 
-  const [aiState, setAiState] = useState<ActionState | null>(null);
+  const [aiState, setAiState] =
+    useState<ActionState<PortfolioReviewSaveData> | null>(null);
   const [aiPending, startTransition] = useTransition();
   const router = useRouter();
 
   useEffect(() => {
-    if (state.ok && state.message) {
-      router.refresh();
-    }
-  }, [router, state.message, state.ok]);
+    if (!state.ok || !state.data) return;
+    onSaved?.(state.data);
+    router.refresh();
+  }, [onSaved, router, state]);
 
   const handleSuggestAi = () => {
     startTransition(async () => {
       const res = await suggestPortfolioScoresWithAiAction(workspaceId, useCaseId);
       setAiState(res);
       if (res.ok) {
+        if (res.data) onSaved?.(res.data);
         router.refresh();
       }
     });

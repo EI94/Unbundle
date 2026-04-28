@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -46,10 +46,6 @@ export function UseCasePortfolioActions({
   const [category, setCategory] = useState<string>(
     initialCategory ?? "not_yet"
   );
-
-  useEffect(() => {
-    setCategory(initialCategory ?? "not_yet");
-  }, [initialCategory]);
 
   const nextOptions = [...allowedNextStatuses(initialStatus)];
 

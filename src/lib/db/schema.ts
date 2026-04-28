@@ -11,6 +11,7 @@ import {
   boolean,
   primaryKey,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // ─── Enums ──────────────────────────────────────────────────────────
@@ -228,6 +229,89 @@ export const workspaces = pgTable("workspaces", {
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 });
+
+// ─── Workspace Collaboration ────────────────────────────────────────
+
+export const workspaceMemberships = pgTable(
+  "workspace_memberships",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: memberRoleEnum("role").notNull().default("contributor"),
+    source: varchar("source", { length: 50 }).notNull().default("direct"),
+    invitedByUserId: uuid("invited_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("workspace_memberships_workspace_user_idx").on(
+      t.workspaceId,
+      t.userId
+    ),
+    index("workspace_memberships_user_idx").on(t.userId),
+  ]
+);
+
+export const workspaceInvitations = pgTable(
+  "workspace_invitations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    email: varchar("email", { length: 255 }),
+    role: memberRoleEnum("role").notNull().default("contributor"),
+    tokenHash: varchar("token_hash", { length: 128 }).notNull().unique(),
+    maxUses: integer("max_uses").notNull().default(1),
+    usedCount: integer("used_count").notNull().default(0),
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    revokedAt: timestamp("revoked_at", { mode: "date" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("workspace_invitations_workspace_idx").on(t.workspaceId),
+    index("workspace_invitations_token_hash_idx").on(t.tokenHash),
+  ]
+);
+
+export const workspaceInvitationAcceptances = pgTable(
+  "workspace_invitation_acceptances",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    invitationId: uuid("invitation_id")
+      .notNull()
+      .references(() => workspaceInvitations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    emailSnapshot: varchar("email_snapshot", { length: 255 }),
+    acceptedAt: timestamp("accepted_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("workspace_invitation_acceptances_invite_user_idx").on(
+      t.invitationId,
+      t.userId
+    ),
+    index("workspace_invitation_acceptances_workspace_idx").on(t.workspaceId),
+  ]
+);
 
 // ─── Workspace Scoring Model (ranking configurabile) ─────────────────
 
@@ -714,7 +798,7 @@ export const slackUseCaseDrafts = pgTable("slack_use_case_drafts", {
   expectedImpact: text("expected_impact"),
   dataRequirements: text("data_requirements"),
   sustainabilityImpact: text("sustainability_impact"),
-  urgency: varchar("urgency", { length: 50 }),
+  urgency: varchar("urgency", { length: 255 }),
   /** Un solo promemoria dopo ~24h di inattività sul draft (fase 2 cron). */
   reminder24hSentAt: timestamp("reminder_24h_sent_at", { mode: "date" }),
   /** Chiusura automatica draft dopo ~48h senza aggiornamenti. */
@@ -733,6 +817,12 @@ export type NewOrganization = typeof organizations.$inferInsert;
 export type Membership = typeof memberships.$inferSelect;
 export type Workspace = typeof workspaces.$inferSelect;
 export type NewWorkspace = typeof workspaces.$inferInsert;
+export type WorkspaceMembership = typeof workspaceMemberships.$inferSelect;
+export type NewWorkspaceMembership = typeof workspaceMemberships.$inferInsert;
+export type WorkspaceInvitation = typeof workspaceInvitations.$inferSelect;
+export type NewWorkspaceInvitation = typeof workspaceInvitations.$inferInsert;
+export type WorkspaceInvitationAcceptance =
+  typeof workspaceInvitationAcceptances.$inferSelect;
 export type WorkspaceScoringModel = typeof workspaceScoringModels.$inferSelect;
 export type NewWorkspaceScoringModel = typeof workspaceScoringModels.$inferInsert;
 export type StrategicGoal = typeof strategicGoals.$inferSelect;

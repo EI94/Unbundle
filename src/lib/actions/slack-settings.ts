@@ -3,11 +3,12 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import {
   getSlackInstallationByWorkspace,
   updateSlackNotifyChannel,
 } from "@/lib/db/queries/slack";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
 function isLikelySlackChannelId(id: string): boolean {
   return /^[CGD][A-Z0-9]{8,}$/i.test(id) && id.length >= 9;
@@ -20,8 +21,11 @@ export async function setSlackNotifyChannelAction(
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) throw new Error("Workspace non trovato");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) throw new Error("Workspace non trovato");
+  if (access.source !== "organization" || !canManageWorkspaceSettings(access.role)) {
+    throw new Error("Serve un ruolo admin dell'organizzazione per modificare Slack.");
+  }
 
   const installation = await getSlackInstallationByWorkspace(workspaceId);
   if (!installation) throw new Error("Installa prima il bot Slack da questa pagina.");

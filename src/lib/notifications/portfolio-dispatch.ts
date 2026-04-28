@@ -4,6 +4,7 @@ import { weeklySignals } from "@/lib/db/schema";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getSlackInstallationByWorkspace } from "@/lib/db/queries/slack";
 import { notifyNewUseCase } from "@/lib/slack/notifications";
+import { tryBuildPortfolioShareUrl } from "@/lib/portfolio/share-link";
 
 function getAppBaseUrl(): string | null {
   const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
@@ -97,13 +98,13 @@ export async function dispatchNewPortfolioNotifications(params: {
   if (workspace?.whatsappWebhookUrl) {
     const base = getAppBaseUrl();
     const link = base
-      ? `${base}/dashboard/${workspaceId}/portfolio/review/${useCase.id}`
+      ? tryBuildPortfolioShareUrl(base, workspaceId, useCase.id)
       : null;
     const text =
       `${kindLabel(useCase.portfolioKind)} in coda al team ${teamName}: ` +
       `"${useCase.title}" (origine: ${source})` +
       `${typeof useCase.overallScore === "number" && useCase.overallScore > 0 ? `, score iniziale ${useCase.overallScore.toFixed(2)}` : ""}. ` +
-      `${link ? `Apri per valutare: ${link}` : ""}`;
+      `${link ? `Apri in Unbundle: ${link}` : ""}`;
     await postWhatsappWebhook(workspace.whatsappWebhookUrl, {
       text: text.trim(),
       link,

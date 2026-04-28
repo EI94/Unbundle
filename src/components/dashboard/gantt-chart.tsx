@@ -1,7 +1,6 @@
 "use client";
 
 import type { UseCase } from "@/lib/db/schema";
-import { Badge } from "@/components/ui/badge";
 
 const categoryColors: Record<string, string> = {
   quick_win: "bg-green-500",
@@ -28,7 +27,7 @@ interface GanttItem {
   score: number;
 }
 
-function useCaseToGanttItem(uc: UseCase, index: number): GanttItem {
+function toGanttItem(uc: UseCase, index: number): GanttItem {
   let startMonth: number;
   let durationMonths: number;
 
@@ -65,7 +64,7 @@ export function GanttChart({ useCases }: { useCases: UseCase[] }) {
     (a, b) => (a.sequenceOrder ?? 99) - (b.sequenceOrder ?? 99)
   );
 
-  const items = sorted.map((uc, i) => useCaseToGanttItem(uc, i));
+  const items = sorted.map((uc, i) => toGanttItem(uc, i));
 
   return (
     <div className="overflow-x-auto">

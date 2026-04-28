@@ -4,11 +4,13 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
-import { getWorkspaceById, getDepartmentsByWorkspace } from "@/lib/db/queries/workspaces";
+import { getDepartmentsByWorkspace } from "@/lib/db/queries/workspaces";
 import { db } from "@/lib/db";
 import { organizations, simulations } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { generateSimulation, type SimulationResult } from "@/lib/ai/generate-simulation";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function generateSimulationAction(
   workspaceId: string
@@ -16,8 +18,12 @@ export async function generateSimulationAction(
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) throw new Error("Workspace non trovato");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) throw new Error("Workspace non trovato");
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    throw new Error("Non hai i permessi per generare simulazioni.");
+  }
+  const { workspace } = access;
 
   const [org] = await db
     .select()

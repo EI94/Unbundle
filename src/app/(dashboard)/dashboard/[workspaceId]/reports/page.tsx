@@ -7,7 +7,6 @@ import { eq, desc } from "drizzle-orm";
 import { GenerateReportButton } from "@/components/dashboard/generate-report-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { FileText, TrendingUp, Shield, Lightbulb, AlertTriangle, BarChart3 } from "lucide-react";
 import type { ReportContent } from "@/lib/ai/generate-report";
 

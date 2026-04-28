@@ -4,10 +4,8 @@ import {
   getWorkspaceById,
   getDepartmentsByWorkspace,
 } from "@/lib/db/queries/workspaces";
-import {
-  getActivitiesByWorkspace,
-} from "@/lib/db/queries/activities";
-import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
+import { getActivityOverviewStats } from "@/lib/db/queries/activities";
+import { getUseCaseCountByWorkspace } from "@/lib/db/queries/use-cases";
 import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import Link from "next/link";
 import {
@@ -41,34 +39,20 @@ export default async function WorkspaceOverviewPage({
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 
-  const [departments, activities, useCases, goals] = await Promise.all([
+  const [departments, activityStats, useCaseCount, goals] = await Promise.all([
     getDepartmentsByWorkspace(workspaceId),
-    getActivitiesByWorkspace(workspaceId),
-    getUseCasesByWorkspace(workspaceId),
+    getActivityOverviewStats(workspaceId),
+    getUseCaseCountByWorkspace(workspaceId),
     getStrategicGoalsByWorkspace(workspaceId),
   ]);
 
   const mappedDepts = departments.filter(
     (d) => d.mappingStatus === "mapped" || d.mappingStatus === "validated"
   );
-  const classifiedActivities = activities.filter((a) => a.classification);
-
   const streamCounts = {
-    automate: activities.filter(
-      (a) =>
-        a.classification === "automate" || a.classification === "automatable"
-    ).length,
-    differentiate: activities.filter(
-      (a) =>
-        a.classification === "differentiate" ||
-        a.classification === "differentiating" ||
-        a.classification === "augmentable"
-    ).length,
-    innovate: activities.filter(
-      (a) =>
-        a.classification === "innovate" ||
-        a.classification === "emerging_opportunity"
-    ).length,
+    automate: activityStats.automate,
+    differentiate: activityStats.differentiate,
+    innovate: activityStats.innovate,
   };
 
   const term = getUnitTerm(workspace);
@@ -76,7 +60,7 @@ export default async function WorkspaceOverviewPage({
   const hasGoals = goals.length > 0;
   const hasDepts = departments.length > 0;
   const hasMappedAll = hasDepts && mappedDepts.length === departments.length;
-  const hasUseCases = useCases.length > 0;
+  const hasUseCases = useCaseCount > 0;
 
   const steps = [
     {
@@ -112,7 +96,7 @@ export default async function WorkspaceOverviewPage({
     {
       label: "Use cases",
       sub: hasUseCases
-        ? `${useCases.length} use case identificati`
+        ? `${useCaseCount} use case identificati`
         : "Dove l'AI trasforma il modo di lavorare",
       href: `/dashboard/${workspaceId}/use-cases`,
       icon: Lightbulb,
@@ -213,7 +197,7 @@ export default async function WorkspaceOverviewPage({
       </div>
 
       {/* 3 Streams */}
-      {classifiedActivities.length > 0 && (
+      {activityStats.classified > 0 && (
         <div className="mb-14">
           <p className="text-xs text-muted-foreground mb-4 tracking-wide">
             Three streams

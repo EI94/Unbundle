@@ -12,10 +12,8 @@ import {
   updateProfile,
 } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase/client";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 

@@ -1,6 +1,7 @@
 import type { UseCase } from "@/lib/db/schema";
 import { getSlackInstallationByTeamId } from "@/lib/db/queries/slack";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
+import { tryBuildPortfolioShareUrl } from "@/lib/portfolio/share-link";
 
 /** URL pubblico dell’app (link nel messaggio admin Slack). */
 function getAppBaseUrl(): string | null {
@@ -13,12 +14,12 @@ function getAppBaseUrl(): string | null {
 
 function portfolioHeadline(useCase: UseCase): string {
   if (useCase.portfolioKind === "best_practice") {
-    return "*Nuova best practice proposta* :white_check_mark:";
+    return "Nuova best practice proposta :white_check_mark:";
   }
   if (useCase.portfolioKind === "use_case_ai") {
-    return "*Nuovo use case AI proposto* :sparkles:";
+    return "Nuovo use case AI proposto :sparkles:";
   }
-  return "*Nuovo contributo portfolio proposto* :sparkles:";
+  return "Nuovo contributo portfolio proposto :sparkles:";
 }
 
 /**
@@ -43,8 +44,9 @@ export async function notifyNewUseCase(
     const channelId = `slack:${installation.notifyChannelId}`;
 
     const base = getAppBaseUrl();
-    const detailPath = `/dashboard/${workspaceId}/portfolio/review/${useCase.id}`;
-    const detailUrl = base ? `${base}${detailPath}` : null;
+    const detailUrl = base
+      ? tryBuildPortfolioShareUrl(base, workspaceId, useCase.id)
+      : null;
 
     const proposer =
       useCase.proposedBy && useCase.proposedBy.startsWith("U")
@@ -59,25 +61,25 @@ export async function notifyNewUseCase(
     const lines = [
       portfolioHeadline(useCase),
       "",
-      `*${useCase.title}*`,
-      excerpt ? `_Anteprima:_ ${excerpt}` : "_Anteprima:_ —",
+      useCase.title,
+      excerpt ? `Anteprima: ${excerpt}` : "Anteprima: —",
       "",
-      `*Compilato da:* ${proposer}`,
-      `_Stato in Unbundle:_ \`${useCase.status}\` _(in coda al team ${teamName})._`,
+      `Compilato da: ${proposer}`,
+      `Stato in Unbundle: ${useCase.status} (in coda al team ${teamName}).`,
     ];
 
     if (typeof useCase.overallScore === "number" && useCase.overallScore > 0) {
       lines.push(
-        `*Ranking AI iniziale:* score ${useCase.overallScore.toFixed(2)} · impact ${useCase.overallImpactScore?.toFixed(1) ?? "-"} · feasibility ${useCase.overallFeasibilityScore?.toFixed(1) ?? "-"}${typeof useCase.overallEsgScore === "number" ? ` · esg ${useCase.overallEsgScore.toFixed(1)}` : ""}`
+        `Ranking AI iniziale: score ${useCase.overallScore.toFixed(2)} · impact ${useCase.overallImpactScore?.toFixed(1) ?? "-"} · feasibility ${useCase.overallFeasibilityScore?.toFixed(1) ?? "-"}${typeof useCase.overallEsgScore === "number" ? ` · esg ${useCase.overallEsgScore.toFixed(1)}` : ""}`
       );
     }
 
     if (detailUrl) {
-      lines.push("", `*Apri per valutazione in Unbundle:* ${detailUrl}`);
+      lines.push("", `Apri in Unbundle: ${detailUrl}`);
     } else {
       lines.push(
         "",
-        "_Per il link diretto alla scheda, configura `NEXT_PUBLIC_APP_URL` sul server (o usa il deploy Vercel con `VERCEL_URL`)._"
+        "Per il link diretto alla scheda, configura NEXT_PUBLIC_APP_URL sul server."
       );
     }
 

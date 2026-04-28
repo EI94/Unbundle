@@ -76,7 +76,7 @@ export default async function IntelligencePage(props: {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Opportunita'</CardTitle>
+            <CardTitle className="text-sm font-medium">Opportunita&apos;</CardTitle>
             <Lightbulb className="h-4 w-4 text-amber-500" />
           </CardHeader>
           <CardContent>
@@ -113,7 +113,7 @@ export default async function IntelligencePage(props: {
               %
             </div>
             <p className="text-xs text-muted-foreground">
-              {automatable.length} di {activities.length} attivita'
+              {automatable.length} di {activities.length} attivita&apos;
             </p>
           </CardContent>
         </Card>

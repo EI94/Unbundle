@@ -2,7 +2,9 @@
 
 import {
   useActionState,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type Dispatch,
@@ -63,7 +65,7 @@ export function ScoringModelForm({
 }) {
   const boundAction = updateScoringModelAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(boundAction, INITIAL);
-  const [recalibrateState, setRecalibrateState] = useState<ActionState<{ updated: number }> | null>(null);
+  const [recalibrateState, setRecalibrateState] = useState<ActionState<{ updated: number; failed: number; total: number }> | null>(null);
   const [recalibrating, startRecalibration] = useTransition();
   const router = useRouter();
 
@@ -91,6 +93,21 @@ export function ScoringModelForm({
       thresholds,
     });
   }, [impact, feasibility, esg, overall, thresholds]);
+  const [savedPayload, setSavedPayload] = useState(payload);
+  const submittedPayloadRef = useRef(payload);
+  const hasUnsavedChanges = payload !== savedPayload;
+
+  useEffect(() => {
+    if (!state.ok || state.message !== "Modello di ranking aggiornato.") return;
+    setSavedPayload(submittedPayloadRef.current);
+    setRecalibrateState({
+      ok: true,
+      message:
+        "Modello salvato. Se hai cambiato KPI o rubriche, ora puoi ricalibrare i contributi con AI.",
+      fieldErrors: {},
+    });
+    router.refresh();
+  }, [router, state.message, state.ok]);
 
   const addKpi = (dim: Dim) =>
     setters[dim]((prev) => [
@@ -117,6 +134,15 @@ export function ScoringModelForm({
   const fe = state.fieldErrors ?? {};
 
   const handleRecalibration = () => {
+    if (hasUnsavedChanges) {
+      setRecalibrateState({
+        ok: false,
+        message:
+          "Salva il modello prima di ricalibrare: cosi l'AI usera KPI, pesi e rubriche aggiornati.",
+        fieldErrors: {},
+      });
+      return;
+    }
     startRecalibration(async () => {
       const result = await recalibratePortfolioScoresAction(workspaceId);
       setRecalibrateState(result);
@@ -127,7 +153,13 @@ export function ScoringModelForm({
   };
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form
+      action={formAction}
+      className="space-y-6"
+      onSubmit={() => {
+        submittedPayloadRef.current = payload;
+      }}
+    >
       <input type="hidden" name="payload" value={payload} />
 
       {state.message && (
@@ -291,9 +323,13 @@ export function ScoringModelForm({
             type="button"
             variant="outline"
             onClick={handleRecalibration}
-            disabled={recalibrating}
+            disabled={recalibrating || hasUnsavedChanges}
           >
-            {recalibrating ? "Ricalibrazione…" : "Ricalibra tutti con AI"}
+            {hasUnsavedChanges
+              ? "Salva prima di ricalibrare"
+              : recalibrating
+                ? "Ricalibrazione…"
+                : "Ricalibra tutti con AI"}
           </Button>
           <Button type="submit" disabled={pending}>
             {pending ? "Salvataggio…" : "Salva modello"}

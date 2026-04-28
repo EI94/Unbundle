@@ -1,0 +1,2 @@
+export const WORKSPACE_INVITE_EXPIRES_IN_DAYS = 7;
+export const WORKSPACE_INVITE_MAX_USES = 1;

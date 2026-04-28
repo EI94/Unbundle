@@ -1,12 +1,13 @@
 import { streamText, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { auth } from "@/lib/auth";
-import { getWorkspaceById } from "@/lib/db/queries/workspaces";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { getLeadershipTools } from "@/lib/ai/tools/leadership-tools";
 import { getActivityMappingTools } from "@/lib/ai/tools/activity-mapping-tools";
 import { getWebSearchTool } from "@/lib/ai/tools/web-search-tool";
 import { DISCOVERY_SYSTEM_PROMPT } from "@/lib/ai/prompts/discovery";
 import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mapping";
+import { withAgentReliability } from "@/lib/ai/agent-reliability";
 import {
   saveMessage,
   getActiveConversation,
@@ -47,10 +48,11 @@ export async function POST(req: Request) {
     return new Response("Missing required fields", { status: 400 });
   }
 
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) {
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) {
     return new Response("Workspace not found", { status: 404 });
   }
+  const { workspace } = access;
 
   const messages = rawMessages.map((m) => ({
     role: m.role as "user" | "assistant",
@@ -243,7 +245,7 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),
-    system: systemPrompt,
+    system: withAgentReliability(systemPrompt),
     messages,
     tools: tools as Parameters<typeof streamText>[0]["tools"],
     // Default SDK = stepCountIs(1): dopo un tool call lo stream si chiude SENZA secondo round

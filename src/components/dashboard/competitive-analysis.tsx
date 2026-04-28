@@ -64,7 +64,7 @@ export function CompetitiveAnalysisViewer({
           </div>
           <CardTitle>Analisi Competitiva AI</CardTitle>
           <CardDescription>
-            Genera un report di intelligence competitiva basato sulle attivita'
+            Genera un report di intelligence competitiva basato sulle attivita&apos;
             mappate, i use case identificati e i segnali recenti.
           </CardDescription>
         </CardHeader>
@@ -111,7 +111,7 @@ export function CompetitiveAnalysisViewer({
           </TabsTrigger>
           <TabsTrigger value="opportunities" className="gap-2">
             <Zap className="h-4 w-4" />
-            Opportunita' ({analysis.automationOpportunities.length})
+            Opportunita&apos; ({analysis.automationOpportunities.length})
           </TabsTrigger>
           <TabsTrigger value="risks" className="gap-2">
             <ShieldAlert className="h-4 w-4" />

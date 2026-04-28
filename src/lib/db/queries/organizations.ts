@@ -3,7 +3,6 @@ import { db } from "..";
 import {
   organizations,
   memberships,
-  workspaces,
   invitations,
   type NewOrganization,
 } from "../schema";

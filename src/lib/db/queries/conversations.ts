@@ -1,6 +1,6 @@
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "..";
-import { conversations, messages, type Conversation, type Message } from "../schema";
+import { conversations, messages, type Conversation } from "../schema";
 
 export async function createConversation(data: {
   workspaceId: string;

@@ -1,14 +1,21 @@
-import { and, eq, desc, isNotNull } from "drizzle-orm";
+import { and, eq, desc, isNotNull, sql } from "drizzle-orm";
 import { db } from "..";
 import {
   useCases,
   useCaseKrLinks,
   type NewUseCase,
   type UseCase,
+  type Workspace,
 } from "../schema";
-import { deriveUseCasePortfolioMetrics } from "../use-case-scoring";
+import {
+  deriveUseCasePortfolioMetrics,
+  type ScoreSource,
+} from "../use-case-scoring";
 import { getWorkspaceById } from "./workspaces";
-import { getOrCreateWorkspaceScoringModel } from "./scoring-model";
+import {
+  getOrCreateWorkspaceScoringModel,
+  type ScoringModelRow,
+} from "./scoring-model";
 import { ensureDbSchema } from "../ensure-schema";
 import {
   isAllowedStatusTransition,
@@ -44,6 +51,15 @@ export async function getUseCasesByWorkspace(workspaceId: string) {
     .from(useCases)
     .where(eq(useCases.workspaceId, workspaceId))
     .orderBy(desc(useCases.overallScore));
+}
+
+export async function getUseCaseCountByWorkspace(workspaceId: string) {
+  await ensureDbSchema();
+  const [row] = await db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(useCases)
+    .where(eq(useCases.workspaceId, workspaceId));
+  return Number(row?.count ?? 0);
 }
 
 export async function getPortfolioContributionsByWorkspace(workspaceId: string) {
@@ -185,6 +201,51 @@ export async function updateUseCaseCustomScores(
   return row;
 }
 
+export async function updateUseCasePortfolioReviewAndCustomScores(params: {
+  useCaseId: string;
+  workspaceId: string;
+  customScores: NonNullable<UseCase["customScores"]>;
+  portfolioReviewStatus: UseCase["portfolioReviewStatus"];
+  reviewNotes: string | null;
+  reviewedBy: string | null;
+  reviewedAt: Date;
+  workspace?: Workspace | null;
+  model?: ScoringModelRow | null;
+}) {
+  const existing = await getUseCaseById(params.useCaseId);
+  if (!existing || existing.workspaceId !== params.workspaceId) return null;
+
+  const [workspace, model] = await Promise.all([
+    params.workspace ? Promise.resolve(params.workspace) : getWorkspaceById(params.workspaceId),
+    params.model
+      ? Promise.resolve(params.model)
+      : getOrCreateWorkspaceScoringModel(params.workspaceId),
+  ]);
+  const merged = { ...existing, customScores: params.customScores };
+  const derived = deriveUseCasePortfolioMetrics(merged, {
+    model: {
+      impactFlagEnabled: model.impactFlagEnabled,
+      config: model.resolvedConfig,
+    },
+    esgEnabled: workspace?.esgEnabled === true,
+  });
+
+  const [row] = await db
+    .update(useCases)
+    .set({
+      customScores: params.customScores,
+      ...derived,
+      portfolioReviewStatus: params.portfolioReviewStatus,
+      reviewNotes: params.reviewNotes,
+      reviewedBy: params.reviewedBy,
+      reviewedAt: params.reviewedAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(useCases.id, params.useCaseId))
+    .returning();
+  return row;
+}
+
 export async function recomputeUseCasePortfolioMetrics(
   useCaseId: string,
   workspaceId: string
@@ -214,11 +275,50 @@ export async function recomputeUseCasePortfolioMetrics(
 }
 
 export async function recomputePortfolioMetricsByWorkspace(workspaceId: string) {
-  const contributions = await getPortfolioContributionsByWorkspace(workspaceId);
-  const updated: UseCase[] = [];
-  for (const item of contributions) {
-    const row = await recomputeUseCasePortfolioMetrics(item.id, workspaceId);
-    if (row) updated.push(row);
+  await ensureDbSchema();
+  const [scoreRows, workspace, model] = await Promise.all([
+    db
+      .select({
+        id: useCases.id,
+        impactEconomic: useCases.impactEconomic,
+        impactTime: useCases.impactTime,
+        impactQuality: useCases.impactQuality,
+        impactCoordination: useCases.impactCoordination,
+        impactSocial: useCases.impactSocial,
+        feasibilityData: useCases.feasibilityData,
+        feasibilityWorkflow: useCases.feasibilityWorkflow,
+        feasibilityRisk: useCases.feasibilityRisk,
+        feasibilityTech: useCases.feasibilityTech,
+        feasibilityTeam: useCases.feasibilityTeam,
+        esgEnvironmental: useCases.esgEnvironmental,
+        esgSocial: useCases.esgSocial,
+        esgGovernance: useCases.esgGovernance,
+        customScores: useCases.customScores,
+      })
+      .from(useCases)
+      .where(
+        and(eq(useCases.workspaceId, workspaceId), isNotNull(useCases.portfolioKind))
+      ),
+    getWorkspaceById(workspaceId),
+    getOrCreateWorkspaceScoringModel(workspaceId),
+  ]);
+  let updated = 0;
+  for (const item of scoreRows) {
+    const derived = deriveUseCasePortfolioMetrics(item satisfies ScoreSource, {
+      model: {
+        impactFlagEnabled: model.impactFlagEnabled,
+        config: model.resolvedConfig,
+      },
+      esgEnabled: workspace?.esgEnabled === true,
+    });
+    await db
+      .update(useCases)
+      .set({
+        ...derived,
+        updatedAt: new Date(),
+      })
+      .where(eq(useCases.id, item.id));
+    updated += 1;
   }
   return updated;
 }

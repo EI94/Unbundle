@@ -1,7 +1,8 @@
 import { auth } from "@/lib/auth";
-import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { updateUseCaseScores } from "@/lib/db/queries/use-cases";
 import { patchUseCaseScoresBodySchema } from "@/lib/api/use-case-scores-schema";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 /**
  * Aggiorna i punteggi (impatto / fattibilità / ESG) e ricalcola category + overall score.
@@ -18,9 +19,12 @@ export async function PATCH(
   }
 
   const { workspaceId, useCaseId } = await params;
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) {
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) {
     return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   let body: unknown;

@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getOrganizationsByUser } from "@/lib/db/queries/organizations";
-import { getWorkspacesByOrganization } from "@/lib/db/queries/workspaces";
+import { getWorkspaceGroupsForUser } from "@/lib/db/queries/workspaces";
 import { CreateWorkspaceDialog } from "@/components/dashboard/create-workspace-dialog";
 import { WorkspaceCard } from "@/components/dashboard/workspace-card";
 import { DashboardListShell } from "@/components/dashboard/dashboard-list-shell";
@@ -26,12 +26,7 @@ export default async function DashboardPage({
 
   const userOrgs = await getOrganizationsByUser(session.user.id);
 
-  const workspacesWithOrgs = await Promise.all(
-    userOrgs.map(async ({ organization }) => {
-      const workspaces = await getWorkspacesByOrganization(organization.id);
-      return { organization, workspaces };
-    })
-  );
+  const workspacesWithOrgs = await getWorkspaceGroupsForUser(session.user.id);
 
   const hasWorkspaces = workspacesWithOrgs.some(
     (o) => o.workspaces.length > 0
@@ -100,11 +95,13 @@ export default async function DashboardPage({
                   {organization.name}
                 </p>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {workspaces.map((workspace) => (
+                  {workspaces.map(({ workspace, accessRole, accessSource }) => (
                     <WorkspaceCard
                       key={workspace.id}
                       workspace={workspace}
                       orgSlug={organization.slug}
+                      accessRole={accessRole}
+                      accessSource={accessSource}
                     />
                   ))}
                 </div>

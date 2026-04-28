@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
-  getWorkspaceById,
   updateWorkspaceAiTransformationTeamName,
   updateWorkspaceWhatsappWebhook,
 } from "@/lib/db/queries/workspaces";
@@ -13,8 +12,7 @@ import {
   createUseCase,
   getUseCaseById,
   recomputePortfolioMetricsByWorkspace,
-  updateUseCaseCustomScores,
-  updateUseCasePortfolioReview,
+  updateUseCasePortfolioReviewAndCustomScores,
 } from "@/lib/db/queries/use-cases";
 import {
   DEFAULT_SCORING_MODEL_CONFIG,
@@ -23,12 +21,18 @@ import {
   type ScoringKpi,
   type ScoringModelConfig,
 } from "@/lib/db/queries/scoring-model";
+import type { UseCase } from "@/lib/db/schema";
 import { markSignalRead } from "@/lib/db/queries/signals";
 import { dispatchNewPortfolioNotifications } from "@/lib/notifications/portfolio-dispatch";
 import {
   autoScorePortfolioUseCase,
   recalibrateWorkspacePortfolioWithAi,
 } from "@/lib/portfolio/ai-ranking";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import {
+  canManageWorkspaceSettings,
+  canReviewWorkspacePortfolio,
+} from "@/lib/workspace-permissions";
 
 // ──────────────────────────────────────────────────────────────────────
 // Tipi risposta usati da useActionState nelle UI client (errori inline).
@@ -42,6 +46,40 @@ export type ActionState<Data = unknown> = {
   fieldErrors?: FieldErrors;
   data?: Data;
 };
+
+export type PortfolioReviewSaveData = {
+  useCaseId: string;
+  customScores: {
+    impact: Record<string, number>;
+    feasibility: Record<string, number>;
+    esg: Record<string, number>;
+  };
+  portfolioReviewStatus: string | null;
+  reviewNotes: string | null;
+  overallImpactScore: number | null;
+  overallFeasibilityScore: number | null;
+  overallEsgScore: number | null;
+  overallScore: number | null;
+  updatedAt: string | null;
+};
+
+function buildPortfolioReviewSaveData(useCaseId: string, row: UseCase): PortfolioReviewSaveData {
+  return {
+    useCaseId,
+    customScores: {
+      impact: row.customScores?.impact ?? {},
+      feasibility: row.customScores?.feasibility ?? {},
+      esg: row.customScores?.esg ?? {},
+    },
+    portfolioReviewStatus: row.portfolioReviewStatus,
+    reviewNotes: row.reviewNotes,
+    overallImpactScore: row.overallImpactScore,
+    overallFeasibilityScore: row.overallFeasibilityScore,
+    overallEsgScore: row.overallEsgScore,
+    overallScore: row.overallScore,
+    updatedAt: row.updatedAt?.toISOString?.() ?? null,
+  };
+}
 
 function formString(form: FormData, key: string): string {
   const v = form.get(key);
@@ -71,6 +109,10 @@ export async function updateAiTransformationTeamNameAction(
 ): Promise<ActionState> {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access || !canManageWorkspaceSettings(access.role)) {
+    return { ok: false, message: "Non hai i permessi per modificare il team.", fieldErrors: {} };
+  }
   const raw = formString(formData, "aiTransformationTeamName");
   await updateWorkspaceAiTransformationTeamName(
     workspaceId,
@@ -87,6 +129,10 @@ export async function updateWhatsappWebhookAction(
 ): Promise<ActionState> {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access || !canManageWorkspaceSettings(access.role)) {
+    return { ok: false, message: "Non hai i permessi per modificare le integrazioni.", fieldErrors: {} };
+  }
   const raw = formString(formData, "whatsappWebhookUrl");
   if (raw.length > 0) {
     try {
@@ -122,7 +168,7 @@ export async function updateWhatsappWebhookAction(
 const kpiSchema = z
   .object({
     id: z.string().min(1),
-    label: z.string().min(1, "Il nome del KPI è obbligatorio."),
+    label: z.string().trim().min(1, "Il nome del KPI è obbligatorio."),
     description: z.string().optional().nullable(),
     weight: z
       .number({ message: "Il peso deve essere un numero." })
@@ -181,10 +227,18 @@ export async function updateScoringModelAction(
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) {
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) {
     return { ok: false, message: "Workspace non trovato.", fieldErrors: {} };
   }
+  if (!canManageWorkspaceSettings(access.role)) {
+    return {
+      ok: false,
+      message: "Non hai i permessi per modificare il modello di ranking.",
+      fieldErrors: {},
+    };
+  }
+  const workspace = access.workspace;
   const esgEnabled = workspace.esgEnabled === true;
 
   const payload = parseScoringPayload(formData);
@@ -241,7 +295,12 @@ export async function updateScoringModelAction(
 
   validateDim("impact", parsed.data.dimensions.impact);
   validateDim("feasibility", parsed.data.dimensions.feasibility);
-  if (esgEnabled) validateDim("esg", parsed.data.dimensions.esg);
+  if (esgEnabled) {
+    if (parsed.data.dimensions.esg.length === 0) {
+      fieldErrors["dimensions.esg"] = "Serve almeno un KPI per ESG.";
+    }
+    validateDim("esg", parsed.data.dimensions.esg);
+  }
 
   const overall = parsed.data.overall;
   const overallSum =
@@ -357,10 +416,11 @@ export async function createPortfolioSubmissionAction(
 ): Promise<ActionState> {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) {
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) {
     return { ok: false, message: "Workspace non trovato.", fieldErrors: {} };
   }
+  const workspace = access.workspace;
   const esgEnabled = workspace.esgEnabled === true;
 
   const parsed = submitSchema.safeParse({
@@ -458,15 +518,23 @@ export async function savePortfolioReviewAction(
   useCaseId: string,
   _prev: ActionState,
   formData: FormData
-): Promise<ActionState> {
+): Promise<ActionState<PortfolioReviewSaveData>> {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const workspace = await getWorkspaceById(workspaceId);
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   const model = await getOrCreateWorkspaceScoringModel(workspaceId);
-  if (!workspace) {
+  if (!access) {
     return { ok: false, message: "Workspace non trovato.", fieldErrors: {} };
   }
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    return {
+      ok: false,
+      message: "Non hai i permessi per salvare la valutazione.",
+      fieldErrors: {},
+    };
+  }
+  const workspace = access.workspace;
   const esgEnabled = workspace.esgEnabled === true;
   const config = model.resolvedConfig;
 
@@ -514,13 +582,33 @@ export async function savePortfolioReviewAction(
   }
 
   try {
-    await updateUseCaseCustomScores(useCaseId, workspaceId, customScores);
-    await updateUseCasePortfolioReview(useCaseId, workspaceId, {
-      portfolioReviewStatus: reviewStatus as never,
+    const updated = await updateUseCasePortfolioReviewAndCustomScores({
+      useCaseId,
+      workspaceId,
+      customScores,
+      portfolioReviewStatus: reviewStatus as UseCase["portfolioReviewStatus"],
       reviewNotes,
       reviewedBy: session.user.id,
       reviewedAt: new Date(),
+      workspace,
+      model,
     });
+    if (!updated) {
+      return {
+        ok: false,
+        message: "Use case non trovato.",
+        fieldErrors: {},
+      };
+    }
+
+    revalidatePath(`/dashboard/${workspaceId}/portfolio`);
+    revalidatePath(`/dashboard/${workspaceId}/portfolio/review/${useCaseId}`);
+    return {
+      ok: true,
+      message: "Valutazione salvata.",
+      fieldErrors: {},
+      data: buildPortfolioReviewSaveData(useCaseId, updated),
+    };
   } catch (err) {
     console.error("[actions/portfolio] savePortfolioReview failed:", err);
     return {
@@ -530,9 +618,6 @@ export async function savePortfolioReviewAction(
     };
   }
 
-  revalidatePath(`/dashboard/${workspaceId}/portfolio`);
-  revalidatePath(`/dashboard/${workspaceId}/portfolio/review/${useCaseId}`);
-  return { ok: true, message: "Valutazione salvata.", fieldErrors: {} };
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -542,16 +627,26 @@ export async function savePortfolioReviewAction(
 export async function suggestPortfolioScoresWithAiAction(
   workspaceId: string,
   useCaseId: string
-): Promise<ActionState> {
+): Promise<ActionState<PortfolioReviewSaveData>> {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
+
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access || !canReviewWorkspacePortfolio(access.role)) {
+    return {
+      ok: false,
+      message: "Non hai i permessi per suggerire punteggi.",
+      fieldErrors: {},
+    };
+  }
 
   const useCase = await getUseCaseById(useCaseId);
   if (!useCase || useCase.workspaceId !== workspaceId) {
     return { ok: false, message: "Use case non trovato.", fieldErrors: {} };
   }
+  let updated: UseCase;
   try {
-    await autoScorePortfolioUseCase({
+    updated = await autoScorePortfolioUseCase({
       workspaceId,
       useCaseId,
       reviewedBy: session.user.id,
@@ -572,27 +667,52 @@ export async function suggestPortfolioScoresWithAiAction(
     ok: true,
     message: "Punteggi suggeriti dall'AI applicati (puoi modificarli prima di salvare).",
     fieldErrors: {},
+    data: buildPortfolioReviewSaveData(useCaseId, updated),
   };
 }
 
 export async function recalibratePortfolioScoresAction(
   workspaceId: string
-): Promise<ActionState<{ updated: number }>> {
+): Promise<ActionState<{ updated: number; failed: number; total: number }>> {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access || !canReviewWorkspacePortfolio(access.role)) {
+    return {
+      ok: false,
+      message: "Non hai i permessi per ricalibrare il portfolio.",
+      fieldErrors: {},
+    };
+  }
+
   try {
-    const updated = await recalibrateWorkspacePortfolioWithAi({
+    const result = await recalibrateWorkspacePortfolioWithAi({
       workspaceId,
       reviewedBy: session.user.id,
       noteLabel: "Ricalibrazione AI",
     });
     revalidatePath(`/dashboard/${workspaceId}/portfolio`);
+    if (result.total === 0) {
+      return {
+        ok: true,
+        message: "Non ci sono contributi da ricalibrare.",
+        fieldErrors: {},
+        data: { updated: 0, failed: 0, total: 0 },
+      };
+    }
     return {
-      ok: true,
-      message: `Ricalibrati ${updated.length} contributi con il modello corrente.`,
+      ok: result.failed === 0,
+      message:
+        result.failed === 0
+          ? `Ricalibrati ${result.updated.length} contributi con il modello corrente.`
+          : `Ricalibrati ${result.updated.length} contributi. ${result.failed} contributi non sono stati aggiornati: riprova tra poco.`,
       fieldErrors: {},
-      data: { updated: updated.length },
+      data: {
+        updated: result.updated.length,
+        failed: result.failed,
+        total: result.total,
+      },
     };
   } catch (error) {
     console.error("[actions/portfolio] recalibratePortfolioScoresAction failed:", error);

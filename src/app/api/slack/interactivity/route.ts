@@ -8,6 +8,7 @@ import { verifySlackRequestSignature } from "@/lib/slack/verify-slack-request-si
 import { slackChatPostMessage } from "@/lib/slack/slack-chat-post";
 import { submitSlackContributionDraft } from "@/lib/slack/submit-contribution";
 import { getDraftById, getSlackInstallationByTeamId } from "@/lib/db/queries/slack";
+import { tryBuildPortfolioShareUrl } from "@/lib/portfolio/share-link";
 
 export const maxDuration = 60;
 
@@ -75,7 +76,7 @@ async function handleBlockActions(payload: SlackBlockActionPayload) {
       channel: channelId,
       threadTs,
       text:
-        "Ok, modifichiamo. Scrivi nel thread *cosa* vuoi cambiare (campo e nuovo testo). " +
+        "Ok, modifichiamo. Scrivi nel thread cosa vuoi cambiare (campo e nuovo testo). " +
         "L'agente aggiornerà il draft.",
     }).catch((e) => console.error("[slack/interactivity] postMessage:", e));
     return;
@@ -92,16 +93,16 @@ async function handleBlockActions(payload: SlackBlockActionPayload) {
   if (result.ok) {
     const base = getAppBaseUrl();
     const reviewUrl = base
-      ? `${base}/dashboard/${draft.workspaceId}/portfolio/review/${result.useCaseId}`
+      ? tryBuildPortfolioShareUrl(base, draft.workspaceId, result.useCaseId)
       : null;
     await slackChatPostMessage({
       botToken: installation.botToken,
       channel: channelId,
       threadTs,
       text:
-        `✅ *Grazie!* Ho registrato il contributo.\n` +
-        `Titolo: *${result.title}*\n` +
-        (reviewUrl ? `\n_${"Link per la valutazione in Unbundle"}:_ ${reviewUrl}` : ""),
+        `✅ Grazie! Ho registrato il contributo.\n` +
+        `Titolo: ${result.title}\n` +
+        (reviewUrl ? `\nLink Unbundle: ${reviewUrl}` : ""),
     }).catch((e) => console.error("[slack/interactivity] postMessage:", e));
   } else {
     await slackChatPostMessage({

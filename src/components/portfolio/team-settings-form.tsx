@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
   updateAiTransformationTeamNameAction,
   updateWhatsappWebhookAction,
@@ -22,6 +22,8 @@ export function TeamNameForm({
   const boundAction = updateAiTransformationTeamNameAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(boundAction, INITIAL);
   const router = useRouter();
+  const [name, setName] = useState(initialName);
+  const isDirty = name.trim() !== initialName.trim();
 
   useEffect(() => {
     if (state.ok && state.message) router.refresh();
@@ -34,11 +36,17 @@ export function TeamNameForm({
       </label>
       <Input
         name="aiTransformationTeamName"
-        defaultValue={initialName}
+        value={name}
+        onChange={(event) => setName(event.target.value)}
         placeholder="es. AI Transformation, CoE AI, Digital Factory…"
       />
-      <Button type="submit" variant="outline" className="w-full" disabled={pending}>
-        {pending ? "Salvo…" : "Salva"}
+      <Button
+        type="submit"
+        variant="outline"
+        className="w-full"
+        disabled={pending || !isDirty}
+      >
+        {pending ? "Salvo…" : isDirty ? "Salva" : "Salvato"}
       </Button>
       {state.message && (
         <p
@@ -61,6 +69,8 @@ export function WhatsappWebhookForm({
   const boundAction = updateWhatsappWebhookAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(boundAction, INITIAL);
   const router = useRouter();
+  const [url, setUrl] = useState(initialUrl);
+  const isDirty = url.trim() !== initialUrl.trim();
 
   useEffect(() => {
     if (state.ok && state.message) router.refresh();
@@ -73,7 +83,8 @@ export function WhatsappWebhookForm({
       </label>
       <Input
         name="whatsappWebhookUrl"
-        defaultValue={initialUrl}
+        value={url}
+        onChange={(event) => setUrl(event.target.value)}
         placeholder="https://hook.make.com/… oppure Zapier / Twilio / endpoint custom"
         aria-invalid={!!state.fieldErrors?.whatsappWebhookUrl}
       />
@@ -88,8 +99,13 @@ export function WhatsappWebhookForm({
         nuovo contributo. Usalo con un relay verso il gruppo WhatsApp del team
         (Zapier, Make, Twilio, o un tuo endpoint).
       </p>
-      <Button type="submit" variant="outline" className="w-full" disabled={pending}>
-        {pending ? "Salvo…" : "Salva webhook"}
+      <Button
+        type="submit"
+        variant="outline"
+        className="w-full"
+        disabled={pending || !isDirty}
+      >
+        {pending ? "Salvo…" : isDirty ? "Salva webhook" : "Webhook salvato"}
       </Button>
       {state.message && (
         <p

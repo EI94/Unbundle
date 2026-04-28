@@ -5,10 +5,17 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getActivitiesByWorkspace, updateActivity } from "@/lib/db/queries/activities";
 import { matchActivitiesToOnet } from "@/lib/ai/onet-matching";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function runOnetMatchingAction(workspaceId: string) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) throw new Error("Workspace non trovato");
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    throw new Error("Non hai i permessi per aggiornare le attivita.");
+  }
 
   const activities = await getActivitiesByWorkspace(workspaceId);
   const unmatched = activities.filter((a) => !a.onetTaskId);

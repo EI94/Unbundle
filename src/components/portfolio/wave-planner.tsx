@@ -77,8 +77,9 @@ export function WavePlanner({
             </div>
             <p className="max-w-2xl text-sm text-muted-foreground">
               Il piano viene autogenerato combinando ranking corrente, effort
-              stimato e valore potenziale. Le stime economiche sono euristiche
-              basate su efficienza, profittabilità ed effort.
+              stimato e budget per wave. Non stimiamo valore economico:
+              profittabilità e business impact restano campi da validare
+              manualmente dal reviewer.
             </p>
           </div>
           <Button
@@ -131,9 +132,9 @@ export function WavePlanner({
             note={`${plan.waves.length} wave generate`}
           />
           <MetricCard
-            label="Valore netto stimato"
-            value={currency.format(plan.totals.estimatedNetValue)}
-            note={`Budget allocato ${currency.format(plan.totals.budgetUsed)}`}
+            label="Budget allocato"
+            value={currency.format(plan.totals.budgetUsed)}
+            note="Basato sull'effort stimato, non su valore monetario"
           />
         </div>
 
@@ -176,12 +177,14 @@ export function WavePlanner({
 
                       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                         <MiniMetric
-                          label="Valore lordo"
-                          value={currency.format(wave.totalEstimatedValue)}
+                          label="Budget usato"
+                          value={currency.format(wave.budgetUsed)}
                         />
                         <MiniMetric
-                          label="Valore netto"
-                          value={currency.format(wave.totalEstimatedNetValue)}
+                          label="Fattibilità media"
+                          value={averageWaveMetric(
+                            wave.items.map((item) => item.useCase.overallFeasibilityScore)
+                          )}
                         />
                         <MiniMetric
                           label="Contributi"
@@ -230,9 +233,9 @@ export function WavePlanner({
                 note="Capacita teorica della roadmap"
               />
               <MetricCard
-                label="Valore lordo stimato"
-                value={currency.format(plan.totals.estimatedValue)}
-                note="Somma del valore potenziale per tutte le wave"
+                label="Contributi in roadmap"
+                value={String(plan.totals.items)}
+                note={`${plan.waves.length} wave generate`}
               />
               <MetricCard
                 label="Budget utilizzato"
@@ -252,8 +255,8 @@ export function WavePlanner({
                 {selectedWave.label} · {selectedWave.startLabel} → {selectedWave.endLabel}
               </DialogTitle>
               <DialogDescription>
-                Dettaglio della wave con costo stimato, impatto atteso e contributi
-                inclusi nel piano.
+                Dettaglio della wave con budget indicativo, fattibilità e contributi
+                inclusi nel piano. Il valore economico resta da compilare manualmente.
               </DialogDescription>
             </DialogHeader>
 
@@ -264,14 +267,16 @@ export function WavePlanner({
                 note={`Usato ${currency.format(selectedWave.budgetUsed)}`}
               />
               <MetricCard
-                label="Valore lordo"
-                value={currency.format(selectedWave.totalEstimatedValue)}
-                note="Stima combinata efficiency + profitability"
+                label="Fattibilità media"
+                value={averageWaveMetric(
+                  selectedWave.items.map((item) => item.useCase.overallFeasibilityScore)
+                )}
+                note="Media dei contributi in wave"
               />
               <MetricCard
-                label="Valore netto"
-                value={currency.format(selectedWave.totalEstimatedNetValue)}
-                note="Valore potenziale meno costo implementativo"
+                label="Contributi"
+                value={String(selectedWave.items.length)}
+                note="Inclusi in questa wave"
               />
               <MetricCard
                 label="Sustainability"
@@ -308,12 +313,12 @@ export function WavePlanner({
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <MiniMetric
-                        label="Costo"
+                        label="Budget indicativo"
                         value={currency.format(item.estimatedCost)}
                       />
                       <MiniMetric
-                        label="Valore netto"
-                        value={currency.format(item.estimatedNetValue)}
+                        label="Impact"
+                        value={item.useCase.overallImpactScore?.toFixed(1) ?? "—"}
                       />
                       <MiniMetric
                         label="Efficiency"
@@ -333,6 +338,14 @@ export function WavePlanner({
       </Dialog>
     </>
   );
+}
+
+function averageWaveMetric(values: Array<number | null | undefined>) {
+  const valid = values.filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value)
+  );
+  if (valid.length === 0) return "—";
+  return (valid.reduce((sum, value) => sum + value, 0) / valid.length).toFixed(1);
 }
 
 function ControlCard({

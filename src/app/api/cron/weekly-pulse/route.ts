@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { workspaces, weeklySignals, activities } from "@/lib/db/schema";
-import { eq, isNull, and, gte } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";

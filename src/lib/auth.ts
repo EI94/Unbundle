@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { adminAuth } from "@/lib/firebase/admin";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -23,7 +24,7 @@ export interface Session {
  * Crea l'utente nel DB se è il primo login (upsert).
  * Stessa firma di NextAuth `auth()` per compatibilità.
  */
-export async function auth(): Promise<Session | null> {
+export const auth = cache(async (): Promise<Session | null> => {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE)?.value;
   if (!sessionCookie) return null;
@@ -69,7 +70,7 @@ export async function auth(): Promise<Session | null> {
   } catch {
     return null;
   }
-}
+});
 
 export async function createSessionCookie(idToken: string): Promise<string> {
   const sessionCookie = await adminAuth.createSessionCookie(idToken, {

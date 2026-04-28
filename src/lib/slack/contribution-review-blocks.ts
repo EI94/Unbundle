@@ -34,27 +34,27 @@ export function buildContributionReviewSummaryText(draft: SlackUseCaseDraft): st
   const kind = draft.contributionKind;
   const lines: string[] = [
     kind === "best_practice"
-      ? "*Best Practice* — riepilogo"
+      ? "Best Practice — riepilogo"
       : kind === "use_case_ai"
-        ? "*Use Case AI* — riepilogo"
-        : "*Contributo* — riepilogo",
+        ? "Use Case AI — riepilogo"
+        : "Contributo — riepilogo",
     "",
-    `*Titolo:* ${draft.title ? truncate(draft.title, 200) : "—"}`,
-    `*Problema / prima:* ${draft.problem ? truncate(draft.problem, 400) : "—"}`,
-    `*Flusso / dopo:* ${draft.flowDescription ? truncate(draft.flowDescription, 400) : "—"}`,
-    `*Human in the loop:* ${draft.humanInTheLoop ? truncate(draft.humanInTheLoop, 300) : "—"}`,
+    `Titolo: ${draft.title ? truncate(draft.title, 200) : "—"}`,
+    `Problema / prima: ${draft.problem ? truncate(draft.problem, 400) : "—"}`,
+    `Flusso / dopo: ${draft.flowDescription ? truncate(draft.flowDescription, 400) : "—"}`,
+    `Human in the loop: ${draft.humanInTheLoop ? truncate(draft.humanInTheLoop, 300) : "—"}`,
   ];
 
   if (kind === "use_case_ai") {
-    lines.push(`*Guardrail:* ${draft.guardrails ? truncate(draft.guardrails, 300) : "—"}`);
-    lines.push(`*Urgenza:* ${draft.urgency ?? "—"}`);
+    lines.push(`Guardrail: ${draft.guardrails ? truncate(draft.guardrails, 300) : "—"}`);
+    lines.push(`Urgenza: ${draft.urgency ?? "—"}`);
   }
 
-  lines.push(`*Impatto / business case:* ${draft.expectedImpact ? truncate(draft.expectedImpact, 400) : "—"}`);
-  lines.push(`*Dati / replicabilità:* ${draft.dataRequirements ? truncate(draft.dataRequirements, 300) : "—"}`);
+  lines.push(`Impatto / business case: ${draft.expectedImpact ? truncate(draft.expectedImpact, 400) : "—"}`);
+  lines.push(`Dati / replicabilità: ${draft.dataRequirements ? truncate(draft.dataRequirements, 300) : "—"}`);
   if (draft.sustainabilityImpact) {
     lines.push(
-      `*Impatto ambientale e sociale:* ${truncate(draft.sustainabilityImpact, 400)}`
+      `Impatto ambientale e sociale: ${truncate(draft.sustainabilityImpact, 400)}`
     );
   }
 

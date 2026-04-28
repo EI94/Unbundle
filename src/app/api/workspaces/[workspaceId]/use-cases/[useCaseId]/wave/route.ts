@@ -1,7 +1,8 @@
 import { auth } from "@/lib/auth";
-import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { updateUseCaseWaveCategory } from "@/lib/db/queries/use-cases";
 import { patchUseCaseWaveBodySchema } from "@/lib/api/use-case-status-wave-schema";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 /**
  * Imposta manualmente il quadrante (categoria wave) senza modificare i punteggi.
@@ -19,9 +20,12 @@ export async function PATCH(
   }
 
   const { workspaceId, useCaseId } = await params;
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) {
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) {
     return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   let body: unknown;

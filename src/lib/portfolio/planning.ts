@@ -13,8 +13,6 @@ export type PortfolioWaveItem = {
   sustainabilityScore: number | null;
   sustainabilityBand: SustainabilityBand;
   estimatedCost: number;
-  estimatedValue: number;
-  estimatedNetValue: number;
   priorityScore: number;
 };
 
@@ -29,8 +27,6 @@ export type PortfolioWave = {
   budget: number;
   budgetUsed: number;
   remainingBudget: number;
-  totalEstimatedValue: number;
-  totalEstimatedNetValue: number;
   avgSustainabilityScore: number | null;
   items: PortfolioWaveItem[];
   isOverBudget: boolean;
@@ -73,22 +69,6 @@ export function estimateImplementationCost(effortScore: number) {
   return 10_000;
 }
 
-function estimateEfficiencyValue(efficiencyScore: number) {
-  if (efficiencyScore >= 4.5) return 300_000;
-  if (efficiencyScore >= 3.5) return 120_000;
-  if (efficiencyScore >= 2.5) return 45_000;
-  if (efficiencyScore >= 1.5) return 15_000;
-  return 5_000;
-}
-
-function estimateProfitabilityValue(profitabilityScore: number) {
-  if (profitabilityScore >= 4.5) return 700_000;
-  if (profitabilityScore >= 3.5) return 300_000;
-  if (profitabilityScore >= 2.5) return 120_000;
-  if (profitabilityScore >= 1.5) return 40_000;
-  return 10_000;
-}
-
 export function buildWaveCandidate(
   useCase: UseCase,
   config: ScoringModelConfig,
@@ -119,14 +99,10 @@ export function buildWaveCandidate(
     ? (environmentalScore + socialScore) / 2
     : null;
   const estimatedCost = estimateImplementationCost(effortScore || 1);
-  const estimatedValue =
-    estimateEfficiencyValue(efficiencyScore || 1) +
-    estimateProfitabilityValue(profitabilityScore || 1);
-  const estimatedNetValue = estimatedValue - estimatedCost;
   const priorityScore =
     (useCase.overallScore ?? 0) * 10 +
-    profitabilityScore * 2 +
     efficiencyScore * 1.5 +
+    (5 - Math.max(1, effortScore || 1)) +
     (sustainabilityScore ?? 0);
 
   return {
@@ -137,8 +113,6 @@ export function buildWaveCandidate(
     sustainabilityScore,
     sustainabilityBand: getSustainabilityBand(sustainabilityScore),
     estimatedCost,
-    estimatedValue,
-    estimatedNetValue,
     priorityScore,
   };
 }
@@ -165,9 +139,6 @@ export function buildPortfolioWavePlan(params: {
       if (b.priorityScore !== a.priorityScore) {
         return b.priorityScore - a.priorityScore;
       }
-      if (b.estimatedNetValue !== a.estimatedNetValue) {
-        return b.estimatedNetValue - a.estimatedNetValue;
-      }
       return a.estimatedCost - b.estimatedCost;
     });
 
@@ -193,8 +164,6 @@ export function buildPortfolioWavePlan(params: {
         budget: params.waveBudget,
         budgetUsed: 0,
         remainingBudget: params.waveBudget,
-        totalEstimatedValue: 0,
-        totalEstimatedNetValue: 0,
         avgSustainabilityScore: null,
         items: [],
         isOverBudget: false,
@@ -205,8 +174,6 @@ export function buildPortfolioWavePlan(params: {
     targetWave.items.push(candidate);
     targetWave.budgetUsed += candidate.estimatedCost;
     targetWave.remainingBudget = targetWave.budget - targetWave.budgetUsed;
-    targetWave.totalEstimatedValue += candidate.estimatedValue;
-    targetWave.totalEstimatedNetValue += candidate.estimatedNetValue;
     targetWave.isOverBudget = targetWave.remainingBudget < 0;
     const sustainabilityValues = targetWave.items
       .map((item) => item.sustainabilityScore)
@@ -224,11 +191,6 @@ export function buildPortfolioWavePlan(params: {
       items: eligible.length,
       budget: waves.reduce((sum, wave) => sum + wave.budget, 0),
       budgetUsed: waves.reduce((sum, wave) => sum + wave.budgetUsed, 0),
-      estimatedValue: waves.reduce((sum, wave) => sum + wave.totalEstimatedValue, 0),
-      estimatedNetValue: waves.reduce(
-        (sum, wave) => sum + wave.totalEstimatedNetValue,
-        0
-      ),
     },
   };
 }

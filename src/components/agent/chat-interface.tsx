@@ -73,6 +73,67 @@ function toolNameFromPart(part: Record<string, unknown>): string {
   return "tool";
 }
 
+function WaitingStatus() {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="flex items-center gap-3 py-1 text-sm text-muted-foreground">
+      <div className="flex items-center gap-1">
+        <span
+          className="h-1.5 w-1.5 animate-bounce rounded-full bg-foreground/30"
+          style={{ animationDelay: "0ms" }}
+        />
+        <span
+          className="h-1.5 w-1.5 animate-bounce rounded-full bg-foreground/30"
+          style={{ animationDelay: "150ms" }}
+        />
+        <span
+          className="h-1.5 w-1.5 animate-bounce rounded-full bg-foreground/30"
+          style={{ animationDelay: "300ms" }}
+        />
+      </div>
+      <span className="text-xs">
+        {seconds < 5
+          ? "Sto ragionando..."
+          : seconds < 15
+            ? "Elaboro la risposta..."
+            : seconds < 30
+              ? `Ancora un momento (${seconds}s)...`
+              : `Ci sto mettendo un po' (${seconds}s)...`}
+      </span>
+    </div>
+  );
+}
+
+function IdleNudge() {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (seconds < 45) return null;
+
+  return (
+    <div className="px-6 pb-2">
+      <div className="mx-auto max-w-2xl">
+        <div className="flex animate-in items-center gap-2 rounded-lg border border-foreground/10 bg-accent/50 px-4 py-2.5 text-xs text-muted-foreground fade-in slide-in-from-bottom-2">
+          <MessageCircle className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            È il tuo turno — rispondi alla domanda per continuare la Discovery.
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ChatInterface({
   workspaceId,
   conversationType,
@@ -83,9 +144,6 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [waitingSeconds, setWaitingSeconds] = useState(0);
-  const [idleSeconds, setIdleSeconds] = useState(0);
-  const [showNudge, setShowNudge] = useState(false);
 
   const welcomeMessages: UIMessage[] = [];
   if (initialMessages.length === 0 && welcomeMessage) {
@@ -152,36 +210,6 @@ export function ChatInterface({
     }
   }, [messages, isLoading]);
 
-  // Timer di attesa AI
-  useEffect(() => {
-    if (!isLoading) {
-      setWaitingSeconds(0);
-      return;
-    }
-    setWaitingSeconds(0);
-    const interval = setInterval(() => setWaitingSeconds((s) => s + 1), 1000);
-    return () => clearInterval(interval);
-  }, [isLoading]);
-
-  // Timer idle utente: nudge dopo 45s
-  useEffect(() => {
-    if (!isUserTurn) {
-      setIdleSeconds(0);
-      setShowNudge(false);
-      return;
-    }
-    setIdleSeconds(0);
-    setShowNudge(false);
-    const interval = setInterval(() => {
-      setIdleSeconds((s) => {
-        const next = s + 1;
-        if (next >= 45) setShowNudge(true);
-        return next;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isUserTurn]);
-
   // Auto-focus input quando è turno utente
   useEffect(() => {
     if (isUserTurn && inputRef.current) {
@@ -195,8 +223,6 @@ export function ChatInterface({
       const value = inputRef.current?.value?.trim();
       if (!value || isLoading) return;
       if (inputRef.current) inputRef.current.value = "";
-      setShowNudge(false);
-      setIdleSeconds(0);
       chat.sendMessage({
         role: "user",
         parts: [{ type: "text", text: value }],
@@ -208,8 +234,6 @@ export function ChatInterface({
   const handleSuggestion = useCallback(
     (text: string) => {
       if (isLoading) return;
-      setShowNudge(false);
-      setIdleSeconds(0);
       chat.sendMessage({
         role: "user",
         parts: [{ type: "text", text }],
@@ -351,33 +375,7 @@ export function ChatInterface({
           })}
 
           {/* AI thinking / streaming indicator */}
-          {isLoading && (
-            <div className="flex items-center gap-3 text-sm text-muted-foreground py-1">
-              <div className="flex items-center gap-1">
-                <span
-                  className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce"
-                  style={{ animationDelay: "0ms" }}
-                />
-                <span
-                  className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce"
-                  style={{ animationDelay: "150ms" }}
-                />
-                <span
-                  className="h-1.5 w-1.5 rounded-full bg-foreground/30 animate-bounce"
-                  style={{ animationDelay: "300ms" }}
-                />
-              </div>
-              <span className="text-xs">
-                {waitingSeconds < 5
-                  ? "Sto ragionando..."
-                  : waitingSeconds < 15
-                    ? "Elaboro la risposta..."
-                    : waitingSeconds < 30
-                      ? `Ancora un momento (${waitingSeconds}s)...`
-                      : `Ci sto mettendo un po' (${waitingSeconds}s)...`}
-              </span>
-            </div>
-          )}
+          {isLoading && <WaitingStatus />}
 
           {/* Errore */}
           {error && (
@@ -401,19 +399,7 @@ export function ChatInterface({
       </div>
 
       {/* Nudge quando utente inattivo */}
-      {showNudge && isUserTurn && (
-        <div className="px-6 pb-2">
-          <div className="mx-auto max-w-2xl">
-            <div className="flex items-center gap-2 rounded-lg border border-foreground/10 bg-accent/50 px-4 py-2.5 text-xs text-muted-foreground animate-in fade-in slide-in-from-bottom-2">
-              <MessageCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>
-                È il tuo turno — rispondi alla domanda per continuare la
-                Discovery.
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      {isUserTurn && <IdleNudge />}
 
       {/* Suggestions */}
       {showSuggestions && (

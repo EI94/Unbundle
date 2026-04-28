@@ -4,18 +4,24 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getActivitiesByWorkspace, updateActivityClassification } from "@/lib/db/queries/activities";
-import { getStrategicGoalsByWorkspace, getWorkspaceById } from "@/lib/db/queries/workspaces";
+import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import { db } from "@/lib/db";
 import { organizations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { classifyActivitiesBatch } from "@/lib/ai/classify";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function runClassificationAction(workspaceId: string) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) throw new Error("Workspace non trovato");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) throw new Error("Workspace non trovato");
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    throw new Error("Non hai i permessi per classificare le attivita.");
+  }
+  const { workspace } = access;
 
   const [org] = await db
     .select()

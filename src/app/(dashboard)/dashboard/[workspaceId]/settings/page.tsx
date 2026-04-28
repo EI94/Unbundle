@@ -2,15 +2,24 @@ import { auth } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getSlackInstallationByWorkspace } from "@/lib/db/queries/slack";
-import { getUserMembership } from "@/lib/db/queries/organizations";
+import {
+  getWorkspaceCollaborators,
+  getWorkspaceInvitationsForWorkspace,
+} from "@/lib/db/queries/workspace-collaboration";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EsgToggle } from "@/components/dashboard/esg-toggle";
 import { SlackInstallButton } from "@/components/dashboard/slack-install-button";
 import { SlackNotifyChannelForm } from "@/components/dashboard/slack-notify-channel-form";
 import { DeleteWorkspaceForm } from "@/components/dashboard/delete-workspace-form";
-import { canDeleteWorkspace } from "@/lib/workspace-permissions";
-import { MessageSquare, CheckCircle, Leaf } from "lucide-react";
+import {
+  canDeleteWorkspace,
+  canManageWorkspaceCollaborators,
+  canManageWorkspaceSettings,
+} from "@/lib/workspace-permissions";
+import { WorkspaceCollaborationCard } from "@/components/workspace/workspace-collaboration-card";
+import { MessageSquare, CheckCircle, Leaf, Lock } from "lucide-react";
 
 function decodeSlackErrorParam(raw: string | undefined): string {
   if (!raw) return "";
@@ -62,12 +71,19 @@ export default async function SettingsPage({
   if (!workspace) notFound();
 
   const search = await searchParams;
-  const [slackInstallation, membership] = await Promise.all([
+  const [slackInstallation, access, collaborators, invitations] = await Promise.all([
     getSlackInstallationByWorkspace(workspaceId),
-    getUserMembership(session.user.id, workspace.organizationId),
+    getWorkspaceAccessForUser(session.user.id, workspaceId),
+    getWorkspaceCollaborators(workspaceId),
+    getWorkspaceInvitationsForWorkspace(workspaceId),
   ]);
+  if (!access) notFound();
   const isSlackInstalled = !!slackInstallation;
-  const canDelete = canDeleteWorkspace(membership?.role);
+  const canDelete =
+    access.source === "organization" && canDeleteWorkspace(access.role);
+  const canManageCollaborators = canManageWorkspaceCollaborators(access.role);
+  const canManageIntegrations =
+    access.source === "organization" && canManageWorkspaceSettings(access.role);
   const slackErrDecoded = decodeSlackErrorParam(search.slack_error);
   const slackErrHint = slackErrDecoded ? slackInstallErrorHint(slackErrDecoded) : null;
 
@@ -138,6 +154,11 @@ export default async function SettingsPage({
                   <CheckCircle className="mr-1 h-3 w-3" />
                   Connesso
                 </Badge>
+              ) : !canManageIntegrations ? (
+                <Badge variant="outline" className="text-muted-foreground">
+                  <Lock className="mr-1 h-3 w-3" />
+                  Admin org
+                </Badge>
               ) : (
                 <SlackInstallButton workspaceId={workspaceId} />
               )}
@@ -183,14 +204,44 @@ export default async function SettingsPage({
                   <span className="font-mono">C</span>/<span className="font-mono">G</span>), non sostituisce
                   l’invito al canale.
                 </p>
-                <SlackNotifyChannelForm
-                  workspaceId={workspaceId}
-                  initialChannelId={slackInstallation.notifyChannelId}
-                />
+                {canManageIntegrations ? (
+                  <SlackNotifyChannelForm
+                    workspaceId={workspaceId}
+                    initialChannelId={slackInstallation.notifyChannelId}
+                  />
+                ) : (
+                  <div className="mt-4 rounded-lg border border-border bg-background/50 p-4 text-xs text-muted-foreground">
+                    Solo un admin dell&apos;organizzazione può modificare le
+                    impostazioni Slack.
+                  </div>
+                )}
               </div>
             </CardContent>
           )}
         </Card>
+
+        <WorkspaceCollaborationCard
+          workspaceId={workspaceId}
+          canManage={canManageCollaborators}
+          members={collaborators.map((member) => ({
+            userId: member.userId,
+            name: member.name,
+            email: member.email,
+            role: member.role,
+            source: member.source,
+            createdAt: member.createdAt.toISOString(),
+          }))}
+          invitations={invitations.map((invitation) => ({
+            id: invitation.id,
+            email: invitation.email,
+            role: invitation.role,
+            maxUses: invitation.maxUses,
+            usedCount: invitation.usedCount,
+            expiresAt: invitation.expiresAt.toISOString(),
+            revokedAt: invitation.revokedAt?.toISOString() ?? null,
+            createdAt: invitation.createdAt.toISOString(),
+          }))}
+        />
 
         <Card>
           <CardHeader>

@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { UseCase } from "@/lib/db/schema";
 import type { ScoringModelConfig } from "@/lib/db/queries/scoring-model";
 import { readUseCaseRawKpiScore } from "@/lib/db/use-case-scoring";
+import { isMonetaryKpi } from "@/lib/portfolio/ai-ranking-contract";
+import { reconcileScoreOverridesWithServerItems } from "@/lib/portfolio/matrix-state";
 import { ReviewForm } from "@/components/portfolio/review-form";
+import type { PortfolioReviewSaveData } from "@/lib/actions/portfolio";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -125,6 +128,9 @@ function buildReviewInitialScores(
       if (typeof scores[kpi.id] === "number" && Number.isFinite(scores[kpi.id])) {
         continue;
       }
+      if (isMonetaryKpi(kpi)) {
+        continue;
+      }
       const fallback = readUseCaseRawKpiScore(item, dim, kpi.id);
       if (fallback > 0) {
         scores[kpi.id] = Number(fallback.toFixed(1));
@@ -169,6 +175,9 @@ export function RankingMatrix({
   const [dragOverrides, setDragOverrides] = useState<Record<string, { x: number; y: number }>>(
     {}
   );
+  const [scoreOverrides, setScoreOverrides] = useState<Record<string, Partial<MatrixItem>>>(
+    {}
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const safeHighImpact = clampThresh(thresholds.highImpact, 3.5);
@@ -192,8 +201,17 @@ export function RankingMatrix({
 
   const hiX = toX(safeHighFeas);
   const hiY = toY(safeHighImpact);
+  const effectiveScoreOverrides = reconcileScoreOverridesWithServerItems(
+    scoreOverrides,
+    items
+  );
 
-  const positioned = items
+  const renderItems = items.map((item) => ({
+    ...item,
+    ...(effectiveScoreOverrides[item.id] ?? {}),
+  }));
+
+  const positioned = renderItems
     .filter(
       (item) =>
         typeof item.overallImpactScore === "number" &&
@@ -217,6 +235,29 @@ export function RankingMatrix({
     });
 
   const selected = positioned.find((item) => item.id === selectedId) ?? null;
+
+  const handleReviewSaved = useCallback((data: PortfolioReviewSaveData) => {
+    setScoreOverrides((prev) => ({
+      ...prev,
+      [data.useCaseId]: {
+        customScores: data.customScores,
+        portfolioReviewStatus: data.portfolioReviewStatus as MatrixItem["portfolioReviewStatus"],
+        reviewNotes: data.reviewNotes,
+        overallImpactScore: data.overallImpactScore,
+        overallFeasibilityScore: data.overallFeasibilityScore,
+        overallEsgScore: data.overallEsgScore,
+        overallScore: data.overallScore,
+        updatedAt: data.updatedAt ? new Date(data.updatedAt) : undefined,
+      },
+    }));
+    setDragOverrides((prev) => {
+      if (!prev[data.useCaseId]) return prev;
+      const next = { ...prev };
+      delete next[data.useCaseId];
+      return next;
+    });
+    setSelectedId(data.useCaseId);
+  }, []);
 
   useEffect(() => {
     if (!activeDragId) return;
@@ -584,7 +625,11 @@ export function RankingMatrix({
                   <DetailBlock label="Problema / prima" value={selected.description} />
                   <DetailBlock label="Nuovo flusso" value={selected.flowDescription} />
                   <DetailBlock
-                    label="Human in the loop"
+                    label={
+                      selected.portfolioKind === "best_practice"
+                        ? "Beneficiari / adozione"
+                        : "Human in the loop"
+                    }
                     value={selected.humanInTheLoop}
                   />
                   {selected.guardrails && (
@@ -595,7 +640,11 @@ export function RankingMatrix({
                     value={selected.businessCase}
                   />
                   <DetailBlock
-                    label="Dati necessari / replicabilita"
+                    label={
+                      selected.portfolioKind === "best_practice"
+                        ? "Requisiti per replicarla"
+                        : "Dati necessari / replicabilita"
+                    }
                     value={selected.dataRequirements}
                   />
                   {esgEnabled && (
@@ -636,6 +685,7 @@ export function RankingMatrix({
                     portfolioReviewStatus: selected.portfolioReviewStatus,
                     reviewNotes: selected.reviewNotes ?? "",
                   }}
+                  onSaved={handleReviewSaved}
                 />
               </div>
             </div>

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Bot, Wrench, Shield, ArrowRight } from "lucide-react";
+import { Loader2, Bot, Wrench, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { generateBlueprintsAction } from "@/lib/actions/blueprints";
 import type { AgentBlueprint } from "@/lib/ai/generate-blueprints";

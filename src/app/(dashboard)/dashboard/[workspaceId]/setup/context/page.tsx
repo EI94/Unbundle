@@ -11,7 +11,6 @@ import { eq } from "drizzle-orm";
 import Link from "next/link";
 import {
   ArrowRight,
-  Compass,
   Check,
 } from "lucide-react";
 import { getUnitTerm, capitalize } from "@/lib/utils/unit-terminology";

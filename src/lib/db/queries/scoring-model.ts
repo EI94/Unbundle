@@ -55,7 +55,7 @@ export const DEFAULT_IMPACT_KPIS: ScoringKpi[] = [
     id: "profitability",
     label: "Profittabilità",
     description:
-      "Scala 1-5. 1 = nessun impatto economico tangibile o valore annuo <10k EUR. 2 = upside limitato: 10k-50k EUR tra nuovi ricavi, saving o margine protetto. 3 = upside medio: 50k-150k EUR annui. 4 = upside alto: 150k-500k EUR annui o contributo forte a upsell / retention. 5 = upside trasformativo: oltre 500k EUR annui o nuova linea di valore significativa.",
+      "Scala 1-5 da compilare dal reviewer quando ci sono dati economici espliciti. 1 = impatto economico nullo o non dimostrato. 3 = upside economico plausibile e supportato da dati. 5 = upside economico trasformativo, documentato e verificabile. L'AI non stima automaticamente questo KPI se mancano numeri affidabili.",
     weight: 1,
     direction: "higher_better",
   },

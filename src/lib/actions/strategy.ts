@@ -3,19 +3,22 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { db } from "@/lib/db";
 import { organizations, strategicGoals } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function createGoalAction(formData: FormData) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
   const workspaceId = formData.get("workspaceId") as string;
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) throw new Error("Workspace non trovato");
   const type = formData.get("type") as "goal" | "objective" | "key_result";
   const title = formData.get("title") as string;
   const description = (formData.get("description") as string) || undefined;
@@ -65,8 +68,12 @@ export async function suggestOKRsAction(
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) throw new Error("Workspace non trovato");
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) throw new Error("Workspace non trovato");
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    throw new Error("Non hai i permessi per suggerire OKR.");
+  }
+  const { workspace } = access;
 
   const [org] = await db
     .select()

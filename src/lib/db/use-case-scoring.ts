@@ -68,11 +68,7 @@ export function readUseCaseRawKpiScore(
   }
 
   if (dimension === "impact" && kpiId === "profitability") {
-    return (
-      readLegacyColumn(data, "impactEconomic") ??
-      averageLegacyColumns(data, ["impactQuality", "impactTime"]) ??
-      0
-    );
+    return 0;
   }
 
   if (dimension === "feasibility" && kpiId === "effort") {

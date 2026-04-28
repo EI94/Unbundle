@@ -7,7 +7,7 @@ import {
   confirmPreGeneratedActivities,
   type PreGeneratedActivity,
 } from "@/lib/actions/pre-generate-activities";
-import { Loader2, Sparkles, Check, X, Clock, Wrench } from "lucide-react";
+import { Loader2, Sparkles, Check, Clock, Wrench } from "lucide-react";
 import { toast } from "sonner";
 
 interface ActivityPreGeneratorProps {

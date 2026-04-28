@@ -96,7 +96,7 @@ function InnerForm({
         name="expectedImpact"
         required
         rows={4}
-        placeholder="Tempo, qualità, costo, ricavi, rischio…"
+        placeholder="Tempo risparmiato, qualità, rischio, esperienza utente. Evita stime economiche se non hai numeri verificabili."
         error={fe.expectedImpact}
       />
       <FieldArea

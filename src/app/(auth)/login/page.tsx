@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/auth/login-form";
+import { safeInternalCallbackUrl } from "@/lib/navigation/safe-callback-url";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -10,9 +11,15 @@ export const metadata: Metadata = {
   alternates: { canonical: "/login" },
 };
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ callbackUrl?: string }>;
+}) {
   const session = await auth();
-  if (session) redirect("/dashboard");
+  const sp = searchParams ? await searchParams : {};
+  const callbackUrl = safeInternalCallbackUrl(sp.callbackUrl);
+  if (session) redirect(callbackUrl ?? "/dashboard");
 
   return (
     <div className="min-h-screen flex">

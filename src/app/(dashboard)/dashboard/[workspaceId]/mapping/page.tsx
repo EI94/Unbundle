@@ -11,7 +11,7 @@ import {
   Compass,
   Check,
 } from "lucide-react";
-import { getUnitTerm, capitalize } from "@/lib/utils/unit-terminology";
+import { getUnitTerm } from "@/lib/utils/unit-terminology";
 
 export default async function MappingPage({
   params,

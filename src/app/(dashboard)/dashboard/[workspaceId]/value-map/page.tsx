@@ -39,8 +39,6 @@ export default async function ValueMapPage({
 
   const needsClassification =
     activities.length > 0 && classified.length < activities.length;
-  const needsPositioning = classified.length > 0 && nodes.length === 0;
-
   return (
     <div className="flex-1 p-8 lg:p-12 max-w-5xl">
       <div className="mb-8">

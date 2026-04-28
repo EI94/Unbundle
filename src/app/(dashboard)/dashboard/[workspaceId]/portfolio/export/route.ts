@@ -1,8 +1,8 @@
 import * as XLSX from "xlsx";
 import { auth } from "@/lib/auth";
-import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getPortfolioContributionsByWorkspace } from "@/lib/db/queries/use-cases";
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import {
   buildPortfolioWavePlan,
   buildWaveCandidate,
@@ -39,10 +39,11 @@ export async function GET(
   }
 
   const { workspaceId } = await params;
-  const workspace = await getWorkspaceById(workspaceId);
-  if (!workspace) {
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) {
     return Response.json({ error: "Workspace not found" }, { status: 404 });
   }
+  const { workspace } = access;
 
   const url = new URL(request.url);
   const waveBudget = Math.max(
@@ -89,9 +90,8 @@ export async function GET(
         Sustainability: esgEnabled
           ? getSustainabilityBand(item.overallEsgScore)
           : "neutral",
-        "Costo stimato": candidate.estimatedCost,
-        "Valore lordo stimato": candidate.estimatedValue,
-        "Valore netto stimato": candidate.estimatedNetValue,
+        "Budget indicativo": candidate.estimatedCost,
+        "Valore economico validato": "",
         Problema: item.description ?? "",
         Flusso: item.flowDescription ?? "",
         "Business case": item.businessCase ?? "",
@@ -120,9 +120,8 @@ export async function GET(
         item.useCase.portfolioKind ??
         "Contributo",
       "Overall score": item.useCase.overallScore ?? null,
-      "Costo stimato": item.estimatedCost,
-      "Valore lordo stimato": item.estimatedValue,
-      "Valore netto stimato": item.estimatedNetValue,
+      "Budget indicativo": item.estimatedCost,
+      "Valore economico validato": "",
       Efficiency: item.efficiencyScore || null,
       Profitability: item.profitabilityScore || null,
       Effort: item.effortScore || null,
@@ -144,14 +143,7 @@ export async function GET(
       Voce: "Budget utilizzato",
       Valore: currency.format(plan.totals.budgetUsed),
     },
-    {
-      Voce: "Valore lordo stimato",
-      Valore: currency.format(plan.totals.estimatedValue),
-    },
-    {
-      Voce: "Valore netto stimato",
-      Valore: currency.format(plan.totals.estimatedNetValue),
-    },
+    { Voce: "Valore economico validato", Valore: "" },
   ];
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), "Summary");
 

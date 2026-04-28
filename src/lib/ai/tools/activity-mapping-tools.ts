@@ -150,7 +150,7 @@ export function getActivityMappingTools(
               counts[result.classification]++;
             }
             classificationSummary = `Classificazione completata: ${counts.automate} Automate, ${counts.differentiate} Differentiate, ${counts.innovate} Innovate.`;
-          } catch (err) {
+          } catch {
             classificationSummary =
               "Classificazione non riuscita — verrà riprovata manualmente.";
           }
@@ -174,7 +174,7 @@ export function getActivityMappingTools(
                   ).toFixed(0)
                 : "0";
             onetSummary = `Match O*NET completato su ${matches.length} attività. AI Exposure media: ${avgExposure}%.`;
-          } catch (err) {
+          } catch {
             onetSummary =
               "Match O*NET non riuscito — verrà riprovato manualmente.";
           }
