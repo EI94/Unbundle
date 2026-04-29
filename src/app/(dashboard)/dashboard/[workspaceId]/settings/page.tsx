@@ -200,6 +200,11 @@ export default async function SettingsPage({
                   questa installazione).
                 </p>
                 <p className="text-muted-foreground mt-2">
+                  Nei <strong>canali Slack Connect</strong>, Unbundle salva il contributo nel workspace collegato
+                  all’azienda della persona che scrive. Se un esterno non ha collegato il proprio Slack a Unbundle,
+                  il bot chiede di completare l’installazione invece di salvare il dato in questo workspace.
+                </p>
+                <p className="text-muted-foreground mt-2">
                   Il campo sotto è solo per <strong>notifiche admin</strong> verso un canale (ID che inizia con{" "}
                   <span className="font-mono">C</span>/<span className="font-mono">G</span>), non sostituisce
                   l’invito al canale.

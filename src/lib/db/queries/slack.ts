@@ -16,6 +16,7 @@ export async function upsertSlackInstallation(data: NewSlackInstallation) {
     .onConflictDoUpdate({
       target: slackInstallations.slackTeamId,
       set: {
+        workspaceId: data.workspaceId,
         botToken: data.botToken,
         slackTeamName: data.slackTeamName,
         installedBy: data.installedBy,

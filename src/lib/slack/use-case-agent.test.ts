@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  chooseSlackContributionTeam,
   detectContributionKind,
   normalizeDraftFieldValue,
   questionForSlackDraftField,
@@ -13,6 +14,8 @@ import {
   type SlackDraftField,
   type SlackPortfolioKind,
 } from "./use-case-agent-utils.ts";
+import { buildUseCaseDataFromSlackDraft } from "./use-case-payload.ts";
+import type { SlackUseCaseDraft } from "../db/schema.ts";
 
 test("non espone markdown bold con doppio asterisco nei messaggi Slack", () => {
   assert.equal(
@@ -205,7 +208,7 @@ test("menzione in canale privato o group DM interno non viene bloccata", () => {
   }
 });
 
-test("Slack Connect preferisce user_team e blocca mittenti esterni", () => {
+test("Slack Connect preferisce il workspace Slack dell'autore se installato", () => {
   const context = resolveSlackTenantContext({
     channel: "C_SHARED",
     team_id: "T_NATIVA",
@@ -218,6 +221,39 @@ test("Slack Connect preferisce user_team e blocca mittenti esterni", () => {
     senderTeamId: "T_EXTERNAL_CLIENT",
     isExternal: true,
   });
+
+  assert.deepEqual(
+    chooseSlackContributionTeam(context, (teamId) => teamId === "T_EXTERNAL_CLIENT"),
+    { ok: true, slackTeamId: "T_EXTERNAL_CLIENT", source: "sender" }
+  );
+});
+
+test("Slack Connect non ripiega su NATIVA se l'autore esterno non ha installato Unbundle", () => {
+  const context = resolveSlackTenantContext({
+    channel: "C_SHARED",
+    team_id: "T_NATIVA",
+    team: "T_NATIVA",
+    user_team: "T_VOLTA",
+  });
+
+  assert.deepEqual(
+    chooseSlackContributionTeam(context, (teamId) => teamId === "T_NATIVA"),
+    { ok: false, reason: "sender_not_installed" }
+  );
+});
+
+test("Slack Connect con autore NATIVA salva nel workspace NATIVA anche in canale condiviso", () => {
+  const context = resolveSlackTenantContext({
+    channel: "C_SHARED",
+    team_id: "T_NATIVA",
+    team: "T_NATIVA",
+    user_team: "T_NATIVA",
+  });
+
+  assert.deepEqual(
+    chooseSlackContributionTeam(context, (teamId) => teamId === "T_NATIVA"),
+    { ok: true, slackTeamId: "T_NATIVA", source: "sender" }
+  );
 });
 
 test("in un thread Slack esplicito il thread_ts vince sempre", () => {
@@ -241,6 +277,53 @@ test("senza draft attivo usa il ts del messaggio come nuova radice", () => {
     }),
     "1777384591.933679"
   );
+});
+
+function completeSlackDraft(
+  patch: Partial<SlackUseCaseDraft> = {}
+): SlackUseCaseDraft {
+  const now = new Date("2026-04-29T08:00:00Z");
+  return {
+    id: "00000000-0000-0000-0000-000000000001",
+    workspaceId: "nativa-workspace",
+    slackUserId: "U_LUCA_BALDESSARINI",
+    slackThreadTs: "1777440000.000001",
+    slackChannelId: "C_SHARED_NATIVA_VOLTA",
+    slackTeamId: "T_NATIVA",
+    contributionKind: "use_case_ai",
+    status: "drafting",
+    title: "Automated project tracking",
+    problem: "Oggi il tracking progetto viene aggiornato manualmente.",
+    flowDescription: "L'AI legge task e meeting notes e aggiorna lo stato progetto.",
+    humanInTheLoop: "Il project owner revisiona e approva gli aggiornamenti.",
+    guardrails: "Non modifica scope, budget o responsabilita senza approvazione.",
+    expectedImpact: "Riduce il lavoro manuale e migliora la qualita degli aggiornamenti.",
+    dataRequirements: "Servono task, meeting notes, owner e template reporting.",
+    sustainabilityImpact: "Impatto sociale positivo per meno lavoro ripetitivo.",
+    urgency: "Quick win pilota in 4 settimane.",
+    reminder24hSentAt: null,
+    abandonedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    submittedAt: null,
+    ...patch,
+  };
+}
+
+test("il draft Slack di Luca crea un use case visibile nel portfolio NATIVA", () => {
+  const useCase = buildUseCaseDataFromSlackDraft({
+    draft: completeSlackDraft(),
+    actingSlackUserId: "U_LUCA_BALDESSARINI",
+    expectedWorkspaceId: "nativa-workspace",
+    esgEnabled: true,
+  });
+
+  assert.equal(useCase.workspaceId, "nativa-workspace");
+  assert.equal(useCase.source, "slack_proposed");
+  assert.equal(useCase.portfolioKind, "use_case_ai");
+  assert.equal(useCase.status, "proposed");
+  assert.equal(useCase.proposedBy, "U_LUCA_BALDESSARINI");
+  assert.equal(useCase.title, "Automated project tracking");
 });
 
 test("rifiuta divagazioni evidenti e mantiene lo stesso campo", () => {

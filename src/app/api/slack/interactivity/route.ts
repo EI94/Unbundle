@@ -9,6 +9,7 @@ import { slackChatPostMessage } from "@/lib/slack/slack-chat-post";
 import { submitSlackContributionDraft } from "@/lib/slack/submit-contribution";
 import { getDraftById, getSlackInstallationByTeamId } from "@/lib/db/queries/slack";
 import { tryBuildPortfolioShareUrl } from "@/lib/portfolio/share-link";
+import { chooseSlackContributionTeam, resolveSlackTenantContext } from "@/lib/slack/use-case-agent-utils";
 
 export const maxDuration = 60;
 
@@ -22,7 +23,7 @@ function getAppBaseUrl(): string | null {
 
 type SlackBlockActionPayload = {
   type: string;
-  user?: { id?: string };
+  user?: { id?: string; team_id?: string };
   team?: { id?: string };
   channel?: { id?: string };
   message?: { ts?: string; thread_ts?: string };
@@ -31,16 +32,39 @@ type SlackBlockActionPayload = {
 
 async function handleBlockActions(payload: SlackBlockActionPayload) {
   const userId = payload.user?.id;
-  const teamId = payload.team?.id;
+  const responseTeamId = payload.team?.id;
   const channelId = payload.channel?.id;
   const action = payload.actions?.[0];
-  if (!userId || !teamId || !channelId || !action?.action_id) return;
+  if (!userId || !channelId || !action?.action_id) return;
 
-  const installation = await getSlackInstallationByTeamId(teamId);
-  if (!installation?.botToken) {
-    console.error("[slack/interactivity] Nessuna installazione/token per team", teamId);
+  const responseInstallation = responseTeamId
+    ? await getSlackInstallationByTeamId(responseTeamId)
+    : null;
+  if (!responseInstallation?.botToken) {
+    console.error("[slack/interactivity] Nessuna installazione/token per team", responseTeamId);
     return;
   }
+
+  const tenantContext = resolveSlackTenantContext({
+    team_id: responseTeamId,
+    user_team: payload.user?.team_id,
+  });
+  const teamIds = Array.from(
+    new Set([tenantContext.senderTeamId, tenantContext.authedTeamId].filter(Boolean))
+  );
+  const installations = new Map(
+    (
+      await Promise.all(
+        teamIds.map(async (teamId) => [
+          teamId,
+          await getSlackInstallationByTeamId(teamId),
+        ] as const)
+      )
+    ).filter(([, installation]) => !!installation)
+  );
+  const teamChoice = chooseSlackContributionTeam(tenantContext, (teamId) =>
+    installations.has(teamId)
+  );
 
   const threadTs = payload.message?.thread_ts ?? payload.message?.ts;
   if (!threadTs) {
@@ -51,7 +75,7 @@ async function handleBlockActions(payload: SlackBlockActionPayload) {
   const decoded = action.value ? decodeContributionReviewValue(action.value) : null;
   if (!decoded) {
     await slackChatPostMessage({
-      botToken: installation.botToken,
+      botToken: responseInstallation.botToken,
       channel: channelId,
       threadTs,
       text: "Azione non valida o payload scaduto. Ricomincia il riepilogo dall'agente.",
@@ -59,10 +83,23 @@ async function handleBlockActions(payload: SlackBlockActionPayload) {
     return;
   }
 
-  const draft = await getDraftById(decoded.d);
-  if (!draft || draft.workspaceId !== installation.workspaceId || draft.workspaceId !== decoded.w) {
+  if (!teamChoice.ok) {
     await slackChatPostMessage({
-      botToken: installation.botToken,
+      botToken: responseInstallation.botToken,
+      channel: channelId,
+      threadTs,
+      text:
+        "Non posso elaborare questa azione da un workspace Slack non collegato a Unbundle. " +
+        "Apri Unbundle dal workspace della tua azienda o chiedi all'admin di installare il bot.",
+    }).catch((e) => console.error("[slack/interactivity] postMessage:", e));
+    return;
+  }
+
+  const installation = installations.get(teamChoice.slackTeamId);
+  const draft = await getDraftById(decoded.d);
+  if (!draft || !installation || draft.workspaceId !== installation.workspaceId || draft.workspaceId !== decoded.w) {
+    await slackChatPostMessage({
+      botToken: responseInstallation.botToken,
       channel: channelId,
       threadTs,
       text: "Non posso elaborare questa richiesta (workspace o draft non coerenti).",
@@ -72,7 +109,7 @@ async function handleBlockActions(payload: SlackBlockActionPayload) {
 
   if (action.action_id === SLACK_CONTRIBUTION_ACTION_EDIT) {
     await slackChatPostMessage({
-      botToken: installation.botToken,
+      botToken: responseInstallation.botToken,
       channel: channelId,
       threadTs,
       text:
@@ -96,7 +133,7 @@ async function handleBlockActions(payload: SlackBlockActionPayload) {
       ? tryBuildPortfolioShareUrl(base, draft.workspaceId, result.useCaseId)
       : null;
     await slackChatPostMessage({
-      botToken: installation.botToken,
+      botToken: responseInstallation.botToken,
       channel: channelId,
       threadTs,
       text:
@@ -106,7 +143,7 @@ async function handleBlockActions(payload: SlackBlockActionPayload) {
     }).catch((e) => console.error("[slack/interactivity] postMessage:", e));
   } else {
     await slackChatPostMessage({
-      botToken: installation.botToken,
+      botToken: responseInstallation.botToken,
       channel: channelId,
       threadTs,
       text: `⚠️ Non è stato possibile inviare: ${result.error}`,

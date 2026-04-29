@@ -8,6 +8,7 @@ import type { SlackUseCaseDraft } from "@/lib/db/schema";
 import { dispatchNewPortfolioNotifications } from "@/lib/notifications/portfolio-dispatch";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { autoScorePortfolioUseCase } from "@/lib/portfolio/ai-ranking";
+import { buildUseCaseDataFromSlackDraft } from "./use-case-payload";
 
 type SlackPortfolioKind = "best_practice" | "use_case_ai";
 
@@ -97,22 +98,14 @@ export async function submitSlackContributionDraft(params: {
   }
 
   try {
-    const createdUseCase = await createUseCase({
-      workspaceId: params.expectedWorkspaceId,
-      title: draft.title ?? "Contributo senza titolo",
-      description: draft.problem,
-      businessCase: draft.expectedImpact,
-      portfolioKind: kind,
-      status: "proposed",
-      source: "slack_proposed",
-      proposedBy: params.actingSlackUserId,
-      flowDescription: draft.flowDescription,
-      humanInTheLoop: draft.humanInTheLoop,
-      guardrails: kind === "use_case_ai" ? draft.guardrails : null,
-      dataRequirements: draft.dataRequirements,
-      sustainabilityImpact: esgEnabled ? draft.sustainabilityImpact : null,
-      timeline: kind === "use_case_ai" ? (draft.urgency ?? null) : null,
-    });
+    const createdUseCase = await createUseCase(
+      buildUseCaseDataFromSlackDraft({
+        draft,
+        actingSlackUserId: params.actingSlackUserId,
+        expectedWorkspaceId: params.expectedWorkspaceId,
+        esgEnabled,
+      })
+    );
 
     let useCase = createdUseCase;
     try {

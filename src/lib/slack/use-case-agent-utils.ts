@@ -16,6 +16,10 @@ export type SlackTenantContext = {
   isExternal: boolean;
 };
 
+export type SlackContributionTeamChoice =
+  | { ok: true; slackTeamId: string; source: "sender" | "authed" }
+  | { ok: false; reason: "missing_team" | "sender_not_installed" | "authed_not_installed" };
+
 export function resolveSlackTenantContext(
   raw: Record<string, string | undefined>
 ): SlackTenantContext {
@@ -35,6 +39,28 @@ export function resolveSlackTenantContext(
       authedTeamId &&
       senderTeamId !== authedTeamId
     ),
+  };
+}
+
+export function chooseSlackContributionTeam(
+  context: SlackTenantContext,
+  hasInstallation: (teamId: string) => boolean
+): SlackContributionTeamChoice {
+  if (context.senderTeamId && hasInstallation(context.senderTeamId)) {
+    return { ok: true, slackTeamId: context.senderTeamId, source: "sender" };
+  }
+
+  if (!context.isExternal && context.authedTeamId && hasInstallation(context.authedTeamId)) {
+    return { ok: true, slackTeamId: context.authedTeamId, source: "authed" };
+  }
+
+  if (!context.authedTeamId && !context.senderTeamId) {
+    return { ok: false, reason: "missing_team" };
+  }
+
+  return {
+    ok: false,
+    reason: context.isExternal ? "sender_not_installed" : "authed_not_installed",
   };
 }
 

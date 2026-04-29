@@ -158,11 +158,12 @@ async function submitCompletedDraft(params: {
 export async function handleUseCaseConversation(
   thread: Thread,
   message: Message,
-  workspaceId: string
+  workspaceId: string,
+  opts: { slackTeamId?: string } = {}
 ) {
   const slackUserId = message.author?.userId ?? "unknown";
   const raw = message.raw as Record<string, string | undefined>;
-  const teamId = raw.team_id ?? raw.team ?? "";
+  const teamId = opts.slackTeamId ?? raw.user_team ?? raw.team_id ?? raw.team ?? "";
   const slackChannelId = raw.channel ?? "";
   const explicitThreadTs = raw.thread_ts?.trim() || null;
   const activeDraft =
