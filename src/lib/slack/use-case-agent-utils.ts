@@ -10,6 +10,34 @@ export type SlackDraftField =
   | "sustainabilityImpact"
   | "urgency";
 
+export type SlackTenantContext = {
+  authedTeamId: string;
+  senderTeamId: string;
+  isExternal: boolean;
+};
+
+export function resolveSlackTenantContext(
+  raw: Record<string, string | undefined>
+): SlackTenantContext {
+  /**
+   * `team_id` is the workspace that installed/authorized the app.
+   * In Slack Connect, `user_team` is the sender's workspace and should win
+   * over `team` when deciding whether the author is external.
+   */
+  const authedTeamId = (raw.team_id ?? raw.team ?? "").trim();
+  const senderTeamId = (raw.user_team ?? raw.team ?? "").trim();
+
+  return {
+    authedTeamId,
+    senderTeamId,
+    isExternal: !!(
+      senderTeamId &&
+      authedTeamId &&
+      senderTeamId !== authedTeamId
+    ),
+  };
+}
+
 export function resolveSlackDraftThreadTs(params: {
   raw: Record<string, string | undefined>;
   activeDraftThreadTs?: string | null;

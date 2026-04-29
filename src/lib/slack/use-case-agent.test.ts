@@ -5,6 +5,7 @@ import {
   normalizeDraftFieldValue,
   questionForSlackDraftField,
   requiredSlackDraftFields,
+  resolveSlackTenantContext,
   resolveSlackDraftThreadTs,
   slackDraftFieldLabel,
   sanitizeSlackBotText,
@@ -135,6 +136,88 @@ test("in canale Slack senza thread riusa il draft attivo invece del ts del nuovo
     }),
     "1777384538.981859"
   );
+});
+
+test("DM Slack da utente senza account Unbundle resta nello stesso tenant", () => {
+  const context = resolveSlackTenantContext({
+    channel: "D0AV2S6D84S",
+    team_id: "T_NATIVA",
+    team: "T_NATIVA",
+    user: "U_EMPLOYEE_WITHOUT_UNBUNDLE_ACCOUNT",
+  });
+
+  assert.deepEqual(context, {
+    authedTeamId: "T_NATIVA",
+    senderTeamId: "T_NATIVA",
+    isExternal: false,
+  });
+});
+
+test("DM Slack da utente con profilo Unbundle segue lo stesso routing Slack", () => {
+  const context = resolveSlackTenantContext({
+    channel: "D_PROFILE",
+    team_id: "T_NATIVA",
+    team: "T_NATIVA",
+    user: "U_EMPLOYEE_WITH_UNBUNDLE_ACCOUNT",
+  });
+
+  assert.equal(context.authedTeamId, "T_NATIVA");
+  assert.equal(context.senderTeamId, "T_NATIVA");
+  assert.equal(context.isExternal, false);
+});
+
+test("menzione in canale pubblico usa il workspace che ha installato il bot", () => {
+  const context = resolveSlackTenantContext({
+    channel: "C_PUBLIC",
+    team_id: "T_NATIVA",
+    team: "T_NATIVA",
+    user_team: "T_NATIVA",
+  });
+
+  assert.equal(context.authedTeamId, "T_NATIVA");
+  assert.equal(context.isExternal, false);
+});
+
+test("eventi Slack legacy senza team_id usano team come tenant autorizzato", () => {
+  const context = resolveSlackTenantContext({
+    channel: "C_PUBLIC",
+    team: "T_NATIVA",
+  });
+
+  assert.deepEqual(context, {
+    authedTeamId: "T_NATIVA",
+    senderTeamId: "T_NATIVA",
+    isExternal: false,
+  });
+});
+
+test("menzione in canale privato o group DM interno non viene bloccata", () => {
+  for (const channel of ["G_PRIVATE", "G_GROUP_DM"]) {
+    const context = resolveSlackTenantContext({
+      channel,
+      team_id: "T_NATIVA",
+      team: "T_NATIVA",
+      user_team: "T_NATIVA",
+    });
+
+    assert.equal(context.authedTeamId, "T_NATIVA", channel);
+    assert.equal(context.isExternal, false, channel);
+  }
+});
+
+test("Slack Connect preferisce user_team e blocca mittenti esterni", () => {
+  const context = resolveSlackTenantContext({
+    channel: "C_SHARED",
+    team_id: "T_NATIVA",
+    team: "T_NATIVA",
+    user_team: "T_EXTERNAL_CLIENT",
+  });
+
+  assert.deepEqual(context, {
+    authedTeamId: "T_NATIVA",
+    senderTeamId: "T_EXTERNAL_CLIENT",
+    isExternal: true,
+  });
 });
 
 test("in un thread Slack esplicito il thread_ts vince sempre", () => {

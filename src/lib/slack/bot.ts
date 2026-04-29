@@ -3,6 +3,7 @@ import { createSlackAdapter, type SlackAdapter } from "@chat-adapter/slack";
 import { createPostgresState } from "@chat-adapter/state-pg";
 import { handleUseCaseConversation } from "./use-case-agent";
 import { getSlackInstallationByTeamId } from "@/lib/db/queries/slack";
+import { resolveSlackTenantContext } from "./use-case-agent-utils";
 
 let _bot: Chat | null = null;
 
@@ -53,9 +54,7 @@ function registerHandlers(bot: Chat) {
      * - `team` può rappresentare il team del mittente in contesti cross-org
      * Per multi-tenant dobbiamo sempre risolvere il workspace da `team_id`.
      */
-    const authedTeamId = raw.team_id ?? raw.team ?? "";
-    const senderTeamId = raw.team ?? raw.user_team ?? "";
-    const isExternal = !!(senderTeamId && authedTeamId && senderTeamId !== authedTeamId);
+    const { authedTeamId, isExternal } = resolveSlackTenantContext(raw);
 
     if (!authedTeamId) {
       await thread.post(
@@ -90,9 +89,7 @@ function registerHandlers(bot: Chat) {
     await thread.startTyping();
 
     const raw = message.raw as Record<string, string | undefined>;
-    const authedTeamId = raw.team_id ?? raw.team ?? "";
-    const senderTeamId = raw.team ?? raw.user_team ?? "";
-    const isExternal = !!(senderTeamId && authedTeamId && senderTeamId !== authedTeamId);
+    const { authedTeamId, isExternal } = resolveSlackTenantContext(raw);
 
     if (!authedTeamId) {
       await thread.post("Non riesco a identificare il workspace.");
@@ -122,9 +119,7 @@ function registerHandlers(bot: Chat) {
     await thread.startTyping();
 
     const raw = message.raw as Record<string, string | undefined>;
-    const authedTeamId = raw.team_id ?? raw.team ?? "";
-    const senderTeamId = raw.team ?? raw.user_team ?? "";
-    const isExternal = !!(senderTeamId && authedTeamId && senderTeamId !== authedTeamId);
+    const { authedTeamId, isExternal } = resolveSlackTenantContext(raw);
 
     if (isExternal) {
       await thread.post(
