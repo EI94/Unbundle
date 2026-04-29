@@ -6,6 +6,7 @@ import {
   getWorkspaceCollaborators,
   getWorkspaceInvitationsForWorkspace,
 } from "@/lib/db/queries/workspace-collaboration";
+import { getWorkspaceIntegrationTokens } from "@/lib/db/queries/workspace-integrations";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,7 @@ import {
   canManageWorkspaceSettings,
 } from "@/lib/workspace-permissions";
 import { WorkspaceCollaborationCard } from "@/components/workspace/workspace-collaboration-card";
+import { ClaudeMcpCard } from "@/components/workspace/claude-mcp-card";
 import { MessageSquare, CheckCircle, Leaf, Lock } from "lucide-react";
 
 function decodeSlackErrorParam(raw: string | undefined): string {
@@ -71,11 +73,12 @@ export default async function SettingsPage({
   if (!workspace) notFound();
 
   const search = await searchParams;
-  const [slackInstallation, access, collaborators, invitations] = await Promise.all([
+  const [slackInstallation, access, collaborators, invitations, integrationTokens] = await Promise.all([
     getSlackInstallationByWorkspace(workspaceId),
     getWorkspaceAccessForUser(session.user.id, workspaceId),
     getWorkspaceCollaborators(workspaceId),
     getWorkspaceInvitationsForWorkspace(workspaceId),
+    getWorkspaceIntegrationTokens(workspaceId),
   ]);
   if (!access) notFound();
   const isSlackInstalled = !!slackInstallation;
@@ -245,6 +248,23 @@ export default async function SettingsPage({
             expiresAt: invitation.expiresAt.toISOString(),
             revokedAt: invitation.revokedAt?.toISOString() ?? null,
             createdAt: invitation.createdAt.toISOString(),
+          }))}
+        />
+
+        <ClaudeMcpCard
+          workspaceId={workspaceId}
+          workspaceName={workspace.name}
+          canManage={canManageIntegrations}
+          tokens={integrationTokens.map((token) => ({
+            id: token.id,
+            label: token.label,
+            provider: token.provider,
+            tokenPrefix: token.tokenPrefix,
+            scopes: token.scopes,
+            lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+            expiresAt: token.expiresAt?.toISOString() ?? null,
+            revokedAt: token.revokedAt?.toISOString() ?? null,
+            createdAt: token.createdAt.toISOString(),
           }))}
         />
 

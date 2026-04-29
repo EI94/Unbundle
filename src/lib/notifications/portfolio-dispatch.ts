@@ -49,12 +49,12 @@ async function postWhatsappWebhook(
  *  - pubblica su canale Slack admin (se Slack è installato)
  *  - inoltra al webhook WhatsApp se configurato sul workspace
  *
- * `source` indica da dove arriva il contributo: "slack" | "web".
+ * `source` indica da dove arriva il contributo: "slack" | "web" | "claude".
  */
 export async function dispatchNewPortfolioNotifications(params: {
   useCase: UseCase;
   workspaceId: string;
-  source: "slack" | "web";
+  source: "slack" | "web" | "claude";
   /** slackTeamId obbligatorio solo se source === "slack" (serve per recuperare l'installazione). */
   slackTeamId?: string | null;
 }) {

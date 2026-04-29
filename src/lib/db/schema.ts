@@ -313,6 +313,35 @@ export const workspaceInvitationAcceptances = pgTable(
   ]
 );
 
+// ─── Workspace Integration Tokens ───────────────────────────────────
+
+export const workspaceIntegrationTokens = pgTable(
+  "workspace_integration_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    label: varchar("label", { length: 255 }).notNull(),
+    provider: varchar("provider", { length: 50 }).notNull().default("claude_mcp"),
+    tokenHash: varchar("token_hash", { length: 128 }).notNull().unique(),
+    tokenPrefix: varchar("token_prefix", { length: 32 }).notNull(),
+    scopes: jsonb("scopes").$type<string[]>().notNull().default(["portfolio:submit"]),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    lastUsedAt: timestamp("last_used_at", { mode: "date" }),
+    expiresAt: timestamp("expires_at", { mode: "date" }),
+    revokedAt: timestamp("revoked_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("workspace_integration_tokens_workspace_idx").on(t.workspaceId),
+    index("workspace_integration_tokens_hash_idx").on(t.tokenHash),
+  ]
+);
+
 // ─── Workspace Scoring Model (ranking configurabile) ─────────────────
 
 export const workspaceScoringModels = pgTable("workspace_scoring_models", {
@@ -555,6 +584,36 @@ export const useCases = pgTable("use_cases", {
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 });
+
+export const externalContributionSubmissions = pgTable(
+  "external_contribution_submissions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    integrationTokenId: uuid("integration_token_id")
+      .notNull()
+      .references(() => workspaceIntegrationTokens.id, { onDelete: "cascade" }),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    requestHash: varchar("request_hash", { length: 128 }).notNull(),
+    status: varchar("status", { length: 50 }).notNull().default("pending"),
+    useCaseId: uuid("use_case_id").references(() => useCases.id, {
+      onDelete: "set null",
+    }),
+    errorCode: varchar("error_code", { length: 100 }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("external_contribution_idempotency_idx").on(
+      t.workspaceId,
+      t.integrationTokenId,
+      t.idempotencyKey
+    ),
+    index("external_contribution_workspace_idx").on(t.workspaceId),
+  ]
+);
 
 // ─── Use Case <-> Key Result Links ─────────────────────────────────
 
@@ -823,6 +882,14 @@ export type WorkspaceInvitation = typeof workspaceInvitations.$inferSelect;
 export type NewWorkspaceInvitation = typeof workspaceInvitations.$inferInsert;
 export type WorkspaceInvitationAcceptance =
   typeof workspaceInvitationAcceptances.$inferSelect;
+export type WorkspaceIntegrationToken =
+  typeof workspaceIntegrationTokens.$inferSelect;
+export type NewWorkspaceIntegrationToken =
+  typeof workspaceIntegrationTokens.$inferInsert;
+export type ExternalContributionSubmission =
+  typeof externalContributionSubmissions.$inferSelect;
+export type NewExternalContributionSubmission =
+  typeof externalContributionSubmissions.$inferInsert;
 export type WorkspaceScoringModel = typeof workspaceScoringModels.$inferSelect;
 export type NewWorkspaceScoringModel = typeof workspaceScoringModels.$inferInsert;
 export type StrategicGoal = typeof strategicGoals.$inferSelect;

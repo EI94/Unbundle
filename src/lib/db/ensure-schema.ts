@@ -19,7 +19,7 @@ import { db } from ".";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 6;
+const ENSURE_VERSION = 7;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -126,6 +126,61 @@ async function runOnce(): Promise<void> {
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "workspace_invitation_acceptances_workspace_idx"
       ON "workspace_invitation_acceptances" ("workspace_id");
+  `);
+
+  // workspace integration tokens: Claude/MCP e futuri connector esterni ───
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "workspace_integration_tokens" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "workspace_id" uuid NOT NULL
+        REFERENCES "workspaces"("id") ON DELETE CASCADE,
+      "label" varchar(255) NOT NULL,
+      "provider" varchar(50) NOT NULL DEFAULT 'claude_mcp',
+      "token_hash" varchar(128) NOT NULL UNIQUE,
+      "token_prefix" varchar(32) NOT NULL,
+      "scopes" jsonb NOT NULL DEFAULT '["portfolio:submit"]'::jsonb,
+      "created_by_user_id" uuid
+        REFERENCES "users"("id") ON DELETE SET NULL,
+      "last_used_at" timestamp,
+      "expires_at" timestamp,
+      "revoked_at" timestamp,
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "workspace_integration_tokens_workspace_idx"
+      ON "workspace_integration_tokens" ("workspace_id");
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "workspace_integration_tokens_hash_idx"
+      ON "workspace_integration_tokens" ("token_hash");
+  `);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "external_contribution_submissions" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "workspace_id" uuid NOT NULL
+        REFERENCES "workspaces"("id") ON DELETE CASCADE,
+      "integration_token_id" uuid NOT NULL
+        REFERENCES "workspace_integration_tokens"("id") ON DELETE CASCADE,
+      "idempotency_key" varchar(128) NOT NULL,
+      "request_hash" varchar(128) NOT NULL,
+      "status" varchar(50) NOT NULL DEFAULT 'pending',
+      "use_case_id" uuid
+        REFERENCES "use_cases"("id") ON DELETE SET NULL,
+      "error_code" varchar(100),
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    );
+  `);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "external_contribution_idempotency_idx"
+      ON "external_contribution_submissions" ("workspace_id", "integration_token_id", "idempotency_key");
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "external_contribution_workspace_idx"
+      ON "external_contribution_submissions" ("workspace_id");
   `);
 
   // weekly_signals.is_read (se DB molto vecchio) ───────────────────────────
@@ -245,6 +300,8 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND to_regclass('public.workspace_memberships') IS NOT NULL
         AND to_regclass('public.workspace_invitations') IS NOT NULL
         AND to_regclass('public.workspace_invitation_acceptances') IS NOT NULL
+        AND to_regclass('public.workspace_integration_tokens') IS NOT NULL
+        AND to_regclass('public.external_contribution_submissions') IS NOT NULL
         AND to_regclass('public.workspace_scoring_models') IS NOT NULL
         AND EXISTS (
           SELECT 1 FROM information_schema.columns
