@@ -149,9 +149,20 @@ export default async function AiReadinessRespondentPage({
             )}
           </p>
           <div className="mt-5 rounded-2xl border bg-background/60 p-4 text-xs leading-5 text-muted-foreground">
-            Le risposte sono salvate con identificativo pseudonimo e vengono
-            aggregate. I risultati per area sono visibili solo se ci sono almeno{" "}
-            {found.assessment.aggregationThreshold} respondent.
+            {found.assessment.anonymousMode !== false ? (
+              <>
+                Le risposte sono salvate con identificativo pseudonimo e vengono
+                aggregate. I risultati per area sono visibili solo se ci sono
+                almeno {found.assessment.aggregationThreshold} respondent.
+              </>
+            ) : (
+              <>
+                Questa survey e nominativa: ti chiederemo nome e cognome, senza
+                bisogno di creare un account. I risultati per area vengono
+                comunque aggregati (minimo {found.assessment.aggregationThreshold}{" "}
+                respondent).
+              </>
+            )}
             <div className="mt-2">
               <Link
                 className="font-medium text-foreground underline"
@@ -170,6 +181,13 @@ export default async function AiReadinessRespondentPage({
           privacyConfig={privacy}
           initialDraft={draft}
           draftSavedAt={draftSavedAt}
+          anonymousMode={found.assessment.anonymousMode !== false}
+          initialIdentity={{
+            firstName:
+              draft?.identity.firstName || found.respondent.name || "",
+            lastName:
+              draft?.identity.lastName || found.respondent.surname || "",
+          }}
         />
       </div>
     </main>

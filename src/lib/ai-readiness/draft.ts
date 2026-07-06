@@ -9,10 +9,16 @@ export type AiReadinessDraftConsents = {
   marketingConsent: boolean;
 };
 
+export type AiReadinessDraftIdentity = {
+  firstName: string;
+  lastName: string;
+};
+
 export type AiReadinessDraftPayload = {
   answers: Record<string, string>;
   consents: AiReadinessDraftConsents;
   useCase: Record<string, string>;
+  identity?: AiReadinessDraftIdentity;
 };
 
 export const USE_CASE_DRAFT_FIELDS = [
@@ -41,10 +47,27 @@ function clampText(value: unknown) {
  * Normalizza il payload bozza ricevuto dal client: tiene solo le domande del
  * template, converte le scale in numeri e scarta valori malformati.
  */
+const MAX_NAME_LENGTH = 120;
+
+function normalizeIdentity(raw: unknown): AiReadinessDraftIdentity {
+  const identity = (raw ?? {}) as Partial<AiReadinessDraftIdentity>;
+  const clean = (value: unknown) =>
+    typeof value === "string" ? value.trim().slice(0, MAX_NAME_LENGTH) : "";
+  return {
+    firstName: clean(identity.firstName),
+    lastName: clean(identity.lastName),
+  };
+}
+
 export function normalizeDraftPayload(
   template: AiReadinessTemplateDefinition,
   raw: unknown
-): { answers: AiReadinessAnswer[]; consents: AiReadinessDraftConsents; useCase: Record<string, string> } {
+): {
+  answers: AiReadinessAnswer[];
+  consents: AiReadinessDraftConsents;
+  useCase: Record<string, string>;
+  identity: AiReadinessDraftIdentity;
+} {
   const payload = (raw ?? {}) as Partial<AiReadinessDraftPayload>;
   const rawAnswers =
     payload.answers && typeof payload.answers === "object" ? payload.answers : {};
@@ -89,7 +112,7 @@ export function normalizeDraftPayload(
     if (value.length > 0) useCase[field] = value;
   }
 
-  return { answers, consents, useCase };
+  return { answers, consents, useCase, identity: normalizeIdentity(payload.identity) };
 }
 
 /**
@@ -99,7 +122,7 @@ export function normalizeDraftPayload(
 export function draftPrefillFromResponse(params: {
   answers: AiReadinessAnswer[] | null | undefined;
   metadata: Record<string, unknown> | null | undefined;
-}): AiReadinessDraftPayload {
+}): AiReadinessDraftPayload & { identity: AiReadinessDraftIdentity } {
   const answers: Record<string, string> = {};
   for (const answer of params.answers ?? []) {
     if (answer?.questionId == null || answer.value == null || answer.value === "") continue;
@@ -128,5 +151,6 @@ export function draftPrefillFromResponse(params: {
       marketingConsent: consents.marketingConsent === true,
     },
     useCase,
+    identity: normalizeIdentity(draftMeta?.identity),
   };
 }

@@ -38,6 +38,37 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
             <Label htmlFor="description">Descrizione interna</Label>
             <Textarea id="description" name="description" placeholder="Es. Assessment iniziale per misurare readiness e prioritizzare la roadmap AI." />
           </div>
+          <fieldset className="space-y-2 lg:col-span-2">
+            <legend className="text-sm font-medium">Modalità survey</legend>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
+                <input
+                  type="radio"
+                  name="surveyMode"
+                  value="anonymous"
+                  defaultChecked
+                  className="mt-1"
+                />
+                <span>
+                  <span className="font-medium">Anonima (consigliata)</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Le risposte restano pseudonime: massima sincerità dei
+                    dipendenti, solo dati aggregati.
+                  </span>
+                </span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
+                <input type="radio" name="surveyMode" value="named" className="mt-1" />
+                <span>
+                  <span className="font-medium">Nominativa</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    A ogni dipendente vengono chiesti nome e cognome (senza
+                    registrazione né account).
+                  </span>
+                </span>
+              </label>
+            </div>
+          </fieldset>
           <div className="space-y-2 lg:col-span-2">
             <Label htmlFor="introCopy">Intro survey</Label>
             <Textarea

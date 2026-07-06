@@ -15,6 +15,7 @@ import {
 } from "@/lib/actions/ai-readiness";
 import {
   USE_CASE_DRAFT_FIELDS,
+  type AiReadinessDraftIdentity,
   type AiReadinessDraftPayload,
 } from "@/lib/ai-readiness/draft";
 import type {
@@ -31,6 +32,95 @@ const INITIAL: AiReadinessActionState<{ completed: true }> = { ok: true };
 const AUTOSAVE_DEBOUNCE_MS = 2000;
 
 type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
+
+type DeviceDraft = {
+  v: 1;
+  savedAt: string;
+  payload: AiReadinessDraftPayload;
+};
+
+function deviceStorageKey(token: string) {
+  return `unbundle-air-draft:${token}`;
+}
+
+function readDeviceDraft(token: string): DeviceDraft | null {
+  try {
+    const raw = window.localStorage.getItem(deviceStorageKey(token));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DeviceDraft;
+    if (parsed?.v !== 1 || !parsed.payload) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeDeviceDraft(token: string, payload: AiReadinessDraftPayload) {
+  try {
+    const entry: DeviceDraft = {
+      v: 1,
+      savedAt: new Date().toISOString(),
+      payload,
+    };
+    window.localStorage.setItem(deviceStorageKey(token), JSON.stringify(entry));
+  } catch {
+    // Storage pieno o bloccato: il salvataggio server resta la rete di sicurezza.
+  }
+}
+
+function clearDeviceDraft(token: string) {
+  try {
+    window.localStorage.removeItem(deviceStorageKey(token));
+  } catch {
+    // ignore
+  }
+}
+
+/** Applica al form (non controllato) i valori di una bozza salvata sul dispositivo. */
+function applyPayloadToForm(form: HTMLFormElement, payload: AiReadinessDraftPayload) {
+  for (const [questionId, value] of Object.entries(payload.answers ?? {})) {
+    const name = `question__${questionId}`;
+    const radio = form.querySelector<HTMLInputElement>(
+      `input[type=radio][name="${CSS.escape(name)}"][value="${CSS.escape(value)}"]`
+    );
+    if (radio) {
+      radio.checked = true;
+      continue;
+    }
+    const field = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+      `textarea[name="${CSS.escape(name)}"], input[name="${CSS.escape(name)}"]`
+    );
+    if (field) field.value = value;
+  }
+  for (const field of USE_CASE_DRAFT_FIELDS) {
+    const value = payload.useCase?.[field];
+    if (typeof value !== "string") continue;
+    const el = form.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+      `[name="${field}"]`
+    );
+    if (el) el.value = value;
+  }
+  if (payload.identity) {
+    const first = form.querySelector<HTMLInputElement>('[name="respondentFirstName"]');
+    const last = form.querySelector<HTMLInputElement>('[name="respondentLastName"]');
+    if (first && payload.identity.firstName) first.value = payload.identity.firstName;
+    if (last && payload.identity.lastName) last.value = payload.identity.lastName;
+  }
+  const consentEntries: Array<[string, boolean]> = [
+    ["privacyAccepted", payload.consents?.privacyAccepted === true],
+    ["benchmarkConsent", payload.consents?.benchmarkConsent === true],
+    ["marketingConsent", payload.consents?.marketingConsent === true],
+  ];
+  for (const [name, desired] of consentEntries) {
+    const input = form.querySelector<HTMLInputElement>(`[name="${name}"]`);
+    if (!input || input.checked === desired || !desired) continue;
+    // Base UI checkbox: il click sul controllo visivo aggiorna stato + input nascosto.
+    const visual = input
+      .closest("label")
+      ?.querySelector<HTMLElement>("[data-slot=checkbox]");
+    (visual ?? input).click();
+  }
+}
 
 function configString(config: Record<string, unknown> | null, key: string, fallback = "") {
   const value = config?.[key];
@@ -135,6 +225,10 @@ function collectDraftPayload(form: HTMLFormElement): AiReadinessDraftPayload {
       useCase[field] = value.trim();
     }
   }
+  const identityValue = (name: string) => {
+    const value = formData.get(name);
+    return typeof value === "string" ? value.trim() : "";
+  };
   return {
     answers,
     consents: {
@@ -143,6 +237,10 @@ function collectDraftPayload(form: HTMLFormElement): AiReadinessDraftPayload {
       marketingConsent: formData.get("marketingConsent") === "on",
     },
     useCase,
+    identity: {
+      firstName: identityValue("respondentFirstName"),
+      lastName: identityValue("respondentLastName"),
+    },
   };
 }
 
@@ -153,6 +251,8 @@ export function RespondentSurveyForm({
   privacyConfig,
   initialDraft,
   draftSavedAt,
+  anonymousMode = true,
+  initialIdentity,
 }: {
   token: string;
   template: AiReadinessTemplateDefinition;
@@ -160,6 +260,8 @@ export function RespondentSurveyForm({
   privacyConfig: Record<string, unknown> | null;
   initialDraft?: AiReadinessDraftPayload | null;
   draftSavedAt?: string | null;
+  anonymousMode?: boolean;
+  initialIdentity?: AiReadinessDraftIdentity;
 }) {
   const action = submitAiReadinessResponseAction.bind(null, token);
   const [state, formAction, pending] = useActionState(action, INITIAL);
@@ -178,6 +280,7 @@ export function RespondentSurveyForm({
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(
     draftSavedAt ?? null
   );
+  const [restoredFromDevice, setRestoredFromDevice] = useState(false);
 
   const totalQuestions = useMemo(
     () =>
@@ -233,11 +336,43 @@ export function RespondentSurveyForm({
   const scheduleSave = useCallback(() => {
     setSaveStatus("dirty");
     setAnsweredCount(countAnswered());
+    // Salvataggio istantaneo sul dispositivo: anche chiudendo subito il
+    // browser non si perde nulla, pure se il debounce server non è scattato.
+    if (formRef.current && !completedRef.current) {
+      writeDeviceDraft(token, collectDraftPayload(formRef.current));
+    }
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       void flushSave();
     }, AUTOSAVE_DEBOUNCE_MS);
-  }, [countAnswered, flushSave]);
+  }, [countAnswered, flushSave, token]);
+
+  // Ripristino dal dispositivo: se qui c'è una bozza più recente di quella
+  // server (es. salvataggio remoto fallito o offline), riportala nel form.
+  useEffect(() => {
+    const form = formRef.current;
+    if (!form || completedRef.current) return;
+    const device = readDeviceDraft(token);
+    if (!device) return;
+    const deviceTime = Date.parse(device.savedAt) || 0;
+    const serverTime = draftSavedAt ? Date.parse(draftSavedAt) || 0 : 0;
+    if (deviceTime <= serverTime) return;
+    applyPayloadToForm(form, device.payload);
+    setAnsweredCount(countAnswered());
+    setRestoredFromDevice(true);
+    setSaveStatus("dirty");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      void flushSave();
+    }, AUTOSAVE_DEBOUNCE_MS);
+    // Solo al primo mount: il form è non controllato.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A invio riuscito, la bozza locale non serve più.
+  useEffect(() => {
+    if (completed) clearDeviceDraft(token);
+  }, [completed, token]);
 
   // Salvataggio "di emergenza" quando l'utente lascia la pagina a metà.
   useEffect(() => {
@@ -296,14 +431,15 @@ export function RespondentSurveyForm({
       onChange={scheduleSave}
       className="space-y-8"
     >
-      {initialDraft && (
+      {(initialDraft || restoredFromDevice) && (
         <div
           className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm leading-6"
           data-testid="survey-resume-banner"
         >
-          <span className="font-semibold">Bentornato.</span> Abbiamo recuperato
-          la bozza salvata{savedTimeLabel ? ` alle ${savedTimeLabel}` : ""}: puoi
-          riprendere da dove avevi lasciato.
+          <span className="font-semibold">Bentornato.</span>{" "}
+          {restoredFromDevice
+            ? "Abbiamo ripristinato le risposte salvate su questo dispositivo: puoi riprendere da dove avevi lasciato."
+            : `Abbiamo recuperato la bozza salvata${savedTimeLabel ? ` alle ${savedTimeLabel}` : ""}: puoi riprendere da dove avevi lasciato.`}
         </div>
       )}
 
@@ -334,6 +470,60 @@ export function RespondentSurveyForm({
           />
         </div>
       </div>
+
+      {!anonymousMode && (
+        <section
+          className="rounded-[32px] border bg-card p-6"
+          data-testid="survey-identity-section"
+        >
+          <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+            I tuoi dati
+          </div>
+          <h2 className="mt-2 text-xl font-semibold">Chi sei?</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Questa survey è nominativa: bastano nome e cognome, senza creare
+            nessun account.
+          </p>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="respondentFirstName">
+                Nome <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="respondentFirstName"
+                name="respondentFirstName"
+                required
+                autoComplete="given-name"
+                placeholder="Es. Maria"
+                defaultValue={initialIdentity?.firstName}
+              />
+              {state.fieldErrors?.respondentFirstName && (
+                <p className="text-xs text-destructive">
+                  {state.fieldErrors.respondentFirstName}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="respondentLastName">
+                Cognome <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="respondentLastName"
+                name="respondentLastName"
+                required
+                autoComplete="family-name"
+                placeholder="Es. Bianchi"
+                defaultValue={initialIdentity?.lastName}
+              />
+              {state.fieldErrors?.respondentLastName && (
+                <p className="text-xs text-destructive">
+                  {state.fieldErrors.respondentLastName}
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="rounded-[32px] border bg-linear-to-br from-emerald-500/10 via-card to-sky-500/10 p-6">
         <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">

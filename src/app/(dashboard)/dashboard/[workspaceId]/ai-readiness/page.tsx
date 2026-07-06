@@ -522,9 +522,15 @@ export default async function AiReadinessPage({
                   >
                     <div>
                       <div className="font-medium">
-                        {respondent.email ?? respondent.pseudonymousId}
+                        {[respondent.name, respondent.surname].filter(Boolean).join(" ") ||
+                          respondent.email ||
+                          respondent.pseudonymousId}
                       </div>
                       <div className="text-xs text-muted-foreground">
+                        {respondent.email &&
+                        (respondent.name || respondent.surname)
+                          ? `${respondent.email} · `
+                          : ""}
                         {respondent.organizationUnit ?? "Area non indicata"} · {respondent.role ?? "ruolo n/d"}
                       </div>
                     </div>

@@ -25,6 +25,7 @@ import {
   getUseCaseSubmissionById,
   markRespondentStarted,
   saveAiReadinessDraftResponse,
+  updateAiReadinessRespondentIdentity,
   listRespondentsByAssessment,
   listUseCaseSubmissionsByAssessment,
   anonymizeAiReadinessRespondentByTokenHash,
@@ -73,6 +74,7 @@ const createAssessmentSchema = z.object({
   dpoEmail: z.string().trim().optional(),
   dataRetentionDays: z.coerce.number().int().min(30).max(3650),
   aggregationThreshold: z.coerce.number().int().min(3).max(50),
+  surveyMode: z.enum(["anonymous", "named"]).default("anonymous"),
 });
 
 const inviteRespondentSchema = z.object({
@@ -186,6 +188,7 @@ export async function createAiReadinessAssessmentAction(
     dpoEmail: formString(formData, "dpoEmail"),
     dataRetentionDays: formString(formData, "dataRetentionDays"),
     aggregationThreshold: formString(formData, "aggregationThreshold"),
+    surveyMode: formString(formData, "surveyMode") || "anonymous",
   });
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
@@ -240,7 +243,7 @@ export async function createAiReadinessAssessmentAction(
       pdfExport: true,
       excelExport: true,
     },
-    anonymousMode: true,
+    anonymousMode: parsed.data.surveyMode !== "named",
     aggregationThreshold: parsed.data.aggregationThreshold,
     createdByUserId: manager.session.user.id,
   });
@@ -430,11 +433,22 @@ export async function saveAiReadinessSurveyDraftAction(
       draft: {
         consents: normalized.consents,
         useCase: normalized.useCase,
+        identity: normalized.identity,
       },
       draftSavedAt: savedAt,
       templateVersion: found.template.version,
     },
   });
+  if (
+    assessment.anonymousMode === false &&
+    (normalized.identity.firstName || normalized.identity.lastName)
+  ) {
+    await updateAiReadinessRespondentIdentity({
+      respondentId: respondent.id,
+      name: normalized.identity.firstName,
+      surname: normalized.identity.lastName,
+    });
+  }
   await markRespondentStarted(respondent.id);
 
   return { ok: true, fieldErrors: {}, data: { savedAt } };
@@ -476,6 +490,18 @@ export async function submitAiReadinessResponseAction(
     });
   }
 
+  // Survey nominativa: nome e cognome obbligatori (nessuna registrazione richiesta).
+  const respondentFirstName = formString(formData, "respondentFirstName").slice(0, 120);
+  const respondentLastName = formString(formData, "respondentLastName").slice(0, 120);
+  if (assessment.anonymousMode === false) {
+    const identityErrors: Record<string, string> = {};
+    if (!respondentFirstName) identityErrors.respondentFirstName = "Inserisci il nome.";
+    if (!respondentLastName) identityErrors.respondentLastName = "Inserisci il cognome.";
+    if (Object.keys(identityErrors).length > 0) {
+      return errorState("Inserisci nome e cognome per inviare le risposte.", identityErrors);
+    }
+  }
+
   const collected = collectAnswersFromForm(formData, found);
   if (Object.keys(collected.fieldErrors).length > 0) {
     return errorState("Completa le risposte obbligatorie.", collected.fieldErrors);
@@ -504,6 +530,14 @@ export async function submitAiReadinessResponseAction(
       userAgent: headerStore.get("user-agent")?.slice(0, 500) ?? null,
     },
   });
+
+  if (assessment.anonymousMode === false) {
+    await updateAiReadinessRespondentIdentity({
+      respondentId: respondent.id,
+      name: respondentFirstName,
+      surname: respondentLastName,
+    });
+  }
 
   await completeAiReadinessRespondent({
     respondentId: respondent.id,

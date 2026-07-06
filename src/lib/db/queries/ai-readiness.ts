@@ -235,6 +235,24 @@ export async function getResponseForRespondent(
   return row ?? null;
 }
 
+export async function updateAiReadinessRespondentIdentity(params: {
+  respondentId: string;
+  name: string;
+  surname: string;
+}) {
+  await ensureDbSchema();
+  const [updated] = await db
+    .update(aiReadinessRespondents)
+    .set({
+      name: params.name,
+      surname: params.surname,
+      updatedAt: new Date(),
+    })
+    .where(eq(aiReadinessRespondents.id, params.respondentId))
+    .returning();
+  return updated ?? null;
+}
+
 export async function markRespondentStarted(respondentId: string) {
   const now = new Date();
   await db
