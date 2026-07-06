@@ -40,6 +40,7 @@ import {
   FlaskConical,
   Radar,
   Inbox,
+  ClipboardCheck,
 } from "lucide-react";
 
 interface AppSidebarProps {
@@ -70,6 +71,7 @@ export function AppSidebar({
   const workspaceNav = workspaceId
     ? [
         { title: "Overview", href: basePath, icon: LayoutDashboard },
+        { title: "AI Readiness", href: `${basePath}/ai-readiness`, icon: ClipboardCheck },
         { title: "Raccolta & ranking", href: `${basePath}/portfolio`, icon: Inbox },
         { title: "Discovery", href: `${basePath}/setup/leadership`, icon: Compass },
         { title: "Contesto", href: `${basePath}/setup/context`, icon: Building2 },

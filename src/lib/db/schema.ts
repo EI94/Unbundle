@@ -116,6 +116,13 @@ export const reportTypeEnum = pgEnum("report_type", [
   "full_report",
 ]);
 
+export type AiReadinessTemplateJson = {
+  pillars: unknown[];
+  sections: unknown[];
+  questions: unknown[];
+  scoringSchema: unknown;
+};
+
 // ─── Auth.js required tables ────────────────────────────────────────
 
 export const users = pgTable("users", {
@@ -867,6 +874,331 @@ export const slackUseCaseDrafts = pgTable("slack_use_case_drafts", {
   submittedAt: timestamp("submitted_at", { mode: "date" }),
 });
 
+// ─── AI Readiness OS (Assessment Core) ──────────────────────────────
+
+export const aiReadinessAssessmentTemplates = pgTable(
+  "ai_readiness_assessment_templates",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    version: varchar("version", { length: 50 }).notNull(),
+    language: varchar("language", { length: 20 }).notNull().default("it"),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    isSystemTemplate: boolean("is_system_template").notNull().default(false),
+    status: varchar("status", { length: 50 }).notNull().default("draft"),
+    pillars: jsonb("pillars").$type<unknown[]>().notNull(),
+    sections: jsonb("sections").$type<unknown[]>().notNull(),
+    questions: jsonb("questions").$type<unknown[]>().notNull(),
+    scoringSchema: jsonb("scoring_schema").$type<unknown>().notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("ai_readiness_templates_name_version_idx").on(
+      t.name,
+      t.version,
+      t.language
+    ),
+  ]
+);
+
+export const aiReadinessAssessments = pgTable(
+  "ai_readiness_assessments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    templateId: uuid("template_id")
+      .notNull()
+      .references(() => aiReadinessAssessmentTemplates.id, {
+        onDelete: "restrict",
+      }),
+    name: varchar("name", { length: 255 }).notNull(),
+    description: text("description"),
+    status: varchar("status", { length: 50 }).notNull().default("draft"),
+    language: varchar("language", { length: 20 }).notNull().default("it"),
+    brandConfig: jsonb("brand_config").$type<Record<string, unknown>>(),
+    terminologyConfig: jsonb("terminology_config").$type<Record<string, unknown>>(),
+    privacyConfig: jsonb("privacy_config").$type<Record<string, unknown>>(),
+    scoringConfig: jsonb("scoring_config").$type<Record<string, unknown>>(),
+    modulesEnabled: jsonb("modules_enabled").$type<Record<string, boolean>>(),
+    anonymousMode: boolean("anonymous_mode").notNull().default(true),
+    aggregationThreshold: integer("aggregation_threshold").notNull().default(5),
+    opensAt: timestamp("opens_at", { mode: "date" }),
+    closesAt: timestamp("closes_at", { mode: "date" }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("ai_readiness_assessments_workspace_idx").on(t.workspaceId),
+    index("ai_readiness_assessments_org_idx").on(t.organizationId),
+  ]
+);
+
+export const aiReadinessRespondents = pgTable(
+  "ai_readiness_respondents",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    assessmentId: uuid("assessment_id")
+      .notNull()
+      .references(() => aiReadinessAssessments.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    email: varchar("email", { length: 255 }),
+    name: varchar("name", { length: 255 }),
+    surname: varchar("surname", { length: 255 }),
+    role: varchar("role", { length: 255 }),
+    seniority: varchar("seniority", { length: 255 }),
+    organizationUnit: varchar("organization_unit", { length: 255 }),
+    country: varchar("country", { length: 100 }),
+    locale: varchar("locale", { length: 20 }),
+    inviteTokenHash: varchar("invite_token_hash", { length: 128 }).notNull().unique(),
+    inviteStatus: varchar("invite_status", { length: 50 }).notNull().default("invited"),
+    pseudonymousId: varchar("pseudonymous_id", { length: 64 }).notNull(),
+    hasAcceptedPrivacyNotice: boolean("has_accepted_privacy_notice")
+      .notNull()
+      .default(false),
+    hasMarketingConsent: boolean("has_marketing_consent").notNull().default(false),
+    hasBenchmarkConsent: boolean("has_benchmark_consent").notNull().default(false),
+    startedAt: timestamp("started_at", { mode: "date" }),
+    completedAt: timestamp("completed_at", { mode: "date" }),
+    lastSeenAt: timestamp("last_seen_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("ai_readiness_respondents_assessment_idx").on(t.assessmentId),
+    index("ai_readiness_respondents_workspace_idx").on(t.workspaceId),
+    index("ai_readiness_respondents_pseudo_idx").on(t.pseudonymousId),
+  ]
+);
+
+export const aiReadinessResponses = pgTable(
+  "ai_readiness_responses",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    assessmentId: uuid("assessment_id")
+      .notNull()
+      .references(() => aiReadinessAssessments.id, { onDelete: "cascade" }),
+    respondentId: uuid("respondent_id")
+      .notNull()
+      .references(() => aiReadinessRespondents.id, { onDelete: "cascade" }),
+    pseudonymousId: varchar("pseudonymous_id", { length: 64 }).notNull(),
+    status: varchar("status", { length: 50 }).notNull().default("draft"),
+    answers: jsonb("answers").$type<unknown[]>().notNull().default([]),
+    derivedScores: jsonb("derived_scores").$type<Record<string, unknown>>(),
+    freeTextAnswers: jsonb("free_text_answers").$type<Record<string, unknown>>(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    submittedAt: timestamp("submitted_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("ai_readiness_responses_respondent_assessment_idx").on(
+      t.assessmentId,
+      t.respondentId
+    ),
+    index("ai_readiness_responses_assessment_idx").on(t.assessmentId),
+    index("ai_readiness_responses_pseudo_idx").on(t.pseudonymousId),
+  ]
+);
+
+export const aiReadinessUseCaseSubmissions = pgTable(
+  "ai_readiness_use_case_submissions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    assessmentId: uuid("assessment_id")
+      .notNull()
+      .references(() => aiReadinessAssessments.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    respondentId: uuid("respondent_id").references(() => aiReadinessRespondents.id, {
+      onDelete: "set null",
+    }),
+    pseudonymousId: varchar("pseudonymous_id", { length: 64 }),
+    title: varchar("title", { length: 500 }).notNull(),
+    currentProcess: text("current_process"),
+    painPoint: text("pain_point"),
+    desiredOutcome: text("desired_outcome"),
+    frequency: varchar("frequency", { length: 255 }),
+    affectedUsers: integer("affected_users"),
+    estimatedBeneficiaries: integer("estimated_beneficiaries"),
+    dataNeeded: text("data_needed"),
+    toolsUsed: text("tools_used"),
+    humanInLoop: text("human_in_loop"),
+    riskLevel: varchar("risk_level", { length: 50 }),
+    riskReasoning: text("risk_reasoning"),
+    impactEstimate: text("impact_estimate"),
+    efficiencyScore: real("efficiency_score"),
+    effortScore: real("effort_score"),
+    feasibilityScore: real("feasibility_score"),
+    strategicValueScore: real("strategic_value_score"),
+    aiSolutionHypothesis: text("ai_solution_hypothesis"),
+    promptOrSnippet: text("prompt_or_snippet"),
+    status: varchar("status", { length: 50 }).notNull().default("submitted"),
+    source: varchar("source", { length: 50 }).notNull().default("assessment"),
+    aiSuggested: boolean("ai_suggested").notNull().default(false),
+    humanValidated: boolean("human_validated").notNull().default(false),
+    reviewerUserId: uuid("reviewer_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at", { mode: "date" }),
+    linkedUseCaseId: uuid("linked_use_case_id").references(() => useCases.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("ai_readiness_use_cases_assessment_idx").on(t.assessmentId),
+    index("ai_readiness_use_cases_workspace_idx").on(t.workspaceId),
+  ]
+);
+
+export const aiReadinessScores = pgTable(
+  "ai_readiness_scores",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    assessmentId: uuid("assessment_id")
+      .notNull()
+      .references(() => aiReadinessAssessments.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    scopeType: varchar("scope_type", { length: 50 }).notNull(),
+    scopeKey: varchar("scope_key", { length: 255 }).notNull(),
+    pillarScores: jsonb("pillar_scores").$type<Record<string, unknown>>(),
+    sectionScores: jsonb("section_scores").$type<Record<string, unknown>>(),
+    overallScore: real("overall_score"),
+    bottleneckPillar: varchar("bottleneck_pillar", { length: 100 }),
+    confidence: real("confidence"),
+    respondentCount: integer("respondent_count").notNull().default(0),
+    aggregationThresholdMet: boolean("aggregation_threshold_met")
+      .notNull()
+      .default(false),
+    generatedAt: timestamp("generated_at", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("ai_readiness_scores_assessment_idx").on(t.assessmentId),
+    index("ai_readiness_scores_workspace_idx").on(t.workspaceId),
+    index("ai_readiness_scores_scope_idx").on(t.assessmentId, t.scopeType, t.scopeKey),
+  ]
+);
+
+export const aiReadinessExports = pgTable(
+  "ai_readiness_exports",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    assessmentId: uuid("assessment_id")
+      .notNull()
+      .references(() => aiReadinessAssessments.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    exportType: varchar("export_type", { length: 100 }).notNull(),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    fileUrl: text("file_url"),
+    status: varchar("status", { length: 50 }).notNull().default("pending"),
+    includedPersonalData: boolean("included_personal_data").notNull().default(false),
+    anonymized: boolean("anonymized").notNull().default(true),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    completedAt: timestamp("completed_at", { mode: "date" }),
+  },
+  (t) => [
+    index("ai_readiness_exports_assessment_idx").on(t.assessmentId),
+    index("ai_readiness_exports_workspace_idx").on(t.workspaceId),
+  ]
+);
+
+export const aiReadinessAuditEvents = pgTable(
+  "ai_readiness_audit_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    assessmentId: uuid("assessment_id").references(() => aiReadinessAssessments.id, {
+      onDelete: "cascade",
+    }),
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    respondentId: uuid("respondent_id").references(() => aiReadinessRespondents.id, {
+      onDelete: "set null",
+    }),
+    eventType: varchar("event_type", { length: 100 }).notNull(),
+    eventPayload: jsonb("event_payload").$type<Record<string, unknown>>(),
+    ipHash: varchar("ip_hash", { length: 128 }),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("ai_readiness_audit_workspace_idx").on(t.workspaceId),
+    index("ai_readiness_audit_assessment_idx").on(t.assessmentId),
+    index("ai_readiness_audit_event_type_idx").on(t.eventType),
+  ]
+);
+
+export const aiReadinessInsights = pgTable(
+  "ai_readiness_insights",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    assessmentId: uuid("assessment_id")
+      .notNull()
+      .references(() => aiReadinessAssessments.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    scopeType: varchar("scope_type", { length: 50 }).notNull().default("company"),
+    scopeKey: varchar("scope_key", { length: 255 }).notNull().default("company"),
+    insightType: varchar("insight_type", { length: 100 }).notNull(),
+    title: varchar("title", { length: 500 }).notNull(),
+    body: text("body").notNull(),
+    evidence: jsonb("evidence").$type<Record<string, unknown>>(),
+    aiGenerated: boolean("ai_generated").notNull().default(true),
+    humanValidated: boolean("human_validated").notNull().default(false),
+    validatedByUserId: uuid("validated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    validationStatus: varchar("validation_status", { length: 50 })
+      .notNull()
+      .default("draft"),
+    model: varchar("model", { length: 255 }),
+    promptVersion: varchar("prompt_version", { length: 100 }),
+    inputScope: jsonb("input_scope").$type<Record<string, unknown>>(),
+    generatedAt: timestamp("generated_at", { mode: "date" }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("ai_readiness_insights_assessment_idx").on(t.assessmentId),
+    index("ai_readiness_insights_workspace_idx").on(t.workspaceId),
+    index("ai_readiness_insights_scope_idx").on(t.assessmentId, t.scopeType, t.scopeKey),
+    index("ai_readiness_insights_type_idx").on(t.assessmentId, t.insightType),
+  ]
+);
+
 // ─── Type exports ───────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -915,3 +1247,26 @@ export type SlackInstallation = typeof slackInstallations.$inferSelect;
 export type NewSlackInstallation = typeof slackInstallations.$inferInsert;
 export type SlackUseCaseDraft = typeof slackUseCaseDrafts.$inferSelect;
 export type NewSlackUseCaseDraft = typeof slackUseCaseDrafts.$inferInsert;
+export type AiReadinessAssessmentTemplate =
+  typeof aiReadinessAssessmentTemplates.$inferSelect;
+export type NewAiReadinessAssessmentTemplate =
+  typeof aiReadinessAssessmentTemplates.$inferInsert;
+export type AiReadinessAssessment = typeof aiReadinessAssessments.$inferSelect;
+export type NewAiReadinessAssessment = typeof aiReadinessAssessments.$inferInsert;
+export type AiReadinessRespondent = typeof aiReadinessRespondents.$inferSelect;
+export type NewAiReadinessRespondent = typeof aiReadinessRespondents.$inferInsert;
+export type AiReadinessResponse = typeof aiReadinessResponses.$inferSelect;
+export type NewAiReadinessResponse = typeof aiReadinessResponses.$inferInsert;
+export type AiReadinessUseCaseSubmission =
+  typeof aiReadinessUseCaseSubmissions.$inferSelect;
+export type NewAiReadinessUseCaseSubmission =
+  typeof aiReadinessUseCaseSubmissions.$inferInsert;
+export type AiReadinessScore = typeof aiReadinessScores.$inferSelect;
+export type NewAiReadinessScore = typeof aiReadinessScores.$inferInsert;
+export type AiReadinessExport = typeof aiReadinessExports.$inferSelect;
+export type NewAiReadinessExport = typeof aiReadinessExports.$inferInsert;
+export type AiReadinessAuditEvent = typeof aiReadinessAuditEvents.$inferSelect;
+export type NewAiReadinessAuditEvent =
+  typeof aiReadinessAuditEvents.$inferInsert;
+export type AiReadinessInsight = typeof aiReadinessInsights.$inferSelect;
+export type NewAiReadinessInsight = typeof aiReadinessInsights.$inferInsert;
