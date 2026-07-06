@@ -11,7 +11,7 @@
     "test:mcp": "node --no-warnings --test src/lib/portfolio/external-submission.test.ts src/lib/integrations/claude-onboarding.test.ts mcp/unbundle-portfolio-server.test.mjs",
     "test:slack": "node --no-warnings --test src/lib/slack/use-case-agent.test.ts",
     "test:workspace-collaboration": "node --no-warnings --test src/lib/db/queries/workspace-collaboration.test.ts",
-    "test:ai-readiness": "node --no-warnings --test src/lib/ai-readiness/scoring.test.ts src/lib/ai-readiness/export.test.ts src/lib/ai-readiness/intelligence.test.ts",
+    "test:ai-readiness": "node --no-warnings --test src/lib/ai-readiness/scoring.test.ts src/lib/ai-readiness/export.test.ts src/lib/ai-readiness/intelligence.test.ts src/lib/ai-readiness/draft.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck",
     "db:push": "dotenv -e .env.local -- drizzle-kit push",

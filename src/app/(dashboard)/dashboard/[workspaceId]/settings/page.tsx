@@ -231,6 +231,7 @@ export default async function SettingsPage({
         <WorkspaceCollaborationCard
           workspaceId={workspaceId}
           canManage={canManageCollaborators}
+          currentUserId={session.user.id}
           members={collaborators.map((member) => ({
             userId: member.userId,
             name: member.name,

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "..";
 import {
   aiReadinessAssessmentTemplates,
@@ -217,6 +217,83 @@ export async function markRespondentOpened(respondent: AiReadinessRespondent) {
     .where(eq(aiReadinessRespondents.id, respondent.id));
 }
 
+export async function getResponseForRespondent(
+  assessmentId: string,
+  respondentId: string
+) {
+  await ensureDbSchema();
+  const [row] = await db
+    .select()
+    .from(aiReadinessResponses)
+    .where(
+      and(
+        eq(aiReadinessResponses.assessmentId, assessmentId),
+        eq(aiReadinessResponses.respondentId, respondentId)
+      )
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function markRespondentStarted(respondentId: string) {
+  const now = new Date();
+  await db
+    .update(aiReadinessRespondents)
+    .set({
+      inviteStatus: "started",
+      startedAt: now,
+      lastSeenAt: now,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(aiReadinessRespondents.id, respondentId),
+        inArray(aiReadinessRespondents.inviteStatus, ["invited", "opened"])
+      )
+    );
+}
+
+export async function saveAiReadinessDraftResponse(params: {
+  respondent: AiReadinessRespondent;
+  answers: NewAiReadinessResponse["answers"];
+  metadata: Record<string, unknown>;
+}) {
+  await ensureDbSchema();
+  const existing = await getResponseForRespondent(
+    params.respondent.assessmentId,
+    params.respondent.id
+  );
+  const now = new Date();
+  if (existing) {
+    // Mai retrocedere una risposta già inviata (o cancellata per privacy) a bozza.
+    if (existing.status !== "draft") return existing;
+    const [updated] = await db
+      .update(aiReadinessResponses)
+      .set({
+        answers: params.answers,
+        metadata: params.metadata,
+        updatedAt: now,
+      })
+      .where(eq(aiReadinessResponses.id, existing.id))
+      .returning();
+    return updated;
+  }
+  const [created] = await db
+    .insert(aiReadinessResponses)
+    .values({
+      assessmentId: params.respondent.assessmentId,
+      respondentId: params.respondent.id,
+      pseudonymousId: params.respondent.pseudonymousId,
+      status: "draft",
+      answers: params.answers,
+      derivedScores: null,
+      freeTextAnswers: {},
+      metadata: params.metadata,
+    })
+    .returning();
+  return created;
+}
+
 export async function upsertAiReadinessResponse(params: {
   respondent: AiReadinessRespondent;
   answers: NewAiReadinessResponse["answers"];
@@ -284,7 +361,7 @@ export async function completeAiReadinessRespondent(params: {
       hasAcceptedPrivacyNotice: params.privacyAccepted,
       hasMarketingConsent: params.marketingConsent,
       hasBenchmarkConsent: params.benchmarkConsent,
-      startedAt: now,
+      startedAt: sql`COALESCE(${aiReadinessRespondents.startedAt}, ${now})`,
       completedAt: now,
       lastSeenAt: now,
       updatedAt: now,

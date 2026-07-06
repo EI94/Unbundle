@@ -3,8 +3,11 @@ import Link from "next/link";
 import { hashInviteToken } from "@/lib/ai-readiness/token";
 import {
   getRespondentByInviteTokenHash,
+  getResponseForRespondent,
   markRespondentOpened,
 } from "@/lib/db/queries/ai-readiness";
+import { draftPrefillFromResponse } from "@/lib/ai-readiness/draft";
+import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
 import { RespondentSurveyForm } from "@/components/ai-readiness/respondent-survey-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,6 +108,25 @@ export default async function AiReadinessRespondentPage({
     );
   }
 
+  const existingResponse = await getResponseForRespondent(
+    found.respondent.assessmentId,
+    found.respondent.id
+  );
+  const draft =
+    existingResponse?.status === "draft"
+      ? draftPrefillFromResponse({
+          answers: existingResponse.answers as AiReadinessAnswer[] | null,
+          metadata: existingResponse.metadata as Record<string, unknown> | null,
+        })
+      : null;
+  const draftSavedAt =
+    draft &&
+    typeof (existingResponse?.metadata as Record<string, unknown> | null)
+      ?.draftSavedAt === "string"
+      ? ((existingResponse!.metadata as Record<string, unknown>)
+          .draftSavedAt as string)
+      : null;
+
   return (
     <main className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6">
       <div className="mx-auto max-w-5xl space-y-8">
@@ -146,6 +168,8 @@ export default async function AiReadinessRespondentPage({
           template={found.templateDefinition}
           brandConfig={brand}
           privacyConfig={privacy}
+          initialDraft={draft}
+          draftSavedAt={draftSavedAt}
         />
       </div>
     </main>

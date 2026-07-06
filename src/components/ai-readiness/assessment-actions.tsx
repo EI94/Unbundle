@@ -60,7 +60,18 @@ export function AssessmentActions({
         </form>
       )}
       {status === "open" && (
-        <form action={closeFormAction}>
+        <form
+          action={closeFormAction}
+          onSubmit={(event) => {
+            if (
+              !window.confirm(
+                "Chiudere la survey? I respondent non potranno più inviare risposte né riprendere le bozze finché non la riapri."
+              )
+            ) {
+              event.preventDefault();
+            }
+          }}
+        >
           <Button type="submit" variant="outline" disabled={closePending}>
             {closePending ? "Chiudo..." : "Chiudi survey"}
           </Button>

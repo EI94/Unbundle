@@ -156,7 +156,15 @@ export function ScoringModelForm({
     <form
       action={formAction}
       className="space-y-6"
-      onSubmit={() => {
+      onSubmit={(event) => {
+        if (
+          !window.confirm(
+            "Salvare il modello di ranking? La modifica vale per tutto il team: i pesi e le soglie aggiornati cambieranno il punteggio e il quadrante di tutti gli use case del workspace."
+          )
+        ) {
+          event.preventDefault();
+          return;
+        }
         submittedPayloadRef.current = payload;
       }}
     >

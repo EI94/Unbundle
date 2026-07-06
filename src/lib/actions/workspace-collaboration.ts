@@ -8,8 +8,11 @@ import { auth } from "@/lib/auth";
 import {
   acceptWorkspaceInvitation,
   createWorkspaceInvitation,
+  deleteWorkspaceMembership,
   getWorkspaceInvitationById,
+  getWorkspaceMembershipByUser,
   revokeWorkspaceInvitation,
+  updateWorkspaceMembershipRole,
   WORKSPACE_COLLABORATOR_ROLES,
   type WorkspaceCollaboratorRole,
 } from "@/lib/db/queries/workspace-collaboration";
@@ -239,6 +242,85 @@ export async function recreateWorkspaceInvitationAction(
       usedCount: invitation.usedCount,
       replacedInvitationId: previous.id,
     },
+  };
+}
+
+export type WorkspaceMemberMutationData = {
+  userId: string;
+  role?: string;
+};
+
+export async function updateWorkspaceMemberRoleAction(
+  workspaceId: string,
+  _prev: WorkspaceCollaborationActionState<WorkspaceMemberMutationData>,
+  formData: FormData
+): Promise<WorkspaceCollaborationActionState<WorkspaceMemberMutationData>> {
+  const manager = await assertWorkspaceInviteManager(workspaceId);
+  if (!manager.ok) return manager.state;
+
+  const userId = String(formData.get("userId") ?? "");
+  const role = String(formData.get("role") ?? "");
+  if (!userId) return errorState("Membro non valido.");
+  if (!(WORKSPACE_COLLABORATOR_ROLES as readonly string[]).includes(role)) {
+    return errorState("Ruolo non valido.");
+  }
+  if (userId === manager.session.user.id) {
+    return errorState("Non puoi modificare il tuo stesso ruolo.");
+  }
+
+  const membership = await getWorkspaceMembershipByUser(userId, workspaceId);
+  if (!membership) {
+    return errorState(
+      "Questo membro fa parte dell'organizzazione: il suo ruolo si gestisce a livello organizzazione, non di workspace."
+    );
+  }
+
+  const updated = await updateWorkspaceMembershipRole({
+    workspaceId,
+    userId,
+    role: role as WorkspaceCollaboratorRole,
+  });
+  if (!updated) return errorState("Aggiornamento non riuscito.");
+
+  revalidatePath(`/dashboard/${workspaceId}/settings`);
+  return {
+    ok: true,
+    message: "Ruolo aggiornato: vale da subito per tutto il workspace.",
+    fieldErrors: {},
+    data: { userId, role },
+  };
+}
+
+export async function removeWorkspaceMemberAction(
+  workspaceId: string,
+  _prev: WorkspaceCollaborationActionState<WorkspaceMemberMutationData>,
+  formData: FormData
+): Promise<WorkspaceCollaborationActionState<WorkspaceMemberMutationData>> {
+  const manager = await assertWorkspaceInviteManager(workspaceId);
+  if (!manager.ok) return manager.state;
+
+  const userId = String(formData.get("userId") ?? "");
+  if (!userId) return errorState("Membro non valido.");
+  if (userId === manager.session.user.id) {
+    return errorState("Non puoi rimuovere te stesso dal workspace.");
+  }
+
+  const membership = await getWorkspaceMembershipByUser(userId, workspaceId);
+  if (!membership) {
+    return errorState(
+      "Questo membro fa parte dell'organizzazione: non può essere rimosso dal singolo workspace."
+    );
+  }
+
+  const removed = await deleteWorkspaceMembership({ workspaceId, userId });
+  if (!removed) return errorState("Rimozione non riuscita.");
+
+  revalidatePath(`/dashboard/${workspaceId}/settings`);
+  return {
+    ok: true,
+    message: "Accesso rimosso. Il collega non vede più questo workspace.",
+    fieldErrors: {},
+    data: { userId },
   };
 }
 

@@ -4,10 +4,13 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import {
   createWorkspaceInvitationAction,
   recreateWorkspaceInvitationAction,
+  removeWorkspaceMemberAction,
   revokeWorkspaceInvitationAction,
+  updateWorkspaceMemberRoleAction,
   type CreateWorkspaceInviteData,
   type WorkspaceCollaborationActionState,
   type WorkspaceInvitationMutationData,
+  type WorkspaceMemberMutationData,
 } from "@/lib/actions/workspace-collaboration";
 import { WORKSPACE_INVITE_EXPIRES_IN_DAYS } from "@/lib/workspace-invite-config";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +45,15 @@ const INITIAL_CREATE: WorkspaceCollaborationActionState<CreateWorkspaceInviteDat
   { ok: true };
 const INITIAL_MUTATION: WorkspaceCollaborationActionState<WorkspaceInvitationMutationData> =
   { ok: true };
+const INITIAL_MEMBER: WorkspaceCollaborationActionState<WorkspaceMemberMutationData> =
+  { ok: true };
+
+const MEMBER_ROLE_OPTIONS = [
+  { value: "analyst", label: "Analyst" },
+  { value: "contributor", label: "Contributor" },
+  { value: "function_lead", label: "Function Lead" },
+  { value: "transformation_lead", label: "Transformation Lead" },
+] as const;
 
 const roleLabels: Record<string, string> = {
   exec_sponsor: "Executive Sponsor",
@@ -107,15 +119,19 @@ export function WorkspaceCollaborationCard({
   members,
   invitations,
   canManage,
+  currentUserId,
 }: {
   workspaceId: string;
   members: Member[];
   invitations: Invitation[];
   canManage: boolean;
+  currentUserId?: string;
 }) {
   const createAction = createWorkspaceInvitationAction.bind(null, workspaceId);
   const recreateAction = recreateWorkspaceInvitationAction.bind(null, workspaceId);
   const revokeAction = revokeWorkspaceInvitationAction.bind(null, workspaceId);
+  const memberRoleAction = updateWorkspaceMemberRoleAction.bind(null, workspaceId);
+  const memberRemoveAction = removeWorkspaceMemberAction.bind(null, workspaceId);
 
   const [createState, createFormAction, createPending] = useActionState(
     createAction,
@@ -129,10 +145,17 @@ export function WorkspaceCollaborationCard({
     revokeAction,
     INITIAL_MUTATION
   );
+  const [memberRoleState, memberRoleFormAction, memberRolePending] =
+    useActionState(memberRoleAction, INITIAL_MEMBER);
+  const [memberRemoveState, memberRemoveFormAction, memberRemovePending] =
+    useActionState(memberRemoveAction, INITIAL_MEMBER);
 
   const [copied, setCopied] = useState(false);
   const [lastAction, setLastAction] = useState<
     "create" | "recreate" | "revoke" | null
+  >(null);
+  const [lastMemberAction, setLastMemberAction] = useState<
+    "role" | "remove" | null
   >(null);
   const [latestInvite, setLatestInvite] =
     useState<CreateWorkspaceInviteData | null>(null);
@@ -336,32 +359,135 @@ export function WorkspaceCollaborationCard({
             </span>
           </div>
           <div className="divide-y rounded-2xl border">
-            {members.map((member) => (
-              <div
-                key={member.userId}
-                className="flex flex-wrap items-center justify-between gap-3 p-3"
-              >
-                <div>
-                  <div className="text-sm font-medium">
-                    {member.name ?? member.email}
+            {members.map((member) => {
+              const isManageable =
+                canManage &&
+                member.source === "workspace" &&
+                member.userId !== currentUserId;
+              return (
+                <div
+                  key={member.userId}
+                  className="flex flex-wrap items-center justify-between gap-3 p-3"
+                  data-testid="workspace-member-row"
+                  data-member-email={member.email}
+                >
+                  <div>
+                    <div className="text-sm font-medium">
+                      {member.name ?? member.email}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {member.email}
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {member.email}
+                  <div className="flex items-center gap-2">
+                    {isManageable ? (
+                      <>
+                        <form action={memberRoleFormAction}>
+                          <input
+                            type="hidden"
+                            name="userId"
+                            value={member.userId}
+                          />
+                          <select
+                            // Rimonta il select quando il ruolo cambia lato server:
+                            // React 19 resetta i form dopo le action e defaultValue
+                            // da solo non riallinea il valore mostrato.
+                            key={`${member.userId}-${member.role}`}
+                            name="role"
+                            defaultValue={member.role}
+                            disabled={memberRolePending}
+                            aria-label={`Ruolo di ${member.email}`}
+                            data-testid="workspace-member-role-select"
+                            className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
+                            onChange={(event) => {
+                              const nextRole = event.target.value;
+                              if (
+                                !window.confirm(
+                                  `Cambiare il ruolo di ${member.email} in "${
+                                    roleLabels[nextRole] ?? nextRole
+                                  }"? La modifica vale da subito per tutto il workspace.`
+                                )
+                              ) {
+                                event.target.value = member.role;
+                                return;
+                              }
+                              setLastMemberAction("role");
+                              event.target.form?.requestSubmit();
+                            }}
+                          >
+                            {MEMBER_ROLE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </form>
+                        <form
+                          action={memberRemoveFormAction}
+                          onSubmit={(event) => {
+                            if (
+                              !window.confirm(
+                                `Rimuovere ${member.email} dal workspace? Perderà subito l'accesso a tutti i dati di questo workspace.`
+                              )
+                            ) {
+                              event.preventDefault();
+                              return;
+                            }
+                            setLastMemberAction("remove");
+                          }}
+                        >
+                          <input
+                            type="hidden"
+                            name="userId"
+                            value={member.userId}
+                          />
+                          <Button
+                            type="submit"
+                            variant="ghost"
+                            size="sm"
+                            disabled={memberRemovePending}
+                            data-testid="workspace-member-remove"
+                            className="text-destructive hover:text-destructive"
+                          >
+                            Rimuovi
+                          </Button>
+                        </form>
+                      </>
+                    ) : (
+                      <Badge variant="outline">
+                        {roleLabels[member.role] ?? member.role}
+                      </Badge>
+                    )}
+                    <Badge variant="secondary">
+                      {member.source === "organization"
+                        ? "Organizzazione"
+                        : "Workspace"}
+                    </Badge>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">
-                    {roleLabels[member.role] ?? member.role}
-                  </Badge>
-                  <Badge variant="secondary">
-                    {member.source === "organization"
-                      ? "Organizzazione"
-                      : "Workspace"}
-                  </Badge>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
+          {lastMemberAction && (
+            (lastMemberAction === "remove"
+              ? memberRemoveState.message
+              : memberRoleState.message) ? (
+              <p
+                className={`text-sm ${
+                  (lastMemberAction === "remove"
+                    ? memberRemoveState.ok
+                    : memberRoleState.ok)
+                    ? "text-emerald-600"
+                    : "text-destructive"
+                }`}
+                role="status"
+              >
+                {lastMemberAction === "remove"
+                  ? memberRemoveState.message
+                  : memberRoleState.message}
+              </p>
+            ) : null
+          )}
         </section>
 
         <section className="space-y-3">

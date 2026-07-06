@@ -18,6 +18,12 @@ export function EsgToggle({
   const [isPending, startTransition] = useTransition();
 
   const handleToggle = (checked: boolean) => {
+    const confirmed = window.confirm(
+      checked
+        ? "Attivare lo scoring ESG? La modifica vale per tutto il team: i prossimi use case includeranno la dimensione ESG nella valutazione."
+        : "Disattivare lo scoring ESG? La modifica vale per tutto il team: la dimensione ESG non sarà più inclusa nella valutazione dei nuovi use case."
+    );
+    if (!confirmed) return;
     setEnabled(checked);
     startTransition(async () => {
       try {

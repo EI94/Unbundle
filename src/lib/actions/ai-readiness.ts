@@ -23,6 +23,8 @@ import {
   getRespondentByInviteTokenHash,
   getRespondentPrivacyBundleByTokenHash,
   getUseCaseSubmissionById,
+  markRespondentStarted,
+  saveAiReadinessDraftResponse,
   listRespondentsByAssessment,
   listUseCaseSubmissionsByAssessment,
   anonymizeAiReadinessRespondentByTokenHash,
@@ -37,6 +39,10 @@ import { createUseCase } from "@/lib/db/queries/use-cases";
 import { generateAiReadinessIntelligence } from "@/lib/ai-readiness/intelligence";
 import { createInviteToken, createPseudonymousId, hashInviteToken } from "@/lib/ai-readiness/token";
 import { scoreResponse } from "@/lib/ai-readiness/scoring";
+import {
+  normalizeDraftPayload,
+  type AiReadinessDraftPayload,
+} from "@/lib/ai-readiness/draft";
 import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
 
 export type AiReadinessActionState<Data = unknown> = {
@@ -394,6 +400,46 @@ function collectAnswersFromForm(formData: FormData, bundle: Awaited<ReturnType<t
   return { answers, fieldErrors };
 }
 
+export async function saveAiReadinessSurveyDraftAction(
+  token: string,
+  payload: AiReadinessDraftPayload
+): Promise<AiReadinessActionState<{ savedAt: string }>> {
+  const found = await getRespondentByInviteTokenHash(hashInviteToken(token));
+  if (!found) return errorState("Invito non valido o revocato.");
+  const { respondent, assessment } = found;
+  if (
+    respondent.inviteStatus === "revoked" ||
+    respondent.inviteStatus === "expired" ||
+    respondent.inviteStatus === "privacy_deleted"
+  ) {
+    return errorState("Questo invito non e piu valido.");
+  }
+  if (respondent.inviteStatus === "completed") {
+    return errorState("Le risposte sono gia state inviate.");
+  }
+  if (assessment.status !== "open") {
+    return errorState("L'assessment non e aperto.");
+  }
+
+  const normalized = normalizeDraftPayload(found.templateDefinition, payload);
+  const savedAt = new Date().toISOString();
+  await saveAiReadinessDraftResponse({
+    respondent,
+    answers: normalized.answers,
+    metadata: {
+      draft: {
+        consents: normalized.consents,
+        useCase: normalized.useCase,
+      },
+      draftSavedAt: savedAt,
+      templateVersion: found.template.version,
+    },
+  });
+  await markRespondentStarted(respondent.id);
+
+  return { ok: true, fieldErrors: {}, data: { savedAt } };
+}
+
 export async function submitAiReadinessResponseAction(
   token: string,
   _prev: AiReadinessActionState,
@@ -402,8 +448,22 @@ export async function submitAiReadinessResponseAction(
   const found = await getRespondentByInviteTokenHash(hashInviteToken(token));
   if (!found) return errorState("Invito non valido o revocato.");
   const { respondent, assessment } = found;
-  if (respondent.inviteStatus === "revoked" || respondent.inviteStatus === "expired") {
+  if (
+    respondent.inviteStatus === "revoked" ||
+    respondent.inviteStatus === "expired" ||
+    respondent.inviteStatus === "privacy_deleted"
+  ) {
     return errorState("Questo invito non e piu valido.");
+  }
+  if (respondent.inviteStatus === "completed") {
+    // Idempotenza: un secondo submit (doppio click, replay) non deve
+    // sovrascrivere le risposte né duplicare gli use case proposti.
+    return {
+      ok: true,
+      message: "Risposte gia inviate in precedenza.",
+      fieldErrors: {},
+      data: { completed: true },
+    };
   }
   if (assessment.status !== "open") {
     return errorState("L'assessment non e aperto. Contatta il team Unbundle.");

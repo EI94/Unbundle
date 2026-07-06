@@ -170,6 +170,42 @@ export async function upsertWorkspaceMembership(params: {
   return row;
 }
 
+export async function updateWorkspaceMembershipRole(params: {
+  workspaceId: string;
+  userId: string;
+  role: WorkspaceCollaboratorRole;
+}) {
+  await ensureDbSchema();
+  const [row] = await db
+    .update(workspaceMemberships)
+    .set({ role: params.role, updatedAt: new Date() })
+    .where(
+      and(
+        eq(workspaceMemberships.workspaceId, params.workspaceId),
+        eq(workspaceMemberships.userId, params.userId)
+      )
+    )
+    .returning();
+  return row ?? null;
+}
+
+export async function deleteWorkspaceMembership(params: {
+  workspaceId: string;
+  userId: string;
+}) {
+  await ensureDbSchema();
+  const [row] = await db
+    .delete(workspaceMemberships)
+    .where(
+      and(
+        eq(workspaceMemberships.workspaceId, params.workspaceId),
+        eq(workspaceMemberships.userId, params.userId)
+      )
+    )
+    .returning();
+  return row ?? null;
+}
+
 export type WorkspaceMemberListItem = {
   userId: string;
   name: string | null;
