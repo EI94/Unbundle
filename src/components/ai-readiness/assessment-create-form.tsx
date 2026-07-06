@@ -1,18 +1,38 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { createAiReadinessAssessmentAction, type AiReadinessActionState } from "@/lib/actions/ai-readiness";
+import { AI_READINESS_SYSTEM_TEMPLATE } from "@/lib/ai-readiness/default-template";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-const INITIAL: AiReadinessActionState = { ok: true };
+const INITIAL: AiReadinessActionState<{ assessmentId: string }> = { ok: true };
+
+const PILLAR_HINTS: Record<string, string> = {
+  technology: "Stack, strumenti approvati, governance tecnica. Tipico per IT o poche persone.",
+  context: "Conoscenza condivisa, documentazione, contesto organizzativo.",
+  workflow: "Processi, automazioni, flussi operativi dei team.",
+  adoption: "Uso reale dell'AI da parte delle persone. Tipico per tutta l'organizzazione.",
+  use_cases: "Raccolta di casi d'uso concreti proposti dai dipendenti.",
+};
 
 export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspaceId: string; workspaceName: string }) {
+  const router = useRouter();
   const action = createAiReadinessAssessmentAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(action, INITIAL);
+
+  useEffect(() => {
+    // Dopo la creazione, apri direttamente il nuovo assessment.
+    if (state.ok && state.data?.assessmentId) {
+      router.push(
+        `/dashboard/${workspaceId}/ai-readiness?assessment=${state.data.assessmentId}`
+      );
+    }
+  }, [state.ok, state.data?.assessmentId, router, workspaceId]);
 
   return (
     <Card className="overflow-hidden rounded-[28px]">
@@ -38,6 +58,39 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
             <Label htmlFor="description">Descrizione interna</Label>
             <Textarea id="description" name="description" placeholder="Es. Assessment iniziale per misurare readiness e prioritizzare la roadmap AI." />
           </div>
+          <fieldset className="space-y-2 lg:col-span-2">
+            <legend className="text-sm font-medium">Aree da misurare</legend>
+            <p className="text-xs text-muted-foreground">
+              Scegli i pilastri per questo assessment: puoi creare assessment
+              mirati (es. solo Adoption per tutta l&apos;organizzazione, solo
+              Technology per l&apos;IT) e inviarli a persone diverse.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {AI_READINESS_SYSTEM_TEMPLATE.pillars.map((pillar) => (
+                <label
+                  key={pillar.id}
+                  className="flex cursor-pointer items-start gap-3 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5"
+                >
+                  <input
+                    type="checkbox"
+                    name="pillars"
+                    value={pillar.id}
+                    defaultChecked
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="font-medium">{pillar.title}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {PILLAR_HINTS[pillar.id] ?? pillar.description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {state.fieldErrors?.pillars && (
+              <p className="text-xs text-destructive">{state.fieldErrors.pillars}</p>
+            )}
+          </fieldset>
           <fieldset className="space-y-2 lg:col-span-2">
             <legend className="text-sm font-medium">Modalità survey</legend>
             <div className="grid gap-3 sm:grid-cols-2">

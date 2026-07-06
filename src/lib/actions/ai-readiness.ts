@@ -197,6 +197,27 @@ export async function createAiReadinessAssessmentAction(
   }
 
   const template = await ensureAiReadinessSystemTemplate();
+
+  // Pilastri selezionati: permette assessment mirati (es. solo Adoption per
+  // tutta l'org, solo Technology per l'IT). Vuoto/tutti = template completo.
+  const templatePillarIds = (
+    template.pillars as Array<{ id: string }>
+  ).map((pillar) => pillar.id);
+  const requestedPillars = formData
+    .getAll("pillars")
+    .filter((value): value is string => typeof value === "string")
+    .filter((value) => templatePillarIds.includes(value));
+  if (formData.has("pillars") && requestedPillars.length === 0) {
+    return errorState("Seleziona almeno un'area da misurare.", {
+      pillars: "Seleziona almeno un'area.",
+    });
+  }
+  const includedPillars =
+    requestedPillars.length > 0 &&
+    requestedPillars.length < templatePillarIds.length
+      ? requestedPillars
+      : null;
+
   const assessment = await createAiReadinessAssessment({
     organizationId: manager.access.workspace.organizationId,
     workspaceId,
@@ -232,7 +253,10 @@ export async function createAiReadinessAssessmentAction(
       dpoEmail: parsed.data.dpoEmail || null,
       supportEmail: parsed.data.supportEmail,
     },
-    scoringConfig: { version: "ai-readiness-core-1" },
+    scoringConfig: {
+      version: "ai-readiness-core-1",
+      ...(includedPillars ? { includedPillars } : {}),
+    },
     modulesEnabled: {
       executiveAssessment: true,
       organizationalAssessment: true,

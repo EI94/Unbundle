@@ -51,6 +51,14 @@ export function proxy(req: NextRequest) {
   }
 
   if (isAuthPage && hasSession) {
+    // Cookie presente ma sessione rifiutata lato server (revocata o utente
+    // eliminato): mostra il login e cancella il cookie, altrimenti il
+    // rimbalzo /login → /dashboard → /login diventa un loop infinito.
+    if (req.nextUrl.searchParams.get("session") === "stale") {
+      const res = nextWithPath(req);
+      res.cookies.delete(SESSION_COOKIE);
+      return res;
+    }
     const raw = req.nextUrl.searchParams.get("callbackUrl");
     const safe = safeInternalCallbackUrl(raw);
     if (safe) {

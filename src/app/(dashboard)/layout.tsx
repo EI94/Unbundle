@@ -16,7 +16,10 @@ export default async function DashboardRootLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
-  if (!session?.user) redirect("/login");
+  // `session=stale` dice al proxy di cancellare il cookie __session: senza,
+  // un cookie presente ma revocato (utente eliminato, sessione revocata)
+  // causerebbe un redirect loop /login ↔ /dashboard.
+  if (!session?.user) redirect("/login?session=stale");
 
   return <>{children}</>;
 }

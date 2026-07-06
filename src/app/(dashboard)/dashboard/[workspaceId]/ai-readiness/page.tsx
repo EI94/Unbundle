@@ -19,7 +19,8 @@ import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 import {
   ensureAiReadinessSystemTemplate,
   getAiReadinessDashboard,
-  getLatestAssessmentBundleByWorkspace,
+  getAssessmentBundleById,
+  listAssessmentsByWorkspace,
   listAiReadinessInsights,
   listAiReadinessExports,
   listRespondentsByAssessment,
@@ -83,20 +84,68 @@ function scoreFromUnknown(value: unknown) {
 
 export default async function AiReadinessPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
+  searchParams: Promise<{ assessment?: string; new?: string }>;
 }) {
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
   const { workspaceId } = await params;
+  const search = await searchParams;
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) notFound();
 
   await ensureAiReadinessSystemTemplate();
   const canManage = canManageWorkspaceSettings(access.role);
-  const bundle = await getLatestAssessmentBundleByWorkspace(workspaceId);
+  const assessments = await listAssessmentsByWorkspace(workspaceId);
+  const selectedRow =
+    assessments.find((row) => row.assessment.id === search.assessment) ??
+    assessments[0] ??
+    null;
+  const showCreateForm =
+    (search.new === "1" && canManage) || assessments.length === 0;
+  const bundle =
+    !showCreateForm && selectedRow
+      ? await getAssessmentBundleById(selectedRow.assessment.id)
+      : null;
 
-  if (!bundle) {
+  const assessmentSwitcher =
+    assessments.length > 0 ? (
+      <div className="flex flex-wrap items-center gap-2" data-testid="assessment-switcher">
+        {assessments.map((row) => {
+          const isActive =
+            !showCreateForm && row.assessment.id === selectedRow?.assessment.id;
+          return (
+            <Link
+              key={row.assessment.id}
+              href={`/dashboard/${workspaceId}/ai-readiness?assessment=${row.assessment.id}`}
+              className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                isActive
+                  ? "border-emerald-500 bg-emerald-500/10 font-medium"
+                  : "hover:bg-muted"
+              }`}
+            >
+              {row.assessment.name}
+              <span className="ml-2 text-xs text-muted-foreground">
+                {statusBadge(row.assessment.status)}
+              </span>
+            </Link>
+          );
+        })}
+        {canManage && (
+          <Link
+            href={`/dashboard/${workspaceId}/ai-readiness?new=1`}
+            className="rounded-full border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
+            data-testid="assessment-new-link"
+          >
+            + Nuovo assessment
+          </Link>
+        )}
+      </div>
+    ) : null;
+
+  if (showCreateForm) {
     return (
       <div className="flex-1 space-y-8 p-6 lg:p-8">
         <div className="rounded-[32px] border bg-linear-to-br from-emerald-500/10 via-background to-sky-500/10 p-8">
@@ -109,6 +158,7 @@ export default async function AiReadinessPage({
             survey privacy-safe, scoring, dashboard base ed export.
           </p>
         </div>
+        {assessmentSwitcher}
         {canManage ? (
           <AssessmentCreateForm
             workspaceId={workspaceId}
@@ -125,6 +175,8 @@ export default async function AiReadinessPage({
       </div>
     );
   }
+
+  if (!bundle) notFound();
 
   const [dashboard, respondents, useCases, exports, insights] = await Promise.all([
     getAiReadinessDashboard(bundle.assessment.id),
@@ -148,8 +200,13 @@ export default async function AiReadinessPage({
   const benchmarkInsight = insights.find((insight) => insight.insightType === "benchmark");
   const benchmark = evidenceRecord(evidenceRecord(benchmarkInsight?.evidence).benchmark);
 
+  const includedPillarTitles = bundle.templateDefinition.pillars
+    .map((pillar) => pillar.title)
+    .join(", ");
+
   return (
     <div className="flex-1 space-y-6 p-6 lg:p-8">
+      {assessmentSwitcher}
       <header className="rounded-[32px] border bg-card p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -167,9 +224,9 @@ export default async function AiReadinessPage({
               {bundle.assessment.name}
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Diagnostic layer per misurare readiness across Technology,
-              Context, Workflow, Adoption e Use Cases. I risultati per team
-              vengono mostrati solo sopra soglia aggregazione.
+              Diagnostic layer per misurare readiness su: {includedPillarTitles}.
+              I risultati per team vengono mostrati solo sopra soglia
+              aggregazione.
             </p>
           </div>
           <div className="space-y-2">
@@ -185,11 +242,14 @@ export default async function AiReadinessPage({
               assessmentId={bundle.assessment.id}
             />
             <div className="flex flex-wrap gap-2">
+              {/* Anchor nativi (non <Link>): il prefetch di Next eseguirebbe
+                  la GET di export a ogni visita, generando file e audit finti. */}
               <Button
                 variant="outline"
                 render={
-                  <Link
+                  <a
                     href={`/api/ai-readiness/assessments/${bundle.assessment.id}/export?type=excel`}
+                    download
                   />
                 }
                 nativeButton={false}
@@ -199,8 +259,9 @@ export default async function AiReadinessPage({
               <Button
                 variant="outline"
                 render={
-                  <Link
+                  <a
                     href={`/api/ai-readiness/assessments/${bundle.assessment.id}/export?type=pdf`}
+                    download
                   />
                 }
                 nativeButton={false}

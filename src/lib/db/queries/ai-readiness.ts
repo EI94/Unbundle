@@ -34,6 +34,10 @@ import type {
   AiReadinessTemplateDefinition,
 } from "@/lib/ai-readiness/types";
 import { aggregateScores } from "@/lib/ai-readiness/scoring";
+import {
+  filterTemplateDefinition,
+  includedPillarsFromScoringConfig,
+} from "@/lib/ai-readiness/template-scope";
 
 export type AiReadinessAssessmentBundle = {
   assessment: AiReadinessAssessment;
@@ -51,6 +55,17 @@ export function templateDefinitionFromRow(
     scoringSchema:
       row.scoringSchema as AiReadinessTemplateDefinition["scoringSchema"],
   };
+}
+
+/** Template ristretto ai pilastri selezionati per lo specifico assessment. */
+function templateDefinitionForAssessment(
+  assessment: AiReadinessAssessment,
+  templateRow: AiReadinessAssessmentTemplate
+): AiReadinessTemplateDefinition {
+  return filterTemplateDefinition(
+    templateDefinitionFromRow(templateRow),
+    includedPillarsFromScoringConfig(assessment.scoringConfig)
+  );
 }
 
 export async function ensureAiReadinessSystemTemplate() {
@@ -109,7 +124,10 @@ export async function getLatestAssessmentBundleByWorkspace(workspaceId: string) 
   return {
     assessment: first.assessment,
     template: first.template,
-    templateDefinition: templateDefinitionFromRow(first.template),
+    templateDefinition: templateDefinitionForAssessment(
+      first.assessment,
+      first.template
+    ),
   };
 }
 
@@ -131,7 +149,10 @@ export async function getAssessmentBundleById(assessmentId: string) {
   return {
     assessment: row.assessment,
     template: row.template,
-    templateDefinition: templateDefinitionFromRow(row.template),
+    templateDefinition: templateDefinitionForAssessment(
+      row.assessment,
+      row.template
+    ),
   };
 }
 
@@ -195,7 +216,10 @@ export async function getRespondentByInviteTokenHash(tokenHash: string) {
   if (!row) return null;
   return {
     ...row,
-    templateDefinition: templateDefinitionFromRow(row.template),
+    templateDefinition: templateDefinitionForAssessment(
+      row.assessment,
+      row.template
+    ),
   };
 }
 

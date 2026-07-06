@@ -25,10 +25,26 @@ function safeFilename(input: string) {
     .slice(0, 80) || "ai-readiness";
 }
 
+function isPrefetchRequest(req: Request) {
+  const h = req.headers;
+  return (
+    h.get("next-router-prefetch") === "1" ||
+    h.get("sec-purpose")?.includes("prefetch") === true ||
+    h.get("purpose") === "prefetch" ||
+    h.get("x-purpose") === "prefetch"
+  );
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ assessmentId: string }> }
 ) {
+  // Difesa in profondità: un prefetch del browser/router non deve mai
+  // generare l'export né scrivere righe di audit.
+  if (isPrefetchRequest(req)) {
+    return new Response(null, { status: 204 });
+  }
+
   const session = await auth();
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
