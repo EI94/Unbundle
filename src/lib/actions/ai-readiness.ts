@@ -322,6 +322,49 @@ export async function updateAiReadinessAssessmentStatusAction(
   return { ok: true, message: `Assessment ${status}.`, fieldErrors: {} };
 }
 
+export async function updateAiReadinessThresholdAction(
+  workspaceId: string,
+  assessmentId: string,
+  _prev: AiReadinessActionState,
+  formData: FormData
+): Promise<AiReadinessActionState> {
+  void _prev;
+  const manager = await assertAssessmentManager(workspaceId);
+  if (!manager.ok) return manager.state;
+  const bundle = await getAssessmentBundleById(assessmentId);
+  if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
+    return errorState("Assessment non trovato.");
+  }
+  // Privacy by design: in modalita anonima la soglia minima resta 3;
+  // in modalita nominativa si puo scendere fino a 1 (pilot piccoli).
+  const min = bundle.assessment.anonymousMode !== false ? 3 : 1;
+  const raw = Number(formString(formData, "aggregationThreshold"));
+  if (!Number.isInteger(raw) || raw < min || raw > 50) {
+    return errorState(
+      `Soglia non valida: inserisci un numero tra ${min} e 50.`,
+      { aggregationThreshold: `Da ${min} a 50.` }
+    );
+  }
+  await updateAiReadinessAssessment(assessmentId, {
+    aggregationThreshold: raw,
+  });
+  await recomputeAiReadinessScores(assessmentId);
+  await createAiReadinessAuditEvent({
+    organizationId: manager.access.workspace.organizationId,
+    workspaceId,
+    assessmentId,
+    actorUserId: manager.session.user.id,
+    eventType: "settings_changed",
+    eventPayload: { aggregationThreshold: raw },
+  });
+  revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
+  return {
+    ok: true,
+    message: `Soglia aggiornata a ${raw}. Score ricalcolati.`,
+    fieldErrors: {},
+  };
+}
+
 export async function createAiReadinessRespondentInviteAction(
   workspaceId: string,
   assessmentId: string,

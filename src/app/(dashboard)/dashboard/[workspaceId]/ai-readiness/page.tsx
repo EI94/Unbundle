@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   BarChart3,
   Brain,
+  Eye,
   Download,
   GitBranch,
   Lock,
@@ -32,6 +33,7 @@ import { AssessmentActions } from "@/components/ai-readiness/assessment-actions"
 import { InsightValidationActions } from "@/components/ai-readiness/insight-validation-actions";
 import { IntelligenceActions } from "@/components/ai-readiness/intelligence-actions";
 import { RespondentInviteForm } from "@/components/ai-readiness/respondent-invite-form";
+import { ThresholdForm } from "@/components/ai-readiness/threshold-form";
 import { UseCasePromoteButton } from "@/components/ai-readiness/use-case-promote-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -213,9 +215,13 @@ export default async function AiReadinessPage({
               <Badge variant="secondary">AI Readiness OS</Badge>
               <Badge variant="outline">Fase 2 - Intelligence Layer</Badge>
               <Badge variant="outline">{statusBadge(bundle.assessment.status)}</Badge>
-              {bundle.assessment.anonymousMode && (
+              {bundle.assessment.anonymousMode ? (
                 <Badge variant="outline" className="gap-1">
-                  <Lock className="size-3" /> Anonymous by default
+                  <Lock className="size-3" /> Anonima
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="gap-1">
+                  <Users className="size-3" /> Nominativa
                 </Badge>
               )}
             </div>
@@ -241,6 +247,25 @@ export default async function AiReadinessPage({
               assessmentId={bundle.assessment.id}
             />
             <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                render={
+                  <Link
+                    href={`/dashboard/${workspaceId}/ai-readiness/preview/${bundle.assessment.id}`}
+                  />
+                }
+                nativeButton={false}
+                data-testid="survey-preview-link"
+              >
+                <Eye className="mr-1 size-4" /> Anteprima survey
+              </Button>
+              <Button
+                render={<a href="#respondents" />}
+                nativeButton={false}
+                data-testid="invite-respondents-cta"
+              >
+                <Mail className="mr-1 size-4" /> Invita respondent
+              </Button>
               {/* Anchor nativi (non <Link>): il prefetch di Next eseguirebbe
                   la GET di export a ogni visita, generando file e audit finti. */}
               <Button
@@ -271,6 +296,69 @@ export default async function AiReadinessPage({
           </div>
         </div>
       </header>
+
+
+      <section className="rounded-[32px] border bg-linear-to-br from-emerald-500/5 via-card to-sky-500/5 p-5" data-testid="journey-steps">
+        <div className="grid gap-3 md:grid-cols-4">
+          {[
+            {
+              n: 1,
+              title: "Controlla le domande",
+              desc: "Guarda l'anteprima esatta della survey prima di inviarla.",
+              done: true,
+              href: `/dashboard/${workspaceId}/ai-readiness/preview/${bundle.assessment.id}`,
+              cta: "Apri anteprima",
+            },
+            {
+              n: 2,
+              title: "Invita i respondent",
+              desc: "Crea un link personale per ogni persona e invialo via email o chat.",
+              done: respondents.length > 0,
+              href: "#respondents",
+              cta: "Crea link",
+            },
+            {
+              n: 3,
+              title: "Raccogli le risposte",
+              desc: "Ognuno compila dal proprio link: salvataggio automatico e ripresa inclusi.",
+              done: (dashboard?.completedCount ?? 0) > 0,
+              href: "#respondents",
+              cta: "Stato inviti",
+            },
+            {
+              n: 4,
+              title: "Analizza ed esporta",
+              desc: "Genera intelligence, valida gli insight e scarica Excel/PDF.",
+              done: insights.length > 0,
+              href: "#intelligence",
+              cta: "Vai agli insight",
+            },
+          ].map((step) => (
+            <a
+              key={step.n}
+              href={step.href}
+              className="group rounded-2xl border bg-background/60 p-4 transition-colors hover:bg-muted/50"
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={`flex size-6 items-center justify-center rounded-full text-xs font-semibold ${
+                    step.done
+                      ? "bg-emerald-500 text-white"
+                      : "border text-muted-foreground"
+                  }`}
+                >
+                  {step.done ? "✓" : step.n}
+                </span>
+                <span className="text-sm font-medium">{step.title}</span>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">{step.desc}</p>
+              <span className="mt-2 inline-block text-xs font-medium text-emerald-600 group-hover:underline">
+                {step.cta} →
+              </span>
+            </a>
+          ))}
+        </div>
+      </section>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
@@ -359,6 +447,14 @@ export default async function AiReadinessPage({
               <div className="mt-1 font-medium">
                 {bundle.assessment.aggregationThreshold} respondent minimi
               </div>
+              {canManage && (
+                <ThresholdForm
+                  workspaceId={workspaceId}
+                  assessmentId={bundle.assessment.id}
+                  current={bundle.assessment.aggregationThreshold}
+                  min={bundle.assessment.anonymousMode !== false ? 3 : 1}
+                />
+              )}
             </div>
             <div className="rounded-2xl border p-3">
               <div className="text-xs text-muted-foreground">Controller</div>
@@ -386,7 +482,7 @@ export default async function AiReadinessPage({
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card className="rounded-[28px]">
+        <Card className="rounded-[28px] scroll-mt-24" id="intelligence">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Brain className="size-5" />
@@ -552,7 +648,7 @@ export default async function AiReadinessPage({
 
       {canManage && (
         <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-          <Card className="rounded-[28px]">
+          <Card className="rounded-[28px] scroll-mt-24" id="respondents">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Mail className="size-5" /> Invita respondent
