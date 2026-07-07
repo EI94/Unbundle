@@ -131,6 +131,14 @@ export default async function AiReadinessSurveyPreviewPage({
                           : "Testo libero"}
                     </Badge>
                   </div>
+                  {question.answerType === "scale" && question.scaleAnchors && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground/80">0</span> ={" "}
+                      {question.scaleAnchors.min} ·{" "}
+                      <span className="font-medium text-foreground/80">5</span> ={" "}
+                      {question.scaleAnchors.max}
+                    </p>
+                  )}
                   {question.answerType === "single_choice" && question.options && (
                     <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
                       {question.options.map((option) => (

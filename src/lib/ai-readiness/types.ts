@@ -23,6 +23,8 @@ export type AiReadinessQuestion = {
   max?: number;
   weight?: number;
   options?: Array<{ value: string; label: string; score?: number }>;
+  /** Ancore della scala: cosa significa il voto minimo e cosa il massimo. */
+  scaleAnchors?: { min: string; max: string };
 };
 
 export type AiReadinessSection = {

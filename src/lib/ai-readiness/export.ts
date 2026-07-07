@@ -420,6 +420,7 @@ export type SurveyPreviewPdfPayload = {
       description?: string;
       answerType: string;
       required?: boolean;
+      scaleAnchors?: { min: string; max: string };
     }>;
   }>;
   generatedAt: Date;
@@ -481,6 +482,13 @@ export function buildSurveyPreviewPdfBuffer(payload: SurveyPreviewPdfPayload) {
         size: 8.5,
         indent: 14,
       });
+      if (question.answerType === "scale" && question.scaleAnchors) {
+        lines.push({
+          text: `0 = ${question.scaleAnchors.min}   |   5 = ${question.scaleAnchors.max}`,
+          size: 8.5,
+          indent: 14,
+        });
+      }
     }
   }
   lines.push({

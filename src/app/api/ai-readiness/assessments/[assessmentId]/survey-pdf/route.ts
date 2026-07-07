@@ -80,6 +80,7 @@ export async function GET(
           description: q.description,
           answerType: q.answerType,
           required: q.required,
+          scaleAnchors: q.scaleAnchors,
         })),
     })),
     generatedAt: new Date(),

@@ -167,9 +167,13 @@ function QuestionField({
             </label>
           ))}
         </div>
-        <div className="flex justify-between text-[11px] text-muted-foreground">
-          <span>0 = non presente</span>
-          <span>5 = AI native</span>
+        <div className="flex justify-between gap-4 text-[11px] leading-4 text-muted-foreground">
+          <span className="max-w-[45%]">
+            0 = {question.scaleAnchors?.min ?? "per niente"}
+          </span>
+          <span className="max-w-[45%] text-right">
+            5 = {question.scaleAnchors?.max ?? "completamente"}
+          </span>
         </div>
         {error && <p className="text-xs text-destructive">{error}</p>}
       </div>

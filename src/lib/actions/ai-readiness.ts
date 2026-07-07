@@ -436,13 +436,18 @@ export async function customizeAssessmentQuestionAction(
     }
     const description = formString(formData, "description");
     const required = formData.get("required") === "on";
+    const anchorMin = formString(formData, "anchorMin").slice(0, 80);
+    const anchorMax = formString(formData, "anchorMax").slice(0, 80);
+    const scaleAnchors =
+      anchorMin && anchorMax ? { min: anchorMin, max: anchorMax } : undefined;
     const custom = added.find((q) => q.id === questionId);
     if (custom) {
       custom.label = label;
       custom.description = description || undefined;
       custom.required = required;
+      custom.scaleAnchors = scaleAnchors;
     } else {
-      edited[questionId] = { label, description, required };
+      edited[questionId] = { label, description, required, scaleAnchors };
     }
   } else if (op === "add") {
     const sectionId = formString(formData, "sectionId");
@@ -456,6 +461,8 @@ export async function customizeAssessmentQuestionAction(
     if (!bundle.templateDefinition.sections.some((s) => s.id === sectionId)) {
       return errorState("Sezione non valida.");
     }
+    const addAnchorMin = formString(formData, "anchorMin").slice(0, 80);
+    const addAnchorMax = formString(formData, "anchorMax").slice(0, 80);
     added.push({
       id: `custom-${randomUUID().slice(0, 8)}`,
       sectionId,
@@ -463,6 +470,9 @@ export async function customizeAssessmentQuestionAction(
       description: formString(formData, "description") || undefined,
       answerType,
       required: answerType === "scale",
+      ...(addAnchorMin && addAnchorMax
+        ? { scaleAnchors: { min: addAnchorMin, max: addAnchorMax } }
+        : {}),
     });
   } else {
     return errorState("Operazione non valida.");

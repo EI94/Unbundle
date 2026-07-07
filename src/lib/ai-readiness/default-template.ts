@@ -1,14 +1,13 @@
 import type { AiReadinessTemplateDefinition } from "./types";
 
-export const AI_READINESS_SYSTEM_TEMPLATE_VERSION = "2.0.0";
+export const AI_READINESS_SYSTEM_TEMPLATE_VERSION = "3.0.0";
 
 /**
- * Template core v2 — sintesi del meglio da: survey Datapizza/NATIVA (quiz
- * oggettivo di conoscenza, uso reale, atteggiamento), framework sistemico
- * NATIVA (domini, ~10-15 min), questionari OPIT/Dylog (baseline ROI,
- * criteri di ammissibilita use case, policy d'uso sicuro).
- * Tutte le domande a punteggio restano su scala 0–5 per pilastro.
- * Ogni assessment puo poi personalizzare le singole domande (templateOverrides).
+ * Template core v3 — riscritto per persone non tecniche: zero gergo, esempi
+ * concreti in ogni domanda, ancore esplicite (cosa significa 0 e cosa 5).
+ * La sezione Adoption è la più ricca (stile survey Datapizza/NATIVA) perché
+ * viene condivisa con tutta l'organizzazione, e raccoglie sia gli use case
+ * AI già in uso sia quelli desiderati. Score sempre 0–5 per pilastro.
  */
 export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
   pillars: [
@@ -16,366 +15,480 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       id: "technology",
       title: "Technology",
       description:
-        "Governance degli strumenti AI, accessi, sicurezza dei dati, costi e adeguatezza dello stack.",
+        "Strumenti AI a disposizione e regole d'uso: cosa si puo usare, con quali account, con quali dati.",
       weight: 1,
     },
     {
       id: "context",
       title: "Context",
       description:
-        "Qualita, accessibilita e ownership della conoscenza e dei dati aziendali usati dall'AI.",
+        "Informazioni, documenti e dati aziendali: quanto sono facili da trovare, affidabili e scritti nero su bianco.",
       weight: 1,
     },
     {
       id: "workflow",
       title: "Workflow",
       description:
-        "Maturita dei processi, baseline di tempi e costi, automazioni esistenti e disponibilita al ridisegno.",
+        "Come si lavora ogni giorno: chiarezza dei passaggi, tempo perso in attivita ripetitive, apertura al cambiamento.",
       weight: 1,
     },
     {
       id: "adoption",
       title: "Adoption",
       description:
-        "Conoscenza reale dell'AI (non solo percepita), uso quotidiano, atteggiamento e cultura di sperimentazione.",
+        "Le persone e l'AI: cosa conoscono davvero, quanto la usano gia, cosa ne pensano e cosa li frena.",
       weight: 1,
     },
     {
       id: "use_cases",
       title: "Use Cases",
       description:
-        "Capacita di identificare, valutare e proporre use case concreti, sicuri e collegati al business.",
+        "La capacita di trasformare il lavoro quotidiano in casi concreti dove l'AI aiuta davvero.",
       weight: 1,
     },
   ],
   sections: [
     {
-      id: "technology-governance",
+      id: "technology-rules",
       pillarId: "technology",
-      title: "Governance e sicurezza",
+      title: "Strumenti e regole d'uso",
       description:
-        "Regole del gioco: strumenti approvati, accessi, protezione dei dati.",
-    },
-    {
-      id: "technology-stack",
-      pillarId: "technology",
-      title: "Stack e strumenti",
-      description: "Adeguatezza e controllo degli strumenti AI disponibili.",
+        "Quali strumenti AI puoi usare, con quali account e con quali dati: le regole del gioco.",
     },
     {
       id: "context-knowledge",
       pillarId: "context",
-      title: "Conoscenza e dati",
+      title: "Informazioni e documenti",
       description:
-        "Quanto la conoscenza aziendale e pronta per essere usata (anche) da un'AI.",
+        "Quanto e facile trovare cio che serve per lavorare, e quanto e scritto invece che solo 'nella testa' di qualcuno.",
     },
     {
-      id: "workflow-processes",
+      id: "workflow-daily",
       pillarId: "workflow",
-      title: "Processi e redesign",
+      title: "Come lavorate ogni giorno",
       description:
-        "Chiarezza dei flussi, misurabilita e disponibilita a ridisegnarli.",
+        "Attivita ripetitive, chiarezza dei passaggi e disponibilita a cambiare il modo di lavorare.",
     },
     {
       id: "adoption-knowledge",
       pillarId: "adoption",
-      title: "Conoscenza AI",
+      title: "Quanto conosci l'AI",
       description:
-        "Cosa sai davvero dell'AI generativa: autovalutazione piu due domande di verifica.",
+        "Niente esame: serve a capire da dove partiamo. Rispondi con sincerita.",
     },
     {
       id: "adoption-usage",
       pillarId: "adoption",
-      title: "Uso quotidiano",
-      description: "Quanto e come l'AI entra gia nel lavoro di tutti i giorni.",
+      title: "L'AI nel tuo lavoro di oggi",
+      description:
+        "Quanto e come usi gia strumenti come ChatGPT, Copilot o Gemini nel lavoro di tutti i giorni.",
     },
     {
       id: "adoption-attitude",
       pillarId: "adoption",
-      title: "Atteggiamento e cultura",
-      description: "Fiducia, formazione e clima del team rispetto all'AI.",
+      title: "Cosa ne pensi",
+      description:
+        "La tua opinione conta: entusiasmo, dubbi e cosa ti frena sono informazioni preziose quanto i numeri.",
     },
     {
-      id: "use-cases-capability",
+      id: "use-cases-ideas",
       pillarId: "use_cases",
-      title: "Qualita use case",
+      title: "Idee e casi concreti",
       description:
-        "Saper riconoscere, valutare e proporre casi d'uso adatti e sicuri.",
+        "Dove l'AI potrebbe aiutarti davvero: idee, esperimenti gia fatti e casi delicati da riconoscere.",
     },
   ],
   questions: [
-    // ───────────── TECHNOLOGY ─────────────
+    // ───────────── TECHNOLOGY — Strumenti e regole d'uso ─────────────
     {
       id: "tech-approved-tools",
       pillarId: "technology",
-      sectionId: "technology-governance",
+      sectionId: "technology-rules",
       label:
-        "In azienda e chiaro quali strumenti AI sono approvati e per quali usi",
-      description: "0 = nessuna indicazione, 5 = lista chiara e comunicata a tutti.",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-    },
-    {
-      id: "tech-access-controls",
-      pillarId: "technology",
-      sectionId: "technology-governance",
-      label:
-        "Gli accessi agli strumenti AI sono gestiti con account aziendali e permessi controllati",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-    },
-    {
-      id: "tech-data-protection",
-      pillarId: "technology",
-      sectionId: "technology-governance",
-      label:
-        "Esistono regole chiare su quali dati si possono inserire negli strumenti AI",
+        "Sai quali strumenti di AI puoi usare per lavoro e quali invece sono vietati?",
       description:
-        "Es. dati di clienti, dati personali, informazioni riservate: cosa si puo usare e dove.",
+        "Es. ChatGPT, Copilot, Gemini: l'azienda ti ha mai detto quali sono ammessi?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Nessuno mi ha mai detto nulla",
+        max: "C'e una lista chiara e la conosco",
+      },
     },
     {
-      id: "tech-monitoring",
+      id: "tech-accounts",
       pillarId: "technology",
-      sectionId: "technology-stack",
-      label: "Uso e costi degli strumenti AI vengono monitorati regolarmente",
+      sectionId: "technology-rules",
+      label:
+        "Gli strumenti AI che usi per lavoro sono forniti dall'azienda o ognuno si arrangia?",
+      description:
+        "Con account aziendali i dati sono piu protetti; con account personali gratuiti nessuno sa dove finiscono.",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Ognuno usa account personali",
+        max: "Tutti abbiamo account aziendali dedicati",
+      },
+    },
+    {
+      id: "tech-data-rules",
+      pillarId: "technology",
+      sectionId: "technology-rules",
+      label:
+        "Ti e chiaro quali informazioni puoi incollare in ChatGPT (o simili) e quali no?",
+      description:
+        "Es. dati di clienti, contratti, stipendi: sai cosa NON va mai condiviso con l'AI?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      scaleAnchors: {
+        min: "Non ci ho mai pensato",
+        max: "Regole chiarissime, so sempre cosa posso inserire",
+      },
     },
     {
       id: "tech-stack-fit",
       pillarId: "technology",
-      sectionId: "technology-stack",
+      sectionId: "technology-rules",
       label:
-        "Gli strumenti AI a tua disposizione coprono i bisogni reali del tuo lavoro",
-      description: "0 = nessuno strumento utile, 5 = ho tutto cio che serve.",
+        "Gli strumenti AI che hai oggi a disposizione ti bastano per il tuo lavoro?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Non ho nessuno strumento utile",
+        max: "Ho tutto quello che mi serve",
+      },
     },
-    // ───────────── CONTEXT ─────────────
     {
-      id: "ctx-knowledge-access",
+      id: "tech-support",
+      pillarId: "technology",
+      sectionId: "technology-rules",
+      label:
+        "Se hai un dubbio o un problema con uno strumento AI, sai a chi chiedere?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      scaleAnchors: {
+        min: "Non saprei proprio a chi rivolgermi",
+        max: "C'e un riferimento chiaro che mi aiuta",
+      },
+    },
+    // ───────────── CONTEXT — Informazioni e documenti ─────────────
+    {
+      id: "ctx-find-info",
       pillarId: "context",
       sectionId: "context-knowledge",
       label:
-        "Le informazioni che ti servono per lavorare (procedure, documenti, dati) sono facili da trovare e aggiornate",
+        "Quando ti serve un'informazione per lavorare (una procedura, un documento, un dato), la trovi facilmente?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Perdo tempo a cercarla o a chiedere in giro",
+        max: "La trovo subito: e ordinata e aggiornata",
+      },
     },
     {
       id: "ctx-data-quality",
       pillarId: "context",
       sectionId: "context-knowledge",
-      label:
-        "I dati aziendali sono affidabili e utilizzabili senza rilavorazioni manuali",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-    },
-    {
-      id: "ctx-knowledge-ownership",
-      pillarId: "context",
-      sectionId: "context-knowledge",
-      label:
-        "E chiaro chi possiede e tiene aggiornata la conoscenza critica dei processi",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-    },
-    {
-      id: "ctx-documentation",
-      pillarId: "context",
-      sectionId: "context-knowledge",
-      label:
-        "I processi chiave sono documentati abbastanza bene da poterli spiegare a un'AI",
+      label: "I dati e i file con cui lavori sono affidabili cosi come sono?",
       description:
-        "Se domani dovessi far eseguire il processo a un collega nuovo (o a un agente AI), la documentazione basterebbe?",
+        "Es. anagrafiche clienti, listini, report: sono giusti al primo colpo o vanno sempre sistemati a mano?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Vanno sempre controllati e corretti a mano",
+        max: "Sono affidabili, li uso senza rilavorarli",
+      },
+    },
+    {
+      id: "ctx-who-knows",
+      pillarId: "context",
+      sectionId: "context-knowledge",
+      label:
+        "Se la persona che 'sa tutto' di un processo va in ferie, il lavoro va avanti lo stesso?",
+      description:
+        "Misura quanto la conoscenza e scritta da qualche parte invece che solo nella testa di qualcuno.",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      scaleAnchors: {
+        min: "Ci blocchiamo: sa tutto solo lei/lui",
+        max: "Tutto e scritto: chiunque puo proseguire",
+      },
+    },
+    {
+      id: "ctx-documented",
+      pillarId: "context",
+      sectionId: "context-knowledge",
+      label:
+        "I passaggi del tuo lavoro sono scritti da qualche parte (guide, procedure, istruzioni)?",
+      description:
+        "Se domani arrivasse un collega nuovo, capirebbe come fare leggendo quello che c'e?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      scaleAnchors: {
+        min: "Niente e scritto: si impara a voce",
+        max: "Tutto documentato e aggiornato",
+      },
     },
     {
       id: "ctx-missing-info",
       pillarId: "context",
       sectionId: "context-knowledge",
-      label: "Quali informazioni ti mancano piu spesso per lavorare bene?",
+      label:
+        "Quale informazione ti manca piu spesso per lavorare bene? Dove la cerchi di solito?",
       answerType: "text",
       required: false,
     },
-    // ───────────── WORKFLOW ─────────────
+    // ───────────── WORKFLOW — Come lavorate ogni giorno ─────────────
     {
-      id: "wf-repetitive-mapped",
+      id: "wf-repetitive",
       pillarId: "workflow",
-      sectionId: "workflow-processes",
+      sectionId: "workflow-daily",
       label:
-        "Le attivita ripetitive o a basso valore del tuo team sono state mappate",
-      description: "Sapete quali sono, quanto tempo assorbono e chi le fa.",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-    },
-    {
-      id: "wf-process-clarity",
-      pillarId: "workflow",
-      sectionId: "workflow-processes",
-      label:
-        "I flussi di lavoro hanno passaggi e responsabilita chiari (chi fa cosa, quando)",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-    },
-    {
-      id: "wf-baseline-roi",
-      pillarId: "workflow",
-      sectionId: "workflow-processes",
-      label:
-        "Sapete misurare tempi e costi dei processi principali (baseline per il ROI)",
+        "Le attivita ripetitive del tuo team sono state identificate e misurate?",
       description:
-        "Senza baseline non si puo dimostrare quanto l'AI fa risparmiare davvero.",
+        "Es. copiare dati da un file all'altro, compilare moduli, scrivere sempre le stesse email: sapete quali sono e quanto tempo portano via?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Nessuno le ha mai guardate davvero",
+        max: "Le conosciamo e sappiamo quanto tempo costano",
+      },
+    },
+    {
+      id: "wf-clear-steps",
+      pillarId: "workflow",
+      sectionId: "workflow-daily",
+      label: "Nel tuo lavoro e chiaro chi fa cosa e quando?",
+      description:
+        "Es. quando arriva una richiesta di un cliente, tutti sanno chi la prende in carico e quali sono i passaggi?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      scaleAnchors: {
+        min: "Ogni volta si improvvisa",
+        max: "Passaggi e responsabilita chiari per tutti",
+      },
+    },
+    {
+      id: "wf-measure",
+      pillarId: "workflow",
+      sectionId: "workflow-daily",
+      label:
+        "Sapete quanto tempo costa un'attivita importante del vostro lavoro?",
+      description:
+        "Es. 'preparare un preventivo ci porta via 45 minuti': avete numeri cosi? Servono per capire dove l'AI fa risparmiare davvero.",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      scaleAnchors: {
+        min: "Nessuna idea: non lo misura nessuno",
+        max: "Abbiamo numeri precisi e aggiornati",
+      },
     },
     {
       id: "wf-automation",
       pillarId: "workflow",
-      sectionId: "workflow-processes",
+      sectionId: "workflow-daily",
       label:
-        "Alcune parti dei vostri processi sono gia automatizzate o assistite dall'AI",
+        "Ci sono gia pezzi del vostro lavoro che 'si fanno da soli'?",
+      description:
+        "Es. email che partono in automatico, report che si generano da soli, dati che passano da un programma all'altro senza copia-incolla.",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Tutto si fa a mano",
+        max: "Molti passaggi sono gia automatici",
+      },
     },
     {
-      id: "wf-redesign-readiness",
+      id: "wf-change-openness",
       pillarId: "workflow",
-      sectionId: "workflow-processes",
+      sectionId: "workflow-daily",
       label:
-        "Il team e disposto a ridisegnare i processi, non solo a renderli piu veloci",
+        "Il tuo team e disposto a cambiare il modo di lavorare, non solo a fare le stesse cose piu in fretta?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "'Si e sempre fatto cosi': meglio non toccare",
+        max: "Cambiare non ci spaventa: l'abbiamo gia fatto",
+      },
     },
     {
       id: "wf-time-waster",
       pillarId: "workflow",
-      sectionId: "workflow-processes",
-      label: "Qual e il processo che oggi vi fa perdere piu tempo?",
+      sectionId: "workflow-daily",
+      label:
+        "Qual e l'attivita che ti fa perdere piu tempo ogni settimana?",
+      description:
+        "Descrivila con parole tue: e uno dei punti dove andremo a cercare i primi risultati.",
       answerType: "text",
       required: false,
     },
-    // ───────────── ADOPTION — Conoscenza ─────────────
+    // ───────────── ADOPTION — Quanto conosci l'AI ─────────────
     {
-      id: "ad-self-knowledge",
+      id: "ad-inform",
       pillarId: "adoption",
       sectionId: "adoption-knowledge",
       label:
-        "Quanto conosci i concetti base dell'AI generativa (modelli, prompt, limiti, allucinazioni)?",
-      description:
-        "Autovalutazione onesta: 0 = per niente, 5 = li so spiegare ad altri.",
+        "Ti capita di informarti sull'intelligenza artificiale (articoli, video, podcast, corsi)?",
+      answerType: "single_choice",
+      required: true,
+      weight: 1,
+      options: [
+        { value: "never", label: "Mai: non e un tema che seguo", score: 0 },
+        { value: "rarely", label: "Raramente, se mi capita sotto gli occhi", score: 1 },
+        { value: "sometimes", label: "Ogni tanto, quando esce qualcosa di grosso", score: 3 },
+        { value: "often", label: "Spesso: cerco di tenermi aggiornato", score: 4 },
+        { value: "always", label: "Con costanza: e un tema che seguo davvero", score: 5 },
+      ],
+    },
+    {
+      id: "ad-know-terms",
+      pillarId: "adoption",
+      sectionId: "adoption-knowledge",
+      label:
+        "Quanto ti senti sicuro sul significato di parole come 'AI generativa', 'prompt', 'chatbot'?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Mai sentite / non saprei spiegarle",
+        max: "Le so spiegare a un collega",
+      },
     },
     {
-      id: "ad-quiz-how-genai-works",
+      id: "ad-know-limits",
       pillarId: "adoption",
       sectionId: "adoption-knowledge",
-      label: "Come funziona, in sintesi, un modello di AI generativa?",
-      description: "Domanda di verifica: scegli la risposta che ti sembra corretta.",
+      label:
+        "Sai quando NON fidarti delle risposte dell'AI?",
+      description:
+        "A volte l'AI inventa dati, nomi o fonti che sembrano veri ma non lo sono. Sapere quando controllare e un'abilita chiave.",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      scaleAnchors: {
+        min: "Pensavo ci si potesse sempre fidare",
+        max: "So bene quando verificare e come",
+      },
+    },
+    {
+      id: "ad-quiz-how",
+      pillarId: "adoption",
+      sectionId: "adoption-knowledge",
+      label: "Secondo te, come fa ChatGPT a scrivere le sue risposte?",
+      description:
+        "Piccola verifica, senza voto individuale: aiuta a capire da dove partiamo come gruppo.",
       answerType: "single_choice",
       required: true,
       weight: 1,
       options: [
         {
           value: "search",
-          label: "Cerca la risposta su internet in tempo reale",
+          label: "Cerca su Google e copia quello che trova",
           score: 1,
         },
         {
           value: "predict",
           label:
-            "Genera il testo prevedendo la parola piu probabile in base ai dati di addestramento",
+            "Scrive parola per parola la continuazione piu probabile, in base a tutto cio che ha 'letto' durante l'addestramento",
           score: 5,
         },
         {
-          value: "faq",
-          label: "Copia la risposta da un database di domande e risposte",
+          value: "archive",
+          label: "Pesca da un archivio di risposte gia scritte da persone",
           score: 0,
         },
         {
           value: "rules",
-          label: "Applica regole scritte una per una dai programmatori",
+          label: "Segue regole scritte una per una dai programmatori",
           score: 1,
         },
       ],
     },
     {
-      id: "ad-quiz-genai-limit",
+      id: "ad-quiz-trust",
       pillarId: "adoption",
       sectionId: "adoption-knowledge",
-      label: "Quale tra questi e un limite attuale dell'AI generativa?",
+      label:
+        "Ti serve un dato preciso (un prezzo, una norma, una scadenza) e lo chiedi all'AI. Cosa fai con la risposta?",
       answerType: "single_choice",
       required: true,
       weight: 1,
       options: [
         {
-          value: "hallucination",
-          label: "Puo inventare informazioni plausibili ma false",
+          value: "trust",
+          label: "La uso direttamente: se lo dice l'AI sara giusto",
+          score: 0,
+        },
+        {
+          value: "verify",
+          label: "La verifico su una fonte ufficiale prima di usarla",
           score: 5,
         },
-        { value: "no-italian", label: "Non capisce l'italiano", score: 0 },
-        { value: "offline", label: "Funziona solo senza internet", score: 0 },
         {
-          value: "short-text",
-          label: "Non riesce a scrivere testi piu lunghi di una pagina",
+          value: "ask-ai",
+          label: "Chiedo all'AI se e sicura della risposta",
           score: 1,
+        },
+        {
+          value: "never",
+          label: "Non uso mai l'AI per queste cose: tanto sbaglia sempre",
+          score: 2,
         },
       ],
     },
-    // ───────────── ADOPTION — Uso quotidiano ─────────────
+    // ───────────── ADOPTION — L'AI nel tuo lavoro di oggi ─────────────
     {
-      id: "ad-usage-frequency",
+      id: "ad-frequency",
       pillarId: "adoption",
       sectionId: "adoption-usage",
-      label: "Con quale frequenza usi strumenti AI per lavoro?",
+      label:
+        "Quanto spesso usi strumenti AI (ChatGPT, Copilot, Gemini...) per lavoro?",
       answerType: "single_choice",
       required: true,
       weight: 1,
@@ -386,139 +499,230 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         { value: "daily", label: "Ogni giorno", score: 4 },
         {
           value: "integrated",
-          label: "Piu volte al giorno: fa parte del mio flusso di lavoro",
+          label: "Piu volte al giorno: fa parte del mio modo di lavorare",
           score: 5,
         },
       ],
     },
     {
-      id: "ad-usage-depth",
+      id: "ad-competence",
       pillarId: "adoption",
       sectionId: "adoption-usage",
       label:
-        "Usi l'AI anche per compiti fuori dal tuo dominio (analisi dati, bozze di codice, calcoli)?",
+        "Quando usi l'AI, quanto ti senti capace di ottenere quello che ti serve?",
+      description:
+        "Es. riesci a farle scrivere l'email giusta, riassumere il documento giusto, nel modo che volevi tu?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Non saprei da dove cominciare",
+        max: "Ottengo quasi sempre cio che mi serve",
+      },
     },
     {
-      id: "ad-team-usage",
+      id: "ad-beyond",
       pillarId: "adoption",
       sectionId: "adoption-usage",
-      label: "Quanto i tuoi colleghi usano gia l'AI nel lavoro quotidiano?",
+      label:
+        "Usi l'AI anche per cose fuori dalla tua specialita?",
+      description:
+        "Es. farti aiutare con un calcolo, una traduzione o un'analisi che prima avresti chiesto a un collega esperto.",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Mai provato",
+        max: "Si, regolarmente",
+      },
     },
     {
-      id: "ad-practical-case",
+      id: "ad-colleagues",
+      pillarId: "adoption",
+      sectionId: "adoption-usage",
+      label: "Secondo te, quanto usano l'AI i tuoi colleghi?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      scaleAnchors: {
+        min: "Nessuno la usa",
+        max: "La usano quasi tutti, ogni giorno",
+      },
+    },
+    {
+      id: "ad-current-usecase",
       pillarId: "adoption",
       sectionId: "adoption-usage",
       label:
-        "Racconta un caso pratico in cui l'AI ti e stata davvero utile (se c'e stato)",
+        "Se usi gia l'AI per lavoro: per cosa la usi? Racconta uno o due esempi concreti.",
+      description:
+        "Es. 'riassumo i verbali delle riunioni', 'preparo la prima bozza delle email ai clienti', 'traduco documenti'. Se non la usi, lascia vuoto.",
       answerType: "text",
       required: false,
     },
-    // ───────────── ADOPTION — Atteggiamento ─────────────
+    // ───────────── ADOPTION — Cosa ne pensi ─────────────
     {
       id: "ad-attitude",
       pillarId: "adoption",
       sectionId: "adoption-attitude",
-      label: "Qual e il tuo atteggiamento verso la diffusione dell'AI in azienda?",
-      description: "0 = preoccupato o contrario, 5 = entusiasta e proattivo.",
+      label: "Come vivi l'arrivo dell'AI nel tuo lavoro?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Mi preoccupa / preferirei evitarla",
+        max: "Non vedo l'ora di usarla di piu",
+      },
     },
     {
-      id: "ad-training-fit",
-      pillarId: "adoption",
-      sectionId: "adoption-attitude",
-      label: "L'azienda offre formazione AI adeguata al tuo ruolo",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-    },
-    {
-      id: "ad-productivity-belief",
+      id: "ad-productivity",
       pillarId: "adoption",
       sectionId: "adoption-attitude",
       label:
-        "Quanto pensi che l'AI possa aumentare la qualita e la produttivita del tuo lavoro?",
+        "Quanto pensi che l'AI possa aiutarti a lavorare meglio (non solo piu in fretta)?",
+      description:
+        "Es. meno lavoro noioso, meno errori, piu tempo per le cose che richiedono testa.",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Per il mio lavoro non serve",
+        max: "Cambierebbe davvero le mie giornate",
+      },
     },
-    // ───────────── USE CASES ─────────────
     {
-      id: "uc-identification",
-      pillarId: "use_cases",
-      sectionId: "use-cases-capability",
+      id: "ad-training",
+      pillarId: "adoption",
+      sectionId: "adoption-attitude",
       label:
-        "Sapresti riconoscere nel tuo lavoro un caso d'uso adatto all'AI (ripetitivo, con regole chiare e dati disponibili)?",
+        "La formazione sull'AI che hai ricevuto finora e stata utile per il tuo lavoro?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Nessuna formazione ricevuta",
+        max: "Molto utile e adatta a quello che faccio",
+      },
     },
     {
-      id: "uc-pilot-history",
-      pillarId: "use_cases",
-      sectionId: "use-cases-capability",
+      id: "ad-blocker",
+      pillarId: "adoption",
+      sectionId: "adoption-attitude",
       label:
-        "Il tuo team ha gia provato esperimenti o pilot con l'AI (anche piccoli)",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
+        "Cosa ti frena di piu, oggi, dall'usare l'AI (o dall'usarla di piu)?",
+      description:
+        "Es. non so da dove partire, non ho tempo di imparare, non mi fido dei risultati, non so se e permesso...",
+      answerType: "text",
+      required: false,
     },
     {
-      id: "uc-prioritization",
-      pillarId: "use_cases",
-      sectionId: "use-cases-capability",
+      id: "ad-future-usecase",
+      pillarId: "adoption",
+      sectionId: "adoption-attitude",
       label:
-        "In azienda esiste un modo chiaro per proporre e prioritizzare le idee AI",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
+        "C'e un compito del tuo lavoro di tutti i giorni in cui vorresti l'aiuto dell'AI? Descrivilo.",
+      description:
+        "Non serve sapere se si puo fare: raccontaci il problema. Es. 'vorrei che mi preparasse il report settimanale' o 'vorrei smettere di ricopiare gli ordini a mano'.",
+      answerType: "text",
+      required: false,
     },
+    // ───────────── USE CASES — Idee e casi concreti ─────────────
     {
-      id: "uc-risk-awareness",
+      id: "uc-recognize",
       pillarId: "use_cases",
-      sectionId: "use-cases-capability",
+      sectionId: "use-cases-ideas",
       label:
-        "Sai valutare quando un caso d'uso AI e rischioso (dati sensibili, decisioni sulle persone, errori costosi)?",
+        "Sapresti indicare un'attivita del tuo lavoro che l'AI potrebbe fare, o aiutarti a fare?",
+      description:
+        "In genere l'AI aiuta dove il lavoro e ripetitivo, ha regole chiare e usa informazioni gia scritte da qualche parte.",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
+      scaleAnchors: {
+        min: "Non saprei proprio",
+        max: "Ne ho gia in mente piu di una",
+      },
     },
     {
-      id: "uc-first-idea",
+      id: "uc-tried",
       pillarId: "use_cases",
-      sectionId: "use-cases-capability",
-      label: "Se domani potessi delegare una cosa all'AI, quale sarebbe?",
+      sectionId: "use-cases-ideas",
+      label:
+        "Nel tuo team avete gia provato l'AI su un caso concreto, anche piccolo?",
+      description:
+        "Es. un esperimento per rispondere prima ai clienti, riassumere documenti, preparare bozze.",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      scaleAnchors: {
+        min: "Mai provato niente",
+        max: "Si, piu di un esperimento gia fatto",
+      },
+    },
+    {
+      id: "uc-channel",
+      pillarId: "use_cases",
+      sectionId: "use-cases-ideas",
+      label:
+        "Se hai un'idea per usare l'AI, sai a chi proporla in azienda?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      scaleAnchors: {
+        min: "Non saprei a chi dirla",
+        max: "C'e un percorso chiaro e le idee vengono ascoltate",
+      },
+    },
+    {
+      id: "uc-risk",
+      pillarId: "use_cases",
+      sectionId: "use-cases-ideas",
+      label:
+        "Riesci a riconoscere quando un uso dell'AI e delicato e va maneggiato con cura?",
+      description:
+        "Es. quando ci sono di mezzo dati personali, soldi, o decisioni che toccano le persone: li serve piu attenzione.",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      scaleAnchors: {
+        min: "Non saprei distinguere",
+        max: "Riconosco subito i casi delicati",
+      },
+    },
+    {
+      id: "uc-idea",
+      pillarId: "use_cases",
+      sectionId: "use-cases-ideas",
+      label:
+        "Se domani potessi affidare un compito all'AI, quale sceglieresti? Perche?",
+      description:
+        "Vale tutto: dal piu piccolo fastidio quotidiano al processo piu grosso. Le idee migliori partono quasi sempre da qui.",
       answerType: "text",
       required: false,
     },
   ],
   scoringSchema: {
-    version: "ai-readiness-core-2",
+    version: "ai-readiness-core-3",
     scale: { min: 0, max: 5 },
     readinessFormula: {
       weightedAverageWeight: 0.65,

@@ -100,6 +100,26 @@ export function QuestionEditor({
                       <Label>Descrizione / aiuto (opzionale)</Label>
                       <Input name="description" defaultValue={question.description ?? ""} />
                     </div>
+                    {question.answerType === "scale" && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label>Cosa significa 0</Label>
+                          <Input
+                            name="anchorMin"
+                            defaultValue={question.scaleAnchors?.min ?? ""}
+                            placeholder="Es. Nessuno lo fa"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Cosa significa 5</Label>
+                          <Input
+                            name="anchorMax"
+                            defaultValue={question.scaleAnchors?.max ?? ""}
+                            placeholder="Es. Lo facciamo tutti, ogni giorno"
+                          />
+                        </div>
+                      </div>
+                    )}
                     <label className="flex items-center gap-2 text-sm">
                       <input type="checkbox" name="required" defaultChecked={question.required} />
                       Risposta obbligatoria
@@ -204,6 +224,14 @@ export function QuestionEditor({
                       <option value="scale">Scala 0–5 (entra nello score)</option>
                       <option value="text">Testo libero (qualitativa)</option>
                     </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Cosa significa 0 (se scala)</Label>
+                    <Input name="anchorMin" placeholder="Es. Mai fatto" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Cosa significa 5 (se scala)</Label>
+                    <Input name="anchorMax" placeholder="Es. Lo facciamo ogni giorno" />
                   </div>
                 </div>
                 <div className="flex gap-2">

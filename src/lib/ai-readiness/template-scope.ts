@@ -49,6 +49,7 @@ export type AiReadinessQuestionEdit = {
   label?: string;
   description?: string;
   required?: boolean;
+  scaleAnchors?: { min: string; max: string };
 };
 
 export type AiReadinessCustomQuestion = {
@@ -58,6 +59,7 @@ export type AiReadinessCustomQuestion = {
   description?: string;
   answerType: "scale" | "text";
   required?: boolean;
+  scaleAnchors?: { min: string; max: string };
 };
 
 export type AiReadinessTemplateOverrides = {
@@ -108,6 +110,14 @@ export function applyTemplateOverrides(
         ...(typeof edit.required === "boolean"
           ? { required: edit.required }
           : {}),
+        ...(edit.scaleAnchors?.min?.trim() && edit.scaleAnchors?.max?.trim()
+          ? {
+              scaleAnchors: {
+                min: edit.scaleAnchors.min.trim(),
+                max: edit.scaleAnchors.max.trim(),
+              },
+            }
+          : {}),
       };
     });
 
@@ -127,6 +137,14 @@ export function applyTemplateOverrides(
       min: 0,
       max: 5,
       weight: 1,
+      ...(custom.scaleAnchors?.min?.trim() && custom.scaleAnchors?.max?.trim()
+        ? {
+            scaleAnchors: {
+              min: custom.scaleAnchors.min.trim(),
+              max: custom.scaleAnchors.max.trim(),
+            },
+          }
+        : {}),
     });
   }
 
