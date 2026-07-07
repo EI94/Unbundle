@@ -1,5 +1,5 @@
-import { auth } from "@/lib/auth";
-import { redirect, notFound } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
+import { notFound } from "next/navigation";
 import { getDepartmentById } from "@/lib/db/queries/workspaces";
 import {
   getActivitiesByDepartment,
@@ -25,8 +25,7 @@ export default async function DepartmentMappingPage({
   params: Promise<{ workspaceId: string; deptId: string }>;
   searchParams: Promise<{ mode?: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  await requireSession();
 
   const { workspaceId, deptId } = await params;
   const { mode } = await searchParams;

@@ -1,7 +1,6 @@
 "use server";
 
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
@@ -36,8 +35,7 @@ export async function preGenerateActivitiesFromDocuments(
   workspaceId: string,
   departmentId: string
 ) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  await requireSession();
 
   const docs = await db
     .select({
@@ -99,8 +97,7 @@ export async function confirmPreGeneratedActivities(
   departmentId: string,
   confirmedActivities: PreGeneratedActivity[]
 ) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  await requireSession();
 
   const saved = [];
 

@@ -1,7 +1,6 @@
 "use server";
 
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { revalidatePath } from "next/cache";
 import { getActivitiesByWorkspace, updateActivityClassification } from "@/lib/db/queries/activities";
 import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
@@ -13,8 +12,7 @@ import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function runClassificationAction(workspaceId: string) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");

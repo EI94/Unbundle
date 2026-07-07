@@ -1,7 +1,6 @@
 "use server";
 
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { organizations, strategicGoals } from "@/lib/db/schema";
@@ -13,8 +12,7 @@ import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function createGoalAction(formData: FormData) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const workspaceId = formData.get("workspaceId") as string;
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
@@ -65,8 +63,7 @@ export interface SuggestedOKR {
 export async function suggestOKRsAction(
   workspaceId: string
 ): Promise<SuggestedOKR[]> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");

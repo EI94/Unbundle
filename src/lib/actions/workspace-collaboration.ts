@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import {
   acceptWorkspaceInvitation,
   createWorkspaceInvitation,
@@ -89,8 +89,7 @@ function errorState(message: string, fieldErrors: Record<string, string> = {}) {
 }
 
 async function assertWorkspaceInviteManager(workspaceId: string) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) {
@@ -331,10 +330,7 @@ export async function acceptWorkspaceInvitationAction(
 ): Promise<WorkspaceCollaborationActionState> {
   void _prev;
   void _formData;
-  const session = await auth();
-  if (!session?.user?.id) {
-    redirect(`/login?callbackUrl=${encodeURIComponent(`/invite/${token}`)}`);
-  }
+  const session = await requireSession(`/invite/${token}`);
 
   const result = await acceptWorkspaceInvitation({
     token,

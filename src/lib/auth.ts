@@ -4,8 +4,9 @@ import { adminAuth } from "@/lib/firebase/admin";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { SESSION_COOKIE_NAME } from "@/lib/auth/session-signal";
 
-const SESSION_COOKIE = "__session";
+const SESSION_COOKIE = SESSION_COOKIE_NAME;
 const SESSION_MAX_AGE = 60 * 60 * 24 * 14; // 14 giorni
 
 export interface SessionUser {

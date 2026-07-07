@@ -1,5 +1,5 @@
-import { auth } from "@/lib/auth";
-import { redirect, notFound } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import {
   getWorkspaceById,
@@ -18,8 +18,7 @@ export default async function MappingPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  await requireSession();
 
   const { workspaceId } = await params;
   const workspace = await getWorkspaceById(workspaceId);

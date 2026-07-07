@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { getOrganizationsByUser } from "@/lib/db/queries/organizations";
 import { getWorkspaceGroupsForUser } from "@/lib/db/queries/workspaces";
 import { CreateWorkspaceDialog } from "@/components/dashboard/create-workspace-dialog";
@@ -17,8 +16,7 @@ export default async function DashboardPage({
 }: {
   searchParams?: Promise<{ slack_error?: string; workspaceDeleted?: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const sp = searchParams ? await searchParams : {};
   const slackErrKey = sp.slack_error?.trim() ?? "";

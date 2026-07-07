@@ -1,5 +1,5 @@
-import { auth } from "@/lib/auth";
-import { redirect, notFound } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
+import { notFound } from "next/navigation";
 import { getUseCaseById, getUseCaseKRLinks } from "@/lib/db/queries/use-cases";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,8 +31,7 @@ export default async function UseCaseDetailPage({
 }: {
   params: Promise<{ workspaceId: string; useCaseId: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  await requireSession();
 
   const { workspaceId, useCaseId } = await params;
   const useCase = await getUseCaseById(useCaseId);

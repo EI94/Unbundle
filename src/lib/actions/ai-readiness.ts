@@ -1,10 +1,9 @@
 "use server";
 
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import {
   canManageWorkspaceSettings,
@@ -129,8 +128,7 @@ function errorState(message: string, fieldErrors: Record<string, string> = {}) {
 }
 
 async function assertAssessmentManager(workspaceId: string) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) {
     return {
@@ -148,8 +146,7 @@ async function assertAssessmentManager(workspaceId: string) {
 }
 
 async function assertAssessmentReviewer(workspaceId: string) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) {
     return {

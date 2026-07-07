@@ -1,7 +1,6 @@
 "use server";
 
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { revalidatePath } from "next/cache";
 import {
   getSlackInstallationByWorkspace,
@@ -18,8 +17,7 @@ export async function setSlackNotifyChannelAction(
   workspaceId: string,
   rawChannelId: string
 ) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");

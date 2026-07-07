@@ -14,12 +14,13 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ callbackUrl?: string }>;
+  searchParams?: Promise<{ callbackUrl?: string; session?: string }>;
 }) {
   const session = await auth();
   const sp = searchParams ? await searchParams : {};
   const callbackUrl = safeInternalCallbackUrl(sp.callbackUrl);
   if (session) redirect(callbackUrl ?? "/dashboard");
+  const sessionExpired = sp.session === "stale";
 
   return (
     <div className="min-h-screen flex">
@@ -52,6 +53,17 @@ export default async function LoginPage({
           <p className="text-sm text-muted-foreground mb-8">
             Usa Google o email per continuare
           </p>
+
+          {sessionExpired && (
+            <div
+              className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm"
+              role="status"
+              data-testid="session-stale-banner"
+            >
+              La tua sessione è scaduta o è stata revocata. Accedi di nuovo per
+              continuare.
+            </div>
+          )}
 
           <LoginForm />
 

@@ -1,7 +1,6 @@
 "use server";
 
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { getDepartmentsByWorkspace } from "@/lib/db/queries/workspaces";
@@ -15,8 +14,7 @@ import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 export async function generateSimulationAction(
   workspaceId: string
 ): Promise<SimulationResult> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");

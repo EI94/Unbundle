@@ -1,5 +1,5 @@
-import { auth } from "@/lib/auth";
-import { redirect, notFound } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
+import { notFound } from "next/navigation";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getSlackInstallationByWorkspace } from "@/lib/db/queries/slack";
 import {
@@ -65,8 +65,7 @@ export default async function SettingsPage({
   params: Promise<{ workspaceId: string }>;
   searchParams: Promise<{ slack?: string; slack_error?: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const { workspaceId } = await params;
   const workspace = await getWorkspaceById(workspaceId);

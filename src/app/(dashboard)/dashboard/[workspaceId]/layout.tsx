@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { headers } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
@@ -29,11 +30,11 @@ export default async function WorkspaceLayout({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  const session = await auth();
+  let session = await auth();
   if (!session?.user?.id) {
     const shareFallback = await portfolioReviewShareFallback(workspaceId);
     if (shareFallback) redirect(shareFallback);
-    redirect("/login");
+    session = await requireSession();
   }
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);

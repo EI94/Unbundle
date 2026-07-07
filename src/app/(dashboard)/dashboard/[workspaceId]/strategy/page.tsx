@@ -1,5 +1,5 @@
-import { auth } from "@/lib/auth";
-import { redirect, notFound } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
+import { notFound } from "next/navigation";
 import { getWorkspaceById, getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import { GoalForm } from "@/components/dashboard/goal-form";
 import { SuggestOKRsButton } from "@/components/dashboard/suggest-okrs-button";
@@ -10,8 +10,7 @@ export default async function StrategyPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  await requireSession();
 
   const { workspaceId } = await params;
   const workspace = await getWorkspaceById(workspaceId);

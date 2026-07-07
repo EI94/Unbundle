@@ -1,10 +1,9 @@
 "use server";
 
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import {
   createWorkspaceIntegrationToken,
   revokeWorkspaceIntegrationToken,
@@ -71,8 +70,7 @@ function errorState(message: string, fieldErrors: Record<string, string> = {}) {
 }
 
 async function assertWorkspaceIntegrationManager(workspaceId: string) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) {

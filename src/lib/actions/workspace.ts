@@ -1,6 +1,6 @@
 "use server";
 
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -90,8 +90,7 @@ function formString(formData: FormData, key: string) {
 }
 
 export async function createWorkspaceAction(formData: FormData) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const name = formData.get("name") as string;
   const description = formData.get("description") as string;
@@ -147,8 +146,7 @@ export async function createWorkspaceWithTeamAction(
   _prev: WorkspaceActionState & { data?: CreateWorkspaceWithTeamData },
   formData: FormData
 ): Promise<WorkspaceActionState & { data?: CreateWorkspaceWithTeamData }> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const name = formString(formData, "name");
   const description = formString(formData, "description");
@@ -293,8 +291,7 @@ export async function deleteWorkspaceAction(
   _prev: WorkspaceActionState,
   formData: FormData
 ): Promise<WorkspaceActionState> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) {

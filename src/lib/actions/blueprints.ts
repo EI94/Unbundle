@@ -1,7 +1,6 @@
 "use server";
 
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { generateAgentBlueprints, type AgentBlueprint } from "@/lib/ai/generate-blueprints";
@@ -12,8 +11,7 @@ import { eq, desc } from "drizzle-orm";
 export async function generateBlueprintsAction(
   workspaceId: string
 ): Promise<AgentBlueprint[]> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  await requireSession();
 
   const [useCases, activities] = await Promise.all([
     getUseCasesByWorkspace(workspaceId),

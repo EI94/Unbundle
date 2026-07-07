@@ -1,6 +1,6 @@
 "use server";
 
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -107,8 +107,7 @@ export async function updateAiTransformationTeamNameAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access || !canManageWorkspaceSettings(access.role)) {
     return { ok: false, message: "Non hai i permessi per modificare il team.", fieldErrors: {} };
@@ -127,8 +126,7 @@ export async function updateWhatsappWebhookAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access || !canManageWorkspaceSettings(access.role)) {
     return { ok: false, message: "Non hai i permessi per modificare le integrazioni.", fieldErrors: {} };
@@ -224,8 +222,7 @@ export async function updateScoringModelAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) {
@@ -414,8 +411,7 @@ export async function createPortfolioSubmissionAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) {
     return { ok: false, message: "Workspace non trovato.", fieldErrors: {} };
@@ -519,8 +515,7 @@ export async function savePortfolioReviewAction(
   _prev: ActionState,
   formData: FormData
 ): Promise<ActionState<PortfolioReviewSaveData>> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   const model = await getOrCreateWorkspaceScoringModel(workspaceId);
@@ -628,8 +623,7 @@ export async function suggestPortfolioScoresWithAiAction(
   workspaceId: string,
   useCaseId: string
 ): Promise<ActionState<PortfolioReviewSaveData>> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access || !canReviewWorkspacePortfolio(access.role)) {
@@ -674,8 +668,7 @@ export async function suggestPortfolioScoresWithAiAction(
 export async function recalibratePortfolioScoresAction(
   workspaceId: string
 ): Promise<ActionState<{ updated: number; failed: number; total: number }>> {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access || !canReviewWorkspacePortfolio(access.role)) {
@@ -732,8 +725,7 @@ export async function markSignalReadAction(
   workspaceId: string,
   signalId: string
 ) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  await requireSession();
   await markSignalRead(signalId);
   revalidatePath(`/dashboard/${workspaceId}`);
   return { ok: true } as const;

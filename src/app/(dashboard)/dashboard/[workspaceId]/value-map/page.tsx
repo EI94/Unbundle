@@ -1,5 +1,5 @@
-import { auth } from "@/lib/auth";
-import { redirect, notFound } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
+import { notFound } from "next/navigation";
 import { getWorkspaceById, getDepartmentsByWorkspace } from "@/lib/db/queries/workspaces";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { WardleyMap } from "@/components/maps/wardley-map";
@@ -14,8 +14,7 @@ export default async function ValueMapPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  await requireSession();
 
   const { workspaceId } = await params;
   const workspace = await getWorkspaceById(workspaceId);

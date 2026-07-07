@@ -1,7 +1,6 @@
 "use server";
 
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { revalidatePath } from "next/cache";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
@@ -23,8 +22,7 @@ import {
 } from "@/lib/workspace-permissions";
 
 export async function generateUseCasesAction(workspaceId: string) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
@@ -98,8 +96,7 @@ export async function generateUseCasesAction(workspaceId: string) {
 }
 
 export async function toggleEsgAction(workspaceId: string, enabled: boolean) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
@@ -120,8 +117,7 @@ export async function setUseCaseStatusAction(
   useCaseId: string,
   nextStatus: UseCase["status"]
 ) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
@@ -142,8 +138,7 @@ export async function setUseCaseWaveCategoryAction(
   useCaseId: string,
   category: UseCaseCategoryValue
 ) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");

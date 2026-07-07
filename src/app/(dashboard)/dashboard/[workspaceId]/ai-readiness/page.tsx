@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect, notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import {
   AlertTriangle,
   BarChart3,
@@ -13,7 +13,7 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 import {
@@ -89,8 +89,7 @@ export default async function AiReadinessPage({
   params: Promise<{ workspaceId: string }>;
   searchParams: Promise<{ assessment?: string; new?: string }>;
 }) {
-  const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  const session = await requireSession();
   const { workspaceId } = await params;
   const search = await searchParams;
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
