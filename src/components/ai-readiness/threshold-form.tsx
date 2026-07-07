@@ -15,11 +15,13 @@ export function ThresholdForm({
   assessmentId,
   current,
   min,
+  expectedRespondents,
 }: {
   workspaceId: string;
   assessmentId: string;
   current: number;
   min: number;
+  expectedRespondents?: number | null;
 }) {
   const action = updateAiReadinessThresholdAction.bind(
     null,
@@ -51,6 +53,16 @@ export function ThresholdForm({
         defaultValue={current}
         className="h-8 w-20"
         aria-label="Soglia aggregazione"
+      />
+      <Input
+        name="expectedRespondents"
+        type="number"
+        min={1}
+        defaultValue={expectedRespondents ?? undefined}
+        placeholder="Attese"
+        className="h-8 w-24"
+        aria-label="Risposte attese"
+        title="Numero di risposte attese (per l'incontro di setup e il PDF)"
       />
       <Button type="submit" variant="outline" size="sm" disabled={pending}>
         {pending ? "Salvo..." : "Aggiorna"}

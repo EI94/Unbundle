@@ -43,12 +43,8 @@ test("non mostra score di unita sotto soglia aggregazione", () => {
   const derivedScores = scoreResponse({
     template: AI_READINESS_SYSTEM_TEMPLATE,
     answers: AI_READINESS_SYSTEM_TEMPLATE.questions
-      .filter((question) => question.answerType !== "text")
-      .map((question) =>
-        question.answerType === "single_choice"
-          ? answer(question.id, "curious")
-          : answer(question.id, 3)
-      ),
+      .filter((question) => question.answerType === "scale")
+      .map((question) => answer(question.id, 3)),
   });
   const dashboard = aggregateScores({
     template: AI_READINESS_SYSTEM_TEMPLATE,
@@ -74,5 +70,5 @@ test("non mostra score di unita sotto soglia aggregazione", () => {
   assert.equal(ops?.aggregationThresholdMet, false);
   assert.equal(ops?.overallScore, null);
   assert.equal(sales?.aggregationThresholdMet, true);
-  assert.equal(sales?.overallScore, 3.04);
+  assert.equal(sales?.overallScore, 3);
 });

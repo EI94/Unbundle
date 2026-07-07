@@ -7,6 +7,7 @@ import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { getAssessmentBundleById } from "@/lib/db/queries/ai-readiness";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Download } from "lucide-react";
 
 /**
  * Anteprima read-only della survey: l'admin vede esattamente le sezioni e le
@@ -58,9 +59,24 @@ export default async function AiReadinessSurveyPreviewPage({
             {anonymous ? "Anonima" : "Nominativa (nome e cognome richiesti)"}
           </Badge>
         </div>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight">
-          Cosa vedranno i respondent
-        </h1>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Cosa vedranno i respondent
+          </h1>
+          {/* anchor nativo: il prefetch di un Link eseguirebbe la GET */}
+          <Button
+            render={
+              <a
+                href={`/api/ai-readiness/assessments/${assessment.id}/survey-pdf`}
+                download
+              />
+            }
+            nativeButton={false}
+            data-testid="survey-pdf-download"
+          >
+            <Download className="mr-1 size-4" /> Scarica PDF per il cliente
+          </Button>
+        </div>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           {scoredCount} domande a punteggio su{" "}
           {templateDefinition.pillars.map((pillar) => pillar.title).join(", ")}

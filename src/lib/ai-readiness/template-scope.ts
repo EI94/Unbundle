@@ -37,3 +37,98 @@ export function filterTemplateDefinition(
     questions: definition.questions.filter((question) => allowed.has(question.pillarId)),
   };
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Personalizzazione per assessment: ogni singola domanda puo essere rimossa,
+// modificata (testo/descrizione/obbligatorieta) o aggiunta (scala 0–5 o testo
+// libero, cosi lo scoring resta sempre 0–5). Salvata in
+// scoringConfig.templateOverrides.
+// ────────────────────────────────────────────────────────────────────────────
+
+export type AiReadinessQuestionEdit = {
+  label?: string;
+  description?: string;
+  required?: boolean;
+};
+
+export type AiReadinessCustomQuestion = {
+  id: string;
+  sectionId: string;
+  label: string;
+  description?: string;
+  answerType: "scale" | "text";
+  required?: boolean;
+};
+
+export type AiReadinessTemplateOverrides = {
+  removed?: string[];
+  edited?: Record<string, AiReadinessQuestionEdit>;
+  added?: AiReadinessCustomQuestion[];
+};
+
+export function templateOverridesFromScoringConfig(
+  scoringConfig: Record<string, unknown> | null | undefined
+): AiReadinessTemplateOverrides {
+  const raw = scoringConfig?.templateOverrides;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const overrides = raw as AiReadinessTemplateOverrides;
+  return {
+    removed: Array.isArray(overrides.removed)
+      ? overrides.removed.filter((id): id is string => typeof id === "string")
+      : [],
+    edited:
+      overrides.edited && typeof overrides.edited === "object"
+        ? overrides.edited
+        : {},
+    added: Array.isArray(overrides.added) ? overrides.added : [],
+  };
+}
+
+export function applyTemplateOverrides(
+  definition: AiReadinessTemplateDefinition,
+  overrides: AiReadinessTemplateOverrides
+): AiReadinessTemplateDefinition {
+  const removed = new Set(overrides.removed ?? []);
+  const edited = overrides.edited ?? {};
+  const sectionById = new Map(definition.sections.map((s) => [s.id, s]));
+
+  const questions = definition.questions
+    .filter((question) => !removed.has(question.id))
+    .map((question) => {
+      const edit = edited[question.id];
+      if (!edit) return question;
+      return {
+        ...question,
+        ...(typeof edit.label === "string" && edit.label.trim()
+          ? { label: edit.label.trim() }
+          : {}),
+        ...(typeof edit.description === "string"
+          ? { description: edit.description.trim() || undefined }
+          : {}),
+        ...(typeof edit.required === "boolean"
+          ? { required: edit.required }
+          : {}),
+      };
+    });
+
+  for (const custom of overrides.added ?? []) {
+    const section = sectionById.get(custom.sectionId);
+    if (!section) continue; // sezione fuori dai pilastri inclusi: ignora
+    if (removed.has(custom.id)) continue;
+    if (!custom.label?.trim()) continue;
+    questions.push({
+      id: custom.id,
+      pillarId: section.pillarId,
+      sectionId: section.id,
+      label: custom.label.trim(),
+      description: custom.description?.trim() || undefined,
+      answerType: custom.answerType === "text" ? "text" : "scale",
+      required: custom.required !== false && custom.answerType !== "text",
+      min: 0,
+      max: 5,
+      weight: 1,
+    });
+  }
+
+  return { ...definition, questions };
+}

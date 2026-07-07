@@ -35,8 +35,11 @@ import type {
 } from "@/lib/ai-readiness/types";
 import { aggregateScores } from "@/lib/ai-readiness/scoring";
 import {
+  applyTemplateOverrides,
   filterTemplateDefinition,
   includedPillarsFromScoringConfig,
+  templateOverridesFromScoringConfig,
+  type AiReadinessTemplateOverrides,
 } from "@/lib/ai-readiness/template-scope";
 
 export type AiReadinessAssessmentBundle = {
@@ -62,10 +65,29 @@ function templateDefinitionForAssessment(
   assessment: AiReadinessAssessment,
   templateRow: AiReadinessAssessmentTemplate
 ): AiReadinessTemplateDefinition {
-  return filterTemplateDefinition(
-    templateDefinitionFromRow(templateRow),
-    includedPillarsFromScoringConfig(assessment.scoringConfig)
+  return applyTemplateOverrides(
+    filterTemplateDefinition(
+      templateDefinitionFromRow(templateRow),
+      includedPillarsFromScoringConfig(assessment.scoringConfig)
+    ),
+    templateOverridesFromScoringConfig(assessment.scoringConfig)
   );
+}
+
+/** Salva gli override domande dell'assessment (merge su scoringConfig). */
+export async function setAssessmentTemplateOverrides(
+  assessmentId: string,
+  overrides: AiReadinessTemplateOverrides
+) {
+  await ensureDbSchema();
+  const bundle = await getAssessmentBundleById(assessmentId);
+  if (!bundle) return null;
+  return updateAiReadinessAssessment(assessmentId, {
+    scoringConfig: {
+      ...(bundle.assessment.scoringConfig ?? {}),
+      templateOverrides: overrides,
+    },
+  });
 }
 
 export async function ensureAiReadinessSystemTemplate() {

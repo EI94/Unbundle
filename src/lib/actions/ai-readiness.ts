@@ -26,6 +26,8 @@ import {
   markRespondentStarted,
   saveAiReadinessDraftResponse,
   setAssessmentOpenLinkTokenHash,
+  setAssessmentTemplateOverrides,
+  listResponsesByAssessment,
   updateAiReadinessRespondentIdentity,
   listRespondentsByAssessment,
   listUseCaseSubmissionsByAssessment,
@@ -45,6 +47,11 @@ import {
   normalizeDraftPayload,
   type AiReadinessDraftPayload,
 } from "@/lib/ai-readiness/draft";
+import {
+  templateOverridesFromScoringConfig,
+  type AiReadinessTemplateOverrides,
+} from "@/lib/ai-readiness/template-scope";
+import { randomUUID } from "node:crypto";
 import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
 
 export type AiReadinessActionState<Data = unknown> = {
@@ -347,8 +354,23 @@ export async function updateAiReadinessThresholdAction(
       { aggregationThreshold: `Da ${min} a 50.` }
     );
   }
+  const expectedRaw = formString(formData, "expectedRespondents");
+  const expected = expectedRaw ? Number(expectedRaw) : null;
+  if (expected != null && (!Number.isInteger(expected) || expected < 1 || expected > 100000)) {
+    return errorState("Risposte attese non valide.", {
+      expectedRespondents: "Numero intero positivo.",
+    });
+  }
   await updateAiReadinessAssessment(assessmentId, {
     aggregationThreshold: raw,
+    ...(expected != null
+      ? {
+          scoringConfig: {
+            ...(bundle.assessment.scoringConfig ?? {}),
+            expectedRespondents: expected,
+          },
+        }
+      : {}),
   });
   await recomputeAiReadinessScores(assessmentId);
   await createAiReadinessAuditEvent({
@@ -363,6 +385,116 @@ export async function updateAiReadinessThresholdAction(
   return {
     ok: true,
     message: `Soglia aggiornata a ${raw}. Score ricalcolati.`,
+    fieldErrors: {},
+  };
+}
+
+/** Customizzazione per-assessment delle singole domande: rimuovi, modifica,
+ *  ripristina o aggiungi (scala 0-5 o testo libero, per non rompere lo score). */
+export async function customizeAssessmentQuestionAction(
+  workspaceId: string,
+  assessmentId: string,
+  _prev: AiReadinessActionState,
+  formData: FormData
+): Promise<AiReadinessActionState> {
+  void _prev;
+  const manager = await assertAssessmentManager(workspaceId);
+  if (!manager.ok) return manager.state;
+  const bundle = await getAssessmentBundleById(assessmentId);
+  if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
+    return errorState("Assessment non trovato.");
+  }
+
+  const op = formString(formData, "op");
+  const overrides = templateOverridesFromScoringConfig(
+    bundle.assessment.scoringConfig
+  );
+  const removed = new Set(overrides.removed ?? []);
+  const edited = { ...(overrides.edited ?? {}) };
+  let added = [...(overrides.added ?? [])];
+
+  if (op === "remove") {
+    const questionId = formString(formData, "questionId");
+    if (!questionId) return errorState("Domanda non valida.");
+    if (added.some((q) => q.id === questionId)) {
+      added = added.filter((q) => q.id !== questionId);
+    } else {
+      removed.add(questionId);
+    }
+    delete edited[questionId];
+  } else if (op === "restore") {
+    const questionId = formString(formData, "questionId");
+    removed.delete(questionId);
+    delete edited[questionId];
+  } else if (op === "edit") {
+    const questionId = formString(formData, "questionId");
+    const label = formString(formData, "label");
+    if (!questionId || label.length < 5) {
+      return errorState("Testo domanda troppo corto (minimo 5 caratteri).", {
+        label: "Minimo 5 caratteri.",
+      });
+    }
+    const description = formString(formData, "description");
+    const required = formData.get("required") === "on";
+    const custom = added.find((q) => q.id === questionId);
+    if (custom) {
+      custom.label = label;
+      custom.description = description || undefined;
+      custom.required = required;
+    } else {
+      edited[questionId] = { label, description, required };
+    }
+  } else if (op === "add") {
+    const sectionId = formString(formData, "sectionId");
+    const label = formString(formData, "label");
+    const answerType = formString(formData, "answerType") === "text" ? "text" : "scale";
+    if (!sectionId || label.length < 5) {
+      return errorState("Testo domanda troppo corto (minimo 5 caratteri).", {
+        label: "Minimo 5 caratteri.",
+      });
+    }
+    if (!bundle.templateDefinition.sections.some((s) => s.id === sectionId)) {
+      return errorState("Sezione non valida.");
+    }
+    added.push({
+      id: `custom-${randomUUID().slice(0, 8)}`,
+      sectionId,
+      label,
+      description: formString(formData, "description") || undefined,
+      answerType,
+      required: answerType === "scale",
+    });
+  } else {
+    return errorState("Operazione non valida.");
+  }
+
+  const nextOverrides: AiReadinessTemplateOverrides = {
+    removed: [...removed],
+    edited,
+    added,
+  };
+  await setAssessmentTemplateOverrides(assessmentId, nextOverrides);
+
+  const responses = await listResponsesByAssessment(assessmentId);
+  const submitted = responses.filter((r) => r.status === "submitted").length;
+  if (submitted > 0) await recomputeAiReadinessScores(assessmentId);
+
+  await createAiReadinessAuditEvent({
+    organizationId: manager.access.workspace.organizationId,
+    workspaceId,
+    assessmentId,
+    actorUserId: manager.session.user.id,
+    eventType: "template_customized",
+    eventPayload: { op, removed: nextOverrides.removed?.length ?? 0, added: added.length },
+  });
+  revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
+  revalidatePath(`/dashboard/${workspaceId}/ai-readiness/questions/${assessmentId}`);
+  return {
+    ok: true,
+    message:
+      submitted > 0
+        ? "Domande aggiornate. Attenzione: ci sono gia risposte inviate, gli score sono stati ricalcolati sulle domande attuali."
+        : "Domande aggiornate.",
     fieldErrors: {},
   };
 }

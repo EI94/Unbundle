@@ -312,3 +312,181 @@ export function buildAiReadinessPdfBuffer(payload: AiReadinessExportPayload) {
 export function canIncludeRawResponses(assessment: ExportAssessment) {
   return assessment.privacyConfig?.allowIndividualView === true;
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Survey preview PDF — multi-pagina, con gerarchia tipografica (bold/size),
+// pensato per l'incontro di setup con il referente del cliente.
+// ────────────────────────────────────────────────────────────────────────────
+
+type PdfLine = {
+  text: string;
+  bold?: boolean;
+  size?: number;
+  spaceBefore?: number;
+  indent?: number;
+};
+
+function buildMultiPagePdf(lines: PdfLine[]) {
+  const pageHeight = 842;
+  const top = 800;
+  const bottom = 56;
+  const left = 52;
+
+  const pages: string[][] = [];
+  let current: string[] = [];
+  let y = top;
+
+  const flushPage = () => {
+    if (current.length > 0) pages.push(current);
+    current = [];
+    y = top;
+  };
+
+  for (const line of lines) {
+    const size = line.size ?? 10;
+    const lead = size + 4.5;
+    const space = line.spaceBefore ?? 0;
+    const wrapped = splitPdfLines(line.text, Math.floor(500 / (size * 0.52)));
+    const needed = space + wrapped.length * lead;
+    if (y - needed < bottom && current.length > 0) flushPage();
+    y -= space;
+    for (const chunk of wrapped) {
+      current.push(
+        `BT /${line.bold ? "F2" : "F1"} ${size} Tf ${left + (line.indent ?? 0)} ${y.toFixed(1)} Td (${escapePdfText(chunk)}) Tj ET`
+      );
+      y -= lead;
+    }
+  }
+  flushPage();
+
+  const objects: string[] = [];
+  const pageCount = pages.length;
+  // 1 catalog, 2 pages, 3..N page objs, then fonts, then content streams
+  const pageObjIds = pages.map((_, i) => 3 + i);
+  const fontRegularId = 3 + pageCount;
+  const fontBoldId = fontRegularId + 1;
+  const contentIds = pages.map((_, i) => fontBoldId + 1 + i);
+
+  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
+  objects.push(
+    `<< /Type /Pages /Kids [${pageObjIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageCount} >>`
+  );
+  pages.forEach((_, i) => {
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 ${pageHeight}] /Resources << /Font << /F1 ${fontRegularId} 0 R /F2 ${fontBoldId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`
+    );
+  });
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+  pages.forEach((pageLines, i) => {
+    const footer = `BT /F1 8 Tf 52 40 Td (Unbundle - AI Readiness OS   |   pagina ${i + 1} di ${pageCount}) Tj ET`;
+    const stream = [...pageLines, footer].join("\n");
+    objects.push(
+      `<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`
+    );
+  });
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf, "utf8"));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(pdf, "utf8");
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= objects.length; i++) {
+    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdf, "utf8");
+}
+
+export type SurveyPreviewPdfPayload = {
+  assessmentName: string;
+  displayName: string;
+  anonymous: boolean;
+  aggregationThreshold: number;
+  expectedRespondents: number | null;
+  invitedCount: number;
+  completedCount: number;
+  estimatedMinutes: number;
+  pillars: Array<{ title: string; description: string; questionCount: number }>;
+  sections: Array<{
+    pillarTitle: string;
+    title: string;
+    description?: string;
+    questions: Array<{
+      label: string;
+      description?: string;
+      answerType: string;
+      required?: boolean;
+    }>;
+  }>;
+  generatedAt: Date;
+};
+
+export function buildSurveyPreviewPdfBuffer(payload: SurveyPreviewPdfPayload) {
+  const typeLabel = (t: string) =>
+    t === "scale" ? "Scala 0-5" : t === "single_choice" ? "Scelta singola" : "Testo libero";
+  const lines: PdfLine[] = [
+    { text: "AI Readiness Assessment - Anteprima survey", bold: true, size: 18 },
+    { text: payload.assessmentName, bold: true, size: 13, spaceBefore: 6 },
+    {
+      text: `${payload.displayName}  |  ${payload.anonymous ? "Survey anonima" : "Survey nominativa (nome e cognome richiesti)"}  |  durata stimata ~${payload.estimatedMinutes} minuti`,
+      size: 10,
+      spaceBefore: 4,
+    },
+    {
+      text: `Respondent attesi: ${payload.expectedRespondents ?? "da definire"}  |  invitati: ${payload.invitedCount}  |  risposte complete: ${payload.completedCount}  |  soglia aggregazione: ${payload.aggregationThreshold}`,
+      size: 10,
+      spaceBefore: 2,
+    },
+    {
+      text: `Documento generato il ${payload.generatedAt.toLocaleDateString("it-IT")} per l'incontro di setup. Score finale: 0-5 per ogni pilastro.`,
+      size: 9,
+      spaceBefore: 2,
+    },
+    { text: "I pilastri misurati", bold: true, size: 13, spaceBefore: 16 },
+  ];
+  for (const pillar of payload.pillars) {
+    lines.push({
+      text: `${pillar.title}  (${pillar.questionCount} domande)`,
+      bold: true,
+      size: 10.5,
+      spaceBefore: 6,
+    });
+    lines.push({ text: pillar.description, size: 9, indent: 12 });
+  }
+  lines.push({ text: "Le domande, sezione per sezione", bold: true, size: 13, spaceBefore: 18 });
+  let n = 0;
+  for (const section of payload.sections) {
+    lines.push({
+      text: `${section.pillarTitle}  >  ${section.title}`,
+      bold: true,
+      size: 11,
+      spaceBefore: 12,
+    });
+    if (section.description) {
+      lines.push({ text: section.description, size: 9, indent: 0 });
+    }
+    for (const question of section.questions) {
+      n += 1;
+      lines.push({
+        text: `${n}. ${question.label}${question.required ? " *" : ""}`,
+        size: 10,
+        spaceBefore: 5,
+      });
+      lines.push({
+        text: `[${typeLabel(question.answerType)}]${question.description ? `  ${question.description}` : ""}`,
+        size: 8.5,
+        indent: 14,
+      });
+    }
+  }
+  lines.push({
+    text: "* = risposta obbligatoria. Le risposte si salvano automaticamente: ogni persona puo interrompere e riprendere dal proprio link.",
+    size: 8.5,
+    spaceBefore: 14,
+  });
+  return buildMultiPagePdf(lines);
+}

@@ -35,6 +35,7 @@ import { IntelligenceActions } from "@/components/ai-readiness/intelligence-acti
 import { RespondentInviteForm } from "@/components/ai-readiness/respondent-invite-form";
 import { ThresholdForm } from "@/components/ai-readiness/threshold-form";
 import { OpenLinkForm } from "@/components/ai-readiness/open-link-form";
+import { AutoRefresh } from "@/components/ai-readiness/auto-refresh";
 import { UseCasePromoteButton } from "@/components/ai-readiness/use-case-promote-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -208,6 +209,7 @@ export default async function AiReadinessPage({
 
   return (
     <div className="flex-1 space-y-6 p-6 lg:p-8">
+      {bundle.assessment.status === "open" && <AutoRefresh seconds={30} />}
       {assessmentSwitcher}
       <header className="rounded-[32px] border bg-card p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -260,6 +262,20 @@ export default async function AiReadinessPage({
               >
                 <Eye className="mr-1 size-4" /> Anteprima survey
               </Button>
+              {canManage && (
+                <Button
+                  variant="outline"
+                  render={
+                    <Link
+                      href={`/dashboard/${workspaceId}/ai-readiness/questions/${bundle.assessment.id}`}
+                    />
+                  }
+                  nativeButton={false}
+                  data-testid="question-editor-link"
+                >
+                  <ShieldCheck className="mr-1 size-4" /> Modifica domande
+                </Button>
+              )}
               <Button
                 render={<a href="#respondents" />}
                 nativeButton={false}
@@ -304,8 +320,8 @@ export default async function AiReadinessPage({
           {[
             {
               n: 1,
-              title: "Controlla le domande",
-              desc: "Guarda l'anteprima esatta della survey prima di inviarla.",
+              title: "Personalizza le domande",
+              desc: "Parti dalla base core, modifica/aggiungi/rimuovi domande e guarda l'anteprima.",
               done: true,
               href: `/dashboard/${workspaceId}/ai-readiness/preview/${bundle.assessment.id}`,
               cta: "Apri anteprima",
@@ -367,7 +383,10 @@ export default async function AiReadinessPage({
             <Users className="mb-3 size-5 text-primary" />
             <div className="text-2xl font-semibold">{dashboard?.completedCount ?? 0}</div>
             <p className="text-xs text-muted-foreground">
-              risposte completate su {dashboard?.invitedCount ?? 0} inviti
+              risposte completate su {dashboard?.invitedCount ?? 0} inviti{(() => {
+                const exp = (bundle.assessment.scoringConfig as Record<string, unknown> | null)?.expectedRespondents;
+                return typeof exp === "number" ? ` · ${exp} attese` : "";
+              })()}
             </p>
             <Progress className="mt-4" value={completion} />
           </CardContent>
@@ -454,6 +473,13 @@ export default async function AiReadinessPage({
                   assessmentId={bundle.assessment.id}
                   current={bundle.assessment.aggregationThreshold}
                   min={bundle.assessment.anonymousMode !== false ? 3 : 1}
+                  expectedRespondents={
+                    typeof (bundle.assessment.scoringConfig as Record<string, unknown> | null)
+                      ?.expectedRespondents === "number"
+                      ? ((bundle.assessment.scoringConfig as Record<string, unknown>)
+                          .expectedRespondents as number)
+                      : null
+                  }
                 />
               )}
             </div>

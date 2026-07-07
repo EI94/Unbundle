@@ -63,3 +63,37 @@ test("lo scoring su template filtrato usa solo i pilastri inclusi", () => {
   assert.equal(scores.bottleneckPillar, "technology");
   assert.ok(scores.readinessIndex != null);
 });
+
+test("applyTemplateOverrides: rimuove, modifica e aggiunge domande", async () => {
+  const { applyTemplateOverrides, templateOverridesFromScoringConfig } = await import("./template-scope.ts");
+  const base = AI_READINESS_SYSTEM_TEMPLATE;
+  const firstScale = base.questions.find((q) => q.answerType === "scale");
+  assert.ok(firstScale);
+  const overrides = templateOverridesFromScoringConfig({
+    templateOverrides: {
+      removed: ["tech-monitoring"],
+      edited: { [firstScale.id]: { label: "Testo personalizzato dal cliente", required: false } },
+      added: [
+        { id: "custom-abc12345", sectionId: "adoption-usage", label: "Domanda su misura del cliente?", answerType: "scale" },
+        { id: "custom-orfano", sectionId: "sezione-che-non-esiste", label: "Ignorami", answerType: "scale" },
+      ],
+    },
+  });
+  const result = applyTemplateOverrides(base, overrides);
+  assert.ok(!result.questions.some((q) => q.id === "tech-monitoring"));
+  const editedQ = result.questions.find((q) => q.id === firstScale.id);
+  assert.equal(editedQ?.label, "Testo personalizzato dal cliente");
+  assert.equal(editedQ?.required, false);
+  const custom = result.questions.find((q) => q.id === "custom-abc12345");
+  assert.equal(custom?.pillarId, "adoption");
+  assert.equal(custom?.answerType, "scale");
+  assert.equal(custom?.max, 5);
+  assert.ok(!result.questions.some((q) => q.id === "custom-orfano"));
+});
+
+test("overrides malformati non rompono il template", async () => {
+  const { applyTemplateOverrides, templateOverridesFromScoringConfig } = await import("./template-scope.ts");
+  const overrides = templateOverridesFromScoringConfig({ templateOverrides: "garbage" });
+  const result = applyTemplateOverrides(AI_READINESS_SYSTEM_TEMPLATE, overrides);
+  assert.equal(result.questions.length, AI_READINESS_SYSTEM_TEMPLATE.questions.length);
+});
