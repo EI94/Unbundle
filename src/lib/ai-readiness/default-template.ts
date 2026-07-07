@@ -1,13 +1,20 @@
 import type { AiReadinessTemplateDefinition } from "./types";
 
-export const AI_READINESS_SYSTEM_TEMPLATE_VERSION = "3.0.0";
+export const AI_READINESS_SYSTEM_TEMPLATE_VERSION = "4.0.0";
 
 /**
- * Template core v3 — riscritto per persone non tecniche: zero gergo, esempi
- * concreti in ogni domanda, ancore esplicite (cosa significa 0 e cosa 5).
- * La sezione Adoption è la più ricca (stile survey Datapizza/NATIVA) perché
- * viene condivisa con tutta l'organizzazione, e raccoglie sia gli use case
- * AI già in uso sia quelli desiderati. Score sempre 0–5 per pilastro.
+ * Template core v4 — un unico assessment, due binari:
+ *
+ * - sezioni `audience: "internal"` → schede compilate sul tool dai referenti
+ *   (IT per infrastruttura e dati, HR per ruoli e processi, business per gli
+ *   use case), tramite link personali con binario "referenti";
+ * - sezioni `audience: "everyone"` → la survey condivisa con tutta
+ *   l'organizzazione (strumenti e regole d'uso, adoption, use case).
+ *
+ * Ogni domanda a scala spiega TUTTI i livelli 1..5 (`levels`) più l'opzione
+ * "Non so / non applicabile" che vale 0,5 (`allowUnsure`): si sceglie in modo
+ * consapevole, mai al buio. Linguaggio semplice, zero gergo, esempi concreti.
+ * Score sempre 0–5 per pilastro.
  */
 export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
   pillars: [
@@ -15,21 +22,21 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       id: "technology",
       title: "Technology",
       description:
-        "Strumenti AI a disposizione e regole d'uso: cosa si puo usare, con quali account, con quali dati.",
+        "Infrastruttura tecnologica e regole d'uso: sistemi, chi li mantiene, accessi, e gli strumenti AI nelle mani delle persone.",
       weight: 1,
     },
     {
       id: "context",
       title: "Context",
       description:
-        "Informazioni, documenti e dati aziendali: quanto sono facili da trovare, affidabili e scritti nero su bianco.",
+        "Dati e conoscenza aziendale: dove vivono, quanto sono affidabili e quanto sono pronti per essere usati (anche) da un'AI.",
       weight: 1,
     },
     {
       id: "workflow",
       title: "Workflow",
       description:
-        "Come si lavora ogni giorno: chiarezza dei passaggi, tempo perso in attivita ripetitive, apertura al cambiamento.",
+        "Persone, ruoli e processi: chiarezza organizzativa, apertura al cambiamento e abitudini di lavoro da rinnovare.",
       weight: 1,
     },
     {
@@ -48,26 +55,39 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
     },
   ],
   sections: [
+    // ── Schede referenti interni ──
+    {
+      id: "technology-infrastructure",
+      pillarId: "technology",
+      title: "Infrastruttura e sistemi",
+      description:
+        "Da compilare con chi conosce i sistemi (IT o fornitore): cloud, manutenzione, accessi, collegamenti tra programmi.",
+      audience: "internal",
+    },
+    {
+      id: "context-systems",
+      pillarId: "context",
+      title: "Dati e conoscenza aziendale",
+      description:
+        "Da compilare con chi conosce i dati (IT o area tecnica): dove vivono le informazioni e quanto sono affidabili.",
+      audience: "internal",
+    },
+    {
+      id: "workflow-people",
+      pillarId: "workflow",
+      title: "Persone, ruoli e processi",
+      description:
+        "Da compilare con HR o chi conosce l'organizzazione: ruoli, competenze, formazione e storia dei cambiamenti.",
+      audience: "internal",
+    },
+    // ── Survey per tutta l'organizzazione ──
     {
       id: "technology-rules",
       pillarId: "technology",
       title: "Strumenti e regole d'uso",
       description:
-        "Quali strumenti AI puoi usare, con quali account e con quali dati: le regole del gioco.",
-    },
-    {
-      id: "context-knowledge",
-      pillarId: "context",
-      title: "Informazioni e documenti",
-      description:
-        "Quanto e facile trovare cio che serve per lavorare, e quanto e scritto invece che solo 'nella testa' di qualcuno.",
-    },
-    {
-      id: "workflow-daily",
-      pillarId: "workflow",
-      title: "Come lavorate ogni giorno",
-      description:
-        "Attivita ripetitive, chiarezza dei passaggi e disponibilita a cambiare il modo di lavorare.",
+        "Gli strumenti AI che usi e le regole che conosci: rispondi pensando alla tua esperienza quotidiana.",
+      audience: "everyone",
     },
     {
       id: "adoption-knowledge",
@@ -75,6 +95,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       title: "Quanto conosci l'AI",
       description:
         "Niente esame: serve a capire da dove partiamo. Rispondi con sincerita.",
+      audience: "everyone",
     },
     {
       id: "adoption-usage",
@@ -82,6 +103,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       title: "L'AI nel tuo lavoro di oggi",
       description:
         "Quanto e come usi gia strumenti come ChatGPT, Copilot o Gemini nel lavoro di tutti i giorni.",
+      audience: "everyone",
     },
     {
       id: "adoption-attitude",
@@ -89,17 +111,343 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       title: "Cosa ne pensi",
       description:
         "La tua opinione conta: entusiasmo, dubbi e cosa ti frena sono informazioni preziose quanto i numeri.",
+      audience: "everyone",
     },
     {
       id: "use-cases-ideas",
       pillarId: "use_cases",
       title: "Idee e casi concreti",
       description:
-        "Dove l'AI potrebbe aiutarti davvero: idee, esperimenti gia fatti e casi delicati da riconoscere.",
+        "Dove l'AI potrebbe aiutarti davvero: idee ed esperimenti gia fatti.",
+      audience: "everyone",
     },
   ],
   questions: [
-    // ───────────── TECHNOLOGY — Strumenti e regole d'uso ─────────────
+    // ═════════ INTERNAL — Infrastruttura e sistemi (IT) ═════════
+    {
+      id: "infra-cloud",
+      pillarId: "technology",
+      sectionId: "technology-infrastructure",
+      label:
+        "I sistemi e i programmi aziendali girano sul cloud o su server in azienda?",
+      description:
+        "Il cloud (es. Microsoft 365, Google Workspace) rende molto piu semplice collegare l'AI ai vostri strumenti.",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Tutto su server nostri e programmi installati sui singoli PC" },
+        { value: 2, label: "Quasi tutto interno, con qualche servizio online" },
+        { value: 3, label: "Un mix: meta cloud, meta sistemi interni" },
+        { value: 4, label: "La maggior parte e su cloud" },
+        { value: 5, label: "Praticamente tutto su cloud, accessibile da ovunque" },
+      ],
+    },
+    {
+      id: "infra-maintenance",
+      pillarId: "technology",
+      sectionId: "technology-infrastructure",
+      label: "Chi tiene in piedi e fa evolvere i sistemi informatici?",
+      description:
+        "Risorse interne dedicate, un fornitore esterno, o ci si arrangia quando qualcosa si rompe?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Nessuno di dedicato: ci si arrangia" },
+        { value: 2, label: "Un fornitore esterno, chiamato solo quando serve" },
+        { value: 3, label: "Un fornitore esterno con contratto continuativo" },
+        { value: 4, label: "Persone interne dedicate, con supporto esterno" },
+        { value: 5, label: "Un team interno che pianifica e fa evolvere i sistemi" },
+      ],
+    },
+    {
+      id: "infra-access-policy",
+      pillarId: "technology",
+      sectionId: "technology-infrastructure",
+      label:
+        "Esistono regole scritte su chi puo accedere a cosa (programmi, cartelle, dati)?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Nessuna regola: tutti accedono a tutto" },
+        { value: 2, label: "Qualche regola informale, niente di scritto" },
+        { value: 3, label: "Regole scritte, ma applicate a macchia di leopardo" },
+        { value: 4, label: "Regole scritte e applicate quasi ovunque" },
+        { value: 5, label: "Regole scritte, applicate e riviste periodicamente" },
+      ],
+    },
+    {
+      id: "infra-integrations",
+      pillarId: "technology",
+      sectionId: "technology-infrastructure",
+      label: "I vostri programmi 'si parlano' tra loro?",
+      description:
+        "Es. il gestionale passa i dati alla fatturazione da solo, oppure qualcuno li ricopia a mano?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Ogni programma e un'isola: si ricopia tutto a mano" },
+        { value: 2, label: "Pochi collegamenti, quasi tutto passa a mano" },
+        { value: 3, label: "I sistemi principali sono collegati tra loro" },
+        { value: 4, label: "La maggior parte si scambia i dati da sola" },
+        { value: 5, label: "Tutto collegato: i dati fluiscono senza copia-incolla" },
+      ],
+    },
+    {
+      id: "infra-security",
+      pillarId: "technology",
+      sectionId: "technology-infrastructure",
+      label:
+        "Come siete messi con le protezioni di base (password, copie di sicurezza, antivirus)?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Nessuna pratica particolare" },
+        { value: 2, label: "Qualcosa c'e, ma senza controllo" },
+        { value: 3, label: "Le basi ci sono: copie di sicurezza e password gestite" },
+        { value: 4, label: "Protezioni solide, verificate ogni tanto" },
+        { value: 5, label: "Protezioni solide, verificate regolarmente, con un responsabile" },
+      ],
+    },
+    // ═════════ INTERNAL — Dati e conoscenza (IT) ═════════
+    {
+      id: "ctx-databases",
+      pillarId: "context",
+      sectionId: "context-systems",
+      label:
+        "I dati importanti (clienti, prodotti, ordini) vivono in sistemi centrali o in file sparsi?",
+      description:
+        "Sistemi centrali = gestionale, archivio clienti condiviso. File sparsi = Excel personali, email, carta.",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Ovunque: Excel personali, email, carta" },
+        { value: 2, label: "Perlopiu file sparsi, con qualche sistema" },
+        { value: 3, label: "Meta nei sistemi, meta nei file personali" },
+        { value: 4, label: "Quasi tutto in sistemi centrali" },
+        { value: 5, label: "Tutto in sistemi centrali, ordinato, senza copie sparse" },
+      ],
+    },
+    {
+      id: "ctx-knowledge-system",
+      pillarId: "context",
+      sectionId: "context-systems",
+      label:
+        "Esiste un posto unico dove trovare procedure e documenti aziendali?",
+      description:
+        "Un archivio condiviso e ordinato: una intranet, un'area documenti comune, un manuale aziendale.",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Non esiste: ognuno ha i suoi file" },
+        { value: 2, label: "C'e una cartella condivisa, ma e un caos" },
+        { value: 3, label: "C'e un archivio, ma incompleto o poco aggiornato" },
+        { value: 4, label: "Archivio ordinato che copre quasi tutto" },
+        { value: 5, label: "Archivio unico, ordinato, aggiornato e usato da tutti" },
+      ],
+    },
+    {
+      id: "ctx-data-quality",
+      pillarId: "context",
+      sectionId: "context-systems",
+      label: "Quanto sono affidabili i dati che avete?",
+      description:
+        "Pensate a doppioni, campi vuoti, informazioni vecchie: quanto lavoro serve prima di potersi fidare?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Molto sporchi: doppioni e buchi ovunque" },
+        { value: 2, label: "Servono spesso correzioni a mano" },
+        { value: 3, label: "Usabili, con qualche pulizia ogni tanto" },
+        { value: 4, label: "Affidabili nella maggior parte dei casi" },
+        { value: 5, label: "Puliti, controllati, con qualcuno che se ne occupa" },
+      ],
+    },
+    {
+      id: "ctx-doc-processes",
+      pillarId: "context",
+      sectionId: "context-systems",
+      label: "I processi importanti sono scritti nero su bianco?",
+      description:
+        "Se domani entra una persona nuova, trova istruzioni scritte per fare il lavoro?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Niente di scritto: tutto passa a voce" },
+        { value: 2, label: "Qualche appunto sparso" },
+        { value: 3, label: "I processi principali sono descritti, ma non aggiornati" },
+        { value: 4, label: "Quasi tutti i processi sono scritti e usabili" },
+        { value: 5, label: "Tutto documentato, aggiornato e facile da trovare" },
+      ],
+    },
+    {
+      id: "ctx-data-access",
+      pillarId: "context",
+      sectionId: "context-systems",
+      label:
+        "Chi ha bisogno di un dato per lavorare riesce ad averlo in tempi ragionevoli?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Ottenere un dato e un'odissea" },
+        { value: 2, label: "Si ottiene, ma con lunghe attese" },
+        { value: 3, label: "Dipende dal dato e da chi lo chiede" },
+        { value: 4, label: "Quasi sempre in giornata" },
+        { value: 5, label: "In autonomia e subito, con i giusti permessi" },
+      ],
+    },
+    // ═════════ INTERNAL — Persone, ruoli e processi (HR) ═════════
+    {
+      id: "wf-roles-clarity",
+      pillarId: "workflow",
+      sectionId: "workflow-people",
+      label: "Ruoli e responsabilita sono chiari e scritti?",
+      description:
+        "Chi decide, chi esegue, chi controlla: e definito da qualche parte o si va a consuetudine?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Tutto a consuetudine: nulla di definito" },
+        { value: 2, label: "Ruoli chiari solo per poche figure" },
+        { value: 3, label: "Definiti sulla carta, ma la pratica e diversa" },
+        { value: 4, label: "Chiari e rispettati quasi ovunque" },
+        { value: 5, label: "Chiari, scritti e aggiornati quando l'organizzazione cambia" },
+      ],
+    },
+    {
+      id: "wf-process-renewal",
+      pillarId: "workflow",
+      sectionId: "workflow-people",
+      label: "I modi di lavorare vengono rivisti e aggiornati nel tempo?",
+      description:
+        "Oppure molti processi sono nati anni fa e nessuno li ha piu toccati, anche se oggi si potrebbe fare meglio?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Quasi tutto si fa come dieci anni fa" },
+        { value: 2, label: "Pochi processi sono stati rivisti" },
+        { value: 3, label: "Alcuni rivisti di recente, altri fermi da anni" },
+        { value: 4, label: "La maggior parte rivista negli ultimi anni" },
+        { value: 5, label: "Li rivediamo regolarmente, con la tecnologia in mente" },
+      ],
+    },
+    {
+      id: "wf-skills-map",
+      pillarId: "workflow",
+      sectionId: "workflow-people",
+      label: "Sapete quali competenze ci sono in azienda e quali mancano?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Nessuna mappatura" },
+        { value: 2, label: "Un'idea vaga, niente di scritto" },
+        { value: 3, label: "Mappatura parziale, solo per alcune aree" },
+        { value: 4, label: "Mappatura completa, ma non sempre aggiornata" },
+        { value: 5, label: "Completa, aggiornata e usata per formazione e assunzioni" },
+      ],
+    },
+    {
+      id: "wf-training-culture",
+      pillarId: "workflow",
+      sectionId: "workflow-people",
+      label: "Quanto si investe nella formazione delle persone?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Praticamente zero" },
+        { value: 2, label: "Solo la formazione obbligatoria" },
+        { value: 3, label: "Corsi ogni tanto, senza un piano" },
+        { value: 4, label: "Un piano di formazione annuale per quasi tutti" },
+        { value: 5, label: "Formazione continua, con tempo e budget dedicati" },
+      ],
+    },
+    {
+      id: "wf-change-history",
+      pillarId: "workflow",
+      sectionId: "workflow-people",
+      label:
+        "Come sono andati i grandi cambiamenti passati (un nuovo gestionale, un nuovo modo di lavorare)?",
+      answerType: "scale",
+      required: true,
+      min: 0,
+      max: 5,
+      weight: 1,
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Malissimo: resistenze e progetti abbandonati" },
+        { value: 2, label: "A fatica e con molti ritardi" },
+        { value: 3, label: "Alterni: alcuni bene, altri male" },
+        { value: 4, label: "Bene nella maggior parte dei casi" },
+        { value: 5, label: "Bene: c'e un metodo collaudato per accompagnarli" },
+      ],
+    },
+    {
+      id: "wf-hr-notes",
+      pillarId: "workflow",
+      sectionId: "workflow-people",
+      label:
+        "C'e qualcosa su ruoli, competenze o processi che e importante sapere?",
+      description:
+        "Es. un'area in forte crescita, un pensionamento chiave in arrivo, un reparto gia molto digitale.",
+      answerType: "text",
+      required: false,
+    },
+    // ═════════ EVERYONE — Strumenti e regole d'uso ═════════
     {
       id: "tech-approved-tools",
       pillarId: "technology",
@@ -113,10 +461,14 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Nessuno mi ha mai detto nulla",
-        max: "C'e una lista chiara e la conosco",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Nessuno mi ha mai detto nulla" },
+        { value: 2, label: "Se ne parla, ma niente di ufficiale" },
+        { value: 3, label: "Regole comunicate, ma non mi sono chiare" },
+        { value: 4, label: "So cosa posso usare" },
+        { value: 5, label: "Lista chiara: la conosco e viene aggiornata" },
+      ],
     },
     {
       id: "tech-accounts",
@@ -131,10 +483,14 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Ognuno usa account personali",
-        max: "Tutti abbiamo account aziendali dedicati",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Uso solo account personali gratuiti" },
+        { value: 2, label: "Perlopiu personali, qualcosa di aziendale" },
+        { value: 3, label: "Un mix di personali e aziendali" },
+        { value: 4, label: "Quasi solo strumenti forniti dall'azienda" },
+        { value: 5, label: "Solo strumenti aziendali, con il mio account dedicato" },
+      ],
     },
     {
       id: "tech-data-rules",
@@ -149,26 +505,14 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Non ci ho mai pensato",
-        max: "Regole chiarissime, so sempre cosa posso inserire",
-      },
-    },
-    {
-      id: "tech-stack-fit",
-      pillarId: "technology",
-      sectionId: "technology-rules",
-      label:
-        "Gli strumenti AI che hai oggi a disposizione ti bastano per il tuo lavoro?",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-      scaleAnchors: {
-        min: "Non ho nessuno strumento utile",
-        max: "Ho tutto quello che mi serve",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Non ci ho mai pensato" },
+        { value: 2, label: "Vado a intuito" },
+        { value: 3, label: "Regole generiche: sui casi pratici ho dubbi" },
+        { value: 4, label: "So quasi sempre cosa posso inserire" },
+        { value: 5, label: "Regole chiarissime: so sempre cosa posso inserire" },
+      ],
     },
     {
       id: "tech-support",
@@ -181,190 +525,16 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Non saprei proprio a chi rivolgermi",
-        max: "C'e un riferimento chiaro che mi aiuta",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Non saprei proprio a chi rivolgermi" },
+        { value: 2, label: "Chiedo a un collega che ne sa piu di me" },
+        { value: 3, label: "C'e qualcuno, ma risponde quando puo" },
+        { value: 4, label: "C'e un riferimento chiaro" },
+        { value: 5, label: "Riferimento chiaro, veloce e sempre disponibile" },
+      ],
     },
-    // ───────────── CONTEXT — Informazioni e documenti ─────────────
-    {
-      id: "ctx-find-info",
-      pillarId: "context",
-      sectionId: "context-knowledge",
-      label:
-        "Quando ti serve un'informazione per lavorare (una procedura, un documento, un dato), la trovi facilmente?",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-      scaleAnchors: {
-        min: "Perdo tempo a cercarla o a chiedere in giro",
-        max: "La trovo subito: e ordinata e aggiornata",
-      },
-    },
-    {
-      id: "ctx-data-quality",
-      pillarId: "context",
-      sectionId: "context-knowledge",
-      label: "I dati e i file con cui lavori sono affidabili cosi come sono?",
-      description:
-        "Es. anagrafiche clienti, listini, report: sono giusti al primo colpo o vanno sempre sistemati a mano?",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-      scaleAnchors: {
-        min: "Vanno sempre controllati e corretti a mano",
-        max: "Sono affidabili, li uso senza rilavorarli",
-      },
-    },
-    {
-      id: "ctx-who-knows",
-      pillarId: "context",
-      sectionId: "context-knowledge",
-      label:
-        "Se la persona che 'sa tutto' di un processo va in ferie, il lavoro va avanti lo stesso?",
-      description:
-        "Misura quanto la conoscenza e scritta da qualche parte invece che solo nella testa di qualcuno.",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-      scaleAnchors: {
-        min: "Ci blocchiamo: sa tutto solo lei/lui",
-        max: "Tutto e scritto: chiunque puo proseguire",
-      },
-    },
-    {
-      id: "ctx-documented",
-      pillarId: "context",
-      sectionId: "context-knowledge",
-      label:
-        "I passaggi del tuo lavoro sono scritti da qualche parte (guide, procedure, istruzioni)?",
-      description:
-        "Se domani arrivasse un collega nuovo, capirebbe come fare leggendo quello che c'e?",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-      scaleAnchors: {
-        min: "Niente e scritto: si impara a voce",
-        max: "Tutto documentato e aggiornato",
-      },
-    },
-    {
-      id: "ctx-missing-info",
-      pillarId: "context",
-      sectionId: "context-knowledge",
-      label:
-        "Quale informazione ti manca piu spesso per lavorare bene? Dove la cerchi di solito?",
-      answerType: "text",
-      required: false,
-    },
-    // ───────────── WORKFLOW — Come lavorate ogni giorno ─────────────
-    {
-      id: "wf-repetitive",
-      pillarId: "workflow",
-      sectionId: "workflow-daily",
-      label:
-        "Le attivita ripetitive del tuo team sono state identificate e misurate?",
-      description:
-        "Es. copiare dati da un file all'altro, compilare moduli, scrivere sempre le stesse email: sapete quali sono e quanto tempo portano via?",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-      scaleAnchors: {
-        min: "Nessuno le ha mai guardate davvero",
-        max: "Le conosciamo e sappiamo quanto tempo costano",
-      },
-    },
-    {
-      id: "wf-clear-steps",
-      pillarId: "workflow",
-      sectionId: "workflow-daily",
-      label: "Nel tuo lavoro e chiaro chi fa cosa e quando?",
-      description:
-        "Es. quando arriva una richiesta di un cliente, tutti sanno chi la prende in carico e quali sono i passaggi?",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-      scaleAnchors: {
-        min: "Ogni volta si improvvisa",
-        max: "Passaggi e responsabilita chiari per tutti",
-      },
-    },
-    {
-      id: "wf-measure",
-      pillarId: "workflow",
-      sectionId: "workflow-daily",
-      label:
-        "Sapete quanto tempo costa un'attivita importante del vostro lavoro?",
-      description:
-        "Es. 'preparare un preventivo ci porta via 45 minuti': avete numeri cosi? Servono per capire dove l'AI fa risparmiare davvero.",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-      scaleAnchors: {
-        min: "Nessuna idea: non lo misura nessuno",
-        max: "Abbiamo numeri precisi e aggiornati",
-      },
-    },
-    {
-      id: "wf-automation",
-      pillarId: "workflow",
-      sectionId: "workflow-daily",
-      label:
-        "Ci sono gia pezzi del vostro lavoro che 'si fanno da soli'?",
-      description:
-        "Es. email che partono in automatico, report che si generano da soli, dati che passano da un programma all'altro senza copia-incolla.",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-      scaleAnchors: {
-        min: "Tutto si fa a mano",
-        max: "Molti passaggi sono gia automatici",
-      },
-    },
-    {
-      id: "wf-change-openness",
-      pillarId: "workflow",
-      sectionId: "workflow-daily",
-      label:
-        "Il tuo team e disposto a cambiare il modo di lavorare, non solo a fare le stesse cose piu in fretta?",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-      scaleAnchors: {
-        min: "'Si e sempre fatto cosi': meglio non toccare",
-        max: "Cambiare non ci spaventa: l'abbiamo gia fatto",
-      },
-    },
-    {
-      id: "wf-time-waster",
-      pillarId: "workflow",
-      sectionId: "workflow-daily",
-      label:
-        "Qual e l'attivita che ti fa perdere piu tempo ogni settimana?",
-      description:
-        "Descrivila con parole tue: e uno dei punti dove andremo a cercare i primi risultati.",
-      answerType: "text",
-      required: false,
-    },
-    // ───────────── ADOPTION — Quanto conosci l'AI ─────────────
+    // ═════════ EVERYONE — Quanto conosci l'AI ═════════
     {
       id: "ad-inform",
       pillarId: "adoption",
@@ -393,28 +563,35 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Mai sentite / non saprei spiegarle",
-        max: "Le so spiegare a un collega",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Mai sentite" },
+        { value: 2, label: "Le ho sentite, ma non le so spiegare" },
+        { value: 3, label: "Le capisco a grandi linee" },
+        { value: 4, label: "Le conosco bene" },
+        { value: 5, label: "Le so spiegare a un collega" },
+      ],
     },
     {
       id: "ad-know-limits",
       pillarId: "adoption",
       sectionId: "adoption-knowledge",
-      label:
-        "Sai quando NON fidarti delle risposte dell'AI?",
+      label: "Sai quando NON fidarti delle risposte dell'AI?",
       description:
-        "A volte l'AI inventa dati, nomi o fonti che sembrano veri ma non lo sono. Sapere quando controllare e un'abilita chiave.",
+        "A volte l'AI inventa dati, nomi o fonti che sembrano veri ma non lo sono.",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Pensavo ci si potesse sempre fidare",
-        max: "So bene quando verificare e come",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Pensavo ci si potesse sempre fidare" },
+        { value: 2, label: "So che puo sbagliare, ma non saprei quando" },
+        { value: 3, label: "Ho un'idea dei casi a rischio" },
+        { value: 4, label: "So quasi sempre quando verificare" },
+        { value: 5, label: "So esattamente quando e come verificare" },
+      ],
     },
     {
       id: "ad-quiz-how",
@@ -482,7 +659,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         },
       ],
     },
-    // ───────────── ADOPTION — L'AI nel tuo lavoro di oggi ─────────────
+    // ═════════ EVERYONE — L'AI nel tuo lavoro di oggi ═════════
     {
       id: "ad-frequency",
       pillarId: "adoption",
@@ -511,23 +688,26 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       label:
         "Quando usi l'AI, quanto ti senti capace di ottenere quello che ti serve?",
       description:
-        "Es. riesci a farle scrivere l'email giusta, riassumere il documento giusto, nel modo che volevi tu?",
+        "Es. riesci a farle scrivere l'email giusta o riassumere il documento giusto, nel modo che volevi tu?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Non saprei da dove cominciare",
-        max: "Ottengo quasi sempre cio che mi serve",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Non saprei da dove cominciare" },
+        { value: 2, label: "Provo, ma spesso non ottengo cio che voglio" },
+        { value: 3, label: "Me la cavo sulle cose semplici" },
+        { value: 4, label: "Ottengo quasi sempre cio che mi serve" },
+        { value: 5, label: "Ottengo cio che serve e aiuto anche i colleghi" },
+      ],
     },
     {
       id: "ad-beyond",
       pillarId: "adoption",
       sectionId: "adoption-usage",
-      label:
-        "Usi l'AI anche per cose fuori dalla tua specialita?",
+      label: "Usi l'AI anche per cose fuori dalla tua specialita?",
       description:
         "Es. farti aiutare con un calcolo, una traduzione o un'analisi che prima avresti chiesto a un collega esperto.",
       answerType: "scale",
@@ -535,10 +715,14 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Mai provato",
-        max: "Si, regolarmente",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Mai provato" },
+        { value: 2, label: "Una o due volte" },
+        { value: 3, label: "Ogni tanto" },
+        { value: 4, label: "Spesso" },
+        { value: 5, label: "Regolarmente: mi ha cambiato il modo di lavorare" },
+      ],
     },
     {
       id: "ad-colleagues",
@@ -550,10 +734,14 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Nessuno la usa",
-        max: "La usano quasi tutti, ogni giorno",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Nessuno la usa" },
+        { value: 2, label: "Pochissimi" },
+        { value: 3, label: "Qualcuno si, qualcuno no" },
+        { value: 4, label: "La maggior parte" },
+        { value: 5, label: "Quasi tutti, ogni giorno" },
+      ],
     },
     {
       id: "ad-current-usecase",
@@ -566,7 +754,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       answerType: "text",
       required: false,
     },
-    // ───────────── ADOPTION — Cosa ne pensi ─────────────
+    // ═════════ EVERYONE — Cosa ne pensi ═════════
     {
       id: "ad-attitude",
       pillarId: "adoption",
@@ -577,10 +765,14 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Mi preoccupa / preferirei evitarla",
-        max: "Non vedo l'ora di usarla di piu",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Mi preoccupa: preferirei evitarla" },
+        { value: 2, label: "Sono scettico: non mi convince" },
+        { value: 3, label: "Neutrale: dipende da come la si usa" },
+        { value: 4, label: "Positivo: sono incuriosito" },
+        { value: 5, label: "Entusiasta: non vedo l'ora di usarla di piu" },
+      ],
     },
     {
       id: "ad-productivity",
@@ -595,10 +787,14 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Per il mio lavoro non serve",
-        max: "Cambierebbe davvero le mie giornate",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Per il mio lavoro non serve" },
+        { value: 2, label: "Aiuterebbe poco" },
+        { value: 3, label: "Qualcosa migliorerebbe" },
+        { value: 4, label: "Migliorerebbe parecchie attivita" },
+        { value: 5, label: "Cambierebbe davvero le mie giornate" },
+      ],
     },
     {
       id: "ad-training",
@@ -611,10 +807,14 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Nessuna formazione ricevuta",
-        max: "Molto utile e adatta a quello che faccio",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Nessuna formazione ricevuta" },
+        { value: 2, label: "Qualcosa, ma poco utile" },
+        { value: 3, label: "Utile a meta" },
+        { value: 4, label: "Utile" },
+        { value: 5, label: "Molto utile e su misura per quello che faccio" },
+      ],
     },
     {
       id: "ad-blocker",
@@ -638,7 +838,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       answerType: "text",
       required: false,
     },
-    // ───────────── USE CASES — Idee e casi concreti ─────────────
+    // ═════════ EVERYONE — Idee e casi concreti ═════════
     {
       id: "uc-recognize",
       pillarId: "use_cases",
@@ -652,10 +852,14 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Non saprei proprio",
-        max: "Ne ho gia in mente piu di una",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Non saprei proprio" },
+        { value: 2, label: "Forse una, ma molto vaga" },
+        { value: 3, label: "Un'idea concreta ce l'ho" },
+        { value: 4, label: "Piu di un'idea concreta" },
+        { value: 5, label: "Ne ho diverse e saprei da dove partire" },
+      ],
     },
     {
       id: "uc-tried",
@@ -670,44 +874,33 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Mai provato niente",
-        max: "Si, piu di un esperimento gia fatto",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Mai provato niente" },
+        { value: 2, label: "Se ne e parlato, ma nulla di fatto" },
+        { value: 3, label: "Un piccolo esperimento" },
+        { value: 4, label: "Qualche esperimento, con risultati" },
+        { value: 5, label: "Piu esperimenti gia entrati nel lavoro quotidiano" },
+      ],
     },
     {
       id: "uc-channel",
       pillarId: "use_cases",
       sectionId: "use-cases-ideas",
-      label:
-        "Se hai un'idea per usare l'AI, sai a chi proporla in azienda?",
+      label: "Se hai un'idea per usare l'AI, sai a chi proporla in azienda?",
       answerType: "scale",
       required: true,
       min: 0,
       max: 5,
       weight: 1,
-      scaleAnchors: {
-        min: "Non saprei a chi dirla",
-        max: "C'e un percorso chiaro e le idee vengono ascoltate",
-      },
-    },
-    {
-      id: "uc-risk",
-      pillarId: "use_cases",
-      sectionId: "use-cases-ideas",
-      label:
-        "Riesci a riconoscere quando un uso dell'AI e delicato e va maneggiato con cura?",
-      description:
-        "Es. quando ci sono di mezzo dati personali, soldi, o decisioni che toccano le persone: li serve piu attenzione.",
-      answerType: "scale",
-      required: true,
-      min: 0,
-      max: 5,
-      weight: 1,
-      scaleAnchors: {
-        min: "Non saprei distinguere",
-        max: "Riconosco subito i casi delicati",
-      },
+      allowUnsure: true,
+      levels: [
+        { value: 1, label: "Non saprei a chi dirla" },
+        { value: 2, label: "La direi al mio capo, poi chissa" },
+        { value: 3, label: "C'e un canale, ma non so come funziona" },
+        { value: 4, label: "C'e un canale chiaro" },
+        { value: 5, label: "Canale chiaro e le idee ricevono risposta" },
+      ],
     },
     {
       id: "uc-idea",
@@ -722,7 +915,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
     },
   ],
   scoringSchema: {
-    version: "ai-readiness-core-3",
+    version: "ai-readiness-core-4",
     scale: { min: 0, max: 5 },
     readinessFormula: {
       weightedAverageWeight: 0.65,

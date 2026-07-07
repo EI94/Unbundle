@@ -36,6 +36,7 @@ import { RespondentInviteForm } from "@/components/ai-readiness/respondent-invit
 import { ThresholdForm } from "@/components/ai-readiness/threshold-form";
 import { OpenLinkForm } from "@/components/ai-readiness/open-link-form";
 import { AutoRefresh } from "@/components/ai-readiness/auto-refresh";
+import { PillarRadar } from "@/components/ai-readiness/pillar-radar";
 import { UseCasePromoteButton } from "@/components/ai-readiness/use-case-promote-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -254,28 +255,14 @@ export default async function AiReadinessPage({
                 variant="outline"
                 render={
                   <Link
-                    href={`/dashboard/${workspaceId}/ai-readiness/preview/${bundle.assessment.id}`}
+                    href={`/dashboard/${workspaceId}/ai-readiness/questions/${bundle.assessment.id}`}
                   />
                 }
                 nativeButton={false}
-                data-testid="survey-preview-link"
+                data-testid="question-editor-link"
               >
-                <Eye className="mr-1 size-4" /> Anteprima survey
+                <Eye className="mr-1 size-4" /> Domande e anteprima
               </Button>
-              {canManage && (
-                <Button
-                  variant="outline"
-                  render={
-                    <Link
-                      href={`/dashboard/${workspaceId}/ai-readiness/questions/${bundle.assessment.id}`}
-                    />
-                  }
-                  nativeButton={false}
-                  data-testid="question-editor-link"
-                >
-                  <ShieldCheck className="mr-1 size-4" /> Modifica domande
-                </Button>
-              )}
               <Button
                 render={<a href="#respondents" />}
                 nativeButton={false}
@@ -323,7 +310,7 @@ export default async function AiReadinessPage({
               title: "Personalizza le domande",
               desc: "Parti dalla base core, modifica/aggiungi/rimuovi domande e guarda l'anteprima.",
               done: true,
-              href: `/dashboard/${workspaceId}/ai-readiness/preview/${bundle.assessment.id}`,
+              href: `/dashboard/${workspaceId}/ai-readiness/questions/${bundle.assessment.id}`,
               cta: "Apri anteprima",
             },
             {
@@ -418,6 +405,96 @@ export default async function AiReadinessPage({
             <Sparkles className="mb-3 size-5 text-primary" />
             <div className="text-2xl font-semibold">{useCases.length}</div>
             <p className="text-xs text-muted-foreground">use case proposti via survey</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]" data-testid="radar-section">
+        <Card className="rounded-[28px]">
+          <CardHeader>
+            <CardTitle>Profilo di maturità</CardTitle>
+          </CardHeader>
+          <CardContent className="text-foreground">
+            <PillarRadar
+              pillars={bundle.templateDefinition.pillars.map((pillar) => ({
+                title: pillar.title,
+                score:
+                  typeof dashboard?.pillarScores[pillar.id] === "number"
+                    ? (dashboard!.pillarScores[pillar.id] as number)
+                    : null,
+              }))}
+            />
+            {!dashboard?.aggregationThresholdMet && (
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                Il radar si popola quando le risposte raggiungono la soglia di
+                aggregazione ({bundle.assessment.aggregationThreshold}).
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="rounded-[28px]">
+          <CardHeader>
+            <CardTitle>Punti di forza e di attenzione</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {(() => {
+              const sectionScores = bundle.templateDefinition.sections
+                .map((section) => ({
+                  title: section.title,
+                  audience: section.audience,
+                  score: dashboard?.sectionScores[section.id],
+                }))
+                .flatMap((item) =>
+                  typeof item.score === "number" && Number.isFinite(item.score)
+                    ? [{ title: item.title, score: item.score }]
+                    : []
+                )
+                .sort((a, b) => b.score - a.score);
+              if (sectionScores.length === 0) {
+                return (
+                  <p className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
+                    Appena arrivano abbastanza risposte, qui compaiono le aree
+                    più solide e quelle su cui lavorare per prime.
+                  </p>
+                );
+              }
+              const strengths = sectionScores.slice(0, 2);
+              const attention = sectionScores.slice(-2).reverse();
+              return (
+                <>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-emerald-600">
+                      Punti di forza
+                    </div>
+                    <div className="mt-2 space-y-2">
+                      {strengths.map((item) => (
+                        <div key={item.title} className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
+                          <span>{item.title}</span>
+                          <span className="font-semibold">{item.score.toFixed(1)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-600">
+                      Punti di attenzione
+                    </div>
+                    <div className="mt-2 space-y-2">
+                      {attention.map((item) => (
+                        <div key={item.title} className="flex items-center justify-between rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+                          <span>{item.title}</span>
+                          <span className="font-semibold">{item.score.toFixed(1)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Calcolati sui punteggi medi delle sezioni (0–5), su tutte le
+                    risposte raccolte finora.
+                  </p>
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>

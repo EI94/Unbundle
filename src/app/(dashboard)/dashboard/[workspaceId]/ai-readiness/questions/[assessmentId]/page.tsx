@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ListChecks } from "lucide-react";
+import { ArrowLeft, Download, ListChecks } from "lucide-react";
 import { requireSession } from "@/lib/auth/redirect-to-login";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
@@ -60,6 +60,7 @@ export default async function AiReadinessQuestionsPage({
     title: section.title,
     description: section.description,
     pillarTitle: pillarById.get(section.pillarId) ?? section.pillarId,
+    audience: section.audience,
   }));
   const scored = bundle.templateDefinition.questions.filter(
     (q) => q.answerType !== "text"
@@ -90,14 +91,31 @@ export default async function AiReadinessQuestionsPage({
           <Badge variant="outline">{bundle.assessment.name}</Badge>
           <Badge variant="outline">{scored} domande a punteggio</Badge>
         </div>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight">
-          Personalizza le domande
-        </h1>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight">
+            Domande e anteprima
+          </h1>
+          {/* anchor nativo: il prefetch di un Link eseguirebbe la GET */}
+          <Button
+            render={
+              <a
+                href={`/api/ai-readiness/assessments/${assessmentId}/survey-pdf`}
+                download
+              />
+            }
+            nativeButton={false}
+            data-testid="survey-pdf-download"
+          >
+            <Download className="mr-1 size-4" /> Scarica PDF per il cliente
+          </Button>
+        </div>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Parti dalla base core e adattala al cliente: modifica il testo,
-          rimuovi ciò che non serve, aggiungi domande su misura (scala 0–5 per
-          lo score, o testo libero). Le modifiche valgono solo per questo
-          assessment; lo score resta sempre da 0 a 5 per pilastro.
+          Questo è esattamente ciò che riceveranno le persone, diviso in due
+          binari: la <span className="font-medium text-foreground">survey per tutta
+          l&apos;organizzazione</span> e le <span className="font-medium text-foreground">schede
+          per i referenti</span> (IT, HR, business). Modifica il testo, i livelli
+          1–5, rimuovi o aggiungi domande: le modifiche valgono solo per questo
+          assessment e lo score resta sempre da 0 a 5 per pilastro.
         </p>
       </header>
 

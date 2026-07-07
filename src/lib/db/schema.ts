@@ -968,6 +968,7 @@ export const aiReadinessRespondents = pgTable(
     locale: varchar("locale", { length: 20 }),
     inviteTokenHash: varchar("invite_token_hash", { length: 128 }).notNull().unique(),
     inviteStatus: varchar("invite_status", { length: 50 }).notNull().default("invited"),
+    surveyTrack: varchar("survey_track", { length: 20 }).notNull().default("everyone"),
     pseudonymousId: varchar("pseudonymous_id", { length: 64 }).notNull(),
     hasAcceptedPrivacyNotice: boolean("has_accepted_privacy_notice")
       .notNull()

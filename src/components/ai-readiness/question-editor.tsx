@@ -20,6 +20,7 @@ type SectionView = {
   title: string;
   pillarTitle: string;
   description?: string;
+  audience?: "everyone" | "internal";
 };
 
 export function QuestionEditor({
@@ -77,10 +78,23 @@ export function QuestionEditor({
         );
         return (
           <section key={section.id} className="rounded-[28px] border bg-card p-5">
-            <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
-              {section.pillarTitle}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                {section.pillarTitle}
+              </div>
+              <Badge
+                variant={section.audience === "internal" ? "secondary" : "outline"}
+                className="text-[10px]"
+              >
+                {section.audience === "internal"
+                  ? "Scheda referenti (IT/HR/business)"
+                  : "Survey per tutta l'organizzazione"}
+              </Badge>
             </div>
             <h2 className="mt-1 text-lg font-semibold">{section.title}</h2>
+            {section.description && (
+              <p className="mt-1 text-xs text-muted-foreground">{section.description}</p>
+            )}
             <div className="mt-4 space-y-2">
               {sectionQuestions.map((question, index) =>
                 editingId === question.id ? (
@@ -101,23 +115,25 @@ export function QuestionEditor({
                       <Input name="description" defaultValue={question.description ?? ""} />
                     </div>
                     {question.answerType === "scale" && (
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-1.5">
-                          <Label>Cosa significa 0</Label>
-                          <Input
-                            name="anchorMin"
-                            defaultValue={question.scaleAnchors?.min ?? ""}
-                            placeholder="Es. Nessuno lo fa"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label>Cosa significa 5</Label>
-                          <Input
-                            name="anchorMax"
-                            defaultValue={question.scaleAnchors?.max ?? ""}
-                            placeholder="Es. Lo facciamo tutti, ogni giorno"
-                          />
-                        </div>
+                      <div className="space-y-2">
+                        <Label>Cosa significa ogni livello (1–5)</Label>
+                        {[1, 2, 3, 4, 5].map((value) => (
+                          <div key={value} className="flex items-center gap-2">
+                            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+                              {value}
+                            </span>
+                            <Input
+                              name={`level${value}`}
+                              defaultValue={
+                                question.levels?.find((l) => l.value === value)?.label ?? ""
+                              }
+                              placeholder={`Descrizione del livello ${value}`}
+                            />
+                          </div>
+                        ))}
+                        <p className="text-xs text-muted-foreground">
+                          L&apos;opzione «Non so / non applicabile» (vale 0,5) è sempre disponibile.
+                        </p>
                       </div>
                     )}
                     <label className="flex items-center gap-2 text-sm">
@@ -142,6 +158,31 @@ export function QuestionEditor({
                         <span className="text-muted-foreground">{index + 1}.</span>{" "}
                         {question.label}
                       </div>
+                      {question.description && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {question.description}
+                        </p>
+                      )}
+                      {question.answerType === "scale" && question.levels?.length ? (
+                        <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
+                          {question.levels.map((level) => (
+                            <li key={level.value}>
+                              <span className="font-medium text-foreground/70">{level.value}</span>{" "}
+                              = {level.label}
+                            </li>
+                          ))}
+                          {question.allowUnsure && (
+                            <li><span className="font-medium text-foreground/70">?</span> = Non so / non applicabile (vale 0,5)</li>
+                          )}
+                        </ul>
+                      ) : null}
+                      {question.answerType === "single_choice" && question.options?.length ? (
+                        <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
+                          {question.options.map((option) => (
+                            <li key={option.value}>• {option.label}</li>
+                          ))}
+                        </ul>
+                      ) : null}
                       <div className="mt-1 flex flex-wrap gap-1.5">
                         <Badge variant="outline" className="text-[10px]">
                           {question.answerType === "scale"
@@ -225,14 +266,17 @@ export function QuestionEditor({
                       <option value="text">Testo libero (qualitativa)</option>
                     </select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label>Cosa significa 0 (se scala)</Label>
-                    <Input name="anchorMin" placeholder="Es. Mai fatto" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Cosa significa 5 (se scala)</Label>
-                    <Input name="anchorMax" placeholder="Es. Lo facciamo ogni giorno" />
-                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Livelli 1–5 (se scala; lascia vuoto per usare quelli generici)</Label>
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <div key={value} className="flex items-center gap-2">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+                        {value}
+                      </span>
+                      <Input name={`level${value}`} placeholder={`Descrizione del livello ${value}`} />
+                    </div>
+                  ))}
                 </div>
                 <div className="flex gap-2">
                   <Button type="submit" size="sm" disabled={pending}>Aggiungi</Button>

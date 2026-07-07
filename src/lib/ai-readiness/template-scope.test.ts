@@ -99,57 +99,89 @@ test("overrides malformati non rompono il template", async () => {
   assert.equal(result.questions.length, AI_READINESS_SYSTEM_TEMPLATE.questions.length);
 });
 
-test("le ancore 0/5 sono presenti su tutte le domande scala del template e sovrascrivibili", async () => {
-  const { applyTemplateOverrides, templateOverridesFromScoringConfig } = await import("./template-scope.ts");
+test("v4: ogni domanda scala ha i 5 livelli spiegati e l'opzione Non so", () => {
   const scaleQuestions = AI_READINESS_SYSTEM_TEMPLATE.questions.filter(
     (q) => q.answerType === "scale"
   );
-  assert.ok(scaleQuestions.length >= 15);
+  assert.ok(scaleQuestions.length >= 20);
   for (const q of scaleQuestions) {
-    assert.ok(q.scaleAnchors?.min, `manca ancora min su ${q.id}`);
-    assert.ok(q.scaleAnchors?.max, `manca ancora max su ${q.id}`);
+    assert.equal(q.levels?.length, 5, `livelli mancanti su ${q.id}`);
+    assert.ok(q.levels!.every((l, i) => l.value === i + 1 && l.label.length > 3));
+    assert.equal(q.allowUnsure, true, `manca Non so su ${q.id}`);
   }
-  const target = scaleQuestions[0];
+});
+
+test("v4: binari — la survey organizzazione e la scheda referenti sono separate", async () => {
+  const { filterTemplateForTrack } = await import("./template-scope.ts");
+  const everyone = filterTemplateForTrack(AI_READINESS_SYSTEM_TEMPLATE, "everyone");
+  const internal = filterTemplateForTrack(AI_READINESS_SYSTEM_TEMPLATE, "internal");
+  assert.ok(everyone.sections.every((s) => s.audience !== "internal"));
+  assert.ok(internal.sections.every((s) => s.audience === "internal"));
+  const everyoneIds = new Set(everyone.questions.map((q) => q.id));
+  assert.ok(internal.questions.every((q) => !everyoneIds.has(q.id)));
+  // survey org: strumenti, adoption e use case; scheda referenti: infra, dati, persone
+  assert.ok(everyone.questions.some((q) => q.id === "tech-approved-tools"));
+  assert.ok(everyone.questions.some((q) => q.id === "ad-current-usecase"));
+  assert.ok(internal.questions.some((q) => q.id === "infra-cloud"));
+  assert.ok(internal.questions.some((q) => q.id === "ctx-knowledge-system"));
+  assert.ok(internal.questions.some((q) => q.id === "wf-roles-clarity"));
+});
+
+test("v4: 'Non so' (0,5) entra nello score senza essere clampato", () => {
+  const question = AI_READINESS_SYSTEM_TEMPLATE.questions.find(
+    (q) => q.answerType === "scale"
+  )!;
+  const scores = scoreResponse({
+    template: AI_READINESS_SYSTEM_TEMPLATE,
+    answers: [
+      {
+        questionId: question.id,
+        value: 0.5,
+        answerType: "scale",
+        pillarId: question.pillarId,
+        sectionId: question.sectionId,
+        answeredAt: "2026-07-08T00:00:00.000Z",
+      },
+    ],
+  });
+  assert.equal(scores.pillarScores[question.pillarId], 0.5);
+});
+
+test("v4: livelli sovrascrivibili per assessment e custom con livelli generici", async () => {
+  const { applyTemplateOverrides, templateOverridesFromScoringConfig } = await import("./template-scope.ts");
+  const target = AI_READINESS_SYSTEM_TEMPLATE.questions.find((q) => q.answerType === "scale")!;
   const overrides = templateOverridesFromScoringConfig({
     templateOverrides: {
       edited: {
         [target.id]: {
           label: "Domanda riscritta dal cliente per il suo contesto",
-          scaleAnchors: { min: "Zero personalizzato", max: "Cinque personalizzato" },
+          levels: [1, 2, 3, 4, 5].map((v) => ({ value: v, label: `Livello cliente ${v}` })),
         },
       },
       added: [
-        {
-          id: "custom-anchored",
-          sectionId: "adoption-usage",
-          label: "Domanda custom con ancore proprie?",
-          answerType: "scale",
-          scaleAnchors: { min: "Mai", max: "Sempre" },
-        },
+        { id: "custom-lv", sectionId: "adoption-usage", label: "Domanda custom senza livelli?", answerType: "scale" },
       ],
     },
   });
   const result = applyTemplateOverrides(AI_READINESS_SYSTEM_TEMPLATE, overrides);
-  const editedQ = result.questions.find((q) => q.id === target.id);
-  assert.equal(editedQ?.scaleAnchors?.min, "Zero personalizzato");
-  assert.equal(editedQ?.scaleAnchors?.max, "Cinque personalizzato");
-  const custom = result.questions.find((q) => q.id === "custom-anchored");
-  assert.equal(custom?.scaleAnchors?.min, "Mai");
-  assert.equal(custom?.scaleAnchors?.max, "Sempre");
+  const edited = result.questions.find((q) => q.id === target.id);
+  assert.equal(edited?.levels?.[2]?.label, "Livello cliente 3");
+  const custom = result.questions.find((q) => q.id === "custom-lv");
+  assert.equal(custom?.levels?.length, 5);
+  assert.equal(custom?.allowUnsure, true);
 });
 
-test("v3: adoption e la sezione piu ricca e include use case attuali e desiderati", () => {
+test("v4: adoption resta la sezione piu ricca con use case attuali e desiderati, zero gergo", () => {
   const adoption = AI_READINESS_SYSTEM_TEMPLATE.questions.filter(
     (q) => q.pillarId === "adoption"
   );
   assert.ok(adoption.length >= 14, `adoption ha solo ${adoption.length} domande`);
   assert.ok(adoption.some((q) => q.id === "ad-current-usecase"));
   assert.ok(adoption.some((q) => q.id === "ad-future-usecase"));
-  // niente gergo tecnico nelle domande
   const all = AI_READINESS_SYSTEM_TEMPLATE.questions
-    .map((q) => `${q.label} ${q.description ?? ""}`)
+    .map((q) => `${q.label} ${q.description ?? ""} ${(q.levels ?? []).map((l) => l.label).join(" ")}`)
     .join(" ");
-  for (const jargon of ["SSO", "MFA", "LLM", "ROI", "baseline", "stack"]) {
+  for (const jargon of ["SSO", "MFA", "LLM", "ROI", "baseline", "stack", "legacy"]) {
     assert.ok(!all.includes(jargon), `trovato gergo: ${jargon}`);
   }
 });

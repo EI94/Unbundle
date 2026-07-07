@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { hashInviteToken } from "@/lib/ai-readiness/token";
 import { getAssessmentByOpenLinkTokenHash } from "@/lib/db/queries/ai-readiness";
+import { filterTemplateForTrack } from "@/lib/ai-readiness/template-scope";
 import { OpenSurveyStartForm } from "@/components/ai-readiness/open-survey-start-form";
 import { SurveyThemeToggle } from "@/components/ai-readiness/survey-theme-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +49,8 @@ export default async function OpenSurveyLandingPage({
   const privacy = found.assessment.privacyConfig ?? {};
   const named = found.assessment.anonymousMode === false;
   const supportEmail = configString(privacy, "supportEmail");
-  const scored = found.templateDefinition.questions.filter((q) => q.answerType !== "text").length;
+  const everyoneDef = filterTemplateForTrack(found.templateDefinition, "everyone");
+  const scored = everyoneDef.questions.filter((q) => q.answerType !== "text").length;
   const minutes = Math.max(2, Math.round(scored * 0.5));
 
   return (

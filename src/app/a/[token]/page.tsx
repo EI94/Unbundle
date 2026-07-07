@@ -65,6 +65,7 @@ export default async function AiReadinessRespondentPage({
     (question) => question.answerType !== "text"
   ).length;
   const estimatedMinutes = Math.max(2, Math.round(scoredQuestions * 0.5));
+  const isInternalTrack = found.respondent.surveyTrack === "internal";
 
   if (found.respondent.inviteStatus === "completed") {
     return (
@@ -150,13 +151,17 @@ export default async function AiReadinessRespondentPage({
             <Badge variant="secondary">AI Readiness OS</Badge>
             <Badge variant="outline">{displayName}</Badge>
             <Badge variant="outline">~{estimatedMinutes} minuti</Badge>
+            {isInternalTrack && (
+              <Badge variant="secondary">Scheda referenti (IT / HR / business)</Badge>
+            )}
           </div>
           <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight">
             Benvenuto nella survey «{surveyName}» 👋
           </h1>
           <p className="mt-2 max-w-3xl text-base text-muted-foreground">
-            Il tuo contributo è importante: aiuta la tua organizzazione a
-            capire dove l&apos;AI può dare una mano davvero.
+            {isInternalTrack
+              ? "Questa scheda è per chi conosce sistemi, dati o organizzazione: le tue risposte completano il quadro raccolto con la survey."
+              : "Il tuo contributo è importante: aiuta la tua organizzazione a capire dove l'AI può dare una mano davvero."}
           </p>
           <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">
             {configString(
@@ -167,7 +172,7 @@ export default async function AiReadinessRespondentPage({
           </p>
           <div className="mt-5 grid gap-2 sm:grid-cols-3" data-testid="survey-howto">
             {[
-              { n: "1", t: "Rispondi da 0 a 5", d: "0 = non presente, 5 = AI native. Nessuna risposta è sbagliata." },
+              { n: "1", t: "Scegli il livello che ti somiglia", d: "Ogni voto da 1 a 5 è spiegato. Se non sai, c'è l'opzione «Non so»." },
               { n: "2", t: "Tutto si salva da solo", d: "Puoi chiudere e riprendere quando vuoi da questo stesso link." },
               { n: "3", t: "Invia alla fine", d: "Controlla la barra di avanzamento e premi Invia assessment." },
             ].map((step) => (

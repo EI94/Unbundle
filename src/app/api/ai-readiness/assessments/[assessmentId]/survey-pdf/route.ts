@@ -73,6 +73,7 @@ export async function GET(
         section.pillarId,
       title: section.title,
       description: section.description,
+      audience: section.audience,
       questions: def.questions
         .filter((q) => q.sectionId === section.id)
         .map((q) => ({
@@ -81,6 +82,8 @@ export async function GET(
           answerType: q.answerType,
           required: q.required,
           scaleAnchors: q.scaleAnchors,
+          levels: q.levels,
+          allowUnsure: q.allowUnsure,
         })),
     })),
     generatedAt: new Date(),

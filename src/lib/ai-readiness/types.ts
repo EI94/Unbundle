@@ -25,6 +25,11 @@ export type AiReadinessQuestion = {
   options?: Array<{ value: string; label: string; score?: number }>;
   /** Ancore della scala: cosa significa il voto minimo e cosa il massimo. */
   scaleAnchors?: { min: string; max: string };
+  /** Descrizione di ogni livello della scala (1..5): l'utente sceglie sapendo
+   *  esattamente cosa significa ciascun voto. */
+  levels?: Array<{ value: number; label: string }>;
+  /** Mostra l'opzione "Non so / non applicabile" (vale 0,5 nello score). */
+  allowUnsure?: boolean;
 };
 
 export type AiReadinessSection = {
@@ -32,6 +37,9 @@ export type AiReadinessSection = {
   pillarId: AiReadinessPillarId;
   title: string;
   description?: string;
+  /** "everyone" = survey per tutta l'organizzazione (default);
+   *  "internal" = scheda compilata dai referenti (IT, HR, business). */
+  audience?: "everyone" | "internal";
 };
 
 export type AiReadinessPillar = {

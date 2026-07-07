@@ -147,6 +147,50 @@ function QuestionField({
   defaultValue?: string;
 }) {
   const name = `question__${question.id}`;
+  if (question.answerType === "scale" && question.levels?.length) {
+    // Ogni livello spiegato: si sceglie sapendo esattamente cosa significa
+    // ciascun voto, mai al buio. "Non so" vale 0,5 nello score.
+    return (
+      <div className="grid gap-2">
+        {question.levels.map((level) => (
+          <label
+            key={level.value}
+            className="flex cursor-pointer items-start gap-3 rounded-2xl border p-3 text-sm leading-5 hover:bg-muted has-checked:border-emerald-500 has-checked:bg-emerald-500/10"
+          >
+            <input
+              required={question.required}
+              type="radio"
+              name={name}
+              value={level.value}
+              defaultChecked={defaultValue === String(level.value)}
+              className="mt-0.5"
+            />
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+              {level.value}
+            </span>
+            <span>{level.label}</span>
+          </label>
+        ))}
+        {question.allowUnsure && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-dashed p-3 text-sm leading-5 text-muted-foreground hover:bg-muted has-checked:border-emerald-500 has-checked:bg-emerald-500/10">
+            <input
+              required={question.required}
+              type="radio"
+              name={name}
+              value="0.5"
+              defaultChecked={defaultValue === "0.5"}
+              className="mt-0.5"
+            />
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+              ?
+            </span>
+            <span>Non so / non applicabile</span>
+          </label>
+        )}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+    );
+  }
   if (question.answerType === "scale") {
     return (
       <div className="grid gap-3">

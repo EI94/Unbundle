@@ -40,6 +40,29 @@ export function RespondentInviteForm({
           )}
         </div>
         <div className="space-y-1.5">
+          <Label>Chi e questa persona?</Label>
+          <div className="grid gap-2">
+            <label className="flex cursor-pointer items-start gap-2 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
+              <input type="radio" name="surveyTrack" value="everyone" defaultChecked className="mt-0.5" />
+              <span>
+                <span className="font-medium">Survey organizzazione</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  La survey condivisa con tutti: strumenti, adoption, idee.
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
+              <input type="radio" name="surveyTrack" value="internal" className="mt-0.5" />
+              <span>
+                <span className="font-medium">Scheda referenti (IT / HR / business)</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  Infrastruttura, dati e conoscenza, persone e processi: per chi conosce i sistemi.
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <div className="space-y-1.5">
           <Label htmlFor="organizationUnit">Area / team</Label>
           <Input id="organizationUnit" name="organizationUnit" placeholder="Marketing, Operations..." />
           {state.fieldErrors?.organizationUnit && (

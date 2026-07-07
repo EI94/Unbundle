@@ -415,12 +415,15 @@ export type SurveyPreviewPdfPayload = {
     pillarTitle: string;
     title: string;
     description?: string;
+    audience?: "everyone" | "internal";
     questions: Array<{
       label: string;
       description?: string;
       answerType: string;
       required?: boolean;
       scaleAnchors?: { min: string; max: string };
+      levels?: Array<{ value: number; label: string }>;
+      allowUnsure?: boolean;
     }>;
   }>;
   generatedAt: Date;
@@ -458,36 +461,63 @@ export function buildSurveyPreviewPdfBuffer(payload: SurveyPreviewPdfPayload) {
     });
     lines.push({ text: pillar.description, size: 9, indent: 12 });
   }
-  lines.push({ text: "Le domande, sezione per sezione", bold: true, size: 13, spaceBefore: 18 });
+  const groups: Array<{ heading: string; audience: "everyone" | "internal" }> = [
+    { heading: "PARTE 1 - Survey per tutta l'organizzazione", audience: "everyone" },
+    { heading: "PARTE 2 - Schede referenti interni (IT / HR / business)", audience: "internal" },
+  ];
   let n = 0;
-  for (const section of payload.sections) {
-    lines.push({
-      text: `${section.pillarTitle}  >  ${section.title}`,
-      bold: true,
-      size: 11,
-      spaceBefore: 12,
-    });
-    if (section.description) {
-      lines.push({ text: section.description, size: 9, indent: 0 });
-    }
-    for (const question of section.questions) {
-      n += 1;
+  for (const group of groups) {
+    const groupSections = payload.sections.filter((section) =>
+      group.audience === "internal"
+        ? section.audience === "internal"
+        : section.audience !== "internal"
+    );
+    if (groupSections.length === 0) continue;
+    lines.push({ text: group.heading, bold: true, size: 13, spaceBefore: 18 });
+    for (const section of groupSections) {
       lines.push({
-        text: `${n}. ${question.label}${question.required ? " *" : ""}`,
-        size: 10,
-        spaceBefore: 5,
+        text: `${section.pillarTitle}  >  ${section.title}`,
+        bold: true,
+        size: 11,
+        spaceBefore: 12,
       });
-      lines.push({
-        text: `[${typeLabel(question.answerType)}]${question.description ? `  ${question.description}` : ""}`,
-        size: 8.5,
-        indent: 14,
-      });
-      if (question.answerType === "scale" && question.scaleAnchors) {
+      if (section.description) {
+        lines.push({ text: section.description, size: 9, indent: 0 });
+      }
+      for (const question of section.questions) {
+        n += 1;
         lines.push({
-          text: `0 = ${question.scaleAnchors.min}   |   5 = ${question.scaleAnchors.max}`,
+          text: `${n}. ${question.label}${question.required ? " *" : ""}`,
+          size: 10,
+          spaceBefore: 5,
+        });
+        lines.push({
+          text: `[${typeLabel(question.answerType)}]${question.description ? `  ${question.description}` : ""}`,
           size: 8.5,
           indent: 14,
         });
+        if (question.answerType === "scale" && question.levels?.length) {
+          for (const level of question.levels) {
+            lines.push({
+              text: `${level.value} = ${level.label}`,
+              size: 8.5,
+              indent: 20,
+            });
+          }
+          if (question.allowUnsure) {
+            lines.push({
+              text: `? = Non so / non applicabile (vale 0,5)`,
+              size: 8.5,
+              indent: 20,
+            });
+          }
+        } else if (question.answerType === "scale" && question.scaleAnchors) {
+          lines.push({
+            text: `0 = ${question.scaleAnchors.min}   |   5 = ${question.scaleAnchors.max}`,
+            size: 8.5,
+            indent: 14,
+          });
+        }
       }
     }
   }

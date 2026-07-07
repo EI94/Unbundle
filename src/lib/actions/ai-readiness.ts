@@ -98,6 +98,7 @@ const inviteRespondentSchema = z.object({
   organizationUnit: z.string().trim().min(2, "Indica l'area/team."),
   country: z.string().trim().optional(),
   locale: z.string().trim().optional(),
+  surveyTrack: z.enum(["everyone", "internal"]).default("everyone"),
 });
 
 function formString(formData: FormData, key: string) {
@@ -391,6 +392,15 @@ export async function updateAiReadinessThresholdAction(
 
 /** Customizzazione per-assessment delle singole domande: rimuovi, modifica,
  *  ripristina o aggiungi (scala 0-5 o testo libero, per non rompere lo score). */
+function parseLevels(formData: FormData) {
+  const labels = [1, 2, 3, 4, 5].map((v) =>
+    formString(formData, `level${v}`).slice(0, 160)
+  );
+  if (labels.every((label) => label.length === 0)) return undefined;
+  if (labels.some((label) => label.length === 0)) return null; // parziali: errore
+  return labels.map((label, i) => ({ value: i + 1, label }));
+}
+
 export async function customizeAssessmentQuestionAction(
   workspaceId: string,
   assessmentId: string,
@@ -436,18 +446,21 @@ export async function customizeAssessmentQuestionAction(
     }
     const description = formString(formData, "description");
     const required = formData.get("required") === "on";
-    const anchorMin = formString(formData, "anchorMin").slice(0, 80);
-    const anchorMax = formString(formData, "anchorMax").slice(0, 80);
-    const scaleAnchors =
-      anchorMin && anchorMax ? { min: anchorMin, max: anchorMax } : undefined;
+    const levels = parseLevels(formData);
+    if (levels === null) {
+      return errorState(
+        "Compila la descrizione di tutti e 5 i livelli (o lasciali tutti vuoti).",
+        { level1: "Tutti i livelli o nessuno." }
+      );
+    }
     const custom = added.find((q) => q.id === questionId);
     if (custom) {
       custom.label = label;
       custom.description = description || undefined;
       custom.required = required;
-      custom.scaleAnchors = scaleAnchors;
+      custom.levels = levels;
     } else {
-      edited[questionId] = { label, description, required, scaleAnchors };
+      edited[questionId] = { label, description, required, levels };
     }
   } else if (op === "add") {
     const sectionId = formString(formData, "sectionId");
@@ -461,8 +474,13 @@ export async function customizeAssessmentQuestionAction(
     if (!bundle.templateDefinition.sections.some((s) => s.id === sectionId)) {
       return errorState("Sezione non valida.");
     }
-    const addAnchorMin = formString(formData, "anchorMin").slice(0, 80);
-    const addAnchorMax = formString(formData, "anchorMax").slice(0, 80);
+    const addLevels = parseLevels(formData);
+    if (addLevels === null) {
+      return errorState(
+        "Compila la descrizione di tutti e 5 i livelli (o lasciali tutti vuoti per usare quelli generici).",
+        { level1: "Tutti i livelli o nessuno." }
+      );
+    }
     added.push({
       id: `custom-${randomUUID().slice(0, 8)}`,
       sectionId,
@@ -470,9 +488,7 @@ export async function customizeAssessmentQuestionAction(
       description: formString(formData, "description") || undefined,
       answerType,
       required: answerType === "scale",
-      ...(addAnchorMin && addAnchorMax
-        ? { scaleAnchors: { min: addAnchorMin, max: addAnchorMax } }
-        : {}),
+      ...(addLevels ? { levels: addLevels } : {}),
     });
   } else {
     return errorState("Operazione non valida.");
@@ -640,6 +656,7 @@ export async function createAiReadinessRespondentInviteAction(
     organizationUnit: formString(formData, "organizationUnit"),
     country: formString(formData, "country"),
     locale: formString(formData, "locale") || "it",
+    surveyTrack: formString(formData, "surveyTrack") || "everyone",
   });
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
@@ -662,6 +679,7 @@ export async function createAiReadinessRespondentInviteAction(
     locale: parsed.data.locale || "it",
     inviteTokenHash: hashInviteToken(token),
     inviteStatus: "invited",
+    surveyTrack: parsed.data.surveyTrack,
     pseudonymousId: createPseudonymousId(`${assessmentId}:${parsed.data.email}:${Date.now()}`),
   });
   const baseUrl = await getBaseUrl();

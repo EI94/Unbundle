@@ -19,7 +19,7 @@ import { db } from ".";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 9;
+const ENSURE_VERSION = 10;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -278,6 +278,10 @@ async function runOnce(): Promise<void> {
   await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "ai_readiness_respondents_pseudo_idx"
       ON "ai_readiness_respondents" ("pseudonymous_id");
+  `);
+  await db.execute(sql`
+    ALTER TABLE "ai_readiness_respondents"
+      ADD COLUMN IF NOT EXISTS "survey_track" varchar(20) NOT NULL DEFAULT 'everyone';
   `);
 
   await db.execute(sql`
@@ -619,6 +623,12 @@ async function schemaLooksCurrent(): Promise<boolean> {
             )
           GROUP BY table_name
           HAVING count(*) = 4
+        )
+        AND EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'ai_readiness_respondents'
+            AND column_name = 'survey_track'
         )
         AND EXISTS (
           SELECT 1 FROM information_schema.columns

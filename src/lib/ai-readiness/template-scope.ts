@@ -38,6 +38,36 @@ export function filterTemplateDefinition(
   };
 }
 
+
+/**
+ * Filtra il template per binario: "everyone" = survey per tutta
+ * l'organizzazione; "internal" = schede compilate dai referenti (IT, HR,
+ * business). Le sezioni senza audience contano come "everyone".
+ */
+export function filterTemplateForTrack(
+  definition: AiReadinessTemplateDefinition,
+  track: string | null | undefined
+): AiReadinessTemplateDefinition {
+  const wantInternal = track === "internal";
+  const sections = definition.sections.filter((section) =>
+    wantInternal
+      ? section.audience === "internal"
+      : section.audience !== "internal"
+  );
+  if (sections.length === 0) return definition;
+  const sectionIds = new Set(sections.map((section) => section.id));
+  const questions = definition.questions.filter((question) =>
+    sectionIds.has(question.sectionId)
+  );
+  const pillarIds = new Set(questions.map((question) => question.pillarId));
+  return {
+    ...definition,
+    sections,
+    questions,
+    pillars: definition.pillars.filter((pillar) => pillarIds.has(pillar.id)),
+  };
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Personalizzazione per assessment: ogni singola domanda puo essere rimossa,
 // modificata (testo/descrizione/obbligatorieta) o aggiunta (scala 0–5 o testo
@@ -50,6 +80,7 @@ export type AiReadinessQuestionEdit = {
   description?: string;
   required?: boolean;
   scaleAnchors?: { min: string; max: string };
+  levels?: Array<{ value: number; label: string }>;
 };
 
 export type AiReadinessCustomQuestion = {
@@ -60,6 +91,7 @@ export type AiReadinessCustomQuestion = {
   answerType: "scale" | "text";
   required?: boolean;
   scaleAnchors?: { min: string; max: string };
+  levels?: Array<{ value: number; label: string }>;
 };
 
 export type AiReadinessTemplateOverrides = {
@@ -118,6 +150,14 @@ export function applyTemplateOverrides(
               },
             }
           : {}),
+        ...(Array.isArray(edit.levels) && edit.levels.length === 5
+          ? {
+              levels: edit.levels.map((level, i) => ({
+                value: i + 1,
+                label: String(level.label ?? "").trim(),
+              })),
+            }
+          : {}),
       };
     });
 
@@ -137,6 +177,24 @@ export function applyTemplateOverrides(
       min: 0,
       max: 5,
       weight: 1,
+      ...(custom.answerType !== "text"
+        ? {
+            allowUnsure: true,
+            levels:
+              Array.isArray(custom.levels) && custom.levels.length === 5
+                ? custom.levels.map((level, i) => ({
+                    value: i + 1,
+                    label: String(level.label ?? "").trim(),
+                  }))
+                : [
+                    { value: 1, label: "Per niente / mai" },
+                    { value: 2, label: "Poco" },
+                    { value: 3, label: "In parte" },
+                    { value: 4, label: "Molto" },
+                    { value: 5, label: "Completamente / sempre" },
+                  ],
+          }
+        : {}),
       ...(custom.scaleAnchors?.min?.trim() && custom.scaleAnchors?.max?.trim()
         ? {
             scaleAnchors: {

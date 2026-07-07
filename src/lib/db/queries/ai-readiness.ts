@@ -37,6 +37,7 @@ import { aggregateScores } from "@/lib/ai-readiness/scoring";
 import {
   applyTemplateOverrides,
   filterTemplateDefinition,
+  filterTemplateForTrack,
   includedPillarsFromScoringConfig,
   templateOverridesFromScoringConfig,
   type AiReadinessTemplateOverrides,
@@ -278,9 +279,11 @@ export async function getRespondentByInviteTokenHash(tokenHash: string) {
   if (!row) return null;
   return {
     ...row,
-    templateDefinition: templateDefinitionForAssessment(
-      row.assessment,
-      row.template
+    // Ogni respondent vede solo le sezioni del proprio binario:
+    // "everyone" = survey organizzazione, "internal" = scheda referenti.
+    templateDefinition: filterTemplateForTrack(
+      templateDefinitionForAssessment(row.assessment, row.template),
+      row.respondent.surveyTrack
     ),
   };
 }
