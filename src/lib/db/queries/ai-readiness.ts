@@ -177,6 +177,46 @@ export async function updateAiReadinessAssessment(
   return updated ?? null;
 }
 
+
+/** Link condivisibile: l'hash del token è salvato in scoringConfig (mai reso al client). */
+export async function setAssessmentOpenLinkTokenHash(
+  assessmentId: string,
+  tokenHash: string
+) {
+  await ensureDbSchema();
+  const bundle = await getAssessmentBundleById(assessmentId);
+  if (!bundle) return null;
+  const scoringConfig = {
+    ...(bundle.assessment.scoringConfig ?? {}),
+    openLinkTokenHash: tokenHash,
+  };
+  return updateAiReadinessAssessment(assessmentId, { scoringConfig });
+}
+
+export async function getAssessmentByOpenLinkTokenHash(tokenHash: string) {
+  await ensureDbSchema();
+  const [row] = await db
+    .select({
+      assessment: aiReadinessAssessments,
+      template: aiReadinessAssessmentTemplates,
+    })
+    .from(aiReadinessAssessments)
+    .innerJoin(
+      aiReadinessAssessmentTemplates,
+      eq(aiReadinessAssessmentTemplates.id, aiReadinessAssessments.templateId)
+    )
+    .where(
+      sql`${aiReadinessAssessments.scoringConfig}->>'openLinkTokenHash' = ${tokenHash}`
+    )
+    .limit(1);
+  if (!row) return null;
+  return {
+    assessment: row.assessment,
+    template: row.template,
+    templateDefinition: templateDefinitionForAssessment(row.assessment, row.template),
+  };
+}
+
 export async function createAiReadinessRespondent(
   data: NewAiReadinessRespondent
 ) {

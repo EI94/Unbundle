@@ -94,3 +94,26 @@
     @apply font-sans;
   }
 }
+
+/* Tema chiaro opzionale per le pagine survey pubbliche (/a/, /s/):
+   override scoped delle variabili core, attivato dal toggle respondent. */
+.survey-light {
+  --background: oklch(0.985 0.002 260);
+  --foreground: oklch(0.16 0.01 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.16 0.01 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.16 0.01 260);
+  --primary: oklch(0.55 0.15 160);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.95 0.005 260);
+  --secondary-foreground: oklch(0.2 0.01 260);
+  --muted: oklch(0.94 0.004 260);
+  --muted-foreground: oklch(0.45 0.01 260);
+  --accent: oklch(0.94 0.004 260);
+  --accent-foreground: oklch(0.2 0.01 260);
+  --border: oklch(0.9 0.004 260);
+  --input: oklch(0.88 0.004 260);
+  --ring: oklch(0.55 0.15 160);
+  color-scheme: light;
+}

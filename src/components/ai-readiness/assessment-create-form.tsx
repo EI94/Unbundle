@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createAiReadinessAssessmentAction, type AiReadinessActionState } from "@/lib/actions/ai-readiness";
 import { AI_READINESS_SYSTEM_TEMPLATE } from "@/lib/ai-readiness/default-template";
@@ -11,6 +11,50 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 const INITIAL: AiReadinessActionState<{ assessmentId: string }> = { ok: true };
+
+
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nome assessment",
+  controllerName: "Titolare del trattamento",
+  processorName: "Responsabile / processore",
+  legalBasis: "Base giuridica",
+  supportEmail: "Email supporto",
+  dataRetentionDays: "Retention dati",
+  aggregationThreshold: "Soglia aggregazione",
+  pillars: "Aree da misurare",
+};
+
+function draftKey(workspaceId: string) {
+  return `unbundle-air-create:${workspaceId}`;
+}
+
+function collectFormValues(form: HTMLFormElement) {
+  const values: Record<string, string> = {};
+  for (const el of Array.from(form.elements)) {
+    const input = el as HTMLInputElement;
+    if (!input.name || input.name.startsWith("$")) continue;
+    if (input.type === "radio" || input.type === "checkbox") {
+      if (input.checked) values[`${input.name}__${input.value}`] = "1";
+      else values[`${input.name}__${input.value}`] = "";
+    } else {
+      values[input.name] = input.value;
+    }
+  }
+  return values;
+}
+
+function applyFormValues(form: HTMLFormElement, values: Record<string, string>) {
+  for (const el of Array.from(form.elements)) {
+    const input = el as HTMLInputElement;
+    if (!input.name || input.name.startsWith("$")) continue;
+    if (input.type === "radio" || input.type === "checkbox") {
+      const saved = values[`${input.name}__${input.value}`];
+      if (saved != null) input.checked = saved === "1";
+    } else if (values[input.name] != null) {
+      input.value = values[input.name];
+    }
+  }
+}
 
 const PILLAR_HINTS: Record<string, string> = {
   technology: "Stack, strumenti approvati, governance tecnica. Tipico per IT o poche persone.",
@@ -25,14 +69,54 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
   const action = createAiReadinessAssessmentAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(action, INITIAL);
 
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Autosave live: ogni modifica viene salvata sul dispositivo, cosi un
+  // errore di validazione (o un refresh) non fa mai perdere quanto digitato.
+  const persistDraft = useCallback(() => {
+    const form = formRef.current;
+    if (!form) return;
+    try {
+      window.localStorage.setItem(
+        draftKey(workspaceId),
+        JSON.stringify(collectFormValues(form))
+      );
+    } catch {}
+  }, [workspaceId]);
+
+  const restoreDraft = useCallback(() => {
+    const form = formRef.current;
+    if (!form) return;
+    try {
+      const raw = window.localStorage.getItem(draftKey(workspaceId));
+      if (raw) applyFormValues(form, JSON.parse(raw));
+    } catch {}
+  }, [workspaceId]);
+
   useEffect(() => {
-    // Dopo la creazione, apri direttamente il nuovo assessment.
+    restoreDraft();
+  }, [restoreDraft]);
+
+  useEffect(() => {
     if (state.ok && state.data?.assessmentId) {
+      // Successo: bozza locale non piu necessaria.
+      try { window.localStorage.removeItem(draftKey(workspaceId)); } catch {}
       router.push(
         `/dashboard/${workspaceId}/ai-readiness?assessment=${state.data.assessmentId}`
       );
+      return;
     }
-  }, [state.ok, state.data?.assessmentId, router, workspaceId]);
+    if (!state.ok) {
+      // React 19 resetta il form dopo l'action: ripristina i valori digitati
+      // e porta l'utente all'elenco errori.
+      restoreDraft();
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [state, router, workspaceId, restoreDraft]);
+
+  const errorFields = !state.ok
+    ? Object.keys(state.fieldErrors ?? {}).map((key) => FIELD_LABELS[key] ?? key)
+    : [];
 
   return (
     <Card className="overflow-hidden rounded-[28px]">
@@ -44,7 +128,26 @@ export function AssessmentCreateForm({ workspaceId, workspaceName }: { workspace
         </p>
       </CardHeader>
       <CardContent className="p-6">
-        <form action={formAction} className="grid gap-5 lg:grid-cols-2">
+        <form ref={formRef} action={formAction} onChange={persistDraft} className="grid gap-5 lg:grid-cols-2">
+          {!state.ok && state.message && (
+            <div
+              className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm lg:col-span-2"
+              role="alert"
+              data-testid="create-error-summary"
+            >
+              <p className="font-medium">{state.message}</p>
+              {errorFields.length > 0 && (
+                <ul className="mt-2 list-inside list-disc text-xs">
+                  {errorFields.map((label) => (
+                    <li key={label}>{label}</li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2 text-xs text-muted-foreground">
+                I dati inseriti sono stati conservati: correggi solo i campi indicati.
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="name">Nome assessment</Label>
             <Input id="name" name="name" defaultValue={`AI Readiness - ${workspaceName}`} />

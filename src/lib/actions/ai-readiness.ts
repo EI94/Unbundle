@@ -22,8 +22,10 @@ import {
   getRespondentByInviteTokenHash,
   getRespondentPrivacyBundleByTokenHash,
   getUseCaseSubmissionById,
+  getAssessmentByOpenLinkTokenHash,
   markRespondentStarted,
   saveAiReadinessDraftResponse,
+  setAssessmentOpenLinkTokenHash,
   updateAiReadinessRespondentIdentity,
   listRespondentsByAssessment,
   listUseCaseSubmissionsByAssessment,
@@ -362,6 +364,115 @@ export async function updateAiReadinessThresholdAction(
     ok: true,
     message: `Soglia aggiornata a ${raw}. Score ricalcolati.`,
     fieldErrors: {},
+  };
+}
+
+export async function generateAiReadinessOpenLinkAction(
+  workspaceId: string,
+  assessmentId: string,
+  _prev: AiReadinessActionState<{ openUrl: string }>,
+  _formData: FormData
+): Promise<AiReadinessActionState<{ openUrl: string }>> {
+  void _prev; void _formData;
+  const manager = await assertAssessmentManager(workspaceId);
+  if (!manager.ok) return manager.state;
+  const bundle = await getAssessmentBundleById(assessmentId);
+  if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
+    return errorState("Assessment non trovato.");
+  }
+  const token = createInviteToken();
+  await setAssessmentOpenLinkTokenHash(assessmentId, hashInviteToken(token));
+  const baseUrl = await getBaseUrl();
+  await createAiReadinessAuditEvent({
+    organizationId: manager.access.workspace.organizationId,
+    workspaceId,
+    assessmentId,
+    actorUserId: manager.session.user.id,
+    eventType: "open_link_generated",
+    eventPayload: {},
+  });
+  revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
+  return {
+    ok: true,
+    message: "Link condivisibile pronto: chiunque lo riceve puo iniziare la survey.",
+    fieldErrors: {},
+    data: { openUrl: `${baseUrl}/s/${encodeURIComponent(token)}` },
+  };
+}
+
+const openStartSchema = z.object({
+  organizationUnit: z.string().trim().min(2, "Indica la tua area o team."),
+  firstName: z.string().trim().optional(),
+  lastName: z.string().trim().optional(),
+  email: z
+    .string()
+    .trim()
+    .transform((value) => value.toLowerCase())
+    .optional(),
+});
+
+/** Avvio della survey da link condivisibile: crea un respondent personale
+ *  e restituisce il suo link /a/ (il client lo salva sul dispositivo per
+ *  evitare doppioni se la stessa persona riapre il link pubblico). */
+export async function startOpenSurveyAction(
+  openToken: string,
+  _prev: AiReadinessActionState<{ personalUrl: string }>,
+  formData: FormData
+): Promise<AiReadinessActionState<{ personalUrl: string }>> {
+  void _prev;
+  const found = await getAssessmentByOpenLinkTokenHash(hashInviteToken(openToken));
+  if (!found) return errorState("Link non valido o revocato.");
+  if (found.assessment.status !== "open") {
+    return errorState("La raccolta non e aperta in questo momento.");
+  }
+  const named = found.assessment.anonymousMode === false;
+  const parsed = openStartSchema.safeParse({
+    organizationUnit: formString(formData, "organizationUnit"),
+    firstName: formString(formData, "firstName"),
+    lastName: formString(formData, "lastName"),
+    email: formString(formData, "email") || undefined,
+  });
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string> = {};
+    for (const issue of parsed.error.issues) fieldErrors[issue.path.join(".")] = issue.message;
+    return errorState("Controlla i campi evidenziati.", fieldErrors);
+  }
+  if (named && (!parsed.data.firstName || !parsed.data.lastName)) {
+    return errorState("Questa survey e nominativa: inserisci nome e cognome.", {
+      ...(parsed.data.firstName ? {} : { firstName: "Richiesto." }),
+      ...(parsed.data.lastName ? {} : { lastName: "Richiesto." }),
+    });
+  }
+
+  const personalToken = createInviteToken();
+  const respondent = await createAiReadinessRespondent({
+    assessmentId: found.assessment.id,
+    organizationId: found.assessment.organizationId,
+    workspaceId: found.assessment.workspaceId,
+    email: parsed.data.email || null,
+    name: parsed.data.firstName || null,
+    surname: parsed.data.lastName || null,
+    organizationUnit: parsed.data.organizationUnit,
+    locale: "it",
+    inviteTokenHash: hashInviteToken(personalToken),
+    inviteStatus: "opened",
+    pseudonymousId: createPseudonymousId(
+      `${found.assessment.id}:open:${personalToken}`
+    ),
+  });
+  await createAiReadinessAuditEvent({
+    organizationId: found.assessment.organizationId,
+    workspaceId: found.assessment.workspaceId,
+    assessmentId: found.assessment.id,
+    respondentId: respondent.id,
+    eventType: "respondent_self_registered",
+    eventPayload: { organizationUnit: respondent.organizationUnit },
+  });
+  const baseUrl = await getBaseUrl();
+  return {
+    ok: true,
+    fieldErrors: {},
+    data: { personalUrl: `${baseUrl}/a/${encodeURIComponent(personalToken)}` },
   };
 }
 

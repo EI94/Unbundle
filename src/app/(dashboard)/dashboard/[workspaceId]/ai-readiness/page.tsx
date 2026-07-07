@@ -34,6 +34,7 @@ import { InsightValidationActions } from "@/components/ai-readiness/insight-vali
 import { IntelligenceActions } from "@/components/ai-readiness/intelligence-actions";
 import { RespondentInviteForm } from "@/components/ai-readiness/respondent-invite-form";
 import { ThresholdForm } from "@/components/ai-readiness/threshold-form";
+import { OpenLinkForm } from "@/components/ai-readiness/open-link-form";
 import { UseCasePromoteButton } from "@/components/ai-readiness/use-case-promote-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -655,6 +656,16 @@ export default async function AiReadinessPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {canManage && (
+                <OpenLinkForm
+                  workspaceId={workspaceId}
+                  assessmentId={bundle.assessment.id}
+                  hasExisting={Boolean(
+                    (bundle.assessment.scoringConfig as Record<string, unknown> | null)
+                      ?.openLinkTokenHash
+                  )}
+                />
+              )}
               <RespondentInviteForm
                 workspaceId={workspaceId}
                 assessmentId={bundle.assessment.id}
