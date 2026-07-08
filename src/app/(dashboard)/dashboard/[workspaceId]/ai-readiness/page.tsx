@@ -92,7 +92,7 @@ export default async function AiReadinessPage({
   searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ assessment?: string; new?: string }>;
+  searchParams: Promise<{ assessment?: string; new?: string; deleted?: string }>;
 }) {
   const session = await requireSession();
   const { workspaceId } = await params;
@@ -162,6 +162,11 @@ export default async function AiReadinessPage({
             survey privacy-safe, scoring, dashboard base ed export.
           </p>
         </div>
+        {search.deleted === "1" && (
+          <p className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm" role="status">
+            Assessment eliminato: inviti, risposte e score sono stati rimossi definitivamente.
+          </p>
+        )}
         {assessmentSwitcher}
         {canManage ? (
           <AssessmentCreateForm
@@ -211,6 +216,11 @@ export default async function AiReadinessPage({
   return (
     <div className="flex-1 space-y-6 p-6 lg:p-8">
       {bundle.assessment.status === "open" && <AutoRefresh seconds={30} />}
+      {search.deleted === "1" && (
+        <p className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm" role="status">
+          Assessment eliminato: inviti, risposte e score sono stati rimossi definitivamente.
+        </p>
+      )}
       {assessmentSwitcher}
       <header className="rounded-[32px] border bg-card p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -244,6 +254,9 @@ export default async function AiReadinessPage({
                 workspaceId={workspaceId}
                 assessmentId={bundle.assessment.id}
                 status={bundle.assessment.status}
+                assessmentName={bundle.assessment.name}
+                respondentCount={respondents.length}
+                completedCount={dashboard?.completedCount ?? 0}
               />
             )}
             <IntelligenceActions

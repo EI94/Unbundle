@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/redirect-to-login";
@@ -27,6 +28,7 @@ import {
   saveAiReadinessDraftResponse,
   setAssessmentOpenLinkTokenHash,
   setAssessmentTemplateOverrides,
+  deleteAiReadinessAssessment,
   listResponsesByAssessment,
   updateAiReadinessRespondentIdentity,
   listRespondentsByAssessment,
@@ -330,6 +332,50 @@ export async function updateAiReadinessAssessmentStatusAction(
   });
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
   return { ok: true, message: `Assessment ${status}.`, fieldErrors: {} };
+}
+
+export async function deleteAiReadinessAssessmentAction(
+  workspaceId: string,
+  assessmentId: string,
+  _prev: AiReadinessActionState,
+  formData: FormData
+): Promise<AiReadinessActionState> {
+  void _prev;
+  const manager = await assertAssessmentManager(workspaceId);
+  if (!manager.ok) return manager.state;
+  const bundle = await getAssessmentBundleById(assessmentId);
+  if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
+    return errorState("Assessment non trovato.");
+  }
+  if (formString(formData, "confirmation").toUpperCase() !== "ELIMINA") {
+    return errorState("Conferma non valida: scrivi ELIMINA per procedere.");
+  }
+
+  const [respondents, responses] = await Promise.all([
+    listRespondentsByAssessment(assessmentId),
+    listResponsesByAssessment(assessmentId),
+  ]);
+
+  // L'audit sopravvive alla cascata: assessmentId a null, dettagli nel payload.
+  await createAiReadinessAuditEvent({
+    organizationId: manager.access.workspace.organizationId,
+    workspaceId,
+    assessmentId: null,
+    actorUserId: manager.session.user.id,
+    eventType: "assessment_deleted",
+    eventPayload: {
+      deletedAssessmentId: assessmentId,
+      name: bundle.assessment.name,
+      respondents: respondents.length,
+      submittedResponses: responses.filter((r) => r.status === "submitted").length,
+    },
+  });
+
+  const deleted = await deleteAiReadinessAssessment(assessmentId, workspaceId);
+  if (!deleted) return errorState("Eliminazione non riuscita: riprova.");
+
+  revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
+  redirect(`/dashboard/${workspaceId}/ai-readiness?deleted=1`);
 }
 
 export async function updateAiReadinessThresholdAction(

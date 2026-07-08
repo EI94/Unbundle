@@ -240,6 +240,26 @@ export async function getAssessmentByOpenLinkTokenHash(tokenHash: string) {
   };
 }
 
+
+/** Elimina l'assessment: respondents, risposte, score, insight ed export
+ *  cadono in cascata (FK ON DELETE CASCADE). Operazione irreversibile. */
+export async function deleteAiReadinessAssessment(
+  assessmentId: string,
+  workspaceId: string
+) {
+  await ensureDbSchema();
+  const [deleted] = await db
+    .delete(aiReadinessAssessments)
+    .where(
+      and(
+        eq(aiReadinessAssessments.id, assessmentId),
+        eq(aiReadinessAssessments.workspaceId, workspaceId)
+      )
+    )
+    .returning();
+  return deleted ?? null;
+}
+
 export async function createAiReadinessRespondent(
   data: NewAiReadinessRespondent
 ) {
