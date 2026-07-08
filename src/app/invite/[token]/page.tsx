@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { WorkspaceInviteAcceptForm } from "@/components/workspace/workspace-invite-accept-form";
+import { SwitchAccountButton } from "@/components/workspace/switch-account-button";
 
 export const metadata: Metadata = {
   title: "Invito workspace",
@@ -97,24 +98,67 @@ export default async function WorkspaceInvitePage({
             </div>
           </div>
 
-          {invitation.email ? (
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
-              Questo invito è riservato a {invitation.email}. Accedi con quella
-              email per accettarlo.
-            </p>
-          ) : null}
+          {(() => {
+            const sessionEmail = session?.user?.email?.trim().toLowerCase() ?? null;
+            const invitedEmail = invitation.email?.trim().toLowerCase() ?? null;
+            const wrongAccount =
+              sessionEmail != null && invitedEmail != null && sessionEmail !== invitedEmail;
 
-          {session?.user ? (
-            <WorkspaceInviteAcceptForm token={token} />
-          ) : (
-            <Button
-              render={<Link href={loginHref} />}
-              nativeButton={false}
-              className="w-full"
-            >
-              Accedi per accettare
-            </Button>
-          )}
+            // Stile Slack: un solo stato chiaro alla volta, mai un vicolo cieco.
+            if (!session?.user) {
+              return (
+                <div className="space-y-3">
+                  {invitedEmail && (
+                    <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                      Invito riservato a{" "}
+                      <span className="font-medium text-foreground">{invitation.email}</span>:
+                      accedi o registrati con quella email.
+                    </p>
+                  )}
+                  <Button
+                    render={<Link href={loginHref} />}
+                    nativeButton={false}
+                    className="w-full"
+                  >
+                    Accedi o registrati per accettare
+                  </Button>
+                  <p className="text-center text-xs text-muted-foreground">
+                    Dopo l&apos;accesso tornerai automaticamente qui.
+                  </p>
+                </div>
+              );
+            }
+
+            if (wrongAccount) {
+              return (
+                <div className="space-y-3" data-testid="invite-wrong-account">
+                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-200">
+                    Sei connesso come{" "}
+                    <span className="font-medium">{session.user.email}</span>, ma
+                    questo invito è riservato a{" "}
+                    <span className="font-medium">{invitation.email}</span>.
+                  </p>
+                  <SwitchAccountButton loginHref={loginHref} />
+                  <p className="text-center text-xs text-muted-foreground">
+                    Oppure chiedi a chi ti ha invitato un nuovo link per{" "}
+                    {session.user.email}.
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-3">
+                <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  Connesso come{" "}
+                  <span className="font-medium text-foreground">
+                    {session.user.email}
+                  </span>
+                </p>
+                <WorkspaceInviteAcceptForm token={token} />
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
     </InviteShell>
