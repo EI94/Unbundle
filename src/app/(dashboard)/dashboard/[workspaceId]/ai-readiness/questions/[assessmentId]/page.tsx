@@ -95,19 +95,80 @@ export default async function AiReadinessQuestionsPage({
           <h1 className="text-3xl font-semibold tracking-tight">
             Domande e anteprima
           </h1>
-          {/* anchor nativo: il prefetch di un Link eseguirebbe la GET */}
-          <Button
-            render={
-              <a
-                href={`/api/ai-readiness/assessments/${assessmentId}/survey-pdf`}
-                download
-              />
-            }
-            nativeButton={false}
-            data-testid="survey-pdf-download"
-          >
-            <Download className="mr-1 size-4" /> Scarica PDF per il cliente
-          </Button>
+        </div>
+        {/* Download separati: file distinti da inviare al cliente.
+            Anchor nativi: il prefetch di un Link eseguirebbe la GET. */}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2" data-testid="question-downloads">
+          <div className="rounded-2xl border bg-muted/20 p-4">
+            <div className="text-sm font-semibold">Survey organizzazione</div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Il questionario per tutte le persone.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <Button
+                size="sm"
+                render={
+                  <a
+                    href={`/api/ai-readiness/assessments/${assessmentId}/questions-export?track=everyone&format=pdf`}
+                    download
+                  />
+                }
+                nativeButton={false}
+                data-testid="dl-survey-pdf"
+              >
+                <Download className="mr-1 size-3.5" /> PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                render={
+                  <a
+                    href={`/api/ai-readiness/assessments/${assessmentId}/questions-export?track=everyone&format=xlsx`}
+                    download
+                  />
+                }
+                nativeButton={false}
+                data-testid="dl-survey-xlsx"
+              >
+                <Download className="mr-1 size-3.5" /> Excel
+              </Button>
+            </div>
+          </div>
+          <div className="rounded-2xl border bg-muted/20 p-4">
+            <div className="text-sm font-semibold">Assessment referenti</div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Le schede per IT, HR e business.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <Button
+                size="sm"
+                render={
+                  <a
+                    href={`/api/ai-readiness/assessments/${assessmentId}/questions-export?track=internal&format=pdf`}
+                    download
+                  />
+                }
+                nativeButton={false}
+                data-testid="dl-internal-pdf"
+              >
+                <Download className="mr-1 size-3.5" /> PDF
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                render={
+                  <a
+                    href={`/api/ai-readiness/assessments/${assessmentId}/questions-export?track=internal&format=xlsx`}
+                    download
+                  />
+                }
+                nativeButton={false}
+                data-testid="dl-internal-xlsx"
+              >
+                <Download className="mr-1 size-3.5" /> Excel
+              </Button>
+            </div>
+          </div>
         </div>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Questo è esattamente ciò che riceveranno le persone, diviso in due

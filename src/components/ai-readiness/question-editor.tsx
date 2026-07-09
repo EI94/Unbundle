@@ -132,7 +132,7 @@ export function QuestionEditor({
                           </div>
                         ))}
                         <p className="text-xs text-muted-foreground">
-                          L&apos;opzione «Non so / non applicabile» (vale 0,5) è sempre disponibile.
+                          L&apos;opzione «Non so / non applicabile» è sempre disponibile.
                         </p>
                       </div>
                     )}
@@ -172,7 +172,7 @@ export function QuestionEditor({
                             </li>
                           ))}
                           {question.allowUnsure && (
-                            <li><span className="font-medium text-foreground/70">?</span> = Non so / non applicabile (vale 0,5)</li>
+                            <li><span className="font-medium text-foreground/70">?</span> = Non so / non applicabile</li>
                           )}
                         </ul>
                       ) : null}

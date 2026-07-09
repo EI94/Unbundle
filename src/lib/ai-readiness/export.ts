@@ -506,7 +506,7 @@ export function buildSurveyPreviewPdfBuffer(payload: SurveyPreviewPdfPayload) {
           }
           if (question.allowUnsure) {
             lines.push({
-              text: `? = Non so / non applicabile (vale 0,5)`,
+              text: `? = Non so / non applicabile`,
               size: 8.5,
               indent: 20,
             });
