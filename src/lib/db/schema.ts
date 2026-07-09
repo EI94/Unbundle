@@ -1041,6 +1041,7 @@ export const aiReadinessUseCaseSubmissions = pgTable(
     estimatedBeneficiaries: integer("estimated_beneficiaries"),
     dataNeeded: text("data_needed"),
     toolsUsed: text("tools_used"),
+    peopleInvolved: text("people_involved"),
     humanInLoop: text("human_in_loop"),
     riskLevel: varchar("risk_level", { length: 50 }),
     riskReasoning: text("risk_reasoning"),

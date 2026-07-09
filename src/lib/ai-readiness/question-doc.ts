@@ -1,5 +1,6 @@
 import XLSXStyle from "xlsx-js-style";
 import type { AiReadinessTemplateDefinition } from "./types";
+import type { UseCaseBlock } from "./use-case-form";
 
 /**
  * Documenti "da cliente" per le domande dell'assessment: un file per la
@@ -329,6 +330,108 @@ export function buildQuestionDocPdf(payload: QuestionDocPayload) {
   doc.text("* risposta obbligatoria", { size: 7.5, color: GRAY });
 
   return doc.finalize(`${payload.displayName} · ${payload.trackTitle} · ${dateLabel}`);
+}
+
+// ─── PDF modulo raccolta use case (OPIT-style) ─────────────────────────────
+
+export type UseCaseFormDocPayload = {
+  assessmentName: string;
+  displayName: string;
+  generatedAt: Date;
+  blocks: UseCaseBlock[];
+};
+
+export function buildUseCaseFormPdf(payload: UseCaseFormDocPayload) {
+  const doc = new PdfBuilder();
+  const dateLabel = payload.generatedAt.toLocaleDateString("it-IT", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const totalFields = payload.blocks.reduce(
+    (sum, block) => sum + block.fields.length,
+    0
+  );
+
+  // Testata
+  const headH = 118;
+  doc.rect(0, PAGE_W, headH, INK, PAGE_H);
+  doc.rect(0, PAGE_W, 3.5, ACCENT, PAGE_H - headH + 3.5);
+  doc.ops.push(
+    `BT /F2 8.5 Tf ${[0.62, 0.75, 0.72].join(" ")} rg ${MARGIN} ${PAGE_H - 40} Td (${esc(payload.displayName.toUpperCase())}  ·  RACCOLTA USE CASE) Tj ET`,
+    `BT /F2 21 Tf 1 1 1 rg ${MARGIN} ${PAGE_H - 66} Td (Modulo use case) Tj ET`,
+    `BT /F1 9.5 Tf ${[0.78, 0.82, 0.86].join(" ")} rg ${MARGIN} ${PAGE_H - 84} Td (${esc("Come raccogliamo i casi d'uso con gli esperti di business, in tre passaggi.")}) Tj ET`,
+    `BT /F1 8 Tf ${[0.62, 0.67, 0.73].join(" ")} rg ${MARGIN} ${PAGE_H - 102} Td (${esc(`${payload.assessmentName}   ·   ${totalFields} domande in 3 blocchi   ·   piu casi per esperto   ·   ${dateLabel}`)}) Tj ET`
+  );
+  doc.y = PAGE_H - headH - 22;
+
+  doc.text("Come funziona", { size: 9, font: "B", color: ACCENT, after: 1 });
+  doc.text(
+    "Chiediamo agli esperti di business di descrivere situazioni di lavoro reali dove l'AI potrebbe aiutare. Ogni caso si racconta in tre blocchi: il bisogno, com'e oggi (processo, persone, strumenti, dati) e come potrebbe cambiare. Non serve essere tecnici. Ogni persona puo inviare piu casi, uno alla volta.",
+    { size: 8.5, color: GRAY, after: 12 }
+  );
+
+  let n = 0;
+  for (const block of payload.blocks) {
+    doc.ensure(60);
+    doc.spacer(4);
+    doc.bandText(block.title.toUpperCase(), { bg: INK, size: 10.5 });
+    doc.text(block.subtitle, { size: 8.5, font: "O", color: GRAY, after: 6 });
+
+    for (const field of block.fields) {
+      n += 1;
+      doc.ensure(40);
+      doc.y -= 11;
+      doc.ops.push(
+        `BT /F2 10 Tf ${ACCENT.join(" ")} rg ${MARGIN} ${doc.y.toFixed(1)} Td (${String(n).padStart(2, "0")}) Tj ET`
+      );
+      doc.y += 11;
+      doc.text(`${field.label}${field.required ? " *" : ""}`, {
+        size: 10,
+        font: "B",
+        x: MARGIN + 24,
+        after: 0.5,
+      });
+      if (field.help) {
+        doc.text(field.help, {
+          size: 8.3,
+          font: "O",
+          color: GRAY,
+          x: MARGIN + 24,
+          after: 1,
+        });
+      }
+      if (field.type === "select" && field.options?.length) {
+        doc.text(`Opzioni: ${field.options.join("  /  ")}`, {
+          size: 8,
+          font: "B",
+          color: ACCENT,
+          x: MARGIN + 24,
+          after: 3,
+        });
+      } else {
+        const meta =
+          field.type === "number"
+            ? "Numero indicativo"
+            : field.type === "text"
+              ? "Risposta breve"
+              : "Risposta aperta";
+        doc.text(meta, { size: 7.3, font: "B", color: ACCENT, x: MARGIN + 24, after: 1 });
+        // riga vuota per la risposta a penna
+        doc.ensure(16);
+        doc.rect(MARGIN + 24, CONTENT_W - 24, 0.6, HAIR, doc.y - 6);
+        doc.y -= 16;
+      }
+      doc.spacer(5);
+    }
+    doc.spacer(4);
+  }
+
+  doc.spacer(4);
+  doc.hr();
+  doc.text("* campo consigliato per iniziare bene l'analisi", { size: 7.5, color: GRAY });
+
+  return doc.finalize(`${payload.displayName} · Modulo use case · ${dateLabel}`);
 }
 
 // ─── Excel ──────────────────────────────────────────────────────────────────

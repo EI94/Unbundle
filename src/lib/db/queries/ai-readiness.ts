@@ -509,6 +509,17 @@ export async function createAiReadinessUseCaseSubmission(
   return created;
 }
 
+
+/** Casi use case inviati da uno specifico respondent (esperto). */
+export async function listUseCaseSubmissionsByRespondent(respondentId: string) {
+  await ensureDbSchema();
+  return db
+    .select()
+    .from(aiReadinessUseCaseSubmissions)
+    .where(eq(aiReadinessUseCaseSubmissions.respondentId, respondentId))
+    .orderBy(desc(aiReadinessUseCaseSubmissions.createdAt));
+}
+
 export async function listResponsesByAssessment(assessmentId: string) {
   await ensureDbSchema();
   return db

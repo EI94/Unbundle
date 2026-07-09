@@ -3,9 +3,11 @@ import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { getAssessmentBundleById } from "@/lib/db/queries/ai-readiness";
 import { filterTemplateForTrack } from "@/lib/ai-readiness/template-scope";
+import { USE_CASE_FORM_BLOCKS } from "@/lib/ai-readiness/use-case-form";
 import {
   buildQuestionDocPdf,
   buildQuestionDocXlsx,
+  buildUseCaseFormPdf,
 } from "@/lib/ai-readiness/question-doc";
 
 function isPrefetchRequest(req: Request) {
@@ -55,8 +57,30 @@ export async function GET(
   }
 
   const url = new URL(req.url);
-  const track = url.searchParams.get("track") === "internal" ? "internal" : "everyone";
+  const trackParam = url.searchParams.get("track");
   const format = url.searchParams.get("format") === "xlsx" ? "xlsx" : "pdf";
+  const brandName0 = bundle.assessment.brandConfig as Record<string, unknown> | null;
+  const displayName0 =
+    typeof brandName0?.displayName === "string" ? brandName0.displayName : "Unbundle";
+
+  // Modulo raccolta use case (form OPIT), sempre PDF.
+  if (trackParam === "use_case") {
+    const buffer = buildUseCaseFormPdf({
+      assessmentName: bundle.assessment.name,
+      displayName: displayName0,
+      generatedAt: new Date(),
+      blocks: USE_CASE_FORM_BLOCKS,
+    });
+    return new Response(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="modulo-use-case-${safeFilename(bundle.assessment.name)}.pdf"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  const track = trackParam === "internal" ? "internal" : "everyone";
 
   const definition = filterTemplateForTrack(bundle.templateDefinition, track);
   const brand = bundle.assessment.brandConfig as Record<string, unknown> | null;

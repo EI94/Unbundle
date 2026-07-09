@@ -98,7 +98,7 @@ export default async function AiReadinessQuestionsPage({
         </div>
         {/* Download separati: file distinti da inviare al cliente.
             Anchor nativi: il prefetch di un Link eseguirebbe la GET. */}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2" data-testid="question-downloads">
+        <div className="mt-4 grid gap-3 sm:grid-cols-3" data-testid="question-downloads">
           <div className="rounded-2xl border bg-muted/20 p-4">
             <div className="text-sm font-semibold">Survey organizzazione</div>
             <p className="mt-0.5 text-xs text-muted-foreground">
@@ -166,6 +166,27 @@ export default async function AiReadinessQuestionsPage({
                 data-testid="dl-internal-xlsx"
               >
                 <Download className="mr-1 size-3.5" /> Excel
+              </Button>
+            </div>
+          </div>
+          <div className="rounded-2xl border bg-muted/20 p-4">
+            <div className="text-sm font-semibold">Modulo use case</div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Il form OPIT-style per gli esperti di business.
+            </p>
+            <div className="mt-3 flex gap-2">
+              <Button
+                size="sm"
+                render={
+                  <a
+                    href={`/api/ai-readiness/assessments/${assessmentId}/questions-export?track=use_case&format=pdf`}
+                    download
+                  />
+                }
+                nativeButton={false}
+                data-testid="dl-usecase-pdf"
+              >
+                <Download className="mr-1 size-3.5" /> PDF
               </Button>
             </div>
           </div>

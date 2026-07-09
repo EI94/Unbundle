@@ -60,6 +60,15 @@ export function RespondentInviteForm({
                 </span>
               </span>
             </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
+              <input type="radio" name="surveyTrack" value="use_case_expert" className="mt-0.5" />
+              <span>
+                <span className="font-medium">Esperto use case (business)</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  Modulo guidato per raccogliere casi concreti: bisogno, com&apos;e oggi, ipotesi AI.
+                </span>
+              </span>
+            </label>
           </div>
         </div>
         <div className="space-y-1.5">

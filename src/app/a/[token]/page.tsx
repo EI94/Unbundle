@@ -4,11 +4,13 @@ import { hashInviteToken } from "@/lib/ai-readiness/token";
 import {
   getRespondentByInviteTokenHash,
   getResponseForRespondent,
+  listUseCaseSubmissionsByRespondent,
   markRespondentOpened,
 } from "@/lib/db/queries/ai-readiness";
 import { draftPrefillFromResponse } from "@/lib/ai-readiness/draft";
 import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
 import { RespondentSurveyForm } from "@/components/ai-readiness/respondent-survey-form";
+import { UseCaseExpertForm } from "@/components/ai-readiness/use-case-expert-form";
 import { SurveyThemeToggle } from "@/components/ai-readiness/survey-theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -113,6 +115,63 @@ export default async function AiReadinessRespondentPage({
               l&apos;ha gia chiusa. Contatta il referente interno.
             </CardContent>
           </Card>
+        </div>
+      </main>
+    );
+  }
+
+  const isUseCaseExpert = found.respondent.surveyTrack === "use_case_expert";
+  if (isUseCaseExpert) {
+    const cases = await listUseCaseSubmissionsByRespondent(found.respondent.id);
+    return (
+      <main id="survey-root" className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6">
+        <div className="mx-auto max-w-3xl space-y-8">
+          <header className="rounded-[36px] border bg-linear-to-br from-emerald-500/10 via-card to-sky-500/10 p-7">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Link href="/" className="text-sm font-semibold tracking-wide">
+                Unbundle
+              </Link>
+              <SurveyThemeToggle />
+            </div>
+            <div className="mt-8 flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">AI Readiness OS</Badge>
+              <Badge variant="outline">{displayName}</Badge>
+              <Badge variant="secondary">Raccolta use case</Badge>
+            </div>
+            <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight">
+              Raccontaci un caso concreto 💡
+            </h1>
+            <p className="mt-2 max-w-3xl text-base text-muted-foreground">
+              Ci serve il tuo sguardo da esperto del business: descrivi una o piu
+              situazioni di lavoro reali dove l&apos;AI potrebbe fare la differenza.
+              Non serve essere tecnici, bastano la tua conoscenza e qualche esempio.
+            </p>
+            <div className="mt-5 grid gap-2 sm:grid-cols-3">
+              {[
+                { n: "1", t: "Il bisogno", d: "Qual e il problema e perche conta." },
+                { n: "2", t: "Com'e oggi", d: "Processo, persone, strumenti e dati, cosi come sono adesso." },
+                { n: "3", t: "Come cambierebbe", d: "La tua ipotesi su come l'AI puo aiutare." },
+              ].map((step) => (
+                <div key={step.n} className="rounded-2xl border bg-background/60 p-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <span className="flex size-5 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-semibold text-emerald-600">{step.n}</span>
+                    {step.t}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{step.d}</p>
+                </div>
+              ))}
+            </div>
+            {supportEmail && (
+              <p className="mt-4 text-xs text-muted-foreground">
+                Domande? Scrivi a{" "}
+                <a className="font-medium text-foreground underline" href={`mailto:${supportEmail}`}>
+                  {supportEmail}
+                </a>
+              </p>
+            )}
+          </header>
+
+          <UseCaseExpertForm token={token} initialCount={cases.length} />
         </div>
       </main>
     );

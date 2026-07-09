@@ -33,6 +33,7 @@ import {
   updateAiReadinessRespondentIdentity,
   listRespondentsByAssessment,
   listUseCaseSubmissionsByAssessment,
+  listUseCaseSubmissionsByRespondent,
   anonymizeAiReadinessRespondentByTokenHash,
   recomputeAiReadinessScores,
   updateAiReadinessInsightValidation,
@@ -53,6 +54,10 @@ import {
   templateOverridesFromScoringConfig,
   type AiReadinessTemplateOverrides,
 } from "@/lib/ai-readiness/template-scope";
+import {
+  collectUseCaseValues,
+  mapUseCaseColumns,
+} from "@/lib/ai-readiness/use-case-form";
 import { randomUUID } from "node:crypto";
 import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
 
@@ -100,7 +105,7 @@ const inviteRespondentSchema = z.object({
   organizationUnit: z.string().trim().min(2, "Indica l'area/team."),
   country: z.string().trim().optional(),
   locale: z.string().trim().optional(),
-  surveyTrack: z.enum(["everyone", "internal"]).default("everyone"),
+  surveyTrack: z.enum(["everyone", "internal", "use_case_expert"]).default("everyone"),
 });
 
 function formString(formData: FormData, key: string) {
@@ -782,6 +787,101 @@ function collectAnswersFromForm(formData: FormData, bundle: Awaited<ReturnType<t
     } satisfies AiReadinessAnswer;
   });
   return { answers, fieldErrors };
+}
+
+/** Un esperto di business invia un caso d'uso (form OPIT). Puo inviarne piu
+ *  di uno: ogni invio e una submission indipendente. */
+export async function submitUseCaseExpertCaseAction(
+  token: string,
+  _prev: AiReadinessActionState<{ savedCount: number }>,
+  formData: FormData
+): Promise<AiReadinessActionState<{ savedCount: number }>> {
+  void _prev;
+  const found = await getRespondentByInviteTokenHash(hashInviteToken(token));
+  if (!found) return errorState("Invito non valido o revocato.");
+  const { respondent, assessment } = found;
+  if (respondent.surveyTrack !== "use_case_expert") {
+    return errorState("Questo link non e per la raccolta use case.");
+  }
+  if (
+    respondent.inviteStatus === "revoked" ||
+    respondent.inviteStatus === "expired" ||
+    respondent.inviteStatus === "privacy_deleted"
+  ) {
+    return errorState("Questo invito non e piu valido.");
+  }
+  if (assessment.status !== "open") {
+    return errorState("La raccolta non e aperta in questo momento.");
+  }
+
+  const values = collectUseCaseValues((name) => {
+    const v = formData.get(name);
+    return typeof v === "string" ? v : null;
+  });
+  const columns = mapUseCaseColumns(values);
+  if (!columns) {
+    return errorState("Manca il titolo del caso.", {
+      title: "Dai un nome al caso.",
+    });
+  }
+  if (!columns.painPoint || !columns.currentProcess) {
+    return errorState("Compila almeno il problema e come viene gestito oggi.", {
+      ...(columns.painPoint ? {} : { painPoint: "Richiesto." }),
+      ...(columns.currentProcess ? {} : { currentProcess: "Richiesto." }),
+    });
+  }
+
+  await createAiReadinessUseCaseSubmission({
+    assessmentId: assessment.id,
+    workspaceId: assessment.workspaceId,
+    respondentId: respondent.id,
+    pseudonymousId: respondent.pseudonymousId,
+    source: "use_case_expert",
+    status: "submitted",
+    ...columns,
+  });
+  await markRespondentStarted(respondent.id);
+
+  const cases = await listUseCaseSubmissionsByRespondent(respondent.id);
+  await createAiReadinessAuditEvent({
+    organizationId: respondent.organizationId,
+    workspaceId: respondent.workspaceId,
+    assessmentId: assessment.id,
+    respondentId: respondent.id,
+    eventType: "use_case_expert_case_submitted",
+    eventPayload: { totalCases: cases.length, title: columns.title },
+  });
+  revalidatePath(`/dashboard/${respondent.workspaceId}/ai-readiness`);
+
+  return {
+    ok: true,
+    message: `Caso «${columns.title}» salvato. Puoi aggiungerne un altro o chiudere.`,
+    fieldErrors: {},
+    data: { savedCount: cases.length },
+  };
+}
+
+/** L'esperto chiude la raccolta: segna il respondent come completato. */
+export async function finishUseCaseExpertAction(
+  token: string,
+  _prev: AiReadinessActionState<{ completed: true }>,
+  _formData: FormData
+): Promise<AiReadinessActionState<{ completed: true }>> {
+  void _prev;
+  void _formData;
+  const found = await getRespondentByInviteTokenHash(hashInviteToken(token));
+  if (!found) return errorState("Invito non valido o revocato.");
+  const { respondent } = found;
+  if (respondent.surveyTrack !== "use_case_expert") {
+    return errorState("Questo link non e per la raccolta use case.");
+  }
+  await completeAiReadinessRespondent({
+    respondentId: respondent.id,
+    privacyAccepted: true,
+    marketingConsent: false,
+    benchmarkConsent: false,
+  });
+  return { ok: true, message: null, fieldErrors: {}, data: { completed: true } };
 }
 
 export async function saveAiReadinessSurveyDraftAction(

@@ -19,7 +19,7 @@ import { db } from ".";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 10;
+const ENSURE_VERSION = 11;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -351,6 +351,10 @@ async function runOnce(): Promise<void> {
     );
   `);
   await db.execute(sql`
+    ALTER TABLE "ai_readiness_use_case_submissions"
+      ADD COLUMN IF NOT EXISTS "people_involved" text;
+  `);
+  await db.execute(sql`
     CREATE INDEX IF NOT EXISTS "ai_readiness_use_cases_assessment_idx"
       ON "ai_readiness_use_case_submissions" ("assessment_id");
   `);
@@ -629,6 +633,12 @@ async function schemaLooksCurrent(): Promise<boolean> {
           WHERE table_schema = 'public'
             AND table_name = 'ai_readiness_respondents'
             AND column_name = 'survey_track'
+        )
+        AND EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'ai_readiness_use_case_submissions'
+            AND column_name = 'people_involved'
         )
         AND EXISTS (
           SELECT 1 FROM information_schema.columns
