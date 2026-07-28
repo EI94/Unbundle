@@ -62,10 +62,55 @@ function InnerForm({
 }) {
   const boundAction = createPortfolioSubmissionAction.bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(boundAction, INITIAL);
+  const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
   const fe = state.fieldErrors ?? {};
+  const mergedErrors = { ...fe, ...localErrors };
+
+  function clearLocalError(name: string) {
+    setLocalErrors((current) => {
+      if (!current[name]) return current;
+      const next = { ...current };
+      delete next[name];
+      return next;
+    });
+  }
 
   return (
-    <form action={formAction} className="space-y-5">
+    <form
+      action={formAction}
+      className="space-y-5"
+      noValidate
+      onSubmit={(event) => {
+        const data = new FormData(event.currentTarget);
+        const required = [
+          "title",
+          "problem",
+          "flowDescription",
+          "expectedImpact",
+          "humanInTheLoop",
+          "dataRequirements",
+          ...(esgEnabled ? ["sustainabilityImpact"] : []),
+        ];
+        const nextErrors: Record<string, string> = {};
+        for (const name of required) {
+          if (!String(data.get(name) ?? "").trim()) {
+            nextErrors[name] = "Campo richiesto.";
+          }
+        }
+        if (Object.keys(nextErrors).length === 0) {
+          setLocalErrors({});
+          return;
+        }
+        event.preventDefault();
+        setLocalErrors(nextErrors);
+        const first = required.find((name) => nextErrors[name]);
+        if (first) {
+          event.currentTarget
+            .querySelector<HTMLElement>(`[name="${CSS.escape(first)}"]`)
+            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }}
+    >
       <input type="hidden" name="portfolioKind" value={kind} />
 
       <Field
@@ -73,7 +118,8 @@ function InnerForm({
         name="title"
         required
         placeholder="Dai un nome chiaro al contributo"
-        error={fe.title}
+        error={mergedErrors.title}
+        onChange={() => clearLocalError("title")}
       />
       <FieldArea
         label={kind === "best_practice" ? "Prima (problema / come funzionava)" : "Problema (perché serve)"}
@@ -81,7 +127,8 @@ function InnerForm({
         required
         rows={4}
         placeholder="Contesto, frizione, perché è importante."
-        error={fe.problem}
+        error={mergedErrors.problem}
+        onChange={() => clearLocalError("problem")}
       />
       <FieldArea
         label={kind === "best_practice" ? "Adesso (come funziona con l'AI)" : "Flusso as-is → to-be"}
@@ -89,7 +136,8 @@ function InnerForm({
         required
         rows={4}
         placeholder="Passi principali, strumenti, dati, output."
-        error={fe.flowDescription}
+        error={mergedErrors.flowDescription}
+        onChange={() => clearLocalError("flowDescription")}
       />
       <FieldArea
         label={kind === "best_practice" ? "Risultato (beneficio osservato)" : "Impatto atteso"}
@@ -97,7 +145,8 @@ function InnerForm({
         required
         rows={4}
         placeholder="Tempo risparmiato, qualità, rischio, esperienza utente. Evita stime economiche se non hai numeri verificabili."
-        error={fe.expectedImpact}
+        error={mergedErrors.expectedImpact}
+        onChange={() => clearLocalError("expectedImpact")}
       />
       <FieldArea
         label="Human-in-the-loop"
@@ -105,7 +154,8 @@ function InnerForm({
         required
         rows={3}
         placeholder="Chi fa cosa? Chi valida? Chi approva?"
-        error={fe.humanInTheLoop}
+        error={mergedErrors.humanInTheLoop}
+        onChange={() => clearLocalError("humanInTheLoop")}
       />
       {showGuardrails && (
         <FieldArea
@@ -113,7 +163,7 @@ function InnerForm({
           name="guardrails"
           rows={3}
           placeholder="Vincoli, compliance, privacy, tono di voce, escalation…"
-          error={fe.guardrails}
+          error={mergedErrors.guardrails}
         />
       )}
       <FieldArea
@@ -122,7 +172,8 @@ function InnerForm({
         required
         rows={3}
         placeholder="Che dati servono? Dove stanno? Sono disponibili?"
-        error={fe.dataRequirements}
+        error={mergedErrors.dataRequirements}
+        onChange={() => clearLocalError("dataRequirements")}
       />
       {esgEnabled && (
         <FieldArea
@@ -135,7 +186,8 @@ function InnerForm({
           required
           rows={4}
           placeholder="Racconta il tipo di impatto ambientale e sociale che questo nuovo processo comporta."
-          error={fe.sustainabilityImpact}
+          error={mergedErrors.sustainabilityImpact}
+          onChange={() => clearLocalError("sustainabilityImpact")}
         />
       )}
       {kind === "use_case_ai" && (
@@ -143,8 +195,17 @@ function InnerForm({
           label="Urgenza"
           name="urgency"
           placeholder="es. quick win / 3-6 mesi / 6-12 mesi"
-          error={fe.urgency}
+          error={mergedErrors.urgency}
         />
+      )}
+
+      {Object.values(localErrors).some(Boolean) && (
+        <div
+          className="rounded-md border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-500"
+          role="alert"
+        >
+          Completa i campi evidenziati prima di inviare.
+        </div>
       )}
 
       {state.message && !state.ok && (
@@ -169,12 +230,14 @@ function Field({
   placeholder,
   required,
   error,
+  onChange,
 }: {
   label: string;
   name: string;
   placeholder?: string;
   required?: boolean;
   error?: string;
+  onChange?: () => void;
 }) {
   return (
     <div className="space-y-1">
@@ -182,8 +245,9 @@ function Field({
       <Input
         name={name}
         placeholder={placeholder}
-        required={required}
+        aria-required={required}
         aria-invalid={!!error}
+        onChange={onChange}
       />
       {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
@@ -197,6 +261,7 @@ function FieldArea({
   rows,
   required,
   error,
+  onChange,
 }: {
   label: string;
   name: string;
@@ -204,6 +269,7 @@ function FieldArea({
   rows?: number;
   required?: boolean;
   error?: string;
+  onChange?: () => void;
 }) {
   return (
     <div className="space-y-1">
@@ -212,8 +278,9 @@ function FieldArea({
         name={name}
         placeholder={placeholder}
         rows={rows}
-        required={required}
+        aria-required={required}
         aria-invalid={!!error}
+        onChange={onChange}
       />
       {error && <p className="text-xs text-red-500">{error}</p>}
     </div>

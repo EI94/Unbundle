@@ -969,6 +969,7 @@ export const aiReadinessRespondents = pgTable(
     inviteTokenHash: varchar("invite_token_hash", { length: 128 }).notNull().unique(),
     inviteStatus: varchar("invite_status", { length: 50 }).notNull().default("invited"),
     surveyTrack: varchar("survey_track", { length: 20 }).notNull().default("everyone"),
+    questionScope: jsonb("question_scope").$type<Record<string, unknown>>(),
     pseudonymousId: varchar("pseudonymous_id", { length: 64 }).notNull(),
     hasAcceptedPrivacyNotice: boolean("has_accepted_privacy_notice")
       .notNull()

@@ -37,10 +37,11 @@ import { aggregateScores } from "@/lib/ai-readiness/scoring";
 import {
   applyTemplateOverrides,
   filterTemplateDefinition,
-  filterTemplateForTrack,
+  filterTemplateForRespondent,
   includedPillarsFromScoringConfig,
   templateOverridesFromScoringConfig,
   type AiReadinessTemplateOverrides,
+  type AiReadinessQuestionScope,
 } from "@/lib/ai-readiness/template-scope";
 
 export type AiReadinessAssessmentBundle = {
@@ -204,7 +205,8 @@ export async function updateAiReadinessAssessment(
 /** Link condivisibile: l'hash del token è salvato in scoringConfig (mai reso al client). */
 export async function setAssessmentOpenLinkTokenHash(
   assessmentId: string,
-  tokenHash: string
+  tokenHash: string,
+  questionScope?: AiReadinessQuestionScope | null
 ) {
   await ensureDbSchema();
   const bundle = await getAssessmentBundleById(assessmentId);
@@ -212,6 +214,7 @@ export async function setAssessmentOpenLinkTokenHash(
   const scoringConfig = {
     ...(bundle.assessment.scoringConfig ?? {}),
     openLinkTokenHash: tokenHash,
+    openLinkQuestionScope: questionScope ?? null,
   };
   return updateAiReadinessAssessment(assessmentId, { scoringConfig });
 }
@@ -301,9 +304,10 @@ export async function getRespondentByInviteTokenHash(tokenHash: string) {
     ...row,
     // Ogni respondent vede solo le sezioni del proprio binario:
     // "everyone" = survey organizzazione, "internal" = scheda referenti.
-    templateDefinition: filterTemplateForTrack(
+    templateDefinition: filterTemplateForRespondent(
       templateDefinitionForAssessment(row.assessment, row.template),
-      row.respondent.surveyTrack
+      row.respondent.surveyTrack,
+      row.respondent.questionScope
     ),
   };
 }

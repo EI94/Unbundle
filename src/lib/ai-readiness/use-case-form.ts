@@ -176,6 +176,27 @@ export const USE_CASE_FORM_FIELDS: UseCaseField[] = USE_CASE_FORM_BLOCKS.flatMap
 
 const FIELD_BY_ID = new Map(USE_CASE_FORM_FIELDS.map((f) => [f.id, f]));
 
+export function getUseCaseFieldIdsForBlocks(blockIds: string[]) {
+  const selected = new Set(blockIds);
+  const fieldIds = USE_CASE_FORM_BLOCKS.filter((block) => selected.has(block.id))
+    .flatMap((block) => block.fields.map((field) => field.id));
+  if (fieldIds.length === 0) return null;
+  // Il titolo resta sempre incluso: senza nome non esiste un caso azionabile.
+  return [...new Set(["title", ...fieldIds])];
+}
+
+export function filterUseCaseBlocks(
+  fieldIds: string[] | null | undefined
+): UseCaseBlock[] {
+  if (!fieldIds?.length) return USE_CASE_FORM_BLOCKS;
+  const allowed = new Set(fieldIds);
+  const blocks = USE_CASE_FORM_BLOCKS.map((block) => ({
+    ...block,
+    fields: block.fields.filter((field) => allowed.has(field.id)),
+  })).filter((block) => block.fields.length > 0);
+  return blocks.length > 0 ? blocks : USE_CASE_FORM_BLOCKS;
+}
+
 export type UseCaseFormValues = Record<string, string>;
 
 /** Estrae i valori del form (solo campi noti, con trim e cap di lunghezza). */
@@ -235,6 +256,25 @@ export function mapUseCaseColumns(
     impactEstimate: str(values.impactEstimate),
     aiSolutionHypothesis: str(values.aiSolutionHypothesis),
   };
+}
+
+export function validateUseCaseValues(
+  values: UseCaseFormValues,
+  fieldIds: string[] | null | undefined
+) {
+  const blocks = filterUseCaseBlocks(fieldIds);
+  const visibleFields = blocks.flatMap((block) => block.fields);
+  const errors: Record<string, string> = {};
+  for (const field of visibleFields) {
+    if (!field.required) continue;
+    if (!values[field.id]?.trim()) {
+      errors[field.id] = "Campo richiesto per questo link.";
+    }
+  }
+  if (!values.title?.trim()) {
+    errors.title = "Dai un nome al caso.";
+  }
+  return errors;
 }
 
 export function labelForUseCaseField(id: string): string {

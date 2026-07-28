@@ -4,7 +4,10 @@ import {
   USE_CASE_FORM_BLOCKS,
   USE_CASE_FORM_FIELDS,
   collectUseCaseValues,
+  filterUseCaseBlocks,
+  getUseCaseFieldIdsForBlocks,
   mapUseCaseColumns,
+  validateUseCaseValues,
 } from "./use-case-form.ts";
 // buildUseCaseFormPdf importa solo il TIPO di UseCaseBlock: i blocchi si passano.
 import { buildUseCaseFormPdf } from "./question-doc.ts";
@@ -46,6 +49,35 @@ test("collect + mappatura su colonne DB, titolo obbligatorio", () => {
 test("senza titolo la mappatura fallisce (null)", () => {
   const cols = mapUseCaseColumns({ painPoint: "x" });
   assert.equal(cols, null);
+});
+
+test("scope use case: solo blocco bisogno non richiede AS-IS", () => {
+  const fieldIds = getUseCaseFieldIdsForBlocks(["need"]);
+  assert.ok(fieldIds);
+  assert.ok(fieldIds.includes("title"));
+  assert.ok(fieldIds.includes("painPoint"));
+  assert.ok(!fieldIds.includes("currentProcess"));
+
+  const blocks = filterUseCaseBlocks(fieldIds);
+  assert.deepEqual(
+    blocks.map((block) => block.id),
+    ["need"]
+  );
+  assert.deepEqual(
+    validateUseCaseValues(
+      { title: "Onboarding HR", painPoint: "Troppe email manuali" },
+      fieldIds
+    ),
+    {}
+  );
+});
+
+test("scope use case: se AS-IS e incluso, processo attuale resta richiesto", () => {
+  const fieldIds = getUseCaseFieldIdsForBlocks(["need", "as-is"]);
+  assert.ok(fieldIds);
+  assert.deepEqual(validateUseCaseValues({ title: "X", painPoint: "Y" }, fieldIds), {
+    currentProcess: "Campo richiesto per questo link.",
+  });
 });
 
 test("PDF modulo use case: valido, con i tre blocchi e le domande chiave", () => {

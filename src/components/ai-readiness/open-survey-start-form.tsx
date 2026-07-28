@@ -6,6 +6,7 @@ import {
   startOpenSurveyAction,
   type AiReadinessActionState,
 } from "@/lib/actions/ai-readiness";
+import { validateOpenSurveyStartFields } from "@/lib/ai-readiness/form-validation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +28,16 @@ export function OpenSurveyStartForm({
   const action = startOpenSurveyAction.bind(null, openToken);
   const [state, formAction, pending] = useActionState(action, INITIAL);
   const [existingUrl, setExistingUrl] = useState<string | null>(null);
+  const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+
+  function clearLocalError(name: string) {
+    setLocalErrors((current) => {
+      if (!current[name]) return current;
+      const next = { ...current };
+      delete next[name];
+      return next;
+    });
+  }
 
   // Anti-duplicati: se da questo dispositivo la survey è già stata iniziata,
   // proponi di riprenderla invece di crearne una nuova.
@@ -63,27 +74,78 @@ export function OpenSurveyStartForm({
         </div>
       )}
 
-      <form action={formAction} className="space-y-4 rounded-[28px] border bg-card p-6">
+      <form
+        action={formAction}
+        className="space-y-4 rounded-[28px] border bg-card p-6"
+        noValidate
+        onSubmit={(event) => {
+          const data = new FormData(event.currentTarget);
+          const errors = validateOpenSurveyStartFields({
+            named,
+            firstName: String(data.get("firstName") ?? ""),
+            lastName: String(data.get("lastName") ?? ""),
+            organizationUnit: String(data.get("organizationUnit") ?? ""),
+          });
+          if (Object.keys(errors).length > 0) {
+            event.preventDefault();
+            setLocalErrors(errors);
+          }
+        }}
+      >
         <h2 className="text-lg font-semibold">Inizia la survey</h2>
         {named && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="firstName">Nome <span className="text-destructive">*</span></Label>
-              <Input id="firstName" name="firstName" required autoComplete="given-name" placeholder="Es. Maria" />
-              {state.fieldErrors?.firstName && <p className="text-xs text-destructive">{state.fieldErrors.firstName}</p>}
+              <Input
+                id="firstName"
+                name="firstName"
+                autoComplete="given-name"
+                placeholder="Es. Maria"
+                aria-invalid={Boolean(localErrors.firstName || state.fieldErrors?.firstName)}
+                onChange={() => clearLocalError("firstName")}
+              />
+              {(localErrors.firstName || state.fieldErrors?.firstName) && (
+                <p className="text-xs text-destructive">
+                  {localErrors.firstName || state.fieldErrors?.firstName}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="lastName">Cognome <span className="text-destructive">*</span></Label>
-              <Input id="lastName" name="lastName" required autoComplete="family-name" placeholder="Es. Bianchi" />
-              {state.fieldErrors?.lastName && <p className="text-xs text-destructive">{state.fieldErrors.lastName}</p>}
+              <Input
+                id="lastName"
+                name="lastName"
+                autoComplete="family-name"
+                placeholder="Es. Bianchi"
+                aria-invalid={Boolean(localErrors.lastName || state.fieldErrors?.lastName)}
+                onChange={() => clearLocalError("lastName")}
+              />
+              {(localErrors.lastName || state.fieldErrors?.lastName) && (
+                <p className="text-xs text-destructive">
+                  {localErrors.lastName || state.fieldErrors?.lastName}
+                </p>
+              )}
             </div>
           </div>
         )}
         <div className="space-y-1.5">
           <Label htmlFor="organizationUnit">Area / team <span className="text-destructive">*</span></Label>
-          <Input id="organizationUnit" name="organizationUnit" required placeholder="Es. Operations, Vendite, IT..." />
+          <Input
+            id="organizationUnit"
+            name="organizationUnit"
+            placeholder="Es. Operations, Vendite, IT..."
+            aria-invalid={Boolean(
+              localErrors.organizationUnit || state.fieldErrors?.organizationUnit
+            )}
+            onChange={() => clearLocalError("organizationUnit")}
+          />
           <p className="text-xs text-muted-foreground">Serve solo per aggregare i risultati per area.</p>
-          {state.fieldErrors?.organizationUnit && <p className="text-xs text-destructive">{state.fieldErrors.organizationUnit}</p>}
+          {(localErrors.organizationUnit || state.fieldErrors?.organizationUnit) && (
+            <p className="text-xs text-destructive">
+              {localErrors.organizationUnit || state.fieldErrors?.organizationUnit}
+            </p>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="email">Email (opzionale)</Label>

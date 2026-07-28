@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { AI_READINESS_SYSTEM_TEMPLATE } from "./default-template.ts";
 import {
   filterTemplateDefinition,
+  filterTemplateForQuestionScope,
   includedPillarsFromScoringConfig,
+  questionScopeFromUnknown,
 } from "./template-scope.ts";
 import { scoreResponse } from "./scoring.ts";
 import type { AiReadinessAnswer } from "./types.ts";
@@ -125,6 +127,40 @@ test("v4: binari — la survey organizzazione e la scheda referenti sono separat
   assert.ok(internal.questions.some((q) => q.id === "infra-cloud"));
   assert.ok(internal.questions.some((q) => q.id === "ctx-knowledge-system"));
   assert.ok(internal.questions.some((q) => q.id === "wf-roles-clarity"));
+});
+
+test("question scope: restringe un link alle sole sezioni selezionate", async () => {
+  const { filterTemplateForTrack } = await import("./template-scope.ts");
+  const internal = filterTemplateForTrack(AI_READINESS_SYSTEM_TEMPLATE, "internal");
+  const scoped = filterTemplateForQuestionScope(internal, {
+    sectionIds: ["workflow-people"],
+  });
+  assert.deepEqual(
+    scoped.sections.map((section) => section.id),
+    ["workflow-people"]
+  );
+  assert.ok(scoped.questions.length > 0);
+  assert.ok(
+    scoped.questions.every((question) => question.sectionId === "workflow-people")
+  );
+  assert.ok(!scoped.questions.some((question) => question.id === "infra-cloud"));
+});
+
+test("question scope: scope assente o corrotto mantiene il binario completo", async () => {
+  const { filterTemplateForTrack } = await import("./template-scope.ts");
+  const everyone = filterTemplateForTrack(AI_READINESS_SYSTEM_TEMPLATE, "everyone");
+  assert.equal(
+    filterTemplateForQuestionScope(everyone, null).questions.length,
+    everyone.questions.length
+  );
+  assert.equal(
+    filterTemplateForQuestionScope(everyone, { sectionIds: ["non-esiste"] })
+      .questions.length,
+    everyone.questions.length
+  );
+  assert.deepEqual(questionScopeFromUnknown({ sectionIds: ["a", "a", "" ] }), {
+    sectionIds: ["a"],
+  });
 });
 
 test("v4: 'Non so' (0,5) entra nello score senza essere clampato", () => {

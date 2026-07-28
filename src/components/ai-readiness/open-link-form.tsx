@@ -11,19 +11,34 @@ import { Copy, Link2 } from "lucide-react";
 
 const INITIAL: AiReadinessActionState<{ openUrl: string }> = { ok: true };
 
+type SectionOption = {
+  id: string;
+  title: string;
+  description?: string;
+  pillarTitle: string;
+};
+
 export function OpenLinkForm({
   workspaceId,
   assessmentId,
   hasExisting,
+  sections,
 }: {
   workspaceId: string;
   assessmentId: string;
   hasExisting: boolean;
+  sections: SectionOption[];
 }) {
   const action = generateAiReadinessOpenLinkAction.bind(null, workspaceId, assessmentId);
   const [state, formAction, pending] = useActionState(action, INITIAL);
   const [copied, setCopied] = useState(false);
+  const [selectedSectionIds, setSelectedSectionIds] = useState(() =>
+    sections.map((section) => section.id)
+  );
+  const [localError, setLocalError] = useState<string | null>(null);
   const url = state.ok ? state.data?.openUrl : undefined;
+  const allSelected =
+    sections.length > 0 && selectedSectionIds.length === sections.length;
 
   return (
     <div className="rounded-2xl border bg-muted/20 p-4" data-testid="open-link-form">
@@ -36,8 +51,14 @@ export function OpenLinkForm({
       </p>
       <form
         action={formAction}
-        className="mt-3"
+        className="mt-4 space-y-4"
+        noValidate
         onSubmit={(event) => {
+          if (selectedSectionIds.length === 0) {
+            event.preventDefault();
+            setLocalError("Scegli almeno un'area da mostrare nella survey.");
+            return;
+          }
           if (
             hasExisting &&
             !window.confirm(
@@ -48,6 +69,74 @@ export function OpenLinkForm({
           }
         }}
       >
+        <input type="hidden" name="scopeConfigured" value="1" />
+        <div className="rounded-2xl border bg-background/70 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium">Domande da mostrare</div>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Per il link generale scegli le aree utili alla popolazione
+                aziendale. Puoi partire da tutte e alleggerire il form.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setLocalError(null);
+                setSelectedSectionIds(
+                  allSelected ? [] : sections.map((section) => section.id)
+                );
+              }}
+            >
+              {allSelected ? "Deseleziona tutto" : "Seleziona tutto"}
+            </Button>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {sections.map((section) => {
+              const checked = selectedSectionIds.includes(section.id);
+              return (
+                <label
+                  key={section.id}
+                  className="flex cursor-pointer gap-3 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5"
+                >
+                  <input
+                    type="checkbox"
+                    name="sectionIds"
+                    value={section.id}
+                    checked={checked}
+                    onChange={(event) => {
+                      setLocalError(null);
+                      setSelectedSectionIds((current) =>
+                        event.target.checked
+                          ? [...new Set([...current, section.id])]
+                          : current.filter((id) => id !== section.id)
+                      );
+                    }}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="font-medium">{section.title}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {section.pillarTitle}
+                    </span>
+                    {section.description && (
+                      <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                        {section.description}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {(localError || state.fieldErrors?.sectionIds) && (
+            <p className="mt-2 text-xs text-destructive" role="alert">
+              {localError ?? state.fieldErrors?.sectionIds}
+            </p>
+          )}
+        </div>
         <Button type="submit" variant="outline" size="sm" disabled={pending}>
           {pending ? "Genero..." : hasExisting || url ? "Rigenera link" : "Genera link"}
         </Button>

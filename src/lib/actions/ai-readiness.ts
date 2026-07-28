@@ -53,10 +53,16 @@ import {
 import {
   templateOverridesFromScoringConfig,
   type AiReadinessTemplateOverrides,
+  filterTemplateForTrack,
+  questionScopeFromUnknown,
+  type AiReadinessQuestionScope,
 } from "@/lib/ai-readiness/template-scope";
 import {
   collectUseCaseValues,
   mapUseCaseColumns,
+  USE_CASE_FORM_BLOCKS,
+  getUseCaseFieldIdsForBlocks,
+  validateUseCaseValues,
 } from "@/lib/ai-readiness/use-case-form";
 import { randomUUID } from "node:crypto";
 import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
@@ -140,8 +146,66 @@ async function getBaseUrl() {
   return `${proto}://${host}`;
 }
 
-function errorState(message: string, fieldErrors: Record<string, string> = {}) {
+function errorState<Data = never>(
+  message: string,
+  fieldErrors: Record<string, string> = {}
+): AiReadinessActionState<Data> {
   return { ok: false, message, fieldErrors };
+}
+
+function selectedStrings(formData: FormData, name: string) {
+  return [
+    ...new Set(
+      formData
+        .getAll(name)
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
+function buildQuestionScopeFromForm(params: {
+  formData: FormData;
+  template: NonNullable<Awaited<ReturnType<typeof getAssessmentBundleById>>>["templateDefinition"];
+  track: "everyone" | "internal" | "use_case_expert";
+}):
+  | { ok: true; scope: AiReadinessQuestionScope | null }
+  | { ok: false; state: AiReadinessActionState<never> } {
+  if (!params.formData.has("scopeConfigured")) {
+    return { ok: true, scope: null };
+  }
+  if (params.track === "use_case_expert") {
+    const allowedBlocks = new Set(USE_CASE_FORM_BLOCKS.map((block) => block.id));
+    const blockIds = selectedStrings(params.formData, "useCaseBlockIds").filter((id) =>
+      allowedBlocks.has(id)
+    );
+    const useCaseFieldIds = getUseCaseFieldIdsForBlocks(blockIds);
+    if (!useCaseFieldIds?.length) {
+      return {
+        ok: false,
+        state: errorState("Scegli almeno un'area del modulo use case.", {
+          useCaseBlockIds: "Seleziona almeno un'area.",
+        }),
+      };
+    }
+    return { ok: true, scope: { useCaseFieldIds } };
+  }
+
+  const trackTemplate = filterTemplateForTrack(params.template, params.track);
+  const allowedSections = new Set(trackTemplate.sections.map((section) => section.id));
+  const sectionIds = selectedStrings(params.formData, "sectionIds").filter((id) =>
+    allowedSections.has(id)
+  );
+  if (sectionIds.length === 0) {
+    return {
+      ok: false,
+      state: errorState("Scegli almeno un'area da includere nel link.", {
+        sectionIds: "Seleziona almeno un'area.",
+      }),
+    };
+  }
+  return { ok: true, scope: { sectionIds } };
 }
 
 async function assertAssessmentManager(workspaceId: string) {
@@ -580,17 +644,27 @@ export async function generateAiReadinessOpenLinkAction(
   workspaceId: string,
   assessmentId: string,
   _prev: AiReadinessActionState<{ openUrl: string }>,
-  _formData: FormData
+  formData: FormData
 ): Promise<AiReadinessActionState<{ openUrl: string }>> {
-  void _prev; void _formData;
+  void _prev;
   const manager = await assertAssessmentManager(workspaceId);
   if (!manager.ok) return manager.state;
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) {
     return errorState("Assessment non trovato.");
   }
+  const scope = buildQuestionScopeFromForm({
+    formData,
+    template: bundle.templateDefinition,
+    track: "everyone",
+  });
+  if (!scope.ok) return scope.state;
   const token = createInviteToken();
-  await setAssessmentOpenLinkTokenHash(assessmentId, hashInviteToken(token));
+  await setAssessmentOpenLinkTokenHash(
+    assessmentId,
+    hashInviteToken(token),
+    scope.scope
+  );
   const baseUrl = await getBaseUrl();
   await createAiReadinessAuditEvent({
     organizationId: manager.access.workspace.organizationId,
@@ -598,7 +672,7 @@ export async function generateAiReadinessOpenLinkAction(
     assessmentId,
     actorUserId: manager.session.user.id,
     eventType: "open_link_generated",
-    eventPayload: {},
+    eventPayload: { questionScope: scope.scope },
   });
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
   return {
@@ -634,6 +708,9 @@ export async function startOpenSurveyAction(
   if (found.assessment.status !== "open") {
     return errorState("La raccolta non e aperta in questo momento.");
   }
+  const openScope = questionScopeFromUnknown(
+    found.assessment.scoringConfig?.openLinkQuestionScope
+  );
   const named = found.assessment.anonymousMode === false;
   const parsed = openStartSchema.safeParse({
     organizationUnit: formString(formData, "organizationUnit"),
@@ -665,6 +742,7 @@ export async function startOpenSurveyAction(
     locale: "it",
     inviteTokenHash: hashInviteToken(personalToken),
     inviteStatus: "opened",
+    questionScope: openScope,
     pseudonymousId: createPseudonymousId(
       `${found.assessment.id}:open:${personalToken}`
     ),
@@ -675,7 +753,10 @@ export async function startOpenSurveyAction(
     assessmentId: found.assessment.id,
     respondentId: respondent.id,
     eventType: "respondent_self_registered",
-    eventPayload: { organizationUnit: respondent.organizationUnit },
+    eventPayload: {
+      organizationUnit: respondent.organizationUnit,
+      questionScope: openScope,
+    },
   });
   const baseUrl = await getBaseUrl();
   return {
@@ -714,6 +795,12 @@ export async function createAiReadinessRespondentInviteAction(
     for (const issue of parsed.error.issues) fieldErrors[issue.path.join(".")] = issue.message;
     return errorState("Controlla i campi evidenziati.", fieldErrors);
   }
+  const scope = buildQuestionScopeFromForm({
+    formData,
+    template: bundle.templateDefinition,
+    track: parsed.data.surveyTrack,
+  });
+  if (!scope.ok) return scope.state;
 
   const token = createInviteToken();
   const respondent = await createAiReadinessRespondent({
@@ -731,6 +818,7 @@ export async function createAiReadinessRespondentInviteAction(
     inviteTokenHash: hashInviteToken(token),
     inviteStatus: "invited",
     surveyTrack: parsed.data.surveyTrack,
+    questionScope: scope.scope,
     pseudonymousId: createPseudonymousId(`${assessmentId}:${parsed.data.email}:${Date.now()}`),
   });
   const baseUrl = await getBaseUrl();
@@ -747,6 +835,8 @@ export async function createAiReadinessRespondentInviteAction(
       organizationUnit: respondent.organizationUnit,
       role: respondent.role,
       hasEmail: Boolean(respondent.email),
+      surveyTrack: respondent.surveyTrack,
+      questionScope: scope.scope,
     },
   });
 
@@ -818,16 +908,15 @@ export async function submitUseCaseExpertCaseAction(
     const v = formData.get(name);
     return typeof v === "string" ? v : null;
   });
+  const fieldIds = questionScopeFromUnknown(respondent.questionScope)?.useCaseFieldIds;
+  const validationErrors = validateUseCaseValues(values, fieldIds);
+  if (Object.keys(validationErrors).length > 0) {
+    return errorState("Completa i campi richiesti per questo link.", validationErrors);
+  }
   const columns = mapUseCaseColumns(values);
   if (!columns) {
     return errorState("Manca il titolo del caso.", {
       title: "Dai un nome al caso.",
-    });
-  }
-  if (!columns.painPoint || !columns.currentProcess) {
-    return errorState("Compila almeno il problema e come viene gestito oggi.", {
-      ...(columns.painPoint ? {} : { painPoint: "Richiesto." }),
-      ...(columns.currentProcess ? {} : { currentProcess: "Richiesto." }),
     });
   }
 

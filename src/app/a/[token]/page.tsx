@@ -8,6 +8,7 @@ import {
   markRespondentOpened,
 } from "@/lib/db/queries/ai-readiness";
 import { draftPrefillFromResponse } from "@/lib/ai-readiness/draft";
+import { questionScopeFromUnknown } from "@/lib/ai-readiness/template-scope";
 import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
 import { RespondentSurveyForm } from "@/components/ai-readiness/respondent-survey-form";
 import { UseCaseExpertForm } from "@/components/ai-readiness/use-case-expert-form";
@@ -171,7 +172,14 @@ export default async function AiReadinessRespondentPage({
             )}
           </header>
 
-          <UseCaseExpertForm token={token} initialCount={cases.length} />
+          <UseCaseExpertForm
+            token={token}
+            initialCount={cases.length}
+            fieldIds={
+              questionScopeFromUnknown(found.respondent.questionScope)?.useCaseFieldIds ??
+              null
+            }
+          />
         </div>
       </main>
     );

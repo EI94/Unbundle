@@ -1,13 +1,14 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
   finishUseCaseExpertAction,
   submitUseCaseExpertCaseAction,
   type AiReadinessActionState,
 } from "@/lib/actions/ai-readiness";
 import {
-  USE_CASE_FORM_BLOCKS,
+  filterUseCaseBlocks,
+  validateUseCaseValues,
   type UseCaseField,
 } from "@/lib/ai-readiness/use-case-form";
 import { Button } from "@/components/ui/button";
@@ -71,9 +72,11 @@ function FieldControl({
 export function UseCaseExpertForm({
   token,
   initialCount,
+  fieldIds,
 }: {
   token: string;
   initialCount: number;
+  fieldIds?: string[] | null;
 }) {
   const submitAction = submitUseCaseExpertCaseAction.bind(null, token);
   const finishAction = finishUseCaseExpertAction.bind(null, token);
@@ -86,10 +89,12 @@ export function UseCaseExpertForm({
     FINISH_INITIAL
   );
   const formRef = useRef<HTMLFormElement>(null);
+  const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
   const finished = finishState.data?.completed === true;
   // Stato derivato dal risultato dell'action: nessun setState negli effect.
   const savedCount = submitState.data?.savedCount ?? initialCount;
   const justSaved = submitState.ok && submitState.data?.savedCount != null;
+  const visibleBlocks = useMemo(() => filterUseCaseBlocks(fieldIds), [fieldIds]);
 
   // Autosave sul dispositivo: se l'esperto chiude a metà, ritrova il caso.
   const persist = () => {
@@ -188,10 +193,43 @@ export function UseCaseExpertForm({
       <form
         ref={formRef}
         action={submitFormAction}
-        onChange={persist}
+        onChange={() => {
+          persist();
+          const form = formRef.current;
+          if (!form) return;
+          const data = new FormData(form);
+          setLocalErrors((current) => {
+            const next: Record<string, string> = {};
+            for (const [key, message] of Object.entries(current)) {
+              if (String(data.get(key) ?? "").trim()) continue;
+              next[key] = message;
+            }
+            return next;
+          });
+        }}
+        noValidate
+        onSubmit={(event) => {
+          const form = event.currentTarget;
+          const data = new FormData(form);
+          const values: Record<string, string> = {};
+          for (const [key, raw] of data.entries()) {
+            if (typeof raw === "string" && raw.trim()) values[key] = raw.trim();
+          }
+          const errors = validateUseCaseValues(values, fieldIds);
+          if (Object.keys(errors).length === 0) {
+            setLocalErrors({});
+            return;
+          }
+          event.preventDefault();
+          setLocalErrors(errors);
+          const first = Object.keys(errors)[0];
+          form
+            .querySelector<HTMLElement>(`[name="${CSS.escape(first)}"]`)
+            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }}
         className="space-y-6"
       >
-        {USE_CASE_FORM_BLOCKS.map((block) => (
+        {visibleBlocks.map((block) => (
           <section key={block.id} className="rounded-[32px] border bg-card p-6">
             <div className="text-xs uppercase tracking-[0.22em] text-emerald-600">
               {block.title}
@@ -202,12 +240,18 @@ export function UseCaseExpertForm({
                 <FieldControl
                   key={field.id}
                   field={field}
-                  error={submitState.fieldErrors?.[field.id]}
+                  error={localErrors[field.id] || submitState.fieldErrors?.[field.id]}
                 />
               ))}
             </div>
           </section>
         ))}
+
+        {Object.keys(localErrors).length > 0 && (
+          <p className="rounded-2xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
+            Completa i campi evidenziati prima di salvare il caso.
+          </p>
+        )}
 
         {!submitState.ok && submitState.message && (
           <p className="text-sm text-destructive" role="alert">

@@ -28,6 +28,7 @@ import {
   listUseCaseSubmissionsByAssessment,
 } from "@/lib/db/queries/ai-readiness";
 import { getMaturityLevel } from "@/lib/ai-readiness/scoring";
+import { USE_CASE_FORM_BLOCKS } from "@/lib/ai-readiness/use-case-form";
 import { AssessmentCreateForm } from "@/components/ai-readiness/assessment-create-form";
 import { AssessmentActions } from "@/components/ai-readiness/assessment-actions";
 import { InsightValidationActions } from "@/components/ai-readiness/insight-validation-actions";
@@ -208,6 +209,23 @@ export default async function AiReadinessPage({
   const clusters = evidenceArray(useCaseEvidence.clusters);
   const benchmarkInsight = insights.find((insight) => insight.insightType === "benchmark");
   const benchmark = evidenceRecord(evidenceRecord(benchmarkInsight?.evidence).benchmark);
+  const sectionOptions = bundle.templateDefinition.sections.map((section) => ({
+    id: section.id,
+    title: section.title,
+    description: section.description,
+    audience: section.audience,
+    pillarTitle:
+      bundle.templateDefinition.pillars.find((pillar) => pillar.id === section.pillarId)
+        ?.title ?? section.pillarId,
+  }));
+  const everyoneSectionOptions = sectionOptions.filter(
+    (section) => section.audience !== "internal"
+  );
+  const useCaseBlockOptions = USE_CASE_FORM_BLOCKS.map((block) => ({
+    id: block.id,
+    title: block.title,
+    subtitle: block.subtitle,
+  }));
 
   const includedPillarTitles = bundle.templateDefinition.pillars
     .map((pillar) => pillar.title)
@@ -776,6 +794,7 @@ export default async function AiReadinessPage({
                 <OpenLinkForm
                   workspaceId={workspaceId}
                   assessmentId={bundle.assessment.id}
+                  sections={everyoneSectionOptions}
                   hasExisting={Boolean(
                     (bundle.assessment.scoringConfig as Record<string, unknown> | null)
                       ?.openLinkTokenHash
@@ -785,6 +804,8 @@ export default async function AiReadinessPage({
               <RespondentInviteForm
                 workspaceId={workspaceId}
                 assessmentId={bundle.assessment.id}
+                sections={sectionOptions}
+                useCaseBlocks={useCaseBlockOptions}
               />
             </CardContent>
           </Card>

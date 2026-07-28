@@ -18,6 +18,7 @@ import {
   type AiReadinessDraftIdentity,
   type AiReadinessDraftPayload,
 } from "@/lib/ai-readiness/draft";
+import { validateSurveyPayload } from "@/lib/ai-readiness/form-validation";
 import type {
   AiReadinessQuestion,
   AiReadinessTemplateDefinition,
@@ -158,7 +159,6 @@ function QuestionField({
             className="flex cursor-pointer items-start gap-3 rounded-2xl border p-3 text-sm leading-5 hover:bg-muted has-checked:border-emerald-500 has-checked:bg-emerald-500/10"
           >
             <input
-              required={question.required}
               type="radio"
               name={name}
               value={level.value}
@@ -174,7 +174,6 @@ function QuestionField({
         {question.allowUnsure && (
           <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-dashed p-3 text-sm leading-5 text-muted-foreground hover:bg-muted has-checked:border-emerald-500 has-checked:bg-emerald-500/10">
             <input
-              required={question.required}
               type="radio"
               name={name}
               value="0.5"
@@ -201,7 +200,6 @@ function QuestionField({
               className="flex cursor-pointer flex-col items-center gap-1 rounded-2xl border bg-background/70 p-2 text-sm hover:bg-muted has-checked:border-emerald-500 has-checked:bg-emerald-500/10"
             >
               <input
-                required={question.required}
                 type="radio"
                 name={name}
                 value={value}
@@ -232,7 +230,6 @@ function QuestionField({
             className="flex cursor-pointer items-center gap-2 rounded-2xl border p-3 text-sm hover:bg-muted has-checked:border-emerald-500 has-checked:bg-emerald-500/10"
           >
             <input
-              required={question.required}
               type="radio"
               name={name}
               value={option.value}
@@ -329,6 +326,7 @@ export function RespondentSurveyForm({
     draftSavedAt ?? null
   );
   const [restoredFromDevice, setRestoredFromDevice] = useState(false);
+  const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
 
   const totalQuestions = useMemo(
     () =>
@@ -383,11 +381,27 @@ export function RespondentSurveyForm({
 
   const scheduleSave = useCallback(() => {
     setSaveStatus("dirty");
+    const form = formRef.current;
+    const payload = form ? collectDraftPayload(form) : null;
     setAnsweredCount(countAnswered());
     // Salvataggio istantaneo sul dispositivo: anche chiudendo subito il
     // browser non si perde nulla, pure se il debounce server non è scattato.
-    if (formRef.current && !completedRef.current) {
-      writeDeviceDraft(token, collectDraftPayload(formRef.current));
+    if (form && payload && !completedRef.current) {
+      writeDeviceDraft(token, payload);
+      setLocalErrors((current) => {
+        const next: Record<string, string> = {};
+        for (const [key, message] of Object.entries(current)) {
+          if (key === "privacyAccepted" && payload.consents.privacyAccepted) continue;
+          if (key === "respondentFirstName" && payload.identity?.firstName) continue;
+          if (key === "respondentLastName" && payload.identity?.lastName) continue;
+          if (key.startsWith("question__")) {
+            const questionId = key.slice("question__".length);
+            if (payload.answers[questionId] != null) continue;
+          }
+          next[key] = message;
+        }
+        return next;
+      });
     }
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
@@ -477,6 +491,23 @@ export function RespondentSurveyForm({
       ref={formRef}
       action={formAction}
       onChange={scheduleSave}
+      noValidate
+      onSubmit={(event) => {
+        const form = event.currentTarget;
+        const payload = collectDraftPayload(form);
+        const errors = validateSurveyPayload({ template, payload, anonymousMode });
+        if (Object.keys(errors).length === 0) {
+          setLocalErrors({});
+          return;
+        }
+        event.preventDefault();
+        setLocalErrors(errors);
+        const first = Object.keys(errors)[0];
+        const target =
+          form.querySelector<HTMLElement>(`[name="${CSS.escape(first)}"]`) ??
+          form.querySelector<HTMLElement>(`[name="${CSS.escape(first)}"] + *`);
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }}
       className="space-y-8"
     >
       {(initialDraft || restoredFromDevice) && (
@@ -540,14 +571,19 @@ export function RespondentSurveyForm({
               <Input
                 id="respondentFirstName"
                 name="respondentFirstName"
-                required
                 autoComplete="given-name"
                 placeholder="Es. Maria"
                 defaultValue={initialIdentity?.firstName}
+                aria-invalid={Boolean(
+                  localErrors.respondentFirstName ||
+                    state.fieldErrors?.respondentFirstName
+                )}
               />
-              {state.fieldErrors?.respondentFirstName && (
+              {(localErrors.respondentFirstName ||
+                state.fieldErrors?.respondentFirstName) && (
                 <p className="text-xs text-destructive">
-                  {state.fieldErrors.respondentFirstName}
+                  {localErrors.respondentFirstName ||
+                    state.fieldErrors?.respondentFirstName}
                 </p>
               )}
             </div>
@@ -558,14 +594,19 @@ export function RespondentSurveyForm({
               <Input
                 id="respondentLastName"
                 name="respondentLastName"
-                required
                 autoComplete="family-name"
                 placeholder="Es. Bianchi"
                 defaultValue={initialIdentity?.lastName}
+                aria-invalid={Boolean(
+                  localErrors.respondentLastName ||
+                    state.fieldErrors?.respondentLastName
+                )}
               />
-              {state.fieldErrors?.respondentLastName && (
+              {(localErrors.respondentLastName ||
+                state.fieldErrors?.respondentLastName) && (
                 <p className="text-xs text-destructive">
-                  {state.fieldErrors.respondentLastName}
+                  {localErrors.respondentLastName ||
+                    state.fieldErrors?.respondentLastName}
                 </p>
               )}
             </div>
@@ -627,11 +668,27 @@ export function RespondentSurveyForm({
             />
             <span>Acconsento a ricevere comunicazioni opzionali sul percorso AI.</span>
           </label>
-          {state.fieldErrors?.privacyAccepted && (
-            <p className="text-xs text-destructive">{state.fieldErrors.privacyAccepted}</p>
+          {(localErrors.privacyAccepted || state.fieldErrors?.privacyAccepted) && (
+            <p className="text-xs text-destructive" role="alert">
+              {localErrors.privacyAccepted || state.fieldErrors?.privacyAccepted}
+            </p>
           )}
         </div>
       </section>
+
+      {Object.keys(localErrors).length > 0 && (
+        <div
+          className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"
+          role="alert"
+          data-testid="survey-error-summary"
+        >
+          <div className="font-medium">Mancano alcune risposte.</div>
+          <p className="mt-1 text-xs leading-5">
+            Le abbiamo evidenziate nel form. Puoi scegliere anche “Non so / non
+            applicabile” quando la domanda non è nel tuo perimetro.
+          </p>
+        </div>
+      )}
 
       {sections.map((section) => (
         <section key={section.id} className="rounded-[32px] border bg-card p-6">
@@ -656,7 +713,10 @@ export function RespondentSurveyForm({
                   )}
                   <QuestionField
                     question={question}
-                    error={state.fieldErrors?.[`question__${question.id}`]}
+                    error={
+                      localErrors[`question__${question.id}`] ||
+                      state.fieldErrors?.[`question__${question.id}`]
+                    }
                     defaultValue={initialDraft?.answers[question.id]}
                   />
                 </div>

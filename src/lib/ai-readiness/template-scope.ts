@@ -1,5 +1,10 @@
 import type { AiReadinessTemplateDefinition } from "./types";
 
+export type AiReadinessQuestionScope = {
+  sectionIds?: string[];
+  useCaseFieldIds?: string[];
+};
+
 /**
  * Pilastri inclusi in un assessment, letti da scoringConfig.includedPillars.
  * `null` = tutti i pilastri del template (default, retrocompatibile con gli
@@ -66,6 +71,66 @@ export function filterTemplateForTrack(
     questions,
     pillars: definition.pillars.filter((pillar) => pillarIds.has(pillar.id)),
   };
+}
+
+function cleanStringList(value: unknown) {
+  if (!Array.isArray(value)) return null;
+  const list = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return list.length > 0 ? [...new Set(list)] : null;
+}
+
+export function questionScopeFromUnknown(
+  value: unknown
+): AiReadinessQuestionScope | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const sectionIds = cleanStringList(raw.sectionIds);
+  const useCaseFieldIds = cleanStringList(raw.useCaseFieldIds);
+  if (!sectionIds && !useCaseFieldIds) return null;
+  return {
+    ...(sectionIds ? { sectionIds } : {}),
+    ...(useCaseFieldIds ? { useCaseFieldIds } : {}),
+  };
+}
+
+/**
+ * Restringe un template gia filtrato per track alle sezioni scelte per quel
+ * link/respondent. Scope assente o corrotto = full track, per compatibilita.
+ */
+export function filterTemplateForQuestionScope(
+  definition: AiReadinessTemplateDefinition,
+  scope: AiReadinessQuestionScope | null | undefined
+): AiReadinessTemplateDefinition {
+  const requested = scope?.sectionIds;
+  if (!requested?.length) return definition;
+  const allowed = new Set(requested);
+  const sections = definition.sections.filter((section) => allowed.has(section.id));
+  if (sections.length === 0) return definition;
+  const sectionIds = new Set(sections.map((section) => section.id));
+  const questions = definition.questions.filter((question) =>
+    sectionIds.has(question.sectionId)
+  );
+  const pillarIds = new Set(questions.map((question) => question.pillarId));
+  return {
+    ...definition,
+    sections,
+    questions,
+    pillars: definition.pillars.filter((pillar) => pillarIds.has(pillar.id)),
+  };
+}
+
+export function filterTemplateForRespondent(
+  definition: AiReadinessTemplateDefinition,
+  track: string | null | undefined,
+  scope: unknown
+): AiReadinessTemplateDefinition {
+  return filterTemplateForQuestionScope(
+    filterTemplateForTrack(definition, track),
+    questionScopeFromUnknown(scope)
+  );
 }
 
 // ────────────────────────────────────────────────────────────────────────────
