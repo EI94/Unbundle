@@ -43,14 +43,14 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       id: "adoption",
       title: "Adoption",
       description:
-        "Le persone e l'AI: cosa conoscono davvero, quanto la usano gia, cosa ne pensano e cosa li frena.",
+        "Le persone e l'AI: cosa conoscono davvero, quanto la usano già, cosa ne pensano e cosa li frena.",
       weight: 1,
     },
     {
       id: "use_cases",
       title: "Use Cases",
       description:
-        "La capacita di trasformare il lavoro quotidiano in casi concreti dove l'AI aiuta davvero.",
+        "La capacità di trasformare il lavoro quotidiano in casi concreti dove l'AI aiuta davvero.",
       weight: 1,
     },
   ],
@@ -94,7 +94,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "adoption",
       title: "Quanto conosci l'AI",
       description:
-        "Niente esame: serve a capire da dove partiamo. Rispondi con sincerita.",
+        "Niente esame: serve a capire da dove partiamo. Rispondi con sincerità.",
       audience: "everyone",
     },
     {
@@ -102,7 +102,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "adoption",
       title: "L'AI nel tuo lavoro di oggi",
       description:
-        "Quanto e come usi gia strumenti come ChatGPT, Copilot o Gemini nel lavoro di tutti i giorni.",
+        "Quanto e come usi già strumenti come ChatGPT, Copilot o Gemini nel lavoro di tutti i giorni.",
       audience: "everyone",
     },
     {
@@ -118,7 +118,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "use_cases",
       title: "Idee e casi concreti",
       description:
-        "Dove l'AI potrebbe aiutarti davvero: idee ed esperimenti gia fatti.",
+        "Dove l'AI potrebbe aiutarti davvero: idee ed esperimenti già fatti.",
       audience: "everyone",
     },
   ],
@@ -131,7 +131,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       label:
         "I sistemi e i programmi aziendali girano sul cloud o su server in azienda?",
       description:
-        "Il cloud (es. Microsoft 365, Google Workspace) rende molto piu semplice collegare l'AI ai vostri strumenti.",
+        "Il cloud (es. Microsoft 365, Google Workspace) rende molto più semplice collegare l'AI ai vostri strumenti.",
       answerType: "scale",
       required: true,
       min: 0,
@@ -141,8 +141,8 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       levels: [
         { value: 1, label: "Tutto su server nostri e programmi installati sui singoli PC" },
         { value: 2, label: "Quasi tutto interno, con qualche servizio online" },
-        { value: 3, label: "Un mix: meta cloud, meta sistemi interni" },
-        { value: 4, label: "La maggior parte e su cloud" },
+        { value: 3, label: "Un mix: metà cloud, metà sistemi interni" },
+        { value: 4, label: "La maggior parte è su cloud" },
         { value: 5, label: "Praticamente tutto su cloud, accessibile da ovunque" },
       ],
     },
@@ -172,7 +172,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "technology",
       sectionId: "technology-infrastructure",
       label:
-        "Esistono regole scritte su chi puo accedere a cosa (programmi, cartelle, dati)?",
+        "Esistono regole scritte su chi può accedere a cosa (programmi, cartelle, dati)?",
       answerType: "scale",
       required: true,
       min: 0,
@@ -201,7 +201,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       weight: 1,
       allowUnsure: true,
       levels: [
-        { value: 1, label: "Ogni programma e un'isola: si ricopia tutto a mano" },
+        { value: 1, label: "Ogni programma è un'isola: si ricopia tutto a mano" },
         { value: 2, label: "Pochi collegamenti, quasi tutto passa a mano" },
         { value: 3, label: "I sistemi principali sono collegati tra loro" },
         { value: 4, label: "La maggior parte si scambia i dati da sola" },
@@ -246,7 +246,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       levels: [
         { value: 1, label: "Ovunque: Excel personali, email, carta" },
         { value: 2, label: "Perlopiu file sparsi, con qualche sistema" },
-        { value: 3, label: "Meta nei sistemi, meta nei file personali" },
+        { value: 3, label: "Metà nei sistemi, metà nei file personali" },
         { value: 4, label: "Quasi tutto in sistemi centrali" },
         { value: 5, label: "Tutto in sistemi centrali, ordinato, senza copie sparse" },
       ],
@@ -267,8 +267,8 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       allowUnsure: true,
       levels: [
         { value: 1, label: "Non esiste: ognuno ha i suoi file" },
-        { value: 2, label: "C'e una cartella condivisa, ma e un caos" },
-        { value: 3, label: "C'e un archivio, ma incompleto o poco aggiornato" },
+        { value: 2, label: "C'è una cartella condivisa, ma è un caos" },
+        { value: 3, label: "C'è un archivio, ma incompleto o poco aggiornato" },
         { value: 4, label: "Archivio ordinato che copre quasi tutto" },
         { value: 5, label: "Archivio unico, ordinato, aggiornato e usato da tutti" },
       ],
@@ -328,7 +328,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       weight: 1,
       allowUnsure: true,
       levels: [
-        { value: 1, label: "Ottenere un dato e un'odissea" },
+        { value: 1, label: "Ottenere un dato è un'odissea" },
         { value: 2, label: "Si ottiene, ma con lunghe attese" },
         { value: 3, label: "Dipende dal dato e da chi lo chiede" },
         { value: 4, label: "Quasi sempre in giornata" },
@@ -340,7 +340,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       id: "wf-roles-clarity",
       pillarId: "workflow",
       sectionId: "workflow-people",
-      label: "Ruoli e responsabilita sono chiari e scritti?",
+      label: "Ruoli e responsabilità sono chiari e scritti?",
       description:
         "Chi decide, chi esegue, chi controlla: e definito da qualche parte o si va a consuetudine?",
       answerType: "scale",
@@ -363,7 +363,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       sectionId: "workflow-people",
       label: "I modi di lavorare vengono rivisti e aggiornati nel tempo?",
       description:
-        "Oppure molti processi sono nati anni fa e nessuno li ha piu toccati, anche se oggi si potrebbe fare meglio?",
+        "Oppure molti processi sono nati anni fa e nessuno li ha più toccati, anche se oggi si potrebbe fare meglio?",
       answerType: "scale",
       required: true,
       min: 0,
@@ -433,7 +433,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         { value: 2, label: "A fatica e con molti ritardi" },
         { value: 3, label: "Alterni: alcuni bene, altri male" },
         { value: 4, label: "Bene nella maggior parte dei casi" },
-        { value: 5, label: "Bene: c'e un metodo collaudato per accompagnarli" },
+        { value: 5, label: "Bene: c'è un metodo collaudato per accompagnarli" },
       ],
     },
     {
@@ -441,9 +441,9 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "workflow",
       sectionId: "workflow-people",
       label:
-        "C'e qualcosa su ruoli, competenze o processi che e importante sapere?",
+        "C'è qualcosa su ruoli, competenze o processi che e importante sapere?",
       description:
-        "Es. un'area in forte crescita, un pensionamento chiave in arrivo, un reparto gia molto digitale.",
+        "Es. un'area in forte crescita, un pensionamento chiave in arrivo, un reparto già molto digitale.",
       answerType: "text",
       required: false,
     },
@@ -477,7 +477,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       label:
         "Gli strumenti AI che usi per lavoro sono forniti dall'azienda o ognuno si arrangia?",
       description:
-        "Con account aziendali i dati sono piu protetti; con account personali gratuiti nessuno sa dove finiscono.",
+        "Con account aziendali i dati sono più protetti; con account personali gratuiti nessuno sa dove finiscono.",
       answerType: "scale",
       required: true,
       min: 0,
@@ -497,7 +497,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "technology",
       sectionId: "technology-rules",
       label:
-        "Ti e chiaro quali informazioni puoi incollare in ChatGPT (o simili) e quali no?",
+        "Ti è chiaro quali informazioni puoi incollare in ChatGPT (o simili) e quali no?",
       description:
         "Es. dati di clienti, contratti, stipendi: sai cosa NON va mai condiviso con l'AI?",
       answerType: "scale",
@@ -528,9 +528,9 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       allowUnsure: true,
       levels: [
         { value: 1, label: "Non saprei proprio a chi rivolgermi" },
-        { value: 2, label: "Chiedo a un collega che ne sa piu di me" },
-        { value: 3, label: "C'e qualcuno, ma risponde quando puo" },
-        { value: 4, label: "C'e un riferimento chiaro" },
+        { value: 2, label: "Chiedo a un collega che ne sa più di me" },
+        { value: 3, label: "C'è qualcuno, ma risponde quando può" },
+        { value: 4, label: "C'è un riferimento chiaro" },
         { value: 5, label: "Riferimento chiaro, veloce e sempre disponibile" },
       ],
     },
@@ -545,7 +545,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       required: true,
       weight: 1,
       options: [
-        { value: "never", label: "Mai: non e un tema che seguo", score: 0 },
+        { value: "never", label: "Mai: non è un tema che seguo", score: 0 },
         { value: "rarely", label: "Raramente, se mi capita sotto gli occhi", score: 1 },
         { value: "sometimes", label: "Ogni tanto, quando esce qualcosa di grosso", score: 3 },
         { value: "often", label: "Spesso: cerco di tenermi aggiornato", score: 4 },
@@ -587,10 +587,10 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       allowUnsure: true,
       levels: [
         { value: 1, label: "Pensavo ci si potesse sempre fidare" },
-        { value: 2, label: "So che puo sbagliare, ma non saprei quando" },
+        { value: 2, label: "So che può sbagliare, ma non saprei quando" },
         { value: 3, label: "Ho un'idea dei casi a rischio" },
         { value: 4, label: "So quasi sempre quando verificare" },
-        { value: 5, label: "So esattamente quando e come verificare" },
+        { value: 5, label: "So esattamente quando è come verificare" },
       ],
     },
     {
@@ -612,12 +612,12 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         {
           value: "predict",
           label:
-            "Scrive parola per parola la continuazione piu probabile, in base a tutto cio che ha 'letto' durante l'addestramento",
+            "Scrive parola per parola la continuazione più probabile, in base a tutto ciò che ha 'letto' durante l'addestramento",
           score: 5,
         },
         {
           value: "archive",
-          label: "Pesca da un archivio di risposte gia scritte da persone",
+          label: "Pesca da un archivio di risposte già scritte da persone",
           score: 0,
         },
         {
@@ -639,7 +639,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       options: [
         {
           value: "trust",
-          label: "La uso direttamente: se lo dice l'AI sara giusto",
+          label: "La uso direttamente: se lo dice l'AI sarà giusto",
           score: 0,
         },
         {
@@ -649,7 +649,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         },
         {
           value: "ask-ai",
-          label: "Chiedo all'AI se e sicura della risposta",
+          label: "Chiedo all'AI se è sicura della risposta",
           score: 1,
         },
         {
@@ -697,10 +697,10 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       allowUnsure: true,
       levels: [
         { value: 1, label: "Non saprei da dove cominciare" },
-        { value: 2, label: "Provo, ma spesso non ottengo cio che voglio" },
+        { value: 2, label: "Provo, ma spesso non ottengo ciò che voglio" },
         { value: 3, label: "Me la cavo sulle cose semplici" },
-        { value: 4, label: "Ottengo quasi sempre cio che mi serve" },
-        { value: 5, label: "Ottengo cio che serve e aiuto anche i colleghi" },
+        { value: 4, label: "Ottengo quasi sempre ciò che mi serve" },
+        { value: 5, label: "Ottengo ciò che serve e aiuto anche i colleghi" },
       ],
     },
     {
@@ -748,7 +748,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "adoption",
       sectionId: "adoption-usage",
       label:
-        "Se usi gia l'AI per lavoro: per cosa la usi? Racconta uno o due esempi concreti.",
+        "Se usi già l'AI per lavoro: per cosa la usi? Racconta uno o due esempi concreti.",
       description:
         "Es. 'riassumo i verbali delle riunioni', 'preparo la prima bozza delle email ai clienti', 'traduco documenti'. Se non la usi, lascia vuoto.",
       answerType: "text",
@@ -771,7 +771,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         { value: 2, label: "Sono scettico: non mi convince" },
         { value: 3, label: "Neutrale: dipende da come la si usa" },
         { value: 4, label: "Positivo: sono incuriosito" },
-        { value: 5, label: "Entusiasta: non vedo l'ora di usarla di piu" },
+        { value: 5, label: "Entusiasta: non vedo l'ora di usarla di più" },
       ],
     },
     {
@@ -779,9 +779,9 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "adoption",
       sectionId: "adoption-attitude",
       label:
-        "Quanto pensi che l'AI possa aiutarti a lavorare meglio (non solo piu in fretta)?",
+        "Quanto pensi che l'AI possa aiutarti a lavorare meglio (non solo più in fretta)?",
       description:
-        "Es. meno lavoro noioso, meno errori, piu tempo per le cose che richiedono testa.",
+        "Es. meno lavoro noioso, meno errori, più tempo per le cose che richiedono testa.",
       answerType: "scale",
       required: true,
       min: 0,
@@ -792,7 +792,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         { value: 1, label: "Per il mio lavoro non serve" },
         { value: 2, label: "Aiuterebbe poco" },
         { value: 3, label: "Qualcosa migliorerebbe" },
-        { value: 4, label: "Migliorerebbe parecchie attivita" },
+        { value: 4, label: "Migliorerebbe parecchie attività" },
         { value: 5, label: "Cambierebbe davvero le mie giornate" },
       ],
     },
@@ -801,7 +801,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "adoption",
       sectionId: "adoption-attitude",
       label:
-        "La formazione sull'AI che hai ricevuto finora e stata utile per il tuo lavoro?",
+        "La formazione sull'AI che hai ricevuto finora è stata utile per il tuo lavoro?",
       answerType: "scale",
       required: true,
       min: 0,
@@ -821,9 +821,9 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "adoption",
       sectionId: "adoption-attitude",
       label:
-        "Cosa ti frena di piu, oggi, dall'usare l'AI (o dall'usarla di piu)?",
+        "Cosa ti frena di più, oggi, dall'usare l'AI (o dall'usarla di più)?",
       description:
-        "Es. non so da dove partire, non ho tempo di imparare, non mi fido dei risultati, non so se e permesso...",
+        "Es. non so da dove partire, non ho tempo di imparare, non mi fido dei risultati, non so se è permesso...",
       answerType: "text",
       required: false,
     },
@@ -832,9 +832,9 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "adoption",
       sectionId: "adoption-attitude",
       label:
-        "C'e un compito del tuo lavoro di tutti i giorni in cui vorresti l'aiuto dell'AI? Descrivilo.",
+        "C'è un compito del tuo lavoro di tutti i giorni in cui vorresti l'aiuto dell'AI? Descrivilo.",
       description:
-        "Non serve sapere se si puo fare: raccontaci il problema. Es. 'vorrei che mi preparasse il report settimanale' o 'vorrei smettere di ricopiare gli ordini a mano'.",
+        "Non serve sapere se si può fare: raccontaci il problema. Es. 'vorrei che mi preparasse il report settimanale' o 'vorrei smettere di ricopiare gli ordini a mano'.",
       answerType: "text",
       required: false,
     },
@@ -844,9 +844,9 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "use_cases",
       sectionId: "use-cases-ideas",
       label:
-        "Sapresti indicare un'attivita del tuo lavoro che l'AI potrebbe fare, o aiutarti a fare?",
+        "Sapresti indicare un'attività del tuo lavoro che l'AI potrebbe fare, o aiutarti a fare?",
       description:
-        "In genere l'AI aiuta dove il lavoro e ripetitivo, ha regole chiare e usa informazioni gia scritte da qualche parte.",
+        "In genere l'AI aiuta dove il lavoro e ripetitivo, ha regole chiare e usa informazioni già scritte da qualche parte.",
       answerType: "scale",
       required: true,
       min: 0,
@@ -866,7 +866,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "use_cases",
       sectionId: "use-cases-ideas",
       label:
-        "Nel tuo team avete gia provato l'AI su un caso concreto, anche piccolo?",
+        "Nel tuo team avete già provato l'AI su un caso concreto, anche piccolo?",
       description:
         "Es. un esperimento per rispondere prima ai clienti, riassumere documenti, preparare bozze.",
       answerType: "scale",
@@ -880,7 +880,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         { value: 2, label: "Se ne e parlato, ma nulla di fatto" },
         { value: 3, label: "Un piccolo esperimento" },
         { value: 4, label: "Qualche esperimento, con risultati" },
-        { value: 5, label: "Piu esperimenti gia entrati nel lavoro quotidiano" },
+        { value: 5, label: "Piu esperimenti già entrati nel lavoro quotidiano" },
       ],
     },
     {
@@ -897,8 +897,8 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       levels: [
         { value: 1, label: "Non saprei a chi dirla" },
         { value: 2, label: "La direi al mio capo, poi chissa" },
-        { value: 3, label: "C'e un canale, ma non so come funziona" },
-        { value: 4, label: "C'e un canale chiaro" },
+        { value: 3, label: "C'è un canale, ma non so come funziona" },
+        { value: 4, label: "C'è un canale chiaro" },
         { value: 5, label: "Canale chiaro e le idee ricevono risposta" },
       ],
     },
@@ -909,7 +909,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       label:
         "Se domani potessi affidare un compito all'AI, quale sceglieresti? Perche?",
       description:
-        "Vale tutto: dal piu piccolo fastidio quotidiano al processo piu grosso. Le idee migliori partono quasi sempre da qui.",
+        "Vale tutto: dal più piccolo fastidio quotidiano al processo più grosso. Le idee migliori partono quasi sempre da qui.",
       answerType: "text",
       required: false,
     },
