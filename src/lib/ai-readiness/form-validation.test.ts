@@ -94,7 +94,7 @@ test("l'errore promette «Non so» solo dove l'opzione esiste davvero", () => {
   const errors = validateSurveyPayload({
     template,
     anonymousMode: true,
-    payload: { answers: {}, consents: { privacyAccepted: true }, useCase: {} },
+    payload: { answers: {}, consents: { privacyAccepted: true, benchmarkConsent: false, marketingConsent: false }, useCase: {} },
   });
   assert.match(errors["question__con-nonso"], /Non so/);
   assert.doesNotMatch(errors["question__senza-nonso"], /Non so/);
@@ -109,7 +109,7 @@ test("le 4 domande a scelta singola obbligatorie della survey non promettono pi�
   const errors = validateSurveyPayload({
     template: everyone,
     anonymousMode: true,
-    payload: { answers: {}, consents: { privacyAccepted: true }, useCase: {} },
+    payload: { answers: {}, consents: { privacyAccepted: true, benchmarkConsent: false, marketingConsent: false }, useCase: {} },
   });
   for (const q of senzaNonSo) {
     assert.doesNotMatch(
