@@ -87,8 +87,10 @@ export default async function OpenSurveyLandingPage({
           </p>
           <ul className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
             <li className="rounded-2xl border bg-background/60 p-3">
-              ✍️ {scored} domande con risposte gia&apos; pronte
-              {openQuestions > 0 ? ` + ${openQuestions} aperte, facoltative` : ""}
+              {/* Stringa unica: il JSX multi-riga mangiava lo spazio dopo il numero. */}
+              {`✍️ ${scored} domande con risposte già pronte${
+                openQuestions > 0 ? ` + ${openQuestions} aperte, facoltative` : ""
+              }`}
             </li>
             <li className="rounded-2xl border bg-background/60 p-3">💾 Salvataggio automatico, riprendi quando vuoi</li>
             <li className="rounded-2xl border bg-background/60 p-3">🔒 {named ? "Risposte nominative, risultati aggregati" : "Risposte pseudonime e aggregate"}</li>
