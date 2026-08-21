@@ -58,6 +58,7 @@ export default async function OpenSurveyLandingPage({
     questionScopeFromUnknown(found.assessment.scoringConfig?.openLinkQuestionScope)
   );
   const scored = everyoneDef.questions.filter((q) => q.answerType !== "text").length;
+  const openQuestions = everyoneDef.questions.length - scored;
   const minutes = Math.max(2, Math.round(scored * 0.5));
 
   return (
@@ -85,7 +86,10 @@ export default async function OpenSurveyLandingPage({
             )}
           </p>
           <ul className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
-            <li className="rounded-2xl border bg-background/60 p-3">✍️ {scored} domande, scala 0–5</li>
+            <li className="rounded-2xl border bg-background/60 p-3">
+              ✍️ {scored} domande con risposte gia&apos; pronte
+              {openQuestions > 0 ? ` + ${openQuestions} aperte, facoltative` : ""}
+            </li>
             <li className="rounded-2xl border bg-background/60 p-3">💾 Salvataggio automatico, riprendi quando vuoi</li>
             <li className="rounded-2xl border bg-background/60 p-3">🔒 {named ? "Risposte nominative, risultati aggregati" : "Risposte pseudonime e aggregate"}</li>
           </ul>

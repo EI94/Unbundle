@@ -313,6 +313,16 @@ export function RespondentSurveyForm({
   const completed = state.data?.completed === true;
   const sections = template.sections;
 
+  // Il blocco "use case intake" e' un modulo a 13 campi con le sole
+  // placeholder come etichette: su mobile spariscono appena si scrive. Quando
+  // il questionario chiede gia' le idee con domande aperte etichettate (e' il
+  // caso della survey organizzazione) e' pura duplicazione: lo nascondiamo.
+  const alreadyAsksForIdeas = template.questions.some(
+    (question) =>
+      question.answerType === "text" &&
+      (question.pillarId === "use_cases" || question.id === "ad-future-usecase")
+  );
+
   const formRef = useRef<HTMLFormElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef(false);
@@ -684,8 +694,8 @@ export function RespondentSurveyForm({
         >
           <div className="font-medium">Mancano alcune risposte.</div>
           <p className="mt-1 text-xs leading-5">
-            Le abbiamo evidenziate nel form. Puoi scegliere anche “Non so / non
-            applicabile” quando la domanda non è nel tuo perimetro.
+            Le abbiamo evidenziate nel form. Dove disponibile puoi scegliere
+            anche “Non so / non applicabile”.
           </p>
         </div>
       )}
@@ -725,6 +735,7 @@ export function RespondentSurveyForm({
         </section>
       ))}
 
+      {!alreadyAsksForIdeas && (
       <section className="rounded-[32px] border bg-card p-6">
         <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
           Use case intake opzionale
@@ -804,6 +815,7 @@ export function RespondentSurveyForm({
           />
         </div>
       </section>
+      )}
 
       {state.message && !completed && (
         <p className={`text-sm ${state.ok ? "text-emerald-600" : "text-destructive"}`}>

@@ -21,7 +21,12 @@ export function validateSurveyPayload(params: {
   for (const question of params.template.questions) {
     if (!question.required) continue;
     if (params.payload.answers[question.id] == null) {
-      errors[`question__${question.id}`] = "Seleziona una risposta o Non so.";
+      // Solo le domande con allowUnsure mostrano davvero l'opzione «Non so»:
+      // promettergliela altrove lascia il rispondente a cercare un pulsante
+      // che non esiste.
+      errors[`question__${question.id}`] = question.allowUnsure
+        ? "Seleziona una risposta oppure «Non so»."
+        : "Seleziona una risposta.";
     }
   }
   return errors;

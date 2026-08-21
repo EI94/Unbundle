@@ -73,3 +73,61 @@ test("open start validation: niente tooltip nativo, errori espliciti", () => {
     }
   );
 });
+
+test("l'errore promette «Non so» solo dove l'opzione esiste davvero", () => {
+  const base = {
+    id: "q",
+    pillarId: "adoption" as const,
+    sectionId: "s",
+    label: "L",
+    required: true,
+  };
+  const template = {
+    pillars: [],
+    sections: [],
+    scoringSchema: AI_READINESS_SYSTEM_TEMPLATE.scoringSchema,
+    questions: [
+      { ...base, id: "con-nonso", answerType: "scale" as const, allowUnsure: true },
+      { ...base, id: "senza-nonso", answerType: "single_choice" as const },
+    ],
+  };
+  const errors = validateSurveyPayload({
+    template,
+    anonymousMode: true,
+    payload: { answers: {}, consents: { privacyAccepted: true }, useCase: {} },
+  });
+  assert.match(errors["question__con-nonso"], /Non so/);
+  assert.doesNotMatch(errors["question__senza-nonso"], /Non so/);
+});
+
+test("le 4 domande a scelta singola obbligatorie della survey non promettono più un'opzione assente", () => {
+  const everyone = filterTemplateForTrack(AI_READINESS_SYSTEM_TEMPLATE, "everyone");
+  const senzaNonSo = everyone.questions.filter(
+    (q) => q.required && q.answerType === "single_choice" && !q.allowUnsure
+  );
+  assert.ok(senzaNonSo.length > 0, "atteso almeno un single_choice obbligatorio");
+  const errors = validateSurveyPayload({
+    template: everyone,
+    anonymousMode: true,
+    payload: { answers: {}, consents: { privacyAccepted: true }, useCase: {} },
+  });
+  for (const q of senzaNonSo) {
+    assert.doesNotMatch(
+      errors[`question__${q.id}`] ?? "",
+      /Non so/,
+      `${q.id} promette «Non so» ma non lo mostra`
+    );
+  }
+});
+
+test("la survey organizzazione chiede già le idee: il blocco use case a 13 campi è ridondante", () => {
+  // Stessa condizione usata da RespondentSurveyForm per nascondere il blocco.
+  const asksForIdeas = (t: { questions: Array<{ answerType: string; pillarId: string; id: string }> }) =>
+    t.questions.some(
+      (q) =>
+        q.answerType === "text" &&
+        (q.pillarId === "use_cases" || q.id === "ad-future-usecase")
+    );
+  assert.equal(asksForIdeas(filterTemplateForTrack(AI_READINESS_SYSTEM_TEMPLATE, "everyone")), true);
+  assert.equal(asksForIdeas(filterTemplateForTrack(AI_READINESS_SYSTEM_TEMPLATE, "internal")), false);
+});
