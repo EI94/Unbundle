@@ -676,7 +676,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         { value: "daily", label: "Ogni giorno", score: 4 },
         {
           value: "integrated",
-          label: "Piu volte al giorno: fa parte del mio modo di lavorare",
+          label: "Più volte al giorno: fa parte del mio modo di lavorare",
           score: 5,
         },
       ],
@@ -857,7 +857,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         { value: 1, label: "Non saprei proprio" },
         { value: 2, label: "Forse una, ma molto vaga" },
         { value: 3, label: "Un'idea concreta ce l'ho" },
-        { value: 4, label: "Piu di un'idea concreta" },
+        { value: 4, label: "Più di un'idea concreta" },
         { value: 5, label: "Ne ho diverse e saprei da dove partire" },
       ],
     },
@@ -880,7 +880,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
         { value: 2, label: "Se ne e parlato, ma nulla di fatto" },
         { value: 3, label: "Un piccolo esperimento" },
         { value: 4, label: "Qualche esperimento, con risultati" },
-        { value: 5, label: "Piu esperimenti già entrati nel lavoro quotidiano" },
+        { value: 5, label: "Più esperimenti già entrati nel lavoro quotidiano" },
       ],
     },
     {
@@ -907,7 +907,7 @@ export const AI_READINESS_SYSTEM_TEMPLATE: AiReadinessTemplateDefinition = {
       pillarId: "use_cases",
       sectionId: "use-cases-ideas",
       label:
-        "Se domani potessi affidare un compito all'AI, quale sceglieresti? Perche?",
+        "Se domani potessi affidare un compito all'AI, quale sceglieresti? Perché?",
       description:
         "Vale tutto: dal più piccolo fastidio quotidiano al processo più grosso. Le idee migliori partono quasi sempre da qui.",
       answerType: "text",
