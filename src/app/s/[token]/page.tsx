@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { hashInviteToken } from "@/lib/ai-readiness/token";
+import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import { getAssessmentByOpenLinkTokenHash } from "@/lib/db/queries/ai-readiness";
 import {
   filterTemplateForQuestionScope,
@@ -76,7 +77,7 @@ export default async function OpenSurveyLandingPage({
   const brand = found.assessment.brandConfig ?? {};
   const privacy = found.assessment.privacyConfig ?? {};
   const named = found.assessment.anonymousMode === false;
-  const supportEmail = configString(privacy, "supportEmail");
+  const support = parseSupportContacts(configString(privacy, "supportEmail"));
   const everyoneDef = filterTemplateForQuestionScope(
     filterTemplateForTrack(found.templateDefinition, "everyone"),
     questionScopeFromUnknown(found.assessment.scoringConfig?.openLinkQuestionScope)
@@ -119,11 +120,11 @@ export default async function OpenSurveyLandingPage({
             <li className="rounded-2xl border bg-background/60 p-3">💾 Salvataggio automatico, riprendi quando vuoi</li>
             <li className="rounded-2xl border bg-background/60 p-3">🔒 {named ? "Risposte nominative, risultati aggregati" : "Risposte pseudonime e aggregate"}</li>
           </ul>
-          {supportEmail && (
+          {support && (
             <p className="mt-4 text-xs text-muted-foreground">
               Domande o problemi? Scrivi a{" "}
-              <a className="font-medium text-foreground underline" href={`mailto:${supportEmail}`}>
-                {supportEmail}
+              <a className="font-medium text-foreground underline" href={support.mailto}>
+                {support.label}
               </a>
             </p>
           )}

@@ -131,3 +131,16 @@ test("la survey organizzazione chiede già le idee: il blocco use case a 13 camp
   assert.equal(asksForIdeas(filterTemplateForTrack(AI_READINESS_SYSTEM_TEMPLATE, "everyone")), true);
   assert.equal(asksForIdeas(filterTemplateForTrack(AI_READINESS_SYSTEM_TEMPLATE, "internal")), false);
 });
+
+test("supportEmail con più indirizzi: mailto valido e resa leggibile", async () => {
+  const { parseSupportContacts } = await import("./support-contacts.ts");
+  const due = parseSupportContacts("d.berdini@cqop.it, pierpaolo@lateralspace.ai");
+  assert.equal(due?.mailto, "mailto:d.berdini@cqop.it,pierpaolo@lateralspace.ai");
+  assert.equal(due?.label, "d.berdini@cqop.it o pierpaolo@lateralspace.ai");
+  const uno = parseSupportContacts("solo@uno.it");
+  assert.equal(uno?.mailto, "mailto:solo@uno.it");
+  assert.equal(uno?.label, "solo@uno.it");
+  assert.equal(parseSupportContacts(""), null);
+  assert.equal(parseSupportContacts(null), null);
+  assert.equal(parseSupportContacts("non-una-email"), null);
+});

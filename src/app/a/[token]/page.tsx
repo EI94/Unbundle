@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { hashInviteToken } from "@/lib/ai-readiness/token";
+import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import {
   getRespondentByInviteTokenHash,
   getResponseForRespondent,
@@ -63,7 +64,7 @@ export default async function AiReadinessRespondentPage({
   const privacy = found.assessment.privacyConfig ?? {};
   const displayName = configString(brand, "displayName", "Unbundle");
   const surveyName = found.assessment.name;
-  const supportEmail = configString(privacy, "supportEmail");
+  const support = parseSupportContacts(configString(privacy, "supportEmail"));
   const scoredQuestions = found.templateDefinition.questions.filter(
     (question) => question.answerType !== "text"
   ).length;
@@ -84,7 +85,7 @@ export default async function AiReadinessRespondentPage({
             <CardContent className="text-sm text-muted-foreground">
               Le tue risposte sono già state inviate una volta e non possono
               essere modificate: così ogni persona conta una sola volta.
-              Se pensi ci sia un errore{supportEmail ? ` scrivi a ${supportEmail}` : " contatta il referente interno"}.
+              Se pensi ci sia un errore{support ? ` scrivi a ${support.label}` : " contatta il referente interno"}.
               <div className="mt-4">
                 <Link
                   className="font-medium text-foreground underline"
@@ -162,11 +163,11 @@ export default async function AiReadinessRespondentPage({
                 </div>
               ))}
             </div>
-            {supportEmail && (
+            {support && (
               <p className="mt-4 text-xs text-muted-foreground">
                 Domande? Scrivi a{" "}
-                <a className="font-medium text-foreground underline" href={`mailto:${supportEmail}`}>
-                  {supportEmail}
+                <a className="font-medium text-foreground underline" href={support.mailto}>
+                  {support.label}
                 </a>
               </p>
             )}
@@ -274,9 +275,9 @@ export default async function AiReadinessRespondentPage({
               >
                 Gestisci privacy, export dati o revoca benchmark
               </Link>
-              {supportEmail && (
-                <a className="font-medium text-foreground underline" href={`mailto:${supportEmail}`}>
-                  Serve aiuto? Scrivi a {supportEmail}
+              {support && (
+                <a className="font-medium text-foreground underline" href={support.mailto}>
+                  Serve aiuto? Scrivi a {support.label}
                 </a>
               )}
             </div>
