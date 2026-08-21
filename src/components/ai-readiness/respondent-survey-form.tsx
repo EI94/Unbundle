@@ -19,6 +19,7 @@ import {
   type AiReadinessDraftPayload,
 } from "@/lib/ai-readiness/draft";
 import { validateSurveyPayload } from "@/lib/ai-readiness/form-validation";
+import { parseSupportContacts } from "@/lib/ai-readiness/support-contacts";
 import type {
   AiReadinessQuestion,
   AiReadinessTemplateDefinition,
@@ -121,6 +122,11 @@ function applyPayloadToForm(form: HTMLFormElement, payload: AiReadinessDraftPayl
       ?.querySelector<HTMLElement>("[data-slot=checkbox]");
     (visual ?? input).click();
   }
+}
+
+/** Evita il doppio punto quando il valore finisce gia' con un punto (S.p.A.). */
+function endWithStop(value: string) {
+  return /[.!?]$/.test(value.trim()) ? value.trim() : `${value.trim()}.`;
 }
 
 function configString(config: Record<string, unknown> | null, key: string, fallback = "") {
@@ -320,6 +326,9 @@ export function RespondentSurveyForm({
   // Benchmark e comunicazioni sono disattivati in configurazione per questo
   // assessment: chiederli comunque significa raccogliere consensi che nessuno
   // potra' onorare.
+  const support = parseSupportContacts(
+    configString(privacyConfig, "supportEmail")
+  );
   const benchmarkEnabled = privacyConfig?.allowBenchmarking === true;
   const marketingEnabled = privacyConfig?.marketingConsentEnabled === true;
 
@@ -637,19 +646,30 @@ export function RespondentSurveyForm({
         <h2 className="mt-3 text-xl font-semibold">Prima di iniziare</h2>
         <div className="mt-3 grid gap-2 text-sm leading-6 text-muted-foreground md:grid-cols-2">
           <p>
-            Titolare: {configString(privacyConfig, "controllerName", "azienda cliente")}.
-            Processore: {configString(privacyConfig, "processorName", "Unbundle / Lateral Space")}.
+            {`Titolare: ${endWithStop(
+              configString(privacyConfig, "controllerName", "azienda cliente")
+            )} Processore: ${endWithStop(
+              configString(privacyConfig, "processorName", "Unbundle / Lateral Space")
+            )}`}
           </p>
           <p>
-            Finalita: misurare la readiness AI in forma aggregata. Nessun manager
+            Finalità: misurare la readiness AI in forma aggregata. Nessun manager
             vede risposte individuali salvo configurazione privacy esplicita.
           </p>
           <p>
-            Base giuridica: {configString(privacyConfig, "legalBasis", "configurata dall'azienda")}.
-            Retention: {String(privacyConfig?.dataRetentionDays ?? 365)} giorni.
+            {`Base giuridica: ${endWithStop(
+              configString(privacyConfig, "legalBasis", "configurata dall'azienda")
+            )} Retention: ${String(privacyConfig?.dataRetentionDays ?? 365)} giorni.`}
           </p>
           <p>
-            Supporto: {configString(privacyConfig, "supportEmail", "contatta il referente interno")}.
+            Supporto:{" "}
+            {support ? (
+              <a className="underline" href={support.mailto}>
+                {support.label}
+              </a>
+            ) : (
+              "contatta il referente interno"
+            )}
           </p>
         </div>
         {configString(privacyConfig, "privacyNoticeUrl") && (
