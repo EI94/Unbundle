@@ -40,7 +40,7 @@ function InvalidInvite() {
             <CardTitle>Link non valido</CardTitle>
           </CardHeader>
           <CardContent className="text-sm leading-6 text-muted-foreground">
-            Il link dell&apos;assessment non e valido, e scaduto o e stato
+            Il link dell&apos;assessment non è valido, è scaduto o è stato
             revocato. Chiedi al referente interno di generare un nuovo invito.
           </CardContent>
         </Card>
@@ -79,11 +79,11 @@ export default async function AiReadinessRespondentPage({
           </Link>
           <Card className="mt-8 rounded-[32px]">
             <CardHeader>
-              <CardTitle>Assessment gia completato</CardTitle>
+              <CardTitle>Assessment già completato</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Le tue risposte sono gia state inviate una volta e non possono
-              essere modificate: cosi ogni persona conta una sola volta.
+              Le tue risposte sono già state inviate una volta e non possono
+              essere modificate: così ogni persona conta una sola volta.
               Se pensi ci sia un errore{supportEmail ? ` scrivi a ${supportEmail}` : " contatta il referente interno"}.
               <div className="mt-4">
                 <Link
@@ -112,8 +112,8 @@ export default async function AiReadinessRespondentPage({
               <CardTitle>Assessment non aperto</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
-              Il link e valido, ma il team non ha ancora aperto la raccolta o
-              l&apos;ha gia chiusa. Contatta il referente interno.
+              Il link è valido, ma il team non ha ancora aperto la raccolta o
+              l&apos;ha già chiusa. Contatta il referente interno.
             </CardContent>
           </Card>
         </div>
@@ -149,9 +149,9 @@ export default async function AiReadinessRespondentPage({
             </p>
             <div className="mt-5 grid gap-2 sm:grid-cols-3">
               {[
-                { n: "1", t: "Il bisogno", d: "Qual e il problema e perche conta." },
-                { n: "2", t: "Com'e oggi", d: "Processo, persone, strumenti e dati, cosi come sono adesso." },
-                { n: "3", t: "Come cambierebbe", d: "La tua ipotesi su come l'AI puo aiutare." },
+                { n: "1", t: "Il bisogno", d: "Qual e il problema e perché conta." },
+                { n: "2", t: "Com'è oggi", d: "Processo, persone, strumenti e dati, cosi come sono adesso." },
+                { n: "3", t: "Come cambierebbe", d: "La tua ipotesi su come l'AI può aiutare." },
               ].map((step) => (
                 <div key={step.n} className="rounded-2xl border bg-background/60 p-3">
                   <div className="flex items-center gap-2 text-sm font-medium">
@@ -234,7 +234,7 @@ export default async function AiReadinessRespondentPage({
             {configString(
               brand,
               "introCopy",
-              "Questa diagnosi misura la readiness AI dell'organizzazione. Non e un esame: serve a capire dove aiutare meglio team, processi e tecnologia."
+              "Questa diagnosi misura la readiness AI dell'organizzazione. Non è un esame: serve a capire dove aiutare meglio team, processi e tecnologia."
             )}
           </p>
           <div className="mt-5 grid gap-2 sm:grid-cols-3" data-testid="survey-howto">
@@ -281,6 +281,11 @@ export default async function AiReadinessRespondentPage({
               )}
             </div>
           </div>
+          <p className="mt-4 rounded-2xl border bg-background/60 p-3 text-xs leading-5 text-muted-foreground">
+            🔗 Questo link è personale e riporta alle <em>tue</em> risposte: non
+            inoltrarlo ai colleghi. Per invitarli, condividi il link generale
+            della survey.
+          </p>
         </header>
 
         <RespondentSurveyForm

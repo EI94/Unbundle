@@ -317,6 +317,12 @@ export function RespondentSurveyForm({
   // placeholder come etichette: su mobile spariscono appena si scrive. Quando
   // il questionario chiede gia' le idee con domande aperte etichettate (e' il
   // caso della survey organizzazione) e' pura duplicazione: lo nascondiamo.
+  // Benchmark e comunicazioni sono disattivati in configurazione per questo
+  // assessment: chiederli comunque significa raccogliere consensi che nessuno
+  // potra' onorare.
+  const benchmarkEnabled = privacyConfig?.allowBenchmarking === true;
+  const marketingEnabled = privacyConfig?.marketingConsentEnabled === true;
+
   const alreadyAsksForIdeas = template.questions.some(
     (question) =>
       question.answerType === "text" &&
@@ -473,7 +479,7 @@ export function RespondentSurveyForm({
           {configString(
             brandConfig,
             "completionCopy",
-            "Grazie. Le risposte saranno aggregate e usate per costruire una roadmap AI piu concreta e sicura."
+            "Grazie. Le risposte saranno aggregate e usate per costruire una roadmap AI più concreta e sicura."
           )}
         </p>
       </div>
@@ -664,20 +670,24 @@ export function RespondentSurveyForm({
             />
             <span>Ho letto l&apos;informativa e accetto di partecipare all&apos;assessment.</span>
           </label>
-          <label className="flex items-start gap-3 rounded-2xl border bg-background/60 p-3 text-sm">
-            <Checkbox
-              name="benchmarkConsent"
-              defaultChecked={initialDraft?.consents.benchmarkConsent === true}
-            />
-            <span>Acconsento all&apos;uso aggregato e anonimo per benchmark futuri.</span>
-          </label>
-          <label className="flex items-start gap-3 rounded-2xl border bg-background/60 p-3 text-sm">
-            <Checkbox
-              name="marketingConsent"
-              defaultChecked={initialDraft?.consents.marketingConsent === true}
-            />
-            <span>Acconsento a ricevere comunicazioni opzionali sul percorso AI.</span>
-          </label>
+          {benchmarkEnabled && (
+            <label className="flex items-start gap-3 rounded-2xl border bg-background/60 p-3 text-sm">
+              <Checkbox
+                name="benchmarkConsent"
+                defaultChecked={initialDraft?.consents.benchmarkConsent === true}
+              />
+              <span>Acconsento all&apos;uso aggregato e anonimo per benchmark futuri.</span>
+            </label>
+          )}
+          {marketingEnabled && (
+            <label className="flex items-start gap-3 rounded-2xl border bg-background/60 p-3 text-sm">
+              <Checkbox
+                name="marketingConsent"
+                defaultChecked={initialDraft?.consents.marketingConsent === true}
+              />
+              <span>Acconsento a ricevere comunicazioni opzionali sul percorso AI.</span>
+            </label>
+          )}
           {(localErrors.privacyAccepted || state.fieldErrors?.privacyAccepted) && (
             <p className="text-xs text-destructive" role="alert">
               {localErrors.privacyAccepted || state.fieldErrors?.privacyAccepted}

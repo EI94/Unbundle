@@ -149,7 +149,7 @@ export function OpenSurveyStartForm({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="email">Email (opzionale)</Label>
-          <Input id="email" name="email" type="email" placeholder="Per ritrovare il tuo link se cambi dispositivo" />
+          <Input id="email" name="email" type="email" placeholder="Se vuoi che ti ricontattiamo sui risultati" />
         </div>
         {!state.ok && state.message && (
           <p className="text-sm text-destructive" role="alert">{state.message}</p>

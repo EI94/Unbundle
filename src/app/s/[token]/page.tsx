@@ -14,10 +14,34 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "AI Readiness Assessment",
-  robots: { index: false, follow: false, nocache: true },
-};
+/**
+ * Anteprima del link quando viene incollato in WhatsApp, Teams o in una mail:
+ * senza questo il primo contatto del dipendente e' una card di marketing del
+ * fornitore. Resta noindex: e' solo la scheda condivisa nelle chat.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}): Promise<Metadata> {
+  const { token } = await params;
+  const found = await getAssessmentByOpenLinkTokenHash(hashInviteToken(token));
+  const brand = found?.assessment.brandConfig as Record<string, unknown> | null;
+  const company =
+    typeof brand?.displayName === "string" ? brand.displayName : null;
+  const title = company
+    ? `Survey AI Readiness — ${company}`
+    : "Survey AI Readiness";
+  const description =
+    "Bastano 10 minuti: raccontaci come lavori oggi e dove l'AI potrebbe darti una mano. Nessuna risposta e' giusta o sbagliata.";
+  return {
+    title,
+    description,
+    robots: { index: false, follow: false, nocache: true },
+    openGraph: { title, description, type: "website" },
+    twitter: { card: "summary", title, description },
+  };
+}
 
 function configString(config: Record<string, unknown> | null, key: string, fallback = "") {
   const value = config?.[key];
