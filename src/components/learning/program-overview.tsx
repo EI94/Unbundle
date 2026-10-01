@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getLearningProgram } from "@/lib/learning/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LearningShell, localDate, outcomeLabel } from "./learning-shell";
+import { LearningExportButton } from "./export-button";
 export async function ProgramOverview({ workspaceId, programId, moduleId }: { workspaceId: string; programId: string; moduleId?: string }) {
   const program = await getLearningProgram(workspaceId, programId);
   const base = `/dashboard/${workspaceId}/learning/${programId}`;
@@ -9,7 +10,9 @@ export async function ProgramOverview({ workspaceId, programId, moduleId }: { wo
     <nav aria-label="Percorso formativo" className="flex flex-wrap gap-4 text-sm underline">
       <Link href={base}>Moduli</Link><Link href={`${base}/progress`}>I miei progressi</Link><Link href={`${base}/ideas`}>La mia idea</Link>
       {program.canReview && <Link href={`${base}/manage`}>Vista formatori</Link>}{program.canAggregate && <Link href={`${base}/live`}>Vista di gruppo</Link>}
+      {program.canManage && <Link href={`${base}/admin`}>Gestisci corso</Link>}
     </nav>
+    {program.canExport && !program.canReview && <LearningExportButton workspaceId={workspaceId} programId={programId} />}
     <Card><CardHeader><CardTitle>Come useremo le tue risposte</CardTitle></CardHeader><CardContent className="space-y-3 text-sm">
       <p>Gli esercizi sono associati al tuo account. Puoi vedere i tuoi risultati; le prove individuali sono accessibili ai formatori con autorizzazione esplicita. La leadership vede solo gli aggregati autorizzati.</p>
       <p className="whitespace-pre-wrap">{program.visibilityPolicy}</p>

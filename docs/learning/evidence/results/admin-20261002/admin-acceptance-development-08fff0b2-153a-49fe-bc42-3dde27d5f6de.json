@@ -1,0 +1,210 @@
+{
+  "runId": "08fff0b2-153a-49fe-bc42-3dde27d5f6de",
+  "runtime": "development",
+  "createdAt": "2026-10-01T22:42:33.050Z",
+  "source": "working tree; no production or real accounts",
+  "workspaces": {
+    "a": {
+      "organizationId": "b150da2a-07de-43ad-8a81-e0fb8467703c",
+      "workspaceId": "9e03d775-d80b-4460-ad90-4f9e09fb4c68",
+      "programId": "a630c615-d373-48d4-9348-382159c1dc72"
+    },
+    "b": {
+      "organizationId": "8cbab3fc-edf3-4012-a680-59581c1f81d0",
+      "workspaceId": "71f20dd0-0569-4f5d-bf47-ed88c2b13c69",
+      "programId": "51f9e024-eded-4d52-b205-ea95da6aecd0"
+    }
+  },
+  "totals": {
+    "pass": 30,
+    "fail": 1
+  },
+  "checks": [
+    {
+      "id": "ADMIN-01",
+      "title": "Anonymous admin request is recoverable JSON, not redirect or cache",
+      "status": "PASS",
+      "elapsedMs": 391
+    },
+    {
+      "id": "ADMIN-02",
+      "title": "Missing/foreign Origin and spoofed forwarded host are rejected",
+      "status": "PASS",
+      "elapsedMs": 64
+    },
+    {
+      "id": "ADMIN-03",
+      "title": "Malformed JSON, unknown operation, extra fields and media fail closed",
+      "status": "PASS",
+      "elapsedMs": 14
+    },
+    {
+      "id": "ADMIN-04",
+      "title": "Upload larger than five MiB is rejected before import",
+      "status": "PASS",
+      "elapsedMs": 19
+    },
+    {
+      "id": "ADMIN-05",
+      "title": "Only effective workspace administrator roles may bootstrap",
+      "status": "PASS",
+      "elapsedMs": 67
+    },
+    {
+      "id": "ADMIN-06",
+      "title": "Organization membership priority prevents workspace-role elevation",
+      "status": "PASS",
+      "elapsedMs": 13
+    },
+    {
+      "id": "ADMIN-07",
+      "title": "Pack inspection returns safe metadata and rejects invalid pack",
+      "status": "PASS",
+      "elapsedMs": 17
+    },
+    {
+      "id": "ADMIN-08",
+      "title": "Import is atomic, disabled, audited and grants management only",
+      "status": "PASS",
+      "elapsedMs": 25
+    },
+    {
+      "id": "ADMIN-09",
+      "title": "Workspace administrator without course grant cannot read or manage imported course",
+      "status": "PASS",
+      "elapsedMs": 22
+    },
+    {
+      "id": "ADMIN-10",
+      "title": "Idempotent import preserves immutable content; changed content requires version",
+      "status": "PASS",
+      "elapsedMs": 38
+    },
+    {
+      "id": "ADMIN-11",
+      "title": "Last active unscoped manager cannot revoke their own grant",
+      "status": "PASS",
+      "elapsedMs": 26
+    },
+    {
+      "id": "ADMIN-12",
+      "title": "Tenant, program and nested object IDs cannot cross workspace boundary",
+      "status": "PASS",
+      "elapsedMs": 90
+    },
+    {
+      "id": "ADMIN-13",
+      "title": "Management capability does not imply individual review or CSV export",
+      "status": "PASS",
+      "elapsedMs": 723
+    },
+    {
+      "id": "ADMIN-14",
+      "title": "Scoped manager sees only cohort operations and cannot change global settings or permissions",
+      "status": "PASS",
+      "elapsedMs": 83
+    },
+    {
+      "id": "ADMIN-15",
+      "title": "Batch enrollment rejects a foreign member without partially enrolling valid members",
+      "status": "PASS",
+      "elapsedMs": 25
+    },
+    {
+      "id": "ADMIN-16",
+      "title": "Valid enrollment batch is atomic and idempotent",
+      "status": "PASS",
+      "elapsedMs": 26
+    },
+    {
+      "id": "ADMIN-17",
+      "title": "Enrollment may move before work but scoped manager cannot cross cohorts",
+      "status": "PASS",
+      "elapsedMs": 29
+    },
+    {
+      "id": "ADMIN-18",
+      "title": "Session changes verify object and cohort; M2/M3 cannot open",
+      "status": "PASS",
+      "elapsedMs": 49
+    },
+    {
+      "id": "ADMIN-19",
+      "title": "Enable permits learner work, which immediately prevents enrollment move",
+      "status": "PASS",
+      "elapsedMs": 42
+    },
+    {
+      "id": "ADMIN-30",
+      "title": "An idea draft alone prevents cohort move without creating an attempt",
+      "status": "PASS",
+      "elapsedMs": 24
+    },
+    {
+      "id": "ADMIN-20",
+      "title": "Enrollment revoke stops learner writes and reactivation preserves draft",
+      "status": "PASS",
+      "elapsedMs": 45
+    },
+    {
+      "id": "ADMIN-21",
+      "title": "Revoked workspace membership immediately removes manager reads and writes",
+      "status": "PASS",
+      "elapsedMs": 12
+    },
+    {
+      "id": "ADMIN-22",
+      "title": "A manager with revoked membership cannot keep final active manager revocation valid",
+      "status": "PASS",
+      "elapsedMs": 14
+    },
+    {
+      "id": "ADMIN-23",
+      "title": "Concurrent self-revocation leaves exactly one active unscoped manager",
+      "status": "PASS",
+      "elapsedMs": 23
+    },
+    {
+      "id": "ADMIN-24",
+      "title": "Explicit review grant revocation removes access without adding other capabilities",
+      "status": "PASS",
+      "elapsedMs": 87
+    },
+    {
+      "id": "ADMIN-31",
+      "title": "Grant targets must be current members and revoke never leaks another cohort",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n\ntrue !== false\n"
+    },
+    {
+      "id": "ADMIN-25",
+      "title": "Program disable/enable/close/reopen preserves draft and controls writes",
+      "status": "PASS",
+      "elapsedMs": 90
+    },
+    {
+      "id": "ADMIN-26",
+      "title": "Session close denies work, open restores same attempt, scheduled is server-timed",
+      "status": "PASS",
+      "elapsedMs": 56
+    },
+    {
+      "id": "ADMIN-27",
+      "title": "Settings update is audited and DTO excludes answers, grading and private content",
+      "status": "PASS",
+      "elapsedMs": 17
+    },
+    {
+      "id": "ADMIN-28",
+      "title": "Purge requires exact confirmation, unscoped manager and elapsed retention",
+      "status": "PASS",
+      "elapsedMs": 40
+    },
+    {
+      "id": "ADMIN-29",
+      "title": "Eligible purge deletes only own responses and retains enrollments, audit, other program",
+      "status": "PASS",
+      "elapsedMs": 35
+    }
+  ]
+}

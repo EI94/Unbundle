@@ -1,0 +1,66 @@
+{
+  "environment": "Static TypeScript transpilation and source audit; not an HTTP/build asset scan",
+  "createdAt": "2026-10-01T22:48:07.295Z",
+  "results": [
+    {
+      "name": "compiled runtime dependency graph excludes private grading/database/auth modules and private key fields",
+      "status": "PASS",
+      "entryCount": 6,
+      "moduleCount": 12
+    },
+    {
+      "name": "admin DAL marked server-only; API responses no-store and unexpected errors generic without logs",
+      "status": "PASS"
+    }
+  ],
+  "sources": [
+    {
+      "path": "src/components/learning/admin-catalog.tsx",
+      "sha256": "d74c6d91f1e7f7c10b44f7dc32fea50b327ead0cc422d6d0fcd74bac085b89c7"
+    },
+    {
+      "path": "src/components/learning/admin-grants.tsx",
+      "sha256": "151904aa645c308ee4f430cf0921453842f78835652737341d52eb25d9a9a515"
+    },
+    {
+      "path": "src/components/learning/admin-participants.tsx",
+      "sha256": "01e3bae93d1d59ef3f943256ce3de2b1183b7af02eccdba3d5ad032ed7e1fe17"
+    },
+    {
+      "path": "src/components/learning/admin-program.tsx",
+      "sha256": "9f85149a762e8d8e4b64b3795910b3e876deb4e25fa1e4833738863c1506d7a6"
+    },
+    {
+      "path": "src/components/learning/admin-shared.tsx",
+      "sha256": "4fc6ce0ac7e3e94a4ffd37c23a96eba186a6b699e7841010c2ec6774938a489a"
+    },
+    {
+      "path": "src/components/ui/button.tsx",
+      "sha256": "f3aef38b4236eba6dc8305c57a73deef526acc480e86b502ef702a4a3faea496"
+    },
+    {
+      "path": "src/components/ui/card.tsx",
+      "sha256": "a41b4d3d618416128d0093af2575048a2de8ef25c0926bcea4f19a24a59de476"
+    },
+    {
+      "path": "src/components/ui/input.tsx",
+      "sha256": "f7d6ecff9a4d631feeaf401c02bb87e26ddb38131c55d15a43b9290747390847"
+    },
+    {
+      "path": "src/components/ui/label.tsx",
+      "sha256": "7f19b8476658d25ff197c84030e58cd7395059d876a54630e025951e474ebdae"
+    },
+    {
+      "path": "src/components/ui/textarea.tsx",
+      "sha256": "58b58d84fc54ba5f4ca46937870c619349fd9eccc4d494250ac7bc73a94e05e9"
+    },
+    {
+      "path": "src/lib/learning/admin-client.ts",
+      "sha256": "283942e2e5230cdec0e231e337e4a7de3c20697824fb3beb246cad3bbc63fc96"
+    },
+    {
+      "path": "src/lib/utils.ts",
+      "sha256": "7c8c3dfc0cdd370d44932828eb067ef771c8fe7996693221d5d4b90af6d54f2d"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-10-01T22:50:47.821Z",
+  "environment": "isolated local optimized build, global Learning flag false",
+  "status": "PASS",
+  "checks": [
+    {
+      "operation": "catalog",
+      "status": "PASS",
+      "httpStatus": 503,
+      "code": "unavailable"
+    },
+    {
+      "operation": "detail",
+      "status": "PASS",
+      "httpStatus": 503,
+      "code": "unavailable"
+    },
+    {
+      "operation": "importPack",
+      "status": "PASS",
+      "httpStatus": 503,
+      "code": "unavailable"
+    }
+  ]
+}

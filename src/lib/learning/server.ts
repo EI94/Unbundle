@@ -81,7 +81,13 @@ export async function getLearningHome(workspaceId: string) {
 }
 export async function hasLearningForWorkspace(workspaceId: string) {
   if (!learningEnabled()) return false;
-  try { return (await getLearningHome(workspaceId)).programs.length > 0; } catch { return false; }
+  try {
+    const userId=await requireWorkspace(workspaceId);
+    const access=await getWorkspaceAccessForUser(userId,workspaceId);
+    if(access && ["exec_sponsor","transformation_lead"].includes(access.role))return true;
+    const [managed]=await db.select({id:learningGrants.id}).from(learningGrants).where(and(eq(learningGrants.workspaceId,workspaceId),eq(learningGrants.userId,userId),eq(learningGrants.capability,"manage"),isNull(learningGrants.revokedAt))).limit(1);
+    return !!managed || (await getLearningHome(workspaceId)).programs.length>0;
+  } catch { return false; }
 }
 async function ownAttempts(ctx: Awaited<ReturnType<typeof requireLearningEnrollment>>) {
   return db.select().from(learningAttempts).where(and(eq(learningAttempts.workspaceId,ctx.program.workspaceId),eq(learningAttempts.programId,ctx.program.id),eq(learningAttempts.enrollmentId,ctx.enrollment.id),eq(learningAttempts.userId,ctx.userId))).orderBy(learningAttempts.createdAt);
@@ -139,16 +145,20 @@ export async function getLearningAttempt(workspaceId:string,programId:string,att
   const ctx=await requireOwnAttempt(workspaceId,programId,attemptId); return attemptDTO(ctx.attempt,ctx.program);
 }
 // Recheck mutable authorization in the database statement, including current membership.
+// Shared program/enrollment/session locks let learner writes run together, while
+// admin transactions lock the program first and then recheck on a fresh snapshot.
+// A stale cohort context must not write after the learner's assignment is moved.
 export function learningWriteGuard(ctx:Awaited<ReturnType<typeof requireLearningEnrollment>>,activityId?:string):SQL {
   const releaseMinutes=activityId?(m1ReleaseMinutes(getActivity(ctx.program.privatePack,activityId))??100000000):0;
   return sql`EXISTS (SELECT 1 FROM learning_programs p JOIN learning_enrollments e ON e.program_id=p.id AND e.workspace_id=p.workspace_id
     JOIN learning_sessions s ON s.workspace_id=e.workspace_id AND s.program_id=e.program_id AND s.module_id=e.module_id AND s.cohort_id=e.cohort_id
     JOIN workspaces w ON w.id=p.workspace_id
     WHERE p.workspace_id=${ctx.program.workspaceId}::uuid AND p.id=${ctx.program.id}::uuid AND p.feature_enabled=true AND p.status='published'
-      AND e.id=${ctx.enrollment.id}::uuid AND e.user_id=${ctx.userId}::uuid AND e.status='active'
+      AND e.id=${ctx.enrollment.id}::uuid AND e.user_id=${ctx.userId}::uuid AND e.cohort_id=${ctx.enrollment.cohortId} AND e.status='active'
       AND (s.status='open' OR (s.status='scheduled' AND s.starts_at+(${releaseMinutes} * interval '1 minute')<=now()))
       AND (EXISTS(SELECT 1 FROM memberships m WHERE m.organization_id=w.organization_id AND m.user_id=${ctx.userId}::uuid)
-        OR EXISTS(SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id=w.id AND wm.user_id=${ctx.userId}::uuid)))`;
+        OR EXISTS(SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id=w.id AND wm.user_id=${ctx.userId}::uuid))
+      FOR SHARE OF p,e,s)`;
 }
 export async function startLearningAttempt(input:{workspaceId:string;programId:string;activityId:string;expectedVersion:string}) {
   const ctx=await requireLearningEnrollment(input.workspaceId,input.programId,true); const activity=ensureM1(ctx.program,input.activityId);

@@ -1,0 +1,96 @@
+{
+  "capturedAt": "2026-10-01T22:53:37.301Z",
+  "program": {
+    "id": "bce91e7c-6f1f-4821-bc7d-22975a652ff4",
+    "workspace_id": "0dccc3c8-81ee-4f6f-badb-db3770e96f0b",
+    "feature_enabled": true,
+    "status": "published",
+    "closed_at": null,
+    "retention_days": 120
+  },
+  "enrollments": [
+    {
+      "cohort_id": "m1-cohort",
+      "status": "active",
+      "n": 1
+    },
+    {
+      "cohort_id": "m1-cohort-2",
+      "status": "active",
+      "n": 1
+    }
+  ],
+  "grants": [
+    {
+      "capability": "review",
+      "cohort_id": "m1-cohort",
+      "active": false,
+      "n": 1
+    },
+    {
+      "capability": "review",
+      "cohort_id": "m1-cohort",
+      "active": true,
+      "n": 1
+    },
+    {
+      "capability": "manage",
+      "cohort_id": null,
+      "active": true,
+      "n": 1
+    }
+  ],
+  "audit": [
+    {
+      "event_type": "attempt_started",
+      "n": 1
+    },
+    {
+      "event_type": "attempt_submitted",
+      "n": 1
+    },
+    {
+      "event_type": "enrollment_changed",
+      "n": 1
+    },
+    {
+      "event_type": "grant_created",
+      "n": 2
+    },
+    {
+      "event_type": "grant_revoked",
+      "n": 1
+    },
+    {
+      "event_type": "learner_enrolled",
+      "n": 2
+    },
+    {
+      "event_type": "program_enabled",
+      "n": 1
+    },
+    {
+      "event_type": "program_imported",
+      "n": 1
+    },
+    {
+      "event_type": "program_settings_changed",
+      "n": 1
+    },
+    {
+      "event_type": "session_status_changed",
+      "n": 1
+    }
+  ],
+  "attempts": [
+    {
+      "id": "ca74ae25-2c44-4f3e-ae1d-a05c49af1396",
+      "activity_id": "m1-check",
+      "status": "submitted",
+      "revision": 4,
+      "submitted_at": "2026-10-01T22:43:50.476Z",
+      "has_idempotency_key": true,
+      "submission_audits": 1
+    }
+  ]
+}

@@ -20,6 +20,8 @@ Ideas remain private drafts until explicit submission. Promotion uses the existi
 
 ## Private pack import
 
+The workspace panel now supports the full M1 administrative workflow: **Formazione → Gestisci formazione**. See [ADMIN.md](ADMIN.md) for private import, settings, bulk enrollment, replica changes, session opening, explicit permissions, course visibility, closure, audit and retention. The CLI below remains an operator alternative. The web panel never applies migrations, chooses a database or enables the global environment flag.
+
 Keep the entire private handoff outside the repository and web root. The private bank is stored only in the server database. Do not put it in `/public`, artifacts, screenshots, environment variables prefixed `NEXT_PUBLIC_`, or a public pull request. Restrict database and backup access accordingly.
 
 The CLI loads **no .env files**. Its default is validation/dry run with **no database access**:
@@ -67,6 +69,7 @@ Routes are under `/dashboard/WORKSPACE_UUID/learning/PROGRAM_UUID`:
 - `/progress`, `/ideas`: own history and voluntary proposal.
 - `/manage`, `/manage/ATTEMPT_UUID`: explicit review grant, assigned cohorts only; individual draft content is not exposed.
 - `/live`: fixed-scope aggregate view, minimum group size and complementary suppression.
+- `/admin`: course administration with an explicit management grant; independent from review/export. The workspace catalog/import page is `/dashboard/WORKSPACE_UUID/learning/admin`.
 
 These are route templates, **not verified production URLs**. Use the evidence report for actual tested localhost URLs. Do not create deck QR codes until two non-admin participants have verified the selected preview/production links and login return.
 
