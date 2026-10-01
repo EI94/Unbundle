@@ -25,7 +25,10 @@
     "vercel:env:sync": "node scripts/sync-vercel-env.mjs",
     "vercel:deploy": "vercel --prod",
     "vercel:deploy:preview": "vercel",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "test:learning": "node --no-warnings --test src/lib/learning/*.test.ts",
+    "learning:admin": "node --no-warnings scripts/learning-admin.ts",
+    "learning:retention": "node --no-warnings scripts/learning-retention.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.68",

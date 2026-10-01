@@ -1,0 +1,38 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
+const output = process.env.LEARNING_TEST_OUTPUT;
+if (!output?.startsWith("/private/tmp/") && !output?.startsWith("/tmp/")) throw new Error("Use temporary output outside Git");
+const requireFromApp = createRequire(resolve("package.json"));
+const { Client } = requireFromApp("pg");
+const local = { host: "127.0.0.1", port: 55439, user: "learning_test" };
+const source = new Client({ ...local, database: "unbundle_learning_test" }); await source.connect();
+const admin = new Client({ ...local, database: "postgres" }); await admin.connect();
+const destination = `unbundle_learning_restore_${randomUUID().replaceAll("-", "")}`;
+const dump = resolve(output, `${destination}.dump`);
+const results = [];
+await source.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+const snapshot = (await source.query("SELECT pg_export_snapshot() AS snapshot")).rows[0].snapshot;
+const tables = (await source.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows.map((row) => row.tablename);
+const signature = async (connection, name) => {
+  if (!/^[a-z0-9_]+$/.test(name)) throw new Error("Unexpected table identifier");
+  return (await connection.query(`SELECT count(*)::int AS rows,md5(string_agg(row::text,E'\\n' ORDER BY row::text)) AS digest FROM (SELECT to_jsonb(t) AS row FROM "${name}" t) records`)).rows[0];
+};
+const before = {};
+for (const name of tables) before[name] = await signature(source, name);
+const exported = spawnSync("pg_dump", ["-h", local.host, "-p", String(local.port), "-U", local.user, "-d", "unbundle_learning_test", "--snapshot", snapshot, "--format=custom", "--file", dump], { encoding: "utf8" });
+assert.equal(exported.status, 0, exported.stderr); await source.query("COMMIT");
+results.push({ id: "O03-backup", status: "PASS", detail: `Consistent exported snapshot of ${tables.length} public tables` });
+await admin.query(`CREATE DATABASE "${destination}"`);
+const restored = spawnSync("pg_restore", ["-h", local.host, "-p", String(local.port), "-U", local.user, "-d", destination, "--no-owner", "--no-privileges", "--exit-on-error", dump], { encoding: "utf8" });
+assert.equal(restored.status, 0, restored.stderr);
+const restoredClient = new Client({ ...local, database: destination }); await restoredClient.connect();
+for (const name of tables) assert.deepEqual(await signature(restoredClient, name), before[name], `Restored rows/hash mismatch: ${name}`);
+results.push({ id: "O03-restore", status: "PASS", detail: "Fresh database restore matches every table count and full-row digest from the same snapshot" });
+await restoredClient.end(); await source.end(); await admin.end();
+await writeFile(resolve(output, "backup-restore.json"), JSON.stringify({ timestamp: new Date().toISOString(), environment: "isolated local PostgreSQL", destination, dump, tables: before, results }, null, 2));
+console.log(`PASS backup and fresh database restore: ${tables.length} table counts and full-row digests identical. Synthetic snapshot retained outside Git.`);

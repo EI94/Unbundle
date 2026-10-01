@@ -1,0 +1,210 @@
+{
+  "timestamp": "2026-10-01T18:38:44.863Z",
+  "environment": "isolated local PostgreSQL",
+  "tables": {
+    "accounts": {
+      "rows": 0,
+      "digest": null
+    },
+    "activities": {
+      "rows": 0,
+      "digest": null
+    },
+    "activity_dependencies": {
+      "rows": 0,
+      "digest": null
+    },
+    "agent_blueprints": {
+      "rows": 0,
+      "digest": null
+    },
+    "ai_readiness_assessment_templates": {
+      "rows": 0,
+      "digest": null
+    },
+    "ai_readiness_assessments": {
+      "rows": 0,
+      "digest": null
+    },
+    "ai_readiness_audit_events": {
+      "rows": 0,
+      "digest": null
+    },
+    "ai_readiness_exports": {
+      "rows": 0,
+      "digest": null
+    },
+    "ai_readiness_insights": {
+      "rows": 0,
+      "digest": null
+    },
+    "ai_readiness_respondents": {
+      "rows": 0,
+      "digest": null
+    },
+    "ai_readiness_responses": {
+      "rows": 0,
+      "digest": null
+    },
+    "ai_readiness_scores": {
+      "rows": 0,
+      "digest": null
+    },
+    "ai_readiness_use_case_submissions": {
+      "rows": 0,
+      "digest": null
+    },
+    "conversation_memory": {
+      "rows": 0,
+      "digest": null
+    },
+    "conversations": {
+      "rows": 0,
+      "digest": null
+    },
+    "departments": {
+      "rows": 0,
+      "digest": null
+    },
+    "document_chunks": {
+      "rows": 0,
+      "digest": null
+    },
+    "external_contribution_submissions": {
+      "rows": 0,
+      "digest": null
+    },
+    "invitations": {
+      "rows": 0,
+      "digest": null
+    },
+    "learning_attempts": {
+      "rows": 14,
+      "digest": "f1f970f13d2b59d078b437e985d69f49"
+    },
+    "learning_audit_events": {
+      "rows": 23,
+      "digest": "a65f4915f7118cea5babb6030030b4fd"
+    },
+    "learning_enrollments": {
+      "rows": 18,
+      "digest": "59a8d87b643173dddb75d7c90d5f6072"
+    },
+    "learning_grants": {
+      "rows": 15,
+      "digest": "d60c0dd0d0c9098df6cb2f250b62cece"
+    },
+    "learning_idea_drafts": {
+      "rows": 3,
+      "digest": "c994981bb69e40bda0a6ad0bad791477"
+    },
+    "learning_programs": {
+      "rows": 9,
+      "digest": "eebfd216c0a1221ebbeda9239aefabed"
+    },
+    "learning_sessions": {
+      "rows": 22,
+      "digest": "51d45c796783b4663ef55c4e4b3cc517"
+    },
+    "memberships": {
+      "rows": 0,
+      "digest": null
+    },
+    "messages": {
+      "rows": 0,
+      "digest": null
+    },
+    "organizations": {
+      "rows": 3,
+      "digest": "e0dc8fcae444a6ac2d32021f67a80fc3"
+    },
+    "reports": {
+      "rows": 0,
+      "digest": null
+    },
+    "sessions": {
+      "rows": 0,
+      "digest": null
+    },
+    "simulations": {
+      "rows": 0,
+      "digest": null
+    },
+    "slack_installations": {
+      "rows": 0,
+      "digest": null
+    },
+    "slack_use_case_drafts": {
+      "rows": 0,
+      "digest": null
+    },
+    "strategic_goals": {
+      "rows": 0,
+      "digest": null
+    },
+    "uploaded_documents": {
+      "rows": 0,
+      "digest": null
+    },
+    "use_case_kr_links": {
+      "rows": 0,
+      "digest": null
+    },
+    "use_cases": {
+      "rows": 4,
+      "digest": "0d255360ea22afa3fa36b749ede25b01"
+    },
+    "users": {
+      "rows": 11,
+      "digest": "f10dd4a4f841f3ecd7c977fb51d802c8"
+    },
+    "value_map_nodes": {
+      "rows": 0,
+      "digest": null
+    },
+    "verification_tokens": {
+      "rows": 0,
+      "digest": null
+    },
+    "weekly_signals": {
+      "rows": 0,
+      "digest": null
+    },
+    "workspace_integration_tokens": {
+      "rows": 0,
+      "digest": null
+    },
+    "workspace_invitation_acceptances": {
+      "rows": 0,
+      "digest": null
+    },
+    "workspace_invitations": {
+      "rows": 0,
+      "digest": null
+    },
+    "workspace_memberships": {
+      "rows": 11,
+      "digest": "78b26cc7d1d3b4d939fafb6d5ff0c347"
+    },
+    "workspace_scoring_models": {
+      "rows": 1,
+      "digest": "d503259c15c2b7dfce72c501846d5cab"
+    },
+    "workspaces": {
+      "rows": 4,
+      "digest": "748b4dfe6c23ca7c42b94e4792a6a57c"
+    }
+  },
+  "results": [
+    {
+      "id": "O03-backup",
+      "status": "PASS",
+      "detail": "Consistent exported snapshot of 48 public tables"
+    },
+    {
+      "id": "O03-restore",
+      "status": "PASS",
+      "detail": "Fresh database restore matches every table count and full-row digest from the same snapshot"
+    }
+  ]
+}

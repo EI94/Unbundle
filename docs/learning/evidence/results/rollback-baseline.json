@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-10-01T18:59:25.737Z",
+  "environment": "Previous e63a2a719410af77982c85522dad6339975f869e build on local53104, retaining additive schema",
+  "results": [
+    {
+      "id": "O04-old-route",
+      "title": "Previous application build has no learning route or navigation",
+      "status": "PASS"
+    },
+    {
+      "id": "O04-existing-routes",
+      "title": "Existing workspace, portfolio and readiness pages render with additive learning schema retained",
+      "status": "PASS"
+    },
+    {
+      "id": "O04-data",
+      "title": "Probe preserves exact two-workspace training/portfolio and all anonymous response rows",
+      "status": "PASS"
+    }
+  ],
+  "scope": "Synthetic workspaces A/B and all isolated readiness responses; production/provider rollback remains separate",
+  "before": {
+    "learning_programs": {
+      "count": 9,
+      "digest": "c59c1db950357628438f2b546dcb9100"
+    },
+    "learning_enrollments": {
+      "count": 24,
+      "digest": "41569d88f457901440d8a5a46d51cdfb"
+    },
+    "learning_sessions": {
+      "count": 27,
+      "digest": "5a98cdc7a580a8d24e6507e31dcac26d"
+    },
+    "learning_grants": {
+      "count": 15,
+      "digest": "3ddfb49a816850c82e9dc351701378da"
+    },
+    "learning_attempts": {
+      "count": 41,
+      "digest": "ca8302ccc8d78d8660921c7791c00e68"
+    },
+    "learning_audit_events": {
+      "count": 98,
+      "digest": "6ee8d41e8caf9fbbe979ed35093c1f22"
+    },
+    "learning_idea_drafts": {
+      "count": 8,
+      "digest": "2391243fccef85b531e8864d6338036b"
+    },
+    "use_cases": {
+      "count": 10,
+      "digest": "b77f5af7565e7a1f1abd906cce202c1e"
+    },
+    "ai_readiness_responses": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    }
+  }
+}

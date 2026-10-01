@@ -1,0 +1,195 @@
+{
+  "timestamp": "2026-10-01T18:43:20.807Z",
+  "runId": "b51bd81f-4a5c-4f58-ac5c-fcff373bd480",
+  "test": "O01",
+  "userCount": 50,
+  "environment": "Local Next optimized production start; Firebase Auth emulator; real Neon/Drizzle SQL through loopback PostgreSQL test transport",
+  "runtime": "production",
+  "codeCommit": "e63a2a719410af77982c85522dad6339975f869e",
+  "workingTreeDirty": true,
+  "sourceHashes": {
+    "src/lib/learning/server.ts": "862a330b124eebdb7d8f3a6c788d717d46b68a7398c34ff15dd5b8dec3cbba8c",
+    "src/lib/learning/schema.ts": "2e1fceb713257faeeba98327d35d9e0e5770679b0e24a6511c5149181bcf0acc",
+    "src/lib/actions/learning.ts": "faa1a07dde445bc7e9f80934c0c61c9b91561fe15a5b938e0aaf2be9381bc970",
+    "src/lib/learning/grading.ts": "600551f3e03c834d36627c6a773897547c330cdd69a57222bbdb5ebe3200353d",
+    "scripts/learning-test/load.mjs": "ed102240e72b8b7e3790a270c603c20230dde9339ccbd753b8d10cc13a7aade1"
+  },
+  "targets": {
+    "warmAutosaveP95Ms": 1500,
+    "warmObjectiveSubmitP95Ms": 2000
+  },
+  "phases": {
+    "prewarmSession": {
+      "requests": 1,
+      "succeeded": 1,
+      "failed": 0,
+      "p50Ms": 27.6,
+      "p95Ms": 27.6,
+      "maxMs": 27.6,
+      "errors": []
+    },
+    "prewarmPageNotColdCompile": {
+      "requests": 1,
+      "succeeded": 1,
+      "failed": 0,
+      "p50Ms": 119.3,
+      "p95Ms": 119.3,
+      "maxMs": 119.3,
+      "errors": []
+    },
+    "prewarmHandlers": {
+      "requests": 1,
+      "succeeded": 1,
+      "failed": 0,
+      "p50Ms": 65.8,
+      "p95Ms": 65.8,
+      "maxMs": 65.8,
+      "errors": []
+    },
+    "sessionConcurrent": {
+      "requests": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "p50Ms": 25.7,
+      "p95Ms": 38.8,
+      "maxMs": 39.5,
+      "errors": [],
+      "wallMs": 41,
+      "concurrency": 50
+    },
+    "startConcurrent": {
+      "requests": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "p50Ms": 283.7,
+      "p95Ms": 285.8,
+      "maxMs": 285.9,
+      "errors": [],
+      "wallMs": 288,
+      "concurrency": 50
+    },
+    "autosaveRound1": {
+      "requests": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "p50Ms": 239.5,
+      "p95Ms": 241.2,
+      "maxMs": 241.6,
+      "errors": [],
+      "wallMs": 243,
+      "concurrency": 50
+    },
+    "autosaveRound2": {
+      "requests": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "p50Ms": 229.8,
+      "p95Ms": 230.7,
+      "maxMs": 230.8,
+      "errors": [],
+      "wallMs": 232,
+      "concurrency": 50
+    },
+    "autosaveRound3": {
+      "requests": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "p50Ms": 209.6,
+      "p95Ms": 210.5,
+      "maxMs": 210.6,
+      "errors": [],
+      "wallMs": 212,
+      "concurrency": 50
+    },
+    "autosaveWarmCombined": {
+      "requests": 150,
+      "succeeded": 150,
+      "failed": 0,
+      "p50Ms": 229.8,
+      "p95Ms": 241.1,
+      "maxMs": 241.6,
+      "errors": [],
+      "concurrency": 50,
+      "rounds": 3
+    },
+    "objectiveSubmitConcurrent": {
+      "requests": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "p50Ms": 268.7,
+      "p95Ms": 271.2,
+      "maxMs": 271.4,
+      "errors": [],
+      "wallMs": 273,
+      "concurrency": 50
+    },
+    "prewarmProgress": {
+      "requests": 1,
+      "succeeded": 1,
+      "failed": 0,
+      "p50Ms": 19.5,
+      "p95Ms": 19.5,
+      "maxMs": 19.5,
+      "errors": []
+    },
+    "progressDashboardConcurrent": {
+      "requests": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "p50Ms": 249.1,
+      "p95Ms": 251.1,
+      "maxMs": 251.9,
+      "errors": [],
+      "wallMs": 252,
+      "concurrency": 50
+    },
+    "lostAckRetryConcurrent": {
+      "requests": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "p50Ms": 205.9,
+      "p95Ms": 207.9,
+      "maxMs": 207.9,
+      "errors": [],
+      "wallMs": 209,
+      "concurrency": 50
+    }
+  },
+  "checks": [
+    {
+      "name": "all 50 learner progress dashboards show their confirmed own attempt",
+      "status": "PASS"
+    },
+    {
+      "name": "50 final receipts each have one immutable attempt, one audit and original owner",
+      "status": "PASS"
+    },
+    {
+      "name": "all retry receipts match the original confirmed submission",
+      "status": "PASS"
+    },
+    {
+      "name": "warm autosave p95 under 1500 ms",
+      "status": "PASS"
+    },
+    {
+      "name": "warm objective submission p95 under 2000 ms",
+      "status": "PASS"
+    }
+  ],
+  "status": "PASS_LOCAL_WARM_ONLY",
+  "cleanup": "PASS_OWN_SYNTHETIC_FIXTURES_REMOVED",
+  "limitations": [
+    "Application, emulator and database share one local host; not production infrastructure.",
+    "The Neon production HTTP transport is replaced only in the test process by the loopback adapter.",
+    "Build compilation is not measured by this harness. Initial page/handler prewarm is recorded separately from warm percentiles; it is not a serverless cold-start measurement.",
+    "Session endpoint uses genuine emulator ID tokens. Browser Google/email sign-in UI is not measured."
+  ],
+  "integrity": {
+    "expectedFinalAttempts": 50,
+    "finalAttempts": 50,
+    "uniqueOwners": 50,
+    "submissionsAudits": 50,
+    "persistedRevision": 5
+  }
+}

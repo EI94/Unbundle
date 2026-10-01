@@ -1,0 +1,174 @@
+{
+  "timestamp": "2026-10-01T19:13:28.755Z",
+  "environment": "local PostgreSQL + Firebase Auth emulator + real Next production JSON gateway + shared Server Action validation/DAL",
+  "results": [
+    {
+      "id": "A01-partial",
+      "title": "Unauthenticated activity redirects to login preserving callback",
+      "status": "PASS",
+      "elapsedMs": 1
+    },
+    {
+      "id": "G04-html",
+      "title": "Pre-submit HTML and RSC omit private grading markers",
+      "status": "PASS",
+      "elapsedMs": 21
+    },
+    {
+      "id": "A02-program",
+      "title": "Foreign workspace/program combination is denied",
+      "status": "PASS",
+      "elapsedMs": 2
+    },
+    {
+      "id": "A09",
+      "title": "Server Action rejects forged identity/score/role fields",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'forbidden'\n- 'invalid'\n"
+    },
+    {
+      "id": "A10-origin",
+      "title": "Cross-origin direct action is rejected",
+      "status": "PASS",
+      "elapsedMs": 1
+    },
+    {
+      "id": "gateway-session",
+      "title": "Missing session returns recoverable JSON without redirect or caching",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n\n403 !== 401\n"
+    },
+    {
+      "id": "gateway-origin",
+      "title": "Missing Origin is rejected even with a valid cookie",
+      "status": "PASS",
+      "elapsedMs": 1
+    },
+    {
+      "id": "gateway-input",
+      "title": "Gateway rejects wrong media, malformed JSON, unknown operation and envelope extras",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n\n403 !== 415\n"
+    },
+    {
+      "id": "gateway-size",
+      "title": "Gateway enforces 64 KiB body limit before parsing",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n\n403 !== 413\n"
+    },
+    {
+      "id": "D01-start",
+      "title": "Authenticated direct action starts a persisted private attempt",
+      "status": "FAIL",
+      "error": "Origine della richiesta non autorizzata.\n\nfalse !== true\n"
+    },
+    {
+      "id": "D07",
+      "title": "Incomplete answers cannot be submitted",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n\nfalse !== true\n"
+    },
+    {
+      "id": "P02-case",
+      "title": "Case locks individual decisions before reference/reflection and creates no portfolio entry",
+      "status": "FAIL",
+      "error": "The expression evaluated to a falsy value:\n\n  assert.ok(started)\n"
+    },
+    {
+      "id": "D09",
+      "title": "Closed program keeps submitted feedback readable but rejects new writes",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'forbidden'\n- 'closed'\n"
+    },
+    {
+      "id": "P01-P03-P04",
+      "title": "Voluntary idea promotes once without LLM and rejects another author",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n\nfalse !== true\n"
+    },
+    {
+      "id": "A04",
+      "title": "Reviewer sees only assigned cohort and cannot access other workspace",
+      "status": "PASS",
+      "elapsedMs": 20
+    },
+    {
+      "id": "A05",
+      "title": "Sponsor and manager without review grant cannot view named results",
+      "status": "PASS",
+      "elapsedMs": 20
+    },
+    {
+      "id": "U04",
+      "title": "Named export requires scope, audits download and neutralizes formula whitespace",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n\nfalse !== true\n"
+    },
+    {
+      "id": "U05",
+      "title": "Sponsor aggregate suppresses group below minimum and includes no names",
+      "status": "PASS",
+      "elapsedMs": 13
+    },
+    {
+      "id": "A07",
+      "title": "One account in two workspaces has separate program histories",
+      "status": "PASS",
+      "elapsedMs": 27
+    },
+    {
+      "id": "A06",
+      "title": "Revocation takes effect on next action and preserves existing records",
+      "status": "PASS",
+      "elapsedMs": 2
+    },
+    {
+      "id": "R04",
+      "title": "Workspace-specific feature flag blocks writes and preserves other program",
+      "status": "PASS",
+      "elapsedMs": 11
+    },
+    {
+      "id": "A04-detail",
+      "title": "Reviewer direct detail URL denies another cohort and another workspace",
+      "status": "FAIL",
+      "error": "Cannot read properties of undefined (reading 'status')"
+    },
+    {
+      "id": "A06-read-save",
+      "title": "Revoked learner membership denies existing receipt read and draft save",
+      "status": "FAIL",
+      "error": "Cannot read properties of undefined (reading 'id')"
+    },
+    {
+      "id": "A06-export",
+      "title": "Revoked reviewer membership denies list and named export despite retained grants",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n\nfalse !== true\n"
+    },
+    {
+      "id": "D08",
+      "title": "Publishing a new version preserves previous draft answers, order and content",
+      "status": "FAIL",
+      "error": "Cannot read properties of undefined (reading 'id')"
+    },
+    {
+      "id": "D09-future",
+      "title": "Server time denies future scheduled activity start and existing draft save",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'forbidden'\n- 'closed'\n"
+    },
+    {
+      "id": "D09-archived",
+      "title": "Archived program denies writes and retains old feedback",
+      "status": "FAIL",
+      "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'forbidden'\n- 'closed'\n"
+    },
+    {
+      "id": "O02-atomic",
+      "title": "Failure inside submission audit rolls back result and allows a safe retry",
+      "status": "FAIL",
+      "error": "Cannot read properties of undefined (reading 'id')"
+    }
+  ]
+}

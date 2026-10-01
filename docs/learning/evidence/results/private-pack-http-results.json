@@ -1,0 +1,77 @@
+{
+  "timestamp": "2026-10-01T18:55:15.493Z",
+  "environment": "Local optimized Next production runtime; isolated PostgreSQL; Firebase Auth emulator; exact external private pack",
+  "fileSha256": "609837c3c10f94155ab973a6b3c71eb9625f9e9a198715e317aa365515a3dc8d",
+  "packHash": "94bca525d4784a30136f5f82bbf6579aa7d795179129ecf3b94acb4918f9cfdb",
+  "checks": [
+    {
+      "id": "private-import-and-synthetic-accounts",
+      "status": "PASS"
+    },
+    {
+      "id": "real-cli-enable-enroll-cohort-grant-open",
+      "status": "PASS"
+    },
+    {
+      "id": "calendar-m1-two-replicas-europe-rome",
+      "status": "PASS"
+    },
+    {
+      "id": "pre-submit-html-rsc-private-bank-redaction",
+      "status": "PASS"
+    },
+    {
+      "id": "m1-check-server-grade",
+      "status": "PASS"
+    },
+    {
+      "id": "m1-case-individual-decisions-before-example",
+      "status": "PASS"
+    },
+    {
+      "id": "m1-case-reflection-mode-submit-server-grade",
+      "status": "PASS"
+    },
+    {
+      "id": "m1-exit-a-essential-error-server-feedback",
+      "status": "PASS"
+    },
+    {
+      "id": "m1-exit-b-retake-original-preserved",
+      "status": "PASS"
+    },
+    {
+      "id": "review-grant-submitted-evidence-and-second-replica",
+      "status": "PASS"
+    },
+    {
+      "id": "database-complete-atomic-history-and-audit",
+      "status": "PASS"
+    }
+  ],
+  "status": "PASS",
+  "cleanup": "PASS_PRIVATE_PACK_AND_OWN_FIXTURES_REMOVED",
+  "calendar": [
+    {
+      "cohortId": "m1-a",
+      "startsLocal": "2026-10-05 14:30",
+      "endsLocal": "2026-10-05 16:30",
+      "timezone": "Europe/Rome"
+    },
+    {
+      "cohortId": "m1-b",
+      "startsLocal": "2026-10-07 10:00",
+      "endsLocal": "2026-10-07 12:00",
+      "timezone": "Europe/Rome"
+    }
+  ],
+  "integrity": {
+    "submittedAttempts": 5,
+    "submissionAudits": 5,
+    "learners": 2,
+    "cohorts": [
+      "m1-a",
+      "m1-b"
+    ]
+  }
+}

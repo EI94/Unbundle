@@ -1,0 +1,50 @@
+[
+  {
+    "name": "private import dry run has no DB writes",
+    "status": "PASS"
+  },
+  {
+    "name": "immutable import creates disabled program",
+    "status": "PASS"
+  },
+  {
+    "name": "same version/hash import is idempotent",
+    "status": "PASS"
+  },
+  {
+    "name": "explicit program enable",
+    "status": "PASS"
+  },
+  {
+    "name": "enroll existing workspace member",
+    "status": "PASS"
+  },
+  {
+    "name": "enroll retry is idempotent",
+    "status": "PASS"
+  },
+  {
+    "name": "cannot enroll nonmember",
+    "status": "PASS"
+  },
+  {
+    "name": "scoped review grant",
+    "status": "PASS"
+  },
+  {
+    "name": "unknown cohort rejected",
+    "status": "PASS"
+  },
+  {
+    "name": "explicit session rehearsal opening",
+    "status": "PASS"
+  },
+  {
+    "name": "close preserves readable feature and records timestamp",
+    "status": "PASS"
+  },
+  {
+    "name": "disable rollback gate",
+    "status": "PASS"
+  }
+]

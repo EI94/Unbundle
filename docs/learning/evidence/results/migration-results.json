@@ -1,0 +1,58 @@
+[
+  {
+    "migration": "0000_many_wallow.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0001_ambitious_tenebrous.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0002_secret_red_skull.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0003_slack_draft_reminders.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0004_portfolio_scoring_model.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0005_portfolio_kpi_and_channels.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0006_workspace_collaboration.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0007_slack_bot_reliability.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0008_workspace_integration_tokens.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0009_ai_readiness_core.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0010_ai_readiness_intelligence.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0011_ai_readiness_question_scope.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0012_learning.sql",
+    "exitCode": 0
+  },
+  {
+    "migration": "0012_learning.sql",
+    "exitCode": 0
+  }
+]

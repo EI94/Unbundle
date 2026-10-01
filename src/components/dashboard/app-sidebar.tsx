@@ -41,9 +41,11 @@ import {
   Radar,
   Inbox,
   ClipboardCheck,
+  GraduationCap,
 } from "lucide-react";
 
 interface AppSidebarProps {
+  learningAvailable?: boolean;
   workspaceId?: string;
   workspaceName?: string;
   user: {
@@ -54,6 +56,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({
+  learningAvailable = false,
   workspaceId,
   workspaceName,
   user,
@@ -72,6 +75,7 @@ export function AppSidebar({
     ? [
         { title: "Overview", href: basePath, icon: LayoutDashboard },
         { title: "AI Readiness", href: `${basePath}/ai-readiness`, icon: ClipboardCheck },
+        ...(learningAvailable ? [{ title: "Formazione", href: `${basePath}/learning`, icon: GraduationCap }] : []),
         { title: "Raccolta & ranking", href: `${basePath}/portfolio`, icon: Inbox },
         { title: "Discovery", href: `${basePath}/setup/leadership`, icon: Compass },
         { title: "Contesto", href: `${basePath}/setup/context`, icon: Building2 },

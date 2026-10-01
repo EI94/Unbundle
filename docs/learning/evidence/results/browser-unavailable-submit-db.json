@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-10-01T19:19:58.338Z",
+  "test": "O02 browser unavailable during final submit and retry",
+  "status": "PASS",
+  "rows": [
+    {
+      "id": "0e044e12-f2b0-4f40-8dea-ad1f7040d925",
+      "status": "submitted",
+      "revision": 3,
+      "correct": "0",
+      "total": "8",
+      "submitted_audits": 1
+    }
+  ]
+}
