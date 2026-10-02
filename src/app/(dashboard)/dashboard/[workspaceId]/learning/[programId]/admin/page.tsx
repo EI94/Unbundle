@@ -5,5 +5,5 @@ import { LearningAdminProgram } from "@/components/learning/admin-program";
 export default async function LearningProgramAdminPage({ params }: { params: Promise<{ workspaceId: string; programId: string }> }) {
   const { workspaceId, programId } = await params;
   const data = await getLearningAdminDetail(workspaceId, programId);
-  return <LearningShell workspaceId={workspaceId} title="Gestisci corso"><LearningAdminProgram workspaceId={workspaceId} initial={data} /></LearningShell>;
+  return <LearningShell workspaceId={workspaceId} title="Gestisci corso"><LearningAdminProgram key={`${workspaceId}:${programId}:${data.userId}`} workspaceId={workspaceId} initial={data} /></LearningShell>;
 }

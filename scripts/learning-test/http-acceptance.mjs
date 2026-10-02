@@ -44,6 +44,7 @@ const activityUrl = `${base(workspaceB)}/activities/m1-exit-a`;
 await page("learner-b", activityUrl);
 await page("reviewer-a", `${base(workspaceA)}/manage`);
 async function action(name, exportedName, input, options = {}) {
+  if (exportedName === "startLearningAttempt") input = { expectedUserId: name === "learner-b" ? runUserId : fixture.accounts[name]?.id ?? runUserId, ...input };
   const response = await fetch(`${origin}/api/learning`, {
     method: "POST", redirect: "manual",
     headers: { "content-type": "application/json", origin: options.origin ?? origin, ...(sessions[name] ? { cookie: sessions[name] } : {}) },
@@ -108,6 +109,14 @@ await check("gateway-input", "Gateway rejects wrong media, malformed JSON, unkno
 await check("gateway-size", "Gateway enforces 64 KiB body limit before parsing", async () => {
   const response = await fetch(`${origin}/api/learning`, { method: "POST", headers: { origin, "content-type": "application/json", cookie: sessions["learner-b"] }, body: JSON.stringify({ operation: "startLearningAttempt", input: { padding: "x".repeat(70_000) } }), redirect: "manual" });
   assert.equal(response.status, 413); assert.equal((await response.json()).ok, false);
+});
+await check("A11-start-actor", "Starting an activity binds the original page identity and refuses old-tab reuse", async () => {
+  const input={...scope(workspaceB),activityId:"m1-exit-a",expectedVersion:fixture.contentVersion};
+  const wrong=await action("learner-b","startLearningAttempt",{...input,expectedUserId:fixture.accounts.shared.id});
+  assert.equal(wrong.status,403);assert.equal(wrong.result?.code,"forbidden");assert.equal(wrong.result?.data,undefined);
+  const missing=await action("learner-b","startLearningAttempt",{...input,expectedUserId:undefined});
+  assert.equal(missing.status,422);assert.equal(missing.result?.code,"invalid");
+  assert.equal((await database.query("SELECT count(*)::int n FROM learning_attempts WHERE program_id=$1 AND user_id=$2",[workspaceB.programId,runUserId])).rows[0].n,0);
 });
 await check("D01-start", "Authenticated direct action starts a persisted private attempt", async () => {
   const result = await action("learner-b", "startLearningAttempt", { ...scope(workspaceB), activityId: "m1-exit-a", expectedVersion: fixture.contentVersion });
@@ -191,11 +200,18 @@ await check("D09", "Closed program keeps submitted feedback readable but rejects
     assert.equal((await page("learner-b", `${base(workspaceB)}/attempts/${attempt.id}`)).status, 200);
   } finally { await database.query("UPDATE learning_programs SET status='published',closed_at=NULL WHERE id=$1", [workspaceB.programId]); }
 });
-await check("P01-P03-P04", "Voluntary idea promotes once without LLM and rejects another author", async () => {
+await check("P01-P03-P04", "Incomplete idea returns field errors without writes; valid idea promotes once and rejects another author", async () => {
   const ideaUrl = `${base(workspaceB)}/ideas`; await page("learner-b", ideaUrl);
   const fields = { title: "Synthetic process improvement", problem: "The fictional checklist repeats manual work.", frequency: "Weekly", inputs: "Invented cards", desiredOutput: "A draft checklist for human review", contact: "Synthetic owner", constraints: "No execution or operational data" };
-  const saved = await action("learner-b", "saveLearningIdea", { ...scope(workspaceB), expectedRevision: null, fields }, { url: ideaUrl }); assert.equal(saved.result?.ok, true);
-  const draft = saved.result.data; const key = randomUUID(); const input = { ...scope(workspaceB), draftId: draft.id, expectedRevision: draft.revision, idempotencyKey: key };
+  const incomplete = await action("learner-b", "saveLearningIdea", { ...scope(workspaceB), expectedUserId: runUserId, draftId: null, expectedRevision: null, fields: { ...fields, desiredOutput: "" } }, { url: ideaUrl }); assert.equal(incomplete.result?.ok, true);
+  const initialDraft = incomplete.result.data;
+  const before = (await database.query("SELECT status,revision,idempotency_key,resulting_use_case_id,fields FROM learning_idea_drafts WHERE id=$1", [initialDraft.id])).rows[0];
+  const invalid = await action("learner-b", "submitLearningIdea", { ...scope(workspaceB), expectedUserId: runUserId, draftId: initialDraft.id, expectedRevision: initialDraft.revision, idempotencyKey: randomUUID() });
+  assert.equal(invalid.status, 422); assert.equal(invalid.result?.code, "invalid"); assert.ok(invalid.result.fieldErrors?.desiredOutput);
+  assert.deepEqual((await database.query("SELECT status,revision,idempotency_key,resulting_use_case_id,fields FROM learning_idea_drafts WHERE id=$1", [initialDraft.id])).rows[0], before);
+  assert.equal((await database.query("SELECT count(*)::int n FROM use_cases WHERE workspace_id=$1 AND proposed_by=$2", [workspaceB.workspaceId, runUserId])).rows[0].n, 0);
+  const saved = await action("learner-b", "saveLearningIdea", { ...scope(workspaceB), expectedUserId: runUserId, draftId: initialDraft.id, expectedRevision: initialDraft.revision, fields }, { url: ideaUrl }); assert.equal(saved.result?.ok, true);
+  const draft = saved.result.data; const key = randomUUID(); const input = { ...scope(workspaceB), expectedUserId: runUserId, draftId: draft.id, expectedRevision: draft.revision, idempotencyKey: key };
   assert.equal((await action("learner-b2", "submitLearningIdea", input, { url: ideaUrl })).result?.ok, false);
   const responses = await Promise.all(Array.from({ length: 4 }, () => action("learner-b", "submitLearningIdea", input, { url: ideaUrl })));
   assert.ok(responses.some((row) => row.result?.ok));

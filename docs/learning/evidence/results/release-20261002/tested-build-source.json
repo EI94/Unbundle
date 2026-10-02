@@ -1,0 +1,29 @@
+{
+  "timestamp": "2026-10-02T10:29:12.682Z",
+  "buildId": "mLKpQvP1366UJpxhqoHjS",
+  "baseCommit": "5ad1ec99e87f09a2a0a4be4f2e504936cc44ddcd",
+  "workingTreeDirty": true,
+  "sourceHashes": {
+    "src/components/learning/session-boundary.tsx": "f006901a31f1609ef4a36888c0ab4897db93a4b9101d9e0f38a07dde9c3190e6",
+    "src/app/(dashboard)/dashboard/[workspaceId]/learning/layout.tsx": "c53cbe635021656b480691b53c10582b6817d39f2385619554b8a37f1e663b6f",
+    "src/app/api/learning/session/route.ts": "5c6fcee2e222ac423147d82548b7aed47ea7c068ba34464ccd2704c9371da497",
+    "src/lib/learning/session-check.ts": "c2c426a423e10c61da1c85bc63fa1e7772c0d36222b61f627a6d2277964c3de7",
+    "src/lib/learning/ideas.ts": "5b20ce836664956947e46f5344fd804a3a5e3402fbd0e17a1dbd6791b7dbc251",
+    "src/lib/learning/idea-contract.ts": "6558602971bc472794f073bb7ebfa3a920dbbbb9ebc26c22cfaa34abd35e906e",
+    "src/components/learning/idea-form.tsx": "1415757f2c1e2ce42a663ed7a2aad4ac7c9d61f00df40a810a43454f362c1ed7",
+    "src/lib/learning/admin.ts": "ec23cb8dd653e6fdb215dafb9646ea43fb74186eefa1c964d2e5c49c278fa79e",
+    "src/lib/learning/admin-contract.ts": "bf4fdd65624aaebd5b9002cfa31235c2423453dffec26034991d41f46330d8e6",
+    "src/lib/learning/admin-client.ts": "283942e2e5230cdec0e231e337e4a7de3c20697824fb3beb246cad3bbc63fc96",
+    "src/lib/learning/server.ts": "aaa276c8bbbc5f1370e0f6d9c6578874cb40c0d044b06d6df7b51858f8afdd59",
+    "src/lib/actions/learning.ts": "4d945e52fea333831c5280b7c5df7951f72131a16228a4235f79350f9a583b40",
+    "src/components/learning/activity-player.tsx": "f433023d250bf71b6f304122ba5b9173d7145eb6873155732068eca6da805e32",
+    "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/page.tsx": "3d38b5d13d15346653979d0adf132725c54cfae3f1d26d1bcfd50e97be260ff8",
+    "src/app/(dashboard)/dashboard/[workspaceId]/learning/error.tsx": "905ca2bba9c17131e45a5bdd93e942b09dfbafb24d851937209f3709bf84def5",
+    "src/lib/actions/learning-ideas.ts": "1900177bea1418b41f5a31da51276f7a26bbd64decadba7589c24d4df6471ddf",
+    "src/app/api/learning/admin/route.ts": "48e31fb1517aa80b92bd27e7213f38db6860aaf3958d3929d2475d28cd99a501",
+    "src/app/api/learning/route.ts": "ac2f82674e5fdc7b4afb2f5110c78d61c7ed3a63a054e6409978b7f5b5f638e1",
+    "scripts/learning-test/http-acceptance.mjs": "7b7003298d59689492554da28c4b865312e5f770f3005c5bd734b5feaf182c93",
+    "scripts/learning-test/admin-acceptance.mjs": "9132dba40aab83f99e20a6b0b4b1739fe69c85d511fcb315f42366b5350c8b3b",
+    "scripts/learning-test/load.mjs": "db610111590c58303e08aa684a35cef67c3ff862a156a3196d3f1225df8cd229"
+  }
+}

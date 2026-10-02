@@ -1,0 +1,167 @@
+{
+  "scope": "Browser localhost con soli dati e account sintetici. Prime prove sulla build integrata; retest idea/retry/portfolio e nuovi casi sulla build finale identificata. Nessuna verifica provider remoto o produzione.",
+  "date": "2026-10-02",
+  "results": [
+    {
+      "id": "B-ACCOUNT-IDEA",
+      "status": "PASS",
+      "observation": "Dopo cambio account la vecchia pagina nasconde la form; B vede campi vuoti; tornando A e verificando accesso, il testo non salvato riappare. Salvataggio e reload recuperano titolo e problema. DB A=1 B=0."
+    },
+    {
+      "id": "B-ACCOUNT-HISTORY",
+      "status": "PASS",
+      "observation": "A carica bozza persistita, naviga alla formazione; B accede nell’altra scheda; Back nella prima mostra account cambiato e nasconde contenuti."
+    },
+    {
+      "id": "B-QUIZ-EMPTY",
+      "status": "PASS",
+      "observation": "Revisione senza risposte: tre errori collegati ai campi, focus al riepilogo; nessun invio."
+    },
+    {
+      "id": "B-QUIZ-CONFLICT",
+      "status": "PASS",
+      "observation": "Due schede stessa revisione; una salva, l’altra è rifiutata. Risposte locali mantenute, scarica/confronta disponibili, invio disabilitato."
+    },
+    {
+      "id": "B-QUIZ-RELOAD",
+      "status": "PASS",
+      "observation": "Tre selezioni Non so salvate; reload restituisce le tre selezioni e il riepilogo corrispondente."
+    },
+    {
+      "id": "B-QUIZ-DOUBLE",
+      "status": "PASS",
+      "observation": "Doppio clic consegna: feedback 0/3 e database esattamente una consegna/un evento audit."
+    },
+    {
+      "id": "B-CASE-PHASES",
+      "status": "PASS",
+      "observation": "Sei decisioni prima dell’esempio, dopo consegna radio bloccate e esempio disponibile. Riflessione composta da spazi respinta."
+    },
+    {
+      "id": "B-CASE-RELOAD",
+      "status": "PASS",
+      "observation": "Riflessione e modalità senza AI salvate e recuperate; testo con tag script reso letteralmente in riepilogo e vista formatore, nessun dialogo script."
+    },
+    {
+      "id": "B-RETAKE",
+      "status": "PASS",
+      "observation": "Finale 0/8, recupero distinto 2/8; storico conserva entrambi, caso e checkpoint. Due attività richieste consegnate su due."
+    },
+    {
+      "id": "B-ADMIN-SETTINGS",
+      "status": "PASS",
+      "observation": "Nome vuoto bloccato dal campo obbligatorio con focus; annullamento nascondi lascia corso visibile; chiusura e riapertura confermate."
+    },
+    {
+      "id": "B-ADMIN-FILTER",
+      "status": "PASS",
+      "observation": "Selezione di una persona rimane esplicita anche quando ricerca non la include; rimossa selezione prima di altre prove."
+    },
+    {
+      "id": "B-ADMIN-ENROLLMENT",
+      "status": "PASS",
+      "observation": "Sospensione nega l’accesso, riattivazione conserva i dati; sulla build finale Riprova recupera la proposta inviata senza reload manuale."
+    },
+    {
+      "id": "B-TRAINER-SCOPE",
+      "status": "PASS",
+      "observation": "Reviewer coorte1 vede un partecipante e quattro tentativi consegnati, non il partecipante coorte2; riflessione visibile nel dettaglio."
+    },
+    {
+      "id": "B-EXPORT-ONLY",
+      "status": "PASS",
+      "observation": "Account con solo export ha bottone CSV; clic mostra esportazione generata. Audit e contenuto/scoping CSV verificati separatamente via HTTP."
+    },
+    {
+      "id": "B-EXPORT-DOWNLOAD",
+      "status": "BLOCKED",
+      "observation": "Download browser IAB non osservato dal tool: attesa evento scaduta sebbene UI e audit confermino generazione. Non equivale a verifica file scaricato."
+    },
+    {
+      "id": "B-TRAINER-MOBILE",
+      "status": "PASS",
+      "observation": "390x844: contenuti leggibili, scrollWidth390 uguale viewport390; screenshot conservato."
+    },
+    {
+      "id": "B-INVITE-EXPIRED",
+      "status": "PASS",
+      "observation": "Link scaduto mostra Invito non disponibile."
+    },
+    {
+      "id": "B-INVITE-REVOKED",
+      "status": "PASS",
+      "observation": "Link revocato mostra Invito non disponibile."
+    },
+    {
+      "id": "B-INVITE-CONSUMED",
+      "status": "PASS",
+      "observation": "Link già usato mostra Invito non disponibile."
+    },
+    {
+      "id": "B-INVITE-EMAIL",
+      "status": "PASS",
+      "observation": "Account diverso vede avviso email non corrispondente e Cambia account; nessun pulsante accettazione. Cambio account va a login con callback invito."
+    },
+    {
+      "id": "B-INVITE-ANONYMOUS",
+      "status": "PASS",
+      "observation": "Da anonimo: richiesta login/registrazione, nessuna accettazione diretta."
+    },
+    {
+      "id": "B-INVITE-VALID",
+      "status": "PASS",
+      "observation": "Account destinatario sintetico accetta e raggiunge workspace corretto con joined=1. Riapertura stesso link negata."
+    },
+    {
+      "id": "B-IDEA-INVALID",
+      "status": "PASS_AFTER_FIX",
+      "observation": "Build finale: campo risultato desiderato indicato con messaggio e riepilogo focalizzato; bozza incompleta conservata; compilazione/salvataggio/conferma e doppio clic producono un solo portfolio e audit, recuperati al reload. FAIL iniziale conservato nelle ricevute dedicate."
+    },
+    {
+      "id": "B-ERROR-RETRY",
+      "status": "PASS_AFTER_FIX",
+      "observation": "Build finale: sospensione, riattivazione, clic Riprova; pagina recuperata con proposta esistente senza ricarica manuale. FAIL iniziale conservato."
+    },
+    {
+      "id": "B-PORTFOLIO-SETTINGS",
+      "status": "PASS_AFTER_FIX",
+      "observation": "Il membro raggiunge il portfolio senza pannello impostazioni riservate. Sei verifiche HTTP/HTML/RSC separate confermano scoping manager/contributor."
+    },
+    {
+      "id": "B-IDEA-CLOSED",
+      "status": "PASS",
+      "observation": "A corso chiuso la pagina mostra avviso di sola lettura e nessun salvataggio. Corso riaperto dopo la prova."
+    },
+    {
+      "id": "B-ADMIN-IDENTITY",
+      "status": "PASS",
+      "observation": "Modifica del titolo non salvata; accesso viewer in altra scheda nasconde admin; ritorno identità admin e verifica recuperano titolo non salvato. Titolo ripristinato senza cambiare il corso."
+    },
+    {
+      "id": "B-ADMIN-MOBILE",
+      "status": "PASS",
+      "observation": "390x844, scrollWidth390, controlli leggibili; screenshot conservato."
+    },
+    {
+      "id": "B-ADMIN-INVALID-PACK",
+      "status": "PASS",
+      "observation": "File fittizio JSON non conforme: Verifica pacchetto mostra errore di schema e nessun import. Nessun pacchetto privato usato nel browser."
+    },
+    {
+      "id": "B-SURVEY-SYNTHETIC",
+      "status": "PASS",
+      "observation": "Survey solo fittizia locale: consenso fittizio, scelta e nota, autosave confermato, reload identico, invio ricevuto. DB una risposta anonima senza link ad account, pur con cookie learner presente. Nessuna campagna reale aperta o modificata."
+    },
+    {
+      "id": "B-LEARNER-IDEA-MOBILE",
+      "status": "PASS",
+      "observation": "Build finale, account secondo learner con form idea vuota a390x844: testo e campi leggibili, nessun overflow (scrollWidth390); screenshot conservato. Nessuna risposta creata."
+    }
+  ],
+  "finalBuildId": "mLKpQvP1366UJpxhqoHjS",
+  "counts": {
+    "BLOCKED": 1,
+    "PASS": 27,
+    "PASS_AFTER_FIX": 3
+  }
+}

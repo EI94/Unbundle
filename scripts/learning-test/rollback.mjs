@@ -38,7 +38,7 @@ if (!baseline) await check("R03-global-flag", "Global flag off blocks direct lea
   assert.ok((await learning.text()).includes("La formazione non è ancora attiva"));
   const response = await fetch(`${origin}/api/learning`, {
     method: "POST", headers: { cookie, origin, "content-type": "application/json" },
-    body: JSON.stringify({ operation: "startLearningAttempt", input: { workspaceId: workspace.workspaceId, programId: workspace.programId, activityId: "m1-check", expectedVersion: fixture.contentVersion } }),
+    body: JSON.stringify({ operation: "startLearningAttempt", input: { expectedUserId: fixture.accounts["learner-b2"].id, workspaceId: workspace.workspaceId, programId: workspace.programId, activityId: "m1-check", expectedVersion: fixture.contentVersion } }),
   });
   assert.equal(response.status, 503);
   const result = await response.json(); assert.equal(result.ok, false); assert.equal(result.code, "unavailable");

@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-10-02T10:33:35.028201+00:00",
+  "status": "PASS",
+  "changedFiles": 52,
+  "textFiles": 46,
+  "privatePhrasesChecked": 89,
+  "browserAssetsChecked": 69,
+  "findings": [],
+  "browserFindings": [],
+  "scope": "Literal private-pack strings longer than60characters, private-key headers and credentialed PostgreSQL URLs in new/changed non-ignored files; private phrases also scanned in all public JavaScript assets. Not a general secret audit."
+}

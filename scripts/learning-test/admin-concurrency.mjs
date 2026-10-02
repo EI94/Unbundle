@@ -74,9 +74,9 @@ async function start(){return execute(learner,sql`INSERT INTO learning_attempts(
  SELECT ${randomUUID()}::uuid,${ids.workspace}::uuid,${ids.program}::uuid,${ids.enrollment}::uuid,${ids.learner}::uuid,'synthetic-race',1,'race-v1',${'0'.repeat(64)},'{}'::jsonb
  WHERE ${guard(sql,ctx,0)} RETURNING id`);}
 const scope={workspaceId:ids.workspace,programId:ids.program};
-const move={operation:'enrollment',input:{...scope,enrollmentId:ids.enrollment,status:'active',cohortId:'b'}};
-const reopen={operation:'lifecycle',input:{...scope,action:'reopen'}};
-const purge={operation:'purge',input:{...scope,confirmProgramId:ids.program,confirmTitle:'Synthetic concurrency'}};
+const move={expectedUserId:ids.manager,operation:'enrollment',input:{...scope,enrollmentId:ids.enrollment,status:'active',cohortId:'b'}};
+const reopen={expectedUserId:ids.manager,operation:'lifecycle',input:{...scope,action:'reopen'}};
+const purge={expectedUserId:ids.manager,operation:'purge',input:{...scope,confirmProgramId:ids.program,confirmTitle:'Synthetic concurrency'}};
 const pending=[];
 const settle=p=>{const result=p.then(value=>({value}),error=>({error}));pending.push(result);return result;};
 const gates=[];

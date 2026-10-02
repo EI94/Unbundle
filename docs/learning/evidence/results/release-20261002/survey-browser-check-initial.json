@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-10-02T10:48:28.729Z",
+  "status": "FAIL_HARNESS_EXPECTATION",
+  "reason": "Assumed metadata empty before inspecting legitimate metadata keys",
+  "respondents": [
+    {
+      "invite_status": "completed",
+      "has_accepted_privacy_notice": true,
+      "completed": true,
+      "noidentity": true
+    }
+  ],
+  "response": [
+    {
+      "status": "submitted",
+      "submitted": true,
+      "answer_count": 2
+    }
+  ],
+  "metadataKeys": [
+    "locale",
+    "version",
+    "userAgent",
+    "templateVersion"
+  ],
+  "audits": [
+    {
+      "event_type": "response_submitted",
+      "count": 1,
+      "actor_accounts": 0
+    }
+  ]
+}

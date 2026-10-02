@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-10-02T10:24:35.529Z",
+  "scope": "local loopback only; new synthetic user; actual session endpoint and revocation; no product auth modification",
+  "userId": "088e08fd-76bf-4c06-bb23-5e357656009b",
+  "checks": [
+    {
+      "id": "SESSION-01",
+      "title": "Current same-user workspace membership is verified without returning identity data",
+      "status": "PASS"
+    },
+    {
+      "id": "SESSION-02",
+      "title": "Different expected user is rejected before content can be shown",
+      "status": "PASS"
+    },
+    {
+      "id": "SESSION-03",
+      "title": "Current user without workspace access is rejected",
+      "status": "PASS"
+    },
+    {
+      "id": "SESSION-04",
+      "title": "Missing cookie returns unauthenticated JSON without redirect",
+      "status": "PASS"
+    },
+    {
+      "id": "SESSION-05",
+      "title": "Missing or foreign Origin and spoofed forwarded host fail closed",
+      "status": "PASS"
+    },
+    {
+      "id": "SESSION-06",
+      "title": "Strict input, media and one-KiB body limit are enforced",
+      "status": "PASS"
+    },
+    {
+      "id": "SESSION-07",
+      "title": "Revoked membership immediately invalidates prior verification",
+      "status": "PASS"
+    },
+    {
+      "id": "SESSION-08",
+      "title": "Emulator session revocation rejects old cookie and a real new sign-in recovers",
+      "status": "PASS"
+    }
+  ],
+  "totals": {
+    "pass": 8,
+    "fail": 0
+  }
+}

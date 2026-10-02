@@ -32,7 +32,7 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
       if (!file || file.size > 5_000_000) throw new Error("Scegli un pacchetto JSON di dimensione inferiore a 5 MB.");
       let pack: unknown;
       try { pack = JSON.parse(await file.text()); } catch { throw new Error("Il file non contiene un pacchetto JSON valido."); }
-      const result = await learningAdminRequest({ operation: "inspectPack", input: { workspaceId, pack } });
+      const result = await learningAdminRequest({ expectedUserId: catalog.userId, operation: "inspectPack", input: { workspaceId, pack } });
       if (!result.ok) { setError(true); setMessage(result.message); return; }
       privatePack.current = pack;
       setPackSummary(result.data);
@@ -47,7 +47,7 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
     const fields = new FormData(event.currentTarget);
     setBusy(true); setError(false); setMessage("");
     try {
-      const result = await learningAdminRequest({ operation: "importPack", input: {
+      const result = await learningAdminRequest({ expectedUserId: catalog.userId, operation: "importPack", input: {
         workspaceId, pack: privatePack.current, title: String(fields.get("title") ?? ""),
         visibilityPolicy: String(fields.get("visibilityPolicy") ?? ""), retentionDays: Number(fields.get("retentionDays")),
       } });
@@ -56,7 +56,7 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
       if (fileInput.current) fileInput.current.value = "";
       setMessage(result.data.message);
       try {
-        const updated = await learningAdminRequest({ operation: "catalog", input: { workspaceId } });
+        const updated = await learningAdminRequest({ expectedUserId: catalog.userId, operation: "catalog", input: { workspaceId } });
         if (updated.ok) setCatalog(updated.data);
         else setMessage("Importazione confermata. Ricarica la pagina per aggiornare l’elenco dei corsi.");
       } catch { setMessage("Importazione confermata. Ricarica la pagina per aggiornare l’elenco dei corsi."); }

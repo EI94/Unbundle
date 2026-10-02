@@ -13,7 +13,8 @@ import { AdminParticipants } from "./admin-participants";
 import { AdminGrants } from "./admin-grants";
 
 type Mutation = Exclude<LearningAdminRequest, { operation: "catalog" | "detail" | "inspectPack" }>;
-export type AdminMutate = (request: Mutation) => Promise<boolean>;
+type WithoutActor<T> = T extends unknown ? Omit<T, "expectedUserId"> : never;
+export type AdminMutate = (request: WithoutActor<Mutation>) => Promise<boolean>;
 const sections = { overview: "Corso", participants: "Partecipanti", sessions: "Turni", permissions: "Permessi", history: "Registro e conservazione" };
 type Section = keyof typeof sections;
 
@@ -39,11 +40,11 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
     if (busy) return false;
     setBusy(true); setError(false); setMessage("");
     try {
-      const result = await learningAdminRequest(request);
+      const result = await learningAdminRequest({ ...request, expectedUserId: data.userId });
       if (!result.ok) { setError(true); setMessage(result.message); return false; }
       setMessage(result.data.message);
       try {
-        const updated = await learningAdminRequest({ operation: "detail", input: scope });
+        const updated = await learningAdminRequest({ expectedUserId: data.userId, operation: "detail", input: scope });
         if (updated.ok) setData(updated.data);
         else if (updated.code === "forbidden") { setAccessLost(true); setMessage("Modifica confermata. Il tuo permesso di gestione per questo corso non è più attivo."); }
         else setMessage(`${result.data.message} Ricarica la pagina per aggiornare il riepilogo.`);
@@ -56,7 +57,7 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
   async function refresh() {
     setBusy(true); setError(false); setMessage("");
     try {
-      const result = await learningAdminRequest({ operation: "detail", input: scope });
+      const result = await learningAdminRequest({ expectedUserId: data.userId, operation: "detail", input: scope });
       if (!result.ok) { setError(true); setMessage(result.message); if (result.code === "forbidden") setAccessLost(true); }
       else { setData(result.data); setMessage("Riepilogo aggiornato."); }
     } catch { setError(true); setMessage("Aggiornamento non riuscito. Riprova quando la connessione è disponibile."); }

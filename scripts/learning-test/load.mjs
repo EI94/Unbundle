@@ -29,7 +29,7 @@ const pack = parseTrainingPack(createOperationalTestPack());
 const answers = Object.fromEntries(pack.items.filter(i => i.activity_id === activityId).map(i => [i.id, i.correct_option_ids[0]]));
 const accounts = [];
 const evidence = {
-  timestamp: new Date().toISOString(), runId, test: "O01", userCount: count,
+  timestamp: new Date().toISOString(), runId, test: "O01", userCount: count, concurrentRequestsPlanned: count * 9,
   environment: `Local Next ${runtime === "production" ? "optimized production start" : "dev --webpack"}; Firebase Auth emulator; real Neon/Drizzle SQL through loopback PostgreSQL test transport`, runtime,
   database: "127.0.0.1:55439/unbundle_learning_test", codeCommit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   workingTreeDirty: !!execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim(),
@@ -43,7 +43,7 @@ const evidence = {
     "Session endpoint uses genuine emulator ID tokens. Browser Google/email sign-in UI is not measured.",
   ],
 };
-for (const path of ["src/lib/learning/server.ts", "src/lib/learning/schema.ts", "src/lib/actions/learning.ts", "src/lib/learning/grading.ts", "src/lib/learning/http.ts", "src/app/api/learning/route.ts", "scripts/learning-test/load.mjs"])
+for (const path of ["src/lib/learning/server.ts", "src/lib/learning/schema.ts", "src/lib/actions/learning.ts", "src/lib/learning/grading.ts", "src/lib/learning/http.ts", "src/app/api/learning/route.ts", "scripts/learning-test/load.mjs", "src/app/api/learning/session/route.ts", "src/lib/learning/session-check.ts", "src/components/learning/session-boundary.tsx"])
   evidence.sourceHashes[path] = createHash("sha256").update(await readFile(path)).digest("hex");
 function percentile(sorted, ratio) { return sorted.length ? Math.round(sorted[Math.ceil(sorted.length * ratio) - 1] * 10) / 10 : null; }
 function metrics(samples) {
@@ -62,6 +62,15 @@ async function session(account) {
   await response.text();
   if (!response.ok || !cookie?.startsWith("__session=")) throw new Error(`Session endpoint status ${response.status}`);
   account.cookie = cookie.split(";")[0];
+}
+async function verifySession(account) {
+  const response = await fetch(`${origin}/api/learning/session`, { method: "POST", redirect: "error", signal: AbortSignal.timeout(60_000),
+    headers: { "content-type": "application/json", origin, cookie: account.cookie },
+    body: JSON.stringify({ workspaceId: scope.workspaceId, expectedUserId: account.id }) });
+  const result = await response.json();
+  assert.equal(response.status, 200, `Session boundary status ${response.status}`);
+  assert.deepEqual(result, { code: "verified" });
+  assert.ok(response.headers.get("cache-control")?.includes("no-store"));
 }
 async function action(account, exportedName, input) {
   const response = await fetch(`${origin}/api/learning`, { method: "POST", redirect: "error", signal: AbortSignal.timeout(60_000),
@@ -108,12 +117,15 @@ try {
     const response = await fetch(activityUrl, { headers: { cookie: accounts[0].cookie }, signal: AbortSignal.timeout(60_000) });
     const text = await response.text(); assert.equal(response.status, 200); assert.ok(!text.includes("PRIVATE_FEEDBACK_MARKER"));
   });
+  const boundaryPrewarm = await timed(() => verifySession(accounts[0]));
+  evidence.phases.prewarmSessionBoundary = metrics([boundaryPrewarm]);
+  assert.ok(boundaryPrewarm.ok, boundaryPrewarm.error);
   evidence.phases.prewarmPageNotColdCompile = metrics([prewarmPage]);
   assert.ok(prewarmPage.ok, prewarmPage.error);
   // Exercise all handlers once outside the measured waves. The practice checkpoint
   // is separate from the 50 final attempts whose integrity is checked below.
   const warmup = await timed(async () => {
-    let a = await action(accounts[0], "startLearningAttempt", { ...scope, activityId: "m1-check", expectedVersion: pack.content_version });
+    let a = await action(accounts[0], "startLearningAttempt", { ...scope, activityId: "m1-check", expectedUserId: accounts[0].id, expectedVersion: pack.content_version });
     const checkAnswers = Object.fromEntries(pack.items.filter(i => i.activity_id === "m1-check").map(i => [i.id, i.correct_option_ids[0]]));
     a = await action(accounts[0], "saveLearningDraft", { ...scope, attemptId: a.id, expectedRevision: a.revision, responses: { answers: checkAnswers, fields: {} } });
     await action(accounts[0], "submitLearningAttempt", { ...scope, attemptId: a.id, expectedRevision: a.revision, idempotencyKey: randomUUID() });
@@ -121,7 +133,9 @@ try {
   evidence.phases.prewarmHandlers = metrics([warmup]); assert.ok(warmup.ok, warmup.error);
   const sessions = await wave("sessionConcurrent", session);
   assert.ok(sessions.every(s => s.ok), "Some synthetic sessions failed; dependent wave cannot run");
-  const started = await wave("startConcurrent", async a => { a.attempt = await action(a, "startLearningAttempt", { ...scope, activityId, expectedVersion: pack.content_version }); });
+  const boundaries = await wave("sessionBoundaryConcurrent", verifySession);
+  assert.ok(boundaries.every(s => s.ok), "Some session boundaries failed; no participant writes started");
+  const started = await wave("startConcurrent", async a => { a.attempt = await action(a, "startLearningAttempt", { ...scope, activityId, expectedUserId: a.id, expectedVersion: pack.content_version }); });
   assert.ok(started.every(s => s.ok), "Some starts failed; dependent wave cannot run");
   const autosaveSamples = [];
   for (let round = 0; round < 3; round++) {

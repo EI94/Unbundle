@@ -39,7 +39,7 @@ Il test locale O03 ha usato un database isolato con due workspace sintetici. Uno
 
 Dopo il ripristino, controllare almeno: appartenenza workspace/program/enrollment, primi e ultimi tentativi, ordini congelati, timestamp delle decisioni e consegne, revisioni, risultati ricalcolabili, grant revocati e perimetro di coorte, audit e collegamenti al portfolio. Riprovare con due account non amministrativi. Non collegare l'ambiente ripristinato a email, Slack o altri canali reali.
 
-Nessun backup/ripristino di produzione è stato eseguito o richiesto. Il database del test locale è reale PostgreSQL, popolato esclusivamente da fixture sintetiche.
+Alla verifica del 1° ottobre nessun backup/ripristino di produzione era stato eseguito o richiesto. Il database del test locale è reale PostgreSQL, popolato esclusivamente da fixture sintetiche. Il 2 ottobre è stata richiesta una verifica di backup reale, rimasta bloccata dalla revisione automatica prima dell’esportazione: stato e condizioni sono in [RELEASE-HARDENING-2026-10-02.md](RELEASE-HARDENING-2026-10-02.md).
 
 ## Conservazione: procedura implementata e limiti
 

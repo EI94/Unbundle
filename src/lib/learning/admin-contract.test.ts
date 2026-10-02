@@ -5,21 +5,22 @@ import { learningAdminRequestSchema } from "./admin-contract.ts";
 const workspaceId = "11111111-1111-4111-8111-aaaaaaaaaaaa";
 const programId = "22222222-2222-4222-8222-bbbbbbbbbbbb";
 const targetId = "33333333-3333-4333-8333-cccccccccccc";
+const expectedUserId = "55555555-5555-4555-8555-dddddddddddd";
 const scope = { workspaceId, programId };
 const settings = { title: "Synthetic course", visibilityPolicy: "Synthetic named visibility policy.", retentionDays: 30 };
 const validRequests = [
-  { operation: "catalog", input: { workspaceId } },
-  { operation: "detail", input: scope },
-  { operation: "inspectPack", input: { workspaceId, pack: {} } },
-  { operation: "importPack", input: { workspaceId, pack: {}, ...settings } },
-  { operation: "settings", input: { ...scope, ...settings } },
-  { operation: "lifecycle", input: { ...scope, action: "disable" } },
-  { operation: "session", input: { ...scope, sessionId: targetId, status: "scheduled" } },
-  { operation: "enroll", input: { ...scope, userIds: [targetId], cohortId: "synthetic-cohort" } },
-  { operation: "enrollment", input: { ...scope, enrollmentId: targetId, status: "revoked", cohortId: "synthetic-cohort" } },
-  { operation: "grant", input: { ...scope, userId: targetId, capability: "review", cohortId: "synthetic-cohort" } },
-  { operation: "revokeGrant", input: { ...scope, grantId: targetId } },
-  { operation: "purge", input: { ...scope, confirmProgramId: programId, confirmTitle: settings.title } },
+  { expectedUserId, operation: "catalog", input: { workspaceId } },
+  { expectedUserId, operation: "detail", input: scope },
+  { expectedUserId, operation: "inspectPack", input: { workspaceId, pack: {} } },
+  { expectedUserId, operation: "importPack", input: { workspaceId, pack: {}, ...settings } },
+  { expectedUserId, operation: "settings", input: { ...scope, ...settings } },
+  { expectedUserId, operation: "lifecycle", input: { ...scope, action: "disable" } },
+  { expectedUserId, operation: "session", input: { ...scope, sessionId: targetId, status: "scheduled" } },
+  { expectedUserId, operation: "enroll", input: { ...scope, userIds: [targetId], cohortId: "synthetic-cohort" } },
+  { expectedUserId, operation: "enrollment", input: { ...scope, enrollmentId: targetId, status: "revoked", cohortId: "synthetic-cohort" } },
+  { expectedUserId, operation: "grant", input: { ...scope, userId: targetId, capability: "review", cohortId: "synthetic-cohort" } },
+  { expectedUserId, operation: "revokeGrant", input: { ...scope, grantId: targetId } },
+  { expectedUserId, operation: "purge", input: { ...scope, confirmProgramId: programId, confirmTitle: settings.title } },
 ];
 
 test("admin accepts only supported operations with exact envelopes and inputs", () => {
@@ -31,27 +32,27 @@ test("admin accepts only supported operations with exact envelopes and inputs", 
     }
   }
   for (const operation of ["constructor", "__proto__", "deleteProgram", "resetSurvey", "exportPrivatePack"]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ operation, input: scope }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation, input: scope }).success, false);
   }
 });
 
 test("administrative settings cannot replace immutable publication or answer data", () => {
   for (const extra of [{ privatePack: {} }, { pack: {} }, { contentVersion: "forged" }, { packHash: "a".repeat(64) }, { publishedBy: targetId }, { responses: {} }]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ operation: "settings", input: { ...scope, ...settings, ...extra } }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, ...settings, ...extra } }).success, false);
   }
   for (const retentionDays of [0, 3651, 1.5, "30", null]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ operation: "settings", input: { ...scope, ...settings, retentionDays } }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, ...settings, retentionDays } }).success, false);
   }
   for (const retentionDays of [1, 3650]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ operation: "settings", input: { ...scope, ...settings, retentionDays } }).success, true);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, ...settings, retentionDays } }).success, true);
   }
   for (const invalid of [{ title: "   " }, { title: "x".repeat(251) }, { visibilityPolicy: "short" }, { visibilityPolicy: "x".repeat(10_001) }]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ operation: "settings", input: { ...scope, ...settings, ...invalid } }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, ...settings, ...invalid } }).success, false);
   }
 });
 
 test("enrollment batches are bounded, UUID-only, and duplicate identity aliases are rejected", () => {
-  const request = (userIds: unknown) => ({ operation: "enroll", input: { ...scope, cohortId: "synthetic-cohort", userIds } });
+  const request = (userIds: unknown) => ({ expectedUserId, operation: "enroll", input: { ...scope, cohortId: "synthetic-cohort", userIds } });
   for (const userIds of [[], [targetId, targetId], [targetId, targetId.toUpperCase()], ["learner@example.invalid"], "all-members"]) {
     assert.equal(learningAdminRequestSchema.safeParse(request(userIds)).success, false);
   }
@@ -62,17 +63,17 @@ test("enrollment batches are bounded, UUID-only, and duplicate identity aliases 
 
 test("grant and lifecycle payloads cannot invent capabilities, transitions or implicit global scope", () => {
   for (const capability of ["manage", "review", "aggregate", "export"]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ operation: "grant", input: { ...scope, userId: targetId, capability, cohortId: null } }).success, true);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "grant", input: { ...scope, userId: targetId, capability, cohortId: null } }).success, true);
   }
   for (const capability of ["admin", "owner", "readAll", "*"]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ operation: "grant", input: { ...scope, userId: targetId, capability, cohortId: null } }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "grant", input: { ...scope, userId: targetId, capability, cohortId: null } }).success, false);
   }
-  assert.equal(learningAdminRequestSchema.safeParse({ operation: "grant", input: { ...scope, userId: targetId, capability: "manage" } }).success, false);
+  assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "grant", input: { ...scope, userId: targetId, capability: "manage" } }).success, false);
   for (const action of ["delete", "reset", "drop", "purge"]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ operation: "lifecycle", input: { ...scope, action } }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "lifecycle", input: { ...scope, action } }).success, false);
   }
   for (const status of ["submitted", "deleted", "pending_review"]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ operation: "enrollment", input: { ...scope, enrollmentId: targetId, cohortId: "synthetic-cohort", status } }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "enrollment", input: { ...scope, enrollmentId: targetId, cohortId: "synthetic-cohort", status } }).success, false);
   }
 });
 
@@ -80,9 +81,21 @@ test("purge requires explicit program and title confirmation and rejects mass de
   const input = { ...scope, confirmProgramId: programId, confirmTitle: settings.title };
   for (const key of ["confirmProgramId", "confirmTitle"]) {
     const missing = { ...input } as Record<string, unknown>; delete missing[key];
-    assert.equal(learningAdminRequestSchema.safeParse({ operation: "purge", input: missing }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "purge", input: missing }).success, false);
   }
   for (const extra of [{ allPrograms: true }, { workspaceIds: [workspaceId] }, { deletePortfolio: true }, { overrideRetention: true }]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ operation: "purge", input: { ...input, ...extra } }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "purge", input: { ...input, ...extra } }).success, false);
+  }
+});
+
+
+test("every admin operation requires an explicit expected actor without treating it as authority", () => {
+  for (const request of validRequests) {
+    const { expectedUserId: omitted, ...unbound } = request; void omitted;
+    assert.equal(learningAdminRequestSchema.safeParse(unbound).success, false, request.operation);
+    for (const expectedUserId of [null, "", "admin", 123]) {
+      assert.equal(learningAdminRequestSchema.safeParse({ ...request, expectedUserId }).success, false, request.operation);
+    }
+    assert.equal(learningAdminRequestSchema.safeParse({ ...request, input: { ...request.input, expectedUserId } }).success, false);
   }
 });

@@ -8,6 +8,6 @@ export default async function LearningAdminPage({ params }: { params: Promise<{ 
   if (!learningEnabled()) return <LearningShell workspaceId={workspaceId} title="Gestisci formazione"><LearningUnavailable message="La formazione non è attiva in questo ambiente." /></LearningShell>;
   const catalog = await getLearningAdminCatalog(workspaceId);
   return <LearningShell workspaceId={workspaceId} title="Gestisci formazione">
-    {catalog.canCreate || catalog.canManage ? <LearningAdminCatalog workspaceId={workspaceId} initial={catalog} /> : <LearningUnavailable message="Per gestire un corso serve un permesso esplicito del responsabile. Gli amministratori del workspace possono preparare un nuovo corso." />}
+    {catalog.canCreate || catalog.canManage ? <LearningAdminCatalog key={`${workspaceId}:${catalog.userId}`} workspaceId={workspaceId} initial={catalog} /> : <LearningUnavailable message="Per gestire un corso serve un permesso esplicito del responsabile. Gli amministratori del workspace possono preparare un nuovo corso." />}
   </LearningShell>;
 }

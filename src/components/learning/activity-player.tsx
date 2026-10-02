@@ -20,8 +20,8 @@ const modeLabel: Record<string, string> = {
   execute_authorized_assistant: "Esecuzione con assistente autorizzato",
 };
 
-export function ActivityPlayer({ workspaceId, programId, version, activity, initialAttempt }: {
-  workspaceId: string; programId: string; version: string; activity: LearnerActivityDTO; initialAttempt: AttemptDTO | null;
+export function ActivityPlayer({ workspaceId, programId, userId, version, activity, initialAttempt }: {
+  workspaceId: string; programId: string; userId: string; version: string; activity: LearnerActivityDTO; initialAttempt: AttemptDTO | null;
 }) {
   const router = useRouter();
   const [attempt, setAttempt] = useState(initialAttempt);
@@ -153,7 +153,7 @@ export function ActivityPlayer({ workspaceId, programId, version, activity, init
   const start = async () => {
     setBusy(true);
     try {
-      const result = await startLearningAttempt({ workspaceId, programId, activityId: activity.id, expectedVersion: version });
+      const result = await startLearningAttempt({ workspaceId, programId, activityId: activity.id, expectedUserId: userId, expectedVersion: version });
       if (!result.ok) { setProblem(result.code); setMessage(result.message); return; }
       const pending = result.data.status === "draft" ? pendingDrafts.get(result.data.id) : undefined;
       revision.current = pending?.revision ?? result.data.revision;

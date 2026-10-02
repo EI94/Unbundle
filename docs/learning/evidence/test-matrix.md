@@ -1,5 +1,7 @@
 # Matrice P0 — evidenze locali e limiti
 
+> Questa matrice conserva lo snapshot della prima consegna. Per la candidata integrata successiva, le prove aggiuntive e i blocchi attuali consultare [RELEASE-HARDENING-2026-10-02.md](../RELEASE-HARDENING-2026-10-02.md) e le ricevute indicate: i PASS storici non attestano automaticamente la nuova fonte.
+
 Data: 1 ottobre 2026, Europe/Rome. Branch `codex/m1-training`; base `e63a2a719410af77982c85522dad6339975f869e`. Verifiche sul working tree della feature: il report finale deve associare e ripetere i controlli sul commit consegnato. Nessuna migrazione, invito o deploy di produzione è stato eseguito.
 
 **PASS** indica un comportamento verificato nel perimetro locale descritto, non una validazione di produzione. **FAIL** indica un criterio misurato non raggiunto. **BLOCKED** indica una prova completa mancante; le verifiche parziali sono indicate senza trasformarle in PASS. L'anteprima autorizzata, il provider di login reale, i destinatari reali e l'approvazione privacy/accessi restano fuori da queste evidenze.

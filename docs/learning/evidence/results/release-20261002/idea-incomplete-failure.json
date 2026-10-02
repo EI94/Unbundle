@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-10-02T09:45:31.277Z",
+  "status": "FAIL_CONFIRMED",
+  "expectedHttpStatus": 422,
+  "actualHttpStatus": 503,
+  "actualCode": "technical",
+  "fieldErrors": null,
+  "workspaceId": "057999d4-b0ba-4b1d-a96e-6c0fa287f077",
+  "programId": "6b0dffb1-bba5-4b70-9faa-74767c80bae9",
+  "draftId": "59240c3e-b368-4c99-949f-25f903539654",
+  "draftUnchanged": true,
+  "portfolioCount": 0,
+  "requiredOutputLength": 0,
+  "fieldsDigest": "1a14bdb0e3ae234cd1f3a458dba2adf8da4cca5d5e1af02912b8aec17dfcc63e"
+}

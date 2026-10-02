@@ -1,0 +1,50 @@
+{
+  "scope": "Local source tests and isolated PostgreSQL only; logs preserved outside Git",
+  "results": [
+    {
+      "suite": "Learning pure tests",
+      "sourceLog": "learning-unit-final.log",
+      "sourceLogSha256": "09f27fcaf93fe0cecaa1d8c24a00fcde1f4bcba618b27636c2caef7914cb0b0e",
+      "pass": 81,
+      "fail": 0,
+      "skipped": 7
+    },
+    {
+      "suite": "Isolated PostgreSQL16 constraints",
+      "sourceLog": "learning-db-final.log",
+      "sourceLogSha256": "fcd3dd067dd9f6d0d3e8fa85a919d4788e18b9b085dbb6f329c74118f4805a6f",
+      "pass": 7,
+      "fail": 0,
+      "skipped": 0
+    }
+  ],
+  "regressions": {
+    "recordedAt": "2026-10-02T09:23:13.718217+00:00",
+    "codeCommit": "5ad1ec99e87f09a2a0a4be4f2e504936cc44ddcd",
+    "workingTreeDirty": true,
+    "execution": "All six npm regression commands completed sequentially with shell && and exit code 0; first five stdout results were returned by the execution tool, final Slack stdout saved as slack-final.log.",
+    "suites": {
+      "auth": 5,
+      "workspace-collaboration": 4,
+      "ai-readiness": 50,
+      "portfolio": 16,
+      "mcp": 11,
+      "slack": 29
+    },
+    "pass": 115,
+    "fail": 0,
+    "learningPure": {
+      "pass": 79,
+      "fail": 0,
+      "skippedDatabase": 7
+    },
+    "databaseSeparate": {
+      "pass": 7,
+      "fail": 0
+    },
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "packageSha256": "9e800f6b9eec7aa27e6b3581b88faf9c5858c4b39a272768cf94e2be92e10e70",
+    "note": "Existing suite results recorded before later idea/retry/portfolio fixes; not rerun implicitly."
+  }
+}

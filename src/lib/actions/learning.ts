@@ -16,7 +16,7 @@ async function run<T>(fn:()=>Promise<T>):Promise<LearningActionResult<T>> {
   }
 }
 export async function startLearningAttempt(input:unknown) {
-  return run(()=>learning.startLearningAttempt(z.object({...scope,activityId:z.string().max(100),expectedVersion:z.string().max(100)}).strict().parse(input)));
+  return run(()=>learning.startLearningAttempt(z.object({...scope,activityId:z.string().max(100),expectedUserId:z.uuid(),expectedVersion:z.string().max(100)}).strict().parse(input)));
 }
 export async function saveLearningDraft(input:unknown) {
   return run(()=>learning.saveLearningDraft(z.object({...scope,attemptId:z.uuid(),expectedRevision:revision,responses:z.unknown()}).strict().parse(input) as Parameters<typeof learning.saveLearningDraft>[0]));

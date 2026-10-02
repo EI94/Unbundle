@@ -64,6 +64,10 @@ import {
   getUseCaseFieldIdsForBlocks,
   validateUseCaseValues,
 } from "@/lib/ai-readiness/use-case-form";
+import {
+  surveyTrackMeta,
+  type AiReadinessSurveyTrack,
+} from "@/lib/ai-readiness/survey-track";
 import { randomUUID } from "node:crypto";
 import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
 
@@ -78,6 +82,7 @@ export type CreateRespondentInviteData = {
   respondentId: string;
   inviteUrl: string;
   email: string | null;
+  surveyTrack: AiReadinessSurveyTrack;
   expiresWithAssessment: boolean;
 };
 
@@ -111,7 +116,7 @@ const inviteRespondentSchema = z.object({
   organizationUnit: z.string().trim().min(2, "Indica l'area/team."),
   country: z.string().trim().optional(),
   locale: z.string().trim().optional(),
-  surveyTrack: z.enum(["everyone", "internal", "use_case_expert"]).default("everyone"),
+  surveyTrack: z.enum(["everyone", "internal", "use_case_expert"]).default("internal"),
 });
 
 function formString(formData: FormData, key: string) {
@@ -788,7 +793,7 @@ export async function createAiReadinessRespondentInviteAction(
     organizationUnit: formString(formData, "organizationUnit"),
     country: formString(formData, "country"),
     locale: formString(formData, "locale") || "it",
-    surveyTrack: formString(formData, "surveyTrack") || "everyone",
+    surveyTrack: formString(formData, "surveyTrack") || "internal",
   });
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {};
@@ -841,14 +846,16 @@ export async function createAiReadinessRespondentInviteAction(
   });
 
   revalidatePath(`/dashboard/${workspaceId}/ai-readiness`);
+  const track = surveyTrackMeta(parsed.data.surveyTrack);
   return {
     ok: true,
-    message: "Invito creato. Copia il link e invialo al respondent.",
+    message: `${track.label} pronta. Copia il link e invialo alla persona corretta.`,
     fieldErrors: {},
     data: {
       respondentId: respondent.id,
       inviteUrl,
       email: respondent.email,
+      surveyTrack: parsed.data.surveyTrack,
       expiresWithAssessment: true,
     },
   };

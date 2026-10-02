@@ -21,7 +21,7 @@ export type LearningEnrollmentRow = typeof learningEnrollments.$inferSelect;
 type AttemptRow = typeof learningAttempts.$inferSelect;
 type GrantRow = typeof learningGrants.$inferSelect;
 export type AttemptDTO = {
-  id: string; activityId: string; attemptNumber: number; parentAttemptId: string | null;
+  id: string; userId: string; activityId: string; attemptNumber: number; parentAttemptId: string | null;
   status: "draft" | "submitted"; revision: number; responses: AttemptResponses;
   savedAt: string; submittedAt: string | null; decisionsSubmittedAt: string | null; result: ObjectiveGrade | null;
   activity: LearnerActivityDTO; version: string; contentVersion: string;
@@ -118,7 +118,7 @@ export async function getLearningProgram(workspaceId: string,programId: string) 
 }
 function attemptDTO(row: AttemptRow,program: LearningProgramRow): AttemptDTO {
   if (row.contentVersion!==program.contentVersion || row.packHash!==program.packHash) throw new LearningError("technical","La versione del contenuto richiede una verifica tecnica. La bozza è conservata.");
-  return {id:row.id,activityId:row.activityId,attemptNumber:row.attemptNumber,parentAttemptId:row.parentAttemptId,status:row.status as "draft"|"submitted",revision:row.revision,responses:row.responses,
+  return {id:row.id,userId:row.userId,activityId:row.activityId,attemptNumber:row.attemptNumber,parentAttemptId:row.parentAttemptId,status:row.status as "draft"|"submitted",revision:row.revision,responses:row.responses,
     savedAt:row.updatedAt.toISOString(),decisionsSubmittedAt:row.decisionsSubmittedAt?.toISOString()??null,submittedAt:row.submittedAt?.toISOString()??null,result:row.status==="submitted"?row.result:null,
     activity:getLearnerActivity(program.privatePack,row.activityId,row.itemOrder),version:row.contentVersion,contentVersion:row.contentVersion,
     caseExample:row.status==="submitted" || row.decisionsSubmittedAt?getSubmittedCaseExample(program.privatePack,row.activityId):null};
@@ -133,7 +133,7 @@ export async function getLearningActivity(workspaceId:string,programId:string,ac
   const rows=(await ownAttempts(ctx)).filter(a=>a.activityId===activityId); const latest=rows.at(-1);
   if(latest?.status!=="submitted")await requireActivityOpen(ctx,activityId);
   if(activity.purpose==="retake" && !latest) throw new LearningError("forbidden","Avvia il recupero dal feedback della tua verifica.");
-  return {program:{id:ctx.program.id,title:ctx.program.title,version:ctx.program.contentVersion},activity:getLearnerActivity(ctx.program.privatePack,activityId,latest?.itemOrder ?? createAttemptOrder(ctx.program.privatePack,activityId)),attempt:latest?attemptDTO(latest,ctx.program):null,history:rows.map(summary)};
+  return {userId:ctx.userId,program:{id:ctx.program.id,title:ctx.program.title,version:ctx.program.contentVersion},activity:getLearnerActivity(ctx.program.privatePack,activityId,latest?.itemOrder ?? createAttemptOrder(ctx.program.privatePack,activityId)),attempt:latest?attemptDTO(latest,ctx.program):null,history:rows.map(summary)};
 }
 async function requireOwnAttempt(workspaceId:string,programId:string,attemptId:string,mutable=false) {
   identifier(attemptId); const ctx=await requireLearningEnrollment(workspaceId,programId,mutable);
@@ -160,8 +160,10 @@ export function learningWriteGuard(ctx:Awaited<ReturnType<typeof requireLearning
         OR EXISTS(SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id=w.id AND wm.user_id=${ctx.userId}::uuid))
       FOR SHARE OF p,e,s)`;
 }
-export async function startLearningAttempt(input:{workspaceId:string;programId:string;activityId:string;expectedVersion:string}) {
-  const ctx=await requireLearningEnrollment(input.workspaceId,input.programId,true); const activity=ensureM1(ctx.program,input.activityId);
+export async function startLearningAttempt(input:{workspaceId:string;programId:string;activityId:string;expectedVersion:string;expectedUserId:string}) {
+  const ctx=await requireLearningEnrollment(input.workspaceId,input.programId,true);
+  if(ctx.userId.toLowerCase()!==input.expectedUserId.toLowerCase())throw new LearningError("forbidden","L’account connesso è cambiato. Nessuna attività è stata aperta: riapri il percorso con l’account corretto.");
+  const activity=ensureM1(ctx.program,input.activityId);
   await requireActivityOpen(ctx,input.activityId);
   if(ctx.program.contentVersion!==input.expectedVersion) throw new LearningError("conflict","Il programma è stato aggiornato. Ricarica prima di iniziare.");
   if(activity.purpose==="retake") throw new LearningError("forbidden","Avvia il recupero dal feedback della tua verifica.");

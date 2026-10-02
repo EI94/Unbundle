@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-10-02T11:29:08.693013+00:00",
+  "status": "PASS",
+  "changedFiles": 84,
+  "textFiles": 75,
+  "screenshotsChecked": 9,
+  "privatePhrasesChecked": 89,
+  "browserAssetsChecked": 69,
+  "findings": [],
+  "browserFindings": [],
+  "screenshots": [
+    "docs/learning/evidence/screenshots/release-20261002/account-history-protected.jpg",
+    "docs/learning/evidence/screenshots/release-20261002/account-switch-protected.jpg",
+    "docs/learning/evidence/screenshots/release-20261002/admin-final-mobile.jpg",
+    "docs/learning/evidence/screenshots/release-20261002/idea-submit-fixed.jpg",
+    "docs/learning/evidence/screenshots/release-20261002/learner-idea-mobile-final.jpg",
+    "docs/learning/evidence/screenshots/release-20261002/learner-progress-retake.jpg",
+    "docs/learning/evidence/screenshots/release-20261002/original-account-draft-recovered.jpg",
+    "docs/learning/evidence/screenshots/release-20261002/trainer-mobile.jpg",
+    "docs/learning/evidence/screenshots/release-20261002/two-tabs-conflict.jpg"
+  ],
+  "scope": "Final pre-commit new/changed non-ignored files, including documentation, sanitized JSON and image bytes/metadata. Literal private-bank phrases longer than60characters, actual private-key headers, credentialed PostgreSQL URLs, raw survey tokens and long session cookies. All public JS also checked for private phrases. No OCR, general secret audit or production scan."
+}

@@ -1,0 +1,58 @@
+{
+  "timestamp": "2026-10-02T10:24:18.516Z",
+  "status": "PASS",
+  "workspaceId": "be1001cd-03fb-45ac-889f-0ea423aeedb9",
+  "programId": "c7cae6a5-dd70-4ea8-9010-fe6d3ae03419",
+  "checks": [
+    {
+      "actor": "student-foreign",
+      "surface": "HTML",
+      "workspaceRole": "contributor",
+      "courseManageGrant": false,
+      "containsPrivateSettingsMarker": false,
+      "status": "PASS"
+    },
+    {
+      "actor": "student-foreign",
+      "surface": "RSC",
+      "workspaceRole": "contributor",
+      "courseManageGrant": false,
+      "containsPrivateSettingsMarker": false,
+      "status": "PASS"
+    },
+    {
+      "actor": "course-manager",
+      "surface": "HTML",
+      "workspaceRole": "contributor",
+      "courseManageGrant": true,
+      "containsPrivateSettingsMarker": false,
+      "status": "PASS"
+    },
+    {
+      "actor": "course-manager",
+      "surface": "RSC",
+      "workspaceRole": "contributor",
+      "courseManageGrant": true,
+      "containsPrivateSettingsMarker": false,
+      "status": "PASS"
+    },
+    {
+      "actor": "admin-bootstrap",
+      "surface": "HTML",
+      "workspaceRole": "transformation_lead",
+      "courseManageGrant": false,
+      "containsPrivateSettingsMarker": true,
+      "status": "PASS"
+    },
+    {
+      "actor": "admin-bootstrap",
+      "surface": "RSC",
+      "workspaceRole": "transformation_lead",
+      "courseManageGrant": false,
+      "containsPrivateSettingsMarker": true,
+      "status": "PASS"
+    }
+  ],
+  "syntheticWebhookNeverCalled": true,
+  "syntheticFieldRestored": true
+}

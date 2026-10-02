@@ -8,6 +8,7 @@ import {
   filterTemplateForTrack,
   questionScopeFromUnknown,
 } from "@/lib/ai-readiness/template-scope";
+import { AI_READINESS_SURVEY_TRACKS } from "@/lib/ai-readiness/survey-track";
 import { OpenSurveyStartForm } from "@/components/ai-readiness/open-survey-start-form";
 import { SurveyThemeToggle } from "@/components/ai-readiness/survey-theme-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -85,9 +86,15 @@ export default async function OpenSurveyLandingPage({
   const scored = everyoneDef.questions.filter((q) => q.answerType !== "text").length;
   const openQuestions = everyoneDef.questions.length - scored;
   const minutes = Math.max(2, Math.round(scored * 0.5));
+  const track = AI_READINESS_SURVEY_TRACKS.everyone;
+  const includedAreas = everyoneDef.sections.map((section) => section.title);
 
   return (
-    <main id="survey-root" className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6">
+    <main
+      id="survey-root"
+      className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6"
+      data-survey-track="everyone"
+    >
       <div className="mx-auto max-w-3xl space-y-6">
         <header className="rounded-[36px] border bg-linear-to-br from-emerald-500/10 via-card to-sky-500/10 p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -97,11 +104,12 @@ export default async function OpenSurveyLandingPage({
           <div className="mt-6 flex flex-wrap items-center gap-2">
             <Badge variant="secondary">AI Readiness</Badge>
             <Badge variant="outline">{configString(brand, "displayName", "Unbundle")}</Badge>
+            <Badge variant="secondary">{track.label}</Badge>
             <Badge variant="outline">~{minutes} minuti</Badge>
             <Badge variant="outline">{named ? "Nominativa" : "Anonima"}</Badge>
           </div>
           <h1 className="mt-5 text-3xl font-semibold tracking-tight">
-            Benvenuto nella survey «{found.assessment.name}» 👋
+            Survey organizzazione «{found.assessment.name}»
           </h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
             {configString(
@@ -110,6 +118,21 @@ export default async function OpenSurveyLandingPage({
               "Il tuo contributo è importante: aiuta la tua organizzazione a capire dove l'AI può dare una mano davvero. Non è un esame e non ci sono risposte sbagliate."
             )}
           </p>
+          <div className="mt-4 rounded-2xl border border-emerald-500/25 bg-background/70 p-4">
+            <div className="text-sm font-medium">{track.audience}</div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Alimenta {track.feeds}. Non richiede informazioni su
+              infrastruttura, dati aziendali o organizzazione dei processi:
+              quelle vengono raccolte separatamente con la scheda referenti.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {includedAreas.map((area) => (
+                <Badge key={area} variant="outline">
+                  {area}
+                </Badge>
+              ))}
+            </div>
+          </div>
           <ul className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-3">
             <li className="rounded-2xl border bg-background/60 p-3">
               {/* Stringa unica: il JSX multi-riga mangiava lo spazio dopo il numero. */}

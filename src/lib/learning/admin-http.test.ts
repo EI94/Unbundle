@@ -5,19 +5,20 @@ import { LearningHttpError } from "./http.ts";
 
 const origin = "https://training.example.invalid";
 const workspaceId = "11111111-1111-4111-8111-aaaaaaaaaaaa";
-const body = JSON.stringify({ operation: "catalog", input: { workspaceId } });
+const expectedUserId = "55555555-5555-4555-8555-dddddddddddd";
+const body = JSON.stringify({ expectedUserId, operation: "catalog", input: { workspaceId } });
 const request = (value: BodyInit = body, headers: Record<string, string> = {}) => new Request(`${origin}/api/learning/admin`, {
   method: "POST", headers: { origin, "content-type": "application/json", ...headers }, body: value,
 });
 const status = (code: number) => (error: unknown) => error instanceof LearningHttpError && error.status === code;
 
 test("admin boundary parses an allowed request and rejects unknown operations and forged scope fields", async () => {
-  assert.deepEqual(await readLearningAdminRequest(request(), origin), { operation: "catalog", input: { workspaceId } });
+  assert.deepEqual(await readLearningAdminRequest(request(), origin), { expectedUserId, operation: "catalog", input: { workspaceId } });
   for (const value of [
-    { operation: "constructor", input: { workspaceId } },
-    { operation: "catalog", input: { workspaceId, role: "exec_sponsor" } },
-    { operation: "catalog", input: { workspaceId }, userId: workspaceId },
-    { operation: "catalog", input: [] }, null,
+    { expectedUserId, operation: "constructor", input: { workspaceId } },
+    { expectedUserId, operation: "catalog", input: { workspaceId, role: "exec_sponsor" } },
+    { expectedUserId, operation: "catalog", input: { workspaceId }, userId: workspaceId },
+    { expectedUserId, operation: "catalog", input: [] }, null,
   ]) await assert.rejects(() => readLearningAdminRequest(request(JSON.stringify(value)), origin), status(422));
 });
 
@@ -36,7 +37,7 @@ test("admin origin and media checks precede any reading of private pack data", a
 });
 
 test("admin upload cap measures bytes even with absent or dishonest Content-Length", async () => {
-  const large = JSON.stringify({ operation: "inspectPack", input: { workspaceId, pack: "é".repeat(LEARNING_ADMIN_MAX_BYTES / 2) } });
+  const large = JSON.stringify({ expectedUserId, operation: "inspectPack", input: { workspaceId, pack: "é".repeat(LEARNING_ADMIN_MAX_BYTES / 2) } });
   await assert.rejects(() => readLearningAdminRequest(request(large), origin), status(413));
   await assert.rejects(() => readLearningAdminRequest(request(large, { "content-length": "1" }), origin), status(413));
   for (const length of [String(LEARNING_ADMIN_MAX_BYTES + 1), "-1", "NaN", "1.5"]) {
@@ -62,7 +63,7 @@ test("admin chunked overflow cancels the stream and incomplete UTF-8 is rejected
 
 test("admin malformed private input never appears in boundary error messages", async () => {
   const privateMarker = "SYNTHETIC_PRIVATE_MARKER_DO_NOT_ECHO";
-  for (const value of [privateMarker, JSON.stringify({ operation: privateMarker, input: {} })]) {
+  for (const value of [privateMarker, JSON.stringify({ expectedUserId, operation: privateMarker, input: {} })]) {
     await assert.rejects(() => readLearningAdminRequest(request(value), origin), error => {
       assert.ok(error instanceof LearningHttpError);
       assert.equal(error.message.includes(privateMarker), false);

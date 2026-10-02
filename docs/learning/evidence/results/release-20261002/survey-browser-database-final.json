@@ -1,0 +1,56 @@
+{
+  "timestamp": "2026-10-02T10:49:35.292Z",
+  "status": "PASS",
+  "environment": "synthetic anonymous public survey on local isolated database",
+  "assessmentId": "86ab20a3-2b2b-478e-9ebb-71a1a2709566",
+  "respondentId": "3843b25c-f482-4a7f-b9f5-6aba5bbea318",
+  "respondents": [
+    {
+      "id": "3843b25c-f482-4a7f-b9f5-6aba5bbea318",
+      "invite_status": "completed",
+      "identity_fields_null": true,
+      "has_accepted_privacy_notice": true,
+      "has_completed_at": true
+    }
+  ],
+  "responses": [
+    {
+      "id": "a2b05d3f-e06e-41dd-832d-c849296f045b",
+      "respondent_id": "3843b25c-f482-4a7f-b9f5-6aba5bbea318",
+      "status": "submitted",
+      "has_submitted_at": true,
+      "answer_count": 2,
+      "metadataKeys": [
+        "locale",
+        "version",
+        "userAgent",
+        "templateVersion"
+      ]
+    }
+  ],
+  "audits": [
+    {
+      "event_type": "response_submitted",
+      "count": 1,
+      "actor_accounts": 0
+    }
+  ],
+  "learningCounts": {
+    "enrollments": 0,
+    "attempts": 0,
+    "programs": 0,
+    "memberships": 0
+  },
+  "accountLinkColumns": [],
+  "metadataHasNoAccountIdentity": true,
+  "checks": [
+    "One anonymous respondent and one submitted response",
+    "Identity fields remain null",
+    "All survey audit actor IDs remain null despite existing synthetic app session",
+    "No learning enrollment, attempt, program or membership in survey workspace",
+    "Respondent/response schema contains no account identity column",
+    "Technical metadata contains no fixture account UUID, Firebase UID, email or session token"
+  ],
+  "limitations": "Synthetic fixture only; no real respondents, raw answer values, public tokens or production data in this report.",
+  "history": "Initial assertion incorrectly expected empty metadata; actual legitimate keys are locale, version, userAgent and templateVersion. Historical harness failure is preserved separately."
+}

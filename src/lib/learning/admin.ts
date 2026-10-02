@@ -34,17 +34,21 @@ function manager(ctx: Context, cohort: SQL | null = null, anyScope = false): SQL
     AND admin_authority.program_id=${ctx.program.id}::uuid AND admin_authority.user_id=${ctx.userId}::uuid AND admin_authority.capability='manage' AND admin_authority.revoked_at IS NULL
     AND ${anyScope ? sql`true` : cohort ? sql`(admin_authority.cohort_id IS NULL OR admin_authority.cohort_id=${cohort})` : sql`admin_authority.cohort_id IS NULL`})`;
 }
-async function workspaceActor(workspaceId: string) {
+async function workspaceActor(workspaceId: string, expectedUserId?: string) {
   if (!learningEnabled()) throw new LearningError("unavailable", "La formazione non è disponibile in questo ambiente.");
   if (!z.uuid().safeParse(workspaceId).success) throw unavailable();
   const session = await auth();
   if (!session?.user.id) throw new LearningError("unauthenticated", "Accedi nuovamente per gestire la formazione.");
+  // Bind a tab's intent to its original author; this never grants authority.
+  if (expectedUserId !== undefined && session.user.id.toLowerCase() !== expectedUserId.toLowerCase()) {
+    throw new LearningError("forbidden", "L’account connesso è cambiato. Nessuna operazione è stata eseguita: riapri la gestione con l’account corretto.");
+  }
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
   if (!access) throw unavailable();
   return { userId: session.user.id, access, canCreate: ["exec_sponsor", "transformation_lead"].includes(access.role) };
 }
-async function requireManager(workspaceId: string, programId: string): Promise<Context> {
-  const { userId } = await workspaceActor(workspaceId);
+async function requireManager(workspaceId: string, programId: string, expectedUserId?: string): Promise<Context> {
+  const { userId } = await workspaceActor(workspaceId, expectedUserId);
   if (!z.uuid().safeParse(programId).success) throw unavailable();
   const [programs, grants] = await Promise.all([
     rows<Program>(sql`SELECT ${programColumns} FROM learning_programs p WHERE p.workspace_id=${workspaceId}::uuid AND p.id=${programId}::uuid`),
@@ -58,15 +62,15 @@ function scope(ctx: Context, cohortId: string | null) {
 }
 function scopedRows(ctx: Context, column: SQL): SQL { return ctx.scopes.includes(null) ? sql`true` : sql`${column} IN (SELECT jsonb_array_elements_text(${JSON.stringify(ctx.scopes)}::jsonb))`; }
 
-export async function getLearningAdminCatalog(workspaceId: string): Promise<AdminCatalogDTO> {
-  const actor = await workspaceActor(workspaceId);
+export async function getLearningAdminCatalog(workspaceId: string, expectedUserId?: string): Promise<AdminCatalogDTO> {
+  const actor = await workspaceActor(workspaceId, expectedUserId);
   const programs = await rows<Program & {scopes:(string|null)[]}>(sql`SELECT ${programColumns},
     (SELECT jsonb_agg(g.cohort_id) FROM learning_grants g WHERE g.workspace_id=p.workspace_id AND g.program_id=p.id AND g.user_id=${actor.userId}::uuid AND g.capability='manage' AND g.revoked_at IS NULL) AS scopes
     FROM learning_programs p WHERE p.workspace_id=${workspaceId}::uuid AND EXISTS(SELECT 1 FROM learning_grants g WHERE g.workspace_id=p.workspace_id AND g.program_id=p.id AND g.user_id=${actor.userId}::uuid AND g.capability='manage' AND g.revoked_at IS NULL) ORDER BY p.published_at DESC`);
-  return { canCreate:actor.canCreate,canManage:programs.length>0,programs:programs.map(({scopes,...p})=>programDTO(p,scopes)) };
+  return { userId:actor.userId,canCreate:actor.canCreate,canManage:programs.length>0,programs:programs.map(({scopes,...p})=>programDTO(p,scopes)) };
 }
-export async function getLearningAdminDetail(workspaceId: string, programId: string): Promise<AdminDetailDTO> {
-  const ctx = await requireManager(workspaceId, programId);
+export async function getLearningAdminDetail(workspaceId: string, programId: string, expectedUserId?: string): Promise<AdminDetailDTO> {
+  const ctx = await requireManager(workspaceId, programId, expectedUserId);
   const [members,sessions,enrollments,grants,audit,counts] = await Promise.all([
     rows<AdminDetailDTO["members"][number]>(sql`SELECT u.id,u.name,u.email,COALESCE(m.role,wm.role)::text AS role,CASE WHEN m.user_id IS NOT NULL THEN 'organization' ELSE 'workspace' END AS source
       FROM workspaces w JOIN users u ON ${member(workspaceId,sql`u.id`)} LEFT JOIN memberships m ON m.organization_id=w.organization_id AND m.user_id=u.id
@@ -87,7 +91,7 @@ export async function getLearningAdminDetail(workspaceId: string, programId: str
       (SELECT count(*)::int FROM learning_idea_drafts WHERE workspace_id=${workspaceId}::uuid AND program_id=${programId}::uuid) AS "ideaDrafts"`) : Promise.resolve([]),
   ]);
   const eligibility=learningRetentionEligibility({status:ctx.program.status,closedAt:ctx.program.closedAt?new Date(ctx.program.closedAt):null,retentionDays:ctx.program.retentionDays});
-  return {program:programDTO(ctx.program,ctx.scopes),members,sessions:sessions.map(s=>({...s,startsAt:instant(s.startsAt),endsAt:instant(s.endsAt)})),enrollments,
+  return {userId:ctx.userId,program:programDTO(ctx.program,ctx.scopes),members,sessions:sessions.map(s=>({...s,startsAt:instant(s.startsAt),endsAt:instant(s.endsAt)})),enrollments,
     grants:grants.map(g=>({...g,grantedAt:instant(g.grantedAt),revokedAt:g.revokedAt?instant(g.revokedAt):null})),audit:audit.map(a=>({...a,createdAt:instant(a.createdAt)})),
     retention:counts[0]?{...counts[0],eligible:eligibility.eligible,purgeAfter:eligibility.expiresAt?.toISOString()??null}:null};
 }
@@ -118,10 +122,10 @@ const result = (programId:string,changed:number,message="Operazione registrata."
 
 export async function performLearningAdmin(request: LearningAdminRequest): Promise<AdminResponseMap[LearningAdminRequest["operation"]]> {
   const input = request.input;
-  if (request.operation === "catalog") return getLearningAdminCatalog(input.workspaceId);
-  if (request.operation === "detail") return getLearningAdminDetail(request.input.workspaceId,request.input.programId);
+  if (request.operation === "catalog") return getLearningAdminCatalog(input.workspaceId,request.expectedUserId);
+  if (request.operation === "detail") return getLearningAdminDetail(request.input.workspaceId,request.input.programId,request.expectedUserId);
   if (request.operation === "inspectPack" || request.operation === "importPack") {
-    const actor=await workspaceActor(request.input.workspaceId);
+    const actor=await workspaceActor(request.input.workspaceId,request.expectedUserId);
     if (!actor.canCreate) throw unavailable();
     const pack=privatePack(request.input.pack), inspection=packDTO(pack);
     if (request.operation === "inspectPack") return inspection;
@@ -144,7 +148,7 @@ export async function performLearningAdmin(request: LearningAdminRequest): Promi
     if (!imported) throw new LearningError("conflict","Importazione non applicata. Il corso potrebbe già esistere con contenuti o permessi diversi; usa una nuova versione per modificarne il contenuto.");
     return result(imported.id,Number(imported.changed),imported.changed?"Corso importato e disabilitato. Configura iscrizioni e permessi prima di abilitarlo.":"La stessa versione è già importata; nessun contenuto modificato.");
   }
-  const ctx=await requireManager(request.input.workspaceId,request.input.programId);
+  const ctx=await requireManager(request.input.workspaceId,request.input.programId,request.expectedUserId);
   const p=ctx.program.id,w=ctx.workspaceId;
   if (request.operation === "settings") {
     scope(ctx,null); const i=request.input;

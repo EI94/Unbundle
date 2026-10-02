@@ -1,0 +1,21 @@
+{
+  "timestamp": "2026-10-02T09:36:59.112Z",
+  "status": "PASS",
+  "case": "browser retest of account-bound idea draft",
+  "workspaceId": "b680e8f9-62e8-4c61-adb0-7b0850b4a475",
+  "programId": "d477d4c3-762b-414d-b226-e8301a85343e",
+  "ownerA": "1e165c4f-a3a5-4155-9737-b6d7d71e2d22",
+  "ownerB": "e3c1142c-606d-4bf4-a4a8-9ac5e7b1758e",
+  "actualDraftCountForA": 1,
+  "actualDraftCountForB": 0,
+  "expectedDraftCountForB": 0,
+  "draftA": {
+    "id": "ac70bc9a-89ae-4431-bb04-71acd55b96f9",
+    "revision": 1,
+    "status": "draft",
+    "containsOnlyASyntheticMarker": true,
+    "fieldsDigest": "c7955dbb7975ed936e626550725091bec7e17b8884c723cc140fa3d4a755a503",
+    "updatedAt": "2026-10-02T09:30:56.920Z"
+  },
+  "privateFieldsOmitted": true
+}

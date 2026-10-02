@@ -6,15 +6,19 @@ import {
   type AiReadinessActionState,
   type CreateRespondentInviteData,
 } from "@/lib/actions/ai-readiness";
+import {
+  AI_READINESS_SURVEY_TRACKS,
+  DEFAULT_TARGETED_SURVEY_TRACK,
+  type AiReadinessSurveyTrack,
+} from "@/lib/ai-readiness/survey-track";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ContactRound } from "lucide-react";
 
 const INITIAL: AiReadinessActionState<CreateRespondentInviteData> = {
   ok: true,
 };
-
-type SurveyTrack = "everyone" | "internal" | "use_case_expert";
 
 type SectionOption = {
   id: string;
@@ -48,9 +52,13 @@ export function RespondentInviteForm({
   );
   const [state, formAction, pending] = useActionState(action, INITIAL);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-  const [track, setTrack] = useState<SurveyTrack>("everyone");
+  const [track, setTrack] = useState<AiReadinessSurveyTrack>(
+    DEFAULT_TARGETED_SURVEY_TRACK
+  );
   const [selectedSectionIds, setSelectedSectionIds] = useState(() =>
-    sections.filter((section) => section.audience !== "internal").map((section) => section.id)
+    sections
+      .filter((section) => section.audience === "internal")
+      .map((section) => section.id)
   );
   const [selectedBlockIds, setSelectedBlockIds] = useState(() =>
     useCaseBlocks.map((block) => block.id)
@@ -64,6 +72,10 @@ export function RespondentInviteForm({
   );
   const selectedAreaCount =
     track === "use_case_expert" ? selectedBlockIds.length : selectedSectionIds.length;
+  const selectedTrackMeta = AI_READINESS_SURVEY_TRACKS[track];
+  const createdTrackMeta = state.data?.surveyTrack
+    ? AI_READINESS_SURVEY_TRACKS[state.data.surveyTrack]
+    : null;
 
   function clearLocalError(name: string) {
     setLocalErrors((current) => {
@@ -74,7 +86,7 @@ export function RespondentInviteForm({
     });
   }
 
-  function resetTrack(next: SurveyTrack) {
+  function resetTrack(next: AiReadinessSurveyTrack) {
     setTrack(next);
     setLocalErrors({});
     if (next === "use_case_expert") {
@@ -95,7 +107,9 @@ export function RespondentInviteForm({
   return (
     <form
       action={formAction}
-      className="mt-4 space-y-4 rounded-3xl border p-4"
+      className="space-y-5 rounded-[28px] border border-sky-500/25 bg-sky-500/5 p-5"
+      data-testid="targeted-invite-form"
+      data-survey-track={track}
       noValidate
       onSubmit={(event) => {
         const form = event.currentTarget;
@@ -120,6 +134,28 @@ export function RespondentInviteForm({
         }
       }}
     >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-sky-500/25 bg-background text-sky-600">
+            <ContactRound className="size-4" />
+          </span>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-[0.18em] text-sky-700 dark:text-sky-400">
+              Percorso 2 · Link personale
+            </div>
+            <div className="mt-1 text-base font-semibold">
+              Schede mirate e raccolta use case
+            </div>
+          </div>
+        </div>
+        <span className="rounded-full border border-sky-500/25 bg-background px-2.5 py-1 text-xs font-medium">
+          1 persona
+        </span>
+      </div>
+      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+        Scegli prima il risultato che vuoi alimentare. La scheda tecnica è il
+        percorso corretto per Context e Workflow.
+      </p>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="email">Email respondent</Label>
@@ -138,24 +174,8 @@ export function RespondentInviteForm({
           )}
         </div>
         <div className="space-y-1.5">
-          <Label>Chi e questa persona?</Label>
+          <Label>Quale percorso deve ricevere?</Label>
           <div className="grid gap-2">
-            <label className="flex cursor-pointer items-start gap-2 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
-              <input
-                type="radio"
-                name="surveyTrack"
-                value="everyone"
-                checked={track === "everyone"}
-                onChange={() => resetTrack("everyone")}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="font-medium">Survey organizzazione</span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  La survey condivisa con tutti: strumenti, adoption, idee.
-                </span>
-              </span>
-            </label>
             <label className="flex cursor-pointer items-start gap-2 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
               <input
                 type="radio"
@@ -166,9 +186,11 @@ export function RespondentInviteForm({
                 className="mt-0.5"
               />
               <span>
-                <span className="font-medium">Scheda referenti (IT / HR / business)</span>
+                <span className="font-medium">
+                  {AI_READINESS_SURVEY_TRACKS.internal.label}
+                </span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                  Infrastruttura, dati e conoscenza, persone e processi: per chi conosce i sistemi.
+                  {AI_READINESS_SURVEY_TRACKS.internal.description}
                 </span>
               </span>
             </label>
@@ -182,12 +204,48 @@ export function RespondentInviteForm({
                 className="mt-0.5"
               />
               <span>
-                <span className="font-medium">Esperto use case (business)</span>
+                <span className="font-medium">
+                  {AI_READINESS_SURVEY_TRACKS.use_case_expert.label}
+                </span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                  Modulo guidato per raccogliere casi concreti: bisogno, com&apos;e oggi, ipotesi AI.
+                  {AI_READINESS_SURVEY_TRACKS.use_case_expert.description}
                 </span>
               </span>
             </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-2xl border p-3 text-sm has-checked:border-emerald-500 has-checked:bg-emerald-500/5">
+              <input
+                type="radio"
+                name="surveyTrack"
+                value="everyone"
+                checked={track === "everyone"}
+                onChange={() => resetTrack("everyone")}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">
+                  {AI_READINESS_SURVEY_TRACKS.everyone.label} individuale
+                </span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {AI_READINESS_SURVEY_TRACKS.everyone.description}
+                </span>
+              </span>
+            </label>
+          </div>
+          <div
+            className={`rounded-2xl border p-3 text-xs leading-5 ${
+              track === "internal"
+                ? "border-sky-500/30 bg-sky-500/10"
+                : "bg-background/70"
+            }`}
+            data-testid="selected-track-impact"
+          >
+            <span className="font-medium">Alimenta: {selectedTrackMeta.feeds}.</span>
+            {track === "everyone" && (
+              <span className="text-muted-foreground">
+                {" "}
+                Non alimenta Context o Workflow.
+              </span>
+            )}
           </div>
         </div>
         <div className="space-y-1.5 md:col-span-2">
@@ -324,8 +382,13 @@ export function RespondentInviteForm({
       {state.data?.inviteUrl && (
         <div className="rounded-2xl border bg-muted/30 p-3">
           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Link survey
+            Link · {createdTrackMeta?.label ?? selectedTrackMeta.label}
           </div>
+          {createdTrackMeta && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Alimenta: {createdTrackMeta.feeds}
+            </p>
+          )}
           <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-center">
             <code className="flex-1 overflow-hidden text-ellipsis rounded-lg bg-background px-3 py-2 text-xs">
               {state.data.inviteUrl}
@@ -344,7 +407,7 @@ export function RespondentInviteForm({
         </div>
       )}
       <Button type="submit" disabled={pending}>
-        {pending ? "Creo invito..." : "Crea link respondent"}
+        {pending ? "Creo invito..." : `Crea link · ${selectedTrackMeta.shortLabel}`}
       </Button>
     </form>
   );

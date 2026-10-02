@@ -1,0 +1,75 @@
+{
+  "source": "Production deployment source hashes were matched against the existing original working copy by infrastructure audit. Original files unchanged.",
+  "files": [
+    {
+      "path": "package.json",
+      "sourceSha256": "47ccda136f2f8f562bf2fd0a112abd0a54c338f0f11c7be665dbe632d4996d20",
+      "candidateSha256": "9e800f6b9eec7aa27e6b3581b88faf9c5858c4b39a272768cf94e2be92e10e70",
+      "exactMatch": false,
+      "integration": "script union"
+    },
+    {
+      "path": "src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx",
+      "sourceSha256": "44bb02cd7cb54245a37e8de0329b18b744f34facc6cd09f0a731b8d541dc045e",
+      "candidateSha256": "44bb02cd7cb54245a37e8de0329b18b744f34facc6cd09f0a731b8d541dc045e",
+      "exactMatch": true,
+      "integration": "exact production-working-copy file"
+    },
+    {
+      "path": "src/app/a/[token]/page.tsx",
+      "sourceSha256": "914028a07bf86408012a43ce0de5d7ab9e13bd800a880fbb8f51ef91ca5b6a76",
+      "candidateSha256": "914028a07bf86408012a43ce0de5d7ab9e13bd800a880fbb8f51ef91ca5b6a76",
+      "exactMatch": true,
+      "integration": "exact production-working-copy file"
+    },
+    {
+      "path": "src/app/s/[token]/page.tsx",
+      "sourceSha256": "58c00dccad139bb00404113116627fbd479dcf6adef2c33cb41e9938260311e6",
+      "candidateSha256": "58c00dccad139bb00404113116627fbd479dcf6adef2c33cb41e9938260311e6",
+      "exactMatch": true,
+      "integration": "exact production-working-copy file"
+    },
+    {
+      "path": "src/components/ai-readiness/open-link-form.tsx",
+      "sourceSha256": "d8fdc4074c8a0794a6721800cdde609a5cce1d145f749fc464d10ca0295edfb4",
+      "candidateSha256": "d8fdc4074c8a0794a6721800cdde609a5cce1d145f749fc464d10ca0295edfb4",
+      "exactMatch": true,
+      "integration": "exact production-working-copy file"
+    },
+    {
+      "path": "src/components/ai-readiness/respondent-invite-form.tsx",
+      "sourceSha256": "1b587c805729e73e3bf5652663ce0bed4f54af18e67367b92ecde5c1f8d5e4ff",
+      "candidateSha256": "1b587c805729e73e3bf5652663ce0bed4f54af18e67367b92ecde5c1f8d5e4ff",
+      "exactMatch": true,
+      "integration": "exact production-working-copy file"
+    },
+    {
+      "path": "src/lib/actions/ai-readiness.ts",
+      "sourceSha256": "28bdb4547d2d4a515e4a11fbd7d747eee4a4634d11217527158cd5fd9c3a9551",
+      "candidateSha256": "28bdb4547d2d4a515e4a11fbd7d747eee4a4634d11217527158cd5fd9c3a9551",
+      "exactMatch": true,
+      "integration": "exact production-working-copy file"
+    },
+    {
+      "path": "src/lib/ai-readiness/template-scope.test.ts",
+      "sourceSha256": "64678c704c96babdefb584a4eab06545b30c000a589ab671bcf97fa32661f2e5",
+      "candidateSha256": "64678c704c96babdefb584a4eab06545b30c000a589ab671bcf97fa32661f2e5",
+      "exactMatch": true,
+      "integration": "exact production-working-copy file"
+    },
+    {
+      "path": "src/lib/ai-readiness/survey-track.test.ts",
+      "sourceSha256": "0fd8dd366c6f9c256530dc399d17457a88ae3e43c0df61e1c96ddebea9a11a73",
+      "candidateSha256": "0fd8dd366c6f9c256530dc399d17457a88ae3e43c0df61e1c96ddebea9a11a73",
+      "exactMatch": true,
+      "integration": "exact production-working-copy file"
+    },
+    {
+      "path": "src/lib/ai-readiness/survey-track.ts",
+      "sourceSha256": "ca4c582a581ee5244bbb7a089209749ad3fec014ab0397ad333892fff25caa65",
+      "candidateSha256": "ca4c582a581ee5244bbb7a089209749ad3fec014ab0397ad333892fff25caa65",
+      "exactMatch": true,
+      "integration": "exact production-working-copy file"
+    }
+  ]
+}

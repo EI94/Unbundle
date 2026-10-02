@@ -1,5 +1,7 @@
 # Consegna M1 — 5 e 7 ottobre 2026
 
+> Documento storico della prima consegna e dell’estensione admin. Per la candidata integrata del 2 ottobre, i difetti corretti, le ricevute aggiornate e i blocchi di rilascio prevale [RELEASE-HARDENING-2026-10-02.md](RELEASE-HARDENING-2026-10-02.md). Le affermazioni sotto sulla separazione della survey descrivono quel momento: la candidata attuale preserva anche la fonte survey già pubblicata, con nove file identici e l’unione degli script.
+
 **Percorso implementato e verificato nell'ambiente locale isolato. Non pronto alla prova generale o al rilascio finché restano P0 non provati.** Nessun merge, push, deploy, invito o intervento sul database della survey è stato eseguito.
 
 Branch dedicato: `codex/m1-training`, dalla base `e63a2a719410af77982c85522dad6339975f869e`. Il checkout originale e il lavoro survey non committato sono rimasti separati. Il commit consegnato è identificato nella ricevuta finale di verifica e nella risposta di consegna; `git rev-parse HEAD` nel checkout dedicato ne restituisce l'identificatore completo. Le evidenze registrano anche le prove eseguite prima del commit, senza attribuire loro retroattivamente uno SHA diverso.

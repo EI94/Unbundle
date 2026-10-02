@@ -1,7 +1,8 @@
 import { requireSession } from "@/lib/auth/redirect-to-login";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getWorkspaceById } from "@/lib/db/queries/workspaces";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 import { getPortfolioContributionsByWorkspace } from "@/lib/db/queries/use-cases";
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,17 +18,20 @@ export default async function PortfolioPage({
   params: Promise<{ workspaceId: string }>;
   searchParams: Promise<{ thanks?: string; created?: string }>;
 }) {
-  await requireSession();
+  const session = await requireSession();
 
   const { workspaceId } = await params;
   const sp = await searchParams;
 
-  const [workspace, model, contributions] = await Promise.all([
-    getWorkspaceById(workspaceId),
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) notFound();
+  const { workspace } = access;
+  const canManageSettings = canManageWorkspaceSettings(access.role);
+
+  const [model, contributions] = await Promise.all([
     getOrCreateWorkspaceScoringModel(workspaceId),
     getPortfolioContributionsByWorkspace(workspaceId),
   ]);
-  if (!workspace) notFound();
 
   const esgEnabled = workspace.esgEnabled === true;
   const teamName =
@@ -46,14 +50,14 @@ export default async function PortfolioPage({
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <PortfolioSettingsSheet
+          {canManageSettings && <PortfolioSettingsSheet
             workspaceId={workspaceId}
             teamName={teamName}
             initialTeamName={workspace.aiTransformationTeamName ?? ""}
             initialWhatsappUrl={workspace.whatsappWebhookUrl ?? ""}
             initialConfig={model.resolvedConfig}
             esgEnabled={esgEnabled}
-          />
+          />}
           <Link href={`/dashboard/${workspaceId}/portfolio/submit`}>
             <Button>Nuovo contributo</Button>
           </Link>
