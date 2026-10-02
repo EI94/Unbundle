@@ -1,0 +1,64 @@
+{
+  "recordedAt": "2026-10-02T14:04:51.794596+00:00",
+  "baseCommit": "90787d5ecb5a3070171b217187eb01dfb3a23b31",
+  "buildId": "S0RWxV0r-g7InIbYPRtZP",
+  "buildMode": "optimized Next.js webpack",
+  "environment": "local application and synthetic PostgreSQL; actual Firebase email/password provider; two temporary test-only identities",
+  "observedWith": "Codex in-app browser, actual forms and UI",
+  "checks": [
+    {
+      "name": "revoked session deep link preserves exact callback and stale marker",
+      "status": "PASS"
+    },
+    {
+      "name": "real Firebase email/password learner returns to original assigned activity",
+      "status": "PASS"
+    },
+    {
+      "name": "server draft restored with three Not sure yet responses and previous order",
+      "status": "PASS"
+    },
+    {
+      "name": "review shows three saved responses",
+      "status": "PASS"
+    },
+    {
+      "name": "double-click submit displays one completed attempt with score 0/3",
+      "status": "PASS"
+    },
+    {
+      "name": "logout returns to login",
+      "status": "PASS"
+    },
+    {
+      "name": "real Firebase email/password admin returns to requested admin page",
+      "status": "PASS"
+    },
+    {
+      "name": "admin course title saves and persists after reload",
+      "status": "PASS"
+    },
+    {
+      "name": "trainer sees submitted learner result and separate non-started enrollee",
+      "status": "PASS"
+    }
+  ],
+  "pass": 9,
+  "failCurrent": 0,
+  "historicalFailure": "Baseline stale-session login dropped the callback; preserved separately. Fixed in two source files and retested.",
+  "limitations": [
+    "Not a remote preview or production test",
+    "No Google OAuth or manual screen-reader verification",
+    "Not the required rehearsal with actual non-admin participants and trainer",
+    "Database invariants verified in a separate receipt"
+  ],
+  "sourceFiles": {
+    "src/app/(dashboard)/layout.tsx": "eca40876ad89bcc61722b088e0d7dfe1c84129bc16e6f76a086a454b06d613be",
+    "src/lib/auth/redirect-to-login.ts": "8d205f1bc83722f1be4c309e8c4c37c417224ca453eaa789d5a8c3038cb8fb11"
+  },
+  "screenshots": {
+    "real-provider-resume-fixed.jpg": "751555b1ef67b0ccf1edea3a7ba257acd03335e095180c65b44434c2344701fb",
+    "real-provider-admin-saved.jpg": "5c4b5328882746153b7291e2e8645aef08d70b923fd83c59a1d63f90fc134e46",
+    "real-provider-trainer.jpg": "f28a967d38d09b791a3eb7c294f52ab46097bf3c7c68dd27ac11e2d7798d5fbb"
+  }
+}

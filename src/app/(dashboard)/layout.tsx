@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requireSession } from "@/lib/auth/redirect-to-login";
 import type { Metadata } from "next";
 
 /** Tutta l'area dashboard è gated. Nessun crawler dovrebbe seguirla — il
@@ -15,11 +14,7 @@ export default async function DashboardRootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-  // `session=stale` dice al proxy di cancellare il cookie __session: senza,
-  // un cookie presente ma revocato (utente eliminato, sessione revocata)
-  // causerebbe un redirect loop /login ↔ /dashboard.
-  if (!session?.user) redirect("/login?session=stale");
+  await requireSession();
 
   return <>{children}</>;
 }

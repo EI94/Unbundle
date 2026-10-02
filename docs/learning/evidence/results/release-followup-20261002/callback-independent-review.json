@@ -1,0 +1,109 @@
+{
+  "timestamp": "2026-10-02T13:53:49.082Z",
+  "status": "PASS_STATIC_AND_HTTP_REVIEW",
+  "sourceFiles": [
+    {
+      "path": "src/lib/auth/redirect-to-login.ts",
+      "sha256": "8d205f1bc83722f1be4c309e8c4c37c417224ca453eaa789d5a8c3038cb8fb11"
+    },
+    {
+      "path": "src/app/(dashboard)/layout.tsx",
+      "sha256": "eca40876ad89bcc61722b088e0d7dfe1c84129bc16e6f76a086a454b06d613be"
+    }
+  ],
+  "sourceDiffSha256": "b716f43ba0fb58c0a2a10dbff269a1aff943526b6f69ba0057e5d53f26eaccbe",
+  "findings": [],
+  "checks": [
+    {
+      "name": "Proxy replaces inbound pathname header with actual requested pathname",
+      "status": "PASS"
+    },
+    {
+      "name": "safeInternalCallbackUrl applied to explicit or header-derived callback before encoding",
+      "status": "PASS"
+    },
+    {
+      "name": "Cookie rejection stale marker and proxy deletion behavior preserved",
+      "status": "PASS"
+    },
+    {
+      "name": "Anonymous survey routes excluded from dashboard layout and proxy matcher; public actions have no requireSession call",
+      "status": "PASS_STATIC"
+    },
+    {
+      "name": "Next bundled guides async headers and request upstream header forwarding followed",
+      "status": "PASS"
+    },
+    {
+      "name": "Two-file full diff contains code only, no seed or credential values",
+      "status": "PASS"
+    }
+  ],
+  "originalFiles": [
+    {
+      "path": "package.json",
+      "sha256": "47ccda136f2f8f562bf2fd0a112abd0a54c338f0f11c7be665dbe632d4996d20",
+      "unchanged": true
+    },
+    {
+      "path": "src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx",
+      "sha256": "44bb02cd7cb54245a37e8de0329b18b744f34facc6cd09f0a731b8d541dc045e",
+      "unchanged": true
+    },
+    {
+      "path": "src/app/a/[token]/page.tsx",
+      "sha256": "914028a07bf86408012a43ce0de5d7ab9e13bd800a880fbb8f51ef91ca5b6a76",
+      "unchanged": true
+    },
+    {
+      "path": "src/app/s/[token]/page.tsx",
+      "sha256": "58c00dccad139bb00404113116627fbd479dcf6adef2c33cb41e9938260311e6",
+      "unchanged": true
+    },
+    {
+      "path": "src/components/ai-readiness/open-link-form.tsx",
+      "sha256": "d8fdc4074c8a0794a6721800cdde609a5cce1d145f749fc464d10ca0295edfb4",
+      "unchanged": true
+    },
+    {
+      "path": "src/components/ai-readiness/respondent-invite-form.tsx",
+      "sha256": "1b587c805729e73e3bf5652663ce0bed4f54af18e67367b92ecde5c1f8d5e4ff",
+      "unchanged": true
+    },
+    {
+      "path": "src/lib/actions/ai-readiness.ts",
+      "sha256": "28bdb4547d2d4a515e4a11fbd7d747eee4a4634d11217527158cd5fd9c3a9551",
+      "unchanged": true
+    },
+    {
+      "path": "src/lib/ai-readiness/template-scope.test.ts",
+      "sha256": "64678c704c96babdefb584a4eab06545b30c000a589ab671bcf97fa32661f2e5",
+      "unchanged": true
+    },
+    {
+      "path": "src/lib/ai-readiness/survey-track.test.ts",
+      "sha256": "0fd8dd366c6f9c256530dc399d17457a88ae3e43c0df61e1c96ddebea9a11a73",
+      "unchanged": true
+    },
+    {
+      "path": "src/lib/ai-readiness/survey-track.ts",
+      "sha256": "ca4c582a581ee5244bbb7a089209749ad3fec014ab0397ad333892fff25caa65",
+      "unchanged": true
+    }
+  ],
+  "all10OriginalFilesUnchanged": true,
+  "scope": "Read-only independent review of two-file patch and runtime receipt; no source edits, provider mutations, or production survey reads. Browser real-provider retest owned by root.",
+  "runtimeReceipt": {
+    "sha256": "47d04bda56c5a91fe311ec3645c5e6b7a65bcf517ed05cad4d3419572192ac46",
+    "buildId": "S0RWxV0r-g7InIbYPRtZP",
+    "passed": 7,
+    "failed": 0,
+    "sourceHashesMatchReviewedPatch": true,
+    "scope": "Read-only local app requests with fake invalid nonexpired cookie; no login or auth mutation, no real survey or database read"
+  },
+  "baseline": {
+    "passed": 3,
+    "failed": 4,
+    "retained": true
+  }
+}

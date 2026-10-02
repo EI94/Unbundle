@@ -1,0 +1,31 @@
+{
+  "recordedAt": "2026-10-02T13:53:09.081509+00:00",
+  "baseCommit": "90787d5ecb5a3070171b217187eb01dfb3a23b31",
+  "sourceChanges": {
+    "src/app/(dashboard)/layout.tsx": "eca40876ad89bcc61722b088e0d7dfe1c84129bc16e6f76a086a454b06d613be",
+    "src/lib/auth/redirect-to-login.ts": "8d205f1bc83722f1be4c309e8c4c37c417224ca453eaa789d5a8c3038cb8fb11"
+  },
+  "results": {
+    "auth": 5,
+    "workspaceCollaboration": 4,
+    "aiReadiness": 50,
+    "portfolio": 16,
+    "mcp": 11,
+    "slack": 29
+  },
+  "pass": 115,
+  "failCurrent": 0,
+  "typecheck": "PASS (tsc --noEmit --incremental false)",
+  "lint": "PASS (npm run lint)",
+  "historicalEnvironmentFailure": {
+    "suite": "mcp",
+    "pass": 10,
+    "fail": 1,
+    "reason": "Sandbox denied 127.0.0.1 listen with EPERM; full suite rerun with authorized local-only listen passed 11/11. No product change for this failure."
+  },
+  "evidence": "First four test stdout/results and typecheck/lint exit0 recorded by tool. MCP authorized and Slack full logs preserved with hashes below.",
+  "logs": {
+    "auth-fix-mcp-authorized.log": "d1f5ab8fed5c6eb0e9e78605c050105c0ac943e97ee6d3d9174579f043ebf0de",
+    "auth-fix-slack.log": "0f1f286b4736a52cb677053bd61afd73f4c75a8d3c0a6db7fd1a1c1343a70ce5"
+  }
+}

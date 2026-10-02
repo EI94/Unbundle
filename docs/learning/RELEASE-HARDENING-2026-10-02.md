@@ -1,5 +1,7 @@
 # Verifica integrata e correzioni del 2 ottobre 2026
 
+> Aggiornamento successivo: [RELEASE-FOLLOWUP-2026-10-02.md](RELEASE-FOLLOWUP-2026-10-02.md) registra consenso e backup/restore completati, CSV verificato e nuovi gate provider/preview. Per questi punti prevale sui limiti storici riportati sotto; il commit finale resta da associare alle prove aggiornate.
+
 **Correzioni verificate sull’ultima build locale; produzione non dichiarata pronta.** Nessun merge o deploy è stato eseguito. Questo documento integra le evidenze precedenti, senza trasformare i loro PASS in prove della nuova versione.
 
 ## Versione e ambiente delle prove

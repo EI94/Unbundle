@@ -1,5 +1,7 @@
 # Matrice P0 — evidenze locali e limiti
 
+> Aggiornamento successivo: [RELEASE-FOLLOWUP-2026-10-02.md](../RELEASE-FOLLOWUP-2026-10-02.md) registra consenso e backup/restore completati, CSV verificato e nuovi gate provider/preview. Per questi punti prevale sui limiti storici riportati sotto; il commit finale resta da associare alle prove aggiornate.
+
 > Questa matrice conserva lo snapshot della prima consegna. Per la candidata integrata successiva, le prove aggiuntive e i blocchi attuali consultare [RELEASE-HARDENING-2026-10-02.md](../RELEASE-HARDENING-2026-10-02.md) e le ricevute indicate: i PASS storici non attestano automaticamente la nuova fonte.
 
 Data: 1 ottobre 2026, Europe/Rome. Branch `codex/m1-training`; base `e63a2a719410af77982c85522dad6339975f869e`. Verifiche sul working tree della feature: il report finale deve associare e ripetere i controlli sul commit consegnato. Nessuna migrazione, invito o deploy di produzione è stato eseguito.

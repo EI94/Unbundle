@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-10-02T14:33:47.027Z",
+  "scope": "Only two temporary Firebase identities created for this provider test; no application database operation or provider configuration change",
+  "status": "PASS",
+  "accounts": [
+    {
+      "refreshTokensRevoked": true,
+      "deleted": true,
+      "notFoundConfirmed": true
+    },
+    {
+      "refreshTokensRevoked": true,
+      "deleted": true,
+      "notFoundConfirmed": true
+    }
+  ],
+  "emailsSent": 0,
+  "completedAt": "2026-10-02T14:33:49.854Z",
+  "deletedCount": 2,
+  "verifiedNotFoundCount": 2,
+  "identifiersOmitted": true
+}

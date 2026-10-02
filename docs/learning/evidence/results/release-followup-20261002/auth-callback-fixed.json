@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-10-02T13:52:47.653Z",
+  "buildId": "S0RWxV0r-g7InIbYPRtZP",
+  "checks": [
+    {
+      "name": "anonymous deep link keeps callback without stale marker",
+      "status": "PASS"
+    },
+    {
+      "name": "rejected nonexpired cookie retains deep link and stale marker",
+      "status": "PASS"
+    },
+    {
+      "name": "proxy overwrites callback header https://attacker.invalid/elsewhere",
+      "status": "PASS"
+    },
+    {
+      "name": "proxy overwrites callback header //attacker.invalid/path",
+      "status": "PASS"
+    },
+    {
+      "name": "proxy overwrites callback header /dashboard/unrelated",
+      "status": "PASS"
+    },
+    {
+      "name": "stale login clears rejected cookie and serves form without redirect loop",
+      "status": "PASS"
+    },
+    {
+      "name": "anonymous ordinary login remains available",
+      "status": "PASS"
+    }
+  ],
+  "passed": 7,
+  "failed": 0,
+  "scope": "Read-only local app requests with fake invalid nonexpired cookie; no login or auth mutation, no real survey or database read",
+  "testScript": "scripts/learning-test/auth-callback.mjs",
+  "baseline": {
+    "passed": 3,
+    "failed": 4,
+    "retained": true
+  }
+}

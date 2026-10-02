@@ -1,0 +1,18 @@
+{
+  "checkedAt": "2026-10-02T13:49:35.166891+00:00",
+  "status": "PASS",
+  "archiveHashUnchanged": true,
+  "permissions": {
+    "directoriesChecked": 93,
+    "regularFilesChecked": 4570,
+    "directoryMode": "0700",
+    "fileMode": "0600",
+    "anomalies": 0,
+    "temporaryPasswordFilesRemaining": 0
+  },
+  "restoreClusterCount": 3,
+  "allRestoreClustersStopped": true,
+  "productionDatabaseWrites": false,
+  "historicalDiagnosticStart": "One diagnostic restart briefly used local defaults including TCP before the socket connection failed and the cluster was stopped immediately. Later starts persisted socket-only configuration. No application was connected by this verification.",
+  "privatePathsOmitted": true
+}
