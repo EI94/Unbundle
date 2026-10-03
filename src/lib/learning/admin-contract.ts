@@ -3,13 +3,16 @@ import { z } from "zod";
 const workspace = { workspaceId: z.uuid() };
 const scope = { ...workspace, programId: z.uuid() };
 const settings = { title: z.string().trim().min(1).max(250), visibilityPolicy: z.string().trim().min(20).max(10_000), retentionDays: z.number().int().min(1).max(3650) };
+// The snapshot is compared byte-for-byte with the stored values. Never trim it.
+export const adminSettingsSnapshotSchema = z.object({ title: z.string().min(1).max(250), visibilityPolicy: z.string().min(20).max(10_000), retentionDays: z.number().int().min(1).max(3650) }).strict();
+export type AdminSettingsSnapshot = z.infer<typeof adminSettingsSnapshotSchema>;
 const cohort = z.string().min(1).max(100);
 export const learningAdminRequestSchema = z.discriminatedUnion("operation", [
   z.object({ expectedUserId: z.uuid(), operation: z.literal("catalog"), input: z.object(workspace).strict() }).strict(),
   z.object({ expectedUserId: z.uuid(), operation: z.literal("detail"), input: z.object(scope).strict() }).strict(),
   z.object({ expectedUserId: z.uuid(), operation: z.literal("inspectPack"), input: z.object({ ...workspace, pack: z.unknown() }).strict() }).strict(),
   z.object({ expectedUserId: z.uuid(), operation: z.literal("importPack"), input: z.object({ ...workspace, pack: z.unknown(), ...settings }).strict() }).strict(),
-  z.object({ expectedUserId: z.uuid(), operation: z.literal("settings"), input: z.object({ ...scope, ...settings }).strict() }).strict(),
+  z.object({ expectedUserId: z.uuid(), operation: z.literal("settings"), input: z.object({ ...scope, ...settings, expectedSettings: adminSettingsSnapshotSchema }).strict() }).strict(),
   z.object({ expectedUserId: z.uuid(), operation: z.literal("lifecycle"), input: z.object({ ...scope, action: z.enum(["enable", "disable", "close", "reopen"]) }).strict() }).strict(),
   z.object({ expectedUserId: z.uuid(), operation: z.literal("session"), input: z.object({ ...scope, sessionId: z.uuid(), status: z.enum(["scheduled", "open", "closed"]) }).strict() }).strict(),
   z.object({ expectedUserId: z.uuid(), operation: z.literal("enroll"), input: z.object({ ...scope, userIds: z.array(z.uuid()).min(1).max(100).refine(ids => new Set(ids.map(id=>id.toLowerCase())).size === ids.length), cohortId: cohort }).strict() }).strict(),

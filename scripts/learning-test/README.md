@@ -26,3 +26,22 @@ Firebase ID tokens obtained from the emulator must be exchanged through the appl
 Use physical installed dependencies in the isolated checkout. An external `node_modules` symlink caused Turbopack root rejection and duplicated request-scope internals during the audit; a local filesystem clone resolved it without changing any application dependencies. Next also replaces `globalThis.fetch` during startup/HMR; the test preload preserves its loopback SQL transport around those wrappers.
 
 Keep session cookies and tokens in temporary files outside Git. Save sanitized results, URLs without tokens, screenshots of synthetic users and direct DB assertions as evidence. At the end stop the app, Auth emulator and PostgreSQL cluster; do not remove records in any other database.
+
+
+## UX refinements: concurrency and truthful availability
+
+Run `ux-fixture.mjs --setup` once with `LEARNING_TEST_ISOLATED=true` and `LEARNING_TEST_OUTPUT` pointing to a new temporary directory. It creates its own generic browser accounts, workspaces, courses and explicit grants using only the local Auth emulator and PostgreSQL database above. It does not read earlier fixture directories, environment files, customer packs or backups. Its private manifest contains emulator-only credentials and stays outside Git.
+
+Run `ux-fixture.mjs --serve-login` with the same variables to start the authentication-only helper on `127.0.0.1:53102`. Supported examples are `/as/learner?view=activity`, `/as/learner?view=ideas`, `/as/admin?view=admin`, `/as/admin-second?view=admin` and `/as/reviewer?view=review`. The handler exchanges an emulator token at the application's real session endpoint and redirects to an allowlisted page; it never changes memberships, grants or course configuration. The browser fixture is separate from every automated run.
+
+Run `node --no-warnings scripts/learning-test/ux-acceptance.mjs` with those same isolation/output variables. It creates a new fixture namespace each time, so browser drafts and previous receipts remain intact. Add `LEARNING_TEST_RUNTIME=production` only when the running local app uses the optimized build. It verifies:
+
+- settings compare-and-swap for stale and simultaneous managers, with one winning update and one audit;
+- no false settings conflicts after unrelated session/grant changes, and unchanged actor/tenant/cohort authorization;
+- actual suspension while a learner save waits on a PostgreSQL lock;
+- future activity pages without questions, read-only closed drafts, historical feedback and blocked retakes;
+- revision conflicts, same-key double submission, recovery history, answer-bank privacy and suppressed aggregates.
+
+The test uses real JSON requests, Firebase session exchange and SQL constraints through the test-only Neon adapter. It inspects serialized React props where necessary; it does not claim browser navigation, dirty-form dialogs, offline behavior, mobile layout or downloads from HTTP alone. Results include source hashes and separate PASS/FAIL counts. Keep failed runs as evidence when correcting the harness. The existing learner suite now signs in directly through the emulator/session endpoint and does not depend on this helper's account names. The existing admin suite uses the selected output directory's `synthetic-fixtures.json` and includes the required settings baseline.
+
+Never run these helpers in a deployed environment. Stop only the recorded test processes after browser and HTTP verification; preserve the temporary data and receipts until the review is complete.

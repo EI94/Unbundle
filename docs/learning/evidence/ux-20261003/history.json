@@ -1,0 +1,36 @@
+{
+  "scope": "Historical failures and limits retained separately from final PASS receipts. Counts are not added together across reruns.",
+  "events": [
+    {
+      "stage": "Initial UX harness run",
+      "passed": 18,
+      "failed": 5,
+      "resolution": "Corrected the expected closed error for edits to submitted attempts and the server-rendered overview assertion. Later checks had cascaded from the first failing assertion; prerequisite checks now mark dependent cases BLOCKED."
+    },
+    {
+      "stage": "Initial existing admin receipt write in clean runtime",
+      "testChecksPassed": 40,
+      "receiptWrite": "FAIL",
+      "resolution": "The test runner expected .git. It now records null Git metadata in a clean copy and uses source hashes; the full admin suite was repeated successfully."
+    },
+    {
+      "stage": "Initial fixture lint",
+      "status": "FAIL",
+      "resolution": "Renamed the local module variable in the synthetic fixture; final lint passed."
+    },
+    {
+      "stage": "Regression sandbox attempt",
+      "status": "BLOCKED",
+      "resolution": "A test required local process capabilities unavailable in the sandbox. The explicitly authorized isolated rerun passed115 tests; original blocked log retained privately."
+    },
+    {
+      "stage": "Final optimized build",
+      "buildId": "ED7ddM0_nZ4ey166viTWT",
+      "status": "PASS",
+      "httpChecksPassed": 101,
+      "httpChecksFailed": 0,
+      "httpChecksBlocked": 0
+    }
+  ],
+  "remainingBrowserVerification": "Browser-specific results and any blocked native-dialog checks are recorded separately by the coordinator, not inferred from HTTP."
+}

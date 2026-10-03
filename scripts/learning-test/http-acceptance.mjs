@@ -19,8 +19,13 @@ const workspaceA = fixture.workspaces.a, workspaceB = fixture.workspaces.b;
 const base = (workspace) => `${origin}/dashboard/${workspace.workspaceId}/learning/${workspace.programId}`;
 const sessions = {};
 for (const name of ["learner-b", "learner-b2", "learner-a2", "shared", "reviewer-a", "manager-a", "sponsor-a"]) {
-  const response = await fetch(`http://127.0.0.1:53102/as/${name}`, { redirect: "manual" });
-  assert.equal(response.status, 302, `Synthetic login failed for ${name}`);
+  const account = fixture.accounts[name];
+  const login = await fetch("http://127.0.0.1:59099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local-only", {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: account.email, password: account.password, returnSecureToken: true }),
+  });
+  const identity = await login.json(); assert.equal(login.status, 200, `Synthetic emulator login failed for ${name}`);
+  const response = await fetch(`${origin}/api/auth/session`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ idToken: identity.idToken }) });
+  assert.equal(response.status, 200, `Application session exchange failed for ${name}`);
   sessions[name] = response.headers.get("set-cookie").split(";")[0];
 }
 // Each run uses a fresh learner for mutating checks, so previous receipts remain

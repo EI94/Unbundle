@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "status": "PASS_STATIC_REVIEW",
+  "reviewedAt": "2026-10-03T10:06:46.368435+00:00",
+  "scanCheckedAt": "2026-10-03T10:06:46.331109+00:00",
+  "baseCommit": "b768000eb862ab4615981c0f19f66064673e84b0",
+  "scope": "Changed and untracked nonignored source/test/document text at the reviewed snapshot. Static inspection only; runtime client-bundle verification is separate.",
+  "filesChecked": 36,
+  "privatePhrasesChecked": 196,
+  "privatePhraseMatches": 0,
+  "credentialMatches": 0,
+  "forbiddenPrivateFilePaths": 0,
+  "heuristicFindingsReviewed": 1,
+  "unresolvedFindings": 0,
+  "classifications": [
+    {
+      "file": "src/components/learning/admin-catalog.tsx",
+      "category": "EXPECTED_ADMIN_FILE_REF",
+      "assessment": "The privatePack identifier belongs to the existing administrator-selected file ref. The changed lines clear it on discard or import completion; they do not serialize server private-bank data or answer keys to learner props."
+    }
+  ],
+  "sourceSnapshotMatchedAtReview": true,
+  "sourceSnapshotSha256": "e70e00f97064a1f8f751c9d4da07d6983e1ace567f09aeb66703db3173fe648b",
+  "rawScanSha256": "36402a0af8a68ee68f73f0afdc9cec807e1dbb36f65c6fa108348cf4d68d49be",
+  "privateContentsOrCredentialsIncluded": false,
+  "limitations": [
+    "Exact private-pack strings of at least 40 characters and known credential patterns are bounded checks, not a universal guarantee.",
+    "No production services, data, database or environment were accessed by this review.",
+    "Runtime HTML/RSC/script checks, browser behavior and database authorizations require their separate receipts."
+  ]
+}

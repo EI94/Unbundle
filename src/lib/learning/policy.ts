@@ -21,3 +21,11 @@ export function m1ReleaseMinutes(activity: {module_id:string;type:string;purpose
   if(activity.type==="knowledge_check" && ["post_module","retake"].includes(activity.purpose))return 105;
   return null;
 }
+
+/** Formative completion is a submission outcome, never a competence/consolidation count. */
+export function summarizeActivityOutcomes(enrolled: number, statuses: Array<string | null>, formative: boolean, minimum = 5) {
+  const submitted = suppressSmallSplit(enrolled, statuses.length, minimum);
+  const successful = statuses.filter(status => status === (formative ? "formative_completed" : "consolidated")).length;
+  const value = submitted === null ? null : suppressSmallSplit(statuses.length, successful, minimum);
+  return { submitted, consolidated: formative ? null : value, completed: formative ? value : null, suppressed: submitted === null || statuses.length < minimum };
+}

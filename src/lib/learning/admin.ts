@@ -105,13 +105,13 @@ function packDTO(pack: PrivateTrainingPack): AdminPackDTO {
 }
 // Neon HTTP supports a non-interactive transactional batch. The second statement
 // takes a fresh READ COMMITTED snapshot after the program row lock has been acquired.
-async function mutate(ctx: Context, query: SQL): Promise<number> {
+async function mutate(ctx: Context, query: SQL, conflictMessage?: string): Promise<number> {
   const results = await db.batch([
     db.execute(sql`SELECT p.id FROM learning_programs p WHERE p.workspace_id=${ctx.workspaceId}::uuid AND p.id=${ctx.program.id}::uuid AND ${manager(ctx,null,true)} FOR UPDATE OF p`),
     db.execute(query),
   ]);
   const changed = Number((results[1].rows[0] as {changed?:unknown}|undefined)?.changed ?? -1);
-  if (changed < 0) throw conflict();
+  if (changed < 0) throw conflictMessage ? new LearningError("conflict", conflictMessage) : conflict();
   return changed;
 }
 function audit(ctx:Context,event:string,cohortId:SQL=sql`NULL`):SQL {
@@ -153,7 +153,10 @@ export async function performLearningAdmin(request: LearningAdminRequest): Promi
   if (request.operation === "settings") {
     scope(ctx,null); const i=request.input;
     return result(p,await mutate(ctx,sql`WITH changed AS(UPDATE learning_programs SET title=${i.title},visibility_policy=${i.visibilityPolicy},retention_days=${i.retentionDays}
-      WHERE workspace_id=${w}::uuid AND id=${p}::uuid AND ${manager(ctx)} RETURNING id), audited AS(${audit(ctx,"program_settings_changed")}) SELECT CASE WHEN EXISTS(SELECT 1 FROM changed) THEN (SELECT count(*) FROM audited) ELSE -1 END AS changed`),"Impostazioni del corso salvate.");
+      WHERE workspace_id=${w}::uuid AND id=${p}::uuid AND ${manager(ctx)}
+      AND title=${i.expectedSettings.title} AND visibility_policy=${i.expectedSettings.visibilityPolicy} AND retention_days=${i.expectedSettings.retentionDays}
+      RETURNING id), audited AS(${audit(ctx,"program_settings_changed")}) SELECT CASE WHEN EXISTS(SELECT 1 FROM changed) THEN (SELECT count(*) FROM audited) ELSE -1 END AS changed`,
+      "Impostazioni non salvate: i valori iniziali o i permessi sono cambiati. Aggiorna il corso e confronta le modifiche prima di riprovare."),"Impostazioni del corso salvate.");
   }
   if (request.operation === "lifecycle") {
     scope(ctx,null); const action=request.input.action;

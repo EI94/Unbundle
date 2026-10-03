@@ -1,3 +1,4 @@
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { getSignalsByWorkspace } from "@/lib/db/queries/signals";
 import { NotificationsBell, type BellSignal } from "./notifications-bell";
 
@@ -28,7 +29,8 @@ export async function WorkspaceTopbar({ workspaceId }: { workspaceId: string }) 
   }));
 
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-end gap-2 border-b bg-background/80 backdrop-blur px-4 py-2">
+    <header className="sticky top-0 z-20 flex items-center justify-between gap-2 md:justify-end border-b bg-background/80 backdrop-blur px-4 py-2">
+      <SidebarTrigger className="size-11 md:hidden" aria-label="Apri navigazione" title="Apri navigazione" />
       <NotificationsBell workspaceId={workspaceId} initialSignals={signals} />
     </header>
   );

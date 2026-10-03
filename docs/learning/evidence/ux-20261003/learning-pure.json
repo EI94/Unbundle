@@ -1,0 +1,50 @@
+{
+  "status": "PASS",
+  "kind": "learning-pure",
+  "startedAt": "2026-10-03T09:02:39.289082+00:00",
+  "durationSeconds": 0.83,
+  "exitCode": 0,
+  "testCounts": {
+    "tests": 97,
+    "pass": 90,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 7,
+    "todo": 0
+  },
+  "logSha256": "133295d48e339e4fe97515d6e63a7e4c97dff579d5f76f9450293f36bbfaf93f",
+  "baseCommit": "b768000eb862ab4615981c0f19f66064673e84b0",
+  "testFiles": [
+    "src/lib/learning/admin-contract.test.ts",
+    "src/lib/learning/admin-http.test.ts",
+    "src/lib/learning/availability.test.ts",
+    "src/lib/learning/database.integration.test.ts",
+    "src/lib/learning/http.test.ts",
+    "src/lib/learning/idea-contract.test.ts",
+    "src/lib/learning/pack.test.ts",
+    "src/lib/learning/policy.test.ts",
+    "src/lib/learning/retention.test.ts",
+    "src/lib/learning/session-check.test.ts"
+  ],
+  "sourceFilesChangedDuringRun": [],
+  "testFileSha256": {
+    "src/lib/learning/admin-contract.test.ts": "9802438d47e1406e5e0d4d1e7beb72f15da836a8f4411440c02994d7a380fe3b",
+    "src/lib/learning/admin-http.test.ts": "16ba15db8567674ecf3f81c94f3fd793e41f383a408f8c6c6c140a78bcca9cde",
+    "src/lib/learning/availability.test.ts": "cd6efe3bab70b9220cbb0a4834afe1eba68c9f31694a2e9c2b9fd16bac665248",
+    "src/lib/learning/database.integration.test.ts": "449015161f2502cbed5e7cd5c5f4f466cab134e3f2fac5a168a41335b8d13e20",
+    "src/lib/learning/http.test.ts": "4c9492bc4da7e408c8024b2021f609c9798441f5099e228f6dbba84d8efbdf7b",
+    "src/lib/learning/idea-contract.test.ts": "c5bc80e5824c458e223aed95e1a92f532b7fa964438b12f5275d16e2da93da73",
+    "src/lib/learning/pack.test.ts": "a7d3320bd28ee435172b9d22d7f04f94bcf2ff0c9976d79ffb491a46a8649a86",
+    "src/lib/learning/policy.test.ts": "63c534b88b34d0de247dea2068c8656819cab2552d8d90a0d6b0d6e0d0239ee6",
+    "src/lib/learning/retention.test.ts": "f7f46d45c640208ab1d2474a0ea4472cd8c016ff045d0178760c64eca844967d",
+    "src/lib/learning/session-check.test.ts": "7244e12e310cf75474050aa5f358eb748001e5c9b3c9eea9d7d23e340549ace3"
+  },
+  "laterFilesChangedBeforeFinalBuild": [
+    "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/page.tsx",
+    "src/components/learning/activity-player.tsx",
+    "src/components/learning/idea-form.tsx",
+    "src/components/learning/session-boundary.tsx"
+  ],
+  "note": "These unit/regression runs precede four subsequent UI refinements. Test files and non-UI source remained unchanged; final optimized HTTP and browser checks cover the later UI snapshot separately.",
+  "environment": "Sanitized process environment; no application environment files or production services loaded."
+}

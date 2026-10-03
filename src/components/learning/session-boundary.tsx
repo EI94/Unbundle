@@ -3,6 +3,7 @@
 import { Activity, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { useLearningUnsavedChanges } from "./use-unsaved-changes";
 
 type Phase = "checking" | "verified" | "session_changed" | "unauthenticated" | "forbidden" | "unavailable";
 
@@ -62,12 +63,12 @@ export function LearningSessionBoundary({ workspaceId, expectedUserId, children 
   }, [check, expectedUserId]);
 
   const phase = state.path === pathname ? state.phase : "checking";
-  useEffect(() => {
-    if (phase === "verified") return;
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [phase]);
+  // Activity suspends the forms' effects while their edits remain in memory.
+  // Keep navigation protection outside the hidden subtree during that interval.
+  useLearningUnsavedChanges({
+    pending: phase === "checking",
+    dirty: phase !== "verified" && phase !== "checking",
+  });
   return <>
     <Activity mode={phase === "verified" ? "visible" : "hidden"}>{children}</Activity>
     {phase !== "verified" && <section className="mx-auto max-w-3xl space-y-4 p-6" aria-busy={phase === "checking"}>

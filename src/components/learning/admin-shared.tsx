@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode, SelectHTMLAttributes } from "react";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -29,14 +30,53 @@ export function AdminNotice({ message, error }: { message: string; error: boolea
 export function ConfirmAdminAction({ label, description, busy, onConfirm, destructive = false }: {
   label: string; description: string; busy: boolean; onConfirm: () => Promise<boolean>; destructive?: boolean;
 }) {
-  const [confirming, setConfirming] = useState(false);
+  const identity = `${label}:${description}`;
+  const [confirmation, setConfirmation] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const inFlight = useRef(false);
+  const confirming = confirmation === identity;
   const confirmButton = useRef<HTMLButtonElement>(null);
   const originalButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (confirming) confirmButton.current?.focus(); }, [confirming]);
+  function close() { setConfirmation(null); setFailed(false); requestAnimationFrame(() => originalButton.current?.focus()); }
   return confirming ? <div className="space-y-3 rounded-lg border p-3">
-    <p className="text-sm">{description}</p><div className="flex flex-wrap gap-2">
-      <Button ref={confirmButton} type="button" disabled={busy} variant={destructive ? "destructive" : "default"} onClick={async () => { if (await onConfirm()) setConfirming(false); }}>Conferma: {label.toLowerCase()}</Button>
-      <Button type="button" disabled={busy} variant="outline" onClick={() => { setConfirming(false); requestAnimationFrame(() => originalButton.current?.focus()); }}>Annulla</Button>
+    <p className="text-sm">{description}</p>
+    {failed && <p role="alert" className="text-sm text-destructive">Operazione non confermata. Controlla il riepilogo prima di riprovare.</p>}
+    <div className="flex flex-wrap gap-2">
+      <Button ref={confirmButton} type="button" disabled={busy || submitting} variant={destructive ? "destructive" : "default"} onClick={async () => {
+        if (busy || inFlight.current) return;
+        inFlight.current = true; setSubmitting(true); setFailed(false);
+        try { if (await onConfirm()) close(); } catch { setFailed(true); }
+        finally { inFlight.current = false; setSubmitting(false); }
+      }}>Conferma: {label.toLowerCase()}</Button>
+      <Button type="button" disabled={busy || submitting} variant="outline" onClick={close}>Annulla</Button>
     </div>
-  </div> : <Button ref={originalButton} type="button" disabled={busy} variant={destructive ? "destructive" : "outline"} onClick={() => setConfirming(true)}>{label}</Button>;
+  </div> : <Button ref={originalButton} type="button" disabled={busy || submitting} variant={destructive ? "destructive" : "outline"} onClick={() => { setFailed(false); setConfirmation(identity); }}>{label}</Button>;
+}
+
+export function AdminUnsavedNotice({ dirty, onDiscard }: { dirty: boolean; onDiscard: () => boolean }) {
+  return dirty ? <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 p-3 text-sm" role="status">
+    <p>Modifiche non salvate. Salva il modulo prima di cambiare sezione o uscire.</p>
+    <Button type="button" variant="outline" onClick={onDiscard}>Scarta modifiche</Button>
+  </div> : null;
+}
+
+export function LearningLinkCopy({ path, label }: { path: string; label: string }) {
+  const id = useId();
+  const input = useRef<HTMLInputElement>(null);
+  const [value, setValue] = useState(path);
+  const [notice, setNotice] = useState("");
+  async function copy() {
+    const url = new URL(path, window.location.origin).href;
+    setValue(url);
+    if (input.current) input.current.value = url;
+    try { await navigator.clipboard.writeText(url); setNotice("Link copiato. Condividilo con le persone assegnate: non concede nuovi permessi e non invia email."); }
+    catch { setNotice("Copia automatica non disponibile. Il link è selezionato: copialo manualmente."); input.current?.focus(); input.current?.select(); }
+  }
+  return <div className="space-y-2">
+    <label className="text-sm font-medium" htmlFor={id}>{label}</label>
+    <div className="flex flex-wrap gap-2"><Input ref={input} id={id} value={value} readOnly className="min-w-0 flex-1 text-sm" onFocus={() => { if (value === path) setValue(new URL(path, window.location.origin).href); }} /><Button type="button" variant="outline" onClick={copy}>Copia link</Button></div>
+    <p className="text-sm text-muted-foreground" role="status" aria-live="polite">{notice || "L’accesso richiede un account autorizzato. Per una persona nuova, invia prima l’invito al workspace e assegnale il corso."}</p>
+  </div>;
 }

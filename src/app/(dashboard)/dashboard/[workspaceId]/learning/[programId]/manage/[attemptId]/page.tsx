@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { getLearningReviewAttempt } from "@/lib/learning/server";
 import { LearningShell, outcomeLabel } from "@/components/learning/learning-shell";
 export default async function ReviewPage({ params }: { params: Promise<{ workspaceId: string; programId: string; attemptId: string }> }) {
   const { workspaceId, programId, attemptId } = await params;
   const { participant, attempt } = await getLearningReviewAttempt(workspaceId, programId, attemptId);
   return <LearningShell workspaceId={workspaceId} title={`Evidenze · ${participant.name}`}>
+    <Link className="underline" href={`/dashboard/${workspaceId}/learning/${programId}/manage`}>Torna alla vista formatori</Link>
     <p>Vista riservata. {attempt.activity.title} · Tentativo {attempt.attemptNumber} · Versione {attempt.version}</p>
     <p>{outcomeLabel(attempt.result?.status)} · {attempt.result?.correct}/{attempt.result?.total}</p>
     {attempt.result?.items.map((result) => {

@@ -1,0 +1,136 @@
+{
+  "date": "2026-10-03",
+  "method": "Observed browser UI using CUA, synthetic users only",
+  "environment": "loopback app with PostgreSQL16 and Firebase Auth emulator",
+  "checks": [
+    {
+      "id": "checkpoint_validation",
+      "build": "development",
+      "status": "PASS",
+      "observation": "No preselected answers; missing fields focus error summary"
+    },
+    {
+      "id": "checkpoint_resume",
+      "build": "development",
+      "status": "PASS",
+      "observation": "Acknowledged answers restored after reload"
+    },
+    {
+      "id": "checkpoint_submit",
+      "build": "development",
+      "status": "PASS",
+      "observation": "Read-only delivery with feedback; no unsupported retake"
+    },
+    {
+      "id": "idea_resume",
+      "build": "development",
+      "status": "PASS",
+      "observation": "Manual save acknowledgement; all required fields restored after reload"
+    },
+    {
+      "id": "idea_submit",
+      "build": "development",
+      "status": "PASS",
+      "observation": "Explicit submit; fields read-only"
+    },
+    {
+      "id": "portfolio_receipt",
+      "build": "RQC0HUMdQZa9oZod3o7Em",
+      "status": "PASS",
+      "observation": "Own submitted idea receipt and pending review status visible"
+    },
+    {
+      "id": "mobile_navigation",
+      "build": "development",
+      "status": "PASS",
+      "observation": "360x800; accepted link closes menu; course has no horizontal overflow"
+    },
+    {
+      "id": "admin_copy_link",
+      "build": "development",
+      "status": "PASS",
+      "observation": "Clipboard equals course URL; no notification sent"
+    },
+    {
+      "id": "admin_concurrent_settings",
+      "build": "development",
+      "status": "PASS",
+      "observation": "Two tabs: first save succeeds, second preserves text and focuses conflict"
+    },
+    {
+      "id": "future_activity",
+      "build": "development",
+      "status": "PASS",
+      "observation": "Opening date/time visible; no questions or start button"
+    },
+    {
+      "id": "closed_draft",
+      "build": "development",
+      "status": "PASS",
+      "observation": "Server rejects save after turn closes; own local fields retained; controls disabled"
+    },
+    {
+      "id": "own_draft_download",
+      "build": "development",
+      "status": "PASS",
+      "observation": "Downloaded file contains only own answers/fields, including unacknowledged change"
+    },
+    {
+      "id": "reopen_refresh",
+      "build": "RQC0HUMdQZa9oZod3o7Em",
+      "status": "PASS",
+      "observation": "Check availability refresh enables controls and preserves acknowledged answer"
+    },
+    {
+      "id": "case_decisions",
+      "build": "RQC0HUMdQZa9oZod3o7Em",
+      "status": "PASS",
+      "observation": "Submission locks decisions before example and reflection are shown"
+    },
+    {
+      "id": "case_reflection_resume",
+      "build": "RQC0HUMdQZa9oZod3o7Em",
+      "status": "PASS",
+      "observation": "Acknowledged reflection and no-AI mode survive reload; decisions remain locked"
+    },
+    {
+      "id": "case_feedback_retake",
+      "build": "RQC0HUMdQZa9oZod3o7Em",
+      "status": "PASS",
+      "observation": "Submit resumed draft, read feedback, immediately start blank retake"
+    },
+    {
+      "id": "trainer_review",
+      "build": "RQC0HUMdQZa9oZod3o7Em",
+      "status": "PASS",
+      "observation": "Refresh; delivered checkpoint/case have details, draft retake has no details link"
+    },
+    {
+      "id": "decisions_review_final",
+      "build": "ED7ddM0_nZ4ey166viTWT",
+      "status": "PASS",
+      "observation": "Six answers saved, review focused; premature reflection label absent; private example absent; submit enabled"
+    },
+    {
+      "id": "native_navigation_dialogs",
+      "build": "development",
+      "status": "BLOCKED",
+      "observation": "Dialog shown, but tool cannot reliably accept/dismiss; pending alert and dirty logout not certified"
+    },
+    {
+      "id": "real_provider_https_login",
+      "build": null,
+      "status": "BLOCKED",
+      "observation": "No authorized cloud environment with isolated DB; emulator session is not real Google/password login"
+    },
+    {
+      "id": "history_offline_forced_close",
+      "build": null,
+      "status": "NOT_RUN",
+      "observation": "Back/forward SPA, full offline and forced tab closure not verified in this PR"
+    }
+  ],
+  "productDeltaAfterRQC": "One JSX condition hides the reflection summary until decisions are submitted; targeted browser check on ED7 passed.",
+  "screenshotsContain": "Only synthetic names, emails at learning-test.invalid and generic fixture content",
+  "noProductionRequests": true
+}

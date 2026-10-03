@@ -13,7 +13,7 @@ const validRequests = [
   { expectedUserId, operation: "detail", input: scope },
   { expectedUserId, operation: "inspectPack", input: { workspaceId, pack: {} } },
   { expectedUserId, operation: "importPack", input: { workspaceId, pack: {}, ...settings } },
-  { expectedUserId, operation: "settings", input: { ...scope, ...settings } },
+  { expectedUserId, operation: "settings", input: { ...scope, expectedSettings: settings, ...settings } },
   { expectedUserId, operation: "lifecycle", input: { ...scope, action: "disable" } },
   { expectedUserId, operation: "session", input: { ...scope, sessionId: targetId, status: "scheduled" } },
   { expectedUserId, operation: "enroll", input: { ...scope, userIds: [targetId], cohortId: "synthetic-cohort" } },
@@ -38,16 +38,16 @@ test("admin accepts only supported operations with exact envelopes and inputs", 
 
 test("administrative settings cannot replace immutable publication or answer data", () => {
   for (const extra of [{ privatePack: {} }, { pack: {} }, { contentVersion: "forged" }, { packHash: "a".repeat(64) }, { publishedBy: targetId }, { responses: {} }]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, ...settings, ...extra } }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, expectedSettings: settings, ...settings, ...extra } }).success, false);
   }
   for (const retentionDays of [0, 3651, 1.5, "30", null]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, ...settings, retentionDays } }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, expectedSettings: settings, ...settings, retentionDays } }).success, false);
   }
   for (const retentionDays of [1, 3650]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, ...settings, retentionDays } }).success, true);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, expectedSettings: settings, ...settings, retentionDays } }).success, true);
   }
   for (const invalid of [{ title: "   " }, { title: "x".repeat(251) }, { visibilityPolicy: "short" }, { visibilityPolicy: "x".repeat(10_001) }]) {
-    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, ...settings, ...invalid } }).success, false);
+    assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, expectedSettings: settings, ...settings, ...invalid } }).success, false);
   }
 });
 
@@ -98,4 +98,17 @@ test("every admin operation requires an explicit expected actor without treating
     }
     assert.equal(learningAdminRequestSchema.safeParse({ ...request, input: { ...request.input, expectedUserId } }).success, false);
   }
+});
+
+
+test("settings require an exact, complete baseline without authority or immutable fields", () => {
+  const request = (expectedSettings: unknown) => ({ expectedUserId, operation: "settings", input: { ...scope, ...settings, expectedSettings } });
+  assert.equal(learningAdminRequestSchema.safeParse({ expectedUserId, operation: "settings", input: { ...scope, ...settings } }).success, false);
+  for (const expectedSettings of [null, {}, { title: settings.title }, { ...settings, retentionDays: "30" }, { ...settings, revision: 1 }, { ...settings, featureEnabled: true }]) {
+    assert.equal(learningAdminRequestSchema.safeParse(request(expectedSettings)).success, false);
+  }
+  const baseline = { ...settings, title: ` ${settings.title} `, visibilityPolicy: ` ${settings.visibilityPolicy} ` };
+  const parsed = learningAdminRequestSchema.parse(request(baseline));
+  assert.equal(parsed.operation, "settings");
+  if (parsed.operation === "settings") assert.deepEqual(parsed.input.expectedSettings, baseline);
 });

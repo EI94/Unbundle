@@ -1,0 +1,89 @@
+{
+  "status": "PASS_READ_ONLY_REVIEW",
+  "originalCheckout": {
+    "checkedAt": "2026-10-03T09:03:46.862528+00:00",
+    "headUnchanged": true,
+    "statusUnchanged": true,
+    "filesChecked": 10,
+    "files": [
+      {
+        "path": "package.json",
+        "expectedSha256": "47ccda136f2f8f562bf2fd0a112abd0a54c338f0f11c7be665dbe632d4996d20",
+        "actualSha256": "47ccda136f2f8f562bf2fd0a112abd0a54c338f0f11c7be665dbe632d4996d20",
+        "unchanged": true
+      },
+      {
+        "path": "src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx",
+        "expectedSha256": "44bb02cd7cb54245a37e8de0329b18b744f34facc6cd09f0a731b8d541dc045e",
+        "actualSha256": "44bb02cd7cb54245a37e8de0329b18b744f34facc6cd09f0a731b8d541dc045e",
+        "unchanged": true
+      },
+      {
+        "path": "src/app/a/[token]/page.tsx",
+        "expectedSha256": "914028a07bf86408012a43ce0de5d7ab9e13bd800a880fbb8f51ef91ca5b6a76",
+        "actualSha256": "914028a07bf86408012a43ce0de5d7ab9e13bd800a880fbb8f51ef91ca5b6a76",
+        "unchanged": true
+      },
+      {
+        "path": "src/app/s/[token]/page.tsx",
+        "expectedSha256": "58c00dccad139bb00404113116627fbd479dcf6adef2c33cb41e9938260311e6",
+        "actualSha256": "58c00dccad139bb00404113116627fbd479dcf6adef2c33cb41e9938260311e6",
+        "unchanged": true
+      },
+      {
+        "path": "src/components/ai-readiness/open-link-form.tsx",
+        "expectedSha256": "d8fdc4074c8a0794a6721800cdde609a5cce1d145f749fc464d10ca0295edfb4",
+        "actualSha256": "d8fdc4074c8a0794a6721800cdde609a5cce1d145f749fc464d10ca0295edfb4",
+        "unchanged": true
+      },
+      {
+        "path": "src/components/ai-readiness/respondent-invite-form.tsx",
+        "expectedSha256": "1b587c805729e73e3bf5652663ce0bed4f54af18e67367b92ecde5c1f8d5e4ff",
+        "actualSha256": "1b587c805729e73e3bf5652663ce0bed4f54af18e67367b92ecde5c1f8d5e4ff",
+        "unchanged": true
+      },
+      {
+        "path": "src/lib/actions/ai-readiness.ts",
+        "expectedSha256": "28bdb4547d2d4a515e4a11fbd7d747eee4a4634d11217527158cd5fd9c3a9551",
+        "actualSha256": "28bdb4547d2d4a515e4a11fbd7d747eee4a4634d11217527158cd5fd9c3a9551",
+        "unchanged": true
+      },
+      {
+        "path": "src/lib/ai-readiness/template-scope.test.ts",
+        "expectedSha256": "64678c704c96babdefb584a4eab06545b30c000a589ab671bcf97fa32661f2e5",
+        "actualSha256": "64678c704c96babdefb584a4eab06545b30c000a589ab671bcf97fa32661f2e5",
+        "unchanged": true
+      },
+      {
+        "path": "src/lib/ai-readiness/survey-track.test.ts",
+        "expectedSha256": "0fd8dd366c6f9c256530dc399d17457a88ae3e43c0df61e1c96ddebea9a11a73",
+        "actualSha256": "0fd8dd366c6f9c256530dc399d17457a88ae3e43c0df61e1c96ddebea9a11a73",
+        "unchanged": true
+      },
+      {
+        "path": "src/lib/ai-readiness/survey-track.ts",
+        "expectedSha256": "ca4c582a581ee5244bbb7a089209749ad3fec014ab0397ad333892fff25caa65",
+        "actualSha256": "ca4c582a581ee5244bbb7a089209749ad3fec014ab0397ad333892fff25caa65",
+        "unchanged": true
+      }
+    ]
+  },
+  "earlierIndependentBuildCheck": {
+    "checkedAt": "2026-10-03T09:54:00.457861+00:00",
+    "buildId": "RQC0HUMdQZa9oZod3o7Em",
+    "buildIdMatches": true,
+    "sourceHashCount": 368,
+    "sourceHashMismatches": [],
+    "original10HashMismatches": [],
+    "diffCheckExit": 0
+  },
+  "finalApplicationBuildComparison": {
+    "checkedAt": "2026-10-03T10:11:16.442753+00:00",
+    "buildId": "ED7ddM0_nZ4ey166viTWT",
+    "applicationSourceMatches": true,
+    "onlyPostBuildChange": [
+      "scripts/learning-test/ux-acceptance.mjs"
+    ]
+  },
+  "note": "The independent build check identifies its own earlier snapshot. The final build comparison separately records the later JSX build and the sole test-harness change."
+}

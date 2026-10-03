@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AdminNotice, AdminSection, adminDate } from "./admin-shared";
+import { AdminNotice, AdminSection, AdminUnsavedNotice, LearningLinkCopy, adminDate } from "./admin-shared";
+
+import { useLearningUnsavedChanges } from "./use-unsaved-changes";
 
 export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: string; initial: AdminCatalogDTO }) {
   const [catalog, setCatalog] = useState(initial);
@@ -18,14 +20,22 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
   const [error, setError] = useState(false);
   const [packSummary, setPackSummary] = useState<AdminPackDTO | null>(null);
   const privatePack = useRef<unknown>(null);
+  const inFlight = useRef(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const form = useRef<HTMLFormElement>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  function discardImport() {
+    privatePack.current = null; setPackSummary(null); setConfirmed(false); setDirty(false);
+    form.current?.reset(); if (fileInput.current) fileInput.current.value = "";
+  }
+  const { confirmDiscard } = useLearningUnsavedChanges({ dirty, pending: busy, onDiscard: discardImport });
   const base = `/dashboard/${workspaceId}/learning`;
 
   async function inspect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true); setError(false); setMessage(""); setPackSummary(null); setConfirmed(false); privatePack.current = null;
     try {
       const file = fileInput.current?.files?.[0];
@@ -38,12 +48,13 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
       setPackSummary(result.data);
       setMessage("Pacchetto verificato. Controlla il riepilogo e completa i dati prima di importarlo.");
     } catch (cause) { setError(true); setMessage(cause instanceof Error ? cause.message : "Verifica non completata. Riprova."); }
-    finally { setBusy(false); }
+    finally { inFlight.current = false; setBusy(false); }
   }
 
   async function importPack(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || !packSummary || !confirmed || !privatePack.current) return;
+    if (inFlight.current || !packSummary || !confirmed || !privatePack.current) return;
+    inFlight.current = true;
     const fields = new FormData(event.currentTarget);
     setBusy(true); setError(false); setMessage("");
     try {
@@ -52,7 +63,7 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
         visibilityPolicy: String(fields.get("visibilityPolicy") ?? ""), retentionDays: Number(fields.get("retentionDays")),
       } });
       if (!result.ok) { setError(true); setMessage(result.message); return; }
-      privatePack.current = null; setPackSummary(null); setConfirmed(false); form.current?.reset();
+      privatePack.current = null; setPackSummary(null); setConfirmed(false); setDirty(false); form.current?.reset();
       if (fileInput.current) fileInput.current.value = "";
       setMessage(result.data.message);
       try {
@@ -61,12 +72,14 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
         else setMessage("Importazione confermata. Ricarica la pagina per aggiornare l’elenco dei corsi.");
       } catch { setMessage("Importazione confermata. Ricarica la pagina per aggiornare l’elenco dei corsi."); }
     } catch { setError(true); setMessage("Importazione non confermata. Riprova con lo stesso pacchetto: un corso già importato non viene duplicato."); }
-    finally { setBusy(false); }
+    finally { inFlight.current = false; setBusy(false); }
   }
 
   return <div className="space-y-6" aria-busy={busy}>
     <p>Prepara il percorso, assegna i turni e autorizza i formatori. Le risposte alla survey AI Readiness restano separate.</p>
     <AdminNotice message={message} error={error} />
+    <AdminUnsavedNotice dirty={dirty} onDiscard={confirmDiscard} />
+    <LearningLinkCopy path={base} label="Link alla formazione del workspace" />
     {busy && <p role="status" className="text-sm text-muted-foreground">Operazione in corso. Attendi la conferma prima di lasciare la pagina.</p>}
     <AdminSection title="I corsi che gestisci">
       {catalog.programs.length === 0 ? <p>Nessun corso da gestire. {catalog.canCreate ? "Inizia importando il pacchetto didattico approvato." : "Un responsabile del corso deve assegnarti il permesso di gestione."}</p> : <ul className="grid gap-4 sm:grid-cols-2">{catalog.programs.map(program => <li key={program.id} className="space-y-3 rounded-lg border p-4">
@@ -81,15 +94,16 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
       <form onSubmit={inspect} className="space-y-3">
         <fieldset disabled={busy} className="space-y-3">
           <Label htmlFor="learning-pack">Pacchetto didattico riservato (JSON, massimo 5 MB)</Label>
-          <Input ref={fileInput} id="learning-pack" type="file" accept=".json,application/json" required onChange={() => { privatePack.current = null; setPackSummary(null); setConfirmed(false); }} />
-          <Button type="submit" variant="outline">Verifica pacchetto</Button>
+          <Input ref={fileInput} id="learning-pack" type="file" disabled={!!packSummary} accept=".json,application/json" required onChange={event => { privatePack.current = null; setPackSummary(null); setConfirmed(false); setDirty(!!event.target.files?.length); }} />
+          <Button type="submit" variant="outline" disabled={!!packSummary}>Verifica pacchetto</Button>
+          {packSummary && <p className="text-sm text-muted-foreground">Per scegliere un altro pacchetto, scarta prima le modifiche non salvate.</p>}
         </fieldset>
       </form>
       {packSummary && <div className="space-y-4 border-t pt-4">
         <div className="space-y-2 rounded-lg bg-muted/40 p-4"><h3 className="font-medium">Riepilogo della versione {packSummary.version}</h3><p className="text-sm">{packSummary.modules.length} moduli · {packSummary.sessionCount} turni · {packSummary.activityCount} attività · {packSummary.itemCount} domande</p>
           <ul className="space-y-3 text-sm">{packSummary.modules.map(module => <li key={module.id}><strong>{module.title}</strong><ul>{module.sessions.map(session => <li key={session.cohortId}>{session.cohortId} · {adminDate(session.startsAt)} – {adminDate(session.endsAt)} · {session.timezone}</li>)}</ul></li>)}</ul>
         </div>
-        <form ref={form} onSubmit={importPack}>
+        <form ref={form} onSubmit={importPack} onChange={() => setDirty(true)}>
           <fieldset disabled={busy} className="space-y-4">
             <div className="space-y-2"><Label htmlFor="new-course-title">Nome del corso</Label><Input id="new-course-title" name="title" maxLength={250} required /></div>
             <div className="space-y-2"><Label htmlFor="new-course-policy">Informativa visibile ai partecipanti</Label><Textarea id="new-course-policy" name="visibilityPolicy" minLength={20} maxLength={10000} rows={4} required placeholder="Indica chi può consultare i risultati e a chi rivolgersi per il percorso." /></div>

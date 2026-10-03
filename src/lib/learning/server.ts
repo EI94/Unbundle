@@ -9,8 +9,9 @@ import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { learningPrograms, learningEnrollments, learningSessions, learningGrants, learningAttempts, learningAuditEvents } from "./schema";
 import { getActivity, createAttemptOrder, getLearnerActivity, getSubmittedCaseExample } from "./pack";
 import { validateDraftResponses, validateCompleteness, gradeActivity } from "./grading";
-import { csvCell, suppressSmallSplit, m1ReleaseMinutes, type LearningCapability } from "./policy";
-import type { AttemptResponses, LearnerActivityDTO, ObjectiveGrade } from "./types";
+import { csvCell, summarizeActivityOutcomes, m1ReleaseMinutes, type LearningCapability } from "./policy";
+import type { AttemptResponses, LearnerActivityDTO, ObjectiveGrade, PrivateTrainingPack } from "./types";
+import { activityAvailability, attemptAccess, latestActivityAttempt, type ActivityAvailability } from "./availability";
 
 export type LearningErrorCode = "unavailable" | "unauthenticated" | "forbidden" | "invalid" | "conflict" | "closed" | "technical";
 export class LearningError extends Error {
@@ -26,6 +27,8 @@ export type AttemptDTO = {
   savedAt: string; submittedAt: string | null; decisionsSubmittedAt: string | null; result: ObjectiveGrade | null;
   activity: LearnerActivityDTO; version: string; contentVersion: string;
   caseExample: ReturnType<typeof getSubmittedCaseExample> | null;
+  writeAccess: boolean; readOnlyReason: string | null;
+  canRetake: boolean; retakeUnavailableReason: string | null;
 };
 export function learningEnabled() { return process.env.LEARNING_ENABLED === "true"; }
 function identifier(id: string) { if (!z.uuid().safeParse(id).success) throw new LearningError("forbidden", "Contenuto non disponibile per questo account."); }
@@ -55,17 +58,22 @@ export async function requireLearningEnrollment(workspaceId: string, programId: 
   }
   return { userId, program, enrollment };
 }
+async function enrollmentSession(program: LearningProgramRow, enrollment: LearningEnrollmentRow) {
+  const [session] = await db.select().from(learningSessions).where(and(eq(learningSessions.workspaceId, program.workspaceId), eq(learningSessions.programId, program.id), eq(learningSessions.moduleId, enrollment.moduleId), eq(learningSessions.cohortId, enrollment.cohortId)));
+  return session ?? null;
+}
+function availabilityFor(program: LearningProgramRow, activityId: string, session: typeof learningSessions.$inferSelect | null, now = Date.now()) {
+  return activityAvailability({ enabled: program.featureEnabled, programStatus: program.status, activity: getActivity(program.privatePack, activityId), session, now });
+}
 async function requireActivityOpen(ctx:Awaited<ReturnType<typeof requireLearningEnrollment>>,activityId:string) {
-  if(ctx.program.status!=="published")throw new LearningError("closed","Il programma è chiuso; le consegne precedenti restano consultabili.");
-  const [session]=await db.select().from(learningSessions).where(and(eq(learningSessions.workspaceId,ctx.program.workspaceId),eq(learningSessions.programId,ctx.program.id),eq(learningSessions.moduleId,"m1"),eq(learningSessions.cohortId,ctx.enrollment.cohortId)));
-  const offset=m1ReleaseMinutes(getActivity(ctx.program.privatePack,activityId));
-  if(offset===null || !session || session.status==="closed" || (session.status!=="open" && session.startsAt.getTime()+offset*60_000>Date.now()))throw new LearningError("closed","L'attività sarà aperta dal formatore o nella finestra prevista del tuo turno.");
+  const availability = availabilityFor(ctx.program, activityId, await enrollmentSession(ctx.program, ctx.enrollment));
+  if (!availability.writeAccess) throw new LearningError("closed", availability.reason ?? "L’attività non è aperta.");
 }
 async function grantsFor(workspaceId: string, programId: string, userId: string) {
   return db.select().from(learningGrants).where(and(eq(learningGrants.workspaceId,workspaceId),eq(learningGrants.programId,programId),eq(learningGrants.userId,userId),isNull(learningGrants.revokedAt)));
 }
 function programDTO(program: LearningProgramRow, grants: GrantRow[], enrollment?: LearningEnrollmentRow) {
-  return { id:program.id,title:program.title,version:program.contentVersion,status:program.status,cohortId:enrollment?.cohortId ?? null,
+  return { id:program.id,title:program.title,version:program.contentVersion,status:program.status,cohortId:enrollment?.cohortId ?? null,canParticipate:!!enrollment,
     canReview:grants.some(g=>g.capability==="review"),canAggregate:grants.some(g=>g.capability==="aggregate"),canExport:grants.some(g=>g.capability==="export"),canManage:grants.some(g=>g.capability==="manage") };
 }
 export async function getLearningHome(workspaceId: string) {
@@ -92,8 +100,8 @@ export async function hasLearningForWorkspace(workspaceId: string) {
 async function ownAttempts(ctx: Awaited<ReturnType<typeof requireLearningEnrollment>>) {
   return db.select().from(learningAttempts).where(and(eq(learningAttempts.workspaceId,ctx.program.workspaceId),eq(learningAttempts.programId,ctx.program.id),eq(learningAttempts.enrollmentId,ctx.enrollment.id),eq(learningAttempts.userId,ctx.userId))).orderBy(learningAttempts.createdAt);
 }
-function summary(row: AttemptRow) {
-  return {id:row.id,activityId:row.activityId,attemptNumber:row.attemptNumber,status:row.status,submittedAt:row.submittedAt?.toISOString() ?? null,
+function summary(row: AttemptRow, pack: PrivateTrainingPack) {
+  return {id:row.id,activityId:row.activityId,activityTitle:getActivity(pack,row.activityId).title,attemptNumber:row.attemptNumber,status:row.status,submittedAt:row.submittedAt?.toISOString() ?? null,
     result:row.status === "submitted" && row.result ? {correct:row.result.correct,total:row.result.total,status:row.result.status,essentialErrors:row.result.essential_errors.length}:null};
 }
 export async function getLearningProgram(workspaceId: string,programId: string) {
@@ -108,17 +116,30 @@ export async function getLearningProgram(workspaceId: string,programId: string) 
   const finalAttempt=attempts.filter(a=>(a.activityId==="m1-exit-a" || a.activityId==="m1-exit-b") && a.status==="submitted").at(-1);
   const m1Completed=!!caseAttempt && !!finalAttempt;
   const m1Outcome=m1Completed ? (caseAttempt.result?.status==="consolidated" && finalAttempt.result?.status==="consolidated" ? "consolidated":"needs_practice") : null;
+  const now = Date.now();
+  const ownSession = enrollment ? sessions.find(s => s.moduleId === enrollment.moduleId && s.cohortId === enrollment.cohortId) ?? null : null;
   return {...programDTO(program,grants,enrollment),visibilityPolicy:program.visibilityPolicy,retentionDays:program.retentionDays,
     modules:program.privatePack.modules.map(m=>({id:m.id,title:m.title,subtitle:m.subtitle,objective:m.objective,completionStatus:m.id==="m1"?(m1Completed?"completed":attempts.length?"in_progress":"not_started"):"not_started",learningOutcome:m.id==="m1"?m1Outcome:null,status:m.id==="m1" && enrollment ? program.status : "scheduled",
       activities:program.privatePack.activities.filter(a=>a.module_id===m.id && a.purpose!=="retake").map(a=>{
-        const row=attempts.filter(t=>t.activityId===a.id).at(-1); return {id:a.id,title:a.title,kind:a.type,status:row?.status ?? (m.id==="m1"?"available":"scheduled"),attemptId:row?.id ?? null,result:row?summary(row).result:null};
+        const row = latestActivityAttempt(a, attempts);
+        const availability = availabilityFor(program, row?.activityId ?? a.id, ownSession, now);
+        return {id:a.id,title:a.title,kind:a.type,status:row?.status ?? availability.state,attemptId:row?.id ?? null,attemptNumber:row?.attemptNumber ?? null,
+          attemptTitle:row?getActivity(program.privatePack,row.activityId).title:null,result:row?summary(row,program.privatePack).result:null,availability};
       })})),
     sessions:sessions.map(s=>({id:s.id,moduleId:s.moduleId,cohortId:s.cohortId,assigned:!!enrollment && s.moduleId===enrollment.moduleId && s.cohortId===enrollment.cohortId,startsAt:s.startsAt.toISOString(),endsAt:s.endsAt.toISOString(),timezone:s.timezone,status:s.status})),
-    reviewers:reviewers.map(r=>`${r.name || "Formatore"} · ${r.email}`),history:attempts.map(summary)};
+    reviewers:reviewers.map(r=>`${r.name || "Formatore"} · ${r.email}`),history:attempts.map(row=>summary(row,program.privatePack))};
 }
-function attemptDTO(row: AttemptRow,program: LearningProgramRow): AttemptDTO {
+async function attemptDTO(row: AttemptRow,program: LearningProgramRow, knownAvailability?: ActivityAvailability): Promise<AttemptDTO> {
   if (row.contentVersion!==program.contentVersion || row.packHash!==program.packHash) throw new LearningError("technical","La versione del contenuto richiede una verifica tecnica. La bozza è conservata.");
-  return {id:row.id,userId:row.userId,activityId:row.activityId,attemptNumber:row.attemptNumber,parentAttemptId:row.parentAttemptId,status:row.status as "draft"|"submitted",revision:row.revision,responses:row.responses,
+  const activity = getActivity(program.privatePack,row.activityId);
+  const [session] = await db.select({session:learningSessions}).from(learningSessions).innerJoin(learningEnrollments,
+    and(eq(learningEnrollments.workspaceId,learningSessions.workspaceId),eq(learningEnrollments.programId,learningSessions.programId),eq(learningEnrollments.moduleId,learningSessions.moduleId),eq(learningEnrollments.cohortId,learningSessions.cohortId)))
+    .where(and(eq(learningEnrollments.workspaceId,program.workspaceId),eq(learningEnrollments.programId,program.id),eq(learningEnrollments.id,row.enrollmentId),eq(learningEnrollments.userId,row.userId)));
+  const now=Date.now();
+  const availability=knownAvailability ?? availabilityFor(program,row.activityId,session?.session ?? null,now);
+  const retakeId=activity.retake_activity_id ?? (["practice","retake"].includes(activity.purpose)?activity.id:null);
+  const access=attemptAccess(row.status as "draft"|"submitted",availability,retakeId?availabilityFor(program,retakeId,session?.session ?? null,now):null);
+  return {...access,id:row.id,userId:row.userId,activityId:row.activityId,attemptNumber:row.attemptNumber,parentAttemptId:row.parentAttemptId,status:row.status as "draft"|"submitted",revision:row.revision,responses:row.responses,
     savedAt:row.updatedAt.toISOString(),decisionsSubmittedAt:row.decisionsSubmittedAt?.toISOString()??null,submittedAt:row.submittedAt?.toISOString()??null,result:row.status==="submitted"?row.result:null,
     activity:getLearnerActivity(program.privatePack,row.activityId,row.itemOrder),version:row.contentVersion,contentVersion:row.contentVersion,
     caseExample:row.status==="submitted" || row.decisionsSubmittedAt?getSubmittedCaseExample(program.privatePack,row.activityId):null};
@@ -131,9 +152,14 @@ function ensureM1(program:LearningProgramRow,activityId:string) {
 export async function getLearningActivity(workspaceId:string,programId:string,activityId:string) {
   const ctx=await requireLearningEnrollment(workspaceId,programId); const activity=ensureM1(ctx.program,activityId);
   const rows=(await ownAttempts(ctx)).filter(a=>a.activityId===activityId); const latest=rows.at(-1);
-  if(latest?.status!=="submitted")await requireActivityOpen(ctx,activityId);
   if(activity.purpose==="retake" && !latest) throw new LearningError("forbidden","Avvia il recupero dal feedback della tua verifica.");
-  return {userId:ctx.userId,program:{id:ctx.program.id,title:ctx.program.title,version:ctx.program.contentVersion},activity:getLearnerActivity(ctx.program.privatePack,activityId,latest?.itemOrder ?? createAttemptOrder(ctx.program.privatePack,activityId)),attempt:latest?attemptDTO(latest,ctx.program):null,history:rows.map(summary)};
+  const availability=availabilityFor(ctx.program,activityId,await enrollmentSession(ctx.program,ctx.enrollment));
+  // A scheduled activity without an attempt exposes only its title and availability.
+  // Existing drafts and submitted feedback remain readable within the same authorization.
+  const attempt=latest?await attemptDTO(latest,ctx.program,availability):null;
+  return {userId:ctx.userId,program:{id:ctx.program.id,title:ctx.program.title,version:ctx.program.contentVersion},activityTitle:activity.title,availability,
+    activity:attempt?.activity ?? (availability.writeAccess?getLearnerActivity(ctx.program.privatePack,activityId,createAttemptOrder(ctx.program.privatePack,activityId)):null),
+    attempt,history:rows.map(row=>summary(row,ctx.program.privatePack))};
 }
 async function requireOwnAttempt(workspaceId:string,programId:string,attemptId:string,mutable=false) {
   identifier(attemptId); const ctx=await requireLearningEnrollment(workspaceId,programId,mutable);
@@ -243,7 +269,7 @@ function scopeCondition(grants:GrantRow[]) {
 async function scopedProgress(ctx:Awaited<ReturnType<typeof requireCapability>>) {
   const rows=await db.select({enrollment:learningEnrollments,name:users.name,email:users.email}).from(learningEnrollments).innerJoin(users,eq(learningEnrollments.userId,users.id)).where(and(eq(learningEnrollments.workspaceId,ctx.program.workspaceId),eq(learningEnrollments.programId,ctx.program.id),eq(learningEnrollments.moduleId,"m1"),eq(learningEnrollments.status,"active"),scopeCondition(ctx.grants)));
   return Promise.all(rows.map(async r=>({userId:r.enrollment.userId,name:r.name??"Partecipante",email:r.email,cohortId:r.enrollment.cohortId,
-    attempts:(await ownAttempts({userId:r.enrollment.userId,program:ctx.program,enrollment:r.enrollment})).map(summary)})));
+    attempts:(await ownAttempts({userId:r.enrollment.userId,program:ctx.program,enrollment:r.enrollment})).map(row=>summary(row,ctx.program.privatePack))})));
 }
 export async function getLearningManage(workspaceId:string,programId:string) {
   const ctx=await requireCapability(workspaceId,programId,"review");
@@ -256,9 +282,7 @@ export async function getLearningLive(workspaceId:string,programId:string) {
   if(rows.length<minimum) return {program:{id:ctx.program.id,title:ctx.program.title},minimum,suppressed:true,enrolled:null,activities:[]};
   const activities=ctx.program.privatePack.activities.filter(a=>a.module_id==="m1" && a.purpose!=="retake").map(a=>{
     const attempts=rows.flatMap(r=>{const first=r.attempts.find(t=>t.activityId===a.id && t.status==="submitted"); return first?[first]:[];});
-    const consolidated=attempts.filter(t=>t.result?.status==="consolidated" || t.result?.status==="formative_completed").length;
-    const submitted=suppressSmallSplit(rows.length,attempts.length,minimum);
-    return {id:a.id,title:a.title,submitted,consolidated:submitted===null?null:suppressSmallSplit(attempts.length,consolidated,minimum),suppressed:submitted===null || attempts.length<minimum};
+    return {id:a.id,title:a.title,formative:a.purpose==="formative",...summarizeActivityOutcomes(rows.length,attempts.map(t=>t.result?.status ?? null),a.purpose==="formative",minimum)};
   });
   return {program:{id:ctx.program.id,title:ctx.program.title},minimum,suppressed:false,enrolled:rows.length,activities};
 }
@@ -300,5 +324,5 @@ export async function getLearningReviewAttempt(workspaceId:string,programId:stri
     .innerJoin(users,eq(users.id,learningAttempts.userId))
     .where(and(eq(learningAttempts.workspaceId,workspaceId),eq(learningAttempts.programId,programId),eq(learningAttempts.id,attemptId),eq(learningAttempts.status,"submitted"),eq(learningEnrollments.status,"active"),scopeCondition(ctx.grants)));
   if(!row)throw new LearningError("forbidden","Consegna non disponibile nel tuo perimetro di revisione.");
-  return {participant:{name:row.name??"Partecipante",email:row.email},attempt:attemptDTO(row.attempt,ctx.program)};
+  return {participant:{name:row.name??"Partecipante",email:row.email},attempt:await attemptDTO(row.attempt,ctx.program)};
 }

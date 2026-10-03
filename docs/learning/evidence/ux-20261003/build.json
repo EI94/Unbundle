@@ -1,0 +1,24 @@
+{
+  "status": "PASS",
+  "buildId": "ED7ddM0_nZ4ey166viTWT",
+  "baseCommit": "b768000eb862ab4615981c0f19f66064673e84b0",
+  "testedSource": "Uncommitted PR working tree identified by the build manifest, not the base commit alone.",
+  "startedAt": "2026-10-03T09:57:29.706067+00:00",
+  "finishedAt": "2026-10-03T09:57:41.553850+00:00",
+  "exitCode": 0,
+  "sourceStableDuringBuild": true,
+  "sourceFileCount": 368,
+  "logSha256": "d78a33e78f56bb72daac3dd45ef0656c853065ef5b4c9618818381a0b79cb8e7",
+  "environment": "Local optimized Next build with explicit environment allowlist, synthetic Firebase configuration, Auth emulator and isolated PostgreSQL. No production credentials or .env files.",
+  "manifest": "source-sha256.json",
+  "postBuildChanges": [
+    {
+      "file": "scripts/learning-test/ux-acceptance.mjs",
+      "kind": "Test-only negative assertions for portfolio receipt; no application code change",
+      "builtSnapshotSha256": "112fe6a89a1da5f99e0632c10a28b248e62014156f6993b4bbf7f5bcfb4ffb82",
+      "executedTestSha256": "e61eee0f7661d57a61b39d7c1517a433f83ec5af965267bf2483ef491ae5a680"
+    }
+  ],
+  "applicationSourceMatchesBuild": true,
+  "deployed": false
+}

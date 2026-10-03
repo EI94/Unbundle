@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { grantCoversCohort,csvCell,suppressSmallSplit,m1ReleaseMinutes } from "./policy.ts";
+import { grantCoversCohort,csvCell,suppressSmallSplit,m1ReleaseMinutes,summarizeActivityOutcomes } from "./policy.ts";
 test("explicit capabilities do not inherit portfolio/sponsor access and preserve cohort boundaries",()=>{
   const grants=[{capability:"review",cohortId:"group-a"},{capability:"aggregate",cohortId:null}];
   assert.equal(grantCoversCohort(grants,"review","group-a"),true);
@@ -35,4 +35,10 @@ test("M1 windows depend on activity semantics and not private client identifiers
   assert.equal(m1ReleaseMinutes({module_id:"m1",type:"knowledge_check",purpose:"post_module"}),105);
   assert.equal(m1ReleaseMinutes({module_id:"m1",type:"knowledge_check",purpose:"retake"}),105);
   assert.equal(m1ReleaseMinutes({module_id:"m2",type:"knowledge_check",purpose:"post_module"}),null);
+});
+
+test("a completed checkpoint never becomes a consolidated outcome and retains small-cell suppression",()=>{
+  assert.deepEqual(summarizeActivityOutcomes(5,Array(5).fill("formative_completed"),true),{submitted:5,consolidated:null,completed:5,suppressed:false});
+  assert.deepEqual(summarizeActivityOutcomes(6,Array(5).fill("formative_completed"),true),{submitted:null,consolidated:null,completed:null,suppressed:true});
+  assert.deepEqual(summarizeActivityOutcomes(10,[...Array(5).fill("consolidated"),...Array(5).fill("needs_practice")],false),{submitted:10,consolidated:5,completed:null,suppressed:false});
 });

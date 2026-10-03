@@ -16,7 +16,7 @@ export default async function PortfolioPage({
   searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ thanks?: string; created?: string }>;
+  searchParams: Promise<{ thanks?: string | string[]; created?: string | string[] }>;
 }) {
   const session = await requireSession();
 
@@ -32,6 +32,15 @@ export default async function PortfolioPage({
     getOrCreateWorkspaceScoringModel(workspaceId),
     getPortfolioContributionsByWorkspace(workspaceId),
   ]);
+
+  // The URL identifies a receipt, never permission to view another author's proposal.
+  const createdContribution = typeof sp.created === "string"
+    ? contributions.find(contribution => contribution.id === sp.created
+      && contribution.source === "learning" && contribution.proposedBy === session.user.id)
+    : undefined;
+  const reviewStatusLabels: Record<string, string> = {
+    needs_inputs: "Dati mancanti", in_review: "In valutazione", scored: "Valutato", archived: "Archiviato",
+  };
 
   const esgEnabled = workspace.esgEnabled === true;
   const teamName =
@@ -75,6 +84,15 @@ export default async function PortfolioPage({
           </CardContent>
         </Card>
       )}
+
+      {createdContribution && <Card className="border-green-500/30 bg-green-500/5">
+        <CardHeader><CardTitle>Proposta ricevuta nel portfolio</CardTitle></CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p className="font-medium break-words">{createdContribution.title}</p>
+          <p>Stato di valutazione: {reviewStatusLabels[createdContribution.portfolioReviewStatus] ?? createdContribution.portfolioReviewStatus}.</p>
+          <p className="text-muted-foreground">L’invio non avvia un progetto o un’automazione. La proposta può comparire nella matrice dopo la valutazione dei referenti.</p>
+        </CardContent>
+      </Card>}
 
       <Card>
         <CardHeader>

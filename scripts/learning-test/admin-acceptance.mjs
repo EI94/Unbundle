@@ -21,7 +21,7 @@ const mode = process.argv[2];
 if (mode && !["--setup", "--serve-login"].includes(mode)) throw new Error("Use --setup, --serve-login or no argument for tests");
 
 async function setup() {
-  const previous = JSON.parse(await readFile("/private/tmp/unbundle-m1-evidence/synthetic-fixtures.json", "utf8"));
+  const previous = JSON.parse(await readFile(resolve(output, "synthetic-fixtures.json"), "utf8"));
   let existing;
   try { existing = JSON.parse(await readFile(manifestPath, "utf8")); } catch { /* New test namespace. */ }
   process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:59099";
@@ -119,6 +119,10 @@ async function runAcceptance() {
   const cohort = "m1-cohort", otherCohort = "m1-cohort-2";
   const scope = (w=a) => ({ workspaceId: w.workspaceId, programId: w.programId });
   async function request(name, operation, input, options = {}) {
+    if (!options.learner && operation === "settings" && !Object.hasOwn(input,"expectedSettings")) {
+      const row=(await db.query('SELECT title,visibility_policy AS "visibilityPolicy",retention_days AS "retentionDays" FROM learning_programs WHERE workspace_id=$1 AND id=$2',[input.workspaceId,input.programId])).rows[0];
+      input={...input,expectedSettings:row??settings};
+    }
     if(options.learner && operation==="startLearningAttempt") input={expectedUserId:accounts[name]?.id,...input};
     const headers = { "content-type": "application/json", origin, ...(cookies[name] ? { cookie: cookies[name] } : {}), ...options.headers };
     for (const key of options.omitHeaders ?? []) delete headers[key];
@@ -245,7 +249,12 @@ async function runAcceptance() {
     clientScan={pages:2,rscRequests:2,htmlBytes,rscBytes,scripts,checkedMarkers:markers};
   });
   const sourceHashes={};for(const path of ["src/lib/learning/admin.ts","src/lib/learning/admin-contract.ts","src/lib/learning/ideas.ts","src/lib/learning/idea-contract.ts","src/components/learning/idea-form.tsx","src/lib/learning/server.ts","src/app/api/learning/admin/route.ts","src/components/learning/admin-program.tsx","src/components/learning/program-overview.tsx"])sourceHashes[path]=createHash("sha256").update(await readFile(path)).digest("hex");
-  const report={runId,runtime,clientScan,sourceHashes,codeCommit:execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8"}).trim(),workingTreeDirty:!!execFileSync("git",["status","--porcelain"],{encoding:"utf8"}).trim(),createdAt:new Date().toISOString(),source:"working tree; no production or real accounts",workspaces,totals:{pass:evidence.filter(e=>e.status==="PASS").length,fail:evidence.filter(e=>e.status==="FAIL").length},checks:evidence};
+  let codeCommit=null,workingTreeDirty=null;
+  try {
+    codeCommit=execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim();
+    workingTreeDirty=!!execFileSync("git",["status","--porcelain"],{encoding:"utf8",stdio:["ignore","pipe","ignore"]}).trim();
+  } catch { /* A clean runtime copy has no .git; source hashes remain the provenance. */ }
+  const report={runId,runtime,clientScan,sourceHashes,codeCommit,workingTreeDirty,createdAt:new Date().toISOString(),source:"runtime files identified by sourceHashes; no production or real accounts",workspaces,totals:{pass:evidence.filter(e=>e.status==="PASS").length,fail:evidence.filter(e=>e.status==="FAIL").length},checks:evidence};
   const path=resolve(output,`admin-acceptance-${runtime}-${runId}.json`);await writeFile(path,JSON.stringify(report,null,2),{mode:0o600});await writeFile(resolve(output,`admin-acceptance-${runtime}-latest.json`),JSON.stringify(report,null,2),{mode:0o600});await db.end();
   console.log(JSON.stringify({evidence:path,...report.totals}));if(report.totals.fail)process.exitCode=1;
 }

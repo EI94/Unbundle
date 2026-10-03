@@ -1,5 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useLearningUnsavedChanges } from "./use-unsaved-changes";
+import { downloadLearningDraft } from "./download-draft";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,26 +22,26 @@ export function IdeaForm({ workspaceId, programId, userId, initial, readOnly = f
   const [confirm, setConfirm] = useState(false);
   const [dirty, setDirty] = useState(!!recovered.current);
   const [errors, setErrors] = useState<Partial<Record<keyof IdeaFields, string>>>({});
-  const [closedByServer, setClosedByServer] = useState(false);
+  const [closedByServer, setClosedByServer] = useState<string | null>(null);
+  const [problem, setProblem] = useState(false);
   const errorBox = useRef<HTMLDivElement>(null);
   const focusErrors = useRef(false);
   const key = useRef<string | null>(null);
   const done = draft?.status === "submitted";
   const frozen = draft?.status === "promoting" || done;
-  const closed = readOnly || closedByServer;
+  const closed = readOnly || !!closedByServer;
   useEffect(() => { if (focusErrors.current) { errorBox.current?.focus(); focusErrors.current = false; } }, [errors]);
-  useEffect(() => {
-    const warn = (event: BeforeUnloadEvent) => { if (dirty || busy) { event.preventDefault(); event.returnValue = ""; } };
-    const guard = (event: MouseEvent) => {
-      const link = (event.target as Element).closest("a");
-      if (link && link.target !== "_blank" && !link.getAttribute("href")?.startsWith("#") && (dirty || busy)) { event.preventDefault(); event.stopPropagation(); setMessage("Salva la proposta prima di lasciare questa pagina."); }
-    };
-    window.addEventListener("beforeunload", warn); document.addEventListener("click", guard, true);
-    return () => { window.removeEventListener("beforeunload", warn); document.removeEventListener("click", guard, true); };
-  }, [dirty, busy]);
+  useLearningUnsavedChanges({ dirty, pending: busy, onDiscard: () => {
+    pendingIdeas.delete(memoryKey);
+    setFields(draft?.fields ?? emptyIdeaFields);
+    setDirty(false);
+    setConfirm(false);
+    setMessage("Modifiche non salvate scartate.");
+  } });
   const reportFailure = (result: { code: string; message: string; fieldErrors?: Record<string, string> }) => {
     setMessage(result.message);
-    if (result.code === "closed") { setClosedByServer(true); setConfirm(false); }
+    setProblem(true);
+    if (result.code === "closed" || result.code === "forbidden") { setClosedByServer(result.message); setConfirm(false); }
     if (result.fieldErrors && Object.keys(result.fieldErrors).length) {
       focusErrors.current = true; setErrors(result.fieldErrors); setConfirm(false);
     }
@@ -54,7 +57,7 @@ export function IdeaForm({ workspaceId, programId, userId, initial, readOnly = f
   };
   const save = async () => {
     if (closed || busy) return;
-    if (!navigator.onLine) { setMessage("Connessione assente: proposta non salvata. Lascia aperta la pagina e riprova."); return; }
+    if (!navigator.onLine) { setProblem(true); setMessage("Connessione assente: proposta non salvata. Lascia aperta la pagina e riprova."); return; }
     setBusy(true);
     const sentMemory = pendingIdeas.get(memoryKey);
     setMessage("Salvataggio in corso…");
@@ -63,8 +66,8 @@ export function IdeaForm({ workspaceId, programId, userId, initial, readOnly = f
       if (!result.ok) { reportFailure(result); return; }
       // An older, unmounted form must not delete a newer form's edits.
       if (pendingIdeas.get(memoryKey) === sentMemory) pendingIdeas.delete(memoryKey);
-      setDraft(result.data); setDirty(false); setMessage("Bozza salvata sul server. Non è ancora nel portfolio.");
-    } catch { setMessage("Salvataggio non confermato. Il testo resta in questa pagina."); }
+      setDraft(result.data); setDirty(false); setProblem(false); setMessage("Bozza salvata sul server. Non è ancora nel portfolio.");
+    } catch { setProblem(true); setMessage("Salvataggio non confermato. Il testo resta in questa pagina."); }
     finally { setBusy(false); }
   };
   const submit = async () => {
@@ -74,15 +77,15 @@ export function IdeaForm({ workspaceId, programId, userId, initial, readOnly = f
     try {
       const result = await submitLearningIdea({ workspaceId, programId, expectedUserId: userId, draftId: draft.id, expectedRevision: draft.revision, idempotencyKey: key.current });
       if (!result.ok) { reportFailure(result); return; }
-      setDraft(result.data); setMessage("Proposta ricevuta nel portfolio. L’invio non avvia un progetto o un’automazione."); setConfirm(false);
-    } catch { setMessage("Conferma non ricevuta. Riprova lo stesso invio: la proposta non verrà duplicata."); }
+      setDraft(result.data); setProblem(false); setMessage("Proposta ricevuta nel portfolio. L’invio non avvia un progetto o un’automazione."); setConfirm(false);
+    } catch { setProblem(true); setMessage("Conferma non ricevuta. Riprova lo stesso invio: la proposta non verrà duplicata."); }
     finally { setBusy(false); }
   };
   return <section className="space-y-4 rounded-xl border p-5">
     <h2 className="text-xl font-semibold">La mia idea, facoltativa</h2>
     <p>Descrivi un miglioramento del tuo lavoro. Nessuna risposta al quiz viene copiata qui. Solo “Invia ai referenti” condivide questi campi nel portfolio del workspace.</p>
-    <p className="text-sm">Per inviare servono attività da migliorare, problema concreto e risultato desiderato, con almeno 5 caratteri ciascuno. Gli altri campi sono facoltativi. Puoi salvare una bozza incompleta.</p>
-    {closed && <p role="status" className="rounded-lg border p-3">Il corso è chiuso alle nuove risposte. La proposta è consultabile; salvataggio e invio non sono disponibili. Le eventuali modifiche non confermate restano soltanto in questa scheda. <a className="underline" target="_blank" rel="noopener noreferrer" href={`/dashboard/${workspaceId}/learning/${programId}/ideas`}>Controlla la disponibilità in una nuova scheda</a>.</p>}
+    <p className="text-sm">Per inviare servono attività da migliorare, problema concreto e risultato desiderato, con almeno 5 caratteri ciascuno. Gli altri campi sono facoltativi. Puoi salvare una bozza incompleta. Usa “Salva bozza” e attendi la conferma prima di uscire.</p>
+    {closed && <p role="status" className="rounded-lg border p-3">{closedByServer ?? "Il corso è chiuso alle nuove risposte. La proposta è consultabile; salvataggio e invio non sono disponibili."} Le eventuali modifiche non confermate restano soltanto in questa scheda. <a className="underline" target="_blank" rel="noopener noreferrer" href={`/dashboard/${workspaceId}/learning/${programId}/ideas`}>Controlla la disponibilità in una nuova scheda</a>.</p>}
     {Object.keys(errors).length > 0 && <div ref={errorBox} tabIndex={-1} role="alert" className="rounded-lg border p-3"><p className="font-medium">Controlla i campi prima dell’invio.</p><ul className="list-disc pl-5">{Object.entries(errors).map(([field, error]) => <li key={field}><a className="underline" href={`#idea-${field}`}>{labels[field as keyof IdeaFields]}: {error}</a></li>)}</ul></div>}
     {Object.entries(labels).map(([key, label]) => {
       const field = key as keyof IdeaFields;
@@ -91,6 +94,11 @@ export function IdeaForm({ workspaceId, programId, userId, initial, readOnly = f
       return <div className="space-y-2" key={key}><label htmlFor={`idea-${key}`} className="font-medium">{label}{required ? " (necessario per inviare)" : " (facoltativo)"}</label>{field === "title" || field === "frequency" || field === "contact" ? <Input {...props} maxLength={field === "title" ? 200 : 300} /> : <Textarea {...props} rows={3} maxLength={field === "problem" ? 3000 : 2000} />}{errors[field] && <p id={`idea-error-${field}`} className="text-sm font-medium">{errors[field]}</p>}</div>;
     })}
     <p role="status" aria-live="polite">{message || (done ? "Proposta già inviata ai referenti." : frozen ? "Invio da completare: riprova per ricevere la conferma." : "Puoi lasciare questa proposta in bozza.")}</p>
+    {!done && (dirty || problem || closed) && <div className="flex flex-wrap items-center gap-3 text-sm">
+      <Button type="button" variant="outline" onClick={() => downloadLearningDraft("mia-proposta-formazione.txt", fields)}>Scarica la mia proposta</Button>
+      <a className="underline" target="_blank" rel="noopener noreferrer" href={`/dashboard/${workspaceId}/learning/${programId}/ideas`}>Confronta la versione sul server</a>
+    </div>}
+    {done && draft.resultingUseCaseId && <Link className="inline-block underline" href={`/dashboard/${workspaceId}/portfolio?created=${encodeURIComponent(draft.resultingUseCaseId)}`}>Vedi la proposta nel portfolio</Link>}
     {!done && !closed && <div className="flex flex-wrap gap-3">
       {!frozen && <Button disabled={busy} variant="outline" onClick={save}>Salva bozza</Button>}
       {!confirm ? <Button disabled={busy || !draft || dirty} onClick={() => { if (validateForSending()) setConfirm(true); }}>{frozen ? "Riprendi invio" : "Rivedi proposta da inviare"}</Button> : <div className="space-y-3"><p>I campi sopra saranno visibili ai referenti del portfolio. Confermi l’invio volontario?</p><Button disabled={busy} onClick={submit}>Invia ai referenti</Button></div>}

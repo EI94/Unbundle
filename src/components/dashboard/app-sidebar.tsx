@@ -15,6 +15,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
@@ -23,6 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { confirmLearningNavigation } from "@/components/learning/use-unsaved-changes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   LayoutDashboard,
@@ -61,13 +63,17 @@ export function AppSidebar({
   workspaceName,
   user,
 }: AppSidebarProps) {
+  const { isMobile, setOpenMobile } = useSidebar();
+  const closeMobileNavigation = () => { if (isMobile) setOpenMobile(false); };
   const pathname = usePathname();
   const router = useRouter();
   const basePath = workspaceId ? `/dashboard/${workspaceId}` : "/dashboard";
 
   const handleLogout = async () => {
+    if (!confirmLearningNavigation()) return;
     await fetch("/api/auth/session", { method: "DELETE" });
     await signOut(firebaseAuth).catch(() => {});
+    closeMobileNavigation();
     router.push("/login");
   };
 
@@ -99,7 +105,7 @@ export function AppSidebar({
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
-        <Link href="/dashboard" className="flex flex-col gap-0.5">
+        <Link onNavigate={closeMobileNavigation} href="/dashboard" className="flex flex-col gap-0.5">
           <span className="text-sm font-medium text-sidebar-foreground tracking-wide">
             Unbundle
           </span>
@@ -120,7 +126,7 @@ export function AppSidebar({
                 {workspaceNav.map((item) => (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
-                      render={<Link href={item.href} />}
+                      render={<Link href={item.href} onNavigate={closeMobileNavigation} />}
                       isActive={pathname === item.href}
                     >
                       <item.icon className="h-4 w-4" />
@@ -138,7 +144,7 @@ export function AppSidebar({
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    render={<Link href="/dashboard" />}
+                    render={<Link onNavigate={closeMobileNavigation} href="/dashboard" />}
                     isActive={pathname === "/dashboard"}
                   >
                     <LayoutDashboard className="h-4 w-4" />
@@ -176,7 +182,7 @@ export function AppSidebar({
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="w-56">
                 <DropdownMenuItem>
-                  <Link href="/dashboard" className="flex items-center w-full">
+                  <Link onNavigate={closeMobileNavigation} href="/dashboard" className="flex items-center w-full">
                     <Settings className="mr-2 h-4 w-4" />
                     Impostazioni
                   </Link>
