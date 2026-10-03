@@ -11,10 +11,10 @@
     "test:mcp": "node --no-warnings --test src/lib/portfolio/external-submission.test.ts src/lib/integrations/claude-onboarding.test.ts mcp/unbundle-portfolio-server.test.mjs",
     "test:slack": "node --no-warnings --test src/lib/slack/use-case-agent.test.ts",
     "test:workspace-collaboration": "node --no-warnings --test src/lib/db/queries/workspace-collaboration.test.ts",
-    "test:auth": "node --no-warnings --test src/lib/auth/session-signal.test.ts",
+    "test:auth": "node --no-warnings --test src/lib/auth/session-signal.test.ts src/lib/auth/workspace-isolation.test.ts",
     "test:ai-readiness": "node --no-warnings --test src/lib/ai-readiness/scoring.test.ts src/lib/ai-readiness/export.test.ts src/lib/ai-readiness/intelligence.test.ts src/lib/ai-readiness/draft.test.ts src/lib/ai-readiness/template-scope.test.ts src/lib/ai-readiness/question-doc.test.ts src/lib/ai-readiness/use-case-form.test.ts src/lib/ai-readiness/form-validation.test.ts src/lib/ai-readiness/survey-track.test.ts",
     "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run typecheck",
+    "check": "npm run lint && npm run typecheck && npm run test",
     "db:push": "dotenv -e .env.local -- drizzle-kit push",
     "db:generate": "dotenv -e .env.local -- drizzle-kit generate",
     "db:migrate": "dotenv -e .env.local -- drizzle-kit migrate",
@@ -28,7 +28,8 @@
     "postinstall": "patch-package",
     "test:learning": "node --no-warnings --test src/lib/learning/*.test.ts",
     "learning:admin": "node --no-warnings scripts/learning-admin.ts",
-    "learning:retention": "node --no-warnings scripts/learning-retention.ts"
+    "learning:retention": "node --no-warnings scripts/learning-retention.ts",
+    "test": "npm run test:portfolio && npm run test:mcp && npm run test:slack && npm run test:workspace-collaboration && npm run test:auth && npm run test:ai-readiness && npm run test:learning"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.68",

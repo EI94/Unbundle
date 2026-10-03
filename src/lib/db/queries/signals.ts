@@ -30,10 +30,15 @@ export async function getUnreadSignals(workspaceId: string) {
     .orderBy(desc(weeklySignals.createdAt));
 }
 
-export async function markSignalRead(signalId: string) {
+export async function markSignalRead(workspaceId: string, signalId: string) {
   await ensureDbSchema();
   await db
     .update(weeklySignals)
     .set({ isRead: true })
-    .where(eq(weeklySignals.id, signalId));
+    .where(
+      and(
+        eq(weeklySignals.id, signalId),
+        eq(weeklySignals.workspaceId, workspaceId)
+      )
+    );
 }

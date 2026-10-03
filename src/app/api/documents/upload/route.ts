@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { db } from "@/lib/db";
 import { uploadedDocuments } from "@/lib/db/schema";
 import { put } from "@vercel/blob";
@@ -19,6 +20,14 @@ export async function POST(req: Request) {
 
   if (!file || !workspaceId) {
     return Response.json({ error: "File and workspaceId required" }, { status: 400 });
+  }
+
+  // Essere autenticati non basta: senza questo controllo qualunque utente
+  // registrato caricherebbe documenti nel workspace di un altro cliente, e li
+  // immetterebbe nel suo indice RAG.
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) {
+    return Response.json({ error: "Workspace non accessibile" }, { status: 403 });
   }
 
   const maxSize = 20 * 1024 * 1024; // 20MB
@@ -44,8 +53,14 @@ export async function POST(req: Request) {
   }
 
   try {
+    // I documenti caricati sono materiale interno dei clienti. `access: "public"`
+    // li metteva su un URL raggiungibile senza autenticazione e — poiche'
+    // addRandomSuffix vale false per default — con un percorso indovinabile a
+    // partire da workspaceId e nome del file. Niente nel prodotto serve il
+    // blobUrl a un browser: viene usato solo per la cancellazione.
     const blob = await put(`documents/${workspaceId}/${file.name}`, file, {
-      access: "public",
+      access: "private",
+      addRandomSuffix: true,
     });
 
     let extractedText = "";

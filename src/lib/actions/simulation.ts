@@ -1,6 +1,7 @@
 "use server";
 
 import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { getDepartmentsByWorkspace } from "@/lib/db/queries/workspaces";
@@ -53,6 +54,10 @@ export async function generateSimulationAction(
 export async function getLatestSimulation(
   workspaceId: string
 ): Promise<SimulationResult | null> {
+  // La generazione qui sopra era protetta, la lettura no: la simulazione di
+  // qualunque cliente era leggibile da chiunque conoscesse un workspaceId.
+  await requireWorkspaceAccess(workspaceId);
+
   const [latest] = await db
     .select()
     .from(simulations)
