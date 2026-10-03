@@ -42,3 +42,10 @@ firebase-debug.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Private training packages and local test evidence (never publish answer banks)
+seed_privati/
+training_pack.json
+training-private/
+*.private.json
+/learning-evidence-private/

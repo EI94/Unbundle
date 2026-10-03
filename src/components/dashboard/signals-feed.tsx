@@ -68,7 +68,7 @@ export function SignalsFeed({ signals: initialSignals, workspaceId }: SignalsFee
       prev.map((s) => (s.id === signalId ? { ...s, isRead: true } : s))
     );
     startTransition(async () => {
-      await markSignalAsRead(signalId);
+      await markSignalAsRead(workspaceId, signalId);
     });
   };
 

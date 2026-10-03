@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 
 type User = {
@@ -24,7 +24,7 @@ export function DashboardListShell({
   return (
     <SidebarProvider>
       <AppSidebar user={user} />
-      <SidebarInset>{children}</SidebarInset>
+      <SidebarInset><header className="border-b px-4 py-2 md:hidden"><SidebarTrigger className="size-11" aria-label="Apri navigazione" title="Apri navigazione" /></header>{children}</SidebarInset>
     </SidebarProvider>
   );
 }

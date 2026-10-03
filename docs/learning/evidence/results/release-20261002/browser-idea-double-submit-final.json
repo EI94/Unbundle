@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-10-02T10:44:25.266Z",
+  "status": "PASS",
+  "case": "Browser double-click idea submission",
+  "programId": "d477d4c3-762b-414d-b226-e8301a85343e",
+  "idea": {
+    "id": "ac70bc9a-89ae-4431-bb04-71acd55b96f9",
+    "user_id": "1e165c4f-a3a5-4155-9737-b6d7d71e2d22",
+    "program_id": "d477d4c3-762b-414d-b226-e8301a85343e",
+    "status": "submitted",
+    "revision": 3,
+    "resulting_use_case_id": "ac70bc9a-89ae-4431-bb04-71acd55b96f9",
+    "has_idempotency_key": true
+  },
+  "portfolioCount": 1,
+  "portfolio": {
+    "id": "ac70bc9a-89ae-4431-bb04-71acd55b96f9",
+    "proposed_by": "1e165c4f-a3a5-4155-9737-b6d7d71e2d22",
+    "workspace_id": "b680e8f9-62e8-4c61-adb0-7b0850b4a475"
+  },
+  "promotionAuditCount": 1,
+  "noAssessmentAnswerMarkersInPortfolioFields": true,
+  "checks": [
+    "Original owner preserved",
+    "One submitted draft",
+    "One portfolio entry at reserved UUID",
+    "One promotion audit",
+    "No quiz/grading answer markers in mapped portfolio fields",
+    "Every mapped portfolio field equals the explicit whitelisted proposal field projection"
+  ],
+  "limitations": "Only synthetic local browser fixture; assertions do not inspect or expose raw fields.",
+  "probeNote": "Initial read probe used incorrect audit column names and failed before assertions; corrected against checked-in schema, no mutation performed.",
+  "exactPortfolioWhitelistMatchesDraft": true
+}

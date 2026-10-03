@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-10-02T09:49:21.753Z",
+  "status": "PASS_HTTP_AND_AUDIT",
+  "workspaceId": "b680e8f9-62e8-4c61-adb0-7b0850b4a475",
+  "programId": "d477d4c3-762b-414d-b226-e8301a85343e",
+  "syntheticUserId": "90f038dd-da4c-4b2d-bd16-baaec74b3540",
+  "activeGrants": [
+    {
+      "capability": "export",
+      "cohort_id": "m1-cohort"
+    }
+  ],
+  "browserExportAuditsBeforeHttp": 1,
+  "exportAuditsAfterHttp": 2,
+  "httpStatus": 200,
+  "containsAuthorizedLearner": true,
+  "excludesOtherCohort": true,
+  "privateGradingMarkersAbsent": true,
+  "csvBytes": 751,
+  "csvSha256": "9618dc67d4ade6e92b89b3e7ec608f6564be6ba7f5a0c9bbbaf80aae4f768a7a",
+  "browserDownloadFile": "NOT_VERIFIED: IAB download wait timed out despite visible success; no claim of downloaded file"
+}

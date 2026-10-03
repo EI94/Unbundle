@@ -1,0 +1,48 @@
+{
+  "status": "PASS",
+  "environment": "fresh isolated PostgreSQL16; local Neon adapter",
+  "tests": 7,
+  "passed": 7,
+  "failed": 0,
+  "skipped": 0,
+  "fixtureCleanup": "after hook completed (process exit0)",
+  "sourceSha256": "449015161f2502cbed5e7cd5c5f4f466cab134e3f2fac5a168a41335b8d13e20",
+  "checks": [
+    {
+      "id": "DB-01",
+      "title": "database refuses a child program ID from a different workspace",
+      "status": "PASS"
+    },
+    {
+      "id": "DB-02",
+      "title": "database prevents assigning a second M1 cohort to the same account",
+      "status": "PASS"
+    },
+    {
+      "id": "DB-03",
+      "title": "database refuses an attempt with another enrollment owner",
+      "status": "PASS"
+    },
+    {
+      "id": "DB-04",
+      "title": "published private content and pinned attempt order are immutable",
+      "status": "PASS"
+    },
+    {
+      "id": "DB-05",
+      "title": "one portfolio draft per participant prevents duplicate initial starts",
+      "status": "PASS"
+    },
+    {
+      "id": "DB-06",
+      "title": "individual decision lock preserves answers while allowing reflection",
+      "status": "PASS"
+    },
+    {
+      "id": "DB-07",
+      "title": "submitted answers and results cannot be rewritten, revision must advance",
+      "status": "PASS"
+    }
+  ],
+  "note": "Executed against the fresh local cluster. Database tests previously skipped by the no-DB unit run are accounted for here, not silently treated as passed."
+}

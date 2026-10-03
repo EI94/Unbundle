@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-10-01T18:38:43.499Z",
+  "environment": "isolated local PostgreSQL",
+  "results": [
+    {
+      "id": "O03-retention-dry",
+      "title": "Dry run reports eligible counts without deleting",
+      "status": "PASS"
+    },
+    {
+      "id": "O03-retention-scope",
+      "title": "Actor without manager grant cannot delete",
+      "status": "PASS"
+    },
+    {
+      "id": "O03-retention-date",
+      "title": "Non-expired other-workspace records cannot be deleted",
+      "status": "PASS"
+    },
+    {
+      "id": "O03-retention-apply",
+      "title": "Expired answers and drafts delete atomically; portfolio and other workspace survive",
+      "status": "PASS"
+    },
+    {
+      "id": "O03-retention-repeat",
+      "title": "Repeated retention is idempotent and keeps enrollment evidence",
+      "status": "PASS"
+    }
+  ]
+}

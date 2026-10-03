@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-10-01T22:50:18.061Z",
+  "environment": "Optimized local server on53103 with LEARNING_ENABLED=false",
+  "results": [
+    {
+      "id": "R03-global-flag",
+      "title": "Global flag off blocks direct learning actions and hides navigation",
+      "status": "PASS"
+    },
+    {
+      "id": "R03-existing-routes",
+      "title": "Existing workspace, portfolio and readiness pages render with additive learning schema retained",
+      "status": "PASS"
+    },
+    {
+      "id": "R03-data",
+      "title": "Probe preserves exact two-workspace training/portfolio and all anonymous response rows",
+      "status": "PASS"
+    }
+  ],
+  "scope": "Synthetic workspaces A/B and all isolated readiness responses; production/provider rollback remains separate",
+  "before": {
+    "learning_programs": {
+      "count": 3,
+      "digest": "86d5eab046e0ad18daa6230e8df97b5f"
+    },
+    "learning_enrollments": {
+      "count": 8,
+      "digest": "9919ed751e5486bc984a9356150e3aed"
+    },
+    "learning_sessions": {
+      "count": 12,
+      "digest": "81f3c40b7093ff6a3de9808a5b1ea9e0"
+    },
+    "learning_grants": {
+      "count": 6,
+      "digest": "23b8ece93af842abecb1cd3481fe1305"
+    },
+    "learning_attempts": {
+      "count": 6,
+      "digest": "6d576fd36d7411bd21dd9a76afceac53"
+    },
+    "learning_audit_events": {
+      "count": 16,
+      "digest": "e692c4b0e5d4be4e088823255bbd451d"
+    },
+    "learning_idea_drafts": {
+      "count": 1,
+      "digest": "980c7dd58f1aa8463ad50bbc523b8d32"
+    },
+    "use_cases": {
+      "count": 1,
+      "digest": "f25c9ae0f1393ea5d64273c8e3e92f9e"
+    },
+    "ai_readiness_responses": {
+      "count": 0,
+      "digest": "d41d8cd98f00b204e9800998ecf8427e"
+    }
+  }
+}

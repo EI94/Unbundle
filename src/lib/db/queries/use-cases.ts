@@ -1,4 +1,4 @@
-import { and, eq, desc, isNotNull, sql } from "drizzle-orm";
+import { and, eq, desc, isNotNull, sql, type SQL } from "drizzle-orm";
 import { db } from "..";
 import {
   useCases,
@@ -42,6 +42,41 @@ export async function createUseCase(data: NewUseCase) {
     })
     .returning();
   return useCase;
+}
+
+/**
+ * Explicit learning idea promotion. The private draft reserves the UUID before
+ * calling this adapter, so a lost acknowledgement can safely retry the insert.
+ * No AI scoring or outbound notification is required to persist a proposal.
+ */
+export async function createLearningPortfolioUseCase(data: NewUseCase & { id: string }, authorization: SQL) {
+  await ensureDbSchema();
+  const workspace = await getWorkspaceById(data.workspaceId);
+  const model = await getOrCreateWorkspaceScoringModel(data.workspaceId);
+  const derived = deriveUseCasePortfolioMetrics(data, {
+    model: { impactFlagEnabled: model.impactFlagEnabled, config: model.resolvedConfig },
+    esgEnabled: workspace?.esgEnabled === true,
+  });
+  // Creation, draft linkage and audit commit together. Only the frozen proposal
+  // supplies these explicit business fields; no learning responses enter here.
+  await db.execute(sql`WITH created AS (
+    INSERT INTO use_cases(id,workspace_id,title,description,business_case,data_requirements,guardrails,proposed_by,submitted_at,
+      source,portfolio_kind,portfolio_review_status,status,overall_esg_score,overall_impact_score,overall_feasibility_score,overall_score,category)
+    SELECT ${data.id}::uuid,${data.workspaceId}::uuid,${data.title},${data.description ?? null},${data.businessCase ?? null},
+      ${data.dataRequirements ?? null},${data.guardrails ?? null},${data.proposedBy ?? null},now(),
+      'learning','use_case_ai','needs_inputs','draft',${derived.overallEsgScore},${derived.overallImpactScore},
+      ${derived.overallFeasibilityScore},${derived.overallScore},${derived.category}::use_case_category
+    WHERE ${authorization} AND EXISTS (SELECT 1 FROM learning_idea_drafts d WHERE d.id=${data.id}::uuid AND d.workspace_id=${data.workspaceId}::uuid AND d.status='promoting')
+    ON CONFLICT(id) DO NOTHING RETURNING id
+  ), candidate AS (
+    SELECT id FROM created UNION ALL SELECT id FROM use_cases WHERE id=${data.id}::uuid AND workspace_id=${data.workspaceId}::uuid AND source='learning'
+  ), promoted AS (
+    UPDATE learning_idea_drafts d SET status='submitted',resulting_use_case_id=d.id,updated_at=now()
+    WHERE d.id=${data.id}::uuid AND d.workspace_id=${data.workspaceId}::uuid AND d.status='promoting' AND ${authorization}
+      AND EXISTS(SELECT 1 FROM candidate c WHERE c.id=d.id)
+    RETURNING d.workspace_id,d.program_id,d.user_id,d.id
+  ) INSERT INTO learning_audit_events(workspace_id,program_id,actor_id,resource_id,event_type)
+    SELECT workspace_id,program_id,user_id,id,'idea_promoted' FROM promoted`);
 }
 
 export async function getUseCasesByWorkspace(workspaceId: string) {

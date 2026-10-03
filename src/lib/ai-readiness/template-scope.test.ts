@@ -127,6 +127,14 @@ test("v4: binari — la survey organizzazione e la scheda referenti sono separat
   assert.ok(internal.questions.some((q) => q.id === "infra-cloud"));
   assert.ok(internal.questions.some((q) => q.id === "ctx-knowledge-system"));
   assert.ok(internal.questions.some((q) => q.id === "wf-roles-clarity"));
+  assert.deepEqual(
+    internal.pillars.map((pillar) => pillar.id),
+    ["technology", "context", "workflow"]
+  );
+  assert.deepEqual(
+    everyone.pillars.map((pillar) => pillar.id),
+    ["technology", "adoption", "use_cases"]
+  );
 });
 
 test("question scope: restringe un link alle sole sezioni selezionate", async () => {

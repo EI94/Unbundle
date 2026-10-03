@@ -5,9 +5,10 @@ import {
   generateAiReadinessOpenLinkAction,
   type AiReadinessActionState,
 } from "@/lib/actions/ai-readiness";
+import { AI_READINESS_SURVEY_TRACKS } from "@/lib/ai-readiness/survey-track";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Copy, Link2 } from "lucide-react";
+import { Building2, Copy, Link2 } from "lucide-react";
 
 const INITIAL: AiReadinessActionState<{ openUrl: string }> = { ok: true };
 
@@ -39,16 +40,41 @@ export function OpenLinkForm({
   const url = state.ok ? state.data?.openUrl : undefined;
   const allSelected =
     sections.length > 0 && selectedSectionIds.length === sections.length;
+  const track = AI_READINESS_SURVEY_TRACKS.everyone;
 
   return (
-    <div className="rounded-2xl border bg-muted/20 p-4" data-testid="open-link-form">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <Link2 className="size-4" /> Link condivisibile con tutti
+    <div
+      className="rounded-[28px] border border-emerald-500/25 bg-emerald-500/5 p-5"
+      data-testid="open-link-form"
+      data-survey-track="everyone"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/25 bg-background text-emerald-600">
+            <Building2 className="size-4" />
+          </span>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">
+              Percorso 1 · {track.audience}
+            </div>
+            <div className="mt-1 text-base font-semibold">{track.label}</div>
+          </div>
+        </div>
+        <span className="rounded-full border border-emerald-500/25 bg-background px-2.5 py-1 text-xs font-medium">
+          Link condivisibile
+        </span>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
         Un unico link da girare in chat, email o intranet: chi lo apre inserisce
-        la propria area e riceve la sua survey personale con salvataggio automatico.
+        la propria area e riceve la survey generale con salvataggio automatico.
       </p>
+      <div className="mt-3 rounded-2xl border border-emerald-500/20 bg-background/80 p-3 text-xs leading-5">
+        <span className="font-medium">Alimenta: {track.feeds}.</span>{" "}
+        <span className="text-muted-foreground">
+          Non raccoglie infrastruttura, dati aziendali o processi interni: per
+          Context e Workflow usa la scheda referenti qui sotto.
+        </span>
+      </div>
       <form
         action={formAction}
         className="mt-4 space-y-4"
@@ -75,8 +101,8 @@ export function OpenLinkForm({
             <div>
               <div className="text-sm font-medium">Domande da mostrare</div>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Per il link generale scegli le aree utili alla popolazione
-                aziendale. Puoi partire da tutte e alleggerire il form.
+                Qui sono disponibili solo le aree della survey organizzazione.
+                Puoi partire da tutte e alleggerire il questionario.
               </p>
             </div>
             <Button
@@ -138,23 +164,33 @@ export function OpenLinkForm({
           )}
         </div>
         <Button type="submit" variant="outline" size="sm" disabled={pending}>
-          {pending ? "Genero..." : hasExisting || url ? "Rigenera link" : "Genera link"}
+          <Link2 className="size-4" />
+          {pending
+            ? "Genero..."
+            : hasExisting || url
+              ? "Rigenera link organizzazione"
+              : "Genera link organizzazione"}
         </Button>
       </form>
       {url && (
-        <div className="mt-3 flex gap-2">
-          <Input readOnly value={url} className="text-xs" />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              await navigator.clipboard.writeText(url);
-              setCopied(true);
-            }}
-          >
-            <Copy className="mr-1 size-3.5" /> {copied ? "Copiato" : "Copia"}
-          </Button>
+        <div className="mt-4 rounded-2xl border bg-background/80 p-3">
+          <div className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Link survey organizzazione
+          </div>
+          <div className="flex gap-2">
+            <Input readOnly value={url} className="text-xs" />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                await navigator.clipboard.writeText(url);
+                setCopied(true);
+              }}
+            >
+              <Copy className="mr-1 size-3.5" /> {copied ? "Copiato" : "Copia"}
+            </Button>
+          </div>
         </div>
       )}
       {state.message && (

@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-10-02T10:24:12.187Z",
+  "status": "PASS",
+  "expectedHttpStatus": 422,
+  "actualHttpStatus": 422,
+  "actualCode": "invalid",
+  "fieldErrors": {
+    "desiredOutput": "Inserisci almeno 5 caratteri, esclusi gli spazi iniziali e finali, per inviare la proposta."
+  },
+  "workspaceId": "89a22d12-bba8-45ae-aa70-4a6391829eaf",
+  "programId": "4cb6d7b2-14e7-438e-bd1e-54c0941170cc",
+  "draftId": "7aeef295-5da0-4181-9ba0-50e7311d2b78",
+  "draftUnchanged": true,
+  "portfolioCount": 0,
+  "requiredOutputLength": 0,
+  "fieldsDigest": "1a14bdb0e3ae234cd1f3a458dba2adf8da4cca5d5e1af02912b8aec17dfcc63e"
+}

@@ -1,0 +1,68 @@
+{
+  "timestamp": "2026-10-02T14:06:22.863Z",
+  "scope": "Read-only transaction on loopback synthetic database after real Firebase email/password browser login; no production database access",
+  "status": "PASS",
+  "harnessCorrection": "Initial probe assumed option ID not_sure; public fixture uses unsure with label Not sure yet. Initial assertion failure preserved; no product or database change.",
+  "buildId": "S0RWxV0r-g7InIbYPRtZP",
+  "checks": [
+    {
+      "name": "Exact isolated database verified",
+      "status": "PASS"
+    },
+    {
+      "name": "A has exactly one checkpoint attempt at expected ID",
+      "status": "PASS"
+    },
+    {
+      "name": "Authenticated original owner and enrollment preserved",
+      "status": "PASS"
+    },
+    {
+      "name": "All three required decisions select the fixture Not sure option (ID unsure)",
+      "status": "PASS"
+    },
+    {
+      "name": "Single submitted receipt with idempotency key",
+      "status": "PASS"
+    },
+    {
+      "name": "Server grading is 0 of 3 formative completed",
+      "status": "PASS"
+    },
+    {
+      "name": "B has no attempt",
+      "status": "PASS"
+    },
+    {
+      "name": "Exactly one submission audit, authored by A",
+      "status": "PASS"
+    },
+    {
+      "name": "Updated course title persisted",
+      "status": "PASS"
+    },
+    {
+      "name": "Exactly one settings audit, authored by B",
+      "status": "PASS"
+    }
+  ],
+  "integrity": {
+    "answerCount": 3,
+    "allAnswersNotSure": true,
+    "fixtureSelectedOptionId": "unsure",
+    "attemptsA": 1,
+    "attemptsB": 0,
+    "score": {
+      "correct": 0,
+      "total": 3,
+      "status": "formative_completed"
+    },
+    "submissionAuditCount": 1,
+    "settingsAuditCount": 1,
+    "titlePersisted": true,
+    "revision": 3
+  },
+  "passed": 10,
+  "failed": 0,
+  "fixtureIdentifiersOmitted": true
+}

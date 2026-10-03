@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-10-02T10:24:39.937Z",
+  "environment": "isolated local optimized build; genuine emulator sessions; direct existing Server Action HTTP",
+  "workspaceId": "eba6f026-fe8a-41aa-9ca8-f9103078ed67",
+  "setup": "Synthetic invitation rows with token hashes only; tokens not persisted in evidence; no email or external account",
+  "checks": [
+    {
+      "id": "INV-expired",
+      "title": "expired invitation cannot be accepted through real Server Action",
+      "status": "PASS"
+    },
+    {
+      "id": "INV-revoked",
+      "title": "revoked invitation cannot be accepted through real Server Action",
+      "status": "PASS"
+    },
+    {
+      "id": "INV-used",
+      "title": "used invitation cannot be accepted through real Server Action",
+      "status": "PASS"
+    },
+    {
+      "id": "INV-email",
+      "title": "Different email is rejected with no membership or consumed use",
+      "status": "PASS"
+    },
+    {
+      "id": "INV-pages",
+      "title": "Expired/revoked pages are unavailable and wrong account offers switch",
+      "status": "PASS"
+    },
+    {
+      "id": "INV-anonymous",
+      "title": "Anonymous invitation acceptance redirects to login without consuming invite",
+      "status": "PASS"
+    },
+    {
+      "id": "INV-accept",
+      "title": "Matching synthetic email accepts once and creates only workspace membership",
+      "status": "PASS"
+    },
+    {
+      "id": "INV-replay",
+      "title": "Used invite replay preserves single acceptance",
+      "status": "PASS"
+    }
+  ],
+  "totals": {
+    "pass": 8,
+    "fail": 0
+  }
+}

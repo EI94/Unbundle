@@ -1,0 +1,187 @@
+{
+  "startedAt": "2026-10-03T10:07:59.711Z",
+  "finishedAt": "2026-10-03T10:08:00.739Z",
+  "runtime": "production",
+  "buildId": "ED7ddM0_nZ4ey166viTWT",
+  "transport": "real HTTP JSON + Firebase Auth emulator + isolated PostgreSQL via local Neon adapter",
+  "passed": 25,
+  "failed": 0,
+  "blocked": 0,
+  "sourceHashesAtStart": {
+    "src/lib/learning/admin.ts": "fdd23bda220da014cfc6be091e69ad271bf395867581964f5e00fb1a24415291",
+    "src/lib/learning/admin-contract.ts": "f127d660ffd9cfb4fb2c06c07cc0526cbb79e75b37675b5d343c45c4340fdabc",
+    "src/lib/learning/server.ts": "b60ffb8f8aadaa12a6e386b943b59a769699e17a3e5258119155277f2d0ed6c5",
+    "src/lib/learning/availability.ts": "46017eb4c6eda57a418e3455095c67c6f49a5c5b20c40290f7b189dc46b44b19",
+    "scripts/learning-test/ux-acceptance.mjs": "e61eee0f7661d57a61b39d7c1517a433f83ec5af965267bf2483ef491ae5a680",
+    "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/page.tsx": "2fdb09cc3c31ed0939db2633ededf9364564126d8a01414fca51004de86d421b"
+  },
+  "sourceHashes": {
+    "src/lib/learning/admin.ts": "fdd23bda220da014cfc6be091e69ad271bf395867581964f5e00fb1a24415291",
+    "src/lib/learning/admin-contract.ts": "f127d660ffd9cfb4fb2c06c07cc0526cbb79e75b37675b5d343c45c4340fdabc",
+    "src/lib/learning/server.ts": "b60ffb8f8aadaa12a6e386b943b59a769699e17a3e5258119155277f2d0ed6c5",
+    "src/lib/learning/availability.ts": "46017eb4c6eda57a418e3455095c67c6f49a5c5b20c40290f7b189dc46b44b19",
+    "scripts/learning-test/ux-acceptance.mjs": "e61eee0f7661d57a61b39d7c1517a433f83ec5af965267bf2483ef491ae5a680",
+    "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/page.tsx": "2fdb09cc3c31ed0939db2633ededf9364564126d8a01414fca51004de86d421b"
+  },
+  "status": "PASS",
+  "syntheticOnly": true,
+  "sourceStableDuringRun": true,
+  "browserFixtureUntouched": true,
+  "checks": [
+    {
+      "id": "UX-01",
+      "title": "Settings refuse a missing baseline without mutation or audit",
+      "status": "PASS",
+      "elapsedMs": 8
+    },
+    {
+      "id": "UX-02",
+      "title": "Two manager forms: stale save conflicts and preserves the winner",
+      "status": "PASS",
+      "elapsedMs": 52
+    },
+    {
+      "id": "UX-03",
+      "title": "Every settings column participates in the stale baseline comparison",
+      "status": "PASS",
+      "elapsedMs": 24
+    },
+    {
+      "id": "UX-04",
+      "title": "Simultaneous manager writes create one winner and one audit",
+      "status": "PASS",
+      "elapsedMs": 15
+    },
+    {
+      "id": "UX-05",
+      "title": "Unrelated session and permission updates do not invalidate settings",
+      "status": "PASS",
+      "elapsedMs": 28
+    },
+    {
+      "id": "UX-06",
+      "title": "Settings baseline never grants scoped or cross-workspace authority",
+      "status": "PASS",
+      "elapsedMs": 21
+    },
+    {
+      "id": "UX-07",
+      "title": "Strict baseline forbids omitted columns or forged authority",
+      "status": "PASS",
+      "elapsedMs": 10
+    },
+    {
+      "id": "UX-08",
+      "title": "Administrative DTO remains free of answers and individual learning evidence",
+      "status": "PASS",
+      "elapsedMs": 12
+    },
+    {
+      "id": "UX-09",
+      "title": "Upload and enrollment bounds remain enforced",
+      "status": "PASS",
+      "elapsedMs": 18
+    },
+    {
+      "id": "UX-10",
+      "title": "Scheduled activity has an explicit page without questions or an attempt",
+      "status": "PASS",
+      "elapsedMs": 137
+    },
+    {
+      "id": "UX-11",
+      "title": "Open override permits a stable draft without hidden grading data",
+      "status": "PASS",
+      "elapsedMs": 19
+    },
+    {
+      "id": "UX-12",
+      "title": "Competing draft saves use revisions and never overwrite the winner",
+      "status": "PASS",
+      "elapsedMs": 10
+    },
+    {
+      "id": "UX-13",
+      "title": "Closed session draft is readable with a read-only DTO and rejects saves",
+      "status": "PASS",
+      "elapsedMs": 34
+    },
+    {
+      "id": "UX-14",
+      "title": "Revocation while save waits for a lock denies the write without losing prior data",
+      "status": "PASS",
+      "elapsedMs": 67
+    },
+    {
+      "id": "UX-15",
+      "title": "Same-key double submit creates one immutable result and one audit",
+      "status": "PASS",
+      "elapsedMs": 34
+    },
+    {
+      "id": "UX-16",
+      "title": "Closed course preserves submitted feedback and blocks new attempts",
+      "status": "PASS",
+      "elapsedMs": 30
+    },
+    {
+      "id": "UX-17",
+      "title": "Hidden program denies access and writes while preserving its saved records",
+      "status": "PASS",
+      "elapsedMs": 28
+    },
+    {
+      "id": "UX-18",
+      "title": "Foreign users and cohorts cannot read or submit another learner attempt",
+      "status": "PASS",
+      "elapsedMs": 39
+    },
+    {
+      "id": "UX-19",
+      "title": "Final feedback cannot start a retake while the session is closed",
+      "status": "PASS",
+      "elapsedMs": 53
+    },
+    {
+      "id": "UX-20",
+      "title": "Reopened retake keeps original history and becomes the overview target",
+      "status": "PASS",
+      "elapsedMs": 62
+    },
+    {
+      "id": "UX-21",
+      "title": "Read-only trainer access excludes drafts, private answer banks and other cohorts",
+      "status": "PASS",
+      "elapsedMs": 74
+    },
+    {
+      "id": "UX-22",
+      "title": "Small aggregates remain suppressed and never include individual answers",
+      "status": "PASS",
+      "elapsedMs": 12
+    },
+    {
+      "id": "UX-23",
+      "title": "Learning operations preserve a dedicated nonempty anonymous survey fixture and private pack",
+      "status": "PASS",
+      "elapsedMs": 4
+    },
+    {
+      "id": "UX-24",
+      "title": "Submitted learning idea has an own portfolio receipt with its pending status",
+      "status": "PASS",
+      "elapsedMs": 46
+    },
+    {
+      "id": "UX-25",
+      "title": "Receipt query cannot expose another author, tenant, source or unknown proposal",
+      "status": "PASS",
+      "elapsedMs": 66
+    }
+  ],
+  "limits": [
+    "Local PostgreSQL through the test-only Neon adapter; not a remote Neon transport test.",
+    "HTTP assertions do not prove native browser confirmation dialogs, dirty navigation, layout or downloads.",
+    "All HTTP fixtures are retained in the disposable local dataset for diagnosis; no real customer data is used."
+  ]
+}

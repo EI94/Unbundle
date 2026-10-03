@@ -1,0 +1,89 @@
+{
+  "timestamp": "2026-10-02T10:23:12.752038+00:00",
+  "scope": "PostgreSQL17 local parity: empty database + repository migrations + random synthetic fixtures only; no production export or restore",
+  "serverVersion": "postgres (PostgreSQL) 17.11 (Homebrew)",
+  "migrations": [
+    {
+      "file": "0000_many_wallow.sql",
+      "sha256": "ba7839f1a8f59ca549bbb937ed874dc1a0199798347f6dd11182e603f2ab9471",
+      "status": "PASS"
+    },
+    {
+      "file": "0001_ambitious_tenebrous.sql",
+      "sha256": "e02d62db9578bc1a77d2f1cfb63c9cda7806064e8bc979f0140006ba94397bcf",
+      "status": "PASS"
+    },
+    {
+      "file": "0002_secret_red_skull.sql",
+      "sha256": "f3e0d157daf9786e4508a47800a64365879a275634759c7b6b742b4e9ab080b0",
+      "status": "PASS"
+    },
+    {
+      "file": "0003_slack_draft_reminders.sql",
+      "sha256": "4e8bcec0a3185850c900f572d91f6c8cfc474af5689c334df940efd68741828d",
+      "status": "PASS"
+    },
+    {
+      "file": "0004_portfolio_scoring_model.sql",
+      "sha256": "1f403a39ca8a79360ca0b3fda3dcbd4fbbe3f601f5350c70faf7cac980c5618f",
+      "status": "PASS"
+    },
+    {
+      "file": "0005_portfolio_kpi_and_channels.sql",
+      "sha256": "a006c649ca77d03aea6e81d75f9636421994e2e7f19092669a10306d9069d81b",
+      "status": "PASS"
+    },
+    {
+      "file": "0006_workspace_collaboration.sql",
+      "sha256": "e6c69989917050472830eca0d69c8dd2a56ec40088e2ef9d918ec6f84da4e7d0",
+      "status": "PASS"
+    },
+    {
+      "file": "0007_slack_bot_reliability.sql",
+      "sha256": "ef714593b01dff4f33f298715d39c76276e76b8e225aec2fd7ddb66348a0c2cc",
+      "status": "PASS"
+    },
+    {
+      "file": "0008_workspace_integration_tokens.sql",
+      "sha256": "afc9f5b52f71cdb490923416e42a0bc25fbce7526fd9c8bf0f5558ad2c613e3e",
+      "status": "PASS"
+    },
+    {
+      "file": "0009_ai_readiness_core.sql",
+      "sha256": "191efd8b8479f60c0ef511ca60e3a857013723f3e05c7185e383227d232cc7d8",
+      "status": "PASS"
+    },
+    {
+      "file": "0010_ai_readiness_intelligence.sql",
+      "sha256": "45cf74dc667163bf4902b324fff2345b1e2fee62a509106b02d1153ecc3c9bce",
+      "status": "PASS"
+    },
+    {
+      "file": "0011_ai_readiness_question_scope.sql",
+      "sha256": "c50e43f02922be02d2f3f370e33524069e7fcc5f2465149e488fb181befb4104",
+      "status": "PASS"
+    },
+    {
+      "file": "0012_learning.sql",
+      "sha256": "d39f2caee006ae392684110a0de169738f81e2c573a0856f00686dbee725b09f",
+      "status": "PASS"
+    },
+    {
+      "file": "0012_learning.sql",
+      "sha256": "d39f2caee006ae392684110a0de169738f81e2c573a0856f00686dbee725b09f",
+      "status": "PASS"
+    }
+  ],
+  "tests": {
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0,
+    "sourceSha256": "449015161f2502cbed5e7cd5c5f4f466cab134e3f2fac5a168a41335b8d13e20"
+  },
+  "status": "PASS",
+  "clusterStopped": true,
+  "productionDataRead": false,
+  "productionRestorePerformed": false,
+  "originalClusterPort55439Touched": false,
+  "reporterCorrection": "Initial wrapper expected TAP # prefixes; Node emitted spec ℹ prefixes. Test process exit 0 and all 7 passed; corrected receipt parsing from preserved log without rerunning or changing product."
+}

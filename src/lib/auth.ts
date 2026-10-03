@@ -40,24 +40,67 @@ export const auth = cache(async (): Promise<Session | null> => {
       .limit(1);
 
     if (!user) {
-      [user] = await db
+      const email = decoded.email ?? `${decoded.uid}@firebase.local`;
+
+      // onConflictDoNothing e non DoUpdate: la riga esistente non va mai
+      // sovrascritta a scatola chiusa. Vedi sotto.
+      const [inserted] = await db
         .insert(users)
         .values({
           firebaseUid: decoded.uid,
-          email: decoded.email ?? `${decoded.uid}@firebase.local`,
+          email,
           name: decoded.name ?? decoded.email?.split("@")[0] ?? null,
           image: decoded.picture ?? null,
           emailVerified: decoded.email_verified ? new Date() : null,
         })
-        .onConflictDoUpdate({
-          target: users.email,
-          set: {
-            firebaseUid: decoded.uid,
-            name: decoded.name ?? undefined,
-            image: decoded.picture ?? undefined,
-          },
-        })
+        .onConflictDoNothing({ target: users.email })
         .returning();
+
+      if (inserted) {
+        user = inserted;
+      } else {
+        // L'email e' gia' registrata su un altro account Firebase.
+        //
+        // Qui stava una presa di controllo dell'account: un
+        // `onConflictDoUpdate` ricollegava la riga `users` esistente al nuovo
+        // firebaseUid e la restituiva, cosi' chi si registrava con l'email di
+        // un altro ne ereditava id, membership di organizzazione e grant del
+        // modulo formazione. Con l'iscrizione libera da link, bastava
+        // conoscere un indirizzo — e il modulo mostra ai partecipanti nome ed
+        // email dei revisori.
+        //
+        // Il cambio di provider legittimo (prima email e password, poi Google
+        // sullo stesso indirizzo) si riconosce da una cosa sola: Firebase
+        // attesta che chi accede controlla davvero quella casella. Senza
+        // quell'attestazione si rifiuta e non si restituisce sessione.
+        const [existing] = await db
+          .select()
+          .from(users)
+          .where(eq(users.email, email))
+          .limit(1);
+
+        if (!existing) return null;
+
+        if (existing.firebaseUid === decoded.uid) {
+          user = existing;
+        } else if (!decoded.email_verified) {
+          console.warn(
+            `[auth] Accesso rifiutato: ${email} e' gia' registrata su un altro account e questo accesso non ha l'email verificata.`
+          );
+          return null;
+        } else {
+          [user] = await db
+            .update(users)
+            .set({
+              firebaseUid: decoded.uid,
+              emailVerified: new Date(),
+              name: decoded.name ?? existing.name,
+              image: decoded.picture ?? existing.image,
+            })
+            .where(eq(users.id, existing.id))
+            .returning();
+        }
+      }
     }
 
     return {

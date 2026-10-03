@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { weeklySignals, activities, workspaces, useCases } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { markSignalRead } from "@/lib/db/queries/signals";
@@ -9,11 +10,15 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
-export async function markSignalAsRead(signalId: string) {
-  await markSignalRead(signalId);
+export async function markSignalAsRead(workspaceId: string, signalId: string) {
+  await requireWorkspaceAccess(workspaceId);
+  // Il segnale viene aggiornato solo se appartiene al workspace richiesto:
+  // senza questo vincolo un id indovinato toccherebbe i dati di un altro cliente.
+  await markSignalRead(workspaceId, signalId);
 }
 
 export async function markAllSignalsRead(workspaceId: string) {
+  await requireWorkspaceAccess(workspaceId);
   await db
     .update(weeklySignals)
     .set({ isRead: true })
@@ -59,6 +64,8 @@ export type CompetitiveAnalysis = z.infer<typeof competitiveAnalysisSchema>;
 export async function generateCompetitiveAnalysis(
   workspaceId: string
 ): Promise<CompetitiveAnalysis> {
+  await requireWorkspaceAccess(workspaceId);
+
   const [workspace] = await db
     .select()
     .from(workspaces)

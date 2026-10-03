@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "capturedAt": "2026-10-01T22:57:58.827960+00:00",
+  "changedFiles": 44,
+  "textFiles": 39,
+  "privatePhrasesChecked": 89,
+  "findings": [],
+  "scope": "New and modified non-ignored files, literal private-pack strings longer than 60 characters, private-key headers and PostgreSQL credential URLs; not a general secret audit."
+}

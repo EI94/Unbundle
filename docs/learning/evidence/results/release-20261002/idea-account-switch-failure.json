@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-10-02T09:01:59.647Z",
+  "testedCommit": "5ad1ec99e87f09a2a0a4be4f2e504936cc44ddcd",
+  "status": "FAIL_CONFIRMED",
+  "case": "browser idea form authored under A, saved after another tab establishes session B",
+  "workspaceId": "b680e8f9-62e8-4c61-adb0-7b0850b4a475",
+  "programId": "01156340-9ed1-46f5-a8a2-e84605834cf6",
+  "expectedAuthorId": "1e165c4f-a3a5-4155-9737-b6d7d71e2d22",
+  "currentSessionUserId": "e3c1142c-606d-4bf4-a4a8-9ac5e7b1758e",
+  "expectedDraftCountForB": 0,
+  "actualDraftCountForB": 1,
+  "actualDraftCountForA": 0,
+  "drafts": [
+    {
+      "id": "b6c39ea6-7778-4c47-ba44-0fd4ec2cefc5",
+      "owner": "e3c1142c-606d-4bf4-a4a8-9ac5e7b1758e",
+      "revision": 1,
+      "containsOnlyASyntheticMarker": true,
+      "fieldsDigest": "863345759df69ab02b70812bc3f646ee24ac66805fa7c51eec27ee85c72a553e",
+      "createdAt": "2026-10-02T08:54:21.474Z",
+      "updatedAt": "2026-10-02T08:54:21.474Z"
+    }
+  ],
+  "privateFieldsOmitted": true
+}

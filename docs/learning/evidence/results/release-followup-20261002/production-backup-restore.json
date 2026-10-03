@@ -1,0 +1,94 @@
+{
+  "startedAt": "2026-10-02T13:48:15.199Z",
+  "completedAt": "2026-10-02T13:49:35.166891+00:00",
+  "status": "PASS",
+  "extensionVersions": [
+    {
+      "extname": "plpgsql",
+      "extversion": "1.0"
+    },
+    {
+      "extname": "vector",
+      "extversion": "0.8.0"
+    }
+  ],
+  "restoreBaseline": "PASS",
+  "migrationOnIsolatedCopy": "PASS",
+  "productionWrites": false,
+  "baseline": {
+    "schemaMatch": true,
+    "schemaComparison": "Seven catalog sections exact; enum names/labels/order exact after ignoring physical numeric sort-key renumbering by restore",
+    "tableCount": 47,
+    "matchingCountsAndRowDigests": 47
+  },
+  "migrationSha256": "d39f2caee006ae392684110a0de169738f81e2c573a0856f00686dbee725b09f",
+  "migrationPasses": [
+    {
+      "pass": 1,
+      "status": "PASS",
+      "learningTables": 7,
+      "enabledLearningTriggers": 4,
+      "preexisting": {
+        "schemaMatch": true,
+        "schemaComparison": "Seven catalog sections exact; enum names/labels/order exact after ignoring physical numeric sort-key renumbering by restore",
+        "tableCount": 47,
+        "matchingCountsAndRowDigests": 47
+      }
+    },
+    {
+      "pass": 2,
+      "status": "PASS",
+      "learningTables": 7,
+      "enabledLearningTriggers": 4,
+      "preexisting": {
+        "schemaMatch": true,
+        "schemaComparison": "Seven catalog sections exact; enum names/labels/order exact after ignoring physical numeric sort-key renumbering by restore",
+        "tableCount": 47,
+        "matchingCountsAndRowDigests": 47
+      }
+    }
+  ],
+  "filePrivacyVerification": {
+    "directoriesChecked": 93,
+    "regularFilesChecked": 4570,
+    "directoryMode": "0700",
+    "fileMode": "0600",
+    "anomalies": 0,
+    "temporaryPasswordFilesRemaining": 0
+  },
+  "allLocalRestoreClustersStopped": true,
+  "validationLimits": [
+    "Owner and ACL statements are retained in the archive but skipped for local restore; production role provisioning and privilege recovery were not exercised.",
+    "Database-local schema/data restored; external provider configuration, PITR retention, globals and service credentials are not covered.",
+    "Exact table counts and complete-row digests cover all47ordinary/materialized/partition relations captured; enum physical numeric sort keys normalized to ordered labels."
+  ],
+  "historicalFailures": [
+    "First source connection rejected unsupported startup lock_timeout; no archive created; corrected with SET LOCAL in read-only transaction.",
+    "Initial local helper used invalid BEGIN syntax; restore had completed, comparison not run; cluster stopped.",
+    "Raw enum numeric sort order changed during pg_restore; logical ordered labels verified against source enum metadata whose raw hash still matched snapshot.",
+    "One diagnostic restart omitted original start options, causing expected private socket connection failure and immediate shutdown; subsequent configuration persisted socket-only settings."
+  ],
+  "scope": "Authorized production database backup and isolated local restore verification; no application tests on restored data",
+  "directHumanConsentReceived": true,
+  "consentDate": "2026-10-02",
+  "archive": {
+    "validation": "PASS",
+    "bytes": 265169,
+    "sha256": "31ec5e2be79e9a41c7154727574b68ff75d88f564bde28b1c8b147d6e8ce79b0",
+    "pgRestoreListVerified": true,
+    "snapshotConsistency": "PostgreSQL exported snapshot held through pg_dump completion"
+  },
+  "clients": {
+    "pg_dump": "pg_dump (PostgreSQL) 17.11",
+    "pg_restore": "pg_restore (PostgreSQL) 17.11",
+    "psql": "psql (PostgreSQL) 17.11"
+  },
+  "sourceConnection": "TLS verified, read-only snapshot; no source writes",
+  "sourceLockTimeout": "5s",
+  "sourceSnapshotStatementTimeout": "120s",
+  "dumpProcessTimeout": "300s",
+  "localMigrationStatementTimeout": "60s",
+  "finalRestoreTransport": "private Unix socket; TCP disabled persistently",
+  "applicationConnectedByVerification": false,
+  "privateArchiveDataAndLocationsOmitted": true
+}

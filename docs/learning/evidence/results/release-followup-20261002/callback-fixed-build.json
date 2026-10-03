@@ -1,0 +1,34 @@
+{
+  "baseCommit": "90787d5ecb5a3070171b217187eb01dfb3a23b31",
+  "baselineBuildId": "VljUxHbvn0COA7MOatZi0",
+  "fixedBuildId": "S0RWxV0r-g7InIbYPRtZP",
+  "fixedBuildBundler": "Next 16.2.3 webpack",
+  "sourceHashes": {
+    "src/lib/auth/redirect-to-login.ts": {
+      "before": "3c8039748eeb4abe8cab4f5d2053dd3654851a939b15dd3149573432a817fe66",
+      "after": "8d205f1bc83722f1be4c309e8c4c37c417224ca453eaa789d5a8c3038cb8fb11"
+    },
+    "src/app/(dashboard)/layout.tsx": {
+      "before": "1bd43e1ba51c550cb29613915732326db6660d9c70fc72d6de812af1dc5ab345",
+      "after": "eca40876ad89bcc61722b088e0d7dfe1c84129bc16e6f76a086a454b06d613be"
+    }
+  },
+  "testPath": "scripts/learning-test/auth-callback.mjs",
+  "testSha256": "fc40d720300135daac52200dd941dac3c51a76f38c73eb75284766bf704f0892",
+  "staticChecks": {
+    "authTests": 5,
+    "authFailed": 0,
+    "targetedLint": "PASS",
+    "diffCheck": "PASS"
+  },
+  "httpChecks": {
+    "passed": 7,
+    "failed": 0,
+    "receipt": "callback-public-probe.json"
+  },
+  "historicalFailures": [
+    "build-callback-fixed.log",
+    "build-callback-fixed-retry.log"
+  ],
+  "failureScope": "Two Turbopack rebuild attempts failed fetching external fonts; webpack build passed without TLS bypass, font mock or product changes. Original main emulator build remains preserved and unchanged."
+}

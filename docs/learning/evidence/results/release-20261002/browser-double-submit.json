@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-10-02T09:39:50.277Z",
+  "status": "PASS",
+  "workspaceId": "b680e8f9-62e8-4c61-adb0-7b0850b4a475",
+  "programId": "d477d4c3-762b-414d-b226-e8301a85343e",
+  "syntheticUserId": "1e165c4f-a3a5-4155-9737-b6d7d71e2d22",
+  "action": "Browser double-click submit after two-tab conflict and persisted unsure choices",
+  "attemptCount": 1,
+  "attempt": {
+    "id": "795e8ea7-cc60-423d-9061-2a2aec9e56d1",
+    "status": "submitted",
+    "revision": 5,
+    "submitted_at": "2026-10-02T09:38:41.766Z",
+    "has_idempotency_key": true,
+    "correct": "0",
+    "total": "3",
+    "submission_audits": 1
+  },
+  "privateAnswersOmitted": true
+}

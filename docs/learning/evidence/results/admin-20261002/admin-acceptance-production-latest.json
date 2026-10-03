@@ -1,0 +1,351 @@
+{
+  "runId": "7e83d19a-d6c6-48a4-a95a-f7f7f35e115a",
+  "runtime": "production",
+  "clientScan": {
+    "pages": 2,
+    "rscRequests": 2,
+    "htmlBytes": 161392,
+    "rscBytes": 52957,
+    "scripts": [
+      {
+        "path": "/_next/static/chunks/0~k6u5_j-9bf2.js",
+        "bytes": 27795
+      },
+      {
+        "path": "/_next/static/chunks/12nge3j-x9tc1.js",
+        "bytes": 30902
+      },
+      {
+        "path": "/_next/static/chunks/0yi.jbuvv9qt1.js",
+        "bytes": 227651
+      },
+      {
+        "path": "/_next/static/chunks/128aahewwf1we.js",
+        "bytes": 44491
+      },
+      {
+        "path": "/_next/static/chunks/0gyhlsobr-.-~.js",
+        "bytes": 109791
+      },
+      {
+        "path": "/_next/static/chunks/turbopack-057j.64izh91..js",
+        "bytes": 10647
+      },
+      {
+        "path": "/_next/static/chunks/10crv3k-5m9fm.js",
+        "bytes": 26130
+      },
+      {
+        "path": "/_next/static/chunks/16n_a0ah~uzot.js",
+        "bytes": 26591
+      },
+      {
+        "path": "/_next/static/chunks/09fmpodg3jfy7.js",
+        "bytes": 44750
+      },
+      {
+        "path": "/_next/static/chunks/0fyl.bfx6m9-n.js",
+        "bytes": 28227
+      },
+      {
+        "path": "/_next/static/chunks/087fl8-bh13q4.js",
+        "bytes": 35603
+      },
+      {
+        "path": "/_next/static/chunks/08r8pgjdip1bh.js",
+        "bytes": 34027
+      },
+      {
+        "path": "/_next/static/chunks/0x.73w57rn4ou.js",
+        "bytes": 3380
+      },
+      {
+        "path": "/_next/static/chunks/0i.l9589uvx0j.js",
+        "bytes": 54763
+      },
+      {
+        "path": "/_next/static/chunks/0jqkyc4~yz6kf.js",
+        "bytes": 22739
+      },
+      {
+        "path": "/_next/static/chunks/0xl50.0-v_0l8.js",
+        "bytes": 29317
+      },
+      {
+        "path": "/_next/static/chunks/0mkacr6crt991.js",
+        "bytes": 60201
+      },
+      {
+        "path": "/_next/static/chunks/0~m4lh-msjcbx.js",
+        "bytes": 108991
+      },
+      {
+        "path": "/_next/static/chunks/0q.nr5~l-6ml4.js",
+        "bytes": 39778
+      },
+      {
+        "path": "/_next/static/chunks/0x1esmcrpi-bv.js",
+        "bytes": 740
+      },
+      {
+        "path": "/_next/static/chunks/0ma4tr3~f9x3t.js",
+        "bytes": 12398
+      },
+      {
+        "path": "/_next/static/chunks/03~yq9q893hmn.js",
+        "bytes": 112594
+      },
+      {
+        "path": "/_next/static/chunks/0hpnrek~99o9g.js",
+        "bytes": 5372
+      },
+      {
+        "path": "/_next/static/chunks/09y_uhff86ba2.js",
+        "bytes": 27838
+      }
+    ],
+    "checkedMarkers": [
+      "PRIVATE_FEEDBACK_MARKER",
+      "PRIVATE_REFERENCE_MARKER",
+      "PRIVATE_FACT_MARKER",
+      "PRIVATE_BOUNDARY_MARKER",
+      "PRIVATE_SOURCE_MARKER",
+      "PRIVATE_PROMPT_MARKER",
+      "correct_option_ids"
+    ]
+  },
+  "sourceHashes": {
+    "src/lib/learning/admin.ts": "7bc362faa05be1c02316951611131b94e159961d4de23bdc44790db8e1f90e8a",
+    "src/lib/learning/admin-contract.ts": "a298b53b4abcc45ac8bfdc02ecd9eca1af3be8329cc831e7a11debbe5e445dd9",
+    "src/lib/learning/server.ts": "5cdb9b3ba4aeaf76eb808ac565534bb8768e72eb4a1916b6779b2144c05178c6",
+    "src/app/api/learning/admin/route.ts": "48e31fb1517aa80b92bd27e7213f38db6860aaf3958d3929d2475d28cd99a501",
+    "src/components/learning/admin-program.tsx": "9f85149a762e8d8e4b64b3795910b3e876deb4e25fa1e4833738863c1506d7a6",
+    "src/components/learning/program-overview.tsx": "5d088ff64609e5b81378ffbbb30dd43aa0ad228bd48eb74da14617662e36d3fb"
+  },
+  "codeCommit": "2b7e7e573c90f2618426b1bb38685da0f0a719c9",
+  "workingTreeDirty": true,
+  "createdAt": "2026-10-01T22:49:02.753Z",
+  "source": "working tree; no production or real accounts",
+  "workspaces": {
+    "a": {
+      "organizationId": "555a47b3-8a7d-43b3-8b4c-ade076a3745a",
+      "workspaceId": "8f78f6bb-8b31-4634-b350-4d19884015b9",
+      "programId": "b653b15d-d7aa-4831-8f29-8dfd457273a3"
+    },
+    "b": {
+      "organizationId": "16445375-b2a2-4809-81e0-fce25174ebf1",
+      "workspaceId": "3239392d-341a-433f-8441-a60c19c76470",
+      "programId": "7c071833-cc68-4647-a74c-7f2fcce655e5"
+    }
+  },
+  "totals": {
+    "pass": 34,
+    "fail": 0
+  },
+  "checks": [
+    {
+      "id": "ADMIN-01",
+      "title": "Anonymous admin request is recoverable JSON, not redirect or cache",
+      "status": "PASS",
+      "elapsedMs": 4
+    },
+    {
+      "id": "ADMIN-02",
+      "title": "Missing/foreign Origin and spoofed forwarded host are rejected",
+      "status": "PASS",
+      "elapsedMs": 9
+    },
+    {
+      "id": "ADMIN-03",
+      "title": "Malformed JSON, unknown operation, extra fields and media fail closed",
+      "status": "PASS",
+      "elapsedMs": 4
+    },
+    {
+      "id": "ADMIN-04",
+      "title": "Upload larger than five MiB is rejected before import",
+      "status": "PASS",
+      "elapsedMs": 12
+    },
+    {
+      "id": "ADMIN-05",
+      "title": "Only effective workspace administrator roles may bootstrap",
+      "status": "PASS",
+      "elapsedMs": 42
+    },
+    {
+      "id": "ADMIN-06",
+      "title": "Organization membership priority prevents workspace-role elevation",
+      "status": "PASS",
+      "elapsedMs": 7
+    },
+    {
+      "id": "ADMIN-07",
+      "title": "Pack inspection returns safe metadata and rejects invalid pack",
+      "status": "PASS",
+      "elapsedMs": 13
+    },
+    {
+      "id": "ADMIN-08",
+      "title": "Import is atomic, disabled, audited and grants management only",
+      "status": "PASS",
+      "elapsedMs": 18
+    },
+    {
+      "id": "ADMIN-09",
+      "title": "Workspace administrator without course grant cannot read or manage imported course",
+      "status": "PASS",
+      "elapsedMs": 11
+    },
+    {
+      "id": "ADMIN-10",
+      "title": "Idempotent import preserves immutable content; changed content requires version",
+      "status": "PASS",
+      "elapsedMs": 21
+    },
+    {
+      "id": "ADMIN-11",
+      "title": "Last active unscoped manager cannot revoke their own grant",
+      "status": "PASS",
+      "elapsedMs": 13
+    },
+    {
+      "id": "ADMIN-12",
+      "title": "Tenant, program and nested object IDs cannot cross workspace boundary",
+      "status": "PASS",
+      "elapsedMs": 36
+    },
+    {
+      "id": "ADMIN-13",
+      "title": "Management capability does not imply individual review or CSV export",
+      "status": "PASS",
+      "elapsedMs": 120
+    },
+    {
+      "id": "ADMIN-14",
+      "title": "Scoped manager sees only cohort operations and cannot change global settings or permissions",
+      "status": "PASS",
+      "elapsedMs": 34
+    },
+    {
+      "id": "ADMIN-15",
+      "title": "Batch enrollment rejects a foreign member without partially enrolling valid members",
+      "status": "PASS",
+      "elapsedMs": 12
+    },
+    {
+      "id": "ADMIN-16",
+      "title": "Valid enrollment batch is atomic and idempotent",
+      "status": "PASS",
+      "elapsedMs": 12
+    },
+    {
+      "id": "ADMIN-17",
+      "title": "Enrollment may move before work but scoped manager cannot cross cohorts",
+      "status": "PASS",
+      "elapsedMs": 13
+    },
+    {
+      "id": "ADMIN-18",
+      "title": "Session changes verify object and cohort; M2/M3 cannot open",
+      "status": "PASS",
+      "elapsedMs": 21
+    },
+    {
+      "id": "ADMIN-19",
+      "title": "Enable permits learner work, which immediately prevents enrollment move",
+      "status": "PASS",
+      "elapsedMs": 22
+    },
+    {
+      "id": "ADMIN-30",
+      "title": "An idea draft alone prevents cohort move without creating an attempt",
+      "status": "PASS",
+      "elapsedMs": 14
+    },
+    {
+      "id": "ADMIN-20",
+      "title": "Enrollment revoke stops learner writes and reactivation preserves draft",
+      "status": "PASS",
+      "elapsedMs": 22
+    },
+    {
+      "id": "ADMIN-21",
+      "title": "Revoked workspace membership immediately removes manager reads and writes",
+      "status": "PASS",
+      "elapsedMs": 6
+    },
+    {
+      "id": "ADMIN-22",
+      "title": "A manager with revoked membership cannot keep final active manager revocation valid",
+      "status": "PASS",
+      "elapsedMs": 7
+    },
+    {
+      "id": "ADMIN-23",
+      "title": "Concurrent self-revocation leaves exactly one active unscoped manager",
+      "status": "PASS",
+      "elapsedMs": 13
+    },
+    {
+      "id": "ADMIN-24",
+      "title": "Explicit review grant revocation removes access without adding other capabilities",
+      "status": "PASS",
+      "elapsedMs": 22
+    },
+    {
+      "id": "ADMIN-31",
+      "title": "Grant targets must be current members and revoke never leaks another cohort",
+      "status": "PASS",
+      "elapsedMs": 24
+    },
+    {
+      "id": "ADMIN-32",
+      "title": "Scoped manager cannot revoke global capability grant",
+      "status": "PASS",
+      "elapsedMs": 14
+    },
+    {
+      "id": "ADMIN-34",
+      "title": "Export-only permission exposes reachable scoped CSV without individual-review access",
+      "status": "PASS",
+      "elapsedMs": 47
+    },
+    {
+      "id": "ADMIN-25",
+      "title": "Program disable/enable/close/reopen preserves draft and controls writes",
+      "status": "PASS",
+      "elapsedMs": 40
+    },
+    {
+      "id": "ADMIN-26",
+      "title": "Session close denies work, open restores same attempt, scheduled is server-timed",
+      "status": "PASS",
+      "elapsedMs": 25
+    },
+    {
+      "id": "ADMIN-27",
+      "title": "Settings update is audited and DTO excludes answers, grading and private content",
+      "status": "PASS",
+      "elapsedMs": 7
+    },
+    {
+      "id": "ADMIN-28",
+      "title": "Purge requires exact confirmation, unscoped manager and elapsed retention",
+      "status": "PASS",
+      "elapsedMs": 14
+    },
+    {
+      "id": "ADMIN-29",
+      "title": "Eligible purge deletes only own responses and retains enrollments, audit, other program",
+      "status": "PASS",
+      "elapsedMs": 16
+    },
+    {
+      "id": "ADMIN-33",
+      "title": "Admin HTML, RSC and browser scripts exclude private grading content",
+      "status": "PASS",
+      "elapsedMs": 77
+    }
+  ]
+}

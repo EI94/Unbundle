@@ -1,0 +1,28 @@
+{
+  "recordedAt": "2026-10-02T09:23:13.718217+00:00",
+  "codeCommit": "5ad1ec99e87f09a2a0a4be4f2e504936cc44ddcd",
+  "workingTreeDirty": true,
+  "execution": "All six npm regression commands completed sequentially with shell && and exit code 0; first five stdout results were returned by the execution tool, final Slack stdout saved as slack-final.log.",
+  "suites": {
+    "auth": 5,
+    "workspace-collaboration": 4,
+    "ai-readiness": 50,
+    "portfolio": 16,
+    "mcp": 11,
+    "slack": 29
+  },
+  "pass": 115,
+  "fail": 0,
+  "learningPure": {
+    "pass": 79,
+    "fail": 0,
+    "skippedDatabase": 7
+  },
+  "databaseSeparate": {
+    "pass": 7,
+    "fail": 0
+  },
+  "lint": "PASS",
+  "typecheck": "PASS",
+  "packageSha256": "9e800f6b9eec7aa27e6b3581b88faf9c5858c4b39a272768cf94e2be92e10e70"
+}

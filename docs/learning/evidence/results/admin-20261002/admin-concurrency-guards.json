@@ -1,0 +1,21 @@
+{
+  "environment": "No database connection attempted; invocation guard rejection tests",
+  "results": [
+    {
+      "name": "requires explicit isolation",
+      "status": "PASS"
+    },
+    {
+      "name": "rejects external database",
+      "status": "PASS"
+    },
+    {
+      "name": "rejects host override query",
+      "status": "PASS"
+    },
+    {
+      "name": "rejects evidence inside checkout",
+      "status": "PASS"
+    }
+  ]
+}

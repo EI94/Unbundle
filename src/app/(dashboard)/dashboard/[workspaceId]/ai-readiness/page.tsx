@@ -28,6 +28,11 @@ import {
   listUseCaseSubmissionsByAssessment,
 } from "@/lib/db/queries/ai-readiness";
 import { getMaturityLevel } from "@/lib/ai-readiness/scoring";
+import { questionScopeFromUnknown } from "@/lib/ai-readiness/template-scope";
+import {
+  findUncoveredInternalPillarIds,
+  surveyTrackMeta,
+} from "@/lib/ai-readiness/survey-track";
 import { USE_CASE_FORM_BLOCKS } from "@/lib/ai-readiness/use-case-form";
 import { AssessmentCreateForm } from "@/components/ai-readiness/assessment-create-form";
 import { AssessmentActions } from "@/components/ai-readiness/assessment-actions";
@@ -214,6 +219,7 @@ export default async function AiReadinessPage({
     title: section.title,
     description: section.description,
     audience: section.audience,
+    pillarId: section.pillarId,
     pillarTitle:
       bundle.templateDefinition.pillars.find((pillar) => pillar.id === section.pillarId)
         ?.title ?? section.pillarId,
@@ -230,6 +236,14 @@ export default async function AiReadinessPage({
   const includedPillarTitles = bundle.templateDefinition.pillars
     .map((pillar) => pillar.title)
     .join(", ");
+  const missingInternalPillarIds = findUncoveredInternalPillarIds({
+    pillarIds: bundle.templateDefinition.pillars.map((pillar) => pillar.id),
+    sections: sectionOptions,
+    respondents,
+  });
+  const missingInternalPillars = bundle.templateDefinition.pillars.filter(
+    (pillar) => missingInternalPillarIds.includes(pillar.id)
+  );
 
   return (
     <div className="flex-1 space-y-6 p-6 lg:p-8">
@@ -536,6 +550,35 @@ export default async function AiReadinessPage({
             <CardTitle>Pillar score</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {missingInternalPillars.length > 0 && (
+              <div
+                className="rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4 text-sm"
+                data-testid="missing-internal-pillars-notice"
+              >
+                <div className="font-medium">
+                  Mancano le risposte dei referenti per{" "}
+                  {missingInternalPillars
+                    .map((pillar) => pillar.title)
+                    .join(" e ")}.
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  La survey organizzazione non raccoglie dati, infrastruttura o
+                  processi interni. Crea una Scheda tecnica e organizzativa per
+                  completare questi punteggi.
+                </p>
+                {canManage && (
+                  <Button
+                    className="mt-3"
+                    variant="outline"
+                    size="sm"
+                    render={<a href="#respondents" />}
+                    nativeButton={false}
+                  >
+                    Crea scheda referenti
+                  </Button>
+                )}
+              </div>
+            )}
             {bundle.templateDefinition.pillars.map((pillar) => {
               const score = dashboard?.pillarScores[pillar.id] ?? null;
               const percentage = typeof score === "number" ? (score / 5) * 100 : 0;
@@ -786,10 +829,15 @@ export default async function AiReadinessPage({
           <Card className="rounded-[28px] scroll-mt-24" id="respondents">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Mail className="size-5" /> Invita respondent
+                <Mail className="size-5" /> Raccogli le risposte
               </CardTitle>
+              <p className="text-sm leading-6 text-muted-foreground">
+                I due percorsi alimentano aree diverse della diagnostica.
+                Scegli il link in base a chi deve rispondere e al risultato che
+                vuoi ottenere.
+              </p>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-5">
               {canManage && (
                 <OpenLinkForm
                   workspaceId={workspaceId}
@@ -801,6 +849,13 @@ export default async function AiReadinessPage({
                   )}
                 />
               )}
+              <div className="flex items-center gap-3" aria-hidden="true">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  oppure
+                </span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
               <RespondentInviteForm
                 workspaceId={workspaceId}
                 assessmentId={bundle.assessment.id}
@@ -819,30 +874,71 @@ export default async function AiReadinessPage({
                   Nessun invito creato.
                 </p>
               ) : (
-                respondents.slice(0, 12).map((respondent) => (
-                  <div
-                    key={respondent.id}
-                    className="flex items-center justify-between rounded-2xl border p-3 text-sm"
-                  >
-                    <div>
-                      <div className="font-medium">
-                        {[respondent.name, respondent.surname].filter(Boolean).join(" ") ||
-                          respondent.email ||
-                          respondent.pseudonymousId}
+                respondents.slice(0, 12).map((respondent) => {
+                  const track = surveyTrackMeta(respondent.surveyTrack);
+                  const scope = questionScopeFromUnknown(respondent.questionScope);
+                  const availableSections = sectionOptions.filter((section) =>
+                    respondent.surveyTrack === "internal"
+                      ? section.audience === "internal"
+                      : section.audience !== "internal"
+                  );
+                  const selectedSections = scope?.sectionIds?.length
+                    ? availableSections.filter((section) =>
+                        scope.sectionIds?.includes(section.id)
+                      )
+                    : availableSections;
+                  const pillarTitles =
+                    respondent.surveyTrack === "use_case_expert"
+                      ? ["Use Cases"]
+                      : [
+                          ...new Set(
+                            selectedSections.map((section) => section.pillarTitle)
+                          ),
+                        ];
+
+                  return (
+                    <div
+                      key={respondent.id}
+                      className="rounded-2xl border p-3 text-sm"
+                      data-respondent-track={respondent.surveyTrack}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-medium">
+                            {[respondent.name, respondent.surname]
+                              .filter(Boolean)
+                              .join(" ") ||
+                              respondent.email ||
+                              respondent.pseudonymousId}
+                          </div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">
+                            {respondent.email &&
+                            (respondent.name || respondent.surname)
+                              ? `${respondent.email} · `
+                              : ""}
+                            {respondent.organizationUnit ?? "Area non indicata"} ·{" "}
+                            {respondent.role ?? "ruolo n/d"}
+                          </div>
+                        </div>
+                        <Badge
+                          variant={
+                            respondent.inviteStatus === "completed"
+                              ? "secondary"
+                              : "outline"
+                          }
+                        >
+                          {respondent.inviteStatus}
+                        </Badge>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {respondent.email &&
-                        (respondent.name || respondent.surname)
-                          ? `${respondent.email} · `
-                          : ""}
-                        {respondent.organizationUnit ?? "Area non indicata"} · {respondent.role ?? "ruolo n/d"}
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">{track.label}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          Alimenta: {pillarTitles.join(", ") || track.feeds}
+                        </span>
                       </div>
                     </div>
-                    <Badge variant={respondent.inviteStatus === "completed" ? "secondary" : "outline"}>
-                      {respondent.inviteStatus}
-                    </Badge>
-                  </div>
-                ))
+                  );
+                })
               )}
             </CardContent>
           </Card>

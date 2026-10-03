@@ -1,0 +1,216 @@
+{
+  "timestamp": "2026-10-01T19:16:30.303Z",
+  "environment": "local PostgreSQL + Firebase Auth emulator + real Next production JSON gateway + shared Server Action validation/DAL",
+  "results": [
+    {
+      "id": "A01-partial",
+      "title": "Unauthenticated activity redirects to login preserving callback",
+      "status": "PASS",
+      "elapsedMs": 1
+    },
+    {
+      "id": "G04-html",
+      "title": "Pre-submit HTML and RSC omit private grading markers",
+      "status": "PASS",
+      "elapsedMs": 23
+    },
+    {
+      "id": "A02-program",
+      "title": "Foreign workspace/program combination is denied",
+      "status": "PASS",
+      "elapsedMs": 15
+    },
+    {
+      "id": "A09",
+      "title": "Server Action rejects forged identity/score/role fields",
+      "status": "PASS",
+      "elapsedMs": 2
+    },
+    {
+      "id": "A10-origin",
+      "title": "Cross-origin direct action is rejected",
+      "status": "PASS",
+      "elapsedMs": 1
+    },
+    {
+      "id": "gateway-session",
+      "title": "Missing session returns recoverable JSON without redirect or caching",
+      "status": "PASS",
+      "elapsedMs": 1
+    },
+    {
+      "id": "gateway-origin",
+      "title": "Missing Origin is rejected even with a valid cookie",
+      "status": "PASS",
+      "elapsedMs": 1
+    },
+    {
+      "id": "gateway-input",
+      "title": "Gateway rejects wrong media, malformed JSON, unknown operation and envelope extras",
+      "status": "PASS",
+      "elapsedMs": 3
+    },
+    {
+      "id": "gateway-size",
+      "title": "Gateway enforces 64 KiB body limit before parsing",
+      "status": "PASS",
+      "elapsedMs": 1
+    },
+    {
+      "id": "D01-start",
+      "title": "Authenticated direct action starts a persisted private attempt",
+      "status": "PASS",
+      "elapsedMs": 8
+    },
+    {
+      "id": "A03",
+      "title": "Another learner in the same workspace cannot modify this attempt",
+      "status": "PASS",
+      "elapsedMs": 20
+    },
+    {
+      "id": "D03",
+      "title": "Concurrent drafts permit one revision and explicitly reject the stale writer",
+      "status": "PASS",
+      "elapsedMs": 9
+    },
+    {
+      "id": "D01-resume",
+      "title": "Server persisted responses/revision/order survive a new session",
+      "status": "PASS",
+      "elapsedMs": 7
+    },
+    {
+      "id": "D05-G01",
+      "title": "Concurrent idempotent submit yields one 8/8 receipt and one audit event",
+      "status": "PASS",
+      "elapsedMs": 32
+    },
+    {
+      "id": "D06",
+      "title": "Submitted attempt rejects further edits",
+      "status": "PASS",
+      "elapsedMs": 4
+    },
+    {
+      "id": "G07",
+      "title": "Retake creates a distinct immutable-history record",
+      "status": "PASS",
+      "elapsedMs": 6
+    },
+    {
+      "id": "G02",
+      "title": "Retake with 7/8 and one essential error remains needs_practice",
+      "status": "PASS",
+      "elapsedMs": 20
+    },
+    {
+      "id": "D07",
+      "title": "Incomplete answers cannot be submitted",
+      "status": "PASS",
+      "elapsedMs": 13
+    },
+    {
+      "id": "P02-case",
+      "title": "Case locks individual decisions before reference/reflection and creates no portfolio entry",
+      "status": "PASS",
+      "elapsedMs": 53
+    },
+    {
+      "id": "D09",
+      "title": "Closed program keeps submitted feedback readable but rejects new writes",
+      "status": "PASS",
+      "elapsedMs": 17
+    },
+    {
+      "id": "P01-P03-P04",
+      "title": "Voluntary idea promotes once without LLM and rejects another author",
+      "status": "PASS",
+      "elapsedMs": 48
+    },
+    {
+      "id": "A04",
+      "title": "Reviewer sees only assigned cohort and cannot access other workspace",
+      "status": "PASS",
+      "elapsedMs": 17
+    },
+    {
+      "id": "A05",
+      "title": "Sponsor and manager without review grant cannot view named results",
+      "status": "PASS",
+      "elapsedMs": 16
+    },
+    {
+      "id": "U04",
+      "title": "Named export requires scope, audits download and neutralizes formula whitespace",
+      "status": "PASS",
+      "elapsedMs": 17
+    },
+    {
+      "id": "U05",
+      "title": "Sponsor aggregate suppresses group below minimum and includes no names",
+      "status": "PASS",
+      "elapsedMs": 13
+    },
+    {
+      "id": "A07",
+      "title": "One account in two workspaces has separate program histories",
+      "status": "PASS",
+      "elapsedMs": 25
+    },
+    {
+      "id": "A06",
+      "title": "Revocation takes effect on next action and preserves existing records",
+      "status": "PASS",
+      "elapsedMs": 4
+    },
+    {
+      "id": "R04",
+      "title": "Workspace-specific feature flag blocks writes and preserves other program",
+      "status": "PASS",
+      "elapsedMs": 12
+    },
+    {
+      "id": "A04-detail",
+      "title": "Reviewer direct detail URL denies another cohort and another workspace",
+      "status": "PASS",
+      "elapsedMs": 27
+    },
+    {
+      "id": "A06-read-save",
+      "title": "Revoked learner membership denies existing receipt read and draft save",
+      "status": "PASS",
+      "elapsedMs": 12
+    },
+    {
+      "id": "A06-export",
+      "title": "Revoked reviewer membership denies list and named export despite retained grants",
+      "status": "PASS",
+      "elapsedMs": 13
+    },
+    {
+      "id": "D08",
+      "title": "Publishing a new version preserves previous draft answers, order and content",
+      "status": "PASS",
+      "elapsedMs": 25
+    },
+    {
+      "id": "D09-future",
+      "title": "Server time denies future scheduled activity start and existing draft save",
+      "status": "PASS",
+      "elapsedMs": 12
+    },
+    {
+      "id": "D09-archived",
+      "title": "Archived program denies writes and retains old feedback",
+      "status": "PASS",
+      "elapsedMs": 12
+    },
+    {
+      "id": "O02-atomic",
+      "title": "Failure inside submission audit rolls back result and allows a safe retry",
+      "status": "PASS",
+      "elapsedMs": 26
+    }
+  ]
+}

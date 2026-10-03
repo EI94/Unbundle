@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/queries/ai-readiness";
 import { draftPrefillFromResponse } from "@/lib/ai-readiness/draft";
 import { questionScopeFromUnknown } from "@/lib/ai-readiness/template-scope";
+import { surveyTrackMeta } from "@/lib/ai-readiness/survey-track";
 import type { AiReadinessAnswer } from "@/lib/ai-readiness/types";
 import { RespondentSurveyForm } from "@/components/ai-readiness/respondent-survey-form";
 import { UseCaseExpertForm } from "@/components/ai-readiness/use-case-expert-form";
@@ -70,6 +71,10 @@ export default async function AiReadinessRespondentPage({
   ).length;
   const estimatedMinutes = Math.max(2, Math.round(scoredQuestions * 0.5));
   const isInternalTrack = found.respondent.surveyTrack === "internal";
+  const track = surveyTrackMeta(found.respondent.surveyTrack);
+  const includedPillars = found.templateDefinition.pillars.map(
+    (pillar) => pillar.title
+  );
 
   if (found.respondent.inviteStatus === "completed") {
     return (
@@ -126,7 +131,11 @@ export default async function AiReadinessRespondentPage({
   if (isUseCaseExpert) {
     const cases = await listUseCaseSubmissionsByRespondent(found.respondent.id);
     return (
-      <main id="survey-root" className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6">
+      <main
+        id="survey-root"
+        className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6"
+        data-survey-track="use_case_expert"
+      >
         <div className="mx-auto max-w-3xl space-y-8">
           <header className="rounded-[36px] border bg-linear-to-br from-emerald-500/10 via-card to-sky-500/10 p-7">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -206,7 +215,11 @@ export default async function AiReadinessRespondentPage({
       : null;
 
   return (
-    <main id="survey-root" className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6">
+    <main
+      id="survey-root"
+      className="min-h-screen bg-background px-4 py-8 text-foreground sm:px-6"
+      data-survey-track={found.respondent.surveyTrack}
+    >
       <div className="mx-auto max-w-5xl space-y-8">
         <header className="rounded-[36px] border bg-linear-to-br from-emerald-500/10 via-card to-sky-500/10 p-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -218,19 +231,34 @@ export default async function AiReadinessRespondentPage({
           <div className="mt-8 flex flex-wrap items-center gap-2">
             <Badge variant="secondary">AI Readiness OS</Badge>
             <Badge variant="outline">{displayName}</Badge>
+            <Badge variant="secondary">{track.label}</Badge>
             <Badge variant="outline">~{estimatedMinutes} minuti</Badge>
-            {isInternalTrack && (
-              <Badge variant="secondary">Scheda referenti (IT / HR / business)</Badge>
-            )}
           </div>
           <h1 className="mt-5 max-w-3xl text-4xl font-semibold tracking-tight">
-            Benvenuto nella survey «{surveyName}» 👋
+            {isInternalTrack
+              ? `Scheda referenti «${surveyName}»`
+              : `Survey organizzazione «${surveyName}»`}
           </h1>
           <p className="mt-2 max-w-3xl text-base text-muted-foreground">
             {isInternalTrack
               ? "Questa scheda è per chi conosce sistemi, dati o organizzazione: le tue risposte completano il quadro raccolto con la survey."
               : "Il tuo contributo è importante: aiuta la tua organizzazione a capire dove l'AI può dare una mano davvero."}
           </p>
+          <div
+            className={`mt-4 rounded-2xl border p-4 ${
+              isInternalTrack
+                ? "border-sky-500/30 bg-sky-500/10"
+                : "bg-background/60"
+            }`}
+            data-testid="survey-track-summary"
+          >
+            <div className="text-sm font-medium">
+              Questa compilazione alimenta: {includedPillars.join(", ")}
+            </div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {track.description}
+            </p>
+          </div>
           <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">
             {configString(
               brand,

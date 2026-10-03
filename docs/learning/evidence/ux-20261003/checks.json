@@ -1,0 +1,29 @@
+{
+  "checkedAt": "2026-10-03T10:11:16.442753+00:00",
+  "status": "PASS",
+  "environment": "Explicit PATH, HOME and LANG only. No database URL, provider credentials, NODE_OPTIONS or .env loaded by checks.",
+  "checks": [
+    {
+      "name": "lint-final",
+      "command": "eslint .",
+      "status": "PASS",
+      "exitCode": 0,
+      "outputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "types-final",
+      "command": "tsc --noEmit --incremental false",
+      "status": "PASS",
+      "exitCode": 0,
+      "outputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "lint-final-harness",
+      "command": "eslint scripts/learning-test/ux-acceptance.mjs",
+      "status": "PASS",
+      "exitCode": 0,
+      "outputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "note": "Full lint/types executed after the final JSX change. The test-only UX25 assertion refinement was followed by targeted lint; it does not affect TypeScript application sources."
+}

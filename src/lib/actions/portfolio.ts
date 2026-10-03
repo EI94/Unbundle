@@ -1,6 +1,7 @@
 "use server";
 
 import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -725,8 +726,8 @@ export async function markSignalReadAction(
   workspaceId: string,
   signalId: string
 ) {
-  await requireSession();
-  await markSignalRead(signalId);
+  await requireWorkspaceAccess(workspaceId);
+  await markSignalRead(workspaceId, signalId);
   revalidatePath(`/dashboard/${workspaceId}`);
   return { ok: true } as const;
 }

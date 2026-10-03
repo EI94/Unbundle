@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-10-02T10:29:12.736Z",
+  "status": "PASS",
+  "assetsChecked": 69,
+  "checkedMarkers": [
+    "PRIVATE_FEEDBACK_MARKER",
+    "PRIVATE_REFERENCE_MARKER",
+    "PRIVATE_FACT_MARKER",
+    "PRIVATE_BOUNDARY_MARKER",
+    "PRIVATE_SOURCE_MARKER",
+    "PRIVATE_PROMPT_MARKER",
+    "correct_option_ids"
+  ],
+  "leaks": []
+}

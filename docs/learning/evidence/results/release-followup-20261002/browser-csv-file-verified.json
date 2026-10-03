@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "verifiedAt": "2026-10-02T12:00:26.995463+00:00",
+  "codeCommit": "90787d5ecb5a3070171b217187eb01dfb3a23b31",
+  "buildId": "mLKpQvP1366UJpxhqoHjS",
+  "fileModifiedAt": "2026-10-02T09:47:24.829463+00:00",
+  "bytes": 751,
+  "sha256": "9618dc67d4ade6e92b89b3e7ec608f6564be6ba7f5a0c9bbbaf80aae4f768a7a",
+  "dataRows": 4,
+  "matchesPriorAuthorizedHttpExportByteForByte": true,
+  "onlySyntheticAuthorizedLearnerAndCohort": true,
+  "previousStatus": "BLOCKED: browser event wait timed out",
+  "resolution": "Actual file found in Downloads; SHA-256 and size exactly match the authenticated HTTP/audit receipt. This is a filesystem verification of the original browser download, not a new download claim.",
+  "downloadedFilenameOmitted": true
+}

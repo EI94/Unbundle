@@ -44,10 +44,15 @@ export default async function WorkspaceLayout({
     notFound();
   }
   const { workspace } = access;
+  // Off by default: existing workspaces do not query the additive training tables.
+  const learningAvailable = process.env.LEARNING_ENABLED === "true"
+    ? await (await import("@/lib/learning/server")).hasLearningForWorkspace(workspaceId)
+    : false;
 
   return (
     <SidebarProvider>
       <AppSidebar
+        learningAvailable={learningAvailable}
         workspaceId={workspace.id}
         workspaceName={workspace.name}
         user={{

@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-10-02T10:28:38.202Z",
+  "status": "PASS",
+  "environment": "isolated local synthetic database only",
+  "workspaceId": "787dffa0-2250-48d2-8737-acd5855c6a6d",
+  "assessmentId": "86ab20a3-2b2b-478e-9ebb-71a1a2709566",
+  "respondentId": "3843b25c-f482-4a7f-b9f5-6aba5bbea318",
+  "templateId": "7ed4a4e6-2837-4910-807d-b2df34cebf3d",
+  "anonymous": true,
+  "identifyingFieldsNull": true,
+  "workspaceMemberships": 0,
+  "httpStatus": 200,
+  "authenticationRequired": false,
+  "questionCount": 2,
+  "productionDataTouched": false,
+  "url": "local public /a/[redacted synthetic token]"
+}

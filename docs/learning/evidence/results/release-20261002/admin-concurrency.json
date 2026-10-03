@@ -1,0 +1,43 @@
+{
+  "environment": "Isolated loopback PostgreSQL; actual admin.ts and learningWriteGuard source; synthetic actor adapter, no HTTP authentication claim",
+  "createdAt": "2026-10-02T10:13:42.296Z",
+  "fixtureCleanup": "completed",
+  "failure": null,
+  "unrun": 0,
+  "sources": [
+    {
+      "path": "src/lib/learning/admin.ts",
+      "sha256": "ec23cb8dd653e6fdb215dafb9646ea43fb74186eefa1c964d2e5c49c278fa79e"
+    },
+    {
+      "path": "src/lib/learning/server.ts",
+      "sha256": "aaa276c8bbbc5f1370e0f6d9c6578874cb40c0d044b06d6df7b51858f8afdd59"
+    },
+    {
+      "path": "src/lib/learning/admin-contract.ts",
+      "sha256": "bf4fdd65624aaebd5b9002cfa31235c2423453dffec26034991d41f46330d8e6"
+    },
+    {
+      "path": "scripts/learning-test/admin-concurrency.mjs",
+      "sha256": "426c46650932231f7434e7926125659715f50bda68befdd5bd7d76f1efab2cdc"
+    }
+  ],
+  "results": [
+    {
+      "name": "start committed before move: admin waits then denies moving an enrollment with work",
+      "status": "PASS"
+    },
+    {
+      "name": "move committed before stale start: learner waits and old cohort guard denies insertion",
+      "status": "PASS"
+    },
+    {
+      "name": "reopen committed before purge: purge waits then fresh eligibility rejects deletion",
+      "status": "PASS"
+    },
+    {
+      "name": "eligible purge committed before reopen: one deletion then reopen preserves enrollment",
+      "status": "PASS"
+    }
+  ]
+}
