@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useLearningUnsavedChanges } from "./use-unsaved-changes";
 import { downloadLearningDraft } from "./download-draft";
+import { LearningRefresh } from "./learning-refresh";
+import { createAcknowledgedMemory } from "@/lib/learning/acknowledged-memory";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,14 +13,21 @@ import { emptyIdeaFields, ideaSubmissionSchema, ideaValidationErrors, requiredId
 import type { IdeaDTO } from "@/lib/learning/ideas";
 
 const pendingIdeas = new Map<string, { fields: IdeaFields; draft: IdeaDTO | null }>();
+const acknowledgedIdeas = createAcknowledgedMemory<IdeaDTO>();
 const labels: Record<keyof IdeaFields, string> = { title: "Attività da migliorare", problem: "Problema concreto", frequency: "Frequenza indicativa", inputs: "Input necessari, senza dati riservati", desiredOutput: "Risultato desiderato", contact: "Ruolo o referente che conosce il processo", constraints: "Vincoli e controlli" };
-export function IdeaForm({ workspaceId, programId, userId, initial, readOnly = false }: { workspaceId: string; programId: string; userId: string; initial: IdeaDTO | null; readOnly?: boolean }) {
+type IdeaFormProps = { workspaceId: string; programId: string; userId: string; initial: IdeaDTO | null; readOnly?: boolean };
+export function IdeaForm(props: IdeaFormProps) {
+  return <IdeaFormFields key={`${props.initial?.id ?? "new"}:${props.initial?.revision ?? 0}`} {...props} />;
+}
+function IdeaFormFields({ workspaceId, programId, userId, initial, readOnly = false }: IdeaFormProps) {
   const memoryKey = `${workspaceId}:${programId}:${userId}`;
-  const recovered = useRef(!initial || initial.status === "draft" ? pendingIdeas.get(memoryKey) : undefined);
-  const [draft, setDraft] = useState(recovered.current?.draft ?? initial);
-  const [fields, setFields] = useState<IdeaFields>(recovered.current?.fields ?? initial?.fields ?? emptyIdeaFields);
+  const initialContent = useRef(acknowledgedIdeas.restore(memoryKey, initial)).current;
+  const restoredAcknowledgement = initialContent !== initial;
+  const recovered = useRef(!initialContent || initialContent.status === "draft" ? pendingIdeas.get(memoryKey) : undefined);
+  const [draft, setDraft] = useState(recovered.current?.draft ?? initialContent);
+  const [fields, setFields] = useState<IdeaFields>(recovered.current?.fields ?? initialContent?.fields ?? emptyIdeaFields);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState(recovered.current ? "Modifiche non confermate recuperate in questa scheda. La revisione originale resta protetta dai conflitti." : "");
+  const [message, setMessage] = useState(recovered.current ? "Modifiche non confermate recuperate in questa scheda. La revisione originale resta protetta dai conflitti." : restoredAcknowledgement ? "Ultima proposta confermata dal server recuperata in questa scheda." : "");
   const [confirm, setConfirm] = useState(false);
   const [dirty, setDirty] = useState(!!recovered.current);
   const [errors, setErrors] = useState<Partial<Record<keyof IdeaFields, string>>>({});
@@ -29,7 +38,9 @@ export function IdeaForm({ workspaceId, programId, userId, initial, readOnly = f
   const key = useRef<string | null>(null);
   const done = draft?.status === "submitted";
   const frozen = draft?.status === "promoting" || done;
-  const closed = readOnly || !!closedByServer;
+  // A historical null snapshot cannot authorize edits to the remembered object.
+  const needsObjectRefresh = !initial && !!initialContent && !done;
+  const closed = readOnly || !!closedByServer || needsObjectRefresh;
   useEffect(() => { if (focusErrors.current) { errorBox.current?.focus(); focusErrors.current = false; } }, [errors]);
   useLearningUnsavedChanges({ dirty, pending: busy, onDiscard: () => {
     pendingIdeas.delete(memoryKey);
@@ -64,6 +75,7 @@ export function IdeaForm({ workspaceId, programId, userId, initial, readOnly = f
     try {
       const result = await saveLearningIdea({ workspaceId, programId, expectedUserId: userId, draftId: draft?.id ?? null, expectedRevision: draft?.revision ?? null, fields });
       if (!result.ok) { reportFailure(result); return; }
+      acknowledgedIdeas.remember(memoryKey, result.data);
       // An older, unmounted form must not delete a newer form's edits.
       if (pendingIdeas.get(memoryKey) === sentMemory) pendingIdeas.delete(memoryKey);
       setDraft(result.data); setDirty(false); setProblem(false); setMessage("Bozza salvata sul server. Non è ancora nel portfolio.");
@@ -77,6 +89,7 @@ export function IdeaForm({ workspaceId, programId, userId, initial, readOnly = f
     try {
       const result = await submitLearningIdea({ workspaceId, programId, expectedUserId: userId, draftId: draft.id, expectedRevision: draft.revision, idempotencyKey: key.current });
       if (!result.ok) { reportFailure(result); return; }
+      acknowledgedIdeas.remember(memoryKey, result.data);
       setDraft(result.data); setProblem(false); setMessage("Proposta ricevuta nel portfolio. L’invio non avvia un progetto o un’automazione."); setConfirm(false);
     } catch { setProblem(true); setMessage("Conferma non ricevuta. Riprova lo stesso invio: la proposta non verrà duplicata."); }
     finally { setBusy(false); }
@@ -85,7 +98,8 @@ export function IdeaForm({ workspaceId, programId, userId, initial, readOnly = f
     <h2 className="text-xl font-semibold">La mia idea, facoltativa</h2>
     <p>Descrivi un miglioramento del tuo lavoro. Nessuna risposta al quiz viene copiata qui. Solo “Invia ai referenti” condivide questi campi nel portfolio del workspace.</p>
     <p className="text-sm">Per inviare servono attività da migliorare, problema concreto e risultato desiderato, con almeno 5 caratteri ciascuno. Gli altri campi sono facoltativi. Puoi salvare una bozza incompleta. Usa “Salva bozza” e attendi la conferma prima di uscire.</p>
-    {closed && <p role="status" className="rounded-lg border p-3">{closedByServer ?? "Il corso è chiuso alle nuove risposte. La proposta è consultabile; salvataggio e invio non sono disponibili."} Le eventuali modifiche non confermate restano soltanto in questa scheda. <a className="underline" target="_blank" rel="noopener noreferrer" href={`/dashboard/${workspaceId}/learning/${programId}/ideas`}>Controlla la disponibilità in una nuova scheda</a>.</p>}
+    {closed && <p role="status" className="rounded-lg border p-3">{closedByServer ?? (needsObjectRefresh ? "La proposta confermata è conservata. Aggiorna la proposta per verificare l’accesso e continuare." : "Il corso è chiuso alle nuove risposte. La proposta è consultabile; salvataggio e invio non sono disponibili.")} Le eventuali modifiche non confermate restano soltanto in questa scheda. <a className="underline" target="_blank" rel="noopener noreferrer" href={`/dashboard/${workspaceId}/learning/${programId}/ideas`}>Controlla la disponibilità in una nuova scheda</a>.</p>}
+    {needsObjectRefresh && <LearningRefresh label="Aggiorna la proposta" />}
     {Object.keys(errors).length > 0 && <div ref={errorBox} tabIndex={-1} role="alert" className="rounded-lg border p-3"><p className="font-medium">Controlla i campi prima dell’invio.</p><ul className="list-disc pl-5">{Object.entries(errors).map(([field, error]) => <li key={field}><a className="underline" href={`#idea-${field}`}>{labels[field as keyof IdeaFields]}: {error}</a></li>)}</ul></div>}
     {Object.entries(labels).map(([key, label]) => {
       const field = key as keyof IdeaFields;

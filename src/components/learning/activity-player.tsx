@@ -13,10 +13,13 @@ import { outcomeLabel } from "./learning-shell";
 import { useLearningUnsavedChanges } from "./use-unsaved-changes";
 import { LearningRefresh } from "./learning-refresh";
 import { downloadLearningDraft } from "./download-draft";
+import { createAcknowledgedMemory } from "@/lib/learning/acknowledged-memory";
 
 // Memory only: an accidental SPA back/forward navigation must not discard a
 // draft. Keys are server-authorized attempt UUIDs, never a shared activity ID.
 const pendingDrafts = new Map<string, { responses: AttemptResponses; revision: number }>();
+const acknowledgedAttempts = createAcknowledgedMemory<AttemptDTO>();
+const attemptScope = (workspaceId: string, programId: string, userId: string, version: string, activityId: string) => JSON.stringify([workspaceId, programId, userId, version, activityId]);
 
 const modeLabel: Record<string, string> = {
   review_reference_output: "Analisi dell’esempio preparato, senza chiamate AI",
@@ -33,18 +36,21 @@ export function ActivityPlayer(props: PlayerProps) {
 }
 function ActivityPlayerForm({ workspaceId, programId, userId, version, activity, initialAttempt }: PlayerProps) {
   const router = useRouter();
-  const [attempt, setAttempt] = useState(initialAttempt);
+  const memoryScope = attemptScope(workspaceId, programId, userId, version, activity.id);
+  const initialContent = useRef(acknowledgedAttempts.restore(memoryScope, initialAttempt)).current;
+  const restoredAcknowledgement = initialContent !== initialAttempt;
+  const [attempt, setAttempt] = useState(initialContent);
   const [mutationAccess, setMutationAccess] = useState<{ source: AttemptDTO | null; attempt: AttemptDTO } | null>(null);
-  const recovered = useRef(initialAttempt?.status === "draft" ? pendingDrafts.get(initialAttempt.id) : undefined);
-  const [responses, setResponses] = useState<AttemptResponses>(() => recovered.current?.responses ?? initialAttempt?.responses ?? { answers: {}, fields: {} });
+  const recovered = useRef(initialContent?.status === "draft" ? pendingDrafts.get(initialContent.id) : undefined);
+  const [responses, setResponses] = useState<AttemptResponses>(() => recovered.current?.responses ?? initialContent?.responses ?? { answers: {}, fields: {} });
   const current = useRef(responses);
-  const revision = useRef(recovered.current?.revision ?? initialAttempt?.revision ?? 1);
+  const revision = useRef(recovered.current?.revision ?? initialContent?.revision ?? 1);
   const edits = useRef(recovered.current ? 1 : 0);
   const acknowledged = useRef(0);
   const inFlight = useRef(false);
   const submitKey = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState(recovered.current ? "Modifiche non confermate recuperate in questa scheda. Salva o confronta la versione sul server." : initialAttempt?.status === "submitted" ? "Consegna ricevuta. Qui trovi le risposte e il feedback." : initialAttempt ? "Bozza caricata dal server." : "");
+  const [message, setMessage] = useState(recovered.current ? "Modifiche non confermate recuperate in questa scheda. Salva o confronta la versione sul server." : initialContent?.status === "submitted" ? "Consegna ricevuta. Qui trovi le risposte e il feedback." : restoredAcknowledgement ? "Ultime risposte confermate dal server recuperate in questa scheda." : initialContent ? "Bozza caricata dal server." : "");
   const [denied, setDenied] = useState<{ source: AttemptDTO | null; reason: string } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -58,10 +64,10 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
   const base = `/dashboard/${workspaceId}/learning/${programId}`;
   const activityPath = `${base}/activities/${activity.id}`;
   // A mutation response is current until a fresh server page arrives.
-  const serverAccess = mutationAccess?.source === initialAttempt ? mutationAccess.attempt : initialAttempt?.id === attempt?.id ? initialAttempt : attempt;
+  const serverAccess = mutationAccess?.source === initialAttempt ? mutationAccess.attempt : initialAttempt?.id === attempt?.id ? initialAttempt : null;
   const deniedReason = denied?.source === initialAttempt ? denied.reason : null;
-  const readOnly = !!attempt && (serverAccess?.writeAccess === false || !!deniedReason);
-  const readOnlyReason = deniedReason ?? serverAccess?.readOnlyReason;
+  const readOnly = !!attempt && (serverAccess?.writeAccess !== true || !!deniedReason);
+  const readOnlyReason = deniedReason ?? serverAccess?.readOnlyReason ?? (!serverAccess ? "Le risposte confermate sono conservate. Controlla la disponibilità per continuare con l’accesso aggiornato." : null);
   const canRetake = !!serverAccess?.canRetake && !deniedReason;
   useLearningUnsavedChanges({
     dirty: edits.current !== acknowledged.current,
@@ -108,6 +114,7 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
         setErrors(result.fieldErrors ?? {});
         return false;
       }
+      acknowledgedAttempts.remember(memoryScope, result.data);
       revision.current = result.data.revision;
       acknowledged.current = sentEdits;
       // A late ACK from an unmounted player must not erase edits made by a
@@ -132,7 +139,7 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
       inFlight.current = false;
       setBusy(false);
     }
-  }, [attempt, workspaceId, programId, readOnly, initialAttempt]);
+  }, [attempt, workspaceId, programId, readOnly, initialAttempt, memoryScope]);
 
   useEffect(() => {
     if (!attempt || attempt.status !== "draft" || readOnly || problem || busy || reviewing || edits.current === acknowledged.current) return;
@@ -157,6 +164,7 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
     try {
       const result = await startLearningAttempt({ workspaceId, programId, activityId: activity.id, expectedUserId: userId, expectedVersion: version });
       if (!result.ok) { setProblem(result.code); setMessage(result.message); return; }
+      acknowledgedAttempts.remember(memoryScope, result.data);
       const pending = result.data.status === "draft" ? pendingDrafts.get(result.data.id) : undefined;
       revision.current = pending?.revision ?? result.data.revision;
       setAttempt(result.data);
@@ -194,6 +202,7 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
         ? await submitLearningDecisions({ workspaceId, programId, attemptId: attempt.id, expectedRevision: revision.current })
         : await submitLearningAttempt({ workspaceId, programId, attemptId: attempt.id, expectedRevision: revision.current, idempotencyKey: submitKey.current });
       if (!result.ok) { setProblem(result.code); setMessage(result.message); setErrors(result.fieldErrors ?? {}); if (result.code === "closed" || result.code === "forbidden") setDenied({ source: initialAttempt, reason: result.message }); return; }
+      acknowledgedAttempts.remember(memoryScope, result.data);
       revision.current = result.data.revision;
       setAttempt(result.data);
       setMutationAccess({ source: initialAttempt, attempt: result.data });
@@ -210,6 +219,7 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
     try {
       const result = await startLearningRetake({ workspaceId, programId, parentAttemptId: attempt.id });
       if (!result.ok) { setMessage(result.message); if (result.code === "closed" || result.code === "forbidden") setDenied({ source: initialAttempt, reason: result.message }); return; }
+      acknowledgedAttempts.remember(attemptScope(workspaceId, programId, userId, version, result.data.activityId), result.data);
       router.push(`${base}/attempts/${result.data.id}`);
     } catch { setMessage("Recupero non aperto. Riprova senza cancellare il tentativo precedente."); }
     finally { setBusy(false); }
@@ -259,7 +269,7 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
         </CardContent></Card>;
       })}
       <div className="flex flex-wrap gap-4">{active.purpose !== "formative" && <Button disabled={busy || !canRetake} onClick={retake}>Riprendi e riprova</Button>}<Link className="self-center underline" href={`${base}/progress`}>I miei progressi e tentativi</Link></div>
-      {active.purpose !== "formative" && !canRetake && <div className="space-y-3 text-sm"><p>{deniedReason ?? serverAccess?.retakeUnavailableReason ?? "Il recupero non è disponibile in questo momento."}</p><LearningRefresh label="Controlla disponibilità" /></div>}
+      {active.purpose !== "formative" && !canRetake && <div className="space-y-3 text-sm"><p>{deniedReason ?? (restoredAcknowledgement ? "Controlla la disponibilità per verificare se puoi riprovare." : serverAccess?.retakeUnavailableReason) ?? "Il recupero non è disponibile in questo momento."}</p><LearningRefresh label="Controlla disponibilità" /></div>}
     </> : <>
       {phase === "questions" && <h2 ref={phaseHeading} tabIndex={-1} className="font-heading text-lg font-medium">Le tue risposte</h2>}
       {active.case && <Card><CardHeader><CardTitle>{active.case.title}</CardTitle></CardHeader><CardContent className="space-y-4">
