@@ -37,7 +37,10 @@ export function isWithinLearnerScope(pathname: string, workspaceId: string) {
   return (
     segments[0] === "dashboard" &&
     segments[1] === workspaceId &&
-    segments[2] === "learning"
+    segments[2] === "learning" &&
+    // Il registro della formazione elenca tutti i partecipanti: la pagina lo
+    // nega da sola, e il perimetro non lo lascia nemmeno raggiungere.
+    segments[3] !== "register"
   );
 }
 

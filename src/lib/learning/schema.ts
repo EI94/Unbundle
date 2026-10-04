@@ -139,3 +139,54 @@ export const learningMaterialDownloads = pgTable("learning_material_downloads", 
   lastDownloadedAt: date("last_downloaded_at").defaultNow().notNull(),
   downloadCount: integer("download_count").notNull().default(1),
 }, t => [primaryKey({ columns: [t.materialId, t.userId] })]);
+
+/** Registro della formazione IA: dati dell'azienda. Vedi la migrazione 0016. */
+export const learningRegisterSettings = pgTable("learning_register_settings", {
+  workspaceId: uuid("workspace_id").primaryKey().references(() => workspaces.id),
+  organizationLegalName: text("organization_legal_name"),
+  registerOwner: text("register_owner"),
+  aiActRole: text("ai_act_role"),
+  aiSystems: text("ai_systems").array().notNull().default([]),
+  useContext: text("use_context"),
+  trainers: text("trainers"),
+  companyNames: jsonb("company_names").$type<Record<string, string>>().notNull().default({}),
+  otherInitiatives: text("other_initiatives"),
+  updatedBy: uuid("updated_by").references(() => users.id),
+  updatedAt: date("updated_at").defaultNow().notNull(),
+});
+
+/** Presenze registrate dal formatore per chi non ha usato la piattaforma. Si annullano, non si modificano. */
+export const learningRegisterManualEntries = pgTable("learning_register_manual_entries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull(),
+  programId: uuid("program_id").notNull(),
+  moduleId: text("module_id").notNull(),
+  cohortId: text("cohort_id").notNull(),
+  personName: text("person_name").notNull(),
+  personEmail: text("person_email"),
+  note: text("note"),
+  recordedBy: uuid("recorded_by").notNull().references(() => users.id),
+  recordedAt: date("recorded_at").defaultNow().notNull(),
+  voidedAt: date("voided_at"),
+  voidedBy: uuid("voided_by").references(() => users.id),
+  voidReason: text("void_reason"),
+}, t => [
+  foreignKey({
+    columns: [t.workspaceId, t.programId, t.moduleId, t.cohortId],
+    foreignColumns: [learningSessions.workspaceId, learningSessions.programId, learningSessions.moduleId, learningSessions.cohortId],
+  }),
+  index().on(t.workspaceId, t.programId),
+]);
+
+/** Impronta di ogni esportazione del registro: un file mostrato a un ispettore si dimostra autentico. */
+export const learningRegisterExports = pgTable("learning_register_exports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id),
+  format: text("format").notNull(),
+  sha256: text("sha256").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  participantCount: integer("participant_count").notNull(),
+  companyDomain: text("company_domain"),
+  generatedBy: uuid("generated_by").notNull().references(() => users.id),
+  generatedAt: date("generated_at").defaultNow().notNull(),
+}, t => [index().on(t.workspaceId, t.generatedAt), index().on(t.sha256)]);

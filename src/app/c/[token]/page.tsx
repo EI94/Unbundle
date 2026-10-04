@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getJoinPreview, type JoinUnusableReason } from "@/lib/learning/join";
+import { participantNotice } from "@/lib/learning/register-legal";
 import { learningEnabled } from "@/lib/learning/server";
 import { JoinCourseForm } from "@/components/learning/join-course-form";
 import { Badge } from "@/components/ui/badge";
@@ -217,6 +218,9 @@ export default async function CourseJoinPage({
                 Le risposte restano conservate per {preview.retentionDays}{" "}
                 {preview.retentionDays === 1 ? "giorno" : "giorni"}, poi vengono
                 eliminate.
+              </li>
+              <li>
+                {participantNotice}
               </li>
             </ul>
           </div>

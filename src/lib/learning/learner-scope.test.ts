@@ -92,3 +92,11 @@ test("un percorso vuoto o malformato non apre il perimetro", () => {
     );
   }
 });
+
+test("il registro della formazione resta fuori dal perimetro del partecipante", () => {
+  for (const path of [`/dashboard/${W}/learning/register`, `/dashboard/${W}/learning/register/`, `/dashboard/${W}/learning/register?x=1`]) {
+    assert.equal(isWithinLearnerScope(path, W), false, `"${path}" deve stare fuori`);
+    assert.equal(learnerRedirect({ role: "learner", pathname: path, workspaceId: W }), learnerHomePath(W));
+  }
+  assert.equal(learnerRedirect({ role: "transformation_lead", pathname: `/dashboard/${W}/learning/register`, workspaceId: W }), null);
+});

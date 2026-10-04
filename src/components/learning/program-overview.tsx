@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getLearningProgram } from "@/lib/learning/server";
+import { participantNotice } from "@/lib/learning/register-legal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LearningShell, outcomeLabel } from "./learning-shell";
 import { LearningExportButton } from "./export-button";
@@ -320,6 +321,7 @@ export async function ProgramOverview({ workspaceId, programId, moduleId }: { wo
           <p>Le attività sono associate al tuo account. Vedi i tuoi risultati; le prove individuali sono accessibili ai formatori con autorizzazione esplicita. La direzione vede solo dati aggregati.</p>
           <p className="whitespace-pre-wrap">{program.visibilityPolicy}</p>
           <p>Le risposte restano conservate {program.retentionDays} giorni dopo la chiusura del corso.</p>
+          <p>{participantNotice}</p>
           {program.reviewers.length > 0 && <p>Formatori del tuo turno: {program.reviewers.join(", ")}.</p>}
         </div>
       </details>

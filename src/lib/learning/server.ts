@@ -243,9 +243,13 @@ export async function submitLearningAttempt(input:{workspaceId:string;programId:
   await db.execute(sql`WITH submitted AS (
     UPDATE learning_attempts SET status='submitted', result=${JSON.stringify(result)}::jsonb, submitted_at=now(),updated_at=now(),revision=revision+1,idempotency_key=${input.idempotencyKey}::uuid
     WHERE workspace_id=${input.workspaceId}::uuid AND program_id=${input.programId}::uuid AND id=${input.attemptId}::uuid AND enrollment_id=${ctx.enrollment.id}::uuid AND user_id=${ctx.userId}::uuid
-      AND status='draft' AND revision=${input.expectedRevision} AND ${learningWriteGuard(ctx,ctx.attempt.activityId)} RETURNING id
-  ) INSERT INTO learning_audit_events(workspace_id,program_id,actor_id,resource_id,event_type)
-    SELECT ${input.workspaceId}::uuid,${input.programId}::uuid,${ctx.userId}::uuid,id,'attempt_submitted' FROM submitted`);
+      AND status='draft' AND revision=${input.expectedRevision} AND ${learningWriteGuard(ctx,ctx.attempt.activityId)} RETURNING id,activity_id
+  ) INSERT INTO learning_audit_events(workspace_id,program_id,actor_id,resource_id,event_type,metadata)
+    -- Attività e turno, mai l'esito: dopo la cancellazione programmata dei
+    -- tentativi questo evento resta l'unica prova di che cosa è stato
+    -- completato, ed è quella che il registro della formazione IA mostra.
+    SELECT ${input.workspaceId}::uuid,${input.programId}::uuid,${ctx.userId}::uuid,id,'attempt_submitted',
+      jsonb_build_object('activityId',activity_id,'cohortId',${ctx.enrollment.cohortId}::text) FROM submitted`);
   const current=await requireOwnAttempt(input.workspaceId,input.programId,input.attemptId);
   if(current.attempt.status!=="submitted" || current.attempt.idempotencyKey!==input.idempotencyKey) throw new LearningError("conflict","Invio non confermato: la bozza è cambiata o l'attività è stata chiusa. Conserva le modifiche e ricarica.");
   return attemptDTO(current.attempt,current.program);

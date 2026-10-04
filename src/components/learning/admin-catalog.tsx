@@ -89,6 +89,10 @@ export function LearningAdminCatalog({ workspaceId, initial }: { workspaceId: st
         <Link className="inline-block underline underline-offset-4" href={`${base}/${program.id}/admin`}>Gestisci {program.title}</Link>
       </li>)}</ul>}
     </AdminSection>
+    <AdminSection title="Registro della formazione IA">
+      <p className="text-sm">Chi ha partecipato, quando, a quale contenuto: il registro si compila da solo mentre il corso si svolge ed è pronto da esportare in PDF o Excel in caso di controllo (art. 4 AI Act). Non contiene risposte né punteggi.</p>
+      <Link className="inline-block underline underline-offset-4" href={`${base}/register`}>Apri il registro</Link>
+    </AdminSection>
     {catalog.canCreate && <AdminSection title="Prepara un nuovo corso">
       <p className="text-sm text-muted-foreground">Usa il pacchetto didattico approvato. Dopo l’importazione sceglierai partecipanti e permessi, poi renderai disponibile il corso. Una versione già importata non può essere sovrascritta.</p>
       <form onSubmit={inspect} className="space-y-3">

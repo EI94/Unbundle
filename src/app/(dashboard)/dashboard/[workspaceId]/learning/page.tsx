@@ -9,7 +9,10 @@ export default async function LearningHome({ params }: { params: Promise<{ works
   const admin = home.enabled ? await getLearningAdminCatalog(workspaceId) : null;
   return <LearningShell workspaceId={workspaceId} title="La tua formazione">
     <p>Materiali, attività e feedback personali. Un percorso per imparare e riprovare, senza classifiche.</p>
-    {(admin?.canCreate || admin?.canManage) && <Link className="inline-block rounded-lg border px-4 py-2 text-sm font-medium" href={`/dashboard/${workspaceId}/learning/admin`}>Gestisci formazione</Link>}
+    {(admin?.canCreate || admin?.canManage) && <div className="flex flex-wrap gap-3">
+      <Link className="inline-block rounded-lg border px-4 py-2 text-sm font-medium" href={`/dashboard/${workspaceId}/learning/admin`}>Gestisci formazione</Link>
+      <Link className="inline-block rounded-lg border px-4 py-2 text-sm font-medium" href={`/dashboard/${workspaceId}/learning/register`}>Registro formazione IA</Link>
+    </div>}
     {!home.enabled ? <LearningUnavailable message="La formazione non è ancora attiva in questo ambiente. Le altre sezioni del workspace restano disponibili." /> : home.programs.length === 0 ? <LearningUnavailable message="Non hai ancora un percorso assegnato in questo workspace. Rivolgiti al responsabile della formazione." /> : <div className="grid gap-4 sm:grid-cols-2">{home.programs.map((program) => <Card key={program.id}><CardHeader><CardTitle>{program.title}</CardTitle></CardHeader><CardContent className="space-y-3">
       <p className="text-sm text-muted-foreground">Versione {program.version}{program.cohortId ? ` · Turno ${program.cohortId}` : ""}</p>
       <Link className="inline-block rounded-lg bg-primary px-4 py-2 text-primary-foreground" href={`/dashboard/${workspaceId}/learning/${program.id}`}>Apri percorso</Link>
