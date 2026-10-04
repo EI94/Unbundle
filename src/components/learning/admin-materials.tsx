@@ -19,9 +19,9 @@ import { AdminSection, AdminSelect, ConfirmAdminAction } from "./admin-shared";
 const MAX_BYTES = 4_000_000;
 
 function sizeLabel(bytes: number) {
-  if (bytes < 1024) return `${bytes} byte`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+  if (bytes < 1024) return `${bytes}\u00a0byte`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u00a0KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")}\u00a0MB`;
 }
 
 const timingLabel = (material: AdminDetailDTO["materials"][number]) =>

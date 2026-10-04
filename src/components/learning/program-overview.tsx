@@ -31,9 +31,9 @@ function minuteLabel(minutes: number) {
   return String(minutes).padStart(2, "0");
 }
 function sizeLabel(bytes: number) {
-  if (bytes < 1024) return `${bytes} byte`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
+  if (bytes < 1024) return `${bytes}\u00a0byte`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u00a0KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")}\u00a0MB`;
 }
 /** Le righe della descrizione diventano passi, se il formatore le ha scritte così. */
 function steps(text: string | null) {
@@ -138,12 +138,13 @@ function BeforeYouStart({ materials }: { materials: Material[] }) {
           )}
           {material.access.downloadable ? (
             <a
-              className="inline-flex h-12 items-center rounded-xl bg-emerald-700 px-6 text-base font-medium text-white hover:bg-emerald-800"
+              className="inline-flex min-h-12 flex-wrap items-center gap-x-2 rounded-xl bg-emerald-700 px-6 py-3 text-base font-medium text-white hover:bg-emerald-800"
               href={material.href}
               download={material.fileName}
               data-testid="learning-download-before"
             >
-              Scarica {material.fileName} · {sizeLabel(material.sizeBytes)}
+              <span>Scarica {material.fileName}</span>
+              <span className="whitespace-nowrap font-normal opacity-90">{sizeLabel(material.sizeBytes)}</span>
             </a>
           ) : (
             <p className="text-sm text-muted-foreground">{material.access.reason}</p>
