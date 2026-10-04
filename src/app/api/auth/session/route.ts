@@ -18,12 +18,13 @@ function fromThisSite(req: Request) {
   const origin = req.headers.get("origin");
   if (!origin) return req.headers.get("sec-fetch-site") === "same-origin";
   try {
-    const host = req.headers.get("host");
-    const self = host ? `${new URL(req.url).protocol}//${host}` : new URL(req.url).origin;
-    const allowed = new Set([new URL(self).origin]);
+    const originHost = new URL(origin).host;
+    // Stesso host della richiesta (il protocollo interno dietro il proxy di
+    // Vercel può essere http: si confronta l'host), oppure l'indirizzo
+    // pubblico configurato.
+    if (originHost === req.headers.get("host")) return true;
     const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-    if (configured) allowed.add(new URL(configured.startsWith("http") ? configured : `https://${configured}`).origin);
-    return allowed.has(new URL(origin).origin);
+    return Boolean(configured) && new URL(configured!.startsWith("http") ? configured! : `https://${configured}`).host === originHost;
   } catch {
     return false;
   }
