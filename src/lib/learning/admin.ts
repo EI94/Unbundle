@@ -11,6 +11,7 @@ import { learningRetentionEligibility } from "./retention";
 import type { PrivateTrainingPack } from "./types";
 import { createJoinToken, hashJoinToken, joinPath } from "./join-token";
 import { learningBaseUrl, joinQrSvg } from "./join-url";
+import { deleteMaterial, listMaterialsForTrainer } from "./materials";
 import type { AdminCatalogDTO, AdminDetailDTO, AdminJoinLinkDTO, AdminMutationDTO, AdminPackDTO, AdminProgramDTO, LearningAdminRequest, AdminResponseMap } from "./admin-contract";
 
 type Program = Omit<AdminProgramDTO, "canManageAll" | "managedCohorts">;
@@ -73,7 +74,7 @@ export async function getLearningAdminCatalog(workspaceId: string, expectedUserI
 }
 export async function getLearningAdminDetail(workspaceId: string, programId: string, expectedUserId?: string): Promise<AdminDetailDTO> {
   const ctx = await requireManager(workspaceId, programId, expectedUserId);
-  const [members,sessions,enrollments,grants,audit,counts,joinLinks] = await Promise.all([
+  const [members,sessions,enrollments,grants,audit,counts,joinLinks,materials] = await Promise.all([
     rows<AdminDetailDTO["members"][number]>(sql`SELECT u.id,u.name,u.email,COALESCE(m.role,wm.role)::text AS role,CASE WHEN m.user_id IS NOT NULL THEN 'organization' ELSE 'workspace' END AS source
       FROM workspaces w JOIN users u ON ${member(workspaceId,sql`u.id`)} LEFT JOIN memberships m ON m.organization_id=w.organization_id AND m.user_id=u.id
       LEFT JOIN workspace_memberships wm ON wm.workspace_id=w.id AND wm.user_id=u.id WHERE w.id=${workspaceId}::uuid
@@ -87,7 +88,8 @@ export async function getLearningAdminDetail(workspaceId: string, programId: str
       FROM learning_grants g JOIN users u ON u.id=g.user_id WHERE g.workspace_id=${workspaceId}::uuid AND g.program_id=${programId}::uuid AND ${scopedRows(ctx,sql`g.cohort_id`)} ORDER BY g.granted_at DESC`),
     rows<AdminDetailDTO["audit"][number]>(sql`SELECT a.id,a.event_type AS "eventType",u.name AS "actorName",a.resource_id AS "resourceId",a.created_at AS "createdAt",a.metadata->>'cohortId' AS "cohortId"
       FROM learning_audit_events a JOIN users u ON u.id=a.actor_id WHERE a.workspace_id=${workspaceId}::uuid AND a.program_id=${programId}::uuid
-      AND a.event_type IN ('program_imported','program_settings_changed','program_enabled','program_disabled','program_closed','program_reopened','session_status_changed','learner_enrolled','enrollment_changed','grant_created','grant_revoked','retention_purged')
+      AND a.event_type IN ('program_imported','program_settings_changed','program_enabled','program_disabled','program_closed','program_reopened','session_status_changed','learner_enrolled','enrollment_changed','grant_created','grant_revoked','retention_purged',
+        'join_link_created','join_link_opened','join_link_closed','join_link_seats_changed','join_link_revoked','learner_joined_by_link','learner_cohort_moved','material_uploaded','material_deleted')
       AND ${scopedRows(ctx,sql`a.metadata->>'cohortId'`)} ORDER BY a.created_at DESC LIMIT 100`),
     ctx.scopes.includes(null) ? rows<{attempts:number;ideaDrafts:number}>(sql`SELECT (SELECT count(*)::int FROM learning_attempts WHERE workspace_id=${workspaceId}::uuid AND program_id=${programId}::uuid) AS attempts,
       (SELECT count(*)::int FROM learning_idea_drafts WHERE workspace_id=${workspaceId}::uuid AND program_id=${programId}::uuid) AS "ideaDrafts"`) : Promise.resolve([]),
@@ -99,11 +101,14 @@ export async function getLearningAdminDetail(workspaceId: string, programId: str
         WHERE r.link_id=l.id AND r.outcome='kept_other_cohort' AND r.reopen_requested_at IS NOT NULL GROUP BY r.enrollment_id
       ) n JOIN learning_enrollments e ON e.id=n.enrollment_id),'[]'::jsonb) AS "reopenRequests"
       FROM learning_join_links l WHERE l.workspace_id=${workspaceId}::uuid AND l.program_id=${programId}::uuid AND ${scopedRows(ctx,sql`l.cohort_id`)} ORDER BY l.created_at DESC`),
+    listMaterialsForTrainer(workspaceId,programId),
   ]);
   const eligibility=learningRetentionEligibility({status:ctx.program.status,closedAt:ctx.program.closedAt?new Date(ctx.program.closedAt):null,retentionDays:ctx.program.retentionDays});
   return {userId:ctx.userId,program:programDTO(ctx.program,ctx.scopes),members,sessions:sessions.map(s=>({...s,startsAt:instant(s.startsAt),endsAt:instant(s.endsAt)})),enrollments,
     grants:grants.map(g=>({...g,grantedAt:instant(g.grantedAt),revokedAt:g.revokedAt?instant(g.revokedAt):null})),audit:audit.map(a=>({...a,createdAt:instant(a.createdAt)})),
     retention:counts[0]?{...counts[0],eligible:eligibility.eligible,purgeAfter:eligibility.expiresAt?.toISOString()??null}:null,
+    materials:materials.map(m=>({id:m.id,moduleId:m.moduleId,title:m.title,description:m.description,kind:m.kind,audience:m.audience,
+      downloadBefore:m.downloadBefore,availableAfterSession:m.availableAfterSession,fileName:m.fileName,sizeBytes:m.sizeBytes,downloads:m.downloads,enrolled:m.enrolled})),
     joinLinks:joinLinks.map(l=>({...l,expiresAt:instant(l.expiresAt),createdAt:instant(l.createdAt),revokedAt:l.revokedAt?instant(l.revokedAt):null}))};
 }
 function privatePack(raw: unknown): PrivateTrainingPack {
@@ -244,6 +249,14 @@ export async function performLearningAdmin(request: LearningAdminRequest): Promi
       audited AS(${audit(ctx,"join_link_seats_changed",sql`cohort_id`)}) SELECT CASE WHEN EXISTS(SELECT 1 FROM changed) THEN (SELECT count(*) FROM audited) ELSE -1 END AS changed`),
       "Posti aggiornati.");
   }
+  if (request.operation === "deleteMaterial") {
+    scope(ctx,null);
+    const removed=await deleteMaterial(w,p,request.input.materialId);
+    if(!removed)throw conflict();
+    await db.execute(sql`INSERT INTO learning_audit_events(workspace_id,program_id,actor_id,resource_id,event_type,metadata)
+      VALUES (${w}::uuid,${p}::uuid,${ctx.userId}::uuid,${request.input.materialId}::uuid,'material_deleted','{}'::jsonb)`);
+    return result(p,1,"Materiale eliminato. Chi l'aveva già scaricato conserva la propria copia.");
+  }
   if (request.operation === "revokeJoinLink") {
     const i=request.input;
     return result(p,await mutate(ctx,sql`WITH changed AS(UPDATE learning_join_links l SET revoked_at=now(),door_open=false
@@ -262,4 +275,16 @@ export async function performLearningAdmin(request: LearningAdminRequest): Promi
       SELECT CASE WHEN EXISTS(SELECT 1 FROM audited) THEN (SELECT count(*) FROM attempts)+(SELECT count(*) FROM ideas) ELSE -1 END AS changed`),"Risposte e bozze eliminate secondo la conservazione prevista. Proposte nel portfolio, iscrizioni e audit conservati.");
   }
   throw new LearningError("invalid","Operazione non riconosciuta.");
+}
+
+
+/**
+ * Permesso di gestione sull'intero corso, per le rotte che non passano dal
+ * contratto JSON (l'upload dei materiali è multipart). Stesse regole delle
+ * operazioni admin: workspace raggiungibile, permesso «manage» senza limite di turno.
+ */
+export async function requireFullProgramManager(workspaceId: string, programId: string, expectedUserId?: string) {
+  const ctx = await requireManager(workspaceId, programId, expectedUserId);
+  scope(ctx, null);
+  return { userId: ctx.userId, workspaceId: ctx.workspaceId, programId: ctx.program.id, privatePack: null };
 }

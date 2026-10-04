@@ -14,8 +14,15 @@ export function suppressSmallSplit(total: number, count: number, minimum = 5): n
   return count;
 }
 
-export function m1ReleaseMinutes(activity: {module_id:string;type:string;purpose:string}): number | null {
+/**
+ * Minuti dall'inizio del turno in cui un'attività si apre.
+ * Un corso può dichiararli (opens_after_minutes); altrimenti valgono i tempi del
+ * primo modulo da due ore per cui il modulo è nato. Solo M1: le iscrizioni sono
+ * per M1, e un'attività di un altro modulo verrebbe aperta sul turno sbagliato.
+ */
+export function m1ReleaseMinutes(activity: {module_id:string;type:string;purpose:string;opens_after_minutes?:number}): number | null {
   if(activity.module_id!=="m1")return null;
+  if(typeof activity.opens_after_minutes==="number")return activity.opens_after_minutes;
   if(activity.type==="case_review")return 78;
   if(activity.type==="knowledge_check" && activity.purpose==="formative")return 30;
   if(activity.type==="knowledge_check" && ["post_module","retake"].includes(activity.purpose))return 105;

@@ -12,6 +12,7 @@ import { validateDraftResponses, validateCompleteness, gradeActivity } from "./g
 import { csvCell, summarizeActivityOutcomes, m1ReleaseMinutes, type LearningCapability } from "./policy";
 import type { AttemptResponses, LearnerActivityDTO, ObjectiveGrade, PrivateTrainingPack } from "./types";
 import { activityAvailability, attemptAccess, latestActivityAttempt, type ActivityAvailability } from "./availability";
+import { moduleCompletion } from "./module-completion";
 
 export type LearningErrorCode = "unavailable" | "unauthenticated" | "forbidden" | "invalid" | "conflict" | "closed" | "technical";
 export class LearningError extends Error {
@@ -112,18 +113,26 @@ export async function getLearningProgram(workspaceId: string,programId: string) 
   const attempts = enrollment ? await ownAttempts({userId,program,enrollment}) : [];
   const sessions = await db.select().from(learningSessions).where(and(eq(learningSessions.workspaceId,workspaceId),eq(learningSessions.programId,programId))).orderBy(learningSessions.startsAt);
   const reviewers = enrollment ? await db.select({name:users.name,email:users.email}).from(learningGrants).innerJoin(users,eq(learningGrants.userId,users.id)).where(and(eq(learningGrants.workspaceId,workspaceId),eq(learningGrants.programId,programId),eq(learningGrants.capability,"review"),isNull(learningGrants.revokedAt),sql`(${learningGrants.cohortId} IS NULL OR ${learningGrants.cohortId} = ${enrollment.cohortId})`)) : [];
-  const caseAttempt=attempts.filter(a=>a.activityId==="m1-case" && a.status==="submitted").at(-1);
-  const finalAttempt=attempts.filter(a=>(a.activityId==="m1-exit-a" || a.activityId==="m1-exit-b") && a.status==="submitted").at(-1);
-  const m1Completed=!!caseAttempt && !!finalAttempt;
-  const m1Outcome=m1Completed ? (caseAttempt.result?.status==="consolidated" && finalAttempt.result?.status==="consolidated" ? "consolidated":"needs_practice") : null;
+  // Completamento ricavato dalle attività che il corso dichiara obbligatorie,
+  // non da nomi scritti nel codice (vedi module-completion.ts).
+  const completionFor = (moduleId: string) => moduleCompletion(program.privatePack, moduleId, moduleId === "m1" ? attempts : []);
   const now = Date.now();
   const ownSession = enrollment ? sessions.find(s => s.moduleId === enrollment.moduleId && s.cohortId === enrollment.cohortId) ?? null : null;
+  // Import dinamico: materials.ts usa LearningError da questo modulo.
+  const materials = await (await import("./materials")).listProgramMaterials(userId, workspaceId, programId);
   return {...programDTO(program,grants,enrollment),visibilityPolicy:program.visibilityPolicy,retentionDays:program.retentionDays,
-    modules:program.privatePack.modules.map(m=>({id:m.id,title:m.title,subtitle:m.subtitle,objective:m.objective,completionStatus:m.id==="m1"?(m1Completed?"completed":attempts.length?"in_progress":"not_started"):"not_started",learningOutcome:m.id==="m1"?m1Outcome:null,status:m.id==="m1" && enrollment ? program.status : "scheduled",
+    // L'istante di riferimento della pagina: calcolato qui, non durante il render.
+    now,
+    materials,
+    ownSession: ownSession ? {cohortId:ownSession.cohortId,moduleId:ownSession.moduleId,startsAt:ownSession.startsAt.toISOString(),endsAt:ownSession.endsAt.toISOString(),status:ownSession.status} : null,
+    modules:program.privatePack.modules.map(m=>({id:m.id,title:m.title,subtitle:m.subtitle,objective:m.objective,durationMinutes:m.duration_minutes,
+      agenda:m.agenda ?? [],takeaways:m.takeaways ?? [],nextSteps:m.next_steps ?? [],
+      completion:completionFor(m.id),
+      completionStatus:completionFor(m.id).status,learningOutcome:completionFor(m.id).outcome,status:m.id==="m1" && enrollment ? program.status : "scheduled",
       activities:program.privatePack.activities.filter(a=>a.module_id===m.id && a.purpose!=="retake").map(a=>{
         const row = latestActivityAttempt(a, attempts);
         const availability = availabilityFor(program, row?.activityId ?? a.id, ownSession, now);
-        return {id:a.id,title:a.title,kind:a.type,status:row?.status ?? availability.state,attemptId:row?.id ?? null,attemptNumber:row?.attemptNumber ?? null,
+        return {id:a.id,title:a.title,kind:a.type,purpose:a.purpose,estimatedMinutes:a.estimated_minutes,required:a.completion_gate,opensAfterMinutes:m1ReleaseMinutes(a),status:row?.status ?? availability.state,attemptId:row?.id ?? null,attemptNumber:row?.attemptNumber ?? null,
           attemptTitle:row?getActivity(program.privatePack,row.activityId).title:null,result:row?summary(row,program.privatePack).result:null,availability};
       })})),
     sessions:sessions.map(s=>({id:s.id,moduleId:s.moduleId,cohortId:s.cohortId,assigned:!!enrollment && s.moduleId===enrollment.moduleId && s.cohortId===enrollment.cohortId,startsAt:s.startsAt.toISOString(),endsAt:s.endsAt.toISOString(),timezone:s.timezone,status:s.status})),

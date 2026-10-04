@@ -1,6 +1,10 @@
 /** Private pack types are server input only. Client components use the explicit DTOs below. */
 export interface TrainingCohort { id: string; start_local: string; end_local: string; timezone: string }
-export interface TrainingModule { id: string; title: string; subtitle: string; objective: string; cohorts: TrainingCohort[]; duration_minutes: number }
+export interface TrainingAgendaBlock { from_minute: number; to_minute: number; title: string; detail?: string }
+export interface TrainingModule {
+  id: string; title: string; subtitle: string; objective: string; cohorts: TrainingCohort[]; duration_minutes: number;
+  agenda?: TrainingAgendaBlock[]; takeaways?: string[]; next_steps?: string[];
+}
 export interface TrainingTextField { id: string; label: string; min_chars: number; max_chars: number; grading?: "unscored_reflection" }
 export interface TrainingActivity {
   id: string; module_id: string; type: "knowledge_check" | "case_review" | "prompt_lab" | "skill_blueprint";
@@ -9,6 +13,7 @@ export interface TrainingActivity {
   completion_gate: boolean; estimated_minutes: number; pass_min_correct?: number; required_critical_correct?: boolean;
   required_text_fields?: TrainingTextField[]; allowed_modes?: string[]; retake_activity_id?: string;
   parallel_form_status?: string; rubric_id?: string; grading?: "human_rubric"; retake_policy?: string;
+  opens_after_minutes?: number;
 }
 export interface TrainingItem {
   id: string; module_id: string; activity_id: string; type: "single_choice"; prompt: string;

@@ -1,6 +1,6 @@
 import { m1ReleaseMinutes } from "./policy.ts";
 
-type ActivityTiming = { module_id: string; type: string; purpose: string };
+type ActivityTiming = { module_id: string; type: string; purpose: string; opens_after_minutes?: number };
 export type LearningSessionTiming = { startsAt: Date | string; status: string };
 export type ActivityAvailability = {
   state: "hidden" | "planned" | "course_closed" | "session_missing" | "session_closed" | "scheduled" | "available";

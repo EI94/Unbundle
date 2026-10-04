@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, jsonb, boolean, integer, unique, foreignKey, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, jsonb, boolean, integer, unique, foreignKey, index, primaryKey, customType } from "drizzle-orm/pg-core";
 import { users, workspaces, useCases } from "@/lib/db/schema";
 import type { PrivateTrainingPack, AttemptOrder, AttemptResponses, ObjectiveGrade } from "./types";
 
@@ -102,3 +102,40 @@ export const learningJoinRedemptions = pgTable("learning_join_redemptions", {
   }),
   index().on(t.workspaceId, t.programId, t.linkId),
 ]);
+
+
+/** Byte grezzi di un file. Dichiarato qui perché db:push non proponga di cancellare la tabella. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/** Materiali del corso: cartella esercizi, slide, documenti per i formatori. Vedi la migrazione 0015. */
+export const learningMaterials = pgTable("learning_materials", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull(),
+  programId: uuid("program_id").notNull(),
+  moduleId: text("module_id"),
+  title: text("title").notNull(),
+  description: text("description"),
+  kind: text("kind").notNull(),
+  audience: text("audience").notNull().default("learners"),
+  downloadBefore: boolean("download_before").notNull().default(false),
+  availableAfterSession: boolean("available_after_session").notNull().default(false),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  sha256: text("sha256").notNull(),
+  content: bytea("content").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: date("created_at").defaultNow().notNull(),
+}, t => [
+  foreignKey({ columns: [t.workspaceId, t.programId], foreignColumns: [learningPrograms.workspaceId, learningPrograms.id] }),
+  index().on(t.workspaceId, t.programId, t.sortOrder),
+]);
+
+export const learningMaterialDownloads = pgTable("learning_material_downloads", {
+  materialId: uuid("material_id").notNull().references(() => learningMaterials.id),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  firstDownloadedAt: date("first_downloaded_at").defaultNow().notNull(),
+  lastDownloadedAt: date("last_downloaded_at").defaultNow().notNull(),
+  downloadCount: integer("download_count").notNull().default(1),
+}, t => [primaryKey({ columns: [t.materialId, t.userId] })]);

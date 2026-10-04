@@ -15,12 +15,20 @@ const activity = z.strictObject({
   estimated_minutes: positive, pass_min_correct: positive.optional(), required_critical_correct: z.boolean().optional(),
   required_text_fields: z.array(field).max(30).optional(), allowed_modes: z.array(z.enum(["review_reference_output", "execute_authorized_assistant"])).min(1).optional(),
   retake_activity_id: id.optional(), parallel_form_status: text.optional(), rubric_id: id.optional(), grading: z.literal("human_rubric").optional(), retake_policy: text.optional(),
+  // Minuti dall'inizio del turno in cui l'attività si apre. Se manca valgono i
+  // tempi storici del primo modulo da due ore (policy.ts).
+  opens_after_minutes: z.number().int().min(0).max(600).optional(),
 });
 const packSchema = z.strictObject({
   schema_version: z.literal("1.0.0"), content_version: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/), status: text, visibility: z.string().includes("PRIVATE"), language: id, client_pack: id,
   source_snapshot_sha: z.string().regex(/^[0-9a-f]{40}$/),
   modules: z.array(z.strictObject({ id, title: text, subtitle: text, objective: text,
     cohorts: z.array(z.strictObject({ id, start_local: text, end_local: text, timezone: text })).min(1).max(30), duration_minutes: positive,
+    // Facoltativi: rendono la pagina del partecipante una scaletta da seguire
+    // invece di un elenco di attività. Un pacchetto senza questi campi resta valido.
+    agenda: z.array(z.strictObject({ from_minute: z.number().int().min(0).max(1440), to_minute: z.number().int().min(1).max(1440), title: text, detail: text.optional() })).max(30).optional(),
+    takeaways: z.array(text).max(20).optional(),
+    next_steps: z.array(text).max(20).optional(),
   })).min(1).max(20),
   competencies: z.array(z.strictObject({ id, label: text })).min(1).max(100),
   cases: z.array(z.strictObject({
@@ -94,6 +102,18 @@ export function parseTrainingPack(raw: unknown): PrivateTrainingPack {
   const items = new Map(pack.items.map((value) => [value.id, value]));
   const cases = new Map(pack.cases.map((value) => [value.id, value]));
   const rubrics = new Set(ids(pack.rubrics));
+  for (const trainingModule of pack.modules) {
+    const blocks = trainingModule.agenda ?? [];
+    for (const [index, block] of blocks.entries()) {
+      invariant(block.from_minute < block.to_minute && block.to_minute <= trainingModule.duration_minutes, "scaletta fuori dalla durata del modulo");
+      invariant(index === 0 || blocks[index - 1].to_minute <= block.from_minute, "scaletta non ordinata o sovrapposta");
+    }
+  }
+  for (const entry of pack.activities) {
+    if (entry.opens_after_minutes === undefined) continue;
+    const owner = pack.modules.find((value) => value.id === entry.module_id);
+    invariant(owner && entry.opens_after_minutes < owner.duration_minutes, "apertura attività oltre la durata del modulo");
+  }
   for (const trainingModule of pack.modules) for (const cohort of trainingModule.cohorts) {
     const start = localDateTimeToUtc(cohort.start_local, cohort.timezone);
     const end = localDateTimeToUtc(cohort.end_local, cohort.timezone);

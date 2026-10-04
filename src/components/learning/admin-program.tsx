@@ -11,13 +11,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { AdminNotice, AdminSection, AdminSelect, AdminUnsavedNotice, ConfirmAdminAction, LearningLinkCopy, adminDate, sessionLabels } from "./admin-shared";
 import { AdminParticipants } from "./admin-participants";
 import { AdminJoinLinks } from "./admin-join-links";
+import { AdminMaterials } from "./admin-materials";
 import { AdminGrants } from "./admin-grants";
 import { confirmLearningNavigation, useLearningUnsavedChanges } from "./use-unsaved-changes";
 
 type Mutation = Exclude<LearningAdminRequest, { operation: "catalog" | "detail" | "inspectPack" }>;
 type WithoutActor<T> = T extends unknown ? Omit<T, "expectedUserId"> : never;
 export type AdminMutate = (request: WithoutActor<Mutation>) => Promise<boolean>;
-const sections = { overview: "Corso", links: "Link di accesso", participants: "Partecipanti", sessions: "Turni", permissions: "Permessi", history: "Registro e conservazione" };
+const sections = { overview: "Corso", links: "Link di accesso", materials: "Materiali", participants: "Partecipanti", sessions: "Turni", permissions: "Permessi", history: "Registro e conservazione" };
 type Section = keyof typeof sections;
 
 const auditLabels: Record<string, string> = {
@@ -28,6 +29,7 @@ const auditLabels: Record<string, string> = {
   join_link_created: "Link di accesso creato", join_link_opened: "Ingresso aperto", join_link_closed: "Ingresso chiuso",
   join_link_seats_changed: "Posti del link aggiornati", join_link_revoked: "Link di accesso disattivato",
   learner_joined_by_link: "Partecipante entrato dal link", learner_cohort_moved: "Partecipante spostato di turno",
+  material_uploaded: "Materiale caricato", material_deleted: "Materiale eliminato",
   attempt_started: "Attività avviata", draft_saved: "Bozza salvata", attempt_submitted: "Attività consegnata", decisions_submitted: "Decisioni consegnate",
 };
 
@@ -62,6 +64,11 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
     } catch { setError(true); setMessage("Modifica non confermata. Verifica la connessione e ricarica il riepilogo prima di riprovare."); return false; }
     finally { inFlight.current = false; setBusy(false); }
   };
+
+  async function reloadDetail() {
+    const result = await learningAdminRequest({ expectedUserId: data.userId, operation: "detail", input: scope });
+    if (result.ok) setData(result.data);
+  }
 
   async function refresh() {
     if (inFlight.current || !confirmLearningNavigation()) return;
@@ -99,6 +106,7 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
 
       </div>}
       {section === "links" && <AdminJoinLinks workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} />}
+      {section === "materials" && <AdminMaterials workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} onUploaded={reloadDetail} />}
       {section === "participants" && <AdminParticipants workspaceId={workspaceId} data={data} busy={busy} mutate={mutate} />}
       {section === "sessions" && <AdminSection title="Apertura dei turni">
         <p className="text-sm">Con il programma automatico, M1 apre le attività dopo 30, 78 e 105 minuti dall’inizio del turno. La fine dell’incontro non interrompe il lavoro. “Tutte le attività aperte” permette di anticiparle; “Nuove risposte sospese” interrompe salvataggi e consegne.</p>
