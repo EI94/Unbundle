@@ -1,4 +1,5 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
@@ -26,9 +27,11 @@ export default async function PortfolioReviewPage({
 }: {
   params: Promise<{ workspaceId: string; useCaseId: string }>;
 }) {
-  await requireSession();
 
   const { workspaceId, useCaseId } = await params;
+
+  const { access } = await requireWorkspacePage(workspaceId);
+  const canReview = canReviewWorkspacePortfolio(access.role);
   const [workspace, useCase, model] = await Promise.all([
     getWorkspaceById(workspaceId),
     getUseCaseById(useCaseId),
@@ -149,6 +152,11 @@ export default async function PortfolioReviewPage({
                 </span>
               )}
             </div>
+            {!canReview ? (
+              <p className="rounded-lg border p-4 text-sm text-muted-foreground">
+                Punteggi e stato li modifica chi valuta gli use case.
+              </p>
+            ) : (
             <ReviewForm
               key={`${useCaseId}:${useCase.updatedAt?.getTime?.() ?? 0}:${JSON.stringify(useCase.customScores ?? {})}`}
               workspaceId={workspaceId}
@@ -161,6 +169,7 @@ export default async function PortfolioReviewPage({
                 reviewNotes: useCase.reviewNotes ?? "",
               }}
             />
+            )}
           </CardContent>
         </Card>
       </div>

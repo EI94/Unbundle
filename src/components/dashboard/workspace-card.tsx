@@ -1,3 +1,4 @@
+import { roleLabel } from "@/lib/workspace-roles";
 import Link from "next/link";
 import type { Workspace } from "@/lib/db/schema";
 import { ArrowRight } from "lucide-react";
@@ -36,7 +37,7 @@ export function WorkspaceCard({
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">
           {statusLabels[workspace.status] ?? workspace.status}
-          {accessRole ? ` · ${accessRole.replaceAll("_", " ")}` : ""}
+          {accessRole ? ` · ${roleLabel(accessRole)}` : ""}
         </p>
       </div>
       <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-3" />

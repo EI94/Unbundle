@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import {
   createAiReadinessAuditEvent,
@@ -55,7 +55,7 @@ export async function GET(
   if (!bundle) {
     return Response.json({ error: "Assessment not found" }, { status: 404 });
   }
-  const access = await getWorkspaceAccessForUser(
+  const access = await getCollaboratorAccess(
     session.user.id,
     bundle.assessment.workspaceId
   );

@@ -60,20 +60,20 @@ export function DeleteWorkspaceForm({
             <h3 className="text-sm font-semibold">Elimina workspace</h3>
           </div>
           <p className="max-w-xl text-sm text-muted-foreground">
-            Cancella in modo permanente discovery, activity map, use case,
-            documenti, ranking, Slack drafts, notifiche, report e simulazioni
-            collegati a questo workspace.
+            Elimina per sempre tutto il contenuto del workspace: discovery,
+            mappa delle attività, use case, documenti, classifiche, bozze
+            arrivate da Slack, notifiche, report e simulazioni.
           </p>
           {!canDelete && (
             <p className="text-xs text-muted-foreground">
-              Serve un ruolo Executive Sponsor o Transformation Lead per usare
-              questa azione.
+              Può eliminarlo solo chi amministra l&apos;organizzazione.
             </p>
           )}
         </div>
         <Button
           type="button"
           variant="destructive"
+          className="h-10 self-start sm:h-8"
           onClick={() => setOpen(true)}
           disabled={!canDelete}
         >
@@ -88,9 +88,8 @@ export function DeleteWorkspaceForm({
             <DialogHeader>
               <DialogTitle>Elimina definitivamente il workspace</DialogTitle>
               <DialogDescription>
-                Questa operazione rimuove il workspace e tutti i dati collegati
-                dal database. I file caricati su Blob vengono rimossi dopo la
-                cancellazione DB.
+                Il workspace e tutti i suoi dati vengono eliminati per sempre,
+                compresi i file caricati. Non si può annullare.
               </DialogDescription>
             </DialogHeader>
 

@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
 import { getUseCaseById, getUseCaseKRLinks } from "@/lib/db/queries/use-cases";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,9 +31,10 @@ export default async function UseCaseDetailPage({
 }: {
   params: Promise<{ workspaceId: string; useCaseId: string }>;
 }) {
-  await requireSession();
 
   const { workspaceId, useCaseId } = await params;
+
+  await requireWorkspacePage(workspaceId);
   const useCase = await getUseCaseById(useCaseId);
   if (!useCase || useCase.workspaceId !== workspaceId) notFound();
 
@@ -64,7 +65,7 @@ export default async function UseCaseDetailPage({
   const hasEsg = esgItems.some((i) => (i.value ?? 0) > 0);
 
   return (
-    <div className="flex-1 p-6 lg:p-8 max-w-4xl">
+    <div className="mx-auto w-full min-w-0 max-w-4xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
       <Link href={`/dashboard/${workspaceId}/use-cases`}>
         <Button variant="ghost" size="sm" className="mb-4">
           <ArrowLeft className="mr-2 h-4 w-4" />

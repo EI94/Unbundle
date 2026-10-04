@@ -9,6 +9,7 @@ import { slackChatPostMessage } from "@/lib/slack/slack-chat-post";
 import { submitSlackContributionDraft } from "@/lib/slack/submit-contribution";
 import { getDraftById, getSlackInstallationByTeamId } from "@/lib/db/queries/slack";
 import { tryBuildPortfolioShareUrl } from "@/lib/portfolio/share-link";
+import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { chooseSlackContributionTeam, resolveSlackTenantContext } from "@/lib/slack/use-case-agent-utils";
 
 export const maxDuration = 60;
@@ -130,7 +131,9 @@ async function handleBlockActions(payload: SlackBlockActionPayload) {
   if (result.ok) {
     const base = getAppBaseUrl();
     const reviewUrl = base
-      ? tryBuildPortfolioShareUrl(base, draft.workspaceId, result.useCaseId)
+      ? tryBuildPortfolioShareUrl(base, draft.workspaceId, result.useCaseId, {
+          epoch: (await getWorkspaceById(draft.workspaceId))?.portfolioShareEpoch ?? 0,
+        })
       : null;
     await slackChatPostMessage({
       botToken: responseInstallation.botToken,

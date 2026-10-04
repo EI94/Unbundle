@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/redirect-to-login";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import {
   canManageWorkspaceSettings,
   canReviewWorkspacePortfolio,
@@ -215,7 +215,7 @@ function buildQuestionScopeFromForm(params: {
 
 async function assertAssessmentManager(workspaceId: string) {
   const session = await requireSession();
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) {
     return {
       ok: false as const,
@@ -233,7 +233,7 @@ async function assertAssessmentManager(workspaceId: string) {
 
 async function assertAssessmentReviewer(workspaceId: string) {
   const session = await requireSession();
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) {
     return {
       ok: false as const,

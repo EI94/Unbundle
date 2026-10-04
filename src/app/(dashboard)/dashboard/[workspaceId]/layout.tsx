@@ -1,27 +1,11 @@
-import { auth } from "@/lib/auth";
 import { requireSession } from "@/lib/auth/redirect-to-login";
 import { headers } from "next/headers";
 import { redirect, notFound } from "next/navigation";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
-import {
-  buildPortfolioSharePath,
-  parsePortfolioReviewPath,
-} from "@/lib/portfolio/share-link";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { learnerRedirect } from "@/lib/learning/learner-scope";
 import { WorkspaceTopbar } from "@/components/portfolio/workspace-topbar";
-
-async function portfolioReviewShareFallback(workspaceId: string) {
-  const pathname = (await headers()).get("x-unbundle-pathname") ?? "";
-  const reviewPath = parsePortfolioReviewPath(pathname);
-  if (!reviewPath || reviewPath.workspaceId !== workspaceId) return null;
-  try {
-    return buildPortfolioSharePath(workspaceId, reviewPath.useCaseId);
-  } catch {
-    return null;
-  }
-}
 
 export default async function WorkspaceLayout({
   children,
@@ -31,19 +15,13 @@ export default async function WorkspaceLayout({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  let session = await auth();
-  if (!session?.user?.id) {
-    const shareFallback = await portfolioReviewShareFallback(workspaceId);
-    if (shareFallback) redirect(shareFallback);
-    session = await requireSession();
-  }
+  // Nessun link di condivisione generato qui: chi non ha una sessione va al
+  // login, chi non ha accesso a questo workspace riceve 404. Un link pubblico
+  // lo crea solo la piattaforma quando lo manda su Slack.
+  const session = await requireSession();
 
   const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
-  if (!access) {
-    const shareFallback = await portfolioReviewShareFallback(workspaceId);
-    if (shareFallback) redirect(shareFallback);
-    notFound();
-  }
+  if (!access) notFound();
   const { workspace } = access;
 
   // Chi entra da un link di corso ha il solo ruolo `learner`: va tenuto dentro
@@ -78,7 +56,8 @@ export default async function WorkspaceLayout({
         }}
       />
       <SidebarInset>
-        <WorkspaceTopbar workspaceId={workspaceId} />
+        {/* La campanella mostra titoli e descrizioni del portfolio: non è per chi segue solo un corso. */}
+        <WorkspaceTopbar workspaceId={workspaceId} showNotifications={!learnerOnly} />
         {children}
       </SidebarInset>
     </SidebarProvider>

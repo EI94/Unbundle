@@ -1,6 +1,7 @@
 "use server";
 
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { generateAgentBlueprints, type AgentBlueprint } from "@/lib/ai/generate-blueprints";
@@ -11,7 +12,12 @@ import { eq, desc } from "drizzle-orm";
 export async function generateBlueprintsAction(
   workspaceId: string
 ): Promise<AgentBlueprint[]> {
-  await requireWorkspaceAccess(workspaceId);
+  const { access } = await requireWorkspaceAccess(workspaceId);
+  // Generare costa crediti AI e cambia ciò che vede tutto il team: come per
+  // strategia, simulazione e report, serve un ruolo che valuta.
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    throw new Error("Il tuo ruolo non può generare i blueprint.");
+  }
 
   const [useCases, activities] = await Promise.all([
     getUseCasesByWorkspace(workspaceId),

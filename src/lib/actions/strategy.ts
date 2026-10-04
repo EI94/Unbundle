@@ -8,14 +8,14 @@ import { eq } from "drizzle-orm";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function createGoalAction(formData: FormData) {
   const session = await requireSession();
 
   const workspaceId = formData.get("workspaceId") as string;
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
   const type = formData.get("type") as "goal" | "objective" | "key_result";
   const title = formData.get("title") as string;
@@ -65,7 +65,7 @@ export async function suggestOKRsAction(
 ): Promise<SuggestedOKR[]> {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
   if (!canReviewWorkspacePortfolio(access.role)) {
     throw new Error("Non hai i permessi per suggerire OKR.");

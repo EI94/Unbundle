@@ -39,7 +39,7 @@ const identity = await signup.json(); assert.equal(signup.status, 200);
 await database.query("INSERT INTO users(id,firebase_uid,email,name) VALUES ($1,$2,$3,'Synthetic HTTP learner')", [runUserId, identity.localId, runEmail]);
 await database.query("INSERT INTO workspace_memberships(workspace_id,user_id,role) VALUES ($1,$2,'contributor')", [workspaceB.workspaceId, runUserId]);
 await database.query("INSERT INTO learning_enrollments(workspace_id,program_id,user_id,module_id,cohort_id) VALUES ($1,$2,$3,'m1','m1-cohort')", [workspaceB.workspaceId, workspaceB.programId, runUserId]);
-const login = await fetch(`${origin}/api/auth/session`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken: identity.idToken }) });
+const login = await fetch(`${origin}/api/auth/session`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ idToken: identity.idToken }) });
 assert.equal(login.status, 200); sessions["learner-b"] = login.headers.get("set-cookie").split(";")[0];
 const page = async (name, url, extraHeaders = {}) => {
   const response = await fetch(url, { headers: { ...(sessions[name] ? { cookie: sessions[name] } : {}), ...extraHeaders }, redirect: "manual" });
@@ -142,7 +142,7 @@ if (attempt) {
     attempt = results.find((row) => row.result?.ok).result.data;
   });
   await check("D01-resume", "Server persisted responses/revision/order survive a new session", async () => {
-    const login = await fetch(`${origin}/api/auth/session`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken: identity.idToken }) });
+    const login = await fetch(`${origin}/api/auth/session`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ idToken: identity.idToken }) });
     sessions["learner-b"] = login.headers.get("set-cookie").split(";")[0];
     const resumed = await action("learner-b", "startLearningAttempt", { ...scope(workspaceB), activityId: "m1-exit-a", expectedVersion: fixture.contentVersion });
     assert.deepEqual(resumed.result.data.responses, attempt.responses); assert.equal(resumed.result.data.revision, attempt.revision);

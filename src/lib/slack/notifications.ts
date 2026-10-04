@@ -45,7 +45,9 @@ export async function notifyNewUseCase(
 
     const base = getAppBaseUrl();
     const detailUrl = base
-      ? tryBuildPortfolioShareUrl(base, workspaceId, useCase.id)
+      ? tryBuildPortfolioShareUrl(base, workspaceId, useCase.id, {
+          epoch: workspace?.portfolioShareEpoch ?? 0,
+        })
       : null;
 
     const proposer =

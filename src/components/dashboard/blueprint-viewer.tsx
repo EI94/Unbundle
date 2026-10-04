@@ -10,9 +10,18 @@ import { toast } from "sonner";
 import { generateBlueprintsAction } from "@/lib/actions/blueprints";
 import type { AgentBlueprint } from "@/lib/ai/generate-blueprints";
 
-export function BlueprintViewer({ workspaceId }: { workspaceId: string }) {
+export function BlueprintViewer({
+  workspaceId,
+  canGenerate,
+  initialBlueprints,
+}: {
+  workspaceId: string;
+  canGenerate: boolean;
+  /** Gli ultimi blueprint generati nel workspace: li vede tutto il team, non solo chi li ha generati. */
+  initialBlueprints: AgentBlueprint[];
+}) {
   const [loading, setLoading] = useState(false);
-  const [blueprints, setBlueprints] = useState<AgentBlueprint[]>([]);
+  const [blueprints, setBlueprints] = useState<AgentBlueprint[]>(initialBlueprints);
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -38,7 +47,10 @@ export function BlueprintViewer({ workspaceId }: { workspaceId: string }) {
           Genera blueprint tecnici per gli agenti AI necessari a implementare i
           use case.
         </p>
-        <Button onClick={handleGenerate} disabled={loading} className="mt-4">
+        {!canGenerate && (
+          <p className="mt-2 max-w-sm text-xs text-muted-foreground">Li genera chi valuta gli use case.</p>
+        )}
+        <Button onClick={handleGenerate} disabled={loading || !canGenerate} className="mt-4">
           {loading ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
@@ -52,6 +64,13 @@ export function BlueprintViewer({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {!canGenerate && <p className="text-xs text-muted-foreground">Li rigenera chi valuta gli use case.</p>}
+        <Button variant="outline" onClick={handleGenerate} disabled={loading || !canGenerate}>
+          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bot className="mr-2 h-4 w-4" />}
+          {loading ? "Generazione in corso..." : "Rigenera blueprint"}
+        </Button>
+      </div>
       {blueprints.map((bp) => (
         <Card key={bp.useCaseId}>
           <CardHeader>

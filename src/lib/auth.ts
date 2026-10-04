@@ -14,6 +14,8 @@ export interface SessionUser {
   name: string | null;
   email: string;
   image: string | null;
+  /** Firebase attesta che chi accede controlla la casella (Google, o link di verifica). */
+  emailVerified: boolean;
 }
 
 export interface Session {
@@ -103,12 +105,23 @@ export const auth = cache(async (): Promise<Session | null> => {
       }
     }
 
+    // Firebase attesta la casella del proprio account, che può essere
+    // cambiata dopo la registrazione: la verifica vale per l'email di
+    // Unbundle solo se è la stessa. Arriva anche dopo (link nella mail): il
+    // cookie rinnovato la porta, e la riga utente la registra una volta.
+    const sameEmail = (decoded.email ?? "").trim().toLowerCase() === user.email.trim().toLowerCase();
+    const verifiedNow = decoded.email_verified === true && sameEmail;
+    if (verifiedNow && !user.emailVerified) {
+      await db.update(users).set({ emailVerified: new Date() }).where(eq(users.id, user.id)).catch(() => undefined);
+    }
+
     return {
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
         image: user.image,
+        emailVerified: verifiedNow || (sameEmail && user.emailVerified != null),
       },
     };
   } catch {

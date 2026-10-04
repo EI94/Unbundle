@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
 import { getWorkspaceById, getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import { GoalForm } from "@/components/dashboard/goal-form";
@@ -10,9 +10,10 @@ export default async function StrategyPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  await requireSession();
 
   const { workspaceId } = await params;
+
+  await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 
@@ -33,7 +34,7 @@ export default async function StrategyPage({
   };
 
   return (
-    <div className="flex-1 p-8 lg:p-12 max-w-3xl">
+    <div className="mx-auto w-full min-w-0 max-w-3xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
       <div className="mb-8">
         <span className="text-xs text-muted-foreground tracking-wide uppercase">
           Strategia

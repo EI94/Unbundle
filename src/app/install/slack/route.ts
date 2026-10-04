@@ -44,7 +44,7 @@ function noWorkspaceHtml(base: string) {
 <html lang="it"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="font-family:system-ui,sans-serif;padding:2rem;max-width:34rem;line-height:1.5;background:#0a0a0a;color:#eee">
 <h1 style="font-size:1.25rem">Nessun workspace</h1>
-<p style="color:#aaa">Crea prima un workspace in Unbundle, poi torna qui o apri <strong>Integrazioni</strong> dal menu del workspace.</p>
+<p style="color:#aaa">Crea prima un workspace in Unbundle, poi torna qui o apri <strong>Impostazioni</strong> dal menu del workspace.</p>
 <p><a href="${base}/dashboard" style="color:#a78bfa">Vai alla dashboard</a></p>
 </body></html>`;
 }

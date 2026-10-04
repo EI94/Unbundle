@@ -98,7 +98,9 @@ export async function dispatchNewPortfolioNotifications(params: {
   if (workspace?.whatsappWebhookUrl) {
     const base = getAppBaseUrl();
     const link = base
-      ? tryBuildPortfolioShareUrl(base, workspaceId, useCase.id)
+      ? tryBuildPortfolioShareUrl(base, workspaceId, useCase.id, {
+          epoch: workspace.portfolioShareEpoch,
+        })
       : null;
     const text =
       `${kindLabel(useCase.portfolioKind)} in coda al team ${teamName}: ` +

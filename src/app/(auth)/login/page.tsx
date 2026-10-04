@@ -21,6 +21,9 @@ export default async function LoginPage({
   const callbackUrl = safeInternalCallbackUrl(sp.callbackUrl);
   if (session) redirect(callbackUrl ?? "/dashboard");
   const sessionExpired = sp.session === "stale";
+  // Chi arriva da un invito sta finendo di entrare in un workspace: lo dice la
+  // pagina, e il modulo parte da «crea account» se l'invito lo chiede.
+  const fromInvite = callbackUrl?.startsWith("/invite/") ?? false;
 
   return (
     <div className="min-h-screen flex">
@@ -49,9 +52,13 @@ export default async function LoginPage({
             <span className="text-sm font-medium tracking-wide">Unbundle</span>
           </div>
 
-          <h2 className="text-lg font-medium mb-1">Accedi</h2>
+          <h2 className="text-lg font-medium mb-1">
+            {fromInvite ? "Entra per accettare l'invito" : "Accedi"}
+          </h2>
           <p className="text-sm text-muted-foreground mb-8">
-            Usa Google o email per continuare
+            {fromInvite
+              ? "Con Google o con email e password. Subito dopo torni all'invito per entrare nel workspace."
+              : "Usa Google o email per continuare"}
           </p>
 
           {sessionExpired && (

@@ -93,22 +93,24 @@ function loginHref(workspaceId: string, useCaseId: string) {
   return `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`;
 }
 
-function InvalidShareLink() {
+function InvalidShareLink({ reason, loginUrl }: { reason: "invalid" | "expired"; loginUrl: string }) {
   return (
-    <main className="min-h-screen bg-background px-6 py-10 text-foreground">
+    <main className="min-h-dvh bg-background px-4 py-10 text-foreground sm:px-6">
       <div className="mx-auto flex min-h-[70vh] max-w-xl items-center">
         <Card className="w-full">
           <CardHeader>
-            <CardTitle>Link non valido</CardTitle>
+            <CardTitle>{reason === "expired" ? "Link scaduto" : "Link non più valido"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
             <p>
-              Questo link viewer non è valido o è stato copiato parzialmente.
-              Chiedi al team che gestisce il workspace di condividere di nuovo
-              il link da Unbundle.
+              {reason === "expired"
+                ? "I link pubblici al portfolio valgono 30 giorni."
+                : "Il link è stato disattivato dal team che gestisce il workspace, oppure è stato copiato solo in parte."}{" "}
+              Se hai un account Unbundle con accesso al workspace, accedi per
+              aprire la scheda. Altrimenti chiedi al team un link nuovo.
             </p>
-            <Link href="/login">
-              <Button>Accedi a Unbundle</Button>
+            <Link href={loginUrl}>
+              <Button className="h-10">Accedi a Unbundle</Button>
             </Link>
           </CardContent>
         </Card>
@@ -277,23 +279,31 @@ export default async function PublicPortfolioSharePage({
   const session = await auth();
   if (session?.user?.id) {
     const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
-    if (access) {
+    // Chi collabora apre la scheda vera; un partecipante a un corso non può,
+    // e vede la stessa copia in sola lettura di chi non ha un account.
+    if (access && access.role !== "learner") {
       redirect(`/dashboard/${workspaceId}/portfolio/review/${useCaseId}`);
     }
   }
 
-  if (!verifyPortfolioShareToken(workspaceId, token)) {
-    return <InvalidShareLink />;
+  // Il token si verifica prima di leggere qualunque dato del portfolio. Un
+  // workspace inesistente risponde come un link non valido: niente indizi.
+  const workspace = /^[0-9a-f-]{36}$/i.test(workspaceId) ? await getWorkspaceById(workspaceId) : null;
+  const check = workspace
+    ? verifyPortfolioShareToken(workspaceId, token, { epoch: workspace.portfolioShareEpoch })
+    : ({ ok: false, reason: "invalid" } as const);
+  if (!workspace || !check.ok) {
+    return <InvalidShareLink reason={check.ok ? "invalid" : check.reason} loginUrl={loginHref(workspaceId, useCaseId)} />;
   }
 
-  const [workspace, selected, model, contributions] = await Promise.all([
-    getWorkspaceById(workspaceId),
+  if (!/^[0-9a-f-]{36}$/i.test(useCaseId)) notFound();
+  const [selected, model, contributions] = await Promise.all([
     getUseCaseById(useCaseId),
     getOrCreateWorkspaceScoringModel(workspaceId),
     getPortfolioContributionsByWorkspace(workspaceId),
   ]);
 
-  if (!workspace || !selected || selected.workspaceId !== workspaceId) notFound();
+  if (!selected || selected.workspaceId !== workspaceId) notFound();
   if (!selected.portfolioKind) notFound();
 
   const esgEnabled = workspace.esgEnabled === true;
@@ -322,7 +332,9 @@ export default async function PublicPortfolioSharePage({
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
                   Stai vedendo una copia in sola lettura del portfolio condivisa
-                  via Slack. Se hai un account Unbundle con accesso al workspace,
+                  via Slack, valida fino al{" "}
+                  {new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "long" }).format(check.expiresAt)}.
+                  Se hai un account Unbundle con accesso al workspace,
                   accedi e potrai aprire la scheda editabile.
                 </p>
               </div>

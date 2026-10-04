@@ -31,6 +31,7 @@ const ACTIONS_DIR = "src/lib/actions";
 const GUARDS = [
   "requireWorkspaceAccess",
   "getWorkspaceAccessForUser",
+  "getCollaboratorAccess",
   "getUserMembership",
   "assertAssessmentManager",
   "assertAssessmentReviewer",
@@ -167,7 +168,7 @@ test("i documenti caricati non finiscono su un blob pubblico", () => {
     'rimasto un access: "public" nella route di upload'
   );
   assert.ok(
-    route.includes("getWorkspaceAccessForUser"),
+    route.includes("getCollaboratorAccess("),
     "la route di upload deve verificare l'accesso al workspace, non solo la sessione"
   );
 });
@@ -187,4 +188,53 @@ test("un secret Slack mancante viene rifiutato in produzione", () => {
     source.includes("verifySlackRequestSignature"),
     "la firma delle richieste Slack deve essere verificata"
   );
+});
+
+// ─── Pagine del workspace ──────────────────────────────────────────────
+
+/**
+ * Il layout di /dashboard/[workspaceId] non viene rieseguito nelle
+ * navigazioni interne: una pagina che si affida solo a lui resta leggibile a
+ * chi è stato appena rimosso, o a un partecipante a un corso che segue un
+ * link. Ogni pagina fuori dalla Formazione chiama requireWorkspacePage.
+ */
+const WORKSPACE_PAGES_DIR = "src/app/(dashboard)/dashboard/[workspaceId]";
+
+function walk(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    return entry.isDirectory() ? walk(path) : [path];
+  });
+}
+
+test("ogni pagina del workspace fuori dalla Formazione verifica da sé l'accesso", () => {
+  const pages = walk(WORKSPACE_PAGES_DIR).filter(
+    (path) => path.endsWith("page.tsx") && !path.includes(`${join(WORKSPACE_PAGES_DIR, "learning")}`)
+  );
+  assert.ok(pages.length >= 20, "attese almeno 20 pagine del workspace");
+  const unguarded = pages.filter((path) => !readFileSync(path, "utf8").includes("requireWorkspacePage("));
+  assert.deepEqual(unguarded, [], `pagine senza requireWorkspacePage: ${unguarded.join(", ")}`);
+});
+
+// ─── Partecipanti ai corsi ─────────────────────────────────────────────
+
+/**
+ * getWorkspaceAccessForUser restituisce accesso anche a chi ha il solo ruolo
+ * `learner`. Fuori dalla Formazione le azioni e le route devono usare
+ * getCollaboratorAccess (o requireWorkspaceAccess, che lo esclude), altrimenti
+ * un partecipante chiamandole direttamente leggerebbe il portfolio.
+ */
+const LEARNER_ALLOWED = new Set([
+  "src/app/api/learning/session/route.ts",
+  // Il layout ammette il partecipante solo per reindirizzarlo alla Formazione.
+  "src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx",
+]);
+
+test("fuori dalla Formazione nessuna azione o route concede accesso ai partecipanti ai corsi", () => {
+  const files = [...walk("src/lib/actions"), ...walk("src/app/api"), ...walk(WORKSPACE_PAGES_DIR)]
+    .filter((path) => /\.(ts|tsx)$/.test(path) && !path.endsWith(".test.ts"))
+    .filter((path) => !path.includes("/learning"))
+    .filter((path) => !LEARNER_ALLOWED.has(path));
+  const offenders = files.filter((path) => readFileSync(path, "utf8").includes("getWorkspaceAccessForUser("));
+  assert.deepEqual(offenders, [], `usano getWorkspaceAccessForUser invece di getCollaboratorAccess: ${offenders.join(", ")}`);
 });

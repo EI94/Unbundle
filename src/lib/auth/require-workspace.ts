@@ -1,5 +1,7 @@
+import { notFound, redirect } from "next/navigation";
 import type { Session } from "@/lib/auth";
 import { requireSession } from "@/lib/auth/redirect-to-login";
+import { isLearnerOnly, learnerHomePath } from "@/lib/learning/learner-scope";
 import {
   getWorkspaceAccessForUser,
   type WorkspaceAccess,
@@ -18,14 +20,41 @@ import {
  * prima di qualunque query.
  */
 export async function requireWorkspaceAccess(
-  workspaceId: string
+  workspaceId: string,
+  opts: { allowLearner?: boolean } = {}
 ): Promise<{ session: Session; access: WorkspaceAccess }> {
   const session = await requireSession();
   const userId = session.user?.id;
   if (!userId) throw new Error("Sessione non valida.");
 
   const access = await getWorkspaceAccessForUser(userId, workspaceId);
-  if (!access) throw new Error("Workspace non trovato o non accessibile.");
+  // Un partecipante a un corso è membro del workspace ma non un collaboratore:
+  // le funzioni fuori dalla Formazione non sono per lui.
+  if (!access || (isLearnerOnly(access.role) && !opts.allowLearner)) {
+    throw new Error("Workspace non trovato o non accessibile.");
+  }
 
+  return { session, access };
+}
+
+/**
+ * Lo stesso controllo per le pagine sotto /dashboard/[workspaceId].
+ *
+ * Il layout del workspace lo fa già, ma un layout non viene rieseguito nelle
+ * navigazioni interne (src/app/.../layout.tsx resta montato): una persona
+ * rimossa con la scheda aperta, o un partecipante che segue un link dalla
+ * campanella, arriverebbe alla pagina senza passare dal controllo. Ogni pagina
+ * quindi verifica da sé. I partecipanti ai corsi restano nell'area Formazione.
+ */
+export async function requireWorkspacePage(
+  workspaceId: string,
+  opts: { allowLearner?: boolean } = {}
+): Promise<{ session: Session; access: WorkspaceAccess }> {
+  const session = await requireSession();
+  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  if (!access) notFound();
+  if (isLearnerOnly(access.role) && !opts.allowLearner) {
+    redirect(learnerHomePath(workspaceId));
+  }
   return { session, access };
 }

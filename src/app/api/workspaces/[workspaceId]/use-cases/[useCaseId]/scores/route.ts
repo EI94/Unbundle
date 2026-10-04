@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { updateUseCaseScores } from "@/lib/db/queries/use-cases";
 import { patchUseCaseScoresBodySchema } from "@/lib/api/use-case-scores-schema";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 /**
@@ -19,7 +19,7 @@ export async function PATCH(
   }
 
   const { workspaceId, useCaseId } = await params;
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }

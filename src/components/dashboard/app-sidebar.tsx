@@ -34,6 +34,7 @@ import {
   Lightbulb,
   FileText,
   Settings,
+  LayoutGrid,
   LogOut,
   ChevronUp,
   Compass,
@@ -103,7 +104,7 @@ export function AppSidebar({
         { title: "Blueprints", href: `${basePath}/blueprints`, icon: Bot },
         { title: "Simulazione", href: `${basePath}/simulation`, icon: FlaskConical },
         { title: "Intelligence", href: `${basePath}/intelligence`, icon: Radar },
-        { title: "Integrazioni", href: `${basePath}/settings`, icon: Settings },
+        { title: "Impostazioni", href: `${basePath}/settings`, icon: Settings },
       ]
     : [];
 
@@ -192,8 +193,8 @@ export function AppSidebar({
               <DropdownMenuContent side="top" align="start" className="w-56">
                 <DropdownMenuItem>
                   <Link onNavigate={closeMobileNavigation} href="/dashboard" className="flex items-center w-full">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Impostazioni
+                    <LayoutGrid className="mr-2 h-4 w-4" />
+                    I miei workspace
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

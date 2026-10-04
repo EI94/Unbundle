@@ -10,7 +10,7 @@
     "test:portfolio": "node --no-warnings --test src/lib/db/use-case-scoring.test.ts src/lib/portfolio/ai-ranking-contract.test.ts src/lib/portfolio/matrix-state.test.ts src/lib/portfolio/share-link.test.ts",
     "test:mcp": "node --no-warnings --test src/lib/portfolio/external-submission.test.ts src/lib/integrations/claude-onboarding.test.ts mcp/unbundle-portfolio-server.test.mjs",
     "test:slack": "node --no-warnings --test src/lib/slack/use-case-agent.test.ts",
-    "test:workspace-collaboration": "node --no-warnings --test src/lib/db/queries/workspace-collaboration.test.ts",
+    "test:workspace-collaboration": "node --no-warnings --test src/lib/db/queries/workspace-collaboration.test.ts src/lib/workspace-roles.test.ts src/lib/firebase/auth-errors.test.ts",
     "test:auth": "node --no-warnings --test src/lib/auth/session-signal.test.ts src/lib/auth/workspace-isolation.test.ts",
     "test:ai-readiness": "node --no-warnings --test src/lib/ai-readiness/scoring.test.ts src/lib/ai-readiness/export.test.ts src/lib/ai-readiness/intelligence.test.ts src/lib/ai-readiness/draft.test.ts src/lib/ai-readiness/template-scope.test.ts src/lib/ai-readiness/question-doc.test.ts src/lib/ai-readiness/use-case-form.test.ts src/lib/ai-readiness/form-validation.test.ts src/lib/ai-readiness/survey-track.test.ts",
     "typecheck": "tsc --noEmit",

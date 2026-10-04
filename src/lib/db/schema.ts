@@ -237,6 +237,8 @@ export const workspaces = pgTable("workspaces", {
    * Se impostato, Unbundle POSTa un JSON `{ text, link, event }`.
    */
   whatsappWebhookUrl: varchar("whatsapp_webhook_url", { length: 1000 }),
+  /** Contatore di revoca dei link pubblici del portfolio (src/lib/portfolio/share-link.ts). */
+  portfolioShareEpoch: integer("portfolio_share_epoch").notNull().default(0),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 });

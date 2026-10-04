@@ -43,3 +43,17 @@ export const getWorkspaceAccessForUser = cache(async function getWorkspaceAccess
 
   return null;
 });
+
+/**
+ * Accesso per tutto ciò che non è la Formazione. Un partecipante a un corso
+ * è membro del workspace (ruolo `learner`) ma vede solo i suoi corsi: le
+ * azioni del server e le route sono raggiungibili direttamente, quindi
+ * ognuna deve escluderlo da sé, non solo la barra laterale.
+ */
+export async function getCollaboratorAccess(
+  userId: string,
+  workspaceId: string
+): Promise<WorkspaceAccess | null> {
+  const access = await getWorkspaceAccessForUser(userId, workspaceId);
+  return access && access.role !== "learner" ? access : null;
+}

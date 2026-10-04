@@ -26,6 +26,8 @@ import {
 
 interface CompetitiveAnalysisViewerProps {
   workspaceId: string;
+  /** Generare è per chi valuta: gli altri ruoli vedono il pulsante spento con il motivo. */
+  canGenerate: boolean;
 }
 
 const relevanceColors: Record<string, string> = {
@@ -44,6 +46,7 @@ const timeframeLabels: Record<string, string> = {
 
 export function CompetitiveAnalysisViewer({
   workspaceId,
+  canGenerate,
 }: CompetitiveAnalysisViewerProps) {
   const [analysis, setAnalysis] = useState<CompetitiveAnalysis | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -68,8 +71,11 @@ export function CompetitiveAnalysisViewer({
             mappate, i use case identificati e i segnali recenti.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex justify-center pb-6">
-          <Button onClick={handleGenerate} disabled={isPending} size="lg">
+        <CardContent className="flex flex-col items-center gap-2 pb-6">
+          {!canGenerate && (
+            <p className="text-sm text-muted-foreground">L&apos;analisi la genera chi valuta gli use case.</p>
+          )}
+          <Button onClick={handleGenerate} disabled={isPending || !canGenerate} size="lg" title={canGenerate ? undefined : "La genera chi valuta gli use case"}>
             {isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -246,7 +252,7 @@ export function CompetitiveAnalysisViewer({
       </Tabs>
 
       <div className="flex justify-center">
-        <Button variant="outline" onClick={handleGenerate} disabled={isPending}>
+        <Button variant="outline" onClick={handleGenerate} disabled={isPending || !canGenerate} title={canGenerate ? undefined : "La genera chi valuta gli use case"}>
           {isPending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

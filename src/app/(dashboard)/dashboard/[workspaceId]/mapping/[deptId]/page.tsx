@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
 import { getDepartmentById } from "@/lib/db/queries/workspaces";
 import {
@@ -25,9 +25,10 @@ export default async function DepartmentMappingPage({
   params: Promise<{ workspaceId: string; deptId: string }>;
   searchParams: Promise<{ mode?: string }>;
 }) {
-  await requireSession();
 
   const { workspaceId, deptId } = await params;
+
+  await requireWorkspacePage(workspaceId);
   const { mode } = await searchParams;
 
   const department = await getDepartmentById(deptId);

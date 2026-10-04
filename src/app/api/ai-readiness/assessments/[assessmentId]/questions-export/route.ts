@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { getAssessmentBundleById } from "@/lib/db/queries/ai-readiness";
 import { filterTemplateForTrack } from "@/lib/ai-readiness/template-scope";
@@ -48,7 +48,7 @@ export async function GET(
   const { assessmentId } = await params;
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle) return Response.json({ error: "Not found" }, { status: 404 });
-  const access = await getWorkspaceAccessForUser(
+  const access = await getCollaboratorAccess(
     session.user.id,
     bundle.assessment.workspaceId
   );

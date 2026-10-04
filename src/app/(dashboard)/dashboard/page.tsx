@@ -7,7 +7,7 @@ import { DashboardListShell } from "@/components/dashboard/dashboard-list-shell"
 import { Plus } from "lucide-react";
 
 const SLACK_ERR: Record<string, string> = {
-  invalid_workspace: "Link Slack non valido. Apri Integrazioni dal workspace e riprova.",
+  invalid_workspace: "Link Slack non valido. Apri Impostazioni dal workspace e riprova.",
   forbidden: "Non hai permesso di installare Slack per quel workspace.",
 };
 
@@ -38,7 +38,7 @@ export default async function DashboardPage({
         image: session.user.image,
       }}
     >
-      <div className="flex-1 p-8 lg:p-12 max-w-3xl">
+      <div className="mx-auto w-full min-w-0 max-w-3xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
         {sp.workspaceDeleted === "1" ? (
           <div className="mb-6 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-500">
             Workspace eliminato correttamente.

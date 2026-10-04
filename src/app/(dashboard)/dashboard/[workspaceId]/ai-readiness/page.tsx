@@ -1,3 +1,4 @@
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -14,8 +15,6 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import { requireSession } from "@/lib/auth/redirect-to-login";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 import {
   ensureAiReadinessSystemTemplate,
@@ -100,11 +99,9 @@ export default async function AiReadinessPage({
   params: Promise<{ workspaceId: string }>;
   searchParams: Promise<{ assessment?: string; new?: string; deleted?: string }>;
 }) {
-  const session = await requireSession();
   const { workspaceId } = await params;
+  const { access } = await requireWorkspacePage(workspaceId);
   const search = await searchParams;
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
-  if (!access) notFound();
 
   await ensureAiReadinessSystemTemplate();
   const canManage = canManageWorkspaceSettings(access.role);

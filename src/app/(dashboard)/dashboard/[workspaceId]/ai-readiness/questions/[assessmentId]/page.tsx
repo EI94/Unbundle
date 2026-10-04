@@ -1,8 +1,7 @@
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Download, ListChecks } from "lucide-react";
-import { requireSession } from "@/lib/auth/redirect-to-login";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 import {
   getAssessmentBundleById,
@@ -28,10 +27,9 @@ export default async function AiReadinessQuestionsPage({
 }: {
   params: Promise<{ workspaceId: string; assessmentId: string }>;
 }) {
-  const session = await requireSession();
   const { workspaceId, assessmentId } = await params;
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
-  if (!access || !canManageWorkspaceSettings(access.role)) notFound();
+  const { access } = await requireWorkspacePage(workspaceId);
+  if (!canManageWorkspaceSettings(access.role)) notFound();
 
   const bundle = await getAssessmentBundleById(assessmentId);
   if (!bundle || bundle.assessment.workspaceId !== workspaceId) notFound();

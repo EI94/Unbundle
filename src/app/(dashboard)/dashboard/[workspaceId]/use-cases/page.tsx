@@ -1,4 +1,5 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
+import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
@@ -61,9 +62,10 @@ export default async function UseCasesPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  await requireSession();
 
   const { workspaceId } = await params;
+
+  const { access } = await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 
@@ -97,6 +99,8 @@ export default async function UseCasesPage({
           <EsgToggle
             workspaceId={workspaceId}
             initialEnabled={esgEnabled}
+            canManage={canManageWorkspaceSettings(access.role)}
+            showLabel
           />
           {needsClassification && (
             <ClassifyButton workspaceId={workspaceId} />

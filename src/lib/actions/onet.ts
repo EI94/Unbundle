@@ -4,12 +4,12 @@ import { requireSession } from "@/lib/auth/redirect-to-login";
 import { revalidatePath } from "next/cache";
 import { getActivitiesByWorkspace, updateActivity } from "@/lib/db/queries/activities";
 import { matchActivitiesToOnet } from "@/lib/ai/onet-matching";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function runOnetMatchingAction(workspaceId: string) {
   const session = await requireSession();
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
   if (!canReviewWorkspacePortfolio(access.role)) {
     throw new Error("Non hai i permessi per aggiornare le attivita.");

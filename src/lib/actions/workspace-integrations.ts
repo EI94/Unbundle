@@ -8,7 +8,7 @@ import {
   createWorkspaceIntegrationToken,
   revokeWorkspaceIntegrationToken,
 } from "@/lib/db/queries/workspace-integrations";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
 const CLAUDE_MCP_TOKEN_EXPIRES_IN_DAYS = 180;
@@ -72,17 +72,20 @@ function errorState(message: string, fieldErrors: Record<string, string> = {}) {
 async function assertWorkspaceIntegrationManager(workspaceId: string) {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) {
     return {
       ok: false as const,
       state: errorState("Workspace non trovato o non accessibile."),
     };
   }
-  if (!canManageWorkspaceSettings(access.role)) {
+  // Come Slack: le integrazioni le gestisce l'organizzazione. Un
+  // responsabile invitato a un solo workspace vede la scheda in sola lettura,
+  // e il server deve dire lo stesso.
+  if (access.source !== "organization" || !canManageWorkspaceSettings(access.role)) {
     return {
       ok: false as const,
-      state: errorState("Non hai i permessi per gestire le integrazioni."),
+      state: errorState("Solo gli amministratori dell'organizzazione gestiscono l'accesso di Claude."),
     };
   }
 

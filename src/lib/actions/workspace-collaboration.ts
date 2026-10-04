@@ -9,6 +9,10 @@ import {
   acceptWorkspaceInvitation,
   createWorkspaceInvitation,
   deleteWorkspaceMembership,
+  demoteToLearnerIfEnrolled,
+  disablePortfolioShareLinks,
+  revokeCourseGrants,
+  revokeInvitationsCreatedBy,
   getWorkspaceInvitationById,
   getWorkspaceMembershipByUser,
   revokeWorkspaceInvitation,
@@ -17,8 +21,9 @@ import {
   type WorkspaceMemberRole,
   type WorkspaceCollaboratorRole,
 } from "@/lib/db/queries/workspace-collaboration";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canManageWorkspaceCollaborators } from "@/lib/workspace-permissions";
+import { roleLabel } from "@/lib/workspace-roles";
 import {
   WORKSPACE_INVITE_EXPIRES_IN_DAYS,
   WORKSPACE_INVITE_MAX_USES,
@@ -94,7 +99,7 @@ function errorState(message: string, fieldErrors: Record<string, string> = {}) {
 async function assertWorkspaceInviteManager(workspaceId: string) {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) {
     return {
       ok: false as const,
@@ -146,8 +151,7 @@ export async function createWorkspaceInvitationAction(
   revalidatePath(`/dashboard/${workspaceId}/settings`);
   return {
     ok: true,
-    message:
-      `Link pronto: valido per ${WORKSPACE_INVITE_EXPIRES_IN_DAYS} giorni. Copialo e invialo al collega.`,
+    message: "Link creato.",
     fieldErrors: {},
     data: {
       invitationId: invitation.id,
@@ -186,7 +190,7 @@ export async function revokeWorkspaceInvitationAction(
   revalidatePath(`/dashboard/${workspaceId}/settings`);
   return {
     ok: true,
-    message: "Invito revocato. Il vecchio link non può più essere usato.",
+    message: "Link disattivato: non funziona più.",
     fieldErrors: {},
     data: {
       invitationId,
@@ -212,6 +216,9 @@ export async function recreateWorkspaceInvitationAction(
   if (previous?.workspaceId !== workspaceId) {
     return errorState("Invito non trovato.");
   }
+  if (previous.usedCount >= previous.maxUses) {
+    return errorState("Questo link è già stato usato: la persona è già entrata. Per invitare qualcun altro crea un nuovo link.");
+  }
 
   await revokeWorkspaceInvitation({ workspaceId, invitationId });
   const { invitation, token } = await createWorkspaceInvitation({
@@ -229,8 +236,7 @@ export async function recreateWorkspaceInvitationAction(
   revalidatePath(`/dashboard/${workspaceId}/settings`);
   return {
     ok: true,
-    message:
-      `Nuovo link pronto: valido per ${WORKSPACE_INVITE_EXPIRES_IN_DAYS} giorni. Il link precedente è stato revocato.`,
+    message: "Nuovo link creato. Quello precedente non funziona più.",
     fieldErrors: {},
     data: {
       invitationId: invitation.id,
@@ -276,6 +282,13 @@ export async function updateWorkspaceMemberRoleAction(
       "Questo membro fa parte dell'organizzazione: il suo ruolo si gestisce a livello organizzazione, non di workspace."
     );
   }
+  if (membership.role === "learner") {
+    // Un partecipante a un corso diventa collaboratore solo accettando un
+    // invito: un cambio di ruolo per sbaglio gli aprirebbe tutto il workspace.
+    return errorState(
+      "Questa persona partecipa a un corso. Per farla diventare collaboratore mandale un link di invito."
+    );
+  }
 
   const updated = await updateWorkspaceMembershipRole({
     workspaceId,
@@ -284,10 +297,18 @@ export async function updateWorkspaceMemberRoleAction(
   });
   if (!updated) return errorState("Aggiornamento non riuscito.");
 
+  // Chi non può più invitare non deve lasciare link aperti dietro di sé.
+  const revokedInvites =
+    canManageWorkspaceCollaborators(membership.role) && !canManageWorkspaceCollaborators(role)
+      ? await revokeInvitationsCreatedBy({ workspaceId, userId })
+      : 0;
+
   revalidatePath(`/dashboard/${workspaceId}/settings`);
   return {
     ok: true,
-    message: "Ruolo aggiornato: vale da subito per tutto il workspace.",
+    message:
+      `Ruolo aggiornato a ${roleLabel(role)}: vale da subito.` +
+      (revokedInvites > 0 ? ` ${revokedInvites === 1 ? "Il link di invito che aveva creato è stato disattivato" : `I ${revokedInvites} link di invito che aveva creato sono stati disattivati`}.` : ""),
     fieldErrors: {},
     data: { userId, role },
   };
@@ -314,23 +335,56 @@ export async function removeWorkspaceMemberAction(
     );
   }
 
-  const removed = await deleteWorkspaceMembership({ workspaceId, userId });
+  if (membership.role === "learner") {
+    return errorState(
+      "Questa persona partecipa solo ai corsi: la sua iscrizione si gestisce da Formazione."
+    );
+  }
+
+  // Chi è iscritto a un corso nel workspace resta partecipante: perde il
+  // workspace, non i suoi corsi. In ogni caso perde i permessi da formatore.
+  const revokedGrants = await revokeCourseGrants({ workspaceId, userId, actorId: manager.session.user.id });
+  const keptAsLearner = await demoteToLearnerIfEnrolled({ workspaceId, userId });
+  const removed = keptAsLearner || (await deleteWorkspaceMembership({ workspaceId, userId }));
   if (!removed) return errorState("Rimozione non riuscita.");
+
+  // Niente porte lasciate aperte: i link di invito che aveva creato e i link
+  // pubblici al portfolio già condivisi (che potrebbe aver conservato) smettono
+  // di funzionare. Chi ha un account con accesso entra comunque dal login.
+  const revokedInvites = await revokeInvitationsCreatedBy({ workspaceId, userId });
+  await disablePortfolioShareLinks(workspaceId);
 
   revalidatePath(`/dashboard/${workspaceId}/settings`);
   return {
     ok: true,
-    message: "Accesso rimosso. Il collega non vede più questo workspace.",
+    message:
+      (keptAsLearner
+        ? "Non è più collaboratore: resta solo partecipante ai suoi corsi. "
+        : "Accesso rimosso: questa persona non vede più il workspace. ") +
+      "I link pubblici al portfolio già condivisi sono stati disattivati" +
+      (revokedInvites > 0 ? `, insieme ai link di invito che aveva creato` : "") +
+      (revokedGrants > 0 ? ". Ha perso anche i permessi da formatore sui corsi." : "."),
     fieldErrors: {},
     data: { userId },
   };
 }
 
+export type AcceptInviteFailure = "invalid" | "revoked" | "expired" | "used" | "email_mismatch" | "email_unverified";
+
+const ACCEPT_MESSAGES: Record<AcceptInviteFailure, string> = {
+  invalid: "Questo link di invito non è valido. Controlla di averlo copiato per intero.",
+  revoked: "Questo invito è stato annullato. Chiedi a chi ti ha invitato di crearne uno nuovo.",
+  expired: "Questo invito è scaduto. Chiedi a chi ti ha invitato di crearne uno nuovo.",
+  used: "Questo link è già stato usato da un'altra persona: ogni link vale per una sola persona. Chiedi a chi ti ha invitato di crearne uno per te.",
+  email_mismatch: "Questo invito è riservato a un'altra email: accedi con l'account giusto o chiedi un nuovo link.",
+  email_unverified: "Per usare un invito riservato alla tua email devi prima confermarla.",
+};
+
 export async function acceptWorkspaceInvitationAction(
   token: string,
-  _prev: WorkspaceCollaborationActionState,
+  _prev: WorkspaceCollaborationActionState<{ reason: AcceptInviteFailure }>,
   _formData: FormData
-): Promise<WorkspaceCollaborationActionState> {
+): Promise<WorkspaceCollaborationActionState<{ reason: AcceptInviteFailure }>> {
   void _prev;
   void _formData;
   const session = await requireSession(`/invite/${token}`);
@@ -339,20 +393,33 @@ export async function acceptWorkspaceInvitationAction(
     token,
     userId: session.user.id,
     userEmail: session.user.email,
+    emailVerified: session.user.emailVerified,
   });
 
   if (!result.ok) {
-    const messages: Record<typeof result.reason, string> = {
-      invalid: "Invito non valido.",
-      expired: "Invito scaduto o revocato.",
-      email_mismatch:
-        "Questo invito e' riservato a un'altra email. Accedi con l'account corretto o chiedi un nuovo link.",
-      full: "Questo link ha gia raggiunto il numero massimo di utilizzi.",
-    };
-    return errorState(messages[result.reason]);
+    return { ok: false, message: ACCEPT_MESSAGES[result.reason], fieldErrors: {}, data: { reason: result.reason } };
   }
 
   revalidatePath("/dashboard");
   revalidatePath(`/dashboard/${result.workspaceId}`);
-  redirect(`/dashboard/${result.workspaceId}/portfolio?joined=1`);
+  const flag = result.outcome === "joined" ? "1" : result.outcome === "upgraded" ? "upgraded" : "already";
+  redirect(`/dashboard/${result.workspaceId}/portfolio?joined=${flag}`);
+}
+
+export async function disablePortfolioShareLinksAction(
+  workspaceId: string,
+  _prev: WorkspaceCollaborationActionState,
+  _formData: FormData
+): Promise<WorkspaceCollaborationActionState> {
+  void _prev;
+  void _formData;
+  const manager = await assertWorkspaceInviteManager(workspaceId);
+  if (!manager.ok) return manager.state;
+  await disablePortfolioShareLinks(workspaceId);
+  revalidatePath(`/dashboard/${workspaceId}/settings`);
+  return {
+    ok: true,
+    message: "Link pubblici disattivati. Le prossime notifiche su Slack porteranno link nuovi.",
+    fieldErrors: {},
+  };
 }

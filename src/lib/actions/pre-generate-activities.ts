@@ -1,6 +1,7 @@
 "use server";
 
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
+import { getDepartmentById } from "@/lib/db/queries/workspaces";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
@@ -31,11 +32,21 @@ export type PreGeneratedActivity = z.infer<
   typeof preGeneratedActivitySchema
 >["activities"][0];
 
+
+/** Il reparto deve essere di questo workspace: l'id arriva dal client. */
+async function requireDepartmentInWorkspace(workspaceId: string, departmentId: string) {
+  const department = await getDepartmentById(departmentId);
+  if (!department || department.workspaceId !== workspaceId) {
+    throw new Error("Reparto non trovato in questo workspace.");
+  }
+}
+
 export async function preGenerateActivitiesFromDocuments(
   workspaceId: string,
   departmentId: string
 ) {
   await requireWorkspaceAccess(workspaceId);
+  await requireDepartmentInWorkspace(workspaceId, departmentId);
 
   const docs = await db
     .select({
@@ -98,6 +109,7 @@ export async function confirmPreGeneratedActivities(
   confirmedActivities: PreGeneratedActivity[]
 ) {
   await requireWorkspaceAccess(workspaceId);
+  await requireDepartmentInWorkspace(workspaceId, departmentId);
 
   const saved = [];
 

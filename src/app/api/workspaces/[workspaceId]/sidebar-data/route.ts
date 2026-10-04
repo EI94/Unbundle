@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { organizations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getUnitTerm } from "@/lib/utils/unit-terminology";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 
 export async function GET(
   _req: Request,
@@ -19,7 +19,7 @@ export async function GET(
   }
 
   const { workspaceId } = await params;
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }

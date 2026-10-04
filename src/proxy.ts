@@ -5,10 +5,6 @@ import {
 } from "@/lib/slack/workspace-context-cookie";
 import { safeInternalCallbackUrl } from "@/lib/navigation/safe-callback-url";
 import {
-  buildPortfolioSharePath,
-  parsePortfolioReviewPath,
-} from "@/lib/portfolio/share-link";
-import {
   isSessionCookieExpired,
   SESSION_COOKIE_NAME,
   STALE_SESSION_PARAM,
@@ -21,14 +17,6 @@ function nextWithPath(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-unbundle-pathname", req.nextUrl.pathname);
   return NextResponse.next({ request: { headers: requestHeaders } });
-}
-
-function signedPortfolioShareUrl(req: NextRequest, workspaceId: string, useCaseId: string) {
-  try {
-    return new URL(buildPortfolioSharePath(workspaceId, useCaseId), req.url);
-  } catch {
-    return null;
-  }
 }
 
 export function proxy(req: NextRequest) {
@@ -45,7 +33,6 @@ export function proxy(req: NextRequest) {
     if (cookieExpired) res.cookies.delete(SESSION_COOKIE);
     return res;
   };
-  const reviewPath = parsePortfolioReviewPath(pathname);
 
   const isAuthPage = pathname === "/login" || pathname === "/register";
   const isProtected = pathname.startsWith("/dashboard");
@@ -53,15 +40,8 @@ export function proxy(req: NextRequest) {
     pathname === "/install/slack" || pathname === "/install/slack/";
 
   if ((isProtected || isInstallSlack) && !hasSession) {
-    if (reviewPath) {
-      const shareUrl = signedPortfolioShareUrl(
-        req,
-        reviewPath.workspaceId,
-        reviewPath.useCaseId
-      );
-      if (shareUrl) return cleanup(NextResponse.redirect(shareUrl));
-    }
-
+    // Anche i vecchi link di revisione arrivati su Slack passano dal login:
+    // generare qui un link pubblico lo darebbe a chiunque conosca due ID.
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname.replace(/\/$/, "") || "/");
     if (cookieExpired) {

@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { weeklySignals, activities, workspaces, useCases } from "@/lib/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { markSignalRead } from "@/lib/db/queries/signals";
@@ -64,7 +65,10 @@ export type CompetitiveAnalysis = z.infer<typeof competitiveAnalysisSchema>;
 export async function generateCompetitiveAnalysis(
   workspaceId: string
 ): Promise<CompetitiveAnalysis> {
-  await requireWorkspaceAccess(workspaceId);
+  const { access } = await requireWorkspaceAccess(workspaceId);
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    throw new Error("Il tuo ruolo non può generare l'analisi competitiva.");
+  }
 
   const [workspace] = await db
     .select()

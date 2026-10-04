@@ -23,40 +23,37 @@ export function SlackNotifyChannelForm({
         await setSlackNotifyChannelAction(workspaceId, value);
         toast.success(
           value.trim()
-            ? "Canale notifiche salvato. Assicurati che il bot sia membro del canale."
-            : "Notifiche canale disattivate."
+            ? "Canale salvato. Ricordati di aggiungere il bot al canale."
+            : "Notifiche nel canale disattivate."
         );
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Errore");
+        toast.error(e instanceof Error ? e.message : "Salvataggio non riuscito. Riprova.");
       }
     });
   };
 
   return (
-    <div className="mt-4 space-y-3 rounded-lg border border-border bg-background/50 p-4">
+    <div className="space-y-3">
       <div>
         <Label htmlFor="slack-notify-channel" className="text-sm font-medium">
-          Canale per notifiche admin
+          Canale per le notifiche agli amministratori
         </Label>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Incolla l&apos;ID del canale Slack (inizia con <span className="font-mono">C</span> o{" "}
-          <span className="font-mono">G</span>). In Slack: nome canale → tre puntini →{" "}
-          <em>Informazioni sul canale</em> → in basso compare l&apos;ID, oppure dal link del
-          canale (la parte dopo l&apos;ultimo <span className="font-mono">/</span> che inizia con
-          C…). Invita il bot nel canale con <span className="font-mono">/invite @Unbundle</span>{" "}
-          (o il nome della tua app).
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          Incolla l&apos;ID del canale (es. <span className="font-mono">C01234567890</span>): in Slack apri il
+          canale, tocca il suo nome e lo trovi in fondo alla scheda «Informazioni». Poi aggiungi il bot al canale
+          scrivendo <span className="font-mono">/invite @Unbundle</span>. Lascia vuoto per non ricevere notifiche.
         </p>
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Input
           id="slack-notify-channel"
-          className="font-mono text-sm sm:max-w-md"
+          className="h-10 font-mono text-base sm:h-8 sm:max-w-xs sm:text-sm"
           placeholder="C01234567890"
           value={value}
           disabled={pending}
           onChange={(e) => setValue(e.target.value)}
         />
-        <Button type="button" size="sm" disabled={pending} onClick={save}>
+        <Button type="button" className="h-10 sm:h-8" disabled={pending} onClick={save}>
           {pending ? "Salvataggio…" : "Salva"}
         </Button>
       </div>

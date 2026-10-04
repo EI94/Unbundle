@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,9 +9,10 @@ export default async function PortfolioSubmitPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  await requireSession();
 
   const { workspaceId } = await params;
+
+  await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 

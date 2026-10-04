@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useLearningUnsavedChanges } from "./use-unsaved-changes";
 import { downloadLearningDraft } from "./download-draft";
 import { LearningRefresh } from "./learning-refresh";
@@ -112,7 +111,7 @@ function IdeaFormFields({ workspaceId, programId, userId, initial, readOnly = fa
       <Button type="button" variant="outline" onClick={() => downloadLearningDraft("mia-proposta-formazione.txt", fields)}>Scarica la mia proposta</Button>
       <a className="underline" target="_blank" rel="noopener noreferrer" href={`/dashboard/${workspaceId}/learning/${programId}/ideas`}>Confronta la versione sul server</a>
     </div>}
-    {done && draft.resultingUseCaseId && <Link className="inline-block underline" href={`/dashboard/${workspaceId}/portfolio?created=${encodeURIComponent(draft.resultingUseCaseId)}`}>Vedi la proposta nel portfolio</Link>}
+    {done && draft.resultingUseCaseId && <p className="rounded-lg border p-3 text-sm">Proposta ricevuta: ora è nel portfolio del workspace e la valutano i referenti. Il portfolio non è visibile da questo corso.</p>}
     {!done && !closed && <div className="flex flex-wrap gap-3">
       {!frozen && <Button disabled={busy} variant="outline" onClick={save}>Salva bozza</Button>}
       {!confirm ? <Button disabled={busy || !draft || dirty} onClick={() => { if (validateForSending()) setConfirm(true); }}>{frozen ? "Riprendi invio" : "Rivedi proposta da inviare"}</Button> : <div className="space-y-3"><p>I campi sopra saranno visibili ai referenti del portfolio. Confermi l’invio volontario?</p><Button disabled={busy} onClick={submit}>Invia ai referenti</Button></div>}

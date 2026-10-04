@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
 import { organizations, simulations } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { generateSimulation, type SimulationResult } from "@/lib/ai/generate-simulation";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function generateSimulationAction(
@@ -17,7 +17,7 @@ export async function generateSimulationAction(
 ): Promise<SimulationResult> {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
   if (!canReviewWorkspacePortfolio(access.role)) {
     throw new Error("Non hai i permessi per generare simulazioni.");

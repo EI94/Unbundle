@@ -2,17 +2,21 @@
 
 import { useState, useTransition } from "react";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Leaf } from "lucide-react";
 import { toast } from "sonner";
 import { toggleEsgAction } from "@/lib/actions/use-cases";
 
 export function EsgToggle({
   workspaceId,
   initialEnabled,
+  canManage,
+  showLabel = false,
 }: {
   workspaceId: string;
   initialEnabled: boolean;
+  /** Fuori dalle Impostazioni l'interruttore non ha un titolo accanto: lo porta con sé. */
+  showLabel?: boolean;
+  /** Solo chi amministra il workspace cambia i criteri: per gli altri il valore è in sola lettura. */
+  canManage: boolean;
 }) {
   const [enabled, setEnabled] = useState(initialEnabled);
   const [isPending, startTransition] = useTransition();
@@ -20,40 +24,33 @@ export function EsgToggle({
   const handleToggle = (checked: boolean) => {
     const confirmed = window.confirm(
       checked
-        ? "Attivare lo scoring ESG? La modifica vale per tutto il team: i prossimi use case includeranno la dimensione ESG nella valutazione."
-        : "Disattivare lo scoring ESG? La modifica vale per tutto il team: la dimensione ESG non sarà più inclusa nella valutazione dei nuovi use case."
+        ? "Attivare i criteri ESG? Vale per tutto il team: i prossimi use case saranno valutati anche su ambiente, impatto sociale e governance."
+        : "Disattivare i criteri ESG? Vale per tutto il team: i nuovi use case non saranno più valutati su questi criteri."
     );
     if (!confirmed) return;
     setEnabled(checked);
     startTransition(async () => {
       try {
         await toggleEsgAction(workspaceId, checked);
-        toast.success(
-          checked
-            ? "Scoring ESG attivato per i prossimi use case"
-            : "Scoring ESG disattivato"
-        );
+        toast.success(checked ? "Criteri ESG attivati per i prossimi use case" : "Criteri ESG disattivati");
       } catch {
         setEnabled(!checked);
-        toast.error("Errore nell'aggiornamento");
+        toast.error("Modifica non salvata. Riprova.");
       }
     });
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <Leaf className="h-4 w-4 text-green-400" />
-      <Label
-        htmlFor="esg-toggle"
-        className="text-sm text-muted-foreground cursor-pointer"
-      >
-        ESG
-      </Label>
+    <div className="flex items-center gap-3">
+      <span className="text-sm text-muted-foreground" aria-hidden>
+        {showLabel ? `Criteri ESG ${enabled ? "attivi" : "spenti"}` : enabled ? "Attivi" : "Spenti"}
+      </span>
       <Switch
         id="esg-toggle"
+        aria-label="Criteri ESG nella valutazione degli use case"
         checked={enabled}
         onCheckedChange={handleToggle}
-        disabled={isPending}
+        disabled={!canManage || isPending}
       />
     </div>
   );

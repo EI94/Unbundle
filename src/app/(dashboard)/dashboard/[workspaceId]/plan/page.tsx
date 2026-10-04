@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
@@ -28,9 +28,10 @@ export default async function PlanPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  await requireSession();
 
   const { workspaceId } = await params;
+
+  await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 
@@ -102,7 +103,7 @@ export default async function PlanPage({
           </TabsContent>
 
           <TabsContent value="phases" className="mt-6">
-            <div className="max-w-4xl space-y-8">
+            <div className="mx-auto max-w-4xl space-y-8">
               {phases.map((phase) => (
                 <div key={phase.title}>
                   <h2 className="text-lg font-semibold mb-1">{phase.title}</h2>

@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
 import { getWorkspaceById, getDepartmentsByWorkspace } from "@/lib/db/queries/workspaces";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
@@ -14,9 +14,10 @@ export default async function ValueMapPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  await requireSession();
 
   const { workspaceId } = await params;
+
+  await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 
@@ -39,7 +40,7 @@ export default async function ValueMapPage({
   const needsClassification =
     activities.length > 0 && classified.length < activities.length;
   return (
-    <div className="flex-1 p-8 lg:p-12 max-w-5xl">
+    <div className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
       <div className="mb-8">
         <span className="text-xs text-muted-foreground tracking-wide uppercase">
           Analisi

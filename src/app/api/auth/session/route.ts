@@ -7,7 +7,32 @@ import {
   SESSION_MAX_AGE,
 } from "@/lib/auth";
 
+/**
+ * Solo dal sito stesso. Un'altra pagina potrebbe altrimenti postare qui un
+ * token del proprio account e far trovare la vittima collegata come
+ * l'attaccante (login CSRF): l'invito accettato subito dopo finirebbe al suo
+ * account. Un modulo cross-site non può mandare Content-Type JSON senza
+ * preflight, e il browser mette sempre Origin sulle POST.
+ */
+function fromThisSite(req: Request) {
+  const origin = req.headers.get("origin");
+  if (!origin) return req.headers.get("sec-fetch-site") === "same-origin";
+  try {
+    const host = req.headers.get("host");
+    const self = host ? `${new URL(req.url).protocol}//${host}` : new URL(req.url).origin;
+    const allowed = new Set([new URL(self).origin]);
+    const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+    if (configured) allowed.add(new URL(configured.startsWith("http") ? configured : `https://${configured}`).origin);
+    return allowed.has(new URL(origin).origin);
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(req: Request) {
+  if (!fromThisSite(req) || !req.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+    return NextResponse.json({ error: "Richiesta non autorizzata." }, { status: 403 });
+  }
   try {
     const { idToken } = (await req.json()) as { idToken?: string };
     if (!idToken) {
@@ -32,7 +57,10 @@ export async function POST(req: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
+  if (!fromThisSite(req)) {
+    return NextResponse.json({ error: "Richiesta non autorizzata." }, { status: 403 });
+  }
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE)?.value;
 

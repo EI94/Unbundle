@@ -2,7 +2,7 @@ import * as XLSX from "xlsx";
 import { auth } from "@/lib/auth";
 import { getPortfolioContributionsByWorkspace } from "@/lib/db/queries/use-cases";
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import {
   buildPortfolioWavePlan,
   buildWaveCandidate,
@@ -39,7 +39,7 @@ export async function GET(
   }
 
   const { workspaceId } = await params;
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) {
     return Response.json({ error: "Workspace not found" }, { status: 404 });
   }

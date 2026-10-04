@@ -26,7 +26,6 @@ import {
   KeyRound,
   MessagesSquare,
   ShieldCheck,
-  Sparkles,
   WandSparkles,
 } from "lucide-react";
 
@@ -193,20 +192,16 @@ export function ClaudeMcpCard({
   const starterPrompt = buildClaudeStarterPrompt(workspaceName);
 
   return (
-    <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
-      <div className="border-b bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.18),transparent_34%),linear-gradient(135deg,rgba(125,211,252,0.08),transparent_45%)] p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-500/10 ring-1 ring-sky-500/20">
-              <Bot className="h-5 w-5 text-sky-500" />
+    <section className="overflow-hidden rounded-xl bg-card text-card-foreground ring-1 ring-foreground/10" aria-labelledby="claude-card-title">
+      <div className="border-b bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.14),transparent_34%)] p-4 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-sky-500/10">
+              <Bot className="size-5 text-sky-400" aria-hidden />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-base font-semibold">Claude per Unbundle</h2>
-                <Badge variant="secondary" className="gap-1">
-                  <Sparkles className="h-3 w-3" />
-                  Effetto wow
-                </Badge>
+                <h2 id="claude-card-title" className="text-base font-semibold">Claude per Unbundle</h2>
               </div>
               <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
                 I colleghi possono dire a Claude che vogliono segnalare una best
@@ -215,18 +210,20 @@ export function ClaudeMcpCard({
               </p>
             </div>
           </div>
-          <Badge variant={activeTokens > 0 ? "secondary" : "outline"} className="shrink-0">
-            {activeTokens > 0 ? "Connesso" : "Da configurare"} · {activeTokens} setup attivi
+          <Badge variant={activeTokens > 0 ? "secondary" : "outline"} className="shrink-0 self-start">
+            {activeTokens > 0
+              ? `Attivo · ${activeTokens} ${activeTokens === 1 ? "configurazione" : "configurazioni"}`
+              : "Da configurare"}
           </Badge>
         </div>
       </div>
 
-      <div className="space-y-6 p-6">
-        <div className="grid gap-3 md:grid-cols-3">
+      <div className="@container space-y-6 p-4 sm:p-6">
+        <div className="grid gap-3 @2xl:grid-cols-3">
           <OnboardingStep
             index="1"
-            title="L'Admin connette"
-            description="Crea un setup team legato solo a questo workspace. La chiave resta revocabile e valida 180 giorni."
+            title="L'amministratore collega Claude"
+            description="Crea un accesso valido solo per questo workspace: dura 180 giorni e puoi revocarlo quando vuoi."
           />
           <OnboardingStep
             index="2"
@@ -252,18 +249,20 @@ export function ClaudeMcpCard({
                   Crea setup Claude per il team
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Genera un kit copiabile: collega Claude senza path locali o
-                  istruzioni da sviluppatore.
+                  Genera il comando da incollare nel Terminale (Mac o Linux) per
+                  collegare Claude Code a questo workspace, più un messaggio
+                  pronto per i colleghi.
                 </p>
               </div>
               <Badge variant="outline">Workspace {workspaceName}</Badge>
             </div>
-            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <div className="grid gap-3 @md:grid-cols-[1fr_auto]">
               <div className="space-y-1.5">
                 <Label htmlFor="claude-token-label">Nome setup</Label>
                 <Input
                   id="claude-token-label"
                   name="label"
+                  className="h-10 text-base sm:h-8 sm:text-sm"
                   defaultValue={`Claude team - ${workspaceName}`}
                   aria-invalid={!!createState.fieldErrors?.label}
                 />
@@ -278,7 +277,7 @@ export function ClaudeMcpCard({
                 )}
               </div>
               <div className="flex items-end">
-                <Button type="submit" disabled={createPending}>
+                <Button type="submit" className="h-10 w-full sm:h-8 @md:w-auto" disabled={createPending}>
                   <KeyRound className="mr-1 h-3.5 w-3.5" />
                   {createPending ? "Preparo..." : "Prepara setup"}
                 </Button>
@@ -288,8 +287,8 @@ export function ClaudeMcpCard({
               <div
                 className={`mt-4 rounded-lg border px-3 py-2 text-sm ${
                   feedbackOk
-                    ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
-                    : "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
+                    ? "border-green-500/30 bg-green-500/10 text-green-300"
+                    : "border-red-500/30 bg-red-500/10 text-red-300"
                 }`}
                 role="status"
               >
@@ -299,16 +298,16 @@ export function ClaudeMcpCard({
           </form>
         ) : (
           <div className="rounded-2xl border bg-muted/20 p-4 text-sm text-muted-foreground">
-            Puoi vedere lo stato della connessione. Solo Executive Sponsor e
-            Transformation Lead possono creare o revocare setup Claude.
+            Puoi vedere lo stato della connessione. Solo gli amministratori
+            dell&apos;organizzazione possono creare o revocare l&apos;accesso di Claude.
           </div>
         )}
 
         {createState.data && setupCommand && colleagueGuide ? (
           <section className="space-y-4 rounded-3xl border border-sky-500/25 bg-sky-500/5 p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="flex flex-col gap-3 @2xl:flex-row @2xl:items-start @2xl:justify-between">
               <div>
-                <div className="flex items-center gap-2 text-sm font-semibold text-sky-700 dark:text-sky-300">
+                <div className="flex items-center gap-2 text-sm font-semibold text-sky-300">
                   <CheckCircle2 className="h-4 w-4" />
                   Setup kit pronto
                 </div>
@@ -322,7 +321,7 @@ export function ClaudeMcpCard({
               </Badge>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="grid gap-4 @4xl:grid-cols-[1.2fr_0.8fr]">
               <div className="space-y-3 rounded-2xl border bg-background p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -345,7 +344,7 @@ export function ClaudeMcpCard({
                   className="min-h-36 resize-none font-mono text-xs"
                   value={setupCommand}
                 />
-                <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
+                <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
                   Il comando contiene una chiave workspace. Condividilo solo con
                   persone autorizzate. Se serve, revoca il setup e generane uno
                   nuovo in pochi secondi.
@@ -416,7 +415,7 @@ export function ClaudeMcpCard({
               </p>
             </div>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 @xl:grid-cols-2">
             <div className="rounded-xl border bg-background p-3">
               <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
                 <MessagesSquare className="h-3.5 w-3.5" />
@@ -444,7 +443,7 @@ export function ClaudeMcpCard({
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">Setup configurati</h3>
             <span className="text-xs text-muted-foreground">
-              Scrittura Raccolta & Ranking
+              Può aggiungere contributi a Raccolta & Ranking
             </span>
           </div>
           {localTokens.length === 0 ? (
@@ -508,6 +507,6 @@ export function ClaudeMcpCard({
           )}
         </section>
       </div>
-    </div>
+    </section>
   );
 }

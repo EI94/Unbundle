@@ -1,8 +1,7 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
-import { notFound } from "next/navigation";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import Link from "next/link";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
-import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
+import { canManageWorkspaceSettings, canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
+import { roleLabel } from "@/lib/workspace-roles";
 import { getPortfolioContributionsByWorkspace } from "@/lib/db/queries/use-cases";
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,17 +15,16 @@ export default async function PortfolioPage({
   searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ thanks?: string | string[]; created?: string | string[] }>;
+  searchParams: Promise<{ thanks?: string | string[]; created?: string | string[]; joined?: string | string[] }>;
 }) {
-  const session = await requireSession();
-
   const { workspaceId } = await params;
-  const sp = await searchParams;
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
-  if (!access) notFound();
+  const { session, access } = await requireWorkspacePage(workspaceId);
+  const sp = await searchParams;
   const { workspace } = access;
   const canManageSettings = canManageWorkspaceSettings(access.role);
+  const canReview = canReviewWorkspacePortfolio(access.role);
+  const joined = typeof sp.joined === "string" ? sp.joined : null;
 
   const [model, contributions] = await Promise.all([
     getOrCreateWorkspaceScoringModel(workspaceId),
@@ -73,6 +71,26 @@ export default async function PortfolioPage({
         </div>
       </div>
 
+      {(joined === "1" || joined === "upgraded") && (
+        <Card className="border-emerald-500/30 bg-emerald-500/5" data-testid="workspace-welcome">
+          <CardContent className="space-y-1 p-4 text-sm">
+            <div className="font-medium">Benvenuto in {workspace.name}!</div>
+            <div className="text-muted-foreground">
+              Ora collabori come {roleLabel(access.role)}
+              {joined === "upgraded" ? " e continui a seguire i tuoi corsi" : ""}. Per iniziare, proponi un use
+              case con «Nuovo contributo».
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {joined === "already" && (
+        <Card className="border-sky-500/30 bg-sky-500/5" data-testid="workspace-already-member">
+          <CardContent className="p-4 text-sm">
+            Eri già in {workspace.name} come {roleLabel(access.role)}: l&apos;invito non ha cambiato il tuo ruolo.
+          </CardContent>
+        </Card>
+      )}
+
       {sp.thanks === "1" && (
         <Card className="border-green-500/30 bg-green-500/5">
           <CardContent className="p-4 text-sm">
@@ -106,6 +124,7 @@ export default async function PortfolioPage({
             thresholds={model.resolvedConfig.thresholds}
             config={model.resolvedConfig}
             esgEnabled={esgEnabled}
+            canReview={canReview}
           />
           <WavePlanner
             workspaceId={workspaceId}

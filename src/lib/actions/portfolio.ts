@@ -29,7 +29,7 @@ import {
   autoScorePortfolioUseCase,
   recalibrateWorkspacePortfolioWithAi,
 } from "@/lib/portfolio/ai-ranking";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import {
   canManageWorkspaceSettings,
   canReviewWorkspacePortfolio,
@@ -109,7 +109,7 @@ export async function updateAiTransformationTeamNameAction(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireSession();
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access || !canManageWorkspaceSettings(access.role)) {
     return { ok: false, message: "Non hai i permessi per modificare il team.", fieldErrors: {} };
   }
@@ -128,7 +128,7 @@ export async function updateWhatsappWebhookAction(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireSession();
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access || !canManageWorkspaceSettings(access.role)) {
     return { ok: false, message: "Non hai i permessi per modificare le integrazioni.", fieldErrors: {} };
   }
@@ -225,7 +225,7 @@ export async function updateScoringModelAction(
 ): Promise<ActionState> {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) {
     return { ok: false, message: "Workspace non trovato.", fieldErrors: {} };
   }
@@ -413,7 +413,7 @@ export async function createPortfolioSubmissionAction(
   formData: FormData
 ): Promise<ActionState> {
   const session = await requireSession();
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) {
     return { ok: false, message: "Workspace non trovato.", fieldErrors: {} };
   }
@@ -518,7 +518,7 @@ export async function savePortfolioReviewAction(
 ): Promise<ActionState<PortfolioReviewSaveData>> {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   const model = await getOrCreateWorkspaceScoringModel(workspaceId);
   if (!access) {
     return { ok: false, message: "Workspace non trovato.", fieldErrors: {} };
@@ -626,7 +626,7 @@ export async function suggestPortfolioScoresWithAiAction(
 ): Promise<ActionState<PortfolioReviewSaveData>> {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access || !canReviewWorkspacePortfolio(access.role)) {
     return {
       ok: false,
@@ -671,7 +671,7 @@ export async function recalibratePortfolioScoresAction(
 ): Promise<ActionState<{ updated: number; failed: number; total: number }>> {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access || !canReviewWorkspacePortfolio(access.role)) {
     return {
       ok: false,

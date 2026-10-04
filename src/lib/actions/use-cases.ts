@@ -15,7 +15,7 @@ import { db } from "@/lib/db";
 import { organizations, workspaces as workspacesTable } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { generateUseCases } from "@/lib/ai/generate-use-cases";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import {
   canManageWorkspaceSettings,
   canReviewWorkspacePortfolio,
@@ -24,7 +24,7 @@ import {
 export async function generateUseCasesAction(workspaceId: string) {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
   if (!canReviewWorkspacePortfolio(access.role)) {
     throw new Error("Non hai i permessi per generare use case.");
@@ -98,7 +98,7 @@ export async function generateUseCasesAction(workspaceId: string) {
 export async function toggleEsgAction(workspaceId: string, enabled: boolean) {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
   if (!canManageWorkspaceSettings(access.role)) {
     throw new Error("Non hai i permessi per modificare ESG.");
@@ -119,7 +119,7 @@ export async function setUseCaseStatusAction(
 ) {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
   if (!canReviewWorkspacePortfolio(access.role)) {
     throw new Error("Non hai i permessi per modificare use case.");
@@ -140,7 +140,7 @@ export async function setUseCaseWaveCategoryAction(
 ) {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
   if (!canReviewWorkspacePortfolio(access.role)) {
     throw new Error("Non hai i permessi per modificare use case.");

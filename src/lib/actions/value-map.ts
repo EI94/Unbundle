@@ -8,13 +8,13 @@ import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
+import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 export async function generateValueMapAction(workspaceId: string) {
   const session = await requireSession();
 
-  const access = await getWorkspaceAccessForUser(session.user.id, workspaceId);
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access) throw new Error("Workspace non trovato");
   if (!canReviewWorkspacePortfolio(access.role)) {
     throw new Error("Non hai i permessi per generare la value map.");

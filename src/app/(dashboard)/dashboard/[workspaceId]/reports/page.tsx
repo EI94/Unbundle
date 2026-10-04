@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { db } from "@/lib/db";
@@ -15,9 +15,10 @@ export default async function ReportsPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  await requireSession();
 
   const { workspaceId } = await params;
+
+  await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 
@@ -31,8 +32,8 @@ export default async function ReportsPage({
   const reportContent = latestReport?.content as ReportContent | null;
 
   return (
-    <div className="flex-1 p-6 lg:p-8">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="mx-auto w-full min-w-0 max-w-4xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Report</h1>
           <p className="mt-1 text-muted-foreground">
@@ -52,7 +53,7 @@ export default async function ReportsPage({
           </p>
         </div>
       ) : (
-        <div className="max-w-4xl space-y-6">
+        <div className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

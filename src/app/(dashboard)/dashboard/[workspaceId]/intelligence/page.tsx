@@ -1,3 +1,5 @@
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { getSignalsByWorkspace, getUnreadSignals } from "@/lib/db/queries/signals";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
@@ -17,6 +19,7 @@ export default async function IntelligencePage(props: {
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await props.params;
+  const { access } = await requireWorkspacePage(workspaceId);
 
   const [signals, unread, activities, useCases] = await Promise.all([
     getSignalsByWorkspace(workspaceId),
@@ -121,7 +124,7 @@ export default async function IntelligencePage(props: {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <SignalsFeed signals={signals} workspaceId={workspaceId} />
-        <CompetitiveAnalysisViewer workspaceId={workspaceId} />
+        <CompetitiveAnalysisViewer workspaceId={workspaceId} canGenerate={canReviewWorkspacePortfolio(access.role)} />
       </div>
     </div>
   );

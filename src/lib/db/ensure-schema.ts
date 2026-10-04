@@ -19,7 +19,7 @@ import { db } from ".";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 12;
+const ENSURE_VERSION = 13;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -46,6 +46,10 @@ async function runOnce(): Promise<void> {
   await db.execute(sql`
     ALTER TABLE "workspaces"
       ADD COLUMN IF NOT EXISTS "whatsapp_webhook_url" varchar(1000);
+  `);
+  await db.execute(sql`
+    ALTER TABLE "workspaces"
+      ADD COLUMN IF NOT EXISTS "portfolio_share_epoch" integer NOT NULL DEFAULT 0;
   `);
   await db.execute(sql`
     ALTER TABLE "workspaces"
@@ -627,10 +631,11 @@ async function schemaLooksCurrent(): Promise<boolean> {
               'esg_enabled',
               'ai_transformation_team_name',
               'whatsapp_webhook_url',
-              'unit_terminology'
+              'unit_terminology',
+              'portfolio_share_epoch'
             )
           GROUP BY table_name
-          HAVING count(*) = 4
+          HAVING count(*) = 5
         )
         AND EXISTS (
           SELECT 1 FROM information_schema.columns

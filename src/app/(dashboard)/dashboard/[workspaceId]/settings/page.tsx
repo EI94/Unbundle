@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getSlackInstallationByWorkspace } from "@/lib/db/queries/slack";
@@ -7,8 +7,6 @@ import {
   getWorkspaceInvitationsForWorkspace,
 } from "@/lib/db/queries/workspace-collaboration";
 import { getWorkspaceIntegrationTokens } from "@/lib/db/queries/workspace-integrations";
-import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EsgToggle } from "@/components/dashboard/esg-toggle";
 import { SlackInstallButton } from "@/components/dashboard/slack-install-button";
@@ -21,7 +19,11 @@ import {
 } from "@/lib/workspace-permissions";
 import { WorkspaceCollaborationCard } from "@/components/workspace/workspace-collaboration-card";
 import { ClaudeMcpCard } from "@/components/workspace/claude-mcp-card";
-import { MessageSquare, CheckCircle, Leaf, Lock } from "lucide-react";
+import { MessageSquare, CheckCircle, Leaf, Lock, AlertTriangle } from "lucide-react";
+import { PageContainer } from "@/components/dashboard/page-container";
+import { SettingsSection } from "@/components/dashboard/settings-section";
+import { DisableShareLinksButton } from "@/components/workspace/disable-share-links-button";
+import { roleLabel } from "@/lib/workspace-roles";
 
 function decodeSlackErrorParam(raw: string | undefined): string {
   if (!raw) return "";
@@ -65,170 +67,114 @@ export default async function SettingsPage({
   params: Promise<{ workspaceId: string }>;
   searchParams: Promise<{ slack?: string; slack_error?: string }>;
 }) {
-  const session = await requireSession();
 
   const { workspaceId } = await params;
+
+  const { session, access } = await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 
   const search = await searchParams;
-  const [slackInstallation, access, collaborators, invitations, integrationTokens] = await Promise.all([
+  const [slackInstallation, collaborators, invitations, integrationTokens] = await Promise.all([
     getSlackInstallationByWorkspace(workspaceId),
-    getWorkspaceAccessForUser(session.user.id, workspaceId),
     getWorkspaceCollaborators(workspaceId),
     getWorkspaceInvitationsForWorkspace(workspaceId),
     getWorkspaceIntegrationTokens(workspaceId),
   ]);
-  if (!access) notFound();
   const isSlackInstalled = !!slackInstallation;
   const canDelete =
     access.source === "organization" && canDeleteWorkspace(access.role);
   const canManageCollaborators = canManageWorkspaceCollaborators(access.role);
   const canManageIntegrations =
     access.source === "organization" && canManageWorkspaceSettings(access.role);
+  const canManageSettings = canManageWorkspaceSettings(access.role);
   const slackErrDecoded = decodeSlackErrorParam(search.slack_error);
   const slackErrHint = slackErrDecoded ? slackInstallErrorHint(slackErrDecoded) : null;
 
+  const roleName = roleLabel(access.role);
+  const sections = [
+    { id: "persone", label: "Persone" },
+    { id: "integrazioni", label: "Integrazioni" },
+    { id: "valutazione", label: "Valutazione" },
+    { id: "zona-pericolosa", label: "Zona pericolosa" },
+  ];
+
   return (
-    <div className="flex-1 p-6 lg:p-8 max-w-3xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Integrazioni</h1>
-        <p className="mt-1 text-muted-foreground">
-          Configura le integrazioni esterne per il tuo workspace
-        </p>
-      </div>
+    <PageContainer>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">{workspace.name}</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Impostazioni</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Chi ha accesso, le integrazioni e i criteri di valutazione di questo workspace.
+          </p>
+        </div>
+        <Badge variant="outline" className="h-7 self-start px-3 sm:self-auto" data-testid="settings-role">
+          Il tuo ruolo: {roleName}
+        </Badge>
+      </header>
+
+      <nav
+        aria-label="Sezioni delle impostazioni"
+        className="-mx-4 mt-6 overflow-x-auto border-b px-4 sm:-mx-6 sm:px-6 md:sticky md:top-[53px] md:z-10 md:bg-background/90 md:backdrop-blur lg:-mx-8 lg:px-8"
+      >
+        <ul className="flex gap-1 py-2">
+          {sections.map((section) => (
+            <li key={section.id}>
+              <a
+                href={`#${section.id}`}
+                className="inline-flex h-10 items-center whitespace-nowrap rounded-lg px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                {section.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
 
       {search.slack === "installed" && isSlackInstalled && (
-        <div className="mb-6 flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm text-green-400">
-          <CheckCircle className="h-4 w-4" />
-          Slack installato con successo!
+        <div className="mt-6 flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/5 px-4 py-3 text-sm text-green-300" role="status">
+          <CheckCircle className="h-4 w-4 shrink-0" aria-hidden />
+          Slack collegato.
         </div>
       )}
 
       {search.slack === "installed" && !isSlackInstalled && (
-        <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-          <p className="font-medium text-amber-50">OAuth Slack completato, ma questo workspace non risulta collegato</p>
-          <p className="mt-2 text-amber-100/90 leading-relaxed">
-            Succede se l’URL ha <code className="text-amber-50/90">?slack=installed</code> ma sei in un altro
-            workspace Unbundle, oppure se l’installazione è finita su un <strong>database</strong> diverso da
-            quello che usa questa pagina (es. OAuth da preview <code className="text-amber-50/90">*.vercel.app</code>{" "}
-            e DB preview, mentre qui leggi altro). Riprova{" "}
-            <strong>Installa su Slack</strong> da questa pagina, oppure apri Integrazioni dal workspace corretto.
+        <div className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100" role="alert">
+          <p className="font-medium text-amber-50">Slack ha dato l&apos;ok, ma questo workspace non risulta collegato</p>
+          <p className="mt-1 leading-relaxed">
+            Controlla di essere nel workspace giusto e premi di nuovo «Collega Slack».
           </p>
+          <details className="mt-2 text-xs text-amber-100/80">
+            <summary className="cursor-pointer">Dettagli tecnici</summary>
+            <p className="mt-1 leading-relaxed">
+              Succede se l&apos;URL contiene <code>?slack=installed</code> ma sei in un altro workspace, oppure se
+              l&apos;installazione è finita su un database diverso (per esempio un deploy di anteprima).
+            </p>
+          </details>
         </div>
       )}
 
       {search.slack_error && (
-        <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
-          <p className="font-medium">Installazione Slack non completata</p>
+        <div className="mt-6 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-300" role="alert">
+          <p className="font-medium">Non siamo riusciti a collegare Slack</p>
+          <p className="mt-1 text-red-200/90">
+            Riprova tra qualche minuto. Se succede ancora, scrivi al supporto indicando il codice qui sotto.
+          </p>
+          <p className="mt-2 break-words font-mono text-xs text-red-300/80">{slackErrDecoded}</p>
           {slackErrHint ? (
-            <p className="mt-2 text-red-200/95 leading-relaxed">{slackErrHint}</p>
-          ) : null}
-          <p className="mt-2 text-xs text-red-300/80 break-words font-mono">{slackErrDecoded}</p>
-          {!slackErrHint ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              In Slack App → OAuth & Permissions controlla le Redirect URL (
-              <code className="text-foreground/80">/api/slack/oauth</code> sullo stesso host di Unbundle)
-              e le variabili <code className="text-foreground/80">SLACK_CLIENT_ID</code> /{" "}
-              <code className="text-foreground/80">SLACK_CLIENT_SECRET</code> su Vercel.
-            </p>
+            <details className="mt-2 text-xs text-red-200/90">
+              <summary className="cursor-pointer">Dettagli tecnici per chi gestisce l&apos;app Slack</summary>
+              <p className="mt-1 leading-relaxed">{slackErrHint}</p>
+            </details>
           ) : null}
         </div>
       )}
 
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10">
-                  <MessageSquare className="h-5 w-5 text-purple-400" />
-                </div>
-                <div>
-                  <CardTitle className="text-base">Slack</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    Bot per proporre use case AI direttamente da Slack
-                  </p>
-                </div>
-              </div>
-              {isSlackInstalled ? (
-                <Badge variant="outline" className="border-green-500/30 text-green-400">
-                  <CheckCircle className="mr-1 h-3 w-3" />
-                  Connesso
-                </Badge>
-              ) : !canManageIntegrations ? (
-                <Badge variant="outline" className="text-muted-foreground">
-                  <Lock className="mr-1 h-3 w-3" />
-                  Admin org
-                </Badge>
-              ) : (
-                <SlackInstallButton workspaceId={workspaceId} />
-              )}
-            </div>
-          </CardHeader>
-          {!isSlackInstalled && (
-            <CardContent className="pt-0">
-              <p className="text-xs text-muted-foreground leading-relaxed border-t border-border/60 pt-4">
-                Dopo la connessione potrai impostare qui sotto il <strong>canale per notifiche admin</strong>{" "}
-                (opzionale). In Slack, invita il bot in un canale con{" "}
-                <code className="text-foreground/80">/invite @Unbundle</code> (o il nome della tua app). Se nelle DM
-                compare &quot;invio messaggi disattivato&quot;, in{" "}
-                <a
-                  className="text-purple-400 underline hover:text-purple-300"
-                  href="https://api.slack.com/apps"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  api.slack.com/apps
-                </a>{" "}
-                → <strong>App Home</strong> abilita la scheda Messaggi / messaggi dall’utente. Per le menzioni:
-                <strong> Event Subscriptions</strong> deve usare lo stesso backend che ha salvato il token (URL{" "}
-                <code className="text-foreground/80">…/api/slack/events</code>); Slack consente un solo URL: di
-                solito va quello di <strong>produzione</strong> se il DB è condiviso con OAuth da produzione.
-              </p>
-            </CardContent>
-          )}
-          {isSlackInstalled && (
-            <CardContent className="pt-0">
-              <div className="rounded-lg bg-accent/30 px-4 py-3 text-sm">
-                <p className="text-muted-foreground">
-                  Workspace: <span className="text-foreground font-medium">{slackInstallation.slackTeamName ?? slackInstallation.slackTeamId}</span>
-                </p>
-                <p className="text-muted-foreground mt-1">
-                  Nei <strong>canali</strong>, invita il bot (<code className="font-mono text-purple-400">/invite @Unbundle</code>) prima
-                  di menzionarlo. Nelle <strong>DM</strong> con il bot, se Slack blocca l’invio, abilita i messaggi utente
-                  in <strong>App Home</strong> nella configurazione dell’app. Le menzioni richiedono che{" "}
-                  <strong>Event Subscriptions</strong> sia attivo e l’URL punti a questo deploy (stesso database di
-                  questa installazione).
-                </p>
-                <p className="text-muted-foreground mt-2">
-                  Nei <strong>canali Slack Connect</strong>, Unbundle salva il contributo nel workspace collegato
-                  all’azienda della persona che scrive. Se un esterno non ha collegato il proprio Slack a Unbundle,
-                  il bot chiede di completare l’installazione invece di salvare il dato in questo workspace.
-                </p>
-                <p className="text-muted-foreground mt-2">
-                  Il campo sotto è solo per <strong>notifiche admin</strong> verso un canale (ID che inizia con{" "}
-                  <span className="font-mono">C</span>/<span className="font-mono">G</span>), non sostituisce
-                  l’invito al canale.
-                </p>
-                {canManageIntegrations ? (
-                  <SlackNotifyChannelForm
-                    workspaceId={workspaceId}
-                    initialChannelId={slackInstallation.notifyChannelId}
-                  />
-                ) : (
-                  <div className="mt-4 rounded-lg border border-border bg-background/50 p-4 text-xs text-muted-foreground">
-                    Solo un admin dell&apos;organizzazione può modificare le
-                    impostazioni Slack.
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          )}
-        </Card>
-
+      <div className="mt-8 space-y-10">
         <WorkspaceCollaborationCard
           workspaceId={workspaceId}
+          workspaceName={workspace.name}
           canManage={canManageCollaborators}
           currentUserId={session.user.id}
           members={collaborators.map((member) => ({
@@ -239,70 +185,157 @@ export default async function SettingsPage({
             source: member.source,
             createdAt: member.createdAt.toISOString(),
           }))}
-          invitations={invitations.map((invitation) => ({
-            id: invitation.id,
-            email: invitation.email,
-            role: invitation.role,
-            maxUses: invitation.maxUses,
-            usedCount: invitation.usedCount,
-            expiresAt: invitation.expiresAt.toISOString(),
-            revokedAt: invitation.revokedAt?.toISOString() ?? null,
-            createdAt: invitation.createdAt.toISOString(),
-          }))}
+          invitations={
+            canManageCollaborators
+              ? invitations.map((invitation) => ({
+                  id: invitation.id,
+                  email: invitation.email,
+                  role: invitation.role,
+                  maxUses: invitation.maxUses,
+                  usedCount: invitation.usedCount,
+                  expiresAt: invitation.expiresAt.toISOString(),
+                  revokedAt: invitation.revokedAt?.toISOString() ?? null,
+                  createdAt: invitation.createdAt.toISOString(),
+                  createdByName: invitation.createdByName,
+                  acceptedByEmail: invitation.acceptedByEmail,
+                }))
+              : []
+          }
         />
 
-        <ClaudeMcpCard
-          workspaceId={workspaceId}
-          workspaceName={workspace.name}
-          canManage={canManageIntegrations}
-          tokens={integrationTokens.map((token) => ({
-            id: token.id,
-            label: token.label,
-            provider: token.provider,
-            tokenPrefix: token.tokenPrefix,
-            scopes: token.scopes,
-            lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
-            expiresAt: token.expiresAt?.toISOString() ?? null,
-            revokedAt: token.revokedAt?.toISOString() ?? null,
-            createdAt: token.createdAt.toISOString(),
-          }))}
-        />
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
-                  <Leaf className="h-5 w-5 text-green-400" />
-                </div>
-                <div>
-                  <CardTitle className="text-base">Scoring ESG</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    Includi Environmental, Social, Governance nella valutazione use case
+        <div id="integrazioni" className="scroll-mt-28 space-y-6">
+          <SettingsSection
+            icon={MessageSquare}
+            iconClassName="bg-purple-500/10 text-purple-400"
+            title="Slack"
+            description="I colleghi propongono use case scrivendo al bot, e chi gestisce il workspace riceve le notifiche."
+            aside={
+              isSlackInstalled ? (
+                <Badge variant="outline" className="border-green-500/30 text-green-400">
+                  <CheckCircle className="mr-1 h-3 w-3" aria-hidden />
+                  Connesso
+                </Badge>
+              ) : !canManageIntegrations ? (
+                <Badge variant="outline" className="text-muted-foreground">
+                  <Lock className="mr-1 h-3 w-3" aria-hidden />
+                  Solo amministratori
+                </Badge>
+              ) : (
+                <SlackInstallButton workspaceId={workspaceId} />
+              )
+            }
+          >
+            <div className="grid gap-6 @3xl:grid-cols-2">
+              <div className="space-y-3 text-sm leading-relaxed text-muted-foreground">
+                {isSlackInstalled ? (
+                  <>
+                    <p>
+                      Collegato a{" "}
+                      <span className="font-medium text-foreground">
+                        {slackInstallation.slackTeamName ?? slackInstallation.slackTeamId}
+                      </span>
+                      .
+                    </p>
+                    <p>
+                      Per usarlo in un canale aggiungi il bot con{" "}
+                      <code className="font-mono text-purple-300">/invite @Unbundle</code> e poi menzionalo; puoi anche
+                      scrivergli in privato. Nei canali condivisi con altre aziende, ogni contributo va al workspace
+                      dell&apos;azienda di chi scrive.
+                    </p>
+                  </>
+                ) : (
+                  <p>
+                    Dopo il collegamento aggiungi il bot ai canali in cui vuoi usarlo scrivendo{" "}
+                    <code className="font-mono text-purple-300">/invite @Unbundle</code>. Potrai anche scegliere un
+                    canale per le notifiche agli amministratori.
                   </p>
+                )}
+                {canManageIntegrations && (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer">Dettagli tecnici per chi gestisce l&apos;app Slack</summary>
+                    <p className="mt-2">
+                      Se nei messaggi diretti compare «invio messaggi disattivato», in{" "}
+                      <a className="underline" href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer">
+                        api.slack.com/apps
+                      </a>{" "}
+                      → App Home abilita la scheda Messaggi. Le menzioni richiedono che Event Subscriptions punti a{" "}
+                      <code>…/api/slack/events</code> sullo stesso deploy che ha salvato l&apos;installazione.
+                    </p>
+                  </details>
+                )}
+              </div>
+              <div className="space-y-6">
+                {isSlackInstalled &&
+                  (canManageIntegrations ? (
+                    <SlackNotifyChannelForm workspaceId={workspaceId} initialChannelId={slackInstallation.notifyChannelId} />
+                  ) : (
+                    <p className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+                      Il canale per le notifiche lo sceglie un amministratore dell&apos;organizzazione.
+                    </p>
+                  ))}
+                <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                  <p className="text-sm font-medium">Link pubblici al portfolio</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Le notifiche su Slack portano a una copia in sola lettura del portfolio, valida 30 giorni. Si
+                    disattivano da sole quando rimuovi una persona; puoi farlo anche ora.
+                  </p>
+                  {canManageCollaborators ? <DisableShareLinksButton workspaceId={workspaceId} /> : null}
                 </div>
               </div>
-              <EsgToggle
-                workspaceId={workspaceId}
-                initialEnabled={workspace.esgEnabled === true}
-              />
             </div>
-          </CardHeader>
-        </Card>
+          </SettingsSection>
 
-        <Card className="border-red-500/20">
-          <CardHeader>
-            <CardTitle className="text-base">Zona pericolosa</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DeleteWorkspaceForm
+          <ClaudeMcpCard
+            workspaceId={workspaceId}
+            workspaceName={workspace.name}
+            canManage={canManageIntegrations}
+            tokens={integrationTokens.map((token) => ({
+              id: token.id,
+              label: token.label,
+              provider: token.provider,
+              tokenPrefix: token.tokenPrefix,
+              scopes: token.scopes,
+              lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
+              expiresAt: token.expiresAt?.toISOString() ?? null,
+              revokedAt: token.revokedAt?.toISOString() ?? null,
+              createdAt: token.createdAt.toISOString(),
+            }))}
+          />
+        </div>
+
+        <SettingsSection
+          id="valutazione"
+          icon={Leaf}
+          iconClassName="bg-green-500/10 text-green-400"
+          title="Criteri ESG"
+          description={
+            <>
+              Aggiunge ambiente, impatto sociale e governance ai criteri con cui valuti gli use case.
+              {!canManageSettings && (
+                <span className="mt-1 block text-xs">Solo chi amministra il workspace può cambiarlo.</span>
+              )}
+            </>
+          }
+          aside={
+            <EsgToggle
               workspaceId={workspaceId}
-              workspaceName={workspace.name}
-              canDelete={canDelete}
+              initialEnabled={workspace.esgEnabled === true}
+              canManage={canManageSettings}
             />
-          </CardContent>
-        </Card>
+          }
+        />
+
+        <SettingsSection
+          id="zona-pericolosa"
+          tone="danger"
+          icon={AlertTriangle}
+          iconClassName="bg-red-500/10 text-red-400"
+          title="Zona pericolosa"
+          description="Azioni definitive: non si possono annullare."
+        >
+          <DeleteWorkspaceForm workspaceId={workspaceId} workspaceName={workspace.name} canDelete={canDelete} />
+        </SettingsSection>
       </div>
-    </div>
+    </PageContainer>
   );
 }

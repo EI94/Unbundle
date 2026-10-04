@@ -39,7 +39,7 @@ function textResult(text, structuredContent, isError = false) {
 
 function missingConfigResult() {
   return textResult(
-    "UNBUNDLE_MCP_TOKEN non configurato. Crea un token in Unbundle > Integrazioni > Claude MCP e avvia il server con UNBUNDLE_MCP_TOKEN.",
+    "UNBUNDLE_MCP_TOKEN non configurato. Crea un token in Unbundle > Impostazioni > Integrazioni > Claude e avvia il server con UNBUNDLE_MCP_TOKEN.",
     { ok: false, error: "missing_token" },
     true
   );

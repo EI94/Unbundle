@@ -15,7 +15,20 @@ function toIso(d: Date | string | null | undefined): string {
  * Topbar server component: carica gli ultimi signal e delega la UI interattiva
  * alla campanella client-side. Viene renderizzato in `dashboard/[workspaceId]/layout`.
  */
-export async function WorkspaceTopbar({ workspaceId }: { workspaceId: string }) {
+export async function WorkspaceTopbar({
+  workspaceId,
+  showNotifications = true,
+}: {
+  workspaceId: string;
+  showNotifications?: boolean;
+}) {
+  if (!showNotifications) {
+    return (
+      <header className="sticky top-0 z-20 flex items-center border-b bg-background/80 px-4 py-2 backdrop-blur md:hidden">
+        <SidebarTrigger className="size-11" aria-label="Apri navigazione" title="Apri navigazione" />
+      </header>
+    );
+  }
   const rows = await getSignalsByWorkspace(workspaceId, 25);
   const signals: BellSignal[] = rows.map((r) => ({
     id: r.id,

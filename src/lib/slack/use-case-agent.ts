@@ -144,7 +144,9 @@ async function submitCompletedDraft(params: {
 
   const base = appBaseUrl();
   const reviewUrl = base
-    ? tryBuildPortfolioShareUrl(base, params.workspaceId, result.useCaseId)
+    ? tryBuildPortfolioShareUrl(base, params.workspaceId, result.useCaseId, {
+        epoch: (await getWorkspaceById(params.workspaceId))?.portfolioShareEpoch ?? 0,
+      })
     : null;
   await post(
     params.thread,

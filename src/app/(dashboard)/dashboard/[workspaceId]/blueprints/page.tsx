@@ -1,4 +1,6 @@
-import { requireSession } from "@/lib/auth/redirect-to-login";
+import { requireWorkspacePage } from "@/lib/auth/require-workspace";
+import { getLatestBlueprints } from "@/lib/actions/blueprints";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { notFound } from "next/navigation";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { BlueprintViewer } from "@/components/dashboard/blueprint-viewer";
@@ -8,9 +10,10 @@ export default async function BlueprintsPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  await requireSession();
 
   const { workspaceId } = await params;
+
+  const { access } = await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 
@@ -24,7 +27,11 @@ export default async function BlueprintsPage({
           Blueprint tecnici per gli agenti AI che implementeranno i use case
         </p>
       </div>
-      <BlueprintViewer workspaceId={workspaceId} />
+      <BlueprintViewer
+        workspaceId={workspaceId}
+        canGenerate={canReviewWorkspacePortfolio(access.role)}
+        initialBlueprints={(await getLatestBlueprints(workspaceId)) ?? []}
+      />
     </div>
   );
 }
