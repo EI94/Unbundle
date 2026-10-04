@@ -14,6 +14,7 @@ import {
   revokeWorkspaceInvitation,
   updateWorkspaceMembershipRole,
   WORKSPACE_COLLABORATOR_ROLES,
+  type WorkspaceMemberRole,
   type WorkspaceCollaboratorRole,
 } from "@/lib/db/queries/workspace-collaboration";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
@@ -34,7 +35,9 @@ export type CreateWorkspaceInviteData = {
   invitationId: string;
   inviteUrl: string;
   email: string | null;
-  role: WorkspaceCollaboratorRole;
+  /** Letto dalla riga, non scelto qui: il ruolo assegnabile e' ristretto dal
+   *  validatore a WORKSPACE_COLLABORATOR_ROLES, ma il tipo riflette la colonna. */
+  role: WorkspaceMemberRole;
   expiresInDays: number;
   expiresAt: string;
   createdAt: string;

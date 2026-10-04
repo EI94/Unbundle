@@ -19,6 +19,10 @@ export const learningAdminRequestSchema = z.discriminatedUnion("operation", [
   z.object({ expectedUserId: z.uuid(), operation: z.literal("enrollment"), input: z.object({ ...scope, enrollmentId: z.uuid(), status: z.enum(["active", "revoked"]), cohortId: cohort }).strict() }).strict(),
   z.object({ expectedUserId: z.uuid(), operation: z.literal("grant"), input: z.object({ ...scope, userId: z.uuid(), capability: z.enum(["manage", "review", "aggregate", "export"]), cohortId: cohort.nullable() }).strict() }).strict(),
   z.object({ expectedUserId: z.uuid(), operation: z.literal("revokeGrant"), input: z.object({ ...scope, grantId: z.uuid() }).strict() }).strict(),
+  z.object({ expectedUserId: z.uuid(), operation: z.literal("joinLink"), input: z.object({ ...scope, cohortId: cohort, label: z.string().trim().max(120).optional(), maxUses: z.number().int().min(1).max(500), expiresInHours: z.number().int().min(1).max(720), idempotencyKey: z.uuid() }).strict() }).strict(),
+  z.object({ expectedUserId: z.uuid(), operation: z.literal("joinLinkDoor"), input: z.object({ ...scope, linkId: z.uuid(), doorOpen: z.boolean() }).strict() }).strict(),
+  z.object({ expectedUserId: z.uuid(), operation: z.literal("joinLinkSeats"), input: z.object({ ...scope, linkId: z.uuid(), maxUses: z.number().int().min(1).max(500) }).strict() }).strict(),
+  z.object({ expectedUserId: z.uuid(), operation: z.literal("revokeJoinLink"), input: z.object({ ...scope, linkId: z.uuid() }).strict() }).strict(),
   z.object({ expectedUserId: z.uuid(), operation: z.literal("purge"), input: z.object({ ...scope, confirmProgramId: z.uuid(), confirmTitle: z.string().min(1).max(250) }).strict() }).strict(),
 ]);
 export type LearningAdminRequest = z.infer<typeof learningAdminRequestSchema>;
@@ -42,7 +46,21 @@ export type AdminDetailDTO = {
   grants: { id: string; userId: string; name: string | null; email: string; capability: AdminCapability; cohortId: string | null; grantedAt: string; revokedAt: string | null }[];
   audit: { id: string; eventType: string; actorName: string | null; resourceId: string; createdAt: string; cohortId: string | null }[];
   retention: { eligible: boolean; purgeAfter: string | null; attempts: number; ideaDrafts: number } | null;
+  joinLinks: {
+    id: string; cohortId: string; label: string | null; maxUses: number; usedCount: number;
+    doorOpen: boolean; expiresAt: string; revokedAt: string | null; createdAt: string;
+    /** Quante persone sono entrate davvero: contate sulle riscossioni, non su used_count. */
+    joined: number;
+    /** Chi ha gia' del lavoro su un altro turno e chiede che venga riaperto. */
+    reopenRequests: { cohortId: string; count: number }[];
+  }[];
 };
 export type AdminMutationDTO = { programId: string; changed: number; message: string };
-export type AdminResponseMap = { catalog: AdminCatalogDTO; detail: AdminDetailDTO; inspectPack: AdminPackDTO } & Record<Exclude<LearningAdminRequest["operation"], "catalog" | "detail" | "inspectPack">, AdminMutationDTO>;
+/**
+ * Il link appena creato. Il token in chiaro vive solo in questa risposta: non
+ * viene ripersistito, quindi se il formatore lo perde si rigenera.
+ */
+export type AdminJoinLinkDTO = AdminMutationDTO & { linkId: string; token: string; url: string; qrSvg: string };
+export type AdminResponseMap = { catalog: AdminCatalogDTO; detail: AdminDetailDTO; inspectPack: AdminPackDTO; joinLink: AdminJoinLinkDTO }
+  & Record<Exclude<LearningAdminRequest["operation"], "catalog" | "detail" | "inspectPack" | "joinLink">, AdminMutationDTO>;
 export type LearningAdminResult<T> = { ok: true; data: T } | { ok: false; code: string; message: string; fieldErrors?: Record<string, string> };

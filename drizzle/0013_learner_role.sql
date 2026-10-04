@@ -1,0 +1,13 @@
+-- Ruolo dedicato a chi entra solo per seguire un corso.
+--
+-- Deve stare da sola e precedere la 0014 e il codice applicativo: in Postgres
+-- un valore aggiunto a un enum non e' utilizzabile nella stessa transazione
+-- che lo aggiunge. Il valore va APPESO in coda anche nell'array TypeScript di
+-- memberRoleEnum, perche' l'ordine deve combaciare.
+--
+-- Perche' un ruolo nuovo e non `contributor`: il layout del workspace apre la
+-- navigazione a chiunque abbia una membership, e la barra laterale elenca
+-- sedici voci fra cui Strategia, Report, Blueprints e Intelligence. Un
+-- partecipante a mezza giornata di corso vedrebbe il piano di trasformazione
+-- del proprio datore di lavoro, e un'informazione vista non si ritira.
+ALTER TYPE member_role ADD VALUE IF NOT EXISTS 'learner';

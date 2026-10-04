@@ -48,6 +48,8 @@ import {
 
 interface AppSidebarProps {
   learningAvailable?: boolean;
+  /** Entrato da un link di corso: la navigazione si riduce al corso. */
+  learnerOnly?: boolean;
   workspaceId?: string;
   workspaceName?: string;
   user: {
@@ -59,6 +61,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({
   learningAvailable = false,
+  learnerOnly = false,
   workspaceId,
   workspaceName,
   user,
@@ -77,7 +80,13 @@ export function AppSidebar({
     router.push("/login");
   };
 
-  const workspaceNav = workspaceId
+  const learnerNav = workspaceId
+    ? [{ title: "Il mio corso", href: `${basePath}/learning`, icon: GraduationCap }]
+    : [];
+
+  const workspaceNav = learnerOnly
+    ? learnerNav
+    : workspaceId
     ? [
         { title: "Overview", href: basePath, icon: LayoutDashboard },
         { title: "AI Readiness", href: `${basePath}/ai-readiness`, icon: ClipboardCheck },

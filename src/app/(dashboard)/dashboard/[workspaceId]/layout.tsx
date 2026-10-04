@@ -9,6 +9,7 @@ import {
 } from "@/lib/portfolio/share-link";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
+import { learnerRedirect } from "@/lib/learning/learner-scope";
 import { WorkspaceTopbar } from "@/components/portfolio/workspace-topbar";
 
 async function portfolioReviewShareFallback(workspaceId: string) {
@@ -44,6 +45,20 @@ export default async function WorkspaceLayout({
     notFound();
   }
   const { workspace } = access;
+
+  // Chi entra da un link di corso ha il solo ruolo `learner`: va tenuto dentro
+  // l'area Formazione. Senza questo la barra laterale gli aprirebbe Strategia,
+  // Report, Blueprints e Intelligence, cioe' il piano di trasformazione del suo
+  // datore di lavoro.
+  const learnerDestination = learnerRedirect({
+    role: access.role,
+    pathname: (await headers()).get("x-unbundle-pathname") ?? "",
+    workspaceId,
+  });
+  if (learnerDestination) redirect(learnerDestination);
+
+  const learnerOnly = access.role === "learner";
+
   // Off by default: existing workspaces do not query the additive training tables.
   const learningAvailable = process.env.LEARNING_ENABLED === "true"
     ? await (await import("@/lib/learning/server")).hasLearningForWorkspace(workspaceId)
@@ -52,6 +67,7 @@ export default async function WorkspaceLayout({
   return (
     <SidebarProvider>
       <AppSidebar
+        learnerOnly={learnerOnly}
         learningAvailable={learningAvailable}
         workspaceId={workspace.id}
         workspaceName={workspace.name}

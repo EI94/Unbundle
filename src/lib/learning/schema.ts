@@ -45,3 +45,60 @@ export const learningIdeaDrafts = pgTable("learning_idea_drafts", {
   revision: integer("revision").notNull().default(1), status: text("status").notNull().default("draft"), idempotencyKey: uuid("idempotency_key"), resultingUseCaseId: uuid("resulting_use_case_id").references(() => useCases.id),
   createdAt: date("created_at").defaultNow().notNull(), updatedAt: date("updated_at").defaultNow().notNull(),
 }, t => [unique().on(t.workspaceId,t.programId,t.userId),unique().on(t.workspaceId,t.programId,t.userId,t.idempotencyKey),foreignKey({columns:[t.workspaceId,t.programId,t.enrollmentId,t.userId],foreignColumns:[learningEnrollments.workspaceId,learningEnrollments.programId,learningEnrollments.id,learningEnrollments.userId]})]);
+
+/**
+ * Link di iscrizione a una lezione, generato dal formatore in console.
+ * La chiave esterna composita punta a una riga di learning_sessions: un link
+ * verso una lezione inesistente non e' rappresentabile.
+ */
+export const learningJoinLinks = pgTable("learning_join_links", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull(),
+  programId: uuid("program_id").notNull(),
+  moduleId: text("module_id").notNull().default("m1"),
+  cohortId: text("cohort_id").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  label: text("label"),
+  role: text("role").notNull().default("learner"),
+  maxUses: integer("max_uses").notNull(),
+  usedCount: integer("used_count").notNull().default(0),
+  doorOpen: boolean("door_open").notNull().default(false),
+  expiresAt: date("expires_at").notNull(),
+  revokedAt: date("revoked_at"),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: date("created_at").defaultNow().notNull(),
+  idempotencyKey: uuid("idempotency_key"),
+}, t => [
+  unique().on(t.workspaceId, t.programId, t.idempotencyKey),
+  unique().on(t.workspaceId, t.programId, t.id),
+  foreignKey({
+    columns: [t.workspaceId, t.programId, t.moduleId, t.cohortId],
+    foreignColumns: [learningSessions.workspaceId, learningSessions.programId, learningSessions.moduleId, learningSessions.cohortId],
+  }),
+  index().on(t.workspaceId, t.programId, t.cohortId),
+]);
+
+/** Chi e' entrato da quale link. Una riga per (link, persona). */
+export const learningJoinRedemptions = pgTable("learning_join_redemptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull(),
+  programId: uuid("program_id").notNull(),
+  linkId: uuid("link_id").notNull(),
+  userId: uuid("user_id").notNull().references(() => users.id),
+  enrollmentId: uuid("enrollment_id").notNull(),
+  emailSnapshot: text("email_snapshot").notNull(),
+  outcome: text("outcome").notNull(),
+  reopenRequestedAt: date("reopen_requested_at"),
+  createdAt: date("created_at").defaultNow().notNull(),
+}, t => [
+  unique().on(t.linkId, t.userId),
+  foreignKey({
+    columns: [t.workspaceId, t.programId, t.linkId],
+    foreignColumns: [learningJoinLinks.workspaceId, learningJoinLinks.programId, learningJoinLinks.id],
+  }),
+  foreignKey({
+    columns: [t.workspaceId, t.programId, t.enrollmentId, t.userId],
+    foreignColumns: [learningEnrollments.workspaceId, learningEnrollments.programId, learningEnrollments.id, learningEnrollments.userId],
+  }),
+  index().on(t.workspaceId, t.programId, t.linkId),
+]);

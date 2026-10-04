@@ -30,6 +30,15 @@ export type WorkspaceCollaboratorRole =
   | "exec_sponsor"
   | (typeof WORKSPACE_COLLABORATOR_ROLES)[number];
 
+/**
+ * Ogni ruolo che una riga di membership puo' portare, `learner` incluso: chi
+ * entra da un link di corso e' un membro del workspace e compare negli
+ * elenchi, quindi va mostrato per quello che e'. Non e' l'insieme assegnabile
+ * da un invito, che resta WORKSPACE_COLLABORATOR_ROLES: nessuna interfaccia
+ * umana deve poter conferire `learner`, e nessun invito deve poterlo togliere.
+ */
+export type WorkspaceMemberRole = WorkspaceCollaboratorRole | "learner";
+
 function normalizeEmail(email: string | null | undefined) {
   const trimmed = email?.trim().toLowerCase() ?? "";
   return trimmed.length > 0 ? trimmed : null;
@@ -143,7 +152,7 @@ export async function getWorkspaceMembershipByUser(
 export async function upsertWorkspaceMembership(params: {
   workspaceId: string;
   userId: string;
-  role: WorkspaceCollaboratorRole;
+  role: WorkspaceMemberRole;
   source: string;
   invitedByUserId?: string | null;
 }) {
@@ -211,7 +220,7 @@ export type WorkspaceMemberListItem = {
   name: string | null;
   email: string;
   image: string | null;
-  role: WorkspaceCollaboratorRole;
+  role: WorkspaceMemberRole;
   source: "organization" | "workspace";
   createdAt: Date;
 };

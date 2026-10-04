@@ -9,7 +9,9 @@ import { learningEnabled, LearningError } from "./server";
 import { parseTrainingPack, trainingPackHash, localDateTimeToUtc } from "./pack";
 import { learningRetentionEligibility } from "./retention";
 import type { PrivateTrainingPack } from "./types";
-import type { AdminCatalogDTO, AdminDetailDTO, AdminMutationDTO, AdminPackDTO, AdminProgramDTO, LearningAdminRequest, AdminResponseMap } from "./admin-contract";
+import { createJoinToken, hashJoinToken, joinPath } from "./join-token";
+import { learningBaseUrl, joinQrSvg } from "./join-url";
+import type { AdminCatalogDTO, AdminDetailDTO, AdminJoinLinkDTO, AdminMutationDTO, AdminPackDTO, AdminProgramDTO, LearningAdminRequest, AdminResponseMap } from "./admin-contract";
 
 type Program = Omit<AdminProgramDTO, "canManageAll" | "managedCohorts">;
 type Context = { userId: string; workspaceId: string; program: Program; scopes: (string | null)[] };
@@ -71,7 +73,7 @@ export async function getLearningAdminCatalog(workspaceId: string, expectedUserI
 }
 export async function getLearningAdminDetail(workspaceId: string, programId: string, expectedUserId?: string): Promise<AdminDetailDTO> {
   const ctx = await requireManager(workspaceId, programId, expectedUserId);
-  const [members,sessions,enrollments,grants,audit,counts] = await Promise.all([
+  const [members,sessions,enrollments,grants,audit,counts,joinLinks] = await Promise.all([
     rows<AdminDetailDTO["members"][number]>(sql`SELECT u.id,u.name,u.email,COALESCE(m.role,wm.role)::text AS role,CASE WHEN m.user_id IS NOT NULL THEN 'organization' ELSE 'workspace' END AS source
       FROM workspaces w JOIN users u ON ${member(workspaceId,sql`u.id`)} LEFT JOIN memberships m ON m.organization_id=w.organization_id AND m.user_id=u.id
       LEFT JOIN workspace_memberships wm ON wm.workspace_id=w.id AND wm.user_id=u.id WHERE w.id=${workspaceId}::uuid
@@ -89,11 +91,20 @@ export async function getLearningAdminDetail(workspaceId: string, programId: str
       AND ${scopedRows(ctx,sql`a.metadata->>'cohortId'`)} ORDER BY a.created_at DESC LIMIT 100`),
     ctx.scopes.includes(null) ? rows<{attempts:number;ideaDrafts:number}>(sql`SELECT (SELECT count(*)::int FROM learning_attempts WHERE workspace_id=${workspaceId}::uuid AND program_id=${programId}::uuid) AS attempts,
       (SELECT count(*)::int FROM learning_idea_drafts WHERE workspace_id=${workspaceId}::uuid AND program_id=${programId}::uuid) AS "ideaDrafts"`) : Promise.resolve([]),
+    rows<AdminDetailDTO["joinLinks"][number]>(sql`SELECT l.id,l.cohort_id AS "cohortId",l.label,l.max_uses AS "maxUses",l.used_count AS "usedCount",
+      l.door_open AS "doorOpen",l.expires_at AS "expiresAt",l.revoked_at AS "revokedAt",l.created_at AS "createdAt",
+      (SELECT count(*)::int FROM learning_join_redemptions r WHERE r.link_id=l.id) AS joined,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('cohortId',e.cohort_id,'count',n.c)) FROM (
+        SELECT r.enrollment_id, count(*)::int AS c FROM learning_join_redemptions r
+        WHERE r.link_id=l.id AND r.outcome='kept_other_cohort' AND r.reopen_requested_at IS NOT NULL GROUP BY r.enrollment_id
+      ) n JOIN learning_enrollments e ON e.id=n.enrollment_id),'[]'::jsonb) AS "reopenRequests"
+      FROM learning_join_links l WHERE l.workspace_id=${workspaceId}::uuid AND l.program_id=${programId}::uuid AND ${scopedRows(ctx,sql`l.cohort_id`)} ORDER BY l.created_at DESC`),
   ]);
   const eligibility=learningRetentionEligibility({status:ctx.program.status,closedAt:ctx.program.closedAt?new Date(ctx.program.closedAt):null,retentionDays:ctx.program.retentionDays});
   return {userId:ctx.userId,program:programDTO(ctx.program,ctx.scopes),members,sessions:sessions.map(s=>({...s,startsAt:instant(s.startsAt),endsAt:instant(s.endsAt)})),enrollments,
     grants:grants.map(g=>({...g,grantedAt:instant(g.grantedAt),revokedAt:g.revokedAt?instant(g.revokedAt):null})),audit:audit.map(a=>({...a,createdAt:instant(a.createdAt)})),
-    retention:counts[0]?{...counts[0],eligible:eligibility.eligible,purgeAfter:eligibility.expiresAt?.toISOString()??null}:null};
+    retention:counts[0]?{...counts[0],eligible:eligibility.eligible,purgeAfter:eligibility.expiresAt?.toISOString()??null}:null,
+    joinLinks:joinLinks.map(l=>({...l,expiresAt:instant(l.expiresAt),createdAt:instant(l.createdAt),revokedAt:l.revokedAt?instant(l.revokedAt):null}))};
 }
 function privatePack(raw: unknown): PrivateTrainingPack {
   try { if (Buffer.byteLength(JSON.stringify(raw) ?? "") > 5_000_000) throw new Error(); return parseTrainingPack(raw); }
@@ -203,6 +214,42 @@ export async function performLearningAdmin(request: LearningAdminRequest): Promi
       AND ${manager(ctx,sql`g.cohort_id`)} AND (g.capability<>'manage' OR ${manager(ctx)})
       AND (g.capability<>'manage' OR g.cohort_id IS NOT NULL OR EXISTS(SELECT 1 FROM learning_grants other WHERE other.workspace_id=g.workspace_id AND other.program_id=g.program_id AND other.id<>g.id AND other.capability='manage' AND other.cohort_id IS NULL AND other.revoked_at IS NULL AND ${member(w,sql`other.user_id`)}))
       RETURNING id,cohort_id),audited AS(${audit(ctx,"grant_revoked",sql`cohort_id`)}) SELECT CASE WHEN EXISTS(SELECT 1 FROM changed) THEN (SELECT count(*) FROM audited) ELSE -1 END AS changed`),"Permesso revocato. Gli eventuali altri permessi restano attivi.");
+  }
+  if (request.operation === "joinLink") {
+    const i=request.input;scope(ctx,i.cohortId);
+    // Il token in chiaro non tocca il database: si salva solo l'impronta.
+    const token=createJoinToken(),linkId=randomUUID();
+    const changed=await mutate(ctx,sql`WITH permitted AS MATERIALIZED(SELECT 1 WHERE ${manager(ctx,sql`${i.cohortId}`)}
+        AND EXISTS(SELECT 1 FROM learning_sessions WHERE workspace_id=${w}::uuid AND program_id=${p}::uuid AND module_id='m1' AND cohort_id=${i.cohortId})),
+      changed AS(INSERT INTO learning_join_links(id,workspace_id,program_id,module_id,cohort_id,token_hash,label,max_uses,door_open,expires_at,created_by,idempotency_key)
+        SELECT ${linkId}::uuid,${w}::uuid,${p}::uuid,'m1',${i.cohortId},${hashJoinToken(token)},${i.label??null},${i.maxUses},false,now()+${i.expiresInHours}*interval '1 hour',${ctx.userId}::uuid,${i.idempotencyKey}::uuid
+        FROM permitted WHERE true ON CONFLICT(workspace_id,program_id,idempotency_key) DO NOTHING RETURNING id),
+      audited AS(${audit(ctx,"join_link_created",sql`${i.cohortId}::text`)}) SELECT CASE WHEN EXISTS(SELECT 1 FROM permitted) THEN (SELECT count(*) FROM audited) ELSE -1 END AS changed`);
+    if (changed===0) throw new LearningError("conflict","Link già creato con questa richiesta. Aggiorna il riepilogo per vederlo.");
+    const url=`${await learningBaseUrl()}${joinPath(token)}`;
+    return {programId:p,changed,linkId,token,url,qrSvg:await joinQrSvg(url),
+      message:"Link creato. L'ingresso è chiuso: aprilo all'inizio della lezione."} satisfies AdminJoinLinkDTO;
+  }
+  if (request.operation === "joinLinkDoor") {
+    const i=request.input;
+    return result(p,await mutate(ctx,sql`WITH changed AS(UPDATE learning_join_links l SET door_open=${i.doorOpen}
+      WHERE l.workspace_id=${w}::uuid AND l.program_id=${p}::uuid AND l.id=${i.linkId}::uuid AND l.revoked_at IS NULL AND ${manager(ctx,sql`l.cohort_id`)} RETURNING id,cohort_id),
+      audited AS(${audit(ctx,i.doorOpen?"join_link_opened":"join_link_closed",sql`cohort_id`)}) SELECT CASE WHEN EXISTS(SELECT 1 FROM changed) THEN (SELECT count(*) FROM audited) ELSE -1 END AS changed`),
+      i.doorOpen?"Ingresso aperto: chi ha il link può iscriversi adesso.":"Ingresso chiuso. Chi è già entrato mantiene l'accesso al corso.");
+  }
+  if (request.operation === "joinLinkSeats") {
+    const i=request.input;
+    return result(p,await mutate(ctx,sql`WITH changed AS(UPDATE learning_join_links l SET max_uses=${i.maxUses}
+      WHERE l.workspace_id=${w}::uuid AND l.program_id=${p}::uuid AND l.id=${i.linkId}::uuid AND l.revoked_at IS NULL AND ${i.maxUses}>=l.used_count AND ${manager(ctx,sql`l.cohort_id`)} RETURNING id,cohort_id),
+      audited AS(${audit(ctx,"join_link_seats_changed",sql`cohort_id`)}) SELECT CASE WHEN EXISTS(SELECT 1 FROM changed) THEN (SELECT count(*) FROM audited) ELSE -1 END AS changed`),
+      "Posti aggiornati.");
+  }
+  if (request.operation === "revokeJoinLink") {
+    const i=request.input;
+    return result(p,await mutate(ctx,sql`WITH changed AS(UPDATE learning_join_links l SET revoked_at=now(),door_open=false
+      WHERE l.workspace_id=${w}::uuid AND l.program_id=${p}::uuid AND l.id=${i.linkId}::uuid AND l.revoked_at IS NULL AND ${manager(ctx,sql`l.cohort_id`)} RETURNING id,cohort_id),
+      audited AS(${audit(ctx,"join_link_revoked",sql`cohort_id`)}) SELECT CASE WHEN EXISTS(SELECT 1 FROM changed) THEN (SELECT count(*) FROM audited) ELSE -1 END AS changed`),
+      "Link disattivato. Chi era già entrato mantiene l'accesso al corso.");
   }
   if (request.operation === "purge") {
     scope(ctx,null);const i=request.input;

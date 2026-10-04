@@ -22,6 +22,10 @@ export const memberRoleEnum = pgEnum("member_role", [
   "function_lead",
   "contributor",
   "analyst",
+  // Appeso in coda: l'ordine deve combaciare con l'ALTER TYPE della
+  // migrazione 0013. Chi entra da un link di corso ottiene solo questo, e
+  // `isLearnerOnly` lo tiene dentro la sola area Formazione.
+  "learner",
 ]);
 
 export const workspaceStatusEnum = pgEnum("workspace_status", [
