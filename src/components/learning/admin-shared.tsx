@@ -77,6 +77,6 @@ export function LearningLinkCopy({ path, label }: { path: string; label: string 
   return <div className="space-y-2">
     <label className="text-sm font-medium" htmlFor={id}>{label}</label>
     <div className="flex flex-wrap gap-2"><Input ref={input} id={id} value={value} readOnly className="min-w-0 flex-1 text-sm" onFocus={() => { if (value === path) setValue(new URL(path, window.location.origin).href); }} /><Button type="button" variant="outline" onClick={copy}>Copia link</Button></div>
-    <p className="text-sm text-muted-foreground" role="status" aria-live="polite">{notice || "L’accesso richiede un account autorizzato. Per una persona nuova, invia prima l’invito al workspace e assegnale il corso."}</p>
+    <p className="text-sm text-muted-foreground" role="status" aria-live="polite">{notice || "Apre il corso a chi è già iscritto. Per far entrare qualcuno di nuovo usa un link di accesso."}</p>
   </div>;
 }

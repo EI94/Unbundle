@@ -194,9 +194,12 @@ export function AdminJoinLinks({
             <div>
               <p className="font-medium">Link pronto</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                L&apos;ingresso è <strong>chiuso</strong>: aprilo qui sotto
-                all&apos;inizio della lezione. Questo indirizzo compare una volta
-                sola — se lo perdi, crea un link nuovo.
+                Questo indirizzo compare una volta sola: copialo adesso. Se lo
+                perdi, crea un link nuovo — chi è già entrato non perde nulla.
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Nasce con l&apos;ingresso chiuso. Aprilo dall&apos;elenco qui
+                sotto quando la lezione comincia.
               </p>
             </div>
             <code className="block overflow-x-auto rounded-lg border bg-background p-3 text-xs">
