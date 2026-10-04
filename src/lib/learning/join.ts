@@ -41,7 +41,14 @@ export type JoinPreview = {
   label: string | null;
 };
 
-export type JoinPreviewResult = JoinPreview | { ok: false; reason: JoinUnusableReason };
+/**
+ * Quando il link è valido ma non si può ancora entrare (ingresso chiuso, posti
+ * finiti) si mostrano comunque corso e lezione: chi apre il link deve capire
+ * di avere quello giusto, e l'anteprima nelle chat — che WhatsApp memorizza al
+ * primo invio — non deve restare una scheda anonima.
+ */
+export type JoinCourseCard = Pick<JoinPreview, "programTitle" | "workspaceName" | "moduleTitle" | "startsAt" | "endsAt" | "timezone" | "trainerName">;
+export type JoinPreviewResult = JoinPreview | { ok: false; reason: JoinUnusableReason; course: JoinCourseCard | null };
 
 type PreviewRow = {
   workspaceId: string;
@@ -74,7 +81,7 @@ type PreviewRow = {
  * identificatori interni, mai i contenuti del pacchetto.
  */
 export async function getJoinPreview(token: string): Promise<JoinPreviewResult> {
-  if (!looksLikeJoinToken(token)) return { ok: false, reason: "not_found" };
+  if (!looksLikeJoinToken(token)) return { ok: false, reason: "not_found", course: null };
 
   const { rows } = await db.execute(sql`
     SELECT
@@ -105,12 +112,18 @@ export async function getJoinPreview(token: string): Promise<JoinPreviewResult> 
   `);
 
   const row = rows[0] as PreviewRow | undefined;
-  if (!row) return { ok: false, reason: "not_found" };
-  if (row.revoked) return { ok: false, reason: "revoked" };
-  if (row.expired) return { ok: false, reason: "expired" };
-  if (!row.courseReady) return { ok: false, reason: "course_unavailable" };
-  if (!row.doorOpen) return { ok: false, reason: "door_closed" };
-  if (row.seatsLeft <= 0) return { ok: false, reason: "full" };
+  if (!row) return { ok: false, reason: "not_found", course: null };
+  // Link morto o corso nascosto: niente dettagli, il link non porta da nessuna parte.
+  if (row.revoked) return { ok: false, reason: "revoked", course: null };
+  if (row.expired) return { ok: false, reason: "expired", course: null };
+  if (!row.courseReady) return { ok: false, reason: "course_unavailable", course: null };
+  const course: JoinCourseCard = {
+    programTitle: row.programTitle, workspaceName: row.workspaceName, moduleTitle: row.moduleTitle,
+    startsAt: new Date(row.startsAt).toISOString(), endsAt: new Date(row.endsAt).toISOString(),
+    timezone: row.timezone, trainerName: row.trainerName,
+  };
+  if (!row.doorOpen) return { ok: false, reason: "door_closed", course };
+  if (row.seatsLeft <= 0) return { ok: false, reason: "full", course };
 
   return {
     ok: true,

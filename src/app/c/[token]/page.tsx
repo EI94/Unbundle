@@ -48,11 +48,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { token } = await params;
   const preview = learningEnabled() ? await getJoinPreview(token) : null;
-  const title = preview?.ok
-    ? `${preview.programTitle} — ${preview.workspaceName}`
-    : "Accesso al corso";
-  const description = preview?.ok
-    ? `${preview.moduleTitle ?? "Lezione"} · ${dateLabel(preview.startsAt, preview.timezone)}. Entra con il tuo account: bastano pochi secondi.`
+  const card = preview ? (preview.ok ? preview : preview.course) : null;
+  const title = card ? `${card.programTitle} — ${card.workspaceName}` : "Accesso al corso";
+  const description = card
+    ? `${card.moduleTitle ?? "Lezione"} · ${dateLabel(card.startsAt, card.timezone)}. Entra con il tuo account: bastano pochi secondi.`
     : "Link di accesso a un corso.";
   return {
     title,
@@ -78,7 +77,7 @@ const UNUSABLE: Record<JoinUnusableReason, { title: string; body: string }> = {
   },
   door_closed: {
     title: "Iscrizioni non ancora aperte",
-    body: "Il formatore apre le iscrizioni all'inizio dell'incontro. Tieni da parte questo link e riprova fra poco: la pagina funzionerà senza che tu debba fare altro.",
+    body: "Il link è quello giusto: il formatore apre le iscrizioni all'inizio dell'incontro. Tienilo da parte e riaprilo quando te lo dice.",
   },
   course_unavailable: {
     title: "Corso non ancora disponibile",
@@ -136,6 +135,16 @@ export default async function CourseJoinPage({
       <Shell>
         <Card className="rounded-[28px]" data-testid="join-unusable">
           <CardHeader>
+            {preview.course && (
+              <div className="mb-2 space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{preview.course.workspaceName}</p>
+                <p className="text-lg font-semibold">{preview.course.programTitle}</p>
+                <p className="text-sm text-muted-foreground">
+                  {preview.course.moduleTitle ?? "Lezione"} · {dateLabel(preview.course.startsAt, preview.course.timezone)}
+                  {" – "}{timeLabel(preview.course.endsAt, preview.course.timezone)}
+                </p>
+              </div>
+            )}
             <CardTitle>{copy.title}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
