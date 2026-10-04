@@ -268,6 +268,10 @@ export async function joinCourseByLink(params: {
       ON CONFLICT (workspace_id, program_id, user_id, module_id) DO NOTHING
       RETURNING id
     ),
+    -- Dipende da allowed: senza quel vincolo l'istruzione riporterebbe un
+    -- esito anche nei casi in cui non ha scritto nulla (iscrizione sospesa,
+    -- posti esauriti), e chi leggesse outcome prima di suspended
+    -- concluderebbe che la persona e' entrata.
     resolved AS (
       SELECT id, 'enrolled'::text AS outcome, NULL::text AS previous FROM created
       UNION ALL
@@ -278,7 +282,7 @@ export async function joinCourseByLink(params: {
           ELSE 'kept_other_cohort'
         END,
         x.cohort_id
-      FROM existing x
+      FROM existing x, allowed
     ),
     redemption AS (
       INSERT INTO learning_join_redemptions(
@@ -301,7 +305,12 @@ export async function joinCourseByLink(params: {
       (SELECT count(*) FROM candidate)::int AS "linkFound",
       (SELECT count(*) FROM allowed)::int AS allowed,
       (SELECT count(*) FROM existing WHERE status <> 'active')::int AS suspended,
-      COALESCE((SELECT GREATEST(max_uses - used_count, 0) FROM candidate), 0)::int AS "seatsLeft",
+      -- La CTE candidate e' fotografata prima dell'UPDATE del posto: sottraggo
+      -- quello appena preso, altrimenti il numero mostrato e' vecchio di uno.
+      GREATEST(
+        COALESCE((SELECT max_uses - used_count FROM candidate), 0)
+          - (SELECT count(*) FROM seat), 0
+      )::int AS "seatsLeft",
       (SELECT revoked FROM candidate) AS revoked,
       (SELECT expired FROM candidate) AS expired,
       (SELECT door_open FROM candidate) AS "doorOpen",
