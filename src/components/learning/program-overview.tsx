@@ -291,7 +291,10 @@ function Agenda({ module, sessionStart, now, base, canParticipate }: {
       activity.opensAfterMinutes >= block.from_minute && activity.opensAfterMinutes < block.to_minute);
     activities.forEach((activity) => placed.add(activity.id));
     const current = live && elapsed! >= block.from_minute && elapsed! < block.to_minute;
-    const past = live ? elapsed! >= block.to_minute : elapsed !== null && elapsed >= module.durationMinutes;
+    // Un blocco con attività ancora da fare non è «passato»: gli esercizi
+    // possono essere compiti da fare dopo la lezione, e non devono sembrare chiusi.
+    const pending = activities.some((activity) => activity.availability.writeAccess && activity.status !== "submitted");
+    const past = !pending && (live ? elapsed! >= block.to_minute : elapsed !== null && elapsed >= module.durationMinutes);
     return { block, activities, current, past };
   });
   const loose = module.activities.filter((activity) => !placed.has(activity.id));
