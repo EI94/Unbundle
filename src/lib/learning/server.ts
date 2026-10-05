@@ -13,6 +13,7 @@ import { csvCell, summarizeActivityOutcomes, m1ReleaseMinutes, type LearningCapa
 import type { AttemptResponses, LearnerActivityDTO, ObjectiveGrade, PrivateTrainingPack } from "./types";
 import { activityAvailability, attemptAccess, latestActivityAttempt, type ActivityAvailability } from "./availability";
 import { moduleCompletion } from "./module-completion";
+import { buildLearningResults, type ResultsScope } from "./results";
 
 export type LearningErrorCode = "unavailable" | "unauthenticated" | "forbidden" | "invalid" | "conflict" | "closed" | "technical";
 export class LearningError extends Error {
@@ -28,6 +29,8 @@ export type AttemptDTO = {
   savedAt: string; submittedAt: string | null; decisionsSubmittedAt: string | null; result: ObjectiveGrade | null;
   activity: LearnerActivityDTO; version: string; contentVersion: string;
   caseExample: ReturnType<typeof getSubmittedCaseExample> | null;
+  /** Risposta giusta per domanda: solo dopo la consegna, per il riscontro. */
+  answerKey: Record<string, string> | null;
   writeAccess: boolean; readOnlyReason: string | null;
   canRetake: boolean; retakeUnavailableReason: string | null;
 };
@@ -138,7 +141,7 @@ export async function getLearningProgram(workspaceId: string,programId: string) 
     sessions:sessions.map(s=>({id:s.id,moduleId:s.moduleId,cohortId:s.cohortId,assigned:!!enrollment && s.moduleId===enrollment.moduleId && s.cohortId===enrollment.cohortId,startsAt:s.startsAt.toISOString(),endsAt:s.endsAt.toISOString(),timezone:s.timezone,status:s.status})),
     reviewers:reviewers.map(r=>`${r.name || "Formatore"} · ${r.email}`),history:attempts.map(row=>summary(row,program.privatePack))};
 }
-async function attemptDTO(row: AttemptRow,program: LearningProgramRow, knownAvailability?: ActivityAvailability): Promise<AttemptDTO> {
+async function attemptDTO(row: AttemptRow,program: LearningProgramRow, knownAvailability?: ActivityAvailability, forReviewer=false): Promise<AttemptDTO> {
   if (row.contentVersion!==program.contentVersion || row.packHash!==program.packHash) throw new LearningError("technical","La versione del contenuto richiede una verifica tecnica. La bozza è conservata.");
   const activity = getActivity(program.privatePack,row.activityId);
   const [session] = await db.select({session:learningSessions}).from(learningSessions).innerJoin(learningEnrollments,
@@ -148,10 +151,16 @@ async function attemptDTO(row: AttemptRow,program: LearningProgramRow, knownAvai
   const availability=knownAvailability ?? availabilityFor(program,row.activityId,session?.session ?? null,now);
   const retakeId=activity.retake_activity_id ?? (["practice","retake"].includes(activity.purpose)?activity.id:null);
   const access=attemptAccess(row.status as "draft"|"submitted",availability,retakeId?availabilityFor(program,retakeId,session?.session ?? null,now):null);
+  // La risposta giusta si mostra dopo la consegna, ma non a chi può ancora
+  // riprovare le stesse domande: riproverebbe con le risposte davanti.
+  // Chi tiene il corso la vede sempre.
+  const sameQuestionsRetake=retakeId===activity.id && access.canRetake && row.result?.status==="needs_practice";
+  const showAnswerKey=row.status==="submitted" && (forReviewer || !sameQuestionsRetake);
   return {...access,id:row.id,userId:row.userId,activityId:row.activityId,attemptNumber:row.attemptNumber,parentAttemptId:row.parentAttemptId,status:row.status as "draft"|"submitted",revision:row.revision,responses:row.responses,
     savedAt:row.updatedAt.toISOString(),decisionsSubmittedAt:row.decisionsSubmittedAt?.toISOString()??null,submittedAt:row.submittedAt?.toISOString()??null,result:row.status==="submitted"?row.result:null,
     activity:getLearnerActivity(program.privatePack,row.activityId,row.itemOrder),version:row.contentVersion,contentVersion:row.contentVersion,
-    caseExample:row.status==="submitted" || row.decisionsSubmittedAt?getSubmittedCaseExample(program.privatePack,row.activityId):null};
+    caseExample:row.status==="submitted" || row.decisionsSubmittedAt?getSubmittedCaseExample(program.privatePack,row.activityId):null,
+    answerKey:showAnswerKey?Object.fromEntries((activity.item_ids ?? []).map(itemId=>[itemId,program.privatePack.items.find(item=>item.id===itemId)?.correct_option_ids[0] ?? ""])):null};
 }
 function ensureM1(program:LearningProgramRow,activityId:string) {
   const activity=program.privatePack.activities.find(a=>a.id===activityId);
@@ -210,7 +219,7 @@ export async function startLearningAttempt(input:{workspaceId:string;programId:s
   ) INSERT INTO learning_audit_events(workspace_id,program_id,actor_id,resource_id,event_type)
     SELECT ${input.workspaceId}::uuid,${input.programId}::uuid,${ctx.userId}::uuid,id,'attempt_started' FROM inserted`);
   const own=(await ownAttempts(ctx)).filter(a=>a.activityId===activity.id).at(-1);
-  if(!own) throw new LearningError("closed","L'attività non è disponibile; nessun tentativo avviato.");
+  if(!own) throw new LearningError("closed","L'attività non è disponibile in questo momento: riprova tra poco.");
   return attemptDTO(own,ctx.program);
 }
 export async function saveLearningDraft(input:{workspaceId:string;programId:string;attemptId:string;expectedRevision:number;responses:unknown}) {
@@ -304,9 +313,45 @@ export async function exportLearningCsv(workspaceId:string,programId:string) {
   const rows=await scopedProgress(ctx);
   // Audit must succeed before any CSV is returned; export grant is independent from review.
   await db.insert(learningAuditEvents).values({workspaceId,programId,actorId:ctx.userId,resourceId:programId,eventType:"named_export",metadata:{participants:rows.length,cohorts:ctx.grants.map(g=>g.cohortId)}});
-  const header=["Partecipante","Email","Coorte","Attività","Tentativo","Consegna","Esito","Corrette","Totale"];
-  const csv=[header,...rows.flatMap(r=>r.attempts.map(a=>[r.name,r.email,r.cohortId,a.activityId,a.attemptNumber,a.status,a.result?.status??"",a.result?.correct??"",a.result?.total??""]))].map(row=>row.map(csvCell).join(",")).join("\r\n");
-  return {filename:`formazione-${programId}.csv`,csv:`\uFEFF${csv}`};
+  // Punto e virgola: è il separatore che Excel in italiano apre in colonne.
+  const header=["Partecipante","Email","Turno","Attività","Prova","Stato","Esito","Risposte giuste","Domande","Risposte importanti sbagliate","Consegnato il"];
+  const stateLabel=(status:string)=>status==="submitted"?"Consegnato":"In corso";
+  const outcome=(status:string|undefined)=>({consolidated:"Obiettivo raggiunto",needs_practice:"Da ripassare",formative_completed:"Fatto"} as Record<string,string>)[status ?? ""] ?? "";
+  const when=(iso:string|null)=>iso?new Intl.DateTimeFormat("it-IT",{timeZone:"Europe/Rome",dateStyle:"short",timeStyle:"short"}).format(new Date(iso)):"";
+  // Il turno con la sua data, non con il codice interno; righe in ordine di nome.
+  const sessions=await db.select({cohortId:learningSessions.cohortId,startsAt:learningSessions.startsAt}).from(learningSessions).where(and(eq(learningSessions.workspaceId,workspaceId),eq(learningSessions.programId,programId),eq(learningSessions.moduleId,"m1")));
+  const turnLabel=(cohortId:string)=>{const session=sessions.find(entry=>entry.cohortId===cohortId);return session?new Intl.DateTimeFormat("it-IT",{timeZone:"Europe/Rome",weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}).format(session.startsAt):cohortId;};
+  const sorted=[...rows].sort((a,b)=>a.name.localeCompare(b.name,"it")||a.email.localeCompare(b.email,"it"));
+  const body=sorted.flatMap(r=>r.attempts.length===0?[[r.name,r.email,turnLabel(r.cohortId),"Nessuna attività iniziata","","","","","","",""]]:r.attempts.map(a=>[r.name,r.email,turnLabel(r.cohortId),a.activityTitle,a.attemptNumber,stateLabel(a.status),outcome(a.result?.status),a.result?.correct??"",a.result?.total??"",a.result?.essentialErrors??"",when(a.submittedAt)]));
+  const csv=[header,...body].map(row=>row.map(csvCell).join(";")).join("\r\n");
+  return {filename:`risultati-${ctx.program.title.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60) || "corso"}.csv`,csv:`\uFEFF${csv}`};
+}
+
+/**
+ * Risultati per chi tiene il corso: una lettura sola per le tre sezioni.
+ * Ogni sezione vale nel perimetro del proprio permesso (gruppo, individuali);
+ * chi gestisce il corso senza quei permessi vede la pagina e può attivarli.
+ */
+export async function getLearningResults(workspaceId:string,programId:string,requestedCohort?:string|null) {
+  const {userId,program}=await requireProgram(workspaceId,programId);
+  const grants=await grantsFor(workspaceId,programId,userId);
+  const scopeOf=(capability:LearningCapability):ResultsScope=>{const own=grants.filter(g=>g.capability===capability);return !own.length?null:own.some(g=>g.cohortId===null)?"all":new Set(own.map(g=>g.cohortId!));};
+  const aggregateScope=scopeOf("aggregate"),reviewScope=scopeOf("review"),exportScope=scopeOf("export");
+  const canManage=grants.some(g=>g.capability==="manage");
+  // Solo chi gestisce tutti i turni può darsi un permesso su tutti i turni.
+  const canManageAll=grants.some(g=>g.capability==="manage" && g.cohortId===null);
+  if(!canManage && !aggregateScope && !reviewScope && !exportScope) throw new LearningError("forbidden","Non sei autorizzato a vedere i risultati di questo corso.");
+  const needsRows=!!aggregateScope || !!reviewScope;
+  const [sessions,enrollments,attempts]=await Promise.all([
+    db.select().from(learningSessions).where(and(eq(learningSessions.workspaceId,workspaceId),eq(learningSessions.programId,programId),eq(learningSessions.moduleId,"m1"))).orderBy(learningSessions.startsAt),
+    needsRows?db.select({id:learningEnrollments.id,userId:learningEnrollments.userId,cohortId:learningEnrollments.cohortId,name:users.name,email:users.email}).from(learningEnrollments).innerJoin(users,eq(learningEnrollments.userId,users.id))
+      .where(and(eq(learningEnrollments.workspaceId,workspaceId),eq(learningEnrollments.programId,programId),eq(learningEnrollments.moduleId,"m1"),eq(learningEnrollments.status,"active"))).orderBy(users.name,users.email):Promise.resolve([]),
+    needsRows?db.select({id:learningAttempts.id,enrollmentId:learningAttempts.enrollmentId,userId:learningAttempts.userId,activityId:learningAttempts.activityId,attemptNumber:learningAttempts.attemptNumber,status:learningAttempts.status,result:learningAttempts.result,submittedAt:learningAttempts.submittedAt})
+      .from(learningAttempts).where(and(eq(learningAttempts.workspaceId,workspaceId),eq(learningAttempts.programId,programId))).orderBy(learningAttempts.createdAt):Promise.resolve([]),
+  ]);
+  const results=buildLearningResults({pack:program.privatePack,sessions,enrollments,attempts,aggregateScope,reviewScope,requestedCohort,now:Date.now()});
+  return {program:{id:program.id,title:program.title,status:program.status},viewerId:userId,
+    can:{group:!!aggregateScope,individual:!!reviewScope,export:!!exportScope,manage:canManage,manageAll:canManageAll},...results};
 }
 
 /** Freeze individual case choices BEFORE releasing the prepared example. */
@@ -337,5 +382,5 @@ export async function getLearningReviewAttempt(workspaceId:string,programId:stri
     .innerJoin(users,eq(users.id,learningAttempts.userId))
     .where(and(eq(learningAttempts.workspaceId,workspaceId),eq(learningAttempts.programId,programId),eq(learningAttempts.id,attemptId),eq(learningAttempts.status,"submitted"),eq(learningEnrollments.status,"active"),scopeCondition(ctx.grants)));
   if(!row)throw new LearningError("forbidden","Consegna non disponibile nel tuo perimetro di revisione.");
-  return {participant:{name:row.name??"Partecipante",email:row.email},attempt:await attemptDTO(row.attempt,ctx.program)};
+  return {participant:{name:row.name??"Partecipante",email:row.email},attempt:await attemptDTO(row.attempt,ctx.program,undefined,true)};
 }

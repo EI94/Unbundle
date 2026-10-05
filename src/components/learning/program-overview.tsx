@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { CircleCheck, PartyPopper, RotateCcw } from "lucide-react";
 import { getLearningProgram } from "@/lib/learning/server";
 import { participantNotice } from "@/lib/learning/register-legal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { LearningShell, outcomeLabel } from "./learning-shell";
-import { LearningExportButton } from "./export-button";
 import { LearningRefresh } from "./learning-refresh";
 
 /**
@@ -19,8 +20,11 @@ type Program = Awaited<ReturnType<typeof getLearningProgram>>;
 type ModuleView = Program["modules"][number];
 type ActivityView = ModuleView["activities"][number];
 type Material = Program["materials"][number];
+type HistoryRow = Program["history"][number];
+type ResultView = NonNullable<ActivityView["result"]>;
 
 const ROME = "Europe/Rome";
+const navLink = "inline-flex min-h-10 items-center underline underline-offset-4";
 
 function dayLabel(iso: string) {
   return new Intl.DateTimeFormat("it-IT", { timeZone: ROME, weekday: "long", day: "numeric", month: "long" }).format(new Date(iso));
@@ -32,58 +36,177 @@ function minuteLabel(minutes: number) {
   return String(minutes).padStart(2, "0");
 }
 function sizeLabel(bytes: number) {
-  if (bytes < 1024) return `${bytes}\u00a0byte`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}\u00a0KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")}\u00a0MB`;
+  if (bytes < 1024) return `${bytes} byte`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
 }
 /** Le righe della descrizione diventano passi, se il formatore le ha scritte così. */
 function steps(text: string | null) {
   return (text ?? "").split("\n").map((line) => line.replace(/^\s*(\d+[.)]|[-•])\s*/, "").trim()).filter(Boolean);
 }
+function plural(count: number, one: string, many: string) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/**
+ * L'ultima consegna di un'attività, anche quando dopo è iniziata una nuova
+ * prova non ancora inviata: il risultato da mostrare resta quello consegnato.
+ */
+function latestResult(activity: ActivityView, history: HistoryRow[]): { result: ResultView; attemptId: string } | null {
+  // L'ultima prova aperta può essere il recupero: valgono le consegne
+  // dell'attività e del suo recupero, come nel completamento del turno.
+  const linked = new Set([activity.id, ...history.filter((entry) => entry.id === activity.attemptId).map((entry) => entry.activityId)]);
+  const row = history.filter((entry) => entry.status === "submitted" && entry.result && linked.has(entry.activityId)).at(-1);
+  if (row?.result) return { result: row.result, attemptId: row.id };
+  if (activity.status === "submitted" && activity.result && activity.attemptId) return { result: activity.result, attemptId: activity.attemptId };
+  return null;
+}
+
+function OutcomePill({ status }: { status: string }) {
+  const good = status === "consolidated" || status === "formative_completed";
+  const practice = status === "needs_practice";
+  return (
+    <span className={cn("inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 text-xs font-medium",
+      good ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
+        : practice ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
+          : "text-muted-foreground")}>
+      {good && <CircleCheck aria-hidden className="size-3.5" />}
+      {practice && <RotateCcw aria-hidden className="size-3.5" />}
+      {outcomeLabel(status)}
+    </span>
+  );
+}
+
+/**
+ * «Il tuo risultato»: le attività del turno con le risposte giuste e, quando
+ * il turno è completo, l'esito in una riga. Componente server, usato sia nel
+ * percorso sia nella pagina «Il mio risultato».
+ */
+export function LearnerResultSummary({ module, history, base, emptyText }: {
+  module: ModuleView; history: HistoryRow[]; base: string; emptyText?: string;
+}) {
+  const rows = module.activities.map((activity) => ({ activity, latest: latestResult(activity, history) }));
+  const anySubmitted = rows.some((row) => row.latest);
+  if (!anySubmitted && !emptyText) return null;
+  const required = rows.filter((row) => row.activity.required);
+  const counted = required.length > 0 ? required : rows;
+  const correct = counted.reduce((sum, row) => sum + (row.latest?.result.correct ?? 0), 0);
+  const total = counted.reduce((sum, row) => sum + (row.latest?.result.total ?? 0), 0);
+  const { completion } = module;
+  const completed = completion.status === "completed";
+  const missing = Math.max(completion.required - completion.submitted, 0);
+  const headingId = `learning-result-${module.id}`;
+
+  return (
+    <section
+      aria-labelledby={headingId}
+      data-testid="learning-result-summary"
+      className="space-y-4 rounded-2xl border-2 border-foreground/20 bg-muted/30 p-4 sm:p-5"
+    >
+      <h2 id={headingId} className="text-lg font-semibold">Il tuo risultato</h2>
+
+      {completed && (
+        completion.outcome === "consolidated" ? (
+          <div className="flex items-start gap-3 rounded-xl border border-emerald-500/50 bg-emerald-500/10 p-4">
+            <PartyPopper aria-hidden className="mt-0.5 size-6 shrink-0 text-emerald-300" />
+            <p className="text-base font-semibold sm:text-lg">Turno completato: obiettivo raggiunto</p>
+          </div>
+        ) : (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 p-4">
+            <RotateCcw aria-hidden className="mt-0.5 size-6 shrink-0 text-amber-300" />
+            <div className="space-y-1">
+              <p className="text-base font-semibold sm:text-lg">Turno completato: alcuni punti da ripassare</p>
+              <p className="text-sm">Rifai quando vuoi gli esercizi segnati «Da ripassare».</p>
+            </div>
+          </div>
+        )
+      )}
+
+      {anySubmitted ? (
+        <>
+          <p className="text-base font-medium" data-testid="learning-result-total">
+            {[
+              completion.required > 0 ? `Esercizi: ${completion.submitted} di ${completion.required} fatti` : null,
+              total > 0 ? `${correct} ${correct === 1 ? "risposta giusta" : "risposte giuste"} su ${total}` : null,
+            ].filter(Boolean).join(" · ")}
+          </p>
+          {!completed && missing > 0 && (
+            <p className="text-sm text-muted-foreground">{missing === 1 ? "Ancora 1 esercizio da fare." : `Ancora ${missing} esercizi da fare.`}</p>
+          )}
+          <ul className="divide-y rounded-xl border bg-background">
+            {rows.map(({ activity, latest }) => (
+              <li key={activity.id} className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                <div className="min-w-0 sm:flex-1">
+                  <p className="font-medium">{activity.title}</p>
+                  {!activity.required && <p className="text-xs text-muted-foreground">Non conta per il risultato</p>}
+                </div>
+                {latest ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-sm tabular-nums">{latest.result.correct}/{latest.result.total} giuste</span>
+                    <OutcomePill status={latest.result.status} />
+                    <Link className={cn(navLink, "text-sm")} href={`${base}/attempts/${latest.attemptId}`}>
+                      Rivedi<span className="sr-only"> {activity.title}</span>
+                    </Link>
+                  </div>
+                ) : (
+                  <span className="text-sm text-muted-foreground">{activity.status === "draft" ? outcomeLabel("draft") : "Da fare"}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">{emptyText}</p>
+      )}
+    </section>
+  );
+}
 
 function activityStatus(activity: ActivityView) {
-  const submitted = activity.status === "submitted";
-  const draft = activity.status === "draft";
-  if (submitted) return outcomeLabel(activity.result?.status ?? "submitted");
-  if (draft) return activity.availability.writeAccess ? "Bozza da riprendere" : "Bozza in sola lettura";
-  if (activity.availability.writeAccess) return "Disponibile";
+  if (activity.status === "submitted") {
+    const label = outcomeLabel(activity.result?.status ?? "submitted");
+    return activity.result ? `${label} · ${activity.result.correct}/${activity.result.total} giuste` : label;
+  }
+  if (activity.status === "draft") return outcomeLabel("draft");
+  if (activity.availability.writeAccess) return "Da fare";
   return activity.availability.state === "scheduled" ? "Si apre durante la lezione" : "Non ancora aperta";
 }
 function activityAction(activity: ActivityView) {
-  const submitted = activity.status === "submitted";
-  const draft = activity.status === "draft";
-  if (submitted) return "Leggi il riscontro";
-  if (draft) return activity.availability.writeAccess ? "Riprendi" : "Consulta la bozza";
-  return activity.availability.writeAccess ? "Inizia" : "Vedi quando si apre";
+  if (activity.status === "submitted") return "Vedi il risultato";
+  if (activity.status === "draft") return activity.availability.writeAccess ? "Continua" : "Vedi le risposte";
+  return activity.availability.writeAccess ? "Inizia" : null;
 }
 
 function ActivityRow({ activity, base, canParticipate }: { activity: ActivityView; base: string; canParticipate: boolean }) {
   const href = activity.attemptId ? `${base}/attempts/${activity.attemptId}` : `${base}/activities/${activity.id}`;
   const open = activity.availability.writeAccess || activity.status === "submitted" || activity.status === "draft";
+  const action = activityAction(activity);
+  const tone = activity.status === "submitted"
+    ? activity.result?.status === "needs_practice" ? "text-amber-300" : "text-emerald-300"
+    : "text-muted-foreground";
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background p-3">
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="font-medium">{activity.title}</p>
         {canParticipate && (
           <p className="text-sm text-muted-foreground">
-            {activityStatus(activity)}
-            {activity.result ? ` · ${activity.result.correct}/${activity.result.total}` : ""}
-            {activity.estimatedMinutes ? ` · circa ${activity.estimatedMinutes} minuti` : ""}
-            {!activity.required ? " · facoltativa" : ""}
+            <span className={tone}>{activityStatus(activity)}</span>
+            {activity.status !== "submitted" && activity.estimatedMinutes ? ` · circa ${plural(activity.estimatedMinutes, "minuto", "minuti")}` : ""}
+            {!activity.required ? " · non conta per il risultato" : ""}
           </p>
         )}
         {canParticipate && !open && activity.availability.reason && (
           <p className="mt-1 text-xs text-muted-foreground">{activity.availability.reason}</p>
         )}
       </div>
-      {canParticipate && (
+      {canParticipate && open && action && (
         <Link
-          className={open
-            ? "rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background"
-            : "text-sm underline underline-offset-4"}
+          className={activity.status === "submitted"
+            ? "inline-flex min-h-10 items-center rounded-lg border px-4 text-sm font-medium hover:bg-muted"
+            : "inline-flex min-h-10 items-center rounded-lg bg-foreground px-5 text-sm font-semibold text-background hover:bg-foreground/90"}
           href={href}
         >
-          {activityAction(activity)}
+          {action}<span className="sr-only">: {activity.title}</span>
         </Link>
       )}
     </li>
@@ -106,7 +229,7 @@ function MaterialRow({ material }: { material: Material }) {
       </div>
       {downloadable ? (
         // Link nativo e non <Link>: un prefetch del router non deve scaricare né contare nulla.
-        <a className="rounded-lg border px-4 py-2 text-sm font-medium" href={material.href} download={material.fileName}>
+        <a className="inline-flex min-h-10 items-center rounded-lg border px-4 text-sm font-medium" href={material.href} download={material.fileName}>
           Scarica
         </a>
       ) : (
@@ -125,7 +248,7 @@ function BeforeYouStart({ materials }: { materials: Material[] }) {
       data-testid="learning-before-start"
     >
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Prima di iniziare</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-emerald-300">Prima di iniziare</p>
         <h2 id="before-start" className="mt-1 text-lg font-semibold">
           {materials.length === 1 ? `Scarica «${materials[0].title}»` : "Scarica i materiali della lezione"}
         </h2>
@@ -216,20 +339,24 @@ export async function ProgramOverview({ workspaceId, programId, moduleId }: { wo
   const base = `/dashboard/${workspaceId}/learning/${programId}`;
   const own = program.ownSession;
   const isTrainerView = !program.canParticipate;
+  const showResults = program.canReview || program.canAggregate || program.canExport || program.canManage;
   const modules = program.modules.filter((module) => !moduleId || module.id === moduleId);
   const before = program.materials.filter((material) => material.downloadBefore && (!moduleId || !material.moduleId || material.moduleId === moduleId));
 
   return (
     <LearningShell workspaceId={workspaceId} title={program.title}>
-      <nav aria-label="Percorso formativo" className="flex flex-wrap gap-4 text-sm underline">
-        <Link href={base}>Il percorso</Link>
-        {program.canParticipate && <><Link href={`${base}/progress`}>I miei progressi</Link><Link href={`${base}/ideas`}>La mia idea</Link></>}
-        {program.canReview && <Link href={`${base}/manage`}>Vista formatori</Link>}
-        {program.canAggregate && <Link href={`${base}/live`}>Vista di gruppo</Link>}
-        {program.canManage && <Link href={`${base}/admin`}>Gestisci corso</Link>}
-      </nav>
-      <LearningRefresh label="Aggiorna" />
-      {program.canExport && !program.canReview && <LearningExportButton workspaceId={workspaceId} programId={programId} />}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <nav aria-label="Pagine del corso" className="flex flex-wrap gap-x-5 text-sm">
+          <Link className={navLink} href={base}>Il percorso</Link>
+          {program.canParticipate && <>
+            <Link className={navLink} href={`${base}/progress`}>Il mio risultato</Link>
+            <Link className={navLink} href={`${base}/ideas`}>La mia idea</Link>
+          </>}
+          {showResults && <Link className={cn(navLink, "font-medium")} href={`${base}/results`}>Risultati</Link>}
+          {program.canManage && <Link className={navLink} href={`${base}/admin`}>Gestisci corso</Link>}
+        </nav>
+        <LearningRefresh label="Aggiorna" />
+      </div>
 
       <BeforeYouStart materials={before} />
 
@@ -240,6 +367,8 @@ export async function ProgramOverview({ workspaceId, programId, moduleId }: { wo
           const ended = isOwn && own && (own.status === "closed" || program.now >= new Date(own.endsAt).getTime());
           const moduleMaterials = program.materials.filter((material) => material.moduleId === module.id && !material.downloadBefore);
           const operational = module.activities.length > 0 || module.agenda.length > 0;
+          const learner = isOwn && program.canParticipate;
+          const hasResults = learner && module.activities.some((activity) => latestResult(activity, program.history));
           return (
             <Card key={module.id} className={isOwn ? "border-foreground/30" : undefined}>
               <CardHeader className="space-y-2">
@@ -266,10 +395,11 @@ export async function ProgramOverview({ workspaceId, programId, moduleId }: { wo
               <CardContent className="space-y-5">
                 <p className="text-sm">{module.objective}</p>
 
-                {isOwn && program.canParticipate && module.completion.required > 0 && (
+                {hasResults && <LearnerResultSummary module={module} history={program.history} base={base} />}
+
+                {learner && !hasResults && module.completion.required > 0 && (
                   <p className="text-sm font-medium" data-testid="learning-module-progress">
-                    Attività richieste: {module.completion.submitted} di {module.completion.required} consegnate
-                    {module.completion.outcome ? ` · ${outcomeLabel(module.completion.outcome)}` : ""}
+                    Esercizi fatti: {module.completion.submitted} di {module.completion.required}
                   </p>
                 )}
 
@@ -311,14 +441,14 @@ export async function ProgramOverview({ workspaceId, programId, moduleId }: { wo
 
       {isTrainerView && (
         <p className="text-sm text-muted-foreground">
-          Stai guardando il corso come formatore: vedi tutte le scalette e tutti i materiali. Per compilare le attività serve un&apos;iscrizione da partecipante.
+          Stai guardando il corso come formatore: vedi tutte le scalette e tutti i materiali. I risultati dei partecipanti sono nella pagina Risultati.
         </p>
       )}
 
-      <details className="rounded-xl border p-4">
-        <summary className="cursor-pointer font-medium">Come useremo le tue risposte</summary>
+      <details className="rounded-xl border px-4 py-3">
+        <summary className="cursor-pointer py-1 font-medium">Chi vede le tue risposte</summary>
         <div className="mt-3 space-y-3 text-sm">
-          <p>Le attività sono associate al tuo account. Vedi i tuoi risultati; le prove individuali sono accessibili ai formatori con autorizzazione esplicita. La direzione vede solo dati aggregati.</p>
+          <p>Le risposte sono legate al tuo account. Le vedi tu e i formatori del corso. La direzione vede solo i risultati di gruppo.</p>
           <p className="whitespace-pre-wrap">{program.visibilityPolicy}</p>
           <p>Le risposte restano conservate {program.retentionDays} giorni dopo la chiusura del corso.</p>
           <p>{participantNotice}</p>

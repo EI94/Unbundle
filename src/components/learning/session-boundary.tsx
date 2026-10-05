@@ -16,12 +16,17 @@ export function LearningSessionBoundary({ workspaceId, expectedUserId, children 
   const sequence = useRef(0);
   const controller = useRef<AbortController | null>(null);
   const channel = useRef<BroadcastChannel | null>(null);
-  const check = useCallback(async (announce = false) => {
+  const check = useCallback(async (announce = false, soft = false) => {
     const generation = ++sequence.current;
     controller.current?.abort();
     const request = new AbortController();
     controller.current = request;
-    setState({ path: pathname, phase: "checking" });
+    // Tornando sulla finestra (focus/visibilità) la pagina già verificata resta
+    // visibile durante il controllo: era già sullo schermo, e nasconderla a ogni
+    // cambio di finestra chiude la presentazione in aula e fa lampeggiare il corso.
+    // Si nasconde solo se il controllo fallisce. La navigazione nella cronologia
+    // e un cambio di account in un'altra scheda restano controlli "duri".
+    setState((previous) => soft && previous.path === pathname && previous.phase === "verified" ? previous : { path: pathname, phase: "checking" });
     const timeout = setTimeout(() => request.abort(), 10_000);
     try {
       const response = await fetch("/api/learning/session", { method: "POST", credentials: "same-origin", redirect: "error", cache: "no-store", signal: request.signal,
@@ -48,8 +53,9 @@ export function LearningSessionBoundary({ workspaceId, expectedUserId, children 
       if (data && typeof data === "object" && "userId" in data && data.userId !== expectedUserId) void check();
     };
     const recheck = () => { void check(); };
-    const visibility = () => { if (document.visibilityState === "visible") recheck(); };
-    window.addEventListener("focus", recheck);
+    const softRecheck = () => { void check(false, true); };
+    const visibility = () => { if (document.visibilityState === "visible") softRecheck(); };
+    window.addEventListener("focus", softRecheck);
     window.addEventListener("popstate", recheck);
     window.addEventListener("pageshow", recheck);
     document.addEventListener("visibilitychange", visibility);
@@ -57,7 +63,7 @@ export function LearningSessionBoundary({ workspaceId, expectedUserId, children 
     const invalidatePendingCheck = () => { ++sequence.current; controller.current?.abort(); };
     return () => {
       invalidatePendingCheck(); changes?.close(); channel.current = null;
-      window.removeEventListener("focus", recheck); window.removeEventListener("popstate", recheck); window.removeEventListener("pageshow", recheck);
+      window.removeEventListener("focus", softRecheck); window.removeEventListener("popstate", recheck); window.removeEventListener("pageshow", recheck);
       document.removeEventListener("visibilitychange", visibility);
     };
   }, [check, expectedUserId]);

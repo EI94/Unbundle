@@ -35,9 +35,9 @@ export function attemptAccess(status: "draft" | "submitted", availability: Activ
   const canRetake = status === "submitted" && !!retakeAvailability?.writeAccess;
   return {
     writeAccess,
-    readOnlyReason: writeAccess ? null : status === "submitted" ? "Questo tentativo è stato consegnato e non può essere modificato." : availability.reason,
+    readOnlyReason: writeAccess ? null : status === "submitted" ? "Queste risposte sono già state inviate e non si possono più cambiare." : availability.reason,
     canRetake,
-    retakeUnavailableReason: canRetake ? null : status !== "submitted" ? "Consegna prima questo tentativo." : retakeAvailability?.reason ?? "Questa attività non prevede un recupero.",
+    retakeUnavailableReason: canRetake ? null : status !== "submitted" ? "Invia prima queste risposte." : retakeAvailability?.reason ?? "Questa attività non si può ripetere.",
   };
 }
 

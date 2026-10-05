@@ -1,20 +1,7 @@
-import { getLearningLive } from "@/lib/learning/server";
-import { LearningShell } from "@/components/learning/learning-shell";
-import { LearningRefresh } from "@/components/learning/learning-refresh";
+import { redirect } from "next/navigation";
+
+/** La vista per l'aula ora vive in Risultati, sezione «Risultati di gruppo». */
 export default async function LivePage({ params }: { params: Promise<{ workspaceId: string; programId: string }> }) {
   const { workspaceId, programId } = await params;
-  const data = await getLearningLive(workspaceId, programId);
-  return <LearningShell workspaceId={workspaceId} title={`In aula · ${data.program.title}`}>
-    <p>Solo dati aggregati nel perimetro autorizzato. Nessun nominativo, testo libero o classifica.</p>
-    <LearningRefresh label="Aggiorna consegne" />
-    {data.suppressed ? <p className="rounded-lg border p-5">Gruppo sotto la soglia minima di {data.minimum}: dettagli non disponibili.</p> : <>
-      <p>Iscritti: {data.enrolled}. Si considera la prima consegna per attività, senza attribuire zero a chi non ha risposto.</p>
-      <div className="grid gap-4 sm:grid-cols-3">{data.activities.map(activity => <section key={activity.id} className="space-y-3 rounded-xl border p-5">
-        <h2 className="font-semibold">{activity.title}</h2>
-        <p>Consegne: {activity.submitted ?? "Dettaglio soppresso"}</p>
-        {activity.formative ? <><p>Checkpoint completati: {activity.completed ?? "Dettaglio soppresso"}</p><p className="text-sm text-muted-foreground">Attività formativa: il completamento non indica un esito consolidato.</p></> : <p>Esiti consolidati: {activity.consolidated ?? "Dettaglio soppresso"}</p>}
-      </section>)}</div>
-    </>}
-    <p className="text-sm text-muted-foreground">Soglia {data.minimum}; anche i sottogruppi piccoli vengono soppressi. Usa “Aggiorna consegne” per ricevere i nuovi dati. Il dato descrive queste prove, non le capacità professionali delle persone.</p>
-  </LearningShell>;
+  redirect(`/dashboard/${encodeURIComponent(workspaceId)}/learning/${encodeURIComponent(programId)}/results?vista=gruppo`);
 }

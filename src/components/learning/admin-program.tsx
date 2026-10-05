@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
+import { ChartColumn } from "lucide-react";
 import type { AdminDetailDTO, LearningAdminRequest } from "@/lib/learning/admin-contract";
 import { learningAdminRequest } from "@/lib/learning/admin-client";
 import { Button } from "@/components/ui/button";
@@ -83,7 +84,7 @@ export function LearningAdminProgram({ workspaceId, initial }: { workspaceId: st
   }
 
   return <div className="space-y-6" aria-busy={busy}>
-    <div className="flex flex-wrap items-center justify-between gap-3"><Link className="text-sm underline" href={`${base}/admin`}>Tutti i corsi da gestire</Link><Button type="button" variant="outline" disabled={busy} onClick={refresh}>Aggiorna riepilogo</Button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><Link className="text-sm underline" href={`${base}/admin`}>Tutti i corsi da gestire</Link><div className="flex flex-wrap items-center gap-2"><Link data-testid="admin-results-link" className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-500" href={`${base}/${data.program.id}/results`}><ChartColumn aria-hidden className="size-4" />Risultati</Link><Button type="button" variant="outline" disabled={busy} onClick={refresh}>Aggiorna riepilogo</Button></div></div>
     <AdminNotice message={message} error={error} />
     {busy && <p role="status" className="text-sm text-muted-foreground">Operazione in corso. Attendi la conferma prima di lasciare la pagina.</p>}
     {!accessLost && <>
