@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { getJoinPreview, type JoinUnusableReason } from "@/lib/learning/join";
+import { redirect } from "next/navigation";
+import { findEnrolledCourseByToken, getJoinPreview, type JoinUnusableReason } from "@/lib/learning/join";
 import { participantNotice } from "@/lib/learning/register-legal";
 import { learningEnabled } from "@/lib/learning/server";
 import { JoinCourseForm } from "@/components/learning/join-course-form";
@@ -131,6 +132,14 @@ export default async function CourseJoinPage({
   const preview = await getJoinPreview(token);
 
   if (!preview.ok) {
+    // Chi è già iscritto rientra nel corso dallo stesso link anche quando le
+    // iscrizioni sono chiuse: gli esercizi si fanno anche dopo la lezione.
+    const returning = preview.reason !== "not_found" && preview.reason !== "course_unavailable";
+    const viewer = returning ? await auth() : null;
+    if (viewer?.user?.id) {
+      const enrolled = await findEnrolledCourseByToken(token, viewer.user.id);
+      if (enrolled) redirect(`/dashboard/${enrolled.workspaceId}/learning/${enrolled.programId}`);
+    }
     const copy = UNUSABLE[preview.reason];
     return (
       <Shell>
@@ -154,6 +163,19 @@ export default async function CourseJoinPage({
               <p className="text-foreground">
                 Questa pagina non si aggiorna da sola: ricaricala quando il
                 formatore dà il via.
+              </p>
+            )}
+            {returning && !viewer?.user?.id && (
+              <p className="text-foreground">
+                Sei già entrato nel corso?{" "}
+                <Link
+                  className="font-medium underline underline-offset-4"
+                  href={`/login?callbackUrl=${encodeURIComponent(`/c/${token}`)}`}
+                  data-testid="join-returning-login"
+                >
+                  Accedi e torni al corso
+                </Link>
+                , anche per fare gli esercizi.
               </p>
             )}
           </CardContent>

@@ -80,6 +80,33 @@ type PreviewRow = {
  * corso, lezione, orario, durata e nome del formatore. Mai la sua email, mai
  * identificatori interni, mai i contenuti del pacchetto.
  */
+/**
+ * Chi è già iscritto torna al proprio corso anche quando il link non accetta
+ * più iscrizioni: scaduto, ingresso chiuso, posti finiti o disattivato.
+ *
+ * Il link della lezione resta l'indirizzo che le persone conservano (il QR
+ * nelle slide, il messaggio del formatore) e con cui rientrano, per esempio
+ * per fare gli esercizi dopo la lezione. Non concede nulla di nuovo: serve
+ * un'iscrizione attiva proprio al corso del link, e il corso visibile.
+ */
+export async function findEnrolledCourseByToken(
+  token: string,
+  userId: string
+): Promise<{ workspaceId: string; programId: string } | null> {
+  if (!looksLikeJoinToken(token)) return null;
+  const { rows } = await db.execute(sql`
+    SELECT l.workspace_id AS "workspaceId", l.program_id AS "programId"
+    FROM learning_join_links l
+    JOIN learning_programs p ON p.workspace_id = l.workspace_id AND p.id = l.program_id AND p.feature_enabled
+    JOIN learning_enrollments e ON e.workspace_id = l.workspace_id AND e.program_id = l.program_id
+      AND e.user_id = ${userId}::uuid AND e.status = 'active'
+    WHERE l.token_hash = ${hashJoinToken(token)}
+    LIMIT 1
+  `);
+  const row = rows[0] as { workspaceId?: string; programId?: string } | undefined;
+  return row?.workspaceId && row.programId ? { workspaceId: row.workspaceId, programId: row.programId } : null;
+}
+
 export async function getJoinPreview(token: string): Promise<JoinPreviewResult> {
   if (!looksLikeJoinToken(token)) return { ok: false, reason: "not_found", course: null };
 
