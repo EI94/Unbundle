@@ -41,7 +41,7 @@ const FIREBASE_MESSAGES: Record<string, string> = {
   "auth/weak-password": "Serve una password di almeno 6 caratteri.",
   "auth/user-not-found": "Nessun account con questa email: usa «Crea un account».",
   "auth/wrong-password": "Password errata.",
-  "auth/invalid-credential": "Email o password non corrette.",
+  "auth/invalid-credential": "Email o password non corrette. Se è la prima volta, tocca «Non ho un account: creane uno».",
   "auth/too-many-requests": "Troppi tentativi. Aspetta un minuto e riprova.",
   "auth/network-request-failed":
     "Connessione interrotta. Controlla la rete e riprova: non hai perso nulla.",
@@ -69,7 +69,8 @@ export function JoinCourseForm({
   const [done, setDone] = useState<Step[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showEmail, setShowEmail] = useState(false);
-  const [registering, setRegistering] = useState(false);
+  // In aula quasi tutti entrano per la prima volta: si parte da «crea l'account».
+  const [registering, setRegistering] = useState(true);
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [browserHint, setBrowserHint] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -185,20 +186,31 @@ export function JoinCourseForm({
 
   async function withEmail(event: React.FormEvent) {
     event.preventDefault();
+    if (registering && !form.name.trim()) {
+      setError("Scrivi nome e cognome: compaiono nel registro della formazione.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const credential = registering
-        ? await createUserWithEmailAndPassword(
-            firebaseAuth,
-            form.email.trim(),
-            form.password
-          )
-        : await signInWithEmailAndPassword(
-            firebaseAuth,
-            form.email.trim(),
-            form.password
-          );
+      const email = form.email.trim();
+      let credential;
+      if (registering) {
+        try {
+          credential = await createUserWithEmailAndPassword(firebaseAuth, email, form.password);
+        } catch (err) {
+          // Chi ha già un account e sceglie «crea» con la stessa password entra
+          // comunque: in aula nessuno deve capire quale dei due pulsanti usare.
+          if (describe(err).code !== "auth/email-already-in-use") throw err;
+          try {
+            credential = await signInWithEmailAndPassword(firebaseAuth, email, form.password);
+          } catch {
+            throw err;
+          }
+        }
+      } else {
+        credential = await signInWithEmailAndPassword(firebaseAuth, email, form.password);
+      }
       if (registering && form.name.trim()) {
         await updateProfile(credential.user, { displayName: form.name.trim() });
       }
@@ -279,7 +291,7 @@ export function JoinCourseForm({
 
   return (
     <div className="space-y-4">
-      {error && (
+      {error && !showEmail && (
         <div
           className="rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-sm"
           role="alert"
@@ -340,14 +352,16 @@ export function JoinCourseForm({
           </Button>
 
           {!showEmail ? (
-            <button
-              className="w-full text-center text-sm text-muted-foreground underline"
+            <Button
+              className="h-12 w-full text-base"
+              size="lg"
+              variant="outline"
               type="button"
               data-testid="join-use-email"
               onClick={() => setShowEmail(true)}
             >
-              Usa email e password
-            </button>
+              Entra con email e password
+            </Button>
           ) : (
             <form className="space-y-3 rounded-2xl border bg-background/60 p-4" onSubmit={withEmail} noValidate>
               {registering && (
@@ -355,6 +369,8 @@ export function JoinCourseForm({
                   <Label htmlFor="join-name">Nome e cognome</Label>
                   <Input
                     id="join-name"
+                    className="h-11"
+                    required
                     autoComplete="name"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -366,6 +382,7 @@ export function JoinCourseForm({
                 <Label htmlFor="join-email">Email</Label>
                 <Input
                   id="join-email"
+                  className="h-11"
                   type="email"
                   required
                   autoComplete="email"
@@ -378,6 +395,7 @@ export function JoinCourseForm({
                 <Label htmlFor="join-password">Password</Label>
                 <Input
                   id="join-password"
+                  className="h-11"
                   type="password"
                   required
                   minLength={6}
@@ -386,13 +404,19 @@ export function JoinCourseForm({
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                 />
               </div>
-              <Button className="h-11 w-full" type="submit" data-testid="join-email-submit">
+              {error && (
+                <p className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm" role="alert" data-testid="join-error">
+                  {error}
+                </p>
+              )}
+              <Button className="h-12 w-full text-base" type="submit" disabled={busy} data-testid="join-email-submit">
                 {registering ? "Crea l'account ed entra" : "Entra nel corso"}
               </Button>
               <button
-                className="w-full text-center text-xs text-muted-foreground underline"
+                className="min-h-10 w-full text-center text-sm text-muted-foreground underline"
                 type="button"
-                onClick={() => setRegistering((value) => !value)}
+                data-testid="join-toggle-register"
+                onClick={() => { setRegistering((value) => !value); setError(null); }}
               >
                 {registering
                   ? "Ho già un account: accedi"
