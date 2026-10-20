@@ -42,11 +42,17 @@ export default async function WorkspaceLayout({
     ? await (await import("@/lib/learning/server")).hasLearningForWorkspace(workspaceId)
     : false;
 
+  // Off by default (UC_ENABLED): the uc tables are read only when the section is on, behind to_regclass.
+  const casesAvailable = process.env.UC_ENABLED === "true" && !learnerOnly
+    ? await (await import("@/lib/db/queries/uc-nav")).ucCasesNavVisible({ userId: session.user.id, workspaceId, role: access.role })
+    : false;
+
   return (
     <SidebarProvider>
       <AppSidebar
         learnerOnly={learnerOnly}
         learningAvailable={learningAvailable}
+        casesAvailable={casesAvailable}
         workspaceId={workspace.id}
         workspaceName={workspace.name}
         user={{

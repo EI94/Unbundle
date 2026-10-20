@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { cache } from "react";
 import { db } from "..";
 import {
@@ -40,6 +40,34 @@ export const getWorkspaceById = cache(async function getWorkspaceById(id: string
   return workspace ?? null;
 });
 
+/** Oggetti dei casi d'uso da cancellare con il workspace, per archivio. */
+export type UcWorkspaceBlobs = { standard: string[]; personale: string[] };
+
+/**
+ * File dei casi d'uso del workspace (PIANO §5.3, D43): percorsi definitivi
+ * nell'archivio della loro zona e quarantene nell'archivio standard, raccolti
+ * prima della cascata. Le tabelle uc possono non esistere (`to_regclass`); si
+ * raccolgono anche con la sezione spenta, così nessun file sopravvive al
+ * workspace. Un errore si registra e la cancellazione prosegue senza la parte uc.
+ */
+async function ucBlobPathsForWorkspace(id: string): Promise<UcWorkspaceBlobs> {
+  const out: UcWorkspaceBlobs = { standard: [], personale: [] };
+  try {
+    const { rows: present } = await db.execute(sql`SELECT to_regclass('public.uc_files') IS NOT NULL AS ok`);
+    if ((present[0] as { ok: boolean } | undefined)?.ok !== true) return out;
+    const { rows } = await db.execute(sql`
+      SELECT storage_zone, blob_path, quarantine_path FROM uc_files
+      WHERE workspace_id = ${id}::uuid AND (blob_path IS NOT NULL OR quarantine_path IS NOT NULL)`);
+    for (const row of rows as { storage_zone: string; blob_path: string | null; quarantine_path: string | null }[]) {
+      if (row.blob_path) (row.storage_zone === "personale" ? out.personale : out.standard).push(row.blob_path);
+      if (row.quarantine_path) out.standard.push(row.quarantine_path);
+    }
+  } catch (error) {
+    console.error("[uc] file dei casi d'uso non raccolti", error instanceof Error ? error.name : "errore");
+  }
+  return out;
+}
+
 export async function deleteWorkspaceById(id: string) {
   await ensureDbSchema();
 
@@ -47,6 +75,7 @@ export async function deleteWorkspaceById(id: string) {
     .select({ blobUrl: uploadedDocuments.blobUrl })
     .from(uploadedDocuments)
     .where(eq(uploadedDocuments.workspaceId, id));
+  const ucBlobs = await ucBlobPathsForWorkspace(id);
 
   const [workspace] = await db
     .delete(workspaces)
@@ -56,6 +85,7 @@ export async function deleteWorkspaceById(id: string) {
   return {
     workspace: workspace ?? null,
     blobUrls: documents.map((doc) => doc.blobUrl).filter(Boolean),
+    ucBlobs: workspace ? ucBlobs : { standard: [], personale: [] },
   };
 }
 

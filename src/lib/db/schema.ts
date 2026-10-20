@@ -12,7 +12,68 @@ import {
   primaryKey,
   index,
   uniqueIndex,
+  char,
+  customType,
+  date,
+  numeric,
+  smallint,
 } from "drizzle-orm/pg-core";
+import type { Approval, Fallback, PartialNa, Waiver } from "../uc/types.ts";
+import { CONNECTOR_DEFAULT_LIMITS, type ConnectorLimits } from "./connector-ddl.ts";
+import type {
+  AnswerDevice,
+  AnswerKind,
+  BlockerStatus,
+  CaseRole,
+  CaseStatus,
+  CatalogVersionReason,
+  CommentKind,
+  CommentVisibility,
+  Confidence,
+  ContactChannel,
+  DataMode,
+  DatasetStatus,
+  EventActorType,
+  FilePersonalData,
+  GateDecision,
+  GateKey,
+  ItemBlockerOrigin,
+  ItemKind,
+  ItemSection,
+  ItemStatus,
+  KpiPhase,
+  Lever,
+  LinkRelation,
+  MapKind,
+  MapSource,
+  ModelRunKind,
+  NotificationChannel,
+  NotificationStatus,
+  Perimeter,
+  Phase,
+  Priority,
+  PrivacyClass,
+  ProvisionalStatus,
+  RecordedBy,
+  RequestChannel,
+  RequestItemState,
+  RequestPurpose,
+  RequestStatus,
+  ResponseType,
+  RoiScenario,
+  RoiStatus,
+  ScanStatus,
+  SourceBasis,
+  SourceKind,
+  StorageZone,
+  TemplateStatus,
+  TestCaseKind,
+  TestCaseResult,
+  TokenIssuedFor,
+  ValidationKind,
+  ValidationOutcome,
+  ValueVisibility,
+} from "../uc/vocab.ts";
 
 // ─── Enums ──────────────────────────────────────────────────────────
 
@@ -348,6 +409,8 @@ export const workspaceIntegrationTokens = pgTable(
     revokedAt: timestamp("revoked_at", { mode: "date" }),
     createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
+    /** Token arrivato dentro un indirizzo: «esposto, da revocare» (coda della 0019, connettore WP4). */
+    exposedAt: timestamp("exposed_at", { mode: "date" }),
   },
   (t) => [
     index("workspace_integration_tokens_workspace_idx").on(t.workspaceId),
@@ -594,6 +657,23 @@ export const useCases = pgTable("use_cases", {
   requirements: jsonb("requirements").$type<string[]>(),
   dataDependencies: jsonb("data_dependencies").$type<string[]>(),
   relatedActivityIds: jsonb("related_activity_ids").$type<string[]>(),
+  /**
+   * Connettore MCP (drizzle/0019): codice leggibile per workspace (es. TJ-0012),
+   * assegnato da `assignUseCaseCode` a ogni nuovo use case di un workspace con
+   * connettore configurato. Indice unico parziale (workspace_id, code) e CHECK sul
+   * formato nella migrazione.
+   */
+  code: varchar("code", { length: 20 }),
+  /** Campi raccolti dal connettore (area, strumenti, stima di chi propone, flag…). */
+  intake: jsonb("intake").$type<Record<string, unknown>>(),
+  /** Nota visibile tramite Claude a chi conosce il codice (max 1.000 caratteri). */
+  publicNote: text("public_note"),
+  /** Ultimo cambio di `status` o `portfolio_review_status` (trigger in drizzle/0019). */
+  statusChangedAt: timestamp("status_changed_at", { mode: "date", withTimezone: true }).defaultNow(),
+  /** Identità verificata di chi propone (fase 2, OAuth). */
+  submittedByUserId: uuid("submitted_by_user_id").references(() => connectorIdentities.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -605,9 +685,22 @@ export const externalContributionSubmissions = pgTable(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
-    integrationTokenId: uuid("integration_token_id")
-      .notNull()
-      .references(() => workspaceIntegrationTokens.id, { onDelete: "cascade" }),
+    /** Token di workspace che ha inviato (fase 1); null per le identità di fase 2. */
+    integrationTokenId: uuid("integration_token_id").references(
+      () => workspaceIntegrationTokens.id,
+      { onDelete: "cascade" }
+    ),
+    /** Chi invia: `token:<tokenId>` oppure, in fase 2, `user:<identityId>`. */
+    principalKey: varchar("principal_key", { length: 80 }).notNull(),
+    /**
+     * Id della segnalazione deciso alla prima presa in carico e riusato da ogni
+     * ripresa: un nuovo tentativo ritrova la segnalazione già creata (nessuna FK:
+     * la segnalazione può non esistere ancora). Il codice nuovo lo scrive sempre;
+     * NULL = riga del codice precedente alla 0019, che non si riprende mai.
+     */
+    reservedUseCaseId: uuid("reserved_use_case_id"),
+    /** Numero del tentativo che possiede la riga; sale a ogni ripresa. */
+    attempt: integer("attempt").notNull().default(1),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     requestHash: varchar("request_hash", { length: 128 }).notNull(),
     status: varchar("status", { length: 50 }).notNull().default("pending"),
@@ -624,7 +717,88 @@ export const externalContributionSubmissions = pgTable(
       t.integrationTokenId,
       t.idempotencyKey
     ),
+    uniqueIndex("external_contribution_principal_idempotency_idx").on(
+      t.workspaceId,
+      t.principalKey,
+      t.idempotencyKey
+    ),
     index("external_contribution_workspace_idx").on(t.workspaceId),
+  ]
+);
+
+// ─── Connettore MCP organizzativo (drizzle/0019) ─────────────────────
+// CHECK, indice full-text e trigger stanno solo nella migrazione e in
+// src/lib/db/connector-ddl.ts (self-heal): mai drizzle-kit su queste tabelle.
+
+/** Identità solo MCP di fase 2 (login Microsoft, claim oid): vuota in fase 1. */
+export const connectorIdentities = pgTable(
+  "connector_identities",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    provider: varchar("provider", { length: 40 }).notNull(),
+    subject: varchar("subject", { length: 255 }).notNull(),
+    email: varchar("email", { length: 255 }),
+    displayName: varchar("display_name", { length: 255 }),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
+    lastSeenAt: timestamp("last_seen_at", { mode: "date", withTimezone: true }),
+    disabledAt: timestamp("disabled_at", { mode: "date", withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("connector_identities_workspace_provider_subject_key").on(
+      t.workspaceId,
+      t.provider,
+      t.subject
+    ),
+  ]
+);
+
+/** Configurazione del connettore, una riga per workspace. */
+export const workspaceConnectorConfigs = pgTable("workspace_connector_configs", {
+  workspaceId: uuid("workspace_id")
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  slug: varchar("slug", { length: 40 }).notNull().unique("workspace_connector_configs_slug_key"),
+  /** Interruttore di sospensione: false → ogni tool risponde `connector_disabled`. */
+  enabled: boolean("enabled").notNull().default(false),
+  codePrefix: varchar("code_prefix", { length: 4 }).notNull(),
+  /** Ultimo numero assegnato: il prossimo codice usa next_code_seq + 1. */
+  nextCodeSeq: integer("next_code_seq").notNull().default(0),
+  identityMode: varchar("identity_mode", { length: 20 })
+    .$type<"dichiarata" | "verificata">()
+    .notNull()
+    .default("dichiarata"),
+  authMode: varchar("auth_mode", { length: 20 }).$type<"header" | "oauth">().notNull().default("header"),
+  workspaceDisplayName: varchar("workspace_display_name", { length: 120 }),
+  guide: jsonb("guide").$type<Record<string, unknown>>(),
+  guideVersion: varchar("guide_version", { length: 20 }),
+  /** Domini EMAIL ammessi al login di fase 2. */
+  allowedDomains: jsonb("allowed_domains").$type<string[]>().notNull().default([]),
+  /** Header `Origin` HTTP ammessi (elenco distinto da allowedDomains). */
+  allowedOrigins: jsonb("allowed_origins").$type<string[]>().notNull().default([]),
+  limits: jsonb("limits").$type<ConnectorLimits>().notNull().default({ ...CONNECTOR_DEFAULT_LIMITS }),
+  createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+  // Coda della 0019 (K8, decisione 1 dell'arresto B): profilo del cliente e modello
+  // delle istruzioni del server, scritti solo da `scripts/connector-admin.ts profile`.
+  profile: jsonb("profile").$type<Record<string, unknown>>(),
+  instructionsTemplate: text("instructions_template"),
+});
+
+/** Contatori del limite di richieste del connettore (come uc_rate_limits). */
+export const connectorRateLimits = pgTable(
+  "connector_rate_limits",
+  {
+    bucket: varchar("bucket", { length: 120 }).notNull(),
+    windowStart: timestamp("window_start", { mode: "date", withTimezone: true }).notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ name: "connector_rate_limits_pkey", columns: [t.bucket, t.windowStart] }),
+    index("connector_rate_limits_window_idx").on(t.windowStart),
   ]
 );
 
@@ -1232,6 +1406,9 @@ export type ExternalContributionSubmission =
 export type NewExternalContributionSubmission =
   typeof externalContributionSubmissions.$inferInsert;
 export type WorkspaceScoringModel = typeof workspaceScoringModels.$inferSelect;
+export type ConnectorIdentity = typeof connectorIdentities.$inferSelect;
+export type WorkspaceConnectorConfig = typeof workspaceConnectorConfigs.$inferSelect;
+export type NewWorkspaceConnectorConfig = typeof workspaceConnectorConfigs.$inferInsert;
 export type NewWorkspaceScoringModel = typeof workspaceScoringModels.$inferInsert;
 export type StrategicGoal = typeof strategicGoals.$inferSelect;
 export type NewStrategicGoal = typeof strategicGoals.$inferInsert;
@@ -1279,3 +1456,711 @@ export type NewAiReadinessAuditEvent =
   typeof aiReadinessAuditEvents.$inferInsert;
 export type AiReadinessInsight = typeof aiReadinessInsights.$inferSelect;
 export type NewAiReadinessInsight = typeof aiReadinessInsights.$inferInsert;
+
+// ── Casi d'uso (uc_*) ───────────────────────────────────────────────
+//
+// Fonte di verità: il DDL di `src/lib/uc/ddl.ts` (migrazione 0018 e self-heal
+// `ensureUcSchema()`). Qui solo colonne e chiavi primarie, per le query tipizzate:
+// CHECK dei vocabolari, FK, indici e trigger vivono solo nel DDL.
+// MAI `db:push`/`db:generate` su queste tabelle: toglierebbero vincoli e trigger.
+// `src/lib/uc/schema-sync.test.ts` controlla che colonne, tipi, NOT NULL e
+// default coincidano con il DDL.
+
+const ucTimestamp = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
+/** Byte grezzi (valori cifrati della zona personale). */
+const ucBytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+export const ucTemplates = pgTable(
+  "uc_templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    key: varchar("key", { length: 120 }).notNull(),
+    version: varchar("version", { length: 20 }).notNull(),
+    language: varchar("language", { length: 10 }).notNull().default("it"),
+    name: varchar("name", { length: 255 }).notNull(),
+    archetype: varchar("archetype", { length: 80 }).notNull(),
+    industry: varchar("industry", { length: 80 }),
+    functionArea: varchar("function_area", { length: 80 }),
+    status: text("status").$type<TemplateStatus>().notNull().default("bozza"),
+    definition: jsonb("definition").$type<Record<string, unknown>>().notNull(),
+    definitionHash: char("definition_hash", { length: 64 }).notNull(),
+    restrictedToWorkspaceId: uuid("restricted_to_workspace_id"),
+    parentTemplateId: uuid("parent_template_id"),
+    changelog: text("changelog"),
+    createdByUserId: uuid("created_by_user_id"),
+    publishedByUserId: uuid("published_by_user_id"),
+    publishedAt: ucTimestamp("published_at"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: ucTimestamp("updated_at").notNull().defaultNow(),
+  }
+);
+
+export const ucContacts = pgTable(
+  "uc_contacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    displayName: varchar("display_name", { length: 255 }).notNull(),
+    roleLabel: varchar("role_label", { length: 255 }),
+    templateRoleKey: varchar("template_role_key", { length: 80 }),
+    email: varchar("email", { length: 320 }),
+    phoneE164: varchar("phone_e164", { length: 32 }),
+    userId: uuid("user_id"),
+    preferredChannel: text("preferred_channel").$type<ContactChannel>().notNull().default("email"),
+    locale: varchar("locale", { length: 10 }).notNull().default("it"),
+    isActive: boolean("is_active").notNull().default(true),
+    privacyNoticeVersion: varchar("privacy_notice_version", { length: 20 }),
+    privacyNoticeSeenAt: ucTimestamp("privacy_notice_seen_at"),
+    digestOptOut: boolean("digest_opt_out").notNull().default(false),
+    anonymizedAt: ucTimestamp("anonymized_at"),
+    createdByUserId: uuid("created_by_user_id"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: ucTimestamp("updated_at").notNull().defaultNow(),
+  }
+);
+
+export const ucCases = pgTable(
+  "uc_cases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    organizationId: uuid("organization_id").notNull(),
+    portfolioUseCaseId: uuid("portfolio_use_case_id"),
+    templateId: uuid("template_id").notNull(),
+    templateVersion: varchar("template_version", { length: 20 }).notNull(),
+    code: varchar("code", { length: 40 }).notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    oneLiner: varchar("one_liner", { length: 500 }),
+    description: jsonb("description").$type<Record<string, unknown>>().notNull().default({}),
+    descriptionHistory: jsonb("description_history").$type<unknown[]>().notNull().default([]),
+    status: text("status").$type<CaseStatus>().notNull().default("bozza"),
+    statusBeforeSuspension: text("status_before_suspension").$type<CaseStatus>(),
+    suspensionReason: text("suspension_reason"),
+    closedReason: text("closed_reason"),
+    statusChangedAt: ucTimestamp("status_changed_at"),
+    perimeterLabel: varchar("perimeter_label", { length: 255 }),
+    contractRefs: jsonb("contract_refs").$type<string[]>().notNull().default([]),
+    specDocumentRef: varchar("spec_document_ref", { length: 255 }),
+    levers: jsonb("levers").$type<Lever[]>().notNull().default([]),
+    lsLeadUserId: uuid("ls_lead_user_id"),
+    clientOwnerContactId: uuid("client_owner_contact_id"),
+    clientOwnerRoleLabel: varchar("client_owner_role_label", { length: 255 }),
+    clientPrivacyApproverContactId: uuid("client_privacy_approver_contact_id"),
+    signersDesignation: jsonb("signers_designation").$type<Record<string, unknown>>().notNull().default({}),
+    dataMode: text("data_mode").$type<DataMode>().notNull().default("solo_sintetici"),
+    aiEnvironmentApproved: boolean("ai_environment_approved").notNull().default(false),
+    dataControllerLabel: varchar("data_controller_label", { length: 255 }),
+    settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
+    readiness: jsonb("readiness").$type<Record<string, unknown>>(),
+    catalogVersion: integer("catalog_version").notNull().default(0),
+    catalogRevision: integer("catalog_revision").notNull().default(0),
+    shareEpoch: integer("share_epoch").notNull().default(0),
+    setupCompletedAt: ucTimestamp("setup_completed_at"),
+    createdByUserId: uuid("created_by_user_id"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: ucTimestamp("updated_at").notNull().defaultNow(),
+    archivedAt: ucTimestamp("archived_at"),
+    closedAt: ucTimestamp("closed_at"),
+  }
+);
+
+export const ucCaseMembers = pgTable(
+  "uc_case_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    role: text("role").$type<CaseRole>().notNull(),
+    personalZoneAccess: boolean("personal_zone_access").notNull().default(false),
+    personalZoneGrant: jsonb("personal_zone_grant").$type<Record<string, unknown>>(),
+    addedByUserId: uuid("added_by_user_id"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  }
+);
+
+export const ucBlockers = pgTable(
+  "uc_blockers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    caseId: uuid("case_id"),
+    key: varchar("key", { length: 60 }).notNull(),
+    label: text("label").notNull(),
+    status: text("status").$type<BlockerStatus>().notNull().default("attivo"),
+    scope: jsonb("scope").$type<Record<string, unknown>>().notNull().default({}),
+    fallbackAllowed: text("fallback_allowed"),
+    evidence: jsonb("evidence").$type<Record<string, unknown>>(),
+    approvals: jsonb("approvals").$type<Approval[]>().notNull().default([]),
+    resolvedByUserId: uuid("resolved_by_user_id"),
+    resolvedAt: ucTimestamp("resolved_at"),
+    notes: text("notes"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: ucTimestamp("updated_at").notNull().defaultNow(),
+  }
+);
+
+export const ucItems = pgTable(
+  "uc_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    key: varchar("key", { length: 160 }).notNull(),
+    templateItemKey: varchar("template_item_key", { length: 160 }),
+    kind: text("kind").$type<ItemKind>().notNull(),
+    section: text("section").$type<ItemSection>().notNull(),
+    parentItemId: uuid("parent_item_id"),
+    title: text("title").notNull(),
+    explanation: text("explanation"),
+    why: text("why"),
+    example: text("example"),
+    help: text("help"),
+    spec: jsonb("spec").$type<Record<string, unknown>>().notNull().default({}),
+    priority: text("priority").$type<Priority>(),
+    servesFor: jsonb("serves_for").$type<Phase[]>().notNull().default([]),
+    privacyClass: text("privacy_class").$type<PrivacyClass>().notNull().default("riservato_azienda"),
+    valueVisibility: text("value_visibility").$type<ValueVisibility>().notNull().default("owner_e_ls"),
+    availability: jsonb("availability").$type<string[]>().notNull().default([]),
+    perimeter: text("perimeter").$type<Perimeter>(),
+    levers: jsonb("levers").$type<Lever[]>().notNull().default([]),
+    responseType: text("response_type").$type<ResponseType>(),
+    responseConfig: jsonb("response_config").$type<Record<string, unknown>>().notNull().default({}),
+    requestModuleKey: varchar("request_module_key", { length: 80 }),
+    inGateScope: boolean("in_gate_scope").notNull().default(false),
+    status: text("status").$type<ItemStatus>().notNull().default("da_chiedere"),
+    statusReason: varchar("status_reason", { length: 500 }),
+    statusChangedAt: ucTimestamp("status_changed_at"),
+    assigneeContactId: uuid("assignee_contact_id"),
+    ownerRoleKey: varchar("owner_role_key", { length: 80 }),
+    lsOwnerUserId: uuid("ls_owner_user_id"),
+    dueAt: ucTimestamp("due_at"),
+    dueIsProposal: boolean("due_is_proposal").notNull().default(false),
+    currentAnswerId: uuid("current_answer_id"),
+    validatedAnswerId: uuid("validated_answer_id"),
+    validatedByUserId: uuid("validated_by_user_id"),
+    validatedAt: ucTimestamp("validated_at"),
+    confirmedByContactId: uuid("confirmed_by_contact_id"),
+    naReason: text("na_reason"),
+    naProposedAt: ucTimestamp("na_proposed_at"),
+    naProposedByUserId: uuid("na_proposed_by_user_id"),
+    naProposedByContactId: uuid("na_proposed_by_contact_id"),
+    naApprovedByUserId: uuid("na_approved_by_user_id"),
+    naClientApprovedByUserId: uuid("na_client_approved_by_user_id"),
+    naApprovedByContactId: uuid("na_approved_by_contact_id"),
+    naApprovedAt: ucTimestamp("na_approved_at"),
+    waiver: jsonb("waiver").$type<Waiver>(),
+    waiverApprovedAt: ucTimestamp("waiver_approved_at"),
+    fallback: jsonb("fallback").$type<Fallback>(),
+    fallbackApprovedAt: ucTimestamp("fallback_approved_at"),
+    partialNa: jsonb("partial_na").$type<PartialNa>(),
+    freshnessDays: integer("freshness_days"),
+    staleAt: ucTimestamp("stale_at"),
+    requiresValidityPeriod: boolean("requires_validity_period").notNull().default(false),
+    sourceRefs: jsonb("source_refs").$type<string[]>().notNull().default([]),
+    aiProposed: boolean("ai_proposed").notNull().default(false),
+    sharedItemId: uuid("shared_item_id"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdByUserId: uuid("created_by_user_id"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: ucTimestamp("updated_at").notNull().defaultNow(),
+    deletedAt: ucTimestamp("deleted_at"),
+  }
+);
+
+export const ucItemBlockers = pgTable(
+  "uc_item_blockers",
+  {
+    itemId: uuid("item_id").notNull(),
+    blockerId: uuid("blocker_id").notNull(),
+    origin: text("origin").$type<ItemBlockerOrigin>().notNull(),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ name: "uc_item_blockers_pkey", columns: [t.itemId, t.blockerId] })]
+);
+
+export const ucItemLinks = pgTable(
+  "uc_item_links",
+  {
+    caseId: uuid("case_id").notNull(),
+    fromItemId: uuid("from_item_id").notNull(),
+    toItemId: uuid("to_item_id").notNull(),
+    relation: text("relation").$type<LinkRelation>().notNull(),
+    cardinality: varchar("cardinality", { length: 40 }),
+    note: text("note"),
+  },
+  (t) => [primaryKey({ name: "uc_item_links_pkey", columns: [t.fromItemId, t.toItemId, t.relation] })]
+);
+
+export const ucRequests = pgTable(
+  "uc_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    contactId: uuid("contact_id").notNull(),
+    purpose: text("purpose").$type<RequestPurpose>().notNull().default("raccolta"),
+    shareEpoch: integer("share_epoch").notNull(),
+    actingRoleKey: varchar("acting_role_key", { length: 80 }),
+    status: text("status").$type<RequestStatus>().notNull().default("bozza"),
+    message: text("message"),
+    channel: text("channel").$type<RequestChannel>().notNull().default("email"),
+    delegatedFromRequestId: uuid("delegated_from_request_id"),
+    delegatedByContactId: uuid("delegated_by_contact_id"),
+    delegationDepth: smallint("delegation_depth").notNull().default(0),
+    otpRequired: boolean("otp_required").notNull().default(false),
+    expiresAt: ucTimestamp("expires_at"),
+    sentAt: ucTimestamp("sent_at"),
+    firstOpenedAt: ucTimestamp("first_opened_at"),
+    completedAt: ucTimestamp("completed_at"),
+    privacyAckAt: ucTimestamp("privacy_ack_at"),
+    privacyNoticeVersion: varchar("privacy_notice_version", { length: 20 }),
+    reminderCount: integer("reminder_count").notNull().default(0),
+    lastReminderAt: ucTimestamp("last_reminder_at"),
+    nextReminderAt: ucTimestamp("next_reminder_at"),
+    escalatedAt: ucTimestamp("escalated_at"),
+    revokedAt: ucTimestamp("revoked_at"),
+    revokedReason: text("revoked_reason"),
+    createdByUserId: uuid("created_by_user_id"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: ucTimestamp("updated_at").notNull().defaultNow(),
+  }
+);
+
+export const ucRequestTokens = pgTable(
+  "uc_request_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    tokenHash: char("token_hash", { length: 64 }).notNull(),
+    tokenPrefix: varchar("token_prefix", { length: 12 }).notNull(),
+    issuedFor: text("issued_for").$type<TokenIssuedFor>().notNull(),
+    issuedByUserId: uuid("issued_by_user_id"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    revokedAt: ucTimestamp("revoked_at"),
+  }
+);
+
+export const ucRequestItems = pgTable(
+  "uc_request_items",
+  {
+    caseId: uuid("case_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    itemId: uuid("item_id").notNull(),
+    state: text("state").$type<RequestItemState>().notNull().default("da_fare"),
+    draft: jsonb("draft").$type<Record<string, unknown>>(),
+    draftUpdatedAt: ucTimestamp("draft_updated_at"),
+  },
+  (t) => [primaryKey({ name: "uc_request_items_pkey", columns: [t.requestId, t.itemId] })]
+);
+
+export const ucAnswers = pgTable(
+  "uc_answers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    itemId: uuid("item_id").notNull(),
+    version: integer("version").notNull(),
+    kind: text("kind").$type<AnswerKind>().notNull(),
+    value: jsonb("value").$type<Record<string, unknown>>(),
+    valueNormalized: jsonb("value_normalized").$type<Record<string, unknown>>(),
+    valueEncrypted: ucBytea("value_encrypted"),
+    validFrom: date("valid_from", { mode: "string" }),
+    validTo: date("valid_to", { mode: "string" }),
+    confidence: text("confidence").$type<Confidence>(),
+    note: text("note"),
+    sourceKind: text("source_kind").$type<SourceKind>().notNull(),
+    sourceRef: varchar("source_ref", { length: 500 }),
+    sourceBasis: text("source_basis").$type<SourceBasis>(),
+    responderContactId: uuid("responder_contact_id"),
+    responderUserId: uuid("responder_user_id"),
+    requestId: uuid("request_id"),
+    supersedesAnswerId: uuid("supersedes_answer_id"),
+    fileIds: jsonb("file_ids").$type<string[]>().notNull().default([]),
+    textHash: char("text_hash", { length: 64 }),
+    ipHash: varchar("ip_hash", { length: 64 }),
+    userAgent: varchar("user_agent", { length: 300 }),
+    device: text("device").$type<AnswerDevice>(),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    erasedAt: ucTimestamp("erased_at"),
+    erasureReason: varchar("erasure_reason", { length: 120 }),
+  }
+);
+
+export const ucFiles = pgTable(
+  "uc_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    caseId: uuid("case_id").notNull(),
+    itemId: uuid("item_id"),
+    answerId: uuid("answer_id"),
+    requestId: uuid("request_id"),
+    uploadedByContactId: uuid("uploaded_by_contact_id"),
+    uploadedByUserId: uuid("uploaded_by_user_id"),
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    mime: varchar("mime", { length: 150 }),
+    sizeBytes: integer("size_bytes"),
+    sha256: char("sha256", { length: 64 }),
+    storageZone: text("storage_zone").$type<StorageZone>().notNull().default("standard"),
+    blobPath: text("blob_path"),
+    quarantinePath: text("quarantine_path"),
+    encryptionKeyRef: varchar("encryption_key_ref", { length: 120 }),
+    personalData: text("personal_data").$type<FilePersonalData>().notNull().default("sconosciuto"),
+    privacyClass: text("privacy_class").$type<PrivacyClass>().notNull(),
+    maxSizeBytes: integer("max_size_bytes").notNull(),
+    scanStatus: text("scan_status").$type<ScanStatus>().notNull().default("in_quarantena"),
+    scanFindings: jsonb("scan_findings").$type<Record<string, unknown>>(),
+    preview: jsonb("preview").$type<Record<string, unknown>>(),
+    contentScanned: boolean("content_scanned").notNull().default(false),
+    uploaderDeclaration: boolean("uploader_declaration").notNull().default(false),
+    reviewedByUserId: uuid("reviewed_by_user_id"),
+    reviewedAt: ucTimestamp("reviewed_at"),
+    extractedText: text("extracted_text"),
+    aiProcessingAllowed: boolean("ai_processing_allowed").notNull().default(false),
+    retentionUntil: date("retention_until", { mode: "string" }),
+    deletedAt: ucTimestamp("deleted_at"),
+    deletionReason: varchar("deletion_reason", { length: 120 }),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  }
+);
+
+export const ucDatasets = pgTable(
+  "uc_datasets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    itemId: uuid("item_id"),
+    fileId: uuid("file_id"),
+    sourceKey: varchar("source_key", { length: 160 }).notNull(),
+    datasetVersion: integer("dataset_version").notNull(),
+    periodFrom: date("period_from", { mode: "string" }),
+    periodTo: date("period_to", { mode: "string" }),
+    extractedAt: ucTimestamp("extracted_at"),
+    extractionMethod: text("extraction_method"),
+    timezone: varchar("timezone", { length: 64 }),
+    currency: char("currency", { length: 3 }),
+    rowCount: integer("row_count"),
+    columnMapping: jsonb("column_mapping").$type<Record<string, unknown>>(),
+    schema: jsonb("schema").$type<Record<string, unknown>>(),
+    pseudonymized: boolean("pseudonymized").notNull().default(false),
+    pseudonymizationMethod: varchar("pseudonymization_method", { length: 120 }),
+    personalData: text("personal_data").$type<FilePersonalData>(),
+    piiColumns: jsonb("pii_columns").$type<string[]>().notNull().default([]),
+    dataControllerLabel: varchar("data_controller_label", { length: 255 }).notNull(),
+    quality: jsonb("quality").$type<Record<string, unknown>>(),
+    status: text("status").$type<DatasetStatus>().notNull().default("ricevuto"),
+    validatedByUserId: uuid("validated_by_user_id"),
+    validatedAt: ucTimestamp("validated_at"),
+    retentionUntil: date("retention_until", { mode: "string" }),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: ucTimestamp("updated_at").notNull().defaultNow(),
+    deletedAt: ucTimestamp("deleted_at"),
+  }
+);
+
+export const ucValidations = pgTable(
+  "uc_validations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    itemId: uuid("item_id").notNull(),
+    answerId: uuid("answer_id"),
+    datasetId: uuid("dataset_id"),
+    checkKey: varchar("check_key", { length: 160 }).notNull(),
+    kind: text("kind").$type<ValidationKind>().notNull(),
+    outcome: text("outcome").$type<ValidationOutcome>().notNull(),
+    message: text("message").notNull(),
+    details: jsonb("details").$type<Record<string, unknown>>(),
+    byUserId: uuid("by_user_id"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  }
+);
+
+export const ucComments = pgTable(
+  "uc_comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    itemId: uuid("item_id").notNull(),
+    authorUserId: uuid("author_user_id"),
+    authorContactId: uuid("author_contact_id"),
+    parentCommentId: uuid("parent_comment_id"),
+    body: text("body").notNull(),
+    visibility: text("visibility").$type<CommentVisibility>().notNull().default("interno_ls"),
+    kind: text("kind").$type<CommentKind>().notNull().default("commento"),
+    resolvedAt: ucTimestamp("resolved_at"),
+    resolvedByUserId: uuid("resolved_by_user_id"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  }
+);
+
+export const ucMaps = pgTable(
+  "uc_maps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    version: integer("version").notNull(),
+    kind: text("kind").$type<MapKind>().notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    graph: jsonb("graph").$type<Record<string, unknown>>().notNull(),
+    artifactBlobPath: text("artifact_blob_path"),
+    artifactSha256: char("artifact_sha256", { length: 64 }),
+    source: text("source").$type<MapSource>().notNull(),
+    isCurrent: boolean("is_current").notNull().default(true),
+    createdByUserId: uuid("created_by_user_id"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  }
+);
+
+export const ucGateReviews = pgTable(
+  "uc_gate_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    gateKey: text("gate_key").$type<GateKey>().notNull(),
+    computed: jsonb("computed").$type<Record<string, unknown>>().notNull(),
+    catalogRevision: integer("catalog_revision").notNull(),
+    summaryTextHash: char("summary_text_hash", { length: 64 }).notNull(),
+    catalogVersion: integer("catalog_version"),
+    catalogSnapshotPath: text("catalog_snapshot_path"),
+    catalogSnapshotHash: char("catalog_snapshot_hash", { length: 64 }),
+    decision: text("decision").$type<GateDecision>().notNull().default("proposto"),
+    waivers: jsonb("waivers").$type<unknown[]>().notNull().default([]),
+    approvals: jsonb("approvals").$type<Approval[]>().notNull().default([]),
+    writtenEvidenceFileId: uuid("written_evidence_file_id"),
+    notes: text("notes"),
+    proposedByUserId: uuid("proposed_by_user_id"),
+    proposedAt: ucTimestamp("proposed_at"),
+    decidedAt: ucTimestamp("decided_at"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  }
+);
+
+export const ucCatalogVersions = pgTable(
+  "uc_catalog_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    version: integer("version").notNull(),
+    reason: text("reason").$type<CatalogVersionReason>().notNull(),
+    gateReviewId: uuid("gate_review_id"),
+    changeNote: text("change_note"),
+    diff: jsonb("diff").$type<Record<string, unknown>>().notNull(),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+    snapshotHash: char("snapshot_hash", { length: 64 }).notNull(),
+    snapshotPath: text("snapshot_path"),
+    approvedBy: jsonb("approved_by").$type<unknown[]>().notNull(),
+    createdByUserId: uuid("created_by_user_id"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  }
+);
+
+export const ucModelRuns = pgTable(
+  "uc_model_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    kind: text("kind").$type<ModelRunKind>().notNull(),
+    catalogVersion: integer("catalog_version").notNull(),
+    datasetVersions: jsonb("dataset_versions").$type<unknown[]>().notNull().default([]),
+    codeRef: varchar("code_ref", { length: 120 }),
+    parametersHash: varchar("parameters_hash", { length: 64 }),
+    periodFrom: date("period_from", { mode: "string" }),
+    periodTo: date("period_to", { mode: "string" }),
+    summary: jsonb("summary").$type<Record<string, unknown>>(),
+    status: text("status").$type<ProvisionalStatus>().notNull().default("provvisorio"),
+    recordedBy: text("recorded_by").$type<RecordedBy>().notNull(),
+    recordedByUserId: uuid("recorded_by_user_id"),
+    integrationTokenId: uuid("integration_token_id"),
+    confirmedByContactId: uuid("confirmed_by_contact_id"),
+    confirmedAt: ucTimestamp("confirmed_at"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  }
+);
+
+export const ucKpiMeasurements = pgTable(
+  "uc_kpi_measurements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    itemId: uuid("item_id").notNull(),
+    phase: text("phase").$type<KpiPhase>().notNull(),
+    periodStart: date("period_start", { mode: "string" }).notNull(),
+    periodEnd: date("period_end", { mode: "string" }).notNull(),
+    value: numeric("value"),
+    unit: varchar("unit", { length: 40 }),
+    intervalLow: numeric("interval_low"),
+    intervalHigh: numeric("interval_high"),
+    sampleSize: integer("sample_size").notNull(),
+    suppressed: boolean("suppressed").notNull().default(false),
+    dimensionValues: jsonb("dimension_values").$type<Record<string, unknown>>().notNull().default({}),
+    method: text("method"),
+    sourceRef: varchar("source_ref", { length: 500 }),
+    datasetId: uuid("dataset_id"),
+    modelRunId: uuid("model_run_id"),
+    catalogVersion: integer("catalog_version"),
+    recordedBy: text("recorded_by").$type<RecordedBy>().notNull(),
+    recordedByUserId: uuid("recorded_by_user_id"),
+    integrationTokenId: uuid("integration_token_id"),
+    status: text("status").$type<ProvisionalStatus>().notNull().default("provvisorio"),
+    confirmedByContactId: uuid("confirmed_by_contact_id"),
+    confirmedAt: ucTimestamp("confirmed_at"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  }
+);
+
+export const ucTestCases = pgTable(
+  "uc_test_cases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    key: varchar("key", { length: 60 }).notNull(),
+    kind: text("kind").$type<TestCaseKind>().notNull(),
+    input: jsonb("input").$type<Record<string, unknown>>().notNull(),
+    expected: jsonb("expected").$type<Record<string, unknown>>().notNull(),
+    covers: jsonb("covers").$type<string[]>().notNull().default([]),
+    servePer: jsonb("serve_per").$type<string[]>().notNull().default([]),
+    lastResult: text("last_result").$type<TestCaseResult>().notNull().default("non_eseguito"),
+    lastRunId: uuid("last_run_id"),
+    approvedByContactId: uuid("approved_by_contact_id"),
+    approvedAt: ucTimestamp("approved_at"),
+    createdByUserId: uuid("created_by_user_id"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: ucTimestamp("updated_at").notNull().defaultNow(),
+  }
+);
+
+export const ucRoiModels = pgTable(
+  "uc_roi_models",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    version: integer("version").notNull(),
+    status: text("status").$type<RoiStatus>().notNull().default("stima"),
+    scenario: text("scenario").$type<RoiScenario>().notNull().default("base"),
+    currency: char("currency", { length: 3 }).notNull().default("EUR"),
+    implementationCost: numeric("implementation_cost"),
+    annualRunCost: numeric("annual_run_cost"),
+    annualBenefit: numeric("annual_benefit"),
+    costLines: jsonb("cost_lines").$type<unknown[]>().notNull().default([]),
+    benefitLines: jsonb("benefit_lines").$type<unknown[]>().notNull().default([]),
+    breakEvenMonths: numeric("break_even_months"),
+    value5y: numeric("value_5y"),
+    discountRate: numeric("discount_rate"),
+    horizonYears: integer("horizon_years").notNull().default(5),
+    assumptions: jsonb("assumptions").$type<unknown[]>().notNull().default([]),
+    attributionMethod: text("attribution_method"),
+    baselinePeriod: jsonb("baseline_period").$type<Record<string, unknown>>(),
+    adoptionRate: numeric("adoption_rate"),
+    includesHumanReviewTime: boolean("includes_human_review_time").notNull().default(true),
+    humanReviewHours: numeric("human_review_hours"),
+    content: jsonb("content").$type<Record<string, unknown>>().notNull().default({}),
+    approvedByContactId: uuid("approved_by_contact_id"),
+    approvedAt: ucTimestamp("approved_at"),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: ucTimestamp("updated_at").notNull().defaultNow(),
+  }
+);
+
+export const ucMilestones = pgTable(
+  "uc_milestones",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    caseId: uuid("case_id").notNull(),
+    key: varchar("key", { length: 60 }).notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    plannedDate: date("planned_date", { mode: "string" }),
+    plannedLabel: text("planned_label"),
+    isProposal: boolean("is_proposal").notNull().default(false),
+    toConfirm: boolean("to_confirm").notNull().default(false),
+    ownerLabel: varchar("owner_label", { length: 255 }),
+    doneAt: ucTimestamp("done_at"),
+    notes: text("notes"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: ucTimestamp("updated_at").notNull().defaultNow(),
+  }
+);
+
+export const ucNotifications = pgTable(
+  "uc_notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    caseId: uuid("case_id"),
+    requestId: uuid("request_id"),
+    recipientContactId: uuid("recipient_contact_id"),
+    recipientUserId: uuid("recipient_user_id"),
+    channel: text("channel").$type<NotificationChannel>().notNull(),
+    templateKey: varchar("template_key", { length: 80 }).notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    status: text("status").$type<NotificationStatus>().notNull().default("in_coda"),
+    holdReason: varchar("hold_reason", { length: 60 }),
+    attempts: integer("attempts").notNull().default(0),
+    dedupeKey: varchar("dedupe_key", { length: 200 }).notNull(),
+    scheduledAt: ucTimestamp("scheduled_at").notNull().defaultNow(),
+    sentAt: ucTimestamp("sent_at"),
+    readAt: ucTimestamp("read_at"),
+    error: varchar("error", { length: 500 }),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  }
+);
+
+export const ucEvents = pgTable(
+  "uc_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id"),
+    caseId: uuid("case_id"),
+    actorType: text("actor_type").$type<EventActorType>().notNull(),
+    actorUserId: uuid("actor_user_id"),
+    actorContactId: uuid("actor_contact_id"),
+    integrationTokenId: uuid("integration_token_id"),
+    eventType: varchar("event_type", { length: 100 }).notNull(),
+    targetType: varchar("target_type", { length: 40 }),
+    targetId: uuid("target_id"),
+    fromState: varchar("from_state", { length: 40 }),
+    toState: varchar("to_state", { length: 40 }),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    ipHash: varchar("ip_hash", { length: 64 }),
+    userAgent: varchar("user_agent", { length: 300 }),
+    createdAt: ucTimestamp("created_at").notNull().defaultNow(),
+  }
+);
+
+export const ucRateLimits = pgTable(
+  "uc_rate_limits",
+  {
+    bucket: varchar("bucket", { length: 120 }).notNull(),
+    windowStart: ucTimestamp("window_start").notNull(),
+    count: integer("count").notNull().default(0),
+  },
+  (t) => [primaryKey({ name: "uc_rate_limits_pkey", columns: [t.bucket, t.windowStart] })]
+);
+
+export type UcTemplate = typeof ucTemplates.$inferSelect;
+export type UcContact = typeof ucContacts.$inferSelect;
+export type UcCase = typeof ucCases.$inferSelect;
+export type UcCaseMember = typeof ucCaseMembers.$inferSelect;
+export type UcBlocker = typeof ucBlockers.$inferSelect;
+export type UcItem = typeof ucItems.$inferSelect;
+export type UcItemBlocker = typeof ucItemBlockers.$inferSelect;
+export type UcItemLink = typeof ucItemLinks.$inferSelect;
+export type UcRequest = typeof ucRequests.$inferSelect;
+export type UcRequestToken = typeof ucRequestTokens.$inferSelect;
+export type UcRequestItem = typeof ucRequestItems.$inferSelect;
+export type UcAnswer = typeof ucAnswers.$inferSelect;
+export type UcFile = typeof ucFiles.$inferSelect;
+export type UcDataset = typeof ucDatasets.$inferSelect;
+export type UcValidation = typeof ucValidations.$inferSelect;
+export type UcComment = typeof ucComments.$inferSelect;
+export type UcMap = typeof ucMaps.$inferSelect;
+export type UcGateReview = typeof ucGateReviews.$inferSelect;
+export type UcCatalogVersion = typeof ucCatalogVersions.$inferSelect;
+export type UcModelRun = typeof ucModelRuns.$inferSelect;
+export type UcKpiMeasurement = typeof ucKpiMeasurements.$inferSelect;
+export type UcTestCase = typeof ucTestCases.$inferSelect;
+export type UcRoiModel = typeof ucRoiModels.$inferSelect;
+export type UcMilestone = typeof ucMilestones.$inferSelect;
+export type UcNotification = typeof ucNotifications.$inferSelect;
+export type UcEvent = typeof ucEvents.$inferSelect;
+export type UcRateLimit = typeof ucRateLimits.$inferSelect;

@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/slack-draft-nudge",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/uc-reminders",
+      "schedule": "0 8 * * 1-5"
+    },
+    {
+      "path": "/api/cron/uc-freshness",
+      "schedule": "0 3 * * *"
     }
   ],
   "git": {

@@ -2,8 +2,32 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { NewUseCase, UseCase, Workspace } from "@/lib/db/schema";
 import type { ScoringModelConfig } from "@/lib/db/queries/scoring-model";
+import {
+  CONNECTOR_CONTRACT_VERSION,
+  CONTRACT_CODE_PATTERN,
+  CONTRACT_LIMITS,
+  DEVELOPMENT_STATUSES,
+  FREQUENCIES,
+  IMPACT_FLAG_VALUES,
+  QUALITY_GAINS,
+  RELATION_TYPES,
+} from "../connector/contract.ts";
 
 export const EXTERNAL_PORTFOLIO_SOURCE = "claude_mcp";
+/** Fonte delle segnalazioni del connettore MCP organizzativo (contratto v2). */
+export const CONNECTOR_PORTFOLIO_SOURCE = "claude_connector";
+
+/**
+ * Valori degli enum propri di un cliente (area, società, strumenti, agente): qui solo
+ * la forma. Il connettore li controlla prima con l'enum del suo profilo
+ * (`src/lib/connector/contract.ts`).
+ */
+const intakeValue = z.string().trim().regex(/^[a-z0-9_]{1,40}$/, "Valore non valido.");
+const L = CONTRACT_LIMITS;
+const estimateReasoning = z.string().trim().min(L.reasoning.min).max(L.reasoning.max);
+const scoredEstimate = z
+  .object({ score: z.number().int().min(L.score.min).max(L.score.max), reasoning: estimateReasoning })
+  .strict();
 
 export const externalContributionPayloadSchema = z
   .object({
@@ -36,6 +60,40 @@ export const externalContributionPayloadSchema = z
     dataRequirements: z.string().trim().min(8).max(4000),
     sustainabilityImpact: z.string().trim().min(8).max(4000).optional(),
     urgency: z.string().trim().min(2).max(255).optional(),
+    // Campi del contratto v2 del connettore: facoltativi, così REST, server stdio e
+    // Slack continuano a funzionare senza. Finiscono in `use_cases.intake`.
+    guideVersion: z.string().trim().min(L.guideVersion.min).max(L.guideVersion.max).optional(),
+    area: intakeValue.optional(),
+    company: intakeValue.optional(),
+    tools: z.array(intakeValue).min(L.tools.min).max(L.tools.max).optional(),
+    toolsOther: z.string().trim().max(L.toolsOther.max).optional(),
+    frequency: z.enum(FREQUENCIES).optional(),
+    beneficiaries: z.number().int().min(L.beneficiaries.min).max(100000).optional(),
+    timeSavedMinutesPerRun: z
+      .number()
+      .min(L.timeSavedMinutesPerRun.min)
+      .max(L.timeSavedMinutesPerRun.max)
+      .optional(),
+    valuePerRunEur: z.number().min(L.valuePerRunEur.min).max(L.valuePerRunEur.max).optional(),
+    qualityGain: z.enum(QUALITY_GAINS).optional(),
+    developmentStatus: z.enum(DEVELOPMENT_STATUSES).optional(),
+    proposerEstimate: z
+      .object({
+        efficiency: scoredEstimate,
+        effort: scoredEstimate,
+        impactFlag: z.object({ value: z.enum(IMPACT_FLAG_VALUES), reasoning: estimateReasoning }).strict(),
+      })
+      .strict()
+      .optional(),
+    flags: z
+      .object({ personalData: z.boolean(), safetyRelated: z.boolean(), outsideFoundation: z.boolean() })
+      .strict()
+      .optional(),
+    relatedAgent: intakeValue.optional(),
+    relatedCode: z.string().regex(new RegExp(CONTRACT_CODE_PATTERN)).optional(),
+    relationType: z.enum(RELATION_TYPES).optional(),
+    promptSnippet: z.string().trim().max(L.promptSnippet.max).optional(),
+    sourceConversation: z.string().trim().max(L.sourceConversation.max).optional(),
   })
   .strict();
 
@@ -114,12 +172,65 @@ export function externalSubmitterLabel(
   return submitter.email ?? submitter.name ?? submitter.externalUserId ?? "Claude user";
 }
 
+/** Campi v2 che si copiano così come sono in `use_cases.intake` (mappatura del contratto). */
+const INTAKE_FIELDS = [
+  "guideVersion",
+  "area",
+  "company",
+  "tools",
+  "toolsOther",
+  "frequency",
+  "beneficiaries",
+  "timeSavedMinutesPerRun",
+  "valuePerRunEur",
+  "qualityGain",
+  "developmentStatus",
+  "proposerEstimate",
+  "flags",
+  "relatedAgent",
+  "relatedCode",
+  "relationType",
+  "promptSnippet",
+  "sourceConversation",
+] as const;
+
+/** Canale che invia: `connector` è il connettore MCP organizzativo (contratto v2). */
+export type ContributionChannel = "rest" | "connector";
+
+/**
+ * `use_cases.intake` dai campi v2 presenti; null se non ce n'è nessuno (invii v1).
+ * Con relationType «integra» la segnalazione collegata diventa `possibleDuplicateOf`.
+ * Dal connettore: `contractVersion` = 2 e l'email dichiarata in `submitterEmail`.
+ */
+export function buildContributionIntake(
+  payload: ExternalContributionPayload,
+  channel: ContributionChannel = "rest"
+): Record<string, unknown> | null {
+  const intake: Record<string, unknown> = {};
+  if (channel === "connector") intake.contractVersion = CONNECTOR_CONTRACT_VERSION;
+  for (const key of INTAKE_FIELDS) {
+    if (payload[key] !== undefined) intake[key] = payload[key];
+  }
+  if (payload.relationType === "integra" && payload.relatedCode) intake.possibleDuplicateOf = payload.relatedCode;
+  if (channel === "connector" && payload.submittedBy.email) intake.submitterEmail = payload.submittedBy.email;
+  return Object.keys(intake).length ? intake : null;
+}
+
+/**
+ * Riga `use_cases` di un invio esterno. Dal connettore (`channel: "connector"`): fonte
+ * `claude_connector`, `proposed_by` = nome dichiarato (l'email va in `intake`). Gli
+ * altri canali restano come prima. Non scrive mai `impact_*`, `custom_scores` né
+ * `overall_*`: li calcolano auto-ranking e revisione.
+ */
 export function buildUseCaseDataFromExternalContribution(params: {
   payload: ExternalContributionPayload;
   workspaceId: string;
   esgEnabled: boolean;
+  channel?: ContributionChannel;
 }): NewUseCase {
   const { payload, workspaceId, esgEnabled } = params;
+  const channel = params.channel ?? "rest";
+  const submitter = payload.submittedBy;
   return {
     workspaceId,
     title: payload.title,
@@ -127,8 +238,11 @@ export function buildUseCaseDataFromExternalContribution(params: {
     businessCase: payload.expectedImpact,
     portfolioKind: payload.contributionKind,
     status: "proposed",
-    source: EXTERNAL_PORTFOLIO_SOURCE,
-    proposedBy: externalSubmitterLabel(payload.submittedBy),
+    source: channel === "connector" ? CONNECTOR_PORTFOLIO_SOURCE : EXTERNAL_PORTFOLIO_SOURCE,
+    proposedBy:
+      channel === "connector"
+        ? submitter.name ?? submitter.email ?? submitter.externalUserId ?? "Claude user"
+        : externalSubmitterLabel(submitter),
     flowDescription: payload.flowDescription,
     humanInTheLoop: payload.humanInTheLoop,
     guardrails:
@@ -143,6 +257,7 @@ export function buildUseCaseDataFromExternalContribution(params: {
       payload.contributionKind === "use_case_ai" ? payload.urgency ?? null : null,
     submittedAt: new Date(),
     portfolioReviewStatus: "needs_inputs",
+    intake: buildContributionIntake(payload, channel),
   };
 }
 

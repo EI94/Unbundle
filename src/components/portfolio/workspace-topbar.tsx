@@ -1,5 +1,7 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { auth } from "@/lib/auth";
 import { getSignalsByWorkspace } from "@/lib/db/queries/signals";
+import type { UcBellItem } from "@/lib/uc/notify/bell";
 import { NotificationsBell, type BellSignal } from "./notifications-bell";
 
 function toIso(d: Date | string | null | undefined): string {
@@ -9,6 +11,25 @@ function toIso(d: Date | string | null | undefined): string {
     if (!Number.isNaN(t.getTime())) return t.toISOString();
   }
   return new Date(0).toISOString();
+}
+
+/**
+ * Notifiche dei casi d'uso per la campanella (PIANO §7.1, §5.2): solo con la
+ * sezione accesa, le tabelle uc presenti e una persona di Lateral Space membro
+ * di un caso (lo controlla `unreadForUser`). Un errore non ferma la barra: la
+ * campanella mostra solo i segnali del portafoglio.
+ */
+async function caseNotifications(workspaceId: string): Promise<UcBellItem[]> {
+  if (process.env.UC_ENABLED !== "true") return [];
+  try {
+    const session = await auth();
+    if (!session?.user?.id) return [];
+    const { unreadForUser } = await import("@/lib/db/queries/uc-notifications-dispatch");
+    return await unreadForUser(session.user.id, { workspaceId, limit: 20 });
+  } catch (error) {
+    console.error("[uc] campanella dei casi non letta", error instanceof Error ? error.name : "errore");
+    return [];
+  }
 }
 
 /**
@@ -29,7 +50,7 @@ export async function WorkspaceTopbar({
       </header>
     );
   }
-  const rows = await getSignalsByWorkspace(workspaceId, 25);
+  const [rows, caseItems] = await Promise.all([getSignalsByWorkspace(workspaceId, 25), caseNotifications(workspaceId)]);
   const signals: BellSignal[] = rows.map((r) => ({
     id: r.id,
     title: r.title,
@@ -44,7 +65,7 @@ export async function WorkspaceTopbar({
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between gap-2 md:justify-end border-b bg-background/80 backdrop-blur px-4 py-2">
       <SidebarTrigger className="size-11 md:hidden" aria-label="Apri navigazione" title="Apri navigazione" />
-      <NotificationsBell workspaceId={workspaceId} initialSignals={signals} />
+      <NotificationsBell workspaceId={workspaceId} initialSignals={signals} initialCaseNotifications={caseItems} />
     </header>
   );
 }

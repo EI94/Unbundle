@@ -9,6 +9,7 @@ import {
 } from "./external-submission.ts";
 import type { Workspace } from "../db/schema.ts";
 import type { ScoringModelConfig } from "../db/queries/scoring-model.ts";
+import { exampleSubmission } from "../connector/contract.fixtures.ts";
 
 const basePayload: ExternalContributionPayload = {
   idempotencyKey: "claude-test-001",
@@ -140,4 +141,112 @@ test("requirements espongono ESG, KPI e policy anti stime monetarie", () => {
   assert.equal(req.scoringModel.impact.length, 2);
   assert.match(req.scoringModel.note, /Non inventare EUR/);
   assert.match(req.confirmationPolicy, /conferma/);
+});
+
+// ─── Campi v2 del connettore (WP3): facoltativi ─────────────────────────────
+
+test("un invio v1 resta identico: nessun campo aggiunto, hash stabile, intake vuoto", () => {
+  const parsed = validateExternalContributionPayload(basePayload, { esgEnabled: false });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.deepEqual(parsed.data, basePayload);
+  assert.equal(hashExternalContributionPayload(parsed.data), hashExternalContributionPayload(basePayload));
+  const useCase = buildUseCaseDataFromExternalContribution({ payload: parsed.data, workspaceId: workspace.id, esgEnabled: false });
+  assert.equal(useCase.intake, null);
+  assert.equal(useCase.source, "claude_mcp");
+  assert.equal(useCase.proposedBy, basePayload.submittedBy.email);
+});
+
+test("una segnalazione del contratto v2 passa anche lo schema condiviso", () => {
+  const parsed = validateExternalContributionPayload(exampleSubmission(), { esgEnabled: false });
+  assert.equal(parsed.ok, true, JSON.stringify(!parsed.ok && parsed.fieldErrors));
+});
+
+test("campi v2 controllati anche nello schema condiviso; campi sconosciuti sempre rifiutati", () => {
+  const bad: Array<[string, Record<string, unknown>]> = [
+    ["frequency", { frequency: "ogni_tanto" }],
+    ["area", { area: "Area Con Spazi" }],
+    ["tools", { tools: [] }],
+    ["beneficiaries", { beneficiaries: 0 }],
+    ["timeSavedMinutesPerRun", { timeSavedMinutesPerRun: -1 }],
+    ["relatedCode", { relatedCode: "xx-1" }],
+    ["relationType", { relationType: "uguale" }],
+    ["flags.outsideFoundation", { flags: { personalData: false, safetyRelated: false } }],
+    ["proponente", { proponente: "qualcuno" }],
+  ];
+  for (const [field, extra] of bad) {
+    const parsed = validateExternalContributionPayload({ ...basePayload, ...extra }, { esgEnabled: false });
+    assert.equal(parsed.ok, false, field);
+    if (!parsed.ok) {
+      assert.equal(parsed.code, "invalid_payload");
+      assert.ok(Object.keys(parsed.fieldErrors).some((k) => k.startsWith(field) || k === "payload"), `${field}: ${JSON.stringify(parsed.fieldErrors)}`);
+    }
+  }
+});
+
+test("dal connettore: fonte claude_connector, nome in proposed_by, campi v2 in intake con contractVersion 2", () => {
+  const payload = exampleSubmission({
+    urgency: "quick_win",
+    qualityGain: "sensibile",
+    relatedAgent: "atlante",
+    relatedCode: "XX-0007",
+    relationType: "integra",
+    promptSnippet: "Confronta le due tabelle e segnala le differenze.",
+    sourceConversation: "Fatture di ottobre",
+  });
+  const parsed = validateExternalContributionPayload(payload, { esgEnabled: false });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const useCase = buildUseCaseDataFromExternalContribution({
+    payload: parsed.data,
+    workspaceId: workspace.id,
+    esgEnabled: false,
+    channel: "connector",
+  });
+  assert.equal(useCase.source, "claude_connector");
+  assert.equal(useCase.proposedBy, "Persona di prova");
+  assert.equal(useCase.status, "proposed");
+  assert.equal(useCase.portfolioReviewStatus, "needs_inputs");
+  assert.equal(useCase.timeline, "quick_win");
+  assert.equal(useCase.description, payload.problem);
+  assert.equal(useCase.businessCase, payload.expectedImpact);
+  assert.deepEqual(useCase.intake, {
+    contractVersion: 2,
+    guideVersion: payload.guideVersion,
+    area: payload.area,
+    company: payload.company,
+    tools: payload.tools,
+    frequency: payload.frequency,
+    beneficiaries: payload.beneficiaries,
+    timeSavedMinutesPerRun: payload.timeSavedMinutesPerRun,
+    qualityGain: "sensibile",
+    developmentStatus: payload.developmentStatus,
+    proposerEstimate: payload.proposerEstimate,
+    flags: payload.flags,
+    relatedAgent: "atlante",
+    relatedCode: "XX-0007",
+    relationType: "integra",
+    promptSnippet: payload.promptSnippet,
+    sourceConversation: "Fatture di ottobre",
+    possibleDuplicateOf: "XX-0007",
+    submitterEmail: "proponente@esempio.test",
+  });
+  for (const key of ["impactTime", "impactEconomic", "impactFlag", "customScores", "overallScore", "overallImpactScore"] as const) {
+    assert.equal(useCase[key], undefined, key);
+  }
+});
+
+test("intake: «simile_ma_diversa» non fa un possibile doppione; dalla REST niente contractVersion né email", () => {
+  const payload = exampleSubmission({ relatedCode: "XX-0007", relationType: "simile_ma_diversa" });
+  const parsed = validateExternalContributionPayload(payload, { esgEnabled: false });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const rest = buildUseCaseDataFromExternalContribution({ payload: parsed.data, workspaceId: workspace.id, esgEnabled: false });
+  assert.equal(rest.source, "claude_mcp");
+  assert.equal(rest.proposedBy, "proponente@esempio.test");
+  const intake = rest.intake as Record<string, unknown>;
+  assert.equal(intake.possibleDuplicateOf, undefined);
+  assert.equal(intake.contractVersion, undefined);
+  assert.equal(intake.submitterEmail, undefined);
+  assert.equal(intake.relationType, "simile_ma_diversa");
 });

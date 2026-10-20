@@ -1,10 +1,13 @@
 import type { UseCase } from "@/lib/db/schema";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { weeklySignals } from "@/lib/db/schema";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getSlackInstallationByWorkspace } from "@/lib/db/queries/slack";
 import { notifyNewUseCase } from "@/lib/slack/notifications";
 import { tryBuildPortfolioShareUrl } from "@/lib/portfolio/share-link";
+import { logSafeError } from "@/lib/log/safe-error";
+import { plainNotificationText } from "./sanitize";
 
 function getAppBaseUrl(): string | null {
   const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
@@ -35,12 +38,32 @@ async function postWhatsappWebhook(
       body: JSON.stringify(payload),
     });
     if (!resp.ok) {
-      const txt = await resp.text().catch(() => "");
-      console.error("[notifications] whatsapp webhook non-2xx:", resp.status, txt.slice(0, 500));
+      // Mai il corpo della risposta: un relay può rimandare indietro il testo inviato.
+      console.error("[notifications] whatsapp webhook non-2xx:", resp.status);
     }
   } catch (e) {
-    console.error("[notifications] whatsapp webhook failed:", e);
+    logSafeError("notifications", "whatsapp_webhook_failed", e);
   }
+}
+
+/**
+ * Vero se il contributo è già stato annunciato: dispatchNewPortfolioNotifications
+ * crea per prima cosa il segnale `new_portfolio_item` della campanella.
+ */
+export async function wasPortfolioItemAnnounced(params: { workspaceId: string; useCaseId: string }) {
+  const [row] = await db
+    .select({ id: weeklySignals.id })
+    .from(weeklySignals)
+    .where(
+      and(
+        eq(weeklySignals.workspaceId, params.workspaceId),
+        eq(weeklySignals.signalType, "new_portfolio_item"),
+        eq(weeklySignals.relatedEntityType, "use_case"),
+        eq(weeklySignals.relatedEntityId, params.useCaseId)
+      )
+    )
+    .limit(1);
+  return Boolean(row);
 }
 
 /**
@@ -50,6 +73,9 @@ async function postWhatsappWebhook(
  *  - inoltra al webhook WhatsApp se configurato sul workspace
  *
  * `source` indica da dove arriva il contributo: "slack" | "web" | "claude".
+ * I testi degli utenti restano dati: la campanella li mostra come testo (React),
+ * Slack li riceve con escape mrkdwn (buildNewUseCaseSlackText), il webhook con le
+ * menzioni neutralizzate (src/lib/notifications/sanitize.ts).
  */
 export async function dispatchNewPortfolioNotifications(params: {
   useCase: UseCase;
@@ -77,7 +103,7 @@ export async function dispatchNewPortfolioNotifications(params: {
       relatedEntityId: useCase.id,
     });
   } catch (e) {
-    console.error("[notifications] insert weeklySignal failed:", e);
+    logSafeError("notifications", "weekly_signal_failed", e, { workspaceId });
   }
 
   // 2) Slack admin channel (se Slack è installato per questo workspace)
@@ -91,7 +117,7 @@ export async function dispatchNewPortfolioNotifications(params: {
       await notifyNewUseCase(useCase, teamIdToUse, workspaceId);
     }
   } catch (e) {
-    console.error("[notifications] slack dispatch failed:", e);
+    logSafeError("notifications", "slack_dispatch_failed", e, { workspaceId });
   }
 
   // 3) WhatsApp webhook (opzionale)
@@ -103,8 +129,8 @@ export async function dispatchNewPortfolioNotifications(params: {
         })
       : null;
     const text =
-      `${kindLabel(useCase.portfolioKind)} in coda al team ${teamName}: ` +
-      `"${useCase.title}" (origine: ${source})` +
+      `${kindLabel(useCase.portfolioKind)} in coda al team ${plainNotificationText(teamName)}: ` +
+      `"${plainNotificationText(useCase.title)}" (origine: ${source})` +
       `${typeof useCase.overallScore === "number" && useCase.overallScore > 0 ? `, score iniziale ${useCase.overallScore.toFixed(2)}` : ""}. ` +
       `${link ? `Apri in Unbundle: ${link}` : ""}`;
     await postWhatsappWebhook(workspace.whatsappWebhookUrl, {
@@ -113,7 +139,7 @@ export async function dispatchNewPortfolioNotifications(params: {
       event: "portfolio.new",
       useCase: {
         id: useCase.id,
-        title: useCase.title,
+        title: plainNotificationText(useCase.title),
         portfolioKind: useCase.portfolioKind,
       },
     });

@@ -46,6 +46,19 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* Casi d'uso: colori del semaforo (vedi --uc-* sotto). */
+  --color-uc-verde: var(--uc-verde);
+  --color-uc-verde-bg: var(--uc-verde-bg);
+  --color-uc-blu: var(--uc-blu);
+  --color-uc-blu-bg: var(--uc-blu-bg);
+  --color-uc-giallo: var(--uc-giallo);
+  --color-uc-giallo-bg: var(--uc-giallo-bg);
+  --color-uc-rosso: var(--uc-rosso);
+  --color-uc-rosso-bg: var(--uc-rosso-bg);
+  --color-uc-grigio: var(--uc-grigio);
+  --color-uc-grigio-bg: var(--uc-grigio-bg);
+  --color-uc-lucchetto: var(--uc-lucchetto);
+  --color-uc-lucchetto-bg: var(--uc-lucchetto-bg);
 }
 
 :root {
@@ -81,6 +94,20 @@
   --sidebar-accent-foreground: oklch(0.9 0.008 260);
   --sidebar-border: oklch(1 0 0 / 6%);
   --sidebar-ring: oklch(0.7 0 0);
+
+  /* Casi d'uso: semaforo delle voci, tema scuro di base. */
+  --uc-verde: oklch(0.74 0.15 150);
+  --uc-verde-bg: oklch(0.74 0.15 150 / 0.14);
+  --uc-blu: oklch(0.7 0.12 245);
+  --uc-blu-bg: oklch(0.7 0.12 245 / 0.15);
+  --uc-giallo: oklch(0.82 0.14 85);
+  --uc-giallo-bg: oklch(0.82 0.14 85 / 0.14);
+  --uc-rosso: oklch(0.68 0.19 25);
+  --uc-rosso-bg: oklch(0.68 0.19 25 / 0.14);
+  --uc-grigio: oklch(0.6 0.01 260);
+  --uc-grigio-bg: oklch(0.6 0.01 260 / 0.14);
+  --uc-lucchetto: oklch(0.7 0.12 300);
+  --uc-lucchetto-bg: oklch(0.7 0.12 300 / 0.15);
 }
 
 @layer base {
@@ -115,5 +142,48 @@
   --border: oklch(0.9 0.004 260);
   --input: oklch(0.88 0.004 260);
   --ring: oklch(0.55 0.15 160);
+  /* Casi d'uso: semaforo leggibile su fondo chiaro (pagina del referente /r). */
+  --uc-verde: oklch(0.52 0.15 150);
+  --uc-verde-bg: oklch(0.52 0.15 150 / 0.1);
+  --uc-blu: oklch(0.52 0.14 245);
+  --uc-blu-bg: oklch(0.52 0.14 245 / 0.1);
+  --uc-giallo: oklch(0.62 0.15 70);
+  --uc-giallo-bg: oklch(0.75 0.15 80 / 0.18);
+  --uc-rosso: oklch(0.55 0.2 25);
+  --uc-rosso-bg: oklch(0.55 0.2 25 / 0.1);
+  --uc-grigio: oklch(0.55 0.01 260);
+  --uc-grigio-bg: oklch(0.55 0.01 260 / 0.1);
+  --uc-lucchetto: oklch(0.5 0.14 300);
+  --uc-lucchetto-bg: oklch(0.5 0.14 300 / 0.1);
   color-scheme: light;
+}
+
+/* Casi d'uso, dossier (DESIGN §5.4): le ancore e il focus della tastiera non
+   finiscono sotto la barra del workspace (61 px, da md 53 px) e la barra fissa
+   del dossier (schede e riga del titolo; da lg una riga sola). */
+html:has([data-uc-case-head]) {
+  scroll-padding-top: 8.5rem;
+}
+@media (min-width: 64rem) {
+  html:has([data-uc-case-head]) {
+    scroll-padding-top: 6.5rem;
+  }
+}
+/* Il grigio dei testi secondari nel dossier: 4,22:1 su --card era sotto AA per
+   il testo piccolo (DESIGN §7.2); così è 5,6:1. Vale nel layout del dossier e,
+   mentre una sua pagina è aperta, nei pannelli, nelle finestre e nei menu che
+   si aprono sopra (vivono fuori dal layout), anche quelli della barra del
+   workspace. La barra laterale, la barra in alto e il resto di Unbundle tengono
+   il token globale. */
+[data-uc-case-root],
+html:has([data-uc-case-head])
+  :is(
+    [data-slot="sheet-content"],
+    [data-slot="dialog-content"],
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="select-content"]
+  ) {
+  --muted-foreground: oklch(0.62 0.01 260);
 }

@@ -45,10 +45,13 @@ import {
   Inbox,
   ClipboardCheck,
   GraduationCap,
+  ListChecks,
 } from "lucide-react";
 
 interface AppSidebarProps {
   learningAvailable?: boolean;
+  /** Voce «Casi d'uso»: sezione accesa e persona che vede i casi (mai chi segue solo un corso). */
+  casesAvailable?: boolean;
   /** Entrato da un link di corso: la navigazione si riduce al corso. */
   learnerOnly?: boolean;
   workspaceId?: string;
@@ -62,6 +65,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({
   learningAvailable = false,
+  casesAvailable = false,
   learnerOnly = false,
   workspaceId,
   workspaceName,
@@ -99,6 +103,8 @@ export function AppSidebar({
         { title: "Activity mapping", href: `${basePath}/mapping`, icon: GitBranch },
         { title: "Value map", href: `${basePath}/value-map`, icon: Map },
         { title: "Use cases", href: `${basePath}/use-cases`, icon: Lightbulb },
+        // Sezione con pagine annidate: resta attiva anche dentro un caso.
+        ...(casesAvailable ? [{ title: "Casi d'uso", href: `${basePath}/casi-duso`, icon: ListChecks, nested: true }] : []),
         { title: "Piano", href: `${basePath}/plan`, icon: FileText },
         { title: "Report", href: `${basePath}/reports`, icon: FileText },
         { title: "Blueprints", href: `${basePath}/blueprints`, icon: Bot },
@@ -137,7 +143,7 @@ export function AppSidebar({
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       render={<Link href={item.href} onNavigate={closeMobileNavigation} />}
-                      isActive={pathname === item.href}
+                      isActive={pathname === item.href || ("nested" in item && item.nested === true && pathname.startsWith(`${item.href}/`))}
                     >
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>

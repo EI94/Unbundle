@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from ".";
+import { UC_DDL, UC_PROBE_SQL } from "../uc/ddl.ts";
+import { CONNECTOR_DDL, CONNECTOR_PROBE_SQL } from "./connector-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -19,7 +21,7 @@ import { db } from ".";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 13;
+const ENSURE_VERSION = 14;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -601,6 +603,25 @@ async function runOnce(): Promise<void> {
     ALTER TABLE "slack_use_case_drafts"
       ALTER COLUMN "urgency" TYPE varchar(255);
   `);
+
+  // Connettore MCP organizzativo (drizzle/0019_connettore_mcp.sql) ─────────
+  // Stessi statement e stesso ordine della migrazione, dopo use_cases ed
+  // external_contribution_submissions (qui sopra): identità, configurazione e
+  // limiti, colonne di use_cases, principal_key, indici e trigger.
+  await runConnectorDdl();
+}
+
+/**
+ * Applica il DDL del connettore in una sola transazione, serializzata da un
+ * advisory lock: il backfill di `principal_key` e il suo NOT NULL non si
+ * separano, e due avvii a freddo non si pestano i piedi.
+ */
+export async function runConnectorDdl(statements: readonly string[] = CONNECTOR_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:connector-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
 }
 
 async function schemaLooksCurrent(): Promise<boolean> {
@@ -709,6 +730,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
           GROUP BY table_name
           HAVING count(*) = 3
         )
+        AND ${sql.raw(CONNECTOR_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -739,4 +761,241 @@ export async function ensureDbSchema(): Promise<void> {
     throw err;
   });
   return ensurePromise;
+}
+
+// ─── Casi d'uso (uc_*): self-heal separato ──────────────────────────
+//
+// Separato da `runOnce()`/`schemaLooksCurrent()` (PIANO §2.5, D35): un DDL uc che
+// fallisce rende «Sezione non disponibile» le sole rotte uc e non tocca
+// assessment, portafoglio, Slack e formazione. Lo chiamano solo i moduli
+// `queries/uc-*.ts`, e solo con `UC_ENABLED === "true"`: senza flag nessuna
+// tabella uc viene creata.
+//
+// In produzione (`VERCEL_ENV=production`) il self-heal uc è spento, salvo un
+// `UC_SCHEMA_SELF_HEAL=on` scritto a mano (`ucSelfHealEnabled`, DESIGN §7.1
+// P0-2): l'app esegue solo la sonda e, se lo schema non è aggiornato, la sezione
+// risponde 503 finché la 0018 non è applicata a mano (`docs/casi-duso/RUNBOOK.md`).
+// Così il DDL uc non parte da una richiesta in produzione.
+//
+// Regola per il futuro: ogni colonna uc nuova va in `src/lib/uc/ddl.ts`
+// (`ADD COLUMN IF NOT EXISTS`), in `UC_ADDITIVE_COLUMNS` e qui in
+// `UC_ENSURE_VERSION`. Il probe confronta anche l'impronta del DDL e, in una
+// colonna a parte, guarda l'indice unico tra dossier e scheda (versione 2,
+// docs/use-case/DESIGN.md §10.4). Con un doppione il DDL salta l'indice e la
+// sezione resta disponibile, con il self-heal acceso e spento: conta solo
+// `current`. Il log lo dice (`doppioni_dossier`, o `indice_unico_assente` se i
+// doppioni non ci sono più e manca solo la 0018 da riapplicare), una volta per
+// avvio a freddo. Il self-heal acceso riprova a ogni avvio a freddo solo il
+// blocco dell'indice, non tutto il DDL, e un suo errore non spegne la sezione.
+//
+// Gli import della parte uc stanno qui e non in testa al file: la testa è della
+// parte principale (hub, connettore), così le unioni in avanti non si toccano.
+
+import { UC_DOSSIER_DUPLICATES_SQL, UC_UNIQUE_DOSSIER_INDEX_DDL } from "../uc/ddl.ts";
+import { errorCodeOf, pgCodeOf, ucLog, ucLogError } from "../uc/log.ts";
+import { ucSelfHealEnabled } from "../uc/platform.ts";
+
+/** Incrementa ad ogni modifica al DDL uc: così i worker warm ri-eseguono il controllo. */
+const UC_ENSURE_VERSION = 2;
+
+/** La sezione «Casi d'uso» è spenta (`UC_ENABLED` diverso da "true"). */
+export class UcSchemaDisabledError extends Error {
+  constructor() {
+    super("Sezione Casi d'uso disattivata (UC_ENABLED).");
+    this.name = "UcSchemaDisabledError";
+  }
+}
+
+/** Self-heal spento (`UC_SCHEMA_SELF_HEAL=off`) e sonda falsa: lo schema uc si aggiorna a mano. */
+export class UcSchemaNotCurrentError extends Error {
+  readonly code = "schema_non_aggiornato";
+  constructor() {
+    super("Schema dei Casi d'uso non aggiornato: applica la migrazione 0018 (self-heal spento).");
+    this.name = "UcSchemaNotCurrentError";
+  }
+}
+
+/** Esito della sonda uc (`UC_PROBE_SQL`). */
+export interface UcSchemaState {
+  /** Schema allineato al DDL uc: la sezione può servire. */
+  current: boolean;
+  /** C'è l'indice unico tra dossier e scheda (il DDL lo salta finché c'è un doppione). */
+  uniqueIndex: boolean;
+}
+
+/** Schema aggiornato ma senza indice unico: doppioni da sistemare, o solo la 0018 da riapplicare. */
+export type UcMissingIndexCode = "doppioni_dossier" | "indice_unico_assente";
+
+export interface UcSchemaEnsurerDeps {
+  enabled: () => boolean;
+  /** Le FK uc puntano a tabelle esistenti: prima si allinea lo schema dell'app. */
+  ensureBase: () => Promise<void>;
+  probe: () => Promise<UcSchemaState>;
+  apply: (statements: readonly string[]) => Promise<void>;
+  ddl: readonly string[];
+  /** Con lo schema già aggiornato e l'indice unico assente si applica solo questo. Predefinito: `[UC_UNIQUE_DOSSIER_INDEX_DDL]`. */
+  indexDdl?: readonly string[];
+  /** Falso con il self-heal spento (`ucSelfHealEnabled`): solo la sonda, mai il DDL. Predefinito: acceso. */
+  selfHeal?: () => boolean;
+  /** Ci sono doppioni? Letta solo con lo schema aggiornato e l'indice assente; un errore vale «sì». Predefinito: sì. */
+  duplicates?: () => Promise<boolean>;
+  log?: Pick<Console, "warn" | "error">;
+  /** Schema aggiornato senza indice unico: la sezione resta disponibile e lo si dice qui. Predefinito: `log.warn`. */
+  missingIndex?: (code: UcMissingIndexCode, op: "self_heal" | "sonda") => void;
+  /** Il blocco dell'indice da solo è fallito (lock, rete): la sezione resta disponibile. Predefinito: `log.warn`. */
+  indexFailed?: (err: unknown) => void;
+}
+
+/**
+ * Self-heal uc con promessa memoizzata propria; un errore la azzera per il
+ * prossimo tentativo. Con il self-heal spento una sonda con `current` falso
+ * rifiuta con `UcSchemaNotCurrentError`, senza toccare lo schema, e non si
+ * memoizza: dopo l'applicazione manuale della migrazione la richiesta dopo
+ * riparte senza deploy.
+ *
+ * L'indice unico tra dossier e scheda non spegne mai la sezione (DESIGN §10.4):
+ * con `current` vero e l'indice assente la promessa si risolve, e si memoizza,
+ * dopo una riga di log (`missingIndex`). Il self-heal acceso prova solo il blocco
+ * dell'indice (`indexDdl`), che lo crea se i doppioni non ci sono più: tutto il
+ * DDL, con i lock su ogni tabella uc, si ripete solo con `current` falso. Se quel
+ * blocco fallisce lo dice `indexFailed` e la promessa si risolve lo stesso.
+ * «Sonda falsa dopo il DDL» resta solo per uno schema che il DDL non ha allineato.
+ */
+export function createUcSchemaEnsurer(deps: UcSchemaEnsurerDeps): { ensure: () => Promise<void>; reset: () => void } {
+  const log = deps.log ?? console;
+  const missingIndex = deps.missingIndex ?? ((code: UcMissingIndexCode) => log.warn(`[db/ensure-schema] uc unique dossier index missing (${code})`));
+  const indexFailed = deps.indexFailed ?? ((err: unknown) => log.warn("[db/ensure-schema] uc unique dossier index not applied:", err));
+  const indexDdl = deps.indexDdl ?? [UC_UNIQUE_DOSSIER_INDEX_DDL];
+  let promise: Promise<void> | null = null;
+  return {
+    ensure() {
+      if (!deps.enabled()) return Promise.reject(new UcSchemaDisabledError());
+      if (promise) return promise;
+      const selfHeal = deps.selfHeal ? deps.selfHeal() : true;
+      const reportMissingIndex = async () => {
+        const duplicates = deps.duplicates ? await deps.duplicates().catch(() => true) : true;
+        missingIndex(duplicates ? "doppioni_dossier" : "indice_unico_assente", selfHeal ? "self_heal" : "sonda");
+      };
+      promise = (async () => {
+        if (!selfHeal) {
+          const state = await deps.probe();
+          if (!state.current) throw new UcSchemaNotCurrentError();
+          if (!state.uniqueIndex) await reportMissingIndex();
+          return;
+        }
+        await deps.ensureBase();
+        const before = await deps.probe();
+        if (before.current && before.uniqueIndex) return;
+        if (before.current) {
+          // Lo schema serve già: solo l'indice, e un suo errore non spegne la sezione.
+          const applied = await deps.apply(indexDdl).then(
+            () => true,
+            (err: unknown) => {
+              indexFailed(err);
+              return false;
+            },
+          );
+          if (!applied || !(await deps.probe()).uniqueIndex) await reportMissingIndex();
+          return;
+        }
+        await deps.apply(deps.ddl);
+        const after = await deps.probe();
+        if (!after.current) log.warn("[db/ensure-schema] uc schema probe still false after self-heal");
+        else if (!after.uniqueIndex) await reportMissingIndex();
+      })().catch((err) => {
+        promise = null;
+        if (err instanceof UcSchemaNotCurrentError) log.error("[db/ensure-schema] uc schema not current and the uc self-heal is off");
+        else log.error("[db/ensure-schema] uc self-heal failed:", err);
+        throw err;
+      });
+      return promise;
+    },
+    reset() {
+      promise = null;
+    },
+  };
+}
+
+/** Sonda uc: schema allineato al DDL corrente (tabelle, funzioni, trigger, CHECK, impronta) e indice unico. */
+export async function ucSchemaState(): Promise<UcSchemaState> {
+  try {
+    const result = (await db.execute(sql.raw(UC_PROBE_SQL))) as unknown as { rows?: Array<{ current?: unknown; unique_index?: unknown }> };
+    const row = result.rows?.[0];
+    return { current: row?.current === true, uniqueIndex: row?.unique_index === true };
+  } catch (err) {
+    ucLog({ level: "warn", area: "uc.schema", op: "sonda", code: errorCodeOf(err), pgCode: pgCodeOf(err) });
+    return { current: false, uniqueIndex: false };
+  }
+}
+
+/** Vero se il self-heal uc non ha nulla da fare: schema allineato e indice unico presente. */
+export async function ucSchemaLooksCurrent(): Promise<boolean> {
+  const state = await ucSchemaState();
+  return state.current && state.uniqueIndex;
+}
+
+/** Ci sono doppioni tra dossier e scheda (righe complete e incomplete)? Nel dubbio sì: il rimedio è `dossier-dups`. */
+export async function ucDossierDuplicates(): Promise<boolean> {
+  try {
+    const result = (await db.execute(sql.raw(UC_DOSSIER_DUPLICATES_SQL))) as unknown as { rows?: Array<{ duplicates?: unknown }> };
+    return result.rows?.[0]?.duplicates !== false;
+  } catch (err) {
+    ucLog({ level: "warn", area: "uc.schema", op: "doppioni", code: errorCodeOf(err), pgCode: pgCodeOf(err) });
+    return true;
+  }
+}
+
+/**
+ * Applica il DDL uc in una sola transazione, serializzata da un advisory lock:
+ * o tutto o niente, e due avvii a freddo non si pestano i piedi. Il NOTICE di un
+ * indice unico saltato non arriva fin qui: lo dice la sonda dopo il DDL.
+ */
+export async function runUcOnce(statements: readonly string[] = UC_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:uc-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
+/** Log del self-heal uc in una riga JSON (P0-6): codici, mai l'errore per esteso. */
+const ucSchemaLog: Pick<Console, "warn" | "error"> = {
+  warn: () => {
+    ucLog({ level: "warn", area: "uc.schema", op: "self_heal", code: "sonda_falsa_dopo_ddl" });
+  },
+  error: (_message?: unknown, err?: unknown) => {
+    if (err === undefined) ucLog({ level: "error", area: "uc.schema", op: "sonda", code: "schema_non_aggiornato" });
+    else ucLogError({ area: "uc.schema", op: "self_heal" }, err);
+  },
+};
+
+const ucEnsurer = createUcSchemaEnsurer({
+  enabled: () => process.env.UC_ENABLED === "true",
+  ensureBase: ensureDbSchema,
+  probe: ucSchemaState,
+  apply: runUcOnce,
+  ddl: UC_DDL,
+  selfHeal: () => ucSelfHealEnabled(process.env),
+  duplicates: ucDossierDuplicates,
+  log: ucSchemaLog,
+  missingIndex: (code, op) => {
+    ucLog({ level: "warn", area: "uc.schema", op, code });
+  },
+  indexFailed: (err) => {
+    ucLog({ level: "warn", area: "uc.schema", op: "self_heal", code: "indice_unico_non_applicato", pgCode: pgCodeOf(err) });
+  },
+});
+let ucEnsureVersionApplied = 0;
+
+/**
+ * Self-heal delle tabelle uc. Rifiuta con `UcSchemaDisabledError` se la sezione
+ * è spenta e con `UcSchemaNotCurrentError` se il self-heal è spento e lo schema
+ * non è aggiornato (le rotte uc rispondono 503).
+ */
+export async function ensureUcSchema(): Promise<void> {
+  if (ucEnsureVersionApplied !== UC_ENSURE_VERSION) {
+    ucEnsurer.reset();
+    ucEnsureVersionApplied = UC_ENSURE_VERSION;
+  }
+  return ucEnsurer.ensure();
 }

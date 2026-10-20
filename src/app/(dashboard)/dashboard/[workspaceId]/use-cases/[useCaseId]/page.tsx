@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
-import { ArrowLeft, MessageSquare } from "lucide-react";
+import { ArrowLeft, ListChecks, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UseCasePortfolioActions } from "@/components/dashboard/use-case-portfolio-actions";
 
@@ -34,11 +34,24 @@ export default async function UseCaseDetailPage({
 
   const { workspaceId, useCaseId } = await params;
 
-  await requireWorkspacePage(workspaceId);
+  const { session, access } = await requireWorkspacePage(workspaceId);
   const useCase = await getUseCaseById(useCaseId);
   if (!useCase || useCase.workspaceId !== workspaceId) notFound();
 
   const krLinks = await getUseCaseKRLinks(useCaseId);
+
+  // «Avvia caso d'uso» (Casi d'uso, PIANO §5.2): solo con UC_ENABLED e le tabelle
+  // uc presenti (to_regclass). Un errore lo registra e la pagina resta com'è.
+  const caseLink =
+    process.env.UC_ENABLED === "true"
+      ? await (await import("@/lib/db/queries/uc-nav")).portfolioCaseLink({
+          userId: session.user.id,
+          workspaceId,
+          role: access.role,
+          useCaseId,
+          useCaseStatus: useCase.status,
+        })
+      : null;
 
   const impactItems = [
     { label: "Economico", value: useCase.impactEconomic },
@@ -98,6 +111,24 @@ export default async function UseCaseDetailPage({
         initialStatus={useCase.status}
         initialCategory={useCase.category}
       />
+
+      {caseLink?.existing ? (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+          <p className="text-sm text-muted-foreground">Questa scheda ha già un caso d&apos;uso, dove si raccolgono i dati per lo sviluppo.</p>
+          <Button render={<Link href={`/dashboard/${workspaceId}/casi-duso/${caseLink.existing.id}`} />} nativeButton={false} variant="outline">
+            <ListChecks className="h-4 w-4" />
+            Caso d&apos;uso {caseLink.existing.code}
+          </Button>
+        </div>
+      ) : caseLink?.canStart ? (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+          <p className="text-sm text-muted-foreground">La scheda è accettata: avvia il caso d&apos;uso per spiegarlo e raccogliere i dati dal cliente.</p>
+          <Button render={<Link href={`/dashboard/${workspaceId}/casi-duso/nuovo?useCaseId=${useCaseId}`} />} nativeButton={false}>
+            <ListChecks className="h-4 w-4" />
+            Avvia caso d&apos;uso
+          </Button>
+        </div>
+      ) : null}
 
       {krLinks.length > 0 && (
         <Card className="mb-6">

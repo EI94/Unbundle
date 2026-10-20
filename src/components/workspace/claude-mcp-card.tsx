@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
@@ -14,6 +15,7 @@ import {
   buildClaudeInstallCommand,
   buildClaudeStarterPrompt,
 } from "@/lib/integrations/claude-onboarding";
+import { CASE_SCOPES, UC_CASE_SCOPE_PREFIX } from "@/lib/uc/mcp-access";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +25,7 @@ import {
   Bot,
   CheckCircle2,
   Copy,
+  FolderCode,
   KeyRound,
   MessagesSquare,
   ShieldCheck,
@@ -76,6 +79,117 @@ function tokenFromAction(data: CreateClaudeMcpTokenData): TokenItem {
   };
 }
 
+/** Token di un dossier (PIANO §5.8): scope `cases:*` e il marcatore `uc:case:<id>`. */
+function isCaseToken(token: TokenItem) {
+  return token.scopes.some(
+    (scope) => scope.startsWith(UC_CASE_SCOPE_PREFIX) || CASE_SCOPES.includes(scope)
+  );
+}
+
+const CASE_MARKER =
+  /^uc:case:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
+/** Il dossier del token, dal marcatore `uc:case:<id>`; null se manca. */
+function dossierIdOf(token: TokenItem): string | null {
+  for (const scope of token.scopes) {
+    const match = CASE_MARKER.exec(scope);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+/** Codice e titolo di un dossier, per i gruppi di «Claude Code sui dossier». */
+export type ClaudeCardDossier = { id: string; code: string | null; title: string };
+
+/**
+ * Accessi attivi raggruppati per dossier, nell'ordine dell'elenco. Il nome del
+ * gruppo è codice e titolo del dossier, se la pagina li passa; altrimenti il
+ * gruppo non ha un titolo suo (ogni accesso mostra già il suo nome).
+ */
+function activeAccessByDossier(tokens: TokenItem[], dossiers: readonly ClaudeCardDossier[]) {
+  const names = new Map(dossiers.map((d) => [d.id.toLowerCase(), d.code ? `${d.code} · ${d.title}` : d.title]));
+  const groups = new Map<string, { dossierId: string | null; name: string | null; tokens: TokenItem[] }>();
+  for (const token of tokens) {
+    if (!isCaseToken(token) || !isActive(token)) continue;
+    const dossierId = dossierIdOf(token);
+    const key = dossierId ?? `token:${token.id}`;
+    const group = groups.get(key);
+    if (group) group.tokens.push(token);
+    else
+      groups.set(key, {
+        dossierId,
+        name: (dossierId && names.get(dossierId)) || null,
+        tokens: [token],
+      });
+  }
+  return [...groups.values()];
+}
+
+function TokenList({
+  tokens,
+  canManage,
+  revokeFormAction,
+  revokePending,
+  confirmText,
+}: {
+  tokens: TokenItem[];
+  canManage: boolean;
+  revokeFormAction: (formData: FormData) => void;
+  revokePending: boolean;
+  confirmText: string;
+}) {
+  return (
+    <div className="divide-y rounded-2xl border">
+      {tokens.map((token) => {
+        const active = isActive(token);
+        return (
+          <div
+            key={token.id}
+            className="flex flex-wrap items-center justify-between gap-3 p-3"
+          >
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="min-w-0 break-words text-sm font-medium">
+                  {token.label}
+                </div>
+                <Badge variant={active ? "secondary" : "outline"}>
+                  {active ? "Attivo" : "Non attivo"}
+                </Badge>
+              </div>
+              <div className="mt-1 break-words text-xs text-muted-foreground">
+                {token.tokenPrefix} · creato il{" "}
+                {formatDate(token.createdAt)} · scade il{" "}
+                {formatDate(token.expiresAt)} · ultimo uso{" "}
+                {token.lastUsedAt ? formatDate(token.lastUsedAt) : "mai"}
+              </div>
+            </div>
+            {canManage && active ? (
+              <form
+                action={revokeFormAction}
+                onSubmit={(event) => {
+                  if (!window.confirm(confirmText)) {
+                    event.preventDefault();
+                  }
+                }}
+              >
+                <input type="hidden" name="tokenId" value={token.id} />
+                <Button
+                  type="submit"
+                  variant="destructive"
+                  size="sm"
+                  disabled={revokePending}
+                >
+                  Revoca
+                </Button>
+              </form>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function OnboardingStep({
   index,
   title,
@@ -117,16 +231,26 @@ function CopyButton({
   );
 }
 
+/**
+ * Integrazioni › Claude: la card «Claude per Unbundle» (server stdio v1, resta
+ * finché ci sono token attivi, D11) e, accanto, il blocco «Claude Code sui
+ * dossier» con gli accessi attivi per dossier (DESIGN §8.3 WP10). Gli accessi
+ * ai dossier si creano dal dossier («Sviluppo con Claude»); qui si vedono e si
+ * revocano. `dossiers`: codice e titolo dei dossier, per dare un nome ai
+ * gruppi; senza, il gruppo prende il nome dell'accesso.
+ */
 export function ClaudeMcpCard({
   workspaceId,
   workspaceName,
   canManage,
   tokens,
+  dossiers = [],
 }: {
   workspaceId: string;
   workspaceName: string;
   canManage: boolean;
   tokens: TokenItem[];
+  dossiers?: readonly ClaudeCardDossier[];
 }) {
   const createAction = createClaudeMcpTokenAction.bind(null, workspaceId);
   const revokeAction = revokeClaudeMcpTokenAction.bind(null, workspaceId);
@@ -177,7 +301,11 @@ export function ClaudeMcpCard({
     }
   }
 
-  const activeTokens = localTokens.filter(isActive).length;
+  // I token dei dossier stanno nello stesso elenco del workspace ma non
+  // aggiungono contributi: hanno il loro blocco e non contano come setup.
+  const portfolioTokens = localTokens.filter((token) => !isCaseToken(token));
+  const dossierGroups = activeAccessByDossier(localTokens, dossiers);
+  const activeTokens = portfolioTokens.filter(isActive).length;
   const feedback = createState.message ?? revokeState.message ?? null;
   const feedbackOk = createState.message ? createState.ok : revokeState.ok;
   const setupCommand = createState.data
@@ -192,6 +320,7 @@ export function ClaudeMcpCard({
   const starterPrompt = buildClaudeStarterPrompt(workspaceName);
 
   return (
+    <>
     <section className="overflow-hidden rounded-xl bg-card text-card-foreground ring-1 ring-foreground/10" aria-labelledby="claude-card-title">
       <div className="border-b bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.14),transparent_34%)] p-4 sm:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -440,73 +569,75 @@ export function ClaudeMcpCard({
         </section>
 
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold">Setup configurati</h3>
             <span className="text-xs text-muted-foreground">
               Può aggiungere contributi a Raccolta & Ranking
             </span>
           </div>
-          {localTokens.length === 0 ? (
+          {portfolioTokens.length === 0 ? (
             <div className="rounded-2xl border border-dashed p-4 text-sm text-muted-foreground">
               Nessun setup creato. Preparane uno quando vuoi abilitare Claude per
               questo workspace.
             </div>
           ) : (
-            <div className="divide-y rounded-2xl border">
-              {localTokens.map((token) => {
-                const active = isActive(token);
-                return (
-                  <div
-                    key={token.id}
-                    className="flex flex-wrap items-center justify-between gap-3 p-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="truncate text-sm font-medium">
-                          {token.label}
-                        </div>
-                        <Badge variant={active ? "secondary" : "outline"}>
-                          {active ? "Attivo" : "Non attivo"}
-                        </Badge>
-                      </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {token.tokenPrefix} · creato il{" "}
-                        {formatDate(token.createdAt)} · scade il{" "}
-                        {formatDate(token.expiresAt)} · ultimo uso{" "}
-                        {token.lastUsedAt ? formatDate(token.lastUsedAt) : "mai"}
-                      </div>
-                    </div>
-                    {canManage && active ? (
-                      <form
-                        action={revokeFormAction}
-                        onSubmit={(event) => {
-                          if (
-                            !window.confirm(
-                              "Revocare questo setup? Claude non potrà più inviare contributi con questa configurazione."
-                            )
-                          ) {
-                            event.preventDefault();
-                          }
-                        }}
-                      >
-                        <input type="hidden" name="tokenId" value={token.id} />
-                        <Button
-                          type="submit"
-                          variant="destructive"
-                          size="sm"
-                          disabled={revokePending}
-                        >
-                          Revoca
-                        </Button>
-                      </form>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
+            <TokenList
+              tokens={portfolioTokens}
+              canManage={canManage}
+              revokeFormAction={revokeFormAction}
+              revokePending={revokePending}
+              confirmText="Revocare questo setup? Claude non potrà più inviare contributi con questa configurazione."
+            />
           )}
         </section>
+
       </div>
     </section>
+
+    {dossierGroups.length > 0 ? (
+      <section className="rounded-xl bg-card p-4 text-card-foreground ring-1 ring-foreground/10 sm:p-6" aria-labelledby="claude-dossier-title">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <FolderCode className="size-5 text-muted-foreground" aria-hidden />
+          </div>
+          <div className="min-w-0">
+            <h2 id="claude-dossier-title" className="text-base font-semibold">
+              Claude Code sui dossier
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              Claude Code legge il catalogo validato di un dossier, in sola lettura. Ogni lettura resta in Attività. Gli accessi si creano
+              dal dossier, in «Sviluppo con Claude»; qui si vedono e si revocano.
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 space-y-5">
+          {dossierGroups.map((group) => (
+            <div key={group.dossierId ?? group.tokens[0].id} className="min-w-0 space-y-2">
+              {group.name || group.dossierId ? (
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  {group.name ? <h3 className="min-w-0 text-sm font-semibold break-words">{group.name}</h3> : null}
+                  {group.dossierId ? (
+                    <Link
+                      href={`/dashboard/${workspaceId}/casi-duso/${group.dossierId}`}
+                      className="ml-auto inline-flex min-h-11 items-center text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline sm:min-h-0"
+                    >
+                      Apri il dossier
+                    </Link>
+                  ) : null}
+                </div>
+              ) : null}
+              <TokenList
+                tokens={group.tokens}
+                canManage={canManage}
+                revokeFormAction={revokeFormAction}
+                revokePending={revokePending}
+                confirmText="Revocare questo accesso? Claude Code non leggerà più il dossier con questa chiave."
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+    ) : null}
+    </>
   );
 }

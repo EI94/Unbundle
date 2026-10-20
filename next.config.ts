@@ -14,9 +14,10 @@ import type { NextConfig } from "next";
  *   bypass è prudente.
  *
  * - Security headers globali: HSTS, X-Content-Type-Options, Referrer-Policy,
- *   X-Frame-Options, Permissions-Policy. CSP non impostata qui: Firebase +
- *   Slack + Vercel Blob richiederebbero un'allowlist articolata, meglio
- *   introdurla in PR dedicata con testing approfondito.
+ *   X-Frame-Options, Permissions-Policy. CSP globale non impostata qui:
+ *   Firebase + Slack + Vercel Blob richiederebbero un'allowlist articolata,
+ *   meglio introdurla in PR dedicata con testing approfondito. I soli link
+ *   personali dei Casi d'uso (`/r/*`, `/api/r/*`) hanno la loro CSP, sotto.
  *
  * - poweredByHeader off: rimuove `X-Powered-By: Next.js`.
  */
@@ -35,6 +36,38 @@ const SECURITY_HEADERS: { key: string; value: string }[] = [
       "camera=(), microphone=(), geolocation=(), browsing-topics=(), interest-cohort=()",
   },
   { key: "X-DNS-Prefetch-Control", value: "on" },
+];
+
+/**
+ * Link personali dei referenti dei Casi d'uso (`/r/<token>`) e le loro API
+ * (`/api/r/<token>/…`): mai indicizzati, mai in cache, e nessun `Referer`
+ * verso altri siti, perché il token sta nell'indirizzo (PIANO §5.6). Vengono
+ * dopo le intestazioni globali, così `Referrer-Policy` sostituisce quella di
+ * default. Le API ripetono le stesse intestazioni su ogni risposta.
+ */
+/**
+ * CSP dei link personali (DESIGN §7.1 P0-7): niente iframe, niente `<base>` né
+ * plugin, form solo verso l'app, connessioni solo verso l'app e Vercel Blob
+ * (il caricamento diretto dei file dal browser), immagini dall'app o generate
+ * nella pagina. Script e stili restano quelli di Next: senza nonce una
+ * `script-src` stretta romperebbe gli script inline di Next (guida
+ * `content-security-policy.md`). Vale sulla pagina `/r/<token>` e sulle API
+ * `/api/r/<token>/…`.
+ */
+const PUBLIC_LINK_CSP = [
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+  "object-src 'none'",
+  "form-action 'self'",
+  "connect-src 'self' https://vercel.com https://*.blob.vercel-storage.com",
+  "img-src 'self' data: blob:",
+].join("; ");
+
+const PUBLIC_LINK_HEADERS: { key: string; value: string }[] = [
+  { key: "X-Robots-Tag", value: "noindex, nofollow" },
+  { key: "Cache-Control", value: "no-store" },
+  { key: "Referrer-Policy", value: "no-referrer" },
+  { key: "Content-Security-Policy", value: PUBLIC_LINK_CSP },
 ];
 
 const nextConfig: NextConfig = {
@@ -57,6 +90,8 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: SECURITY_HEADERS,
       },
+      { source: "/r/:path*", headers: PUBLIC_LINK_HEADERS },
+      { source: "/api/r/:path*", headers: PUBLIC_LINK_HEADERS },
     ];
   },
 };

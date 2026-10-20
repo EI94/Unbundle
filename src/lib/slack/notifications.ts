@@ -2,6 +2,8 @@ import type { UseCase } from "@/lib/db/schema";
 import { getSlackInstallationByTeamId } from "@/lib/db/queries/slack";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { tryBuildPortfolioShareUrl } from "@/lib/portfolio/share-link";
+import { buildNewUseCaseSlackText } from "./new-use-case-message";
+import { logSafeError } from "@/lib/log/safe-error";
 
 /** URL pubblico dell’app (link nel messaggio admin Slack). */
 function getAppBaseUrl(): string | null {
@@ -12,19 +14,10 @@ function getAppBaseUrl(): string | null {
   return null;
 }
 
-function portfolioHeadline(useCase: UseCase): string {
-  if (useCase.portfolioKind === "best_practice") {
-    return "Nuova best practice proposta :white_check_mark:";
-  }
-  if (useCase.portfolioKind === "use_case_ai") {
-    return "Nuovo use case AI proposto :sparkles:";
-  }
-  return "Nuovo contributo portfolio proposto :sparkles:";
-}
-
 /**
  * Avvisa il canale admin Slack quando un contributo è stato **creato** (stato proposto).
- * Chi ha compilato: mention Slack `<@U…>` (Slack mostra il nome visualizzato del membro).
+ * Chi ha compilato: mention Slack `<@U…>` solo per un ID utente Slack (Slack mostra il
+ * nome visualizzato del membro); ogni altro testo è mostrato e mai interpretato.
  */
 export async function notifyNewUseCase(
   useCase: UseCase,
@@ -50,47 +43,14 @@ export async function notifyNewUseCase(
         })
       : null;
 
-    const proposer =
-      useCase.proposedBy && useCase.proposedBy.startsWith("U")
-        ? `<@${useCase.proposedBy}>`
-        : useCase.proposedBy ?? "Contributore";
-
-    const excerpt = useCase.description
-      ? useCase.description.slice(0, 200) +
-        (useCase.description.length > 200 ? "…" : "")
-      : "Nessuna descrizione";
-
-    const lines = [
-      portfolioHeadline(useCase),
-      "",
-      useCase.title,
-      excerpt ? `Anteprima: ${excerpt}` : "Anteprima: —",
-      "",
-      `Compilato da: ${proposer}`,
-      `Stato in Unbundle: ${useCase.status} (in coda al team ${teamName}).`,
-    ];
-
-    if (typeof useCase.overallScore === "number" && useCase.overallScore > 0) {
-      lines.push(
-        `Ranking AI iniziale: score ${useCase.overallScore.toFixed(2)} · impact ${useCase.overallImpactScore?.toFixed(1) ?? "-"} · feasibility ${useCase.overallFeasibilityScore?.toFixed(1) ?? "-"}${typeof useCase.overallEsgScore === "number" ? ` · esg ${useCase.overallEsgScore.toFixed(1)}` : ""}`
-      );
-    }
-
-    if (detailUrl) {
-      lines.push("", `Apri in Unbundle: ${detailUrl}`);
-    } else {
-      lines.push(
-        "",
-        "Per il link diretto alla scheda, configura NEXT_PUBLIC_APP_URL sul server."
-      );
-    }
-
-    const text = lines.join("\n");
+    // Titolo, anteprima e nome sono testi degli utenti: escape mrkdwn e menzioni
+    // neutralizzate (src/lib/notifications/sanitize.ts).
+    const text = buildNewUseCaseSlackText({ useCase, teamName, detailUrl });
 
     await adapter.withBotToken(installation.botToken, async () => {
       await adapter.postChannelMessage(channelId, text);
     });
   } catch (error) {
-    console.error("[slack/notifications] Failed to post to Slack channel:", error);
+    logSafeError("slack/notifications", "post_failed", error, { workspaceId });
   }
 }

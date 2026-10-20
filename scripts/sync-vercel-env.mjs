@@ -168,6 +168,34 @@ const definitions = [
     sensitive: false,
     getValue: () => vars.SLACK_DEFAULT_WORKSPACE_ID?.trim() || null,
   },
+  // Casi d'uso (docs/casi-duso/AMBIENTE.md). Solo i nomi: i valori arrivano da
+  // .env.local e una variabile assente viene saltata. UC_ADMIN_DATABASE_URL e
+  // UC_LOCAL_STORAGE_DIR non vanno mai su Vercel (script operatore e harness locale).
+  // Gli interruttori e la chiave della zona personale NON si copiano da qui
+  // (DESIGN §7.1 P0-1): UC_ENABLED, UC_WORKSPACE_IDS, UC_SCHEMA_SELF_HEAL e
+  // UC_PERSONAL_ZONE_KEY si impostano a mano, ambiente per ambiente, nella
+  // dashboard di Vercel (docs/casi-duso/RUNBOOK.md). Così un .env.local di
+  // sviluppo non accende mai la sezione in produzione.
+  {
+    name: "UC_SECRET",
+    sensitive: true,
+    getValue: () => vars.UC_SECRET || null,
+  },
+  {
+    name: "UC_LS_EMAIL_DOMAINS",
+    sensitive: false,
+    getValue: () => vars.UC_LS_EMAIL_DOMAINS?.trim() || null,
+  },
+  {
+    name: "UC_PERSONAL_BLOB_READ_WRITE_TOKEN",
+    sensitive: true,
+    getValue: () => vars.UC_PERSONAL_BLOB_READ_WRITE_TOKEN || null,
+  },
+  {
+    name: "UC_EMAIL_FROM",
+    sensitive: false,
+    getValue: () => vars.UC_EMAIL_FROM?.trim() || null,
+  },
 ];
 
 const targets = ["production"];

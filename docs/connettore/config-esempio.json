@@ -1,0 +1,10 @@
+{
+  "slug": "alfa-beta",
+  "codePrefix": "AB",
+  "workspaceDisplayName": "Alfa e Beta",
+  "identityMode": "dichiarata",
+  "authMode": "header",
+  "allowedDomains": ["alfa.test", "beta.test"],
+  "allowedOrigins": [],
+  "limits": { "submitsPerHour": 200, "readsPerHour": 3000, "submitsPerDayWorkspace": 1000, "submitsPerHourPerUser": 10 }
+}

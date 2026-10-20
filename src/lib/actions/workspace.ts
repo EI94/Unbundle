@@ -14,6 +14,7 @@ import {
   createWorkspace,
   deleteWorkspaceById,
   getWorkspaceById,
+  type UcWorkspaceBlobs,
 } from "@/lib/db/queries/workspaces";
 import {
   createWorkspaceInvitation,
@@ -233,6 +234,21 @@ async function deleteBlobUrls(blobUrls: string[]) {
   }
 }
 
+/**
+ * File dei casi d'uso del workspace eliminato: archivio standard (con le
+ * quarantene) e archivio separato della zona personale (PIANO §5.3, D43).
+ */
+async function deleteUcBlobs(paths: UcWorkspaceBlobs) {
+  if (paths.standard.length === 0 && paths.personale.length === 0) return;
+  try {
+    const { deleteUcObjects } = await import("@/lib/uc/storage");
+    const result = await deleteUcObjects(paths, process.env);
+    if (result.failed > 0) console.error("[actions/workspace] uc blob cleanup incomplete:", result.failed);
+  } catch (error) {
+    console.error("[actions/workspace] uc blob cleanup failed:", error instanceof Error ? error.name : "errore");
+  }
+}
+
 export async function deleteWorkspaceAction(
   workspaceId: string,
   _prev: WorkspaceActionState,
@@ -292,6 +308,7 @@ export async function deleteWorkspaceAction(
       };
     }
     await deleteBlobUrls(result.blobUrls);
+    await deleteUcBlobs(result.ucBlobs);
   } catch (error) {
     console.error("[actions/workspace] deleteWorkspaceAction failed:", error);
     return {

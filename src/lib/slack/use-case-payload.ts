@@ -2,6 +2,9 @@ import type { NewUseCase, SlackUseCaseDraft } from "../db/schema";
 
 type SlackPortfolioKind = "best_practice" | "use_case_ai";
 
+/** `use_cases.source` delle segnalazioni dello Slack intake: solo qui proposedBy è un ID utente Slack. */
+export const SLACK_INTAKE_SOURCE = "slack_proposed";
+
 export function buildUseCaseDataFromSlackDraft(params: {
   draft: SlackUseCaseDraft;
   actingSlackUserId: string;
@@ -16,7 +19,7 @@ export function buildUseCaseDataFromSlackDraft(params: {
     businessCase: params.draft.expectedImpact,
     portfolioKind: kind,
     status: "proposed",
-    source: "slack_proposed",
+    source: SLACK_INTAKE_SOURCE,
     proposedBy: params.actingSlackUserId,
     flowDescription: params.draft.flowDescription,
     humanInTheLoop: params.draft.humanInTheLoop,

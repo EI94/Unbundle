@@ -1,0 +1,13 @@
+# Contenuti riservati del cliente emersi nelle call: non vanno nella cronologia git.
+# Il seed si carica solo nel database; il template si committa solo dopo averlo ripulito dai valori del cliente
+# (la specifica vuole template con sola struttura e testi d'esempio inventati).
+# Modelli generici: nessun nome del cliente in questo file.
+seed-caso-*.json
+template-*.json
+prototipo-*.html
+# La specifica contiene nomi di persone del cliente e fatti di contratto (PIANO §4.4, b24).
+specifica-*.json
+# Piano e prompt di lavoro: contengono nomi del cliente finché non sono ripuliti
+# (DESIGN §7.1 P0-14, §9.1 punto 18). DESIGN.md si può versionare.
+PIANO.md
+PROMPT.md

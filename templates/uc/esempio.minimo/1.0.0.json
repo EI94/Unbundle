@@ -1,0 +1,571 @@
+{
+  "schema": "unbundle.uc-template/1",
+  "key": "esempio.minimo",
+  "version": "1.0.0",
+  "status": "pubblicato",
+  "language": "it",
+  "name": "Esempio · Gestione richieste",
+  "archetype": "decisione_assistita",
+  "confidential": false,
+  "industry": "servizi",
+  "function_area": "assistenza clienti",
+  "description": "Esempio inventato. Per ogni richiesta di assistenza propone a quale team assegnarla e con quale priorità, spiegando il perché. La persona decide. Serve per provare la sezione Casi d'uso: nessun dato è reale.",
+  "vocabularies": {
+    "priority": ["must", "should", "could"],
+    "serves_for": ["baseline", "modello", "backtest", "monitoraggio", "roi"],
+    "privacy_class": ["nessuna", "riservato_azienda", "personale", "personale_equipaggio", "escluso_sanitario"],
+    "availability": ["oggi_export", "con_api", "dopo_a8", "da_chiedere", "da_costruire", "fuori_foundation"],
+    "perimeter": { "in": "in_contratto", "out": "evoluzione" },
+    "levers": ["tempo", "output", "qualita", "nuove_capacita", "decisioni", "costi", "ricavi", "rischio"]
+  },
+  "roles": [
+    { "key": "resp_servizio", "label": "Responsabile del servizio clienti" },
+    { "key": "controllo_gestione", "label": "Controllo di gestione" },
+    { "key": "referente_sistemi", "label": "Referente dei sistemi" },
+    { "key": "approvatore_privacy", "label": "Approvatore della scheda privacy" },
+    { "key": "ai_board", "label": "Comitato AI (decide le evoluzioni)" }
+  ],
+  "sections": [
+    { "key": "descrizione", "title": "Descrizione" },
+    { "key": "mappa", "title": "Mappa" },
+    { "key": "kpi", "title": "KPI" },
+    { "key": "modello_dati", "title": "Modello dati" },
+    { "key": "regole", "title": "Regole" },
+    { "key": "documenti_dataset", "title": "Documenti e dataset" },
+    { "key": "roi", "title": "ROI" },
+    { "key": "avanzamento", "title": "Avanzamento" }
+  ],
+  "blockers": [
+    {
+      "key": "a8",
+      "label": "Scheda privacy approvata per iscritto prima di usare dati personali reali",
+      "scope": { "privacy_classes": ["escluso_sanitario", "personale_equipaggio", "personale"], "availability": ["dopo_a8"], "real_data": true }
+    },
+    { "key": "decisione_board", "label": "Decisione scritta del comitato AI per ogni voce di evoluzione", "scope": { "perimeters": ["evoluzione"] } },
+    { "key": "fuori_foundation", "label": "Voci fuori dal primo rilascio: serve una decisione del comitato AI", "scope": { "availability": ["fuori_foundation"] } },
+    {
+      "key": "accesso_sistema",
+      "label": "Accesso in lettura al sistema delle richieste tramite API",
+      "scope": { "availability": ["con_api"] },
+      "fallback_allowed": "export CSV autorizzato o tabella compilata a mano"
+    },
+    { "key": "costi_art_8_4", "label": "Costi di esercizio autorizzati per iscritto", "scope": {} },
+    { "key": "sanitario", "label": "Dati sanitari: mai", "scope": { "privacy_classes": ["escluso_sanitario"] }, "permanent": true }
+  ],
+  "gates": [
+    { "key": "G1", "label": "Pronto per lo sviluppo", "phase": "modello", "rule": "tutte le voci must, in perimetro, con «modello» tra gli usi: validate, non applicabili approvate o in deroga valida", "approvers": ["ls_lead", "owner_cliente"] },
+    { "key": "G2", "label": "Pronto per il backtest", "phase": "backtest", "rule": "come G1 sulle voci con «backtest» tra gli usi; dataset validati", "approvers": ["ls_lead", "owner_cliente", "approvatore_privacy"] },
+    { "key": "G3", "label": "Pronto per l'esercizio", "phase": "monitoraggio", "rule": "collaudo superato con verbale; voci di monitoraggio verdi", "approvers": ["ls_lead", "owner_cliente"] },
+    { "key": "G4", "label": "Revisione del ROI", "phase": "roi", "rule": "voci con «roi» tra gli usi verdi; misure confermate dall'Owner", "approvers": ["ls_lead", "owner_cliente"] }
+  ],
+  "gate_policy": { "scope": "request_modules", "default_serves_for": ["modello"], "default_perimeter": "in_contratto" },
+  "map": {
+    "kind": "soluzione",
+    "title": "Come funziona la soluzione d'esempio",
+    "nodes": [
+      { "id": "n1", "label": "Richiesta in arrivo", "description": "La richiesta arriva da un canale e diventa una scheda con campi fissi.", "input": ["Email, telefono o chat"], "output": ["richiesta.canale", "richiesta.data_apertura"], "items": ["ent.richiesta", "richiesta.canale", "richiesta.data_apertura", "src.crm.richieste"] },
+      { "id": "n2", "label": "Classificazione", "description": "Si decide la priorità con la regola sulle urgenze.", "input": ["richiesta.canale"], "output": ["richiesta.priorita"], "items": ["richiesta.priorita", "rule.servizio.urgenti_prima", "par.soglia_urgenza_minuti"] },
+      { "id": "n3", "label": "Assegnazione proposta", "description": "Si propone il team, nel rispetto dell'orario di servizio.", "input": ["richiesta.priorita"], "output": ["dv.team_assegnato"], "items": ["dv.team_assegnato", "hc.orario_servizio", "sc.preferenza_canale", "obj.tempo_risposta_minimo"] },
+      { "id": "n4", "label": "Scelta della persona", "description": "Chi coordina il servizio conferma o cambia la proposta.", "input": ["dv.team_assegnato"], "output": ["out.proposta_assegnazione"], "items": ["out.proposta_assegnazione", "unc.picchi_stagionali"] },
+      { "id": "n5", "label": "Misura", "description": "Si misurano tempi e costi per vedere se la soluzione aiuta.", "input": ["richiesta.data_apertura"], "output": ["kpi.servizio.tempo_prima_risposta"], "items": ["kpi.servizio.tempo_prima_risposta", "kpi.servizio.costo_per_richiesta", "f.tempo_risposta_medio", "f.costo_per_richiesta"] },
+      { "id": "n6", "label": "Controlli e documenti", "description": "Controlli di qualità sui dati e procedure di riferimento.", "input": ["src.crm.richieste"], "output": ["dq.data_apertura_presente"], "items": ["dq.data_apertura_presente", "dq.canale_valido", "doc.procedura_assistenza"] }
+    ],
+    "edges": [
+      { "from": "n1", "to": "n2", "label": "richiesta strutturata" },
+      { "from": "n2", "to": "n3", "label": "priorità" },
+      { "from": "n3", "to": "n4", "label": "proposta" },
+      { "from": "n4", "to": "n5", "label": "esito" },
+      { "from": "n1", "to": "n6", "label": "dati grezzi" },
+      { "from": "n6", "to": "n5", "label": "dati controllati" }
+    ]
+  },
+  "items": [
+    {
+      "key": "ent.richiesta", "kind": "entita", "section": "modello_dati",
+      "title": "Richiesta di assistenza",
+      "explanation": "Ogni richiesta che un cliente apre verso il servizio.",
+      "example": "Richiesta R-1 da chat, aperta lunedì alle 9:05 (dato inventato).",
+      "priority": "must", "serves_for": ["modello", "backtest"], "privacy_class": "riservato_azienda",
+      "availability": ["oggi_export"], "perimeter": "in_contratto", "levers": ["tempo", "decisioni"],
+      "links": [
+        { "rel": "usa", "to": "ent.cliente", "cardinality": "N:1" },
+        { "rel": "alimentato_da", "to": "src.crm.richieste" }
+      ],
+      "spec": { "chiave": "richiesta.id", "granularita": "una riga per richiesta", "frequenza": "continua", "fonte_verita": "sistema delle richieste", "dominio": "servizio" }
+    },
+    {
+      "key": "ent.cliente", "kind": "entita", "section": "modello_dati",
+      "title": "Cliente",
+      "explanation": "Chi apre la richiesta. Si usa solo come codice.",
+      "priority": "must", "serves_for": ["modello"], "privacy_class": "riservato_azienda",
+      "availability": ["oggi_export"], "perimeter": "in_contratto",
+      "links": [{ "rel": "alimentato_da", "to": "src.crm.richieste" }],
+      "spec": { "chiave": "cliente.id", "granularita": "una riga per cliente", "dominio": "servizio" }
+    },
+    {
+      "key": "ent.operatore", "kind": "entita", "section": "modello_dati",
+      "title": "Operatore",
+      "explanation": "Chi lavora le richieste. Dati personali: solo dopo la scheda privacy.",
+      "priority": "should", "serves_for": ["modello"], "privacy_class": "personale",
+      "availability": ["dopo_a8"], "perimeter": "in_contratto",
+      "links": [{ "rel": "alimentato_da", "to": "src.hr.turni" }],
+      "spec": { "chiave": "operatore.codice", "dominio": "persone" }
+    },
+    {
+      "key": "richiesta.canale", "kind": "campo", "parent": "ent.richiesta", "section": "modello_dati",
+      "title": "Canale di arrivo",
+      "explanation": "Da dove arriva la richiesta.",
+      "example": "chat",
+      "priority": "must", "serves_for": ["modello", "backtest"], "privacy_class": "nessuna",
+      "availability": ["oggi_export"], "perimeter": "in_contratto", "levers": ["decisioni"],
+      "response": { "type": "scelta", "config": { "options": ["email", "telefono", "chat"] } },
+      "links": [{ "rel": "alimentato_da", "to": "src.crm.richieste" }],
+      "spec": { "tipo_dato": "testo", "obbligatorio": true }
+    },
+    {
+      "key": "richiesta.data_apertura", "kind": "campo", "parent": "ent.richiesta", "section": "modello_dati",
+      "title": "Data e ora di apertura",
+      "explanation": "Quando il cliente ha aperto la richiesta, nel fuso di Roma.",
+      "priority": "must", "serves_for": ["modello", "monitoraggio"], "privacy_class": "nessuna",
+      "availability": ["oggi_export"], "perimeter": "in_contratto", "levers": ["tempo"],
+      "response": { "type": "data_ora", "config": { "tz": "Europe/Rome" } },
+      "links": [{ "rel": "alimentato_da", "to": "src.crm.richieste" }],
+      "spec": { "tipo_dato": "data_ora", "obbligatorio": true }
+    },
+    {
+      "key": "richiesta.priorita", "kind": "campo", "parent": "ent.richiesta", "section": "modello_dati",
+      "title": "Priorità assegnata",
+      "priority": "must", "serves_for": ["modello", "backtest"], "privacy_class": "nessuna",
+      "availability": ["da_costruire"], "perimeter": "in_contratto", "levers": ["decisioni", "qualita"],
+      "response": { "type": "scelta", "config": { "options": ["alta", "media", "bassa"] } },
+      "spec": { "tipo_dato": "testo", "obbligatorio": true }
+    },
+    {
+      "key": "richiesta.tempo_prima_risposta", "kind": "campo", "parent": "ent.richiesta", "section": "modello_dati",
+      "title": "Tempo alla prima risposta",
+      "priority": "should", "serves_for": ["monitoraggio"], "privacy_class": "nessuna",
+      "availability": ["oggi_export"], "perimeter": "in_contratto", "levers": ["tempo"],
+      "response": { "type": "durata", "config": { "unit": "minuti", "min": 0 } },
+      "links": [{ "rel": "alimentato_da", "to": "src.crm.richieste" }],
+      "spec": { "tipo_dato": "durata", "unita": "minuti", "obbligatorio": false }
+    },
+    {
+      "key": "richiesta.id_cliente", "kind": "campo", "parent": "ent.richiesta", "section": "modello_dati",
+      "title": "Codice del cliente",
+      "priority": "must", "serves_for": ["modello"], "privacy_class": "riservato_azienda",
+      "availability": ["oggi_export"], "perimeter": "in_contratto",
+      "response": { "type": "codice", "config": { "ref_entity": "ent.cliente" } },
+      "links": [{ "rel": "alimentato_da", "to": "src.crm.richieste" }],
+      "spec": { "tipo_dato": "riferimento", "obbligatorio": true }
+    },
+    {
+      "key": "cliente.segmento", "kind": "campo", "parent": "ent.cliente", "section": "modello_dati",
+      "title": "Segmento del cliente",
+      "priority": "should", "serves_for": ["modello"], "privacy_class": "riservato_azienda",
+      "availability": ["oggi_export"], "perimeter": "in_contratto", "levers": ["ricavi"],
+      "response": { "type": "scelta", "config": { "options": ["privato", "azienda", "pubblica amministrazione"] } },
+      "spec": { "tipo_dato": "testo", "obbligatorio": false }
+    },
+    {
+      "key": "cliente.email", "kind": "campo", "parent": "ent.cliente", "section": "modello_dati",
+      "title": "Email del cliente",
+      "explanation": "Dato personale: non serve al modello, solo per il contatto.",
+      "priority": "could", "serves_for": ["monitoraggio"], "privacy_class": "personale",
+      "availability": ["dopo_a8"], "perimeter": "in_contratto",
+      "response": { "type": "testo", "config": {} },
+      "spec": { "tipo_dato": "testo", "obbligatorio": false }
+    },
+    {
+      "key": "operatore.turno", "kind": "campo", "parent": "ent.operatore", "section": "modello_dati",
+      "title": "Turno dell'operatore",
+      "priority": "could", "serves_for": ["modello"], "privacy_class": "personale",
+      "availability": ["dopo_a8"], "perimeter": "evoluzione",
+      "notes": { "perimeter": "Evoluzione: serve la decisione del comitato AI." },
+      "response": { "type": "testo", "config": {} },
+      "links": [{ "rel": "alimentato_da", "to": "src.hr.turni" }],
+      "spec": { "tipo_dato": "testo", "obbligatorio": false }
+    },
+    {
+      "key": "operatore.competenze", "kind": "campo", "parent": "ent.operatore", "section": "modello_dati",
+      "title": "Competenze dell'operatore",
+      "priority": "could", "serves_for": ["modello"], "privacy_class": "riservato_azienda",
+      "availability": ["fuori_foundation"], "perimeter": "in_contratto",
+      "response": { "type": "scelta_multipla", "config": { "options": ["fatturazione", "tecnico", "commerciale"] } },
+      "spec": { "tipo_dato": "lista", "obbligatorio": false }
+    },
+    {
+      "key": "operatore.dati_sanitari", "kind": "campo", "parent": "ent.operatore", "section": "modello_dati",
+      "title": "Dati sanitari dell'operatore (esclusi)",
+      "explanation": "Voce presente solo per mostrare il lucchetto permanente: non si raccoglie mai.",
+      "priority": "could", "serves_for": [], "privacy_class": "escluso_sanitario",
+      "perimeter": "in_contratto",
+      "spec": { "tipo_dato": "nessuno", "obbligatorio": false }
+    },
+    {
+      "key": "kpi.servizio.tempo_prima_risposta", "kind": "kpi", "section": "kpi",
+      "title": "Tempo medio alla prima risposta",
+      "explanation": "Quanti minuti passano in media tra l'apertura e la prima risposta.",
+      "why": "È il numero che il cliente nota di più.",
+      "priority": "must", "serves_for": ["modello", "monitoraggio", "roi"], "privacy_class": "riservato_azienda",
+      "availability": ["oggi_export"], "perimeter": "in_contratto", "levers": ["tempo", "qualita"],
+      "owner_role_key": "resp_servizio",
+      "links": [
+        { "rel": "usa", "to": "richiesta.data_apertura" },
+        { "rel": "usa", "to": "richiesta.tempo_prima_risposta" },
+        { "rel": "alimentato_da", "to": "src.crm.richieste" },
+        { "rel": "deriva_da", "to": "f.tempo_risposta_medio" }
+      ],
+      "spec": { "formula": "media dei minuti tra apertura e prima risposta", "unit": "minuti", "direzione": "più basso è meglio", "granularita": "settimana", "dimensioni": ["canale", "priorita"], "baseline": "da misurare", "target": "dopo la baseline" }
+    },
+    {
+      "key": "kpi.servizio.costo_per_richiesta", "kind": "kpi", "section": "kpi",
+      "title": "Costo medio per richiesta",
+      "priority": "should", "serves_for": ["roi"], "privacy_class": "riservato_azienda",
+      "availability": ["da_chiedere"], "perimeter": "in_contratto", "levers": ["costi"],
+      "owner_role_key": "controllo_gestione",
+      "links": [
+        { "rel": "deriva_da", "to": "f.costo_per_richiesta" },
+        { "rel": "usa", "to": "par.costo_orario_operatore" }
+      ],
+      "spec": { "formula": "costo del servizio / richieste lavorate", "unit": "EUR", "direzione": "più basso è meglio", "granularita": "mese", "baseline": "da misurare", "target": "dopo la baseline" }
+    },
+    {
+      "key": "dv.team_assegnato", "kind": "decisione", "section": "modello_dati",
+      "title": "Team a cui assegnare la richiesta",
+      "explanation": "La scelta che il modello propone e la persona conferma.",
+      "priority": "must", "serves_for": ["modello", "backtest"], "privacy_class": "riservato_azienda",
+      "perimeter": "in_contratto", "levers": ["decisioni"],
+      "links": [
+        { "rel": "dipende_da", "to": "richiesta.priorita" },
+        { "rel": "dipende_da", "to": "richiesta.canale" }
+      ],
+      "spec": { "definizione": "uno dei team del servizio", "valori": "primo livello, secondo livello, fatturazione" }
+    },
+    {
+      "key": "par.soglia_urgenza_ore", "kind": "parametro", "section": "modello_dati",
+      "title": "Soglia di urgenza in ore (vecchia versione)",
+      "priority": "could", "serves_for": ["modello"], "privacy_class": "nessuna",
+      "perimeter": "in_contratto",
+      "spec": { "definizione": "ore oltre le quali una richiesta diventa urgente", "unit": "ore" }
+    },
+    {
+      "key": "par.soglia_urgenza_minuti", "kind": "parametro", "section": "modello_dati",
+      "title": "Soglia di urgenza in minuti",
+      "explanation": "Oltre questa attesa la richiesta passa in alta priorità.",
+      "priority": "must", "serves_for": ["modello"], "privacy_class": "nessuna",
+      "perimeter": "in_contratto", "levers": ["qualita"],
+      "links": [
+        { "rel": "sostituisce", "to": "par.soglia_urgenza_ore" },
+        { "rel": "dipende_da", "to": "f.tempo_risposta_medio" }
+      ],
+      "spec": { "definizione": "minuti di attesa", "unit": "minuti", "valori": "da 15 a 240" }
+    },
+    {
+      "key": "par.costo_orario_operatore", "kind": "parametro", "section": "modello_dati",
+      "title": "Costo orario medio di un operatore",
+      "priority": "should", "serves_for": ["roi"], "privacy_class": "riservato_azienda",
+      "perimeter": "in_contratto", "levers": ["costi"],
+      "spec": { "definizione": "costo aziendale medio per ora", "unit": "EUR all'ora" }
+    },
+    {
+      "key": "hc.orario_servizio", "kind": "vincolo_rigido", "section": "modello_dati",
+      "title": "Assegnare solo a team in servizio",
+      "explanation": "Una richiesta non si propone a un team fuori dal suo orario.",
+      "priority": "must", "serves_for": ["modello"], "privacy_class": "nessuna",
+      "perimeter": "in_contratto", "levers": ["rischio"],
+      "links": [{ "rel": "dipende_da", "to": "dv.team_assegnato" }],
+      "spec": { "definizione": "orario di servizio di ogni team" }
+    },
+    {
+      "key": "sc.preferenza_canale", "kind": "vincolo_morbido", "section": "modello_dati",
+      "title": "Rispondere sullo stesso canale, se possibile",
+      "priority": "should", "serves_for": ["modello"], "privacy_class": "nessuna",
+      "perimeter": "in_contratto", "levers": ["qualita"],
+      "links": [{ "rel": "dipende_da", "to": "richiesta.canale" }],
+      "spec": { "definizione": "peso della preferenza", "unit": "punti" }
+    },
+    {
+      "key": "obj.tempo_risposta_minimo", "kind": "obiettivo", "section": "modello_dati",
+      "title": "Ridurre il tempo alla prima risposta",
+      "priority": "must", "serves_for": ["modello"], "privacy_class": "nessuna",
+      "perimeter": "in_contratto", "levers": ["tempo"],
+      "links": [{ "rel": "dipende_da", "to": "kpi.servizio.tempo_prima_risposta" }],
+      "spec": { "definizione": "minimizzare la media dei minuti" }
+    },
+    {
+      "key": "unc.picchi_stagionali", "kind": "incertezza", "section": "modello_dati",
+      "title": "Picchi di richieste nei periodi di saldi",
+      "priority": "should", "serves_for": ["backtest"], "privacy_class": "nessuna",
+      "perimeter": "in_contratto", "levers": ["rischio"],
+      "links": [{ "rel": "dipende_da", "to": "richiesta.data_apertura" }],
+      "spec": { "definizione": "volumi fino al doppio in alcune settimane (stima inventata)" }
+    },
+    {
+      "key": "out.proposta_assegnazione", "kind": "uscita", "section": "modello_dati",
+      "title": "Proposta di assegnazione scritta nel sistema",
+      "explanation": "Scrivere la proposta nel sistema con un clic: è un'evoluzione.",
+      "priority": "could", "serves_for": ["modello"], "privacy_class": "riservato_azienda",
+      "availability": ["da_costruire"], "perimeter": "evoluzione", "levers": ["tempo"],
+      "links": [{ "rel": "dipende_da", "to": "dv.team_assegnato" }],
+      "spec": { "definizione": "testo della proposta con motivazione" }
+    },
+    {
+      "key": "f.tempo_risposta_medio", "kind": "formula", "section": "modello_dati",
+      "title": "Media dei minuti alla prima risposta",
+      "privacy_class": "nessuna",
+      "links": [{ "rel": "usa", "to": "richiesta.tempo_prima_risposta" }],
+      "spec": { "formula": "somma dei minuti / numero di richieste con risposta" }
+    },
+    {
+      "key": "f.costo_per_richiesta", "kind": "formula", "section": "modello_dati",
+      "title": "Costo per richiesta",
+      "privacy_class": "riservato_azienda",
+      "links": [{ "rel": "usa", "to": "par.costo_orario_operatore" }],
+      "spec": { "formula": "ore lavorate × costo orario / richieste lavorate" }
+    },
+    {
+      "key": "rule.servizio.urgenti_prima", "kind": "regola", "section": "regole",
+      "title": "Le richieste urgenti si lavorano prima delle altre",
+      "explanation": "Una richiesta oltre la soglia di urgenza passa davanti alle altre.",
+      "priority": "must", "serves_for": ["modello"], "privacy_class": "nessuna",
+      "perimeter": "in_contratto", "levers": ["qualita"],
+      "owner_role_key": "resp_servizio",
+      "response": { "type": "conferma_regola", "config": { "ask_exceptions": true } },
+      "links": [
+        { "rel": "usa", "to": "par.soglia_urgenza_minuti" },
+        { "rel": "vincola", "to": "dv.team_assegnato" }
+      ],
+      "spec": { "tipo_regola": "rigida", "forma_logica": "se attesa > soglia allora priorità alta", "stato_validazione": "proposta" }
+    },
+    {
+      "key": "rule.normativa.conservazione_dati", "kind": "regola", "section": "regole",
+      "title": "I dati delle richieste si conservano per un periodo definito",
+      "priority": "must", "serves_for": ["modello"], "privacy_class": "nessuna",
+      "perimeter": "in_contratto", "levers": ["rischio"],
+      "owner_role_key": "approvatore_privacy",
+      "response": { "type": "conferma_regola", "config": {} },
+      "links": [{ "rel": "vincola", "to": "ent.cliente" }],
+      "spec": { "tipo_regola": "rigida", "forma_logica": "cancellare dopo il periodo indicato dalla scheda privacy", "stato_validazione": "da validare" }
+    },
+    {
+      "key": "src.crm.richieste", "kind": "fonte", "section": "documenti_dataset",
+      "title": "Export delle richieste degli ultimi 12 mesi",
+      "priority": "must", "serves_for": ["baseline", "backtest"], "privacy_class": "riservato_azienda",
+      "availability": ["oggi_export"], "perimeter": "in_contratto",
+      "owner_role_key": "referente_sistemi",
+      "response": { "type": "dataset", "config": { "accept": ["text/csv"] } },
+      "validations": [{ "key": "dq.data_apertura_presente", "rule": "ogni riga ha una data di apertura" }],
+      "spec": { "periodo": "12 mesi", "formato": "CSV", "metodo": "export dal sistema delle richieste" }
+    },
+    {
+      "key": "src.crm.api_richieste", "kind": "fonte", "section": "documenti_dataset",
+      "title": "Lettura delle richieste tramite API",
+      "priority": "could", "serves_for": ["monitoraggio"], "privacy_class": "riservato_azienda",
+      "availability": ["con_api"], "perimeter": "in_contratto",
+      "owner_role_key": "referente_sistemi",
+      "response": { "type": "collegamento_sistema", "config": { "system": "sistema_richieste", "object": "richieste" } },
+      "spec": { "metodo": "API in sola lettura" }
+    },
+    {
+      "key": "src.hr.turni", "kind": "fonte", "section": "documenti_dataset",
+      "title": "Turni degli operatori",
+      "priority": "could", "serves_for": ["modello"], "privacy_class": "personale",
+      "availability": ["dopo_a8"], "perimeter": "in_contratto",
+      "blocked_by": ["a8"],
+      "response": { "type": "file", "config": {} },
+      "spec": { "periodo": "3 mesi", "formato": "Excel", "forbidden_columns": ["sanitari"] }
+    },
+    {
+      "key": "dq.data_apertura_presente", "kind": "controllo_qualita", "section": "documenti_dataset",
+      "title": "Ogni richiesta ha la data di apertura",
+      "privacy_class": "nessuna",
+      "links": [
+        { "rel": "controlla", "to": "richiesta.data_apertura" },
+        { "rel": "controlla", "to": "src.crm.richieste" }
+      ],
+      "spec": { "controllo": "data di apertura non vuota", "azione": "scartare la riga e contarla", "gravita": "alta" }
+    },
+    {
+      "key": "dq.canale_valido", "kind": "controllo_qualita", "section": "documenti_dataset",
+      "title": "Il canale è uno di quelli previsti",
+      "privacy_class": "nessuna",
+      "links": [{ "rel": "controlla", "to": "richiesta.canale" }],
+      "spec": { "controllo": "canale tra email, telefono e chat", "azione": "segnalare", "gravita": "media" }
+    },
+    {
+      "key": "doc.procedura_assistenza", "kind": "documento", "section": "documenti_dataset",
+      "title": "Procedura del servizio clienti",
+      "explanation": "Il documento che descrive come si lavorano le richieste oggi.",
+      "priority": "should", "serves_for": ["modello"], "privacy_class": "riservato_azienda",
+      "perimeter": "in_contratto",
+      "owner_role_key": "resp_servizio",
+      "response": { "type": "file", "config": {} },
+      "links": [{ "rel": "deriva_da", "to": "rule.servizio.urgenti_prima" }]
+    },
+    {
+      "key": "q.servizio.01", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.servizio.base",
+      "title": "Su 100 richieste, quante arrivano da email, telefono e chat?",
+      "why": "Ci serve un valore di partenza da confrontare con la misura vera.",
+      "example": "Email 50, telefono 30, chat 20 (esempio inventato).",
+      "help": "Va bene anche una stima: indicatelo.",
+      "priority": "must", "privacy_class": "nessuna", "owner_role_key": "resp_servizio",
+      "response": { "type": "tabella", "config": { "columns": [{ "key": "canale", "label": "Canale", "type": "testo" }, { "key": "su_100", "label": "Su 100", "type": "numero" }], "min_rows": 3 } },
+      "links": [{ "rel": "precisa", "to": "richiesta.canale" }]
+    },
+    {
+      "key": "q.servizio.02", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.servizio.base",
+      "title": "Quante richieste arrivano in un mese normale?",
+      "priority": "must", "privacy_class": "nessuna", "owner_role_key": "resp_servizio",
+      "response": { "type": "numero", "config": { "unit": "richieste al mese", "integer": true, "min": 0 } },
+      "links": [{ "rel": "precisa", "to": "kpi.servizio.tempo_prima_risposta" }]
+    },
+    {
+      "key": "q.servizio.03", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.servizio.base",
+      "title": "Le richieste urgenti si lavorano prima delle altre: è così?",
+      "priority": "must", "privacy_class": "nessuna", "owner_role_key": "resp_servizio",
+      "response": { "type": "conferma_regola", "config": { "ask_exceptions": true } },
+      "links": [{ "rel": "precisa", "to": "rule.servizio.urgenti_prima" }]
+    },
+    {
+      "key": "q.servizio.04", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.servizio.base",
+      "title": "In che orario lavora il servizio?",
+      "example": "8:30–18:00 (esempio inventato).",
+      "priority": "must", "privacy_class": "nessuna", "owner_role_key": "resp_servizio",
+      "response": { "type": "intervallo", "config": { "kind": "ora" } },
+      "links": [{ "rel": "precisa", "to": "hc.orario_servizio" }]
+    },
+    {
+      "key": "q.servizio.05", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.servizio.base",
+      "title": "Dopo quanto tempo di attesa una richiesta diventa urgente?",
+      "priority": "should", "privacy_class": "nessuna", "owner_role_key": "resp_servizio",
+      "response": { "type": "durata", "config": { "min": 1 } },
+      "links": [{ "rel": "precisa", "to": "par.soglia_urgenza_minuti" }]
+    },
+    {
+      "key": "q.costi.01", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.costi.base",
+      "title": "Quanto costa in media un'ora di lavoro di un operatore?",
+      "priority": "must", "privacy_class": "riservato_azienda", "owner_role_key": "controllo_gestione",
+      "response": { "type": "valuta", "config": { "currency": "EUR", "per": "ora" } },
+      "links": [{ "rel": "precisa", "to": "par.costo_orario_operatore" }]
+    },
+    {
+      "key": "q.costi.02", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.costi.base",
+      "title": "Che percentuale delle richieste è urgente?",
+      "priority": "must", "privacy_class": "nessuna", "owner_role_key": "controllo_gestione",
+      "response": { "type": "percentuale", "config": { "base": "delle richieste" } },
+      "links": [{ "rel": "precisa", "to": "richiesta.priorita" }]
+    },
+    {
+      "key": "q.costi.03", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.costi.base",
+      "title": "Il costo per richiesta si calcola così: ore lavorate × costo orario / richieste. È giusto?",
+      "priority": "should", "privacy_class": "riservato_azienda", "owner_role_key": "controllo_gestione",
+      "response": { "type": "conferma_formula", "config": {} },
+      "links": [{ "rel": "precisa", "to": "f.costo_per_richiesta" }]
+    },
+    {
+      "key": "q.costi.04", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.costi.base",
+      "title": "Da quando vale il costo orario che ci avete indicato?",
+      "priority": "could", "privacy_class": "nessuna", "owner_role_key": "controllo_gestione",
+      "response": { "type": "data", "config": { "max_date": "today" } },
+      "links": [{ "rel": "precisa", "to": "par.costo_orario_operatore" }]
+    },
+    {
+      "key": "q.sistemi.01", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.sistemi.base",
+      "title": "Il sistema delle richieste permette un export in CSV?",
+      "priority": "must", "privacy_class": "nessuna", "owner_role_key": "referente_sistemi",
+      "response": { "type": "si_no", "config": {} },
+      "links": [{ "rel": "precisa", "to": "src.crm.richieste" }]
+    },
+    {
+      "key": "q.sistemi.02", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.sistemi.base",
+      "title": "Quali di questi campi compaiono nell'export?",
+      "priority": "should", "privacy_class": "nessuna", "owner_role_key": "referente_sistemi",
+      "response": { "type": "scelta_multipla", "config": { "options": ["canale", "data di apertura", "priorità", "codice cliente"] } },
+      "links": [{ "rel": "precisa", "to": "src.crm.richieste" }]
+    },
+    {
+      "key": "q.sistemi.03", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.sistemi.base",
+      "title": "Potete allegare un export di esempio con dati inventati?",
+      "priority": "should", "privacy_class": "riservato_azienda", "owner_role_key": "referente_sistemi",
+      "response": { "type": "file", "config": {} },
+      "links": [{ "rel": "precisa", "to": "src.crm.richieste" }]
+    },
+    {
+      "key": "q.sistemi.04", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.sistemi.base",
+      "title": "Qual è il codice dell'ambiente del sistema (tre lettere)?",
+      "priority": "could", "privacy_class": "nessuna", "owner_role_key": "referente_sistemi",
+      "response": { "type": "codice", "config": { "pattern": "^[A-Z]{3}$" } },
+      "links": [{ "rel": "precisa", "to": "src.crm.api_richieste" }]
+    },
+    {
+      "key": "q.sistemi.05", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.sistemi.base",
+      "title": "Come sono organizzati i turni degli operatori?",
+      "priority": "should", "privacy_class": "personale", "owner_role_key": "referente_sistemi",
+      "blocked_by": ["a8"],
+      "response": { "type": "testo", "config": {} },
+      "links": [{ "rel": "precisa", "to": "src.hr.turni" }]
+    },
+    {
+      "key": "q.sistemi.06", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.sistemi.base",
+      "title": "Quando è stato fatto l'ultimo export completo?",
+      "priority": "could", "privacy_class": "nessuna", "owner_role_key": "referente_sistemi",
+      "response": { "type": "data_ora", "config": { "tz": "Europe/Rome" } },
+      "links": [{ "rel": "precisa", "to": "src.crm.richieste" }]
+    },
+    {
+      "key": "q.sistemi.07", "kind": "domanda", "section": "documenti_dataset", "request_module": "m.sistemi.base",
+      "title": "Ogni quanto si può ripetere l'export?",
+      "priority": "should", "privacy_class": "nessuna", "owner_role_key": "referente_sistemi",
+      "response": { "type": "scelta", "config": { "options": ["ogni giorno", "ogni settimana", "ogni mese"] } },
+      "links": [{ "rel": "precisa", "to": "src.crm.richieste" }]
+    }
+  ],
+  "request_modules": [
+    {
+      "key": "m.servizio.base", "title": "Richieste, canali e regole", "role_key": "resp_servizio",
+      "why": "Per sapere quante richieste arrivano, da dove e come si decide la priorità.",
+      "instructions": "Rispondete con quello che sapete oggi, anche a stima. Niente nomi di clienti o colleghi: se serve un esempio, inventatelo.",
+      "estimated_minutes": 15, "estimated_label": "15 minuti",
+      "items": ["q.servizio.01", "q.servizio.02", "q.servizio.03", "q.servizio.04", "q.servizio.05"]
+    },
+    {
+      "key": "m.costi.base", "title": "Costi del servizio", "role_key": "controllo_gestione",
+      "why": "Per stimare il ROI servono costi orari e percentuali.",
+      "estimated_minutes": 10, "estimated_label": "10 minuti",
+      "items": ["q.costi.01", "q.costi.02", "q.costi.03", "q.costi.04"]
+    },
+    {
+      "key": "m.sistemi.base", "title": "Sistemi ed export", "role_key": "referente_sistemi",
+      "why": "Per capire quali dati si possono leggere e come.",
+      "estimated_minutes": 20, "estimated_label": "20 minuti, più il tempo dell'export",
+      "items": ["q.sistemi.01", "q.sistemi.02", "q.sistemi.03", "q.sistemi.04", "q.sistemi.05", "q.sistemi.06", "q.sistemi.07"]
+    }
+  ],
+  "roi": {
+    "currency": "EUR",
+    "horizon_years": 5,
+    "costs": [
+      { "key": "implementazione", "label": "Quota del progetto attribuita al caso", "value": null, "status": "da definire" },
+      { "key": "verifica_umana", "label": "Tempo di verifica umana delle proposte", "value": null, "status": "dopo la baseline", "kpis": ["kpi.servizio.tempo_prima_risposta"] }
+    ],
+    "benefits": [
+      { "key": "tempo_risparmiato", "lever": "tempo", "formula": "minuti risparmiati per richiesta × richieste all'anno × costo orario / 60", "kpis": ["kpi.servizio.tempo_prima_risposta"], "status": "dopo la baseline" },
+      { "key": "costo_ridotto", "lever": "costi", "formula": "differenza del costo per richiesta × richieste all'anno", "kpis": ["kpi.servizio.costo_per_richiesta"], "status": "da misurare" }
+    ],
+    "notes": "Valori d'esempio inventati: nessun beneficio garantito."
+  },
+  "glossary": [
+    { "term": "Prima risposta", "explanation": "Il primo messaggio del servizio al cliente dopo l'apertura.", "example": "Una risposta in chat dopo 4 minuti." },
+    { "term": "Richiesta urgente", "explanation": "Una richiesta che ha superato la soglia di attesa." },
+    { "term": "Team", "explanation": "Un gruppo di operatori con le stesse competenze." }
+  ],
+  "test_cases": [
+    {
+      "key": "caso.sintetico.01", "kind": "sintetico",
+      "input": "Cliente A, richiesta da chat aperta alle 9:05, attesa di 50 minuti (inventato)",
+      "expected": { "atteso": "priorità alta e proposta al primo livello in servizio, con motivazione", "regole": ["rule.servizio.urgenti_prima", "hc.orario_servizio"] },
+      "covers": ["dv.team_assegnato"],
+      "serve_per": ["backtest", "collaudo"]
+    }
+  ]
+}

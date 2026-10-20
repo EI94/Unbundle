@@ -1,4 +1,4 @@
-import { and, eq, desc, isNotNull, sql, type SQL } from "drizzle-orm";
+import { and, eq, desc, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import { db } from "..";
 import {
   useCases,
@@ -17,11 +17,18 @@ import {
   type ScoringModelRow,
 } from "./scoring-model";
 import { ensureDbSchema } from "../ensure-schema";
+import { assignUseCaseCodeSafely } from "./use-case-codes";
 import {
   isAllowedStatusTransition,
   type UseCaseCategoryValue,
 } from "@/lib/use-case-lifecycle";
 
+/**
+ * Punto comune di creazione degli use case (web, Slack, REST/MCP stdio, AI
+ * Readiness, connettore). Dopo l'inserimento assegna il codice del workspace
+ * (es. TJ-0012) se il connettore è configurato; se l'assegnazione fallisce la
+ * segnalazione resta salvata senza codice.
+ */
 export async function createUseCase(data: NewUseCase) {
   await ensureDbSchema();
   const workspace = await getWorkspaceById(data.workspaceId);
@@ -41,7 +48,44 @@ export async function createUseCase(data: NewUseCase) {
       ...derived,
     })
     .returning();
-  return useCase;
+  const code = await assignUseCaseCodeSafely(useCase.workspaceId, useCase.id);
+  return code ? { ...useCase, code } : useCase;
+}
+
+/**
+ * Creazione idempotente con id deciso prima (servizio condiviso di invio, vedi
+ * `reserved_use_case_id`): se una segnalazione con quell'id esiste già nello stesso
+ * workspace la restituisce senza crearne un'altra (`created: false`, stato attuale
+ * letto dal database). Il codice si assegna una sola volta (assignUseCaseCode non
+ * tocca una segnalazione che ha già un codice).
+ */
+export async function createUseCaseOnce(
+  data: NewUseCase & { id: string }
+): Promise<{ useCase: UseCase; created: boolean }> {
+  await ensureDbSchema();
+  const workspace = await getWorkspaceById(data.workspaceId);
+  const model = await getOrCreateWorkspaceScoringModel(data.workspaceId);
+  const derived = deriveUseCasePortfolioMetrics(data, {
+    model: {
+      impactFlagEnabled: model.impactFlagEnabled,
+      config: model.resolvedConfig,
+    },
+    esgEnabled: workspace?.esgEnabled === true,
+  });
+
+  const [inserted] = await db
+    .insert(useCases)
+    .values({ ...data, ...derived })
+    .onConflictDoNothing({ target: useCases.id })
+    .returning();
+  const useCase = inserted ?? (await getUseCaseById(data.id));
+  if (!useCase || useCase.workspaceId !== data.workspaceId) {
+    throw Object.assign(new Error("Id prenotato della segnalazione non disponibile."), {
+      name: "ReservedUseCaseUnavailable",
+    });
+  }
+  const code = await assignUseCaseCodeSafely(useCase.workspaceId, useCase.id);
+  return { useCase: code ? { ...useCase, code } : useCase, created: Boolean(inserted) };
 }
 
 /**
@@ -77,6 +121,9 @@ export async function createLearningPortfolioUseCase(data: NewUseCase & { id: st
     RETURNING d.workspace_id,d.program_id,d.user_id,d.id
   ) INSERT INTO learning_audit_events(workspace_id,program_id,actor_id,resource_id,event_type)
     SELECT workspace_id,program_id,user_id,id,'idea_promoted' FROM promoted`);
+  // Codice del workspace (connettore): nessun effetto se la proposta non è stata
+  // creata qui, se ha già un codice o se il connettore non è configurato.
+  await assignUseCaseCodeSafely(data.workspaceId, data.id);
 }
 
 export async function getUseCasesByWorkspace(workspaceId: string) {
@@ -246,6 +293,12 @@ export async function updateUseCasePortfolioReviewAndCustomScores(params: {
   reviewedAt: Date;
   workspace?: Workspace | null;
   model?: ScoringModelRow | null;
+  /**
+   * Solo se nessuno l'ha ancora valutata (stessa condizione di isUntouchedUseCase,
+   * controllata nello stesso UPDATE): l'auto-ranking del servizio di invio non
+   * sovrascrive mai una revisione. Senza il flag il comportamento non cambia.
+   */
+  onlyIfUntouched?: boolean;
 }) {
   const existing = await getUseCaseById(params.useCaseId);
   if (!existing || existing.workspaceId !== params.workspaceId) return null;
@@ -276,9 +329,17 @@ export async function updateUseCasePortfolioReviewAndCustomScores(params: {
       reviewedAt: params.reviewedAt,
       updatedAt: new Date(),
     })
-    .where(eq(useCases.id, params.useCaseId))
+    .where(
+      params.onlyIfUntouched
+        ? and(
+            eq(useCases.id, params.useCaseId),
+            eq(useCases.portfolioReviewStatus, "needs_inputs"),
+            isNull(useCases.reviewedAt)
+          )
+        : eq(useCases.id, params.useCaseId)
+    )
     .returning();
-  return row;
+  return row ?? null;
 }
 
 export async function recomputeUseCasePortfolioMetrics(

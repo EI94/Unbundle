@@ -1,0 +1,10 @@
+{
+  "name": "unbundle-organizzazione",
+  "displayName": "Unbundle",
+  "version": "0.1.0",
+  "description": "Proponi casi d'uso AI e best practice dialogando con Claude. La skill segnala-caso-uso guida il dialogo e invia la segnalazione al portafoglio Unbundle con il connettore Unbundle dell'organizzazione.",
+  "author": {
+    "name": "Lateral Space"
+  },
+  "keywords": ["unbundle", "casi-uso", "best-practice", "segnalazioni"]
+}

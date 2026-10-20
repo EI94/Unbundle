@@ -21,6 +21,8 @@ import {
   type WorkspaceMemberRole,
   type WorkspaceCollaboratorRole,
 } from "@/lib/db/queries/workspace-collaboration";
+import { removeUserFromWorkspaceCases, ucMemberTablesPresent } from "@/lib/db/queries/uc-cases";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canManageWorkspaceCollaborators } from "@/lib/workspace-permissions";
 import { roleLabel } from "@/lib/workspace-roles";
@@ -353,6 +355,7 @@ export async function removeWorkspaceMemberAction(
   // di funzionare. Chi ha un account con accesso entra comunque dal login.
   const revokedInvites = await revokeInvitationsCreatedBy({ workspaceId, userId });
   await disablePortfolioShareLinks(workspaceId);
+  const ucNote = await removeFromUseCaseSection({ workspaceId, userId, actorUserId: manager.session.user.id });
 
   revalidatePath(`/dashboard/${workspaceId}/settings`);
   return {
@@ -363,10 +366,29 @@ export async function removeWorkspaceMemberAction(
         : "Accesso rimosso: questa persona non vede più il workspace. ") +
       "I link pubblici al portfolio già condivisi sono stati disattivati" +
       (revokedInvites > 0 ? `, insieme ai link di invito che aveva creato` : "") +
-      (revokedGrants > 0 ? ". Ha perso anche i permessi da formatore sui corsi." : "."),
+      (revokedGrants > 0 ? ". Ha perso anche i permessi da formatore sui corsi." : ".") +
+      ucNote,
     fieldErrors: {},
     data: { userId },
   };
+}
+
+/**
+ * Casi d'uso (PIANO §5.2, §5.3): chi lascia il workspace perde i ruoli nei casi,
+ * i link dei referenti che aveva copiato e le firme in attesa. Solo con la
+ * sezione accesa e le tabelle uc presenti; un errore non ferma la rimozione.
+ */
+async function removeFromUseCaseSection(params: { workspaceId: string; userId: string; actorUserId: string }): Promise<string> {
+  if (process.env.UC_ENABLED !== "true") return "";
+  try {
+    const executor = await getAppUcExecutor();
+    if (!(await ucMemberTablesPresent(executor))) return "";
+    const result = await removeUserFromWorkspaceCases(executor, params);
+    return result.casesWithoutLead.map((c) => ` Caso ${c.code}: ls_lead da indicare.`).join("");
+  } catch (error) {
+    console.error("[uc] rimozione dai casi d'uso non riuscita", error instanceof Error ? error.message : "errore");
+    return " Controlla i ruoli nei casi d'uso: l'aggiornamento non è riuscito.";
+  }
 }
 
 export type AcceptInviteFailure = "invalid" | "revoked" | "expired" | "used" | "email_mismatch" | "email_unverified";

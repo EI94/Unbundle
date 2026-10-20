@@ -1,17 +1,21 @@
 import { anthropic } from "@ai-sdk/anthropic";
-import { generateObject } from "ai";
+import { generateObject, jsonSchema } from "ai";
 import type { UseCase } from "@/lib/db/schema";
 import {
   getOrCreateWorkspaceScoringModel,
   type ScoringModelConfig,
 } from "@/lib/db/queries/scoring-model";
-import { getPortfolioContributionsByWorkspace, getUseCaseById, updateUseCaseCustomScores, updateUseCasePortfolioReview } from "@/lib/db/queries/use-cases";
+import { getPortfolioContributionsByWorkspace, getUseCaseById, updateUseCaseCustomScores, updateUseCasePortfolioReview, updateUseCasePortfolioReviewAndCustomScores } from "@/lib/db/queries/use-cases";
+import { isUntouchedUseCase } from "@/lib/portfolio/review-state";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import {
   buildPortfolioScoreRequest,
   compactPortfolioScoreObject,
+  portfolioRankingCallSettings,
+  resolvePortfolioRankingModel,
   type PortfolioScoreSuggestion,
 } from "@/lib/portfolio/ai-ranking-contract";
+import { logSafeError } from "@/lib/log/safe-error";
 
 export async function generatePortfolioScoresWithAi(params: {
   workspaceName: string;
@@ -27,13 +31,18 @@ export async function generatePortfolioScoresWithAi(params: {
     esgEnabled,
   });
 
+  // Modello configurabile (PORTFOLIO_RANKING_MODEL). Lo schema inviato al modello
+  // usa solo costrutti ammessi dagli output strutturati; la risposta si rivalida
+  // con lo schema zod completo (punteggi interi 1-5, rationale non vuota).
+  const modelId = resolvePortfolioRankingModel();
   const result = await generateObject({
-    model: anthropic("claude-sonnet-4-20250514"),
-    schema: request.schema,
+    model: anthropic(modelId),
+    schema: jsonSchema<Record<string, unknown>>(request.jsonSchema),
     prompt: request.prompt,
+    ...portfolioRankingCallSettings(modelId),
   });
 
-  const object = result.object as {
+  const object = request.schema.parse(result.object) as {
     impact: Record<string, number | null>;
     feasibility: Record<string, number | null>;
     esg?: Record<string, number | null>;
@@ -75,6 +84,13 @@ export async function autoScorePortfolioUseCase(params: {
   useCaseId: string;
   reviewedBy?: string | null;
   noteLabel?: string;
+  /**
+   * Servizio di invio: valuta solo una segnalazione ancora intatta e scrive
+   * punteggi e stato in un solo UPDATE condizionato, così una revisione arrivata
+   * nel frattempo non viene sovrascritta. Ricalibrazione e azioni manuali non lo
+   * passano: per loro nulla cambia.
+   */
+  onlyIfUntouched?: boolean;
 }) {
   const [workspace, modelRow, useCase] = await Promise.all([
     getWorkspaceById(params.workspaceId),
@@ -85,6 +101,7 @@ export async function autoScorePortfolioUseCase(params: {
   if (!workspace || !useCase || useCase.workspaceId !== params.workspaceId) {
     throw new Error("Use case portfolio non trovato per auto-ranking.");
   }
+  if (params.onlyIfUntouched && !isUntouchedUseCase(useCase)) return useCase;
 
   const config = modelRow.resolvedConfig;
   const suggestion = await generatePortfolioScoresWithAi({
@@ -93,6 +110,28 @@ export async function autoScorePortfolioUseCase(params: {
     config,
     esgEnabled: workspace.esgEnabled === true,
   });
+
+  if (params.onlyIfUntouched) {
+    await updateUseCasePortfolioReviewAndCustomScores({
+      useCaseId: useCase.id,
+      workspaceId: params.workspaceId,
+      customScores: suggestion.customScores,
+      portfolioReviewStatus: "in_review",
+      reviewNotes: replaceAiRationale(
+        useCase.reviewNotes,
+        suggestion.rationale,
+        params.noteLabel ?? "Auto-ranking AI"
+      ),
+      reviewedBy: params.reviewedBy ?? useCase.reviewedBy,
+      reviewedAt: new Date(),
+      workspace,
+      model: modelRow,
+      onlyIfUntouched: true,
+    });
+    const current = await getUseCaseById(useCase.id);
+    if (!current) throw new Error("Use case non trovato dopo auto-ranking.");
+    return current;
+  }
 
   await updateUseCaseCustomScores(
     useCase.id,
@@ -137,7 +176,7 @@ export async function recalibrateWorkspacePortfolioWithAi(params: {
       updated.push(row);
     } catch (error) {
       failed += 1;
-      console.error("[portfolio/ai-ranking] recalibrate item failed:", item.id, error);
+      logSafeError("portfolio/ai-ranking", "recalibrate_item_failed", error, { useCaseId: item.id });
     }
   }
 

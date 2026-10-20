@@ -1,0 +1,100 @@
+# Casi d'uso: CI (docs/casi-duso/DESIGN.md §7.1 P0-9).
+#
+# Gira solo su GitHub, dopo un push approvato da Pierpaolo: nessun segreto,
+# nessun database remoto. Il Postgres 16 del servizio imita il harness locale
+# (utente uc_test, database unbundle_uc_test, porta 55449 su 127.0.0.1), così
+# scripts/uc-test/local-neon.cjs lo accetta senza modifiche.
+#
+# Passi: migrazione 0018 allineata al DDL, npm run check (lint, typecheck, test
+# unitari), migrazioni sul database di prova (0018 e le successive due volte:
+# devono essere idempotenti), suite di integrazione uc una alla volta, con
+# database.integration.test.ts per ultima perché rompe e ripara il DDL uc.
+name: Casi d'uso
+
+on:
+  push:
+    branches: [main, "feat/casi-duso", "feat/casi-duso-**"]
+  pull_request:
+    branches: [main, "feat/casi-duso"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uc-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  uc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: uc_test
+          POSTGRES_DB: unbundle_uc_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 127.0.0.1:55449:5432
+        options: >-
+          --health-cmd "pg_isready -U uc_test -d unbundle_uc_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Dipendenze
+        run: npm ci
+
+      - name: Migrazione 0018 generata dal DDL
+        run: node --no-warnings scripts/uc-write-migration.ts --check
+
+      - name: Lint, typecheck e test unitari
+        run: npm run check
+
+      - name: Database di prova
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "55449"
+          PGUSER: uc_test
+          PGDATABASE: unbundle_uc_test
+        run: |
+          set -euo pipefail
+          apply() { psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -q -f "$1"; }
+          for f in $(ls drizzle/[0-9][0-9][0-9][0-9]_*.sql | sort); do
+            name="$(basename "$f")"
+            if [[ "$name" < "0018" ]]; then
+              apply "$f"
+            else
+              # Dalla 0018 in poi due volte: devono essere idempotenti.
+              apply "$f"
+              apply "$f"
+            fi
+            echo "applicata $name"
+          done
+
+      - name: Suite di integrazione, una alla volta
+        env:
+          UC_TEST_DATABASE_URL: postgresql://uc_test@127.0.0.1:55449/unbundle_uc_test
+          UC_TEST_ISOLATED: "true"
+          NODE_OPTIONS: --require=./scripts/uc-test/local-neon.cjs
+        run: |
+          set -euo pipefail
+          for f in src/lib/uc/*.integration.test.ts src/lib/uc/template/*.integration.test.ts; do
+            [ "$(basename "$f")" = "database.integration.test.ts" ] && continue
+            echo "::group::$f"
+            node --no-warnings --test --test-concurrency=1 "$f"
+            echo "::endgroup::"
+          done
+          # Per ultima: rompe e ripara il DDL uc di proposito.
+          node --no-warnings --test --test-concurrency=1 src/lib/uc/database.integration.test.ts

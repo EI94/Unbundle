@@ -115,6 +115,39 @@ test("ogni action che riceve un workspaceId verifica l'accesso a quel workspace"
   );
 });
 
+/**
+ * Casi d'uso (PIANO §1.1, §5.3): ogni server action uc riceve `workspaceId` come
+ * primo argomento e la sua prima istruzione è `requireWorkspaceAccess(workspaceId)`:
+ * i ruoli di caso si aggiungono dopo, mai al posto dell'accesso al workspace.
+ */
+test("le azioni dei casi d'uso verificano il workspace per prima cosa", () => {
+  const files = actionFiles().filter((file) => /^uc-.*\.ts$/.test(file.name));
+  const offenders: string[] = [];
+  let actions = 0;
+  for (const file of files) {
+    const isServerFile = /^\s*["']use server["'];/.test(file.source);
+    if (!isServerFile) {
+      // Gli aiuti condivisi non sono azioni e non devono diventarlo per errore.
+      if (exportedFunctions(file.source).some((fn) => takesWorkspaceId(fn.body))) offenders.push(`${file.name}: aiuto con workspaceId esportato`);
+      continue;
+    }
+    for (const fn of exportedFunctions(file.source)) {
+      actions++;
+      const signature = fn.body.slice(0, fn.body.indexOf("{"));
+      const firstParam = /^\s*\(\s*([A-Za-z_]+)\s*:\s*string/.exec(signature.slice(fn.name.length))?.[1];
+      // Il corpo inizia alla prima graffa a fine riga (i tipi in linea non vanno a capo).
+      const bodyStart = fn.body.search(/\{\n/);
+      const firstStatement = withoutComments(fn.body.slice(bodyStart + 1)).trim().split("\n")[0] ?? "";
+      if (firstParam !== "workspaceId") offenders.push(`${file.name}: ${fn.name} non riceve workspaceId per primo`);
+      else if (!/^const \{[^}]*\} = await requireWorkspaceAccess\(workspaceId\);$/.test(firstStatement)) {
+        offenders.push(`${file.name}: ${fn.name} non chiama requireWorkspaceAccess(workspaceId) per primo`);
+      }
+    }
+  }
+  assert.ok(actions >= 30, "attese almeno 30 azioni uc");
+  assert.deepEqual(offenders, []);
+});
+
 test("requireSession da solo non e' accettato come guardia di workspace", () => {
   // requireSession prova soltanto che qualcuno e' loggato: e' esattamente
   // l'errore che ha lasciato aperte quattro superfici. Non deve finire fra le

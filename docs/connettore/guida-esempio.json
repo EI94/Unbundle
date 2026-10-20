@@ -1,0 +1,147 @@
+{
+  "guideVersion": "2026-10.1",
+  "workspace": {
+    "nome": "Alfa e Beta",
+    "società": ["alfa", "beta", "entrambe"],
+    "esgEnabled": false
+  },
+  "areas": [
+    { "id": "amministrazione", "label": "Amministrazione", "descrizione": "Fatture, pagamenti, contabilità." },
+    { "id": "operazioni", "label": "Operazioni", "descrizione": "Pianificazione e lavoro quotidiano." },
+    { "id": "vendite", "label": "Vendite", "descrizione": "Offerte, clienti, preventivi." },
+    { "id": "persone", "label": "Persone", "descrizione": "Selezione, presenze, formazione." },
+    { "id": "trasversale", "label": "Trasversale", "descrizione": "Riguarda più aree insieme." }
+  ],
+  "tools": [
+    { "id": "foglio_calcolo", "label": "Foglio di calcolo" },
+    { "id": "posta", "label": "Posta elettronica" },
+    { "id": "gestionale", "label": "Gestionale" },
+    { "id": "archivio_documenti", "label": "Archivio documenti" },
+    { "id": "altro", "label": "Altro (scrivere quale in toolsOther)" }
+  ],
+  "contributionKinds": [
+    {
+      "id": "use_case_ai",
+      "label": "Caso d'uso AI",
+      "spiegazione": "Un bisogno o un'idea da realizzare: qualcosa che oggi si fa a mano e che l'AI potrebbe aiutare a fare.",
+      "esempi": ["Riassumere le richieste in arrivo e smistarle", "Preparare la bozza di un'offerta da un modulo"]
+    },
+    {
+      "id": "best_practice",
+      "label": "Best practice",
+      "spiegazione": "Un uso dell'AI che la persona fa già e che funziona, da far conoscere ai colleghi.",
+      "esempi": ["Un prompt che rilegge i verbali e trova le azioni aperte"]
+    }
+  ],
+  "fields": [
+    { "name": "idempotencyKey", "required": true, "min": 8, "max": 128, "help": "Nuova per ogni riepilogo confermato; la stessa se si ripete dopo un errore." },
+    { "name": "confirmedByUser", "required": true, "help": "true solo dopo il sì esplicito al riepilogo." },
+    { "name": "guideVersion", "required": true, "min": 1, "max": 20, "help": "La versione di questa guida." },
+    { "name": "contributionKind", "required": true, "values": ["use_case_ai", "best_practice"], "help": "Vedi contributionKinds." },
+    { "name": "title", "required": true, "min": 5, "max": 120, "help": "5-10 parole, senza nomi né dati: lo vedono i colleghi." },
+    { "name": "area", "required": true, "help": "Un id di areas." },
+    { "name": "company", "required": true, "help": "Un valore di workspace.società." },
+    { "name": "problem", "required": true, "min": 20, "max": 2000, "help": "Come si lavora oggi, chi è coinvolto, dove si perde tempo." },
+    { "name": "flowDescription", "required": true, "min": 20, "max": 3000, "help": "Cosa farebbe o fa già l'AI, con quali strumenti." },
+    { "name": "tools", "required": true, "min": 1, "max": 10, "help": "Id di tools; con «altro» compila toolsOther." },
+    { "name": "toolsOther", "required": false, "max": 200, "help": "Solo con «altro» in tools." },
+    { "name": "frequency", "required": true, "values": ["giornaliera", "settimanale", "mensile", "trimestrale", "una_tantum"], "help": "Vedi frequencies." },
+    { "name": "beneficiaries", "required": true, "min": 1, "max": 50, "help": "Persone che ne avrebbero un vantaggio, al massimo beneficiaryCap." },
+    { "name": "timeSavedMinutesPerRun", "required": false, "min": 0, "max": 1440, "help": "Minuti risparmiati a ogni esecuzione, come li dice la persona." },
+    { "name": "valuePerRunEur", "required": false, "min": 0, "max": 500000, "help": "Solo se la persona dà la cifra e la sua base." },
+    { "name": "qualityGain", "required": false, "help": "Serve almeno una misura tra tempo, euro e qualità." },
+    { "name": "developmentStatus", "required": true, "values": ["idea", "prototipo", "funzionante", "diffuso"], "help": "A che punto è oggi." },
+    { "name": "humanInTheLoop", "required": true, "min": 8, "max": 2000, "help": "Chi controlla o approva il risultato." },
+    { "name": "guardrails", "required": false, "min": 8, "max": 2000, "help": "Obbligatorio per use_case_ai: cosa l'AI non fa, quando si ferma." },
+    { "name": "expectedImpact", "required": true, "min": 10, "max": 2000, "help": "Il vantaggio in parole, senza numeri inventati." },
+    { "name": "dataRequirements", "required": true, "min": 8, "max": 2000, "help": "Tipi di dati e accessi necessari, mai i dati." },
+    { "name": "proposerEstimate", "required": true, "help": "Efficienza, sforzo e semaforo calcolati con la rubrica, con il calcolo scritto." },
+    { "name": "flags", "required": true, "help": "personalData, safetyRelated, outsideFoundation (vedi perimeterRules)." },
+    { "name": "relatedAgent", "required": false, "help": "Un id di agentCatalog, oppure nessuno o non_so." },
+    { "name": "relatedCode", "required": false, "help": "Il codice di una segnalazione simile trovata con la ricerca." },
+    { "name": "relationType", "required": false, "values": ["integra", "simile_ma_diversa"], "help": "Obbligatorio con relatedCode." },
+    { "name": "submittedBy", "required": false, "help": "Con identityMode «dichiarata»: nome di chi propone, email facoltativa." }
+  ],
+  "frequencies": [
+    { "id": "giornaliera", "label": "Ogni giorno lavorativo", "esecuzioniAnno": 220 },
+    { "id": "settimanale", "label": "Ogni settimana", "esecuzioniAnno": 50 },
+    { "id": "mensile", "label": "Ogni mese", "esecuzioniAnno": 12 },
+    { "id": "trimestrale", "label": "Ogni trimestre", "esecuzioniAnno": 4 },
+    { "id": "una_tantum", "label": "Una volta", "esecuzioniAnno": 1 }
+  ],
+  "beneficiaryCap": 50,
+  "rubric": {
+    "calibrazione": "Soglie d'esempio, da confermare con il comitato del workspace.",
+    "efficiency": {
+      "formula": "ore l'anno = minuti per esecuzione / 60 x esecuzioni l'anno x persone",
+      "regola": "Tre criteri alternativi: ore, euro o qualità. Si prende il punteggio più alto.",
+      "livelli": [
+        { "score": 1, "label": "minimo", "oreAnnue": "meno di 40", "euroAnnui": "meno di 1.500 euro", "qualita": "invariata" },
+        { "score": 2, "label": "contenuto", "oreAnnue": "40-150", "euroAnnui": "1.500-15.000 euro", "qualita": "lieve" },
+        { "score": 3, "label": "discreto", "oreAnnue": "150-800", "euroAnnui": "15.000-80.000 euro", "qualita": "sensibile" },
+        { "score": 4, "label": "elevato", "oreAnnue": "800-2.500", "euroAnnui": "80.000-400.000 euro", "qualita": "nettamente_superiore" },
+        { "score": 5, "label": "eccezionale", "oreAnnue": "oltre 2.500", "euroAnnui": "oltre 400.000 euro", "qualita": "non_raggiungibile_a_mano" }
+      ],
+      "note": ["Le persone non superano beneficiaryCap.", "Senza numeri chiedi un dato concreto: non inventare."]
+    },
+    "effort": {
+      "livelli": [
+        { "score": 1, "label": "minimo", "tempo": "pochi giorni", "cosaServe": "un prompt o una skill semplice" },
+        { "score": 2, "label": "contenuto", "tempo": "1-3 settimane", "cosaServe": "strumenti che ci sono già" },
+        { "score": 3, "label": "discreto", "tempo": "1-2 mesi", "cosaServe": "uno sviluppo leggero o un agente con strumenti" },
+        { "score": 4, "label": "elevato", "tempo": "2-6 mesi", "cosaServe": "più integrazioni e dati da preparare" },
+        { "score": 5, "label": "molto elevato", "tempo": "oltre 6 mesi", "cosaServe": "un sistema dedicato" }
+      ],
+      "note": ["Ciò che richiede un'integrazione non ancora disponibile parte da 3."]
+    },
+    "impactFlag": {
+      "checklist": [
+        { "ambito": "persone", "voci": ["Sostituisce il lavoro centrale di qualcuno.", "Tocca il rapporto con i clienti."] },
+        { "ambito": "dati", "voci": ["Espone dati riservati dei clienti."] }
+      ],
+      "logica": [
+        { "value": "verde", "quando": "Nessun rischio." },
+        { "value": "giallo", "quando": "Rischi possibili." },
+        { "value": "rosso", "quando": "Rischi certi e concreti." }
+      ]
+    }
+  },
+  "privacyRules": [
+    "Mai dati sanitari.",
+    "Nessun nome di colleghi o clienti: usa ruoli o esempi inventati.",
+    "Titolo e stato di ogni proposta sono visibili ai colleghi: il titolo va scritto senza nomi né dati."
+  ],
+  "perimeterRules": ["Ciò che tocca la sicurezza sul lavoro è fuori perimetro: flags.outsideFoundation true."],
+  "agentCatalog": [
+    {
+      "id": "atlante",
+      "nome": "ATLANTE",
+      "sistema": "Sistema Alfa",
+      "cosaFa": "Prepara bozze di risposta",
+      "keywords": ["bozze di risposta", "email dei clienti", "riconciliazione"]
+    },
+    {
+      "id": "boreale",
+      "nome": "BOREALE",
+      "sistema": "Sistema Beta",
+      "cosaFa": "Controlla le scadenze dei documenti",
+      "keywords": ["scadenze", "documenti in scadenza", "promemoria"]
+    }
+  ],
+  "statusLegend": [
+    { "code": "RICEVUTA", "label": "Ricevuta", "significato": "Salvata; la prima valutazione automatica non è finita." },
+    { "code": "IN_VALUTAZIONE", "label": "In valutazione", "significato": "Lateral Space la sta esaminando." },
+    { "code": "POSSIBILE_DOPPIONE", "label": "In valutazione (possibile doppione di XX-0000)", "significato": "Somiglia a una segnalazione esistente." },
+    { "code": "SERVONO_INFORMAZIONI", "label": "Servono informazioni da te", "significato": "Manca qualcosa: la nota pubblica dice cosa." },
+    { "code": "VALUTATA", "label": "Valutata, in attesa di decisione", "significato": "Ha i punteggi; decide il comitato." },
+    { "code": "APPROVATA", "label": "Approvata", "significato": "Scelta per lo sviluppo o da diffondere." },
+    { "code": "AVVIATA_COME_CASO", "label": "Avviata come caso d'uso", "significato": "È diventata un caso d'uso strutturato." },
+    { "code": "IN_SVILUPPO", "label": "In sviluppo", "significato": "Qualcuno ci sta lavorando." },
+    { "code": "REALIZZATA", "label": "Realizzata", "significato": "Disponibile per chi ne beneficia." },
+    { "code": "NON_AVVIATA", "label": "Non avviata per ora", "significato": "Non entra nel piano attuale: la nota pubblica dice perché." },
+    { "code": "DOPPIONE", "label": "Unita a XX-0000", "significato": "Era la stessa cosa di un'altra segnalazione." },
+    { "code": "ARCHIVIATA", "label": "Archiviata", "significato": "Chiusa senza seguito." }
+  ],
+  "dialogProtocol": "1. Ricava dalla conversazione tutto quello che puoi. 2. Al massimo due giri di domande, in un solo messaggio ciascuno; sul tempo una sola domanda: quanto tempo fa risparmiare ogni volta. 3. Cerca le proposte simili con 3-6 parole chiave e chiedi se è la stessa cosa, un'integrazione o un'idea diversa. 4. Calcola efficienza, sforzo e semaforo con la rubrica, scrivendo il calcolo. 5. Mostra il riepilogo e chiedi «Confermi l'invio?»; invia solo dopo un sì. 6. Comunica codice e stato.",
+  "summaryTemplate": "Titolo: …\nTipo: …  A che punto è: …\nArea: …  Società: …\nCome si fa oggi: …\nCosa farebbe l'AI: …\nStrumenti: …\nFrequenza: …  Persone: …\nEfficienza: … (calcolo)\nSforzo: … (motivo)\nSemaforo: … (motivo)\nChi controlla: …\nControlli e limiti: …\nConfermi l'invio?"
+}
