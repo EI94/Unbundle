@@ -1,4 +1,5 @@
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { notFound } from "next/navigation";
 import { getUseCaseById, getUseCaseKRLinks } from "@/lib/db/queries/use-cases";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,12 +106,15 @@ export default async function UseCaseDetailPage({
         <p className="mt-2 text-muted-foreground">{useCase.description}</p>
       </div>
 
-      <UseCasePortfolioActions
-        workspaceId={workspaceId}
-        useCaseId={useCaseId}
-        initialStatus={useCase.status}
-        initialCategory={useCase.category}
-      />
+      {/* Stato e quadrante li cambia solo chi valuta: le action rifiutano gli altri ruoli. */}
+      {canReviewWorkspacePortfolio(access.role) && (
+        <UseCasePortfolioActions
+          workspaceId={workspaceId}
+          useCaseId={useCaseId}
+          initialStatus={useCase.status}
+          initialCategory={useCase.category}
+        />
+      )}
 
       {caseLink?.existing ? (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">

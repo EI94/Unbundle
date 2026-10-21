@@ -5,6 +5,7 @@ import { roleLabel } from "@/lib/workspace-roles";
 import { getPortfolioContributionsByWorkspace } from "@/lib/db/queries/use-cases";
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
 import { getPortfolioParticipation } from "@/lib/db/queries/portfolio-participation";
+import { toPortfolioClientItems } from "@/lib/portfolio/client-items";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RankingMatrix } from "@/components/portfolio/ranking-matrix";
@@ -39,6 +40,8 @@ export default async function PortfolioPage({
     ? contributions.find(contribution => contribution.id === sp.created
       && contribution.source === "learning" && contribution.proposedBy === session.user.id)
     : undefined;
+  // Al browser vanno solo le righe ridotte: chi propone e l'intake restano sul server.
+  const items = toPortfolioClientItems(contributions, { canReview });
   const reviewStatusLabels: Record<string, string> = {
     needs_inputs: "Dati mancanti", in_review: "In valutazione", scored: "Valutato", archived: "Archiviato",
   };
@@ -123,7 +126,7 @@ export default async function PortfolioPage({
           <RankingMatrix
             workspaceId={workspaceId}
             teamName={teamName}
-            items={contributions}
+            items={items}
             thresholds={model.resolvedConfig.thresholds}
             config={model.resolvedConfig}
             esgEnabled={esgEnabled}
@@ -131,7 +134,7 @@ export default async function PortfolioPage({
           />
           <WavePlanner
             workspaceId={workspaceId}
-            items={contributions}
+            items={items}
             config={model.resolvedConfig}
             esgEnabled={esgEnabled}
           />

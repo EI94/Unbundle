@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { GanttChart } from "@/components/dashboard/gantt-chart";
+import { toGanttUseCases } from "@/lib/portfolio/use-case-client-rows";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -97,7 +98,7 @@ export default async function PlanPage({
                 <CardTitle>Piano di Sequencing a 6 Mesi</CardTitle>
               </CardHeader>
               <CardContent>
-                <GanttChart useCases={useCases} />
+                <GanttChart useCases={toGanttUseCases(useCases)} />
               </CardContent>
             </Card>
           </TabsContent>

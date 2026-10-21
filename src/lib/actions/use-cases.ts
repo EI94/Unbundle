@@ -10,6 +10,10 @@ import {
   updateUseCaseWaveCategory,
 } from "@/lib/db/queries/use-cases";
 import type { UseCase } from "@/lib/db/schema";
+import {
+  toUseCaseLifecycleState,
+  type UseCaseLifecycleState,
+} from "@/lib/portfolio/use-case-client-rows";
 import type { UseCaseCategoryValue } from "@/lib/use-case-lifecycle";
 import { db } from "@/lib/db";
 import { organizations, workspaces as workspacesTable } from "@/lib/db/schema";
@@ -116,7 +120,7 @@ export async function setUseCaseStatusAction(
   workspaceId: string,
   useCaseId: string,
   nextStatus: UseCase["status"]
-) {
+): Promise<{ useCase: UseCaseLifecycleState }> {
   const session = await requireSession();
 
   const access = await getCollaboratorAccess(session.user.id, workspaceId);
@@ -130,14 +134,15 @@ export async function setUseCaseStatusAction(
 
   revalidatePath(`/dashboard/${workspaceId}/use-cases`);
   revalidatePath(`/dashboard/${workspaceId}/use-cases/${useCaseId}`);
-  return { useCase: result.useCase };
+  // Solo stato e quadrante: la riga intera porterebbe al browser chi propone e l'intake.
+  return { useCase: toUseCaseLifecycleState(result.useCase) };
 }
 
 export async function setUseCaseWaveCategoryAction(
   workspaceId: string,
   useCaseId: string,
   category: UseCaseCategoryValue
-) {
+): Promise<{ useCase: UseCaseLifecycleState }> {
   const session = await requireSession();
 
   const access = await getCollaboratorAccess(session.user.id, workspaceId);
@@ -155,5 +160,6 @@ export async function setUseCaseWaveCategoryAction(
 
   revalidatePath(`/dashboard/${workspaceId}/use-cases`);
   revalidatePath(`/dashboard/${workspaceId}/use-cases/${useCaseId}`);
-  return { useCase: result.useCase };
+  // Solo stato e quadrante: la riga intera porterebbe al browser chi propone e l'intake.
+  return { useCase: toUseCaseLifecycleState(result.useCase) };
 }

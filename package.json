@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:portfolio": "node --no-warnings --test src/lib/db/use-case-scoring.test.ts src/lib/portfolio/ai-ranking-contract.test.ts src/lib/portfolio/matrix-state.test.ts src/lib/portfolio/share-link.test.ts src/lib/portfolio/participation.test.ts",
+    "test:portfolio": "node --no-warnings --test src/lib/db/use-case-scoring.test.ts src/lib/portfolio/ai-ranking-contract.test.ts src/lib/portfolio/matrix-state.test.ts src/lib/portfolio/share-link.test.ts src/lib/portfolio/participation.test.ts src/lib/portfolio/client-items.test.ts src/lib/portfolio/use-case-client-rows.test.ts",
     "test:mcp": "node --no-warnings --test src/lib/portfolio/external-submission.test.ts src/lib/integrations/claude-onboarding.test.ts mcp/unbundle-portfolio-server.test.mjs",
     "test:slack": "node --no-warnings --test src/lib/slack/use-case-agent.test.ts",
     "test:workspace-collaboration": "node --no-warnings --test src/lib/db/queries/workspace-collaboration.test.ts src/lib/workspace-roles.test.ts src/lib/firebase/auth-errors.test.ts",

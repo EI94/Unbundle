@@ -11,7 +11,7 @@ import {
   ReferenceLine,
   Label,
 } from "recharts";
-import type { UseCase } from "@/lib/db/schema";
+import type { UseCaseMatrixPoint } from "@/lib/portfolio/use-case-client-rows";
 
 const categoryColors: Record<string, string> = {
   quick_win: "#22c55e",
@@ -21,7 +21,7 @@ const categoryColors: Record<string, string> = {
 };
 
 interface UseCaseMatrixProps {
-  useCases: UseCase[];
+  useCases: UseCaseMatrixPoint[];
   onSelect?: (id: string) => void;
 }
 

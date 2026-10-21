@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { updateUseCaseStatus } from "@/lib/db/queries/use-cases";
 import { patchUseCaseStatusBodySchema } from "@/lib/api/use-case-status-wave-schema";
+import { toUseCaseApiRow } from "@/lib/portfolio/use-case-client-rows";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
@@ -45,5 +46,5 @@ export async function PATCH(
     return Response.json({ error: result.error }, { status: 400 });
   }
 
-  return Response.json({ useCase: result.useCase });
+  return Response.json({ useCase: toUseCaseApiRow(result.useCase) });
 }

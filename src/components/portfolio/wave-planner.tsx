@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import type { UseCase } from "@/lib/db/schema";
+import type { PortfolioItem } from "@/lib/portfolio/client-items";
 import type { ScoringModelConfig } from "@/lib/db/queries/scoring-model";
 import { buildPortfolioWavePlan } from "@/lib/portfolio/planning";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +41,8 @@ export function WavePlanner({
   esgEnabled,
 }: {
   workspaceId: string;
-  items: UseCase[];
+  /** Righe ridotte di `client-items.ts`, mai la riga `use_cases` intera. */
+  items: PortfolioItem[];
   config: ScoringModelConfig;
   esgEnabled: boolean;
 }) {

@@ -1,12 +1,20 @@
 import { addMonths, endOfMonth, format } from "date-fns";
 import type { UseCase } from "@/lib/db/schema";
 import type { ScoringModelConfig } from "@/lib/db/queries/scoring-model";
-import { readUseCaseRawKpiScore } from "@/lib/db/use-case-scoring";
+import { readUseCaseRawKpiScore, type ScoreSource } from "@/lib/db/use-case-scoring";
+import { isWavePlanCandidate } from "@/lib/portfolio/client-items";
 
 export type SustainabilityBand = "green" | "yellow" | "red" | "neutral";
 
-export type PortfolioWaveItem = {
-  useCase: UseCase;
+/**
+ * Ciò che il piano legge da un contributo. Il server (export) passa la riga intera,
+ * la pagina passa la riga ridotta di `client-items.ts`: il piano non ha bisogno d'altro.
+ */
+export type WavePlanSource = ScoreSource &
+  Pick<UseCase, "portfolioKind" | "portfolioReviewStatus" | "overallScore">;
+
+export type PortfolioWaveItem<T extends WavePlanSource = UseCase> = {
+  useCase: T;
   efficiencyScore: number;
   profitabilityScore: number;
   effortScore: number;
@@ -16,7 +24,7 @@ export type PortfolioWaveItem = {
   priorityScore: number;
 };
 
-export type PortfolioWave = {
+export type PortfolioWave<T extends WavePlanSource = UseCase> = {
   id: string;
   index: number;
   label: string;
@@ -28,7 +36,7 @@ export type PortfolioWave = {
   budgetUsed: number;
   remainingBudget: number;
   avgSustainabilityScore: number | null;
-  items: PortfolioWaveItem[];
+  items: PortfolioWaveItem<T>[];
   isOverBudget: boolean;
 };
 
@@ -42,7 +50,7 @@ function firstKpiId(
 }
 
 function readPreferredScore(
-  useCase: UseCase,
+  useCase: ScoreSource,
   config: ScoringModelConfig,
   dimension: "impact" | "feasibility" | "esg",
   preferredIds: string[]
@@ -69,11 +77,11 @@ export function estimateImplementationCost(effortScore: number) {
   return 10_000;
 }
 
-export function buildWaveCandidate(
-  useCase: UseCase,
+export function buildWaveCandidate<T extends WavePlanSource>(
+  useCase: T,
   config: ScoringModelConfig,
   esgEnabled: boolean
-): PortfolioWaveItem {
+): PortfolioWaveItem<T> {
   const efficiencyScore = readPreferredScore(useCase, config, "impact", [
     "efficiency",
     "time",
@@ -117,8 +125,8 @@ export function buildWaveCandidate(
   };
 }
 
-export function buildPortfolioWavePlan(params: {
-  items: UseCase[];
+export function buildPortfolioWavePlan<T extends WavePlanSource>(params: {
+  items: readonly T[];
   config: ScoringModelConfig;
   esgEnabled: boolean;
   waveBudget: number;
@@ -127,13 +135,7 @@ export function buildPortfolioWavePlan(params: {
 }) {
   const startDate = params.startDate ?? new Date();
   const eligible = params.items
-    .filter(
-      (item) =>
-        !!item.portfolioKind &&
-        item.portfolioReviewStatus !== "archived" &&
-        typeof item.overallScore === "number" &&
-        item.overallScore > 0
-    )
+    .filter(isWavePlanCandidate)
     .map((item) => buildWaveCandidate(item, params.config, params.esgEnabled))
     .sort((a, b) => {
       if (b.priorityScore !== a.priorityScore) {
@@ -142,7 +144,7 @@ export function buildPortfolioWavePlan(params: {
       return a.estimatedCost - b.estimatedCost;
     });
 
-  const waves: PortfolioWave[] = [];
+  const waves: PortfolioWave<T>[] = [];
 
   for (const candidate of eligible) {
     let targetWave =

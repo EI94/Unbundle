@@ -1,7 +1,10 @@
 import { auth } from "@/lib/auth";
 import { getUseCaseById } from "@/lib/db/queries/use-cases";
+import { toUseCaseApiRow } from "@/lib/portfolio/use-case-client-rows";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
+/** Dettaglio di uno use case, solo per chi valuta, con l'allowlist di `toUseCaseApiRow`. */
 export async function GET(
   _req: Request,
   {
@@ -18,11 +21,14 @@ export async function GET(
   if (!access) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const useCase = await getUseCaseById(useCaseId);
   if (!useCase || useCase.workspaceId !== workspaceId) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  return Response.json({ useCase });
+  return Response.json({ useCase: toUseCaseApiRow(useCase) });
 }

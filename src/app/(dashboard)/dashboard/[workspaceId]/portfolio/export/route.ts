@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { getPortfolioContributionsByWorkspace } from "@/lib/db/queries/use-cases";
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
+import { isHiddenFromColleagues } from "@/lib/portfolio/client-items";
 import {
   buildPortfolioWavePlan,
   buildWaveCandidate,
@@ -55,10 +57,14 @@ export async function GET(
     Math.min(12, Number(url.searchParams.get("waveDurationMonths") ?? "3") || 3)
   );
 
-  const [model, contributions] = await Promise.all([
+  const [model, allContributions] = await Promise.all([
     getOrCreateWorkspaceScoringModel(workspaceId),
     getPortfolioContributionsByWorkspace(workspaceId),
   ]);
+  // Come sulla pagina: chi non valuta non riceve le proposte nascoste ai colleghi.
+  const contributions = canReviewWorkspacePortfolio(access.role)
+    ? allContributions
+    : allContributions.filter((contribution) => !isHiddenFromColleagues(contribution));
   const esgEnabled = workspace.esgEnabled === true;
   const plan = buildPortfolioWavePlan({
     items: contributions,

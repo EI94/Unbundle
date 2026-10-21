@@ -1,6 +1,6 @@
 "use client";
 
-import type { UseCase } from "@/lib/db/schema";
+import type { GanttUseCase } from "@/lib/portfolio/use-case-client-rows";
 
 const categoryColors: Record<string, string> = {
   quick_win: "bg-green-500",
@@ -27,7 +27,7 @@ interface GanttItem {
   score: number;
 }
 
-function toGanttItem(uc: UseCase, index: number): GanttItem {
+function toGanttItem(uc: GanttUseCase, index: number): GanttItem {
   let startMonth: number;
   let durationMonths: number;
 
@@ -59,7 +59,7 @@ function toGanttItem(uc: UseCase, index: number): GanttItem {
   };
 }
 
-export function GanttChart({ useCases }: { useCases: UseCase[] }) {
+export function GanttChart({ useCases }: { useCases: GanttUseCase[] }) {
   const sorted = [...useCases].sort(
     (a, b) => (a.sequenceOrder ?? 99) - (b.sequenceOrder ?? 99)
   );

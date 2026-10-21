@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { updateUseCaseScores } from "@/lib/db/queries/use-cases";
 import { patchUseCaseScoresBodySchema } from "@/lib/api/use-case-scores-schema";
+import { toUseCaseApiRow } from "@/lib/portfolio/use-case-client-rows";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
@@ -52,5 +53,5 @@ export async function PATCH(
     return Response.json({ error: "Use case non trovato" }, { status: 404 });
   }
 
-  return Response.json({ useCase: updated });
+  return Response.json({ useCase: toUseCaseApiRow(updated) });
 }

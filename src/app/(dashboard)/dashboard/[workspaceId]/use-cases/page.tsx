@@ -6,6 +6,7 @@ import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { UseCaseMatrix } from "@/components/dashboard/use-case-matrix";
+import { toUseCaseMatrixPoints } from "@/lib/portfolio/use-case-client-rows";
 import { GenerateUseCasesButton } from "@/components/dashboard/generate-use-cases-button";
 import { ClassifyButton } from "@/components/dashboard/classify-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -150,7 +151,7 @@ export default async function UseCasesPage({
                     );
                   })}
                 </div>
-                <UseCaseMatrix useCases={useCases} />
+                <UseCaseMatrix useCases={toUseCaseMatrixPoints(useCases)} />
               </CardContent>
             </Card>
           </TabsContent>

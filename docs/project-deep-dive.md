@@ -484,11 +484,11 @@ L'analisi competitiva viene generata on demand e mostrata in locale nel componen
 - `src/app/api/slack/webhooks/route.ts` - webhook principale Slack.
 - `src/app/api/slack/interactivity/route.ts` - gestisce pulsanti Block Kit Slack.
 - `src/app/api/workspaces/[workspaceId]/sidebar-data/route.ts` - alimenta sidebar discovery con dati riepilogativi.
-- `src/app/api/workspaces/[workspaceId]/use-cases/route.ts` - GET use cases workspace.
-- `src/app/api/workspaces/[workspaceId]/use-cases/[useCaseId]/route.ts` - GET dettaglio use case.
-- `src/app/api/workspaces/[workspaceId]/use-cases/[useCaseId]/status/route.ts` - PATCH stato lifecycle.
-- `src/app/api/workspaces/[workspaceId]/use-cases/[useCaseId]/wave/route.ts` - PATCH categoria/quadrante manuale.
-- `src/app/api/workspaces/[workspaceId]/use-cases/[useCaseId]/scores/route.ts` - PATCH score legacy e ricalcolo metriche.
+- `src/app/api/workspaces/[workspaceId]/use-cases/route.ts` - GET use cases workspace (solo chi valuta; righe da `toUseCaseApiRow`, senza proponente, `reviewedBy` e intake).
+- `src/app/api/workspaces/[workspaceId]/use-cases/[useCaseId]/route.ts` - GET dettaglio use case (stesse regole dell'elenco).
+- `src/app/api/workspaces/[workspaceId]/use-cases/[useCaseId]/status/route.ts` - PATCH stato lifecycle (solo chi valuta; risponde con la riga di `toUseCaseApiRow`, come le GET).
+- `src/app/api/workspaces/[workspaceId]/use-cases/[useCaseId]/wave/route.ts` - PATCH categoria/quadrante manuale (solo chi valuta; stessa riga di `toUseCaseApiRow`).
+- `src/app/api/workspaces/[workspaceId]/use-cases/[useCaseId]/scores/route.ts` - PATCH score legacy e ricalcolo metriche (solo chi valuta; stessa riga di `toUseCaseApiRow`).
 
 ## 11.7 `src/components/agent/`
 
@@ -586,7 +586,7 @@ Questi file sono primitive UI generiche, quasi tutte in stile shadcn/base-nova. 
 - `src/lib/actions/simulation.ts` - genera simulazioni e le persiste.
 - `src/lib/actions/slack-settings.ts` - salva canale admin Slack.
 - `src/lib/actions/strategy.ts` - crea goal e suggerisce OKR.
-- `src/lib/actions/use-cases.ts` - genera use case, toggle ESG, cambia stato/categoria.
+- `src/lib/actions/use-cases.ts` - genera use case, toggle ESG, cambia stato/categoria (solo chi valuta; rispondono con `toUseCaseLifecycleState`: `id`, `status`, `category`).
 - `src/lib/actions/value-map.ts` - genera posizionamento Wardley map.
 - `src/lib/actions/workspace.ts` - crea workspace e organizzazione.
 

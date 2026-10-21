@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { UseCase } from "@/lib/db/schema";
+import {
+  isPlacedOnMatrix,
+  type PortfolioItem,
+  type PortfolioReviewerItem,
+} from "@/lib/portfolio/client-items";
 import type { ScoringModelConfig } from "@/lib/db/queries/scoring-model";
-import { readUseCaseRawKpiScore } from "@/lib/db/use-case-scoring";
+import { readUseCaseRawKpiScore, type ScoreSource } from "@/lib/db/use-case-scoring";
 import { isMonetaryKpi } from "@/lib/portfolio/ai-ranking-contract";
 import { reconcileScoreOverridesWithServerItems } from "@/lib/portfolio/matrix-state";
 import { ReviewForm } from "@/components/portfolio/review-form";
@@ -19,39 +23,25 @@ import {
 } from "@/components/ui/dialog";
 import { RotateCcw } from "lucide-react";
 
-type MatrixItem = Pick<
-  UseCase,
-  | "id"
-  | "title"
-  | "description"
-  | "businessCase"
-  | "flowDescription"
-  | "humanInTheLoop"
-  | "guardrails"
-  | "dataRequirements"
-  | "sustainabilityImpact"
-  | "impactEconomic"
-  | "impactTime"
-  | "impactQuality"
-  | "impactCoordination"
-  | "impactSocial"
-  | "feasibilityData"
-  | "feasibilityWorkflow"
-  | "feasibilityRisk"
-  | "feasibilityTech"
-  | "feasibilityTeam"
-  | "esgEnvironmental"
-  | "esgSocial"
-  | "esgGovernance"
-  | "overallImpactScore"
-  | "overallFeasibilityScore"
-  | "overallEsgScore"
-  | "overallScore"
-  | "portfolioKind"
-  | "portfolioReviewStatus"
-  | "customScores"
-  | "reviewNotes"
-  | "updatedAt"
+/**
+ * Righe ridotte di `client-items.ts`: mai la riga `use_cases` intera (chi propone e
+ * l'intake restano sul server). `reviewNotes` e `updatedAt` ci sono solo per chi valuta.
+ */
+type MatrixItem = PortfolioItem;
+
+/** Ciò che un salvataggio della review aggiorna subito sul punto, in attesa del server. */
+type ScoreOverride = Partial<
+  Pick<
+    PortfolioReviewerItem,
+    | "customScores"
+    | "portfolioReviewStatus"
+    | "reviewNotes"
+    | "overallImpactScore"
+    | "overallFeasibilityScore"
+    | "overallEsgScore"
+    | "overallScore"
+    | "updatedAt"
+  >
 >;
 
 type DragState = {
@@ -118,7 +108,7 @@ function getSustainabilityBand(
 }
 
 function buildReviewInitialScores(
-  item: MatrixItem,
+  item: ScoreSource,
   config: ScoringModelConfig,
   esgEnabled: boolean
 ) {
@@ -178,7 +168,7 @@ export function RankingMatrix({
   const [dragOverrides, setDragOverrides] = useState<Record<string, { x: number; y: number }>>(
     {}
   );
-  const [scoreOverrides, setScoreOverrides] = useState<Record<string, Partial<MatrixItem>>>(
+  const [scoreOverrides, setScoreOverrides] = useState<Record<string, ScoreOverride>>(
     {}
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -215,12 +205,7 @@ export function RankingMatrix({
   }));
 
   const positioned = renderItems
-    .filter(
-      (item) =>
-        typeof item.overallImpactScore === "number" &&
-        typeof item.overallFeasibilityScore === "number" &&
-        (item.overallImpactScore !== 0 || item.overallFeasibilityScore !== 0)
-    )
+    .filter(isPlacedOnMatrix)
     .map((item) => {
       const override = dragOverrides[item.id];
       const baseX = toX(item.overallFeasibilityScore ?? 0);
@@ -244,7 +229,7 @@ export function RankingMatrix({
       ...prev,
       [data.useCaseId]: {
         customScores: data.customScores,
-        portfolioReviewStatus: data.portfolioReviewStatus as MatrixItem["portfolioReviewStatus"],
+        portfolioReviewStatus: data.portfolioReviewStatus as ScoreOverride["portfolioReviewStatus"],
         reviewNotes: data.reviewNotes,
         overallImpactScore: data.overallImpactScore,
         overallFeasibilityScore: data.overallFeasibilityScore,
