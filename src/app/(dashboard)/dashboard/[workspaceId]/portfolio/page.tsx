@@ -4,11 +4,13 @@ import { canManageWorkspaceSettings, canReviewWorkspacePortfolio } from "@/lib/w
 import { roleLabel } from "@/lib/workspace-roles";
 import { getPortfolioContributionsByWorkspace } from "@/lib/db/queries/use-cases";
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
+import { getPortfolioParticipation } from "@/lib/db/queries/portfolio-participation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RankingMatrix } from "@/components/portfolio/ranking-matrix";
 import { WavePlanner } from "@/components/portfolio/wave-planner";
 import { PortfolioSettingsSheet } from "@/components/portfolio/portfolio-settings-sheet";
+import { ParticipationCard } from "@/components/portfolio/participation-card";
 
 export default async function PortfolioPage({
   params,
@@ -26,9 +28,10 @@ export default async function PortfolioPage({
   const canReview = canReviewWorkspacePortfolio(access.role);
   const joined = typeof sp.joined === "string" ? sp.joined : null;
 
-  const [model, contributions] = await Promise.all([
+  const [model, contributions, participation] = await Promise.all([
     getOrCreateWorkspaceScoringModel(workspaceId),
     getPortfolioContributionsByWorkspace(workspaceId),
+    getPortfolioParticipation(workspaceId),
   ]);
 
   // The URL identifies a receipt, never permission to view another author's proposal.
@@ -134,6 +137,8 @@ export default async function PortfolioPage({
           />
         </CardContent>
       </Card>
+
+      {participation && <ParticipationCard participation={participation} />}
     </div>
   );
 }

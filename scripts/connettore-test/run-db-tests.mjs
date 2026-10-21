@@ -16,9 +16,10 @@ const db = process.env.UC_TEST_PG_DB?.trim() || "unbundle_conn_test";
 if (!/^\d+$/.test(port) || ["55439", "55449"].includes(port)) throw new Error("Use the connector's own test cluster port (default 55469)");
 if (!/^[a-z_][a-z0-9_]{2,62}$/.test(db)) throw new Error("UC_TEST_PG_DB must be a plain lowercase database name");
 const url = `postgresql://uc_test@127.0.0.1:${port}/${db}`;
-// Glob read by the Node test runner itself: later connector packages add their suites
-// under src/lib/connector/ without touching this list.
-const files = ["src/lib/portfolio/submission.integration.test.ts", "src/lib/connector/**/*.integration.test.ts"];
+// Globs read by the Node test runner itself: later packages add their suites under
+// src/lib/portfolio/ or src/lib/connector/ without touching this list (the portfolio ones
+// are the shared submission service and «Partecipazione per area»).
+const files = ["src/lib/portfolio/*.integration.test.ts", "src/lib/connector/**/*.integration.test.ts"];
 
 const result = spawnSync(process.execPath, ["--no-warnings", "--test", "--test-concurrency=1", ...files], {
   cwd: repoRoot,
