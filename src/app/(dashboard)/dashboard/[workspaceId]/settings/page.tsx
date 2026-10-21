@@ -20,6 +20,7 @@ import {
 import { WorkspaceCollaborationCard } from "@/components/workspace/workspace-collaboration-card";
 import { ClaudeMcpCard } from "@/components/workspace/claude-mcp-card";
 import { ConnectorCard } from "@/components/workspace/connector-card";
+import { SubprocessorsCard } from "@/components/workspace/subprocessors-card";
 import { MessageSquare, CheckCircle, Leaf, Lock, AlertTriangle } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
@@ -325,6 +326,13 @@ export default async function SettingsPage({
               canManage={canManageSettings}
             />
           }
+        />
+
+        <SubprocessorsCard
+          workspaceId={workspaceId}
+          workspaceName={workspace.name}
+          userId={session.user.id}
+          workspaceRole={access.role}
         />
 
         <SettingsSection

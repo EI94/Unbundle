@@ -141,9 +141,9 @@ async function uniqueDossierIndex(): Promise<{ present: boolean; unique: boolean
   return rows.length === 0 ? { present: false, unique: false, definition: null } : { present: true, unique: rows[0].unique === true, definition: String(rows[0].definition) };
 }
 
-test("schema: 27 uc tables, validated vocabulary CHECKs, the unique dossier index and a current probe", opts, async () => {
+test("schema: 28 uc tables, validated vocabulary CHECKs, the unique dossier index and a current probe", opts, async () => {
   const tables = await q(`SELECT count(*)::int AS n FROM unnest($1::text[]) t(name) WHERE to_regclass('public.' || t.name) IS NOT NULL`, [UC_TABLE_NAMES]);
-  assert.equal(tables[0].n, 27);
+  assert.equal(tables[0].n, 28);
   const checks = await q(`SELECT count(*)::int AS n FROM pg_constraint WHERE conname = ANY($1::text[]) AND convalidated`, [UC_VOCAB_CHECKS.map((c) => c.name)]);
   assert.equal(checks[0].n, UC_VOCAB_CHECKS.length);
   const index = await uniqueDossierIndex();

@@ -58,13 +58,13 @@ async function expectError(sqlText, params, pattern) {
 
 try {
   // ── Database (runs now) ───────────────────────────────────────────
-  await step("0.schema", "Le 27 tabelle uc esistono e il probe del self-heal è vero", async () => {
+  await step("0.schema", "Le 28 tabelle uc esistono e il probe del self-heal è vero", async () => {
     const { UC_PROBE_SQL, UC_TABLE_NAMES } = await import("../../src/lib/uc/ddl.ts");
     const tables = await db.query("SELECT count(*)::int AS n FROM unnest($1::text[]) t(name) WHERE to_regclass('public.' || t.name) IS NOT NULL", [UC_TABLE_NAMES]);
-    if (tables.rows[0].n !== 27) throw new Error(`${tables.rows[0].n} tables`);
+    if (tables.rows[0].n !== UC_TABLE_NAMES.length) throw new Error(`${tables.rows[0].n} tables`);
     const probe = await db.query(UC_PROBE_SQL);
     if (probe.rows[0].current !== true) throw new Error("probe false");
-    return "27 tabelle, probe vero";
+    return `${UC_TABLE_NAMES.length} tabelle, probe vero`;
   });
 
   await step("11.append_only", "UPDATE e DELETE diretti su uc_answers falliscono (dati sintetici, transazione annullata)", async () => {

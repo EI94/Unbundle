@@ -37,13 +37,13 @@ const drizzleTables: PgTable[] = (Object.values(schema) as unknown[]).filter(
   (value): value is PgTable => is(value, PgTable) && getTableName(value).startsWith("uc_"),
 );
 
-test("Drizzle declares exactly the 27 uc tables of the DDL", () => {
+test("Drizzle declares exactly the 28 uc tables of the DDL", () => {
   assert.deepEqual(drizzleTables.map((t) => getTableName(t)).sort(), [...UC_TABLE_NAMES].sort());
 });
 
 test("for every uc table, Drizzle columns match the DDL: names, types, NOT NULL and defaults", () => {
   const ddl = parseDdl();
-  assert.equal(ddl.size, 27);
+  assert.equal(ddl.size, 28);
   for (const table of drizzleTables) {
     const name = getTableName(table);
     const expected = ddl.get(name);

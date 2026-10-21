@@ -2,7 +2,7 @@
 -- GENERATO da scripts/uc-write-migration.ts a partire da src/lib/uc/ddl.ts: non modificare a mano.
 -- Idempotente. Si applica con:
 --   psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0018_uc_casi_duso.sql
--- Impronta: uc-ddl:c57f18f82ef27142bb4f94158bd0de84
+-- Impronta: uc-ddl:c5264e3eb553a3e87d43efc93b86fd89
 
 CREATE OR REPLACE FUNCTION uc_require(ok boolean, code text) RETURNS boolean
 LANGUAGE plpgsql AS $$
@@ -28,6 +28,10 @@ BEGIN
       END IF;
     ELSIF TG_TABLE_NAME = 'uc_events' THEN
       IF OLD.workspace_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM workspaces WHERE id = OLD.workspace_id) THEN
+        RETURN OLD;
+      END IF;
+    ELSIF TG_TABLE_NAME = 'uc_subprocessor_acks' THEN
+      IF NOT EXISTS (SELECT 1 FROM workspaces WHERE id = OLD.workspace_id) THEN
         RETURN OLD;
       END IF;
     END IF;
@@ -765,6 +769,16 @@ CREATE TABLE IF NOT EXISTS uc_rate_limits (
   CONSTRAINT uc_rate_limits_pkey PRIMARY KEY (bucket, window_start)
 );
 
+CREATE TABLE IF NOT EXISTS uc_subprocessor_acks (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  workspace_id uuid NOT NULL REFERENCES workspaces (id) ON DELETE CASCADE,
+  list_version text NOT NULL,
+  statement_text text NOT NULL,
+  declared_by_user_id uuid NOT NULL REFERENCES users (id) DEFERRABLE INITIALLY DEFERRED,
+  declared_by_role text NOT NULL,
+  declared_at timestamptz NOT NULL DEFAULT now()
+);
+
 DO $uc$ BEGIN
   ALTER TABLE uc_items ADD CONSTRAINT uc_items_current_answer_fkey FOREIGN KEY (id, current_answer_id) REFERENCES uc_answers (item_id, id) DEFERRABLE INITIALLY DEFERRED;
 EXCEPTION WHEN duplicate_object THEN NULL;
@@ -1078,6 +1092,12 @@ CREATE INDEX IF NOT EXISTS uc_events_workspace_created_idx ON uc_events (workspa
 
 CREATE INDEX IF NOT EXISTS uc_rate_limits_window_idx ON uc_rate_limits (window_start);
 
+CREATE INDEX IF NOT EXISTS uc_subprocessor_acks_workspace_declared_idx ON uc_subprocessor_acks (workspace_id, declared_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uc_subprocessor_acks_workspace_version_idx ON uc_subprocessor_acks (workspace_id, list_version);
+
+CREATE INDEX IF NOT EXISTS uc_subprocessor_acks_declared_by_idx ON uc_subprocessor_acks (declared_by_user_id);
+
 DO $uc$
 BEGIN
   IF to_regclass('public.uc_cases_portfolio_use_case_unique_idx') IS NULL THEN
@@ -1100,6 +1120,8 @@ CREATE OR REPLACE TRIGGER uc_events_append_only BEFORE UPDATE OR DELETE ON uc_ev
 
 CREATE OR REPLACE TRIGGER uc_catalog_versions_append_only BEFORE UPDATE OR DELETE ON uc_catalog_versions FOR EACH ROW EXECUTE FUNCTION uc_guard_append_only();
 
+CREATE OR REPLACE TRIGGER uc_subprocessor_acks_append_only BEFORE UPDATE OR DELETE ON uc_subprocessor_acks FOR EACH ROW EXECUTE FUNCTION uc_guard_append_only();
+
 CREATE OR REPLACE TRIGGER uc_templates_immutable BEFORE UPDATE ON uc_templates FOR EACH ROW EXECUTE FUNCTION uc_template_immutable();
 
 CREATE OR REPLACE TRIGGER uc_gate_reviews_frozen BEFORE UPDATE ON uc_gate_reviews FOR EACH ROW EXECUTE FUNCTION uc_gate_review_frozen();
@@ -1108,4 +1130,4 @@ CREATE OR REPLACE TRIGGER uc_answers_no_personal_plaintext BEFORE INSERT ON uc_a
 
 CREATE OR REPLACE TRIGGER uc_item_blockers_keep BEFORE DELETE ON uc_item_blockers FOR EACH ROW EXECUTE FUNCTION uc_item_blockers_keep();
 
-COMMENT ON FUNCTION uc_require(boolean, text) IS 'uc-ddl:c57f18f82ef27142bb4f94158bd0de84';
+COMMENT ON FUNCTION uc_require(boolean, text) IS 'uc-ddl:c5264e3eb553a3e87d43efc93b86fd89';

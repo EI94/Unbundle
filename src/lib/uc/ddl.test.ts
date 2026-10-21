@@ -31,7 +31,7 @@ const EXPECTED_TABLES = [
   "uc_item_links", "uc_requests", "uc_request_tokens", "uc_request_items", "uc_answers", "uc_files", "uc_datasets",
   "uc_validations", "uc_comments", "uc_maps", "uc_gate_reviews", "uc_catalog_versions", "uc_model_runs",
   "uc_kpi_measurements", "uc_test_cases", "uc_roi_models", "uc_milestones", "uc_notifications", "uc_events",
-  "uc_rate_limits",
+  "uc_rate_limits", "uc_subprocessor_acks",
 ];
 
 const createTables = UC_DDL.filter((s) => s.startsWith("CREATE TABLE"));
@@ -43,9 +43,9 @@ test("migration 0018 is exactly the generated DDL", () => {
   assert.ok(file.includes(UC_DDL_MARKER));
 });
 
-test("the 23 specification tables plus 4 bridges and technical tables exist, in creation order", () => {
+test("the 23 specification tables plus 4 bridges and technical tables and the sub-processor authorizations exist, in creation order", () => {
   assert.deepEqual([...UC_TABLE_NAMES], EXPECTED_TABLES);
-  assert.equal(createTables.length, 27);
+  assert.equal(createTables.length, 28);
   createTables.forEach((s, i) => assert.ok(s.startsWith(`CREATE TABLE IF NOT EXISTS ${EXPECTED_TABLES[i]} (`)));
 });
 
@@ -131,7 +131,7 @@ test("every NO ACTION foreign key is checked at commit, so workspace cascades ca
 });
 
 test("append-only tables, immutability and privacy triggers are declared", () => {
-  assert.deepEqual([...UC_APPEND_ONLY_TABLES].sort(), ["uc_answers", "uc_catalog_versions", "uc_events", "uc_validations"]);
+  assert.deepEqual([...UC_APPEND_ONLY_TABLES].sort(), ["uc_answers", "uc_catalog_versions", "uc_events", "uc_subprocessor_acks", "uc_validations"]);
   const names = UC_TRIGGERS.map((t) => `${t.table}.${t.name}`);
   for (const table of UC_APPEND_ONLY_TABLES) assert.ok(names.includes(`${table}.${table}_append_only`));
   assert.ok(names.includes("uc_templates.uc_templates_immutable"));

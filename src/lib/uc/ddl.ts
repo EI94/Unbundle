@@ -867,6 +867,22 @@ export const UC_TABLES: readonly UcTable[] = [
     columns: [nn("bucket", "varchar(120)"), nn("window_start", "timestamptz"), nn("count", "integer", "0")],
     constraints: ["CONSTRAINT uc_rate_limits_pkey PRIMARY KEY (bucket, window_start)"],
   },
+  // Autorizzazione del cliente ai sub-responsabili di Lateral Space (GDPR art. 28, par. 2):
+  // una riga per workspace e versione dell'elenco (`src/lib/uc/legal/subprocessors.ts`),
+  // a sola aggiunta. Chi ha dichiarato resta: NO ACTION differita verso `users`.
+  {
+    name: "uc_subprocessor_acks",
+    columns: [
+      id(),
+      fk("workspace_id", "workspaces", "CASCADE", true),
+      nn("list_version", "text"),
+      nn("statement_text", "text"),
+      fk("declared_by_user_id", "users", undefined, true),
+      nn("declared_by_role", "text"),
+      nn("declared_at", "timestamptz", "now()"),
+    ],
+    constraints: [],
+  },
 ];
 
 export const UC_TABLE_NAMES: readonly string[] = UC_TABLES.map((t) => t.name);
@@ -1040,6 +1056,11 @@ export const UC_INDEXES: readonly UcIndex[] = [
   ix("uc_events", "workspace_created", "workspace_id, created_at"),
 
   ix("uc_rate_limits", "window", "window_start"),
+
+  ix("uc_subprocessor_acks", "workspace_declared", "workspace_id, declared_at DESC"),
+  // Una sola autorizzazione per versione: dichiarare di nuovo non aggiunge righe.
+  ix("uc_subprocessor_acks", "workspace_version", "workspace_id, list_version", { unique: true }),
+  ix("uc_subprocessor_acks", "declared_by", "declared_by_user_id"),
 ];
 
 // ── Indice unico tra dossier e scheda (docs/use-case/DESIGN.md §10.4) ──
@@ -1117,7 +1138,7 @@ export const UC_FUNCTIONS: readonly string[] = [
 ];
 
 /** Tabelle a sola aggiunta. */
-export const UC_APPEND_ONLY_TABLES: readonly string[] = ["uc_answers", "uc_validations", "uc_events", "uc_catalog_versions"];
+export const UC_APPEND_ONLY_TABLES: readonly string[] = ["uc_answers", "uc_validations", "uc_events", "uc_catalog_versions", "uc_subprocessor_acks"];
 
 export const UC_TRIGGERS: readonly { name: string; table: string; timing: string; fn: string }[] = [
   ...UC_APPEND_ONLY_TABLES.map((table) => ({
@@ -1159,6 +1180,10 @@ BEGIN
       END IF;
     ELSIF TG_TABLE_NAME = 'uc_events' THEN
       IF OLD.workspace_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM workspaces WHERE id = OLD.workspace_id) THEN
+        RETURN OLD;
+      END IF;
+    ELSIF TG_TABLE_NAME = 'uc_subprocessor_acks' THEN
+      IF NOT EXISTS (SELECT 1 FROM workspaces WHERE id = OLD.workspace_id) THEN
         RETURN OLD;
       END IF;
     END IF;

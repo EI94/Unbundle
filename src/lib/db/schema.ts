@@ -2137,6 +2137,20 @@ export const ucRateLimits = pgTable(
   (t) => [primaryKey({ name: "uc_rate_limits_pkey", columns: [t.bucket, t.windowStart] })]
 );
 
+/** Autorizzazione ai sub-responsabili (GDPR art. 28, par. 2), a sola aggiunta. */
+export const ucSubprocessorAcks = pgTable(
+  "uc_subprocessor_acks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull(),
+    listVersion: text("list_version").notNull(),
+    statementText: text("statement_text").notNull(),
+    declaredByUserId: uuid("declared_by_user_id").notNull(),
+    declaredByRole: text("declared_by_role").notNull(),
+    declaredAt: ucTimestamp("declared_at").notNull().defaultNow(),
+  }
+);
+
 export type UcTemplate = typeof ucTemplates.$inferSelect;
 export type UcContact = typeof ucContacts.$inferSelect;
 export type UcCase = typeof ucCases.$inferSelect;
@@ -2164,3 +2178,4 @@ export type UcMilestone = typeof ucMilestones.$inferSelect;
 export type UcNotification = typeof ucNotifications.$inferSelect;
 export type UcEvent = typeof ucEvents.$inferSelect;
 export type UcRateLimit = typeof ucRateLimits.$inferSelect;
+export type UcSubprocessorAck = typeof ucSubprocessorAcks.$inferSelect;

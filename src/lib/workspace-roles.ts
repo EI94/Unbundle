@@ -22,7 +22,7 @@ export const ROLE_INFO: Record<string, RoleInfo> = {
     label: "Responsabile di funzione",
     summary: "valuta gli use case e organizza le wave",
     can: ["Vede tutto il workspace", "Propone e valuta gli use case", "Organizza le wave e genera analisi"],
-    cannot: ["Non invita persone e non cambia le impostazioni"],
+    cannot: ["Non invita persone e non cambia le impostazioni del workspace"],
   },
   analyst: {
     label: "Analista",

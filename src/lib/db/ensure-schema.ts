@@ -796,7 +796,7 @@ import { errorCodeOf, pgCodeOf, ucLog, ucLogError } from "../uc/log.ts";
 import { ucSelfHealEnabled } from "../uc/platform.ts";
 
 /** Incrementa ad ogni modifica al DDL uc: così i worker warm ri-eseguono il controllo. */
-const UC_ENSURE_VERSION = 2;
+const UC_ENSURE_VERSION = 3;
 
 /** La sezione «Casi d'uso» è spenta (`UC_ENABLED` diverso da "true"). */
 export class UcSchemaDisabledError extends Error {

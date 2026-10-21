@@ -102,7 +102,7 @@ test("a switched-off section is not an error", () => {
   );
 });
 
-const GOOD: UcDbFacts = { ucTables: 27, probeCurrent: true, duplicateGroups: 0, duplicateRows: 0, uniqueIndex: true, orphanDossiers: 0, listedWorkspacesFound: 1, listedWorkspaces: 1 };
+const GOOD: UcDbFacts = { ucTables: 28, probeCurrent: true, duplicateGroups: 0, duplicateRows: 0, uniqueIndex: true, orphanDossiers: 0, listedWorkspacesFound: 1, listedWorkspaces: 1 };
 
 test("database: probe, duplicates with the 0020 condition, unique index, orphans", () => {
   const ok = checkUcDatabase(GOOD, { environment: "production", ucEnabled: true });
