@@ -30,7 +30,7 @@ import { checkCaseCreator } from "../../uc/permissions.ts";
 import { rowBool, rowDate, rowJson, rowString, rowVocab, type Row } from "../../uc/sql/readiness.ts";
 import { STALE_INCOMPLETE_CASE_MINUTES } from "../../uc/sql/case-create.ts";
 import { cast, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
-import { fail, ok, type Result, type UserContext } from "../../uc/types.ts";
+import { fail, ok, type Json, type Result, type UserContext } from "../../uc/types.ts";
 import type { NextStepInput } from "../../uc/views/next-step.ts";
 import {
   REALIZATION_TEXT,
@@ -551,7 +551,20 @@ function pgConstraintOf(error: unknown): string | undefined {
  */
 export async function startRealization(
   executor: UcExecutor,
-  i: { workspaceId: string; user: UserContext; canReviewWorkspacePortfolio: boolean; input: unknown; now?: () => Date },
+  i: {
+    workspaceId: string;
+    user: UserContext;
+    canReviewWorkspacePortfolio: boolean;
+    input: unknown;
+    now?: () => Date;
+    /**
+     * Blocchi in più della Descrizione iniziale, decisi dal server di chi chiama e mai dal
+     * modulo: la pagina Use case ci mette i dati raccolti da Claude di una scheda del
+     * connettore (H6a, decisione del 19/10/2026). Passano dalla stessa scansione dei testi
+     * dello use case; non sostituiscono «In breve» né «Dallo use case».
+     */
+    extraDescription?: Readonly<Record<string, Json>> | null;
+  },
 ): Promise<Result<{ caseId: string; code: string; useCaseId: string }>> {
   const creator = checkCaseCreator({ user: i.user, canReviewWorkspacePortfolio: i.canReviewWorkspacePortfolio });
   if (!creator.ok) return fail(creator.code, "Solo Lateral Space avvia la realizzazione.");
@@ -581,7 +594,9 @@ export async function startRealization(
 
   let code = await chooseCode();
   if (!code.ok) return fail("codice_mancante", START_MESSAGES.codice_mancante);
-  const overrides = realizationDescription(context.texts);
+  const base = realizationDescription(context.texts);
+  const extra = Object.fromEntries(Object.entries(i.extraDescription ?? {}).filter(([key]) => !Object.hasOwn(base, key)));
+  const overrides = { ...base, ...extra };
   const scan = checkLsText(overrides);
   if (!scan.ok) return fail(scan.code, START_MESSAGES.testo_dallo_use_case);
 

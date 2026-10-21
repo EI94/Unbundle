@@ -6,7 +6,7 @@ import {
   getWorkspaceCollaborators,
   getWorkspaceInvitationsForWorkspace,
 } from "@/lib/db/queries/workspace-collaboration";
-import { getWorkspaceIntegrationTokens } from "@/lib/db/queries/workspace-integrations";
+import { CLAUDE_MCP_PROVIDER, getWorkspaceIntegrationTokens } from "@/lib/db/queries/workspace-integrations";
 import { Badge } from "@/components/ui/badge";
 import { EsgToggle } from "@/components/dashboard/esg-toggle";
 import { SlackInstallButton } from "@/components/dashboard/slack-install-button";
@@ -20,12 +20,23 @@ import {
 import { WorkspaceCollaborationCard } from "@/components/workspace/workspace-collaboration-card";
 import { ClaudeMcpCard } from "@/components/workspace/claude-mcp-card";
 import { ConnectorCard } from "@/components/workspace/connector-card";
+import { TeamMcpCard } from "@/components/workspace/team-mcp-card";
+import { loadTeamMcpCard } from "@/lib/db/queries/team-mcp-tokens";
 import { SubprocessorsCard } from "@/components/workspace/subprocessors-card";
-import { MessageSquare, CheckCircle, Leaf, Lock, AlertTriangle } from "lucide-react";
+import { MessageSquare, MessageCircle, CheckCircle, Leaf, Lock, AlertTriangle } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { DisableShareLinksButton } from "@/components/workspace/disable-share-links-button";
 import { roleLabel } from "@/lib/workspace-roles";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { ValuationSettings } from "@/components/use-cases/settings/valuation-settings";
+import { WhatsappWebhookForm } from "@/components/portfolio/team-settings-form";
+
+/**
+ * L'ancora di Impostazioni › Valutazione dell'area «Use case» (docs/use-case/DESIGN.md §14.3,
+ * PIANO-LAVORI H3d e H4i). `valutazione` resta a «Criteri ESG», dove porta già oggi.
+ */
+const USE_CASE_VALUATION_ANCHOR = "valutazione-use-case";
 
 function decodeSlackErrorParam(raw: string | undefined): string {
   if (!raw) return "";
@@ -77,11 +88,13 @@ export default async function SettingsPage({
   if (!workspace) notFound();
 
   const search = await searchParams;
-  const [slackInstallation, collaborators, invitations, integrationTokens] = await Promise.all([
+  const [slackInstallation, collaborators, invitations, integrationTokens, teamMcpCard] = await Promise.all([
     getSlackInstallationByWorkspace(workspaceId),
     getWorkspaceCollaborators(workspaceId),
     getWorkspaceInvitationsForWorkspace(workspaceId),
-    getWorkspaceIntegrationTokens(workspaceId),
+    // Card v1 «Claude per Unbundle»: solo `provider = 'claude_mcp'` (D11, DESIGN §9.7).
+    getWorkspaceIntegrationTokens(workspaceId, { providers: [CLAUDE_MCP_PROVIDER] }),
+    loadTeamMcpCard({ workspaceId, user: session.user, role: access.role }),
   ]);
   const isSlackInstalled = !!slackInstallation;
   const canDelete =
@@ -90,6 +103,12 @@ export default async function SettingsPage({
   const canManageIntegrations =
     access.source === "organization" && canManageWorkspaceSettings(access.role);
   const canManageSettings = canManageWorkspaceSettings(access.role);
+  // Area «Use case» accesa (DESIGN §12.1, §13): /portfolio reindirizza e con lui sparisce il
+  // pannello «Team e ranking». Nome del team, codici, soglie, fasce e modello stanno in
+  // «Valutazione»; il webhook WhatsApp, che si modificava solo lì, in «Integrazioni». Solo per
+  // chi gestisce il workspace, come le action. Spenta: la pagina di oggi.
+  const useCaseHub = isUseCaseHubWorkspace(workspaceId);
+  const useCaseSettings = useCaseHub && canManageSettings;
   const slackErrDecoded = decodeSlackErrorParam(search.slack_error);
   const slackErrHint = slackErrDecoded ? slackInstallErrorHint(slackErrDecoded) : null;
 
@@ -97,7 +116,7 @@ export default async function SettingsPage({
   const sections = [
     { id: "persone", label: "Persone" },
     { id: "integrazioni", label: "Integrazioni" },
-    { id: "valutazione", label: "Valutazione" },
+    { id: useCaseSettings ? USE_CASE_VALUATION_ANCHOR : "valutazione", label: "Valutazione" },
     { id: "zona-pericolosa", label: "Zona pericolosa" },
   ];
 
@@ -287,10 +306,28 @@ export default async function SettingsPage({
             </div>
           </SettingsSection>
 
+          {useCaseSettings && (
+            <SettingsSection
+              icon={MessageCircle}
+              iconClassName="bg-emerald-500/10 text-emerald-400"
+              title="WhatsApp"
+              description="Avvisa anche il gruppo WhatsApp del team quando arriva un nuovo use case."
+            >
+              <WhatsappWebhookForm
+                key={`whatsapp-${workspace.whatsappWebhookUrl ?? ""}`}
+                workspaceId={workspaceId}
+                initialUrl={workspace.whatsappWebhookUrl ?? ""}
+              />
+            </SettingsSection>
+          )}
+
+          {teamMcpCard && <TeamMcpCard workspaceId={workspaceId} data={teamMcpCard} />}
+
           <ClaudeMcpCard
             workspaceId={workspaceId}
             workspaceName={workspace.name}
             canManage={canManageIntegrations}
+            useCaseHub={useCaseHub}
             tokens={integrationTokens.map((token) => ({
               id: token.id,
               label: token.label,
@@ -305,6 +342,8 @@ export default async function SettingsPage({
           />
           <ConnectorCard workspaceId={workspaceId} />
         </div>
+
+        {useCaseSettings && <ValuationSettings workspaceId={workspaceId} id={USE_CASE_VALUATION_ANCHOR} />}
 
         <SettingsSection
           id="valutazione"

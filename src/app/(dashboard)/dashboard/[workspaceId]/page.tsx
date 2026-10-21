@@ -26,6 +26,28 @@ import {
   Inbox,
 } from "lucide-react";
 import { getUnitTerm } from "@/lib/utils/unit-terminology";
+import type { Session } from "@/lib/auth";
+import type { WorkspaceAccess } from "@/lib/workspace-access";
+import { listHubItems, viewerFromSession } from "@/lib/db/queries/use-case-hub";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+
+/**
+ * Il passo «Use case» del Percorso con l'area accesa (docs/use-case/DESIGN.md §2.5, D1, D4):
+ * ai revisori gli use case dall'alto (`origin = transformation`), con il filtro dell'origine;
+ * ai contributori gli use case che vedono (non l'origine, non le schede nascoste altrui).
+ * Il conto viene dalla stessa lettura della pagina, già proiettata per chi guarda.
+ */
+async function overviewHubStep(workspaceId: string, session: Session, access: WorkspaceAccess) {
+  const list = await listHubItems(workspaceId, viewerFromSession(session.user, access.role));
+  const base = `/dashboard/${workspaceId}/use-cases`;
+  if (!list) return { count: 0, sub: null, href: base };
+  if (list.projection === "contributore") {
+    const count = list.items.length;
+    return { count, sub: `${count} use case`, href: base };
+  }
+  const count = list.items.filter((item) => item.origin === "transformation").length;
+  return { count, sub: `${count} use case dall'alto`, href: count > 0 ? `${base}?origine=transformation` : base };
+}
 
 export default async function WorkspaceOverviewPage({
   params,
@@ -35,15 +57,17 @@ export default async function WorkspaceOverviewPage({
 
   const { workspaceId } = await params;
 
-  await requireWorkspacePage(workspaceId);
+  const { session, access } = await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
+  const useCaseHub = isUseCaseHubWorkspace(workspaceId);
 
-  const [departments, activityStats, useCaseCount, goals] = await Promise.all([
+  const [departments, activityStats, useCaseCount, goals, hubStep] = await Promise.all([
     getDepartmentsByWorkspace(workspaceId),
     getActivityOverviewStats(workspaceId),
-    getUseCaseCountByWorkspace(workspaceId),
+    useCaseHub ? 0 : getUseCaseCountByWorkspace(workspaceId),
     getStrategicGoalsByWorkspace(workspaceId),
+    useCaseHub ? overviewHubStep(workspaceId, session, access) : null,
   ]);
 
   const mappedDepts = departments.filter(
@@ -93,24 +117,37 @@ export default async function WorkspaceOverviewPage({
       done: hasMappedAll,
       locked: false,
     },
-    {
-      label: "Use cases",
-      sub: hasUseCases
-        ? `${useCaseCount} use case identificati`
-        : "Dove l'AI trasforma il modo di lavorare",
-      href: `/dashboard/${workspaceId}/use-cases`,
-      icon: Lightbulb,
-      done: hasUseCases,
-      locked: false,
-    },
+    // Il Percorso resta di 4 passi anche con l'area accesa: nessun passo «Realizzazione» (§2.5).
+    hubStep
+      ? {
+          label: "Use case",
+          sub: hubStep.count > 0 && hubStep.sub ? hubStep.sub : "Dove l'AI trasforma il modo di lavorare",
+          href: hubStep.href,
+          icon: Lightbulb,
+          done: hubStep.count > 0,
+          locked: false,
+        }
+      : {
+          label: "Use cases",
+          sub: hasUseCases
+            ? `${useCaseCount} use case identificati`
+            : "Dove l'AI trasforma il modo di lavorare",
+          href: `/dashboard/${workspaceId}/use-cases`,
+          icon: Lightbulb,
+          done: hasUseCases,
+          locked: false,
+        },
   ];
 
   const nextStep = steps.find((s) => !s.done && !s.locked);
 
+  // Con l'area accesa uno strumento «Use case» al posto di «Raccolta & ranking» e «Piano» (§2.5).
   const tools = [
-    { label: "Raccolta & ranking", href: `/dashboard/${workspaceId}/portfolio`, icon: Inbox, ready: true },
+    ...(useCaseHub
+      ? [{ label: "Use case", href: `/dashboard/${workspaceId}/use-cases`, icon: Lightbulb, ready: true }]
+      : [{ label: "Raccolta & ranking", href: `/dashboard/${workspaceId}/portfolio`, icon: Inbox, ready: true }]),
     { label: "Value map", href: `/dashboard/${workspaceId}/value-map`, icon: MapPin, ready: true },
-    { label: "Piano", href: `/dashboard/${workspaceId}/plan`, icon: BarChart3, ready: true },
+    ...(useCaseHub ? [] : [{ label: "Piano", href: `/dashboard/${workspaceId}/plan`, icon: BarChart3, ready: true }]),
     { label: "Report", href: `/dashboard/${workspaceId}/reports`, icon: FileText, ready: true },
     { label: "Blueprints", href: `/dashboard/${workspaceId}/blueprints`, icon: Zap, ready: true },
     { label: "Simulazione", href: `/dashboard/${workspaceId}/simulation`, icon: TrendingUp, ready: true },

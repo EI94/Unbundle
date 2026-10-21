@@ -1,14 +1,38 @@
 /**
- * Testo del messaggio al canale admin Slack per un nuovo contributo del
- * portafoglio. Tutti i testi scritti dagli utenti passano da escapeSlackText.
- * Modulo puro: lo usa notifyNewUseCase e lo provano i test con Node.
+ * Testi di Slack per un nuovo contributo del portafoglio: il messaggio al canale admin
+ * (notifyNewUseCase) e la risposta a chi l'ha proposto dopo l'invio riuscito
+ * (use-case-agent). Tutti i testi scritti dagli utenti, nome del team compreso, passano
+ * da escapeSlackText. Il nome del team va da solo, senza articolo né «team» davanti
+ * (docs/use-case/DESIGN.md §14.2). Modulo puro: lo provano i test con Node.
  */
 import type { UseCase } from "@/lib/db/schema";
+import { connectorStatus, type UseCaseStatusInput } from "../connector/status.ts";
 import { escapeSlackText } from "../notifications/sanitize.ts";
+import { CONNECTOR_CODE_PHASE, PHASE_LABEL } from "../use-cases/phase.ts";
 import { SLACK_INTAKE_SOURCE } from "./use-case-payload.ts";
 
 /** ID utente Slack (U… o W…). */
 const SLACK_USER_ID = /^[UW][A-Z0-9]{6,}$/;
+
+/** Le colonne che decidono la fase (`connectorStatus`, DESIGN §3.5). */
+type PhaseColumns = "status" | "portfolioReviewStatus" | "reviewedBy" | "publicNote" | "intake" | "reviewBy";
+
+/**
+ * La fase della scheda con la parola che vedono i revisori («Da valutare» per una proposta
+ * nuova, DESIGN §14.1), mai la chiave dello stato nel database. Solo la fase: il sotto-stato
+ * chiede la data di oggi e lo stato del dossier, che il messaggio non ha.
+ */
+function phaseName(useCase: Pick<UseCase, PhaseColumns>): string {
+  const { statusCode } = connectorStatus({
+    status: useCase.status,
+    portfolioReviewStatus: useCase.portfolioReviewStatus,
+    reviewedBy: useCase.reviewedBy ?? null,
+    publicNote: useCase.publicNote ?? null,
+    intake: (useCase.intake ?? null) as UseCaseStatusInput["intake"],
+    reviewBy: useCase.reviewBy ?? null,
+  });
+  return PHASE_LABEL[CONNECTOR_CODE_PHASE[statusCode]];
+}
 
 function portfolioHeadline(useCase: Pick<UseCase, "portfolioKind">): string {
   if (useCase.portfolioKind === "best_practice") {
@@ -28,7 +52,7 @@ export function buildNewUseCaseSlackText(params: {
     | "description"
     | "proposedBy"
     | "source"
-    | "status"
+    | PhaseColumns
     | "overallScore"
     | "overallImpactScore"
     | "overallFeasibilityScore"
@@ -58,7 +82,7 @@ export function buildNewUseCaseSlackText(params: {
     excerpt ? `Anteprima: ${escapeSlackText(excerpt)}` : "Anteprima: —",
     "",
     `Compilato da: ${proposer}`,
-    `Stato in Unbundle: ${escapeSlackText(useCase.status)} (in coda al team ${escapeSlackText(teamName)}).`,
+    `Fase in Unbundle: ${phaseName(useCase)} (in coda a ${escapeSlackText(teamName)}).`,
   ];
 
   if (typeof useCase.overallScore === "number" && useCase.overallScore > 0) {
@@ -77,4 +101,23 @@ export function buildNewUseCaseSlackText(params: {
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Risposta a chi ha proposto su Slack, dopo l'invio riuscito (DESIGN §14.5, D14): il codice
+ * della sua proposta, chi la valuta e il link di condivisione. La pagina del link non mostra
+ * il codice a chi non è membro: glielo dà questo messaggio. Senza codice (workspace senza
+ * configurazione dei codici, o assegnazione non riuscita) la frase resta senza.
+ */
+export function buildSlackSubmittedReply(params: {
+  code: string | null;
+  teamName: string;
+  link: string | null;
+}): string {
+  const team = escapeSlackText(params.teamName);
+  const code = params.code?.trim();
+  const thanks = code
+    ? `Grazie, l'ho registrato. Il codice è ${escapeSlackText(code)}: ${team} lo valuta.`
+    : `Grazie, l'ho registrato: ${team} lo valuta.`;
+  return params.link ? `${thanks}\nScheda Unbundle: ${params.link}` : thanks;
 }

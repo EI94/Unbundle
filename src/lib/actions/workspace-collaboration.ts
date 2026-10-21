@@ -23,8 +23,10 @@ import {
 } from "@/lib/db/queries/workspace-collaboration";
 import { removeUserFromWorkspaceCases, ucMemberTablesPresent } from "@/lib/db/queries/uc-cases";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { revokeTeamMcpTokensOfOwner } from "@/lib/db/queries/team-mcp-tokens";
+import { logSafeError } from "@/lib/log/safe-error";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
-import { canManageWorkspaceCollaborators } from "@/lib/workspace-permissions";
+import { canManageWorkspaceCollaborators, canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { roleLabel } from "@/lib/workspace-roles";
 import {
   WORKSPACE_INVITE_EXPIRES_IN_DAYS,
@@ -304,6 +306,10 @@ export async function updateWorkspaceMemberRoleAction(
     canManageWorkspaceCollaborators(membership.role) && !canManageWorkspaceCollaborators(role)
       ? await revokeInvitationsCreatedBy({ workspaceId, userId })
       : 0;
+  // Chi non valuta più gli use case perde i suoi token del MCP del team (H7).
+  if (canReviewWorkspacePortfolio(membership.role) && !canReviewWorkspacePortfolio(role)) {
+    await revokeTeamTokensOf(workspaceId, userId);
+  }
 
   revalidatePath(`/dashboard/${workspaceId}/settings`);
   return {
@@ -355,6 +361,8 @@ export async function removeWorkspaceMemberAction(
   // di funzionare. Chi ha un account con accesso entra comunque dal login.
   const revokedInvites = await revokeInvitationsCreatedBy({ workspaceId, userId });
   await disablePortfolioShareLinks(workspaceId);
+  // E i suoi token del MCP del team (H7): il MCP li rifiuta già, qui smettono anche di contare.
+  await revokeTeamTokensOf(workspaceId, userId);
   const ucNote = await removeFromUseCaseSection({ workspaceId, userId, actorUserId: manager.session.user.id });
 
   revalidatePath(`/dashboard/${workspaceId}/settings`);
@@ -371,6 +379,19 @@ export async function removeWorkspaceMemberAction(
     fieldErrors: {},
     data: { userId },
   };
+}
+
+/**
+ * I token del MCP del team di chi perde il ruolo da revisore o lascia il workspace (H7). Un
+ * errore non ferma il cambio di ruolo: il MCP del team rilegge il ruolo a ogni richiesta e il
+ * conteggio della card non conta i token di chi non valuta più.
+ */
+async function revokeTeamTokensOf(workspaceId: string, userId: string): Promise<void> {
+  try {
+    await revokeTeamMcpTokensOfOwner({ workspaceId, ownerUserId: userId });
+  } catch (error) {
+    logSafeError("team-mcp-tokens", "revoke_owner_failed", error);
+  }
 }
 
 /**

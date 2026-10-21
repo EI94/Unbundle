@@ -35,7 +35,16 @@ Regole di questo documento:
 **Prerequisiti tecnici**
 - `feat/casi-duso` unito in `main` con il sì di Pierpaolo (`PIANO-LAVORI.md` §2.4, unione 1), con `UC_ENABLED` spento in produzione.
 - La pagina Use case (hub) unita e accesa per i workspace che riceveranno i dossier: **la pagina Use case si accende prima dei dossier**.
-- P0-16 fatto prima di togliere la voce «Casi d'uso» e di reindirizzare `/casi-duso`: `use-case-admin dossier-dups` a zero doppioni (righe complete e incomplete) **prima della 0020**, poi `use-case-admin dossier-links` dopo la 0020. `uc-doctor` (§9.1) mostra zero doppioni.
+- P0-16 fatto prima di togliere la voce «Casi d'uso» e di reindirizzare `/casi-duso`: `use-case-admin dossier-dups` a zero doppioni (righe complete e incomplete) **prima della 0020**, poi `use-case-admin dossier-links` dopo la 0020. `uc-doctor` (§9.1) mostra zero doppioni. Finché `dossierLinksReady` non è vero (o la lettura non riesce) il layout tiene la voce «Casi d'uso» sotto «Use case» e non reindirizza `/casi-duso`: un dossier senza scheda resta raggiungibile dalla barra.
+- La 0020 si applica **prima** del deploy del codice della pagina Use case: senza, la prima richiesta esegue nella funzione tutto il DDL di recupero (idempotente, una transazione, advisory lock), con lock ALTER durante una richiesta vera, e un errore DDL fa rispondere 500 a ogni pagina use_cases finché non riesce.
+
+**Cosa cambia anche nei workspace fuori da `USE_CASE_HUB_WORKSPACES`** (accettato: stringe la privacy come il commit di produzione 2ae98a7, art. 15.4; D4, D13, D14 valgono per tutti i workspace, non solo per quello dell'AI lab):
+- i contributori non vedono più matrice, punteggi e testi in `/portfolio`, `/portfolio/review/<id>`, `/use-cases`, `/use-cases/<id>` e `/plan`; il link di condivisione mostra a chi non è membro solo titolo, fase e «Quando»;
+- i segnali «nuova proposta» della campanella vanno ai soli revisori; i testi dei ruoli cambiano per tutti;
+- le scritture REST scrivono una riga di Storia e fanno salire `version`; il flusso di invio da Slack è idempotente e svuota i testi della bozza;
+- il cron `weekly-pulse` rifiuta un `CRON_SECRET` assente o vuoto (§2);
+- l'avvio di un dossier da una scheda arrivata dal connettore porta nel dossier, in sola lettura, problema, soluzione, area e strumenti (decisione del 19/10/2026), anche con l'area spenta: mai il proponente, e solo dove la sezione Casi d'uso è accesa.
+Per tenere uno di questi workspace come oggi servirebbe legare D4 a `isUseCaseHubWorkspace`: non si fa, perché riaprirebbe ai contributori dati che la produzione ha già chiuso.
 
 ## 2. Variabili per ambiente
 
@@ -48,7 +57,7 @@ Si impostano **a mano** nella dashboard di Vercel, ambiente per ambiente. `scrip
 | `UC_SCHEMA_SELF_HEAL` | assente oppure `off`; mai `on` | facoltativa (assente = self-heal acceso) | in produzione (`VERCEL_ENV=production`) il self-heal è spento se la variabile non dice `on`: l'app esegue solo la sonda e risponde 503 se lo schema non è aggiornato |
 | `UC_LS_EMAIL_DOMAINS` | domini di Lateral Space | come in produzione | serve anche con i dossier spenti (pagina Use case) |
 | `UC_SECRET` | obbligatoria | consigliata | `openssl rand -base64 32`; senza, le scritture dei link rispondono 503 |
-| `CRON_SECRET` | obbligatoria | consigliata | senza, i cron uc rispondono 401 |
+| `CRON_SECRET` | obbligatoria | consigliata | senza, i cron uc e `weekly-pulse` rispondono 401 |
 | `NEXT_PUBLIC_APP_URL` | `https://…` del dominio pubblico | mai l'URL della singola anteprima | origine dei link nelle email |
 | `RESEND_API_KEY`, `UC_EMAIL_FROM` | sì | facoltative | tracciamento di aperture e clic **spento** sul dominio del mittente |
 | `BLOB_READ_WRITE_TOKEN` | store standard | store di prova | file della zona standard e quarantena |

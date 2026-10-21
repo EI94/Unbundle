@@ -1,15 +1,11 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { DossierCardList, DossierColumnEmpty, DossierReadOnlyNotice } from "@/components/uc/shell/case-card";
 import { SectionUnavailable } from "@/components/uc/shell/section-unavailable";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { UcAccessError, ensureUcAvailable, getUcUserContext, isUcEnabledFor, isUcLsConfigured } from "@/lib/db/queries/uc-access";
+import { SubprocessorsLsNotice, subprocessorsPendingForLs } from "@/components/workspace/subprocessors-notice";
+import { UcAccessError, ensureUcAvailable, isUcEnabledFor, isUcLsConfigured } from "@/lib/db/queries/uc-access";
 import { dossierCardsForWorkspace } from "@/lib/db/queries/uc-nav";
-import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
-import { getAppUcExecutor } from "@/lib/db/uc-executor";
-import { subprocessorsLsNoticeParts } from "@/lib/uc/legal/subprocessors";
-import { ucLogError } from "@/lib/uc/log";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
 /**
@@ -39,7 +35,6 @@ export default async function CasesPage({ params }: { params: Promise<{ workspac
     subprocessorsPendingForLs(workspaceId, session.user.id),
   ]);
   const readOnlyNotice = canManageWorkspaceSettings(access.role) && !isUcLsConfigured();
-  const notice = subprocessorsLsNoticeParts(access.workspace.name);
 
   return (
     <PageContainer>
@@ -47,31 +42,11 @@ export default async function CasesPage({ params }: { params: Promise<{ workspac
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Casi d&apos;uso</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">I dossier in realizzazione: ognuno nasce dalla scheda di uno use case.</p>
       </div>
-      {subprocessorsPending && (
-        <p className="mb-4 text-sm text-muted-foreground" data-testid="subprocessors-notice">
-          {notice.before}
-          <Link href={`/dashboard/${workspaceId}/settings#sub-responsabili`} className="underline underline-offset-4 hover:text-foreground">
-            {notice.link}
-          </Link>
-          {notice.after}
-        </p>
-      )}
+      {subprocessorsPending && <SubprocessorsLsNotice workspaceId={workspaceId} workspaceName={access.workspace.name} className="mb-4" />}
       {readOnlyNotice && <DossierReadOnlyNotice />}
       <div className={readOnlyNotice ? "mt-4" : undefined}>
         {cards.length === 0 ? <DossierColumnEmpty variant="page" /> : <DossierCardList cards={cards} className="md:grid-cols-2" />}
       </div>
     </PageContainer>
   );
-}
-
-/** Solo per Lateral Space: il cliente non ha ancora autorizzato i sub-responsabili della versione corrente. */
-async function subprocessorsPendingForLs(workspaceId: string, userId: string): Promise<boolean> {
-  try {
-    const user = await getUcUserContext(userId);
-    if (!user?.isLateralSpace) return false;
-    return (await loadSubprocessorAck(await getAppUcExecutor(), workspaceId)) === null;
-  } catch (error) {
-    ucLogError({ area: "uc", op: "sub_responsabili", workspaceId }, error);
-    return false;
-  }
 }

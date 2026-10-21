@@ -3,7 +3,7 @@
 import { Bell } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { markSignalReadAction } from "@/lib/actions/portfolio";
+import { markSignalAsRead } from "@/lib/actions/intelligence";
 import { markAllUcNotificationsReadAction, markUcNotificationReadAction } from "@/lib/actions/uc-notifications";
 import {
   DropdownMenu,
@@ -22,24 +22,22 @@ export type BellSignal = {
   relatedEntityId: string | null;
   createdAt: string;
   isRead: boolean;
+  /** Dove porta il segnale, deciso dalla barra in alto con l'area del workspace; null: nessun link. */
+  href: string | null;
 };
 
-function hrefFor(workspaceId: string, s: BellSignal): string | null {
-  if (
-    s.signalType === "new_portfolio_item" &&
-    s.relatedEntityType === "use_case" &&
-    s.relatedEntityId
-  ) {
-    return `/dashboard/${workspaceId}/portfolio/review/${s.relatedEntityId}`;
-  }
-  return null;
-}
+/** «Segna come lette»: l'azione in testata (docs/casi-duso/DESIGN.md §3.13.4). */
+const READ_ALL = "Segna come lette";
+
+/** La data di un segnale in `it-IT`, a Roma («14 ott, 09:30»): la stessa sul server e nel browser. */
+const SIGNAL_DATE = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
 
 /**
  * Una riga della campanella: un segnale del portafoglio (`weekly_signals`) o una
  * notifica dei casi d'uso (`uc_notifications`, solo per Lateral Space). Le due
  * fonti restano separate anche nel «letto»: un segnale si segna con
- * `markSignalReadAction`, una notifica uc con `markUcNotificationReadAction`.
+ * `markSignalAsRead` (quella di Intelligence, che guarda il ruolo: chi non valuta non spegne i
+ * segnali delle schede), una notifica uc con `markUcNotificationReadAction`.
  */
 type BellEntry =
   | { source: "signal"; key: string; signal: BellSignal; createdAt: string; isRead: boolean }
@@ -57,11 +55,18 @@ export function NotificationsBell({
   workspaceId,
   initialSignals,
   initialCaseNotifications = [],
+  useCaseHub = false,
 }: {
   workspaceId: string;
   initialSignals: BellSignal[];
   /** Notifiche non lette dei casi d'uso (campanella di Lateral Space). */
   initialCaseNotifications?: UcBellItem[];
+  /**
+   * Area «Use case» accesa per il workspace. Le righe dei dossier hanno in testa codice e titolo
+   * dello use case (`context` di `src/lib/uc/notify/bell.ts`), mai «Casi d'uso»; spenta, senza
+   * contesto resta l'etichetta di oggi.
+   */
+  useCaseHub?: boolean;
 }) {
   const [signals, setSignals] = useState(initialSignals);
   const [caseItems] = useState(initialCaseNotifications);
@@ -75,7 +80,7 @@ export function NotificationsBell({
     if (s.isRead) return;
     setSignals((prev) => prev.map((x) => (x.id === s.id ? { ...x, isRead: true } : x)));
     startTransition(async () => {
-      await markSignalReadAction(workspaceId, s.id).catch(() => {});
+      await markSignalAsRead(workspaceId, s.id).catch(() => {});
     });
   };
 
@@ -112,7 +117,7 @@ export function NotificationsBell({
           <span>Notifiche workspace</span>
           {unreadCase > 0 && (
             <button type="button" className="underline-offset-2 hover:underline" onClick={onReadAllCases}>
-              Segna lette quelle dei casi d&apos;uso
+              {READ_ALL}
             </button>
           )}
         </div>
@@ -123,7 +128,7 @@ export function NotificationsBell({
         ) : (
           <ul className="space-y-1">
             {entries.slice(0, 40).map((e) => {
-              const href = e.source === "signal" ? hrefFor(workspaceId, e.signal) : e.item.href;
+              const href = e.source === "signal" ? e.signal.href : e.item.href;
               const title = e.source === "signal" ? e.signal.title : e.item.title;
               const description = e.source === "signal" ? e.signal.description : e.item.description;
               const content = (
@@ -134,11 +139,9 @@ export function NotificationsBell({
                   )}
                   onClick={() => (e.source === "signal" ? onOpenSignal(e.signal) : onOpenCase(e.item))}
                 >
-                  {e.source === "uc_case" && (
-                    <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Casi d&apos;uso
-                    </div>
-                  )}
+                  {e.source === "uc_case" && (e.item.context || !useCaseHub) ? (
+                    <div className="truncate text-xs text-muted-foreground">{e.item.context ?? "Casi d'uso"}</div>
+                  ) : null}
                   <div className="text-sm font-medium line-clamp-2">{title}</div>
                   {description && (
                     <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
@@ -146,7 +149,7 @@ export function NotificationsBell({
                     </div>
                   )}
                   <div className="text-[10px] text-muted-foreground mt-1">
-                    {new Date(e.createdAt).toLocaleString()}
+                    {e.source === "uc_case" ? e.item.when : SIGNAL_DATE.format(new Date(e.createdAt))}
                   </div>
                 </div>
               );

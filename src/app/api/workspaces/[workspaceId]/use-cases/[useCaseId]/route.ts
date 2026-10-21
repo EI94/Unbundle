@@ -1,10 +1,16 @@
 import { auth } from "@/lib/auth";
-import { getUseCaseById } from "@/lib/db/queries/use-cases";
+import { getUseCaseForRest, viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { toUseCaseApiRow } from "@/lib/portfolio/use-case-client-rows";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
-/** Dettaglio di uno use case, solo per chi valuta, con l'allowlist di `toUseCaseApiRow`. */
+/**
+ * Dettaglio di uno use case, solo per chi valuta, con l'allowlist di `toUseCaseApiRow`, in
+ * tutti i workspace.
+ *
+ * Risposte: 200 `{ useCase }`; 401 senza sessione; 403 senza ruolo da revisore; 404
+ * workspace o use case non trovato.
+ */
 export async function GET(
   _req: Request,
   {
@@ -25,8 +31,8 @@ export async function GET(
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const useCase = await getUseCaseById(useCaseId);
-  if (!useCase || useCase.workspaceId !== workspaceId) {
+  const useCase = await getUseCaseForRest(workspaceId, useCaseId, viewerFromSession(session.user, access.role));
+  if (!useCase) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 

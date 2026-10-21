@@ -38,7 +38,7 @@ export function TeamNameForm({
         name="aiTransformationTeamName"
         value={name}
         onChange={(event) => setName(event.target.value)}
-        placeholder="es. AI Transformation, CoE AI, Digital Factory…"
+        placeholder="es. CoE AI, Digital Factory…"
       />
       <Button
         type="submit"

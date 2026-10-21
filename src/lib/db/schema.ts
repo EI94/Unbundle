@@ -21,6 +21,14 @@ import {
 import type { Approval, Fallback, PartialNa, Waiver } from "../uc/types.ts";
 import { CONNECTOR_DEFAULT_LIMITS, type ConnectorLimits } from "./connector-ddl.ts";
 import type {
+  UseCaseEventAction,
+  UseCaseEventActorKind,
+  UseCaseEventChannel,
+  UseCaseEventField,
+  UseCaseMcpRequestStatus,
+} from "./use-case-hub-ddl.ts";
+import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
+import type {
   AnswerDevice,
   AnswerKind,
   BlockerStatus,
@@ -286,8 +294,11 @@ export const workspaces = pgTable("workspaces", {
   }>(),
   esgEnabled: boolean("esg_enabled").notNull().default(false),
   /**
-   * Nome del team che governa triage e valutazione (es. "AI Transformation", "CoE AI").
-   * Usato in copy UI e notifiche Slack.
+   * Nome del team che valuta gli use case, scelto dal workspace (es. «CoE AI»).
+   * Vuoto: vale `DEFAULT_REVIEW_TEAM_NAME` di `src/lib/review-team.ts`, l'unico posto
+   * con il valore predefinito (docs/use-case/DESIGN.md §14.2); lo legge `reviewTeamName()`.
+   * Usato in copy UI e notifiche Slack, senza articolo né «team» davanti.
+   * La colonna non si rinomina.
    */
   aiTransformationTeamName: varchar("ai_transformation_team_name", {
     length: 255,
@@ -411,6 +422,12 @@ export const workspaceIntegrationTokens = pgTable(
     updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
     /** Token arrivato dentro un indirizzo: «esposto, da revocare» (coda della 0019, connettore WP4). */
     exposedAt: timestamp("exposed_at", { mode: "date" }),
+    /**
+     * Token personale del MCP del team (drizzle/0020): la persona che lo possiede.
+     * Vale esattamente quanto lei e sparisce con lei. NULL per i token di workspace
+     * di oggi. Indice parziale `workspace_integration_tokens_owner_idx` nella migrazione.
+     */
+    ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: "cascade" }),
   },
   (t) => [
     index("workspace_integration_tokens_workspace_idx").on(t.workspaceId),
@@ -674,9 +691,139 @@ export const useCases = pgTable("use_cases", {
   submittedByUserId: uuid("submitted_by_user_id").references(() => connectorIdentities.id, {
     onDelete: "set null",
   }),
+  /*
+   * Area «Use case» (drizzle/0020, docs/use-case/DESIGN.md §3.1 e §10.1). Ogni colonna
+   * è nullable o ha un default: il codice di oggi inserisce ancora senza nominarle.
+   * CHECK, indici delle viste e trigger stanno solo nella migrazione e in
+   * src/lib/db/use-case-hub-ddl.ts (self-heal): mai drizzle-kit su queste colonne.
+   */
+  /** «AI Adoption · dal basso» (`adoption`) o «AI Transformation · dall'alto» (`transformation`). */
+  origin: varchar("origin", { length: 20 })
+    .$type<UseCaseOrigin>()
+    .notNull()
+    .default("adoption"),
+  /** Nome dell'AI Lab da cui nasce, es. «AI Lab Finanza · 12 ott». */
+  aiLab: varchar("ai_lab", { length: 120 }),
+  /** «Quando», solo per gli approvati: trimestre `2027-Q1`; NULL = «Più avanti». */
+  targetQuarter: varchar("target_quarter", { length: 7 }),
+  /** Data di revisione `AAAA-MM-GG`, solo per i rimandati. */
+  reviewBy: date("review_by", { mode: "string" }),
+  /** Valore stimato dal team, euro all'anno. */
+  valueEurYear: integer("value_eur_year"),
+  /** Costo di realizzazione del team, importo una tantum. Mai insieme a `costBand` (CHECK). */
+  costEurOnce: integer("cost_eur_once"),
+  /**
+   * Costo di realizzazione del team come fascia, indice 1-5. Le fasce (confini ed
+   * etichette) sono del workspace, in `workspace_scoring_models.config.costBands` (D15):
+   * un cambio di fasce non riscrive questo indice, che si rilegge con l'etichetta nuova.
+   */
+  costBand: smallint("cost_band"),
+  /** Punteggi e motivazione dell'AI. Lo scrive solo l'AI; non fa salire `version`. */
+  aiSuggestion: jsonb("ai_suggestion").$type<UseCaseAiSuggestion>(),
+  /**
+   * Controllo di versione delle scritture: lo alza il trigger `use_cases_bump_version`
+   * solo quando cambia una colonna che una persona modifica. Chi lo scrive a mano non lo cambia.
+   */
+  version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 });
+
+/** Punteggi 0–5 per KPI, divisi per dimensione: la stessa forma di `useCases.customScores`. */
+export type UseCaseKpiScores = {
+  impact?: Record<string, number>;
+  feasibility?: Record<string, number>;
+  esg?: Record<string, number>;
+};
+
+/**
+ * `use_cases.ai_suggestion` (docs/use-case/DESIGN.md §7.6): punteggi dell'AI per KPI e
+ * motivazione. `v1Backup` è la copia che `use-case-admin scoring-v2` salva prima del
+ * passaggio alla v2, per poter tornare indietro.
+ */
+export type UseCaseAiSuggestion = {
+  scores?: UseCaseKpiScores;
+  rationale?: string | null;
+  model?: string | null;
+  /** Istante ISO della stima. */
+  at?: string;
+  kind?: "auto" | "suggerimento" | "ricalibrazione";
+  /**
+   * Copia della v1 salvata da `scoring-v2 --apply` (§7.6 punto 4): `--revert` rimette
+   * `custom_scores` e `review_notes` da qui (punto 5).
+   */
+  v1Backup?: {
+    customScores: UseCaseKpiScores | null;
+    reviewNotes: string | null;
+    /** Istante ISO della copia. */
+    at: string;
+  };
+};
+
+// ─── Area «Use case» (drizzle/0020) ──────────────────────────────────
+// CHECK, indici parziali e trigger stanno solo nella migrazione e in
+// src/lib/db/use-case-hub-ddl.ts (self-heal): mai drizzle-kit su queste tabelle.
+
+/**
+ * Storia di uno use case, senza testi (docs/use-case/DESIGN.md §10.3): chi del team ha
+ * agito, canale, azione e nomi dei campi da un elenco chiuso. La creazione la scrive il
+ * trigger `use_cases_created_event` con `actorUserId` NULL: la Storia non registra chi
+ * propone. Nessun indice su `actor_user_id`: niente viste aggregate per persona.
+ */
+export const useCaseEvents = pgTable(
+  "use_case_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id")
+      .notNull()
+      .references(() => useCases.id, { onDelete: "cascade" }),
+    at: timestamp("at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
+    /** Solo per le azioni di persone del team (`actorKind = 'persona'`, CHECK). */
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorKind: varchar("actor_kind", { length: 12 }).$type<UseCaseEventActorKind>().notNull(),
+    channel: varchar("channel", { length: 20 }).$type<UseCaseEventChannel>().notNull(),
+    action: varchar("action", { length: 30 }).$type<UseCaseEventAction>().notNull(),
+    /** Nomi dei campi toccati, mai i testi (CHECK sull'elenco chiuso). */
+    fields: text("fields").array().$type<UseCaseEventField[]>().notNull().default([]),
+    /** Codici di fase, es. `da_valutare.nuova`, `approvato.trimestre`. */
+    phaseBefore: varchar("phase_before", { length: 40 }),
+    phaseAfter: varchar("phase_after", { length: 40 }),
+  },
+  (t) => [index("use_case_events_use_case_idx").on(t.useCaseId, t.at.desc())]
+);
+
+/**
+ * Richieste idempotenti del MCP del team: una riga per (workspace, principal, chiave).
+ * `result` tiene solo id, codici e versioni; `reservedIds` gli id decisi alla presa in
+ * carico di `create_use_cases`, riusati a ogni ripresa.
+ */
+export const useCaseMcpRequests = pgTable(
+  "use_case_mcp_requests",
+  {
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    principalKey: varchar("principal_key", { length: 80 }).notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    tool: varchar("tool", { length: 40 }).notNull(),
+    requestHash: varchar("request_hash", { length: 128 }).notNull(),
+    status: varchar("status", { length: 20 }).$type<UseCaseMcpRequestStatus>().notNull().default("pending"),
+    result: jsonb("result").$type<Record<string, unknown>>(),
+    reservedIds: uuid("reserved_ids").array(),
+    attempt: integer("attempt").notNull().default(1),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({
+      name: "use_case_mcp_requests_pkey",
+      columns: [t.workspaceId, t.principalKey, t.idempotencyKey],
+    }),
+  ]
+);
 
 export const externalContributionSubmissions = pgTable(
   "external_contribution_submissions",
@@ -1418,6 +1565,10 @@ export type Activity = typeof activities.$inferSelect;
 export type NewActivity = typeof activities.$inferInsert;
 export type UseCase = typeof useCases.$inferSelect;
 export type NewUseCase = typeof useCases.$inferInsert;
+export type UseCaseEvent = typeof useCaseEvents.$inferSelect;
+export type NewUseCaseEvent = typeof useCaseEvents.$inferInsert;
+export type UseCaseMcpRequest = typeof useCaseMcpRequests.$inferSelect;
+export type NewUseCaseMcpRequest = typeof useCaseMcpRequests.$inferInsert;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Report = typeof reports.$inferSelect;

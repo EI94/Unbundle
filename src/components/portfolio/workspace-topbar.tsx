@@ -2,6 +2,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { auth } from "@/lib/auth";
 import { getSignalsByWorkspace } from "@/lib/db/queries/signals";
 import type { UcBellItem } from "@/lib/uc/notify/bell";
+import { hubSignalHref } from "@/lib/use-cases/digest";
 import { NotificationsBell, type BellSignal } from "./notifications-bell";
 
 function toIso(d: Date | string | null | undefined): string {
@@ -33,15 +34,40 @@ async function caseNotifications(workspaceId: string): Promise<UcBellItem[]> {
 }
 
 /**
+ * Dove porta un segnale della campanella. Con l'area «Use case» accesa (docs/use-case/DESIGN.md
+ * §2.5, §14.3) un nuovo use case apre la sua scheda e i riepiloghi dell'area la loro vista;
+ * spenta, come oggi: solo il nuovo contributo, verso la pagina di revisione.
+ */
+function signalHref(
+  workspaceId: string,
+  signal: { signalType: string; relatedEntityType: string | null; relatedEntityId: string | null },
+  useCaseHub: boolean,
+): string | null {
+  if (signal.signalType === "new_portfolio_item" && signal.relatedEntityType === "use_case" && signal.relatedEntityId) {
+    const id = encodeURIComponent(signal.relatedEntityId);
+    return useCaseHub ? `/dashboard/${workspaceId}/use-cases/${id}` : `/dashboard/${workspaceId}/portfolio/review/${id}`;
+  }
+  return useCaseHub ? hubSignalHref(workspaceId, signal.signalType) : null;
+}
+
+/**
  * Topbar server component: carica gli ultimi signal e delega la UI interattiva
  * alla campanella client-side. Viene renderizzato in `dashboard/[workspaceId]/layout`.
+ * I segnali delle schede (`new_portfolio_item` e i riepiloghi dell'area) arrivano solo
+ * ai revisori: li filtra la query, con il ruolo di chi guarda (D4).
  */
 export async function WorkspaceTopbar({
   workspaceId,
+  role,
   showNotifications = true,
+  useCaseHub = false,
 }: {
   workspaceId: string;
+  /** Ruolo di chi guarda nel workspace, letto dal layout. */
+  role: string | null;
   showNotifications?: boolean;
+  /** Area «Use case» accesa per il workspace (`isUseCaseHubWorkspace`, letta dal layout): decide i link. */
+  useCaseHub?: boolean;
 }) {
   if (!showNotifications) {
     return (
@@ -50,7 +76,7 @@ export async function WorkspaceTopbar({
       </header>
     );
   }
-  const [rows, caseItems] = await Promise.all([getSignalsByWorkspace(workspaceId, 25), caseNotifications(workspaceId)]);
+  const [rows, caseItems] = await Promise.all([getSignalsByWorkspace(workspaceId, 25, role), caseNotifications(workspaceId)]);
   const signals: BellSignal[] = rows.map((r) => ({
     id: r.id,
     title: r.title,
@@ -60,12 +86,13 @@ export async function WorkspaceTopbar({
     relatedEntityId: r.relatedEntityId ?? null,
     createdAt: toIso(r.createdAt),
     isRead: r.isRead,
+    href: signalHref(workspaceId, { signalType: r.signalType, relatedEntityType: r.relatedEntityType ?? null, relatedEntityId: r.relatedEntityId ?? null }, useCaseHub),
   }));
 
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between gap-2 md:justify-end border-b bg-background/80 backdrop-blur px-4 py-2">
       <SidebarTrigger className="size-11 md:hidden" aria-label="Apri navigazione" title="Apri navigazione" />
-      <NotificationsBell workspaceId={workspaceId} initialSignals={signals} initialCaseNotifications={caseItems} />
+      <NotificationsBell workspaceId={workspaceId} initialSignals={signals} initialCaseNotifications={caseItems} useCaseHub={useCaseHub} />
     </header>
   );
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { cache } from "react";
 import { db } from "..";
@@ -15,10 +16,52 @@ import {
   type Organization,
 } from "../schema";
 import { getOrganizationsByUser } from "@/lib/db/queries/organizations";
+import { logSafeError } from "@/lib/log/safe-error";
+import {
+  FALLBACK_CODE_PREFIX,
+  isValidCodePrefix,
+  proposePrefix,
+  slugForNewWorkspace,
+} from "@/lib/use-cases/prefix";
 import { ensureDbSchema } from "../ensure-schema";
 
+/**
+ * Crea il workspace e, nello stesso statement, la sua riga di `workspace_connector_configs`
+ * (docs/use-case/DESIGN.md §10.6, D6): `enabled = false`, contatore dei codici a zero,
+ * prefisso proposto dal nome (`UC` se non è valido) e slug valido e unico per costruzione
+ * (base dal nome, `-`, i primi 8 caratteri dell'id). Senza la riga `assignUseCaseCode` non
+ * assegna codici.
+ *
+ * La creazione del workspace non fallisce mai per colpa della riga:
+ * - prima `ensureDbSchema()`, così la tabella c'è (un suo guasto si registra e basta);
+ * - la riga sta in una CTE con `ON CONFLICT DO NOTHING` senza target: uno slug già usato non
+ *   ferma l'INSERT del workspace. Il CHECK dello slug non si può violare (`ON CONFLICT` non
+ *   salverebbe da un CHECK). La chiave esterna verso il workspace si controlla a fine
+ *   statement, quando il workspace c'è;
+ * - se lo statement con la riga fallisce lo stesso (tabella assente), il workspace si crea
+ *   da solo, con lo stesso id. La riga mancante la recupera `use-case-admin configs` e
+ *   `use-case-admin doctor` la segnala.
+ */
 export async function createWorkspace(data: NewWorkspace) {
-  const [workspace] = await db.insert(workspaces).values(data).returning();
+  try {
+    await ensureDbSchema();
+  } catch (error) {
+    logSafeError("workspaces", "ensure_schema_failed", error);
+  }
+  const id = data.id ?? randomUUID();
+  const values = { ...data, id };
+  const proposed = proposePrefix(data.name);
+  const prefix = isValidCodePrefix(proposed) ? proposed : FALLBACK_CODE_PREFIX;
+  const connectorConfig = db.$with("connector_config", {}).as(sql`INSERT INTO workspace_connector_configs (workspace_id, slug, code_prefix, enabled, next_code_seq)
+    VALUES (${id}::uuid, ${slugForNewWorkspace(data.name, id)}, ${prefix}, false, 0)
+    ON CONFLICT DO NOTHING`);
+  try {
+    const [workspace] = await db.with(connectorConfig).insert(workspaces).values(values).returning();
+    return workspace;
+  } catch (error) {
+    logSafeError("workspaces", "create_with_connector_config_failed", error);
+  }
+  const [workspace] = await db.insert(workspaces).values(values).returning();
   return workspace;
 }
 

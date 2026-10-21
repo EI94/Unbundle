@@ -1,10 +1,16 @@
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { legacyRouteRedirect, stubLogEntry } from "@/lib/use-cases/legacy-routes";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getUseCaseById } from "@/lib/db/queries/use-cases";
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
+import { dossierStateForUseCase } from "@/lib/db/queries/use-case-dossiers";
+import { projectForContributor } from "@/lib/use-cases/permissions";
+import type { PhaseInput } from "@/lib/use-cases/phase";
+import { romeToday } from "@/lib/use-cases/quarter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,17 +36,69 @@ export default async function PortfolioReviewPage({
 
   const { workspaceId, useCaseId } = await params;
 
-  const { access } = await requireWorkspacePage(workspaceId);
+  // Area «Use case» accesa: questa pagina vive nell'area (docs/use-case/DESIGN.md §2.3, §2.4).
+  // 307, mai 308, prima di ogni lettura: se l'area si spegne il vecchio indirizzo torna com'era.
+  if (isUseCaseHubWorkspace(workspaceId)) {
+    const legacy = legacyRouteRedirect(`/dashboard/${workspaceId}/portfolio/review/${useCaseId}`, null);
+    if (legacy) {
+      console.info(JSON.stringify(stubLogEntry(legacy.from)));
+      redirect(legacy.to);
+    }
+  }
+
+  const { session, access } = await requireWorkspacePage(workspaceId);
   const canReview = canReviewWorkspacePortfolio(access.role);
   const [workspace, useCase, model] = await Promise.all([
     getWorkspaceById(workspaceId),
     getUseCaseById(useCaseId),
-    getOrCreateWorkspaceScoringModel(workspaceId),
+    canReview ? getOrCreateWorkspaceScoringModel(workspaceId) : null,
   ]);
   if (!workspace || !useCase || useCase.workspaceId !== workspaceId) notFound();
 
   const isPortfolio = !!useCase.portfolioKind;
   if (!isPortfolio) notFound();
+
+  if (!canReview || !model) {
+    // D4 e D13 (docs/use-case/DESIGN.md §6.9, §11): chi non valuta vede titolo, fase e
+    // «Quando»; della propria proposta anche codice e nota pubblica. Una scheda nascosta
+    // alla ricerca che non è sua non c'è.
+    const read = await dossierStateForUseCase(workspaceId, useCase.id);
+    const dossier = read.ok ? read.dossier : null;
+    const item = projectForContributor(
+      { userId: session.user.id, email: session.user.email, emailVerified: session.user.emailVerified },
+      {
+        ...useCase,
+        intake: useCase.intake as PhaseInput["intake"],
+        linkedCaseCode: dossier?.code ?? null,
+        dossierStatus: dossier?.status ?? null,
+        duplicateOfCode: null,
+        today: romeToday(),
+      },
+    );
+    if (!item) notFound();
+    return (
+      <div className="mx-auto w-full max-w-2xl flex-1 space-y-6 p-6 lg:p-8">
+        <Link href={`/dashboard/${workspaceId}/portfolio`} className="text-sm text-muted-foreground hover:text-foreground">
+          ‹ Raccolta & Ranking
+        </Link>
+        <div className="space-y-2">
+          {item.own && item.code && <div className="font-mono text-sm text-muted-foreground">{item.code}</div>}
+          <h1 className="text-2xl font-bold tracking-tight break-words">{item.title}</h1>
+          <Badge variant="outline">{item.phaseLabel}</Badge>
+        </div>
+        {item.own && item.publicNote && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Nota pubblica</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap text-sm">{item.publicNote}</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
 
   const esgEnabled = workspace.esgEnabled === true;
 
@@ -152,11 +210,6 @@ export default async function PortfolioReviewPage({
                 </span>
               )}
             </div>
-            {!canReview ? (
-              <p className="rounded-lg border p-4 text-sm text-muted-foreground">
-                Punteggi e stato li modifica chi valuta gli use case.
-              </p>
-            ) : (
             <ReviewForm
               key={`${useCaseId}:${useCase.updatedAt?.getTime?.() ?? 0}:${JSON.stringify(useCase.customScores ?? {})}`}
               workspaceId={workspaceId}
@@ -169,7 +222,6 @@ export default async function PortfolioReviewPage({
                 reviewNotes: useCase.reviewNotes ?? "",
               }}
             />
-            )}
           </CardContent>
         </Card>
       </div>

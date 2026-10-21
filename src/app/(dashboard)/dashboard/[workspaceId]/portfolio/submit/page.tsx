@@ -1,6 +1,9 @@
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { notFound } from "next/navigation";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { legacyRouteRedirect, stubLogEntry } from "@/lib/use-cases/legacy-routes";
+import { notFound, redirect } from "next/navigation";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
+import { reviewTeamName } from "@/lib/review-team";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PortfolioSubmitForm } from "@/components/portfolio/submit-form";
 
@@ -12,12 +15,22 @@ export default async function PortfolioSubmitPage({
 
   const { workspaceId } = await params;
 
+  // Area «Use case» accesa: questa pagina vive nell'area (docs/use-case/DESIGN.md §2.3, §2.4).
+  // 307, mai 308, prima di ogni lettura: se l'area si spegne il vecchio indirizzo torna com'era.
+  if (isUseCaseHubWorkspace(workspaceId)) {
+    const legacy = legacyRouteRedirect(`/dashboard/${workspaceId}/portfolio/submit`, null);
+    if (legacy) {
+      console.info(JSON.stringify(stubLogEntry(legacy.from)));
+      redirect(legacy.to);
+    }
+  }
+
   await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 
-  const teamName =
-    workspace.aiTransformationTeamName?.trim() || "AI Transformation";
+  // Il nome da solo, senza articolo né «team» davanti (DESIGN §14.2).
+  const teamName = reviewTeamName(workspace);
   const esgEnabled = workspace.esgEnabled === true;
 
   return (
@@ -25,7 +38,7 @@ export default async function PortfolioSubmitPage({
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Nuovo contributo</h1>
         <p className="mt-1 text-muted-foreground max-w-2xl">
-          Compila in modo semplice. Alla fine ti ringraziamo e il team{" "}
+          Compila in modo semplice. Alla fine ti ringraziamo e{" "}
           <strong>{teamName}</strong> potrà valutare e confrontare i contributi
           sulla matrice.
         </p>

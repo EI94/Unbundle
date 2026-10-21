@@ -231,6 +231,9 @@ function CopyButton({
   );
 }
 
+/** La nota della card v1 con l'area «Use case» accesa (docs/use-case/DESIGN.md §9.7, D11). */
+export const CLAUDE_V1_HUB_NOTE = "Per proporre con Claude ora si usa il connettore «Unbundle».";
+
 /**
  * Integrazioni › Claude: la card «Claude per Unbundle» (server stdio v1, resta
  * finché ci sono token attivi, D11) e, accanto, il blocco «Claude Code sui
@@ -238,6 +241,13 @@ function CopyButton({
  * ai dossier si creano dal dossier («Sviluppo con Claude»); qui si vedono e si
  * revocano. `dossiers`: codice e titolo dei dossier, per dare un nome ai
  * gruppi; senza, il gruppo prende il nome dell'accesso.
+ *
+ * Con l'area «Use case» accesa (`useCaseHub`, docs/use-case/DESIGN.md §9.7):
+ * niente token v1 nuovi (lo rifiuta anche `createClaudeMcpTokenAction`); la card
+ * mostra solo l'elenco, la revoca e la nota, e con zero token v1 attivi non
+ * compare. `tokens` sono solo quelli con `provider = 'claude_mcp'`
+ * (`getWorkspaceIntegrationTokens`): i token personali del MCP del team hanno
+ * la loro card e non contano qui.
  */
 export function ClaudeMcpCard({
   workspaceId,
@@ -245,12 +255,15 @@ export function ClaudeMcpCard({
   canManage,
   tokens,
   dossiers = [],
+  useCaseHub = false,
 }: {
   workspaceId: string;
   workspaceName: string;
   canManage: boolean;
   tokens: TokenItem[];
   dossiers?: readonly ClaudeCardDossier[];
+  /** Area «Use case» accesa per il workspace: solo elenco, revoca e nota (D11). */
+  useCaseHub?: boolean;
 }) {
   const createAction = createClaudeMcpTokenAction.bind(null, workspaceId);
   const revokeAction = revokeClaudeMcpTokenAction.bind(null, workspaceId);
@@ -303,9 +316,13 @@ export function ClaudeMcpCard({
 
   // I token dei dossier stanno nello stesso elenco del workspace ma non
   // aggiungono contributi: hanno il loro blocco e non contano come setup.
-  const portfolioTokens = localTokens.filter((token) => !isCaseToken(token));
+  // Solo i token v1 (`provider = 'claude_mcp'`, non di un dossier): un altro provider non conta.
+  const portfolioTokens = localTokens.filter((token) => token.provider === "claude_mcp" && !isCaseToken(token));
   const dossierGroups = activeAccessByDossier(localTokens, dossiers);
   const activeTokens = portfolioTokens.filter(isActive).length;
+  // D11: con l'area accesa la card resta finché ci sono token v1 attivi, e non ne crea di nuovi.
+  const showV1 = !useCaseHub || activeTokens > 0;
+  const canCreate = canManage && !useCaseHub;
   const feedback = createState.message ?? revokeState.message ?? null;
   const feedbackOk = createState.message ? createState.ok : revokeState.ok;
   const setupCommand = createState.data
@@ -321,7 +338,8 @@ export function ClaudeMcpCard({
 
   return (
     <>
-    <section className="overflow-hidden rounded-xl bg-card text-card-foreground ring-1 ring-foreground/10" aria-labelledby="claude-card-title">
+    {showV1 ? (
+    <section className="overflow-hidden rounded-xl bg-card text-card-foreground ring-1 ring-foreground/10" aria-labelledby="claude-card-title" data-slot="claude-v1-card">
       <div className="border-b bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.14),transparent_34%)] p-4 sm:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
@@ -348,6 +366,12 @@ export function ClaudeMcpCard({
       </div>
 
       <div className="@container space-y-6 p-4 sm:p-6">
+        {useCaseHub ? (
+          <p className="rounded-2xl border bg-muted/20 p-4 text-sm text-muted-foreground" data-slot="claude-v1-note">
+            {CLAUDE_V1_HUB_NOTE}
+          </p>
+        ) : null}
+        {useCaseHub ? null : (
         <div className="grid gap-3 @2xl:grid-cols-3">
           <OnboardingStep
             index="1"
@@ -365,8 +389,9 @@ export function ClaudeMcpCard({
             description="Niente numeri inventati, niente invii silenziosi: campi coerenti, riepilogo e conferma finale."
           />
         </div>
+        )}
 
-        {canManage ? (
+        {useCaseHub ? null : canCreate ? (
           <form
             action={createFormAction}
             className="rounded-2xl border bg-muted/20 p-4"
@@ -529,6 +554,7 @@ export function ClaudeMcpCard({
           </section>
         ) : null}
 
+        {useCaseHub ? null : (
         <section className="rounded-2xl border bg-muted/10 p-4">
           <div className="mb-4 flex items-start gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10">
@@ -561,18 +587,19 @@ export function ClaudeMcpCard({
                 Cosa succede dopo
               </div>
               <p className="text-sm leading-relaxed">
-                Il contributo entra in Raccolta & Ranking, viene valutato sulla
+                Il contributo entra negli use case del workspace, viene valutato sulla
                 griglia del workspace e resta modificabile dal team autorizzato.
               </p>
             </div>
           </div>
         </section>
+        )}
 
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold">Setup configurati</h3>
             <span className="text-xs text-muted-foreground">
-              Può aggiungere contributi a Raccolta & Ranking
+              Può aggiungere contributi agli use case del workspace
             </span>
           </div>
           {portfolioTokens.length === 0 ? (
@@ -593,6 +620,7 @@ export function ClaudeMcpCard({
 
       </div>
     </section>
+    ) : null}
 
     {dossierGroups.length > 0 ? (
       <section className="rounded-xl bg-card p-4 text-card-foreground ring-1 ring-foreground/10 sm:p-6" aria-labelledby="claude-dossier-title">

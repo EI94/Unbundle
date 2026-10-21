@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from ".";
 import { UC_DDL, UC_PROBE_SQL } from "../uc/ddl.ts";
 import { CONNECTOR_DDL, CONNECTOR_PROBE_SQL } from "./connector-ddl.ts";
+import { USE_CASE_HUB_DDL, USE_CASE_HUB_PROBE_SQL } from "./use-case-hub-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -21,7 +22,7 @@ import { CONNECTOR_DDL, CONNECTOR_PROBE_SQL } from "./connector-ddl.ts";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 14;
+const ENSURE_VERSION = 15;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -609,6 +610,12 @@ async function runOnce(): Promise<void> {
   // external_contribution_submissions (qui sopra): identità, configurazione e
   // limiti, colonne di use_cases, principal_key, indici e trigger.
   await runConnectorDdl();
+
+  // Area «Use case» (drizzle/0020_use_case_hub.sql) ───────────────────────
+  // Stessi statement e stesso ordine della migrazione, dopo il connettore (il
+  // trigger della versione legge intake e public_note della 0019). Non l'indice
+  // unico dei dossier: sta solo nella migrazione (docs/use-case/DESIGN.md §10.2).
+  await runUseCaseHubDdl();
 }
 
 /**
@@ -620,6 +627,19 @@ export async function runConnectorDdl(statements: readonly string[] = CONNECTOR_
   const client = db.$client;
   await client.transaction([
     client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:connector-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
+/**
+ * Applica il DDL dell'hub in una sola transazione, serializzata da un advisory lock:
+ * colonne, vincoli, trigger e tabelle arrivano insieme, e due avvii a freddo non si
+ * pestano i piedi.
+ */
+export async function runUseCaseHubDdl(statements: readonly string[] = USE_CASE_HUB_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-hub-ddl'))"),
     ...statements.map((statement) => client.query(statement)),
   ]);
 }
@@ -731,6 +751,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
           HAVING count(*) = 3
         )
         AND ${sql.raw(CONNECTOR_PROBE_SQL)}
+        AND ${sql.raw(USE_CASE_HUB_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;

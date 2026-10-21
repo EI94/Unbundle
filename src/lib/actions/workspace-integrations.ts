@@ -8,10 +8,14 @@ import {
   createWorkspaceIntegrationToken,
   revokeWorkspaceIntegrationToken,
 } from "@/lib/db/queries/workspace-integrations";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
 const CLAUDE_MCP_TOKEN_EXPIRES_IN_DAYS = 180;
+
+/** Lo stesso testo della nota della card v1 (`CLAUDE_V1_HUB_NOTE`, D11). */
+const CLAUDE_V1_CLOSED_MESSAGE = "Per proporre con Claude ora si usa il connettore «Unbundle».";
 
 export type WorkspaceIntegrationActionState<Data = unknown> = {
   ok: boolean;
@@ -99,6 +103,11 @@ export async function createClaudeMcpTokenAction(
 ): Promise<WorkspaceIntegrationActionState<CreateClaudeMcpTokenData>> {
   const manager = await assertWorkspaceIntegrationManager(workspaceId);
   if (!manager.ok) return manager.state;
+  // D11 (docs/use-case/DESIGN.md §9.7): con l'area «Use case» accesa non nascono token v1
+  // nuovi, anche chiamando l'action direttamente. Elenco e revoca restano.
+  if (isUseCaseHubWorkspace(workspaceId)) {
+    return errorState(CLAUDE_V1_CLOSED_MESSAGE);
+  }
 
   const parsed = createTokenSchema.safeParse({
     label: String(formData.get("label") ?? "Claude team"),

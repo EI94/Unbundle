@@ -1,0 +1,499 @@
+// Schema checks for drizzle/0020_use_case_hub.sql on the hub's local test cluster
+// (docs/use-case/PIANO-LAVORI.md §5.6, docs/use-case/DESIGN.md §10.1-10.4), on the model
+// of scripts/connettore-test/schema-check.mjs. Never touches another database: every
+// psql / pg_dump call is pinned to uc_test@127.0.0.1:<UC_TEST_PG_PORT>, and the scratch
+// databases hub_check_<run>_* below belong to this run only: created here, dropped when
+// the script exits (also after an error). <run> is HUB_CHECK_ID (lowercase letters, digits,
+// _) or the process id, so two runs at once never drop each other's databases; those of a
+// run that was killed (its process is gone) are dropped at the start of the next one.
+//
+//   UC_TEST_PG_PORT=55479 node scripts/use-case-test/schema-check.mjs
+//
+// 1. Idempotence: on a database migrated 0000→0019 (with synthetic rows), 0020 is applied
+//    twice; `pg_dump --schema-only` after the first and the second apply must be identical.
+//    Existing rows get origin 'adoption' and version 1, and no history row (no backfill).
+// 2. Self-heal parity: a second database migrated only 0000→0017 (same rows) gets the real
+//    `ensureDbSchema()` of the app. Tables, columns, constraints, indexes, triggers and
+//    trigger functions of the hub must equal those of database 1.
+// 3. Duplicate dossiers: with two uc_cases rows on the same card (a complete one and an
+//    incomplete one, then two complete ones) 0020 stops with the message of DESIGN §10.4
+//    and leaves nothing behind; without duplicates it creates the unique index. The database
+//    first loses the unique index of the 0018 of C11b, as under a 0018 from before C11b;
+//    that 0018 applied again over the duplicate skips the index with a NOTICE, and 0020
+//    still stops.
+// 4. Without the uc tables (0000→0017 and 0019, no 0018) 0020 passes twice and creates no
+//    unique index.
+// 5. Art. 15.4: no index on use_cases.proposed_by nor on use_case_events.actor_user_id; no
+//    free-text column in use_case_events.
+// 6. Rollout safety: on both databases inserts and updates in the shape of the code before
+//    0020 succeed; the creation trigger writes one `creato` row without a person.
+// 7. Probe: a database at 0019 that today's probe calls current (0000→0019 plus the
+//    self-heal catch-up, without the hub objects) receives `ensureDbSchema()`: the self-heal
+//    runs and the hub objects appear (DESIGN §10.2). Case 2 alone cannot see this, because
+//    0000→0017 makes the probe false anyway. On a fully healed database the same call runs
+//    only the probe.
+// 8. Without 0019 (0000→0017): 0020 stops with its message and leaves nothing behind. The
+//    version trigger reads intake and public_note, and PL/pgSQL would not notice their
+//    absence until the first UPDATE of use_cases.
+// Exit code 0 only if every check passes. Optional: UC_TEST_PG_BIN.
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const port = process.env.UC_TEST_PG_PORT?.trim() || "55479";
+// 55439 Learning, 55449 Casi d'uso, 55469 connector: never the hub's checks.
+if (!/^\d+$/.test(port) || ["55439", "55449", "55469"].includes(port)) {
+  throw new Error("Use the hub's own test cluster port (default 55479)");
+}
+const pgBin = process.env.UC_TEST_PG_BIN || "/opt/homebrew/opt/postgresql@16/bin";
+const HOST = "127.0.0.1";
+const USER = "uc_test";
+// One set of scratch databases per run (see the header): never shared, never reused.
+const runTag = (process.env.HUB_CHECK_ID?.trim().toLowerCase() || String(process.pid)).replace(/[^a-z0-9_]/g, "").slice(0, 24);
+if (!runTag) throw new Error("HUB_CHECK_ID must contain lowercase letters, digits or _");
+const DB = Object.fromEntries(["mig", "heal", "probe", "dups", "nouc", "no19"].map((key) => [key, `hub_check_${runTag}_${key}`]));
+const HUB_TABLES = ["use_case_events", "use_case_mcp_requests"];
+const USE_CASES_0020 = [
+  // Read by the version trigger; the self-heal already adds it, migrations 0000–0019 do not.
+  "column sustainability_impact",
+  "column origin", "column ai_lab", "column target_quarter", "column review_by", "column value_eur_year",
+  "column cost_eur_once", "column cost_band", "column ai_suggestion", "column version",
+  "constraint use_cases_origin_check", "constraint use_cases_target_quarter_check",
+  "constraint use_cases_value_eur_year_check", "constraint use_cases_cost_eur_once_check",
+  "constraint use_cases_cost_band_check", "constraint use_cases_ai_suggestion_check",
+  "constraint use_cases_cost_one_source_check",
+  "index use_cases_workspace_origin_idx", "index use_cases_workspace_quarter_idx",
+  "index use_cases_workspace_review_by_idx", "index use_cases_workspace_ai_lab_idx",
+  "trigger use_cases_bump_version", "trigger use_cases_created_event",
+];
+const TOKENS_0020 = [
+  "column owner_user_id",
+  "constraint workspace_integration_tokens_owner_user_id_fkey",
+  "index workspace_integration_tokens_owner_idx",
+];
+const FUNCTIONS = ["use_cases_bump_version", "use_cases_created_event"];
+const env = { PATH: `${pgBin}:${process.env.PATH ?? "/usr/bin:/bin"}`, HOME: process.env.HOME ?? "/private/tmp", LC_ALL: "C", LANG: "C" };
+const pinned = ["-h", HOST, "-p", port, "-U", USER];
+const failures = [];
+
+function bin(name) {
+  const path = join(pgBin, name);
+  return existsSync(path) ? path : name;
+}
+
+function exec(name, args, { input } = {}) {
+  return spawnSync(bin(name), args, { env, input, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+}
+
+function run(name, args, options) {
+  const result = exec(name, args, options);
+  if (result.status !== 0) {
+    console.error(result.stderr?.trim());
+    throw new Error(`${name} ${args.filter((a) => !a.startsWith("-")).slice(-1)} failed (exit ${result.status})`);
+  }
+  return result.stdout;
+}
+
+const psql = (db, sql) => run("psql", [...pinned, "-d", db, "--no-psqlrc", "-q", "-v", "ON_ERROR_STOP=1", "-At", "-c", sql]).trim();
+/** psql that may fail: { ok, out, err }. */
+const tryPsql = (db, sql) => {
+  const result = exec("psql", [...pinned, "-d", db, "--no-psqlrc", "-q", "-v", "ON_ERROR_STOP=1", "-At", "-c", sql]);
+  return { ok: result.status === 0, out: result.stdout.trim(), err: result.stderr.trim() };
+};
+const applyArgs = (db, file) => [...pinned, "-d", db, "--no-psqlrc", "--single-transaction", "--set=ON_ERROR_STOP=1", "-q", "-f", file];
+const applyFile = (db, file) => run("psql", applyArgs(db, file));
+
+/** pg_dump output without the per-run random `\restrict` keys of recent pg_dump releases. */
+function dump(db, tables = []) {
+  const args = [...pinned, "-d", db, "--schema-only", "--no-owner", "--no-privileges"];
+  for (const t of tables) args.push("-t", `public.${t}`);
+  return run("pg_dump", args)
+    .split("\n")
+    .filter((line) => !/^\\(un)?restrict /.test(line))
+    .join("\n");
+}
+
+function check(label, ok, detail = "") {
+  console.log(`${ok ? "PASS" : "FAIL"} ${label}${detail ? ` (${detail})` : ""}`);
+  if (!ok) failures.push(label);
+}
+
+function firstDiff(a, b) {
+  const la = a.split("\n");
+  const lb = b.split("\n");
+  for (let i = 0; i < Math.max(la.length, lb.length); i++) {
+    if (la[i] !== lb[i]) return `line ${i + 1}: ${JSON.stringify(la[i])} vs ${JSON.stringify(lb[i])}`;
+  }
+  return "";
+}
+
+const migrations = readdirSync(join(repoRoot, "drizzle")).filter((n) => /^\d{4}_.+\.sql$/.test(n)).sort();
+const upTo = (last) => migrations.filter((n) => n.slice(0, 4) <= last);
+const file = (prefix) => join(repoRoot, "drizzle", migrations.find((n) => n.startsWith(prefix)));
+const file0020 = file("0020");
+
+// Synthetic rows that exist before the migration (no client data, .test addresses only).
+const ids = {
+  org: "00000000-0000-4000-8000-0000000000b1",
+  ws: "00000000-0000-4000-8000-0000000000b2",
+  user: "00000000-0000-4000-8000-0000000000b3",
+  token: "00000000-0000-4000-8000-0000000000b4",
+  ucOld: "00000000-0000-4000-8000-0000000000b5",
+  ucOldDraft: "00000000-0000-4000-8000-0000000000b6",
+  cardA: "00000000-0000-4000-8000-0000000000c1",
+  cardB: "00000000-0000-4000-8000-0000000000c2",
+  template: "00000000-0000-4000-8000-0000000000c3",
+};
+const SEED = `
+INSERT INTO organizations (id, name, slug) VALUES ('${ids.org}', 'Organizzazione di prova hub', 'org-prova-hub-schema');
+INSERT INTO workspaces (id, organization_id, name) VALUES ('${ids.ws}', '${ids.org}', 'Workspace di prova hub');
+INSERT INTO users (id, email, name) VALUES ('${ids.user}', 'revisore.schema@ls.test', 'Revisore di prova');
+INSERT INTO workspace_integration_tokens (id, workspace_id, label, token_hash, token_prefix)
+  VALUES ('${ids.token}', '${ids.ws}', 'Token di prova', repeat('d', 64), 'prova...');
+INSERT INTO use_cases (id, workspace_id, title, status, source, submitted_at, created_at)
+  VALUES ('${ids.ucOld}', '${ids.ws}', 'Riepilogo automatico delle riunioni', 'proposed', 'web_proposed', '2026-09-01 08:30:00', '2026-09-01 08:00:00');
+INSERT INTO use_cases (id, workspace_id, title, created_at)
+  VALUES ('${ids.ucOldDraft}', '${ids.ws}', 'Bozza di prova', '2026-09-02 10:00:00');
+`;
+
+const { CONNECTOR_PROBE_SQL } = await import("../../src/lib/db/connector-ddl.ts");
+const { USE_CASE_HUB_PROBE_SQL, DOSSIER_DUPLICATES_MESSAGE, MISSING_0019_MESSAGE } = await import("../../src/lib/db/use-case-hub-ddl.ts");
+const hubProbe = (db) => psql(db, `SELECT ${USE_CASE_HUB_PROBE_SQL}`) === "t";
+const connectorProbe = (db) => psql(db, `SELECT ${CONNECTOR_PROBE_SQL}`) === "t";
+
+/** Columns, constraints, indexes and triggers of a table, one sorted line each. */
+const catalogOf = (db, table) =>
+  psql(
+    db,
+    `SELECT string_agg(line, E'\\n' ORDER BY line) FROM (
+       SELECT 'column ' || column_name || ' | ' || data_type || coalesce('(' || character_maximum_length || ')', '') || ' | ' || is_nullable || ' | ' || coalesce(column_default, '') AS line
+         FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '${table}'
+       UNION ALL
+       SELECT 'constraint ' || conname || ' | ' || pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'public.${table}'::regclass
+       UNION ALL
+       SELECT 'index ' || indexname || ' | ' || indexdef FROM pg_indexes WHERE schemaname = 'public' AND tablename = '${table}'
+       UNION ALL
+       SELECT 'trigger ' || tgname || ' | ' || pg_get_triggerdef(oid) FROM pg_trigger WHERE tgrelid = 'public.${table}'::regclass AND NOT tgisinternal
+     ) s`,
+  ).split("\n");
+const only = (lines, names) => lines.filter((line) => names.some((name) => line.startsWith(`${name} |`)));
+const functionDefs = (db) => FUNCTIONS.map((name) => psql(db, `SELECT pg_get_functiondef('public.${name}'::regproc)`)).join("\n");
+
+/** Every hub object of a database, as comparable text. */
+function hubObjects(db) {
+  return {
+    tables: dump(db, HUB_TABLES),
+    useCases: only(catalogOf(db, "use_cases"), USE_CASES_0020),
+    tokens: only(catalogOf(db, "workspace_integration_tokens"), TOKENS_0020),
+    functions: functionDefs(db),
+  };
+}
+
+function freshDatabase(db, files) {
+  run("dropdb", [...pinned, "--if-exists", "--force", db]);
+  run("createdb", [...pinned, db]);
+  for (const name of files) applyFile(db, join(repoRoot, "drizzle", name));
+  run("psql", [...pinned, "-d", db, "--no-psqlrc", "--single-transaction", "--set=ON_ERROR_STOP=1", "-q"], { input: SEED });
+}
+
+/**
+ * The real `ensureDbSchema()` of the app on `db`, in a child process with the local Neon
+ * transport. Returns how many `db.execute` calls it made: 1 means only the probe ran
+ * (`schemaLooksCurrent()` was true), more means the self-heal ran.
+ */
+function ensureDbSchemaOn(db) {
+  const url = `postgresql://${USER}@${HOST}:${port}/${db}`;
+  const child = spawnSync(
+    process.execPath,
+    [
+      "--no-warnings",
+      "--import",
+      "./scripts/connettore-test/app-resolve.mjs",
+      "--require",
+      "./scripts/uc-test/local-neon.cjs",
+      "--input-type=module",
+      "-e",
+      `const { db } = await import("./src/lib/db/index.ts");
+       let calls = 0;
+       const execute = db.execute.bind(db);
+       db.execute = (...args) => { calls += 1; return execute(...args); };
+       const m = await import("./src/lib/db/ensure-schema.ts");
+       await m.ensureDbSchema();
+       console.log("ensure-calls=" + calls);`,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: { PATH: env.PATH, HOME: env.HOME, DATABASE_URL: url, UC_TEST_DATABASE_URL: url, UC_TEST_PG_PORT: port, UC_TEST_PG_DB: db },
+    },
+  );
+  const calls = Number(child.stdout.match(/ensure-calls=(\d+)/)?.[1] ?? NaN);
+  return { ok: child.status === 0, calls, error: child.status === 0 ? "" : child.stderr.trim().split("\n").slice(-3).join(" / ") };
+}
+
+/** Inserts and updates in the shape of the code before 0020 (no hub column named). */
+function oldShapeWrites(db, label) {
+  const inserted = psql(
+    db,
+    `INSERT INTO use_cases (workspace_id, title, description, source, proposed_by, portfolio_kind, status, portfolio_review_status, submitted_at)
+     VALUES ('${ids.ws}', 'Classificazione delle richieste', 'Smistare le richieste in arrivo', 'web_proposed', 'persona.${label}@cliente.test', 'use_case_ai', 'proposed', 'needs_inputs', now())
+     RETURNING id || ' ' || origin || ' ' || version`,
+  );
+  const [id, origin, version] = inserted.split(" ");
+  check(`${db}: insert without the 0020 columns succeeds (origin adoption, version 1)`, origin === "adoption" && version === "1", inserted);
+  const events = psql(
+    db,
+    `SELECT string_agg(action || '/' || channel || '/' || actor_kind || '/' || coalesce(actor_user_id::text, 'null') || '/' || cardinality(fields)
+       || '/' || coalesce(phase_before, 'null') || '/' || coalesce(phase_after, 'null'), ',')
+       FROM use_case_events WHERE use_case_id = '${id}'`,
+  );
+  check(`${db}: the creation trigger writes one «creato» row, channel web, no person, no fields`, events === "creato/web/proponente/null/0/null/null", events);
+  const updated = psql(
+    db,
+    `UPDATE use_cases SET portfolio_review_status = 'in_review', review_notes = 'Nota interna di prova', reviewed_by = '${ids.user}', reviewed_at = now(), updated_at = now()
+      WHERE id = '${id}' RETURNING version`,
+  );
+  check(`${db}: an old-shape review update succeeds and bumps version (review status changed)`, updated === "2", updated);
+  const recomputed = psql(
+    db,
+    `UPDATE use_cases SET overall_score = 3.4, overall_impact_score = 3.1, category = 'quick_win', updated_at = now() WHERE id = '${id}' RETURNING version`,
+  );
+  check(`${db}: recomputed scores and category leave version unchanged`, recomputed === "2", recomputed);
+  const token = psql(
+    db,
+    `INSERT INTO workspace_integration_tokens (workspace_id, label, token_hash, token_prefix)
+     VALUES ('${ids.ws}', 'Token forma vecchia', md5('${label}') || md5('${label}x'), 'prova...') RETURNING coalesce(owner_user_id::text, 'null')`,
+  );
+  check(`${db}: an old-shape workspace token insert succeeds with owner_user_id NULL`, token === "null", token);
+}
+
+/** Drops this run's scratch databases; runs on every exit, an uncaught error included. */
+let dropped = false;
+function dropScratchDatabases() {
+  if (dropped) return;
+  dropped = true;
+  for (const db of Object.values(DB)) exec("dropdb", [...pinned, "--if-exists", "--force", db]);
+}
+process.on("exit", dropScratchDatabases);
+
+/** A run killed outright (SIGKILL, Ctrl-C during a child process) leaves hub_check_<pid>_*: drop those of dead processes. */
+function dropDeadRunDatabases() {
+  const names = psql("postgres", `SELECT string_agg(datname, ' ') FROM pg_database WHERE datname ~ '^hub_check_[0-9]+_[a-z0-9]+$'`);
+  for (const name of names.split(" ").filter(Boolean)) {
+    const pid = Number(name.split("_")[2]);
+    if (pid === process.pid) continue;
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error.code === "ESRCH") run("dropdb", [...pinned, "--if-exists", "--force", name]);
+    }
+  }
+}
+dropDeadRunDatabases();
+
+console.log(`Cluster 127.0.0.1:${port}; migrations ${migrations[0]} → ${migrations[migrations.length - 1]}; databases hub_check_${runTag}_*`);
+
+// 1. Idempotence of 0020 on 0000→0019 with rows.
+freshDatabase(DB.mig, upTo("0019"));
+check("0000→0019: hub probe false, connector probe true", !hubProbe(DB.mig) && connectorProbe(DB.mig));
+applyFile(DB.mig, file0020);
+const first = dump(DB.mig);
+applyFile(DB.mig, file0020);
+const second = dump(DB.mig);
+check("0020 applied twice: identical schema dump", first === second, firstDiff(first, second));
+check("hub probe true after 0020", hubProbe(DB.mig));
+const existing = psql(DB.mig, `SELECT string_agg(origin || '/' || version, ',' ORDER BY id) FROM use_cases WHERE workspace_id = '${ids.ws}'`);
+check("existing rows: origin adoption, version 1", existing === "adoption/1,adoption/1", existing);
+check("existing rows: no history row (no backfill)", psql(DB.mig, `SELECT count(*) FROM use_case_events`) === "0");
+check("0020 with the uc tables creates the unique dossier index", psql(DB.mig, `SELECT to_regclass('public.uc_cases_portfolio_use_case_unique_idx') IS NOT NULL`) === "t");
+check("the old non-unique dossier index stays", psql(DB.mig, `SELECT to_regclass('public.uc_cases_portfolio_use_case_idx') IS NOT NULL`) === "t");
+
+// 2. Self-heal parity on 0000→0017.
+freshDatabase(DB.heal, upTo("0017"));
+check("0000→0017: hub probe false before the self-heal", !hubProbe(DB.heal));
+const heal = ensureDbSchemaOn(DB.heal);
+check("ensureDbSchema() runs without errors and applies the self-heal", heal.ok && heal.calls > 1, heal.error || `${heal.calls} execute calls`);
+check("hub probe true after the self-heal", hubProbe(DB.heal));
+const migHub = hubObjects(DB.mig);
+const healHub = hubObjects(DB.heal);
+check(`self-heal = 0020 for ${HUB_TABLES.join(", ")}`, migHub.tables === healHub.tables, firstDiff(migHub.tables, healHub.tables));
+check("0020 creates every listed use_cases object", migHub.useCases.length === USE_CASES_0020.length, `${migHub.useCases.length}/${USE_CASES_0020.length}`);
+check(
+  "self-heal = 0020 for the use_cases columns, constraints, indexes and triggers",
+  migHub.useCases.join("\n") === healHub.useCases.join("\n"),
+  firstDiff(migHub.useCases.join("\n"), healHub.useCases.join("\n")),
+);
+check("0020 creates every listed workspace_integration_tokens object", migHub.tokens.length === TOKENS_0020.length, `${migHub.tokens.length}/${TOKENS_0020.length}`);
+check("self-heal = 0020 for workspace_integration_tokens.owner_user_id", migHub.tokens.join("\n") === healHub.tokens.join("\n"), firstDiff(migHub.tokens.join("\n"), healHub.tokens.join("\n")));
+check("self-heal = 0020 for the trigger functions", migHub.functions === healHub.functions, firstDiff(migHub.functions, healHub.functions));
+check("the self-heal creates no dossier index (it is only in 0020)", psql(DB.heal, `SELECT to_regclass('public.uc_cases_portfolio_use_case_unique_idx') IS NULL`) === "t");
+
+// 3. Duplicate dossiers stop 0020, complete or not, and leave nothing behind.
+freshDatabase(DB.dups, upTo("0019"));
+// The 0018 of C11b creates the unique dossier index on the still empty uc_cases. Production
+// ran a 0018 from before it: drop the index to seed duplicates as there (no-op before C11b).
+psql(DB.dups, `DROP INDEX IF EXISTS uc_cases_portfolio_use_case_unique_idx`);
+psql(
+  DB.dups,
+  `INSERT INTO use_cases (id, workspace_id, title, status) VALUES ('${ids.cardA}', '${ids.ws}', 'Scheda A di prova', 'accepted'), ('${ids.cardB}', '${ids.ws}', 'Scheda B di prova', 'accepted');
+   INSERT INTO uc_templates (id, key, version, name, archetype, definition, definition_hash)
+     VALUES ('${ids.template}', 'prova.schema_hub', '1.0.0', 'Modello di prova', 'prova', '{}'::jsonb, repeat('a', 64));
+   INSERT INTO uc_cases (workspace_id, organization_id, portfolio_use_case_id, template_id, template_version, code, title, setup_completed_at)
+     VALUES ('${ids.ws}', '${ids.org}', '${ids.cardA}', '${ids.template}', '1.0.0', 'XX-D1', 'Dossier completo A', now()),
+            ('${ids.ws}', '${ids.org}', '${ids.cardA}', '${ids.template}', '1.0.0', 'XX-D2', 'Dossier incompleto A', NULL);`,
+);
+const stopped = (label) => {
+  const result = exec("psql", applyArgs(DB.dups, file0020));
+  const error = result.stderr.split("\n").find((line) => line.startsWith("psql:") && line.includes("ERROR:")) ?? result.stderr.trim();
+  check(`${label}: 0020 stops with the message of DESIGN §10.4`, result.status !== 0 && result.stderr.includes(DOSSIER_DUPLICATES_MESSAGE), error.replace(/^.*ERROR:\s*/, ""));
+  const left = psql(DB.dups, `SELECT (SELECT count(*) FROM information_schema.columns WHERE table_name = 'use_cases' AND column_name = 'origin') || '/' || coalesce(to_regclass('public.use_case_events')::text, 'none')`);
+  check(`${label}: nothing of 0020 is left (single transaction)`, left === "0/none", left);
+};
+stopped("complete + incomplete dossier on one card");
+// Then production gets the 0018 of C11b over the duplicate: it skips the index with a NOTICE
+// (UC_UNIQUE_DOSSIER_INDEX_DDL in src/lib/uc/ddl.ts), and 0020 still stops.
+const rerun0018 = exec("psql", applyArgs(DB.dups, file("0018")));
+check(
+  "0018 again over the duplicate passes and creates no unique index",
+  rerun0018.status === 0 && psql(DB.dups, `SELECT to_regclass('public.uc_cases_portfolio_use_case_unique_idx') IS NULL`) === "t",
+  rerun0018.status === 0 ? "" : rerun0018.stderr.trim().split("\n").pop(),
+);
+if (readFileSync(file("0018"), "utf8").includes("uc_cases_portfolio_use_case_unique_idx")) {
+  const notice = "uc_cases: piu dossier sulla stessa scheda (righe complete e incomplete). Indice uc_cases_portfolio_use_case_unique_idx non creato: esegui use-case-admin dossier-dups.";
+  check("…with the NOTICE that names use-case-admin dossier-dups", rerun0018.stderr.includes(notice), rerun0018.stderr.trim().split("\n").pop());
+} else {
+  console.log("SKIP …with the NOTICE that names use-case-admin dossier-dups (this 0018 predates C11b: no unique index in it)");
+}
+stopped("0018 again over the duplicate");
+psql(DB.dups, `DELETE FROM uc_cases WHERE code = 'XX-D2'`);
+psql(
+  DB.dups,
+  `INSERT INTO uc_cases (workspace_id, organization_id, portfolio_use_case_id, template_id, template_version, code, title, setup_completed_at)
+   VALUES ('${ids.ws}', '${ids.org}', '${ids.cardB}', '${ids.template}', '1.0.0', 'XX-D3', 'Dossier completo B', now()),
+          ('${ids.ws}', '${ids.org}', '${ids.cardB}', '${ids.template}', '1.0.0', 'XX-D4', 'Altro dossier completo B', now());`,
+);
+stopped("two complete dossiers on one card");
+psql(DB.dups, `DELETE FROM uc_cases WHERE code = 'XX-D4'`);
+const passed = exec("psql", applyArgs(DB.dups, file0020));
+check("without duplicates 0020 passes", passed.status === 0, passed.status === 0 ? "" : passed.stderr.trim().split("\n").pop());
+check("…and creates the unique dossier index", psql(DB.dups, `SELECT to_regclass('public.uc_cases_portfolio_use_case_unique_idx') IS NOT NULL`) === "t");
+const dupAfter = tryPsql(
+  DB.dups,
+  `INSERT INTO uc_cases (workspace_id, organization_id, portfolio_use_case_id, template_id, template_version, code, title)
+   VALUES ('${ids.ws}', '${ids.org}', '${ids.cardA}', '${ids.template}', '1.0.0', 'XX-D5', 'Secondo dossier A')`,
+);
+check("…which then refuses a second dossier on the same card, even incomplete", !dupAfter.ok && dupAfter.err.includes("uc_cases_portfolio_use_case_unique_idx"), dupAfter.err.split("\n")[0]);
+
+// 4. Without the uc tables.
+freshDatabase(DB.nouc, [...upTo("0017"), migrations.find((n) => n.startsWith("0019"))]);
+const noUc1 = exec("psql", applyArgs(DB.nouc, file0020));
+const noUc2 = exec("psql", applyArgs(DB.nouc, file0020));
+check(
+  "without uc tables 0020 passes twice",
+  noUc1.status === 0 && noUc2.status === 0,
+  noUc1.status === 0 && noUc2.status === 0 ? "" : `${noUc1.stderr}${noUc2.stderr}`.trim().split("\n").pop(),
+);
+check(
+  "…creates no uc table and no unique index",
+  psql(DB.nouc, `SELECT to_regclass('public.uc_cases') IS NULL AND to_regclass('public.uc_cases_portfolio_use_case_unique_idx') IS NULL`) === "t",
+);
+check("…and the hub probe is true", hubProbe(DB.nouc));
+
+// 5. Art. 15.4: no index per person, no free text in the history.
+for (const db of [DB.mig, DB.heal]) {
+  const personIndexes = psql(
+    db,
+    `SELECT coalesce(string_agg(indexname, ', '), '') FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename IN ('use_cases', 'use_case_events')
+        AND (indexdef ~ 'proposed_by' OR indexdef ~ 'actor_user_id')`,
+  );
+  check(`${db}: no index on use_cases.proposed_by nor on use_case_events.actor_user_id`, personIndexes === "", personIndexes);
+  const freeText = psql(
+    db,
+    `SELECT coalesce(string_agg(column_name || ':' || udt_name || coalesce('(' || character_maximum_length || ')', ''), ', ' ORDER BY column_name), '')
+       FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'use_case_events'
+        AND (udt_name IN ('text', 'json', 'jsonb', 'bytea') OR (udt_name = 'varchar' AND character_maximum_length > 40)
+             OR (udt_name = '_text' AND column_name <> 'fields'))`,
+  );
+  const columnCount = psql(db, `SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'use_case_events'`);
+  check(`${db}: no free-text column in use_case_events (11 columns)`, freeText === "" && columnCount === "11", freeText || `${columnCount} columns`);
+  const fieldsCheck = tryPsql(
+    db,
+    `INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields)
+     VALUES ('${ids.ws}', '${ids.ucOld}', 'sistema', 'script', 'modificato', ARRAY['Testo libero di una persona'])`,
+  );
+  check(`${db}: the fields CHECK refuses a value outside the list`, !fieldsCheck.ok && fieldsCheck.err.includes("use_case_events_fields_check"), fieldsCheck.err.split("\n")[0]);
+}
+
+// 6. The code before 0020 still writes.
+for (const [db, label] of [[DB.mig, "mig"], [DB.heal, "heal"]]) oldShapeWrites(db, label);
+
+// 7. Probe: production after 0019 (catch-up done, no hub objects) must self-heal.
+check("a fully healed database: ensureDbSchema() runs only the probe", (() => {
+  const again = ensureDbSchemaOn(DB.heal);
+  return again.ok && again.calls === 1;
+})());
+freshDatabase(DB.probe, upTo("0019"));
+const caughtUp = ensureDbSchemaOn(DB.probe);
+check("0000→0019 + ensureDbSchema(): catch-up done", caughtUp.ok && hubProbe(DB.probe), caughtUp.error);
+// Remove what this branch adds, nothing else: the database is now what production looks
+// like after 0019 with the self-heal of ENSURE_VERSION 14.
+psql(
+  DB.probe,
+  `DROP TRIGGER use_cases_bump_version ON use_cases;
+   DROP TRIGGER use_cases_created_event ON use_cases;
+   DROP FUNCTION use_cases_bump_version();
+   DROP FUNCTION use_cases_created_event();
+   DROP TABLE use_case_events;
+   DROP TABLE use_case_mcp_requests;
+   ALTER TABLE use_cases DROP CONSTRAINT use_cases_cost_one_source_check,
+     DROP COLUMN origin, DROP COLUMN ai_lab, DROP COLUMN target_quarter, DROP COLUMN review_by, DROP COLUMN value_eur_year,
+     DROP COLUMN cost_eur_once, DROP COLUMN cost_band, DROP COLUMN ai_suggestion, DROP COLUMN version;
+   ALTER TABLE workspace_integration_tokens DROP COLUMN owner_user_id;`,
+);
+check("0019 database as in production: connector probe true, hub probe false", connectorProbe(DB.probe) && !hubProbe(DB.probe));
+const healedAt0019 = ensureDbSchemaOn(DB.probe);
+check(
+  "on it ensureDbSchema() does not stop at the probe: the self-heal runs",
+  healedAt0019.ok && healedAt0019.calls > 1,
+  healedAt0019.error || `${healedAt0019.calls} execute calls`,
+);
+const hubBack = hubProbe(DB.probe);
+check("…and the hub objects are there (hub probe true)", hubBack);
+if (hubBack) {
+  const probeHub = hubObjects(DB.probe);
+  check(
+    "…equal to those of 0020",
+    probeHub.tables === migHub.tables &&
+      probeHub.useCases.join("\n") === migHub.useCases.join("\n") &&
+      probeHub.tokens.join("\n") === migHub.tokens.join("\n") &&
+      probeHub.functions === migHub.functions,
+  );
+  const kept = psql(DB.probe, `SELECT string_agg(origin || '/' || version, ',' ORDER BY id) FROM use_cases WHERE workspace_id = '${ids.ws}'`);
+  check("…with the existing rows kept (origin adoption, version 1)", kept === "adoption/1,adoption/1", kept);
+}
+check("no extension created by 0020", !readFileSync(file0020, "utf8").match(/CREATE\s+EXTENSION/i));
+
+// 8. Without 0019: 0020 stops before creating anything.
+freshDatabase(DB.no19, upTo("0017"));
+const without0019 = exec("psql", applyArgs(DB.no19, file0020));
+check(
+  "0000→0017 without 0019: 0020 stops with its message",
+  without0019.status !== 0 && without0019.stderr.includes(MISSING_0019_MESSAGE),
+  (without0019.stderr.split("\n").find((line) => line.includes("ERROR:")) ?? without0019.stderr.trim()).replace(/^.*ERROR:\s*/, ""),
+);
+const leftNo19 = psql(
+  DB.no19,
+  `SELECT (SELECT count(*) FROM information_schema.columns WHERE table_name = 'use_cases' AND column_name IN ('origin', 'version'))
+       || '/' || coalesce(to_regprocedure('public.use_cases_bump_version()')::text, 'none') || '/' || coalesce(to_regclass('public.use_case_events')::text, 'none')`,
+);
+check("…and leaves nothing of 0020 behind (single transaction)", leftNo19 === "0/none/none", leftNo19);
+const stillWrites = tryPsql(DB.no19, `UPDATE use_cases SET title = 'Titolo di prova cambiato' WHERE id = '${ids.ucOld}'`);
+check("…so use_cases still accepts updates", stillWrites.ok, stillWrites.err.split("\n")[0]);
+
+dropScratchDatabases();
+console.log(failures.length === 0 ? "All hub schema checks passed." : `${failures.length} check(s) failed.`);
+process.exit(failures.length === 0 ? 0 : 1);

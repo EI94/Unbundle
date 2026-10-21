@@ -20,6 +20,12 @@
  *   delle domande e valori dichiarati nelle call. Idempotente sul codice del caso.
  * - Non crea contatti: i referenti veri si inseriscono dall'interfaccia.
  * - Il report di scansione contiene solo chiavi e categorie, mai il testo.
+ * - Scheda madre (casi-duso P0-16 d; docs/use-case/DESIGN.md §10.9): con la 0020 il
+ *   caso non resta orfano. Se non ha una scheda, il seed ne crea una come
+ *   `use-case-admin dossier-links` (approvata, «AI Transformation · dall'alto»,
+ *   nascosta alla ricerca, senza proponente), la collega e le assegna il codice
+ *   (senza riga di config del workspace resta senza: `configs` e poi `codes`). Il
+ *   caso tiene il suo codice. Vale anche per un caso già seedato.
  */
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -35,6 +41,9 @@ import { planSeed, type PlanSeedOptions, type SeedPlan, type SeedScanner } from 
 import { parseRedactionNames, parseSeedText, SEED_MAX_BYTES } from "../src/lib/uc/seed/schema.ts";
 import { describeCandidates, pickWorkspace, workspaceSearch, type WorkspaceCandidate, type WorkspaceSearch } from "../src/lib/uc/seed/workspace.ts";
 import { cast, jsonb, requireRows, toStatement, ucSql, type UcStatement } from "../src/lib/uc/sql/statement.ts";
+import { ASSIGN_USE_CASE_CODE_SQL } from "../src/lib/portfolio/use-case-code.ts";
+import { MOTHER_CARD } from "../src/lib/use-cases/admin/dossier-links.ts";
+import { SCHEMA_FACTS_SQL, schemaFactsFrom } from "../src/lib/use-cases/admin/schema.ts";
 import { planTemplateLoad } from "../src/lib/uc/template/load.ts";
 import { normalizeTemplate } from "../src/lib/uc/template/normalize.ts";
 import { redactPersonalMentions } from "../src/lib/uc/text/redact.ts";
@@ -417,6 +426,45 @@ function checkCounts(plan: SeedPlan, got: Awaited<ReturnType<typeof countsInData
   return problems;
 }
 
+/** La scheda madre del caso, come `use-case-admin dossier-links`. `$1` caso, `$2` nuova scheda. */
+const CREATE_AND_LINK_MOTHER_SQL = `WITH c AS (
+  SELECT id, workspace_id, coalesce(nullif(btrim(title), ''), code) AS title, nullif(btrim(one_liner), '') AS one_liner FROM uc_cases
+   WHERE id = $1::uuid AND setup_completed_at IS NOT NULL AND portfolio_use_case_id IS NULL
+   FOR UPDATE
+), card AS (
+  INSERT INTO use_cases (id, workspace_id, title, description, portfolio_kind, status, origin, source, intake, proposed_by)
+  SELECT $2::uuid, c.workspace_id, c.title, c.one_liner, '${MOTHER_CARD.portfolioKind}', '${MOTHER_CARD.status}', '${MOTHER_CARD.origin}', '${MOTHER_CARD.source}',
+         '${JSON.stringify(MOTHER_CARD.intake)}'::jsonb, NULL
+    FROM c
+  RETURNING id
+)
+UPDATE uc_cases u
+   SET portfolio_use_case_id = card.id, updated_at = now()
+  FROM card
+ WHERE u.id = $1::uuid
+RETURNING card.id::text AS use_case_id`;
+
+/**
+ * Collega il caso alla sua scheda madre (P0-16 d): la crea se manca, con il codice. null senza
+ * la 0020 (la scheda usa `origin`); `{ created: false }` se il caso ha già una scheda.
+ */
+async function linkMotherCard(workspaceId: string, caseId: string): Promise<{ created: boolean; use_case_id: string; code: string | null } | null> {
+  const facts = schemaFactsFrom((await one({ text: SCHEMA_FACTS_SQL, params: [] }))[0]);
+  if (!facts.m0020) return null;
+  const linkedSql = toStatement(ucSql`SELECT c.portfolio_use_case_id::text AS use_case_id, u.code
+    FROM uc_cases c LEFT JOIN use_cases u ON u.id = c.portfolio_use_case_id
+   WHERE c.id = ${cast(caseId, "uuid")}`);
+  const linked = (await one(linkedSql))[0];
+  if (linked?.use_case_id) return { created: false, use_case_id: String(linked.use_case_id), code: typeof linked.code === "string" ? linked.code : null };
+  const useCaseId = randomUUID();
+  const [link = [], code = []] = await executor.batch([
+    { text: CREATE_AND_LINK_MOTHER_SQL, params: [caseId, useCaseId] },
+    { text: ASSIGN_USE_CASE_CODE_SQL, params: [workspaceId, useCaseId] },
+  ]);
+  if (link.length === 0) fail("scheda_madre", "Il caso non è completo o ha già una scheda: rilancia lo script.");
+  return { created: true, use_case_id: useCaseId, code: typeof code[0]?.code === "string" ? code[0].code : null };
+}
+
 async function main() {
   // Il template viene dal database (caricato prima con il loader), non dal file.
   const workspaceId = workspaceOption ?? (await findWorkspace(workspaceSearch(seed.workspace_hint)));
@@ -448,7 +496,8 @@ FROM uc_cases c WHERE workspace_id = ${cast(workspaceId, "uuid")} AND code = ${c
   let caseId: string;
   if (existing && existing.seed_hash === plan.seedHash) {
     const got = await countsInDatabase(String(existing.id));
-    console.log(JSON.stringify({ status: "ALREADY_SEEDED", case_id: existing.id, code: plan.case.code, counts_now: got }, null, 2));
+    const motherCard = await linkMotherCard(workspaceId, String(existing.id));
+    console.log(JSON.stringify({ status: "ALREADY_SEEDED", case_id: existing.id, code: plan.case.code, counts_now: got, mother_card: motherCard }, null, 2));
     return;
   }
   if (existing && existing.seed_hash) fail("seed_diverso", "Il caso esiste già con un seed diverso: lo script non sovrascrive.");
@@ -490,6 +539,7 @@ FROM uc_cases c WHERE workspace_id = ${cast(workspaceId, "uuid")} AND code = ${c
     .batch(overlayStatements(plan, workspaceId, caseId, personal))
     .catch((error: unknown) => fail("sovrapposizione_fallita", error instanceof Error ? error.message.replace(/^uc:/, "") : "Errore del database."));
   await refreshReadinessCache(executor, workspaceId, caseId);
+  const motherCard = await linkMotherCard(workspaceId, caseId);
 
   const got = await countsInDatabase(caseId);
   const problems = checkCounts(plan, got);
@@ -504,6 +554,7 @@ FROM uc_cases c WHERE workspace_id = ${cast(workspaceId, "uuid")} AND code = ${c
         expected: plan.counts,
         counts_now: got,
         problems,
+        mother_card: motherCard,
         scan_report_sha256: plan.scan.sha256,
       },
       null,

@@ -4,31 +4,48 @@ import { db } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { weeklySignals, activities, workspaces, useCases } from "@/lib/db/schema";
-import { eq, and, desc } from "drizzle-orm";
-import { markSignalRead } from "@/lib/db/queries/signals";
+import { eq, and, desc, notInArray } from "drizzle-orm";
+import { USE_CASE_SIGNAL_TYPES, markAllVisibleSignalsRead, markSignalRead } from "@/lib/db/queries/signals";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 
+/**
+ * «Segna come letto» di un segnale, in Intelligence e nella campanella. `is_read` è uno per
+ * tutto il workspace: chi non valuta non vede i segnali delle schede (D4, docs/use-case/DESIGN.md
+ * §11) e quindi non li spegne ai revisori, nemmeno con l'id di un segnale indovinato.
+ */
 export async function markSignalAsRead(workspaceId: string, signalId: string) {
-  await requireWorkspaceAccess(workspaceId);
+  const { access } = await requireWorkspaceAccess(workspaceId);
   // Il segnale viene aggiornato solo se appartiene al workspace richiesto:
   // senza questo vincolo un id indovinato toccherebbe i dati di un altro cliente.
-  await markSignalRead(workspaceId, signalId);
+  if (canReviewWorkspacePortfolio(access.role)) {
+    await markSignalRead(workspaceId, signalId);
+  } else {
+    await db
+      .update(weeklySignals)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(weeklySignals.id, signalId),
+          eq(weeklySignals.workspaceId, workspaceId),
+          notInArray(weeklySignals.signalType, [...USE_CASE_SIGNAL_TYPES])
+        )
+      );
+  }
+  // La campanella sta nella barra in alto del workspace.
+  revalidatePath(`/dashboard/${workspaceId}`);
 }
 
+/**
+ * «Segna tutti letti» in Intelligence: solo i segnali che il ruolo di chi chiama vede, come la
+ * campanella (`markAllVisibleSignalsRead`). Un contributore non segna letti i segnali delle
+ * schede, che arrivano solo ai revisori.
+ */
 export async function markAllSignalsRead(workspaceId: string) {
-  await requireWorkspaceAccess(workspaceId);
-  await db
-    .update(weeklySignals)
-    .set({ isRead: true })
-    .where(
-      and(
-        eq(weeklySignals.workspaceId, workspaceId),
-        eq(weeklySignals.isRead, false)
-      )
-    );
+  const { access } = await requireWorkspaceAccess(workspaceId);
+  await markAllVisibleSignalsRead(workspaceId, access.role);
   revalidatePath(`/dashboard/${workspaceId}/intelligence`);
 }
 

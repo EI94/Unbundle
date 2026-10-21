@@ -1,7 +1,21 @@
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { notFound } from "next/navigation";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
+import { db } from "@/lib/db";
+import { useCases, workspaceConnectorConfigs } from "@/lib/db/schema";
 import { getUseCaseById, getUseCaseKRLinks } from "@/lib/db/queries/use-cases";
+import { dossierStateForUseCase, realizationOfUseCase } from "@/lib/db/queries/use-case-dossiers";
+import { listUseCaseEvents, USE_CASE_EVENTS_DEFAULT_LIMIT } from "@/lib/db/queries/use-case-events";
+import { getUseCaseDetail, viewerFromSession } from "@/lib/db/queries/use-case-hub";
+import { abilitiesForUseCase, projectForContributor } from "@/lib/use-cases/permissions";
+import type { PhaseInput } from "@/lib/use-cases/phase";
+import { romeToday } from "@/lib/use-cases/quarter";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { reviewTeamName } from "@/lib/review-team";
+import { PageContainer } from "@/components/dashboard/page-container";
+import { UseCaseDetailView, chapterFromParam, showsRealization } from "@/components/use-cases/detail/detail";
+import { guideLabels, type GuideLabels } from "@/components/use-cases/detail/intake-details";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -27,17 +41,148 @@ const statusLabels: Record<string, string> = {
   rejected: "Rifiutato",
 };
 
+
+/** «Mostra tutto» della Storia: fino a mille righe (`listUseCaseEvents`). */
+const HISTORY_ALL_LIMIT = 1000;
+
+/**
+ * Gli use case del workspace che possono essere l'originale di «Doppione di…» (§6.4): solo id,
+ * codice e titolo, in ordine di codice. Solo per chi decide.
+ */
+async function duplicateCandidatesOf(workspaceId: string) {
+  return db
+    .select({ id: useCases.id, code: useCases.code, title: useCases.title })
+    .from(useCases)
+    .where(and(eq(useCases.workspaceId, workspaceId), isNotNull(useCases.code)))
+    .orderBy(asc(useCases.code));
+}
+
+/**
+ * I titoli della guida del connettore del workspace, letta una volta (§6.2): le aree (l'elenco
+ * da cui si sceglie l'area, se c'è; altrimenti l'area resta un testo libero), gli strumenti e gli
+ * agenti del catalogo, per mostrare i titoli e mai le chiavi. Si salva sempre l'id.
+ */
+async function guideLabelsOf(workspaceId: string): Promise<GuideLabels> {
+  const [config] = await db
+    .select({ guide: workspaceConnectorConfigs.guide })
+    .from(workspaceConnectorConfigs)
+    .where(eq(workspaceConnectorConfigs.workspaceId, workspaceId))
+    .limit(1);
+  return guideLabels(config?.guide);
+}
+
+/**
+ * `/use-cases/[id]` (docs/use-case/DESIGN.md §2.2, §6; PIANO-LAVORI H4b). Area accesa per il
+ * workspace: la scheda con i capitoli per ruolo (`UseCaseDetailView`), con i dati già proiettati
+ * sul server (`getUseCaseDetail`). Area spenta: la scheda di oggi.
+ *
+ * Una scheda che non c'è, di un altro workspace, o nascosta alla ricerca e non sua per un
+ * contributore: `notFound()`, cioè «Use case non trovato» (`not-found.tsx`). Sotto `loading.tsx`
+ * la risposta è 200 con `noindex`: i test guardano il contenuto, non lo stato.
+ */
 export default async function UseCaseDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceId: string; useCaseId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-
   const { workspaceId, useCaseId } = await params;
+  if (!isUseCaseHubWorkspace(workspaceId)) return await legacyUseCaseDetail(workspaceId, useCaseId);
 
+  const { session, access } = await requireWorkspacePage(workspaceId);
+  const viewer = viewerFromSession(session.user, access.role);
+  const abilities = abilitiesForUseCase(viewer);
+  if (!abilities.canOpenArea) notFound();
+  const result = await getUseCaseDetail(workspaceId, useCaseId, viewer);
+  if (!result) notFound();
+
+  const query = (await searchParams) ?? {};
+  const chapter = chapterFromParam(query.capitolo);
+  const historyAll = query.storia === "tutta";
+  const reviewer = result.projection !== "contributore";
+  // Il riepilogo ricco del dossier (H6a) solo quando il capitolo «Realizzazione» c'è e la parte
+  // del dossier ha risposto: i contributori non lo ricevono (il capitolo non è per loro).
+  const readsRealization = reviewer && result.dossierRead === "ok" && showsRealization(result.useCase);
+  const [events, candidates, guide, realization] = reviewer
+    ? await Promise.all([
+        abilities.canSeeHistory ? listUseCaseEvents(workspaceId, result.useCase.id, historyAll ? HISTORY_ALL_LIMIT : USE_CASE_EVENTS_DEFAULT_LIMIT) : null,
+        abilities.canDecide ? duplicateCandidatesOf(workspaceId) : [],
+        guideLabelsOf(workspaceId),
+        readsRealization ? realizationOfUseCase(workspaceId, { userId: session.user.id, role: access.role }, result.useCase.id) : null,
+      ])
+    : [null, [], null, null];
+
+  return (
+    <PageContainer size="default">
+      <UseCaseDetailView
+        workspaceId={workspaceId}
+        result={result}
+        abilities={abilities}
+        events={events}
+        candidates={candidates}
+        guide={guide}
+        chapter={chapter}
+        historyAll={historyAll}
+        historyAllHref={`/dashboard/${workspaceId}/use-cases/${result.useCase.id}?storia=tutta#storia`}
+        realization={realization}
+        teamName={reviewTeamName(access.workspace)}
+      />
+    </PageContainer>
+  );
+}
+
+/**
+ * La scheda di oggi, con l'area spenta per il workspace (DESIGN §2.2, §12.3): resta com'è, con D4
+ * per chi non valuta (H2e). Una funzione chiamata e attesa dalla pagina, non un componente
+ * `async` annidato: la pagina resta una funzione che restituisce l'albero già pronto.
+ */
+async function legacyUseCaseDetail(workspaceId: string, useCaseId: string) {
   const { session, access } = await requireWorkspacePage(workspaceId);
   const useCase = await getUseCaseById(useCaseId);
   if (!useCase || useCase.workspaceId !== workspaceId) notFound();
+
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    // D4 e D13 (docs/use-case/DESIGN.md §6.9, §11): chi non valuta vede titolo, fase e
+    // «Quando»; delle proprie proposte anche codice e nota pubblica. Niente punteggi,
+    // matrice, sotto-punteggi o testi. Una scheda nascosta alla ricerca che non è sua non c'è.
+    const read = await dossierStateForUseCase(workspaceId, useCase.id);
+    const dossier = read.ok ? read.dossier : null;
+    const item = projectForContributor(
+      { userId: session.user.id, email: session.user.email, emailVerified: session.user.emailVerified },
+      {
+        ...useCase,
+        intake: useCase.intake as PhaseInput["intake"],
+        linkedCaseCode: dossier?.code ?? null,
+        dossierStatus: dossier?.status ?? null,
+        duplicateOfCode: null,
+        today: romeToday(),
+      },
+    );
+    if (!item) notFound();
+    return (
+      <div className="mx-auto w-full min-w-0 max-w-2xl flex-1 space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+        <Link href={`/dashboard/${workspaceId}/use-cases`} className="text-sm text-muted-foreground hover:text-foreground">
+          ‹ Use Cases
+        </Link>
+        <div className="space-y-2">
+          {item.own && item.code && <div className="font-mono text-sm text-muted-foreground">{item.code}</div>}
+          <h1 className="text-3xl font-bold tracking-tight break-words">{item.title}</h1>
+          <Badge variant="outline">{item.phaseLabel}</Badge>
+        </div>
+        {item.own && item.publicNote && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Nota pubblica</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap text-sm">{item.publicNote}</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
 
   const krLinks = await getUseCaseKRLinks(useCaseId);
 

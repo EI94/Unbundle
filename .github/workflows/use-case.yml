@@ -1,0 +1,58 @@
+# Use case hub (docs/use-case/PIANO-LAVORI.md, package H0).
+#
+# Runs only after a push to a hub branch, and nothing is pushed without Pierpaolo's
+# explicit yes (PIANO §7.2): until then this file does nothing. It checks lint,
+# typecheck and every unit test (npm run check, where the integration suites skip
+# themselves), the ownership file and, on a package branch, the package's ownership.
+# No secrets, no database, no deploy: the integration suites run on the local harness.
+name: use-case
+
+on:
+  push:
+    branches:
+      - feat/use-case-hub
+      - "feat/use-case-hub-**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: use-case-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.4.1"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint, typecheck and unit tests
+        run: npm run check
+
+      - name: Ownership file
+        run: node scripts/use-case-test/ownership.mjs --validate
+
+      - name: Ownership of the package branch
+        run: |
+          id="${GITHUB_REF_NAME#feat/use-case-hub-}"
+          if [ "$id" = "$GITHUB_REF_NAME" ] || ! printf '%s' "$id" | grep -Eq '^h[0-9][a-z]?$'; then
+            echo "Not a hub package branch: nothing to check"
+            exit 0
+          fi
+          # fetch-depth 0 already brings every branch as origin/<name>.
+          node scripts/use-case-test/ownership.mjs "$id" --base origin/feat/use-case-hub

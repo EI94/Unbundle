@@ -5,6 +5,8 @@ import { eq, and } from "drizzle-orm";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
+import { runUseCaseDigestStep } from "@/lib/db/queries/use-case-digest";
+import { checkCronAuthorization } from "@/lib/uc/notify/cron-auth";
 
 const signalsSchema = z.object({
   signals: z.array(
@@ -24,10 +26,17 @@ const signalsSchema = z.object({
 });
 
 export async function GET(req: Request) {
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Un CRON_SECRET assente o vuoto rifiuta sempre: il confronto di prima faceva passare
+  // «Bearer undefined», e da qui ora parte anche una scrittura (il passo dell'hub).
+  if (checkCronAuthorization(req.headers.get("authorization"), process.env.CRON_SECRET) !== "ok") {
     return new Response("Unauthorized", { status: 401 });
   }
+
+  // Passo dell'hub (docs/use-case/DESIGN.md §14.3): riepilogo «Use case» dei workspace con
+  // l'area accesa, senza AI. Gira prima del ciclo AI qui sotto, che non ha try/catch: così
+  // un errore del modello non fa perdere il riepilogo. Ha il suo try/catch per workspace e
+  // non lancia mai.
+  const useCaseHub = await runUseCaseDigestStep();
 
   const activeWorkspaces = await db
     .select()
@@ -81,5 +90,5 @@ Scrivi in italiano.`,
     }
   }
 
-  return NextResponse.json({ processed: activeWorkspaces.length });
+  return NextResponse.json({ processed: activeWorkspaces.length, useCaseHub });
 }

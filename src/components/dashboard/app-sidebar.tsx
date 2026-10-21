@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { confirmLearningNavigation } from "@/components/learning/use-unsaved-changes";
+import { USE_CASE_NAV_MATCH, isNavItemActive } from "@/components/dashboard/nav-active";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   LayoutDashboard,
@@ -46,14 +47,40 @@ import {
   ClipboardCheck,
   GraduationCap,
   ListChecks,
+  type LucideIcon,
 } from "lucide-react";
+
+interface NavItem {
+  title: string;
+  href: string;
+  icon: LucideIcon;
+  /** Segmenti sotto il workspace per cui la voce resta accesa (`isNavItemActive`); `[]`: solo il suo indirizzo. */
+  match?: readonly string[];
+}
+
+/** Solo l'indirizzo della voce: come accendeva la barra prima dell'area «Use case». */
+const EXACT: readonly string[] = Object.freeze([]);
+
+/** «Use case» mentre la voce «Casi d'uso» resta nella barra (P0-16 non ancora fatto): `/casi-duso` è sua. */
+const USE_CASE_NAV_MATCH_WITHOUT_DOSSIERS: readonly string[] = Object.freeze(USE_CASE_NAV_MATCH.filter((segment) => segment !== "casi-duso"));
 
 interface AppSidebarProps {
   learningAvailable?: boolean;
-  /** Voce «Casi d'uso»: sezione accesa e persona che vede i casi (mai chi segue solo un corso). */
+  /**
+   * Voce «Casi d'uso»: sezione accesa e persona che vede i casi (mai chi segue solo un corso).
+   * Con l'area «Use case» accesa il layout la chiede solo finché `dossierLinksReady` non è vero
+   * (P0-16): allora la voce sta subito sotto «Use case», che lascia a lei `/casi-duso`.
+   */
   casesAvailable?: boolean;
   /** Entrato da un link di corso: la navigazione si riduce al corso. */
   learnerOnly?: boolean;
+  /**
+   * Area «Use case» accesa per il workspace (`USE_CASE_HUB_WORKSPACES`, docs/use-case/DESIGN.md
+   * §2.1, §12.1; D1): una voce «Use case» al posto di «Raccolta & ranking», «Use cases»,
+   * «Casi d'uso» e «Piano», accesa anche sulle pagine che sostituisce (tranne `/casi-duso` finché
+   * la voce «Casi d'uso» resta, vedi `casesAvailable`). Spenta: la barra di oggi.
+   */
+  useCaseHub?: boolean;
   workspaceId?: string;
   workspaceName?: string;
   user: {
@@ -67,6 +94,7 @@ export function AppSidebar({
   learningAvailable = false,
   casesAvailable = false,
   learnerOnly = false,
+  useCaseHub = false,
   workspaceId,
   workspaceName,
   user,
@@ -85,32 +113,46 @@ export function AppSidebar({
     router.push("/login");
   };
 
-  const learnerNav = workspaceId
-    ? [{ title: "Il mio corso", href: `${basePath}/learning`, icon: GraduationCap }]
+  // Area spenta: la barra di oggi, voce per voce, e ogni voce accesa solo sul suo indirizzo
+  // (`EXACT`), tranne «Casi d'uso», che resta accesa dentro un dossier. Area accesa: ogni voce
+  // resta accesa anche sulle sue pagine annidate (il predefinito di `isNavItemActive`).
+  const own = useCaseHub ? undefined : EXACT;
+
+  const learnerNav: NavItem[] = workspaceId
+    ? [{ title: "Il mio corso", href: `${basePath}/learning`, icon: GraduationCap, match: own }]
     : [];
 
-  const workspaceNav = learnerOnly
+  const workspaceNav: NavItem[] = learnerOnly
     ? learnerNav
     : workspaceId
     ? [
         { title: "Overview", href: basePath, icon: LayoutDashboard },
-        { title: "AI Readiness", href: `${basePath}/ai-readiness`, icon: ClipboardCheck },
-        ...(learningAvailable ? [{ title: "Formazione", href: `${basePath}/learning`, icon: GraduationCap }] : []),
-        { title: "Raccolta & ranking", href: `${basePath}/portfolio`, icon: Inbox },
-        { title: "Discovery", href: `${basePath}/setup/leadership`, icon: Compass },
-        { title: "Contesto", href: `${basePath}/setup/context`, icon: Building2 },
-        { title: "Strategia", href: `${basePath}/strategy`, icon: Target },
-        { title: "Activity mapping", href: `${basePath}/mapping`, icon: GitBranch },
-        { title: "Value map", href: `${basePath}/value-map`, icon: Map },
-        { title: "Use cases", href: `${basePath}/use-cases`, icon: Lightbulb },
-        // Sezione con pagine annidate: resta attiva anche dentro un caso.
-        ...(casesAvailable ? [{ title: "Casi d'uso", href: `${basePath}/casi-duso`, icon: ListChecks, nested: true }] : []),
-        { title: "Piano", href: `${basePath}/plan`, icon: FileText },
-        { title: "Report", href: `${basePath}/reports`, icon: FileText },
-        { title: "Blueprints", href: `${basePath}/blueprints`, icon: Bot },
-        { title: "Simulazione", href: `${basePath}/simulation`, icon: FlaskConical },
-        { title: "Intelligence", href: `${basePath}/intelligence`, icon: Radar },
-        { title: "Impostazioni", href: `${basePath}/settings`, icon: Settings },
+        { title: "AI Readiness", href: `${basePath}/ai-readiness`, icon: ClipboardCheck, match: own },
+        ...(learningAvailable ? [{ title: "Formazione", href: `${basePath}/learning`, icon: GraduationCap, match: own }] : []),
+        ...(useCaseHub
+          ? [
+              { title: "Use case", href: `${basePath}/use-cases`, icon: Lightbulb, match: casesAvailable ? USE_CASE_NAV_MATCH_WITHOUT_DOSSIERS : USE_CASE_NAV_MATCH },
+              ...(casesAvailable ? [{ title: "Casi d'uso", href: `${basePath}/casi-duso`, icon: ListChecks }] : []),
+            ]
+          : [{ title: "Raccolta & ranking", href: `${basePath}/portfolio`, icon: Inbox, match: EXACT }]),
+        { title: "Discovery", href: `${basePath}/setup/leadership`, icon: Compass, match: own },
+        { title: "Contesto", href: `${basePath}/setup/context`, icon: Building2, match: own },
+        { title: "Strategia", href: `${basePath}/strategy`, icon: Target, match: own },
+        { title: "Activity mapping", href: `${basePath}/mapping`, icon: GitBranch, match: own },
+        { title: "Value map", href: `${basePath}/value-map`, icon: Map, match: own },
+        // Con l'area accesa queste tre pagine stanno sotto «Use case» (i vecchi indirizzi reindirizzano).
+        ...(useCaseHub
+          ? []
+          : [
+              { title: "Use cases", href: `${basePath}/use-cases`, icon: Lightbulb, match: EXACT },
+              ...(casesAvailable ? [{ title: "Casi d'uso", href: `${basePath}/casi-duso`, icon: ListChecks }] : []),
+              { title: "Piano", href: `${basePath}/plan`, icon: FileText, match: EXACT },
+            ]),
+        { title: "Report", href: `${basePath}/reports`, icon: FileText, match: own },
+        { title: "Blueprints", href: `${basePath}/blueprints`, icon: Bot, match: own },
+        { title: "Simulazione", href: `${basePath}/simulation`, icon: FlaskConical, match: own },
+        { title: "Intelligence", href: `${basePath}/intelligence`, icon: Radar, match: own },
+        { title: "Impostazioni", href: `${basePath}/settings`, icon: Settings, match: own },
       ]
     : [];
 
@@ -143,7 +185,7 @@ export function AppSidebar({
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       render={<Link href={item.href} onNavigate={closeMobileNavigation} />}
-                      isActive={pathname === item.href || ("nested" in item && item.nested === true && pathname.startsWith(`${item.href}/`))}
+                      isActive={isNavItemActive(pathname ?? "", basePath, item)}
                     >
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>

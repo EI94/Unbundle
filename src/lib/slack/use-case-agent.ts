@@ -25,6 +25,8 @@ import {
   type SlackPortfolioKind,
 } from "./use-case-agent-utils";
 import { tryBuildPortfolioShareUrl } from "@/lib/portfolio/share-link";
+import { reviewTeamName } from "@/lib/review-team";
+import { buildSlackSubmittedReply } from "./new-use-case-message";
 
 const SLACK_CHANNEL_CONVERSATION_WINDOW_MS = 8 * 60 * 60 * 1000;
 
@@ -142,18 +144,25 @@ async function submitCompletedDraft(params: {
     return;
   }
 
+  // A chi ha proposto: il codice della sua proposta, chi la valuta e il link di
+  // condivisione, che a chi non è membro mostra la vista ridotta senza codice
+  // (docs/use-case/DESIGN.md §14.5, D14). Il riepilogo usa la bozza letta prima
+  // dell'invio: dopo l'invio la bozza non tiene più i testi (§6.8).
+  const workspace = await getWorkspaceById(params.workspaceId);
   const base = appBaseUrl();
-  const reviewUrl = base
+  const shareUrl = base
     ? tryBuildPortfolioShareUrl(base, params.workspaceId, result.useCaseId, {
-        epoch: (await getWorkspaceById(params.workspaceId))?.portfolioShareEpoch ?? 0,
+        epoch: workspace?.portfolioShareEpoch ?? 0,
       })
     : null;
   await post(
     params.thread,
     `${completionSummary(params.draft, params.kind)}\n\n` +
-      "Grazie, ho registrato il contributo nel portfolio Unbundle. " +
-      "Ora il team lo vede in Raccolta e ranking." +
-      (reviewUrl ? `\nScheda Unbundle: ${reviewUrl}` : "")
+      buildSlackSubmittedReply({
+        code: result.code,
+        teamName: reviewTeamName(workspace),
+        link: shareUrl,
+      })
   );
 }
 

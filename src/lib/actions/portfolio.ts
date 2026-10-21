@@ -12,15 +12,15 @@ import {
 import {
   createUseCase,
   getUseCaseById,
-  recomputePortfolioMetricsByWorkspace,
   updateUseCasePortfolioReviewAndCustomScores,
 } from "@/lib/db/queries/use-cases";
 import {
   DEFAULT_SCORING_MODEL_CONFIG,
   getOrCreateWorkspaceScoringModel,
+  recomputeWorkspaceScores,
   upsertWorkspaceScoringModel,
   type ScoringKpi,
-  type ScoringModelConfig,
+  type ScoringModelConfigPatch,
 } from "@/lib/db/queries/scoring-model";
 import type { UseCase } from "@/lib/db/schema";
 import { markSignalRead } from "@/lib/db/queries/signals";
@@ -28,6 +28,7 @@ import { dispatchNewPortfolioNotifications } from "@/lib/notifications/portfolio
 import {
   autoScorePortfolioUseCase,
   recalibrateWorkspacePortfolioWithAi,
+  scorePortfolioUseCaseWithAi,
 } from "@/lib/portfolio/ai-ranking";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import {
@@ -324,7 +325,10 @@ export async function updateScoringModelAction(
     };
   }
 
-  const config: ScoringModelConfig = {
+  // Solo le chiavi del modulo: `upsertWorkspaceScoringModel` le fonde con il `config` salvato
+  // (DESIGN §7.6). Restano `scoringVersion`, `costKpiId`, `thresholds.costLowMaxEur` e
+  // `costBands`; il modulo non scrive mai `scoringVersion`.
+  const config: ScoringModelConfigPatch = {
     dimensions: {
       impact: parsed.data.dimensions.impact.map((k) => ({
         id: k.id,
@@ -379,7 +383,8 @@ export async function updateScoringModelAction(
     };
   }
 
-  await recomputePortfolioMetricsByWorkspace(workspaceId);
+  // Con i KPI dell'AI di `ai_suggestion`, che in v2 contano (§7.6 regola 1).
+  await recomputeWorkspaceScores(workspaceId);
 
   revalidatePath(`/dashboard/${workspaceId}/portfolio`);
   revalidatePath(`/dashboard/${workspaceId}/use-cases`);
@@ -486,11 +491,14 @@ export async function createPortfolioSubmissionAction(
 
   let useCase = createdUseCase;
   try {
+    // `reviewedBy` vale solo in v1 (comportamento di oggi). In v2 l'AI scrive solo
+    // `ai_suggestion`: niente `reviewed_by` di chi ha inviato (DESIGN §7.6, ai-ranking.ts).
     useCase = await autoScorePortfolioUseCase({
       workspaceId,
       useCaseId: createdUseCase.id,
       reviewedBy: session.user.id,
       noteLabel: "Auto-ranking AI",
+      kind: "auto",
     });
   } catch (error) {
     console.error("[actions/portfolio] autoScorePortfolioUseCase failed:", error);
@@ -640,13 +648,18 @@ export async function suggestPortfolioScoresWithAiAction(
     return { ok: false, message: "Use case non trovato.", fieldErrors: {} };
   }
   let updated: UseCase;
+  let version: 1 | 2;
+  let written: boolean;
   try {
-    updated = await autoScorePortfolioUseCase({
+    // v1: i punteggi dell'AI entrano nel modulo, come oggi. v2: l'AI scrive solo
+    // `ai_suggestion`; i punteggi del team, lo stato e le note restano (§7.6).
+    ({ useCase: updated, version, written } = await scorePortfolioUseCaseWithAi({
       workspaceId,
       useCaseId,
       reviewedBy: session.user.id,
       noteLabel: "Suggerimento AI",
-    });
+      kind: "suggerimento",
+    }));
   } catch (err) {
     console.error("[actions/portfolio] AI suggest failed:", err);
     return {
@@ -658,9 +671,20 @@ export async function suggestPortfolioScoresWithAiAction(
 
   revalidatePath(`/dashboard/${workspaceId}/portfolio`);
   revalidatePath(`/dashboard/${workspaceId}/portfolio/review/${useCaseId}`);
+  if (!written) {
+    // v2: la scheda è cambiata mentre l'AI rispondeva; il suggerimento non si salva.
+    return {
+      ok: false,
+      message: "La scheda è cambiata mentre l'AI rispondeva: il suggerimento non è stato salvato. Riprova.",
+      fieldErrors: {},
+    };
+  }
   return {
     ok: true,
-    message: "Punteggi suggeriti dall'AI applicati (puoi modificarli prima di salvare).",
+    message:
+      version === 2
+        ? "Suggerimento AI salvato. I punteggi del team non cambiano: la valutazione la salvi tu."
+        : "Punteggi suggeriti dall'AI applicati (puoi modificarli prima di salvare).",
     fieldErrors: {},
     data: buildPortfolioReviewSaveData(useCaseId, updated),
   };
@@ -668,7 +692,7 @@ export async function suggestPortfolioScoresWithAiAction(
 
 export async function recalibratePortfolioScoresAction(
   workspaceId: string
-): Promise<ActionState<{ updated: number; failed: number; total: number }>> {
+): Promise<ActionState<{ updated: number; failed: number; total: number; skipped: number }>> {
   const session = await requireSession();
 
   const access = await getCollaboratorAccess(session.user.id, workspaceId);
@@ -687,25 +711,38 @@ export async function recalibratePortfolioScoresAction(
       noteLabel: "Ricalibrazione AI",
     });
     revalidatePath(`/dashboard/${workspaceId}/portfolio`);
+    // Solo in v2 (§7.6 regola 4): le schede valutate e le archiviate non si ricalibrano, e
+    // nemmeno quelle che una persona cambia mentre l'AI risponde. «use case» è invariato al
+    // plurale (DESIGN §14.1).
+    const skippedNote =
+      result.skipped > 0
+        ? ` ${result.skipped === 1 ? "1 use case valutato, archiviato o appena modificato resta com'era" : `${result.skipped} use case valutati, archiviati o appena modificati restano com'erano`}.`
+        : "";
     if (result.total === 0) {
       return {
         ok: true,
-        message: "Non ci sono contributi da ricalibrare.",
+        message: `Non ci sono use case da ricalibrare.${skippedNote}`,
         fieldErrors: {},
-        data: { updated: 0, failed: 0, total: 0 },
+        data: { updated: 0, failed: 0, total: 0, skipped: result.skipped },
       };
     }
+    // Singolare e plurale come `skippedNote`: «Ricalibrato 1 use case», «1 use case non è stato aggiornato».
+    const recalibrated =
+      result.updated.length === 1 ? "Ricalibrato 1 use case" : `Ricalibrati ${result.updated.length} use case`;
+    const failedNote =
+      result.failed === 1 ? "1 use case non è stato aggiornato" : `${result.failed} use case non sono stati aggiornati`;
     return {
       ok: result.failed === 0,
       message:
         result.failed === 0
-          ? `Ricalibrati ${result.updated.length} contributi con il modello corrente.`
-          : `Ricalibrati ${result.updated.length} contributi. ${result.failed} contributi non sono stati aggiornati: riprova tra poco.`,
+          ? `${recalibrated} con il modello corrente.${skippedNote}`
+          : `${recalibrated}. ${failedNote}: riprova tra poco.${skippedNote}`,
       fieldErrors: {},
       data: {
         updated: result.updated.length,
         failed: result.failed,
         total: result.total,
+        skipped: result.skipped,
       },
     };
   } catch (error) {

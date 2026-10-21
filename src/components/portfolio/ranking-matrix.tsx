@@ -136,6 +136,12 @@ function buildReviewInitialScores(
   };
 }
 
+/**
+ * Matrice, punteggi, KPI e note delle proposte: solo per chi valuta (D4,
+ * docs/use-case/DESIGN.md §11). Le righe intere arrivano al client, quindi chi non
+ * valuta non deve riceverle: la pagina monta per lui la lista ridotta (titolo, fase e
+ * «Quando»), mai questo componente.
+ */
 export function RankingMatrix({
   workspaceId,
   teamName,
@@ -143,7 +149,6 @@ export function RankingMatrix({
   thresholds,
   config,
   esgEnabled,
-  canReview,
 }: {
   workspaceId: string;
   teamName: string;
@@ -151,8 +156,6 @@ export function RankingMatrix({
   thresholds: { highImpact: number; highFeasibility: number; midImpact: number };
   config: ScoringModelConfig;
   esgEnabled: boolean;
-  /** Chi non valuta vede la matrice e le schede, ma non sposta i punti e non cambia i punteggi. */
-  canReview: boolean;
 }) {
   const width = 720;
   const height = 430;
@@ -307,13 +310,11 @@ export function RankingMatrix({
               <div className="text-sm font-semibold">Matrice portfolio interattiva</div>
               <p className="max-w-2xl text-xs text-muted-foreground">
                 Cerchi = Use Case AI. Quadrati = Best Practice. I colori riflettono
-                l&apos;impatto di sostenibilità.{" "}
-                {canReview
-                  ? "Trascina i punti per fare stress test visivi, poi apri il dettaglio per correggere i KPI ufficiali."
-                  : "Apri un punto per leggerne il dettaglio."}
+                l&apos;impatto di sostenibilità. Trascina i punti per fare stress test
+                visivi, poi apri il dettaglio per correggere i KPI ufficiali.
               </p>
             </div>
-            {canReview && <Button
+            <Button
               type="button"
               variant="outline"
               size="sm"
@@ -322,7 +323,7 @@ export function RankingMatrix({
             >
               <RotateCcw className="mr-1 h-3.5 w-3.5" />
               Ripristina layout
-            </Button>}
+            </Button>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-3 text-xs text-muted-foreground">
@@ -499,13 +500,7 @@ export function RankingMatrix({
                 <g
                   key={item.id}
                   className="cursor-pointer"
-                  onClick={() => {
-                    // Chi non valuta apre la scheda al clic (non alla pressione:
-                    // il rilascio cadrebbe sullo sfondo del dialogo e lo chiuderebbe).
-                    if (!canReview) setSelectedId(item.id);
-                  }}
                   onPointerDown={(event) => {
-                    if (!canReview) return;
                     dragStateRef.current = {
                       id: item.id,
                       originX: event.clientX,
@@ -602,9 +597,7 @@ export function RankingMatrix({
                 </Badge>
               </DialogTitle>
               <DialogDescription>
-                {canReview
-                  ? "Rileggi il contributo e correggi i punteggi se non sei d'accordo con il ranking proposto."
-                  : "Il contributo e i punteggi assegnati da chi valuta gli use case."}
+                Rileggi il contributo e correggi i punteggi se non sei d&apos;accordo con il ranking proposto.
               </DialogDescription>
             </DialogHeader>
 
@@ -659,11 +652,6 @@ export function RankingMatrix({
                 </div>
               </div>
 
-              {!canReview ? (
-                <p className="rounded-2xl border p-4 text-sm text-muted-foreground">
-                  Punteggi e posizione li modifica chi valuta gli use case ({teamName}).
-                </p>
-              ) : (
               <div className="rounded-2xl border p-4">
                 <div className="mb-4">
                   <div className="text-sm font-semibold">Correggi ranking e parametri</div>
@@ -690,7 +678,6 @@ export function RankingMatrix({
                   onSaved={handleReviewSaved}
                 />
               </div>
-              )}
             </div>
           </DialogContent>
         )}

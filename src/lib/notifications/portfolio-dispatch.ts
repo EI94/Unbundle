@@ -7,6 +7,8 @@ import { getSlackInstallationByWorkspace } from "@/lib/db/queries/slack";
 import { notifyNewUseCase } from "@/lib/slack/notifications";
 import { tryBuildPortfolioShareUrl } from "@/lib/portfolio/share-link";
 import { logSafeError } from "@/lib/log/safe-error";
+import { reviewTeamName } from "@/lib/review-team";
+import { channelLabel } from "@/lib/use-cases/labels";
 import { plainNotificationText } from "./sanitize";
 
 function getAppBaseUrl(): string | null {
@@ -72,7 +74,9 @@ export async function wasPortfolioItemAnnounced(params: { workspaceId: string; u
  *  - pubblica su canale Slack admin (se Slack è installato)
  *  - inoltra al webhook WhatsApp se configurato sul workspace
  *
- * `source` indica da dove arriva il contributo: "slack" | "web" | "claude".
+ * `source` indica da dove arriva il contributo: "slack" | "web" | "claude". Il testo
+ * WhatsApp nomina il canale dalla scheda (`use_cases.source`, etichette di DESIGN §4.7),
+ * che distingue anche connettore e MCP v1.
  * I testi degli utenti restano dati: la campanella li mostra come testo (React),
  * Slack li riceve con escape mrkdwn (buildNewUseCaseSlackText), il webhook con le
  * menzioni neutralizzate (src/lib/notifications/sanitize.ts).
@@ -84,11 +88,10 @@ export async function dispatchNewPortfolioNotifications(params: {
   /** slackTeamId obbligatorio solo se source === "slack" (serve per recuperare l'installazione). */
   slackTeamId?: string | null;
 }) {
-  const { useCase, workspaceId, source } = params;
+  const { useCase, workspaceId } = params;
 
   const workspace = await getWorkspaceById(workspaceId);
-  const teamName =
-    workspace?.aiTransformationTeamName?.trim() || "AI Transformation";
+  const teamName = reviewTeamName(workspace);
 
   // 1) Signal DB (alimenta la campanella in header)
   try {
@@ -128,10 +131,12 @@ export async function dispatchNewPortfolioNotifications(params: {
           epoch: workspace.portfolioShareEpoch,
         })
       : null;
+    // Il nome del team da solo, senza articolo né «team» davanti (DESIGN §14.2). Il canale
+    // con la sua etichetta (§4.7), mai la chiave interna; nessun punteggio: il webhook può
+    // arrivare anche a chi non è revisore (D4).
     const text =
-      `${kindLabel(useCase.portfolioKind)} in coda al team ${plainNotificationText(teamName)}: ` +
-      `"${plainNotificationText(useCase.title)}" (origine: ${source})` +
-      `${typeof useCase.overallScore === "number" && useCase.overallScore > 0 ? `, score iniziale ${useCase.overallScore.toFixed(2)}` : ""}. ` +
+      `${kindLabel(useCase.portfolioKind)} in coda a ${plainNotificationText(teamName)}: ` +
+      `"${plainNotificationText(useCase.title)}". Canale: ${channelLabel(useCase.source)}. ` +
       `${link ? `Apri in Unbundle: ${link}` : ""}`;
     await postWhatsappWebhook(workspace.whatsappWebhookUrl, {
       text: text.trim(),

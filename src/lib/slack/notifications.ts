@@ -4,6 +4,7 @@ import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { tryBuildPortfolioShareUrl } from "@/lib/portfolio/share-link";
 import { buildNewUseCaseSlackText } from "./new-use-case-message";
 import { logSafeError } from "@/lib/log/safe-error";
+import { reviewTeamName } from "@/lib/review-team";
 
 /** URL pubblico dell’app (link nel messaggio admin Slack). */
 function getAppBaseUrl(): string | null {
@@ -25,8 +26,7 @@ export async function notifyNewUseCase(
   workspaceId: string
 ) {
   const workspace = await getWorkspaceById(workspaceId);
-  const teamName =
-    workspace?.aiTransformationTeamName?.trim() || "AI Transformation";
+  const teamName = reviewTeamName(workspace);
 
   const installation = await getSlackInstallationByTeamId(slackTeamId);
   if (!installation?.notifyChannelId || !installation?.botToken) return;

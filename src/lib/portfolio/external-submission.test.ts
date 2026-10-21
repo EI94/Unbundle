@@ -10,6 +10,7 @@ import {
 import type { Workspace } from "../db/schema.ts";
 import type { ScoringModelConfig } from "../db/queries/scoring-model.ts";
 import { exampleSubmission } from "../connector/contract.fixtures.ts";
+import { DEFAULT_REVIEW_TEAM_NAME } from "../review-team.ts";
 
 const basePayload: ExternalContributionPayload = {
   idempotencyKey: "claude-test-001",
@@ -141,6 +142,17 @@ test("requirements espongono ESG, KPI e policy anti stime monetarie", () => {
   assert.equal(req.scoringModel.impact.length, 2);
   assert.match(req.scoringModel.note, /Non inventare EUR/);
   assert.match(req.confirmationPolicy, /conferma/);
+});
+
+test("requirements: senza nome del team la REST dà il nome predefinito, con la stessa chiave", () => {
+  // DESIGN §14.2: la forma resta, cambia solo il valore per i workspace senza nome.
+  for (const name of [null, undefined, "", "   "]) {
+    const req = buildWorkspaceIntakeRequirements({ workspace: { ...workspace, aiTransformationTeamName: name } as Workspace, config });
+    assert.equal(req.workspace.aiTransformationTeamName, DEFAULT_REVIEW_TEAM_NAME, JSON.stringify(name));
+  }
+  const named = buildWorkspaceIntakeRequirements({ workspace: { ...workspace, aiTransformationTeamName: "  CoE AI " } as Workspace, config });
+  assert.equal(named.workspace.aiTransformationTeamName, "CoE AI");
+  assert.deepEqual(Object.keys(named.workspace), ["id", "name", "esgEnabled", "aiTransformationTeamName"]);
 });
 
 // ─── Campi v2 del connettore (WP3): facoltativi ─────────────────────────────

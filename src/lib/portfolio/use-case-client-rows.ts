@@ -103,6 +103,22 @@ export function toUseCaseLifecycleState(row: Pick<UseCase, LifecycleKey>): UseCa
 }
 
 /**
+ * Il suggerimento dell'AI ricostruito: punteggi (come `customScores`), motivazione, modello,
+ * istante e tipo. La copia della v1 (`v1Backup`) e ogni altra chiave restano sul server.
+ */
+function aiSuggestionOf(value: UseCase["aiSuggestion"]): UseCase["aiSuggestion"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const out: NonNullable<UseCase["aiSuggestion"]> = {};
+  const scores = sanitizeCustomScores(value.scores);
+  if (scores) out.scores = scores;
+  if (typeof value.rationale === "string" || value.rationale === null) out.rationale = value.rationale;
+  if (typeof value.model === "string" || value.model === null) out.model = value.model;
+  if (typeof value.at === "string") out.at = value.at;
+  if (value.kind === "auto" || value.kind === "suggerimento" || value.kind === "ricalibrazione") out.kind = value.kind;
+  return out;
+}
+
+/**
  * Colonne che le API REST degli use case non restituiscono mai: chi propone, chi ha valutato
  * e l'intake del connettore (intero, qualunque chiave contenga).
  */
@@ -147,6 +163,16 @@ export const USE_CASE_API_KEYS = [
   "code",
   "publicNote",
   "statusChangedAt",
+  // Colonne dell'area «Use case» (drizzle/0020): dati della valutazione, mai di chi propone.
+  "origin",
+  "aiLab",
+  "targetQuarter",
+  "reviewBy",
+  "valueEurYear",
+  "costEurOnce",
+  "costBand",
+  "aiSuggestion",
+  "version",
   "createdAt",
   "updatedAt",
 ] as const;
@@ -208,6 +234,15 @@ export function toUseCaseApiRow(row: Pick<UseCase, ApiKey>): UseCaseApiRow {
     code: text(row.code),
     publicNote: text(row.publicNote),
     statusChangedAt: row.statusChangedAt ?? null,
+    origin: row.origin,
+    aiLab: text(row.aiLab),
+    targetQuarter: text(row.targetQuarter),
+    reviewBy: text(row.reviewBy),
+    valueEurYear: score(row.valueEurYear),
+    costEurOnce: score(row.costEurOnce),
+    costBand: score(row.costBand),
+    aiSuggestion: aiSuggestionOf(row.aiSuggestion),
+    version: row.version,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

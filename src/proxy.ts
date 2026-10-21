@@ -10,6 +10,8 @@ import {
   STALE_SESSION_PARAM,
   STALE_SESSION_VALUE,
 } from "@/lib/auth/session-signal";
+import { legacyRouteRedirect, stubLogEntry } from "@/lib/use-cases/legacy-routes";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 
 const SESSION_COOKIE = SESSION_COOKIE_NAME;
 
@@ -70,6 +72,17 @@ export function proxy(req: NextRequest) {
   }
 
   const dashWs = pathname.match(/^\/dashboard\/([0-9a-f-]{36})/i);
+  // «Avvia la realizzazione» senza uno use case (docs/use-case/DESIGN.md §2.3, §2.4; PIANO-LAVORI
+  // H6a): con l'area «Use case» accesa si sceglie lo use case in «Priorità». Qui e non in pagina,
+  // che sta sotto `casi-duso/loading.tsx` (un 307 lì sarebbe un 200 con una meta refresh). Solo
+  // l'interruttore del workspace, senza database; la pagina ricontrolla chi può avviare.
+  if (dashWs?.[1] && hasSession && /^\/dashboard\/[^/]+\/casi-duso\/nuovo\/?$/.test(pathname) && isUseCaseHubWorkspace(dashWs[1])) {
+    const legacy = legacyRouteRedirect(pathname.replace(/\/$/, ""), req.nextUrl.searchParams);
+    if (legacy) {
+      console.info(JSON.stringify(stubLogEntry(legacy.from)));
+      return NextResponse.redirect(new URL(legacy.to, req.url), 307);
+    }
+  }
   if (dashWs?.[1] && hasSession) {
     const res = nextWithPath(req);
     res.cookies.set(SLACK_WORKSPACE_CONTEXT_COOKIE, dashWs[1], {

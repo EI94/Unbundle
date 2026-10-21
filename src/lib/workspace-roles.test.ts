@@ -17,10 +17,30 @@ test("un invito non può dare il ruolo di sponsor né quello di partecipante", (
 
 test("le descrizioni dei ruoli dicono il vero sui permessi", () => {
   for (const role of INVITABLE_ROLES) {
-    const text = [...ROLE_INFO[role].can, ...(ROLE_INFO[role].cannot ?? [])].join(" ").toLowerCase();
-    if (canReviewWorkspacePortfolio(role)) assert.match(text, /valuta/, `${role} valuta`);
-    else assert.match(text, /non valuta/, `${role} non valuta`);
-    if (canManageWorkspaceCollaborators(role)) assert.match(text, /invita/, `${role} invita`);
-    else assert.match(text, /non invita|non valuta/, `${role} non invita`);
+    const can = ROLE_INFO[role].can.join(" ").toLowerCase();
+    const cannot = (ROLE_INFO[role].cannot ?? []).join(" ").toLowerCase();
+    // Chi valuta lo dice, e decide anche (D3); chi non valuta non lo promette e dice cosa non vede (D4).
+    if (canReviewWorkspacePortfolio(role)) {
+      assert.match(can, /valuta/, `${role} valuta`);
+      assert.match(`${ROLE_INFO[role].summary} ${can}`, /decide/, `${role} decide`);
+    } else {
+      assert.doesNotMatch(can, /valuta|decide/, `${role} non valuta né decide`);
+      assert.match(cannot, /non vede valutazioni/, `${role} non vede valutazioni`);
+    }
+    if (canManageWorkspaceCollaborators(role)) assert.match(can, /invita/, `${role} invita`);
+    else assert.doesNotMatch(can, /invita/, `${role} non invita`);
+  }
+});
+
+test("i testi degli use case sono quelli di docs/use-case/DESIGN.md §14.4", () => {
+  assert.ok(ROLE_INFO.transformation_lead.can.includes("Valuta e decide gli use case"));
+  assert.equal(ROLE_INFO.function_lead.summary, "valuta e decide gli use case");
+  assert.ok(ROLE_INFO.function_lead.can.includes("Decide se e quando fare gli use case"));
+  assert.ok(ROLE_INFO.analyst.can.includes("Propone, valuta e decide gli use case"));
+  assert.ok(ROLE_INFO.contributor.can.includes("Propone nuovi use case e ne vede la fase; delle proprie vede anche codice e nota pubblica"));
+  assert.deepEqual(ROLE_INFO.contributor.cannot, ["Non vede valutazioni, costi e note interne"]);
+  // Le wave escono con l'area (D1): nessun ruolo le promette più.
+  for (const [role, info] of Object.entries(ROLE_INFO)) {
+    assert.doesNotMatch([info.summary, ...info.can, ...(info.cannot ?? [])].join(" "), /\bwave\b/i, role);
   }
 });

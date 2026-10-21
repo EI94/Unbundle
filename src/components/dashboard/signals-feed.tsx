@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,9 +15,12 @@ import {
   Bell,
   Eye,
   Clock,
+  Inbox,
+  CalendarClock,
 } from "lucide-react";
 import { markSignalAsRead, markAllSignalsRead } from "@/lib/actions/intelligence";
 import type { WeeklySignal } from "@/lib/db/schema";
+import { HUB_SIGNAL_LABEL, hubSignalHref } from "@/lib/use-cases/digest";
 import { formatDistanceToNow } from "date-fns";
 import { it } from "date-fns/locale";
 
@@ -54,6 +58,23 @@ const signalConfig: Record<
     icon: CheckCircle2,
     color: "text-emerald-500",
     label: "Avanzamento",
+  },
+  // I segnali delle schede: arrivano solo ai revisori (la pagina li legge con il ruolo, D4,
+  // docs/use-case/DESIGN.md §11). I riepiloghi dell'area portano alla loro vista (§14.3).
+  new_portfolio_item: {
+    icon: Lightbulb,
+    color: "text-amber-500",
+    label: "Nuovo use case",
+  },
+  use_case_digest: {
+    icon: Inbox,
+    color: "text-sky-500",
+    label: HUB_SIGNAL_LABEL.use_case_digest,
+  },
+  use_case_quarter: {
+    icon: CalendarClock,
+    color: "text-sky-500",
+    label: HUB_SIGNAL_LABEL.use_case_quarter,
   },
 };
 
@@ -122,6 +143,7 @@ export function SignalsFeed({ signals: initialSignals, workspaceId }: SignalsFee
                   label: signal.signalType,
                 };
                 const Icon = config.icon;
+                const href = hubSignalHref(workspaceId, signal.signalType);
 
                 return (
                   <div
@@ -155,7 +177,13 @@ export function SignalsFeed({ signals: initialSignals, workspaceId }: SignalsFee
                           )}
                         </div>
                         <h4 className="mt-1 text-sm font-medium">
-                          {signal.title}
+                          {href ? (
+                            <Link href={href} className="underline-offset-2 hover:underline">
+                              {signal.title}
+                            </Link>
+                          ) : (
+                            signal.title
+                          )}
                         </h4>
                         {signal.description && (
                           <p className="mt-1 text-xs text-muted-foreground leading-relaxed">

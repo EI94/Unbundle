@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { getTableColumns } from "drizzle-orm";
 import {
   chooseSlackContributionTeam,
   detectContributionKind,
@@ -15,7 +16,10 @@ import {
   type SlackPortfolioKind,
 } from "./use-case-agent-utils.ts";
 import { buildUseCaseDataFromSlackDraft } from "./use-case-payload.ts";
-import type { SlackUseCaseDraft } from "../db/schema.ts";
+import { buildNewUseCaseSlackText, buildSlackSubmittedReply } from "./new-use-case-message.ts";
+import { DEFAULT_REVIEW_TEAM_NAME, reviewTeamName } from "../review-team.ts";
+import { slackUseCaseDrafts, type SlackUseCaseDraft, type UseCase } from "../db/schema.ts";
+import { SLACK_DRAFT_TEXT_COLUMNS } from "../use-cases/admin/slack-drafts.ts";
 
 test("non espone markdown bold con doppio asterisco nei messaggi Slack", () => {
   assert.equal(
@@ -324,6 +328,97 @@ test("il draft Slack di Luca crea un use case visibile nel portfolio NATIVA", ()
   assert.equal(useCase.status, "proposed");
   assert.equal(useCase.proposedBy, "U_LUCA_BALDESSARINI");
   assert.equal(useCase.title, "Automated project tracking");
+});
+
+// ─── Testi dopo l'invio (docs/use-case/DESIGN.md §14.2, §14.5; D2, D14) ───
+// Il nome predefinito si confronta sempre con la costante, mai con il suo valore.
+
+const SHARE_LINK = "https://app.esempio.test/share/portfolio/ws/uc?token=t0k3n";
+
+test("risposta a chi propone: codice, nome del team da solo e link di condivisione", () => {
+  const reply = buildSlackSubmittedReply({ code: "XX-0012", teamName: reviewTeamName(null), link: SHARE_LINK });
+  assert.equal(
+    reply,
+    `Grazie, l'ho registrato. Il codice è XX-0012: ${DEFAULT_REVIEW_TEAM_NAME} lo valuta.\nScheda Unbundle: ${SHARE_LINK}`
+  );
+  // Il bot pubblica il testo così com'è.
+  assert.equal(sanitizeSlackBotText(reply), reply);
+  assert.doesNotMatch(reply, /raccolta\s*(e|&)\s*ranking/i);
+});
+
+test("risposta a chi propone: il nome del workspace senza articolo né «team» davanti", () => {
+  for (const name of ["Digital Factory", "CoE AI", "  Centro AI  "]) {
+    const teamName = reviewTeamName({ aiTransformationTeamName: name });
+    const reply = buildSlackSubmittedReply({ code: "XX-0007", teamName, link: null });
+    assert.equal(reply, `Grazie, l'ho registrato. Il codice è XX-0007: ${teamName} lo valuta.`);
+    assert.doesNotMatch(reply, new RegExp(`\\b(il|lo|la|team)\\s+${teamName}`, "i"));
+  }
+});
+
+test("risposta a chi propone: senza codice la frase resta senza, senza link niente riga del link", () => {
+  assert.equal(
+    buildSlackSubmittedReply({ code: null, teamName: "CoE AI", link: null }),
+    "Grazie, l'ho registrato: CoE AI lo valuta."
+  );
+  assert.equal(
+    buildSlackSubmittedReply({ code: "  ", teamName: "CoE AI", link: SHARE_LINK }),
+    `Grazie, l'ho registrato: CoE AI lo valuta.\nScheda Unbundle: ${SHARE_LINK}`
+  );
+});
+
+test("risposta a chi propone: un nome del team ostile resta testo", () => {
+  const reply = buildSlackSubmittedReply({ code: "XX-0012", teamName: "<!here> @channel & co", link: null });
+  assert.ok(reply.includes("&lt;!here&gt;"));
+  assert.ok(reply.includes("&amp; co"));
+  assert.doesNotMatch(reply, /<!here>|(?<!<)@channel\b/);
+});
+
+test("canale admin: «in coda a» con il nome da solo", () => {
+  const useCase = {
+    source: "slack_proposed",
+    portfolioKind: "use_case_ai",
+    title: "Sintesi dei verbali",
+    description: "Prima i verbali si scrivevano a mano.",
+    proposedBy: "U0ABCDEF1",
+    status: "proposed",
+    overallScore: null,
+    overallImpactScore: null,
+    overallFeasibilityScore: null,
+    overallEsgScore: null,
+  } as unknown as UseCase;
+  for (const teamName of [reviewTeamName(null), "Digital Factory"]) {
+    const text = buildNewUseCaseSlackText({ useCase, teamName, detailUrl: null });
+    assert.ok(text.includes(`(in coda a ${teamName}).`), teamName);
+    assert.doesNotMatch(text, /in coda al team|\bteam\s+(AI|Digital)/i);
+  }
+});
+
+test("canale admin: la fase in italiano, mai la chiave dello stato nel database", () => {
+  const base = {
+    source: "web_proposed",
+    portfolioKind: "use_case_ai",
+    title: "Sintesi dei verbali",
+    description: "Prima i verbali si scrivevano a mano.",
+    proposedBy: "persona.inventata@example.test",
+    reviewedBy: null,
+    publicNote: null,
+    intake: null,
+    reviewBy: null,
+    overallScore: null,
+    overallImpactScore: null,
+    overallFeasibilityScore: null,
+    overallEsgScore: null,
+  };
+  for (const [status, portfolioReviewStatus, phase] of [
+    ["proposed", "needs_inputs", "Da valutare"],
+    ["proposed", "in_review", "Da valutare"],
+    ["accepted", "scored", "Approvato"],
+  ] as const) {
+    const useCase = { ...base, status, portfolioReviewStatus } as unknown as UseCase;
+    const text = buildNewUseCaseSlackText({ useCase, teamName: "CoE AI", detailUrl: null });
+    assert.ok(text.includes(`\nFase in Unbundle: ${phase} (in coda a CoE AI).`), text);
+    assert.doesNotMatch(text, /\b(proposed|accepted|needs_inputs|in_review|scored)\b|\bStato\b/, text);
+  }
 });
 
 test("rifiuta divagazioni evidenti e mantiene lo stesso campo", () => {
@@ -759,4 +854,18 @@ test("20 conversazioni Slack e webapp completano senza loop e senza salti di cam
   assert.equal(transcripts.length, 20);
   assert.equal(SCENARIOS.filter((s) => s.channel === "slack").length, 12);
   assert.equal(SCENARIOS.filter((s) => s.channel === "webapp").length, 8);
+});
+
+test("le colonne che l'invio porta a NULL sono le colonne di testo della bozza nello schema", () => {
+  // submit-contribution.ts traduce l'elenco nelle chiavi di drizzle a ogni invio: qui, dentro
+  // `npm run check`, ogni nome deve avere la sua colonna, e ogni testo delle persone il suo nome.
+  const columns = Object.values(getTableColumns(slackUseCaseDrafts));
+  const names = new Set(columns.map((column) => column.name));
+  for (const name of SLACK_DRAFT_TEXT_COLUMNS) assert.ok(names.has(name), `slack_use_case_drafts non ha la colonna ${name}`);
+  // Gli id di Slack, il tipo e lo stato non sono testi delle persone.
+  const texts = columns
+    .filter((column) => column.columnType === "PgText" || column.columnType === "PgVarchar")
+    .map((column) => column.name)
+    .filter((name) => !/^slack_/.test(name) && name !== "contribution_kind" && name !== "status");
+  assert.deepEqual([...SLACK_DRAFT_TEXT_COLUMNS].sort(), texts.sort());
 });

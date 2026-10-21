@@ -20,12 +20,15 @@ export default async function IntelligencePage(props: {
 }) {
   const { workspaceId } = await props.params;
   const { access } = await requireWorkspacePage(workspaceId);
+  // D4: chi non valuta non riceve i segnali delle schede (titolo e problema di ogni
+  // proposta, riepiloghi dell'area) né le zone degli use case.
+  const canReview = canReviewWorkspacePortfolio(access.role);
 
   const [signals, unread, activities, useCases] = await Promise.all([
-    getSignalsByWorkspace(workspaceId),
-    getUnreadSignals(workspaceId),
+    getSignalsByWorkspace(workspaceId, 50, access.role),
+    getUnreadSignals(workspaceId, access.role),
     getActivitiesByWorkspace(workspaceId),
-    getUseCasesByWorkspace(workspaceId),
+    canReview ? getUseCasesByWorkspace(workspaceId) : Promise.resolve([]),
   ]);
 
   const riskSignals = signals.filter((s) => s.signalType === "risk_alert");
@@ -85,7 +88,7 @@ export default async function IntelligencePage(props: {
           <CardContent>
             <div className="text-2xl font-bold">{opportunitySignals.length}</div>
             <p className="text-xs text-muted-foreground">
-              {quickWins.length} quick wins attivi
+              {canReview ? `${quickWins.length} quick wins attivi` : "nuove opportunità segnalate"}
             </p>
           </CardContent>
         </Card>
@@ -124,7 +127,7 @@ export default async function IntelligencePage(props: {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <SignalsFeed signals={signals} workspaceId={workspaceId} />
-        <CompetitiveAnalysisViewer workspaceId={workspaceId} canGenerate={canReviewWorkspacePortfolio(access.role)} />
+        <CompetitiveAnalysisViewer workspaceId={workspaceId} canGenerate={canReview} />
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import { auth } from "@/lib/auth";
 import { getPortfolioContributionsByWorkspace } from "@/lib/db/queries/use-cases";
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
+import { exportUseCaseRows, viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { isHiddenFromColleagues } from "@/lib/portfolio/client-items";
@@ -10,8 +11,42 @@ import {
   buildWaveCandidate,
   getSustainabilityBand,
 } from "@/lib/portfolio/planning";
+import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { EXPORT_COLUMNS, EXPORT_SHEET_NAME } from "@/lib/use-cases/views";
+
+/**
+ * «Esporta Excel» (docs/use-case/DESIGN.md §4.1, §9.3, §12.1; D4).
+ *
+ * - Solo ai revisori, in tutti i workspace: gli altri ricevono 403 (e il pulsante lo vedono
+ *   solo i revisori, H2e).
+ * - Area accesa per il workspace: un solo foglio «Use case» con le colonne di §4.1, le fasce
+ *   del costo del workspace (D15) e nessuna colonna sul proponente; niente «Waves».
+ * - Area spenta: il file di oggi (Portfolio, Waves, Summary), con `waveBudget` e
+ *   `waveDurationMonths` dalla query.
+ */
 
 export const dynamic = "force-dynamic";
+
+function fileName(workspaceName: string, suffix: string): string {
+  const safeName = workspaceName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${safeName || "unbundle"}-${suffix}.xlsx`;
+}
+
+function xlsxResponse(workbook: XLSX.WorkBook, name: string): Response {
+  const file = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
+  return new Response(file, {
+    headers: {
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="${name}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
 
 const currency = new Intl.NumberFormat("it-IT", {
   style: "currency",
@@ -46,6 +81,24 @@ export async function GET(
     return Response.json({ error: "Workspace not found" }, { status: 404 });
   }
   const { workspace } = access;
+  const viewer = viewerFromSession(session.user, access.role);
+  if (!abilitiesForUseCase(viewer).canExport) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  if (isUseCaseHubWorkspace(workspaceId)) {
+    const exported = await exportUseCaseRows(workspaceId, viewer);
+    if (!exported) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(exported.rows, { header: [...EXPORT_COLUMNS] }),
+      EXPORT_SHEET_NAME
+    );
+    return xlsxResponse(workbook, fileName(workspace.name, "use-case"));
+  }
 
   const url = new URL(request.url);
   const waveBudget = Math.max(
@@ -153,18 +206,5 @@ export async function GET(
   ];
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), "Summary");
 
-  const file = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
-  const safeName = workspace.name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  return new Response(file, {
-    headers: {
-      "Content-Type":
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${safeName || "unbundle"}-portfolio.xlsx"`,
-      "Cache-Control": "no-store",
-    },
-  });
+  return xlsxResponse(workbook, fileName(workspace.name, "portfolio"));
 }

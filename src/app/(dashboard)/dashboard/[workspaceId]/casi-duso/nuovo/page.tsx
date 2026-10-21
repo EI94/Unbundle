@@ -10,9 +10,13 @@ import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { UcAccessError, ensureUcAvailable, getUcUserContext, isUcEnabledFor } from "@/lib/db/queries/uc-access";
 import { readStartContext } from "@/lib/db/queries/uc-realization";
 import { listTemplatesForWorkspace } from "@/lib/db/queries/uc-templates";
+import { realizationPrefillOf } from "@/lib/db/queries/use-case-dossiers";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { checkCaseCreator } from "@/lib/uc/permissions";
 import { REALIZATION_TEXT, startDefaults } from "@/lib/uc/views/realization";
+import { HUB_VIEWS, HUB_VIEW_PARAM, stubLogEntry } from "@/lib/use-cases/legacy-routes";
+import { PREFILL_TEXT, type PrefillRow } from "@/lib/use-cases/realization-prefill";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canManageWorkspaceSettings, canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { UUID } from "@/lib/uc/ids";
 
@@ -25,9 +29,16 @@ import { UUID } from "@/lib/uc/ids";
  *   chi gestisce il workspace), gli altri alla scheda dello use case;
  * - per una best practice, uno use case non approvato o chi non può avviare,
  *   rimanda alla scheda dello use case.
- * Senza `useCaseId`, o con uno use case che non è del workspace, dice dove si
- * parte: i redirect verso «Priorità» li aggiunge la pagina Use case (H6a, in
- * `src/proxy.ts` e qui). Sezione spenta per il workspace: 404.
+ * Senza `useCaseId` il redirect verso «Priorità» lo fa `src/proxy.ts` (307,
+ * fuori da `loading.tsx`) con l'area «Use case» accesa; con uno use case che non
+ * c'è o non è del workspace lo fa questa pagina (sotto `loading.tsx` è un 200 con
+ * una meta refresh). Con l'area spenta dice dove si parte. Sezione spenta per il
+ * workspace: 404.
+ *
+ * Una scheda arrivata dal connettore (`intake.contractVersion = 2`, decisione del
+ * 19/10/2026) parte precompilata: «In una frase» con il problema (al massimo 500
+ * caratteri) e, accanto, in sola lettura, i dati raccolti da Claude che entrano
+ * nel dossier (`realizationPrefillOf`).
  */
 export default async function StartRealizationPage({
   params,
@@ -53,6 +64,11 @@ export default async function StartRealizationPage({
 
   const executor = await getAppUcExecutor();
   const context = useCaseId ? await readStartContext(executor, { workspaceId, useCaseId, userId: session.user.id }) : null;
+  if (!context && isUseCaseHubWorkspace(workspaceId)) {
+    // Un dossier nasce solo da uno use case (DESIGN §2.3, §6.5): si sceglie in «Priorità».
+    console.info(JSON.stringify(stubLogEntry("/casi-duso/nuovo")));
+    redirect(`${ws}/use-cases?${HUB_VIEW_PARAM}=${HUB_VIEWS.priorita}`);
+  }
   if (!context) {
     return (
       <PageContainer size="narrow">
@@ -80,8 +96,11 @@ export default async function StartRealizationPage({
   if (!creator?.ok || context.kind !== "use_case_ai" || context.status !== "accepted") redirect(scheda);
 
   const codeMissing = context.hasCodeColumn && !context.code;
-  const templates = codeMissing ? [] : await listTemplatesForWorkspace(executor, workspaceId);
-  const defaults = startDefaults(context.texts);
+  const [templates, prefill] = await Promise.all([
+    codeMissing ? [] : listTemplatesForWorkspace(executor, workspaceId),
+    realizationPrefillOf(workspaceId, context.useCaseId),
+  ]);
+  const defaults = prefill ? { ...startDefaults(context.texts), oneLiner: prefill.oneLiner } : startDefaults(context.texts);
   const crumb = context.code ?? context.title;
 
   return (
@@ -119,6 +138,27 @@ export default async function StartRealizationPage({
             .map((t) => ({ id: t.id, name: t.name, questions: t.questions, restricted: t.restricted }))}
         />
       )}
+      {!codeMissing && prefill && prefill.rows.length > 0 ? <CollectedByClaude rows={prefill.rows} /> : null}
     </PageContainer>
+  );
+}
+
+/** «Dati raccolti da Claude», in sola lettura accanto a «In una frase»: entrano così nel dossier. */
+function CollectedByClaude({ rows }: { rows: readonly PrefillRow[] }) {
+  return (
+    <section aria-labelledby="dati-raccolti-titolo" data-slot="collected-by-claude" className="mt-6 min-w-0 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+      <h2 id="dati-raccolti-titolo" className="text-sm font-medium">
+        {PREFILL_TEXT.title}
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">{PREFILL_TEXT.hint}</p>
+      <dl className="mt-4 grid min-w-0 gap-3">
+        {rows.map((row) => (
+          <div key={row.label} className="min-w-0">
+            <dt className="text-xs text-muted-foreground">{row.label}</dt>
+            <dd className="mt-0.5 text-sm break-words whitespace-pre-line">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }

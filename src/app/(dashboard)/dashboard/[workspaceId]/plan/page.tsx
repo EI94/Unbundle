@@ -1,7 +1,16 @@
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
-import { notFound } from "next/navigation";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { legacyRouteRedirect, stubLogEntry } from "@/lib/use-cases/legacy-routes";
+import { notFound, redirect } from "next/navigation";
+import type { SessionUser } from "@/lib/auth";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { getUseCasesByWorkspace } from "@/lib/db/queries/use-cases";
+import { dossierStates } from "@/lib/db/queries/use-case-dossiers";
+import type { UseCase } from "@/lib/db/schema";
+import { projectForContributor, type ContributorUseCase } from "@/lib/use-cases/permissions";
+import type { PhaseInput } from "@/lib/use-cases/phase";
+import { romeToday } from "@/lib/use-cases/quarter";
 import { GanttChart } from "@/components/dashboard/gantt-chart";
 import { toGanttUseCases } from "@/lib/portfolio/use-case-client-rows";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +33,31 @@ const categoryColors: Record<string, string> = {
   not_yet: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
 };
 
+/**
+ * Gli use case come li vede chi non valuta (D4 e D13, docs/use-case/DESIGN.md §11):
+ * titolo, fase e «Quando»; delle proprie proposte anche il codice. Niente schede nascoste
+ * altrui. In ordine di arrivo, dalla più recente, come /portfolio: `getUseCasesByWorkspace`
+ * ordina per punteggio, e quell'ordine è la classifica dei revisori.
+ */
+async function contributorItems(workspaceId: string, user: SessionUser, rows: UseCase[]): Promise<ContributorUseCase[]> {
+  const read = await dossierStates(workspaceId, rows.map((row) => row.id));
+  const today = romeToday();
+  const viewer = { userId: user.id, email: user.email, emailVerified: user.emailVerified };
+  const byArrival = [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || a.id.localeCompare(b.id));
+  return byArrival.flatMap((row) => {
+    const dossier = read.ok ? read.states.get(row.id.toLowerCase()) : undefined;
+    const item = projectForContributor(viewer, {
+      ...row,
+      intake: row.intake as PhaseInput["intake"],
+      linkedCaseCode: dossier?.code ?? null,
+      dossierStatus: dossier?.status ?? null,
+      duplicateOfCode: null,
+      today,
+    });
+    return item ? [item] : [];
+  });
+}
+
 export default async function PlanPage({
   params,
 }: {
@@ -32,11 +66,60 @@ export default async function PlanPage({
 
   const { workspaceId } = await params;
 
-  await requireWorkspacePage(workspaceId);
+  // Area «Use case» accesa: questa pagina vive nell'area (docs/use-case/DESIGN.md §2.3, §2.4).
+  // 307, mai 308, prima di ogni lettura: se l'area si spegne il vecchio indirizzo torna com'era.
+  if (isUseCaseHubWorkspace(workspaceId)) {
+    const legacy = legacyRouteRedirect(`/dashboard/${workspaceId}/plan`, null);
+    if (legacy) {
+      console.info(JSON.stringify(stubLogEntry(legacy.from)));
+      redirect(legacy.to);
+    }
+  }
+
+  const { session, access } = await requireWorkspacePage(workspaceId);
   const workspace = await getWorkspaceById(workspaceId);
   if (!workspace) notFound();
 
   const useCases = await getUseCasesByWorkspace(workspaceId);
+
+  // D4: niente cifre, zone e sequenza per chi non valuta: titolo, fase e «Quando».
+  if (!canReviewWorkspacePortfolio(access.role)) {
+    const items = await contributorItems(workspaceId, session.user, useCases);
+    return (
+      <div className="flex-1 p-6 lg:p-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight">Unbundle Plan</h1>
+          <p className="mt-1 text-muted-foreground">
+            Gli use case del workspace e a che punto sono.
+          </p>
+        </div>
+        {items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border p-12 text-center">
+            <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold">Nessun use case disponibile</h3>
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="py-0">
+              <ul className="divide-y">
+                {items.map((item) => (
+                  <li key={item.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3">
+                    <div className="min-w-0">
+                      {item.own && item.code && <div className="font-mono text-xs text-muted-foreground">{item.code}</div>}
+                      <Link href={`/dashboard/${workspaceId}/use-cases/${item.id}`} className="font-medium text-sm break-words hover:underline">
+                        {item.title}
+                      </Link>
+                    </div>
+                    <Badge variant="outline">{item.phaseLabel}</Badge>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
   const sorted = [...useCases].sort(
     (a, b) => (a.sequenceOrder ?? 99) - (b.sequenceOrder ?? 99)
   );

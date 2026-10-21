@@ -1,12 +1,19 @@
 import { auth } from "@/lib/auth";
-import { updateUseCaseScores } from "@/lib/db/queries/use-cases";
 import { patchUseCaseScoresBodySchema } from "@/lib/api/use-case-scores-schema";
+import { restResponse, restWriteContext, saveLegacyScores } from "@/lib/use-cases/service";
 import { toUseCaseApiRow } from "@/lib/portfolio/use-case-client-rows";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
 /**
- * Aggiorna i punteggi (impatto / fattibilità / ESG) e ricalcola category + overall score.
+ * Aggiorna i punteggi legacy (impatto / fattibilità / ESG, da 1 a 5) con il corpo di oggi,
+ * in tutti i workspace. Passa da «Salva la valutazione» del servizio dell'area
+ * (docs/use-case/DESIGN.md §9.3), canale `rest`: ricalcola category e punteggi complessivi,
+ * segna lo use case come valutato e scrive la riga di Storia.
+ *
+ * Risposte: 200 `{ useCase }`; 400 corpo non valido; 401 senza sessione; 403 senza ruolo da
+ * revisore; 404 workspace o use case non trovato; 409 modificato nel frattempo; 503 errore
+ * temporaneo, riprovare.
  */
 export async function PATCH(
   req: Request,
@@ -48,10 +55,12 @@ export async function PATCH(
     return Response.json({ error: msg }, { status: 400 });
   }
 
-  const updated = await updateUseCaseScores(useCaseId, workspaceId, parsed.data);
-  if (!updated) {
-    return Response.json({ error: "Use case non trovato" }, { status: 404 });
-  }
-
-  return Response.json({ useCase: toUseCaseApiRow(updated) });
+  const result = await saveLegacyScores(
+    restWriteContext(session.user, workspaceId, access.role),
+    useCaseId,
+    parsed.data
+  );
+  // Errori come li dà il servizio; la scheda passa dall'allowlist della REST.
+  if (!result.ok) return restResponse(result);
+  return Response.json({ useCase: toUseCaseApiRow(result.value) });
 }

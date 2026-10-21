@@ -1,0 +1,386 @@
+{
+  "$comment": [
+    "Files of each hub package (docs/use-case/PIANO-LAVORI.md §3.3 and §4). One owner per file and per wave.",
+    "Check a package branch with: node scripts/use-case-test/ownership.mjs <id> (diff against integrationBranch).",
+    "Patterns: * inside one path segment, ** across segments, {a,b} alternatives; [ ] and ( ) are literal.",
+    "newTestFiles: a package may also ADD new test files there, if no package lists them (casi-duso DESIGN §8.1 rule 5).",
+    "forbidden: never versioned by any package (untracked docs of the main checkout, client files; PIANO §2.6.8, §5.8).",
+    "note: a rule the package must follow in its own files, printed by ownership.mjs <id> (e.g. where src/lib/use-cases/art15-4.source.test.ts lets the proposer appear).",
+    "H8 (cleanup) is not listed: it runs on its own branch from main, with a file list decided then."
+  ],
+  "integrationBranch": "feat/use-case-hub",
+  "forbidden": [
+    "docs/use-case/PROPOSTA.md",
+    "docs/use-case/DESIGN.md",
+    "docs/use-case/PIANO-LAVORI.md",
+    "docs/casi-duso/DESIGN.md",
+    "docs/casi-duso/PIANO.md",
+    "docs/casi-duso/PROMPT.md",
+    "docs/casi-duso/*.json",
+    "docs/mcp-organizzativo/**",
+    "**/.env*"
+  ],
+  "newTestFiles": [
+    "src/lib/use-cases/**/*.test.ts",
+    "src/components/use-cases/**/*.test.ts",
+    "src/lib/db/use-case-hub*.test.ts"
+  ],
+  "packages": {
+    "h0": {
+      "wave": "H0",
+      "title": "Impalcatura",
+      "files": [
+        "package.json",
+        "scripts/uc-test/config.mjs",
+        "src/lib/use-cases/types.ts",
+        "src/lib/use-cases/types.test.ts",
+        "src/lib/use-cases/rollout.ts",
+        "src/lib/use-cases/rollout.test.ts",
+        "src/lib/review-team.ts",
+        "src/lib/review-team.test.ts",
+        "src/lib/use-cases/art15-4.source.test.ts",
+        "src/lib/use-cases/harness.integration.test.ts",
+        "scripts/use-case-test/run-db-tests.mjs",
+        "scripts/use-case-test/db-clone.mjs",
+        "scripts/use-case-test/ownership.mjs",
+        "scripts/use-case-test/ownership.json",
+        "scripts/use-case-test/test-hooks.mjs",
+        ".github/workflows/use-case.yml"
+      ]
+    },
+    "h1a": {
+      "wave": "H1",
+      "title": "Dati: migrazione 0020",
+      "files": [
+        "drizzle/0020_use_case_hub.sql",
+        "src/lib/db/use-case-hub-ddl.ts",
+        "src/lib/db/use-case-hub-ddl.test.ts",
+        "src/lib/db/use-case-hub.integration.test.ts",
+        "scripts/use-case-test/schema-check.mjs",
+        "src/lib/db/schema.ts",
+        "src/lib/db/ensure-schema.ts"
+      ]
+    },
+    "h1b": {
+      "wave": "H1",
+      "title": "Regole pure: Quando, costo, valore, decisioni",
+      "files": [
+        "src/lib/use-cases/{quarter,cost-bands,valuation,decisions,labels,inputs}.ts",
+        "src/lib/use-cases/{quarter,cost-bands,valuation,decisions,labels,inputs}.test.ts"
+      ]
+    },
+    "h1b2": {
+      "wave": "H2",
+      "title": "Fasce del costo del workspace",
+      "files": [
+        "src/lib/use-cases/{cost-bands,valuation}.ts",
+        "src/lib/use-cases/{cost-bands,valuation}.test.ts",
+        "src/lib/use-cases/{decisions,quarter}.ts",
+        "src/lib/use-cases/decisions.test.ts"
+      ]
+    },
+    "h1c": {
+      "wave": "H1",
+      "title": "Fase, permessi, vecchi indirizzi, barra",
+      "files": [
+        "src/lib/use-cases/{phase,permissions,legacy-routes,prefix}.ts",
+        "src/lib/use-cases/{phase,permissions,legacy-routes,prefix}.test.ts",
+        "src/components/dashboard/nav-active.ts",
+        "src/components/dashboard/nav-active.test.ts"
+      ]
+    },
+    "h1d": {
+      "wave": "H1",
+      "title": "Letture minime del dossier",
+      "files": [
+        "src/lib/db/queries/use-case-dossiers.ts",
+        "src/lib/use-cases/dossiers.integration.test.ts"
+      ]
+    },
+    "h2a": {
+      "wave": "H2",
+      "title": "Servizio di scrittura",
+      "note": "Art. 15.4: in service.ts the proposer (proposed_by, proposedBy, submitterEmail, submitted_by_user_id) may appear only in the column list of INSERT INTO use_cases written in an sql template (up to RETURNING, ON CONFLICT, WHERE, JOIN or ;) or in the object of .insert(useCases).values(...). RETURNING, reads and comments may not name it.",
+      "files": [
+        "src/lib/use-cases/service.ts",
+        "src/lib/db/queries/use-case-events.ts",
+        "src/lib/use-cases/service.integration.test.ts",
+        "src/app/api/workspaces/[workspaceId]/use-cases/[useCaseId]/{status,scores,wave}/route.ts"
+      ]
+    },
+    "h2b": {
+      "wave": "H2",
+      "title": "Letture, viste e proiezioni",
+      "note": "Art. 15.4: in src/lib/db/queries/use-case-hub.ts the proposer (proposed_by, proposedBy, submitterEmail, submitted_by_user_id) may appear only inside the top-level function projectForManager, the projection of who manages the workspace; queries read the row without naming those columns (e.g. SELECT u.* or db.select().from(useCases)). No GROUP BY or aggregate without OVER in a statement that names proposed_by: a per-case count next to the proposer goes in a subquery.",
+      "files": [
+        "src/lib/db/queries/use-case-hub.ts",
+        "src/lib/use-cases/views.ts",
+        "src/lib/use-cases/views.test.ts",
+        "src/lib/use-cases/art15-4.projection.test.ts",
+        "src/lib/use-cases/reads.integration.test.ts",
+        "scripts/use-case-test/seed-hub.mjs",
+        "src/lib/db/queries/use-case-dossiers.ts",
+        "src/app/api/workspaces/[workspaceId]/use-cases/route.ts",
+        "src/app/api/workspaces/[workspaceId]/use-cases/[useCaseId]/route.ts",
+        "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/export/route.ts"
+      ]
+    },
+    "h2c": {
+      "wave": "H2",
+      "title": "Script operatore e configurazioni",
+      "files": [
+        "scripts/use-case-admin.ts",
+        "scripts/use-case-admin/{dossier-dups,configs,team-name,origin,codes,dossier-links,slack-drafts,doctor}.ts",
+        "src/lib/use-cases/admin/*.ts",
+        "src/lib/db/queries/workspaces.ts"
+      ]
+    },
+    "h2d": {
+      "wave": "H2",
+      "title": "Pezzi comuni dell'interfaccia e driver delle schermate",
+      "files": [
+        "src/components/use-cases/{phase-pill,origin-chip,kind-label,value-figure,cost-figure,source-tag,cost-input}.tsx",
+        "src/components/use-cases/cost-input*.ts",
+        "src/lib/use-cases/{format,copy-guard}.ts",
+        "src/lib/use-cases/{format,copy-guard}.test.ts",
+        "scripts/use-case-test/screens-hub.mjs"
+      ]
+    },
+    "h2e": {
+      "wave": "H2",
+      "title": "D4 subito ovunque",
+      "files": [
+        "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/page.tsx",
+        "src/components/portfolio/ranking-matrix.tsx",
+        "src/components/portfolio/wave-planner.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/review/[useCaseId]/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/plan/page.tsx",
+        "src/app/share/portfolio/[workspaceId]/[useCaseId]/page.tsx",
+        "src/lib/db/queries/signals.ts",
+        "src/components/portfolio/workspace-topbar.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/intelligence/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx",
+        "src/lib/use-cases/d4-legacy.integration.test.ts"
+      ]
+    },
+    "h3a": {
+      "wave": "H3",
+      "title": "Punteggio v2",
+      "files": [
+        "src/lib/db/use-case-scoring.ts",
+        "src/lib/db/use-case-scoring.test.ts",
+        "src/lib/portfolio/ai-ranking.ts",
+        "src/lib/portfolio/ai-ranking*.test.ts",
+        "src/lib/db/queries/scoring-model.ts",
+        "src/lib/actions/portfolio.ts",
+        "scripts/use-case-admin/scoring-v2.ts",
+        "src/lib/use-cases/scoring-v2.integration.test.ts"
+      ]
+    },
+    "h3b": {
+      "wave": "H3",
+      "title": "Decisioni",
+      "files": [
+        "src/lib/actions/use-case-decisions.ts",
+        "src/components/use-cases/{decision-buttons,when-control,approve-dialog,postpone-dialog,public-note-dialog,duplicate-dialog,archive-dialog,reopen-dialog}.tsx",
+        "src/components/use-cases/detail/{section-decision,public-note-field}.tsx",
+        "src/lib/use-cases/decision-ui.ts",
+        "src/lib/use-cases/decision-ui.test.ts"
+      ]
+    },
+    "h3c": {
+      "wave": "H3",
+      "title": "Nuovo use case e Activity mapping",
+      "files": [
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/nuovo/page.tsx",
+        "src/components/use-cases/{quick-create-sheet,use-case-form}.tsx",
+        "src/lib/actions/use-case-create.ts",
+        "src/lib/actions/use-cases.ts",
+        "src/lib/use-cases/create*.ts"
+      ]
+    },
+    "h3d": {
+      "wave": "H3",
+      "title": "Impostazioni › Valutazione",
+      "files": [
+        "src/components/use-cases/settings/**",
+        "src/lib/actions/use-case-settings.ts",
+        "src/lib/use-cases/settings*.ts",
+        "src/components/portfolio/scoring-model-form.tsx",
+        "src/components/portfolio/team-settings-form.tsx"
+      ]
+    },
+    "h3e": {
+      "wave": "H3",
+      "title": "Nome del team in un punto solo",
+      "files": [
+        "src/lib/portfolio/external-submission.ts",
+        "src/lib/portfolio/external-submission.test.ts",
+        "src/lib/notifications/portfolio-dispatch.ts",
+        "src/lib/slack/notifications.ts",
+        "src/lib/slack/new-use-case-message.ts",
+        "src/lib/slack/use-case-agent.ts",
+        "src/lib/slack/use-case-agent.test.ts",
+        "src/lib/slack/submit-contribution.ts",
+        "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/submit/page.tsx",
+        "src/app/share/portfolio/[workspaceId]/[useCaseId]/page.tsx",
+        "src/lib/review-team.guard.test.ts"
+      ]
+    },
+    "h4a": {
+      "wave": "H4",
+      "title": "Pagina «Use case» e tre viste",
+      "files": [
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/{loading,error}.tsx",
+        "src/components/use-cases/{hub,hub-header,hub-menu,filter-bar,use-case-row,decide-view,priority-view,value-cost-matrix,priority-list,diffuse-list,roadmap-view,roadmap-tiles,roadmap-card,use-case-panel}.tsx",
+        "scripts/use-case-test/screens/hub.routes.mjs",
+        "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/export/route.ts"
+      ]
+    },
+    "h4b": {
+      "wave": "H4",
+      "title": "Scheda",
+      "files": [
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/{loading,not-found}.tsx",
+        "src/components/use-cases/detail/{detail,detail-header,chapter-nav,section-what,intake-details,inline-text-field,section-valuation,valuation-form,claude-estimate-box,ai-suggestion-box,risk-chips,section-realization,section-history,redact-dialog,hide-from-search-item}.tsx",
+        "src/lib/actions/use-case-edit.ts",
+        "scripts/use-case-test/screens/detail.routes.mjs"
+      ]
+    },
+    "h4d": {
+      "wave": "H4",
+      "title": "Riepilogo settimanale",
+      "files": [
+        "src/app/api/cron/weekly-pulse/route.ts",
+        "src/lib/use-cases/digest.ts",
+        "src/lib/use-cases/digest.test.ts",
+        "src/lib/db/queries/use-case-digest.ts"
+      ]
+    },
+    "h4i": {
+      "wave": "H4",
+      "title": "Integrazione «Una voce» (si unisce per ultimo)",
+      "files": [
+        "src/components/dashboard/app-sidebar.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx",
+        "src/components/portfolio/workspace-topbar.tsx",
+        "src/components/portfolio/notifications-bell.tsx",
+        "src/components/portfolio/ranking-matrix.tsx",
+        "src/components/portfolio/wave-planner.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/review/[useCaseId]/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/portfolio/submit/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/plan/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/settings/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/page.tsx",
+        "src/app/share/portfolio/[workspaceId]/[useCaseId]/page.tsx",
+        "src/lib/workspace-roles.ts",
+        "src/lib/workspace-roles.test.ts",
+        "scripts/use-case-test/redirects.mjs",
+        "scripts/use-case-test/screens/legacy.routes.mjs",
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/not-found.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/nuovo/not-found.tsx",
+        "src/components/dashboard/signals-feed.tsx",
+        "src/lib/actions/intelligence.ts"
+      ]
+    },
+    "h4p": {
+      "wave": "H4p",
+      "title": "Rifinitura della pagina Use case dopo l'arresto H-B (D17, D18)",
+      "files": [
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/**",
+        "src/components/use-cases/**",
+        "src/lib/use-cases/**",
+        "src/lib/actions/use-case*.ts",
+        "src/lib/db/queries/use-case*.ts",
+        "src/lib/db/use-case-scoring.ts",
+        "src/lib/db/queries/scoring-model.ts",
+        "src/components/portfolio/scoring-model-form.tsx",
+        "scripts/use-case-test/screens/**",
+        "scripts/use-case-test/seed-hub.mjs"
+      ]
+    },
+    "h5a": {
+      "wave": "H5",
+      "title": "MCP del team: server",
+      "files": [
+        "src/app/api/mcp/use-case/route.ts",
+        "src/lib/use-cases/mcp/**",
+        "src/lib/db/queries/team-mcp-requests.ts",
+        "src/lib/use-cases/art15-4.mcp.test.ts",
+        "scripts/use-case-mcp-smoke.mjs"
+      ]
+    },
+    "h5b": {
+      "wave": "H5",
+      "title": "Token personali, card e skill",
+      "files": [
+        "src/components/workspace/team-mcp-card.tsx",
+        "src/lib/actions/team-mcp-tokens.ts",
+        "src/lib/db/queries/team-mcp-tokens.ts",
+        "skills/registra-ai-lab/SKILL.md",
+        "src/lib/use-cases/skill-registra.test.ts",
+        "src/app/(dashboard)/dashboard/[workspaceId]/settings/page.tsx"
+      ]
+    },
+    "h6": {
+      "wave": "H6",
+      "title": "Realizzazione e integrazione dell'ondata H6 (H6a e H6i in un ramo)",
+      "files": [
+        "src/components/use-cases/detail/section-realization.tsx",
+        "src/components/use-cases/roadmap-view.tsx",
+        "src/lib/db/queries/use-case-dossiers.ts",
+        "src/lib/actions/uc-realization.ts",
+        "src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx",
+        "src/proxy.ts",
+        "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/page.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/nuovo/page.tsx",
+        "scripts/uc-seed-case.ts",
+        "scripts/use-case-test/acceptance-hub.mjs",
+        "scripts/use-case-test/screens/realization.routes.mjs",
+        "src/components/workspace/claude-mcp-card.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/settings/page.tsx",
+        "src/lib/actions/workspace-integrations.ts",
+        "src/lib/use-cases/realization-prefill.ts",
+        "src/lib/use-cases/realization-prefill.test.ts",
+        "src/lib/use-cases/realization.integration.test.ts",
+        "src/lib/db/queries/uc-realization.ts",
+        "src/lib/uc/realization-gates.test.ts",
+        "src/components/use-cases/detail/detail.tsx",
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx",
+        "src/components/use-cases/hub.tsx",
+        "src/components/portfolio/notifications-bell.tsx",
+        "scripts/use-case-test/redirects.mjs",
+        "scripts/use-case-test/ownership.json"
+      ],
+      "note": "H6a e H6i stanno in un solo ramo (feat/use-case-hub-h6): l'elenco è la loro unione più i file che il collegamento richiede. Aggiunti oltre PIANO-LAVORI H6a/H6i: realization-prefill.ts e uc-realization.ts (dossier precompilato dal connettore, decisione del 19/10/2026: il blocco «Dati raccolti da Claude» entra nella Descrizione iniziale); detail.tsx, use-cases/[useCaseId]/page.tsx e hub.tsx (le pagine leggono il riepilogo ricco e lo passano ai capitoli: nessuna lettura uc nei componenti); notifications-bell.tsx (testi della campanella di casi-duso §3.13.4, consegna di bell.ts a H4i); redirects.mjs (il controllo di /casi-duso accetta il 307 di H6a); realization-gates.test.ts (il controllo «nessun import dall'hub» di C10 ammette i soli moduli dell'hub montati da H6a nella pagina di avvio e nell'action); ownership.json."
+    },
+    "h7": {
+      "wave": "H7",
+      "title": "Collaudo finale",
+      "note": "H7-lite: la rifinitura dopo il ricontrollo dell'arresto H-B e l'arresto H-C (D17 dopo la risposta, testi, telefono, scheda, token del team) più i controlli finali. Aggiunti oltre PIANO-LAVORI §3.3 H7: i file della rifinitura, come per H4p.",
+      "files": [
+        "docs/use-case/RUNBOOK.md",
+        "scripts/use-case-test/perf-hub.mjs",
+        "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/**",
+        "src/components/use-cases/**",
+        "src/lib/use-cases/**",
+        "src/lib/db/queries/use-case-hub.ts",
+        "src/components/workspace/team-mcp-card.tsx",
+        "src/lib/db/queries/team-mcp-tokens.ts",
+        "src/lib/db/use-case-hub-team-mcp-tokens.integration.test.ts",
+        "src/lib/actions/workspace-collaboration.ts",
+        "src/lib/workspace-permissions.ts",
+        "scripts/use-case-skill-package.mjs",
+        "scripts/use-case-test/screens/**",
+        "scripts/use-case-test/seed-hub.mjs",
+        "scripts/use-case-test/ownership.json"
+      ]
+    }
+  }
+}

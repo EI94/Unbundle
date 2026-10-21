@@ -12,6 +12,7 @@ import {
   QUALITY_GAINS,
   RELATION_TYPES,
 } from "../connector/contract.ts";
+import { reviewTeamName } from "../review-team.ts";
 
 export const EXTERNAL_PORTFOLIO_SOURCE = "claude_mcp";
 /** Fonte delle segnalazioni del connettore MCP organizzativo (contratto v2). */
@@ -307,8 +308,8 @@ export function buildWorkspaceIntakeRequirements(params: {
       id: workspace.id,
       name: workspace.name,
       esgEnabled,
-      aiTransformationTeamName:
-        workspace.aiTransformationTeamName?.trim() || "AI Transformation",
+      // Stessa chiave di sempre; senza nome del workspace vale il nome predefinito (§14.2).
+      aiTransformationTeamName: reviewTeamName(workspace),
     },
     contributionKinds: ["use_case_ai", "best_practice"] as const,
     requiredFields: {

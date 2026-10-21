@@ -36,7 +36,7 @@ test("the fallback list and the start page are 404 for a workspace outside UC_WO
     const text = source(page);
     assert.match(text, /if \(!isUcEnabledFor\(workspaceId\)\) notFound\(\);/, page);
     assert.match(text, /await ensureUcAvailable\(workspaceId\);/, page);
-    const firstRead = [text.indexOf("await getAppUcExecutor()"), text.indexOf("await dossierCardsForWorkspace(")].filter((i) => i >= 0);
+    const firstRead = [text.indexOf("await getAppUcExecutor()"), text.indexOf("dossierCardsForWorkspace({"), text.indexOf("subprocessorsPendingForLs(workspaceId")].filter((i) => i >= 0);
     assert.ok(firstRead.length > 0 && firstRead.every((i) => text.indexOf("if (!isUcEnabledFor(workspaceId)) notFound();") < i), `${page}: the switch comes before any uc read`);
     assert.doesNotMatch(text, /\bredirect\(`\$\{ws\}\/use-cases\?vista=/, `${page}: the redirects to the Use case page belong to H6a`);
   }
@@ -67,10 +67,22 @@ test("every read for the Use case page and the fallback sidebar goes through the
   assert.match(link, /row\.kind !== "use_case_ai"/);
 });
 
+/**
+ * The two mount points of the hub's package H6a (docs/use-case/PIANO-LAVORI.md §4, H6a): the start
+ * page (precompiled dossier, «Priorità» for an unknown use case) and the start action (the Storia
+ * row). They may import these hub modules and nothing else from the hub or the connector.
+ */
+const H6A_MOUNTS: Readonly<Record<string, readonly string[]>> = {
+  [START_PAGE]: ["@/lib/use-cases/legacy-routes", "@/lib/use-cases/realization-prefill", "@/lib/use-cases/rollout"],
+  "src/lib/actions/uc-realization.ts": ["@/lib/use-cases/service", "@/lib/use-cases/rollout"],
+};
+const HUB_OR_CONNECTOR_IMPORT = /from ["']((?:@\/lib\/use-cases|@\/lib\/connector|@\/components\/use-cases|[./]*(?:lib\/)?use-cases\/|[./]*(?:lib\/)?connector\/)[^"']*)["']/g;
+
 test("no import from the hub or the connector; no read by proposer", () => {
   for (const file of C10_FILES) {
-    const text = source(file);
-    assert.doesNotMatch(text, /from ["'](?:@\/lib\/use-cases|@\/lib\/connector|@\/components\/use-cases|[./]*(?:lib\/)?use-cases\/|[./]*(?:lib\/)?connector\/)/, file);
+    const allowed = H6A_MOUNTS[file] ?? [];
+    const found = [...source(file).matchAll(HUB_OR_CONNECTOR_IMPORT)].map((m) => m[1]).filter((path) => !allowed.includes(path));
+    assert.deepEqual(found, [], file);
   }
   for (const file of ["src/lib/db/queries/uc-realization.ts", "src/lib/db/queries/uc-nav.ts", "src/lib/uc/views/realization.ts", "src/lib/db/queries/uc-notifications-dispatch.ts"]) {
     // Il proponente dello use case (art. 15.4), non `na_proposed_by_contact_id` (il referente di un «non si applica»).

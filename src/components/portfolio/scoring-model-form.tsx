@@ -15,6 +15,8 @@ import {
   updateScoringModelAction,
   type ActionState,
 } from "@/lib/actions/portfolio";
+import { saveValuationModelAction } from "@/lib/actions/use-case-settings";
+import { VALUATION_SETTINGS_TEXT, midImpactAboveHighError } from "@/lib/use-cases/settings";
 import type {
   ScoringKpi,
   ScoringModelConfig,
@@ -34,13 +36,62 @@ const dimLabels: Record<Dim, string> = {
   esg: "ESG",
 };
 
-const dimHelp: Record<Dim, string> = {
-  impact:
-    "I criteri che definiscono il valore generato dal contributo.",
-  feasibility:
-    "Quanto è semplice o complesso portare il contributo in produzione.",
-  esg:
-    "Impatto ambientale e sociale, quando ESG è attivo nel workspace.",
+const ESG_HELP = "Impatto ambientale e sociale, quando ESG è attivo nel workspace.";
+
+const MODEL_TEXT = VALUATION_SETTINGS_TEXT.model;
+
+/** I testi del modulo che cambiano con il posto: aiuti, anteprima, conferma, salvataggio. */
+type FormCopy = {
+  valueHelp: string;
+  feasibilityHelp: string;
+  /** La riga sopra il titolo dell'anteprima; null: niente riga. */
+  previewEyebrow: string | null;
+  previewTitle: string;
+  previewNote: string;
+  direction: string;
+  confirm: string;
+  /** Sotto l'esito del salvataggio: l'invito a ricalibrare. */
+  savedHint: string;
+};
+
+/** Il pannello di oggi, fuori dall'area: i suoi testi restano com'erano. */
+const PANEL_COPY: FormCopy = {
+  valueHelp: "I criteri che definiscono il valore generato dal contributo.",
+  feasibilityHelp: "Quanto è semplice o complesso portare il contributo in produzione.",
+  previewEyebrow: "Scorecard attiva",
+  previewTitle: "KPI usati per il ranking",
+  previewNote:
+    "Questi sono i parametri visibili nella pagina Use case: se li modifichi e salvi, puoi ricalibrare automaticamente tutti i contributi.",
+  direction: "Direzione ranking",
+  confirm:
+    "Salvare il modello di ranking? La modifica vale per tutto il team: i pesi e le soglie aggiornati cambieranno il punteggio e la zona di tutti gli use case del workspace.",
+  savedHint: "Modello salvato. Se hai cambiato KPI o rubriche, ora puoi ricalibrare i contributi con AI.",
+};
+
+/** Impostazioni › Valutazione, dentro l'area: le parole del glossario (§14.1). */
+const SETTINGS_COPY: FormCopy = {
+  valueHelp: MODEL_TEXT.valueHelp,
+  feasibilityHelp: MODEL_TEXT.feasibilityHelp,
+  previewEyebrow: null,
+  previewTitle: MODEL_TEXT.previewTitle,
+  previewNote: MODEL_TEXT.previewNote,
+  direction: MODEL_TEXT.direction,
+  confirm: MODEL_TEXT.confirm,
+  savedHint: MODEL_TEXT.savedHint,
+};
+
+/**
+ * ESG si accende solo in Impostazioni › Valutazione, nella sezione «Criteri ESG» (DESIGN §13):
+ * i testi del modulo mandano lì, con o senza la sezione nella stessa pagina.
+ */
+const ESG_SECTION = "«Criteri ESG»";
+const ESG_TEXT = {
+  off: (inSettings: boolean) =>
+    `ESG è spento per questo workspace. Lo accendi in ${
+      inSettings ? `${ESG_SECTION}, in questa pagina` : `Impostazioni › Valutazione, ${ESG_SECTION}`
+    }: da lì la dimensione entra nella valutazione e ne modifichi i KPI qui.`,
+  previewOff: `Si accende in ${ESG_SECTION}.`,
+  previewEmpty: `ESG è spento: accendilo in ${ESG_SECTION} per vedere anche i KPI ambientali e sociali.`,
 };
 
 function genId() {
@@ -58,13 +109,26 @@ export function ScoringModelForm({
   workspaceId,
   initialConfig,
   esgEnabled,
+  inSettings,
 }: {
   workspaceId: string;
   initialConfig: ScoringModelConfig;
   esgEnabled: boolean;
+  /**
+   * Il modulo dentro Impostazioni › Valutazione, dove «Valore alto da» e le zone che decide
+   * stanno già nelle «Soglie» della sezione. Qui: niente «Valore alto da» né «Fattibilità alta
+   * da» (decide solo `category`, che non si mostra più, §7.4); il modulo manda solo «Valore
+   * medio da» e `saveValuationModelAction` aggiunge le due soglie salvate, rilette al
+   * salvataggio. La dimensione d'impatto si chiama «Valore» (§14.1), il blocco delle soglie
+   * «Valore medio», e «Salva modello» è bordato (la pagina ha già il suo pulsante pieno). Gli
+   * altri testi sono quelli dell'area (`SETTINGS_COPY`): «use case», non «contributo»; niente
+   * «ranking» né «Scorecard». Senza, il modulo del pannello di oggi, con i suoi testi.
+   */
+  inSettings?: boolean;
 }) {
-  const boundAction = updateScoringModelAction.bind(null, workspaceId);
+  const boundAction = (inSettings ? saveValuationModelAction : updateScoringModelAction).bind(null, workspaceId);
   const [state, formAction, pending] = useActionState(boundAction, INITIAL);
+  const fe = state.fieldErrors ?? {};
   const [recalibrateState, setRecalibrateState] = useState<ActionState<{ updated: number; failed: number; total: number }> | null>(null);
   const [recalibrating, startRecalibration] = useTransition();
   const router = useRouter();
@@ -93,21 +157,42 @@ export function ScoringModelForm({
       thresholds,
     });
   }, [impact, feasibility, esg, overall, thresholds]);
+  // Quello che parte salvando. In Impostazioni partono solo KPI, pesi e «Valore medio da»:
+  // «Valore alto da» e «Fattibilità alta da» li aggiunge l'action, quelli salvati in quel
+  // momento, così una pagina vecchia non riporta indietro le «Soglie» della sezione.
+  const settingsPlacement = Boolean(inSettings);
+  const sentPayload = useMemo(() => {
+    if (!settingsPlacement) return payload;
+    return JSON.stringify({
+      dimensions: { impact, feasibility, esg },
+      overall,
+      thresholds: { midImpact: thresholds.midImpact },
+    });
+  }, [settingsPlacement, payload, impact, feasibility, esg, overall, thresholds.midImpact]);
+  // «Valore medio da» non sopra «Valore alto da» salvato (arriva nuovo con la pagina quando le
+  // «Soglie» lo cambiano): l'errore in italiano subito, senza partire. L'action rifà il
+  // controllo con il valore salvato in quel momento.
+  const savedHighImpact = initialConfig.thresholds.highImpact;
+  const midAboveHigh = settingsPlacement && thresholds.midImpact > savedHighImpact;
+  const midImpactError = midAboveHigh
+    ? midImpactAboveHighError(savedHighImpact)
+    : fe["thresholds.midImpact"];
+  const advancedRef = useRef<HTMLDetailsElement>(null);
+  const impactLabel = settingsPlacement ? MODEL_TEXT.valueDimension : dimLabels.impact;
+  const copy = settingsPlacement ? SETTINGS_COPY : PANEL_COPY;
   const [savedPayload, setSavedPayload] = useState(payload);
   const submittedPayloadRef = useRef(payload);
   const hasUnsavedChanges = payload !== savedPayload;
 
+  // Ogni esito nuovo dell'action è un oggetto nuovo: un salvataggio riuscito (`ok`, mai lo
+  // stato iniziale) segna il modello salvato, anche quando il messaggio è lo stesso di prima.
+  // Le due action hanno testi diversi: non si confronta il messaggio.
   useEffect(() => {
-    if (!state.ok || state.message !== "Modello di ranking aggiornato.") return;
+    if (state === INITIAL || !state.ok) return;
     setSavedPayload(submittedPayloadRef.current);
-    setRecalibrateState({
-      ok: true,
-      message:
-        "Modello salvato. Se hai cambiato KPI o rubriche, ora puoi ricalibrare i contributi con AI.",
-      fieldErrors: {},
-    });
+    setRecalibrateState({ ok: true, message: copy.savedHint, fieldErrors: {} });
     router.refresh();
-  }, [router, state.message, state.ok]);
+  }, [router, state, copy.savedHint]);
 
   const addKpi = (dim: Dim) =>
     setters[dim]((prev) => [
@@ -131,14 +216,12 @@ export function ScoringModelForm({
       return next;
     });
 
-  const fe = state.fieldErrors ?? {};
-
   const handleRecalibration = () => {
     if (hasUnsavedChanges) {
       setRecalibrateState({
         ok: false,
         message:
-          "Salva il modello prima di ricalibrare: cosi l'AI usera KPI, pesi e rubriche aggiornati.",
+          "Salva il modello prima di ricalibrare: così l'AI userà KPI, pesi e rubriche aggiornati.",
         fieldErrors: {},
       });
       return;
@@ -157,18 +240,19 @@ export function ScoringModelForm({
       action={formAction}
       className="space-y-6"
       onSubmit={(event) => {
-        if (
-          !window.confirm(
-            "Salvare il modello di ranking? La modifica vale per tutto il team: i pesi e le soglie aggiornati cambieranno il punteggio e il quadrante di tutti gli use case del workspace."
-          )
-        ) {
+        if (midAboveHigh) {
+          event.preventDefault();
+          if (advancedRef.current) advancedRef.current.open = true;
+          return;
+        }
+        if (!window.confirm(copy.confirm)) {
           event.preventDefault();
           return;
         }
         submittedPayloadRef.current = payload;
       }}
     >
-      <input type="hidden" name="payload" value={payload} />
+      <input type="hidden" name="payload" value={sentPayload} />
 
       {state.message && (
         <div
@@ -201,12 +285,15 @@ export function ScoringModelForm({
         feasibility={feasibility}
         esg={esg}
         esgEnabled={esgEnabled}
+        impactLabel={impactLabel}
+        copy={copy}
       />
 
       <Dimension
         dim="impact"
-        title={dimLabels.impact}
-        help={dimHelp.impact}
+        title={impactLabel}
+        help={copy.valueHelp}
+        directionLabel={copy.direction}
         kpis={impact}
         onAdd={() => addKpi("impact")}
         onRemove={(i) => removeKpi("impact", i)}
@@ -217,7 +304,8 @@ export function ScoringModelForm({
       <Dimension
         dim="feasibility"
         title={dimLabels.feasibility}
-        help={dimHelp.feasibility}
+        help={copy.feasibilityHelp}
+        directionLabel={copy.direction}
         kpis={feasibility}
         onAdd={() => addKpi("feasibility")}
         onRemove={(i) => removeKpi("feasibility", i)}
@@ -229,7 +317,8 @@ export function ScoringModelForm({
         <Dimension
           dim="esg"
           title={dimLabels.esg}
-          help={dimHelp.esg}
+          help={ESG_HELP}
+          directionLabel={copy.direction}
           kpis={esg}
           onAdd={() => addKpi("esg")}
           onRemove={(i) => removeKpi("esg", i)}
@@ -238,17 +327,15 @@ export function ScoringModelForm({
         />
       ) : (
         <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-          ESG è disattivato a livello di workspace. Puoi attivarlo in{" "}
-          <strong>Integrazioni</strong>: quando è ON, la dimensione ESG viene
-          inclusa automaticamente nel ranking e puoi editare i KPI qui.
+          {ESG_TEXT.off(settingsPlacement)}
         </div>
       )}
 
-      <details className="rounded-2xl border p-4">
+      <details ref={advancedRef} className="rounded-2xl border p-4">
         <summary className="cursor-pointer list-none text-sm font-semibold outline-none marker:hidden">
           Impostazioni avanzate
           <span className="ml-2 text-xs font-normal text-muted-foreground">
-            pesi globali e soglie matrice
+            {inSettings ? MODEL_TEXT.advancedHint : "pesi globali e soglie matrice"}
           </span>
         </summary>
         <div className="mt-4 space-y-5">
@@ -263,7 +350,7 @@ export function ScoringModelForm({
             )}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
               <LabeledNumber
-                label="Impatto"
+                label={impactLabel}
                 value={overall.impact}
                 onChange={(v) => setOverall((o) => ({ ...o, impact: v }))}
                 error={fe["overall.impact"]}
@@ -285,37 +372,48 @@ export function ScoringModelForm({
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold">Soglie della matrice (0-5)</h3>
+            <h3 className="text-sm font-semibold">
+              {inSettings ? MODEL_TEXT.midImpactTitle : "Soglie della matrice (0-5)"}
+            </h3>
             <p className="text-xs text-muted-foreground">
-              Determinano i quadranti: Quick Win, Strategic Bet, Capability
-              Builder, Not Yet.
+              {inSettings
+                ? MODEL_TEXT.midImpactHelp
+                : "Determinano le zone: Subito, Da pianificare, Se avanza tempo, Non ora."}
             </p>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div
+              className={`grid grid-cols-1 gap-3 ${inSettings ? "md:grid-cols-2" : "md:grid-cols-3"}`}
+            >
+              {!inSettings && (
+                <>
+                  <LabeledNumber
+                    label="Valore alto da"
+                    value={thresholds.highImpact}
+                    onChange={(v) =>
+                      setThresholds((t) => ({ ...t, highImpact: v }))
+                    }
+                    error={fe["thresholds.highImpact"]}
+                    step={0.1}
+                    min={0}
+                    max={5}
+                  />
+                  <LabeledNumber
+                    label="Fattibilità alta da"
+                    value={thresholds.highFeasibility}
+                    onChange={(v) =>
+                      setThresholds((t) => ({ ...t, highFeasibility: v }))
+                    }
+                    error={fe["thresholds.highFeasibility"]}
+                    step={0.1}
+                    min={0}
+                    max={5}
+                  />
+                </>
+              )}
               <LabeledNumber
-                label="High Impact >="
-                value={thresholds.highImpact}
-                onChange={(v) => setThresholds((t) => ({ ...t, highImpact: v }))}
-                error={fe["thresholds.highImpact"]}
-                step={0.1}
-                min={0}
-                max={5}
-              />
-              <LabeledNumber
-                label="High Feasibility >="
-                value={thresholds.highFeasibility}
-                onChange={(v) =>
-                  setThresholds((t) => ({ ...t, highFeasibility: v }))
-                }
-                error={fe["thresholds.highFeasibility"]}
-                step={0.1}
-                min={0}
-                max={5}
-              />
-              <LabeledNumber
-                label="Mid Impact >="
+                label="Valore medio da"
                 value={thresholds.midImpact}
                 onChange={(v) => setThresholds((t) => ({ ...t, midImpact: v }))}
-                error={fe["thresholds.midImpact"]}
+                error={midImpactError}
                 step={0.1}
                 min={0}
                 max={5}
@@ -339,7 +437,11 @@ export function ScoringModelForm({
                 ? "Ricalibrazione…"
                 : "Ricalibra tutti con AI"}
           </Button>
-          <Button type="submit" disabled={pending}>
+          <Button
+            type="submit"
+            variant={inSettings ? "outline" : "default"}
+            disabled={pending}
+          >
             {pending ? "Salvataggio…" : "Salva modello"}
           </Button>
         </div>
@@ -353,15 +455,19 @@ function ScorecardPreview({
   feasibility,
   esg,
   esgEnabled,
+  impactLabel,
+  copy,
 }: {
   impact: ScoringKpi[];
   feasibility: ScoringKpi[];
   esg: ScoringKpi[];
   esgEnabled: boolean;
+  impactLabel: string;
+  copy: FormCopy;
 }) {
   const rows = [
     {
-      title: "Impatto",
+      title: impactLabel,
       description: "Valore creato.",
       kpis: impact,
     },
@@ -372,9 +478,7 @@ function ScorecardPreview({
     },
     {
       title: "Sostenibilità",
-      description: esgEnabled
-        ? "Ambiente e persone."
-        : "Attivabile in Integrazioni.",
+      description: esgEnabled ? "Ambiente e persone." : ESG_TEXT.previewOff,
       kpis: esgEnabled ? esg : [],
     },
   ];
@@ -383,19 +487,18 @@ function ScorecardPreview({
     <section className="rounded-2xl border bg-muted/20 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Scorecard attiva
-          </p>
-          <h3 className="text-base font-semibold">KPI usati per il ranking</h3>
+          {copy.previewEyebrow && (
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              {copy.previewEyebrow}
+            </p>
+          )}
+          <h3 className="text-base font-semibold">{copy.previewTitle}</h3>
         </div>
         <div className="rounded-full border px-3 py-1 text-[11px] font-medium text-muted-foreground">
           Scala 1-5
         </div>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Questi sono i parametri visibili oggi in Raccolta & Ranking: se li
-        modifichi e salvi, puoi ricalibrare automaticamente tutti i contributi.
-      </p>
+      <p className="mt-2 text-xs text-muted-foreground">{copy.previewNote}</p>
 
       <div className="mt-4 space-y-3">
         {rows.map((row) => (
@@ -424,8 +527,7 @@ function ScorecardPreview({
               </div>
             ) : (
               <p className="mt-3 rounded-lg border border-dashed p-2 text-[11px] text-muted-foreground">
-                ESG OFF: attivalo in Integrazioni per mostrare anche i KPI
-                ambientali e sociali.
+                {ESG_TEXT.previewEmpty}
               </p>
             )}
           </div>
@@ -439,6 +541,7 @@ function Dimension({
   dim,
   title,
   help,
+  directionLabel,
   kpis,
   onAdd,
   onRemove,
@@ -448,6 +551,7 @@ function Dimension({
   dim: Dim;
   title: string;
   help: string;
+  directionLabel: string;
   kpis: ScoringKpi[];
   onAdd: () => void;
   onRemove: (i: number) => void;
@@ -496,7 +600,7 @@ function Dimension({
                 </div>
                 <div className="space-y-1">
                   <label className="text-[11px] font-medium text-muted-foreground">
-                    Direzione ranking
+                    {directionLabel}
                   </label>
                   <select
                     value={k.direction ?? "higher_better"}

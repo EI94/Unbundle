@@ -1,0 +1,821 @@
+import test, { after, before } from "node:test";
+import assert from "node:assert/strict";
+import { randomBytes, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import * as nodeModule from "node:module";
+import { fileURLToPath } from "node:url";
+import { DEFAULT_REVIEW_TEAM_NAME } from "../review-team.ts";
+import { askedTitle } from "./answers.ts";
+
+/** `module.registerHooks` di Node 24 (i tipi di @types/node del progetto non lo hanno ancora). */
+type ResolveResult = { url: string; shortCircuit?: boolean };
+type LoadResult = { format?: string; source?: string | Uint8Array; shortCircuit?: boolean };
+const { registerHooks } = nodeModule as unknown as {
+  registerHooks(hooks: {
+    resolve?(specifier: string, context: object, nextResolve: (specifier: string, context: object) => ResolveResult): ResolveResult;
+    load?(url: string, context: object, nextLoad: (url: string, context: object) => LoadResult): LoadResult;
+  }): void;
+};
+
+// La pagina «Use case» con l'area accesa (docs/use-case/PIANO-LAVORI.md H4a; docs/use-case/
+// DESIGN.md §4, §5.1, §7.2, §11; decisioni D4, D13, D15): la pagina vera
+// (`use-cases/page.tsx`) resa in questo processo con la sessione scelta dalla prova.
+//
+// - Vista di partenza per ruolo: Lateral Space e AI Builder del cliente «Da decidere» se c'è
+//   qualcosa da decidere, altrimenti «Priorità»; lo sponsor del cliente e i contributori la
+//   «Roadmap».
+// - Fasce del costo del workspace diverse dalle predefinite: posizione in matrice, linea del
+//   costo basso, zone, cifre della Roadmap, etichette delle fasce ed export le usano.
+// - Il contributore: titolo, fase e «Quando», solo «Cerca per titolo», codice e nota pubblica
+//   delle sole proprie proposte; nessun «€», nessun `[data-figure]`.
+// - Vuoti, filtri senza risultati, matrice e lista, pannello laterale e pannello rapido.
+// - Parte dossier non disponibile (§4.9): «In realizzazione» mostra solo fase e titolo. La
+//   lettura del dossier fallisce per finta: `dossierSummaries` risponde «errore» quando la
+//   prova accende `__hubH4aDossierError`, altrimenti è quella vera.
+//
+// Con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database del pacchetto
+// hub_<id> su 127.0.0.1) gira sul database di prova; dentro `npm run check` si salta (in
+// testa solo moduli di Node; i moduli dell'app arrivano con `await import()` in `before()`).
+// I file `.tsx` si traducono qui con TypeScript, solo per questa prova; `@/lib/auth`
+// restituisce la sessione della prova, ruolo e accesso si rileggono dal database.
+// Dati sintetici, creati e cancellati qui.
+const url = process.env.DATABASE_URL;
+const enabled = process.env.HUB_TEST_ISOLATED === "true" && Boolean(url);
+if (enabled) {
+  const parsed = new URL(url!);
+  if (parsed.hostname !== "127.0.0.1" || process.env.UC_TEST_DATABASE_URL !== url) {
+    throw new Error("Hub DB tests need a loopback DATABASE_URL equal to UC_TEST_DATABASE_URL");
+  }
+  if (!/^\/hub_[a-z0-9][a-z0-9_]{0,39}$/.test(parsed.pathname)) {
+    throw new Error("Run this suite only on a package database hub_<id>");
+  }
+  if ((globalThis.fetch as { name?: string }).name !== "localNeonFetch") {
+    throw new Error("Preload scripts/uc-test/local-neon.cjs to reach the local test database");
+  }
+}
+const opts = { skip: !enabled };
+
+type PageProps = { params: Promise<Record<string, string>>; searchParams: Promise<Record<string, string>> };
+type Page = (props: PageProps) => Promise<unknown>;
+type RouteGet = (req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;
+type HubModule = typeof import("../../components/use-cases/hub.tsx");
+type Access = typeof import("../workspace-access.ts");
+
+let q: (text: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
+let renderToStaticMarkup: (element: unknown) => string;
+let pageOfUseCases: Page;
+let exportGet: RouteGet;
+let hub: HubModule;
+let access: Access;
+let XLSX: typeof import("xlsx");
+let currentQuarter: () => string;
+let nextQuarter: (q: string) => string;
+
+const suffix = randomBytes(3).toString("hex");
+const ids = {
+  org: randomUUID(),
+  /** Area accesa, fasce del workspace diverse dalle predefinite. */
+  wsA: randomUUID(),
+  /** Area accesa, niente da decidere: solo una best practice approvata. */
+  wsD: randomUUID(),
+  /** Area accesa, una sola scheda chiusa: niente da decidere, niente in Roadmap. */
+  wsE: randomUUID(),
+  /** Area accesa, nessuno use case. */
+  wsZ: randomUUID(),
+  ls: randomUUID(),
+  builder: randomUUID(),
+  manager: randomUUID(),
+  contributor: randomUUID(),
+};
+const emails = {
+  ls: `ls.h4a.${suffix}@ls.test`,
+  builder: `builder.h4a.${suffix}@cliente.test`,
+  manager: `sponsor.h4a.${suffix}@cliente.test`,
+  contributor: `contributor.h4a.${suffix}@cliente.test`,
+};
+type Person = keyof typeof emails;
+const ROLES: Record<Person, string> = {
+  ls: "transformation_lead",
+  builder: "function_lead",
+  manager: "exec_sponsor",
+  contributor: "contributor",
+};
+const ENV_KEYS = ["USE_CASE_HUB_WORKSPACES", "UC_LS_EMAIL_DOMAINS", "UC_ENABLED"] as const;
+const envBefore = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
+
+/** Fasce del costo del workspace A, diverse dalle predefinite (D15), e la sua soglia del costo basso. */
+const BANDS_A = {
+  limits: [15_000, 40_000, 90_000, 200_000],
+  labels: ["Piccolo", "Medio", "Grande", "Molto grande", "Enorme"],
+  topReferenceEur: 300_000,
+};
+const COST_LOW_A = 40_000;
+const HIGH = { impact: { efficiency: 4, profitability: 4 } };
+const MID = { impact: { efficiency: 3, profitability: 3 } };
+const CONTRIBUTOR_KEYS = ["id", "title", "phase", "subState", "phaseLabel", "quando", "own"].sort();
+const OWN_KEYS = [...CONTRIBUTOR_KEYS, "code", "publicNote"].sort();
+const OWN_NOTE = `Nota pubblica della mia proposta ${suffix}`;
+const OWN_QUESTION = `Domanda del team sulla mia proposta ${suffix}`;
+const OTHER_NOTE = `Nota pubblica altrui ${suffix}`;
+const TEAM_QUESTION = `Quante visite fate al mese? ${suffix}`;
+const TEAM_ANSWER = `Circa 40 visite al mese ${suffix}`;
+
+const codeBase = 20_000 + Math.floor(Math.random() * 70_000);
+let codeSeq = 0;
+
+interface Seed {
+  workspaceId?: string;
+  title: string;
+  status?: string;
+  review?: string;
+  kind?: string;
+  origin?: string;
+  intake?: Record<string, unknown> | null;
+  publicNote?: string | null;
+  reviewedBy?: string | null;
+  targetQuarter?: string | null;
+  customScores?: Record<string, unknown> | null;
+  proposedBy?: string | null;
+  source?: string;
+  valueEurYear?: number | null;
+  costEurOnce?: number | null;
+  costBand?: number | null;
+}
+
+/** Una scheda sintetica, scritta senza passare dal servizio. */
+async function seed(s: Seed): Promise<{ id: string; code: string; title: string }> {
+  const id = randomUUID();
+  const code = `XX-${codeBase + codeSeq++}`;
+  await q(
+    `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, origin, code,
+       intake, public_note, reviewed_by, target_quarter, custom_scores, source, proposed_by, value_eur_year, cost_eur_once, cost_band,
+       submitted_at)
+     VALUES ($1::uuid, $2::uuid, $3, 'Problema di prova', $4::use_case_status, $5::portfolio_review_status, $6, $7, $8,
+       $9::jsonb, $10, $11::uuid, $12, $13::jsonb, $14, $15, $16, $17, $18, now() - interval '3 days')`,
+    [
+      id,
+      s.workspaceId ?? ids.wsA,
+      s.title,
+      s.status ?? "proposed",
+      s.review ?? "in_review",
+      s.kind ?? "use_case_ai",
+      s.origin ?? "adoption",
+      code,
+      s.intake ? JSON.stringify(s.intake) : null,
+      s.publicNote ?? null,
+      s.reviewedBy ?? null,
+      s.targetQuarter ?? null,
+      s.customScores ? JSON.stringify(s.customScores) : null,
+      s.source ?? "web_proposed",
+      s.proposedBy === undefined ? `collega.${suffix}@cliente.test` : s.proposedBy,
+      s.valueEurYear ?? null,
+      s.costEurOnce ?? null,
+      s.costBand ?? null,
+    ],
+  );
+  return { id, code, title: s.title };
+}
+
+const cards = {} as Record<
+  | "newIdea"
+  | "serveInfo"
+  | "amount"
+  | "band"
+  | "overdue"
+  | "toDecideScored"
+  | "answered"
+  | "ownByEmail"
+  | "ownAsked"
+  | "othersWithNote"
+  | "othersHidden"
+  | "building"
+  | "realized"
+  | "bestPractice"
+  | "dBest"
+  | "eClosed",
+  { id: string; code: string; title: string }
+>;
+
+function signIn(person: Person | null): void {
+  (globalThis as { __hubH4aSession?: unknown }).__hubH4aSession = person
+    ? { user: { id: ids[person], email: emails[person], emailVerified: true, name: `Persona ${person}`, image: null } }
+    : null;
+}
+
+/** La pagina resa in HTML per `person`. */
+async function html(person: Person, workspaceId: string, searchParams: Record<string, string> = {}): Promise<string> {
+  signIn(person);
+  const element = await pageOfUseCases({ params: Promise.resolve({ workspaceId }), searchParams: Promise.resolve(searchParams) });
+  return renderToStaticMarkup(element);
+}
+
+/** I dati della pagina e l'albero degli elementi, senza renderli (per i pannelli, che vivono in un portale). */
+async function hubTree(person: Person, workspaceId: string, searchParams: Record<string, string>) {
+  const workspaceAccess = await access.getWorkspaceAccessForUser(ids[person], workspaceId);
+  assert.ok(workspaceAccess, `${person} è nel workspace`);
+  const session = { user: { id: ids[person], email: emails[person], emailVerified: true, name: `Persona ${person}`, image: null } };
+  const data = await hub.loadUseCaseHub({ workspaceId, session, access: workspaceAccess, searchParams });
+  assert.ok(data);
+  return { data, tree: hub.UseCaseHub({ data }) as unknown };
+}
+
+/** Le prop `name` degli elementi React dell'albero, in profondità (senza rendere i componenti). */
+function findProp(node: unknown, name: string): unknown[] {
+  const out: unknown[] = [];
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === "object" && "props" in value) {
+      const props = (value as { props: Record<string, unknown> }).props;
+      if (props && Object.hasOwn(props, name)) out.push(props[name]);
+      if (props) {
+        visit(props.children);
+        for (const [key, inner] of Object.entries(props)) if (key !== "children" && inner && typeof inner === "object" && "props" in inner) visit(inner);
+      }
+    }
+  };
+  visit(node);
+  return out;
+}
+
+/** I pulsanti pieni della pagina: `[data-slot=button]` con la classe `bg-primary` (§5.7). */
+function filledButtons(page: string): number {
+  return [...page.matchAll(/<(?:a|button)\b[^>]*>/g)].filter(([tag]) => {
+    if (!tag.includes('data-slot="button"')) return false;
+    const classes = /class="([^"]*)"/.exec(tag)?.[1].split(/\s+/) ?? [];
+    return classes.includes("bg-primary");
+  }).length;
+}
+
+/** La vista a schermo (`data-view` della pagina). */
+function viewOf(page: string): string | null {
+  return /data-slot="use-case-hub" data-view="([a-z-]+)"/.exec(page)?.[1] ?? null;
+}
+
+/** Il pezzo di HTML di un elemento con `data-id`, fino alla chiusura del suo `<li>`. */
+function rowOf(page: string, id: string): string {
+  const start = page.indexOf(`data-id="${id}"`);
+  assert.ok(start >= 0, `riga ${id}`);
+  const end = page.indexOf("</li>", start);
+  return page.slice(start, end);
+}
+
+before(async () => {
+  if (!enabled) return;
+  const { default: ts } = await import("typescript");
+  const stub = (source: string) => `data:text/javascript,${encodeURIComponent(source)}`;
+  const dossiers = JSON.stringify(new URL("../db/queries/use-case-dossiers.ts", import.meta.url).href);
+  const stubs: Record<string, string> = {
+    // La lettura vera, salvo `dossierSummaries` quando la prova vuole la parte dossier in errore.
+    "@/lib/db/queries/use-case-dossiers": stub(
+      `export * from ${dossiers}; import * as real from ${dossiers};
+       export function dossierSummaries(...args) {
+         return globalThis.__hubH4aDossierError ? Promise.resolve({ ok: false, motivo: "errore" }) : real.dossierSummaries(...args);
+       }`,
+    ),
+    "@/lib/auth": stub("export async function auth() { return globalThis.__hubH4aSession ?? null; }"),
+    // La matrice di oggi (recharts) non si carica sotto Node puro: serve solo all'area spenta.
+    "@/components/dashboard/use-case-matrix": stub("export function UseCaseMatrix() { return null; }"),
+  };
+  registerHooks({
+    resolve(specifier, context, nextResolve) {
+      if (Object.hasOwn(stubs, specifier)) return { url: stubs[specifier], shortCircuit: true };
+      return nextResolve(specifier, context);
+    },
+    load(moduleUrl, context, nextLoad) {
+      if (!moduleUrl.startsWith("file:") || !moduleUrl.endsWith(".tsx")) return nextLoad(moduleUrl, context);
+      const file = fileURLToPath(moduleUrl);
+      const { outputText } = ts.transpileModule(readFileSync(file, "utf8"), {
+        fileName: file,
+        compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+      });
+      return { format: "module", source: outputText, shortCircuit: true };
+    },
+  });
+
+  const { neon } = await import("@neondatabase/serverless");
+  const sql = neon(url!);
+  q = (text, params = []) => sql.query(text, params) as Promise<Record<string, unknown>[]>;
+  // I componenti client chiamano `useRouter()`: un router che non naviga.
+  const { createElement } = await import("react");
+  const { renderToStaticMarkup: toHtml } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string };
+  const { AppRouterContext } = (await import("next/dist/shared/lib/app-router-context.shared-runtime.js")) as unknown as {
+    AppRouterContext: import("react").Context<object | null>;
+  };
+  const router = { push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} };
+  renderToStaticMarkup = (element) => toHtml(createElement(AppRouterContext.Provider, { value: router }, element as never));
+  pageOfUseCases = (await import("../../app/(dashboard)/dashboard/[workspaceId]/use-cases/page.tsx")).default as unknown as Page;
+  exportGet = (await import("../../app/(dashboard)/dashboard/[workspaceId]/portfolio/export/route.ts")).GET as unknown as RouteGet;
+  hub = await import("../../components/use-cases/hub.tsx");
+  access = await import("../workspace-access.ts");
+  XLSX = await import("xlsx");
+  const quarter = await import("./quarter.ts");
+  currentQuarter = () => quarter.currentQuarter();
+  nextQuarter = (value) => quarter.nextQuarter(value);
+
+  process.env.USE_CASE_HUB_WORKSPACES = [ids.wsA, ids.wsD, ids.wsE, ids.wsZ].join(",");
+  process.env.UC_LS_EMAIL_DOMAINS = "ls.test";
+  delete process.env.UC_ENABLED;
+
+  await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione di prova H4a', $2)`, [ids.org, `hub-h4a-${ids.org}`]);
+  await q(
+    `INSERT INTO workspaces (id, organization_id, name) VALUES
+       ($1::uuid, $5::uuid, 'Prova H4a A'), ($2::uuid, $5::uuid, 'Prova H4a D'), ($3::uuid, $5::uuid, 'Prova H4a E'), ($4::uuid, $5::uuid, 'Prova H4a Z')`,
+    [ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.org],
+  );
+  for (const person of Object.keys(emails) as Person[]) {
+    await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
+    for (const workspaceId of [ids.wsA, ids.wsD, ids.wsE, ids.wsZ]) {
+      await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [workspaceId, ids[person], ROLES[person]]);
+    }
+  }
+  await q(`INSERT INTO workspace_scoring_models (workspace_id, impact_flag_enabled, config) VALUES ($1::uuid, false, $2::jsonb)`, [
+    ids.wsA,
+    JSON.stringify({ costBands: BANDS_A, thresholds: { highImpact: 3.5, midImpact: 2.5, highFeasibility: 3.5, costLowMaxEur: COST_LOW_A } }),
+  ]);
+
+  const thisQuarter = currentQuarter();
+  cards.newIdea = await seed({ title: `Idea nuova ${suffix}`, review: "needs_inputs" });
+  cards.serveInfo = await seed({ title: `Serve info ${suffix}`, review: "needs_inputs", reviewedBy: ids.ls, publicNote: OTHER_NOTE });
+  cards.amount = await seed({
+    title: `Approvata con importo ${suffix}`,
+    status: "accepted",
+    review: "scored",
+    targetQuarter: thisQuarter,
+    customScores: HIGH,
+    costEurOnce: 30_000,
+    valueEurYear: 50_000,
+  });
+  cards.band = await seed({
+    title: `Approvata con fascia ${suffix}`,
+    status: "accepted",
+    review: "scored",
+    targetQuarter: nextQuarter(thisQuarter),
+    customScores: HIGH,
+    costBand: 2,
+    valueEurYear: 25_000,
+    origin: "transformation",
+  });
+  // Approvata per un trimestre passato, senza Valore né Costo: «Scaduti».
+  cards.overdue = await seed({ title: `Approvata scaduta ${suffix}`, status: "accepted", review: "scored", targetQuarter: "2020-Q1" });
+  cards.toDecideScored = await seed({
+    title: `Da decidere, valutata ${suffix}`,
+    review: "scored",
+    customScores: MID,
+    costEurOnce: 120_000,
+    // Dati raccolti dal connettore: la «Stima di Claude, non ufficiale» del pannello (§7.5).
+    intake: {
+      frequency: "settimanale",
+      beneficiaries: 4,
+      timeSavedMinutesPerRun: 30,
+      valuePerRunEur: 25,
+      proposerEstimate: { efficiency: { score: 4 }, effort: { score: 2 }, impactFlag: { value: "verde" } },
+    },
+  });
+  // Da decidere con il solo Valore, tornata da «Serve info» con una risposta di chi ha proposto
+  // (D17): la riga dice quale cifra manca («Costo: da stimare»), il pannello la domanda e la risposta.
+  cards.answered = await seed({
+    title: `Solo Valore, con risposta ${suffix}`,
+    review: "in_review",
+    customScores: HIGH,
+    publicNote: TEAM_QUESTION,
+    intake: {
+      risposte: [{ at: "2026-10-01T09:00:00.000Z", text: "Prima risposta di prova." }, { at: "2026-10-02T09:00:00.000Z", text: TEAM_ANSWER }],
+      // In attesa di una decisione: la scrive `answerInfoRequest`, la toglie ogni decisione.
+      rispostaInAttesa: "2026-10-02T09:00:00.000Z",
+    },
+  });
+  cards.ownByEmail = await seed({
+    title: `Mia proposta ${suffix}`,
+    review: "needs_inputs",
+    publicNote: OWN_NOTE,
+    proposedBy: emails.contributor.toUpperCase(),
+  });
+  // La propria proposta in «Serve info»: il contributore la vede con «Rispondi» (D17).
+  cards.ownAsked = await seed({
+    title: `Mia proposta con domanda ${suffix}`,
+    review: "needs_inputs",
+    reviewedBy: ids.ls,
+    publicNote: OWN_QUESTION,
+    proposedBy: emails.contributor,
+  });
+  cards.othersWithNote = await seed({ title: `Proposta altrui ${suffix}`, review: "needs_inputs", publicNote: OTHER_NOTE });
+  cards.othersHidden = await seed({
+    title: `Altrui nascosta ${suffix}`,
+    origin: "transformation",
+    source: "manual",
+    intake: { hiddenFromSearch: true },
+    proposedBy: null,
+  });
+  cards.building = await seed({ title: `In realizzazione ${suffix}`, status: "in_progress", review: "scored" });
+  cards.realized = await seed({ title: `Realizzata ${suffix}`, status: "implemented", review: "scored", valueEurYear: 30_000 });
+  cards.bestPractice = await seed({ title: `Best practice ${suffix}`, kind: "best_practice", status: "accepted", review: "scored" });
+  cards.dBest = await seed({ workspaceId: ids.wsD, title: `Best practice di D ${suffix}`, kind: "best_practice", status: "accepted", review: "scored" });
+  cards.eClosed = await seed({ workspaceId: ids.wsE, title: `Chiusa di E ${suffix}`, status: "rejected", review: "scored" });
+});
+
+after(async () => {
+  signIn(null);
+  for (const [key, value] of Object.entries(envBefore)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  if (!enabled) return;
+  // I workspace portano via schede, iscrizioni e modelli di valutazione.
+  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.wsA, ids.wsD, ids.wsE, ids.wsZ]]);
+  await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [Object.keys(emails).map((person) => ids[person as Person])]);
+  await q(`DELETE FROM organizations WHERE id = $1::uuid`, [ids.org]);
+});
+
+// ─── Vista di partenza (§4.2) ────────────────────────────────────────
+
+test("vista di partenza per ruolo: revisori «Da decidere» se c'è qualcosa, sponsor del cliente e contributori la Roadmap", opts, async () => {
+  assert.equal(viewOf(await html("ls", ids.wsA)), "da-decidere", "Lateral Space");
+  assert.equal(viewOf(await html("builder", ids.wsA)), "da-decidere", "AI Builder del cliente");
+  assert.equal(viewOf(await html("manager", ids.wsA)), "roadmap", "sponsor del cliente");
+  assert.equal(viewOf(await html("contributor", ids.wsA)), "roadmap", "contributore");
+  // Niente da decidere: i revisori partono da «Priorità».
+  assert.equal(viewOf(await html("ls", ids.wsD)), "priorita");
+  assert.equal(viewOf(await html("builder", ids.wsE)), "priorita");
+  assert.equal(viewOf(await html("contributor", ids.wsD)), "roadmap");
+  // Una vista scelta vince; «Priorità» non è dei contributori.
+  assert.equal(viewOf(await html("manager", ids.wsA, { vista: "da-decidere" })), "da-decidere");
+  assert.equal(viewOf(await html("contributor", ids.wsA, { vista: "priorita" })), "roadmap");
+});
+
+test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido per Lateral Space), menu «⋯» solo ai revisori", opts, async () => {
+  const ls = await html("ls", ids.wsA);
+  assert.match(ls, /<h1[^>]*>Use case<\/h1>/);
+  assert.ok(ls.includes("Idee dal basso e dall&#x27;alto: cosa fare e quando.") || ls.includes("Idee dal basso e dall'alto: cosa fare e quando."));
+  assert.match(ls, /href="\/dashboard\/[^"]+\/use-cases\?vista=da-decidere&amp;nuovo=1"/, "Lateral Space: pannello rapido");
+  assert.ok(ls.includes('aria-label="Altre azioni"'));
+  const builder = await html("builder", ids.wsA);
+  assert.ok(builder.includes(`href="/dashboard/${ids.wsA}/use-cases/nuovo"`), "revisore del cliente: modulo completo");
+  const contributor = await html("contributor", ids.wsA);
+  assert.ok(contributor.includes(`href="/dashboard/${ids.wsA}/use-cases/nuovo"`));
+  assert.ok(!contributor.includes('aria-label="Altre azioni"'), "niente menu «⋯» per il contributore");
+  for (const page of [ls, builder, contributor]) {
+    assert.equal(filledButtons(page), 1, "un solo pulsante pieno");
+  }
+});
+
+// ─── Fasce del workspace (D15) ───────────────────────────────────────
+
+test("fasce del workspace diverse dalle predefinite: matrice, linea del costo basso, zone ed etichette le usano", opts, async () => {
+  const page = await html("ls", ids.wsA, { vista: "priorita", mostra: "matrice" });
+  assert.ok(page.includes('data-slot="value-cost-matrix"'));
+  assert.ok(!page.includes('data-slot="priority-list"'), "matrice e lista mai insieme");
+  // 30.000 € nella seconda fascia del workspace (15.001-40.000): 1,5 + 14.999/24.999 ≈ 2,1 → 32 %.
+  // Con le fasce predefinite (25.001-65.000) sarebbe 1,625 → 22,5 %.
+  const point = new RegExp(`left:([\\d.]+)%;top:([\\d.]+)%"[^>]*><a[^>]*data-point="${cards.amount.id}"`).exec(page);
+  assert.ok(point, "punto dello use case con importo");
+  assert.ok(Math.abs(Number(point[1]) - 32) < 0.1, `posizione del costo ${point[1]}`);
+  assert.ok(Math.abs(Number(point[2]) - 30) < 0.1, `Valore 4 → 30 %: ${point[2]}`);
+  // Una fascia sola sta al centro della sua fascia: la seconda → 30 %.
+  const band = new RegExp(`left:([\\d.]+)%;top:([\\d.]+)%"[^>]*><a[^>]*data-point="${cards.band.id}"`).exec(page);
+  assert.ok(band && Math.abs(Number(band[1]) - 30) < 0.1, `fascia 2 al centro: ${band?.[1]}`);
+  // Costo basso 40.000 € = fine della seconda fascia del workspace → 2,5 → 40 %.
+  assert.match(page, /<line x1="40" x2="40" y1="0" y2="100"[^>]*stroke-dasharray/, "linea tratteggiata del costo basso");
+  // Valore alto 3,5 → 40 % dall'alto.
+  assert.match(page, /<line x1="0" x2="100" y1="40" y2="40"[^>]*stroke-dasharray/, "linea tratteggiata del Valore alto");
+  for (const label of BANDS_A.labels) assert.ok(page.includes(`title="${label}"`), `etichetta della fascia ${label}`);
+  for (const zone of ["Subito", "Da pianificare", "Se avanza tempo", "Non ora"]) assert.ok(page.includes(zone), zone);
+  // Le etichette stanno dalla loro parte della linea del costo basso (40 %), anche al telefono.
+  assert.match(page, /style="max-width:calc\(40% - 0\.75rem\)"[^>]*>Se avanza tempo</);
+  assert.match(page, /style="left:calc\(40% \+ 0\.5rem\)"[^>]*>Non ora</);
+  assert.ok(page.includes("Le zone sono un suggerimento, non la decisione."));
+
+  // Zone con la soglia del workspace: 30.000 € ≤ 40.000 € è «Subito» (con 25.000 € sarebbe «Da pianificare»).
+  const list = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista" });
+  assert.ok(list.includes('data-slot="priority-list"'));
+  assert.ok(!list.includes('data-slot="value-cost-matrix"'));
+  assert.match(rowOf(list, cards.amount.id), />Subito</);
+  assert.match(rowOf(list, cards.toDecideScored.id), />Non ora</);
+  // «Quando» in riga per i revisori (§4.4): su una da decidere il menu parte da «Scegli…» (la
+  // scelta apre il dialogo «Approva»); su una approvata il trimestre.
+  assert.match(rowOf(list, cards.toDecideScored.id), /data-slot="when-control"/);
+  assert.ok(rowOf(list, cards.toDecideScored.id).includes("Scegli…"));
+  assert.doesNotMatch(rowOf(list, cards.toDecideScored.id), /Approva…/);
+  assert.match(rowOf(list, cards.amount.id), /data-slot="when-control"/);
+  assert.ok(!rowOf(list, cards.amount.id).includes("Scegli…"));
+});
+
+test("fasce del workspace: «Costo impegnato» con il riferimento della fascia, «su N use case · M da fascia»", opts, async () => {
+  const page = await html("builder", ids.wsA, { vista: "roadmap" });
+  // 30.000 € (importo) + 40.000 € (seconda fascia del workspace); con le predefinite sarebbe 95.000 €.
+  assert.ok(page.includes("70.000 €"), "Costo impegnato");
+  assert.ok(page.includes("su 2 use case · 1 da fascia"));
+  // 50.000 € + 25.000 €, «su 2 use case».
+  assert.ok(page.includes("75.000 €"), "Valore atteso all'anno");
+  assert.ok(page.includes("su 2 use case<"));
+  assert.ok(page.includes("Valore atteso all&#x27;anno") || page.includes("Valore atteso all'anno"));
+  assert.ok(!page.includes("Valore misurato"), "il valore misurato non c'è ancora");
+  // La card della Roadmap: forma corta del costo con la fonte.
+  const amount = rowOf(page, cards.amount.id);
+  assert.ok(amount.includes("€€ · 30.000 €"), amount);
+  assert.match(amount, /data-source="team_importo"/);
+  const band = rowOf(page, cards.band.id);
+  assert.ok(band.includes("€€ · fascia"));
+  assert.match(band, /data-source="team_fascia"/);
+  // «Valore:» e «Costo:» sempre, come nella riga (H7); una da stimare dice quale è.
+  assert.ok(amount.includes("Valore: ") && amount.includes("Costo: "), amount);
+  const overdue = rowOf(page, cards.overdue.id);
+  assert.match(overdue, /Valore: <\/span><span[^>]*>da stimare</);
+  assert.match(overdue, /Costo: <\/span><span[^>]*>da stimare</);
+  // Best practice approvata: «Da diffondere», il Valore e senza costo.
+  const best = rowOf(page, cards.bestPractice.id);
+  assert.ok(best.includes("Da diffondere"));
+  assert.match(best, /data-figure="valore"/);
+  assert.ok(!best.includes('data-figure="costo"'));
+  // Prossimi per trimestre, Fatti con il mese.
+  assert.ok(page.includes("Questo trimestre · T"));
+  assert.ok(page.includes("Prossimo trimestre · T"));
+  assert.match(rowOf(page, cards.realized.id), />Realizzato</);
+});
+
+test("fasce del workspace: la colonna «Fascia» dell'export usa le etichette del workspace", opts, async () => {
+  signIn("builder");
+  const res = await exportGet(new Request("http://127.0.0.1/export"), { params: Promise.resolve({ workspaceId: ids.wsA }) });
+  assert.equal(res.status, 200);
+  const workbook = XLSX.read(Buffer.from(await res.arrayBuffer()), { type: "buffer" });
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[workbook.SheetNames[0]]);
+  const byCode = new Map(rows.map((row) => [row.Codice, row]));
+  assert.equal(byCode.get(cards.band.code)?.Fascia, "€€ · Medio");
+  assert.equal(byCode.get(cards.amount.code)?.Fascia, "€€ · Medio");
+  assert.equal(byCode.get(cards.toDecideScored.code)?.Fascia, "€€€€ · Molto grande");
+  assert.equal(byCode.get(cards.amount.code)?.Zona, "Subito");
+});
+
+// ─── Le tre viste ────────────────────────────────────────────────────
+
+test("«Da decidere»: righe con Valore e Costo con la fonte, giorni di attesa, «Serve info» sotto «In attesa di risposta»", opts, async () => {
+  const page = await html("ls", ids.wsA, { vista: "da-decidere" });
+  const row = rowOf(page, cards.toDecideScored.id);
+  assert.ok(row.includes(cards.toDecideScored.code));
+  assert.ok(row.includes("120.000 €"));
+  assert.match(row, /data-cost-source="team_importo"/);
+  assert.match(row, /data-source="team_importo"/);
+  assert.ok(row.includes("Valutata"));
+  assert.ok(row.includes("da 3 giorni"));
+  const divider = page.indexOf("In attesa di risposta");
+  assert.ok(divider > 0);
+  assert.ok(page.indexOf(`data-id="${cards.serveInfo.id}"`) > divider, "«Serve info» sotto il divisore");
+  assert.ok(page.indexOf(`data-id="${cards.newIdea.id}"`) < divider);
+  // Il contatore non conta «Serve info»: Idea nuova, Da decidere valutata, Solo Valore con risposta, Mia proposta, Altrui, Altrui nascosta.
+  assert.match(page, /Da decidere<\/span><span class="text-xs text-muted-foreground tabular-nums">6</);
+  // Telefono (§4.6, D5): la seconda riga va a capo, il costo non si accorcia mai e la sua fonte
+  // resta a schermo; «Valore:» e «Costo:» a ogni larghezza, così ogni riga dice lo stesso (H7).
+  const tagOf = (html: string, figure: string) => new RegExp(`<span data-figure="${figure}"[^>]*>`).exec(html)?.[0] ?? "";
+  assert.match(row, /<span class="flex min-w-0 flex-wrap /);
+  assert.ok(!tagOf(row, "costo").includes("truncate"), tagOf(row, "costo"));
+  assert.ok(!tagOf(row, "costo").includes("first-child]:hidden") && !tagOf(row, "valore").includes("first-child]:hidden"));
+  assert.ok(row.includes("Valore: ") && row.includes("Costo: "));
+  const valueOnly = rowOf(page, cards.answered.id);
+  assert.match(valueOnly, /Costo: <\/span><span[^>]*>da stimare</);
+  assert.ok(!tagOf(valueOnly, "valore").includes("first-child]:hidden"), "«Valore: Alto» anche sul telefono");
+  // D17 (H7): una risposta non ancora decisa si legge «Risposta ricevuta», non «Nuova».
+  assert.ok(valueOnly.includes(">Risposta ricevuta<") && !valueOnly.includes(">Nuova<"), "risposta ricevuta");
+  // Approvate e realizzate non ci sono.
+  assert.ok(!page.includes(`data-id="${cards.amount.id}"`));
+  assert.ok(!page.includes(`data-id="${cards.realized.id}"`));
+});
+
+test("«Priorità»: senza scelta matrice da 768 px e lista sotto; «Da diffondere» con «Segna come diffusa»", opts, async () => {
+  const page = await html("ls", ids.wsA, { vista: "priorita" });
+  assert.ok(page.includes('data-default-show="matrice" class="hidden md:block"'));
+  assert.ok(page.includes('data-default-show="lista" class="md:hidden"'));
+  // H4p: «Da costruire | Da diffondere» sta nel menu «Tipo» della riga dei filtri e «Matrice | Lista» in fondo alla stessa riga.
+  assert.ok(page.includes('aria-label="Tipo: Da costruire"'));
+  assert.ok(page.includes('data-slot="show-toggle"') && page.includes('aria-label="Matrice"') && page.includes('aria-label="Lista"'));
+  assert.equal((page.match(/data-slot="filter-bar"/g) ?? []).length, 1, "una sola riga di filtri");
+  const diffuse = await html("ls", ids.wsA, { vista: "priorita", tipo: "diffondere" });
+  assert.ok(diffuse.includes('data-slot="diffuse-list"'));
+  assert.ok(diffuse.includes("Segna come diffusa"));
+  assert.ok(rowOf(diffuse, cards.bestPractice.id).includes(cards.bestPractice.title));
+  assert.ok(!diffuse.includes('data-slot="value-cost-matrix"'));
+  // Il chip «N da stimare» porta alla lista con `stima=mancante`.
+  assert.match(page, /href="[^"]*mostra=lista&amp;stima=mancante"[^>]*>\d+ da stimare</);
+  // `stima` resta nella Priorità: i link alle altre viste lo tolgono, e il contatore conta come loro.
+  const toEstimate = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista", stima: "mancante" });
+  assert.ok(toEstimate.includes("Togli i filtri"));
+  assert.match(toEstimate, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=roadmap"`));
+  assert.match(toEstimate, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=da-decidere"`));
+  const decideCountOf = (html: string) => /Da decidere<\/span><span class="text-xs text-muted-foreground tabular-nums">(\d+)</.exec(html)?.[1];
+  assert.equal(decideCountOf(toEstimate), decideCountOf(page));
+});
+
+test("filtri: origine, tipo e «Altri filtri» ai revisori; senza risultati «Nessuno use case con questi filtri.»", opts, async () => {
+  const page = await html("ls", ids.wsA, { vista: "da-decidere" });
+  for (const text of ["Tutte", "AI Adoption", "AI Transformation", "Cerca per titolo o codice", "Altri filtri", ">Tipo:<"]) {
+    assert.ok(page.includes(text), text);
+  }
+  const transformation = await html("ls", ids.wsA, { vista: "roadmap", origine: "transformation" });
+  assert.ok(transformation.includes(`data-id="${cards.band.id}"`));
+  assert.ok(!transformation.includes(`data-id="${cards.amount.id}"`));
+  assert.ok(transformation.includes("Togli i filtri"));
+  const none = await html("ls", ids.wsA, { vista: "da-decidere", q: "nessuna-corrispondenza" });
+  assert.ok(none.includes("Nessuno use case con questi filtri."));
+  assert.match(none, /href="\/dashboard\/[^"]+\/use-cases\?vista=da-decidere"[^>]*>Togli i filtri</);
+  // «Altri filtri»: un valore dell'indirizzo che nessuno use case ha resta scelto con il suo testo, mai la chiave.
+  const shared = await hubTree("ls", ids.wsA, { vista: "roadmap", canale: "team_mcp", trimestre: "2031-Q2" });
+  const [more] = findProp(shared.tree, "more") as Array<{ channels: Array<{ value: string; label: string }>; quarters: Array<{ value: string; label: string }> }>;
+  assert.deepEqual(
+    more.channels.find((option) => option.value === "team_mcp"),
+    { value: "team_mcp", label: "MCP del team" },
+  );
+  assert.deepEqual(
+    more.quarters.find((option) => option.value === "2031-Q2"),
+    { value: "2031-Q2", label: "T2 2031" },
+  );
+  // Nessun filtro per persona, nemmeno scritto a mano nell'URL (art. 15.4).
+  const plain = await html("ls", ids.wsA, { vista: "da-decidere" });
+  const forged = await html("ls", ids.wsA, { vista: "da-decidere", proponente: emails.contributor, proposedBy: ids.contributor, autore: "x", persona: "y" });
+  assert.equal(forged, plain);
+});
+
+// ─── Contributori (D4, D13) ──────────────────────────────────────────
+
+test("contributore: titolo, fase e «Quando»; solo «Cerca per titolo»; codice delle sole proprie; nessun numero", opts, async () => {
+  for (const vista of ["da-decidere", "roadmap"]) {
+    const page = await html("contributor", ids.wsA, { vista });
+    assert.ok(!page.includes("€"), `${vista}: «€»`);
+    assert.ok(!page.includes("data-figure"), `${vista}: [data-figure]`);
+    assert.ok(page.includes('placeholder="Cerca per titolo"'), vista);
+    for (const text of ["Cerca per titolo o codice", "Altri filtri", "AI Adoption", "AI Transformation", ">Tipo:<", "Priorità", cards.othersHidden.title]) {
+      assert.ok(!page.includes(text), `${vista}: «${text}»`);
+    }
+    for (const card of [cards.newIdea, cards.amount, cards.band, cards.othersWithNote]) assert.ok(!page.includes(card.code), `${vista}: codice altrui ${card.code}`);
+  }
+  const decide = await html("contributor", ids.wsA, { vista: "da-decidere" });
+  assert.ok(decide.includes(cards.ownByEmail.code), "codice della propria proposta");
+  assert.ok(decide.includes(cards.othersWithNote.title));
+  assert.ok(!decide.includes(OTHER_NOTE) && !decide.includes(OWN_NOTE) && !decide.includes(OWN_QUESTION), "le note si leggono nel pannello");
+  // «In valutazione» dice già la fase: le righe altrui senza pillola, le proprie con fase e sotto-stato.
+  assert.ok(!rowOf(decide, cards.othersWithNote.id).includes('data-slot="phase-pill"'), "niente «Da valutare» ripetuto");
+  assert.ok(rowOf(decide, cards.ownByEmail.id).includes('data-slot="phase-pill"'));
+  assert.ok(rowOf(decide, cards.ownAsked.id).includes("Da valutare · Serve info") && rowOf(decide, cards.ownAsked.id).includes("Rispondi"));
+  // Sopra la lista un avviso per ogni propria proposta in «Serve info», con «Rispondi» al pannello.
+  const noticeAt = decide.indexOf('data-slot="answer-notice"');
+  assert.ok(noticeAt > 0 && noticeAt < decide.indexOf('data-slot="use-case-row"'), "l'avviso sta sopra la lista");
+  const notice = decide.slice(noticeAt, decide.indexOf("</ul>", noticeAt));
+  assert.ok(notice.includes(`${askedTitle(DEFAULT_REVIEW_TEAM_NAME)}:`) && notice.includes(cards.ownAsked.code) && notice.includes(cards.ownAsked.title));
+  assert.match(notice, new RegExp(`href="[^"]*apri=${cards.ownAsked.id}"[^>]*>Rispondi`));
+  assert.ok(!notice.includes(cards.ownByEmail.code), "solo le proprie in «Serve info»");
+  // L'ordine della lista resta quello del server (art. 15.4): l'avviso non sposta le righe, e le
+  // proprie proposte non vanno in cima (nessun ordine per proponente, §4.7).
+  const order = [...decide.matchAll(/data-slot="use-case-row" data-id="([^"]+)"/g)].map((m) => m[1]);
+  const listed = await hub.loadUseCaseHub({
+    workspaceId: ids.wsA,
+    session: { user: { id: ids.contributor, email: emails.contributor, emailVerified: true, name: "Persona contributor", image: null } },
+    access: (await access.getWorkspaceAccessForUser(ids.contributor, ids.wsA))!,
+    searchParams: { vista: "da-decidere" },
+  });
+  assert.deepEqual(order, listed!.list.items.filter((item) => item.phase === "da_valutare").map((item) => item.id));
+  // Ai revisori niente avviso.
+  assert.ok(!(await html("ls", ids.wsA, { vista: "da-decidere" })).includes('data-slot="answer-notice"'));
+  const roadmap = await html("contributor", ids.wsA, { vista: "roadmap" });
+  assert.ok(roadmap.includes(cards.amount.title) && roadmap.includes("Approvato · T"));
+  assert.ok(!roadmap.includes("Costo impegnato"));
+  // La ricerca del contributore: il codice di una proposta altrui non trova nulla.
+  assert.ok((await html("contributor", ids.wsA, { vista: "roadmap", q: cards.amount.code })).includes("Nessuno use case con questi filtri."));
+  assert.ok((await html("contributor", ids.wsA, { vista: "da-decidere", q: cards.ownByEmail.code })).includes(cards.ownByEmail.title));
+});
+
+test("Roadmap: «Scaduti» rosso con il tag «Scaduto» ai revisori; ai contributori in grigio e senza tag", opts, async () => {
+  const reviewer = await html("builder", ids.wsA, { vista: "roadmap" });
+  // Il tema dell'app è scuro senza la classe `.dark`: il rosso è quello che si legge lì (H4p).
+  assert.match(reviewer, /class="text-xs font-medium text-red-300">Scaduti</);
+  assert.ok(rowOf(reviewer, cards.overdue.id).includes(">Scaduto<"));
+  const contributor = await html("contributor", ids.wsA, { vista: "roadmap" });
+  assert.match(contributor, /class="text-xs font-medium text-muted-foreground">Scaduti</);
+  assert.ok(rowOf(contributor, cards.overdue.id).includes(cards.overdue.title));
+  assert.ok(!contributor.includes(">Scaduto<"), "niente tag «Scaduto» al contributore");
+  assert.ok(!contributor.includes("text-red-300"), "niente rosso al contributore");
+});
+
+// ─── Parte dossier non disponibile (§4.9) ────────────────────────────
+
+test("parte dossier non disponibile: «In realizzazione» mostra solo fase e titolo, mai «Senza dossier»", opts, async () => {
+  // Sezione Casi d'uso spenta: nessun dossier, e «Senza dossier» è vero.
+  const off = await html("ls", ids.wsA, { vista: "roadmap" });
+  assert.ok(rowOf(off, cards.building.id).includes("In realizzazione · Senza dossier"));
+  const flags = globalThis as { __hubH4aDossierError?: boolean };
+  flags.__hubH4aDossierError = true;
+  try {
+    for (const person of ["ls", "manager", "contributor"] as const) {
+      const page = await html(person, ids.wsA, { vista: "roadmap" });
+      const card = rowOf(page, cards.building.id);
+      assert.ok(card.includes(cards.building.title), person);
+      assert.ok(card.includes(">In realizzazione<"), `${person}: ${card}`);
+      assert.ok(!page.includes("Senza dossier"), `${person}: niente «Senza dossier»`);
+    }
+    // Il pannello riceve lo stesso ripiego.
+    for (const person of ["builder", "contributor"] as const) {
+      const { tree } = await hubTree(person, ids.wsA, { vista: "roadmap", apri: cards.building.id });
+      assert.deepEqual(findProp(tree, "dossierDown"), [true, true], `${person}: Roadmap e pannello`);
+    }
+  } finally {
+    delete flags.__hubH4aDossierError;
+  }
+});
+
+// ─── Pannelli ────────────────────────────────────────────────────────
+
+test("pannello laterale: il contributore vede codice e nota pubblica delle sole proprie; i revisori tutto, senza proponente", opts, async () => {
+  const own = await hubTree("contributor", ids.wsA, { vista: "da-decidere", apri: cards.ownByEmail.id });
+  const ownPanel = findProp(own.tree, "data").find((value) => (value as { projection?: string })?.projection) as { projection: string; item: Record<string, unknown> };
+  assert.equal(ownPanel.projection, "contributore");
+  assert.deepEqual(Object.keys(ownPanel.item).sort(), OWN_KEYS);
+  assert.equal(ownPanel.item.code, cards.ownByEmail.code);
+  assert.equal(ownPanel.item.publicNote, OWN_NOTE);
+  assert.deepEqual(own.data.panelEstimate, [], "i dati raccolti non si leggono per il contributore");
+
+  const other = await hubTree("contributor", ids.wsA, { vista: "da-decidere", apri: cards.othersWithNote.id });
+  const otherPanel = findProp(other.tree, "data").find((value) => (value as { projection?: string })?.projection) as { projection: string; item: Record<string, unknown> };
+  assert.deepEqual(Object.keys(otherPanel.item).sort(), CONTRIBUTOR_KEYS);
+  assert.ok(!JSON.stringify(otherPanel).includes(OTHER_NOTE));
+
+  // Una scheda nascosta altrui non si apre per il contributore.
+  const hidden = await hubTree("contributor", ids.wsA, { apri: cards.othersHidden.id });
+  assert.equal(findProp(hidden.tree, "data").filter((value) => (value as { projection?: string })?.projection).length, 0);
+
+  const reviewer = await hubTree("builder", ids.wsA, { vista: "da-decidere", apri: cards.amount.id });
+  const panel = findProp(reviewer.tree, "data").find((value) => (value as { projection?: string })?.projection) as {
+    projection: string;
+    item: { cost: { source: string; bandLabel: string }; code: string };
+    candidates: Array<Record<string, unknown>>;
+    estimate: string[];
+  };
+  assert.equal(panel.projection, "revisore");
+  assert.equal(panel.item.code, cards.amount.code);
+  assert.equal(panel.item.cost.source, "team_importo");
+  assert.equal(panel.item.cost.bandLabel, "Medio");
+  assert.ok(panel.candidates.length > 0);
+  for (const candidate of panel.candidates) assert.deepEqual(Object.keys(candidate).sort(), ["code", "id", "title"]);
+  assert.deepEqual(panel.estimate, [], "senza dati raccolti niente «Stima di Claude»");
+  assert.deepEqual((panel as unknown as { answers: unknown[] }).answers, [], "senza risposte niente risposte");
+  // D17: una risposta ricevuta riporta lo use case in «Da decidere» con «Nuova»: il pannello dei
+  // revisori ha la domanda del team (la nota pubblica) e le risposte, che decidono qui.
+  for (const person of ["ls", "builder"] as const) {
+    const answered = await hubTree(person, ids.wsA, { vista: "da-decidere", apri: cards.answered.id });
+    const answeredPanel = findProp(answered.tree, "data").find((value) => (value as { projection?: string })?.projection) as {
+      item: { publicNote: string | null; subState: string; phase: string };
+      answers: Array<{ at: string; text: string }>;
+    };
+    assert.equal(answeredPanel.item.publicNote, TEAM_QUESTION, person);
+    assert.deepEqual([answeredPanel.item.phase, answeredPanel.item.subState], ["da_valutare", "nuova"], person);
+    assert.deepEqual(answeredPanel.answers.map((answer) => answer.text), ["Prima risposta di prova.", TEAM_ANSWER], person);
+  }
+  // Il contributore non riceve le risposte di altri, nemmeno aprendo la scheda.
+  const notMine = await hubTree("contributor", ids.wsA, { vista: "da-decidere", apri: cards.answered.id });
+  assert.deepEqual(notMine.data.panelAnswers, []);
+  assert.equal(notMine.data.panelOwnAnswer, null);
+  assert.ok(!JSON.stringify(findProp(notMine.tree, "data")).includes(TEAM_ANSWER));
+  // «Stima di Claude, non ufficiale» (§7.5): ore con il conto, euro e stima di chi ha proposto.
+  for (const person of ["ls", "manager"] as const) {
+    const collected = await hubTree(person, ids.wsA, { vista: "da-decidere", apri: cards.toDecideScored.id });
+    const collectedPanel = findProp(collected.tree, "data").find((value) => (value as { projection?: string })?.projection) as { estimate: string[] };
+    assert.deepEqual(
+      collectedPanel.estimate,
+      [
+        "Circa 100 ore all'anno (30 minuti × 48 volte × 4 persone).",
+        "Circa 4.800 € all'anno, secondo chi ha proposto.",
+        "Secondo chi ha proposto: efficienza 4 su 5, impegno 2 su 5, nessun rischio particolare.",
+      ],
+      person,
+    );
+  }
+  assert.doesNotMatch(JSON.stringify(panel), /proposed_?by|submitter_?email|submitted_?by_?user_?id/i);
+});
+
+test("pannello rapido: solo per Lateral Space, con le voci di «AI Lab»", opts, async () => {
+  const ls = await hubTree("ls", ids.wsA, { nuovo: "1" });
+  assert.ok(ls.data.quickCreate, "Lateral Space: pannello rapido");
+  assert.equal(findProp(ls.tree, "aiLabs").length, 1);
+  for (const person of ["builder", "manager", "contributor"] as const) {
+    const other = await hubTree(person, ids.wsA, { nuovo: "1" });
+    assert.equal(other.data.quickCreate, null, person);
+    assert.equal(findProp(other.tree, "aiLabs").length, 0, person);
+  }
+});
+
+// ─── Vuoti (§4.3-4.5, §4.9) ──────────────────────────────────────────
+
+test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, roadmap vuota", opts, async () => {
+  const zReviewer = await html("ls", ids.wsZ);
+  assert.ok(zReviewer.includes("Nessuno use case, per ora"));
+  assert.ok(zReviewer.includes("Aggiungine uno o proponili da Activity mapping."));
+  assert.equal(filledButtons(zReviewer), 1, "un solo pulsante pieno anche nel vuoto");
+  assert.ok((await html("contributor", ids.wsZ)).includes("Proponi la prima idea."));
+
+  const eDecide = await html("ls", ids.wsE, { vista: "da-decidere" });
+  assert.ok(eDecide.includes("Niente da decidere") && eDecide.includes("Le nuove idee arrivano qui.") && eDecide.includes("Vai a Priorità"));
+  const eContributor = await html("contributor", ids.wsE, { vista: "da-decidere" });
+  // H4p: per i contributori «In valutazione».
+  assert.ok(eContributor.includes("Nessuno use case in valutazione") && !eContributor.includes("Vai a Priorità"));
+  assert.ok((await html("ls", ids.wsE, { vista: "roadmap" })).includes("La roadmap è vuota"));
+  const ePriority = await html("ls", ids.wsE, { vista: "priorita" });
+  assert.ok(ePriority.includes("Nessuno use case da mettere in ordine"));
+  assert.ok((await html("ls", ids.wsE, { vista: "priorita", tipo: "diffondere" })).includes("Nessuna best practice approvata."));
+  // D: solo una best practice approvata, nessuna da costruire con Valore e Costo.
+  assert.ok((await html("ls", ids.wsD, { vista: "priorita" })).includes("Nessuno use case da mettere in ordine"));
+});
