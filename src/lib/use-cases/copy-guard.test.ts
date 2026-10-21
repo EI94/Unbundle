@@ -63,7 +63,7 @@ test("nell'area: ogni parola vietata di §14.5, senza distinguere maiuscole", ()
 test("nell'area passano i testi di §14.3, «Casi d'uso» come nome della sezione e il nome del team", () => {
   const ok = [
     "Use case",
-    "Idee dal basso e dall'alto: cosa fare e quando.",
+    "Dal basso e dall'alto: quali use case realizzare e quando.",
     "Senza dossier: la sezione Casi d'uso è spenta per questo workspace.",
     "Le zone sono un suggerimento, non la decisione.",
     "Subito · Da pianificare · Se avanza tempo · Non ora",

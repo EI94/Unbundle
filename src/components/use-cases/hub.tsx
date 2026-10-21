@@ -339,6 +339,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
             query={query}
             filtersActive={filtersActive}
             clearHref={clearHref}
+            roadmapHref={viewHref("roadmap")}
           />
         ) : view === "roadmap" ? (
           <RoadmapView

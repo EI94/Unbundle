@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChartScatter, List } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { COST_BANDS, costLowLinePosition, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { DEFAULT_THRESHOLDS, costLowBandOf, type ValuationModel } from "@/lib/use-cases/valuation";
 import { buildPriority, roadmapGroupKey, type HubItem, type HubKindParam, type HubShowParam } from "@/lib/use-cases/views";
@@ -21,7 +22,13 @@ export const PRIORITY_TEXT = Object.freeze({
   emptyBuildTitle: "Nessuno use case da mettere in ordine",
   emptyBuildBody: "Valuta Valore e Costo in «Da decidere».",
   emptyDiffuse: "Nessuna best practice approvata.",
+  goToRoadmap: "Vai alla Roadmap",
 });
+
+/** «1 use case è già in realizzazione» · «3 use case sono già in realizzazione»: li mostra la Roadmap, non «Priorità». */
+export function inRealizationText(count: number): string {
+  return count === 1 ? "1 use case è già in realizzazione." : `${count} use case sono già in realizzazione.`;
+}
 
 export interface PriorityViewProps {
   workspaceId: string;
@@ -38,6 +45,8 @@ export interface PriorityViewProps {
   query: HubQuery;
   filtersActive: boolean;
   clearHref: string;
+  /** Dove sta la Roadmap: nel vuoto di «Da costruire» rimanda agli use case già in realizzazione. */
+  roadmapHref?: string | null;
 }
 
 /**
@@ -97,7 +106,7 @@ export function ShowToggle({ basePath, query, mostra }: { basePath: string; quer
  * approvate, per ore stimate. Valore, costo, zone e soglie sono quelli del modello e delle
  * fasce del workspace (D15, D18).
  */
-export function PriorityView({ workspaceId, items, tipo, mostra, model, bands = COST_BANDS, today, canDecide, basePath, query, filtersActive, clearHref }: PriorityViewProps) {
+export function PriorityView({ workspaceId, items, tipo, mostra, model, bands = COST_BANDS, today, canDecide, basePath, query, filtersActive, clearHref, roadmapHref = null }: PriorityViewProps) {
   const view = buildPriority(items, tipo);
   const base = withoutTransient(query);
 
@@ -131,9 +140,20 @@ export function PriorityView({ workspaceId, items, tipo, mostra, model, bands = 
   }
 
   if (view.list.length === 0) {
+    const inRealization = items.filter((item) => item.phase === "in_realizzazione").length;
     return (
       <div data-slot="priority-view" className="space-y-4">
-        {filtersActive ? <NoResults clearHref={clearHref} /> : <EmptyState title={PRIORITY_TEXT.emptyBuildTitle} body={PRIORITY_TEXT.emptyBuildBody} />}
+        {filtersActive ? (
+          <NoResults clearHref={clearHref} />
+        ) : inRealization > 0 && roadmapHref ? (
+          <EmptyState title={PRIORITY_TEXT.emptyBuildTitle} body={inRealizationText(inRealization)}>
+            <Button variant="outline" className="min-h-11 sm:min-h-8" render={<Link href={roadmapHref} scroll={false} />} nativeButton={false}>
+              {PRIORITY_TEXT.goToRoadmap}
+            </Button>
+          </EmptyState>
+        ) : (
+          <EmptyState title={PRIORITY_TEXT.emptyBuildTitle} body={PRIORITY_TEXT.emptyBuildBody} />
+        )}
       </div>
     );
   }

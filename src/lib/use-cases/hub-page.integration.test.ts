@@ -445,7 +445,7 @@ test("vista di partenza per ruolo: revisori «Da decidere» se c'è qualcosa, sp
 test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido per Lateral Space), menu «⋯» solo ai revisori", opts, async () => {
   const ls = await html("ls", ids.wsA);
   assert.match(ls, /<h1[^>]*>Use case<\/h1>/);
-  assert.ok(ls.includes("Idee dal basso e dall&#x27;alto: cosa fare e quando.") || ls.includes("Idee dal basso e dall'alto: cosa fare e quando."));
+  assert.ok(ls.includes("Dal basso e dall&#x27;alto: quali use case realizzare e quando.") || ls.includes("Dal basso e dall'alto: quali use case realizzare e quando."));
   assert.match(ls, /href="\/dashboard\/[^"]+\/use-cases\?vista=da-decidere&amp;nuovo=1"/, "Lateral Space: pannello rapido");
   assert.ok(ls.includes('aria-label="Altre azioni"'));
   const builder = await html("builder", ids.wsA);
@@ -805,10 +805,10 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   assert.ok(zReviewer.includes("Nessuno use case, per ora"));
   assert.ok(zReviewer.includes("Aggiungine uno o proponili da Activity mapping."));
   assert.equal(filledButtons(zReviewer), 1, "un solo pulsante pieno anche nel vuoto");
-  assert.ok((await html("contributor", ids.wsZ)).includes("Proponi la prima idea."));
+  assert.ok((await html("contributor", ids.wsZ)).includes("Proponi il primo use case."));
 
   const eDecide = await html("ls", ids.wsE, { vista: "da-decidere" });
-  assert.ok(eDecide.includes("Niente da decidere") && eDecide.includes("Le nuove idee arrivano qui.") && eDecide.includes("Vai a Priorità"));
+  assert.ok(eDecide.includes("Niente da decidere") && eDecide.includes("Le nuove proposte arrivano qui.") && eDecide.includes("Vai a Priorità"));
   const eContributor = await html("contributor", ids.wsE, { vista: "da-decidere" });
   // H4p: per i contributori «In valutazione».
   assert.ok(eContributor.includes("Nessuno use case in valutazione") && !eContributor.includes("Vai a Priorità"));

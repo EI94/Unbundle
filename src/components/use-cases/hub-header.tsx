@@ -9,7 +9,7 @@ import { HubMenu } from "./hub-menu";
 /** Testi della testata e dei vuoti della pagina (docs/use-case/DESIGN.md §4.1, §4.9, §5.5, §14.3). */
 export const HUB_TEXT = Object.freeze({
   title: "Use case",
-  subtitle: "Idee dal basso e dall'alto: cosa fare e quando.",
+  subtitle: "Dal basso e dall'alto: quali use case realizzare e quando.",
   newUseCase: "Nuovo use case",
   viewsLabel: "Viste",
   decideView: "Da decidere",
@@ -17,7 +17,7 @@ export const HUB_TEXT = Object.freeze({
   contributorDecideView: "In valutazione",
   emptyTitle: "Nessuno use case, per ora",
   emptyReviewer: "Aggiungine uno o proponili da Activity mapping.",
-  emptyContributor: "Proponi la prima idea.",
+  emptyContributor: "Proponi il primo use case.",
   noResults: "Nessuno use case con questi filtri.",
   clearFilters: "Togli i filtri",
   receiptTitle: "Grazie! Use case inviato.",

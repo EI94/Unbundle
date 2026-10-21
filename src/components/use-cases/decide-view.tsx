@@ -11,7 +11,7 @@ import { CodeLabel, ROW_TEXT, UseCaseRow, isAskedOfViewer, panelHref, type HubQu
 export const DECIDE_TEXT = Object.freeze({
   divider: "In attesa di risposta",
   emptyTitle: "Niente da decidere",
-  emptyBody: "Le nuove idee arrivano qui.",
+  emptyBody: "Le nuove proposte arrivano qui.",
   /** «In valutazione» dei contributori (H4p). */
   contributorEmptyTitle: "Nessuno use case in valutazione",
   toPriority: "Vai a Priorità",
