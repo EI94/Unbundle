@@ -10,9 +10,11 @@
  *   `UC_WORKSPACE_IDS` delle pagine (`isUcWorkspaceEnabled`).
  * - `ucOnForEveryWorkspace`: vero solo con `*` fuori produzione; un controllo
  *   che non conosce il workspace vale solo così (azioni, cron).
- * - `parsePlainUuidList`: `USE_CASE_HUB_WORKSPACES` letta come semplice
- *   elenco di UUID separati da virgole, senza importare nulla dall'hub
- *   (PIANO-LAVORI §3.4, C11). Serve a `uc-doctor`.
+ * - `parseHubWorkspaceList` e `parsePlainUuidList`: `USE_CASE_HUB_WORKSPACES`
+ *   (`*` = ogni workspace, oppure UUID separati da virgole) e `USE_CASE_HUB_EXCLUDE`
+ *   (solo UUID), lette senza importare nulla dall'hub (PIANO-LAVORI §3.4, C11), con le
+ *   stesse regole di `src/lib/use-cases/rollout.ts` (una prova le confronta). Servono a
+ *   `uc-doctor`.
  */
 import { isProductionEnv, parseUcWorkspaceIds, type UcRolloutEnv } from "./rollout.ts";
 import { UUID } from "./ids.ts";
@@ -73,7 +75,7 @@ export interface PlainUuidList {
   ignored: string[];
 }
 
-/** Elenco di UUID separati da virgole; vuoto o assente = nessuno. Niente `*`. */
+/** Elenco di UUID separati da virgole; vuoto o assente = nessuno. Qui `*` è una voce scartata. */
 export function parsePlainUuidList(raw: string | null | undefined): PlainUuidList {
   const ids: string[] = [];
   const ignored: string[] = [];
@@ -88,4 +90,25 @@ export function parsePlainUuidList(raw: string | null | undefined): PlainUuidLis
     }
   }
   return { ids, ignored };
+}
+
+/** `USE_CASE_HUB_WORKSPACES`: `*` (ogni workspace) oppure UUID separati da virgole. */
+export interface HubWorkspaceList extends PlainUuidList {
+  /** C'è una voce `*`: area accesa per ogni workspace, tranne gli esclusi. */
+  wildcard: boolean;
+}
+
+/** Come `hubRollout` dell'hub: `*` vale «tutti», gli UUID validi si tengono, il resto si scarta. */
+export function parseHubWorkspaceList(raw: string | null | undefined): HubWorkspaceList {
+  const parts = (raw ?? "").split(",").map((part) => part.trim());
+  const wildcard = parts.includes("*");
+  const rest = parsePlainUuidList(parts.filter((part) => part !== "*").join(","));
+  return { wildcard, ids: rest.ids, ignored: rest.ignored };
+}
+
+/** Area «Use case» accesa per il workspace, con le regole di `isUseCaseHubWorkspace`. */
+export function hubAreaOn(id: string, hub: HubWorkspaceList, excluded: PlainUuidList): boolean {
+  const key = id.toLowerCase();
+  if (excluded.ids.includes(key)) return false;
+  return hub.wildcard || hub.ids.includes(key);
 }

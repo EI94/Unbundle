@@ -10,7 +10,8 @@
 // and combinable with one mode above:
 //
 //   --flag UC_WORKSPACE_IDS=<uuid>[,<uuid>…]       default «*»: every workspace, as before the switch
-//   --flag USE_CASE_HUB_WORKSPACES=<uuid>[,<uuid>…]  unset by default (area off)
+//   --flag USE_CASE_HUB_WORKSPACES=*|<uuid>[,<uuid>…]  unset by default (area off); «*» = every workspace
+//   --flag USE_CASE_HUB_EXCLUDE=<uuid>[,<uuid>…]     unset by default; area off for these, even with «*»
 //   --flag MCP_CONNECTOR_ENABLED=true               unset by default
 //   --flag MCP_TEAM_ENABLED=true                    unset by default
 //
@@ -44,7 +45,7 @@ if (readdirSync(process.cwd()).some((name) => /^\.env($|\.)/.test(name))) {
 }
 const MODES = ["--build", "--production", "--uc-disabled"];
 // Closed list: nothing else reaches the app through --flag.
-const FLAGS = ["UC_WORKSPACE_IDS", "USE_CASE_HUB_WORKSPACES", "MCP_CONNECTOR_ENABLED", "MCP_TEAM_ENABLED"];
+const FLAGS = ["UC_WORKSPACE_IDS", "USE_CASE_HUB_WORKSPACES", "USE_CASE_HUB_EXCLUDE", "MCP_CONNECTOR_ENABLED", "MCP_TEAM_ENABLED"];
 const usage = `Use no mode for dev or one of ${MODES.join(", ")}, plus any --flag NAME=value with NAME in ${FLAGS.join(", ")}`;
 
 function parseOptions(args) {

@@ -7,19 +7,22 @@ import { dossierStates } from "@/lib/db/queries/use-case-dossiers";
 import { logSafeError } from "@/lib/log/safe-error";
 import { digestCounts, dueHubSignalTypes, hubWeeklySignals, type DigestRow, type HubSignal, type HubSignalType } from "@/lib/use-cases/digest";
 import { romeToday } from "@/lib/use-cases/quarter";
-import { hubWorkspaceIds } from "@/lib/use-cases/rollout";
+import { hubRollout, hubWorkspaceIds, hubWorkspacesAmong } from "@/lib/use-cases/rollout";
 
 /**
  * Il passo dell'hub nel cron `weekly-pulse` (docs/use-case/DESIGN.md §14.3; PIANO-LAVORI
- * H4d): per ogni workspace con l'area accesa (`USE_CASE_HUB_WORKSPACES`) scrive in
+ * H4d): per ogni workspace con l'area accesa (`USE_CASE_HUB_WORKSPACES`, `*` = tutti quelli
+ * che esistono, meno `USE_CASE_HUB_EXCLUDE`) scrive in
  * `weekly_signals` il riepilogo `use_case_digest` e, il primo lunedì del trimestre,
- * `use_case_quarter` (testi e conti in `src/lib/use-cases/digest.ts`).
+ * `use_case_quarter` (testi e conti in `src/lib/use-cases/digest.ts`). Un workspace senza use
+ * case non riceve nessuno dei due.
  *
  * - Nessun modello: qui non si importa l'SDK AI. Il cron lo chiama **prima** del ciclo AI
  *   di oggi, che non ha `try/catch`: un errore del modello non ferma più il riepilogo.
  * - Un `try/catch` per workspace: un workspace che si rompe non ferma gli altri, e il passo
  *   intero non lancia mai (il ciclo AI parte comunque).
  * - Solo i workspace dell'elenco che esistono: un UUID di un workspace cancellato si salta.
+ *   Con `*` si leggono tutti i workspace del database, e gli esclusi si saltano.
  * - Si legge il minimo: le colonne della fase, l'arrivo, l'ultimo «Riapri» dalla Storia e,
  *   di `intake`, i tre campi tecnici del connettore. Nessun titolo, testo o proponente; i
  *   segnali portano solo numeri e nessuna scheda collegata.
@@ -87,6 +90,12 @@ async function existingWorkspaces(ids: readonly string[]): Promise<string[]> {
   if (ids.length === 0) return [];
   const rows = await db.select({ id: workspaces.id }).from(workspaces).where(inArray(workspaces.id, [...ids]));
   return rows.map((row) => row.id).sort();
+}
+
+/** Con `*`: ogni workspace del database, tranne gli esclusi. */
+async function everyHubWorkspace(env: Env): Promise<string[]> {
+  const rows = await db.select({ id: workspaces.id }).from(workspaces);
+  return hubWorkspacesAmong(rows.map((row) => row.id), env).sort();
 }
 
 // ─── Scritture ───────────────────────────────────────────────────────
@@ -160,6 +169,10 @@ async function writeSignals(workspaceId: string, signals: readonly HubSignal[], 
 export async function digestWorkspace(workspaceId: string, now: Date): Promise<number> {
   const today = romeToday(now);
   const rows = await readDigestRows(workspaceId);
+  // Senza use case non c'è niente da decidere né una roadmap da rivedere: nessun segnale, neanche
+  // «Nuovo trimestre» (con `*` sono molti i workspace vuoti o di sola Formazione). I segnali dei
+  // giorni prima dei tipi di oggi passano a letti lo stesso.
+  if (rows.length === 0) return writeSignals(workspaceId, [], now, today);
   const dossiers = await dossierStates(
     workspaceId,
     rows.map((row) => row.id),
@@ -184,7 +197,7 @@ export interface UseCaseDigestStepResult {
 
 export interface UseCaseDigestStepOptions {
   now?: Date;
-  /** Le variabili da cui leggere `USE_CASE_HUB_WORKSPACES`; predefinita `process.env`. */
+  /** Le variabili da cui leggere `USE_CASE_HUB_WORKSPACES` e `USE_CASE_HUB_EXCLUDE`; predefinita `process.env`. */
   env?: Env;
   /** Il riepilogo di un workspace; predefinito `digestWorkspace` (le prove lo avvolgono). */
   digest?: (workspaceId: string, now: Date) => Promise<number>;
@@ -199,12 +212,14 @@ export async function runUseCaseDigestStep(opts: UseCaseDigestStepOptions = {}):
   const now = opts.now ?? new Date();
   const digest = opts.digest ?? digestWorkspace;
   const result: UseCaseDigestStepResult = { workspaces: 0, signals: 0, failed: 0 };
-  const enabled = [...hubWorkspaceIds(opts.env ?? process.env)];
-  if (enabled.length === 0) return result;
+  const env = opts.env ?? process.env;
+  const all = hubRollout(env).all;
+  const enabled = all ? [] : [...hubWorkspaceIds(env)];
+  if (!all && enabled.length === 0) return result;
   let ids: string[];
   try {
     await ensureDbSchema();
-    ids = await existingWorkspaces(enabled);
+    ids = all ? await everyHubWorkspace(env) : await existingWorkspaces(enabled);
   } catch (error) {
     logSafeError(LOG_SCOPE, "digest_step_failed", error, { op: "digest" });
     return result;

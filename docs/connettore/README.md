@@ -69,7 +69,7 @@ La presa in carico è `INSERT … ON CONFLICT DO NOTHING RETURNING` seguita da u
 `assignUseCaseCode(workspaceId, useCaseId)` (`src/lib/db/queries/use-case-codes.ts`, SQL in `src/lib/portfolio/use-case-code.ts`) incrementa `workspace_connector_configs.next_code_seq` e scrive `use_cases.code` in un solo statement.
 
 - Formato: prefisso, trattino, numero a 4 cifre con zeri davanti (`TJ-0001`); oltre 9999 il numero resta intero (`TJ-10000`), fino a 99999. Pattern del contratto: `^[A-Z]{2,4}-[0-9]{4,5}$`.
-- Workspace senza riga in `workspace_connector_configs`: nessun codice.
+- Workspace senza riga in `workspace_connector_configs` (di prima, o creato quando la riga non era riuscita): la riga nasce alla prima segnalazione (prefisso dal nome, come `use-case-admin configs`; slug dal nome più gli 8 caratteri dell'id; connettore spento), e la segnalazione ha il suo codice. Ogni workspace nuovo la riceve già alla creazione (`createWorkspace`, `src/lib/use-cases/provisioning.ts`). Lo slug «pulito» (`acme`) l'app non lo prende mai, perché chiunque può creare un workspace: lo dà l'operatore con `config`, che avvisa del cambio di slug.
 - Si chiama dopo **ogni** creazione: `createUseCase` (portafoglio web, use case web, AI Readiness, Slack, REST e quindi server MCP stdio) e la promozione delle idee della Formazione.
 - Se l'assegnazione fallisce la segnalazione resta salvata senza codice; il recupero è compito dello script `backfill-codes` (WP8).
 

@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cronWorkspaceFilter, parsePlainUuidList, rolloutEnv, ucCronWorkspaceScope, ucOnForEveryWorkspace, ucSelfHealEnabled } from "./platform.ts";
+import {
+  cronWorkspaceFilter,
+  hubAreaOn,
+  parseHubWorkspaceList,
+  parsePlainUuidList,
+  rolloutEnv,
+  ucCronWorkspaceScope,
+  ucOnForEveryWorkspace,
+  ucSelfHealEnabled,
+} from "./platform.ts";
 
 const A = "0f8e2a64-1b7c-4d3e-9a5f-6c2b1d0e9f8a";
 const B = "7c1d9e2f-3a4b-4c5d-8e6f-0a1b2c3d4e5f";
@@ -44,13 +53,25 @@ test("without a workspace the section counts as on only with «*» outside produ
   assert.equal(ucOnForEveryWorkspace({ UC_WORKSPACE_IDS: "*", VERCEL_ENV: "production" }), false);
 });
 
-test("USE_CASE_HUB_WORKSPACES is read as a plain comma-separated uuid list, no wildcard", () => {
+test("USE_CASE_HUB_EXCLUDE is read as a plain comma-separated uuid list, no wildcard", () => {
   assert.deepEqual(parsePlainUuidList(undefined), { ids: [], ignored: [] });
   assert.deepEqual(parsePlainUuidList(" , "), { ids: [], ignored: [] });
   assert.deepEqual(parsePlainUuidList(`${A.toUpperCase()}, ${B},${A}`), { ids: [A, B], ignored: [] });
   assert.deepEqual(parsePlainUuidList(`*, ${A}, non-un-id`), { ids: [A], ignored: ["*", "non-un-id"] });
   // Spaces are not separators: two ids glued by a space are one bad entry.
   assert.deepEqual(parsePlainUuidList(`${A} ${B}`), { ids: [], ignored: [`${A} ${B}`] });
+});
+
+test("USE_CASE_HUB_WORKSPACES: «*» means every workspace, otherwise a plain uuid list; the exclude list wins", () => {
+  assert.deepEqual(parseHubWorkspaceList(undefined), { wildcard: false, ids: [], ignored: [] });
+  assert.deepEqual(parseHubWorkspaceList(" * "), { wildcard: true, ids: [], ignored: [] });
+  assert.deepEqual(parseHubWorkspaceList(`*, ${A.toUpperCase()}, all`), { wildcard: true, ids: [A], ignored: ["all"] });
+  assert.deepEqual(parseHubWorkspaceList(`${A},${B}`), { wildcard: false, ids: [A, B], ignored: [] });
+  const none = parsePlainUuidList("");
+  assert.equal(hubAreaOn(A, parseHubWorkspaceList("*"), none), true);
+  assert.equal(hubAreaOn(A, parseHubWorkspaceList("*"), parsePlainUuidList(A.toUpperCase())), false);
+  assert.equal(hubAreaOn(B, parseHubWorkspaceList(A), none), false);
+  assert.equal(hubAreaOn(A, parseHubWorkspaceList(A), parsePlainUuidList("*")), true, "«*» never excludes everyone");
 });
 
 test("rolloutEnv keeps only the two switch variables", () => {

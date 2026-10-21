@@ -5,7 +5,7 @@
  *
  *   node --no-warnings scripts/uc-doctor.ts [--environment local|preview|production] [--json] [--no-db]
  *   env: le variabili dell'ambiente da controllare (UC_ENABLED, UC_WORKSPACE_IDS,
- *        USE_CASE_HUB_WORKSPACES, UC_LS_EMAIL_DOMAINS, UC_SECRET, CRON_SECRET,
+ *        USE_CASE_HUB_WORKSPACES, USE_CASE_HUB_EXCLUDE, UC_LS_EMAIL_DOMAINS, UC_SECRET, CRON_SECRET,
  *        UC_SCHEMA_SELF_HEAL, NEXT_PUBLIC_APP_URL, RESEND_API_KEY, UC_EMAIL_FROM,
  *        BLOB_READ_WRITE_TOKEN, UC_PERSONAL_ZONE_KEY, UC_PERSONAL_BLOB_READ_WRITE_TOKEN);
  *        per il database UC_ADMIN_DATABASE_URL, passata a mano.
@@ -15,8 +15,9 @@
  * `DATABASE_URL`, in una transazione `READ ONLY`): tabelle uc, sonda dello
  * schema, dossier doppi sulla stessa scheda (righe complete e incomplete, la
  * stessa condizione della 0020), indice unico, dossier senza scheda madre,
- * workspace accesi presenti. `USE_CASE_HUB_WORKSPACES` si legge come semplice
- * elenco di UUID, senza importare nulla della pagina Use case.
+ * workspace accesi presenti. `USE_CASE_HUB_WORKSPACES` (`*` = ogni workspace, anche in
+ * produzione, oppure UUID separati da virgole) e `USE_CASE_HUB_EXCLUDE` si leggono con le
+ * regole della pagina Use case, senza importare nulla da lei (`src/lib/uc/platform.ts`).
  *
  * Esce con 1 se c'è almeno un errore. La procedura è in `docs/casi-duso/RUNBOOK.md`.
  */

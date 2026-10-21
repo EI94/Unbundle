@@ -1,7 +1,8 @@
 /**
  * Prefisso dei codici e slug di un workspace, proposti dal nome (docs/use-case/DESIGN.md
- * §10.6, D6). Li usano `use-case-admin configs` (prova a secco, poi `--apply`),
- * `createWorkspace` e Impostazioni › Valutazione › «Codici degli use case».
+ * §10.6, D6). Li usano `use-case-admin configs` (prova a secco, poi `--apply`), i
+ * prerequisiti dell'area scritti dall'app (`createWorkspace`, layout, primo codice:
+ * `provisioning.ts`) e Impostazioni › Valutazione › «Codici degli use case».
  *
  * - **Prefisso** (`proposePrefix`): lettere senza accenti; parole separate da tutto ciò che
  *   non è una lettera; tolte le parole vuote (di, e, la, il, the, srl, spa, anche scritte
@@ -11,9 +12,11 @@
  * - **Slug** (`proposeSlug`): minuscole senza accenti, tutto il resto diventa `-`, da 3 a
  *   40 caratteri; già usato → `-2`, `-3`…; troppo corto → `ws-` più i primi 8 caratteri
  *   dell'id del workspace. Rispetta sempre il CHECK della 0019 (`^[a-z0-9-]{3,40}$`).
- * - **Slug di un workspace nuovo** (`slugForNewWorkspace`): unico per costruzione, senza
- *   leggere gli altri: base dal nome troncata, poi `-` e i primi 8 caratteri dell'id.
- *   `ON CONFLICT` non salva da un CHECK: lo slug deve essere valido già qui.
+ * - **Slug scritto dall'app** (`slugForNewWorkspace`: prerequisiti dell'area e upsert di
+ *   Impostazioni): unico per costruzione, senza leggere gli altri: base dal nome troncata, poi
+ *   `-` e i primi 8 caratteri dell'id. Chiunque può creare un workspace, quindi l'app non prende
+ *   mai lo slug «pulito» di `proposeSlug`: lo dà l'operatore. `ON CONFLICT` non salva da un
+ *   CHECK: lo slug deve essere valido già qui.
  *
  * Modulo puro: solo import relativi `.ts`.
  */
@@ -136,9 +139,10 @@ export function proposeSlug(name: string | null | undefined, taken: Iterable<str
 }
 
 /**
- * Lo slug di un workspace appena creato (`createWorkspace`): base dal nome troncata, poi
- * `-` e i primi 8 caratteri dell'id. Unico perché l'id è unico; valido per costruzione.
- * Un nome senza lettere né cifre dà `ws-` e l'id.
+ * Lo slug che scrive l'app, senza leggere quelli già usati (prerequisiti dell'area,
+ * `provisioning.ts`, e l'upsert di Impostazioni › «Codici degli use case»): base dal nome
+ * troncata, poi `-` e i primi 8 caratteri dell'id. Unico perché l'id è unico; valido per
+ * costruzione. Un nome senza lettere né cifre dà `ws-` e l'id.
  */
 export function slugForNewWorkspace(name: string | null | undefined, workspaceId: string): string {
   const tail = idTail(workspaceId) || "0";

@@ -7,7 +7,8 @@
  *        [--apply --confirm-authorized --confirm-database host[:porta]/database
  *         --environment local|preview|production [--production-approved]]
  *   env: USE_CASE_ADMIN_DATABASE_URL (a mano, nella shell); UC_LS_EMAIL_DOMAINS (origin, codes, doctor);
- *        USE_CASE_HUB_WORKSPACES, facoltativa, come su Vercel (origin, codes, doctor)
+ *        USE_CASE_HUB_WORKSPACES e USE_CASE_HUB_EXCLUDE, facoltative, come su Vercel (origin, codes,
+ *        scoring-v2, doctor): con `*` l'area è accesa per ogni workspace del database, tranne gli esclusi
  *
  * Comandi, in quest'ordine (DESIGN §10.5):
  *   dossier-dups  [--detach <caseId>[,<caseId>…]]  doppioni tra dossier e scheda, prima della 0020
@@ -48,7 +49,7 @@ import {
   type AdminRow,
 } from "../src/lib/use-cases/admin/cli.ts";
 import { summarizeError } from "../src/lib/log/safe-error.ts";
-import { USE_CASE_HUB_WORKSPACES_ENV, hubWorkspaceIds } from "../src/lib/use-cases/rollout.ts";
+import { USE_CASE_HUB_EXCLUDE_ENV, USE_CASE_HUB_WORKSPACES_ENV, hubRollout, hubWorkspaceIds, hubWorkspacesAmong } from "../src/lib/use-cases/rollout.ts";
 
 const MAX_JSON_FILE_BYTES = 1_000_000;
 
@@ -115,6 +116,18 @@ async function main(argv: readonly string[]): Promise<AdminOutcome> {
       return (await sql.transaction(statements.map((s) => sql.query(s.text, [...s.params])))) as AdminRow[][];
     },
   };
+  // L'interruttore dell'area come su Vercel. Con `*` vale per ogni workspace del database (anche
+  // quelli nati dopo), tranne gli esclusi: si legge l'elenco dei workspace una volta, qui.
+  const hubEnv = { [USE_CASE_HUB_WORKSPACES_ENV]: process.env.USE_CASE_HUB_WORKSPACES, [USE_CASE_HUB_EXCLUDE_ENV]: process.env.USE_CASE_HUB_EXCLUDE };
+  let hubWorkspaces: ReadonlySet<string> = hubWorkspaceIds(hubEnv);
+  if (hubRollout(hubEnv).all) {
+    try {
+      const rows = await db.read(`SELECT id FROM workspaces ORDER BY created_at, id`);
+      hubWorkspaces = new Set(hubWorkspacesAmong(rows.map((row) => String(row.id)), hubEnv));
+    } catch (caught) {
+      return error("errore", "Non riesco a leggere i workspace per USE_CASE_HUB_WORKSPACES=*.", { command: commandName, error: summarizeError(caught) });
+    }
+  }
   const ctx: AdminContext = {
     command: commandName,
     scope: args.scope,
@@ -123,7 +136,7 @@ async function main(argv: readonly string[]): Promise<AdminOutcome> {
     flag: (option) => args.flags.has(option),
     db,
     lsEmailDomains: process.env.UC_LS_EMAIL_DOMAINS?.trim() || null,
-    hubWorkspaces: hubWorkspaceIds({ [USE_CASE_HUB_WORKSPACES_ENV]: process.env.USE_CASE_HUB_WORKSPACES }),
+    hubWorkspaces,
     readJsonFile,
     // Il piano, prima delle scritture: nello stesso flusso, prima del risultato.
     print: (output) => process.stdout.write(json({ ...output, ...where })),

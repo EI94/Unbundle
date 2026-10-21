@@ -155,8 +155,10 @@ export const DEFAULT_ESG_KPIS: ScoringKpi[] = [
 
 /**
  * La config di un modello nuovo, come si salva: dimensioni, pesi e soglie di oggi. Le chiavi
- * di §7.2 e §7.6 non ci sono (valgono i predefiniti): `scoringVersion` lo scrive solo
- * `use-case-admin scoring-v2`.
+ * di §7.2 e §7.6 non ci sono (valgono i predefiniti). Nessun salvataggio del modulo scrive
+ * `scoringVersion`: la scrivono `use-case-admin scoring-v2` e, per un workspace senza use
+ * case, i prerequisiti dell'area (`src/lib/use-cases/provisioning.ts`), con
+ * `scoringModelConfigFor(2)`.
  */
 export const DEFAULT_SCORING_MODEL_CONFIG: ScoringModelConfig = {
   dimensions: {
@@ -167,6 +169,15 @@ export const DEFAULT_SCORING_MODEL_CONFIG: ScoringModelConfig = {
   overall: { impact: 0.5, feasibility: 0.3, esg: 0.2 },
   thresholds: { highImpact: 3.5, highFeasibility: 3.5, midImpact: 2.5 },
 };
+
+/**
+ * La config del modello che `use-case-admin scoring-v2` scrive su un workspace che non ne ha
+ * uno: quella predefinita con `scoringVersion`. La usano anche i prerequisiti dell'area per i
+ * workspace senza use case (`src/lib/use-cases/provisioning.ts`), così il risultato è lo stesso.
+ */
+export function scoringModelConfigFor(version: ScoringVersion): ScoringModelConfig {
+  return { ...DEFAULT_SCORING_MODEL_CONFIG, scoringVersion: version };
+}
 
 const LEGACY_DIMENSION_IDS: Record<keyof ScoringModelConfig["dimensions"], string[]> = {
   impact: ["economic", "time", "quality", "coordination", "social"],

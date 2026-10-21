@@ -51,10 +51,21 @@ test("production rules: no wildcard, self-heal off, secrets, https, the Use case
   assert.equal(status(checkUcEnv(production(off), "production"), "USE_CASE_HUB_WORKSPACES"), "errore");
   assert.equal(status(checkUcEnv(production(off), "preview"), "USE_CASE_HUB_WORKSPACES"), "avviso");
   assert.equal(status(checkUcEnv(production({ USE_CASE_HUB_WORKSPACES: undefined }), "production"), "USE_CASE_HUB_WORKSPACES"), "errore");
-  // The hub list is a plain comma list: «*» and spaces are reported, never read as «all».
+  // «*» on the hub list means every workspace, production included: the dossier workspaces have the page.
   const star = checkUcEnv(production({ USE_CASE_HUB_WORKSPACES: "*" }), "production");
-  assert.equal(status(star, "USE_CASE_HUB_WORKSPACES.voci"), "avviso");
-  assert.equal(status(star, "USE_CASE_HUB_WORKSPACES"), "errore");
+  assert.equal(status(star, "USE_CASE_HUB_WORKSPACES.voci"), undefined);
+  assert.equal(status(star, "USE_CASE_HUB_WORKSPACES"), "ok");
+  assert.equal(doctorExitCode(star), 0, formatDoctorReport(star));
+  // …unless a dossier workspace is excluded from the hub (rollback of one client).
+  const excluded = checkUcEnv(production({ USE_CASE_HUB_WORKSPACES: "*", USE_CASE_HUB_EXCLUDE: `${A.toUpperCase()}, x` }), "production");
+  assert.equal(status(excluded, "USE_CASE_HUB_WORKSPACES"), "errore");
+  assert.equal(status(excluded, "USE_CASE_HUB_EXCLUDE.voci"), "avviso");
+  assert.equal(status(checkUcEnv(production({ USE_CASE_HUB_EXCLUDE: B }), "production"), "USE_CASE_HUB_WORKSPACES"), "ok", "excluding a non-dossier workspace is fine");
+  assert.equal(status(checkUcEnv(production({ USE_CASE_HUB_EXCLUDE: A }), "production"), "USE_CASE_HUB_WORKSPACES"), "errore");
+  // Other words never read as «all».
+  const words = checkUcEnv(production({ USE_CASE_HUB_WORKSPACES: "all" }), "production");
+  assert.equal(status(words, "USE_CASE_HUB_WORKSPACES.voci"), "avviso");
+  assert.equal(status(words, "USE_CASE_HUB_WORKSPACES"), "errore");
 });
 
 test("outside production the harness is accepted with warnings only", () => {

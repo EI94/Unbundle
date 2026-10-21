@@ -171,6 +171,9 @@ before(async () => {
     [ids.coded, ids.named, ids.org, NAMED_TEAM, webhookUrl],
   );
   await q(`INSERT INTO workspace_connector_configs (workspace_id, slug, code_prefix) VALUES ($1::uuid, $2, $3)`, [ids.coded, `hub-h3e-${suffix}`, PREFIX]);
+  // «named» senza codici: un workspace senza riga la riceve alla prima scheda (assignUseCaseCode),
+  // quindi qui la riga c'è con il contatore al massimo, l'unico caso in cui il codice non arriva.
+  await q(`INSERT INTO workspace_connector_configs (workspace_id, slug, code_prefix, next_code_seq) VALUES ($1::uuid, $2, 'NC', 99999)`, [ids.named, `hub-h3e-nome-${suffix}`]);
 });
 
 after(async () => {
@@ -349,7 +352,7 @@ test("conversazione Slack senza codici: il nome del workspace da solo; WhatsApp 
 
   const [card] = await cardsTitled(ids.named, draft.title);
   assert.ok(card, "la scheda è nata");
-  assert.equal(card.code, null, "il workspace non assegna codici");
+  assert.equal(card.code, null, "il workspace non assegna codici (contatore al massimo)");
   const [reply] = posted;
   assert.ok(reply.includes(`Grazie, l'ho registrato: ${NAMED_TEAM} lo valuta.`), reply);
   assert.ok(!reply.includes("Il codice è"), reply);

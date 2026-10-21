@@ -1,8 +1,9 @@
 /**
  * `use-case-admin origin [--decisions origin.json]` (docs/use-case/DESIGN.md §10.7): origine e
  * «nascosta alla ricerca» dei dati esistenti. Serve la 0020 e `UC_LS_EMAIL_DOMAINS`;
- * `USE_CASE_HUB_WORKSPACES` (facoltativa, come su Vercel) toglie dalla lista le proposte dal web
- * che il servizio dell'hub ha già deciso. Regole e piano in `src/lib/use-cases/admin/origin.ts`.
+ * `USE_CASE_HUB_WORKSPACES` e `USE_CASE_HUB_EXCLUDE` (facoltative, come su Vercel; `*` = ogni
+ * workspace del database) tolgono dalla lista le proposte dal web che il servizio dell'hub ha già
+ * deciso. Regole e piano in `src/lib/use-cases/admin/origin.ts`.
  *
  * **Autore risolto** (il solo punto dello script che legge chi ha proposto, art. 15.4):
  * `proposed_by` è un'email oppure un id utente (`lib/actions/portfolio.ts`,

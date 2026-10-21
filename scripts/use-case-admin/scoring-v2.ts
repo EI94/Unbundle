@@ -86,13 +86,13 @@ import {
 } from "../../src/lib/use-cases/admin/cli.ts";
 import { SCHEMA_FACTS_SQL, SCHEMA_MESSAGES, schemaFactsFrom } from "../../src/lib/use-cases/admin/schema.ts";
 import {
-  DEFAULT_SCORING_MODEL_CONFIG,
   aiScoresOf,
   deriveUseCasePortfolioMetrics,
   isCustomScoringModel,
   kpiScoresOf,
   normalizeScoringConfig,
   rewriteAiRationale,
+  scoringModelConfigFor,
   splitAiRationale,
   type DerivedUseCaseScores,
   type ResolvedScoringModelConfig,
@@ -829,8 +829,7 @@ export function versionStatements(workspace: ScoringWorkspace, version: ScoringV
   if (workspace.hasModel) {
     return { text: SET_VERSION_SQL, params: [workspace.id, workspace.rawConfig === null ? null : JSON.stringify(workspace.rawConfig), version] };
   }
-  const config = { ...DEFAULT_SCORING_MODEL_CONFIG, scoringVersion: version };
-  return { text: INSERT_MODEL_SQL, params: [workspace.id, JSON.stringify(config)] };
+  return { text: INSERT_MODEL_SQL, params: [workspace.id, JSON.stringify(scoringModelConfigFor(version))] };
 }
 
 async function writeWorkspace(ctx: AdminContext, workspace: ScoringWorkspace, writes: ReadonlyArray<{ card: ScoringCard; write: CardWrite }>, version: ScoringVersion) {

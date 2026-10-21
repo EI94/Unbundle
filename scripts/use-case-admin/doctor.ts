@@ -102,6 +102,8 @@ export const command: AdminCommand = {
         origineDaDecidere: ws.originPending,
         dossierLinksReady: ws.dossierLinksReady,
         scoringVersion: ws.scoringVersion,
+        // Come la vede l'app con le stesse variabili (`*` = ogni workspace, meno USE_CASE_HUB_EXCLUDE).
+        areaAccesa: ctx.hubWorkspaces.has(ws.id.toLowerCase()),
       })),
     };
     return result.green ? done(output) : stopped(output);

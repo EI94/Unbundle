@@ -11,6 +11,11 @@
  *   quelli proposti prima nello stesso giro.
  * - `enabled = false`, `next_code_seq = 0`, il resto ai valori predefiniti della 0019.
  *
+ * L'app scrive la riga da sola per ogni workspace nuovo e per quelli senza riga
+ * (`src/lib/use-cases/provisioning.ts`), con `INSERT_CONFIGS_SQL` e lo stesso prefisso, ma con lo
+ * slug di `slugForNewWorkspace` (nome più 8 caratteri dell'id): lo slug «pulito» lo dà solo
+ * l'operatore, qui o con `connector-admin config`. Dopo, qui non resta niente da fare.
+ *
  * Modulo puro: solo import relativi `.ts`.
  */
 import { isValidCodePrefix, proposePrefix, proposeSlug } from "../prefix.ts";

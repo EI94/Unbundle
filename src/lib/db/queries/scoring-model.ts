@@ -9,8 +9,8 @@ import {
 } from "../schema";
 import { ensureDbSchema } from "../ensure-schema";
 import { isUuid } from "@/lib/slack/workspace-context-cookie";
+import { INITIAL_MODEL_SQL, initialModelParams } from "@/lib/use-cases/provisioning";
 import {
-  DEFAULT_SCORING_MODEL_CONFIG,
   deriveUseCasePortfolioMetrics,
   mergeScoringConfig,
   normalizeScoringConfig,
@@ -69,6 +69,13 @@ export async function getWorkspaceScoringModel(
   return { ...row, resolvedConfig: normalizeScoringConfig(row.config) };
 }
 
+/**
+ * Il modello del workspace; se non c'è, lo crea con `INITIAL_MODEL_SQL`
+ * (`src/lib/use-cases/provisioning.ts`): in v2 per un workspace senza use case, come lo lascia
+ * `scoring-v2 --apply` (DESIGN §12.2), altrimenti il predefinito di sempre in v1. Un modello che
+ * c'è già non cambia mai versione da qui (la cambia solo `scoring-v2`). Così anche la
+ * prima proposta di un workspace nuovo si valuta in v2, da qualunque canale arrivi.
+ */
 export async function getOrCreateWorkspaceScoringModel(
   workspaceId: string
 ): Promise<ScoringModelRow> {
@@ -76,24 +83,9 @@ export async function getOrCreateWorkspaceScoringModel(
   if (existing) {
     return { ...existing, resolvedConfig: normalizeScoringConfig(existing.config) };
   }
-  const [row] = await db
-    .insert(workspaceScoringModels)
-    .values({
-      workspaceId,
-      impactFlagEnabled: false,
-      config: {
-        ...DEFAULT_SCORING_MODEL_CONFIG,
-        dimensions: {
-          impact: DEFAULT_SCORING_MODEL_CONFIG.dimensions.impact.map((k) => ({ ...k })),
-          feasibility: DEFAULT_SCORING_MODEL_CONFIG.dimensions.feasibility.map((k) => ({
-            ...k,
-          })),
-          esg: DEFAULT_SCORING_MODEL_CONFIG.dimensions.esg.map((k) => ({ ...k })),
-        },
-      },
-      updatedAt: new Date(),
-    } satisfies NewWorkspaceScoringModel)
-    .returning();
+  await db.$client.query(INITIAL_MODEL_SQL, initialModelParams(workspaceId));
+  const row = await getRow(workspaceId);
+  if (!row) throw new Error("Modello di valutazione non creato: il workspace non c'è.");
   return { ...row, resolvedConfig: normalizeScoringConfig(row.config) };
 }
 

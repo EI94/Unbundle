@@ -258,8 +258,10 @@ export interface AdminContext {
   /** `UC_LS_EMAIL_DOMAINS` della shell, letta dallo smistatore; `null` se manca. */
   lsEmailDomains: string | null;
   /**
-   * I workspace con l'area accesa, da `USE_CASE_HUB_WORKSPACES` della shell (facoltativa,
-   * come su Vercel): lì le proposte dal web nuove le decide il servizio. Vuota se manca.
+   * I workspace con l'area accesa, da `USE_CASE_HUB_WORKSPACES` e `USE_CASE_HUB_EXCLUDE` della
+   * shell (facoltative, come su Vercel): lì le proposte dal web nuove le decide il servizio.
+   * Con `*` sono tutti i workspace del database meno gli esclusi (lo smistatore li legge una
+   * volta). Vuota se manca.
    */
   hubWorkspaces: ReadonlySet<string>;
   /** Un file JSON dell'operatore (`--prefixes`, `--decisions`), al massimo 1 MB. */

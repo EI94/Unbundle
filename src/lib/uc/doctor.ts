@@ -10,7 +10,7 @@
  */
 import { UC_TABLE_NAMES } from "./ddl.ts";
 import { parseLsDomains } from "./lateral-space.ts";
-import { parsePlainUuidList, ucSelfHealEnabled, type UcPlatformEnv } from "./platform.ts";
+import { hubAreaOn, parseHubWorkspaceList, parsePlainUuidList, ucSelfHealEnabled, type UcPlatformEnv } from "./platform.ts";
 import { parseUcWorkspaceIds } from "./rollout.ts";
 
 export type DoctorStatus = "ok" | "avviso" | "errore";
@@ -77,16 +77,27 @@ export function checkUcEnv(env: UcPlatformEnv, environment: DoctorEnvironment): 
   if (list.ignored.length > 0) out.push(check("UC_WORKSPACE_IDS.voci", "avviso", `${list.ignored.length} voci scartate perché non sono UUID.`));
 
   // Ogni workspace dei dossier sta anche nella pagina Use case (P0-1, DESIGN §2.1).
-  const hub = parsePlainUuidList(env.USE_CASE_HUB_WORKSPACES);
-  if (hub.ignored.length > 0) out.push(check("USE_CASE_HUB_WORKSPACES.voci", "avviso", `${hub.ignored.length} voci scartate: l'elenco è di UUID separati da virgole, senza «*».`));
+  // `USE_CASE_HUB_WORKSPACES`: `*` = ogni workspace, anche in produzione; `USE_CASE_HUB_EXCLUDE` la spegne per alcuni.
+  const hub = parseHubWorkspaceList(env.USE_CASE_HUB_WORKSPACES);
+  const hubExcluded = parsePlainUuidList(env.USE_CASE_HUB_EXCLUDE);
+  if (hub.ignored.length > 0) out.push(check("USE_CASE_HUB_WORKSPACES.voci", "avviso", `${hub.ignored.length} voci scartate: l'elenco è «*» oppure UUID separati da virgole.`));
+  if (hubExcluded.ignored.length > 0) out.push(check("USE_CASE_HUB_EXCLUDE.voci", "avviso", `${hubExcluded.ignored.length} voci scartate: gli esclusi sono UUID separati da virgole («*» qui non spegne nulla).`));
   if (list.wildcard && !prod) {
-    out.push(check("USE_CASE_HUB_WORKSPACES", "avviso", "Con «*» non si può controllare che ogni workspace dei dossier abbia la pagina Use case."));
+    out.push(
+      hub.wildcard && hubExcluded.ids.length === 0
+        ? check("USE_CASE_HUB_WORKSPACES", "ok", "«*» anche qui: ogni workspace dei dossier ha la pagina Use case accesa.")
+        : check("USE_CASE_HUB_WORKSPACES", "avviso", "Con «*» non si può controllare che ogni workspace dei dossier abbia la pagina Use case."),
+    );
   } else if (list.ids.size > 0) {
-    const missing = [...list.ids].filter((id) => !hub.ids.includes(id));
+    const missing = [...list.ids].filter((id) => !hubAreaOn(id, hub, hubExcluded));
     out.push(
       missing.length === 0
-        ? check("USE_CASE_HUB_WORKSPACES", "ok", "Ogni workspace dei dossier ha anche la pagina Use case accesa.")
-        : check("USE_CASE_HUB_WORKSPACES", prod ? "errore" : "avviso", `${missing.length} workspace in UC_WORKSPACE_IDS ma non in USE_CASE_HUB_WORKSPACES: accendi prima la pagina Use case.`),
+        ? check("USE_CASE_HUB_WORKSPACES", "ok", hub.wildcard ? "«*»: ogni workspace dei dossier ha anche la pagina Use case accesa." : "Ogni workspace dei dossier ha anche la pagina Use case accesa.")
+        : check(
+            "USE_CASE_HUB_WORKSPACES",
+            prod ? "errore" : "avviso",
+            `${missing.length} workspace in UC_WORKSPACE_IDS senza la pagina Use case (fuori da USE_CASE_HUB_WORKSPACES o in USE_CASE_HUB_EXCLUDE): accendi prima la pagina Use case.`,
+          ),
     );
   }
 

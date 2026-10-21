@@ -25,7 +25,8 @@ export function formatUseCaseCode(prefix: string, seq: number): string {
  * contatore del workspace e scrive il codice sulla segnalazione.
  * Postgres non ammette un UPDATE … RETURNING dentro FROM, quindi l'UPDATE
  * annidato sta in una CTE (eseguita una volta sola, stesso snapshot).
- *  - Nessuna riga in workspace_connector_configs → nessun effetto (codice null).
+ *  - Nessuna riga in workspace_connector_configs → nessun effetto (codice null):
+ *    `assignUseCaseCode` crea allora la riga (connettore spento) e lo ripete.
  *  - Segnalazione che ha già un codice, o di un altro workspace → nessun effetto e
  *    contatore invariato.
  *  - Oltre 99999 → nessun effetto: il pattern del contratto ammette 5 cifre.

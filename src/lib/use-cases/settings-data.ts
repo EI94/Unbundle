@@ -175,8 +175,11 @@ export interface CodePrefixSaved {
 
 /**
  * «Codici degli use case › Prefisso» (D6, §10.6). Cambia solo `code_prefix`: i codici già
- * assegnati e il contatore restano. Senza la riga di D6 la crea spenta, come
- * `createWorkspace` (slug dal nome più gli 8 caratteri dell'id).
+ * assegnati e il contatore restano. Senza la riga di D6 (di solito c'è già: la scrivono
+ * `createWorkspace` e il layout, `src/lib/use-cases/provisioning.ts`) la crea spenta, con lo
+ * slug di `slugForNewWorkspace` (dal nome più gli 8 caratteri dell'id), lo stesso dei
+ * prerequisiti: unico per costruzione, quindi l'upsert di un solo statement non urta mai un
+ * altro slug.
  */
 export async function saveCodePrefix(userId: string, workspaceId: string, raw: unknown): Promise<ServiceResult<CodePrefixSaved>> {
   const guard = await managerAccess(userId, workspaceId);

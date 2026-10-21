@@ -75,10 +75,10 @@ const ids = {
   template: randomUUID(),
   dossier: randomUUID(),
 };
-const ENV_KEYS = ["USE_CASE_HUB_WORKSPACES", "UC_ENABLED", "UC_WORKSPACE_IDS", "VERCEL_ENV", "CRON_SECRET", "ANTHROPIC_API_KEY"] as const;
+const ENV_KEYS = ["USE_CASE_HUB_WORKSPACES", "USE_CASE_HUB_EXCLUDE", "UC_ENABLED", "UC_WORKSPACE_IDS", "VERCEL_ENV", "CRON_SECRET", "ANTHROPIC_API_KEY"] as const;
 const envBefore = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 const CRON_SECRET = randomBytes(24).toString("hex");
-const HUB_ENV = `${ids.wsOn}, ${ids.wsOn2} ,${ids.ghost},*,non-un-uuid`;
+const HUB_ENV = `${ids.wsOn}, ${ids.wsOn2} ,${ids.ghost},non-un-uuid`;
 
 /** Primo lunedì del T1 2027, 10:00 a Roma. */
 const NOW = new Date("2027-01-04T09:00:00Z");
@@ -333,8 +333,52 @@ test("un lunedì che non è il primo del trimestre: solo il riepilogo", opts, as
   assert.equal(rows[0].description, "1 è da rivedere. Il più vecchio aspetta da 19 giorni.");
 });
 
+test("«*»: il passo visita ogni workspace che esiste, tranne gli esclusi", opts, async () => {
+  const visited: string[] = [];
+  const digest = async (workspaceId: string) => {
+    visited.push(workspaceId);
+    return 0;
+  };
+  const all = await step.runUseCaseDigestStep({ now: NOW, env: { USE_CASE_HUB_WORKSPACES: "*" }, digest });
+  for (const id of [ids.wsOn, ids.wsOn2, ids.wsOff]) assert.ok(visited.includes(id), "ogni workspace della prova");
+  assert.ok(!visited.includes(ids.ghost), "mai un workspace che non c'è");
+  assert.equal(all.workspaces, visited.length);
+  assert.equal(new Set(visited).size, visited.length, "una volta sola");
+
+  visited.length = 0;
+  await step.runUseCaseDigestStep({ now: NOW, env: { USE_CASE_HUB_WORKSPACES: "*", USE_CASE_HUB_EXCLUDE: `${ids.wsOff.toUpperCase()}, non-un-uuid` }, digest });
+  assert.ok(visited.includes(ids.wsOn) && visited.includes(ids.wsOn2));
+  assert.ok(!visited.includes(ids.wsOff), "l'escluso si salta");
+  // Con l'elenco esplicito l'esclusione vale lo stesso.
+  visited.length = 0;
+  await step.runUseCaseDigestStep({ now: NOW, env: { USE_CASE_HUB_WORKSPACES: HUB_ENV, USE_CASE_HUB_EXCLUDE: ids.wsOn2 }, digest });
+  assert.deepEqual(visited, [ids.wsOn]);
+  assert.deepEqual(await signalRows(), []);
+});
+
+test("un workspace acceso senza use case: nessun segnale, neanche il trimestre, e i vecchi passano a letti", opts, async () => {
+  const empty = randomUUID();
+  await q(`INSERT INTO workspaces (id, organization_id, name, status) VALUES ($1::uuid, $2::uuid, 'Prova H4d vuota', 'mapping')`, [empty, ids.org]);
+  try {
+    const oldQuarter = await seedSignal(empty, "use_case_quarter", "Nuovo trimestre: rivedi la roadmap", new Date("2026-10-05T08:00:00Z"));
+    // Il primo lunedì del trimestre, come lo visita il passo con «*».
+    assert.equal(await step.digestWorkspace(empty, NOW), 0);
+    assert.deepEqual(
+      (await signalRows(empty)).map((row) => row.signalType),
+      ["use_case_quarter"],
+      "solo il segnale del trimestre scorso, scritto a mano",
+    );
+    assert.deepEqual(await readFlags([oldQuarter]), { [oldQuarter]: true });
+    // Con uno use case il trimestre arriva.
+    await seedCard(empty, { status: "accepted", targetQuarter: "2026-Q3", submittedDaysAgo: 150 });
+    assert.equal(await step.digestWorkspace(empty, NOW), 1);
+  } finally {
+    await q(`DELETE FROM workspaces WHERE id = $1::uuid`, [empty]);
+  }
+});
+
 test("area spenta ovunque: nessuna lettura e nessun segnale", opts, async () => {
-  for (const value of [undefined, "", "*", "non-un-uuid", ids.wsOff.slice(0, -1)]) {
+  for (const value of [undefined, "", "all", "non-un-uuid", ids.wsOff.slice(0, -1)]) {
     const result = await step.runUseCaseDigestStep({ now: NOW, env: { USE_CASE_HUB_WORKSPACES: value } });
     assert.deepEqual(result, { workspaces: 0, signals: 0, failed: 0 }, String(value));
   }

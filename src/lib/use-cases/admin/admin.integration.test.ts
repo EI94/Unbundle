@@ -698,7 +698,12 @@ test("doctor: sola lettura, verde solo quando il workspace è pronto", opts, asy
   const failing = (red.last.controlli as Array<{ controllo: string; ok: boolean }>).filter((c) => !c.ok).map((c) => c.controllo);
   assert.deepEqual(failing, ["scoring_v2"], "origin, codes e dossier-links fatti");
   const [wsA] = red.last.workspaces as Array<Record<string, unknown>>;
-  assert.deepEqual(wsA, { workspace: ids.wsA, nome: NAME_AB, rigaConfig: true, senzaCodice: 0, origineDaDecidere: 0, dossierLinksReady: true, scoringVersion: 1 });
+  assert.deepEqual(wsA, { workspace: ids.wsA, nome: NAME_AB, rigaConfig: true, senzaCodice: 0, origineDaDecidere: 0, dossierLinksReady: true, scoringVersion: 1, areaAccesa: false });
+  // Con l'interruttore di produzione («*») l'area è accesa anche per lui; l'esclusione la spegne.
+  const star = runAdmin(["doctor", "--workspace", ids.wsA], { env: { USE_CASE_HUB_WORKSPACES: "*" } });
+  assert.equal((star.last.workspaces as Array<Record<string, unknown>>)[0].areaAccesa, true);
+  const out = runAdmin(["doctor", "--workspace", ids.wsA], { env: { USE_CASE_HUB_WORKSPACES: "*", USE_CASE_HUB_EXCLUDE: ids.wsA } });
+  assert.equal((out.last.workspaces as Array<Record<string, unknown>>)[0].areaAccesa, false);
   const noConfig = runAdmin(["doctor", "--workspace", ids.wsD]);
   assert.ok((noConfig.last.controlli as Array<{ controllo: string; ok: boolean }>).some((c) => c.controllo === "righe_config" && !c.ok));
   assert.deepEqual(await fingerprint(main), before, "doctor non scrive");
@@ -884,10 +889,14 @@ test("createWorkspace: ogni workspace nuovo nasce con la sua riga di config, anc
   assert.notEqual(first.id, second.id);
   assert.equal(first.name, name);
   const [a, b] = [await configOf(first.id), await configOf(second.id)];
+  // Prefisso come `configs`; slug dal nome più l'id (`slugForNewWorkspace`): quello «pulito» resta all'operatore.
   assert.deepEqual(a, { slug: prefixModule.slugForNewWorkspace(name, first.id), code_prefix: "SCP", enabled: false, next_code_seq: 0 });
-  assert.equal(b?.code_prefix, "SCP");
+  assert.deepEqual(b, { slug: prefixModule.slugForNewWorkspace(name, second.id), code_prefix: "SCP", enabled: false, next_code_seq: 0 });
   assert.notEqual(a?.slug, b?.slug);
   assert.match(String(a?.slug), new RegExp(`^societa-citta-prova-${suffix}-${first.id.replace(/-/g, "").slice(0, 8)}$`));
+  // Nessuna riga da creare per configs.
+  const dry = runAdmin(["configs", "--workspace", first.id]);
+  assert.equal(dry.last.status, "NOTHING_TO_DO", dry.stdout);
 });
 
 test("createWorkspace: nomi di soli simboli, accentati o lunghissimi danno uno slug valido", opts, async () => {
@@ -908,18 +917,25 @@ test("createWorkspace: nomi di soli simboli, accentati o lunghissimi danno uno s
 
 test("createWorkspace: il workspace nasce sempre, anche se la riga non si può scrivere", opts, async (t) => {
   const log = t.mock.method(console, "error", () => {});
-  // Slug già preso da un altro workspace: ON CONFLICT DO NOTHING, il workspace nasce senza riga.
+  // Lo slug «pulito» già preso da un altro workspace non conta: quello dell'app ha l'id.
   const id = randomUUID();
   const name = `Slug occupato ${SUFFIX}`;
-  await main.query(`INSERT INTO workspace_connector_configs (workspace_id, slug, code_prefix) VALUES ($1, $2, 'OS')`, [ids.wsE, prefixModule.slugForNewWorkspace(name, id)]);
+  await main.query(`INSERT INTO workspace_connector_configs (workspace_id, slug, code_prefix) VALUES ($1, $2, 'OS')`, [ids.wsE, `slug-occupato-${suffix}`]);
   const squatted = await workspacesModule.createWorkspace({ id, organizationId: ids.org, name });
   created.push(squatted.id);
   assert.equal(squatted.id, id);
-  assert.equal(await configOf(id), null);
+  assert.equal((await configOf(id))?.slug, prefixModule.slugForNewWorkspace(name, id));
+  // Proprio lo slug dell'app già preso (a mano): ON CONFLICT DO NOTHING, il workspace nasce senza riga.
+  const id2 = randomUUID();
+  await main.query(`UPDATE workspace_connector_configs SET slug = $2 WHERE workspace_id = $1`, [ids.wsE, prefixModule.slugForNewWorkspace(name, id2)]);
+  const taken = await workspacesModule.createWorkspace({ id: id2, organizationId: ids.org, name });
+  created.push(taken.id);
+  assert.equal(taken.id, id2);
+  assert.equal(await configOf(id2), null);
   // La riga mancante la recupera configs, con un altro slug.
-  const recovered = runAdmin(["configs", "--workspace", id, ...confirm()]);
-  assert.equal(recovered.last.status, "APPLIED", recovered.stdout);
-  assert.ok(await configOf(id));
+  const recoveredTaken = runAdmin(["configs", "--workspace", id2, ...confirm()]);
+  assert.equal(recoveredTaken.last.status, "APPLIED", recoveredTaken.stdout);
+  assert.ok(await configOf(id2));
 
   // Tabella assente: lo statement con la riga fallisce, il workspace nasce da solo.
   const lonely = await renamed(
@@ -931,6 +947,10 @@ test("createWorkspace: il workspace nasce sempre, anche se la riga non si può s
   assert.equal((await one<{ n: number }>(main, `SELECT count(*)::int AS n FROM workspaces WHERE id = $1`, [lonely.id])).n, 1);
   assert.equal(await configOf(lonely.id), null);
   const lines = log.mock.calls.map((call) => call.arguments.map(String).join(" "));
-  assert.ok(lines.some((line) => line.includes("create_with_connector_config_failed")));
+  assert.ok(lines.some((line) => line.includes("provision_failed")), JSON.stringify(lines));
   assert.ok(lines.every((line) => !line.includes("Senza tabella")), "il log non ha il nome del workspace");
+  // La riga mancante la recupera anche configs, con lo slug «pulito» di proposeSlug.
+  const recovered = runAdmin(["configs", "--workspace", lonely.id, ...confirm()]);
+  assert.equal(recovered.last.status, "APPLIED", recovered.stdout);
+  assert.equal((await configOf(lonely.id))?.slug, `senza-tabella-${suffix}`);
 });

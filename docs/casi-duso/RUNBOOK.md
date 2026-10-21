@@ -29,7 +29,7 @@ Regole di questo documento:
    "regions": ["fra1"]
    ```
    Il pacchetto C11 **non** l'ha aggiunta: senza la decisione la regione resta quella di oggi. Dopo la scelta, controllare che anche gli store Blob (standard e zona personale) siano in Europa: dashboard Vercel › Storage › store › Settings › Region.
-2. **Workspace e data del go-live** (domanda 4). Ogni workspace dei dossier deve avere **già** la pagina Use case accesa (`USE_CASE_HUB_WORKSPACES`, §4).
+2. **Workspace e data del go-live** (domanda 4). Ogni workspace dei dossier deve avere **già** la pagina Use case accesa (`USE_CASE_HUB_WORKSPACES`, §4): con `*` lo è ogni workspace che non sta in `USE_CASE_HUB_EXCLUDE`.
 3. **Testi legali** (domanda 2) e **scheda privacy A.8** prima di qualunque dato reale nella zona personale.
 
 **Prerequisiti tecnici**
@@ -38,7 +38,7 @@ Regole di questo documento:
 - P0-16 fatto prima di togliere la voce «Casi d'uso» e di reindirizzare `/casi-duso`: `use-case-admin dossier-dups` a zero doppioni (righe complete e incomplete) **prima della 0020**, poi `use-case-admin dossier-links` dopo la 0020. `uc-doctor` (§9.1) mostra zero doppioni. Finché `dossierLinksReady` non è vero (o la lettura non riesce) il layout tiene la voce «Casi d'uso» sotto «Use case» e non reindirizza `/casi-duso`: un dossier senza scheda resta raggiungibile dalla barra.
 - La 0020 si applica **prima** del deploy del codice della pagina Use case: senza, la prima richiesta esegue nella funzione tutto il DDL di recupero (idempotente, una transazione, advisory lock), con lock ALTER durante una richiesta vera, e un errore DDL fa rispondere 500 a ogni pagina use_cases finché non riesce.
 
-**Cosa cambia anche nei workspace fuori da `USE_CASE_HUB_WORKSPACES`** (accettato: stringe la privacy come il commit di produzione 2ae98a7, art. 15.4; D4, D13, D14 valgono per tutti i workspace, non solo per quello dell'AI lab):
+**Cosa cambia anche nei workspace con la pagina Use case spenta** (fuori da `USE_CASE_HUB_WORKSPACES`, o in `USE_CASE_HUB_EXCLUDE`) (accettato: stringe la privacy come il commit di produzione 2ae98a7, art. 15.4; D4, D13, D14 valgono per tutti i workspace, non solo per quello dell'AI lab):
 - i contributori non vedono più matrice, punteggi e testi in `/portfolio`, `/portfolio/review/<id>`, `/use-cases`, `/use-cases/<id>` e `/plan`; il link di condivisione mostra a chi non è membro solo titolo, fase e «Quando»;
 - i segnali «nuova proposta» della campanella vanno ai soli revisori; i testi dei ruoli cambiano per tutti;
 - le scritture REST scrivono una riga di Storia e fanno salire `version`; il flusso di invio da Slack è idempotente e svuota i testi della bozza;
@@ -53,7 +53,9 @@ Si impostano **a mano** nella dashboard di Vercel, ambiente per ambiente. `scrip
 | Variabile | Produzione | Anteprima (ramo Neon di sviluppo) | Note |
 |---|---|---|---|
 | `UC_ENABLED` | `true` solo al go-live | `true` per le prove | interruttore generale |
-| `UC_WORKSPACE_IDS` | UUID separati da virgole; vuota = sezione spenta ovunque | UUID, oppure `*` | `*` non vale in produzione; ogni UUID deve stare anche in `USE_CASE_HUB_WORKSPACES` |
+| `UC_WORKSPACE_IDS` | UUID separati da virgole; vuota = sezione spenta ovunque | UUID, oppure `*` | `*` non vale in produzione; ogni UUID deve avere anche la pagina Use case accesa (`USE_CASE_HUB_WORKSPACES`, `*` compreso, e fuori da `USE_CASE_HUB_EXCLUDE`) |
+| `USE_CASE_HUB_WORKSPACES` | `*`: pagina Use case accesa per ogni workspace, anche per quelli creati dopo; oppure UUID separati da virgole | come in produzione | `*` vale anche in produzione (a differenza di `UC_WORKSPACE_IDS`). I prerequisiti di un workspace nuovo li scrive l'app alla creazione (`docs/use-case/DESIGN.md` §12.1): riga di config spenta (slug dal nome più 8 caratteri dell'id: lo slug «pulito» lo dà l'operatore) e modello v2 solo se il workspace non ha né modello né use case. Un modello che c'è non lo tocca mai: un workspace di prima ancora in v1 (o riportato in v1 con `scoring-v2 --revert`) resta com'è, `use-case-admin doctor` lo segnala (`scoring_v2`) e si passa con `scoring-v2 --apply --workspace` |
+| `USE_CASE_HUB_EXCLUDE` | facoltativa: UUID separati da virgole con la pagina Use case spenta anche con `*` | come in produzione | il ritorno indietro per un cliente senza togliere `*`; un `*` qui non spegne nulla |
 | `UC_SCHEMA_SELF_HEAL` | assente oppure `off`; mai `on` | facoltativa (assente = self-heal acceso) | in produzione (`VERCEL_ENV=production`) il self-heal è spento se la variabile non dice `on`: l'app esegue solo la sonda e risponde 503 se lo schema non è aggiornato |
 | `UC_LS_EMAIL_DOMAINS` | domini di Lateral Space | come in produzione | serve anche con i dossier spenti (pagina Use case) |
 | `UC_SECRET` | obbligatoria | consigliata | `openssl rand -base64 32`; senza, le scritture dei link rispondono 503 |
@@ -94,7 +96,7 @@ drizzle-kit non vede le tabelle `uc_*` da nessuno dei due lati: dal codice legge
 
 Ordine: prima il workspace di Lateral Space, poi un cliente alla volta. **La pagina Use case prima dei dossier.**
 
-1. Il workspace è già in `USE_CASE_HUB_WORKSPACES` e la pagina Use case funziona.
+1. Il workspace ha già la pagina Use case accesa (`USE_CASE_HUB_WORKSPACES=*`, o il suo UUID nell'elenco, e non in `USE_CASE_HUB_EXCLUDE`) e la pagina funziona.
 2. `uc-doctor --environment production` senza errori (§9.1), con il nuovo UUID già nella variabile che si sta per salvare (si prova nella shell prima di toccare Vercel).
 3. Vercel › Settings › Environment Variables › Production: aggiungere l'UUID a `UC_WORKSPACE_IDS` (virgola come separatore). Al primo go-live anche `UC_ENABLED=true`.
 4. Redeploy della produzione (le variabili valgono dal deploy successivo).
@@ -111,6 +113,7 @@ Ordine: prima il workspace di Lateral Space, poi un cliente alla volta. **La pag
 ## 5. Ritorno indietro
 
 - **Un workspace**: togliere il suo UUID da `UC_WORKSPACE_IDS` e fare redeploy. Le pagine del caso e le loro rotte (file, esporta, registro), l'elenco `/casi-duso` e `/casi-duso/nuovo`, le azioni sul caso, il MCP dei dossier e i cron di quel workspace rispondono come a sezione spenta (404); i link `/r` e `/api/r` dei suoi casi rispondono «link non valido», come un link scaduto; la campanella non mostra più i suoi casi; i dati restano. Ogni azione sul caso porta il suo workspace e nessuna parte senza: il vecchio «Nuovo caso» (`createCaseAction`), che poteva, non c'è più.
+- **La pagina Use case di un cliente** (con `USE_CASE_HUB_WORKSPACES=*`): se il workspace è in `UC_WORKSPACE_IDS`, prima toglierlo da lì (un workspace dei dossier escluso è un errore di `uc-doctor`). Poi aggiungere il suo UUID a `USE_CASE_HUB_EXCLUDE` (UUID intero, virgola come separatore) e fare redeploy. **Controllo obbligatorio**: nella shell, con gli stessi valori di Vercel per `USE_CASE_HUB_WORKSPACES` e `USE_CASE_HUB_EXCLUDE`, `use-case-admin doctor --workspace <uuid>` (sola lettura) deve dire `areaAccesa: false`. Una voce con un errore di battitura, un UUID tagliato o due UUID separati da spazi invece che da virgola si ignorano in silenzio, e l'area resta accesa. I dati restano; togliendo l'UUID dall'esclusione l'area torna com'era.
 - **Tutta la sezione**: `UC_ENABLED` a qualunque valore diverso da `true`, redeploy. Nessuna tabella si cancella. **Attenzione**: con la sezione spenta i cron uc rispondono 404, quindi si ferma anche la conservazione notturna dei file (§7.1), che è un obbligo. Se la sezione resta spenta più di qualche giorno, i casi chiusi oltre i 30 giorni si cancellano a mano con `purge-case` (§7.3); alla riaccensione il cron riprende da solo i file arretrati (fino a 500 per notte).
 - **Codice**: redeploy del deploy precedente (Vercel › Deployments › Promote). La 0018 resta: è solo additiva, e il codice precedente non legge le tabelle uc.
 - **Schema rotto in produzione**: con il self-heal spento (il default in produzione) le rotte uc rispondono 503 e il resto dell'app funziona. Riapplicare la 0018 (§3, punto 2); la richiesta dopo riparte senza redeploy.

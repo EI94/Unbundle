@@ -413,7 +413,10 @@ test("createUseCases: permessi, dati e interruttore dell'area", opts, async () =
   );
   const s = await row(slack.id);
   assert.equal(s.workspace_id, ids.wsB);
-  assert.equal(slack.code, null, "senza connettore configurato nessun codice");
+  // Senza riga di config la riga nasce (connettore spento) e la scheda ha il suo codice.
+  const configB = (await q(`SELECT code_prefix, enabled FROM workspace_connector_configs WHERE workspace_id = $1::uuid`, [ids.wsB]))[0];
+  assert.equal(configB?.enabled, false, "il connettore resta spento");
+  assert.equal(slack.code, `${String(configB?.code_prefix)}-0001`, "anche senza riga di config prima");
   assert.equal(s.origin, "adoption");
 });
 

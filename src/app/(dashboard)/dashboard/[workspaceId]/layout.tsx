@@ -1,5 +1,6 @@
 import { requireSession } from "@/lib/auth/redirect-to-login";
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { redirect, notFound } from "next/navigation";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
@@ -41,6 +42,15 @@ export default async function WorkspaceLayout({
 
   // Area «Use case» (docs/use-case/DESIGN.md §2.1, §12.1): una voce sola al posto di quattro.
   const useCaseHub = isUseCaseHubWorkspace(workspaceId);
+  // I prerequisiti dell'area (riga di config, modello v2 se non ci sono use case), dopo la
+  // risposta: un workspace di prima o una creazione in cui non erano riusciti si sistema alla
+  // prima visita. Idempotente; un workspace già a posto non si rilegge (src/lib/use-cases/provisioning.ts).
+  if (useCaseHub) {
+    after(async () => {
+      const { provisionUseCaseWorkspaceSafely } = await import("@/lib/db/queries/use-case-provisioning");
+      await provisionUseCaseWorkspaceSafely(workspace.id);
+    });
+  }
 
   // P0-16 (docs/casi-duso/RUNBOOK.md §1): con l'area accesa «Casi d'uso» esce dalla barra e
   // `/casi-duso` esatto va alla Roadmap solo quando ogni dossier completo ha la sua scheda
