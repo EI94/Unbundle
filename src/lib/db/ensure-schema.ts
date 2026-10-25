@@ -3,6 +3,7 @@ import { db } from ".";
 import { UC_DDL, UC_PROBE_SQL } from "../uc/ddl.ts";
 import { CONNECTOR_DDL, CONNECTOR_PROBE_SQL } from "./connector-ddl.ts";
 import { USE_CASE_HUB_DDL, USE_CASE_HUB_PROBE_SQL } from "./use-case-hub-ddl.ts";
+import { USE_CASE_VALUE_DDL, USE_CASE_VALUE_PROBE_SQL } from "./use-case-hub-value-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -22,7 +23,7 @@ import { USE_CASE_HUB_DDL, USE_CASE_HUB_PROBE_SQL } from "./use-case-hub-ddl.ts"
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 15;
+const ENSURE_VERSION = 16;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -616,6 +617,11 @@ async function runOnce(): Promise<void> {
   // trigger della versione legge intake e public_note della 0019). Non l'indice
   // unico dei dossier: sta solo nella migrazione (docs/use-case/DESIGN.md §10.2).
   await runUseCaseHubDdl();
+
+  // Benefici e «Cosa serve» (drizzle/0022_use_case_value.sql) ─────────────
+  // Stessi statement e stesso ordine della migrazione, dopo l'hub (il trigger
+  // di value_model scrive use_cases.version della 0020).
+  await runUseCaseValueDdl();
 }
 
 /**
@@ -640,6 +646,18 @@ export async function runUseCaseHubDdl(statements: readonly string[] = USE_CASE_
   const client = db.$client;
   await client.transaction([
     client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-hub-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
+/**
+ * Applica il DDL della 0022 in una sola transazione, serializzata da un advisory lock:
+ * colonna, trigger e tabelle delle esigenze arrivano insieme.
+ */
+export async function runUseCaseValueDdl(statements: readonly string[] = USE_CASE_VALUE_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-value-ddl'))"),
     ...statements.map((statement) => client.query(statement)),
   ]);
 }
@@ -752,6 +770,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         )
         AND ${sql.raw(CONNECTOR_PROBE_SQL)}
         AND ${sql.raw(USE_CASE_HUB_PROBE_SQL)}
+        AND ${sql.raw(USE_CASE_VALUE_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;

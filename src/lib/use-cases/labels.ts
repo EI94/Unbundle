@@ -49,6 +49,19 @@ export const VALUE_WORD_LABEL: Readonly<Record<ValueWord, string>> = {
   basso: "Basso",
 };
 
+/**
+ * Il Valore di «Benefici e costi» senza un beneficio contato: voci solo da misurare
+ * («da misurare · fino a 5.840 €») oppure solo a parole («qualitativo»).
+ */
+export const VALUE_MODEL_STATE_LABEL = Object.freeze({ da_misurare: "da misurare", qualitativo: "qualitativo" });
+/** «fino a 5.840 €»: il tetto delle voci da misurare, fuori dal totale. */
+export const UP_TO_WORD = "fino a";
+/** «4.043 €/anno»: il beneficio all'anno nella forma corta. */
+export const PER_YEAR_SHORT_SUFFIX = "/anno";
+/** «avvio 560 € · ricorrenti 600 €/anno»: il costo di «Benefici e costi». */
+export const COST_ONEOFF_WORD = "avvio";
+export const COST_RUN_WORD = "ricorrenti";
+
 /** Da dove viene il punteggio del Valore (§7.1). Senza punteggio: «da stimare». */
 export const VALUE_SOURCES = ["team", "ai"] as const;
 export type ValueSource = (typeof VALUE_SOURCES)[number];
@@ -66,16 +79,19 @@ export const VALUE_EUR_SOURCE_LABEL: Readonly<Record<ValueEurSource, { short: st
 };
 
 /**
- * Le quattro fonti del costo di realizzazione, nell'ordine in cui vincono (§7.2).
+ * Le fonti del costo di realizzazione, nell'ordine in cui vincono (§7.2): il dossier, la stima
+ * di «Benefici e costi» (avvio e ricorrenti), l'importo e la fascia del team, l'impegno.
  * Forma corta nella riga e nella card della Roadmap, lunga nella scheda.
  * Per il dossier: «dossier» e «dal dossier», mai «da dossier». Il costo che viene dal punteggio
  * di impegno (KPI `effort`) si dice in parole semplici, «stimato» e «stimato dall'impegno», non
  * «da sforzo» (H4p).
  */
-export const COST_SOURCES = ["dossier", "team_importo", "team_fascia", "sforzo"] as const;
+export const COST_SOURCES = ["dossier", "stima", "team_importo", "team_fascia", "sforzo"] as const;
 export type CostSource = (typeof COST_SOURCES)[number];
 export const COST_SOURCE_LABEL: Readonly<Record<CostSource, { short: string; long: string }>> = {
   dossier: { short: "dossier", long: "dal dossier" },
+  // «Benefici e costi» della scheda (`value_model.costs`): avvio e ricorrenti, stimati dal team.
+  stima: { short: "team", long: "stima del team" },
   team_importo: { short: "team", long: "importo del team" },
   team_fascia: { short: "team", long: "fascia del team" },
   sforzo: { short: "stimato", long: "stimato dall'impegno" },

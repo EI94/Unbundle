@@ -9,7 +9,7 @@ import { handleTeamMcpRequest } from "@/lib/use-cases/mcp/handler";
  *
  * Tutto il lavoro è in `src/lib/use-cases/mcp/handler.ts`: igiene HTTP, autenticazione con il
  * token personale del team e i permessi della persona riletti a ogni richiesta, server
- * nuovo a ogni richiesta, 6 tool, log senza dati. Spento (404) finché `MCP_TEAM_ENABLED` non vale
+ * nuovo a ogni richiesta, 8 tool, log senza dati. Spento (404) finché `MCP_TEAM_ENABLED` non vale
  * `true`. Solo POST: ogni altro metodo risponde 405 con `Allow: POST`, le intestazioni di igiene e
  * una riga di log; per questo la rotta esporta tutti i metodi che Next gestisce (un metodo non
  * esportato lo gestirebbe Next da solo, anche con la rotta spenta). Le notifiche delle schede

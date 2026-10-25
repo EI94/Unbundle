@@ -1,26 +1,33 @@
 /**
  * Dove mettere il codice accanto a ogni punto della matrice Valore × Costo (docs/use-case/
- * DESIGN.md §4.4; H4p): ogni punto ha la sua etichetta, e le etichette non si coprono tra loro
- * né coprono gli altri punti, finché c'è posto.
+ * DESIGN.md §4.4; H4p) e accanto a ogni bolla di «Priorità › Benefici»: ogni punto ha la sua
+ * etichetta, e le etichette non si coprono tra loro né coprono gli altri punti, finché c'è posto.
  *
- * Il calcolo è in pixel su un quadrato di `boxPx` (il più piccolo in cui la matrice si disegna,
- * al telefono): su un quadrato più grande i punti si allontanano e le etichette, che restano
- * della stessa misura, si coprono ancora meno. Per ogni punto si provano le posizioni in ordine
- * (a destra, a sinistra, sopra, sotto, poi le diagonali, poi le stesse più lontane) e si prende la
- * prima libera e dentro il quadrato; se nessuna è libera, quella che copre meno. Lo spostamento
- * è dal centro del punto all'angolo in alto a sinistra dell'etichetta, in pixel.
+ * Il calcolo è in pixel, sul riquadro più piccolo in cui il grafico si disegna (`boxPx` di
+ * larghezza, `aspect` l'altezza sulla larghezza) e, con `maxBoxPx`, anche su quello più grande e
+ * su uno in mezzo: le etichette hanno una misura fissa mentre i punti si allontanano, e due
+ * etichette messe una sotto e una sopra (incrociate) libere sul riquadro piccolo possono coprirsi
+ * su quello grande. Per ogni punto si provano le posizioni in ordine (a destra, a sinistra, sopra,
+ * sotto, poi le diagonali, poi le stesse più lontane) e si prende la prima libera e dentro il
+ * riquadro a ogni larghezza. Se nessuna lo è, la prima libera sul riquadro più grande (lo schermo
+ * largo, dove il grafico si guarda di più); se nemmeno quella, quella che copre meno lì e poi sugli altri:
+ * `crowded` dice che copre qualcosa sul riquadro più grande, `crowdedSmall` sui più piccoli. Un
+ * punto può avere il suo raggio (`radiusPx`, le bolle). Lo spostamento è dal centro del punto
+ * all'angolo in alto a sinistra dell'etichetta, in pixel.
  *
  * Modulo puro: nessun import.
  */
 
 export interface MatrixLabelInput {
   id: string;
-  /** Posizione del punto in percentuale del quadrato, da 0 a 100 (sinistra → destra). */
+  /** Posizione del punto in percentuale del riquadro, da 0 a 100 (sinistra → destra). */
   left: number;
-  /** Posizione del punto in percentuale del quadrato, da 0 a 100 (alto → basso). */
+  /** Posizione del punto in percentuale del riquadro, da 0 a 100 (alto → basso). */
   top: number;
   /** Il testo dell'etichetta: il codice. */
   text: string;
+  /** Raggio del punto in pixel (le bolle); senza, `dotPx / 2`. */
+  radiusPx?: number;
 }
 
 export interface MatrixLabelPlacement {
@@ -28,13 +35,19 @@ export interface MatrixLabelPlacement {
   dx: number;
   /** Spostamento verticale, in pixel. */
   dy: number;
-  /** L'etichetta copre qualcosa anche nella posizione scelta: si disegna lo stesso, più tenue. */
+  /** L'etichetta copre qualcosa anche nella posizione scelta, sul riquadro più grande. */
   crowded: boolean;
+  /** …oppure su un riquadro più piccolo (senza `maxBoxPx`: uguale a `crowded`). */
+  crowdedSmall: boolean;
 }
 
 export interface MatrixLabelOptions {
-  /** Lato del quadrato più piccolo, in pixel. */
+  /** Larghezza del riquadro più piccolo, in pixel. */
   boxPx?: number;
+  /** Larghezza del riquadro più grande, in pixel (predefinita `boxPx`). */
+  maxBoxPx?: number;
+  /** Altezza del riquadro sulla larghezza (predefinita 1, un quadrato). */
+  aspect?: number;
   /** Larghezza di un carattere dell'etichetta (monospazio, 10 px), in pixel. */
   charPx?: number;
   /** Altezza dell'etichetta, in pixel. */
@@ -58,9 +71,9 @@ function overlap(a: Rect, b: Rect): number {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
-/** Quanto l'etichetta esce dal quadrato, come area. */
-function outside(rect: Rect, box: number): number {
-  const inside = overlap(rect, { x: 0, y: 0, w: box, h: box });
+/** Quanto l'etichetta esce dal riquadro, come area. */
+function outside(rect: Rect, boxW: number, boxH: number): number {
+  const inside = overlap(rect, { x: 0, y: 0, w: boxW, h: boxH });
   return rect.w * rect.h - inside;
 }
 
@@ -88,26 +101,55 @@ function candidates(w: number, h: number, r: number): Array<[number, number]> {
  */
 export function placeMatrixLabels(points: readonly MatrixLabelInput[], options: MatrixLabelOptions = {}): Map<string, MatrixLabelPlacement> {
   const { boxPx, charPx, heightPx, dotPx } = { ...DEFAULTS, ...options };
-  const centers = points.map((point) => ({ id: point.id, x: (point.left / 100) * boxPx, y: (point.top / 100) * boxPx }));
-  const dots: Rect[] = centers.map((c) => ({ x: c.x - dotPx / 2, y: c.y - dotPx / 2, w: dotPx, h: dotPx }));
-  const placed: Rect[] = [];
+  const maxBox = Math.max(boxPx, options.maxBoxPx ?? boxPx);
+  const aspect = options.aspect && options.aspect > 0 ? options.aspect : 1;
+  const widths = maxBox > boxPx ? [boxPx, (boxPx + maxBox) / 2, maxBox] : [boxPx];
+  const radius = (point: MatrixLabelInput) => (typeof point.radiusPx === "number" && point.radiusPx > 0 ? point.radiusPx : dotPx / 2);
+  const scales = widths.map((boxW) => {
+    const boxH = boxW * aspect;
+    const centers = points.map((point) => ({ x: (point.left / 100) * boxW, y: (point.top / 100) * boxH }));
+    const dots: Rect[] = centers.map((c, i) => {
+      const r = radius(points[i]);
+      return { x: c.x - r, y: c.y - r, w: 2 * r, h: 2 * r };
+    });
+    return { boxW, boxH, centers, dots };
+  });
+  const placed: Array<{ index: number; dx: number; dy: number; w: number; h: number }> = [];
   const out = new Map<string, MatrixLabelPlacement>();
   points.forEach((point, index) => {
-    const center = centers[index];
     const w = Math.ceil([...point.text].length * charPx) + 4;
     const h = heightPx;
-    let best: { dx: number; dy: number; cost: number } | null = null;
-    for (const [dx, dy] of candidates(w, h, dotPx / 2)) {
+    const costAt = (scale: (typeof scales)[number], dx: number, dy: number) => {
+      const center = scale.centers[index];
       const rect = { x: center.x + dx, y: center.y + dy, w, h };
-      let cost = outside(rect, boxPx) * 4;
-      for (const [i, dot] of dots.entries()) if (i !== index) cost += overlap(rect, dot) * 2;
-      for (const other of placed) cost += overlap(rect, other);
-      if (!best || cost < best.cost) best = { dx, dy, cost };
-      if (cost === 0) break;
+      let cost = outside(rect, scale.boxW, scale.boxH) * 4;
+      for (const [i, dot] of scale.dots.entries()) if (i !== index) cost += overlap(rect, dot) * 2;
+      for (const other of placed) {
+        const at = scale.centers[other.index];
+        cost += overlap(rect, { x: at.x + other.dx, y: at.y + other.dy, w: other.w, h: other.h });
+      }
+      return cost;
+    };
+    // La prima posizione libera a ogni larghezza; se non c'è, la prima libera sul riquadro più
+    // grande (nell'ordine di preferenza: a destra prima di tutto); se nemmeno quella, la meno coperta.
+    type Choice = { dx: number; dy: number; large: number; small: number };
+    let perfect: Choice | null = null;
+    let largeFree: Choice | null = null;
+    let least: Choice | null = null;
+    for (const [dx, dy] of candidates(w, h, radius(point))) {
+      const large = costAt(scales[scales.length - 1], dx, dy);
+      const small = scales.slice(0, -1).reduce((sum, scale) => sum + costAt(scale, dx, dy), 0);
+      const choice = { dx, dy, large, small };
+      if (large === 0 && small === 0) {
+        perfect = choice;
+        break;
+      }
+      if (large === 0 && !largeFree) largeFree = choice;
+      if (!least || large < least.large || (large === least.large && small < least.small)) least = choice;
     }
-    const chosen = best!;
-    placed.push({ x: center.x + chosen.dx, y: center.y + chosen.dy, w, h });
-    out.set(point.id, { dx: Math.round(chosen.dx), dy: Math.round(chosen.dy), crowded: chosen.cost > 0 });
+    const chosen = (perfect ?? largeFree ?? least)!;
+    placed.push({ index, dx: chosen.dx, dy: chosen.dy, w, h });
+    out.set(point.id, { dx: Math.round(chosen.dx), dy: Math.round(chosen.dy), crowded: chosen.large > 0, crowdedSmall: chosen.small > 0 || chosen.large > 0 });
   });
   return out;
 }

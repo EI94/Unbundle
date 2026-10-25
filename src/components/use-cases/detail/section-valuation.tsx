@@ -1,7 +1,8 @@
 import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
-import { NOT_ESTIMATED_LABEL, ZONE_LABEL } from "@/lib/use-cases/labels";
+import { zoneText } from "@/lib/use-cases/format";
 import type { Dimension, ValuationModel } from "@/lib/use-cases/valuation";
-import type { UseCaseDetail } from "@/lib/use-cases/views";
+import type { ValueParams } from "@/lib/use-cases/value-model";
+import { hubValueParams, type UseCaseDetail } from "@/lib/use-cases/views";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
 import { cn } from "@/lib/utils";
 import { CostFigure } from "../cost-figure";
@@ -77,9 +78,13 @@ export interface SectionValuationProps {
   workspaceId: string;
   detail: Pick<
     UseCaseDetail,
-    "id" | "version" | "value" | "cost" | "zone" | "intake" | "risks" | "aiSuggestion" | "customScores" | "valueEurYear" | "costEurOnce" | "costBand"
+    "id" | "version" | "value" | "cost" | "zone" | "intake" | "risks" | "aiSuggestion" | "customScores" | "valueEurYear" | "costEurOnce" | "costBand" | "valueModel"
   >;
   model: Pick<ValuationModel, "dimensions">;
+  /** Le ipotesi di calcolo del workspace (`getUseCaseDetail`); assenti: le predefinite. */
+  valueParams?: ValueParams;
+  /** Oggi a Roma, per le ipotesi predefinite. */
+  today?: string;
   /** Le fasce del costo del workspace (D15, `resolveCostBands`). */
   costBands?: readonly CostBandInfo[];
   esgEnabled: boolean;
@@ -97,8 +102,20 @@ export interface SectionValuationProps {
  * «Conta la valutazione del team.»), i chip di rischio e «Modifica valutazione», che apre il
  * modulo sul posto. Il costo usa le fasce del workspace (D15).
  */
-export function SectionValuation({ workspaceId, detail, model, costBands = COST_BANDS, esgEnabled, canEdit, id = "valutazione", className }: SectionValuationProps) {
+export function SectionValuation({
+  workspaceId,
+  detail,
+  model,
+  costBands = COST_BANDS,
+  valueParams,
+  today,
+  esgEnabled,
+  canEdit,
+  id = "valutazione",
+  className,
+}: SectionValuationProps) {
   const headingId = `${id}-titolo`;
+  const params = valueParams ?? hubValueParams({ today: today ?? new Date().toISOString().slice(0, 10) });
   const groups = valuationKpiGroups(model, { esgEnabled });
   return (
     <section id={id} aria-labelledby={headingId} data-slot="section-valuation" className={cn("scroll-mt-28 space-y-4", className)}>
@@ -111,7 +128,7 @@ export function SectionValuation({ workspaceId, detail, model, costBands = COST_
       </div>
       <p className="text-sm">
         <span className="text-muted-foreground">{SECTION_VALUATION_TEXT.zone}: </span>
-        <span className={cn(detail.zone ? "font-medium" : "text-muted-foreground")}>{detail.zone ? ZONE_LABEL[detail.zone] : NOT_ESTIMATED_LABEL}</span>
+        <span className={cn(detail.zone ? "font-medium" : "text-muted-foreground")}>{zoneText(detail.zone, detail.value)}</span>
         {detail.zone ? <span className="text-muted-foreground"> {SECTION_VALUATION_TEXT.zoneHint}</span> : null}
       </p>
       <ValuationEditor
@@ -123,6 +140,8 @@ export function SectionValuation({ workspaceId, detail, model, costBands = COST_
         savedCost={{ costEurOnce: detail.costEurOnce, costBand: detail.costBand }}
         costBands={costBands}
         suggestion={detail.aiSuggestion ? { scores: detail.aiSuggestion.scores, rationale: detail.aiSuggestion.rationale, at: detail.aiSuggestion.at } : null}
+        valueModel={detail.valueModel}
+        valueParams={params}
         estimateLines={unofficialEstimateLines(detail.intake)}
         canEdit={canEdit}
         risks={<RiskChips risks={detail.risks} />}

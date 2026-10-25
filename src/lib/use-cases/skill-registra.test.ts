@@ -18,8 +18,8 @@ const skill = readFileSync(join(ROOT, SKILL_SOURCE_PATH), "utf8");
 
 /** Nome del connettore del MCP del team in Claude: il prefisso dei tool nella skill. */
 const TEAM_MCP_SERVER_NAME = "Unbundle Use case";
-/** I 6 tool del MCP del team (DESIGN §9.4). */
-const TEAM_MCP_TOOL_NAMES = ["search_use_cases", "get_use_case", "create_use_cases", "update_use_case", "decide_use_case", "set_priority"] as const;
+/** Gli 8 tool del MCP del team (DESIGN §9.4, più «Cosa serve»). */
+const TEAM_MCP_TOOL_NAMES = ["search_use_cases", "get_use_case", "create_use_cases", "update_use_case", "decide_use_case", "set_priority", "list_needs", "save_needs"] as const;
 /** I soli tool che la skill usa: cerca i doppioni e crea. Non modifica e non decide. */
 const SKILL_TOOL_NAMES = ["search_use_cases", "create_use_cases"] as const;
 /** I tool come li cita la skill. */
@@ -255,7 +255,7 @@ test("frontmatter: solo name e description; name registra-ai-lab; descrizione so
 
 test("tool: solo il MCP del team, sempre con il nome completo, e solo cerca e crea", () => {
   assert.equal(TEAM_MCP_SERVER_NAME, "Unbundle Use case");
-  assert.deepEqual([...TEAM_MCP_TOOL_NAMES].sort(), ["create_use_cases", "decide_use_case", "get_use_case", "search_use_cases", "set_priority", "update_use_case"]);
+  assert.deepEqual([...TEAM_MCP_TOOL_NAMES].sort(), ["create_use_cases", "decide_use_case", "get_use_case", "list_needs", "save_needs", "search_use_cases", "set_priority", "update_use_case"]);
   for (const reference of SKILL_TOOL_REFERENCES) assert.ok(skill.includes(reference), `manca ${reference}`);
   assert.deepEqual(SKILL_TOOL_REFERENCES, ["Unbundle Use case:search_use_cases", "Unbundle Use case:create_use_cases"]);
   assert.deepEqual(bareToolMentions(skill), [], "ogni tool con il prefisso «Unbundle Use case:»");

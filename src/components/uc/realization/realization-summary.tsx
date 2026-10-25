@@ -15,9 +15,21 @@ import { REALIZATION_TEXT, type RealizationDossierView } from "@/lib/uc/views/re
  *
  * Riceve i dati come props (`realizationForUseCase` di `uc-nav.ts`). `primary`:
  * «Apri il dossier» come pulsante pieno (predefinito) o `outline`, se la
- * schermata ha già il suo pulsante pieno.
+ * schermata ha già il suo pulsante pieno. `hideEmptyFigures`: senza nessuna
+ * delle tre cifre, niente «da calcolare» (la scheda dello use case con
+ * «Benefici e costi» ha già le sue cifre nella Valutazione, poco sopra).
  */
-export function RealizationSummary({ dossier, primary = true, className }: { dossier: RealizationDossierView; primary?: boolean; className?: string }) {
+export function RealizationSummary({
+  dossier,
+  primary = true,
+  hideEmptyFigures = false,
+  className,
+}: {
+  dossier: RealizationDossierView;
+  primary?: boolean;
+  hideEmptyFigures?: boolean;
+  className?: string;
+}) {
   const figures = [
     { label: REALIZATION_TEXT.cost, value: dossier.figures.cost },
     { label: REALIZATION_TEXT.benefit, value: dossier.figures.benefit },
@@ -43,14 +55,16 @@ export function RealizationSummary({ dossier, primary = true, className }: { dos
           {REALIZATION_TEXT.nextMilestone}: <span className="text-foreground tabular-nums">{dossier.nextMilestone}</span>
         </p>
       ) : null}
-      <dl className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
-        {figures.map((f) => (
-          <div key={f.label} className="min-w-0">
-            <dt className="text-xs text-muted-foreground">{f.label}</dt>
-            <dd className={cn("mt-0.5 text-base tabular-nums", f.value ? "font-semibold" : "text-muted-foreground")}>{f.value ?? REALIZATION_TEXT.toCompute}</dd>
-          </div>
-        ))}
-      </dl>
+      {hideEmptyFigures && figures.every((f) => !f.value) ? null : (
+        <dl className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
+          {figures.map((f) => (
+            <div key={f.label} className="min-w-0">
+              <dt className="text-xs text-muted-foreground">{f.label}</dt>
+              <dd className={cn("mt-0.5 text-base tabular-nums", f.value ? "font-semibold" : "text-muted-foreground")}>{f.value ?? REALIZATION_TEXT.toCompute}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {dossier.closed && <p className="text-sm text-muted-foreground">{REALIZATION_TEXT.closed}</p>}
       {dossier.href ? (
         <Button variant={primary ? "default" : "outline"} className="h-11 sm:h-8" render={<Link href={dossier.href} />} nativeButton={false}>

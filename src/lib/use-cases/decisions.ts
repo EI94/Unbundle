@@ -82,6 +82,8 @@ export interface DecisionCard extends DecisionColumns {
   valueEurYear?: number | null;
   costEurOnce?: number | null;
   costBand?: number | null;
+  /** «Benefici e costi» (`value_model`): un modello valido è una valutazione del team. */
+  valueModel?: unknown;
 }
 
 export interface DecisionContext {

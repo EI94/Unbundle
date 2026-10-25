@@ -73,7 +73,7 @@ export function realizationVariant(
 export interface SectionRealizationProps {
   workspaceId: string;
   item: Pick<DecisionItem, "id" | "code" | "version" | "phase" | "subState" | "kind" | "phaseLabel"> &
-    Pick<UseCaseDetail, "tone" | "realizedOn"> & { dossier: HubDossier | null };
+    Pick<UseCaseDetail, "tone" | "realizedOn"> & { dossier: HubDossier | null; valueModel?: UseCaseDetail["valueModel"] };
   today: string;
   dossierRead: DossierRead;
   /** Solo Lateral Space con ruolo da revisore (D3). */
@@ -152,7 +152,11 @@ export function SectionRealization({
 
       {variant === "lo_avvia_ls" ? <p className="text-sm text-muted-foreground">{SECTION_REALIZATION_TEXT.startedByLs}</p> : null}
 
-      {variant === "riepilogo" && realization?.state === "avviata" ? <RealizationSummary dossier={realization.dossier} primary={!primaryTaken} /> : null}
+      {variant === "riepilogo" && realization?.state === "avviata" ? (
+        // Senza il conto del dossier, una scheda con «Benefici e costi» non ripete «da calcolare»: le
+        // sue cifre sono nella Valutazione, poco sopra.
+        <RealizationSummary dossier={realization.dossier} primary={!primaryTaken} hideEmptyFigures={Boolean(item.valueModel)} />
+      ) : null}
 
       {variant === "dossier" && dossier ? (
         <div className="space-y-2 text-sm">

@@ -1,7 +1,7 @@
 "use client";
 
-import { useId, useState, type FormEvent, type ReactNode } from "react";
-import { Info } from "lucide-react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { ChevronRight, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,7 @@ import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import type { DecisionItem } from "@/lib/use-cases/decision-ui";
 import { VALUE_EUR_YEAR_MAX, parseEuroAmount } from "@/lib/use-cases/inputs";
 import type { CostInput as CostValue } from "@/lib/use-cases/types";
+import type { ValueModel, ValueParams } from "@/lib/use-cases/value-model";
 import type { HubAiSuggestion } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { CostInput } from "../cost-input";
@@ -20,6 +21,8 @@ import { useDecisionRunner } from "../decision-buttons";
 import { ESTIMATES_TEXT } from "@/lib/use-cases/estimates";
 import { AiSuggestionBox, hasAiSuggestion } from "./ai-suggestion-box";
 import type { ValuationKpiGroup } from "./section-valuation";
+import { draftErrorsFromService, draftFromModel, modelFromDraft, sameValueModel, type ValueModelDraft } from "./value-model-draft";
+import { ValueModelEditor } from "./value-model-editor";
 
 /** I testi del modulo (§6.3, §14.3). */
 export const VALUATION_FORM_TEXT = Object.freeze({
@@ -30,6 +33,8 @@ export const VALUATION_FORM_TEXT = Object.freeze({
   valuePerYear: "Valore all'anno (facoltativo)",
   valuePerYearPlaceholder: "es. 60000",
   rubric: "Come si dà il punteggio",
+  scores: "Punteggi (facoltativi)",
+  scoresHint: "Con «Benefici e costi» Valore e costo vengono da lì.",
 });
 
 /** I punteggi del modulo: per dimensione, per KPI, da 1 a 5; un KPI assente è «Nessun valore». */
@@ -106,18 +111,22 @@ export interface ValuationBase {
   kpis: KpiValues;
   valueEurYear: number | null;
   cost: CostValue;
+  /** «Benefici e costi» salvato; null senza modello. */
+  model: ValueModel | null;
 }
 
 /** La base del modulo dalle prop della pagina. */
-export function valuationBaseOf(version: number, kpis: KpiValues, valueEurYear: number | null, savedCost: SavedCost): ValuationBase {
+export function valuationBaseOf(version: number, kpis: KpiValues, valueEurYear: number | null, savedCost: SavedCost, model: ValueModel | null = null): ValuationBase {
   const cost = costInputValue(initialCostInputState(savedCost));
-  return { version, kpis: structuredClone(kpis), valueEurYear, cost: cost.ok ? cost.value : null };
+  return { version, kpis: structuredClone(kpis), valueEurYear, cost: cost.ok ? cost.value : null, model };
 }
 
 export type ValuationPayload = {
   kpis?: Partial<Record<ValuationKpiGroup["dimension"], Record<string, number | null>>>;
   valueEurYear?: string | null;
   cost?: CostValue;
+  /** «Benefici e costi»: solo se cambiato; null lo toglie. */
+  model?: ValueModel | null;
 };
 
 /**
@@ -128,10 +137,12 @@ export type ValuationPayload = {
  */
 export function valuationPayload(input: {
   groups: readonly ValuationKpiGroup[];
-  base: Pick<ValuationBase, "kpis" | "valueEurYear" | "cost">;
+  base: Pick<ValuationBase, "kpis" | "valueEurYear" | "cost"> & Partial<Pick<ValuationBase, "model">>;
   values: KpiValues;
   valueText: string;
   cost: CostValue;
+  /** Il modello della bozza (`modelFromDraft`); assente se il modulo non lo porta. */
+  model?: ValueModel | null;
 }): ValuationPayload {
   const out: ValuationPayload = {};
   const kpis = changedKpis(input.groups, input.base.kpis, input.values);
@@ -141,7 +152,13 @@ export function valuationPayload(input: {
     out.valueEurYear = value === "" ? null : value;
   }
   if (!sameCost(input.cost, input.base.cost)) out.cost = input.cost;
+  if (input.model !== undefined && !sameValueModel(input.model, input.base.model ?? null)) out.model = input.model;
   return Object.keys(out).length ? out : { kpis: {} };
+}
+
+/** Le chiavi degli errori che stanno sotto «Punteggi (facoltativi)»: un errore lì apre il riquadro. */
+function isScoresError(key: string): boolean {
+  return key === "valueEurYear" || key === "cost" || key.startsWith("kpis.");
 }
 
 /**
@@ -175,6 +192,10 @@ export interface ValuationFormProps {
   valueEurYear: number | null;
   savedCost: SavedCost;
   costBands?: readonly CostBandInfo[];
+  /** «Benefici e costi» salvato (`value_model`); null senza modello. */
+  valueModel?: ValueModel | null;
+  /** Le ipotesi del workspace, per le righe calcolate dell'editor. */
+  valueParams: ValueParams;
   onDone: () => void;
   className?: string;
 }
@@ -193,9 +214,26 @@ export interface ValuationFormProps {
  * scritti, gli altri mostrano i valori appena salvati dal collega, e il salvataggio dopo non li
  * riporta indietro.
  */
-export function ValuationForm({ workspaceId, item, groups, saved, initial, valueEurYear, savedCost, costBands = COST_BANDS, onDone, className }: ValuationFormProps) {
+export function ValuationForm({
+  workspaceId,
+  item,
+  groups,
+  saved,
+  initial,
+  valueEurYear,
+  savedCost,
+  costBands = COST_BANDS,
+  valueModel = null,
+  valueParams,
+  onDone,
+  className,
+}: ValuationFormProps) {
   const formId = useId();
-  const [base, setBase] = useState<ValuationBase>(() => valuationBaseOf(item.version, saved, valueEurYear, savedCost));
+  const [base, setBase] = useState<ValuationBase>(() => valuationBaseOf(item.version, saved, valueEurYear, savedCost, valueModel));
+  const [draft, setDraft] = useState<ValueModelDraft>(() => draftFromModel(valueModel));
+  const [modelErrors, setModelErrors] = useState<Record<string, string>>({});
+  // I punteggi di oggi aperti se la scheda non ha un modello ma ha già una valutazione, oppure se arriva l'AI.
+  const [scoresOpen, setScoresOpen] = useState(() => valueModel === null && (Object.keys(saved).length > 0 || valueEurYear !== null || base.cost !== null || initial !== saved));
   const [values, setValues] = useState<KpiValues>(() => structuredClone(initial));
   const [valueText, setValueText] = useState(valueEurYear === null ? "" : String(valueEurYear));
   const [cost, setCost] = useState<CostValueResult>(() => costInputValue(initialCostInputState(savedCost)));
@@ -204,13 +242,24 @@ export function ValuationForm({ workspaceId, item, groups, saved, initial, value
   const [stale, setStale] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { run, pending } = useDecisionRunner();
+  const formRef = useRef<HTMLFormElement>(null);
+  // Dopo un «Salva» non riuscito il fuoco va al primo campo con un errore (anche dentro un riquadro
+  // che l'errore ha appena aperto): un contatore, perché lo stesso errore può tornare due volte.
+  const [focusErrors, setFocusErrors] = useState(0);
+  useEffect(() => {
+    if (focusErrors === 0) return;
+    formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [focusErrors]);
 
   // Dopo una versione superata, appena la pagina porta una versione nuova: la base si aggiorna e
   // ciò che la persona non aveva toccato prende i valori riletti (stato aggiornato nel render,
   // come chiede React per uno stato che dipende dalle prop).
   if (stale && item.version !== base.version) {
-    const fresh = valuationBaseOf(item.version, saved, valueEurYear, savedCost);
+    const fresh = valuationBaseOf(item.version, saved, valueEurYear, savedCost, valueModel);
     setValues(rebaseKpis(groups, base.kpis, fresh.kpis, values));
+    // «Benefici e costi» non toccato prende il modello appena riletto; toccato resta com'è.
+    const drafted = modelFromDraft(draft);
+    if (drafted.ok && sameValueModel(drafted.model, base.model)) setDraft(draftFromModel(fresh.model));
     if (sameValueText(valueText, base.valueEurYear)) setValueText(fresh.valueEurYear === null ? "" : String(fresh.valueEurYear));
     if (cost.ok && sameCost(cost.value, base.cost) && !sameCost(fresh.cost, base.cost)) {
       setCost({ ok: true, value: fresh.cost });
@@ -236,18 +285,29 @@ export function ValuationForm({ workspaceId, item, groups, saved, initial, value
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
+    const drafted = modelFromDraft(draft);
+    if (!drafted.ok) setModelErrors(drafted.errors);
     if (!cost.ok) {
       setErrors({ cost: cost.message });
+      setScoresOpen(true);
+    }
+    if (!drafted.ok || !cost.ok) {
+      setFocusErrors((n) => n + 1);
       return;
     }
     setErrors({});
-    const payload = valuationPayload({ groups, base, values, valueText, cost: cost.value });
+    setModelErrors({});
+    const payload = valuationPayload({ groups, base, values, valueText, cost: cost.value, model: drafted.model });
     // La versione della base, non quella della pagina riletta: `run` la alza solo dopo le
     // scritture riuscite di questa pagina (`createDecisionWriteQueue`).
     const result = await run({ id: item.id, version: base.version }, (version) => saveValuationAction(workspaceId, item.id, version, payload));
     if (result.ok) onDone();
-    else if (result.fieldErrors) setErrors(result.fieldErrors);
-    else if (result.error === "versione_superata") setStale(true);
+    else if (result.fieldErrors) {
+      setErrors(result.fieldErrors);
+      setModelErrors(draftErrorsFromService(result.fieldErrors));
+      if (Object.keys(result.fieldErrors).some(isScoresError)) setScoresOpen(true);
+      setFocusErrors((n) => n + 1);
+    } else if (result.error === "versione_superata") setStale(true);
   }
 
   const valueId = `${formId}-valore`;
@@ -255,106 +315,132 @@ export function ValuationForm({ workspaceId, item, groups, saved, initial, value
   const generalError = errors.payload ?? null;
 
   return (
-    <form onSubmit={submit} noValidate data-slot="valuation-form" className={cn("space-y-5 rounded-lg border border-border p-3 sm:p-4", className)}>
-      {groups.map((group) => (
-        <fieldset key={group.dimension} className="space-y-3">
-          <legend className="mb-2 text-sm font-medium">{group.title}</legend>
-          {group.kpis.map((kpi) => {
-            const fieldId = `${formId}-${group.dimension}-${kpi.id}`;
-            const errorKey = `kpis.${group.dimension}.${kpi.id}`;
-            const current = values[group.dimension]?.[kpi.id];
-            const error = errors[errorKey] ?? null;
-            return (
-              <div key={kpi.id} className="grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center sm:gap-3">
-                <div className="flex min-w-0 items-center gap-1">
-                  <Label htmlFor={fieldId} className="min-w-0">
-                    {kpi.label}
-                  </Label>
-                  {kpi.description ? (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            type="button"
-                            aria-label={`${VALUATION_FORM_TEXT.rubric}: ${kpi.label}`}
-                            className="inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-7"
-                          />
-                        }
-                      >
-                        <Info aria-hidden className="size-4" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-sm">{kpi.description}</TooltipContent>
-                    </Tooltip>
-                  ) : null}
-                </div>
-                <div className="min-w-0 space-y-1">
-                  <Select
-                    items={[{ value: NO_VALUE, label: VALUATION_FORM_TEXT.noValue }, ...SCORE_CHOICES.map((choice) => ({ value: choice, label: choice }))]}
-                    value={current === undefined ? NO_VALUE : String(current)}
-                    onValueChange={(next) => setKpi(group.dimension, kpi.id, next)}
-                  >
-                    <SelectTrigger id={fieldId} aria-invalid={error ? true : undefined} className="min-h-11 w-full sm:min-h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_VALUE}>{VALUATION_FORM_TEXT.noValue}</SelectItem>
-                      {SCORE_CHOICES.map((choice) => (
-                        <SelectItem key={choice} value={choice}>
-                          {choice}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {error ? (
-                    <p role="alert" className="text-sm text-destructive">
-                      {error}
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-        </fieldset>
-      ))}
-
-      <div className="space-y-1.5">
-        <Label htmlFor={valueId}>{VALUATION_FORM_TEXT.valuePerYear}</Label>
-        <div className="relative w-full max-w-60">
-          <Input
-            id={valueId}
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder={VALUATION_FORM_TEXT.valuePerYearPlaceholder}
-            value={valueText}
-            aria-describedby={errors.valueEurYear ? valueErrorId : undefined}
-            aria-invalid={errors.valueEurYear ? true : undefined}
-            className="pr-8"
-            onChange={(event) => {
-              setValueText(event.target.value);
-              setErrors((current) => withoutError(current, "valueEurYear"));
-            }}
-          />
-          <span aria-hidden className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
-            €
-          </span>
-        </div>
-        {errors.valueEurYear ? (
-          <p id={valueErrorId} role="alert" className="text-sm text-destructive">
-            {errors.valueEurYear}
-          </p>
-        ) : null}
-      </div>
-
-      <CostInput
-        key={costKey}
-        defaultValue={savedCost}
-        bands={costBands}
-        error={errors.cost ?? null}
-        onValueChange={(result) => {
-          setCost(result);
-          setErrors((current) => withoutError(current, "cost"));
+    <form ref={formRef} onSubmit={submit} noValidate data-slot="valuation-form" className={cn("space-y-5 rounded-lg border border-border p-3 sm:p-4", className)}>
+      <ValueModelEditor
+        draft={draft}
+        errors={modelErrors}
+        params={valueParams}
+        onChange={(next) => {
+          setDraft(next);
+          setModelErrors({});
         }}
       />
+
+      <details
+        open={scoresOpen}
+        onToggle={(event) => setScoresOpen(event.currentTarget.open)}
+        data-slot="valuation-scores"
+        className="group border-t border-border pt-4"
+      >
+        <summary className="flex cursor-pointer list-none items-start gap-2 text-sm outline-none marker:hidden focus-visible:underline [&::-webkit-details-marker]:hidden">
+          <ChevronRight aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="font-semibold">{VALUATION_FORM_TEXT.scores}</span>
+            <span className="text-xs text-muted-foreground">{VALUATION_FORM_TEXT.scoresHint}</span>
+          </span>
+        </summary>
+        <div className="mt-4 space-y-5">
+          {groups.map((group) => (
+            <fieldset key={group.dimension} className="space-y-3">
+              <legend className="mb-2 text-sm font-medium">{group.title}</legend>
+              {group.kpis.map((kpi) => {
+                const fieldId = `${formId}-${group.dimension}-${kpi.id}`;
+                const errorKey = `kpis.${group.dimension}.${kpi.id}`;
+                const current = values[group.dimension]?.[kpi.id];
+                const error = errors[errorKey] ?? null;
+                return (
+                  <div key={kpi.id} className="grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center sm:gap-3">
+                    <div className="flex min-w-0 items-center gap-1">
+                      <Label htmlFor={fieldId} className="min-w-0">
+                        {kpi.label}
+                      </Label>
+                      {kpi.description ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <button
+                                type="button"
+                                aria-label={`${VALUATION_FORM_TEXT.rubric}: ${kpi.label}`}
+                                className="inline-flex size-11 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-7"
+                              />
+                            }
+                          >
+                            <Info aria-hidden className="size-4" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-sm">{kpi.description}</TooltipContent>
+                        </Tooltip>
+                      ) : null}
+                    </div>
+                    <div className="min-w-0 space-y-1">
+                      <Select
+                        items={[{ value: NO_VALUE, label: VALUATION_FORM_TEXT.noValue }, ...SCORE_CHOICES.map((choice) => ({ value: choice, label: choice }))]}
+                        value={current === undefined ? NO_VALUE : String(current)}
+                        onValueChange={(next) => setKpi(group.dimension, kpi.id, next)}
+                      >
+                        <SelectTrigger id={fieldId} aria-invalid={error ? true : undefined} className="min-h-11 w-full sm:min-h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_VALUE}>{VALUATION_FORM_TEXT.noValue}</SelectItem>
+                          {SCORE_CHOICES.map((choice) => (
+                            <SelectItem key={choice} value={choice}>
+                              {choice}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {error ? (
+                        <p role="alert" className="text-sm text-destructive">
+                          {error}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </fieldset>
+          ))}
+
+          <div className="space-y-1.5">
+            <Label htmlFor={valueId}>{VALUATION_FORM_TEXT.valuePerYear}</Label>
+            <div className="relative w-full max-w-60">
+              <Input
+                id={valueId}
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder={VALUATION_FORM_TEXT.valuePerYearPlaceholder}
+                value={valueText}
+                aria-describedby={errors.valueEurYear ? valueErrorId : undefined}
+                aria-invalid={errors.valueEurYear ? true : undefined}
+                className="pr-8"
+                onChange={(event) => {
+                  setValueText(event.target.value);
+                  setErrors((current) => withoutError(current, "valueEurYear"));
+                }}
+              />
+              <span aria-hidden className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+                €
+              </span>
+            </div>
+            {errors.valueEurYear ? (
+              <p id={valueErrorId} role="alert" className="text-sm text-destructive">
+                {errors.valueEurYear}
+              </p>
+            ) : null}
+          </div>
+
+          <CostInput
+            key={costKey}
+            defaultValue={savedCost}
+            bands={costBands}
+            error={errors.cost ?? null}
+            onValueChange={(result) => {
+              setCost(result);
+              setErrors((current) => withoutError(current, "cost"));
+            }}
+          />
+        </div>
+      </details>
 
       {generalError ? (
         <p role="alert" className="text-sm text-destructive">
@@ -384,6 +470,10 @@ export interface ValuationEditorProps {
   savedCost: SavedCost;
   costBands?: readonly CostBandInfo[];
   suggestion: Pick<HubAiSuggestion, "scores" | "rationale" | "at"> | null;
+  /** «Benefici e costi» salvato (`value_model`); null senza modello. */
+  valueModel?: ValueModel | null;
+  /** Le ipotesi del workspace, per le righe calcolate dell'editor. */
+  valueParams: ValueParams;
   /** `canEditValuation`. */
   canEdit: boolean;
   /** I chip di rischio, tra il suggerimento e «Modifica valutazione» (§6.3). */
@@ -399,7 +489,22 @@ export interface ValuationEditorProps {
  * sola, «Conta la valutazione del team.»), i chip di rischio e «Modifica valutazione», che apre il
  * modulo sul posto. «Usa questi valori» apre il modulo con i punteggi dell'AI, senza salvare.
  */
-export function ValuationEditor({ workspaceId, item, groups, personValues, valueEurYear, savedCost, costBands, suggestion, canEdit, risks, estimateLines = [], className }: ValuationEditorProps) {
+export function ValuationEditor({
+  workspaceId,
+  item,
+  groups,
+  personValues,
+  valueEurYear,
+  savedCost,
+  costBands,
+  suggestion,
+  valueModel = null,
+  valueParams,
+  canEdit,
+  risks,
+  estimateLines = [],
+  className,
+}: ValuationEditorProps) {
   const [editing, setEditing] = useState(false);
   const [prefill, setPrefill] = useState<KpiValues | null>(null);
   const [formKey, setFormKey] = useState(0);
@@ -458,6 +563,8 @@ export function ValuationEditor({ workspaceId, item, groups, personValues, value
             valueEurYear={valueEurYear}
             savedCost={savedCost}
             costBands={costBands}
+            valueModel={valueModel}
+            valueParams={valueParams}
             onDone={() => setEditing(false)}
           />
         ) : (

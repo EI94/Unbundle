@@ -10,7 +10,9 @@ import { questionLabel, type InfoAnswer } from "@/lib/use-cases/answers";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { DIALOG_COMMON_TEXT, PUBLIC_NOTE_TEXT, toDecisionItem, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
 import { ESTIMATES_TEXT } from "@/lib/use-cases/estimates";
+import type { PanelNeeds } from "@/lib/use-cases/needs";
 import { RISK_LABEL } from "@/lib/use-cases/labels";
+import { StatusDot } from "@/components/uc/ui/status-dot";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
 import type { HubItem } from "@/lib/use-cases/views";
 import { AnswerForm } from "./answer-form";
@@ -30,7 +32,13 @@ export const PANEL_TEXT = Object.freeze({
   openDetail: "Apri la scheda",
   close: "Chiudi",
   problem: "Problema",
+  needs: "Cosa serve",
 });
+
+/** «Altre 2 nella scheda»: le esigenze aperte oltre le tre del pannello. */
+export function moreNeedsText(count: number): string {
+  return count === 1 ? "Un'altra nella scheda" : `Altre ${count} nella scheda`;
+}
 
 export type UseCasePanelData =
   | {
@@ -41,6 +49,8 @@ export type UseCasePanelData =
       estimate: string[];
       /** Le risposte di chi ha proposto a «Serve info» (D17, `intake.risposte`), dalla più vecchia. */
       answers: InfoAnswer[];
+      /** «Cosa serve»: al massimo tre esigenze aperte dello use case (`panelNeeds`); null senza. */
+      needs?: PanelNeeds | null;
     }
   | {
       projection: "contributore";
@@ -127,6 +137,8 @@ export function UseCasePanel({ workspaceId, data, closeHref, detailHref, today, 
             candidates={data.candidates}
             estimate={data.estimate}
             answers={data.answers}
+            needs={data.needs ?? null}
+            needsHref={`${detailHref}?capitolo=cosa-serve`}
             today={today}
             canDecide={canDecide}
             bands={bands}
@@ -162,6 +174,8 @@ function ReviewerBody({
   candidates,
   estimate,
   answers,
+  needs,
+  needsHref,
   today,
   canDecide,
   bands,
@@ -173,6 +187,8 @@ function ReviewerBody({
   candidates: DuplicateCandidate[];
   estimate: string[];
   answers: readonly InfoAnswer[];
+  needs: PanelNeeds | null;
+  needsHref: string;
   today: string;
   canDecide: boolean;
   bands?: readonly CostBandInfo[];
@@ -221,6 +237,7 @@ function ReviewerBody({
           ) : null}
         </Block>
       ) : null}
+      {needs ? <PanelNeedsBlock needs={needs} href={needsHref} /> : null}
       {answered ? (
         <Block className="space-y-3 px-4 py-3">
           {item.publicNote ? (
@@ -246,6 +263,37 @@ function ReviewerBody({
         </Block>
       ) : null}
     </div>
+  );
+}
+
+/** «Cosa serve» nel pannello: al massimo tre esigenze aperte, con stato e scadenza; le altre nella scheda. */
+export function PanelNeedsBlock({ needs, href }: { needs: PanelNeeds; href: string }) {
+  return (
+    <Block>
+      <div data-slot="panel-needs" className="space-y-2">
+        <p className="text-sm font-medium">{PANEL_TEXT.needs}</p>
+        <ul className="space-y-2">
+          {needs.rows.map((row) => (
+            <li key={row.id} data-need={row.id} className="space-y-0.5">
+              <p className="text-sm break-words">{row.title}</p>
+              <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                <StatusDot tone={row.status.tone} label={row.status.label} />
+                {row.due ? <span className="tabular-nums">{row.due}</span> : null}
+              </p>
+            </li>
+          ))}
+        </ul>
+        {needs.more ? (
+          <Link
+            href={href}
+            className="inline-flex min-h-11 items-center gap-0.5 text-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:underline sm:min-h-8"
+          >
+            {moreNeedsText(needs.more)}
+            <ChevronRight aria-hidden className="size-4" />
+          </Link>
+        ) : null}
+      </div>
+    </Block>
   );
 }
 

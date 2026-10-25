@@ -54,6 +54,8 @@ let quarter: typeof import("../quarter.ts");
 let decisionsPage: typeof import("../../actions/use-case-decisions.ts");
 let editPage: typeof import("../../actions/use-case-edit.ts");
 let createPage: typeof import("../../actions/use-case-create.ts");
+let needsPage: typeof import("../../actions/use-case-needs.ts");
+let needsReads: typeof import("../../db/queries/use-case-needs.ts");
 let rest: typeof import("../../portfolio/submission-http.ts");
 let q: (text: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
 let deps: HandlerDeps;
@@ -292,6 +294,8 @@ before(async () => {
   decisionsPage = await import("../../actions/use-case-decisions.ts");
   editPage = await import("../../actions/use-case-edit.ts");
   createPage = await import("../../actions/use-case-create.ts");
+  needsPage = await import("../../actions/use-case-needs.ts");
+  needsReads = await import("../../db/queries/use-case-needs.ts");
   rest = await import("../../portfolio/submission-http.ts");
 
   ENV.USE_CASE_HUB_WORKSPACES = ids.wsA;
@@ -357,7 +361,7 @@ after(async () => {
 
 // ─── Server, tool e istruzioni ───────────────────────────────────────
 
-test("initialize e tools/list: «Unbundle Use case», istruzioni del workspace con la riga sul costo, 6 tool con titoli e annotazioni", opts, async () => {
+test("initialize e tools/list: «Unbundle Use case», istruzioni del workspace con la riga sul costo, 8 tool con titoli e annotazioni", opts, async () => {
   const client = await connect(tokens.builder.token);
   try {
     assert.deepEqual(client.getServerVersion(), { name: "unbundle-use-case", title: "Unbundle Use case", version: "1.0.0" });
@@ -444,7 +448,7 @@ test("igiene HTTP: token nell'indirizzo 400 senza eco (segnato esposto), 415, 41
 test("area spenta per il workspace del token: handshake e tools/list sì, ogni tool area_spenta", opts, async () => {
   const client = await connect(tokens.builderB.token);
   try {
-    assert.equal((await client.listTools()).tools.length, 6);
+    assert.equal((await client.listTools()).tools.length, 8);
     for (const name of contract.TEAM_MCP_TOOL_NAMES) {
       const out = await call(client, name, {});
       assert.equal(out.content.error, "area_spenta", name);
@@ -589,6 +593,18 @@ test("stessi permessi della pagina, ruolo per ruolo: Lateral Space, AI Builder d
         },
       },
       {
+        name: "save_needs (aggiungi un'esigenza a uno use case)",
+        expected: abilities.canEditNeeds ? "ok" : "permesso_mancante",
+        mcp: async () => {
+          const card = await seed();
+          return mcp("save_needs", { items: [{ type: "requisito", kind: "accesso", title: `Esigenza dal MCP ${person} ${suffix}`, useCases: [card.code] }] });
+        },
+        page: async () => {
+          const card = await seed();
+          return pageCategory(await needsPage.createNeedAction(ids.wsA, card.id, { type: "requisito", kind: "accesso", title: `Esigenza dalla pagina ${person} ${suffix}` }));
+        },
+      },
+      {
         name: "update_use_case (testi, visibilità, valutazione)",
         expected: abilities.canEditWhat && abilities.canSetHiddenFromSearch && abilities.canEditValuation ? "ok" : "permesso_mancante",
         mcp: async () => {
@@ -623,7 +639,7 @@ test("stessi permessi della pagina, ruolo per ruolo: Lateral Space, AI Builder d
   state.__hubH5aAfter = [];
   tasks.length = 0;
   notified.length = 0;
-  assert.equal(table.length, people.length * 7);
+  assert.equal(table.length, people.length * 8);
 });
 
 test("criterio 5: l'AI Builder del cliente approva, rimanda e sceglie «Quando» dal MCP; la Storia dice canale mcp_team", opts, async () => {
@@ -726,7 +742,7 @@ test("fasce del workspace (D15): search_use_cases e get_use_case con le etichett
     const found = await call(client, "search_use_cases", { query: `Fasce del workspace ${suffix}` });
     const [hit] = found.content.results as Array<Record<string, unknown>>;
     assert.equal(found.content.total, 1);
-    assert.deepEqual(hit.costo, { symbols: "€€", amount: null, band: 2, bandLabel: BAND_LABELS[1], source: "team_fascia", sourceLabel: "fascia del team" });
+    assert.deepEqual(hit.costo, { symbols: "€€", amount: null, band: 2, bandLabel: BAND_LABELS[1], source: "team_fascia", sourceLabel: "fascia del team", runEurYear: null, text: "€€ · fascia · team" });
 
     const read = await call(client, "get_use_case", { code: card.code });
     assert.deepEqual(read.content.costBands, BAND_LABELS.map((label, i) => ({ band: i + 1, symbol: "€".repeat(i + 1), label })));
@@ -737,13 +753,13 @@ test("fasce del workspace (D15): search_use_cases e get_use_case con le etichett
     let r = await row(card.id);
     assert.equal(r.cost_band, 3);
     assert.equal(r.cost_eur_once, null);
-    assert.deepEqual(((band.content.useCase as Structured).valuation as Structured).costo, { symbols: "€€€", amount: null, band: 3, bandLabel: BAND_LABELS[2], source: "team_fascia", sourceLabel: "fascia del team" });
+    assert.deepEqual(((band.content.useCase as Structured).valuation as Structured).costo, { symbols: "€€€", amount: null, band: 3, bandLabel: BAND_LABELS[2], source: "team_fascia", sourceLabel: "fascia del team", runEurYear: null, text: "€€€ · fascia · team" });
 
     const amount = await call(client, "update_use_case", write({ code: card.code, expectedVersion: band.content.version, changes: { valuation: { cost: { eurOnce: 45000 } } } }));
     r = await row(card.id);
     assert.equal(r.cost_eur_once, 45000);
     assert.equal(r.cost_band, null);
-    assert.deepEqual(((amount.content.useCase as Structured).valuation as Structured).costo, { symbols: "€€€", amount: 45000, band: 3, bandLabel: BAND_LABELS[2], source: "team_importo", sourceLabel: "importo del team" });
+    assert.deepEqual(((amount.content.useCase as Structured).valuation as Structured).costo, { symbols: "€€€", amount: 45000, band: 3, bandLabel: BAND_LABELS[2], source: "team_importo", sourceLabel: "importo del team", runEurYear: null, text: "€€€ · 45.000 € · team" });
   } finally {
     await client.close();
   }
@@ -789,6 +805,184 @@ test("update_use_case: versione superata con la version vecchia; testi, nota pub
     assert.ok((area.content.fieldErrors as Structured)["changes.valuation.kpis.impact.inventato"]);
   } finally {
     await client.close();
+  }
+});
+
+// ─── «Benefici e costi» ──────────────────────────────────────────────
+
+/** FIX_A della spec: 115,5 ore, 4.042,5 € all'anno, avvio 560 €, ricorrenti 600 € all'anno. */
+const FIX_A = {
+  v: 1,
+  primary: "tempo",
+  components: [
+    { key: "capacita", lever: "nuove_capacita", label: "Risposte anche fuori orario", kind: "qualitativo", confidence: "ipotesi" },
+    { key: "tempo", lever: "tempo", label: "Smistamento delle richieste", kind: "ore", volumeYear: 6600, minutesPerUnit: 1.5, automatablePct: 70, confidence: "ipotesi" },
+    { key: "qualita", lever: "qualita", label: "Meno errori di smistamento", kind: "qualitativo", confidence: "da_misurare" },
+  ],
+  ease: 4,
+  costs: { devDays: 4, internalHours: 16, runCostEurYear: 600 },
+  plan: { quarter: "2026-Q4", startMonth: "2026-11", goLiveMonth: "2027-01" },
+};
+
+test("«Benefici e costi»: update_use_case salva valuation.model, la Storia dice valore e costo; get_use_case dà il modello e i conti; null lo toglie", opts, async () => {
+  const client = await connect(tokens.builder.token);
+  try {
+    const card = await seed({ status: "accepted", review: "scored", targetQuarter: "2026-Q4", title: `Benefici e costi ${suffix}` });
+    const v = await versionOf(card.id);
+    const saved = await call(client, "update_use_case", write({ code: card.code, expectedVersion: v, changes: { valuation: { model: FIX_A } } }));
+    assert.equal(saved.isError, false, JSON.stringify(saved.content));
+    let r = await row(card.id);
+    assert.deepEqual(r.value_model, FIX_A);
+    assert.equal(Number(r.version), v + 1, "una version sola, anche con il trigger della 0022");
+    const valued = (await storia(card.id)).at(-1)!;
+    assert.deepEqual({ action: valued.action, channel: valued.channel, actor_user_id: valued.actor_user_id }, { action: "valutato", channel: "mcp_team", actor_user_id: ids.builder });
+    assert.deepEqual([...(valued.fields as string[])].sort(), ["costo", "valore"]);
+
+    const read = await call(client, "get_use_case", { code: card.code });
+    const valuation = read.content.valuation as Structured;
+    assert.deepEqual(valuation.model, FIX_A);
+    const computed = valuation.computed as Structured;
+    for (const [key, expected] of Object.entries({ benefitEurYear: 4042.5, hoursYear: 115.5, pendingEurYear: 0, oneoffEur: 560, runEurYear: 600, netEurYear: 3442.5, qualitativeCount: 2 })) {
+      assert.equal(computed[key], expected, key);
+    }
+    assert.equal(computed.valueText, "Basso · 4.043 €/anno");
+    assert.equal(computed.costText, "avvio 560 € · ricorrenti 600 €/anno");
+    assert.deepEqual(computed.costBand, { band: 1, symbol: "€", label: BAND_LABELS[0] });
+    assert.deepEqual(computed.plan, { startMonth: "2026-11", goLiveMonth: "2027-01", startLabel: "nov 26", goLiveLabel: "gen 27", source: "piano", sourceLabel: "i mesi della scheda" });
+    assert.equal((computed.assumptions as Structured).hourlyCostEur, 35, "le ipotesi predefinite del workspace");
+    assert.deepEqual(valuation.costo, { symbols: "€", amount: 560, band: 1, bandLabel: BAND_LABELS[0], source: "stima", sourceLabel: "stima del team", runEurYear: 600, text: "avvio 560 € · ricorrenti 600 €/anno" });
+    assert.equal((valuation.valore as Structured).text, "Basso · 4.043 €/anno");
+    const [hit] = (await call(client, "search_use_cases", { query: `Benefici e costi ${suffix}` })).content.results as Structured[];
+    assert.equal((hit.valore as Structured).text, "Basso · 4.043 €/anno");
+
+    const wrong = await call(client, "update_use_case", write({ code: card.code, expectedVersion: read.content.version, changes: { valuation: { model: { ...FIX_A, primary: "ricavi" } } } }));
+    assert.deepEqual(wrong.content.fieldErrors, { "changes.valuation.model.primary": "Il ritorno principale deve essere il tipo di almeno una voce." });
+    assert.equal(await versionOf(card.id), v + 1, "un modello sbagliato non scrive");
+
+    const cleared = await call(client, "update_use_case", write({ code: card.code, expectedVersion: read.content.version, changes: { valuation: { model: null } } }));
+    assert.equal(cleared.isError, false, JSON.stringify(cleared.content));
+    r = await row(card.id);
+    assert.equal(r.value_model, null);
+    const after = (cleared.content.useCase as Structured).valuation as Structured;
+    assert.deepEqual([after.model, after.computed], [null, null]);
+  } finally {
+    await client.close();
+  }
+});
+
+// ─── «Cosa serve» ────────────────────────────────────────────────────
+
+/** Le esigenze del workspace con questi titoli, con gli use case collegati. */
+async function needRows(...titles: string[]) {
+  return q(
+    `SELECT n.id, n.title, n.version, n.status, n.import_key, n.done_at, n.archived_at, n.archive_reason,
+            coalesce((SELECT array_agg(l.use_case_id::text ORDER BY l.use_case_id) FROM use_case_need_links l WHERE l.need_id = n.id), '{}') AS links
+       FROM use_case_needs n WHERE n.workspace_id = $1::uuid AND n.title = ANY($2::text[]) ORDER BY n.title`,
+    [ids.wsA, titles],
+  );
+}
+
+test("«Cosa serve»: save_needs crea e collega per codice o id, list_needs le legge come la pagina, il duplicato non riscrive; poi upsert, legami e archivio", opts, async () => {
+  const client = await connect(tokens.builder.token);
+  try {
+    const a = await seed();
+    const b = await seed();
+    const key1 = `need-${suffix}-1`;
+    const items = [
+      { importKey: key1, type: "requisito", kind: "accesso", title: `Accesso al gestionale ${suffix}`, ownerLabel: "Ufficio IT", ownerSide: "cliente", availability: "subito", useCases: [a.code.toLowerCase()] },
+      { type: "passo", kind: "decisione", title: `Fissare la riunione ${suffix}`, dueOn: "2026-11-15", dueIsProposal: true, useCases: [b.id.toUpperCase()] },
+    ];
+    const idempotencyKey = newKey();
+    const first = await call(client, "save_needs", { items, idempotencyKey, confirmedByUser: true });
+    assert.equal(first.isError, false, JSON.stringify(first.content));
+    const saved = first.content.saved as Array<{ id: string; action: string; version: number; importKey: string | null }>;
+    assert.deepEqual(saved.map((entry) => [entry.action, entry.version, entry.importKey]), [["creata", 1, key1], ["creata", 1, null]]);
+    const titles = items.map((item) => item.title);
+    let rows = await needRows(...titles);
+    const byTitle = (title: string) => rows.find((r) => String(r.title).startsWith(title))!;
+    assert.equal(rows.length, 2);
+    assert.deepEqual(byTitle("Accesso").links, [a.id]);
+    assert.deepEqual(byTitle("Fissare").links, [b.id]);
+    const request = await one(`SELECT status, result, reserved_ids::text[] AS reserved, tool FROM use_case_mcp_requests WHERE workspace_id = $1::uuid AND idempotency_key = $2`, [ids.wsA, idempotencyKey]);
+    assert.deepEqual([request.status, request.tool], ["completed", "save_needs"]);
+    assert.deepEqual(request.reserved, saved.map((entry) => entry.id), "le esigenze nuove hanno gli id riservati");
+    assert.equal(JSON.stringify(request.result).includes(suffix) || JSON.stringify(request.result).includes("Ufficio"), false, "solo indici, id, version e azioni");
+
+    const listed = await call(client, "list_needs", { useCase: a.code });
+    assert.equal(listed.content.total, 1);
+    const [need] = listed.content.needs as Structured[];
+    assert.deepEqual([need.title, need.typeLabel, need.areaLabel, need.ownerLabel, need.ownerSideLabel, need.statusLabel], [`Accesso al gestionale ${suffix}`, "Requisito", "Accessi", "Ufficio IT", "Cliente", "Non ancora chiesta"]);
+    assert.deepEqual((need.useCases as Structured[]).map((u) => u.code), [a.code]);
+    const page = await needsReads.listWorkspaceNeeds(ids.wsA, viewerOf("manager"));
+    assert.deepEqual(page!.filter((n) => titles.includes(n.title)).map((n) => n.id).sort(), saved.map((entry) => entry.id).sort(), "la pagina legge le stesse esigenze");
+
+    const again = await call(client, "save_needs", { items, idempotencyKey, confirmedByUser: true });
+    assert.equal(again.content.duplicate, true);
+    assert.equal((await needRows(...titles)).length, 2, "nessun doppione");
+
+    const upsert = await call(client, "save_needs", write({ items: [{ importKey: key1, status: "validata" }] }));
+    assert.deepEqual((upsert.content.saved as Structured[]).map((entry) => [entry.action, entry.version]), [["aggiornata", 2]]);
+    const relink = await call(client, "save_needs", write({ items: [{ id: saved[0].id, expectedVersion: 2, useCases: [b.code] }] }));
+    assert.deepEqual((relink.content.saved as Structured[]).map((entry) => [entry.action, entry.version]), [["aggiornata", 2]], "i legami non cambiano la version");
+    rows = await needRows(...titles);
+    assert.deepEqual(byTitle("Accesso").links, [b.id]);
+    assert.notEqual(byTitle("Accesso").done_at, null, "un requisito validato è a posto");
+
+    const stale = await call(client, "save_needs", write({ items: [{ importKey: key1, expectedVersion: 1, status: "chiesta" }] }));
+    assert.equal(stale.content.error, "version_conflict");
+    assert.equal(Number((await needRows(`Accesso al gestionale ${suffix}`))[0].version), 2, "niente scritto");
+
+    const archived = await call(client, "save_needs", write({ items: [{ importKey: key1, expectedVersion: 2, archive: { reason: "Superata dal nuovo contratto." } }] }));
+    assert.deepEqual((archived.content.saved as Structured[]).map((entry) => [entry.action, entry.version]), [["archiviata", 3]]);
+    const [gone] = await needRows(`Accesso al gestionale ${suffix}`);
+    assert.ok(gone, "archiviare non cancella");
+    assert.notEqual(gone.archived_at, null);
+    assert.equal(gone.archive_reason, "Superata dal nuovo contratto.");
+    assert.equal(((await call(client, "list_needs", {})).content.needs as Structured[]).some((n) => n.id === saved[0].id), false, "le archiviate restano fuori");
+    assert.equal(((await call(client, "list_needs", { includeArchived: true })).content.needs as Structured[]).some((n) => n.id === saved[0].id), true);
+    const edit = await call(client, "save_needs", write({ items: [{ importKey: key1, status: "chiesta" }] }));
+    assert.deepEqual(edit.content.fieldErrors, { "items.0.importKey": "Questa esigenza è archiviata." });
+  } finally {
+    await client.close();
+  }
+});
+
+test("«Cosa serve» resta nel workspace del token: niente esigenze né use case di un altro workspace; «Solo lettura» legge e non salva; chi non è revisore non entra", opts, async () => {
+  const other = await seed({ workspaceId: ids.wsB });
+  const [foreign] = await q(
+    `INSERT INTO use_case_needs (workspace_id, type, kind, title, status, import_key) VALUES ($1::uuid, 'requisito', 'accesso', $2, 'da_chiedere', $3) RETURNING id`,
+    [ids.wsB, `Esigenza di un altro workspace ${suffix}`, `foreign-${suffix}`],
+  );
+  const client = await connect(tokens.builder.token);
+  const reader = await connect(tokens.builderReadOnly.token);
+  try {
+    const all = await call(client, "list_needs", { includeArchived: true });
+    assert.equal(JSON.stringify(all.content).includes("altro workspace"), false);
+    const byId = await call(client, "save_needs", write({ items: [{ id: String(foreign.id), expectedVersion: 1, status: "chiesta" }] }));
+    assert.equal((byId.content.fieldErrors as Structured)["items.0.id"], "Esigenza non trovata in questo workspace: rileggi con list_needs.");
+    const byCode = await call(client, "save_needs", write({ items: [{ type: "passo", title: `Collegata altrove ${suffix}`, useCases: [other.code] }] }));
+    assert.deepEqual(byCode.content.fieldErrors, { "items.0.useCases.0": "Use case non trovato." });
+    const byKey = await call(client, "save_needs", write({ items: [{ importKey: `foreign-${suffix}`, type: "requisito", title: `Stessa chiave ${suffix}` }] }));
+    assert.equal(byKey.isError, false, "le chiavi sono per workspace: in questo è nuova");
+    assert.deepEqual((await one(`SELECT title, status FROM use_case_needs WHERE id = $1::uuid`, [foreign.id])), { title: `Esigenza di un altro workspace ${suffix}`, status: "da_chiedere" }, "l'altro workspace non cambia");
+
+    assert.equal((await call(reader, "list_needs", {})).isError, false);
+    const denied = await call(reader, "save_needs", write({ items: [{ type: "passo", title: `Dal token in sola lettura ${suffix}` }] }));
+    assert.equal(denied.content.error, "permesso_mancante");
+    assert.equal((await needRows(`Dal token in sola lettura ${suffix}`)).length, 0);
+  } finally {
+    await client.close();
+    await reader.close();
+  }
+  for (const person of ["contributor", "learner"] as const) {
+    const response = await handle(rpcRequest(tokens[person].token, toolCall("list_needs", {})), deps);
+    assert.equal(response.status, 401, person);
+  }
+  await q(`UPDATE workspace_memberships SET role = 'contributor' WHERE workspace_id = $1::uuid AND user_id = $2::uuid`, [ids.wsA, ids.builder]);
+  try {
+    assert.equal((await handle(rpcRequest(tokens.builder.token, toolCall("save_needs", write({ items: [{ type: "passo", title: "x" }] }))), deps)).status, 401);
+  } finally {
+    await q(`UPDATE workspace_memberships SET role = 'function_lead' WHERE workspace_id = $1::uuid AND user_id = $2::uuid`, [ids.wsA, ids.builder]);
   }
 });
 
@@ -1108,7 +1302,8 @@ test("log: una riga per chiamata con area, tool, esito, durata e 8 caratteri del
     assert.equal(all.includes(t.token), false, "nessun token");
     assert.equal(all.includes(sha256(t.token)), false, "nessun hash");
   }
-  for (const text of [`Dal basso ${suffix}`, "Ne parliamo al prossimo AI Lab.", "Problema riscritto", ...Object.values(emails)]) {
+  assert.ok(lines.some((line) => line.includes('"tool":"save_needs"')) && lines.some((line) => line.includes('"tool":"list_needs"')));
+  for (const text of [`Dal basso ${suffix}`, "Ne parliamo al prossimo AI Lab.", "Problema riscritto", `Accesso al gestionale ${suffix}`, "Ufficio IT", "Superata dal nuovo contratto.", ...Object.values(emails)]) {
     assert.equal(all.includes(text), false, text);
   }
 });

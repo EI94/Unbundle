@@ -78,6 +78,16 @@ function fullRow(o: Partial<UseCase> = {}): UseCase {
     createdAt: new Date("2026-10-01T10:00:00Z"),
     updatedAt: new Date("2026-10-02T10:00:00Z"),
     statusChangedAt: new Date("2026-10-02T10:00:00Z"),
+    // «Benefici e costi»: solo i revisori lo ricevono.
+    valueModel: {
+      v: 1,
+      primary: "tempo",
+      components: [
+        { key: "tempo", lever: "tempo", label: "Voce riservata ai revisori", kind: "ore", volumeYear: 6600, minutesPerUnit: 1.5, automatablePct: 70, confidence: "ipotesi" },
+      ],
+      costs: { devDays: 4, internalHours: 16, runCostEurYear: 600 },
+      confirmBy: "Responsabile riservato",
+    },
     ...o,
   };
 }
@@ -209,7 +219,7 @@ test("intake dei revisori: solo le chiavi ammesse, nessun recapito", () => {
 });
 
 test("export: colonne di §4.1, nessuna sul proponente né sulle wave; nessun recapito nelle righe", () => {
-  assert.equal(EXPORT_COLUMNS.length, 24);
+  assert.equal(EXPORT_COLUMNS.length, 29);
   for (const column of EXPORT_COLUMNS) {
     assert.doesNotMatch(column, /propost|propon|autor|person|email|wave|budget|impact|feasibility|effort/i, column);
   }
@@ -217,4 +227,21 @@ test("export: colonne di §4.1, nessuna sul proponente né sulle wave; nessun re
   const out = exportRow(projectHubItem(row, CTX, null), row);
   assert.deepEqual(Object.keys(out), [...EXPORT_COLUMNS]);
   assert.equal(JSON.stringify(out).includes(OTHER_EMAIL), false);
+});
+
+test("«Benefici e costi»: ai revisori il modello e le sue cifre, al contributore niente, sulle proprie e sulle altrui", () => {
+  const others = fullRow({ status: "accepted", targetQuarter: "2027-Q1" });
+  const own = fullRow({ proposedBy: ME_EMAIL, status: "accepted", targetQuarter: "2027-Q1" });
+  for (const row of [others, own]) {
+    const item = projectContributorRow(contributor, row, null, TODAY);
+    assert.ok(item);
+    const keys = keysDeep(item);
+    assert.ok(!keys.includes("valueModel") && !keys.includes("components") && !keys.includes("value") && !keys.includes("cost"), keys.join(","));
+    const text = JSON.stringify(item);
+    assert.ok(!text.includes("Voce riservata ai revisori") && !text.includes("Responsabile riservato"), text);
+  }
+  const reviewer = projectHubItem(others, CTX, null);
+  assert.equal(reviewer.valueModel?.components[0].label, "Voce riservata ai revisori");
+  assert.equal(reviewer.cost?.source, "stima");
+  assert.equal(projectUseCaseDetail(others, CTX, null).valueModel?.confirmBy, "Responsabile riservato");
 });

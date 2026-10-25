@@ -68,7 +68,11 @@ export interface UseCaseAbilities {
   canOpenArea: boolean;
   /** Vista «Priorità» (matrice, lista, Da diffondere). */
   canSeePriority: boolean;
-  /** Valore, Costo, zone, euro, punteggi e cifre della Roadmap. */
+  /**
+   * Valore, Costo, zone, euro, punteggi e cifre della Roadmap; anche «Benefici e costi»
+   * (`value_model`) e le «Ipotesi di calcolo» in sola lettura. Solo i revisori: la proiezione
+   * del contributore non li porta mai.
+   */
   canSeeFigures: boolean;
   /** Codici e nota pubblica di tutte le schede (i contributori: solo delle proprie). */
   canSeeAllCodes: boolean;
@@ -101,7 +105,14 @@ export interface UseCaseAbilities {
   canRedact: boolean;
   /** «Apri il dossier» anche senza esserne membro. */
   canOpenAnyDossier: boolean;
-  /** Impostazioni › Valutazione: nome del team, prefisso dei codici, soglie, fasce del costo. */
+  /**
+   * «Cosa serve» (`use_case_needs`: requisiti e prossimi passi) in Priorità, nel pannello e nella
+   * scheda. Solo i revisori: la pagina, la REST, il MCP e l'export non li portano mai agli altri.
+   */
+  canSeeNeeds: boolean;
+  /** Aggiunge, modifica, collega e archivia le esigenze di «Cosa serve»: tutti i revisori. */
+  canEditNeeds: boolean;
+  /** Impostazioni › Valutazione: nome del team, prefisso dei codici, soglie, fasce del costo, «Ipotesi di calcolo». */
   canEditSettings: boolean;
   /** Token personali del MCP del team (§1.2 punto 8). */
   canUseTeamMcp: boolean;
@@ -133,6 +144,8 @@ function noAbilities(isLateralSpace: boolean): UseCaseAbilities {
     canSeeProposer: false,
     canRedact: false,
     canOpenAnyDossier: false,
+    canSeeNeeds: false,
+    canEditNeeds: false,
     canEditSettings: false,
     canUseTeamMcp: false,
   };
@@ -174,6 +187,8 @@ export function abilitiesForUseCase(viewer: UseCaseViewer): UseCaseAbilities {
     canSeeProposer: manages,
     canRedact: lsReviewer || manages,
     canOpenAnyDossier: manages,
+    canSeeNeeds: true,
+    canEditNeeds: true,
     canEditSettings: manages,
     canUseTeamMcp: true,
   };

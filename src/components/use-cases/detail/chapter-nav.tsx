@@ -16,9 +16,13 @@ export interface ChapterNavProps {
   className?: string;
 }
 
-/** Apre il `<details>` di un capitolo chiuso (la «Storia») quando ci si arriva. */
+/**
+ * Apre il `<details>` di un capitolo chiuso (la «Storia») quando ci si arriva: solo quello che è il
+ * capitolo stesso, figlio diretto della sezione. I riquadri chiusi dentro un capitolo aperto («Già a
+ * posto» di «Cosa serve», «Suggerimento AI») restano chiusi.
+ */
 function openDetailsOf(target: HTMLElement | null): void {
-  const details = target?.querySelector("details");
+  const details = target?.querySelector<HTMLDetailsElement>(":scope > details");
   if (details && !details.open) details.open = true;
 }
 

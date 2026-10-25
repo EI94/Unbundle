@@ -3,10 +3,13 @@ import { DossierCard, DossierReadOnlyNotice } from "@/components/uc/shell/case-c
 import type { DossierColumn } from "@/lib/db/queries/uc-nav";
 import type { DossierCardView } from "@/lib/uc/views/realization";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
+import { buildRoadmapValue, groupPalette, roadmapPlan, type GroupPalette } from "@/lib/use-cases/value-charts";
+import type { ValueParams } from "@/lib/use-cases/value-model";
 import { ROADMAP_DONE_PREVIEW, buildRoadmap, isContributorItem, roadmapTotals, type AnyHubItem, type HubItem } from "@/lib/use-cases/views";
 import { EmptyState, NoResults } from "./hub-header";
 import { RoadmapCard } from "./roadmap-card";
 import { RoadmapTiles } from "./roadmap-tiles";
+import { RoadmapValueCharts } from "./roadmap-value";
 import { panelHref, type HubQuery } from "./use-case-row";
 
 /** Testi della vista (docs/use-case/DESIGN.md §4.5, §14.3). */
@@ -34,6 +37,23 @@ export interface RoadmapViewProps {
    * non `pronta`: la colonna mostra le card dello use case.
    */
   dossierColumn?: DossierColumn | null;
+  /**
+   * Le ipotesi di calcolo del workspace (solo revisori): con almeno una scheda della vista con
+   * «Benefici e costi», «Ore liberate all'anno», «Pareggio», la J-curve e «Valore per tipo di
+   * ritorno». Assenti: la Roadmap di oggi.
+   */
+  valueParams?: ValueParams | null;
+  /** I colori dei gruppi, da tutte le schede del workspace (`groupPalette`): un filtro non li cambia. */
+  palette?: GroupPalette | null;
+  /**
+   * Tutte le schede dei revisori del workspace, senza filtri: i mesi della curva (`roadmapPlan`)
+   * si calcolano su queste, così un filtro non sposta «Più avanti» né il pareggio delle altre.
+   */
+  planItems?: readonly HubItem[] | null;
+  /** Il primo mese della curva segue il mese corrente: «Ipotesi di calcolo» lo dice. */
+  followsCurrentMonth?: boolean;
+  /** Impostazioni › Valutazione, solo per chi gestisce il workspace: il link in «Ipotesi di calcolo». */
+  settingsHref?: string | null;
   basePath: string;
   query: HubQuery;
   filtersActive: boolean;
@@ -51,8 +71,27 @@ export interface RoadmapViewProps {
  * 15 nov»; prima quelle in cui tocca a chi guarda), oppure fase e «Senza dossier»; senza la
  * parte del dossier solo la fase (§4.9). «Fatti»:
  * i primi 10, poi «Mostra tutti». I contributori vedono titolo, fase e «Quando».
+ * Con «Benefici e costi» (solo revisori, almeno una scheda approvata o in realizzazione con un
+ * modello) le cifre in testa diventano quattro e sotto vengono la J-curve, «Valore per tipo di
+ * ritorno» e «Ipotesi di calcolo», prima delle colonne.
  */
-export function RoadmapView({ items, today, showTiles, bands, dossierDown = false, dossierColumn = null, basePath, query, filtersActive, clearHref }: RoadmapViewProps) {
+export function RoadmapView({
+  items,
+  today,
+  showTiles,
+  bands,
+  dossierDown = false,
+  dossierColumn = null,
+  valueParams = null,
+  palette = null,
+  planItems = null,
+  followsCurrentMonth = false,
+  settingsHref = null,
+  basePath,
+  query,
+  filtersActive,
+  clearHref,
+}: RoadmapViewProps) {
   const roadmap = buildRoadmap(items, today);
   const empty = !roadmap.upcoming.length && !roadmap.inProgress.length && !roadmap.done.length;
   if (empty) {
@@ -66,9 +105,23 @@ export function RoadmapView({ items, today, showTiles, bands, dossierDown = fals
   const cardOf = (id: string): DossierCardView | undefined => column?.byUseCase.get(id.toLowerCase());
   const doneFirst = roadmap.done.slice(0, ROADMAP_DONE_PREVIEW);
   const doneRest = roadmap.done.slice(ROADMAP_DONE_PREVIEW);
+  const figures = showTiles && forReviewers;
+  const value = figures && valueParams ? buildRoadmapValue(reviewerItems, valueParams, { plan: roadmapPlan(planItems ?? reviewerItems, valueParams) }) : null;
+  const hrefs = value ? Object.fromEntries(value.cards.map((card) => [card.id, href(card.id)])) : {};
   return (
     <div data-slot="roadmap-view" className="space-y-6">
-      {showTiles && forReviewers ? <RoadmapTiles totals={roadmapTotals(reviewerItems)} /> : null}
+      {figures ? <RoadmapTiles totals={roadmapTotals(reviewerItems)} value={value} /> : null}
+      {value && valueParams ? (
+        <RoadmapValueCharts
+          value={value}
+          items={reviewerItems}
+          params={valueParams}
+          palette={palette ?? groupPalette(reviewerItems, valueParams)}
+          hrefs={hrefs}
+          followsCurrentMonth={followsCurrentMonth}
+          settingsHref={settingsHref}
+        />
+      ) : null}
       <div className="grid gap-6 lg:grid-cols-3">
         <Column id="roadmap-prossimi" title={ROADMAP_TEXT.upcoming} count={roadmap.upcoming.reduce((sum, group) => sum + group.items.length, 0)}>
           {roadmap.upcoming.map((group) => (

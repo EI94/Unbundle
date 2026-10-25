@@ -10,7 +10,8 @@ export interface CostFigureProps {
   bands?: readonly CostBandInfo[];
   /**
    * «corta» (riga, pannello, card della Roadmap, la stessa forma): «€€ · 40.000 € · team»,
-   * «€€ · fascia · team», «€€€ · fascia · stimato»; «lunga» (scheda, §6.3): «€€ · 40.000 €»
+   * «€€ · fascia · team», «€€€ · fascia · stimato», con «Benefici e costi» «avvio 560 € ·
+   * ricorrenti 600 €/anno» (senza fonte: la dice la scheda); «lunga» (scheda, §6.3): «€€ · 40.000 €»
    * oppure «€€ · fascia da 25.000 a 65.000 €», con la fonte per esteso.
    */
   form?: "corta" | "lunga";
@@ -48,17 +49,19 @@ export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel
       </div>
     );
   }
-  // In riga, testo semplice che va a capo tra le parti: «Costo: €€ · 40.000 € · team».
+  // In riga, testo semplice che va a capo tra le parti: «Costo: €€ · 40.000 € · team». La cifra
+  // di «Benefici e costi» («avvio 1.050 € · ricorrenti 300 €/anno») è lunga: può andare a capo,
+  // altrimenti esce dal pannello.
   return (
     <span data-figure="costo" data-estimated={parts.estimated ? "true" : undefined} data-cost-source={source ?? undefined} className={cn("text-sm", className)}>
       {withLabel && <span className="text-muted-foreground">{COST_LABEL_SHORT}: </span>}
-      <span className={cn("whitespace-nowrap", parts.estimated ? "text-muted-foreground" : "font-medium")}>{parts.figure}</span>
-      {source && (
+      <span className={cn(source !== "stima" && "whitespace-nowrap", parts.estimated ? "text-muted-foreground" : "font-medium")}>{parts.figure}</span>
+      {source && parts.source ? (
         <>
           <span className="text-muted-foreground">{FIGURE_SEPARATOR}</span>
           <SourceTag figure="costo" source={source} />
         </>
-      )}
+      ) : null}
     </span>
   );
 }

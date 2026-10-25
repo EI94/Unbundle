@@ -2,7 +2,8 @@
 
 /**
  * Server action di Impostazioni › Valutazione (docs/use-case/DESIGN.md §7.2, §10.6, §14.3;
- * PIANO-LAVORI H3d): nome del team, prefisso dei codici, soglie, fasce del costo.
+ * PIANO-LAVORI H3d): nome del team, prefisso dei codici, soglie, fasce del costo, «Ipotesi di
+ * calcolo» di «Benefici e costi».
  *
  * Ogni action è raggiungibile con una POST diretta: legge la sessione, verifica da sé che
  * l'area sia accesa per il workspace (`isUseCaseHubWorkspace`, §12.1: altrimenti
@@ -27,9 +28,12 @@ import {
   saveCostBands,
   saveReviewTeamName,
   saveThresholds,
+  saveValueParams,
   type CodePrefixSaved,
 } from "@/lib/use-cases/settings-data";
 import type { ServiceResult } from "@/lib/use-cases/types";
+import type { ValueParams } from "@/lib/use-cases/value-model";
+import type { ValueParamsTexts } from "@/lib/use-cases/value-params-form";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 
@@ -92,6 +96,19 @@ export async function saveCostBandsAction(
   const access = await getCollaboratorAccess(session.user.id, workspaceId);
   if (!access || !canManageWorkspaceSettings(access.role)) return DENIED;
   return finish(workspaceId, await saveCostBands(session.user.id, workspaceId, bands));
+}
+
+/** «Ipotesi di calcolo»: costo orario e di una giornata, soglie in euro del Valore, mesi della curva. */
+export async function saveValueParamsAction(
+  workspaceId: string,
+  texts: ValueParamsTexts,
+): Promise<ServiceResult<{ valueParams: ValueParams; storedOriginMonth: string | null }>> {
+  const session = await requireSession();
+  if (!isUuidText(workspaceId)) return DENIED;
+  if (!isUseCaseHubWorkspace(workspaceId)) return AREA_OFF;
+  const access = await getCollaboratorAccess(session.user.id, workspaceId);
+  if (!access || !canManageWorkspaceSettings(access.role)) return DENIED;
+  return finish(workspaceId, await saveValueParams(session.user.id, workspaceId, texts));
 }
 
 /** Un rifiuto del servizio come lo mostra il modulo del modello. */

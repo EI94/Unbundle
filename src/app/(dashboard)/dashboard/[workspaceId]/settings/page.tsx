@@ -30,13 +30,8 @@ import { DisableShareLinksButton } from "@/components/workspace/disable-share-li
 import { roleLabel } from "@/lib/workspace-roles";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { ValuationSettings } from "@/components/use-cases/settings/valuation-settings";
+import { USE_CASE_VALUATION_ANCHOR } from "@/lib/use-cases/settings";
 import { WhatsappWebhookForm } from "@/components/portfolio/team-settings-form";
-
-/**
- * L'ancora di Impostazioni › Valutazione dell'area «Use case» (docs/use-case/DESIGN.md §14.3,
- * PIANO-LAVORI H3d e H4i). `valutazione` resta a «Criteri ESG», dove porta già oggi.
- */
-const USE_CASE_VALUATION_ANCHOR = "valutazione-use-case";
 
 function decodeSlackErrorParam(raw: string | undefined): string {
   if (!raw) return "";

@@ -27,7 +27,7 @@
 // smoke creates the workspace with that id. Synthetic data only; SM is a synthetic code prefix.
 //
 // Checks: initialize (latest protocol, then a 2025-06-18 client), server name and instructions
-// (≤ 2.048 characters, the cost line), tools/list (6 tools, titles, annotations, no
+// (≤ 2.048 characters, the cost line), tools/list (8 tools, titles, annotations, no
 // outputSchema), search, create twice with the same key (duplicate), read, valuation with a cost
 // band, approve, «Quando», a stale version (version_conflict), the negatives (no token 401,
 // refused owner 401, token in the query 400 without echo, 405 with Allow: POST, Origin 403,

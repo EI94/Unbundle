@@ -3,13 +3,18 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { COST_BANDS } from "./cost-bands.ts";
 import { TEAM_MCP_TOOL_NAMES, teamToolDefinitions, validateTeamToolInput } from "./mcp/contract.ts";
-import { COLLECTED_INTAKE_KEYS, cardOutput, searchItemOutput } from "./mcp/output.ts";
+import { COLLECTED_INTAKE_KEYS, cardOutput, needOutput, searchItemOutput } from "./mcp/output.ts";
 import { filterSearchItems } from "./mcp/tools.ts";
 import type { HubItem, UseCaseDetail } from "./views.ts";
 
 // Art. 15.4 per il MCP del team (docs/use-case/PIANO-LAVORI.md §5.4, DESIGN §11 e §12.5 test 1):
 // gli ingressi dei tool non hanno filtri o campi sulla persona; le uscite non hanno il
-// proponente, nemmeno per chi gestisce il workspace, la cui proiezione lo porta. Il controllo
+// proponente, nemmeno per chi gestisce il workspace, la cui proiezione lo porta.
+//
+// Una sola eccezione, voluta: «Chi» di «Cosa serve» (`ownerLabel`, `ownerSide`, spec di
+// Pierpaolo, 25/10/2026) è un testo che il team scrive sulla riga di un'esigenza, come nella
+// pagina. Si scrive con `save_needs` e si legge con `list_needs`; nessun tool filtra, ordina o
+// conta per lui. Il controllo
 // sul sorgente (`art15-4.source.test.ts`) copre già `src/lib/use-cases/mcp/**`, la rotta e
 // `src/lib/db/queries/team-mcp-*.ts`.
 
@@ -41,14 +46,59 @@ function inputFieldNames(schema: unknown, out: string[] = []): string[] {
   return out;
 }
 
-test("ingressi dei 6 tool: nessun campo o filtro sulla persona", () => {
+/** «Chi» di un'esigenza: un testo della riga, scritto dal team; solo `save_needs` lo riceve. */
+const NEED_OWNER_FIELDS = ["ownerLabel", "ownerSide"];
+/** «(proposta)» accanto alla scadenza: la data è da confermare. Non parla di chi ha proposto. */
+const DUE_IS_PROPOSAL = "dueIsProposal";
+
+test("ingressi degli 8 tool: nessun campo o filtro sulla persona; «Chi» di un'esigenza solo in save_needs", () => {
   const defs = teamToolDefinitions();
   assert.equal(defs.length, TEAM_MCP_TOOL_NAMES.length);
   for (const def of defs) {
     const fields = inputFieldNames(def.inputSchema);
     assert.ok(fields.length > 0, def.name);
-    assert.deepEqual(fields.filter((name) => name !== "confirmedByUser" && PERSON_KEY.test(name)), [], def.name);
+    const allowed = def.name === "save_needs" ? ["confirmedByUser", DUE_IS_PROPOSAL, ...NEED_OWNER_FIELDS] : ["confirmedByUser"];
+    assert.deepEqual(fields.filter((name) => !allowed.includes(name) && PERSON_KEY.test(name)), [], def.name);
   }
+  const save = inputFieldNames(defs.find((def) => def.name === "save_needs")!.inputSchema);
+  assert.deepEqual(save.filter((name) => PERSON_KEY.test(name) && name !== "confirmedByUser" && name !== DUE_IS_PROPOSAL), NEED_OWNER_FIELDS);
+});
+
+test("list_needs rifiuta ogni filtro sulla persona, anche su «Chi»", () => {
+  for (const key of ["ownerLabel", "ownerSide", "owner", "chi", "persona", "proposedBy", "email", "userId"]) {
+    assert.equal(validateTeamToolInput("list_needs", { [key]: "Ufficio IT" }).ok, false, key);
+  }
+});
+
+test("uscite di list_needs: «Chi» resta il testo della riga, nessun'altra chiave sulla persona", () => {
+  const out = needOutput(
+    {
+      id: randomUUID(),
+      type: "requisito",
+      kind: "persona",
+      title: "Referente per i dati",
+      detail: null,
+      ownerLabel: "Ufficio acquisti",
+      ownerSide: "cliente",
+      status: "chiesta",
+      availability: null,
+      dueOn: null,
+      dueLabel: null,
+      dueIsProposal: false,
+      forLabel: null,
+      sortOrder: 0,
+      version: 1,
+      importKey: null,
+      createdAt: "2026-10-20T08:00:00.000Z",
+      updatedAt: "2026-10-20T08:00:00.000Z",
+      doneAt: null,
+      archivedAt: null,
+      archiveReason: null,
+      useCaseIds: [],
+    },
+    { today: "2026-10-25", refs: {}, link: () => "" },
+  );
+  assert.deepEqual(keysOf(out).filter((key) => PERSON_KEY.test(key) && key !== DUE_IS_PROPOSAL), ["ownerLabel", "ownerSide", "ownerSideLabel"]);
 });
 
 test("search_use_cases rifiuta ogni parametro sulla persona, anche scritto a mano", () => {
@@ -77,6 +127,7 @@ function item(over: Partial<HubItem> = {}): HubItem {
     value: { score: null, word: null, source: null, perYear: null },
     cost: null,
     zone: null,
+    valueModel: null,
     risks: [],
     claudeHoursPerYear: null,
     source: "web_proposed",

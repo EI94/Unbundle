@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
-import { costShortText, valueWordText } from "@/lib/use-cases/format";
+import { costShortText, valueShortText } from "@/lib/use-cases/format";
 import { ORIGIN_LABEL, ZONE_HINT, ZONE_LABEL } from "@/lib/use-cases/labels";
 import { placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
 import type { Origin } from "@/lib/use-cases/types";
@@ -52,6 +52,11 @@ export interface ValueCostMatrixProps {
   /** Chip «N da stimare» e il suo link (lista con `stima=mancante`). */
   toEstimate: number;
   toEstimateHref: string;
+  /**
+   * Chip «N senza beneficio contato» (`offMatrixLabel`) e il suo link (lista con
+   * `stima=fuori-matrice`): le schede con «Benefici e costi» che non hanno un punto qui.
+   */
+  offMatrix?: { label: string; count: number; href: string } | null;
 }
 
 /** Il dominio dei due assi: da 0,5 a 5,5, con le tacche a 1, 2, 3, 4, 5. */
@@ -111,9 +116,13 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
  * o al tocco, il pannello laterale (il punto e il codice sono lo stesso link, largo abbastanza
  * per un dito). Senza trascinamento. Solo per i revisori.
  */
-export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BANDS, toEstimate, toEstimateHref }: ValueCostMatrixProps) {
+export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BANDS, toEstimate, toEstimateHref, offMatrix = null }: ValueCostMatrixProps) {
   const placed = spread(points);
-  const labels = placeMatrixLabels(placed.filter((point) => point.code).map((point) => ({ id: point.id, left: point.left, top: point.top, text: point.code! })));
+  // Le etichette si mettono per la matrice più piccola (320 px, al telefono) e per la più grande (600 px).
+  const labels = placeMatrixLabels(
+    placed.filter((point) => point.code).map((point) => ({ id: point.id, left: point.left, top: point.top, text: point.code! })),
+    { boxPx: 320, maxBoxPx: 600 },
+  );
   const anyExpired = points.some((point) => point.expired);
   const highTop = topPct(highValue);
   const lowLeft = leftPct(lowCostX);
@@ -205,7 +214,12 @@ export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BAND
             </span>
           ) : null}
         </p>
-        <ToEstimateChip count={toEstimate} href={toEstimateHref} />
+        {toEstimate > 0 || (offMatrix && offMatrix.count > 0) ? (
+          <div className="flex flex-wrap gap-2">
+            <ToEstimateChip count={toEstimate} href={toEstimateHref} />
+            {offMatrix && offMatrix.count > 0 ? <MatrixChip text={offMatrix.label} href={offMatrix.href} slot="off-matrix-chip" /> : null}
+          </div>
+        ) : null}
         <p className="text-xs text-muted-foreground">{ZONE_HINT}</p>
       </figcaption>
     </figure>
@@ -218,14 +232,19 @@ export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BAND
  */
 export function ToEstimateChip({ count, href }: { count: number; href: string }) {
   if (count <= 0) return null;
+  return <MatrixChip text={toEstimateLabel(count)} href={href} slot="to-estimate-chip" />;
+}
+
+/** Un chip sotto la matrice che apre la lista filtrata: «5 da stimare», «2 senza beneficio contato». */
+function MatrixChip({ text, href, slot }: { text: string; href: string; slot: string }) {
   return (
     <Link
       href={href}
       scroll={false}
-      data-slot="to-estimate-chip"
+      data-slot={slot}
       className="inline-flex min-h-11 items-center self-start rounded-full border px-3 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-7"
     >
-      {toEstimateLabel(count)}
+      {text}
     </Link>
   );
 }
@@ -244,12 +263,13 @@ function MatrixDot({
   bands: readonly CostBandInfo[];
   label: MatrixLabelPlacement | null;
 }) {
-  const text = `${point.code ? `${point.code} ` : ""}${point.title}. Valore: ${valueWordText(point.value)}. Costo: ${costShortText(point.cost, bands)}`;
+  const text = `${point.code ? `${point.code} ` : ""}${point.title}. Valore: ${valueShortText(point.value)}. Costo: ${costShortText(point.cost, bands)}`;
   // Il riquadro si apre verso il centro, così non esce dalla matrice.
   const toLeft = point.left > 50;
   const above = point.top > 35;
   return (
-    <li className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: `${point.left}%`, top: `${point.top}%` }}>
+    // Il punto sotto il puntatore, o con il fuoco, sale sopra gli altri: il suo riquadro resta leggibile.
+    <li className="absolute -translate-x-1/2 -translate-y-1/2 focus-within:z-20 hover:z-20" style={{ left: `${point.left}%`, top: `${point.top}%` }}>
       <Link
         href={point.href}
         scroll={false}
@@ -273,7 +293,8 @@ function MatrixDot({
             data-slot="matrix-label"
             className={cn(
               "pointer-events-none absolute rounded-sm bg-background/80 px-0.5 font-mono text-[10px] leading-[13px] whitespace-nowrap text-muted-foreground group-hover:text-foreground",
-              label.crowded && "opacity-60",
+              // Più tenue dove copre qualcosa: sullo schermo largo, oppure solo sotto i 768 px.
+              label.crowded ? "opacity-60" : label.crowdedSmall && "max-md:opacity-60",
             )}
             style={{ left: `calc(50% + ${label.dx}px)`, top: `calc(50% + ${label.dy}px)` }}
           >

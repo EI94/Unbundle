@@ -17,8 +17,15 @@
  * - «Costo basso» è «fino alla fascia N» del workspace (D18, `thresholds.costLowBand`,
  *   predefinita la 1): una config di prima con `costLowMaxEur` vale la fascia che lo contiene.
  * - La stima di Claude (§7.5) non entra mai nel Valore, nel costo o nelle zone.
+ * - **«Benefici e costi»** (`value_model`, drizzle/0022): i conti li fa `value-calc.ts`
+ *   (`modelEstimate`) e arrivano qui come dati (`ModelEstimate`). Con un beneficio contato il
+ *   Valore all'anno è il beneficio, il punteggio quello interpolato e la parola la solita
+ *   `valueWord`; senza, «qualitativo» o «da misurare · fino a X €», senza parola né zona. Il
+ *   costo è l'avvio (`oneoff`, fonte «stima»), collocato nelle fasce del workspace: così zone e
+ *   matrice Valore × Costo funzionano. Una scheda con un modello ha sempre una valutazione del
+ *   team (`hasTeamValuation`).
  *
- * Modulo puro: solo import relativi `.ts`.
+ * Modulo puro: import relativi `.ts` (e `zod`, attraverso `value-model.ts`).
  */
 import type { CostBand } from "./types.ts";
 import {
@@ -33,6 +40,7 @@ import {
   type CostLowBand,
 } from "./cost-bands.ts";
 import type { CostSource, RiskChip, ValueEurSource, ValueSource, ValueWord, Zone } from "./labels.ts";
+import { parseValueModel } from "./value-model.ts";
 
 // ─── Modello del workspace ───────────────────────────────────────────
 
@@ -347,21 +355,49 @@ export function valueWord(score: number | null | undefined, model: ValuationMode
   return "basso";
 }
 
+/** Lo stato del Valore di «Benefici e costi»: con un beneficio contato, solo da misurare, solo a parole. */
+export type ValueModelState = "contato" | "da_misurare" | "qualitativo";
+
+/**
+ * I conti di «Benefici e costi» della scheda, già fatti con le ipotesi del workspace
+ * (`modelEstimate` di `value-calc.ts`). Mai salvati: si rifanno a ogni lettura.
+ */
+export interface ModelEstimate {
+  state: ValueModelState;
+  /** Beneficio contato, euro all'anno. */
+  benefitEur: number;
+  /** Euro all'anno delle voci da misurare: fuori dal totale. */
+  pendingEur: number;
+  /** Ore all'anno contate. */
+  hours: number;
+  /** Punteggio da 1 a 5 del beneficio contato (`valueScore`); null senza beneficio contato. */
+  score: number | null;
+  /** Avvio (euro) e ricorrenti (euro all'anno); null se il modello non ha costi. */
+  costs: { oneoffEur: number; runEurYear: number } | null;
+}
+
+/** Il Valore di «Benefici e costi» come lo scrivono riga, pannello, card e scheda. */
+export type ValueBenefits = Pick<ModelEstimate, "state" | "benefitEur" | "pendingEur" | "hours">;
+
 export interface ValueInput extends ScoreInput {
   /** `annualBenefit` del ROI del dossier (letture protette di `use-case-dossiers.ts`). */
   dossierAnnualBenefitEur?: number | null;
   /** `value_eur_year`, valore stimato dal team. */
   valueEurYear?: number | null;
+  /** «Benefici e costi» della scheda, se ha un modello valido: vale al posto dei KPI d'impatto. */
+  estimate?: ModelEstimate | null;
 }
 
 export interface ValueFigure {
-  /** Punteggio d'impatto (1-5); `null` = «da stimare». */
+  /** Punteggio d'impatto (1-5); `null` = «da stimare» (o, con un modello, nessun beneficio contato). */
   score: number | null;
   word: ValueWord | null;
   /** «team», «AI»; `null` = «da stimare». */
   source: ValueSource | null;
-  /** Euro all'anno accanto, se ci sono: prima il dossier, poi il team. */
+  /** Euro all'anno accanto, se ci sono: prima il dossier, poi il beneficio contato del modello o il team. */
   perYear: { amount: number; source: ValueEurSource } | null;
+  /** Con un modello: stato, beneficio contato, da misurare e ore. Assente o null senza modello. */
+  benefits?: ValueBenefits | null;
 }
 
 function finiteOrNull(value: number | null | undefined): number | null {
@@ -384,6 +420,7 @@ export function annualValue(input: Pick<ValueInput, "dossierAnnualBenefitEur" | 
  * punteggi di `ai_suggestion` non contano nemmeno qui, come nell'aggregatore v1.
  */
 export function valueFigure(input: ValueInput, model: ValuationModel, opts: AggregateOptions = {}): ValueFigure {
+  if (input.estimate) return modelValueFigure(input, input.estimate, model);
   const perYear = annualValue(input);
   const version = opts.version ?? scoringVersionOf(model);
   const readable: ScoreInput = version === 1 ? { ...input, aiScores: null } : input;
@@ -398,6 +435,27 @@ export function valueFigure(input: ValueInput, model: ValuationModel, opts: Aggr
   };
 }
 
+/**
+ * Il Valore con «Benefici e costi»: il modello vale al posto dei KPI d'impatto e del valore
+ * all'anno scritto a mano. Con un beneficio contato, punteggio interpolato, parola e beneficio
+ * all'anno (il dossier, quando c'è, resta prima); senza, nessuna parola: «qualitativo» o «da
+ * misurare · fino a X €». La fonte è sempre il team.
+ */
+function modelValueFigure(input: Pick<ValueInput, "dossierAnnualBenefitEur">, estimate: ModelEstimate, model: ValuationModel): ValueFigure {
+  const counted = estimate.state === "contato";
+  const score = counted ? estimate.score : null;
+  const dossier = finiteOrNull(input.dossierAnnualBenefitEur);
+  const perYear: ValueFigure["perYear"] =
+    dossier !== null ? { amount: dossier, source: "dossier" } : counted ? { amount: estimate.benefitEur, source: "team" } : null;
+  return {
+    score,
+    word: valueWord(score, model),
+    source: "team",
+    perYear,
+    benefits: { state: estimate.state, benefitEur: estimate.benefitEur, pendingEur: estimate.pendingEur, hours: estimate.hours },
+  };
+}
+
 // ─── Costo di realizzazione (§7.2) ───────────────────────────────────
 
 export interface CostFigureInput extends Pick<ScoreInput, "customScores" | "aiScores"> {
@@ -407,6 +465,8 @@ export interface CostFigureInput extends Pick<ScoreInput, "customScores" | "aiSc
   costEurOnce?: number | null;
   /** `cost_band`, fascia del team (1-5). */
   costBand?: number | null;
+  /** «Benefici e costi» della scheda: con i costi, avvio e ricorrenti (fonte «stima»). */
+  estimate?: Pick<ModelEstimate, "costs"> | null;
 }
 
 /** Il costo con la sua fonte. `null` = «da stimare». */
@@ -424,6 +484,8 @@ export interface CostFigure {
   bandLabel?: string;
   /** Vero per una fascia (team o sforzo): a schermo «fascia» al posto dell'importo. */
   fromBand: boolean;
+  /** Solo per la fonte «stima»: i costi ricorrenti, euro all'anno. */
+  runEurYear?: number | null;
   /** Posizione orizzontale in matrice, da 0,5 a 5,5, sulla scala delle fasce del workspace. */
   position: number;
   /**
@@ -433,7 +495,7 @@ export interface CostFigure {
   referenceEur: number;
 }
 
-function amountFigure(source: "dossier" | "team_importo", amount: number, bands: readonly CostBandInfo[]): CostFigure {
+function amountFigure(source: "dossier" | "stima" | "team_importo", amount: number, bands: readonly CostBandInfo[]): CostFigure {
   const band = bandForAmount(amount, bands);
   return {
     source,
@@ -468,9 +530,10 @@ function costKpiDimension(model: ValuationModel, kpiId: string): Dimension | nul
 }
 
 /**
- * Scala con fonte, la prima disponibile vince (§7.2): 1 dossier, 2 importo del team,
- * 3 fascia del team, 4 derivato dallo sforzo (KPI `costKpiId`, da persona o AI; non esiste se
- * il modello non ha quel KPI), 5 nessuna. Mai «6 − fattibilità».
+ * Scala con fonte, la prima disponibile vince (§7.2): 1 dossier, 2 «Benefici e costi» con i
+ * costi (fonte «stima»: l'avvio come importo, i ricorrenti accanto), 3 importo del team,
+ * 4 fascia del team, 5 derivato dallo sforzo (KPI `costKpiId`, da persona o AI; non esiste se
+ * il modello non ha quel KPI), 6 nessuna. Mai «6 − fattibilità».
  * Fascia, etichetta, posizione e valore nei totali seguono le fasce del workspace
  * (`resolveCostBands(model)`, D15). Lo sforzo dà l'importo stimato di oggi (tabella di
  * `estimateImplementationCost`), l'importo dà la fascia del workspace; nei totali vale
@@ -480,6 +543,10 @@ export function costFigure(input: CostFigureInput, model: ValuationModel): CostF
   const bands = resolveCostBands(model);
   const dossier = finiteOrNull(input.dossierImplementationEur);
   if (dossier !== null) return amountFigure("dossier", Math.max(0, dossier), bands);
+  const costs = input.estimate?.costs;
+  if (costs && Number.isFinite(costs.oneoffEur)) {
+    return { ...amountFigure("stima", Math.max(0, costs.oneoffEur), bands), runEurYear: Number.isFinite(costs.runEurYear) ? Math.max(0, costs.runEurYear) : 0 };
+  }
   const amount = finiteOrNull(input.costEurOnce);
   if (amount !== null) return amountFigure("team_importo", Math.max(0, amount), bands);
   if (isCostBand(input.costBand)) return bandFigure("team_fascia", input.costBand, bands);
@@ -557,16 +624,18 @@ export function riskChips(intake: unknown): RiskChip[] {
 
 /**
  * Vero se il team ha messo almeno un valore: un KPI di una persona (`custom_scores`), il
- * valore all'anno o il costo. Serve a «Riapri» (§3.7: `scored` se ci sono valori del team)
- * e all'avviso non bloccante di «Approva».
+ * valore all'anno, il costo o «Benefici e costi» (`value_model` valido). Serve a «Riapri»
+ * (§3.7: `scored` se ci sono valori del team) e all'avviso non bloccante di «Approva».
  */
 export function hasTeamValuation(card: {
   customScores?: KpiScoreMap | null;
   valueEurYear?: number | null;
   costEurOnce?: number | null;
   costBand?: number | null;
+  valueModel?: unknown;
 }): boolean {
   if (finiteOrNull(card.valueEurYear) !== null || finiteOrNull(card.costEurOnce) !== null || isCostBand(card.costBand)) return true;
+  if (parseValueModel(card.valueModel) !== null) return true;
   for (const dimension of DIMENSIONS) {
     const scores = card.customScores?.[dimension];
     if (scores && typeof scores === "object" && Object.values(scores).some((v) => presentScore(v) !== null)) return true;

@@ -17,6 +17,7 @@ import {
   date,
   numeric,
   smallint,
+  unique,
 } from "drizzle-orm/pg-core";
 import type { Approval, Fallback, PartialNa, Waiver } from "../uc/types.ts";
 import { CONNECTOR_DEFAULT_LIMITS, type ConnectorLimits } from "./connector-ddl.ts";
@@ -27,7 +28,15 @@ import type {
   UseCaseEventField,
   UseCaseMcpRequestStatus,
 } from "./use-case-hub-ddl.ts";
+import type {
+  UseCaseNeedAvailability,
+  UseCaseNeedKind,
+  UseCaseNeedOwnerSide,
+  UseCaseNeedStatus,
+  UseCaseNeedType,
+} from "./use-case-hub-value-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
+import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
   AnswerDevice,
   AnswerKind,
@@ -725,6 +734,12 @@ export const useCases = pgTable("use_cases", {
    * solo quando cambia una colonna che una persona modifica. Chi lo scrive a mano non lo cambia.
    */
   version: integer("version").notNull().default(1),
+  /**
+   * Modello dei benefici (drizzle/0022): voci, costi, facilità e piano, nella forma di
+   * `valueModelSchema` (src/lib/use-cases/value-model.ts); NULL = nessun modello. Valore e
+   * costo si calcolano in lettura. Un cambio alza `version` (trigger `use_cases_value_model_version`).
+   */
+  valueModel: jsonb("value_model").$type<UseCaseValueModel>(),
   createdAt: timestamp("created_at", { mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { mode: "date" }).defaultNow().notNull(),
 });
@@ -822,6 +837,69 @@ export const useCaseMcpRequests = pgTable(
       name: "use_case_mcp_requests_pkey",
       columns: [t.workspaceId, t.principalKey, t.idempotencyKey],
     }),
+  ]
+);
+
+// ─── Benefici e «Cosa serve» (drizzle/0022) ──────────────────────────
+// CHECK e trigger stanno solo nella migrazione e in src/lib/db/use-case-hub-value-ddl.ts
+// (self-heal): mai drizzle-kit su queste tabelle.
+
+/**
+ * Esigenze del workspace: requisiti per far avanzare gli use case (gli 8 stati delle voci) e
+ * prossimi passi (proposta, confermata, fatta). Non si cancellano: si archiviano
+ * (`archivedAt`, `archiveReason`). `importKey` è unica per workspace (upsert del MCP).
+ */
+export const useCaseNeeds = pgTable(
+  "use_case_needs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    type: varchar("type", { length: 12 }).$type<UseCaseNeedType>().notNull(),
+    kind: varchar("kind", { length: 20 }).$type<UseCaseNeedKind>().notNull().default("altro"),
+    title: varchar("title", { length: 300 }).notNull(),
+    detail: varchar("detail", { length: 4000 }),
+    /** Chi se ne occupa, a parole (testo libero). */
+    ownerLabel: varchar("owner_label", { length: 120 }),
+    ownerSide: varchar("owner_side", { length: 20 }).$type<UseCaseNeedOwnerSide>(),
+    /** Stato secondo il tipo (CHECK `use_case_needs_status_check`). */
+    status: varchar("status", { length: 20 }).$type<UseCaseNeedStatus>().notNull(),
+    availability: varchar("availability", { length: 12 }).$type<UseCaseNeedAvailability>(),
+    dueOn: date("due_on", { mode: "string" }),
+    dueLabel: varchar("due_label", { length: 80 }),
+    /** Vero se la data è una proposta, non ancora confermata. */
+    dueIsProposal: boolean("due_is_proposal").notNull().default(false),
+    forLabel: varchar("for_label", { length: 200 }),
+    sortOrder: integer("sort_order").notNull().default(0),
+    version: integer("version").notNull().default(1),
+    importKey: varchar("import_key", { length: 128 }),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).defaultNow().notNull(),
+    doneAt: timestamp("done_at", { mode: "date", withTimezone: true }),
+    archivedAt: timestamp("archived_at", { mode: "date", withTimezone: true }),
+    archiveReason: varchar("archive_reason", { length: 300 }),
+  },
+  (t) => [
+    index("use_case_needs_workspace_idx").on(t.workspaceId, t.type, t.sortOrder),
+    unique("use_case_needs_import_key_unique").on(t.workspaceId, t.importKey),
+  ]
+);
+
+/** Per quali schede serve un'esigenza. Sparisce con l'esigenza o con la scheda. */
+export const useCaseNeedLinks = pgTable(
+  "use_case_need_links",
+  {
+    needId: uuid("need_id")
+      .notNull()
+      .references(() => useCaseNeeds.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id")
+      .notNull()
+      .references(() => useCases.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_need_links_pkey", columns: [t.needId, t.useCaseId] }),
+    index("use_case_need_links_use_case_idx").on(t.useCaseId),
   ]
 );
 
@@ -1569,6 +1647,9 @@ export type UseCaseEvent = typeof useCaseEvents.$inferSelect;
 export type NewUseCaseEvent = typeof useCaseEvents.$inferInsert;
 export type UseCaseMcpRequest = typeof useCaseMcpRequests.$inferSelect;
 export type NewUseCaseMcpRequest = typeof useCaseMcpRequests.$inferInsert;
+export type UseCaseNeed = typeof useCaseNeeds.$inferSelect;
+export type NewUseCaseNeed = typeof useCaseNeeds.$inferInsert;
+export type UseCaseNeedLink = typeof useCaseNeedLinks.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 export type Report = typeof reports.$inferSelect;

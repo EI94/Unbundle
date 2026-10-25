@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ANSWER_TEXT } from "@/lib/use-cases/answers";
+import { hasValueText } from "@/lib/use-cases/format";
 import { NOT_ESTIMATED_LABEL } from "@/lib/use-cases/labels";
 import { PHASE_LABEL, VALUED_PILL } from "@/lib/use-cases/phase";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
@@ -150,7 +151,7 @@ const ROW_LINK =
  * fonte, intera: non si accorcia mai, va a capo (D5, §4.6).
  */
 export function RowFigures({ item, bands }: { item: Pick<HubItem, "value" | "cost">; bands?: readonly CostBandInfo[] }) {
-  if (!item.value.word && !item.cost) {
+  if (!hasValueText(item.value) && !item.cost) {
     return (
       <span data-figure="stima" data-estimated="true" className="shrink-0 text-sm whitespace-nowrap text-muted-foreground">
         {NOT_ESTIMATED_LABEL}

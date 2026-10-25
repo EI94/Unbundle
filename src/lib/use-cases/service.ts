@@ -69,6 +69,7 @@ import {
   type WhenInput,
 } from "./types";
 import type { Dimension, LegacyScoreColumns } from "./valuation";
+import type { ValueModel } from "./value-model";
 
 /**
  * Servizio unico di scrittura dell'area «Use case» (docs/use-case/DESIGN.md §9.1, §9.2,
@@ -150,24 +151,25 @@ export const NOTHING_TO_REDACT_ERROR = "Non c'è testo da oscurare nei campi sce
 export const DOSSIER_NOT_LINKED_ERROR = "Il dossier non è collegato a questo use case.";
 export const TOO_MANY_ITEMS_ERROR = "Al massimo 100 use case per volta.";
 
-type Failure = Extract<ServiceResult<never>, { ok: false }>;
+export type Failure = Extract<ServiceResult<never>, { ok: false }>;
 
-function fail(error: ServiceError, message: string = SERVICE_MESSAGES[error], fieldErrors?: Record<string, string>): Failure {
+/** Anche per `needs-service.ts`, che scrive le esigenze con gli stessi errori. */
+export function fail(error: ServiceError, message: string = SERVICE_MESSAGES[error], fieldErrors?: Record<string, string>): Failure {
   return fieldErrors && Object.keys(fieldErrors).length
     ? { ok: false, error, message, fieldErrors }
     : { ok: false, error, message };
 }
 
-function invalid(fieldErrors: Record<string, string>, message: string = SERVICE_MESSAGES.dati_non_validi): Failure {
+export function invalid(fieldErrors: Record<string, string>, message: string = SERVICE_MESSAGES.dati_non_validi): Failure {
   return fail("dati_non_validi", message, fieldErrors);
 }
 
 /**
  * Una funzione esportata del servizio che non lancia: un errore (database, rete) diventa
  * `riprova`. Nel log solo nome, SQLSTATE e vincolo: mai il messaggio di drizzle
- * (`Failed query: <sql> params: <testi>`), mai la causa intera.
+ * (`Failed query: <sql> params: <testi>`), mai la causa intera. La usa anche `needs-service.ts`.
  */
-function guarded<A extends unknown[], T>(
+export function guarded<A extends unknown[], T>(
   op: string,
   run: (...args: A) => Promise<ServiceResult<T>>,
 ): (...args: A) => Promise<ServiceResult<T>> {
@@ -221,6 +223,7 @@ const CARD_COLUMNS = {
   valueEurYear: useCases.valueEurYear,
   costEurOnce: useCases.costEurOnce,
   costBand: useCases.costBand,
+  valueModel: useCases.valueModel,
   impactEconomic: useCases.impactEconomic,
   impactTime: useCases.impactTime,
   impactQuality: useCases.impactQuality,
@@ -446,6 +449,19 @@ function personaCan(actor: Actor, ability: keyof UseCaseAbilities): boolean {
   return actor.kind === "persona" && actor.abilities?.[ability] === true;
 }
 
+/**
+ * Passo 1 per le scritture fuori da `use_cases` (le esigenze di «Cosa serve», `needs-service.ts`):
+ * schema, area accesa per i canali `pagina` e `mcp_team`, ruolo e «Lateral Space» riletti adesso,
+ * e solo una persona con l'abilità richiesta. Restituisce l'id di chi scrive.
+ */
+export async function personaWriter(ctx: WriteContext, ability: keyof UseCaseAbilities): Promise<{ ok: true; userId: string } | Failure> {
+  await ensureDbSchema();
+  const resolved = await resolveActor(ctx);
+  if (!resolved.ok) return resolved;
+  if (!personaCan(resolved.actor, ability) || !resolved.actor.userId) return fail("permesso_mancante");
+  return { ok: true, userId: resolved.actor.userId };
+}
+
 function decisionActor(actor: Actor): DecisionContext["actor"] {
   return {
     userId: actor.userId,
@@ -601,6 +617,7 @@ function decisionCardOf(loaded: Loaded): DecisionCard {
     valueEurYear: row.valueEurYear,
     costEurOnce: row.costEurOnce,
     costBand: row.costBand,
+    valueModel: row.valueModel,
   };
 }
 
@@ -1119,6 +1136,8 @@ interface ValuationChange {
   kpis?: Partial<Record<Dimension, Record<string, number | null>>>;
   valueEurYear?: number | null;
   cost?: CostInput;
+  /** «Benefici e costi», già validato (`valueModelSchema`); null lo toglie. */
+  model?: ValueModel | null;
   legacy?: Partial<Record<LegacyScoreKey, number>>;
 }
 
@@ -1162,6 +1181,13 @@ function valuationWrite(
       set.costBand = cost.costBand;
       fields.add("costo");
     }
+  }
+  // «Benefici e costi»: il trigger della 0022 alza `version` quando `value_model` cambia. Nella
+  // Storia solo i nomi: «valore», e «costo» se cambiano i costi del modello.
+  if (change.model !== undefined && !sameJson(change.model, row.valueModel)) {
+    set.valueModel = change.model;
+    fields.add("valore");
+    if (!sameJson(change.model?.costs ?? null, row.valueModel?.costs ?? null)) fields.add("costo");
   }
   const nextReview = row.portfolioReviewStatus === "archived" ? "archived" : "scored";
   if (fields.size === 0 && nextReview === row.portfolioReviewStatus) return null;
@@ -1211,7 +1237,8 @@ async function writeValuation(
 /**
  * «Salva la valutazione» (§6.3) e la valutazione di `update_use_case` del MCP del team: KPI
  * da 1 a 5 o vuoti (un KPI vuoto non conta zero, §7.6), valore all'anno, costo come importo
- * o fascia (mai entrambi, D5). Ogni KPI deve stare nel modello del workspace.
+ * o fascia (mai entrambi, D5), «Benefici e costi» (`model`, lo schema di `value-model.ts`; null
+ * lo toglie). Ogni KPI deve stare nel modello del workspace.
  */
 export const saveValuation = guarded("save_valuation", async function saveValuation(
   ctx: WriteContext,
@@ -1224,8 +1251,8 @@ export const saveValuation = guarded("save_valuation", async function saveValuat
   const model = await workspaceModel(ctx.workspaceId);
   const validated = validateValuation(valuation, { kpiIds: model.kpiIds });
   if (!validated.ok) return invalid(validated.fieldErrors);
-  const { kpis, valueEurYear, cost } = validated.valuation;
-  return writeValuation(ctx, prep, expectedVersion, { kpis, valueEurYear, cost }, model);
+  const { kpis, valueEurYear, cost, model: valueModel } = validated.valuation;
+  return writeValuation(ctx, prep, expectedVersion, { kpis, valueEurYear, cost, model: valueModel }, model);
 });
 
 // ═══ decideUseCase, setWhen, setHiddenFromSearch ═════════════════════

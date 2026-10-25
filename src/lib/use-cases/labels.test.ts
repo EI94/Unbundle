@@ -51,9 +51,10 @@ test("Valore (§7.1): Alto, Medio, Basso; fonti «team», «AI», «da stimare»
 });
 
 test("costo (§7.2): fonti corte e lunghe, nell'ordine in cui vincono; mai «da dossier»", () => {
-  assert.deepEqual(COST_SOURCES, ["dossier", "team_importo", "team_fascia", "sforzo"]);
+  assert.deepEqual(COST_SOURCES, ["dossier", "stima", "team_importo", "team_fascia", "sforzo"]);
   assert.deepEqual(COST_SOURCE_LABEL, {
     dossier: { short: "dossier", long: "dal dossier" },
+    stima: { short: "team", long: "stima del team" },
     team_importo: { short: "team", long: "importo del team" },
     team_fascia: { short: "team", long: "fascia del team" },
     sforzo: { short: "stimato", long: "stimato dall'impegno" },

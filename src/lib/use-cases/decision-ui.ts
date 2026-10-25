@@ -517,8 +517,8 @@ export function lastSavedNote(state: PublicNoteFieldState): string | null {
 
 // ─── «Approva» (§6.4, §1.2 punto 4) ──────────────────────────────────
 
-/** Le fonti del costo che sono una valutazione del team (o il dossier, che viene dopo). */
-const TEAM_COST_SOURCES: readonly CostSource[] = ["team_importo", "team_fascia", "dossier"];
+/** Le fonti del costo che sono una valutazione del team (o il dossier, che viene dopo); «stima» è «Benefici e costi». */
+const TEAM_COST_SOURCES: readonly CostSource[] = ["stima", "team_importo", "team_fascia", "dossier"];
 
 /**
  * Vero quando né Valore né Costo vengono dal team: il dialogo «Approva» mostra l'avviso non

@@ -59,6 +59,11 @@
   --color-uc-grigio-bg: var(--uc-grigio-bg);
   --color-uc-lucchetto: var(--uc-lucchetto);
   --color-uc-lucchetto-bg: var(--uc-lucchetto-bg);
+  /* Use case: i colori dei gruppi nei grafici di «Benefici e costi» (vedi --uc-serie-* sotto). */
+  --color-uc-serie-1: var(--uc-serie-1);
+  --color-uc-serie-2: var(--uc-serie-2);
+  --color-uc-serie-3: var(--uc-serie-3);
+  --color-uc-serie-altro: var(--uc-serie-altro);
 }
 
 :root {
@@ -108,6 +113,14 @@
   --uc-grigio-bg: oklch(0.6 0.01 260 / 0.14);
   --uc-lucchetto: oklch(0.7 0.12 300);
   --uc-lucchetto-bg: oklch(0.7 0.12 300 / 0.15);
+
+  /* Use case, grafici di «Benefici e costi»: tre colori per i gruppi e il grigio di «Altro»,
+     tema scuro di base. Convalidati a coppie (tutte: nelle bolle due gruppi qualsiasi stanno
+     vicini) anche per chi non distingue rosso e verde, almeno 3:1 sul fondo. */
+  --uc-serie-1: #3987e5;
+  --uc-serie-2: #d95926;
+  --uc-serie-3: #199e70;
+  --uc-serie-altro: oklch(0.6 0.01 260);
 }
 
 @layer base {
@@ -155,6 +168,11 @@
   --uc-grigio-bg: oklch(0.55 0.01 260 / 0.1);
   --uc-lucchetto: oklch(0.5 0.14 300);
   --uc-lucchetto-bg: oklch(0.5 0.14 300 / 0.1);
+  /* Use case: i colori dei gruppi su fondo chiaro (stessi tre toni, passi per il chiaro). */
+  --uc-serie-1: #2a78d6;
+  --uc-serie-2: #eb6834;
+  --uc-serie-3: #1baf7a;
+  --uc-serie-altro: oklch(0.55 0.01 260);
   color-scheme: light;
 }
 

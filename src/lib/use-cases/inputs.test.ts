@@ -20,12 +20,14 @@ import {
   UNKNOWN_FIELD_ERROR,
   VALUE_AMOUNT_ERROR,
   VALUE_EUR_YEAR_MAX,
+  VALUE_MODEL_FIELD_ERROR,
   validatePublicNote,
   validateQuickCreate,
   validateUseCaseChanges,
   validateValuation,
 } from "./inputs.ts";
 import { EVENT_FIELDS } from "./labels.ts";
+import { VALUE_MODEL_ERRORS } from "./value-model.ts";
 
 // Limiti dei campi (docs/use-case/DESIGN.md §6.2, §6.4, §5.2) e campo costo (§5.4, D5).
 // Testi sintetici.
@@ -303,4 +305,42 @@ test("pannello rapido: titolo 3-200, problema in una riga 3-300, AI Lab fino a 1
   ]) {
     assert.equal(validateQuickCreate(bad).ok, false, JSON.stringify(bad).slice(0, 60));
   }
+});
+
+// ─── «Benefici e costi» in «Salva la valutazione» ────────────────────
+
+const MODEL_INPUT = {
+  v: 1,
+  primary: "tempo",
+  components: [
+    { key: "tempo", lever: "tempo", label: "Smistamento delle richieste", kind: "ore", volumeYear: 6600, minutesPerUnit: 1.5, automatablePct: 70, confidence: "ipotesi" },
+  ],
+  costs: { devDays: 4, internalHours: 16, runCostEurYear: 600 },
+};
+
+test("valutazione: «model» con lo schema di value-model.ts, null lo toglie; nella Storia «valore»", () => {
+  const saved = validateValuation({ model: MODEL_INPUT });
+  assert.equal(saved.ok, true);
+  if (saved.ok) {
+    assert.deepEqual(saved.fields, ["valore"]);
+    assert.equal(saved.valuation.model?.components[0].label, "Smistamento delle richieste");
+  }
+  assert.deepEqual(validateValuation({ model: null }), { ok: true, valuation: { model: null }, fields: ["valore"] });
+  const both = validateValuation({ model: null, cost: null });
+  assert.equal(both.ok, true);
+  if (both.ok) assert.deepEqual(both.fields.sort(), ["costo", "valore"]);
+});
+
+test("valutazione: errori di «model» in italiano, con il percorso del campo", () => {
+  const wrongPrimary = validateValuation({ model: { ...MODEL_INPUT, primary: "ricavi" } });
+  assert.deepEqual(wrongPrimary, { ok: false, fieldErrors: { "model.primary": VALUE_MODEL_ERRORS.primaryNotInComponents } });
+  const emptyLabel = validateValuation({ model: { ...MODEL_INPUT, components: [{ ...MODEL_INPUT.components[0], label: "  " }] } });
+  assert.deepEqual(emptyLabel, { ok: false, fieldErrors: { "model.components.0.label": VALUE_MODEL_FIELD_ERROR } });
+  const tooMany = validateValuation({ model: { ...MODEL_INPUT, components: Array.from({ length: 7 }, (_, i) => ({ ...MODEL_INPUT.components[0], key: `t${i}` })) } });
+  assert.deepEqual(tooMany, { ok: false, fieldErrors: { "model.components": VALUE_MODEL_FIELD_ERROR } });
+  const extra = validateValuation({ model: { ...MODEL_INPUT, proponente: "x" } });
+  assert.deepEqual(extra, { ok: false, fieldErrors: { "model.proponente": UNKNOWN_FIELD_ERROR } });
+  // Una voce in euro non porta le ore.
+  const mixed = validateValuation({ model: { ...MODEL_INPUT, components: [{ key: "e", lever: "tempo", label: "Euro", kind: "euro", eurYear: 10, volumeYear: 3, confidence: "fonte" }] } });
+  assert.equal(mixed.ok, false);
 });

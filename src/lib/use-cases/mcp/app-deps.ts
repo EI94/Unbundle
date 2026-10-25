@@ -8,6 +8,7 @@ import { CONNECTOR_PUBLIC_ORIGIN } from "@/lib/connector/auth";
 import { alertExposedToken, type ExposedTokenAlertDeps } from "@/lib/connector/exposed-token-alert";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { getUseCaseDetail, listHubItems } from "@/lib/db/queries/use-case-hub";
+import { listWorkspaceNeeds, needUseCaseRefs } from "@/lib/db/queries/use-case-needs";
 import { getUseCaseById } from "@/lib/db/queries/use-cases";
 import { markIntegrationTokenExposed } from "@/lib/db/queries/workspace-integrations";
 import {
@@ -21,6 +22,7 @@ import {
 import { logSafeError } from "@/lib/log/safe-error";
 import { dispatchNewPortfolioNotifications } from "@/lib/notifications/portfolio-dispatch";
 import { isLateralSpaceEmail } from "@/lib/uc/lateral-space";
+import { archiveNeed, createNeed, linkNeed, unlinkNeed, updateNeed } from "@/lib/use-cases/needs-service";
 import { phaseOfUseCase } from "@/lib/use-cases/phase";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { createUseCases, creationFollowUps, decideUseCase, saveValuation, setHiddenFromSearch, setWhen, updateUseCase } from "@/lib/use-cases/service";
@@ -100,8 +102,9 @@ export const appTeamAuthDeps: TeamAuthDeps = {
 
 /**
  * Le letture dei tool: le proiezioni della pagina, id, titoli e codici, il problema intero per
- * la ricerca, le aree della guida del connettore e, per una ripresa, la Storia e lo stato della
- * scheda.
+ * la ricerca, le aree della guida del connettore, per una ripresa la Storia e lo stato della
+ * scheda e, per «Cosa serve», le letture della pagina con la persona del token
+ * (`listWorkspaceNeeds` e `needUseCaseRefs` rispondono null o vuoto a chi non è revisore).
  */
 export const appTeamReadDeps: TeamReadDeps = {
   listItems: (workspaceId, viewer) => listHubItems(workspaceId, viewer),
@@ -160,6 +163,19 @@ export const appTeamReadDeps: TeamReadDeps = {
       )
       .limit(1);
     return Boolean(row);
+  },
+  needs: (workspaceId, viewer, opts) => listWorkspaceNeeds(workspaceId, viewer, { includeArchived: opts.includeArchived }),
+  needUseCaseRefs: (workspaceId, ids, viewer) => needUseCaseRefs(workspaceId, ids, viewer),
+  async findUseCases(workspaceId, { codes, ids }) {
+    if (codes.length === 0 && ids.length === 0) return [];
+    await ensureDbSchema();
+    const byCode = codes.length ? inArray(useCases.code, [...codes]) : undefined;
+    const byId = ids.length ? inArray(useCases.id, [...ids]) : undefined;
+    const rows = await db
+      .select({ id: useCases.id, code: useCases.code })
+      .from(useCases)
+      .where(and(eq(useCases.workspaceId, workspaceId), byCode && byId ? or(byCode, byId) : (byCode ?? byId)));
+    return rows.map((row) => ({ id: row.id.toLowerCase(), code: row.code ?? null }));
   },
   async cardState(workspaceId, useCaseId, viewer) {
     // La proiezione del revisore dà accesso, dossier e oggi; la fase si calcola dalla riga
@@ -238,6 +254,11 @@ export function appTeamToolDeps(opts: { schedule: (task: () => Promise<void>) =>
       decideUseCase,
       setWhen,
       creationFollowUps: (writer) => creationFollowUps("team_mcp", writer),
+      createNeed,
+      updateNeed,
+      archiveNeed,
+      linkNeed,
+      unlinkNeed,
     },
     requests: {
       read: readTeamMcpRequest,

@@ -28,12 +28,19 @@
 import { COST_BANDS, costBandInfo, type CostBandInfo } from "./cost-bands.ts";
 import {
   COST_BAND_WORD,
+  COST_ONEOFF_WORD,
+  COST_RUN_WORD,
   COST_SOURCE_LABEL,
   NOT_ESTIMATED_LABEL,
+  PER_YEAR_SHORT_SUFFIX,
+  UP_TO_WORD,
   VALUE_EUR_SOURCE_LABEL,
+  VALUE_MODEL_STATE_LABEL,
   VALUE_SOURCE_LABEL,
   VALUE_WORD_LABEL,
+  ZONE_LABEL,
   type CostSource,
+  type Zone,
   type ValueEurSource,
   type ValueSource,
   type ValueWord,
@@ -46,11 +53,26 @@ export const FIGURE_SEPARATOR = " · ";
 
 // ─── Importi e punteggi ──────────────────────────────────────────────
 
+/**
+ * Arrotondato all'intero, la metà in su lontano dallo zero, con una tolleranza di 1e-9: una coda
+ * di virgola mobile (2.183,4999999999995 dove il conto esatto dà 2.183,5) non sposta la cifra.
+ * Nessun altro arrotondamento prima: 1.234,497 resta 1.234 e 2,4951 resta 2.
+ */
+export function roundAmount(n: number): number {
+  return Math.sign(n) * Math.round(Math.abs(n) + 1e-9);
+}
+
 /** «40.000»: intero, con il punto delle migliaia anche sotto 10.000. */
 function groupedInteger(n: number): string {
-  const rounded = Math.round(Math.abs(n));
+  const rounded = roundAmount(Math.abs(n));
   const digits = String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return n < 0 && rounded !== 0 ? `-${digits}` : digits;
+}
+
+/** «1.250»: un numero intero (ore, volte), con il punto delle migliaia. */
+export function formatInteger(n: number): string {
+  if (typeof n !== "number" || !Number.isFinite(n)) return NOT_ESTIMATED_LABEL;
+  return groupedInteger(n);
 }
 
 /**
@@ -193,23 +215,90 @@ export function valueEurSourceText(source: ValueEurSource, form: SourceForm): st
 
 // ─── Valore (§7.1) ───────────────────────────────────────────────────
 
-/** Le parti del Valore che servono qui: tipo strutturale, `ValueFigure` di `valuation.ts` è assegnabile. */
+/**
+ * Le parti del Valore che servono qui: tipo strutturale, `ValueFigure` di `valuation.ts` è
+ * assegnabile. `benefits` c'è solo con «Benefici e costi» (`value_model`).
+ */
 export interface ValueParts {
   score: number | null;
   word: ValueWord | null;
   source: ValueSource | null;
   perYear: { amount: number; source: ValueEurSource } | null;
+  benefits?: {
+    state: "contato" | "da_misurare" | "qualitativo";
+    benefitEur: number;
+    pendingEur: number;
+    hours: number;
+  } | null;
 }
 
-/** «Alto», «Medio», «Basso»; senza punteggio «da stimare». La forma della riga e della card. */
-export function valueWordText(value: Pick<ValueParts, "word"> | null | undefined): string {
-  return value?.word ? VALUE_WORD_LABEL[value.word] : NOT_ESTIMATED_LABEL;
+/** «4.043 €/anno»: un importo all'anno nella forma corta. */
+export function perYearShortText(amount: number): string {
+  return `${formatEuro(amount)}${PER_YEAR_SHORT_SUFFIX}`;
 }
 
-/** «Alto · 3,8»: la cifra grande della scheda; senza punteggio «da stimare». */
-export function valueLongText(value: Pick<ValueParts, "word" | "score"> | null | undefined): string {
+/** «da misurare · fino a 5.840 €» oppure «qualitativo»: un modello senza beneficio contato. */
+function uncountedText(benefits: NonNullable<ValueParts["benefits"]>): string {
+  if (benefits.state === "da_misurare") return `${VALUE_MODEL_STATE_LABEL.da_misurare}${FIGURE_SEPARATOR}${UP_TO_WORD} ${formatEuro(benefits.pendingEur)}`;
+  return VALUE_MODEL_STATE_LABEL.qualitativo;
+}
+
+/**
+ * C'è qualcosa da scrivere per il Valore? Una parola, «Benefici e costi» o gli euro all'anno.
+ * Senza, la cifra è «da stimare».
+ */
+export function hasValueText(value: Pick<ValueParts, "word" | "perYear" | "benefits"> | null | undefined): boolean {
+  return Boolean(value?.word || value?.benefits || (value?.perYear && Number.isFinite(value.perYear.amount)));
+}
+
+/**
+ * «Alto», «Medio», «Basso»; con un modello senza beneficio contato «qualitativo» o «da
+ * misurare»; senza punteggio «da stimare». La parola sola (export, etichette).
+ */
+export function valueWordText(value: Pick<ValueParts, "word" | "benefits"> | null | undefined): string {
+  if (value?.word) return VALUE_WORD_LABEL[value.word];
+  if (value?.benefits && value.benefits.state !== "contato") return VALUE_MODEL_STATE_LABEL[value.benefits.state];
+  return NOT_ESTIMATED_LABEL;
+}
+
+/**
+ * La forma corta del Valore, una sola per riga, pannello e card della Roadmap:
+ * - con «Benefici e costi»: «Medio · 4.043 €/anno», «da misurare · fino a 5.840 €», «qualitativo»;
+ * - senza: «Alto»; senza parola ma con gli euro all'anno «12.250 € all'anno»; altrimenti «da stimare».
+ */
+export function valueShortText(value: Pick<ValueParts, "word" | "perYear" | "benefits"> | null | undefined): string {
+  const benefits = value?.benefits;
+  if (benefits) {
+    if (benefits.state !== "contato" || !value.word) return uncountedText(benefits);
+    const amount = value.perYear && Number.isFinite(value.perYear.amount) ? value.perYear.amount : benefits.benefitEur;
+    return `${VALUE_WORD_LABEL[value.word]}${FIGURE_SEPARATOR}${perYearShortText(amount)}`;
+  }
+  if (value?.word) return VALUE_WORD_LABEL[value.word];
+  return perYearText(value?.perYear) ?? NOT_ESTIMATED_LABEL;
+}
+
+/**
+ * «Alto · 3,8»: la cifra grande della scheda; con un modello senza beneficio contato «da
+ * misurare · fino a 5.840 €» o «qualitativo»; senza punteggio «da stimare».
+ */
+export function valueLongText(value: Pick<ValueParts, "word" | "score" | "benefits"> | null | undefined): string {
+  if (value?.benefits && (value.benefits.state !== "contato" || !value.word)) return uncountedText(value.benefits);
   if (!value?.word || typeof value.score !== "number" || !Number.isFinite(value.score)) return NOT_ESTIMATED_LABEL;
   return `${VALUE_WORD_LABEL[value.word]}${FIGURE_SEPARATOR}${formatScore(value.score)}`;
+}
+
+/** La zona di una scheda con «Benefici e costi» ma senza beneficio contato: non è «da stimare». */
+export const NO_COUNTED_BENEFIT_LABEL = "senza beneficio contato";
+
+/**
+ * La zona a parole (§7.4): «Subito», «Se avanza tempo»…; senza zona «da stimare», oppure, per una
+ * scheda con «Benefici e costi» che non ha un beneficio contato (Valore «qualitativo» o «da
+ * misurare»), «senza beneficio contato»: la stessa cosa che dice il Valore.
+ */
+export function zoneText(zone: Zone | null, value: Pick<ValueParts, "benefits"> | null | undefined): string {
+  if (zone) return ZONE_LABEL[zone];
+  if (value?.benefits && value.benefits.state !== "contato") return NO_COUNTED_BENEFIT_LABEL;
+  return NOT_ESTIMATED_LABEL;
 }
 
 /** «60.000 € all'anno»; `null` senza una cifra. */
@@ -263,6 +352,26 @@ export interface CostParts {
   band: CostBand;
   bandLabel?: string;
   fromBand: boolean;
+  /** Solo per la fonte «stima»: i costi ricorrenti, euro all'anno. */
+  runEurYear?: number | null;
+}
+
+/** «116 ore»: le ore liberate all'anno (grafici di «Benefici e costi»). */
+export function hoursFreedText(hours: number): string {
+  return `${formatInteger(hours)} ${roundAmount(hours) === 1 ? "ora" : "ore"}`;
+}
+
+/** «(1 qualitativo)», «(3 qualitativi)»: le voci qualitative di un tipo di ritorno. */
+export function qualitativeCountText(count: number): string {
+  return count === 1 ? "(1 qualitativo)" : `(${count} qualitativi)`;
+}
+
+/** «avvio 560 € · ricorrenti 600 €/anno»; i ricorrenti a zero non si scrivono («avvio 280 €»). */
+export function oneoffRunText(oneoffEur: number, runEurYear: number | null | undefined): string {
+  const oneoff = `${COST_ONEOFF_WORD} ${formatEuro(oneoffEur)}`;
+  return typeof runEurYear === "number" && Number.isFinite(runEurYear) && runEurYear > 0
+    ? `${oneoff}${FIGURE_SEPARATOR}${COST_RUN_WORD} ${perYearShortText(runEurYear)}`
+    : oneoff;
 }
 
 /** Il costo a schermo in due parti: la cifra e la sua fonte. Senza costo: «da stimare», nessuna fonte. */
@@ -281,12 +390,19 @@ function costBandLabelOf(cost: CostParts, bands: readonly CostBandInfo[]): strin
 /**
  * Le parti del costo nella forma `form`:
  * - corta (riga, pannello, card della Roadmap): «€€ · 40.000 €» oppure «€€ · fascia», fonte
- *   «team», «dossier», «stimato»;
+ *   «team», «dossier», «stimato»; con «Benefici e costi» «avvio 560 € · ricorrenti 600 €/anno»,
+ *   senza fonte (`source` null);
  * - lunga (scheda): «€€ · 40.000 €» oppure «€€ · fascia da 25.000 a 65.000 €», fonte
  *   «importo del team», «fascia del team», «stimato dall'impegno», «dal dossier».
  */
 export function costTextParts(cost: CostParts | null | undefined, form: SourceForm, bands: readonly CostBandInfo[] = COST_BANDS): CostTextParts {
   if (!cost) return { figure: NOT_ESTIMATED_LABEL, source: null, estimated: true };
+  // «Benefici e costi»: avvio e ricorrenti, senza simbolo della fascia (la fascia resta per zone e
+  // matrice). Nella forma corta senza fonte, come la spec la scrive: la cifra è già lunga, e «stima
+  // del team» la dice la scheda.
+  if (cost.source === "stima" && typeof cost.amount === "number" && Number.isFinite(cost.amount)) {
+    return { figure: oneoffRunText(cost.amount, cost.runEurYear), source: form === "lunga" ? costSourceText(cost.source, form) : null, estimated: false };
+  }
   const symbol = costBandSymbol(cost.band, bands);
   let detail: string;
   if (!cost.fromBand && typeof cost.amount === "number" && Number.isFinite(cost.amount)) detail = formatEuro(cost.amount);

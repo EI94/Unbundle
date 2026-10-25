@@ -35,6 +35,18 @@
 // 8. Without 0019 (0000→0017): 0020 stops with its message and leaves nothing behind. The
 //    version trigger reads intake and public_note, and PL/pgSQL would not notice their
 //    absence until the first UPDATE of use_cases.
+// Migration 0022 (value_model, its version trigger, use_case_needs, use_case_need_links):
+// 9. Idempotence: on database 1 (0000→0020 with rows) 0022 is applied twice, identical
+//    dumps; existing rows keep their version and get no value model. Self-heal parity: the
+//    0022 objects of database 2 equal those of database 1.
+// 10. The version trigger of 0022 on every database: one bump when value_model changes,
+//    also together with another column; none for the same value, a hand-written version or
+//    the AI. Needs: closed vocabularies, import key unique per workspace, cascades.
+// 11. Production: a database at 0018, 0019 and 0020 healed by the self-heal of before
+//    (ENSURE_VERSION 15), with rows of the 0020 era. `ensureDbSchema()` does not stop at the
+//    probe, adds the 0022 objects (equal to those of the migration) and keeps every row; a
+//    second call runs only the probe; 0022 applied twice on top changes nothing.
+// 12. Without 0020 (0000→0019): 0022 stops with its message and leaves nothing behind.
 // Exit code 0 only if every check passes. Optional: UC_TEST_PG_BIN.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -53,7 +65,7 @@ const USER = "uc_test";
 // One set of scratch databases per run (see the header): never shared, never reused.
 const runTag = (process.env.HUB_CHECK_ID?.trim().toLowerCase() || String(process.pid)).replace(/[^a-z0-9_]/g, "").slice(0, 24);
 if (!runTag) throw new Error("HUB_CHECK_ID must contain lowercase letters, digits or _");
-const DB = Object.fromEntries(["mig", "heal", "probe", "dups", "nouc", "no19"].map((key) => [key, `hub_check_${runTag}_${key}`]));
+const DB = Object.fromEntries(["mig", "heal", "probe", "dups", "nouc", "no19", "prod", "no20"].map((key) => [key, `hub_check_${runTag}_${key}`]));
 const HUB_TABLES = ["use_case_events", "use_case_mcp_requests"];
 const USE_CASES_0020 = [
   // Read by the version trigger; the self-heal already adds it, migrations 0000–0019 do not.
@@ -74,6 +86,9 @@ const TOKENS_0020 = [
   "index workspace_integration_tokens_owner_idx",
 ];
 const FUNCTIONS = ["use_cases_bump_version", "use_cases_created_event"];
+const VALUE_TABLES = ["use_case_needs", "use_case_need_links"];
+const USE_CASES_0022 = ["column value_model", "constraint use_cases_value_model_check", "trigger use_cases_value_model_version"];
+const VALUE_FUNCTIONS = ["use_cases_value_model_version"];
 const env = { PATH: `${pgBin}:${process.env.PATH ?? "/usr/bin:/bin"}`, HOME: process.env.HOME ?? "/private/tmp", LC_ALL: "C", LANG: "C" };
 const pinned = ["-h", HOST, "-p", port, "-U", USER];
 const failures = [];
@@ -133,6 +148,7 @@ const migrations = readdirSync(join(repoRoot, "drizzle")).filter((n) => /^\d{4}_
 const upTo = (last) => migrations.filter((n) => n.slice(0, 4) <= last);
 const file = (prefix) => join(repoRoot, "drizzle", migrations.find((n) => n.startsWith(prefix)));
 const file0020 = file("0020");
+const file0022 = file("0022");
 
 // Synthetic rows that exist before the migration (no client data, .test addresses only).
 const ids = {
@@ -160,7 +176,9 @@ INSERT INTO use_cases (id, workspace_id, title, created_at)
 
 const { CONNECTOR_PROBE_SQL } = await import("../../src/lib/db/connector-ddl.ts");
 const { USE_CASE_HUB_PROBE_SQL, DOSSIER_DUPLICATES_MESSAGE, MISSING_0019_MESSAGE } = await import("../../src/lib/db/use-case-hub-ddl.ts");
+const { USE_CASE_VALUE_PROBE_SQL, MISSING_0020_MESSAGE } = await import("../../src/lib/db/use-case-hub-value-ddl.ts");
 const hubProbe = (db) => psql(db, `SELECT ${USE_CASE_HUB_PROBE_SQL}`) === "t";
+const valueProbe = (db) => psql(db, `SELECT ${USE_CASE_VALUE_PROBE_SQL}`) === "t";
 const connectorProbe = (db) => psql(db, `SELECT ${CONNECTOR_PROBE_SQL}`) === "t";
 
 /** Columns, constraints, indexes and triggers of a table, one sorted line each. */
@@ -190,6 +208,17 @@ function hubObjects(db) {
     functions: functionDefs(db),
   };
 }
+
+/** Every 0022 object of a database, as comparable text. */
+function valueObjects(db) {
+  return {
+    tables: dump(db, VALUE_TABLES),
+    useCases: only(catalogOf(db, "use_cases"), USE_CASES_0022),
+    functions: VALUE_FUNCTIONS.map((name) => psql(db, `SELECT pg_get_functiondef('public.${name}'::regproc)`)).join("\n"),
+  };
+}
+const sameValueObjects = (a, b) => a.tables === b.tables && a.useCases.join("\n") === b.useCases.join("\n") && a.functions === b.functions;
+const valueDiff = (a, b) => firstDiff(a.tables, b.tables) || firstDiff(a.useCases.join("\n"), b.useCases.join("\n")) || firstDiff(a.functions, b.functions);
 
 function freshDatabase(db, files) {
   run("dropdb", [...pinned, "--if-exists", "--force", db]);
@@ -269,6 +298,35 @@ function oldShapeWrites(db, label) {
   check(`${db}: an old-shape workspace token insert succeeds with owner_user_id NULL`, token === "null", token);
 }
 
+/** The 0022 trigger and tables on `db`: version bumps, closed vocabularies, unique key, cascades. */
+function valueWrites(db, label) {
+  const id = psql(db, `INSERT INTO use_cases (workspace_id, title, status) VALUES ('${ids.ws}', 'Scheda con benefici ${label}', 'accepted') RETURNING id`);
+  const versions = [
+    `value_model = '{"v": 1, "primary": "tempo"}'::jsonb`,
+    `value_model = '{"primary": "tempo", "v": 1}'::jsonb`,
+    `value_model = '{"v": 1, "primary": "tempo", "ease": 3}'::jsonb, version = 50`,
+    `title = 'Titolo cambiato ${label}', value_model = '{"v": 1, "primary": "costi"}'::jsonb`,
+    `ai_suggestion = '{"kind": "auto"}'::jsonb, overall_score = 2.5`,
+    `value_model = NULL`,
+  ].map((set) => psql(db, `UPDATE use_cases SET ${set} WHERE id = '${id}' RETURNING version`));
+  check(`${db}: value_model bumps version by one (with another column too), not for the same jsonb, a hand-written version or the AI`, versions.join(",") === "2,2,3,4,4,5", versions.join(","));
+  const array = tryPsql(db, `UPDATE use_cases SET value_model = '[]'::jsonb WHERE id = '${id}'`);
+  check(`${db}: value_model must be an object`, !array.ok && array.err.includes("use_cases_value_model_check"), array.err.split("\n")[0]);
+  const need = psql(
+    db,
+    `INSERT INTO use_case_needs (workspace_id, type, kind, title, status, import_key) VALUES ('${ids.ws}', 'requisito', 'accesso', 'Accesso al gestionale', 'chiesta', 'k-${label}') RETURNING id`,
+  );
+  psql(db, `INSERT INTO use_case_need_links (need_id, use_case_id) VALUES ('${need}', '${id}')`);
+  const wrongStatus = tryPsql(db, `INSERT INTO use_case_needs (workspace_id, type, title, status) VALUES ('${ids.ws}', 'passo', 'Passo di prova', 'validata')`);
+  check(`${db}: a step cannot take a requirement status`, !wrongStatus.ok && wrongStatus.err.includes("use_case_needs_status_check"), wrongStatus.err.split("\n")[0]);
+  const dupKey = tryPsql(db, `INSERT INTO use_case_needs (workspace_id, type, title, status, import_key) VALUES ('${ids.ws}', 'passo', 'Altro passo', 'proposta', 'k-${label}')`);
+  check(`${db}: the import key is unique per workspace`, !dupKey.ok && dupKey.err.includes("use_case_needs_import_key_unique"), dupKey.err.split("\n")[0]);
+  psql(db, `DELETE FROM use_cases WHERE id = '${id}'`);
+  const left = psql(db, `SELECT (SELECT count(*) FROM use_case_need_links WHERE need_id = '${need}') || '/' || (SELECT count(*) FROM use_case_needs WHERE id = '${need}')`);
+  check(`${db}: deleting the card removes the link, the need stays`, left === "0/1", left);
+  psql(db, `DELETE FROM use_case_needs WHERE id = '${need}'`);
+}
+
 /** Drops this run's scratch databases; runs on every exit, an uncaught error included. */
 let dropped = false;
 function dropScratchDatabases() {
@@ -310,6 +368,20 @@ check("existing rows: no history row (no backfill)", psql(DB.mig, `SELECT count(
 check("0020 with the uc tables creates the unique dossier index", psql(DB.mig, `SELECT to_regclass('public.uc_cases_portfolio_use_case_unique_idx') IS NOT NULL`) === "t");
 check("the old non-unique dossier index stays", psql(DB.mig, `SELECT to_regclass('public.uc_cases_portfolio_use_case_idx') IS NOT NULL`) === "t");
 
+// 9. Idempotence of 0022 on the same database (now 0000→0020 with rows).
+check("0000→0020: value probe false before 0022", !valueProbe(DB.mig));
+applyFile(DB.mig, file0022);
+const firstValue = dump(DB.mig);
+applyFile(DB.mig, file0022);
+const secondValue = dump(DB.mig);
+check("0022 applied twice: identical schema dump", firstValue === secondValue, firstDiff(firstValue, secondValue));
+check("value probe true after 0022", valueProbe(DB.mig));
+const migValue = valueObjects(DB.mig);
+check("0022 creates every listed use_cases object", migValue.useCases.length === USE_CASES_0022.length, `${migValue.useCases.length}/${USE_CASES_0022.length}`);
+const afterValue = psql(DB.mig, `SELECT string_agg(version || '/' || coalesce(value_model::text, 'null'), ',' ORDER BY id) FROM use_cases WHERE workspace_id = '${ids.ws}'`);
+check("existing rows after 0022: same version, no value model", afterValue === "1/null,1/null", afterValue);
+check("no extension created by 0022", !readFileSync(file0022, "utf8").match(/CREATE\s+EXTENSION/i));
+
 // 2. Self-heal parity on 0000→0017.
 freshDatabase(DB.heal, upTo("0017"));
 check("0000→0017: hub probe false before the self-heal", !hubProbe(DB.heal));
@@ -329,6 +401,9 @@ check("0020 creates every listed workspace_integration_tokens object", migHub.to
 check("self-heal = 0020 for workspace_integration_tokens.owner_user_id", migHub.tokens.join("\n") === healHub.tokens.join("\n"), firstDiff(migHub.tokens.join("\n"), healHub.tokens.join("\n")));
 check("self-heal = 0020 for the trigger functions", migHub.functions === healHub.functions, firstDiff(migHub.functions, healHub.functions));
 check("the self-heal creates no dossier index (it is only in 0020)", psql(DB.heal, `SELECT to_regclass('public.uc_cases_portfolio_use_case_unique_idx') IS NULL`) === "t");
+check("value probe true after the self-heal", valueProbe(DB.heal));
+const healValue = valueObjects(DB.heal);
+check(`self-heal = 0022 for ${VALUE_TABLES.join(", ")}, use_cases.value_model, its CHECK, trigger and function`, sameValueObjects(migValue, healValue), valueDiff(migValue, healValue));
 
 // 3. Duplicate dossiers stop 0020, complete or not, and leave nothing behind.
 freshDatabase(DB.dups, upTo("0019"));
@@ -431,6 +506,9 @@ for (const db of [DB.mig, DB.heal]) {
 // 6. The code before 0020 still writes.
 for (const [db, label] of [[DB.mig, "mig"], [DB.heal, "heal"]]) oldShapeWrites(db, label);
 
+// 10. The 0022 trigger and tables, on the migrated and on the healed database.
+for (const [db, label] of [[DB.mig, "mig"], [DB.heal, "heal"]]) valueWrites(db, label);
+
 // 7. Probe: production after 0019 (catch-up done, no hub objects) must self-heal.
 check("a fully healed database: ensureDbSchema() runs only the probe", (() => {
   const again = ensureDbSchemaOn(DB.heal);
@@ -493,6 +571,67 @@ const leftNo19 = psql(
 check("…and leaves nothing of 0020 behind (single transaction)", leftNo19 === "0/none/none", leftNo19);
 const stillWrites = tryPsql(DB.no19, `UPDATE use_cases SET title = 'Titolo di prova cambiato' WHERE id = '${ids.ucOld}'`);
 check("…so use_cases still accepts updates", stillWrites.ok, stillWrites.err.split("\n")[0]);
+
+// 11. Production before 0022: 0018, 0019, 0020 and the self-heal of ENSURE_VERSION 15, with
+//     rows of the 0020 era. The first ensureDbSchema() heals it completely; then remove only
+//     what 0022 adds, which leaves the database as production is today.
+freshDatabase(DB.prod, upTo("0020"));
+const prodCatchUp = ensureDbSchemaOn(DB.prod);
+check("0000→0020 + ensureDbSchema(): catch-up done", prodCatchUp.ok && hubProbe(DB.prod) && valueProbe(DB.prod), prodCatchUp.error);
+psql(
+  DB.prod,
+  `DROP TRIGGER use_cases_value_model_version ON use_cases;
+   DROP FUNCTION use_cases_value_model_version();
+   DROP TABLE use_case_need_links;
+   DROP TABLE use_case_needs;
+   ALTER TABLE use_cases DROP COLUMN value_model;`,
+);
+psql(
+  DB.prod,
+  `INSERT INTO use_cases (workspace_id, title, status, source, target_quarter, value_eur_year, cost_band, origin)
+     VALUES ('${ids.ws}', 'Scheda approvata della 0020', 'accepted', 'manual', '2027-Q1', 24000, 2, 'transformation');
+   UPDATE use_cases SET title = 'Scheda approvata della 0020, corretta' WHERE title = 'Scheda approvata della 0020';
+   INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields)
+     SELECT workspace_id, id, 'sistema', 'script', 'valutato', ARRAY['valore', 'costo'] FROM use_cases WHERE workspace_id = '${ids.ws}';`,
+);
+check("production today: hub probe true, value probe false", hubProbe(DB.prod) && !valueProbe(DB.prod));
+const rowsOf = (db) =>
+  psql(
+    db,
+    `SELECT string_agg(id || ':' || version || ':' || coalesce(target_quarter, '-') || ':' || coalesce(value_eur_year::text, '-'), ',' ORDER BY id) || ' events ' || (SELECT count(*) FROM use_case_events)
+       FROM use_cases WHERE workspace_id = '${ids.ws}'`,
+  );
+const prodRows = rowsOf(DB.prod);
+const prodHeal = ensureDbSchemaOn(DB.prod);
+check("on it ensureDbSchema() does not stop at the probe: the 0022 self-heal runs", prodHeal.ok && prodHeal.calls > 1, prodHeal.error || `${prodHeal.calls} execute calls`);
+check("…the value probe is true", valueProbe(DB.prod));
+const prodValue = valueObjects(DB.prod);
+check("…the 0022 objects equal those of the migration", sameValueObjects(migValue, prodValue), valueDiff(migValue, prodValue));
+check("…every row is kept, versions and history included", rowsOf(DB.prod) === prodRows, `${prodRows} → ${rowsOf(DB.prod)}`);
+check("…no row gets a value model", psql(DB.prod, `SELECT count(*) FROM use_cases WHERE value_model IS NOT NULL`) === "0");
+const prodAgain = ensureDbSchemaOn(DB.prod);
+check("a second ensureDbSchema() runs only the probe", prodAgain.ok && prodAgain.calls === 1, prodAgain.error || `${prodAgain.calls} execute calls`);
+const healedDump = dump(DB.prod);
+applyFile(DB.prod, file0022);
+applyFile(DB.prod, file0022);
+check("0022 applied twice on the healed database: identical schema dump", dump(DB.prod) === healedDump, firstDiff(healedDump, dump(DB.prod)));
+valueWrites(DB.prod, "prod");
+oldShapeWrites(DB.prod, "prod");
+
+// 12. Without 0020 (0000→0019): 0022 stops before creating anything.
+freshDatabase(DB.no20, upTo("0019"));
+const without0020 = exec("psql", applyArgs(DB.no20, file0022));
+check(
+  "0000→0019 without 0020: 0022 stops with its message",
+  without0020.status !== 0 && without0020.stderr.includes(MISSING_0020_MESSAGE),
+  (without0020.stderr.split("\n").find((line) => line.includes("ERROR:")) ?? without0020.stderr.trim()).replace(/^.*ERROR:\s*/, ""),
+);
+const leftNo20 = psql(
+  DB.no20,
+  `SELECT (SELECT count(*) FROM information_schema.columns WHERE table_name = 'use_cases' AND column_name = 'value_model')
+       || '/' || coalesce(to_regprocedure('public.use_cases_value_model_version()')::text, 'none') || '/' || coalesce(to_regclass('public.use_case_needs')::text, 'none')`,
+);
+check("…and leaves nothing of 0022 behind (single transaction)", leftNo20 === "0/none/none", leftNo20);
 
 dropScratchDatabases();
 console.log(failures.length === 0 ? "All hub schema checks passed." : `${failures.length} check(s) failed.`);

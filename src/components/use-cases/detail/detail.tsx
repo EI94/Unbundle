@@ -5,6 +5,7 @@ import type { UseCaseEventList } from "@/lib/db/queries/use-case-events";
 import { decisionLayout, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
 import { TEXT_LIMITS } from "@/lib/use-cases/inputs";
 import { WHAT_FIELD_LABEL } from "@/lib/use-cases/labels";
+import type { NeedUseCaseRef, UseCaseNeedLists } from "@/lib/use-cases/needs";
 import type { UseCaseAbilities } from "@/lib/use-cases/permissions";
 import type { RedactableField } from "@/lib/use-cases/service";
 import type { UseCaseDetail } from "@/lib/use-cases/views";
@@ -16,6 +17,7 @@ import { DetailHeader } from "./detail-header";
 import { IntakeDetails, type GuideLabels } from "./intake-details";
 import type { RedactOption } from "./redact-dialog";
 import { SectionHistory } from "./section-history";
+import { SectionNeeds } from "./section-needs";
 import { SectionRealization } from "./section-realization";
 import { SectionValuation } from "./section-valuation";
 import { SectionWhat } from "./section-what";
@@ -27,6 +29,7 @@ export const DETAIL_CHAPTERS = [
   { id: "cosa-e", label: "Cos'è" },
   { id: "valutazione", label: "Valutazione" },
   { id: "decisione", label: "Decisione" },
+  { id: "cosa-serve", label: "Cosa serve" },
   { id: "realizzazione", label: "Realizzazione" },
   { id: "storia", label: "Storia" },
 ] as const satisfies readonly ChapterLink[];
@@ -56,13 +59,17 @@ export function showsRealization(item: Pick<UseCaseDetail, "phase" | "kind"> & {
 }
 
 /**
- * Le ancore di chi guarda (§6.7): i revisori «Cos'è», «Valutazione», «Decisione»,
+ * Le ancore di chi guarda (§6.7): i revisori «Cos'è», «Valutazione», «Decisione», «Cosa serve»,
  * «Realizzazione» (quando c'è) e «Storia»; il contributore nessuna (la sua scheda è testata e
  * nota pubblica, §6.9). Mai ancore spente.
  */
-export function detailChapters(abilities: Pick<UseCaseAbilities, "isReviewer" | "canSeeHistory">, opts: { showRealization: boolean }): ChapterLink[] {
+export function detailChapters(
+  abilities: Pick<UseCaseAbilities, "isReviewer" | "canSeeHistory"> & Partial<Pick<UseCaseAbilities, "canSeeNeeds">>,
+  opts: { showRealization: boolean },
+): ChapterLink[] {
   if (!abilities.isReviewer) return [];
   return DETAIL_CHAPTERS.filter((chapter) => {
+    if (chapter.id === "cosa-serve") return abilities.canSeeNeeds === true;
     if (chapter.id === "realizzazione") return opts.showRealization;
     if (chapter.id === "storia") return abilities.canSeeHistory;
     return true;
@@ -177,6 +184,11 @@ export interface UseCaseDetailViewProps {
   historyAll?: boolean;
   /** Il riepilogo ricco del dossier per chi guarda (`realizationOfUseCase`, H6a); null se non letto. */
   realization?: UseCaseRealization | null;
+  /**
+   * «Cosa serve» (solo revisori, `canSeeNeeds`): le esigenze collegate a questo use case, per tipo,
+   * quelle del workspace da collegare e codice e titolo degli use case che nominano.
+   */
+  needs?: { lists: UseCaseNeedLists; refs: Record<string, NeedUseCaseRef> } | null;
   /** Il nome del team che valuta, da solo (§14.2): i testi del contributore. */
   teamName: string;
   className?: string;
@@ -201,6 +213,7 @@ export function UseCaseDetailView({
   historyAllHref,
   historyAll = false,
   realization = null,
+  needs = null,
   teamName,
   className,
 }: UseCaseDetailViewProps) {
@@ -274,6 +287,8 @@ export function UseCaseDetailView({
           detail={detail}
           model={result.model}
           costBands={result.costBands}
+          valueParams={result.valueParams}
+          today={result.today}
           esgEnabled={result.esgEnabled}
           canEdit={abilities.canEditValuation}
         />
@@ -287,6 +302,18 @@ export function UseCaseDetailView({
           answers={answersOf(detail.intake)}
           className="scroll-mt-28"
         />
+        {abilities.canSeeNeeds && needs ? (
+          <SectionNeeds
+            workspaceId={workspaceId}
+            useCaseId={detail.id}
+            requirements={needs.lists.requirements}
+            steps={needs.lists.steps}
+            linkable={needs.lists.linkable}
+            refs={needs.refs}
+            today={result.today}
+            canEdit={abilities.canEditNeeds}
+          />
+        ) : null}
         {showRealization ? (
           <SectionRealization
             workspaceId={workspaceId}

@@ -313,8 +313,9 @@ test("la sonda copre ogni oggetto del DDL", () => {
   assert.doesNotMatch(USE_CASE_HUB_PROBE_SQL, /uc_cases/);
 });
 
-test("ensure-schema: versione 15, DDL dell'hub dopo il connettore, sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 15;/);
+test("ensure-schema: versione almeno 15, DDL dell'hub dopo il connettore, sonda in AND", () => {
+  // La 0020 l'ha portata a 15; la 0022 (use-case-hub-value-ddl.test.ts) a 16.
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 15, "ENSURE_VERSION almeno 15");
   assert.match(ensureSchema, /import \{ USE_CASE_HUB_DDL, USE_CASE_HUB_PROBE_SQL \} from "\.\/use-case-hub-ddl\.ts";/);
   const connector = ensureSchema.indexOf("await runConnectorDdl();");
   const hub = ensureSchema.indexOf("await runUseCaseHubDdl();");

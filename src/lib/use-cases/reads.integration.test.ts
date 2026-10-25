@@ -671,6 +671,56 @@ test("export con l'area spenta: il file di oggi, ai soli revisori", opts, async 
   assert.deepEqual(workbook.SheetNames, ["Portfolio", "Waves", "Summary"]);
 });
 
+// ─── «Benefici e costi» nella REST e nell'export ─────────────────────
+
+/** FIX_A della spec: 115,5 ore e 4.042,5 € all'anno, avvio 560 €, ricorrenti 600 € all'anno, facilità 4. */
+const FIX_A_MODEL = {
+  v: 1,
+  primary: "tempo",
+  components: [
+    { key: "capacita", lever: "nuove_capacita", label: "Risposte anche fuori orario", kind: "qualitativo", confidence: "ipotesi" },
+    { key: "tempo", lever: "tempo", label: "Smistamento delle richieste", kind: "ore", volumeYear: 6600, minutesPerUnit: 1.5, automatablePct: 70, confidence: "ipotesi" },
+    { key: "qualita", lever: "qualita", label: "Meno errori di smistamento", kind: "qualitativo", confidence: "da_misurare" },
+  ],
+  ease: 4,
+  costs: { devDays: 4, internalHours: 16, runCostEurYear: 600 },
+  confirmBy: "Responsabile amministrazione",
+};
+
+test("«Benefici e costi»: la REST dei revisori porta il modello (null se non è valido), l'export le sue cifre; chi non è revisore non riceve nulla", opts, async () => {
+  const card = await seed({ status: "accepted", review: "scored", targetQuarter: "2026-Q4" });
+  const broken = await seed();
+  await q(`UPDATE use_cases SET value_model = $2::jsonb WHERE id = $1::uuid`, [card.id, JSON.stringify(FIX_A_MODEL)]);
+  await q(`UPDATE use_cases SET value_model = $2::jsonb WHERE id = $1::uuid`, [broken.id, JSON.stringify({ ...FIX_A_MODEL, v: 2 })]);
+  for (const person of ["builder", "manager"] as const) {
+    signIn(person);
+    const list = (await (await call(listGet, "/api", { workspaceId: ids.wsA })).json()) as { useCases: Array<Record<string, unknown>> };
+    assert.deepEqual(list.useCases.find((row) => row.id === card.id)?.valueModel, FIX_A_MODEL, person);
+    assert.equal(list.useCases.find((row) => row.id === broken.id)?.valueModel, null, `${person}: un modello non valido esce come null`);
+    assert.ok(list.useCases.every((row) => Object.prototype.hasOwnProperty.call(row, "valueModel")), "la colonna c'è in ogni riga");
+    const single = (await (await call(itemGet, "/api", { workspaceId: ids.wsA, useCaseId: card.id })).json()) as { useCase: Record<string, unknown> };
+    assert.deepEqual(single.useCase.valueModel, FIX_A_MODEL, person);
+  }
+  signIn("builder");
+  const workbook = await workbookOf(await call(exportGet, "/export", { workspaceId: ids.wsA }));
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[views.EXPORT_SHEET_NAME]);
+  const exported = rows.find((row) => row.Codice === card.code)!;
+  assert.deepEqual(
+    [exported.Valore, exported["Valore all'anno"], exported["Ritorno principale"], exported["Ore all'anno"], exported["Da misurare all'anno"], exported.Costo, exported["Fonte del costo"], exported["Ricorrenti all'anno"], exported.Facilità],
+    ["Basso", 4042.5, "Risparmio di tempo", 115.5, 0, 560, "stima del team", 600, 4],
+  );
+  const plain = rows.find((row) => row.Codice === cards.othersVisible.code)!;
+  assert.equal(plain["Ritorno principale"] ?? "", "", "senza modello le celle restano vuote");
+  for (const column of ["Ore all'anno", "Da misurare all'anno", "Ricorrenti all'anno", "Facilità"]) assert.equal(plain[column], undefined, column);
+
+  signIn("contributor");
+  for (const res of [await call(listGet, "/api", { workspaceId: ids.wsA }), await call(itemGet, "/api", { workspaceId: ids.wsA, useCaseId: card.id }), await call(exportGet, "/export", { workspaceId: ids.wsA })]) {
+    assert.equal(res.status, 403);
+    const text = await res.text();
+    for (const secret of ["Smistamento delle richieste", "Responsabile amministrazione", "valueModel"]) assert.equal(text.includes(secret), false, secret);
+  }
+});
+
 // ─── Indici (art. 15.4) ──────────────────────────────────────────────
 
 test("nessun indice su use_cases.proposed_by né su use_case_events.actor_user_id", opts, async () => {

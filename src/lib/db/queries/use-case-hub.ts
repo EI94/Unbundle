@@ -19,6 +19,7 @@ import {
 import { romeToday } from "@/lib/use-cases/quarter";
 import type { IsoDate } from "@/lib/use-cases/types";
 import type { ValuationModel } from "@/lib/use-cases/valuation";
+import { originFollowsCurrentMonth, resolveValueParams, type ValueParams } from "@/lib/use-cases/value-model";
 import {
   compareWaiting,
   exportRow,
@@ -58,6 +59,11 @@ import {
  *
  * Valore, costo e zone usano il modello del workspace e le sue fasce (`resolveCostBands`,
  * D15), restituite anche a chi disegna matrice, righe ed export.
+ *
+ * «Benefici e costi» (`use_cases.value_model`) si legge solo per i revisori: per i contributori
+ * la colonna non esce nemmeno dal database (`selectHubRows` con `withValueModel` falso). Le
+ * ipotesi di calcolo del workspace (`config.valueParams`, `resolveValueParams`) vanno con le
+ * figure ai revisori.
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -85,14 +91,25 @@ export function viewerFromSession(
 interface ReadContext extends HubContext {
   /** Le fasce del costo del workspace (D15), già risolte. */
   costBands: readonly CostBandInfo[];
+  /** Le ipotesi di calcolo del workspace, già risolte (ogni chiave mancante vale il predefinito). */
+  valueParams: ValueParams;
+  /** Il primo mese della curva non è salvato: vale il mese corrente (`originFollowsCurrentMonth`). */
+  followsCurrentMonth: boolean;
 }
 
-/** Il modello di valutazione del workspace (senza crearlo: è una lettura), ESG e oggi a Roma. */
+/** Il modello di valutazione del workspace (senza crearlo: è una lettura), ESG, ipotesi di calcolo e oggi a Roma. */
 async function readContext(workspaceId: string, now: Date): Promise<ReadContext> {
   const [workspace, scoring] = await Promise.all([getWorkspaceById(workspaceId), getWorkspaceScoringModel(workspaceId)]);
   const resolved = scoring?.resolvedConfig ?? normalizeScoringConfig(null);
   const model = workspaceValuationModel(resolved, scoring?.config ?? null);
-  return { model, esgEnabled: workspace?.esgEnabled === true, today: romeToday(now), costBands: resolveCostBands(model) };
+  return {
+    model,
+    esgEnabled: workspace?.esgEnabled === true,
+    today: romeToday(now),
+    costBands: resolveCostBands(model),
+    valueParams: resolveValueParams(scoring?.config ?? null, now),
+    followsCurrentMonth: originFollowsCurrentMonth(scoring?.config ?? null),
+  };
 }
 
 /** Come è andata la lettura del dossier: «spenta» e «errore» lasciano l'area senza dossier. */
@@ -127,10 +144,22 @@ const REALIZED_ON: SQL<string | null> = sql`(SELECT to_char(max(e.at) AT TIME ZO
   FROM use_case_events e
   WHERE e.use_case_id = use_cases.id AND e.action = 'decisione' AND e.phase_after LIKE 'realizzato.%')`;
 
-/** Le schede del workspace (o una sola), intere, con i due giorni letti dalla Storia. */
-async function selectHubRows(workspaceId: string, useCaseId?: string) {
+/** `value_model` per chi non è revisore: la colonna resta nel database. */
+const NO_VALUE_MODEL: SQL<null> = sql<null>`NULL::jsonb`;
+
+/**
+ * Le schede del workspace (o una sola), intere, con i due giorni letti dalla Storia.
+ * `value_model` solo con `withValueModel` (i revisori); altrimenti NULL.
+ */
+async function selectHubRows(workspaceId: string, opts: { useCaseId?: string; withValueModel: boolean }) {
+  const { useCaseId, withValueModel } = opts;
   return db
-    .select({ ...getTableColumns(useCases), reopenedOn: REOPENED_ON, realizedOn: REALIZED_ON })
+    .select({
+      ...getTableColumns(useCases),
+      valueModel: withValueModel ? useCases.valueModel : NO_VALUE_MODEL,
+      reopenedOn: REOPENED_ON,
+      realizedOn: REALIZED_ON,
+    })
     .from(useCases)
     .where(useCaseId ? and(eq(useCases.workspaceId, workspaceId), eq(useCases.id, useCaseId)) : eq(useCases.workspaceId, workspaceId));
 }
@@ -214,6 +243,10 @@ export type HubList =
       /** Le fasce del costo del workspace (D15), per matrice, righe, pannello e card. */
       costBands: readonly CostBandInfo[];
       esgEnabled: boolean;
+      /** Le ipotesi di calcolo del workspace (grafici di «Benefici e costi», «Ipotesi di calcolo»). */
+      valueParams: ValueParams;
+      /** Il primo mese della curva segue il mese corrente (non è salvato): lo dice «Ipotesi di calcolo». */
+      followsCurrentMonth: boolean;
     });
 
 export interface HubReadOptions {
@@ -237,7 +270,8 @@ export async function listHubItems(workspaceId: string, viewer: UseCaseViewer, o
   const abilities = abilitiesForUseCase(viewer);
   if (!abilities.canOpenArea || !abilities.projection || !isUuid(workspaceId)) return null;
   await ensureDbSchema();
-  const [rows, ctx] = await Promise.all([selectHubRows(workspaceId), readContext(workspaceId, opts.now ?? new Date())]);
+  const withValueModel = abilities.projection !== "contributore";
+  const [rows, ctx] = await Promise.all([selectHubRows(workspaceId, { withValueModel }), readContext(workspaceId, opts.now ?? new Date())]);
   const dossiers = await readDossiers(
     workspaceId,
     rows.map((row) => row.id),
@@ -257,7 +291,16 @@ export async function listHubItems(workspaceId: string, viewer: UseCaseViewer, o
   }
 
   const items = rows.map((row) => projectHubItem(row, ctx, dossiers.of(row.id))).sort(compareWaiting);
-  return { ...base, projection: abilities.projection, items, model: ctx.model, costBands: ctx.costBands, esgEnabled: ctx.esgEnabled };
+  return {
+    ...base,
+    projection: abilities.projection,
+    items,
+    model: ctx.model,
+    costBands: ctx.costBands,
+    esgEnabled: ctx.esgEnabled,
+    valueParams: ctx.valueParams,
+    followsCurrentMonth: ctx.followsCurrentMonth,
+  };
 }
 
 // ═══ Scheda (§6) ═════════════════════════════════════════════════════
@@ -284,6 +327,7 @@ export type UseCaseDetailResult =
       model: ValuationModel;
       costBands: readonly CostBandInfo[];
       esgEnabled: boolean;
+      valueParams: ValueParams;
     })
   | (DetailBase & {
       projection: "gestore";
@@ -291,6 +335,7 @@ export type UseCaseDetailResult =
       model: ValuationModel;
       costBands: readonly CostBandInfo[];
       esgEnabled: boolean;
+      valueParams: ValueParams;
     });
 
 /**
@@ -307,7 +352,11 @@ export async function getUseCaseDetail(
   const abilities = abilitiesForUseCase(viewer);
   if (!abilities.canOpenArea || !abilities.projection || !isUuid(workspaceId) || !isUuid(useCaseId)) return null;
   await ensureDbSchema();
-  const [[row], ctx] = await Promise.all([selectHubRows(workspaceId, useCaseId), readContext(workspaceId, opts.now ?? new Date())]);
+  const withValueModel = abilities.projection !== "contributore";
+  const [[row], ctx] = await Promise.all([
+    selectHubRows(workspaceId, { useCaseId, withValueModel }),
+    readContext(workspaceId, opts.now ?? new Date()),
+  ]);
   if (!row) return null;
   const dossiers = await readDossiers(workspaceId, [row.id]);
   const dossier = dossiers.of(row.id);
@@ -320,7 +369,7 @@ export async function getUseCaseDetail(
     return { ...base, projection: "contributore", useCase: item, answer };
   }
   const detail = projectUseCaseDetail(row, ctx, dossier);
-  const figures = { model: ctx.model, costBands: ctx.costBands, esgEnabled: ctx.esgEnabled };
+  const figures = { model: ctx.model, costBands: ctx.costBands, esgEnabled: ctx.esgEnabled, valueParams: ctx.valueParams };
   if (abilities.projection === "gestore") {
     return { ...base, ...figures, projection: "gestore", useCase: { ...detail, proposer: await proposerDetails(row) } };
   }
@@ -384,7 +433,7 @@ function byCode(a: HubItem, b: HubItem): number {
 export async function exportUseCaseRows(workspaceId: string, viewer: UseCaseViewer, opts: Pick<HubReadOptions, "now"> = {}): Promise<UseCaseExport | null> {
   if (!abilitiesForUseCase(viewer).canExport || !isUuid(workspaceId)) return null;
   await ensureDbSchema();
-  const [rows, ctx] = await Promise.all([selectHubRows(workspaceId), readContext(workspaceId, opts.now ?? new Date())]);
+  const [rows, ctx] = await Promise.all([selectHubRows(workspaceId, { withValueModel: true }), readContext(workspaceId, opts.now ?? new Date())]);
   const dossiers = await readDossiers(
     workspaceId,
     rows.map((row) => row.id),

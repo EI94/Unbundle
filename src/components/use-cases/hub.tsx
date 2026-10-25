@@ -3,6 +3,7 @@ import { PageContainer } from "@/components/dashboard/page-container";
 import type { Session } from "@/lib/auth";
 import { getUseCaseDetail, listHubItems, viewerFromSession, type HubList } from "@/lib/db/queries/use-case-hub";
 import { dossierColumnOf } from "@/lib/db/queries/use-case-dossiers";
+import { listWorkspaceNeeds } from "@/lib/db/queries/use-case-needs";
 import type { DossierColumn } from "@/lib/db/queries/uc-nav";
 import { getPortfolioParticipation } from "@/lib/db/queries/portfolio-participation";
 import type { Participation } from "@/lib/portfolio/participation";
@@ -15,9 +16,11 @@ import { toDuplicateCandidates } from "@/lib/use-cases/decision-ui";
 import { answersOf, type InfoAnswer } from "@/lib/use-cases/answers";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
 import { channelLabel } from "@/lib/use-cases/labels";
+import { buildNeedsBoard, panelNeeds, type NeedView } from "@/lib/use-cases/needs";
 import { abilitiesForUseCase, type UseCaseAbilities } from "@/lib/use-cases/permissions";
 import { compareQuarters, quarterLabel, WHEN_LATER_LABEL } from "@/lib/use-cases/quarter";
 import { USE_CASE_SOURCES } from "@/lib/use-cases/types";
+import { groupPalette, hasPriorityValueModels } from "@/lib/use-cases/value-charts";
 import {
   LATER_QUARTER_PARAM,
   applyHubFilters,
@@ -32,16 +35,18 @@ import {
   type HubView,
   type RawHubParams,
 } from "@/lib/use-cases/views";
+import { USE_CASE_VALUATION_ANCHOR } from "@/lib/use-cases/settings";
 import { roleLabel } from "@/lib/workspace-roles";
 import type { WorkspaceAccess } from "@/lib/workspace-access";
 import { DecideView } from "./decide-view";
 import { FilterBar, type FilterOption } from "./filter-bar";
+import { NeedsBoardView } from "./needs-board";
 import { EmptyState, HUB_TEXT, HubHeader, HubNotice, receiptText } from "./hub-header";
 import { PriorityView, ShowToggle } from "./priority-view";
 import { QuickCreateSheet } from "./quick-create-sheet";
 import { RoadmapView } from "./roadmap-view";
 import { UseCasePanel, type UseCasePanelData } from "./use-case-panel";
-import { hubHref, withoutTransient, type HubQuery } from "./use-case-row";
+import { hubHref, panelHref, withoutTransient, type HubQuery } from "./use-case-row";
 
 /**
  * La pagina «Use case» con l'area accesa (docs/use-case/DESIGN.md §4; PIANO-LAVORI H4a): testata,
@@ -95,6 +100,11 @@ export interface UseCaseHubData {
    */
   dossierColumn: DossierColumn | null;
   /**
+   * «Cosa serve» (`listWorkspaceNeeds`): le esigenze non archiviate del workspace, solo per un
+   * revisore in Priorità o con il pannello aperto; null altrimenti. Ai contributori mai.
+   */
+  needs: NeedView[] | null;
+  /**
    * «Partecipazione per area» (la scheda di «Raccolta & ranking», che con l'area accesa è la vista
    * «Da decidere»): solo etichette e numeri per area e società, mai chi propone (art. 15.4). Solo
    * sulla vista «Da decidere», per ogni ruolo come su /portfolio; null altrove o senza aree nella
@@ -125,15 +135,19 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
   if (!list) return null;
   const items: readonly AnyHubItem[] = list.items;
   const view = params.vista ?? defaultHubView(viewer, decideCount(items));
-  // La colonna «In realizzazione» con le card dei dossier (§4.5): un giro in più, solo qui.
+  // La colonna «In realizzazione» con le card dei dossier (§4.5): un giro in più, solo qui. In
+  // Priorità le stesse card chiudono «Cosa serve».
   const inProgress =
-    reviewer && view === "roadmap" && list.dossierRead === "ok"
+    reviewer && (view === "roadmap" || view === "priorita") && list.dossierRead === "ok"
       ? (items as readonly HubItem[]).filter((item) => item.phase === "in_realizzazione" && item.dossier).map((item) => item.id)
       : [];
-  const [dossierColumn, participation, subprocessorsPending] = await Promise.all([
+  // «Cosa serve»: le esigenze del workspace per Priorità e per il pannello, solo ai revisori.
+  const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "priorita" || Boolean(params.apri));
+  const [dossierColumn, participation, subprocessorsPending, needs] = await Promise.all([
     inProgress.length ? dossierColumnOf(workspaceId, { userId: session.user.id, role: access.role }, inProgress) : null,
     view === "da-decidere" ? getPortfolioParticipation(workspaceId) : null,
     reviewer && view === "roadmap" ? subprocessorsPendingForLs(workspaceId, session.user.id) : false,
+    readsNeeds ? listWorkspaceNeeds(workspaceId, viewer) : null,
   ]);
   return {
     workspaceId,
@@ -151,6 +165,7 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     panelAnswers: opened && opened.projection !== "contributore" ? answersOf(opened.useCase.intake) : [],
     panelOwnAnswer: opened && opened.projection === "contributore" ? opened.answer : null,
     dossierColumn,
+    needs,
     participation,
     subprocessorsPending,
   };
@@ -248,6 +263,12 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   const items: readonly AnyHubItem[] = list.items;
   const reviewerItems = reviewer ? (list.items as HubItem[]) : [];
   const bands = list.projection !== "contributore" ? list.costBands : undefined;
+  // «Benefici e costi» (solo revisori): ipotesi del workspace e colori dei gruppi, da tutte le schede.
+  const valueParams = list.projection !== "contributore" ? list.valueParams : null;
+  const palette = reviewer ? groupPalette(reviewerItems, valueParams) : null;
+  const followsCurrentMonth = list.projection !== "contributore" ? list.followsCurrentMonth : false;
+  // «Ipotesi di calcolo» porta a Impostazioni › Valutazione solo chi le può cambiare.
+  const valueSettingsHref = abilities.canEditSettings ? `/dashboard/${workspaceId}/settings#${USE_CASE_VALUATION_ANCHOR}` : null;
   const query = queryOf(params, view);
   const navQuery = withoutTransient(query);
   const ignoreKind = view === "priorita";
@@ -258,6 +279,16 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   // «da stimare» (`stima`) è il chip della Priorità, senza un controllo suo: non passa alle altre viste.
   const viewHref = (key: HubView) => hubHref(basePath, navQuery, { vista: key, tipo: null, mostra: null, stima: null });
   const decideItems = params.stima ? applyHubFilters(items, { ...params, stima: null }, { ignoreKind }) : filtered;
+  // «Benefici» nel selettore solo se una scheda della vista ha «Benefici e costi»; senza, la matrice.
+  const benefitsShown = reviewer && view === "priorita" && hasPriorityValueModels(filtered as HubItem[]);
+  const mostra = params.mostra === "benefici" && !benefitsShown ? "matrice" : params.mostra;
+
+  // «Cosa serve» in fondo a Priorità: tutte le esigenze del workspace, con i codici di tutte le
+  // schede dei revisori (un filtro della vista non nasconde un'esigenza).
+  const needsBoard =
+    view === "priorita" && reviewer && data.needs && valueParams
+      ? buildNeedsBoard(data.needs, reviewerItems, { today: list.today, params: valueParams })
+      : null;
 
   const panelItem = params.apri ? items.find((item) => item.id.toLowerCase() === params.apri) : undefined;
   const panelData: UseCasePanelData | null = panelItem
@@ -269,6 +300,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           candidates: toDuplicateCandidates(reviewerItems) ?? [],
           estimate: data.panelEstimate,
           answers: data.panelAnswers,
+          needs: data.needs ? panelNeeds(data.needs, panelItem, list.today) : null,
         }
     : null;
 
@@ -307,7 +339,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 active={filtersActive}
                 clearHref={clearHref}
                 trailing={
-                  view === "priorita" && reviewer && params.tipo !== "diffondere" ? <ShowToggle basePath={basePath} query={query} mostra={params.mostra} /> : null
+                  view === "priorita" && reviewer && params.tipo !== "diffondere" ? <ShowToggle basePath={basePath} query={query} mostra={mostra} benefits={benefitsShown} /> : null
                 }
               />
             </div>
@@ -326,21 +358,28 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           // «Nuovo use case» c'è già nella testata: il vuoto non ne aggiunge un secondo.
           <EmptyState title={HUB_TEXT.emptyTitle} body={reviewer ? HUB_TEXT.emptyReviewer : HUB_TEXT.emptyContributor} />
         ) : view === "priorita" && list.projection !== "contributore" ? (
-          <PriorityView
-            workspaceId={workspaceId}
-            items={filtered as HubItem[]}
-            tipo={params.tipo}
-            mostra={params.mostra}
-            model={list.model}
-            bands={list.costBands}
-            today={list.today}
-            canDecide={abilities.canDecide}
-            basePath={basePath}
-            query={query}
-            filtersActive={filtersActive}
-            clearHref={clearHref}
-            roadmapHref={viewHref("roadmap")}
-          />
+          <>
+            <PriorityView
+              workspaceId={workspaceId}
+              items={filtered as HubItem[]}
+              tipo={params.tipo}
+              mostra={mostra}
+              model={list.model}
+              valueParams={valueParams}
+              palette={palette}
+              followsCurrentMonth={followsCurrentMonth}
+              settingsHref={valueSettingsHref}
+              bands={list.costBands}
+              today={list.today}
+              canDecide={abilities.canDecide}
+              basePath={basePath}
+              query={query}
+              filtersActive={filtersActive}
+              clearHref={clearHref}
+              roadmapHref={viewHref("roadmap")}
+            />
+            {needsBoard ? <NeedsBoardView board={needsBoard} dossierColumn={data.dossierColumn} hrefOf={(id) => panelHref(basePath, query, id)} /> : null}
+          </>
         ) : view === "roadmap" ? (
           <RoadmapView
             items={filtered}
@@ -349,6 +388,11 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
             bands={bands}
             dossierDown={dossierDown}
             dossierColumn={data.dossierColumn}
+            valueParams={valueParams}
+            palette={palette}
+            planItems={reviewer ? reviewerItems : null}
+            followsCurrentMonth={followsCurrentMonth}
+            settingsHref={valueSettingsHref}
             basePath={basePath}
             query={query}
             filtersActive={filtersActive}

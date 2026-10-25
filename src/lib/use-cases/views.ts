@@ -19,6 +19,10 @@
  * - **Costo.** Valore, costo, zone e costo basso passano da `valuation.ts` con il modello del
  *   workspace, quindi con le sue fasce (`resolveCostBands`, D15). Dove questo modulo scrive
  *   l'etichetta di una fascia riceve anche `bands` (predefinite `COST_BANDS`).
+ * - **Benefici e costi.** Una scheda con `value_model` valido (`parseValueModel`) si conta con
+ *   le ipotesi del workspace (`ctx.valueParams`, `modelEstimate`): il modello vale al posto dei
+ *   KPI d'impatto e del costo scritto a mano. Solo i revisori lo ricevono (`HubItem.valueModel`);
+ *   la proiezione dei contributori non lo nomina.
  * - **Giorni di attesa** (D8): dall'ultimo «Riapri» se c'è, altrimenti dall'arrivo
  *   (`coalesce(submitted_at, created_at)`); per «Da rivedere» dalla data di revisione. Mai
  *   dall'ultimo cambio di stato: cambia anche quando si salva una valutazione.
@@ -29,15 +33,16 @@ import type { UseCase } from "../db/schema.ts";
 import type { CaseStatus } from "../uc/vocab.ts";
 import { isAnswerPending } from "./answers.ts";
 import { COST_BANDS, costBandInfo, costLowBandFrom, isCostBand, isCostLowBand, resolveCostBands, type CostBandInfo } from "./cost-bands.ts";
+import { zoneText } from "./format.ts";
 import {
   COST_SOURCE_LABEL,
   KIND_LABEL,
   NOT_ESTIMATED_LABEL,
   ORIGIN_LABEL,
+  VALUE_MODEL_STATE_LABEL,
   VALUE_SOURCE_LABEL,
   VALUE_WORD_LABEL,
   ZONES,
-  ZONE_LABEL,
   channelLabel,
   kindOf,
   type RiskChip,
@@ -66,6 +71,8 @@ import {
   type ValuationModel,
   type ValueFigure,
 } from "./valuation.ts";
+import { modelEstimate } from "./value-calc.ts";
+import { DEFAULT_VALUE_PARAMS, LEVER_LABELS, parseValueModel, type MonthCode, type ValueModel, type ValueParams } from "./value-model.ts";
 
 // ═══ Parametri della pagina (§4.2) ═══════════════════════════════════
 
@@ -75,8 +82,13 @@ export type HubView = (typeof HUB_VIEWS)[number];
 export const HUB_KIND_PARAMS = ["costruire", "diffondere"] as const;
 export type HubKindParam = (typeof HUB_KIND_PARAMS)[number];
 
-export const HUB_SHOW_PARAMS = ["matrice", "lista"] as const;
+/** «Priorità › Da costruire»: la matrice Valore × Costo, la matrice a bolle di «Benefici e costi», la lista. */
+export const HUB_SHOW_PARAMS = ["matrice", "benefici", "lista"] as const;
 export type HubShowParam = (typeof HUB_SHOW_PARAMS)[number];
+
+/** I valori di `stima`: «da stimare» e «fuori dalla matrice» (con «Benefici e costi», senza beneficio contato o costo). */
+export const HUB_ESTIMATE_PARAMS = ["mancante", "fuori-matrice"] as const;
+export type HubEstimateParam = (typeof HUB_ESTIMATE_PARAMS)[number];
 
 /** `trimestre=piu-avanti`: gli approvati senza trimestre. */
 export const LATER_QUARTER_PARAM = "piu-avanti";
@@ -123,7 +135,8 @@ export interface HubParams {
   area: string | null;
   lab: string | null;
   trimestre: QuarterCode | typeof LATER_QUARTER_PARAM | null;
-  stima: "mancante" | null;
+  /** «mancante»: il chip «N da stimare»; «fuori-matrice»: le schede con «Benefici e costi» senza un punto nella matrice. */
+  stima: HubEstimateParam | null;
   apri: string | null;
   /** Pannello rapido: solo Lateral Space (§5.1). */
   nuovo: boolean;
@@ -181,7 +194,7 @@ export function parseHubParams(raw: RawHubParams, viewer: UseCaseViewer): HubPar
     area: filters ? boundedText(readParam(raw, "area"), 1, AREA_MAX) : null,
     lab: filters ? boundedText(readParam(raw, "lab"), 1, LAB_MAX) : null,
     trimestre: filters ? trimestre : null,
-    stima: filters && readParam(raw, "stima") === "mancante" ? "mancante" : null,
+    stima: filters ? oneOf(HUB_ESTIMATE_PARAMS, readParam(raw, "stima")) : null,
     apri: apri !== null && UUID.test(apri) ? apri.toLowerCase() : null,
     nuovo: abilities.newUseCase === "pannello_rapido" && readParam(raw, "nuovo") === "1",
     thanks: readParam(raw, "thanks") === "1",
@@ -251,6 +264,8 @@ export interface HubItem {
   /** null: «da stimare». Con le fasce del workspace (`bandLabel`). */
   cost: CostFigure | null;
   zone: Zone | null;
+  /** «Benefici e costi» (`value_model`), se valido: solo per i revisori (grafici, editor, «Cosa serve»). */
+  valueModel: ValueModel | null;
   risks: RiskChip[];
   /** Stima di Claude, non ufficiale (§7.5): ore all'anno, alle decine; null senza dati. */
   claudeHoursPerYear: number | null;
@@ -310,6 +325,8 @@ export type HubSourceRow = Pick<
   | "version"
   | keyof LegacyScoreColumns
 > & {
+  /** `value_model`: la lista lo legge solo per i revisori (assente o null: nessun modello). */
+  valueModel?: unknown;
   /** Giorno (Roma) dell'ultimo «Riapri», letto dalla Storia nella stessa query. */
   reopenedOn?: string | null;
   /** Giorno (Roma) dell'ultimo passaggio a «Realizzato», letto dalla Storia. */
@@ -322,6 +339,16 @@ export interface HubContext {
   esgEnabled: boolean;
   /** Oggi, `AAAA-MM-GG` a Roma. */
   today: string;
+  /**
+   * Le ipotesi di calcolo del workspace (`resolveValueParams`, `config.valueParams`). Assenti:
+   * le predefinite, con il mese di oggi come origine (`hubValueParams`).
+   */
+  valueParams?: ValueParams;
+}
+
+/** Le ipotesi del contesto, oppure le predefinite con il mese di oggi come origine. */
+export function hubValueParams(ctx: Pick<HubContext, "valueParams" | "today">): ValueParams {
+  return ctx.valueParams ?? { ...DEFAULT_VALUE_PARAMS, originMonth: ctx.today.slice(0, 7) as MonthCode };
 }
 
 /** Il problema nel pannello: due righe bastano. */
@@ -495,8 +522,10 @@ export function projectHubItem(row: HubSourceRow, ctx: HubContext, dossier: HubD
     esgGovernance: row.esgGovernance,
   };
   // Il dossier come fonte di Valore e Costo (ROI) lo legge H6a: qui non c'è ancora.
-  const value = valueFigure({ ...legacy, customScores, aiScores, valueEurYear: row.valueEurYear }, ctx.model, { esgEnabled: ctx.esgEnabled });
-  const cost = costFigure({ customScores, aiScores, costEurOnce: row.costEurOnce, costBand: row.costBand }, ctx.model);
+  const valueModel = parseValueModel(row.valueModel);
+  const estimate = valueModel ? modelEstimate(valueModel, hubValueParams(ctx), ctx.model) : null;
+  const value = valueFigure({ ...legacy, customScores, aiScores, valueEurYear: row.valueEurYear, estimate }, ctx.model, { esgEnabled: ctx.esgEnabled });
+  const cost = costFigure({ customScores, aiScores, costEurOnce: row.costEurOnce, costBand: row.costBand, estimate }, ctx.model);
   const intake = record(row.intake);
   const arrivedOn = romeDay(row.submittedAt ?? row.createdAt) ?? (ctx.today as IsoDate);
   const reviewBy = dateOnly(row.reviewBy);
@@ -516,6 +545,7 @@ export function projectHubItem(row: HubSourceRow, ctx: HubContext, dossier: HubD
     value,
     cost,
     zone: zoneOf(value, cost, ctx.model),
+    valueModel,
     risks: riskChips(intake),
     claudeHoursPerYear: claudeHoursPerYear(intake),
     source: row.source ?? null,
@@ -693,9 +723,23 @@ export function matchesSearch(item: AnyHubItem, q: string | null): boolean {
   return typeof code === "string" && fold(code).includes(needle);
 }
 
-/** Senza Valore o senza Costo: «da stimare» (`stima=mancante`, chip «N da stimare»). */
-export function isToEstimate(item: HubItem): boolean {
+/**
+ * Senza Valore o senza Costo: «da stimare» (`stima=mancante`, chip «N da stimare»). Una scheda
+ * con «Benefici e costi» non è mai da stimare, anche senza beneficio contato o senza costi.
+ */
+export function isToEstimate(item: Pick<HubItem, "value" | "cost">): boolean {
+  if (item.value.benefits) return false;
   return item.value.score === null || item.cost === null;
+}
+
+/**
+ * Una scheda con «Benefici e costi» che non ha un punto nella matrice Valore × Costo: senza
+ * beneficio contato (Valore «qualitativo» o «da misurare») o senza costo. Non è «da stimare»
+ * (`isToEstimate`), ma la matrice la conta a parte (chip «N senza beneficio contato»), così non
+ * sparisce: la lista la mostra con `stima=fuori-matrice`.
+ */
+export function isOffMatrix(item: Pick<HubItem, "value" | "cost">): boolean {
+  return Boolean(item.value.benefits) && (item.value.score === null || item.cost === null);
 }
 
 /**
@@ -717,6 +761,7 @@ export function applyHubFilters<T extends AnyHubItem>(items: readonly T[], param
       if (params.trimestre === LATER_QUARTER_PARAM ? item.targetQuarter !== null : item.targetQuarter !== params.trimestre) return false;
     }
     if (params.stima === "mancante" && !isToEstimate(item)) return false;
+    if (params.stima === "fuori-matrice" && !isOffMatrix(item)) return false;
     return true;
   });
 }
@@ -792,12 +837,17 @@ export interface PriorityPoint {
 export type PriorityView =
   | {
       tipo: "costruire";
-      /** Gli use case con Valore e Costo. */
+      /** Gli use case con un punteggio del Valore e un Costo. */
       points: PriorityPoint[];
       /** Zona, poi Valore decrescente, poi Costo crescente; «da stimare» in fondo. */
       list: HubItem[];
-      /** Chip «N da stimare». */
+      /** Chip «N da stimare» (`isToEstimate`). */
       toEstimate: number;
+      /**
+       * Chip «N senza beneficio contato» (`isOffMatrix`): le schede con «Benefici e costi» che non
+       * hanno un punto; `withoutBenefit` quante perché manca il beneficio contato (le altre: il costo).
+       */
+      offMatrix: { count: number; withoutBenefit: number };
     }
   | {
       tipo: "diffondere";
@@ -852,24 +902,33 @@ export function buildPriority(items: readonly HubItem[], tipo: HubKindParam | nu
   const list = [...candidates].sort(byPriority);
   const points: PriorityPoint[] = [];
   for (const item of list) {
-    if (isToEstimate(item)) continue;
+    // Un modello senza beneficio contato (o senza costo) non è da stimare e non ha un punto qui:
+    // lo conta il chip «N senza beneficio contato» (`isOffMatrix`).
+    if (item.value.score === null || item.cost === null) continue;
     points.push({
       id: item.id,
       code: item.code,
       title: item.title,
       origin: item.origin,
       approved: item.phase === "approvato",
-      x: item.cost!.position,
-      y: Math.min(5, Math.max(1, item.value.score!)),
+      x: item.cost.position,
+      y: Math.min(5, Math.max(1, item.value.score)),
       zone: item.zone,
     });
   }
-  return { tipo: "costruire", points, list, toEstimate: list.length - points.length };
+  const off = list.filter(isOffMatrix);
+  const offMatrix = { count: off.length, withoutBenefit: off.filter((item) => item.value.score === null).length };
+  return { tipo: "costruire", points, list, toEstimate: list.filter(isToEstimate).length, offMatrix };
 }
 
 /** «5 da stimare». */
 export function toEstimateLabel(count: number): string {
   return `${count} da stimare`;
+}
+
+/** «2 senza beneficio contato», oppure «3 senza beneficio contato o costo» se a qualcuna manca il costo. */
+export function offMatrixLabel(offMatrix: { count: number; withoutBenefit: number }): string {
+  return offMatrix.withoutBenefit === offMatrix.count ? `${offMatrix.count} senza beneficio contato` : `${offMatrix.count} senza beneficio contato o costo`;
 }
 
 /** «circa 180 ore all'anno», «circa 1.250 ore all'anno» (Da diffondere, la stima di Claude in grigio). */
@@ -1090,7 +1149,11 @@ export function roadmapTotals(items: readonly HubItem[]): RoadmapTotals {
 
 export const EXPORT_SHEET_NAME = "Use case";
 
-/** Le colonne del foglio «Use case», nell'ordine di §4.1. Nessuna sul proponente. */
+/**
+ * Le colonne del foglio «Use case», nell'ordine di §4.1, con le cifre di «Benefici e costi»
+ * accanto a Valore e costo (vuote senza modello). Nessuna sul proponente. Il foglio è solo dei
+ * revisori: il modello e le sue cifre non arrivano a nessun altro.
+ */
 export const EXPORT_COLUMNS = [
   "Codice",
   "Titolo",
@@ -1102,9 +1165,14 @@ export const EXPORT_COLUMNS = [
   "Punteggio",
   "Fonte del valore",
   "Valore all'anno",
+  "Ritorno principale",
+  "Ore all'anno",
+  "Da misurare all'anno",
   "Costo",
   "Fascia",
   "Fonte del costo",
+  "Ricorrenti all'anno",
+  "Facilità",
   "Zona",
   "AI Lab",
   "Canale",
@@ -1137,6 +1205,11 @@ export function bandText(cost: CostFigure, bands: readonly CostBandInfo[] = COST
   return `${info.symbol} · ${cost.bandLabel ?? info.label}`;
 }
 
+/** Un importo del foglio al centesimo: i conti di «Benefici e costi» non portano code di virgola mobile. */
+function cents(amount: number | null | undefined): number | null {
+  return typeof amount === "number" && Number.isFinite(amount) ? Math.round(amount * 100) / 100 : null;
+}
+
 /**
  * Una riga del foglio «Use case» (§4.1). Le etichette delle fasce sono quelle del workspace:
  * le porta `cost.bandLabel` (da `costFigure` con il modello del workspace) e, in sua
@@ -1145,6 +1218,7 @@ export function bandText(cost: CostFigure, bands: readonly CostBandInfo[] = COST
 export function exportRow(item: HubItem, texts: ExportTexts, bands: readonly CostBandInfo[] = COST_BANDS): ExportRow {
   const value = item.value;
   const cost = item.cost;
+  const model = item.valueModel;
   return {
     Codice: item.code ?? "",
     Titolo: item.title,
@@ -1152,14 +1226,19 @@ export function exportRow(item: HubItem, texts: ExportTexts, bands: readonly Cos
     Tipo: KIND_LABEL[item.kind].label,
     Fase: item.phaseLabel,
     Quando: item.quando ?? "",
-    Valore: value.word ? VALUE_WORD_LABEL[value.word] : NOT_ESTIMATED_LABEL,
+    Valore: value.word ? VALUE_WORD_LABEL[value.word] : value.benefits && value.benefits.state !== "contato" ? VALUE_MODEL_STATE_LABEL[value.benefits.state] : NOT_ESTIMATED_LABEL,
     Punteggio: value.score === null ? null : Math.round(value.score * 10) / 10,
     "Fonte del valore": value.source ? VALUE_SOURCE_LABEL[value.source] : NOT_ESTIMATED_LABEL,
-    "Valore all'anno": value.perYear?.amount ?? null,
-    Costo: cost?.amount ?? null,
+    "Valore all'anno": cents(value.perYear?.amount),
+    "Ritorno principale": model ? LEVER_LABELS[model.primary] : "",
+    "Ore all'anno": value.benefits ? cents(value.benefits.hours) : null,
+    "Da misurare all'anno": value.benefits ? cents(value.benefits.pendingEur) : null,
+    Costo: cents(cost?.amount),
     Fascia: cost ? bandText(cost, bands) : "",
     "Fonte del costo": cost ? COST_SOURCE_LABEL[cost.source].long : NOT_ESTIMATED_LABEL,
-    Zona: item.zone ? ZONE_LABEL[item.zone] : NOT_ESTIMATED_LABEL,
+    "Ricorrenti all'anno": model?.costs ? cents(model.costs.runCostEurYear) : null,
+    Facilità: model?.ease ?? null,
+    Zona: zoneText(item.zone, item.value),
     "AI Lab": item.aiLab ?? "",
     Canale: channelLabel(item.source),
     Area: item.area ?? "",

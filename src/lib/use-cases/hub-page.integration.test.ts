@@ -142,7 +142,11 @@ interface Seed {
   costBand?: number | null;
 }
 
-/** Una scheda sintetica, scritta senza passare dal servizio. */
+/**
+ * Una scheda sintetica, scritta senza passare dal servizio. `submitted_at` è un `timestamp` senza
+ * fuso che l'app legge come UTC: si scrive l'ora UTC, così i giorni di attesa non dipendono dal fuso
+ * del cluster di prova (Europe/Rome: dalle 22 «da 3 giorni» diventava «da 2 giorni»).
+ */
 async function seed(s: Seed): Promise<{ id: string; code: string; title: string }> {
   const id = randomUUID();
   const code = `XX-${codeBase + codeSeq++}`;
@@ -151,7 +155,7 @@ async function seed(s: Seed): Promise<{ id: string; code: string; title: string 
        intake, public_note, reviewed_by, target_quarter, custom_scores, source, proposed_by, value_eur_year, cost_eur_once, cost_band,
        submitted_at)
      VALUES ($1::uuid, $2::uuid, $3, 'Problema di prova', $4::use_case_status, $5::portfolio_review_status, $6, $7, $8,
-       $9::jsonb, $10, $11::uuid, $12, $13::jsonb, $14, $15, $16, $17, $18, now() - interval '3 days')`,
+       $9::jsonb, $10, $11::uuid, $12, $13::jsonb, $14, $15, $16, $17, $18, ((date_trunc('day', now() AT TIME ZONE 'Europe/Rome') - interval '3 days' + interval '12 hours') AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'UTC')`,
     [
       id,
       s.workspaceId ?? ids.wsA,

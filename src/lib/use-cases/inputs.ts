@@ -12,11 +12,13 @@
  * Modulo puro: import relativi `.ts` e `zod`, nessun `@/`, nessun `server-only`.
  */
 import { z } from "zod";
+import { COST_EUR_ONCE_MAX, VALUE_EUR_YEAR_MAX } from "./amount-limits.ts";
 import { USE_CASE_CODE_PATTERN } from "../portfolio/use-case-code.ts";
 import { isCostBand } from "./cost-bands.ts";
 import type { EventField } from "./labels.ts";
 import { KINDS, ORIGINS, type CostBand, type CostInput } from "./types.ts";
 import type { Dimension } from "./valuation.ts";
+import { VALUE_MODEL_ERRORS, valueModelSchema } from "./value-model.ts";
 
 // ─── Limiti (§5.2, §5.4, §6.2, §6.4, CHECK della 0019 e della 0020) ──
 
@@ -46,10 +48,8 @@ export const QUICK_CREATE_LIMITS = {
   aiLab: { max: 120 },
 } as const;
 
-/** `cost_eur_once`: intero da 0 a 100.000.000 (§5.4, CHECK della 0020). */
-export const COST_EUR_ONCE_MAX = 100_000_000;
-/** `value_eur_year`: intero da 0 a 1.000.000.000 (CHECK della 0020). */
-export const VALUE_EUR_YEAR_MAX = 1_000_000_000;
+/** `cost_eur_once` e `value_eur_year` (CHECK della 0020): stanno in `amount-limits.ts`. */
+export { COST_EUR_ONCE_MAX, VALUE_EUR_YEAR_MAX };
 
 /** Errore del campo costo, testo esatto di §5.4. */
 export const COST_AMOUNT_ERROR = "Scrivi un importo in euro, senza decimali (es. 40000).";
@@ -304,22 +304,42 @@ export const valuationSchema = z
       .optional(),
     valueEurYear: euroSchema(VALUE_EUR_YEAR_MAX, VALUE_AMOUNT_ERROR).optional(),
     cost: costSchema.optional(),
+    /** «Benefici e costi» (`value_model`, lo schema unico di `value-model.ts`); null lo toglie. */
+    model: valueModelSchema.nullable().optional(),
   })
   .strict();
 
 export type ValuationInput = z.output<typeof valuationSchema>;
 
+/** L'errore di un campo di «Benefici e costi» quando zod non ne ha uno suo in italiano. */
+export const VALUE_MODEL_FIELD_ERROR = "Controlla questo valore.";
+
+/**
+ * Gli errori di «Salva la valutazione»: sotto `model` i messaggi di zod sono in inglese, tranne
+ * quelli scritti da `value-model.ts` (`VALUE_MODEL_ERRORS`): al loro posto `VALUE_MODEL_FIELD_ERROR`.
+ */
+function valuationErrorsOf(error: z.ZodError): FieldErrors {
+  const out = fieldErrorsOf(error);
+  const own = new Set<string>(Object.values(VALUE_MODEL_ERRORS));
+  for (const issue of error.issues) {
+    if (issue.path[0] !== "model" || issue.code === "unrecognized_keys" || own.has(issue.message)) continue;
+    const key = issue.path.join(".");
+    if (out[key] === issue.message) out[key] = VALUE_MODEL_FIELD_ERROR;
+  }
+  return out;
+}
+
 /**
  * «Salva la valutazione» (e `update_use_case` del MCP del team): KPI da 1 a 5 o vuoti, valore
- * all'anno, costo. Con `kpiIds` ogni KPI deve stare nel modello del workspace, nella sua
- * dimensione (con ESG spento: `esg: []`).
+ * all'anno, costo, «Benefici e costi» (`model`, null lo toglie). Con `kpiIds` ogni KPI deve
+ * stare nel modello del workspace, nella sua dimensione (con ESG spento: `esg: []`).
  */
 export function validateValuation(
   input: unknown,
   opts: { kpiIds?: Partial<Record<Dimension, readonly string[]>> } = {},
 ): { ok: true; valuation: ValuationInput; fields: EventField[] } | { ok: false; fieldErrors: FieldErrors } {
   const parsed = valuationSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, fieldErrors: fieldErrorsOf(parsed.error) };
+  if (!parsed.success) return { ok: false, fieldErrors: valuationErrorsOf(parsed.error) };
   const valuation = parsed.data;
   const fieldErrors: FieldErrors = {};
   if (valuation.kpis && opts.kpiIds) {
@@ -336,6 +356,7 @@ export function validateValuation(
     valuation.kpis !== undefined ? "kpi" : null,
     valuation.valueEurYear !== undefined ? "valore" : null,
     valuation.cost !== undefined ? "costo" : null,
+    valuation.model !== undefined ? "valore" : null,
   ];
   if (!fields.some(Boolean)) return { ok: false, fieldErrors: { payload: NO_CHANGES_ERROR } };
   return { ok: true, valuation, fields: uniqueFields(fields) };

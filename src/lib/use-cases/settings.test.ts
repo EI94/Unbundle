@@ -415,7 +415,7 @@ test("Impostazioni › Valutazione segue l'area (§12.1): la sezione, le action 
   const section = source("src/components/use-cases/settings/valuation-settings.tsx");
   assert.match(section, /if \(!isUseCaseHubWorkspace\(workspaceId\)\) return null;/);
   const actions = source("src/lib/actions/use-case-settings.ts");
-  assert.equal(actions.match(/if \(!isUseCaseHubWorkspace\(workspaceId\)\) return AREA_OFF;/g)?.length, 4, "le quattro action delle impostazioni");
+  assert.equal(actions.match(/if \(!isUseCaseHubWorkspace\(workspaceId\)\) return AREA_OFF;/g)?.length, 5, "le cinque action delle impostazioni (con «Ipotesi di calcolo»)");
   assert.match(actions, /if \(!isUseCaseHubWorkspace\(workspaceId\)\) return refusedState\(AREA_OFF\);/, "e quella del modello");
   assert.match(source("src/lib/use-cases/settings-data.ts"), /if \(!isUseCaseHubWorkspace\(workspaceId\)\) return areaOff\(\);/);
 });

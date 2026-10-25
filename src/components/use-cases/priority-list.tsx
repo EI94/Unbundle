@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { toDecisionItem } from "@/lib/use-cases/decision-ui";
-import { NOT_ESTIMATED_LABEL, ZONE_LABEL } from "@/lib/use-cases/labels";
+import { hasValueText, zoneText } from "@/lib/use-cases/format";
+import { NOT_ESTIMATED_LABEL } from "@/lib/use-cases/labels";
 import { isToEstimate, roadmapGroupKey, type HubItem } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { CostFigure } from "./cost-figure";
@@ -75,7 +76,7 @@ export function PriorityList({ workspaceId, items, today, canDecide, bands, base
         {rows.map((item) => {
           const whenId = `quando-${item.id}`;
           const expired = item.phase === "approvato" && roadmapGroupKey(item.targetQuarter, today) === "scaduti";
-          const estimated = !item.value.word && !item.cost;
+          const estimated = !hasValueText(item.value) && !item.cost;
           return (
             <li key={item.id} data-slot="priority-row" data-id={item.id} className={cn("flex flex-col gap-2 px-3 py-2.5", COLUMNS)}>
               <span className="flex min-w-0 items-baseline gap-3 lg:contents">
@@ -104,7 +105,7 @@ export function PriorityList({ workspaceId, items, today, canDecide, bands, base
                 <CostFigure cost={item.cost} bands={bands} withLabel className={cn(HIDE_LABEL_ON_LG, estimated && "max-lg:hidden")} />
                 <span className={cn("text-sm", estimated && "max-lg:hidden")}>
                   <span className="text-muted-foreground lg:hidden">{PRIORITY_LIST_TEXT.zone}: </span>
-                  <span className={item.zone ? "font-medium" : "text-muted-foreground"}>{item.zone ? ZONE_LABEL[item.zone] : NOT_ESTIMATED_LABEL}</span>
+                  <span className={item.zone ? "font-medium" : "text-muted-foreground"}>{zoneText(item.zone, item.value)}</span>
                 </span>
               </span>
               <span className="flex min-w-0 items-center gap-2">

@@ -60,3 +60,41 @@ test("troppi punti nello stesso posto: tutti hanno un'etichetta, quelle senza po
   assert.ok([...placed.values()].some((p) => p.crowded), "qualcuna resta affollata");
   assert.ok([...placed.values()].every((p) => Number.isFinite(p.dx) && Number.isFinite(p.dy)));
 });
+
+test("da 320 a 600 px: due etichette non si incrociano quando i punti si allontanano", () => {
+  // XX-0003 e XX-0006 nella colonna «€», a Valore 1,4 e 1,25: a 320 px una sotto e l'altra sopra
+  // stavano libere, a 600 px si coprivano.
+  const points = [
+    { id: "a", left: 3, top: 82, text: "XX-0003" },
+    { id: "b", left: 3, top: 85.1, text: "XX-0006" },
+  ];
+  const placed = placeMatrixLabels(points, { maxBoxPx: 600 });
+  for (const box of [320, 400, 460, 520, 600]) {
+    const rect = (point: (typeof points)[number]) => {
+      const p = placed.get(point.id)!;
+      return { x: (point.left / 100) * box + p.dx, y: (point.top / 100) * box + p.dy, w: W(point.text), h: 13 };
+    };
+    assert.ok(!overlaps(rect(points[0]), rect(points[1])), `a ${box} px le etichette si coprono`);
+  }
+});
+
+test("bolle: il raggio di ogni punto conta, e un riquadro 4:3", () => {
+  // Due bolle a facilità 3 e beneficio 0, una grande: l'etichetta della piccola non va sulla grande.
+  const points = [
+    { id: "small", left: 48, top: 96, text: "XX-0011", radiusPx: 9 },
+    { id: "big", left: 53, top: 96, text: "XX-0010", radiusPx: 13 },
+  ];
+  const placed = placeMatrixLabels(points, { boxPx: 560, maxBoxPx: 640, aspect: 0.75 });
+  for (const box of [560, 640]) {
+    const h = box * 0.75;
+    const at = (point: (typeof points)[number]) => ({ x: (point.left / 100) * box, y: (point.top / 100) * h });
+    const label = (point: (typeof points)[number]) => {
+      const p = placed.get(point.id)!;
+      return { x: at(point).x + p.dx, y: at(point).y + p.dy, w: W(point.text), h: 13 };
+    };
+    const bubble = (point: (typeof points)[number]) => ({ x: at(point).x - point.radiusPx, y: at(point).y - point.radiusPx, w: 2 * point.radiusPx, h: 2 * point.radiusPx });
+    assert.ok(!overlaps(label(points[0]), bubble(points[1])), `a ${box} px l'etichetta della piccola copre la grande`);
+    assert.ok(!overlaps(label(points[1]), bubble(points[0])), `a ${box} px l'etichetta della grande copre la piccola`);
+    assert.ok(!overlaps(label(points[0]), label(points[1])), `a ${box} px le etichette si coprono`);
+  }
+});

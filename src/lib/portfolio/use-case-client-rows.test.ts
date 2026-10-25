@@ -56,6 +56,8 @@ const PLANTED = [
 ];
 
 /** A use_cases row with every column filled, proposer, reviewer and intake included. */
+const CONFIRM_BY = "Responsabile amministrazione";
+
 function stuffedRow(overrides: Partial<UseCase> = {}): UseCase {
   return {
     id: "5b0c2a52-6a7e-4a43-9a51-0d1d6a1f00aa",
@@ -125,6 +127,13 @@ function stuffedRow(overrides: Partial<UseCase> = {}): UseCase {
     costBand: 2,
     aiSuggestion: { scores: { impact: { efficiency: 4 } }, rationale: "Molte ore a fine mese.", model: "claude", at: "2026-10-02T08:00:00.000Z", kind: "auto" },
     version: 3,
+    valueModel: {
+      v: 1,
+      primary: "tempo",
+      components: [{ key: "tempo", lever: "tempo", label: "Controllo delle fatture", kind: "ore", volumeYear: 480, minutesPerUnit: 12, automatablePct: 65, confidence: "ipotesi" }],
+      // «Chi conferma i numeri»: un testo che scrive il team, come il titolo; mai preso dal proponente.
+      confirmBy: CONFIRM_BY,
+    },
     createdAt: new Date("2026-10-01T08:00:00.000Z"),
     updatedAt: new Date("2026-10-03T09:30:00.000Z"),
     ...overrides,
@@ -198,6 +207,18 @@ test("the REST row is every column but proposer, reviewer and intake", () => {
   // Reviewer-only content of the row stays (the routes answer only to reviewers).
   const json = JSON.stringify(api);
   assert.ok(json.includes(REVIEW_NOTES) && json.includes(PUBLIC_NOTE) && json.includes("TJ-0042"));
+});
+
+test("the value model reaches reviewers through the one schema: a broken or extended model goes out as null", () => {
+  const row = stuffedRow();
+  const api = toUseCaseApiRow(row);
+  assert.deepEqual(api.valueModel, row.valueModel);
+  assert.equal(api.valueModel?.confirmBy, CONFIRM_BY);
+  assert.notEqual(api.valueModel, row.valueModel, "rebuilt by the schema, not passed by reference");
+  const planted = { ...row.valueModel, submittedBy: { email: PROPOSER_EMAIL } } as unknown as UseCase["valueModel"];
+  assert.equal(toUseCaseApiRow(stuffedRow({ valueModel: planted })).valueModel, null, "an unknown key makes the whole model invalid");
+  assert.equal(toUseCaseApiRow(stuffedRow({ valueModel: { v: 2 } as unknown as UseCase["valueModel"] })).valueModel, null);
+  assert.equal(toUseCaseApiRow(stuffedRow({ valueModel: null })).valueModel, null);
 });
 
 test("jsonb columns of the REST row are rebuilt, not passed by reference", () => {

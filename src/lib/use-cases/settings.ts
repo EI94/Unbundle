@@ -44,6 +44,13 @@ export function teamNameHelp(): string {
 /** Le zone nell'ordine della matrice: «Subito, Da pianificare, Se avanza tempo, Non ora». */
 const ZONE_NAMES = ZONES.map((zone) => ZONE_LABEL[zone]).join(", ");
 
+/**
+ * L'ancora di Impostazioni › Valutazione dell'area «Use case» (docs/use-case/DESIGN.md §14.3,
+ * PIANO-LAVORI H3d e H4i). `valutazione` resta a «Criteri ESG», dove porta già oggi. La usa
+ * anche il riquadro «Ipotesi di calcolo» per chi gestisce il workspace.
+ */
+export const USE_CASE_VALUATION_ANCHOR = "valutazione-use-case";
+
 /** I testi della sezione. Quelli di §14.3 sono esatti; gli altri sono pulsanti e conferme. */
 export const VALUATION_SETTINGS_TEXT = Object.freeze({
   section: "Valutazione",

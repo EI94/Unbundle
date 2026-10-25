@@ -86,6 +86,8 @@ const NOTHING: UseCaseAbilities = {
   canSeeProposer: false,
   canRedact: false,
   canOpenAnyDossier: false,
+  canSeeNeeds: false,
+  canEditNeeds: false,
   canEditSettings: false,
   canUseTeamMcp: false,
 };
@@ -109,6 +111,8 @@ const REVIEWER: UseCaseAbilities = {
   canEditValuation: true,
   canSetHiddenFromSearch: true,
   canSeeHistory: true,
+  canSeeNeeds: true,
+  canEditNeeds: true,
   canUseTeamMcp: true,
 };
 

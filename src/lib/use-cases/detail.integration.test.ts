@@ -687,7 +687,7 @@ test("revisori: «Oscura testo» per Lateral Space e chi gestisce il workspace, 
   }
   const { element } = await detailHtml("builder", card.id, { capitolo: "valutazione" });
   const [chapters] = findProp(element, "chapters") as Array<Array<{ id: string }>>;
-  assert.deepEqual(chapters.map((chapter) => chapter.id), ["cosa-e", "valutazione", "decisione", "storia"], "senza «Realizzazione» prima dell'approvazione");
+  assert.deepEqual(chapters.map((chapter) => chapter.id), ["cosa-e", "valutazione", "decisione", "cosa-serve", "storia"], "senza «Realizzazione» prima dell'approvazione");
   assert.deepEqual(findProp(element, "initial"), ["valutazione"], "?capitolo=");
 });
 
@@ -861,6 +861,11 @@ test("capitoli: `?capitolo=`, ancore per ruolo, «Realizzazione» dalla fase App
     detailChapters({ isReviewer: true, canSeeHistory: true }, { showRealization: true }).map((c) => c.label),
     ["Cos'è", "Valutazione", "Decisione", "Realizzazione", "Storia"],
   );
+  assert.deepEqual(
+    detailChapters({ isReviewer: true, canSeeHistory: true, canSeeNeeds: true }, { showRealization: true }).map((c) => c.label),
+    ["Cos'è", "Valutazione", "Decisione", "Cosa serve", "Realizzazione", "Storia"],
+  );
+  assert.deepEqual(detailChapters({ isReviewer: false, canSeeHistory: false, canSeeNeeds: false }, { showRealization: true }), []);
   assert.equal(showsRealization({ phase: "da_valutare", kind: "da_costruire", dossier: null }), false);
   assert.equal(showsRealization({ phase: "approvato", kind: "da_costruire", dossier: null }), true);
   assert.equal(showsRealization({ phase: "chiuso", kind: "da_costruire", dossier: null }), false);
@@ -1037,7 +1042,16 @@ test("«Cosa è» e «Valutazione»: campi per tipo, KPI del modello, «Sforzo»
   assert.equal(formModule.sameValueText("", null), true);
   assert.equal(formModule.sameValueText("60.000", 60000), true);
   assert.equal(formModule.sameValueText("abc", null), false);
-  assert.deepEqual(formModule.valuationBaseOf(4, saved, null, { costEurOnce: null, costBand: 3 }), { version: 4, kpis: saved, valueEurYear: null, cost: { band: 3 } });
+  assert.deepEqual(formModule.valuationBaseOf(4, saved, null, { costEurOnce: null, costBand: 3 }), { version: 4, kpis: saved, valueEurYear: null, cost: { band: 3 }, model: null });
+  // «Benefici e costi»: il modello parte solo se è cambiato; null lo toglie.
+  const valueModel = {
+    v: 1 as const,
+    primary: "tempo" as const,
+    components: [{ key: "t", lever: "tempo" as const, label: "Voce di prova", kind: "qualitativo" as const, confidence: "ipotesi" as const }],
+  };
+  assert.deepEqual(formModule.valuationPayload({ groups, base: { ...base, model: valueModel }, values: saved, valueText: "60.000", cost: { band: 2 }, model: valueModel }), { kpis: {} });
+  assert.deepEqual(formModule.valuationPayload({ groups, base: { ...base, model: valueModel }, values: saved, valueText: "60.000", cost: { band: 2 }, model: null }), { model: null });
+  assert.deepEqual(formModule.valuationPayload({ groups, base, values: saved, valueText: "60.000", cost: { band: 2 }, model: valueModel }), { model: valueModel });
   // Dopo una versione superata: i KPI cambiati dalla persona restano, gli altri prendono quelli riletti.
   assert.deepEqual(
     formModule.rebaseKpis(groups, { impact: { efficiency: 3 } }, { impact: { efficiency: 5 }, feasibility: { effort: 1 } }, { impact: { efficiency: 3 }, feasibility: { effort: 4 } }),

@@ -8,6 +8,8 @@ import { getUseCaseById, getUseCaseKRLinks } from "@/lib/db/queries/use-cases";
 import { dossierStateForUseCase, realizationOfUseCase } from "@/lib/db/queries/use-case-dossiers";
 import { listUseCaseEvents, USE_CASE_EVENTS_DEFAULT_LIMIT } from "@/lib/db/queries/use-case-events";
 import { getUseCaseDetail, viewerFromSession } from "@/lib/db/queries/use-case-hub";
+import { listWorkspaceNeeds, needUseCaseRefs } from "@/lib/db/queries/use-case-needs";
+import { needListsOfUseCase } from "@/lib/use-cases/needs";
 import { abilitiesForUseCase, projectForContributor } from "@/lib/use-cases/permissions";
 import type { PhaseInput } from "@/lib/use-cases/phase";
 import { romeToday } from "@/lib/use-cases/quarter";
@@ -104,14 +106,24 @@ export default async function UseCaseDetailPage({
   // Il riepilogo ricco del dossier (H6a) solo quando il capitolo «Realizzazione» c'è e la parte
   // del dossier ha risposto: i contributori non lo ricevono (il capitolo non è per loro).
   const readsRealization = reviewer && result.dossierRead === "ok" && showsRealization(result.useCase);
-  const [events, candidates, guide, realization] = reviewer
+  const [events, candidates, guide, realization, workspaceNeeds] = reviewer
     ? await Promise.all([
         abilities.canSeeHistory ? listUseCaseEvents(workspaceId, result.useCase.id, historyAll ? HISTORY_ALL_LIMIT : USE_CASE_EVENTS_DEFAULT_LIMIT) : null,
         abilities.canDecide ? duplicateCandidatesOf(workspaceId) : [],
         guideLabelsOf(workspaceId),
         readsRealization ? realizationOfUseCase(workspaceId, { userId: session.user.id, role: access.role }, result.useCase.id) : null,
+        // «Cosa serve»: solo i revisori; `listWorkspaceNeeds` risponde null a tutti gli altri.
+        abilities.canSeeNeeds ? listWorkspaceNeeds(workspaceId, viewer) : null,
       ])
-    : [null, [], null, null];
+    : [null, [], null, null, null];
+  const needLists = workspaceNeeds ? needListsOfUseCase(workspaceNeeds, result.useCase.id) : null;
+  const needRefs = needLists
+    ? await needUseCaseRefs(
+        workspaceId,
+        [...needLists.requirements, ...needLists.steps].flatMap((need) => need.useCaseIds),
+        viewer,
+      )
+    : {};
 
   return (
     <PageContainer size="default">
@@ -126,6 +138,7 @@ export default async function UseCaseDetailPage({
         historyAll={historyAll}
         historyAllHref={`/dashboard/${workspaceId}/use-cases/${result.useCase.id}?storia=tutta#storia`}
         realization={realization}
+        needs={needLists ? { lists: needLists, refs: needRefs } : null}
         teamName={reviewTeamName(access.workspace)}
       />
     </PageContainer>

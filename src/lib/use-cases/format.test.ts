@@ -38,6 +38,11 @@ test("importi (§14.5): «40.000 €», senza decimali, il punto delle migliaia 
   assert.equal(formatEuro(18_500), "18.500 €");
   assert.equal(formatEuro(18_500.4), "18.500 €", "il ROI del dossier può avere i centesimi");
   assert.equal(formatEuro(18_500.5), "18.501 €");
+  // Nessun arrotondamento ai centesimi prima dell'euro: sotto la metà resta sotto.
+  assert.equal(formatEuro(1_234.497), "1.234 €");
+  assert.equal(formatEuro(2.4951), "2 €");
+  // Una coda di virgola mobile sotto la metà esatta non sposta la cifra.
+  assert.equal(formatEuro(4_042.4999999999995), "4.043 €");
   assert.equal(formatEuro(400_000), "400.000 €");
   assert.equal(formatEuro(100_000_000), "100.000.000 €");
   assert.equal(formatEuro(999), "999 €");
@@ -137,8 +142,14 @@ test("date nelle righe: l'anno solo quando non è quello di oggi", () => {
 test("fonti (§7.2, §14.3): corte e lunghe, «dossier» e «dal dossier», mai «da dossier»", () => {
   const short = Object.fromEntries(COST_SOURCES.map((s) => [s, costSourceText(s, "corta")]));
   const long = Object.fromEntries(COST_SOURCES.map((s) => [s, costSourceText(s, "lunga")]));
-  assert.deepEqual(short, { dossier: "dossier", team_importo: "team", team_fascia: "team", sforzo: "stimato" });
-  assert.deepEqual(long, { dossier: "dal dossier", team_importo: "importo del team", team_fascia: "fascia del team", sforzo: "stimato dall'impegno" });
+  assert.deepEqual(short, { dossier: "dossier", stima: "team", team_importo: "team", team_fascia: "team", sforzo: "stimato" });
+  assert.deepEqual(long, {
+    dossier: "dal dossier",
+    stima: "stima del team",
+    team_importo: "importo del team",
+    team_fascia: "fascia del team",
+    sforzo: "stimato dall'impegno",
+  });
   assert.equal(valueSourceText("team"), "team");
   assert.equal(valueSourceText("ai"), "AI");
   assert.equal(valueEurSourceText("dossier", "corta"), "dossier");

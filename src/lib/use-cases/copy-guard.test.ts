@@ -18,9 +18,17 @@ import {
   findHubForbiddenIn,
   type HubCopyScope,
 } from "./copy-guard.ts";
+import * as format from "./format.ts";
 import { costLongText, costShortText, costSourceText, valueEurSourceText, valueLongText } from "./format.ts";
 import * as inputs from "./inputs.ts";
 import * as labels from "./labels.ts";
+import { PLAN_SOURCE_LABEL } from "./mcp/output.ts";
+import { SAVED_NEED_ACTION_LABEL } from "./mcp/tools.ts";
+import * as needs from "./needs.ts";
+import * as valueCharts from "./value-charts.ts";
+import * as valueModel from "./value-model.ts";
+import * as valueParamsForm from "./value-params-form.ts";
+import { offMatrixLabel, toEstimateLabel } from "./views.ts";
 import { PHASE_LABEL, SUB_STATE_LABEL } from "./phase.ts";
 import * as quarter from "./quarter.ts";
 import { WHEN_CHOICES, USE_CASE_SOURCES } from "./types.ts";
@@ -330,8 +338,27 @@ test("copy-guard verde sulle etichette dell'area", () => {
       costLongText({ source: "sforzo", amount: null, band, fromBand: true }),
     ]),
     ...costInputState.bandOptions().map((o) => `${o.symbol} ${o.label}`),
+    // «Benefici e costi» e «Cosa serve»: i moduli dei testi che vanno nelle pagine e nel MCP.
+    ...exportedStrings(needs),
+    ...exportedStrings(valueCharts),
+    ...exportedStrings(valueModel),
+    ...exportedStrings(valueParamsForm),
+    ...exportedStrings(format),
+    ...Object.values(PLAN_SOURCE_LABEL),
+    ...Object.values(SAVED_NEED_ACTION_LABEL),
+    format.hoursFreedText(116),
+    format.qualitativeCountText(2),
+    format.oneoffRunText(560, 600),
+    format.zoneText(null, { benefits: { state: "qualitativo", benefitEur: 0, pendingEur: 0, hours: 0 } }),
+    format.valueShortText({ word: null, perYear: null, benefits: { state: "da_misurare", benefitEur: 0, pendingEur: 5840, hours: 0 } }),
+    valueCharts.otherGroupsLabel(["Amministrazione", "Logistica", "Produzione", "Vendite"], true),
+    valueCharts.groupText(null),
+    valueCharts.beyondHorizonText("2028-10"),
+    valueCharts.bubbleWhenText({ when: "questo_trimestre", expired: true }),
+    toEstimateLabel(5),
+    offMatrixLabel({ count: 3, withoutBenefit: 2 }),
   ];
-  assert.ok(texts.length > 120, `${texts.length} testi controllati`);
+  assert.ok(texts.length > 400, `${texts.length} testi controllati`);
   assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
 });
 

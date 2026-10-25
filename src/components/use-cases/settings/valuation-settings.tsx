@@ -12,13 +12,15 @@ import { CodePrefixField } from "./code-prefix-field";
 import { CostBandsField } from "./cost-bands-field";
 import { TeamNameField } from "./team-name-field";
 import { ThresholdsField } from "./thresholds-field";
+import { ValueParamsField } from "./value-params-field";
+import { VALUE_PARAMS_TEXT } from "@/lib/use-cases/value-params-form";
 
 const TEXT = VALUATION_SETTINGS_TEXT;
 
 /**
  * Impostazioni › Valutazione (docs/use-case/DESIGN.md §7.2, §10.6, §14.2, §14.3; PIANO-LAVORI
- * H3d): nome del team che valuta, prefisso dei codici, soglie, fasce del costo e modello di
- * valutazione, in un posto solo.
+ * H3d): nome del team che valuta, prefisso dei codici, soglie, fasce del costo, «Ipotesi di
+ * calcolo» di «Benefici e costi» e modello di valutazione, in un posto solo.
  *
  * Componente server, montato con una riga nella pagina delle impostazioni (H4i): controlla
  * da sé l'area e chi guarda, e non mostra nulla con l'area spenta per il workspace (§12.1: lì
@@ -73,6 +75,23 @@ export async function ValuationSettings({ workspaceId, id }: { workspaceId: stri
           bands={data.costBands}
         />
         <CostBandsField workspaceId={workspaceId} bands={data.costBands} />
+        <details className="group" data-slot="value-params-settings">
+          <summary className="flex cursor-pointer list-none items-start gap-2 text-sm outline-none marker:hidden focus-visible:underline [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden />
+            <span className="flex min-w-0 flex-col gap-0.5 @md:flex-row @md:items-baseline @md:gap-2">
+              <span className="font-semibold">{VALUE_PARAMS_TEXT.title}</span>
+              <span className="text-xs text-muted-foreground">{VALUE_PARAMS_TEXT.hint}</span>
+            </span>
+          </summary>
+          <div className="mt-4">
+            <ValueParamsField
+              key={`ipotesi-${JSON.stringify(data.valueParams)}-${data.storedOriginMonth ?? ""}`}
+              workspaceId={workspaceId}
+              initial={data.valueParams}
+              storedOriginMonth={data.storedOriginMonth}
+            />
+          </div>
+        </details>
         <details className="group">
           <summary className="flex cursor-pointer list-none items-start gap-2 text-sm outline-none marker:hidden focus-visible:underline [&::-webkit-details-marker]:hidden">
             <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden />

@@ -1,6 +1,7 @@
 /**
- * I 6 tool del MCP del team «Unbundle Use case» (docs/use-case/DESIGN.md §9.4, D3, D9): gli
- * handler di `tools/call`. Le definizioni di `tools/list` sono in `contract.ts`.
+ * Gli 8 tool del MCP del team «Unbundle Use case» (docs/use-case/DESIGN.md §9.4, D3, D9; «Cosa
+ * serve» e «Benefici e costi» dalla spec di Pierpaolo, 25/10/2026): gli handler di `tools/call`.
+ * Le definizioni di `tools/list` sono in `contract.ts`.
  *
  * Ogni tool risponde sempre nel formato del contratto (`structuredContent` più la copia JSON;
  * gli errori con `isError: true`), mai con il testo «Input validation error» dell'SDK.
@@ -45,6 +46,14 @@
  * conta come fatto e si va avanti). Se c'è ma dopo qualcuno ha cambiato la scheda,
  * `version_conflict` che lo dice, e la riga resta per la stessa chiave.
  *
+ * **«Cosa serve».** `list_needs` legge le esigenze con la persona del token (`listWorkspaceNeeds`:
+ * null a chi non è revisore). `save_needs` legge prima tutto (esigenze per id o `importKey`, use
+ * case per codice o id, version, validazione di `needs.ts`): un errore lì non scrive nulla e
+ * libera la chiave. Poi scrive una voce alla volta dal servizio (`needs-service.ts`, canale
+ * `mcp_team`), salvando l'avanzamento nella riga dell'idempotenza; le esigenze nuove usano gli
+ * id riservati alla presa in carico, così una ripresa non crea doppioni. Non si cancella nulla:
+ * si archivia con il motivo.
+ *
  * Il risultato salvato di ogni scrittura contiene solo id, codici e versioni, mai testi: una
  * risposta ripetuta rilegge i titoli dal database. Un errore inatteso diventa `internal_error`
  * con un log senza dati della richiesta.
@@ -54,14 +63,19 @@
  */
 import { randomUUID } from "node:crypto";
 import type { HubList, UseCaseDetailResult } from "../../db/queries/use-case-hub.ts";
+import { USE_CASE_CODE_PATTERN } from "../../portfolio/use-case-code.ts";
 import type { UseCaseEventAction } from "../../db/use-case-hub-ddl.ts";
 import type { TeamClaim, TeamRequestKey, TeamRequestRow } from "../../db/queries/team-mcp-requests.ts";
 import type { ConnectorStatusCode } from "../../connector/status.ts";
 import { consumeRateLimits, rateLimitBucket, type RateLimitRule, type SqlExecutor } from "../../connector/rate-limit.ts";
 import { logSafeError } from "../../log/safe-error.ts";
-import { quarterLabel, whenLabel } from "../quarter.ts";
+import { NEED_ERRORS, validateNeedInput, validateNeedPatch, type NeedUseCaseRef, type NeedView } from "../needs.ts";
+import type { NeedWritten } from "../needs-service.ts";
+import { quarterLabel, romeToday, whenLabel } from "../quarter.ts";
 import type { UseCaseViewer } from "../permissions.ts";
 import type { CreatedUseCase, NewUseCaseItem, UseCaseCard, UseCaseChangesInput, ValuationInputRaw, WriteContext } from "../service.ts";
+import { planMonths, type PlanCard, type PlannedMonths } from "../value-calc.ts";
+import { roadmapValueItems } from "../value-charts.ts";
 import { PHASES, SUB_STATES, type Decision, type Phase, type ServiceError, type ServiceResult, type SubState, type WhenInput } from "../types.ts";
 import type { Dimension } from "../valuation.ts";
 import type { HubItem } from "../views.ts";
@@ -75,9 +89,13 @@ import {
   teamRequestHash,
   teamResult,
   validateTeamToolInput,
+  NEED_FIELD_KEYS,
+  SAVE_NEEDS_MESSAGES,
   type CreateUseCasesInput,
   type DecideUseCaseInput,
   type McpDecision,
+  type SaveNeedItemInput,
+  type SaveNeedsInput,
   type SearchUseCasesInput,
   type SetPriorityInput,
   type TeamMcpError,
@@ -89,7 +107,16 @@ import {
   type UseCaseChangesMcp,
 } from "./contract.ts";
 import { decideExistingTeamRequest, releasesKey } from "./idempotency.ts";
-import { connectorStatusOutput, phaseLabelFromCodes, searchItemOutput, linkToUseCase, cardOutput, type AreaOption } from "./output.ts";
+import {
+  NEEDS_RESULTS_NOTE,
+  cardOutput,
+  connectorStatusOutput,
+  linkToUseCase,
+  needOutput,
+  phaseLabelFromCodes,
+  searchItemOutput,
+  type AreaOption,
+} from "./output.ts";
 
 /** Area delle righe di log del MCP del team. */
 export const TEAM_MCP_LOG_AREA = "team-mcp";
@@ -97,16 +124,22 @@ export const TEAM_MCP_LOG_AREA = "team-mcp";
 // ─── Limiti di richieste (DESIGN §9.4) ───────────────────────────────
 
 export const TEAM_BUCKET_PREFIX = "team";
-export const TEAM_MCP_RATE_LIMITS = Object.freeze({ readsPerHour: 600, writesPerHour: 120, createdPerDayWorkspace: 300 });
+export const TEAM_MCP_RATE_LIMITS = Object.freeze({ readsPerHour: 600, writesPerHour: 120, createdPerDayWorkspace: 300, savedNeedsPerDayWorkspace: 1000 });
 /** Il giorno del workspace ricomincia a mezzanotte in Italia, come per il connettore. */
 export const TEAM_DAY_TIME_ZONE = "Europe/Rome";
 
 /**
  * I secchi di una chiamata: `team:<tokenId>:read` (600 all'ora), `team:<tokenId>:write` (120
- * all'ora) e, per `create_use_cases`, `team:ws:<workspaceId>:create:day` con il numero di
- * schede (300 al giorno).
+ * all'ora; `save_needs` conta una scrittura come gli altri), per `create_use_cases`
+ * `team:ws:<workspaceId>:create:day` con il numero di schede (300 al giorno) e, per
+ * `save_needs`, `team:ws:<workspaceId>:needs:day` con il numero di esigenze (1.000 al giorno).
  */
-export function teamRateLimitRules(principal: Pick<TeamPrincipal, "tokenId" | "workspaceId">, kind: "read" | "write", createdItems = 0): RateLimitRule[] {
+export function teamRateLimitRules(
+  principal: Pick<TeamPrincipal, "tokenId" | "workspaceId">,
+  kind: "read" | "write",
+  createdItems = 0,
+  savedNeeds = 0,
+): RateLimitRule[] {
   if (kind === "read") {
     return [{ bucket: rateLimitBucket(TEAM_BUCKET_PREFIX, principal.tokenId, "read"), window: "hour", limit: TEAM_MCP_RATE_LIMITS.readsPerHour }];
   }
@@ -117,6 +150,15 @@ export function teamRateLimitRules(principal: Pick<TeamPrincipal, "tokenId" | "w
       window: "day",
       limit: TEAM_MCP_RATE_LIMITS.createdPerDayWorkspace,
       cost: createdItems,
+      timeZone: TEAM_DAY_TIME_ZONE,
+    });
+  }
+  if (savedNeeds > 0) {
+    rules.push({
+      bucket: rateLimitBucket(TEAM_BUCKET_PREFIX, "ws", principal.workspaceId, "needs", "day"),
+      window: "day",
+      limit: TEAM_MCP_RATE_LIMITS.savedNeedsPerDayWorkspace,
+      cost: savedNeeds,
       timeZone: TEAM_DAY_TIME_ZONE,
     });
   }
@@ -145,6 +187,12 @@ export interface TeamReadDeps {
   savedBy(workspaceId: string, useCaseId: string, opts: { since: Date; userId: string; actions: readonly UseCaseEventAction[] }): Promise<boolean>;
   /** Fase, stato per il cliente, version e trimestre della scheda adesso, per un revisore; null se non c'è. */
   cardState(workspaceId: string, useCaseId: string, viewer: UseCaseViewer): Promise<TeamCardState | null>;
+  /** `listWorkspaceNeeds`: le esigenze di «Cosa serve» del workspace per chi guarda; null a chi non è revisore. */
+  needs(workspaceId: string, viewer: UseCaseViewer, opts: { includeArchived: boolean }): Promise<NeedView[] | null>;
+  /** `needUseCaseRefs`: codice e titolo degli use case collegati, per id in minuscolo; vuoto a chi non è revisore. */
+  needUseCaseRefs(workspaceId: string, ids: readonly string[], viewer: UseCaseViewer): Promise<Record<string, NeedUseCaseRef>>;
+  /** Gli use case del workspace con questi codici o questi id: id in minuscolo e codice. */
+  findUseCases(workspaceId: string, refs: { codes: readonly string[]; ids: readonly string[] }): Promise<Array<{ id: string; code: string | null }>>;
 }
 
 /** Lo stato di una scheda letto dopo una scrittura già salvata da un tentativo di prima. */
@@ -170,6 +218,12 @@ export interface TeamServiceDeps {
   setWhen(ctx: WriteContext, id: string, expectedVersion: number, when: WhenInput): Promise<ServiceResult<UseCaseCard>>;
   /** `creationFollowUps("team_mcp", writer)` del servizio: notifiche solo se chi scrive non è di Lateral Space. */
   creationFollowUps(writer: { isLateralSpace: boolean }): { aiValuation: boolean; notifications: boolean };
+  /** Le scritture di «Cosa serve» (`needs-service.ts`). */
+  createNeed(ctx: WriteContext, raw: unknown, opts: { useCaseIds?: readonly unknown[]; id?: string }): Promise<ServiceResult<NeedWritten>>;
+  updateNeed(ctx: WriteContext, needId: string, expectedVersion: number, raw: unknown): Promise<ServiceResult<NeedWritten>>;
+  archiveNeed(ctx: WriteContext, needId: string, expectedVersion: number, reason: unknown): Promise<ServiceResult<NeedWritten>>;
+  linkNeed(ctx: WriteContext, needId: string, useCaseId: string): Promise<ServiceResult<NeedWritten>>;
+  unlinkNeed(ctx: WriteContext, needId: string, useCaseId: string): Promise<ServiceResult<NeedWritten>>;
 }
 
 /** Le query di `team-mcp-requests.ts`. */
@@ -232,7 +286,7 @@ const SERVICE_TO_TEAM: Readonly<Record<ServiceError, TeamMcpErrorCode>> = Object
 const KEEP_SERVICE_MESSAGE: ReadonlySet<TeamMcpErrorCode> = new Set(["permesso_mancante", "transizione_non_ammessa", "riprova"]);
 
 /** I campi del servizio con il loro nome nel contratto. */
-const SERVICE_FIELD: Readonly<Record<string, string>> = Object.freeze({ description: "problem", businessCase: "expectedImpact", hidden: "hiddenFromSearch" });
+const SERVICE_FIELD: Readonly<Record<string, string>> = Object.freeze({ description: "problem", businessCase: "expectedImpact", hidden: "hiddenFromSearch", useCaseIds: "useCases" });
 
 const SAFE_FIELD = /^[A-Za-z0-9_.-]{1,80}$/;
 
@@ -291,7 +345,7 @@ export function teamWriteContext(principal: TeamPrincipal, now?: Date): WriteCon
 
 // ─── Ingresso ────────────────────────────────────────────────────────
 
-/** Esegue un tool. `name` deve essere uno dei 6 (`isTeamToolName`). Non lancia. */
+/** Esegue un tool. `name` deve essere uno degli 8 (`isTeamToolName`). Non lancia. */
 export async function callTeamTool(name: TeamToolName, args: unknown, principal: TeamPrincipal, deps: TeamToolDeps): Promise<TeamToolOutcome> {
   const log = deps.log ?? console;
   try {
@@ -310,6 +364,10 @@ export async function callTeamTool(name: TeamToolName, args: unknown, principal:
         return await decideUseCaseTool(args, principal, deps);
       case "set_priority":
         return await setPriorityTool(args, principal, deps);
+      case "list_needs":
+        return await listNeedsTool(args, principal, deps);
+      case "save_needs":
+        return await saveNeedsTool(args, principal, deps);
     }
   } catch (error) {
     logSafeError(TEAM_MCP_LOG_AREA, "tool_failed", error, { tool: name }, log);
@@ -317,9 +375,9 @@ export async function callTeamTool(name: TeamToolName, args: unknown, principal:
   }
 }
 
-async function consumeLimit(principal: TeamPrincipal, deps: TeamToolDeps, kind: "read" | "write", createdItems = 0): Promise<TeamMcpError | null> {
+async function consumeLimit(principal: TeamPrincipal, deps: TeamToolDeps, kind: "read" | "write", createdItems = 0, savedNeeds = 0): Promise<TeamMcpError | null> {
   try {
-    const decision = await consumeRateLimits(deps.rateLimitExec, teamRateLimitRules(principal, kind, createdItems), { log: deps.log, random: deps.random });
+    const decision = await consumeRateLimits(deps.rateLimitExec, teamRateLimitRules(principal, kind, createdItems, savedNeeds), { log: deps.log, random: deps.random });
     return decision.ok ? null : teamError("rate_limited", { retryAfterSeconds: decision.retryAfterSeconds });
   } catch (error) {
     logSafeError(TEAM_MCP_LOG_AREA, "rate_limit_failed", error, {}, deps.log ?? console);
@@ -363,6 +421,7 @@ export function filterSearchItems(items: readonly HubItem[], input: SearchUseCas
 }
 
 const CURSOR_MAX_OFFSET = 100_000;
+const CURSOR_ERROR = "Cursore non valido: usa il nextCursor della pagina prima.";
 
 export function encodeCursor(offset: number): string {
   return Buffer.from(JSON.stringify({ o: offset }), "utf8").toString("base64url");
@@ -385,7 +444,7 @@ async function searchUseCases(args: unknown, principal: TeamPrincipal, deps: Tea
   const input = validateTeamToolInput("search_use_cases", args);
   if (!input.ok) return failed(input.error);
   const offset = decodeCursor(input.data.cursor);
-  if (offset === null) return failed(teamError("invalid_payload", { fieldErrors: { cursor: "Cursore non valido: usa il nextCursor della pagina prima." } }));
+  if (offset === null) return failed(teamError("invalid_payload", { fieldErrors: { cursor: CURSOR_ERROR } }));
   const list = await deps.reads.listItems(principal.workspaceId, principal.viewer);
   if (!list || list.projection === "contributore") return failed(teamError("permesso_mancante"));
   const words = input.data.query?.trim();
@@ -406,6 +465,37 @@ async function searchUseCases(args: unknown, principal: TeamPrincipal, deps: Tea
   });
 }
 
+type ReviewerDetail = Exclude<UseCaseDetailResult, { projection: "contributore" }>;
+
+function planCardOf(item: Pick<HubItem, "id" | "phase" | "targetQuarter" | "valueModel">): PlanCard {
+  return {
+    id: item.id,
+    stage: item.phase === "in_realizzazione" ? "in_realizzazione" : "approvato",
+    targetQuarter: item.targetQuarter,
+    plan: item.valueModel?.plan ?? null,
+  };
+}
+
+/**
+ * I mesi di avvio e di entrata in uso di una scheda con «Benefici e costi», approvata o in
+ * realizzazione, come nella Roadmap (`planMonths`). Solo «Più avanti» senza piano dipende dalle
+ * altre schede (parte dopo l'ultimo trimestre usato): allora si leggono anche loro.
+ */
+async function planOfDetail(principal: TeamPrincipal, deps: TeamToolDeps, detail: ReviewerDetail): Promise<PlannedMonths | null> {
+  const card = detail.useCase;
+  if (!card.valueModel || (card.phase !== "approvato" && card.phase !== "in_realizzazione")) return null;
+  const self = planCardOf(card);
+  let cards: PlanCard[] = [self];
+  if (!self.plan && self.stage === "approvato" && !self.targetQuarter) {
+    const list = await deps.reads.listItems(principal.workspaceId, principal.viewer);
+    if (list && list.projection !== "contributore") {
+      cards = roadmapValueItems(list.items).map((item) => (item.id === card.id ? self : planCardOf(item)));
+      if (!cards.some((entry) => entry.id === card.id)) cards.push(self);
+    }
+  }
+  return planMonths(cards, detail.valueParams).find((months) => months.id === card.id) ?? null;
+}
+
 /** La scheda per un revisore, con il contesto di valore e costo; null se non c'è (o non la vede). */
 async function readDetail(principal: TeamPrincipal, deps: TeamToolDeps, useCaseId: string) {
   const [detail, areaOptions] = await Promise.all([
@@ -421,6 +511,8 @@ async function readDetail(principal: TeamPrincipal, deps: TeamToolDeps, useCaseI
     today: detail.today,
     dossierRead: detail.dossierRead,
     link: linkToUseCase(deps.appOrigin, principal.workspaceId, detail.useCase.id),
+    valueParams: detail.valueParams,
+    plan: await planOfDetail(principal, deps, detail),
   });
 }
 
@@ -448,6 +540,8 @@ interface WritePlan {
   requestHash: string;
   /** Schede create (secchio del giorno del workspace). */
   createdItems?: number;
+  /** Esigenze di «Cosa serve» da salvare (secchio del giorno del workspace). */
+  savedNeeds?: number;
   /** Id da riservare se la richiesta nasce adesso (`create_use_cases`). */
   reservedIds?: string[] | null;
   /** La risposta di una richiesta già completata, dal suo risultato salvato. */
@@ -471,7 +565,7 @@ async function runWrite(principal: TeamPrincipal, deps: TeamToolDeps, plan: Writ
     if (decision.kind === "conflict") return failed(teamError("idempotency_conflict"));
   }
 
-  const limited = await consumeLimit(principal, deps, "write", plan.createdItems ?? 0);
+  const limited = await consumeLimit(principal, deps, "write", plan.createdItems ?? 0, plan.savedNeeds ?? 0);
   if (limited) return failed(limited);
 
   const claim = await deps.requests.claim({ ...key, tool: plan.tool, requestHash: plan.requestHash, reservedIds: plan.reservedIds ?? null });
@@ -956,6 +1050,378 @@ async function setPriorityTool(args: unknown, principal: TeamPrincipal, deps: Te
       const card = result.value;
       const saved = { id: card.id, code: card.code, version: card.version, targetQuarter: card.targetQuarter ?? null };
       return { ok: true, result: saved, respond: async () => priorityResponse(saved, false) };
+    },
+  });
+}
+
+// ═══ list_needs ══════════════════════════════════════════════════════
+
+/** Dove si vede «Cosa serve»: in fondo a Priorità. */
+export function linkToNeeds(appOrigin: string, workspaceId: string): string {
+  return `${appOrigin.replace(/\/+$/, "")}/dashboard/${workspaceId}/use-cases?vista=priorita`;
+}
+
+async function listNeedsTool(args: unknown, principal: TeamPrincipal, deps: TeamToolDeps): Promise<TeamToolOutcome> {
+  const limited = await consumeLimit(principal, deps, "read");
+  if (limited) return failed(limited);
+  const input = validateTeamToolInput("list_needs", args);
+  if (!input.ok) return failed(input.error);
+  const offset = decodeCursor(input.data.cursor);
+  if (offset === null) return failed(teamError("invalid_payload", { fieldErrors: { cursor: CURSOR_ERROR } }));
+  const needs = await deps.reads.needs(principal.workspaceId, principal.viewer, { includeArchived: input.data.includeArchived === true });
+  if (!needs) return failed(teamError("permesso_mancante"));
+  let useCaseId: string | null = null;
+  if (input.data.useCase) {
+    const id = await deps.reads.findUseCaseId(principal.workspaceId, input.data.useCase);
+    if (!id) return failed(teamError("not_found"));
+    useCaseId = id.toLowerCase();
+  }
+  const { type } = input.data;
+  const found = needs.filter((need) => (!type || need.type === type) && (!useCaseId || need.useCaseIds.includes(useCaseId)));
+  const limit = input.data.limit ?? TEAM_MCP_LIMITS.needsMax;
+  const page = found.slice(offset, offset + limit);
+  const linked = [...new Set(page.flatMap((need) => need.useCaseIds))];
+  const refs = linked.length ? await deps.reads.needUseCaseRefs(principal.workspaceId, linked, principal.viewer) : {};
+  const today = romeToday(deps.now?.() ?? new Date());
+  const link = (id: string) => linkToUseCase(deps.appOrigin, principal.workspaceId, id);
+  const next = offset + page.length;
+  return succeeded({
+    needs: page.map((need) => needOutput(need, { today, refs, link })),
+    total: found.length,
+    nextCursor: next < found.length ? encodeCursor(next) : null,
+    link: linkToNeeds(deps.appOrigin, principal.workspaceId),
+    note: NEEDS_RESULTS_NOTE,
+  });
+}
+
+// ═══ save_needs ══════════════════════════════════════════════════════
+
+/** Che cosa è successo a una voce di `save_needs`. */
+export type SavedNeedAction = "creata" | "aggiornata" | "invariata" | "archiviata";
+
+export const SAVED_NEED_ACTION_LABEL: Readonly<Record<SavedNeedAction, string>> = Object.freeze({
+  creata: "Aggiunta",
+  aggiornata: "Aggiornata",
+  invariata: "Già così",
+  archiviata: "Archiviata",
+});
+
+const SAVED_NEED_ACTIONS = Object.keys(SAVED_NEED_ACTION_LABEL) as SavedNeedAction[];
+
+export const NEED_NOT_FOUND_MESSAGE = "Esigenza non trovata in questo workspace: rileggi con list_needs.";
+export const NEED_VERSION_CONFLICT_MESSAGE = "Qualcuno ha appena modificato questa esigenza: rileggila con list_needs e riproponi la modifica.";
+export const NEED_TWICE_MESSAGE = "Questa esigenza è già in un'altra voce di questa richiesta.";
+const NEED_ARCHIVE_MISSING = "Nessuna esigenza con questa chiave da archiviare.";
+const USE_CASE_REF_ERROR = "Scrivi un codice come XX-0012 oppure l'id di uno use case.";
+const PARTIAL_NEEDS_NOTE = "Le esigenze già salvate restano: rileggile con list_needs prima di riproporre il resto.";
+
+/** Una voce salvata, nel risultato della richiesta: solo indice, id, version e che cosa è successo. */
+interface SavedNeed {
+  index: number;
+  id: string;
+  version: number;
+  action: SavedNeedAction;
+}
+
+function savedNeedsOf(result: Record<string, unknown> | null): SavedNeed[] {
+  const list = result?.saved;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((entry) => {
+    const saved = record(entry);
+    const version = versionOf(saved?.version);
+    if (!saved || typeof saved.index !== "number" || !Number.isInteger(saved.index) || typeof saved.id !== "string" || !UUID.test(saved.id)) return [];
+    if (version === null || !SAVED_NEED_ACTIONS.includes(saved.action as SavedNeedAction)) return [];
+    return [{ index: saved.index, id: saved.id, version, action: saved.action as SavedNeedAction }];
+  });
+}
+
+/** Che cosa fare di una voce, deciso dopo la lettura e prima di scrivere. */
+type NeedStep =
+  | { kind: "create"; index: number; id: string; input: Record<string, unknown>; useCaseIds: string[] }
+  | { kind: "update"; index: number; current: NeedView; version: number; patch: Record<string, unknown>; useCaseIds: string[] | null; earlier: boolean }
+  | { kind: "archive"; index: number; current: NeedView; version: number; reason: string }
+  | { kind: "done"; index: number; id: string; version: number; action: SavedNeedAction };
+
+/** I campi dell'esigenza che la voce scrive, con i nomi del servizio (sono gli stessi). */
+function needFieldsOf(item: SaveNeedItemInput): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of NEED_FIELD_KEYS) if (item[key] !== undefined) out[key] = item[key];
+  return out;
+}
+
+/** Un use case di `useCases`: un id, oppure un codice (in maiuscolo); null se non è né l'uno né l'altro. */
+function refToUseCase(raw: string): { kind: "code" | "id"; value: string } | null {
+  const text = raw.trim();
+  if (UUID.test(text)) return { kind: "id", value: text.toLowerCase() };
+  const code = text.toUpperCase();
+  return USE_CASE_CODE_PATTERN.test(code) ? { kind: "code", value: code } : null;
+}
+
+type PlannedNeeds = { ok: true; steps: NeedStep[] } | { ok: false; error: TeamMcpError };
+
+/**
+ * La lettura di `save_needs`, prima di scrivere qualunque cosa: ogni voce non ancora salvata
+ * (`progress`) si riconosce per id, per `importKey` o per l'id riservato (creata da un tentativo
+ * di prima), si valida con le regole della pagina (`validateNeedInput`, `validateNeedPatch`),
+ * risolve i suoi use case e controlla la version. Un errore qui non ha scritto nulla.
+ */
+async function planNeedSteps(
+  principal: TeamPrincipal,
+  deps: TeamToolDeps,
+  data: SaveNeedsInput,
+  reservedIds: readonly string[],
+  progress: ReadonlyMap<number, SavedNeed>,
+  takeover: boolean,
+): Promise<PlannedNeeds> {
+  const pending = data.items.map((item, index) => ({ item, index })).filter(({ index }) => !progress.has(index));
+  if (!pending.length) return { ok: true, steps: [] };
+  const needs = await deps.reads.needs(principal.workspaceId, principal.viewer, { includeArchived: true });
+  if (!needs) return { ok: false, error: teamError("permesso_mancante") };
+
+  const codes = new Set<string>();
+  const useCaseIds = new Set<string>();
+  for (const { item } of pending) {
+    for (const raw of item.useCases ?? []) {
+      const ref = refToUseCase(raw);
+      if (ref?.kind === "code") codes.add(ref.value);
+      else if (ref?.kind === "id") useCaseIds.add(ref.value);
+    }
+  }
+  const found = codes.size || useCaseIds.size ? await deps.reads.findUseCases(principal.workspaceId, { codes: [...codes], ids: [...useCaseIds] }) : [];
+  const useCaseByCode = new Map(found.flatMap((row) => (row.code ? [[row.code.toUpperCase(), row.id.toLowerCase()] as const] : [])));
+  const knownUseCases = new Set(found.map((row) => row.id.toLowerCase()));
+  const needById = new Map(needs.map((need) => [need.id.toLowerCase(), need]));
+  const needByKey = new Map(needs.flatMap((need) => (need.importKey !== null ? [[need.importKey, need] as const] : [])));
+
+  const errors: Record<string, string> = {};
+  const conflicts: Record<string, string> = {};
+  const fail = (index: number, field: string, message: string) => {
+    errors[`items.${index}.${field}`] ??= message;
+  };
+  // Ogni esigenza (e ogni chiave nuova) una volta sola per richiesta, anche con le voci già salvate.
+  const targeted = new Set<string>([...progress.values()].map((saved) => `id:${saved.id.toLowerCase()}`));
+  const steps: NeedStep[] = [];
+
+  for (const { item, index } of pending) {
+    const reserved = reservedIds[index].toLowerCase();
+    const refField = item.id !== undefined ? "id" : "importKey";
+    let current: NeedView | undefined;
+    if (item.id !== undefined) {
+      current = needById.get(item.id.toLowerCase());
+      if (!current) {
+        fail(index, "id", NEED_NOT_FOUND_MESSAGE);
+        continue;
+      }
+    } else {
+      current = item.importKey !== undefined ? needByKey.get(item.importKey) : needById.get(reserved);
+    }
+    // Una ripresa: un tentativo di prima l'ha già creata, con l'id riservato e i suoi legami.
+    if (current && item.id === undefined && current.id.toLowerCase() === reserved) {
+      targeted.add(`id:${reserved}`);
+      steps.push({ kind: "done", index, id: current.id, version: current.version, action: "creata" });
+      continue;
+    }
+    if (current || item.importKey !== undefined) {
+      const target = current ? `id:${current.id.toLowerCase()}` : `key:${item.importKey}`;
+      if (targeted.has(target)) {
+        fail(index, refField, NEED_TWICE_MESSAGE);
+        continue;
+      }
+      targeted.add(target);
+    }
+
+    let linked: string[] | null = null;
+    if (item.useCases) {
+      const ids: string[] = [];
+      item.useCases.forEach((raw, position) => {
+        const ref = refToUseCase(raw);
+        const id = ref?.kind === "code" ? useCaseByCode.get(ref.value) : ref && knownUseCases.has(ref.value) ? ref.value : undefined;
+        if (!ref) fail(index, `useCases.${position}`, USE_CASE_REF_ERROR);
+        else if (!id) fail(index, `useCases.${position}`, NEED_ERRORS.useCase);
+        else if (!ids.includes(id)) ids.push(id);
+      });
+      linked = ids;
+    }
+
+    if (item.archive) {
+      if (!current) {
+        fail(index, "importKey", NEED_ARCHIVE_MISSING);
+        continue;
+      }
+      if (current.archivedAt) {
+        // Già archiviata: da questa richiesta (ripresa, version subito dopo) o da prima.
+        const mine = takeover && item.expectedVersion !== undefined && current.version === item.expectedVersion + 1;
+        steps.push({ kind: "done", index, id: current.id, version: current.version, action: mine ? "archiviata" : "invariata" });
+        continue;
+      }
+      if (item.expectedVersion !== undefined && item.expectedVersion !== current.version) {
+        conflicts[`items.${index}.expectedVersion`] = NEED_VERSION_CONFLICT_MESSAGE;
+        continue;
+      }
+      steps.push({ kind: "archive", index, current, version: current.version, reason: item.archive.reason });
+      continue;
+    }
+
+    const fields = needFieldsOf(item);
+    if (!current) {
+      // Una chiave nuova crea l'esigenza: come senza riferimento, servono tipo e titolo.
+      if (item.type === undefined || item.title === undefined) {
+        if (item.type === undefined) fail(index, "type", SAVE_NEEDS_MESSAGES.newNeedRequired);
+        if (item.title === undefined) fail(index, "title", SAVE_NEEDS_MESSAGES.newNeedRequired);
+        continue;
+      }
+      const input = { ...fields, ...(item.importKey !== undefined ? { importKey: item.importKey } : {}) };
+      const parsed = validateNeedInput(input);
+      if (!parsed.ok) {
+        for (const [field, message] of Object.entries(parsed.fieldErrors)) fail(index, field, message);
+        continue;
+      }
+      steps.push({ kind: "create", index, id: reserved, input, useCaseIds: linked ?? [] });
+      continue;
+    }
+    if (current.archivedAt) {
+      fail(index, refField, NEED_ERRORS.archived);
+      continue;
+    }
+    // Riconosciuta per id, la voce può dare all'esigenza una chiave nuova.
+    const patch = { ...fields, ...(item.id !== undefined && item.importKey !== undefined ? { importKey: item.importKey } : {}) };
+    const parsed = validateNeedPatch(patch, { type: current.type, status: current.status });
+    if (!parsed.ok) {
+      for (const [field, message] of Object.entries(parsed.fieldErrors)) fail(index, field, message);
+      continue;
+    }
+    const newKey = parsed.value.importKey;
+    if (newKey && newKey !== current.importKey) {
+      const owner = needByKey.get(newKey);
+      if ((owner && owner.id !== current.id) || targeted.has(`key:${newKey}`)) {
+        fail(index, "importKey", NEED_ERRORS.importKeyTaken);
+        continue;
+      }
+      targeted.add(`key:${newKey}`);
+    }
+    const changed = Object.entries(parsed.value).some(([key, value]) => (current as unknown as Record<string, unknown>)[key] !== value);
+    let earlier = false;
+    if (item.expectedVersion !== undefined && item.expectedVersion !== current.version) {
+      // Una ripresa: la modifica l'ha forse già salvata un tentativo di prima, che poi non ha risposto.
+      if (takeover && current.version === item.expectedVersion + 1 && !changed) earlier = true;
+      else {
+        conflicts[`items.${index}.expectedVersion`] = NEED_VERSION_CONFLICT_MESSAGE;
+        continue;
+      }
+    }
+    steps.push({ kind: "update", index, current, version: current.version, patch: changed ? patch : {}, useCaseIds: linked, earlier });
+  }
+
+  if (Object.keys(errors).length) return { ok: false, error: teamError("invalid_payload", { fieldErrors: errors }) };
+  if (Object.keys(conflicts).length) return { ok: false, error: teamError("version_conflict", { message: NEED_VERSION_CONFLICT_MESSAGE, fieldErrors: conflicts }) };
+  return { ok: true, steps };
+}
+
+/** Un errore del servizio su una voce, con i campi sotto `items.<n>.`. */
+function needServiceError(failure: Extract<ServiceResult<unknown>, { ok: false }>, index: number): TeamMcpError {
+  if (failure.error === "versione_superata") return teamError("version_conflict", { message: NEED_VERSION_CONFLICT_MESSAGE, fieldErrors: { [`items.${index}.expectedVersion`]: NEED_VERSION_CONFLICT_MESSAGE } });
+  if (failure.error === "non_trovato") return teamError("not_found", { message: NEED_NOT_FOUND_MESSAGE });
+  return fromService(failure, `items.${index}.`);
+}
+
+type NeedStepOutcome = { ok: true; saved: SavedNeed } | { ok: false; error: TeamMcpError };
+
+/** Scrive una voce dal servizio: crea, modifica e allinea gli use case collegati, oppure archivia. */
+async function runNeedStep(ctx: WriteContext, deps: TeamToolDeps, step: NeedStep): Promise<NeedStepOutcome> {
+  const { index } = step;
+  if (step.kind === "done") return { ok: true, saved: { index, id: step.id, version: step.version, action: step.action } };
+  if (step.kind === "create") {
+    const result = await deps.service.createNeed(ctx, step.input, { useCaseIds: step.useCaseIds, id: step.id });
+    if (!result.ok) return { ok: false, error: needServiceError(result, index) };
+    return { ok: true, saved: { index, id: result.value.id, version: result.value.version, action: "creata" } };
+  }
+  if (step.kind === "archive") {
+    const result = await deps.service.archiveNeed(ctx, step.current.id, step.version, step.reason);
+    if (!result.ok) return { ok: false, error: needServiceError(result, index) };
+    return { ok: true, saved: { index, id: result.value.id, version: result.value.version, action: "archiviata" } };
+  }
+  let version = step.version;
+  let changed = step.earlier;
+  if (Object.keys(step.patch).length) {
+    const result = await deps.service.updateNeed(ctx, step.current.id, step.version, step.patch);
+    if (!result.ok) return { ok: false, error: needServiceError(result, index) };
+    changed ||= result.value.version !== step.version;
+    version = result.value.version;
+  }
+  if (step.useCaseIds) {
+    // `useCases` è l'elenco intero: si collegano i nuovi e si scollegano gli altri. I legami non cambiano la version.
+    const before = new Set(step.current.useCaseIds.map((id) => id.toLowerCase()));
+    const after = new Set(step.useCaseIds);
+    for (const id of after) {
+      if (before.has(id)) continue;
+      const result = await deps.service.linkNeed(ctx, step.current.id, id);
+      if (!result.ok) return { ok: false, error: needServiceError(result, index) };
+      changed = true;
+    }
+    for (const id of before) {
+      if (after.has(id)) continue;
+      const result = await deps.service.unlinkNeed(ctx, step.current.id, id);
+      if (!result.ok) return { ok: false, error: needServiceError(result, index) };
+      changed = true;
+    }
+  }
+  return { ok: true, saved: { index, id: step.current.id, version, action: changed ? "aggiornata" : "invariata" } };
+}
+
+async function saveNeedsTool(args: unknown, principal: TeamPrincipal, deps: TeamToolDeps): Promise<TeamToolOutcome> {
+  const input = validateTeamToolInput("save_needs", args);
+  if (!input.ok) return failed(input.error);
+  const data: SaveNeedsInput = input.data;
+  const workspaceId = principal.workspaceId;
+  const newId = deps.newId ?? randomUUID;
+
+  const respond = (saved: readonly SavedNeed[], duplicate: boolean): TeamToolOutcome =>
+    succeeded({
+      duplicate,
+      saved: [...saved]
+        .sort((a, b) => a.index - b.index)
+        .map((entry) => ({
+          index: entry.index,
+          id: entry.id,
+          importKey: data.items[entry.index]?.importKey ?? null,
+          version: entry.version,
+          action: entry.action,
+          actionLabel: SAVED_NEED_ACTION_LABEL[entry.action],
+        })),
+      link: linkToNeeds(deps.appOrigin, workspaceId),
+    });
+
+  return runWrite(principal, deps, {
+    tool: "save_needs",
+    idempotencyKey: data.idempotencyKey,
+    requestHash: teamRequestHash("save_needs", data),
+    savedNeeds: data.items.length,
+    reservedIds: data.items.map(() => newId()),
+    async duplicate(result) {
+      const saved = savedNeedsOf(result);
+      return saved.length === data.items.length ? respond(saved, true) : failed(teamError("internal_error"));
+    },
+    async execute(claim, key) {
+      const ids = claim.reservedIds;
+      if (!ids || ids.length !== data.items.length) return { ok: false, error: teamError("internal_error"), partial: true };
+      const progress = new Map<number, SavedNeed>(savedNeedsOf(claim.result).map((entry) => [entry.index, entry]));
+      const stop = (error: TeamMcpError): Execution => {
+        const partial = progress.size > 0;
+        return { ok: false, error: partial ? { ...error, message: `${error.message} ${PARTIAL_NEEDS_NOTE}` } : error, partial };
+      };
+
+      const planned = await planNeedSteps(principal, deps, data, ids, progress, claim.takeover);
+      if (!planned.ok) return stop(planned.error);
+
+      const ctx = teamWriteContext(principal, deps.now?.());
+      for (const step of planned.steps) {
+        const outcome = await runNeedStep(ctx, deps, step);
+        if (!outcome.ok) return stop(await withAreaChoices(outcome.error, principal, deps));
+        progress.set(step.index, outcome.saved);
+        await deps.requests.progress(key, claim.attempt, { saved: [...progress.values()] }).catch(() => false);
+      }
+      const saved = [...progress.values()];
+      return { ok: true, result: { saved }, respond: async () => respond(saved, false) };
     },
   });
 }

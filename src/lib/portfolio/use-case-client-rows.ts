@@ -1,4 +1,5 @@
 import type { UseCase } from "@/lib/db/schema";
+import { parseValueModel } from "../use-cases/value-model.ts";
 import { PORTFOLIO_SCORE_COLUMNS, sanitizeCustomScores } from "./client-items.ts";
 
 /**
@@ -172,6 +173,8 @@ export const USE_CASE_API_KEYS = [
   "costEurOnce",
   "costBand",
   "aiSuggestion",
+  // «Benefici e costi» (drizzle/0022): la REST risponde solo a chi valuta, come la pagina e il MCP.
+  "valueModel",
   "version",
   "createdAt",
   "updatedAt",
@@ -242,6 +245,8 @@ export function toUseCaseApiRow(row: Pick<UseCase, ApiKey>): UseCaseApiRow {
     costEurOnce: score(row.costEurOnce),
     costBand: score(row.costBand),
     aiSuggestion: aiSuggestionOf(row.aiSuggestion),
+    // Lo schema unico di `value-model.ts`: un modello non valido esce come null, mai a pezzi.
+    valueModel: parseValueModel(row.valueModel),
     version: row.version,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

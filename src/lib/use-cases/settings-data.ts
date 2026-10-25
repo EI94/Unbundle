@@ -25,6 +25,8 @@ import {
   type ThresholdsValue,
 } from "./settings";
 import type { ServiceResult } from "./types";
+import { isMonthCode, resolveValueParams, type StoredValueParams, type ValueParams } from "./value-model";
+import { parseValueParamsTexts } from "./value-params-form";
 
 /**
  * Letture e scritture di Impostazioni › Valutazione (docs/use-case/DESIGN.md §7.2 «Fasce del
@@ -79,6 +81,10 @@ export interface ValuationSettingsData {
   /** Il modello per il modulo «Modello di valutazione» (normalizzato, come oggi). */
   scoringConfig: ScoringModelConfig;
   esgEnabled: boolean;
+  /** «Ipotesi di calcolo» (`config.valueParams`), con i predefiniti dove mancano. */
+  valueParams: ValueParams;
+  /** Il primo mese della curva salvato; null se il workspace segue il mese corrente. */
+  storedOriginMonth: string | null;
 }
 
 function rawObject(value: unknown): Record<string, unknown> {
@@ -117,7 +123,15 @@ export async function loadValuationSettings(workspaceId: string): Promise<Valuat
     customCostBands: rawObject(rawConfig).costBands !== undefined && rawObject(rawConfig).costBands !== null,
     scoringConfig: model.resolvedConfig,
     esgEnabled: workspace.esgEnabled === true,
+    valueParams: resolveValueParams(model.config),
+    storedOriginMonth: storedOriginMonth(model.config),
   };
+}
+
+/** Il primo mese della curva salvato in `config.valueParams.originMonth`, se è un mese. */
+function storedOriginMonth(config: unknown): string | null {
+  const month = rawObject(rawObject(config).valueParams).originMonth;
+  return isMonthCode(month) ? month : null;
 }
 
 // ─── Scritture ───────────────────────────────────────────────────────
@@ -394,4 +408,37 @@ export async function saveCostBands(
     return retry();
   }
   return { ok: true, value: { costBands: resolveCostBands({ costBands: stored ?? undefined }), custom: stored !== null } };
+}
+
+/**
+ * «Ipotesi di calcolo» (`config.valueParams`): solo chi gestisce il workspace. Valida i testi dei
+ * campi con `parseValueParamsTexts` (gli stessi limiti di `valueParamsSchema`) e sostituisce
+ * solo la chiave `valueParams` del `config`, in un solo statement: soglie, fasce, modello e
+ * `scoringVersion` restano. Non scrive su `use_cases`: valore e costo si ricalcolano in lettura.
+ */
+export async function saveValueParams(
+  userId: string,
+  workspaceId: string,
+  input: unknown,
+): Promise<ServiceResult<{ valueParams: ValueParams; storedOriginMonth: string | null }>> {
+  const guard = await managerAccess(userId, workspaceId);
+  if (!guard.ok) return guard;
+  const parsed = parseValueParamsTexts(input);
+  if (!parsed.ok) return invalid(parsed.fieldErrors);
+  const stored: StoredValueParams = parsed.value;
+  try {
+    await getOrCreateWorkspaceScoringModel(workspaceId);
+    const { rows } = await db.execute(sql`UPDATE workspace_scoring_models
+         SET config = jsonb_set(${BASE_CONFIG}, '{valueParams}', ${JSON.stringify(stored)}::jsonb, true),
+             updated_by_user_id = ${userId}::uuid,
+             updated_at = now()
+       WHERE workspace_id = ${workspaceId}::uuid
+       RETURNING config`);
+    if (!rows.length) return retry();
+    const config = (rows[0] as { config?: unknown }).config;
+    return { ok: true, value: { valueParams: resolveValueParams(config), storedOriginMonth: storedOriginMonth(config) } };
+  } catch (error) {
+    logSafeError(LOG_SCOPE, "value_params_failed", error);
+    return retry();
+  }
 }
