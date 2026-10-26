@@ -294,3 +294,108 @@ test("lettura: gli use case collegati solo dello stesso workspace, per codice; l
   const elsewhere = (await reads.listWorkspaceNeeds(ids.other, viewer("builder"))) ?? [];
   assert.ok(!elsewhere.some((row) => row.id === created.id));
 });
+
+// ─── Storia (drizzle/0023) ───────────────────────────────────────────
+
+/** Le righe «Cosa serve» della Storia di uno use case, in ordine: azione/canale/chi/campi/prima/dopo. */
+async function needsHistory(useCaseId: string): Promise<string[]> {
+  const rows = await q(
+    `SELECT action, channel, actor_kind, actor_user_id::text AS actor, array_to_string(fields, ',') AS fields, phase_before, phase_after
+       FROM use_case_events WHERE use_case_id = $1::uuid AND 'cosa_serve' = ANY(fields) ORDER BY at, id`,
+    [useCaseId],
+  );
+  return rows.map((row) => [row.action, row.channel, row.actor_kind, row.actor === ids.builder ? "builder" : row.actor === ids.ls ? "ls" : row.actor, row.fields, row.phase_before ?? "-", row.phase_after].join("/"));
+}
+
+const row = (who: "builder" | "ls", before: string, after: string, channel = "pagina") => `modificato/${channel}/persona/${who}/cosa_serve/${before}/${after}`;
+
+test("Storia: una riga per cambio su ogni use case toccato, senza testi; nessuna riga per una scrittura che non cambia niente", opts, async () => {
+  const a = await seedUseCase();
+  const b = await seedUseCase();
+  const c = await seedUseCase();
+  const title = `Accesso riservato ${suffix}`;
+  const reason = `Motivo riservato ${suffix}`;
+  const created = ok(await svc.createNeed(as("builder"), { type: "requisito", kind: "accesso", title, ownerLabel: `Ufficio ${suffix}` }, { useCaseIds: [a, b] }));
+  const added = row("builder", "-", "aggiunta.requisito.da_chiedere");
+  assert.deepEqual(await needsHistory(a), [added]);
+  assert.deepEqual(await needsHistory(b), [added]);
+  assert.deepEqual(await needsHistory(c), [], "uno use case non collegato non ha righe");
+
+  // Niente da cambiare: niente riga. Un cambio senza stato: «modificato», senza lo stato di prima.
+  const same = ok(await svc.updateNeed(as("builder"), created.id, created.version, { title: ` ${title} ` }));
+  assert.equal(same.version, created.version);
+  const v2 = ok(await svc.updateNeed(as("builder"), created.id, created.version, { detail: `Dettaglio riservato ${suffix}` }));
+  // Lo stato cambia: lo stato di prima e quello dopo.
+  const v3 = ok(await svc.updateNeed(as("ls"), created.id, v2.version, { status: "chiesta" }));
+  const edited = [row("builder", "-", "modificata.requisito.da_chiedere"), row("ls", "requisito.da_chiedere", "modificata.requisito.chiesta")];
+  assert.deepEqual(await needsHistory(a), [added, ...edited]);
+  assert.deepEqual(await needsHistory(b), [added, ...edited]);
+
+  // Collegare e scollegare: solo lo use case collegato o scollegato; due volte, una riga.
+  ok(await svc.linkNeed(as("builder"), created.id, c));
+  ok(await svc.linkNeed(as("builder"), created.id, c), "già collegata");
+  assert.deepEqual(await needsHistory(c), [row("builder", "-", "collegata.requisito.chiesta")]);
+  ok(await svc.unlinkNeed(as("builder"), created.id, a));
+  ok(await svc.unlinkNeed(as("builder"), created.id, a), "già scollegata");
+  assert.deepEqual(await needsHistory(a), [added, ...edited, row("builder", "-", "scollegata.requisito.chiesta")]);
+  assert.deepEqual(await needsHistory(b), [added, ...edited], "gli altri use case collegati non cambiano");
+
+  // Archiviare: ogni use case ancora collegato, senza il motivo.
+  ok(await svc.archiveNeed(as("ls"), created.id, v3.version, reason));
+  const archived = row("ls", "-", "archiviata.requisito.chiesta");
+  assert.deepEqual(await needsHistory(b), [added, ...edited, archived]);
+  assert.deepEqual(await needsHistory(c), [row("builder", "-", "collegata.requisito.chiesta"), archived]);
+  assert.equal((await needsHistory(a)).length, 4, "scollegato prima: niente archiviazione");
+
+  // Nessun testo dell'esigenza nella Storia; la versione degli use case non cambia.
+  const all = await q(`SELECT e.* FROM use_case_events e WHERE e.use_case_id = ANY($1::uuid[])`, [[a, b, c]]);
+  const dumped = JSON.stringify(all);
+  for (const text of [title, reason, `Ufficio ${suffix}`, `Dettaglio riservato ${suffix}`]) assert.ok(!dumped.includes(text), text);
+  const versions = await q(`SELECT version FROM use_cases WHERE id = ANY($1::uuid[])`, [[a, b, c]]);
+  assert.deepEqual(versions.map((v) => Number(v.version)), [1, 1, 1]);
+});
+
+test("Storia: un passo cambiato di tipo, il canale del MCP del team; niente righe per scritture respinte o legami verso un altro workspace", opts, async () => {
+  const a = await seedUseCase();
+  const foreign = await seedUseCase(ids.other);
+  const mcp: Ctx = { ...as("builder"), channel: "mcp_team" };
+  const created = ok(await svc.createNeed(mcp, { type: "passo", title: `Riunione ${suffix}`, status: "confermata" }, { useCaseIds: [a] }));
+  // Un legame scritto a mano verso un altro workspace: nessuna riga lì, mai.
+  await q(`INSERT INTO use_case_need_links (need_id, use_case_id) VALUES ($1::uuid, $2::uuid)`, [created.id, foreign]);
+  const v2 = ok(await svc.updateNeed(mcp, created.id, created.version, { type: "requisito" }));
+  assert.deepEqual(await needsHistory(a), [
+    row("builder", "-", "aggiunta.passo.confermata", "mcp_team"),
+    row("builder", "passo.confermata", "modificata.requisito.da_chiedere", "mcp_team"),
+  ]);
+
+  // Versione vecchia, permesso mancante, stato del tipo sbagliato: niente scritto, niente righe.
+  refused(await svc.updateNeed(as("builder"), created.id, created.version, { title: "Vecchia" }), "versione_superata");
+  refused(await svc.updateNeed(as("contributor"), created.id, v2.version, { title: "No" }), "permesso_mancante");
+  refused(await svc.updateNeed(as("builder"), created.id, v2.version, { status: "fatta" }), "dati_non_validi");
+  refused(await svc.archiveNeed(as("builder"), created.id, created.version, "Vecchia"), "versione_superata");
+  refused(await svc.linkNeed(as("builder"), created.id, foreign), "non_trovato");
+  refused(await svc.createNeed(as("contributor"), { type: "requisito", title: "No" }, { useCaseIds: [a] }), "permesso_mancante");
+  assert.equal((await needsHistory(a)).length, 2);
+  ok(await svc.archiveNeed(as("builder"), created.id, v2.version, "Fatto altrove"));
+  assert.equal((await needsHistory(a)).length, 3);
+  assert.deepEqual(await needsHistory(foreign), [], "l'altro workspace non ha righe");
+  refused(await svc.unlinkNeed(as("builder"), created.id, a), "transizione_non_ammessa");
+  assert.equal((await needsHistory(a)).length, 3, "archiviata: niente più righe");
+});
+
+test("Storia: le righe «Cosa serve» le legge solo chi vede le esigenze (listUseCaseEvents con withNeeds)", opts, async () => {
+  const events = await import("../db/queries/use-case-events.ts");
+  const a = await seedUseCase();
+  const fresh = await seedUseCase();
+  ok(await svc.createNeed(as("builder"), { type: "requisito", title: `Solo revisori ${suffix}` }, { useCaseIds: [a, fresh] }));
+  // Una riga di un'altra scrittura, per la Storia di sempre.
+  await q(`INSERT INTO use_case_events (workspace_id, use_case_id, actor_user_id, actor_kind, channel, action, fields) VALUES ($1::uuid, $2::uuid, $3::uuid, 'persona', 'pagina', 'modificato', ARRAY['titolo'])`, [ids.ws, a, ids.builder]);
+  const rowsOf = (list: Awaited<ReturnType<typeof events.listUseCaseEvents>>) => list.events.map((e) => `${e.action}:${e.fields.join(",")}`).sort();
+  assert.deepEqual(rowsOf(await events.listUseCaseEvents(ids.ws, a, 50, { withNeeds: true })), ["creato:", "modificato:cosa_serve", "modificato:titolo"]);
+  assert.deepEqual(rowsOf(await events.listUseCaseEvents(ids.ws, a)), ["creato:", "modificato:titolo"], "predefinito: senza le righe delle esigenze");
+  assert.deepEqual(rowsOf(await events.listUseCaseEvents(ids.ws, fresh, 50, { withNeeds: false })), ["creato:"]);
+  // «Mostra tutto»: con una riga per pagina, le righe delle esigenze non contano tra le altre.
+  const first = await events.listUseCaseEvents(ids.ws, fresh, 1, { withNeeds: false });
+  assert.equal(first.hasMore, false);
+  assert.equal((await events.listUseCaseEvents(ids.ws, fresh, 1, { withNeeds: true })).hasMore, true);
+});

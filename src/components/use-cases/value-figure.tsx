@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { FIGURE_SEPARATOR, formatEuro, hasValueText, perYearText, valueLongText, valueShortText, type ValueParts } from "@/lib/use-cases/format";
 import { cn } from "@/lib/utils";
 import { SourceTag } from "./source-tag";
@@ -19,6 +20,12 @@ export interface ValueFigureProps {
    * costi»: «Medio · 4.043 €/anno» è già la forma della spec. La forma lunga la mostra sempre.
    */
   withSource?: boolean;
+  /**
+   * Nella forma corta, nelle colonne strette (riga di «Da decidere», lista di «Priorità»): la cifra
+   * va a capo dopo «·» se non ci sta, mai dentro una parte («Medio ·» / «20.600 €/anno»). Senza,
+   * resta su una riga.
+   */
+  wrap?: boolean;
   className?: string;
 }
 
@@ -32,7 +39,7 @@ const PENDING_TEXT = (amount: number) => `e fino a ${formatEuro(amount)} da misu
  * Solo per i revisori: `data-figure="valore"` permette alle schermate di controllare che la
  * pagina del contributore non ne abbia (PIANO-LAVORI §5.4).
  */
-export function ValueFigure({ value, form = "corta", withLabel = false, withSource = false, className }: ValueFigureProps) {
+export function ValueFigure({ value, form = "corta", withLabel = false, withSource = false, wrap = false, className }: ValueFigureProps) {
   const estimated = !hasValueText(value);
   if (form === "lunga") {
     const perYear = perYearText(value?.perYear);
@@ -59,7 +66,9 @@ export function ValueFigure({ value, form = "corta", withLabel = false, withSour
   return (
     <span data-figure="valore" data-estimated={estimated ? "true" : undefined} className={cn("text-sm", className)}>
       {withLabel && <span className="text-muted-foreground">{VALUE_LABEL}: </span>}
-      <span className={cn("whitespace-nowrap", estimated || !value?.word ? "text-muted-foreground" : "font-medium")}>{valueShortText(value)}</span>
+      <span className={cn(!wrap && "whitespace-nowrap", estimated || !value?.word ? "text-muted-foreground" : "font-medium")}>
+        {wrap ? <WrapAfterSeparator text={valueShortText(value)} /> : valueShortText(value)}
+      </span>
       {withSource && value?.source && !value.benefits && (
         <>
           <span className="text-muted-foreground">{FIGURE_SEPARATOR}</span>
@@ -68,4 +77,19 @@ export function ValueFigure({ value, form = "corta", withLabel = false, withSour
       )}
     </span>
   );
+}
+
+/**
+ * «Medio · 20.600 €/anno» con un solo punto dove andare a capo, dopo «·»: ogni parte, con il suo
+ * «·», resta intera («20.600 €/anno», «fino a 5.000 €»). Lo stesso testo della forma su una riga.
+ */
+function WrapAfterSeparator({ text }: { text: string }) {
+  const parts = text.split(FIGURE_SEPARATOR);
+  const mark = FIGURE_SEPARATOR.trimEnd();
+  return parts.map((part, index) => (
+    <Fragment key={index}>
+      {index > 0 ? " " : null}
+      <span className="whitespace-nowrap">{index < parts.length - 1 ? `${part}${mark}` : part}</span>
+    </Fragment>
+  ));
 }

@@ -25,6 +25,7 @@ import * as labels from "./labels.ts";
 import { PLAN_SOURCE_LABEL } from "./mcp/output.ts";
 import { SAVED_NEED_ACTION_LABEL } from "./mcp/tools.ts";
 import * as needs from "./needs.ts";
+import * as needsHistory from "./needs-history.ts";
 import * as valueCharts from "./value-charts.ts";
 import * as valueModel from "./value-model.ts";
 import * as valueParamsForm from "./value-params-form.ts";
@@ -340,6 +341,11 @@ test("copy-guard verde sulle etichette dell'area", () => {
     ...costInputState.bandOptions().map((o) => `${o.symbol} ${o.label}`),
     // «Benefici e costi» e «Cosa serve»: i moduli dei testi che vanno nelle pagine e nel MCP.
     ...exportedStrings(needs),
+    // «Cosa serve» nella Storia (0023).
+    ...exportedStrings(needsHistory),
+    needsHistory.needHistoryText({ phaseBefore: null, phaseAfter: "aggiunta.requisito.da_chiedere" }),
+    needsHistory.needHistoryText({ phaseBefore: "requisito.chiesta", phaseAfter: "modificata.requisito.validata" }),
+    needsHistory.needHistoryText({ phaseBefore: "requisito.chiesta", phaseAfter: "modificata.passo.proposta" }),
     ...exportedStrings(valueCharts),
     ...exportedStrings(valueModel),
     ...exportedStrings(valueParamsForm),

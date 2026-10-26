@@ -1191,6 +1191,78 @@ test("ripresa con versione superata e una decisione di un'altra persona: vero co
   }
 });
 
+test("«Cosa serve» nella Storia: save_needs scrive le righe col canale mcp_team su ogni use case toccato; duplicato e «invariata» nessuna", opts, async () => {
+  const a = await seed();
+  const b = await seed();
+  /** Le righe «Cosa serve» della Storia: chi/canale/prima/dopo. */
+  const needsRows = async (id: string) =>
+    (await q(`SELECT actor_kind, actor_user_id::text AS actor, channel, action, fields, phase_before, phase_after FROM use_case_events WHERE use_case_id = $1::uuid AND 'cosa_serve' = ANY(fields) ORDER BY at, id`, [id])).map(
+      (e) => `${e.action}/${e.actor_kind}/${e.actor === ids.builder ? "builder" : e.actor}/${e.channel}/${(e.fields as string[]).join(",")}/${e.phase_before ?? "-"}/${e.phase_after}`,
+    );
+  const line = (before: string, after: string) => `modificato/persona/builder/mcp_team/cosa_serve/${before}/${after}`;
+  const client = await connect(tokens.builder.token);
+  try {
+    const idempotencyKey = newKey();
+    const first = { items: [{ type: "requisito", kind: "dato", title: `Estratto dal MCP ${suffix}`, useCases: [a.code] }], idempotencyKey, confirmedByUser: true };
+    const created = await call(client, "save_needs", first);
+    assert.equal(created.isError, false, JSON.stringify(created.content));
+    const [saved] = created.content.saved as Array<{ id: string; version: number }>;
+    assert.deepEqual(await needsRows(a.id), [line("-", "aggiunta.requisito.da_chiedere")]);
+    assert.equal((await call(client, "save_needs", first)).content.duplicate, true);
+    assert.equal((await needsRows(a.id)).length, 1, "il duplicato non riscrive la Storia");
+
+    // Stato e legami in una voce: la modifica su a (ancora collegata), poi b collegata e a scollegata.
+    const moved = await call(client, "save_needs", write({ items: [{ id: saved.id, expectedVersion: 1, status: "validata", useCases: [b.code] }] }));
+    assert.deepEqual((moved.content.saved as Structured[]).map((entry) => [entry.action, entry.version]), [["aggiornata", 2]]);
+    assert.deepEqual(await needsRows(a.id), [
+      line("-", "aggiunta.requisito.da_chiedere"),
+      line("requisito.da_chiedere", "modificata.requisito.validata"),
+      line("-", "scollegata.requisito.validata"),
+    ]);
+    assert.deepEqual(await needsRows(b.id), [line("-", "collegata.requisito.validata")]);
+    const same = await call(client, "save_needs", write({ items: [{ id: saved.id, expectedVersion: 2, status: "validata", useCases: [b.code] }] }));
+    assert.deepEqual((same.content.saved as Structured[]).map((entry) => entry.action), ["invariata"]);
+    assert.equal((await needsRows(b.id)).length, 1, "«invariata»: nessuna riga");
+    await call(client, "save_needs", write({ items: [{ id: saved.id, expectedVersion: 2, archive: { reason: `Motivo dal MCP ${suffix}` } }] }));
+    assert.deepEqual(await needsRows(b.id), [line("-", "collegata.requisito.validata"), line("-", "archiviata.requisito.validata")]);
+    const texts = JSON.stringify(await q(`SELECT * FROM use_case_events WHERE use_case_id = ANY($1::uuid[])`, [[a.id, b.id]]));
+    assert.ok(!texts.includes(`Estratto dal MCP ${suffix}`) && !texts.includes(`Motivo dal MCP ${suffix}`), "nessun testo nella Storia");
+    assert.deepEqual([await versionOf(a.id), await versionOf(b.id)], [1, 1], "le schede non cambiano versione");
+  } finally {
+    await client.close();
+  }
+});
+
+test("ripresa di update_use_case con versione superata: una riga «Cosa serve» della stessa persona non vale come la scrittura di prima", opts, async () => {
+  const card = await seed();
+  const v = await versionOf(card.id);
+  const args = { code: card.code, expectedVersion: v, changes: { title: `Titolo ripreso ${suffix}` }, idempotencyKey: newKey(), confirmedByUser: true };
+  // Il primo tentativo non scrive nulla.
+  const flaky: HandlerDeps = {
+    ...deps,
+    tools: { ...deps.tools, service: { ...deps.tools.service, updateUseCase: async () => ({ ok: false, error: "riprova", message: "Non riusciamo a salvare. Riprova." }) } },
+  };
+  await handle(rpcRequest(tokens.builder.token, toolCall("update_use_case", args)), flaky);
+  const builder = await connect(tokens.builder.token);
+  const ls = await connect(tokens.ls.token);
+  try {
+    // La stessa persona, sullo stesso canale, aggiunge un'esigenza alla scheda: una riga «modificato» nella Storia.
+    const need = await call(builder, "save_needs", write({ items: [{ type: "passo", title: `Passo nel mezzo ${suffix}`, useCases: [card.code] }] }));
+    assert.equal(need.isError, false, JSON.stringify(need.content));
+    // Un'altra persona cambia la scheda: la versione sale di uno, come dopo la scrittura di prima.
+    const other = await call(ls, "update_use_case", write({ code: card.code, expectedVersion: v, changes: { problem: `Problema di un altro ${suffix}` } }));
+    assert.equal(other.isError, false, JSON.stringify(other.content));
+    assert.equal(await versionOf(card.id), v + 1);
+    const again = await call(builder, "update_use_case", args);
+    assert.equal(again.content.error, "version_conflict", JSON.stringify(again.content));
+    assert.notEqual(again.content.duplicate, true);
+    assert.notEqual((await row(card.id)).title, `Titolo ripreso ${suffix}`, "il titolo non c'è");
+  } finally {
+    await builder.close();
+    await ls.close();
+  }
+});
+
 test("aree della guida del connettore: areaOptions nelle letture; un'area fuori elenco riceve gli id ammessi; un id dell'elenco si salva", opts, async () => {
   const areas = [{ id: "operazioni", label: "Operazioni" }, { id: "vendite", label: "Vendite e clienti" }];
   await q(`UPDATE workspace_connector_configs SET guide = $2::jsonb WHERE workspace_id = $1::uuid`, [ids.wsA, JSON.stringify({ areas })]);

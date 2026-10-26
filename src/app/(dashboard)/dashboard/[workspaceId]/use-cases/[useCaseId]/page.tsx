@@ -108,7 +108,10 @@ export default async function UseCaseDetailPage({
   const readsRealization = reviewer && result.dossierRead === "ok" && showsRealization(result.useCase);
   const [events, candidates, guide, realization, workspaceNeeds] = reviewer
     ? await Promise.all([
-        abilities.canSeeHistory ? listUseCaseEvents(workspaceId, result.useCase.id, historyAll ? HISTORY_ALL_LIMIT : USE_CASE_EVENTS_DEFAULT_LIMIT) : null,
+        // Le righe di «Cosa serve» solo a chi vede le esigenze (`canSeeNeeds`, drizzle/0023).
+        abilities.canSeeHistory
+          ? listUseCaseEvents(workspaceId, result.useCase.id, historyAll ? HISTORY_ALL_LIMIT : USE_CASE_EVENTS_DEFAULT_LIMIT, { withNeeds: abilities.canSeeNeeds })
+          : null,
         abilities.canDecide ? duplicateCandidatesOf(workspaceId) : [],
         guideLabelsOf(workspaceId),
         readsRealization ? realizationOfUseCase(workspaceId, { userId: session.user.id, role: access.role }, result.useCase.id) : null,

@@ -47,8 +47,28 @@
 //    probe, adds the 0022 objects (equal to those of the migration) and keeps every row; a
 //    second call runs only the probe; 0022 applied twice on top changes nothing.
 // 12. Without 0020 (0000→0019): 0022 stops with its message and leaves nothing behind.
+// Migration 0023 (the Storia's fields CHECK widened with 'cosa_serve'):
+// 13. Idempotence: on database 1 (0000→0022 with rows and history rows) 0023 is applied
+//    twice, identical dumps; the CHECK lists the 0020 names plus cosa_serve and is validated;
+//    every row is kept. Self-heal parity follows from case 2 (use_case_events is in its dump).
+// 14. Production today: 0000→0022 healed by the self-heal of before (ENSURE_VERSION 16), with
+//    use cases, history rows using every 0020 name, needs and links. a) `ensureDbSchema()`
+//    does not stop at the probe, widens the CHECK as the migration does and keeps every row; a
+//    second call runs only the probe; 0023 applied twice on top changes nothing. b) The same
+//    database through the SQL file: twice, identical dumps, rows kept, then `ensureDbSchema()`
+//    runs only the probe.
+// 15. Never narrows, never fails on rows: a CHECK that already allows more names stays as it is;
+//    a CHECK without cosa_serve but with an extra name keeps the extra name; with no CHECK and a
+//    row outside every list 0023 passes with its WARNING, leaves the CHECK NOT VALID (new rows
+//    still refused) and validates it once the row is gone.
+// 16. Without 0020 (0000→0019): 0023 stops with its message.
+// 17. Never queued behind a long transaction, never at the same time as the self-heal: on a
+//    database as production is today, a session holding a lock on use_case_events makes 0023
+//    (file and self-heal) stop within its lock_timeout of 3s with «lock timeout», changing
+//    nothing; a session holding the self-heal's advisory lock makes the file stop the same way
+//    (the file takes that lock); once both are gone, 0023 passes.
 // Exit code 0 only if every check passes. Optional: UC_TEST_PG_BIN.
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -65,7 +85,9 @@ const USER = "uc_test";
 // One set of scratch databases per run (see the header): never shared, never reused.
 const runTag = (process.env.HUB_CHECK_ID?.trim().toLowerCase() || String(process.pid)).replace(/[^a-z0-9_]/g, "").slice(0, 24);
 if (!runTag) throw new Error("HUB_CHECK_ID must contain lowercase letters, digits or _");
-const DB = Object.fromEntries(["mig", "heal", "probe", "dups", "nouc", "no19", "prod", "no20"].map((key) => [key, `hub_check_${runTag}_${key}`]));
+const DB = Object.fromEntries(
+  ["mig", "heal", "probe", "dups", "nouc", "no19", "prod", "no20", "prod23", "prod23f", "narrow", "locks"].map((key) => [key, `hub_check_${runTag}_${key}`]),
+);
 const HUB_TABLES = ["use_case_events", "use_case_mcp_requests"];
 const USE_CASES_0020 = [
   // Read by the version trigger; the self-heal already adds it, migrations 0000–0019 do not.
@@ -149,6 +171,7 @@ const upTo = (last) => migrations.filter((n) => n.slice(0, 4) <= last);
 const file = (prefix) => join(repoRoot, "drizzle", migrations.find((n) => n.startsWith(prefix)));
 const file0020 = file("0020");
 const file0022 = file("0022");
+const file0023 = file("0023");
 
 // Synthetic rows that exist before the migration (no client data, .test addresses only).
 const ids = {
@@ -177,8 +200,28 @@ INSERT INTO use_cases (id, workspace_id, title, created_at)
 const { CONNECTOR_PROBE_SQL } = await import("../../src/lib/db/connector-ddl.ts");
 const { USE_CASE_HUB_PROBE_SQL, DOSSIER_DUPLICATES_MESSAGE, MISSING_0019_MESSAGE } = await import("../../src/lib/db/use-case-hub-ddl.ts");
 const { USE_CASE_VALUE_PROBE_SQL, MISSING_0020_MESSAGE } = await import("../../src/lib/db/use-case-hub-value-ddl.ts");
+const { USE_CASE_EVENT_FIELDS } = await import("../../src/lib/db/use-case-hub-ddl.ts");
+const { USE_CASE_HISTORY_PROBE_SQL, USE_CASE_EVENT_FIELDS_0023, MISSING_EVENTS_MESSAGE, FIELDS_NOT_VALIDATED_WARNING } = await import(
+  "../../src/lib/db/use-case-hub-history-ddl.ts"
+);
 const hubProbe = (db) => psql(db, `SELECT ${USE_CASE_HUB_PROBE_SQL}`) === "t";
 const valueProbe = (db) => psql(db, `SELECT ${USE_CASE_VALUE_PROBE_SQL}`) === "t";
+const historyProbe = (db) => psql(db, `SELECT ${USE_CASE_HISTORY_PROBE_SQL}`) === "t";
+/** The Storia's fields CHECK: `<definition>|<validated t/f>`, or "" when there is none. */
+const fieldsCheckOf = (db) =>
+  psql(db, `SELECT coalesce((SELECT pg_get_constraintdef(oid) || '|' || convalidated FROM pg_constraint WHERE conrelid = 'public.use_case_events'::regclass AND conname = 'use_case_events_fields_check'), '')`);
+/** The CHECK as Postgres prints it for a list of names. */
+const checkDefOf = (names) => `CHECK ((fields <@ ARRAY[${names.map((name) => `'${name}'::text`).join(", ")}]))`;
+const textArray = (names) => `ARRAY[${names.map((name) => `'${name}'`).join(", ")}]::text[]`;
+/** Use cases, history rows, needs and links of a database, as comparable text. */
+const snapshotOf = (db) =>
+  psql(
+    db,
+    `SELECT (SELECT coalesce(string_agg(id || ':' || version, ',' ORDER BY id), '') FROM use_cases)
+       || ' | ' || (SELECT coalesce(string_agg(id || ':' || action || ':' || array_to_string(fields, '+') || ':' || coalesce(phase_before, '-') || ':' || coalesce(phase_after, '-') || ':' || at::text, ',' ORDER BY id), '') FROM use_case_events)
+       || ' | ' || (SELECT coalesce(string_agg(id || ':' || version || ':' || status, ',' ORDER BY id), '') FROM use_case_needs)
+       || ' | ' || (SELECT coalesce(string_agg(need_id || ':' || use_case_id, ',' ORDER BY need_id, use_case_id), '') FROM use_case_need_links)`,
+  );
 const connectorProbe = (db) => psql(db, `SELECT ${CONNECTOR_PROBE_SQL}`) === "t";
 
 /** Columns, constraints, indexes and triggers of a table, one sorted line each. */
@@ -259,7 +302,7 @@ function ensureDbSchemaOn(db) {
     },
   );
   const calls = Number(child.stdout.match(/ensure-calls=(\d+)/)?.[1] ?? NaN);
-  return { ok: child.status === 0, calls, error: child.status === 0 ? "" : child.stderr.trim().split("\n").slice(-3).join(" / ") };
+  return { ok: child.status === 0, calls, error: child.status === 0 ? "" : child.stderr.trim().split("\n").slice(-3).join(" / "), stderr: child.stderr };
 }
 
 /** Inserts and updates in the shape of the code before 0020 (no hub column named). */
@@ -382,6 +425,31 @@ const afterValue = psql(DB.mig, `SELECT string_agg(version || '/' || coalesce(va
 check("existing rows after 0022: same version, no value model", afterValue === "1/null,1/null", afterValue);
 check("no extension created by 0022", !readFileSync(file0022, "utf8").match(/CREATE\s+EXTENSION/i));
 
+// 13. Idempotence of 0023 on the same database (now 0000→0022 with rows), with history rows that
+//     use every name of the 0020 list.
+check("0000→0022: history probe false before 0023", !historyProbe(DB.mig));
+const check0020 = fieldsCheckOf(DB.mig);
+check("…with the CHECK of 0020, validated", check0020 === `${checkDefOf(USE_CASE_EVENT_FIELDS)}|true`, check0020);
+psql(
+  DB.mig,
+  `INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields)
+     VALUES ('${ids.ws}', '${ids.ucOld}', 'sistema', 'script', 'modificato', ${textArray(USE_CASE_EVENT_FIELDS)});
+   INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields, phase_before, phase_after)
+     VALUES ('${ids.ws}', '${ids.ucOld}', 'sistema', 'script', 'decisione', '{}', 'da_valutare.nuova', 'approvato.trimestre');`,
+);
+const migBefore0023 = snapshotOf(DB.mig);
+applyFile(DB.mig, file0023);
+const firstHistory = dump(DB.mig);
+applyFile(DB.mig, file0023);
+const secondHistory = dump(DB.mig);
+check("0023 applied twice: identical schema dump", firstHistory === secondHistory, firstDiff(firstHistory, secondHistory));
+check("history probe true after 0023", historyProbe(DB.mig));
+const check0023 = fieldsCheckOf(DB.mig);
+check("0023: the CHECK lists the 0020 names plus cosa_serve, validated", check0023 === `${checkDefOf(USE_CASE_EVENT_FIELDS_0023)}|true`, check0023);
+check("0023 keeps every use case, history row, need and link", snapshotOf(DB.mig) === migBefore0023, `${migBefore0023} → ${snapshotOf(DB.mig)}`);
+check("no extension created by 0023", !readFileSync(file0023, "utf8").match(/CREATE\s+EXTENSION/i));
+psql(DB.mig, `DELETE FROM use_case_events WHERE use_case_id = '${ids.ucOld}'`);
+
 // 2. Self-heal parity on 0000→0017.
 freshDatabase(DB.heal, upTo("0017"));
 check("0000→0017: hub probe false before the self-heal", !hubProbe(DB.heal));
@@ -404,6 +472,8 @@ check("the self-heal creates no dossier index (it is only in 0020)", psql(DB.hea
 check("value probe true after the self-heal", valueProbe(DB.heal));
 const healValue = valueObjects(DB.heal);
 check(`self-heal = 0022 for ${VALUE_TABLES.join(", ")}, use_cases.value_model, its CHECK, trigger and function`, sameValueObjects(migValue, healValue), valueDiff(migValue, healValue));
+check("history probe true after the self-heal", historyProbe(DB.heal));
+check("self-heal = 0023 for the Storia's fields CHECK", fieldsCheckOf(DB.heal) === check0023, fieldsCheckOf(DB.heal));
 
 // 3. Duplicate dossiers stop 0020, complete or not, and leave nothing behind.
 freshDatabase(DB.dups, upTo("0019"));
@@ -501,6 +571,13 @@ for (const db of [DB.mig, DB.heal]) {
      VALUES ('${ids.ws}', '${ids.ucOld}', 'sistema', 'script', 'modificato', ARRAY['Testo libero di una persona'])`,
   );
   check(`${db}: the fields CHECK refuses a value outside the list`, !fieldsCheck.ok && fieldsCheck.err.includes("use_case_events_fields_check"), fieldsCheck.err.split("\n")[0]);
+  const needsRow = tryPsql(
+    db,
+    `INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields, phase_after)
+     VALUES ('${ids.ws}', '${ids.ucOld}', 'sistema', 'script', 'modificato', ARRAY['cosa_serve'], 'aggiunta.requisito.da_chiedere') RETURNING 1`,
+  );
+  check(`${db}: the fields CHECK accepts cosa_serve (0023)`, needsRow.ok, needsRow.err.split("\n")[0]);
+  psql(db, `DELETE FROM use_case_events WHERE use_case_id = '${ids.ucOld}' AND 'cosa_serve' = ANY(fields)`);
 }
 
 // 6. The code before 0020 still writes.
@@ -594,7 +671,7 @@ psql(
    INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields)
      SELECT workspace_id, id, 'sistema', 'script', 'valutato', ARRAY['valore', 'costo'] FROM use_cases WHERE workspace_id = '${ids.ws}';`,
 );
-check("production today: hub probe true, value probe false", hubProbe(DB.prod) && !valueProbe(DB.prod));
+check("production before 0022: hub probe true, value probe false", hubProbe(DB.prod) && !valueProbe(DB.prod));
 const rowsOf = (db) =>
   psql(
     db,
@@ -632,6 +709,193 @@ const leftNo20 = psql(
        || '/' || coalesce(to_regprocedure('public.use_cases_value_model_version()')::text, 'none') || '/' || coalesce(to_regclass('public.use_case_needs')::text, 'none')`,
 );
 check("…and leaves nothing of 0022 behind (single transaction)", leftNo20 === "0/none/none", leftNo20);
+
+// 14. Production today: 0000→0022 and the self-heal of ENSURE_VERSION 16, with rows. The first
+//     ensureDbSchema() heals it completely (0023 included); then the CHECK goes back to the list
+//     of 0020, which leaves the database as production is today.
+function productionAt0022(db) {
+  freshDatabase(db, upTo("0022"));
+  const caughtUp = ensureDbSchemaOn(db);
+  check(`${db}: 0000→0022 + ensureDbSchema(): catch-up done`, caughtUp.ok && hubProbe(db) && valueProbe(db) && historyProbe(db), caughtUp.error);
+  psql(
+    db,
+    `ALTER TABLE use_case_events DROP CONSTRAINT use_case_events_fields_check;
+     ALTER TABLE use_case_events ADD CONSTRAINT use_case_events_fields_check CHECK (fields <@ ${textArray(USE_CASE_EVENT_FIELDS)});`,
+  );
+  psql(
+    db,
+    `INSERT INTO use_cases (workspace_id, title, status, source, target_quarter, value_eur_year, cost_band, origin, value_model)
+       VALUES ('${ids.ws}', 'Scheda approvata della 0022', 'accepted', 'manual', '2027-Q1', 24000, 2, 'transformation', '{"v": 1, "primary": "tempo"}'::jsonb);
+     UPDATE use_cases SET title = 'Scheda approvata della 0022, corretta' WHERE title = 'Scheda approvata della 0022';
+     INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields)
+       SELECT workspace_id, id, 'sistema', 'script', 'modificato', ${textArray(USE_CASE_EVENT_FIELDS)} FROM use_cases WHERE workspace_id = '${ids.ws}';
+     INSERT INTO use_case_events (workspace_id, use_case_id, actor_user_id, actor_kind, channel, action, fields, phase_before, phase_after)
+       SELECT workspace_id, id, '${ids.user}', 'persona', 'pagina', 'decisione', '{}', 'da_valutare.nuova', 'approvato.trimestre' FROM use_cases WHERE workspace_id = '${ids.ws}';
+     WITH need AS (
+       INSERT INTO use_case_needs (workspace_id, type, kind, title, status, import_key)
+       VALUES ('${ids.ws}', 'requisito', 'accesso', 'Accesso al gestionale di prova', 'chiesta', 'prod-0022') RETURNING id
+     )
+     INSERT INTO use_case_need_links (need_id, use_case_id) SELECT need.id, u.id FROM need, use_cases u WHERE u.workspace_id = '${ids.ws}';`,
+  );
+  check(`${db}: production today: hub and value probes true, history probe false, the CHECK of 0020`, hubProbe(db) && valueProbe(db) && !historyProbe(db) && fieldsCheckOf(db) === check0020, fieldsCheckOf(db));
+}
+/** A write of the needs service after 0023, and the free text still refused. */
+function needsHistoryWrites(db) {
+  const accepted = tryPsql(
+    db,
+    `INSERT INTO use_case_events (workspace_id, use_case_id, actor_user_id, actor_kind, channel, action, fields, phase_after)
+     SELECT workspace_id, id, '${ids.user}', 'persona', 'pagina', 'modificato', ARRAY['cosa_serve'], 'aggiunta.requisito.da_chiedere' FROM use_cases WHERE id = '${ids.ucOld}'`,
+  );
+  check(`${db}: a «Cosa serve» row is accepted`, accepted.ok, accepted.err.split("\n")[0]);
+  const refused = tryPsql(db, `INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields) VALUES ('${ids.ws}', '${ids.ucOld}', 'sistema', 'script', 'modificato', ARRAY['cosa_serve', 'Accesso al gestionale'])`);
+  check(`${db}: free text is still refused`, !refused.ok && refused.err.includes("use_case_events_fields_check"), refused.err.split("\n")[0]);
+}
+
+// 14a. Through the self-heal.
+productionAt0022(DB.prod23);
+const prod23Rows = snapshotOf(DB.prod23);
+const prod23Heal = ensureDbSchemaOn(DB.prod23);
+check("production today: ensureDbSchema() does not stop at the probe, the 0023 self-heal runs", prod23Heal.ok && prod23Heal.calls > 1, prod23Heal.error || `${prod23Heal.calls} execute calls`);
+check("…the history probe is true", historyProbe(DB.prod23));
+check("…the CHECK equals the one of the migration", fieldsCheckOf(DB.prod23) === check0023, fieldsCheckOf(DB.prod23));
+check("…every use case, history row, need and link is kept", snapshotOf(DB.prod23) === prod23Rows, `${prod23Rows} → ${snapshotOf(DB.prod23)}`);
+const prod23Again = ensureDbSchemaOn(DB.prod23);
+check("a second ensureDbSchema() runs only the probe", prod23Again.ok && prod23Again.calls === 1, prod23Again.error || `${prod23Again.calls} execute calls`);
+const prod23Dump = dump(DB.prod23);
+applyFile(DB.prod23, file0023);
+applyFile(DB.prod23, file0023);
+check("0023 applied twice on the healed database: identical schema dump", dump(DB.prod23) === prod23Dump, firstDiff(prod23Dump, dump(DB.prod23)));
+needsHistoryWrites(DB.prod23);
+valueWrites(DB.prod23, "prod23");
+oldShapeWrites(DB.prod23, "prod23");
+
+// 14b. Through the SQL file.
+productionAt0022(DB.prod23f);
+const prod23fRows = snapshotOf(DB.prod23f);
+applyFile(DB.prod23f, file0023);
+const prod23fFirst = dump(DB.prod23f);
+applyFile(DB.prod23f, file0023);
+check("production today, 0023 applied twice through the file: identical schema dump", dump(DB.prod23f) === prod23fFirst, firstDiff(prod23fFirst, dump(DB.prod23f)));
+check("…the history probe is true and the CHECK equals the one of the migration", historyProbe(DB.prod23f) && fieldsCheckOf(DB.prod23f) === check0023, fieldsCheckOf(DB.prod23f));
+check("…every use case, history row, need and link is kept", snapshotOf(DB.prod23f) === prod23fRows, `${prod23fRows} → ${snapshotOf(DB.prod23f)}`);
+const prod23fProbe = ensureDbSchemaOn(DB.prod23f);
+check("…then ensureDbSchema() runs only the probe", prod23fProbe.ok && prod23fProbe.calls === 1, prod23fProbe.error || `${prod23fProbe.calls} execute calls`);
+needsHistoryWrites(DB.prod23f);
+
+// 15. Never narrows, never fails on rows.
+freshDatabase(DB.narrow, upTo("0022"));
+applyFile(DB.narrow, file0023);
+const replaceCheck = (expression) =>
+  psql(DB.narrow, `ALTER TABLE use_case_events DROP CONSTRAINT IF EXISTS use_case_events_fields_check;${expression ? ` ALTER TABLE use_case_events ADD CONSTRAINT use_case_events_fields_check CHECK (${expression}) NOT VALID;` : ""}`);
+const wider = [...USE_CASE_EVENT_FIELDS_0023, "campo_futuro"];
+replaceCheck(`fields <@ ${textArray(wider)}`);
+psql(DB.narrow, `ALTER TABLE use_case_events VALIDATE CONSTRAINT use_case_events_fields_check;
+  INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields) VALUES ('${ids.ws}', '${ids.ucOld}', 'sistema', 'script', 'modificato', ARRAY['campo_futuro']);`);
+const widerApplied = exec("psql", applyArgs(DB.narrow, file0023));
+check("a CHECK that already allows more names: 0023 passes and leaves it as it is", widerApplied.status === 0 && fieldsCheckOf(DB.narrow) === `${checkDefOf(wider)}|true`, widerApplied.stderr.trim() || fieldsCheckOf(DB.narrow));
+replaceCheck(`fields <@ ${textArray(["titolo", "campo_futuro", "problema"])}`);
+const extraApplied = exec("psql", applyArgs(DB.narrow, file0023));
+check(
+  "a CHECK without cosa_serve but with an extra name: 0023 keeps the extra name after the list, validated",
+  extraApplied.status === 0 && fieldsCheckOf(DB.narrow) === `${checkDefOf(wider)}|true` && historyProbe(DB.narrow),
+  extraApplied.stderr.trim() || fieldsCheckOf(DB.narrow),
+);
+replaceCheck(null);
+psql(DB.narrow, `INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields) VALUES ('${ids.ws}', '${ids.ucOld}', 'sistema', 'script', 'modificato', ARRAY['valore_fuori_elenco'])`);
+const narrowRows = snapshotOf(DB.narrow);
+const outside = exec("psql", applyArgs(DB.narrow, file0023));
+check(
+  "no CHECK and rows outside the list: 0023 passes with its WARNING and leaves the CHECK NOT VALID",
+  outside.status === 0 && outside.stderr.includes(FIELDS_NOT_VALIDATED_WARNING) && fieldsCheckOf(DB.narrow) === `${checkDefOf(USE_CASE_EVENT_FIELDS_0023)} NOT VALID|false`,
+  `${outside.status} ${fieldsCheckOf(DB.narrow)} ${outside.stderr.trim().split("\n").pop()}`,
+);
+check("…keeps every row", snapshotOf(DB.narrow) === narrowRows);
+check("…the history probe is true (no self-heal at every start)", historyProbe(DB.narrow));
+const stillRefused = tryPsql(DB.narrow, `INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields) VALUES ('${ids.ws}', '${ids.ucOld}', 'sistema', 'script', 'modificato', ARRAY['Testo libero di una persona'])`);
+check("…and still refuses a new row outside the list", !stillRefused.ok && stillRefused.err.includes("use_case_events_fields_check"), stillRefused.err.split("\n")[0]);
+psql(DB.narrow, `DELETE FROM use_case_events WHERE NOT (fields <@ ${textArray(USE_CASE_EVENT_FIELDS_0023)})`);
+applyFile(DB.narrow, file0023);
+check("once the rows are gone, 0023 validates the CHECK", fieldsCheckOf(DB.narrow) === `${checkDefOf(USE_CASE_EVENT_FIELDS_0023)}|true`, fieldsCheckOf(DB.narrow));
+
+// 16. Without 0020 (0000→0019, the database of case 12): 0023 stops with its message.
+const without0020History = exec("psql", applyArgs(DB.no20, file0023));
+check(
+  "0000→0019 without 0020: 0023 stops with its message",
+  without0020History.status !== 0 && without0020History.stderr.includes(MISSING_EVENTS_MESSAGE),
+  (without0020History.stderr.split("\n").find((line) => line.includes("ERROR:")) ?? without0020History.stderr.trim()).replace(/^.*ERROR:\s*/, ""),
+);
+
+// 17. Locks: never queued behind a long transaction, never together with the self-heal.
+const HOLDER = `hub_check_holder_${runTag}`;
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+/**
+ * A session of this run on `db` that runs `sql` (it takes a lock, then sleeps) in the background.
+ * Resolves once the lock is granted; `release()` ends that session (only it: its application_name
+ * and this run's database) and waits until it is gone.
+ */
+async function holdLock(db, sql, granted) {
+  const child = spawn(bin("psql"), [...pinned, "-d", db, "--no-psqlrc", "-q", "-c", sql], { env: { ...env, PGAPPNAME: HOLDER }, stdio: "ignore" });
+  const exited = new Promise((done) => child.once("exit", done));
+  const mine = `a.datname = '${db}' AND a.application_name = '${HOLDER}'`;
+  for (let i = 0; i < 100 && psql(db, `SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid WHERE ${mine} AND l.granted AND ${granted}`) === "0"; i++) await sleep(100);
+  return {
+    held: psql(db, `SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid WHERE ${mine} AND l.granted AND ${granted}`) !== "0",
+    async release() {
+      psql(db, `SELECT count(pg_terminate_backend(a.pid)) FROM pg_stat_activity a WHERE ${mine}`);
+      await exited;
+    },
+  };
+}
+/** 0023 through the file, timed. */
+function timedApply(db) {
+  const start = Date.now();
+  const result = exec("psql", applyArgs(db, file0023));
+  return { ...result, ms: Date.now() - start };
+}
+const lockTimedOut = (text) => /canceling statement due to lock timeout/.test(text);
+productionAt0022(DB.locks);
+const locksRows = snapshotOf(DB.locks);
+const tableLock = await holdLock(
+  DB.locks,
+  "BEGIN; SELECT count(*) FROM use_case_events; SELECT pg_sleep(30); COMMIT;",
+  "l.locktype = 'relation' AND l.relation = 'public.use_case_events'::regclass",
+);
+check("a long transaction reads use_case_events (ACCESS SHARE held)", tableLock.held);
+const behindTable = timedApply(DB.locks);
+check(
+  "behind it 0023 does not wait: it stops within its lock_timeout with «lock timeout»",
+  behindTable.status !== 0 && lockTimedOut(behindTable.stderr) && behindTable.ms >= 2500 && behindTable.ms < 10000,
+  `${behindTable.status} in ${behindTable.ms} ms: ${behindTable.stderr.trim().split("\n").pop()}`,
+);
+check("…and changes nothing (the CHECK of 0020, every row)", fieldsCheckOf(DB.locks) === check0020 && snapshotOf(DB.locks) === locksRows, fieldsCheckOf(DB.locks));
+const healStart = Date.now();
+const healBehindTable = ensureDbSchemaOn(DB.locks);
+const healMs = Date.now() - healStart;
+check(
+  "behind it the self-heal stops too, with «lock timeout», and changes nothing",
+  !healBehindTable.ok && lockTimedOut(healBehindTable.stderr) && healMs < 20000 && fieldsCheckOf(DB.locks) === check0020 && snapshotOf(DB.locks) === locksRows,
+  `${healBehindTable.ok ? "ok" : (healBehindTable.stderr.match(/canceling statement[^\n"]*/)?.[0] ?? healBehindTable.error)} in ${healMs} ms`,
+);
+await tableLock.release();
+const advisoryLock = await holdLock(
+  DB.locks,
+  `SELECT pg_advisory_lock(hashtext('unbundle:use-case-history-ddl')); SELECT pg_sleep(30);`,
+  "l.locktype = 'advisory'",
+);
+check("a session holds the self-heal's advisory lock", advisoryLock.held);
+const behindAdvisory = timedApply(DB.locks);
+check(
+  "the file takes the same advisory lock: it waits, then stops within its lock_timeout",
+  behindAdvisory.status !== 0 && lockTimedOut(behindAdvisory.stderr) && behindAdvisory.ms >= 2500 && behindAdvisory.ms < 10000,
+  `${behindAdvisory.status} in ${behindAdvisory.ms} ms: ${behindAdvisory.stderr.trim().split("\n").pop()}`,
+);
+check("…and changes nothing", fieldsCheckOf(DB.locks) === check0020 && snapshotOf(DB.locks) === locksRows, fieldsCheckOf(DB.locks));
+await advisoryLock.release();
+const afterLocks = timedApply(DB.locks);
+check("with both sessions gone 0023 passes: the CHECK of the migration, every row kept", afterLocks.status === 0 && fieldsCheckOf(DB.locks) === check0023 && snapshotOf(DB.locks) === locksRows, afterLocks.stderr.trim() || fieldsCheckOf(DB.locks));
+// The file without --single-transaction, then SHOW in the same session: the limit ended with the DO block.
+const sameSession = exec("psql", [...pinned, "-d", DB.locks, "--no-psqlrc", "-q", "-At", "-v", "ON_ERROR_STOP=1", "-f", file0023, "-c", "SHOW lock_timeout"]);
+check("lock_timeout ends with 0023's transaction: the session keeps its own", sameSession.status === 0 && sameSession.stdout.trim() === "0", sameSession.stderr.trim() || sameSession.stdout.trim());
 
 dropScratchDatabases();
 console.log(failures.length === 0 ? "All hub schema checks passed." : `${failures.length} check(s) failed.`);

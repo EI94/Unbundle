@@ -99,6 +99,17 @@ function useIsPhone(): boolean {
   );
 }
 
+/**
+ * Dove sta «Tutte · AI Adoption · AI Transformation»: nella barra solo dal tablet (`sm`) e con la
+ * pagina (`@container/hub` di hub.tsx) larga almeno 42rem (672 px), dove «Tipo», l'origine e la
+ * ricerca stanno in una riga e «Altri filtri», «Togli i filtri» e «Matrice | Benefici | Lista»
+ * nella seconda; altrimenti dentro «Altri filtri», come al telefono. Più stretta (accanto alla
+ * barra laterale da 768 a circa 975 px di finestra) l'origine andava a capo da sola e i controlli
+ * di «Priorità» finivano su tre righe (120 px a 768). Il contenuto di «Altri filtri» si apre fuori
+ * dal riquadro (portale): lì decide `originShown`.
+ */
+const ORIGIN_INLINE = "sm:@2xl/hub:block";
+
 /** Il valore «nessun filtro» dentro le scelte di «Altri filtri». */
 const ANY = "__tutti__";
 
@@ -106,10 +117,11 @@ const ANY = "__tutti__";
 const SEARCH_DEBOUNCE_MS = 350;
 
 /**
- * La barra dei filtri (docs/use-case/DESIGN.md §4.4, §4.7), una riga sola sotto le viste: al
- * massimo due righe di controlli prima del contenuto, anche al telefono. Revisori: «Tipo»
+ * La barra dei filtri (docs/use-case/DESIGN.md §4.4, §4.7), una riga sotto le viste che va a capo
+ * solo se i controlli non ci stanno: al massimo due righe di controlli prima del contenuto. Revisori: «Tipo»
  * (filtro; in «Priorità» la scelta «Da costruire | Da diffondere»), «Tutte · AI Adoption · AI
- * Transformation» (al telefono dentro «Altri filtri»), «Cerca per titolo o codice», «Altri
+ * Transformation» (dentro «Altri filtri» al telefono e quando la pagina è più stretta di
+ * {@link ORIGIN_INLINE}), «Cerca per titolo o codice», «Altri
  * filtri» (Canale, Area, AI Lab, Trimestre) e in fondo l'interruttore «Matrice | Lista» di
  * «Priorità». Contributori: solo «Cerca per titolo». Ogni filtro è un parametro dell'indirizzo;
  * con filtri attivi compare «Togli i filtri». Filtri per proponente non esistono (art. 15.4):
@@ -125,6 +137,9 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
    * l'altra è in viaggio (un'origine, poi la ricerca) le porta tutte, invece di toglierne una.
    */
   const inFlight = useRef<{ address: string; change: Partial<Record<HubParamKey, string | null>> }>({ address, change: {} });
+  /** «Tutte · AI Adoption · AI Transformation» nella barra: a schermo solo con {@link ORIGIN_INLINE}. */
+  const originNav = useRef<HTMLElement>(null);
+  const originShown = () => (originNav.current ? getComputedStyle(originNav.current).display !== "none" : false);
 
   function go(change: Partial<Record<HubParamKey, string | null>>) {
     const merged = { ...(inFlight.current.address === address ? inFlight.current.change : {}), ...change };
@@ -142,7 +157,10 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
   ) : null;
 
   return (
-    <div data-slot="filter-bar" aria-busy={pending || undefined} className="flex min-w-0 flex-nowrap items-center gap-2">
+    // Dal tablet va a capo quando i controlli non ci stanno: accanto alla barra laterale (da 768 px)
+    // restano anche solo 460 px, e una riga che non va a capo faceva scorrere di lato tutta la pagina.
+    // Al telefono resta una riga: i controlli sono icone e la ricerca si stringe.
+    <div data-slot="filter-bar" aria-busy={pending || undefined} className="flex min-w-0 flex-nowrap items-center gap-2 sm:flex-wrap">
       {reviewer ? (
         <>
           <KindMenu
@@ -152,7 +170,7 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
               go(kind === "priorita" ? { tipo: value || "costruire", mostra: null, stima: null } : { tipo: value || null })
             }
           />
-          <nav aria-label={FILTER_TEXT.originLabel} className="hidden max-w-full min-w-0 shrink-0 sm:block">
+          <nav ref={originNav} aria-label={FILTER_TEXT.originLabel} className={cn("hidden max-w-full min-w-0 shrink-0", ORIGIN_INLINE)}>
             <ul className="inline-flex max-w-full gap-1 overflow-x-auto rounded-xl border bg-muted/60 p-1 [scrollbar-width:none]">
               {ORIGINS.map((option) => {
                 const current = (query.origine ?? "") === option.value;
@@ -189,7 +207,7 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
         phonePlaceholder={reviewer ? FILTER_TEXT.searchReviewerShort : FILTER_TEXT.searchContributor}
         onSearch={(text) => go({ q: text })}
       />
-      {reviewer && more ? <MoreFilters query={query} options={more} onChange={go} clear={clear} /> : null}
+      {reviewer && more ? <MoreFilters query={query} options={more} onChange={go} clear={clear} originShown={originShown} /> : null}
       {/* Al telefono, per i revisori, «Togli i filtri» sta dentro «Altri filtri». */}
       {clear ? <span className={cn("shrink-0", reviewer && more && "hidden sm:inline-flex")}>{clear}</span> : null}
       {trailing ? <div className="ml-auto shrink-0">{trailing}</div> : null}
@@ -327,13 +345,18 @@ function MoreFilters({
   options,
   onChange,
   clear,
+  originShown,
 }: {
   query: HubQuery;
   options: NonNullable<FilterBarProps["more"]>;
   onChange: (change: Partial<Record<HubParamKey, string | null>>) => void;
   /** «Togli i filtri», al telefono qui dentro. */
   clear: ReactNode;
+  /** L'origine è a schermo nella barra? Se no, sta qui dentro. */
+  originShown: () => boolean;
 }) {
+  // Deciso all'apertura, dalla barra: il contenuto si apre in un portale, fuori dal riquadro della pagina.
+  const [originInside, setOriginInside] = useState(true);
   const fields: Array<{ key: HubParamKey; label: string; any: string; list: FilterOption[] }> = [
     { key: "canale", label: FILTER_TEXT.channel, any: FILTER_TEXT.anyMasculine, list: options.channels },
     { key: "area", label: FILTER_TEXT.area, any: FILTER_TEXT.anyFeminine, list: options.areas },
@@ -341,18 +364,23 @@ function MoreFilters({
     { key: "trimestre", label: FILTER_TEXT.quarter, any: FILTER_TEXT.anyMasculine, list: options.quarters },
   ];
   const count = fields.filter((field) => query[field.key]).length;
-  // Al telefono anche l'origine sta qui dentro: conta anche lei.
-  const phoneCount = count + (query.origine ? 1 : 0);
+  // Quando l'origine sta qui dentro (telefono, pagina stretta) conta anche lei: le classi del numero
+  // sono le stesse di ORIGIN_INLINE, rovesciate, perché il bottone sta nel riquadro della pagina.
+  const countWithOrigin = count + (query.origine ? 1 : 0);
   return (
-    <Popover>
+    <Popover
+      onOpenChange={(open) => {
+        if (open) setOriginInside(!originShown());
+      }}
+    >
       <PopoverTrigger aria-label={FILTER_TEXT.more} render={<Button variant="outline" className="min-h-11 shrink-0 gap-1 px-2.5 sm:min-h-8" />}>
         <SlidersHorizontal aria-hidden className="text-muted-foreground" />
         <span className="hidden sm:inline">{FILTER_TEXT.more}</span>
-        {phoneCount > 0 ? <span className="text-xs text-muted-foreground tabular-nums sm:hidden">{phoneCount}</span> : null}
-        {count > 0 ? <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline">{count}</span> : null}
+        {countWithOrigin > 0 ? <span className="text-xs text-muted-foreground tabular-nums sm:@2xl/hub:hidden">{countWithOrigin}</span> : null}
+        {count > 0 ? <span className="hidden text-xs text-muted-foreground tabular-nums sm:@2xl/hub:inline">{count}</span> : null}
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 max-w-[calc(100vw-2rem)] gap-3 p-3">
-        <div className="sm:hidden">
+        {originInside ? (
           <MoreField
             label={FILTER_TEXT.originLabel}
             any={FILTER_TEXT.originAll}
@@ -360,7 +388,7 @@ function MoreFilters({
             list={ORIGINS.filter((option) => option.value)}
             onChange={(value) => onChange({ origine: value })}
           />
-        </div>
+        ) : null}
         {fields.map((field) => (
           <MoreField key={field.key} label={field.label} any={field.any} value={query[field.key] ?? null} list={field.list} onChange={(value) => onChange({ [field.key]: value })} />
         ))}

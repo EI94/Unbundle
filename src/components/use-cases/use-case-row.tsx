@@ -25,7 +25,11 @@ import { ValueFigure } from "./value-figure";
  * Riga dei revisori (circa 56 px): codice, titolo, origine, il tipo solo se «Da diffondere»
  * (il tipo di quasi tutte è «Da costruire»: ripeterlo su ogni riga è rumore), Valore in parola
  * e Costo con la fonte, oppure un solo «da stimare» grigio; in «Da decidere» anche il
- * sotto-stato e i giorni di attesa. Sotto `lg` prima riga codice, titolo e giorni, poi il
+ * sotto-stato e i giorni di attesa. In una riga sola quando il riquadro della pagina
+ * (`@container/hub` di hub.tsx) è largo almeno 58rem (da circa 1250 px di finestra, accanto alla
+ * barra laterale), con il titolo largo almeno 14rem insieme al codice: se le cifre non ci stanno,
+ * Valore e Costo vanno a capo dentro la riga. Più stretto (telefono, e da 768 a circa 1250 px
+ * di finestra) prima riga codice, titolo e giorni, poi il
  * resto, che va a capo se non ci sta (§4.6): il costo non si accorcia mai e la sua fonte resta
  * a schermo (D5). Riga dei contributori: titolo e, se non la dice già la scheda «In
  * valutazione», la pillola della fase (con «Quando» se approvato); delle proprie proposte anche
@@ -142,7 +146,14 @@ export function UseCaseRow({ item, href, variant = "plain", today, bands }: UseC
 }
 
 const ROW_LINK =
-  "group flex min-h-14 flex-col gap-1 rounded-lg px-3 py-2.5 outline-none transition-colors hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50 lg:flex-row lg:items-center lg:gap-4";
+  "group flex min-h-14 flex-col gap-1 rounded-lg px-3 py-2.5 outline-none transition-colors hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50";
+/**
+ * Una riga sola sulla larghezza del riquadro (`@container/hub`), non della finestra: i revisori da
+ * 58rem (codice, titolo, origine, sotto-stato, Valore e Costo con la fonte, giorni), come le
+ * colonne della lista di «Priorità», i contributori da 42rem (titolo e pillola).
+ */
+const REVIEWER_ROW_LINK = `${ROW_LINK} @min-[58rem]/hub:flex-row @min-[58rem]/hub:items-center @min-[58rem]/hub:gap-4`;
+const CONTRIBUTOR_ROW_LINK = `${ROW_LINK} @2xl/hub:flex-row @2xl/hub:items-center @2xl/hub:gap-4`;
 
 /**
  * Valore e Costo nella riga (§4.6, §7.1, §7.2). Senza l'uno e senza l'altro una sola parola
@@ -160,8 +171,9 @@ export function RowFigures({ item, bands }: { item: Pick<HubItem, "value" | "cos
   }
   return (
     <>
-      {/* «Valore:» e «Costo:» a ogni larghezza: la stessa riga dice sempre quale cifra è quale (H7). */}
-      <ValueFigure value={item.value} withLabel className="shrink-0" />
+      {/* «Valore:» e «Costo:» a ogni larghezza: la stessa riga dice sempre quale cifra è quale (H7). Se
+          la riga è stretta tutte e due vanno a capo, il Valore solo dopo «·». */}
+      <ValueFigure value={item.value} withLabel wrap />
       <CostFigure cost={item.cost} bands={bands} withLabel className="min-w-0" />
     </>
   );
@@ -171,24 +183,27 @@ function ReviewerRow({ item, href, variant, today, bands }: { item: HubItem; hre
   const days = variant === "decide" ? waitingLabel(waitingDays(item.waitingSince, today)) : null;
   return (
     <li data-slot="use-case-row" data-id={item.id}>
-      <Link href={href} scroll={false} className={ROW_LINK}>
-        {/* Prima riga: codice, titolo e, sul telefono, i giorni di attesa. */}
-        <span className="flex min-w-0 items-baseline gap-3 lg:flex-1">
-          <CodeLabel code={item.code} className="lg:w-20" />
+      <Link href={href} scroll={false} className={REVIEWER_ROW_LINK}>
+        {/* Prima riga: codice, titolo e, nel riquadro stretto, i giorni di attesa. In una riga sola almeno 14rem. */}
+        <span className="flex min-w-0 items-baseline gap-3 @min-[58rem]/hub:min-w-56 @min-[58rem]/hub:flex-1">
+          <CodeLabel code={item.code} className="@min-[58rem]/hub:w-20" />
           <span className="min-w-0 flex-1 truncate font-semibold text-foreground">{item.title}</span>
-          {days ? <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground lg:hidden">{days}</span> : null}
+          {days ? <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground @min-[58rem]/hub:hidden">{days}</span> : null}
         </span>
-        {/* Seconda riga: origine, tipo solo se «Da diffondere», sotto-stato, cifre; sotto `lg` va a capo se non ci sta. */}
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 lg:shrink-0 lg:flex-nowrap lg:gap-x-3">
+        {/*
+          Seconda riga: origine, tipo solo se «Da diffondere», sotto-stato, cifre; nel riquadro stretto va a
+          capo se non ci sta. In una riga sola si stringe accanto al titolo: Valore e Costo vanno a capo.
+        */}
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 @min-[58rem]/hub:flex-nowrap @min-[58rem]/hub:gap-x-3">
           <OriginChip origin={item.origin} className="shrink-0" />
           {item.kind === "da_diffondere" ? <KindLabel kind={item.kind} className="shrink-0" /> : null}
           {variant === "decide" ? (
-            <span className="inline-flex shrink-0 items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium whitespace-nowrap lg:order-last">
+            <span className="inline-flex shrink-0 items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium whitespace-nowrap @min-[58rem]/hub:order-last">
               {reviewerSubStateText(item)}
             </span>
           ) : null}
           <RowFigures item={item} bands={bands} />
-          {days ? <span className="hidden text-xs whitespace-nowrap text-muted-foreground lg:order-last lg:inline lg:w-24 lg:text-right">{days}</span> : null}
+          {days ? <span className="hidden shrink-0 text-xs whitespace-nowrap text-muted-foreground @min-[58rem]/hub:order-last @min-[58rem]/hub:inline @min-[58rem]/hub:w-20 @min-[58rem]/hub:text-right">{days}</span> : null}
         </span>
       </Link>
     </li>
@@ -217,13 +232,13 @@ function ContributorRow({ item, href }: { item: ContributorUseCase; href: string
   const showPhase = item.own || item.phase !== "da_valutare";
   return (
     <li data-slot="use-case-row" data-id={item.id} data-own={item.own ? "true" : undefined}>
-      <Link href={href} scroll={false} className={ROW_LINK}>
-        <span className="flex min-w-0 items-baseline gap-3 lg:flex-1">
+      <Link href={href} scroll={false} className={CONTRIBUTOR_ROW_LINK}>
+        <span className="flex min-w-0 items-baseline gap-3 @2xl/hub:flex-1">
           <CodeLabel code={item.own ? item.code : null} />
           <span className="min-w-0 truncate font-semibold text-foreground">{item.title}</span>
         </span>
         {showPhase ? (
-          <span className="flex min-w-0 flex-wrap items-center gap-2 lg:shrink-0">
+          <span className="flex min-w-0 flex-wrap items-center gap-2 @2xl/hub:shrink-0">
             {item.own ? <OwnMarker /> : null}
             <PhasePill label={item.phaseLabel} phase={item.phase} subState={item.subState} />
             {asked ? <span className="text-xs font-medium text-primary underline underline-offset-4">{ROW_TEXT.answer}</span> : null}

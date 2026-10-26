@@ -317,7 +317,12 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
 
   return (
     <PageContainer size="default">
-      <div data-slot="use-case-hub" data-view={view} className="space-y-6">
+      {/*
+        `@container/hub`: le righe, la lista di «Priorità» e le tabelle di «Cosa serve» cambiano forma
+        sulla larghezza di questo riquadro, non della finestra. Da 768 px la barra laterale ne prende
+        256: a 1024 px restano circa 700 px, e le colonne pensate per la finestra intera non ci stanno.
+      */}
+      <div data-slot="use-case-hub" data-view={view} className="@container/hub space-y-6">
         <HubHeader
           workspaceId={workspaceId}
           newHref={newHref}

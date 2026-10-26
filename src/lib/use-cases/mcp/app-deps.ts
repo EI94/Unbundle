@@ -1,8 +1,9 @@
 import "server-only";
-import { and, eq, gt, gte, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { useCaseEvents, useCases, users, workspaceConnectorConfigs, workspaceIntegrationTokens } from "@/lib/db/schema";
+import { USE_CASE_NEEDS_EVENT_FIELD } from "@/lib/db/use-case-hub-ddl";
 import { appExposedTokenAlertDeps, appRateLimitExecutor } from "@/lib/connector/app-deps";
 import { CONNECTOR_PUBLIC_ORIGIN } from "@/lib/connector/auth";
 import { alertExposedToken, type ExposedTokenAlertDeps } from "@/lib/connector/exposed-token-alert";
@@ -159,6 +160,8 @@ export const appTeamReadDeps: TeamReadDeps = {
           eq(useCaseEvents.actorUserId, userId),
           inArray(useCaseEvents.action, [...actions]),
           gte(useCaseEvents.at, since),
+          // Le righe di «Cosa serve» (save_needs, drizzle/0023) non sono scritture della scheda.
+          sql`NOT (${USE_CASE_NEEDS_EVENT_FIELD} = ANY(${useCaseEvents.fields}))`,
         ),
       )
       .limit(1);

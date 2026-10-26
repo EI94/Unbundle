@@ -175,11 +175,16 @@ function AreaTable({ area, hrefOf }: { area: NeedAreaTable; hrefOf: (id: string)
   );
 }
 
-/** Da 768 px una tabella; sotto, un elenco con le stesse cose (mai le due insieme a schermo). */
+/**
+ * Una tabella quando il riquadro della pagina (`@container/hub` di hub.tsx) è largo almeno 56rem;
+ * più stretto un elenco con le stesse cose (mai le due insieme a schermo). Sulla larghezza della
+ * finestra (768 px) la tabella aveva circa 460 px accanto alla barra laterale: Stato ed Entro
+ * restavano tagliati.
+ */
 function NeedTable({ rows, hrefOf, labelledBy }: { rows: readonly NeedRow[]; hrefOf: (id: string) => string; labelledBy: string }) {
   return (
     <>
-      <div className="hidden overflow-hidden rounded-lg border md:block">
+      <div className="hidden overflow-hidden rounded-lg border @4xl/hub:block">
         <table aria-labelledby={labelledBy} className="w-full table-fixed text-sm">
           <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
             <tr>
@@ -221,7 +226,7 @@ function NeedTable({ rows, hrefOf, labelledBy }: { rows: readonly NeedRow[]; hre
           </tbody>
         </table>
       </div>
-      <ul data-slot="needs-list" className="divide-y rounded-lg border md:hidden">
+      <ul data-slot="needs-list" className="divide-y rounded-lg border @4xl/hub:hidden">
         {rows.map((row) => (
           <li key={row.id} data-need-item={row.id} className="space-y-1.5 px-3 py-2.5">
             <div className="flex items-start justify-between gap-3">

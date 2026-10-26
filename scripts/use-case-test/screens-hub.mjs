@@ -29,7 +29,8 @@
 //   node scripts/use-case-test/screens-hub.mjs --routes <file.mjs> --dry-run
 //
 // Options: --routes <file.mjs> (repeatable), --path <p> (repeatable), --smoke, --as <a,b>,
-// --widths <w,h> (default 1440,400), --workspace a|b (default «a»), --copy-guard area|vecchio_nome|off
+// --widths <w,h> (default 1440,400), --overflow-widths <w,h>|off (default 768,900,1024,1280: see below),
+// --workspace a|b (default «a»), --copy-guard area|vecchio_nome|off
 // (for routes that do not say; without it the scope comes from the path, see below), --label <name>
 // (default «adhoc»), --theme dark|light, --warn-only, --dry-run.
 //
@@ -49,7 +50,8 @@
 // Accounts: those of the manifest, plus `anonimo`, who opens the pages without a session.
 //
 // Checks on every page (failures, also with --smoke): status below 500, no «Application error»,
-// no uncaught exception, no horizontal scroll (scrollWidth ≤ innerWidth); for contributors and
+// no uncaught exception, no horizontal scroll (scrollWidth ≤ innerWidth, with the element that
+// sticks out in the message); on the hub's lists, the columns (see «Hub layout» below); for contributors and
 // non-members of the route's workspace (art. 15.4, D4, D14): no [data-figure] element and no «€»
 // in the visible text; `absent` and `present`. Strict checks (failures, warnings with --smoke or
 // --warn-only): at most one filled button outside dialogs; every cost shown
@@ -61,6 +63,20 @@
 // (src/lib/uc/views/copy-guard.ts), which DESIGN §14.5 extends with the hub words. A 404 for a role
 // is reported, not failed: the strict checks skip it, the D4 checks do not. Two pages with the same
 // name in the same workspace for one account stop the run (set `name`). Exit code 1 on any failure.
+//
+// Tablet and laptop widths (--overflow-widths, default 768,900,1024,1280; «off» to skip): every page
+// is opened again at each of them (those already in --widths are not repeated), with a screenshot,
+// and fails on horizontal scroll and on the hub layout, as well as on status, «Application error»,
+// exceptions and the art. 15.4 / D4 checks; the strict checks run only at --widths. From 768 px the
+// sidebar takes 256 px of the window, so layouts sized on the window (`md:`, `lg:`) can be wider
+// than the page: the default widths of 1440 and 400 never saw it (horizontal scroll at 768-1024 on
+// every view of the area). At 1280 px the page area is 960 px: the lists must have their columns.
+//
+// Hub layout (failures, every width): with a page area (`@container/hub`, [data-slot=use-case-hub])
+// of at least 58rem (928 px) the «Priorità» list has its columns and header and the use case rows
+// are one line (priority-list.tsx, use-case-row.tsx); at every width no cell of the «Priorità» list
+// and no part of a row is wider than its box (a value written over the cost next to it). Text cut
+// on purpose (`truncate`, overflow hidden) does not count.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -88,6 +104,7 @@ const opts = {
   copyGuard: null,
   label: "adhoc",
   theme: "dark",
+  overflowWidths: null,
 };
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
@@ -103,6 +120,10 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--routes") opts.routes.push(value());
   else if (a === "--as") opts.as = value().split(",").map((s) => s.trim()).filter(Boolean);
   else if (a === "--widths") opts.widths = value().split(",").map((s) => Number(s.trim()));
+  else if (a === "--overflow-widths") {
+    const v = value();
+    opts.overflowWidths = v === "off" ? [] : v.split(",").map((s) => Number(s.trim()));
+  }
   else if (a === "--workspace") opts.workspace = value();
   else if (a === "--copy-guard") opts.copyGuard = value();
   else if (a === "--label") opts.label = value();
@@ -116,6 +137,12 @@ if (opts.copyGuard !== null && ![...COPY_SCOPES, "off"].includes(opts.copyGuard)
 if (!opts.smoke && !opts.routes.length && !opts.paths.length) throw new Error("Nothing to open: use --smoke, --path or --routes");
 const widths = opts.widths ?? [1440, 400];
 if (widths.some((w) => !Number.isInteger(w) || w < 320 || w > 3840)) throw new Error("--widths: integers between 320 and 3840");
+/** The tablet widths where every page is checked for horizontal scroll (see the header). */
+const DEFAULT_OVERFLOW_WIDTHS = [768, 900, 1024, 1280];
+/** From this page area (58rem) the «Priorità» list has columns and the rows are one line (see «Hub layout»). */
+const HUB_COLUMNS_FROM_PX = 928;
+const overflowWidths = (opts.overflowWidths ?? DEFAULT_OVERFLOW_WIDTHS).filter((w) => !widths.includes(w));
+if (overflowWidths.some((w) => !Number.isInteger(w) || w < 320 || w > 3840)) throw new Error("--overflow-widths: integers between 320 and 3840, or off");
 
 // The hub has its own app and login helper (§2.7): never the Casi d'uso, Learning or connector ones.
 if ([53100, 53110, 53130].includes(UC_TEST_APP_PORT) || [53102, 53112].includes(UC_TEST_LOGIN_PORT)) {
@@ -286,6 +313,71 @@ function hubMeasures(page) {
   });
 }
 
+/**
+ * What sticks out on the right of the window: the innermost visible elements (not fixed, not SVG
+ * shapes) whose right edge is past innerWidth, as «tag[data-slot] .classes «text»», at most three.
+ */
+function overflowCulprits(page) {
+  return evaluate(page, () => {
+    const iw = window.innerWidth;
+    const shapes = new Set(["path", "circle", "line", "rect", "polyline", "polygon", "g", "text", "tspan", "ellipse"]);
+    const beyond = [...document.querySelectorAll("body *")].filter((el) => {
+      if (shapes.has(el.tagName.toLowerCase())) return false;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.right <= iw + 0.5) return false;
+      const style = getComputedStyle(el);
+      return style.position !== "fixed" && style.display !== "none" && style.visibility !== "hidden";
+    });
+    const innermost = beyond.filter((el) => !beyond.some((other) => other !== el && el.contains(other)));
+    return innermost.slice(0, 3).map((el) => {
+      const slot = el.dataset?.slot ?? el.closest("[data-slot]")?.dataset.slot ?? "";
+      const cls = String(el.className?.baseVal ?? el.className ?? "").split(/\s+/).filter(Boolean).slice(0, 4).join(".");
+      const text = (el.innerText ?? el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 30);
+      return `${el.tagName.toLowerCase()}[${slot}]${cls ? `.${cls}` : ""} right ${Math.round(el.getBoundingClientRect().right)}${text ? ` «${text}»` : ""}`;
+    });
+  });
+}
+
+/**
+ * The hub's lists on the page (see «Hub layout» in the header): page area, «Priorità» rows with and
+ * without columns, rows on two lines, and the cells and row parts whose content is wider than their
+ * box (flex and grid items, so their client width is their box). Nothing on the detail page.
+ */
+function hubLayout(page) {
+  return evaluate(page, () => {
+    const shown = (el) => el.getBoundingClientRect().width > 0 && getComputedStyle(el).display !== "none";
+    const clips = (el) => ["hidden", "clip"].includes(getComputedStyle(el).overflowX);
+    const text = (el) => (el.innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+    const cellsOf = (row) => {
+      const cells = [];
+      const walk = (node) => {
+        for (const child of node.children) {
+          if (getComputedStyle(child).display === "contents") walk(child);
+          else cells.push(child);
+        }
+      };
+      walk(row);
+      return cells;
+    };
+    const hub = document.querySelector('[data-slot="use-case-hub"]');
+    const priorityRows = [...document.querySelectorAll('[data-slot="priority-row"]')].filter(shown);
+    const header = document.querySelector('[data-slot="priority-list"] > [aria-hidden]');
+    const rows = [...document.querySelectorAll('[data-slot="use-case-row"] > a')].filter(shown);
+    const boxes = [...priorityRows.flatMap(cellsOf), ...rows.flatMap((link) => [link, ...link.children])].filter((el) => shown(el) && !clips(el));
+    const wider = boxes.filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => `«${text(el)}» ${el.scrollWidth} > ${el.clientWidth} px`);
+    return {
+      hubWidth: hub ? Math.round(hub.getBoundingClientRect().width) : null,
+      priorityRows: priorityRows.length,
+      priorityWithoutColumns: priorityRows.filter((li) => getComputedStyle(li).display !== "grid").length,
+      priorityHeader: header ? shown(header) : null,
+      rows: rows.length,
+      rowsOnTwoLines: rows.filter((link) => getComputedStyle(link).flexDirection !== "row").length,
+      wider: wider.length,
+      widerText: wider.slice(0, 3),
+    };
+  });
+}
+
 // ─── Run ─────────────────────────────────────────────────────────────
 
 const routes = await loadRoutes();
@@ -327,7 +419,9 @@ if (opts.dryRun) {
     const guard = item.copyScope ? `  [copy-guard ${item.copyScope}${item.dossierGuard ? " + dossier §6.2" : ""}]` : "";
     console.log(`${item.account.padEnd(18)} ${item.audience.padEnd(12)} ${item.letter}  ${item.name.padEnd(28)} ${item.url}${guard}`);
   }
-  console.log(`\n${plan.length} pages × ${widths.length} widths (${widths.join(", ")}). Nothing opened (--dry-run).`);
+  console.log(
+    `\n${plan.length} pages × ${widths.length} widths (${widths.join(", ")}), plus horizontal scroll at ${overflowWidths.length ? overflowWidths.join(", ") : "no tablet width"}. Nothing opened (--dry-run).`,
+  );
   process.exit(0);
 }
 
@@ -344,7 +438,9 @@ try {
   for (const account of accounts) {
     const items = plan.filter((item) => item.account === account);
     if (!items.length) continue;
-    for (const width of widths) {
+    for (const width of [...widths, ...overflowWidths]) {
+      // At the tablet widths only the horizontal scroll and the hard checks (see the header).
+      const tablet = !widths.includes(width);
       const page = await newPage(browser, { width, colorScheme: opts.theme });
       try {
         if (account === ANONYMOUS) await clearCookies(page);
@@ -355,6 +451,7 @@ try {
           const nav = await navigate(page, item.url);
           const report = await pageReport(page);
           const hub = await hubMeasures(page);
+          const layout = await hubLayout(page);
           const file = await screenshot(page, join(outDir, account, String(width), `${item.letter}-${item.name}.png`));
           const failures = [];
           const warnings = [];
@@ -362,7 +459,18 @@ try {
           if (nav.status !== null && nav.status >= 500) failures.push(`status ${nav.status}`);
           if (report.applicationError) failures.push("Application error");
           for (const e of page.errors.filter((e) => e.kind === "exception")) failures.push(`exception: ${e.text.split("\n")[0]}`);
-          if (report.horizontalOverflow) failures.push(`horizontal scroll (${report.scrollWidth} > ${report.innerWidth})`);
+          if (report.horizontalOverflow) {
+            const culprits = await overflowCulprits(page);
+            failures.push(`horizontal scroll at ${width} px (${report.scrollWidth} > ${report.innerWidth})${culprits.length ? `: ${culprits.join(" | ")}` : ""}`);
+          }
+          // Hub layout: the columns from 58rem of page area, and nothing wider than its column.
+          if (layout.hubWidth !== null && layout.hubWidth >= HUB_COLUMNS_FROM_PX) {
+            const area = `a page area of ${layout.hubWidth} px (columns from ${HUB_COLUMNS_FROM_PX})`;
+            if (layout.priorityWithoutColumns) failures.push(`${layout.priorityWithoutColumns} «Priorità» rows without columns with ${area}`);
+            if (layout.priorityRows && layout.priorityHeader === false) failures.push(`«Priorità» list without its header with ${area}`);
+            if (layout.rowsOnTwoLines) failures.push(`${layout.rowsOnTwoLines} rows on two lines with ${area}`);
+          }
+          if (layout.wider) failures.push(`${layout.wider} cells wider than their column at ${width} px: ${layout.widerText.join(" | ")}`);
           if (!nav.idle) warnings.push("network not quiet within the timeout");
           // Art. 15.4 and D4: contributors and non-members never get a figure or a euro amount.
           const restricted = item.audience !== "revisore";
@@ -374,7 +482,7 @@ try {
           for (const text of item.absent) if (report.text.includes(text)) failures.push(`«${text}» must not be in the page`);
           // A page that is not for this role: its own 404 text is not the page under test.
           const notForRole = nav.status === 404 || report.notFound;
-          if (!notForRole) {
+          if (!notForRole && !tablet) {
             for (const text of item.present) if (!report.text.includes(text)) failures.push(`«${text}» missing from the page`);
             if (report.filledButtons > 1) strict(`${report.filledButtons} filled buttons: ${report.filledButtonLabels.join(" | ")}`);
             if (hub.costsWithoutSource > 0) strict(`${hub.costsWithoutSource} costs without their source: ${hub.costWithoutSourceText.join(" | ")}`);
@@ -387,12 +495,13 @@ try {
               if (found.length) strict(`copy-guard dossier: ${[...new Set(found.map((m) => `${m.reason} «${m.match}»`))].slice(0, 8).join(", ")}${found.length > 8 ? " …" : ""}`);
             }
           }
-          for (const e of page.errors.filter((e) => e.kind === "console")) warnings.push(`console: ${e.text.split("\n")[0].slice(0, 160)}`);
+          if (!tablet) for (const e of page.errors.filter((e) => e.kind === "console")) warnings.push(`console: ${e.text.split("\n")[0].slice(0, 160)}`);
           results.push({
             account,
             audience: item.audience,
             workspace: item.letter,
             width,
+            tablet,
             route: item.route.path,
             name: item.name,
             copyGuard: item.copyScope ? [item.copyScope, ...(item.dossierGuard ? ["dossier"] : [])] : [],
@@ -403,6 +512,7 @@ try {
             filledButtons: report.filledButtons,
             figures: hub.figures,
             costs: hub.costs,
+            layout,
             ms: Date.now() - started,
             failures,
             warnings,
@@ -429,7 +539,7 @@ const summary = {
   warned: results.filter((r) => !r.failures.length && r.warnings.length).length,
   notForRole: results.filter((r) => r.notForRole).length,
 };
-writeFileSync(join(outDir, "report.json"), JSON.stringify({ summary, widths, accounts, results }, null, 2));
+writeFileSync(join(outDir, "report.json"), JSON.stringify({ summary, widths, overflowWidths, accounts, results }, null, 2));
 console.log(
   `\n${summary.pages} pages · ${summary.failed} failed · ${summary.warned} with warnings · ${summary.notForRole} not for the role. Report: ${join(outDir, "report.json")}`,
 );

@@ -176,8 +176,9 @@ test("la sonda copre ogni oggetto del DDL", () => {
   assert.match(USE_CASE_VALUE_PROBE_SQL, new RegExp(`\\) = ${USE_CASE_NEED_COLUMNS.length}\\s`));
 });
 
-test("ensure-schema: versione 16, DDL della 0022 dopo quello dell'hub, sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 16;/);
+test("ensure-schema: versione almeno 16, DDL della 0022 dopo quello dell'hub, sonda in AND", () => {
+  // La 0022 l'ha portata a 16; la 0023 (use-case-hub-history-ddl.test.ts) a 17.
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 16, "ENSURE_VERSION almeno 16");
   assert.match(ensureSchema, /import \{ USE_CASE_VALUE_DDL, USE_CASE_VALUE_PROBE_SQL \} from "\.\/use-case-hub-value-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const hub = runOnce.indexOf("await runUseCaseHubDdl();");

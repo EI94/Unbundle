@@ -331,7 +331,9 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   assert.doesNotMatch(empty, /Ritorno principale|Avanzate/, "senza voci solo «Aggiungi una voce»");
 
   const figures = renderToStaticMarkup(createElement(RowFigures, { item: detail.useCase }));
-  assert.match(figures, /Basso · 4\.043 €\/anno/);
+  assert.match(figures.replace(/<[^>]+>/g, ""), /Basso · 4\.043 €\/anno/);
+  // Nella riga stretta il Valore va a capo solo dopo «·»: ogni parte resta intera.
+  assert.match(figures, /<span class="whitespace-nowrap">Basso ·<\/span> <span class="whitespace-nowrap">4\.043 €\/anno<\/span>/);
   assert.match(figures, /avvio 560 € · ricorrenti 600 €\/anno/);
   assert.match(figures, /data-cost-source="stima"/);
   assert.doesNotMatch(figures, /data-source="stima"/, "nella riga la cifra del modello va senza fonte");

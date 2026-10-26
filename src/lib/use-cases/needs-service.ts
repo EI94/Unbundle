@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { useCaseNeeds, useCases } from "@/lib/db/schema";
 import {
@@ -12,6 +12,7 @@ import {
   type NeedInput,
   type NeedPatch,
 } from "./needs";
+import { NEED_HISTORY_FIELD, needHistoryCode, needStateCode, type NeedHistoryChange } from "./needs-history";
 import { fail, guarded, invalid, personaWriter, type Failure, type WriteContext } from "./service";
 import type { ServiceResult } from "./types";
 
@@ -33,7 +34,12 @@ import type { ServiceResult } from "./types";
  *   sullo stesso `workspace_id`.
  * - Un errore del database diventa `riprova` (`guarded`); la chiave di importazione già usata
  *   torna come errore del campo `importKey`.
- * - Niente Storia: la Storia è degli use case, e il suo elenco chiuso di campi non ha le esigenze.
+ * - **Storia** (drizzle/0023): ogni cambio scrive, nello stesso statement, una riga nella Storia di
+ *   ogni use case che tocca: aggiungere e modificare su tutti gli use case collegati, archiviare
+ *   pure, collegare e scollegare solo sullo use case collegato o scollegato. Una scrittura che non
+ *   cambia niente (stessi valori, legame già così) non scrive righe. La riga non ha testi: azione
+ *   `modificato`, campo `cosa_serve`, la persona del team e il canale, e i codici di tipo e stato
+ *   dell'esigenza (`needs-history.ts`). La leggono solo i revisori, come le esigenze.
  */
 
 export interface NeedWritten {
@@ -45,6 +51,28 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (value: unknown): value is string => typeof value === "string" && UUID.test(value);
 
 const IMPORT_KEY_CONSTRAINT = "use_case_needs_import_key_unique";
+
+// ─── Storia (drizzle/0023) ───────────────────────────────────────────
+
+/** `INSERT INTO use_case_events (…)`: le colonne nell'ordine di `needEventSelect`. */
+const EVENT_INSERT = sql.raw(
+  "INSERT INTO use_case_events (workspace_id, use_case_id, actor_user_id, actor_kind, channel, action, fields, phase_before, phase_after)",
+);
+
+/**
+ * La lista del SELECT di una riga «Cosa serve» per lo use case `useCaseId`: workspace e use case,
+ * la persona che scrive (`personaWriter`), il canale, azione `modificato`, campo `cosa_serve`,
+ * poi i codici dell'esigenza (`needs-history.ts`): `phaseBefore` e `phaseAfter`.
+ */
+function needEventSelect(ctx: WriteContext, userId: string, useCaseId: SQL, phaseBefore: SQL | string | null, phaseAfter: SQL | string): SQL {
+  return sql`${ctx.workspaceId}::uuid, ${useCaseId}, ${userId}::uuid, 'persona', ${ctx.channel}, 'modificato',
+      ${sql.param([NEED_HISTORY_FIELD])}::text[], ${phaseBefore}, ${phaseAfter}`;
+}
+
+/** `needHistoryCode` in SQL, con tipo e stato letti dalla riga che si scrive (archiviare, collegare, scollegare). */
+function historyCodeOf(change: NeedHistoryChange, type: SQL, status: SQL): SQL {
+  return sql`${change} || '.' || ${type} || '.' || ${status}`;
+}
 
 /** La chiave di importazione è già di un'altra esigenza del workspace (SQLSTATE 23505 sul suo vincolo). */
 function importKeyTaken(error: unknown): boolean {
@@ -111,12 +139,17 @@ export const createNeed = guarded("create_need", async function createNeed(
 
   const values = { ...insertValues(ctx.workspaceId, parsed.value), ...(opts.id ? { id: opts.id.toLowerCase() } : {}) };
   const insert = db.insert(useCaseNeeds).values(values).returning({ id: useCaseNeeds.id, version: useCaseNeeds.version });
+  // I legami e, per ogni use case collegato, la riga «aggiunto» della sua Storia.
   const links = linked.ids.length
     ? sql`, lnk AS (
         INSERT INTO use_case_need_links (need_id, use_case_id)
         SELECT ins.id, u.id FROM ins JOIN use_cases u ON u.workspace_id = ${ctx.workspaceId}::uuid AND u.id = ANY(${sql.param(linked.ids)}::uuid[])
         ON CONFLICT DO NOTHING
-        RETURNING need_id
+        RETURNING need_id, use_case_id
+      ), ev AS (
+        ${EVENT_INSERT}
+        SELECT ${needEventSelect(ctx, writer.userId, sql`lnk.use_case_id`, null, needHistoryCode("aggiunta", parsed.value.type, parsed.value.status))}
+        FROM lnk
       )`
     : sql``;
   try {
@@ -187,26 +220,36 @@ export const updateNeed = guarded("update_need", async function updateNeed(
   const status = changes.status ?? current.status;
   const done = isNeedDone(type, status);
   const wasDone = isNeedDone(current.type, current.status);
+  const update = db
+    .update(useCaseNeeds)
+    .set({
+      ...changes,
+      ...(done === wasDone ? {} : { doneAt: done ? sql`now()` : null }),
+      version: sql`${useCaseNeeds.version} + 1`,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(useCaseNeeds.id, needId),
+        eq(useCaseNeeds.workspaceId, ctx.workspaceId),
+        eq(useCaseNeeds.version, expectedVersion),
+        isNull(useCaseNeeds.archivedAt),
+      ),
+    )
+    .returning({ id: useCaseNeeds.id, version: useCaseNeeds.version });
+  // Una riga «modificato» nella Storia di ogni use case collegato; lo stato di prima solo se cambia.
+  // La versione attesa è quella letta: tipo e stato di prima sono quelli di `current`.
+  const before = type !== current.type || status !== current.status ? needStateCode(current.type, current.status) : null;
+  const events = sql`${EVENT_INSERT}
+    SELECT ${needEventSelect(ctx, writer.userId, sql`u.id`, before, needHistoryCode("modificata", type, status))}
+      FROM upd
+      JOIN use_case_need_links l ON l.need_id = upd.id
+      JOIN use_cases u ON u.id = l.use_case_id AND u.workspace_id = ${ctx.workspaceId}::uuid`;
   try {
-    const [row] = await db
-      .update(useCaseNeeds)
-      .set({
-        ...changes,
-        ...(done === wasDone ? {} : { doneAt: done ? sql`now()` : null }),
-        version: sql`${useCaseNeeds.version} + 1`,
-        updatedAt: sql`now()`,
-      })
-      .where(
-        and(
-          eq(useCaseNeeds.id, needId),
-          eq(useCaseNeeds.workspaceId, ctx.workspaceId),
-          eq(useCaseNeeds.version, expectedVersion),
-          isNull(useCaseNeeds.archivedAt),
-        ),
-      )
-      .returning({ id: useCaseNeeds.id, version: useCaseNeeds.version });
-    if (!row) return whyNotWritten(ctx.workspaceId, needId);
-    return { ok: true, value: row };
+    const { rows } = await db.execute(sql`WITH upd AS (${update.getSQL()}), ev AS (${events}) SELECT id, version FROM upd`);
+    const row = rows[0] as { id?: string; version?: number } | undefined;
+    if (!row?.id) return whyNotWritten(ctx.workspaceId, needId);
+    return { ok: true, value: { id: row.id, version: Number(row.version) } };
   } catch (error) {
     if (importKeyTaken(error)) return invalid({ importKey: NEED_ERRORS.importKeyTaken });
     throw error;
@@ -226,7 +269,7 @@ export const archiveNeed = guarded("archive_need", async function archiveNeed(
   if (!Number.isSafeInteger(expectedVersion)) return invalid({ expectedVersion: "Versione non valida." });
   const parsed = validateArchiveReason(reason);
   if (!parsed.ok) return invalid(parsed.fieldErrors);
-  const [row] = await db
+  const update = db
     .update(useCaseNeeds)
     .set({ archivedAt: sql`now()`, archiveReason: parsed.value, version: sql`${useCaseNeeds.version} + 1`, updatedAt: sql`now()` })
     .where(
@@ -237,8 +280,16 @@ export const archiveNeed = guarded("archive_need", async function archiveNeed(
         isNull(useCaseNeeds.archivedAt),
       ),
     )
-    .returning({ id: useCaseNeeds.id, version: useCaseNeeds.version });
-  return row ? { ok: true, value: row } : whyNotWritten(ctx.workspaceId, needId);
+    .returning({ id: useCaseNeeds.id, version: useCaseNeeds.version, type: useCaseNeeds.type, status: useCaseNeeds.status });
+  // Una riga «archiviato» nella Storia di ogni use case collegato (i legami restano). Il motivo no.
+  const events = sql`${EVENT_INSERT}
+    SELECT ${needEventSelect(ctx, writer.userId, sql`u.id`, null, historyCodeOf("archiviata", sql`upd.type`, sql`upd.status`))}
+      FROM upd
+      JOIN use_case_need_links l ON l.need_id = upd.id
+      JOIN use_cases u ON u.id = l.use_case_id AND u.workspace_id = ${ctx.workspaceId}::uuid`;
+  const { rows } = await db.execute(sql`WITH upd AS (${update.getSQL()}), ev AS (${events}) SELECT id, version FROM upd`);
+  const row = rows[0] as { id?: string; version?: number } | undefined;
+  return row?.id ? { ok: true, value: { id: row.id, version: Number(row.version) } } : whyNotWritten(ctx.workspaceId, needId);
 });
 
 /** Dopo un legame che non ha toccato righe: l'esigenza o lo use case mancano, oppure era già così. */
@@ -264,13 +315,21 @@ export const linkNeed = guarded("link_need", async function linkNeed(
   const writer = await personaWriter(ctx, "canEditNeeds");
   if (!writer.ok) return writer;
   if (!isUuid(needId) || !isUuid(useCaseId)) return fail("non_trovato");
-  const { rows } = await db.execute(sql`INSERT INTO use_case_need_links (need_id, use_case_id)
-    SELECT n.id, u.id
-      FROM use_case_needs n
-      JOIN use_cases u ON u.workspace_id = n.workspace_id
-     WHERE n.id = ${needId}::uuid AND n.workspace_id = ${ctx.workspaceId}::uuid AND n.archived_at IS NULL AND u.id = ${useCaseId}::uuid
-    ON CONFLICT DO NOTHING
-    RETURNING (SELECT version FROM use_case_needs WHERE id = ${needId}::uuid) AS version`);
+  // Il legame nuovo e la riga «collegato» nella Storia dello use case collegato; già collegata: nessuna riga.
+  const { rows } = await db.execute(sql`WITH lnk AS (
+      INSERT INTO use_case_need_links (need_id, use_case_id)
+      SELECT n.id, u.id
+        FROM use_case_needs n
+        JOIN use_cases u ON u.workspace_id = n.workspace_id
+       WHERE n.id = ${needId}::uuid AND n.workspace_id = ${ctx.workspaceId}::uuid AND n.archived_at IS NULL AND u.id = ${useCaseId}::uuid
+      ON CONFLICT DO NOTHING
+      RETURNING need_id, use_case_id
+    ), ev AS (
+      ${EVENT_INSERT}
+      SELECT ${needEventSelect(ctx, writer.userId, sql`lnk.use_case_id`, null, historyCodeOf("collegata", sql`n.type`, sql`n.status`))}
+        FROM lnk JOIN use_case_needs n ON n.id = lnk.need_id
+    )
+    SELECT n.version FROM lnk JOIN use_case_needs n ON n.id = lnk.need_id`);
   const row = rows[0] as { version?: number } | undefined;
   if (row) return { ok: true, value: { id: needId.toLowerCase(), version: Number(row.version) } };
   return linkOutcome(ctx.workspaceId, needId, useCaseId);
@@ -285,11 +344,19 @@ export const unlinkNeed = guarded("unlink_need", async function unlinkNeed(
   const writer = await personaWriter(ctx, "canEditNeeds");
   if (!writer.ok) return writer;
   if (!isUuid(needId) || !isUuid(useCaseId)) return fail("non_trovato");
-  const { rows } = await db.execute(sql`DELETE FROM use_case_need_links l
-     USING use_case_needs n
-     WHERE l.need_id = n.id AND n.id = ${needId}::uuid AND n.workspace_id = ${ctx.workspaceId}::uuid AND n.archived_at IS NULL
-       AND l.use_case_id = ${useCaseId}::uuid
-    RETURNING n.version`);
+  // Via il legame, e la riga «scollegato» nella Storia dello use case scollegato; già scollegata: nessuna riga.
+  const { rows } = await db.execute(sql`WITH del AS (
+      DELETE FROM use_case_need_links l
+       USING use_case_needs n
+       WHERE l.need_id = n.id AND n.id = ${needId}::uuid AND n.workspace_id = ${ctx.workspaceId}::uuid AND n.archived_at IS NULL
+         AND l.use_case_id = ${useCaseId}::uuid
+      RETURNING l.use_case_id, n.version, n.type, n.status
+    ), ev AS (
+      ${EVENT_INSERT}
+      SELECT ${needEventSelect(ctx, writer.userId, sql`u.id`, null, historyCodeOf("scollegata", sql`del.type`, sql`del.status`))}
+        FROM del JOIN use_cases u ON u.id = del.use_case_id AND u.workspace_id = ${ctx.workspaceId}::uuid
+    )
+    SELECT version FROM del`);
   const row = rows[0] as { version?: number } | undefined;
   if (row) return { ok: true, value: { id: needId.toLowerCase(), version: Number(row.version) } };
   return linkOutcome(ctx.workspaceId, needId, useCaseId);

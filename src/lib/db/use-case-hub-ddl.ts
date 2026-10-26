@@ -84,7 +84,14 @@ export const USE_CASE_EVENT_FIELDS = [
   "possibile_doppione",
   "intake",
 ] as const;
-export type UseCaseEventField = (typeof USE_CASE_EVENT_FIELDS)[number];
+
+/**
+ * «Cosa serve» (le esigenze della 0022) nella Storia degli use case collegati: l'unico nome che
+ * la 0023 aggiunge all'elenco qui sopra, che resta quello della 0020 (il DDL della 0020 si compone
+ * da lì e non cambia). L'elenco dopo la 0023 è in `use-case-hub-history-ddl.ts`.
+ */
+export const USE_CASE_NEEDS_EVENT_FIELD = "cosa_serve" as const;
+export type UseCaseEventField = (typeof USE_CASE_EVENT_FIELDS)[number] | typeof USE_CASE_NEEDS_EVENT_FIELD;
 
 /**
  * Canale della riga `creato` per ogni valore di `use_cases.source` (§10.3). `NULL` vale

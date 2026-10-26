@@ -531,3 +531,45 @@ test("action: scrive solo un revisore, rilegge la pagina; versione vecchia e mot
   const back = await actions.unlinkNeedAction(ids.ws, cards.progress.id, needIds.kickoff, cards.progress.id);
   assert.ok(back.ok);
 });
+
+// ─── Storia (drizzle/0023) ───────────────────────────────────────────
+
+/** Le righe della Storia della scheda, senza la data: «Persona ls · Cosa serve: … · pagina». */
+function historyRows(page: string): string[] {
+  const section = between(page, 'data-slot="section-history"', "</section>");
+  return [...section.matchAll(/<li data-action="([a-z_]+)"[^>]*>([^<]*)<\/li>/g)].map((match) => match[2].split(" · ").slice(1).join(" · "));
+}
+
+test("Storia: i cambi di «Cosa serve» nelle righe della scheda per i revisori, senza testi; mai per chi non è revisore", opts, async () => {
+  // La scheda dove l'action della prova sopra ha aggiunto, cambiato, archiviato, collegato e scollegato.
+  for (const person of REVIEWERS) {
+    const rows = historyRows(await detailHtml(person, cards.progress.id));
+    assert.deepEqual(
+      rows.filter((text) => text.includes("Cosa serve")),
+      [
+        "Persona ls · Cosa serve: scollegato un prossimo passo · pagina",
+        "Persona ls · Cosa serve: collegato un prossimo passo · pagina",
+        "Persona builder · Cosa serve: archiviato un prossimo passo · pagina",
+        "Persona builder · Cosa serve: stato di un prossimo passo, «Proposto» → «Fatto» · pagina",
+        "Persona builder · Cosa serve: aggiunto un prossimo passo · pagina",
+      ],
+      person,
+    );
+    assert.equal(rows.at(-1), "Creato · dal modulo web", "la creazione resta la prima riga");
+  }
+  const quarter = historyRows(await detailHtml("manager", cards.quarter.id));
+  assert.equal(quarter.filter((text) => text === "Persona ls · Cosa serve: aggiunto un requisito · pagina").length, 6, "una per esigenza collegata");
+  assert.ok(quarter.includes("Persona ls · Cosa serve: archiviato un requisito · pagina"));
+  const page = await detailHtml("builder", cards.quarter.id);
+  const history = between(page, 'data-slot="section-history"', "</section>");
+  for (const text of [T.access, T.archived, "Non serve più", "Ufficio IT"]) assert.ok(!history.includes(text), `nessun testo dell'esigenza: ${text}`);
+
+  // La proposta del contributore riceve una riga «Cosa serve»: lui non vede né la Storia né la riga.
+  ok(await svc.linkNeed(as("ls"), needIds.decide, cards.own.id));
+  assert.ok(historyRows(await detailHtml("builder", cards.own.id)).includes("Persona ls · Cosa serve: collegato un requisito · pagina"));
+  const own = await detailHtml("contributor", cards.own.id);
+  assert.ok(!own.includes('data-slot="section-history"'), "il contributore non ha la Storia");
+  assert.ok(!own.includes("Cosa serve") && !own.includes("collegato un requisito") && !own.includes(T.decide));
+  const [stored] = await q(`SELECT count(*)::int AS n FROM use_case_events WHERE use_case_id = $1::uuid AND 'cosa_serve' = ANY(fields)`, [cards.own.id]);
+  assert.equal(stored.n, 1, "la riga c'è, e resta ai revisori");
+});

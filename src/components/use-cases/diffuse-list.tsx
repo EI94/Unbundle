@@ -55,18 +55,21 @@ export function DiffuseList({ workspaceId, items, canDecide }: DiffuseListProps)
     <>
       <ul data-slot="diffuse-list" className="divide-y divide-border/70">
         {items.map((item) => (
+          // Le colonne quando il riquadro della pagina (`@container/hub` di hub.tsx) è largo almeno
+          // 56rem: da sole chiedono circa 46rem più il titolo. Sulla finestra (`lg`) a 1024 px, accanto
+          // alla barra laterale, «Segna come diffusa» usciva dalla pagina.
           <li
             key={item.id}
             data-id={item.id}
-            className="flex flex-col gap-2 px-3 py-2.5 lg:grid lg:grid-cols-[4.5rem_minmax(0,1fr)_8.75rem_9rem_11rem_auto] lg:items-center lg:gap-3"
+            className="flex flex-col gap-2 px-3 py-2.5 @4xl/hub:grid @4xl/hub:grid-cols-[4.5rem_minmax(0,1fr)_8.75rem_9rem_11rem_auto] @4xl/hub:items-center @4xl/hub:gap-3"
           >
-            <span className="flex min-w-0 items-baseline gap-3 lg:contents">
-              <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums empty:hidden lg:empty:block">{item.code ?? ""}</span>
+            <span className="flex min-w-0 items-baseline gap-3 @4xl/hub:contents">
+              <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums empty:hidden @4xl/hub:empty:block">{item.code ?? ""}</span>
               <Link href={item.href} scroll={false} title={item.title} className="min-w-0 truncate text-sm font-semibold text-foreground outline-none hover:underline focus-visible:underline">
                 {item.title}
               </Link>
             </span>
-            <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 lg:contents">
+            <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @4xl/hub:contents">
               <span className="min-w-0">
                 <OriginChip origin={item.origin} />
               </span>
@@ -74,7 +77,7 @@ export function DiffuseList({ workspaceId, items, canDecide }: DiffuseListProps)
               <span className="text-sm text-muted-foreground">{item.claudeHoursPerYear !== null ? hoursLabel(item.claudeHoursPerYear) : ""}</span>
             </span>
             {canDecide ? (
-              <span className="lg:justify-self-end">
+              <span className="@4xl/hub:justify-self-end">
                 <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" onClick={() => setConfirm(item)}>
                   {DECISION_LABEL.segna_diffusa}
                 </Button>

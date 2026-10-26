@@ -9,8 +9,9 @@
 // and the list of «Priorità» (without ?mostra= the matrix from 768 px, the list below), «Da
 // diffondere», the side panel (reviewers on a card with a cost, osservatore on an own proposal with
 // code and public note and on someone else's without them), the quick panel of Lateral Space and
-// filters without results. The driver checks every page: no horizontal scroll, at most one filled
-// button outside dialogs, every cost with its source, no figure and no «€» for the contributor.
+// filters without results. The driver checks every page: no horizontal scroll (also at the tablet
+// widths 768, 900 and 1024), at most one filled button outside dialogs, every cost with its source,
+// no figure and no «€» for the contributor.
 //
 // Empty states of a workspace with no use case: set HUB_EMPTY_WORKSPACE_ID to an extra workspace
 // that is in USE_CASE_HUB_WORKSPACES, has no use case and gives the four accounts their roles of «a».
@@ -68,6 +69,9 @@ const routes = [
   // H7: the rows without Value or Cost in one chip «N da stimare», as in the matrix.
   { name: "priorita-lista", path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=lista", as: REVIEWERS, present: ["Quando", "{code:r06}", "Scegli…", "Scaduto", "da stimare"], absent: ["Approva…", "{code:r04}"] },
   { name: "priorita-diffondere", path: "/dashboard/{ws:a}/use-cases?vista=priorita&tipo=diffondere", as: REVIEWERS, present: ["Segna come diffusa", "ore all'anno"] },
+  // «Benefici» (the bubbles, only with a «Benefici e costi» model in the view; otherwise the page
+  // falls back to the matrix) and «Cosa serve» at the foot of «Priorità», always, for reviewers.
+  { name: "priorita-benefici", path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=benefici", as: REVIEWERS, present: ["Cosa serve"] },
   // «Priorità» is not for contributors: the page falls back to the Roadmap.
   { name: "priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Matrice"] },
   { name: "roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: REVIEWERS, present: ["Valore atteso all'anno", "Costo impegnato", "use case", "Scaduti", "In realizzazione", "Fatti"] },
@@ -145,7 +149,7 @@ if (emptyWorkspace) {
   // The roles of «a» (the route's workspace for the role checks); the copy guard as on every area page.
   routes.push(
     { name: "vuoto", path: base, workspace: "a", copyGuard: "area", as: [...REVIEWERS], present: ["Nessuno use case, per ora", "Aggiungine uno o proponili da Activity mapping."] },
-    { name: "vuoto", path: base, workspace: "a", copyGuard: "area", as: CONTRIBUTOR, present: ["Nessuno use case, per ora", "Proponi la prima idea."] },
+    { name: "vuoto", path: base, workspace: "a", copyGuard: "area", as: CONTRIBUTOR, present: ["Nessuno use case, per ora", "Proponi il primo use case."] },
   );
 }
 

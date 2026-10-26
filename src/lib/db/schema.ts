@@ -803,7 +803,12 @@ export const useCaseEvents = pgTable(
     action: varchar("action", { length: 30 }).$type<UseCaseEventAction>().notNull(),
     /** Nomi dei campi toccati, mai i testi (CHECK sull'elenco chiuso). */
     fields: text("fields").array().$type<UseCaseEventField[]>().notNull().default([]),
-    /** Codici di fase, es. `da_valutare.nuova`, `approvato.trimestre`. */
+    /**
+     * Codici chiusi, mai testi. Codici di fase della scheda (`da_valutare.nuova`,
+     * `approvato.trimestre`); nelle righe di «Cosa serve» (`fields` = `cosa_serve`, drizzle/0023)
+     * codici dell'esigenza: `<tipo>.<stato>` prima, `<cambio>.<tipo>.<stato>` dopo
+     * (src/lib/use-cases/needs-history.ts). Chi legge le fasi filtra su `action`.
+     */
     phaseBefore: varchar("phase_before", { length: 40 }),
     phaseAfter: varchar("phase_after", { length: 40 }),
   },

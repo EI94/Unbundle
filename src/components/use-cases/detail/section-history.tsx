@@ -4,6 +4,7 @@ import type { UseCaseEventList, UseCaseEventRow } from "@/lib/db/queries/use-cas
 import { ANSWER_TEXT } from "@/lib/use-cases/answers";
 import { formatDate, formatDayInYear } from "@/lib/use-cases/format";
 import { WHAT_FIELD_LABEL, type WhatField } from "@/lib/use-cases/labels";
+import { NEED_HISTORY_TEXT, isNeedHistoryEvent, needHistoryText } from "@/lib/use-cases/needs-history";
 import { PHASE_LABEL } from "@/lib/use-cases/phase";
 import type { Phase, UseCaseKind } from "@/lib/use-cases/types";
 import { cn } from "@/lib/utils";
@@ -38,7 +39,7 @@ const WHAT_EVENT_FIELD: Readonly<Record<string, WhatField>> = {
   ai_lab: "aiLab",
 };
 
-/** Gli altri campi della Storia (l'elenco chiuso del CHECK della 0020, §10.3). */
+/** Gli altri campi della Storia (l'elenco chiuso del CHECK della 0020, §10.3, e `cosa_serve` della 0023). */
 const OTHER_EVENT_FIELD: Readonly<Record<string, string>> = {
   origine: "Origine",
   tipo: "Tipo",
@@ -51,6 +52,7 @@ const OTHER_EVENT_FIELD: Readonly<Record<string, string>> = {
   visibilita: "Visibilità",
   possibile_doppione: "Possibile doppione di",
   intake: "Dati raccolti da Claude",
+  cosa_serve: NEED_HISTORY_TEXT.label,
 };
 
 /** Il canale di una riga, dopo l'azione: «pagina», «MCP del team». */
@@ -131,7 +133,10 @@ export function decisionText(phaseBefore: string | null, phaseAfter: string | nu
   }
 }
 
-/** L'azione di una riga, senza testi: «Decisione: Approvato», «Valutazione modificata: Valore all'anno, Costo». */
+/**
+ * L'azione di una riga, senza testi: «Decisione: Approvato», «Valutazione modificata: Valore all'anno,
+ * Costo», «Cosa serve: aggiunto un requisito» (le esigenze, drizzle/0023; `needs-history.ts`).
+ */
 export function eventActionText(
   event: Pick<UseCaseEventRow, "action" | "fields" | "phaseBefore" | "phaseAfter"> & Partial<Pick<UseCaseEventRow, "actorKind">>,
   kind: UseCaseKind,
@@ -142,6 +147,8 @@ export function eventActionText(
     case "creato":
       return HISTORY_TEXT.created;
     case "modificato":
+      // «Cosa serve»: il cambio e il tipo dell'esigenza, con lo stato se cambia; mai i suoi testi.
+      if (isNeedHistoryEvent(event)) return needHistoryText(event);
       // La risposta a «Serve info» (D17): di chi ha proposto, senza testo e senza persona.
       if (event.actorKind === "proponente") return ANSWER_TEXT.history;
       return withFields(HISTORY_TEXT.edited);
