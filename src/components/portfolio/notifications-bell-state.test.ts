@@ -264,3 +264,21 @@ test("una scrittura che rifiuta (rete) vale «riprova», con il testo della camp
   assert.ok(log.includes(`toast:${BELL_TEXT.errors.readOne}`));
   assert.equal(log.at(-1), `push:${e.href}`);
 });
+
+test("navigazione: anche una query diversa (vista, pannello dell'area «Use case») rilegge la campanella, una volta", async () => {
+  const { bellNavigationKey, navigationChanged } = await import("./notifications-bell-state.ts");
+  const ws = "/dashboard/ffa20e13-190b-43fb-9b8f-0035a08edd49/use-cases";
+  assert.equal(bellNavigationKey(ws, ""), ws);
+  assert.equal(bellNavigationKey(ws, "?vista=priorita"), `${ws}?vista=priorita`);
+  assert.equal(bellNavigationKey(ws, "vista=priorita&apri=TJ-0010"), `${ws}?vista=priorita&apri=TJ-0010`);
+  assert.equal(bellNavigationKey(null, null), "");
+  // La sequenza di una sessione nell'hub: la prima chiave è la pagina già letta dal server.
+  const keys = [ws, `${ws}?vista=priorita`, `${ws}?vista=priorita`, `${ws}?vista=priorita&apri=TJ-0010`, `${ws}/abc`];
+  let last: string | null = null;
+  const fetches: string[] = [];
+  for (const key of keys) {
+    if (navigationChanged(last, key)) fetches.push(key);
+    last = key;
+  }
+  assert.deepEqual(fetches, [`${ws}?vista=priorita`, `${ws}?vista=priorita&apri=TJ-0010`, `${ws}/abc`], "una rilettura per ogni cambio, nessuna per la prima chiave o per una chiave uguale");
+});

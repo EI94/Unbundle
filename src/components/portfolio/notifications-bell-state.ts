@@ -235,3 +235,18 @@ export async function runRowClick(entry: BellEntry, click: { plain: boolean }, d
   }
   if (entry.href) deps.push(entry.href);
 }
+
+/**
+ * La chiave di una navigazione: percorso e query (senza «?» iniziale). Nell'area «Use case» una vista,
+ * un filtro o il pannello di una scheda cambiano solo la query: anche quella è una navigazione.
+ */
+export function bellNavigationKey(pathname: string | null, search: string | null): string {
+  const path = pathname ?? "";
+  const query = (search ?? "").replace(/^\?/, "");
+  return query ? `${path}?${query}` : path;
+}
+
+/** Dopo la prima chiave (l'apertura della pagina, già letta dal server), ogni chiave diversa è una navigazione. */
+export function navigationChanged(previous: string | null, next: string): boolean {
+  return previous !== null && previous !== next;
+}

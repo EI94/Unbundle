@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState, type MouseEvent } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useReducer, useRef, useState, type MouseEvent } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Menu } from "@base-ui/react/menu";
 import { Bell, Check } from "lucide-react";
 import { toast } from "sonner";
@@ -18,7 +18,16 @@ import {
   type BellWriteResult,
 } from "@/lib/notifications/bell";
 import { cn } from "@/lib/utils";
-import { bellMenuModel, bellReducer, initialBellState, runRowClick, visibleEntries, visibleNewCount } from "./notifications-bell-state";
+import {
+  bellMenuModel,
+  bellNavigationKey,
+  bellReducer,
+  initialBellState,
+  navigationChanged,
+  runRowClick,
+  visibleEntries,
+  visibleNewCount,
+} from "./notifications-bell-state";
 
 export interface NotificationsBellProps {
   workspaceId: string;
@@ -70,6 +79,21 @@ function isPlainClick(event: MouseEvent): boolean {
 }
 
 /**
+ * Percorso e query della pagina: l'area «Use case» tiene viste, filtri e pannello nella query
+ * (?vista=, ?apri=), e la barra in alto non si ridisegna. A parte, dentro un `Suspense`, perché
+ * `useSearchParams` non sospenda la campanella.
+ */
+function NavigationWatch({ onNavigate }: { onNavigate: (key: string) => void }) {
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const key = bellNavigationKey(pathname, search?.toString() ?? "");
+  useEffect(() => {
+    onNavigate(key);
+  }, [key, onNavigate]);
+  return null;
+}
+
+/**
  * La campanella della barra in alto, per persona (SPEC §P2.5, R10): il numero rosso conta le righe
  * nuove dall'ultima apertura e si azzera aprendola; ogni riga resta evidenziata finché la persona non
  * la apre; aprire una riga la segna letta prima di navigare; «Segna tutte come lette» vale per tutte
@@ -78,13 +102,12 @@ function isPlainClick(event: MouseEvent): boolean {
  */
 export function NotificationsBell({ workspaceId, initial }: NotificationsBellProps) {
   const router = useRouter();
-  const pathname = usePathname();
   const [state, dispatch] = useReducer(bellReducer, initial, initialBellState);
   const [emailOverride, setEmailOverride] = useState<boolean | null>(null);
   const stateRef = useRef(state);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastVisibleFetch = useRef(0);
-  const firstPath = useRef(true);
+  const lastNavigation = useRef<string | null>(null);
 
   useEffect(() => {
     stateRef.current = state;
@@ -116,15 +139,17 @@ export function NotificationsBell({ workspaceId, initial }: NotificationsBellPro
     dispatch({ type: "payload", payload: initial });
   }, [initial]);
 
-  // Navigazione: il menu si chiude e la campanella si rilegge.
-  useEffect(() => {
-    if (firstPath.current) {
-      firstPath.current = false;
-      return;
-    }
-    dispatch({ type: "close" });
-    refetch();
-  }, [pathname, refetch]);
+  // Navigazione (percorso o query): il menu si chiude e la campanella si rilegge.
+  const onNavigate = useCallback(
+    (key: string) => {
+      const changed = navigationChanged(lastNavigation.current, key);
+      lastNavigation.current = key;
+      if (!changed) return;
+      dispatch({ type: "close" });
+      refetch();
+    },
+    [refetch],
+  );
 
   // Ritorno sulla scheda del browser: al massimo una rilettura al minuto.
   useEffect(() => {
@@ -205,98 +230,103 @@ export function NotificationsBell({ workspaceId, initial }: NotificationsBellPro
   const emailChecked = emailOverride ?? model.emailChecked;
 
   return (
-    <DropdownMenu open={state.open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger
-        data-slot="notifications-bell"
-        className="relative inline-flex size-11 items-center justify-center rounded-md border outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-9"
-        aria-label={bellAriaLabel(count)}
-      >
-        <Bell aria-hidden className="size-4" />
-        {badge ? (
-          <span
-            aria-hidden
-            data-slot="notifications-badge"
-            className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white"
-          >
-            {badge}
-          </span>
-        ) : null}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-2rem))] max-h-[70vh] overflow-auto p-2">
-        <div className="sticky -top-2 z-10 -mx-2 -mt-2 flex min-h-11 items-center justify-between gap-2 border-b bg-popover px-4 py-1.5 sm:min-h-9">
-          <span className="text-xs font-medium text-muted-foreground">{BELL_TEXT.title}</span>
-          {model.showReadAll ? (
-            <Menu.Item
-              closeOnClick={false}
-              onClick={() => void onReadAll()}
-              className="inline-flex min-h-11 cursor-default items-center rounded-md px-2 text-xs font-medium text-primary outline-hidden select-none data-highlighted:bg-accent sm:min-h-7"
+    <>
+      <Suspense fallback={null}>
+        <NavigationWatch onNavigate={onNavigate} />
+      </Suspense>
+      <DropdownMenu open={state.open} onOpenChange={onOpenChange}>
+        <DropdownMenuTrigger
+          data-slot="notifications-bell"
+          className="relative inline-flex size-11 items-center justify-center rounded-md border outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-9"
+          aria-label={bellAriaLabel(count)}
+        >
+          <Bell aria-hidden className="size-4" />
+          {badge ? (
+            <span
+              aria-hidden
+              data-slot="notifications-badge"
+              className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white"
             >
-              {BELL_TEXT.readAll}
-            </Menu.Item>
+              {badge}
+            </span>
           ) : null}
-        </div>
-        {model.refreshText ? (
-          <p role="status" className="px-2 pt-2 text-xs text-muted-foreground">
-            {model.refreshText}
-          </p>
-        ) : null}
-        {model.emptyText ? (
-          <p className="p-3 text-sm text-muted-foreground">{model.emptyText}</p>
-        ) : (
-          <div className="mt-1 space-y-1">
-            {model.rows.map((row) => {
-              const content = (
-                <>
-                  {row.context ? <span className="truncate text-xs text-muted-foreground">{row.context}</span> : null}
-                  <span className="line-clamp-2 text-sm font-medium">{row.title}</span>
-                  {row.description ? <span className="line-clamp-2 text-xs text-muted-foreground">{row.description}</span> : null}
-                  <span className="text-[10px] text-muted-foreground">
-                    {row.when}
-                    {row.unread ? <span className="sr-only">{` · ${BELL_TEXT.unreadSr}`}</span> : null}
-                  </span>
-                </>
-              );
-              const className = cn(ROW, row.unread && "bg-accent/50");
-              return row.href ? (
-                <Menu.LinkItem
-                  key={row.key}
-                  href={row.href}
-                  closeOnClick={false}
-                  data-unread={row.unread || undefined}
-                  className={className}
-                  onClick={(event) => onRow(event, row.key)}
-                  onAuxClick={(event) => {
-                    if (event.button === 1) onRow(event, row.key);
-                  }}
-                >
-                  {content}
-                </Menu.LinkItem>
-              ) : (
-                <Menu.Item key={row.key} closeOnClick={false} data-unread={row.unread || undefined} className={className} onClick={(event) => onRow(event, row.key)}>
-                  {content}
-                </Menu.Item>
-              );
-            })}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-2rem))] max-h-[70vh] overflow-auto p-2">
+          <div className="sticky -top-2 z-10 -mx-2 -mt-2 flex min-h-11 items-center justify-between gap-2 border-b bg-popover px-4 py-1.5 sm:min-h-9">
+            <span className="text-xs font-medium text-muted-foreground">{BELL_TEXT.title}</span>
+            {model.showReadAll ? (
+              <Menu.Item
+                closeOnClick={false}
+                onClick={() => void onReadAll()}
+                className="inline-flex min-h-11 cursor-default items-center rounded-md px-2 text-xs font-medium text-primary outline-hidden select-none data-highlighted:bg-accent sm:min-h-7"
+              >
+                {BELL_TEXT.readAll}
+              </Menu.Item>
+            ) : null}
           </div>
-        )}
-        {model.showEmailToggle ? (
-          <div className="sticky -bottom-2 -mx-2 -mb-2 mt-2 border-t bg-popover px-2 py-1.5">
-            <Menu.CheckboxItem
-              checked={emailChecked}
-              closeOnClick={false}
-              onCheckedChange={(checked) => void onEmailAlerts(checked)}
-              className="flex min-h-11 w-full cursor-default items-start gap-2 rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent sm:min-h-0"
-            >
-              <span aria-hidden className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border">
-                <Menu.CheckboxItemIndicator>
-                  <Check className="size-3" />
-                </Menu.CheckboxItemIndicator>
-              </span>
-              <span>{BELL_TEXT.emailAlerts}</span>
-            </Menu.CheckboxItem>
-          </div>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {model.refreshText ? (
+            <p role="status" className="px-2 pt-2 text-xs text-muted-foreground">
+              {model.refreshText}
+            </p>
+          ) : null}
+          {model.emptyText ? (
+            <p className="p-3 text-sm text-muted-foreground">{model.emptyText}</p>
+          ) : (
+            <div className="mt-1 space-y-1">
+              {model.rows.map((row) => {
+                const content = (
+                  <>
+                    {row.context ? <span className="truncate text-xs text-muted-foreground">{row.context}</span> : null}
+                    <span className="line-clamp-2 text-sm font-medium">{row.title}</span>
+                    {row.description ? <span className="line-clamp-2 text-xs text-muted-foreground">{row.description}</span> : null}
+                    <span className="text-[10px] text-muted-foreground">
+                      {row.when}
+                      {row.unread ? <span className="sr-only">{` · ${BELL_TEXT.unreadSr}`}</span> : null}
+                    </span>
+                  </>
+                );
+                const className = cn(ROW, row.unread && "bg-accent/50");
+                return row.href ? (
+                  <Menu.LinkItem
+                    key={row.key}
+                    href={row.href}
+                    closeOnClick={false}
+                    data-unread={row.unread || undefined}
+                    className={className}
+                    onClick={(event) => onRow(event, row.key)}
+                    onAuxClick={(event) => {
+                      if (event.button === 1) onRow(event, row.key);
+                    }}
+                  >
+                    {content}
+                  </Menu.LinkItem>
+                ) : (
+                  <Menu.Item key={row.key} closeOnClick={false} data-unread={row.unread || undefined} className={className} onClick={(event) => onRow(event, row.key)}>
+                    {content}
+                  </Menu.Item>
+                );
+              })}
+            </div>
+          )}
+          {model.showEmailToggle ? (
+            <div className="sticky -bottom-2 -mx-2 -mb-2 mt-2 border-t bg-popover px-2 py-1.5">
+              <Menu.CheckboxItem
+                checked={emailChecked}
+                closeOnClick={false}
+                onCheckedChange={(checked) => void onEmailAlerts(checked)}
+                className="flex min-h-11 w-full cursor-default items-start gap-2 rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent sm:min-h-0"
+              >
+                <span aria-hidden className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border">
+                  <Menu.CheckboxItemIndicator>
+                    <Check className="size-3" />
+                  </Menu.CheckboxItemIndicator>
+                </span>
+                <span>{BELL_TEXT.emailAlerts}</span>
+              </Menu.CheckboxItem>
+            </div>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   );
 }
