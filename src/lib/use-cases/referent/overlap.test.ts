@@ -36,8 +36,8 @@ test("persona: solo un ruolo da revisore conta; il link alla scheda vuole anche 
     assert.equal(p.teamAccess, false, `${role}: mai link alla dashboard`);
   }
   for (const role of ["exec_sponsor", "transformation_lead", "function_lead", "analyst"]) {
-    assert.deepEqual(referentPersonOf({ userId: USER.toUpperCase(), role, verifiedEmailMatch: true }), { userId: USER, reviewer: true, teamAccess: true }, role);
-    assert.deepEqual(referentPersonOf({ userId: USER, role, verifiedEmailMatch: false }), { userId: USER, reviewer: true, teamAccess: false }, `${role} senza email uguale`);
+    assert.deepEqual(referentPersonOf({ userId: USER.toUpperCase(), role, verifiedEmailMatch: true }), { userId: USER, reviewer: true, teamAccess: true, member: true, accountNotice: false }, role);
+    assert.deepEqual(referentPersonOf({ userId: USER, role, verifiedEmailMatch: false }), { userId: USER, reviewer: true, teamAccess: false, member: true, accountNotice: false }, `${role} senza email uguale`);
   }
 });
 

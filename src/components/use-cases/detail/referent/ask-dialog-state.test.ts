@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { REFERENT_LIMITS, type ReferentContactOption, type UseCaseReferentPanel } from "../../../../lib/use-cases/referent/contract.ts";
+import { REFERENT_LIMITS, type ReferentContactOption, type ReferentMemberOption, type UseCaseReferentPanel } from "../../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT } from "../../../../lib/use-cases/referent/labels.ts";
 import {
   ASK_MODE,
+  MEMBER_PREFIX,
   NEW_CONTACT,
   askAgainMode,
   askDraftErrors,
@@ -12,9 +13,11 @@ import {
   askPayload,
   askSelfHint,
   askSummary,
+  contactChoiceGroups,
   contactChoices,
   contactOptionLabel,
   initialAskDraft,
+  memberOptionLabel,
 } from "./ask-dialog-state.ts";
 
 // La finestra «Chiedi al referente» e «Chiedi di nuovo» (SPEC §5.2, §9.3, §P3.7), senza React.
@@ -154,4 +157,46 @@ test("errori del server: i campi nella finestra, gli altri nell'area degli error
     askErrorView({ ok: false, code: "messaggio_troppo_lungo", message: "m", fieldErrors: { message: REFERENT_ERROR_MESSAGES.messaggio_troppo_lungo } }, { choice: MARIO.id }),
     { formError: null, fieldErrors: { message: REFERENT_ERROR_MESSAGES.messaggio_troppo_lungo } },
   );
+});
+
+// ── Referente già iscritto (27/10): le persone del workspace con un account ──
+
+const SARA: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-000000000001", displayName: "Sara Conti", emailMasked: "s•••@topjet.it", team: false };
+const PAOLO: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-000000000002", displayName: "Paolo Galli", emailMasked: "p•••@topjet.it", team: true };
+const withMembers = { ...panel, members: [PAOLO, SARA] };
+
+test("persone del workspace: dopo i referenti, prima di «+ Nuovo referente»; nome ed email coperta, «Fa parte del team» per i revisori", () => {
+  assert.equal(memberOptionLabel(SARA), "Sara Conti · s•••@topjet.it");
+  assert.equal(memberOptionLabel(PAOLO), `Paolo Galli · p•••@topjet.it · ${T.teamTag}`);
+  assert.equal(memberOptionLabel({ ...SARA, emailMasked: null }), "Sara Conti");
+  const choices = contactChoices(withMembers);
+  assert.deepEqual(
+    choices.map((c) => c.group),
+    ["referenti", "referenti", "referenti", "referenti", "referenti", "persone", "persone", "nuovo"],
+  );
+  assert.deepEqual(choices.filter((c) => c.group === "persone").map((c) => [c.value, c.disabled]), [
+    [`${MEMBER_PREFIX}${PAOLO.userId}`, false],
+    [`${MEMBER_PREFIX}${SARA.userId}`, false],
+  ]);
+  // Nessun ruolo, nessun numero, niente dei corsi.
+  for (const choice of choices) assert.doesNotMatch(choice.label, /\d|corso|formazione|partecipant|learner|contributor|Contributore/i, choice.label);
+  const groups = contactChoiceGroups(choices);
+  assert.deepEqual(groups.map((g) => [g.label, g.choices.length]), [[T.contactsGroup, 5], [T.membersGroup, 2], [null, 1]]);
+  // Senza persone: un elenco solo, come prima.
+  assert.deepEqual(contactChoiceGroups(contactChoices(panel)).map((g) => g.label), [null]);
+  // «Chiedi di nuovo»: il referente non si cambia, le persone non ci sono.
+  const again = contactChoices(withMembers, { kind: "again", lockedContactId: MARIO.id, previousRequestId: "x", liveHint: false });
+  assert.equal(again.some((c) => c.group === "persone"), false);
+});
+
+test("persone del workspace: il contenuto dell'action è { kind: «membro», userId }; il server ricontrolla tutto", () => {
+  const draft = { ...initialAskDraft(withMembers), choice: `${MEMBER_PREFIX}${SARA.userId}` };
+  assert.deepEqual(askDraftErrors(draft, withMembers), {});
+  assert.deepEqual(askPayload(draft, withMembers), { contact: { kind: "membro", userId: SARA.userId }, needIds: [N1, N2, N3], message: null });
+  assert.deepEqual(askDraftErrors({ ...draft, choice: `${MEMBER_PREFIX}dddddddd-0000-4000-8000-000000000009` }, withMembers), { contact: REFERENT_ERROR_MESSAGES.referente_non_valido });
+  assert.match(askSummary(withMembers, { choice: draft.choice, email: "" }, "non-deve-servire@topjet.it") ?? "", /^Mandiamo un'email a s•••@topjet\.it /);
+  assert.equal(askOtherRequestsHint(withMembers, { choice: draft.choice }), null);
+  // Un errore sull'email di una persona scelta dall'elenco va nell'area degli errori (non c'è un campo «Email»).
+  const ls = REFERENT_ERROR_MESSAGES.referente_lateral_space;
+  assert.deepEqual(askErrorView({ ok: false, code: "referente_lateral_space", message: ls, fieldErrors: { email: ls } }, { choice: draft.choice }), { formError: ls, fieldErrors: {} });
 });

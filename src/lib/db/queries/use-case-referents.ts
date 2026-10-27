@@ -14,8 +14,10 @@ import {
   readContact,
   readEmailPerson,
   readLsMemberEmails,
+  readPersonContacts,
   readReferentPerson,
   readReferentPeople,
+  readWorkspaceMembers,
   referentBatch,
   referentStoreReady,
   referentWriter,
@@ -51,6 +53,7 @@ import {
   type NeedReferentView,
   type ReferentContactOption,
   type ReferentGate,
+  type ReferentMemberOption,
   type ReferentRequestView,
   type UseCaseReferentPanel,
 } from "@/lib/use-cases/referent/contract";
@@ -75,7 +78,17 @@ import {
   uuidOf,
   type ReferentActor,
 } from "@/lib/use-cases/referent/sql";
-import { NO_PERSON, isSelfRequest, requestReferentUserSql } from "@/lib/use-cases/referent/people";
+import {
+  NO_PERSON,
+  canSeeWorkspacePeople,
+  isSelfRequest,
+  linkNewContactUserSql,
+  memberDisplayName,
+  pickerMembersOf,
+  relinkCorrectedContactSql,
+  requestReferentUserSql,
+  type WorkspaceMemberFacts,
+} from "@/lib/use-cases/referent/people";
 import { reviewerStatus } from "@/lib/use-cases/referent/state";
 import { checkQuestionTitle, checkRequestMessage, checkReviewerAnswer } from "@/lib/use-cases/referent/text";
 import { formatFileSize } from "@/lib/use-cases/referent/upload-transport";
@@ -115,6 +128,12 @@ const ok = <V>(value: V): { ok: true; value: V } => ({ ok: true, value });
 
 function persona(userId: string): ReferentActor {
   return { kind: "persona", userId };
+}
+
+/** (Referente già iscritto) Una persona del workspace è di Lateral Space? Le regole dei referenti (`checkContactEmail`). */
+function memberIsLateralSpace(m: Pick<WorkspaceMemberFacts, "userId" | "email">, lsDomains: readonly string[], lsMembers: readonly string[]): boolean {
+  const user = userContextFrom({ id: m.userId, email: m.email, emailVerified: true }, lsDomains);
+  return !checkContactEmail({ email: m.email, user, lsDomains, lsMemberEmails: lsMembers }).ok;
 }
 
 /** Il prossimo stato da `reviewerStatus` per una riga letta. */
@@ -361,6 +380,7 @@ function emptyPanel(available: boolean, canAsk: boolean): UseCaseReferentPanel {
     canReviewFiles: false,
     gates: [],
     contacts: [],
+    members: [],
     requests: [],
     needs: {},
     askableNeedIds: [],
@@ -485,6 +505,23 @@ export async function loadUseCaseReferentPanel(i: {
         hasOtherRequests: rowBool(r.has_live) && !liveHere.has(id),
       };
     });
+
+    // (Referente già iscritto) Dopo i referenti, le persone del workspace con un account: solo a chi può
+    // chiedere e vede già le persone in Impostazioni › Persone; una voce per persona, mai chi guarda,
+    // mai Lateral Space, mai i partecipanti ai corsi. Solo nome, email coperta e «Fa parte del team».
+    let members: ReferentMemberOption[] = [];
+    if (canAsk && canSeeWorkspacePeople(i.role)) {
+      const [all, known] = await Promise.all([readWorkspaceMembers(executor, ws), readPersonContacts(executor, ws)]);
+      const contactUserIds = new Set<string>();
+      for (const c of known) if (c.userId) contactUserIds.add(c.userId);
+      for (const person of people.values()) if (person.userId) contactUserIds.add(person.userId);
+      const contactEmails = new Set(known.map((c) => c.email).filter((e): e is string => Boolean(e)));
+      members = pickerMembersOf(all, {
+        viewerUserId: i.session.id,
+        dedupe: { contactEmails, contactUserIds },
+        isLateralSpace: (m) => memberIsLateralSpace(m, lsDomains, lsMembers),
+      }).map((m) => ({ userId: m.userId, displayName: m.displayName, emailMasked: maskEmail(m.email), team: m.team }));
+    }
 
     // Richieste.
     const today = romeDate(now);
@@ -662,6 +699,7 @@ export async function loadUseCaseReferentPanel(i: {
       canReviewFiles,
       gates,
       contacts,
+      members,
       requests: requestViews,
       needs: needsView,
       askableNeedIds: askable.map((n) => n.id.toLowerCase()),
@@ -756,7 +794,10 @@ SELECT id FROM ins`);
 
 const MAX_QUESTIONS = REFERENT_LIMITS.questionsPerRequest;
 
-type ContactInput = { kind: "esistente"; contactId: string } | { kind: "nuovo"; displayName: string; email: string; roleLabel: string | null };
+type ContactInput =
+  | { kind: "esistente"; contactId: string }
+  | { kind: "nuovo"; displayName: string; email: string; roleLabel: string | null }
+  | { kind: "membro"; userId: string };
 
 function parseSendInput(raw: unknown): { ok: true; contact: ContactInput; needIds: string[]; message: string | null; previousRequestId: string | null } | ReferentFailure {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return rfail("dati_non_validi", REFERENT_ERROR_MESSAGES.riprova);
@@ -771,7 +812,8 @@ function parseSendInput(raw: unknown): { ok: true; contact: ContactInput; needId
       email: typeof c.email === "string" ? c.email : "",
       roleLabel: typeof c.roleLabel === "string" ? c.roleLabel : null,
     };
-  } else return rfail("referente_non_valido");
+  } else if (c && c.kind === "membro" && isUuid(c.userId)) contact = { kind: "membro", userId: c.userId.toLowerCase() };
+  else return rfail("referente_non_valido");
   const ids = Array.isArray(r.needIds) ? r.needIds : [];
   if (!ids.every(isUuid)) return rfail("domande_cambiate");
   const message = r.message === undefined || r.message === null ? null : typeof r.message === "string" ? r.message : null;
@@ -805,21 +847,28 @@ export const sendReferentRequest = guardedReferent(
     const lsMembers = await readLsMemberEmails(executor, ctx.workspaceId);
 
     // 6. Il referente.
-    let contactId: string;
-    let contactName: string;
-    let newContact: { id: string; draft: ContactDraft } | null = null;
-    if (parsed.contact.kind === "esistente") {
-      const contact = await readContact(executor, ctx.workspaceId, parsed.contact.contactId);
-      if (!contact || !contact.isActive || contact.anonymized) return rfail("referente_non_valido");
+    let contactId = "";
+    let contactName = "";
+    let newContact: { id: string; draft: ContactDraft; userId: string | null } | null = null;
+    /** Un contatto esistente del workspace (scelto, oppure ritrovato dall'email o dalla persona): le regole di sempre. */
+    const takeContact = async (id: string, onEmail: boolean): Promise<ReferentFailure | null> => {
+      const field = (code: string) => (onEmail ? { email: REFERENT_ERROR_MESSAGES[code] ?? REFERENT_ERROR_MESSAGES.riprova } : undefined);
+      const contact = await readContact(executor, ctx.workspaceId, id);
+      if (!contact || !contact.isActive || contact.anonymized) return rfail("referente_non_valido", undefined, field("referente_non_valido"));
       if (!contact.email) return rfail("email_mancante", REFERENT_ERROR_MESSAGES.email_mancante_esistente);
       const user = contact.userId ? await loadUserContext(executor, contact.userId, lsDomains) : null;
       const check = checkContactEmail({ email: contact.email, user, lsDomains, lsMemberEmails: lsMembers });
-      if (!check.ok) return rfail(check.code);
+      if (!check.ok) return rfail(check.code, undefined, field(check.code));
       // 6b (Parte 3). Chi chiede a se stesso: niente email, risponde dalla scheda.
-      if (isSelfRequest(await readReferentPerson(executor, ctx.workspaceId, contact.id), writer.userId)) return rfail("referente_sei_tu");
+      if (isSelfRequest(await readReferentPerson(executor, ctx.workspaceId, contact.id), writer.userId)) return rfail("referente_sei_tu", undefined, field("referente_sei_tu"));
       contactId = contact.id;
       contactName = contact.displayName;
-    } else {
+      return null;
+    };
+    if (parsed.contact.kind === "esistente") {
+      const refused = await takeContact(parsed.contact.contactId, false);
+      if (refused) return refused;
+    } else if (parsed.contact.kind === "nuovo") {
       const draft = prepareContact({ displayName: parsed.contact.displayName, email: parsed.contact.email, roleLabel: parsed.contact.roleLabel });
       if (!draft.ok) {
         const field = draft.code === "email_non_valida" ? "email" : "displayName";
@@ -829,14 +878,55 @@ export const sendReferentRequest = guardedReferent(
       const check = checkContactDraft(draft.value, { lsDomains, lsMemberEmails: lsMembers, user: null });
       if (!check.ok) return rfail(check.code, undefined, { email: REFERENT_ERROR_MESSAGES[check.code] ?? check.message });
       // 6b (Parte 3). La propria email come referente nuovo: niente email, risponde dalla scheda.
-      if (isSelfRequest(await readEmailPerson(executor, ctx.workspaceId, draft.value.email), writer.userId)) {
+      const typedPerson = await readEmailPerson(executor, ctx.workspaceId, draft.value.email);
+      if (isSelfRequest(typedPerson, writer.userId)) {
         return rfail("referente_sei_tu", undefined, { email: REFERENT_ERROR_MESSAGES.referente_sei_tu });
       }
-      const [[taken]] = await executor.batch([contactEmailTakenSql({ workspaceId: ctx.workspaceId, email: draft.value.email })]);
-      if (rowBool(taken?.taken)) return rfail("email_in_uso", undefined, { email: REFERENT_ERROR_MESSAGES.email_in_uso });
-      contactId = randomUUID();
-      contactName = draft.value.displayName;
-      newContact = { id: contactId, draft: draft.value };
+      // (Referente già iscritto) L'email è già di un referente del workspace: si usa quello, con il nome
+      // che ha già; un referente disattivato resta un errore chiaro. Nessun dato del contatto cambia.
+      const [same] = await readPersonContacts(executor, ctx.workspaceId, { email: draft.value.email, userId: null });
+      if (same) {
+        const refused = await takeContact(same.id, true);
+        if (refused) return refused;
+      } else {
+        // (Referente già iscritto) L'email è di una persona del workspace con l'email verificata: il
+        // referente nuovo si collega al suo account, se nessun altro referente lo è già.
+        let linkUserId: string | null = null;
+        if (typedPerson.member && typedPerson.userId) {
+          const linked = await readPersonContacts(executor, ctx.workspaceId, { email: null, userId: typedPerson.userId });
+          if (linked.length === 0) linkUserId = typedPerson.userId;
+        }
+        contactId = randomUUID();
+        contactName = draft.value.displayName;
+        newContact = { id: contactId, draft: draft.value, userId: linkUserId };
+      }
+    } else {
+      // (Referente già iscritto) Una persona del workspace scelta dall'elenco: tutto si ricontrolla qui.
+      // Chi guarda deve già vedere le persone del workspace (Impostazioni › Persone); la persona è ancora
+      // del workspace, con l'email verificata, non è un partecipante ai corsi, non è di Lateral Space e
+      // non è chi chiede. Il suo referente si riusa se c'è (per account o per email), altrimenti nasce
+      // collegato al suo account.
+      // Il ruolo di chi chiede si rilegge qui (`readWorkspaceMembers` vuole un ruolo diverso da `learner`).
+      const [self] = await readWorkspaceMembers(executor, ctx.workspaceId, writer.userId);
+      if (!self || !canSeeWorkspacePeople(self.role)) return rfail("permesso_mancante");
+      const [member] = await readWorkspaceMembers(executor, ctx.workspaceId, parsed.contact.userId);
+      if (!member) return rfail("referente_non_valido");
+      if (memberIsLateralSpace(member, lsDomains, lsMembers)) return rfail("referente_lateral_space");
+      if (member.userId === writer.userId.toLowerCase()) return rfail("referente_sei_tu");
+      const known = await readPersonContacts(executor, ctx.workspaceId, { email: member.email, userId: member.userId });
+      const active = known.find((c) => c.isActive);
+      if (active) {
+        const refused = await takeContact(active.id, false);
+        if (refused) return refused;
+      } else if (known.length > 0) {
+        return rfail("referente_non_valido");
+      } else {
+        const draft = prepareContact({ displayName: memberDisplayName(member), email: member.email, roleLabel: null });
+        if (!draft.ok || draft.value.email === null) return rfail("referente_non_valido");
+        contactId = randomUUID();
+        contactName = draft.value.displayName;
+        newContact = { id: contactId, draft: draft.value, userId: member.userId };
+      }
     }
 
     // 11 (prima della 7 quando c'è): la richiesta di prima.
@@ -855,8 +945,8 @@ WHERE r.id = ${cast(parsed.previousRequestId, "uuid")} AND r.workspace_id = ${ca
       } else if (status !== "scaduta") return rfail("richiesta_chiusa");
     }
 
-    // 7. Nessun'altra richiesta viva per questa persona su questo use case.
-    if (parsed.contact.kind === "esistente") {
+    // 7. Nessun'altra richiesta viva per questa persona su questo use case (un referente che c'era già).
+    if (!newContact) {
       const [live] = await executor.batch([
         toStatement(ucSql`SELECT r.id FROM use_case_referent_requests r
 WHERE r.workspace_id = ${cast(ctx.workspaceId, "uuid")} AND r.use_case_id = ${cast(card.id, "uuid")} AND r.contact_id = ${cast(contactId, "uuid")}
@@ -895,7 +985,10 @@ WHERE r.workspace_id = ${cast(ctx.workspaceId, "uuid")} AND r.use_case_id = ${ca
       statements.push(...revokeStatements({ workspaceId: ctx.workspaceId, target: { requestId: replaceLive.id, version: replaceLive.version, statuses: ["inviata"] }, reason: "sostituita", actor, failCode: "richiesta_chiusa" }));
     }
     if (silentIds.length) statements.push(silentGuardSql(ctx.workspaceId, silentIds));
-    if (newContact) statements.push(contactInsertSql({ id: newContact.id, workspaceId: ctx.workspaceId, draft: newContact.draft, createdByUserId: writer.userId }));
+    if (newContact) {
+      statements.push(contactInsertSql({ id: newContact.id, workspaceId: ctx.workspaceId, draft: newContact.draft, createdByUserId: writer.userId }));
+      if (newContact.userId) statements.push(linkNewContactUserSql(ctx.workspaceId, newContact.id, newContact.userId));
+    }
     const requesterName = (deps.requester.name ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
     statements.push(
       toStatement(
@@ -1302,6 +1395,8 @@ WHERE r.workspace_id = ${ws} AND r.contact_id = ${c} AND r.status = 'inviata' AN
     const run = await referentBatch(executor, [
       contactHubOnlySql(ctx.workspaceId, contact.id),
       contactUpdateSql({ workspaceId: ctx.workspaceId, contactId: contact.id, patch: { email: draft.value.email }, expect: { email: contact.email, isActive: true } }),
+      // (Referente già iscritto) Il collegamento all'account segue l'indirizzo nuovo (solo dell'hub: la riga sopra lo garantisce).
+      relinkCorrectedContactSql(ctx.workspaceId, contact.id),
       toStatement(ucSql`UPDATE use_case_referent_tokens t SET revoked_at = now()
 FROM use_case_referent_requests r
 WHERE t.request_id = r.id AND r.workspace_id = ${ws} AND r.contact_id = ${c} AND t.revoked_at IS NULL`),

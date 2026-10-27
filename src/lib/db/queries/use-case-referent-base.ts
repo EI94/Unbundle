@@ -7,13 +7,23 @@ import { logSafeError } from "@/lib/log/safe-error";
 import { parseLsDomains } from "@/lib/uc/lateral-space";
 import { ucLog } from "@/lib/uc/log";
 import { rowBool, rowDate, rowJson, rowNumber, rowString } from "@/lib/uc/sql/readiness";
-import { cast, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
+import { cast, join, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
 import { LS_CASE_ROLES } from "@/lib/uc/vocab";
 import { silentNeedIds, type InfoAskFact } from "@/lib/use-cases/info-progress";
 import type { NeedKind, NeedOwnerSide, NeedStatus, NeedType, NeedView } from "@/lib/use-cases/needs";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import { REFERENT_ERROR_MESSAGES, referentErrorMessage } from "@/lib/use-cases/referent/labels";
-import { NO_PERSON, contactPeopleSql, emailPersonSql, personFactsOf, referentPersonOf, type ReferentPerson } from "@/lib/use-cases/referent/people";
+import {
+  NO_PERSON,
+  contactPeopleSql,
+  emailPersonSql,
+  memberFactsOf,
+  personFactsOf,
+  referentPersonOf,
+  workspaceMembersSql,
+  type ReferentPerson,
+  type WorkspaceMemberFacts,
+} from "@/lib/use-cases/referent/people";
 import { personaWriter, type ServiceResult, type WriteContext } from "@/lib/use-cases/service";
 import type { IsoDate } from "@/lib/use-cases/types";
 import type { ValueModel } from "@/lib/use-cases/value-model";
@@ -372,6 +382,57 @@ export async function readEmailPerson(executor: UcExecutor, workspaceId: string,
   if (!isUuid(workspaceId) || !email.trim()) return NO_PERSON;
   const [[row]] = await executor.batch([emailPersonSql(workspaceId, email)]);
   return personOfRow(row);
+}
+
+// ─── Referente già iscritto (27/10) ──────────────────────────────────
+
+/**
+ * Le persone del workspace che il selettore può proporre (`workspaceMembersSql`): account verificati,
+ * ruolo diverso da `learner`. Con `userId` una sola persona, o nessuna. Mai mostrate oltre a nome, email
+ * coperta e «Fa parte del team»; nessun dato dei corsi.
+ */
+export async function readWorkspaceMembers(executor: UcExecutor, workspaceId: string, userId: string | null = null): Promise<WorkspaceMemberFacts[]> {
+  if (!isUuid(workspaceId) || (userId !== null && !isUuid(userId))) return [];
+  const [rows] = await executor.batch([workspaceMembersSql(workspaceId, userId)]);
+  return rows.map((r) => memberFactsOf(r)).filter((m): m is WorkspaceMemberFacts => m !== null);
+}
+
+/** Un contatto del workspace, non anonimizzato, letto per riconoscere la stessa persona. */
+export interface PersonContactRow {
+  id: string;
+  displayName: string;
+  email: string | null;
+  userId: string | null;
+  isActive: boolean;
+}
+
+/**
+ * I contatti non anonimizzati del workspace: con `match`, solo quelli della persona (lo stesso account
+ * in `user_id`, oppure la stessa email senza maiuscole e spazi), il collegamento all'account prima.
+ * Senza, tutti (per non proporre due volte la stessa persona nel selettore). Nessun ORDER BY per persona.
+ */
+export async function readPersonContacts(executor: UcExecutor, workspaceId: string, match?: { email: string | null; userId: string | null }): Promise<PersonContactRow[]> {
+  if (!isUuid(workspaceId)) return [];
+  const email = match?.email?.trim().toLowerCase() || null;
+  const userId = match?.userId && isUuid(match.userId) ? match.userId.toLowerCase() : null;
+  if (match && !email && !userId) return [];
+  const conditions: SqlFragment[] = [];
+  if (userId) conditions.push(ucSql`c.user_id = ${cast(userId, "uuid")}`);
+  if (email) conditions.push(ucSql`lower(btrim(c.email)) = ${cast(email, "text")}`);
+  const filter = match ? ucSql` AND (${join(conditions, " OR ")})` : raw("");
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT c.id::text AS id, c.display_name, lower(btrim(c.email)) AS email, c.user_id::text AS user_id, c.is_active
+FROM uc_contacts c WHERE c.workspace_id = ${cast(workspaceId, "uuid")} AND c.anonymized_at IS NULL${filter}`),
+  ]);
+  const out = rows.map((r) => ({
+    id: String(r.id).toLowerCase(),
+    displayName: rowString(r.display_name) ?? "",
+    email: rowString(r.email),
+    userId: rowString(r.user_id)?.toLowerCase() ?? null,
+    isActive: rowBool(r.is_active),
+  }));
+  // Il collegamento esplicito all'account vince sull'email (la regola di `people.ts`).
+  return userId ? [...out.filter((c) => c.userId === userId), ...out.filter((c) => c.userId !== userId)] : out;
 }
 
 // ─── Il link pubblico ────────────────────────────────────────────────

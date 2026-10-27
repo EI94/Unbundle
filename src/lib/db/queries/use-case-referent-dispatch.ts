@@ -202,6 +202,7 @@ WHERE u.id = ANY(${cast(askers, "uuid[]")}) AND u.email_verified IS NOT NULL
       const user = userId ? await loadUserContext(executor, userId, lsDomains) : null;
       const ack = await loadSubprocessorAck(executor, e.workspaceId);
       // (Parte 3) Il referente è adesso un revisore del workspace con la stessa email verificata? Riletto a ogni invio.
+      // (Referente già iscritto) Oppure un membro che non è revisore: «Hai già un account Unbundle».
       const person = await readReferentPerson(executor, e.workspaceId, e.contactId);
       // (Parte 3) Mai un'email a chi ha chiesto: lo stesso account, oppure l'email del contatto uguale alla sua email verificata.
       const contactEmail = rowString(head?.email)?.trim().toLowerCase() ?? null;
@@ -236,6 +237,7 @@ WHERE u.id = ANY(${cast(requesterIds, "uuid[]")}) AND u.email_verified IS NOT NU
               anonymized: rowBool(head.anonymized),
               linkedUserIsLateralSpace: user?.isLateralSpace === true,
               teamAccess: person.teamAccess,
+              accountNotice: person.accountNotice,
             }
           : null,
         replyTo,

@@ -363,7 +363,7 @@ test("email al referente: il link alla scheda solo a un revisore con l'email ver
     const { getAppUcExecutor } = await import("../../db/uc-executor.ts");
     const base = await import("../../db/queries/use-case-referent-base.ts");
     const person = await base.readReferentPerson(await getAppUcExecutor(), ids.ws, contacts.federico);
-    assert.deepEqual(person, { userId: null, reviewer: false, teamAccess: false }, "senza email verificata il contatto non porta all'account");
+    assert.deepEqual(person, { userId: null, reviewer: false, teamAccess: false, member: false, accountNotice: false }, "senza email verificata il contatto non porta all'account");
   } finally {
     await q(`UPDATE users SET email_verified = now() WHERE id = $1::uuid`, [ids.federico]);
   }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { Fragment, useEffect, useId, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { revealReferentContactEmailAction, sendReferentRequestAction } from "@/lib/actions/use-case-referents";
 import type { ReferentRequestView, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
@@ -10,6 +10,7 @@ import { REFERENT_UI_TEXT } from "@/lib/use-cases/referent/labels";
 import { DecisionDialog } from "../../reopen-dialog";
 import {
   ASK_MODE,
+  MEMBER_PREFIX,
   NEW_CONTACT,
   askDraftErrors,
   askErrorView,
@@ -17,6 +18,7 @@ import {
   askPayload,
   askSelfHint,
   askSummary,
+  contactChoiceGroups,
   contactChoices,
   initialAskDraft,
   type AskDraft,
@@ -40,8 +42,8 @@ export interface AskDialogProps {
 }
 
 /**
- * La finestra «Chiedi al referente» (SPEC §5.2, §P3.7): a chi chiedi (un referente del workspace o
- * uno nuovo), che cosa chiedi (le domande aperte della scheda, tutte spuntate), un messaggio
+ * La finestra «Chiedi al referente» (SPEC §5.2, §P3.7): a chi chiedi (un referente del workspace, una
+ * persona del workspace che ha già un account, o un referente nuovo), che cosa chiedi (le domande aperte della scheda, tutte spuntate), un messaggio
  * facoltativo e il riepilogo di dove arriva l'email e dove arrivano le risposte. Con «Chiedi di
  * nuovo» il referente resta quello della richiesta. L'email parte dopo la risposta del server.
  */
@@ -55,8 +57,10 @@ export function AskDialog({ workspaceId, useCaseId, panel, mode = ASK_MODE, prev
   const [revealed, setRevealed] = useState<Record<string, string | null>>({});
 
   const choices = contactChoices(panel, mode);
+  const groups = contactChoiceGroups(choices);
   const isNew = draft.choice === NEW_CONTACT;
-  const existingId = draft.choice && !isNew ? draft.choice : null;
+  // L'indirizzo intero si chiede solo per un referente esistente; una persona del workspace resta coperta.
+  const existingId = draft.choice && !isNew && !draft.choice.startsWith(MEMBER_PREFIX) ? draft.choice : null;
 
   // L'indirizzo intero del referente scelto, solo per il riepilogo; fino ad allora quello coperto.
   useEffect(() => {
@@ -131,11 +135,26 @@ export function AskDialog({ workspaceId, useCaseId, panel, mode = ASK_MODE, prev
               <SelectValue placeholder={T.whoPlaceholder} />
             </SelectTrigger>
             <SelectContent>
-              {choices.map((choice) => (
-                <SelectItem key={choice.value} value={choice.value} disabled={choice.disabled}>
-                  {choice.label}
-                </SelectItem>
-              ))}
+              {groups.map((group, index) =>
+                group.label ? (
+                  <SelectGroup key={group.label}>
+                    <SelectLabel>{group.label}</SelectLabel>
+                    {group.choices.map((choice) => (
+                      <SelectItem key={choice.value} value={choice.value} disabled={choice.disabled}>
+                        {choice.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ) : (
+                  <Fragment key={`gruppo-${index}`}>
+                    {group.choices.map((choice) => (
+                      <SelectItem key={choice.value} value={choice.value} disabled={choice.disabled}>
+                        {choice.label}
+                      </SelectItem>
+                    ))}
+                  </Fragment>
+                ),
+              )}
             </SelectContent>
           </Select>
           {selfHint ? (

@@ -26,9 +26,10 @@ test("{UC}: codice e titolo, o il solo titolo; al massimo 120 caratteri", () => 
 
 test("richiesta: oggetto e testo, con e senza messaggio e risposta all'email", () => {
   const one = renderReferentEmail({ template: "richiesta", company: "TopJet", useCase: UC, requesterName: "Giulia Neri", questions: 1, message: null, expiresAt: EXPIRES, link: LINK, replyToKnown: true });
-  assert.equal(one.subject, "TopJet: Giulia Neri ti chiede alcune informazioni su «TJ-0004 · Fatture fornitori»");
+  assert.equal(one.subject, "TopJet: sei il referente per «TJ-0004 · Fatture fornitori»");
   has(one.text, "Buongiorno,");
-  has(one.text, "Giulia Neri ti chiede alcune informazioni sullo use case «TJ-0004 · Fatture fornitori» di TopJet: una domanda.");
+  has(one.text, "Giulia Neri ti ha indicato come referente per lo use case «TJ-0004 · Fatture fornitori» e ti chiede alcune informazioni.");
+  has(one.text, "È una domanda sola.");
   has(one.text, "Bastano pochi minuti e puoi rispondere anche dal telefono. Se non sai una risposta, scegli «Non lo so». Se hai un documento utile, allegalo: prima togli nomi e dati personali.");
   has(one.text, "Apri le domande");
   has(one.text, LINK);
@@ -36,7 +37,7 @@ test("richiesta: oggetto e testo, con e senza messaggio e risposta all'email", (
   has(one.text, "Il link è personale: non inoltrarlo. Per un dubbio rispondi a questa email: arriva a Giulia Neri.");
   clean(one);
   const many = renderReferentEmail({ template: "richiesta", company: "TopJet", useCase: UC, requesterName: "Giulia Neri", questions: 6, message: "Grazie in anticipo!", expiresAt: EXPIRES, link: LINK, replyToKnown: false });
-  has(many.text, "di TopJet: 6 domande.");
+  has(many.text, "Le domande sono 6.");
   has(many.text, "Grazie in anticipo!");
   has(many.text, "Il link è personale: non inoltrarlo.");
   assert.ok(!many.text.includes("arriva a Giulia Neri"));

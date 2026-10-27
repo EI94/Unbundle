@@ -42,9 +42,11 @@ export type ReferentEmailInput =
       replyToKnown: boolean;
       /** (Parte 3) Solo per un referente che è già revisore del workspace. */
       cardLink?: string | null;
+      /** (Referente già iscritto) Membro del workspace che non è revisore: «Hai già un account Unbundle: …». */
+      accountNotice?: boolean;
     }
   /** Da 1 a n voci, nell'ordine di creazione delle richieste. replyName c'è solo se tutte le voci hanno chi chiede uguale e la risposta all'email arriva a quella persona. */
-  | { template: "promemoria"; company: string; entries: ReminderEntry[]; replyToKnown: boolean; replyName: string | null }
+  | { template: "promemoria"; company: string; entries: ReminderEntry[]; replyToKnown: boolean; replyName: string | null; accountNotice?: boolean }
   | { template: "conferma"; company: string; useCase: UcRef; requesterName: string; submitted: number; openQuestions: number; expiresAt: Date };
 
 const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/;
@@ -86,9 +88,16 @@ export const TEAM_ACCESS_LINE = "Hai già accesso a Unbundle: puoi rispondere an
 export const TEAM_ACCESS_LINE_MANY = "Hai già accesso a Unbundle: puoi rispondere anche dalle schede degli use case.";
 export const TEAM_ACCESS_LINK_LABEL = "Apri la scheda";
 
-function teamAccessBlocks(cardLink: string | null | undefined): Block[] {
-  if (!cardLink) return [];
-  return [{ small: TEAM_ACCESS_LINE }, { link: { href: checkCardLink(cardLink), label: TEAM_ACCESS_LINK_LABEL } }];
+/**
+ * (Referente già iscritto) Per chi ha già un account nel workspace ma non è revisore (per esempio ha
+ * partecipato a una formazione): non serve entrare, basta il link personale. Nessun link alla dashboard.
+ */
+export const ACCOUNT_NOTICE_LINE = "Hai già un account Unbundle: per rispondere non serve entrare, basta questo link.";
+export const ACCOUNT_NOTICE_LINE_MANY = "Hai già un account Unbundle: per rispondere non serve entrare, bastano questi link.";
+
+function teamAccessBlocks(cardLink: string | null | undefined, accountNotice = false): Block[] {
+  if (cardLink) return [{ small: TEAM_ACCESS_LINE }, { link: { href: checkCardLink(cardLink), label: TEAM_ACCESS_LINK_LABEL } }];
+  return accountNotice ? [{ small: ACCOUNT_NOTICE_LINE }] : [];
 }
 
 const questionsWord = (n: number) => (n === 1 ? "una domanda" : `${n} domande`);
@@ -104,7 +113,7 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
       { p: `${name(e.requesterName)} ha aggiunto ${questionsWord(e.newQuestions)} sullo use case «${uc}»: le trovi insieme alle altre, con lo stesso link.` },
       { link: { href: link, label: "Apri le domande" } },
       { small: expiry(e.expiresAt) },
-      ...teamAccessBlocks(e.cardLink),
+      ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
       reply,
     ]);
   }
@@ -119,7 +128,7 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
       : { p: "Quello che hai già scritto è salvato: riparti da dove eri rimasto." },
     { link: { href: link, label: "Riprendi le domande" } },
     { small: expiry(e.expiresAt) },
-    ...teamAccessBlocks(e.cardLink),
+    ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
     reply,
   ]);
 }
@@ -131,6 +140,7 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
     { p: `ti ricordiamo che ci sono ancora domande aperte su ${n} use case di ${company(input.company)}. Quello che hai già scritto è salvato.` },
   ];
   if (input.entries.some((e) => e.cardLink)) blocks.push({ small: TEAM_ACCESS_LINE_MANY });
+  else if (input.accountNotice === true) blocks.push({ small: ACCOUNT_NOTICE_LINE_MANY });
   for (const e of input.entries) {
     const uc = labelOfUseCase(e.useCase);
     blocks.push(
@@ -155,19 +165,21 @@ export function renderReferentEmail(input: ReferentEmailInput): RenderedEmail {
     case "richiesta": {
       const uc = labelOfUseCase(input.useCase);
       const link = checkReferentLink(input.link);
+      // (Referente già iscritto) L'email dice subito che la persona è stata indicata come referente.
       const blocks: Block[] = [
         { p: "Buongiorno," },
-        { p: `${name(input.requesterName)} ti chiede alcune informazioni sullo use case «${uc}» di ${company(input.company)}: ${questionsWord(input.questions)}.` },
+        { p: `${name(input.requesterName)} ti ha indicato come referente per lo use case «${uc}» e ti chiede alcune informazioni.` },
+        { p: input.questions === 1 ? "È una domanda sola." : `Le domande sono ${input.questions}.` },
       ];
       if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
       blocks.push(
         { p: "Bastano pochi minuti e puoi rispondere anche dal telefono. Se non sai una risposta, scegli «Non lo so». Se hai un documento utile, allegalo: prima togli nomi e dati personali." },
         { link: { href: link, label: "Apri le domande" } },
         { small: expiry(input.expiresAt) },
-        ...teamAccessBlocks(input.cardLink),
+        ...teamAccessBlocks(input.cardLink, input.accountNotice === true),
         { small: replyLine(input.replyToKnown, input.requesterName) },
       );
-      return render(subjectOf(`${company(input.company)}: ${name(input.requesterName)} ti chiede alcune informazioni su «${uc}»`), blocks);
+      return render(subjectOf(`${company(input.company)}: sei il referente per «${uc}»`), blocks);
     }
     case "promemoria": {
       if (input.entries.length === 0) throw new Error("Promemoria senza voci");

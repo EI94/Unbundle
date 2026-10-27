@@ -9,6 +9,7 @@
 import type {
   ReferentActionResult,
   ReferentContactOption,
+  ReferentMemberOption,
   ReferentRequestView,
   SendReferentRequestInput,
   UseCaseReferentPanel,
@@ -19,6 +20,13 @@ const T = REFERENT_UI_TEXT.askDialog;
 
 /** Il valore della scelta «+ Nuovo referente» nel selettore. */
 export const NEW_CONTACT = "__nuovo__";
+
+/** (Referente già iscritto) Il valore di una persona del workspace nel selettore: `membro:<userId>`. */
+export const MEMBER_PREFIX = "membro:";
+const memberValue = (userId: string) => `${MEMBER_PREFIX}${userId.toLowerCase()}`;
+const memberIdOf = (choice: string | null): string | null => (choice && choice.startsWith(MEMBER_PREFIX) ? choice.slice(MEMBER_PREFIX.length) : null);
+
+type PanelPeople = Pick<UseCaseReferentPanel, "contacts"> & Partial<Pick<UseCaseReferentPanel, "members">>;
 
 export interface AskDraft {
   /** L'id del referente scelto, `NEW_CONTACT`, oppure null (niente ancora). */
@@ -79,18 +87,28 @@ export function contactOptionLabel(option: ReferentContactOption): string {
   return label;
 }
 
+/** (Referente già iscritto) «Mario Rossi · m•••@topjet.it», con « · Fa parte del team» per i revisori; mai un ruolo, niente dei corsi. */
+export function memberOptionLabel(option: ReferentMemberOption): string {
+  let label = option.emailMasked ? fillText(T.optionNoRole, { Nome: option.displayName, email: option.emailMasked }) : fillText(T.optionNameOnly, { Nome: option.displayName });
+  if (option.team) label += ` · ${T.teamTag}`;
+  return label;
+}
+
 export interface AskContactChoice {
   value: string;
   label: string;
   disabled: boolean;
+  /** (Referente già iscritto) Il gruppo del selettore: i referenti, le persone del workspace, «+ Nuovo referente». */
+  group: "referenti" | "persone" | "nuovo";
 }
 
 /**
- * Le voci del selettore «A chi chiedi?»: i referenti nell'ordine del pannello, poi «+ Nuovo
- * referente». Con «Chiedi di nuovo» il referente della richiesta resta scelto e si può tenere anche
- * se la sua richiesta di prima è ancora aperta (è quella che si sostituisce).
+ * Le voci del selettore «A chi chiedi?»: i referenti nell'ordine del pannello, poi le persone del
+ * workspace che hanno già un account (in ordine alfabetico, dal pannello), poi «+ Nuovo referente».
+ * Con «Chiedi di nuovo» il referente della richiesta resta scelto e si può tenere anche se la sua
+ * richiesta di prima è ancora aperta (è quella che si sostituisce); le persone non compaiono.
  */
-export function contactChoices(panel: Pick<UseCaseReferentPanel, "contacts">, mode: AskMode = ASK_MODE): AskContactChoice[] {
+export function contactChoices(panel: PanelPeople, mode: AskMode = ASK_MODE): AskContactChoice[] {
   const locked = mode.lockedContactId ? lower(mode.lockedContactId) : null;
   const out: AskContactChoice[] = panel.contacts.map((option) => {
     const isLocked = locked !== null && lower(option.id) === locked;
@@ -99,10 +117,33 @@ export function contactChoices(panel: Pick<UseCaseReferentPanel, "contacts">, mo
       value: option.id,
       label: keep ? contactOptionLabel({ ...option, selectable: true, reason: null }) : contactOptionLabel(option),
       disabled: locked !== null ? !isLocked : !option.selectable,
+      group: "referenti" as const,
     };
   });
-  if (!locked) out.push({ value: NEW_CONTACT, label: T.newContact, disabled: false });
+  if (!locked) {
+    for (const member of panel.members ?? []) out.push({ value: memberValue(member.userId), label: memberOptionLabel(member), disabled: false, group: "persone" });
+    out.push({ value: NEW_CONTACT, label: T.newContact, disabled: false, group: "nuovo" });
+  }
   return out;
+}
+
+/** (Referente già iscritto) Le voci a gruppi, per il selettore: le etichette dei gruppi solo quando ci sono anche persone del workspace. */
+export function contactChoiceGroups(choices: readonly AskContactChoice[]): { label: string | null; choices: AskContactChoice[] }[] {
+  const of = (group: AskContactChoice["group"]) => choices.filter((c) => c.group === group);
+  const people = of("persone");
+  if (people.length === 0) return [{ label: null, choices: [...choices] }];
+  const contacts = of("referenti");
+  return [
+    ...(contacts.length ? [{ label: T.contactsGroup, choices: contacts }] : []),
+    { label: T.membersGroup, choices: people },
+    { label: null, choices: of("nuovo") },
+  ];
+}
+
+function chosenMember(panel: PanelPeople, draft: Pick<AskDraft, "choice">): ReferentMemberOption | null {
+  const id = memberIdOf(draft.choice);
+  if (!id) return null;
+  return (panel.members ?? []).find((m) => lower(m.userId) === id) ?? null;
 }
 
 /** Chi guarda è tra i referenti («(sei tu)»): sotto il selettore, il suggerimento di rispondere dalla scheda. */
@@ -111,7 +152,7 @@ export function askSelfHint(panel: Pick<UseCaseReferentPanel, "contacts">): stri
 }
 
 function chosenContact(panel: Pick<UseCaseReferentPanel, "contacts">, draft: Pick<AskDraft, "choice">): ReferentContactOption | null {
-  if (!draft.choice || draft.choice === NEW_CONTACT) return null;
+  if (!draft.choice || draft.choice === NEW_CONTACT || memberIdOf(draft.choice)) return null;
   const id = lower(draft.choice);
   return panel.contacts.find((option) => lower(option.id) === id) ?? null;
 }
@@ -127,12 +168,13 @@ export function askOtherRequestsHint(panel: Pick<UseCaseReferentPanel, "contacts
  * esistente l'indirizzo intero quando è arrivato (`revealed`), fino ad allora quello coperto.
  */
 export function askSummary(
-  panel: Pick<UseCaseReferentPanel, "contacts" | "requester">,
+  panel: Pick<UseCaseReferentPanel, "contacts" | "requester"> & Partial<Pick<UseCaseReferentPanel, "members">>,
   draft: Pick<AskDraft, "choice" | "email">,
   revealed: string | null,
 ): string | null {
   let email: string | null = null;
   if (draft.choice === NEW_CONTACT) email = draft.email.trim() || null;
+  else if (memberIdOf(draft.choice)) email = chosenMember(panel, draft)?.emailMasked ?? null;
   else email = revealed ?? chosenContact(panel, draft)?.emailMasked ?? null;
   if (!email) return null;
   return fillText(T.summary, { email, tuaEmail: panel.requester.email ?? "" });
@@ -141,12 +183,14 @@ export function askSummary(
 /** I controlli prima dell'invio, con i testi del server: il server rifà tutto. Chiavi: `contact`, `displayName`, `email`, `message`, `needIds`. */
 export function askDraftErrors(
   draft: AskDraft,
-  panel: Pick<UseCaseReferentPanel, "contacts" | "limits">,
+  panel: Pick<UseCaseReferentPanel, "contacts" | "limits"> & Partial<Pick<UseCaseReferentPanel, "members">>,
   mode: AskMode = ASK_MODE,
 ): Record<string, string> {
   const errors: Record<string, string> = {};
   if (!draft.choice) errors.contact = T.whoPlaceholder;
-  else if (draft.choice === NEW_CONTACT) {
+  else if (memberIdOf(draft.choice)) {
+    if (mode.lockedContactId !== null || !chosenMember(panel, draft)) errors.contact = REFERENT_ERROR_MESSAGES.referente_non_valido;
+  } else if (draft.choice === NEW_CONTACT) {
     const name = draft.name.trim();
     if (name.length < panel.limits.contactNameMin || name.length > panel.limits.contactNameMax) errors.displayName = REFERENT_ERROR_MESSAGES.dati_non_validi;
     if (!draft.email.trim()) errors.email = REFERENT_ERROR_MESSAGES.email_mancante;
@@ -170,10 +214,13 @@ export function askPayload(draft: AskDraft, panel: Pick<UseCaseReferentPanel, "a
   const chosen = new Set(draft.needIds.map(lower));
   const needIds = panel.askableNeedIds.filter((id) => chosen.has(lower(id)));
   const message = draft.message.trim();
+  const memberId = memberIdOf(draft.choice);
   const contact: SendReferentRequestInput["contact"] =
     draft.choice === NEW_CONTACT
       ? { kind: "nuovo", displayName: draft.name.trim(), email: draft.email.trim(), roleLabel: draft.role.trim() || null }
-      : { kind: "esistente", contactId: draft.choice ?? "" };
+      : memberId
+        ? { kind: "membro", userId: memberId }
+        : { kind: "esistente", contactId: draft.choice ?? "" };
   return {
     contact,
     needIds,

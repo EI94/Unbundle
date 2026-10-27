@@ -143,6 +143,9 @@ export const REFERENT_UI_TEXT = Object.freeze({
     // (Parte 3) Sotto il selettore, quando chi guarda è tra i contatti (opzione «(sei tu)», non selezionabile).
     selfHint: "Non serve chiedere a te stesso: rispondi direttamente qui in «Cosa serve», con «Aggiungi una risposta» o «Allega un file».",
     newContact: "+ Nuovo referente",
+    // (Referente già iscritto) I due gruppi del selettore, quando ci sono anche persone del workspace.
+    contactsGroup: "Referenti",
+    membersGroup: "Persone del workspace",
     newName: "Nome e cognome",
     newEmail: "Email",
     newRole: "Ruolo (facoltativo)",

@@ -143,7 +143,7 @@ test("le righe di una richiesta non dipendono dalla lettura dell'informativa, e 
 
 test("pannello: l'unica email intera è quella di chi guarda; le altre sono mascherate", () => {
   const emailKeys = PANEL_VIEW_KEYS.filter((k) => /email/i.test(k));
-  assert.deepEqual(emailKeys, ["contacts[].emailMasked", "requests[].contact.emailMasked", "requests[].email", "requests[].email.state", "requests[].email.label", "requests[].actions.correctEmail", "requester.email"]);
+  assert.deepEqual(emailKeys, ["contacts[].emailMasked", "members[].emailMasked", "requests[].contact.emailMasked", "requests[].email", "requests[].email.state", "requests[].email.label", "requests[].actions.correctEmail", "requester.email"]);
   assert.equal(maskEmail(" Mario.Rossi@TopJet.it "), "m•••@topjet.it");
   assert.equal(maskEmail(null), null);
   assert.equal(maskEmail("senza-chiocciola"), null);

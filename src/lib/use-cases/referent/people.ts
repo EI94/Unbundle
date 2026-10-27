@@ -47,14 +47,23 @@ export interface ReferentPerson {
   reviewer: boolean;
   /** Revisore con l'email verificata uguale a quella del contatto: l'email può portare il link alla scheda. */
   teamAccess: boolean;
+  /** (Referente già iscritto) Ha un ruolo qualsiasi nel workspace, adesso (anche `learner` o `contributor`). */
+  member: boolean;
+  /**
+   * (Referente già iscritto) Membro del workspace che non è revisore (corsista, contributore), con l'email
+   * verificata uguale a quella del contatto: l'email al referente dice «Hai già un account Unbundle: per
+   * rispondere non serve entrare, basta questo link.». Mai un link alla dashboard; nessun accesso in più.
+   */
+  accountNotice: boolean;
 }
 
-export const NO_PERSON: ReferentPerson = Object.freeze({ userId: null, reviewer: false, teamAccess: false });
+export const NO_PERSON: ReferentPerson = Object.freeze({ userId: null, reviewer: false, teamAccess: false, member: false, accountNotice: false });
 
 export function referentPersonOf(f: ReferentPersonFacts | null | undefined): ReferentPerson {
   if (!f || !f.userId || !UUID.test(f.userId)) return NO_PERSON;
   const reviewer = canReviewWorkspacePortfolio(f.role);
-  return { userId: f.userId.toLowerCase(), reviewer, teamAccess: reviewer && f.verifiedEmailMatch };
+  const member = typeof f.role === "string" && f.role.length > 0;
+  return { userId: f.userId.toLowerCase(), reviewer, teamAccess: reviewer && f.verifiedEmailMatch, member, accountNotice: member && !reviewer && f.verifiedEmailMatch };
 }
 
 /** Chi chiede ha scelto se stesso: niente email, risponde direttamente in «Cosa serve». */
@@ -130,4 +139,129 @@ export function personFactsOf(row: Readonly<Record<string, unknown>> | undefined
   const userId = typeof row.user_id === "string" && UUID.test(row.user_id) ? row.user_id.toLowerCase() : null;
   const role = typeof row.role === "string" && row.role ? row.role : null;
   return { userId, role, verifiedEmailMatch: row.email_match === true || row.email_match === "t" };
+}
+
+// ─── Referente già iscritto (27/10): le persone del workspace nel selettore ─────────────────
+
+/**
+ * Chi guarda può già vedere le persone del workspace (Impostazioni › Persone, «Chi ha accesso»)? La
+ * pagina delle impostazioni si apre a ogni ruolo tranne `learner` (`requireWorkspacePage`) e lì
+ * l'elenco mostra nome ed email di chi ha accesso, tutti tranne i partecipanti ai corsi. Il selettore
+ * di «Chiedi al referente» mostra le stesse persone e niente di più, solo a chi le vede già.
+ */
+export function canSeeWorkspacePeople(role: string | null | undefined): boolean {
+  return typeof role === "string" && role.length > 0 && role !== "learner";
+}
+
+/**
+ * Le persone che il selettore può proporre: account con l'email verificata e un ruolo nel workspace
+ * diverso da `learner` (le stesse di «Chi ha accesso»). Un partecipante ai corsi non è nell'elenco:
+ * chi guarda non lo vede in Impostazioni, quindi non lo vede nemmeno qui (si riconosce solo quando
+ * qualcuno scrive la sua email in «+ Nuovo referente»). Con `userId` una persona sola (il server
+ * ricontrolla la scelta). Nessun ORDER BY: l'ordine lo dà `pickerMembersOf`.
+ */
+export function workspaceMembersSql(workspaceId: string, userId: string | null = null): UcStatement {
+  const ws = cast(uuid(workspaceId, "workspace"), "uuid");
+  const one = userId === null ? raw("") : ucSql` AND pu.id = ${cast(uuid(userId, "persona"), "uuid")}`;
+  return toStatement(ucSql`SELECT m.user_id, m.name, m.email, m.role FROM (
+  SELECT pu.id::text AS user_id, pu.name, lower(btrim(pu.email)) AS email, ${effectiveRole("pu.id", "pw0.id")} AS role
+  FROM users pu JOIN workspaces pw0 ON pw0.id = ${ws}
+  WHERE pu.email_verified IS NOT NULL AND pu.email IS NOT NULL AND btrim(pu.email) <> ''${one}
+    AND (EXISTS (SELECT 1 FROM memberships om WHERE om.organization_id = pw0.organization_id AND om.user_id = pu.id)
+      OR EXISTS (SELECT 1 FROM workspace_memberships owm WHERE owm.workspace_id = pw0.id AND owm.user_id = pu.id))
+) m
+WHERE m.role IS NOT NULL AND m.role <> 'learner'`);
+}
+
+/** Una persona del workspace letta da `workspaceMembersSql`. */
+export interface WorkspaceMemberFacts {
+  userId: string;
+  name: string | null;
+  email: string;
+  role: string;
+}
+
+export function memberFactsOf(row: Readonly<Record<string, unknown>> | undefined): WorkspaceMemberFacts | null {
+  if (!row) return null;
+  const userId = typeof row.user_id === "string" && UUID.test(row.user_id) ? row.user_id.toLowerCase() : null;
+  const email = typeof row.email === "string" ? row.email.trim().toLowerCase() : "";
+  const role = typeof row.role === "string" ? row.role : "";
+  if (!userId || !email.includes("@") || !canSeeWorkspacePeople(role)) return null;
+  const name = typeof row.name === "string" ? row.name.replace(/\s+/g, " ").trim() : "";
+  return { userId, name: name || null, email, role };
+}
+
+/**
+ * Il nome di una persona per il selettore e per il contatto nuovo: il nome dell'account, oppure la parte
+ * dell'email prima della chiocciola (come «Chi ha accesso», che senza nome mostra l'email). 2–255 caratteri.
+ */
+export function memberDisplayName(m: Pick<WorkspaceMemberFacts, "name" | "email">): string {
+  const base = (m.name ?? "").trim();
+  const name = base.length >= 2 ? base : m.email.split("@")[0] ?? "";
+  return (name.length >= 2 ? name : m.email).slice(0, 255);
+}
+
+/** Quello che serve per non proporre due volte la stessa persona: i contatti del workspace. */
+export interface PickerDedupe {
+  /** Email (minuscole, senza spazi) dei contatti non anonimizzati, attivi o no. */
+  contactEmails: ReadonlySet<string>;
+  /** Account dei contatti non anonimizzati: `user_id`, oppure l'account trovato con l'email verificata. */
+  contactUserIds: ReadonlySet<string>;
+}
+
+/**
+ * Le persone del selettore, dopo i referenti: una per persona (mai una seconda voce per chi è già un
+ * referente, per email o per account), mai chi guarda, mai Lateral Space (`isLateralSpace`), in ordine
+ * alfabetico di nome. Art. 15.4: nessun conteggio e nessun ruolo; l'unica informazione in più è
+ * «Fa parte del team» per i revisori, la stessa dei referenti.
+ */
+export function pickerMembersOf(
+  members: readonly WorkspaceMemberFacts[],
+  o: { viewerUserId: string | null; dedupe: PickerDedupe; isLateralSpace: (m: WorkspaceMemberFacts) => boolean },
+): { userId: string; displayName: string; email: string; team: boolean }[] {
+  const viewer = o.viewerUserId?.toLowerCase() ?? null;
+  const seen = new Set<string>();
+  const out: { userId: string; displayName: string; email: string; team: boolean }[] = [];
+  for (const m of members) {
+    if (seen.has(m.userId) || m.userId === viewer) continue;
+    if (o.dedupe.contactUserIds.has(m.userId) || o.dedupe.contactEmails.has(m.email)) continue;
+    if (!canSeeWorkspacePeople(m.role) || o.isLateralSpace(m)) continue;
+    seen.add(m.userId);
+    out.push({ userId: m.userId, displayName: memberDisplayName(m), email: m.email, team: canReviewWorkspacePortfolio(m.role) });
+  }
+  const collator = new Intl.Collator("it", { sensitivity: "base" });
+  return out.sort((a, b) => collator.compare(a.displayName, b.displayName) || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
+}
+
+/**
+ * Collega un contatto **appena creato dall'hub** al suo account (`uc_contacts.user_id`), solo se manca e
+ * solo se l'account ha l'email verificata uguale (senza maiuscole e spazi) a quella del contatto: lo
+ * stesso controllo dentro la SQL, così una corsa non collega mai la persona sbagliata. Se non combacia
+ * non fa niente (non fallisce): la persona si ritrova comunque all'invio con l'email verificata.
+ * Mai su un contatto esistente: i contatti sono condivisi con i dossier e l'hub non li modifica.
+ */
+export function linkNewContactUserSql(workspaceId: string, contactId: string, userId: string): UcStatement {
+  return toStatement(ucSql`UPDATE uc_contacts c SET user_id = lu.id, updated_at = now()
+FROM users lu
+WHERE c.id = ${cast(uuid(contactId, "referente"), "uuid")} AND c.workspace_id = ${cast(uuid(workspaceId, "workspace"), "uuid")}
+  AND c.user_id IS NULL AND c.anonymized_at IS NULL AND c.email IS NOT NULL
+  AND lu.id = ${cast(uuid(userId, "persona"), "uuid")} AND lu.email_verified IS NOT NULL AND lower(btrim(lu.email)) = lower(btrim(c.email))
+RETURNING c.id`);
+}
+
+/**
+ * «Correggi l'email» di un contatto **solo dell'hub**: il collegamento all'account segue l'indirizzo
+ * nuovo. Diventa l'account con quell'email verificata se è membro del workspace, altrimenti NULL; così
+ * un collegamento vecchio non porta mai alla persona di prima. Va nel batch dopo l'aggiornamento
+ * dell'email e dopo `contactHubOnlySql` (un contatto anche dei dossier non arriva mai qui).
+ */
+export function relinkCorrectedContactSql(workspaceId: string, contactId: string): UcStatement {
+  return toStatement(ucSql`UPDATE uc_contacts c SET user_id = (
+    SELECT ru.id FROM users ru
+    WHERE ru.email_verified IS NOT NULL AND c.email IS NOT NULL AND lower(btrim(ru.email)) = lower(btrim(c.email))
+      AND ${effectiveRole("ru.id", "c.workspace_id")} IS NOT NULL
+    LIMIT 1
+  ), updated_at = now()
+WHERE c.id = ${cast(uuid(contactId, "referente"), "uuid")} AND c.workspace_id = ${cast(uuid(workspaceId, "workspace"), "uuid")} AND c.anonymized_at IS NULL
+RETURNING c.id`);
 }

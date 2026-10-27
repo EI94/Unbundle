@@ -110,7 +110,19 @@ export interface ReferentDeliveryFacts {
    * aggiunge «Hai già accesso a Unbundle: …» e il link alla scheda; mai per corsisti, contributori o
    * persone senza account.
    */
-  recipient: { email: string | null; active: boolean; anonymized: boolean; linkedUserIsLateralSpace: boolean; teamAccess?: boolean } | null;
+  recipient: {
+    email: string | null;
+    active: boolean;
+    anonymized: boolean;
+    linkedUserIsLateralSpace: boolean;
+    teamAccess?: boolean;
+    /**
+     * (Referente già iscritto) Il referente è adesso un membro del workspace che non è revisore (corsista,
+     * contributore) con l'email verificata uguale a quella del contatto (`referentPersonOf`, riletto a
+     * ogni invio): l'email aggiunge «Hai già un account Unbundle: …», senza alcun link alla dashboard.
+     */
+    accountNotice?: boolean;
+  } | null;
   /**
    * L'email di chi ha chiesto la prima richiesta (`requests[0]`), solo se verificata e ancora revisore
    * del workspace; in minuscolo. Vale solo per quella persona: senza `replyToByRequester` il piano la
@@ -178,6 +190,11 @@ function cardLinkOf(e: ClaimedReferentEmail, f: ReferentDeliveryFacts, r: Refere
   return cardLink(origin, e.workspaceId, r.useCaseId);
 }
 
+/** (Referente già iscritto) La riga «Hai già un account Unbundle» vale solo per chi non ha la riga del team. */
+function accountNoticeOf(f: ReferentDeliveryFacts): boolean {
+  return f.recipient?.accountNotice === true && f.recipient.teamAccess !== true;
+}
+
 /** Che cosa fare di una riga: inviarla (con i link da emettere e gli effetti), tenerla in coda o annullarla. */
 export function planReferentDelivery(
   e: ClaimedReferentEmail,
@@ -234,6 +251,7 @@ export function planReferentDelivery(
         link: linkOf(links, req.id),
         replyToKnown,
         cardLink: cardLinkOf(e, f, req, o.origin),
+        accountNotice: accountNoticeOf(f),
       }),
       after: [{ requestId: req.id, reminder: null, first: true, manual: false }],
     };
@@ -292,6 +310,7 @@ export function planReferentDelivery(
       company: f.company,
       replyToKnown,
       replyName,
+      accountNotice: accountNoticeOf(f),
       // Solo le voci con il loro link: una richiesta non più viva all'emissione esce dall'email.
       entries: kept
         .filter((x) => Boolean(links[x.id]))

@@ -196,6 +196,20 @@ export interface ReferentContactOption {
   hasOtherRequests: boolean;
 }
 
+/**
+ * (Referente già iscritto) Una persona del workspace che ha già un account Unbundle e non è ancora tra
+ * i referenti: le stesse persone che chi guarda vede in Impostazioni › Persone («Chi ha accesso»), mai
+ * i partecipanti ai corsi, mai Lateral Space, mai chi guarda. Nome ed email coperta, più «Fa parte del
+ * team» per i revisori; nessun ruolo, niente dei corsi. Sceglierla crea (o riusa) il suo referente.
+ */
+export interface ReferentMemberOption {
+  userId: string;
+  displayName: string;
+  /** «m•••@topjet.it», come per i referenti. */
+  emailMasked: string | null;
+  team: boolean;
+}
+
 export interface ReferentRequestView {
   id: string;
   version: number;
@@ -279,6 +293,11 @@ export interface UseCaseReferentPanel {
   gates: ReferentGate[];
   /** Attivi, non anonimizzati; in ordine di created_at, id (mai per nome). */
   contacts: ReferentContactOption[];
+  /**
+   * (Referente già iscritto) Dopo i referenti: le persone del workspace con un account, in ordine
+   * alfabetico. Vuoto per chi non vede già le persone del workspace o non può chiedere.
+   */
+  members: ReferentMemberOption[];
   /** Di questo use case, dalla più recente, al massimo 20. */
   requests: ReferentRequestView[];
   /** Chiave: id dell'esigenza in minuscolo, per le esigenze collegate a questa scheda. */
@@ -310,7 +329,11 @@ export type ReferentActionResult<T = null> =
   | { ok: false; code: string; message: string; fieldErrors?: Record<string, string> };
 
 export interface SendReferentRequestInput {
-  contact: { kind: "esistente"; contactId: string } | { kind: "nuovo"; displayName: string; email: string; roleLabel?: string | null };
+  contact:
+    | { kind: "esistente"; contactId: string }
+    | { kind: "nuovo"; displayName: string; email: string; roleLabel?: string | null }
+    /** (Referente già iscritto) Una persona del workspace scelta dall'elenco: il server la ricontrolla e crea o riusa il suo referente. */
+    | { kind: "membro"; userId: string };
   needIds: string[];
   message?: string | null;
   /** «Chiedi di nuovo»: la richiesta che questa sostituisce (scaduta, o viva «Senza risposta»). */
