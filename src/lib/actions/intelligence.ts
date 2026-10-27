@@ -4,49 +4,49 @@ import { db } from "@/lib/db";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { weeklySignals, activities, workspaces, useCases } from "@/lib/db/schema";
-import { eq, and, desc, notInArray } from "drizzle-orm";
-import { USE_CASE_SIGNAL_TYPES, markAllVisibleSignalsRead, markSignalRead } from "@/lib/db/queries/signals";
+import { eq, desc } from "drizzle-orm";
+import { markSignalsReadForUser } from "@/lib/db/queries/signals";
+import { logSafeError } from "@/lib/log/safe-error";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import { revalidatePath } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 
 /**
- * «Segna come letto» di un segnale, in Intelligence e nella campanella. `is_read` è uno per
- * tutto il workspace: chi non valuta non vede i segnali delle schede (D4, docs/use-case/DESIGN.md
- * §11) e quindi non li spegne ai revisori, nemmeno con l'id di un segnale indovinato.
+ * «Segna come letto» di un segnale, in Intelligence. Letto **per persona** (SPEC §P2.4): la riga va
+ * in `weekly_signal_reads` per chi clicca, e solo per i segnali che il suo ruolo vede (chi non
+ * valuta non vede i segnali delle schede, D4, docs/use-case/DESIGN.md §11: un id indovinato non
+ * scrive niente). Il clic di un revisore non spegne il segnale ai colleghi. Dopo la scrittura
+ * `refresh()` ridisegna tutta la pagina, barra in alto compresa: la campanella resta d'accordo.
  */
-export async function markSignalAsRead(workspaceId: string, signalId: string) {
-  const { access } = await requireWorkspaceAccess(workspaceId);
-  // Il segnale viene aggiornato solo se appartiene al workspace richiesto:
-  // senza questo vincolo un id indovinato toccherebbe i dati di un altro cliente.
-  if (canReviewWorkspacePortfolio(access.role)) {
-    await markSignalRead(workspaceId, signalId);
-  } else {
-    await db
-      .update(weeklySignals)
-      .set({ isRead: true })
-      .where(
-        and(
-          eq(weeklySignals.id, signalId),
-          eq(weeklySignals.workspaceId, workspaceId),
-          notInArray(weeklySignals.signalType, [...USE_CASE_SIGNAL_TYPES])
-        )
-      );
+export type SignalReadResult = { ok: true } | { ok: false; code: "riprova"; message: string };
+
+export async function markSignalAsRead(workspaceId: string, signalId: string): Promise<SignalReadResult> {
+  const { session, access } = await requireWorkspaceAccess(workspaceId);
+  try {
+    await markSignalsReadForUser({ workspaceId, userId: session.user?.id ?? "", role: access.role ?? null, signalIds: [signalId] });
+  } catch (error) {
+    logSafeError("intelligence", "segnale_letto", error, { workspaceId });
+    return { ok: false, code: "riprova", message: "Non riesco a segnarlo come letto. Riprova." };
   }
-  // La campanella sta nella barra in alto del workspace.
-  revalidatePath(`/dashboard/${workspaceId}`);
+  refresh();
+  return { ok: true };
 }
 
 /**
- * «Segna tutti letti» in Intelligence: solo i segnali che il ruolo di chi chiama vede, come la
- * campanella (`markAllVisibleSignalsRead`). Un contributore non segna letti i segnali delle
- * schede, che arrivano solo ai revisori.
+ * «Segna tutti letti» in Intelligence: per chi chiama, solo i segnali che il suo ruolo vede, come la
+ * campanella. Un contributore non segna letti i segnali delle schede, che arrivano solo ai revisori.
  */
-export async function markAllSignalsRead(workspaceId: string) {
-  const { access } = await requireWorkspaceAccess(workspaceId);
-  await markAllVisibleSignalsRead(workspaceId, access.role);
-  revalidatePath(`/dashboard/${workspaceId}/intelligence`);
+export async function markAllSignalsRead(workspaceId: string): Promise<SignalReadResult> {
+  const { session, access } = await requireWorkspaceAccess(workspaceId);
+  try {
+    await markSignalsReadForUser({ workspaceId, userId: session.user?.id ?? "", role: access.role ?? null, signalIds: null });
+  } catch (error) {
+    logSafeError("intelligence", "segnali_letti", error, { workspaceId });
+    return { ok: false, code: "riprova", message: "Non riesco a segnarli come letti. Riprova." };
+  }
+  refresh();
+  return { ok: true };
 }
 
 const competitiveAnalysisSchema = z.object({

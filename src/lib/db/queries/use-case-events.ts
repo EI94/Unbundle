@@ -9,6 +9,7 @@ import {
   type UseCaseEventChannel,
   type UseCaseEventField,
 } from "@/lib/db/use-case-hub-ddl";
+import { REFERENT_EVENT_FIELD } from "@/lib/db/use-case-hub-referents-ddl";
 
 /**
  * La Storia di uno use case, senza testi (docs/use-case/DESIGN.md §6.6, §10.3; PIANO-LAVORI
@@ -104,12 +105,13 @@ function toDate(value: unknown): Date {
 }
 
 /**
- * Le righe di «Cosa serve» (campo `cosa_serve`, drizzle/0023) solo con `withNeeds`: le esigenze
- * le vedono solo i revisori (`canSeeNeeds`), e così le loro righe. Senza, la Storia è quella di
- * prima, anche per «Mostra tutto» e «La storia parte dal».
+ * Le righe di «Cosa serve» (campo `cosa_serve`, drizzle/0023) e di «Chiedi al referente» (campo
+ * `richiesta_referente`, drizzle/0024) solo con `withNeeds`: le esigenze e le richieste le vedono
+ * solo i revisori (`canSeeNeeds`), e così le loro righe. Senza, la Storia è quella di prima, anche
+ * per «Mostra tutto» e «La storia parte dal».
  */
 function needsRows(withNeeds: boolean): SQL {
-  return withNeeds ? sql`` : sql` AND NOT (${USE_CASE_NEEDS_EVENT_FIELD} = ANY(fields))`;
+  return withNeeds ? sql`` : sql` AND NOT (fields && ARRAY[${USE_CASE_NEEDS_EVENT_FIELD}, ${REFERENT_EVENT_FIELD}]::text[])`;
 }
 
 /**

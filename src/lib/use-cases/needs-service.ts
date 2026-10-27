@@ -14,6 +14,8 @@ import {
 } from "./needs";
 import { NEED_HISTORY_FIELD, needHistoryCode, needStateCode, type NeedHistoryChange } from "./needs-history";
 import { fail, guarded, invalid, personaWriter, type Failure, type WriteContext } from "./service";
+import { ucToDrizzle } from "@/lib/db/use-case-hub-uc-drizzle";
+import { infoCompleteSyncStatements } from "./referent/sql";
 import type { ServiceResult } from "./types";
 
 /**
@@ -119,6 +121,22 @@ async function linkTargetsOf(workspaceId: string, raw: readonly unknown[] | unde
 }
 
 /**
+ * La scrittura, poi il lock per scheda e la sincronizzazione di «Informazioni complete» (SPEC
+ * §P2.6.2 evento 4, §P2.9.1 T13), in un solo `db.batch` (una transazione): le righe della scrittura
+ * sono quelle di prima. Il lock arriva dopo i lock di riga della scrittura e sempre in ordine di
+ * `use_cases.id`, così due scritture si aspettano invece di bloccarsi a vicenda.
+ */
+async function executeWithInfoSync(
+  write: SQL,
+  cards: { workspaceId: string; useCaseIds?: readonly string[]; needId?: string | null; actorUserId: string },
+): Promise<{ rows: Record<string, unknown>[] }> {
+  if (!(cards.useCaseIds?.length) && !cards.needId) return db.execute(write) as Promise<{ rows: Record<string, unknown>[] }>;
+  const [lock, sync] = infoCompleteSyncStatements(cards);
+  const [result] = await db.batch([db.execute(write), db.execute(ucToDrizzle(lock)), db.execute(ucToDrizzle(sync))]);
+  return result as unknown as { rows: Record<string, unknown>[] };
+}
+
+/**
  * Un'esigenza nuova, già collegata agli use case dati (dalla scheda: lo use case aperto), in un
  * solo statement: l'esigenza e i suoi legami vanno insieme o non vanno. `id` è facoltativo: il
  * MCP del team passa l'id deciso alla presa in carico della richiesta (`reserved_ids`), così una
@@ -153,7 +171,11 @@ export const createNeed = guarded("create_need", async function createNeed(
       )`
     : sql``;
   try {
-    const { rows } = await db.execute(sql`WITH ins AS (${insert.getSQL()})${links} SELECT id, version FROM ins`);
+    const { rows } = await executeWithInfoSync(sql`WITH ins AS (${insert.getSQL()})${links} SELECT id, version FROM ins`, {
+      workspaceId: ctx.workspaceId,
+      useCaseIds: linked.ids,
+      actorUserId: writer.userId,
+    });
     const row = rows[0] as { id?: string; version?: number } | undefined;
     if (!row?.id) return fail("riprova");
     return { ok: true, value: { id: row.id, version: Number(row.version) } };
@@ -246,7 +268,11 @@ export const updateNeed = guarded("update_need", async function updateNeed(
       JOIN use_case_need_links l ON l.need_id = upd.id
       JOIN use_cases u ON u.id = l.use_case_id AND u.workspace_id = ${ctx.workspaceId}::uuid`;
   try {
-    const { rows } = await db.execute(sql`WITH upd AS (${update.getSQL()}), ev AS (${events}) SELECT id, version FROM upd`);
+    const { rows } = await executeWithInfoSync(sql`WITH upd AS (${update.getSQL()}), ev AS (${events}) SELECT id, version FROM upd`, {
+      workspaceId: ctx.workspaceId,
+      needId,
+      actorUserId: writer.userId,
+    });
     const row = rows[0] as { id?: string; version?: number } | undefined;
     if (!row?.id) return whyNotWritten(ctx.workspaceId, needId);
     return { ok: true, value: { id: row.id, version: Number(row.version) } };
@@ -287,7 +313,11 @@ export const archiveNeed = guarded("archive_need", async function archiveNeed(
       FROM upd
       JOIN use_case_need_links l ON l.need_id = upd.id
       JOIN use_cases u ON u.id = l.use_case_id AND u.workspace_id = ${ctx.workspaceId}::uuid`;
-  const { rows } = await db.execute(sql`WITH upd AS (${update.getSQL()}), ev AS (${events}) SELECT id, version FROM upd`);
+  const { rows } = await executeWithInfoSync(sql`WITH upd AS (${update.getSQL()}), ev AS (${events}) SELECT id, version FROM upd`, {
+    workspaceId: ctx.workspaceId,
+    needId,
+    actorUserId: writer.userId,
+  });
   const row = rows[0] as { id?: string; version?: number } | undefined;
   return row?.id ? { ok: true, value: { id: row.id, version: Number(row.version) } } : whyNotWritten(ctx.workspaceId, needId);
 });
@@ -316,7 +346,7 @@ export const linkNeed = guarded("link_need", async function linkNeed(
   if (!writer.ok) return writer;
   if (!isUuid(needId) || !isUuid(useCaseId)) return fail("non_trovato");
   // Il legame nuovo e la riga «collegato» nella Storia dello use case collegato; già collegata: nessuna riga.
-  const { rows } = await db.execute(sql`WITH lnk AS (
+  const { rows } = await executeWithInfoSync(sql`WITH lnk AS (
       INSERT INTO use_case_need_links (need_id, use_case_id)
       SELECT n.id, u.id
         FROM use_case_needs n
@@ -329,7 +359,7 @@ export const linkNeed = guarded("link_need", async function linkNeed(
       SELECT ${needEventSelect(ctx, writer.userId, sql`lnk.use_case_id`, null, historyCodeOf("collegata", sql`n.type`, sql`n.status`))}
         FROM lnk JOIN use_case_needs n ON n.id = lnk.need_id
     )
-    SELECT n.version FROM lnk JOIN use_case_needs n ON n.id = lnk.need_id`);
+    SELECT n.version FROM lnk JOIN use_case_needs n ON n.id = lnk.need_id`, { workspaceId: ctx.workspaceId, useCaseIds: [useCaseId], actorUserId: writer.userId });
   const row = rows[0] as { version?: number } | undefined;
   if (row) return { ok: true, value: { id: needId.toLowerCase(), version: Number(row.version) } };
   return linkOutcome(ctx.workspaceId, needId, useCaseId);
@@ -345,7 +375,7 @@ export const unlinkNeed = guarded("unlink_need", async function unlinkNeed(
   if (!writer.ok) return writer;
   if (!isUuid(needId) || !isUuid(useCaseId)) return fail("non_trovato");
   // Via il legame, e la riga «scollegato» nella Storia dello use case scollegato; già scollegata: nessuna riga.
-  const { rows } = await db.execute(sql`WITH del AS (
+  const { rows } = await executeWithInfoSync(sql`WITH del AS (
       DELETE FROM use_case_need_links l
        USING use_case_needs n
        WHERE l.need_id = n.id AND n.id = ${needId}::uuid AND n.workspace_id = ${ctx.workspaceId}::uuid AND n.archived_at IS NULL
@@ -356,7 +386,7 @@ export const unlinkNeed = guarded("unlink_need", async function unlinkNeed(
       SELECT ${needEventSelect(ctx, writer.userId, sql`u.id`, null, historyCodeOf("scollegata", sql`del.type`, sql`del.status`))}
         FROM del JOIN use_cases u ON u.id = del.use_case_id AND u.workspace_id = ${ctx.workspaceId}::uuid
     )
-    SELECT version FROM del`);
+    SELECT version FROM del`, { workspaceId: ctx.workspaceId, useCaseIds: [useCaseId], needId, actorUserId: writer.userId });
   const row = rows[0] as { version?: number } | undefined;
   if (row) return { ok: true, value: { id: needId.toLowerCase(), version: Number(row.version) } };
   return linkOutcome(ctx.workspaceId, needId, useCaseId);

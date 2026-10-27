@@ -289,6 +289,7 @@ export const PANEL_VIEW_KEYS: readonly string[] = Object.freeze([
   "contacts[].emailMasked",
   "contacts[].selectable",
   "contacts[].reason",
+  "contacts[].hasOtherRequests",
   "requests",
   "requests[].id",
   "requests[].version",

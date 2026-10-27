@@ -476,9 +476,11 @@ test("getUnreadSignals: stessa regola, solo i non letti", opts, async () => {
 
 test("campanella: la barra in alto passa alla campanella solo i segnali che il ruolo vede", opts, async () => {
   const bell = async (role: string | null) => {
-    const [initial] = findProp(await workspaceTopbar({ workspaceId: ids.ws, role }), "initialSignals") as Array<Array<{ signalType: string; title: string }>>;
-    assert.ok(Array.isArray(initial), "la campanella riceve i segnali");
-    return initial;
+    // La campanella riceve il payload della persona (SPEC §P2.5): le righe «segnale» hanno la chiave `s:<id>`.
+    const [initial] = findProp(await workspaceTopbar({ workspaceId: ids.ws, role }), "initial") as Array<{ entries: Array<{ key: string; source: string; title: string }> }>;
+    assert.ok(initial && Array.isArray(initial.entries), "la campanella riceve le righe");
+    const typeOf = new Map((await q(`SELECT id::text AS id, signal_type FROM weekly_signals WHERE workspace_id = $1::uuid`, [ids.ws])).map((r) => [`s:${r.id}`, String(r.signal_type)]));
+    return initial.entries.filter((e) => e.source === "segnale").map((e) => ({ signalType: typeOf.get(e.key) ?? "?", title: e.title }));
   };
   const contributor = await bell("contributor");
   assert.deepEqual(types(contributor), [...OTHER_TYPES].sort());
@@ -486,18 +488,25 @@ test("campanella: la barra in alto passa alla campanella solo i segnali che il r
   assert.deepEqual(types(await bell("function_lead")), [...ALL_TYPES].sort());
 });
 
-test("markAllVisibleSignalsRead: «Segna tutti letti» tocca solo i segnali che il ruolo vede", opts, async () => {
+test("markSignalsReadForUser: «Segna tutti letti» è per persona e tocca solo i segnali che il ruolo vede", opts, async () => {
   const saved = await q(`SELECT id, is_read FROM weekly_signals WHERE workspace_id = ANY($1::uuid[])`, [[ids.ws, ids.other]]);
+  const contributor = { id: ids.contributor };
+  const reviewer = { id: ids.builder };
+  const OTHER_UNREAD = ["risk_alert"];
   try {
-    // `is_read` è uno per il workspace: il contributore non spegne ai revisori i segnali delle schede.
-    await signals.markAllVisibleSignalsRead(ids.ws, "contributor");
-    assert.deepEqual(types(await signals.getUnreadSignals(ids.ws, "contributor")), []);
-    assert.deepEqual(types(await signals.getUnreadSignals(ids.ws, "function_lead")), [...CASE_TYPES].sort());
-    await signals.markAllVisibleSignalsRead(ids.ws, "function_lead");
-    assert.deepEqual(types(await signals.getUnreadSignals(ids.ws, "function_lead")), []);
+    // Letto per persona: il contributore non spegne ai revisori nessun segnale, nemmeno i suoi.
+    await signals.markSignalsReadForUser({ workspaceId: ids.ws, userId: String(contributor.id), role: "contributor", signalIds: null });
+    assert.deepEqual(types(await signals.getUnreadSignals(ids.ws, "contributor", String(contributor.id))), []);
+    assert.deepEqual(types(await signals.getUnreadSignals(ids.ws, "function_lead", String(contributor.id))), [...CASE_TYPES].sort());
+    assert.deepEqual(types(await signals.getUnreadSignals(ids.ws, "function_lead", String(reviewer.id))), [...CASE_TYPES, ...OTHER_UNREAD].sort());
+    await signals.markSignalsReadForUser({ workspaceId: ids.ws, userId: String(reviewer.id), role: "function_lead", signalIds: null });
+    assert.deepEqual(types(await signals.getUnreadSignals(ids.ws, "function_lead", String(reviewer.id))), []);
+    // `is_read` non cambia: nessuna scrittura per una persona sola lo mette a true.
+    assert.deepEqual(types(await signals.getUnreadSignals(ids.ws, "function_lead")), [...CASE_TYPES, ...OTHER_UNREAD].sort());
     // Mai i segnali di un altro workspace.
-    assert.deepEqual(types(await signals.getUnreadSignals(ids.other, "function_lead")), ["new_portfolio_item", "risk_alert"]);
+    assert.deepEqual(types(await signals.getUnreadSignals(ids.other, "function_lead", String(reviewer.id))), ["new_portfolio_item", "risk_alert"]);
   } finally {
+    await q(`DELETE FROM weekly_signal_reads WHERE workspace_id = ANY($1::uuid[])`, [[ids.ws, ids.other]]);
     for (const row of saved) await q(`UPDATE weekly_signals SET is_read = $2 WHERE id = $1::uuid`, [row.id, row.is_read]);
   }
 });

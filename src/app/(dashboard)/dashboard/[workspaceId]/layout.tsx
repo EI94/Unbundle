@@ -99,7 +99,7 @@ export default async function WorkspaceLayout({
       />
       <SidebarInset>
         {/* La campanella mostra titoli e descrizioni del portfolio: non è per chi segue solo un corso. */}
-        <WorkspaceTopbar workspaceId={workspaceId} role={access.role} showNotifications={!learnerOnly} useCaseHub={useCaseHub} />
+        <WorkspaceTopbar workspaceId={workspaceId} role={access.role} userId={session.user.id} showNotifications={!learnerOnly} useCaseHub={useCaseHub} />
         {children}
       </SidebarInset>
     </SidebarProvider>

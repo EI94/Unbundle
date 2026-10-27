@@ -30,6 +30,7 @@ export const ADMIN_COMMANDS = [
   "slack-drafts",
   "scoring-v2",
   "doctor",
+  "erase-referent",
 ] as const;
 export type AdminCommandName = (typeof ADMIN_COMMANDS)[number];
 

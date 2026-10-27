@@ -68,6 +68,18 @@
 //    nothing; a session holding the self-heal's advisory lock makes the file stop the same way
 //    (the file takes that lock); once both are gone, 0023 passes.
 // Exit code 0 only if every check passes. Optional: UC_TEST_PG_BIN.
+// Migration 0024 (Chiedi al referente, the per-person bell, «Raccolta informazioni»):
+// 18. Idempotence: on database 1 (0000→0023 with rows) 0024 is applied twice, identical dumps;
+//     the Storia's CHECK gains 'richiesta_referente'; the referents probe is true. Self-heal
+//     parity: the 0024 tables of database 2 equal those of database 1.
+// 19. Production today (0000→0023 healed by the self-heal of ENSURE_VERSION 17, with use cases,
+//     history rows and needs; a card whose client-side needs are all validated): a) the
+//     self-heal at 18 applies 0024, keeps every row and marks that card complete in
+//     use_case_info_state; a second call runs only the probe; the file twice on top changes
+//     nothing. b) The file through psql --single-transaction, then ensureDbSchema() runs only the
+//     probe; the file again changes nothing.
+// 20. TimeZone: every scratch database runs in UTC, as Neon does (the bell reads
+//     weekly_signals.created_at, a timestamp without time zone, as UTC): `SHOW TimeZone` is UTC.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -86,7 +98,7 @@ const USER = "uc_test";
 const runTag = (process.env.HUB_CHECK_ID?.trim().toLowerCase() || String(process.pid)).replace(/[^a-z0-9_]/g, "").slice(0, 24);
 if (!runTag) throw new Error("HUB_CHECK_ID must contain lowercase letters, digits or _");
 const DB = Object.fromEntries(
-  ["mig", "heal", "probe", "dups", "nouc", "no19", "prod", "no20", "prod23", "prod23f", "narrow", "locks"].map((key) => [key, `hub_check_${runTag}_${key}`]),
+  ["mig", "heal", "probe", "dups", "nouc", "no19", "prod", "no20", "prod23", "prod23f", "narrow", "locks", "prod24", "prod24f"].map((key) => [key, `hub_check_${runTag}_${key}`]),
 );
 const HUB_TABLES = ["use_case_events", "use_case_mcp_requests"];
 const USE_CASES_0020 = [
@@ -172,6 +184,7 @@ const file = (prefix) => join(repoRoot, "drizzle", migrations.find((n) => n.star
 const file0020 = file("0020");
 const file0022 = file("0022");
 const file0023 = file("0023");
+const file0024 = file("0024");
 
 // Synthetic rows that exist before the migration (no client data, .test addresses only).
 const ids = {
@@ -204,7 +217,9 @@ const { USE_CASE_EVENT_FIELDS } = await import("../../src/lib/db/use-case-hub-dd
 const { USE_CASE_HISTORY_PROBE_SQL, USE_CASE_EVENT_FIELDS_0023, MISSING_EVENTS_MESSAGE, FIELDS_NOT_VALIDATED_WARNING } = await import(
   "../../src/lib/db/use-case-hub-history-ddl.ts"
 );
+const { USE_CASE_REFERENTS_PROBE_SQL, REFERENTS_TABLES, USE_CASE_EVENT_FIELDS_0024 } = await import("../../src/lib/db/use-case-hub-referents-ddl.ts");
 const hubProbe = (db) => psql(db, `SELECT ${USE_CASE_HUB_PROBE_SQL}`) === "t";
+const referentsProbe = (db) => psql(db, `SELECT ${USE_CASE_REFERENTS_PROBE_SQL}`) === "t";
 const valueProbe = (db) => psql(db, `SELECT ${USE_CASE_VALUE_PROBE_SQL}`) === "t";
 const historyProbe = (db) => psql(db, `SELECT ${USE_CASE_HISTORY_PROBE_SQL}`) === "t";
 /** The Storia's fields CHECK: `<definition>|<validated t/f>`, or "" when there is none. */
@@ -263,9 +278,25 @@ function valueObjects(db) {
 const sameValueObjects = (a, b) => a.tables === b.tables && a.useCases.join("\n") === b.useCases.join("\n") && a.functions === b.functions;
 const valueDiff = (a, b) => firstDiff(a.tables, b.tables) || firstDiff(a.useCases.join("\n"), b.useCases.join("\n")) || firstDiff(a.functions, b.functions);
 
+/** Removes what 0024 adds (its tables, the wider CHECK): the database goes back to before 0024. */
+function dropReferents(db) {
+  psql(
+    db,
+    `DROP TABLE IF EXISTS ${[...REFERENTS_TABLES].reverse().join(", ")} CASCADE;
+     DO $$ BEGIN
+       IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'public.use_case_events'::regclass AND conname = 'use_case_events_fields_check') THEN
+         ALTER TABLE use_case_events DROP CONSTRAINT use_case_events_fields_check;
+         ALTER TABLE use_case_events ADD CONSTRAINT use_case_events_fields_check CHECK (fields <@ ${textArray(USE_CASE_EVENT_FIELDS_0023)});
+       END IF;
+     END $$;`,
+  );
+}
+
 function freshDatabase(db, files) {
   run("dropdb", [...pinned, "--if-exists", "--force", db]);
   run("createdb", [...pinned, db]);
+  // As Neon: the database runs in UTC (case 20).
+  psql(db, `ALTER DATABASE "${db}" SET timezone TO 'UTC'`);
   for (const name of files) applyFile(db, join(repoRoot, "drizzle", name));
   run("psql", [...pinned, "-d", db, "--no-psqlrc", "--single-transaction", "--set=ON_ERROR_STOP=1", "-q"], { input: SEED });
 }
@@ -450,6 +481,20 @@ check("0023 keeps every use case, history row, need and link", snapshotOf(DB.mig
 check("no extension created by 0023", !readFileSync(file0023, "utf8").match(/CREATE\s+EXTENSION/i));
 psql(DB.mig, `DELETE FROM use_case_events WHERE use_case_id = '${ids.ucOld}'`);
 
+// 18. Idempotence of 0024 on the same database (now 0000→0023 with rows).
+check("0000→0023: referents probe false before 0024", !referentsProbe(DB.mig));
+const migBefore0024 = snapshotOf(DB.mig);
+applyFile(DB.mig, file0024);
+const firstReferents = dump(DB.mig);
+applyFile(DB.mig, file0024);
+const secondReferents = dump(DB.mig);
+check("0024 applied twice: identical schema dump", firstReferents === secondReferents, firstDiff(firstReferents, secondReferents));
+check("referents probe true after 0024", referentsProbe(DB.mig));
+const check0024 = fieldsCheckOf(DB.mig);
+check("0024: the CHECK lists the 0023 names plus richiesta_referente, validated", check0024 === `${checkDefOf(USE_CASE_EVENT_FIELDS_0024)}|true`, check0024);
+check("0024 keeps every use case, history row, need and link", snapshotOf(DB.mig) === migBefore0024, `${migBefore0024} → ${snapshotOf(DB.mig)}`);
+check("no extension created by 0024", !readFileSync(file0024, "utf8").match(/CREATE\s+EXTENSION/i));
+
 // 2. Self-heal parity on 0000→0017.
 freshDatabase(DB.heal, upTo("0017"));
 check("0000→0017: hub probe false before the self-heal", !hubProbe(DB.heal));
@@ -473,7 +518,9 @@ check("value probe true after the self-heal", valueProbe(DB.heal));
 const healValue = valueObjects(DB.heal);
 check(`self-heal = 0022 for ${VALUE_TABLES.join(", ")}, use_cases.value_model, its CHECK, trigger and function`, sameValueObjects(migValue, healValue), valueDiff(migValue, healValue));
 check("history probe true after the self-heal", historyProbe(DB.heal));
-check("self-heal = 0023 for the Storia's fields CHECK", fieldsCheckOf(DB.heal) === check0023, fieldsCheckOf(DB.heal));
+check("self-heal = 0023 and 0024 for the Storia's fields CHECK", fieldsCheckOf(DB.heal) === check0024, fieldsCheckOf(DB.heal));
+check("referents probe true after the self-heal", referentsProbe(DB.heal));
+check(`self-heal = 0024 for ${REFERENTS_TABLES.length} tables`, dump(DB.heal, [...REFERENTS_TABLES]) === dump(DB.mig, [...REFERENTS_TABLES]), firstDiff(dump(DB.mig, [...REFERENTS_TABLES]), dump(DB.heal, [...REFERENTS_TABLES])));
 
 // 3. Duplicate dossiers stop 0020, complete or not, and leave nothing behind.
 freshDatabase(DB.dups, upTo("0019"));
@@ -655,6 +702,7 @@ check("…so use_cases still accepts updates", stillWrites.ok, stillWrites.err.s
 freshDatabase(DB.prod, upTo("0020"));
 const prodCatchUp = ensureDbSchemaOn(DB.prod);
 check("0000→0020 + ensureDbSchema(): catch-up done", prodCatchUp.ok && hubProbe(DB.prod) && valueProbe(DB.prod), prodCatchUp.error);
+dropReferents(DB.prod);
 psql(
   DB.prod,
   `DROP TRIGGER use_cases_value_model_version ON use_cases;
@@ -717,6 +765,7 @@ function productionAt0022(db) {
   freshDatabase(db, upTo("0022"));
   const caughtUp = ensureDbSchemaOn(db);
   check(`${db}: 0000→0022 + ensureDbSchema(): catch-up done`, caughtUp.ok && hubProbe(db) && valueProbe(db) && historyProbe(db), caughtUp.error);
+  dropReferents(db);
   psql(
     db,
     `ALTER TABLE use_case_events DROP CONSTRAINT use_case_events_fields_check;
@@ -757,7 +806,7 @@ const prod23Rows = snapshotOf(DB.prod23);
 const prod23Heal = ensureDbSchemaOn(DB.prod23);
 check("production today: ensureDbSchema() does not stop at the probe, the 0023 self-heal runs", prod23Heal.ok && prod23Heal.calls > 1, prod23Heal.error || `${prod23Heal.calls} execute calls`);
 check("…the history probe is true", historyProbe(DB.prod23));
-check("…the CHECK equals the one of the migration", fieldsCheckOf(DB.prod23) === check0023, fieldsCheckOf(DB.prod23));
+check("…the CHECK equals the one of the migrations (0023, then 0024)", fieldsCheckOf(DB.prod23) === check0024, fieldsCheckOf(DB.prod23));
 check("…every use case, history row, need and link is kept", snapshotOf(DB.prod23) === prod23Rows, `${prod23Rows} → ${snapshotOf(DB.prod23)}`);
 const prod23Again = ensureDbSchemaOn(DB.prod23);
 check("a second ensureDbSchema() runs only the probe", prod23Again.ok && prod23Again.calls === 1, prod23Again.error || `${prod23Again.calls} execute calls`);
@@ -778,8 +827,9 @@ applyFile(DB.prod23f, file0023);
 check("production today, 0023 applied twice through the file: identical schema dump", dump(DB.prod23f) === prod23fFirst, firstDiff(prod23fFirst, dump(DB.prod23f)));
 check("…the history probe is true and the CHECK equals the one of the migration", historyProbe(DB.prod23f) && fieldsCheckOf(DB.prod23f) === check0023, fieldsCheckOf(DB.prod23f));
 check("…every use case, history row, need and link is kept", snapshotOf(DB.prod23f) === prod23fRows, `${prod23fRows} → ${snapshotOf(DB.prod23f)}`);
+applyFile(DB.prod23f, file0024);
 const prod23fProbe = ensureDbSchemaOn(DB.prod23f);
-check("…then ensureDbSchema() runs only the probe", prod23fProbe.ok && prod23fProbe.calls === 1, prod23fProbe.error || `${prod23fProbe.calls} execute calls`);
+check("…then (with 0024 by hand too) ensureDbSchema() runs only the probe", prod23fProbe.ok && prod23fProbe.calls === 1, prod23fProbe.error || `${prod23fProbe.calls} execute calls`);
 needsHistoryWrites(DB.prod23f);
 
 // 15. Never narrows, never fails on rows.
@@ -896,6 +946,71 @@ check("with both sessions gone 0023 passes: the CHECK of the migration, every ro
 // The file without --single-transaction, then SHOW in the same session: the limit ended with the DO block.
 const sameSession = exec("psql", [...pinned, "-d", DB.locks, "--no-psqlrc", "-q", "-At", "-v", "ON_ERROR_STOP=1", "-f", file0023, "-c", "SHOW lock_timeout"]);
 check("lock_timeout ends with 0023's transaction: the session keeps its own", sameSession.status === 0 && sameSession.stdout.trim() === "0", sameSession.stderr.trim() || sameSession.stdout.trim());
+
+// 19. Production today for 0024: 0000→0023 healed by the self-heal of ENSURE_VERSION 17.
+function productionAt0023(db) {
+  freshDatabase(db, upTo("0023"));
+  const caughtUp = ensureDbSchemaOn(db);
+  check(`${db}: 0000→0023 + ensureDbSchema(): catch-up done`, caughtUp.ok && historyProbe(db) && referentsProbe(db), caughtUp.error);
+  dropReferents(db);
+  psql(
+    db,
+    `INSERT INTO use_cases (id, workspace_id, title, status, source, origin) VALUES ('${ids.cardA}', '${ids.ws}', 'Scheda completa della 0023', 'accepted', 'manual', 'transformation'),
+       ('${ids.cardB}', '${ids.ws}', 'Scheda in corso della 0023', 'accepted', 'manual', 'transformation');
+     WITH n AS (
+       INSERT INTO use_case_needs (workspace_id, type, kind, title, status, owner_side, import_key)
+       VALUES ('${ids.ws}', 'requisito', 'dato', 'Quante fatture', 'validata', 'cliente', 'p24-a1'), ('${ids.ws}', 'requisito', 'dato', 'Quali programmi', 'non_applicabile', 'cliente', 'p24-a2')
+       RETURNING id
+     )
+     INSERT INTO use_case_need_links (need_id, use_case_id) SELECT n.id, '${ids.cardA}' FROM n;
+     WITH n AS (
+       INSERT INTO use_case_needs (workspace_id, type, kind, title, status, owner_side, import_key)
+       VALUES ('${ids.ws}', 'requisito', 'dato', 'Quanto tempo', 'chiesta', 'cliente', 'p24-b1') RETURNING id
+     )
+     INSERT INTO use_case_need_links (need_id, use_case_id) SELECT n.id, '${ids.cardB}' FROM n;
+     INSERT INTO use_case_events (workspace_id, use_case_id, actor_kind, channel, action, fields, phase_after)
+       VALUES ('${ids.ws}', '${ids.cardA}', 'sistema', 'script', 'modificato', ARRAY['cosa_serve'], 'aggiunta.requisito.da_chiedere');`,
+  );
+  check(`${db}: production today for 0024: history probe true, referents probe false, the CHECK of 0023`, historyProbe(db) && !referentsProbe(db) && fieldsCheckOf(db) === check0023, fieldsCheckOf(db));
+}
+const completeSince = (db) =>
+  psql(db, `SELECT coalesce(string_agg(use_case_id || ':' || (complete_since IS NOT NULL), ',' ORDER BY use_case_id), '') FROM use_case_info_state WHERE use_case_id IN ('${ids.cardA}', '${ids.cardB}')`);
+
+// 19a. Through the self-heal.
+productionAt0023(DB.prod24);
+const prod24Rows = snapshotOf(DB.prod24);
+const prod24Heal = ensureDbSchemaOn(DB.prod24);
+check("production today: ensureDbSchema() does not stop at the probe, the 0024 self-heal runs", prod24Heal.ok && prod24Heal.calls > 1, prod24Heal.error || `${prod24Heal.calls} execute calls`);
+check("…the referents probe is true and the CHECK equals the one of the migration", referentsProbe(DB.prod24) && fieldsCheckOf(DB.prod24) === check0024, fieldsCheckOf(DB.prod24));
+check("…the 0024 tables equal those of the migration", dump(DB.prod24, [...REFERENTS_TABLES]) === dump(DB.mig, [...REFERENTS_TABLES]), firstDiff(dump(DB.mig, [...REFERENTS_TABLES]), dump(DB.prod24, [...REFERENTS_TABLES])));
+check("…every use case, history row, need and link is kept", snapshotOf(DB.prod24) === prod24Rows, `${prod24Rows} → ${snapshotOf(DB.prod24)}`);
+check("…a card whose client-side needs are all done is marked complete; the other is not", completeSince(DB.prod24) === `${ids.cardA}:true`, completeSince(DB.prod24));
+const prod24Again = ensureDbSchemaOn(DB.prod24);
+check("a second ensureDbSchema() runs only the probe", prod24Again.ok && prod24Again.calls === 1, prod24Again.error || `${prod24Again.calls} execute calls`);
+const prod24Dump = dump(DB.prod24);
+applyFile(DB.prod24, file0024);
+applyFile(DB.prod24, file0024);
+check("0024 applied twice on the healed database: identical schema dump", dump(DB.prod24) === prod24Dump, firstDiff(prod24Dump, dump(DB.prod24)));
+needsHistoryWrites(DB.prod24);
+
+// 19b. Through the SQL file, then the self-heal.
+productionAt0023(DB.prod24f);
+const prod24fRows = snapshotOf(DB.prod24f);
+applyFile(DB.prod24f, file0024);
+const prod24fFirst = dump(DB.prod24f);
+check("production today, 0024 through the file: the referents probe is true, every row kept", referentsProbe(DB.prod24f) && snapshotOf(DB.prod24f) === prod24fRows, `${prod24fRows} → ${snapshotOf(DB.prod24f)}`);
+check("…the card complete before 0024 is marked complete", completeSince(DB.prod24f) === `${ids.cardA}:true`, completeSince(DB.prod24f));
+const prod24fProbe = ensureDbSchemaOn(DB.prod24f);
+check("…then ensureDbSchema() runs only the probe", prod24fProbe.ok && prod24fProbe.calls === 1, prod24fProbe.error || `${prod24fProbe.calls} execute calls`);
+applyFile(DB.prod24f, file0024);
+check("…and the file again changes nothing", dump(DB.prod24f) === prod24fFirst, firstDiff(prod24fFirst, dump(DB.prod24f)));
+
+// 20. TimeZone, as Neon: UTC on every scratch database of this run.
+for (const db of Object.values(DB)) {
+  if (psql("postgres", `SELECT count(*) FROM pg_database WHERE datname = '${db}'`) !== "1") continue;
+  const zone = psql(db, "SHOW TimeZone");
+  check(`${db}: SHOW TimeZone is UTC`, ["UTC", "GMT", "Etc/UTC"].includes(zone), zone);
+}
 
 dropScratchDatabases();
 console.log(failures.length === 0 ? "All hub schema checks passed." : `${failures.length} check(s) failed.`);

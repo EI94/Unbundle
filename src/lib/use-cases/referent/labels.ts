@@ -364,6 +364,7 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   riprova_non_ammessa: "L'email è già partita, oppure hai già riprovato tre volte.",
   versione_superata: "Qualcuno ha appena cambiato questa richiesta. Ho ricaricato i dati: riprova.",
   domanda_non_disponibile: "Questa esigenza non accetta risposte o file.",
+  risposta_non_trovata: "Risposta non trovata.",
   risposta_vuota: "Scrivi la risposta.",
   testo_troppo_lungo: "Al massimo 4.000 caratteri.",
   troppi_file: "Al massimo 5 file per domanda.",

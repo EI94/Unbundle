@@ -3,6 +3,8 @@ import { SettingsSection } from "@/components/dashboard/settings-section";
 import { UcAccessError, ensureUcAvailable, getUcUserContext, isUcEnabledFor, ucLsDomains } from "@/lib/db/queries/uc-access";
 import { loadSubprocessorAck, type SubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { referentStoreReady } from "@/lib/db/queries/use-case-referent-base";
+import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import {
   SUBPROCESSORS,
   SUBPROCESSORS_POWERS_TEXT,
@@ -20,7 +22,8 @@ import { SubprocessorsForm } from "./subprocessors-form";
  * Impostazioni › «Sub-responsabili» (GDPR art. 28, par. 2): l'elenco dei fornitori
  * di Lateral Space e l'autorizzazione del cliente. Componente server, montato con
  * una riga nella pagina delle impostazioni. Solo dove la sezione Casi d'uso è
- * accesa per il workspace e lo schema uc è aggiornato; altrimenti, o se la
+ * accesa per il workspace e lo schema uc è aggiornato, oppure dove è accesa «Chiedi al referente»
+ * (le sue email vogliono la stessa autorizzazione) con i suoi archivi pronti; altrimenti, o se la
  * lettura non riesce, non mostra nulla e il resto della pagina resta com'è.
  */
 export async function SubprocessorsCard({
@@ -34,11 +37,12 @@ export async function SubprocessorsCard({
   userId: string;
   workspaceRole: string;
 }) {
-  if (!isUcEnabledFor(workspaceId)) return null;
+  const dossiers = isUcEnabledFor(workspaceId);
+  if (!dossiers && !(referentAskEnabled(workspaceId, process.env) && (await referentStoreReady()))) return null;
   let ack: SubprocessorAck | null;
   let user: UserContext | null;
   try {
-    await ensureUcAvailable(workspaceId);
+    if (dossiers) await ensureUcAvailable(workspaceId);
     const executor = await getAppUcExecutor();
     [ack, user] = await Promise.all([loadSubprocessorAck(executor, workspaceId), getUcUserContext(userId)]);
   } catch (error) {

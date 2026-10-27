@@ -1,7 +1,6 @@
 "use server";
 
 import { requireSession } from "@/lib/auth/redirect-to-login";
-import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -23,7 +22,6 @@ import {
   type ScoringModelConfigPatch,
 } from "@/lib/db/queries/scoring-model";
 import type { UseCase } from "@/lib/db/schema";
-import { markSignalRead } from "@/lib/db/queries/signals";
 import { dispatchNewPortfolioNotifications } from "@/lib/notifications/portfolio-dispatch";
 import {
   autoScorePortfolioUseCase,
@@ -753,18 +751,4 @@ export async function recalibratePortfolioScoresAction(
       fieldErrors: {},
     };
   }
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Inbox notifiche (campanella)
-// ──────────────────────────────────────────────────────────────────────
-
-export async function markSignalReadAction(
-  workspaceId: string,
-  signalId: string
-) {
-  await requireWorkspaceAccess(workspaceId);
-  await markSignalRead(workspaceId, signalId);
-  revalidatePath(`/dashboard/${workspaceId}`);
-  return { ok: true } as const;
 }

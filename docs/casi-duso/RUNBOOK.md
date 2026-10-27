@@ -18,6 +18,7 @@ Regole di questo documento:
 | 7 | Richieste sui dati, conservazione e cancellazione |
 | 8 | Schema, seed e template |
 | 9 | Controlli: `uc-doctor`, `perf-smoke`, CI, log |
+| 10 | Use case: «Chiedi al referente», la campanella per persona, gli avvisi a chi ha chiesto |
 
 ---
 
@@ -250,3 +251,68 @@ Ogni errore del server (`src/instrumentation.ts`) e ogni lettura MCP, cron e sel
 ### 9.6 MCP dei dossier
 
 Il server `unbundle-casi` resta in sola lettura. Lo strumento `list_use_cases` si chiama ora `list_cases`; il vecchio nome resta come alias per una release e poi si toglie (solo nel server stdio `mcp/unbundle-casi-server.mjs`, che per l'alias chiama la stessa rotta). Chi ha installato il server lo riscarica dal pannello «Sviluppo con Claude» del caso.
+
+## 10. Use case: «Chiedi al referente», la campanella per persona, gli avvisi a chi ha chiesto
+
+Riferimento: la SPEC del pacchetto (parti 1 e 2). La funzione vive nell'area «Use case» e **non dipende da `UC_ENABLED` né da `UC_WORKSPACE_IDS`**: spegnere i dossier non la spegne. Per spegnerla: `USE_CASE_REFERENTS=off`.
+
+### 10.1 Variabili
+
+| Variabile | Produzione | Note |
+|---|---|---|
+| `USE_CASE_REFERENTS` | assente (accesa) oppure `off` | `off`: niente pannello, i link rispondono «non valido», il cron risponde 404, nessuna email ai referenti né a chi ha chiesto. La campanella per persona continua a funzionare. |
+| `USE_CASE_REFERENTS_PRIVACY_EMAIL` | facoltativa | L'indirizzo dell'informativa per accesso, rettifica e cancellazione. Assente: l'indirizzo dentro `UC_EMAIL_FROM`. |
+| `RESEND_API_KEY` | **solo Produzione** | Mai in Preview: le anteprime usano il database di produzione. Il codice spegne comunque la funzione con `VERCEL_ENV=preview`. |
+| `UC_EMAIL_FROM` | `Lateral Space via Unbundle <indirizzo@dominio-verificato>` | In Resend: dominio verificato (SPF, DKIM) e **tracciamento di aperture e clic spento** (riscriverebbe i link `/rispondi/` e aggiungerebbe un pixel). |
+| `UC_SECRET` | già impostata | Obbligatoria per le scritture della pagina pubblica su ogni ambiente Vercel (limite per IP). |
+| `BLOB_READ_WRITE_TOKEN` | già impostata | Store privato: caricamenti diretti fino a 20 MB. Senza, solo fino a 4 MB passando dal server. |
+| `CRON_SECRET` | già impostata | `/api/cron/use-case-referents` (lun–ven alle 09:00 UTC) risponde 401 se manca o è diversa. |
+| `UC_ENABLED` | non letta qui | `UC_ENABLED=false` ferma solo i dossier. |
+
+### 10.2 Migrazione 0024 (a mano, prima del deploy)
+
+1. Restore point su Neon.
+2. Controllo di sola lettura: `SHOW TimeZone;` deve dare `GMT`, `UTC` o `Etc/UTC` (la campanella legge `weekly_signals.created_at`, un `timestamp` senza fuso, come UTC). Se no, fermarsi.
+3. In un momento tranquillo: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0024_use_case_referents.sql`.
+4. `SELECT <USE_CASE_REFERENTS_PROBE_SQL>` (da `src/lib/db/use-case-hub-referents-ddl.ts`) deve dare `true`. Il DDL è solo additivo: il codice di prima ignora le tabelle nuove e il CHECK più largo.
+5. Mai drizzle-kit, mai `db:push`. Il self-heal dell'app (`ENSURE_VERSION` 18) trova lo schema aggiornato e non fa niente.
+
+Prima della migrazione: `node scripts/use-case-test/schema-check.mjs` sul cluster locale (casi 18–20: due applicazioni, self-heal, produzione di oggi, TimeZone).
+
+Il ramo `feat/chiedi-al-referente` ha i deploy spenti (`vercel.json`, `git.deploymentEnabled`): un'anteprima applicherebbe la 0024 al database di produzione prima della revisione.
+
+### 10.3 Accensione
+
+1. Deploy (dopo 10.2). `GET /api/cron/use-case-referents` con `CRON_SECRET`: soli conteggi, tutti a zero.
+2. Un responsabile del cliente (function_lead, exec_sponsor o transformation_lead, email non di Lateral Space) autorizza i sub-responsabili in Impostazioni › Sub-responsabili. La scheda c'è anche senza dossier. Senza autorizzazione «Chiedi al referente» resta fermo con il suo avviso e nessuna email parte (righe in attesa, `sub_responsabili_mancanti`).
+3. `RESEND_API_KEY` e `UC_EMAIL_FROM` in Produzione, poi un nuovo deploy. Prima decidere cosa fare delle righe dei dossier in attesa: il dispatcher dei dossier le manderebbe in ritardo. Le righe della coda dei referenti e degli avvisi più vecchie di 2 giorni lavorativi si annullano da sole (`troppo_vecchia`).
+4. Prima richiesta a una casella di prova fuori dai domini di Lateral Space, poi ai referenti veri.
+
+Regole del Firewall di Vercel (chiave: IP), accanto a quelle di `/r/`: `GET /rispondi/*` 60 al minuto; `/api/rispondi/*` 120 al minuto; facoltativa `/api/workspaces/*/bell` 120 al minuto.
+
+### 10.4 Dati, conservazione e cancellazione
+
+- Conservazione automatica (cron, passo 8): 12 mesi dopo la fine di una richiesta, se le sue esigenze non sono più «da verificare», risposte svuotate e file cancellati (codici e date restano). Bozze e file non inviati si cancellano appena la richiesta finisce.
+- «Cancella i dati di questa persona» dalla scheda, oppure l'operatore:
+  `node --no-warnings scripts/use-case-admin.ts erase-referent --workspace <uuid> --contact <uuid>` (a secco), poi con `--apply --confirm-authorized --confirm-database host[:porta]/database --environment production --production-approved`. Una transazione: richieste revocate («cancellazione»), link revocati, email in coda annullate, risposte svuotate, file segnati cancellati, messaggi tolti; la riga del referente si anonimizza solo se la usa soltanto l'hub. Lo script non ha accesso all'archivio: gli oggetti dei file li cancella il prossimo giro del cron (passo 7). Se il referente è anche in un dossier: `uc-case-admin anonymize-contact` (§7.2).
+- Link trapelato: «Revoca il link» dalla scheda (oppure la cancellazione qui sopra). Un cambio d'indirizzo del referente («Correggi l'email») revoca da solo i link partiti al vecchio indirizzo.
+
+### 10.5 La campanella per persona
+
+- Il numero rosso conta le righe **non lette da quella persona** e **più nuove della sua ultima apertura** della campanella; senza una riga di stato, dall'inizio della sua iscrizione. Aprire la campanella azzera il numero; le righe restano evidenziate finché non si aprono o «Segna tutte come lette».
+- Dove sta lo stato: `weekly_signal_reads` (segnali letti per persona; `weekly_signals.is_read = true` vuol dire «letto per tutti», solo per le righe di prima o ritirate dal riepilogo), `workspace_bell_state` (`seen_at`, la scelta sulle email), `use_case_notifications` (una riga per revisore, use case, tipo e giorno di Roma), `uc_notifications` per le righe dei dossier.
+- Controllo di una persona, in sola lettura (UUID inventati):
+  ```sql
+  SELECT seen_at, referent_emails FROM workspace_bell_state WHERE workspace_id = '<ws>' AND user_id = '<utente>';
+  SELECT kind, rome_day, answers, unknowns, documents, read_at FROM use_case_notifications
+   WHERE workspace_id = '<ws>' AND recipient_user_id = '<utente>' ORDER BY last_event_at DESC LIMIT 20;
+  ```
+- Le notifiche e gli avvisi più vecchi di 90 giorni si cancellano (cron, passo 12).
+
+### 10.6 Avvisi per email a chi ha chiesto
+
+- Coda: `use_case_requester_emails` (una riga per persona, workspace e giorno di Roma) con le voci in `use_case_requester_email_items`. Al massimo un'email al giorno per persona, lun–ven 9–18 di Roma, festivi esclusi.
+- Le risposte del referente partono subito (prima email del giorno); documenti e «Nessuna risposta» vanno nell'email del giorno lavorativo dopo, alle 9 (o si uniscono a quella di oggi se non è ancora partita).
+- In attesa (`hold_reason`): `email_non_configurata`, `sub_responsabili_mancanti`, `funzione_spenta`. Annullate (`cancel_reason`): `destinatario_non_valido` (email non verificata, non più revisore), `avvisi_spenti` (la persona ha tolto la spunta nella campanella), `nessuna_voce`, `troppo_vecchia` (più di 2 giorni lavorativi dopo `due_at`, che i nuovi tentativi non spostano).
+- Mai nel testo: risposte, nomi di file, nome o email del referente.
+

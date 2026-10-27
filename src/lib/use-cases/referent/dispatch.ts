@@ -78,6 +78,8 @@ export interface ReferentRequestFacts {
 
 export interface ReferentDeliveryFacts {
   company: string;
+  /** `referentAskEnabled(workspaceId, env)`: falso (workspace escluso dall'area) → la riga aspetta. */
+  featureOn?: boolean;
   /** L'autorizzazione del workspace all'elenco dei sub-responsabili di adesso. */
   subprocessorsAuthorized: boolean;
   recipient: { email: string | null; active: boolean; anonymized: boolean; linkedUserIsLateralSpace: boolean } | null;
@@ -134,13 +136,15 @@ function dropReason(r: ReferentRequestFacts, now: Date): string | null {
 
 /** Che cosa fare di una riga: inviarla (con i link da emettere e gli effetti), tenerla in coda o annullarla. */
 export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliveryFacts, o: { lsDomains: readonly string[]; now: Date }): ReferentDeliveryPlan {
+  if (f.featureOn === false) return hold("funzione_spenta");
   if (!f.subprocessorsAuthorized) return hold("sub_responsabili_mancanti");
   const r = f.recipient;
-  if (!r || !r.active || r.anonymized || !isPlainAddress(r.email)) return cancel("destinatario_non_raggiungibile");
-  const to = r.email.trim().toLowerCase();
+  const to = r?.email?.trim().toLowerCase() ?? null;
+  if (!r || !r.active || r.anonymized || !isPlainAddress(to)) return cancel("destinatario_non_raggiungibile");
   const domain = emailDomain(to);
   if ((domain && o.lsDomains.includes(domain)) || r.linkedUserIsLateralSpace) return cancel("destinatario_lateral_space");
-  const replyTo = isPlainAddress(f.replyTo) ? f.replyTo.trim().toLowerCase() : null;
+  const reply = f.replyTo?.trim().toLowerCase() ?? null;
+  const replyTo = isPlainAddress(reply) ? reply : null;
   const replyToKnown = replyTo !== null;
 
   if (e.template === "richiesta") {
@@ -215,17 +219,20 @@ export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliver
       company: f.company,
       replyToKnown: replyToKnown && sameRequester,
       replyName,
-      entries: kept.map(
-        (x): ReminderEntry => ({
-          useCase: x.useCase,
-          requesterName: x.requesterName,
-          kind: x.item!.kind,
-          openQuestions: x.openItems,
-          newQuestions: x.newQuestions,
-          expiresAt: x.expiresAt,
-          link: linkOf(links, x.id),
-        }),
-      ),
+      // Solo le voci con il loro link: una richiesta non più viva all'emissione esce dall'email.
+      entries: kept
+        .filter((x) => Boolean(links[x.id]))
+        .map(
+          (x): ReminderEntry => ({
+            useCase: x.useCase,
+            requesterName: x.requesterName,
+            kind: x.item!.kind,
+            openQuestions: x.openItems,
+            newQuestions: x.newQuestions,
+            expiresAt: x.expiresAt,
+            link: linkOf(links, x.id),
+          }),
+        ),
     }),
     after: kept.map((x) => ({
       requestId: x.id,
@@ -386,11 +393,10 @@ async function deliverOne(
   try {
     const links = Object.fromEntries(Object.entries(tokens).map(([requestId, t]) => [requestId, `${config.origin}/rispondi/${t.token}`]));
     const input = plan.build(links);
-    // Le voci senza token (richiesta non più viva al momento dell'emissione) escono dall'email.
+    // Le voci senza token (richiesta non più viva al momento dell'emissione) escono dall'email (`build`).
     if (input.template === "promemoria") {
       const keptIds = new Set(Object.keys(tokens));
-      const entries = input.entries.filter((_, index) => keptIds.has(plan.links[index]?.requestId ?? ""));
-      rendered = renderReferentEmail({ ...input, entries });
+      rendered = renderReferentEmail(input);
       effects = plan.after.filter((x) => keptIds.has(x.requestId));
     } else {
       rendered = renderReferentEmail(input);

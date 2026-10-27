@@ -19,14 +19,14 @@ export default async function IntelligencePage(props: {
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await props.params;
-  const { access } = await requireWorkspacePage(workspaceId);
+  const { session, access } = await requireWorkspacePage(workspaceId);
   // D4: chi non valuta non riceve i segnali delle schede (titolo e problema di ogni
   // proposta, riepiloghi dell'area) né le zone degli use case.
   const canReview = canReviewWorkspacePortfolio(access.role);
 
   const [signals, unread, activities, useCases] = await Promise.all([
-    getSignalsByWorkspace(workspaceId, 50, access.role),
-    getUnreadSignals(workspaceId, access.role),
+    getSignalsByWorkspace(workspaceId, 50, access.role, session.user.id),
+    getUnreadSignals(workspaceId, access.role, session.user.id),
     getActivitiesByWorkspace(workspaceId),
     canReview ? getUseCasesByWorkspace(workspaceId) : Promise.resolve([]),
   ]);

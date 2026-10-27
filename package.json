@@ -32,7 +32,7 @@
     "test:uc": "node --no-warnings --test \"src/lib/uc/**/*.test.ts\" \"mcp/unbundle-casi-server*.test.mjs\"",
     "test:connector": "node --no-warnings --test \"src/lib/connector/**/*.test.ts\" src/lib/db/connector-ddl.test.ts src/lib/portfolio/use-case-code.test.ts src/lib/portfolio/idempotency.test.ts src/lib/portfolio/submit-contribution.test.ts src/lib/portfolio/ai-ranking-safety.test.ts src/lib/notifications/sanitize.test.ts src/lib/log/safe-error.test.ts",
     "test:connector:db": "node --no-warnings scripts/connettore-test/run-db-tests.mjs",
-    "test:use-cases": "node --no-warnings --test \"src/lib/use-cases/**/*.test.ts\" \"src/lib/db/use-case-hub*.test.ts\" \"src/components/use-cases/**/*.test.ts\" \"src/components/dashboard/nav-active.test.ts\" \"src/lib/review-team*.test.ts\"",
+    "test:use-cases": "node --no-warnings --test \"src/lib/use-cases/**/*.test.ts\" \"src/lib/db/use-case-hub*.test.ts\" \"src/components/use-cases/**/*.test.ts\" \"src/components/dashboard/nav-active.test.ts\" \"src/lib/review-team*.test.ts\" \"src/lib/notifications/bell*.test.ts\" \"src/components/portfolio/**/*.test.ts\"",
     "test:use-cases:db": "node --no-warnings scripts/use-case-test/run-db-tests.mjs",
     "test": "npm run test:portfolio && npm run test:mcp && npm run test:slack && npm run test:workspace-collaboration && npm run test:auth && npm run test:ai-readiness && npm run test:learning && npm run test:uc && npm run test:connector && npm run test:use-cases"
   },

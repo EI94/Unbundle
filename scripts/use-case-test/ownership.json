@@ -392,7 +392,7 @@
         "src/lib/db/use-case-hub-referents-ddl.test.ts",
         "src/lib/db/use-case-hub-uc-drizzle.ts",
         "src/lib/db/use-case-hub-uc-drizzle.test.ts",
-        "src/lib/use-cases/referent/{contract,labels,tokens,availability,questions,prepare,schedule,state,text,files,email,dispatch,history,view,upload-transport,erase,alerts}.ts",
+        "src/lib/use-cases/referent/{contract,labels,tokens,availability,questions,prepare,schedule,state,text,files,email,dispatch,history,view,upload-transport,erase,alerts,sql}.ts",
         "src/lib/use-cases/referent/*.test.ts",
         "src/lib/use-cases/info-progress.ts",
         "src/lib/use-cases/info-progress.test.ts",
@@ -401,7 +401,9 @@
         "src/lib/use-cases/bell/*.test.ts",
         "src/lib/use-cases/admin/erase-referent.test.ts",
         "src/lib/use-cases/admin/cli.ts",
-        "src/lib/db/queries/{use-case-referents,use-case-referent-public,use-case-referent-files,use-case-referent-dispatch,bell-state,use-case-notifications,use-case-info-progress}.ts",
+        "src/lib/use-cases/admin/cli.test.ts",
+        "src/lib/use-cases/admin/erase-referent.ts",
+        "src/lib/db/queries/{use-case-referents,use-case-referent-base,use-case-referent-public,use-case-referent-files,use-case-referent-dispatch,bell-state,use-case-notifications,use-case-info-progress}.ts",
         "src/lib/notifications/{bell,bell-data,bell-writes}.ts",
         "src/lib/notifications/bell.test.ts",
         "src/lib/notifications/bell-writes.source.test.ts",
@@ -446,7 +448,9 @@
         "scripts/use-case-test/schema-check.mjs",
         "docs/casi-duso/RUNBOOK.md",
         "docs/casi-duso/AMBIENTE.md",
-        "src/lib/use-cases/digest.test.ts"
+        "src/lib/use-cases/digest.test.ts",
+        "src/lib/use-cases/una-voce.integration.test.ts",
+        "src/lib/db/use-case-hub-history.integration.test.ts"
       ]
     },
     "chiedi-p": {

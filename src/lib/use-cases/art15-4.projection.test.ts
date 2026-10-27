@@ -245,3 +245,14 @@ test("«Benefici e costi»: ai revisori il modello e le sue cifre, al contributo
   assert.equal(reviewer.cost?.source, "stima");
   assert.equal(projectUseCaseDetail(others, CTX, null).valueModel?.confirmBy, "Responsabile riservato");
 });
+
+test("«Raccolta informazioni» e le notifiche restano fuori dalle proiezioni della pagina, della REST e dell'export (SPEC §P2.11)", () => {
+  const row = { ...fullRow(), reopenedOn: null, realizedOn: null };
+  const contributorRow = { ...row, proposedBy: ME_EMAIL };
+  const projected = [projectHubItem(row, CTX, null), projectUseCaseDetail(row, CTX, null), exportRow(projectHubItem(row, CTX, null), row), projectContributorRow(contributor, contributorRow, null, TODAY)];
+  for (const value of projected) {
+    const keys = keysDeep(value);
+    assert.deepEqual(keys.filter((key) => /^(info|infoProgress|notifications)$/.test(key)), []);
+  }
+  assert.ok(!(EXPORT_COLUMNS as readonly string[]).some((column) => /info|notific/i.test(column)));
+});

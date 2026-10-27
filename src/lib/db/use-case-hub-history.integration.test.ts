@@ -58,7 +58,11 @@ test("lo schema della 0023 c'è: la sonda è vera, il CHECK ha l'elenco intero e
   assert.equal(row.db, process.env.UC_TEST_PG_DB);
   assert.equal(row.current, true);
   const first = await constraint();
-  assert.equal(first.def, `CHECK ((fields <@ ARRAY[${ddl.USE_CASE_EVENT_FIELDS_0023.map((name) => `'${name}'::text`).join(", ")}]))`);
+  // Il database di prova ha anche la 0024, che allarga l'elenco con `richiesta_referente`: la 0023
+  // c'è intera, e il suo DDL non lo restringe.
+  const { USE_CASE_EVENT_FIELDS_0024 } = await import("./use-case-hub-referents-ddl.ts");
+  const expected = (names: readonly string[]) => `CHECK ((fields <@ ARRAY[${names.map((name) => `'${name}'::text`).join(", ")}]))`;
+  assert.ok([expected(ddl.USE_CASE_EVENT_FIELDS_0023), expected(USE_CASE_EVENT_FIELDS_0024)].includes(String(first.def)), String(first.def));
   assert.equal(first.convalidated, true);
   await ensure.runUseCaseHistoryDdl();
   await ensure.runUseCaseHistoryDdl();

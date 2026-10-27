@@ -50,10 +50,17 @@ const SCAN_DIRS = [
   "src/app/(dashboard)/dashboard/[workspaceId]/use-cases",
   "src/app/api/mcp/use-case",
   "scripts/use-case-admin",
+  // «Chiedi al referente» (SPEC §9.1) e la campanella per persona (§P2.12.1).
+  "src/app/rispondi",
+  "src/app/api/rispondi",
+  "src/app/api/cron/use-case-referents",
+  "src/app/api/workspaces/[workspaceId]/bell",
 ];
 const SCAN_FILES: Array<{ dir: string; name: RegExp }> = [
-  { dir: "src/lib/db/queries", name: /^(use-case-|team-mcp-)[^/]*\.ts$/ },
+  { dir: "src/lib/db/queries", name: /^(use-case-|team-mcp-|bell-state)[^/]*\.ts$/ },
   { dir: "scripts", name: /^use-case-admin[^/]*\.(ts|mjs|js)$/ },
+  { dir: "src/lib/actions", name: /^(use-case-referents|notifications)\.ts$/ },
+  { dir: "src/lib/notifications", name: /^bell[^/]*\.ts$/ },
 ];
 
 type Range = readonly [start: number, end: number];
@@ -90,7 +97,10 @@ const SOURCE = /\.(ts|tsx|mjs|js|cjs)$/;
 const TEST_FILE = /\.test\.(ts|tsx|mjs|js|cjs)$/;
 
 const PERSON_FIELD = /proposed_?by|submitter_?email|submitted_?by_?user_?id/gi;
-const PERSON_COLUMN = /proposed_?by|actor_?user_?id/i;
+// Le persone di «Chiedi al referente» e della campanella: il referente, chi ha chiesto, chi ha scritto,
+// caricato, revocato, cancellato, tolto o controllato, chi riceve una notifica (SPEC §9.1, §P2.12.1).
+const PERSON_COLUMN =
+  /proposed_?by|actor_?user_?id|contact_?id|requested_?by_?user_?id|author_?user_?id|uploaded_?by_?user_?id|revoked_?by_?user_?id|deleted_?by_?user_?id|removed_?by_?user_?id|reviewed_?by_?user_?id|recipient_?user_?id/i;
 const CLAUSE_END = /\b(limit|offset|having|union|returning|window|fetch|select|from|where)\b/i;
 
 function walk(dir: string, out: string[]) {
@@ -736,4 +746,100 @@ test("prova del controllo: lascia passare ordinamenti e conteggi che non guardan
     "}",
   ].join("\n");
   assert.deepEqual(aggregationsByPerson(component, "src/components/use-cases/detail/intake-details.tsx"), [], component);
+});
+
+// ─── «Chiedi al referente»: niente tempi di risposta (SPEC §9.1) ──────
+
+const REFERENT_QUERY_FILE = /^src\/lib\/db\/queries\/use-case-referent[^/]*\.ts$/;
+const REQUEST_DATE = "(?:[a-z_][a-z0-9_]*\\.)?(?:sent_at|answered_at|completed_at|submitted_at|last_email_at)";
+/** Una differenza tra due date di una richiesta (il tempo di risposta di una persona). */
+const DATE_DIFFERENCE = new RegExp(`${REQUEST_DATE}\\s*-\\s*${REQUEST_DATE}|age\\s*\\(\\s*${REQUEST_DATE}\\s*,\\s*${REQUEST_DATE}`, "i");
+/** Un ordinamento per data di risposta o di completamento. */
+const ORDER_BY_ANSWER = /\border\s+by\b[^;`]*?\b(?:[a-z_][a-z0-9_]*\.)?(?:answered_at|completed_at)\b/i;
+
+function responseTimeHits(source: string): string[] {
+  const out: string[] = [];
+  for (const re of [DATE_DIFFERENCE, ORDER_BY_ANSWER]) {
+    const m = re.exec(source);
+    if (m) out.push(m[0].replace(/\s+/g, " "));
+  }
+  return out;
+}
+
+test("i file della funzione e della campanella sono nell'elenco controllato", () => {
+  const files = scannedFiles();
+  for (const expected of [
+    "src/lib/db/queries/use-case-referents.ts",
+    "src/lib/db/queries/use-case-referent-public.ts",
+    "src/lib/db/queries/use-case-referent-files.ts",
+    "src/lib/db/queries/use-case-referent-dispatch.ts",
+    "src/lib/db/queries/use-case-notifications.ts",
+    "src/lib/db/queries/use-case-info-progress.ts",
+    "src/lib/db/queries/bell-state.ts",
+    "src/lib/notifications/bell.ts",
+    "src/lib/notifications/bell-data.ts",
+    "src/lib/notifications/bell-writes.ts",
+    "src/lib/actions/notifications.ts",
+    "src/lib/actions/use-case-referents.ts",
+    "src/app/api/cron/use-case-referents/route.ts",
+    "src/app/api/workspaces/[workspaceId]/bell/route.ts",
+    "src/lib/use-cases/referent/sql.ts",
+  ]) {
+    assert.ok(files.includes(expected), `manca ${expected} nell'elenco controllato`);
+  }
+  // La pagina pubblica arriva con il suo pacchetto: le cartelle sono già nell'elenco.
+  for (const dir of ["src/app/rispondi", "src/app/api/rispondi"]) assert.ok(SCAN_DIRS.includes(dir), dir);
+});
+
+test("le richieste al referente non calcolano tempi di risposta né ordinano per risposta", () => {
+  const violations: string[] = [];
+  for (const file of scannedFiles().filter((f) => REFERENT_QUERY_FILE.test(f))) {
+    for (const hit of responseTimeHits(readFileSync(join(ROOT, file), "utf8"))) violations.push(`${file}: ${hit}`);
+  }
+  assert.deepEqual(violations, []);
+});
+
+test("prova del controllo: le persone di «Chiedi al referente» e della campanella", () => {
+  for (const text of [
+    sqlQuery("SELECT contact_id, count(*) FROM use_case_referent_requests GROUP BY 1"),
+    sqlQuery("SELECT r.requested_by_user_id, count(*) FROM use_case_referent_requests r GROUP BY r.requested_by_user_id"),
+    sqlQuery("SELECT id FROM use_case_referent_requests ORDER BY contact_id"),
+    sqlQuery("SELECT count(*) FROM use_case_need_answers WHERE author_user_id = $1"),
+    sqlQuery("SELECT uploaded_by_user_id, count(*) FROM use_case_need_files GROUP BY 1"),
+    sqlQuery("SELECT recipient_user_id, count(*) FROM use_case_notifications GROUP BY 1"),
+    sqlQuery("SELECT count(*) FROM use_case_notifications WHERE recipient_user_id = $1 AND read_at IS NULL"),
+  ]) {
+    assert.ok(aggregationsByPerson(text).length > 0, text);
+  }
+  for (const text of [
+    sqlQuery("SELECT r.id FROM use_case_referent_requests r WHERE r.contact_id = $1 ORDER BY r.created_at, r.id"),
+    sqlQuery(
+      "SELECT n.id, n.kind FROM use_case_notifications n WHERE n.recipient_user_id = $1 AND n.workspace_id = $2 ORDER BY n.last_event_at DESC, n.id LIMIT 30",
+    ),
+    sqlQuery("SELECT EXISTS (SELECT 1 FROM use_case_referent_requests r WHERE r.workspace_id = $1 AND r.requested_by_user_id = $2) AS has_requested"),
+    sqlQuery(
+      "SELECT r.id, r.contact_id, (SELECT count(*)::int FROM use_case_referent_request_items oi WHERE oi.request_id = r.id) AS open_items FROM use_case_referent_requests r",
+    ),
+  ]) {
+    assert.deepEqual(aggregationsByPerson(text), [], text);
+  }
+});
+
+test("prova del controllo: tempi di risposta e ordinamenti per risposta si trovano", () => {
+  for (const text of [
+    "sql`SELECT r.answered_at - r.sent_at AS took FROM use_case_referent_requests r`",
+    "sql`SELECT completed_at-sent_at FROM use_case_referent_requests`",
+    "sql`SELECT age(r.completed_at, r.sent_at) FROM use_case_referent_requests r`",
+    "sql`SELECT i.need_id FROM use_case_referent_request_items i ORDER BY i.answered_at DESC`",
+    "sql`SELECT id FROM use_case_referent_requests ORDER BY completed_at`",
+  ]) {
+    assert.ok(responseTimeHits(text).length > 0, text);
+  }
+  for (const text of [
+    "sql`SELECT r.id FROM use_case_referent_requests r ORDER BY r.created_at DESC, r.id`",
+    "sql`SELECT r.expires_at, r.sent_at FROM use_case_referent_requests r WHERE r.expires_at > now()`",
+    "sql`SELECT coalesce(r.completed_at, r.expired_at, r.revoked_at) < now() - interval '360 days' FROM use_case_referent_requests r`",
+  ]) {
+    assert.deepEqual(responseTimeHits(text), [], text);
+  }
 });

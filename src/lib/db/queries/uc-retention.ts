@@ -196,8 +196,10 @@ export const CASE_CONTACT_COLUMNS: readonly { table: string; column: string }[] 
  * Coppie (caso, referente) dei casi di un workspace: le colonne di
  * `CASE_CONTACT_COLUMNS` e i firmatari designati (`signers_designation`).
  * L'audit non conta: resta per sempre e terrebbe in vita ogni referente.
+ * Esportata per «Chiedi al referente» (`src/lib/use-cases/referent/erase.ts`): lo stesso elenco dice
+ * se un referente è usato solo dagli use case.
  */
-function contactRefsSql(workspaceId: string): SqlFragment {
+export function contactRefsSql(workspaceId: string): SqlFragment {
   const ws = () => cast(uuid(workspaceId, "workspace"), "uuid");
   const parts: SqlFragment[] = CASE_CONTACT_COLUMNS.map(({ table, column }) =>
     table === "uc_cases"

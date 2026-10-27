@@ -21,10 +21,10 @@ import {
 
 const WS = "3f2a9c1e-0000-4000-8000-0000000000a1";
 
-test("i 9 comandi, nell'ordine di DESIGN §10.5", () => {
+test("i 9 comandi, nell'ordine di DESIGN §10.5, più la cancellazione di un referente (SPEC §3.10)", () => {
   assert.deepEqual(
     [...ADMIN_COMMANDS],
-    ["dossier-dups", "configs", "team-name", "origin", "codes", "dossier-links", "slack-drafts", "scoring-v2", "doctor"],
+    ["dossier-dups", "configs", "team-name", "origin", "codes", "dossier-links", "slack-drafts", "scoring-v2", "doctor", "erase-referent"],
   );
   assert.equal(ADMIN_DATABASE_ENV, "USE_CASE_ADMIN_DATABASE_URL");
 });

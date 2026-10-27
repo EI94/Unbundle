@@ -171,6 +171,11 @@ export interface ReferentContactOption {
   emailMasked: string | null;
   selectable: boolean;
   reason: "senza_email" | "lateral_space" | "richiesta_aperta" | null;
+  /**
+   * Ha già domande aperte su altri use case del workspace: la finestra dice «… i promemoria
+   * arriveranno in un'unica email.» (un sì o un no, mai un numero).
+   */
+  hasOtherRequests: boolean;
 }
 
 export interface ReferentRequestView {

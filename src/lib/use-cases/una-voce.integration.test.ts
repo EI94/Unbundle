@@ -224,8 +224,19 @@ async function unreadTypes(workspaceId: string): Promise<string[]> {
   return rows.map((row) => String(row.signal_type));
 }
 
+/** I tipi non letti da una persona (SPEC §P2.4: `is_read` per tutti, oppure la sua riga di lettura). */
+async function unreadTypesFor(workspaceId: string, person: Person): Promise<string[]> {
+  const rows = await q(
+    `SELECT s.signal_type FROM weekly_signals s WHERE s.workspace_id = $1::uuid AND s.is_read = false
+       AND NOT EXISTS (SELECT 1 FROM weekly_signal_reads r WHERE r.signal_id = s.id AND r.user_id = $2::uuid) ORDER BY s.signal_type`,
+    [workspaceId, ids[person]],
+  );
+  return rows.map((row) => String(row.signal_type));
+}
+
 async function markAllUnread(): Promise<void> {
   await q(`UPDATE weekly_signals SET is_read = false WHERE workspace_id = ANY($1::uuid[])`, [[ids.on, ids.off]]);
+  await q(`DELETE FROM weekly_signal_reads WHERE workspace_id = ANY($1::uuid[])`, [[ids.on, ids.off]]);
 }
 
 before(async () => {
@@ -509,11 +520,13 @@ test("campanella: i link dei segnali seguono l'area del workspace", opts, async 
   areaOn();
   const signalsOf = async (workspaceId: string, role: string, useCaseHub: boolean) => {
     const tree = await workspaceTopbar({ workspaceId, role, useCaseHub });
+    // La campanella riceve il payload della persona (SPEC §P2.5): le righe «segnale» hanno la chiave `s:<id>`.
     const [initial] = elementsOf(tree)
-      .filter((element) => Object.hasOwn(element.props, "initialSignals"))
-      .map((element) => element.props.initialSignals) as Array<Array<{ signalType: string; href: string | null }>>;
-    assert.ok(Array.isArray(initial), "la campanella riceve i segnali");
-    return Object.fromEntries(initial.map((signal) => [signal.signalType, signal.href]));
+      .filter((element) => Object.hasOwn(element.props, "initial"))
+      .map((element) => element.props.initial) as Array<{ entries: Array<{ key: string; source: string; href: string | null }> }>;
+    assert.ok(initial && Array.isArray(initial.entries), "la campanella riceve le righe");
+    const typeOf = new Map((await q(`SELECT id::text AS id, signal_type FROM weekly_signals WHERE workspace_id = $1::uuid`, [workspaceId])).map((r) => [`s:${r.id}`, String(r.signal_type)]));
+    return Object.fromEntries(initial.entries.filter((e) => e.source === "segnale").map((e) => [typeOf.get(e.key), e.href]));
   };
   const on = await signalsOf(ids.on, "function_lead", true);
   assert.equal(on.new_portfolio_item, `/dashboard/${ids.on}/use-cases/${cards.bottom.id}`);
@@ -541,84 +554,75 @@ test("Intelligence: i segnali delle schede con il loro nome e i riepiloghi con i
   assert.ok(contributor.includes(`RISCHIO-${suffix}`));
 });
 
-test("Intelligence, «Segna tutti letti» e «Segna come letto»: il contributore non tocca i segnali delle schede", opts, async () => {
+test("Intelligence, «Segna tutti letti» e «Segna come letto»: per persona, e il contributore non tocca i segnali delle schede", opts, async () => {
   areaOn();
-  const state = globalThis as { __hubH4iRevalidated?: string[] };
   await markAllUnread();
+  const ALL = ["new_portfolio_item", "new_use_case_opportunity", "risk_alert", "use_case_digest", "use_case_quarter"];
   try {
     signIn("contributor");
     await intelligence.markAllSignalsRead(ids.on);
-    assert.deepEqual(await unreadTypes(ids.on), ["new_portfolio_item", "use_case_digest", "use_case_quarter"]);
-    assert.ok(state.__hubH4iRevalidated?.includes(`/dashboard/${ids.on}/intelligence`));
+    // Per il contributore: letti i segnali che vede; i segnali delle schede non li tocca.
+    assert.deepEqual(await unreadTypesFor(ids.on, "contributor"), ["new_portfolio_item", "use_case_digest", "use_case_quarter"]);
+    // Per il revisore niente cambia, e `is_read` resta quello di prima (SPEC §P2.4).
+    assert.deepEqual(await unreadTypesFor(ids.on, "builder"), ALL);
+    assert.deepEqual(await unreadTypes(ids.on), ALL);
 
     // Anche con l'id di un segnale delle schede: niente.
     await intelligence.markSignalAsRead(ids.on, signalIds.digest);
     await intelligence.markSignalAsRead(ids.on, signalIds.case);
-    assert.deepEqual(await unreadTypes(ids.on), ["new_portfolio_item", "use_case_digest", "use_case_quarter"]);
+    assert.deepEqual(await unreadTypesFor(ids.on, "contributor"), ["new_portfolio_item", "use_case_digest", "use_case_quarter"]);
 
-    // I segnali che vede sì; mai un segnale di un altro workspace.
+    // I segnali che vede sì, solo per lui; mai un segnale di un altro workspace.
     await markAllUnread();
-    await intelligence.markSignalAsRead(ids.on, signalIds.risk);
-    assert.ok(!(await unreadTypes(ids.on)).includes("risk_alert"));
+    assert.deepEqual(await intelligence.markSignalAsRead(ids.on, signalIds.risk), { ok: true });
+    assert.ok(!(await unreadTypesFor(ids.on, "contributor")).includes("risk_alert"));
+    assert.ok((await unreadTypesFor(ids.on, "builder")).includes("risk_alert"));
     await intelligence.markSignalAsRead(ids.on, signalIds.otherWorkspace);
-    assert.deepEqual(await unreadTypes(ids.off), ["new_portfolio_item"]);
+    assert.deepEqual(await unreadTypesFor(ids.off, "contributor"), ["new_portfolio_item"]);
 
-    // Il revisore li segna tutti, solo nel suo workspace.
+    // Il revisore li segna tutti, solo per sé e solo nel suo workspace.
     signIn("builder");
     await intelligence.markSignalAsRead(ids.on, signalIds.digest);
-    assert.ok(!(await unreadTypes(ids.on)).includes("use_case_digest"));
+    assert.ok(!(await unreadTypesFor(ids.on, "builder")).includes("use_case_digest"));
     await intelligence.markAllSignalsRead(ids.on);
-    assert.deepEqual(await unreadTypes(ids.on), []);
-    assert.deepEqual(await unreadTypes(ids.off), ["new_portfolio_item"]);
+    assert.deepEqual(await unreadTypesFor(ids.on, "builder"), []);
+    assert.deepEqual(await unreadTypesFor(ids.off, "builder"), ["new_portfolio_item"]);
+    assert.ok((await unreadTypesFor(ids.on, "contributor")).includes("new_use_case_opportunity"), "il contributore non è toccato");
 
     // Chi non è membro non arriva alla query.
     await markAllUnread();
     signIn("outsider");
     await assert.rejects(intelligence.markAllSignalsRead(ids.on), /non accessibile/);
-    assert.equal((await unreadTypes(ids.on)).length, 5);
+    assert.equal((await unreadTypesFor(ids.on, "outsider")).length, 5);
   } finally {
     await markAllUnread();
     signIn(null);
   }
 });
 
-test("Campanella, «Segna come letto»: l'action che chiama non spegne ai revisori i segnali delle schede", opts, async () => {
+test("Campanella, «ho aperto questa riga»: per persona, e non spegne ai revisori i segnali delle schede", opts, async () => {
   areaOn();
-  // L'action che la campanella chiama davvero quando si apre un segnale, letta dal componente:
-  // se tornasse a un'action senza il ruolo, la prova la chiamerebbe e cadrebbe.
-  const source = readFileSync(new URL("../../components/portfolio/notifications-bell.tsx", import.meta.url), "utf8");
-  const called = /const onOpenSignal = [\s\S]*?await (\w+)\(workspaceId, s\.id\)/.exec(source)?.[1];
-  assert.ok(called, "la campanella segna il segnale con un'action (workspaceId, s.id)");
-  const from = new RegExp(`import \\{[^}]*\\b${called}\\b[^}]*\\} from "@/lib/actions/([\\w-]+)"`).exec(source)?.[1];
-  assert.ok(from, `${called} arriva da @/lib/actions/…`);
-  const bellMarkRead = (await import(`../actions/${from}.ts`))[called] as (workspaceId: string, signalId: string) => Promise<unknown>;
-  assert.equal(typeof bellMarkRead, "function");
-
-  const state = globalThis as { __hubH4iRevalidated?: string[] };
+  // La scrittura che la campanella fa quando si apre un segnale (POST /api/workspaces/<ws>/bell).
+  const { writeBellRead } = await import("../notifications/bell-writes.ts");
+  const read = (person: Exclude<Person, "outsider">, signalId: string) => writeBellRead({ workspaceId: ids.on, userId: ids[person], role: roles[person], ref: { source: "segnale", id: signalId } });
   await markAllUnread();
   try {
     // Il contributore, anche con l'id di un segnale delle schede: niente.
-    signIn("contributor");
-    await bellMarkRead(ids.on, signalIds.case);
-    await bellMarkRead(ids.on, signalIds.digest);
-    await bellMarkRead(ids.on, signalIds.quarter);
-    assert.deepEqual(await unreadTypes(ids.on), ["new_portfolio_item", "new_use_case_opportunity", "risk_alert", "use_case_digest", "use_case_quarter"]);
-    // I segnali che vede sì, e la barra in alto si rilegge.
-    state.__hubH4iRevalidated = [];
-    await bellMarkRead(ids.on, signalIds.risk);
-    assert.ok(!(await unreadTypes(ids.on)).includes("risk_alert"));
-    assert.ok(state.__hubH4iRevalidated.includes(`/dashboard/${ids.on}`), "revalida il workspace della campanella");
+    for (const id of [signalIds.case, signalIds.digest, signalIds.quarter]) assert.equal(await read("contributor", id), "ok");
+    assert.deepEqual(await unreadTypesFor(ids.on, "contributor"), ["new_portfolio_item", "new_use_case_opportunity", "risk_alert", "use_case_digest", "use_case_quarter"]);
+    // I segnali che vede sì, solo per lui.
+    await read("contributor", signalIds.risk);
+    assert.ok(!(await unreadTypesFor(ids.on, "contributor")).includes("risk_alert"));
+    assert.ok((await unreadTypesFor(ids.on, "builder")).includes("risk_alert"));
     // Mai un segnale di un altro workspace.
-    await bellMarkRead(ids.on, signalIds.otherWorkspace);
-    assert.deepEqual(await unreadTypes(ids.off), ["new_portfolio_item"]);
-
-    // Il revisore segna letto il segnale delle schede che riceve.
-    signIn("builder");
-    await bellMarkRead(ids.on, signalIds.case);
-    assert.ok(!(await unreadTypes(ids.on)).includes("new_portfolio_item"));
+    await read("contributor", signalIds.otherWorkspace);
+    assert.deepEqual(await unreadTypesFor(ids.off, "contributor"), ["new_portfolio_item"]);
+    // Il revisore segna letto il segnale delle schede che riceve, per sé.
+    await read("builder", signalIds.case);
+    assert.ok(!(await unreadTypesFor(ids.on, "builder")).includes("new_portfolio_item"));
+    assert.ok((await unreadTypesFor(ids.on, "contributor")).includes("new_portfolio_item"));
   } finally {
     await markAllUnread();
-    signIn(null);
   }
 });
 

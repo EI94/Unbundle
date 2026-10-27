@@ -165,7 +165,6 @@ test("le superfici trovate scoperte restano protette", () => {
     ["blueprints.ts", "getLatestBlueprints"],
     ["pre-generate-activities.ts", "preGenerateActivitiesFromDocuments"],
     ["pre-generate-activities.ts", "confirmPreGeneratedActivities"],
-    ["portfolio.ts", "markSignalReadAction"],
     ["simulation.ts", "getLatestSimulation"],
   ];
 
