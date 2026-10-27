@@ -293,7 +293,15 @@ WHERE id = ${req} AND workspace_id = ${cast(ws, "uuid")}`),
         ]);
         for (const r of rows) {
           statements.push(
-            notifyReviewersSql({ workspaceId: ws, useCaseId: String(r.use_case_id), kind: "senza_risposta", followUp: "ultimo_promemoria", actorUserId: null }),
+            notifyReviewersSql({
+              workspaceId: ws,
+              useCaseId: String(r.use_case_id),
+              kind: "senza_risposta",
+              followUp: "ultimo_promemoria",
+              actorUserId: null,
+              // D-B21: il referente revisore non riceve «Nessuna risposta» della propria richiesta.
+              exceptReferentOfRequestId: String(r.id),
+            }),
             queueRequesterAlertSql({
               workspaceId: ws,
               target: { requestId: String(r.id) },

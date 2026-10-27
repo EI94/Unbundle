@@ -73,7 +73,21 @@ const emails: Record<Person, string> = {
 const MARIO = `mario.rossi.${suffix}@topjet.test`;
 const COURSE_TITLE = `Corso AI generativa ${suffix}`;
 const contacts = { builder: randomUUID(), claudio: randomUUID(), federico: randomUUID(), corsista: randomUUID(), contrib: randomUUID(), mario: randomUUID() };
-const cards = { fed: randomUUID(), learner: randomUUID(), contrib: randomUUID(), mario: randomUUID(), self: randomUUID(), recheck: randomUUID() };
+const cards = {
+  fed: randomUUID(),
+  learner: randomUUID(),
+  contrib: randomUUID(),
+  mario: randomUUID(),
+  self: randomUUID(),
+  recheck: randomUUID(),
+  // D-B21 e D-B24 (decisioni del proprietario, 27/10).
+  silent: randomUUID(),
+  expired: randomUUID(),
+  late: randomUUID(),
+  late2: randomUUID(),
+};
+const LATE = { link: randomUUID(), email: randomUUID() };
+const LATE_EMAILS = { link: `ritardo.${suffix}@topjet.test`, email: `ritardo.due.${suffix}@topjet.test` };
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-ruoli-"));
 
 const ENV = {
@@ -481,4 +495,103 @@ test("le due strade si incontrano: una risposta dalla scheda ferma il promemoria
   if (resolved.access !== "ok") assert.fail(resolved.access);
   const late = await pub.saveReferentDraft(resolved.link, { needId: m1, text: "x", dontKnow: false }, new Date());
   assert.equal(late.ok, false);
+});
+
+// ── Decisioni del proprietario, 27/10 ─────────────────────────────────
+
+/** Le righe «Nessuna risposta» di una scheda, con il motivo. */
+async function silentRows(card: string) {
+  return q(`SELECT recipient_user_id::text AS who, follow_up FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'senza_risposta' ORDER BY recipient_user_id`, [card]);
+}
+/** Chi riceve un avviso per email su questa richiesta. */
+async function alertRecipients(requestId: string) {
+  const rows = await q(
+    `SELECT e.recipient_user_id::text AS who, i.follow_up FROM use_case_requester_email_items i JOIN use_case_requester_emails e ON e.id = i.email_id WHERE i.request_id = $1::uuid ORDER BY e.recipient_user_id`,
+    [requestId],
+  );
+  return rows.map((r) => ({ who: String(r.who), followUp: r.follow_up === null ? null : String(r.follow_up) }));
+}
+
+test("D-B21: dopo l'ultimo promemoria «Nessuna risposta» non arriva al revisore referente; gli altri revisori e chi ha chiesto sì", opts, async () => {
+  // Giulia chiede a Federico (revisore): dopo 7 giorni lavorativi parte l'ultimo promemoria.
+  const sent = await ask("builder", cards.silent, contacts.federico, (await needsOf(cards.silent)).slice(0, 2));
+  await q(
+    `UPDATE use_case_referent_requests SET created_at = $2::timestamptz - interval '1 minute', sent_at = $2::timestamptz, last_email_at = $3::timestamptz, reminder_count = 1,
+       expires_at = $2::timestamptz + interval '30 days' WHERE id = $1::uuid`,
+    [sent.requestId, workingDaysBefore(V, 7).toISOString(), workingDaysBefore(V, 4).toISOString()],
+  );
+  const mailer = fakeMailer();
+  const counts = await referents.runReferentCron({ env: ENV, now: V, mailer });
+  assert.equal(counts.errors, 0, JSON.stringify(counts));
+  const last = mailer.outbox.filter((m) => m.to === emails.federico);
+  assert.equal(last.length, 1, "l'ultimo promemoria parte comunque");
+  assert.match(last[0].subject, /^Ultimo promemoria/);
+  const [req] = await q(`SELECT reminder_count FROM use_case_referent_requests WHERE id = $1::uuid`, [sent.requestId]);
+  assert.equal(Number(req.reminder_count), 2);
+  // La campanella: Giulia (chi ha chiesto) e Claudio sì; Federico, che non ha risposto, no.
+  const rows = await silentRows(cards.silent);
+  assert.deepEqual(rows.map((r) => r.who), sorted("builder", "claudio"));
+  assert.ok(rows.every((r) => r.follow_up === "ultimo_promemoria"));
+  // L'avviso per email va solo a chi ha chiesto, mai a Federico.
+  assert.deepEqual(await alertRecipients(sent.requestId), [{ who: ids.builder, followUp: "ultimo_promemoria" }]);
+  const toFederico = await q(`SELECT 1 FROM use_case_requester_emails WHERE recipient_user_id = $1::uuid AND workspace_id = $2::uuid`, [ids.federico, ids.ws]);
+  assert.equal(toFederico.length, 0, "nessuna email a chi ha chiesto per Federico");
+  // Nella campanella di Federico la riga non c'è; in quella di Claudio sì.
+  const fedBell = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.federico, role: "function_lead", useCaseHub: true, env: ENV });
+  assert.ok(!fedBell.entries.some((e) => e.source === "use_case" && (e.href ?? "").includes(cards.silent)));
+  const claudioBell = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.claudio, role: "function_lead", useCaseHub: true, env: ENV });
+  assert.ok(claudioBell.entries.some((e) => e.source === "use_case" && (e.href ?? "").includes(cards.silent)));
+});
+
+test("D-B21: alla scadenza «Nessuna risposta» non arriva al revisore referente (collegato al suo account); gli altri revisori e chi ha chiesto sì", opts, async () => {
+  // Giulia chiede a Claudio (contatto collegato al suo account): il link scade senza risposta.
+  const sent = await ask("builder", cards.expired, contacts.claudio, (await needsOf(cards.expired)).slice(0, 2));
+  await q(`UPDATE use_case_referent_requests SET created_at = now() - interval '31 days', sent_at = now() - interval '31 days', last_email_at = now() - interval '31 days', expires_at = now() - interval '1 minute' WHERE id = $1::uuid`, [sent.requestId]);
+  const counts = await referents.runReferentCron({ env: ENV, now: V, mailer: fakeMailer() });
+  assert.equal(counts.errors, 0, JSON.stringify(counts));
+  const [req] = await q(`SELECT status FROM use_case_referent_requests WHERE id = $1::uuid`, [sent.requestId]);
+  assert.equal(req.status, "scaduta");
+  const rows = await silentRows(cards.expired);
+  assert.deepEqual(rows.map((r) => r.who), sorted("builder", "federico"), "Claudio non riceve la riga della sua richiesta");
+  assert.ok(rows.every((r) => r.follow_up === "scaduta"));
+  assert.deepEqual(await alertRecipients(sent.requestId), [{ who: ids.builder, followUp: "scaduta" }]);
+});
+
+test("D-B24: un contatto collegato più tardi a chi ha chiesto non riceve mai l'email (account o email verificata uguale)", opts, async () => {
+  await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $3::uuid, 'Contatto in ritardo', $2)`, [LATE.link, LATE_EMAILS.link, ids.ws]);
+  await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $3::uuid, 'Contatto in ritardo due', $2)`, [LATE.email, LATE_EMAILS.email, ids.ws]);
+  const first = ok(
+    await referents.sendReferentRequest(as("builder"), cards.late, { contact: { kind: "esistente", contactId: LATE.link }, needIds: (await needsOf(cards.late)).slice(0, 1) }, { env: ENV, requester: requester("builder") }),
+    "invio (account)",
+  );
+  const second = ok(
+    await referents.sendReferentRequest(as("builder"), cards.late2, { contact: { kind: "esistente", contactId: LATE.email }, needIds: (await needsOf(cards.late2)).slice(0, 1) }, { env: ENV, requester: requester("builder") }),
+    "invio (email)",
+  );
+  // Prima dell'invio dell'email, il primo contatto si collega all'account di Giulia…
+  await q(`UPDATE uc_contacts SET user_id = $2::uuid WHERE id = $1::uuid`, [LATE.link, ids.builder]);
+  const m1 = fakeMailer();
+  await dispatch.dispatchReferentEmails({ requestId: first.requestId, env: ENV, mailer: m1, sendIntervalMs: 0 });
+  assert.equal(m1.outbox.length, 0, "nessuna email a se stessi");
+  const [row1] = await q(`SELECT status, cancel_reason, token_id FROM use_case_referent_emails WHERE request_id = $1::uuid AND template = 'richiesta'`, [first.requestId]);
+  assert.deepEqual([row1.status, row1.cancel_reason, row1.token_id], ["annullata", "referente_sei_tu", null]);
+  assert.equal((await q(`SELECT 1 FROM use_case_referent_tokens WHERE request_id = $1::uuid`, [first.requestId])).length, 0, "nessun link emesso");
+  // …e l'email verificata di Giulia diventa quella del secondo contatto.
+  await q(`UPDATE users SET email = $2 WHERE id = $1::uuid`, [ids.builder, LATE_EMAILS.email]);
+  try {
+    const m2 = fakeMailer();
+    await dispatch.dispatchReferentEmails({ requestId: second.requestId, env: ENV, mailer: m2, sendIntervalMs: 0 });
+    assert.equal(m2.outbox.length, 0, "nessuna email a se stessi (stessa email verificata)");
+    const [row2] = await q(`SELECT status, cancel_reason FROM use_case_referent_emails WHERE request_id = $1::uuid AND template = 'richiesta'`, [second.requestId]);
+    assert.deepEqual([row2.status, row2.cancel_reason], ["annullata", "referente_sei_tu"]);
+  } finally {
+    await q(`UPDATE users SET email = $2 WHERE id = $1::uuid`, [ids.builder, emails.builder]);
+  }
+  // Il link scade senza risposta: «Nessuna risposta» va agli altri revisori, non a Giulia (referente e
+  // richiedente insieme), e nessun avviso per email sulla propria richiesta.
+  await q(`UPDATE use_case_referent_requests SET created_at = now() - interval '31 days', sent_at = now() - interval '31 days', last_email_at = now() - interval '31 days', expires_at = now() - interval '1 minute' WHERE id = $1::uuid`, [first.requestId]);
+  const counts = await referents.runReferentCron({ env: ENV, now: V, mailer: fakeMailer() });
+  assert.equal(counts.errors, 0, JSON.stringify(counts));
+  assert.deepEqual((await silentRows(cards.late)).map((r) => r.who), sorted("claudio", "federico"));
+  assert.deepEqual(await alertRecipients(first.requestId), []);
 });

@@ -196,6 +196,11 @@ test("piano: reply-to — chi ha chiesto finché è revisore, altrimenti UC_EMAI
   }
 });
 
+test("piano: D-B24 — nemmeno la conferma parte se il referente è chi ha chiesto", () => {
+  const e = email({ template: "conferma" });
+  assert.deepEqual(plan(e, facts({ requests: [request({ status: "completata", live: false, selfRequest: true })] })), { action: "cancel", reason: "referente_sei_tu" });
+});
+
 // ── Motore ────────────────────────────────────────────────────────────
 
 interface Log {

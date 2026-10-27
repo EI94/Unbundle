@@ -20,7 +20,7 @@
  *
  * Art. 15.4: nessun ORDER BY, GROUP BY o conteggio; una riga per contatto. Modulo puro.
  */
-import { cast, raw, toStatement, ucSql, type UcStatement } from "../../uc/sql/statement.ts";
+import { cast, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
 import { canReviewWorkspacePortfolio } from "../../workspace-permissions.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,6 +71,32 @@ function effectiveRole(userColumn: string, workspaceColumn: string) {
     )`);
 }
 
+const ALIAS = /^[a-z][a-z0-9_]{0,30}$/;
+
+/**
+ * «L'account `user` è la persona del contatto `contact`»: il collegamento esplicito vince; senza
+ * collegamento, la stessa email verificata (senza maiuscole e spazi). L'unica regola, usata da
+ * `contactPeopleSql` e da `requestReferentUserSql`.
+ */
+function personMatch(contact: string, user: string): string {
+  if (!ALIAS.test(contact) || !ALIAS.test(user)) throw new Error("Alias non valido");
+  return `(${contact}.user_id IS NOT NULL AND ${user}.id = ${contact}.user_id)
+     OR (${contact}.user_id IS NULL AND ${contact}.email IS NOT NULL AND ${user}.email_verified IS NOT NULL AND lower(btrim(${user}.email)) = lower(btrim(${contact}.email)))`;
+}
+
+/**
+ * L'account della persona del referente della richiesta con alias `request` (colonne `contact_id` e
+ * `workspace_id`), oppure NULL senza account. Letto nella stessa SQL che scrive le righe, quindi al
+ * momento dell'evento (mai salvato). Serve a non mandare «Nessuna risposta» (campanella e avviso a
+ * chi ha chiesto) alla persona che non ha risposto: un revisore referente non riceve l'avviso della
+ * propria richiesta. Per chi non è revisore non cambia niente (non riceve comunque quelle righe).
+ */
+export function requestReferentUserSql(request: string): SqlFragment {
+  if (!ALIAS.test(request)) throw new Error("Alias non valido");
+  return raw(`(SELECT rpu.id FROM uc_contacts rpc JOIN users rpu ON ${personMatch("rpc", "rpu")}
+  WHERE rpc.id = ${request}.contact_id AND rpc.workspace_id = ${request}.workspace_id LIMIT 1)`);
+}
+
 /**
  * Una riga per contatto (`contact_id`, `user_id`, `role`, `email_match`), anche senza account. Solo
  * contatti del workspace; l'account collegato vince sull'email.
@@ -84,8 +110,7 @@ LEFT JOIN LATERAL (
     (pu.email_verified IS NOT NULL AND c.email IS NOT NULL AND lower(btrim(pu.email)) = lower(btrim(c.email))) AS email_match,
     ${effectiveRole("pu.id", "c.workspace_id")} AS role
   FROM users pu
-  WHERE (c.user_id IS NOT NULL AND pu.id = c.user_id)
-     OR (c.user_id IS NULL AND c.email IS NOT NULL AND pu.email_verified IS NOT NULL AND lower(btrim(pu.email)) = lower(btrim(c.email)))
+  WHERE ${raw(personMatch("c", "pu"))}
   LIMIT 1
 ) p ON true
 WHERE c.workspace_id = ${cast(uuid(workspaceId, "workspace"), "uuid")} AND c.id = ANY(${cast(ids, "uuid[]")})`);

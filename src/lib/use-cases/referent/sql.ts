@@ -20,6 +20,7 @@ import { PORTFOLIO_REVIEWER_ROLES } from "../../workspace-permissions.ts";
 import type { NeedStatus } from "../needs.ts";
 import type { AlertSchedule } from "./alerts.ts";
 import type { ReferentHistoryCode } from "./history.ts";
+import { requestReferentUserSql } from "./people.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CODE = /^[a-z0-9_]{1,60}$/;
@@ -388,11 +389,21 @@ export function notifyReviewersSql(n: {
   actorUserId: string | null;
   /** (Parte 3) Chi ha dato il documento quando l'evento è di un'altra persona (l'accettazione di Lateral Space). */
   alsoExceptUserId?: string | null;
+  /**
+   * (Decisione del proprietario, D-B21) «Nessuna risposta» di questa richiesta: la persona del suo
+   * referente (`requestReferentUserSql`, letta adesso) non riceve la riga della propria richiesta.
+   */
+  exceptReferentOfRequestId?: string | null;
   clock?: Date;
 }): UcStatement {
   const ts = clockOf(n.clock);
   const counted = n.kind === "risposte" || n.kind === "documenti";
   const followUp = n.kind === "senza_risposta" ? (n.followUp ?? "scaduta") : null;
+  const referent = n.exceptReferentOfRequestId
+    ? ucSql`
+  AND r.user_id IS DISTINCT FROM (SELECT ${requestReferentUserSql("xr")} FROM use_case_referent_requests xr
+                                  WHERE xr.id = ${id(n.exceptReferentOfRequestId, "richiesta")} AND xr.workspace_id = u.workspace_id)`
+    : raw("");
   return toStatement(ucSql`INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day, answers, unknowns, documents, follow_up, first_event_at, last_event_at)
 SELECT u.workspace_id, u.id, r.user_id, ${cast(n.kind, "text")},
        (${ts} AT TIME ZONE 'Europe/Rome')::date,
@@ -400,7 +411,7 @@ SELECT u.workspace_id, u.id, r.user_id, ${cast(n.kind, "text")},
        ${cast(followUp, "text")}, ${ts}, ${ts}
 FROM use_cases u
 CROSS JOIN LATERAL (${reviewerRecipientsSql(raw("u.workspace_id"), n.actorUserId, n.alsoExceptUserId ?? null)}) r
-WHERE u.id = ${id(n.useCaseId, "use case")} AND u.workspace_id = ${id(n.workspaceId, "workspace")}
+WHERE u.id = ${id(n.useCaseId, "use case")} AND u.workspace_id = ${id(n.workspaceId, "workspace")}${referent}
 ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET
   ${COLLAPSE_SET}`);
 }
@@ -416,7 +427,12 @@ function expiredNowFilter(i: { workspaceId: string; useCaseId: string | null; re
                 WHERE i.request_id = r.id AND i.state = 'aperta' AND n.status = 'chiesta' AND n.archived_at IS NULL${needs})`;
 }
 
-/** «Nessuna risposta» (scaduta) per le richieste scadute in questa transazione, una riga per revisore e scheda. */
+/**
+ * «Nessuna risposta» (scaduta) per le richieste scadute in questa transazione, una riga per revisore e
+ * scheda. (D-B21, decisione del proprietario) La persona del referente di una richiesta, se è un
+ * revisore, non riceve la riga per quella richiesta; la riceve se un'altra richiesta della stessa
+ * scheda, a un'altra persona, è scaduta insieme.
+ */
 export function notifyExpiredRequestsSql(i: {
   workspaceId: string;
   useCaseId: string | null;
@@ -426,13 +442,17 @@ export function notifyExpiredRequestsSql(i: {
 }): UcStatement {
   const ts = clockOf(i.clock);
   return toStatement(ucSql`WITH ex AS (
-  SELECT DISTINCT r.workspace_id, r.use_case_id
+  SELECT r.workspace_id, r.use_case_id, ${requestReferentUserSql("r")} AS referent_user_id
   FROM use_case_referent_requests r
   WHERE ${expiredNowFilter(i)}
+), who AS (
+  SELECT DISTINCT ex.workspace_id, ex.use_case_id, rc.user_id
+  FROM ex CROSS JOIN LATERAL (${reviewerRecipientsSql(raw("ex.workspace_id"), i.actorUserId)}) rc
+  WHERE rc.user_id IS DISTINCT FROM ex.referent_user_id
 )
 INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day, follow_up, first_event_at, last_event_at)
-SELECT ex.workspace_id, ex.use_case_id, rc.user_id, 'senza_risposta', (${ts} AT TIME ZONE 'Europe/Rome')::date, 'scaduta', ${ts}, ${ts}
-FROM ex CROSS JOIN LATERAL (${reviewerRecipientsSql(raw("ex.workspace_id"), i.actorUserId)}) rc
+SELECT who.workspace_id, who.use_case_id, who.user_id, 'senza_risposta', (${ts} AT TIME ZONE 'Europe/Rome')::date, 'scaduta', ${ts}, ${ts}
+FROM who
 ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET
   ${COLLAPSE_SET}`);
 }
@@ -513,11 +533,14 @@ function queueAlertSql(i: {
   const also = i.alsoExceptUserId ? ucSql`
     AND r.requested_by_user_id <> ${id(i.alsoExceptUserId, "persona")}` : raw("");
   const today = cast(i.schedule.today, "date");
+  // (D-B21, D-B24) Mai un avviso a chi ha chiesto sulla richiesta di cui è anche il referente (il
+  // contatto collegato più tardi al suo account): la persona del referente si legge adesso.
   return toStatement(ucSql`WITH req AS (
   SELECT r.id, r.workspace_id, r.use_case_id, r.requested_by_user_id AS uid
   FROM use_case_referent_requests r
   WHERE r.workspace_id = ${ws} AND r.purged_at IS NULL AND r.requested_by_user_id IS NOT NULL
     AND r.requested_by_user_id IS DISTINCT FROM ${cast(i.actorUserId, "uuid")}${also}
+    AND r.requested_by_user_id IS DISTINCT FROM ${requestReferentUserSql("r")}
     AND ${i.target}
     AND coalesce((SELECT b.referent_emails FROM workspace_bell_state b WHERE b.workspace_id = r.workspace_id AND b.user_id = r.requested_by_user_id), true)
 ), who AS (

@@ -215,6 +215,8 @@ export function planReferentDelivery(
     const req = f.requests.find((x) => x.id === e.requestId);
     const confirmable = req && (req.status === "inviata" || req.status === "completata") && req.expiresAt.getTime() > o.now.getTime();
     if (!req || !confirmable) return cancel("richiesta_non_viva");
+    // D-B24: mai un'email a chi ha chiesto, nemmeno la conferma (contatto collegato più tardi al suo account).
+    if (req.selfRequest) return cancel("referente_sei_tu");
     const submitted = Math.max(1, req.answeredToday ?? 1);
     return {
       action: "send",

@@ -6,7 +6,8 @@ import { planReferentDelivery, type ClaimedReferentEmail, type ReferentDeliveryF
 import { TEAM_ACCESS_LINE, TEAM_ACCESS_LINE_MANY, TEAM_ACCESS_LINK_LABEL, renderReferentEmail, type ReferentEmailInput } from "./email.ts";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT, REFERENT_UI_TEXT } from "./labels.ts";
 import { cardLink, checkCardLink } from "./links.ts";
-import { NO_PERSON, contactPeopleSql, emailPersonSql, isSelfRequest, personFactsOf, referentPersonOf } from "./people.ts";
+import { toStatement, ucSql } from "../../uc/sql/statement.ts";
+import { NO_PERSON, contactPeopleSql, emailPersonSql, isSelfRequest, personFactsOf, referentPersonOf, requestReferentUserSql } from "./people.ts";
 import { HANDLED_NEED_STATUSES, itemHandledByTeam, itemIsOpen } from "./state.ts";
 import { toPublicView, type PublicItemRow, type PublicRows } from "./view.ts";
 
@@ -69,6 +70,15 @@ test("persona: la SQL legge solo account, appartenenze e contatti; niente corsi,
   assert.ok(byEmail.params.includes("Federico@TopJet.it"));
   assert.throws(() => contactPeopleSql("x", [R1]));
   assert.throws(() => contactPeopleSql(WS, ["x"]));
+});
+
+test("persona del referente di una richiesta (D-B21): la stessa regola di contactPeopleSql, letta nella SQL dell'evento", () => {
+  const text = toStatement(ucSql`SELECT ${requestReferentUserSql("r")}`).text;
+  assert.match(text, /rpc\.user_id IS NOT NULL AND rpu\.id = rpc\.user_id/, "il collegamento vince sull'email");
+  assert.match(text, /rpc\.user_id IS NULL AND rpc\.email IS NOT NULL AND rpu\.email_verified IS NOT NULL/, "altrimenti la stessa email verificata");
+  assert.match(text, /rpc\.id = r\.contact_id AND rpc\.workspace_id = r\.workspace_id/, "solo il contatto della richiesta, nel suo workspace");
+  assert.doesNotMatch(text, /learning_|\bORDER\s+BY\b|\bGROUP\s+BY\b|count\(/i);
+  for (const bad of ["r; DROP TABLE x", "R", "1r", ""]) assert.throws(() => requestReferentUserSql(bad), bad);
 });
 
 // ── Il link alla scheda ──────────────────────────────────────────────
