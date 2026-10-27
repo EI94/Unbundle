@@ -6,7 +6,8 @@
  *
  * - Un referente è «solo degli use case» quando nessun dossier lo usa: nessuna richiesta dei dossier
  *   (`uc_requests`), nessun riferimento nei casi (`contactRefsSql`, le stesse colonne della purge dei
- *   dossier), nessuna riga di audit con lui come attore. Solo allora l'anonimizzazione della riga
+ *   dossier), nessuna riga di audit con lui come attore né come oggetto (un contatto creato in «Persone»
+ *   di un dossier ha la sua riga `referente.creato` prima di ogni richiesta; quelli dell'hub non ne hanno). Solo allora l'anonimizzazione della riga
  *   `uc_contacts` va nello stesso batch; altrimenti la riga resta alla procedura dei dossier.
  * - Gli oggetti dell'archivio si cancellano **dopo** le righe (l'action con `after()`, il cron dopo):
  *   un oggetto non si perde mai di vista.
@@ -22,7 +23,8 @@ function hubOnlyCondition(workspaceId: string, contactId: string): SqlFragment {
   const c = () => cast(uuidOf(contactId, "referente"), "uuid");
   return ucSql`(NOT EXISTS (SELECT 1 FROM uc_requests q WHERE q.contact_id = ${c()})
   AND NOT EXISTS (SELECT 1 FROM (${contactRefsSql(uuidOf(workspaceId, "workspace"))}) refs WHERE refs.contact_id = ${c()})
-  AND NOT EXISTS (SELECT 1 FROM uc_events e WHERE e.actor_contact_id = ${c()}))`;
+  AND NOT EXISTS (SELECT 1 FROM uc_events e WHERE e.actor_contact_id = ${c()})
+  AND NOT EXISTS (SELECT 1 FROM uc_events e WHERE e.target_type = 'referente' AND e.target_id = ${c()}))`;
 }
 
 /** Guardia nel batch: il referente non è usato da nessun dossier, altrimenti `referente_in_dossier`. */

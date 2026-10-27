@@ -202,8 +202,18 @@ test("ensure-schema: versione 18, la 0024 dopo la 0023, con timeout e lock, e la
   assert.match(ensureSchema, /import \{ USE_CASE_REFERENTS_DDL, USE_CASE_REFERENTS_PROBE_SQL \} from "\.\/use-case-hub-referents-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const history = runOnce.indexOf("await runUseCaseHistoryDdl();");
-  const referents = runOnce.indexOf("await runUseCaseReferentsDdl();");
+  const referents = runOnce.indexOf("await runUseCaseReferentsDdlSafely();");
   assert.ok(history > 0 && referents > history, "0023 poi 0024");
+  assert.ok(!runOnce.includes("await runUseCaseReferentsDdl();"), "la 0024 passa solo dalla versione che non lancia");
+  // Un errore della 0024 non ferma `ensureDbSchema()` (tutte le pagine di tutti i workspace): si registra
+  // e si riprova dopo la pausa, mai a ogni richiesta.
+  const safe = topLevelFunction(ensureSchema, "async function runUseCaseReferentsDdlSafely(): Promise<void> {");
+  assert.match(safe, /try \{\s+await runUseCaseReferentsDdl\(\);\s+referentsDdlFailedAt = null;\s+\} catch \(err\) \{\s+referentsDdlFailedAt = Date\.now\(\);/);
+  assert.ok(!/\bthrow\b/.test(safe), "nessun rilancio");
+  assert.match(ensureSchema, /export const REFERENTS_DDL_RETRY_MS = 5 \* 60_000;/);
+  const ensure = topLevelFunction(ensureSchema, "export async function ensureDbSchema(): Promise<void> {");
+  assert.match(ensure, /Date\.now\(\) - referentsDdlFailedAt >= REFERENTS_DDL_RETRY_MS/);
+  assert.match(ensure, /ensurePromise = ensurePromise\.then\(runUseCaseReferentsDdlSafely\);/);
   assert.match(ensureSchema, /AND \$\{sql\.raw\(USE_CASE_HISTORY_PROBE_SQL\)\}\s+AND \$\{sql\.raw\(USE_CASE_REFERENTS_PROBE_SQL\)\}/);
   const run = topLevelFunction(ensureSchema, "export async function runUseCaseReferentsDdl(");
   const timeout = run.indexOf(`client.query("SELECT set_config('lock_timeout', '3s', true)")`);

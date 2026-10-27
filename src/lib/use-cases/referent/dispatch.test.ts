@@ -355,3 +355,55 @@ test("motore: held e cancelled contano, e i promemoria si prendono solo nella fi
   await runReferentDispatch(night.store, { env: ENV, lsDomains: LS, now: NOW, mailer: mailer() });
   assert.equal((night.claims[1] as { includeWindowed: boolean }).includeWindowed, true);
 });
+
+test("piano: il reply-to di un promemoria è di chi ha chiesto le voci che partono, mai della prima voce tolta", () => {
+  const e = email({ template: "promemoria", requestId: null, dedupeKey: "pro:c1:2026-11-05" });
+  // R1 (Giulia, più vecchia) non ha più domande aperte e si toglie; parte solo R2 (Luca).
+  const dropped = request({ id: R1, openItems: 0, item: { kind: "primo", alreadySent: false } });
+  const kept = request({ id: R2, item: { kind: "manuale", alreadySent: false }, requesterUserId: USER_B, requesterName: "Luca Verdi" });
+  const p = plan(e, facts({ replyTo: "giulia.neri@topjet.it", replyToByRequester: { [USER_A]: "giulia.neri@topjet.it", [USER_B]: "luca.verdi@topjet.it" }, requests: [dropped, kept] }));
+  assert.equal(p.action, "send");
+  if (p.action !== "send") return;
+  assert.deepEqual(p.drop, [{ requestId: R1, reason: "nessuna_domanda_aperta" }]);
+  assert.equal(p.replyTo, "luca.verdi@topjet.it", "l'intestazione segue chi ha chiesto R2");
+  const input = p.build({ [R2]: "http://localhost:3000/rispondi/ucq_" + "B".repeat(32) });
+  assert.ok(input.template === "promemoria");
+  if (input.template === "promemoria") {
+    assert.equal(input.replyName, "Luca Verdi", "il testo e l'intestazione nominano la stessa persona");
+    assert.equal(input.replyToKnown, true);
+  }
+  // Luca non è più revisore (nessuna email nella mappa): mai l'indirizzo di Giulia, solo il ripiego.
+  const lost = planReferentDelivery(e, facts({ replyTo: "giulia.neri@topjet.it", replyToByRequester: { [USER_A]: "giulia.neri@topjet.it" }, requests: [dropped, kept] }), {
+    lsDomains: LS,
+    now: NOW,
+    fallbackReplyTo: "team@lateralspace.example",
+  });
+  assert.ok(lost.action === "send" && lost.replyTo === "team@lateralspace.example");
+  if (lost.action === "send") {
+    const built = lost.build({ [R2]: "http://localhost:3000/rispondi/ucq_" + "C".repeat(32) });
+    assert.ok(built.template === "promemoria" && built.replyName === null && built.replyToKnown === false);
+  }
+  // Senza la mappa (fatti vecchi): `replyTo` vale solo per la persona della prima voce.
+  const legacy = plan(e, facts({ replyTo: "giulia.neri@topjet.it", requests: [dropped, kept] }));
+  assert.ok(legacy.action === "send" && legacy.replyTo === null);
+});
+
+test("piano: richiesta e conferma prendono il reply-to di chi ha chiesto quella richiesta", () => {
+  const byUser = { [USER_A]: "giulia.neri@topjet.it", [USER_B]: "luca.verdi@topjet.it" };
+  const r = plan(email(), facts({ replyTo: null, replyToByRequester: byUser, requests: [request({ requesterUserId: USER_B, requesterName: "Luca Verdi" })] }));
+  assert.ok(r.action === "send" && r.replyTo === "luca.verdi@topjet.it");
+  const c = plan(email({ template: "conferma" }), facts({ replyToByRequester: byUser, requests: [request({ requesterUserId: USER_A })] }));
+  assert.ok(c.action === "send" && c.replyTo === "giulia.neri@topjet.it");
+});
+
+test("piano: senza le risposte dal link (UC_SECRET mancante) richieste e promemoria aspettano, la conferma parte", () => {
+  assert.deepEqual(plan(email(), facts({ publicWritesOn: false })), { action: "hold", reason: "risposte_non_attive" });
+  const reminder = email({ template: "promemoria", requestId: null, dedupeKey: "pro:c1:2026-11-05" });
+  assert.deepEqual(plan(reminder, facts({ publicWritesOn: false, requests: [request({ item: { kind: "primo", alreadySent: false } })] })), {
+    action: "hold",
+    reason: "risposte_non_attive",
+  });
+  const confirm = plan(email({ template: "conferma" }), facts({ publicWritesOn: false, requests: [request({ status: "completata", live: false, answeredToday: 1 })] }));
+  assert.equal(confirm.action, "send");
+  assert.equal(plan(email(), facts({ publicWritesOn: true })).action, "send");
+});

@@ -170,6 +170,7 @@ export interface SubmitResult {
 export type ReferentGate =
   | { code: "sub_responsabili_mancanti"; message: string; canDeclare: boolean; settingsHref: string; linkLabel: string }
   | { code: "email_non_configurata"; message: string }
+  | { code: "risposte_non_attive"; message: string }
   | { code: "email_non_verificata"; message: string }
   | { code: "nessuna_domanda"; message: string };
 

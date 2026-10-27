@@ -151,6 +151,15 @@ WHERE r.id = ${id(requestId, "richiesta")} AND r.workspace_id = ${id(workspaceId
 FOR UPDATE`);
 }
 
+/** Come `lockRequestSql`, per più richieste del workspace, sempre in ordine di id. */
+export function lockRequestsSql(workspaceId: string, requestIds: readonly string[]): UcStatement {
+  const ids = [...new Set(requestIds.map((x) => uuidOf(x, "richiesta")))];
+  return toStatement(ucSql`SELECT r.id FROM use_case_referent_requests r
+WHERE r.workspace_id = ${id(workspaceId, "workspace")} AND r.id = ANY(${cast(ids, "uuid[]")})
+ORDER BY r.id
+FOR UPDATE`);
+}
+
 /** Come `lockRequestSql`, per le richieste vive che chiedono l'esigenza `needId` (in ordine di id). */
 export function lockRequestsOfNeedSql(workspaceId: string, needId: string): UcStatement {
   return toStatement(ucSql`SELECT r.id FROM use_case_referent_requests r
@@ -254,6 +263,12 @@ export function expireStatements(i: {
   const one = i.requestId ? ucSql` AND id = ${id(i.requestId, "richiesta")}` : raw("");
   const filter = justExpiredFilter(i.workspaceId, i.useCaseId ?? null);
   return [
+    // Prima tutte le richieste vive dell'ambito, in ordine di id (come `lockRequestsOfNeedSql`): la
+    // scadenza e quello che il batch fa dopo (una sostituzione, una revoca) non le prendono in un altro ordine.
+    toStatement(ucSql`SELECT id FROM use_case_referent_requests
+WHERE workspace_id = ${ws}${uc}${one} AND status = 'inviata'
+ORDER BY id
+FOR UPDATE`),
     toStatement(ucSql`UPDATE use_case_referent_requests SET status = 'scaduta', expired_at = now(), version = version + 1
 WHERE workspace_id = ${ws}${uc}${one} AND status = 'inviata' AND expires_at <= now()
 RETURNING id`),
@@ -462,6 +477,14 @@ function targetCards(i: { workspaceId: string; useCaseIds?: readonly string[]; n
   return ucSql`u.workspace_id = ${id(i.workspaceId, "workspace")}
     AND (u.id = ANY(${cast(ids, "uuid[]")}) OR u.id IN (SELECT l.use_case_id FROM use_case_need_links l WHERE l.need_id = ${cast(i.needId ? uuidOf(i.needId, "esigenza") : null, "uuid")}))`;
 }
+
+/**
+ * Le tabelle che `infoCompleteSyncStatements` scrive e legge ci sono (drizzle/0024): senza, chi
+ * scrive «Cosa serve» salta la sincronizzazione invece di fallire. Colonna `ok`.
+ */
+export const INFO_SYNC_TABLES_PRESENT_SQL = `SELECT (to_regclass('public.use_case_info_state') IS NOT NULL
+  AND to_regclass('public.use_case_notifications') IS NOT NULL
+  AND to_regclass('public.use_case_referent_requests') IS NOT NULL) AS ok`;
 
 /**
  * «Informazioni complete»: [il lock per scheda, la sincronizzazione], in fondo al batch e in

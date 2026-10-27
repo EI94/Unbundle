@@ -8,7 +8,7 @@ import { DISPATCH_LEASE_MINUTES, RETRY_DELAY_MINUTES, type DispatchEnv, type UcM
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
 import { cast, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 import { alertSchedule } from "@/lib/use-cases/referent/alerts";
-import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
+import { referentAskEnabled, referentPublicWritesAvailable } from "@/lib/use-cases/referent/availability";
 import {
   REFERENT_DISPATCH_AFTER_LIMIT,
   REFERENT_DISPATCH_LIMIT,
@@ -20,7 +20,7 @@ import {
   type ReferentDispatchSummary,
   type ReferentRequestFacts,
 } from "@/lib/use-cases/referent/dispatch";
-import { notifyReviewersSql, openItemsCountSql, queueRequesterAlertSql, referentEventsForRequestsSql, validLinkSql } from "@/lib/use-cases/referent/sql";
+import { lockRequestsSql, notifyReviewersSql, openItemsCountSql, queueRequesterAlertSql, referentEventsForRequestsSql, validLinkSql } from "@/lib/use-cases/referent/sql";
 import { newReferentToken } from "@/lib/use-cases/referent/tokens";
 import { PORTFOLIO_REVIEWER_ROLES } from "@/lib/workspace-permissions";
 
@@ -177,19 +177,27 @@ WHERE w.id = ${ws}`),
     AND x.sent_at >= (date_trunc('day', now() AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'Europe/Rome')) AS today`),
       ]);
       const requests = requestRows.map(requestFactsOf).filter((x): x is ReferentRequestFacts => x !== null);
-      const requester = requests[0]?.requesterUserId ?? null;
-      let replyTo: string | null = null;
-      if (requester) {
-        const [[row]] = await executor.batch([
-          toStatement(ucSql`SELECT lower(u.email) AS email FROM users u JOIN workspaces w ON w.id = ${ws}
-WHERE u.id = ${cast(requester, "uuid")} AND u.email_verified IS NOT NULL
+      // (Reply-to) L'email di ogni persona che ha chiesto una delle richieste, solo verificata e ancora
+      // revisore del workspace: il piano sceglie quella delle voci che partono davvero.
+      const askers = [...new Set(requests.map((x) => x.requesterUserId).filter((x): x is string => x !== null))];
+      const replyToByRequester: Record<string, string> = {};
+      if (askers.length) {
+        const [rows] = await executor.batch([
+          toStatement(ucSql`SELECT u.id::text AS id, lower(u.email) AS email FROM users u JOIN workspaces w ON w.id = ${ws}
+WHERE u.id = ANY(${cast(askers, "uuid[]")}) AND u.email_verified IS NOT NULL
   AND coalesce(
     (SELECT m.role::text FROM memberships m WHERE m.user_id = u.id AND m.organization_id = w.organization_id LIMIT 1),
     (SELECT wm.role::text FROM workspace_memberships wm WHERE wm.user_id = u.id AND wm.workspace_id = w.id LIMIT 1)
   ) = ANY(${cast([...PORTFOLIO_REVIEWER_ROLES], "text[]")})`),
         ]);
-        replyTo = rowString(row?.email);
+        for (const row of rows) {
+          const id = rowString(row.id)?.toLowerCase();
+          const email = rowString(row.email);
+          if (id && email) replyToByRequester[id] = email;
+        }
       }
+      const first = requests[0]?.requesterUserId ?? null;
+      const replyTo = first ? (replyToByRequester[first] ?? null) : null;
       const userId = rowString(head?.user_id);
       const user = userId ? await loadUserContext(executor, userId, lsDomains) : null;
       const ack = await loadSubprocessorAck(executor, e.workspaceId);
@@ -219,6 +227,7 @@ WHERE u.id = ANY(${cast(requesterIds, "uuid[]")}) AND u.email_verified IS NOT NU
       const facts: ReferentDeliveryFacts = {
         company: rowString(head?.company) ?? "",
         featureOn: referentAskEnabled(e.workspaceId, env),
+        publicWritesOn: referentPublicWritesAvailable(env),
         subprocessorsAuthorized: ack !== null,
         recipient: head && rowString(head.contact_id)
           ? {
@@ -230,6 +239,7 @@ WHERE u.id = ANY(${cast(requesterIds, "uuid[]")}) AND u.email_verified IS NOT NU
             }
           : null,
         replyTo,
+        replyToByRequester,
         requests,
         contactRemindedToday: rowBool(reminded?.today),
       };
@@ -252,7 +262,11 @@ RETURNING id`),
     },
     async markSent(e, effects, tokenIds, dropped) {
       const ws = e.workspaceId;
+      // Prima le richieste, in ordine di id (come revoca, scadenza e invio delle risposte), poi l'email e
+      // le sue voci: due transazioni che toccano le stesse righe si aspettano invece di bloccarsi.
+      const touched = [...new Set([...(e.requestId ? [e.requestId] : []), ...effects.map((x) => x.requestId), ...dropped.map((x) => x.requestId)].map((x) => x.toLowerCase()))];
       const statements: UcStatement[] = [
+        ...(touched.length ? [lockRequestsSql(ws, touched)] : []),
         toStatement(ucSql`UPDATE use_case_referent_emails SET status = 'inviata', sent_at = now(), lease_until = NULL, hold_reason = NULL, updated_at = now(),
   token_id = ${cast(e.template === "richiesta" && e.requestId ? (tokenIds[e.requestId] ?? null) : null, "uuid")}
 WHERE id = ${cast(e.id, "uuid")}`),

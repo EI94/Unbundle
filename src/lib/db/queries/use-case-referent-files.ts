@@ -34,7 +34,18 @@ import {
   referentUploadCheck,
 } from "@/lib/use-cases/referent/files";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
-import { completeHandledRequestsStatements, infoCompleteSyncStatements, lockRequestsOfNeedSql, needTransitionSql, notifyReviewersSql, queueRequesterAlertSql, referentEventSql, type ReferentActor } from "@/lib/use-cases/referent/sql";
+import { requestReferentUserSql } from "@/lib/use-cases/referent/people";
+import {
+  completeHandledRequestsStatements,
+  infoCompleteSyncStatements,
+  lockRequestsOfNeedSql,
+  needTransitionSql,
+  notifyReviewersSql,
+  queueRequesterAlertSql,
+  referentEventSql,
+  reviewerRecipientsSql,
+  type ReferentActor,
+} from "@/lib/use-cases/referent/sql";
 import type { ServiceResult, WriteContext } from "@/lib/use-cases/service";
 
 /**
@@ -218,41 +229,67 @@ function resultOf(f: FileRow, status: ReferentUploadResult["status"], extra: { s
   };
 }
 
-/** Gli effetti di un file del team nello stesso batch dell'esito (§3.9, §P2.6.2). */
+/**
+ * Gli effetti di un file del team nello stesso batch dell'esito (§3.9, §P2.6.2). Un PDF «in_revisione»
+ * non conta ancora: l'esigenza e la domanda del referente restano come sono finché un'altra persona del
+ * team non lo accetta (`acceptedTeamFileEffects`); un rifiuto, o il controllo scaduto, non lascia
+ * niente da disfare.
+ */
 function reviewerEffects(f: FileRow, outcome: "pulito" | "in_revisione", validate: boolean): UcStatement[] {
   const userId = f.uploadedByUserId;
   if (!userId) return [];
   const actor: ReferentActor = { kind: "persona", userId };
+  if (outcome === "in_revisione") return [referentEventSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, code: "file_team", actor })];
   const out: UcStatement[] = [
     // Prima le richieste vive su questa esigenza, come revoca e scadenza (stesso ordine dei lock).
     lockRequestsOfNeedSql(f.workspaceId, f.needId),
-    validate && outcome === "pulito"
+    validate
       ? needTransitionSql({ workspaceId: f.workspaceId, needIds: [f.needId], from: ["da_chiedere", "chiesta", "mancante", "parziale", "in_verifica"], to: "validata", actor })
       : needTransitionSql({ workspaceId: f.workspaceId, needIds: [f.needId], from: ["da_chiedere", "chiesta", "mancante", "parziale"], to: "in_verifica", actor }),
     referentEventSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, code: "file_team", actor }),
     // (Parte 3) La domanda del referente su questa esigenza è fatta: se non resta altro, la richiesta si completa.
     ...completeHandledRequestsStatements({ workspaceId: f.workspaceId, needId: f.needId }),
   ];
-  if (outcome === "pulito") {
-    const now = new Date();
-    out.push(
-      notifyReviewersSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, kind: "documenti", documents: 1, actorUserId: userId }),
-      queueRequesterAlertSql({
-        workspaceId: f.workspaceId,
-        target: { useCaseId: f.useCaseId, needId: f.needId },
-        answers: 0,
-        unknowns: 0,
-        documents: 1,
-        followUp: null,
-        actorUserId: userId,
-        immediate: false,
-        schedule: alertSchedule(now),
-        now,
-      }),
-    );
-  }
+  const now = new Date();
+  out.push(
+    notifyReviewersSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, kind: "documenti", documents: 1, actorUserId: userId }),
+    queueRequesterAlertSql({
+      workspaceId: f.workspaceId,
+      target: { useCaseId: f.useCaseId, needId: f.needId },
+      answers: 0,
+      unknowns: 0,
+      documents: 1,
+      followUp: null,
+      actorUserId: userId,
+      immediate: false,
+      schedule: alertSchedule(now),
+      now,
+    }),
+  );
   out.push(...infoCompleteSyncStatements({ workspaceId: f.workspaceId, useCaseIds: [f.useCaseId], needId: f.needId, actorUserId: userId }));
   return out;
+}
+
+/**
+ * Un PDF del team accettato da un'altra persona: adesso conta come la risposta di un file pulito
+ * (l'esigenza «in_verifica», la domanda del referente fatta, «Informazioni complete»). Le richieste
+ * vive dell'esigenza si bloccano prima, nello stesso ordine di revoca e scadenza.
+ */
+function acceptedTeamFileEffects(f: FileRow, accepterUserId: string): UcStatement[] {
+  const actor: ReferentActor = { kind: "persona", userId: accepterUserId };
+  return [
+    lockRequestsOfNeedSql(f.workspaceId, f.needId),
+    needTransitionSql({ workspaceId: f.workspaceId, needIds: [f.needId], from: ["da_chiedere", "chiesta", "mancante", "parziale"], to: "in_verifica", actor }),
+    ...completeHandledRequestsStatements({ workspaceId: f.workspaceId, needId: f.needId }),
+  ];
+}
+
+/** C'è nel workspace un'altra persona che può controllare un PDF caricato da `userId` (revisore, non lui). */
+async function anotherReviewerExists(executor: UcExecutor, workspaceId: string, userId: string): Promise<boolean> {
+  const [[row]] = await executor.batch([
+    toStatement(ucSql`SELECT EXISTS (${reviewerRecipientsSql(cast(workspaceId, "uuid"), userId)}) AS ok`),
+  ]);
+  return rowBool(row?.ok);
 }
 
 /**
@@ -301,6 +338,11 @@ WHERE id = ${id} AND scan_status = 'in_quarantena' AND deleted_at IS NULL`),
       sha: report.sha256,
       findings: outcome.findings as Record<string, unknown>,
     });
+  }
+  // Un PDF del team da controllare lo controlla un'altra persona: se nel workspace non c'è, il file non
+  // resterebbe mai in attesa per niente (e dopo 7 giorni si perderebbe). Lo diciamo subito.
+  if (f.source === "revisore" && outcome.status === "in_revisione" && f.uploadedByUserId && !(await anotherReviewerExists(executor, f.workspaceId, f.uploadedByUserId))) {
+    return reject("nessun_altro_revisore", REFERENT_ERROR_MESSAGES.nessun_altro_revisore, { mime: report.mime, size: report.sizeBytes, sha: report.sha256 });
   }
   const mime = report.mime ?? "application/octet-stream";
   const finalPath = referentBlobPath("standard", f.workspaceId, f.useCaseId, f.id);
@@ -517,15 +559,16 @@ export const reviewNeedFile = guardedReferent(
     // Chi modifica «Cosa serve» (`referentWriter`), Lateral Space o revisore del cliente: mai chi l'ha caricato.
     const f = await loadFile(executor, ctx.workspaceId, fileId);
     if (!f || f.deleted || f.useCaseId !== useCaseId.toLowerCase() || f.scanStatus !== "in_revisione" || (f.source === "referente" && !f.submitted)) return rfail("file_non_trovato");
-    if (f.uploadedByUserId !== null && f.uploadedByUserId === writer.userId.toLowerCase()) return rfail("revisore_uguale");
+    // Chi ha dato il documento: il referente (se ha un account, anche quando è revisore: Parte 3) o chi
+    // l'ha caricato dalla scheda. Non lo controlla mai lui (due persone diverse, sempre).
+    const owner = f.source === "referente" ? (f.requestId ? (await readRequestReferentPerson(executor, f.workspaceId, f.requestId)).userId : null) : f.uploadedByUserId;
+    if (owner !== null && owner.toLowerCase() === writer.userId.toLowerCase()) return rfail("revisore_uguale");
     const actor: ReferentActor = { kind: "persona", userId: writer.userId };
     const id = cast(f.id, "uuid");
     if (outcome === "accetta") {
       const now = new Date();
-      // (Parte 3) Chi ha dato il documento (il referente, se ha un account, o chi l'ha caricato dalla
-      // scheda) non riceve la notifica né l'avviso del suo documento accettato.
-      const owner = f.source === "referente" && f.requestId ? (await readRequestReferentPerson(executor, f.workspaceId, f.requestId)).userId : f.uploadedByUserId;
-      const alsoExceptUserId = owner && owner !== writer.userId.toLowerCase() ? owner : null;
+      // (Parte 3) Chi ha dato il documento non riceve la notifica né l'avviso del suo documento accettato.
+      const alsoExceptUserId = owner ? owner.toLowerCase() : null;
       // Un file del referente l'hanno già annunciato le sue risposte (i revisori lo vedono «Da controllare»
       // dall'arrivo): accettarlo non manda una seconda notifica. Un file del team si annuncia qui.
       const announce = f.source === "revisore";
@@ -539,6 +582,8 @@ WHERE id = ${id} AND scan_status = 'in_revisione' AND deleted_at IS NULL RETURNI
           ),
         ),
         referentEventSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, code: "file_accettato", actor }),
+        // Un PDF del team conta da adesso (`reviewerEffects` non l'ha contato al caricamento).
+        ...(f.source === "revisore" ? acceptedTeamFileEffects(f, writer.userId) : []),
         ...(announce
           ? [
               notifyReviewersSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, kind: "documenti", documents: 1, actorUserId: writer.userId, alsoExceptUserId }),
@@ -557,6 +602,7 @@ WHERE id = ${id} AND scan_status = 'in_revisione' AND deleted_at IS NULL RETURNI
               }),
             ]
           : []),
+        ...(f.source === "revisore" ? infoCompleteSyncStatements({ workspaceId: f.workspaceId, useCaseIds: [f.useCaseId], needId: f.needId, actorUserId: writer.userId }) : []),
       ]);
       if (!run.ok) return run;
       return { ok: true, value: { status: "pulito" } };
@@ -604,7 +650,8 @@ WHERE f.id = ${cast(i.fileId, "uuid")} AND f.workspace_id = ${cast(i.workspaceId
   AND f.deleted_at IS NULL AND f.blob_path IS NOT NULL
   AND (f.source = 'revisore' OR f.submitted_at IS NOT NULL)
   AND (f.scan_status = 'pulito'
-       OR (f.scan_status = 'in_revisione' AND ${cast(teamReviewer, "boolean")} AND f.uploaded_by_user_id IS DISTINCT FROM ${cast(i.userId, "uuid")}))`),
+       OR (f.scan_status = 'in_revisione' AND ${cast(teamReviewer, "boolean")} AND f.uploaded_by_user_id IS DISTINCT FROM ${cast(i.userId, "uuid")}
+           AND (f.request_id IS NULL OR (SELECT ${requestReferentUserSql("fr")} FROM use_case_referent_requests fr WHERE fr.id = f.request_id AND fr.workspace_id = f.workspace_id) IS DISTINCT FROM ${cast(i.userId, "uuid")})))`),
   ]);
   const path = rowString(row?.blob_path);
   if (!row || !path || !isReferentBlobPath(path, i.workspaceId, i.useCaseId)) return notFound;
@@ -656,6 +703,8 @@ export async function cleanupDeletedFiles(i: { workspaceId: string | null; limit
 /**
  * Cron, passo 6: le quarantene di più di un'ora diventano «rifiutato» (`quarantena_scaduta`) senza
  * oggetto; i PDF in revisione da più di 7 giorni «rifiutato» (`revisione_scaduta`), oggetto cancellato.
+ * I 7 giorni contano dall'invio per un file del referente (prima dell'invio il team non lo vede: una
+ * bozza la toglie la pulizia delle bozze, alla fine della richiesta) e dal caricamento per un file del team.
  */
 export async function cleanupPendingFiles(env: Env, now: Date): Promise<number> {
   const executor = await getAppUcExecutor();
@@ -665,8 +714,9 @@ export async function cleanupPendingFiles(env: Env, now: Date): Promise<number> 
 WHERE scan_status = 'in_quarantena' AND deleted_at IS NULL AND created_at <= ${cast(new Date(now.getTime() - PENDING_QUARANTINE_MS).toISOString(), "timestamptz")}
 ORDER BY created_at, id LIMIT 200`),
     toStatement(ucSql`SELECT id, blob_path FROM use_case_need_files
-WHERE scan_status = 'in_revisione' AND deleted_at IS NULL AND created_at <= ${cast(new Date(now.getTime() - REVIEW_TTL_MS).toISOString(), "timestamptz")}
-ORDER BY created_at, id LIMIT 200`),
+WHERE scan_status = 'in_revisione' AND deleted_at IS NULL AND (source = 'revisore' OR submitted_at IS NOT NULL)
+  AND coalesce(submitted_at, created_at) <= ${cast(new Date(now.getTime() - REVIEW_TTL_MS).toISOString(), "timestamptz")}
+ORDER BY coalesce(submitted_at, created_at), id LIMIT 200`),
   ]);
   let done = 0;
   for (const r of quarantine) {

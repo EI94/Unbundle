@@ -99,14 +99,29 @@ export interface ReferentDeliveryFacts {
   /** L'autorizzazione del workspace all'elenco dei sub-responsabili di adesso. */
   subprocessorsAuthorized: boolean;
   /**
+   * `referentPublicWritesAvailable(env)`: la pagina pubblica accetta risposte e file (`UC_SECRET` su
+   * Vercel). Falso → richieste e promemoria aspettano (`risposte_non_attive`): il referente non riceve
+   * un link da cui non può rispondere. La conferma parte (le risposte sono già arrivate).
+   */
+  publicWritesOn?: boolean;
+  /**
    * `teamAccess` (Parte 3): il referente è adesso un revisore del workspace con l'email verificata
    * uguale a quella del contatto (`referentPersonOf`, riletto a ogni invio). Solo allora l'email
    * aggiunge «Hai già accesso a Unbundle: …» e il link alla scheda; mai per corsisti, contributori o
    * persone senza account.
    */
   recipient: { email: string | null; active: boolean; anonymized: boolean; linkedUserIsLateralSpace: boolean; teamAccess?: boolean } | null;
-  /** L'email di chi ha chiesto solo se verificata e ancora revisore del workspace; in minuscolo. */
+  /**
+   * L'email di chi ha chiesto la prima richiesta (`requests[0]`), solo se verificata e ancora revisore
+   * del workspace; in minuscolo. Vale solo per quella persona: senza `replyToByRequester` il piano la
+   * usa solo per le richieste della stessa persona.
+   */
   replyTo: string | null;
+  /**
+   * Le stesse email per ogni persona che ha chiesto una delle richieste (id in minuscolo → email): il
+   * reply-to segue la persona delle voci che partono davvero, non della prima riga letta.
+   */
+  replyToByRequester?: Readonly<Record<string, string>>;
   /** richiesta/conferma: l'unica richiesta; promemoria: una per voce ancora «in_coda». */
   requests: ReferentRequestFacts[];
   /** Oggi (Roma) a questa persona è già partito un altro promemoria. */
@@ -171,14 +186,25 @@ export function planReferentDelivery(
 ): ReferentDeliveryPlan {
   if (f.featureOn === false) return hold("funzione_spenta");
   if (!f.subprocessorsAuthorized) return hold("sub_responsabili_mancanti");
+  if (f.publicWritesOn === false && e.template !== "conferma") return hold("risposte_non_attive");
   const r = f.recipient;
   const to = r?.email?.trim().toLowerCase() ?? null;
   if (!r || !r.active || r.anonymized || !isPlainAddress(to)) return cancel("destinatario_non_raggiungibile");
   const domain = emailDomain(to);
   if ((domain && o.lsDomains.includes(domain)) || r.linkedUserIsLateralSpace) return cancel("destinatario_lateral_space");
-  const reply = f.replyTo?.trim().toLowerCase() ?? null;
-  const replyTo = isPlainAddress(reply) ? reply : null;
-  const replyToKnown = replyTo !== null;
+  // Il reply-to della persona che ha chiesto `req`: mai quello di un'altra persona.
+  const replyToOf = (req: ReferentRequestFacts | undefined): string | null => {
+    const who = req?.requesterUserId ?? null;
+    const raw = f.replyToByRequester
+      ? who
+        ? (f.replyToByRequester[who] ?? null)
+        : null
+      : req && (who === (f.requests[0]?.requesterUserId ?? null) || f.requests.length <= 1)
+        ? f.replyTo
+        : null;
+    const value = raw?.trim().toLowerCase() ?? null;
+    return isPlainAddress(value) ? value : null;
+  };
   // Il reply-to di ripiego (`UC_EMAIL_REPLY_TO`, già controllato da `ucEmailConfig`): si ricontrolla qui
   // perché il piano è puro e si prova da solo. Non cambia il testo («arriva a {Nome}» vale solo per chi ha chiesto).
   const fallbackRaw = o.fallbackReplyTo?.trim().toLowerCase() ?? null;
@@ -189,6 +215,8 @@ export function planReferentDelivery(
     if (!req || !req.live) return cancel("richiesta_non_viva");
     if (req.openItems <= 0) return cancel("nessuna_domanda_aperta");
     if (req.selfRequest) return cancel("referente_sei_tu");
+    const replyTo = replyToOf(req);
+    const replyToKnown = replyTo !== null;
     return {
       action: "send",
       to,
@@ -218,6 +246,7 @@ export function planReferentDelivery(
     // D-B24: mai un'email a chi ha chiesto, nemmeno la conferma (contatto collegato più tardi al suo account).
     if (req.selfRequest) return cancel("referente_sei_tu");
     const submitted = Math.max(1, req.answeredToday ?? 1);
+    const replyTo = replyToOf(req);
     return {
       action: "send",
       to,
@@ -248,17 +277,20 @@ export function planReferentDelivery(
   }
   if (kept.length === 0) return cancel("nessuna_voce");
   const sameRequester = kept.every((x) => x.requesterUserId !== null && x.requesterUserId === kept[0].requesterUserId);
-  const replyName = replyToKnown && sameRequester ? kept[0].requesterName : null;
+  // Il reply-to e «arriva a {Nome}» vengono dalla stessa persona: quella delle voci che partono.
+  const replyTo = sameRequester ? replyToOf(kept[0]) : null;
+  const replyToKnown = replyTo !== null;
+  const replyName = replyToKnown ? kept[0].requesterName : null;
   return {
     action: "send",
     to,
-    replyTo: (sameRequester ? replyTo : null) ?? fallback,
+    replyTo: replyTo ?? fallback,
     links: kept.map((x) => ({ requestId: x.id, issuedFor: "promemoria" as const })),
     drop,
     build: (links) => ({
       template: "promemoria",
       company: f.company,
-      replyToKnown: replyToKnown && sameRequester,
+      replyToKnown,
       replyName,
       // Solo le voci con il loro link: una richiesta non più viva all'emissione esce dall'email.
       entries: kept

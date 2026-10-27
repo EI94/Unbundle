@@ -266,12 +266,16 @@ Riferimento: la SPEC del pacchetto (parti 1 e 2). La funzione vive nell'area «U
 | `RESEND_API_KEY` | **solo Produzione** | Mai in Preview: le anteprime usano il database di produzione. Il codice spegne comunque la funzione con `VERCEL_ENV=preview`. |
 | `UC_EMAIL_FROM` | `Lateral Space via Unbundle <indirizzo@dominio-verificato>` | In Resend: dominio verificato (SPF, DKIM) e **tracciamento di aperture e clic spento** (riscriverebbe i link `/rispondi/` e aggiungerebbe un pixel). |
 | `UC_EMAIL_REPLY_TO` | un indirizzo che riceve posta (es. `persona@lateralspace.ai`) | Il mittente sta su un sottodominio che non riceve posta. Email al referente: reply-to = l'email verificata di chi ha chiesto finché è revisore del workspace; altrimenti questa. Avvisi a chi ha chiesto e email dei dossier: sempre questa. Assente o non valida: nessun reply-to. |
-| `UC_SECRET` | già impostata | Obbligatoria per le scritture della pagina pubblica su ogni ambiente Vercel (limite per IP). |
+| `UC_SECRET` | già impostata | Obbligatoria per le scritture della pagina pubblica su ogni ambiente Vercel (limite per IP). Senza, «Chiedi al referente» resta fermo con l'avviso «Le risposte dal link non sono attive…» e richieste e promemoria aspettano in coda (`risposte_non_attive`): nessun link da cui non si può rispondere. |
 | `BLOB_READ_WRITE_TOKEN` | già impostata | Store privato: caricamenti diretti fino a 20 MB. Senza, solo fino a 4 MB passando dal server. |
 | `CRON_SECRET` | già impostata | `/api/cron/use-case-referents` (lun–ven alle 09:00 UTC) risponde 401 se manca o è diversa. |
 | `UC_ENABLED` | non letta qui | `UC_ENABLED=false` ferma solo i dossier. |
 
 ### 10.2 Migrazione 0024 (a mano, prima del deploy)
+
+**Prima del merge su `main`**: Vercel pubblica in produzione a ogni push su `main`, quindi il merge è già il deploy. La 0024 va applicata (passi 1–5) prima di unire il ramo, non dopo.
+
+Se il deploy arriva lo stesso prima della 0024: il self-heal dell'app prova la 0024 al primo avvio a freddo, dentro una richiesta. Un suo errore (per esempio `lock timeout` dietro una transazione lunga) non ferma le pagine: si registra (`[db/ensure-schema] 0024 self-heal failed`), l'app serve senza «Chiedi al referente» (le scritture di «Cosa serve» saltano il segno «Informazioni complete»), e ogni processo riprova al massimo ogni 5 minuti. Applicare la 0024 a mano come qui sotto.
 
 1. Restore point su Neon.
 2. Controllo di sola lettura: `SHOW TimeZone;` deve dare `GMT`, `UTC` o `Etc/UTC` (la campanella legge `weekly_signals.created_at`, un `timestamp` senza fuso, come UTC). Se no, fermarsi.

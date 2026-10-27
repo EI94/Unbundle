@@ -15,7 +15,7 @@ import {
 import { NEED_HISTORY_FIELD, needHistoryCode, needStateCode, type NeedHistoryChange } from "./needs-history";
 import { fail, guarded, invalid, personaWriter, type Failure, type WriteContext } from "./service";
 import { ucToDrizzle } from "@/lib/db/use-case-hub-uc-drizzle";
-import { infoCompleteSyncStatements } from "./referent/sql";
+import { INFO_SYNC_TABLES_PRESENT_SQL, infoCompleteSyncStatements } from "./referent/sql";
 import type { ServiceResult } from "./types";
 
 /**
@@ -126,11 +126,27 @@ async function linkTargetsOf(workspaceId: string, raw: readonly unknown[] | unde
  * sono quelle di prima. Il lock arriva dopo i lock di riga della scrittura e sempre in ordine di
  * `use_cases.id`, così due scritture si aspettano invece di bloccarsi a vicenda.
  */
+let infoSyncTablesPresent = false;
+
+/**
+ * Le tabelle della sincronizzazione (drizzle/0024) ci sono: senza (la 0024 non ancora applicata, il
+ * self-heal fallito) «Cosa serve» si scrive lo stesso, senza il segno «Informazioni complete». Il
+ * risultato positivo si tiene per tutto il processo.
+ */
+async function infoSyncAvailable(): Promise<boolean> {
+  if (infoSyncTablesPresent) return true;
+  const result = (await db.execute(sql.raw(INFO_SYNC_TABLES_PRESENT_SQL))) as unknown as { rows?: Array<{ ok?: unknown }> };
+  infoSyncTablesPresent = result.rows?.[0]?.ok === true;
+  return infoSyncTablesPresent;
+}
+
 async function executeWithInfoSync(
   write: SQL,
   cards: { workspaceId: string; useCaseIds?: readonly string[]; needId?: string | null; actorUserId: string },
 ): Promise<{ rows: Record<string, unknown>[] }> {
-  if (!(cards.useCaseIds?.length) && !cards.needId) return db.execute(write) as Promise<{ rows: Record<string, unknown>[] }>;
+  if ((!(cards.useCaseIds?.length) && !cards.needId) || !(await infoSyncAvailable())) {
+    return db.execute(write) as Promise<{ rows: Record<string, unknown>[] }>;
+  }
   const [lock, sync] = infoCompleteSyncStatements(cards);
   const [result] = await db.batch([db.execute(write), db.execute(ucToDrizzle(lock)), db.execute(ucToDrizzle(sync))]);
   return result as unknown as { rows: Record<string, unknown>[] };

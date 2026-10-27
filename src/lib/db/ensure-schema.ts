@@ -632,7 +632,29 @@ async function runOnce(): Promise<void> {
 
   // «Chiedi al referente» (drizzle/0024_use_case_referents.sql) ─────────
   // Dopo la 0022 (le esigenze) e la 0023 (il CHECK della Storia, che la 0024 allarga ancora).
-  await runUseCaseReferentsDdl();
+  // Non blocca il resto dell'app: un errore qui (per esempio il `lock_timeout` dietro una
+  // transazione lunga, se la 0024 non è stata applicata a mano prima del rilascio) lo registra e
+  // l'app serve senza la funzione (`referentStoreReady`, le letture con `to_regclass`).
+  await runUseCaseReferentsDdlSafely();
+}
+
+/** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
+export const REFERENTS_DDL_RETRY_MS = 5 * 60_000;
+let referentsDdlFailedAt: number | null = null;
+
+/**
+ * La 0024 senza far fallire `ensureDbSchema()`: `getWorkspaceById` e le altre letture di tutte le
+ * pagine non la aspettano. L'errore resta nel log e il prossimo tentativo arriva dopo
+ * `REFERENTS_DDL_RETRY_MS` (`ensureDbSchema`), non alla richiesta dopo.
+ */
+async function runUseCaseReferentsDdlSafely(): Promise<void> {
+  try {
+    await runUseCaseReferentsDdl();
+    referentsDdlFailedAt = null;
+  } catch (err) {
+    referentsDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0024 self-heal failed, the app keeps serving without «Chiedi al referente» (apply drizzle/0024 by hand):", err);
+  }
 }
 
 /**
@@ -836,7 +858,14 @@ export async function ensureDbSchema(): Promise<void> {
     ensurePromise = null;
     ensureVersionApplied = ENSURE_VERSION;
   }
-  if (ensurePromise) return ensurePromise;
+  if (ensurePromise) {
+    // La 0024 era fallita (non fatale): un solo nuovo tentativo alla volta, dopo la pausa.
+    if (referentsDdlFailedAt !== null && Date.now() - referentsDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      referentsDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runUseCaseReferentsDdlSafely);
+    }
+    return ensurePromise;
+  }
   ensurePromise = (async () => {
     // Nei cold start serverless evitiamo decine di DDL idempotenti se il DB è già allineato.
     if (await schemaLooksCurrent()) return;

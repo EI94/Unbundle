@@ -41,7 +41,7 @@ import { cast, raw, requireRows, toStatement, ucSql, type SqlFragment, type UcSt
 import { clientUploadAvailable } from "@/lib/uc/storage";
 import { abilitiesForUseCase, type UseCaseViewer } from "@/lib/use-cases/permissions";
 import { alertSchedule } from "@/lib/use-cases/referent/alerts";
-import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
+import { referentAskEnabled, referentPublicWritesAvailable } from "@/lib/use-cases/referent/availability";
 import {
   REFERENT_LIMITS,
   reviewerFileHref,
@@ -75,7 +75,7 @@ import {
   uuidOf,
   type ReferentActor,
 } from "@/lib/use-cases/referent/sql";
-import { NO_PERSON, isSelfRequest } from "@/lib/use-cases/referent/people";
+import { NO_PERSON, isSelfRequest, requestReferentUserSql } from "@/lib/use-cases/referent/people";
 import { reviewerStatus } from "@/lib/use-cases/referent/state";
 import { checkQuestionTitle, checkRequestMessage, checkReviewerAnswer } from "@/lib/use-cases/referent/text";
 import { formatFileSize } from "@/lib/use-cases/referent/upload-transport";
@@ -211,6 +211,9 @@ async function deliveryGates(executor: UcExecutor, workspaceId: string, company:
   const sub = await subprocessorsGate(executor, workspaceId, company);
   if (sub) return sub;
   if (!ucEmailConfig(env).ok) return rfail("email_non_configurata");
+  // Senza le scritture della pagina pubblica (`UC_SECRET` su Vercel) il referente leggerebbe le domande
+  // ma non potrebbe rispondere: niente richieste né promemoria finché non tornano.
+  if (!referentPublicWritesAvailable(env)) return rfail("risposte_non_attive");
   return null;
 }
 
@@ -321,7 +324,8 @@ ORDER BY a.submitted_at DESC, a.id`);
 
 function filesSql(workspaceId: string, useCaseId: string): UcStatement {
   return toStatement(ucSql`SELECT f.id, f.need_id, f.source, f.file_name, f.size_bytes, f.scan_status, f.personal_warning, f.created_at, f.submitted_at,
-  f.uploaded_by_user_id, coalesce(c.display_name, '') AS contact_name, coalesce(nullif(btrim(u.name), ''), '') AS author_name
+  f.uploaded_by_user_id, coalesce(c.display_name, '') AS contact_name, coalesce(nullif(btrim(u.name), ''), '') AS author_name,
+  CASE WHEN f.source = 'referente' THEN ${requestReferentUserSql("r")} ELSE f.uploaded_by_user_id END AS owner_user_id
 FROM use_case_need_files f
 LEFT JOIN use_case_referent_requests r ON r.id = f.request_id
 LEFT JOIN uc_contacts c ON c.id = r.contact_id AND c.workspace_id = f.workspace_id
@@ -337,8 +341,11 @@ ORDER BY f.created_at DESC, f.id`);
  */
 function expiredReviewsSql(workspaceId: string, useCaseId: string): UcStatement {
   return toStatement(ucSql`SELECT DISTINCT f.need_id FROM use_case_need_files f
+JOIN use_case_needs n ON n.id = f.need_id AND n.workspace_id = f.workspace_id
 WHERE f.workspace_id = ${cast(workspaceId, "uuid")} AND f.use_case_id = ${cast(useCaseId, "uuid")} AND f.deleted_at IS NULL
   AND f.scan_status = 'rifiutato' AND f.rejection_reason = 'revisione_scaduta'
+  AND (f.source = 'revisore' OR f.submitted_at IS NOT NULL)
+  AND n.archived_at IS NULL AND n.status NOT IN ('validata', 'non_applicabile')
   AND NOT EXISTS (SELECT 1 FROM use_case_need_files g WHERE g.workspace_id = f.workspace_id AND g.use_case_id = f.use_case_id AND g.need_id = f.need_id
     AND g.deleted_at IS NULL AND g.scan_status IN ('pulito', 'in_revisione') AND g.created_at > f.created_at)`);
 }
@@ -437,9 +444,11 @@ export async function loadUseCaseReferentPanel(i: {
     }
     const emailOk = ucEmailConfig(env).ok;
     if (!emailOk) gates.push({ code: "email_non_configurata", message: T.gates.emailNotConfigured });
+    const publicWritesOn = referentPublicWritesAvailable(env);
+    if (!publicWritesOn) gates.push({ code: "risposte_non_attive", message: T.gates.publicWritesOff });
     if (!i.session.emailVerified) gates.push({ code: "email_non_verificata", message: T.gates.emailNotVerified });
     if (askable.length === 0) gates.push({ code: "nessuna_domanda", message: T.gates.noQuestions });
-    const deliveryBlocked = !ack || !emailOk;
+    const deliveryBlocked = !ack || !emailOk || !publicWritesOn;
 
     // Referenti: attivi, in ordine di arrivo, email mascherate.
     const liveHere = new Set(liveRows.map((r) => String(r.contact_id).toLowerCase()));
@@ -617,9 +626,10 @@ export async function loadUseCaseReferentPanel(i: {
           const fileId = String(f.id).toLowerCase();
           const source = rowString(f.source) === "revisore" ? "revisore" : "referente";
           const status = rowString(f.scan_status) === "in_revisione" ? "in_revisione" : "pulito";
-          const uploader = rowString(f.uploaded_by_user_id);
+          // Chi ha dato il file (il referente con un account, anche revisore, o chi l'ha caricato dalla scheda) non lo controlla.
+          const owner = rowString(f.owner_user_id)?.toLowerCase() ?? null;
           const at = rowDate(f.submitted_at) ?? rowDate(f.created_at) ?? now;
-          const reviewable = status === "in_revisione" && canReviewFiles && uploader !== i.session.id;
+          const reviewable = status === "in_revisione" && canReviewFiles && owner !== i.session.id.toLowerCase();
           return {
             id: fileId,
             name: rowString(f.file_name) ?? "file",

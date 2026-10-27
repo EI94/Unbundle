@@ -38,6 +38,7 @@ export const REFERENT_UI_TEXT = Object.freeze({
       "{Azienda} deve autorizzare i fornitori che usiamo, per esempio quello delle email. La dà una persona di {Azienda} con ruolo Sponsor esecutivo, Responsabile della trasformazione o Responsabile di funzione, in Impostazioni › Sub-responsabili.",
     subprocessorsLink: "Apri Impostazioni",
     emailNotConfigured: "Le email non sono ancora attive: per ora non possiamo scrivere al referente.",
+    publicWritesOff: "Le risposte dal link non sono attive in questo momento: per ora non possiamo scrivere al referente. Riprova più tardi.",
     emailNotVerified: "Per chiedere serve un account con l'email verificata: le risposte all'email arrivano a te.",
     noQuestions: "Non ci sono domande da fare: aggiungile in «Cosa serve» o usa «Prepara le domande».",
   }),
@@ -201,9 +202,9 @@ export const REFERENT_UI_TEXT = Object.freeze({
     answerAddedValidated: "Risposta aggiunta e informazione segnata «A posto».",
     answerRemoved: "Risposta eliminata.",
     fileAttached: "File allegato.",
-    fileAttachedReview: "File allegato: è un PDF con poco testo, lo controlla un'altra persona del team.",
+    fileAttachedReview: "File allegato: è un PDF con poco testo, lo controlla un'altra persona del team. Conta come risposta quando è accettato.",
     fileAttachedValidated: "File allegato e informazione segnata «A posto».",
-    fileAttachedReviewValidate: "File allegato: è un PDF con poco testo, lo controlla un'altra persona del team. L'informazione resta da verificare.",
+    fileAttachedReviewValidate: "File allegato: è un PDF con poco testo, lo controlla un'altra persona del team. Conta come risposta quando è accettato, e l'informazione resta da verificare.",
     fileDeleted: "File eliminato.",
     fileAccepted: "File accettato.",
     fileRejected: "File rifiutato.",
@@ -367,6 +368,7 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   funzione_spenta: "Questa funzione non è attiva per questo workspace.",
   permesso_mancante: "Non hai i permessi per farlo.",
   email_non_configurata: "Le email non sono ancora attive: per ora non possiamo scrivere al referente.",
+  risposte_non_attive: "Le risposte dal link non sono attive in questo momento: per ora non possiamo scrivere al referente. Riprova più tardi.",
   sub_responsabili_mancanti: "Prima {Azienda} deve autorizzare i fornitori che usiamo, in Impostazioni › Sub-responsabili.",
   email_non_verificata: "Per chiedere serve un account con l'email verificata: le risposte all'email arrivano a te.",
   referente_non_valido: "Questo referente non è più attivo: scegline un altro.",
@@ -418,6 +420,8 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   pdf_in_revisione: "Questo PDF ha poco testo, forse è una scansione: lo controlla il team prima di usarlo. Puoi inviare lo stesso.",
   revisione_rifiutata: "Il file non è stato accettato dopo il controllo.",
   revisione_scaduta: "Il controllo del file non è stato fatto in tempo: caricalo di nuovo.",
+  nessun_altro_revisore:
+    "Questo PDF ha poco testo, forse è una scansione: lo deve controllare un'altra persona del team, e qui non c'è. Allega un PDF con testo, un DOCX o un file di testo.",
   quarantena_scaduta: "Il controllo del file non è finito: caricalo di nuovo.",
 });
 
