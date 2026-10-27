@@ -17,7 +17,7 @@ test("riuscita: il toast del server e la finestra si chiude", () => {
 });
 
 test("dati superati (versione, domande cambiate, richiesta chiusa…): toast, la pagina si rilegge, la finestra si chiude", () => {
-  for (const code of ["versione_superata", "domande_cambiate", "richiesta_chiusa", "non_trovato"]) {
+  for (const code of ["versione_superata", "domande_cambiate", "richiesta_chiusa", "non_trovato", "referente_non_valido", "persona_non_disponibile"]) {
     assert.ok(REFERENT_STALE_CODES.has(code), code);
     const outcome = referentOutcome({ ok: false, code, message: REFERENT_ERROR_MESSAGES[code] ?? "x" }, { inDialog: true });
     assert.deepEqual([outcome.refresh, outcome.close, outcome.toast?.kind], [true, true, "error"], code);
@@ -30,4 +30,12 @@ test("altri errori: dentro la finestra se c'è, altrimenti un toast; mai un test
   const button = referentOutcome({ ok: false, code: "promemoria_gia_inviato", message: "Oggi a Mario è già partita un'email." }, { inDialog: false });
   assert.deepEqual(button.toast, { kind: "error", text: "Oggi a Mario è già partita un'email." });
   assert.equal(referentOutcome({ ok: false, code: "riprova", message: "" }, { inDialog: true }).error, REFERENT_ERROR_MESSAGES.riprova);
+});
+
+test("(Referente già iscritto) errori da correggere nella finestra: mai chiusa, mai la bozza persa", () => {
+  for (const code of ["referente_disattivato", "email_in_uso", "referente_sei_tu", "referente_lateral_space", "richiesta_aperta"]) {
+    assert.equal(REFERENT_STALE_CODES.has(code), false, code);
+    const outcome = referentOutcome({ ok: false, code, message: REFERENT_ERROR_MESSAGES[code] ?? "x" }, { inDialog: true });
+    assert.deepEqual([outcome.close, outcome.refresh, outcome.error], [false, false, REFERENT_ERROR_MESSAGES[code]], code);
+  }
 });

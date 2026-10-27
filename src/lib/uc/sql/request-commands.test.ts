@@ -16,6 +16,7 @@ import {
   contactEventSql,
   contactHasNoOpenRequestsSql,
   contactInsertSql,
+  contactStaleLinkClearSql,
   contactUpdateSql,
   extendExpirySql,
   groupByAssignee,
@@ -180,6 +181,12 @@ test("contact SQL: insert fails as email_in_uso on a duplicate, updates and anon
   assert.match(upd.text, /SET email = \$1::text, is_active = \$2::boolean, updated_at = now\(\)/);
   assert.match(upd.text, /email IS NOT DISTINCT FROM \$\d+::text AND is_active = \$\d+::boolean/);
   assert.match(upd.text, /anonymized_at IS NULL/);
+  // Dopo un cambio d'email il collegamento all'account resta solo se l'account ha ancora quell'email verificata.
+  const unlink = contactStaleLinkClearSql({ workspaceId: WS, contactId: CONTACT });
+  assert.match(unlink.text, /UPDATE uc_contacts c SET user_id = NULL, updated_at = now\(\)/);
+  assert.match(unlink.text, /c\.user_id IS NOT NULL\s+AND NOT EXISTS \(SELECT 1 FROM users lu WHERE lu\.id = c\.user_id AND lu\.email_verified IS NOT NULL AND c\.email IS NOT NULL AND lower\(btrim\(lu\.email\)\) = lower\(btrim\(c\.email\)\)\)/);
+  assert.doesNotMatch(unlink.text, /uc_require/, "nessuna riga toccata non è un errore");
+  assert.throws(() => contactStaleLinkClearSql({ workspaceId: WS, contactId: "x" }));
   const anon = contactAnonymizeSql({ workspaceId: WS, contactId: CONTACT });
   assert.match(anon.text, /email = NULL, phone_e164 = NULL, user_id = NULL/);
   assert.match(anon.text, /anonymized_at = now\(\)/);

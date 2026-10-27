@@ -65,6 +65,7 @@ import {
   contactRoleIfMissingSql,
   contactRowsSql,
   contactsListSql,
+  contactStaleLinkClearSql,
   contactTokensRevokeSql,
   contactUpdateSql,
   delegationsTodaySql,
@@ -449,7 +450,8 @@ export async function updateContact(executor: UcExecutor, ctx: UcCommandContext,
   if (deactivated) statements.push(contactHasNoOpenRequestsSql(contactId), contactNotDesignatedSql(ctx.workspaceId, contactId));
   statements.push(contactUpdateSql({ workspaceId: ctx.workspaceId, contactId, patch, expect: { email: contact.email, isActive: contact.isActive } }));
   if (emailChanged) {
-    statements.push(contactTokensRevokeSql(contactId));
+    // Il collegamento all'account vale solo per l'email di quell'account (`contactStaleLinkClearSql`).
+    statements.push(contactStaleLinkClearSql({ workspaceId: ctx.workspaceId, contactId }), contactTokensRevokeSql(contactId));
     if (designated) {
       statements.push(
         ...dropPendingApprovalsSql({ scope: { workspaceId: ctx.workspaceId }, match: { contactId } }),

@@ -375,6 +375,10 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   sub_responsabili_mancanti: "Prima {Azienda} deve autorizzare i fornitori che usiamo, in Impostazioni › Sub-responsabili.",
   email_non_verificata: "Per chiedere serve un account con l'email verificata: le risposte all'email arrivano a te.",
   referente_non_valido: "Questo referente non è più attivo: scegline un altro.",
+  // (Referente già iscritto) L'email scritta in «+ Nuovo referente» è di un referente disattivato.
+  referente_disattivato: "Questa email è di un referente non più attivo: usa un altro indirizzo.",
+  // (Referente già iscritto) Una persona del workspace che non si può più scegliere: non è mai stata un referente.
+  persona_non_disponibile: "Questa persona non si può più scegliere: scegline un'altra.",
   email_mancante: "Scrivi l'email del referente.",
   email_mancante_esistente: "Questo referente non ha un'email: scegli un'altra persona o aggiungine una nuova.",
   email_non_valida: "Controlla l'indirizzo email del referente.",

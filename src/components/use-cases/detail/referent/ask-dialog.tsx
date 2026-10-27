@@ -10,6 +10,7 @@ import { REFERENT_UI_TEXT } from "@/lib/use-cases/referent/labels";
 import { DecisionDialog } from "../../reopen-dialog";
 import {
   ASK_MODE,
+  ASK_OPTION_CLASS,
   MEMBER_PREFIX,
   NEW_CONTACT,
   askDraftErrors,
@@ -140,7 +141,7 @@ export function AskDialog({ workspaceId, useCaseId, panel, mode = ASK_MODE, prev
                   <SelectGroup key={group.label}>
                     <SelectLabel>{group.label}</SelectLabel>
                     {group.choices.map((choice) => (
-                      <SelectItem key={choice.value} value={choice.value} disabled={choice.disabled}>
+                      <SelectItem key={choice.value} value={choice.value} disabled={choice.disabled} className={ASK_OPTION_CLASS}>
                         {choice.label}
                       </SelectItem>
                     ))}
@@ -148,7 +149,7 @@ export function AskDialog({ workspaceId, useCaseId, panel, mode = ASK_MODE, prev
                 ) : (
                   <Fragment key={`gruppo-${index}`}>
                     {group.choices.map((choice) => (
-                      <SelectItem key={choice.value} value={choice.value} disabled={choice.disabled}>
+                      <SelectItem key={choice.value} value={choice.value} disabled={choice.disabled} className={ASK_OPTION_CLASS}>
                         {choice.label}
                       </SelectItem>
                     ))}

@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { REFERENT_LIMITS, type ReferentContactOption, type ReferentMemberOption, type UseCaseReferentPanel } from "../../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT } from "../../../../lib/use-cases/referent/labels.ts";
 import {
   ASK_MODE,
+  ASK_OPTION_CLASS,
   MEMBER_PREFIX,
   NEW_CONTACT,
   askAgainMode,
@@ -19,6 +21,7 @@ import {
   initialAskDraft,
   memberOptionLabel,
 } from "./ask-dialog-state.ts";
+import { referentOutcome } from "./referent-outcome.ts";
 
 // La finestra «Chiedi al referente» e «Chiedi di nuovo» (SPEC §5.2, §9.3, §P3.7), senza React.
 const T = REFERENT_UI_TEXT.askDialog;
@@ -193,10 +196,57 @@ test("persone del workspace: il contenuto dell'action è { kind: «membro», use
   const draft = { ...initialAskDraft(withMembers), choice: `${MEMBER_PREFIX}${SARA.userId}` };
   assert.deepEqual(askDraftErrors(draft, withMembers), {});
   assert.deepEqual(askPayload(draft, withMembers), { contact: { kind: "membro", userId: SARA.userId }, needIds: [N1, N2, N3], message: null });
-  assert.deepEqual(askDraftErrors({ ...draft, choice: `${MEMBER_PREFIX}dddddddd-0000-4000-8000-000000000009` }, withMembers), { contact: REFERENT_ERROR_MESSAGES.referente_non_valido });
+  assert.deepEqual(askDraftErrors({ ...draft, choice: `${MEMBER_PREFIX}dddddddd-0000-4000-8000-000000000009` }, withMembers), { contact: REFERENT_ERROR_MESSAGES.persona_non_disponibile });
   assert.match(askSummary(withMembers, { choice: draft.choice, email: "" }, "non-deve-servire@topjet.it") ?? "", /^Mandiamo un'email a s•••@topjet\.it /);
   assert.equal(askOtherRequestsHint(withMembers, { choice: draft.choice }), null);
   // Un errore sull'email di una persona scelta dall'elenco va nell'area degli errori (non c'è un campo «Email»).
   const ls = REFERENT_ERROR_MESSAGES.referente_lateral_space;
   assert.deepEqual(askErrorView({ ok: false, code: "referente_lateral_space", message: ls, fieldErrors: { email: ls } }, { choice: draft.choice }), { formError: ls, fieldErrors: {} });
+});
+
+// (Referente già iscritto, revisione) Il risultato vero dell'action passa da `referentOutcome` (chiudere
+// o no) e poi da `askErrorView` (dove scrivere l'errore), nell'ordine di `ask-dialog.tsx` `confirm()`.
+function afterSend(result: Extract<Parameters<typeof askErrorView>[0], { ok: false }>, draft: { choice: string | null }) {
+  const outcome = referentOutcome(result, { inDialog: true });
+  if (outcome.close) return { closed: true, refresh: outcome.refresh, toast: outcome.toast?.text ?? null, view: null };
+  return { closed: false, refresh: outcome.refresh, toast: null, view: askErrorView(result, draft) };
+}
+
+test("«+ Nuovo referente» con l'email di un referente disattivato: la finestra resta aperta, l'errore sotto «Email», la bozza resta", () => {
+  const text = REFERENT_ERROR_MESSAGES.referente_disattivato;
+  assert.equal(text, "Questa email è di un referente non più attivo: usa un altro indirizzo.");
+  assert.deepEqual(afterSend({ ok: false, code: "referente_disattivato", message: text, fieldErrors: { email: text } }, { choice: NEW_CONTACT }), {
+    closed: false,
+    refresh: false,
+    toast: null,
+    view: { formError: null, fieldErrors: { email: text } },
+  });
+});
+
+test("una persona del workspace che non si può più scegliere: il suo testo, la pagina si rilegge e la finestra si chiude", () => {
+  const text = REFERENT_ERROR_MESSAGES.persona_non_disponibile;
+  assert.equal(text, "Questa persona non si può più scegliere: scegline un'altra.");
+  assert.notEqual(text, REFERENT_ERROR_MESSAGES.referente_non_valido, "non parla di un referente");
+  assert.deepEqual(afterSend({ ok: false, code: "persona_non_disponibile", message: text }, { choice: `${MEMBER_PREFIX}${SARA.userId}` }), {
+    closed: true,
+    refresh: true,
+    toast: text,
+    view: null,
+  });
+  // Il referente scelto dall'elenco dei referenti e disattivato nel frattempo: come prima.
+  assert.deepEqual(afterSend({ ok: false, code: "referente_non_valido", message: REFERENT_ERROR_MESSAGES.referente_non_valido }, { choice: MARIO.id }).closed, true);
+});
+
+test("su un telefono le voci di «A chi chiedi?» vanno a capo: «Fa parte del team» non si taglia", () => {
+  // `SelectItem` mette il testo in un `ItemText` `shrink-0 whitespace-nowrap`, in un elenco largo come il
+  // selettore (circa 311 px a 375 px) e senza puntini: la classe lo lascia andare a capo.
+  for (const rule of ["[&>*:first-child]:whitespace-normal", "[&>*:first-child]:min-w-0", "[&>*:first-child]:shrink", "[&>*:first-child]:[overflow-wrap:anywhere]"]) {
+    assert.ok(ASK_OPTION_CLASS.split(" ").includes(rule), rule);
+  }
+  const source = readFileSync(new URL("./ask-dialog.tsx", import.meta.url), "utf8");
+  const items = source.match(/<SelectItem\b[^>]*>/g) ?? [];
+  assert.ok(items.length >= 2, "le voci dei gruppi e quelle senza gruppo");
+  for (const item of items) assert.match(item, /className=\{ASK_OPTION_CLASS\}/, item);
+  // L'etichetta lunga di prova sta davvero oltre una riga a 375 px (circa 265 px di testo a 14 px).
+  assert.ok(memberOptionLabel({ ...SARA, displayName: "Federico Barsi", emailMasked: "f•••@topjet.it", team: true }).length > 40);
 });

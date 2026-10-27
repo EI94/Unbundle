@@ -342,6 +342,20 @@ RETURNING id`,
   );
 }
 
+/**
+ * Dopo un cambio d'email (nello stesso batch, dopo `contactUpdateSql`): il collegamento all'account
+ * (`user_id`) resta solo se quell'account ha l'email verificata uguale (senza maiuscole e spazi) a quella
+ * nuova del contatto; altrimenti si toglie. Il contatto è adesso un'altra persona o un altro indirizzo:
+ * un collegamento vecchio la farebbe passare per la persona di prima (l'hub lo usa per «sei tu» e per
+ * chi ha risposto). Nessuna riga toccata non è un errore.
+ */
+export function contactStaleLinkClearSql(i: { workspaceId: string; contactId: string }): UcStatement {
+  return toStatement(ucSql`UPDATE uc_contacts c SET user_id = NULL, updated_at = now()
+WHERE c.id = ${cast(uuid(i.contactId, "referente"), "uuid")} AND c.workspace_id = ${cast(uuid(i.workspaceId, "workspace"), "uuid")} AND c.user_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM users lu WHERE lu.id = c.user_id AND lu.email_verified IS NOT NULL AND c.email IS NOT NULL AND lower(btrim(lu.email)) = lower(btrim(c.email)))
+RETURNING c.id`);
+}
+
 /** Anonimizzazione: il nome diventa l'etichetta del ruolo, email, telefono e account si tolgono. Non si cancella mai. */
 export function contactAnonymizeSql(i: { workspaceId: string; contactId: string }): UcStatement {
   return toStatement(

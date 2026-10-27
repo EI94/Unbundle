@@ -825,207 +825,227 @@ function parseSendInput(raw: unknown): { ok: true; contact: ContactInput; needId
 /** «Chiedi al referente» e «Chiedi di nuovo»: una richiesta, le sue domande, le esigenze «chiesta», la Storia e l'email in coda. */
 export const sendReferentRequest = guardedReferent(
   "chiedi_al_referente",
-  async function sendReferentRequest(
-    ctx: WriteContext,
-    useCaseId: string,
-    input: unknown,
-    deps: { env: Env; requester: { name: string | null; emailVerified: boolean }; now?: Date },
-  ): Promise<ServiceResult<{ requestId: string; contactName: string }> | ReferentFailure> {
-    const now = deps.now ?? new Date();
-    const writer = await referentWriter(ctx, deps.env);
-    if (!writer.ok) return writer;
-    if (!isUuid(useCaseId)) return rfail("non_trovato");
-    const executor = await getAppUcExecutor();
-    const card = await readCard(executor, ctx.workspaceId, useCaseId);
-    if (!card) return rfail("non_trovato");
-    const gate = await deliveryGates(executor, ctx.workspaceId, card.company, deps.env);
-    if (gate) return gate;
-    if (!deps.requester.emailVerified) return rfail("email_non_verificata");
-    const parsed = parseSendInput(input);
-    if (!parsed.ok) return parsed;
-    const lsDomains = lsDomainsOf(deps.env);
-    const lsMembers = await readLsMemberEmails(executor, ctx.workspaceId);
+  (ctx: WriteContext, useCaseId: string, input: unknown, deps: SendReferentDeps) => sendReferentRequestOnce(ctx, useCaseId, input, deps, false),
+);
 
-    // 6. Il referente.
-    let contactId = "";
-    let contactName = "";
-    let newContact: { id: string; draft: ContactDraft; userId: string | null } | null = null;
-    /** Un contatto esistente del workspace (scelto, oppure ritrovato dall'email o dalla persona): le regole di sempre. */
-    const takeContact = async (id: string, onEmail: boolean): Promise<ReferentFailure | null> => {
-      const field = (code: string) => (onEmail ? { email: REFERENT_ERROR_MESSAGES[code] ?? REFERENT_ERROR_MESSAGES.riprova } : undefined);
-      const contact = await readContact(executor, ctx.workspaceId, id);
-      if (!contact || !contact.isActive || contact.anonymized) return rfail("referente_non_valido", undefined, field("referente_non_valido"));
-      if (!contact.email) return rfail("email_mancante", REFERENT_ERROR_MESSAGES.email_mancante_esistente);
-      const user = contact.userId ? await loadUserContext(executor, contact.userId, lsDomains) : null;
-      const check = checkContactEmail({ email: contact.email, user, lsDomains, lsMemberEmails: lsMembers });
-      if (!check.ok) return rfail(check.code, undefined, field(check.code));
-      // 6b (Parte 3). Chi chiede a se stesso: niente email, risponde dalla scheda.
-      if (isSelfRequest(await readReferentPerson(executor, ctx.workspaceId, contact.id), writer.userId)) return rfail("referente_sei_tu", undefined, field("referente_sei_tu"));
-      contactId = contact.id;
-      contactName = contact.displayName;
-      return null;
-    };
-    if (parsed.contact.kind === "esistente") {
-      const refused = await takeContact(parsed.contact.contactId, false);
-      if (refused) return refused;
-    } else if (parsed.contact.kind === "nuovo") {
-      const draft = prepareContact({ displayName: parsed.contact.displayName, email: parsed.contact.email, roleLabel: parsed.contact.roleLabel });
-      if (!draft.ok) {
-        const field = draft.code === "email_non_valida" ? "email" : "displayName";
-        return rfail(draft.code, field === "displayName" ? REFERENT_ERROR_MESSAGES.dati_non_validi : REFERENT_ERROR_MESSAGES.email_non_valida, { [field]: field === "displayName" ? REFERENT_ERROR_MESSAGES.dati_non_validi : REFERENT_ERROR_MESSAGES.email_non_valida });
-      }
-      if (draft.value.email === null) return rfail("email_mancante", undefined, { email: REFERENT_ERROR_MESSAGES.email_mancante });
-      const check = checkContactDraft(draft.value, { lsDomains, lsMemberEmails: lsMembers, user: null });
-      if (!check.ok) return rfail(check.code, undefined, { email: REFERENT_ERROR_MESSAGES[check.code] ?? check.message });
-      // 6b (Parte 3). La propria email come referente nuovo: niente email, risponde dalla scheda.
-      const typedPerson = await readEmailPerson(executor, ctx.workspaceId, draft.value.email);
-      if (isSelfRequest(typedPerson, writer.userId)) {
-        return rfail("referente_sei_tu", undefined, { email: REFERENT_ERROR_MESSAGES.referente_sei_tu });
-      }
-      // (Referente già iscritto) L'email è già di un referente del workspace: si usa quello, con il nome
-      // che ha già; un referente disattivato resta un errore chiaro. Nessun dato del contatto cambia.
-      const [same] = await readPersonContacts(executor, ctx.workspaceId, { email: draft.value.email, userId: null });
-      if (same) {
-        const refused = await takeContact(same.id, true);
-        if (refused) return refused;
-      } else {
-        // (Referente già iscritto) L'email è di una persona del workspace con l'email verificata: il
-        // referente nuovo si collega al suo account, se nessun altro referente lo è già.
-        let linkUserId: string | null = null;
-        if (typedPerson.member && typedPerson.userId) {
-          const linked = await readPersonContacts(executor, ctx.workspaceId, { email: null, userId: typedPerson.userId });
-          if (linked.length === 0) linkUserId = typedPerson.userId;
-        }
-        contactId = randomUUID();
-        contactName = draft.value.displayName;
-        newContact = { id: contactId, draft: draft.value, userId: linkUserId };
-      }
-    } else {
-      // (Referente già iscritto) Una persona del workspace scelta dall'elenco: tutto si ricontrolla qui.
-      // Chi guarda deve già vedere le persone del workspace (Impostazioni › Persone); la persona è ancora
-      // del workspace, con l'email verificata, non è un partecipante ai corsi, non è di Lateral Space e
-      // non è chi chiede. Il suo referente si riusa se c'è (per account o per email), altrimenti nasce
-      // collegato al suo account.
-      // Il ruolo di chi chiede si rilegge qui (`readWorkspaceMembers` vuole un ruolo diverso da `learner`).
-      const [self] = await readWorkspaceMembers(executor, ctx.workspaceId, writer.userId);
-      if (!self || !canSeeWorkspacePeople(self.role)) return rfail("permesso_mancante");
-      const [member] = await readWorkspaceMembers(executor, ctx.workspaceId, parsed.contact.userId);
-      if (!member) return rfail("referente_non_valido");
-      if (memberIsLateralSpace(member, lsDomains, lsMembers)) return rfail("referente_lateral_space");
-      if (member.userId === writer.userId.toLowerCase()) return rfail("referente_sei_tu");
-      const known = await readPersonContacts(executor, ctx.workspaceId, { email: member.email, userId: member.userId });
-      const active = known.find((c) => c.isActive);
-      if (active) {
-        const refused = await takeContact(active.id, false);
-        if (refused) return refused;
-      } else if (known.length > 0) {
-        return rfail("referente_non_valido");
-      } else {
-        const draft = prepareContact({ displayName: memberDisplayName(member), email: member.email, roleLabel: null });
-        if (!draft.ok || draft.value.email === null) return rfail("referente_non_valido");
-        contactId = randomUUID();
-        contactName = draft.value.displayName;
-        newContact = { id: contactId, draft: draft.value, userId: member.userId };
-      }
+type SendReferentDeps = { env: Env; requester: { name: string | null; emailVerified: boolean }; now?: Date };
+
+/**
+ * Un tentativo di `sendReferentRequest`. `retried`: è il secondo, dopo una corsa sul referente nuovo
+ * (un'altra persona lo ha appena creato con la stessa email): al secondo giro lo si ritrova e si usa quello.
+ */
+async function sendReferentRequestOnce(
+  ctx: WriteContext,
+  useCaseId: string,
+  input: unknown,
+  deps: SendReferentDeps,
+  retried: boolean,
+): Promise<ServiceResult<{ requestId: string; contactName: string }> | ReferentFailure> {
+  const now = deps.now ?? new Date();
+  const writer = await referentWriter(ctx, deps.env);
+  if (!writer.ok) return writer;
+  if (!isUuid(useCaseId)) return rfail("non_trovato");
+  const executor = await getAppUcExecutor();
+  const card = await readCard(executor, ctx.workspaceId, useCaseId);
+  if (!card) return rfail("non_trovato");
+  const gate = await deliveryGates(executor, ctx.workspaceId, card.company, deps.env);
+  if (gate) return gate;
+  if (!deps.requester.emailVerified) return rfail("email_non_verificata");
+  const parsed = parseSendInput(input);
+  if (!parsed.ok) return parsed;
+  const lsDomains = lsDomainsOf(deps.env);
+  const lsMembers = await readLsMemberEmails(executor, ctx.workspaceId);
+
+  // 6. Il referente.
+  let contactId = "";
+  let contactName = "";
+  let newContact: { id: string; draft: ContactDraft; userId: string | null } | null = null;
+  /** Un contatto esistente del workspace (scelto, oppure ritrovato dall'email o dalla persona): le regole di sempre. */
+  const takeContact = async (id: string, onEmail: boolean): Promise<ReferentFailure | null> => {
+    const field = (code: string) => (onEmail ? { email: REFERENT_ERROR_MESSAGES[code] ?? REFERENT_ERROR_MESSAGES.riprova } : undefined);
+    const contact = await readContact(executor, ctx.workspaceId, id);
+    // Un'email scritta in «+ Nuovo referente» che è di un referente disattivato: la finestra resta
+    // aperta con l'errore sotto «Email» (`referente_disattivato` non rilegge la pagina).
+    if (onEmail && contact && !contact.anonymized && !contact.isActive) return rfail("referente_disattivato", undefined, field("referente_disattivato"));
+    if (!contact || !contact.isActive || contact.anonymized) return rfail("referente_non_valido", undefined, field("referente_non_valido"));
+    if (!contact.email) return rfail("email_mancante", REFERENT_ERROR_MESSAGES.email_mancante_esistente);
+    const user = contact.userId ? await loadUserContext(executor, contact.userId, lsDomains) : null;
+    const check = checkContactEmail({ email: contact.email, user, lsDomains, lsMemberEmails: lsMembers });
+    if (!check.ok) return rfail(check.code, undefined, field(check.code));
+    // 6b (Parte 3). Chi chiede a se stesso: niente email, risponde dalla scheda.
+    if (isSelfRequest(await readReferentPerson(executor, ctx.workspaceId, contact.id), writer.userId)) return rfail("referente_sei_tu", undefined, field("referente_sei_tu"));
+    contactId = contact.id;
+    contactName = contact.displayName;
+    return null;
+  };
+  if (parsed.contact.kind === "esistente") {
+    const refused = await takeContact(parsed.contact.contactId, false);
+    if (refused) return refused;
+  } else if (parsed.contact.kind === "nuovo") {
+    const draft = prepareContact({ displayName: parsed.contact.displayName, email: parsed.contact.email, roleLabel: parsed.contact.roleLabel });
+    if (!draft.ok) {
+      const field = draft.code === "email_non_valida" ? "email" : "displayName";
+      return rfail(draft.code, field === "displayName" ? REFERENT_ERROR_MESSAGES.dati_non_validi : REFERENT_ERROR_MESSAGES.email_non_valida, { [field]: field === "displayName" ? REFERENT_ERROR_MESSAGES.dati_non_validi : REFERENT_ERROR_MESSAGES.email_non_valida });
     }
+    if (draft.value.email === null) return rfail("email_mancante", undefined, { email: REFERENT_ERROR_MESSAGES.email_mancante });
+    const check = checkContactDraft(draft.value, { lsDomains, lsMemberEmails: lsMembers, user: null });
+    if (!check.ok) return rfail(check.code, undefined, { email: REFERENT_ERROR_MESSAGES[check.code] ?? check.message });
+    // 6b (Parte 3). La propria email come referente nuovo: niente email, risponde dalla scheda.
+    const typedPerson = await readEmailPerson(executor, ctx.workspaceId, draft.value.email);
+    if (isSelfRequest(typedPerson, writer.userId)) {
+      return rfail("referente_sei_tu", undefined, { email: REFERENT_ERROR_MESSAGES.referente_sei_tu });
+    }
+    // (Referente già iscritto) L'email è già di un referente del workspace: si usa quello, con il nome
+    // che ha già; un referente disattivato resta un errore chiaro. Nessun dato del contatto cambia.
+    const [same] = await readPersonContacts(executor, ctx.workspaceId, { email: draft.value.email, userId: null });
+    if (same) {
+      const refused = await takeContact(same.id, true);
+      if (refused) return refused;
+    } else {
+      // (Referente già iscritto) L'email è di una persona del workspace con l'email verificata: il
+      // referente nuovo si collega al suo account, se nessun altro referente lo è già.
+      let linkUserId: string | null = null;
+      if (typedPerson.member && typedPerson.userId) {
+        const linked = await readPersonContacts(executor, ctx.workspaceId, { email: null, userId: typedPerson.userId });
+        if (linked.length === 0) linkUserId = typedPerson.userId;
+      }
+      contactId = randomUUID();
+      contactName = draft.value.displayName;
+      newContact = { id: contactId, draft: draft.value, userId: linkUserId };
+    }
+  } else {
+    // (Referente già iscritto) Una persona del workspace scelta dall'elenco: tutto si ricontrolla qui.
+    // Chi guarda deve già vedere le persone del workspace (Impostazioni › Persone); la persona è ancora
+    // del workspace, con l'email verificata, non è un partecipante ai corsi, non è di Lateral Space e
+    // non è chi chiede. Il suo referente si riusa se c'è (per account o per email), altrimenti nasce
+    // collegato al suo account.
+    // Il ruolo di chi chiede si rilegge qui (`readWorkspaceMembers` vuole un ruolo diverso da `learner`).
+    const [self] = await readWorkspaceMembers(executor, ctx.workspaceId, writer.userId);
+    if (!self || !canSeeWorkspacePeople(self.role)) return rfail("permesso_mancante");
+    // Una persona che non si può più scegliere (tolta dal workspace, diventata partecipante ai corsi,
+    // email non più verificata, un id inventato): non è mai stata un referente, quindi un testo suo.
+    const [member] = await readWorkspaceMembers(executor, ctx.workspaceId, parsed.contact.userId);
+    if (!member) return rfail("persona_non_disponibile");
+    if (memberIsLateralSpace(member, lsDomains, lsMembers)) return rfail("referente_lateral_space");
+    if (member.userId === writer.userId.toLowerCase()) return rfail("referente_sei_tu");
+    const known = await readPersonContacts(executor, ctx.workspaceId, { email: member.email, userId: member.userId });
+    const active = known.find((c) => c.isActive);
+    if (active) {
+      const refused = await takeContact(active.id, false);
+      if (refused) return refused;
+    } else if (known.length > 0) {
+      return rfail("referente_non_valido");
+    } else {
+      const draft = prepareContact({ displayName: memberDisplayName(member), email: member.email, roleLabel: null });
+      if (!draft.ok || draft.value.email === null) return rfail("persona_non_disponibile");
+      contactId = randomUUID();
+      contactName = draft.value.displayName;
+      newContact = { id: contactId, draft: draft.value, userId: member.userId };
+    }
+  }
 
-    // 11 (prima della 7 quando c'è): la richiesta di prima.
-    let replaceLive: { id: string; version: number } | null = null;
-    if (parsed.previousRequestId) {
-      const [[prev]] = await executor.batch([
-        toStatement(ucSql`SELECT r.id, r.version, r.status, r.expires_at, r.reminder_count, ${openItemsCountSql("r")} AS open_items
+  // 11 (prima della 7 quando c'è): la richiesta di prima.
+  let replaceLive: { id: string; version: number } | null = null;
+  if (parsed.previousRequestId) {
+    const [[prev]] = await executor.batch([
+      toStatement(ucSql`SELECT r.id, r.version, r.status, r.expires_at, r.reminder_count, ${openItemsCountSql("r")} AS open_items
 FROM use_case_referent_requests r
 WHERE r.id = ${cast(parsed.previousRequestId, "uuid")} AND r.workspace_id = ${cast(ctx.workspaceId, "uuid")} AND r.use_case_id = ${cast(card.id, "uuid")} AND r.contact_id = ${cast(contactId, "uuid")}`),
-      ]);
-      if (!prev) return rfail("richiesta_chiusa");
-      const status = statusOf(prev, now);
-      if (status === "inviata") {
-        if ((rowNumber(prev.reminder_count) ?? 0) < 2 || (rowNumber(prev.open_items) ?? 0) <= 0) return rfail("richiesta_chiusa");
-        replaceLive = { id: String(prev.id).toLowerCase(), version: rowNumber(prev.version) ?? 1 };
-      } else if (status !== "scaduta") return rfail("richiesta_chiusa");
-    }
+    ]);
+    if (!prev) return rfail("richiesta_chiusa");
+    const status = statusOf(prev, now);
+    if (status === "inviata") {
+      if ((rowNumber(prev.reminder_count) ?? 0) < 2 || (rowNumber(prev.open_items) ?? 0) <= 0) return rfail("richiesta_chiusa");
+      replaceLive = { id: String(prev.id).toLowerCase(), version: rowNumber(prev.version) ?? 1 };
+    } else if (status !== "scaduta") return rfail("richiesta_chiusa");
+  }
 
-    // 7. Nessun'altra richiesta viva per questa persona su questo use case (un referente che c'era già).
-    if (!newContact) {
-      const [live] = await executor.batch([
-        toStatement(ucSql`SELECT r.id FROM use_case_referent_requests r
+  // 7. Nessun'altra richiesta viva per questa persona su questo use case (un referente che c'era già).
+  if (!newContact) {
+    const [live] = await executor.batch([
+      toStatement(ucSql`SELECT r.id FROM use_case_referent_requests r
 WHERE r.workspace_id = ${cast(ctx.workspaceId, "uuid")} AND r.use_case_id = ${cast(card.id, "uuid")} AND r.contact_id = ${cast(contactId, "uuid")}
-  AND r.status = 'inviata' AND r.expires_at > now()`),
-      ]);
-      if (live.some((r) => String(r.id).toLowerCase() !== replaceLive?.id)) return rfail("richiesta_aperta");
-    }
+AND r.status = 'inviata' AND r.expires_at > now()`),
+    ]);
+    if (live.some((r) => String(r.id).toLowerCase() !== replaceLive?.id)) return rfail("richiesta_aperta");
+  }
 
-    // 8. Le domande.
-    const unique = [...new Set(parsed.needIds)];
-    if (unique.length === 0) return rfail("nessuna_domanda", undefined, { needIds: REFERENT_ERROR_MESSAGES.nessuna_domanda });
-    if (unique.length !== parsed.needIds.length) return rfail("domande_cambiate");
-    if (unique.length > MAX_QUESTIONS) return rfail("troppe_domande", undefined, { needIds: REFERENT_ERROR_MESSAGES.troppe_domande });
-    const needs = await readCardNeeds(executor, ctx.workspaceId, card.id);
-    const asks = await readAsksForNeeds(executor, ctx.workspaceId, needs.map((n) => n.id));
-    const silent = silentOf(needs, asks, now);
-    const askable = new Map(askableNeeds(needs, card.id, { silentNeedIds: silent }).map((n) => [n.id.toLowerCase(), n]));
-    if (!unique.every((id) => askable.has(id))) return rfail("domande_cambiate");
-    // 9. I titoli. 10. Il messaggio.
-    for (const id of unique) {
-      const title = askable.get(id)!.title;
-      const check = checkQuestionTitle(title);
-      if (!check.ok) return rfail(check.code, `Nella domanda «${title.slice(0, 60)}»: ${check.message}`, { needIds: check.message });
-    }
-    const message = checkRequestMessage(parsed.message);
-    if (!message.ok) return rfail(message.code, message.message, { message: message.message });
-    const silentIds = unique.filter((id) => silent.has(id));
+  // 8. Le domande.
+  const unique = [...new Set(parsed.needIds)];
+  if (unique.length === 0) return rfail("nessuna_domanda", undefined, { needIds: REFERENT_ERROR_MESSAGES.nessuna_domanda });
+  if (unique.length !== parsed.needIds.length) return rfail("domande_cambiate");
+  if (unique.length > MAX_QUESTIONS) return rfail("troppe_domande", undefined, { needIds: REFERENT_ERROR_MESSAGES.troppe_domande });
+  const needs = await readCardNeeds(executor, ctx.workspaceId, card.id);
+  const asks = await readAsksForNeeds(executor, ctx.workspaceId, needs.map((n) => n.id));
+  const silent = silentOf(needs, asks, now);
+  const askable = new Map(askableNeeds(needs, card.id, { silentNeedIds: silent }).map((n) => [n.id.toLowerCase(), n]));
+  if (!unique.every((id) => askable.has(id))) return rfail("domande_cambiate");
+  // 9. I titoli. 10. Il messaggio.
+  for (const id of unique) {
+    const title = askable.get(id)!.title;
+    const check = checkQuestionTitle(title);
+    if (!check.ok) return rfail(check.code, `Nella domanda «${title.slice(0, 60)}»: ${check.message}`, { needIds: check.message });
+  }
+  const message = checkRequestMessage(parsed.message);
+  if (!message.ok) return rfail(message.code, message.message, { message: message.message });
+  const silentIds = unique.filter((id) => silent.has(id));
 
-    // Il batch (§3.2).
-    const requestId = randomUUID();
-    const ws = cast(ctx.workspaceId, "uuid");
-    const ucId = cast(card.id, "uuid");
-    const actor = persona(writer.userId);
-    const statements: UcStatement[] = [...lazyExpiry(ctx, card.id, now, { previousRequestId: parsed.previousRequestId, needIds: unique })];
-    if (replaceLive) {
-      statements.push(...revokeStatements({ workspaceId: ctx.workspaceId, target: { requestId: replaceLive.id, version: replaceLive.version, statuses: ["inviata"] }, reason: "sostituita", actor, failCode: "richiesta_chiusa" }));
-    }
-    if (silentIds.length) statements.push(silentGuardSql(ctx.workspaceId, silentIds));
-    if (newContact) {
-      statements.push(contactInsertSql({ id: newContact.id, workspaceId: ctx.workspaceId, draft: newContact.draft, createdByUserId: writer.userId }));
-      if (newContact.userId) statements.push(linkNewContactUserSql(ctx.workspaceId, newContact.id, newContact.userId));
-    }
-    const requesterName = (deps.requester.name ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
-    statements.push(
-      toStatement(
-        requireRows(
-          ucSql`INSERT INTO use_case_referent_requests (id, workspace_id, use_case_id, contact_id, requested_by_user_id, requester_name, message, expires_at, previous_request_id)
+  // Il batch (§3.2).
+  const requestId = randomUUID();
+  const ws = cast(ctx.workspaceId, "uuid");
+  const ucId = cast(card.id, "uuid");
+  const actor = persona(writer.userId);
+  const statements: UcStatement[] = [...lazyExpiry(ctx, card.id, now, { previousRequestId: parsed.previousRequestId, needIds: unique })];
+  if (replaceLive) {
+    statements.push(...revokeStatements({ workspaceId: ctx.workspaceId, target: { requestId: replaceLive.id, version: replaceLive.version, statuses: ["inviata"] }, reason: "sostituita", actor, failCode: "richiesta_chiusa" }));
+  }
+  if (silentIds.length) statements.push(silentGuardSql(ctx.workspaceId, silentIds));
+  if (newContact) {
+    statements.push(contactInsertSql({ id: newContact.id, workspaceId: ctx.workspaceId, draft: newContact.draft, createdByUserId: writer.userId }));
+    if (newContact.userId) statements.push(linkNewContactUserSql(ctx.workspaceId, newContact.id, newContact.userId));
+  }
+  const requesterName = (deps.requester.name ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+  statements.push(
+    toStatement(
+      requireRows(
+        ucSql`INSERT INTO use_case_referent_requests (id, workspace_id, use_case_id, contact_id, requested_by_user_id, requester_name, message, expires_at, previous_request_id)
 SELECT ${cast(requestId, "uuid")}, w.id, u.id, ${cast(contactId, "uuid")}, ${cast(writer.userId, "uuid")},
-  coalesce(nullif(${cast(requesterName, "text")}, ''), left('Il team di ' || w.name, 120)), ${cast(message.value, "text")}, now() + interval '30 days', ${cast(parsed.previousRequestId, "uuid")}
+coalesce(nullif(${cast(requesterName, "text")}, ''), left('Il team di ' || w.name, 120)), ${cast(message.value, "text")}, now() + interval '30 days', ${cast(parsed.previousRequestId, "uuid")}
 FROM workspaces w JOIN use_cases u ON u.workspace_id = w.id AND u.id = ${ucId}
 WHERE w.id = ${ws}
 RETURNING id`,
-          1,
-          "non_trovato",
-        ),
+        1,
+        "non_trovato",
       ),
-      itemsInsertSql(ctx.workspaceId, card.id, requestId, unique, 0),
-      needTransitionSql({
-        workspaceId: ctx.workspaceId,
-        needIds: unique,
-        from: ["da_chiedere", "mancante", "parziale"],
-        silentIds,
-        to: "chiesta",
-        actor,
-        expect: { count: unique.length, code: "domande_cambiate" },
-      }),
-      referentEventSql({ workspaceId: ctx.workspaceId, useCaseId: card.id, code: "inviata", actor }),
-      toStatement(ucSql`INSERT INTO use_case_referent_emails (workspace_id, contact_id, request_id, template, dedupe_key, due_at, scheduled_at)
+    ),
+    itemsInsertSql(ctx.workspaceId, card.id, requestId, unique, 0),
+    needTransitionSql({
+      workspaceId: ctx.workspaceId,
+      needIds: unique,
+      from: ["da_chiedere", "mancante", "parziale"],
+      silentIds,
+      to: "chiesta",
+      actor,
+      expect: { count: unique.length, code: "domande_cambiate" },
+    }),
+    referentEventSql({ workspaceId: ctx.workspaceId, useCaseId: card.id, code: "inviata", actor }),
+    toStatement(ucSql`INSERT INTO use_case_referent_emails (workspace_id, contact_id, request_id, template, dedupe_key, due_at, scheduled_at)
 VALUES (${ws}, ${cast(contactId, "uuid")}, ${cast(requestId, "uuid")}, 'richiesta', ${cast(`ric:${requestId}:1`, "text")}, now(), now())`),
-      ...infoCompleteSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId }),
-    );
-    const run = await referentBatch(executor, statements);
-    if (!run.ok) {
-      if (run.error === "email_in_uso") return rfail("email_in_uso", undefined, { email: REFERENT_ERROR_MESSAGES.email_in_uso });
-      return run;
+    ...infoCompleteSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId }),
+  );
+  const run = await referentBatch(executor, statements);
+  if (!run.ok) {
+    if (run.error === "email_in_uso") {
+      // (Corsa) Fra i controlli e il batch un'altra persona ha creato il referente con la stessa
+      // email (per esempio due revisori scelgono insieme la stessa persona): il batch non ha scritto
+      // niente. Si rifà tutto una volta: adesso il referente c'è e si usa quello, con le regole di sempre.
+      if (newContact && !retried) return sendReferentRequestOnce(ctx, useCaseId, input, deps, true);
+      return rfail("email_in_uso", undefined, { email: REFERENT_ERROR_MESSAGES.email_in_uso });
     }
-    return ok({ requestId, contactName });
-  },
-);
+    return run;
+  }
+  return ok({ requestId, contactName });
+}
 
 /** Le domande nuove della richiesta, alle posizioni dopo `offset`, con il titolo dell'esigenza di adesso. */
 function itemsInsertSql(workspaceId: string, useCaseId: string, requestId: string, needIds: readonly string[], offset: number): UcStatement {

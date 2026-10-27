@@ -12,6 +12,7 @@ export const REFERENT_STALE_CODES: ReadonlySet<string> = new Set([
   "non_trovato",
   "richiesta_chiusa",
   "referente_non_valido",
+  "persona_non_disponibile",
   "file_non_trovato",
   "risposta_non_trovata",
   "domanda_non_disponibile",

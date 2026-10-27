@@ -19,6 +19,8 @@ import { isWorkingDay, romeDate, romeLocalToUtc, workingDaysBetween } from "../.
 // - l'email di un referente che c'è già → si usa quello (nessuna riga in più), uno disattivato → errore;
 // - chi si iscrive dopo la richiesta → il promemoria ha la riga;
 // - «Correggi l'email» sposta il collegamento all'account.
+// - (revisione) un collegamento all'account vale solo finché l'email del contatto è la sua; due revisori che
+//   aggiungono insieme la stessa persona hanno un referente solo.
 //
 // Con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database hub_<id> su
 // 127.0.0.1). Dati sintetici, creati e cancellati qui. Nessuna email vera: un mailer finto.
@@ -65,6 +67,7 @@ const ids = {
   outsider: randomUUID(),
   tardi: randomUUID(),
   program: randomUUID(),
+  dario: randomUUID(),
 };
 type Person = "builder" | "federico" | "corsista" | "contrib" | "ls";
 const PEOPLE: Person[] = ["builder", "federico", "corsista", "contrib", "ls"];
@@ -81,6 +84,9 @@ const OUTSIDER = `esterno.${suffix}@altra.test`;
 const MARIO = `mario.rossi.${suffix}@topjet.test`;
 const ELENA = `elena.${suffix}@topjet.test`;
 const TARDI = `luca.tardi.${suffix}@topjet.test`;
+const LUCA_DOSSIER = `luca.dossier.${suffix}@topjet.test`;
+const DARIO = `dario.${suffix}@topjet.test`;
+const NUOVA = `nuova.persona.${suffix}@topjet.test`;
 const COURSE_TITLE = `Corso AI generativa ${suffix}`;
 const contacts = { mario: randomUUID(), elena: randomUUID() };
 const cards = {
@@ -91,6 +97,12 @@ const cards = {
   learner: randomUUID(),
   mario: randomUUID(),
   tardi: randomUUID(),
+  dossier1: randomUUID(),
+  dossier2: randomUUID(),
+  race1: randomUUID(),
+  race2: randomUUID(),
+  race3: randomUUID(),
+  race4: randomUUID(),
 };
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-iscritti-"));
 
@@ -248,7 +260,7 @@ after(async () => {
   await q(`DELETE FROM uc_contacts WHERE workspace_id = ANY($1::uuid[])`, [[ids.ws, ids.otherWs]]);
   await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.ws, ids.otherWs]]);
   await q(`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, [[ids.org, ids.otherOrg]]);
-  await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [[...PEOPLE.map((p) => ids[p]), ids.outsider, ids.tardi]]);
+  await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [[...PEOPLE.map((p) => ids[p]), ids.outsider, ids.tardi, ids.dario]]);
 });
 
 test("preparazione: autorizzazione, domande, un referente senza account, uno disattivato, la corsista iscritta al corso", opts, async () => {
@@ -302,9 +314,16 @@ test("scelte forzate: chi chiede, Lateral Space, la corsista dall'elenco, un alt
   const send = (userId: string) => referents.sendReferentRequest(as("builder"), cards.forged, { contact: { kind: "membro", userId }, needIds: [n0] }, { env: ENV, requester: requester("builder") });
   refused(await send(ids.builder), "referente_sei_tu", "chi chiede");
   refused(await send(ids.ls), "referente_lateral_space", "Lateral Space");
-  refused(await send(ids.corsista), "referente_non_valido", "una corsista non è nell'elenco");
-  refused(await send(ids.outsider), "referente_non_valido", "un altro workspace");
-  refused(await send(randomUUID()), "referente_non_valido", "un id inventato");
+  // (Revisione) Una persona che non si può scegliere non è mai stata un referente: il suo testo, e la
+  // pagina si rilegge (codice «superato»).
+  const { REFERENT_ERROR_MESSAGES } = await import("./labels.ts");
+  const { REFERENT_STALE_CODES } = await import("../../../components/use-cases/detail/referent/referent-outcome.ts");
+  assert.ok(REFERENT_STALE_CODES.has("persona_non_disponibile"));
+  for (const [userId, label] of [[ids.corsista, "una corsista non è nell'elenco"], [ids.outsider, "un altro workspace"], [randomUUID(), "un id inventato"]] as const) {
+    const result = await send(userId);
+    refused(result, "persona_non_disponibile", label);
+    if (!result.ok) assert.equal(result.message, REFERENT_ERROR_MESSAGES.persona_non_disponibile, label);
+  }
   // Un contributore non chiede (non è revisore), nemmeno scegliendo dall'elenco.
   const byContrib = await referents.sendReferentRequest(as("contrib"), cards.forged, { contact: { kind: "membro", userId: ids.federico }, needIds: [n0] }, { env: ENV, requester: requester("contrib") });
   assert.equal(byContrib.ok, false);
@@ -393,8 +412,18 @@ test("l'email di un referente che c'è già: si usa quello, con il suo nome; uno
   const twice = await referents.sendReferentRequest(as("builder"), cards.mario, { contact: { kind: "nuovo", displayName: "Mario", email: MARIO }, needIds: (await needsOf(cards.mario)).slice(1, 2) }, { env: ENV, requester: requester("builder") });
   refused(twice, "richiesta_aperta", "una richiesta aperta per persona");
   const inactive = await referents.sendReferentRequest(as("builder"), cards.mario, { contact: { kind: "nuovo", displayName: "Elena", email: ELENA }, needIds: (await needsOf(cards.mario)).slice(1, 2) }, { env: ENV, requester: requester("builder") });
-  refused(inactive, "referente_non_valido", "disattivato");
-  if (!inactive.ok) assert.ok(inactive.fieldErrors?.email, "sotto «Email»");
+  refused(inactive, "referente_disattivato", "disattivato");
+  if (inactive.ok) return;
+  const { REFERENT_ERROR_MESSAGES } = await import("./labels.ts");
+  assert.equal(inactive.fieldErrors?.email, REFERENT_ERROR_MESSAGES.referente_disattivato, "sotto «Email»");
+  // (Revisione) Come lo tratta la finestra: lo stesso percorso di `ask-dialog.tsx` `confirm()` con la
+  // risposta dell'action. La finestra resta aperta (la bozza non si perde) e l'errore sta sotto «Email».
+  const { referentOutcome } = await import("../../../components/use-cases/detail/referent/referent-outcome.ts");
+  const { askErrorView, NEW_CONTACT } = await import("../../../components/use-cases/detail/referent/ask-dialog-state.ts");
+  const actionResult = { ok: false as const, code: inactive.error, message: inactive.message, fieldErrors: inactive.fieldErrors };
+  const outcome = referentOutcome(actionResult, { inDialog: true });
+  assert.deepEqual([outcome.close, outcome.refresh], [false, false], "la finestra resta aperta");
+  assert.deepEqual(askErrorView(actionResult, { choice: NEW_CONTACT }), { formError: null, fieldErrors: { email: REFERENT_ERROR_MESSAGES.referente_disattivato } });
   assert.equal((await contactRow(ELENA)).length, 1);
 });
 
@@ -432,4 +461,91 @@ test("«Correggi l'email» di un referente dell'hub: il collegamento all'account
   // Torna all'indirizzo del suo account: si ricollega.
   ok(await referents.correctReferentEmail(as("builder"), cards.contrib, String(row.id), { email: emails.contrib }, { env: ENV }), "correggi di nuovo");
   assert.equal((await contactRow(emails.contrib))[0]?.user_id, ids.contrib);
+});
+
+test("(revisione) l'email di un referente collegato cambia in un dossier: il collegamento all'account di prima non conta più", opts, async () => {
+  const { getAppUcExecutor } = await import("../../db/uc-executor.ts");
+  const { contactStaleLinkClearSql, contactUpdateSql } = await import("../../uc/sql/request-commands.ts");
+  const { requestReferentUserSql } = await import("./people.ts");
+  const { cast, toStatement, ucSql } = await import("../../uc/sql/statement.ts");
+  const executor = await getAppUcExecutor();
+  // Il referente di Federico, nato dall'hub collegato al suo account.
+  const [row] = await contactRow(emails.federico);
+  assert.equal(row?.user_id, ids.federico);
+  const contactId = String(row.id);
+  // Lateral Space cambia l'email del contatto in un dossier: le stesse SQL del comando dei dossier
+  // (`updateContact` in uc-requests.ts; che le metta nel batch lo prova requests.integration.test.ts).
+  await executor.batch([
+    contactUpdateSql({ workspaceId: ids.ws, contactId, patch: { email: LUCA_DOSSIER }, expect: { email: emails.federico, isActive: true } }),
+    contactStaleLinkClearSql({ workspaceId: ids.ws, contactId }),
+  ]);
+  const [moved] = await contactRow(LUCA_DOSSIER);
+  assert.deepEqual([moved?.id, moved?.user_id], [contactId, null], "il collegamento all'account di Federico si toglie");
+
+  // Per Federico il contatto (adesso Luca) non è «(sei tu)», non è «del team», e lui torna fra le persone.
+  const forFederico = await panelFor("federico", cards.dossier1);
+  const option = forFederico!.contacts.find((c) => c.id === contactId);
+  assert.ok(option, "il referente c'è");
+  assert.equal(option!.reason, null, "non è «sei tu»");
+  assert.equal(option!.selectable, true);
+  assert.equal(option!.team, false, "Luca non ha un account");
+  const forBuilder = await panelFor("builder", cards.dossier1);
+  assert.equal(forBuilder!.contacts.find((c) => c.id === contactId)?.team, false);
+  assert.ok(forBuilder!.members.some((m) => m.userId === ids.federico), "Federico torna fra le persone del workspace");
+
+  // Federico chiede a Luca: non è una richiesta a se stesso, l'email parte a Luca senza righe dell'account.
+  const [n0] = await needsOf(cards.dossier1);
+  const sent = ok(
+    await referents.sendReferentRequest(as("federico"), cards.dossier1, { contact: { kind: "esistente", contactId }, needIds: [n0] }, { env: ENV, requester: requester("federico") }),
+    "Federico chiede a Luca",
+  );
+  const mailer = fakeMailer();
+  await dispatch.dispatchReferentEmails({ requestId: sent.requestId, env: ENV, mailer, sendIntervalMs: 0 });
+  assert.deepEqual(mailer.outbox.map((m) => m.to), [LUCA_DOSSIER], "l'email parte, a Luca");
+  assert.ok(!mailer.outbox[0].text.includes(TEAM_LINE) && !mailer.outbox[0].text.includes(ACCOUNT_LINE));
+  const [email] = await q(`SELECT status, cancel_reason FROM use_case_referent_emails WHERE request_id = $1::uuid`, [sent.requestId]);
+  assert.deepEqual([email?.status, email?.cancel_reason ?? null], ["inviata", null], "mai annullata come «sei tu»");
+  // La persona del referente di questa richiesta (campanella, avvisi): nessuna, non Federico.
+  const [[who]] = await executor.batch([
+    toStatement(ucSql`SELECT ${requestReferentUserSql("r")}::text AS who FROM use_case_referent_requests r WHERE r.id = ${cast(sent.requestId, "uuid")}`),
+  ]);
+  assert.equal(who?.who ?? null, null, "la risposta di Luca non è di Federico");
+
+  // Giulia sceglie Federico dall'elenco: un referente nuovo con la sua email, mai quello di Luca.
+  const forFed = await ask(cards.dossier2, { kind: "membro", userId: ids.federico });
+  assert.notEqual(await requestContact(forFed.requestId), contactId, "non il referente di Luca");
+  assert.equal(forFed.mail.to, emails.federico);
+  assert.ok(forFed.mail.text.includes(TEAM_LINE), "Federico è del team");
+  const [fresh] = await contactRow(emails.federico);
+  assert.equal(fresh?.user_id, ids.federico, "il referente nuovo è collegato a Federico");
+});
+
+test("(revisione) due revisori aggiungono insieme la stessa persona: un referente solo, nessun errore", opts, async () => {
+  // Una persona nuova del workspace, non ancora referente.
+  await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, 'Dario Neri', now())`, [ids.dario, DARIO]);
+  await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'contributor')`, [ids.ws, ids.dario]);
+  const sendAs = async (person: Person, card: string, contact: ContactInput) =>
+    referents.sendReferentRequest(as(person), card, { contact, needIds: (await needsOf(card)).slice(0, 1) }, { env: ENV, requester: requester(person) });
+  // Scelta dall'elenco «Persone del workspace», nello stesso momento, da Giulia e da Federico.
+  const [a, b] = await Promise.all([sendAs("builder", cards.race1, { kind: "membro", userId: ids.dario }), sendAs("federico", cards.race2, { kind: "membro", userId: ids.dario })]);
+  const first = ok(a, "Giulia");
+  const second = ok(b, "Federico");
+  const rows = await contactRow(DARIO);
+  assert.equal(rows.length, 1, "un referente solo");
+  assert.equal(rows[0].user_id, ids.dario);
+  assert.deepEqual([await requestContact(first.requestId), await requestContact(second.requestId)], [String(rows[0].id), String(rows[0].id)], "lo stesso referente");
+  // La stessa email scritta in «+ Nuovo referente», nello stesso momento.
+  const [c, d] = await Promise.all([
+    sendAs("builder", cards.race3, { kind: "nuovo", displayName: "Nuova Persona", email: NUOVA }),
+    sendAs("federico", cards.race4, { kind: "nuovo", displayName: "Nuova P.", email: NUOVA.toUpperCase() }),
+  ]);
+  const third = ok(c, "Giulia, email");
+  const fourth = ok(d, "Federico, email");
+  const typed = await contactRow(NUOVA);
+  assert.equal(typed.length, 1, "un referente solo");
+  assert.deepEqual([await requestContact(third.requestId), await requestContact(fourth.requestId)], [String(typed[0].id), String(typed[0].id)]);
+  // Adesso è fra i «Referenti», non più fra le persone del workspace.
+  const panel = await panelFor("builder", cards.dossier2);
+  assert.ok(!panel!.members.some((m) => m.userId === ids.dario));
+  assert.equal(panel!.contacts.filter((x) => x.id === String(rows[0].id)).length, 1);
 });

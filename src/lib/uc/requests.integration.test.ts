@@ -58,7 +58,7 @@ const num = (v: unknown) => Number(v);
 
 const LS_DOMAINS = ["ls.test"];
 const suffix = randomBytes(3).toString("hex");
-const ids = { org: randomUUID(), ws: randomUUID(), lead: randomUUID(), analyst: randomUUID(), owner: randomUUID(), mcp: randomUUID() };
+const ids = { org: randomUUID(), ws: randomUUID(), lead: randomUUID(), analyst: randomUUID(), owner: randomUUID(), mcp: randomUUID(), linked: randomUUID(), moved: randomUUID() };
 const exampleText = readFileSync(new URL("../../../templates/uc/esempio.minimo/1.0.0.json", import.meta.url), "utf8");
 const state = {
   caseId: "",
@@ -141,7 +141,7 @@ after(async () => {
   if (!sql) return;
   await q(`DELETE FROM workspaces WHERE id = $1::uuid`, [ids.ws]);
   await q(`DELETE FROM organizations WHERE id = $1::uuid`, [ids.org]);
-  await q(`DELETE FROM users WHERE id IN ($1::uuid, $2::uuid, $3::uuid)`, [ids.lead, ids.analyst, ids.owner]);
+  await q(`DELETE FROM users WHERE id IN ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid)`, [ids.lead, ids.analyst, ids.owner, ids.linked, ids.moved]);
 });
 
 test("referents: client people only, unique email per workspace, the Owner adds colleagues", opts, async () => {
@@ -401,6 +401,32 @@ test("referent lifecycle: an email change revokes old links; no anonymization wh
   assert.ok(lsView.some((c) => c.email !== null));
   assert.ok(clientView.every((c) => c.email === null && c.phone === null && c.openItems === null && c.assigned === null), "no per-person data for client roles");
   assert.ok(lsView.every((c) => typeof c.openItems === "number"));
+});
+
+test("referent lifecycle: an email change drops an account link that no longer matches the email; other edits keep it", opts, async () => {
+  // A contact linked to an account (as the use case hub links the referents it creates).
+  const lead = await ctxFor(ids.lead);
+  const linkedEmail = `collegato-${suffix}@cliente.test`;
+  await q(`INSERT INTO users (id, email, email_verified) VALUES ($1::uuid, $2, now())`, [ids.linked, linkedEmail]);
+  const contactId = randomUUID();
+  await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email, user_id) VALUES ($1::uuid, $2::uuid, 'Referente collegato', $3, $4::uuid)`, [contactId, ids.ws, linkedEmail, ids.linked]);
+  const linkOf = async (id: string) => (await one(`SELECT user_id::text AS user_id FROM uc_contacts WHERE id = $1::uuid`, [id]))?.user_id ?? null;
+  const renamed = await updateContact(exec!, lead, { contactId, displayName: "Referente rinominato" });
+  assert.ok(renamed.ok, renamed.ok ? "" : renamed.message);
+  assert.equal(await linkOf(contactId), ids.linked, "a change that is not the email keeps the link");
+  // The email becomes a colleague's: the contact no longer leads to the account of before.
+  const changed = await updateContact(exec!, lead, { contactId, email: `collega-${suffix}@cliente.test` });
+  assert.ok(changed.ok, changed.ok ? "" : changed.message);
+  assert.equal(await linkOf(contactId), null, "the old link is gone");
+  // The account itself moved to the new address first: the link still matches and stays.
+  const oldEmail = `prima-${suffix}@cliente.test`;
+  const newEmail = `dopo-${suffix}@cliente.test`;
+  await q(`INSERT INTO users (id, email, email_verified) VALUES ($1::uuid, $2, now())`, [ids.moved, newEmail]);
+  const movedId = randomUUID();
+  await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email, user_id) VALUES ($1::uuid, $2::uuid, 'Referente spostato', $3, $4::uuid)`, [movedId, ids.ws, oldEmail, ids.moved]);
+  const followed = await updateContact(exec!, lead, { contactId: movedId, email: newEmail.toUpperCase() });
+  assert.ok(followed.ok, followed.ok ? "" : followed.message);
+  assert.equal(await linkOf(movedId), ids.moved, "the account has the new email: the link stays");
 });
 
 // ── Persone e Impostazioni (WP6, DESIGN §3.9 e §3.13.3) ───────────────

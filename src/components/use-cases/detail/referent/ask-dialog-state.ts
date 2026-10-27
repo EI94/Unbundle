@@ -94,6 +94,14 @@ export function memberOptionLabel(option: ReferentMemberOption): string {
   return label;
 }
 
+/**
+ * Le voci del selettore «A chi chiedi?» vanno a capo invece di essere tagliate: su un telefono (375 px)
+ * «Federico Barsi · f•••@topjet.it · Fa parte del team» non sta in una riga, e «Fa parte del team» è
+ * l'unica cosa che distingue un revisore. Va sul `SelectItem`; tocca solo il testo della voce (il primo
+ * figlio, `ItemText`, che di suo è `shrink-0 whitespace-nowrap`).
+ */
+export const ASK_OPTION_CLASS = "[&>*:first-child]:min-w-0 [&>*:first-child]:shrink [&>*:first-child]:whitespace-normal [&>*:first-child]:[overflow-wrap:anywhere]";
+
 export interface AskContactChoice {
   value: string;
   label: string;
@@ -189,7 +197,7 @@ export function askDraftErrors(
   const errors: Record<string, string> = {};
   if (!draft.choice) errors.contact = T.whoPlaceholder;
   else if (memberIdOf(draft.choice)) {
-    if (mode.lockedContactId !== null || !chosenMember(panel, draft)) errors.contact = REFERENT_ERROR_MESSAGES.referente_non_valido;
+    if (mode.lockedContactId !== null || !chosenMember(panel, draft)) errors.contact = REFERENT_ERROR_MESSAGES.persona_non_disponibile;
   } else if (draft.choice === NEW_CONTACT) {
     const name = draft.name.trim();
     if (name.length < panel.limits.contactNameMin || name.length > panel.limits.contactNameMax) errors.displayName = REFERENT_ERROR_MESSAGES.dati_non_validi;
