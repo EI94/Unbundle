@@ -57,10 +57,12 @@ function failure<T>(code: string, message: string = REFERENT_ERROR_MESSAGES[code
 
 type Page = { ok: true; ctx: WriteContext; session: Session } | { ok: false; result: ReferentActionResult<never> };
 
-/** Sessione, accesso al workspace, area e funzione accese: il contesto di scrittura della pagina. */
-async function page(workspaceId: string): Promise<Page> {
-  const session = await requireSession();
-  const access: WorkspaceAccess | null = await getCollaboratorAccess(session.user.id, workspaceId);
+/**
+ * Il contesto di scrittura della pagina, da sessione e accesso al workspace che ogni action legge da sé
+ * (`requireSession`, poi `getCollaboratorAccess`): senza accesso nessuna scrittura; poi area e funzione
+ * accese.
+ */
+function page(workspaceId: string, session: Session, access: WorkspaceAccess | null): Page {
   if (!access) return { ok: false, result: failure("permesso_mancante") };
   if (!isUseCaseHubWorkspace(workspaceId) || !referentAskEnabled(workspaceId, process.env)) return { ok: false, result: failure("funzione_spenta") };
   const viewer = viewerFromSession(session.user, access.role);
@@ -108,7 +110,8 @@ function afterFiles(workspaceId: string): void {
 /** «Prepara le domande». */
 export async function prepareReferentQuestionsAction(workspaceId: string, useCaseId: string): Promise<ReferentActionResult<{ added: number }>> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId)) return failure("non_trovato");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await prepareReferentQuestions(p.ctx, useCaseId);
   return done(workspaceId, useCaseId, result, (v) => {
@@ -122,7 +125,8 @@ export async function prepareReferentQuestionsAction(workspaceId: string, useCas
 export async function sendReferentRequestAction(workspaceId: string, useCaseId: string, input: SendReferentRequestInput): Promise<ReferentActionResult<{ requestId: string }>> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId)) return failure("non_trovato");
   if (!isRecord(input)) return failure("dati_non_validi", REFERENT_ERROR_MESSAGES.riprova);
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await sendReferentRequest(p.ctx, useCaseId, input, {
     env: process.env,
@@ -142,7 +146,8 @@ export async function addToReferentRequestAction(
 ): Promise<ReferentActionResult<{ added: number }>> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(requestId) || !isVersion(expectedVersion)) return failure("non_trovato");
   if (!isRecord(input)) return failure("nessuna_domanda");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await addToReferentRequest(p.ctx, useCaseId, requestId, expectedVersion, input, { env: process.env });
   if (result.ok && result.value.emailQueued) scheduleReferentDispatch(requestId);
@@ -155,7 +160,8 @@ export async function addToReferentRequestAction(
 /** «Manda un promemoria». */
 export async function remindReferentRequestAction(workspaceId: string, useCaseId: string, requestId: string, expectedVersion: number): Promise<ReferentActionResult> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(requestId) || !isVersion(expectedVersion)) return failure("non_trovato");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await remindReferentRequest(p.ctx, useCaseId, requestId, expectedVersion, { env: process.env });
   if (result.ok && result.value.now) scheduleReferentDispatch(requestId);
@@ -165,7 +171,8 @@ export async function remindReferentRequestAction(workspaceId: string, useCaseId
 /** «Revoca il link». */
 export async function revokeReferentRequestAction(workspaceId: string, useCaseId: string, requestId: string, expectedVersion: number): Promise<ReferentActionResult> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(requestId) || !isVersion(expectedVersion)) return failure("non_trovato");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await revokeReferentRequest(p.ctx, useCaseId, requestId, expectedVersion);
   if (result.ok) afterFiles(workspaceId);
@@ -175,7 +182,8 @@ export async function revokeReferentRequestAction(workspaceId: string, useCaseId
 /** «Riprova l'invio». */
 export async function retryReferentRequestEmailAction(workspaceId: string, useCaseId: string, requestId: string, expectedVersion: number): Promise<ReferentActionResult> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(requestId) || !isVersion(expectedVersion)) return failure("non_trovato");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await retryReferentRequestEmail(p.ctx, useCaseId, requestId, expectedVersion, { env: process.env });
   if (result.ok) scheduleReferentDispatch(requestId);
@@ -185,7 +193,8 @@ export async function retryReferentRequestEmailAction(workspaceId: string, useCa
 /** L'indirizzo intero di un referente, per il riepilogo della finestra «Chiedi al referente». Solo lettura. */
 export async function revealReferentContactEmailAction(workspaceId: string, useCaseId: string, contactId: string): Promise<ReferentActionResult<{ email: string | null }>> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(contactId)) return failure("non_trovato");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await revealReferentContactEmail(p.ctx, useCaseId, contactId);
   if (result.ok) return { ok: true, data: { email: result.value.email }, message: null };
@@ -196,7 +205,8 @@ export async function revealReferentContactEmailAction(workspaceId: string, useC
 export async function correctReferentEmailAction(workspaceId: string, useCaseId: string, contactId: string, input: { email: string }): Promise<ReferentActionResult> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(contactId)) return failure("non_trovato");
   if (!isRecord(input)) return failure("email_mancante");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await correctReferentEmail(p.ctx, useCaseId, contactId, input, { env: process.env });
   return done(workspaceId, useCaseId, result, () => ({ data: null, message: T.emailCorrected }));
@@ -205,7 +215,8 @@ export async function correctReferentEmailAction(workspaceId: string, useCaseId:
 /** «Cancella i dati di questa persona». */
 export async function eraseReferentDataAction(workspaceId: string, useCaseId: string, contactId: string): Promise<ReferentActionResult<{ contactAnonymized: boolean }>> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(contactId)) return failure("non_trovato");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await eraseReferentData(p.ctx, useCaseId, contactId, { env: process.env });
   if (result.ok) afterFiles(workspaceId);
@@ -216,7 +227,8 @@ export async function eraseReferentDataAction(workspaceId: string, useCaseId: st
 export async function addNeedAnswerAction(workspaceId: string, useCaseId: string, needId: string, input: { text: string; validate?: boolean }): Promise<ReferentActionResult<{ answerId: string }>> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(needId)) return failure("non_trovato");
   if (!isRecord(input)) return failure("risposta_vuota");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await addReviewerAnswer(p.ctx, useCaseId, needId, input);
   return done(workspaceId, useCaseId, result, (v) => ({ data: { answerId: v.answerId }, message: input.validate === true ? T.answerAddedValidated : T.answerAdded }));
@@ -225,7 +237,8 @@ export async function addNeedAnswerAction(workspaceId: string, useCaseId: string
 /** «Elimina la risposta». */
 export async function removeNeedAnswerAction(workspaceId: string, useCaseId: string, answerId: string): Promise<ReferentActionResult> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(answerId)) return failure("non_trovato");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await removeNeedAnswer(p.ctx, useCaseId, answerId);
   return done(workspaceId, useCaseId, result, () => ({ data: null, message: T.answerRemoved }));
@@ -234,7 +247,8 @@ export async function removeNeedAnswerAction(workspaceId: string, useCaseId: str
 /** «Elimina» un file. */
 export async function deleteNeedFileAction(workspaceId: string, useCaseId: string, fileId: string): Promise<ReferentActionResult> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(fileId)) return failure("non_trovato");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await deleteNeedFile(p.ctx, useCaseId, fileId, process.env);
   if (result.ok) afterFiles(workspaceId);
@@ -245,7 +259,8 @@ export async function deleteNeedFileAction(workspaceId: string, useCaseId: strin
 export async function reviewNeedFileAction(workspaceId: string, useCaseId: string, fileId: string, outcome: FileReviewOutcome): Promise<ReferentActionResult> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(fileId)) return failure("non_trovato");
   if (outcome !== "accetta" && outcome !== "rifiuta") return failure("revisione_non_ammessa");
-  const p = await page(workspaceId);
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await reviewNeedFile(p.ctx, useCaseId, fileId, outcome, process.env);
   if (result.ok && result.value.status === "rifiutato") afterFiles(workspaceId);

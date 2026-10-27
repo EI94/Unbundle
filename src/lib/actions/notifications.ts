@@ -11,7 +11,7 @@ import { logSafeError } from "@/lib/log/safe-error";
 import { BELL_TEXT, parseUpTo, type BellPayload } from "@/lib/notifications/bell";
 import { loadBellPayload } from "@/lib/notifications/bell-data";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
-import { getCollaboratorAccess } from "@/lib/workspace-access";
+import { getCollaboratorAccess, type WorkspaceAccess } from "@/lib/workspace-access";
 
 /**
  * Le due azioni rare ed esplicite della campanella (SPEC §P2.3.8): «Segna tutte come lette» e la
@@ -26,15 +26,21 @@ export type BellActionResult =
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Caller = { ok: true; userId: string; role: string | null } | Extract<BellActionResult, { ok: false }>;
+type SignedIn = { ok: true; userId: string } | Extract<BellActionResult, { ok: false }>;
 
-async function caller(workspaceId: string, valid: boolean): Promise<Caller> {
+/** Sessione e ingresso; l'accesso al workspace lo legge ogni action da sé (`getCollaboratorAccess`). */
+async function signedIn(workspaceId: string, valid: boolean): Promise<SignedIn> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return { ok: false, code: "non_autenticato", message: BELL_TEXT.errors.session };
   if (typeof workspaceId !== "string" || !UUID.test(workspaceId) || !valid) return { ok: false, code: "dati_non_validi", message: BELL_TEXT.errors.unavailable };
-  const access = await getCollaboratorAccess(userId, workspaceId);
+  return { ok: true, userId };
+}
+
+/** Solo chi ha accesso al workspace: il ruolo è quello di adesso. */
+function withAccess(s: { userId: string }, access: WorkspaceAccess | null): Caller {
   if (!access) return { ok: false, code: "non_disponibile", message: BELL_TEXT.errors.unavailable };
-  return { ok: true, userId, role: access.role ?? null };
+  return { ok: true, userId: s.userId, role: access.role ?? null };
 }
 
 async function payloadFor(workspaceId: string, c: { userId: string; role: string | null }): Promise<BellPayload> {
@@ -44,7 +50,9 @@ async function payloadFor(workspaceId: string, c: { userId: string; role: string
 /** `upTo` = il `latestAt` del payload che la persona ha visto (null: niente da segnare, solo «visto»). */
 export async function markAllBellReadAction(workspaceId: string, upTo: string | null): Promise<BellActionResult> {
   const limit = upTo === null ? null : parseUpTo(upTo);
-  const c = await caller(workspaceId, upTo === null || limit !== null);
+  const s = await signedIn(workspaceId, upTo === null || limit !== null);
+  if (!s.ok) return s;
+  const c = withAccess(s, await getCollaboratorAccess(s.userId, workspaceId));
   if (!c.ok) return c;
   try {
     if (limit) {
@@ -65,7 +73,9 @@ export async function markAllBellReadAction(workspaceId: string, upTo: string | 
 }
 
 export async function setBellEmailAlertsAction(workspaceId: string, on: boolean): Promise<BellActionResult> {
-  const c = await caller(workspaceId, typeof on === "boolean");
+  const s = await signedIn(workspaceId, typeof on === "boolean");
+  if (!s.ok) return s;
+  const c = withAccess(s, await getCollaboratorAccess(s.userId, workspaceId));
   if (!c.ok) return c;
   try {
     await setReferentEmails(workspaceId, c.userId, on);
