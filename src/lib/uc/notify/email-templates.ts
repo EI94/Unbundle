@@ -17,16 +17,12 @@
  */
 import type { ItemStatus } from "../vocab.ts";
 import { STATUS_LABELS } from "../export/format.ts";
-import { ROME_TZ } from "./schedule.ts";
 import { UUID } from "../ids.ts";
+import { formatDateIt, multiLine, oneLine, render, type Block, type RenderedEmail } from "./email-render.ts";
 
-export const UC_EMAIL_SENDER_NAME = "Lateral Space via Unbundle";
-
-export interface RenderedEmail {
-  subject: string;
-  text: string;
-  html: string;
-}
+// Il motore di composizione (testo semplice più HTML minimo, piè di pagina) sta in `email-render.ts`:
+// lo usano anche le email di «Chiedi al referente». Qui restano esportati come prima.
+export { UC_EMAIL_SENDER_NAME, escapeHtml, formatDateIt, type RenderedEmail } from "./email-render.ts";
 
 interface CaseRef {
   /** Nome del cliente (workspace o organizzazione). */
@@ -76,30 +72,6 @@ export type EmailInput =
 
 // ── Aiuti ─────────────────────────────────────────────────────────────
 
-const DATE_IT = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "long", year: "numeric", timeZone: ROME_TZ });
-
-export function formatDateIt(d: Date): string {
-  return DATE_IT.format(d);
-}
-
-function oneLine(s: string, max: number): string {
-  const clean = s.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
-  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
-}
-
-function multiLine(s: string, max: number): string {
-  const clean = s
-    .replace(/\r\n?/g, "\n")
-    .replace(/[\u0000-\u0009\u000b-\u001f\u007f]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
-}
-
-export function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
-
 const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/;
 const REQUEST_PATH = /^\/r\/ucr_[A-Za-z0-9_-]{32}$/;
 const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/casi-duso(\/[0-9a-f-]{36})?$/;
@@ -144,46 +116,6 @@ function minutesText(minutes: number | null): string | null {
 
 function subjectOf(parts: string): string {
   return oneLine(parts, 200);
-}
-
-type Block = { p: string } | { link: { href: string; label: string } } | { list: string[] } | { small: string } | { quote: string };
-
-function render(subject: string, blocks: Block[]): RenderedEmail {
-  const text: string[] = [];
-  const html: string[] = [];
-  for (const b of blocks) {
-    if ("p" in b) {
-      text.push(b.p);
-      html.push(`<p style="margin:0 0 16px">${escapeHtml(b.p)}</p>`);
-    } else if ("link" in b) {
-      text.push(`${b.link.label}: ${b.link.href}`);
-      html.push(
-        `<p style="margin:0 0 16px"><a href="${escapeHtml(b.link.href)}" style="display:inline-block;padding:12px 18px;background:#111827;color:#ffffff;text-decoration:none;border-radius:6px">${escapeHtml(b.link.label)}</a></p>`,
-        `<p style="margin:0 0 16px;font-size:13px;color:#4b5563;word-break:break-all">${escapeHtml(b.link.href)}</p>`,
-      );
-    } else if ("list" in b) {
-      text.push(b.list.map((l) => `- ${l}`).join("\n"));
-      html.push(`<ul style="margin:0 0 16px;padding-left:20px">${b.list.map((l) => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`);
-    } else if ("quote" in b) {
-      text.push(b.quote.split("\n").map((l) => `> ${l}`).join("\n"));
-      html.push(`<blockquote style="margin:0 0 16px;padding-left:12px;border-left:3px solid #d1d5db;white-space:pre-line">${escapeHtml(b.quote)}</blockquote>`);
-    } else {
-      text.push(b.small);
-      html.push(`<p style="margin:0 0 12px;font-size:13px;color:#6b7280">${escapeHtml(b.small)}</p>`);
-    }
-  }
-  const footer = `${UC_EMAIL_SENDER_NAME}.`;
-  text.push("--", footer);
-  html.push(`<p style="margin:24px 0 0;font-size:12px;color:#9ca3af">${escapeHtml(footer)}</p>`);
-  return {
-    subject,
-    text: `${text.join("\n\n")}\n`,
-    html:
-      `<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(subject)}</title></head>` +
-      `<body style="margin:0;padding:24px;background:#ffffff;color:#111827;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5">` +
-      html.join("") +
-      `</body></html>`,
-  };
 }
 
 function caseLabel(c: CaseRef): string {

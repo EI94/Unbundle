@@ -148,6 +148,11 @@ export interface OutgoingEmail {
   subject: string;
   text: string;
   html: string;
+  /**
+   * Indirizzo a cui arrivano le risposte all'email. Le email dei dossier non lo impostano mai; lo
+   * usa «Chiedi al referente» (l'email verificata di chi ha chiesto). Resend lo accetta così com'è.
+   */
+  replyTo?: string;
 }
 
 /**

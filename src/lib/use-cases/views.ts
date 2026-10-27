@@ -72,6 +72,7 @@ import {
   type ValueFigure,
 } from "./valuation.ts";
 import { modelEstimate } from "./value-calc.ts";
+import { parseInfoParam, type InfoProgressState } from "./info-progress.ts";
 import { DEFAULT_VALUE_PARAMS, LEVER_LABELS, parseValueModel, type MonthCode, type ValueModel, type ValueParams } from "./value-model.ts";
 
 // ═══ Parametri della pagina (§4.2) ═══════════════════════════════════
@@ -115,6 +116,7 @@ export const HUB_PARAM_KEYS = [
   "lab",
   "trimestre",
   "stima",
+  "info",
   "apri",
   "nuovo",
   "thanks",
@@ -137,6 +139,8 @@ export interface HubParams {
   trimestre: QuarterCode | typeof LATER_QUARTER_PARAM | null;
   /** «mancante»: il chip «N da stimare»; «fuori-matrice»: le schede con «Benefici e costi» senza un punto nella matrice. */
   stima: HubEstimateParam | null;
+  /** «Raccolta informazioni» (`info-progress.ts`): solo per i revisori, come `stima`. */
+  info: InfoProgressState | null;
   apri: string | null;
   /** Pannello rapido: solo Lateral Space (§5.1). */
   nuovo: boolean;
@@ -195,6 +199,7 @@ export function parseHubParams(raw: RawHubParams, viewer: UseCaseViewer): HubPar
     lab: filters ? boundedText(readParam(raw, "lab"), 1, LAB_MAX) : null,
     trimestre: filters ? trimestre : null,
     stima: filters ? oneOf(HUB_ESTIMATE_PARAMS, readParam(raw, "stima")) : null,
+    info: filters && abilities.canSeeNeeds ? parseInfoParam(readParam(raw, "info")) : null,
     apri: apri !== null && UUID.test(apri) ? apri.toLowerCase() : null,
     nuovo: abilities.newUseCase === "pannello_rapido" && readParam(raw, "nuovo") === "1",
     thanks: readParam(raw, "thanks") === "1",
@@ -217,7 +222,8 @@ export function hasActiveFilters(params: HubParams, opts: { ignoreKind?: boolean
       params.area ||
       params.lab ||
       params.trimestre ||
-      params.stima,
+      params.stima ||
+      params.info,
   );
 }
 
@@ -747,7 +753,11 @@ export function isOffMatrix(item: Pick<HubItem, "value" | "cost">): boolean {
  * tipo (fuori da «Priorità», dove il tipo è il selettore interno: `ignoreKind`), canale,
  * area, AI Lab, trimestre e «da stimare». Nessun filtro per persona.
  */
-export function applyHubFilters<T extends AnyHubItem>(items: readonly T[], params: HubParams, opts: { ignoreKind?: boolean } = {}): T[] {
+export function applyHubFilters<T extends AnyHubItem>(
+  items: readonly T[],
+  params: HubParams,
+  opts: { ignoreKind?: boolean; infoOf?: (id: string) => InfoProgressState | null } = {},
+): T[] {
   return items.filter((item) => {
     if (!matchesSearch(item, params.q)) return false;
     if (isContributorItem(item)) return true;
@@ -762,6 +772,7 @@ export function applyHubFilters<T extends AnyHubItem>(items: readonly T[], param
     }
     if (params.stima === "mancante" && !isToEstimate(item)) return false;
     if (params.stima === "fuori-matrice" && !isOffMatrix(item)) return false;
+    if (params.info && (opts.infoOf?.(item.id) ?? null) !== params.info) return false;
     return true;
   });
 }

@@ -91,7 +91,12 @@ export const USE_CASE_EVENT_FIELDS = [
  * da lì e non cambia). L'elenco dopo la 0023 è in `use-case-hub-history-ddl.ts`.
  */
 export const USE_CASE_NEEDS_EVENT_FIELD = "cosa_serve" as const;
-export type UseCaseEventField = (typeof USE_CASE_EVENT_FIELDS)[number] | typeof USE_CASE_NEEDS_EVENT_FIELD;
+/**
+ * I nomi della Storia nei tipi: quelli della 0020, `cosa_serve` (0023) e `richiesta_referente` (0024,
+ * «Chiedi al referente», elenco in `use-case-hub-referents-ddl.ts`). Solo il tipo: il DDL della 0020
+ * non cambia.
+ */
+export type UseCaseEventField = (typeof USE_CASE_EVENT_FIELDS)[number] | typeof USE_CASE_NEEDS_EVENT_FIELD | "richiesta_referente";
 
 /**
  * Canale della riga `creato` per ogni valore di `use_cases.source` (§10.3). `NULL` vale

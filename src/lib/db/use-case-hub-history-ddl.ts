@@ -58,10 +58,15 @@ export const FIELDS_NOT_VALIDATED_WARNING =
 /** `ARRAY['a', 'b']`: valori noti, scritti qui sopra (nessun apice dentro). */
 const array = (values: readonly string[]) => `ARRAY[${values.map((value) => `'${value}'`).join(", ")}]::text[]`;
 
-export const USE_CASE_HISTORY_DDL: readonly string[] = [
-  `DO $$
+/**
+ * Il blocco `DO` che allarga il CHECK della Storia all'elenco `wanted` (mai restringe): lo stesso
+ * della 0023, con l'elenco come parametro. La 0024 lo riusa con `richiesta_referente`
+ * (`use-case-hub-referents-ddl.ts`); per l'elenco della 0023 il testo è identico a quello del file.
+ */
+export function eventFieldsWideningDdl(wanted: readonly string[]): string {
+  return `DO $$
 DECLARE
-  wanted text[] := ${array(USE_CASE_EVENT_FIELDS_0023)};
+  wanted text[] := ${array(wanted)};
   current_def text;
   current_valid boolean;
   allowed text[];
@@ -99,8 +104,10 @@ BEGIN
       ALTER TABLE use_case_events VALIDATE CONSTRAINT ${FIELDS_CHECK_NAME};
     END IF;
   END IF;
-END $$;`,
-];
+END $$;`;
+}
+
+export const USE_CASE_HISTORY_DDL: readonly string[] = [eventFieldsWideningDdl(USE_CASE_EVENT_FIELDS_0023)];
 
 /**
  * Espressione booleana per la sonda di `ensureDbSchema()`: vera solo se il CHECK della Storia
@@ -108,16 +115,21 @@ END $$;`,
  * da `::text`, nella definizione di `pg_get_constraintdef`). Senza, un database con la 0022 e
  * senza la 0023 sembrerebbe aggiornato e la prima riga «Cosa serve» fallirebbe sul CHECK.
  * Non guarda `convalidated`: un vincolo lasciato NOT VALID dal punto 4 vale già per le righe
- * nuove, e il self-heal non ripartirebbe a ogni avvio.
+ * nuove, e il self-heal non ripartirebbe a ogni avvio. L'elenco è un parametro: la 0024 usa la
+ * stessa sonda con `richiesta_referente` (`use-case-hub-referents-ddl.ts`).
  */
-export const USE_CASE_HISTORY_PROBE_SQL = `(
+export function eventFieldsProbeSql(wanted: readonly string[]): string {
+  return `(
   EXISTS (
     SELECT 1 FROM pg_constraint c
     WHERE c.conrelid = to_regclass('public.use_case_events')
       AND c.conname = '${FIELDS_CHECK_NAME}'
       AND NOT EXISTS (
-        SELECT 1 FROM unnest(${array(USE_CASE_EVENT_FIELDS_0023)}) AS w(name)
+        SELECT 1 FROM unnest(${array(wanted)}) AS w(name)
         WHERE position(quote_literal(w.name) || '::text' IN pg_get_constraintdef(c.oid)) = 0
       )
   )
 )`;
+}
+
+export const USE_CASE_HISTORY_PROBE_SQL = eventFieldsProbeSql(USE_CASE_EVENT_FIELDS_0023);

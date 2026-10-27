@@ -18,6 +18,7 @@ import {
   numeric,
   smallint,
   unique,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type { Approval, Fallback, PartialNa, Waiver } from "../uc/types.ts";
 import { CONNECTOR_DEFAULT_LIMITS, type ConnectorLimits } from "./connector-ddl.ts";
@@ -35,6 +36,19 @@ import type {
   UseCaseNeedStatus,
   UseCaseNeedType,
 } from "./use-case-hub-value-ddl.ts";
+import type {
+  FollowUpReason,
+  ReferentEmailTemplate,
+  ReferentEntrySource,
+  ReferentFileDeleteReason,
+  ReferentFileStatus,
+  ReferentItemState,
+  ReferentReminderKind,
+  ReferentRequestStatus,
+  ReferentRevokeReason,
+  RequesterEmailStatus,
+  UseCaseNotificationKind,
+} from "./use-case-hub-referents-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
@@ -907,6 +921,289 @@ export const useCaseNeedLinks = pgTable(
     index("use_case_need_links_use_case_idx").on(t.useCaseId),
   ]
 );
+
+// ─── «Chiedi al referente» (drizzle/0024) ───────────────────────────
+// CHECK e indici parziali stanno solo nella migrazione e in src/lib/db/use-case-hub-referents-ddl.ts.
+// Mai drizzle-kit push: lo schema serve alle query tipizzate.
+
+const tz = (name: string) => timestamp(name, { mode: "date", withTimezone: true });
+
+export const useCaseReferentRequests = pgTable(
+  "use_case_referent_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    /** uc_contacts.id, senza vincolo (le tabelle uc non sono del self-heal dell'hub). */
+    contactId: uuid("contact_id").notNull(),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    requesterName: varchar("requester_name", { length: 120 }).notNull(),
+    message: varchar("message", { length: 1000 }),
+    status: varchar("status", { length: 12 }).$type<ReferentRequestStatus>().notNull().default("inviata"),
+    privacyNoticeVersion: varchar("privacy_notice_version", { length: 20 }),
+    privacyAcceptedAt: tz("privacy_accepted_at"),
+    reminderCount: smallint("reminder_count").notNull().default(0),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    sentAt: tz("sent_at"),
+    lastEmailAt: tz("last_email_at"),
+    lastReminderAt: tz("last_reminder_at"),
+    expiresAt: tz("expires_at").notNull(),
+    completedAt: tz("completed_at"),
+    expiredAt: tz("expired_at"),
+    revokedAt: tz("revoked_at"),
+    revokedByUserId: uuid("revoked_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    revokedReason: varchar("revoked_reason", { length: 24 }).$type<ReferentRevokeReason>(),
+    draftsClearedAt: tz("drafts_cleared_at"),
+    purgedAt: tz("purged_at"),
+    previousRequestId: uuid("previous_request_id").references((): AnyPgColumn => useCaseReferentRequests.id, { onDelete: "set null" }),
+    version: integer("version").notNull().default(1),
+  },
+  (t) => [
+    index("use_case_referent_requests_use_case_idx").on(t.useCaseId, t.createdAt.desc()),
+    index("use_case_referent_requests_workspace_idx").on(t.workspaceId, t.status),
+    index("use_case_referent_requests_contact_idx").on(t.contactId),
+  ]
+);
+
+export const useCaseReferentRequestItems = pgTable(
+  "use_case_referent_request_items",
+  {
+    requestId: uuid("request_id").notNull().references(() => useCaseReferentRequests.id, { onDelete: "cascade" }),
+    needId: uuid("need_id").notNull().references(() => useCaseNeeds.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    position: smallint("position").notNull(),
+    question: varchar("question", { length: 300 }).notNull(),
+    state: varchar("state", { length: 10 }).$type<ReferentItemState>().notNull().default("aperta"),
+    addedAt: tz("added_at").defaultNow().notNull(),
+    answeredAt: tz("answered_at"),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_referent_request_items_pkey", columns: [t.requestId, t.needId] }),
+    unique("use_case_referent_request_items_position_unique").on(t.requestId, t.position),
+    index("use_case_referent_request_items_need_idx").on(t.needId),
+  ]
+);
+
+export const useCaseReferentTokens = pgTable(
+  "use_case_referent_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    requestId: uuid("request_id").notNull().references(() => useCaseReferentRequests.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    /** Solo l'impronta sha256: il token in chiaro sta solo nell'email. */
+    tokenHash: char("token_hash", { length: 64 }).notNull(),
+    /** sha256(lower(trim(email))) dell'indirizzo a cui è partito il link. */
+    recipientHash: char("recipient_hash", { length: 64 }).notNull(),
+    issuedFor: varchar("issued_for", { length: 12 }).$type<"richiesta" | "promemoria">().notNull(),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    expiresAt: tz("expires_at").notNull(),
+    revokedAt: tz("revoked_at"),
+  },
+  (t) => [unique("use_case_referent_tokens_hash_unique").on(t.tokenHash), index("use_case_referent_tokens_request_idx").on(t.requestId)]
+);
+
+export const useCaseNeedAnswers = pgTable(
+  "use_case_need_answers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    needId: uuid("need_id").notNull().references(() => useCaseNeeds.id, { onDelete: "cascade" }),
+    requestId: uuid("request_id").references(() => useCaseReferentRequests.id, { onDelete: "cascade" }),
+    source: varchar("source", { length: 10 }).$type<ReferentEntrySource>().notNull(),
+    authorUserId: uuid("author_user_id").references(() => users.id, { onDelete: "set null" }),
+    body: varchar("body", { length: 4000 }),
+    dontKnow: boolean("dont_know").notNull().default(false),
+    status: varchar("status", { length: 8 }).$type<"bozza" | "inviata">().notNull().default("bozza"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+    submittedAt: tz("submitted_at"),
+    removedAt: tz("removed_at"),
+    removedByUserId: uuid("removed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    removedReason: varchar("removed_reason", { length: 14 }).$type<"revisore" | "conservazione" | "cancellazione">(),
+  },
+  (t) => [index("use_case_need_answers_need_idx").on(t.needId, t.submittedAt), index("use_case_need_answers_workspace_idx").on(t.workspaceId)]
+);
+
+export const useCaseNeedFiles = pgTable(
+  "use_case_need_files",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    needId: uuid("need_id").notNull().references(() => useCaseNeeds.id, { onDelete: "cascade" }),
+    requestId: uuid("request_id").references(() => useCaseReferentRequests.id, { onDelete: "cascade" }),
+    source: varchar("source", { length: 10 }).$type<ReferentEntrySource>().notNull(),
+    uploadedByUserId: uuid("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    fileName: varchar("file_name", { length: 255 }).notNull(),
+    kind: varchar("kind", { length: 8 }),
+    mime: varchar("mime", { length: 120 }),
+    sizeBytes: integer("size_bytes"),
+    maxBytes: integer("max_bytes").notNull(),
+    sha256: char("sha256", { length: 64 }),
+    uploadMode: varchar("upload_mode", { length: 6 }).$type<"server" | "client">().notNull(),
+    scanStatus: varchar("scan_status", { length: 14 }).$type<ReferentFileStatus>().notNull().default("in_quarantena"),
+    rejectionReason: varchar("rejection_reason", { length: 40 }),
+    findings: jsonb("findings").$type<Record<string, unknown>>().notNull().default({}),
+    personalWarning: boolean("personal_warning").notNull().default(false),
+    warningConfirmedAt: tz("warning_confirmed_at"),
+    quarantinePath: varchar("quarantine_path", { length: 300 }),
+    blobPath: varchar("blob_path", { length: 300 }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    checkedAt: tz("checked_at"),
+    reviewedAt: tz("reviewed_at"),
+    reviewedByUserId: uuid("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    submittedAt: tz("submitted_at"),
+    deletedAt: tz("deleted_at"),
+    deletedByUserId: uuid("deleted_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    deletedReason: varchar("deleted_reason", { length: 14 }).$type<ReferentFileDeleteReason>(),
+  },
+  (t) => [index("use_case_need_files_need_idx").on(t.needId, t.createdAt), index("use_case_need_files_workspace_idx").on(t.workspaceId)]
+);
+
+export const useCaseReferentEmails = pgTable(
+  "use_case_referent_emails",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    /** uc_contacts.id, senza vincolo. */
+    contactId: uuid("contact_id").notNull(),
+    /** null per «promemoria» (le richieste stanno in use_case_referent_email_items). */
+    requestId: uuid("request_id").references(() => useCaseReferentRequests.id, { onDelete: "cascade" }),
+    template: varchar("template", { length: 14 }).$type<ReferentEmailTemplate>().notNull(),
+    status: varchar("status", { length: 10 }).$type<"in_coda" | "inviata" | "errore" | "annullata">().notNull().default("in_coda"),
+    holdReason: varchar("hold_reason", { length: 40 }),
+    cancelReason: varchar("cancel_reason", { length: 40 }),
+    lastErrorCode: varchar("last_error_code", { length: 60 }),
+    attempts: smallint("attempts").notNull().default(0),
+    dueAt: tz("due_at").defaultNow().notNull(),
+    scheduledAt: tz("scheduled_at").defaultNow().notNull(),
+    leaseUntil: tz("lease_until"),
+    sentAt: tz("sent_at"),
+    tokenId: uuid("token_id").references(() => useCaseReferentTokens.id, { onDelete: "set null" }),
+    dedupeKey: varchar("dedupe_key", { length: 120 }).notNull(),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [unique("use_case_referent_emails_dedupe_unique").on(t.dedupeKey), index("use_case_referent_emails_contact_idx").on(t.contactId, t.createdAt.desc())]
+);
+
+export const useCaseReferentEmailItems = pgTable(
+  "use_case_referent_email_items",
+  {
+    emailId: uuid("email_id").notNull().references(() => useCaseReferentEmails.id, { onDelete: "cascade" }),
+    requestId: uuid("request_id").notNull().references(() => useCaseReferentRequests.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 8 }).$type<ReferentReminderKind>().notNull(),
+    state: varchar("state", { length: 8 }).$type<"in_coda" | "inviata" | "tolta">().notNull().default("in_coda"),
+    dropReason: varchar("drop_reason", { length: 40 }),
+    newQuestions: smallint("new_questions").notNull().default(0),
+    tokenId: uuid("token_id").references(() => useCaseReferentTokens.id, { onDelete: "set null" }),
+  },
+  (t) => [primaryKey({ name: "use_case_referent_email_items_pkey", columns: [t.emailId, t.requestId] }), index("use_case_referent_email_items_request_idx").on(t.requestId, t.kind)]
+);
+
+export type UseCaseReferentRequest = typeof useCaseReferentRequests.$inferSelect;
+export type UseCaseNeedAnswer = typeof useCaseNeedAnswers.$inferSelect;
+export type UseCaseNeedFile = typeof useCaseNeedFiles.$inferSelect;
+
+// ─── Campanella per persona, notifiche degli use case, avvisi a chi ha chiesto (drizzle/0024, Parte 2) ───
+
+export const weeklySignalReads = pgTable(
+  "weekly_signal_reads",
+  {
+    signalId: uuid("signal_id").notNull().references(() => weeklySignals.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    readAt: tz("read_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "weekly_signal_reads_pkey", columns: [t.signalId, t.userId] }), index("weekly_signal_reads_user_idx").on(t.userId, t.workspaceId)]
+);
+
+export const workspaceBellState = pgTable(
+  "workspace_bell_state",
+  {
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    seenAt: tz("seen_at"),
+    referentEmails: boolean("referent_emails").notNull().default(true),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "workspace_bell_state_pkey", columns: [t.workspaceId, t.userId] })]
+);
+
+export const useCaseNotifications = pgTable(
+  "use_case_notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 16 }).$type<UseCaseNotificationKind>().notNull(),
+    romeDay: date("rome_day", { mode: "string" }).notNull(),
+    answers: smallint("answers").notNull().default(0),
+    unknowns: smallint("unknowns").notNull().default(0),
+    documents: smallint("documents").notNull().default(0),
+    followUp: varchar("follow_up", { length: 18 }).$type<FollowUpReason>(),
+    firstEventAt: tz("first_event_at").defaultNow().notNull(),
+    lastEventAt: tz("last_event_at").defaultNow().notNull(),
+    readAt: tz("read_at"),
+  },
+  (t) => [
+    unique("use_case_notifications_unique").on(t.recipientUserId, t.useCaseId, t.kind, t.romeDay),
+    index("use_case_notifications_recipient_idx").on(t.recipientUserId, t.workspaceId, t.lastEventAt.desc()),
+    index("use_case_notifications_use_case_idx").on(t.useCaseId),
+    index("use_case_notifications_gc_idx").on(t.lastEventAt),
+  ]
+);
+
+export const useCaseInfoState = pgTable("use_case_info_state", {
+  useCaseId: uuid("use_case_id").primaryKey().references(() => useCases.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  completeSince: tz("complete_since"),
+  updatedAt: tz("updated_at").defaultNow().notNull(),
+});
+
+export const useCaseRequesterEmails = pgTable(
+  "use_case_requester_emails",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    sendOn: date("send_on", { mode: "string" }).notNull(),
+    status: varchar("status", { length: 10 }).$type<RequesterEmailStatus>().notNull().default("in_coda"),
+    holdReason: varchar("hold_reason", { length: 40 }),
+    cancelReason: varchar("cancel_reason", { length: 40 }),
+    lastErrorCode: varchar("last_error_code", { length: 60 }),
+    attempts: smallint("attempts").notNull().default(0),
+    scheduledAt: tz("scheduled_at").notNull(),
+    dueAt: tz("due_at").notNull(),
+    leaseUntil: tz("lease_until"),
+    sentAt: tz("sent_at"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [unique("use_case_requester_emails_day_unique").on(t.workspaceId, t.recipientUserId, t.sendOn), index("use_case_requester_emails_gc_idx").on(t.createdAt)]
+);
+
+export const useCaseRequesterEmailItems = pgTable(
+  "use_case_requester_email_items",
+  {
+    emailId: uuid("email_id").notNull().references(() => useCaseRequesterEmails.id, { onDelete: "cascade" }),
+    requestId: uuid("request_id").notNull().references(() => useCaseReferentRequests.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    answers: smallint("answers").notNull().default(0),
+    unknowns: smallint("unknowns").notNull().default(0),
+    documents: smallint("documents").notNull().default(0),
+    followUp: varchar("follow_up", { length: 18 }).$type<FollowUpReason>(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "use_case_requester_email_items_pkey", columns: [t.emailId, t.requestId] }), index("use_case_requester_email_items_request_idx").on(t.requestId)]
+);
+
+export type WorkspaceBellState = typeof workspaceBellState.$inferSelect;
+export type UseCaseNotification = typeof useCaseNotifications.$inferSelect;
 
 export const externalContributionSubmissions = pgTable(
   "external_contribution_submissions",

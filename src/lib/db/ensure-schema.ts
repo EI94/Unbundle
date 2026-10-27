@@ -5,6 +5,7 @@ import { CONNECTOR_DDL, CONNECTOR_PROBE_SQL } from "./connector-ddl.ts";
 import { USE_CASE_HUB_DDL, USE_CASE_HUB_PROBE_SQL } from "./use-case-hub-ddl.ts";
 import { USE_CASE_VALUE_DDL, USE_CASE_VALUE_PROBE_SQL } from "./use-case-hub-value-ddl.ts";
 import { USE_CASE_HISTORY_DDL, USE_CASE_HISTORY_PROBE_SQL } from "./use-case-hub-history-ddl.ts";
+import { USE_CASE_REFERENTS_DDL, USE_CASE_REFERENTS_PROBE_SQL } from "./use-case-hub-referents-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -24,7 +25,7 @@ import { USE_CASE_HISTORY_DDL, USE_CASE_HISTORY_PROBE_SQL } from "./use-case-hub
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 17;
+const ENSURE_VERSION = 18;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -628,6 +629,10 @@ async function runOnce(): Promise<void> {
   // Lo stesso blocco della migrazione, dopo l'hub (allarga il CHECK della
   // Storia nato con la 0020) e dopo la 0022 (le esigenze che lo scrivono).
   await runUseCaseHistoryDdl();
+
+  // «Chiedi al referente» (drizzle/0024_use_case_referents.sql) ─────────
+  // Dopo la 0022 (le esigenze) e la 0023 (il CHECK della Storia, che la 0024 allarga ancora).
+  await runUseCaseReferentsDdl();
 }
 
 /**
@@ -680,6 +685,23 @@ export async function runUseCaseHistoryDdl(statements: readonly string[] = USE_C
   await client.transaction([
     client.query("SELECT set_config('lock_timeout', '3s', true)"),
     client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-history-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
+/**
+ * Applica il DDL della 0024 («Chiedi al referente», campanella per persona, avanzamento) in una
+ * sola transazione, serializzata dallo stesso advisory lock del file, con `lock_timeout` di 3s come
+ * la 0023. L'ultimo statement è il blocco della Storia, che prende da sé il lock della 0023: l'ordine
+ * è sempre prima referenti, poi Storia, e la 0023 prende solo il suo, quindi non c'è stallo. In
+ * produzione il file si applica a mano prima del rilascio: qui il self-heal trova lo schema già
+ * aggiornato e non fa niente (resta il ripiego per i database locali e di prova).
+ */
+export async function runUseCaseReferentsDdl(statements: readonly string[] = USE_CASE_REFERENTS_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-referents-ddl'))"),
     ...statements.map((statement) => client.query(statement)),
   ]);
 }
@@ -794,6 +816,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(USE_CASE_HUB_PROBE_SQL)}
         AND ${sql.raw(USE_CASE_VALUE_PROBE_SQL)}
         AND ${sql.raw(USE_CASE_HISTORY_PROBE_SQL)}
+        AND ${sql.raw(USE_CASE_REFERENTS_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;

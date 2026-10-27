@@ -51,7 +51,7 @@ const newTestFiles = compile(config.newTestFiles);
 function validate() {
   const problems = [];
   for (const [id, pkg] of Object.entries(packages)) {
-    if (!/^h\d[a-z]?\d?$/.test(id)) problems.push(`${id}: package ids look like h0, h2a, h1b2, h4i`);
+    if (!/^(h\d[a-z]?\d?|[a-z]+-[a-z])$/.test(id)) problems.push(`${id}: package ids look like h0, h2a, h1b2, h4i (or chiedi-b)`);
     if (!/^H\d[a-z]?$/.test(pkg.wave ?? "")) problems.push(`${id}: wave must look like H2 or H4p`);
     if (!Array.isArray(pkg.files) || !pkg.files.length) problems.push(`${id}: empty file list`);
     if (pkg.note !== undefined && (typeof pkg.note !== "string" || !pkg.note.trim())) problems.push(`${id}: note must be a non-empty string`);

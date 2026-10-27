@@ -153,6 +153,7 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
       lab: "AI Lab Prova",
       trimestre: "2027-Q1",
       stima: "mancante",
+      info: "da-verificare",
       apri: uuid(1).toUpperCase(),
       nuovo: "1",
       thanks: "1",
@@ -179,6 +180,7 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
     lab: "AI Lab Prova",
     trimestre: "2027-Q1",
     stima: "mancante",
+    info: "da_verificare",
     apri: uuid(1),
     nuovo: true,
     thanks: true,
@@ -190,7 +192,7 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
 test("parseHubParams: valori fuori elenco diventano null, anche da URLSearchParams e con parametri ripetuti", () => {
   const lead = viewer("function_lead");
   const params = parseHubParams(
-    new URLSearchParams("vista=tutte&tipo=altro&mostra=griglia&origine=entrambe&q=a&canale=email&trimestre=2027-Q5&stima=si&apri=12&nuovo=1&thanks=2&created=x&joined=0"),
+    new URLSearchParams("vista=tutte&tipo=altro&mostra=griglia&origine=entrambe&q=a&canale=email&trimestre=2027-Q5&stima=si&info=bloccate&apri=12&nuovo=1&thanks=2&created=x&joined=0"),
     lead,
   );
   for (const key of HUB_PARAM_KEYS) {
@@ -208,11 +210,11 @@ test("parseHubParams: valori fuori elenco diventano null, anche da URLSearchPara
 test("parseHubParams: al contributore restano vista (non «Priorità»), ricerca, apri e ricevute", () => {
   const contributor = viewer("contributor");
   const params = parseHubParams(
-    { vista: "priorita", tipo: "costruire", mostra: "matrice", origine: "adoption", q: "prezzi", canale: "learning", area: "Finanza", lab: "Lab", trimestre: "2027-Q1", stima: "mancante", nuovo: "1", thanks: "1", created: uuid(3), apri: uuid(4) },
+    { vista: "priorita", tipo: "costruire", mostra: "matrice", origine: "adoption", q: "prezzi", canale: "learning", area: "Finanza", lab: "Lab", trimestre: "2027-Q1", stima: "mancante", info: "senza-risposta", nuovo: "1", thanks: "1", created: uuid(3), apri: uuid(4) },
     contributor,
   );
   assert.equal(params.vista, null, "la Priorità non è per i contributori");
-  for (const key of ["tipo", "mostra", "origine", "canale", "area", "lab", "trimestre", "stima"] as const) assert.equal(params[key], null, key);
+  for (const key of ["tipo", "mostra", "origine", "canale", "area", "lab", "trimestre", "stima", "info"] as const) assert.equal(params[key], null, key);
   assert.equal(params.nuovo, false);
   assert.equal(params.q, "prezzi");
   assert.equal(params.thanks, true);
@@ -230,6 +232,24 @@ test("hasActiveFilters: vista, apri e ricevute non sono filtri", () => {
   assert.equal(hasActiveFilters(parseHubParams({ origine: "adoption" }, lead)), true);
   assert.equal(hasActiveFilters(parseHubParams({ q: "prezzi" }, lead)), true);
   assert.equal(hasActiveFilters(parseHubParams({ vista: "roadmap", tipo: "diffondere" }, lead)), true);
+  // «Raccolta informazioni» è un filtro (Parte 2).
+  assert.equal(hasActiveFilters(parseHubParams({ info: "in-attesa" }, lead)), true);
+  assert.equal(hasActiveFilters(parseHubParams({ info: "bloccate" }, lead)), false, "un valore sconosciuto non vale");
+});
+
+test("parseHubParams: «info» solo per i revisori e solo con i valori noti", () => {
+  for (const [raw, state] of [
+    ["da-chiedere", "da_chiedere"],
+    ["in-attesa", "in_attesa"],
+    ["da-verificare", "da_verificare"],
+    ["senza-risposta", "senza_risposta"],
+    ["complete", "complete"],
+  ] as const) {
+    assert.equal(parseHubParams({ info: raw }, viewer("function_lead")).info, state, raw);
+  }
+  for (const raw of ["da_verificare", "bloccate", "", "DA-VERIFICARE"]) assert.equal(parseHubParams({ info: raw }, viewer("function_lead")).info, null, raw);
+  assert.equal(parseHubParams({ info: "complete" }, viewer("contributor")).info, null);
+  assert.equal(parseHubParams({ info: "complete" }, viewer("learner")).info, null);
 });
 
 test("hasActiveFilters: in «Priorità» il tipo è il selettore, non un filtro (ignoreKind)", () => {
@@ -296,6 +316,24 @@ test("filtri dei revisori: origine, tipo, canale, area, AI Lab, trimestre, da st
     applyHubFilters(all, parseHubParams({ tipo: "diffondere" }, lead), { ignoreKind: true }).map((i) => i.id),
     [a.id, b.id, c.id],
   );
+});
+
+test("filtro «Informazioni»: lo stato derivato della scheda, i contributori restano come sono", () => {
+  const lead = viewer("function_lead");
+  const a = item({});
+  const b = item({});
+  const c = item({});
+  const states: Record<string, "da_verificare" | "in_attesa"> = { [a.id]: "da_verificare", [b.id]: "in_attesa" };
+  const infoOf = (id: string) => states[id] ?? null;
+  const filter = (raw: Record<string, string>) => applyHubFilters([a, b, c], parseHubParams(raw, lead), { infoOf }).map((i) => i.id);
+  assert.deepEqual(filter({ info: "da-verificare" }), [a.id], "corrisponde");
+  assert.deepEqual(filter({ info: "in-attesa" }), [b.id]);
+  assert.deepEqual(filter({ info: "complete" }), [], "nessuna scheda con quello stato");
+  assert.deepEqual(filter({}), [a.id, b.id, c.id], "senza filtro tutte");
+  // Senza `infoOf` (nessuno stato letto) il filtro non trova niente, invece di mostrare tutto.
+  assert.deepEqual(applyHubFilters([a, b, c], parseHubParams({ info: "da-verificare" }, lead)).map((i) => i.id), []);
+  const own = contributorItem({ title: "Riepilogo turni" });
+  assert.deepEqual(applyHubFilters([own], parseHubParams({ info: "da-verificare" }, lead), { infoOf }), [own], "le righe dei contributori non si filtrano");
 });
 
 // ─── Giorni di attesa (D8) ───────────────────────────────────────────

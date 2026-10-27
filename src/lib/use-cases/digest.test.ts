@@ -379,5 +379,11 @@ test("weekly-pulse: il passo dell'hub gira prima del ciclo AI, senza rotte o pia
     crons.filter((cron) => cron.path === "/api/cron/weekly-pulse"),
     [{ path: "/api/cron/weekly-pulse", schedule: "0 9 * * 1" }],
   );
-  assert.ok(!crons.some((cron) => /digest|use-case/.test(cron.path)));
+  // Nessuna rotta del riepilogo. L'unica rotta dell'area è quella di «Chiedi al referente» (scadenze e
+  // promemoria, drizzle/0024), che non è il riepilogo.
+  assert.ok(!crons.some((cron) => /digest/.test(cron.path)));
+  assert.deepEqual(
+    crons.filter((cron) => /use-case/.test(cron.path)).map((cron) => cron.path),
+    ["/api/cron/use-case-referents"],
+  );
 });

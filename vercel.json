@@ -15,11 +15,16 @@
     {
       "path": "/api/cron/uc-freshness",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/use-case-referents",
+      "schedule": "0 9 * * 1-5"
     }
   ],
   "git": {
     "deploymentEnabled": {
-      "codex/m1-ux-refinements": false
+      "codex/m1-ux-refinements": false,
+      "feat/chiedi-al-referente": false
     }
   }
 }

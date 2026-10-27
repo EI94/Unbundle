@@ -119,8 +119,9 @@ test("la sonda guarda lo stesso elenco e lo stesso vincolo, con la stessa regola
   assert.doesNotMatch(USE_CASE_HISTORY_PROBE_SQL, /convalidated/, "un vincolo NOT VALID non fa ripartire il self-heal a ogni avvio");
 });
 
-test("ensure-schema: versione 17, DDL della 0023 dopo quello della 0022, sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 17;/);
+test("ensure-schema: versione almeno 17, DDL della 0023 dopo quello della 0022, sonda in AND", () => {
+  // La 0023 l'ha portata a 17; la 0024 (use-case-hub-referents-ddl.test.ts) a 18.
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 17, "ENSURE_VERSION almeno 17");
   assert.match(ensureSchema, /import \{ USE_CASE_HISTORY_DDL, USE_CASE_HISTORY_PROBE_SQL \} from "\.\/use-case-hub-history-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const hub = runOnce.indexOf("await runUseCaseHubDdl();");

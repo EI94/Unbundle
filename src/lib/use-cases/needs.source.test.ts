@@ -52,6 +52,7 @@ const TABLES = /\b(use_case_needs|use_case_need_links|useCaseNeeds|useCaseNeedLi
 const TABLE_FILES = new Set([
   "src/lib/db/schema.ts",
   "src/lib/db/use-case-hub-value-ddl.ts",
+  "src/lib/db/use-case-hub-referents-ddl.ts",
   "src/lib/db/queries/use-case-needs.ts",
   "src/lib/use-cases/needs-service.ts",
 ]);
