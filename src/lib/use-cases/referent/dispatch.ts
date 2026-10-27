@@ -13,7 +13,10 @@
  *   l'impronta dell'indirizzo a cui parte; mai nel database in chiaro, mai nei log. Un invio fallito
  *   con certezza revoca i token emessi; un esito incerto li lascia validi.
  * - **Rispondi**: le risposte all'email arrivano a chi ha chiesto (`replyTo`), solo se ha ancora
- *   l'email verificata e un ruolo da revisore (lo decide chi legge i fatti).
+ *   l'email verificata e un ruolo da revisore (lo decide chi legge i fatti). Altrimenti (chi ha
+ *   chiesto non è più revisore, o un promemoria raccoglie richieste di persone diverse) il reply-to è
+ *   `UC_EMAIL_REPLY_TO` se è configurato e valido; mai un altro indirizzo, mai uno non verificato.
+ *   Il mittente sta su un sottodominio che non riceve posta: senza reply-to una risposta si perde.
  * - **Un promemoria al giorno per persona**: un promemoria raccoglie le richieste dovute della stessa
  *   persona (una voce per use case); se oggi le è già partito un promemoria, la riga aspetta.
  *
@@ -161,7 +164,11 @@ function cardLinkOf(e: ClaimedReferentEmail, f: ReferentDeliveryFacts, r: Refere
 }
 
 /** Che cosa fare di una riga: inviarla (con i link da emettere e gli effetti), tenerla in coda o annullarla. */
-export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliveryFacts, o: { lsDomains: readonly string[]; now: Date; origin?: string }): ReferentDeliveryPlan {
+export function planReferentDelivery(
+  e: ClaimedReferentEmail,
+  f: ReferentDeliveryFacts,
+  o: { lsDomains: readonly string[]; now: Date; origin?: string; fallbackReplyTo?: string | null },
+): ReferentDeliveryPlan {
   if (f.featureOn === false) return hold("funzione_spenta");
   if (!f.subprocessorsAuthorized) return hold("sub_responsabili_mancanti");
   const r = f.recipient;
@@ -172,6 +179,10 @@ export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliver
   const reply = f.replyTo?.trim().toLowerCase() ?? null;
   const replyTo = isPlainAddress(reply) ? reply : null;
   const replyToKnown = replyTo !== null;
+  // Il reply-to di ripiego (`UC_EMAIL_REPLY_TO`, già controllato da `ucEmailConfig`): si ricontrolla qui
+  // perché il piano è puro e si prova da solo. Non cambia il testo («arriva a {Nome}» vale solo per chi ha chiesto).
+  const fallbackRaw = o.fallbackReplyTo?.trim().toLowerCase() ?? null;
+  const fallback = isPlainAddress(fallbackRaw) ? fallbackRaw : null;
 
   if (e.template === "richiesta") {
     const req = f.requests.find((x) => x.id === e.requestId);
@@ -181,7 +192,7 @@ export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliver
     return {
       action: "send",
       to,
-      replyTo,
+      replyTo: replyTo ?? fallback,
       links: [{ requestId: req.id, issuedFor: "richiesta" }],
       drop: [],
       build: (links) => ({
@@ -208,7 +219,7 @@ export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliver
     return {
       action: "send",
       to,
-      replyTo,
+      replyTo: replyTo ?? fallback,
       links: [],
       drop: [],
       build: () => ({
@@ -239,7 +250,7 @@ export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliver
   return {
     action: "send",
     to,
-    replyTo: sameRequester ? replyTo : null,
+    replyTo: (sameRequester ? replyTo : null) ?? fallback,
     links: kept.map((x) => ({ requestId: x.id, issuedFor: "promemoria" as const })),
     drop,
     build: (links) => ({
@@ -368,13 +379,13 @@ export async function runReferentDispatch(store: ReferentDispatchStore, o: Refer
 async function deliverOne(
   store: ReferentDispatchStore,
   mailer: UcMailer,
-  config: { from: string; origin: string },
+  config: { from: string; origin: string; replyTo?: string },
   e: ClaimedReferentEmail,
   o: { lsDomains: readonly string[]; now: Date },
 ): Promise<Delivered> {
   let plan: ReferentDeliveryPlan;
   try {
-    plan = planReferentDelivery(e, await store.loadFacts(e, o.now), { ...o, origin: config.origin });
+    plan = planReferentDelivery(e, await store.loadFacts(e, o.now), { ...o, origin: config.origin, fallbackReplyTo: config.replyTo ?? null });
   } catch {
     await store.markFailed(e, "dati_non_letti");
     return "failed";

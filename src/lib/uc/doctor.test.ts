@@ -22,6 +22,7 @@ function production(extra: Record<string, string | undefined> = {}) {
     NEXT_PUBLIC_APP_URL: "https://app.example.test",
     RESEND_API_KEY: "chiave-di-prova",
     UC_EMAIL_FROM: "Prova <avvisi@example.test>",
+    UC_EMAIL_REPLY_TO: "risposte@example.test",
     BLOB_READ_WRITE_TOKEN: "store-standard-di-prova",
     ...extra,
   };
@@ -88,6 +89,22 @@ test("outside production the harness is accepted with warnings only", () => {
   // http is only for loopback, and only on the harness.
   assert.equal(status(checkUcEnv({ ...harness, NEXT_PUBLIC_APP_URL: "http://app.example.test" }, "local"), "NEXT_PUBLIC_APP_URL"), "errore");
   assert.equal(status(checkUcEnv({ ...harness, NEXT_PUBLIC_APP_URL: "http://127.0.0.1:53110" }, "preview"), "NEXT_PUBLIC_APP_URL"), "errore");
+});
+
+test("reply-to: a warning when missing or not one plain address, never the value in the report", () => {
+  const report = (extra: Record<string, string | undefined>) => checkUcEnv(production(extra), "production");
+  const missing = report({ UC_EMAIL_REPLY_TO: undefined });
+  assert.equal(status(missing, "UC_EMAIL_REPLY_TO"), "avviso");
+  assert.match(missing.find((c) => c.key === "UC_EMAIL_REPLY_TO")!.message, /Reply-to non impostato/);
+  assert.equal(doctorExitCode(missing), 0, "a warning, not an error");
+  for (const bad of ["Nome <segreto.reply@example.test>", "segreto.reply@example.test, altro@example.test", "segreto.reply@example.test\r\nBcc: x@example.test"]) {
+    const checks = report({ UC_EMAIL_REPLY_TO: bad });
+    assert.equal(status(checks, "UC_EMAIL_REPLY_TO"), "avviso", bad);
+    assert.ok(!formatDoctorReport(checks).includes("segreto.reply"), "the value never reaches the report");
+  }
+  const ok = report({ UC_EMAIL_REPLY_TO: "segreto.reply@example.test" });
+  assert.equal(status(ok, "UC_EMAIL_REPLY_TO"), "ok");
+  assert.ok(!formatDoctorReport(ok).includes("segreto.reply"));
 });
 
 test("the personal zone: a 32-byte key and a separate store, or neither", () => {

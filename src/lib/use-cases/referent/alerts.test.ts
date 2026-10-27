@@ -251,6 +251,19 @@ test("motore: invia nella finestra, senza replyTo, con la chiave dell'avviso", a
   assert.equal(unconfigured.notConfigured, 1);
 });
 
+test("motore: il reply-to degli avvisi è UC_EMAIL_REPLY_TO, solo se è un indirizzo semplice", async () => {
+  const send = async (env: Record<string, string>) => {
+    const m = mailer();
+    await runRequesterAlertDispatch(store([claimed()], facts()).store, { env, now: NOW, mailer: m, sendIntervalMs: 0 });
+    assert.equal(m.outbox.length, 1);
+    return m.outbox[0];
+  };
+  assert.equal((await send({ ...ENV, UC_EMAIL_REPLY_TO: " Risposte@LateralSpace.example " })).replyTo, "risposte@lateralspace.example");
+  for (const bad of ["Nome <risposte@lateralspace.example>", "a@b.test,c@d.test", "a@b.test\r\nBcc: c@d.test", "non-un-indirizzo"]) {
+    assert.equal("replyTo" in (await send({ ...ENV, UC_EMAIL_REPLY_TO: bad })), false, JSON.stringify(bad));
+  }
+});
+
 test("motore: un fallimento si segna, il limite di Resend ferma il giro", async () => {
   const s = store([claimed({ id: "a1" }), claimed({ id: "a2" })], facts());
   const m = mailer([{ ok: false, code: "rate_limit_exceeded", ambiguous: false }]);

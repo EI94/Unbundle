@@ -160,6 +160,42 @@ test("piano: mai un'email a chi ha chiesto (referente = richiedente), né la ric
   assert.deepEqual(plan(e, facts({ requests: [self] })), { action: "cancel", reason: "nessuna_voce" });
 });
 
+test("piano: reply-to — chi ha chiesto finché è revisore, altrimenti UC_EMAIL_REPLY_TO; il testo dice «arriva a» solo per chi ha chiesto", () => {
+  const LS_REPLY = "risposte@lateralspace.example";
+  const withFallback = (e: ClaimedReferentEmail, f: ReferentDeliveryFacts, fallbackReplyTo: string | null) =>
+    planReferentDelivery(e, f, { lsDomains: LS, now: NOW, fallbackReplyTo });
+  // Chi ha chiesto è ancora revisore con l'email verificata: resta lui, anche con il ripiego configurato.
+  const own = withFallback(email(), facts(), LS_REPLY);
+  assert.ok(own.action === "send" && own.replyTo === "giulia.neri@topjet.it");
+  // Non più revisore (o email non verificata): chi legge i fatti dà null → il ripiego, e il testo non promette che arriva a lui.
+  const fallback = withFallback(email(), facts({ replyTo: null }), LS_REPLY);
+  assert.ok(fallback.action === "send");
+  if (fallback.action === "send") {
+    assert.equal(fallback.replyTo, LS_REPLY);
+    const input = fallback.build({ [R1]: "http://localhost:3000/rispondi/ucq_" + "A".repeat(32) });
+    assert.ok(input.template === "richiesta" && input.replyToKnown === false);
+  }
+  // Un valore sporco come ripiego non vale mai (nome, virgola, a capo): nessun reply-to.
+  for (const bad of ["Nome <risposte@lateralspace.example>", "a@b.test, c@d.test", "a@b.test\r\nBcc: c@d.test", ""]) {
+    const p = withFallback(email(), facts({ replyTo: null }), bad);
+    assert.ok(p.action === "send" && p.replyTo === null, JSON.stringify(bad));
+  }
+  // Un indirizzo di chi ha chiesto non semplice non passa: il ripiego.
+  const dirty = withFallback(email(), facts({ replyTo: "Giulia <giulia@topjet.it>" }), LS_REPLY);
+  assert.ok(dirty.action === "send" && dirty.replyTo === LS_REPLY);
+  // La conferma come la richiesta.
+  const conf = withFallback(email({ template: "conferma" }), facts({ replyTo: null, requests: [request({ status: "completata", live: false })] }), LS_REPLY);
+  assert.ok(conf.action === "send" && conf.replyTo === LS_REPLY);
+  // Un promemoria con due richiedenti diversi: il ripiego, senza «arriva a».
+  const e = email({ template: "promemoria", requestId: null, dedupeKey: "pro:c1:2026-11-05" });
+  const two = withFallback(e, facts({ requests: [request({ id: R1, item: { kind: "primo", alreadySent: false } }), request({ id: R2, item: { kind: "primo", alreadySent: false }, requesterUserId: USER_B })] }), LS_REPLY);
+  assert.ok(two.action === "send" && two.replyTo === LS_REPLY);
+  if (two.action === "send") {
+    const input = two.build({ [R1]: "http://localhost:3000/rispondi/ucq_" + "A".repeat(32), [R2]: "http://localhost:3000/rispondi/ucq_" + "B".repeat(32) });
+    assert.ok(input.template === "promemoria" && input.replyToKnown === false && input.replyName === null);
+  }
+});
+
 // ── Motore ────────────────────────────────────────────────────────────
 
 interface Log {
@@ -260,6 +296,20 @@ test("motore: un token per voce, con l'impronta dell'indirizzo; il link nell'ema
   assert.ok(m.outbox[0].text.includes("http://localhost:3000/rispondi/ucq_"));
   assert.deepEqual(s.log.sent[0].tokenIds, { [R1]: "t1", [R2]: "t2" });
   assert.match(m.keys[0], /pro:c1:2026-11-05/);
+});
+
+test("motore: reply-to dalla configurazione solo quando manca chi ha chiesto; senza UC_EMAIL_REPLY_TO nessuna intestazione", async () => {
+  const send = async (env: Record<string, string>, replyTo: string | null) => {
+    const m = mailer();
+    await runReferentDispatch(store([email()], () => facts({ replyTo })).store, { env, lsDomains: LS, now: NOW, mailer: m, sendIntervalMs: 0 });
+    assert.equal(m.outbox.length, 1);
+    return m.outbox[0];
+  };
+  const withEnv = { ...ENV, UC_EMAIL_REPLY_TO: "Risposte@LateralSpace.example" };
+  assert.equal((await send(withEnv, "Giulia.Neri@TopJet.it")).replyTo, "giulia.neri@topjet.it", "chi ha chiesto vince");
+  assert.equal((await send(withEnv, null)).replyTo, "risposte@lateralspace.example", "il ripiego configurato");
+  assert.equal("replyTo" in (await send(ENV, null)), false, "senza configurazione: nessun reply-to");
+  assert.equal("replyTo" in (await send({ ...ENV, UC_EMAIL_REPLY_TO: "x@y.test\nBcc: z@w.test" }, null)), false, "un valore sporco non passa");
 });
 
 test("motore: un fallimento certo revoca i token, uno incerto li lascia; il limite di Resend ferma il giro", async () => {

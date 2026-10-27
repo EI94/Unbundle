@@ -6,7 +6,7 @@
  *   node --no-warnings scripts/uc-doctor.ts [--environment local|preview|production] [--json] [--no-db]
  *   env: le variabili dell'ambiente da controllare (UC_ENABLED, UC_WORKSPACE_IDS,
  *        USE_CASE_HUB_WORKSPACES, USE_CASE_HUB_EXCLUDE, UC_LS_EMAIL_DOMAINS, UC_SECRET, CRON_SECRET,
- *        UC_SCHEMA_SELF_HEAL, NEXT_PUBLIC_APP_URL, RESEND_API_KEY, UC_EMAIL_FROM,
+ *        UC_SCHEMA_SELF_HEAL, NEXT_PUBLIC_APP_URL, RESEND_API_KEY, UC_EMAIL_FROM, UC_EMAIL_REPLY_TO,
  *        BLOB_READ_WRITE_TOKEN, UC_PERSONAL_ZONE_KEY, UC_PERSONAL_BLOB_READ_WRITE_TOKEN);
  *        per il database UC_ADMIN_DATABASE_URL, passata a mano.
  *

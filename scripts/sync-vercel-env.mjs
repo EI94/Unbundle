@@ -196,6 +196,12 @@ const definitions = [
     sensitive: false,
     getValue: () => vars.UC_EMAIL_FROM?.trim() || null,
   },
+  {
+    // Il reply-to delle email (un solo indirizzo semplice): il mittente non riceve posta.
+    name: "UC_EMAIL_REPLY_TO",
+    sensitive: false,
+    getValue: () => vars.UC_EMAIL_REPLY_TO?.trim() || null,
+  },
 ];
 
 const targets = ["production"];

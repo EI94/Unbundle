@@ -293,7 +293,8 @@ export async function runRequesterAlertDispatch(
       let result;
       try {
         result = await mailer.send(
-          { from: config.from, to: plan.to, subject: rendered.subject, text: rendered.text, html: rendered.html },
+          // Il reply-to è `UC_EMAIL_REPLY_TO` (se configurato): il mittente non riceve posta.
+          { from: config.from, to: plan.to, subject: rendered.subject, text: rendered.text, html: rendered.html, ...(config.replyTo ? { replyTo: config.replyTo } : {}) },
           { idempotencyKey: idempotencyKeyFor(`ra:${e.id}`, e.attempts + 1) },
         );
       } finally {

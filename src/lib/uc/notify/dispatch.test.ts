@@ -5,6 +5,7 @@ import {
   HOLD_CASE_SUSPENDED,
   RATE_LIMIT_CODE,
   emailOrigin,
+  emailReplyTo,
   idempotencyKeyFor,
   isPlainAddress,
   mailResultFromError,
@@ -106,6 +107,33 @@ test("email configuration: key, sender and public origin are all needed", () => 
   assert.ok(ok.ok);
   assert.deepEqual(ok.config, { apiKey: "re_test", from: ENV.UC_EMAIL_FROM, origin: "https://app.unbundle.test" });
   assert.ok(ucEmailConfig({ ...ENV, UC_EMAIL_FROM: "casi@mittente.test" }).ok, "a bare address is a valid sender");
+});
+
+test("reply-to: UC_EMAIL_REPLY_TO only as one plain address, lower case; anything else is ignored", () => {
+  assert.equal(emailReplyTo({ UC_EMAIL_REPLY_TO: " Risposte@Mittente.TEST " }), "risposte@mittente.test");
+  assert.equal(emailReplyTo({}), null, "missing");
+  assert.equal(emailReplyTo({ UC_EMAIL_REPLY_TO: "   " }), null, "blank");
+  for (const bad of [
+    "Nome <risposte@mittente.test>",
+    "risposte@mittente.test, altro@esterno.test",
+    "risposte@mittente.test;altro@esterno.test",
+    "risposte@mittente.test\r\nBcc: altro@esterno.test",
+    "risposte@mittente.test\nBcc: altro@esterno.test",
+    "\"Nome\" risposte@mittente.test",
+    "risposte",
+    "@mittente.test",
+    "risposte@",
+    "risposte@mittente",
+  ]) {
+    assert.equal(emailReplyTo({ UC_EMAIL_REPLY_TO: bad }), null, JSON.stringify(bad));
+  }
+  // The configuration carries it only when valid; it never makes email «not configured».
+  const withReply = ucEmailConfig({ ...ENV, UC_EMAIL_REPLY_TO: "Risposte@Mittente.test" });
+  assert.ok(withReply.ok);
+  assert.equal(withReply.config.replyTo, "risposte@mittente.test");
+  const invalid = ucEmailConfig({ ...ENV, UC_EMAIL_REPLY_TO: "Nome <risposte@mittente.test>" });
+  assert.ok(invalid.ok, "an invalid reply-to does not switch email off");
+  assert.equal("replyTo" in invalid.config, false);
 });
 
 test("email origin: never a preview URL, https only (http only on loopback), no credentials", () => {
@@ -395,6 +423,25 @@ test("configured: the token is issued at send time and goes only into the email"
   assert.equal(owner.key, `owner:${REQ}:a2`);
   assert.ok(!owner.email.text.includes("/r/"), "no referent link to the Owner");
   assert.deepEqual(store.sent.map((x) => x.after), [null, { kind: "segnalazione" }]);
+});
+
+test("reply-to on dossier emails: UC_EMAIL_REPLY_TO when valid, no header when missing or invalid", async () => {
+  const run = async (env: Record<string, string>) => {
+    const rows = [claimed(), claimed({ id: TOKEN_ID, templateKey: "segnalazione_owner", recipientContactId: OWNER, dedupeKey: `owner:${REQ}` })];
+    const store = fakeStore(rows, (n) =>
+      n.templateKey === "segnalazione_owner"
+        ? facts({ recipient: { kind: "contact", id: OWNER, email: "owner@cliente.test", reachable: true, digestOptOut: false, lateralSpace: false }, request: request({ reminderCount: 2 }), openItemList: [] })
+        : facts(),
+    );
+    const mailer = fakeMailer();
+    await runDispatch(store, { env, lsDomains: LS, now: NOW, mailer, sendIntervalMs: 0 });
+    assert.equal(mailer.emails.length, 2);
+    return mailer.emails.map((x) => x.email);
+  };
+  for (const email of await run({ ...ENV, UC_EMAIL_REPLY_TO: "Risposte@LS.test" })) assert.equal(email.replyTo, "risposte@ls.test");
+  for (const env of [ENV, { ...ENV, UC_EMAIL_REPLY_TO: "risposte@ls.test\r\nBcc: x@y.test" }, { ...ENV, UC_EMAIL_REPLY_TO: "a@b.test, c@d.test" }]) {
+    for (const email of await run(env)) assert.equal("replyTo" in email, false, "no reply-to header");
+  }
 });
 
 test("outside the Rome window reminders and summaries are not even claimed", async () => {

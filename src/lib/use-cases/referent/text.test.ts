@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { checkDraftText, checkQuestionTitle, checkRequestMessage, checkReviewerAnswer, checkSubmitText } from "./text.ts";
-import { REFERENT_ERROR_MESSAGES } from "./labels.ts";
+import { REFERENT_ERROR_MESSAGES, REFERENT_PRIVACY_CONTACT } from "./labels.ts";
 
 // I controlli del testo (SPEC §3.1, §3.8, §3.9). Testi inventati.
 const NEED = "3f2a9c1e-0000-4000-8000-0000000000e1";
@@ -54,4 +54,14 @@ test("risposta del team: da 1 a 4.000 caratteri, senza dati personali", () => {
   assert.deepEqual(checkReviewerAnswer("a".repeat(4001)), { ok: false, code: "testo_troppo_lungo", message: REFERENT_ERROR_MESSAGES.testo_troppo_lungo });
   assert.deepEqual(checkReviewerAnswer(" 20 al giorno \r\n "), { ok: true, value: "20 al giorno" });
   assert.equal(checkReviewerAnswer("Le controlla Mario Rossi").ok, false);
+});
+
+test("informativa: l'indirizzo per i dati è quello esplicito, poi il reply-to, poi il mittente (che può non ricevere posta)", () => {
+  const FROM = "Lateral Space via Unbundle <avvisi@notifiche.example.test>";
+  assert.equal(REFERENT_PRIVACY_CONTACT({ USE_CASE_REFERENTS_PRIVACY_EMAIL: "privacy@example.test", UC_EMAIL_REPLY_TO: "risposte@example.test", UC_EMAIL_FROM: FROM }), "privacy@example.test");
+  assert.equal(REFERENT_PRIVACY_CONTACT({ UC_EMAIL_REPLY_TO: " Risposte@Example.test ", UC_EMAIL_FROM: FROM }), "risposte@example.test");
+  for (const bad of ["Nome <risposte@example.test>", "a@example.test, b@example.test", "a@example.test;b@example.test"]) {
+    assert.equal(REFERENT_PRIVACY_CONTACT({ UC_EMAIL_REPLY_TO: bad, UC_EMAIL_FROM: FROM }), "avvisi@notifiche.example.test", bad);
+  }
+  assert.equal(REFERENT_PRIVACY_CONTACT({}), "chi ti ha mandato il link");
 });

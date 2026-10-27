@@ -345,12 +345,15 @@ const ADDRESS = /<([^<>\s@]+@[^<>\s@]+)>\s*$|^([^<>\s@]+@[^<>\s@]+)$/;
 
 /**
  * L'indirizzo dell'informativa per vedere, correggere o cancellare i dati:
- * `USE_CASE_REFERENTS_PRIVACY_EMAIL`, altrimenti l'indirizzo dentro `UC_EMAIL_FROM` (in produzione
- * pierpaolo@lateralspace.ai), altrimenti «chi ti ha mandato il link».
+ * `USE_CASE_REFERENTS_PRIVACY_EMAIL`, altrimenti il reply-to `UC_EMAIL_REPLY_TO` (in produzione
+ * pierpaolo@lateralspace.ai), altrimenti l'indirizzo dentro `UC_EMAIL_FROM` (un sottodominio che può
+ * non ricevere posta: per questo viene dopo il reply-to), altrimenti «chi ti ha mandato il link».
  */
 export function REFERENT_PRIVACY_CONTACT(env: Readonly<Record<string, string | undefined>>): string {
   const explicit = env.USE_CASE_REFERENTS_PRIVACY_EMAIL?.trim();
   if (explicit && /^[^\s@<>]+@[^\s@<>]+$/.test(explicit)) return explicit;
+  const reply = env.UC_EMAIL_REPLY_TO?.trim();
+  if (reply && /^[^\s@<>,;"]+@[^\s@<>,;"]+$/.test(reply)) return reply.toLowerCase();
   const from = env.UC_EMAIL_FROM?.trim() ?? "";
   const m = ADDRESS.exec(from);
   const address = m?.[1] ?? m?.[2];

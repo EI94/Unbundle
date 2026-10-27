@@ -63,6 +63,7 @@ Si impostano **a mano** nella dashboard di Vercel, ambiente per ambiente. `scrip
 | `CRON_SECRET` | obbligatoria | consigliata | senza, i cron uc e `weekly-pulse` rispondono 401 |
 | `NEXT_PUBLIC_APP_URL` | `https://…` del dominio pubblico | mai l'URL della singola anteprima | origine dei link nelle email |
 | `RESEND_API_KEY`, `UC_EMAIL_FROM` | sì | facoltative | tracciamento di aperture e clic **spento** sul dominio del mittente |
+| `UC_EMAIL_REPLY_TO` | sì, se il mittente non riceve posta | facoltativa | un solo indirizzo semplice; reply-to di email dei dossier, riepiloghi e avvisi a chi ha chiesto (e delle email ai referenti quando chi ha chiesto non è più revisore). Assente: nessun reply-to, `uc-doctor` avvisa |
 | `BLOB_READ_WRITE_TOKEN` | store standard | store di prova | file della zona standard e quarantena |
 | `UC_PERSONAL_ZONE_KEY`, `UC_PERSONAL_BLOB_READ_WRITE_TOKEN` | solo dopo la scheda A.8 | solo per le prove | store Blob **separato**; la chiave non si ruota (perderla = dati personali illeggibili, §6.2) |
 
@@ -261,9 +262,10 @@ Riferimento: la SPEC del pacchetto (parti 1 e 2). La funzione vive nell'area «U
 | Variabile | Produzione | Note |
 |---|---|---|
 | `USE_CASE_REFERENTS` | assente (accesa) oppure `off` | `off`: niente pannello, i link rispondono «non valido», il cron risponde 404, nessuna email ai referenti né a chi ha chiesto. La campanella per persona continua a funzionare. |
-| `USE_CASE_REFERENTS_PRIVACY_EMAIL` | facoltativa | L'indirizzo dell'informativa per accesso, rettifica e cancellazione. Assente: l'indirizzo dentro `UC_EMAIL_FROM`. |
+| `USE_CASE_REFERENTS_PRIVACY_EMAIL` | facoltativa | L'indirizzo dell'informativa per accesso, rettifica e cancellazione. Assente: `UC_EMAIL_REPLY_TO`, poi l'indirizzo dentro `UC_EMAIL_FROM`. |
 | `RESEND_API_KEY` | **solo Produzione** | Mai in Preview: le anteprime usano il database di produzione. Il codice spegne comunque la funzione con `VERCEL_ENV=preview`. |
 | `UC_EMAIL_FROM` | `Lateral Space via Unbundle <indirizzo@dominio-verificato>` | In Resend: dominio verificato (SPF, DKIM) e **tracciamento di aperture e clic spento** (riscriverebbe i link `/rispondi/` e aggiungerebbe un pixel). |
+| `UC_EMAIL_REPLY_TO` | un indirizzo che riceve posta (es. `persona@lateralspace.ai`) | Il mittente sta su un sottodominio che non riceve posta. Email al referente: reply-to = l'email verificata di chi ha chiesto finché è revisore del workspace; altrimenti questa. Avvisi a chi ha chiesto e email dei dossier: sempre questa. Assente o non valida: nessun reply-to. |
 | `UC_SECRET` | già impostata | Obbligatoria per le scritture della pagina pubblica su ogni ambiente Vercel (limite per IP). |
 | `BLOB_READ_WRITE_TOKEN` | già impostata | Store privato: caricamenti diretti fino a 20 MB. Senza, solo fino a 4 MB passando dal server. |
 | `CRON_SECRET` | già impostata | `/api/cron/use-case-referents` (lun–ven alle 09:00 UTC) risponde 401 se manca o è diversa. |

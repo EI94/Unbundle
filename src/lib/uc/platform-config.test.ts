@@ -89,7 +89,7 @@ test("switches and the personal zone key are never copied to Vercel by the sync 
   for (const name of ["UC_ENABLED", "UC_WORKSPACE_IDS", "UC_SCHEMA_SELF_HEAL", "UC_PERSONAL_ZONE_KEY", "UC_ADMIN_DATABASE_URL", "UC_LOCAL_STORAGE_DIR"]) {
     assert.doesNotMatch(source, new RegExp(`name:\\s*"${name}"`), name);
   }
-  for (const name of ["UC_SECRET", "UC_LS_EMAIL_DOMAINS", "UC_EMAIL_FROM"]) assert.match(source, new RegExp(`name:\\s*"${name}"`), name);
+  for (const name of ["UC_SECRET", "UC_LS_EMAIL_DOMAINS", "UC_EMAIL_FROM", "UC_EMAIL_REPLY_TO"]) assert.match(source, new RegExp(`name:\\s*"${name}"`), name);
 });
 
 test("the uc crons stay scheduled", () => {

@@ -20,6 +20,9 @@
  * - **Nessun tracciamento**: testo semplice più HTML minimo, senza immagini né
  *   pixel (vedi `email-templates.ts`); il tracciamento di aperture e clic va
  *   spento sul dominio Resend (`AMBIENTE.md`).
+ * - **Reply-to**: il mittente sta su un sottodominio che non riceve posta; con
+ *   `UC_EMAIL_REPLY_TO` (un indirizzo semplice) le risposte arrivano lì. Senza,
+ *   o con un valore non valido, nessuna intestazione reply-to.
  *
  * Il motore (`runDispatch`) e la decisione per riga (`planDelivery`) non toccano
  * il database: lo fanno le funzioni di `queries/uc-notifications-dispatch.ts`
@@ -84,6 +87,12 @@ export interface DispatchEnv {
   readonly [name: string]: string | undefined;
   RESEND_API_KEY?: string;
   UC_EMAIL_FROM?: string;
+  /**
+   * Indirizzo a cui arrivano le risposte alle email (un solo indirizzo semplice). Il mittente sta su
+   * un sottodominio che non riceve posta: senza reply-to una risposta si perde. Facoltativa: assente
+   * o non valida, le email partono senza reply-to.
+   */
+  UC_EMAIL_REPLY_TO?: string;
   NEXT_PUBLIC_APP_URL?: string;
   APP_URL?: string;
   VERCEL_PROJECT_PRODUCTION_URL?: string;
@@ -95,6 +104,8 @@ export interface UcEmailConfig {
   from: string;
   /** Origine pubblica dell'app per i link (`https://…`, `http://` solo in locale). */
   origin: string;
+  /** `UC_EMAIL_REPLY_TO` in minuscolo, solo se è un indirizzo semplice; assente altrimenti. */
+  replyTo?: string;
 }
 
 export type EmailConfigCheck = { ok: true; config: UcEmailConfig } | { ok: false; missing: ("RESEND_API_KEY" | "UC_EMAIL_FROM" | "NEXT_PUBLIC_APP_URL")[] };
@@ -106,6 +117,18 @@ const SENDER = /^(?:[^\r\n<>@"]{1,80}\s<)?[^\s@,;:<>()"'\\[\]]{1,64}@[a-z0-9.-]{
 /** Un solo indirizzo email semplice: niente nomi, virgole o a capo (nessun destinatario in più). */
 export function isPlainAddress(value: string | null | undefined): value is string {
   return typeof value === "string" && value.length <= 320 && PLAIN_ADDRESS.test(value);
+}
+
+/**
+ * Il reply-to delle email da `UC_EMAIL_REPLY_TO`: un solo indirizzo semplice, in minuscolo. Un nome
+ * («Nome <a@b>»), una virgola, un a capo o qualunque altra forma non vale: null, e l'email parte
+ * senza reply-to (mai un'intestazione costruita da un valore sporco).
+ */
+export function emailReplyTo(env: DispatchEnv): string | null {
+  const raw = env.UC_EMAIL_REPLY_TO;
+  if (typeof raw !== "string" || /[\r\n]/.test(raw)) return null;
+  const value = raw.trim().toLowerCase();
+  return isPlainAddress(value) ? value : null;
 }
 
 /**
@@ -137,7 +160,9 @@ export function ucEmailConfig(env: DispatchEnv): EmailConfigCheck {
   if (!apiKey) missing.push("RESEND_API_KEY");
   if (!from || !SENDER.test(from)) missing.push("UC_EMAIL_FROM");
   if (!origin) missing.push("NEXT_PUBLIC_APP_URL");
-  return missing.length === 0 && origin ? { ok: true, config: { apiKey, from, origin } } : { ok: false, missing };
+  if (missing.length > 0 || !origin) return { ok: false, missing };
+  const replyTo = emailReplyTo(env);
+  return { ok: true, config: replyTo ? { apiKey, from, origin, replyTo } : { apiKey, from, origin } };
 }
 
 // ── Trasporto ─────────────────────────────────────────────────────────
@@ -149,8 +174,10 @@ export interface OutgoingEmail {
   text: string;
   html: string;
   /**
-   * Indirizzo a cui arrivano le risposte all'email. Le email dei dossier non lo impostano mai; lo
-   * usa «Chiedi al referente» (l'email verificata di chi ha chiesto). Resend lo accetta così com'è.
+   * Indirizzo a cui arrivano le risposte all'email. Le email dei dossier e gli avvisi ai revisori
+   * usano `UC_EMAIL_REPLY_TO` (`UcEmailConfig.replyTo`); «Chiedi al referente» usa l'email verificata
+   * di chi ha chiesto finché è revisore, altrimenti lo stesso `UC_EMAIL_REPLY_TO`. Assente: nessuna
+   * intestazione. Resend lo accetta così com'è.
    */
   replyTo?: string;
 }
@@ -670,7 +697,7 @@ async function deliverOne(
   }
 
   const result = await mailer.send(
-    { from: config.from, to: plan.to, subject: rendered.subject, text: rendered.text, html: rendered.html },
+    { from: config.from, to: plan.to, subject: rendered.subject, text: rendered.text, html: rendered.html, ...(config.replyTo ? { replyTo: config.replyTo } : {}) },
     { idempotencyKey: idempotencyKeyFor(n.dedupeKey, n.attempts + 1) },
   );
   if (result.ok) {

@@ -9,6 +9,7 @@
  * variabili esce dai messaggi: solo «presente», conteggi e host.
  */
 import { UC_TABLE_NAMES } from "./ddl.ts";
+import { emailReplyTo } from "./notify/dispatch.ts";
 import { parseLsDomains } from "./lateral-space.ts";
 import { hubAreaOn, parseHubWorkspaceList, parsePlainUuidList, ucSelfHealEnabled, type UcPlatformEnv } from "./platform.ts";
 import { parseUcWorkspaceIds } from "./rollout.ts";
@@ -145,6 +146,14 @@ export function checkUcEnv(env: UcPlatformEnv, environment: DoctorEnvironment): 
   // Email.
   const mail = has(env.RESEND_API_KEY) && has(env.UC_EMAIL_FROM);
   out.push(mail ? check("UC_EMAIL_FROM", "ok", "Resend e mittente presenti.") : check("UC_EMAIL_FROM", "avviso", "Email non configurate (RESEND_API_KEY o UC_EMAIL_FROM): le notifiche restano in coda e Lateral Space copia i link a mano."));
+  // Reply-to: il mittente sta su un sottodominio che non riceve posta. Mai il valore nel rapporto.
+  if (!has(env.UC_EMAIL_REPLY_TO)) {
+    out.push(check("UC_EMAIL_REPLY_TO", "avviso", "Reply-to non impostato: le email partono senza reply-to e una risposta al mittente si perde (chi chiede a un referente resta il reply-to delle sue email)."));
+  } else if (!emailReplyTo(env)) {
+    out.push(check("UC_EMAIL_REPLY_TO", "avviso", "Reply-to non valido (serve un solo indirizzo semplice, senza nome né virgole): si ignora e le email partono senza reply-to."));
+  } else {
+    out.push(check("UC_EMAIL_REPLY_TO", "ok", "Reply-to presente."));
+  }
 
   // Archivi dei file.
   const local = has(env.UC_LOCAL_STORAGE_DIR);
