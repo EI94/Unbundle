@@ -3,10 +3,12 @@ import type { UseCaseRealization } from "@/lib/uc/views/realization";
 import { answersOf } from "@/lib/use-cases/answers";
 import type { UseCaseEventList } from "@/lib/db/queries/use-case-events";
 import { decisionLayout, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
+import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { TEXT_LIMITS } from "@/lib/use-cases/inputs";
 import { WHAT_FIELD_LABEL } from "@/lib/use-cases/labels";
 import type { NeedUseCaseRef, UseCaseNeedLists } from "@/lib/use-cases/needs";
 import type { UseCaseAbilities } from "@/lib/use-cases/permissions";
+import type { UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
 import type { RedactableField } from "@/lib/use-cases/service";
 import type { UseCaseDetail } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
@@ -189,6 +191,16 @@ export interface UseCaseDetailViewProps {
    * quelle del workspace da collegare e codice e titolo degli use case che nominano.
    */
   needs?: { lists: UseCaseNeedLists; refs: Record<string, NeedUseCaseRef> } | null;
+  /**
+   * «Chiedi al referente» (`loadUseCaseReferentPanel`): solo ai revisori che vedono «Cosa serve»; ai
+   * contributori mai. Va al capitolo «Cosa serve».
+   */
+  referents?: UseCaseReferentPanel | null;
+  /**
+   * «Raccolta informazioni» (`loadUseCaseInfoProgress`): solo ai revisori, null senza requisiti del
+   * cliente. Il chip accanto alla fase e il riepilogo in cima a «Cosa serve».
+   */
+  infoProgress?: InfoProgressView | null;
   /** Il nome del team che valuta, da solo (§14.2): i testi del contributore. */
   teamName: string;
   className?: string;
@@ -214,6 +226,8 @@ export function UseCaseDetailView({
   historyAll = false,
   realization = null,
   needs = null,
+  referents = null,
+  infoProgress = null,
   teamName,
   className,
 }: UseCaseDetailViewProps) {
@@ -271,6 +285,7 @@ export function UseCaseDetailView({
           canRedact: abilities.canRedact,
           redactOptions: abilities.canRedact ? redactOptions(detail) : [],
         }}
+        infoProgress={abilities.canSeeNeeds ? infoProgress : null}
       />
       <ChapterNav chapters={chapters} initial={chapter ?? null} className="mt-4" />
       <div className="mt-6 space-y-10">
@@ -312,6 +327,8 @@ export function UseCaseDetailView({
             refs={needs.refs}
             today={result.today}
             canEdit={abilities.canEditNeeds}
+            referents={referents}
+            infoProgress={infoProgress}
           />
         ) : null}
         {showRealization ? (

@@ -9,6 +9,8 @@ import { dossierStateForUseCase, realizationOfUseCase } from "@/lib/db/queries/u
 import { listUseCaseEvents, USE_CASE_EVENTS_DEFAULT_LIMIT } from "@/lib/db/queries/use-case-events";
 import { getUseCaseDetail, viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { listWorkspaceNeeds, needUseCaseRefs } from "@/lib/db/queries/use-case-needs";
+import { loadUseCaseInfoProgress } from "@/lib/db/queries/use-case-info-progress";
+import { loadUseCaseReferentPanel } from "@/lib/db/queries/use-case-referents";
 import { needListsOfUseCase } from "@/lib/use-cases/needs";
 import { abilitiesForUseCase, projectForContributor } from "@/lib/use-cases/permissions";
 import type { PhaseInput } from "@/lib/use-cases/phase";
@@ -120,13 +122,30 @@ export default async function UseCaseDetailPage({
       ])
     : [null, [], null, null, null];
   const needLists = workspaceNeeds ? needListsOfUseCase(workspaceNeeds, result.useCase.id) : null;
-  const needRefs = needLists
-    ? await needUseCaseRefs(
-        workspaceId,
-        [...needLists.requirements, ...needLists.steps].flatMap((need) => need.useCaseIds),
-        viewer,
-      )
-    : {};
+  // «Cosa serve», «Chiedi al referente» e «Raccolta informazioni»: solo a chi vede le esigenze
+  // (`canSeeNeeds`); le letture stesse rispondono null a tutti gli altri.
+  const [needRefs, referents, infoProgress] = await Promise.all([
+    needLists
+      ? needUseCaseRefs(
+          workspaceId,
+          [...needLists.requirements, ...needLists.steps].flatMap((need) => need.useCaseIds),
+          viewer,
+        )
+      : {},
+    abilities.canSeeNeeds && needLists
+      ? loadUseCaseReferentPanel({
+          workspaceId,
+          useCaseId: result.useCase.id,
+          viewer,
+          session: { id: session.user.id, name: session.user.name ?? null, email: session.user.email, emailVerified: session.user.emailVerified === true },
+          role: access.role,
+          needs: needLists,
+        })
+      : null,
+    abilities.canSeeNeeds && needLists
+      ? loadUseCaseInfoProgress({ workspaceId, useCaseId: result.useCase.id, viewer, needs: needLists, canAsk: abilities.canEditNeeds })
+      : null,
+  ]);
 
   return (
     <PageContainer size="default">
@@ -142,6 +161,8 @@ export default async function UseCaseDetailPage({
         historyAllHref={`/dashboard/${workspaceId}/use-cases/${result.useCase.id}?storia=tutta#storia`}
         realization={realization}
         needs={needLists ? { lists: needLists, refs: needRefs } : null}
+        referents={referents}
+        infoProgress={infoProgress}
         teamName={reviewTeamName(access.workspace)}
       />
     </PageContainer>

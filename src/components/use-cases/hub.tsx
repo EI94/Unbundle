@@ -4,6 +4,7 @@ import type { Session } from "@/lib/auth";
 import { getUseCaseDetail, listHubItems, viewerFromSession, type HubList } from "@/lib/db/queries/use-case-hub";
 import { dossierColumnOf } from "@/lib/db/queries/use-case-dossiers";
 import { listWorkspaceNeeds } from "@/lib/db/queries/use-case-needs";
+import { listInfoProgress } from "@/lib/db/queries/use-case-info-progress";
 import type { DossierColumn } from "@/lib/db/queries/uc-nav";
 import { getPortfolioParticipation } from "@/lib/db/queries/portfolio-participation";
 import type { Participation } from "@/lib/portfolio/participation";
@@ -15,6 +16,7 @@ import { activityMappingReadiness, quickCreateOptions, type QuickCreateOptions }
 import { toDuplicateCandidates } from "@/lib/use-cases/decision-ui";
 import { answersOf, type InfoAnswer } from "@/lib/use-cases/answers";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
+import { INFO_PROGRESS_PARAM, type InfoProgressState, type InfoProgressView } from "@/lib/use-cases/info-progress";
 import { channelLabel } from "@/lib/use-cases/labels";
 import { buildNeedsBoard, panelNeeds, type NeedView } from "@/lib/use-cases/needs";
 import { abilitiesForUseCase, type UseCaseAbilities } from "@/lib/use-cases/permissions";
@@ -40,6 +42,7 @@ import { roleLabel } from "@/lib/workspace-roles";
 import type { WorkspaceAccess } from "@/lib/workspace-access";
 import { DecideView } from "./decide-view";
 import { FilterBar, type FilterOption } from "./filter-bar";
+import { infoFilterOptions } from "./info-chip";
 import { NeedsBoardView } from "./needs-board";
 import { EmptyState, HUB_TEXT, HubHeader, HubNotice, receiptText } from "./hub-header";
 import { PriorityView, ShowToggle } from "./priority-view";
@@ -112,6 +115,12 @@ export interface UseCaseHubData {
    */
   participation: Participation | null;
   /**
+   * «Raccolta informazioni» di ogni scheda con requisiti del cliente (chiave: id in minuscolo), solo
+   * per i revisori che vedono «Cosa serve» (`listInfoProgress`); null ai contributori. Il chip nelle
+   * righe e il filtro «Informazioni».
+   */
+  info: Record<string, InfoProgressView> | null;
+  /**
    * L'avviso dei sub-responsabili non ancora autorizzati dal cliente: solo per Lateral Space,
    * sulla Roadmap (con l'area accesa `/casi-duso` porta qui), con la sezione Casi d'uso accesa.
    */
@@ -143,11 +152,13 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
       : [];
   // «Cosa serve»: le esigenze del workspace per Priorità e per il pannello, solo ai revisori.
   const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "priorita" || Boolean(params.apri));
-  const [dossierColumn, participation, subprocessorsPending, needs] = await Promise.all([
+  const [dossierColumn, participation, subprocessorsPending, needs, info] = await Promise.all([
     inProgress.length ? dossierColumnOf(workspaceId, { userId: session.user.id, role: access.role }, inProgress) : null,
     view === "da-decidere" ? getPortfolioParticipation(workspaceId) : null,
     reviewer && view === "roadmap" ? subprocessorsPendingForLs(workspaceId, session.user.id) : false,
     readsNeeds ? listWorkspaceNeeds(workspaceId, viewer) : null,
+    // «Raccolta informazioni»: solo a chi vede «Cosa serve»; la lettura stessa risponde null agli altri.
+    abilities.canSeeNeeds ? listInfoProgress(workspaceId, viewer, { now }) : null,
   ]);
   return {
     workspaceId,
@@ -167,6 +178,7 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     dossierColumn,
     needs,
     participation,
+    info,
     subprocessorsPending,
   };
 }
@@ -183,6 +195,7 @@ function queryOf(params: HubParams, view: HubView): HubQuery {
   if (params.lab) query.lab = params.lab;
   if (params.trimestre) query.trimestre = params.trimestre;
   if (params.stima) query.stima = params.stima;
+  if (params.info) query.info = INFO_PROGRESS_PARAM[params.info];
   if (params.apri) query.apri = params.apri;
   if (params.nuovo) query.nuovo = "1";
   if (params.thanks) query.thanks = "1";
@@ -201,7 +214,8 @@ const byLabel = (a: FilterOption, b: FilterOption) => a.label.localeCompare(b.la
 function moreFilterOptions(
   items: readonly HubItem[],
   params: HubParams,
-): { channels: FilterOption[]; areas: FilterOption[]; labs: FilterOption[]; quarters: FilterOption[] } {
+  info: UseCaseHubData["info"],
+): { channels: FilterOption[]; areas: FilterOption[]; labs: FilterOption[]; quarters: FilterOption[]; infos: FilterOption[] } {
   const channels = new Map<string, string>();
   const areas = new Map<string, string>();
   const labs = new Map<string, string>();
@@ -231,6 +245,8 @@ function moreFilterOptions(
       ...[...quarters].sort(compareQuarters).map((value) => ({ value, label: quarterLabel(value) })),
       ...(later ? [{ value: LATER_QUARTER_PARAM, label: WHEN_LATER_LABEL }] : []),
     ],
+    // «Informazioni»: gli stati delle schede che ci sono, nell'ordine fisso; mai per persona.
+    infos: infoFilterOptions(info, params.info),
   };
 }
 
@@ -272,13 +288,15 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   const query = queryOf(params, view);
   const navQuery = withoutTransient(query);
   const ignoreKind = view === "priorita";
-  const filtered = applyHubFilters(items, params, { ignoreKind });
+  // «Raccolta informazioni» della scheda, per il filtro e i chip: solo per i revisori.
+  const infoOf = (id: string): InfoProgressState | null => data.info?.[id.toLowerCase()]?.state ?? null;
+  const filtered = applyHubFilters(items, params, { ignoreKind, infoOf });
   const filtersActive = hasActiveFilters(params, { ignoreKind });
   const clearHref = hubHref(basePath, { vista: view, ...(ignoreKind && params.tipo ? { tipo: params.tipo } : {}), ...(params.mostra ? { mostra: params.mostra } : {}) });
   const newHref = abilities.newUseCase === "pannello_rapido" ? hubHref(basePath, navQuery, { nuovo: "1" }) : fullFormPath(workspaceId);
   // «da stimare» (`stima`) è il chip della Priorità, senza un controllo suo: non passa alle altre viste.
   const viewHref = (key: HubView) => hubHref(basePath, navQuery, { vista: key, tipo: null, mostra: null, stima: null });
-  const decideItems = params.stima ? applyHubFilters(items, { ...params, stima: null }, { ignoreKind }) : filtered;
+  const decideItems = params.stima ? applyHubFilters(items, { ...params, stima: null }, { ignoreKind, infoOf }) : filtered;
   // «Benefici» nel selettore solo se una scheda della vista ha «Benefici e costi»; senza, la matrice.
   const benefitsShown = reviewer && view === "priorita" && hasPriorityValueModels(filtered as HubItem[]);
   const mostra = params.mostra === "benefici" && !benefitsShown ? "matrice" : params.mostra;
@@ -340,7 +358,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 query={query}
                 mode={reviewer ? "revisore" : "contributore"}
                 kind={view === "priorita" ? "priorita" : "filtro"}
-                more={reviewer ? moreFilterOptions(reviewerItems, params) : undefined}
+                more={reviewer ? moreFilterOptions(reviewerItems, params, data.info) : undefined}
                 active={filtersActive}
                 clearHref={clearHref}
                 trailing={
@@ -396,6 +414,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
             valueParams={valueParams}
             palette={palette}
             planItems={reviewer ? reviewerItems : null}
+            info={data.info}
             followsCurrentMonth={followsCurrentMonth}
             settingsHref={valueSettingsHref}
             basePath={basePath}
@@ -412,6 +431,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
             query={query}
             bands={bands}
             priorityHref={abilities.canSeePriority ? viewHref("priorita") : null}
+            info={data.info}
             filtersActive={filtersActive}
             clearHref={clearHref}
           />

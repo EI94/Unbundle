@@ -6,6 +6,7 @@ import { formatDate, formatDayInYear } from "@/lib/use-cases/format";
 import { WHAT_FIELD_LABEL, type WhatField } from "@/lib/use-cases/labels";
 import { NEED_HISTORY_TEXT, isNeedHistoryEvent, needHistoryText } from "@/lib/use-cases/needs-history";
 import { PHASE_LABEL } from "@/lib/use-cases/phase";
+import { REFERENT_HISTORY_PREFIX, historyActorText, isReferentHistoryEvent, referentHistoryText } from "@/lib/use-cases/referent/history";
 import type { Phase, UseCaseKind } from "@/lib/use-cases/types";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +54,8 @@ const OTHER_EVENT_FIELD: Readonly<Record<string, string>> = {
   possibile_doppione: "Possibile doppione di",
   intake: "Dati raccolti da Claude",
   cosa_serve: NEED_HISTORY_TEXT.label,
+  // «Chiedi al referente» (drizzle/0024): righe senza testi e senza il nome del referente.
+  richiesta_referente: REFERENT_HISTORY_PREFIX,
 };
 
 /** Il canale di una riga, dopo l'azione: «pagina», «MCP del team». */
@@ -147,6 +150,8 @@ export function eventActionText(
     case "creato":
       return HISTORY_TEXT.created;
     case "modificato":
+      // «Chiedi al referente»: che cosa è successo alla richiesta, mai chi è il referente né le risposte.
+      if (isReferentHistoryEvent(event)) return referentHistoryText(event);
       // «Cosa serve»: il cambio e il tipo dell'esigenza, con lo stato se cambia; mai i suoi testi.
       if (isNeedHistoryEvent(event)) return needHistoryText(event);
       // La risposta a «Serve info» (D17): di chi ha proposto, senza testo e senza persona.
@@ -174,18 +179,32 @@ export function eventActionText(
 }
 
 /**
+ * Le righe automatiche di «Cosa serve» e di «Chiedi al referente» (Parte 2): chi ha agito è
+ * «Referente» (dalla pagina pubblica) o «Unbundle» (promemoria, scadenze, invio delle email), senza
+ * canale. null per le altre righe.
+ */
+function automaticActor(event: Pick<UseCaseEventRow, "fields" | "actorKind" | "channel">): string | null {
+  if (!event.fields.includes("cosa_serve") && !isReferentHistoryEvent(event)) return null;
+  return historyActorText(event);
+}
+
+/**
  * Una riga della Storia in parti (§6.6): data, persona del team (solo per le persone, mai per la
  * creazione), azione con i nomi dei campi, canale. «14 ott · Nome Cognome · Decisione: Approvato ·
- * pagina», «12 ott · Creato · da Slack». Mai un testo della scheda, né prima né dopo.
+ * pagina», «12 ott · Creato · da Slack». Mai un testo della scheda, né prima né dopo. Le righe di
+ * «Chiedi al referente» non hanno canale: non nominano mai il referente («27 ott · Unbundle ·
+ * Chiedi al referente: promemoria automatico inviato»).
  */
 export function historyRowParts(event: UseCaseEventRow, opts: { kind: UseCaseKind; today: string }): string[] {
   const parts: string[] = [];
   const day = formatDayInYear(event.at, opts.today);
   if (day) parts.push(day);
-  if (event.action !== "creato" && event.actorKind === "persona" && event.actorName) parts.push(event.actorName);
+  const automatic = event.action === "creato" ? null : automaticActor(event);
+  if (automatic) parts.push(automatic);
+  else if (event.action !== "creato" && event.actorKind === "persona" && event.actorName) parts.push(event.actorName);
   parts.push(eventActionText(event, opts.kind));
   if (event.action === "creato") parts.push(CREATED_FROM[event.channel] ?? CREATED_FROM.altro);
-  else parts.push(CHANNEL_TEXT[event.channel] ?? CHANNEL_TEXT.altro);
+  else if (!automatic && !isReferentHistoryEvent(event)) parts.push(CHANNEL_TEXT[event.channel] ?? CHANNEL_TEXT.altro);
   return parts;
 }
 

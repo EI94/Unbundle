@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { INFO_PROGRESS_TEXT } from "@/lib/use-cases/info-progress";
 import { SEARCH_MAX, SEARCH_MIN, type HubParamKey } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { hubHref, withoutTransient, type HubQuery } from "./use-case-row";
@@ -57,8 +58,11 @@ export interface FilterBarProps {
    * costruire», §4.4), nello stesso menu, così i controlli restano su due righe.
    */
   kind: "filtro" | "priorita";
-  /** Le voci di «Altri filtri», dagli use case del workspace e con il valore scelto (solo revisori). */
-  more?: { channels: FilterOption[]; areas: FilterOption[]; labs: FilterOption[]; quarters: FilterOption[] };
+  /**
+   * Le voci di «Altri filtri», dagli use case del workspace e con il valore scelto (solo revisori).
+   * `infos`: «Informazioni» (Raccolta informazioni), solo gli stati che hanno una scheda; vuoto, il campo non c'è.
+   */
+  more?: { channels: FilterOption[]; areas: FilterOption[]; labs: FilterOption[]; quarters: FilterOption[]; infos?: FilterOption[] };
   /** Filtri attivi: compare «Togli i filtri». */
   active: boolean;
   clearHref: string;
@@ -362,6 +366,8 @@ function MoreFilters({
     { key: "area", label: FILTER_TEXT.area, any: FILTER_TEXT.anyFeminine, list: options.areas },
     { key: "lab", label: FILTER_TEXT.lab, any: FILTER_TEXT.anyMasculine, list: options.labs },
     { key: "trimestre", label: FILTER_TEXT.quarter, any: FILTER_TEXT.anyMasculine, list: options.quarters },
+    // «Informazioni»: lo stato della raccolta di ogni scheda, mai una persona; senza stati il campo non c'è.
+    ...(options.infos?.length ? [{ key: "info" as const, label: INFO_PROGRESS_TEXT.filterLabel, any: INFO_PROGRESS_TEXT.filterAny, list: options.infos }] : []),
   ];
   const count = fields.filter((field) => query[field.key]).length;
   // Quando l'origine sta qui dentro (telefono, pagina stretta) conta anche lei: le classi del numero

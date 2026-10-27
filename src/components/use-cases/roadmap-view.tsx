@@ -3,6 +3,7 @@ import { DossierCard, DossierReadOnlyNotice } from "@/components/uc/shell/case-c
 import type { DossierColumn } from "@/lib/db/queries/uc-nav";
 import type { DossierCardView } from "@/lib/uc/views/realization";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
+import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { buildRoadmapValue, groupPalette, roadmapPlan, type GroupPalette } from "@/lib/use-cases/value-charts";
 import type { ValueParams } from "@/lib/use-cases/value-model";
 import { ROADMAP_DONE_PREVIEW, buildRoadmap, isContributorItem, roadmapTotals, type AnyHubItem, type HubItem } from "@/lib/use-cases/views";
@@ -58,6 +59,8 @@ export interface RoadmapViewProps {
   query: HubQuery;
   filtersActive: boolean;
   clearHref: string;
+  /** «Raccolta informazioni» per scheda (id in minuscolo), solo per i revisori: il chip delle card. */
+  info?: Readonly<Record<string, InfoProgressView>> | null;
 }
 
 /**
@@ -91,7 +94,9 @@ export function RoadmapView({
   query,
   filtersActive,
   clearHref,
+  info = null,
 }: RoadmapViewProps) {
+  const infoOf = (id: string) => info?.[id.toLowerCase()] ?? null;
   const roadmap = buildRoadmap(items, today);
   const empty = !roadmap.upcoming.length && !roadmap.inProgress.length && !roadmap.done.length;
   if (empty) {
@@ -134,7 +139,7 @@ export function RoadmapView({
               </h3>
               <ul className="space-y-2">
                 {group.items.map((item) => (
-                  <RoadmapCard key={item.id} item={item} column="prossimi" expired={group.expired} href={href(item.id)} bands={bands} />
+                  <RoadmapCard key={item.id} item={item} column="prossimi" expired={group.expired} href={href(item.id)} info={infoOf(item.id)} bands={bands} />
                 ))}
               </ul>
             </section>
@@ -150,7 +155,7 @@ export function RoadmapView({
                   <DossierCard card={card} className="gap-2 px-3 py-2.5" />
                 </li>
               ) : (
-                <RoadmapCard key={item.id} item={item} column="in_realizzazione" dossierDown={dossierDown} href={href(item.id)} bands={bands} />
+                <RoadmapCard key={item.id} item={item} column="in_realizzazione" dossierDown={dossierDown} href={href(item.id)} info={infoOf(item.id)} bands={bands} />
               );
             })}
           </ul>
@@ -158,7 +163,7 @@ export function RoadmapView({
         <Column id="roadmap-fatti" title={ROADMAP_TEXT.done} count={roadmap.done.length}>
           <ul className="space-y-2">
             {doneFirst.map((item) => (
-              <RoadmapCard key={item.id} item={item} column="fatti" href={href(item.id)} bands={bands} />
+              <RoadmapCard key={item.id} item={item} column="fatti" href={href(item.id)} info={infoOf(item.id)} bands={bands} />
             ))}
           </ul>
           {doneRest.length ? (
@@ -168,7 +173,7 @@ export function RoadmapView({
               </summary>
               <ul className="space-y-2">
                 {doneRest.map((item) => (
-                  <RoadmapCard key={item.id} item={item} column="fatti" href={href(item.id)} bands={bands} />
+                  <RoadmapCard key={item.id} item={item} column="fatti" href={href(item.id)} info={infoOf(item.id)} bands={bands} />
                 ))}
               </ul>
             </details>

@@ -6,8 +6,10 @@ import { PHASE_LABEL, VALUED_PILL } from "@/lib/use-cases/phase";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
 import { HUB_PARAM_KEYS, isContributorItem, waitingDays, waitingLabel, type AnyHubItem, type HubItem, type HubParamKey } from "@/lib/use-cases/views";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
+import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { cn } from "@/lib/utils";
 import { CostFigure } from "./cost-figure";
+import { InfoChip } from "./info-chip";
 import { KindLabel } from "./kind-label";
 import { OriginChip } from "./origin-chip";
 import { PhasePill } from "./phase-pill";
@@ -118,6 +120,11 @@ export interface UseCaseRowProps {
   today: string;
   /** Le fasce del costo del workspace (D15). */
   bands?: readonly CostBandInfo[];
+  /**
+   * «Raccolta informazioni» della scheda (solo revisori): il chip corto, solo per gli stati che
+   * chiedono a qualcuno di fare qualcosa («Info: da verificare», «Info: senza risposta»).
+   */
+  info?: InfoProgressView | null;
 }
 
 /** Testi della riga (§4.6, §14.3; D17). */
@@ -140,9 +147,9 @@ export function othersCardNote(teamName: string): string {
 }
 
 /** Una riga della lista (§4.6). Il link è tutta la riga: dentro non ci sono altri controlli. */
-export function UseCaseRow({ item, href, variant = "plain", today, bands }: UseCaseRowProps) {
+export function UseCaseRow({ item, href, variant = "plain", today, bands, info = null }: UseCaseRowProps) {
   if (isContributorItem(item)) return <ContributorRow item={item} href={href} />;
-  return <ReviewerRow item={item} href={href} variant={variant} today={today} bands={bands} />;
+  return <ReviewerRow item={item} href={href} variant={variant} today={today} bands={bands} info={info} />;
 }
 
 const ROW_LINK =
@@ -179,7 +186,21 @@ export function RowFigures({ item, bands }: { item: Pick<HubItem, "value" | "cos
   );
 }
 
-function ReviewerRow({ item, href, variant, today, bands }: { item: HubItem; href: string; variant: "decide" | "plain"; today: string; bands?: readonly CostBandInfo[] }) {
+function ReviewerRow({
+  item,
+  href,
+  variant,
+  today,
+  bands,
+  info,
+}: {
+  item: HubItem;
+  href: string;
+  variant: "decide" | "plain";
+  today: string;
+  bands?: readonly CostBandInfo[];
+  info: InfoProgressView | null;
+}) {
   const days = variant === "decide" ? waitingLabel(waitingDays(item.waitingSince, today)) : null;
   return (
     <li data-slot="use-case-row" data-id={item.id}>
@@ -202,6 +223,7 @@ function ReviewerRow({ item, href, variant, today, bands }: { item: HubItem; hre
               {reviewerSubStateText(item)}
             </span>
           ) : null}
+          <InfoChip view={info} variant="short" className="shrink-0 @min-[58rem]/hub:order-last" />
           <RowFigures item={item} bands={bands} />
           {days ? <span className="hidden shrink-0 text-xs whitespace-nowrap text-muted-foreground @min-[58rem]/hub:order-last @min-[58rem]/hub:inline @min-[58rem]/hub:w-20 @min-[58rem]/hub:text-right">{days}</span> : null}
         </span>

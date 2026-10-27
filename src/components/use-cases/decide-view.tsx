@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { askedTitle } from "@/lib/use-cases/answers";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
+import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
 import { buildDecideList, isContributorItem, type AnyHubItem } from "@/lib/use-cases/views";
 import { EmptyState, NoResults } from "./hub-header";
@@ -31,6 +32,8 @@ export interface DecideViewProps {
   /** Con filtri attivi il vuoto è «Nessuno use case con questi filtri.» (§4.9). */
   filtersActive: boolean;
   clearHref: string;
+  /** «Raccolta informazioni» per scheda (id in minuscolo), solo per i revisori. */
+  info?: Readonly<Record<string, InfoProgressView>> | null;
 }
 
 /**
@@ -42,7 +45,8 @@ export interface DecideViewProps {
  * nell'ordine del server, le proprie proposte con la fase, e sopra la lista un avviso per ogni
  * propria proposta in «Serve info», con «Rispondi» (D17). L'ordine non cambia (art. 15.4).
  */
-export function DecideView({ items, teamName, today, basePath, query, bands, priorityHref, filtersActive, clearHref }: DecideViewProps) {
+export function DecideView({ items, teamName, today, basePath, query, bands, priorityHref, filtersActive, clearHref, info = null }: DecideViewProps) {
+  const infoOf = (id: string) => info?.[id.toLowerCase()] ?? null;
   const list = buildDecideList(items);
   if (!list.waiting.length && !list.needInfo.length) {
     if (filtersActive) return <NoResults clearHref={clearHref} />;
@@ -81,7 +85,7 @@ export function DecideView({ items, teamName, today, basePath, query, bands, pri
       {list.waiting.length ? (
         <ul className="divide-y divide-border/70">
           {list.waiting.map((item) => (
-            <UseCaseRow key={item.id} item={item} href={panelHref(basePath, query, item.id)} variant="decide" today={today} bands={bands} />
+            <UseCaseRow key={item.id} item={item} href={panelHref(basePath, query, item.id)} variant="decide" today={today} bands={bands} info={infoOf(item.id)} />
           ))}
         </ul>
       ) : null}
@@ -93,7 +97,7 @@ export function DecideView({ items, teamName, today, basePath, query, bands, pri
           </h2>
           <ul className="divide-y divide-border/70">
             {list.needInfo.map((item) => (
-              <UseCaseRow key={item.id} item={item} href={panelHref(basePath, query, item.id)} variant="decide" today={today} bands={bands} />
+              <UseCaseRow key={item.id} item={item} href={panelHref(basePath, query, item.id)} variant="decide" today={today} bands={bands} info={infoOf(item.id)} />
             ))}
           </ul>
         </section>

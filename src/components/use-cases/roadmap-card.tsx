@@ -1,9 +1,11 @@
 import Link from "next/link";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
+import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { formatMonthYear, perYearText } from "@/lib/use-cases/format";
 import { EXPIRED_TAG, isContributorItem, type AnyHubItem, type HubItem } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { CostFigure } from "./cost-figure";
+import { InfoChip } from "./info-chip";
 import { KindLabel } from "./kind-label";
 import { OriginChip } from "./origin-chip";
 import { PhasePill } from "./phase-pill";
@@ -23,6 +25,8 @@ export interface RoadmapCardProps {
   /** Apre il pannello laterale. */
   href: string;
   bands?: readonly CostBandInfo[];
+  /** «Raccolta informazioni» (solo revisori): il chip corto sotto il titolo, solo «da verificare» e «senza risposta». */
+  info?: InfoProgressView | null;
 }
 
 /**
@@ -39,7 +43,7 @@ export interface RoadmapCardProps {
  * I contributori vedono titolo, fase e «Quando», nient'altro (nemmeno «Scaduto»); delle
  * proprie proposte anche il codice (D4, D13).
  */
-export function RoadmapCard({ item, column, expired = false, dossierDown = false, href, bands }: RoadmapCardProps) {
+export function RoadmapCard({ item, column, expired = false, dossierDown = false, href, bands, info = null }: RoadmapCardProps) {
   return (
     <li data-slot="roadmap-card" data-id={item.id}>
       <Link
@@ -51,6 +55,7 @@ export function RoadmapCard({ item, column, expired = false, dossierDown = false
           <CodeLabel code={visibleCode(item)} />
           <span className="line-clamp-2 min-w-0 text-sm font-semibold text-foreground">{item.title}</span>
         </span>
+        {isContributorItem(item) ? null : <InfoChip view={info} variant="short" className="flex" />}
         {isContributorItem(item) ? (
           <span className="flex flex-wrap items-center gap-2">
             <PhasePill label={shownPhaseLabel(item, dossierDown)} phase={item.phase} subState={item.subState} />

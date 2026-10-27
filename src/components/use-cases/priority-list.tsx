@@ -1,11 +1,13 @@
 import Link from "next/link";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
+import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { toDecisionItem } from "@/lib/use-cases/decision-ui";
 import { hasValueText, zoneText } from "@/lib/use-cases/format";
 import { NOT_ESTIMATED_LABEL } from "@/lib/use-cases/labels";
 import { isToEstimate, roadmapGroupKey, type HubItem } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { CostFigure } from "./cost-figure";
+import { InfoChip } from "./info-chip";
 import { OriginChip } from "./origin-chip";
 import { ExpiredTag } from "./roadmap-card";
 import { panelHref, type HubQuery } from "./use-case-row";
@@ -38,6 +40,11 @@ export interface PriorityListProps {
    * in un chip solo, come nella matrice, che porta qui.
    */
   toEstimateHref: string;
+  /**
+   * «Raccolta informazioni» per scheda (id in minuscolo), solo per i revisori: il chip corto accanto
+   * al titolo, solo «da verificare» e «senza risposta».
+   */
+  info?: Readonly<Record<string, InfoProgressView>> | null;
 }
 
 /** L'etichetta «Valore:» o «Costo:» dentro la cifra (il primo figlio) si nasconde quando ci sono le colonne. */
@@ -65,7 +72,7 @@ const COLUMNS =
  * nella Roadmap. Il titolo apre il pannello laterale. Con il riquadro sotto i 58rem ogni riga va
  * su due righe, senza scorrimento orizzontale.
  */
-export function PriorityList({ workspaceId, items, today, canDecide, bands, basePath, query, toEstimateHref }: PriorityListProps) {
+export function PriorityList({ workspaceId, items, today, canDecide, bands, basePath, query, toEstimateHref, info = null }: PriorityListProps) {
   // Come la matrice: le righe senza Valore o senza Costo in un chip «N da stimare», tranne nella
   // lista che il chip stesso apre (`stima=mancante`), dove sono tutte da stimare.
   const collapse = query.stima !== "mancante";
@@ -93,14 +100,18 @@ export function PriorityList({ workspaceId, items, today, canDecide, bands, base
               <span className="flex min-w-0 items-baseline gap-3 @min-[58rem]/hub:contents">
                 {/* Sempre una cella, anche senza codice: le colonne restano allineate. */}
                 <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums empty:hidden @min-[58rem]/hub:empty:block">{item.code ?? ""}</span>
-                <Link
-                  href={panelHref(basePath, query, item.id)}
-                  scroll={false}
-                  title={item.title}
-                  className="min-w-0 truncate text-sm font-semibold text-foreground outline-none hover:underline focus-visible:underline"
-                >
-                  {item.title}
-                </Link>
+                {/* Il titolo e, per i revisori, il chip di «Raccolta informazioni»: una sola cella della griglia. */}
+                <span className="flex min-w-0 items-center gap-2">
+                  <Link
+                    href={panelHref(basePath, query, item.id)}
+                    scroll={false}
+                    title={item.title}
+                    className="min-w-0 truncate text-sm font-semibold text-foreground outline-none hover:underline focus-visible:underline"
+                  >
+                    {item.title}
+                  </Link>
+                  <InfoChip view={info?.[item.id.toLowerCase()] ?? null} variant="short" className="shrink-0" />
+                </span>
               </span>
               <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @min-[58rem]/hub:contents">
                 <span className="min-w-0">

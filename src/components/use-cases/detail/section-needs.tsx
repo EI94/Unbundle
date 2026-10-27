@@ -2,7 +2,7 @@
 
 import { useId, useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Link2, Pencil, Plus } from "lucide-react";
+import { Link2, MessageSquarePlus, Paperclip, Pencil, Plus, Send } from "lucide-react";
 import { toast } from "sonner";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,9 @@ import {
   type NeedActionResult,
 } from "@/lib/actions/use-case-needs";
 import { ACTION_FAILED_MESSAGE } from "@/lib/use-cases/decision-ui";
+import type { InfoProgressView } from "@/lib/use-cases/info-progress";
+import type { NeedReferentView, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
+import { REFERENT_UI_TEXT } from "@/lib/use-cases/referent/labels";
 import {
   NEED_AVAILABILITY_LABEL,
   NEED_KIND_LABEL,
@@ -38,6 +41,12 @@ import {
 import { cn } from "@/lib/utils";
 import { Disclosure } from "../disclosure";
 import { DecisionChoiceGroup, DecisionDialog } from "../reopen-dialog";
+import { InfoSummary } from "./info-summary";
+import { ReferentDialogs, type ReferentDialog } from "./referent/dialogs";
+import { GateNotice } from "./referent/gate-notice";
+import { NeedReferentBlock } from "./referent/need-referent-block";
+import { PrepareButton } from "./referent/prepare-button";
+import { RequestsList } from "./referent/requests-list";
 import {
   NEED_FORM_CHOICES,
   NEED_FORM_TEXT as TEXT,
@@ -65,6 +74,13 @@ export interface SectionNeedsProps {
   today: string;
   /** `canEditNeeds`: tutti i revisori. */
   canEdit: boolean;
+  /**
+   * «Chiedi al referente» (`loadUseCaseReferentPanel`, solo revisori): referenti, richieste, risposte
+   * e file. null o non `available`: il capitolo è quello di prima.
+   */
+  referents?: UseCaseReferentPanel | null;
+  /** «Raccolta informazioni» della scheda (`loadUseCaseInfoProgress`, solo revisori): in cima al capitolo. */
+  infoProgress?: InfoProgressView | null;
   id?: string;
   className?: string;
 }
@@ -85,13 +101,32 @@ type Dialog =
  * delle altre del workspace. Ogni modifica porta la versione letta: se qualcuno l'ha appena
  * cambiata, il toast lo dice e la pagina si rilegge.
  */
-export function SectionNeeds({ workspaceId, useCaseId, requirements, steps, linkable, refs, today, canEdit, id = "cosa-serve", className }: SectionNeedsProps) {
+export function SectionNeeds({
+  workspaceId,
+  useCaseId,
+  requirements,
+  steps,
+  linkable,
+  refs,
+  today,
+  canEdit,
+  referents = null,
+  infoProgress = null,
+  id = "cosa-serve",
+  className,
+}: SectionNeedsProps) {
   const headingId = `${id}-titolo`;
+  const gatesId = `${id}-chiedi-motivi`;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [referentDialog, setReferentDialog] = useState<ReferentDialog | null>(null);
   const refMap = useMemo(() => new Map(Object.entries(refs)), [refs]);
   const empty = !requirements.length && !steps.length;
+  // «Chiedi al referente»: solo con la funzione accesa per il workspace e gli archivi pronti.
+  const feature = referents?.available ? referents : null;
+  const needTitles = useMemo(() => new Map([...requirements, ...steps].map((need) => [need.id.toLowerCase(), need.title])), [requirements, steps]);
+  const answerable = useMemo(() => new Set((feature?.answerableNeedIds ?? []).map((needId) => needId.toLowerCase())), [feature]);
 
   /** Manda una scrittura: toast, rilettura dopo una versione superata; chiude il dialogo se va bene. */
   function send(call: () => Promise<NeedActionResult>, onFieldErrors?: (errors: Record<string, string>) => void): Promise<boolean> {
@@ -125,14 +160,34 @@ export function SectionNeeds({ workspaceId, useCaseId, requirements, steps, link
   const doneSteps = steps.filter((need) => isNeedDone(need.type, need.status));
   const openSteps = steps.filter((need) => !isNeedDone(need.type, need.status));
   const list = (needs: readonly NeedView[]) => (
-    <NeedList needs={needs} useCaseId={useCaseId} refs={refMap} today={today} canEdit={canEdit} onEdit={(need) => setDialog({ mode: "modifica", need })} />
+    <NeedList
+      needs={needs}
+      useCaseId={useCaseId}
+      refs={refMap}
+      today={today}
+      canEdit={canEdit}
+      onEdit={(need) => setDialog({ mode: "modifica", need })}
+      referent={
+        feature
+          ? {
+              workspaceId,
+              views: feature.needs,
+              answerable: canEdit && feature.canAsk ? answerable : new Set<string>(),
+              canReviewFiles: feature.canReviewFiles,
+              onOpen: setReferentDialog,
+            }
+          : null
+      }
+    />
   );
+  const askBlocked = feature ? feature.gates.length > 0 : true;
 
   return (
     <section id={id} aria-labelledby={headingId} data-slot="section-needs" className={cn("scroll-mt-28 space-y-4", className)}>
       <h2 id={headingId} className="text-base font-semibold">
         {TEXT.title}
       </h2>
+      <InfoSummary view={infoProgress} />
       {empty ? <p className="text-sm text-muted-foreground">{TEXT.empty}</p> : null}
       {requirements.length ? (
         <div data-slot="needs-requirements" className="space-y-2">
@@ -160,8 +215,30 @@ export function SectionNeeds({ workspaceId, useCaseId, requirements, steps, link
               {TEXT.link}
             </Button>
           ) : null}
+          {feature?.canAsk ? (
+            <>
+              <PrepareButton workspaceId={workspaceId} useCaseId={useCaseId} preparable={feature.preparable} />
+              {/*
+                L'azione principale del capitolo, ma non della pagina: un solo pulsante pieno per pagina
+                (la decisione). «secondary» la distingue da «Aggiungi» e «Prepara le domande».
+              */}
+              <Button
+                type="button"
+                variant="secondary"
+                className="min-h-11 sm:min-h-8"
+                disabled={askBlocked}
+                aria-describedby={askBlocked ? gatesId : undefined}
+                onClick={() => setReferentDialog({ kind: "ask" })}
+              >
+                <Send aria-hidden />
+                {REFERENT_UI_TEXT.ask}
+              </Button>
+            </>
+          ) : null}
         </div>
       ) : null}
+      {canEdit && feature?.canAsk ? <GateNotice id={gatesId} gates={feature.gates} /> : null}
+      {feature ? <RequestsList workspaceId={workspaceId} useCaseId={useCaseId} requests={feature.requests} canAsk={canEdit && feature.canAsk} onOpen={setReferentDialog} /> : null}
 
       {canEdit && (dialog?.mode === "aggiungi" || dialog?.mode === "modifica") ? (
         <NeedFormDialog
@@ -195,6 +272,9 @@ export function SectionNeeds({ workspaceId, useCaseId, requirements, steps, link
           }
         />
       ) : null}
+      {canEdit && feature ? (
+        <ReferentDialogs dialog={referentDialog} workspaceId={workspaceId} useCaseId={useCaseId} panel={feature} needTitles={needTitles} onClose={() => setReferentDialog(null)} />
+      ) : null}
       {canEdit && dialog?.mode === "collega" ? (
         <LinkNeedDialog
           needs={linkable}
@@ -207,6 +287,16 @@ export function SectionNeeds({ workspaceId, useCaseId, requirements, steps, link
   );
 }
 
+/** «Chiedi al referente» nelle righe: la riga della richiesta, risposte e file, «Aggiungi una risposta» e «Allega un file». */
+interface NeedListReferent {
+  workspaceId: string;
+  views: Readonly<Record<string, NeedReferentView>>;
+  /** Le esigenze che accettano una risposta o un file del team (id in minuscolo); vuoto per chi non modifica. */
+  answerable: ReadonlySet<string>;
+  canReviewFiles: boolean;
+  onOpen: (dialog: ReferentDialog) => void;
+}
+
 function NeedList({
   needs,
   useCaseId,
@@ -214,6 +304,7 @@ function NeedList({
   today,
   canEdit,
   onEdit,
+  referent = null,
 }: {
   needs: readonly NeedView[];
   useCaseId: string;
@@ -221,6 +312,7 @@ function NeedList({
   today: string;
   canEdit: boolean;
   onEdit: (need: NeedView) => void;
+  referent?: NeedListReferent | null;
 }) {
   const self = useCaseId.toLowerCase();
   return (
@@ -243,11 +335,49 @@ function NeedList({
                   </span>
                 ) : null}
               </p>
+              {referent ? (
+                <NeedReferentBlock
+                  workspaceId={referent.workspaceId}
+                  useCaseId={useCaseId}
+                  view={referent.views[need.id.toLowerCase()]}
+                  canEdit={canEdit}
+                  canReviewFiles={referent.canReviewFiles}
+                  onOpen={referent.onOpen}
+                />
+              ) : null}
             </div>
             {canEdit ? (
-              <Button type="button" variant="ghost" size="icon" className="size-11 shrink-0 sm:size-8" aria-label={`${TEXT.edit}: ${row.title}`} onClick={() => onEdit(need)}>
-                <Pencil aria-hidden />
-              </Button>
+              <div className="flex shrink-0 flex-col items-center sm:flex-row">
+                {referent?.answerable.has(need.id.toLowerCase()) ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-11 shrink-0 sm:size-8"
+                      aria-label={`${REFERENT_UI_TEXT.rowAddAnswer}: ${row.title}`}
+                      title={REFERENT_UI_TEXT.rowAddAnswer}
+                      onClick={() => referent.onOpen({ kind: "answer", need: { id: need.id, title: row.title } })}
+                    >
+                      <MessageSquarePlus aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-11 shrink-0 sm:size-8"
+                      aria-label={`${REFERENT_UI_TEXT.rowAttachFile}: ${row.title}`}
+                      title={REFERENT_UI_TEXT.rowAttachFile}
+                      onClick={() => referent.onOpen({ kind: "file", need: { id: need.id, title: row.title } })}
+                    >
+                      <Paperclip aria-hidden />
+                    </Button>
+                  </>
+                ) : null}
+                <Button type="button" variant="ghost" size="icon" className="size-11 shrink-0 sm:size-8" aria-label={`${TEXT.edit}: ${row.title}`} onClick={() => onEdit(need)}>
+                  <Pencil aria-hidden />
+                </Button>
+              </div>
             ) : null}
           </li>
         );

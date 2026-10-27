@@ -7,10 +7,12 @@ import { toast } from "sonner";
 import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
 import { decideUseCaseAction } from "@/lib/actions/use-case-decisions";
 import { DECISION_LABEL, type DecisionActionResult, type DecisionItem, type PageDecision } from "@/lib/use-cases/decision-ui";
+import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import type { Origin, Phase, PhaseTone, SubState, UseCaseKind } from "@/lib/use-cases/types";
 import { cn } from "@/lib/utils";
 import { ArchiveDialog } from "../archive-dialog";
 import { useDecisionRunner } from "../decision-buttons";
+import { InfoChip } from "../info-chip";
 import { KindLabel } from "../kind-label";
 import { OriginChip } from "../origin-chip";
 import { PhasePill } from "../phase-pill";
@@ -61,6 +63,11 @@ export interface DetailHeaderProps {
   titleEdit?: { item: Pick<DecisionItem, "id" | "version">; label: string; max: number } | null;
   /** Accanto alla pillola: «Proposto da te» (D13), per il contributore. */
   marker?: ReactNode;
+  /**
+   * «Raccolta informazioni» (SPEC §P2.10.3): solo ai revisori, subito dopo la pillola della fase. Non
+   * è una fase e non cambia mai la fase: la fase la decidono le persone.
+   */
+  infoProgress?: InfoProgressView | null;
   className?: string;
 }
 
@@ -71,7 +78,7 @@ export interface DetailHeaderProps {
  * colleghi» e «Archivia» (se ammesso) per i revisori; «Oscura testo» per Lateral Space e chi
  * gestisce il workspace. Al contributore titolo e fase, e il codice solo delle sue proposte.
  */
-export function DetailHeader({ workspaceId, card, reviewer, titleEdit, marker, className }: DetailHeaderProps) {
+export function DetailHeader({ workspaceId, card, reviewer, titleEdit, marker, infoProgress = null, className }: DetailHeaderProps) {
   const [dialog, setDialog] = useState<"archivia" | "oscura" | null>(null);
   const { run, pending } = useDecisionRunner();
   const hideItem = useHideFromSearchItem({
@@ -135,6 +142,7 @@ export function DetailHeader({ workspaceId, card, reviewer, titleEdit, marker, c
         {card.origin ? <OriginChip origin={card.origin} /> : null}
         {card.kind ? <KindLabel kind={card.kind} /> : null}
         <PhasePill label={card.phaseLabel} tone={card.tone} phase={card.phase} subState={card.subState} />
+        <InfoChip view={infoProgress} variant="long" />
       </div>
       {reviewer && dialog === "archivia" ? (
         <ArchiveDialog
