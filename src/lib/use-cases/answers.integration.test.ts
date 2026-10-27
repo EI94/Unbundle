@@ -91,6 +91,15 @@ function revalidated(): string[] {
 
 const QUESTION = "Quante richieste arrivano a settimana?";
 const ANSWER = "Circa 120 a settimana, quasi tutte via email.\nIl lunedì il doppio.";
+/**
+ * Pezzi del testo della risposta che non compaiono mai per caso in un uuid o in una data: le prove
+ * «il testo non c'è» cercano questi, non «120» (che un id casuale o un istante possono contenere).
+ */
+const ANSWER_PARTS = ANSWER.split("\n").map((line) => line.trim());
+const carriesAnswer = (value: unknown) => {
+  const json = JSON.stringify(value) ?? "";
+  return ANSWER_PARTS.some((part) => json.includes(part)) || json.includes("Circa 120");
+};
 let codeSeq = 500;
 
 /** Una proposta in «Serve info» (o in un altro stato), scritta senza passare dal servizio. */
@@ -246,13 +255,13 @@ test("chi ha proposto risponde in «Serve info»: risposta in intake, in_review,
   );
   assert.equal(event.phase_before, "da_valutare.serve_info");
   assert.equal(event.phase_after, "da_valutare.nuova");
-  assert.ok(!JSON.stringify(event).includes("120"), "la Storia non ha il testo");
+  assert.ok(!carriesAnswer(event), "la Storia non ha il testo");
 
   const [signal] = await signalsOf(card.id);
   assert.equal(signal.signal_type, "new_portfolio_item");
   assert.equal(signal.related_entity_type, "use_case");
   assert.ok(String(signal.title).startsWith(`Risposta ricevuta: ${card.code}`));
-  assert.ok(!JSON.stringify(signal).includes("120"), "il segnale non ha il testo della risposta");
+  assert.ok(!carriesAnswer(signal), "il segnale non ha il testo della risposta");
   assert.ok(!JSON.stringify(signal).includes(emails.contributor), "né chi ha risposto");
   // La campanella: i revisori lo vedono, i contributori no (D4).
   const forReviewer = await signals.getSignalsByWorkspace(ids.ws, 50, "function_lead");
@@ -276,7 +285,10 @@ test("i revisori leggono la risposta nella scheda; chi ha proposto rilegge solo 
   // proiezione (lista, REST, MCP) resta senza risposte.
   assert.equal(own.answer?.text, ANSWER, "la sua risposta, fuori dalla proiezione");
   assert.deepEqual(Object.keys(own.answer!).sort(), ["at", "text"]);
-  assert.ok(!JSON.stringify(own.useCase).includes("120"), "la proiezione non porta le risposte");
+  // La proiezione non porta le risposte: il campo che le tiene (`intake.risposte`) non c'è, e il testo nemmeno.
+  const projectedIntake = (own.useCase as { intake?: { risposte?: unknown } | null }).intake;
+  assert.equal(projectedIntake?.risposte, undefined, "la proiezione non porta le risposte");
+  assert.ok(!carriesAnswer(own.useCase), "la proiezione non porta il testo della risposta");
   const list = await hub.listHubItems(ids.ws, viewer("builder", "function_lead"));
   const item = list?.items.find((i) => i.id === card.id);
   assert.equal(item?.subState, "nuova", "torna in «Da decidere», non più «In attesa di risposta»");
