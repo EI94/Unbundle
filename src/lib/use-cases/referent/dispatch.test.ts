@@ -134,6 +134,32 @@ test("piano: promemoria — voci tolte una per una, una persona al giorno, reply
   assert.deepEqual(plan(e, facts({ requests: [request({ item: { kind: "primo", alreadySent: false }, lastEmailAt: romeLocalToUtc("2026-11-05", 9) })] })), { action: "cancel", reason: "nessuna_voce" });
 });
 
+test("piano: dopo «Correggi l'email» il promemoria parte anche il giorno dell'email al vecchio indirizzo", () => {
+  const e = email({ template: "promemoria", requestId: null, dedupeKey: "pm:x:2026-11-05:v3" });
+  const today = romeLocalToUtc("2026-11-05", 9);
+  const changed = request({ item: { kind: "manuale", alreadySent: false }, lastEmailAt: today, addressChanged: true });
+  const p = plan(e, facts({ contactRemindedToday: true, requests: [changed] }));
+  assert.equal(p.action, "send");
+  if (p.action === "send") assert.deepEqual(p.links, [{ requestId: R1, issuedFor: "promemoria" }]);
+  // Senza il cambio d'indirizzo: «un'email al giorno».
+  assert.deepEqual(plan(e, facts({ contactRemindedToday: true, requests: [{ ...changed, addressChanged: false }] })), { action: "hold", reason: "gia_scritto_oggi" });
+  assert.deepEqual(plan(e, facts({ requests: [{ ...changed, addressChanged: false }] })), { action: "cancel", reason: "nessuna_voce" });
+});
+
+test("piano: mai un'email a chi ha chiesto (referente = richiedente), né la richiesta né i promemoria", () => {
+  assert.deepEqual(plan(email(), facts({ requests: [request({ selfRequest: true })] })), { action: "cancel", reason: "referente_sei_tu" });
+  const e = email({ template: "promemoria", requestId: null, dedupeKey: "pro:c1:2026-11-05" });
+  const self = request({ id: R1, item: { kind: "primo", alreadySent: false }, selfRequest: true });
+  const other = request({ id: R2, item: { kind: "primo", alreadySent: false }, requesterUserId: USER_B });
+  const p = plan(e, facts({ requests: [self, other] }));
+  assert.equal(p.action, "send");
+  if (p.action === "send") {
+    assert.deepEqual(p.links.map((l) => l.requestId), [R2]);
+    assert.deepEqual(p.drop, [{ requestId: R1, reason: "referente_sei_tu" }]);
+  }
+  assert.deepEqual(plan(e, facts({ requests: [self] })), { action: "cancel", reason: "nessuna_voce" });
+});
+
 // ── Motore ────────────────────────────────────────────────────────────
 
 interface Log {

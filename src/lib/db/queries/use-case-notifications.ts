@@ -18,6 +18,7 @@ import {
   type RequesterAlertSummary,
 } from "@/lib/use-cases/referent/alerts";
 import { inRomeSendWindow } from "@/lib/uc/calendar";
+import { openItemsCountSql } from "@/lib/use-cases/referent/sql";
 import { PORTFOLIO_REVIEWER_ROLES } from "@/lib/workspace-permissions";
 
 /**
@@ -205,7 +206,12 @@ RETURNING e.id, e.workspace_id, e.recipient_user_id, e.send_on::text AS send_on,
   u.id AS user_id
 FROM workspaces w LEFT JOIN users u ON u.id = ${cast(e.recipientUserId, "uuid")}
 WHERE w.id = ${ws}`),
-        toStatement(ucSql`SELECT i.request_id, i.use_case_id, i.answers, i.unknowns, i.documents, i.follow_up, r.created_at, r.purged_at IS NOT NULL AS purged, c.code, c.title
+        toStatement(ucSql`SELECT i.request_id, i.use_case_id, i.answers, i.unknowns, i.documents, i.follow_up, r.created_at, r.purged_at IS NOT NULL AS purged, c.code, c.title,
+  (${openItemsCountSql("r")} > 0 AND CASE
+    WHEN i.follow_up = 'ultimo_promemoria' THEN r.status = 'inviata' AND r.expires_at > now()
+    WHEN i.follow_up = 'scaduta' THEN (r.status = 'scaduta' OR (r.status = 'inviata' AND r.expires_at <= now()))
+      AND NOT EXISTS (SELECT 1 FROM use_case_referent_requests nr WHERE nr.previous_request_id = r.id AND nr.workspace_id = r.workspace_id)
+    ELSE true END) AS still_waiting
 FROM use_case_requester_email_items i
 JOIN use_case_referent_requests r ON r.id = i.request_id AND r.workspace_id = i.workspace_id
 JOIN use_cases c ON c.id = i.use_case_id AND c.workspace_id = i.workspace_id
@@ -236,6 +242,7 @@ ORDER BY r.created_at, i.request_id`),
               documents: rowNumber(r.documents) ?? 0,
               followUp: (rowString(r.follow_up) as FollowUpReason | null) ?? null,
               requestPurged: rowBool(r.purged),
+              stillWaiting: rowBool(r.still_waiting),
             },
           ];
         }),

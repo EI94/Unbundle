@@ -231,7 +231,16 @@ WHERE k.workspace_id = ${cast(uuid(workspaceId, "workspace"), "uuid")} AND k.ano
   AND (k.id IN (SELECT r.contact_id FROM refs r WHERE r.case_id = ${id()})
     OR k.id IN (SELECT e.actor_contact_id FROM uc_events e WHERE e.case_id = ${id()} AND e.actor_contact_id IS NOT NULL))
   AND k.id NOT IN (SELECT r.contact_id FROM refs r WHERE r.case_id <> ${id()})
+  AND NOT ${hubUsesContactSql(raw("k.id"))}
 ORDER BY k.id`);
+}
+
+/**
+ * «Chiedi al referente» usa la stessa rubrica: un referente con richieste degli use case non ancora
+ * cancellate dalla conservazione non è orfano, e la purge di un dossier non lo anonimizza.
+ */
+function hubUsesContactSql(contact: SqlFragment): SqlFragment {
+  return ucSql`EXISTS (SELECT 1 FROM use_case_referent_requests hr WHERE hr.contact_id = ${contact} AND hr.purged_at IS NULL)`;
 }
 
 /** Nella transazione della purge: i referenti del piano non hanno preso legami con altri casi. */
@@ -240,7 +249,8 @@ function contactsStillOrphanSql(workspaceId: string, caseId: string, contactIds:
   ${contactRefsSql(workspaceId)}
 )
 SELECT uc_require(NOT EXISTS (SELECT 1 FROM refs r WHERE r.case_id <> ${cast(uuid(caseId, "caso"), "uuid")}
-  AND r.contact_id = ANY(${cast(contactIds.map((c) => uuid(c, "referente")), "uuid[]")})), 'referenti_cambiati') AS ok`);
+  AND r.contact_id = ANY(${cast(contactIds.map((c) => uuid(c, "referente")), "uuid[]")}))
+  AND NOT EXISTS (SELECT 1 FROM unnest(${cast(contactIds.map((c) => uuid(c, "referente")), "uuid[]")}) AS hk(id) WHERE ${hubUsesContactSql(raw("hk.id"))}), 'referenti_cambiati') AS ok`);
 }
 
 export interface PurgeCasePlan {

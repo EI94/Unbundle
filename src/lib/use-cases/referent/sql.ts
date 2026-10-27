@@ -126,6 +126,39 @@ export function openItemsCountSql(request: string): SqlFragment {
   return ucSql`(SELECT count(*)::int FROM use_case_referent_request_items oi WHERE oi.request_id = ${raw(request)}.id AND ${openItemSql("oi", request)})`;
 }
 
+/**
+ * La richiesta `r` ha un link valido per l'indirizzo di adesso del suo referente: un token non
+ * revocato e non scaduto emesso per quell'email. Falso dopo «Correggi l'email»: le email partite
+ * finora sono andate all'indirizzo sbagliato, quindi il limite «un'email al giorno» non le conta.
+ */
+export function validLinkSql(request: string): SqlFragment {
+  if (!/^[a-z][a-z0-9_]*$/.test(request)) throw new Error("Alias non valido");
+  return raw(`EXISTS (SELECT 1 FROM use_case_referent_tokens vt JOIN uc_contacts vc ON vc.id = ${request}.contact_id AND vc.workspace_id = ${request}.workspace_id
+    WHERE vt.request_id = ${request}.id AND vt.revoked_at IS NULL AND vt.expires_at > now() AND vc.email IS NOT NULL
+      AND vt.recipient_hash = encode(sha256(convert_to(lower(btrim(vc.email)), 'UTF8')), 'hex'))`);
+}
+
+/**
+ * L'ordine dei lock (§3.3): ogni batch che tocca una richiesta e le sue risposte o esigenze blocca
+ * prima la riga della richiesta. Revoca, scadenza e cancellazione la aggiornano per prima; l'invio
+ * delle risposte e le risposte del team la bloccano qui, prima di bozze ed esigenze. Così due
+ * transazioni sulla stessa richiesta si mettono in fila invece di bloccarsi a vicenda (40P01).
+ */
+export function lockRequestSql(workspaceId: string, requestId: string): UcStatement {
+  return toStatement(ucSql`SELECT r.id FROM use_case_referent_requests r
+WHERE r.id = ${id(requestId, "richiesta")} AND r.workspace_id = ${id(workspaceId, "workspace")}
+FOR UPDATE`);
+}
+
+/** Come `lockRequestSql`, per le richieste vive che chiedono l'esigenza `needId` (in ordine di id). */
+export function lockRequestsOfNeedSql(workspaceId: string, needId: string): UcStatement {
+  return toStatement(ucSql`SELECT r.id FROM use_case_referent_requests r
+WHERE r.workspace_id = ${id(workspaceId, "workspace")} AND r.status = 'inviata'
+  AND EXISTS (SELECT 1 FROM use_case_referent_request_items li WHERE li.request_id = r.id AND li.need_id = ${id(needId, "esigenza")})
+ORDER BY r.id
+FOR UPDATE`);
+}
+
 // ─── Fine di una richiesta: coda, bozze ──────────────────────────────
 
 /** Le righe in coda delle richieste di `filter` si annullano; le voci dei promemoria si tolgono. */

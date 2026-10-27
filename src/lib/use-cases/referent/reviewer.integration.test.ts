@@ -275,12 +275,36 @@ test("«Correggi l'email» di un referente solo dell'hub: il vecchio link non va
   const before = await q(`SELECT 1 FROM use_case_referent_tokens WHERE request_id = $1::uuid AND revoked_at IS NULL`, [state.requestId]);
   assert.ok(before.length >= 1);
   refused(await referents.correctReferentEmail(as("builder"), ids.useCase, state.contactId, { email: emails.ls }, { env: ENV }), "referente_lateral_space");
-  ok(await referents.correctReferentEmail(as("builder"), ids.useCase, state.contactId, { email: `m.rossi.${suffix}@topjet.test` }, { env: ENV }), "correzione");
+  // Mai l'indirizzo di chi ha chiesto (il builder): né da lui, né da un altro revisore.
+  refused(await referents.correctReferentEmail(as("builder"), ids.useCase, state.contactId, { email: emails.builder }, { env: ENV }), "referente_sei_tu");
+  refused(await referents.correctReferentEmail(as("analyst"), ids.useCase, state.contactId, { email: emails.builder.toUpperCase() }, { env: ENV }), "email_di_chi_chiede");
+  const corrected = `m.rossi.${suffix}@topjet.test`;
+  ok(await referents.correctReferentEmail(as("builder"), ids.useCase, state.contactId, { email: corrected }, { env: ENV }), "correzione");
   assert.equal((await q(`SELECT 1 FROM use_case_referent_tokens WHERE request_id = $1::uuid AND revoked_at IS NULL`, [state.requestId])).length, 0);
   const [r] = await q(`SELECT status FROM use_case_referent_requests WHERE id = $1::uuid`, [state.requestId]);
   assert.equal(r.status, "inviata");
   const events = await q(`SELECT phase_after FROM use_case_events WHERE use_case_id = $1::uuid AND phase_after = 'email_corretta'`, [ids.useCase]);
   assert.equal(events.length, 1);
+
+  // Lo stesso giorno dell'email al vecchio indirizzo «Manda un promemoria» parte: è l'unico modo di
+  // dare il link al nuovo indirizzo. Un orario fisso nella finestra di Roma, con l'email di prima alle 9:40.
+  const { nextRomeSendWindowStart } = await import("../../uc/calendar.ts");
+  const at = new Date(nextRomeSendWindowStart(new Date()).getTime() + 60 * 60_000);
+  await q(`UPDATE use_case_referent_requests SET last_email_at = $2::timestamptz WHERE id = $1::uuid`, [state.requestId, new Date(at.getTime() - 20 * 60_000).toISOString()]);
+  ok(await referents.remindReferentRequest(as("builder"), ids.useCase, state.requestId, await versionOf(state.requestId), { env: ENV, now: at }), "promemoria al nuovo indirizzo");
+  const mailer = fakeMailer();
+  await dispatch.dispatchReferentEmails({ requestId: state.requestId, env: ENV, now: at, mailer, sendIntervalMs: 0 });
+  assert.equal(mailer.outbox.length, 1, "un'email");
+  assert.equal(mailer.outbox[0].to, corrected);
+  const token = tokenOf(mailer.outbox[0]);
+  assert.ok(token);
+  assert.equal((await pub.resolveReferentToken(token!, new Date())).access, "ok");
+  // Con il link valido per il nuovo indirizzo torna «un'email al giorno» (l'email è partita all'ora `at`).
+  await q(`UPDATE use_case_referent_requests SET last_email_at = $2::timestamptz WHERE id = $1::uuid`, [state.requestId, at.toISOString()]);
+  refused(
+    await referents.remindReferentRequest(as("builder"), ids.useCase, state.requestId, await versionOf(state.requestId), { env: ENV, now: new Date(at.getTime() + 60_000) }),
+    "promemoria_gia_inviato",
+  );
 });
 
 test("un referente solo dell'hub: la lettura prima della cancellazione lo riconosce", opts, async () => {
@@ -303,7 +327,12 @@ test("«Cancella i dati di questa persona»: risposte e file svuotati, link revo
   assert.equal(live.length, 0);
   const answers = await q(`SELECT body FROM use_case_need_answers a JOIN use_case_referent_requests r ON r.id = a.request_id WHERE r.contact_id = $1::uuid AND a.body IS NOT NULL`, [state.contactId]);
   assert.equal(answers.length, 0);
-  assert.equal((await q(`SELECT 1 FROM use_case_referent_tokens t JOIN use_case_referent_requests r ON r.id = t.request_id WHERE r.contact_id = $1::uuid AND t.revoked_at IS NULL`, [state.contactId])).length, 0);
+  // I link si cancellano, con l'impronta dell'email: nessuna riga riporta all'indirizzo di prima.
+  assert.equal((await q(`SELECT 1 FROM use_case_referent_tokens t JOIN use_case_referent_requests r ON r.id = t.request_id WHERE r.contact_id = $1::uuid`, [state.contactId])).length, 0);
+  for (const address of [REFERENT_EMAIL, `m.rossi.${suffix}@topjet.test`]) {
+    const hash = await q(`SELECT 1 FROM use_case_referent_tokens WHERE recipient_hash = encode(sha256(convert_to($1, 'UTF8')), 'hex')`, [address]);
+    assert.equal(hash.length, 0, "nessuna impronta dell'email");
+  }
   // Una seconda volta non fallisce.
   const again = await referents.eraseReferentData(as("builder"), ids.useCase, state.contactId, { env: ENV });
   assert.ok(again.ok || again.error === "referente_non_valido", JSON.stringify(again));
@@ -317,6 +346,56 @@ test("la Storia della funzione solo a chi vede «Cosa serve»", opts, async () =
   assert.ok(withNeeds.events.some(isReferent));
   assert.ok(!without.events.some(isReferent));
   assert.ok(!without.events.some((e) => e.fields.includes("cosa_serve")));
+});
+
+test("scadenza pigra in un batch di un revisore: la causa il tempo, chi agisce riceve la notifica e l'avviso", opts, async () => {
+  const first = await send([state.needs[0]], `luigi.verdi.${suffix}@topjet.test`, "Luigi Verdi");
+  const second = await send([state.needs[1]], `anna.neri.${suffix}@topjet.test`, "Anna Neri");
+  await q(`UPDATE use_case_referent_requests SET created_at = now() - interval '31 days', sent_at = now() - interval '31 days', expires_at = now() - interval '1 minute' WHERE id = $1::uuid`, [first.requestId]);
+  // Il builder (che ha chiesto la prima) revoca la seconda: la prima scade nello stesso batch.
+  ok(await referents.revokeReferentRequest(as("builder"), ids.useCase, second.requestId, await versionOf(second.requestId)), "revoca");
+  const [expired] = await q(`SELECT status FROM use_case_referent_requests WHERE id = $1::uuid`, [first.requestId]);
+  assert.equal(expired.status, "scaduta");
+  const bell = await q(`SELECT follow_up FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'senza_risposta' AND recipient_user_id = $2::uuid`, [ids.useCase, ids.builder]);
+  assert.deepEqual(bell.map((r) => r.follow_up), ["scaduta"], "chi ha chiesto vede «Nessuna risposta»");
+  const alert = await q(
+    `SELECT i.follow_up FROM use_case_requester_email_items i JOIN use_case_requester_emails e ON e.id = i.email_id WHERE i.request_id = $1::uuid AND e.recipient_user_id = $2::uuid`,
+    [first.requestId, ids.builder],
+  );
+  assert.deepEqual(alert.map((r) => r.follow_up), ["scaduta"], "e l'avviso per email");
+});
+
+test("un referente che è anche in un dossier: l'email intera resta coperta per i ruoli del cliente, e la purge del dossier non lo anonimizza", opts, async () => {
+  const dossierEmail = `dossier.${suffix}@topjet.test`;
+  const contactId = randomUUID();
+  const templateId = randomUUID();
+  const caseId = randomUUID();
+  await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $2::uuid, 'Paola Bianchi', $3)`, [contactId, ids.ws, dossierEmail]);
+  await q(
+    `INSERT INTO uc_templates (id, key, version, name, archetype, definition, definition_hash) VALUES ($1::uuid, $2, '1.0.0', 'Modello di prova', 'prova', '{}'::jsonb, $3)`,
+    [templateId, `prova.referenti_${suffix}`, "a".repeat(64)],
+  );
+  await q(
+    `INSERT INTO uc_cases (id, workspace_id, organization_id, template_id, template_version, code, title, client_owner_contact_id)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, '1.0.0', $5, 'Dossier di prova', $6::uuid)`,
+    [caseId, ids.ws, ids.org, templateId, `UC-RF${suffix.toUpperCase()}`, contactId],
+  );
+  try {
+    const client = ok(await referents.revealReferentContactEmail(as("builder"), ids.useCase, contactId), "revisore del cliente");
+    assert.equal(client.email, null, "coperta, come in «Persone» del dossier");
+    const ls = ok(await referents.revealReferentContactEmail(as("ls"), ids.useCase, contactId), "Lateral Space");
+    assert.equal(ls.email, dossierEmail);
+    refused(await referents.revealReferentContactEmail(as("builder"), randomUUID(), contactId), "non_trovato");
+    // Una richiesta degli use case allo stesso referente.
+    await send([state.needs[2]], dossierEmail);
+    const { orphanContactsSql } = await import("../../db/queries/uc-retention.ts");
+    const { getAppUcExecutor } = await import("../../db/uc-executor.ts");
+    const [orphans] = await (await getAppUcExecutor()).batch([orphanContactsSql(ids.ws, caseId)]);
+    assert.ok(!orphans.some((r) => String(r.id) === contactId), "usato dagli use case: non è orfano");
+  } finally {
+    await q(`DELETE FROM uc_cases WHERE id = $1::uuid`, [caseId]);
+    await q(`DELETE FROM uc_templates WHERE id = $1::uuid`, [templateId]);
+  }
 });
 
 // Gli aiuti di prova comuni alle suite di «Chiedi al referente»: questa non li usa tutti.

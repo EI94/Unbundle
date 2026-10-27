@@ -76,6 +76,12 @@ export interface AlertItemFacts {
   documents: number;
   followUp: FollowUpReason | null;
   requestPurged: boolean;
+  /**
+   * La richiesta aspetta ancora, adesso: con «ultimo_promemoria» è viva con domande aperte, con
+   * «scaduta» è scaduta con domande aperte e nessuno l'ha chiesta di nuovo. Falso → la frase
+   * «restano domande senza risposta» non è più vera e si toglie (assente: vale ancora).
+   */
+  stillWaiting?: boolean;
 }
 
 export interface ClaimedAlert {
@@ -134,7 +140,13 @@ export function planRequesterAlert(e: ClaimedAlert, f: AlertFacts, o: { env: Dis
   if (!r || !r.verified || !r.reviewer || !isPlainAddress(r.email)) return { action: "cancel", reason: "destinatario_non_valido" };
   if (!r.alertsOn) return { action: "cancel", reason: "avvisi_spenti" };
   const dropped = f.items.filter((i) => i.requestPurged).map((i) => ({ requestId: i.requestId, reason: "dati_cancellati" as const }));
-  const kept = f.items.filter((i) => !i.requestPurged).slice().sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.requestId < b.requestId ? -1 : 1));
+  // Un seguito («ultimo promemoria», «link scaduto») si riguarda adesso: se nel frattempo è arrivata la
+  // risposta, o qualcuno ha chiesto di nuovo, la frase cade; una voce senza altro da dire esce.
+  const kept = f.items
+    .filter((i) => !i.requestPurged)
+    .map((i) => (i.followUp !== null && i.stillWaiting === false ? { ...i, followUp: null } : i))
+    .filter((i) => i.answers > 0 || i.unknowns > 0 || i.documents > 0 || i.followUp !== null)
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.requestId < b.requestId ? -1 : 1));
   if (kept.length === 0) return { action: "cancel", reason: "nessuna_voce" };
   const byUseCase = new Map<string, AlertEntry>();
   for (const item of kept) {

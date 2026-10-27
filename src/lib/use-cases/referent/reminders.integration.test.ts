@@ -340,6 +340,8 @@ test("conservazione: 12 mesi dopo la fine le risposte si svuotano, se le esigenz
   assert.deepEqual([a.body, a.removed_reason], [null, "conservazione"]);
   const [r] = await q(`SELECT purged_at, message FROM use_case_referent_requests WHERE id = $1::uuid`, [requestId]);
   assert.ok(r.purged_at);
+  // I link si cancellano, con l'impronta dell'email del referente.
+  assert.equal((await q(`SELECT 1 FROM use_case_referent_tokens WHERE request_id = $1::uuid`, [requestId])).length, 0);
 });
 
 test("senza l'autorizzazione ai fornitori il cron non mette niente in coda e il promemoria a mano si rifiuta", opts, async () => {

@@ -148,7 +148,7 @@ test("la riga d'aiuto dei file: 20 MB con il caricamento diretto, 4 MB senza", (
 test("gli stati dei file, «in revisione» e la conferma", () => {
   assert.equal(fileStateLabel(file({ status: "in_quarantena" })), "Controllo in corso…");
   assert.equal(fileStateLabel(file()), "Allegato");
-  assert.equal(fileStateLabel(file({ status: "in_revisione" })), "In controllo da Lateral Space: puoi inviare lo stesso");
+  assert.equal(fileStateLabel(file({ status: "in_revisione" })), "Lo controlla il team prima di usarlo: puoi inviare lo stesso");
   assert.equal(fileStateLabel(file({ status: "rifiutato", message: "Contiene dati sanitari." })), "Non accettato: Contiene dati sanitari.");
   assert.equal(fileStateLabel(file({ status: "rifiutato", message: null })), "Non accettato");
 

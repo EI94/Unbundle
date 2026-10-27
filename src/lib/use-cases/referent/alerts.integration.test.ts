@@ -300,5 +300,45 @@ test("senza email configurata le righe aspettano; più di 2 giorni lavorativi do
   assert.equal((await rowsOf())[0].cancel_reason, "troppo_vecchia");
 });
 
+test("ultimo promemoria, poi il referente risponde lo stesso giorno: l'email del giorno dopo non dice «restano domande senza risposta»", opts, async () => {
+  await reset();
+  // Una domanda aperta sulla richiesta: esigenza «chiesta» e voce «aperta».
+  const need = randomUUID();
+  await q(`INSERT INTO use_case_needs (id, workspace_id, type, title, status, owner_side) VALUES ($1::uuid, $2::uuid, 'requisito', 'Quante fatture al mese?', 'chiesta', 'cliente')`, [need, ids.ws]);
+  await q(`INSERT INTO use_case_need_links (need_id, use_case_id) VALUES ($1::uuid, $2::uuid)`, [need, ids.useCase]);
+  await q(
+    `INSERT INTO use_case_referent_request_items (request_id, need_id, workspace_id, position, question) VALUES ($1::uuid, $2::uuid, $3::uuid, 1, 'Quante fatture al mese?')`,
+    [requests[0], need, ids.ws],
+  );
+  // L'ultimo promemoria alle 10: l'avviso «Nessuna risposta» va al giorno lavorativo dopo.
+  await queue(requests[0], T("2026-11-04", 10), { followUp: "ultimo_promemoria", immediate: false });
+  assert.deepEqual((await rowsOf()).map((r) => [r.day, r.follow_up]), [["2026-11-05", "ultimo_promemoria"]]);
+  // Ancora aperta: il giorno dopo l'email lo dice.
+  const still = await sendAt(T("2026-11-05", 10));
+  assert.equal(still.s.sent, 1, JSON.stringify(still.s));
+  assert.match(still.mailer.outbox[0].text, /restano domande senza risposta/);
+
+  await reset();
+  await queue(requests[0], T("2026-11-04", 10), { followUp: "ultimo_promemoria", immediate: false });
+  // Alle 10:30 il referente risponde a tutto: la richiesta è completata.
+  await q(`UPDATE use_case_referent_request_items SET state = 'risposta', answered_at = now() WHERE request_id = $1::uuid`, [requests[0]]);
+  await q(`UPDATE use_case_needs SET status = 'in_verifica' WHERE id = $1::uuid`, [need]);
+  await q(`UPDATE use_case_referent_requests SET status = 'completata', completed_at = now() WHERE id = $1::uuid`, [requests[0]]);
+  // Solo il seguito, ormai falso: la riga si annulla, nessuna email.
+  const next = await sendAt(T("2026-11-05", 10));
+  assert.equal(next.s.sent, 0, JSON.stringify(next.s));
+  assert.equal((await rowsOf())[0].cancel_reason, "nessuna_voce");
+
+  // Con una risposta nella stessa riga: l'email parte, senza la frase del seguito.
+  await reset();
+  await queue(requests[0], T("2026-11-04", 10), { followUp: "ultimo_promemoria", immediate: false });
+  await queue(requests[0], T("2026-11-04", 10, 30), { answers: 1, immediate: false });
+  const mixed = await sendAt(T("2026-11-05", 10));
+  assert.equal(mixed.s.sent, 1, JSON.stringify(mixed.s));
+  assert.match(mixed.mailer.outbox[0].text, /è arrivata 1 risposta/);
+  assert.doesNotMatch(mixed.mailer.outbox[0].text, /senza risposta/);
+  await q(`UPDATE use_case_referent_requests SET status = 'inviata', completed_at = NULL WHERE id = $1::uuid`, [requests[0]]);
+});
+
 // Gli aiuti di prova comuni alle suite di «Chiedi al referente»: questa non li usa tutti.
 void (() => [referents, pub, dispatch, as, requester, ok, refused, tokenOf, needIds, statusOf, useCaseSnapshot, state]);

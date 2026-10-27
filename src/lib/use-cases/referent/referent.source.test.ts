@@ -62,6 +62,8 @@ const TABLE_FILES = new Set([
   "scripts/use-case-admin/erase-referent.ts",
   // La cancellazione di un workspace raccoglie i percorsi dei file.
   "src/lib/db/queries/workspaces.ts",
+  // La purge di un dossier non anonimizza un referente che gli use case usano ancora.
+  "src/lib/db/queries/uc-retention.ts",
   // I controlli dello schema sul cluster locale di prova (0024 tolta e rimessa).
   "scripts/use-case-test/schema-check.mjs",
 ]);

@@ -20,7 +20,7 @@ import {
   type ReferentDispatchSummary,
   type ReferentRequestFacts,
 } from "@/lib/use-cases/referent/dispatch";
-import { notifyReviewersSql, openItemsCountSql, queueRequesterAlertSql, referentEventsForRequestsSql } from "@/lib/use-cases/referent/sql";
+import { notifyReviewersSql, openItemsCountSql, queueRequesterAlertSql, referentEventsForRequestsSql, validLinkSql } from "@/lib/use-cases/referent/sql";
 import { newReferentToken } from "@/lib/use-cases/referent/tokens";
 import { PORTFOLIO_REVIEWER_ROLES } from "@/lib/workspace-permissions";
 
@@ -71,13 +71,15 @@ function requestFactsSql(i: { emailId: string; template: ReferentEmailTemplate; 
   const ws = cast(i.workspaceId, "uuid");
   const common = raw(`r.id, r.use_case_id, r.status, r.expires_at, r.sent_at, r.reminder_count, r.last_email_at, r.message, r.requester_name, r.requested_by_user_id, r.created_at,
   (r.status = 'inviata' AND r.revoked_at IS NULL AND r.expires_at > now()) AS live, u.code, u.title`);
+  // Già partita ma senza link valido per l'indirizzo di adesso («Correggi l'email»).
+  const changed = ucSql`(r.sent_at IS NOT NULL AND NOT ${validLinkSql("r")}) AS address_changed`;
   if (i.template !== "promemoria") {
-    return toStatement(ucSql`SELECT ${common}, ${openItemsCountSql("r")} AS open_items, 0 AS new_questions, NULL::text AS item_kind, false AS already_sent,
+    return toStatement(ucSql`SELECT ${common}, ${changed}, ${openItemsCountSql("r")} AS open_items, 0 AS new_questions, NULL::text AS item_kind, false AS already_sent,
   (SELECT count(*)::int FROM use_case_referent_request_items x WHERE x.request_id = r.id AND x.answered_at >= (date_trunc('day', now() AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'Europe/Rome')) AS answered_today
 FROM use_case_referent_requests r JOIN use_cases u ON u.id = r.use_case_id AND u.workspace_id = r.workspace_id
 WHERE r.id = ${cast(i.requestId, "uuid")} AND r.workspace_id = ${ws}`);
   }
-  return toStatement(ucSql`SELECT ${common}, ${openItemsCountSql("r")} AS open_items, it.new_questions, it.kind AS item_kind,
+  return toStatement(ucSql`SELECT ${common}, ${changed}, ${openItemsCountSql("r")} AS open_items, it.new_questions, it.kind AS item_kind,
   EXISTS (SELECT 1 FROM use_case_referent_email_items o WHERE o.request_id = r.id AND o.kind = it.kind AND o.state = 'inviata' AND o.email_id <> it.email_id) AS already_sent,
   0 AS answered_today
 FROM use_case_referent_email_items it
@@ -109,6 +111,7 @@ function requestFactsOf(r: UcRow): ReferentRequestFacts | null {
     newQuestions: rowNumber(r.new_questions) ?? 0,
     answeredToday: rowNumber(r.answered_today) ?? 0,
     item: kind ? { kind, alreadySent: rowBool(r.already_sent) } : null,
+    addressChanged: rowBool(r.address_changed),
   };
 }
 
@@ -192,6 +195,27 @@ WHERE u.id = ${cast(requester, "uuid")} AND u.email_verified IS NOT NULL
       const ack = await loadSubprocessorAck(executor, e.workspaceId);
       // (Parte 3) Il referente è adesso un revisore del workspace con la stessa email verificata? Riletto a ogni invio.
       const person = await readReferentPerson(executor, e.workspaceId, e.contactId);
+      // (Parte 3) Mai un'email a chi ha chiesto: lo stesso account, oppure l'email del contatto uguale alla sua email verificata.
+      const contactEmail = rowString(head?.email)?.trim().toLowerCase() ?? null;
+      const requesterIds = [...new Set(requests.map((x) => x.requesterUserId).filter((x): x is string => x !== null))];
+      const requesterEmails = new Map<string, string>();
+      if (requesterIds.length) {
+        const [rows] = await executor.batch([
+          toStatement(ucSql`SELECT u.id::text AS id, lower(btrim(u.email)) AS email FROM users u
+WHERE u.id = ANY(${cast(requesterIds, "uuid[]")}) AND u.email_verified IS NOT NULL AND u.email IS NOT NULL`),
+        ]);
+        for (const row of rows) {
+          const id = rowString(row.id)?.toLowerCase();
+          const email = rowString(row.email);
+          if (id && email) requesterEmails.set(id, email);
+        }
+      }
+      for (const req of requests) {
+        const requester = req.requesterUserId;
+        req.selfRequest = Boolean(
+          requester && ((person.userId !== null && person.userId === requester) || (contactEmail !== null && requesterEmails.get(requester) === contactEmail)),
+        );
+      }
       const facts: ReferentDeliveryFacts = {
         company: rowString(head?.company) ?? "",
         featureOn: referentAskEnabled(e.workspaceId, env),

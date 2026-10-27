@@ -10,7 +10,7 @@ import { PrivacyCard, PrivacyFooter } from "./privacy-card";
 import { QuestionCard, questionTitleId, type FlushDraft } from "./question-card";
 import { finalCardText, headerTexts, issuesByQuestion, privacyTexts, questionSections, screenOf, submitHint, thanksTexts } from "./public-view-render";
 import { MessageCard, PublicShell } from "./state-card";
-import { SubmitBar } from "./submit-bar";
+import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
 
 /**
  * La pagina del referente `/rispondi/<token>` (SPEC §4.4): pubblica, senza account, pensata per il
@@ -151,6 +151,7 @@ export function ReferentAskPage({ token, initialView, today }: { token: string; 
     setIssues(mapped.byNeed);
     setSubmitError(r.message);
     if (mapped.first) setFocusTarget(questionTitleId(mapped.first));
+    else setFocusTarget(SUBMIT_ERROR_ID);
   }
 
   const footer = <PrivacyFooter texts={privacy} />;

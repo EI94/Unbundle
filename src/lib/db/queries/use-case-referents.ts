@@ -66,8 +66,10 @@ import {
   draftsCleanupStatements,
   expireStatements,
   infoCompleteSyncStatements,
+  lockRequestsOfNeedSql,
   needTransitionSql,
   openItemsCountSql,
+  validLinkSql,
   referentEventSql,
   revokeStatements,
   uuidOf,
@@ -189,9 +191,13 @@ WHERE use_case_referent_email_items.kind IN ('manuale', 'nuove') OR use_case_ref
 RETURNING request_id`);
 }
 
-/** La scadenza pigra all'inizio di un batch dei revisori (§3.3), con chi agisce e le richieste chieste di nuovo. */
-function lazyExpiry(ctx: WriteContext, useCaseId: string, actorUserId: string, now: Date, reask?: { previousRequestId: string | null; needIds: readonly string[] }): UcStatement[] {
-  return expireStatements({ workspaceId: ctx.workspaceId, useCaseId, actorUserId, reask, schedule: alertSchedule(now), now });
+/**
+ * La scadenza pigra all'inizio di un batch dei revisori (§3.3), con le richieste chieste di nuovo.
+ * Una scadenza la causa il tempo, non chi agisce: nessuno è escluso dalla notifica «Nessuna risposta»
+ * né dall'avviso a chi ha chiesto (`reask` salta già la richiesta che questo batch chiede di nuovo).
+ */
+function lazyExpiry(ctx: WriteContext, useCaseId: string, now: Date, reask?: { previousRequestId: string | null; needIds: readonly string[] }): UcStatement[] {
+  return expireStatements({ workspaceId: ctx.workspaceId, useCaseId, actorUserId: null, reask, schedule: alertSchedule(now), now });
 }
 
 // ─── Le porte comuni (§3.1, 3–5) ─────────────────────────────────────
@@ -277,8 +283,7 @@ function requestsSql(workspaceId: string, useCaseId: string): UcStatement {
   c.display_name AS contact_name, c.role_label, c.email AS contact_email, (c.is_active AND c.anonymized_at IS NULL) AS contact_active,
   ${openItemsCountSql("r")} AS open_items,
   (SELECT array_agg(it.need_id::text ORDER BY it.position) FROM use_case_referent_request_items it WHERE it.request_id = r.id) AS need_ids,
-  EXISTS (SELECT 1 FROM use_case_referent_tokens t WHERE t.request_id = r.id AND t.revoked_at IS NULL AND t.expires_at > now()
-    AND t.recipient_hash = encode(sha256(convert_to(lower(btrim(c.email)), 'UTF8')), 'hex')) AS has_valid_token,
+  ${validLinkSql("r")} AS has_valid_token,
   EXISTS (SELECT 1 FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta'
     AND (e.status = 'in_coda' OR (e.status = 'errore' AND e.attempts < 3))) AS richiesta_pending,
   EXISTS (SELECT 1 FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta' AND e.status = 'inviata') AS richiesta_sent,
@@ -324,6 +329,18 @@ LEFT JOIN users u ON u.id = f.uploaded_by_user_id
 WHERE f.workspace_id = ${cast(workspaceId, "uuid")} AND f.use_case_id = ${cast(useCaseId, "uuid")} AND f.deleted_at IS NULL AND f.blob_path IS NOT NULL
   AND (f.source = 'revisore' OR f.submitted_at IS NOT NULL) AND f.scan_status IN ('pulito', 'in_revisione')
 ORDER BY f.created_at DESC, f.id`);
+}
+
+/**
+ * Le esigenze il cui ultimo file è un PDF non controllato in tempo (`revisione_scaduta`, il cron dopo
+ * 7 giorni) e dopo il quale non è arrivato altro: la scheda lo dice, così si chiede di ricaricarlo.
+ */
+function expiredReviewsSql(workspaceId: string, useCaseId: string): UcStatement {
+  return toStatement(ucSql`SELECT DISTINCT f.need_id FROM use_case_need_files f
+WHERE f.workspace_id = ${cast(workspaceId, "uuid")} AND f.use_case_id = ${cast(useCaseId, "uuid")} AND f.deleted_at IS NULL
+  AND f.scan_status = 'rifiutato' AND f.rejection_reason = 'revisione_scaduta'
+  AND NOT EXISTS (SELECT 1 FROM use_case_need_files g WHERE g.workspace_id = f.workspace_id AND g.use_case_id = f.use_case_id AND g.need_id = f.need_id
+    AND g.deleted_at IS NULL AND g.scan_status IN ('pulito', 'in_revisione') AND g.created_at > f.created_at)`);
 }
 
 function importKeysSql(workspaceId: string, useCaseId: string): UcStatement {
@@ -377,14 +394,16 @@ export async function loadUseCaseReferentPanel(i: {
     if (!card) return emptyPanel(false, canAsk);
     const cardNeeds = [...i.needs.requirements, ...i.needs.steps];
     const requirementIds = i.needs.requirements.map((n) => n.id.toLowerCase());
-    const [requestRows, contactRows, liveRows, answerRows, fileRows, keyRows] = await executor.batch([
+    const [requestRows, contactRows, liveRows, answerRows, fileRows, keyRows, expiredRows] = await executor.batch([
       requestsSql(ws, uc),
       contactsSql(ws),
       liveOnUseCaseSql(ws, uc),
       answersSql(ws, uc),
       filesSql(ws, uc),
       importKeysSql(ws, uc),
+      expiredReviewsSql(ws, uc),
     ]);
+    const reviewExpired = new Set(expiredRows.map((r) => String(r.need_id).toLowerCase()));
     const [asks, ack, lsMembers] = await Promise.all([
       readAsksForNeeds(executor, ws, requirementIds),
       loadSubprocessorAck(executor, ws),
@@ -483,6 +502,7 @@ export async function loadUseCaseReferentPanel(i: {
         reminderCount: r.reminderCount,
         lastEmailAt: r.lastEmailAt,
         openItems: r.openItems,
+        addressChanged: r.sentAt !== null && !r.hasValidToken,
       };
       const name = r.contactName;
       let remind: { allowed: boolean; reason: string | null } = { allowed: false, reason: null };
@@ -560,7 +580,9 @@ export async function loadUseCaseReferentPanel(i: {
 
     // Esigenze: la riga, le risposte e i file.
     const needsView: Record<string, NeedReferentView> = {};
-    const canReviewFiles = abilities.isLateralSpace && canAsk;
+    // I PDF con poco testo li controllano i revisori del workspace (chi modifica «Cosa serve»), non
+    // solo Lateral Space: in un workspace senza persone di Lateral Space nessuno li vedrebbe mai.
+    const canReviewFiles = canAsk;
     for (const need of i.needs.requirements) {
       const id = need.id.toLowerCase();
       const own = asks.filter((a) => a.needId === id);
@@ -568,6 +590,8 @@ export async function loadUseCaseReferentPanel(i: {
       const silentNeed = silent.has(id);
       const answers: NeedAnswerView[] = answerRows
         .filter((a) => String(a.need_id).toLowerCase() === id)
+        // Una domanda risposta solo con un file: la riga della risposta non ha testo, si vede solo il file.
+        .filter((a) => rowBool(a.dont_know) || Boolean(rowString(a.body)?.trim()))
         .map((a) => {
           const source = rowString(a.source) === "revisore" ? "revisore" : "referente";
           const at = rowDate(a.submitted_at) ?? now;
@@ -615,11 +639,12 @@ export async function loadUseCaseReferentPanel(i: {
             canReview: reviewable,
           };
         });
-      needsView[id] = { needId: id, line: needReferentLine(latestLine, today, uc), silent: silentNeed, answers, files };
+      needsView[id] = { needId: id, line: needReferentLine(latestLine, today, uc), silent: silentNeed, answers, files, reviewExpired: reviewExpired.has(id) };
     }
 
     const existingKeys = new Set(keyRows.map((r) => String(r.import_key)));
     const preparable = missingPreparedQuestions({ useCaseId: uc, intake: card.intake, valueModel: card.valueModel, linkedNeeds: cardNeeds, existingImportKeys: existingKeys }).map((q) => q.key);
+    const prepareGaps = gapsOf({ useCaseId: uc, intake: card.intake, valueModel: card.valueModel, linkedNeeds: cardNeeds }).length > 0;
 
     return {
       available: true,
@@ -632,6 +657,7 @@ export async function loadUseCaseReferentPanel(i: {
       askableNeedIds: askable.map((n) => n.id.toLowerCase()),
       answerableNeedIds: answerableNeeds(cardNeeds, uc).map((n) => n.id.toLowerCase()),
       preparable,
+      prepareGaps,
       requester: { name: i.session.name?.trim() || "", email: i.session.email ? i.session.email.toLowerCase() : null },
       upload: { clientMode: clientUploadAvailable(env) },
       limits: REFERENT_LIMITS,
@@ -854,7 +880,7 @@ WHERE r.workspace_id = ${cast(ctx.workspaceId, "uuid")} AND r.use_case_id = ${ca
     const ws = cast(ctx.workspaceId, "uuid");
     const ucId = cast(card.id, "uuid");
     const actor = persona(writer.userId);
-    const statements: UcStatement[] = [...lazyExpiry(ctx, card.id, writer.userId, now, { previousRequestId: parsed.previousRequestId, needIds: unique })];
+    const statements: UcStatement[] = [...lazyExpiry(ctx, card.id, now, { previousRequestId: parsed.previousRequestId, needIds: unique })];
     if (replaceLive) {
       statements.push(...revokeStatements({ workspaceId: ctx.workspaceId, target: { requestId: replaceLive.id, version: replaceLive.version, statuses: ["inviata"] }, reason: "sostituita", actor, failCode: "richiesta_chiusa" }));
     }
@@ -947,13 +973,14 @@ interface LiveRequest {
   richiestaPending: boolean;
   richiestaSent: boolean;
   richiestaTotal: number;
+  hasValidToken: boolean;
 }
 
 async function readRequest(executor: UcExecutor, workspaceId: string, useCaseId: string, requestId: string, now: Date): Promise<LiveRequest | null> {
   if (!isUuid(requestId)) return null;
   const [[r]] = await executor.batch([
     toStatement(ucSql`SELECT r.id, r.version, r.contact_id, r.status, r.sent_at, r.expires_at, r.revoked_at, r.reminder_count, r.last_email_at,
-  coalesce(c.display_name, '') AS contact_name, ${openItemsCountSql("r")} AS open_items,
+  coalesce(c.display_name, '') AS contact_name, ${openItemsCountSql("r")} AS open_items, ${validLinkSql("r")} AS has_valid_token,
   (SELECT array_agg(it.need_id::text ORDER BY it.position) FROM use_case_referent_request_items it WHERE it.request_id = r.id) AS need_ids,
   EXISTS (SELECT 1 FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta' AND (e.status = 'in_coda' OR (e.status = 'errore' AND e.attempts < 3))) AS richiesta_pending,
   EXISTS (SELECT 1 FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta' AND e.status = 'inviata') AS richiesta_sent,
@@ -987,6 +1014,7 @@ WHERE r.id = ${cast(requestId, "uuid")} AND r.workspace_id = ${cast(workspaceId,
     richiestaPending: rowBool(r.richiesta_pending),
     richiestaSent: rowBool(r.richiesta_sent),
     richiestaTotal: rowNumber(r.richiesta_total) ?? 0,
+    hasValidToken: rowBool(r.has_valid_token),
   };
 }
 
@@ -1003,7 +1031,16 @@ RETURNING id`,
 }
 
 function reminderStateOf(r: LiveRequest): ReminderState {
-  return { status: r.storedStatus, sentAt: r.sentAt, expiresAt: r.expiresAt, revokedAt: r.revokedAt, reminderCount: r.reminderCount, lastEmailAt: r.lastEmailAt, openItems: r.openItems };
+  return {
+    status: r.storedStatus,
+    sentAt: r.sentAt,
+    expiresAt: r.expiresAt,
+    revokedAt: r.revokedAt,
+    reminderCount: r.reminderCount,
+    lastEmailAt: r.lastEmailAt,
+    openItems: r.openItems,
+    addressChanged: r.sentAt !== null && !r.hasValidToken,
+  };
 }
 
 // ─── «Aggiungi domande» (§3.4) ───────────────────────────────────────
@@ -1051,7 +1088,7 @@ export const addToReferentRequest = guardedReferent(
     const check = manualReminderCheck(reminderStateOf(request), now, { remindedOn: remindedOn.get(request.contactId) ?? new Set() });
     const actor = persona(writer.userId);
     const statements: UcStatement[] = [
-      ...lazyExpiry(ctx, card.id, writer.userId, now),
+      ...lazyExpiry(ctx, card.id, now),
       versionCasSql(ctx.workspaceId, request.id, expectedVersion),
     ];
     if (silentIds.length) statements.push(silentGuardSql(ctx.workspaceId, silentIds));
@@ -1069,7 +1106,8 @@ export const addToReferentRequest = guardedReferent(
           requestId: request.id,
           kind: "nuove",
           newQuestions: unique.length,
-          dedupeKey: `pm:${request.id}:${romeDate(check.scheduledAt)}`,
+          // Dopo «Correggi l'email» la chiave cambia a ogni versione: un promemoria partito oggi al vecchio indirizzo non la blocca.
+        dedupeKey: request.sentAt && !request.hasValidToken ? `pm:${request.id}:${romeDate(check.scheduledAt)}:v${expectedVersion}` : `pm:${request.id}:${romeDate(check.scheduledAt)}`,
           at: check.scheduledAt,
         }),
       );
@@ -1107,14 +1145,15 @@ export const remindReferentRequest = guardedReferent(
     const check = manualReminderCheck(reminderStateOf(request), now, { remindedOn: remindedOn.get(request.contactId) ?? new Set() });
     if (!check.ok) return check.code === "promemoria_gia_inviato" ? rfailVars(check.code, { Nome: request.contactName }) : rfail(check.code);
     const run = await referentBatch(executor, [
-      ...lazyExpiry(ctx, card.id, writer.userId, now),
+      ...lazyExpiry(ctx, card.id, now),
       versionCasSql(ctx.workspaceId, request.id, expectedVersion),
       queueReminderItemSql({
         workspaceId: ctx.workspaceId,
         contactId: request.contactId,
         requestId: request.id,
         kind: "manuale",
-        dedupeKey: `pm:${request.id}:${romeDate(check.scheduledAt)}`,
+        // Dopo «Correggi l'email» la chiave cambia a ogni versione: un promemoria partito oggi al vecchio indirizzo non la blocca.
+        dedupeKey: request.sentAt && !request.hasValidToken ? `pm:${request.id}:${romeDate(check.scheduledAt)}:v${expectedVersion}` : `pm:${request.id}:${romeDate(check.scheduledAt)}`,
         at: check.scheduledAt,
       }),
     ]);
@@ -1139,7 +1178,7 @@ export const revokeReferentRequest = guardedReferent(
     if (!request || (request.status !== "inviata" && request.status !== "completata")) return rfail("richiesta_chiusa");
     if (request.version !== expectedVersion) return rfail("versione_superata");
     const run = await referentBatch(executor, [
-      ...lazyExpiry(ctx, card.id, writer.userId, now),
+      ...lazyExpiry(ctx, card.id, now),
       ...revokeStatements({
         workspaceId: ctx.workspaceId,
         target: { requestId: request.id, version: expectedVersion },
@@ -1179,7 +1218,7 @@ export const retryReferentRequestEmail = guardedReferent(
     if (request.version !== expectedVersion) return rfail("versione_superata");
     if (request.sentAt || request.richiestaPending || request.richiestaSent || request.richiestaTotal >= 4) return rfail("riprova_non_ammessa");
     const run = await referentBatch(executor, [
-      ...lazyExpiry(ctx, card.id, writer.userId, now),
+      ...lazyExpiry(ctx, card.id, now),
       versionCasSql(ctx.workspaceId, request.id, expectedVersion),
       toStatement(ucSql`INSERT INTO use_case_referent_emails (workspace_id, contact_id, request_id, template, dedupe_key, due_at, scheduled_at)
 VALUES (${cast(ctx.workspaceId, "uuid")}, ${cast(request.contactId, "uuid")}, ${cast(request.id, "uuid")}, 'richiesta', ${cast(`ric:${request.id}:${request.richiestaTotal + 1}`, "text")}, now(), now())`),
@@ -1191,7 +1230,13 @@ VALUES (${cast(ctx.workspaceId, "uuid")}, ${cast(request.contactId, "uuid")}, ${
 
 // ─── Referenti: indirizzo, correzione, cancellazione (§3.10) ─────────
 
-/** L'indirizzo intero di un referente del workspace, solo per i revisori (il riepilogo della finestra). */
+/**
+ * L'indirizzo intero di un referente del workspace, solo per i revisori (il riepilogo della finestra).
+ * Solo per i referenti degli use case (scritti dai revisori del workspace): un referente che è anche
+ * in un dossier resta coperto per i ruoli del cliente, come in «Persone» del dossier (`listContacts`:
+ * ai ruoli del cliente niente email); lo vede intero solo una persona di Lateral Space. La scheda
+ * deve esistere nel workspace. `email: null` → la finestra mostra l'indirizzo coperto.
+ */
 export const revealReferentContactEmail = guardedReferent(
   "indirizzo_referente",
   async function revealReferentContactEmail(ctx: WriteContext, useCaseId: string, contactId: string, env: Env = process.env): Promise<ServiceResult<{ email: string | null }> | ReferentFailure> {
@@ -1199,9 +1244,16 @@ export const revealReferentContactEmail = guardedReferent(
     if (!writer.ok) return writer;
     if (!isUuid(useCaseId) || !isUuid(contactId)) return rfail("non_trovato");
     const executor = await getAppUcExecutor();
+    const card = await readCard(executor, ctx.workspaceId, useCaseId);
+    if (!card) return rfail("non_trovato");
     const contact = await readContact(executor, ctx.workspaceId, contactId);
     if (!contact || !contact.isActive || contact.anonymized) return rfail("referente_non_valido");
-    return ok({ email: contact.email ? contact.email.trim().toLowerCase() : null });
+    const email = contact.email ? contact.email.trim().toLowerCase() : null;
+    if (!email) return ok({ email: null });
+    const [[hub]] = await executor.batch([contactHubOnlyReadSql(ctx.workspaceId, contact.id)]);
+    if (rowBool(hub?.hub_only)) return ok({ email });
+    const viewer = await loadUserContext(executor, writer.userId, lsDomainsOf(env));
+    return ok({ email: viewer?.isLateralSpace === true ? email : null });
   },
 );
 
@@ -1228,6 +1280,15 @@ export const correctReferentEmail = guardedReferent(
     if (rowBool(taken?.taken)) return rfail("email_in_uso", undefined, { email: REFERENT_ERROR_MESSAGES.email_in_uso });
     const ws = cast(ctx.workspaceId, "uuid");
     const c = cast(contact.id, "uuid");
+    // (Parte 3) Mai l'indirizzo di chi ha chiesto: i promemoria di una richiesta viva gli arriverebbero come referente di se stesso.
+    const [requesterRows] = await executor.batch([
+      toStatement(ucSql`SELECT DISTINCT r.requested_by_user_id::text AS user_id FROM use_case_referent_requests r
+WHERE r.workspace_id = ${ws} AND r.contact_id = ${c} AND r.status = 'inviata' AND r.expires_at > now() AND r.requested_by_user_id IS NOT NULL`),
+    ]);
+    const requesters = new Set(requesterRows.map((r) => String(r.user_id).toLowerCase()));
+    const newPerson = await readEmailPerson(executor, ctx.workspaceId, draft.value.email);
+    if (isSelfRequest(newPerson, writer.userId)) return rfail("referente_sei_tu", undefined, { email: REFERENT_ERROR_MESSAGES.referente_sei_tu });
+    if (newPerson.userId && requesters.has(newPerson.userId)) return rfail("email_di_chi_chiede", undefined, { email: REFERENT_ERROR_MESSAGES.email_di_chi_chiede });
     const run = await referentBatch(executor, [
       contactHubOnlySql(ctx.workspaceId, contact.id),
       contactUpdateSql({ workspaceId: ctx.workspaceId, contactId: contact.id, patch: { email: draft.value.email }, expect: { email: contact.email, isActive: true } }),
@@ -1288,6 +1349,8 @@ export const addReviewerAnswer = guardedReferent(
     const actor = persona(writer.userId);
     const ws = cast(ctx.workspaceId, "uuid");
     const run = await referentBatch(executor, [
+      // Prima le richieste vive su questa esigenza, come revoca e scadenza (stesso ordine dei lock).
+      lockRequestsOfNeedSql(ctx.workspaceId, needId),
       toStatement(
         requireRows(
           ucSql`INSERT INTO use_case_need_answers (id, workspace_id, use_case_id, need_id, request_id, source, author_user_id, body, dont_know, status, submitted_at)

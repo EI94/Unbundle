@@ -29,6 +29,7 @@ export const REFERENT_UI_TEXT = Object.freeze({
   // Riga delle azioni
   prepare: "Prepara le domande",
   prepareDisabledTitle: "Non manca niente da chiedere su questa scheda.",
+  prepareDisabledPresent: "Le domande standard ci sono già o sono state archiviate in «Cosa serve».",
   ask: "Chiedi al referente",
   // Avvisi che bloccano «Chiedi al referente»
   gates: Object.freeze({
@@ -69,6 +70,7 @@ export const REFERENT_UI_TEXT = Object.freeze({
   fileDeleteConfirmTitle: "Eliminare il file?",
   fileDeleteConfirmText: "Non si può recuperare.",
   fileInReview: "Da controllare: PDF con poco testo",
+  fileReviewExpired: "File non controllato in tempo: chiedi di caricarlo di nuovo.",
   fileDownloadToReview: "Scarica per controllarlo",
   fileAccept: "Accetta il file",
   fileReject: "Rifiuta il file",
@@ -189,7 +191,7 @@ export const REFERENT_UI_TEXT = Object.freeze({
     addedEmail: "Domande aggiunte: avvisiamo {Nome} con un'email.",
     addedSameLink: "Domande aggiunte: {Nome} le trova nello stesso link.",
     remindedNow: "Promemoria inviato.",
-    remindedLater: "Promemoria in partenza alle 9 del prossimo giorno lavorativo.",
+    remindedLater: "Il promemoria parte il prossimo giorno lavorativo, in mattinata.",
     revoked: "Link revocato.",
     retried: "Invio riprovato.",
     emailCorrected: "Email corretta. Con «Manda un promemoria» parte il link al nuovo indirizzo.",
@@ -199,9 +201,9 @@ export const REFERENT_UI_TEXT = Object.freeze({
     answerAddedValidated: "Risposta aggiunta e informazione segnata «A posto».",
     answerRemoved: "Risposta eliminata.",
     fileAttached: "File allegato.",
-    fileAttachedReview: "File allegato: lo controlla una persona di Lateral Space.",
+    fileAttachedReview: "File allegato: è un PDF con poco testo, lo controlla un'altra persona del team.",
     fileAttachedValidated: "File allegato e informazione segnata «A posto».",
-    fileAttachedReviewValidate: "File allegato: lo controlla una persona di Lateral Space. L'informazione resta da verificare.",
+    fileAttachedReviewValidate: "File allegato: è un PDF con poco testo, lo controlla un'altra persona del team. L'informazione resta da verificare.",
     fileDeleted: "File eliminato.",
     fileAccepted: "File accettato.",
     fileRejected: "File rifiutato.",
@@ -256,7 +258,7 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   fileStates: Object.freeze({
     in_quarantena: "Controllo in corso…",
     pulito: "Allegato",
-    in_revisione: "In controllo da Lateral Space: puoi inviare lo stesso",
+    in_revisione: "Lo controlla il team prima di usarlo: puoi inviare lo stesso",
     rifiutato: "Non accettato: {message}",
   }),
   removeFile: "Togli",
@@ -375,6 +377,7 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   richiesta_aperta: "C'è già una richiesta aperta per questa persona su questo use case: usa «Aggiungi domande».",
   // (Parte 3) Chi chiede ha scelto se stesso.
   referente_sei_tu: "Sei tu il referente: non serve un'email. Rispondi direttamente qui in «Cosa serve», con «Aggiungi una risposta» o «Allega un file».",
+  email_di_chi_chiede: "Questa è l'email di chi ha fatto la richiesta: chi chiede risponde direttamente in «Cosa serve». Scrivi l'email del referente.",
   nessuna_domanda: "Scegli almeno una domanda aperta.",
   troppe_domande: "Al massimo 20 domande per richiesta.",
   domande_cambiate: "Qualcuno ha appena cambiato queste domande. Ho ricaricato i dati: riprova.",
@@ -391,8 +394,8 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   testo_troppo_lungo: "Al massimo 4.000 caratteri.",
   troppi_file: "Al massimo 5 file per domanda.",
   file_non_trovato: "File non trovato.",
-  revisore_uguale: "Il file lo controlla un'altra persona di Lateral Space, non chi l'ha caricato.",
-  revisione_non_ammessa: "Il controllo dei PDF lo fa una persona di Lateral Space.",
+  revisore_uguale: "Il file lo controlla un'altra persona del team, non chi l'ha caricato.",
+  revisione_non_ammessa: "Il controllo dei PDF lo fa chi può modificare «Cosa serve».",
   non_trovato: "Use case non trovato.",
   riprova: "Non riusciamo a salvare. Riprova.",
   // Pagina pubblica (§4.3)
@@ -409,7 +412,7 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   file_gia_inviato: "Questo file è già stato inviato: non si può togliere.",
   modalita_non_disponibile: "Per questo file serve il caricamento diretto, che qui non è attivo: usa un file fino a 4 MB.",
   domanda_non_disponibile_pubblica: "Questa domanda non è più tra quelle per te.",
-  pdf_in_revisione: "Questo PDF ha poco testo, forse è una scansione: lo controlla una persona di Lateral Space. Puoi inviare lo stesso.",
+  pdf_in_revisione: "Questo PDF ha poco testo, forse è una scansione: lo controlla il team prima di usarlo. Puoi inviare lo stesso.",
   revisione_rifiutata: "Il file non è stato accettato dopo il controllo.",
   revisione_scaduta: "Il controllo del file non è stato fatto in tempo: caricalo di nuovo.",
   quarantena_scaduta: "Il controllo del file non è finito: caricalo di nuovo.",

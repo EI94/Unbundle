@@ -38,6 +38,8 @@ export interface NeedFileRow {
 
 export interface NeedReferentRows {
   line: string | null;
+  /** «File non controllato in tempo: chiedi di caricarlo di nuovo.», oppure null. */
+  notice: string | null;
   /** Il segnale «Senza risposta», solo se la riga non lo dice già: un solo segnale per esigenza. */
   silentTag: string | null;
   /** «Risposte e file · {n}», oppure null senza voci. */
@@ -46,7 +48,7 @@ export interface NeedReferentRows {
   files: NeedFileRow[];
 }
 
-export const EMPTY_NEED_REFERENT_ROWS: NeedReferentRows = Object.freeze({ line: null, silentTag: null, summary: null, answers: [], files: [] }) as NeedReferentRows;
+export const EMPTY_NEED_REFERENT_ROWS: NeedReferentRows = Object.freeze({ line: null, notice: null, silentTag: null, summary: null, answers: [], files: [] }) as NeedReferentRows;
 
 function answerRow(answer: NeedAnswerView, canEdit: boolean): NeedAnswerRow {
   return {
@@ -76,17 +78,19 @@ function fileRow(file: NeedFileView, opts: { canEdit: boolean; canReviewFiles: b
 }
 
 /**
- * Le righe di un'esigenza. I file «Da controllare» solo a chi li controlla (Lateral Space,
- * `canReviewFiles`): il server non li manda agli altri, e qui non si mostrano comunque.
+ * Le righe di un'esigenza. I file «Da controllare» solo a chi li controlla (i revisori che modificano
+ * «Cosa serve», `canReviewFiles`): il server non li manda agli altri, e qui non si mostrano comunque.
  */
 export function needReferentRows(view: NeedReferentView | null | undefined, opts: { canEdit: boolean; canReviewFiles: boolean }): NeedReferentRows {
   if (!view) return EMPTY_NEED_REFERENT_ROWS;
-  const answers = view.answers.map((answer) => answerRow(answer, opts.canEdit));
+  // Una risposta senza testo e senza «Non lo so» (la domanda risposta solo con un file) non è una voce: c'è il file.
+  const answers = view.answers.filter((answer) => answer.dontKnow || Boolean(answer.text?.trim())).map((answer) => answerRow(answer, opts.canEdit));
   const files = view.files.filter((file) => file.status !== "in_revisione" || opts.canReviewFiles).map((file) => fileRow(file, opts));
   const count = answers.length + files.length;
   const saysSilent = /senza risposta/i.test(view.line ?? "");
   return {
     line: view.line,
+    notice: view.reviewExpired ? T.fileReviewExpired : null,
     silentTag: view.silent && !saysSilent ? T.silentTag : null,
     summary: count > 0 ? fillText(T.entriesSummary, { n: count }) : null,
     answers,

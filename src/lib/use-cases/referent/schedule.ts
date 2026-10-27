@@ -54,6 +54,12 @@ export interface ReminderState {
   lastEmailAt: Date | null;
   /** Domande ancora aperte (`itemIsOpen`). */
   openItems: number;
+  /**
+   * L'indirizzo del referente è stato corretto dopo l'ultima email: nessun link valido per l'email di
+   * adesso. Le email partite oggi sono andate all'indirizzo sbagliato, quindi «Manda un promemoria»
+   * può partire anche oggi (è l'unico modo di dare il link al nuovo indirizzo).
+   */
+  addressChanged?: boolean;
 }
 
 /** Due istanti nello stesso giorno di Roma (`a` null: no). */
@@ -109,7 +115,9 @@ export function manualReminderCheck(
   if (r.openItems <= 0) return { ok: false, code: "nessuna_domanda_aperta" };
   const scheduledAt = inRomeSendWindow(now) ? new Date(now.getTime()) : nextRomeSendWindowStart(now);
   if (scheduledAt.getTime() >= r.expiresAt.getTime()) return { ok: false, code: "richiesta_chiusa" };
-  if (sameRomeDay(r.lastEmailAt, scheduledAt) || contact.remindedOn.has(romeDate(scheduledAt))) return { ok: false, code: "promemoria_gia_inviato" };
+  if (!r.addressChanged && (sameRomeDay(r.lastEmailAt, scheduledAt) || contact.remindedOn.has(romeDate(scheduledAt)))) {
+    return { ok: false, code: "promemoria_gia_inviato" };
+  }
   return { ok: true, scheduledAt };
 }
 

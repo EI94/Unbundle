@@ -263,6 +263,8 @@ export interface NeedReferentView {
   answers: NeedAnswerView[];
   /** Non eliminati; quelli del referente solo dopo l'invio; «in_revisione» solo con canReviewFiles. */
   files: NeedFileView[];
+  /** L'ultimo file dell'esigenza è un PDF non controllato in tempo: «File non controllato in tempo: …». */
+  reviewExpired?: boolean;
 }
 
 export interface UseCaseReferentPanel {
@@ -270,7 +272,7 @@ export interface UseCaseReferentPanel {
   available: boolean;
   /** canEditNeeds */
   canAsk: boolean;
-  /** abilities.isLateralSpace && canEditNeeds */
+  /** canEditNeeds: i revisori del workspace controllano i PDF con poco testo (non chi li ha caricati). */
   canReviewFiles: boolean;
   /** Ogni controllo che blocca «Chiedi al referente», nell'ordine in cui si mostra; [] = si può inviare. */
   gates: ReferentGate[];
@@ -286,6 +288,11 @@ export interface UseCaseReferentPanel {
   answerableNeedIds: string[];
   /** Cosa aggiungerebbe adesso «Prepara le domande». */
   preparable: PreparedQuestionKey[];
+  /**
+   * Alla scheda mancano dati che le domande standard chiedono (frequenza, tempo, …), anche se le
+   * domande ci sono già o sono archiviate: il motivo di «Prepara le domande» spento lo dice.
+   */
+  prepareGaps?: boolean;
   /** L'account di chi guarda. */
   requester: { name: string; email: string | null };
   /** clientUploadAvailable(process.env) */

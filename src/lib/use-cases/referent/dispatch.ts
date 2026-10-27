@@ -77,6 +77,16 @@ export interface ReferentRequestFacts {
   answeredToday?: number;
   /** Solo promemoria: il tipo della voce, e se una voce «inviata» dello stesso tipo c'è già per la richiesta. */
   item: { kind: ReferentReminderKind; alreadySent: boolean } | null;
+  /**
+   * Già partita, ma senza un link valido per l'indirizzo di adesso («Correggi l'email»): le email di
+   * oggi sono andate al vecchio indirizzo, quindi «un'email al giorno» non le conta.
+   */
+  addressChanged?: boolean;
+  /**
+   * (Parte 3) Il referente è chi ha chiesto: lo stesso account, oppure l'email del contatto è l'email
+   * verificata di chi ha chiesto. Riletto a ogni invio: nessuna email a se stessi.
+   */
+  selfRequest?: boolean;
 }
 
 export interface ReferentDeliveryFacts {
@@ -139,7 +149,8 @@ function dropReason(r: ReferentRequestFacts, now: Date): string | null {
   if (!item) return "richiesta_non_viva";
   if (item.kind === "primo" && (r.reminderCount !== 0 || item.alreadySent)) return "promemoria_gia_fatto";
   if (item.kind === "ultimo" && (r.reminderCount !== 1 || item.alreadySent)) return "promemoria_gia_fatto";
-  if (sameRomeDay(r.lastEmailAt, now)) return "gia_scritto_oggi";
+  if (r.selfRequest) return "referente_sei_tu";
+  if (!r.addressChanged && sameRomeDay(r.lastEmailAt, now)) return "gia_scritto_oggi";
   return null;
 }
 
@@ -166,6 +177,7 @@ export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliver
     const req = f.requests.find((x) => x.id === e.requestId);
     if (!req || !req.live) return cancel("richiesta_non_viva");
     if (req.openItems <= 0) return cancel("nessuna_domanda_aperta");
+    if (req.selfRequest) return cancel("referente_sei_tu");
     return {
       action: "send",
       to,
@@ -213,7 +225,7 @@ export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliver
   }
 
   // Promemoria: una o più richieste della stessa persona.
-  if (f.contactRemindedToday) return hold("gia_scritto_oggi");
+  if (f.contactRemindedToday && !(f.requests.length > 0 && f.requests.every((x) => x.addressChanged === true))) return hold("gia_scritto_oggi");
   const drop: { requestId: string; reason: string }[] = [];
   const kept: ReferentRequestFacts[] = [];
   for (const req of f.requests) {

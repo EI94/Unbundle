@@ -44,7 +44,7 @@ function contactRequests(workspaceId: string, contactId: string): SqlFragment {
  * La cancellazione dei dati di un referente in un workspace, in un batch:
  * 1. le sue richieste vive (e completate) revocate, motivo «cancellazione» (le domande aperte tornano
  *    da chiedere);
- * 2. ogni suo link revocato, ogni email in coda per lui annullata;
+ * 2. ogni suo link cancellato (con l'impronta dell'email), ogni email in coda per lui annullata;
  * 3. risposte (anche bozze) senza testo, file segnati cancellati con il nome tolto, messaggi delle
  *    richieste tolti (`purged_at`);
  * 4. con `anonymizeContact` (il referente è solo degli use case e non è già anonimizzato: lo legge
@@ -68,9 +68,11 @@ export function referentEraseStatements(i: {
   const mine = contactRequests(i.workspaceId, i.contactId);
   const statements: UcStatement[] = [
     ...revokeStatements({ workspaceId: i.workspaceId, target: { contactId: i.contactId }, reason: i.reason, actor }),
-    toStatement(ucSql`UPDATE use_case_referent_tokens t SET revoked_at = now()
-FROM use_case_referent_requests r
-WHERE t.request_id = r.id AND t.revoked_at IS NULL AND ${mine}`),
+    // I link non servono più a nessuno: si cancellano, con l'impronta dell'email del destinatario
+    // (`recipient_hash`, uno sha256 senza sale, risalibile all'indirizzo). Le email partite perdono `token_id`.
+    toStatement(ucSql`DELETE FROM use_case_referent_tokens t
+USING use_case_referent_requests r
+WHERE t.request_id = r.id AND ${mine}`),
     toStatement(ucSql`UPDATE use_case_referent_email_items it SET state = 'tolta', drop_reason = 'cancellazione'
 FROM use_case_referent_emails e
 WHERE it.email_id = e.id AND e.workspace_id = ${ws} AND e.contact_id = ${c} AND it.state = 'in_coda'`),
@@ -108,7 +110,7 @@ WHERE ${mine} AND r.purged_at = now()`),
 
 /**
  * La conservazione (cron, 12 mesi dopo la fine): risposte senza testo, file cancellati con il nome
- * tolto, messaggio tolto, `purged_at`; restano date, stati e id delle esigenze, così «Cosa serve»
+ * tolto, messaggio tolto, link cancellati, `purged_at`; restano date, stati e id delle esigenze, così «Cosa serve»
  * conserva la sua storia. Una riga «risposte e file cancellati dopo 12 mesi» nella Storia.
  */
 export function referentPurgeStatements(i: { workspaceId: string; requestId: string }): UcStatement[] {
@@ -122,6 +124,9 @@ WHERE id = ${req()} AND workspace_id = ${ws} AND status <> 'inviata' AND purged_
 WHERE request_id = ${req()} AND workspace_id = ${ws}`),
     toStatement(ucSql`UPDATE use_case_need_files SET deleted_at = coalesce(deleted_at, now()), deleted_reason = coalesce(deleted_reason, 'conservazione'), file_name = 'file'
 WHERE request_id = ${req()} AND workspace_id = ${ws}`),
+    // I link della richiesta chiusa, con l'impronta dell'email del destinatario: non resta niente.
+    toStatement(ucSql`DELETE FROM use_case_referent_tokens WHERE request_id = ${req()} AND workspace_id = ${ws}
+  AND EXISTS (SELECT 1 FROM use_case_referent_requests r WHERE r.id = ${req()} AND r.workspace_id = ${ws} AND r.status <> 'inviata')`),
     referentEventsForRequestsSql({ filter, code: "conservazione", actor: { kind: "sistema" } }),
   ];
 }

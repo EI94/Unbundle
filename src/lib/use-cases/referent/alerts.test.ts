@@ -107,6 +107,18 @@ test("piano: nell'ordine di §P2.7.3", () => {
   assert.ok(both.action === "send" && both.input.entries[0].followUp === "scaduta", "«scaduta» vince");
 });
 
+test("piano: un seguito non più vero si toglie all'invio (risposta arrivata, chiesto di nuovo)", () => {
+  // Ultimo promemoria, poi il referente ha risposto a tutto: la frase cade, la voce senza altro esce.
+  assert.deepEqual(plan(facts({ items: [item({ answers: 0, followUp: "ultimo_promemoria", stillWaiting: false })] })), { action: "cancel", reason: "nessuna_voce" });
+  // Nella stessa riga anche le risposte: restano, senza «restano domande senza risposta».
+  const mixed = plan(facts({ items: [item({ answers: 1, followUp: "ultimo_promemoria", stillWaiting: false })] }));
+  assert.ok(mixed.action === "send" && mixed.input.entries[0].followUp === null && mixed.input.entries[0].answers === 1);
+  if (mixed.action === "send") assert.doesNotMatch(renderRequesterAlert(mixed.input).text, /senza risposta/);
+  // Ancora vero: resta.
+  const waiting = plan(facts({ items: [item({ answers: 0, followUp: "scaduta", stillWaiting: true })] }));
+  assert.ok(waiting.action === "send" && waiting.input.entries[0].followUp === "scaduta");
+});
+
 const entry = (over: Partial<RequesterAlertInput["entries"][number]> = {}) => ({
   useCase: { code: "TJ-0004", title: "Fatture fornitori" },
   answers: 0,

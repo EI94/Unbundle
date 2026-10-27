@@ -1,12 +1,10 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
-import { loadUserContext } from "@/lib/db/queries/uc-cases";
 import {
   guardedReferent,
   isUuid,
   logReferentError,
-  lsDomainsOf,
   readRequestReferentPerson,
   referentBatch,
   referentWriter,
@@ -36,7 +34,7 @@ import {
   referentUploadCheck,
 } from "@/lib/use-cases/referent/files";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
-import { completeHandledRequestsStatements, infoCompleteSyncStatements, needTransitionSql, notifyReviewersSql, queueRequesterAlertSql, referentEventSql, type ReferentActor } from "@/lib/use-cases/referent/sql";
+import { completeHandledRequestsStatements, infoCompleteSyncStatements, lockRequestsOfNeedSql, needTransitionSql, notifyReviewersSql, queueRequesterAlertSql, referentEventSql, type ReferentActor } from "@/lib/use-cases/referent/sql";
 import type { ServiceResult, WriteContext } from "@/lib/use-cases/service";
 
 /**
@@ -183,7 +181,13 @@ function quarantineInsertSql(i: {
     ? ucSql`f.request_id = ${request} AND f.need_id = ${need}`
     : ucSql`f.use_case_id = ${uc} AND f.need_id = ${need} AND f.source = 'revisore' AND f.workspace_id = ${ws}`;
   const open = referent ? ucSql` AND ${openItemForLinkSql((i.uploader as { link: ReferentLink }).link, i.needId)}` : raw("");
+  // Un caricamento alla volta per domanda (richiesta del referente, oppure team su use case + esigenza):
+  // due file in parallelo non contano entrambi «meno di 5». Il lock dura fino alla fine della transazione.
+  const lockKey = referent
+    ? ucSql`${cast(i.needId, "text")} || ':' || ${cast((i.uploader as { link: ReferentLink }).link.requestId, "text")}`
+    : ucSql`${cast(i.needId, "text")} || ':team:' || ${cast(i.useCaseId, "text")}`;
   return [
+    toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('use_case_need_files'), hashtext(${lockKey})) IS NULL AS locked`),
     toStatement(ucSql`SELECT uc_require(${liveFilesCountSql(scope)} < ${cast(REFERENT_LIMITS.filesPerQuestion, "int")}, 'troppi_file') AS ok`),
     toStatement(
       requireRows(
@@ -220,6 +224,8 @@ function reviewerEffects(f: FileRow, outcome: "pulito" | "in_revisione", validat
   if (!userId) return [];
   const actor: ReferentActor = { kind: "persona", userId };
   const out: UcStatement[] = [
+    // Prima le richieste vive su questa esigenza, come revoca e scadenza (stesso ordine dei lock).
+    lockRequestsOfNeedSql(f.workspaceId, f.needId),
     validate && outcome === "pulito"
       ? needTransitionSql({ workspaceId: f.workspaceId, needIds: [f.needId], from: ["da_chiedere", "chiesta", "mancante", "parziale", "in_verifica"], to: "validata", actor })
       : needTransitionSql({ workspaceId: f.workspaceId, needIds: [f.needId], from: ["da_chiedere", "chiesta", "mancante", "parziale"], to: "in_verifica", actor }),
@@ -498,7 +504,7 @@ export async function completeReviewerClientUpload(ctx: WriteContext, useCaseId:
   }
 }
 
-// ─── Controllo di un PDF da parte di Lateral Space (§3.9) ────────────
+// ─── Controllo di un PDF con poco testo da parte del team (§3.9) ─────
 
 export const reviewNeedFile = guardedReferent(
   "controllo_file",
@@ -508,8 +514,7 @@ export const reviewNeedFile = guardedReferent(
     if (outcome !== "accetta" && outcome !== "rifiuta") return rfail("revisione_non_ammessa");
     if (!isUuid(useCaseId) || !isUuid(fileId)) return rfail("file_non_trovato");
     const executor = await getAppUcExecutor();
-    const user = await loadUserContext(executor, writer.userId, lsDomainsOf(env));
-    if (!user?.isLateralSpace) return rfail("revisione_non_ammessa");
+    // Chi modifica «Cosa serve» (`referentWriter`), Lateral Space o revisore del cliente: mai chi l'ha caricato.
     const f = await loadFile(executor, ctx.workspaceId, fileId);
     if (!f || f.deleted || f.useCaseId !== useCaseId.toLowerCase() || f.scanStatus !== "in_revisione" || (f.source === "referente" && !f.submitted)) return rfail("file_non_trovato");
     if (f.uploadedByUserId !== null && f.uploadedByUserId === writer.userId.toLowerCase()) return rfail("revisore_uguale");
@@ -521,6 +526,9 @@ export const reviewNeedFile = guardedReferent(
       // scheda) non riceve la notifica né l'avviso del suo documento accettato.
       const owner = f.source === "referente" && f.requestId ? (await readRequestReferentPerson(executor, f.workspaceId, f.requestId)).userId : f.uploadedByUserId;
       const alsoExceptUserId = owner && owner !== writer.userId.toLowerCase() ? owner : null;
+      // Un file del referente l'hanno già annunciato le sue risposte (i revisori lo vedono «Da controllare»
+      // dall'arrivo): accettarlo non manda una seconda notifica. Un file del team si annuncia qui.
+      const announce = f.source === "revisore";
       const run = await referentBatch(executor, [
         toStatement(
           requireRows(
@@ -531,20 +539,24 @@ WHERE id = ${id} AND scan_status = 'in_revisione' AND deleted_at IS NULL RETURNI
           ),
         ),
         referentEventSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, code: "file_accettato", actor }),
-        notifyReviewersSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, kind: "documenti", documents: 1, actorUserId: writer.userId, alsoExceptUserId }),
-        queueRequesterAlertSql({
-          workspaceId: f.workspaceId,
-          target: f.requestId ? { requestId: f.requestId } : { useCaseId: f.useCaseId, needId: f.needId },
-          answers: 0,
-          unknowns: 0,
-          documents: 1,
-          followUp: null,
-          actorUserId: writer.userId,
-          alsoExceptUserId,
-          immediate: false,
-          schedule: alertSchedule(now),
-          now,
-        }),
+        ...(announce
+          ? [
+              notifyReviewersSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, kind: "documenti", documents: 1, actorUserId: writer.userId, alsoExceptUserId }),
+              queueRequesterAlertSql({
+                workspaceId: f.workspaceId,
+                target: f.requestId ? { requestId: f.requestId } : { useCaseId: f.useCaseId, needId: f.needId },
+                answers: 0,
+                unknowns: 0,
+                documents: 1,
+                followUp: null,
+                actorUserId: writer.userId,
+                alsoExceptUserId,
+                immediate: false,
+                schedule: alertSchedule(now),
+                now,
+              }),
+            ]
+          : []),
       ]);
       if (!run.ok) return run;
       return { ok: true, value: { status: "pulito" } };
@@ -572,7 +584,7 @@ WHERE id = ${id} AND scan_status = 'in_revisione' AND deleted_at IS NULL RETURNI
 
 /**
  * Il download di un file per un revisore (§2.3): un file pulito della scheda (del team, o del
- * referente dopo l'invio), oppure un PDF in revisione per una persona di Lateral Space che non l'ha
+ * referente dopo l'invio), oppure un PDF in revisione per un revisore che modifica «Cosa serve» e non l'ha
  * caricato. Ogni rifiuto, un contributore compreso, è lo stesso «File non trovato.».
  */
 export async function openReviewerFileDownload(
@@ -582,7 +594,8 @@ export async function openReviewerFileDownload(
   const notFound = failCode<{ body: ReadableStream<Uint8Array>; size: number | null; mime: string; fileName: string }>("file_non_trovato");
   const abilities = abilitiesForUseCase(i.viewer);
   if (!abilities.canSeeNeeds || !isUuid(i.workspaceId) || !isUuid(i.useCaseId) || !isUuid(i.fileId) || !isUuid(i.userId)) return notFound;
-  const lsReviewer = abilities.isLateralSpace && abilities.canEditNeeds;
+  // I PDF da controllare li apre chi li controlla: un revisore che modifica «Cosa serve» e non li ha caricati.
+  const teamReviewer = abilities.canEditNeeds;
   const executor = await getAppUcExecutor();
   const [[row]] = await executor.batch([
     toStatement(ucSql`SELECT f.id, f.blob_path, f.mime, f.file_name, f.size_bytes
@@ -591,7 +604,7 @@ WHERE f.id = ${cast(i.fileId, "uuid")} AND f.workspace_id = ${cast(i.workspaceId
   AND f.deleted_at IS NULL AND f.blob_path IS NOT NULL
   AND (f.source = 'revisore' OR f.submitted_at IS NOT NULL)
   AND (f.scan_status = 'pulito'
-       OR (f.scan_status = 'in_revisione' AND ${cast(lsReviewer, "boolean")} AND f.uploaded_by_user_id IS DISTINCT FROM ${cast(i.userId, "uuid")}))`),
+       OR (f.scan_status = 'in_revisione' AND ${cast(teamReviewer, "boolean")} AND f.uploaded_by_user_id IS DISTINCT FROM ${cast(i.userId, "uuid")}))`),
   ]);
   const path = rowString(row?.blob_path);
   if (!row || !path || !isReferentBlobPath(path, i.workspaceId, i.useCaseId)) return notFound;

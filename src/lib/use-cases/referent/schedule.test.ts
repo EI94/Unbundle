@@ -105,6 +105,16 @@ test("promemoria a mano: adesso nella finestra, altrimenti alle 9 del prossimo g
   assert.deepEqual(manualReminderCheck(state({ expiresAt: at("2026-11-09", 8) }), at("2026-11-06", 21), none), { ok: false, code: "richiesta_chiusa" });
 });
 
+test("promemoria a mano dopo «Correggi l'email»: parte anche il giorno dell'email al vecchio indirizzo", () => {
+  const today = { remindedOn: new Set(["2026-11-04"]) };
+  const changed = state({ lastEmailAt: at("2026-11-04", 10), addressChanged: true });
+  assert.deepEqual(manualReminderCheck(changed, at("2026-11-04", 10, 30), today), { ok: true, scheduledAt: at("2026-11-04", 10, 30) });
+  // Senza il cambio d'indirizzo resta «un'email al giorno».
+  assert.deepEqual(manualReminderCheck(state({ lastEmailAt: at("2026-11-04", 10) }), at("2026-11-04", 10, 30), today), { ok: false, code: "promemoria_gia_inviato" });
+  // Le altre regole valgono lo stesso.
+  assert.deepEqual(manualReminderCheck({ ...changed, openItems: 0 }, at("2026-11-04", 10, 30), today), { ok: false, code: "nessuna_domanda_aperta" });
+});
+
 test("sameRomeDay", () => {
   assert.equal(sameRomeDay(null, SENT), false);
   assert.equal(sameRomeDay(at("2026-11-02", 0, 30), at("2026-11-02", 23, 30)), true);

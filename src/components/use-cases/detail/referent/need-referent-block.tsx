@@ -32,13 +32,18 @@ export function NeedReferentBlock({
   onOpen: (dialog: ReferentDialog) => void;
 }) {
   const rows = needReferentRows(view, { canEdit, canReviewFiles });
-  if (!rows.line && !rows.silentTag && !rows.summary) return null;
+  if (!rows.line && !rows.silentTag && !rows.summary && !rows.notice) return null;
   return (
     <div data-slot="need-referent" className="space-y-1">
       {rows.line || rows.silentTag ? (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs break-words text-muted-foreground">
           {rows.line ? <span data-slot="need-referent-line">{rows.line}</span> : null}
           {rows.silentTag ? <StatusDot tone="rosso" label={rows.silentTag} /> : null}
+        </p>
+      ) : null}
+      {rows.notice ? (
+        <p data-slot="need-referent-notice" className="text-xs break-words text-muted-foreground">
+          <StatusDot tone="giallo" label={rows.notice} />
         </p>
       ) : null}
       {rows.summary ? (

@@ -217,7 +217,7 @@ export function SectionNeeds({
           ) : null}
           {feature?.canAsk ? (
             <>
-              <PrepareButton workspaceId={workspaceId} useCaseId={useCaseId} preparable={feature.preparable} />
+              <PrepareButton workspaceId={workspaceId} useCaseId={useCaseId} preparable={feature.preparable} gaps={feature.prepareGaps === true} />
               {/*
                 L'azione principale del capitolo, ma non della pagina: un solo pulsante pieno per pagina
                 (la decisione). «secondary» la distingue da «Aggiungi» e «Prepara le domande».

@@ -35,6 +35,7 @@ test("senza richiesta e senza voci non si mostra niente", () => {
   assert.equal(needReferentRows(null, { canEdit: true, canReviewFiles: false }), EMPTY_NEED_REFERENT_ROWS);
   assert.deepEqual(needReferentRows({ needId: "n", line: null, silent: false, answers: [], files: [] }, { canEdit: true, canReviewFiles: false }), {
     line: null,
+    notice: null,
     silentTag: null,
     summary: null,
     answers: [],
@@ -84,4 +85,25 @@ test("nessuna voce parla di tempi o di persone a confronto", () => {
   const rows = needReferentRows(view, { canEdit: true, canReviewFiles: true });
   const texts = [rows.line, rows.summary, ...rows.answers.map((a) => a.header), ...rows.files.map((f) => f.header)].join(" ");
   assert.doesNotMatch(texts, /in ritardo|giorni|classifica|In corso/i);
+});
+
+test("una domanda risposta solo con un file: nessuna risposta vuota, il file conta una volta", () => {
+  const onlyFile: NeedReferentView = {
+    needId: "n2",
+    line: null,
+    silent: false,
+    answers: [{ id: "a3", source: "referente", authorLabel: "Mario Rossi", dateLabel: "27/10", text: null, dontKnow: false, canRemove: true }],
+    files: [file({ id: "f3" })],
+  };
+  const rows = needReferentRows(onlyFile, { canEdit: true, canReviewFiles: false });
+  assert.deepEqual(rows.answers, []);
+  assert.equal(rows.files.length, 1);
+  assert.equal(rows.summary, "Risposte e file · 1");
+});
+
+test("un PDF non controllato in tempo: la riga lo dice, anche senza altre voci", () => {
+  const rows = needReferentRows({ needId: "n3", line: null, silent: false, answers: [], files: [], reviewExpired: true }, { canEdit: true, canReviewFiles: true });
+  assert.equal(rows.notice, T.fileReviewExpired);
+  assert.equal(rows.notice, "File non controllato in tempo: chiedi di caricarlo di nuovo.");
+  assert.equal(rows.summary, null);
 });

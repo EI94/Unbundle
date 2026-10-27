@@ -235,7 +235,7 @@ test("referente: dati sanitari → rifiutato, nessun oggetto, il motivo resta", 
   assert.ok(row.rejection_reason);
 });
 
-test("referente: un PDF con poco testo va in revisione, si può inviare, lo controlla un'altra persona di Lateral Space", opts, async () => {
+test("referente: un PDF con poco testo va in revisione, si può inviare, lo controlla un revisore del workspace (anche del cliente)", opts, async () => {
   const { buildPdf, pdfTextContent } = await import("../../uc/files/fixtures.ts");
   const pdf = buildPdf([{ content: pdfTextContent(["Pagina quasi vuota"]) }]);
   const up = await pub.uploadReferentFileServer(link, { needId: state.needs[2], fileName: "scansione.pdf", declaration: true, bytes: pdf }, ENV);
@@ -244,22 +244,45 @@ test("referente: un PDF con poco testo va in revisione, si può inviare, lo cont
   const row = await fileRow(up.value.fileId);
   assert.ok(String(row.blob_path).startsWith("uc/s/"));
   // Prima dell'invio nessuno lo controlla.
-  refused(await files.reviewNeedFile(as("ls"), ids.useCase, up.value.fileId, "accetta", ENV), "file_non_trovato");
+  refused(await files.reviewNeedFile(as("builder"), ids.useCase, up.value.fileId, "accetta", ENV), "file_non_trovato");
   const done = await pub.submitReferentAnswers(link, { needIds: [state.needs[2]] }, new Date());
   assert.ok(done.ok, JSON.stringify(done));
-  // Il revisore del cliente non lo scarica; Lateral Space sì.
+  // Annunciato all'arrivo, come documento (non come «risposta»: solo un file, nessun testo).
+  const arrived = await q(`SELECT answers, documents FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'risposte' AND recipient_user_id = $2::uuid`, [ids.useCase, ids.builder]);
+  assert.ok(Number(arrived[0]?.documents) >= 1, JSON.stringify(arrived));
+  const answers = await q(`SELECT body, dont_know FROM use_case_need_answers WHERE need_id = $1::uuid AND request_id = $2::uuid AND status = 'inviata'`, [state.needs[2], state.requestId]);
+  assert.ok(answers.every((a) => a.body === null && a.dont_know === false));
+  // Nel pannello: nessuna risposta vuota, il file «Da controllare» per i revisori del workspace.
+  const base = await import("../../db/queries/use-case-referent-base.ts");
+  const { getAppUcExecutor } = await import("../../db/uc-executor.ts");
+  const all = await base.readCardNeeds(await getAppUcExecutor(), ids.ws, ids.useCase);
+  const panel = await referents.loadUseCaseReferentPanel({
+    workspaceId: ids.ws,
+    useCaseId: ids.useCase,
+    viewer: viewerOf("builder"),
+    session: { id: ids.builder, name: "Persona builder", email: emails.builder, emailVerified: true },
+    role: ROLE.builder,
+    needs: { requirements: all.filter((n) => n.type === "requisito"), steps: [], linkable: [] },
+    env: ENV,
+  });
+  assert.ok(panel);
+  if (!panel) return;
+  const need = panel.needs[state.needs[2]];
+  assert.ok(need, "esigenza nel pannello");
+  assert.equal(need.answers.length, 0, "una domanda risposta solo con un file non mostra una risposta vuota");
+  assert.ok(need.files.some((f) => f.id === up.value.fileId && f.status === "in_revisione" && f.canReview), JSON.stringify(need.files));
+  assert.equal(panel.canReviewFiles, true);
+  // Il revisore del cliente lo scarica e lo controlla; il contributore no.
   const client = await files.openReviewerFileDownload({ workspaceId: ids.ws, useCaseId: ids.useCase, fileId: up.value.fileId, viewer: viewerOf("builder"), userId: ids.builder }, ENV);
-  assert.equal(client.ok, false);
-  const ls = await files.openReviewerFileDownload({ workspaceId: ids.ws, useCaseId: ids.useCase, fileId: up.value.fileId, viewer: viewerOf("ls"), userId: ids.ls }, ENV);
-  assert.ok(ls.ok, JSON.stringify(ls));
-  if (ls.ok) await ls.value.body.cancel();
-  // Solo Lateral Space lo controlla.
-  refused(await files.reviewNeedFile(as("builder"), ids.useCase, up.value.fileId, "accetta", ENV), "revisione_non_ammessa");
-  ok(await files.reviewNeedFile(as("ls"), ids.useCase, up.value.fileId, "accetta", ENV), "accetta");
+  assert.ok(client.ok, JSON.stringify(client));
+  if (client.ok) await client.value.body.cancel();
+  const contributor = await files.openReviewerFileDownload({ workspaceId: ids.ws, useCaseId: ids.useCase, fileId: up.value.fileId, viewer: viewerOf("contributor"), userId: ids.contributor }, ENV);
+  assert.equal(contributor.ok, false);
+  assert.equal((await files.reviewNeedFile(as("contributor"), ids.useCase, up.value.fileId, "accetta", ENV)).ok, false);
+  ok(await files.reviewNeedFile(as("builder"), ids.useCase, up.value.fileId, "accetta", ENV), "accetta");
   assert.equal((await fileRow(up.value.fileId)).scan_status, "pulito");
-  const docs = await q(`SELECT documents FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'documenti' AND recipient_user_id = $2::uuid`, [ids.useCase, ids.builder]);
-  assert.equal(Number(docs[0]?.documents), 1);
-  assert.equal((await q(`SELECT 1 FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'documenti' AND recipient_user_id = $2::uuid`, [ids.useCase, ids.ls])).length, 0, "chi accetta non riceve la notifica");
+  // Già annunciato con le risposte: l'accettazione non manda una seconda notifica.
+  assert.equal((await q(`SELECT 1 FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'documenti'`, [ids.useCase])).length, 0);
 });
 
 test("team: «Allega un file» porta a «Da verificare» (o «A posto» se verificato e pulito), con la Storia; chi l'ha caricato non lo controlla", opts, async () => {
@@ -282,6 +305,23 @@ test("team: «Allega un file» porta a «Da verificare» (o «A posto» se verif
     const contributor = await files.uploadReviewerFileServer(as("contributor"), ids.useCase, { needId: n4, fileName: "a.csv", declaration: true, bytes: CLEAN }, ENV);
     assert.equal(contributor.ok, false);
   }
+});
+
+test("al massimo 5 file per domanda anche con otto caricamenti insieme", opts, async () => {
+  const need = state.needs[3];
+  const live = async () =>
+    Number(
+      (await q(`SELECT count(*)::int AS n FROM use_case_need_files WHERE need_id = $1::uuid AND use_case_id = $2::uuid AND source = 'revisore' AND deleted_at IS NULL AND scan_status <> 'rifiutato'`, [need, ids.useCase]))[0].n,
+    );
+  const before = await live();
+  assert.ok(before < 5, `prima ${before}`);
+  const results = await Promise.all(
+    Array.from({ length: 8 }, (_, i) => files.uploadReviewerFileServer(as("builder"), ids.useCase, { needId: need, fileName: `p${i}.csv`, declaration: true, bytes: CLEAN }, ENV)),
+  );
+  const done = results.filter((r) => r.ok).length;
+  assert.equal(done, 5 - before, JSON.stringify(results.map((r) => (r.ok ? "ok" : r.code))));
+  assert.ok(results.every((r) => r.ok || r.code === "troppi_file"), JSON.stringify(results.map((r) => (r.ok ? "ok" : r.code))));
+  assert.equal(await live(), 5);
 });
 
 test("al massimo 5 file per domanda; una quarantena abbandonata non conta e il cron la chiude", opts, async () => {

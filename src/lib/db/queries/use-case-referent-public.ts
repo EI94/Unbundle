@@ -47,6 +47,7 @@ import {
   referentEventSql,
   referentEventsForRequestsSql,
   casTail,
+  lockRequestSql,
 } from "@/lib/use-cases/referent/sql";
 import { HANDLED_NEED_STATUSES, privacyAccepted } from "@/lib/use-cases/referent/state";
 import { checkDraftText, checkSubmitText } from "@/lib/use-cases/referent/text";
@@ -384,6 +385,8 @@ interface Target {
   needId: string;
   dontKnow: boolean;
   hasDraft: boolean;
+  /** C'è un testo: solo così conta come «risposta» (un file da solo conta tra i documenti). */
+  hasText: boolean;
   documents: number;
 }
 
@@ -433,7 +436,7 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
       const check = checkSubmitText(text, needId);
       if (!check.ok) issues.push(...check.issues);
     }
-    ready.push({ needId, dontKnow, hasDraft: draft !== null, documents: files.filter((f) => f.scanStatus === "pulito").length });
+    ready.push({ needId, dontKnow, hasDraft: draft !== null, hasText: !dontKnow && text !== null, documents: files.length });
   }
   if (issues.length > 0) return pfail("risposte_da_correggere", undefined, issues);
   if (ready.length === 0) return pfail("nessuna_risposta");
@@ -448,12 +451,14 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
   const answerIds = ready.filter((t) => !t.dontKnow).map((t) => t.needId);
   const drafted = ready.filter((t) => t.hasDraft).map((t) => t.needId);
   const fileOnly = ready.filter((t) => !t.hasDraft).map((t) => t.needId);
-  const answers = answerIds.length;
+  // Le risposte con un testo; una domanda con solo file conta tra i documenti, mai due volte.
+  const answers = ready.filter((t) => t.hasText).length;
   const unknowns = unknownIds.length;
   const documents = ready.reduce((n, t) => n + t.documents, 0);
   const completedFilter = ucSql`r.id = ${req} AND r.workspace_id = ${ws} AND r.status = 'completata' AND r.completed_at = now()`;
 
-  const statements: UcStatement[] = [];
+  // Prima la riga della richiesta, come revoca e scadenza: le due transazioni si mettono in fila.
+  const statements: UcStatement[] = [lockRequestSql(link.workspaceId, link.requestId)];
   if (drafted.length) {
     statements.push(
       toStatement(ucSql`WITH upd AS (
