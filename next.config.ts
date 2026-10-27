@@ -17,7 +17,8 @@ import type { NextConfig } from "next";
  *   X-Frame-Options, Permissions-Policy. CSP globale non impostata qui:
  *   Firebase + Slack + Vercel Blob richiederebbero un'allowlist articolata,
  *   meglio introdurla in PR dedicata con testing approfondito. I soli link
- *   personali dei Casi d'uso (`/r/*`, `/api/r/*`) hanno la loro CSP, sotto.
+ *   personali dei Casi d'uso (`/r/*`, `/api/r/*`) e di «Chiedi al referente»
+ *   (`/rispondi/*`, `/api/rispondi/*`) hanno la loro CSP, sotto.
  *
  * - poweredByHeader off: rimuove `X-Powered-By: Next.js`.
  */
@@ -92,6 +93,9 @@ const nextConfig: NextConfig = {
       },
       { source: "/r/:path*", headers: PUBLIC_LINK_HEADERS },
       { source: "/api/r/:path*", headers: PUBLIC_LINK_HEADERS },
+      // «Chiedi al referente»: la pagina `/rispondi/<token>` e le sue API, con le stesse regole.
+      { source: "/rispondi/:path*", headers: PUBLIC_LINK_HEADERS },
+      { source: "/api/rispondi/:path*", headers: PUBLIC_LINK_HEADERS },
     ];
   },
 };

@@ -75,7 +75,8 @@ function looksSecret(segment: string): boolean {
 
 /**
  * Percorso da registrare: senza query né frammento, con il token dei link
- * personali (`/r/<token>`, `/api/r/<token>/…`) riscritto in `[token]` e ogni
+ * personali (`/r/<token>`, `/api/r/<token>/…`, e quelli di «Chiedi al
+ * referente» `/rispondi/<token>`, `/api/rispondi/<token>/…`) riscritto in `[token]` e ogni
  * altro segmento opaco o con un'email riscritto in `[redatto]`.
  */
 export function redactUcPath(path: unknown): string {
@@ -94,7 +95,7 @@ export function redactUcPath(path: unknown): string {
     const s = segments[i];
     const prev = out[out.length - 1];
     const prev2 = out[out.length - 2];
-    if (s && prev === "r" && (out.length === 2 || (prev2 === "api" && out.length === 3))) {
+    if (s && (prev === "r" || prev === "rispondi") && (out.length === 2 || (prev2 === "api" && out.length === 3))) {
       out.push("[token]");
     } else if (s && looksSecret(s)) {
       out.push("[redatto]");
@@ -108,6 +109,8 @@ export function redactUcPath(path: unknown): string {
 /** Area del log dal percorso: le rotte uc hanno la loro, il resto è `app`. */
 export function areaForPath(path: string): string {
   if (/^\/(api\/)?r(\/|$)/.test(path)) return "uc.r";
+  // «Chiedi al referente» (area «Use case»): la stessa area di `logReferentPublicError`.
+  if (/^\/(api\/)?rispondi(\/|$)/.test(path)) return "use-case.rispondi";
   if (/^\/api\/mcp\/casi(\/|$)/.test(path)) return "uc.mcp";
   if (/^\/api\/cron\/uc-/.test(path)) return "uc.cron";
   if (/^\/dashboard\/[^/]+\/casi-duso(\/|$)/.test(path)) return "uc";
