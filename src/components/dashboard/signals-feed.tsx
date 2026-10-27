@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,25 +79,49 @@ const signalConfig: Record<
   },
 };
 
+/** Il messaggio quando la scrittura non parte (rete assente): lo stesso delle action. */
+const READ_FAILED = "Non riesco a segnarlo come letto. Riprova.";
+const READ_ALL_FAILED = "Non riesco a segnarli come letti. Riprova.";
+
+/**
+ * I segnali di Intelligence, letti per persona (SPEC §P2.4): il «letto» è di chi clicca. Dopo ogni
+ * scrittura le action rileggono la pagina (`refresh()`), e qui la lista segue i dati nuovi; se la
+ * scrittura non riesce le righe tornano com'erano e un toast lo dice.
+ */
 export function SignalsFeed({ signals: initialSignals, workspaceId }: SignalsFeedProps) {
   const [signals, setSignals] = useState(initialSignals);
   const [isPending, startTransition] = useTransition();
 
+  // La pagina riletta (le action di qui, o la campanella) porta la lista vera: quella locale la segue.
+  useEffect(() => {
+    setSignals(initialSignals);
+  }, [initialSignals]);
+
   const unreadCount = signals.filter((s) => !s.isRead).length;
 
   const handleMarkRead = (signalId: string) => {
+    const previous = signals;
     setSignals((prev) =>
       prev.map((s) => (s.id === signalId ? { ...s, isRead: true } : s))
     );
     startTransition(async () => {
-      await markSignalAsRead(workspaceId, signalId);
+      const result = await markSignalAsRead(workspaceId, signalId).catch(() => ({ ok: false as const, code: "riprova" as const, message: READ_FAILED }));
+      if (!result.ok) {
+        setSignals(previous);
+        toast.error(result.message);
+      }
     });
   };
 
   const handleMarkAllRead = () => {
+    const previous = signals;
     setSignals((prev) => prev.map((s) => ({ ...s, isRead: true })));
     startTransition(async () => {
-      await markAllSignalsRead(workspaceId);
+      const result = await markAllSignalsRead(workspaceId).catch(() => ({ ok: false as const, code: "riprova" as const, message: READ_ALL_FAILED }));
+      if (!result.ok) {
+        setSignals(previous);
+        toast.error(result.message);
+      }
     });
   };
 

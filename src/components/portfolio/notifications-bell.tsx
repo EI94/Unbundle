@@ -1,166 +1,300 @@
 "use client";
 
-import { Bell } from "lucide-react";
-import Link from "next/link";
-import { useState, useTransition } from "react";
-import { markSignalAsRead } from "@/lib/actions/intelligence";
-import { markAllUcNotificationsReadAction, markUcNotificationReadAction } from "@/lib/actions/uc-notifications";
+import { useCallback, useEffect, useReducer, useRef, useState, type MouseEvent } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Menu } from "@base-ui/react/menu";
+import { Bell, Check } from "lucide-react";
+import { toast } from "sonner";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { markAllBellReadAction, setBellEmailAlertsAction } from "@/lib/actions/notifications";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import type { UcBellItem } from "@/lib/uc/notify/bell";
+  BELL_TEXT,
+  bellApiPath,
+  bellAriaLabel,
+  bellBadgeText,
+  type BellPayload,
+  type BellReadRef,
+  type BellWriteBody,
+  type BellWriteResult,
+} from "@/lib/notifications/bell";
 import { cn } from "@/lib/utils";
+import { bellMenuModel, bellReducer, initialBellState, runRowClick, visibleEntries, visibleNewCount } from "./notifications-bell-state";
 
-export type BellSignal = {
-  id: string;
-  title: string;
-  description: string | null;
-  signalType: string;
-  relatedEntityType: string | null;
-  relatedEntityId: string | null;
-  createdAt: string;
-  isRead: boolean;
-  /** Dove porta il segnale, deciso dalla barra in alto con l'area del workspace; null: nessun link. */
-  href: string | null;
-};
-
-/** «Segna come lette»: l'azione in testata (docs/casi-duso/DESIGN.md §3.13.4). */
-const READ_ALL = "Segna come lette";
-
-/** La data di un segnale in `it-IT`, a Roma («14 ott, 09:30»): la stessa sul server e nel browser. */
-const SIGNAL_DATE = new Intl.DateTimeFormat("it-IT", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
-
-/**
- * Una riga della campanella: un segnale del portafoglio (`weekly_signals`) o una
- * notifica dei casi d'uso (`uc_notifications`, solo per Lateral Space). Le due
- * fonti restano separate anche nel «letto»: un segnale si segna con
- * `markSignalAsRead` (quella di Intelligence, che guarda il ruolo: chi non valuta non spegne i
- * segnali delle schede), una notifica uc con `markUcNotificationReadAction`.
- */
-type BellEntry =
-  | { source: "signal"; key: string; signal: BellSignal; createdAt: string; isRead: boolean }
-  | { source: "uc_case"; key: string; item: UcBellItem; createdAt: string; isRead: boolean };
-
-function entriesOf(signals: BellSignal[], caseItems: UcBellItem[], readCase: ReadonlySet<string>): BellEntry[] {
-  const all: BellEntry[] = [
-    ...signals.map((s): BellEntry => ({ source: "signal", key: `s:${s.id}`, signal: s, createdAt: s.createdAt, isRead: s.isRead })),
-    ...caseItems.map((n): BellEntry => ({ source: "uc_case", key: `uc:${n.id}`, item: n, createdAt: n.createdAt, isRead: readCase.has(n.id) })),
-  ];
-  return all.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+export interface NotificationsBellProps {
+  workspaceId: string;
+  /** Il payload della persona letto dalla barra in alto (`loadBellPayload`). */
+  initial: BellPayload;
 }
 
-export function NotificationsBell({
-  workspaceId,
-  initialSignals,
-  initialCaseNotifications = [],
-  useCaseHub = false,
-}: {
-  workspaceId: string;
-  initialSignals: BellSignal[];
-  /** Notifiche non lette dei casi d'uso (campanella di Lateral Space). */
-  initialCaseNotifications?: UcBellItem[];
-  /**
-   * Area «Use case» accesa per il workspace. Le righe dei dossier hanno in testa codice e titolo
-   * dello use case (`context` di `src/lib/uc/notify/bell.ts`), mai «Casi d'uso»; spenta, senza
-   * contesto resta l'etichetta di oggi.
-   */
-  useCaseHub?: boolean;
-}) {
-  const [signals, setSignals] = useState(initialSignals);
-  const [caseItems] = useState(initialCaseNotifications);
-  const [readCase, setReadCase] = useState<ReadonlySet<string>>(() => new Set());
-  const [, startTransition] = useTransition();
-  const entries = entriesOf(signals, caseItems, readCase);
-  const unread = entries.filter((e) => !e.isRead).length;
-  const unreadCase = caseItems.filter((n) => !readCase.has(n.id)).length;
+/** Dopo una navigazione o una scrittura la campanella si rilegge una volta, poco dopo. */
+const REFETCH_DELAY_MS = 300;
+/** Al ritorno sulla scheda del browser al massimo una rilettura al minuto. */
+const VISIBLE_REFETCH_MS = 60_000;
 
-  const onOpenSignal = (s: BellSignal) => {
-    if (s.isRead) return;
-    setSignals((prev) => prev.map((x) => (x.id === s.id ? { ...x, isRead: true } : x)));
-    startTransition(async () => {
-      await markSignalAsRead(workspaceId, s.id).catch(() => {});
+const ROW =
+  "flex w-full min-h-11 flex-col items-stretch gap-0.5 rounded-md px-2 py-2 text-left outline-hidden select-none sm:min-h-0 data-highlighted:bg-accent data-highlighted:text-accent-foreground";
+
+async function postBell(workspaceId: string, body: BellWriteBody): Promise<BellWriteResult> {
+  try {
+    const response = await fetch(bellApiPath(workspaceId), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      credentials: "same-origin",
+      cache: "no-store",
+      // La scrittura arriva anche se la persona cambia pagina subito dopo (un clic su una riga, un'apertura breve).
+      keepalive: true,
     });
+    const json = (await response.json().catch(() => null)) as BellWriteResult | null;
+    if (json && typeof json === "object" && "ok" in json) return json;
+  } catch {
+    // rete assente: come un errore del server
+  }
+  return { ok: false, code: "riprova", message: body.op === "read" ? BELL_TEXT.errors.readOne : BELL_TEXT.errors.unavailable };
+}
+
+async function getBell(workspaceId: string): Promise<BellPayload | null> {
+  try {
+    const response = await fetch(bellApiPath(workspaceId), { cache: "no-store", credentials: "same-origin" });
+    if (!response.ok) return null;
+    const json = (await response.json().catch(() => null)) as { ok?: boolean; payload?: BellPayload } | null;
+    return json?.ok === true && json.payload ? json.payload : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Un clic semplice (sinistro, senza modificatori): naviga la campanella; gli altri restano del link. */
+function isPlainClick(event: MouseEvent): boolean {
+  return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+}
+
+/**
+ * La campanella della barra in alto, per persona (SPEC §P2.5, R10): il numero rosso conta le righe
+ * nuove dall'ultima apertura e si azzera aprendola; ogni riga resta evidenziata finché la persona non
+ * la apre; aprire una riga la segna letta prima di navigare; «Segna tutte come lette» vale per tutte
+ * le fonti che la persona vede, solo per lei. Si rilegge dopo ogni navigazione e ogni scrittura, e
+ * adotta il payload nuovo che arriva dal server con la pagina.
+ */
+export function NotificationsBell({ workspaceId, initial }: NotificationsBellProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [state, dispatch] = useReducer(bellReducer, initial, initialBellState);
+  const [emailOverride, setEmailOverride] = useState<boolean | null>(null);
+  const stateRef = useRef(state);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastVisibleFetch = useRef(0);
+  const firstPath = useRef(true);
+
+  useEffect(() => {
+    stateRef.current = state;
+  });
+
+  const fetchNow = useCallback(async () => {
+    const payload = await getBell(workspaceId);
+    if (payload) dispatch({ type: "payload", payload });
+    else dispatch({ type: "refreshFailed" });
+  }, [workspaceId]);
+
+  const refetch = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      void fetchNow();
+    }, REFETCH_DELAY_MS);
+  }, [fetchNow]);
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  // Il payload che arriva con la pagina (refresh() dalle action, router.refresh()): adottato se più nuovo.
+  useEffect(() => {
+    dispatch({ type: "payload", payload: initial });
+  }, [initial]);
+
+  // Navigazione: il menu si chiude e la campanella si rilegge.
+  useEffect(() => {
+    if (firstPath.current) {
+      firstPath.current = false;
+      return;
+    }
+    dispatch({ type: "close" });
+    refetch();
+  }, [pathname, refetch]);
+
+  // Ritorno sulla scheda del browser: al massimo una rilettura al minuto.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastVisibleFetch.current < VISIBLE_REFETCH_MS) return;
+      lastVisibleFetch.current = now;
+      void fetchNow();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [fetchNow]);
+
+  function onOpenChange(open: boolean) {
+    if (!open) {
+      dispatch({ type: "close" });
+      return;
+    }
+    dispatch({ type: "open" });
+    // In parallelo, senza aspettare per mostrare il menu: «visto fino a» lo decide il server.
+    void postBell(workspaceId, { op: "seen" }).then((result) => {
+      if (result.ok && result.seenAt) dispatch({ type: "seen", seenAt: result.seenAt });
+    });
+    void fetchNow();
+  }
+
+  const deps = {
+    markRead: (ref: BellReadRef) => postBell(workspaceId, { op: "read", ref }),
+    push: (href: string) => router.push(href),
+    toast: (message: string) => toast.error(message),
+    dispatch,
+    timeout: (ms: number) => new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), ms)),
+    refetch,
   };
 
-  const onOpenCase = (n: UcBellItem) => {
-    if (readCase.has(n.id)) return;
-    setReadCase((prev) => new Set(prev).add(n.id));
-    startTransition(async () => {
-      await markUcNotificationReadAction(workspaceId, n.id).catch(() => {});
-    });
-  };
+  function onRow(event: MouseEvent, key: string) {
+    const entry = visibleEntries(stateRef.current).find((e) => e.key === key);
+    if (!entry) return;
+    const plain = !entry.href || isPlainClick(event);
+    if (plain) event.preventDefault();
+    void runRowClick(entry, { plain }, deps);
+  }
 
-  const onReadAllCases = () => {
-    setReadCase(new Set(caseItems.map((n) => n.id)));
-    startTransition(async () => {
-      await markAllUcNotificationsReadAction(workspaceId).catch(() => {});
-    });
-  };
+  async function onReadAll() {
+    const previous = stateRef.current;
+    dispatch({ type: "optimisticReadAll" });
+    let result: Awaited<ReturnType<typeof markAllBellReadAction>>;
+    try {
+      result = await markAllBellReadAction(workspaceId, previous.payload.latestAt);
+    } catch {
+      result = { ok: false, code: "riprova", message: BELL_TEXT.errors.readAll };
+    }
+    if (result.ok) dispatch({ type: "payload", payload: result.payload });
+    else {
+      dispatch({ type: "revertReadAll", previous });
+      toast.error(result.message || BELL_TEXT.errors.readAll);
+    }
+  }
+
+  async function onEmailAlerts(on: boolean) {
+    setEmailOverride(on);
+    let result: Awaited<ReturnType<typeof setBellEmailAlertsAction>>;
+    try {
+      result = await setBellEmailAlertsAction(workspaceId, on);
+    } catch {
+      result = { ok: false, code: "riprova", message: BELL_TEXT.errors.preference };
+    }
+    if (result.ok) dispatch({ type: "payload", payload: result.payload });
+    else toast.error(result.message || BELL_TEXT.errors.preference);
+    setEmailOverride(null);
+  }
+
+  const model = bellMenuModel(state);
+  const count = visibleNewCount(state);
+  const badge = bellBadgeText(count);
+  const emailChecked = emailOverride ?? model.emailChecked;
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={state.open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
-        className="relative inline-flex items-center justify-center h-9 w-9 rounded-md border hover:bg-accent"
-        aria-label="Notifiche"
+        data-slot="notifications-bell"
+        className="relative inline-flex size-11 items-center justify-center rounded-md border outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-9"
+        aria-label={bellAriaLabel(count)}
       >
-        <Bell className="h-4 w-4" />
-        {unread > 0 && (
-          <span className="absolute -top-1 -right-1 h-4 min-w-[1rem] rounded-full bg-red-500 text-[10px] font-medium text-white flex items-center justify-center px-1">
-            {unread > 9 ? "9+" : unread}
+        <Bell aria-hidden className="size-4" />
+        {badge ? (
+          <span
+            aria-hidden
+            data-slot="notifications-badge"
+            className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white"
+          >
+            {badge}
           </span>
-        )}
+        ) : null}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 max-w-[calc(100vw-2rem)] max-h-[70vh] overflow-auto p-2">
-        <div className="flex items-center justify-between gap-2 px-2 py-1 text-xs text-muted-foreground">
-          <span>Notifiche workspace</span>
-          {unreadCase > 0 && (
-            <button type="button" className="underline-offset-2 hover:underline" onClick={onReadAllCases}>
-              {READ_ALL}
-            </button>
-          )}
+      <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-2rem))] max-h-[70vh] overflow-auto p-2">
+        <div className="sticky -top-2 z-10 -mx-2 -mt-2 flex min-h-11 items-center justify-between gap-2 border-b bg-popover px-4 py-1.5 sm:min-h-9">
+          <span className="text-xs font-medium text-muted-foreground">{BELL_TEXT.title}</span>
+          {model.showReadAll ? (
+            <Menu.Item
+              closeOnClick={false}
+              onClick={() => void onReadAll()}
+              className="inline-flex min-h-11 cursor-default items-center rounded-md px-2 text-xs font-medium text-primary outline-hidden select-none data-highlighted:bg-accent sm:min-h-7"
+            >
+              {BELL_TEXT.readAll}
+            </Menu.Item>
+          ) : null}
         </div>
-        {entries.length === 0 ? (
-          <div className="p-3 text-sm text-muted-foreground">
-            Nessuna notifica ancora.
-          </div>
+        {model.refreshText ? (
+          <p role="status" className="px-2 pt-2 text-xs text-muted-foreground">
+            {model.refreshText}
+          </p>
+        ) : null}
+        {model.emptyText ? (
+          <p className="p-3 text-sm text-muted-foreground">{model.emptyText}</p>
         ) : (
-          <ul className="space-y-1">
-            {entries.slice(0, 40).map((e) => {
-              const href = e.source === "signal" ? e.signal.href : e.item.href;
-              const title = e.source === "signal" ? e.signal.title : e.item.title;
-              const description = e.source === "signal" ? e.signal.description : e.item.description;
+          <div className="mt-1 space-y-1">
+            {model.rows.map((row) => {
               const content = (
-                <div
-                  className={cn(
-                    "rounded-md px-2 py-2 hover:bg-accent cursor-pointer",
-                    !e.isRead && "bg-accent/50"
-                  )}
-                  onClick={() => (e.source === "signal" ? onOpenSignal(e.signal) : onOpenCase(e.item))}
-                >
-                  {e.source === "uc_case" && (e.item.context || !useCaseHub) ? (
-                    <div className="truncate text-xs text-muted-foreground">{e.item.context ?? "Casi d'uso"}</div>
-                  ) : null}
-                  <div className="text-sm font-medium line-clamp-2">{title}</div>
-                  {description && (
-                    <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                      {description}
-                    </div>
-                  )}
-                  <div className="text-[10px] text-muted-foreground mt-1">
-                    {e.source === "uc_case" ? e.item.when : SIGNAL_DATE.format(new Date(e.createdAt))}
-                  </div>
-                </div>
+                <>
+                  {row.context ? <span className="truncate text-xs text-muted-foreground">{row.context}</span> : null}
+                  <span className="line-clamp-2 text-sm font-medium">{row.title}</span>
+                  {row.description ? <span className="line-clamp-2 text-xs text-muted-foreground">{row.description}</span> : null}
+                  <span className="text-[10px] text-muted-foreground">
+                    {row.when}
+                    {row.unread ? <span className="sr-only">{` · ${BELL_TEXT.unreadSr}`}</span> : null}
+                  </span>
+                </>
               );
-              return (
-                <li key={e.key}>
-                  {href ? <Link href={href}>{content}</Link> : content}
-                </li>
+              const className = cn(ROW, row.unread && "bg-accent/50");
+              return row.href ? (
+                <Menu.LinkItem
+                  key={row.key}
+                  href={row.href}
+                  closeOnClick={false}
+                  data-unread={row.unread || undefined}
+                  className={className}
+                  onClick={(event) => onRow(event, row.key)}
+                  onAuxClick={(event) => {
+                    if (event.button === 1) onRow(event, row.key);
+                  }}
+                >
+                  {content}
+                </Menu.LinkItem>
+              ) : (
+                <Menu.Item key={row.key} closeOnClick={false} data-unread={row.unread || undefined} className={className} onClick={(event) => onRow(event, row.key)}>
+                  {content}
+                </Menu.Item>
               );
             })}
-          </ul>
+          </div>
         )}
+        {model.showEmailToggle ? (
+          <div className="sticky -bottom-2 -mx-2 -mb-2 mt-2 border-t bg-popover px-2 py-1.5">
+            <Menu.CheckboxItem
+              checked={emailChecked}
+              closeOnClick={false}
+              onCheckedChange={(checked) => void onEmailAlerts(checked)}
+              className="flex min-h-11 w-full cursor-default items-start gap-2 rounded-md px-2 py-2 text-xs outline-hidden select-none data-highlighted:bg-accent sm:min-h-0"
+            >
+              <span aria-hidden className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[4px] border">
+                <Menu.CheckboxItemIndicator>
+                  <Check className="size-3" />
+                </Menu.CheckboxItemIndicator>
+              </span>
+              <span>{BELL_TEXT.emailAlerts}</span>
+            </Menu.CheckboxItem>
+          </div>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
