@@ -159,6 +159,7 @@ export function NotificationsBell({ workspaceId, initial }: NotificationsBellPro
     dispatch,
     timeout: (ms: number) => new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), ms)),
     refetch,
+    refreshPage: () => router.refresh(),
   };
 
   function onRow(event: MouseEvent, key: string) {

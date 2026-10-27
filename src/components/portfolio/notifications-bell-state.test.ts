@@ -226,6 +226,29 @@ test("clic con un modificatore (nuova scheda): nessuna navigazione dalla campane
   assert.ok(!log.some((line) => line.startsWith("push:") || line === "dispatch:close" || line.startsWith("timeout:")));
 });
 
+test("lettura riuscita senza navigazione: la pagina si rilegge (router.refresh), con la navigazione no", async () => {
+  const refreshed: string[] = [];
+  const noLink = entry(1, 1, { href: null });
+  const a = fakeDeps({ ok: true, seenAt: null });
+  a.deps.refreshPage = () => refreshed.push("senza-link");
+  await runRowClick(noLink, { plain: true }, a.deps);
+  assert.deepEqual(refreshed, ["senza-link"]);
+
+  const b = fakeDeps({ ok: true, seenAt: null });
+  b.deps.refreshPage = () => refreshed.push("nuova-scheda");
+  await runRowClick(entry(2, 2), { plain: false }, b.deps);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(refreshed, ["senza-link", "nuova-scheda"]);
+
+  const c = fakeDeps({ ok: true, seenAt: null });
+  c.deps.refreshPage = () => refreshed.push("con-link");
+  await runRowClick(entry(3, 3), { plain: true }, c.deps);
+  const d = fakeDeps({ ok: false, code: "riprova", message: "no" });
+  d.deps.refreshPage = () => refreshed.push("errore");
+  await runRowClick(entry(4, 4, { href: null }), { plain: true }, d.deps);
+  assert.deepEqual(refreshed, ["senza-link", "nuova-scheda"]);
+});
+
 test("clic semplice su una riga già letta: chiude e naviga, nessuna scrittura", async () => {
   const e = entry(1, 1, { unread: false });
   const { deps, log } = fakeDeps({ ok: true, seenAt: null });

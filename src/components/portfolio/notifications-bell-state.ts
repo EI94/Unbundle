@@ -180,6 +180,12 @@ export interface RowClickDeps {
   dispatch(e: BellEvent): void;
   timeout(ms: number): Promise<"timeout">;
   refetch(): void;
+  /**
+   * `router.refresh()`: dopo una lettura riuscita senza navigazione (riga senza link, o aperta in
+   * un'altra scheda), le altre viste della pagina con lo stesso stato per persona (Intelligence
+   * «non letti») si rileggono dal server. Con la navigazione ci pensa la pagina nuova.
+   */
+  refreshPage?(): void;
 }
 
 const READ_FAILED: BellWriteResult = { ok: false, code: "riprova", message: BELL_TEXT.errors.readOne };
@@ -193,9 +199,10 @@ function safeMarkRead(entry: BellEntry, deps: RowClickDeps): Promise<BellWriteRe
   }
 }
 
-function applyRead(entry: BellEntry, result: BellWriteResult, deps: RowClickDeps): void {
+function applyRead(entry: BellEntry, result: BellWriteResult, deps: RowClickDeps, navigates: boolean): void {
   if (result.ok) {
     deps.refetch();
+    if (!navigates) deps.refreshPage?.();
     return;
   }
   deps.dispatch({ type: "revertRead", key: entry.key });
@@ -214,16 +221,17 @@ export async function runRowClick(entry: BellEntry, click: { plain: boolean }, d
   if (!click.plain) {
     if (!entry.unread) return;
     deps.dispatch({ type: "optimisticRead", key: entry.key, at: entry.activityAt });
-    void safeMarkRead(entry, deps).then((result) => applyRead(entry, result, deps));
+    void safeMarkRead(entry, deps).then((result) => applyRead(entry, result, deps, false));
     return;
   }
   deps.dispatch({ type: "close" });
   if (entry.unread) {
     deps.dispatch({ type: "optimisticRead", key: entry.key, at: entry.activityAt });
     const write = safeMarkRead(entry, deps);
+    const navigates = Boolean(entry.href);
     const first = await Promise.race([write, deps.timeout(BELL_READ_WAIT_MS)]);
-    if (first === "timeout") void write.then((result) => applyRead(entry, result, deps));
-    else applyRead(entry, first, deps);
+    if (first === "timeout") void write.then((result) => applyRead(entry, result, deps, navigates));
+    else applyRead(entry, first, deps, navigates);
   }
   if (entry.href) deps.push(entry.href);
 }

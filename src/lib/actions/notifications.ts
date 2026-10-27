@@ -60,7 +60,8 @@ export async function markAllBellReadAction(workspaceId: string, upTo: string | 
       await markUseCaseNotificationsRead({ userId: c.userId, workspaceId, id: null, upTo: limit });
       if (isUcEnabledFor(workspaceId)) {
         const { markBellRead } = await import("@/lib/db/queries/uc-notifications-dispatch");
-        await markBellRead(await getAppUcExecutor(), { userId: c.userId, workspaceId, notificationId: null });
+        // Come segnali e notifiche degli use case: solo fino alle righe che la persona ha visto.
+        await markBellRead(await getAppUcExecutor(), { userId: c.userId, workspaceId, notificationId: null, upTo: limit });
       }
     }
     await markBellSeen(workspaceId, c.userId);

@@ -642,7 +642,8 @@ LIMIT ${cast(limit, "int")}`);
  * dossier, stesso giorno a Roma) si segna tutta insieme, così la campanella non
  * la ripropone con le altre notifiche del gruppo.
  */
-export function markBellReadSql(i: { userId: string; workspaceId: string; notificationId?: string | null }): UcStatement {
+/** `upTo` (solo «Segna tutte come lette» della campanella): non oltre le righe che la persona ha visto. */
+export function markBellReadSql(i: { userId: string; workspaceId: string; notificationId?: string | null; upTo?: Date | null }): UcStatement {
   const one = i.notificationId
     ? ucSql` AND (id = ${cast(i.notificationId, "uuid")} OR (template_key = 'risposta_ricevuta' AND EXISTS (
     SELECT 1 FROM uc_notifications t
@@ -650,9 +651,14 @@ export function markBellReadSql(i: { userId: string; workspaceId: string; notifi
       AND t.template_key = 'risposta_ricevuta' AND t.case_id = uc_notifications.case_id
       AND ${romeDayStart("t.created_at")} = ${romeDayStart("uc_notifications.created_at")})))`
     : raw("");
+  // Troncato ai millisecondi come `latestAt` del payload (ISO), altrimenti l'ultima riga vista resterebbe fuori.
+  const upTo =
+    i.upTo instanceof Date && !Number.isNaN(i.upTo.getTime())
+      ? ucSql` AND date_trunc('milliseconds', created_at) <= least(${cast(i.upTo.toISOString(), "timestamptz")}, now())`
+      : raw("");
   return toStatement(ucSql`WITH u AS (
   UPDATE uc_notifications SET read_at = now()
-  WHERE recipient_user_id = ${cast(i.userId, "uuid")} AND workspace_id = ${cast(i.workspaceId, "uuid")} AND channel = 'in_app' AND read_at IS NULL${one}
+  WHERE recipient_user_id = ${cast(i.userId, "uuid")} AND workspace_id = ${cast(i.workspaceId, "uuid")} AND channel = 'in_app' AND read_at IS NULL${one}${upTo}
   RETURNING 1
 )
 SELECT count(*)::int AS n FROM u`);
@@ -688,7 +694,7 @@ export async function listUnreadBell(
   return toBellItems(out, i.now ?? new Date());
 }
 
-export async function markBellRead(executor: UcExecutor, i: { userId: string; workspaceId: string; notificationId?: string | null }): Promise<number> {
+export async function markBellRead(executor: UcExecutor, i: { userId: string; workspaceId: string; notificationId?: string | null; upTo?: Date | null }): Promise<number> {
   if (!isUuid(i.userId) || !isUuid(i.workspaceId) || (i.notificationId && !isUuid(i.notificationId))) return 0;
   const [rows] = await executor.batch([markBellReadSql(i)]);
   return count(rows);
