@@ -146,6 +146,11 @@ export interface PublicItemRow {
   open: boolean;
   /** L'esigenza è ancora collegata e non archiviata. */
   visible: boolean;
+  /**
+   * (Parte 3) La domanda è ancora «aperta» per il referente ma l'esigenza è già stata data da altri
+   * (`itemHandledByTeam`: «Da verificare» o «A posto»): si mostra «gestita».
+   */
+  handled?: boolean;
   draft: { body: string | null; dontKnow: boolean; updatedAt: Date } | null;
   answer: { body: string | null; dontKnow: boolean; submittedAt: Date } | null;
   files: PublicFileRow[];
@@ -192,7 +197,11 @@ function fileView(f: PublicFileRow): ReferentFileView {
   };
 }
 
+/** (Parte 3) Una domanda a cui ha già pensato il team: solo il titolo, mai quello che hanno scritto gli altri. */
+const isHandled = (i: PublicItemRow) => !i.open && i.state === "aperta" && i.visible && i.handled === true;
+
 function questionView(i: PublicItemRow): ReferentQuestionView {
+  if (isHandled(i)) return { needId: i.needId, position: i.position, title: i.question, state: "gestita", draft: null, answer: null, files: [] };
   const sent = !i.open;
   return {
     needId: i.needId,
@@ -212,11 +221,14 @@ function questionView(i: PublicItemRow): ReferentQuestionView {
  */
 export function toPublicView(rows: PublicRows): ReferentAskView {
   const shown = rows.items
-    .filter((i) => i.open || (i.state !== "aperta" && i.visible))
+    .filter((i) => i.open || (i.state !== "aperta" && i.visible) || isHandled(i))
     .slice()
     .sort((a, b) => a.position - b.position);
   const open = shown.filter((i) => i.open).length;
-  const state: ReferentAskView["state"] = open > 0 ? "aperta" : shown.length > 0 || rows.request.status === "completata" ? "completata" : "vuota";
+  const answered = shown.filter((i) => !i.open && i.state !== "aperta").length;
+  const handled = shown.filter(isHandled).length;
+  // (Parte 3) Tutto fatto dal team, niente dal referente: «vuota», mai «Hai risposto a tutte le domande».
+  const state: ReferentAskView["state"] = open > 0 ? "aperta" : answered > 0 || (rows.request.status === "completata" && handled === 0) ? "completata" : "vuota";
   return {
     state,
     privacy: { accepted: privacyAccepted(rows.request), version: REFERENT_PRIVACY_NOTICE.version, contact: rows.privacyContact },
@@ -289,6 +301,7 @@ export const PANEL_VIEW_KEYS: readonly string[] = Object.freeze([
   "contacts[].emailMasked",
   "contacts[].selectable",
   "contacts[].reason",
+  "contacts[].team",
   "contacts[].hasOtherRequests",
   "requests",
   "requests[].id",

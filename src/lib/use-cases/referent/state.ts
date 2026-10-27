@@ -75,6 +75,22 @@ export function itemIsOpen(i: { state: ReferentItemState; needStatus: NeedStatus
   return i.state === "aperta" && i.needStatus === "chiesta" && !i.needArchived && i.linked;
 }
 
+/**
+ * (Parte 3) Gli stati di un'esigenza a cui qualcuno ha già pensato: una domanda ancora «aperta» del
+ * referente su un'esigenza in uno di questi stati si mostra «Non serve più: ci ha già pensato il team.».
+ */
+export const HANDLED_NEED_STATUSES: readonly NeedStatus[] = Object.freeze(["in_verifica", "validata"] as NeedStatus[]);
+
+/**
+ * (Parte 3) La domanda era del referente e l'ha già data qualcun altro (una risposta o un file dalla
+ * scheda, o un'altra risposta arrivata): non è più aperta, il promemoria non la conta, la pagina la
+ * mostra «gestita». Un'esigenza portata a mano a «Non ancora chiesta», «Manca il dato», «Risposta
+ * parziale», «Non si applica» o «Bloccata» è invece ritirata e non si mostra (come nella Parte 1).
+ */
+export function itemHandledByTeam(i: { state: ReferentItemState; needStatus: NeedStatus; needArchived: boolean; linked: boolean }): boolean {
+  return i.state === "aperta" && !i.needArchived && i.linked && HANDLED_NEED_STATUSES.includes(i.needStatus);
+}
+
 /** L'informativa è letta per la versione di adesso (una versione vecchia la fa mostrare di nuovo). */
 export function privacyAccepted(r: { privacyAcceptedAt: Date | null; privacyNoticeVersion: string | null }): boolean {
   return r.privacyAcceptedAt !== null && r.privacyNoticeVersion === REFERENT_PRIVACY_NOTICE.version;

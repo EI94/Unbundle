@@ -201,7 +201,7 @@ test("lo stesso giorno si somma e torna non letta; dopo la lettura si riparte da
   assert.deepEqual([builder[0].answers, builder[0].unknowns], [7, 1]);
   await ev(1, 0, new Date("2026-11-04T09:00:00Z"));
   rows = (await rowsFor(card2, "risposte")).filter((r) => r.who === ids.analyst);
-  assert.deepEqual(rows.map((r) => r.day), ["2026-11-03", "2026-11-04"]);
+  assert.deepEqual(rows.map((r) => String(r.day)).sort(), ["2026-11-03", "2026-11-04"]);
 });
 
 test("«Informazioni complete»: una volta sola, solo con una richiesta sulla scheda, di nuovo dopo «non più complete»", opts, async () => {

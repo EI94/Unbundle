@@ -392,7 +392,7 @@
         "src/lib/db/use-case-hub-referents-ddl.test.ts",
         "src/lib/db/use-case-hub-uc-drizzle.ts",
         "src/lib/db/use-case-hub-uc-drizzle.test.ts",
-        "src/lib/use-cases/referent/{contract,labels,tokens,availability,questions,prepare,schedule,state,text,files,email,dispatch,history,view,upload-transport,erase,alerts,sql}.ts",
+        "src/lib/use-cases/referent/{contract,labels,tokens,availability,questions,prepare,schedule,state,text,files,email,dispatch,history,view,upload-transport,erase,alerts,sql,people,links}.ts",
         "src/lib/use-cases/referent/*.test.ts",
         "src/lib/use-cases/info-progress.ts",
         "src/lib/use-cases/info-progress.test.ts",

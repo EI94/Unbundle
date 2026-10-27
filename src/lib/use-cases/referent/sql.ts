@@ -166,6 +166,31 @@ WHERE r.workspace_id = ${ws} AND r.drafts_cleared_at IS NULL AND ${i.filter}`),
   ];
 }
 
+// ─── Le due strade si incontrano (Parte 3, §P3.5) ────────────────────
+
+/**
+ * Una risposta o un file del team dalla scheda su un'esigenza che una richiesta viva chiede ancora:
+ * l'esigenza non è più «chiesta» (lo fa la transizione dello stesso batch, prima di queste righe),
+ * quindi la domanda non è più aperta (`openItemSql`) e i promemoria non la contano. Qui, nello stesso
+ * batch: ogni richiesta viva con una domanda su `needId` e nessuna domanda più aperta si completa
+ * subito (coda annullata, bozze cancellate, Storia «completata» di Unbundle). Nessuna email, nessuna
+ * notifica in più: la notifica, se c'è, è quella del file (`documenti`).
+ */
+export function completeHandledRequestsStatements(i: { workspaceId: string; needId: string }): UcStatement[] {
+  const ws = id(i.workspaceId, "workspace");
+  const filter = ucSql`r.workspace_id = ${ws} AND r.status = 'completata' AND r.completed_at = now()`;
+  return [
+    toStatement(ucSql`UPDATE use_case_referent_requests r SET status = 'completata', completed_at = now(), version = version + 1
+WHERE r.workspace_id = ${ws} AND r.status = 'inviata' AND r.expires_at > now()
+  AND EXISTS (SELECT 1 FROM use_case_referent_request_items ci WHERE ci.request_id = r.id AND ci.need_id = ${id(i.needId, "esigenza")})
+  AND ${openItemsCountSql("r")} = 0
+RETURNING r.id`),
+    ...cancelQueuedForRequestsStatements({ workspaceId: i.workspaceId, filter, reason: "completata" }),
+    ...draftsCleanupStatements({ workspaceId: i.workspaceId, filter }),
+    referentEventsForRequestsSql({ filter, code: "completata", actor: { kind: "sistema" } }),
+  ];
+}
+
 // ─── Scadenza ────────────────────────────────────────────────────────
 
 /** Le richieste scadute adesso, in questa transazione (alias `r`). */
@@ -290,14 +315,16 @@ function clockOf(clock: Date | undefined): SqlFragment {
  * nel workspace), tranne chi ha agito. Alias propri, per un `CROSS JOIN LATERAL`. Nessun ORDER BY,
  * nessun conteggio; 200 al massimo, per sicurezza.
  */
-export function reviewerRecipientsSql(workspace: SqlFragment, exceptUserId: string | null): SqlFragment {
+export function reviewerRecipientsSql(workspace: SqlFragment, exceptUserId: string | null, alsoExceptUserId: string | null = null): SqlFragment {
+  // (Parte 3) Una seconda persona esclusa: chi ha caricato il documento che un'altra persona ha accettato.
+  const also = alsoExceptUserId ? ucSql` AND ru.id <> ${id(alsoExceptUserId, "persona")}` : raw("");
   return ucSql`SELECT ru.id AS user_id
 FROM workspaces rw
 JOIN users ru ON ru.id IN (
   SELECT rm.user_id FROM memberships rm WHERE rm.organization_id = rw.organization_id
   UNION SELECT rwm.user_id FROM workspace_memberships rwm WHERE rwm.workspace_id = rw.id
 )
-WHERE rw.id = ${workspace} AND ru.id IS DISTINCT FROM ${cast(exceptUserId, "uuid")}
+WHERE rw.id = ${workspace} AND ru.id IS DISTINCT FROM ${cast(exceptUserId, "uuid")}${also}
   AND coalesce(
     (SELECT rm2.role::text FROM memberships rm2 WHERE rm2.user_id = ru.id AND rm2.organization_id = rw.organization_id LIMIT 1),
     (SELECT rwm2.role::text FROM workspace_memberships rwm2 WHERE rwm2.user_id = ru.id AND rwm2.workspace_id = rw.id LIMIT 1)
@@ -326,6 +353,8 @@ export function notifyReviewersSql(n: {
   documents?: number;
   followUp?: FollowUpReason | null;
   actorUserId: string | null;
+  /** (Parte 3) Chi ha dato il documento quando l'evento è di un'altra persona (l'accettazione di Lateral Space). */
+  alsoExceptUserId?: string | null;
   clock?: Date;
 }): UcStatement {
   const ts = clockOf(n.clock);
@@ -337,7 +366,7 @@ SELECT u.workspace_id, u.id, r.user_id, ${cast(n.kind, "text")},
        ${cast(counted ? bounded(n.answers) : 0, "int")}, ${cast(n.kind === "risposte" ? bounded(n.unknowns) : 0, "int")}, ${cast(counted ? bounded(n.documents) : 0, "int")},
        ${cast(followUp, "text")}, ${ts}, ${ts}
 FROM use_cases u
-CROSS JOIN LATERAL (${reviewerRecipientsSql(raw("u.workspace_id"), n.actorUserId)}) r
+CROSS JOIN LATERAL (${reviewerRecipientsSql(raw("u.workspace_id"), n.actorUserId, n.alsoExceptUserId ?? null)}) r
 WHERE u.id = ${id(n.useCaseId, "use case")} AND u.workspace_id = ${id(n.workspaceId, "workspace")}
 ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET
   ${COLLAPSE_SET}`);
@@ -441,18 +470,21 @@ function queueAlertSql(i: {
   documents: number;
   followUp: FollowUpReason | null;
   actorUserId: string | null;
+  alsoExceptUserId?: string | null;
   immediate: boolean;
   schedule: AlertSchedule;
   now: Date;
 }): UcStatement {
   const ws = id(i.workspaceId, "workspace");
   const now = cast(i.now.toISOString(), "timestamptz");
+  const also = i.alsoExceptUserId ? ucSql`
+    AND r.requested_by_user_id <> ${id(i.alsoExceptUserId, "persona")}` : raw("");
   const today = cast(i.schedule.today, "date");
   return toStatement(ucSql`WITH req AS (
   SELECT r.id, r.workspace_id, r.use_case_id, r.requested_by_user_id AS uid
   FROM use_case_referent_requests r
   WHERE r.workspace_id = ${ws} AND r.purged_at IS NULL AND r.requested_by_user_id IS NOT NULL
-    AND r.requested_by_user_id IS DISTINCT FROM ${cast(i.actorUserId, "uuid")}
+    AND r.requested_by_user_id IS DISTINCT FROM ${cast(i.actorUserId, "uuid")}${also}
     AND ${i.target}
     AND coalesce((SELECT b.referent_emails FROM workspace_bell_state b WHERE b.workspace_id = r.workspace_id AND b.user_id = r.requested_by_user_id), true)
 ), who AS (
@@ -505,6 +537,8 @@ export function queueRequesterAlertSql(i: {
   documents: number;
   followUp: FollowUpReason | null;
   actorUserId: string | null;
+  /** (Parte 3) Chi ha dato il documento accettato da un'altra persona: non riceve l'avviso del suo documento. */
+  alsoExceptUserId?: string | null;
   immediate: boolean;
   schedule: AlertSchedule;
   now: Date;

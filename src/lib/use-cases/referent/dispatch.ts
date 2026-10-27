@@ -35,6 +35,7 @@ import {
 import type { RenderedEmail } from "../../uc/notify/email-render.ts";
 import type { ReferentEmailTemplate, ReferentReminderKind, ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
 import { renderReferentEmail, type ReferentEmailInput, type ReminderEntry } from "./email.ts";
+import { cardLink } from "./links.ts";
 import { isStaleEmail, sameRomeDay } from "./schedule.ts";
 import { recipientHash } from "./tokens.ts";
 
@@ -57,6 +58,8 @@ export interface ClaimedReferentEmail {
 
 export interface ReferentRequestFacts {
   id: string;
+  /** (Parte 3) Lo use case della richiesta, per il link alla scheda di un referente revisore. */
+  useCaseId?: string;
   useCase: UcRef;
   status: ReferentRequestStatus;
   /** `inviata`, non revocata e non scaduta (orologio del database). */
@@ -82,7 +85,13 @@ export interface ReferentDeliveryFacts {
   featureOn?: boolean;
   /** L'autorizzazione del workspace all'elenco dei sub-responsabili di adesso. */
   subprocessorsAuthorized: boolean;
-  recipient: { email: string | null; active: boolean; anonymized: boolean; linkedUserIsLateralSpace: boolean } | null;
+  /**
+   * `teamAccess` (Parte 3): il referente è adesso un revisore del workspace con l'email verificata
+   * uguale a quella del contatto (`referentPersonOf`, riletto a ogni invio). Solo allora l'email
+   * aggiunge «Hai già accesso a Unbundle: …» e il link alla scheda; mai per corsisti, contributori o
+   * persone senza account.
+   */
+  recipient: { email: string | null; active: boolean; anonymized: boolean; linkedUserIsLateralSpace: boolean; teamAccess?: boolean } | null;
   /** L'email di chi ha chiesto solo se verificata e ancora revisore del workspace; in minuscolo. */
   replyTo: string | null;
   /** richiesta/conferma: l'unica richiesta; promemoria: una per voce ancora «in_coda». */
@@ -134,8 +143,14 @@ function dropReason(r: ReferentRequestFacts, now: Date): string | null {
   return null;
 }
 
+/** (Parte 3) Il link alla scheda di una richiesta, solo per un referente revisore e con l'origine pubblica. */
+function cardLinkOf(e: ClaimedReferentEmail, f: ReferentDeliveryFacts, r: ReferentRequestFacts, origin: string | undefined): string | null {
+  if (!f.recipient?.teamAccess || !origin || !r.useCaseId) return null;
+  return cardLink(origin, e.workspaceId, r.useCaseId);
+}
+
 /** Che cosa fare di una riga: inviarla (con i link da emettere e gli effetti), tenerla in coda o annullarla. */
-export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliveryFacts, o: { lsDomains: readonly string[]; now: Date }): ReferentDeliveryPlan {
+export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliveryFacts, o: { lsDomains: readonly string[]; now: Date; origin?: string }): ReferentDeliveryPlan {
   if (f.featureOn === false) return hold("funzione_spenta");
   if (!f.subprocessorsAuthorized) return hold("sub_responsabili_mancanti");
   const r = f.recipient;
@@ -167,6 +182,7 @@ export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliver
         expiresAt: req.expiresAt,
         link: linkOf(links, req.id),
         replyToKnown,
+        cardLink: cardLinkOf(e, f, req, o.origin),
       }),
       after: [{ requestId: req.id, reminder: null, first: true, manual: false }],
     };
@@ -231,6 +247,7 @@ export function planReferentDelivery(e: ClaimedReferentEmail, f: ReferentDeliver
             newQuestions: x.newQuestions,
             expiresAt: x.expiresAt,
             link: linkOf(links, x.id),
+            cardLink: cardLinkOf(e, f, x, o.origin),
           }),
         ),
     }),
@@ -345,7 +362,7 @@ async function deliverOne(
 ): Promise<Delivered> {
   let plan: ReferentDeliveryPlan;
   try {
-    plan = planReferentDelivery(e, await store.loadFacts(e, o.now), o);
+    plan = planReferentDelivery(e, await store.loadFacts(e, o.now), { ...o, origin: config.origin });
   } catch {
     await store.markFailed(e, "dati_non_letti");
     return "failed";

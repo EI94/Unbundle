@@ -134,7 +134,11 @@ export const REFERENT_UI_TEXT = Object.freeze({
     optionNoRole: "{Nome} · {email}",
     optionNoEmail: "{Nome} · {ruolo}",
     optionNameOnly: "{Nome}",
-    suffix: Object.freeze({ senza_email: "(senza email)", lateral_space: "(di Lateral Space)", richiesta_aperta: "(richiesta già aperta)" }),
+    suffix: Object.freeze({ senza_email: "(senza email)", lateral_space: "(di Lateral Space)", richiesta_aperta: "(richiesta già aperta)", sei_tu: "(sei tu)" }),
+    // (Parte 3) Il contatto è un revisore del workspace: in coda all'opzione, « · Fa parte del team».
+    teamTag: "Fa parte del team",
+    // (Parte 3) Sotto il selettore, quando chi guarda è tra i contatti (opzione «(sei tu)», non selezionabile).
+    selfHint: "Non serve chiedere a te stesso: rispondi direttamente qui in «Cosa serve», con «Aggiungi una risposta» o «Allega un file».",
     newContact: "+ Nuovo referente",
     newName: "Nome e cognome",
     newEmail: "Email",
@@ -266,6 +270,8 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   backToQuestions: "Torna alle domande",
   completed: "Hai risposto a tutte le domande. Grazie!",
   empty: "Non ci sono più domande per te. Grazie per la disponibilità.",
+  // (Parte 3) Una domanda a cui ha già pensato il team dalla scheda: in sola lettura, mai cosa ha scritto.
+  handledByTeam: "Non serve più: ci ha già pensato il team.",
   privacyFooterLabel: "Come usiamo le tue risposte",
 });
 
@@ -353,6 +359,8 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   referente_in_dossier: "Questo referente è anche in un dossier: l'email si corregge in «Persone» del dossier.",
   dati_non_validi: "Scrivi il nome del referente.",
   richiesta_aperta: "C'è già una richiesta aperta per questa persona su questo use case: usa «Aggiungi domande».",
+  // (Parte 3) Chi chiede ha scelto se stesso.
+  referente_sei_tu: "Sei tu il referente: non serve un'email. Rispondi direttamente qui in «Cosa serve», con «Aggiungi una risposta» o «Allega un file».",
   nessuna_domanda: "Scegli almeno una domanda aperta.",
   troppe_domande: "Al massimo 20 domande per richiesta.",
   domande_cambiate: "Qualcuno ha appena cambiato queste domande. Ho ricaricato i dati: riprova.",

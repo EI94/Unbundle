@@ -7,6 +7,7 @@ import {
   isUuid,
   logReferentError,
   lsDomainsOf,
+  readRequestReferentPerson,
   referentBatch,
   referentWriter,
   rfail,
@@ -35,7 +36,7 @@ import {
   referentUploadCheck,
 } from "@/lib/use-cases/referent/files";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
-import { infoCompleteSyncStatements, needTransitionSql, notifyReviewersSql, queueRequesterAlertSql, referentEventSql, type ReferentActor } from "@/lib/use-cases/referent/sql";
+import { completeHandledRequestsStatements, infoCompleteSyncStatements, needTransitionSql, notifyReviewersSql, queueRequesterAlertSql, referentEventSql, type ReferentActor } from "@/lib/use-cases/referent/sql";
 import type { ServiceResult, WriteContext } from "@/lib/use-cases/service";
 
 /**
@@ -223,6 +224,8 @@ function reviewerEffects(f: FileRow, outcome: "pulito" | "in_revisione", validat
       ? needTransitionSql({ workspaceId: f.workspaceId, needIds: [f.needId], from: ["da_chiedere", "chiesta", "mancante", "parziale", "in_verifica"], to: "validata", actor })
       : needTransitionSql({ workspaceId: f.workspaceId, needIds: [f.needId], from: ["da_chiedere", "chiesta", "mancante", "parziale"], to: "in_verifica", actor }),
     referentEventSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, code: "file_team", actor }),
+    // (Parte 3) La domanda del referente su questa esigenza è fatta: se non resta altro, la richiesta si completa.
+    ...completeHandledRequestsStatements({ workspaceId: f.workspaceId, needId: f.needId }),
   ];
   if (outcome === "pulito") {
     const now = new Date();
@@ -514,6 +517,10 @@ export const reviewNeedFile = guardedReferent(
     const id = cast(f.id, "uuid");
     if (outcome === "accetta") {
       const now = new Date();
+      // (Parte 3) Chi ha dato il documento (il referente, se ha un account, o chi l'ha caricato dalla
+      // scheda) non riceve la notifica né l'avviso del suo documento accettato.
+      const owner = f.source === "referente" && f.requestId ? (await readRequestReferentPerson(executor, f.workspaceId, f.requestId)).userId : f.uploadedByUserId;
+      const alsoExceptUserId = owner && owner !== writer.userId.toLowerCase() ? owner : null;
       const run = await referentBatch(executor, [
         toStatement(
           requireRows(
@@ -524,7 +531,7 @@ WHERE id = ${id} AND scan_status = 'in_revisione' AND deleted_at IS NULL RETURNI
           ),
         ),
         referentEventSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, code: "file_accettato", actor }),
-        notifyReviewersSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, kind: "documenti", documents: 1, actorUserId: writer.userId }),
+        notifyReviewersSql({ workspaceId: f.workspaceId, useCaseId: f.useCaseId, kind: "documenti", documents: 1, actorUserId: writer.userId, alsoExceptUserId }),
         queueRequesterAlertSql({
           workspaceId: f.workspaceId,
           target: f.requestId ? { requestId: f.requestId } : { useCaseId: f.useCaseId, needId: f.needId },
@@ -533,6 +540,7 @@ WHERE id = ${id} AND scan_status = 'in_revisione' AND deleted_at IS NULL RETURNI
           documents: 1,
           followUp: null,
           actorUserId: writer.userId,
+          alsoExceptUserId,
           immediate: false,
           schedule: alertSchedule(now),
           now,

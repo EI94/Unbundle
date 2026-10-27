@@ -13,6 +13,7 @@
 import { formatDateIt, multiLine, oneLine, render, type Block, type RenderedEmail } from "../../uc/notify/email-render.ts";
 import type { ReferentReminderKind } from "../../db/use-case-hub-referents-ddl.ts";
 import { companyLabel } from "./labels.ts";
+import { checkCardLink } from "./links.ts";
 
 type UcRef = { code: string | null; title: string };
 
@@ -24,10 +25,24 @@ export interface ReminderEntry {
   newQuestions: number;
   expiresAt: Date;
   link: string;
+  /** (Parte 3) Solo per un referente che è già revisore del workspace: il link alla scheda, al capitolo «Cosa serve». */
+  cardLink?: string | null;
 }
 
 export type ReferentEmailInput =
-  | { template: "richiesta"; company: string; useCase: UcRef; requesterName: string; questions: number; message: string | null; expiresAt: Date; link: string; replyToKnown: boolean }
+  | {
+      template: "richiesta";
+      company: string;
+      useCase: UcRef;
+      requesterName: string;
+      questions: number;
+      message: string | null;
+      expiresAt: Date;
+      link: string;
+      replyToKnown: boolean;
+      /** (Parte 3) Solo per un referente che è già revisore del workspace. */
+      cardLink?: string | null;
+    }
   /** Da 1 a n voci, nell'ordine di creazione delle richieste. replyName c'è solo se tutte le voci hanno chi chiede uguale e la risposta all'email arriva a quella persona. */
   | { template: "promemoria"; company: string; entries: ReminderEntry[]; replyToKnown: boolean; replyName: string | null }
   | { template: "conferma"; company: string; useCase: UcRef; requesterName: string; submitted: number; openQuestions: number; expiresAt: Date };
@@ -66,6 +81,16 @@ function replyLine(known: boolean, requesterName: string): string {
   return known ? `Il link è personale: non inoltrarlo. Per un dubbio rispondi a questa email: arriva a ${name(requesterName)}.` : "Il link è personale: non inoltrarlo.";
 }
 
+/** (Parte 3) La riga per un referente che è già revisore del workspace, e il suo link alla scheda. */
+export const TEAM_ACCESS_LINE = "Hai già accesso a Unbundle: puoi rispondere anche dalla scheda.";
+export const TEAM_ACCESS_LINE_MANY = "Hai già accesso a Unbundle: puoi rispondere anche dalle schede degli use case.";
+export const TEAM_ACCESS_LINK_LABEL = "Apri la scheda";
+
+function teamAccessBlocks(cardLink: string | null | undefined): Block[] {
+  if (!cardLink) return [];
+  return [{ small: TEAM_ACCESS_LINE }, { link: { href: checkCardLink(cardLink), label: TEAM_ACCESS_LINK_LABEL } }];
+}
+
 const questionsWord = (n: number) => (n === 1 ? "una domanda" : `${n} domande`);
 const openWord = (n: number) => (n === 1 ? "una domanda aperta" : `${n} domande aperte`);
 
@@ -79,6 +104,7 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
       { p: `${name(e.requesterName)} ha aggiunto ${questionsWord(e.newQuestions)} sullo use case «${uc}»: le trovi insieme alle altre, con lo stesso link.` },
       { link: { href: link, label: "Apri le domande" } },
       { small: expiry(e.expiresAt) },
+      ...teamAccessBlocks(e.cardLink),
       reply,
     ]);
   }
@@ -93,6 +119,7 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
       : { p: "Quello che hai già scritto è salvato: riparti da dove eri rimasto." },
     { link: { href: link, label: "Riprendi le domande" } },
     { small: expiry(e.expiresAt) },
+    ...teamAccessBlocks(e.cardLink),
     reply,
   ]);
 }
@@ -103,6 +130,7 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
     { p: "Buongiorno," },
     { p: `ti ricordiamo che ci sono ancora domande aperte su ${n} use case di ${company(input.company)}. Quello che hai già scritto è salvato.` },
   ];
+  if (input.entries.some((e) => e.cardLink)) blocks.push({ small: TEAM_ACCESS_LINE_MANY });
   for (const e of input.entries) {
     const uc = labelOfUseCase(e.useCase);
     blocks.push(
@@ -110,6 +138,7 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
       { small: `${expiry(e.expiresAt)}${e.kind === "ultimo" ? " È l'ultimo promemoria per questo use case." : ""}` },
       { link: { href: checkReferentLink(e.link), label: "Apri le domande" } },
     );
+    if (e.cardLink) blocks.push({ link: { href: checkCardLink(e.cardLink), label: TEAM_ACCESS_LINK_LABEL } });
   }
   blocks.push({
     small:
@@ -135,6 +164,7 @@ export function renderReferentEmail(input: ReferentEmailInput): RenderedEmail {
         { p: "Bastano pochi minuti e puoi rispondere anche dal telefono. Se non sai una risposta, scegli «Non lo so». Se hai un documento utile, allegalo: prima togli nomi e dati personali." },
         { link: { href: link, label: "Apri le domande" } },
         { small: expiry(input.expiresAt) },
+        ...teamAccessBlocks(input.cardLink),
         { small: replyLine(input.replyToKnown, input.requesterName) },
       );
       return render(subjectOf(`${company(input.company)}: ${name(input.requesterName)} ti chiede alcune informazioni su «${uc}»`), blocks);

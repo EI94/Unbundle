@@ -13,6 +13,7 @@ import { silentNeedIds, type InfoAskFact } from "@/lib/use-cases/info-progress";
 import type { NeedKind, NeedOwnerSide, NeedStatus, NeedType, NeedView } from "@/lib/use-cases/needs";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import { REFERENT_ERROR_MESSAGES, referentErrorMessage } from "@/lib/use-cases/referent/labels";
+import { NO_PERSON, contactPeopleSql, emailPersonSql, personFactsOf, referentPersonOf, type ReferentPerson } from "@/lib/use-cases/referent/people";
 import { personaWriter, type ServiceResult, type WriteContext } from "@/lib/use-cases/service";
 import type { IsoDate } from "@/lib/use-cases/types";
 import type { ValueModel } from "@/lib/use-cases/value-model";
@@ -330,6 +331,48 @@ FROM uc_contacts WHERE id = ${cast(contactId, "uuid")} AND workspace_id = ${cast
   };
 }
 
+// ─── Ruoli che si sovrappongono (Parte 3, §P3.1) ─────────────────────
+
+const personOfRow = (row: UcRow | undefined): ReferentPerson => referentPersonOf(personFactsOf(row ? { ...row, email_match: rowBool(row.email_match) } : undefined));
+
+/**
+ * Chi è adesso, in Unbundle, il referente di ogni contatto: l'account (collegato, o con la stessa
+ * email verificata) e se ha un ruolo da revisore nel workspace. Si legge a ogni invio e a ogni
+ * notifica, mai salvato. Un contatto senza account (o non trovato) non è nella mappa.
+ */
+export async function readReferentPeople(executor: UcExecutor, workspaceId: string, contactIds: readonly string[]): Promise<Map<string, ReferentPerson>> {
+  const ids = [...new Set(contactIds.filter(isUuid).map((x) => x.toLowerCase()))];
+  const out = new Map<string, ReferentPerson>();
+  if (!ids.length || !isUuid(workspaceId)) return out;
+  const [rows] = await executor.batch([contactPeopleSql(workspaceId, ids)]);
+  for (const row of rows) {
+    const person = personOfRow(row);
+    if (person.userId) out.set(String(row.contact_id).toLowerCase(), person);
+  }
+  return out;
+}
+
+/** La persona di un solo contatto; `NO_PERSON` senza account. */
+export async function readReferentPerson(executor: UcExecutor, workspaceId: string, contactId: string): Promise<ReferentPerson> {
+  return (await readReferentPeople(executor, workspaceId, [contactId])).get(contactId.toLowerCase()) ?? NO_PERSON;
+}
+
+/** La persona del referente di una richiesta del workspace; `NO_PERSON` senza account o senza richiesta. */
+export async function readRequestReferentPerson(executor: UcExecutor, workspaceId: string, requestId: string): Promise<ReferentPerson> {
+  if (!isUuid(workspaceId) || !isUuid(requestId)) return NO_PERSON;
+  const [[row]] = await executor.batch([
+    toStatement(ucSql`SELECT r.contact_id::text AS contact_id FROM use_case_referent_requests r WHERE r.id = ${cast(requestId, "uuid")} AND r.workspace_id = ${cast(workspaceId, "uuid")}`),
+  ]);
+  const contactId = rowString(row?.contact_id);
+  return contactId ? readReferentPerson(executor, workspaceId, contactId) : NO_PERSON;
+}
+
+/** La persona di un'email che non è ancora un contatto (il referente nuovo). */
+export async function readEmailPerson(executor: UcExecutor, workspaceId: string, email: string): Promise<ReferentPerson> {
+  if (!isUuid(workspaceId) || !email.trim()) return NO_PERSON;
+  const [[row]] = await executor.batch([emailPersonSql(workspaceId, email)]);
+  return personOfRow(row);
+}
 
 // ─── Il link pubblico ────────────────────────────────────────────────
 

@@ -55,7 +55,11 @@ export type ReferentPageResult =
   | { access: "non_valido" | "revocato" | "scaduto" | "non_disponibile" };
 
 export interface ReferentAskView {
-  /** «aperta»: c'è qualcosa a cui rispondere; «completata»: tutto risposto; «vuota»: niente da rispondere (domande ritirate). */
+  /**
+   * «aperta»: c'è qualcosa a cui rispondere; «completata»: niente di aperto e almeno una risposta del
+   * referente (o la richiesta chiusa senza domande già fatte dal team); «vuota»: niente da rispondere
+   * e nessuna risposta del referente (domande ritirate, o tutte «gestita» dal team: Parte 3).
+   */
   state: "aperta" | "completata" | "vuota";
   /** accepted = privacy_accepted_at presente E privacy_notice_version = REFERENT_PRIVACY_NOTICE.version. */
   privacy: { accepted: boolean; version: string; contact: string };
@@ -77,7 +81,13 @@ export interface ReferentQuestionView {
   position: number;
   /** Il testo della domanda com'era all'invio, mai `need.detail`. */
   title: string;
-  state: "aperta" | "inviata";
+  /**
+   * (Parte 3) «gestita»: la domanda era per il referente, ma qualcuno l'ha già data dalla scheda
+   * (l'esigenza è «Da verificare» o «A posto» senza una sua risposta). Si mostra in sola
+   * lettura con «Non serve più: ci ha già pensato il team.»: niente bozza, niente risposta, niente file,
+   * mai cosa hanno scritto gli altri.
+   */
+  state: "aperta" | "inviata" | "gestita";
   /** Solo mentre è «aperta». */
   draft: { text: string; dontKnow: boolean; savedAt: string } | null;
   /** Quando è «inviata». */
@@ -170,7 +180,14 @@ export interface ReferentContactOption {
   /** «m•••@topjet.it»: la prima lettera, poi •••, poi @dominio. L'indirizzo intero non arriva mai al pannello. */
   emailMasked: string | null;
   selectable: boolean;
-  reason: "senza_email" | "lateral_space" | "richiesta_aperta" | null;
+  /** (Parte 3) «sei_tu»: il contatto è chi guarda (account collegato o email verificata): risponde dalla scheda. */
+  reason: "senza_email" | "lateral_space" | "richiesta_aperta" | "sei_tu" | null;
+  /**
+   * (Parte 3) Il contatto è adesso un revisore di questo workspace: il selettore aggiunge «Fa parte del
+   * team». Falso per tutti gli altri ruoli e per chi non ha un account; nessuna altra informazione su
+   * ruoli o corsi arriva al pannello.
+   */
+  team: boolean;
   /**
    * Ha già domande aperte su altri use case del workspace: la finestra dice «… i promemoria
    * arriveranno in un'unica email.» (un sì o un no, mai un numero).

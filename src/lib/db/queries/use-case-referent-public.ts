@@ -3,6 +3,7 @@ import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-execu
 import {
   afterResponse,
   isUuid,
+  readReferentPerson,
   referentBatch,
   referentStoreReady,
   type Env,
@@ -47,7 +48,7 @@ import {
   referentEventsForRequestsSql,
   casTail,
 } from "@/lib/use-cases/referent/sql";
-import { privacyAccepted } from "@/lib/use-cases/referent/state";
+import { HANDLED_NEED_STATUSES, privacyAccepted } from "@/lib/use-cases/referent/state";
 import { checkDraftText, checkSubmitText } from "@/lib/use-cases/referent/text";
 import { hashReferentToken, looksLikeReferentToken, RECIPIENT_HASH_SQL } from "@/lib/use-cases/referent/tokens";
 import { toPublicView, type PublicFileRow, type PublicItemRow } from "@/lib/use-cases/referent/view";
@@ -136,6 +137,8 @@ interface ItemFact {
   state: ReferentItemState;
   open: boolean;
   visible: boolean;
+  /** (Parte 3) L'esigenza è già «Da verificare» o «A posto» (`itemHandledByTeam`). */
+  handled: boolean;
 }
 
 interface AnswerFact {
@@ -179,7 +182,9 @@ FROM use_case_referent_requests r JOIN use_cases u ON u.id = r.use_case_id AND u
 WHERE r.id = ${req} AND r.workspace_id = ${ws}`),
     toStatement(ucSql`SELECT i.need_id, i.position, i.question, i.state, ${openItemSql("i", "r")} AS open,
   EXISTS (SELECT 1 FROM use_case_needs vn JOIN use_case_need_links vl ON vl.need_id = vn.id AND vl.use_case_id = r.use_case_id
-          WHERE vn.id = i.need_id AND vn.workspace_id = r.workspace_id AND vn.archived_at IS NULL) AS visible
+          WHERE vn.id = i.need_id AND vn.workspace_id = r.workspace_id AND vn.archived_at IS NULL) AS visible,
+  EXISTS (SELECT 1 FROM use_case_needs hn JOIN use_case_need_links hl ON hl.need_id = hn.id AND hl.use_case_id = r.use_case_id
+          WHERE hn.id = i.need_id AND hn.workspace_id = r.workspace_id AND hn.archived_at IS NULL AND hn.status = ANY(${cast([...HANDLED_NEED_STATUSES], "text[]")})) AS handled
 FROM use_case_referent_request_items i JOIN use_case_referent_requests r ON r.id = i.request_id
 WHERE i.request_id = ${req} AND r.workspace_id = ${ws}
 ORDER BY i.position`),
@@ -222,6 +227,7 @@ async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promi
       state: (rowString(i.state) ?? "aperta") as ReferentItemState,
       open: rowBool(i.open),
       visible: rowBool(i.visible),
+      handled: rowBool(i.handled),
     })),
     answers: answers.map((a: UcRow) => ({
       needId: String(a.need_id).toLowerCase(),
@@ -270,6 +276,7 @@ export async function loadReferentAskView(link: ReferentLink, o: { env: Env; now
       state: i.state,
       open: i.open && facts.status === "inviata" && facts.expiresAt.getTime() > o.now.getTime(),
       visible: i.visible,
+      handled: i.handled,
       draft: draft ? { body: draft.body, dontKnow: draft.dontKnow, updatedAt: draft.updatedAt } : null,
       answer: answer && answer.submittedAt ? { body: answer.body, dontKnow: answer.dontKnow, submittedAt: answer.submittedAt } : null,
       files: facts.files.filter((f) => f.needId === i.needId && liveFile(f, o.now)),
@@ -431,6 +438,9 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
   if (issues.length > 0) return pfail("risposte_da_correggere", undefined, issues);
   if (ready.length === 0) return pfail("nessuna_risposta");
 
+  // (Parte 3) Chi risponde, se è anche una persona di Unbundle: non riceve la notifica né l'avviso di
+  // quello che ha fatto lui. Si rilegge adesso (ruolo e account di questo momento); la Storia resta «Referente».
+  const actorUserId = (await readReferentPerson(executor, link.workspaceId, link.contactId)).userId;
   const ws = cast(link.workspaceId, "uuid");
   const req = cast(link.requestId, "uuid");
   const all = ready.map((t) => t.needId);
@@ -493,7 +503,7 @@ WHERE r.id = ${req} AND r.workspace_id = ${ws} AND r.status = 'inviata' AND ${op
 SELECT r.workspace_id, r.contact_id, r.id, 'conferma', ${cast(`conf:${link.requestId}:${romeDate(now)}`, "text")}, now(), now()
 FROM use_case_referent_requests r WHERE r.id = ${req} AND r.workspace_id = ${ws}
 ON CONFLICT (dedupe_key) DO NOTHING`),
-    notifyReviewersSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, kind: "risposte", answers, unknowns, documents, actorUserId: null }),
+    notifyReviewersSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, kind: "risposte", answers, unknowns, documents, actorUserId }),
     queueRequesterAlertSql({
       workspaceId: link.workspaceId,
       target: { requestId: link.requestId },
@@ -501,12 +511,12 @@ ON CONFLICT (dedupe_key) DO NOTHING`),
       unknowns,
       documents,
       followUp: null,
-      actorUserId: null,
+      actorUserId,
       immediate: true,
       schedule: alertSchedule(now),
       now,
     }),
-    ...infoCompleteSyncStatements({ workspaceId: link.workspaceId, useCaseIds: [link.useCaseId], actorUserId: null }),
+    ...infoCompleteSyncStatements({ workspaceId: link.workspaceId, useCaseIds: [link.useCaseId], actorUserId }),
     toStatement(ucSql`SELECT r.status, ${openItemsCountSql("r")} AS open_items FROM use_case_referent_requests r WHERE r.id = ${req} AND r.workspace_id = ${ws}`),
   );
   const run = await referentBatch(executor, statements);

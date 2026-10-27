@@ -2,7 +2,7 @@ import "server-only";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { loadUserContext } from "@/lib/db/queries/uc-cases";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
-import { lsDomainsOf, logReferentError, type Env } from "@/lib/db/queries/use-case-referent-base";
+import { lsDomainsOf, logReferentError, readReferentPerson, type Env } from "@/lib/db/queries/use-case-referent-base";
 import type { ReferentEmailTemplate, ReferentReminderKind, ReferentRequestStatus } from "@/lib/db/use-case-hub-referents-ddl";
 import { DISPATCH_LEASE_MINUTES, RETRY_DELAY_MINUTES, type DispatchEnv, type UcMailer } from "@/lib/uc/notify/dispatch";
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
@@ -69,7 +69,7 @@ function scopeOf(requestId: string | null): ReturnType<typeof ucSql> {
 /** Le colonne di una richiesta per il motore; la voce del promemoria con il suo tipo. */
 function requestFactsSql(i: { emailId: string; template: ReferentEmailTemplate; requestId: string | null; workspaceId: string }): UcStatement {
   const ws = cast(i.workspaceId, "uuid");
-  const common = raw(`r.id, r.status, r.expires_at, r.sent_at, r.reminder_count, r.last_email_at, r.message, r.requester_name, r.requested_by_user_id, r.created_at,
+  const common = raw(`r.id, r.use_case_id, r.status, r.expires_at, r.sent_at, r.reminder_count, r.last_email_at, r.message, r.requester_name, r.requested_by_user_id, r.created_at,
   (r.status = 'inviata' AND r.revoked_at IS NULL AND r.expires_at > now()) AS live, u.code, u.title`);
   if (i.template !== "promemoria") {
     return toStatement(ucSql`SELECT ${common}, ${openItemsCountSql("r")} AS open_items, 0 AS new_questions, NULL::text AS item_kind, false AS already_sent,
@@ -94,6 +94,7 @@ function requestFactsOf(r: UcRow): ReferentRequestFacts | null {
   const kind = rowString(r.item_kind) as ReferentReminderKind | null;
   return {
     id: id.toLowerCase(),
+    useCaseId: rowString(r.use_case_id)?.toLowerCase() ?? undefined,
     useCase: { code: rowString(r.code), title: rowString(r.title) ?? "" },
     status: (rowString(r.status) ?? "inviata") as ReferentRequestStatus,
     live: rowBool(r.live),
@@ -189,12 +190,20 @@ WHERE u.id = ${cast(requester, "uuid")} AND u.email_verified IS NOT NULL
       const userId = rowString(head?.user_id);
       const user = userId ? await loadUserContext(executor, userId, lsDomains) : null;
       const ack = await loadSubprocessorAck(executor, e.workspaceId);
+      // (Parte 3) Il referente è adesso un revisore del workspace con la stessa email verificata? Riletto a ogni invio.
+      const person = await readReferentPerson(executor, e.workspaceId, e.contactId);
       const facts: ReferentDeliveryFacts = {
         company: rowString(head?.company) ?? "",
         featureOn: referentAskEnabled(e.workspaceId, env),
         subprocessorsAuthorized: ack !== null,
         recipient: head && rowString(head.contact_id)
-          ? { email: rowString(head.email), active: rowBool(head.is_active), anonymized: rowBool(head.anonymized), linkedUserIsLateralSpace: user?.isLateralSpace === true }
+          ? {
+              email: rowString(head.email),
+              active: rowBool(head.is_active),
+              anonymized: rowBool(head.anonymized),
+              linkedUserIsLateralSpace: user?.isLateralSpace === true,
+              teamAccess: person.teamAccess,
+            }
           : null,
         replyTo,
         requests,

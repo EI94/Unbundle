@@ -12,7 +12,10 @@ import {
   readCard,
   readCardNeeds,
   readContact,
+  readEmailPerson,
   readLsMemberEmails,
+  readReferentPerson,
+  readReferentPeople,
   referentBatch,
   referentStoreReady,
   referentWriter,
@@ -59,6 +62,7 @@ import { manualReminderCheck, referentReminderDue, retentionDue, sameRomeDay, is
 import {
   cancelQueuedForRequestsStatements as cancelQueuedRaw,
   casTail,
+  completeHandledRequestsStatements,
   draftsCleanupStatements,
   expireStatements,
   infoCompleteSyncStatements,
@@ -69,6 +73,7 @@ import {
   uuidOf,
   type ReferentActor,
 } from "@/lib/use-cases/referent/sql";
+import { NO_PERSON, isSelfRequest } from "@/lib/use-cases/referent/people";
 import { reviewerStatus } from "@/lib/use-cases/referent/state";
 import { checkQuestionTitle, checkRequestMessage, checkReviewerAnswer } from "@/lib/use-cases/referent/text";
 import { formatFileSize } from "@/lib/use-cases/referent/upload-transport";
@@ -424,12 +429,23 @@ export async function loadUseCaseReferentPanel(i: {
       const userId = rowString(r.user_id);
       if (userId && !userCtx.has(userId)) userCtx.set(userId, await loadUserContext(executor, userId, lsDomains));
     }
+    // (Parte 3) Chi è ogni contatto in Unbundle, adesso: solo «Fa parte del team» e «(sei tu)», niente altro.
+    const people = await readReferentPeople(executor, ws, contactRows.map((r) => String(r.id)));
     const contacts: ReferentContactOption[] = contactRows.map((r) => {
       const id = String(r.id).toLowerCase();
       const email = rowString(r.email);
       const userId = rowString(r.user_id);
+      const person = people.get(id) ?? NO_PERSON;
       const ls = !checkContactEmail({ email, user: userId ? (userCtx.get(userId) ?? null) : null, lsDomains, lsMemberEmails: lsMembers }).ok;
-      const reason: ReferentContactOption["reason"] = !email ? "senza_email" : ls ? "lateral_space" : liveHere.has(id) ? "richiesta_aperta" : null;
+      const reason: ReferentContactOption["reason"] = !email
+        ? "senza_email"
+        : ls
+          ? "lateral_space"
+          : isSelfRequest(person, i.session.id)
+            ? "sei_tu"
+            : liveHere.has(id)
+              ? "richiesta_aperta"
+              : null;
       return {
         id,
         displayName: rowString(r.display_name) ?? "",
@@ -437,6 +453,7 @@ export async function loadUseCaseReferentPanel(i: {
         emailMasked: maskEmail(email),
         selectable: reason === null,
         reason,
+        team: person.reviewer,
         hasOtherRequests: rowBool(r.has_live) && !liveHere.has(id),
       };
     });
@@ -762,6 +779,8 @@ export const sendReferentRequest = guardedReferent(
       const user = contact.userId ? await loadUserContext(executor, contact.userId, lsDomains) : null;
       const check = checkContactEmail({ email: contact.email, user, lsDomains, lsMemberEmails: lsMembers });
       if (!check.ok) return rfail(check.code);
+      // 6b (Parte 3). Chi chiede a se stesso: niente email, risponde dalla scheda.
+      if (isSelfRequest(await readReferentPerson(executor, ctx.workspaceId, contact.id), writer.userId)) return rfail("referente_sei_tu");
       contactId = contact.id;
       contactName = contact.displayName;
     } else {
@@ -773,6 +792,10 @@ export const sendReferentRequest = guardedReferent(
       if (draft.value.email === null) return rfail("email_mancante", undefined, { email: REFERENT_ERROR_MESSAGES.email_mancante });
       const check = checkContactDraft(draft.value, { lsDomains, lsMemberEmails: lsMembers, user: null });
       if (!check.ok) return rfail(check.code, undefined, { email: REFERENT_ERROR_MESSAGES[check.code] ?? check.message });
+      // 6b (Parte 3). La propria email come referente nuovo: niente email, risponde dalla scheda.
+      if (isSelfRequest(await readEmailPerson(executor, ctx.workspaceId, draft.value.email), writer.userId)) {
+        return rfail("referente_sei_tu", undefined, { email: REFERENT_ERROR_MESSAGES.referente_sei_tu });
+      }
       const [[taken]] = await executor.batch([contactEmailTakenSql({ workspaceId: ctx.workspaceId, email: draft.value.email })]);
       if (rowBool(taken?.taken)) return rfail("email_in_uso", undefined, { email: REFERENT_ERROR_MESSAGES.email_in_uso });
       contactId = randomUUID();
@@ -1280,6 +1303,8 @@ RETURNING id`,
         ? needTransitionSql({ workspaceId: ctx.workspaceId, needIds: [needId], from: ["da_chiedere", "chiesta", "mancante", "parziale", "in_verifica"], to: "validata", actor })
         : needTransitionSql({ workspaceId: ctx.workspaceId, needIds: [needId], from: ["da_chiedere", "chiesta", "mancante", "parziale"], to: "in_verifica", actor }),
       referentEventSql({ workspaceId: ctx.workspaceId, useCaseId, code: "risposta_team", actor }),
+      // (Parte 3) La domanda del referente su questa esigenza è fatta: se non resta altro, la richiesta si completa.
+      ...completeHandledRequestsStatements({ workspaceId: ctx.workspaceId, needId }),
       ...infoCompleteSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [useCaseId], needId, actorUserId: writer.userId }),
     ]);
     if (!run.ok) return run;

@@ -35,6 +35,7 @@ import { oneLine, render, type Block, type RenderedEmail } from "../../uc/notify
 import type { FollowUpReason } from "../../db/use-case-hub-referents-ddl.ts";
 import { companyLabel } from "./labels.ts";
 import { labelOfUseCase } from "./email.ts";
+import { cardLink } from "./links.ts";
 
 // ── Calendario ────────────────────────────────────────────────────────
 
@@ -120,17 +121,8 @@ export type AlertPlan =
   | { action: "hold"; reason: "email_non_configurata" | "sub_responsabili_mancanti" | "funzione_spenta" }
   | { action: "cancel"; reason: "destinatario_non_valido" | "avvisi_spenti" | "nessuna_voce" | "troppo_vecchia" };
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/i;
-
-/** Il link alla scheda, al capitolo «Cosa serve»: https (http solo in locale), solo uuid. */
-export function cardLink(origin: string, workspaceId: string, useCaseId: string): string {
-  if (!UUID.test(workspaceId) || !UUID.test(useCaseId)) throw new Error("Identificativo non valido nel link");
-  const url = new URL(origin);
-  if (url.username || url.password) throw new Error("Origine non valida");
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && LOOPBACK.test(url.hostname))) throw new Error("Il link dell'email deve essere https");
-  return `${url.origin}/dashboard/${workspaceId.toLowerCase()}/use-cases/${useCaseId.toLowerCase()}?capitolo=cosa-serve`;
-}
+/** Il link alla scheda, al capitolo «Cosa serve» (`links.ts`, lo usa anche l'email al referente revisore). */
+export { cardLink };
 
 /** Il piano di una riga, nell'ordine di §P2.7.3. */
 export function planRequesterAlert(e: ClaimedAlert, f: AlertFacts, o: { env: DispatchEnv; origin: string; now: Date }): AlertPlan {
