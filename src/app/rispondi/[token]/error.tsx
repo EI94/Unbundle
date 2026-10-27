@@ -2,7 +2,9 @@
 
 import { Button } from "@/components/ui/button";
 import { MessageCard, PublicShell } from "@/components/use-cases/referent-public/state-card";
-import { REFERENT_PUBLIC_EXTRA_TEXT as X } from "@/components/use-cases/referent-public/texts";
+import { REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
+
+const X = REFERENT_PUBLIC_TEXT.error;
 
 /**
  * Errore imprevisto nella pagina del referente: una scheda chiara con «Riprova», senza dettagli tecnici
@@ -11,7 +13,7 @@ import { REFERENT_PUBLIC_EXTRA_TEXT as X } from "@/components/use-cases/referent
 export default function ReferentAskError({ unstable_retry }: { error: Error & { digest?: string }; unstable_retry: () => void }) {
   return (
     <PublicShell>
-      <MessageCard title={X.errorTitle} text={<p>{X.errorText}</p>}>
+      <MessageCard title={X.title} text={<p>{X.text}</p>}>
         <div className="mt-5 flex flex-wrap gap-2">
           <Button type="button" className="min-h-11 text-base" onClick={() => unstable_retry()}>
             {X.retry}

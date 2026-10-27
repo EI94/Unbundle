@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { COST_BANDS, costLowLinePosition, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { DEFAULT_THRESHOLDS, costLowBandOf, type ValuationModel } from "@/lib/use-cases/valuation";
 import { buildBenefitBubbles, groupPalette, type GroupPalette } from "@/lib/use-cases/value-charts";
+import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import type { ValueParams } from "@/lib/use-cases/value-model";
 import { buildPriority, offMatrixLabel, roadmapGroupKey, type HubItem, type HubKindParam, type HubShowParam } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
@@ -60,6 +61,11 @@ export interface PriorityViewProps {
   clearHref: string;
   /** Dove sta la Roadmap: nel vuoto di «Da costruire» rimanda agli use case già in realizzazione. */
   roadmapHref?: string | null;
+  /**
+   * «Raccolta informazioni» per scheda (id in minuscolo), solo per i revisori: il chip corto nella
+   * lista (SPEC §P2.10.5). null per chi non vede «Cosa serve».
+   */
+  info?: Readonly<Record<string, InfoProgressView>> | null;
 }
 
 const SHOW_OPTIONS = [
@@ -143,6 +149,7 @@ export function PriorityView({
   filtersActive,
   clearHref,
   roadmapHref = null,
+  info = null,
 }: PriorityViewProps) {
   const view = buildPriority(items, tipo);
   const base = withoutTransient(query);
@@ -222,7 +229,7 @@ export function PriorityView({
     />
   );
   const list = (
-    <PriorityList workspaceId={workspaceId} items={view.list} today={today} canDecide={canDecide} bands={bands} basePath={basePath} query={query} toEstimateHref={toEstimateHref} />
+    <PriorityList workspaceId={workspaceId} items={view.list} today={today} canDecide={canDecide} bands={bands} basePath={basePath} query={query} toEstimateHref={toEstimateHref} info={info} />
   );
 
   // «Benefici»: la matrice a bolle facilità × beneficio, con «Ipotesi di calcolo» sotto.

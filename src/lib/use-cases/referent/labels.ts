@@ -174,6 +174,8 @@ export const REFERENT_UI_TEXT = Object.freeze({
     helpServerOnly: "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 4 MB. Niente foto.",
     declaration: "Il file non contiene dati sanitari né dati personali che non servono.",
     confirm: "Allega",
+    /** «Allega» premuto senza aver scelto un file. */
+    chooseFile: "Scegli un file da allegare.",
     personalWarning: "Allegato. Il file sembra contenere nomi, email o telefoni di persone: se non servono, toglilo e caricalo di nuovo.",
     /** (Parte 2) */
     validate: "L'ho già verificata: segna l'informazione come «A posto»",
@@ -273,6 +275,18 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   // (Parte 3) Una domanda a cui ha già pensato il team dalla scheda: in sola lettura, mai cosa ha scritto.
   handledByTeam: "Non serve più: ci ha già pensato il team.",
   privacyFooterLabel: "Come usiamo le tue risposte",
+  /** La scheda d'errore imprevisto (`error.tsx`). */
+  error: Object.freeze({
+    title: "Qualcosa non ha funzionato",
+    text: "Può essere un problema momentaneo di connessione. Le risposte che hai già inviato sono salve: riprova tra poco.",
+    retry: "Riprova",
+    reload: "Ricarica la pagina",
+  }),
+  /** Il caricamento, per i lettori di schermo (`loading.tsx`). */
+  loading: "Caricamento…",
+  uploading: "Carico e controllo il file…",
+  /** Etichette accessibili: «Togli preventivo.pdf», l'elenco dei file di una domanda. */
+  aria: Object.freeze({ removeFile: "Togli {file}", dismissRejected: "Nascondi {file}", files: "File allegati" }),
 });
 
 // ─── Informativa (§5.3) ──────────────────────────────────────────────

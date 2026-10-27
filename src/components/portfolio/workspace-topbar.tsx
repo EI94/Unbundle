@@ -1,16 +1,7 @@
-import type { ComponentType } from "react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { emptyBellPayload, type BellPayload } from "@/lib/notifications/bell";
+import { emptyBellPayload } from "@/lib/notifications/bell";
 import { loadBellPayload } from "@/lib/notifications/bell-data";
 import { NotificationsBell } from "./notifications-bell";
-
-/**
- * La campanella riceve tutto il payload della persona (SPEC §P2.5.2: `{ workspaceId, initial }`).
- * Il componente lo riscrive il pacchetto dell'interfaccia; questo tipo è il contratto, così ognuno
- * dei due rami compila da solo.
- */
-type NotificationsBellProps = { workspaceId: string; initial: BellPayload };
-const Bell = NotificationsBell as unknown as ComponentType<NotificationsBellProps>;
 
 /**
  * Topbar server component: legge la campanella di chi guarda (`loadBellPayload`: segnali letti per
@@ -46,7 +37,7 @@ export async function WorkspaceTopbar({
   return (
     <header className="sticky top-0 z-20 flex items-center justify-between gap-2 md:justify-end border-b bg-background/80 backdrop-blur px-4 py-2">
       <SidebarTrigger className="size-11 md:hidden" aria-label="Apri navigazione" title="Apri navigazione" />
-      <Bell workspaceId={workspaceId} initial={initial} />
+      <NotificationsBell workspaceId={workspaceId} initial={initial} />
     </header>
   );
 }

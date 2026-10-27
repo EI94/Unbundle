@@ -107,6 +107,29 @@ test("le letture delle esigenze le chiamano solo le pagine dell'area, con canSee
   assert.equal((reads.match(/abilitiesForUseCase\(viewer\)\.canSeeNeeds/g) ?? []).length, 3);
 });
 
+// «Chiedi al referente» e «Raccolta informazioni» (SPEC §P2.14, «Merge order»): l'hub e la scheda le
+// chiedono solo a chi vede «Cosa serve»; nessun'altra pagina le chiama.
+const REFERENT_READS = /\b(listInfoProgress|loadUseCaseInfoProgress|loadUseCaseReferentPanel)\(/g;
+const REFERENT_READ_CALLERS: Readonly<Record<string, { guard: string; names: readonly string[] }>> = {
+  "src/components/use-cases/hub.tsx": { guard: "abilities.canSeeNeeds ?", names: ["listInfoProgress"] },
+  "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx": {
+    guard: "abilities.canSeeNeeds && needLists ?",
+    names: ["loadUseCaseReferentPanel", "loadUseCaseInfoProgress"],
+  },
+};
+
+test("hub e scheda chiedono referenti e «Raccolta informazioni» solo con canSeeNeeds", () => {
+  const definitions = new Set(["src/lib/db/queries/use-case-info-progress.ts", "src/lib/db/queries/use-case-referents.ts"]);
+  const callers = files.filter((file) => !definitions.has(file) && new RegExp(REFERENT_READS.source).test(read(file)));
+  assert.deepEqual(callers.sort(), Object.keys(REFERENT_READ_CALLERS).sort());
+  for (const [file, { guard, names }] of Object.entries(REFERENT_READ_CALLERS)) {
+    const source = read(file).replace(/\s+/g, " ");
+    const calls = [...source.matchAll(REFERENT_READS)].map((match) => match[1]);
+    assert.deepEqual([...calls].sort(), [...names].sort(), `${file}: le letture attese, una volta ciascuna`);
+    for (const name of names) assert.ok(source.includes(`${guard} ${name}(`), `${file}: ${name} sotto «${guard}»`);
+  }
+});
+
 test("il MCP del team legge le esigenze con la persona del token, mai con un'altra", () => {
   const source = read("src/lib/use-cases/mcp/app-deps.ts");
   const calls = [...source.matchAll(/\b(listWorkspaceNeeds|needUseCaseRefs)\(([^)]*)\)/g)].map((match) => match[0]);
@@ -141,16 +164,10 @@ test("REST ed export non toccano le esigenze", () => {
   }
 });
 
-test("le eccezioni della REST esistono (o sono del pacchetto della pagina pubblica, non ancora unito)", () => {
-  const owned = JSON.parse(readFileSync(join(root, "scripts/use-case-test/ownership.json"), "utf8")) as { packages?: Record<string, { files?: string[] }> };
-  const publicFiles = owned.packages?.["chiedi-p"]?.files ?? [];
+test("le eccezioni della REST esistono e passano dai moduli della funzione", () => {
   for (const e of REST_EXCEPTIONS) {
-    const present = files.some((file) => (e.path.endsWith("/") ? file.startsWith(e.path) : file === e.path));
-    if (present) {
-      const via = files.filter((file) => (e.path.endsWith("/") ? file.startsWith(e.path) : file === e.path)).some((file) => e.via.test(read(file)));
-      assert.ok(via, `${e.path} (${e.reason}): passa da ${e.via}`);
-      continue;
-    }
-    assert.ok(publicFiles.some((f) => f.startsWith(e.path)), `${e.path} (${e.reason}) non esiste e non è di chiedi-p`);
+    const matched = files.filter((file) => (e.path.endsWith("/") ? file.startsWith(e.path) : file === e.path));
+    assert.ok(matched.length > 0, `${e.path} (${e.reason}) non esiste: aggiorna l'elenco`);
+    assert.ok(matched.some((file) => e.via.test(read(file))), `${e.path} (${e.reason}): passa da ${e.via}`);
   }
 });

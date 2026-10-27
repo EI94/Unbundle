@@ -400,6 +400,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
               filtersActive={filtersActive}
               clearHref={clearHref}
               roadmapHref={viewHref("roadmap")}
+              info={data.info}
             />
             {needsBoard ? <NeedsBoardView board={needsBoard} dossierColumn={data.dossierColumn} hrefOf={(id) => panelHref(basePath, query, id)} /> : null}
           </>

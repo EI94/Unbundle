@@ -1,5 +1,5 @@
 import { PublicShell } from "@/components/use-cases/referent-public/state-card";
-import { REFERENT_PUBLIC_EXTRA_TEXT } from "@/components/use-cases/referent-public/texts";
+import { REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
 
 /** Caricamento della pagina del referente: solo sagome chiare e «Caricamento…» per i lettori di schermo. */
 export default function ReferentAskLoading() {
@@ -12,7 +12,7 @@ export default function ReferentAskLoading() {
         <div className="h-40 w-full animate-pulse rounded-xl bg-muted" />
       </div>
       <p role="status" className="sr-only">
-        {REFERENT_PUBLIC_EXTRA_TEXT.loading}
+        {REFERENT_PUBLIC_TEXT.loading}
       </p>
     </PublicShell>
   );

@@ -43,3 +43,14 @@ test("il tono colora solo l'icona; niente pillola, bordo o puntino, nessuna clas
   const source = readFileSync(new URL("./info-chip.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /rounded-full|PhasePill|phase-pill|StatusDot/);
 });
+
+test("il chip corto arriva anche nella lista di «Priorità»: hub → PriorityView → PriorityList", () => {
+  const flat = (file: string) => readFileSync(new URL(file, import.meta.url), "utf8").replace(/\s+/g, " ");
+  const hub = flat("./hub.tsx");
+  const priorityView = hub.slice(hub.indexOf("<PriorityView "), hub.indexOf("/>", hub.indexOf("<PriorityView ")));
+  assert.match(priorityView, /\binfo=\{data\.info\}/);
+  const view = flat("./priority-view.tsx");
+  const list = view.slice(view.indexOf("<PriorityList "), view.indexOf("/>", view.indexOf("<PriorityList ")));
+  assert.match(list, /\binfo=\{info\}/);
+  assert.match(view, /info = null,? \}: PriorityViewProps/);
+});

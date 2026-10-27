@@ -6,16 +6,13 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { copyScopeOfFile, findHubForbidden } from "../../../lib/use-cases/copy-guard.ts";
 import { REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT } from "../../../lib/use-cases/referent/labels.ts";
-import { REFERENT_PUBLIC_EXTRA_TEXT } from "./texts.ts";
 
 // I testi della pagina `/rispondi/<token>` (SPEC §9.2): «use case», mai «caso d'uso» né «wave»; niente
 // parole tecniche per il referente; e nessun testo scritto nei componenti: vengono tutti da labels.ts
-// (`REFERENT_PUBLIC_TEXT`, l'informativa) o, per i pochi che la SPEC non elenca, da `texts.ts`.
+// (`REFERENT_PUBLIC_TEXT`, l'informativa).
 
 const root = fileURLToPath(new URL("../../../..", import.meta.url));
 const DIRS = ["src/components/use-cases/referent-public", "src/app/rispondi"];
-/** I moduli che tengono i testi: si controllano le parole, non la loro presenza. */
-const TEXT_MODULES = new Set(["src/components/use-cases/referent-public/texts.ts"]);
 /** I metadati del layout (titolo «Unbundle», descrizione) sono gli stessi dei link dei dossier. */
 const METADATA_FILES = new Set(["src/app/rispondi/layout.tsx"]);
 
@@ -112,16 +109,16 @@ test("nessuna parola vietata né tecnica nei testi della pagina", () => {
       if (findHubForbidden(l.text, "area").length > 0 || (looksLikeCopy(l) && TECH.test(l.text))) bad.push(`${file}: ${l.text}`);
     }
   }
-  for (const text of [...strings(REFERENT_PUBLIC_EXTRA_TEXT), ...strings(REFERENT_PUBLIC_TEXT), ...strings(REFERENT_PRIVACY_NOTICE)]) {
+  for (const text of [...strings(REFERENT_PUBLIC_TEXT), ...strings(REFERENT_PRIVACY_NOTICE)]) {
     if (findHubForbidden(text, "area").length > 0 || TECH.test(text)) bad.push(`testo: ${text}`);
   }
   assert.deepEqual(bad, []);
 });
 
-test("i componenti non scrivono testi: arrivano da labels.ts o da texts.ts", () => {
+test("i componenti non scrivono testi: arrivano da labels.ts", () => {
   const bad: string[] = [];
   for (const file of files) {
-    if (TEXT_MODULES.has(file) || METADATA_FILES.has(file)) continue;
+    if (METADATA_FILES.has(file)) continue;
     for (const l of literals(file)) if (looksLikeCopy(l)) bad.push(`${file}: ${l.text}`);
   }
   assert.deepEqual(bad, []);

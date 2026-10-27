@@ -10,7 +10,6 @@ import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT, fillText } from "@/lib/u
 import { uploadReferentFile } from "@/lib/use-cases/referent/upload-transport";
 import { confirmFile, removeFile } from "./api";
 import { attachHelp, fileFromUpload, fileRow, type FileRow, type PublicFile } from "./public-view-render";
-import { REFERENT_PUBLIC_EXTRA_TEXT as X_TEXT } from "./texts";
 
 /**
  * I file di una domanda (SPEC §4.4 punto 4): la casella obbligatoria prima di scegliere il file, «Allega
@@ -110,7 +109,7 @@ export function Attachments({
   return (
     <div className="min-w-0 space-y-3">
       {rows.length > 0 || uploading ? (
-        <ul className="space-y-2" aria-label={X_TEXT.filesAria}>
+        <ul className="space-y-2" aria-label={T.aria.files}>
           {rows.map((row) => (
             <li key={row.id} className="min-w-0 rounded-lg bg-muted/40 px-3 py-2">
               <div className="flex min-w-0 items-start gap-2">
@@ -128,7 +127,7 @@ export function Attachments({
                     variant="ghost"
                     className="min-h-11 shrink-0 px-3 text-base"
                     disabled={disabled || busyFile !== null}
-                    aria-label={fillText(X_TEXT.removeFileAria, { file: row.name })}
+                    aria-label={fillText(T.aria.removeFile, { file: row.name })}
                     onClick={() => void onRemove(row)}
                   >
                     {T.removeFile}
@@ -140,7 +139,7 @@ export function Attachments({
                     variant="ghost"
                     size="icon"
                     className="size-11 shrink-0"
-                    aria-label={fillText(X_TEXT.dismissRejectedAria, { file: row.name })}
+                    aria-label={fillText(T.aria.dismissRejected, { file: row.name })}
                     onClick={() => onFiles((current) => current.filter((f) => f.id !== row.id))}
                   >
                     <X aria-hidden />
@@ -156,7 +155,7 @@ export function Attachments({
                       variant="outline"
                       className="min-h-11 text-base"
                       disabled={disabled || busyFile !== null}
-                      aria-label={fillText(X_TEXT.removeFileAria, { file: row.name })}
+                      aria-label={fillText(T.aria.removeFile, { file: row.name })}
                       onClick={() => void onRemove(row)}
                     >
                       {T.removeFile}
@@ -202,7 +201,7 @@ export function Attachments({
           />
           <Button type="button" variant="outline" className="min-h-11 text-base" disabled={blocked || !declared} onClick={() => input.current?.click()}>
             {uploading ? <Loader2 className="animate-spin" aria-hidden /> : <Paperclip aria-hidden />}
-            {uploading ? X_TEXT.uploading : T.attach}
+            {uploading ? T.uploading : T.attach}
           </Button>
           <p className="text-sm break-words text-muted-foreground">{attachHelp(clientMode)}</p>
         </div>

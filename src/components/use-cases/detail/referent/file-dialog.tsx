@@ -56,7 +56,7 @@ export function FileDialog({
   async function confirm() {
     if (busy) return;
     if (!file) {
-      setError(REFERENT_ERROR_MESSAGES.file_non_trovato);
+      setError(T.chooseFile);
       return;
     }
     if (!declaration) {
