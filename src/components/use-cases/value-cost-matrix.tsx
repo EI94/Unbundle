@@ -112,7 +112,7 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
  * la sua zona, di qua o di là della linea del costo basso (anche al telefono). Punti di
  * 10 px colorati per origine, pieni se approvati, vuoti se da decidere, con il bordo rosso se
  * scaduti; ogni punto ha accanto il suo codice, messo dove non copre gli altri
- * (`placeMatrixLabels`; dove coprirebbe qualcosa non c'è, come nelle bolle di «Benefici»).
+ * (`placeMatrixLabels`; dove coprirebbe qualcosa non c'è, come nelle bolle facilità × beneficio).
  * Al passaggio del mouse codice, titolo, Valore, Costo e fonte; al clic,
  * o al tocco, il pannello laterale (il punto e il codice sono lo stesso link, largo abbastanza
  * per un dito). Senza trascinamento. Solo per i revisori.

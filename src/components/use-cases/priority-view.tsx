@@ -1,13 +1,12 @@
 import Link from "next/link";
-import { Bubbles, ChartScatter, List } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { COST_BANDS, costLowLinePosition, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { DEFAULT_THRESHOLDS, costLowBandOf, type ValuationModel } from "@/lib/use-cases/valuation";
 import { buildBenefitBubbles, groupPalette, type GroupPalette } from "@/lib/use-cases/value-charts";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import type { ValueParams } from "@/lib/use-cases/value-model";
-import { buildPriority, offMatrixLabel, roadmapGroupKey, type HubItem, type HubKindParam, type HubShowParam } from "@/lib/use-cases/views";
-import { cn } from "@/lib/utils";
+import { buildPriority, offMatrixLabel, roadmapGroupKey, type HubChartParam, type HubItem, type HubKindParam, type HubShowParam } from "@/lib/use-cases/views";
 import { BenefitBubbleChart } from "./benefit-bubbles";
 import { DiffuseList } from "./diffuse-list";
 import { EmptyState, NoResults } from "./hub-header";
@@ -21,10 +20,9 @@ export const PRIORITY_TEXT = Object.freeze({
   kindLabel: "Tipo",
   build: "Da costruire",
   diffuse: "Da diffondere",
-  showLabel: "Mostra",
-  matrix: "Matrice",
-  benefits: "Benefici",
-  list: "Lista",
+  matrix: "Matrice Valore × Costo",
+  benefits: "Matrice Facilità × Beneficio",
+  backToList: "Torna alla lista",
   emptyBuildTitle: "Nessuno use case da mettere in ordine",
   emptyBuildBody: "Valuta Valore e Costo in «Da decidere».",
   emptyDiffuse: "Nessuna best practice approvata.",
@@ -41,10 +39,10 @@ export interface PriorityViewProps {
   /** Gli use case dei revisori, già filtrati (il tipo qui non è un filtro). */
   items: readonly HubItem[];
   tipo: HubKindParam | null;
-  /** null: matrice da 768 px in su, lista sotto (§4.2). «benefici»: la matrice a bolle di «Benefici e costi». */
+  /** null o «lista»: la lista; «matrice» e «benefici»: un grafico del menu «⋯» al posto della lista, con «‹ Torna alla lista» sopra. */
   mostra: HubShowParam | null;
   model: ValuationModel;
-  /** Le ipotesi di calcolo del workspace, per «Benefici» e il riquadro «Ipotesi di calcolo». */
+  /** Le ipotesi di calcolo del workspace, per le bolle facilità × beneficio e il riquadro «Ipotesi di calcolo». */
   valueParams?: ValueParams | null;
   /** I colori dei gruppi, da tutte le schede del workspace (`groupPalette`). */
   palette?: GroupPalette | null;
@@ -68,68 +66,29 @@ export interface PriorityViewProps {
   info?: Readonly<Record<string, InfoProgressView>> | null;
 }
 
-const SHOW_OPTIONS = [
-  { key: "matrice", label: PRIORITY_TEXT.matrix, Icon: ChartScatter },
-  { key: "benefici", label: PRIORITY_TEXT.benefits, Icon: Bubbles },
-  { key: "lista", label: PRIORITY_TEXT.list, Icon: List },
-] as const;
-
-/**
- * L'interruttore «Matrice | Benefici | Lista» di «Priorità › Da costruire» (§4.4), piccolo, in
- * fondo alla riga dei filtri: al telefono le icone, dal tablet anche le parole. «Benefici» c'è
- * solo se almeno una scheda della vista ha «Benefici e costi» (`benefits`): senza modelli resta
- * «Matrice | Lista», come oggi, e `?mostra=benefici` vale la matrice (lo decide la pagina). Senza
- * `?mostra=` vale la matrice da 768 px in su e la lista sotto, come la vista.
- */
-export function ShowToggle({ basePath, query, mostra, benefits = false }: { basePath: string; query: HubQuery; mostra: HubShowParam | null; benefits?: boolean }) {
-  const base = withoutTransient(query);
-  const options = SHOW_OPTIONS.filter((option) => option.key !== "benefici" || benefits);
-  const toggle = (active: HubShowParam) => (
-    <nav aria-label={PRIORITY_TEXT.showLabel} data-slot="show-toggle">
-      <ul className="inline-flex gap-0.5 rounded-lg border bg-muted/60 p-0.5">
-        {options.map(({ key, label, Icon }) => {
-          const current = key === active;
-          // Al telefono le tre scelte sono solo icone: «Benefici» c'è anche lì, e mostra l'elenco delle bolle.
-          return (
-            <li key={key}>
-              <Link
-                href={hubHref(basePath, base, { tipo: "costruire", mostra: key })}
-                scroll={false}
-                aria-current={current ? "page" : undefined}
-                aria-label={label}
-                title={label}
-                className={cn(
-                  "flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-md px-2 text-xs font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-7 sm:min-w-0",
-                  current ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon aria-hidden className="size-4" />
-                <span className="hidden sm:inline">{label}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
-  );
-  if (mostra) return toggle(mostra);
+/** Sopra un grafico del menu «⋯»: «‹ Torna alla lista», con gli stessi filtri, e il nome del grafico. */
+function ChartHeader({ title, listHref }: { title: string; listHref: string }) {
   return (
-    <>
-      <div className="hidden md:block">{toggle("matrice")}</div>
-      <div className="md:hidden">{toggle("lista")}</div>
-    </>
+    <div data-slot="chart-header" className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <Button variant="outline" className="min-h-11 sm:min-h-8" render={<Link href={listHref} scroll={false} />} nativeButton={false}>
+        <ChevronLeft aria-hidden />
+        {PRIORITY_TEXT.backToList}
+      </Button>
+      <h2 className="text-base font-semibold">{title}</h2>
+    </div>
   );
 }
 
 /**
  * «Priorità» (docs/use-case/DESIGN.md §4.4; solo revisori). «Da costruire | Da diffondere» sta
- * nel menu «Tipo» della riga dei filtri e «Matrice | Lista» in fondo alla stessa riga
- * (`ShowToggle`): qui solo il contenuto. Da costruire: le fasi «Da valutare» (non le
- * «Rimandate» in attesa) e «Approvato», come matrice Valore × Costo o come lista, mai insieme;
- * senza `?mostra=` la matrice da 768 px in su e la lista sotto. Da diffondere: le best practice
- * approvate, per ore stimate. Valore, costo, zone e soglie sono quelli del modello e delle
- * fasce del workspace (D15, D18). «Benefici» (`?mostra=benefici`): la matrice a bolle facilità ×
- * beneficio delle schede con «Benefici e costi», con «Ipotesi di calcolo» sotto.
+ * nel menu «Tipo» della riga dei filtri: qui solo il contenuto. Da costruire: le fasi «Da
+ * valutare» (non le «Rimandate» in attesa) e «Approvato», come lista. Dal menu «⋯»
+ * (`?mostra=matrice|benefici`) un grafico prende il posto della lista, mai i due insieme: la
+ * matrice Valore × Costo, oppure le bolle facilità × beneficio delle schede con «Benefici e
+ * costi», con «Ipotesi di calcolo» sotto. Sopra il grafico «‹ Torna alla lista», con gli stessi
+ * filtri. `?mostra=lista` dei vecchi link è la lista. Da diffondere: le best practice approvate,
+ * per ore stimate. Valore, costo, zone e soglie sono quelli del modello e delle fasce del
+ * workspace (D15, D18).
  */
 export function PriorityView({
   workspaceId,
@@ -183,10 +142,16 @@ export function PriorityView({
     );
   }
 
+  // Un grafico del menu «⋯» al posto della lista: le bolle solo con le ipotesi di calcolo, altrimenti la matrice.
+  const chart: HubChartParam | null = mostra === "benefici" && valueParams ? "benefici" : mostra === "matrice" || mostra === "benefici" ? "matrice" : null;
+  const header = chart ? <ChartHeader title={chart === "benefici" ? PRIORITY_TEXT.benefits : PRIORITY_TEXT.matrix} listHref={hubHref(basePath, base, { mostra: null })} /> : null;
+
   if (view.list.length === 0) {
     const inRealization = items.filter((item) => item.phase === "in_realizzazione").length;
+    // Con un grafico aperto e nessuna scheda: «‹ Torna alla lista» resta; «Togli i filtri» tiene il grafico.
     return (
-      <div data-slot="priority-view" className="space-y-4">
+      <div data-slot="priority-view" data-chart={chart ?? undefined} className="space-y-4">
+        {header}
         {filtersActive ? (
           <NoResults clearHref={clearHref} />
         ) : inRealization > 0 && roadmapHref ? (
@@ -202,63 +167,58 @@ export function PriorityView({
     );
   }
 
-  const byId = new Map(view.list.map((item) => [item.id, item]));
-  const points: MatrixPoint[] = view.points.flatMap((point) => {
-    const item = byId.get(point.id);
-    if (!item || !item.cost) return [];
-    // Approvato con un trimestre passato: «Scaduto», come nella Roadmap.
-    const expired = item.phase === "approvato" && roadmapGroupKey(item.targetQuarter, today) === "scaduti";
-    return [{ ...point, value: item.value, cost: item.cost, expired, href: panelHref(basePath, query, point.id) }];
-  });
-  const toEstimateHref = hubHref(basePath, base, { tipo: "costruire", mostra: "lista", stima: "mancante" });
-  const offMatrix =
-    view.offMatrix.count > 0
-      ? { label: offMatrixLabel(view.offMatrix), count: view.offMatrix.count, href: hubHref(basePath, base, { tipo: "costruire", mostra: "lista", stima: "fuori-matrice" }) }
-      : null;
-  const thresholds = model.thresholds ?? {};
-  const highValue = typeof thresholds.highImpact === "number" ? thresholds.highImpact : DEFAULT_THRESHOLDS.highImpact;
-  const matrix = (
-    <ValueCostMatrix
-      points={points}
-      highValue={highValue}
-      lowCostX={costLowLinePosition(costLowBandOf(model))}
-      bands={bands}
-      toEstimate={view.toEstimate}
-      toEstimateHref={toEstimateHref}
-      offMatrix={offMatrix}
-    />
-  );
-  const list = (
-    <PriorityList workspaceId={workspaceId} items={view.list} today={today} canDecide={canDecide} bands={bands} basePath={basePath} query={query} toEstimateHref={toEstimateHref} info={info} />
-  );
+  const toEstimateHref = hubHref(basePath, base, { tipo: "costruire", mostra: null, stima: "mancante" });
 
-  // «Benefici»: la matrice a bolle facilità × beneficio, con «Ipotesi di calcolo» sotto.
-  if (mostra === "benefici" && valueParams) {
-    const chart = buildBenefitBubbles(view.list, valueParams, today, palette ?? groupPalette(view.list, valueParams));
-    const hrefs = Object.fromEntries(chart.bubbles.map((bubble) => [bubble.id, panelHref(basePath, query, bubble.id)]));
+  // Le bolle facilità × beneficio, con «Ipotesi di calcolo» sotto.
+  if (chart === "benefici" && valueParams) {
+    const colors = palette ?? groupPalette(view.list, valueParams);
+    const bubbles = buildBenefitBubbles(view.list, valueParams, today, colors);
+    const hrefs = Object.fromEntries(bubbles.bubbles.map((bubble) => [bubble.id, panelHref(basePath, query, bubble.id)]));
     return (
-      <div data-slot="priority-view" className="space-y-4">
-        <BenefitBubbleChart chart={chart} palette={palette ?? groupPalette(view.list, valueParams)} hrefs={hrefs} />
+      <div data-slot="priority-view" data-chart="benefici" className="space-y-4">
+        {header}
+        <BenefitBubbleChart chart={bubbles} palette={colors} hrefs={hrefs} />
         <ValueParamsSummary params={valueParams} followsCurrentMonth={followsCurrentMonth} settingsHref={settingsHref} className="max-w-[720px]" />
       </div>
     );
   }
 
+  // La matrice Valore × Costo.
+  if (chart === "matrice") {
+    const byId = new Map(view.list.map((item) => [item.id, item]));
+    const points: MatrixPoint[] = view.points.flatMap((point) => {
+      const item = byId.get(point.id);
+      if (!item || !item.cost) return [];
+      // Approvato con un trimestre passato: «Scaduto», come nella Roadmap.
+      const expired = item.phase === "approvato" && roadmapGroupKey(item.targetQuarter, today) === "scaduti";
+      return [{ ...point, value: item.value, cost: item.cost, expired, href: panelHref(basePath, query, point.id) }];
+    });
+    const offMatrix =
+      view.offMatrix.count > 0
+        ? { label: offMatrixLabel(view.offMatrix), count: view.offMatrix.count, href: hubHref(basePath, base, { tipo: "costruire", mostra: null, stima: "fuori-matrice" }) }
+        : null;
+    const thresholds = model.thresholds ?? {};
+    const highValue = typeof thresholds.highImpact === "number" ? thresholds.highImpact : DEFAULT_THRESHOLDS.highImpact;
+    return (
+      <div data-slot="priority-view" data-chart="matrice" className="space-y-4">
+        {header}
+        <ValueCostMatrix
+          points={points}
+          highValue={highValue}
+          lowCostX={costLowLinePosition(costLowBandOf(model))}
+          bands={bands}
+          toEstimate={view.toEstimate}
+          toEstimateHref={toEstimateHref}
+          offMatrix={offMatrix}
+        />
+      </div>
+    );
+  }
+
+  // La lista, a ogni larghezza.
   return (
     <div data-slot="priority-view" className="space-y-4">
-      {mostra === "matrice" || mostra === "benefici" ? matrix : null}
-      {mostra === "lista" ? list : null}
-      {/* Senza scelta: la matrice da 768 px in su, la lista sotto; mai le due insieme a schermo. */}
-      {mostra === null ? (
-        <>
-          <div data-default-show="matrice" className="hidden md:block">
-            {matrix}
-          </div>
-          <div data-default-show="lista" className="md:hidden">
-            {list}
-          </div>
-        </>
-      ) : null}
+      <PriorityList workspaceId={workspaceId} items={view.list} today={today} canDecide={canDecide} bands={bands} basePath={basePath} query={query} toEstimateHref={toEstimateHref} info={info} />
     </div>
   );
 }

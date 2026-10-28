@@ -18,14 +18,14 @@ const { registerHooks } = nodeModule as unknown as {
 // I grafici di «Benefici e costi» nella pagina vera (`use-cases/page.tsx`), resa in questo processo
 // con la sessione scelta dalla prova (spec di Pierpaolo, 25/10/2026):
 //
-// - «Priorità»: il selettore «Matrice · Benefici · Lista» e, con `mostra=benefici`, la matrice a
-//   bolle (facilità, beneficio, raggio, bordo per il quando, link al pannello) con «Ipotesi di
-//   calcolo» sotto.
+// - «Priorità»: le voci «Matrice Valore × Costo» e «Matrice Facilità × Beneficio» del menu «⋯» e,
+//   con `mostra=benefici`, la matrice a bolle (facilità, beneficio, raggio, bordo per il quando,
+//   link al pannello) con «Ipotesi di calcolo» sotto.
 // - «Roadmap»: quattro cifre in testa, la J-curve (entrata in uso, pareggio), «Valore per tipo di
 //   ritorno» (un segmento per use case, la parte da misurare tratteggiata, «(n qualitativi)») e
 //   «Ipotesi di calcolo».
-// - Un workspace senza modelli resta com'è: niente «Benefici», niente grafici; il contributore non
-//   vede nulla di tutto questo.
+// - Un workspace senza modelli resta com'è: solo la matrice nel menu, niente grafici di «Benefici e
+//   costi»; il contributore non vede nulla di tutto questo.
 //
 // Con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database del pacchetto
 // hub_<id> su 127.0.0.1) gira sul database di prova; dentro `npm run check` si salta. I `.tsx` si
@@ -49,10 +49,14 @@ const opts = { skip: !enabled };
 
 type PageProps = { params: Promise<Record<string, string>>; searchParams: Promise<Record<string, string>> };
 type Page = (props: PageProps) => Promise<unknown>;
+type HubModule = typeof import("../../components/use-cases/hub.tsx");
+type Access = typeof import("../workspace-access.ts");
 
 let q: (text: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
 let renderToStaticMarkup: (element: unknown) => string;
 let pageOfUseCases: Page;
+let hub: HubModule;
+let access: Access;
 
 const suffix = randomBytes(3).toString("hex");
 const ids = {
@@ -168,6 +172,54 @@ async function html(person: Person, workspaceId: string, searchParams: Record<st
   return renderToStaticMarkup(element);
 }
 
+/** I dati della pagina e l'albero degli elementi, senza renderli (il contenuto del menu «⋯» non è nell'HTML finché è chiuso). */
+async function hubTree(person: Person, workspaceId: string, searchParams: Record<string, string>) {
+  const workspaceAccess = await access.getWorkspaceAccessForUser(ids[person], workspaceId);
+  assert.ok(workspaceAccess, `${person} è nel workspace`);
+  const session = { user: { id: ids[person], email: emails[person], emailVerified: true, name: `Persona ${person}`, image: null } };
+  const data = await hub.loadUseCaseHub({ workspaceId, session, access: workspaceAccess, searchParams });
+  assert.ok(data);
+  return { data, tree: hub.UseCaseHub({ data }) as unknown };
+}
+
+/** Le prop `name` degli elementi React dell'albero, in profondità (senza rendere i componenti). */
+function findProp(node: unknown, name: string): unknown[] {
+  const out: unknown[] = [];
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === "object" && "props" in value) {
+      const props = (value as { props: Record<string, unknown> }).props;
+      if (props && Object.hasOwn(props, name)) out.push(props[name]);
+      if (props) {
+        visit(props.children);
+        for (const [key, inner] of Object.entries(props)) if (key !== "children" && inner && typeof inner === "object" && "props" in inner) visit(inner);
+      }
+    }
+  };
+  visit(node);
+  return out;
+}
+
+/** Le voci dei grafici nel menu «⋯» (`HubHeader.menu.charts`). */
+async function menuCharts(person: Person, workspaceId: string, searchParams: Record<string, string> = {}) {
+  const { tree } = await hubTree(person, workspaceId, searchParams);
+  const [menu] = findProp(tree, "menu") as Array<{ charts: Array<{ label: string; href: string }> } | null>;
+  assert.ok(menu, `${person}: il menu «⋯»`);
+  return menu.charts;
+}
+
+/** «‹ Torna alla lista» e il nome del grafico: dal riquadro alla chiusura dell'h2 (il pulsante scrive il suo `data-slot` sull'`<a>`). */
+function chartHeaderOf(page: string): { href: string; text: string; title: string } {
+  const start = page.indexOf('data-slot="chart-header"');
+  assert.ok(start >= 0, "«Torna alla lista» sopra il grafico");
+  const header = page.slice(start, page.indexOf("</h2>", start) + 5);
+  return {
+    href: /<a [^>]*href="([^"]*)"/.exec(header)?.[1] ?? "",
+    text: /<a [^>]*>([\s\S]*?)<\/a>/.exec(header)?.[1].replace(/<[^>]+>/g, "") ?? "",
+    title: /<h2[^>]*>([^<]*)<\/h2>/.exec(header)?.[1] ?? "",
+  };
+}
+
 /** Il pezzo di HTML del `<li>` che contiene l'attributo `marker`, dalla sua apertura alla chiusura. */
 function itemOf(page: string, marker: string): string {
   const at = page.indexOf(marker);
@@ -222,6 +274,8 @@ before(async () => {
   const router = { push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}, forward() {} };
   renderToStaticMarkup = (element) => toHtml(createElement(AppRouterContext.Provider, { value: router }, element as never));
   pageOfUseCases = (await import("../../app/(dashboard)/dashboard/[workspaceId]/use-cases/page.tsx")).default as unknown as Page;
+  hub = await import("../../components/use-cases/hub.tsx");
+  access = await import("../workspace-access.ts");
   const quarter = await import("./quarter.ts");
   const thisQuarter = quarter.currentQuarter();
 
@@ -280,14 +334,17 @@ after(async () => {
   await q(`DELETE FROM organizations WHERE id = $1::uuid`, [ids.org]);
 });
 
-// ─── «Priorità › Benefici» ───────────────────────────────────────────
+// ─── «Priorità»: i grafici del menu «⋯» ──────────────────────────────
 
-test("Priorità: «Matrice · Benefici · Lista»; le bolle con facilità, beneficio, quando e il link al pannello", opts, async () => {
+test("Priorità: «Matrice Valore × Costo» e «Matrice Facilità × Beneficio» nel menu «⋯»; le bolle con facilità, beneficio, quando e il link al pannello", opts, async () => {
   for (const person of ["ls", "builder", "manager"] as const) {
-    const matrix = await html(person, ids.wsV, { vista: "priorita", mostra: "matrice" });
-    assert.ok(matrix.includes('data-slot="show-toggle"'), person);
-    for (const label of ["Matrice", "Benefici", "Lista"]) assert.ok(matrix.includes(`aria-label="${label}"`), `${person}: «${label}» nel selettore`);
-    assert.match(matrix, /href="[^"]*mostra=benefici"/, person);
+    const charts = await menuCharts(person, ids.wsV);
+    assert.deepEqual(
+      charts.map((chart) => chart.label),
+      ["Matrice Valore × Costo", "Matrice Facilità × Beneficio"],
+      person,
+    );
+    assert.ok(charts[1].href.endsWith("?vista=priorita&tipo=costruire&mostra=benefici"), `${person}: ${charts[1].href}`);
   }
 
   const page = await html("builder", ids.wsV, { vista: "priorita", mostra: "benefici" });
@@ -310,7 +367,20 @@ test("Priorità: «Matrice · Benefici · Lista»; le bolle con facilità, benef
   assert.ok(page.includes("Servizio clienti"), "la legenda dei gruppi");
   assert.ok(page.includes(">Senza gruppo<"), "il grigio dice che sono schede senza gruppo, non «Altro»");
   assert.ok(page.includes('data-slot="value-params-summary"') && page.includes("Ipotesi di calcolo"));
-  assert.ok(page.includes('aria-current="page" aria-label="Benefici"'), "«Benefici» scelto nel selettore");
+  // Sopra le bolle «‹ Torna alla lista», che torna alla lista, e il nome del grafico.
+  assert.deepEqual(chartHeaderOf(page), { href: `/dashboard/${ids.wsV}/use-cases?vista=priorita`, text: "Torna alla lista", title: "Matrice Facilità × Beneficio" });
+  assert.ok(page.includes('data-chart="benefici"'));
+});
+
+test("Priorità: con «Benefici e costi» nel workspace e un filtro che li esclude, le bolle restano, vuote", opts, async () => {
+  // La voce del menu dipende dal workspace, non dalla vista filtrata: una ricerca che trova solo la
+  // scheda senza modello non riporta alla matrice.
+  const page = await html("builder", ids.wsV, { vista: "priorita", mostra: "benefici", q: `Senza modello ${suffix}` });
+  assert.equal(chartHeaderOf(page).title, "Matrice Facilità × Beneficio");
+  assert.ok(page.includes('data-chart="benefici"'));
+  assert.ok(page.includes("Nessuno use case della vista ha la facilità in «Benefici e costi»."));
+  assert.ok(!page.includes('data-slot="value-cost-matrix"'), "non la matrice");
+  assert.ok(!page.includes("data-bubble="));
 });
 
 // ─── «Roadmap» ───────────────────────────────────────────────────────
@@ -358,13 +428,16 @@ test("Roadmap: quattro cifre, J-curve con entrata in uso e pareggio, «Valore pe
 
 // ─── Come oggi ───────────────────────────────────────────────────────
 
-test("senza modelli: «Matrice · Lista» e la Roadmap di oggi; `mostra=benefici` vale la matrice", opts, async () => {
-  const priority = await html("builder", ids.wsN, { vista: "priorita", mostra: "matrice" });
-  assert.ok(priority.includes('aria-label="Matrice"') && priority.includes('aria-label="Lista"'));
-  assert.ok(!priority.includes('aria-label="Benefici"'));
+test("senza modelli: nel menu solo «Matrice Valore × Costo» e la Roadmap di oggi; `mostra=benefici` vale la matrice", opts, async () => {
+  assert.deepEqual(
+    (await menuCharts("builder", ids.wsN)).map((chart) => chart.label),
+    ["Matrice Valore × Costo"],
+  );
   const forced = await html("builder", ids.wsN, { vista: "priorita", mostra: "benefici" });
   assert.ok(forced.includes('data-slot="value-cost-matrix"'), "la matrice di oggi");
   assert.ok(!forced.includes('data-slot="benefit-bubbles"'));
+  assert.equal(chartHeaderOf(forced).title, "Matrice Valore × Costo");
+  assert.ok(forced.includes('data-chart="matrice"'));
   assert.ok(!forced.includes("Ipotesi di calcolo"));
   const roadmap = await html("builder", ids.wsN, { vista: "roadmap" });
   assert.ok(roadmap.includes('data-figure="totale-valore"'));
@@ -377,7 +450,7 @@ test("contributore: nessun grafico, nessuna ipotesi, nessuna voce", opts, async 
   const roadmap = await html("contributor", ids.wsV, { vista: "roadmap" });
   const priority = await html("contributor", ids.wsV, { vista: "priorita", mostra: "benefici" });
   for (const page of [roadmap, priority]) {
-    for (const text of ["roadmap-value", "benefit-bubbles", "value-jcurve", "value-by-lever", "data-figure", "Ipotesi di calcolo", "Pareggio", "Servizio clienti", "€", "Benefici"]) {
+    for (const text of ["roadmap-value", "benefit-bubbles", "value-jcurve", "value-by-lever", "data-figure", "Ipotesi di calcolo", "Pareggio", "Servizio clienti", "€", "Benefici", "Torna alla lista", "Matrice", "chart-header"]) {
       assert.ok(!page.includes(text), `contributore: «${text}»`);
     }
   }

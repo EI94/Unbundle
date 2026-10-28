@@ -5,9 +5,9 @@
 //     --as ls-lead,function-lead,osservatore,sponsor-cliente --widths 1440,400 --label h4a
 //
 // Workspace «a» has the area on (start-app.mjs --flag USE_CASE_HUB_WORKSPACES=<id of «a»>) and the
-// cards of scripts/use-case-test/seed-hub.mjs. The four views for the four accounts, the matrix
-// and the list of «Priorità» (without ?mostra= the matrix from 768 px, the list below), «Da
-// diffondere», the side panel (reviewers on a card with a cost, osservatore on an own proposal with
+// cards of scripts/use-case-test/seed-hub.mjs. The four views for the four accounts, the list of
+// «Priorità» (the list by default; the matrix and the bubbles from the «⋯» menu,
+// ?mostra=matrice|benefici, with «Torna alla lista»), «Da diffondere», the side panel (reviewers on a card with a cost, osservatore on an own proposal with
 // code and public note and on someone else's without them), the quick panel of Lateral Space and
 // filters without results. The driver checks every page: no horizontal scroll (also at the tablet
 // widths 768, 900 and 1024), at most one filled button outside dialogs, every cost with its source,
@@ -56,22 +56,31 @@ const routes = [
     present: ["In valutazione", "{code:osservatore-email}", "Riepilogo delle chiamate di assistenza", "Proposto da te", "Rispondi", `${askedTitle(TEAM)}:`],
     absent: [...NOT_FOR_CONTRIBUTOR, "Da decidere", "In attesa di risposta", "Possibile doppione", "Valutata, da decidere"],
   },
-  { name: "priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: REVIEWERS, present: ["{code:r06}"] },
-  // H4p: ogni punto con il suo codice; i scaduti marcati; legenda corta.
+  // Without ?mostra= the list, at every width.
+  { name: "priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: REVIEWERS, present: ["{code:r06}", "Quando"] },
+  // H4p: ogni punto con il suo codice; i scaduti marcati; legenda corta. Opened from the «⋯» menu,
+  // in place of the list, with «Torna alla lista» above.
   {
     name: "priorita-matrice",
     path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=matrice",
     as: REVIEWERS,
-    present: ["Subito", "Da pianificare", "Se avanza tempo", "Non ora", "Le zone sono un suggerimento, non la decisione.", "{code:r06}", "{code:r09}", "da decidere"],
+    present: ["Torna alla lista", "Subito", "Da pianificare", "Se avanza tempo", "Non ora", "Le zone sono un suggerimento, non la decisione.", "{code:r06}", "{code:r09}", "da decidere"],
   },
   // §4.4: il menu «Quando» parte da «Scegli…» sulle schede da decidere (la scelta apre «Approva»);
   // il trimestre per intero e «Scaduto» sulle approvate.
   // H7: the rows without Value or Cost in one chip «N da stimare», as in the matrix.
   { name: "priorita-lista", path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=lista", as: REVIEWERS, present: ["Quando", "{code:r06}", "Scegli…", "Scaduto", "da stimare"], absent: ["Approva…", "{code:r04}"] },
   { name: "priorita-diffondere", path: "/dashboard/{ws:a}/use-cases?vista=priorita&tipo=diffondere", as: REVIEWERS, present: ["Segna come diffusa", "ore all'anno"] },
-  // «Benefici» (the bubbles, only with a «Benefici e costi» model in the view; otherwise the page
-  // falls back to the matrix). The needs are no longer at the foot of «Priorità»: they have their own view.
-  { name: "priorita-benefici", path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=benefici", as: REVIEWERS, absent: ["Cosa serve per far avanzare", "Requisiti"] },
+  // «Matrice Facilità × Beneficio» from the «⋯» menu (the bubbles, only with a «Benefici e costi»
+  // model in the workspace; otherwise the page falls back to the matrix), with «Torna alla lista».
+  // The needs are no longer at the foot of «Priorità»: they have their own view.
+  {
+    name: "priorita-benefici",
+    path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=benefici",
+    as: REVIEWERS,
+    present: ["Torna alla lista"],
+    absent: ["Cosa serve per far avanzare", "Requisiti"],
+  },
   // «Priorità» is not for contributors: the page falls back to the Roadmap.
   { name: "priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Matrice", "Cosa serve"] },
   { name: "roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: REVIEWERS, present: ["Valore atteso all'anno", "Costo impegnato", "use case", "Scaduti", "In realizzazione", "Fatti"] },

@@ -263,6 +263,28 @@ function rowOf(page: string, id: string): string {
   return page.slice(start, end);
 }
 
+/**
+ * Sopra un grafico del menu «⋯»: il link di «‹ Torna alla lista» (con `&amp;`, com'è nell'HTML) e
+ * il nome del grafico. Dal riquadro alla chiusura dell'h2: il pulsante scrive il suo `data-slot` sull'`<a>`.
+ */
+function chartHeaderOf(page: string): { href: string; text: string; title: string } {
+  const start = page.indexOf('data-slot="chart-header"');
+  assert.ok(start >= 0, "«Torna alla lista» sopra il grafico");
+  const header = page.slice(start, page.indexOf("</h2>", start) + 5);
+  return {
+    href: /<a [^>]*href="([^"]*)"/.exec(header)?.[1] ?? "",
+    text: /<a [^>]*>([\s\S]*?)<\/a>/.exec(header)?.[1].replace(/<[^>]+>/g, "") ?? "",
+    title: /<h2[^>]*>([^<]*)<\/h2>/.exec(header)?.[1] ?? "",
+  };
+}
+
+/** Le voci dei grafici nel menu «⋯» (`HubHeader.menu.charts`): il contenuto del menu non è nell'HTML finché è chiuso. */
+async function menuCharts(person: Person, workspaceId: string, searchParams: Record<string, string>) {
+  const { tree } = await hubTree(person, workspaceId, searchParams);
+  const [menu] = findProp(tree, "menu") as Array<{ charts: Array<{ label: string; href: string }> } | null>;
+  return menu;
+}
+
 before(async () => {
   if (!enabled) return;
   const { default: ts } = await import("typescript");
@@ -479,7 +501,7 @@ test("«Cosa serve»: un solo pulsante pieno, «Tipo» è un filtro, niente matr
   assert.ok(page.includes('aria-label="Tipo: Tutti"'), "«Tipo» come filtro");
   assert.ok(page.includes('data-slot="needs-board"'));
   assert.ok(!page.includes('data-slot="value-cost-matrix"') && !page.includes('data-slot="priority-list"'));
-  assert.ok(!page.includes('data-slot="show-toggle"'), "«Matrice | Lista» solo in «Priorità»");
+  assert.ok(!page.includes('data-slot="show-toggle"') && !page.includes('data-slot="chart-header"'), "nessun interruttore e nessun grafico");
 });
 
 test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido per Lateral Space), menu «⋯» solo ai revisori", opts, async () => {
@@ -504,6 +526,9 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
   const page = await html("ls", ids.wsA, { vista: "priorita", mostra: "matrice" });
   assert.ok(page.includes('data-slot="value-cost-matrix"'));
   assert.ok(!page.includes('data-slot="priority-list"'), "matrice e lista mai insieme");
+  // Dal menu «⋯»: sopra la matrice «‹ Torna alla lista», che torna alla lista, e il nome del grafico.
+  assert.deepEqual(chartHeaderOf(page), { href: `/dashboard/${ids.wsA}/use-cases?vista=priorita`, text: "Torna alla lista", title: "Matrice Valore × Costo" });
+  assert.ok(page.includes('data-chart="matrice"'));
   // 30.000 € nella seconda fascia del workspace (15.001-40.000): 1,5 + 14.999/24.999 ≈ 2,1 → 32 %.
   // Con le fasce predefinite (25.001-65.000) sarebbe 1,625 → 22,5 %.
   const point = new RegExp(`left:([\\d.]+)%;top:([\\d.]+)%"[^>]*><a[^>]*data-point="${cards.amount.id}"`).exec(page);
@@ -625,21 +650,22 @@ test("«Da decidere»: righe con Valore e Costo con la fonte, giorni di attesa, 
   assert.ok(!page.includes(`data-id="${cards.realized.id}"`));
 });
 
-test("«Priorità»: senza scelta matrice da 768 px e lista sotto; «Da diffondere» con «Segna come diffusa»", opts, async () => {
+test("Priorità: senza scelta la lista, a ogni larghezza; i grafici nel menu «⋯»; «Da diffondere» con «Segna come diffusa»", opts, async () => {
   const page = await html("ls", ids.wsA, { vista: "priorita" });
-  assert.ok(page.includes('data-default-show="matrice" class="hidden md:block"'));
-  assert.ok(page.includes('data-default-show="lista" class="md:hidden"'));
-  // H4p: «Da costruire | Da diffondere» sta nel menu «Tipo» della riga dei filtri e «Matrice | Lista» in fondo alla stessa riga.
+  assert.ok(page.includes('data-slot="priority-list"'), "la lista");
+  for (const text of ['data-slot="value-cost-matrix"', "data-default-show", 'data-slot="chart-header"', 'data-slot="show-toggle"', 'aria-label="Matrice"']) {
+    assert.ok(!page.includes(text), `senza scelta: niente ${text}`);
+  }
+  // H4p: «Da costruire | Da diffondere» sta nel menu «Tipo» della riga dei filtri; i grafici nel menu «⋯».
   assert.ok(page.includes('aria-label="Tipo: Da costruire"'));
-  assert.ok(page.includes('data-slot="show-toggle"') && page.includes('aria-label="Matrice"') && page.includes('aria-label="Lista"'));
   assert.equal((page.match(/data-slot="filter-bar"/g) ?? []).length, 1, "una sola riga di filtri");
   const diffuse = await html("ls", ids.wsA, { vista: "priorita", tipo: "diffondere" });
   assert.ok(diffuse.includes('data-slot="diffuse-list"'));
   assert.ok(diffuse.includes("Segna come diffusa"));
   assert.ok(rowOf(diffuse, cards.bestPractice.id).includes(cards.bestPractice.title));
   assert.ok(!diffuse.includes('data-slot="value-cost-matrix"'));
-  // Il chip «N da stimare» porta alla lista con `stima=mancante`.
-  assert.match(page, /href="[^"]*mostra=lista&amp;stima=mancante"[^>]*>\d+ da stimare</);
+  // Il chip «N da stimare» porta alla lista (senza `mostra`, è la lista) con `stima=mancante`.
+  assert.match(page, /href="[^"]*vista=priorita&amp;tipo=costruire&amp;stima=mancante"[^>]*>\d+ da stimare</);
   // `stima` resta nella Priorità: i link alle altre viste lo tolgono, e il contatore conta come loro.
   const toEstimate = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista", stima: "mancante" });
   assert.ok(toEstimate.includes("Togli i filtri"));
@@ -648,6 +674,54 @@ test("«Priorità»: senza scelta matrice da 768 px e lista sotto; «Da diffonde
   assert.match(toEstimate, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=cosa-serve"`), "senza stima, mostra né tipo");
   const decideCountOf = (html: string) => /Da decidere<\/span><span class="text-xs text-muted-foreground tabular-nums">(\d+)</.exec(html)?.[1];
   assert.equal(decideCountOf(toEstimate), decideCountOf(page));
+});
+
+test("menu «⋯»: i grafici con i filtri di adesso, mai ai contributori", opts, async () => {
+  // Da un'altra vista, con un pannello aperto e «da stimare»: «Priorità › Da costruire» con l'origine
+  // di adesso, senza `stima` né `apri`. Nessuna scheda di A ha «Benefici e costi»: solo la matrice.
+  for (const person of ["ls", "builder", "manager"] as const) {
+    const menu = await menuCharts(person, ids.wsA, { vista: "roadmap", origine: "transformation", stima: "mancante", apri: cards.amount.id });
+    assert.ok(menu, person);
+    assert.deepEqual(
+      menu.charts,
+      [{ label: "Matrice Valore × Costo", href: `/dashboard/${ids.wsA}/use-cases?vista=priorita&tipo=costruire&mostra=matrice&origine=transformation` }],
+      person,
+    );
+  }
+  assert.equal(await menuCharts("contributor", ids.wsA, { vista: "roadmap" }), null, "niente menu «⋯» per il contributore");
+  // Nessuno use case da mettere in ordine (D: solo una best practice; E: una scheda chiusa): nessun grafico.
+  assert.deepEqual((await menuCharts("ls", ids.wsD, { vista: "roadmap" }))?.charts, []);
+  assert.deepEqual((await menuCharts("builder", ids.wsE, { vista: "roadmap" }))?.charts, []);
+});
+
+test("Priorità: un grafico tiene i filtri; «Torna alla lista» li tiene, «Togli i filtri» tiene il grafico", opts, async () => {
+  const page = await html("ls", ids.wsA, { vista: "priorita", tipo: "costruire", mostra: "matrice", origine: "adoption" });
+  assert.equal(chartHeaderOf(page).href, `/dashboard/${ids.wsA}/use-cases?vista=priorita&amp;tipo=costruire&amp;origine=adoption`);
+  assert.match(page, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=priorita&amp;tipo=costruire&amp;mostra=matrice"[^>]*>Togli i filtri<`));
+  assert.ok(page.includes('data-slot="value-cost-matrix"'));
+  assert.ok(!page.includes('data-slot="priority-list"'), "il grafico al posto della lista");
+
+  // Nessuna scheda con questi filtri: «Torna alla lista» resta sopra il vuoto.
+  const none = await html("ls", ids.wsA, { vista: "priorita", mostra: "matrice", q: "nessuna-corrispondenza" });
+  assert.equal(chartHeaderOf(none).title, "Matrice Valore × Costo");
+  assert.ok(none.includes("Nessuno use case con questi filtri."));
+  assert.ok(none.includes('data-chart="matrice"'));
+
+  // «Da diffondere» non ha grafici: `mostra` non conta.
+  const diffuse = await html("ls", ids.wsA, { vista: "priorita", tipo: "diffondere", mostra: "matrice" });
+  assert.ok(diffuse.includes('data-slot="diffuse-list"'));
+  assert.ok(!diffuse.includes('data-slot="chart-header"') && !diffuse.includes('data-slot="value-cost-matrix"'));
+
+  // I vecchi link con `mostra=lista`: la lista, senza «Torna alla lista».
+  const oldList = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista" });
+  assert.ok(oldList.includes('data-slot="priority-list"'));
+  assert.ok(!oldList.includes('data-slot="chart-header"') && !oldList.includes('data-slot="value-cost-matrix"'));
+  const toEstimate = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista", stima: "mancante" });
+  assert.ok(toEstimate.includes('data-slot="priority-list"') && !toEstimate.includes('data-slot="chart-header"'));
+
+  // «Torna alla lista» è un contorno: la pagina tiene un solo pulsante pieno, con la lista e con il grafico.
+  assert.equal(filledButtons(await html("ls", ids.wsA, { vista: "priorita" })), 1, "lista");
+  assert.equal(filledButtons(page), 1, "matrice");
 });
 
 test("Priorità: una lista di soli use case con euro non ha la colonna «Zona»", opts, async () => {

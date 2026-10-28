@@ -4,7 +4,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ActivityMappingState } from "@/lib/use-cases/create";
 import { cn } from "@/lib/utils";
-import { HubMenu } from "./hub-menu";
+import { HubMenu, type HubMenuLink } from "./hub-menu";
 
 /** Testi della testata e dei vuoti della pagina (docs/use-case/DESIGN.md §4.1, §4.9, §5.5, §14.3). */
 export const HUB_TEXT = Object.freeze({
@@ -33,8 +33,8 @@ export interface HubHeaderProps {
   workspaceId: string;
   /** Dove porta «Nuovo use case»: il pannello rapido (Lateral Space) o il modulo completo. */
   newHref: string;
-  /** Menu «⋯», solo revisori (§4.1): senza, non c'è. */
-  menu: { exportHref: string; activityMapping: ActivityMappingState; mappingHref: string } | null;
+  /** Menu «⋯», solo revisori (§4.1): i grafici di «Priorità», «Esporta Excel», «Proponi da Activity mapping»; senza, non c'è. */
+  menu: { exportHref: string; activityMapping: ActivityMappingState; mappingHref: string; charts: readonly HubMenuLink[] } | null;
   children?: ReactNode;
 }
 
@@ -56,7 +56,9 @@ export function HubHeader({ workspaceId, newHref, menu, children }: HubHeaderPro
             <Plus aria-hidden />
             {HUB_TEXT.newUseCase}
           </Button>
-          {menu ? <HubMenu workspaceId={workspaceId} exportHref={menu.exportHref} activityMapping={menu.activityMapping} mappingHref={menu.mappingHref} /> : null}
+          {menu ? (
+            <HubMenu workspaceId={workspaceId} charts={menu.charts} exportHref={menu.exportHref} activityMapping={menu.activityMapping} mappingHref={menu.mappingHref} />
+          ) : null}
         </div>
       </div>
       {children}

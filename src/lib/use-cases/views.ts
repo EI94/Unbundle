@@ -84,9 +84,14 @@ export type HubView = (typeof HUB_VIEWS)[number];
 export const HUB_KIND_PARAMS = ["costruire", "diffondere"] as const;
 export type HubKindParam = (typeof HUB_KIND_PARAMS)[number];
 
-/** «Priorità › Da costruire»: la matrice Valore × Costo, la matrice a bolle di «Benefici e costi», la lista. */
+/**
+ * «Priorità › Da costruire»: senza `mostra` (o con `lista` dei vecchi link) la lista; `matrice` e
+ * `benefici` i grafici aperti dal menu «⋯».
+ */
 export const HUB_SHOW_PARAMS = ["matrice", "benefici", "lista"] as const;
 export type HubShowParam = (typeof HUB_SHOW_PARAMS)[number];
+/** Un grafico di «Priorità › Da costruire», aperto dal menu «⋯». */
+export type HubChartParam = Exclude<HubShowParam, "lista">;
 
 /** I valori di `stima`: «da stimare» e «fuori dalla matrice» (con «Benefici e costi», senza beneficio contato o costo). */
 export const HUB_ESTIMATE_PARAMS = ["mancante", "fuori-matrice"] as const;

@@ -21,6 +21,7 @@ import {
   isCommittedCost,
   niceScale,
   otherGroupsLabel,
+  priorityCharts,
   roadmapPlan,
   roadmapValueItems,
 } from "./value-charts.ts";
@@ -250,6 +251,12 @@ test("bolle: x facilità, y beneficio contato, dalla più grande; senza facilit�
   assert.equal(chart.scale.max, 5000);
   assert.equal(hasPriorityValueModels([plain, building]), false);
   assert.equal(hasPriorityValueModels([plain, small]), true);
+  // Le voci del menu «⋯»: la matrice con una scheda di «Priorità», le bolle se una ha «Benefici e costi».
+  assert.deepEqual(priorityCharts([building]), [], "in realizzazione: non è in «Priorità»");
+  assert.deepEqual(priorityCharts([plain, building]), ["matrice"]);
+  assert.deepEqual(priorityCharts([plain, small]), ["matrice", "benefici"]);
+  assert.deepEqual(priorityCharts([small]), ["matrice", "benefici"]);
+  assert.deepEqual(priorityCharts([]), []);
 });
 
 // ─── Roadmap ─────────────────────────────────────────────────────────

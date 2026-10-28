@@ -1,7 +1,8 @@
 /**
  * Dove mettere il codice accanto a ogni punto della matrice Valore × Costo (docs/use-case/
- * DESIGN.md §4.4; H4p) e accanto a ogni bolla di «Priorità › Benefici»: ogni punto ha la sua
- * etichetta, e le etichette non si coprono tra loro né coprono gli altri punti, finché c'è posto.
+ * DESIGN.md §4.4; H4p) e accanto a ogni bolla di «Matrice Facilità × Beneficio»: ogni punto ha
+ * la sua etichetta, e le etichette non si coprono tra loro né coprono gli altri punti, finché c'è
+ * posto.
  *
  * Il calcolo è in pixel, sul riquadro più piccolo in cui il grafico si disegna (`boxPx` di
  * larghezza, `aspect` l'altezza sulla larghezza) e, con `maxBoxPx`, anche su quello più grande e

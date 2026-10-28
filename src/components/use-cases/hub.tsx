@@ -22,7 +22,7 @@ import { buildNeedsBoard, panelNeeds, type NeedView } from "@/lib/use-cases/need
 import { abilitiesForUseCase, type UseCaseAbilities } from "@/lib/use-cases/permissions";
 import { compareQuarters, quarterLabel, WHEN_LATER_LABEL } from "@/lib/use-cases/quarter";
 import { USE_CASE_SOURCES } from "@/lib/use-cases/types";
-import { groupPalette, hasPriorityValueModels } from "@/lib/use-cases/value-charts";
+import { groupPalette, priorityCharts } from "@/lib/use-cases/value-charts";
 import {
   LATER_QUARTER_PARAM,
   applyHubFilters,
@@ -45,7 +45,7 @@ import { FilterBar, type FilterOption } from "./filter-bar";
 import { infoFilterOptions } from "./info-chip";
 import { NeedsBoardView } from "./needs-board";
 import { EmptyState, HUB_TEXT, HubHeader, HubNotice, receiptText } from "./hub-header";
-import { PriorityView, ShowToggle } from "./priority-view";
+import { PRIORITY_TEXT, PriorityView } from "./priority-view";
 import { QuickCreateSheet } from "./quick-create-sheet";
 import { RoadmapView } from "./roadmap-view";
 import { UseCasePanel, type UseCasePanelData } from "./use-case-panel";
@@ -296,9 +296,16 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   // «da stimare» (`stima`) è il chip della Priorità, senza un controllo suo: non passa alle altre viste.
   const viewHref = (key: HubView) => hubHref(basePath, navQuery, { vista: key, tipo: null, mostra: null, stima: null });
   const decideItems = params.stima ? applyHubFilters(items, { ...params, stima: null }, { ignoreKind, infoOf }) : filtered;
-  // «Benefici» nel selettore solo se una scheda della vista ha «Benefici e costi»; senza, la matrice.
-  const benefitsShown = reviewer && view === "priorita" && hasPriorityValueModels(filtered as HubItem[]);
-  const mostra = params.mostra === "benefici" && !benefitsShown ? "matrice" : params.mostra;
+  // I grafici di «Priorità › Da costruire» stanno nel menu «⋯» dei revisori (`priorityCharts`, su tutte
+  // le schede: un filtro non toglie una voce). Si aprono in «Priorità» con i filtri di adesso, senza «da
+  // stimare» (`stima`): i suoi use case non hanno un punto. `?mostra=benefici` senza «Benefici e costi»
+  // (un vecchio link) vale la matrice, come prima.
+  const charts = abilities.canSeePriority ? priorityCharts(reviewerItems) : [];
+  const chartLinks = charts.map((key) => ({
+    label: key === "benefici" ? PRIORITY_TEXT.benefits : PRIORITY_TEXT.matrix,
+    href: hubHref(basePath, navQuery, { vista: "priorita", tipo: "costruire", mostra: key, stima: null }),
+  }));
+  const mostra = params.mostra === "benefici" && !charts.includes("benefici") ? "matrice" : params.mostra;
 
   // «Cosa serve»: tutte le esigenze del workspace; con un filtro quelle degli use case che lo
   // passano (e quelle con la ricerca nel titolo). I codici in «Per» restano quelli di tutte le schede.
@@ -350,7 +357,12 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           newHref={newHref}
           menu={
             abilities.canExport && data.activityMapping
-              ? { exportHref: `/dashboard/${workspaceId}/portfolio/export`, activityMapping: data.activityMapping, mappingHref: activityMappingPath(workspaceId) }
+              ? {
+                  exportHref: `/dashboard/${workspaceId}/portfolio/export`,
+                  activityMapping: data.activityMapping,
+                  mappingHref: activityMappingPath(workspaceId),
+                  charts: chartLinks,
+                }
               : null
           }
         >
@@ -365,9 +377,6 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 more={reviewer ? moreFilterOptions(reviewerItems, params, data.info) : undefined}
                 active={filtersActive}
                 clearHref={clearHref}
-                trailing={
-                  view === "priorita" && reviewer && params.tipo !== "diffondere" ? <ShowToggle basePath={basePath} query={query} mostra={mostra} benefits={benefitsShown} /> : null
-                }
               />
             </div>
           ) : null}

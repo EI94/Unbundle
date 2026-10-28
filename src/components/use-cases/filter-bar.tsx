@@ -66,8 +66,6 @@ export interface FilterBarProps {
   /** Filtri attivi: compare «Togli i filtri». */
   active: boolean;
   clearHref: string;
-  /** In fondo alla riga: l'interruttore «Matrice | Lista» di «Priorità». */
-  trailing?: ReactNode;
 }
 
 const ORIGINS: FilterOption[] = [
@@ -106,11 +104,11 @@ function useIsPhone(): boolean {
 /**
  * Dove sta «Tutte · AI Adoption · AI Transformation»: nella barra solo dal tablet (`sm`) e con la
  * pagina (`@container/hub` di hub.tsx) larga almeno 42rem (672 px), dove «Tipo», l'origine e la
- * ricerca stanno in una riga e «Altri filtri», «Togli i filtri» e «Matrice | Benefici | Lista»
- * nella seconda; altrimenti dentro «Altri filtri», come al telefono. Più stretta (accanto alla
- * barra laterale da 768 a circa 975 px di finestra) l'origine andava a capo da sola e i controlli
- * di «Priorità» finivano su tre righe (120 px a 768). Il contenuto di «Altri filtri» si apre fuori
- * dal riquadro (portale): lì decide `originShown`.
+ * ricerca stanno in una riga e «Altri filtri» e «Togli i filtri» nella seconda; altrimenti dentro
+ * «Altri filtri», come al telefono. Più stretta (accanto alla barra laterale da 768 a circa 975 px
+ * di finestra) l'origine andava a capo da sola e i controlli di «Priorità» finivano su tre righe
+ * (120 px a 768). Il contenuto di «Altri filtri» si apre fuori dal riquadro (portale): lì decide
+ * `originShown`.
  */
 const ORIGIN_INLINE = "sm:@2xl/hub:block";
 
@@ -127,12 +125,11 @@ const SEARCH_DEBOUNCE_MS = 350;
  * diffondere»), «Tutte · AI Adoption · AI
  * Transformation» (dentro «Altri filtri» al telefono e quando la pagina è più stretta di
  * {@link ORIGIN_INLINE}), «Cerca per titolo o codice», «Altri
- * filtri» (Canale, Area, AI Lab, Trimestre) e in fondo l'interruttore «Matrice | Lista» di
- * «Priorità». Contributori: solo «Cerca per titolo». Ogni filtro è un parametro dell'indirizzo;
- * con filtri attivi compare «Togli i filtri». Filtri per proponente non esistono (art. 15.4):
- * `parseHubParams` li scarterebbe comunque.
+ * filtri» (Canale, Area, AI Lab, Trimestre). Contributori: solo «Cerca per titolo». Ogni filtro è
+ * un parametro dell'indirizzo; con filtri attivi compare «Togli i filtri». Filtri per proponente
+ * non esistono (art. 15.4): `parseHubParams` li scarterebbe comunque.
  */
-export function FilterBar({ basePath, query, mode, kind, more, active, clearHref, trailing }: FilterBarProps) {
+export function FilterBar({ basePath, query, mode, kind, more, active, clearHref }: FilterBarProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const base = withoutTransient(query);
@@ -215,7 +212,6 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
       {reviewer && more ? <MoreFilters query={query} options={more} onChange={go} clear={clear} originShown={originShown} /> : null}
       {/* Al telefono, per i revisori, «Togli i filtri» sta dentro «Altri filtri». */}
       {clear ? <span className={cn("shrink-0", reviewer && more && "hidden sm:inline-flex")}>{clear}</span> : null}
-      {trailing ? <div className="ml-auto shrink-0">{trailing}</div> : null}
     </div>
   );
 }

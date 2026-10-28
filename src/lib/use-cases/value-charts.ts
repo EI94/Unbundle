@@ -1,7 +1,8 @@
 /**
- * I dati dei grafici di «Benefici e costi» (spec di Pierpaolo, 25/10/2026): la matrice a bolle di
- * «Priorità › Benefici», le cifre in più della Roadmap («Ore liberate all'anno», «Pareggio»), la
- * J-curve e «Valore per tipo di ritorno». Qui solo numeri ed etichette; i componenti disegnano.
+ * I dati dei grafici di «Benefici e costi» (spec di Pierpaolo, 25/10/2026): la matrice a bolle
+ * facilità × beneficio di «Priorità» (dal menu «⋯»), le cifre in più della Roadmap («Ore liberate
+ * all'anno», «Pareggio»), la J-curve e «Valore per tipo di ritorno». Qui solo numeri ed etichette;
+ * i componenti disegnano.
  *
  * - **Colore per gruppo** (`groupPalette`): i gruppi di `value_model.group`, dal più grande (più
  *   schede, poi più beneficio contato, poi il nome), prendono i primi tre colori; gli altri gruppi e
@@ -35,7 +36,7 @@ import { FIGURE_SEPARATOR, formatEuro, formatInteger, lowerFirst } from "./forma
 import type { Origin } from "./types.ts";
 import { CURVE_EPSILON, componentResult, jCurve, monthLabel, planMonths, valueTotals, type JCurve, type PlannedMonths, type ValueTotals } from "./value-calc.ts";
 import { LEVER_LABELS, VALUE_CONFIDENCE_LABELS, type MonthCode, type ValueComponent, type ValueModel, type ValueParams } from "./value-model.ts";
-import { isPriorityCandidate, roadmapGroupKey, type HubItem } from "./views.ts";
+import { isPriorityCandidate, roadmapGroupKey, type HubChartParam, type HubItem } from "./views.ts";
 
 // ─── Gruppi e colori ─────────────────────────────────────────────────
 
@@ -264,8 +265,8 @@ export interface BenefitBubbles {
 }
 
 /**
- * La matrice a bolle di «Priorità › Benefici», dalle schede di «Da costruire» (`isPriorityCandidate`)
- * con un modello. Senza facilità una scheda non ha una x: si conta in `withoutEase`.
+ * La matrice a bolle facilità × beneficio di «Priorità» (dal menu «⋯»), dalle schede di «Da
+ * costruire» (`isPriorityCandidate`) con un modello. Senza facilità una scheda non ha una x: si conta in `withoutEase`.
  */
 export function buildBenefitBubbles(items: readonly HubItem[], params: ValueParams, today: string, palette: GroupPalette): BenefitBubbles {
   const drafts: Array<Omit<BenefitBubble, "r">> = [];
@@ -304,9 +305,19 @@ export function buildBenefitBubbles(items: readonly HubItem[], params: ValuePara
   return { bubbles, scale: niceScale(0, maxBenefit), withoutEase };
 }
 
-/** Almeno una scheda di «Priorità › Da costruire» ha «Benefici e costi»: il selettore offre «Benefici». */
+/** Almeno una scheda di «Priorità › Da costruire» ha «Benefici e costi»: il menu «⋯» offre «Matrice Facilità × Beneficio». */
 export function hasPriorityValueModels(items: readonly HubItem[]): boolean {
   return items.some((item) => item.valueModel !== null && isPriorityCandidate(item));
+}
+
+/**
+ * I grafici di «Priorità › Da costruire» nel menu «⋯» (solo revisori), su tutte le schede del
+ * workspace: un filtro non toglie una voce. La matrice se una scheda entra in «Priorità», le bolle
+ * se una di queste ha «Benefici e costi». Nessuna: nessun grafico.
+ */
+export function priorityCharts(items: readonly HubItem[]): HubChartParam[] {
+  if (!items.some(isPriorityCandidate)) return [];
+  return hasPriorityValueModels(items) ? ["matrice", "benefici"] : ["matrice"];
 }
 
 // ─── Roadmap: ore, J-curve, pareggio ─────────────────────────────────

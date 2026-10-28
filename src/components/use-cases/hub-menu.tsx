@@ -18,8 +18,16 @@ export const HUB_MENU_TEXT = Object.freeze({
   openMapping: "Apri Activity mapping",
 });
 
+/** Una voce che apre una pagina dell'area: i grafici di «Priorità» (`?mostra=matrice|benefici`). */
+export interface HubMenuLink {
+  label: string;
+  href: string;
+}
+
 export interface HubMenuProps {
   workspaceId: string;
+  /** I grafici di «Priorità › Da costruire», in cima; vuoto senza use case da mettere in ordine. */
+  charts?: readonly HubMenuLink[];
   /** `/portfolio/export`: con l'area accesa il foglio «Use case» (§4.1). */
   exportHref: string;
   /** Le attività del workspace: da classificare, nessuna, oppure pronte (`activityMappingReadiness`). */
@@ -29,12 +37,14 @@ export interface HubMenuProps {
 }
 
 /**
- * Il menu «⋯» della pagina, solo per i revisori (§4.1): «Esporta Excel» e «Proponi da Activity
- * mapping». Il secondo, con attività da classificare, dice «Prima classifica le attività in
+ * Il menu «⋯» della pagina, solo per i revisori (§4.1). In cima i grafici di «Priorità › Da
+ * costruire»: «Matrice Valore × Costo» e, con «Benefici e costi», «Matrice Facilità × Beneficio»;
+ * ognuno si apre al posto della lista, con i filtri di adesso. Poi «Esporta Excel» e «Proponi da
+ * Activity mapping». L'ultimo, con attività da classificare, dice «Prima classifica le attività in
  * Activity mapping.» con il link; altrimenti chiede conferma e fa proporre a Claude nuovi use
  * case, che arrivano in «Da decidere», nascosti ai colleghi, mai approvati da soli (§8.5).
  */
-export function HubMenu({ workspaceId, exportHref, activityMapping, mappingHref }: HubMenuProps) {
+export function HubMenu({ workspaceId, charts = [], exportHref, activityMapping, mappingHref }: HubMenuProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -65,6 +75,8 @@ export function HubMenu({ workspaceId, exportHref, activityMapping, mappingHref 
       <ActionMenu
         label={HUB_MENU_TEXT.label}
         items={[
+          // I grafici sono pagine dell'area: link, con i filtri di adesso.
+          ...charts.map(({ label, href }) => ({ label, href })),
           // Un file da scaricare: navigazione piena, non una pagina dell'app.
           { label: HUB_MENU_TEXT.export, onSelect: () => window.location.assign(exportHref) },
           { label: ACTIVITY_MAPPING_TEXT.menuItem, onSelect: () => setOpen(true) },
