@@ -143,7 +143,7 @@ export default async function UseCaseDetailPage({
         })
       : null,
     abilities.canSeeNeeds && needLists
-      ? loadUseCaseInfoProgress({ workspaceId, useCaseId: result.useCase.id, viewer, needs: needLists, canAsk: abilities.canEditNeeds })
+      ? loadUseCaseInfoProgress({ workspaceId, useCaseId: result.useCase.id, viewer, needs: needLists })
       : null,
   ]);
 

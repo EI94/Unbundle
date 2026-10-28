@@ -154,6 +154,9 @@ export const REFERENT_UI_TEXT = Object.freeze({
     questionsLabel: "Cosa chiedi",
     questionsHint: "Il referente vede solo il testo delle domande, non i dettagli.",
     questionsEmpty: "Non ci sono domande da fare: aggiungile in «Cosa serve» o usa «Prepara le domande».",
+    // Sotto «Cosa chiedi», accanto a «Prepara le domande», quando mancano domande standard.
+    prepareHintOne: "Aggiunge la domanda standard sul dato che manca: arriva già spuntata.",
+    prepareHintMany: "Aggiunge {n} domande standard sui dati che mancano: arrivano già spuntate.",
     messageLabel: "Messaggio (facoltativo)",
     messagePlaceholder: "Per esempio: ci serve per la stima di fine mese.",
     messageHint: "Non scrivere dati sanitari, nomi, email o telefoni di altre persone.",

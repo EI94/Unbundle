@@ -12,10 +12,21 @@ before(async () => {
 });
 
 const view = (state: InfoProgressState): InfoProgressView =>
-  infoProgressView(
-    { state, since: state === "in_attesa" ? "2026-10-27" : null, reminded: false, until: null, silentReason: state === "senza_risposta" ? "scaduta" : null, blocked: false, received: 1, total: 3, toAsk: 1 },
-    { today: "2026-10-27", canAsk: true },
-  )!;
+  infoProgressView({
+    state,
+    since: state === "in_attesa" ? "2026-10-27" : null,
+    reminded: false,
+    until: null,
+    silentReason: state === "senza_risposta" ? "scaduta" : null,
+    blocked: false,
+    received: 1,
+    total: 3,
+    toAsk: 1,
+    toVerify: state === "da_verificare" ? 1 : 0,
+    waiting: state === "in_attesa" ? 1 : 0,
+    unanswered: state === "senza_risposta" ? 1 : 0,
+    blockedCount: 0,
+  })!;
 
 test("le voci: gli stati che hanno una scheda, nell'ordine fisso, con il testo dell'opzione e il valore dell'indirizzo", () => {
   const info = { a: view("complete"), b: view("da_verificare"), c: view("da_verificare"), d: view("da_chiedere") };

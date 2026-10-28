@@ -247,7 +247,6 @@ test("T5-T7: risposte del referente, risposta e file del team; «L'ho già verif
       const { getAppUcExecutor } = await import("../../db/uc-executor.ts");
       return (await base.readCardNeeds(await getAppUcExecutor(), ids.ws, ids.useCase)).filter((n) => n.type === "requisito");
     })(), steps: [], linkable: [] },
-    canAsk: true,
   });
   assert.equal(view?.state, "da_verificare");
   assert.equal(view?.count, "2 di 6 informazioni ricevute");

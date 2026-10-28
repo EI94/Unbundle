@@ -15,6 +15,10 @@
  * persone: qui non entra e non si scrive mai. I conteggi sono delle esigenze di una scheda, mai di
  * persone; nessun testo nomina una persona o una durata. Lo vedono solo i revisori.
  *
+ * Sulla scheda (rilascio «Pulizia»): la testata dice solo lo stato a parole; in cima a «Cosa serve»
+ * una riga con i conteggi e che cosa resta. Le date (richiesta, promemoria, scadenza) non si ripetono
+ * qui: stanno nelle righe delle «Richieste».
+ *
  * Modulo puro: import relativi `.ts`.
  */
 import type { ReferentItemState, ReferentRequestStatus } from "../db/use-case-hub-referents-ddl.ts";
@@ -22,7 +26,6 @@ import { romeDate } from "../uc/calendar.ts";
 import type { SemaforoColor } from "../uc/vocab.ts";
 import type { NeedStatus, NeedView } from "./needs.ts";
 import { reviewerStatus } from "./referent/state.ts";
-import { referentDateLabel } from "./referent/view.ts";
 
 export const INFO_PROGRESS_STATES = ["da_chiedere", "in_attesa", "da_verificare", "senza_risposta", "complete"] as const;
 export type InfoProgressState = (typeof INFO_PROGRESS_STATES)[number];
@@ -82,6 +85,14 @@ export interface InfoProgress {
   total: number;
   /** Esigenze ancora da chiedere: da_chiedere, mancante, parziale. Un conteggio di esigenze, mai di persone. */
   toAsk: number;
+  /** Esigenze «in_verifica»: è arrivata una risposta o un documento da guardare. */
+  toVerify: number;
+  /** Esigenze chieste che aspettano ancora: le «chiesta» meno quelle senza risposta. */
+  waiting: number;
+  /** Esigenze «chiesta» la cui ultima richiesta è senza risposta (scaduta, o dopo l'ultimo promemoria). */
+  unanswered: number;
+  /** Esigenze «bloccata»: non si possono chiedere finché non si sbloccano. */
+  blockedCount: number;
 }
 
 export interface InfoProgressView {
@@ -92,13 +103,15 @@ export interface InfoProgressView {
   chip: string;
   /** Testo dell'opzione del filtro: «Da verificare». */
   option: string;
-  /** Testo lungo per il chip della testata e il riepilogo: «Informazioni: in attesa dal 27/10 · promemoria inviato». */
+  /** Testo del chip della testata: solo lo stato, «Informazioni: in attesa». Niente date né conteggi. */
   label: string;
   /** «2 di 6 informazioni ricevute» oppure «Nessuna informazione serve dal cliente.» */
   count: string;
-  /** Una frase sotto il riepilogo, oppure null. Non ripete la data né il promemoria di `label`. */
-  hint: string | null;
-  /** «Raccolta informazioni: {label}» */
+  /** Che cosa resta dopo il conteggio, es. «4 in attesa · 2 da chiedere»; null con total 0. */
+  next: string | null;
+  /** La riga di «Cosa serve»: `count`, e « · » `next` quando c'è. */
+  line: string;
+  /** Uguale a `label`. */
   ariaLabel: string;
   /** state ∈ INFO_ROW_STATES */
   showInRows: boolean;
@@ -109,28 +122,26 @@ export interface InfoProgressView {
 export const INFO_PROGRESS_TEXT = Object.freeze({
   states: Object.freeze({
     da_chiedere: Object.freeze({ chip: "Info: da chiedere", option: "Da chiedere", label: "Informazioni: da chiedere" }),
-    in_attesa: Object.freeze({ chip: "Info: in attesa", option: "In attesa", label: "Informazioni: in attesa dal {date}", labelUndated: "Informazioni: in attesa" }),
+    in_attesa: Object.freeze({ chip: "Info: in attesa", option: "In attesa", label: "Informazioni: in attesa" }),
     da_verificare: Object.freeze({ chip: "Info: da verificare", option: "Da verificare", label: "Informazioni: da verificare" }),
     senza_risposta: Object.freeze({ chip: "Info: senza risposta", option: "Senza risposta", label: "Informazioni: senza risposta" }),
     complete: Object.freeze({ chip: "Info: complete", option: "Complete", label: "Informazioni: complete" }),
   }),
-  reminded: " · promemoria inviato",
   count: Object.freeze({ one: "{received} di 1 informazione ricevuta", many: "{received} di {total} informazioni ricevute", none: "Nessuna informazione serve dal cliente." }),
-  hints: Object.freeze({
-    askReferent: "Usa «Chiedi al referente» per raccoglierle.",
-    blocked: "Le informazioni che mancano sono bloccate: sbloccale in «Cosa serve» per chiederle.",
-    notAskedOneAdd: "1 domanda non è ancora stata chiesta: usa «Aggiungi domande».",
-    notAskedManyAdd: "{n} domande non sono ancora state chieste: usa «Aggiungi domande».",
-    notAskedOneAsk: "1 domanda non è ancora stata chiesta: usa «Chiedi al referente».",
-    notAskedManyAsk: "{n} domande non sono ancora state chieste: usa «Chiedi al referente».",
-    until: "Il link vale fino al {date}.",
-    toVerify: "Sono arrivate risposte o documenti: per ognuno scegli A posto, Risposta parziale o Manca il dato.",
-    silentLastReminder: "Nessuna risposta dopo l'ultimo promemoria. Puoi chiedere di nuovo o chiedere a un'altra persona.",
-    silentExpired: "Il link è scaduto senza risposta. Puoi chiedere di nuovo o chiedere a un'altra persona.",
-    complete: "Ci sono tutte le informazioni che servono dal cliente.",
+  // Che cosa resta, dopo il conteggio: al massimo due pezzi, separati da « · ».
+  next: Object.freeze({
+    separator: " · ",
+    toAsk: "{n} da chiedere",
+    waiting: "{n} in attesa",
+    toVerify: "{n} da verificare",
+    unanswered: "{n} senza risposta",
+    blockedOne: "1 da chiedere, bloccata",
+    blockedMany: "{n} da chiedere, bloccate",
+    oneDone: "a posto",
+    allDone: "tutte a posto",
   }),
+  // Solo l'etichetta del blocco in cima a «Cosa serve», per i lettori di schermo.
   summaryHeading: "Raccolta informazioni",
-  chipAria: "Raccolta informazioni: {label}",
   filterLabel: "Informazioni",
   filterAny: "Tutte",
 });
@@ -211,11 +222,26 @@ export function deriveInfoProgress(needs: readonly InfoNeedFact[], asks: readonl
   const total = needs.filter((n) => n.status !== "non_applicabile").length;
   const received = needs.filter((n) => RECEIVED.includes(n.status)).length;
   const toAsk = needs.filter((n) => TO_ASK.includes(n.status)).length;
-  const base = { since: null, reminded: false, until: null, silentReason: null, blocked: false, received, total, toAsk };
-  if (needs.every((n) => DONE.includes(n.status))) return { ...base, state: "complete" };
-  if (needs.some((n) => n.status === "in_verifica")) return { ...base, state: "da_verificare" };
+  const toVerify = needs.filter((n) => n.status === "in_verifica").length;
+  const blockedCount = needs.filter((n) => n.status === "bloccata").length;
   const asked = needs.filter((n) => n.status === "chiesta").map((n) => ({ need: n, ask: latestAsk(asks, n.id) }));
   const silent = asked.filter((x) => x.ask !== null && askIsSilent(x.ask, now));
+  const base = {
+    since: null,
+    reminded: false,
+    until: null,
+    silentReason: null,
+    blocked: false,
+    received,
+    total,
+    toAsk,
+    toVerify,
+    waiting: asked.length - silent.length,
+    unanswered: silent.length,
+    blockedCount,
+  };
+  if (needs.every((n) => DONE.includes(n.status))) return { ...base, state: "complete" };
+  if (needs.some((n) => n.status === "in_verifica")) return { ...base, state: "da_verificare" };
   if (silent.length > 0) {
     const expired = silent.some((x) => reviewerStatus(x.ask!, now) === "scaduta");
     return { ...base, state: "senza_risposta", silentReason: expired ? "scaduta" : "ultimo_promemoria" };
@@ -237,50 +263,34 @@ export function deriveInfoProgress(needs: readonly InfoNeedFact[], asks: readonl
 
 const fill = (template: string, values: Record<string, string | number>) => template.replace(/\{(\w+)\}/g, (whole, key: string) => (key in values ? String(values[key]) : whole));
 
+/** Che cosa resta: il conteggio dello stato e, se ne restano, quelle da chiedere. Al massimo due pezzi. */
+function infoNext(p: InfoProgress): string {
+  const n = INFO_PROGRESS_TEXT.next;
+  const toAsk = fill(n.toAsk, { n: p.toAsk });
+  if (p.state === "complete") return p.total === 1 ? n.oneDone : n.allDone;
+  if (p.state === "da_chiedere") return p.blocked ? (p.blockedCount === 1 ? n.blockedOne : fill(n.blockedMany, { n: p.blockedCount })) : toAsk;
+  const head = p.state === "da_verificare" ? fill(n.toVerify, { n: p.toVerify }) : p.state === "senza_risposta" ? fill(n.unanswered, { n: p.unanswered }) : fill(n.waiting, { n: p.waiting });
+  return p.toAsk > 0 ? head + n.separator + toAsk : head;
+}
+
 /** I testi di §P2.8.2 per uno stato; null quando non c'è niente da mostrare. */
-export function infoProgressView(p: InfoProgress | null, o: { today: string; canAsk: boolean }): InfoProgressView | null {
+export function infoProgressView(p: InfoProgress | null): InfoProgressView | null {
   if (!p) return null;
   const t = INFO_PROGRESS_TEXT;
   const texts = t.states[p.state];
-  let label: string = texts.label;
-  if (p.state === "in_attesa") {
-    label = p.since ? fill(t.states.in_attesa.label, { date: referentDateLabel(p.since, o.today) }) : t.states.in_attesa.labelUndated;
-    if (p.since && p.reminded) label += t.reminded;
-  }
   const count = p.total === 0 ? t.count.none : p.total === 1 ? fill(t.count.one, { received: p.received }) : fill(t.count.many, { received: p.received, total: p.total });
-  let hint: string | null = null;
-  switch (p.state) {
-    case "da_chiedere":
-      hint = p.blocked ? t.hints.blocked : o.canAsk ? t.hints.askReferent : null;
-      break;
-    case "in_attesa":
-      if (p.toAsk > 0 && o.canAsk) {
-        const dated = p.since !== null;
-        hint = p.toAsk === 1 ? (dated ? t.hints.notAskedOneAdd : t.hints.notAskedOneAsk) : fill(dated ? t.hints.notAskedManyAdd : t.hints.notAskedManyAsk, { n: p.toAsk });
-      } else if (p.until) {
-        hint = fill(t.hints.until, { date: referentDateLabel(p.until, o.today) });
-      }
-      break;
-    case "da_verificare":
-      hint = t.hints.toVerify;
-      break;
-    case "senza_risposta":
-      hint = p.silentReason === "scaduta" ? t.hints.silentExpired : t.hints.silentLastReminder;
-      break;
-    case "complete":
-      hint = t.hints.complete;
-      break;
-  }
+  const next = p.total === 0 ? null : infoNext(p);
   return {
     state: p.state,
     param: INFO_PROGRESS_PARAM[p.state],
     tone: TONE[p.state],
     chip: texts.chip,
     option: texts.option,
-    label,
+    label: texts.label,
     count,
-    hint,
-    ariaLabel: fill(t.chipAria, { label }),
+    next,
+    line: next ? count + t.next.separator + next : count,
+    ariaLabel: texts.label,
     showInRows: INFO_ROW_STATES.includes(p.state),
     received: p.received,
     total: p.total,

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { REFERENT_LIMITS, type ReferentContactOption, type ReferentMemberOption, type UseCaseReferentPanel } from "../../../../lib/use-cases/referent/contract.ts";
+import { existsSync, readFileSync } from "node:fs";
+import { REFERENT_LIMITS, type ReferentContactOption, type ReferentGate, type ReferentMemberOption, type UseCaseReferentPanel } from "../../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT } from "../../../../lib/use-cases/referent/labels.ts";
 import {
   ASK_MODE,
@@ -10,9 +10,11 @@ import {
   NEW_CONTACT,
   askAgainMode,
   askDraftErrors,
+  askEntry,
   askErrorView,
   askOtherRequestsHint,
   askPayload,
+  askPrepareOffer,
   askSelfHint,
   askSummary,
   contactChoiceGroups,
@@ -20,6 +22,7 @@ import {
   contactOptionLabel,
   initialAskDraft,
   memberOptionLabel,
+  mergeAskSelection,
 } from "./ask-dialog-state.ts";
 import { referentOutcome } from "./referent-outcome.ts";
 
@@ -249,4 +252,65 @@ test("su un telefono le voci di «A chi chiedi?» vanno a capo: «Fa parte del t
   for (const item of items) assert.match(item, /className=\{ASK_OPTION_CLASS\}/, item);
   // L'etichetta lunga di prova sta davvero oltre una riga a 375 px (circa 265 px di testo a 14 px).
   assert.ok(memberOptionLabel({ ...SARA, displayName: "Federico Barsi", emailMasked: "f•••@topjet.it", team: true }).length > 40);
+});
+
+// «Prepara le domande» dentro «Chiedi al referente» (rilascio «Pulizia»).
+const GATE: Record<ReferentGate["code"], ReferentGate> = {
+  sub_responsabili_mancanti: { code: "sub_responsabili_mancanti", message: REFERENT_UI_TEXT.gates.subprocessorsCanDeclare, canDeclare: true, settingsHref: "/dashboard/x/settings#sub-responsabili", linkLabel: REFERENT_UI_TEXT.gates.subprocessorsLink },
+  email_non_configurata: { code: "email_non_configurata", message: REFERENT_UI_TEXT.gates.emailNotConfigured },
+  risposte_non_attive: { code: "risposte_non_attive", message: REFERENT_UI_TEXT.gates.publicWritesOff },
+  email_non_verificata: { code: "email_non_verificata", message: REFERENT_UI_TEXT.gates.emailNotVerified },
+  nessuna_domanda: { code: "nessuna_domanda", message: REFERENT_UI_TEXT.gates.noQuestions },
+};
+
+test("«Chiedi al referente» si apre quando niente blocca, o quando manca solo cosa chiedere e «Prepara le domande» può aggiungerlo", () => {
+  assert.deepEqual(askEntry({ gates: [], preparable: [] }), { canOpen: true, gates: [], noQuestionsNote: null });
+  // Solo «Non ci sono domande da fare», ma ci sono domande standard da preparare: si apre, nessun avviso.
+  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: ["frequenza", "tempo"] }), { canOpen: true, gates: [], noQuestionsNote: null });
+  // Niente da preparare: spento, con il motivo per cui «Prepara le domande» non aiuterebbe.
+  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: [] }), { canOpen: false, gates: [GATE.nessuna_domanda], noQuestionsNote: REFERENT_UI_TEXT.prepareDisabledTitle });
+  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: [], prepareGaps: true }), { canOpen: false, gates: [GATE.nessuna_domanda], noQuestionsNote: REFERENT_UI_TEXT.prepareDisabledPresent });
+  // Un altro motivo blocca: spento con ogni motivo, nell'ordine del server, anche se si può preparare.
+  const gates = [GATE.sub_responsabili_mancanti, GATE.email_non_configurata, GATE.nessuna_domanda];
+  assert.deepEqual(askEntry({ gates, preparable: ["frequenza"] }), { canOpen: false, gates, noQuestionsNote: null });
+  assert.equal(askEntry({ gates: [GATE.email_non_verificata], preparable: ["frequenza"] }).canOpen, false);
+  assert.equal(askEntry({ gates: [GATE.risposte_non_attive], preparable: ["frequenza"] }).canOpen, false);
+});
+
+test("l'offerta di «Prepara le domande» nella finestra: solo in «Chiedi al referente» e solo con qualcosa da aggiungere", () => {
+  const six = ["frequenza", "tempo", "persone", "sistemi", "esempio", "costi"] as const;
+  assert.deepEqual(askPrepareOffer({ preparable: [...six] }, ASK_MODE), { count: 6, hint: "Aggiunge 6 domande standard sui dati che mancano: arrivano già spuntate." });
+  assert.deepEqual(askPrepareOffer({ preparable: ["tempo"] }), { count: 1, hint: T.prepareHintOne });
+  const again = askAgainMode({ id: "bbbbbbbb-0000-4000-8000-000000000001", status: "scaduta", contact: { id: MARIO.id, name: MARIO.displayName, roleLabel: null, emailMasked: null, hubOnly: true } });
+  assert.equal(askPrepareOffer({ preparable: [...six] }, again), null, "non in «Chiedi di nuovo»");
+  assert.equal(askPrepareOffer({ preparable: [] }), null);
+});
+
+test("dopo «Prepara le domande» le nuove arrivano spuntate, quelle tolte restano tolte, quelle che non si chiedono più escono", () => {
+  const again = askAgainMode({ id: "bbbbbbbb-0000-4000-8000-000000000001", status: "scaduta", contact: { id: MARIO.id, name: MARIO.displayName, roleLabel: null, emailMasked: null, hubOnly: true } });
+  // N2 era stata tolta: resta tolta; N3 è nuova: spuntata in «Chiedi al referente», no in «Chiedi di nuovo».
+  assert.deepEqual(mergeAskSelection([N1], [N1, N2], [N1, N2, N3], ASK_MODE), [N1, N3]);
+  assert.deepEqual(mergeAskSelection([N1], [N1, N2], [N1, N2, N3], again), [N1]);
+  // N1 non si può più chiedere: esce.
+  assert.deepEqual(mergeAskSelection([N1, N2], [N1, N2], [N2, N3]), [N2, N3]);
+  // Gli id si confrontano in minuscolo; l'ordine è quello del pannello.
+  assert.deepEqual(mergeAskSelection([N3], [N3.toUpperCase()], [N2.toUpperCase(), N3.toUpperCase(), N1.toUpperCase()]), [N2, N3, N1]);
+  // La finestra aperta senza domande: le sei preparate arrivano tutte spuntate.
+  const six = Array.from({ length: 6 }, (_, i) => `4444444${i}-4444-4444-8444-444444444444`);
+  assert.deepEqual(mergeAskSelection([], [], six), six);
+});
+
+test("le sorgenti: «Prepara le domande» sta nella finestra, senza toast, e non manda la richiesta; nel capitolo un solo pulsante", () => {
+  const dialog = readFileSync(new URL("./ask-dialog.tsx", import.meta.url), "utf8");
+  assert.match(dialog, /prep\.run\(\(\) => prepareReferentQuestionsAction\(workspaceId, useCaseId\), \{ inDialog: true, successToast: false \}\)/);
+  // Il <Button> che scrive «Prepara le domande» è dentro il <form> della finestra: type="button".
+  const at = dialog.indexOf("{REFERENT_UI_TEXT.prepare}");
+  assert.ok(at > 0, "il pulsante nella finestra");
+  const button = dialog.slice(dialog.lastIndexOf("<Button", at), at);
+  assert.match(button, /type="button"/);
+  const section = readFileSync(new URL("../section-needs.tsx", import.meta.url), "utf8");
+  assert.ok(!section.includes("prepare-button"), "nessun «Prepara le domande» separato");
+  assert.ok(!section.includes("prepareReferentQuestionsAction"));
+  assert.equal((section.match(/REFERENT_UI_TEXT\.ask\b/g) ?? []).length, 1, "un solo «Chiedi al referente»");
+  assert.equal(existsSync(new URL("./prepare-button.tsx", import.meta.url)), false);
 });

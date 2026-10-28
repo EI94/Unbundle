@@ -64,8 +64,9 @@ export interface DetailHeaderProps {
   /** Accanto alla pillola: «Proposto da te» (D13), per il contributore. */
   marker?: ReactNode;
   /**
-   * «Raccolta informazioni» (SPEC §P2.10.3): solo ai revisori, subito dopo la pillola della fase. Non
-   * è una fase e non cambia mai la fase: la fase la decidono le persone.
+   * «Raccolta informazioni» (SPEC §P2.10.3): solo ai revisori, subito dopo la pillola della fase: solo
+   * lo stato a parole («Informazioni: in attesa»), senza date né conteggi, che stanno in cima a «Cosa
+   * serve». Non è una fase e non cambia mai la fase: la fase la decidono le persone.
    */
   infoProgress?: InfoProgressView | null;
   className?: string;

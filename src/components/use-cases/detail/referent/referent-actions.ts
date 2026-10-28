@@ -25,7 +25,15 @@ export function useReferentRunner() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const run = useCallback(
-    <T>(call: () => Promise<ReferentActionResult<T>>, opts: { inDialog: boolean; refreshOnSuccess?: boolean }) =>
+    <T>(
+      call: () => Promise<ReferentActionResult<T>>,
+      opts: {
+        inDialog: boolean;
+        refreshOnSuccess?: boolean;
+        // false: l'esito lo scrive la finestra, niente toast.
+        successToast?: boolean;
+      },
+    ) =>
       new Promise<{ result: ReferentActionResult<T>; outcome: ReferentOutcome }>((resolve) => {
         startTransition(async () => {
           let result: ReferentActionResult<T>;
@@ -35,8 +43,9 @@ export function useReferentRunner() {
             result = FAILED;
           }
           const outcome = referentOutcome(result, opts);
-          if (outcome.toast?.kind === "success") toast.success(outcome.toast.text);
-          else if (outcome.toast) toast.error(outcome.toast.text);
+          if (outcome.toast?.kind === "success") {
+            if (opts.successToast !== false) toast.success(outcome.toast.text);
+          } else if (outcome.toast) toast.error(outcome.toast.text);
           if (outcome.refresh || (outcome.ok && opts.refreshOnSuccess)) router.refresh();
           resolve({ result, outcome });
         });

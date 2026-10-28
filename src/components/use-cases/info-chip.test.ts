@@ -11,14 +11,28 @@ before(async () => {
   chip = await import("./info-chip.tsx");
 });
 
-const base: InfoProgress = { state: "da_verificare", since: null, reminded: false, until: null, silentReason: null, blocked: false, received: 2, total: 6, toAsk: 0 };
-const view = (over: Partial<InfoProgress> = {}): InfoProgressView => infoProgressView({ ...base, ...over }, { today: "2026-10-27", canAsk: true })!;
+const base: InfoProgress = {
+  state: "da_verificare",
+  since: null,
+  reminded: false,
+  until: null,
+  silentReason: null,
+  blocked: false,
+  received: 2,
+  total: 6,
+  toAsk: 0,
+  toVerify: 2,
+  waiting: 0,
+  unanswered: 0,
+  blockedCount: 0,
+};
+const view = (over: Partial<InfoProgress> = {}): InfoProgressView => infoProgressView({ ...base, ...over })!;
 
-test("lungo nella testata: l'etichetta intera; corto nelle righe: «Info: …», solo per gli stati che chiedono di fare qualcosa", () => {
+test("lungo nella testata: solo lo stato a parole; corto nelle righe: «Info: …», solo per gli stati che chiedono di fare qualcosa", () => {
   const toVerify = view();
   assert.deepEqual(chip.infoChipProps(toVerify, "long")?.text, "Informazioni: da verificare");
   assert.deepEqual(chip.infoChipProps(toVerify, "short")?.text, "Info: da verificare");
-  assert.equal(chip.infoChipProps(toVerify, "long")?.ariaLabel, "Raccolta informazioni: Informazioni: da verificare");
+  assert.equal(chip.infoChipProps(toVerify, "long")?.ariaLabel, "Informazioni: da verificare");
   const silent = view({ state: "senza_risposta", silentReason: "scaduta" });
   assert.equal(chip.infoChipProps(silent, "short")?.text, "Info: senza risposta");
   for (const state of ["da_chiedere", "in_attesa", "complete"] as const) {
@@ -26,7 +40,7 @@ test("lungo nella testata: l'etichetta intera; corto nelle righe: «Info: …»,
     assert.ok(chip.infoChipProps(view({ state, since: state === "in_attesa" ? "2026-10-27" : null }), "long"), state);
   }
   const waiting = view({ state: "in_attesa", since: "2026-10-27", reminded: true });
-  assert.equal(chip.infoChipProps(waiting, "long")?.text, "Informazioni: in attesa dal 27/10 · promemoria inviato");
+  assert.equal(chip.infoChipProps(waiting, "long")?.text, "Informazioni: in attesa", "niente data né promemoria nella testata");
   assert.equal(chip.infoChipProps(null, "long"), null);
 });
 

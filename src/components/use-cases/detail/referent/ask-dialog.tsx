@@ -1,10 +1,12 @@
 "use client";
 
-import { Fragment, useEffect, useId, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
+import { ListPlus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { revealReferentContactEmailAction, sendReferentRequestAction } from "@/lib/actions/use-case-referents";
+import { prepareReferentQuestionsAction, revealReferentContactEmailAction, sendReferentRequestAction } from "@/lib/actions/use-case-referents";
 import type { ReferentRequestView, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
 import { REFERENT_UI_TEXT } from "@/lib/use-cases/referent/labels";
 import { DecisionDialog } from "../../reopen-dialog";
@@ -17,11 +19,13 @@ import {
   askErrorView,
   askOtherRequestsHint,
   askPayload,
+  askPrepareOffer,
   askSelfHint,
   askSummary,
   contactChoiceGroups,
   contactChoices,
   initialAskDraft,
+  mergeAskSelection,
   type AskDraft,
   type AskMode,
 } from "./ask-dialog-state";
@@ -47,15 +51,41 @@ export interface AskDialogProps {
  * persona del workspace che ha già un account, o un referente nuovo), che cosa chiedi (le domande aperte della scheda, tutte spuntate), un messaggio
  * facoltativo e il riepilogo di dove arriva l'email e dove arrivano le risposte. Con «Chiedi di
  * nuovo» il referente resta quello della richiesta. L'email parte dopo la risposta del server.
+ *
+ * Quando alla scheda mancano domande standard, «Cosa chiedi» offre anche «Prepara le domande»: la
+ * pagina si rilegge, la finestra resta aperta e le domande nuove arrivano già spuntate; chi è scelto,
+ * il messaggio e le domande tolte restano come sono.
  */
 export function AskDialog({ workspaceId, useCaseId, panel, mode = ASK_MODE, previous = null, needTitles, onClose }: AskDialogProps) {
   const baseId = useId();
-  const ids = { who: `${baseId}-chi`, name: `${baseId}-nome`, email: `${baseId}-email`, role: `${baseId}-ruolo`, questions: `${baseId}-domande`, message: `${baseId}-messaggio` };
+  const ids = { who: `${baseId}-chi`, name: `${baseId}-nome`, email: `${baseId}-email`, role: `${baseId}-ruolo`, questions: `${baseId}-domande`, prepare: `${baseId}-prepara`, message: `${baseId}-messaggio` };
   const { pending, run } = useReferentRunner();
+  // «Prepara le domande»: un'altra azione, con la sua attesa.
+  const prep = useReferentRunner();
   const [draft, setDraft] = useState<AskDraft>(() => initialAskDraft(panel, mode, previous));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<Record<string, string | null>>({});
+  const [prepareError, setPrepareError] = useState<string | null>(null);
+  // L'esito di «Prepara le domande», al posto del pulsante.
+  const [prepared, setPrepared] = useState<string | null>(null);
+  const statusRef = useRef<HTMLParagraphElement>(null);
+
+  // Le domande che si possono chiedere sono cambiate a finestra aperta (la pagina si è riletta dopo
+  // «Prepara le domande»): le nuove si aggiungono alla bozza, il resto della bozza resta com'è.
+  // Si allinea durante il disegno, non in un effetto.
+  const askableKey = panel.askableNeedIds.join(" ");
+  const [seen, setSeen] = useState(() => ({ key: askableKey, ids: panel.askableNeedIds }));
+  if (seen.key !== askableKey) {
+    setSeen({ key: askableKey, ids: panel.askableNeedIds });
+    setDraft((current) => ({ ...current, needIds: mergeAskSelection(current.needIds, seen.ids, panel.askableNeedIds, mode) }));
+    setErrors((current) => (current.needIds ? { ...current, needIds: "" } : current));
+  }
+
+  // Il pulsante sparisce dopo «Prepara le domande»: il fuoco va sulla riga dell'esito, dentro la finestra.
+  useEffect(() => {
+    if (prepared !== null) statusRef.current?.focus();
+  }, [prepared]);
 
   const choices = contactChoices(panel, mode);
   const groups = contactChoiceGroups(choices);
@@ -90,8 +120,27 @@ export function AskDialog({ workspaceId, useCaseId, panel, mode = ASK_MODE, prev
   const selfHint = mode.kind === "ask" ? askSelfHint(panel) : null;
   const otherHint = askOtherRequestsHint(panel, draft);
   const whoHint = otherHint;
+  const offer = prepared === null ? askPrepareOffer(panel, mode) : null;
+  const busy = pending || prep.pending;
+
+  async function prepare() {
+    if (busy) return;
+    setPrepareError(null);
+    const { result, outcome } = await prep.run(() => prepareReferentQuestionsAction(workspaceId, useCaseId), { inDialog: true, successToast: false });
+    // Riuscito: la finestra resta aperta e scrive l'esito al posto del pulsante.
+    if (result.ok) {
+      setPrepared(result.message ?? REFERENT_UI_TEXT.toasts.prepareAlready);
+      return;
+    }
+    if (outcome.close) {
+      onClose();
+      return;
+    }
+    setPrepareError(outcome.error);
+  }
 
   async function confirm() {
+    if (prep.pending) return;
     const local = askDraftErrors(draft, panel, mode);
     if (Object.keys(local).length) {
       setErrors(local);
@@ -116,7 +165,7 @@ export function AskDialog({ workspaceId, useCaseId, panel, mode = ASK_MODE, prev
       title={mode.kind === "again" ? T.titleAgain : T.title}
       description={mode.kind === "again" && mode.liveHint ? REFERENT_UI_TEXT.askAgainLiveHint : null}
       confirmLabel={T.confirm}
-      pending={pending}
+      pending={busy}
       error={formError || errors.contact || null}
       onConfirm={() => void confirm()}
       className="sm:max-w-lg"
@@ -225,6 +274,36 @@ export function AskDialog({ workspaceId, useCaseId, panel, mode = ASK_MODE, prev
             <p className="text-sm text-muted-foreground">{T.questionsEmpty}</p>
           )}
           {errors.needIds ? <p className="text-xs text-destructive">{errors.needIds}</p> : null}
+          {/* Dentro il <form> della finestra: type="button", o premerlo manderebbe la richiesta. */}
+          {offer ? (
+            <div data-slot="referent-ask-prepare" className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 sm:min-h-8"
+                aria-describedby={ids.prepare}
+                aria-disabled={busy || undefined}
+                aria-busy={prep.pending || undefined}
+                onClick={() => void prepare()}
+              >
+                <ListPlus aria-hidden />
+                {REFERENT_UI_TEXT.prepare}
+              </Button>
+              <span id={ids.prepare} className="text-xs break-words text-muted-foreground">
+                {offer.hint}
+              </span>
+            </div>
+          ) : null}
+          {prepared !== null ? (
+            <p ref={statusRef} tabIndex={-1} role="status" data-slot="referent-ask-prepared" className="text-xs break-words text-muted-foreground outline-none">
+              {prepared}
+            </p>
+          ) : null}
+          {prepareError ? (
+            <p role="alert" className="text-xs text-destructive">
+              {prepareError}
+            </p>
+          ) : null}
         </div>
 
         <Field id={ids.message} label={T.messageLabel} hint={T.messageHint} error={errors.message}>

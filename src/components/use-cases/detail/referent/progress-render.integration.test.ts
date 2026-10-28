@@ -18,8 +18,9 @@ const { registerHooks } = nodeModule as unknown as {
 };
 
 // «Raccolta informazioni» nelle pagine vere (SPEC §P2.10.3–5, §P2.12.3), con una scheda per stato:
-// - la scheda, per un revisore (function_lead): il chip accanto alla pillola della fase con il testo
-//   lungo, che non sembra una fase; in cima a «Cosa serve» «N di M informazioni ricevute» e la frase;
+// - la scheda, per un revisore (function_lead): il chip accanto alla pillola della fase con solo lo
+//   stato a parole, che non sembra una fase; in cima a «Cosa serve» una riga sola, «N di M
+//   informazioni ricevute» e che cosa resta (rilascio «Pulizia»: niente date, niente frasi);
 // - la pagina «Use case»: il chip corto solo nelle righe di «Da decidere» e nelle card della Roadmap
 //   che chiedono a qualcuno di fare qualcosa («da verificare», «senza risposta»); il filtro
 //   «Informazioni» con i cinque stati;
@@ -238,33 +239,54 @@ test("preparazione: una scheda per stato, con richieste, risposte e scadenze ver
   await q(`UPDATE use_case_needs n SET status = 'validata' FROM use_case_need_links l WHERE l.need_id = n.id AND l.use_case_id = $1::uuid`, [cards.done]);
 });
 
-test("la scheda: il chip accanto alla fase con il testo lungo, non una pillola; in cima a «Cosa serve» i conteggi e la frase", opts, async () => {
+/** Il testo di un pezzo di HTML, senza i tag. */
+const textOf = (html: string) => html.replace(/<[^>]+>/g, "");
+/** Il blocco in cima a «Cosa serve»: dal suo `<div>` al primo `</div>`. */
+function summaryOf(page: string): string {
+  const start = page.lastIndexOf("<div", page.indexOf('data-slot="info-summary"'));
+  assert.ok(start >= 0, "il riepilogo in cima a «Cosa serve»");
+  return page.slice(start, page.indexOf("</div>", start) + "</div>".length);
+}
+
+test("la scheda: nella testata solo lo stato a parole, non una pillola; in cima a «Cosa serve» una riga con i conteggi", opts, async () => {
   const page = await detailHtml("builder", cards.wait);
   const header = page.slice(page.indexOf('data-slot="detail-header"'), page.indexOf("</header>"));
   const pill = header.indexOf('data-slot="phase-pill"');
   const chip = header.indexOf('data-slot="info-chip"');
   assert.ok(pill >= 0 && chip > pill, "il chip viene subito dopo la pillola della fase");
   const chipHtml = header.slice(chip - 300, header.indexOf("</span></span>", chip));
-  assert.match(chipHtml, /aria-label="Raccolta informazioni: Informazioni: in attesa dal \d{2}\/\d{2}"/);
-  assert.match(chipHtml, /Informazioni: in attesa dal \d{2}\/\d{2}/);
+  assert.match(chipHtml, /aria-label="Informazioni: in attesa"/);
+  assert.ok(header.includes(">Informazioni: in attesa</span>"), "il testo visibile del chip");
+  // Nella testata niente date, promemoria o numeri dopo «Informazioni:».
+  const words = header.slice(header.indexOf(">Informazioni:") + 1);
+  const said = words.slice(0, words.indexOf("<"));
+  assert.equal(said, "Informazioni: in attesa");
+  assert.doesNotMatch(said.slice("Informazioni:".length), /dal |promemoria|\d/, said);
   const chipTag = header.slice(header.lastIndexOf("<span", chip), header.indexOf(">", chip));
   assert.doesNotMatch(chipTag, /rounded-full|border/, chipTag);
-  const summary = page.slice(page.indexOf('data-slot="info-summary"'));
-  assert.ok(summary.includes(progress.INFO_PROGRESS_TEXT.summaryHeading));
+  // In cima a «Cosa serve»: una riga, i conteggi e che cosa resta; niente titolo, chip o maiuscolo.
+  const summary = summaryOf(page);
   const total = (await needsOf(cards.wait)).length;
-  assert.ok(summary.includes(`0 di ${total} informazioni ricevute`), `0 di ${total}`);
-  assert.ok(summary.includes(`${total - 2} domande non sono ancora state chieste: usa «Aggiungi domande».`));
-  // Da verificare e senza risposta: il testo e la frase giusti; la fase non cambia mai da sola.
+  assert.equal(textOf(summary), `0 di ${total} informazioni ricevute · 2 in attesa · ${total - 2} da chiedere`);
+  assert.match(summary, new RegExp(`aria-label="${progress.INFO_PROGRESS_TEXT.summaryHeading}"`));
+  for (const text of ["Informazioni:", 'data-slot="info-chip"', "uppercase"]) assert.ok(!summary.includes(text), `riepilogo: ${text}`);
+  // Da verificare e senza risposta: i conteggi giusti; la fase non cambia mai da sola.
   const verify = await detailHtml("builder", cards.verify);
+  const verifyTotal = (await needsOf(cards.verify)).length;
   assert.ok(verify.includes("Informazioni: da verificare"));
-  assert.ok(verify.includes(`1 di ${(await needsOf(cards.verify)).length} informazioni ricevute`));
-  assert.ok(verify.includes(progress.INFO_PROGRESS_TEXT.hints.toVerify));
+  assert.equal(textOf(summaryOf(verify)), `1 di ${verifyTotal} informazioni ricevute · 1 da verificare · ${verifyTotal - 1} da chiedere`);
   const silent = await detailHtml("builder", cards.silent);
+  const silentTotal = (await needsOf(cards.silent)).length;
   assert.ok(silent.includes("Informazioni: senza risposta"));
-  assert.ok(silent.includes(progress.INFO_PROGRESS_TEXT.hints.silentExpired));
-  assert.ok(silent.includes("Scaduta senza risposta"), "la richiesta in rosso");
-  assert.ok((await detailHtml("builder", cards.done)).includes("Informazioni: complete"));
-  assert.ok((await detailHtml("builder", cards.ask)).includes("Informazioni: da chiedere"));
+  assert.equal(textOf(summaryOf(silent)), `0 di ${silentTotal} informazioni ricevute · 2 senza risposta · ${silentTotal - 2} da chiedere`);
+  assert.ok(silent.includes("Scaduta senza risposta"), "la richiesta in rosso, con la sua data nelle «Richieste»");
+  const done = await detailHtml("builder", cards.done);
+  assert.ok(done.includes("Informazioni: complete"));
+  assert.ok(textOf(summaryOf(done)).endsWith(" · tutte a posto"), textOf(summaryOf(done)));
+  const ask = await detailHtml("builder", cards.ask);
+  const askTotal = (await needsOf(cards.ask)).length;
+  assert.ok(ask.includes("Informazioni: da chiedere"));
+  assert.ok(textOf(summaryOf(ask)).endsWith(` · ${askTotal} da chiedere`), textOf(summaryOf(ask)));
   for (const key of CARDS) assert.equal(String((await q(`SELECT status FROM use_cases WHERE id = $1::uuid`, [cards[key]]))[0]?.status), phases[key], `${key}: la fase resta`);
 });
 

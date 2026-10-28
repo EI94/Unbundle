@@ -2,7 +2,6 @@ import "server-only";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { CLIENT_SIDE_SQL, type ReferentItemState, type ReferentRequestStatus } from "@/lib/db/use-case-hub-referents-ddl";
-import { romeDate } from "@/lib/uc/calendar";
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
 import { cast, raw, toStatement, ucSql } from "@/lib/uc/sql/statement";
 import { clientSideNeeds, deriveInfoProgress, infoProgressView, type InfoAskFact, type InfoNeedFact, type InfoProgressView } from "@/lib/use-cases/info-progress";
@@ -79,17 +78,9 @@ WHERE n.workspace_id = ${cast(workspaceId, "uuid")} AND n.type = 'requisito' AND
   }
   if (byCard.size === 0) return {};
   const asks = await loadInfoAsks(workspaceId, null);
-  const today = romeDate(now);
   const out: Record<string, InfoProgressView> = {};
   for (const [card, needs] of byCard) {
-    const view = infoProgressView(
-      deriveInfoProgress(
-        needs,
-        asks.filter((a) => a.useCaseId === card),
-        now,
-      ),
-      { today, canAsk: abilities.canEditNeeds },
-    );
+    const view = infoProgressView(deriveInfoProgress(needs, asks.filter((a) => a.useCaseId === card), now));
     if (view) out[card] = view;
   }
   return out;
@@ -101,7 +92,6 @@ export async function loadUseCaseInfoProgress(i: {
   useCaseId: string;
   viewer: UseCaseViewer;
   needs: UseCaseNeedLists;
-  canAsk: boolean;
   now?: Date;
 }): Promise<InfoProgressView | null> {
   if (!abilitiesForUseCase(i.viewer).canSeeNeeds || !UUID.test(i.workspaceId) || !UUID.test(i.useCaseId)) return null;
@@ -109,5 +99,5 @@ export async function loadUseCaseInfoProgress(i: {
   const needs = clientSideNeeds(i.needs.requirements, i.useCaseId);
   if (needs.length === 0) return null;
   const asks = await loadInfoAsks(i.workspaceId, i.useCaseId);
-  return infoProgressView(deriveInfoProgress(needs, asks, now), { today: romeDate(now), canAsk: i.canAsk });
+  return infoProgressView(deriveInfoProgress(needs, asks, now));
 }

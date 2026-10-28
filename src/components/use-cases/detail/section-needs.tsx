@@ -44,10 +44,10 @@ import { Disclosure } from "../disclosure";
 import { NeedUseCasesDisclosure } from "../need-use-cases";
 import { DecisionChoiceGroup, DecisionDialog } from "../reopen-dialog";
 import { InfoSummary } from "./info-summary";
+import { askEntry } from "./referent/ask-dialog-state";
 import { ReferentDialogs, type ReferentDialog } from "./referent/dialogs";
 import { GateNotice } from "./referent/gate-notice";
 import { NeedReferentBlock } from "./referent/need-referent-block";
-import { PrepareButton } from "./referent/prepare-button";
 import { RequestsList } from "./referent/requests-list";
 import {
   NEED_FORM_CHOICES,
@@ -81,7 +81,7 @@ export interface SectionNeedsProps {
    * e file. null o non `available`: il capitolo è quello di prima.
    */
   referents?: UseCaseReferentPanel | null;
-  /** «Raccolta informazioni» della scheda (`loadUseCaseInfoProgress`, solo revisori): in cima al capitolo. */
+  /** «Raccolta informazioni» della scheda (`loadUseCaseInfoProgress`, solo revisori): la riga dei conteggi in cima al capitolo. */
   infoProgress?: InfoProgressView | null;
   id?: string;
   className?: string;
@@ -184,7 +184,10 @@ export function SectionNeeds({
       }
     />
   );
-  const askBlocked = feature ? feature.gates.length > 0 : true;
+  // «Chiedi al referente» si apre anche quando manca solo qualcosa da chiedere e «Prepara le domande»
+  // può aggiungerlo: la finestra lo offre.
+  const entry = feature ? askEntry(feature) : null;
+  const askBlocked = !entry?.canOpen;
 
   return (
     <section id={id} aria-labelledby={headingId} data-slot="section-needs" className={cn("scroll-mt-28 space-y-4", className)}>
@@ -219,29 +222,26 @@ export function SectionNeeds({
               {TEXT.link}
             </Button>
           ) : null}
+          {/*
+            L'azione principale del capitolo, ma non della pagina: un solo pulsante pieno per pagina (la
+            decisione). «secondary» la distingue da «Aggiungi». «Prepara le domande» sta nella sua finestra.
+          */}
           {feature?.canAsk ? (
-            <>
-              <PrepareButton workspaceId={workspaceId} useCaseId={useCaseId} preparable={feature.preparable} gaps={feature.prepareGaps === true} />
-              {/*
-                L'azione principale del capitolo, ma non della pagina: un solo pulsante pieno per pagina
-                (la decisione). «secondary» la distingue da «Aggiungi» e «Prepara le domande».
-              */}
-              <Button
-                type="button"
-                variant="secondary"
-                className="min-h-11 sm:min-h-8"
-                disabled={askBlocked}
-                aria-describedby={askBlocked ? gatesId : undefined}
-                onClick={() => setReferentDialog({ kind: "ask" })}
-              >
-                <Send aria-hidden />
-                {REFERENT_UI_TEXT.ask}
-              </Button>
-            </>
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-11 sm:min-h-8"
+              disabled={askBlocked}
+              aria-describedby={askBlocked ? gatesId : undefined}
+              onClick={() => setReferentDialog({ kind: "ask" })}
+            >
+              <Send aria-hidden />
+              {REFERENT_UI_TEXT.ask}
+            </Button>
           ) : null}
         </div>
       ) : null}
-      {canEdit && feature?.canAsk ? <GateNotice id={gatesId} gates={feature.gates} /> : null}
+      {canEdit && feature?.canAsk && entry ? <GateNotice id={gatesId} gates={entry.gates} noQuestionsNote={entry.noQuestionsNote} /> : null}
       {feature ? <RequestsList workspaceId={workspaceId} useCaseId={useCaseId} requests={feature.requests} canAsk={canEdit && feature.canAsk} onOpen={setReferentDialog} /> : null}
 
       {canEdit && (dialog?.mode === "aggiungi" || dialog?.mode === "modifica") ? (

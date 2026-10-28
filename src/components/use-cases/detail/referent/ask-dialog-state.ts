@@ -9,6 +9,7 @@
 import type {
   ReferentActionResult,
   ReferentContactOption,
+  ReferentGate,
   ReferentMemberOption,
   ReferentRequestView,
   SendReferentRequestInput,
@@ -73,6 +74,54 @@ export function initialAskDraft(panel: Pick<UseCaseReferentPanel, "askableNeedId
     role: "",
     needIds: mode.kind === "again" && previous ? askable.filter((id) => before.has(id)) : askable,
     message: "",
+  };
+}
+
+/**
+ * Le domande spuntate quando il pannello cambia a finestra aperta (dopo «Prepara le domande»): quelle
+ * che si possono chiedere adesso, in minuscolo e nell'ordine del pannello. Restano spuntate quelle già
+ * spuntate; una tolta resta tolta; le nuove (mai viste in `seen`) arrivano spuntate in «Chiedi al
+ * referente» e non spuntate in «Chiedi di nuovo»; quelle che non si possono più chiedere escono.
+ */
+export function mergeAskSelection(selected: readonly string[], seen: readonly string[], askableNow: readonly string[], mode: AskMode = ASK_MODE): string[] {
+  const chosen = new Set(selected.map(lower));
+  const before = new Set(seen.map(lower));
+  return askableNow.map(lower).filter((id) => chosen.has(id) || (mode.kind === "ask" && !before.has(id)));
+}
+
+/**
+ * «Prepara le domande» dentro «Cosa chiedi»: solo in «Chiedi al referente» (non in «Chiedi di nuovo»)
+ * e solo quando mancano domande standard. Il numero è di domande della scheda, mai di persone.
+ */
+export function askPrepareOffer(panel: Pick<UseCaseReferentPanel, "preparable">, mode: AskMode = ASK_MODE): { count: number; hint: string } | null {
+  if (mode.kind !== "ask" || panel.preparable.length === 0) return null;
+  const count = panel.preparable.length;
+  return { count, hint: count === 1 ? T.prepareHintOne : fillText(T.prepareHintMany, { n: count }) };
+}
+
+export interface AskEntry {
+  /** Il pulsante «Chiedi al referente» apre la finestra. */
+  canOpen: boolean;
+  /** I motivi da scrivere sotto il pulsante spento, nell'ordine del server; [] quando si apre. */
+  gates: readonly ReferentGate[];
+  /** Con «Non ci sono domande da fare»: perché «Prepara le domande» non aiuterebbe; altrimenti null. */
+  noQuestionsNote: string | null;
+}
+
+/**
+ * Il pulsante «Chiedi al referente» del capitolo: si apre quando niente blocca, oppure quando blocca
+ * solo «non ci sono domande da fare» e «Prepara le domande» ha qualcosa da aggiungere (la finestra lo
+ * offre). Altrimenti resta spento con ogni motivo, come prima.
+ */
+export function askEntry(panel: Pick<UseCaseReferentPanel, "gates" | "preparable"> & Partial<Pick<UseCaseReferentPanel, "prepareGaps">>): AskEntry {
+  const canPrepare = panel.preparable.length > 0;
+  const canOpen = panel.gates.every((gate) => gate.code === "nessuna_domanda" && canPrepare);
+  if (canOpen) return { canOpen: true, gates: [], noQuestionsNote: null };
+  const noQuestions = panel.gates.some((gate) => gate.code === "nessuna_domanda");
+  return {
+    canOpen: false,
+    gates: panel.gates,
+    noQuestionsNote: noQuestions && !canPrepare ? (panel.prepareGaps ? REFERENT_UI_TEXT.prepareDisabledPresent : REFERENT_UI_TEXT.prepareDisabledTitle) : null,
   };
 }
 

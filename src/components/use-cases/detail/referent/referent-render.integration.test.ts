@@ -19,9 +19,10 @@ const { registerHooks } = nodeModule as unknown as {
 
 // «Chiedi al referente» nella scheda vera (SPEC §9.3, §P3.9), resa in questo processo con la sessione
 // scelta dalla prova:
-// - un revisore (function_lead) vede «Chiedi al referente», «Prepara le domande» e ogni motivo che
-//   blocca (fornitori non autorizzati ed email spente insieme); poi le richieste, le righe sotto le
-//   esigenze, le risposte e i file con «Scarica»; mai «In corso»;
+// - un revisore (function_lead) vede «Chiedi al referente» e ogni motivo che blocca (fornitori non
+//   autorizzati ed email spente insieme), senza un «Prepara le domande» separato: sta nella finestra
+//   (rilascio «Pulizia»); poi le richieste, le righe sotto le esigenze, le risposte e i file con
+//   «Scarica»; mai «In corso»;
 // - nel selettore il suo contatto è «(sei tu)», un collega revisore «Fa parte del team»;
 // - un contributore non riceve niente di tutto questo, nemmeno il testo delle risposte.
 //
@@ -223,19 +224,31 @@ after(async () => {
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [PEOPLE.map((p) => ids[p])]);
 });
 
-test("un revisore vede «Prepara le domande», «Chiedi al referente» spento e ogni motivo insieme; il contributore niente", opts, async () => {
+test("un revisore vede «Chiedi al referente» spento e ogni motivo insieme, senza un «Prepara le domande» separato; il contributore niente", opts, async () => {
+  const T = labels.REFERENT_UI_TEXT;
+  const askButton = (html: string) => new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*?${T.ask}</button>`).exec(html)?.[0] ?? "";
+  // Prima di preparare: niente da chiedere, ma le email e i fornitori bloccano comunque; «Prepara le
+  // domande» potrebbe aggiungere domande, quindi nessuna nota che dice il contrario.
+  const empty = await detailHtml("builder");
+  assert.match(askButton(empty), /disabled=""/);
+  const emptyGates = empty.slice(empty.indexOf('data-slot="referent-gates"'));
+  assert.ok(emptyGates.includes(T.gates.noQuestions), "il motivo «Non ci sono domande da fare»");
+  assert.ok(!empty.includes(T.prepareDisabledTitle), "si può ancora preparare: nessuna nota");
   ok(await referents.prepareReferentQuestions(as("builder"), ids.card), "Prepara le domande");
   flow.needs = await needsOfCard();
   assert.ok(flow.needs.length >= 4, `domande preparate: ${flow.needs.length}`);
   const page = await detailHtml("builder");
-  const T = labels.REFERENT_UI_TEXT;
-  for (const text of [T.ask, T.prepare, labels.REFERENT_UI_TEXT.gates.emailNotConfigured, T.gates.subprocessorsLink]) assert.ok(page.includes(text), text);
+  for (const text of [T.ask, labels.REFERENT_UI_TEXT.gates.emailNotConfigured, T.gates.subprocessorsLink]) assert.ok(page.includes(text), text);
+  // «Prepara le domande» sta nella finestra di «Chiedi al referente»; dopo averle preparate non c'è
+  // più il motivo «Non ci sono domande da fare» che lo nomina.
+  assert.ok(!page.includes(T.prepare), "nessun «Prepara le domande» nel capitolo");
+  assert.ok(!page.includes('data-slot="prepare-reason"'));
   // La persona di funzione può dare l'autorizzazione lei stessa: il testo lo dice, con il nome dell'azienda.
   assert.ok(page.includes(`TopJet prova ${suffix} deve autorizzare i fornitori che usiamo`), "fornitori da autorizzare");
   assert.match(page, /data-slot="referent-gates"[^>]*role="status"|role="status"[^>]*data-slot="referent-gates"/);
   assert.ok(page.includes(`/dashboard/${ids.ws}/settings#sub-responsabili`));
   // Il pulsante è spento e dice perché.
-  const ask = new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*?${T.ask}</button>`).exec(page)?.[0] ?? "";
+  const ask = askButton(page);
   assert.ok(ask, "il pulsante «Chiedi al referente»");
   assert.match(ask, /disabled=""/);
   assert.match(ask, /aria-describedby="cosa-serve-chiedi-motivi"/);
