@@ -74,11 +74,10 @@ export const NEED_FORM_TEXT = Object.freeze({
   more: "Altro",
   dueLabel: "Entro, a parole",
   forLabel: "Per, a parole",
-  alsoFor: "Anche per",
   unlink: "Scollega da questo use case",
   archive: "Archivia",
   archiveTitle: "Archivia l'esigenza",
-  archiveDescription: "Esce da Priorità, dal pannello e dalle schede. Non si cancella.",
+  archiveDescription: "Non si vede più in «Cosa serve», nel pannello e nelle schede. Non si cancella.",
   archiveReason: "Perché la archivi?",
 });
 

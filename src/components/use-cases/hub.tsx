@@ -53,8 +53,8 @@ import { hubHref, panelHref, withoutTransient, type HubQuery } from "./use-case-
 
 /**
  * La pagina «Use case» con l'area accesa (docs/use-case/DESIGN.md §4; PIANO-LAVORI H4a): testata,
- * le tre viste «Da decidere», «Priorità» e «Roadmap», i filtri, il pannello laterale
- * (`?apri=`) e il pannello rapido di «Nuovo use case» (`?nuovo=1`, solo Lateral Space).
+ * le quattro viste «Da decidere», «Priorità», «Roadmap» e «Cosa serve», i filtri, il pannello
+ * laterale (`?apri=`) e il pannello rapido di «Nuovo use case» (`?nuovo=1`, solo Lateral Space).
  *
  * `loadUseCaseHub` legge tutto sul server, in una volta: la lista già proiettata per chi guarda
  * (`listHubItems`, una query; i contributori ricevono `ContributorUseCase` e nient'altro, D4 e
@@ -104,7 +104,7 @@ export interface UseCaseHubData {
   dossierColumn: DossierColumn | null;
   /**
    * «Cosa serve» (`listWorkspaceNeeds`): le esigenze non archiviate del workspace, solo per un
-   * revisore in Priorità o con il pannello aperto; null altrimenti. Ai contributori mai.
+   * revisore nella vista «Cosa serve» o con il pannello aperto; null altrimenti. Ai contributori mai.
    */
   needs: NeedView[] | null;
   /**
@@ -144,14 +144,13 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
   if (!list) return null;
   const items: readonly AnyHubItem[] = list.items;
   const view = params.vista ?? defaultHubView(viewer, decideCount(items));
-  // La colonna «In realizzazione» con le card dei dossier (§4.5): un giro in più, solo qui. In
-  // Priorità le stesse card chiudono «Cosa serve».
+  // La colonna «In realizzazione» con le card dei dossier (§4.5): un giro in più, solo sulla Roadmap.
   const inProgress =
-    reviewer && (view === "roadmap" || view === "priorita") && list.dossierRead === "ok"
+    reviewer && view === "roadmap" && list.dossierRead === "ok"
       ? (items as readonly HubItem[]).filter((item) => item.phase === "in_realizzazione" && item.dossier).map((item) => item.id)
       : [];
-  // «Cosa serve»: le esigenze del workspace per Priorità e per il pannello, solo ai revisori.
-  const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "priorita" || Boolean(params.apri));
+  // «Cosa serve»: le esigenze del workspace per la sua vista e per il pannello, solo ai revisori.
+  const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "cosa-serve" || Boolean(params.apri));
   const [dossierColumn, participation, subprocessorsPending, needs, info] = await Promise.all([
     inProgress.length ? dossierColumnOf(workspaceId, { userId: session.user.id, role: access.role }, inProgress) : null,
     view === "da-decidere" ? getPortfolioParticipation(workspaceId) : null,
@@ -301,11 +300,15 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   const benefitsShown = reviewer && view === "priorita" && hasPriorityValueModels(filtered as HubItem[]);
   const mostra = params.mostra === "benefici" && !benefitsShown ? "matrice" : params.mostra;
 
-  // «Cosa serve» in fondo a Priorità: tutte le esigenze del workspace, con i codici di tutte le
-  // schede dei revisori (un filtro della vista non nasconde un'esigenza).
+  // «Cosa serve»: tutte le esigenze del workspace; con un filtro quelle degli use case che lo
+  // passano (e quelle con la ricerca nel titolo). I codici in «Per» restano quelli di tutte le schede.
   const needsBoard =
-    view === "priorita" && reviewer && data.needs && valueParams
-      ? buildNeedsBoard(data.needs, reviewerItems, { today: list.today, params: valueParams })
+    view === "cosa-serve" && reviewer && data.needs && valueParams
+      ? buildNeedsBoard(data.needs, reviewerItems, {
+          today: list.today,
+          params: valueParams,
+          only: filtersActive ? { useCaseIds: new Set((filtered as HubItem[]).map((item) => item.id.toLowerCase())), q: params.q } : null,
+        })
       : null;
 
   const panelItem = params.apri ? items.find((item) => item.id.toLowerCase() === params.apri) : undefined;
@@ -329,6 +332,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
       : { key: "da-decidere", label: HUB_TEXT.contributorDecideView, href: viewHref("da-decidere") },
     ...(abilities.canSeePriority ? [{ key: "priorita", label: "Priorità", href: viewHref("priorita") }] : []),
     { key: "roadmap", label: "Roadmap", href: viewHref("roadmap") },
+    ...(abilities.canSeeNeeds ? [{ key: "cosa-serve", label: "Cosa serve", href: viewHref("cosa-serve") }] : []),
   ];
 
   const receipt = params.thanks ? list.receipt : null;
@@ -381,29 +385,37 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           // «Nuovo use case» c'è già nella testata: il vuoto non ne aggiunge un secondo.
           <EmptyState title={HUB_TEXT.emptyTitle} body={reviewer ? HUB_TEXT.emptyReviewer : HUB_TEXT.emptyContributor} />
         ) : view === "priorita" && list.projection !== "contributore" ? (
-          <>
-            <PriorityView
-              workspaceId={workspaceId}
-              items={filtered as HubItem[]}
-              tipo={params.tipo}
-              mostra={mostra}
-              model={list.model}
-              valueParams={valueParams}
-              palette={palette}
-              followsCurrentMonth={followsCurrentMonth}
-              settingsHref={valueSettingsHref}
-              bands={list.costBands}
-              today={list.today}
-              canDecide={abilities.canDecide}
-              basePath={basePath}
-              query={query}
+          <PriorityView
+            workspaceId={workspaceId}
+            items={filtered as HubItem[]}
+            tipo={params.tipo}
+            mostra={mostra}
+            model={list.model}
+            valueParams={valueParams}
+            palette={palette}
+            followsCurrentMonth={followsCurrentMonth}
+            settingsHref={valueSettingsHref}
+            bands={list.costBands}
+            today={list.today}
+            canDecide={abilities.canDecide}
+            basePath={basePath}
+            query={query}
+            filtersActive={filtersActive}
+            clearHref={clearHref}
+            roadmapHref={viewHref("roadmap")}
+            info={data.info}
+          />
+        ) : view === "cosa-serve" && list.projection !== "contributore" ? (
+          needsBoard ? (
+            <NeedsBoardView
+              board={needsBoard}
+              hrefOf={(id) => panelHref(basePath, query, id)}
+              inRealization={(filtered as HubItem[]).filter((item) => item.phase === "in_realizzazione").length}
+              roadmapHref={viewHref("roadmap")}
               filtersActive={filtersActive}
               clearHref={clearHref}
-              roadmapHref={viewHref("roadmap")}
-              info={data.info}
             />
-            {needsBoard ? <NeedsBoardView board={needsBoard} dossierColumn={data.dossierColumn} hrefOf={(id) => panelHref(basePath, query, id)} /> : null}
-          </>
+          ) : null
         ) : view === "roadmap" ? (
           <RoadmapView
             items={filtered}

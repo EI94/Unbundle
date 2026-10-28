@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { findHubForbiddenIn } from "./copy-guard.ts";
 import {
+  needAlsoForText,
   needDoneSummaryText,
+  needForText,
+  quarterAskSummaryText,
   NEED_AREAS,
   NEED_ERRORS,
   buildNeedsBoard,
@@ -20,11 +24,12 @@ import {
   validateNeedInput,
   validateNeedPatch,
   type NeedBoardItem,
+  type NeedsBoardFilter,
   type NeedView,
 } from "./needs.ts";
 import { DEFAULT_VALUE_PARAMS, type ValueModel } from "./value-model.ts";
 
-// «Cosa serve» (spec di Pierpaolo, 25/10/2026): vocabolari, validazione e i blocchi di Priorità,
+// «Cosa serve» (spec di Pierpaolo, 25/10/2026): vocabolari, validazione e i blocchi della sua vista,
 // del pannello e della scheda, da un elenco già letto. Dati sintetici.
 
 const PARAMS = { ...DEFAULT_VALUE_PARAMS, originMonth: "2026-11" as const };
@@ -165,7 +170,7 @@ test("il ritorno da confermare: le voci a ipotesi e da misurare, con la formula"
   assert.deepEqual(returnsToConfirm(null, PARAMS), []);
 });
 
-test("Priorità: requisiti per area, a posto da parte; passi per mese; questo trimestre per use case", () => {
+test("Cosa serve: requisiti per area, a posto da parte; passi per mese; questo trimestre per use case", () => {
   const needs = [
     need({ kind: "accesso", title: "Accesso al gestionale", useCaseIds: [A.toUpperCase(), B], dueOn: "2026-11-15", ownerLabel: "Giulia", ownerSide: "cliente", availability: "subito" }),
     need({ kind: "dato", title: "Estratto delle fatture", status: "validata", useCaseIds: [B] }),
@@ -250,4 +255,66 @@ test("le righe chiuse di default: «Già a posto · n», «Fatto · 1», «Fatti
   assert.equal(needDoneSummaryText("requisito", 3), "Già a posto · 3");
   assert.equal(needDoneSummaryText("passo", 1), "Fatto · 1");
   assert.equal(needDoneSummaryText("passo", 2), "Fatti · 2");
+});
+
+test("Cosa serve con un filtro: le esigenze degli use case che lo passano, con tutti i loro use case in «Per»", () => {
+  const needs = [
+    need({ kind: "accesso", title: "Accesso al gestionale", useCaseIds: [A.toUpperCase(), B] }),
+    need({ kind: "dato", title: "Estratto delle fatture", useCaseIds: [B] }),
+    need({ kind: "documento", title: "Procedura", useCaseIds: [C] }),
+    need({ type: "passo", title: "Avvio con il team", dueOn: "2026-11-03", useCaseIds: [A] }),
+  ];
+  const titles = (board: ReturnType<typeof buildNeedsBoard>) => [
+    ...board.areas.flatMap((area) => [...area.open, ...area.done].map((row) => row.title)),
+    ...board.steps.flatMap((month) => month.rows.map((row) => row.title)),
+  ];
+  const board = buildNeedsBoard(needs, ITEMS, { today: TODAY, params: PARAMS, only: { useCaseIds: new Set([A]), q: null } });
+  assert.deepEqual(titles(board), ["Accesso al gestionale", "Avvio con il team"], "collegate ad A, anche con l'id in maiuscolo");
+  assert.deepEqual(
+    board.areas[0].open[0].useCases.map((ref) => ref.code),
+    ["XV-0001", "XV-0002"],
+    "«Per» nomina anche gli use case fuori dal filtro",
+  );
+  // L'id del filtro in maiuscolo nell'esigenza, in minuscolo nell'insieme.
+  const upper = buildNeedsBoard([need({ title: "Maiuscolo", useCaseIds: [C.toUpperCase()] })], ITEMS, { today: TODAY, params: PARAMS, only: { useCaseIds: new Set([C]), q: null } });
+  assert.deepEqual(titles(upper), ["Maiuscolo"]);
+});
+
+test("Cosa serve con un filtro: le esigenze senza use case, la ricerca solo nel titolo, mai in «Chi»", () => {
+  const loose = need({ kind: "persona", title: "Un referente", forLabel: "Tutto il programma" });
+  const access = need({ kind: "accesso", title: "Accesso al GESTIONALE" });
+  const owner = need({ title: "Un'altra cosa", ownerLabel: "Giulia", ownerSide: "cliente", detail: "Serve il gestionale di Giulia" });
+  const titlesWith = (only: NeedsBoardFilter | null) =>
+    buildNeedsBoard([loose, access, owner], ITEMS, { today: TODAY, params: PARAMS, only }).areas.flatMap((area) => area.open.map((row) => row.title));
+
+  assert.ok(titlesWith(null).includes("Un referente"), "senza filtro c'è");
+  assert.ok(!titlesWith({ useCaseIds: new Set([A]), q: null }).includes("Un referente"), "con un filtro no");
+  assert.deepEqual(titlesWith({ useCaseIds: new Set(), q: "gestionale" }), ["Accesso al GESTIONALE"], "maiuscole non contano; il dettaglio non si cerca");
+  assert.deepEqual(titlesWith({ useCaseIds: new Set(), q: "gestionàle" }), ["Accesso al GESTIONALE"], "accenti nemmeno");
+  for (const q of ["Giulia", "cliente", "Cliente", "di Giulia"]) {
+    assert.deepEqual(titlesWith({ useCaseIds: new Set(), q }), [], `«${q}» non trova nulla (art. 15.4)`);
+  }
+});
+
+test("Cosa serve con un filtro: le schede del trimestre solo degli use case che lo passano", () => {
+  const items: NeedBoardItem[] = [...ITEMS, { id: "dddddddd-0000-4000-8000-000000000004", code: "XV-0004", title: "Ordini", phase: "approvato", targetQuarter: "2026-Q4", valueModel: null }];
+  assert.deepEqual(buildNeedsBoard([], items, { today: TODAY, params: PARAMS }).quarter.map((card) => card.code), ["XV-0001", "XV-0004"]);
+  const only = { useCaseIds: new Set(["dddddddd-0000-4000-8000-000000000004"]), q: null };
+  assert.deepEqual(buildNeedsBoard([], items, { today: TODAY, params: PARAMS, only }).quarter.map((card) => card.code), ["XV-0004"]);
+});
+
+test("i testi di «Cosa serve»: le schede del trimestre, «Per N use case», «Serve anche a…»", () => {
+  assert.equal(quarterAskSummaryText(1), "Cosa vi chiediamo questo trimestre · 1 use case");
+  assert.equal(quarterAskSummaryText(17), "Cosa vi chiediamo questo trimestre · 17 use case");
+  assert.equal(needForText(3), "Per 3 use case");
+  assert.equal(needAlsoForText(1), "Serve anche a un altro use case");
+  assert.equal(needAlsoForText(2), "Serve anche ad altri 2 use case");
+  assert.equal(needAlsoForText(22), "Serve anche ad altri 22 use case");
+  const texts = [quarterAskSummaryText(1), quarterAskSummaryText(17), needForText(3), needAlsoForText(1), needAlsoForText(2), needAlsoForText(22)];
+  assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
+});
+
+test("una riga nomina solo gli use case che chi guarda conosce", () => {
+  const board = buildNeedsBoard([need({ title: "Con uno sconosciuto", useCaseIds: [A, "eeeeeeee-0000-4000-8000-000000000005"] })], ITEMS, { today: TODAY, params: PARAMS });
+  assert.equal(board.areas[0].open[0].useCases.length, 1);
 });

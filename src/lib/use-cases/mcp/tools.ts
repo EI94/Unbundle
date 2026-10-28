@@ -1056,9 +1056,9 @@ async function setPriorityTool(args: unknown, principal: TeamPrincipal, deps: Te
 
 // ═══ list_needs ══════════════════════════════════════════════════════
 
-/** Dove si vede «Cosa serve»: in fondo a Priorità. */
+/** Dove si vede «Cosa serve»: la sua vista nella pagina «Use case». */
 export function linkToNeeds(appOrigin: string, workspaceId: string): string {
-  return `${appOrigin.replace(/\/+$/, "")}/dashboard/${workspaceId}/use-cases?vista=priorita`;
+  return `${appOrigin.replace(/\/+$/, "")}/dashboard/${workspaceId}/use-cases?vista=cosa-serve`;
 }
 
 async function listNeedsTool(args: unknown, principal: TeamPrincipal, deps: TeamToolDeps): Promise<TeamToolOutcome> {

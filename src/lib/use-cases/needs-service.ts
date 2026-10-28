@@ -298,7 +298,7 @@ export const updateNeed = guarded("update_need", async function updateNeed(
   }
 });
 
-/** «Archivia», con il motivo: l'esigenza esce da Priorità, pannello e scheda, e resta nel database. */
+/** «Archivia», con il motivo: l'esigenza esce da «Cosa serve», pannello e scheda, e resta nel database. */
 export const archiveNeed = guarded("archive_need", async function archiveNeed(
   ctx: WriteContext,
   needId: string,

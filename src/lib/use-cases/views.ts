@@ -1,10 +1,10 @@
 /**
- * Letture dell'area «Use case»: parametri, proiezioni per ruolo e le tre viste
+ * Letture dell'area «Use case»: parametri, proiezioni per ruolo e le quattro viste
  * (docs/use-case/DESIGN.md §4.2-4.7, §4.10, §6.9, §7.5, §9.3, §11; PIANO-LAVORI H2b).
  *
  * - **Parametri.** `parseHubParams` tiene solo i parametri dell'elenco di §4.2 e ignora
  *   tutti gli altri: nessun filtro per persona entra nemmeno scritto a mano nell'URL (§11).
- *   Ai contributori restano solo vista (tranne «Priorità»), ricerca e ricevute.
+ *   Ai contributori restano solo vista (tranne «Priorità» e «Cosa serve»), ricerca e ricevute.
  * - **Proiezioni.** I revisori ricevono `HubItem` (lista) e `UseCaseDetail` (scheda), senza
  *   il proponente; i contributori `ContributorUseCase` di `permissions.ts`, e nient'altro.
  *   Di `intake` i revisori ricevono solo le chiavi di `REVIEWER_INTAKE_KEYS`: un elenco di
@@ -14,8 +14,9 @@
  *   `projectForManager` (`src/lib/db/queries/use-case-hub.ts`), l'unico posto che la nomina.
  * - **Viste.** «Da decidere» (giorni di attesa, contatore senza «Serve info»), «Priorità»
  *   (zone, matrice Valore × Costo, lista, Da diffondere), «Roadmap» (trimestri con
- *   «Scaduti», cifre in testa «su N use case · M da fascia»). Nessun ordinamento,
- *   raggruppamento o conteggio per persona (art. 15.4).
+ *   «Scaduti», cifre in testa «su N use case · M da fascia»), «Cosa serve» (requisiti e
+ *   prossimi passi degli use case, solo revisori). Nessun ordinamento, raggruppamento o
+ *   conteggio per persona (art. 15.4).
  * - **Costo.** Valore, costo, zone e costo basso passano da `valuation.ts` con il modello del
  *   workspace, quindi con le sue fasce (`resolveCostBands`, D15). Dove questo modulo scrive
  *   l'etichetta di una fascia riceve anche `bands` (predefinite `COST_BANDS`).
@@ -77,7 +78,7 @@ import { DEFAULT_VALUE_PARAMS, LEVER_LABELS, parseValueModel, type MonthCode, ty
 
 // ═══ Parametri della pagina (§4.2) ═══════════════════════════════════
 
-export const HUB_VIEWS = ["da-decidere", "priorita", "roadmap"] as const;
+export const HUB_VIEWS = ["da-decidere", "priorita", "roadmap", "cosa-serve"] as const;
 export type HubView = (typeof HUB_VIEWS)[number];
 
 export const HUB_KIND_PARAMS = ["costruire", "diffondere"] as const;
@@ -176,14 +177,15 @@ function boundedText(value: string | null, min: number, max: number): string | n
 /**
  * I parametri della pagina, per chi guarda (§4.2, §4.7, §4.10, §11). Restano solo le chiavi
  * di `HUB_PARAM_KEYS`, con valori dell'elenco; ogni altro parametro (anche sul proponente) si
- * ignora. Ai contributori restano la vista (non «Priorità»), la ricerca, `apri` e le
- * ricevute; il pannello rapido (`nuovo=1`) solo a chi lo apre (Lateral Space).
+ * ignora. Ai contributori restano la vista (non «Priorità» né «Cosa serve»), la ricerca,
+ * `apri` e le ricevute; il pannello rapido (`nuovo=1`) solo a chi lo apre (Lateral Space).
  */
 export function parseHubParams(raw: RawHubParams, viewer: UseCaseViewer): HubParams {
   const abilities = abilitiesForUseCase(viewer);
   const filters = abilities.canUseAllFilters;
   let vista = oneOf(HUB_VIEWS, readParam(raw, "vista"));
   if (vista === "priorita" && !abilities.canSeePriority) vista = null;
+  if (vista === "cosa-serve" && !abilities.canSeeNeeds) vista = null;
   const trimestreRaw = readParam(raw, "trimestre");
   const trimestre = trimestreRaw === LATER_QUARTER_PARAM ? LATER_QUARTER_PARAM : isQuarterCode(trimestreRaw) ? trimestreRaw : null;
   const apri = readParam(raw, "apri");
@@ -230,7 +232,8 @@ export function hasActiveFilters(params: HubParams, opts: { ignoreKind?: boolean
 /**
  * Vista di partenza quando `vista` manca (§4.2): Lateral Space e revisori del cliente «Da
  * decidere» se c'è qualcosa da decidere, altrimenti «Priorità»; uno sponsor del cliente
- * (`exec_sponsor` che non è di Lateral Space) e i contributori la «Roadmap».
+ * (`exec_sponsor` che non è di Lateral Space) e i contributori la «Roadmap». «Cosa serve» non
+ * è mai la vista di partenza.
  */
 export function defaultHubView(viewer: UseCaseViewer, decideCount: number): HubView {
   const abilities = abilitiesForUseCase(viewer);

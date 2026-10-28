@@ -24,7 +24,7 @@ export default function UseCasesLoading() {
           </div>
           <Skeleton className="h-8 w-36" />
         </div>
-        <Skeleton className="h-10 w-full max-w-sm rounded-2xl" />
+        <Skeleton className="h-10 w-full max-w-md rounded-2xl" />
         <div className="flex flex-wrap gap-2">
           <Skeleton className="h-8 w-64 max-w-full" />
           <Skeleton className="h-8 w-56 max-w-full" />

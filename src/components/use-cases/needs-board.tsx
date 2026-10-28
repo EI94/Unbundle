@@ -1,27 +1,28 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { DossierCardList, DossierReadOnlyNotice } from "@/components/uc/shell/case-card";
+import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/uc/ui/status-dot";
-import type { DossierColumn } from "@/lib/db/queries/uc-nav";
-import type { NeedAreaTable, NeedRow, NeedsBoard, NeedUseCaseRef, QuarterAsk } from "@/lib/use-cases/needs";
-import { isBoardEmpty, needDoneSummaryText } from "@/lib/use-cases/needs";
+import type { NeedAreaTable, NeedRow, NeedsBoard, QuarterAsk } from "@/lib/use-cases/needs";
+import { isBoardEmpty, needDoneSummaryText, needForText, quarterAskSummaryText } from "@/lib/use-cases/needs";
 import { cn } from "@/lib/utils";
 import { Disclosure } from "./disclosure";
+import { EmptyState, NoResults } from "./hub-header";
+import { NeedUseCaseLink, NeedUseCasesDisclosure } from "./need-use-cases";
+import { inRealizationText, PRIORITY_TEXT } from "./priority-view";
 
-/** Testi di «Cosa serve» in Priorità (spec di Pierpaolo, 25/10/2026). */
+/** Testi della vista «Cosa serve» (spec di Pierpaolo, 25/10/2026; rilascio «Pulizia»). */
 export const NEEDS_BOARD_TEXT = Object.freeze({
-  title: "Cosa serve",
-  requirements: "Cosa serve per far avanzare gli use case",
+  requirements: "Requisiti",
   steps: "Prossimi passi",
-  quarter: "Questo trimestre: cosa vi chiediamo, use case per use case",
-  inProgress: "Use case in realizzazione",
   what: "Che cosa",
   who: "Chi",
   for: "Per",
   status: "Stato",
   due: "Entro",
   none: "—",
-  empty: "Niente da chiedere per ora. Le esigenze si aggiungono dalla scheda di uno use case, nel capitolo «Cosa serve».",
+  emptyTitle: "Niente da chiedere per ora",
+  emptyBody: "Le esigenze si aggiungono dalla scheda di uno use case, nel capitolo «Cosa serve».",
+  noResults: "Niente da chiedere con questi filtri.",
   confirmBy: "Chi conferma i numeri",
   returns: "Il ritorno da confermare",
   now: "Ci serve subito",
@@ -32,37 +33,54 @@ export const NEEDS_BOARD_TEXT = Object.freeze({
 
 export interface NeedsBoardViewProps {
   board: NeedsBoard;
-  /** Le card dei dossier degli use case in realizzazione (`dossierColumnOf`), come nella Roadmap. */
-  dossierColumn?: DossierColumn | null;
   /** id dello use case → il pannello laterale (`?apri=`). */
   hrefOf: (id: string) => string;
-  className?: string;
+  /** Quanti use case (filtrati) sono in realizzazione: i loro dossier stanno nella Roadmap. */
+  inRealization?: number;
+  /** La Roadmap, per «Vai alla Roadmap». */
+  roadmapHref?: string | null;
+  /** Con un filtro attivo il vuoto è «Niente da chiedere con questi filtri.» [Togli i filtri]. */
+  filtersActive?: boolean;
+  clearHref?: string;
 }
 
 /**
- * «Cosa serve» in fondo a Priorità, sempre, solo per i revisori (spec di Pierpaolo, 25/10/2026).
- * Quattro blocchi, ognuno solo se ha qualcosa:
- * 1. «Cosa serve per far avanzare gli use case»: una tabella per area (Accessi, Dati e documenti,
- *    Regole e decisioni, Persone e ruoli, Contratto e governance, Altro) con Che cosa, Chi, Per (i
- *    codici aprono il pannello), Stato ed Entro; le righe già a posto sono chiuse di default.
+ * La vista «Cosa serve», solo per i revisori (spec di Pierpaolo, 25/10/2026; rilascio «Pulizia»).
+ * Due blocchi aperti, ognuno solo se ha qualcosa, poi le schede del trimestre, chiuse:
+ * 1. «Requisiti»: una tabella per area (Accessi, Dati e documenti, Regole e decisioni, Persone e
+ *    ruoli, Contratto e governance, Altro) con Che cosa, Chi, Per, Stato ed Entro; le righe già a
+ *    posto sono chiuse di default.
  * 2. «Prossimi passi», per mese; quelli fatti chiusi di default.
- * 3. «Questo trimestre: cosa vi chiediamo»: una scheda per use case approvato per il trimestre (anche
- *    se è già in realizzazione), con
- *    chi conferma, il ritorno da confermare, «Ci serve subito», «Dopo la scheda A.8», «Da decidere».
- * 4. Gli use case in realizzazione con il dossier: le card della colonna della Roadmap.
- * Sotto i 768 px le tabelle diventano elenchi. Nessun conteggio e nessun filtro per persona: «Chi»
- * è un testo della riga. Componente senza stato: si rende sul server.
+ * 3. «Cosa vi chiediamo questo trimestre», chiuso di default: una scheda per use case approvato per
+ *    il trimestre (anche se è già in realizzazione), con chi conferma, il ritorno da confermare,
+ *    «Ci serve subito», «Dopo la scheda A.8», «Da decidere».
+ * I dossier degli use case in realizzazione stanno nella Roadmap: qui solo una riga con il link.
+ * «Per»: uno use case si legge per intero, più di uno dietro «Per N use case»; ognuno apre il
+ * pannello. Nessun titolo visibile: la scheda attiva del selettore nomina la vista. Sotto i 56rem
+ * del riquadro le tabelle diventano elenchi. Nessun conteggio e nessun filtro per persona: «Chi» è
+ * un testo della riga. Componente senza stato: si rende sul server.
  */
-export function NeedsBoardView({ board, dossierColumn = null, hrefOf, className }: NeedsBoardViewProps) {
-  const column = dossierColumn?.state === "pronta" && dossierColumn.cards.length ? dossierColumn : null;
-  const empty = isBoardEmpty(board) && !column;
+export function NeedsBoardView({ board, hrefOf, inRealization = 0, roadmapHref = null, filtersActive = false, clearHref }: NeedsBoardViewProps) {
+  const toRoadmap = inRealization > 0 && roadmapHref ? roadmapHref : null;
+  if (isBoardEmpty(board)) {
+    return (
+      <div data-slot="needs-board">
+        {filtersActive && clearHref ? (
+          <NoResults clearHref={clearHref} title={NEEDS_BOARD_TEXT.noResults} />
+        ) : (
+          <EmptyState title={NEEDS_BOARD_TEXT.emptyTitle} body={toRoadmap ? inRealizationText(inRealization) : NEEDS_BOARD_TEXT.emptyBody}>
+            {toRoadmap ? (
+              <Button variant="outline" className="min-h-11 sm:min-h-8" render={<Link href={toRoadmap} scroll={false} />} nativeButton={false}>
+                {PRIORITY_TEXT.goToRoadmap}
+              </Button>
+            ) : null}
+          </EmptyState>
+        )}
+      </div>
+    );
+  }
   return (
-    <section aria-labelledby="cosa-serve-titolo" data-slot="needs-board" className={cn("space-y-6 border-t pt-6", className)}>
-      <h2 id="cosa-serve-titolo" className="text-base font-semibold">
-        {NEEDS_BOARD_TEXT.title}
-      </h2>
-      {empty ? <p className="text-sm text-muted-foreground">{NEEDS_BOARD_TEXT.empty}</p> : null}
-
+    <div data-slot="needs-board" className="space-y-8">
       {board.areas.length ? (
         <Block id="cosa-serve-requisiti" title={NEEDS_BOARD_TEXT.requirements} slot="needs-requirements">
           {board.areas.map((area) => (
@@ -75,9 +93,9 @@ export function NeedsBoardView({ board, dossierColumn = null, hrefOf, className 
         <Block id="cosa-serve-passi" title={NEEDS_BOARD_TEXT.steps} slot="needs-steps">
           {board.steps.map((month) => (
             <section key={month.key} aria-labelledby={`cosa-serve-mese-${month.key}`} className="space-y-2">
-              <h4 id={`cosa-serve-mese-${month.key}`} className="text-xs font-medium text-muted-foreground">
+              <h3 id={`cosa-serve-mese-${month.key}`} className="text-xs font-medium text-muted-foreground">
                 {month.label}
-              </h4>
+              </h3>
               <StepList rows={month.rows} hrefOf={hrefOf} />
             </section>
           ))}
@@ -90,59 +108,51 @@ export function NeedsBoardView({ board, dossierColumn = null, hrefOf, className 
       ) : null}
 
       {board.quarter.length ? (
-        <Block id="cosa-serve-trimestre" title={NEEDS_BOARD_TEXT.quarter} slot="needs-quarter">
-          <ul className="grid gap-3 lg:grid-cols-2">
+        <Disclosure summary={quarterAskSummaryText(board.quarter.length)} slot="needs-quarter">
+          <ul className="grid gap-3 @4xl/hub:grid-cols-2">
             {board.quarter.map((ask) => (
               <QuarterCard key={ask.id} ask={ask} href={hrefOf(ask.id)} />
             ))}
           </ul>
-        </Block>
+        </Disclosure>
       ) : null}
 
-      {column ? (
-        <Block id="cosa-serve-realizzazione" title={NEEDS_BOARD_TEXT.inProgress} slot="needs-in-progress">
-          {column.readOnlyNotice ? <DossierReadOnlyNotice /> : null}
-          <DossierCardList cards={column.cards} className="sm:grid-cols-2 lg:grid-cols-3" />
-        </Block>
+      {toRoadmap ? (
+        <p data-slot="needs-in-progress" className="text-sm text-muted-foreground">
+          {inRealizationText(inRealization)}{" "}
+          <Link
+            href={toRoadmap}
+            scroll={false}
+            className="rounded-sm font-medium text-primary underline underline-offset-4 outline-none hover:decoration-2 focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            {PRIORITY_TEXT.goToRoadmap}
+          </Link>
+        </p>
       ) : null}
-    </section>
+    </div>
   );
 }
 
 function Block({ id, title, slot, children }: { id: string; title: string; slot: string; children: ReactNode }) {
   return (
     <section aria-labelledby={id} data-slot={slot} className="space-y-3">
-      <h3 id={id} className="text-sm font-semibold">
+      <h2 id={id} className="text-sm font-semibold">
         {title}
-      </h3>
+      </h2>
       {children}
     </section>
   );
 }
 
-/** I codici degli use case collegati, ognuno apre il pannello; senza codice il titolo. */
-export function UseCaseCodes({ refs, forLabel, hrefOf }: { refs: readonly NeedUseCaseRef[]; forLabel: string | null; hrefOf: (id: string) => string }) {
-  if (!refs.length) return <span className={forLabel ? undefined : "text-muted-foreground"}>{forLabel ?? NEEDS_BOARD_TEXT.none}</span>;
-  return (
-    <span className="inline-flex flex-wrap gap-x-2 gap-y-1">
-      {refs.map((ref) => (
-        <Link
-          key={ref.id}
-          href={hrefOf(ref.id)}
-          scroll={false}
-          title={ref.title}
-          data-need-use-case={ref.id}
-          className={cn(
-            // Al telefono un bersaglio da dito (44 px di altezza); nelle tabelle da 768 px il testo basta.
-            "inline-flex min-h-11 items-center rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 md:min-h-0",
-            ref.code ? "font-mono text-xs" : "line-clamp-1 text-sm",
-          )}
-        >
-          {ref.code ?? ref.title}
-        </Link>
-      ))}
-    </span>
-  );
+/**
+ * «Per» di una riga: senza use case collegati il testo libero (o «—»); con uno solo il suo link,
+ * «TJ-0012 · Smistamento»; con più di uno «Per N use case», chiuso, che si apre sui link. Ogni link
+ * apre il pannello.
+ */
+function NeedFor({ row, hrefOf }: { row: NeedRow; hrefOf: (id: string) => string }) {
+  if (!row.useCases.length) return <span className={row.forLabel ? undefined : "text-muted-foreground"}>{row.forLabel ?? NEEDS_BOARD_TEXT.none}</span>;
+  if (row.useCases.length === 1) return <NeedUseCaseLink useCase={row.useCases[0]} href={hrefOf(row.useCases[0].id)} scroll={false} />;
+  return <NeedUseCasesDisclosure summary={needForText(row.useCases.length)} context={row.title} useCases={row.useCases} hrefOf={hrefOf} scroll={false} />;
 }
 
 function What({ row }: { row: NeedRow }) {
@@ -162,9 +172,9 @@ function AreaTable({ area, hrefOf }: { area: NeedAreaTable; hrefOf: (id: string)
   const headingId = `cosa-serve-area-${area.key}`;
   return (
     <section aria-labelledby={headingId} data-need-area={area.key} className="space-y-2">
-      <h4 id={headingId} className="text-xs font-medium text-muted-foreground">
+      <h3 id={headingId} className="text-xs font-medium text-muted-foreground">
         {area.label}
-      </h4>
+      </h3>
       {area.open.length ? <NeedTable rows={area.open} hrefOf={hrefOf} labelledBy={headingId} /> : null}
       {area.done.length ? (
         <Disclosure summary={needDoneSummaryText("requisito", area.done.length)} slot="needs-area-done">
@@ -213,7 +223,7 @@ function NeedTable({ rows, hrefOf, labelledBy }: { rows: readonly NeedRow[]; hre
                 </td>
                 <td className="px-3 py-2 break-words">{row.owner ?? <span className="text-muted-foreground">{NEEDS_BOARD_TEXT.none}</span>}</td>
                 <td className="px-3 py-2">
-                  <UseCaseCodes refs={row.useCases} forLabel={row.forLabel} hrefOf={hrefOf} />
+                  <NeedFor row={row} hrefOf={hrefOf} />
                 </td>
                 <td className="px-3 py-2">
                   <StatusDot tone={row.status.tone} label={row.status.label} />
@@ -241,17 +251,23 @@ function NeedTable({ rows, hrefOf, labelledBy }: { rows: readonly NeedRow[]; hre
   );
 }
 
-/** «Chi · Per · Entro» in una riga, per gli elenchi. */
+/**
+ * «Chi · Entro · Per» in una riga, per gli elenchi. «Per 3 use case» chiude la riga senza «·» e,
+ * aperto, va a capo da solo. Un `<div>`, non un `<p>`: un `<details>` non è testo e dentro un `<p>`
+ * il parser spezzerebbe il DOM.
+ */
 function MetaLine({ row, hrefOf }: { row: NeedRow; hrefOf: (id: string) => string }) {
   const parts: ReactNode[] = [];
   if (row.owner) parts.push(<span key="chi">{row.owner}</span>);
-  if (row.useCases.length || row.forLabel) parts.push(<UseCaseCodes key="per" refs={row.useCases} forLabel={row.forLabel} hrefOf={hrefOf} />);
   if (row.due) parts.push(<span key="entro" className="tabular-nums">{row.due}</span>);
-  if (!parts.length) return null;
+  if (row.useCases.length === 1 || (!row.useCases.length && row.forLabel)) parts.push(<NeedFor key="per" row={row} hrefOf={hrefOf} />);
+  const several = row.useCases.length > 1;
+  if (!parts.length && !several) return null;
   return (
-    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
       {parts.flatMap((part, index) => (index ? [<span key={`sep-${index}`} aria-hidden>·</span>, part] : [part]))}
-    </p>
+      {several ? <NeedFor row={row} hrefOf={hrefOf} /> : null}
+    </div>
   );
 }
 

@@ -441,9 +441,45 @@ test("vista di partenza per ruolo: revisori «Da decidere» se c'è qualcosa, sp
   assert.equal(viewOf(await html("ls", ids.wsD)), "priorita");
   assert.equal(viewOf(await html("builder", ids.wsE)), "priorita");
   assert.equal(viewOf(await html("contributor", ids.wsD)), "roadmap");
-  // Una vista scelta vince; «Priorità» non è dei contributori.
+  // Una vista scelta vince; «Priorità» e «Cosa serve» non sono dei contributori.
   assert.equal(viewOf(await html("manager", ids.wsA, { vista: "da-decidere" })), "da-decidere");
   assert.equal(viewOf(await html("contributor", ids.wsA, { vista: "priorita" })), "roadmap");
+  assert.equal(viewOf(await html("contributor", ids.wsA, { vista: "cosa-serve" })), "roadmap");
+  assert.equal(viewOf(await html("manager", ids.wsA, { vista: "cosa-serve" })), "cosa-serve");
+});
+
+/** I segmenti del selettore delle viste: etichetta e contatore, nell'ordine. */
+function switcherOf(page: string): Array<{ label: string; count: string | null; href: string }> {
+  const start = page.indexOf('data-slot="segmented-nav"');
+  assert.ok(start >= 0, "il selettore delle viste");
+  const nav = page.slice(start, page.indexOf("</nav>", start));
+  return [...nav.matchAll(/<a [^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)].map(([, href, inner]) => ({
+    href,
+    label: /<span>([^<]*)<\/span>/.exec(inner)?.[1] ?? "",
+    count: /<span class="text-xs text-muted-foreground tabular-nums">([^<]*)<\/span>/.exec(inner)?.[1] ?? null,
+  }));
+}
+
+test("selettore delle viste: ai revisori «Da decidere», «Priorità», «Roadmap» e «Cosa serve», senza contatore sull'ultima; al contributore due", opts, async () => {
+  for (const person of ["ls", "builder", "manager"] as const) {
+    const segments = switcherOf(await html(person, ids.wsA, { vista: "roadmap" }));
+    assert.deepEqual(segments.map((segment) => segment.label), ["Da decidere", "Priorità", "Roadmap", "Cosa serve"], person);
+    const last = segments[3];
+    assert.equal(last.count, null, `${person}: nessun numero su «Cosa serve»`);
+    assert.equal(last.href, `/dashboard/${ids.wsA}/use-cases?vista=cosa-serve`);
+  }
+  const contributor = switcherOf(await html("contributor", ids.wsA, { vista: "roadmap" }));
+  assert.deepEqual(contributor.map((segment) => segment.label), ["In valutazione", "Roadmap"]);
+});
+
+test("«Cosa serve»: un solo pulsante pieno, «Tipo» è un filtro, niente matrice né lista", opts, async () => {
+  const page = await html("ls", ids.wsA, { vista: "cosa-serve" });
+  assert.equal(viewOf(page), "cosa-serve");
+  assert.equal(filledButtons(page), 1, "un solo pulsante pieno");
+  assert.ok(page.includes('aria-label="Tipo: Tutti"'), "«Tipo» come filtro");
+  assert.ok(page.includes('data-slot="needs-board"'));
+  assert.ok(!page.includes('data-slot="value-cost-matrix"') && !page.includes('data-slot="priority-list"'));
+  assert.ok(!page.includes('data-slot="show-toggle"'), "«Matrice | Lista» solo in «Priorità»");
 });
 
 test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido per Lateral Space), menu «⋯» solo ai revisori", opts, async () => {
@@ -609,6 +645,7 @@ test("«Priorità»: senza scelta matrice da 768 px e lista sotto; «Da diffonde
   assert.ok(toEstimate.includes("Togli i filtri"));
   assert.match(toEstimate, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=roadmap"`));
   assert.match(toEstimate, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=da-decidere"`));
+  assert.match(toEstimate, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=cosa-serve"`), "senza stima, mostra né tipo");
   const decideCountOf = (html: string) => /Da decidere<\/span><span class="text-xs text-muted-foreground tabular-nums">(\d+)</.exec(html)?.[1];
   assert.equal(decideCountOf(toEstimate), decideCountOf(page));
 });
@@ -666,7 +703,7 @@ test("contributore: titolo, fase e «Quando»; solo «Cerca per titolo»; codice
     assert.ok(!page.includes("€"), `${vista}: «€»`);
     assert.ok(!page.includes("data-figure"), `${vista}: [data-figure]`);
     assert.ok(page.includes('placeholder="Cerca per titolo"'), vista);
-    for (const text of ["Cerca per titolo o codice", "Altri filtri", "AI Adoption", "AI Transformation", ">Tipo:<", "Priorità", cards.othersHidden.title]) {
+    for (const text of ["Cerca per titolo o codice", "Altri filtri", "AI Adoption", "AI Transformation", ">Tipo:<", "Priorità", "Cosa serve", "Requisiti", cards.othersHidden.title]) {
       assert.ok(!page.includes(text), `${vista}: «${text}»`);
     }
     for (const card of [cards.newIdea, cards.amount, cards.band, cards.othersWithNote]) assert.ok(!page.includes(card.code), `${vista}: codice altrui ${card.code}`);

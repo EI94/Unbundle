@@ -207,7 +207,7 @@ test("parseHubParams: valori fuori elenco diventano null, anche da URLSearchPara
   assert.equal(parseHubParams({ trimestre: "piu-avanti" }, lead).trimestre, "piu-avanti");
 });
 
-test("parseHubParams: al contributore restano vista (non «Priorità»), ricerca, apri e ricevute", () => {
+test("parseHubParams: al contributore restano vista (non «Priorità» né «Cosa serve»), ricerca, apri e ricevute", () => {
   const contributor = viewer("contributor");
   const params = parseHubParams(
     { vista: "priorita", tipo: "costruire", mostra: "matrice", origine: "adoption", q: "prezzi", canale: "learning", area: "Finanza", lab: "Lab", trimestre: "2027-Q1", stima: "mancante", info: "senza-risposta", nuovo: "1", thanks: "1", created: uuid(3), apri: uuid(4) },
@@ -222,8 +222,17 @@ test("parseHubParams: al contributore restano vista (non «Priorità»), ricerca
   assert.equal(params.apri, uuid(4));
   assert.equal(parseHubParams({ vista: "da-decidere" }, contributor).vista, "da-decidere");
   assert.equal(parseHubParams({ vista: "roadmap" }, contributor).vista, "roadmap");
+  assert.equal(parseHubParams({ vista: "cosa-serve" }, contributor).vista, null, "«Cosa serve» non è per i contributori");
   // Chi non entra nell'area non ha filtri.
   assert.equal(parseHubParams({ origine: "adoption" }, viewer("learner")).origine, null);
+  assert.equal(parseHubParams({ vista: "cosa-serve" }, viewer("learner")).vista, null);
+});
+
+test("parseHubParams: «Cosa serve» resta ai revisori", () => {
+  for (const role of ["function_lead", "analyst", "transformation_lead", "exec_sponsor"]) {
+    assert.equal(parseHubParams({ vista: "cosa-serve" }, viewer(role)).vista, "cosa-serve", role);
+  }
+  assert.equal(parseHubParams({ vista: "cosa-serve" }, viewer("transformation_lead", true)).vista, "cosa-serve", "Lateral Space");
 });
 
 test("hasActiveFilters: vista, apri e ricevute non sono filtri", () => {
@@ -270,6 +279,12 @@ test("defaultHubView: revisori «Da decidere» se c'è qualcosa, altrimenti «Pr
   assert.equal(defaultHubView(viewer("exec_sponsor"), 5), "roadmap", "sponsor del cliente");
   assert.equal(defaultHubView(viewer("exec_sponsor", true), 5), "da-decidere", "sponsor di Lateral Space");
   assert.equal(defaultHubView(viewer("contributor"), 5), "roadmap");
+  // «Cosa serve» non è mai la vista di partenza.
+  for (const role of ["exec_sponsor", "transformation_lead", "function_lead", "analyst", "contributor", "learner", null]) {
+    for (const lateral of [false, true]) {
+      for (const count of [0, 4]) assert.notEqual(defaultHubView(viewer(role, lateral), count), "cosa-serve", `${role} ${lateral} ${count}`);
+    }
+  }
 });
 
 // ─── Ricerca e filtri (§4.7) ─────────────────────────────────────────

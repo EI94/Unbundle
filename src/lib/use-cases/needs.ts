@@ -10,9 +10,10 @@
  *   `STATUS_GROUP_OF`), un passo è fatto. `done_at` segue questa regola (`needs-service.ts`).
  * - **Validazione** (`validateNeedInput`, `validateNeedPatch`): uno schema solo per la pagina e,
  *   più avanti, per il MCP del team. I messaggi sono in italiano.
- * - **Viste** (`buildNeedsBoard`, `panelNeeds`, `needListsOfUseCase`): i blocchi di Priorità, il
- *   blocco del pannello e il capitolo della scheda, da un elenco già letto per i revisori. Nessun
- *   conteggio e nessun filtro per persona: «Chi» è un testo della riga, mai un criterio.
+ * - **Viste** (`buildNeedsBoard`, `panelNeeds`, `needListsOfUseCase`): i blocchi della vista
+ *   «Cosa serve», il blocco del pannello e il capitolo della scheda, da un elenco già letto per i
+ *   revisori. Nessun conteggio e nessun filtro per persona: «Chi» è un testo della riga, mai un
+ *   criterio.
  *
  * Le esigenze non si cancellano: si archiviano. Le letture le portano solo ai revisori.
  * Modulo puro: import relativi `.ts` e `zod`; si usa anche nei componenti client.
@@ -439,7 +440,7 @@ function refsOf(items: readonly NeedUseCaseRef[]): Map<string, NeedUseCaseRef> {
   return new Map(items.map((item) => [item.id.toLowerCase(), { id: item.id, code: item.code, title: item.title }]));
 }
 
-// ─── Priorità: i quattro blocchi ─────────────────────────────────────
+// ─── La vista «Cosa serve» ───────────────────────────────────────────
 
 export interface NeedAreaTable {
   key: NeedAreaKey;
@@ -466,7 +467,7 @@ export interface ReturnToConfirm {
   confidence: string;
 }
 
-/** «Questo trimestre: cosa vi chiediamo»: una scheda per use case approvato per il trimestre, anche se già partito. */
+/** «Cosa vi chiediamo questo trimestre»: una scheda per use case approvato per il trimestre, anche se già partito. */
 export interface QuarterAsk extends NeedUseCaseRef {
   /** Chi conferma i numeri (`value_model.confirmBy`). */
   confirmBy: string | null;
@@ -525,23 +526,46 @@ export function returnsToConfirm(model: ValueModel | null, params: Pick<ValuePar
 }
 
 /**
- * I quattro blocchi di «Cosa serve» in Priorità, tranne gli use case in realizzazione (le card dei
- * dossier, lette a parte):
+ * Il filtro della vista «Cosa serve»: gli use case che passano i filtri della pagina (id in
+ * minuscolo) e la ricerca. Un'esigenza resta se è collegata ad almeno uno di loro, oppure se la
+ * ricerca è nel suo titolo. Mai «Chi», la parte o il dettaglio (art. 15.4).
+ */
+export interface NeedsBoardFilter {
+  useCaseIds: ReadonlySet<string>;
+  q: string | null;
+}
+
+function foldText(text: string): string {
+  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLocaleLowerCase("it-IT");
+}
+
+function passesBoardFilter(need: Pick<NeedView, "useCaseIds" | "title">, only: NeedsBoardFilter | null): boolean {
+  if (!only) return true;
+  if (need.useCaseIds.some((id) => only.useCaseIds.has(id.toLowerCase()))) return true;
+  const q = only.q?.trim();
+  return Boolean(q) && foldText(need.title).includes(foldText(q as string));
+}
+
+/**
+ * I tre blocchi della vista «Cosa serve»:
  * 1. i requisiti, una tabella per area, con quelli già a posto da parte;
  * 2. i prossimi passi per mese di scadenza, con quelli fatti da parte;
  * 3. una scheda per ogni use case approvato per questo trimestre (anche se è già in realizzazione):
  *    chi conferma, il ritorno da
  *    confermare (le voci a ipotesi e da misurare), i requisiti aperti divisi in «Ci serve subito»,
  *    «Dopo la scheda A.8» e «Da decidere» (le decisioni, qualunque sia il «quando»).
- * `items` sono gli use case dei revisori del workspace: danno codici e titoli alle righe.
+ * I dossier degli use case in realizzazione stanno nella Roadmap.
+ * `items` sono gli use case dei revisori del workspace: danno codici e titoli alle righe. `only`
+ * restringe le esigenze a quelle degli use case che passano i filtri della pagina
+ * (`NeedsBoardFilter`); le righe nominano comunque tutti gli use case collegati.
  */
 export function buildNeedsBoard(
   needs: readonly NeedView[],
   items: readonly NeedBoardItem[],
-  opts: { today: string; params: Pick<ValueParams, "hourlyCostEur" | "includeUnmeasured"> },
+  opts: { today: string; params: Pick<ValueParams, "hourlyCostEur" | "includeUnmeasured">; only?: NeedsBoardFilter | null },
 ): NeedsBoard {
   const refs = refsOf(items);
-  const live = needs.filter((need) => !need.archivedAt).slice().sort(compareNeeds);
+  const live = needs.filter((need) => !need.archivedAt && passesBoardFilter(need, opts.only ?? null)).slice().sort(compareNeeds);
   const rows = live.map((need) => ({ need, row: needRow(need, refs, opts.today) }));
 
   const areas: NeedAreaTable[] = NEED_AREAS.map((area) => ({ key: area.key, label: area.label, open: [], done: [] }));
@@ -570,6 +594,7 @@ export function buildNeedsBoard(
   // trimestre di oggi): il ritorno da confermare e le richieste aperte servono ancora.
   const quarter = items
     .filter((item) => (item.phase === "approvato" || item.phase === "in_realizzazione") && item.targetQuarter === current)
+    .filter((item) => !opts.only || opts.only.useCaseIds.has(item.id.toLowerCase()))
     .slice()
     .sort(byCode)
     .map((item): QuarterAsk => {
@@ -596,6 +621,21 @@ export function buildNeedsBoard(
 /** «Già a posto · 3», «Fatti · 2»: il titolo delle righe chiuse di default. */
 export function needDoneSummaryText(type: NeedType, count: number): string {
   return `${type === "requisito" ? "Già a posto" : count === 1 ? "Fatto" : "Fatti"} · ${count}`;
+}
+
+/** «Cosa vi chiediamo questo trimestre · 17 use case»: il titolo, chiuso di default, delle schede del trimestre. */
+export function quarterAskSummaryText(count: number): string {
+  return `Cosa vi chiediamo questo trimestre · ${formatInteger(count)} use case`;
+}
+
+/** «Per 3 use case»: nella vista «Cosa serve», gli use case di un'esigenza quando sono più di uno. */
+export function needForText(count: number): string {
+  return `Per ${formatInteger(count)} use case`;
+}
+
+/** «Serve anche a un altro use case», «Serve anche ad altri 22 use case»: nella scheda, gli altri use case dell'esigenza. */
+export function needAlsoForText(count: number): string {
+  return count === 1 ? "Serve anche a un altro use case" : `Serve anche ad altri ${formatInteger(count)} use case`;
 }
 
 export function isBoardEmpty(board: NeedsBoard): boolean {

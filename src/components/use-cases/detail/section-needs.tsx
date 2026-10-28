@@ -21,7 +21,7 @@ import {
 } from "@/lib/actions/use-case-needs";
 import { ACTION_FAILED_MESSAGE } from "@/lib/use-cases/decision-ui";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
-import type { NeedReferentView, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
+import { cosaServeHref, type NeedReferentView, type UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
 import { REFERENT_UI_TEXT } from "@/lib/use-cases/referent/labels";
 import {
   NEED_AVAILABILITY_LABEL,
@@ -30,6 +30,7 @@ import {
   NEED_OWNER_SIDE_LABEL,
   NEED_TYPE_LABEL,
   isNeedDone,
+  needAlsoForText,
   needDoneSummaryText,
   needRow,
   needStatusChoices,
@@ -40,6 +41,7 @@ import {
 } from "@/lib/use-cases/needs";
 import { cn } from "@/lib/utils";
 import { Disclosure } from "../disclosure";
+import { NeedUseCasesDisclosure } from "../need-use-cases";
 import { DecisionChoiceGroup, DecisionDialog } from "../reopen-dialog";
 import { InfoSummary } from "./info-summary";
 import { ReferentDialogs, type ReferentDialog } from "./referent/dialogs";
@@ -69,7 +71,7 @@ export interface SectionNeedsProps {
   steps: readonly NeedView[];
   /** Le altre esigenze del workspace, per «Collega un'esigenza». */
   linkable: readonly NeedView[];
-  /** Gli use case nominati dalle esigenze (id in minuscolo): codice e titolo per «Anche per». */
+  /** Gli use case nominati dalle esigenze (id in minuscolo): codice e titolo per «Serve anche a…». */
   refs: Readonly<Record<string, NeedUseCaseRef>>;
   today: string;
   /** `canEditNeeds`: tutti i revisori. */
@@ -122,6 +124,7 @@ export function SectionNeeds({
   const [dialog, setDialog] = useState<Dialog>(null);
   const [referentDialog, setReferentDialog] = useState<ReferentDialog | null>(null);
   const refMap = useMemo(() => new Map(Object.entries(refs)), [refs]);
+  const detailHrefOf = (id: string) => cosaServeHref(workspaceId, id);
   const empty = !requirements.length && !steps.length;
   // «Chiedi al referente»: solo con la funzione accesa per il workspace e gli archivi pronti.
   const feature = referents?.available ? referents : null;
@@ -164,6 +167,7 @@ export function SectionNeeds({
       needs={needs}
       useCaseId={useCaseId}
       refs={refMap}
+      detailHrefOf={detailHrefOf}
       today={today}
       canEdit={canEdit}
       onEdit={(need) => setDialog({ mode: "modifica", need })}
@@ -301,6 +305,7 @@ function NeedList({
   needs,
   useCaseId,
   refs,
+  detailHrefOf,
   today,
   canEdit,
   onEdit,
@@ -309,6 +314,8 @@ function NeedList({
   needs: readonly NeedView[];
   useCaseId: string;
   refs: ReadonlyMap<string, NeedUseCaseRef>;
+  /** id dello use case → il suo capitolo «Cosa serve» (`cosaServeHref`). */
+  detailHrefOf: (id: string) => string;
   today: string;
   canEdit: boolean;
   onEdit: (need: NeedView) => void;
@@ -326,15 +333,11 @@ function NeedList({
             <div className="min-w-0 flex-1 space-y-1">
               <p className="text-sm font-medium break-words">{row.title}</p>
               {row.detail ? <p className="line-clamp-2 text-xs text-muted-foreground break-words">{row.detail}</p> : null}
-              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                 <StatusDot tone={row.status.tone} label={row.status.label} />
                 {meta ? <span>{meta}</span> : null}
-                {others.length ? (
-                  <span>
-                    {TEXT.alsoFor}: <span className="font-mono">{others.map((ref) => ref.code ?? ref.title).join(", ")}</span>
-                  </span>
-                ) : null}
-              </p>
+                {others.length ? <NeedUseCasesDisclosure summary={needAlsoForText(others.length)} context={row.title} useCases={others} hrefOf={detailHrefOf} /> : null}
+              </div>
               {referent ? (
                 <NeedReferentBlock
                   workspaceId={referent.workspaceId}

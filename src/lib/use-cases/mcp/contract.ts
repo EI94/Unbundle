@@ -430,7 +430,7 @@ const saveNeedItemSchema = z
       .object({ reason: z.string().trim().min(1).max(NEED_LIMITS.archiveReason).describe("Perché la archivi.") })
       .strict()
       .optional()
-      .describe("Archivia l'esigenza: esce da Priorità, pannello e scheda, e resta nel database. Con archive manda solo id o importKey, ed expectedVersion."),
+      .describe("Archivia l'esigenza: esce da «Cosa serve», dal pannello e dalla scheda, e resta nel database. Con archive manda solo id o importKey, ed expectedVersion."),
   })
   .strict()
   .superRefine((item, ctx) => {

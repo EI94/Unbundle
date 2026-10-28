@@ -106,8 +106,9 @@ export interface UseCaseAbilities {
   /** «Apri il dossier» anche senza esserne membro. */
   canOpenAnyDossier: boolean;
   /**
-   * «Cosa serve» (`use_case_needs`: requisiti e prossimi passi) in Priorità, nel pannello e nella
-   * scheda. Solo i revisori: la pagina, la REST, il MCP e l'export non li portano mai agli altri.
+   * «Cosa serve» (`use_case_needs`: requisiti e prossimi passi) nella sua vista della pagina «Use
+   * case», nel pannello e nella scheda. Solo i revisori: la pagina, la REST, il MCP e l'export non
+   * li portano mai agli altri.
    */
   canSeeNeeds: boolean;
   /** Aggiunge, modifica, collega e archivia le esigenze di «Cosa serve»: tutti i revisori. */

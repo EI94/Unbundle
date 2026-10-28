@@ -45,6 +45,9 @@ test("la pagina «Use case» è un contenitore: righe, lista e tabelle guardano 
   const needs = read("src/components/use-cases/needs-board.tsx");
   assert.match(needs, /className="hidden overflow-hidden rounded-lg border @4xl\/hub:block"/);
   assert.match(needs, /data-slot="needs-list" className="divide-y rounded-lg border @4xl\/hub:hidden"/);
+  // Le schede del trimestre in due colonne sulla larghezza del riquadro, non della finestra.
+  assert.ok(needs.includes("@4xl/hub:grid-cols-2"));
+  assert.ok(!needs.includes("lg:grid-cols-2"));
 });
 
 /** Le tracce di un `grid-cols-[…]` in rem: la misura fissa, o il minimo di `minmax(min,…fr)`. */

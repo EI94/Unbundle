@@ -18,9 +18,10 @@ const { registerHooks } = nodeModule as unknown as {
 // «Cosa serve» nelle pagine vere (spec di Pierpaolo, 25/10/2026), rese in questo processo con la
 // sessione scelta dalla prova:
 //
-// - «Priorità»: per i revisori, sempre, in fondo alla vista: i requisiti per area (le righe a posto
-//   chiuse), i prossimi passi per mese (i fatti chiusi), «Questo trimestre» per use case approvato,
-//   gli use case in realizzazione con le card dei dossier.
+// - «Cosa serve»: la sua vista, solo per i revisori, ultima nel selettore: i requisiti per area (le
+//   righe a posto chiuse, «Per N use case» chiuso), i prossimi passi per mese (i fatti chiusi), «Cosa
+//   vi chiediamo questo trimestre» chiuso, una riga per gli use case in realizzazione con la Roadmap.
+//   Con un filtro, le esigenze degli use case che lo passano. «Priorità» non le ha più.
 // - Il pannello: al massimo tre esigenze aperte, le altre nella scheda.
 // - La scheda: il capitolo «Cosa serve» con la modifica; le action scrivono solo per i revisori.
 // - Chi non è revisore non riceve esigenze da nessuna parte: pagina, pannello, scheda, action.
@@ -212,6 +213,11 @@ function between(page: string, from: string, to?: string): string {
   return page.slice(start, end === -1 ? undefined : end);
 }
 
+/** Chiuso di default: l'apertura del `<details>` senza l'attributo `open` (la classe `open:basis-full` non conta). */
+function assertClosed(details: string, label = "chiuso di default"): void {
+  assert.doesNotMatch(details.slice(0, details.indexOf(">")).replace(/="[^"]*"/g, ""), /\sopen\b/, label);
+}
+
 /** Il `<details>` che contiene `marker`, dalla sua apertura alla chiusura. */
 function detailsAround(page: string, marker: string): string {
   const at = page.indexOf(marker);
@@ -340,15 +346,15 @@ after(async () => {
   await q(`DELETE FROM organizations WHERE id = $1::uuid`, [ids.org]);
 });
 
-// ─── Priorità ────────────────────────────────────────────────────────
+// ─── Cosa serve ──────────────────────────────────────────────────────
 
-test("Priorità: «Cosa serve» per i revisori, una tabella per area, le righe a posto chiuse, codici che aprono il pannello", opts, async () => {
+test("Cosa serve: la vista dei revisori, una tabella per area, le righe a posto chiuse, «Per» che apre il pannello", opts, async () => {
   for (const person of REVIEWERS) {
-    const page = await hubHtml(person, ids.ws, { vista: "priorita" });
+    const page = await hubHtml(person, ids.ws, { vista: "cosa-serve" });
     assert.ok(page.includes('data-slot="needs-board"'), person);
-    assert.ok(page.includes(">Cosa serve per far avanzare gli use case<"), person);
+    assert.ok(page.includes(">Requisiti<"), person);
   }
-  const page = await hubHtml("builder", ids.ws, { vista: "priorita" });
+  const page = await hubHtml("builder", ids.ws, { vista: "cosa-serve" });
   const requirements = between(page, 'data-slot="needs-requirements"', 'data-slot="needs-steps"');
   // Le aree nell'ordine della pagina, solo quelle con righe.
   const areas = [...requirements.matchAll(/data-need-area="([a-z]+)"/g)].map((match) => match[1]);
@@ -358,24 +364,39 @@ test("Priorità: «Cosa serve» per i revisori, una tabella per area, le righe a
   const accessRow = between(requirements, `data-need="${needIds.access}"`, "</tr>");
   assert.ok(accessRow.includes(T.access));
   assert.ok(accessRow.includes("Ufficio IT · Cliente"), "Chi: persona e parte");
-  assert.ok(accessRow.includes(`>${cards.quarter.code}<`) && accessRow.includes(`>${cards.proposed.code}<`), "Per: i codici");
-  assert.match(accessRow, new RegExp(`href="[^"]*apri=${cards.quarter.id}"`), "il codice apre il pannello");
+  // Due use case: «Per 2 use case», chiuso, con i due link al pannello.
+  const per = detailsAround(accessRow, "Per 2 use case");
+  assertClosed(per);
+  assert.ok(per.includes('data-slot="need-use-cases"'));
+  for (const card of [cards.quarter, cards.proposed]) {
+    assert.ok(per.includes(`>${card.code}<`), card.code);
+    assert.match(per, new RegExp(`href="[^"]*apri=${card.id}"`), "il link apre il pannello");
+  }
+  assert.ok(per.includes(`Smistamento ${suffix}`) && per.includes(`Preventivi ${suffix}`), "codice e titolo");
+  assert.ok(per.includes(`<span class="sr-only">: ${T.access}</span>`), "il titolo dell'esigenza per i lettori di schermo");
   assert.ok(accessRow.includes(">Chiesta, in attesa<"), "lo stato delle voci");
   assert.ok(accessRow.includes(`>${format.formatDayInYear(dueSoon, today)}<`), "Entro");
+  // Uno use case: il suo link per intero, senza <details>.
+  const procedureRow = between(requirements, `data-need="${needIds.procedure}"`, "</tr>");
+  assert.ok(procedureRow.includes(`>${cards.quarter.code}<`) && procedureRow.includes(`Smistamento ${suffix}`));
+  assert.match(procedureRow, new RegExp(`href="[^"]*apri=${cards.quarter.id}"`));
+  assert.ok(!procedureRow.includes('data-slot="need-use-cases"'));
+  assert.ok(procedureRow.includes("(proposta)"), "la data da confermare");
 
   // Già a posto: in un <details> chiuso; archiviate e altri workspace: mai.
   const done = detailsAround(requirements, T.extract);
   assert.ok(done.includes("Già a posto · 1"));
-  assert.doesNotMatch(done.slice(0, done.indexOf(">")), /\sopen/, "chiuso di default");
-  assert.ok(between(requirements, `data-need="${needIds.procedure}"`, "</tr>").includes("(proposta)"), "la data da confermare");
+  assertClosed(done);
   assert.ok(between(requirements, `data-need="${needIds.decide}"`, "</tr>").includes("entro fine mese"));
   assert.ok(!page.includes(T.archived), "l'archiviata non c'è");
   assert.ok(!page.includes(T.foreign), "le esigenze di un altro workspace non ci sono");
-  assert.ok(requirements.includes('data-slot="needs-list"'), "sotto i 768 px, l'elenco");
+  assert.ok(requirements.includes('data-slot="needs-list"'), "sotto i 56rem del riquadro, l'elenco");
+  // I link restano nella vista: `?vista=cosa-serve&apri=<id>`.
+  assert.ok(page.includes(`href="/dashboard/${ids.ws}/use-cases?vista=cosa-serve&apri=${cards.proposed.id}"`));
 });
 
-test("Priorità: «Prossimi passi» per mese, i fatti chiusi; «Questo trimestre» per use case approvato", opts, async () => {
-  const page = await hubHtml("ls", ids.ws, { vista: "priorita" });
+test("Cosa serve: «Prossimi passi» per mese, i fatti chiusi; «Cosa vi chiediamo questo trimestre», chiuso, per use case approvato", opts, async () => {
+  const page = await hubHtml("ls", ids.ws, { vista: "cosa-serve" });
   const steps = between(page, 'data-slot="needs-steps"', 'data-slot="needs-quarter"');
   assert.ok(steps.includes(`>${needs.monthHeading(dueSoon.slice(0, 7))}<`), "il mese della scadenza");
   assert.ok(steps.includes(T.kickoff) && steps.includes(">Confermato<"));
@@ -383,7 +404,11 @@ test("Priorità: «Prossimi passi» per mese, i fatti chiusi; «Questo trimestre
   assert.ok(done.includes("Fatto · 1"));
 
   const quarter = between(page, 'data-slot="needs-quarter"');
-  assert.ok(quarter.includes(">Questo trimestre: cosa vi chiediamo, use case per use case<"));
+  const opening = page.slice(page.lastIndexOf("<details", page.indexOf('data-slot="needs-quarter"')));
+  assert.ok(opening.startsWith('<details data-slot="needs-quarter"'));
+  assertClosed(opening);
+  const summary = quarter.slice(0, quarter.indexOf("</summary>"));
+  assert.ok(summary.includes("Cosa vi chiediamo questo trimestre · 1 use case"));
   const ask = between(quarter, `data-quarter-ask="${cards.quarter.id}"`, "</li><li data-quarter-ask");
   assert.equal(quarter.split("data-quarter-ask=").length - 1, 1, "solo lo use case approvato in questo trimestre");
   assert.ok(ask.includes(`Chi conferma i numeri: <span class="text-foreground">${FIX_A.confirmBy}</span>`));
@@ -398,58 +423,98 @@ test("Priorità: «Prossimi passi» per mese, i fatti chiusi; «Questo trimestre
   assert.ok(!ask.includes(T.extract), "le righe a posto non si chiedono");
 });
 
-test("Priorità: sempre presente, anche in «Da diffondere» e senza esigenze; la riga vuota", opts, async () => {
-  const diffuse = await hubHtml("builder", ids.ws, { vista: "priorita", tipo: "diffondere" });
-  assert.ok(diffuse.includes('data-slot="needs-board"'));
-  const empty = await hubHtml("manager", ids.wsEmpty, { vista: "priorita" });
-  assert.ok(empty.includes('data-slot="needs-board"'));
-  assert.ok(empty.includes("Niente da chiedere per ora."));
+test("Cosa serve: la sua vista, non in Priorità né nella Roadmap; senza esigenze il vuoto", opts, async () => {
+  const notThere: Array<Record<string, string>> = [{}, { vista: "priorita" }, { vista: "priorita", tipo: "diffondere" }];
+  for (const searchParams of notThere) {
+    const page = await hubHtml("builder", ids.ws, searchParams);
+    assert.ok(!page.includes('data-slot="needs-board"'), JSON.stringify(searchParams));
+    assert.ok(!page.includes(T.access), JSON.stringify(searchParams));
+  }
+  assert.ok((await hubHtml("builder", ids.ws, { vista: "cosa-serve" })).includes('data-slot="needs-board"'));
+  const empty = await hubHtml("manager", ids.wsEmpty, { vista: "cosa-serve" });
+  const blank = between(empty, 'data-slot="needs-board"');
+  assert.ok(blank.includes('data-slot="hub-empty"') && blank.includes("Niente da chiedere per ora"));
+  assert.ok(blank.includes("Le esigenze si aggiungono dalla scheda di uno use case, nel capitolo «Cosa serve»."));
   assert.ok(!empty.includes('data-slot="needs-requirements"') && !empty.includes('data-slot="needs-quarter"'), "nessun blocco vuoto");
   const roadmap = await hubHtml("builder", ids.ws, { vista: "roadmap" });
-  assert.ok(!roadmap.includes('data-slot="needs-board"'), "solo in Priorità");
+  assert.ok(!roadmap.includes('data-slot="needs-board"'), "solo nella sua vista");
 });
 
-test("Priorità: gli use case in realizzazione con il dossier, le card della Roadmap", opts, () => {
-  const card = {
-    caseId: randomUUID(),
-    useCaseId: cards.progress.id,
-    code: cards.progress.code,
-    title: `Fatture ${suffix}`,
-    statusLabel: "In raccolta",
-    statusTone: "blu",
-    progress: { ok: 3, required: 12, inReview: 1 },
-    context: { kind: "tappa", text: "Prossima tappa · 15 nov" },
-    href: `/dashboard/${ids.ws}/casi-duso/dossier-di-prova`,
-    myTurn: false,
-    updatedAt: null,
-  };
+test("Cosa serve: gli use case in realizzazione si leggono nella Roadmap, mai le card dei dossier qui", opts, () => {
   const emptyBoard = { areas: [], steps: [], stepsDone: [], quarter: [] };
-  const render = (column: unknown) =>
-    readable(renderToStaticMarkup(createElementOf(board.NeedsBoardView, { board: emptyBoard, dossierColumn: column, hrefOf: (id: string) => `?apri=${id}` })));
-  const ready = render({ state: "pronta", cards: [card], byUseCase: new Map([[cards.progress.id, card]]), readOnlyNotice: false });
-  const block = between(ready, 'data-slot="needs-in-progress"');
-  assert.ok(block.includes(">Use case in realizzazione<"));
-  assert.ok(block.includes('data-slot="dossier-card"') && block.includes(`href="${card.href}"`), "l'avanzamento, con il link");
-  assert.ok(!ready.includes("Niente da chiedere per ora."), "con le card la riga vuota non serve");
-  for (const column of [{ state: "spenta" }, { state: "errore" }, null]) {
-    const html = render(column);
-    assert.ok(!html.includes('data-slot="needs-in-progress"'), JSON.stringify(column));
-    assert.ok(html.includes("Niente da chiedere per ora."));
+  const render = (props: Record<string, unknown>) => readable(renderToStaticMarkup(createElementOf(board.NeedsBoardView, { hrefOf: (id: string) => `?apri=${id}`, ...props })));
+  const blank = render({ board: emptyBoard, inRealization: 1, roadmapHref: "/r" });
+  assert.ok(blank.includes('data-slot="hub-empty"') && blank.includes("Niente da chiedere per ora"));
+  assert.ok(blank.includes("1 use case è già in realizzazione."));
+  assert.match(blank, /<a [^>]*href="\/r"[^>]*>Vai alla Roadmap<\/a>/);
+  assert.ok(!blank.includes('data-slot="dossier-card"'));
+
+  const row = {
+    id: randomUUID(),
+    type: "requisito",
+    kind: "accesso",
+    title: `Una riga ${suffix}`,
+    detail: null,
+    owner: null,
+    status: { label: "Da chiedere", tone: "grigio" },
+    done: false,
+    due: null,
+    availability: null,
+    useCases: [],
+    forLabel: null,
+  };
+  const filled = { ...emptyBoard, areas: [{ key: "accessi", label: "Accessi", open: [row], done: [] }] };
+  const two = render({ board: filled, inRealization: 2, roadmapHref: "/r" });
+  const line = between(two, 'data-slot="needs-in-progress"');
+  assert.ok(two.indexOf('data-slot="needs-in-progress"') > two.indexOf('data-slot="needs-requirements"'), "dopo i blocchi");
+  assert.ok(line.includes("2 use case sono già in realizzazione.") && /href="\/r"[^>]*>Vai alla Roadmap</.test(line));
+  assert.ok(!two.includes('data-slot="dossier-card"'));
+  for (const props of [{ inRealization: 0, roadmapHref: "/r" }, { inRealization: 2, roadmapHref: null }]) {
+    const html = render({ board: filled, ...props });
+    assert.ok(!html.includes('data-slot="needs-in-progress"') && !html.includes("Vai alla Roadmap"), JSON.stringify(props));
   }
+});
+
+test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerca nel titolo, il vuoto dei filtri", opts, async () => {
+  const byCode = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: cards.proposed.code });
+  assert.ok(byCode.includes(T.access), "collegata allo use case cercato");
+  for (const title of [T.extract, T.procedure, T.kickoff]) assert.ok(!byCode.includes(title), title);
+  // «Per» nomina comunque tutti gli use case dell'esigenza.
+  assert.ok(detailsAround(byCode, "Per 2 use case").includes(`>${cards.quarter.code}<`));
+
+  // (La ricerca resta anche nel campo «Cerca»: il passo si cerca nei blocchi.)
+  const byTitle = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: T.kickoff });
+  assert.ok(between(byTitle, 'data-slot="needs-steps"').includes(T.kickoff), "un passo senza use case, per il titolo");
+  assert.ok(!byTitle.includes(T.access));
+
+  // Nessuno use case ha questa origine: niente da chiedere, con «Togli i filtri».
+  const none = await hubHtml("builder", ids.ws, { vista: "cosa-serve", origine: "transformation" });
+  const blank = between(none, 'data-slot="needs-board"');
+  assert.ok(blank.includes("Niente da chiedere con questi filtri."));
+  assert.match(blank, new RegExp(`<a [^>]*href="/dashboard/${ids.ws}/use-cases\\?vista=cosa-serve"[^>]*>Togli i filtri</a>`));
+  for (const title of Object.values(T)) assert.ok(!none.includes(title), title);
+});
+
+test("Cosa serve: Priorità non legge né esigenze né dossier", opts, async () => {
+  const { data } = await hubTree("builder", ids.ws, { vista: "priorita" });
+  assert.equal(data.needs, null);
+  assert.equal(data.dossierColumn, null);
 });
 
 // ─── Pannello e scheda ───────────────────────────────────────────────
 
 test("pannello: al massimo tre esigenze aperte, le altre nella scheda; senza esigenze niente blocco", opts, async () => {
-  const { tree } = await hubTree("builder", ids.ws, { vista: "priorita", apri: cards.quarter.id });
-  const data = findProp(tree, "data").find((value) => (value as { projection?: string })?.projection === "revisore") as {
-    needs: import("./needs.ts").PanelNeeds | null;
-  };
+  let data: { needs: import("./needs.ts").PanelNeeds | null } | undefined;
+  for (const vista of ["priorita", "cosa-serve"]) {
+    const { tree } = await hubTree("builder", ids.ws, { vista, apri: cards.quarter.id });
+    data = findProp(tree, "data").find((value) => (value as { projection?: string })?.projection === "revisore") as typeof data;
+    assert.ok(data?.needs, vista);
+    assert.equal(data.needs.rows.length, 3, vista);
+    assert.equal(data.needs.more, 1, "quattro aperte: tre e «Un'altra»");
+    assert.equal(data.needs.rows[0].title, T.access, "prima la scadenza più vicina");
+    assert.ok(data.needs.rows.every((row) => !row.done));
+  }
   assert.ok(data?.needs);
-  assert.equal(data.needs.rows.length, 3);
-  assert.equal(data.needs.more, 1, "quattro aperte: tre e «Un'altra»");
-  assert.equal(data.needs.rows[0].title, T.access, "prima la scadenza più vicina");
-  assert.ok(data.needs.rows.every((row) => !row.done));
   const html = readable(renderToStaticMarkup(createElementOf(panel.PanelNeedsBlock, { needs: data.needs, href: `/dashboard/${ids.ws}/use-cases/${cards.quarter.id}?capitolo=cosa-serve` })));
   assert.ok(html.includes('data-slot="panel-needs"') && html.includes(">Cosa serve<"));
   assert.equal(html.split("data-need=").length - 1, 3);
@@ -469,15 +534,28 @@ test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a p
   assert.ok(!section.includes(T.kickoff), "i passi non collegati non ci sono");
   assert.ok(!section.includes(T.archived));
   assert.ok(detailsAround(section, T.extract).includes("Già a posto · 1"));
-  assert.ok(section.includes(`Anche per: <span class="font-mono">${cards.proposed.code}</span>`), "gli altri use case dell'esigenza");
+  // Gli altri use case dell'esigenza, chiusi: il link porta al loro capitolo «Cosa serve».
+  const also = detailsAround(section, "Serve anche a un altro use case");
+  assertClosed(also);
+  assert.ok(also.includes(`href="/dashboard/${ids.ws}/use-cases/${cards.proposed.id}?capitolo=cosa-serve"`));
+  assert.ok(also.includes(cards.proposed.code) && also.includes(`Preventivi ${suffix}`));
+  assert.ok(also.includes(`: ${T.access}`), "il titolo dell'esigenza per i lettori di schermo");
+  assert.ok(!section.includes("Anche per"));
   assert.ok(section.includes(`aria-label="Modifica: ${T.access}"`));
   assert.ok(section.includes(">Aggiungi<") && section.includes(">Collega un'esigenza<"));
   const other = await detailHtml("builder", cards.progress.id);
   assert.ok(between(other, 'data-slot="section-needs"', "</section>").includes("Niente per ora."));
 });
 
-test("chi non è revisore: niente esigenze in Priorità, pannello, scheda e dati della pagina", opts, async () => {
-  const views: Array<Record<string, string>> = [{ vista: "priorita" }, { vista: "roadmap" }, { vista: "da-decidere", apri: cards.own.id }, { apri: cards.quarter.id }];
+test("chi non è revisore: niente esigenze in «Cosa serve», Priorità, pannello, scheda e dati della pagina", opts, async () => {
+  const views: Array<Record<string, string>> = [
+    { vista: "cosa-serve" },
+    { vista: "cosa-serve", apri: cards.quarter.id },
+    { vista: "priorita" },
+    { vista: "roadmap" },
+    { vista: "da-decidere", apri: cards.own.id },
+    { apri: cards.quarter.id },
+  ];
   for (const searchParams of views) {
     const page = await hubHtml("contributor", ids.ws, searchParams);
     assert.ok(!page.includes('data-slot="needs-board"'), JSON.stringify(searchParams));

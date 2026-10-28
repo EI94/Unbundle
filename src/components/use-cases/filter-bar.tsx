@@ -53,8 +53,8 @@ export interface FilterBarProps {
   /** I contributori hanno solo «Cerca per titolo» (§4.7). */
   mode: "revisore" | "contributore";
   /**
-   * «Tipo»: un filtro (Tutti, Da costruire, Da diffondere) nelle viste «Da decidere» e
-   * «Roadmap»; in «Priorità» la scelta tra «Da costruire» e «Da diffondere» (predefinito «Da
+   * «Tipo»: un filtro (Tutti, Da costruire, Da diffondere) nelle viste «Da decidere», «Roadmap»
+   * e «Cosa serve»; in «Priorità» la scelta tra «Da costruire» e «Da diffondere» (predefinito «Da
    * costruire», §4.4), nello stesso menu, così i controlli restano su due righe.
    */
   kind: "filtro" | "priorita";
@@ -123,7 +123,8 @@ const SEARCH_DEBOUNCE_MS = 350;
 /**
  * La barra dei filtri (docs/use-case/DESIGN.md §4.4, §4.7), una riga sotto le viste che va a capo
  * solo se i controlli non ci stanno: al massimo due righe di controlli prima del contenuto. Revisori: «Tipo»
- * (filtro; in «Priorità» la scelta «Da costruire | Da diffondere»), «Tutte · AI Adoption · AI
+ * (filtro in «Da decidere», «Roadmap» e «Cosa serve»; in «Priorità» la scelta «Da costruire | Da
+ * diffondere»), «Tutte · AI Adoption · AI
  * Transformation» (dentro «Altri filtri» al telefono e quando la pagina è più stretta di
  * {@link ORIGIN_INLINE}), «Cerca per titolo o codice», «Altri
  * filtri» (Canale, Area, AI Lab, Trimestre) e in fondo l'interruttore «Matrice | Lista» di

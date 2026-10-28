@@ -75,10 +75,10 @@ export function EmptyState({ title, body, children, className }: { title: string
   );
 }
 
-/** «Nessuno use case con questi filtri.» [Togli i filtri] (§4.9). */
-export function NoResults({ clearHref }: { clearHref: string }) {
+/** «Nessuno use case con questi filtri.» [Togli i filtri] (§4.9); `title` per un'altra vista, come «Cosa serve». */
+export function NoResults({ clearHref, title = HUB_TEXT.noResults }: { clearHref: string; title?: string }) {
   return (
-    <EmptyState title={HUB_TEXT.noResults}>
+    <EmptyState title={title}>
       <Button variant="outline" className="min-h-11 sm:min-h-8" render={<Link href={clearHref} scroll={false} />} nativeButton={false}>
         {HUB_TEXT.clearFilters}
       </Button>

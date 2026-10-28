@@ -5,7 +5,7 @@
 //     --as ls-lead,function-lead,osservatore,sponsor-cliente --widths 1440,400 --label h4a
 //
 // Workspace «a» has the area on (start-app.mjs --flag USE_CASE_HUB_WORKSPACES=<id of «a»>) and the
-// cards of scripts/use-case-test/seed-hub.mjs. The three views for the four accounts, the matrix
+// cards of scripts/use-case-test/seed-hub.mjs. The four views for the four accounts, the matrix
 // and the list of «Priorità» (without ?mostra= the matrix from 768 px, the list below), «Da
 // diffondere», the side panel (reviewers on a card with a cost, osservatore on an own proposal with
 // code and public note and on someone else's without them), the quick panel of Lateral Space and
@@ -35,9 +35,9 @@ const routes = [
   // The starting view of each role (§4.2): reviewers «Da decidere», the client's sponsor and contributors «Roadmap».
   { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: ["ls-lead", "function-lead"], present: ["Use case", "Nuovo use case", "In attesa di risposta"] },
   { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: ["sponsor-cliente"], present: ["Prossimi", "In realizzazione", "Fatti", "Costo impegnato"] },
-  { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: CONTRIBUTOR, present: ["Prossimi", "Fatti"], absent: [...NOT_FOR_CONTRIBUTOR, "Costo impegnato"] },
+  { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: CONTRIBUTOR, present: ["Prossimi", "Fatti"], absent: [...NOT_FOR_CONTRIBUTOR, "Costo impegnato", "Cosa serve"] },
 
-  // The three views.
+  // The four views.
   // H4p: un solo «da stimare» quando mancano Valore e Costo; il tipo solo per «Da diffondere».
   // H7: an answered «Serve info» reads «Risposta ricevuta», not «Nuova»; one wording for the valued phase.
   {
@@ -70,12 +70,18 @@ const routes = [
   { name: "priorita-lista", path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=lista", as: REVIEWERS, present: ["Quando", "{code:r06}", "Scegli…", "Scaduto", "da stimare"], absent: ["Approva…", "{code:r04}"] },
   { name: "priorita-diffondere", path: "/dashboard/{ws:a}/use-cases?vista=priorita&tipo=diffondere", as: REVIEWERS, present: ["Segna come diffusa", "ore all'anno"] },
   // «Benefici» (the bubbles, only with a «Benefici e costi» model in the view; otherwise the page
-  // falls back to the matrix) and «Cosa serve» at the foot of «Priorità», always, for reviewers.
-  { name: "priorita-benefici", path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=benefici", as: REVIEWERS, present: ["Cosa serve"] },
+  // falls back to the matrix). The needs are no longer at the foot of «Priorità»: they have their own view.
+  { name: "priorita-benefici", path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=benefici", as: REVIEWERS, absent: ["Cosa serve per far avanzare", "Requisiti"] },
   // «Priorità» is not for contributors: the page falls back to the Roadmap.
-  { name: "priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Matrice"] },
+  { name: "priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Matrice", "Cosa serve"] },
   { name: "roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: REVIEWERS, present: ["Valore atteso all'anno", "Costo impegnato", "use case", "Scaduti", "In realizzazione", "Fatti"] },
   { name: "roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: CONTRIBUTOR, present: ["Prossimi", "Fatti"], absent: [...NOT_FOR_CONTRIBUTOR, "Costo impegnato", "Valore atteso"] },
+  // «Cosa serve»: requirements and next steps, reviewers only, last in the switcher. seed-hub.mjs
+  // writes no needs, so the reviewers get the empty view, which points to the Roadmap (the seed has
+  // use cases in realization); with needs in the workspace it shows «Requisiti» and «Prossimi passi».
+  { name: "cosa-serve", path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve", as: REVIEWERS, present: ["Niente da chiedere per ora", "Vai alla Roadmap"], absent: ["Cosa serve per far avanzare"] },
+  // Not for contributors: the page falls back to the Roadmap.
+  { name: "cosa-serve", path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Cosa serve", "Requisiti"] },
 
   // The side panel (§4.8).
   { name: "pannello", path: `${DECIDE}&apri={uc:r06}`, as: REVIEWERS, present: ["Smistamento richieste", "Apri la scheda", "Approva", "{code:r06}"] },
