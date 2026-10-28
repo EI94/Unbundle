@@ -112,7 +112,7 @@ function RequestRow({
         </ul>
       ) : null}
       {request.notices.length ? (
-        <div role="status" className="space-y-0.5 text-xs text-amber-700 dark:text-amber-300">
+        <div role="status" className="space-y-0.5 text-xs text-uc-giallo">
           {request.notices.map((notice) => (
             <p key={notice} className="break-words">
               {notice}

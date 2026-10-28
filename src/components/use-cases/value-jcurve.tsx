@@ -84,7 +84,7 @@ export function ValueJCurve({ value }: ValueJCurveProps) {
                 x2={x(mark.index)}
                 y1="0"
                 y2="100"
-                className="stroke-muted-foreground/60"
+                className="stroke-muted-foreground/80"
                 strokeWidth="1"
                 strokeDasharray="4 4"
                 vectorEffect="non-scaling-stroke"

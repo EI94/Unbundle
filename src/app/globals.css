@@ -135,8 +135,9 @@
   }
 }
 
-/* Tema chiaro opzionale per le pagine survey pubbliche (/a/, /s/):
-   override scoped delle variabili core, attivato dal toggle respondent. */
+/* Tema chiaro delle pagine pubbliche (/rispondi, /r, /a, /s): override scoped delle variabili
+   core. «Molto chiaro»: testi almeno 7:1, link e pulsanti almeno 6:1, i toni del semaforo almeno
+   5:1 sul loro fondo, bordi dei campi almeno 3:1. */
 .survey-light {
   --background: oklch(0.985 0.002 260);
   --foreground: oklch(0.16 0.01 260);
@@ -144,7 +145,7 @@
   --card-foreground: oklch(0.16 0.01 260);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.16 0.01 260);
-  --primary: oklch(0.55 0.15 160);
+  --primary: oklch(0.46 0.12 160);
   --primary-foreground: oklch(0.99 0 0);
   --secondary: oklch(0.95 0.005 260);
   --secondary-foreground: oklch(0.2 0.01 260);
@@ -153,21 +154,22 @@
   --accent: oklch(0.94 0.004 260);
   --accent-foreground: oklch(0.2 0.01 260);
   --border: oklch(0.9 0.004 260);
-  --input: oklch(0.88 0.004 260);
-  --ring: oklch(0.55 0.15 160);
-  /* Casi d'uso: semaforo leggibile su fondo chiaro (pagina del referente /r). */
-  --uc-verde: oklch(0.52 0.15 150);
-  --uc-verde-bg: oklch(0.52 0.15 150 / 0.1);
-  --uc-blu: oklch(0.52 0.14 245);
-  --uc-blu-bg: oklch(0.52 0.14 245 / 0.1);
-  --uc-giallo: oklch(0.62 0.15 70);
+  --input: oklch(0.58 0.01 260);
+  --ring: oklch(0.46 0.12 160);
+  --destructive: oklch(0.48 0.2 25);
+  /* Semaforo leggibile su fondo chiaro, almeno 5:1 sul suo fondo (/r, /rispondi). */
+  --uc-verde: oklch(0.46 0.15 150);
+  --uc-verde-bg: oklch(0.46 0.15 150 / 0.1);
+  --uc-blu: oklch(0.48 0.14 245);
+  --uc-blu-bg: oklch(0.48 0.14 245 / 0.1);
+  --uc-giallo: oklch(0.48 0.15 70);
   --uc-giallo-bg: oklch(0.75 0.15 80 / 0.18);
-  --uc-rosso: oklch(0.55 0.2 25);
-  --uc-rosso-bg: oklch(0.55 0.2 25 / 0.1);
-  --uc-grigio: oklch(0.55 0.01 260);
-  --uc-grigio-bg: oklch(0.55 0.01 260 / 0.1);
-  --uc-lucchetto: oklch(0.5 0.14 300);
-  --uc-lucchetto-bg: oklch(0.5 0.14 300 / 0.1);
+  --uc-rosso: oklch(0.48 0.2 25);
+  --uc-rosso-bg: oklch(0.48 0.2 25 / 0.1);
+  --uc-grigio: oklch(0.46 0.01 260);
+  --uc-grigio-bg: oklch(0.46 0.01 260 / 0.1);
+  --uc-lucchetto: oklch(0.46 0.14 300);
+  --uc-lucchetto-bg: oklch(0.46 0.14 300 / 0.1);
   /* Use case: i colori dei gruppi su fondo chiaro (stessi tre toni, passi per il chiaro). */
   --uc-serie-1: #2a78d6;
   --uc-serie-2: #eb6834;
@@ -204,4 +206,25 @@ html:has([data-uc-case-head])
     [data-slot="select-content"]
   ) {
   --muted-foreground: oklch(0.62 0.01 260);
+}
+/* Use case (pagina, scheda, «Nuovo use case»; vedi use-cases/layout.tsx), tema scuro «molto
+   chiaro»: il grigio dei testi secondari a 0,68 (con 0,55 era 3,9–4,3:1 sulle superfici
+   dell'area, sotto AA; così 6,5–7,2:1), i bordi dei campi al 38% (al 10% erano 1,2:1; così
+   3,4:1) e il fuoco a 0,85 (l'alone era 2,6:1; così 3,7:1). Vale nel layout dell'area e,
+   mentre una sua pagina è aperta, nei pannelli, nelle finestre e nei menu che si aprono sopra
+   (vivono fuori dal layout), anche quelli della barra del workspace. Il dossier tiene il suo
+   blocco qui sopra. */
+[data-use-case-root],
+html:has([data-use-case-root])
+  :is(
+    [data-slot="sheet-content"],
+    [data-slot="dialog-content"],
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="select-content"]
+  ) {
+  --muted-foreground: oklch(0.68 0.01 260);
+  --input: oklch(1 0 0 / 38%);
+  --ring: oklch(0.85 0 0);
 }

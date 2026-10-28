@@ -112,7 +112,8 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
  * la sua zona, di qua o di là della linea del costo basso (anche al telefono). Punti di
  * 10 px colorati per origine, pieni se approvati, vuoti se da decidere, con il bordo rosso se
  * scaduti; ogni punto ha accanto il suo codice, messo dove non copre gli altri
- * (`placeMatrixLabels`). Al passaggio del mouse codice, titolo, Valore, Costo e fonte; al clic,
+ * (`placeMatrixLabels`; dove coprirebbe qualcosa non c'è, come nelle bolle di «Benefici»).
+ * Al passaggio del mouse codice, titolo, Valore, Costo e fonte; al clic,
  * o al tocco, il pannello laterale (il punto e il codice sono lo stesso link, largo abbastanza
  * per un dito). Senza trascinamento. Solo per i revisori.
  */
@@ -287,14 +288,14 @@ function MatrixDot({
             point.expired && "ring-2 ring-red-500 ring-offset-1 ring-offset-background",
           )}
         />
-        {point.code && label ? (
+        {point.code && label && !label.crowded ? (
           <span
             aria-hidden
             data-slot="matrix-label"
             className={cn(
               "pointer-events-none absolute rounded-sm bg-background/80 px-0.5 font-mono text-[10px] leading-[13px] whitespace-nowrap text-muted-foreground group-hover:text-foreground",
-              // Più tenue dove copre qualcosa: sullo schermo largo, oppure solo sotto i 768 px.
-              label.crowded ? "opacity-60" : label.crowdedSmall && "max-md:opacity-60",
+              // Sotto i 768 px, dove coprirebbe un altro punto, il codice non c'è (più tenue era 2,2:1 sul fondo).
+              label.crowdedSmall && "max-md:hidden",
             )}
             style={{ left: `calc(50% + ${label.dx}px)`, top: `calc(50% + ${label.dy}px)` }}
           >
