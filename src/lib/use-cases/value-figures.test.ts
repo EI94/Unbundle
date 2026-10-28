@@ -2,7 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { COST_BANDS, bandForAmount, costPosition } from "./cost-bands.ts";
 import { teamValuationMissing } from "./decision-ui.ts";
-import { costLongText, costShortText, oneoffRunText, valueLongText, valueShortText, valueWordText, zoneText } from "./format.ts";
+import {
+  costLongText,
+  costShortText,
+  hasEuroValue,
+  oneoffRunText,
+  showsZone,
+  valueLongText,
+  valueScreenLongText,
+  valueScreenText,
+  valueShortText,
+  valueWordText,
+  zoneText,
+} from "./format.ts";
 import { projectForContributor, type ContributorSourceRow } from "./permissions.ts";
 import { hasTeamValuation, type ValuationModel } from "./valuation.ts";
 import { modelEstimate } from "./value-calc.ts";
@@ -268,6 +280,63 @@ test("forme corte e lunghe: «Medio · 4.043 €/anno», «avvio 560 € · rico
   const cost = { source: "stima" as const, amount: 560, band: 1 as const, fromBand: false, runEurYear: 600 };
   assert.equal(costShortText(cost), "avvio 560 € · ricorrenti 600 €/anno", "corta: senza fonte, come la spec");
   assert.equal(costLongText(cost), "avvio 560 € · ricorrenti 600 €/anno");
+});
+
+test("a schermo: con una cifra in euro solo la cifra, senza parola né zona; il MCP e l'export tengono la parola", () => {
+  // Beneficio contato: la cifra sola, la zona resta nella proiezione (matrice, export, MCP).
+  const a = item({ valueModel: FIX_A });
+  assert.equal(valueScreenText(a.value), "4.043 €/anno");
+  assert.equal(valueScreenLongText(a.value), "4.043 € all'anno");
+  assert.equal(showsZone(a.value), false);
+  assert.equal(a.zone, "se_avanza_tempo");
+  assert.equal(valueShortText(a.value), "Basso · 4.043 €/anno", "la forma con la parola non cambia");
+  assert.equal(valueScreenText(item({ valueModel: FIX_B }).value), "2.719 €/anno");
+
+  // Solo il tetto «da misurare»: anche questa è una cifra in euro.
+  const pending = item({ valueModel: PENDING_ONLY });
+  assert.equal(valueScreenText(pending.value), "da misurare · fino a 5.840 €");
+  assert.equal(valueScreenLongText(pending.value), "da misurare · fino a 5.840 €");
+  assert.equal(hasEuroValue(pending.value), true);
+  assert.equal(showsZone(pending.value), false);
+
+  // Solo a parole: nessuna cifra, la zona resta.
+  const words = item({ valueModel: WORDS_ONLY });
+  assert.equal(valueScreenText(words.value), "qualitativo");
+  assert.equal(showsZone(words.value), true);
+  assert.equal(zoneText(words.zone, words.value), "senza beneficio contato");
+
+  // Senza modello: punteggio basso e valore all'anno del team (il caso di produzione).
+  const team = { customScores: { impact: { efficiency: 2, profitability: 2 } }, valueEurYear: 12_250, costEurOnce: 10_000 };
+  const low = item(team);
+  assert.equal(low.value.word, "basso");
+  assert.equal(valueScreenText(low.value), "12.250 €/anno");
+  assert.equal(valueScreenLongText(low.value), "12.250 € all'anno");
+  assert.equal(showsZone(low.value), false);
+  const detail = projectUseCaseDetail(row(team), CTX, null);
+  const out = exportRow(detail, detail);
+  assert.equal(out.Valore, "Basso", "l'export tiene la parola");
+  assert.equal(out.Zona, zoneText(detail.zone, detail.value), "e la zona");
+  assert.equal(out.Zona, "Se avanza tempo");
+
+  // Il solo punteggio dell'AI: la parola e la zona, come prima.
+  const ai = item({ aiSuggestion: { scores: { impact: { efficiency: 5, profitability: 5 } } } }, { ...CTX, model: { ...MODEL, scoringVersion: 2 } });
+  assert.equal(ai.value.source, "ai");
+  assert.equal(valueScreenText(ai.value), "Alto");
+  assert.equal(showsZone(ai.value), true);
+
+  // 0 € non è una cifra: resta la parola.
+  const zero = item({ customScores: { impact: { efficiency: 4, profitability: 4 } }, valueEurYear: 0 });
+  assert.equal(valueScreenText(zero.value), "Alto");
+  assert.equal(valueScreenLongText(zero.value), "Alto · 4,0");
+  assert.equal(showsZone(zero.value), true);
+
+  // Un modello non valido vale come nessun modello: gli euro del team nella forma corta a schermo.
+  const broken = item({ valueModel: { v: 1, primary: "tempo", components: [] }, valueEurYear: 12_250 });
+  assert.equal(valueScreenText(broken.value), "12.250 €/anno");
+  assert.equal(valueShortText(broken.value), "12.250 € all'anno");
+
+  assert.equal(valueScreenText(item().value), "da stimare");
+  assert.equal(showsZone(item().value), true);
 });
 
 // ─── Valutazione del team, Roadmap, export ───────────────────────────

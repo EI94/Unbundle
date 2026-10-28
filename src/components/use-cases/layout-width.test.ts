@@ -61,20 +61,30 @@ function trackMinimums(template: string): number[] {
 test("la lista di «Priorità» e le righe dei revisori hanno le colonne da 58rem, e a 58rem ci stanno", () => {
   // A 1280 px di finestra la pagina ha 960 px (60rem), 945 con una barra di scorrimento classica.
   const list = read("src/components/use-cases/priority-list.tsx");
-  const narrow = /@min-\[58rem\]\/hub:grid-cols-\[([^\]\s]+)\]/.exec(list)?.[1];
-  const wide = /@5xl\/hub:grid-cols-\[([^\]\s]+)\]/.exec(list)?.[1];
-  assert.ok(narrow && wide, "le colonne da 58rem e da 64rem");
+  // Due coppie di colonne: con la zona (sette) e senza, quando nessuna riga la scrive (sei).
+  const narrows = [...list.matchAll(/@min-\[58rem\]\/hub:grid-cols-\[([^\]\s]+)\]/g)].map((match) => match[1]);
+  const wides = [...list.matchAll(/@5xl\/hub:grid-cols-\[([^\]\s]+)\]/g)].map((match) => match[1]);
+  assert.equal(narrows.length, 2, "le colonne da 58rem, con e senza la zona");
+  assert.equal(wides.length, 2, "le colonne da 64rem, con e senza la zona");
   assert.match(list, /@min-\[58rem\]\/hub:grid /);
   assert.match(list, /@min-\[58rem\]\/hub:gap-3"/);
-  assert.match(list, /className=\{cn\("flex flex-col gap-2 px-3 py-2\.5", COLUMNS\)\}/);
-  // Sette colonne, ognuna con un minimo fisso: la somma, i sei spazi (gap-3) e i margini (px-3) stanno nel riquadro.
-  for (const [template, page] of [[narrow, 58], [wide, 64]] as const) {
-    const tracks = trackMinimums(template);
-    assert.equal(tracks.length, 7, template);
-    const total = tracks.reduce((sum, rem) => sum + rem, 0) + 6 * 0.75 + 2 * 0.75;
-    assert.ok(total <= page, `${template}: ${total}rem in un riquadro di ${page}rem`);
+  assert.match(list, /className=\{cn\("flex flex-col gap-2 px-3 py-2\.5", columns\)\}/);
+  // Ogni colonna con un minimo fisso: la somma, gli spazi tra le colonne (gap-3) e i margini (px-3) stanno nel riquadro.
+  const counts: number[] = [];
+  for (const [index, narrow] of narrows.entries()) {
+    const wide = wides[index];
+    const sizes = [narrow, wide].map((template) => trackMinimums(template).length);
+    assert.equal(sizes[0], sizes[1], `${narrow} e ${wide}: le stesse colonne da 58rem e da 64rem`);
+    counts.push(sizes[0]);
+    for (const [template, page] of [[narrow, 58], [wide, 64]] as const) {
+      const tracks = trackMinimums(template);
+      const total = tracks.reduce((sum, rem) => sum + rem, 0) + (tracks.length - 1) * 0.75 + 2 * 0.75;
+      assert.ok(total <= page, `${template}: ${total}rem in un riquadro di ${page}rem`);
+    }
   }
+  assert.deepEqual([...counts].sort(), [6, 7], "sette colonne con la zona, sei senza");
   // Il titolo ha la quota più grande di quel che resta (2fr), mai meno di 9rem.
+  const narrow = narrows[counts.indexOf(7)];
   assert.match(narrow, /^4\.5rem_minmax\(9rem,2fr\)_/);
   // Valore va a capo dopo «·», nella lista e nella riga, invece di scrivere sopra il Costo.
   assert.match(list, /<ValueFigure value=\{item\.value\} withLabel wrap /);

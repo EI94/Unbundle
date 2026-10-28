@@ -488,12 +488,16 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
   assert.match(page, /style="left:calc\(40% \+ 0\.5rem\)"[^>]*>Non ora</);
   assert.ok(page.includes("Le zone sono un suggerimento, non la decisione."));
 
-  // Zone con la soglia del workspace: 30.000 € ≤ 40.000 € è «Subito» (con 25.000 € sarebbe «Da pianificare»).
+  // Zone con la soglia del workspace: la matrice qui sopra le disegna, l'export le scrive (la prova
+  // dell'export «Fascia»). Nella lista la zona va solo con un Valore senza euro: 50.000 €/anno
+  // basta, senza «Subito»; la da decidere con il solo punteggio (MID) resta «Non ora».
   const list = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista" });
   assert.ok(list.includes('data-slot="priority-list"'));
   assert.ok(!list.includes('data-slot="value-cost-matrix"'));
-  assert.match(rowOf(list, cards.amount.id), />Subito</);
+  assert.doesNotMatch(rowOf(list, cards.amount.id), />Subito</);
+  assert.ok(rowOf(list, cards.amount.id).includes("50.000 €/anno"), rowOf(list, cards.amount.id));
   assert.match(rowOf(list, cards.toDecideScored.id), />Non ora</);
+  assert.ok(list.includes(">Zona<"), "la colonna «Zona» c'è: una riga la scrive");
   // «Quando» in riga per i revisori (§4.4): su una da decidere il menu parte da «Scegli…» (la
   // scelta apre il dialogo «Approva»); su una approvata il trimestre.
   assert.match(rowOf(list, cards.toDecideScored.id), /data-slot="when-control"/);
@@ -513,9 +517,11 @@ test("fasce del workspace: «Costo impegnato» con il riferimento della fascia, 
   assert.ok(page.includes("su 2 use case<"));
   assert.ok(page.includes("Valore atteso all&#x27;anno") || page.includes("Valore atteso all'anno"));
   assert.ok(!page.includes("Valore misurato"), "il valore misurato non c'è ancora");
-  // La card della Roadmap: forma corta del costo con la fonte.
+  // La card della Roadmap: forma corta del costo con la fonte; il Valore con gli euro, senza parola.
   const amount = rowOf(page, cards.amount.id);
   assert.ok(amount.includes("€€ · 30.000 €"), amount);
+  assert.ok(amount.includes("50.000 €/anno"), amount);
+  assert.doesNotMatch(amount, />Alto</);
   assert.match(amount, /data-source="team_importo"/);
   const band = rowOf(page, cards.band.id);
   assert.ok(band.includes("€€ · fascia"));
@@ -605,6 +611,22 @@ test("«Priorità»: senza scelta matrice da 768 px e lista sotto; «Da diffonde
   assert.match(toEstimate, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=da-decidere"`));
   const decideCountOf = (html: string) => /Da decidere<\/span><span class="text-xs text-muted-foreground tabular-nums">(\d+)</.exec(html)?.[1];
   assert.equal(decideCountOf(toEstimate), decideCountOf(page));
+});
+
+test("Priorità: una lista di soli use case con euro non ha la colonna «Zona»", opts, async () => {
+  // «Approvata con importo» (50.000 €/anno) e «Approvata con fascia» (25.000 €/anno): con una cifra
+  // in euro nessuna riga scrive la zona, e la lista perde la colonna invece di tenerla vuota.
+  const list = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista", q: "Approvata con" });
+  const rows = [...list.matchAll(/data-slot="priority-row" data-id="([^"]+)"/g)].map((match) => match[1]).sort();
+  assert.deepEqual(rows, [cards.amount.id, cards.band.id].sort());
+  assert.ok(!list.includes(">Zona<"), "nessuna intestazione «Zona»");
+  const rowClasses = [...list.matchAll(/<li[^>]*data-slot="priority-row"[^>]*class="([^"]*)"/g)].map((match) => match[1]);
+  assert.equal(rowClasses.length, 2);
+  for (const classes of rowClasses) {
+    assert.ok(!classes.includes("7.25rem"), `senza la traccia della zona: ${classes}`);
+    assert.ok(classes.includes("@min-[58rem]/hub:grid-cols-[4.5rem_minmax(9rem,2fr)_8.25rem_minmax(7rem,1fr)_minmax(8.5rem,1.5fr)_minmax(6.5rem,1fr)]"), classes);
+  }
+  for (const card of [cards.amount, cards.band]) assert.ok(rowOf(list, card.id).includes("€/anno"), card.title);
 });
 
 test("filtri: origine, tipo e «Altri filtri» ai revisori; senza risultati «Nessuno use case con questi filtri.»", opts, async () => {

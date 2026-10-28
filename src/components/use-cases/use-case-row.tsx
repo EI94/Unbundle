@@ -25,9 +25,9 @@ import { ValueFigure } from "./value-figure";
  * direttiva: lo usano i pezzi del server e quelli del browser (la barra dei filtri).
  *
  * Riga dei revisori (circa 56 px): codice, titolo, origine, il tipo solo se «Da diffondere»
- * (il tipo di quasi tutte è «Da costruire»: ripeterlo su ogni riga è rumore), Valore in parola
- * e Costo con la fonte, oppure un solo «da stimare» grigio; in «Da decidere» anche il
- * sotto-stato e i giorni di attesa. In una riga sola quando il riquadro della pagina
+ * (il tipo di quasi tutte è «Da costruire»: ripeterlo su ogni riga è rumore), il Valore (gli
+ * euro all'anno se ci sono, altrimenti in parola) e Costo con la fonte, oppure un solo «da
+ * stimare» grigio; in «Da decidere» anche il sotto-stato e i giorni di attesa. In una riga sola quando il riquadro della pagina
  * (`@container/hub` di hub.tsx) è largo almeno 58rem (da circa 1250 px di finestra, accanto alla
  * barra laterale), con il titolo largo almeno 14rem insieme al codice: se le cifre non ci stanno,
  * Valore e Costo vanno a capo dentro la riga. Più stretto (telefono, e da 768 a circa 1250 px

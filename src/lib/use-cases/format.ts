@@ -19,6 +19,9 @@
  *   ultimo argomento `bands` (tipo `CostBandInfo` di `cost-bands.ts`), predefinite
  *   `COST_BANDS`. Le fasce del workspace le passano le pagine (H3c, H4a, H4b), che le leggono
  *   con `resolveCostBands`.
+ * - **Valore a schermo**: con una cifra in euro la pagina scrive solo la cifra, senza parola,
+ *   punteggio né zona (`valueScreenText`, `valueScreenLongText`, `showsZone`); il MCP del team e
+ *   l'export tengono la parola.
  *
  * Lo usano i pezzi comuni di `src/components/use-cases/` sul server e nel browser: le stesse
  * stringhe nei due posti, nessuna differenza all'idratazione.
@@ -253,7 +256,9 @@ export function hasValueText(value: Pick<ValueParts, "word" | "perYear" | "benef
 
 /**
  * «Alto», «Medio», «Basso»; con un modello senza beneficio contato «qualitativo» o «da
- * misurare»; senza punteggio «da stimare». La parola sola (export, etichette).
+ * misurare»; senza punteggio «da stimare». La parola sola, per il MCP del team e l'export
+ * (etichette); la pagina usa `valueScreenText` e `valueScreenLongText`, che con una cifra in euro
+ * non scrivono la parola.
  */
 export function valueWordText(value: Pick<ValueParts, "word" | "benefits"> | null | undefined): string {
   if (value?.word) return VALUE_WORD_LABEL[value.word];
@@ -262,9 +267,10 @@ export function valueWordText(value: Pick<ValueParts, "word" | "benefits"> | nul
 }
 
 /**
- * La forma corta del Valore, una sola per riga, pannello e card della Roadmap:
+ * La forma corta del Valore con la parola, per il MCP del team e l'export:
  * - con «Benefici e costi»: «Medio · 4.043 €/anno», «da misurare · fino a 5.840 €», «qualitativo»;
  * - senza: «Alto»; senza parola ma con gli euro all'anno «12.250 € all'anno»; altrimenti «da stimare».
+ * Riga, pannello e card della Roadmap usano `valueScreenText`: con una cifra in euro solo la cifra.
  */
 export function valueShortText(value: Pick<ValueParts, "word" | "perYear" | "benefits"> | null | undefined): string {
   const benefits = value?.benefits;
@@ -278,8 +284,10 @@ export function valueShortText(value: Pick<ValueParts, "word" | "perYear" | "ben
 }
 
 /**
- * «Alto · 3,8»: la cifra grande della scheda; con un modello senza beneficio contato «da
- * misurare · fino a 5.840 €» o «qualitativo»; senza punteggio «da stimare».
+ * «Alto · 3,8»: la forma lunga con la parola e il punteggio, per il MCP del team e l'export; con un
+ * modello senza beneficio contato «da misurare · fino a 5.840 €» o «qualitativo»; senza punteggio
+ * «da stimare». La cifra grande della scheda è `valueScreenLongText`: con gli euro all'anno solo
+ * la cifra.
  */
 export function valueLongText(value: Pick<ValueParts, "word" | "score" | "benefits"> | null | undefined): string {
   if (value?.benefits && (value.benefits.state !== "contato" || !value.word)) return uncountedText(value.benefits);
@@ -293,7 +301,8 @@ export const NO_COUNTED_BENEFIT_LABEL = "senza beneficio contato";
 /**
  * La zona a parole (§7.4): «Subito», «Se avanza tempo»…; senza zona «da stimare», oppure, per una
  * scheda con «Benefici e costi» che non ha un beneficio contato (Valore «qualitativo» o «da
- * misurare»), «senza beneficio contato»: la stessa cosa che dice il Valore.
+ * misurare»), «senza beneficio contato»: la stessa cosa che dice il Valore. La forma che va con
+ * la parola del Valore, per il MCP del team e l'export; la pagina la scrive solo se `showsZone`.
  */
 export function zoneText(zone: Zone | null, value: Pick<ValueParts, "benefits"> | null | undefined): string {
   if (zone) return ZONE_LABEL[zone];
@@ -305,6 +314,36 @@ export function zoneText(zone: Zone | null, value: Pick<ValueParts, "benefits"> 
 export function perYearText(perYear: ValueParts["perYear"] | null | undefined): string | null {
   if (!perYear || !Number.isFinite(perYear.amount)) return null;
   return `${formatEuro(perYear.amount)} all'anno`;
+}
+
+// ─── Valore a schermo (rilascio «Pulizia») ───────────────────────────
+
+/** Gli euro all'anno da scrivere a schermo: una cifra finita e maggiore di zero, altrimenti null (0 € non è una cifra: resta la parola). */
+export function shownPerYear(value: Pick<ValueParts, "perYear"> | null | undefined): ValueParts["perYear"] {
+  const perYear = value?.perYear;
+  return perYear && Number.isFinite(perYear.amount) && perYear.amount > 0 ? perYear : null;
+}
+
+/** Il Valore ha una cifra in euro: gli euro all'anno, oppure il tetto «da misurare · fino a X €» di «Benefici e costi». */
+export function hasEuroValue(value: Pick<ValueParts, "perYear" | "benefits"> | null | undefined): boolean {
+  return shownPerYear(value) !== null || (value?.benefits?.state === "da_misurare" && value.benefits.pendingEur > 0);
+}
+
+/** La zona si scrive solo per un Valore senza cifra in euro; la matrice la disegna sempre. */
+export function showsZone(value: Pick<ValueParts, "perYear" | "benefits"> | null | undefined): boolean {
+  return !hasEuroValue(value);
+}
+
+/** La forma corta a schermo: con gli euro all'anno solo la cifra, «12.250 €/anno»; altrimenti `valueShortText` («da misurare · fino a 5.840 €», «Alto», «qualitativo», «da stimare»). */
+export function valueScreenText(value: Pick<ValueParts, "word" | "perYear" | "benefits"> | null | undefined): string {
+  const perYear = shownPerYear(value);
+  return perYear ? perYearShortText(perYear.amount) : valueShortText(value);
+}
+
+/** La cifra grande della scheda: con gli euro all'anno «12.250 € all'anno», senza parola né punteggio; altrimenti `valueLongText`. */
+export function valueScreenLongText(value: Pick<ValueParts, "word" | "score" | "perYear" | "benefits"> | null | undefined): string {
+  const perYear = shownPerYear(value);
+  return (perYear && perYearText(perYear)) || valueLongText(value);
 }
 
 // ─── Fasce (§5.4, §7.2, D15) ─────────────────────────────────────────

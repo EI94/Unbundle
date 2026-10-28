@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
-import { costShortText, valueShortText } from "@/lib/use-cases/format";
+import { costShortText, valueScreenText } from "@/lib/use-cases/format";
 import { ORIGIN_LABEL, ZONE_HINT, ZONE_LABEL } from "@/lib/use-cases/labels";
 import { placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
 import type { Origin } from "@/lib/use-cases/types";
@@ -264,7 +264,7 @@ function MatrixDot({
   bands: readonly CostBandInfo[];
   label: MatrixLabelPlacement | null;
 }) {
-  const text = `${point.code ? `${point.code} ` : ""}${point.title}. Valore: ${valueShortText(point.value)}. Costo: ${costShortText(point.cost, bands)}`;
+  const text = `${point.code ? `${point.code} ` : ""}${point.title}. Valore: ${valueScreenText(point.value)}. Costo: ${costShortText(point.cost, bands)}`;
   // Il riquadro si apre verso il centro, così non esce dalla matrice.
   const toLeft = point.left > 50;
   const above = point.top > 35;

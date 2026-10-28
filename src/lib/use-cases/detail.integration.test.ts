@@ -527,6 +527,17 @@ test("«Salva la valutazione»: KPI, valore all'anno e fascia; «valutata»; Sto
   const [event] = (await storia(card.id)).slice(-1);
   assert.equal(event.action, "valutato");
   assert.deepEqual([...(event.fields as string[])].sort(), ["costo", "kpi", "valore"]);
+  // Con una cifra in euro la «Valutazione» scrive solo la cifra: niente parola, punteggio né zona.
+  const valuation = sectionOf((await detailHtml("builder", card.id)).html, "section-valuation");
+  assert.ok(valuation.includes("60.000 € all&#x27;anno"), valuation);
+  assert.ok(!valuation.includes("Zona:"), "senza zona");
+  assert.ok(!valuation.includes("un suggerimento, non la decisione"));
+  assert.ok(!valuation.includes("Alto · 4"));
+  // Con il solo punteggio la zona resta, con il suggerimento.
+  const scored = await seed({ review: "scored", customScores: { impact: { efficiency: 4 }, feasibility: { effort: 2 } } });
+  const scoredValuation = sectionOf((await detailHtml("builder", scored.id)).html, "section-valuation");
+  assert.ok(scoredValuation.includes("Zona:"), scoredValuation);
+  assert.ok(scoredValuation.includes("un suggerimento, non la decisione"));
   // Un importo azzera la fascia (D5).
   ok(await actions.saveValuationAction(ids.ws, card.id, saved.version, { cost: { eurOnce: "40.000" } }), "importo");
   const after = await row(card.id);

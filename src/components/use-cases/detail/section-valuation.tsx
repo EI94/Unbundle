@@ -1,5 +1,5 @@
 import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
-import { zoneText } from "@/lib/use-cases/format";
+import { showsZone, zoneText } from "@/lib/use-cases/format";
 import type { Dimension, ValuationModel } from "@/lib/use-cases/valuation";
 import type { ValueParams } from "@/lib/use-cases/value-model";
 import { hubValueParams, type UseCaseDetail } from "@/lib/use-cases/views";
@@ -97,10 +97,11 @@ export interface SectionValuationProps {
 /**
  * Il capitolo «Valutazione» della scheda, solo per i revisori (docs/use-case/DESIGN.md §6.3,
  * §6.7, §7): Valore e Costo di realizzazione, due cifre grandi con la loro fonte (una colonna sul
- * telefono), la zona come suggerimento, un solo riquadro «Stime non ufficiali» (la stima di
- * Claude e quella di chi ha proposto, se ci sono dati, e il «Suggerimento AI», sotto la frase
- * «Conta la valutazione del team.»), i chip di rischio e «Modifica valutazione», che apre il
- * modulo sul posto. Il costo usa le fasce del workspace (D15).
+ * telefono), la zona come suggerimento, solo per un Valore senza cifra in euro (`showsZone`), un
+ * solo riquadro «Stime non ufficiali» (la stima di Claude e quella di chi ha proposto, se ci sono
+ * dati, e il «Suggerimento AI», sotto la frase «Conta la valutazione del team.»), i chip di
+ * rischio e «Modifica valutazione», che apre il modulo sul posto. Il costo usa le fasce del
+ * workspace (D15).
  */
 export function SectionValuation({
   workspaceId,
@@ -126,11 +127,14 @@ export function SectionValuation({
         <ValueFigure value={detail.value} form="lunga" withLabel />
         <CostFigure cost={detail.cost} bands={costBands} form="lunga" withLabel />
       </div>
-      <p className="text-sm">
-        <span className="text-muted-foreground">{SECTION_VALUATION_TEXT.zone}: </span>
-        <span className={cn(detail.zone ? "font-medium" : "text-muted-foreground")}>{zoneText(detail.zone, detail.value)}</span>
-        {detail.zone ? <span className="text-muted-foreground"> {SECTION_VALUATION_TEXT.zoneHint}</span> : null}
-      </p>
+      {/* Con una cifra in euro basta la cifra: la zona resta nella matrice. */}
+      {showsZone(detail.value) ? (
+        <p className="text-sm">
+          <span className="text-muted-foreground">{SECTION_VALUATION_TEXT.zone}: </span>
+          <span className={cn(detail.zone ? "font-medium" : "text-muted-foreground")}>{zoneText(detail.zone, detail.value)}</span>
+          {detail.zone ? <span className="text-muted-foreground"> {SECTION_VALUATION_TEXT.zoneHint}</span> : null}
+        </p>
+      ) : null}
       <ValuationEditor
         workspaceId={workspaceId}
         item={{ id: detail.id, version: detail.version }}

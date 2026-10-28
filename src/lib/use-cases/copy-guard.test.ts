@@ -357,6 +357,8 @@ test("copy-guard verde sulle etichette dell'area", () => {
     format.oneoffRunText(560, 600),
     format.zoneText(null, { benefits: { state: "qualitativo", benefitEur: 0, pendingEur: 0, hours: 0 } }),
     format.valueShortText({ word: null, perYear: null, benefits: { state: "da_misurare", benefitEur: 0, pendingEur: 5840, hours: 0 } }),
+    format.valueScreenText({ word: "basso", perYear: { amount: 12_250, source: "team" } }),
+    format.valueScreenLongText({ word: "basso", score: 2.2, perYear: { amount: 12_250, source: "dossier" } }),
     valueCharts.otherGroupsLabel(["Amministrazione", "Logistica", "Produzione", "Vendite"], true),
     valueCharts.groupText(null),
     valueCharts.beyondHorizonText("2028-10"),

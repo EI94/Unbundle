@@ -331,17 +331,23 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   assert.doesNotMatch(empty, /Ritorno principale|Avanzate/, "senza voci solo «Aggiungi una voce»");
 
   const figures = renderToStaticMarkup(createElement(RowFigures, { item: detail.useCase }));
-  assert.match(figures.replace(/<[^>]+>/g, ""), /Basso · 4\.043 €\/anno/);
-  // Nella riga stretta il Valore va a capo solo dopo «·»: ogni parte resta intera.
-  assert.match(figures, /<span class="whitespace-nowrap">Basso ·<\/span> <span class="whitespace-nowrap">4\.043 €\/anno<\/span>/);
+  // Con una cifra in euro la riga scrive solo la cifra, senza la parola (rilascio «Pulizia»).
+  assert.match(figures.replace(/<[^>]+>/g, ""), /Valore: 4\.043 €\/anno/);
+  assert.doesNotMatch(figures, /Basso/);
+  // Nella riga stretta il Valore va a capo solo dopo «·»: la cifra resta intera.
+  assert.ok(figures.includes('<span class="whitespace-nowrap">4.043 €/anno</span>'), figures);
   assert.match(figures, /avvio 560 € · ricorrenti 600 €\/anno/);
   assert.match(figures, /data-cost-source="stima"/);
   assert.doesNotMatch(figures, /data-source="stima"/, "nella riga la cifra del modello va senza fonte");
 
+  const longValue = renderToStaticMarkup(createElement(ValueFigure, { value: detail.useCase.value, form: "lunga" }));
   const long = renderToStaticMarkup(createElement("div", null, createElement(ValueFigure, { value: detail.useCase.value, form: "lunga" }), createElement(CostFigure, { cost: detail.useCase.cost, form: "lunga" })));
-  assert.match(long, /Basso · 1,4/);
+  // La cifra grande: solo gli euro all'anno, senza parola né punteggio, scritti una volta sola.
+  assert.doesNotMatch(long, /Basso/);
+  assert.doesNotMatch(long, /1,4/);
   assert.match(long, /4\.043 € all&#x27;anno/);
   assert.match(long, /stima del team/);
+  assert.equal((longValue.match(/data-source=/g) ?? []).length, 1, longValue);
 
   const summary = renderToStaticMarkup(createElement(ValueParamsSummary, { params: detail.valueParams }));
   assert.match(summary, /Ipotesi di calcolo/);

@@ -32,10 +32,11 @@ export interface RoadmapCardProps {
 /**
  * Una card della Roadmap (docs/use-case/DESIGN.md §4.5), in sola lettura: un clic apre il
  * pannello laterale.
- * - Prossimi: codice, titolo, origine, Valore in parola e il costo nella forma corta con la
- *   fonte, la stessa della riga («€€ · 40.000 € · team»); le best practice con «Da diffondere»,
- *   il Valore e senza costo; nel gruppo «Scaduti» il tag rosso «Scaduto». Una cifra da stimare
- *   dice quale è: «Valore: da stimare», «Costo: da stimare».
+ * - Prossimi: codice, titolo, origine, il Valore (gli euro all'anno se ci sono, altrimenti in
+ *   parola) e il costo nella forma corta con la fonte, la stessa della riga
+ *   («€€ · 40.000 € · team»); le best practice con «Da diffondere», il Valore e senza costo;
+ *   nel gruppo «Scaduti» il tag rosso «Scaduto». Una cifra da stimare dice quale è:
+ *   «Valore: da stimare», «Costo: da stimare».
  * - In realizzazione: codice, titolo, origine e la fase con lo stato del dossier, oppure
  *   «Senza dossier»; con la lettura del dossier in errore solo la fase (§4.9). Il riepilogo
  *   del dossier (avanzamento, prossima tappa) arriva con H6a.

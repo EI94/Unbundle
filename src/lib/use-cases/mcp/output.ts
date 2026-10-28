@@ -14,9 +14,10 @@
  * §4.3, §4.6): per le altre fasi sono null.
  *
  * «Benefici e costi» (spec di Pierpaolo, 25/10/2026): Valore e costo portano anche la forma
- * corta della pagina (`text`: «Basso · 4.043 €/anno», «avvio 560 € · ricorrenti 600 €/anno ·
- * team»); `get_use_case` dà il modello salvato e i conti (`computedOutput`), calcolati in
- * lettura con le ipotesi del workspace, arrotondati al centesimo solo qui. «Cosa serve»
+ * corta con la parola (`text`: «Basso · 4.043 €/anno», «avvio 560 € · ricorrenti 600 €/anno ·
+ * team»); la pagina, con una cifra in euro, scrive solo la cifra (`valueScreenText`).
+ * `get_use_case` dà il modello salvato e i conti (`computedOutput`), calcolati in lettura con le
+ * ipotesi del workspace, arrotondati al centesimo solo qui. «Cosa serve»
  * (`needOutput`) arriva solo ai revisori: le letture dei tool lo chiedono con la loro persona.
  *
  * Modulo puro: import relativi `.ts`; gira con `node --test`.
@@ -83,7 +84,11 @@ export interface ValueOutput {
   source: ValueFigure["source"];
   /** «team» o «AI»; null senza punteggio. */
   sourceLabel: string | null;
-  /** La forma corta della pagina: «Basso · 4.043 €/anno», «da misurare · fino a 5.840 €», «qualitativo», «Alto», «da stimare». */
+  /**
+   * La forma corta con la parola («Basso · 4.043 €/anno»); la pagina, con una cifra in euro, scrive
+   * solo la cifra (`valueScreenText`). Altrimenti «da misurare · fino a 5.840 €», «qualitativo»,
+   * «Alto», «da stimare».
+   */
   text: string;
 }
 
