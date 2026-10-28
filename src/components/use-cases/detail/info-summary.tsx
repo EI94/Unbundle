@@ -5,8 +5,9 @@ import { INFO_PROGRESS_TEXT } from "@/lib/use-cases/info-progress";
 import { cn } from "@/lib/utils";
 
 /**
- * In cima a «Cosa serve» (rilascio «Pulizia»): una riga sola, «N di M informazioni ricevute» e che
- * cosa resta. Lo stato a parole sta solo nella testata e qui non si ripete; le date stanno nelle righe
+ * In cima a «Cosa serve» (rilascio «Pulizia»): una riga sola, «N di M informazioni ricevute», tra
+ * parentesi quante di quelle sono da verificare, e che cosa resta, gruppo per gruppo, così i numeri
+ * fanno il totale («2 di 5 informazioni ricevute (1 da verificare) · 1 in attesa · 2 da chiedere»). Lo stato a parole sta solo nella testata e qui non si ripete; le date stanno nelle righe
  * delle «Richieste». Conteggi di esigenze della scheda, mai di persone. Niente barra: il conteggio
  * dice già quanto manca.
  */
@@ -18,6 +19,8 @@ export function InfoSummary({ view, className }: { view: InfoProgressView | null
         <ClipboardList aria-hidden className={cn("mt-0.5 size-4 shrink-0", SEMAFORO_TONE[view.tone].text)} />
         <span className="min-w-0 break-words tabular-nums">
           <span className="font-medium">{view.count}</span>
+          {/* Quelle da guardare fanno parte delle ricevute: tra parentesi, così i pezzi sommano al totale. */}
+          {view.receivedNote ? <span data-slot="info-received-note"> ({view.receivedNote})</span> : null}
           {view.next ? (
             <span data-slot="info-next">
               {INFO_PROGRESS_TEXT.next.separator}

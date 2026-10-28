@@ -391,6 +391,16 @@ test("Cosa serve: la vista dei revisori, una tabella per area, le righe a posto 
   assert.ok(!page.includes(T.archived), "l'archiviata non c'è");
   assert.ok(!page.includes(T.foreign), "le esigenze di un altro workspace non ci sono");
   assert.ok(requirements.includes('data-slot="needs-list"'), "sotto i 56rem del riquadro, l'elenco");
+  // «Entro» solo nelle aree con una data: «Altro» non ne ha, e non ha una colonna di «—».
+  assert.ok(between(requirements, 'data-need-area="accessi"', 'data-need-area="dati"').includes(">Entro</th>"));
+  const other = between(requirements, 'data-need-area="altro"');
+  assert.ok(!other.includes(">Entro</th>"), "nessuna colonna «Entro» senza date");
+  assert.ok(other.includes(">Per</th>") && other.includes('class="w-[42%] px-3 py-2 font-medium"'), "le altre colonne si allargano");
+  // Nell'elenco ogni «·» va a capo con la parte che segue; un solo use case sta su una riga sua.
+  const accessItem = between(requirements, `data-need-item="${needIds.access}"`, "</summary>");
+  assert.match(accessItem, /<span data-meta="entro" class="inline-flex min-w-0 items-center gap-x-2"><span aria-hidden="true">·<\/span>/);
+  const procedureItem = between(requirements, `data-need-item="${needIds.procedure}"`, "</li>");
+  assert.match(procedureItem, /<span data-meta="per" class="flex min-w-0 basis-full"><a /);
   // I link restano nella vista: `?vista=cosa-serve&apri=<id>`.
   assert.ok(page.includes(`href="/dashboard/${ids.ws}/use-cases?vista=cosa-serve&apri=${cards.proposed.id}"`));
 });

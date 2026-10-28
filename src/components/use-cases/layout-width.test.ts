@@ -64,11 +64,12 @@ function trackMinimums(template: string): number[] {
 test("la lista di «Priorità» e le righe dei revisori hanno le colonne da 58rem, e a 58rem ci stanno", () => {
   // A 1280 px di finestra la pagina ha 960 px (60rem), 945 con una barra di scorrimento classica.
   const list = read("src/components/use-cases/priority-list.tsx");
-  // Due coppie di colonne: con la zona (sette) e senza, quando nessuna riga la scrive (sei).
+  // Quattro coppie di colonne: con e senza la zona (quando nessuna riga la scrive), con e senza
+  // l'origine (quando tutte le righe hanno la stessa).
   const narrows = [...list.matchAll(/@min-\[58rem\]\/hub:grid-cols-\[([^\]\s]+)\]/g)].map((match) => match[1]);
   const wides = [...list.matchAll(/@5xl\/hub:grid-cols-\[([^\]\s]+)\]/g)].map((match) => match[1]);
-  assert.equal(narrows.length, 2, "le colonne da 58rem, con e senza la zona");
-  assert.equal(wides.length, 2, "le colonne da 64rem, con e senza la zona");
+  assert.equal(narrows.length, 4, "le colonne da 58rem, con e senza la zona e l'origine");
+  assert.equal(wides.length, 4, "le colonne da 64rem, con e senza la zona e l'origine");
   assert.match(list, /@min-\[58rem\]\/hub:grid /);
   assert.match(list, /@min-\[58rem\]\/hub:gap-3"/);
   assert.match(list, /className=\{cn\("flex flex-col gap-2 px-3 py-2\.5", columns\)\}/);
@@ -85,10 +86,17 @@ test("la lista di «Priorità» e le righe dei revisori hanno le colonne da 58re
       assert.ok(total <= page, `${template}: ${total}rem in un riquadro di ${page}rem`);
     }
   }
-  assert.deepEqual([...counts].sort(), [6, 7], "sette colonne con la zona, sei senza");
-  // Il titolo ha la quota più grande di quel che resta (2fr), mai meno di 9rem.
-  const narrow = narrows[counts.indexOf(7)];
-  assert.match(narrow, /^4\.5rem_minmax\(9rem,2fr\)_/);
+  assert.deepEqual([...counts].sort(), [5, 6, 6, 7], "sette colonne con zona e origine, cinque senza");
+  // Il titolo ha la quota più grande di quel che resta (2fr), mai meno di 9rem; senza la colonna
+  // dell'origine (8,25rem) mai meno di 16rem.
+  for (const narrow of narrows) {
+    const withOrigin = narrow.includes("_8.25rem_");
+    assert.match(narrow, withOrigin ? /^4\.5rem_minmax\(9rem,2fr\)_8\.25rem_/ : /^4\.5rem_minmax\(16rem,2fr\)_minmax\(7rem,1fr\)_/, narrow);
+  }
+  // Il chip di «Raccolta informazioni» sta sotto il titolo, non accanto: non gli toglie spazio.
+  assert.match(list, /<span className="flex min-w-0 flex-col items-start gap-0\.5">\s*<Link/);
+  // L'origine si nasconde con le colonne solo quando non c'è la sua colonna.
+  assert.ok(list.includes('<span className={cn("min-w-0", !originColumn && "@min-[58rem]/hub:hidden")}>'));
   // Valore va a capo dopo «·», nella lista e nella riga, invece di scrivere sopra il Costo.
   assert.match(list, /<ValueFigure value=\{item\.value\} withLabel wrap /);
   const row = read("src/components/use-cases/use-case-row.tsx");

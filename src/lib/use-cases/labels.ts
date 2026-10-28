@@ -40,6 +40,9 @@ export function portfolioKindOf(kind: UseCaseKind): PortfolioKind {
 /** Testo di ogni cifra che manca (Valore, Costo, zona). */
 export const NOT_ESTIMATED_LABEL = "da stimare";
 
+/** Una riga senza Valore né Costo: una frase sola che dice che cosa è da stimare (rilascio «Pulizia»). */
+export const VALUE_COST_NOT_ESTIMATED_LABEL = `Valore e costo: ${NOT_ESTIMATED_LABEL}`;
+
 /** Il Valore in parola (§7.1). Senza punteggio: `NOT_ESTIMATED_LABEL`. */
 export const VALUE_WORDS = ["alto", "medio", "basso"] as const;
 export type ValueWord = (typeof VALUE_WORDS)[number];

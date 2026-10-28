@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { placeMatrixLabels } from "./matrix-labels.ts";
+import { groupLabelTexts, groupNearPoints, placeMatrixLabels } from "./matrix-labels.ts";
 
 // Le etichette dei codici accanto ai punti della matrice (H4p): ogni punto la sua, senza
 // coprirsi finché c'è posto. Punti e codici sintetici.
@@ -97,4 +97,30 @@ test("bolle: il raggio di ogni punto conta, e un riquadro 4:3", () => {
     assert.ok(!overlaps(label(points[1]), bubble(points[0])), `a ${box} px l'etichetta della grande copre la piccola`);
     assert.ok(!overlaps(label(points[0]), label(points[1])), `a ${box} px le etichette si coprono`);
   }
+});
+
+test("due punti quasi nello stesso posto: un gruppo, un'etichetta con i due codici, nessun codice che sparisce", () => {
+  // TJ-0001 e TJ-0004 della prova di TopJet: stesso Valore, costo quasi uguale.
+  const points = [
+    { left: 14.2, top: 54.9 },
+    { left: 30, top: 50 },
+    { left: 15.1, top: 54.9 },
+    { left: 18.5, top: 54.9 },
+  ];
+  assert.deepEqual(groupNearPoints(points), [[0, 2], [1], [3]], "entro 3 punti percentuali dal primo del gruppo");
+  assert.deepEqual(groupLabelTexts(["TJ-0001", "TJ-0007", "TJ-0004", null], groupNearPoints(points)), ["TJ-0001, TJ-0004", "TJ-0007", "", ""]);
+  // Il primo del gruppo senza codice: l'etichetta va al primo che ne ha uno.
+  assert.deepEqual(groupLabelTexts([null, "XX-0002"], [[0, 1]]), ["", "XX-0002"]);
+});
+
+test("un punto senza testo non ha etichetta ma resta un ostacolo per le altre", () => {
+  const placed = placeMatrixLabels([
+    { id: "a", left: 30, top: 50, text: "XX-0001, XX-0004" },
+    { id: "b", left: 33, top: 50, text: "" },
+  ]);
+  assert.equal(placed.has("b"), false);
+  const a = placed.get("a")!;
+  const rect = rectOf({ left: 30, top: 50, text: "XX-0001, XX-0004" }, a);
+  const dot = { x: 0.33 * BOX - 6, y: 0.5 * BOX - 6, w: 12, h: 12 };
+  assert.ok(!(Math.min(rect.x + rect.w, dot.x + dot.w) > Math.max(rect.x, dot.x) && Math.min(rect.y + rect.h, dot.y + dot.h) > Math.max(rect.y, dot.y)), `non copre il punto b: ${JSON.stringify(a)}`);
 });

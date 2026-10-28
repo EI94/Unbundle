@@ -190,7 +190,7 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
                       }}
                       className={cn(
                         "flex min-h-11 items-center rounded-lg px-2.5 text-xs font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-7",
-                        current ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-foreground",
+                        current ? "bg-background text-foreground shadow-sm ring-1 ring-input" : "text-muted-foreground hover:text-foreground",
                       )}
                     >
                       {option.label}

@@ -369,7 +369,7 @@ export interface NeedRow {
   owner: string | null;
   status: { label: string; tone: SemaforoColor };
   done: boolean;
-  /** «15 nov», «entro fine mese»; con «(proposta)» se la data non è ancora confermata. */
+  /** «15 nov», «entro fine mese»; con «(proposta)» se la data non è ancora confermata, tranne su un passo «Proposto». */
   due: string | null;
   availability: NeedAvailability | null;
   /** Gli use case collegati, per codice. */
@@ -429,7 +429,9 @@ export function needRow(need: NeedView, useCases: ReadonlyMap<string, NeedUseCas
     owner: needOwnerText(need),
     status: needStatusView(need.type, need.status),
     done: isNeedDone(need.type, need.status),
-    due: needDueText(need, today),
+    // Un passo «Proposto» è da confermare tutto, data compresa: a schermo «(proposta)» ripeterebbe lo
+    // stato accanto («Proposto · 3 dic (proposta)»). Il MCP del team tiene `needDueText` com'è.
+    due: needDueText(need.type === "passo" && need.status === "proposta" ? { ...need, dueIsProposal: false } : need, today),
     availability: need.availability,
     useCases: linked.sort(byCode),
     forLabel: need.forLabel,

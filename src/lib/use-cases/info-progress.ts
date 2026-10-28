@@ -107,9 +107,15 @@ export interface InfoProgressView {
   label: string;
   /** «2 di 6 informazioni ricevute» oppure «Nessuna informazione serve dal cliente.» */
   count: string;
-  /** Che cosa resta dopo il conteggio, es. «4 in attesa · 2 da chiedere»; null con total 0. */
+  /** Delle ricevute, quelle da guardare: «1 da verificare» (tra parentesi dopo `count`); null senza. */
+  receivedNote: string | null;
+  /**
+   * Che cosa resta dopo il conteggio, es. «1 in attesa · 2 da chiedere»: ogni gruppo non ricevuto con
+   * almeno un'esigenza, così ricevute e gruppi fanno il totale; «tutte a posto» a scheda completa;
+   * null con total 0 o senza niente che resta.
+   */
   next: string | null;
-  /** La riga di «Cosa serve»: `count`, e « · » `next` quando c'è. */
+  /** La riga di «Cosa serve»: `count`, « (`receivedNote`)» e « · » `next` quando ci sono. */
   line: string;
   /** Uguale a `label`. */
   ariaLabel: string;
@@ -128,7 +134,8 @@ export const INFO_PROGRESS_TEXT = Object.freeze({
     complete: Object.freeze({ chip: "Info: complete", option: "Complete", label: "Informazioni: complete" }),
   }),
   count: Object.freeze({ one: "{received} di 1 informazione ricevuta", many: "{received} di {total} informazioni ricevute", none: "Nessuna informazione serve dal cliente." }),
-  // Che cosa resta, dopo il conteggio: al massimo due pezzi, separati da « · ».
+  // Che cosa resta, dopo il conteggio: un pezzo per gruppo, separati da « · », che con le ricevute
+  // fanno il totale; «da verificare» sta tra parentesi dopo le ricevute, perché ne fa parte.
   next: Object.freeze({
     separator: " · ",
     toAsk: "{n} da chiedere",
@@ -137,6 +144,8 @@ export const INFO_PROGRESS_TEXT = Object.freeze({
     unanswered: "{n} senza risposta",
     blockedOne: "1 da chiedere, bloccata",
     blockedMany: "{n} da chiedere, bloccate",
+    blockedShortOne: "1 bloccata",
+    blockedShortMany: "{n} bloccate",
     oneDone: "a posto",
     allDone: "tutte a posto",
   }),
@@ -263,14 +272,24 @@ export function deriveInfoProgress(needs: readonly InfoNeedFact[], asks: readonl
 
 const fill = (template: string, values: Record<string, string | number>) => template.replace(/\{(\w+)\}/g, (whole, key: string) => (key in values ? String(values[key]) : whole));
 
-/** Che cosa resta: il conteggio dello stato e, se ne restano, quelle da chiedere. Al massimo due pezzi. */
-function infoNext(p: InfoProgress): string {
+/**
+ * Che cosa resta: un pezzo per ogni gruppo non ricevuto con almeno un'esigenza, nell'ordine degli
+ * stati (senza risposta, in attesa, da chiedere, bloccate), così il primo dice lo stato della
+ * testata e ricevute più pezzi fanno il totale. Le bloccate da sole «1 da chiedere, bloccata»;
+ * accanto ad altre, «1 bloccata». null quando non resta niente.
+ */
+function infoNext(p: InfoProgress): string | null {
   const n = INFO_PROGRESS_TEXT.next;
-  const toAsk = fill(n.toAsk, { n: p.toAsk });
   if (p.state === "complete") return p.total === 1 ? n.oneDone : n.allDone;
-  if (p.state === "da_chiedere") return p.blocked ? (p.blockedCount === 1 ? n.blockedOne : fill(n.blockedMany, { n: p.blockedCount })) : toAsk;
-  const head = p.state === "da_verificare" ? fill(n.toVerify, { n: p.toVerify }) : p.state === "senza_risposta" ? fill(n.unanswered, { n: p.unanswered }) : fill(n.waiting, { n: p.waiting });
-  return p.toAsk > 0 ? head + n.separator + toAsk : head;
+  const pieces: string[] = [];
+  if (p.unanswered > 0) pieces.push(fill(n.unanswered, { n: p.unanswered }));
+  if (p.waiting > 0) pieces.push(fill(n.waiting, { n: p.waiting }));
+  if (p.toAsk > 0) pieces.push(fill(n.toAsk, { n: p.toAsk }));
+  if (p.blockedCount > 0) {
+    const alone = pieces.length === 0;
+    pieces.push(p.blockedCount === 1 ? (alone ? n.blockedOne : n.blockedShortOne) : fill(alone ? n.blockedMany : n.blockedShortMany, { n: p.blockedCount }));
+  }
+  return pieces.length ? pieces.join(n.separator) : null;
 }
 
 /** I testi di §P2.8.2 per uno stato; null quando non c'è niente da mostrare. */
@@ -280,6 +299,8 @@ export function infoProgressView(p: InfoProgress | null): InfoProgressView | nul
   const texts = t.states[p.state];
   const count = p.total === 0 ? t.count.none : p.total === 1 ? fill(t.count.one, { received: p.received }) : fill(t.count.many, { received: p.received, total: p.total });
   const next = p.total === 0 ? null : infoNext(p);
+  const receivedNote = p.toVerify > 0 ? fill(t.next.toVerify, { n: p.toVerify }) : null;
+  const head = receivedNote ? `${count} (${receivedNote})` : count;
   return {
     state: p.state,
     param: INFO_PROGRESS_PARAM[p.state],
@@ -288,8 +309,9 @@ export function infoProgressView(p: InfoProgress | null): InfoProgressView | nul
     option: texts.option,
     label: texts.label,
     count,
+    receivedNote,
     next,
-    line: next ? count + t.next.separator + next : count,
+    line: next ? head + t.next.separator + next : head,
     ariaLabel: texts.label,
     showInRows: INFO_ROW_STATES.includes(p.state),
     received: p.received,

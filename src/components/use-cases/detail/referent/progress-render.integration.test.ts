@@ -20,7 +20,8 @@ const { registerHooks } = nodeModule as unknown as {
 // «Raccolta informazioni» nelle pagine vere (SPEC §P2.10.3–5, §P2.12.3), con una scheda per stato:
 // - la scheda, per un revisore (function_lead): il chip accanto alla pillola della fase con solo lo
 //   stato a parole, che non sembra una fase; in cima a «Cosa serve» una riga sola, «N di M
-//   informazioni ricevute» e che cosa resta (rilascio «Pulizia»: niente date, niente frasi);
+//   informazioni ricevute» (tra parentesi le da verificare) e che cosa resta, gruppo per gruppo
+//   (rilascio «Pulizia»: niente date, niente frasi);
 // - la pagina «Use case»: il chip corto solo nelle righe di «Da decidere» e nelle card della Roadmap
 //   che chiedono a qualcuno di fare qualcosa («da verificare», «senza risposta»); il filtro
 //   «Informazioni» con i cinque stati;
@@ -274,7 +275,8 @@ test("la scheda: nella testata solo lo stato a parole, non una pillola; in cima 
   const verify = await detailHtml("builder", cards.verify);
   const verifyTotal = (await needsOf(cards.verify)).length;
   assert.ok(verify.includes("Informazioni: da verificare"));
-  assert.equal(textOf(summaryOf(verify)), `1 di ${verifyTotal} informazioni ricevute · 1 da verificare · ${verifyTotal - 1} da chiedere`);
+  // La da verificare è tra le ricevute: tra parentesi, così ricevute e «da chiedere» fanno il totale.
+  assert.equal(textOf(summaryOf(verify)), `1 di ${verifyTotal} informazioni ricevute (1 da verificare) · ${verifyTotal - 1} da chiedere`);
   const silent = await detailHtml("builder", cards.silent);
   const silentTotal = (await needsOf(cards.silent)).length;
   assert.ok(silent.includes("Informazioni: senza risposta"));

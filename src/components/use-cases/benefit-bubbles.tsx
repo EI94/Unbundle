@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FIGURE_SEPARATOR, formatEuro, oneoffRunText, perYearShortText } from "@/lib/use-cases/format";
+import { FIGURE_SEPARATOR, formatEuro, oneoffRunParts, oneoffRunText, perYearShortText } from "@/lib/use-cases/format";
 import { UP_TO_WORD, VALUE_MODEL_STATE_LABEL } from "@/lib/use-cases/labels";
 import { placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
 import { BUBBLE_WHEN_LABEL, bubbleWhenText, groupLegend, type BenefitBubble, type BenefitBubbles, type BubbleWhen, type GroupPalette } from "@/lib/use-cases/value-charts";
@@ -34,11 +34,19 @@ function benefitText(bubble: Pick<BenefitBubble, "benefit" | "pendingEur">): str
   return pendingText(bubble) ?? VALUE_MODEL_STATE_LABEL.qualitativo;
 }
 
+/**
+ * Le parti della riga sotto il titolo, nell'elenco al telefono: ognuna va a capo intera, mai
+ * «1.200» da una parte e «€/anno» dall'altra.
+ */
+export function bubbleSummaryParts(bubble: BenefitBubble): string[] {
+  const parts = [`${BUBBLES_TEXT.ease} ${bubble.ease}`, benefitText(bubble), ...oneoffRunParts(bubble.oneoff, bubble.run), bubbleWhenText(bubble)];
+  if (bubble.groupLabel) parts.push(bubble.groupLabel);
+  return parts;
+}
+
 /** «Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre · Gruppo Vendite» (con «· scaduto» se il trimestre è passato). */
 export function bubbleSummary(bubble: BenefitBubble): string {
-  const parts = [`${BUBBLES_TEXT.ease} ${bubble.ease}`, benefitText(bubble), oneoffRunText(bubble.oneoff, bubble.run), bubbleWhenText(bubble)];
-  if (bubble.groupLabel) parts.push(bubble.groupLabel);
-  return parts.join(FIGURE_SEPARATOR);
+  return bubbleSummaryParts(bubble).join(FIGURE_SEPARATOR);
 }
 
 /** Bordo e riempimento: scuro questo trimestre, pieno il prossimo, tratteggiato più avanti, chiaro da decidere. */
@@ -183,10 +191,17 @@ export function BenefitBubbleChart({ chart, palette, hrefs }: BenefitBubblesProp
                 >
                   <span className="flex min-w-0 items-center gap-2 text-sm">
                     <span aria-hidden className={cn("size-3 shrink-0 rounded-full", bubbleClass(bubble))} />
-                    {bubble.code ? <span className="font-mono text-xs text-muted-foreground">{bubble.code}</span> : null}
-                    <span className="truncate font-medium">{bubble.title}</span>
+                    {bubble.code ? <span className="shrink-0 font-mono text-xs whitespace-nowrap text-muted-foreground">{bubble.code}</span> : null}
+                    <span className="min-w-0 truncate font-medium">{bubble.title}</span>
                   </span>
-                  <span className="text-xs text-muted-foreground">{bubbleSummary(bubble)}</span>
+                  <span data-slot="bubble-summary" className="text-xs text-muted-foreground">
+                    {bubbleSummaryParts(bubble).map((part, index) => (
+                      <span key={`${index}-${part}`}>
+                        {index ? FIGURE_SEPARATOR : null}
+                        <span className="whitespace-nowrap">{part}</span>
+                      </span>
+                    ))}
+                  </span>
                 </Link>
               </li>
             ))}

@@ -65,3 +65,9 @@ test("niente dal cliente: solo la frase, senza «che cosa resta»", () => {
   assert.equal(textOf(html), "Nessuna informazione serve dal cliente.");
   assert.ok(!html.includes('data-slot="info-next"'));
 });
+
+test("da verificare: tra parentesi dopo le ricevute, e ogni gruppo che resta, così i numeri fanno il totale", () => {
+  const html = render(infoProgressView({ ...waiting, state: "da_verificare", received: 2, total: 5, toVerify: 1, waiting: 1, toAsk: 2 }));
+  assert.equal(textOf(html), "2 di 5 informazioni ricevute (1 da verificare) · 1 in attesa · 2 da chiedere");
+  assert.match(html, /<span data-slot="info-received-note"> \(1 da verificare\)<\/span>/);
+});

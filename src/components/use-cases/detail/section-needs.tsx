@@ -48,6 +48,7 @@ import { askEntry } from "./referent/ask-dialog-state";
 import { ReferentDialogs, type ReferentDialog } from "./referent/dialogs";
 import { GateNotice } from "./referent/gate-notice";
 import { NeedReferentBlock } from "./referent/need-referent-block";
+import { PrepareButton } from "./referent/prepare-button";
 import { RequestsList } from "./referent/requests-list";
 import {
   NEED_FORM_CHOICES,
@@ -185,7 +186,7 @@ export function SectionNeeds({
     />
   );
   // «Chiedi al referente» si apre anche quando manca solo qualcosa da chiedere e «Prepara le domande»
-  // può aggiungerlo: la finestra lo offre.
+  // può aggiungerlo: la finestra lo offre. Spento da un altro motivo, «Prepara le domande» resta nel capitolo.
   const entry = feature ? askEntry(feature) : null;
   const askBlocked = !entry?.canOpen;
 
@@ -223,8 +224,13 @@ export function SectionNeeds({
             </Button>
           ) : null}
           {/*
+            «Prepara le domande» sta nella finestra di «Chiedi al referente»; qui solo quando qualcosa si
+            può preparare ma un altro motivo tiene la finestra chiusa (preparare non manda niente).
+          */}
+          {feature?.canAsk && entry?.showPrepare ? <PrepareButton workspaceId={workspaceId} useCaseId={useCaseId} describedBy={gatesId} /> : null}
+          {/*
             L'azione principale del capitolo, ma non della pagina: un solo pulsante pieno per pagina (la
-            decisione). «secondary» la distingue da «Aggiungi». «Prepara le domande» sta nella sua finestra.
+            decisione). «secondary» la distingue da «Aggiungi» e «Prepara le domande».
           */}
           {feature?.canAsk ? (
             <Button
@@ -241,7 +247,7 @@ export function SectionNeeds({
           ) : null}
         </div>
       ) : null}
-      {canEdit && feature?.canAsk && entry ? <GateNotice id={gatesId} gates={entry.gates} noQuestionsNote={entry.noQuestionsNote} /> : null}
+      {canEdit && feature?.canAsk && entry ? <GateNotice id={gatesId} gates={entry.gates} /> : null}
       {feature ? <RequestsList workspaceId={workspaceId} useCaseId={useCaseId} requests={feature.requests} canAsk={canEdit && feature.canAsk} onOpen={setReferentDialog} /> : null}
 
       {canEdit && (dialog?.mode === "aggiungi" || dialog?.mode === "modifica") ? (

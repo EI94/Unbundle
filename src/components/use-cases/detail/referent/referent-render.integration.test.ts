@@ -20,8 +20,9 @@ const { registerHooks } = nodeModule as unknown as {
 // «Chiedi al referente» nella scheda vera (SPEC §9.3, §P3.9), resa in questo processo con la sessione
 // scelta dalla prova:
 // - un revisore (function_lead) vede «Chiedi al referente» e ogni motivo che blocca (fornitori non
-//   autorizzati ed email spente insieme), senza un «Prepara le domande» separato: sta nella finestra
-//   (rilascio «Pulizia»); poi le richieste, le righe sotto le esigenze, le risposte e i file con
+//   autorizzati ed email spente insieme); finché la finestra non si apre e c'è qualcosa da preparare,
+//   «Prepara le domande» accanto, che funziona; dopo averle preparate sparisce (sta nella finestra,
+//   rilascio «Pulizia»); poi le richieste, le righe sotto le esigenze, le risposte e i file con
 //   «Scarica»; mai «In corso»;
 // - nel selettore il suo contatto è «(sei tu)», un collega revisore «Fa parte del team»;
 // - un contributore non riceve niente di tutto questo, nemmeno il testo delle risposte.
@@ -224,24 +225,38 @@ after(async () => {
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [PEOPLE.map((p) => ids[p])]);
 });
 
-test("un revisore vede «Chiedi al referente» spento e ogni motivo insieme, senza un «Prepara le domande» separato; il contributore niente", opts, async () => {
+test("un revisore vede «Chiedi al referente» spento e ogni motivo insieme, con «Prepara le domande» accanto finché c'è da preparare; il contributore niente", opts, async () => {
   const T = labels.REFERENT_UI_TEXT;
   const askButton = (html: string) => new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*?${T.ask}</button>`).exec(html)?.[0] ?? "";
-  // Prima di preparare: niente da chiedere, ma le email e i fornitori bloccano comunque; «Prepara le
-  // domande» potrebbe aggiungere domande, quindi nessuna nota che dice il contrario.
+  const prepareButton = (html: string) => new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*?${T.prepare}</button>`).exec(html)?.[0] ?? "";
+  // Prima di preparare: niente da chiedere, e le email e i fornitori tengono chiusa la finestra; le
+  // domande standard si possono preparare lo stesso, con «Prepara le domande» accanto, e il motivo
+  // «Non ci sono domande da fare» che lo nomina dice il vero.
   const empty = await detailHtml("builder");
   assert.match(askButton(empty), /disabled=""/);
+  const prepare = prepareButton(empty);
+  assert.ok(prepare, "«Prepara le domande» nel capitolo");
+  assert.doesNotMatch(prepare, /disabled=""|aria-disabled="true"/);
+  assert.match(prepare, /aria-describedby="cosa-serve-chiedi-motivi"/);
   const emptyGates = empty.slice(empty.indexOf('data-slot="referent-gates"'));
+  for (const gate of ["sub_responsabili_mancanti", "email_non_configurata", "nessuna_domanda"]) assert.ok(emptyGates.includes(`data-gate="${gate}"`), gate);
   assert.ok(emptyGates.includes(T.gates.noQuestions), "il motivo «Non ci sono domande da fare»");
-  assert.ok(!empty.includes(T.prepareDisabledTitle), "si può ancora preparare: nessuna nota");
+  assert.ok(!empty.includes(T.gates.noQuestionsPage));
+  // Anche con l'email di chi guarda non verificata (un motivo suo) si può preparare.
+  state.__hubServeSession = { user: { id: ids.builder, email: emails.builder, emailVerified: false, name: NAMES.builder, image: null } };
+  const unverified = readable(renderToStaticMarkup(await pageOfDetail({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId: ids.card }), searchParams: Promise.resolve({}) })));
+  assert.ok(unverified.includes('data-gate="email_non_verificata"'), "il motivo dell'email non verificata");
+  assert.ok(prepareButton(unverified), "«Prepara le domande» anche con l'email non verificata");
+  // Il pulsante chiama l'azione di sempre: la stessa scrittura del server.
   ok(await referents.prepareReferentQuestions(as("builder"), ids.card), "Prepara le domande");
   flow.needs = await needsOfCard();
   assert.ok(flow.needs.length >= 4, `domande preparate: ${flow.needs.length}`);
   const page = await detailHtml("builder");
   for (const text of [T.ask, labels.REFERENT_UI_TEXT.gates.emailNotConfigured, T.gates.subprocessorsLink]) assert.ok(page.includes(text), text);
-  // «Prepara le domande» sta nella finestra di «Chiedi al referente»; dopo averle preparate non c'è
-  // più il motivo «Non ci sono domande da fare» che lo nomina.
+  // Dopo averle preparate non manca più niente da preparare: «Prepara le domande» sparisce dal
+  // capitolo, e con le domande da fare non c'è più il motivo «Non ci sono domande da fare».
   assert.ok(!page.includes(T.prepare), "nessun «Prepara le domande» nel capitolo");
+  assert.ok(!page.includes('data-gate="nessuna_domanda"'));
   assert.ok(!page.includes('data-slot="prepare-reason"'));
   // La persona di funzione può dare l'autorizzazione lei stessa: il testo lo dice, con il nome dell'azienda.
   assert.ok(page.includes(`TopJet prova ${suffix} deve autorizzare i fornitori che usiamo`), "fornitori da autorizzare");

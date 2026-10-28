@@ -55,6 +55,12 @@ test("«Per 3 use case»: un link per use case, «codice · titolo» o il titolo
     ],
   );
   for (const ref of REFS) assert.ok(html.includes(`href="${hrefOf(ref.id)}"`), ref.id);
+  // Sottolineati sempre, come gli altri link dell'area: in una riga grigia il solo colore non basta.
+  for (const link of links) {
+    const classes = /class="([^"]*)"/.exec(link[0])?.[1].split(" ") ?? [];
+    assert.ok(classes.includes("underline") && classes.includes("hover:decoration-2"), link[0]);
+    assert.ok(!classes.includes("hover:underline"), link[0]);
+  }
   assert.ok(html.includes('title="XV-0001 · Smistamento"'));
   assert.ok(html.includes('title="Preventivi"'));
 });

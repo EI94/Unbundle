@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ANSWER_TEXT } from "@/lib/use-cases/answers";
 import { hasValueText } from "@/lib/use-cases/format";
-import { NOT_ESTIMATED_LABEL } from "@/lib/use-cases/labels";
+import { VALUE_COST_NOT_ESTIMATED_LABEL } from "@/lib/use-cases/labels";
 import { PHASE_LABEL, VALUED_PILL } from "@/lib/use-cases/phase";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
 import { HUB_PARAM_KEYS, isContributorItem, waitingDays, waitingLabel, type AnyHubItem, type HubItem, type HubParamKey } from "@/lib/use-cases/views";
@@ -160,11 +160,15 @@ const ROW_LINK =
  * colonne della lista di «Priorità», i contributori da 42rem (titolo e pillola).
  */
 const REVIEWER_ROW_LINK = `${ROW_LINK} @min-[58rem]/hub:flex-row @min-[58rem]/hub:items-center @min-[58rem]/hub:gap-4`;
+/** Il titolo: due righe nel riquadro stretto, una con le colonne (le stesse larghezze di `REVIEWER_ROW_LINK`). */
+const TITLE_CLAMP_REVIEWER = "line-clamp-2 break-words @min-[58rem]/hub:line-clamp-1";
 const CONTRIBUTOR_ROW_LINK = `${ROW_LINK} @2xl/hub:flex-row @2xl/hub:items-center @2xl/hub:gap-4`;
+const TITLE_CLAMP_CONTRIBUTOR = "line-clamp-2 break-words @2xl/hub:line-clamp-1";
 
 /**
- * Valore e Costo nella riga (§4.6, §7.1, §7.2). Senza l'uno e senza l'altro una sola parola
- * grigia, «da stimare», invece di «Valore: da stimare · Costo: da stimare»; senza uno dei due,
+ * Valore e Costo nella riga (§4.6, §7.1, §7.2). Senza l'uno e senza l'altro una sola frase
+ * grigia, «Valore e costo: da stimare», invece di «Valore: da stimare · Costo: da stimare» (e non
+ * «da stimare» da solo, che non dice che cosa); senza uno dei due,
  * «Costo: da stimare» (o «Valore: da stimare») anche sul telefono. Il costo ha sempre la sua
  * fonte, intera: non si accorcia mai, va a capo (D5, §4.6).
  */
@@ -172,7 +176,7 @@ export function RowFigures({ item, bands }: { item: Pick<HubItem, "value" | "cos
   if (!hasValueText(item.value) && !item.cost) {
     return (
       <span data-figure="stima" data-estimated="true" className="shrink-0 text-sm whitespace-nowrap text-muted-foreground">
-        {NOT_ESTIMATED_LABEL}
+        {VALUE_COST_NOT_ESTIMATED_LABEL}
       </span>
     );
   }
@@ -205,10 +209,14 @@ function ReviewerRow({
   return (
     <li data-slot="use-case-row" data-id={item.id}>
       <Link href={href} scroll={false} className={REVIEWER_ROW_LINK}>
-        {/* Prima riga: codice, titolo e, nel riquadro stretto, i giorni di attesa. In una riga sola almeno 14rem. */}
+        {/*
+          Prima riga: codice, titolo e, nel riquadro stretto, i giorni di attesa. In una riga sola almeno
+          14rem. Nel riquadro stretto il titolo va su due righe: con i prefissi di TopJet («LIBRA L1 · …»)
+          una riga sola tagliava proprio la parte che dice che cosa fa.
+        */}
         <span className="flex min-w-0 items-baseline gap-3 @min-[58rem]/hub:min-w-56 @min-[58rem]/hub:flex-1">
           <CodeLabel code={item.code} className="@min-[58rem]/hub:w-20" />
-          <span className="min-w-0 flex-1 truncate font-semibold text-foreground">{item.title}</span>
+          <span className={cn("min-w-0 flex-1 font-semibold text-foreground", TITLE_CLAMP_REVIEWER)}>{item.title}</span>
           {days ? <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground @min-[58rem]/hub:hidden">{days}</span> : null}
         </span>
         {/*
@@ -257,7 +265,7 @@ function ContributorRow({ item, href }: { item: ContributorUseCase; href: string
       <Link href={href} scroll={false} className={CONTRIBUTOR_ROW_LINK}>
         <span className="flex min-w-0 items-baseline gap-3 @2xl/hub:flex-1">
           <CodeLabel code={item.own ? item.code : null} />
-          <span className="min-w-0 truncate font-semibold text-foreground">{item.title}</span>
+          <span className={cn("min-w-0 font-semibold text-foreground", TITLE_CLAMP_CONTRIBUTOR)}>{item.title}</span>
         </span>
         {showPhase ? (
           <span className="flex min-w-0 flex-wrap items-center gap-2 @2xl/hub:shrink-0">

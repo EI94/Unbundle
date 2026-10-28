@@ -108,7 +108,9 @@ test("da verificare, ricevute e chiuse", () => {
   const v = view(needs("in_verifica", "in_verifica", "chiesta", "chiesta", "chiesta", "chiesta"), []);
   assert.equal(v?.state, "da_verificare");
   assert.equal(v?.count, "2 di 6 informazioni ricevute");
-  assert.equal(v?.line, "2 di 6 informazioni ricevute · 2 da verificare");
+  // Le da verificare sono tra le ricevute: tra parentesi; le quattro chieste restano «in attesa».
+  assert.equal(v?.receivedNote, "2 da verificare");
+  assert.equal(v?.line, "2 di 6 informazioni ricevute (2 da verificare) · 4 in attesa");
   const dontKnow = needs("mancante", "validata", "validata", "validata", "validata", "validata");
   const after = view(dontKnow, [ask(dontKnow[0].id, { status: "completata", itemState: "non_so" })]);
   assert.equal(after?.state, "da_chiedere");
@@ -180,9 +182,10 @@ test("la riga non ripete la testata: niente «Informazioni:», niente date né p
     assert.ok(!v.label.includes("dal ") && !v.label.includes("promemoria"), `${name}: ${v.label}`);
     assert.equal(v.ariaLabel, v.label, name);
     if (v.next === null) continue;
-    // Il primo pezzo di «che cosa resta» dice lo stato della testata con un numero.
+    // Lo stato della testata si legge con un numero: tra parentesi (da verificare) o nel primo pezzo.
     const [first] = v.next.split(INFO_PROGRESS_TEXT.next.separator);
-    assert.ok(first.includes(STATE_WORD[v.state]), `${name}: «${first}» per ${v.state}`);
+    const said = v.state === "da_verificare" ? (v.receivedNote ?? "") : first;
+    assert.ok(said.includes(STATE_WORD[v.state]), `${name}: «${said}» per ${v.state}`);
   }
 });
 
@@ -205,16 +208,29 @@ test("i conteggi per stato delle esigenze: da verificare, in attesa, senza rispo
   const p = deriveInfoProgress(n, asks, NOW)!;
   assert.deepEqual({ toVerify: p.toVerify, waiting: p.waiting, unanswered: p.unanswered, blockedCount: p.blockedCount, toAsk: p.toAsk }, { toVerify: 1, waiting: 1, unanswered: 1, blockedCount: 1, toAsk: 1 });
   assert.equal(p.state, "da_verificare");
-  assert.equal(infoProgressView(p)?.line, "1 di 5 informazioni ricevute · 1 da verificare · 1 da chiedere");
+  // Ogni gruppo non ricevuto ha il suo pezzo: 1 ricevuta + 1 + 1 + 1 + 1 = 5.
+  assert.equal(infoProgressView(p)?.line, "1 di 5 informazioni ricevute (1 da verificare) · 1 senza risposta · 1 in attesa · 1 da chiedere · 1 bloccata");
 });
 
-test("che cosa resta: al massimo due pezzi; «complete» non dice mai «da chiedere»", () => {
+test("che cosa resta: le ricevute e i pezzi fanno il totale; «complete» non dice mai «da chiedere»", () => {
   for (const { name, n, a } of fixtures()) {
     const v = view(n, a)!;
     if (v.next === null) continue;
-    assert.ok(v.next.split(INFO_PROGRESS_TEXT.next.separator).length <= 2, `${name}: ${v.next}`);
-    if (v.state === "complete") assert.ok(!v.next.includes("da chiedere"), `${name}: ${v.next}`);
+    if (v.state === "complete") {
+      assert.ok(!v.next.includes("da chiedere"), `${name}: ${v.next}`);
+      continue;
+    }
+    const pieces = v.next.split(INFO_PROGRESS_TEXT.next.separator).map((piece) => Number(/^(\d+) /.exec(piece)?.[1]));
+    assert.ok(pieces.every(Number.isFinite), `${name}: ${v.next}`);
+    assert.equal(v.received + pieces.reduce((sum, count) => sum + count, 0), v.total, `${name}: ${v.line}`);
   }
+  // Il caso visto sulla scheda: 2 ricevute (1 da verificare), 1 in attesa, 2 da chiedere su 5.
+  const seen = needs("validata", "in_verifica", "chiesta", "da_chiedere", "da_chiedere");
+  assert.equal(view(seen, [ask(seen[2].id)])?.line, "2 di 5 informazioni ricevute (1 da verificare) · 1 in attesa · 2 da chiedere");
+  // Tutte ricevute, una da guardare: niente che resta.
+  const received = view(needs("validata", "in_verifica"), [])!;
+  assert.equal(received.next, null);
+  assert.equal(received.line, "2 di 2 informazioni ricevute (1 da verificare)");
 });
 
 test("una sola informazione, a posto: «1 di 1 informazione ricevuta · a posto»", () => {

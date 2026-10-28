@@ -336,7 +336,13 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   assert.doesNotMatch(figures, /Basso/);
   // Nella riga stretta il Valore va a capo solo dopo «·»: la cifra resta intera.
   assert.ok(figures.includes('<span class="whitespace-nowrap">4.043 €/anno</span>'), figures);
-  assert.match(figures, /avvio 560 € · ricorrenti 600 €\/anno/);
+  assert.match(figures.replace(/<[^>]+>/g, ""), /avvio 560 € · ricorrenti 600 €\/anno/);
+  // La cifra del modello va a capo solo dopo «·»: «avvio …» e «ricorrenti …» restano interi.
+  for (const part of ["avvio 560 €", "ricorrenti 600 €/anno"]) assert.ok(figures.includes(`<span class="whitespace-nowrap">${part}</span>`), part);
+  // Nella colonna di «Priorità» e nel pannello le due parti stanno una sotto l'altra, senza «·».
+  const stacked = renderToStaticMarkup(createElement(CostFigure, { cost: detail.useCase.cost, withLabel: true, stack: true }));
+  assert.match(stacked, /<span data-cost-parts="" class="inline-flex flex-col font-medium"><span class="whitespace-nowrap">avvio 560 €<\/span><span class="whitespace-nowrap">ricorrenti 600 €\/anno<\/span><\/span>/);
+  assert.doesNotMatch(stacked, / · /);
   assert.match(figures, /data-cost-source="stima"/);
   assert.doesNotMatch(figures, /data-source="stima"/, "nella riga la cifra del modello va senza fonte");
 
@@ -348,6 +354,8 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   assert.match(long, /4\.043 € all&#x27;anno/);
   assert.match(long, /stima del team/);
   assert.equal((longValue.match(/data-source=/g) ?? []).length, 1, longValue);
+  // Le due fonti nello stesso posto: sulla riga sotto la cifra grande.
+  assert.equal((long.match(/<div data-slot="figure-source"><span data-source=/g) ?? []).length, 2, long);
 
   const summary = renderToStaticMarkup(createElement(ValueParamsSummary, { params: detail.valueParams }));
   assert.match(summary, /Ipotesi di calcolo/);

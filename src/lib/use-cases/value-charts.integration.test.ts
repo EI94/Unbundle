@@ -364,6 +364,10 @@ test("Priorità: «Matrice Valore × Costo» e «Matrice Facilità × Beneficio�
   assert.ok(!page.includes(`data-bubble="${cards.b.id}"`), "in realizzazione: non è in «Priorità»");
   assert.ok(!page.includes(`data-bubble="${cards.plain.id}"`), "senza modello: non è tra le bolle");
   assert.ok(page.includes('data-slot="benefit-bubbles-list"'), "sotto i 768 px, l'elenco");
+  // Nell'elenco il codice non va a capo («TJ-» / «0010») e ogni parte della riga resta intera.
+  const phoneList = page.slice(page.indexOf('data-slot="benefit-bubbles-list"'));
+  assert.ok(phoneList.includes(`<span class="shrink-0 font-mono text-xs whitespace-nowrap text-muted-foreground">${cards.a.code}</span>`), "il codice intero");
+  for (const part of ["4.043 €/anno", "avvio 560 €", "ricorrenti 600 €/anno"]) assert.ok(phoneList.includes(`<span class="whitespace-nowrap">${part}</span>`), part);
   assert.ok(page.includes("Servizio clienti"), "la legenda dei gruppi");
   assert.ok(page.includes(">Senza gruppo<"), "il grigio dice che sono schede senza gruppo, non «Altro»");
   assert.ok(page.includes('data-slot="value-params-summary"') && page.includes("Ipotesi di calcolo"));

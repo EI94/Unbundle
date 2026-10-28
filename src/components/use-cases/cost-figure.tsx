@@ -17,6 +17,13 @@ export interface CostFigureProps {
   form?: "corta" | "lunga";
   /** «Costo: €€ · 40.000 € · team» nella riga (§4.6); «Costo di realizzazione» sopra la cifra nella scheda. */
   withLabel?: boolean;
+  /**
+   * Forma corta: «avvio 6.450 €» e «ricorrenti 1.200 €/anno» una sotto l'altra, senza « · »: sempre
+   * (`true`, il pannello) o solo con le colonne della lista di «Priorità» (`"colonne"`, il riquadro
+   * `@container/hub` largo almeno 58rem). Senza, le due parti stanno in riga e vanno a capo solo
+   * dopo « · ».
+   */
+  stack?: boolean | "colonne";
   className?: string;
 }
 
@@ -30,7 +37,7 @@ const COST_LABEL_LONG = "Costo di realizzazione";
  * alle schermate di controllare che il costo abbia sempre la sua fonte e che la pagina del
  * contributore non abbia cifre (PIANO-LAVORI §5.4, §5.7).
  */
-export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel = false, className }: CostFigureProps) {
+export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel = false, stack = false, className }: CostFigureProps) {
   const parts = costTextParts(cost, form, bands);
   const source = cost && !parts.estimated ? cost.source : null;
   if (form === "lunga") {
@@ -42,20 +49,46 @@ export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel
         className={cn("min-w-0 space-y-1", className)}
       >
         {withLabel && <div className="text-sm text-muted-foreground">{COST_LABEL_LONG}</div>}
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <div>
           <span className={cn("text-xl font-semibold tracking-tight", parts.estimated && "text-muted-foreground")}>{parts.figure}</span>
-          {source && <SourceTag figure="costo" source={source} form="lunga" />}
         </div>
+        {/* La fonte sulla riga sotto la cifra, come per il Valore: accanto, una cifra lunga la mandava a capo da sola. */}
+        {source ? (
+          <div data-slot="figure-source">
+            <SourceTag figure="costo" source={source} form="lunga" />
+          </div>
+        ) : null}
       </div>
     );
   }
   // In riga, testo semplice che va a capo tra le parti: «Costo: €€ · 40.000 € · team». La cifra
-  // di «Benefici e costi» («avvio 1.050 € · ricorrenti 300 €/anno») è lunga: può andare a capo,
-  // altrimenti esce dal pannello.
+  // di «Benefici e costi» («avvio 1.050 € · ricorrenti 300 €/anno») è lunga: va a capo, ma solo tra
+  // «avvio …» e «ricorrenti …», mai dentro un importo; con `stack` le due parti stanno una sotto l'altra.
+  const tone = parts.estimated ? "text-muted-foreground" : "font-medium";
+  const multi = parts.figureParts.length > 1;
   return (
     <span data-figure="costo" data-estimated={parts.estimated ? "true" : undefined} data-cost-source={source ?? undefined} className={cn("text-sm", className)}>
       {withLabel && <span className="text-muted-foreground">{COST_LABEL_SHORT}: </span>}
-      <span className={cn(source !== "stima" && "whitespace-nowrap", parts.estimated ? "text-muted-foreground" : "font-medium")}>{parts.figure}</span>
+      {multi && stack === true ? (
+        <span data-cost-parts="" className={cn("inline-flex flex-col", tone)}>
+          {parts.figureParts.map((part) => (
+            <span key={part} className="whitespace-nowrap">
+              {part}
+            </span>
+          ))}
+        </span>
+      ) : multi ? (
+        <span data-cost-parts={stack === "colonne" ? "colonne" : undefined} className={cn(tone, stack === "colonne" && "@min-[58rem]/hub:inline-flex @min-[58rem]/hub:flex-col")}>
+          {parts.figureParts.map((part, index) => (
+            <span key={part}>
+              {index > 0 ? <span className={stack === "colonne" ? "@min-[58rem]/hub:hidden" : undefined}>{FIGURE_SEPARATOR}</span> : null}
+              <span className="whitespace-nowrap">{part}</span>
+            </span>
+          ))}
+        </span>
+      ) : (
+        <span className={cn("whitespace-nowrap", tone)}>{parts.figure}</span>
+      )}
       {source && parts.source ? (
         <>
           <span className="text-muted-foreground">{FIGURE_SEPARATOR}</span>

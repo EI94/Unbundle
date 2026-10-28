@@ -28,8 +28,6 @@ export function companyLabel(name: string | null | undefined): string {
 export const REFERENT_UI_TEXT = Object.freeze({
   // Riga delle azioni
   prepare: "Prepara le domande",
-  prepareDisabledTitle: "Non manca niente da chiedere su questa scheda.",
-  prepareDisabledPresent: "Le domande standard ci sono già o sono state archiviate in «Cosa serve».",
   ask: "Chiedi al referente",
   // Avvisi che bloccano «Chiedi al referente»
   gates: Object.freeze({
@@ -41,6 +39,9 @@ export const REFERENT_UI_TEXT = Object.freeze({
     publicWritesOff: "Le risposte dal link non sono attive in questo momento: per ora non possiamo scrivere al referente. Riprova più tardi.",
     emailNotVerified: "Per chiedere serve un account con l'email verificata: le risposte all'email arrivano a te.",
     noQuestions: "Non ci sono domande da fare: aggiungile in «Cosa serve» o usa «Prepara le domande».",
+    // Sulla scheda, al posto di `noQuestions`, quando «Prepara le domande» non ha niente da aggiungere
+    // e quindi non c'è: nomina solo il pulsante che c'è.
+    noQuestionsPage: "Non ci sono domande da fare: aggiungile con «Aggiungi».",
   }),
   // Riga di un'esigenza (composta da `needReferentLine`)
   needLine: Object.freeze({

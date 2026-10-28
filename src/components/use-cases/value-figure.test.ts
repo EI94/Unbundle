@@ -67,6 +67,8 @@ test("forma lunga con gli euro: una sola cifra grande con la sua fonte, senza pa
   assert.doesNotMatch(html, /Basso · 2,2/);
   assert.doesNotMatch(html, /Basso|2,2/);
   assert.match(html, /<span class="text-xl font-semibold tracking-tight">12\.250 € all&#x27;anno<\/span>/, "non in grigio");
+  // La fonte sulla riga sotto la cifra, nello stesso posto del costo.
+  assert.match(html, /<\/span><\/div><div data-slot="figure-source"><span data-source="dossier"/);
 });
 
 test("forma lunga con «Benefici e costi»: le voci da misurare sotto la cifra; il solo tetto in grigio", () => {

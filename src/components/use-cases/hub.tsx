@@ -368,7 +368,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
         >
           {items.length > 0 ? (
             <div className="space-y-3">
-              <SegmentedNav ariaLabel={HUB_TEXT.viewsLabel} active={view} items={navItems} />
+              <SegmentedNav ariaLabel={HUB_TEXT.viewsLabel} active={view} items={navItems} gridOnPhone={navItems.length > 2} />
               <FilterBar
                 basePath={basePath}
                 query={query}

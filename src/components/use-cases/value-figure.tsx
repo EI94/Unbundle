@@ -67,14 +67,19 @@ export function ValueFigure({ value, form = "corta", withLabel = false, withSour
     return (
       <div data-figure="valore" data-estimated={estimated ? "true" : undefined} className={cn("min-w-0 space-y-1", className)}>
         {withLabel && <div className="text-sm text-muted-foreground">{VALUE_LABEL}</div>}
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <div>
           <span className={cn("text-xl font-semibold tracking-tight", grey && "text-muted-foreground")}>{valueScreenLongText(value)}</span>
-          {euro ? (
-            <SourceTag figure="valore_anno" source={euro.source} form="lunga" />
-          ) : (
-            value?.source && <SourceTag figure="valore" source={value.source} form="lunga" />
-          )}
         </div>
+        {/* La fonte sulla riga sotto la cifra, come per il costo: lo stesso posto per le due cifre. */}
+        {euro ? (
+          <div data-slot="figure-source">
+            <SourceTag figure="valore_anno" source={euro.source} form="lunga" />
+          </div>
+        ) : value?.source ? (
+          <div data-slot="figure-source">
+            <SourceTag figure="valore" source={value.source} form="lunga" />
+          </div>
+        ) : null}
         {perYear && value?.perYear && (
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
             <span>{perYear}</span>

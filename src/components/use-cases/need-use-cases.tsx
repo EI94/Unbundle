@@ -6,7 +6,11 @@ import { Disclosure } from "./disclosure";
 // Al telefono un bersaglio da dito (44 px); dal tablet almeno 24 px.
 const TARGET = "min-h-11 sm:min-h-6";
 
-/** Uno use case di un'esigenza: «TJ-0012 · Smistamento», il titolo solo senza codice. */
+/**
+ * Uno use case di un'esigenza: «TJ-0012 · Smistamento», il titolo solo senza codice. Sottolineato come
+ * gli altri link dell'area: nel tema scuro --primary è chiaro come il testo e sta dentro righe grigie
+ * («Ufficio IT · 30/11 · TJ-0012 · …»), dove il solo colore non basta a dire dove inizia il link.
+ */
 export function NeedUseCaseLink({ useCase, href, scroll = true }: { useCase: NeedUseCaseRef; href: string; scroll?: boolean }) {
   return (
     <Link
@@ -15,7 +19,7 @@ export function NeedUseCaseLink({ useCase, href, scroll = true }: { useCase: Nee
       data-need-use-case={useCase.id}
       title={useCase.code ? `${useCase.code} · ${useCase.title}` : useCase.title}
       className={cn(
-        "inline-flex items-center rounded-sm text-xs text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50",
+        "inline-flex items-center rounded-sm text-xs text-primary underline underline-offset-4 outline-none hover:decoration-2 focus-visible:ring-3 focus-visible:ring-ring/50",
         TARGET,
       )}
     >

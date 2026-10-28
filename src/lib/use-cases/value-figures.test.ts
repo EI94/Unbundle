@@ -299,11 +299,15 @@ test("a schermo: con una cifra in euro solo la cifra, senza parola né zona; il 
   assert.equal(hasEuroValue(pending.value), true);
   assert.equal(showsZone(pending.value), false);
 
-  // Solo a parole: nessuna cifra, la zona resta.
+  // Solo a parole: nessuna cifra, e la zona («senza beneficio contato») ripeterebbe «qualitativo»:
+  // a schermo non si scrive; il MCP e l'export la tengono.
   const words = item({ valueModel: WORDS_ONLY });
   assert.equal(valueScreenText(words.value), "qualitativo");
-  assert.equal(showsZone(words.value), true);
+  assert.equal(showsZone(words.value), false);
   assert.equal(zoneText(words.zone, words.value), "senza beneficio contato");
+  // «da misurare» senza un tetto in euro: lo stesso.
+  assert.equal(showsZone({ perYear: null, benefits: { state: "da_misurare", benefitEur: 0, pendingEur: 0, hours: 0 } }), false);
+  assert.equal(showsZone({ perYear: null, benefits: null }), true, "senza modello e senza euro la zona resta");
 
   // Senza modello: punteggio basso e valore all'anno del team (il caso di produzione).
   const team = { customScores: { impact: { efficiency: 2, profitability: 2 } }, valueEurYear: 12_250, costEurOnce: 10_000 };

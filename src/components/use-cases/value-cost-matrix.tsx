@@ -2,7 +2,7 @@ import Link from "next/link";
 import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { costShortText, valueScreenText } from "@/lib/use-cases/format";
 import { ORIGIN_LABEL, ZONE_HINT, ZONE_LABEL } from "@/lib/use-cases/labels";
-import { placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
+import { groupLabelTexts, groupNearPoints, placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
 import type { Origin } from "@/lib/use-cases/types";
 import type { CostFigure as CostFigureData, ValueFigure as ValueFigureData } from "@/lib/use-cases/valuation";
 import { EXPIRED_TAG, toEstimateLabel } from "@/lib/use-cases/views";
@@ -14,7 +14,8 @@ import { ValueFigure } from "./value-figure";
 /** Testi della matrice (docs/use-case/DESIGN.md §4.4, §14.3). */
 export const MATRIX_TEXT = Object.freeze({
   label: "Matrice Valore × Costo di realizzazione",
-  valueAxis: "Valore",
+  // Gli altri schermi scrivono il Valore in euro: qui l'asse dice che è il punteggio da 1 a 5.
+  valueAxis: "Valore (punteggio 1–5)",
   costAxis: "Costo di realizzazione",
   approved: "approvato",
   toDecide: "da decidere",
@@ -80,16 +81,19 @@ const ZONE_TEXT = "absolute text-xs leading-tight break-words text-muted-foregro
 
 /**
  * Punti che cadono nello stesso posto (stessa fascia, stesso Valore): si aprono a raggiera di
- * poco, così ognuno resta cliccabile. Nessun ordine per persona: l'ordine è quello della lista.
+ * poco, così ognuno resta cliccabile. Punti quasi nello stesso posto restano dove sono (la
+ * posizione è il loro costo), ma il primo porta l'etichetta con tutti i codici del gruppo
+ * («TJ-0001, TJ-0004», `groupNearPoints`): senza, il secondo codice copriva il primo e uno use case
+ * spariva dal grafico. Nessun ordine per persona: l'ordine è quello della lista.
  */
-function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: number; top: number }> {
+function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: number; top: number; labelText: string }> {
   const groups = new Map<string, number>();
   const seen = new Map<string, number>();
   for (const point of points) {
     const key = `${leftPct(point.x).toFixed(1)}|${topPct(point.y).toFixed(1)}`;
     groups.set(key, (groups.get(key) ?? 0) + 1);
   }
-  return points.map((point) => {
+  const placed = points.map((point) => {
     const left = leftPct(point.x);
     const top = topPct(point.y);
     const key = `${left.toFixed(1)}|${top.toFixed(1)}`;
@@ -101,6 +105,11 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
     const radius = 2.2;
     return { ...point, left: clamp(left + radius * Math.cos(angle)), top: clamp(top + radius * Math.sin(angle)) };
   });
+  const texts = groupLabelTexts(
+    placed.map((point) => point.code),
+    groupNearPoints(placed),
+  );
+  return placed.map((point, index) => ({ ...point, labelText: texts[index] }));
 }
 
 /**
@@ -112,7 +121,8 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
  * la sua zona, di qua o di là della linea del costo basso (anche al telefono). Punti di
  * 10 px colorati per origine, pieni se approvati, vuoti se da decidere, con il bordo rosso se
  * scaduti; ogni punto ha accanto il suo codice, messo dove non copre gli altri
- * (`placeMatrixLabels`; dove coprirebbe qualcosa non c'è, come nelle bolle facilità × beneficio).
+ * (`placeMatrixLabels`; dove coprirebbe qualcosa non c'è, come nelle bolle facilità × beneficio);
+ * punti quasi nello stesso posto hanno un'etichetta sola con tutti i loro codici.
  * Al passaggio del mouse codice, titolo, Valore, Costo e fonte; al clic,
  * o al tocco, il pannello laterale (il punto e il codice sono lo stesso link, largo abbastanza
  * per un dito). Senza trascinamento. Solo per i revisori.
@@ -120,8 +130,9 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
 export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BANDS, toEstimate, toEstimateHref, offMatrix = null }: ValueCostMatrixProps) {
   const placed = spread(points);
   // Le etichette si mettono per la matrice più piccola (320 px, al telefono) e per la più grande (600 px).
+  // Ogni punto è un ostacolo; ha un'etichetta solo chi porta i codici del suo gruppo.
   const labels = placeMatrixLabels(
-    placed.filter((point) => point.code).map((point) => ({ id: point.id, left: point.left, top: point.top, text: point.code! })),
+    placed.map((point) => ({ id: point.id, left: point.left, top: point.top, text: point.labelText })),
     { boxPx: 320, maxBoxPx: 600 },
   );
   const anyExpired = points.some((point) => point.expired);
@@ -260,7 +271,7 @@ function MatrixDot({
   bands,
   label,
 }: {
-  point: MatrixPoint & { left: number; top: number };
+  point: MatrixPoint & { left: number; top: number; labelText: string };
   bands: readonly CostBandInfo[];
   label: MatrixLabelPlacement | null;
 }) {
@@ -288,7 +299,7 @@ function MatrixDot({
             point.expired && "ring-2 ring-red-500 ring-offset-1 ring-offset-background",
           )}
         />
-        {point.code && label && !label.crowded ? (
+        {point.labelText && label && !label.crowded ? (
           <span
             aria-hidden
             data-slot="matrix-label"
@@ -299,7 +310,7 @@ function MatrixDot({
             )}
             style={{ left: `calc(50% + ${label.dx}px)`, top: `calc(50% + ${label.dy}px)` }}
           >
-            {point.code}
+            {point.labelText}
           </span>
         ) : null}
         <span

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { COST_BANDS, costLowLinePosition, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { DEFAULT_THRESHOLDS, costLowBandOf, type ValuationModel } from "@/lib/use-cases/valuation";
@@ -10,6 +9,7 @@ import { buildPriority, offMatrixLabel, roadmapGroupKey, type HubChartParam, typ
 import { BenefitBubbleChart } from "./benefit-bubbles";
 import { DiffuseList } from "./diffuse-list";
 import { EmptyState, NoResults } from "./hub-header";
+import { BackToListLink, ListFocusTarget } from "./list-focus";
 import { PriorityList } from "./priority-list";
 import { hubHref, panelHref, withoutTransient, type HubQuery } from "./use-case-row";
 import { ValueCostMatrix, type MatrixPoint } from "./value-cost-matrix";
@@ -66,14 +66,14 @@ export interface PriorityViewProps {
   info?: Readonly<Record<string, InfoProgressView>> | null;
 }
 
-/** Sopra un grafico del menu «⋯»: «‹ Torna alla lista», con gli stessi filtri, e il nome del grafico. */
+/**
+ * Sopra un grafico del menu «⋯»: «‹ Torna alla lista», con gli stessi filtri, e il nome del grafico.
+ * Tornando, il fuoco va al titolo della lista (`ListFocusTarget`), non sul `<body>`.
+ */
 function ChartHeader({ title, listHref }: { title: string; listHref: string }) {
   return (
     <div data-slot="chart-header" className="flex flex-wrap items-center gap-x-3 gap-y-2">
-      <Button variant="outline" className="min-h-11 sm:min-h-8" render={<Link href={listHref} scroll={false} />} nativeButton={false}>
-        <ChevronLeft aria-hidden />
-        {PRIORITY_TEXT.backToList}
-      </Button>
+      <BackToListLink href={listHref}>{PRIORITY_TEXT.backToList}</BackToListLink>
       <h2 className="text-base font-semibold">{title}</h2>
     </div>
   );
@@ -151,7 +151,7 @@ export function PriorityView({
     // Con un grafico aperto e nessuna scheda: «‹ Torna alla lista» resta; «Togli i filtri» tiene il grafico.
     return (
       <div data-slot="priority-view" data-chart={chart ?? undefined} className="space-y-4">
-        {header}
+        {header ?? <ListFocusTarget title={PRIORITY_TEXT.build} />}
         {filtersActive ? (
           <NoResults clearHref={clearHref} />
         ) : inRealization > 0 && roadmapHref ? (
@@ -215,9 +215,10 @@ export function PriorityView({
     );
   }
 
-  // La lista, a ogni larghezza.
+  // La lista, a ogni larghezza; il suo titolo per i lettori di schermo prende il fuoco dopo «‹ Torna alla lista».
   return (
     <div data-slot="priority-view" className="space-y-4">
+      <ListFocusTarget title={PRIORITY_TEXT.build} />
       <PriorityList workspaceId={workspaceId} items={view.list} today={today} canDecide={canDecide} bands={bands} basePath={basePath} query={query} toEstimateHref={toEstimateHref} info={info} />
     </div>
   );

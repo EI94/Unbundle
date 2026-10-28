@@ -137,7 +137,8 @@
 
 /* Tema chiaro delle pagine pubbliche (/rispondi, /r, /a, /s): override scoped delle variabili
    core. «Molto chiaro»: testi almeno 7:1, link e pulsanti almeno 6:1, i toni del semaforo almeno
-   5:1 sul loro fondo, bordi dei campi almeno 3:1. */
+   5:1 sul loro fondo, bordi dei campi almeno 3:1, il fuoco della tastiera almeno 3:1 (un contorno
+   pieno di --ring, sotto il blocco). */
 .survey-light {
   --background: oklch(0.985 0.002 260);
   --foreground: oklch(0.16 0.01 260);
@@ -177,6 +178,16 @@
   --uc-serie-altro: oklch(0.55 0.01 260);
   color-scheme: light;
 }
+/* Pagine pubbliche chiare: l'alone del fuoco (`ring-ring/50`, nei campi di /r `ring-ring/40`) sul
+   fondo chiaro resta sotto 3:1 con qualsiasi verde, e per il pulsante pieno, «‹ Indietro» e le
+   fonti di /r è l'unico segno del fuoco. Un contorno pieno di --ring (6,3:1 sul fondo) lo dice
+   per tutti i controlli; fuori dai layer di Tailwind, vince su `outline-none`. I campi cambiano
+   già il bordo in --ring; i bersagli del fuoco dal codice (tabindex -1) restano come sono. */
+.survey-light
+  :is(a, button, summary, [role="button"], [role="radio"], [role="checkbox"], [role="switch"], [role="tab"], [role="link"]):focus-visible:not([tabindex="-1"]) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
 
 /* Casi d'uso, dossier (DESIGN §5.4): le ancore e il focus della tastiera non
    finiscono sotto la barra del workspace (61 px, da md 53 px) e la barra fissa
@@ -212,8 +223,11 @@ html:has([data-uc-case-head])
    dell'area, sotto AA; così 6,5–7,2:1), i bordi dei campi al 38% (al 10% erano 1,2:1; così
    3,4:1) e il fuoco a 0,85 (l'alone era 2,6:1; così 3,7:1). Vale nel layout dell'area e,
    mentre una sua pagina è aperta, nei pannelli, nelle finestre e nei menu che si aprono sopra
-   (vivono fuori dal layout), anche quelli della barra del workspace. Il dossier tiene il suo
-   blocco qui sopra. */
+   (vivono fuori dal layout), anche quelli della barra del workspace. Le finestre e i pannelli
+   dell'area che danno a `DialogContent`/`SheetContent` un loro `data-slot` (le decisioni e
+   «Chiedi al referente», «Oscura», il pannello laterale, «Nuovo use case») lo sostituiscono a
+   quello di base: per questo sono nell'elenco anche loro. Il dossier tiene il suo blocco qui
+   sopra. */
 [data-use-case-root],
 html:has([data-use-case-root])
   :is(
@@ -222,9 +236,22 @@ html:has([data-use-case-root])
     [data-slot="popover-content"],
     [data-slot="dropdown-menu-content"],
     [data-slot="dropdown-menu-sub-content"],
-    [data-slot="select-content"]
+    [data-slot="select-content"],
+    [data-slot="decision-dialog"],
+    [data-slot="redact-dialog"],
+    [data-slot="use-case-panel"],
+    [data-slot="quick-create-sheet"]
   ) {
   --muted-foreground: oklch(0.68 0.01 260);
   --input: oklch(1 0 0 / 38%);
   --ring: oklch(0.85 0 0);
+}
+/* Use case, il segmento scelto delle viste («Da decidere | Priorità | Roadmap | Cosa serve»): con
+   il grigio a 0,68 il testo scelto e quello degli altri distano solo 2,5:1, e il fondo del segmento
+   (1,04:1) e l'anello `ring-border` (1,1:1) non si vedono sul tema scuro. L'anello prende il colore
+   dei bordi dei campi (3,4:1 sul segmento): si vede quale vista è aperta anche senza leggere il
+   colore del testo. `SegmentedNav` è anche del dossier, che resta com'era; con il fuoco della
+   tastiera vale l'alone di sempre. */
+[data-use-case-root] [data-slot="segmented-nav"] [aria-current="page"]:not(:focus-visible) {
+  --tw-ring-color: var(--input);
 }

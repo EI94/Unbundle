@@ -17,6 +17,7 @@ import {
   needDueText,
   needListsOfUseCase,
   needOwnerText,
+  needRow,
   needStatusView,
   panelNeeds,
   returnsToConfirm,
@@ -116,6 +117,13 @@ test("vocabolari: aree dai tipi, stati per tipo, fatto e colori", () => {
   assert.equal(needDueText({ dueOn: null, dueLabel: "a fine mese", dueIsProposal: false }, TODAY), "a fine mese");
   assert.equal(needDueText({ dueOn: null, dueLabel: null, dueIsProposal: true }, TODAY), null);
   assert.equal(monthHeading("2026-11"), "Novembre 2026");
+  // A schermo, su un passo «Proposto», la data non dice «(proposta)»: lo dice già lo stato accanto.
+  const proposedStep = need({ type: "passo", kind: "decisione", status: "proposta", dueOn: "2026-12-03", dueIsProposal: true });
+  assert.equal(needRow(proposedStep, new Map(), TODAY).due, "3 dic");
+  assert.equal(needRow(proposedStep, new Map(), TODAY).status.label, "Proposto");
+  assert.equal(needDueText(proposedStep, TODAY), "3 dic (proposta)", "il MCP del team la tiene");
+  assert.equal(needRow({ ...proposedStep, status: "confermata" }, new Map(), TODAY).due, "3 dic (proposta)", "un passo confermato con la data ancora da confermare");
+  assert.equal(needRow(need({ dueOn: "2026-12-03", dueIsProposal: true }), new Map(), TODAY).due, "3 dic (proposta)", "un requisito");
 });
 
 test("validazione: stato predefinito per tipo, testi ripuliti, errori in italiano", () => {

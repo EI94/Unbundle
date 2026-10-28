@@ -162,7 +162,7 @@ export function WhenControl({ workspaceId, item, today, canDecide, variant = "se
             key={option.choice}
             value={option.choice}
             aria-label={option.label}
-            className="flex min-h-11 min-w-0 cursor-pointer flex-col items-center justify-center rounded-md px-1.5 py-1 text-center text-muted-foreground outline-none transition-colors select-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-checked:bg-background data-checked:text-foreground data-checked:shadow-sm"
+            className="flex min-h-11 min-w-0 cursor-pointer flex-col items-center justify-center rounded-md px-1.5 py-1 text-center text-muted-foreground outline-none transition-colors select-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-checked:bg-background data-checked:text-foreground data-checked:shadow-sm data-checked:inset-ring data-checked:inset-ring-input"
           >
             <span className="w-full truncate text-xs leading-tight">{parts.title}</span>
             {parts.quarter ? <span className="text-sm leading-tight font-medium whitespace-nowrap">{parts.quarter}</span> : null}

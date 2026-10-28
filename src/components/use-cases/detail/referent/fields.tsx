@@ -49,7 +49,9 @@ export function NeedChecklist({
 }) {
   const chosen = new Set(selected);
   return (
-    <ul role="group" aria-labelledby={labelledBy} className={cn("max-h-64 space-y-0.5 overflow-y-auto rounded-lg border p-1", invalid && "border-destructive")}>
+    // Senza una sua altezza massima: la finestra scorre già, e una lista che scorre dentro una finestra
+    // che scorre tagliava a metà la sesta domanda senza una barra visibile (le domande preparate sono lunghe).
+    <ul role="group" aria-labelledby={labelledBy} className={cn("space-y-0.5 rounded-lg border p-1", invalid && "border-destructive")}>
       {items.map((item) => {
         const checked = chosen.has(item.id);
         const disabled = disabledIds?.has(item.id) && !checked;

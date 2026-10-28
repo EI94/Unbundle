@@ -178,8 +178,16 @@ test("forma corta del costo (§4.6, §7.2): le quattro fonti e «da stimare»", 
     [null, "da stimare"],
   ];
   for (const [cost, text] of cases) assert.equal(costShortText(cost), text);
-  assert.deepEqual(costTextParts(null, "corta"), { figure: "da stimare", source: null, estimated: true });
-  assert.deepEqual(costTextParts(cases[0][0], "corta"), { figure: "€€ · 40.000 €", source: "team", estimated: false });
+  assert.deepEqual(costTextParts(null, "corta"), { figure: "da stimare", figureParts: ["da stimare"], source: null, estimated: true });
+  assert.deepEqual(costTextParts(cases[0][0], "corta"), { figure: "€€ · 40.000 €", figureParts: ["€€ · 40.000 €"], source: "team", estimated: false });
+  // «Benefici e costi»: due pezzi che non si spezzano, uniti da « · » nella cifra intera.
+  assert.deepEqual(costTextParts({ source: "stima", amount: 6_450, band: 1, fromBand: false, runEurYear: 1_200 }, "corta"), {
+    figure: "avvio 6.450 € · ricorrenti 1.200 €/anno",
+    figureParts: ["avvio 6.450 €", "ricorrenti 1.200 €/anno"],
+    source: null,
+    estimated: false,
+  });
+  assert.deepEqual(costTextParts({ source: "stima", amount: 280, band: 1, fromBand: false, runEurYear: 0 }, "corta").figureParts, ["avvio 280 €"]);
 });
 
 test("forma corta del costo: la stessa stringa per la riga e per la card della Roadmap (§4.5, §4.6)", () => {
@@ -206,6 +214,7 @@ test("forma lunga del costo (§6.3, §7.2): importo, oppure «fascia» con l'eti
   assert.equal(costLongText(null), "da stimare");
   assert.deepEqual(costTextParts({ source: "team_fascia", amount: null, band: 3, fromBand: true }, "lunga"), {
     figure: "€€€ · fascia da 65.000 a 130.000 €",
+    figureParts: ["€€€ · fascia da 65.000 a 130.000 €"],
     source: "fascia del team",
     estimated: false,
   });

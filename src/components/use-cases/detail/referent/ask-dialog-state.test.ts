@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { REFERENT_LIMITS, type ReferentContactOption, type ReferentGate, type ReferentMemberOption, type UseCaseReferentPanel } from "../../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT } from "../../../../lib/use-cases/referent/labels.ts";
 import {
@@ -264,17 +264,22 @@ const GATE: Record<ReferentGate["code"], ReferentGate> = {
 };
 
 test("«Chiedi al referente» si apre quando niente blocca, o quando manca solo cosa chiedere e «Prepara le domande» può aggiungerlo", () => {
-  assert.deepEqual(askEntry({ gates: [], preparable: [] }), { canOpen: true, gates: [], noQuestionsNote: null });
+  assert.deepEqual(askEntry({ gates: [], preparable: [] }), { canOpen: true, gates: [], showPrepare: false });
   // Solo «Non ci sono domande da fare», ma ci sono domande standard da preparare: si apre, nessun avviso.
-  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: ["frequenza", "tempo"] }), { canOpen: true, gates: [], noQuestionsNote: null });
-  // Niente da preparare: spento, con il motivo per cui «Prepara le domande» non aiuterebbe.
-  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: [] }), { canOpen: false, gates: [GATE.nessuna_domanda], noQuestionsNote: REFERENT_UI_TEXT.prepareDisabledTitle });
-  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: [], prepareGaps: true }), { canOpen: false, gates: [GATE.nessuna_domanda], noQuestionsNote: REFERENT_UI_TEXT.prepareDisabledPresent });
-  // Un altro motivo blocca: spento con ogni motivo, nell'ordine del server, anche se si può preparare.
+  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: ["frequenza", "tempo"] }), { canOpen: true, gates: [], showPrepare: false });
+  // Niente da preparare: spento, e il motivo nomina solo «Aggiungi», non un «Prepara le domande» che non c'è.
+  const page = { ...GATE.nessuna_domanda, message: REFERENT_UI_TEXT.gates.noQuestionsPage };
+  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: [] }), { canOpen: false, gates: [page], showPrepare: false });
+  assert.ok(!REFERENT_UI_TEXT.gates.noQuestionsPage.includes(REFERENT_UI_TEXT.prepare));
+  // Con un altro motivo e niente da preparare: ogni motivo, nell'ordine del server; cambia solo quello.
+  assert.deepEqual(askEntry({ gates: [GATE.email_non_configurata, GATE.nessuna_domanda], preparable: [] }), { canOpen: false, gates: [GATE.email_non_configurata, page], showPrepare: false });
+  // Un altro motivo blocca ma si può preparare: spento con ogni motivo, e «Prepara le domande» accanto,
+  // quindi il motivo del server che lo nomina resta com'è.
   const gates = [GATE.sub_responsabili_mancanti, GATE.email_non_configurata, GATE.nessuna_domanda];
-  assert.deepEqual(askEntry({ gates, preparable: ["frequenza"] }), { canOpen: false, gates, noQuestionsNote: null });
-  assert.equal(askEntry({ gates: [GATE.email_non_verificata], preparable: ["frequenza"] }).canOpen, false);
-  assert.equal(askEntry({ gates: [GATE.risposte_non_attive], preparable: ["frequenza"] }).canOpen, false);
+  assert.deepEqual(askEntry({ gates, preparable: ["frequenza"] }), { canOpen: false, gates, showPrepare: true });
+  // Anche un motivo di chi guarda (email non verificata) lascia preparare.
+  assert.deepEqual(askEntry({ gates: [GATE.email_non_verificata, GATE.nessuna_domanda], preparable: ["frequenza"] }), { canOpen: false, gates: [GATE.email_non_verificata, GATE.nessuna_domanda], showPrepare: true });
+  assert.deepEqual(askEntry({ gates: [GATE.risposte_non_attive], preparable: ["frequenza"] }), { canOpen: false, gates: [GATE.risposte_non_attive], showPrepare: true });
 });
 
 test("l'offerta di «Prepara le domande» nella finestra: solo in «Chiedi al referente» e solo con qualcosa da aggiungere", () => {
@@ -309,8 +314,13 @@ test("le sorgenti: «Prepara le domande» sta nella finestra, senza toast, e non
   const button = dialog.slice(dialog.lastIndexOf("<Button", at), at);
   assert.match(button, /type="button"/);
   const section = readFileSync(new URL("../section-needs.tsx", import.meta.url), "utf8");
-  assert.ok(!section.includes("prepare-button"), "nessun «Prepara le domande» separato");
+  // Nel capitolo «Prepara le domande» c'è solo quando la finestra non si apre e qualcosa si può preparare.
+  assert.match(section, /\{feature\?\.canAsk && entry\?\.showPrepare \? <PrepareButton workspaceId=\{workspaceId\} useCaseId=\{useCaseId\} describedBy=\{gatesId\} \/> : null\}/);
+  assert.equal((section.match(/<PrepareButton\b/g) ?? []).length, 1);
   assert.ok(!section.includes("prepareReferentQuestionsAction"));
   assert.equal((section.match(/REFERENT_UI_TEXT\.ask\b/g) ?? []).length, 1, "un solo «Chiedi al referente»");
-  assert.equal(existsSync(new URL("./prepare-button.tsx", import.meta.url)), false);
+  // Fuori dalla finestra prepara e basta: toast e rilettura come prima, niente richiesta.
+  const standalone = readFileSync(new URL("./prepare-button.tsx", import.meta.url), "utf8");
+  assert.match(standalone, /run\(\(\) => prepareReferentQuestionsAction\(workspaceId, useCaseId\), \{ inDialog: false \}\)/);
+  assert.ok(!standalone.includes("sendReferentRequest"));
 });

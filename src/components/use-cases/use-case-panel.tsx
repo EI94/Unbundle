@@ -212,7 +212,7 @@ function ReviewerBody({
       </Block>
       <Block className="grid gap-2 px-4 py-3 sm:grid-cols-2">
         <ValueFigure value={item.value} withLabel withSource />
-        <CostFigure cost={item.cost} bands={bands} withLabel />
+        <CostFigure cost={item.cost} bands={bands} withLabel stack />
       </Block>
       {estimate.length || item.risks.length ? (
         <Block>

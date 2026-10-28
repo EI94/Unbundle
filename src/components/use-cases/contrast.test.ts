@@ -99,15 +99,61 @@ test("nell'area «Use case» bordi dei campi e fuoco almeno 3:1", () => {
   }
 });
 
+/** I `data-slot` scritti a mano su un contenuto con portale (`<DialogContent data-slot="…">`): sostituiscono quello di base. */
+function portalSlots(source: string): string[] {
+  const out: string[] = [];
+  for (const match of source.matchAll(/<(DialogContent|SheetContent|PopoverContent|DropdownMenuContent|DropdownMenuSubContent|SelectContent)\b/g)) {
+    // Il tag di apertura, fino al primo «>» fuori dalle graffe (non quello di «=>»).
+    let depth = 0;
+    let end = match.index + match[0].length;
+    for (; end < source.length; end++) {
+      const char = source[end];
+      if (char === "{") depth++;
+      else if (char === "}") depth--;
+      else if (char === ">" && depth === 0 && source[end - 1] !== "=") break;
+    }
+    const slot = /\bdata-slot="([^"]+)"/.exec(source.slice(match.index, end));
+    if (slot) out.push(slot[1]);
+  }
+  return out;
+}
+
 test("il blocco dell'area vale anche nei portali, come quello del dossier", () => {
   assert.ok(areaBlock.selector.includes("[data-use-case-root]"));
   assert.ok(areaBlock.selector.includes("html:has([data-use-case-root])"));
   const slots = (selector: string) => new Set([...selector.matchAll(/data-slot="([^"]+)"/g)].map((match) => match[1]));
   const areaSlots = slots(areaBlock.selector);
   assert.ok(areaSlots.size > 0, "nessun portale nel selettore dell'area");
-  assert.deepEqual(areaSlots, slots(dossierBlock.selector));
+  // Tutti i portali del dossier, e in più quelli dell'area con un loro `data-slot`.
+  for (const slot of slots(dossierBlock.selector)) assert.ok(areaSlots.has(slot), `portale del dossier: ${slot}`);
   // Il dossier tiene il suo blocco com'era: solo il grigio dei testi secondari.
   assert.deepEqual([...dossierBlock.body.matchAll(/--[\w-]+:[^;]*;/g)].map((match) => match[0]), ["--muted-foreground: oklch(0.62 0.01 260);"]);
+});
+
+test("ogni finestra, pannello e menu dell'area con un suo `data-slot` è nel blocco dell'area", () => {
+  const areaSlots = new Set([...areaBlock.selector.matchAll(/data-slot="([^"]+)"/g)].map((match) => match[1]));
+  const found = new Map<string, string>();
+  for (const file of tsxFiles("src/components/use-cases")) for (const slot of portalSlots(read(file))) found.set(slot, file);
+  // Quelli di oggi: le decisioni (e «Chiedi al referente»), «Oscura», il pannello laterale, «Nuovo use case».
+  for (const slot of ["decision-dialog", "redact-dialog", "use-case-panel", "quick-create-sheet"]) assert.ok(found.has(slot), `atteso nei sorgenti: ${slot}`);
+  const missing = [...found].filter(([slot]) => !areaSlots.has(slot)).map(([slot, file]) => `${slot} (${file})`);
+  assert.deepEqual(missing, [], "portali dell'area senza i token dell'area");
+  // La prova legge davvero il tag su più righe e salta «=>».
+  assert.deepEqual(portalSlots('<SheetContent\n  side="right"\n  onKeyDown={(e) => e}\n  data-slot="prova"\n>'), ["prova"]);
+});
+
+test("nell'area «Use case» il segmento scelto si vede anche senza il colore del testo", () => {
+  const t = area;
+  // Il testo scelto (foreground) e quello degli altri (muted-foreground) da soli non bastano più.
+  const chip = t.background.rgb;
+  const track = over(t.muted.rgb, chip, 0.6);
+  // L'anello del segmento scelto prende il colore dei bordi dei campi: almeno 3:1 sul segmento e sulla cornice.
+  atLeast(ratio(on(t.input, chip), chip), 3, "anello del segmento scelto sul segmento");
+  atLeast(ratio(on(t.input, track), track), 3, "anello del segmento scelto sulla cornice");
+  atLeast(ratio(on(t.input, t.muted.rgb), t.muted.rgb), 3, "anello di «Quando» su muted");
+  assert.match(css, /\[data-use-case-root\] \[data-slot="segmented-nav"\] \[aria-current="page"\]:not\(:focus-visible\) \{\s*--tw-ring-color: var\(--input\);/);
+  assert.ok(read("src/components/use-cases/filter-bar.tsx").includes('"bg-background text-foreground shadow-sm ring-1 ring-input"'), "origine: anello del segmento scelto");
+  assert.ok(read("src/components/use-cases/when-control.tsx").includes("data-checked:inset-ring data-checked:inset-ring-input"), "«Quando»: anello della scelta");
 });
 
 test("il layout dell'area porta il segno, senza un riquadro in più", () => {
@@ -130,7 +176,15 @@ test(".survey-light è molto chiara", () => {
     atLeast(ratio(on(t[`uc-${tone}`], surface), surface), 5, `uc-${tone} sul suo fondo`);
   }
   for (const [name, surface] of [["background", bg], ["card", card]] as const) atLeast(ratio(on(t.input, surface), surface), 3, `input su ${name}`);
-  atLeast(ratio(on(t.ring, card), card), 3, "ring su card");
+  // Il fuoco della tastiera è un contorno pieno di --ring (l'alone a metà resta sotto 3:1 sul chiaro).
+  for (const [name, surface] of [["background", bg], ["card", card], ["muted", t.muted.rgb]] as const) atLeast(ratio(on(t.ring, surface), surface), 3, `ring su ${name}`);
+  assert.ok(ratio(over(t.ring.rgb, bg, 0.5), bg) < 3, "l'alone a metà da solo non basterebbe");
+  const focus = /\.survey-light\s+:is\(([^)]*)\):focus-visible:not\(\[tabindex="-1"\]\) \{\s*outline: 2px solid var\(--ring\);\s*outline-offset: 2px;\s*\}/.exec(css);
+  assert.ok(focus, "il contorno del fuoco sulle pagine chiare");
+  for (const target of ["a", "button", '[role="radio"]', '[role="checkbox"]']) assert.ok(focus[1].split(", ").includes(target), target);
+  // Al livello più alto del file, fuori da ogni @layer: vince su `outline-none` di Tailwind.
+  const before = css.slice(0, focus.index).replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.equal((before.match(/\{/g) ?? []).length - (before.match(/\}/g) ?? []).length, 0, "il contorno del fuoco dentro un blocco");
 });
 
 /** I file .tsx sotto una cartella, anche nelle sottocartelle. */

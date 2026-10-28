@@ -118,6 +118,8 @@ export function placeMatrixLabels(points: readonly MatrixLabelInput[], options: 
   const placed: Array<{ index: number; dx: number; dy: number; w: number; h: number }> = [];
   const out = new Map<string, MatrixLabelPlacement>();
   points.forEach((point, index) => {
+    // Senza testo il punto non ha un'etichetta sua (il suo codice sta in quella del gruppo), ma resta un ostacolo.
+    if (!point.text) return;
     const w = Math.ceil([...point.text].length * charPx) + 4;
     const h = heightPx;
     const costAt = (scale: (typeof scales)[number], dx: number, dy: number) => {
@@ -152,5 +154,38 @@ export function placeMatrixLabels(points: readonly MatrixLabelInput[], options: 
     placed.push({ index, dx: chosen.dx, dy: chosen.dy, w, h });
     out.set(point.id, { dx: Math.round(chosen.dx), dy: Math.round(chosen.dy), crowded: chosen.large > 0, crowdedSmall: chosen.small > 0 || chosen.large > 0 });
   });
+  return out;
+}
+
+/**
+ * I punti che cadono quasi nello stesso posto: entro `nearPct` punti percentuali dal primo del
+ * gruppo, nelle due direzioni (3 % è un punto di 10 px sulla matrice più piccola, 320 px). Gruppi di
+ * indici nell'ordine dei punti; il primo di ogni gruppo è l'ancora. Chi disegna scrive un'etichetta
+ * sola con tutti i codici del gruppo (`groupLabelTexts`): un codice coperto non sparisce dal grafico.
+ */
+export function groupNearPoints(points: readonly { left: number; top: number }[], nearPct = 3): number[][] {
+  const groups: number[][] = [];
+  points.forEach((point, index) => {
+    const group = groups.find((members) => {
+      const anchor = points[members[0]];
+      return Math.abs(anchor.left - point.left) <= nearPct && Math.abs(anchor.top - point.top) <= nearPct;
+    });
+    if (group) group.push(index);
+    else groups.push([index]);
+  });
+  return groups;
+}
+
+/**
+ * Il testo dell'etichetta di ogni punto, per gruppi: il primo punto con un codice porta tutti i
+ * codici del gruppo, «XX-0001, XX-0004»; gli altri "" (nessuna etichetta loro). Un punto senza
+ * codice non ne ha.
+ */
+export function groupLabelTexts(codes: readonly (string | null)[], groups: readonly number[][]): string[] {
+  const out = codes.map(() => "");
+  for (const members of groups) {
+    const withCode = members.filter((index) => codes[index]);
+    if (withCode.length) out[withCode[0]] = withCode.map((index) => codes[index]).join(", ");
+  }
   return out;
 }

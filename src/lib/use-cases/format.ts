@@ -20,8 +20,8 @@
  *   `COST_BANDS`. Le fasce del workspace le passano le pagine (H3c, H4a, H4b), che le leggono
  *   con `resolveCostBands`.
  * - **Valore a schermo**: con una cifra in euro la pagina scrive solo la cifra, senza parola,
- *   punteggio né zona (`valueScreenText`, `valueScreenLongText`, `showsZone`); il MCP del team e
- *   l'export tengono la parola.
+ *   punteggio né zona (`valueScreenText`, `valueScreenLongText`, `showsZone`); senza beneficio
+ *   contato («qualitativo») nemmeno la zona; il MCP del team e l'export tengono la parola e la zona.
  *
  * Lo usano i pezzi comuni di `src/components/use-cases/` sul server e nel browser: le stesse
  * stringhe nei due posti, nessuna differenza all'idratazione.
@@ -329,9 +329,22 @@ export function hasEuroValue(value: Pick<ValueParts, "perYear" | "benefits"> | n
   return shownPerYear(value) !== null || (value?.benefits?.state === "da_misurare" && value.benefits.pendingEur > 0);
 }
 
-/** La zona si scrive solo per un Valore senza cifra in euro; la matrice la disegna sempre. */
+/**
+ * La zona si scrive a schermo solo per un Valore senza cifra in euro e non «senza beneficio
+ * contato»: per un modello «qualitativo» o «da misurare» la zona ripeterebbe quello che dice già il
+ * Valore. La matrice la disegna sempre; il MCP del team e l'export tengono `zoneText`.
+ */
 export function showsZone(value: Pick<ValueParts, "perYear" | "benefits"> | null | undefined): boolean {
-  return !hasEuroValue(value);
+  if (hasEuroValue(value)) return false;
+  return !(value?.benefits && value.benefits.state !== "contato");
+}
+
+/**
+ * Le colonne della lista di «Priorità»: «Origine» solo se le righe non hanno tutte la stessa origine
+ * (altrimenti ripeterebbe la stessa parola in ogni riga), «Zona» solo se una riga la scrive (`showsZone`).
+ */
+export function priorityListColumns(rows: readonly { origin: string; value: Pick<ValueParts, "perYear" | "benefits"> | null | undefined }[]): { origin: boolean; zone: boolean } {
+  return { origin: new Set(rows.map((row) => row.origin)).size > 1, zone: rows.some((row) => showsZone(row.value)) };
 }
 
 /** La forma corta a schermo: con gli euro all'anno solo la cifra, «12.250 €/anno»; altrimenti `valueShortText` («da misurare · fino a 5.840 €», «Alto», «qualitativo», «da stimare»). */
@@ -405,17 +418,28 @@ export function qualitativeCountText(count: number): string {
   return count === 1 ? "(1 qualitativo)" : `(${count} qualitativi)`;
 }
 
+/**
+ * «avvio 560 €» e «ricorrenti 600 €/anno», le due parti che a schermo non si spezzano; i ricorrenti
+ * a zero non si scrivono (solo «avvio 280 €»).
+ */
+export function oneoffRunParts(oneoffEur: number, runEurYear: number | null | undefined): string[] {
+  const oneoff = `${COST_ONEOFF_WORD} ${formatEuro(oneoffEur)}`;
+  return typeof runEurYear === "number" && Number.isFinite(runEurYear) && runEurYear > 0 ? [oneoff, `${COST_RUN_WORD} ${perYearShortText(runEurYear)}`] : [oneoff];
+}
+
 /** «avvio 560 € · ricorrenti 600 €/anno»; i ricorrenti a zero non si scrivono («avvio 280 €»). */
 export function oneoffRunText(oneoffEur: number, runEurYear: number | null | undefined): string {
-  const oneoff = `${COST_ONEOFF_WORD} ${formatEuro(oneoffEur)}`;
-  return typeof runEurYear === "number" && Number.isFinite(runEurYear) && runEurYear > 0
-    ? `${oneoff}${FIGURE_SEPARATOR}${COST_RUN_WORD} ${perYearShortText(runEurYear)}`
-    : oneoff;
+  return oneoffRunParts(oneoffEur, runEurYear).join(FIGURE_SEPARATOR);
 }
 
 /** Il costo a schermo in due parti: la cifra e la sua fonte. Senza costo: «da stimare», nessuna fonte. */
 export interface CostTextParts {
   figure: string;
+  /**
+   * La cifra nei pezzi che non vanno spezzati: con «Benefici e costi» «avvio 560 €» e «ricorrenti
+   * 600 €/anno» (uniti da « · » fanno `figure`), altrimenti la cifra intera.
+   */
+  figureParts: string[];
   source: string | null;
   /** Vero per «da stimare». */
   estimated: boolean;
@@ -435,18 +459,20 @@ function costBandLabelOf(cost: CostParts, bands: readonly CostBandInfo[]): strin
  *   «importo del team», «fascia del team», «stimato dall'impegno», «dal dossier».
  */
 export function costTextParts(cost: CostParts | null | undefined, form: SourceForm, bands: readonly CostBandInfo[] = COST_BANDS): CostTextParts {
-  if (!cost) return { figure: NOT_ESTIMATED_LABEL, source: null, estimated: true };
+  if (!cost) return { figure: NOT_ESTIMATED_LABEL, figureParts: [NOT_ESTIMATED_LABEL], source: null, estimated: true };
   // «Benefici e costi»: avvio e ricorrenti, senza simbolo della fascia (la fascia resta per zone e
   // matrice). Nella forma corta senza fonte, come la spec la scrive: la cifra è già lunga, e «stima
   // del team» la dice la scheda.
   if (cost.source === "stima" && typeof cost.amount === "number" && Number.isFinite(cost.amount)) {
-    return { figure: oneoffRunText(cost.amount, cost.runEurYear), source: form === "lunga" ? costSourceText(cost.source, form) : null, estimated: false };
+    const figureParts = oneoffRunParts(cost.amount, cost.runEurYear);
+    return { figure: figureParts.join(FIGURE_SEPARATOR), figureParts, source: form === "lunga" ? costSourceText(cost.source, form) : null, estimated: false };
   }
   const symbol = costBandSymbol(cost.band, bands);
   let detail: string;
   if (!cost.fromBand && typeof cost.amount === "number" && Number.isFinite(cost.amount)) detail = formatEuro(cost.amount);
   else detail = form === "lunga" ? `${COST_BAND_WORD} ${lowerFirst(costBandLabelOf(cost, bands))}` : COST_BAND_WORD;
-  return { figure: `${symbol}${FIGURE_SEPARATOR}${detail}`, source: costSourceText(cost.source, form), estimated: false };
+  const figure = `${symbol}${FIGURE_SEPARATOR}${detail}`;
+  return { figure, figureParts: [figure], source: costSourceText(cost.source, form), estimated: false };
 }
 
 /**

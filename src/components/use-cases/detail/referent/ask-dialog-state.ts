@@ -104,25 +104,30 @@ export interface AskEntry {
   canOpen: boolean;
   /** I motivi da scrivere sotto il pulsante spento, nell'ordine del server; [] quando si apre. */
   gates: readonly ReferentGate[];
-  /** Con «Non ci sono domande da fare»: perché «Prepara le domande» non aiuterebbe; altrimenti null. */
-  noQuestionsNote: string | null;
+  /**
+   * «Prepara le domande» accanto a «Chiedi al referente» spento: c'è qualcosa da preparare ma un
+   * altro motivo (fornitori, email, link, email non verificata) tiene chiusa la finestra. Preparare
+   * non manda niente, quindi si può anche mentre quei motivi bloccano, come prima del rilascio.
+   */
+  showPrepare: boolean;
 }
 
 /**
  * Il pulsante «Chiedi al referente» del capitolo: si apre quando niente blocca, oppure quando blocca
  * solo «non ci sono domande da fare» e «Prepara le domande» ha qualcosa da aggiungere (la finestra lo
- * offre). Altrimenti resta spento con ogni motivo, come prima.
+ * offre). Altrimenti resta spento con ogni motivo, nell'ordine del server; con qualcosa da preparare
+ * c'è «Prepara le domande» accanto (`showPrepare`), e il motivo «Non ci sono domande da fare» che lo
+ * nomina dice il vero. Senza niente da preparare quel motivo nomina solo «Aggiungi»
+ * (`gates.noQuestionsPage`): la scheda non mostra un pulsante che non c'è.
  */
-export function askEntry(panel: Pick<UseCaseReferentPanel, "gates" | "preparable"> & Partial<Pick<UseCaseReferentPanel, "prepareGaps">>): AskEntry {
+export function askEntry(panel: Pick<UseCaseReferentPanel, "gates" | "preparable">): AskEntry {
   const canPrepare = panel.preparable.length > 0;
   const canOpen = panel.gates.every((gate) => gate.code === "nessuna_domanda" && canPrepare);
-  if (canOpen) return { canOpen: true, gates: [], noQuestionsNote: null };
-  const noQuestions = panel.gates.some((gate) => gate.code === "nessuna_domanda");
-  return {
-    canOpen: false,
-    gates: panel.gates,
-    noQuestionsNote: noQuestions && !canPrepare ? (panel.prepareGaps ? REFERENT_UI_TEXT.prepareDisabledPresent : REFERENT_UI_TEXT.prepareDisabledTitle) : null,
-  };
+  if (canOpen) return { canOpen: true, gates: [], showPrepare: false };
+  const gates = canPrepare
+    ? panel.gates
+    : panel.gates.map((gate): ReferentGate => (gate.code === "nessuna_domanda" ? { ...gate, message: REFERENT_UI_TEXT.gates.noQuestionsPage } : gate));
+  return { canOpen: false, gates, showPrepare: canPrepare };
 }
 
 /** «Mario Rossi · Ufficio acquisti · m•••@topjet.it», con « · Fa parte del team» e il motivo se non si può scegliere. */

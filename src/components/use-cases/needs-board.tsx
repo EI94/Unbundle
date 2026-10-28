@@ -170,15 +170,18 @@ function Due({ row }: { row: NeedRow }) {
 
 function AreaTable({ area, hrefOf }: { area: NeedAreaTable; hrefOf: (id: string) => string }) {
   const headingId = `cosa-serve-area-${area.key}`;
+  // «Entro» solo se una riga dell'area ha una data: una colonna di «—» non dice niente. La stessa
+  // scelta per le righe aperte e quelle a posto, così le due tabelle hanno le stesse colonne.
+  const withDue = [...area.open, ...area.done].some((row) => row.due);
   return (
     <section aria-labelledby={headingId} data-need-area={area.key} className="space-y-2">
       <h3 id={headingId} className="text-xs font-medium text-muted-foreground">
         {area.label}
       </h3>
-      {area.open.length ? <NeedTable rows={area.open} hrefOf={hrefOf} labelledBy={headingId} /> : null}
+      {area.open.length ? <NeedTable rows={area.open} hrefOf={hrefOf} labelledBy={headingId} withDue={withDue} /> : null}
       {area.done.length ? (
         <Disclosure summary={needDoneSummaryText("requisito", area.done.length)} slot="needs-area-done">
-          <NeedTable rows={area.done} hrefOf={hrefOf} labelledBy={headingId} />
+          <NeedTable rows={area.done} hrefOf={hrefOf} labelledBy={headingId} withDue={withDue} />
         </Disclosure>
       ) : null}
     </section>
@@ -189,30 +192,34 @@ function AreaTable({ area, hrefOf }: { area: NeedAreaTable; hrefOf: (id: string)
  * Una tabella quando il riquadro della pagina (`@container/hub` di hub.tsx) è largo almeno 56rem;
  * più stretto un elenco con le stesse cose (mai le due insieme a schermo). Sulla larghezza della
  * finestra (768 px) la tabella aveva circa 460 px accanto alla barra laterale: Stato ed Entro
- * restavano tagliati.
+ * restavano tagliati. «Per» ha un quinto della riga o più: aperto, «Per 6 use case» elenca i
+ * codici e i titoli senza tagliarli dopo poche parole. Senza date nell'area, niente «Entro» e
+ * le altre colonne si allargano.
  */
-function NeedTable({ rows, hrefOf, labelledBy }: { rows: readonly NeedRow[]; hrefOf: (id: string) => string; labelledBy: string }) {
+function NeedTable({ rows, hrefOf, labelledBy, withDue = true }: { rows: readonly NeedRow[]; hrefOf: (id: string) => string; labelledBy: string; withDue?: boolean }) {
   return (
     <>
       <div className="hidden overflow-hidden rounded-lg border @4xl/hub:block">
         <table aria-labelledby={labelledBy} className="w-full table-fixed text-sm">
           <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
             <tr>
-              <th scope="col" className="w-[40%] px-3 py-2 font-medium">
+              <th scope="col" className={cn(withDue ? "w-[36%]" : "w-[42%]", "px-3 py-2 font-medium")}>
                 {NEEDS_BOARD_TEXT.what}
               </th>
-              <th scope="col" className="w-[18%] px-3 py-2 font-medium">
+              <th scope="col" className={cn(withDue ? "w-[16%]" : "w-[18%]", "px-3 py-2 font-medium")}>
                 {NEEDS_BOARD_TEXT.who}
               </th>
-              <th scope="col" className="w-[16%] px-3 py-2 font-medium">
+              <th scope="col" className={cn(withDue ? "w-[22%]" : "w-[26%]", "px-3 py-2 font-medium")}>
                 {NEEDS_BOARD_TEXT.for}
               </th>
               <th scope="col" className="w-[14%] px-3 py-2 font-medium">
                 {NEEDS_BOARD_TEXT.status}
               </th>
-              <th scope="col" className="w-[12%] px-3 py-2 font-medium">
-                {NEEDS_BOARD_TEXT.due}
-              </th>
+              {withDue ? (
+                <th scope="col" className="w-[12%] px-3 py-2 font-medium">
+                  {NEEDS_BOARD_TEXT.due}
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -228,9 +235,11 @@ function NeedTable({ rows, hrefOf, labelledBy }: { rows: readonly NeedRow[]; hre
                 <td className="px-3 py-2">
                   <StatusDot tone={row.status.tone} label={row.status.label} />
                 </td>
-                <td className="px-3 py-2">
-                  <Due row={row} />
-                </td>
+                {withDue ? (
+                  <td className="px-3 py-2">
+                    <Due row={row} />
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>
@@ -252,20 +261,33 @@ function NeedTable({ rows, hrefOf, labelledBy }: { rows: readonly NeedRow[]; hre
 }
 
 /**
- * «Chi · Entro · Per» in una riga, per gli elenchi. «Per 3 use case» chiude la riga senza «·» e,
- * aperto, va a capo da solo. Un `<div>`, non un `<p>`: un `<details>` non è testo e dentro un `<p>`
- * il parser spezzerebbe il DOM.
+ * «Chi · Entro · Per» sotto il titolo, per gli elenchi. Ogni « · » va a capo con la parte che lo
+ * segue, mai da solo in fondo alla riga. Il link a un solo use case («TJ-0008 · ATLAS A1 · …») sta
+ * su una riga sua: è lungo, ha già i suoi « · », e in mezzo alla riga grigia non si capirebbe dove
+ * inizia. «Per 3 use case» chiude la riga senza «·» e, aperto, va a capo da solo. Un `<div>`, non
+ * un `<p>`: un `<details>` non è testo e dentro un `<p>` il parser spezzerebbe il DOM.
  */
 function MetaLine({ row, hrefOf }: { row: NeedRow; hrefOf: (id: string) => string }) {
-  const parts: ReactNode[] = [];
-  if (row.owner) parts.push(<span key="chi">{row.owner}</span>);
-  if (row.due) parts.push(<span key="entro" className="tabular-nums">{row.due}</span>);
-  if (row.useCases.length === 1 || (!row.useCases.length && row.forLabel)) parts.push(<NeedFor key="per" row={row} hrefOf={hrefOf} />);
+  const parts: Array<{ key: string; node: ReactNode }> = [];
+  if (row.owner) parts.push({ key: "chi", node: row.owner });
+  if (row.due) parts.push({ key: "entro", node: <span className="tabular-nums">{row.due}</span> });
+  if (!row.useCases.length && row.forLabel) parts.push({ key: "per", node: <NeedFor row={row} hrefOf={hrefOf} /> });
+  const one = row.useCases.length === 1;
   const several = row.useCases.length > 1;
-  if (!parts.length && !several) return null;
+  if (!parts.length && !one && !several) return null;
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-      {parts.flatMap((part, index) => (index ? [<span key={`sep-${index}`} aria-hidden>·</span>, part] : [part]))}
+      {parts.map((part, index) => (
+        <span key={part.key} data-meta={part.key} className="inline-flex min-w-0 items-center gap-x-2">
+          {index ? <span aria-hidden>·</span> : null}
+          <span className="min-w-0">{part.node}</span>
+        </span>
+      ))}
+      {one ? (
+        <span data-meta="per" className="flex min-w-0 basis-full">
+          <NeedFor row={row} hrefOf={hrefOf} />
+        </span>
+      ) : null}
       {several ? <NeedFor row={row} hrefOf={hrefOf} /> : null}
     </div>
   );
