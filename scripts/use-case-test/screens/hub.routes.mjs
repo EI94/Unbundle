@@ -124,7 +124,8 @@ const routes = [
   // Panoramica» under them while use cases are in realization (the seed has some). seed-hub.mjs writes
   // no needs, so the reviewers get the empty view. With needs it shows «Requisiti» with the counts
   // line («4 aperti · 3 da chiedere · 1 in attesa · 1 a posto») and one closed line per area, then
-  // «Prossimi passi» open up to next month, with «Più avanti · N passi» and «Senza data · N passi» closed.
+  // «Prossimi passi» open up to this month, with «Più avanti · N passi» and «Senza data · N passi» closed.
+  // Without requirements «Requisiti» says «Niente da chiedere per ora.» above the other blocks.
   {
     name: "cosa-serve",
     path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve",

@@ -85,4 +85,8 @@ test("matrice: due punti quasi nello stesso posto restano al loro costo e hanno 
   assert.ok(Math.abs(left(points[0].id) - 12) < 0.01 && Math.abs(left(points[1].id) - 13.4) < 0.01, "le posizioni restano quelle del costo");
   // L'asse del Valore dice che è un punteggio: gli altri schermi scrivono gli euro.
   assert.ok(html.includes(">Valore (punteggio 1–5)<"));
+  // Un titolo con l'agente: accanto al punto il tag delle card della Panoramica, non il codice.
+  const tagged = [{ ...points[0], title: "LIBRA L1 · Lettura delle fatture estere" }, points[1], points[2]];
+  const withAgent = renderToStaticMarkup(createElement(matrix.ValueCostMatrix, { points: tagged, highValue: 3.5, lowCostX: 1.5, toEstimate: [] }));
+  assert.deepEqual([...withAgent.matchAll(/data-slot="matrix-label"[^>]*>([^<]*)</g)].map((match) => match[1]), ["LIBRA L1, TJ-0004", "TJ-0007"]);
 });

@@ -439,24 +439,24 @@ test("i testi dei conteggi: «86 aperti · 60 da chiedere · …», senza gli ze
   assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
 });
 
-test("«Prossimi passi»: aperti i mesi fino al prossimo, gli scaduti compresi; poi «Più avanti» e «Senza data»", () => {
+test("«Prossimi passi»: aperti i mesi fino a quello di oggi, gli scaduti compresi; poi «Più avanti» e «Senza data»", () => {
   const month = (key: string): NeedStepMonth => ({ key, label: key === "senza_data" ? "Senza data" : monthHeading(key), rows: [] });
   const keys = (months: readonly NeedStepMonth[]) => months.map((m) => m.key);
   const all = ["2026-09", "2026-10", "2026-11", "2026-12", "senza_data"].map(month);
   const horizon = stepsHorizon(all, "2026-10-25");
-  assert.deepEqual(keys(horizon.soon), ["2026-09", "2026-10", "2026-11"], "settembre è scaduto: resta aperto");
-  assert.deepEqual(keys(horizon.later), ["2026-12"]);
+  assert.deepEqual(keys(horizon.soon), ["2026-09", "2026-10"], "settembre è scaduto: resta aperto");
+  assert.deepEqual(keys(horizon.later), ["2026-11", "2026-12"], "dal mese prossimo, sotto «Più avanti»");
   assert.equal(horizon.undated?.key, "senza_data");
-  // Niente fino al mese prossimo: resta aperto il primo mese che c'è.
+  // Niente fino a questo mese: resta aperto il primo mese che c'è.
   const far = stepsHorizon(["2027-02", "2027-03"].map(month), "2026-10-25");
   assert.deepEqual([keys(far.soon), keys(far.later), far.undated], [["2027-02"], ["2027-03"], null]);
   // Solo passi senza data: si leggono aperti.
   const undated = stepsHorizon([month("senza_data")], "2026-10-25");
   assert.deepEqual([keys(undated.soon), keys(undated.later), undated.undated], [["senza_data"], [], null]);
   assert.deepEqual(stepsHorizon([], "2026-10-25"), { soon: [], later: [], undated: null });
-  // A dicembre il mese prossimo è gennaio dell'anno dopo.
+  // A dicembre resta aperto dicembre; gennaio dell'anno dopo è già «Più avanti».
   const december = stepsHorizon(["2026-12", "2027-01", "2027-02"].map(month), "2026-12-10");
-  assert.deepEqual([keys(december.soon), keys(december.later)], [["2026-12", "2027-01"], ["2027-02"]]);
+  assert.deepEqual([keys(december.soon), keys(december.later)], [["2026-12"], ["2027-01", "2027-02"]]);
   // I mesi di `buildNeedsBoard` vanno così come sono.
   const board = buildNeedsBoard(
     [

@@ -14,6 +14,7 @@ import {
   buildRoadmapValue,
   componentAmountText,
   curveScale,
+  groupLabelOf,
   groupLegend,
   groupPalette,
   groupSlot,
@@ -27,6 +28,7 @@ import {
   roadmapPlan,
   roadmapValueItems,
 } from "./value-charts.ts";
+import { agentPalette, agentToneOf } from "./agents.ts";
 import { hoursFreedText, qualitativeCountText } from "./format.ts";
 import { DEFAULT_VALUE_PARAMS, valueModelSchema, type ValueModel, type ValueParams } from "./value-model.ts";
 import { projectHubItem, type HubContext, type HubItem, type HubSourceRow } from "./views.ts";
@@ -174,6 +176,38 @@ test("colori dei gruppi: dal più grande, tre colori, il grigio dice chi c'è de
   assert.deepEqual(groupLegend(single, [null]), []);
 });
 
+test("colori dei gruppi con gli agenti nei titoli: il colore dice l'agente, come nelle card; gli altri gruppi grigi", () => {
+  const agents = agentPalette([
+    { title: "LIBRA L1 · Lettura delle fatture estere" },
+    { title: "ORSA O1 · Solleciti ai clienti" },
+    { title: "AUTO A1 · Riepilogo settimanale" },
+    { title: "Strategia per volo" },
+  ]);
+  const items = ["LIBRA", "LIBRA", "Automazioni", "Automazioni", "Automazioni", "orsa", null].map((group) => ({ valueModel: group ? { ...SMALL, group } : SMALL }));
+  const palette = groupPalette(items, PARAMS, agents);
+  // I tre colori dei gruppi non ci sono: «Automazioni», il gruppo più grande, non è un agente.
+  assert.deepEqual(palette.slots, {});
+  assert.deepEqual(palette.agents, { LIBRA: agentToneOf(agents, "LIBRA"), orsa: agentToneOf(agents, "ORSA") });
+  assert.equal(groupSlot(palette, "LIBRA"), `agente-${agentToneOf(agents, "LIBRA")}`, "il tono del tag di LIBRA");
+  assert.equal(groupSlot(palette, "orsa"), `agente-${agentToneOf(agents, "ORSA")}`, "il nome del gruppo senza badare alle maiuscole");
+  assert.equal(groupSlot(palette, "Automazioni"), 0);
+  assert.equal(groupSlot(palette, null), 0);
+  // La legenda: i nomi degli agenti, come i tag; nel grigio gli altri gruppi.
+  assert.deepEqual(groupLegend(palette, ["Automazioni", "orsa", "LIBRA", null]), [
+    { slot: `agente-${agentToneOf(agents, "LIBRA")}`, label: "LIBRA" },
+    { slot: `agente-${agentToneOf(agents, "ORSA")}`, label: "ORSA" },
+    { slot: 0, label: "Altri gruppi (Automazioni) e senza gruppo" },
+  ]);
+  assert.equal(groupLabelOf(palette, "orsa"), "ORSA");
+  assert.equal(groupLabelOf(palette, "Automazioni"), "Gruppo Automazioni");
+  // Agenti nei titoli e nessun gruppo: tutto grigio, senza legenda; senza agenti i colori dei gruppi di sempre.
+  const none = groupPalette([{ valueModel: SMALL }], PARAMS, agents);
+  assert.deepEqual([none.single, groupSlot(none, null), groupLegend(none, [null]), groupLabelOf(none, null)], [true, 0, [], null]);
+  const plain = groupPalette(items, PARAMS, agentPalette([{ title: "Strategia per volo" }]));
+  assert.equal(plain.agents, null);
+  assert.deepEqual(plain.slots, { Automazioni: 1, LIBRA: 2, orsa: 3 });
+});
+
 test("niceScale: tacche tonde che comprendono lo zero; senza ampiezza da 0 a 1.000", () => {
   assert.deepEqual(niceScale(0, 4042.5).ticks, [0, 1000, 2000, 3000, 4000, 5000]);
   const both = niceScale(-840, 2719);
@@ -302,6 +336,9 @@ test("Roadmap: FIX_A + FIX_B, ore 177,9, J-curve sommata, pareggio «apr 27», e
   assert.equal(value.curve.breakeven, 5);
   assert.equal(value.breakevenText, "apr 27");
   assert.deepEqual(value.goLives, [{ index: 2, month: "2027-01", label: "gen 27", names: [a.code, b.code] }]);
+  // Un titolo con l'agente: sulla curva il tag delle card della Panoramica, non il codice.
+  const libra = item({ valueModel: FIX_A, title: "LIBRA L1 · Lettura delle fatture estere" });
+  assert.deepEqual(buildRoadmapValue([libra, b], PARAMS)?.goLives.map((mark) => mark.names), [["LIBRA L1", b.code]]);
   assert.deepEqual(
     { index: value.low?.index, label: value.low?.label },
     { index: 2, label: "gen 27" },

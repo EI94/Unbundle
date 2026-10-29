@@ -519,23 +519,19 @@ export interface StepsHorizon {
   undated: NeedStepMonth | null;
 }
 
-/** Il mese dopo quello di oggi, `AAAA-MM`: «2026-10-29» → «2026-11»; da dicembre il gennaio dopo. */
-function nextMonthKey(today: string): string {
-  const [year, month] = today.split("-").map(Number);
-  return month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
-}
-
 /**
- * I «Prossimi passi» a portata: aperti i mesi fino al prossimo (gli scaduti compresi); gli altri
- * sotto «Più avanti» e quelli senza data sotto «Senza data», chiusi. Senza passi fino al mese
- * prossimo resta aperto il primo mese che c'è; con soli passi senza data si leggono aperti quelli.
- * `steps` nell'ordine di `buildNeedsBoard`: dal mese più vicino, quelli senza data in fondo.
+ * I «Prossimi passi» a portata: aperti i mesi fino a quello di oggi (gli scaduti compresi); gli
+ * altri, dal mese prossimo, sotto «Più avanti» e quelli senza data sotto «Senza data», chiusi. Senza
+ * passi fino a questo mese resta aperto il primo mese che c'è; con soli passi senza data si leggono
+ * aperti quelli. `steps` nell'ordine di `buildNeedsBoard`: dal mese più vicino, quelli senza data in
+ * fondo.
  */
 export function stepsHorizon(steps: readonly NeedStepMonth[], today: string): StepsHorizon {
   const dated = steps.filter((month) => month.key !== NO_DATE_KEY);
   const undated = steps.find((month) => month.key === NO_DATE_KEY) ?? null;
   if (!dated.length) return { soon: undated ? [undated] : [], later: [], undated: null };
-  const limit = nextMonthKey(today);
+  // Il mese di oggi, `AAAA-MM`: «2026-10-29» → «2026-10».
+  const limit = today.slice(0, 7);
   const near = dated.filter((month) => month.key <= limit);
   const soon = near.length ? near : [dated[0]];
   return { soon, later: dated.filter((month) => !soon.includes(month)), undated };

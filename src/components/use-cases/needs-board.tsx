@@ -46,7 +46,7 @@ export const NEEDS_BOARD_TEXT = Object.freeze({
 
 export interface NeedsBoardViewProps {
   board: NeedsBoard;
-  /** Oggi (AAAA-MM-GG, Roma): quali mesi di «Prossimi passi» restano aperti. */
+  /** Oggi (AAAA-MM-GG, Roma): aperti i mesi di «Prossimi passi» fino a quello di oggi, gli scaduti compresi. */
   today: string;
   /** I colori degli agenti della pagina (`agentPalette` su tutte le schede): gli stessi delle corsie. */
   agents?: AgentPalette | null;
@@ -59,18 +59,27 @@ export interface NeedsBoardViewProps {
   /** Con un filtro attivo il vuoto è «Niente da chiedere con questi filtri.» [Togli i filtri]. */
   filtersActive?: boolean;
   clearHref?: string;
+  /**
+   * Con una ricerca (`?q=`) le aree sono aperte: si legge subito quello che si cerca. Gli altri
+   * filtri, anche il «Trimestre» di «Prossimo passo», le lasciano chiuse con i loro conteggi.
+   */
+  searched?: boolean;
+  /** Il trimestre del filtro («T4 2026», «Più avanti»): in testa alla riga dei conteggi; null senza. */
+  quarter?: string | null;
 }
 
 /**
  * La vista «Cosa serve», solo per i revisori e in sola lettura (spec di Pierpaolo, 25/10/2026;
  * rilascio «Panoramica», 29/10/2026: più leggera, ogni richiesta una volta sola). Due blocchi,
- * ognuno solo se ha qualcosa, poi le schede del trimestre, chiuse:
+ * «Prossimi passi» solo se ha qualcosa, poi le schede del trimestre, chiuse:
  * 1. «Requisiti»: sotto il titolo la riga dei conteggi («86 aperti · 60 da chiedere · …»), poi una
  *    riga chiusa per area (Accessi, Dati e documenti, Regole e decisioni, Persone e ruoli, Contratto
  *    e governance, Altro) con i suoi conteggi, che si apre sulla sua tabella: Che cosa, Chi, Per,
- *    Stato ed Entro, con le righe già a posto chiuse. Con un filtro le aree sono aperte.
- * 2. «Prossimi passi»: aperti i mesi fino al prossimo (gli scaduti compresi), poi «Più avanti» e
- *    «Senza data», chiusi; quelli fatti chiusi.
+ *    Stato ed Entro, con le righe già a posto chiuse. Con una ricerca le aree sono aperte; con il
+ *    filtro «Trimestre» la riga dei conteggi comincia dal trimestre («T4 2026 · 67 aperti · …»).
+ *    Senza requisiti, «Niente da chiedere per ora.» (o «… con questi filtri.»).
+ * 2. «Prossimi passi»: aperti i mesi fino a quello di oggi (gli scaduti compresi), poi «Più avanti»
+ *    e «Senza data», chiusi; quelli fatti chiusi.
  * 3. «Cosa vi chiediamo questo trimestre», chiuso di default: una scheda per use case approvato per
  *    il trimestre (anche se è già in realizzazione), con chi conferma, il ritorno da confermare,
  *    «Ci serve subito», «Dopo la scheda A.8», «Da decidere».
@@ -82,7 +91,18 @@ export interface NeedsBoardViewProps {
  * solo per stato, mai per persona: «Chi» è un testo della riga, mai contato né filtrato. Le
  * esigenze si cambiano nella scheda dello use case. Componente senza stato: si rende sul server.
  */
-export function NeedsBoardView({ board, today, agents = null, hrefOf, inRealization = 0, realizationHref = null, filtersActive = false, clearHref }: NeedsBoardViewProps) {
+export function NeedsBoardView({
+  board,
+  today,
+  agents = null,
+  hrefOf,
+  inRealization = 0,
+  realizationHref = null,
+  filtersActive = false,
+  clearHref,
+  searched = false,
+  quarter = null,
+}: NeedsBoardViewProps) {
   const toRealization = inRealization > 0 && realizationHref ? realizationHref : null;
   if (isBoardEmpty(board)) {
     return (
@@ -106,19 +126,37 @@ export function NeedsBoardView({ board, today, agents = null, hrefOf, inRealizat
   const laterSteps = later.reduce((sum, month) => sum + month.rows.length, 0);
   return (
     <div data-slot="needs-board" className="space-y-8">
-      {board.areas.length ? (
-        <Block id="cosa-serve-requisiti" title={NEEDS_BOARD_TEXT.requirements} slot="needs-requirements">
-          <p data-slot="needs-summary" className="text-sm text-muted-foreground tabular-nums">
-            <span className="font-medium text-foreground">{summaryFirst}</span>
-            <Pieces pieces={summaryRest} leading />
+      <Block id="cosa-serve-requisiti" title={NEEDS_BOARD_TEXT.requirements} slot="needs-requirements">
+        {board.areas.length ? (
+          <>
+            <p data-slot="needs-summary" className="text-sm text-muted-foreground tabular-nums">
+              {quarter ? (
+                // Il trimestre che si guarda, poi i conteggi: il «·» va a capo con il numero che lo segue.
+                <>
+                  {quarter}{" "}
+                  <span className="whitespace-nowrap">
+                    {`${FIGURE_SEPARATOR.trim()} `}
+                    <span className="font-medium text-foreground">{summaryFirst}</span>
+                  </span>
+                </>
+              ) : (
+                <span className="font-medium text-foreground">{summaryFirst}</span>
+              )}
+              <Pieces pieces={summaryRest} leading />
+            </p>
+            <div className="space-y-1">
+              {board.areas.map((area) => (
+                <AreaTable key={area.key} area={area} hrefOf={hrefOf} palette={agents} open={searched} />
+              ))}
+            </div>
+          </>
+        ) : (
+          // Altri blocchi sì, requisiti no: lo si dice, invece di togliere «Requisiti».
+          <p data-slot="needs-none" className="text-sm text-muted-foreground">
+            {filtersActive ? NEEDS_BOARD_TEXT.noResults : NEEDS_BOARD_TEXT.nothingToAsk}
           </p>
-          <div className="space-y-1">
-            {board.areas.map((area) => (
-              <AreaTable key={area.key} area={area} hrefOf={hrefOf} palette={agents} open={filtersActive} />
-            ))}
-          </div>
-        </Block>
-      ) : null}
+        )}
+      </Block>
 
       {board.steps.length || board.stepsDone.length ? (
         <Block id="cosa-serve-passi" title={NEEDS_BOARD_TEXT.steps} slot="needs-steps">
@@ -232,7 +270,7 @@ function Due({ row }: { row: NeedRow }) {
 
 /**
  * Un'area di «Requisiti»: una riga chiusa con il nome e i suoi conteggi («Accessi · 12 da chiedere ·
- * 4 in attesa · 3 a posto»), che si apre sulla tabella; `open` (un filtro attivo) la rende aperta. Il
+ * 4 in attesa · 3 a posto»), che si apre sulla tabella; `open` (una ricerca) la rende aperta. Il
  * nome dà il titolo alla sezione e alle tabelle.
  */
 function AreaTable({ area, hrefOf, palette, open }: { area: NeedAreaTable; hrefOf: (id: string) => string; palette: AgentPalette | null; open: boolean }) {
@@ -268,6 +306,13 @@ function AreaTable({ area, hrefOf, palette, open }: { area: NeedAreaTable; hrefO
     </section>
   );
 }
+
+/**
+ * La testa di una riga degli elenchi: il titolo e lo stato. Al telefono (riquadro sotto i 28rem) lo
+ * stato va sotto il titolo, che così ha tutta la riga: accanto, «Chiesta, in attesa» lo stringeva
+ * in una colonna di 220 px, fino a sei righe.
+ */
+const ROW_HEAD = "flex flex-col items-start gap-1 @md/hub:flex-row @md/hub:justify-between @md/hub:gap-3";
 
 /**
  * Una tabella quando il riquadro della pagina (`@container/hub` di hub.tsx) è largo almeno 56rem;
@@ -341,7 +386,7 @@ function NeedTable({
       <ul data-slot="needs-list" className="divide-y rounded-lg border @4xl/hub:hidden">
         {rows.map((row) => (
           <li key={row.id} data-need-item={row.id} className="space-y-1.5 px-3 py-2.5">
-            <div className="flex items-start justify-between gap-3">
+            <div className={ROW_HEAD}>
               <What row={row} />
               <StatusDot tone={row.status.tone} label={row.status.label} className="shrink-0" />
             </div>
@@ -438,7 +483,7 @@ function StepList({ rows, hrefOf, palette }: { rows: readonly NeedRow[]; hrefOf:
     <ul className="divide-y rounded-lg border">
       {rows.map((row) => (
         <li key={row.id} data-need={row.id} className="space-y-1.5 px-3 py-2.5">
-          <div className="flex items-start justify-between gap-3">
+          <div className={ROW_HEAD}>
             <What row={row} />
             <StatusDot tone={row.status.tone} label={row.status.label} className="shrink-0" />
           </div>

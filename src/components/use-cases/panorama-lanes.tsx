@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 import { SegmentedNav, type SegmentedNavItem } from "@/components/dashboard/segmented-nav";
 import { DossierCard, DossierReadOnlyNotice } from "@/components/uc/shell/case-card";
 import type { DossierColumn } from "@/lib/db/queries/uc-nav";
@@ -39,6 +41,7 @@ export const LANES_TEXT = Object.freeze({
   sectionByQuarter: "Use case per trimestre",
   sectionByAgent: "Use case per agente",
   sectionOthers: "Altri use case per trimestre",
+  allAgents: "Tutti gli agenti",
 });
 
 /** «Use case di LIBRA per trimestre»: le corsie di un solo agente, dopo un clic in «Per agente». */
@@ -92,7 +95,9 @@ export interface PanoramaLanesProps {
  * l'altra. Ai revisori di un workspace con gli agenti nel titolo, sopra, «Per trimestre | Per agente»:
  * per agente una card per agente al posto delle corsie (`AgentGrid`). Sotto «In realizzazione», aperta,
  * con le card dei dossier, e «Realizzati», chiusa, con il conto. I contributori vedono le stesse corsie
- * con «N use case» e card con tag, titolo e fase, senza cifre.
+ * con «N use case» e card con tag, titolo e fase, senza cifre. Con il filtro «Agente» (anche dopo un
+ * clic in «Per agente») sopra le corsie una riga dice di chi sono, «LIBRA · 7 use case», con
+ * «‹ Tutti gli agenti» quando c'è «Per agente».
  */
 export function PanoramaLanes({
   items,
@@ -134,6 +139,15 @@ export function PanoramaLanes({
       : agentFilter
         ? agentSectionLabel(agentLabel(agentFilter))
         : LANES_TEXT.sectionByQuarter;
+  // Le corsie di un solo agente: il suo nome a schermo, non solo per i lettori di schermo.
+  const agentLine =
+    reviewers && agentFilter && !byAgent
+      ? {
+          name: agentLabel(agentFilter),
+          count: lanes.lanes.reduce((sum, lane) => sum + lane.entries.length, 0),
+          backHref: grouping?.items.find((item) => item.key === "agente")?.href ?? null,
+        }
+      : null;
   const card = (entry: LaneEntry<AnyHubItem>, place: Lane<AnyHubItem>["key"]) => (
     <LaneCard
       key={entry.item.id}
@@ -158,6 +172,23 @@ export function PanoramaLanes({
             <div data-slot="plan-grouping">
               <SegmentedNav size="sm" ariaLabel={LANES_TEXT.groupingLabel} active={grouping.active} items={grouping.items} />
             </div>
+          ) : null}
+          {agentLine ? (
+            <p data-slot="agent-filter-line" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+              <span>
+                <span className="font-semibold">{agentLine.name}</span>
+                <span className="text-muted-foreground tabular-nums">{`${FIGURE_SEPARATOR}${laneSummaryText(agentLine.count, null)}`}</span>
+              </span>
+              {agentLine.backHref ? (
+                <Link
+                  href={agentLine.backHref}
+                  className="inline-flex min-h-11 items-center gap-0.5 rounded-sm font-medium text-primary underline underline-offset-4 outline-none hover:decoration-2 focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8"
+                >
+                  <ChevronLeft aria-hidden className="size-4" />
+                  {LANES_TEXT.allAgents}
+                </Link>
+              ) : null}
+            </p>
           ) : null}
           {byAgent ? (
             <AgentGrid groups={agentGroups(lanes.lanes as Lane<HubItem>[])} hrefOf={agentHref} agents={agents} />
@@ -211,7 +242,8 @@ export function PanoramaLanes({
 
       {inProgress.length ? (
         <section aria-labelledby={PANORAMA_SECTION_ID.inRealizzazione} className="space-y-3">
-          <h2 id={PANORAMA_SECTION_ID.inRealizzazione} className="flex scroll-mt-24 items-baseline gap-2 text-sm font-semibold">
+          {/* L'ancora di «In realizzazione» (le fasi, «Vai alla Panoramica» da «Cosa serve»): con `tabIndex` Next le dà il fuoco. */}
+          <h2 id={PANORAMA_SECTION_ID.inRealizzazione} tabIndex={-1} className="flex scroll-mt-24 items-baseline gap-2 text-sm font-semibold outline-none">
             {`${LANES_TEXT.inProgress} `}
             <span className="text-xs font-normal text-muted-foreground tabular-nums">{inProgress.length}</span>
           </h2>

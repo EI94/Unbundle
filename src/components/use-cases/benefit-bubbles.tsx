@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FIGURE_SEPARATOR, formatEuro, oneoffRunParts, oneoffRunText, perYearShortText } from "@/lib/use-cases/format";
 import { UP_TO_WORD, VALUE_MODEL_STATE_LABEL } from "@/lib/use-cases/labels";
+import { shortRefOf } from "@/lib/use-cases/agents";
 import { placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
 import { BUBBLE_WHEN_LABEL, bubbleWhenText, groupLegend, type BenefitBubble, type BenefitBubbles, type BubbleWhen, type GroupPalette } from "@/lib/use-cases/value-charts";
 import { cn } from "@/lib/utils";
@@ -128,7 +129,10 @@ export function BenefitBubbleChart({ chart, palette, hrefs }: BenefitBubblesProp
   const max = chart.scale.max;
   const placed = spread(chart.bubbles, max);
   const labels = placeMatrixLabels(
-    placed.filter((bubble) => bubble.code).map((bubble) => ({ id: bubble.id, left: bubble.left, top: bubble.top, text: bubble.code!, radiusPx: bubble.r })),
+    placed.flatMap((bubble) => {
+      const text = shortRefOf(bubble);
+      return text ? [{ id: bubble.id, left: bubble.left, top: bubble.top, text, radiusPx: bubble.r }] : [];
+    }),
     LABEL_BOX,
   );
   const legend = groupLegend(
@@ -214,7 +218,7 @@ export function BenefitBubbleChart({ chart, palette, hrefs }: BenefitBubblesProp
             <GroupLegendItems entries={legend} />
             {whens.map((when) => (
               <span key={when} className="inline-flex items-center gap-1.5">
-                <span aria-hidden className={cn("size-3 shrink-0 rounded-full", bubbleClass({ slot: palette.single ? 1 : 0, when }))} />
+                <span aria-hidden className={cn("size-3 shrink-0 rounded-full", bubbleClass({ slot: palette.single && !palette.agents ? 1 : 0, when }))} />
                 {BUBBLE_WHEN_LABEL[when]}
               </span>
             ))}
@@ -234,6 +238,7 @@ function BubbleDot({ bubble, href, label: placement }: { bubble: BenefitBubble &
   // Il «da misurare» in coda solo accanto a un beneficio contato: senza, è già la cifra.
   const pending = bubble.benefit > 0 ? pendingText(bubble) : null;
   const label = `${bubble.code ? `${bubble.code} ` : ""}${bubble.title}. ${bubbleSummary(bubble)}${pending ? `${FIGURE_SEPARATOR}${pending}` : ""}`;
+  const short = shortRefOf(bubble);
   // Il riquadro si apre verso il centro, così non esce dal grafico.
   const toLeft = bubble.left > 50;
   const above = bubble.top > 35;
@@ -255,15 +260,15 @@ function BubbleDot({ bubble, href, label: placement }: { bubble: BenefitBubble &
           className={cn("rounded-full ring-2 ring-background transition-transform group-hover:scale-110", bubbleClass(bubble))}
           style={{ width: size, height: size }}
         />
-        {bubble.code && placement && !placement.crowded ? (
-          // Il codice accanto alla bolla, dove non copre altre bolle né altri codici.
+        {short && placement && !placement.crowded ? (
+          // Il tag dell'agente o il codice accanto alla bolla, dove non copre altre bolle né altri codici.
           <span
             aria-hidden
             data-slot="bubble-label"
             className="pointer-events-none absolute rounded-sm bg-background/80 px-0.5 font-mono text-[10px] leading-[13px] whitespace-nowrap text-muted-foreground group-hover:text-foreground"
             style={{ left: `calc(50% + ${placement.dx}px)`, top: `calc(50% + ${placement.dy}px)` }}
           >
-            {bubble.code}
+            {short}
           </span>
         ) : null}
         <span

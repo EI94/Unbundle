@@ -208,7 +208,8 @@ test("«In realizzazione»: la card del dossier se c'è, altrimenti «Senza doss
   const column = { state: "pronta", cards: [dossier], byUseCase: new Map([[withDossier.id, dossier]]), readOnlyNotice: false };
   const html = render([without, withDossier], { dossierColumn: column });
   const section = html.slice(html.indexOf('aria-labelledby="panoramica-in-realizzazione"'));
-  assert.match(section, /<h2 id="panoramica-in-realizzazione" class="flex scroll-mt-24 items-baseline gap-2 text-sm font-semibold">In realizzazione <span[^>]*>2<\/span><\/h2>/);
+  // L'ancora prende il fuoco (le fasi, «Vai alla Panoramica» da «Cosa serve»): `tabindex="-1"`, senza contorno.
+  assert.match(section, /<h2 id="panoramica-in-realizzazione" tabindex="-1" class="flex scroll-mt-24 items-baseline gap-2 text-sm font-semibold outline-none">In realizzazione <span[^>]*>2<\/span><\/h2>/);
   assert.ok(section.indexOf(`data-id="${withDossier.id}"`) < section.indexOf(`data-id="${without.id}"`), "prima quelli con la card del dossier");
   const card = cardOf(section, withDossier.id);
   assert.match(card, /data-slot="dossier-card"/);
@@ -291,8 +292,18 @@ test("«Per trimestre | Per agente»: le card degli agenti al posto delle corsie
   const byQuarter = render([libra, plain], { grouping: grouping("trimestre") });
   assert.ok(byQuarter.includes('data-slot="lanes"') && !byQuarter.includes('data-slot="agent-grid"'));
   assert.match(byQuarter, /aria-current="page"[^>]*><span>Per trimestre<\/span>/);
-  assert.match(render([libra], { agentFilter: "LIBRA" }), /aria-label="Use case di LIBRA per trimestre"/);
-  assert.match(render([plain], { agentFilter: "altri" }), /aria-label="Altri use case per trimestre"/);
+  const drill = render([libra], { agentFilter: "LIBRA", grouping: grouping("trimestre") });
+  assert.match(drill, /aria-label="Use case di LIBRA per trimestre"/);
+  // A schermo, sopra le corsie: di chi sono, quanti, e la strada per tornare agli agenti.
+  const line = drill.slice(drill.indexOf('data-slot="agent-filter-line"'), drill.indexOf("</p>", drill.indexOf('data-slot="agent-filter-line"')));
+  assert.equal(textOf(line.slice(line.indexOf(">") + 1)), "LIBRA · 1 use caseTutti gli agenti");
+  assert.match(line, new RegExp(`<a [^>]*href="${BASE.replace(/[?]/g, "\\?")}\\?vista=panoramica&amp;mostra=agenti"`));
+  assert.ok(!line.includes("bg-primary"), "un link, non un pulsante pieno");
+  const others = render([plain], { agentFilter: "altri" });
+  assert.match(others, /aria-label="Altri use case per trimestre"/);
+  assert.ok(others.includes('data-slot="agent-filter-line"') && textOf(others).includes("Altri use case · 1 use case"));
+  assert.ok(!others.includes("Tutti gli agenti"), "senza «Per agente» niente ritorno");
+  assert.ok(!byQuarter.includes('data-slot="agent-filter-line"'), "senza il filtro nessuna riga");
   assert.ok(!render([libra]).includes("plan-grouping"), "senza la scelta niente controllo");
   assert.equal(lanes.agentSectionLabel("ORSA"), "Use case di ORSA per trimestre");
 });

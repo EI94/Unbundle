@@ -10,6 +10,7 @@ import {
   agentPalette,
   agentParamOf,
   agentToneOf,
+  shortRefOf,
   parseAgentParam,
   titleAgent,
 } from "./agents.ts";
@@ -197,4 +198,11 @@ test("agentFilterOptions: agenti in ordine alfabetico, «Altri use case» in fon
     { value: "LIBRA", label: "LIBRA" },
     { value: "altri", label: "Altri use case" },
   ]);
+});
+
+test("l'etichetta corta dei punti dei grafici: il tag dell'agente, altrimenti il codice", () => {
+  assert.equal(shortRefOf({ code: "TJ-0001", title: "LIBRA L1 · Lettura delle fatture estere" }), "LIBRA L1");
+  assert.equal(shortRefOf({ code: "TJ-0002", title: "ORSA · Solleciti" }), "ORSA");
+  assert.equal(shortRefOf({ code: "TJ-0003", title: "Strategia per volo" }), "TJ-0003");
+  assert.equal(shortRefOf({ code: null, title: "Strategia per volo" }), null);
 });

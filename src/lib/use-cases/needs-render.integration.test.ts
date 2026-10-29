@@ -20,10 +20,11 @@ const { registerHooks } = nodeModule as unknown as {
 //
 // - «Cosa serve»: la sua vista, solo per i revisori, ultima nel selettore: sotto «Requisiti» la riga
 //   dei conteggi, poi un'area chiusa per riga con i suoi conteggi (le righe a posto chiuse, «Per N
-//   use case» chiuso, prima gli agenti dei titoli), i prossimi passi aperti fino al mese prossimo
+//   use case» chiuso, prima gli agenti dei titoli), i prossimi passi aperti fino al mese di oggi
 //   («Più avanti» e «Senza data» chiusi, i fatti chiusi), «Cosa vi chiediamo questo trimestre»
 //   chiuso, una riga per gli use case in realizzazione con la Panoramica. Con un filtro, le esigenze
-//   degli use case che lo passano, con le aree aperte. La Panoramica non le mostra: ne conta i
+//   degli use case che lo passano; con una ricerca le aree aperte, con il trimestre di «Prossimo
+//   passo» chiuse, il trimestre in testa ai conteggi. La Panoramica non le mostra: ne conta i
 //   requisiti per «Prossimo passo» (quelli degli use case approvati per questo trimestre, ognuno una
 //   volta), in un workspace a parte, e «Cosa serve» del trimestre conta gli stessi.
 // - Il pannello: al massimo tre esigenze aperte, le altre nella scheda.
@@ -555,11 +556,15 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   assert.ok(manager.includes('data-slot="overview-figures"'));
   assert.match(manager, /data-figure="totale-trimestre"[^>]*><p[^>]*><span class="whitespace-nowrap">2<\/span><\/p><p class="text-sm">use case in questo trimestre</);
   // Il link porta a «Cosa serve» del trimestre: proprio i requisiti contati, non gli altri, con gli
-  // stessi numeri del riquadro nella riga sotto «Requisiti».
+  // stessi numeri del riquadro nella riga sotto «Requisiti», che comincia dal trimestre.
   const target = await hubHtml("builder", ids.wsStart, { vista: "cosa-serve", trimestre: thisQuarter });
   assert.ok(target.includes(START.shared) && target.includes(START.blocked));
   assert.ok(!target.includes(START.progress) && !target.includes(START.next));
-  assert.equal(summaryOf(target), "2 aperti · 1 da chiedere · 1 bloccato");
+  assert.equal(summaryOf(target), `${quarter.quarterLabel(thisQuarter)} · 2 aperti · 1 da chiedere · 1 bloccato`);
+  // Il filtro del trimestre non apre le aree: si arriva sui conteggi, non su tutte le tabelle.
+  const areas = areasOf(target);
+  assert.ok(areas.length > 0);
+  for (const area of areas) assert.equal(area.opening, '<details data-slot="needs-area">', area.key);
   // Il requisito dei due use case di LIBRA: il tag dell'agente una volta sola, prima di «Per 2 use case».
   const shared = between(target, START.shared, "</tr>");
   const tags = [...between(shared, 'data-slot="need-agents"', "Per 2 use case").matchAll(/data-slot="agent-tag"[^>]*><span class="truncate">([^<]*)</g)].map((match) => match[1]);
@@ -620,7 +625,7 @@ test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai
   }
 });
 
-test("Cosa serve: «Prossimi passi» aperti fino al mese prossimo, poi «Più avanti» e «Senza data» chiusi; gli agenti in «Per»", opts, async () => {
+test("Cosa serve: «Prossimi passi» aperti fino al mese di oggi, poi «Più avanti» e «Senza data» chiusi; gli agenti in «Per»", opts, async () => {
   const { agentPalette } = await import("./agents.ts");
   const step = (title: string, useCases: Array<{ id: string; code: string | null; title: string }> = []) => ({
     id: randomUUID(),
@@ -656,15 +661,15 @@ test("Cosa serve: «Prossimi passi» aperti fino al mese prossimo, poi «Più av
       }),
     ),
   );
-  // Questo mese e il prossimo: aperti, fuori da ogni <details> (prima di loro ogni <details> è già chiuso).
-  for (const title of ["Questo mese", "Il mese prossimo"]) {
-    const before = html.slice(0, html.indexOf(`${title} ${suffix}`));
-    assert.equal(before.split("<details").length, before.split("</details>").length, `${title}: fuori da ogni <details>`);
-  }
-  assert.ok(html.includes(">Ottobre 2026<") && html.includes(">Novembre 2026<"));
+  // Questo mese: aperto, fuori da ogni <details> (prima di lui ogni <details> è già chiuso).
+  const before = html.slice(0, html.indexOf(`Questo mese ${suffix}`));
+  assert.equal(before.split("<details").length, before.split("</details>").length, "Questo mese: fuori da ogni <details>");
+  assert.ok(html.includes(">Ottobre 2026<"));
+  // Dal mese prossimo, sotto «Più avanti», chiuso: novembre e gennaio.
   const later = detailsAround(html, `Fra tre mesi ${suffix}`);
   assert.match(later, /^<details data-slot="needs-steps-later">/);
-  assert.ok(later.includes("Più avanti · 1 passo") && later.includes(">Gennaio 2027<"));
+  assert.ok(later.includes("Più avanti · 2 passi") && later.includes(">Novembre 2026<") && later.includes(">Gennaio 2027<"));
+  assert.ok(later.includes(`Il mese prossimo ${suffix}`), "il mese prossimo sta in «Più avanti»");
   const undated = detailsAround(html, `Da fissare ${suffix}`);
   assert.match(undated, /^<details data-slot="needs-steps-undated">/);
   assert.ok(undated.includes("Senza data · 1 passo"));
@@ -681,7 +686,7 @@ test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerc
   const byCode = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: cards.proposed.code });
   assert.ok(byCode.includes(T.access), "collegata allo use case cercato");
   for (const title of [T.extract, T.procedure, T.kickoff]) assert.ok(!byCode.includes(title), title);
-  // Con un filtro i conteggi seguono il filtro e le aree sono aperte: si legge subito quello che si cerca.
+  // Con una ricerca i conteggi seguono il filtro e le aree sono aperte: si legge subito quello che si cerca.
   assert.equal(summaryOf(byCode), "1 aperto · 1 in attesa");
   assert.deepEqual(
     areasOf(byCode).map((area) => [area.key, area.opening, area.summary]),

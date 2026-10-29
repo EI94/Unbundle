@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { shortRefOf } from "@/lib/use-cases/agents";
 import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { costShortText, valueScreenText } from "@/lib/use-cases/format";
 import { ORIGIN_LABEL, ZONE_HINT, ZONE_LABEL } from "@/lib/use-cases/labels";
@@ -9,6 +10,7 @@ import { EXPIRED_TAG, toEstimateLabel, type HubEstimateParam } from "@/lib/use-c
 import { cn } from "@/lib/utils";
 import { CostFigure } from "./cost-figure";
 import { Disclosure } from "./disclosure";
+import { RevealOnMount } from "./list-focus";
 import { NeedUseCaseLink } from "./need-use-cases";
 import { ORIGIN_DOT_CLASS } from "./origin-chip";
 import { ValueFigure } from "./value-figure";
@@ -96,7 +98,8 @@ const ZONE_TEXT = "absolute text-xs leading-tight break-words text-muted-foregro
  * poco, così ognuno resta cliccabile. Punti quasi nello stesso posto restano dove sono (la
  * posizione è il loro costo), ma il primo porta l'etichetta con tutti i codici del gruppo
  * («TJ-0001, TJ-0004», `groupNearPoints`): senza, il secondo codice copriva il primo e uno use case
- * spariva dal grafico. Nessun ordine per persona: l'ordine è quello della lista.
+ * spariva dal grafico. Un titolo con l'agente dà il tag al posto del codice («LIBRA L1, TJ-0004»),
+ * come le card della Panoramica (`shortRefOf`). Nessun ordine per persona: l'ordine è quello della lista.
  */
 function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: number; top: number; labelText: string }> {
   const groups = new Map<string, number>();
@@ -118,7 +121,7 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
     return { ...point, left: clamp(left + radius * Math.cos(angle)), top: clamp(top + radius * Math.sin(angle)) };
   });
   const texts = groupLabelTexts(
-    placed.map((point) => point.code),
+    placed.map((point) => shortRefOf(point)),
     groupNearPoints(placed),
   );
   return placed.map((point, index) => ({ ...point, labelText: texts[index] }));
@@ -244,11 +247,14 @@ export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BAND
             {toEstimate.length ? (
               <Disclosure slot="to-estimate" summary={toEstimateLabel(toEstimate.length)} defaultOpen={open === "mancante"}>
                 <MatrixOffList items={toEstimate} />
+                {/* Aperto da un vecchio link: l'elenco in vista, non sotto la piega. */}
+                {open === "mancante" ? <RevealOnMount /> : null}
               </Disclosure>
             ) : null}
             {offMatrix ? (
               <Disclosure slot="off-matrix" summary={offMatrix.label} defaultOpen={open === "fuori-matrice"}>
                 <MatrixOffList items={offMatrix.items} />
+                {open === "fuori-matrice" ? <RevealOnMount /> : null}
               </Disclosure>
             ) : null}
           </div>

@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
  * Un `<details>` chiuso di default, con la freccia come «Ipotesi di calcolo». La freccia segue solo
  * il suo `<details>`: chiusa resta chiusa anche dentro un «Già a posto» aperto. `id`: un'ancora sul
  * `<details>` stesso, come «Realizzati» della Panoramica (`#panoramica-realizzati`). `defaultOpen`:
- * aperto quando la pagina si rende (un link che chiede quell'elenco, un filtro attivo in «Cosa
- * serve»); poi lo apre e lo chiude chi guarda, come ogni `<details>`.
+ * aperto quando la pagina si rende (un link che chiede quell'elenco, una ricerca in «Cosa serve»);
+ * poi lo apre e lo chiude chi guarda, come ogni `<details>`.
  */
 export function Disclosure({
   summary,

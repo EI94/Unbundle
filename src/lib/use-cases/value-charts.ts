@@ -12,6 +12,9 @@
  *   gruppo («Altri gruppi (Amministrazione) e senza gruppo»), e ogni bolla o segmento dice il suo
  *   gruppo. La tavolozza si calcola su tutte le schede del workspace, non su quelle filtrate: un
  *   filtro non ridipinge un gruppo. Senza nessun gruppo: un colore solo, senza legenda dei gruppi.
+ *   In un workspace con gli agenti nei titoli (rilascio «Panoramica») il colore dice sempre
+ *   l'agente, come le card della Panoramica: un gruppo con il nome di un agente («LIBRA») prende il
+ *   suo colore e il suo nome, gli altri gruppi sono grigi e i tre colori dei gruppi non ci sono.
  * - **Bolle** (`buildBenefitBubbles`): le schede della vista con un modello e la facilità; x la
  *   facilità da 1 a 5, y il beneficio contato all'anno, raggio `5 + 13·√(avvio / avvio massimo)`
  *   in pixel; il bordo dice quando (questo trimestre, prossimo, più avanti) e il riempimento
@@ -32,6 +35,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import { LEVERS, type Lever } from "../uc/vocab.ts";
+import { agentToneOf, shortRefOf, type AgentPalette, type AgentTone } from "./agents.ts";
 import { FIGURE_SEPARATOR, formatEuro, formatInteger, lowerFirst } from "./format.ts";
 import type { Origin } from "./types.ts";
 import { CURVE_EPSILON, componentResult, jCurve, monthLabel, planMonths, valueTotals, type JCurve, type PlannedMonths, type ValueTotals } from "./value-calc.ts";
@@ -43,14 +47,25 @@ import { isPriorityCandidate, roadmapGroupKey, type HubChartParam, type HubItem 
 /** Quanti gruppi hanno un colore loro. */
 export const GROUP_COLOR_SLOTS = 3;
 
-/** Il colore di un gruppo: 1, 2, 3, oppure 0, il grigio degli altri gruppi e delle schede senza gruppo. */
-export type GroupSlot = 0 | 1 | 2 | 3;
+/** Il colore di un gruppo che è un agente dei titoli: il tono dell'agente (`--uc-agente-*`). */
+export type AgentGroupSlot = `agente-${AgentTone}`;
+
+/**
+ * Il colore di un gruppo: 1, 2, 3, oppure 0, il grigio degli altri gruppi e delle schede senza
+ * gruppo; con gli agenti nei titoli, il tono dell'agente (`agente-3`) o il grigio.
+ */
+export type GroupSlot = 0 | 1 | 2 | 3 | AgentGroupSlot;
 
 export interface GroupPalette {
   /** Gruppo → colore (1-3): i tre gruppi più grandi. Gli altri gruppi e «senza gruppo» sono grigi. */
   slots: Readonly<Record<string, 1 | 2 | 3>>;
   /** Nessuna scheda ha un gruppo: un colore solo (1), senza legenda dei gruppi. */
   single: boolean;
+  /**
+   * Con gli agenti nei titoli: gruppo → tono dell'agente con lo stesso nome («LIBRA»); gli altri
+   * gruppi, e tutto senza gruppi, in grigio. null senza agenti: i colori dei gruppi.
+   */
+  agents: Readonly<Record<string, AgentTone>> | null;
 }
 
 /** I gruppi senza un colore loro, in grigio. */
@@ -74,9 +89,10 @@ export function groupText(group: string | null): string {
 /**
  * I colori dei gruppi, dalle schede del workspace (tutte, non solo quelle filtrate): i gruppi dal
  * più grande (più schede con un modello; a pari schede più beneficio contato, se ci sono le
- * ipotesi `params`; poi il nome), i primi tre con un colore, gli altri in grigio.
+ * ipotesi `params`; poi il nome), i primi tre con un colore, gli altri in grigio. Con gli agenti dei
+ * titoli (`agents`, `agentPalette` di tutte le schede) un gruppo ha il colore solo se è un agente.
  */
-export function groupPalette(items: readonly Pick<HubItem, "valueModel">[], params?: ValueParams | null): GroupPalette {
+export function groupPalette(items: readonly Pick<HubItem, "valueModel">[], params?: ValueParams | null, agents?: AgentPalette | null): GroupPalette {
   const size = new Map<string, { cards: number; benefit: number }>();
   for (const item of items) {
     const group = groupOf(item.valueModel);
@@ -89,16 +105,47 @@ export function groupPalette(items: readonly Pick<HubItem, "valueModel">[], para
   const sorted = [...size.entries()]
     .sort(([a, sa], [b, sb]) => sb.cards - sa.cards || sb.benefit - sa.benefit || a.localeCompare(b, "it-IT"))
     .map(([group]) => group);
+  if (agents && Object.keys(agents.tones).length) {
+    const tones: Record<string, AgentTone> = {};
+    for (const group of sorted) {
+      const tone = agentToneOf(agents, agentNameOfGroup(group));
+      if (tone) tones[group] = tone;
+    }
+    return { slots: {}, single: sorted.length === 0, agents: tones };
+  }
   const slots: Record<string, 1 | 2 | 3> = {};
   sorted.slice(0, GROUP_COLOR_SLOTS).forEach((group, index) => {
     slots[group] = (index + 1) as 1 | 2 | 3;
   });
-  return { slots, single: sorted.length === 0 };
+  return { slots, single: sorted.length === 0, agents: null };
+}
+
+/** Il nome dell'agente che un gruppo può essere: «Libra» e «LIBRA» sono LIBRA. */
+function agentNameOfGroup(group: string): string {
+  return group.toLocaleUpperCase("it-IT");
+}
+
+/** Il gruppo è un agente dei titoli: ha il suo tono. */
+function agentToneOfGroup(palette: GroupPalette, group: string | null): AgentTone | null {
+  return palette.agents && group !== null && Object.prototype.hasOwnProperty.call(palette.agents, group) ? palette.agents[group] : null;
 }
 
 export function groupSlot(palette: GroupPalette, group: string | null): GroupSlot {
+  if (palette.agents) {
+    const tone = agentToneOfGroup(palette, group);
+    return tone ? `agente-${tone}` : 0;
+  }
   if (palette.single) return 1;
   return group !== null && Object.prototype.hasOwnProperty.call(palette.slots, group) ? palette.slots[group] : 0;
+}
+
+/**
+ * Il gruppo di una bolla o di un segmento, a parole: «Gruppo Vendite», «Senza gruppo»; un gruppo
+ * che è un agente con il nome dell'agente, «LIBRA», come il suo tag. null con un colore solo.
+ */
+export function groupLabelOf(palette: GroupPalette, group: string | null): string | null {
+  if (palette.single) return null;
+  return agentToneOfGroup(palette, group) && group !== null ? agentNameOfGroup(group) : groupText(group);
 }
 
 export interface GroupLegendEntry {
@@ -126,10 +173,16 @@ export function otherGroupsLabel(others: readonly string[], ungrouped: boolean):
 export function groupLegend(palette: GroupPalette, groups: readonly (string | null)[]): GroupLegendEntry[] {
   if (palette.single) return [];
   const present = new Set(groups.map((group) => groupSlot(palette, group)));
-  const entries: GroupLegendEntry[] = Object.entries(palette.slots)
-    .filter(([, slot]) => present.has(slot))
-    .sort(([, a], [, b]) => a - b)
-    .map(([label, slot]) => ({ slot, label }));
+  // Con gli agenti: i loro nomi in ordine alfabetico, come i toni.
+  const entries: GroupLegendEntry[] = palette.agents
+    ? Object.entries(palette.agents)
+        .map(([group, tone]) => ({ slot: `agente-${tone}` as const, label: agentNameOfGroup(group) }))
+        .filter((entry) => present.has(entry.slot))
+        .sort((a, b) => a.label.localeCompare(b.label, "it-IT"))
+    : Object.entries(palette.slots)
+        .filter(([, slot]) => present.has(slot))
+        .sort(([, a], [, b]) => a - b)
+        .map(([label, slot]) => ({ slot, label }));
   if (present.has(0)) {
     const others = [...new Set(groups.filter((group): group is string => group !== null && groupSlot(palette, group) === 0))].sort((a, b) => a.localeCompare(b, "it-IT"));
     entries.push({ slot: 0, label: otherGroupsLabel(others, groups.includes(null)) });
@@ -291,7 +344,7 @@ export function buildBenefitBubbles(items: readonly HubItem[], params: ValuePara
       oneoff: totals.oneoff,
       run: totals.run,
       group,
-      groupLabel: palette.single ? null : groupText(group),
+      groupLabel: groupLabelOf(palette, group),
       slot: groupSlot(palette, group),
       when: bubbleWhen(item, today),
       expired: item.phase === "approvato" && roadmapGroupKey(item.targetQuarter, today) === "scaduti",
@@ -420,8 +473,9 @@ export function beyondHorizonText(month: MonthCode): string {
   return `oltre ${monthLabel(month)}`;
 }
 
+/** Il nome di uno use case sulla curva: il tag dell'agente come nelle card («LIBRA L1»), altrimenti il codice o il titolo. */
 function nameOf(card: Pick<HubItem, "code" | "title">): string {
-  return card.code ?? card.title;
+  return shortRefOf(card) ?? card.title;
 }
 
 /**
@@ -579,7 +633,7 @@ export function buildLeverChart(items: readonly HubItem[], params: ValueParams, 
           kind: component.kind,
         };
       });
-      const base = { id: item.id, code: item.code, title: item.title, group, groupLabel: palette.single ? null : groupText(group), slot, components: lines };
+      const base = { id: item.id, code: item.code, title: item.title, group, groupLabel: groupLabelOf(palette, group), slot, components: lines };
       if (totals.byLever[lever] > 0) {
         row.total += totals.byLever[lever];
         row.segments.push({ ...base, eur: totals.byLever[lever] });

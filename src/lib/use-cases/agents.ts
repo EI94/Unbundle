@@ -48,6 +48,14 @@ export function titleAgent(title: string): TitleAgent | null {
   return { agent, code, label: code ? `${agent} ${code}` : agent, prefix: text.slice(0, text.length - rest.length), rest };
 }
 
+/**
+ * L'etichetta corta di uno use case accanto a un punto dei grafici del menu «⋯»: il tag dell'agente
+ * («LIBRA L1»), lo stesso delle card della Panoramica, altrimenti il codice («TJ-0012»); null senza.
+ */
+export function shortRefOf(item: { code: string | null; title: string }): string | null {
+  return titleAgent(item.title)?.label ?? item.code;
+}
+
 /** Solo il nome dell'agente del titolo; null senza il prefisso. */
 export function agentOfTitle(title: string): string | null {
   return titleAgent(title)?.agent ?? null;

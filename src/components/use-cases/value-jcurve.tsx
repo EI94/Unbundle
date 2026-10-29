@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { formatEuro } from "@/lib/use-cases/format";
 import { monthLabel } from "@/lib/use-cases/value-calc";
 import { curveScale, type RoadmapValue } from "@/lib/use-cases/value-charts";
@@ -167,49 +168,70 @@ export function ValueJCurve({ value }: ValueJCurveProps) {
       </div>
 
       {/* Al telefono: le tappe della curva, senza grafico. */}
-      <dl data-slot="value-jcurve-list" className="space-y-1.5 text-sm md:hidden">
+      <dl data-slot="value-jcurve-list" className="space-y-2 text-sm md:hidden">
         {low ? <Fact label={JCURVE_TEXT.low} value={`${formatEuro(low.net)} · ${low.label}`} /> : null}
         {goLives.map((mark) => (
-          <Fact key={mark.index} label={`${JCURVE_TEXT.goLive} · ${mark.label}`} value={mark.names.join(", ")} />
+          <Fact key={mark.index} label={`${JCURVE_TEXT.goLive} · ${mark.label}`} value={<Names names={mark.names} />} />
         ))}
         {value.breakevenText ? <Fact label={JCURVE_TEXT.breakeven} value={value.breakevenText} /> : null}
         <Fact label={afterMonthsText(horizon)} value={formatEuro(end)} />
       </dl>
 
-      {/* Per i lettori di schermo, da tablet in su: la curva mese per mese. */}
-      <table className="sr-only hidden md:table">
-        <caption>{JCURVE_TEXT.title}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{JCURVE_TEXT.month}</th>
-            <th scope="col">{JCURVE_TEXT.net}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {curve.net.map((net, m) => {
-            const mark = goLiveAt.get(m);
-            return (
-              <tr key={m}>
-                <th scope="row">{monthLabel(curve.months[m])}</th>
-                <td>
-                  {formatEuro(net)}
-                  {mark ? ` · ${JCURVE_TEXT.goLive}: ${mark.names.join(", ")}` : ""}
-                  {m === breakeven ? ` · ${JCURVE_TEXT.breakeven}` : ""}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {/*
+        Per i lettori di schermo, da tablet in su: la curva mese per mese. `sr-only` sta sul riquadro,
+        non sulla tabella: con `display: table` la larghezza di 1 px non vale, e le righe lunghe di
+        «Entrata in uso» allargavano la pagina.
+      */}
+      <div className="sr-only hidden md:block">
+        <table>
+          <caption>{JCURVE_TEXT.title}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{JCURVE_TEXT.month}</th>
+              <th scope="col">{JCURVE_TEXT.net}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {curve.net.map((net, m) => {
+              const mark = goLiveAt.get(m);
+              return (
+                <tr key={m}>
+                  <th scope="row">{monthLabel(curve.months[m])}</th>
+                  <td>
+                    {formatEuro(net)}
+                    {mark ? ` · ${JCURVE_TEXT.goLive}: ${mark.names.join(", ")}` : ""}
+                    {m === breakeven ? ` · ${JCURVE_TEXT.breakeven}` : ""}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+/** Una tappa al telefono: il nome sopra, il valore sotto, così un elenco lungo ha tutta la riga. */
+function Fact({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
+    <div className="space-y-0.5">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-right tabular-nums">{value}</dd>
+      <dd className="tabular-nums">{value}</dd>
     </div>
+  );
+}
+
+/** «LIBRA L1, TJ-0006»: ogni nome intero su una riga, mai «TJ-» da una parte e «0006» dall'altra. */
+function Names({ names }: { names: readonly string[] }) {
+  return (
+    <>
+      {names.map((name, index) => (
+        <span key={`${index}-${name}`}>
+          {index ? " " : null}
+          <span className="whitespace-nowrap">{index < names.length - 1 ? `${name},` : name}</span>
+        </span>
+      ))}
+    </>
   );
 }

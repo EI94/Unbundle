@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatEuro, formatInteger } from "@/lib/use-cases/format";
 import { OVERVIEW_STEP_TARGET, type OverviewFigures, type OverviewNextStep, type OverviewStep, type PortfolioLine } from "@/lib/use-cases/panoramica";
@@ -8,6 +7,7 @@ import { monthLongLabel } from "@/lib/use-cases/value-calc";
 import type { MonthCode } from "@/lib/use-cases/value-model";
 import { cn } from "@/lib/utils";
 import { HUB_TEXT } from "./hub-header";
+import { ViewFocusLink } from "./list-focus";
 
 /** Testi della testa della Panoramica (rilascio «Panoramica»). */
 export const OVERVIEW_TEXT = Object.freeze({
@@ -114,11 +114,12 @@ function StepCell({ step, reviewer, decideHref }: { step: OverviewStep; reviewer
     </>
   );
   if (step.key === "da_decidere") {
-    // Ai contributori «In valutazione» si apre sempre: non ha contatore.
+    // Ai contributori «In valutazione» si apre sempre: non ha contatore. La Panoramica sparisce con
+    // il link: il fuoco va al titolo di «Da decidere» (`ViewFocusLink`).
     return !reviewer || (count ?? 0) > 0 ? (
-      <Link href={decideHref} scroll={false} className={STEP_LINK}>
+      <ViewFocusLink href={decideHref} className={STEP_LINK}>
         {content}
-      </Link>
+      </ViewFocusLink>
     ) : (
       <span className={STEP_INERT}>{content}</span>
     );
@@ -164,6 +165,7 @@ function figureTiles(figures: OverviewFigures): FigureTile[] {
  *    17 use case»), e sotto «Su tutto il portafoglio: …»;
  * 3. per i revisori «Prossimo passo», con una frase e il solo pulsante pieno della pagina (la testata
  *    rende «Nuovo use case» bordato).
+ * «Da decidere» e il pulsante cambiano vista: il fuoco va al titolo della vista nuova (`ViewFocusLink`).
  * Conteggi di use case e di esigenze, mai di persone (art. 15.4).
  */
 export function PanoramicaTop({ steps, reviewer, decideHref, figures, line, nextStep }: PanoramicaTopProps) {
@@ -225,8 +227,8 @@ export function PanoramicaTop({ steps, reviewer, decideHref, figures, line, next
             </h2>
             <p className="text-sm">{nextStepText(nextStep.step)}</p>
           </div>
-          {/* Il solo pulsante pieno della pagina: con il riquadro, «Nuovo use case» è bordato. */}
-          <Button className="min-h-11 shrink-0 self-start sm:min-h-8 @2xl/hub:self-center" render={<Link href={nextStep.href} scroll={false} />} nativeButton={false}>
+          {/* Il solo pulsante pieno della pagina: con il riquadro, «Nuovo use case» è bordato. Porta il fuoco al titolo della vista che apre. */}
+          <Button className="min-h-11 shrink-0 self-start sm:min-h-8 @2xl/hub:self-center" render={<ViewFocusLink href={nextStep.href} />} nativeButton={false}>
             {nextStepAction(nextStep.step)}
           </Button>
         </section>

@@ -308,12 +308,13 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   const items: readonly AnyHubItem[] = list.items;
   const reviewerItems = reviewer ? (list.items as HubItem[]) : [];
   const bands = list.projection !== "contributore" ? list.costBands : undefined;
-  // «Benefici e costi» (solo revisori): ipotesi del workspace e colori dei gruppi, da tutte le schede.
-  const valueParams = list.projection !== "contributore" ? list.valueParams : null;
-  const palette = reviewer ? groupPalette(reviewerItems, valueParams) : null;
-  const followsCurrentMonth = list.projection !== "contributore" ? list.followsCurrentMonth : false;
   // I colori degli agenti, da tutte le schede della pagina: un filtro non li cambia.
   const agents = agentPalette(list.items);
+  // «Benefici e costi» (solo revisori): ipotesi del workspace e colori dei gruppi, da tutte le schede;
+  // con gli agenti nei titoli il colore dei grafici dice l'agente, come nelle card.
+  const valueParams = list.projection !== "contributore" ? list.valueParams : null;
+  const palette = reviewer ? groupPalette(reviewerItems, valueParams, agents) : null;
+  const followsCurrentMonth = list.projection !== "contributore" ? list.followsCurrentMonth : false;
   // La scala delle barre, sugli approvati di tutto il workspace.
   const barScale = reviewer ? laneBarScale(reviewerItems) : 0;
   // «Ipotesi di calcolo» porta a Impostazioni › Valutazione solo chi le può cambiare.
@@ -476,7 +477,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
               planItems={reviewerItems}
               model={list.model}
               valueParams={valueParams}
-              palette={palette ?? groupPalette(reviewerItems, valueParams)}
+              palette={palette ?? groupPalette(reviewerItems, valueParams, agents)}
               followsCurrentMonth={followsCurrentMonth}
               settingsHref={valueSettingsHref}
               bands={list.costBands}
@@ -522,30 +523,40 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           )
         ) : view === "cosa-serve" && list.projection !== "contributore" ? (
           needsBoard ? (
-            <NeedsBoardView
-              board={needsBoard}
+            // Il titolo per i lettori di schermo prende il fuoco dopo «Vedi cosa serve» della Panoramica.
+            <>
+              <ListFocusTarget key="cosa-serve" title="Cosa serve" />
+              <NeedsBoardView
+                board={needsBoard}
+                today={list.today}
+                agents={agents}
+                hrefOf={(id) => panelHref(basePath, query, id)}
+                inRealization={(filtered as HubItem[]).filter((item) => item.phase === "in_realizzazione").length}
+                realizationHref={`${viewHref("panoramica")}#${PANORAMA_SECTION_ID.inRealizzazione}`}
+                filtersActive={filtersActive}
+                clearHref={clearHref}
+                searched={Boolean(params.q)}
+                quarter={params.trimestre ? (params.trimestre === LATER_QUARTER_PARAM ? WHEN_LATER_LABEL : quarterLabel(params.trimestre)) : null}
+              />
+            </>
+          ) : null
+        ) : (
+          // Il titolo per i lettori di schermo prende il fuoco dopo «Vedi le proposte» e «Da decidere» delle fasi.
+          <>
+            <ListFocusTarget key="da-decidere" title={reviewer ? HUB_TEXT.decideView : HUB_TEXT.contributorDecideView} />
+            <DecideView
+              items={filtered}
+              teamName={data.teamName}
               today={list.today}
-              agents={agents}
-              hrefOf={(id) => panelHref(basePath, query, id)}
-              inRealization={(filtered as HubItem[]).filter((item) => item.phase === "in_realizzazione").length}
-              realizationHref={`${viewHref("panoramica")}#${PANORAMA_SECTION_ID.inRealizzazione}`}
+              basePath={basePath}
+              query={query}
+              bands={bands}
+              overviewHref={abilities.canSeePriority ? viewHref("panoramica") : null}
+              info={data.info}
               filtersActive={filtersActive}
               clearHref={clearHref}
             />
-          ) : null
-        ) : (
-          <DecideView
-            items={filtered}
-            teamName={data.teamName}
-            today={list.today}
-            basePath={basePath}
-            query={query}
-            bands={bands}
-            overviewHref={abilities.canSeePriority ? viewHref("panoramica") : null}
-            info={data.info}
-            filtersActive={filtersActive}
-            clearHref={clearHref}
-          />
+          </>
         )}
 
         {view === "da-decidere" && data.participation ? <ParticipationCard participation={data.participation} /> : null}

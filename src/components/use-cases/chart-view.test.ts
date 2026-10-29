@@ -168,6 +168,9 @@ test("matrice: sotto la legenda due elenchi chiusi; l'indirizzo apre il suo", ()
   assert.match(detailsTag(html, "off-matrix"), /^<details data-slot="off-matrix" open=""/);
   const offList = detailsOf(html, "off-matrix");
   assert.ok(offList.includes("1 senza beneficio contato") && offList.includes(">Meno errori nelle fatture<"), "senza codice, il titolo solo");
+  // L'elenco che l'indirizzo apre viene in vista appena c'è (un vecchio link lo lasciava sotto la piega); l'altro no.
+  assert.ok(offList.includes('<span hidden="" data-slot="reveal-on-mount"></span>'));
+  assert.ok(!estimate.includes("reveal-on-mount"));
   // Gli elenchi stanno sotto la legenda, nella didascalia della matrice.
   assert.ok(html.indexOf('data-slot="matrix-legend"') < html.indexOf('data-slot="to-estimate"'));
   assert.ok(html.indexOf('data-slot="off-matrix"') < html.indexOf("</figcaption>"));
