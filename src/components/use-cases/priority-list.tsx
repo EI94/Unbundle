@@ -118,14 +118,16 @@ export function PriorityList({ workspaceId, items, today, canDecide, bands, base
                 <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums empty:hidden @min-[58rem]/hub:empty:block">{item.code ?? ""}</span>
                 {/*
                   Il titolo e, per i revisori, il chip di «Raccolta informazioni» sotto: una sola cella
-                  della griglia, e il chip non toglie spazio al titolo.
+                  della griglia, e il chip non toglie spazio al titolo. Il titolo va su due righe anche
+                  con le colonne: con «Origine» e «Zona» la cella è stretta, e la riga è già alta due
+                  righe per il Costo («avvio …» / «ricorrenti …»).
                 */}
                 <span className="flex min-w-0 flex-col items-start gap-0.5">
                   <Link
                     href={panelHref(basePath, query, item.id)}
                     scroll={false}
                     title={item.title}
-                    className="line-clamp-2 max-w-full min-w-0 text-sm font-semibold break-words text-foreground outline-none hover:underline focus-visible:underline @min-[58rem]/hub:line-clamp-1"
+                    className="line-clamp-2 max-w-full min-w-0 text-sm font-semibold break-words text-foreground outline-none hover:underline focus-visible:underline"
                   >
                     {item.title}
                   </Link>

@@ -95,6 +95,9 @@ test("la lista di «Priorità» e le righe dei revisori hanno le colonne da 58re
   }
   // Il chip di «Raccolta informazioni» sta sotto il titolo, non accanto: non gli toglie spazio.
   assert.match(list, /<span className="flex min-w-0 flex-col items-start gap-0\.5">\s*<Link/);
+  // Il titolo va su due righe a ogni larghezza: con «Origine» e «Zona» una riga sola lo taglia dopo poche parole.
+  assert.match(list, /className="line-clamp-2 max-w-full min-w-0 text-sm font-semibold /);
+  assert.ok(!list.includes("hub:line-clamp-1"), "nessuna riga sola per il titolo con le colonne");
   // L'origine c'è solo quando c'è la sua colonna, anche nella riga stretta del telefono.
   assert.match(list, /\{originColumn \? \(\s*<span className="min-w-0">\s*<OriginChip origin=\{item\.origin\} \/>/);
   // Valore va a capo dopo «·», nella lista e nella riga, invece di scrivere sopra il Costo.
