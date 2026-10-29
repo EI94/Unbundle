@@ -59,6 +59,9 @@ export function LearningSessionBoundary({ workspaceId, expectedUserId, children 
     window.addEventListener("popstate", recheck);
     window.addEventListener("pageshow", recheck);
     document.addEventListener("visibilitychange", visibility);
+    // Voluto: il controllo nasconde subito i contenuti («checking», senza aspettare la risposta),
+    // perché l'albero RSC di un altro account non resti a schermo mentre si verifica la sessione.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- nasconde i contenuti prima della verifica
     void check(true);
     const invalidatePendingCheck = () => { ++sequence.current; controller.current?.abort(); };
     return () => {

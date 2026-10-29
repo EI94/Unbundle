@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -44,25 +44,30 @@ export function LeadershipSidebar({
   const [data, setData] = useState<SidebarData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/sidebar-data`);
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      }
-    } catch {
-      // silent retry on next poll
-    } finally {
-      setLoading(false);
-    }
-  }, [workspaceId]);
-
+  // La lettura sta nell'effetto che la ripete: lo stato cambia solo dopo la risposta, mai
+  // durante l'effetto, e non dopo lo smontaggio.
   useEffect(() => {
-    fetchData();
+    let active = true;
+    const fetchData = async () => {
+      try {
+        const res = await fetch(`/api/workspaces/${workspaceId}/sidebar-data`);
+        if (res.ok) {
+          const json = await res.json();
+          if (active) setData(json);
+        }
+      } catch {
+        // silent retry on next poll
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void fetchData();
     const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [workspaceId]);
 
   if (loading && !data) {
     return (

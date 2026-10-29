@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
   startOpenSurveyAction,
@@ -17,6 +17,20 @@ function storageKey(openToken: string) {
   return `unbundle-air-open:${openToken.slice(-16)}`;
 }
 
+/** La survey già iniziata da questo dispositivo; null senza, o se localStorage non risponde. */
+function readExistingUrl(openToken: string): string | null {
+  try {
+    return window.localStorage.getItem(storageKey(openToken));
+  } catch {
+    return null;
+  }
+}
+
+function subscribeStorage(onChange: () => void): () => void {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+}
+
 export function OpenSurveyStartForm({
   openToken,
   named,
@@ -27,7 +41,6 @@ export function OpenSurveyStartForm({
   const router = useRouter();
   const action = startOpenSurveyAction.bind(null, openToken);
   const [state, formAction, pending] = useActionState(action, INITIAL);
-  const [existingUrl, setExistingUrl] = useState<string | null>(null);
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
 
   function clearLocalError(name: string) {
@@ -40,12 +53,8 @@ export function OpenSurveyStartForm({
   }
 
   // Anti-duplicati: se da questo dispositivo la survey è già stata iniziata,
-  // proponi di riprenderla invece di crearne una nuova.
-  useEffect(() => {
-    try {
-      setExistingUrl(window.localStorage.getItem(storageKey(openToken)));
-    } catch {}
-  }, [openToken]);
+  // proponi di riprenderla invece di crearne una nuova. Sul server, e all'idratazione, niente.
+  const existingUrl = useSyncExternalStore(subscribeStorage, () => readExistingUrl(openToken), () => null);
 
   useEffect(() => {
     if (state.ok && state.data?.personalUrl) {

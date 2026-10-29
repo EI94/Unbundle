@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, Suspense } from "react";
+import { useState, useMemo, useSyncExternalStore, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { safeInternalCallbackUrl } from "@/lib/navigation/safe-callback-url";
 import {
@@ -25,6 +25,11 @@ import { toast } from "sonner";
 
 type Mode = "login" | "register" | "reset";
 
+/** Lo user agent non cambia mentre la pagina è aperta: niente a cui iscriversi. */
+function noSubscribe(): () => void {
+  return () => undefined;
+}
+
 function LoginFormInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -46,13 +51,13 @@ function LoginFormInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestRegister, setSuggestRegister] = useState(false);
-  const [inAppBrowser, setInAppBrowser] = useState(false);
+  // Lo user agent non esiste durante il rendering sul server: lì, e all'idratazione, `false`;
+  // subito dopo il valore del browser. Vale anche un browser che lo user agent non dice, quando la
+  // finestra di Google non si apre.
+  const inAppUserAgent = useSyncExternalStore(noSubscribe, () => isInAppBrowser(navigator.userAgent), () => false);
+  const [googleBlocked, setGoogleBlocked] = useState(false);
+  const inAppBrowser = inAppUserAgent || googleBlocked;
   const [linkCopied, setLinkCopied] = useState(false);
-
-  useEffect(() => {
-    // Letto dopo il montaggio: lo user agent non esiste durante il rendering sul server.
-    setInAppBrowser(isInAppBrowser(navigator.userAgent));
-  }, []);
 
   async function copyPageLink() {
     try {
@@ -96,7 +101,7 @@ function LoginFormInner() {
     } catch (err) {
       const code = firebaseErrorCode(err);
       if (GOOGLE_NEEDS_REAL_BROWSER.has(code)) {
-        setInAppBrowser(true);
+        setGoogleBlocked(true);
         setError("Questo browser non apre la finestra di Google. Apri il link in Safari o Chrome, oppure usa email e password qui sotto.");
       } else if (code) {
         setError(firebaseErrorMessage(err));

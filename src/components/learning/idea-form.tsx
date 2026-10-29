@@ -20,15 +20,16 @@ export function IdeaForm(props: IdeaFormProps) {
 }
 function IdeaFormFields({ workspaceId, programId, userId, initial, readOnly = false }: IdeaFormProps) {
   const memoryKey = `${workspaceId}:${programId}:${userId}`;
-  const initialContent = useRef(acknowledgedIdeas.restore(memoryKey, initial)).current;
+  // Letti una volta, al primo rendering (stato iniziale, non un ref letto a ogni rendering).
+  const [initialContent] = useState(() => acknowledgedIdeas.restore(memoryKey, initial));
   const restoredAcknowledgement = initialContent !== initial;
-  const recovered = useRef(!initialContent || initialContent.status === "draft" ? pendingIdeas.get(memoryKey) : undefined);
-  const [draft, setDraft] = useState(recovered.current?.draft ?? initialContent);
-  const [fields, setFields] = useState<IdeaFields>(recovered.current?.fields ?? initialContent?.fields ?? emptyIdeaFields);
+  const [recovered] = useState(() => (!initialContent || initialContent.status === "draft" ? pendingIdeas.get(memoryKey) : undefined));
+  const [draft, setDraft] = useState(recovered?.draft ?? initialContent);
+  const [fields, setFields] = useState<IdeaFields>(recovered?.fields ?? initialContent?.fields ?? emptyIdeaFields);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState(recovered.current ? "Modifiche non confermate recuperate in questa scheda. La revisione originale resta protetta dai conflitti." : restoredAcknowledgement ? "Ultima proposta confermata dal server recuperata in questa scheda." : "");
+  const [message, setMessage] = useState(recovered ? "Modifiche non confermate recuperate in questa scheda. La revisione originale resta protetta dai conflitti." : restoredAcknowledgement ? "Ultima proposta confermata dal server recuperata in questa scheda." : "");
   const [confirm, setConfirm] = useState(false);
-  const [dirty, setDirty] = useState(!!recovered.current);
+  const [dirty, setDirty] = useState(!!recovered);
   const [errors, setErrors] = useState<Partial<Record<keyof IdeaFields, string>>>({});
   const [closedByServer, setClosedByServer] = useState<string | null>(null);
   const [problem, setProblem] = useState(false);

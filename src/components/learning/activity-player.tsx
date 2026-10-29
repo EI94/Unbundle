@@ -115,20 +115,21 @@ export function ActivityPlayer(props: PlayerProps) {
 function ActivityPlayerForm({ workspaceId, programId, userId, version, activity, initialAttempt }: PlayerProps) {
   const router = useRouter();
   const memoryScope = attemptScope(workspaceId, programId, userId, version, activity.id);
-  const initialContent = useRef(acknowledgedAttempts.restore(memoryScope, initialAttempt)).current;
+  // Letti una volta, al primo rendering (stato iniziale, non un ref letto a ogni rendering).
+  const [initialContent] = useState(() => acknowledgedAttempts.restore(memoryScope, initialAttempt));
   const restoredAcknowledgement = initialContent !== initialAttempt;
   const [attempt, setAttempt] = useState(initialContent);
   const [mutationAccess, setMutationAccess] = useState<{ source: AttemptDTO | null; attempt: AttemptDTO } | null>(null);
-  const recovered = useRef(initialContent?.status === "draft" ? pendingDrafts.get(initialContent.id) : undefined);
-  const [responses, setResponses] = useState<AttemptResponses>(() => recovered.current?.responses ?? initialContent?.responses ?? { answers: {}, fields: {} });
+  const [recovered] = useState(() => (initialContent?.status === "draft" ? pendingDrafts.get(initialContent.id) : undefined));
+  const [responses, setResponses] = useState<AttemptResponses>(() => recovered?.responses ?? initialContent?.responses ?? { answers: {}, fields: {} });
   const current = useRef(responses);
-  const revision = useRef(recovered.current?.revision ?? initialContent?.revision ?? 1);
-  const edits = useRef(recovered.current ? 1 : 0);
+  const revision = useRef(recovered?.revision ?? initialContent?.revision ?? 1);
+  const edits = useRef(recovered ? 1 : 0);
   const acknowledged = useRef(0);
   const inFlight = useRef(false);
   const submitKey = useRef<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState(recovered.current ? "Abbiamo ritrovato risposte non ancora salvate: le salviamo ora." : restoredAcknowledgement && initialContent?.status !== "submitted" ? "Abbiamo ritrovato le ultime risposte salvate." : "");
+  const [message, setMessage] = useState(recovered ? "Abbiamo ritrovato risposte non ancora salvate: le salviamo ora." : restoredAcknowledgement && initialContent?.status !== "submitted" ? "Abbiamo ritrovato le ultime risposte salvate." : "");
   const [denied, setDenied] = useState<{ source: AttemptDTO | null; reason: string } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -148,6 +149,9 @@ function ActivityPlayerForm({ workspaceId, programId, userId, version, activity,
   const readOnlyReason = deniedReason ?? serverAccess?.readOnlyReason ?? (!serverAccess ? "Le tue risposte sono salvate. Aggiorna la pagina per continuare." : null);
   const canRetake = !!serverAccess?.canRetake && !deniedReason;
   useLearningUnsavedChanges({
+    // I due contatori cambiano sempre insieme a uno stato (`setResponses` a ogni modifica, `setBusy` a
+    // ogni salvataggio): il rendering che li legge è quello dopo il cambio, mai uno vecchio.
+    // eslint-disable-next-line react-hooks/refs -- contatori scritti dai gestori, letti dopo il loro rendering
     dirty: edits.current !== acknowledged.current,
     pending: busy,
     onDiscard: () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -90,12 +90,15 @@ const READ_ALL_FAILED = "Non riesco a segnarli come letti. Riprova.";
  */
 export function SignalsFeed({ signals: initialSignals, workspaceId }: SignalsFeedProps) {
   const [signals, setSignals] = useState(initialSignals);
+  const [serverSignals, setServerSignals] = useState(initialSignals);
   const [isPending, startTransition] = useTransition();
 
-  // La pagina riletta (le action di qui, o la campanella) porta la lista vera: quella locale la segue.
-  useEffect(() => {
+  // La pagina riletta (le action di qui, o la campanella) porta la lista vera: quella locale la segue,
+  // nello stesso rendering e non in un effetto dopo.
+  if (serverSignals !== initialSignals) {
+    setServerSignals(initialSignals);
     setSignals(initialSignals);
-  }, [initialSignals]);
+  }
 
   const unreadCount = signals.filter((s) => !s.isRead).length;
 

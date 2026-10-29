@@ -87,6 +87,8 @@ export function WavePlanner({
             type="button"
             variant="outline"
             onClick={() => {
+              // Una rotta che scarica il file Excel, non una pagina: serve la navigazione del browser.
+              // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- download da /portfolio/export
               window.location.href = exportHref;
             }}
           >

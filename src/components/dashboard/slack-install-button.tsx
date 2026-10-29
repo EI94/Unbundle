@@ -9,6 +9,8 @@ export function SlackInstallButton({ workspaceId }: { workspaceId: string }) {
       variant="outline"
       className="h-10 gap-2 sm:h-8"
       onClick={() => {
+        // Una rotta API, non una pagina: risponde con il redirect all'OAuth di Slack, che il router di Next non può seguire.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- navigazione intera verso /api/slack/install
         window.location.href = `/api/slack/install?workspaceId=${workspaceId}`;
       }}
     >

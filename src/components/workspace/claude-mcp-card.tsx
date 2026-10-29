@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState, type ReactNode } from "react";
+import { useActionState, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   createClaudeMcpTokenAction,
@@ -280,29 +280,23 @@ export function ClaudeMcpCard({
     "token" | "setup" | "guide" | "prompt" | null
   >(null);
 
-  useEffect(() => {
-    setLocalTokens(tokens);
-  }, [tokens]);
-
-  useEffect(() => {
-    if (!createState.ok || !createState.data) return;
-    const nextToken = tokenFromAction(createState.data);
-    setLocalTokens((current) => [
-      nextToken,
-      ...current.filter((token) => token.id !== nextToken.id),
-    ]);
-  }, [createState.data, createState.ok]);
-
-  useEffect(() => {
-    if (!revokeState.ok || !revokeState.data) return;
-    setLocalTokens((current) =>
-      current.map((token) =>
-        token.id === revokeState.data?.tokenId
-          ? { ...token, revokedAt: revokeState.data.revokedAt }
-          : token
-      )
-    );
-  }, [revokeState.data, revokeState.ok]);
+  // L'elenco del server (dopo una rilettura) e le risposte delle action aggiornano l'elenco locale
+  // nello stesso rendering, non in un effetto dopo: prima l'elenco del server, poi la chiave appena
+  // creata in cima e la revoca, come facevano i tre effetti di prima.
+  const [seen, setSeen] = useState({ tokens, created: createState.data, revoked: revokeState.data });
+  if (seen.tokens !== tokens || seen.created !== createState.data || seen.revoked !== revokeState.data) {
+    setSeen({ tokens, created: createState.data, revoked: revokeState.data });
+    let next = seen.tokens !== tokens ? tokens : localTokens;
+    if (seen.created !== createState.data && createState.ok && createState.data) {
+      const nextToken = tokenFromAction(createState.data);
+      next = [nextToken, ...next.filter((token) => token.id !== nextToken.id)];
+    }
+    const revoked = revokeState.ok ? revokeState.data : undefined;
+    if (seen.revoked !== revokeState.data && revoked) {
+      next = next.map((token) => (token.id === revoked.tokenId ? { ...token, revokedAt: revoked.revokedAt } : token));
+    }
+    setLocalTokens(next);
+  }
 
   async function copy(value: string, kind: "token" | "setup" | "guide" | "prompt") {
     try {

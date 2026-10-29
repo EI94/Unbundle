@@ -4,6 +4,7 @@ import {
   useActionState,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -342,9 +343,13 @@ export function RespondentSurveyForm({
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef(false);
   const pendingRef = useRef(pending);
-  pendingRef.current = pending;
   const completedRef = useRef(completed);
-  completedRef.current = completed;
+  // Gli ultimi valori per i salvataggi a tempo e per l'uscita dalla pagina: aggiornati alla conferma
+  // del rendering (prima di ogni altro effetto e di ogni evento), non durante il rendering.
+  useLayoutEffect(() => {
+    pendingRef.current = pending;
+    completedRef.current = completed;
+  });
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(
@@ -445,6 +450,9 @@ export function RespondentSurveyForm({
     const serverTime = draftSavedAt ? Date.parse(draftSavedAt) || 0 : 0;
     if (deviceTime <= serverTime) return;
     applyPayloadToForm(form, device.payload);
+    // Il form non è controllato e la bozza del dispositivo esiste solo nel browser: scritta nel DOM
+    // dopo il montaggio, una volta sola, lo stato deve seguirla subito.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ripristino della bozza dal dispositivo, al primo montaggio
     setAnsweredCount(countAnswered());
     setRestoredFromDevice(true);
     setSaveStatus("dirty");
