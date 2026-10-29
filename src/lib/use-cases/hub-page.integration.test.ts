@@ -97,6 +97,8 @@ const ids = {
   wsZ: randomUUID(),
   /** Area accesa, titoli con il prefisso dell'agente («LIBRA L1 · …») e uno senza (rilascio «Panoramica»). */
   wsP: randomUUID(),
+  /** Area accesa, gli approvati tutti AI Transformation nascosti alla ricerca e una proposta del contributore (come TopJet). */
+  wsH: randomUUID(),
   ls: randomUUID(),
   builder: randomUUID(),
   manager: randomUUID(),
@@ -211,7 +213,9 @@ const cards = {} as Record<
   | "realized"
   | "bestPractice"
   | "dBest"
-  | "eClosed",
+  | "eClosed"
+  | "hHidden"
+  | "hOwn",
   { id: string; code: string; title: string }
 >;
 
@@ -397,7 +401,7 @@ before(async () => {
   currentQuarter = () => quarter.currentQuarter();
   nextQuarter = (value) => quarter.nextQuarter(value);
 
-  process.env.USE_CASE_HUB_WORKSPACES = [ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.wsP].join(",");
+  process.env.USE_CASE_HUB_WORKSPACES = [ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.wsP, ids.wsH].join(",");
   process.env.UC_LS_EMAIL_DOMAINS = "ls.test";
   delete process.env.UC_ENABLED;
 
@@ -408,9 +412,10 @@ before(async () => {
     [ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.org],
   );
   await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Prova H4a P')`, [ids.wsP, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Prova H4a H')`, [ids.wsH, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
-    for (const workspaceId of [ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.wsP]) {
+    for (const workspaceId of [ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.wsP, ids.wsH]) {
       await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [workspaceId, ids[person], ROLES[person]]);
     }
   }
@@ -497,6 +502,20 @@ before(async () => {
   cards.bestPractice = await seed({ title: `Best practice ${suffix}`, kind: "best_practice", status: "accepted", review: "scored" });
   cards.dBest = await seed({ workspaceId: ids.wsD, title: `Best practice di D ${suffix}`, kind: "best_practice", status: "accepted", review: "scored" });
   cards.eClosed = await seed({ workspaceId: ids.wsE, title: `Chiusa di E ${suffix}`, status: "rejected", review: "scored" });
+  // Workspace H: un approvato AI Transformation nato nascosto alla ricerca (§8.6), come i 45 di TopJet,
+  // e la sola proposta del contributore.
+  cards.hHidden = await seed({
+    workspaceId: ids.wsH,
+    title: `Approvata nascosta di H ${suffix}`,
+    status: "accepted",
+    review: "scored",
+    targetQuarter: thisQuarter,
+    origin: "transformation",
+    source: "manual",
+    intake: { hiddenFromSearch: true },
+    proposedBy: null,
+  });
+  cards.hOwn = await seed({ workspaceId: ids.wsH, title: `Mia proposta di H ${suffix}`, review: "needs_inputs", proposedBy: emails.contributor });
 
   // Workspace P: gli agenti dal titolo (rilascio «Panoramica»). Due LIBRA con gli euro, un agente
   // senza cifre, uno scaduto, uno senza prefisso e senza trimestre, poi le altre fasi.
@@ -528,7 +547,7 @@ after(async () => {
   }
   if (!enabled) return;
   // I workspace portano via schede, iscrizioni e modelli di valutazione.
-  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.wsP]]);
+  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.wsP, ids.wsH]]);
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [Object.keys(emails).map((person) => ids[person as Person])]);
   await q(`DELETE FROM organizations WHERE id = $1::uuid`, [ids.org]);
 });
@@ -1078,6 +1097,8 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
   );
   const libraCard = grid.slice(grid.indexOf('data-agent="LIBRA"'), grid.indexOf("</li>", grid.indexOf('data-agent="LIBRA"')));
   assert.equal(/<a [^>]*href="([^"]*)"/.exec(libraCard)?.[1], `${base}?vista=panoramica&amp;origine=adoption&amp;agente=LIBRA#panoramica-approvati`);
+  // L'ancora della card, dove torna «‹ Tutti gli agenti».
+  assert.match(libraCard, /<a id="agente-LIBRA" /);
   assert.equal(filledButtons(grid), 1, "un solo pulsante pieno");
 
   // Dopo il clic: le corsie del solo LIBRA, con il suo nome per i lettori di schermo.
@@ -1094,6 +1115,9 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
   assert.deepEqual([byQuarter.current, byAgent.current], [true, false]);
   assert.equal(byQuarter.href, `${base}?vista=panoramica&amp;origine=adoption&amp;agente=LIBRA`);
   assert.equal(byAgent.href, `${base}?vista=panoramica&amp;mostra=agenti&amp;origine=adoption`);
+  // «‹ Tutti gli agenti» sparisce con il clic: torna alla card di LIBRA, che prende il fuoco, con gli stessi filtri.
+  const backLine = libra.slice(libra.indexOf('data-slot="agent-filter-line"'), libra.indexOf("</p>", libra.indexOf('data-slot="agent-filter-line"')));
+  assert.equal(/<a [^>]*href="([^"]*)"/.exec(backLine)?.[1], `${base}?vista=panoramica&amp;mostra=agenti&amp;origine=adoption#agente-LIBRA`);
   assert.match(await html("ls", ids.wsP, { vista: "panoramica", agente: "altri" }), /aria-label="Altri use case per trimestre"/);
 
   // Il contributore non ha la scelta: `mostra` non vale per lui.
@@ -1310,8 +1334,17 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   // Il contributore non approva: il vuoto gli dice dove sono le proposte.
   const eContributorOverview = await html("contributor", ids.wsE, { vista: "panoramica" });
   assert.ok(eContributorOverview.includes("Niente in programma, per ora"), "le corsie vuote, non la pagina vuota");
-  assert.ok(eContributorOverview.includes("Nessuno use case è ancora approvato. Le proposte sono in «In valutazione»."));
+  assert.ok(eContributorOverview.includes("Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In valutazione»."));
   assert.ok(!eContributorOverview.includes("Approva uno use case"));
+  // Gli approvati ci sono ma sono nascosti alla ricerca: il contributore ha il vuoto, che dice solo
+  // che cosa trova qui, mai che nel workspace niente è approvato.
+  const hReviewer = await html("ls", ids.wsH, { vista: "panoramica" });
+  assert.ok(hReviewer.includes(`data-id="${cards.hHidden.id}"`) && !hReviewer.includes("Niente in programma"), "il revisore vede l'approvato");
+  const hContributor = await html("contributor", ids.wsH, { vista: "panoramica" });
+  assert.ok(hContributor.includes('data-slot="phase-strip"'), "la sua proposta c'è: la pagina non è vuota");
+  assert.ok(hContributor.includes("Niente in programma, per ora"), "le corsie vuote");
+  assert.ok(hContributor.includes("Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In valutazione»."));
+  for (const text of ["Nessuno use case è ancora approvato", "Approva uno use case", cards.hHidden.title, cards.hHidden.id]) assert.ok(!hContributor.includes(text), text);
   const eMatrix = await html("ls", ids.wsE, { vista: "panoramica", mostra: "matrice" });
   assert.ok(eMatrix.includes("Nessuno use case da mettere in ordine"));
   // «Da diffondere» di prima è il filtro della Panoramica: senza best practice, nessun risultato.

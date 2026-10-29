@@ -11,6 +11,7 @@ import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import {
   LANE_PREVIEW,
   PANORAMA_SECTION_ID,
+  agentCardId,
   agentGroups,
   buildLanes,
   laneCountedText,
@@ -34,8 +35,12 @@ export const LANES_TEXT = Object.freeze({
   showLess: "Mostra meno",
   emptyTitle: "Niente in programma, per ora",
   emptyBody: "Approva uno use case e scegli quando farlo.",
-  /** Ai contributori, che non approvano: dove trovano le proposte. */
-  emptyContributorBody: `Nessuno use case è ancora approvato. Le proposte sono in «${HUB_TEXT.contributorDecideView}».`,
+  /**
+   * Ai contributori, che non approvano: che cosa trovano qui e dove sono le proposte. Solo quello
+   * che vedono: gli approvati nascosti alla ricerca (AI Transformation) non li vedono, e il vuoto
+   * non dice che nel workspace non ce ne sono.
+   */
+  emptyContributorBody: `Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «${HUB_TEXT.contributorDecideView}».`,
   noneWithFilters: "Niente in programma con questi filtri.",
   groupingLabel: "Raggruppa",
   byQuarter: "Per trimestre",
@@ -101,8 +106,9 @@ export interface PanoramaLanesProps {
  * con le card dei dossier, e «Realizzati», chiusa, con il conto. I contributori vedono le stesse corsie
  * con «N use case» e card con tag, titolo e fase, senza cifre. Con il filtro «Agente» (anche dopo un
  * clic in «Per agente») sopra le corsie una riga dice di chi sono, «LIBRA · 7 use case», con
- * «‹ Tutti gli agenti» quando c'è «Per agente». Senza niente in programma il vuoto chiede ai
- * revisori di approvare uno use case, e dice ai contributori dove sono le proposte.
+ * «‹ Tutti gli agenti» quando c'è «Per agente», che torna alla card dell'agente e le dà il fuoco.
+ * Senza niente in programma il vuoto chiede ai revisori di approvare uno use case, e dice ai
+ * contributori che cosa trovano qui e dove sono le proposte.
  */
 export function PanoramaLanes({
   items,
@@ -146,12 +152,15 @@ export function PanoramaLanes({
         ? agentSectionLabel(agentLabel(agentFilter))
         : LANES_TEXT.sectionByQuarter;
   // Le corsie di un solo agente: il suo nome a schermo, non solo per i lettori di schermo.
+  // «‹ Tutti gli agenti» sparisce con il clic: con l'ancora della card dell'agente Next scorre lì e
+  // le dà il fuoco, che altrimenti cadrebbe sul <body>, in cima alla pagina.
+  const agentsHref = grouping?.items.find((item) => item.key === "agente")?.href ?? null;
   const agentLine =
     reviewers && agentFilter && !byAgent
       ? {
           name: agentLabel(agentFilter),
           count: lanes.lanes.reduce((sum, lane) => sum + lane.entries.length, 0),
-          backHref: grouping?.items.find((item) => item.key === "agente")?.href ?? null,
+          backHref: agentsHref ? `${agentsHref}#${agentCardId(agentFilter)}` : null,
         }
       : null;
   const card = (entry: LaneEntry<AnyHubItem>, place: Lane<AnyHubItem>["key"]) => (

@@ -2,6 +2,7 @@ import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import * as nodeModule from "node:module";
 import { agentPalette } from "../../lib/use-cases/agents.ts";
+import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
 import type { ValueParts } from "../../lib/use-cases/format.ts";
 import { infoProgressView } from "../../lib/use-cases/info-progress.ts";
 import type { ContributorUseCase } from "../../lib/use-cases/permissions.ts";
@@ -241,6 +242,14 @@ test("vuoti: «Niente in programma, per ora»; con i filtri «Niente in programm
   const decide = hub({ phase: "da_valutare", subState: "nuova", phaseLabel: "Da valutare · Nuova" });
   assert.ok(render([decide]).includes("Niente in programma, per ora"));
   assert.ok(render([decide]).includes("Approva uno use case e scegli quando farlo."));
+  // Il contributore non approva, e non vede gli approvati nascosti alla ricerca: il vuoto dice solo
+  // che cosa trova qui, non che nel workspace non c'è niente di approvato.
+  const own = contributor({ title: "La mia proposta", phase: "da_valutare", subState: "nuova", phaseLabel: "Da valutare · Nuova", quando: null, own: true });
+  const mine = textOf(render([own], { contributor: true }));
+  assert.ok(mine.includes("Niente in programma, per ora"), mine);
+  assert.ok(mine.includes("Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In valutazione»."), mine);
+  for (const text of ["Nessuno use case è ancora approvato", "Approva uno use case", "nascost"]) assert.ok(!mine.includes(text), text);
+  assert.deepEqual(findHubForbiddenIn([lanes.LANES_TEXT.emptyContributorBody], "area"), []);
   const filtered = render([decide], { filtersActive: true });
   assert.ok(filtered.includes("Niente in programma con questi filtri.") && filtered.includes("Togli i filtri"));
   assert.ok(render([], { filtersActive: true }).includes("Nessuno use case con questi filtri."));
@@ -297,12 +306,16 @@ test("«Per trimestre | Per agente»: le card degli agenti al posto delle corsie
   // A schermo, sopra le corsie: di chi sono, quanti, e la strada per tornare agli agenti.
   const line = drill.slice(drill.indexOf('data-slot="agent-filter-line"'), drill.indexOf("</p>", drill.indexOf('data-slot="agent-filter-line"')));
   assert.equal(textOf(line.slice(line.indexOf(">") + 1)), "LIBRA · 1 use caseTutti gli agenti");
-  assert.match(line, new RegExp(`<a [^>]*href="${BASE.replace(/[?]/g, "\\?")}\\?vista=panoramica&amp;mostra=agenti"`));
+  // Il ritorno porta alla card di LIBRA (`#agente-LIBRA`): il link sparisce con il clic e il fuoco va lì, non sul <body>.
+  assert.match(line, new RegExp(`<a [^>]*href="${BASE.replace(/[?]/g, "\\?")}\\?vista=panoramica&amp;mostra=agenti#agente-LIBRA"`));
   assert.ok(!line.includes("bg-primary"), "un link, non un pulsante pieno");
   const others = render([plain], { agentFilter: "altri" });
   assert.match(others, /aria-label="Altri use case per trimestre"/);
   assert.ok(others.includes('data-slot="agent-filter-line"') && textOf(others).includes("Altri use case · 1 use case"));
   assert.ok(!others.includes("Tutti gli agenti"), "senza «Per agente» niente ritorno");
+  assert.match(render([plain], { agentFilter: "altri", grouping: grouping("trimestre") }), /<a [^>]*href="[^"]*mostra=agenti#agente-altri"/);
+  // Il segmento «Per agente» resta senza ancora (`scroll={false}`): resta a schermo, e il fuoco con lui.
+  assert.match(drill, /<nav aria-label="Raggruppa"[\s\S]*?href="[^"]*mostra=agenti"/);
   assert.ok(!byQuarter.includes('data-slot="agent-filter-line"'), "senza il filtro nessuna riga");
   assert.ok(!render([libra]).includes("plan-grouping"), "senza la scelta niente controllo");
   assert.equal(lanes.agentSectionLabel("ORSA"), "Use case di ORSA per trimestre");

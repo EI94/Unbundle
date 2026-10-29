@@ -14,10 +14,11 @@
  *   filtro non ridipinge un gruppo. Senza nessun gruppo: un colore solo, senza legenda dei gruppi.
  *   In un workspace con gli agenti nei titoli (rilascio «Panoramica») il colore dice sempre
  *   l'agente, come le card della Panoramica: un gruppo con il nome di un agente («LIBRA»), o le cui
- *   schede hanno tutte lo stesso agente nel titolo («Automazioni», tutte «AUTO X… · …»), prende il
- *   colore e il nome di quell'agente; gli altri gruppi, anche quelli con agenti diversi, sono grigi
- *   e i tre colori dei gruppi non ci sono. Lo stesso nella «Matrice Valore × Costo», che non ha
- *   gruppi: ogni punto ha il tono dell'agente del suo titolo (`agentPointSlot`), il grigio senza.
+ *   schede disegnate hanno tutte lo stesso agente nel titolo («Automazioni», tutte «AUTO X… · …»;
+ *   una scheda chiusa non conta), prende il colore e il nome di quell'agente; gli altri gruppi,
+ *   anche quelli con agenti diversi, sono grigi e i tre colori dei gruppi non ci sono. Lo stesso
+ *   nella «Matrice Valore × Costo», che non ha gruppi: ogni punto ha il tono dell'agente del suo
+ *   titolo (`agentPointSlot`), il grigio senza.
  * - **Bolle** (`buildBenefitBubbles`): le schede della vista con un modello e la facilità; x la
  *   facilità da 1 a 5, y il beneficio contato all'anno, raggio `5 + 13·√(avvio / avvio massimo)`
  *   in pixel; il bordo dice quando (questo trimestre, prossimo, più avanti) e il riempimento
@@ -78,6 +79,9 @@ export interface GroupAgent {
   tone: AgentTone;
 }
 
+/** Una scheda per i colori dei gruppi: il modello, la fase (la disegna un grafico?) e il titolo (l'agente). */
+export type GroupPaletteItem = Pick<HubItem, "valueModel" | "phase" | "kind" | "subState"> & { title?: string };
+
 /** I gruppi senza un colore loro, in grigio. */
 export const OTHER_GROUPS_LABEL = "Altri gruppi";
 /** Le schede senza gruppo, in grigio. */
@@ -103,9 +107,11 @@ export function groupText(group: string | null): string {
  * titoli (`agents`, `workspaceAgentPalette`) un gruppo ha il colore solo se è un agente: ha il nome
  * di un agente («LIBRA», «Libra»), oppure tutte le sue schede hanno lo stesso agente nel titolo
  * (TopJet: «Automazioni», sette schede «AUTO X… · …», è AUTO). Un gruppo con agenti diversi, o con
- * una scheda senza agente, resta grigio.
+ * una scheda senza agente, resta grigio. L'agente lo dicono solo le schede che un grafico dei gruppi
+ * disegna (`drawnInGroupCharts`): una proposta senza agente nelle bolle lascia il gruppo grigio, una
+ * scheda chiusa, rimandata o realizzata, che nessun grafico mostra, no. La grandezza conta tutte.
  */
-export function groupPalette(items: readonly (Pick<HubItem, "valueModel"> & { title?: string })[], params?: ValueParams | null, agents?: AgentPalette | null): GroupPalette {
+export function groupPalette(items: readonly GroupPaletteItem[], params?: ValueParams | null, agents?: AgentPalette | null): GroupPalette {
   const size = new Map<string, { cards: number; benefit: number }>();
   // L'agente comune delle schede di ogni gruppo; null appena una scheda ne ha un altro o nessuno.
   const shared = new Map<string, string | null>();
@@ -116,6 +122,8 @@ export function groupPalette(items: readonly (Pick<HubItem, "valueModel"> & { ti
     entry.cards += 1;
     if (params) entry.benefit += valueTotals(item.valueModel, params).benefit;
     size.set(group, entry);
+    // Una scheda che non si vede non toglie al gruppo il suo agente.
+    if (!drawnInGroupCharts(item)) continue;
     const agent = item.title === undefined ? null : agentOfTitle(item.title);
     shared.set(group, shared.has(group) && shared.get(group) !== agent ? null : agent);
   }
@@ -138,6 +146,18 @@ export function groupPalette(items: readonly (Pick<HubItem, "valueModel"> & { ti
     slots[group] = (index + 1) as 1 | 2 | 3;
   });
   return { slots, single: sorted.length === 0, agents: null };
+}
+
+/**
+ * La scheda è in un grafico dei gruppi: una bolla di «Matrice Facilità × Beneficio»
+ * (`buildBenefitBubbles`: «Da costruire», `isPriorityCandidate`, con la facilità) o un segmento di
+ * «Curva del valore» e «Valore per tipo di ritorno» (`roadmapValueItems`: approvata o in
+ * realizzazione). Chiusa, rimandata, realizzata, o una proposta senza facilità: in nessuno.
+ */
+function drawnInGroupCharts(item: GroupPaletteItem): boolean {
+  if (!item.valueModel) return false;
+  if (item.phase === "approvato" || item.phase === "in_realizzazione") return true;
+  return isPriorityCandidate(item) && typeof item.valueModel.ease === "number";
 }
 
 /** Il nome dell'agente che un gruppo può essere: «Libra» e «LIBRA» sono LIBRA. */

@@ -48,6 +48,15 @@ export const PANORAMA_SECTION_ID = Object.freeze({
   realizzati: "panoramica-realizzati",
 });
 
+/**
+ * L'ancora della card di un agente in «Per agente»: `agente-LIBRA`, `agente-altri`. «‹ Tutti gli
+ * agenti» ci torna e Next le dà il fuoco: si riparte dalla card che si era aperta. I nomi degli
+ * agenti sono maiuscole e cifre, «altri» è minuscolo: due card non hanno mai la stessa ancora.
+ */
+export function agentCardId(param: AgentParam): string {
+  return `agente-${param}`;
+}
+
 export interface LaneEntry<T> {
   item: T;
   /** Trimestre passato senza avvio: «Scaduto». Solo per i revisori. */

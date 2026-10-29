@@ -934,7 +934,7 @@ export interface PriorityMatrix {
 }
 
 /** Chi entra nella matrice Valore × Costo: «Da costruire» in «Da valutare» (non le «Rimandate» in attesa) o «Approvato». */
-export function isPriorityCandidate(item: HubItem): boolean {
+export function isPriorityCandidate(item: Pick<HubItem, "kind" | "phase" | "subState">): boolean {
   if (item.kind !== "da_costruire") return false;
   if (item.phase === "approvato") return true;
   return item.phase === "da_valutare" && item.subState !== "rimandata";

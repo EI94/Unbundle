@@ -134,6 +134,8 @@ function row(o: Partial<HubSourceRow> = {}): HubSourceRow {
 
 const item = (o: Partial<HubSourceRow> = {}): HubItem => projectHubItem(row(o), CTX, null);
 const TO_DECIDE = { status: "proposed", portfolioReviewStatus: "in_review", targetQuarter: null } as const;
+/** Una scheda approvata «Da costruire», per i colori dei gruppi: i grafici la disegnano. */
+const APPROVED = { phase: "approvato", kind: "da_costruire", subState: "trimestre" } as const;
 
 function near(actual: number | null | undefined, expected: number, label: string, eps = 1e-6) {
   assert.ok(typeof actual === "number" && Math.abs(actual - expected) <= eps, `${label}: ${actual} invece di ${expected}`);
@@ -143,8 +145,8 @@ function near(actual: number | null | undefined, expected: number, label: string
 
 test("colori dei gruppi: dal più grande, tre colori, il grigio dice chi c'è dentro; un filtro non ridipinge", () => {
   const groups = ["Vendite", "Vendite", "Vendite", "Amministrazione", "Produzione", "Logistica", "Logistica", null];
-  const items = groups.map((group) => ({ valueModel: group ? { ...SMALL, group } : SMALL }));
-  const palette = groupPalette([...items, { valueModel: null }, { valueModel: { ...SMALL, group: "  Produzione  " } }]);
+  const items = groups.map((group) => ({ ...APPROVED, valueModel: group ? { ...SMALL, group } : SMALL }));
+  const palette = groupPalette([...items, { ...APPROVED, valueModel: null }, { ...APPROVED, valueModel: { ...SMALL, group: "  Produzione  " } }]);
   assert.equal(palette.single, false);
   // Vendite 3 schede, Logistica 2, Produzione 2 (a pari schede il nome), Amministrazione 1.
   assert.deepEqual(palette.slots, { Vendite: 1, Logistica: 2, Produzione: 3 });
@@ -165,14 +167,17 @@ test("colori dei gruppi: dal più grande, tre colori, il grigio dice chi c'è de
   // A pari schede, con le ipotesi, vince il beneficio contato più alto.
   const tie = groupPalette(
     [
-      { valueModel: { ...SMALL, group: "Acquisti" } },
-      { valueModel: { ...FIX_A, group: "Zeta" } },
+      { ...APPROVED, valueModel: { ...SMALL, group: "Acquisti" } },
+      { ...APPROVED, valueModel: { ...FIX_A, group: "Zeta" } },
     ],
     PARAMS,
   );
   assert.deepEqual(tie.slots, { Zeta: 1, Acquisti: 2 });
   // Senza gruppi: un colore solo, nessuna legenda.
-  const single = groupPalette([{ valueModel: SMALL }, { valueModel: null }]);
+  const single = groupPalette([
+    { ...APPROVED, valueModel: SMALL },
+    { ...APPROVED, valueModel: null },
+  ]);
   assert.equal(single.single, true);
   assert.equal(groupSlot(single, null), 1);
   assert.deepEqual(groupLegend(single, [null]), []);
@@ -185,7 +190,7 @@ test("colori dei gruppi con gli agenti nei titoli: il colore dice l'agente, come
     { title: "AUTO A1 · Riepilogo settimanale" },
     { title: "Strategia per volo" },
   ]);
-  const items = ["LIBRA", "LIBRA", "Automazioni", "Automazioni", "Automazioni", "orsa", null].map((group) => ({ valueModel: group ? { ...SMALL, group } : SMALL }));
+  const items = ["LIBRA", "LIBRA", "Automazioni", "Automazioni", "Automazioni", "orsa", null].map((group) => ({ ...APPROVED, valueModel: group ? { ...SMALL, group } : SMALL }));
   const palette = groupPalette(items, PARAMS, agents);
   // I tre colori dei gruppi non ci sono: «Automazioni», il gruppo più grande, non è un agente (le sue schede non hanno titolo).
   assert.deepEqual(palette.slots, {});
@@ -203,7 +208,7 @@ test("colori dei gruppi con gli agenti nei titoli: il colore dice l'agente, come
   assert.equal(groupLabelOf(palette, "orsa"), "ORSA");
   assert.equal(groupLabelOf(palette, "Automazioni"), "Gruppo Automazioni");
   // Agenti nei titoli e nessun gruppo: tutto grigio, senza legenda; senza agenti i colori dei gruppi di sempre.
-  const none = groupPalette([{ valueModel: SMALL }], PARAMS, agents);
+  const none = groupPalette([{ ...APPROVED, valueModel: SMALL }], PARAMS, agents);
   assert.deepEqual([none.single, groupSlot(none, null), groupLegend(none, [null]), groupLabelOf(none, null)], [true, 0, [], null]);
   const plain = groupPalette(items, PARAMS, agentPalette([{ title: "Strategia per volo" }]));
   assert.equal(plain.agents, null);
@@ -226,7 +231,7 @@ test("colori dei gruppi con gli agenti nei titoli: un gruppo le cui schede hanno
     "TAIGETE T3 · Pratiche ENAC",
   ];
   const agents = agentPalette(titles.map((title) => ({ title })));
-  const card = (title: string, group: string | null) => ({ title, valueModel: group ? { ...SMALL, group } : SMALL });
+  const card = (title: string, group: string | null) => ({ ...APPROVED, title, valueModel: group ? { ...SMALL, group } : SMALL });
   const auto = [1, 2, 3, 4, 5, 6, 7].map((n) => card(`AUTO X${n} · Automazione ${n}`, "Automazioni"));
   const items = [
     ...auto,
@@ -273,6 +278,60 @@ test("colori dei gruppi con gli agenti nei titoli: un gruppo le cui schede hanno
   assert.ok(bubbles.bubbles.every((bubble) => bubble.slot === "agente-2" && bubble.groupLabel === "AUTO"));
   // Senza agenti nei titoli i gruppi tengono i loro tre colori.
   assert.equal(groupPalette(items, PARAMS, agentPalette([{ title: "Strategia per volo" }])).agents, null);
+});
+
+test("colori dei gruppi con gli agenti nei titoli: l'agente del gruppo lo dicono le schede che i grafici disegnano", () => {
+  // TopJet (29/10/2026): un analista compila «Benefici e costi» di una proposta senza prefisso con il
+  // gruppo «Automazioni», poi la scarta. Chiusa, non è in nessun grafico: i sette AUTO restano AUTO.
+  const agents = agentPalette([
+    { title: "ALCIONE A1 · Presenze del personale di terra" },
+    { title: "AUTO X1 · Estratti conto in Echo" },
+    { title: "LIBRA L1 · Lettura delle fatture estere" },
+  ]);
+  const automation = (model: ValueModel = FIX_A) => ({ ...model, group: "Automazioni" });
+  const auto = [1, 2, 3, 4, 5, 6, 7].map((n) => item({ title: `AUTO X${n} · Automazione ${n}`, valueModel: automation() }));
+  const closed = item({ title: "Ricerca automatica delle ricevute", valueModel: automation(), status: "rejected", portfolioReviewStatus: "scored" });
+  const postponed = item({ title: "Smistamento automatico delle PEC", valueModel: automation(), ...TO_DECIDE, portfolioReviewStatus: "scored", reviewBy: "2027-03-01" });
+  const realized = item({ title: "Archivio dei contratti", valueModel: automation(), status: "implemented", portfolioReviewStatus: "scored" });
+  // Una proposta senza facilità non ha una bolla: è tra le «senza facilità».
+  const withoutEase = item({ title: "Riepilogo delle trasferte", valueModel: automation(FIX_B), ...TO_DECIDE });
+  assert.deepEqual(
+    [closed, postponed, realized, withoutEase].map((card) => [card.phase, card.subState]),
+    [
+      ["chiuso", "non_avviato"],
+      ["da_valutare", "rimandata"],
+      ["realizzato", "realizzato"],
+      ["da_valutare", "nuova"],
+    ],
+  );
+  const hidden = [closed, postponed, realized, withoutEase];
+  const all = [...auto, ...hidden];
+  // Nessun grafico dei gruppi le disegna.
+  assert.deepEqual(buildBenefitBubbles(hidden, PARAMS, TODAY, groupPalette(hidden)).bubbles, []);
+  assert.deepEqual(roadmapValueItems(hidden), []);
+  const palette = groupPalette(all, PARAMS, agents);
+  assert.equal(groupSlot(palette, "Automazioni"), "agente-2", "AUTO nel tono 2 del suo tag");
+  assert.equal(groupLabelOf(palette, "Automazioni"), "AUTO");
+  const bubbles = buildBenefitBubbles(all, PARAMS, TODAY, palette);
+  assert.equal(bubbles.withoutEase, 1);
+  assert.deepEqual(
+    bubbles.bubbles.map((bubble) => [bubble.slot, bubble.groupLabel]),
+    auto.map(() => ["agente-2", "AUTO"]),
+  );
+  assert.deepEqual(groupLegend(palette, bubbles.bubbles.map((bubble) => bubble.group)), [{ slot: "agente-2", label: "AUTO" }]);
+  // Ognuna da sola fa lo stesso.
+  for (const card of hidden) assert.equal(groupSlot(groupPalette([...auto, card], PARAMS, agents), "Automazioni"), "agente-2", card.title);
+  // Una proposta senza prefisso con la facilità è una bolla del gruppo: il gruppo mescola, ed è grigio.
+  const proposal = item({ title: "Smistamento automatico delle PEC", valueModel: automation(), ...TO_DECIDE });
+  const mixed = groupPalette([...all, proposal], PARAMS, agents);
+  assert.equal(groupSlot(mixed, "Automazioni"), 0);
+  assert.equal(groupLabelOf(mixed, "Automazioni"), "Gruppo Automazioni");
+  const drawn = buildBenefitBubbles([...all, proposal], PARAMS, TODAY, mixed).bubbles;
+  assert.equal(drawn.length, 8, "la proposta è tra le bolle");
+  assert.ok(drawn.every((bubble) => bubble.slot === 0 && bubble.groupLabel === "Gruppo Automazioni"));
+  // La grandezza dei gruppi conta ancora tutte le schede: senza agenti nei titoli i colori non cambiano.
+  const plain = groupPalette([...hidden, ...hidden, item({ valueModel: { ...FIX_A, group: "Vendite" } })], PARAMS);
+  assert.deepEqual(plain.slots, { Automazioni: 1, Vendite: 2 });
 });
 
 test("matrice Valore × Costo con gli agenti nei titoli: il punto nel tono dell'agente, grigio senza; la legenda per agente", () => {
