@@ -51,7 +51,7 @@ const FIGURES: OverviewFigures = {
   pending: { amountEur: 23_400, count: 9, note: "su 9 use case" },
 };
 const LINE: PortfolioLine = { hours: 1_404, breakeven: { kind: "mese", month: "2027-08" } };
-const REQUIREMENTS: OverviewNextStep = { kind: "requisiti", quarter: "2026-Q4", toAsk: 60, blocked: 10 };
+const REQUIREMENTS: OverviewNextStep = { kind: "requisiti", quarter: "2026-Q4", toAsk: 60, toVerify: 0, blocked: 10 };
 
 function render(props: Record<string, unknown> = {}): string {
   return renderToStaticMarkup(
@@ -178,21 +178,26 @@ test("«Prossimo passo»: una frase e il solo pulsante pieno della testa", () =>
 test("le frasi di «Prossimo passo», al singolare e al plurale", () => {
   const q = "2026-Q4" as const;
   const cases: Array<[OverviewNextStep, string]> = [
-    [{ kind: "requisiti", quarter: q, toAsk: 60, blocked: 10 }, "Per partire con il T4 2026 servono ancora 70 requisiti: 60 sono da chiedere e 10 sono bloccati."],
-    [{ kind: "requisiti", quarter: q, toAsk: 1, blocked: 1 }, "Per partire con il T4 2026 servono ancora 2 requisiti: 1 è da chiedere e 1 è bloccato."],
-    [{ kind: "requisiti", quarter: q, toAsk: 1, blocked: 0 }, "Per partire con il T4 2026 serve ancora 1 requisito da chiedere."],
-    [{ kind: "requisiti", quarter: q, toAsk: 1_250, blocked: 0 }, "Per partire con il T4 2026 servono ancora 1.250 requisiti da chiedere."],
-    [{ kind: "requisiti", quarter: q, toAsk: 0, blocked: 1 }, "Per partire con il T4 2026 serve ancora 1 requisito bloccato."],
-    [{ kind: "requisiti", quarter: q, toAsk: 0, blocked: 10 }, "Per partire con il T4 2026 servono ancora 10 requisiti bloccati."],
-    [{ kind: "da_verificare", quarter: q, toVerify: 1 }, "Per partire con il T4 2026 c'è 1 requisito da verificare."],
-    [{ kind: "da_verificare", quarter: "2027-Q1", toVerify: 5 }, "Per partire con il T1 2027 ci sono 5 requisiti da verificare."],
+    // TopJet il 29/10/2026: la riga di «Cosa serve» del trimestre dice «40 da chiedere · 17 in attesa · 2 da verificare · 8 bloccati».
+    [{ kind: "requisiti", quarter: q, toAsk: 40, toVerify: 2, blocked: 8 }, "Per partire con il T4 2026 servono ancora 50 requisiti: 40 sono da chiedere, 2 sono da verificare e 8 sono bloccati."],
+    [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 1, blocked: 1 }, "Per partire con il T4 2026 servono ancora 3 requisiti: 1 è da chiedere, 1 è da verificare e 1 è bloccato."],
+    [{ kind: "requisiti", quarter: q, toAsk: 60, toVerify: 0, blocked: 10 }, "Per partire con il T4 2026 servono ancora 70 requisiti: 60 sono da chiedere e 10 sono bloccati."],
+    [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 0, blocked: 1 }, "Per partire con il T4 2026 servono ancora 2 requisiti: 1 è da chiedere e 1 è bloccato."],
+    [{ kind: "requisiti", quarter: q, toAsk: 3, toVerify: 2, blocked: 0 }, "Per partire con il T4 2026 servono ancora 5 requisiti: 3 sono da chiedere e 2 sono da verificare."],
+    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 1, blocked: 4 }, "Per partire con il T4 2026 servono ancora 5 requisiti: 1 è da verificare e 4 sono bloccati."],
+    [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 0, blocked: 0 }, "Per partire con il T4 2026 serve ancora 1 requisito da chiedere."],
+    [{ kind: "requisiti", quarter: q, toAsk: 1_250, toVerify: 0, blocked: 0 }, "Per partire con il T4 2026 servono ancora 1.250 requisiti da chiedere."],
+    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 0, blocked: 1 }, "Per partire con il T4 2026 serve ancora 1 requisito bloccato."],
+    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 0, blocked: 10 }, "Per partire con il T4 2026 servono ancora 10 requisiti bloccati."],
+    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 1, blocked: 0 }, "Per partire con il T4 2026 c'è 1 requisito da verificare."],
+    [{ kind: "requisiti", quarter: "2027-Q1", toAsk: 0, toVerify: 5, blocked: 0 }, "Per partire con il T1 2027 ci sono 5 requisiti da verificare."],
     [{ kind: "decisioni", count: 1 }, "1 use case aspetta una decisione."],
     [{ kind: "decisioni", count: 4 }, "4 use case aspettano una decisione."],
   ];
   for (const [step, text] of cases) assert.equal(top.nextStepText(step), text);
   assert.equal(top.nextStepAction({ kind: "decisioni", count: 1 }), "Vedi le proposte");
-  assert.equal(top.nextStepAction({ kind: "requisiti", quarter: q, toAsk: 1, blocked: 0 }), "Vedi cosa serve");
-  assert.equal(top.nextStepAction({ kind: "da_verificare", quarter: q, toVerify: 1 }), "Vedi cosa serve");
+  assert.equal(top.nextStepAction({ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 0, blocked: 0 }), "Vedi cosa serve");
+  assert.equal(top.nextStepAction({ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 1, blocked: 0 }), "Vedi cosa serve");
 });
 
 test("«Su tutto il portafoglio»: ore e pareggio, «ad» solo davanti ad aprile e agosto, una parte sola", () => {

@@ -7,8 +7,9 @@
  *   niente; un titolo senza il prefisso non ha agente («Altri use case»). L'agente è un nome in
  *   testa al titolo, mai una persona (art. 15.4).
  * - **Colori.** Dieci toni (`--uc-agente-1…10` di globals.css), dati in ordine alfabetico agli
- *   agenti di tutte le schede del workspace (`agentPalette`): un filtro non ridipinge nessuno. Il
- *   nome è sempre scritto accanto al colore, che non è mai l'unico segno.
+ *   agenti degli use case della Panoramica di tutto il workspace (`workspaceAgentPalette`: approvati,
+ *   in realizzazione e realizzati), per chiunque guardi: né un filtro, né il ruolo, né una proposta
+ *   ridipingono nessuno. Il nome è sempre scritto accanto al colore, che non è mai l'unico segno.
  *
  * Modulo puro, senza import.
  */
@@ -127,8 +128,8 @@ export interface AgentPalette {
 }
 
 /**
- * I toni degli agenti, dalle schede del workspace (tutte, non solo quelle filtrate): gli agenti in
- * ordine alfabetico, l'i-esimo con il tono (i mod 10) + 1. In ordine alfabetico e non con un hash
+ * I toni degli agenti delle schede date (la pagina dà quelle della Panoramica di tutto il workspace,
+ * `workspaceAgentPalette`): gli agenti in ordine alfabetico, l'i-esimo con il tono (i mod 10) + 1. In ordine alfabetico e non con un hash
  * del nome: FNV-1a modulo 10 darebbe lo stesso colore a SIRIO, MAIA e MEROPE, e a DENEB e LIBRA.
  * Così i dieci agenti di TopJet hanno dieci colori: ALCIONE 1, AUTO 2, DENEB 3, LIBRA 4, MAIA 5,
  * MEROPE 6, ORSA 7, SIRIO 8, SPICA 9, TAIGETE 10. Dall'undicesimo agente i toni ricominciano.
@@ -146,6 +147,39 @@ export function agentPalette(items: readonly { title: string }[]): AgentPalette 
       tones[agent] = ((index % AGENT_TONES) + 1) as AgentTone;
     });
   return { tones };
+}
+
+/** Le fasi della Panoramica: un agente ha un tono solo se ha uno use case in una di queste. */
+export const AGENT_PALETTE_PHASES: readonly string[] = Object.freeze(["approvato", "in_realizzazione", "realizzato"]);
+
+/**
+ * La tavolozza del workspace: `agentPalette` sugli use case di tutto il workspace nelle fasi della
+ * Panoramica (`AGENT_PALETTE_PHASES`), letti sul server per chiunque guardi, senza filtri. Così una
+ * proposta, una scheda chiusa o nascosta non sposta i colori («IVA · Calcolo…», una sigla in testa,
+ * darebbe a sette agenti di TopJet un altro colore), e un contributore vede gli stessi colori di un
+ * revisore. Un agente che ha solo proposte non ha un tono: il suo tag è neutro.
+ */
+export function workspaceAgentPalette(items: readonly { title: string; phase: string }[]): AgentPalette {
+  return agentPalette(items.filter((item) => AGENT_PALETTE_PHASES.includes(item.phase)));
+}
+
+/**
+ * La tavolozza ridotta agli agenti di questi titoli, con gli stessi toni: a chi non vede tutte le
+ * schede (i contributori) i toni dei suoi agenti, mai il nome di un agente che non vede.
+ */
+export function paletteForTitles(palette: AgentPalette, items: readonly { title: string }[]): AgentPalette {
+  const tones: Record<string, AgentTone> = {};
+  for (const item of items) {
+    const agent = agentOfTitle(item.title);
+    const tone = agentToneOf(palette, agent);
+    if (agent && tone) tones[agent] = tone;
+  }
+  return { tones };
+}
+
+/** La tavolozza ha almeno un agente: i titoli del workspace portano gli agenti, e i grafici li colorano. */
+export function paletteHasAgents(palette: AgentPalette | null | undefined): palette is AgentPalette {
+  return Boolean(palette && Object.keys(palette.tones).length);
 }
 
 /** Il tono di un agente; null senza tavolozza, senza agente o per un agente che non ha un tono. */

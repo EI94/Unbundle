@@ -13,8 +13,11 @@
  *   gruppo. La tavolozza si calcola su tutte le schede del workspace, non su quelle filtrate: un
  *   filtro non ridipinge un gruppo. Senza nessun gruppo: un colore solo, senza legenda dei gruppi.
  *   In un workspace con gli agenti nei titoli (rilascio «Panoramica») il colore dice sempre
- *   l'agente, come le card della Panoramica: un gruppo con il nome di un agente («LIBRA») prende il
- *   suo colore e il suo nome, gli altri gruppi sono grigi e i tre colori dei gruppi non ci sono.
+ *   l'agente, come le card della Panoramica: un gruppo con il nome di un agente («LIBRA»), o le cui
+ *   schede hanno tutte lo stesso agente nel titolo («Automazioni», tutte «AUTO X… · …»), prende il
+ *   colore e il nome di quell'agente; gli altri gruppi, anche quelli con agenti diversi, sono grigi
+ *   e i tre colori dei gruppi non ci sono. Lo stesso nella «Matrice Valore × Costo», che non ha
+ *   gruppi: ogni punto ha il tono dell'agente del suo titolo (`agentPointSlot`), il grigio senza.
  * - **Bolle** (`buildBenefitBubbles`): le schede della vista con un modello e la facilità; x la
  *   facilità da 1 a 5, y il beneficio contato all'anno, raggio `5 + 13·√(avvio / avvio massimo)`
  *   in pixel; il bordo dice quando (questo trimestre, prossimo, più avanti) e il riempimento
@@ -35,7 +38,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import { LEVERS, type Lever } from "../uc/vocab.ts";
-import { agentToneOf, shortRefOf, type AgentPalette, type AgentTone } from "./agents.ts";
+import { NO_AGENT_LABEL, agentOfTitle, agentToneOf, paletteHasAgents, shortRefOf, type AgentPalette, type AgentTone } from "./agents.ts";
 import { FIGURE_SEPARATOR, formatEuro, formatInteger, lowerFirst } from "./format.ts";
 import type { Origin } from "./types.ts";
 import { CURVE_EPSILON, componentResult, jCurve, monthLabel, planMonths, valueTotals, type JCurve, type PlannedMonths, type ValueTotals } from "./value-calc.ts";
@@ -62,10 +65,17 @@ export interface GroupPalette {
   /** Nessuna scheda ha un gruppo: un colore solo (1), senza legenda dei gruppi. */
   single: boolean;
   /**
-   * Con gli agenti nei titoli: gruppo → tono dell'agente con lo stesso nome («LIBRA»); gli altri
-   * gruppi, e tutto senza gruppi, in grigio. null senza agenti: i colori dei gruppi.
+   * Con gli agenti nei titoli: gruppo → l'agente che è (lo stesso nome, «LIBRA», o l'agente di tutte
+   * le sue schede) e il suo tono; gli altri gruppi, e tutto senza gruppi, in grigio. null senza
+   * agenti: i colori dei gruppi.
    */
-  agents: Readonly<Record<string, AgentTone>> | null;
+  agents: Readonly<Record<string, GroupAgent>> | null;
+}
+
+/** L'agente di un gruppo: il nome del tag («AUTO») e il suo tono. */
+export interface GroupAgent {
+  agent: string;
+  tone: AgentTone;
 }
 
 /** I gruppi senza un colore loro, in grigio. */
@@ -90,10 +100,15 @@ export function groupText(group: string | null): string {
  * I colori dei gruppi, dalle schede del workspace (tutte, non solo quelle filtrate): i gruppi dal
  * più grande (più schede con un modello; a pari schede più beneficio contato, se ci sono le
  * ipotesi `params`; poi il nome), i primi tre con un colore, gli altri in grigio. Con gli agenti dei
- * titoli (`agents`, `agentPalette` di tutte le schede) un gruppo ha il colore solo se è un agente.
+ * titoli (`agents`, `workspaceAgentPalette`) un gruppo ha il colore solo se è un agente: ha il nome
+ * di un agente («LIBRA», «Libra»), oppure tutte le sue schede hanno lo stesso agente nel titolo
+ * (TopJet: «Automazioni», sette schede «AUTO X… · …», è AUTO). Un gruppo con agenti diversi, o con
+ * una scheda senza agente, resta grigio.
  */
-export function groupPalette(items: readonly Pick<HubItem, "valueModel">[], params?: ValueParams | null, agents?: AgentPalette | null): GroupPalette {
+export function groupPalette(items: readonly (Pick<HubItem, "valueModel"> & { title?: string })[], params?: ValueParams | null, agents?: AgentPalette | null): GroupPalette {
   const size = new Map<string, { cards: number; benefit: number }>();
+  // L'agente comune delle schede di ogni gruppo; null appena una scheda ne ha un altro o nessuno.
+  const shared = new Map<string, string | null>();
   for (const item of items) {
     const group = groupOf(item.valueModel);
     if (!group || !item.valueModel) continue;
@@ -101,17 +116,22 @@ export function groupPalette(items: readonly Pick<HubItem, "valueModel">[], para
     entry.cards += 1;
     if (params) entry.benefit += valueTotals(item.valueModel, params).benefit;
     size.set(group, entry);
+    const agent = item.title === undefined ? null : agentOfTitle(item.title);
+    shared.set(group, shared.has(group) && shared.get(group) !== agent ? null : agent);
   }
   const sorted = [...size.entries()]
     .sort(([a, sa], [b, sb]) => sb.cards - sa.cards || sb.benefit - sa.benefit || a.localeCompare(b, "it-IT"))
     .map(([group]) => group);
-  if (agents && Object.keys(agents.tones).length) {
-    const tones: Record<string, AgentTone> = {};
+  if (paletteHasAgents(agents)) {
+    const named: Record<string, GroupAgent> = {};
     for (const group of sorted) {
-      const tone = agentToneOf(agents, agentNameOfGroup(group));
-      if (tone) tones[group] = tone;
+      // Prima il nome del gruppo, poi l'agente di tutte le sue schede.
+      const byName = agentNameOfGroup(group);
+      const agent = agentToneOf(agents, byName) ? byName : (shared.get(group) ?? null);
+      const tone = agentToneOf(agents, agent);
+      if (agent && tone) named[group] = { agent, tone };
     }
-    return { slots: {}, single: sorted.length === 0, agents: tones };
+    return { slots: {}, single: sorted.length === 0, agents: named };
   }
   const slots: Record<string, 1 | 2 | 3> = {};
   sorted.slice(0, GROUP_COLOR_SLOTS).forEach((group, index) => {
@@ -125,15 +145,15 @@ function agentNameOfGroup(group: string): string {
   return group.toLocaleUpperCase("it-IT");
 }
 
-/** Il gruppo è un agente dei titoli: ha il suo tono. */
-function agentToneOfGroup(palette: GroupPalette, group: string | null): AgentTone | null {
+/** L'agente che il gruppo è, con il suo tono; null se il gruppo non è un agente. */
+function agentOfGroup(palette: GroupPalette, group: string | null): GroupAgent | null {
   return palette.agents && group !== null && Object.prototype.hasOwnProperty.call(palette.agents, group) ? palette.agents[group] : null;
 }
 
 export function groupSlot(palette: GroupPalette, group: string | null): GroupSlot {
   if (palette.agents) {
-    const tone = agentToneOfGroup(palette, group);
-    return tone ? `agente-${tone}` : 0;
+    const agent = agentOfGroup(palette, group);
+    return agent ? `agente-${agent.tone}` : 0;
   }
   if (palette.single) return 1;
   return group !== null && Object.prototype.hasOwnProperty.call(palette.slots, group) ? palette.slots[group] : 0;
@@ -141,11 +161,11 @@ export function groupSlot(palette: GroupPalette, group: string | null): GroupSlo
 
 /**
  * Il gruppo di una bolla o di un segmento, a parole: «Gruppo Vendite», «Senza gruppo»; un gruppo
- * che è un agente con il nome dell'agente, «LIBRA», come il suo tag. null con un colore solo.
+ * che è un agente con il nome dell'agente, «LIBRA» o «AUTO», come il suo tag. null con un colore solo.
  */
 export function groupLabelOf(palette: GroupPalette, group: string | null): string | null {
   if (palette.single) return null;
-  return agentToneOfGroup(palette, group) && group !== null ? agentNameOfGroup(group) : groupText(group);
+  return agentOfGroup(palette, group)?.agent ?? groupText(group);
 }
 
 export interface GroupLegendEntry {
@@ -173,10 +193,9 @@ export function otherGroupsLabel(others: readonly string[], ungrouped: boolean):
 export function groupLegend(palette: GroupPalette, groups: readonly (string | null)[]): GroupLegendEntry[] {
   if (palette.single) return [];
   const present = new Set(groups.map((group) => groupSlot(palette, group)));
-  // Con gli agenti: i loro nomi in ordine alfabetico, come i toni.
+  // Con gli agenti: i loro nomi in ordine alfabetico, come i toni; due gruppi dello stesso agente, un nome solo.
   const entries: GroupLegendEntry[] = palette.agents
-    ? Object.entries(palette.agents)
-        .map(([group, tone]) => ({ slot: `agente-${tone}` as const, label: agentNameOfGroup(group) }))
+    ? [...new Map(Object.values(palette.agents).map(({ agent, tone }) => [agent, { slot: `agente-${tone}` as const, label: agent }])).values()]
         .filter((entry) => present.has(entry.slot))
         .sort((a, b) => a.label.localeCompare(b.label, "it-IT"))
     : Object.entries(palette.slots)
@@ -187,6 +206,41 @@ export function groupLegend(palette: GroupPalette, groups: readonly (string | nu
     const others = [...new Set(groups.filter((group): group is string => group !== null && groupSlot(palette, group) === 0))].sort((a, b) => a.localeCompare(b, "it-IT"));
     entries.push({ slot: 0, label: otherGroupsLabel(others, groups.includes(null)) });
   }
+  return entries;
+}
+
+// ─── I punti della «Matrice Valore × Costo» per agente ───────────────
+
+/**
+ * Il colore di un punto della «Matrice Valore × Costo» in un workspace con gli agenti nei titoli
+ * (`paletteHasAgents`): il tono dell'agente del titolo, come il suo tag; il grigio (0) senza agente
+ * o per un agente senza tono (solo proposte). null senza agenti: la matrice resta per origine.
+ */
+export function agentPointSlot(agents: AgentPalette | null | undefined, title: string): GroupSlot | null {
+  if (!paletteHasAgents(agents)) return null;
+  const tone = agentToneOf(agents, agentOfTitle(title));
+  return tone ? `agente-${tone}` : 0;
+}
+
+/**
+ * La legenda della «Matrice Valore × Costo» per agente: gli agenti con un tono che hanno un punto,
+ * in ordine alfabetico come i toni, poi il grigio «Altri use case» se un punto non ha un agente con
+ * un tono. Vuota senza agenti nei titoli.
+ */
+export function agentPointLegend(agents: AgentPalette | null | undefined, titles: readonly string[]): GroupLegendEntry[] {
+  if (!paletteHasAgents(agents)) return [];
+  const shown = new Map<string, AgentTone>();
+  let others = false;
+  for (const title of titles) {
+    const agent = agentOfTitle(title);
+    const tone = agentToneOf(agents, agent);
+    if (agent && tone) shown.set(agent, tone);
+    else others = true;
+  }
+  const entries: GroupLegendEntry[] = [...shown.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, "it-IT"))
+    .map(([agent, tone]) => ({ slot: `agente-${tone}` as const, label: agent }));
+  if (others) entries.push({ slot: 0, label: NO_AGENT_LABEL });
   return entries;
 }
 

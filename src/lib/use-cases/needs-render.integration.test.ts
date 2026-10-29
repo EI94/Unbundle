@@ -128,6 +128,7 @@ const T = {
 const START = {
   shared: `Accesso alla posta delle fatture ${suffix}`,
   blocked: `Contratto con il fornitore ${suffix}`,
+  verify: `Estratto delle fatture del 2025 ${suffix}`,
   progress: `Estratto dei pagamenti ${suffix}`,
   next: `Regole di riconciliazione ${suffix}`,
 };
@@ -370,9 +371,9 @@ before(async () => {
   ok(await svc.archiveNeed(as("ls"), needIds.archived, 1, "Non serve più"));
   await create("foreign", { type: "requisito", kind: "accesso" }, [foreignCard.id], ids.wsOther);
 
-  // «Prossimo passo»: due use case approvati per questo trimestre con un requisito in comune e uno
-  // bloccato; uno già partito e uno del trimestre dopo, con i loro requisiti, che non contano; una
-  // proposta da decidere, che viene dopo i requisiti.
+  // «Prossimo passo»: due use case approvati per questo trimestre con un requisito in comune, uno
+  // bloccato e uno da verificare; uno già partito e uno del trimestre dopo, con i loro requisiti, che
+  // non contano; una proposta da decidere, che viene dopo i requisiti.
   const thisQuarter = quarter.currentQuarter();
   startCards.a = await seed({ workspaceId: ids.wsStart, title: `LIBRA L1 · Fatture estere ${suffix}`, targetQuarter: thisQuarter });
   startCards.b = await seed({ workspaceId: ids.wsStart, title: `LIBRA L2 · Pagamenti ${suffix}`, targetQuarter: thisQuarter });
@@ -383,6 +384,7 @@ before(async () => {
     ok(await svc.createNeed(as("ls", ids.wsStart), { type: "requisito", title, ...input }, { useCaseIds }), title);
   await startNeed(START.shared, { kind: "accesso", ownerSide: "cliente" }, [startCards.a.id, startCards.b.id]);
   await startNeed(START.blocked, { kind: "contratto", ownerSide: "lateral_space", status: "bloccata" }, [startCards.b.id]);
+  await startNeed(START.verify, { kind: "dato", status: "in_verifica" }, [startCards.a.id, startCards.b.id]);
   await startNeed(START.progress, { kind: "dato" }, [startCards.progress.id]);
   await startNeed(START.next, { kind: "regola" }, [startCards.next.id]);
 });
@@ -530,7 +532,8 @@ test("Cosa serve: la sua vista, non nella Panoramica né nei vecchi link; senza 
 test("Panoramica: il prossimo passo conta i requisiti degli use case di questo trimestre", opts, async () => {
   const quarter = await import("./quarter.ts");
   const thisQuarter = quarter.currentQuarter();
-  const sentence = `Per partire con il ${quarter.quarterLabel(thisQuarter)} servono ancora 2 requisiti: 1 è da chiedere e 1 è bloccato.`;
+  // Ogni gruppo che conta, con il suo nome: da chiedere, da verificare e bloccati.
+  const sentence = `Per partire con il ${quarter.quarterLabel(thisQuarter)} servono ancora 3 requisiti: 1 è da chiedere, 1 è da verificare e 1 è bloccato.`;
   const href = `/dashboard/${ids.wsStart}/use-cases?vista=cosa-serve&trimestre=${thisQuarter}`;
   for (const person of REVIEWERS) {
     const page = await hubHtml(person, ids.wsStart, { vista: "panoramica" });
@@ -556,11 +559,13 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   assert.ok(manager.includes('data-slot="overview-figures"'));
   assert.match(manager, /data-figure="totale-trimestre"[^>]*><p[^>]*><span class="whitespace-nowrap">2<\/span><\/p><p class="text-sm">use case in questo trimestre</);
   // Il link porta a «Cosa serve» del trimestre: proprio i requisiti contati, non gli altri, con gli
-  // stessi numeri del riquadro nella riga sotto «Requisiti», che comincia dal trimestre.
+  // stessi numeri del riquadro nella riga sotto «Requisiti», che comincia dal trimestre: ogni numero
+  // della frase si ritrova con la sua parola.
   const target = await hubHtml("builder", ids.wsStart, { vista: "cosa-serve", trimestre: thisQuarter });
-  assert.ok(target.includes(START.shared) && target.includes(START.blocked));
+  assert.ok(target.includes(START.shared) && target.includes(START.blocked) && target.includes(START.verify));
   assert.ok(!target.includes(START.progress) && !target.includes(START.next));
-  assert.equal(summaryOf(target), `${quarter.quarterLabel(thisQuarter)} · 2 aperti · 1 da chiedere · 1 bloccato`);
+  assert.equal(summaryOf(target), `${quarter.quarterLabel(thisQuarter)} · 3 aperti · 1 da chiedere · 1 da verificare · 1 bloccato`);
+  for (const piece of ["1 da chiedere", "1 da verificare", "1 bloccato"]) assert.ok(summaryOf(target).includes(piece), piece);
   // Il filtro del trimestre non apre le aree: si arriva sui conteggi, non su tutte le tabelle.
   const areas = areasOf(target);
   assert.ok(areas.length > 0);
@@ -570,6 +575,10 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   const tags = [...between(shared, 'data-slot="need-agents"', "Per 2 use case").matchAll(/data-slot="agent-tag"[^>]*><span class="truncate">([^<]*)</g)].map((match) => match[1]);
   assert.deepEqual(tags, ["LIBRA"]);
   assert.ok(shared.indexOf('data-slot="need-agents"') < shared.indexOf("Per 2 use case"));
+  // Il requisito di un solo use case: nessun tag, il link dice già «LIBRA L2».
+  const blocked = between(target, START.blocked, "</tr>");
+  assert.ok(!blocked.includes('data-slot="need-agents"'), blocked);
+  assert.ok(blocked.includes(`LIBRA L2 · Pagamenti ${suffix}`));
   // Con un filtro il riquadro non c'è: dice tutto il workspace.
   const filtered = await hubHtml("builder", ids.wsStart, { vista: "panoramica", agente: "LIBRA" });
   assert.ok(!filtered.includes('data-slot="next-step"') && filtered.includes('data-slot="phase-strip"'));
@@ -581,9 +590,16 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   }
   const { data } = await hubTree("contributor", ids.wsStart, { vista: "panoramica" });
   assert.equal(data.needs, null);
-  // I revisori le leggono sulle corsie, non con un grafico del menu «⋯».
+  // I revisori le leggono sulle corsie senza filtri, per «Prossimo passo»; non con un filtro, che lo
+  // toglie, né con un grafico del menu «⋯». Il pannello e «Cosa serve» le leggono anche con un filtro.
   assert.ok((await hubTree("builder", ids.wsStart, { vista: "panoramica" })).data.needs?.length);
   assert.equal((await hubTree("builder", ids.wsStart, { vista: "panoramica", mostra: "matrice" })).data.needs, null);
+  const filters: Array<Record<string, string>> = [{ agente: "LIBRA" }, { q: "Fatture" }, { trimestre: thisQuarter }, { origine: "adoption" }];
+  for (const filter of filters) {
+    assert.equal((await hubTree("builder", ids.wsStart, { vista: "panoramica", ...filter })).data.needs, null, JSON.stringify(filter));
+  }
+  assert.ok((await hubTree("builder", ids.wsStart, { vista: "panoramica", agente: "LIBRA", apri: startCards.a.id })).data.needs?.length, "il pannello");
+  assert.ok((await hubTree("builder", ids.wsStart, { vista: "cosa-serve", agente: "LIBRA" })).data.needs?.length, "«Cosa serve»");
 });
 
 test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai le card dei dossier qui", opts, () => {
@@ -646,7 +662,7 @@ test("Cosa serve: «Prossimi passi» aperti fino al mese di oggi, poi «Più ava
   const plainRef = ref("TJ-0004", "Smistamento delle richieste");
   const month = (key: string, label: string, rows: unknown[]) => ({ key, label, rows });
   const steps = [
-    month("2026-10", "Ottobre 2026", [step("Questo mese", agentsRefs)]),
+    month("2026-10", "Ottobre 2026", [step("Questo mese", agentsRefs), step("Un solo agente", [agentsRefs[1]])]),
     month("2026-11", "Novembre 2026", [step("Il mese prossimo", [plainRef])]),
     month("2027-01", "Gennaio 2027", [step("Fra tre mesi")]),
     month("senza_data", "Senza data", [step("Da fissare")]),
@@ -680,6 +696,11 @@ test("Cosa serve: «Prossimi passi» aperti fino al mese di oggi, poi «Più ava
   assert.deepEqual(names, ["LIBRA", "ORSA"]);
   assert.ok(withAgents.indexOf('data-meta="agenti"') < withAgents.indexOf("Per 3 use case"), "prima gli agenti");
   assert.ok(!between(html, `Il mese prossimo ${suffix}`, "</li>").includes('data-slot="need-agents"'), "senza prefisso, nessun tag");
+  // Con un solo use case il link dice già l'agente: nessun tag, l'agente una volta sola, anche per i lettori di schermo.
+  const single = between(html, `Un solo agente ${suffix}`, "</li>");
+  assert.ok(!single.includes('data-slot="need-agents"') && !single.includes('data-slot="agent-tag"'), single);
+  assert.equal(readable(single.replace(/<[^>]+>/g, "")).split("ORSA").length - 1, 1, "«ORSA» una volta");
+  assert.ok(single.includes("TJ-0002") && single.includes("ORSA O1 · Solleciti ai clienti"));
 });
 
 test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerca nel titolo, il vuoto dei filtri", opts, async () => {

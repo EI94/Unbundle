@@ -16,7 +16,7 @@ export interface AgentGridProps {
   groups: readonly AgentGroup[];
   /** Le corsie del solo agente (`?agente=`), con l'ancora delle corsie. */
   hrefOf: (param: string) => string;
-  /** I toni degli agenti, da tutte le schede della pagina (`agentPalette`). */
+  /** I toni degli agenti del workspace (`workspaceAgentPalette`), gli stessi per ogni ruolo. */
   agents: AgentPalette;
 }
 

@@ -22,7 +22,7 @@ import {
 import { isContributorItem, type AnyHubItem, type HubItem } from "@/lib/use-cases/views";
 import { AgentGrid } from "./agent-grid";
 import { Disclosure } from "./disclosure";
-import { EmptyState, NoResults } from "./hub-header";
+import { EmptyState, HUB_TEXT, NoResults } from "./hub-header";
 import { LaneCard } from "./lane-card";
 import { panelHref, type HubQuery } from "./use-case-row";
 
@@ -34,6 +34,8 @@ export const LANES_TEXT = Object.freeze({
   showLess: "Mostra meno",
   emptyTitle: "Niente in programma, per ora",
   emptyBody: "Approva uno use case e scegli quando farlo.",
+  /** Ai contributori, che non approvano: dove trovano le proposte. */
+  emptyContributorBody: `Nessuno use case è ancora approvato. Le proposte sono in «${HUB_TEXT.contributorDecideView}».`,
   noneWithFilters: "Niente in programma con questi filtri.",
   groupingLabel: "Raggruppa",
   byQuarter: "Per trimestre",
@@ -59,7 +61,7 @@ export interface PanoramaLanesProps {
   /** Gli use case della pagina, già filtrati e proiettati per chi guarda. */
   items: readonly AnyHubItem[];
   today: string;
-  /** I toni degli agenti, da tutte le schede della pagina: un filtro non li cambia. */
+  /** I toni degli agenti del workspace (`workspaceAgentPalette`): né un filtro né il ruolo li cambiano. */
   agents: AgentPalette;
   /** La scala delle barre (`laneBarScale`, sugli approvati di tutto il workspace); 0 ai contributori. */
   barScale: number;
@@ -84,6 +86,8 @@ export interface PanoramaLanesProps {
   agentHref: (param: string) => string;
   /** L'agente del filtro «Agente», per il nome della sezione; null senza. */
   agentFilter: string | null;
+  /** Chi guarda è un contributore: il vuoto non gli chiede di approvare. */
+  contributor?: boolean;
 }
 
 /**
@@ -97,7 +101,8 @@ export interface PanoramaLanesProps {
  * con le card dei dossier, e «Realizzati», chiusa, con il conto. I contributori vedono le stesse corsie
  * con «N use case» e card con tag, titolo e fase, senza cifre. Con il filtro «Agente» (anche dopo un
  * clic in «Per agente») sopra le corsie una riga dice di chi sono, «LIBRA · 7 use case», con
- * «‹ Tutti gli agenti» quando c'è «Per agente».
+ * «‹ Tutti gli agenti» quando c'è «Per agente». Senza niente in programma il vuoto chiede ai
+ * revisori di approvare uno use case, e dice ai contributori dove sono le proposte.
  */
 export function PanoramaLanes({
   items,
@@ -115,6 +120,7 @@ export function PanoramaLanes({
   grouping,
   agentHref,
   agentFilter,
+  contributor = false,
 }: PanoramaLanesProps) {
   const lanes = buildLanes(items, today);
   const planned = lanes.lanes.some((lane) => lane.entries.length > 0);
@@ -122,7 +128,7 @@ export function PanoramaLanes({
     return filtersActive ? (
       <NoResults clearHref={clearHref} title={items.length ? LANES_TEXT.noneWithFilters : undefined} />
     ) : (
-      <EmptyState title={LANES_TEXT.emptyTitle} body={LANES_TEXT.emptyBody} />
+      <EmptyState title={LANES_TEXT.emptyTitle} body={contributor ? LANES_TEXT.emptyContributorBody : LANES_TEXT.emptyBody} />
     );
   }
   const reviewers = items.every((item) => !isContributorItem(item));

@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { shortRefOf } from "@/lib/use-cases/agents";
+import { shortRefOf, type AgentPalette } from "@/lib/use-cases/agents";
 import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { costShortText, valueScreenText } from "@/lib/use-cases/format";
 import { ORIGIN_LABEL, ZONE_HINT, ZONE_LABEL } from "@/lib/use-cases/labels";
 import { groupLabelTexts, groupNearPoints, placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
 import type { Origin } from "@/lib/use-cases/types";
 import type { CostFigure as CostFigureData, ValueFigure as ValueFigureData } from "@/lib/use-cases/valuation";
+import { agentPointLegend, agentPointSlot, type GroupSlot } from "@/lib/use-cases/value-charts";
 import { EXPIRED_TAG, toEstimateLabel, type HubEstimateParam } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { CostFigure } from "./cost-figure";
@@ -13,6 +14,7 @@ import { Disclosure } from "./disclosure";
 import { RevealOnMount } from "./list-focus";
 import { NeedUseCaseLink } from "./need-use-cases";
 import { ORIGIN_DOT_CLASS } from "./origin-chip";
+import { GroupLegendItems, SLOT_BORDER, SLOT_FILL } from "./value-chart-colors";
 import { ValueFigure } from "./value-figure";
 
 /** Testi della matrice (docs/use-case/DESIGN.md §4.4, §14.3). */
@@ -72,6 +74,11 @@ export interface ValueCostMatrixProps {
   offMatrix?: { label: string; items: readonly MatrixOffItem[] } | null;
   /** L'elenco che l'indirizzo chiede (`stima`, un vecchio chip «N da stimare»), aperto quando la pagina si rende. */
   open?: HubEstimateParam | null;
+  /**
+   * I toni degli agenti del workspace (`workspaceAgentPalette`): con gli agenti nei titoli i punti
+   * hanno il colore dell'agente, come i tag della Panoramica, e la legenda gli agenti; senza, l'origine.
+   */
+  agents?: AgentPalette | null;
 }
 
 /** Il dominio dei due assi: da 0,5 a 5,5, con le tacche a 1, 2, 3, 4, 5. */
@@ -134,7 +141,8 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
  * fascia, una fascia sola al centro). Due linee tratteggiate: «Valore alto» e «Costo basso», soglie del workspace.
  * Quattro zone in grigio: «Subito», «Da pianificare», «Se avanza tempo», «Non ora», ognuna dentro
  * la sua zona, di qua o di là della linea del costo basso (anche al telefono). Punti di
- * 10 px colorati per origine, pieni se approvati, vuoti se da decidere, con il bordo rosso se
+ * 10 px colorati per origine (in un workspace con gli agenti nei titoli per agente, nel tono del suo
+ * tag, grigi senza: `agentPointSlot`), pieni se approvati, vuoti se da decidere, con il bordo rosso se
  * scaduti; ogni punto ha accanto il suo codice, messo dove non copre gli altri
  * (`placeMatrixLabels`; dove coprirebbe qualcosa non c'è, come nelle bolle facilità × beneficio);
  * punti quasi nello stesso posto hanno un'etichetta sola con tutti i loro codici.
@@ -143,8 +151,10 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
  * per un dito). Senza trascinamento. Sotto la legenda, gli use case senza Valore o Costo, e quelli
  * con «Benefici e costi» senza un punto, in due elenchi chiusi (`toEstimate`, `offMatrix`). Solo per i revisori.
  */
-export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BANDS, toEstimate, offMatrix = null, open = null }: ValueCostMatrixProps) {
+export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BANDS, toEstimate, offMatrix = null, open = null, agents = null }: ValueCostMatrixProps) {
   const placed = spread(points);
+  // Per agente solo se i titoli del workspace li portano; altrimenti per origine, come sempre.
+  const agentLegend = agentPointLegend(agents, points.map((point) => point.title));
   // Le etichette si mettono per la matrice più piccola (320 px, al telefono) e per la più grande (600 px).
   // Ogni punto è un ostacolo; ha un'etichetta solo chi porta i codici del suo gruppo.
   const labels = placeMatrixLabels(
@@ -196,7 +206,7 @@ export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BAND
             </span>
             <ul className="absolute inset-0">
               {placed.map((point) => (
-                <MatrixDot key={point.id} point={point} bands={bands} label={labels.get(point.id) ?? null} />
+                <MatrixDot key={point.id} point={point} bands={bands} label={labels.get(point.id) ?? null} slot={agentPointSlot(agents, point.title)} />
               ))}
             </ul>
           </div>
@@ -221,12 +231,16 @@ export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BAND
       )}
       <figcaption className="space-y-2">
         <p data-slot="matrix-legend" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {(["adoption", "transformation"] as const).map((origin) => (
-            <span key={origin} className="inline-flex items-center gap-1.5">
-              <span aria-hidden className={cn("size-2.5 rounded-full", ORIGIN_DOT_CLASS[origin])} />
-              {ORIGIN_LABEL[origin].chip}
-            </span>
-          ))}
+          {agentLegend.length ? (
+            <GroupLegendItems entries={agentLegend} />
+          ) : (
+            (["adoption", "transformation"] as const).map((origin) => (
+              <span key={origin} className="inline-flex items-center gap-1.5">
+                <span aria-hidden className={cn("size-2.5 rounded-full", ORIGIN_DOT_CLASS[origin])} />
+                {ORIGIN_LABEL[origin].chip}
+              </span>
+            ))
+          )}
           <span className="inline-flex items-center gap-1.5">
             <span aria-hidden className="size-2.5 rounded-full border-2 border-muted-foreground bg-muted-foreground" />
             {MATRIX_TEXT.approved}
@@ -287,10 +301,13 @@ function MatrixDot({
   point,
   bands,
   label,
+  slot,
 }: {
   point: MatrixPoint & { left: number; top: number; labelText: string };
   bands: readonly CostBandInfo[];
   label: MatrixLabelPlacement | null;
+  /** Il tono dell'agente del punto (`agentPointSlot`, 0 il grigio); null: il colore dell'origine. */
+  slot: GroupSlot | null;
 }) {
   const text = `${point.code ? `${point.code} ` : ""}${point.title}. Valore: ${valueScreenText(point.value)}. Costo: ${costShortText(point.cost, bands)}`;
   // Il riquadro si apre verso il centro, così non esce dalla matrice.
@@ -311,8 +328,8 @@ function MatrixDot({
           aria-hidden
           className={cn(
             "size-2.5 rounded-full border-2 transition-transform group-hover:scale-125",
-            RING_CLASS[point.origin],
-            point.approved ? ORIGIN_DOT_CLASS[point.origin] : "bg-background",
+            slot === null ? RING_CLASS[point.origin] : SLOT_BORDER[slot],
+            point.approved ? (slot === null ? ORIGIN_DOT_CLASS[point.origin] : SLOT_FILL[slot]) : "bg-background",
             point.expired && "ring-2 ring-red-500 ring-offset-1 ring-offset-background",
           )}
         />

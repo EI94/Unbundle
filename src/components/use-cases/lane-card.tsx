@@ -22,7 +22,7 @@ export interface LaneCardProps {
   place: LaneCardPlace;
   /** Apre il pannello laterale. */
   href: string;
-  /** I toni degli agenti, da tutte le schede della pagina (`agentPalette`). */
+  /** I toni degli agenti del workspace (`workspaceAgentPalette`), gli stessi per ogni ruolo. */
   agents: AgentPalette;
   /** «T3 2026» di uno scaduto, «T2 2027» in «Più avanti» (solo revisori, `buildLanes`). */
   quarterNote?: string | null;

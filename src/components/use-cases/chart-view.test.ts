@@ -1,6 +1,7 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import * as nodeModule from "node:module";
+import { agentPalette, agentToneOf } from "../../lib/use-cases/agents.ts";
 import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
 import type { ValuationModel } from "../../lib/use-cases/valuation.ts";
 import { DEFAULT_VALUE_PARAMS, valueModelSchema, type ValueParams } from "../../lib/use-cases/value-model.ts";
@@ -212,6 +213,43 @@ test("«Matrice Valore × Costo» dal menu «⋯»: «‹ Torna alla Panoramica�
   assert.equal(isOpen(detailsTag(html, "off-matrix")), false);
   assert.match(off, /1 senza beneficio contato<\/summary>/);
   assert.ok(off.includes(`>${qualitative.code}<`));
+});
+
+test("«Matrice Valore × Costo» con gli agenti nei titoli: i punti nel tono dell'agente, grigi senza, la legenda per agente", () => {
+  const libra = item({ title: "LIBRA L1 · Lettura delle fatture estere", origin: "transformation", customScores: HIGH, costEurOnce: 18_000 });
+  const deneb = item({ title: "DENEB D1 · Richieste di riposo e ferie", origin: "transformation", customScores: HIGH, costEurOnce: 4_000, ...TO_DECIDE });
+  const plain = item({ title: "Strategia per volo", origin: "transformation", customScores: HIGH, costEurOnce: 40_000 });
+  const proposal = item({ title: "IVA · Calcolo dell'imposta sui biglietti", customScores: HIGH, costEurOnce: 9_000, ...TO_DECIDE });
+  const items = [libra, deneb, plain, proposal];
+  // I toni del workspace: solo gli agenti della Panoramica (IVA ha solo una proposta).
+  const agents = agentPalette([{ title: libra.title }, { title: "DENEB D2 · Turni" }, { title: "ORSA O1 · Voli" }]);
+  const html = view({ items, agents });
+  // Il pallino di un punto: il primo `<span>` dopo il suo link.
+  const dotOf = (id: string) => {
+    const start = html.indexOf(`data-point="${id}"`);
+    return /<span aria-hidden="true" class="([^"]*)"/.exec(html.slice(start))?.[1] ?? "";
+  };
+  const tone = (agent: string) => agentToneOf(agents, agent);
+  // Approvato: pieno nel tono del tag; da decidere: solo il bordo, nel tono; senza agente il grigio.
+  assert.match(dotOf(libra.id), new RegExp(`\\bborder-uc-agente-${tone("LIBRA")}\\b.*\\bbg-uc-agente-${tone("LIBRA")}\\b`));
+  assert.match(dotOf(deneb.id), new RegExp(`\\bborder-uc-agente-${tone("DENEB")}\\b.*\\bbg-background\\b`));
+  assert.match(dotOf(plain.id), /\bborder-uc-serie-altro\b.*\bbg-uc-serie-altro\b/);
+  assert.match(dotOf(proposal.id), /\bborder-uc-serie-altro\b.*\bbg-background\b/, "un agente senza tono: grigio");
+  assert.ok(!/(?:bg|border)-(?:indigo|teal)-500/.test(html.slice(html.indexOf('data-slot="value-cost-matrix"'))), "nessun colore dell'origine");
+  // La legenda: gli agenti dei punti, poi «Altri use case»; le fasi come prima, senza l'origine.
+  const legendStart = html.indexOf(">", html.indexOf('data-slot="matrix-legend"')) + 1;
+  const legend = html.slice(legendStart, html.indexOf("</p>", legendStart));
+  const legendText = legend.replace(/<[^>]+>/g, "|").split("|").filter(Boolean);
+  assert.deepEqual(legendText, ["DENEB", "LIBRA", "Altri use case", "approvato", "da decidere"]);
+  assert.ok(legend.includes(`bg-uc-agente-${tone("DENEB")}`) && legend.includes(`bg-uc-agente-${tone("LIBRA")}`) && legend.includes("bg-uc-serie-altro"));
+  // Etichette, riquadri e nomi per i lettori di schermo restano quelli di prima.
+  assert.ok(html.includes(`aria-label="${libra.code} ${libra.title}. Valore:`));
+  assert.deepEqual([...html.matchAll(/data-slot="matrix-label"[^>]*>([^<]*)</g)].map((match) => match[1]).sort(), ["DENEB D1", "IVA", "LIBRA L1", plain.code].sort());
+  // Senza agenti nei titoli: l'origine, come sempre.
+  const byOrigin = view({ items, agents: agentPalette([{ title: "Strategia per volo" }]) });
+  assert.ok(byOrigin.includes("bg-indigo-500") && byOrigin.includes("border-teal-500") && !byOrigin.includes("uc-agente"));
+  assert.ok(byOrigin.includes(">AI Transformation<") && !byOrigin.includes("Altri use case"));
+  assert.equal(view({ items }), byOrigin, "senza tavolozza come senza agenti");
 });
 
 test("i vuoti dei grafici: «Nessuno use case da mettere in ordine», o «Togli i filtri» che tiene il grafico", () => {

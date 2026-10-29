@@ -8,6 +8,7 @@ import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { dossierSummaries, type DossierSummary } from "@/lib/db/queries/use-case-dossiers";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { isLateralSpaceEmail } from "@/lib/uc/lateral-space";
+import { paletteForTitles, workspaceAgentPalette, type AgentPalette } from "@/lib/use-cases/agents";
 import { pendingAnswer, type InfoAnswer } from "@/lib/use-cases/answers";
 import { resolveCostBands, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import {
@@ -16,6 +17,7 @@ import {
   type ContributorUseCase,
   type UseCaseViewer,
 } from "@/lib/use-cases/permissions";
+import { phaseOfUseCase } from "@/lib/use-cases/phase";
 import { romeToday } from "@/lib/use-cases/quarter";
 import type { IsoDate } from "@/lib/use-cases/types";
 import type { ValuationModel } from "@/lib/use-cases/valuation";
@@ -23,6 +25,7 @@ import { originFollowsCurrentMonth, resolveValueParams, type ValueParams } from 
 import {
   compareWaiting,
   exportRow,
+  phaseInputOf,
   projectContributorRow,
   projectHubItem,
   projectUseCaseDetail,
@@ -232,6 +235,11 @@ interface HubListBase {
   today: IsoDate;
   dossierRead: DossierReadStatus;
   receipt: HubReceipt | null;
+  /**
+   * I toni degli agenti (`workspaceAgentPalette`): dagli use case della Panoramica di tutto il
+   * workspace, gli stessi per ogni ruolo. Ai contributori solo gli agenti dei titoli che vedono.
+   */
+  agents: AgentPalette;
 }
 
 export type HubList =
@@ -276,7 +284,7 @@ export async function listHubItems(workspaceId: string, viewer: UseCaseViewer, o
     workspaceId,
     rows.map((row) => row.id),
   );
-  const base: HubListBase = { today: ctx.today as IsoDate, dossierRead: dossiers.status, receipt: receiptOf(viewer, rows, opts.createdId) };
+  const base: Omit<HubListBase, "agents"> = { today: ctx.today as IsoDate, dossierRead: dossiers.status, receipt: receiptOf(viewer, rows, opts.createdId) };
 
   if (abilities.projection === "contributore") {
     const visible: Array<{ item: ContributorUseCase; since: string; arrivedOn: string }> = [];
@@ -287,12 +295,16 @@ export async function listHubItems(workspaceId: string, viewer: UseCaseViewer, o
       visible.push({ item, arrivedOn, since: waitingStart({ subState: item.subState, reviewBy: row.reviewBy, reopenedOn: row.reopenedOn, arrivedOn }) });
     }
     visible.sort((a, b) => a.since.localeCompare(b.since) || a.arrivedOn.localeCompare(b.arrivedOn) || a.item.id.localeCompare(b.item.id));
-    return { ...base, projection: "contributore", items: visible.map((entry) => entry.item) };
+    const items = visible.map((entry) => entry.item);
+    // I toni su tutte le schede del workspace, come per i revisori; escono solo quelli degli agenti che vede.
+    const palette = workspaceAgentPalette(rows.map((row) => ({ title: row.title, phase: phaseOfUseCase(phaseInputOf(row, dossiers.of(row.id), ctx.today)).phase })));
+    return { ...base, agents: paletteForTitles(palette, items), projection: "contributore", items };
   }
 
   const items = rows.map((row) => projectHubItem(row, ctx, dossiers.of(row.id))).sort(compareWaiting);
   return {
     ...base,
+    agents: workspaceAgentPalette(items),
     projection: abilities.projection,
     items,
     model: ctx.model,

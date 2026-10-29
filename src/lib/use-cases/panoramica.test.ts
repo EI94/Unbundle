@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { ValueParts } from "./format.ts";
 import { buildLanes, PANORAMA_SECTION_ID } from "./lanes.ts";
-import type { NeedView } from "./needs.ts";
+import { buildNeedsBoard, needsSummaryPieces, type NeedView } from "./needs.ts";
 import {
   OVERVIEW_STEP_KEYS,
   OVERVIEW_STEP_TARGET,
@@ -11,11 +11,11 @@ import {
   overviewSteps,
   portfolioLine,
 } from "./panoramica.ts";
-import type { ContributorUseCase } from "./permissions.ts";
+import type { ContributorUseCase, UseCaseViewer } from "./permissions.ts";
 import type { CostFigure } from "./valuation.ts";
 import type { RoadmapValue } from "./value-charts.ts";
-import type { MonthCode } from "./value-model.ts";
-import { pendingValueTotal, roadmapTotals, type HubItem } from "./views.ts";
+import { DEFAULT_VALUE_PARAMS, type MonthCode } from "./value-model.ts";
+import { applyHubFilters, hasActiveFilters, parseHubParams, pendingValueTotal, roadmapTotals, type HubItem } from "./views.ts";
 
 // La testa della Panoramica (rilascio «Panoramica»): fasi, cifre, «Su tutto il portafoglio» e
 // «Prossimo passo». Dati inventati: codici XX-0000.
@@ -219,12 +219,57 @@ test("prossimo passo: i requisiti degli approvati di questo trimestre prima dell
     need({ status: "validata", useCaseIds: [a.id] }),
     need({ status: "chiesta", useCaseIds: [a.id] }),
   ];
-  assert.deepEqual(overviewNextStep({ items, needs, today: TODAY }), { kind: "requisiti", quarter: "2026-Q4", toAsk: 1, blocked: 1 });
-  // Tutto chiesto: quelli da verificare.
+  assert.deepEqual(overviewNextStep({ items, needs, today: TODAY }), { kind: "requisiti", quarter: "2026-Q4", toAsk: 1, toVerify: 0, blocked: 1 });
+  // Quelli da verificare contano con gli altri, non solo quando non c'è altro.
+  const withVerify = [...needs, need({ status: "in_verifica", useCaseIds: [a.id, b.id] }), need({ status: "in_verifica", useCaseIds: [next.id] })];
+  assert.deepEqual(overviewNextStep({ items, needs: withVerify, today: TODAY }), { kind: "requisiti", quarter: "2026-Q4", toAsk: 1, toVerify: 1, blocked: 1 });
+  // Tutto chiesto: quelli da verificare da soli.
   const verify = [need({ status: "in_verifica", useCaseIds: [a.id] }), need({ status: "chiesta", useCaseIds: [b.id] })];
-  assert.deepEqual(overviewNextStep({ items, needs: verify, today: TODAY }), { kind: "da_verificare", quarter: "2026-Q4", toVerify: 1 });
+  assert.deepEqual(overviewNextStep({ items, needs: verify, today: TODAY }), { kind: "requisiti", quarter: "2026-Q4", toAsk: 0, toVerify: 1, blocked: 0 });
   // Niente da chiedere né da verificare: le decisioni.
   assert.deepEqual(overviewNextStep({ items, needs: [need({ status: "chiesta", useCaseIds: [a.id] })], today: TODAY }), { kind: "decisioni", count: 2 });
+});
+
+test("prossimo passo e «Cosa serve» del trimestre, dove porta il pulsante: gli stessi requisiti, contati allo stesso modo", () => {
+  // La forma di TopJet il 29/10/2026, in piccolo: requisiti di più use case del trimestre, uno già
+  // partito, uno del trimestre dopo, uno scaduto; ogni gruppo di stato, archiviate e passi.
+  const a = hub({ title: "LIBRA L1 · Lettura delle fatture estere" });
+  const b = hub({ title: "SIRIO S3 · File F24 delle tasse passeggeri" });
+  const c = hub({ title: "AUTO X2 · Bonifici massivi" });
+  const started = hub({ phase: "in_realizzazione", subState: "senza_dossier", targetQuarter: "2026-Q4" });
+  const next = hub({ targetQuarter: "2027-Q1" });
+  const overdue = hub({ targetQuarter: "2026-Q3" });
+  const items = [a, b, c, started, next, overdue, toDecide()];
+  const needs = [
+    need({ useCaseIds: [a.id, b.id] }),
+    need({ status: "mancante", useCaseIds: [c.id] }),
+    need({ status: "parziale", useCaseIds: [a.id, next.id] }),
+    need({ status: "chiesta", useCaseIds: [b.id] }),
+    need({ status: "in_verifica", useCaseIds: [c.id] }),
+    need({ status: "in_verifica", useCaseIds: [a.id, c.id] }),
+    need({ status: "bloccata", useCaseIds: [b.id] }),
+    need({ status: "validata", useCaseIds: [a.id] }),
+    need({ status: "in_verifica", useCaseIds: [started.id] }),
+    need({ status: "bloccata", useCaseIds: [next.id, overdue.id] }),
+    need({ status: "bloccata", archivedAt: "2026-10-20T10:00:00.000Z", useCaseIds: [a.id] }),
+    need({ type: "passo", status: "proposta", useCaseIds: [a.id] }),
+  ];
+  const step = overviewNextStep({ items, needs, today: TODAY });
+  assert.deepEqual(step, { kind: "requisiti", quarter: "2026-Q4", toAsk: 3, toVerify: 2, blocked: 1 });
+  // La pagina del pulsante (`?vista=cosa-serve&trimestre=2026-Q4`), come la compone hub.tsx.
+  const viewer: UseCaseViewer = { userId: uuid(9000), email: "persona.prova@cliente.test", emailVerified: true, role: "function_lead", isLateralSpace: false };
+  const params = parseHubParams(new URLSearchParams("vista=cosa-serve&trimestre=2026-Q4"), viewer);
+  assert.ok(hasActiveFilters(params));
+  const filtered = applyHubFilters(items, params);
+  const board = buildNeedsBoard(needs, items, {
+    today: TODAY,
+    params: DEFAULT_VALUE_PARAMS,
+    only: { useCaseIds: new Set(filtered.map((item) => item.id.toLowerCase())), q: params.q },
+  });
+  assert.ok(step?.kind === "requisiti");
+  assert.deepEqual({ toAsk: board.counts.toAsk, toVerify: board.counts.toVerify, blocked: board.counts.blocked }, { toAsk: step.toAsk, toVerify: step.toVerify, blocked: step.blocked });
+  // I numeri del riquadro si leggono nella riga sotto «Requisiti», con le stesse parole.
+  assert.deepEqual(needsSummaryPieces(board.counts), ["7 aperti", "3 da chiedere", "1 in attesa", "2 da verificare", "1 bloccato", "1 a posto"]);
 });
 
 test("prossimo passo: le decisioni senza approvati di questo trimestre o senza esigenze; altrimenti niente", () => {

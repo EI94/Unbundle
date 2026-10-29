@@ -1,3 +1,4 @@
+import type { AgentPalette } from "@/lib/use-cases/agents";
 import { COST_BANDS, costLowLinePosition, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { DEFAULT_THRESHOLDS, costLowBandOf, type ValuationModel } from "@/lib/use-cases/valuation";
 import { buildBenefitBubbles, buildRoadmapValue, groupPalette, roadmapPlan, type GroupPalette } from "@/lib/use-cases/value-charts";
@@ -46,6 +47,8 @@ export interface HubChartViewProps {
   valueParams?: ValueParams | null;
   /** I colori dei gruppi, da tutte le schede del workspace (`groupPalette`). */
   palette?: GroupPalette | null;
+  /** I toni degli agenti del workspace (`workspaceAgentPalette`): i punti della «Matrice Valore × Costo». */
+  agents?: AgentPalette | null;
   /** Il primo mese della curva segue il mese corrente: «Ipotesi di calcolo» lo dice. */
   followsCurrentMonth?: boolean;
   /** Impostazioni › Valutazione, solo per chi gestisce il workspace: il link in «Ipotesi di calcolo». */
@@ -66,7 +69,8 @@ export interface HubChartViewProps {
  * (`?vista=panoramica&mostra=matrice|benefici|curva`; solo revisori), con «‹ Torna alla Panoramica»
  * sopra e gli stessi filtri:
  * - «Matrice Valore × Costo»: le fasi «Da valutare» (non le «Rimandate» in attesa) e «Approvato»
- *   degli use case «Da costruire»; sotto la legenda, chiusi, quelli «da stimare» e quelli con
+ *   degli use case «Da costruire», nel colore dell'agente con gli agenti nei titoli e altrimenti
+ *   dell'origine; sotto la legenda, chiusi, quelli «da stimare» e quelli con
  *   «Benefici e costi» senza un punto, che un link `stima` apre. Valore, costo, zone e soglie sono
  *   quelli del modello e delle fasce del workspace (D15, D18).
  * - «Matrice Facilità × Beneficio»: le bolle delle stesse schede con «Benefici e costi», con
@@ -83,6 +87,7 @@ export function HubChartView({
   model,
   valueParams = null,
   palette = null,
+  agents = null,
   followsCurrentMonth = false,
   settingsHref = null,
   bands = COST_BANDS,
@@ -174,6 +179,7 @@ export function HubChartView({
         toEstimate={view.toEstimate.map(offItem)}
         offMatrix={off.length ? { label: offMatrixLabel({ count: off.length, withoutBenefit: view.offMatrix.withoutBenefit }), items: off.map(offItem) } : null}
         open={open}
+        agents={agents}
       />
     </div>
   );

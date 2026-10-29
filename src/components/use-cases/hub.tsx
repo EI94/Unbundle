@@ -14,7 +14,7 @@ import { reviewTeamName } from "@/lib/review-team";
 import { activityMappingPath, fullFormPath, type ActivityMappingState } from "@/lib/use-cases/create";
 import { activityMappingReadiness, quickCreateOptions, type QuickCreateOptions } from "@/lib/use-cases/create-data";
 import { toDuplicateCandidates } from "@/lib/use-cases/decision-ui";
-import { agentFilterOptions, agentOfTitle, agentPalette } from "@/lib/use-cases/agents";
+import { agentFilterOptions, agentOfTitle } from "@/lib/use-cases/agents";
 import { answersOf, type InfoAnswer } from "@/lib/use-cases/answers";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
 import { INFO_PROGRESS_PARAM, type InfoProgressState, type InfoProgressView } from "@/lib/use-cases/info-progress";
@@ -113,7 +113,8 @@ export interface UseCaseHubData {
   /**
    * «Cosa serve» (`listWorkspaceNeeds`): le esigenze non archiviate del workspace, solo per un
    * revisore nella vista «Cosa serve», con il pannello aperto e anche sulla Panoramica, per
-   * «Prossimo passo» (sulle corsie, non con un grafico); null altrimenti. Ai contributori mai.
+   * «Prossimo passo» (sulle corsie senza filtri, non con un grafico); null altrimenti. Ai
+   * contributori mai.
    */
   needs: NeedView[] | null;
   /**
@@ -169,8 +170,9 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
       ? (items as readonly HubItem[]).filter((item) => item.phase === "in_realizzazione" && item.dossier).map((item) => item.id)
       : [];
   // «Cosa serve»: le esigenze del workspace per la sua vista, per il pannello e per «Prossimo passo»
-  // della Panoramica, solo ai revisori.
-  const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "cosa-serve" || lanes || Boolean(params.apri));
+  // della Panoramica, solo ai revisori. «Prossimo passo» c'è solo sulle corsie senza filtri: con un
+  // filtro le corsie non le leggono.
+  const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "cosa-serve" || (lanes && !hasActiveFilters(params)) || Boolean(params.apri));
   const [dossierColumn, participation, subprocessorsPending, needs, info] = await Promise.all([
     inProgress.length ? dossierColumnOf(workspaceId, { userId: session.user.id, role: access.role }, inProgress) : null,
     view === "da-decidere" ? getPortfolioParticipation(workspaceId) : null,
@@ -308,8 +310,9 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   const items: readonly AnyHubItem[] = list.items;
   const reviewerItems = reviewer ? (list.items as HubItem[]) : [];
   const bands = list.projection !== "contributore" ? list.costBands : undefined;
-  // I colori degli agenti, da tutte le schede della pagina: un filtro non li cambia.
-  const agents = agentPalette(list.items);
+  // I colori degli agenti, dagli use case della Panoramica di tutto il workspace (`listHubItems`):
+  // gli stessi per ogni ruolo, e né un filtro né una proposta li cambiano.
+  const agents = list.agents;
   // «Benefici e costi» (solo revisori): ipotesi del workspace e colori dei gruppi, da tutte le schede;
   // con gli agenti nei titoli il colore dei grafici dice l'agente, come nelle card.
   const valueParams = list.projection !== "contributore" ? list.valueParams : null;
@@ -478,6 +481,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
               model={list.model}
               valueParams={valueParams}
               palette={palette ?? groupPalette(reviewerItems, valueParams, agents)}
+              agents={agents}
               followsCurrentMonth={followsCurrentMonth}
               settingsHref={valueSettingsHref}
               bands={list.costBands}
@@ -518,6 +522,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 grouping={grouping}
                 agentHref={agentHref}
                 agentFilter={params.agente}
+                contributor={!reviewer}
               />
             </div>
           )

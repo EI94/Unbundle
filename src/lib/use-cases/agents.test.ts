@@ -10,9 +10,12 @@ import {
   agentPalette,
   agentParamOf,
   agentToneOf,
+  paletteForTitles,
+  paletteHasAgents,
   shortRefOf,
   parseAgentParam,
   titleAgent,
+  workspaceAgentPalette,
 } from "./agents.ts";
 
 // Gli agenti dal titolo (rilascio «Panoramica»): il prefisso «LIBRA L1 · …», il filtro «Agente» e
@@ -173,6 +176,47 @@ test("agentPalette: i dieci agenti di TopJet hanno dieci colori, i cinque dell'a
   assert.equal(agentToneOf(null, "LIBRA"), null);
   assert.equal(agentToneOf(undefined, "LIBRA"), null);
   assert.equal(agentToneOf(palette, "toString"), null, "niente chiavi ereditate");
+});
+
+test("workspaceAgentPalette: solo gli use case della Panoramica; una proposta «IVA · …» non sposta nessun colore", () => {
+  const approved = (title: string, phase = "approvato") => ({ title, phase });
+  const topjet = [
+    approved("LIBRA L1 · Lettura delle fatture estere e bozza di registrazione"),
+    approved("SIRIO S3 · File F24 delle tasse passeggeri"),
+    approved("SPICA P3 · Calendario dei pagamenti e fabbisogno per banca"),
+    approved("ORSA O1 · Voli pieni, vuoti ed empty leg", "in_realizzazione"),
+    approved("MAIA M3 · Canale unico per le note spese"),
+    approved("AUTO X2 · Bonifici massivi e riconciliazione bancaria in Echo"),
+    approved("ALCIONE A1 · Presenze del personale di terra senza ricopiature"),
+    approved("DENEB D1 · Richieste di riposo e ferie in un modulo, al posto delle email"),
+    approved("MEROPE R3 · Checklist di ingresso e uscita", "realizzato"),
+    approved("TAIGETE T3 · Pratiche ENAC: lista dei documenti e stato"),
+    approved("Strategia per volo"),
+  ];
+  const tones = { ALCIONE: 1, AUTO: 2, DENEB: 3, LIBRA: 4, MAIA: 5, MEROPE: 6, ORSA: 7, SIRIO: 8, SPICA: 9, TAIGETE: 10 };
+  assert.deepEqual(workspaceAgentPalette(topjet).tones, tones);
+  // Una proposta e due schede chiuse con una sigla in testa: nessun tono, nessun colore spostato.
+  const withProposal = [
+    ...topjet,
+    approved("IVA · Calcolo dell'imposta sui biglietti", "da_valutare"),
+    approved("CFO · Report mensile", "chiuso"),
+    approved("BETA B1 · Prova archiviata", "chiuso"),
+  ];
+  const palette = workspaceAgentPalette(withProposal);
+  assert.deepEqual(palette.tones, tones, "ALCIONE…TAIGETE restano sui toni 1…10");
+  assert.equal(agentToneOf(palette, "IVA"), null, "l'agente di sole proposte ha il tag neutro");
+  assert.notEqual(agentToneOf(palette, "TAIGETE"), agentToneOf(palette, "ALCIONE"));
+  // Il contributore: gli stessi toni dei revisori, solo per gli agenti dei titoli che vede.
+  const seen = [{ title: "TAIGETE T3 · Pratiche ENAC: lista dei documenti e stato" }, { title: "LIBRA L2 · Pagamenti" }, { title: "IVA · Calcolo dell'imposta sui biglietti" }, { title: "Strategia per volo" }];
+  const contributor = paletteForTitles(palette, seen);
+  assert.deepEqual(contributor.tones, { LIBRA: 4, TAIGETE: 10 });
+  for (const agent of ["LIBRA", "TAIGETE"]) assert.equal(agentToneOf(contributor, agent), agentToneOf(palette, agent), agent);
+  assert.equal(agentToneOf(contributor, "ALCIONE"), null, "mai il nome di un agente che non vede");
+  assert.deepEqual(paletteForTitles(palette, []).tones, {});
+  // «I titoli portano gli agenti»: almeno un tono.
+  assert.equal(paletteHasAgents(palette), true);
+  assert.equal(paletteHasAgents(workspaceAgentPalette([approved("IVA · Calcolo", "da_valutare")])), false);
+  assert.equal(paletteHasAgents(null), false);
 });
 
 test("agentFilterOptions: agenti in ordine alfabetico, «Altri use case» in fondo, la scelta resta", () => {

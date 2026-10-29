@@ -1307,6 +1307,11 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   // Nessuno use case approvato, in realizzazione o realizzato: le corsie dicono il loro vuoto.
   const eOverview = await html("ls", ids.wsE, { vista: "panoramica" });
   assert.ok(eOverview.includes("Niente in programma, per ora") && eOverview.includes("Approva uno use case e scegli quando farlo."));
+  // Il contributore non approva: il vuoto gli dice dove sono le proposte.
+  const eContributorOverview = await html("contributor", ids.wsE, { vista: "panoramica" });
+  assert.ok(eContributorOverview.includes("Niente in programma, per ora"), "le corsie vuote, non la pagina vuota");
+  assert.ok(eContributorOverview.includes("Nessuno use case è ancora approvato. Le proposte sono in «In valutazione»."));
+  assert.ok(!eContributorOverview.includes("Approva uno use case"));
   const eMatrix = await html("ls", ids.wsE, { vista: "panoramica", mostra: "matrice" });
   assert.ok(eMatrix.includes("Nessuno use case da mettere in ordine"));
   // «Da diffondere» di prima è il filtro della Panoramica: senza best practice, nessun risultato.

@@ -399,7 +399,7 @@ function harness(
       async listItems(_ws, viewer) {
         const abilities = abilitiesForUseCase(viewer);
         if (!abilities.isReviewer) return null;
-        return { projection: "revisore", items, today: "2026-10-19", dossierRead: "ok", receipt: null, model: { dimensions: { impact: [], feasibility: [], esg: [] } }, costBands: BANDS, esgEnabled: false, valueParams: VALUE_PARAMS, followsCurrentMonth: false };
+        return { projection: "revisore", items, today: "2026-10-19", dossierRead: "ok", receipt: null, agents: { tones: {} }, model: { dimensions: { impact: [], feasibility: [], esg: [] } }, costBands: BANDS, esgEnabled: false, valueParams: VALUE_PARAMS, followsCurrentMonth: false };
       },
       async findUseCaseId(_ws, code) {
         return items.find((i) => i.code === code)?.id ?? null;

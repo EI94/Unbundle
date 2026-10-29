@@ -10,8 +10,8 @@
  *   scaduti compresi), «fino a» la somma dei «fino a X €» delle card (`pendingValueTotal`).
  * - **Su tutto il portafoglio** (`portfolioLine`): le ore e il pareggio di `buildRoadmapValue`.
  * - **Prossimo passo** (`overviewNextStep`): regole fisse, nell'ordine. Prima i requisiti degli use
- *   case approvati per questo trimestre (da chiedere o bloccati, poi da verificare), poi le
- *   decisioni; altrimenti niente.
+ *   case approvati per questo trimestre (da chiedere, da verificare o bloccati, ognuno una volta),
+ *   poi le decisioni; altrimenti niente.
  *
  * Art. 15.4: conteggi di use case o di esigenze, mai di persone; nessun conto per «Chi» o per parte.
  *
@@ -122,21 +122,21 @@ export function portfolioLine(value: RoadmapValue | null): PortfolioLine | null 
 // ─── Prossimo passo ──────────────────────────────────────────────────
 
 export type OverviewNextStep =
-  | { kind: "requisiti"; quarter: QuarterCode; toAsk: number; blocked: number }
-  | { kind: "da_verificare"; quarter: QuarterCode; toVerify: number }
+  | { kind: "requisiti"; quarter: QuarterCode; toAsk: number; toVerify: number; blocked: number }
   | { kind: "decisioni"; count: number };
 
 /**
  * Il prossimo passo di tutto il workspace (`items`: le schede dei revisori, senza filtri), con
  * regole fisse:
  * 1. i requisiti degli use case approvati per questo trimestre (non quelli già partiti, scaduti o di
- *    altri trimestri: gli stessi che prende il filtro `trimestre` di «Cosa serve») da chiedere o
- *    bloccati;
- * 2. altrimenti quelli da verificare;
- * 3. altrimenti gli use case che aspettano una decisione (`decideCount`);
- * 4. altrimenti null: niente riquadro.
+ *    altri trimestri: gli stessi che prende il filtro `trimestre` di «Cosa serve») da chiedere, da
+ *    verificare o bloccati, con i tre conteggi: sono quelli della riga sotto «Requisiti» di «Cosa
+ *    serve» del trimestre, dove porta il pulsante («T4 2026 · 67 aperti · 40 da chiedere · 17 in
+ *    attesa · 2 da verificare · 8 bloccati · 1 a posto»), e la frase li nomina tutti;
+ * 2. altrimenti gli use case che aspettano una decisione (`decideCount`);
+ * 3. altrimenti null: niente riquadro.
  * Ogni requisito conta una volta, anche se serve a più use case (`needAskCountsOf`). `needs` null
- * (chi non le legge): solo la regola 3.
+ * (chi non le legge): solo la regola 2.
  */
 export function overviewNextStep(i: { items: readonly HubItem[]; needs: readonly NeedView[] | null; today: string }): OverviewNextStep | null {
   const starting = new Set(
@@ -144,9 +144,9 @@ export function overviewNextStep(i: { items: readonly HubItem[]; needs: readonly
   );
   if (i.needs && starting.size > 0) {
     const counts = needAskCountsOf(i.needs, starting);
-    const quarter = quarterOfDate(i.today);
-    if (counts.toAsk + counts.blocked > 0) return { kind: "requisiti", quarter, toAsk: counts.toAsk, blocked: counts.blocked };
-    if (counts.toVerify > 0) return { kind: "da_verificare", quarter, toVerify: counts.toVerify };
+    if (counts.toAsk + counts.toVerify + counts.blocked > 0) {
+      return { kind: "requisiti", quarter: quarterOfDate(i.today), toAsk: counts.toAsk, toVerify: counts.toVerify, blocked: counts.blocked };
+    }
   }
   const count = decideCount(i.items);
   return count > 0 ? { kind: "decisioni", count } : null;

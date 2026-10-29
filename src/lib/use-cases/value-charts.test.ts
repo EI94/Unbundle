@@ -6,6 +6,8 @@ import type { ValuationModel } from "./valuation.ts";
 import {
   BREAKEVEN_NOW,
   NO_GROUP_LABEL,
+  agentPointLegend,
+  agentPointSlot,
   bubbleRadius,
   bubbleWhen,
   bubbleWhenText,
@@ -185,9 +187,9 @@ test("colori dei gruppi con gli agenti nei titoli: il colore dice l'agente, come
   ]);
   const items = ["LIBRA", "LIBRA", "Automazioni", "Automazioni", "Automazioni", "orsa", null].map((group) => ({ valueModel: group ? { ...SMALL, group } : SMALL }));
   const palette = groupPalette(items, PARAMS, agents);
-  // I tre colori dei gruppi non ci sono: «Automazioni», il gruppo più grande, non è un agente.
+  // I tre colori dei gruppi non ci sono: «Automazioni», il gruppo più grande, non è un agente (le sue schede non hanno titolo).
   assert.deepEqual(palette.slots, {});
-  assert.deepEqual(palette.agents, { LIBRA: agentToneOf(agents, "LIBRA"), orsa: agentToneOf(agents, "ORSA") });
+  assert.deepEqual(palette.agents, { LIBRA: { agent: "LIBRA", tone: agentToneOf(agents, "LIBRA") }, orsa: { agent: "ORSA", tone: agentToneOf(agents, "ORSA") } });
   assert.equal(groupSlot(palette, "LIBRA"), `agente-${agentToneOf(agents, "LIBRA")}`, "il tono del tag di LIBRA");
   assert.equal(groupSlot(palette, "orsa"), `agente-${agentToneOf(agents, "ORSA")}`, "il nome del gruppo senza badare alle maiuscole");
   assert.equal(groupSlot(palette, "Automazioni"), 0);
@@ -206,6 +208,87 @@ test("colori dei gruppi con gli agenti nei titoli: il colore dice l'agente, come
   const plain = groupPalette(items, PARAMS, agentPalette([{ title: "Strategia per volo" }]));
   assert.equal(plain.agents, null);
   assert.deepEqual(plain.slots, { Automazioni: 1, LIBRA: 2, orsa: 3 });
+});
+
+test("colori dei gruppi con gli agenti nei titoli: un gruppo le cui schede hanno tutte lo stesso agente è quell'agente", () => {
+  // La forma di TopJet (29/10/2026): il gruppo «Automazioni» ha i sette use case «AUTO X… · …»; le
+  // card della Panoramica li mostrano con il tag AUTO, i grafici devono dire lo stesso.
+  const titles = [
+    "ALCIONE A1 · Presenze del personale di terra",
+    "AUTO X1 · Estratti conto in Echo",
+    "DENEB D1 · Richieste di riposo e ferie",
+    "LIBRA L1 · Lettura delle fatture estere",
+    "MAIA M3 · Canale unico per le note spese",
+    "MEROPE R3 · Checklist di ingresso e uscita",
+    "ORSA O1 · Voli pieni, vuoti ed empty leg",
+    "SIRIO S3 · File F24 delle tasse passeggeri",
+    "SPICA P3 · Calendario dei pagamenti",
+    "TAIGETE T3 · Pratiche ENAC",
+  ];
+  const agents = agentPalette(titles.map((title) => ({ title })));
+  const card = (title: string, group: string | null) => ({ title, valueModel: group ? { ...SMALL, group } : SMALL });
+  const auto = [1, 2, 3, 4, 5, 6, 7].map((n) => card(`AUTO X${n} · Automazione ${n}`, "Automazioni"));
+  const items = [
+    ...auto,
+    card("LIBRA L1 · Lettura delle fatture estere", "Amministrazione"),
+    card("LIBRA L2 · Pagamenti", "Amministrazione"),
+    // Due agenti nello stesso gruppo: grigio.
+    card("ORSA O1 · Voli pieni, vuoti ed empty leg", "Operazioni"),
+    card("SIRIO S3 · File F24 delle tasse passeggeri", "Operazioni"),
+    // Una scheda senza agente basta a lasciarlo grigio.
+    card("SPICA P3 · Calendario dei pagamenti", "Tesoreria"),
+    card("Strategia per volo", "Tesoreria"),
+    // Il nome di un agente vale prima delle schede.
+    card("Bozza di registrazione", "maia"),
+    card("ALCIONE A1 · Presenze del personale di terra", null),
+  ];
+  const palette = groupPalette(items, PARAMS, agents);
+  assert.deepEqual(palette.agents, {
+    Automazioni: { agent: "AUTO", tone: 2 },
+    Amministrazione: { agent: "LIBRA", tone: 4 },
+    maia: { agent: "MAIA", tone: 5 },
+  });
+  assert.equal(groupSlot(palette, "Automazioni"), "agente-2", "AUTO nel tono del suo tag (2: menta)");
+  assert.equal(groupLabelOf(palette, "Automazioni"), "AUTO", "e con il suo nome, non «Gruppo Automazioni»");
+  assert.equal(groupSlot(palette, "Operazioni"), 0);
+  assert.equal(groupLabelOf(palette, "Operazioni"), "Gruppo Operazioni");
+  assert.equal(groupSlot(palette, "Tesoreria"), 0);
+  // La legenda: AUTO e LIBRA per nome, una volta ciascuno, e il grigio con i gruppi che non sono agenti.
+  assert.deepEqual(groupLegend(palette, ["Automazioni", "Amministrazione", "Operazioni", "Tesoreria", null]), [
+    { slot: "agente-2", label: "AUTO" },
+    { slot: "agente-4", label: "LIBRA" },
+    { slot: 0, label: "Altri gruppi (Operazioni, Tesoreria) e senza gruppo" },
+  ]);
+  // Due gruppi dello stesso agente: un nome solo nella legenda.
+  const twice = groupPalette([...auto, card("AUTO X8 · Cedolini", "AUTO")], PARAMS, agents);
+  assert.deepEqual(groupLegend(twice, ["Automazioni", "AUTO"]), [{ slot: "agente-2", label: "AUTO" }]);
+  // Le bolle e la curva leggono lo stesso nome.
+  const bubbles = buildBenefitBubbles(
+    auto.map((card) => item({ title: card.title, valueModel: { ...FIX_A, group: "Automazioni" } })),
+    PARAMS,
+    TODAY,
+    palette,
+  );
+  assert.equal(bubbles.bubbles.length, 7);
+  assert.ok(bubbles.bubbles.every((bubble) => bubble.slot === "agente-2" && bubble.groupLabel === "AUTO"));
+  // Senza agenti nei titoli i gruppi tengono i loro tre colori.
+  assert.equal(groupPalette(items, PARAMS, agentPalette([{ title: "Strategia per volo" }])).agents, null);
+});
+
+test("matrice Valore × Costo con gli agenti nei titoli: il punto nel tono dell'agente, grigio senza; la legenda per agente", () => {
+  const agents = agentPalette([{ title: "LIBRA L1 · Fatture" }, { title: "AUTO X1 · Bonifici" }, { title: "ORSA O1 · Voli" }]);
+  assert.equal(agentPointSlot(agents, "LIBRA L2 · Pagamenti"), `agente-${agentToneOf(agents, "LIBRA")}`);
+  assert.equal(agentPointSlot(agents, "Strategia per volo"), 0, "senza agente: grigio");
+  assert.equal(agentPointSlot(agents, "IVA · Calcolo dell'imposta"), 0, "un agente senza tono (solo proposte): grigio");
+  assert.equal(agentPointSlot(agentPalette([{ title: "Strategia per volo" }]), "LIBRA L1 · Fatture"), null, "senza agenti nel workspace: l'origine");
+  assert.equal(agentPointSlot(null, "LIBRA L1 · Fatture"), null);
+  assert.deepEqual(agentPointLegend(agents, ["ORSA O1 · Voli", "LIBRA L1 · Fatture", "LIBRA L2 · Pagamenti", "Strategia per volo"]), [
+    { slot: `agente-${agentToneOf(agents, "LIBRA")}`, label: "LIBRA" },
+    { slot: `agente-${agentToneOf(agents, "ORSA")}`, label: "ORSA" },
+    { slot: 0, label: "Altri use case" },
+  ]);
+  assert.deepEqual(agentPointLegend(agents, ["AUTO X1 · Bonifici"]), [{ slot: `agente-${agentToneOf(agents, "AUTO")}`, label: "AUTO" }], "solo gli agenti che hanno un punto");
+  assert.deepEqual(agentPointLegend(agentPalette([]), ["LIBRA L1 · Fatture"]), []);
 });
 
 test("niceScale: tacche tonde che comprendono lo zero; senza ampiezza da 0 a 1.000", () => {

@@ -366,7 +366,7 @@ after(async () => {
 test("listHubItems, contributore: proposte altrui esatte, proprie con codice e nota, nessuna nascosta altrui", opts, async () => {
   const list = await hub.listHubItems(ids.wsA, viewer("contributor"));
   assert.ok(list && list.projection === "contributore");
-  assert.deepEqual(Object.keys(list).sort(), ["dossierRead", "items", "projection", "receipt", "today"]);
+  assert.deepEqual(Object.keys(list).sort(), ["agents", "dossierRead", "items", "projection", "receipt", "today"]);
   const byId = new Map(list.items.map((item) => [item.id, item]));
   assert.equal(byId.has(cards.othersHidden.id), false, "nascosta e non sua");
   assert.equal(byId.has(cards.bVisible.id), false, "solo il workspace chiesto");
@@ -429,6 +429,33 @@ test("listHubItems: chi non entra nell'area non riceve nulla; la ricevuta solo a
   // Modulo web, ma proposta di un altro: niente ricevuta.
   assert.equal((await hub.listHubItems(ids.wsA, viewer("contributor"), { createdId: cards.reopened.id }))?.receipt, null);
   assert.equal((await hub.listHubItems(ids.wsA, viewer("builder"), { createdId: cards.ownById.id }))?.receipt, null);
+});
+
+test("listHubItems: i toni degli agenti dagli use case della Panoramica di tutto il workspace, gli stessi per ogni ruolo", opts, async () => {
+  // Due agenti approvati, uno in una scheda approvata nascosta alla ricerca (che il contributore non
+  // vede), una proposta con una sigla in testa e una proposta del contributore con un agente.
+  const temporary = [
+    await seed({ title: "ALCIONE A1 · Presenze del personale di terra", status: "accepted", targetQuarter: "2026-Q4" }),
+    await seed({ title: "BETA B1 · Scheda riservata", status: "accepted", targetQuarter: "2027-Q1", intake: { hiddenFromSearch: true }, proposedBy: ids.builder }),
+    await seed({ title: "TAIGETE T3 · Pratiche ENAC", status: "implemented" }),
+    await seed({ title: "IVA · Calcolo dell'imposta sui biglietti" }),
+    await seed({ title: "ALCIONE A2 · Mia proposta", proposedBy: ids.contributor }),
+  ];
+  try {
+    for (const person of ["builder", "ls", "manager"] as const) {
+      const list = await hub.listHubItems(ids.wsA, viewer(person));
+      assert.ok(list, person);
+      // La proposta «IVA · …» non ha un tono e non sposta TAIGETE.
+      assert.deepEqual(list.agents.tones, { ALCIONE: 1, BETA: 2, TAIGETE: 3 }, person);
+    }
+    const contributor = await hub.listHubItems(ids.wsA, viewer("contributor"));
+    assert.ok(contributor && contributor.projection === "contributore");
+    // Gli stessi toni dei revisori, solo per gli agenti dei titoli che vede: mai BETA, che non vede.
+    assert.deepEqual(contributor.agents.tones, { ALCIONE: 1, TAIGETE: 3 });
+    assert.equal(JSON.stringify(contributor).includes("BETA"), false);
+  } finally {
+    await q(`DELETE FROM use_cases WHERE id = ANY($1::uuid[])`, [temporary.map((card) => card.id)]);
+  }
 });
 
 test("listHubItems: una query sola sulle schede per la lista", opts, async () => {

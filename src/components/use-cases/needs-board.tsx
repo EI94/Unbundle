@@ -48,7 +48,7 @@ export interface NeedsBoardViewProps {
   board: NeedsBoard;
   /** Oggi (AAAA-MM-GG, Roma): aperti i mesi di «Prossimi passi» fino a quello di oggi, gli scaduti compresi. */
   today: string;
-  /** I colori degli agenti della pagina (`agentPalette` su tutte le schede): gli stessi delle corsie. */
+  /** I colori degli agenti del workspace (`workspaceAgentPalette`): gli stessi delle corsie. */
   agents?: AgentPalette | null;
   /** id dello use case → il pannello laterale (`?apri=`). */
   hrefOf: (id: string) => string;
@@ -84,8 +84,9 @@ export interface NeedsBoardViewProps {
  *    il trimestre (anche se è già in realizzazione), con chi conferma, il ritorno da confermare,
  *    «Ci serve subito», «Dopo la scheda A.8», «Da decidere».
  * Gli use case in realizzazione stanno nella Panoramica: qui solo una riga con il link alla sua
- * sezione «In realizzazione». «Per»: prima gli agenti serviti, letti dai titoli («LIBRA», «ORSA»),
- * poi lo use case per intero, o più di uno dietro «Per N use case»; ognuno apre il pannello. Le
+ * sezione «In realizzazione». «Per»: lo use case per intero, che dice già il suo agente, o più di
+ * uno dietro «Per N use case», con prima gli agenti serviti, letti dai titoli («LIBRA», «ORSA»);
+ * ognuno apre il pannello. Le
  * richieste di un agente si leggono con il filtro «Agente». Nessun titolo visibile: la scheda attiva
  * del selettore nomina la vista. Sotto i 56rem del riquadro le tabelle diventano elenchi. Si conta
  * solo per stato, mai per persona: «Chi» è un testo della riga, mai contato né filtrato. Le
@@ -243,9 +244,18 @@ function AgentTags({ agents, palette }: { agents: readonly string[]; palette: Ag
   );
 }
 
-/** La cella «Per» della tabella: prima gli agenti, se i titoli li hanno, poi «Per» com'era. */
+/**
+ * Gli agenti da mostrare in «Per»: solo se l'esigenza serve più di uno use case. Con uno solo il
+ * suo link dice già l'agente («TJ-0002 · LIBRA L1 · Lettura delle fatture estere»): il tag lo
+ * ripeterebbe, anche ai lettori di schermo.
+ */
+function shownAgents(row: NeedRow): string[] {
+  return row.useCases.length > 1 ? needAgents(row.useCases) : [];
+}
+
+/** La cella «Per» della tabella: con più use case prima i loro agenti, se i titoli li hanno, poi «Per» com'era. */
 function NeedForCell({ row, hrefOf, palette }: { row: NeedRow; hrefOf: (id: string) => string; palette: AgentPalette | null }) {
-  const agents = needAgents(row.useCases);
+  const agents = shownAgents(row);
   if (!agents.length) return <NeedFor row={row} hrefOf={hrefOf} />;
   return (
     <div className="flex min-w-0 flex-col items-start gap-1">
@@ -428,14 +438,15 @@ function OwnerText({ text }: { text: string }) {
 
 /**
  * «Chi · Entro · Per» sotto il titolo, per gli elenchi. Ogni « · » va a capo con la parte che lo
- * segue, mai da solo in fondo alla riga. Gli agenti serviti («LIBRA», «ORSA») su una riga loro,
- * prima degli use case. Il link a un solo use case («TJ-0008 · ATLAS A1 · …») sta su una riga sua:
- * è lungo, ha già i suoi « · », e in mezzo alla riga grigia non si capirebbe dove inizia. «Per 3 use
- * case» chiude la riga senza «·» e, aperto, va a capo da solo. Un `<div>`, non un `<p>`: un
- * `<details>` non è testo e dentro un `<p>` il parser spezzerebbe il DOM.
+ * segue, mai da solo in fondo alla riga. Con più di uno use case gli agenti serviti («LIBRA»,
+ * «ORSA») su una riga loro, prima degli use case. Il link a un solo use case («TJ-0008 · ATLAS A1 ·
+ * …», che dice già l'agente) sta su una riga sua: è lungo, ha già i suoi « · », e in mezzo alla riga
+ * grigia non si capirebbe dove inizia. «Per 3 use case» chiude la riga senza «·» e, aperto, va a
+ * capo da solo. Un `<div>`, non un `<p>`: un `<details>` non è testo e dentro un `<p>` il parser
+ * spezzerebbe il DOM.
  */
 function MetaLine({ row, hrefOf, palette }: { row: NeedRow; hrefOf: (id: string) => string; palette: AgentPalette | null }) {
-  const agents = needAgents(row.useCases);
+  const agents = shownAgents(row);
   const parts: Array<{ key: string; node: ReactNode }> = [];
   if (row.owner) parts.push({ key: "chi", node: row.owner });
   if (row.due) parts.push({ key: "entro", node: <span className="tabular-nums">{row.due}</span> });
