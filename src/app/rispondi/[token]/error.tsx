@@ -10,12 +10,12 @@ const X = REFERENT_PUBLIC_TEXT.error;
  * Errore imprevisto nella pagina del referente: una scheda chiara con «Riprova», senza dettagli tecnici
  * né dati della richiesta. Le risposte già inviate restano salve.
  */
-export default function ReferentAskError({ unstable_retry }: { error: Error & { digest?: string }; unstable_retry: () => void }) {
+export default function ReferentAskError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
     <PublicShell>
       <MessageCard title={X.title} text={<p>{X.text}</p>}>
         <div className="mt-5 flex flex-wrap gap-2">
-          <Button type="button" className="min-h-11 text-base" onClick={() => unstable_retry()}>
+          <Button type="button" className="min-h-11 text-base" onClick={() => retry()}>
             {X.retry}
           </Button>
           <Button type="button" variant="outline" className="min-h-11 text-base" onClick={() => window.location.reload()}>
