@@ -51,7 +51,7 @@ import { FilterBar, type FilterOption } from "./filter-bar";
 import { infoFilterOptions } from "./info-chip";
 import { NeedsBoardView } from "./needs-board";
 import { EmptyState, HUB_TEXT, HubHeader, HubNotice, receiptText } from "./hub-header";
-import { ListFocusTarget } from "./list-focus";
+import { HashFocusOnCommit, ListFocusTarget } from "./list-focus";
 import { LANES_TEXT, PanoramaLanes, type LanesGrouping } from "./panorama-lanes";
 import { PanoramicaTop } from "./panoramica-top";
 import { QuickCreateSheet } from "./quick-create-sheet";
@@ -360,7 +360,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           ],
         }
       : null;
-  // Una card di «Per agente»: le corsie del solo agente, con l'ancora che le porta in vista e dà loro il fuoco.
+  // Una card di «Per agente»: le corsie del solo agente, con l'ancora che le porta in vista e prende il fuoco (`HashFocusLink`).
   const agentHref = (param: string) => `${hubHref(basePath, navQuery, { mostra: null, agente: param })}#${PANORAMA_SECTION_ID.approvati}`;
   // La testa della Panoramica (solo con le corsie): fasi e cifre seguono i filtri, come le corsie;
   // «Su tutto il portafoglio» e «Prossimo passo» dicono tutto il workspace e con un filtro non ci sono.
@@ -429,6 +429,8 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
         restano circa 700 px, e le colonne pensate per la finestra intera non ci stanno.
       */}
       <div data-slot="use-case-hub" data-view={view} className="@container/hub space-y-6">
+        {/* Dopo un link con un'ancora (`HashFocusLink`: «Per agente», «‹ Tutti gli agenti», «Vai alla Panoramica») l'ancora prende il fuoco. */}
+        <HashFocusOnCommit />
         <HubHeader
           workspaceId={workspaceId}
           newHref={newHref}

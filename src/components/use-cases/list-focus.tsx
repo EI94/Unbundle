@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -73,6 +74,87 @@ export function ViewFocusLink({ onClick, ...props }: ComponentProps<typeof Link>
       }}
     />
   );
+}
+
+/**
+ * I link con un'ancora che porta in un'altra vista dell'hub: una card di «Per agente»
+ * (`?agente=LIBRA#panoramica-approvati`), «‹ Tutti gli agenti» (`#agente-LIBRA`) e «Vai alla
+ * Panoramica» di «Cosa serve» (`#panoramica-in-realizzazione`). Next scorre fino all'ancora, ma da
+ * Next 16.4 non le dà più il fuoco (il suo `ScrollHandler` non chiama `focus()`, e l'opzione per il
+ * comportamento di prima non c'è più): il fuoco restava sul link cliccato, che sparisce con il clic,
+ * e cadeva sul `<body>`; un lettore di schermo ripartiva dalla cima della pagina. Il clic lascia
+ * l'ancora come segno; `HashFocusOnCommit`, nell'hub, a navigazione confermata (dopo lo scorrimento
+ * di Next) porta il fuoco sull'ancora, senza scorrere ancora, se l'indirizzo arrivato ha quell'ancora.
+ * L'ancora deve poter prendere il fuoco: un link, o `tabIndex={-1}`.
+ */
+let pendingHashFocus: string | null = null;
+
+/** L'ancora di un indirizzo, decodificata come fa Next (`#agente-LIBRA` → `agente-LIBRA`); null senza. */
+export function hashTargetOf(href: string): string | null {
+  const at = href.indexOf("#");
+  const raw = at < 0 ? "" : href.slice(at + 1);
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/** Il segno di un `HashFocusLink`: l'ancora che prende il fuoco a navigazione confermata. */
+export function markHashFocus(id: string): void {
+  pendingHashFocus = id;
+}
+
+/**
+ * La navigazione confermata legge il segno e lo toglie: vale una volta sola, e solo se l'indirizzo
+ * arrivato (`location.hash`) ha l'ancora del clic. Un segno rimasto da un clic che non ha navigato
+ * non sposta il fuoco alla navigazione dopo.
+ */
+export function takeHashFocus(hash: string): string | null {
+  const id = pendingHashFocus;
+  pendingHashFocus = null;
+  return id !== null && hashTargetOf(hash) === id ? id : null;
+}
+
+function focusHashTarget(id: string): void {
+  document.getElementById(id)?.focus({ preventScroll: true });
+}
+
+/**
+ * Un link con un'ancora (vedi sopra), senza `scroll={false}`: Next scorre all'ancora, il clic lascia
+ * il segno e l'ancora prende il fuoco. Se cambia solo l'ancora (stesso indirizzo), la pagina resta e
+ * il bersaglio c'è già: prende il fuoco subito. Va anche come `render` di un `Button`.
+ */
+export function HashFocusLink({ onClick, ...props }: ComponentProps<typeof Link> & { href: string }) {
+  return (
+    <Link
+      {...props}
+      onClick={(event) => {
+        onClick?.(event);
+        const id = hashTargetOf(props.href);
+        if (!id || event.defaultPrevented || !staysInPage(event)) return;
+        const to = new URL(props.href, window.location.href);
+        if (to.pathname === window.location.pathname && to.search === window.location.search) focusHashTarget(id);
+        else markHashFocus(id);
+      }}
+    />
+  );
+}
+
+/**
+ * Montato una volta nell'hub: a ogni navigazione confermata (cambia il percorso o un parametro)
+ * prende il segno di un `HashFocusLink` e porta il fuoco sull'ancora. L'effetto viene dopo lo
+ * scorrimento di Next, che avviene mentre React conferma la navigazione.
+ */
+export function HashFocusOnCommit() {
+  const pathname = usePathname();
+  const search = useSearchParams()?.toString() ?? "";
+  useEffect(() => {
+    const id = takeHashFocus(window.location.hash);
+    if (id) focusHashTarget(id);
+  }, [pathname, search]);
+  return null;
 }
 
 /**

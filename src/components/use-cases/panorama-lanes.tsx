@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { SegmentedNav, type SegmentedNavItem } from "@/components/dashboard/segmented-nav";
 import { DossierCard, DossierReadOnlyNotice } from "@/components/uc/shell/case-card";
@@ -25,6 +24,7 @@ import { AgentGrid } from "./agent-grid";
 import { Disclosure } from "./disclosure";
 import { EmptyState, HUB_TEXT, NoResults } from "./hub-header";
 import { LaneCard } from "./lane-card";
+import { HashFocusLink } from "./list-focus";
 import { panelHref, type HubQuery } from "./use-case-row";
 
 /** Testi delle corsie della Panoramica (rilascio «Panoramica»). */
@@ -106,7 +106,8 @@ export interface PanoramaLanesProps {
  * con le card dei dossier, e «Realizzati», chiusa, con il conto. I contributori vedono le stesse corsie
  * con «N use case» e card con tag, titolo e fase, senza cifre. Con il filtro «Agente» (anche dopo un
  * clic in «Per agente») sopra le corsie una riga dice di chi sono, «LIBRA · 7 use case», con
- * «‹ Tutti gli agenti» quando c'è «Per agente», che torna alla card dell'agente e le dà il fuoco.
+ * «‹ Tutti gli agenti» quando c'è «Per agente», che torna alla card dell'agente e le dà il fuoco
+ * (`HashFocusLink`).
  * Senza niente in programma il vuoto chiede ai revisori di approvare uno use case, e dice ai
  * contributori che cosa trovano qui e dove sono le proposte.
  */
@@ -153,7 +154,7 @@ export function PanoramaLanes({
         : LANES_TEXT.sectionByQuarter;
   // Le corsie di un solo agente: il suo nome a schermo, non solo per i lettori di schermo.
   // «‹ Tutti gli agenti» sparisce con il clic: con l'ancora della card dell'agente Next scorre lì e
-  // le dà il fuoco, che altrimenti cadrebbe sul <body>, in cima alla pagina.
+  // `HashFocusLink` le dà il fuoco, che altrimenti cadrebbe sul <body>, in cima alla pagina.
   const agentsHref = grouping?.items.find((item) => item.key === "agente")?.href ?? null;
   const agentLine =
     reviewers && agentFilter && !byAgent
@@ -181,7 +182,7 @@ export function PanoramaLanes({
   return (
     <div data-slot="panorama-lanes" className="space-y-6">
       {planned ? (
-        // L'ancora delle corsie: «Per agente» ci porta con `?agente=…#panoramica-approvati` e Next le dà il fuoco.
+        // L'ancora delle corsie: «Per agente» ci porta con `?agente=…#panoramica-approvati`, Next ci scorre e `HashFocusLink` le dà il fuoco.
         <section id={PANORAMA_SECTION_ID.approvati} tabIndex={-1} aria-label={planLabel} data-slot="panorama-plan" className="scroll-mt-24 space-y-3 outline-none">
           {grouping ? (
             <div data-slot="plan-grouping">
@@ -195,13 +196,13 @@ export function PanoramaLanes({
                 <span className="text-muted-foreground tabular-nums">{`${FIGURE_SEPARATOR}${laneSummaryText(agentLine.count, null)}`}</span>
               </span>
               {agentLine.backHref ? (
-                <Link
+                <HashFocusLink
                   href={agentLine.backHref}
                   className="inline-flex min-h-11 items-center gap-0.5 rounded-sm font-medium text-primary underline underline-offset-4 outline-none hover:decoration-2 focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8"
                 >
                   <ChevronLeft aria-hidden className="size-4" />
                   {LANES_TEXT.allAgents}
-                </Link>
+                </HashFocusLink>
               ) : null}
             </p>
           ) : null}
@@ -257,7 +258,7 @@ export function PanoramaLanes({
 
       {inProgress.length ? (
         <section aria-labelledby={PANORAMA_SECTION_ID.inRealizzazione} className="space-y-3">
-          {/* L'ancora di «In realizzazione» (le fasi, «Vai alla Panoramica» da «Cosa serve»): con `tabIndex` Next le dà il fuoco. */}
+          {/* L'ancora di «In realizzazione»: con `tabIndex` prende il fuoco, dal browser per le fasi (un `<a>` della pagina) e da `HashFocusLink` per «Vai alla Panoramica» di «Cosa serve». */}
           <h2 id={PANORAMA_SECTION_ID.inRealizzazione} tabIndex={-1} className="flex scroll-mt-24 items-baseline gap-2 text-sm font-semibold outline-none">
             {`${LANES_TEXT.inProgress} `}
             <span className="text-xs font-normal text-muted-foreground tabular-nums">{inProgress.length}</span>

@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { AgentTag } from "./agent-tag";
 import { Disclosure } from "./disclosure";
 import { EmptyState, HUB_TEXT, NoResults, inRealizationText } from "./hub-header";
+import { HashFocusLink } from "./list-focus";
 import { NeedUseCaseLink, NeedUseCasesDisclosure } from "./need-use-cases";
 
 /** Testi della vista «Cosa serve» (spec di Pierpaolo, 25/10/2026; rilascio «Pulizia»). */
@@ -54,7 +55,7 @@ export interface NeedsBoardViewProps {
   hrefOf: (id: string) => string;
   /** Quanti use case (filtrati) sono in realizzazione: i loro dossier stanno nella Panoramica. */
   inRealization?: number;
-  /** La sezione «In realizzazione» della Panoramica, per «Vai alla Panoramica». */
+  /** La sezione «In realizzazione» della Panoramica, per «Vai alla Panoramica»: un'ancora che prende il fuoco (`HashFocusLink`). */
   realizationHref?: string | null;
   /** Con un filtro attivo il vuoto è «Niente da chiedere con questi filtri.» [Togli i filtri]. */
   filtersActive?: boolean;
@@ -113,7 +114,7 @@ export function NeedsBoardView({
         ) : (
           <EmptyState title={NEEDS_BOARD_TEXT.emptyTitle} body={toRealization ? inRealizationText(inRealization) : NEEDS_BOARD_TEXT.emptyBody}>
             {toRealization ? (
-              <Button variant="outline" className="min-h-11 sm:min-h-8" render={<Link href={toRealization} />} nativeButton={false}>
+              <Button variant="outline" className="min-h-11 sm:min-h-8" render={<HashFocusLink href={toRealization} />} nativeButton={false}>
                 {HUB_TEXT.goToOverview}
               </Button>
             ) : null}
@@ -199,12 +200,12 @@ export function NeedsBoardView({
       {toRealization ? (
         <p data-slot="needs-in-progress" className="text-sm text-muted-foreground">
           {inRealizationText(inRealization)}{" "}
-          <Link
+          <HashFocusLink
             href={toRealization}
             className="rounded-sm font-medium text-primary underline underline-offset-4 outline-none hover:decoration-2 focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             {HUB_TEXT.goToOverview}
-          </Link>
+          </HashFocusLink>
         </p>
       ) : null}
     </div>

@@ -50,8 +50,9 @@ export const PANORAMA_SECTION_ID = Object.freeze({
 
 /**
  * L'ancora della card di un agente in «Per agente»: `agente-LIBRA`, `agente-altri`. «‹ Tutti gli
- * agenti» ci torna e Next le dà il fuoco: si riparte dalla card che si era aperta. I nomi degli
- * agenti sono maiuscole e cifre, «altri» è minuscolo: due card non hanno mai la stessa ancora.
+ * agenti» ci torna, Next ci scorre e la card prende il fuoco (`HashFocusLink` di list-focus.tsx): si
+ * riparte dalla card che si era aperta. I nomi degli agenti sono maiuscole e cifre, «altri» è
+ * minuscolo: due card non hanno mai la stessa ancora.
  */
 export function agentCardId(param: AgentParam): string {
   return `agente-${param}`;

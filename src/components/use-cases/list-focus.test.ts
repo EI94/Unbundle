@@ -73,3 +73,80 @@ test("la Panoramica, «Cosa serve» e «Da decidere» hanno il loro titolo; «�
   const own = readFileSync(new URL("./list-focus.tsx", import.meta.url), "utf8");
   assert.match(own, /useEffect\(\(\) => \{\s*if \(takeListFocus\(\)\) ref\.current\?\.focus\(\);\s*\}, \[\]\);/);
 });
+
+// I link con un'ancora che cambiano vista (rilascio «Panoramica»): da Next 16.4 Next scorre all'ancora
+// ma non le dà più il fuoco. Il clic lascia l'ancora come segno, l'hub la mette a fuoco a navigazione
+// confermata: una card di «Per agente», «‹ Tutti gli agenti» e «Vai alla Panoramica» di «Cosa serve».
+test("l'ancora di un link: decodificata come fa Next, e nessuna senza `#`", () => {
+  assert.equal(focus.hashTargetOf("/dashboard/x/use-cases?vista=panoramica&agente=LIBRA#panoramica-approvati"), "panoramica-approvati");
+  assert.equal(focus.hashTargetOf("?mostra=agenti#agente-LIBRA"), "agente-LIBRA");
+  assert.equal(focus.hashTargetOf("#a%20b"), "a b");
+  assert.equal(focus.hashTargetOf("#%E0"), "%E0", "un'ancora che non si decodifica resta com'è");
+  assert.equal(focus.hashTargetOf("/dashboard/x/use-cases?vista=panoramica"), null);
+  assert.equal(focus.hashTargetOf("/dashboard/x/use-cases#"), null);
+});
+
+test("il segno dell'ancora vale una volta, e solo se l'indirizzo arrivato ha quell'ancora", () => {
+  assert.equal(focus.takeHashFocus("#agente-LIBRA"), null, "senza clic il fuoco resta dov'è");
+  focus.markHashFocus("agente-LIBRA");
+  assert.equal(focus.takeHashFocus("#agente-LIBRA"), "agente-LIBRA");
+  assert.equal(focus.takeHashFocus("#agente-LIBRA"), null, "una volta sola");
+  // Un clic che non ha navigato (o un'altra navigazione arrivata prima): il segno se ne va senza fuoco.
+  focus.markHashFocus("agente-LIBRA");
+  assert.equal(focus.takeHashFocus(""), null);
+  assert.equal(focus.takeHashFocus("#agente-LIBRA"), null, "il segno vecchio non vale per la navigazione dopo");
+  focus.markHashFocus("panoramica-approvati");
+  assert.equal(focus.takeHashFocus("#panoramica-in-realizzazione"), null);
+});
+
+test("un link con un'ancora: senza `scroll={false}`, il clic lascia il segno; se cambia solo l'ancora il fuoco va subito", () => {
+  const html = renderToStaticMarkup(createElement(focus.HashFocusLink, { id: "agente-LIBRA", href: "/dashboard/x/use-cases?vista=panoramica&agente=LIBRA#panoramica-approvati", className: "c" }, "LIBRA"));
+  assert.equal(html, '<a id="agente-LIBRA" class="c" href="/dashboard/x/use-cases?vista=panoramica&amp;agente=LIBRA#panoramica-approvati">LIBRA</a>');
+  const href = "/dashboard/x/use-cases?vista=panoramica&mostra=agenti#agente-LIBRA";
+  const calls: string[] = [];
+  const onClickOf = (to: string) =>
+    (focus.HashFocusLink({ href: to, onClick: () => calls.push("proprio") }) as unknown as { props: { onClick: (event: unknown) => void; scroll?: boolean } }).props;
+  assert.equal(onClickOf(href).scroll, undefined, "Next scorre all'ancora");
+  const focused: unknown[] = [];
+  const page = globalThis as { window?: unknown; document?: unknown };
+  page.window = { location: new URL("http://localhost/dashboard/x/use-cases?vista=panoramica&agente=LIBRA") };
+  page.document = { getElementById: (id: string) => ({ focus: (options: unknown) => focused.push([id, options]) }) };
+  const event = (extra: Partial<typeof CLICK> = {}) => ({ ...CLICK, ...extra, defaultPrevented: false, preventDefault() {} });
+  try {
+    focus.takeHashFocus("");
+    onClickOf(href).onClick(event({ ctrlKey: true }));
+    assert.deepEqual([calls, focus.takeHashFocus("#agente-LIBRA")], [["proprio"], null], "una nuova scheda: nessun segno");
+    onClickOf(href).onClick({ ...event(), defaultPrevented: true });
+    assert.equal(focus.takeHashFocus("#agente-LIBRA"), null, "un clic fermato da chi usa il link non naviga");
+    // Un'altra vista (cambiano i parametri): il fuoco aspetta la navigazione confermata.
+    onClickOf(href).onClick(event());
+    assert.deepEqual([focused, focus.takeHashFocus("#agente-LIBRA")], [[], "agente-LIBRA"]);
+    // Cambia solo l'ancora: la pagina resta, il bersaglio c'è già e prende il fuoco subito, senza scorrere.
+    onClickOf("/dashboard/x/use-cases?vista=panoramica&agente=LIBRA#panoramica-approvati").onClick(event());
+    assert.deepEqual(focused, [["panoramica-approvati", { preventScroll: true }]]);
+    assert.equal(focus.takeHashFocus("#panoramica-approvati"), null, "nessun segno da aspettare");
+  } finally {
+    delete page.window;
+    delete page.document;
+  }
+});
+
+test("le ancore che cambiano vista usano `HashFocusLink`, e l'hub monta `HashFocusOnCommit` una volta", () => {
+  const read = (file: string) => readFileSync(new URL(file, import.meta.url), "utf8");
+  const grid = read("./agent-grid.tsx");
+  assert.match(grid, /<HashFocusLink\s+id=\{agentCardId\(group\.param\)\}\s+href=\{href\}/, "la card di «Per agente»");
+  const lanesSource = read("./panorama-lanes.tsx");
+  assert.match(lanesSource, /<HashFocusLink\s+href=\{agentLine\.backHref\}/, "«‹ Tutti gli agenti»");
+  const board = read("./needs-board.tsx");
+  assert.ok(board.includes("render={<HashFocusLink href={toRealization} />}"), "«Vai alla Panoramica» del vuoto");
+  assert.match(board, /<HashFocusLink\s+href=\{toRealization\}/, "«Vai alla Panoramica» sotto le tabelle");
+  // Nessun `<Link>` semplice per queste ancore: il fuoco andrebbe sul <body>.
+  assert.ok(!/from "next\/link"/.test(grid) && !/from "next\/link"/.test(lanesSource), "agent-grid e panorama-lanes non hanno altri link");
+  assert.ok(!/<Link\s+href=\{toRealization\}/.test(board) && !board.includes("<Link href={toRealization}"), "needs-board");
+  const hub = read("./hub.tsx");
+  assert.equal(hub.split("<HashFocusOnCommit />").length - 1, 1);
+  const own = read("./list-focus.tsx");
+  // Dopo ogni navigazione confermata (percorso o parametri), dopo lo scorrimento di Next: senza scorrere ancora.
+  assert.match(own, /useEffect\(\(\) => \{\s*const id = takeHashFocus\(window\.location\.hash\);\s*if \(id\) focusHashTarget\(id\);\s*\}, \[pathname, search\]\);/);
+  assert.match(own, /getElementById\(id\)\?\.focus\(\{ preventScroll: true \}\)/);
+});

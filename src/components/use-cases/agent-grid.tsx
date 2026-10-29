@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { agentToneOf, type AgentPalette } from "@/lib/use-cases/agents";
 import { formatInteger, perYearText } from "@/lib/use-cases/format";
 import { agentCardId, type AgentGroup } from "@/lib/use-cases/lanes";
 import { totalsNote } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { AGENT_BAR_CLASS, AGENT_TEXT_CLASS, NEUTRAL_BAR_CLASS, NEUTRAL_TEXT_CLASS } from "./agent-tag";
+import { HashFocusLink } from "./list-focus";
 
 /** Testi dei gruppi «Per agente». */
 export const AGENT_GRID_TEXT = Object.freeze({
@@ -25,9 +25,10 @@ export interface AgentGridProps {
  * In ogni card il nome nel colore dell'agente, quanti use case, gli euro contati all'anno («12.300 €
  * all'anno · su 3 use case» quando non tutti ne hanno, altrimenti «Nessuna cifra contata»), una barra
  * sulla scala del gruppo più grande e i trimestri («T4 · 3», «Più avanti · 1»). Un clic porta alle
- * corsie del solo agente (`?agente=LIBRA#panoramica-approvati`): Next scorre all'ancora e le dà il
- * fuoco, così un lettore di schermo sente «Use case di LIBRA per trimestre». Ogni card ha la sua
- * ancora (`agentCardId`, `agente-LIBRA`): «‹ Tutti gli agenti» riporta il fuoco sulla card aperta.
+ * corsie del solo agente (`?agente=LIBRA#panoramica-approvati`): Next scorre all'ancora e
+ * `HashFocusLink` le dà il fuoco, così un lettore di schermo sente «Use case di LIBRA per trimestre».
+ * Ogni card ha la sua ancora (`agentCardId`, `agente-LIBRA`): «‹ Tutti gli agenti» riporta il fuoco
+ * sulla card aperta.
  * Nessun conto per persona: l'agente è il prefisso del titolo.
  */
 export function AgentGrid({ groups, hrefOf, agents }: AgentGridProps) {
@@ -46,8 +47,8 @@ function AgentCard({ group, href, agents, maxEur }: { group: AgentGroup; href: s
   const bar = tone ? AGENT_BAR_CLASS[tone] : NEUTRAL_BAR_CLASS;
   return (
     <li data-slot="agent-card" data-agent={group.param} className="min-w-0">
-      {/* Senza `scroll={false}`: l'ancora porta alle corsie dell'agente. L'`id` è l'ancora del ritorno. */}
-      <Link
+      {/* Senza `scroll={false}`: l'ancora porta alle corsie dell'agente e prende il fuoco. L'`id` è l'ancora del ritorno. */}
+      <HashFocusLink
         id={agentCardId(group.param)}
         href={href}
         className="flex h-full scroll-mt-24 flex-col gap-2 rounded-xl border border-input bg-card px-3 py-2.5 outline-none transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -86,7 +87,7 @@ function AgentCard({ group, href, agents, maxEur }: { group: AgentGroup; href: s
             </span>
           ))}
         </span>
-      </Link>
+      </HashFocusLink>
     </li>
   );
 }

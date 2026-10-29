@@ -82,7 +82,7 @@ test("il link: le corsie del solo agente, senza `mostra`, con l'ancora; «Altri 
   const href = /<a [^>]*href="([^"]*)"/.exec(libra)?.[1] ?? "";
   assert.ok(href.includes("agente=LIBRA") && !href.includes("mostra") && href.endsWith("#panoramica-approvati"), href);
   assert.match(libra, /<a [^>]*class="flex h-full scroll-mt-24 flex-col gap-2 rounded-xl border border-input bg-card /);
-  // L'ancora del ritorno da «‹ Tutti gli agenti»: Next scorre alla card e le dà il fuoco.
+  // L'ancora del ritorno da «‹ Tutti gli agenti»: Next scorre alla card e `HashFocusLink` le dà il fuoco.
   assert.match(libra, /<a id="agente-LIBRA" [^>]*href="[^"]*agente=LIBRA#panoramica-approvati"/);
   const others = cardOf(html, "altri");
   assert.match(others, /<a id="agente-altri" [^>]*href="[^"]*agente=altri#panoramica-approvati"/);
