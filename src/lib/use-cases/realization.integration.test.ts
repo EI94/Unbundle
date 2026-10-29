@@ -18,7 +18,7 @@ const { registerHooks } = nodeModule as unknown as {
 // Il collegamento tra use case e dossier (docs/use-case/PIANO-LAVORI.md H6a e H6i; docs/use-case/
 // DESIGN.md §6.5, §4.5, §9.7, §10.4; decisione di Pierpaolo del 19/10/2026): «Avvia la
 // realizzazione» dalla pagina con la riga di Storia e il dossier precompilato da una scheda del
-// connettore, il capitolo «Realizzazione» e le card della Roadmap per ruolo, la card v1 di Claude
+// connettore, il capitolo «Realizzazione» e le card della Panoramica per ruolo, la card v1 di Claude
 // chiusa nei workspace accesi.
 //
 // Solo con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database del pacchetto
@@ -48,7 +48,8 @@ let startAction: (workspaceId: string, input: unknown) => Promise<StartResult>;
 let createV1Token: (workspaceId: string, prev: unknown, formData: FormData) => Promise<{ ok: boolean; message?: string | null }>;
 let dossiers: typeof import("../db/queries/use-case-dossiers.ts");
 let detailPage: Page;
-let roadmapModule: typeof import("../../components/use-cases/roadmap-view.tsx");
+let lanesModule: typeof import("../../components/use-cases/panorama-lanes.tsx");
+let agentPalette: typeof import("./agents.ts").agentPalette;
 let renderToStaticMarkup: (element: unknown) => string;
 let createElementOf: (type: unknown, props: Record<string, unknown> | null) => unknown;
 
@@ -134,7 +135,8 @@ before(async () => {
   createV1Token = (await import("../actions/workspace-integrations.ts")).createClaudeMcpTokenAction as unknown as typeof createV1Token;
   dossiers = await import("../db/queries/use-case-dossiers.ts");
   detailPage = (await import("../../app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx")).default as Page;
-  roadmapModule = await import("../../components/use-cases/roadmap-view.tsx");
+  lanesModule = await import("../../components/use-cases/panorama-lanes.tsx");
+  ({ agentPalette } = await import("./agents.ts"));
   const { createElement } = await import("react");
   createElementOf = (type, props) => createElement(type as never, props as never);
   const { renderToStaticMarkup: toHtml } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string };
@@ -292,7 +294,7 @@ test("capitolo «Realizzazione»: riepilogo per ogni revisore, «Apri il dossier
   assert.ok(!own.includes("section-realization") && !own.includes("Costo di realizzazione"), "il contributore non riceve il capitolo");
 });
 
-test("Roadmap: le card dei dossier in «In realizzazione» per i revisori, con la mini barra e il contesto; sezione spenta, nessuna card", opts, async () => {
+test("Panoramica: le card dei dossier in «In realizzazione» per i revisori, con la mini barra e il contesto; sezione spenta, nessuna card", opts, async () => {
   const column = await dossiers.dossierColumnOf(ids.ws, viewer("builder", "function_lead"), [ids.fromConnector, ids.fromPage, ids.practice]);
   assert.equal(column.state, "pronta");
   assert.ok(column.state === "pronta");
@@ -303,7 +305,7 @@ test("Roadmap: le card dei dossier in «In realizzazione» per i revisori, con l
   assert.deepEqual(await dossiers.dossierColumnOf(ids.ws, viewer("contributor", "contributor"), [ids.fromConnector]), { state: "nascosta" });
 
   const html = renderToStaticMarkup(
-    createElementOf(roadmapModule.RoadmapView, {
+    createElementOf(lanesModule.PanoramaLanes, {
       items: [
         {
           id: ids.fromConnector,
@@ -319,12 +321,16 @@ test("Roadmap: le card dei dossier in «In realizzazione» per i revisori, con l
         },
       ],
       today: "2026-10-20",
-      showTiles: false,
+      agents: agentPalette([]),
+      barScale: 0,
       dossierColumn: column,
       basePath: `/dashboard/${ids.ws}/use-cases`,
       query: { vista: "panoramica" },
       filtersActive: false,
       clearHref: `/dashboard/${ids.ws}/use-cases?vista=panoramica`,
+      grouping: null,
+      agentHref: () => "",
+      agentFilter: null,
     }),
   );
   assert.ok(html.includes('data-slot="dossier-card"'), "la card del dossier");

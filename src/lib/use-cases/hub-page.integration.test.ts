@@ -30,7 +30,8 @@ const { registerHooks } = nodeModule as unknown as {
 //   delle sole proprie proposte; nessun «€», nessun `[data-figure]`.
 // - Vuoti, filtri senza risultati, i grafici del menu «⋯», pannello laterale e pannello rapido.
 // - «Agente» (rilascio «Panoramica»): il workspace P ha titoli con il prefisso dell'agente
-//   («LIBRA L1 · …») e uno senza; il filtro è solo dei revisori.
+//   («LIBRA L1 · …») e uno senza; il filtro è solo dei revisori. Le corsie della Panoramica con il
+//   tag e le barre del valore, e «Per agente», solo ai revisori.
 // - Parte dossier non disponibile (§4.9): «In realizzazione» mostra solo fase e titolo. La
 //   lettura del dossier fallisce per finta: `dossierSummaries` risponde «errore» quando la
 //   prova accende `__hubH4aDossierError`, altrimenti è quella vera.
@@ -637,28 +638,30 @@ test("fasce del workspace: «Costo impegnato» con il riferimento della fascia, 
   assert.ok(page.includes("su 2 use case<"));
   assert.ok(page.includes("Valore atteso all&#x27;anno") || page.includes("Valore atteso all'anno"));
   assert.ok(!page.includes("Valore misurato"), "il valore misurato non c'è ancora");
-  // La card della Panoramica: forma corta del costo con la fonte; il Valore con gli euro, senza parola.
+  // La card della Panoramica: l'avvio con la sua fonte e gli euro all'anno, senza parola né «Valore:» e «Costo:».
   const amount = rowOf(page, cards.amount.id);
-  assert.ok(amount.includes("€€ · 30.000 €"), amount);
-  assert.ok(amount.includes("50.000 €/anno"), amount);
-  assert.doesNotMatch(amount, />Alto</);
+  assert.ok(amount.includes("avvio 30.000 €"), amount);
   assert.match(amount, /data-source="team_importo"/);
+  assert.ok(amount.includes("50.000 € all&#x27;anno") || amount.includes("50.000 € all'anno"), amount);
+  assert.doesNotMatch(amount, />Alto</);
+  assert.ok(!amount.includes("Valore: ") && !amount.includes("Costo: "), amount);
   const band = rowOf(page, cards.band.id);
-  assert.ok(band.includes("€€ · fascia"));
+  assert.ok(band.includes("avvio €€ · fascia"), band);
   assert.match(band, /data-source="team_fascia"/);
-  // «Valore:» e «Costo:» sempre, come nella riga (H7); una da stimare dice quale è.
-  assert.ok(amount.includes("Valore: ") && amount.includes("Costo: "), amount);
+  // Senza cifre: «Valore: da stimare»; il costo che manca non si scrive (lo dice il pannello).
   const overdue = rowOf(page, cards.overdue.id);
+  assert.ok(!overdue.includes('data-figure="costo"'), overdue);
   assert.match(overdue, /Valore: <\/span><span[^>]*>da stimare</);
-  assert.match(overdue, /Costo: <\/span><span[^>]*>da stimare</);
   // Best practice approvata: «Da diffondere», il Valore e senza costo.
   const best = rowOf(page, cards.bestPractice.id);
   assert.ok(best.includes("Da diffondere"));
   assert.match(best, /data-figure="valore"/);
   assert.ok(!best.includes('data-figure="costo"'));
-  // Prossimi per trimestre, Fatti con il mese.
+  // Le corsie per trimestre; «Realizzati» chiusi, con il mese.
   assert.ok(page.includes("Questo trimestre · T"));
   assert.ok(page.includes("Prossimo trimestre · T"));
+  const done = page.slice(page.indexOf('data-slot="panoramica-realizzati"'), page.indexOf("</details>", page.indexOf('data-slot="panoramica-realizzati"')));
+  assert.ok(done.includes(`data-id="${cards.realized.id}"`), "il realizzato dentro «Realizzati»");
   assert.match(rowOf(page, cards.realized.id), />Realizzato</);
 });
 
@@ -894,6 +897,98 @@ test("filtro «Agente»: il prefisso del titolo, solo ai revisori", opts, async 
   assert.deepEqual(findProp(forContributor.tree, "more"), [undefined]);
 });
 
+test("Panoramica: tag degli agenti, corsie e barre", opts, async () => {
+  const page = await html("ls", ids.wsP, { vista: "panoramica" });
+  const toneOf = (card: string) => /data-slot="agent-tag" data-tone="([^"]+)"/.exec(card)?.[1];
+  const widthOf = (card: string) => /data-slot="value-bar"[^>]*><span[^>]*style="width:([^"]+)"/.exec(card)?.[1];
+  const l1 = rowOf(page, agentCards.libraL1.id);
+  const l2 = rowOf(page, agentCards.libraL2.id);
+  const orsa = rowOf(page, agentCards.orsaO1.id);
+  // Lo stesso agente, lo stesso colore; un altro agente un altro.
+  assert.match(l1, /data-agent="LIBRA"/);
+  assert.match(l2, /data-agent="LIBRA"/);
+  assert.ok(toneOf(l1) && toneOf(l1) !== "neutro" && toneOf(l1) === toneOf(l2), `${toneOf(l1)} ${toneOf(l2)}`);
+  assert.notEqual(toneOf(orsa), toneOf(l1));
+  assert.ok(!rowOf(page, agentCards.plain.id).includes("agent-tag"), "senza prefisso niente tag");
+  // «Questo trimestre»: lo scaduto ORSA in cima, poi LIBRA L1 con gli euro, poi la best practice DENEB senza.
+  const lane = page.slice(page.indexOf('data-slot="lane" data-lane="questo_trimestre"'), page.indexOf('data-slot="lane" data-lane="prossimo_trimestre"'));
+  assert.deepEqual(
+    [...lane.matchAll(/data-slot="lane-card" data-id="([^"]+)"/g)].map((match) => match[1]),
+    [agentCards.orsaO1.id, agentCards.libraL1.id, agentCards.denebD1.id],
+  );
+  // Le barre sulla scala del più grande degli approvati (12.250 €): 5.000 € e 3.000 €.
+  assert.deepEqual([widthOf(l1), widthOf(l2), widthOf(orsa)], ["100.0%", "40.8%", "24.5%"]);
+  // Il titolo senza il prefisso, che resta per i lettori di schermo; il tag è nascosto a loro.
+  assert.ok(l1.includes(`<span class="sr-only">LIBRA L1 · </span>Lettura delle fatture estere ${suffix}`), l1);
+  assert.match(l1, /data-slot="agent-tag" data-tone="[^"]+" aria-hidden="true"/);
+  // Un filtro non cambia né la scala né i colori.
+  for (const filter of [{ origine: "adoption" }, { agente: "LIBRA" }] as Array<Record<string, string>>) {
+    const filtered = await html("ls", ids.wsP, { vista: "panoramica", ...filter });
+    assert.equal(widthOf(rowOf(filtered, agentCards.libraL2.id)), "40.8%", JSON.stringify(filter));
+    assert.equal(toneOf(rowOf(filtered, agentCards.libraL1.id)), toneOf(l1), JSON.stringify(filter));
+  }
+  // Il contributore: gli stessi colori, dal titolo che vede già; nessun euro, nessuna barra.
+  const contributor = await html("contributor", ids.wsP, { vista: "panoramica" });
+  assert.equal(toneOf(rowOf(contributor, agentCards.libraL1.id)), toneOf(l1));
+  assert.equal(toneOf(rowOf(contributor, agentCards.orsaO1.id)), toneOf(orsa));
+  assert.ok(!contributor.includes("€") && !contributor.includes('data-slot="value-bar"') && !contributor.includes("data-figure"));
+});
+
+test("Panoramica «Per agente»: una card per agente, poi le corsie del solo agente; solo ai revisori, con gli agenti nel titolo", opts, async () => {
+  /** I segmenti di «Per trimestre | Per agente»: etichetta, link e se è quello scelto. */
+  const groupingOf = (page: string) => {
+    const start = page.indexOf('data-slot="plan-grouping"');
+    assert.ok(start >= 0, "«Per trimestre | Per agente»");
+    return [...page.slice(start, page.indexOf("</nav>", start)).matchAll(/<a ([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs, inner]) => ({
+      label: /<span>([^<]*)<\/span>/.exec(inner)?.[1] ?? "",
+      href: /href="([^"]*)"/.exec(attrs)?.[1] ?? "",
+      current: attrs.includes('aria-current="page"'),
+    }));
+  };
+  const base = `/dashboard/${ids.wsP}/use-cases`;
+  const grid = await html("ls", ids.wsP, { vista: "panoramica", mostra: "agenti", origine: "adoption" });
+  assert.ok(grid.includes('data-slot="agent-grid"') && !grid.includes('data-slot="lanes"'));
+  assert.match(grid, /aria-label="Use case per agente" data-slot="panorama-plan"/);
+  // Chi ha più euro contati in testa, poi più use case, poi il nome; «Altri use case» in fondo.
+  assert.deepEqual(
+    [...grid.matchAll(/data-slot="agent-card" data-agent="([^"]+)"/g)].map((match) => match[1]),
+    ["LIBRA", "ORSA", "AUTO", "DENEB", "altri"],
+  );
+  assert.deepEqual(
+    groupingOf(grid).map((segment) => [segment.label, segment.current]),
+    [
+      ["Per trimestre", false],
+      ["Per agente", true],
+    ],
+  );
+  const libraCard = grid.slice(grid.indexOf('data-agent="LIBRA"'), grid.indexOf("</li>", grid.indexOf('data-agent="LIBRA"')));
+  assert.equal(/<a [^>]*href="([^"]*)"/.exec(libraCard)?.[1], `${base}?vista=panoramica&amp;origine=adoption&amp;agente=LIBRA#panoramica-approvati`);
+  assert.equal(filledButtons(grid), 1, "un solo pulsante pieno");
+
+  // Dopo il clic: le corsie del solo LIBRA, con il suo nome per i lettori di schermo.
+  const libra = await html("ls", ids.wsP, { vista: "panoramica", agente: "LIBRA", origine: "adoption" });
+  assert.match(libra, /<section id="panoramica-approvati" tabindex="-1" aria-label="Use case di LIBRA per trimestre" data-slot="panorama-plan"/);
+  assert.deepEqual(
+    Object.values(agentCards)
+      .filter((card) => libra.includes(`data-id="${card.id}"`))
+      .map((card) => card.id),
+    [agentCards.libraL1.id, agentCards.libraL2.id],
+  );
+  // «Per trimestre» tiene ogni filtro; «Per agente» toglie solo l'agente.
+  const [byQuarter, byAgent] = groupingOf(libra);
+  assert.deepEqual([byQuarter.current, byAgent.current], [true, false]);
+  assert.equal(byQuarter.href, `${base}?vista=panoramica&amp;origine=adoption&amp;agente=LIBRA`);
+  assert.equal(byAgent.href, `${base}?vista=panoramica&amp;mostra=agenti&amp;origine=adoption`);
+  assert.match(await html("ls", ids.wsP, { vista: "panoramica", agente: "altri" }), /aria-label="Altri use case per trimestre"/);
+
+  // Il contributore non ha la scelta: `mostra` non vale per lui.
+  const contributor = await html("contributor", ids.wsP, { vista: "panoramica", mostra: "agenti" });
+  assert.ok(!contributor.includes("plan-grouping") && !contributor.includes("agent-grid") && contributor.includes('data-slot="lanes"'));
+  // Senza agenti nei titoli niente scelta, e un vecchio `mostra=agenti` mostra le corsie.
+  const plain = await html("ls", ids.wsA, { vista: "panoramica", mostra: "agenti" });
+  assert.ok(!plain.includes("plan-grouping") && !plain.includes("agent-grid") && plain.includes('data-slot="lanes"'));
+});
+
 // ─── Contributori (D4, D13) ──────────────────────────────────────────
 
 test("contributore: titolo, fase e «Quando»; solo «Cerca per titolo»; codice delle sole proprie; nessun numero", opts, async () => {
@@ -901,6 +996,7 @@ test("contributore: titolo, fase e «Quando»; solo «Cerca per titolo»; codice
     const page = await html("contributor", ids.wsA, { vista });
     assert.ok(!page.includes("€"), `${vista}: «€»`);
     assert.ok(!page.includes("data-figure"), `${vista}: [data-figure]`);
+    assert.ok(!page.includes('data-slot="value-bar"'), `${vista}: barre del valore`);
     assert.ok(page.includes('placeholder="Cerca per titolo"'), vista);
     for (const text of ["Cerca per titolo o codice", "Altri filtri", "AI Adoption", "AI Transformation", ">Tipo:<", "Priorità", "Cosa serve", "Requisiti", cards.othersHidden.title]) {
       assert.ok(!page.includes(text), `${vista}: «${text}»`);
@@ -942,16 +1038,24 @@ test("contributore: titolo, fase e «Quando»; solo «Cerca per titolo»; codice
   assert.ok((await html("contributor", ids.wsA, { vista: "da-decidere", q: cards.ownByEmail.code })).includes(cards.ownByEmail.title));
 });
 
-test("Panoramica: «Scaduti» rosso con il tag «Scaduto» ai revisori; ai contributori in grigio e senza tag", opts, async () => {
+test("Panoramica: gli scaduti in cima a «Questo trimestre» con «Scaduto» ai revisori", opts, async () => {
   const reviewer = await html("builder", ids.wsA, { vista: "panoramica" });
+  const overdue = rowOf(reviewer, cards.overdue.id);
+  assert.match(overdue, /data-lane="questo_trimestre"/);
+  const lane = reviewer.slice(reviewer.indexOf('data-slot="lane" data-lane="questo_trimestre"'));
+  assert.equal(/data-slot="lane-card" data-id="([^"]+)"/.exec(lane)?.[1], cards.overdue.id, "il primo della corsia");
   // Il tema dell'app è scuro senza la classe `.dark`: il rosso è quello che si legge lì (H4p).
-  assert.match(reviewer, /class="text-xs font-medium text-red-300">Scaduti</);
-  assert.ok(rowOf(reviewer, cards.overdue.id).includes(">Scaduto<"));
+  assert.ok(overdue.includes(">Scaduto<") && overdue.includes("text-red-300"), overdue);
+  assert.ok(overdue.includes(">T1 2020<"), "il trimestre passato accanto a «Scaduto»");
+  assert.ok(!reviewer.includes(">Scaduti<"), "nessun gruppo «Scaduti»");
+  // Al contributore niente tag, niente rosso e niente trimestre a parte: lo dice la sua pillola, nessun giudizio sul team.
   const contributor = await html("contributor", ids.wsA, { vista: "panoramica" });
-  assert.match(contributor, /class="text-xs font-medium text-muted-foreground">Scaduti</);
-  assert.ok(rowOf(contributor, cards.overdue.id).includes(cards.overdue.title));
+  const card = rowOf(contributor, cards.overdue.id);
+  assert.ok(card.includes(cards.overdue.title));
   assert.ok(!contributor.includes(">Scaduto<"), "niente tag «Scaduto» al contributore");
   assert.ok(!contributor.includes("text-red-300"), "niente rosso al contributore");
+  assert.ok(!card.includes(">T1 2020<"), "niente trimestre a parte");
+  assert.ok(card.includes(">Approvato · T1 2020<"), "la pillola della fase");
 });
 
 // ─── Parte dossier non disponibile (§4.9) ────────────────────────────
@@ -1075,8 +1179,9 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   const eContributor = await html("contributor", ids.wsE, { vista: "da-decidere" });
   // H4p: per i contributori «In valutazione».
   assert.ok(eContributor.includes("Nessuno use case in valutazione") && !eContributor.includes("Vai alla Panoramica"));
-  // Le corsie sono ancora quelle della Roadmap di prima: il suo vuoto.
-  assert.ok((await html("ls", ids.wsE, { vista: "panoramica" })).includes("La roadmap è vuota"));
+  // Nessuno use case approvato, in realizzazione o realizzato: le corsie dicono il loro vuoto.
+  const eOverview = await html("ls", ids.wsE, { vista: "panoramica" });
+  assert.ok(eOverview.includes("Niente in programma, per ora") && eOverview.includes("Approva uno use case e scegli quando farlo."));
   const eMatrix = await html("ls", ids.wsE, { vista: "panoramica", mostra: "matrice" });
   assert.ok(eMatrix.includes("Nessuno use case da mettere in ordine"));
   // «Da diffondere» di prima è il filtro della Panoramica: senza best practice, nessun risultato.

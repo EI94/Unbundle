@@ -23,6 +23,7 @@ import * as format from "./format.ts";
 import { costLongText, costShortText, costSourceText, valueEurSourceText, valueLongText } from "./format.ts";
 import * as inputs from "./inputs.ts";
 import * as labels from "./labels.ts";
+import * as lanes from "./lanes.ts";
 import { PLAN_SOURCE_LABEL } from "./mcp/output.ts";
 import { SAVED_NEED_ACTION_LABEL } from "./mcp/tools.ts";
 import * as needs from "./needs.ts";
@@ -329,6 +330,11 @@ test("copy-guard verde sulle etichette dell'area", () => {
     ...exportedStrings(costInputState),
     // «Agente» (rilascio «Panoramica»): «Altri use case».
     ...exportedStrings(agents),
+    // Le corsie della Panoramica: «ritorno qualitativo» e i testi delle corsie.
+    ...exportedStrings(lanes),
+    lanes.laneSummaryText(3, 24_500),
+    lanes.laneMoreLabel(1),
+    lanes.laneMoreLabel(3),
     ...Object.values(PHASE_LABEL),
     ...Object.values(SUB_STATE_LABEL),
     ...WHEN_CHOICES.map((choice) => quarter.whenChoiceLabel(choice, now)),

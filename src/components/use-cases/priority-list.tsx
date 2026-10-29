@@ -8,8 +8,8 @@ import { isToEstimate, roadmapGroupKey, type HubItem } from "@/lib/use-cases/vie
 import { cn } from "@/lib/utils";
 import { CostFigure } from "./cost-figure";
 import { InfoChip } from "./info-chip";
+import { ExpiredTag } from "./lane-card";
 import { OriginChip } from "./origin-chip";
-import { ExpiredTag } from "./roadmap-card";
 import { panelHref, type HubQuery } from "./use-case-row";
 import { MATRIX_TEXT, ToEstimateChip } from "./value-cost-matrix";
 import { ValueFigure } from "./value-figure";

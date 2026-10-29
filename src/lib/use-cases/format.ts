@@ -14,7 +14,8 @@
  * - **Costo**: una sola forma corta per la riga e per la card della Roadmap («€€ · 40.000 € ·
  *   team», «€€ · fascia · team», «€€€ · fascia · stimato», «da stimare»); la forma lunga
  *   della scheda scrive per una fascia la sua etichetta nelle fasce del workspace (D15), con
- *   l'iniziale minuscola: «€€ · fascia da 25.000 a 65.000 €».
+ *   l'iniziale minuscola: «€€ · fascia da 25.000 a 65.000 €». Le card della Panoramica scrivono
+ *   solo l'avvio: «avvio 30.000 € · team», «avvio €€ · fascia · team» (`startCostParts`).
  * - Le funzioni che scrivono l'etichetta di una fascia ricevono le fasce del workspace come
  *   ultimo argomento `bands` (tipo `CostBandInfo` di `cost-bands.ts`), predefinite
  *   `COST_BANDS`. Le fasce del workspace le passano le pagine (H3c, H4a, H4b), che le leggono
@@ -310,8 +311,8 @@ export function zoneText(zone: Zone | null, value: Pick<ValueParts, "benefits"> 
   return NOT_ESTIMATED_LABEL;
 }
 
-/** «60.000 € all'anno»; `null` senza una cifra. */
-export function perYearText(perYear: ValueParts["perYear"] | null | undefined): string | null {
+/** «60.000 € all'anno»; `null` senza una cifra. Basta l'importo: i gruppi «Per agente» sommano euro di fonti diverse. */
+export function perYearText(perYear: Pick<NonNullable<ValueParts["perYear"]>, "amount"> | null | undefined): string | null {
   if (!perYear || !Number.isFinite(perYear.amount)) return null;
   return `${formatEuro(perYear.amount)} all'anno`;
 }
@@ -483,6 +484,22 @@ export function costTextParts(cost: CostParts | null | undefined, form: SourceFo
 export function costShortText(cost: CostParts | null | undefined, bands: readonly CostBandInfo[] = COST_BANDS): string {
   const parts = costTextParts(cost, "corta", bands);
   return parts.source ? `${parts.figure}${FIGURE_SEPARATOR}${parts.source}` : parts.figure;
+}
+
+/**
+ * Il costo d'avvio nelle card della Panoramica (rilascio «Panoramica»), con la fonte corta a parte:
+ * - un importo (dossier, «Benefici e costi», importo del team): «avvio 700 €», «avvio 30.000 €»,
+ *   fonte «dossier» o «team»; per «Benefici e costi» nessuna fonte, come nella forma corta (la dice
+ *   la scheda);
+ * - una fascia (del team o dall'impegno): «avvio €€ · fascia», fonte «team» o «stimato».
+ * Senza costo null: la card non scrive «da stimare», lo dice il pannello.
+ */
+export function startCostParts(cost: CostParts | null | undefined, bands: readonly CostBandInfo[] = COST_BANDS): { figure: string; source: string | null } | null {
+  if (!cost) return null;
+  if (!cost.fromBand && typeof cost.amount === "number" && Number.isFinite(cost.amount)) {
+    return { figure: `${COST_ONEOFF_WORD} ${formatEuro(cost.amount)}`, source: cost.source === "stima" ? null : costSourceText(cost.source, "corta") };
+  }
+  return { figure: `${COST_ONEOFF_WORD} ${costBandSymbol(cost.band, bands)}${FIGURE_SEPARATOR}${COST_BAND_WORD}`, source: costSourceText(cost.source, "corta") };
 }
 
 /** La cifra del costo nella scheda (§6.3): «€€ · 40.000 €», «€€ · fascia da 25.000 a 65.000 €», «da stimare». La fonte va accanto, per esteso. */

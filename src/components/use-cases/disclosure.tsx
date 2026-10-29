@@ -4,23 +4,26 @@ import { cn } from "@/lib/utils";
 
 /**
  * Un `<details>` chiuso di default, con la freccia come «Ipotesi di calcolo». La freccia segue solo
- * il suo `<details>`: chiusa resta chiusa anche dentro un «Già a posto» aperto.
+ * il suo `<details>`: chiusa resta chiusa anche dentro un «Già a posto» aperto. `id`: un'ancora sul
+ * `<details>` stesso, come «Realizzati» della Panoramica (`#panoramica-realizzati`).
  */
 export function Disclosure({
   summary,
   slot,
+  id,
   children,
   className,
   summaryClassName,
 }: {
   summary: ReactNode;
   slot?: string;
+  id?: string;
   children: ReactNode;
   className?: string;
   summaryClassName?: string;
 }) {
   return (
-    <details data-slot={slot} className={className}>
+    <details id={id} data-slot={slot} className={className}>
       <summary
         className={cn(
           "inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-md text-sm text-muted-foreground outline-none select-none marker:hidden hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8 [&::-webkit-details-marker]:hidden",

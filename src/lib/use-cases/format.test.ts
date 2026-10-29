@@ -18,6 +18,7 @@ import {
   lowerFirst,
   perYearText,
   phaseTone,
+  startCostParts,
   valueEurSourceText,
   valueLongText,
   valueSourceText,
@@ -263,6 +264,18 @@ test("forma lunga di una fascia (D15): etichette predefinite e etichette diverse
   assert.equal(costShortText(costFigure({ costEurOnce: 30_000 }, model)), "€€ · 30.000 € · team");
   assert.equal(costShortText(costFigure({ costEurOnce: 20_000 }, model)), "€€ · 20.000 € · team");
   assert.equal(costShortText(costFigure({ costEurOnce: 20_000 }, MODEL)), "€ · 20.000 € · team");
+});
+
+test("costo d'avvio nelle card della Panoramica: «avvio 30.000 €» con la fonte, «avvio €€ · fascia»; senza costo niente", () => {
+  assert.deepEqual(startCostParts({ source: "stima", amount: 700, band: 1, fromBand: false, runEurYear: 1_200 }), { figure: "avvio 700 €", source: null }, "«Benefici e costi»: la fonte la dice la scheda");
+  assert.deepEqual(startCostParts({ source: "team_importo", amount: 30_000, band: 2, fromBand: false }), { figure: "avvio 30.000 €", source: "team" });
+  assert.deepEqual(startCostParts({ source: "dossier", amount: 18_500, band: 1, fromBand: false }), { figure: "avvio 18.500 €", source: "dossier" });
+  // Una fascia con le fasce del workspace: il simbolo non cambia, l'etichetta non si scrive.
+  const teamBand = costFigure({ costBand: 2 }, { ...MODEL, costBands: { limits: [15_000, 40_000, 90_000, 200_000], labels: CUSTOM_BANDS.map((b) => b.label), topReferenceEur: 300_000 } });
+  assert.deepEqual(startCostParts(teamBand, CUSTOM_BANDS), { figure: "avvio €€ · fascia", source: "team" });
+  assert.deepEqual(startCostParts({ source: "sforzo", amount: null, band: 3, fromBand: true }), { figure: "avvio €€€ · fascia", source: "stimato" });
+  assert.equal(startCostParts(null), null);
+  assert.equal(startCostParts(undefined), null);
 });
 
 test("iniziale minuscola: le sigle in testa restano", () => {

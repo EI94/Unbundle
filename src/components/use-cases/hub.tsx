@@ -14,16 +14,17 @@ import { reviewTeamName } from "@/lib/review-team";
 import { activityMappingPath, fullFormPath, type ActivityMappingState } from "@/lib/use-cases/create";
 import { activityMappingReadiness, quickCreateOptions, type QuickCreateOptions } from "@/lib/use-cases/create-data";
 import { toDuplicateCandidates } from "@/lib/use-cases/decision-ui";
-import { agentFilterOptions } from "@/lib/use-cases/agents";
+import { agentFilterOptions, agentOfTitle, agentPalette } from "@/lib/use-cases/agents";
 import { answersOf, type InfoAnswer } from "@/lib/use-cases/answers";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
 import { INFO_PROGRESS_PARAM, type InfoProgressState, type InfoProgressView } from "@/lib/use-cases/info-progress";
 import { channelLabel } from "@/lib/use-cases/labels";
+import { laneBarScale, PANORAMA_SECTION_ID } from "@/lib/use-cases/lanes";
 import { buildNeedsBoard, panelNeeds, type NeedView } from "@/lib/use-cases/needs";
 import { abilitiesForUseCase, type UseCaseAbilities } from "@/lib/use-cases/permissions";
 import { compareQuarters, quarterLabel, WHEN_LATER_LABEL } from "@/lib/use-cases/quarter";
 import { USE_CASE_SOURCES } from "@/lib/use-cases/types";
-import { groupPalette, priorityCharts } from "@/lib/use-cases/value-charts";
+import { buildRoadmapValue, groupPalette, priorityCharts, roadmapPlan } from "@/lib/use-cases/value-charts";
 import {
   LATER_QUARTER_PARAM,
   applyHubFilters,
@@ -32,6 +33,7 @@ import {
   hasActiveFilters,
   isContributorItem,
   parseHubParams,
+  roadmapTotals,
   shownChart,
   type AnyHubItem,
   type HubChartParam,
@@ -49,9 +51,11 @@ import { infoFilterOptions } from "./info-chip";
 import { NeedsBoardView } from "./needs-board";
 import { EmptyState, HUB_TEXT, HubHeader, HubNotice, receiptText } from "./hub-header";
 import { ListFocusTarget } from "./list-focus";
+import { LANES_TEXT, PanoramaLanes, type LanesGrouping } from "./panorama-lanes";
 import { PRIORITY_TEXT, PriorityView } from "./priority-view";
 import { QuickCreateSheet } from "./quick-create-sheet";
-import { RoadmapView } from "./roadmap-view";
+import { RoadmapTiles } from "./roadmap-tiles";
+import { RoadmapValueCharts } from "./roadmap-value";
 import { UseCasePanel, type UseCasePanelData } from "./use-case-panel";
 import { hubHref, panelHref, withoutTransient, type HubQuery } from "./use-case-row";
 
@@ -306,6 +310,10 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   const valueParams = list.projection !== "contributore" ? list.valueParams : null;
   const palette = reviewer ? groupPalette(reviewerItems, valueParams) : null;
   const followsCurrentMonth = list.projection !== "contributore" ? list.followsCurrentMonth : false;
+  // I colori degli agenti, da tutte le schede della pagina: un filtro non li cambia.
+  const agents = agentPalette(list.items);
+  // La scala delle barre, sugli approvati di tutto il workspace.
+  const barScale = reviewer ? laneBarScale(reviewerItems) : 0;
   // «Ipotesi di calcolo» porta a Impostazioni › Valutazione solo chi le può cambiare.
   const valueSettingsHref = abilities.canEditSettings ? `/dashboard/${workspaceId}/settings#${USE_CASE_VALUATION_ANCHOR}` : null;
   const query = queryOf(params, view);
@@ -331,6 +339,27 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
     label: CHART_LABEL[key],
     href: hubHref(basePath, navQuery, { vista: "panoramica", mostra: key, stima: null }),
   }));
+
+  // «Per trimestre | Per agente»: ai revisori, solo se un approvato ha l'agente nel titolo (un vecchio
+  // `?mostra=agenti` senza prefissi mostra le corsie). «Per trimestre» tiene ogni filtro; «Per agente»
+  // toglie solo l'agente, e torna all'elenco degli agenti.
+  const agentsInWorkspace = reviewer && reviewerItems.some((item) => item.phase === "approvato" && agentOfTitle(item.title) !== null);
+  const grouping: LanesGrouping | null =
+    view === "panoramica" && !chart && agentsInWorkspace
+      ? {
+          active: params.mostra === "agenti" ? "agente" : "trimestre",
+          items: [
+            { key: "trimestre", label: LANES_TEXT.byQuarter, href: hubHref(basePath, navQuery, { mostra: null }) },
+            { key: "agente", label: LANES_TEXT.byAgent, href: hubHref(basePath, navQuery, { mostra: "agenti", agente: null }) },
+          ],
+        }
+      : null;
+  // Una card di «Per agente»: le corsie del solo agente, con l'ancora che le porta in vista e dà loro il fuoco.
+  const agentHref = (param: string) => `${hubHref(basePath, navQuery, { mostra: null, agente: param })}#${PANORAMA_SECTION_ID.approvati}`;
+  // Provvisorio: le cifre e la curva di oggi, finché arrivano la testa della Panoramica e «Curva del valore» nel menu.
+  // Solo sopra le corsie: le altre viste non le calcolano.
+  const figureItems = reviewer && abilities.canSeeFigures && view === "panoramica" && !chart ? (filtered as HubItem[]) : null;
+  const roadmapValue = figureItems && valueParams ? buildRoadmapValue(figureItems, valueParams, { plan: roadmapPlan(reviewerItems, valueParams) }) : null;
 
   // «Cosa serve»: tutte le esigenze del workspace; con un filtro quelle degli use case che lo
   // passano (e quelle con la ricerca nel titolo). I codici in «Per» restano quelli di tutte le schede.
@@ -444,23 +473,34 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
             // Il titolo per i lettori di schermo prende il fuoco dopo «‹ Torna alla Panoramica».
             <div data-slot="panoramica" className="space-y-6">
               <ListFocusTarget title={HUB_TEXT.overviewView} />
-              <RoadmapView
+              {figureItems ? <RoadmapTiles totals={roadmapTotals(figureItems)} value={roadmapValue} /> : null}
+              {roadmapValue && valueParams && figureItems ? (
+                <RoadmapValueCharts
+                  value={roadmapValue}
+                  items={figureItems}
+                  params={valueParams}
+                  palette={palette ?? groupPalette(reviewerItems, valueParams)}
+                  hrefs={Object.fromEntries(roadmapValue.cards.map((card) => [card.id, panelHref(basePath, query, card.id)]))}
+                  followsCurrentMonth={followsCurrentMonth}
+                  settingsHref={valueSettingsHref}
+                />
+              ) : null}
+              <PanoramaLanes
                 items={filtered}
                 today={list.today}
-                showTiles={abilities.canSeeFigures}
+                agents={agents}
+                barScale={barScale}
                 bands={bands}
                 dossierDown={dossierDown}
                 dossierColumn={data.dossierColumn}
-                valueParams={valueParams}
-                palette={palette}
-                planItems={reviewer ? reviewerItems : null}
                 info={data.info}
-                followsCurrentMonth={followsCurrentMonth}
-                settingsHref={valueSettingsHref}
                 basePath={basePath}
                 query={query}
                 filtersActive={filtersActive}
                 clearHref={clearHref}
+                grouping={grouping}
+                agentHref={agentHref}
+                agentFilter={params.agente}
               />
             </div>
           )
@@ -470,7 +510,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
               board={needsBoard}
               hrefOf={(id) => panelHref(basePath, query, id)}
               inRealization={(filtered as HubItem[]).filter((item) => item.phase === "in_realizzazione").length}
-              realizationHref={viewHref("panoramica")}
+              realizationHref={`${viewHref("panoramica")}#${PANORAMA_SECTION_ID.inRealizzazione}`}
               filtersActive={filtersActive}
               clearHref={clearHref}
             />

@@ -2,11 +2,11 @@ import Link from "next/link";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { formatMonthYear, perYearText } from "@/lib/use-cases/format";
-import { EXPIRED_TAG, isContributorItem, type AnyHubItem, type HubItem } from "@/lib/use-cases/views";
-import { cn } from "@/lib/utils";
+import { isContributorItem, type AnyHubItem, type HubItem } from "@/lib/use-cases/views";
 import { CostFigure } from "./cost-figure";
 import { InfoChip } from "./info-chip";
 import { KindLabel } from "./kind-label";
+import { ExpiredTag } from "./lane-card";
 import { OriginChip } from "./origin-chip";
 import { PhasePill } from "./phase-pill";
 import { CodeLabel, shownPhaseLabel, subStateText, visibleCode } from "./use-case-row";
@@ -66,18 +66,6 @@ export function RoadmapCard({ item, column, expired = false, dossierDown = false
         )}
       </Link>
     </li>
-  );
-}
-
-/** Il tag rosso «Scaduto» (§4.5): trimestre passato, senza avvio. Lo stesso nella Roadmap e nella lista di «Priorità». */
-export function ExpiredTag({ className }: { className?: string }) {
-  return (
-    <span
-      data-slot="expired-tag"
-      className={cn("inline-flex shrink-0 items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium whitespace-nowrap text-red-300", className)}
-    >
-      {EXPIRED_TAG}
-    </span>
   );
 }
 

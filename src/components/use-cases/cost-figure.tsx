@@ -1,5 +1,5 @@
 import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
-import { FIGURE_SEPARATOR, costTextParts, type CostParts } from "@/lib/use-cases/format";
+import { FIGURE_SEPARATOR, costTextParts, startCostParts, type CostParts } from "@/lib/use-cases/format";
 import { cn } from "@/lib/utils";
 import { SourceTag } from "./source-tag";
 
@@ -12,9 +12,11 @@ export interface CostFigureProps {
    * «corta» (riga, pannello, card della Roadmap, la stessa forma): «€€ · 40.000 € · team»,
    * «€€ · fascia · team», «€€€ · fascia · stimato», con «Benefici e costi» «avvio 560 € ·
    * ricorrenti 600 €/anno» (senza fonte: la dice la scheda); «lunga» (scheda, §6.3): «€€ · 40.000 €»
-   * oppure «€€ · fascia da 25.000 a 65.000 €», con la fonte per esteso.
+   * oppure «€€ · fascia da 25.000 a 65.000 €», con la fonte per esteso; «avvio» (card della
+   * Panoramica, `startCostParts`): «avvio 30.000 € · team», «avvio €€ · fascia · team», «avvio 700 €»
+   * per «Benefici e costi», piccolo e grigio; senza costo niente, nemmeno «da stimare».
    */
-  form?: "corta" | "lunga";
+  form?: "corta" | "lunga" | "avvio";
   /** «Costo: €€ · 40.000 € · team» nella riga (§4.6); «Costo di realizzazione» sopra la cifra nella scheda. */
   withLabel?: boolean;
   /**
@@ -38,6 +40,22 @@ const COST_LABEL_LONG = "Costo di realizzazione";
  * contributore non abbia cifre (PIANO-LAVORI §5.4, §5.7).
  */
 export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel = false, stack = false, className }: CostFigureProps) {
+  if (form === "avvio") {
+    // Il costo d'avvio della card, senza etichetta: la fonte con il suo `data-source`, tranne «Benefici e costi».
+    const start = startCostParts(cost, bands);
+    if (!start || !cost) return null;
+    return (
+      <span data-figure="costo" data-cost-source={cost.source} className={cn("text-xs text-muted-foreground", className)}>
+        <span className="whitespace-nowrap">{start.figure}</span>
+        {start.source ? (
+          <>
+            <span>{FIGURE_SEPARATOR}</span>
+            <SourceTag figure="costo" source={cost.source} />
+          </>
+        ) : null}
+      </span>
+    );
+  }
   const parts = costTextParts(cost, form, bands);
   const source = cost && !parts.estimated ? cost.source : null;
   if (form === "lunga") {

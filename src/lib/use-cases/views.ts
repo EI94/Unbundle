@@ -1046,8 +1046,11 @@ export const EXPIRED_TAG = "Scaduto";
 
 const QUARTER_LABEL = /^T([1-4]) ([0-9]{4})$/;
 
-/** Il trimestre di uno use case approvato: dal dato per i revisori, dall'etichetta «T1 2027» per i contributori. */
-function quarterOfItem(item: AnyHubItem): QuarterCode | null {
+/**
+ * Il trimestre di uno use case approvato: dal dato per i revisori, dall'etichetta «T1 2027» per i
+ * contributori. Lo usano anche le corsie della Panoramica (`lanes.ts`).
+ */
+export function quarterOfItem(item: AnyHubItem): QuarterCode | null {
   if (!isContributorItem(item)) return item.targetQuarter;
   const match = item.quando ? QUARTER_LABEL.exec(item.quando) : null;
   return match ? (`${match[2]}-Q${match[1]}` as QuarterCode) : null;
@@ -1108,7 +1111,8 @@ function byValueThenTitle<T extends AnyHubItem>(a: T, b: T): number {
   return byTitle(a, b);
 }
 
-function byRealizedDesc<T extends AnyHubItem>(a: T, b: T): number {
+/** «Fatti» e «Realizzati» (`lanes.ts`): dal più recente; i contributori per titolo. */
+export function byRealizedDesc<T extends AnyHubItem>(a: T, b: T): number {
   if (!isContributorItem(a) && !isContributorItem(b)) {
     const ra = a.realizedOn ?? "";
     const rb = b.realizedOn ?? "";

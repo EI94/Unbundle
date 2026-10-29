@@ -73,10 +73,12 @@
 // every view of the area). At 1280 px the page area is 960 px: the lists must have their columns.
 //
 // Hub layout (failures, every width): with a page area (`@container/hub`, [data-slot=use-case-hub])
-// of at least 58rem (928 px) the «Priorità» list has its columns and header and the use case rows
-// are one line (priority-list.tsx, use-case-row.tsx); at every width no cell of the «Priorità» list
-// and no part of a row is wider than its box (a value written over the cost next to it). Text cut
-// on purpose (`truncate`, overflow hidden) does not count.
+// of at least 58rem (928 px) the «Priorità» list has its columns and header, the use case rows
+// are one line (priority-list.tsx, use-case-row.tsx) and the three lanes of the Panoramica stand
+// side by side; below 58rem the lanes are one column, one under the other (panorama-lanes.tsx). At
+// every width no cell of the «Priorità» list, no part of a row and no part of a lane card is wider
+// than its box (a value written over the cost next to it). Text cut on purpose (`truncate`,
+// overflow hidden) does not count.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -340,8 +342,9 @@ function overflowCulprits(page) {
 
 /**
  * The hub's lists on the page (see «Hub layout» in the header): page area, «Priorità» rows with and
- * without columns, rows on two lines, and the cells and row parts whose content is wider than their
- * box (flex and grid items, so their client width is their box). Nothing on the detail page.
+ * without columns, rows on two lines, the columns of the Panoramica's lanes (null without lanes),
+ * and the cells, row parts and lane card parts whose content is wider than their box (flex and grid
+ * items, so their client width is their box). Nothing on the detail page.
  */
 function hubLayout(page) {
   return evaluate(page, () => {
@@ -363,7 +366,13 @@ function hubLayout(page) {
     const priorityRows = [...document.querySelectorAll('[data-slot="priority-row"]')].filter(shown);
     const header = document.querySelector('[data-slot="priority-list"] > [aria-hidden]');
     const rows = [...document.querySelectorAll('[data-slot="use-case-row"] > a')].filter(shown);
-    const boxes = [...priorityRows.flatMap(cellsOf), ...rows.flatMap((link) => [link, ...link.children])].filter((el) => shown(el) && !clips(el));
+    const laneCards = [...document.querySelectorAll('[data-slot="lane-card"] > a')].filter(shown);
+    const lanes = document.querySelector('[data-slot="lanes"]');
+    const boxes = [
+      ...priorityRows.flatMap(cellsOf),
+      ...rows.flatMap((link) => [link, ...link.children]),
+      ...laneCards.flatMap((link) => [link, ...link.children]),
+    ].filter((el) => shown(el) && !clips(el));
     const wider = boxes.filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => `«${text(el)}» ${el.scrollWidth} > ${el.clientWidth} px`);
     return {
       hubWidth: hub ? Math.round(hub.getBoundingClientRect().width) : null,
@@ -372,6 +381,8 @@ function hubLayout(page) {
       priorityHeader: header ? shown(header) : null,
       rows: rows.length,
       rowsOnTwoLines: rows.filter((link) => getComputedStyle(link).flexDirection !== "row").length,
+      // The used tracks of the lanes grid: «300px 300px 300px» side by side, «928px» one under the other.
+      laneColumns: lanes ? getComputedStyle(lanes).gridTemplateColumns.split(" ").filter(Boolean).length : null,
       wider: wider.length,
       widerText: wider.slice(0, 3),
     };
@@ -469,6 +480,11 @@ try {
             if (layout.priorityWithoutColumns) failures.push(`${layout.priorityWithoutColumns} «Priorità» rows without columns with ${area}`);
             if (layout.priorityRows && layout.priorityHeader === false) failures.push(`«Priorità» list without its header with ${area}`);
             if (layout.rowsOnTwoLines) failures.push(`${layout.rowsOnTwoLines} rows on two lines with ${area}`);
+            if (layout.laneColumns !== null && layout.laneColumns !== 3) failures.push(`lanes not side by side with ${area}: ${layout.laneColumns} columns`);
+          } else if (layout.hubWidth !== null) {
+            if (layout.laneColumns !== null && layout.laneColumns !== 1) {
+              failures.push(`lanes side by side in a page area of ${layout.hubWidth} px (one column below ${HUB_COLUMNS_FROM_PX}): ${layout.laneColumns} columns`);
+            }
           }
           if (layout.wider) failures.push(`${layout.wider} cells wider than their column at ${width} px: ${layout.widerText.join(" | ")}`);
           if (!nav.idle) warnings.push("network not quiet within the timeout");

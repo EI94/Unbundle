@@ -112,6 +112,30 @@ test("la lista di «Priorità» e le righe dei revisori hanno le colonne da 58re
   assert.match(read("scripts/use-case-test/screens-hub.mjs"), /const HUB_COLUMNS_FROM_PX = 928;/);
 });
 
+test("la «Panoramica»: tre corsie da 58rem del riquadro, prima una sotto l'altra", () => {
+  const lanes = read("src/components/use-cases/panorama-lanes.tsx");
+  // Affiancate da 58rem (928 px, a 1280 px di finestra), con le card una sotto l'altra; più stretto le
+  // corsie una sotto l'altra, con le card in due colonne da 36rem.
+  assert.ok(lanes.includes('data-slot="lanes" className="grid gap-6 @min-[58rem]/hub:grid-cols-3 @min-[58rem]/hub:gap-4"'));
+  assert.ok(lanes.includes('<ul className="grid gap-2 @xl/hub:grid-cols-2 @min-[58rem]/hub:grid-cols-1">'));
+  for (const file of [
+    "src/components/use-cases/panorama-lanes.tsx",
+    "src/components/use-cases/lane-card.tsx",
+    "src/components/use-cases/agent-tag.tsx",
+    "src/components/use-cases/agent-grid.tsx",
+  ]) {
+    const classes = [...read(file).matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
+    assert.doesNotMatch(classes, VIEWPORT_VARIANT, `${file}: una forma sulla larghezza della finestra`);
+  }
+  // La card: il titolo prende quel che resta accanto al costo e va a capo dentro una parola lunga.
+  const card = read("src/components/use-cases/lane-card.tsx");
+  assert.ok(card.includes("grid-cols-[minmax(0,1fr)_auto]"));
+  assert.match(card, /className="line-clamp-2 min-w-0 text-sm font-semibold break-words text-foreground"/);
+  assert.match(card, /<li data-slot="lane-card" data-id=\{item\.id\} data-lane=\{place\} data-agent=\{agent\?\.agent\} className="min-w-0">/);
+  // Lo script delle schermate controlla le colonne delle corsie dallo stesso riquadro.
+  assert.ok(read("scripts/use-case-test/screens-hub.mjs").includes("if (layout.laneColumns"));
+});
+
 test("la barra dei filtri va a capo dal tablet e resta una riga al telefono", () => {
   assert.match(read("src/components/use-cases/filter-bar.tsx"), /data-slot="filter-bar"[^>]*className="flex min-w-0 flex-nowrap items-center gap-2 sm:flex-wrap"/);
 });

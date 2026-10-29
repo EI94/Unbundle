@@ -22,7 +22,7 @@ const { registerHooks } = nodeModule as unknown as {
 //   stato a parole, che non sembra una fase; in cima a «Cosa serve» una riga sola, «N di M
 //   informazioni ricevute» (tra parentesi le da verificare) e che cosa resta, gruppo per gruppo
 //   (rilascio «Pulizia»: niente date, niente frasi);
-// - la pagina «Use case»: il chip corto solo nelle righe di «Da decidere» e nelle card della Roadmap
+// - la pagina «Use case»: il chip corto solo nelle righe di «Da decidere» e nelle card della Panoramica
 //   che chiedono a qualcuno di fare qualcosa («da verificare», «senza risposta»); il filtro
 //   «Informazioni» con i cinque stati;
 // - il contributore: niente di tutto questo; la fase non cambia mai da sola.
@@ -192,7 +192,7 @@ before(async () => {
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, ids[person], ROLE[person]]);
   }
   for (const key of CARDS) {
-    // «Da decidere»: le tre proposte; Roadmap: le due approvate per questo trimestre.
+    // «Da decidere»: le tre proposte; Panoramica: le due approvate per questo trimestre.
     const approved = key === "silent" || key === "done";
     await q(
       `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, origin, code, target_quarter, source, submitted_at)
@@ -308,10 +308,10 @@ test("la pagina «Use case»: il chip corto solo per «da verificare» e «senza
   const decide = await hubHtml("builder", { vista: "da-decidere" });
   assert.ok(itemHtml(decide, "use-case-row", cards.verify).includes("Info: da verificare"));
   for (const key of ["ask", "wait"] as const) assert.ok(!itemHtml(decide, "use-case-row", cards[key]).includes('data-slot="info-chip"'), key);
-  // La Panoramica ha ancora le card della Roadmap di prima.
-  const roadmap = await hubHtml("builder", { vista: "panoramica" });
-  assert.ok(itemHtml(roadmap, "roadmap-card", cards.silent).includes("Info: senza risposta"));
-  assert.ok(!itemHtml(roadmap, "roadmap-card", cards.done).includes('data-slot="info-chip"'));
+  // Le card delle corsie della Panoramica.
+  const overview = await hubHtml("builder", { vista: "panoramica" });
+  assert.ok(itemHtml(overview, "lane-card", cards.silent).includes("Info: senza risposta"));
+  assert.ok(!itemHtml(overview, "lane-card", cards.done).includes('data-slot="info-chip"'));
   // Il filtro «Informazioni»: cinque voci nell'ordine fisso.
   const workspaceAccess = await access.getWorkspaceAccessForUser(ids.builder, ids.ws);
   assert.ok(workspaceAccess);

@@ -58,13 +58,15 @@ test("il tono colora solo l'icona; niente pillola, bordo o puntino, nessuna clas
   assert.doesNotMatch(source, /rounded-full|PhasePill|phase-pill|StatusDot/);
 });
 
-test("il chip corto arriva anche nella lista di «Priorità»: hub → PriorityView → PriorityList", () => {
+test("il chip corto arriva nelle card della Panoramica: hub → PanoramaLanes → LaneCard", () => {
   const flat = (file: string) => readFileSync(new URL(file, import.meta.url), "utf8").replace(/\s+/g, " ");
   const hub = flat("./hub.tsx");
-  const priorityView = hub.slice(hub.indexOf("<PriorityView "), hub.indexOf("/>", hub.indexOf("<PriorityView ")));
-  assert.match(priorityView, /\binfo=\{data\.info\}/);
-  const view = flat("./priority-view.tsx");
-  const list = view.slice(view.indexOf("<PriorityList "), view.indexOf("/>", view.indexOf("<PriorityList ")));
-  assert.match(list, /\binfo=\{info\}/);
-  assert.match(view, /info = null,? \}: PriorityViewProps/);
+  const lanes = hub.slice(hub.indexOf("<PanoramaLanes "), hub.indexOf("/>", hub.indexOf("<PanoramaLanes ")));
+  assert.match(lanes, /\binfo=\{data\.info\}/);
+  const view = flat("./panorama-lanes.tsx");
+  const cards = [...view.matchAll(/<LaneCard [^>]*?\/>/g)].map((match) => match[0]);
+  assert.equal(cards.length, 3, "corsie, «In realizzazione» e «Realizzati»");
+  for (const card of cards) assert.match(card, /\binfo=\{infoOf\(/, card);
+  assert.match(view, /const infoOf = \(id: string\) => info\?\.\[id\.toLowerCase\(\)\] \?\? null;/);
+  assert.match(flat("./lane-card.tsx"), /<InfoChip view=\{info\} variant="short" className="flex" \/>/);
 });
