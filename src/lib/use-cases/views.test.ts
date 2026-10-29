@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { COST_BANDS, DEFAULT_COST_BANDS_CONFIG } from "./cost-bands.ts";
 import type { ContributorUseCase, UseCaseViewer } from "./permissions.ts";
 import type { ValuationModel } from "./valuation.ts";
+import { DEFAULT_VALUE_PARAMS, valueModelSchema } from "./value-model.ts";
 import {
   EXPORT_COLUMNS,
   HUB_PARAM_KEYS,
@@ -25,6 +26,7 @@ import {
   matchesSearch,
   monthLabel,
   parseHubParams,
+  pendingValueTotal,
   projectHubItem,
   projectUseCaseDetail,
   roadmapGroupKey,
@@ -754,6 +756,41 @@ test("cifre della Roadmap: «su N use case · M da fascia», quota delle origini
   assert.equal(totalsNote(9), "su 9 use case");
   assert.equal(totalsNote(7, 2), "su 7 use case · 2 da fascia");
   assert.equal(shareLabel({ adoption: 60, transformation: 40 }), "AI Adoption 60% · AI Transformation 40%");
+});
+
+test("«fino a» della Panoramica: i «da misurare» delle card approvate e in realizzazione con un modello; null senza", () => {
+  const ctx: HubContext = { ...CTX, valueParams: { ...DEFAULT_VALUE_PARAMS, originMonth: "2026-10" } };
+  // Solo da misurare: «da misurare · fino a 1.200 €».
+  const onlyPending = valueModelSchema.parse({
+    v: 1,
+    primary: "ricavi",
+    components: [{ key: "ricavi", lever: "ricavi", label: "Più preventivi chiusi", kind: "euro", eurYear: 1_200, confidence: "da_misurare" }],
+  });
+  // Contato, con una parte da misurare: 535 € contati, 2.000 € fuori dal totale.
+  const partly = valueModelSchema.parse({
+    v: 1,
+    primary: "costi",
+    components: [
+      { key: "costi", lever: "costi", label: "Meno licenze", kind: "euro", eurYear: 535, confidence: "ipotesi" },
+      { key: "ricavi", lever: "ricavi", label: "Più rinnovi", kind: "euro", eurYear: 2_000, confidence: "da_misurare" },
+    ],
+  });
+  const approved = item({ status: "accepted", targetQuarter: "2026-Q4", valueModel: onlyPending }, ctx);
+  const building = item({ status: "in_progress", valueModel: partly }, ctx);
+  assert.equal(approved.value.benefits?.state, "da_misurare");
+  assert.equal(building.value.benefits?.state, "contato");
+  const ignored = [
+    item({ valueModel: onlyPending }, ctx),
+    item({ status: "implemented", valueModel: partly }, ctx),
+    item({ status: "accepted", valueEurYear: 5_000 }, ctx),
+  ];
+  assert.deepEqual(pendingValueTotal([approved, building, ...ignored]), { amountEur: 3_200, count: 2, note: "su 2 use case" });
+  assert.equal(pendingValueTotal(ignored), null, "da valutare, realizzate e senza modello non contano");
+  assert.equal(pendingValueTotal([]), null);
+  // Il workspace conta anche le voci da misurare: non ne resta nessuna.
+  const counted: HubContext = { ...ctx, valueParams: { ...DEFAULT_VALUE_PARAMS, originMonth: "2026-10", includeUnmeasured: true } };
+  const all = [item({ status: "accepted", valueModel: onlyPending }, counted), item({ status: "in_progress", valueModel: partly }, counted)];
+  assert.equal(pendingValueTotal(all), null);
 });
 
 // ─── Proiezione e scheda dei revisori ────────────────────────────────

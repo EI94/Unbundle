@@ -21,7 +21,9 @@ const { registerHooks } = nodeModule as unknown as {
 // - «Cosa serve»: la sua vista, solo per i revisori, ultima nel selettore: i requisiti per area (le
 //   righe a posto chiuse, «Per N use case» chiuso), i prossimi passi per mese (i fatti chiusi), «Cosa
 //   vi chiediamo questo trimestre» chiuso, una riga per gli use case in realizzazione con la
-//   Panoramica. Con un filtro, le esigenze degli use case che lo passano. La Panoramica non le ha.
+//   Panoramica. Con un filtro, le esigenze degli use case che lo passano. La Panoramica non le
+//   mostra: ne conta i requisiti per «Prossimo passo» (quelli degli use case approvati per questo
+//   trimestre, ognuno una volta), in un workspace a parte.
 // - Il pannello: al massimo tre esigenze aperte, le altre nella scheda.
 // - La scheda: il capitolo «Cosa serve» con la modifica; le action scrivono solo per i revisori.
 // - Chi non è revisore non riceve esigenze da nessuna parte: pagina, pannello, scheda, action.
@@ -73,6 +75,8 @@ const ids = {
   wsEmpty: randomUUID(),
   /** Un altro workspace con un'esigenza sua. */
   wsOther: randomUUID(),
+  /** «Prossimo passo» della Panoramica: due use case di questo trimestre e i loro requisiti. */
+  wsStart: randomUUID(),
   ls: randomUUID(),
   builder: randomUUID(),
   manager: randomUUID(),
@@ -117,10 +121,19 @@ const T = {
   foreign: `Esigenza di un altro workspace ${suffix}`,
 };
 
+/** Le esigenze del workspace di «Prossimo passo». */
+const START = {
+  shared: `Accesso alla posta delle fatture ${suffix}`,
+  blocked: `Contratto con il fornitore ${suffix}`,
+  progress: `Estratto dei pagamenti ${suffix}`,
+  next: `Regole di riconciliazione ${suffix}`,
+};
+
 const codeBase = 40_000 + Math.floor(Math.random() * 50_000);
 let codeSeq = 0;
 const cards = {} as Record<"quarter" | "proposed" | "progress" | "empty" | "own", { id: string; code: string }>;
 const needIds = {} as Record<keyof typeof T, string>;
+const startCards = {} as Record<"a" | "b" | "progress" | "next" | "proposed", { id: string; code: string }>;
 let today = "";
 let dueSoon = "";
 
@@ -159,6 +172,13 @@ const revalidated = (): string[] => [...(state.__hubServeRevalidated ?? [])];
 
 function signIn(person: Person | null): void {
   state.__hubServeSession = person ? { user: { id: ids[person], email: emails[person], emailVerified: true, name: `Persona ${person}`, image: null } } : null;
+}
+
+/** I pulsanti pieni della pagina: `[data-slot=button]` con la classe `bg-primary` (§5.7). */
+function filledButtons(page: string): string[] {
+  return [...page.matchAll(/<(?:a|button)\b[^>]*>/g)]
+    .map(([tag]) => tag)
+    .filter((tag) => tag.includes('data-slot="button"') && (/class="([^"]*)"/.exec(tag)?.[1].split(/\s+/) ?? []).includes("bg-primary"));
 }
 
 /** L'HTML con le entità più comuni tolte, per cercare i testi come si leggono. */
@@ -289,7 +309,7 @@ before(async () => {
   due.setUTCDate(due.getUTCDate() + 20);
   dueSoon = due.toISOString().slice(0, 10);
 
-  process.env.USE_CASE_HUB_WORKSPACES = [ids.ws, ids.wsEmpty, ids.wsOther].join(",");
+  process.env.USE_CASE_HUB_WORKSPACES = [ids.ws, ids.wsEmpty, ids.wsOther, ids.wsStart].join(",");
   process.env.UC_LS_EMAIL_DOMAINS = "ls.test";
   delete process.env.UC_ENABLED;
   delete process.env.UC_WORKSPACE_IDS;
@@ -301,9 +321,10 @@ before(async () => {
     ids.wsOther,
     ids.org,
   ]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Prova prossimo passo')`, [ids.wsStart, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
-    for (const workspaceId of [ids.ws, ids.wsEmpty, ids.wsOther]) {
+    for (const workspaceId of [ids.ws, ids.wsEmpty, ids.wsOther, ids.wsStart]) {
       await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [workspaceId, ids[person], ROLES[person]]);
     }
   }
@@ -328,6 +349,22 @@ before(async () => {
   await create("archived", { type: "requisito", kind: "accesso" });
   ok(await svc.archiveNeed(as("ls"), needIds.archived, 1, "Non serve più"));
   await create("foreign", { type: "requisito", kind: "accesso" }, [foreignCard.id], ids.wsOther);
+
+  // «Prossimo passo»: due use case approvati per questo trimestre con un requisito in comune e uno
+  // bloccato; uno già partito e uno del trimestre dopo, con i loro requisiti, che non contano; una
+  // proposta da decidere, che viene dopo i requisiti.
+  const thisQuarter = quarter.currentQuarter();
+  startCards.a = await seed({ workspaceId: ids.wsStart, title: `LIBRA L1 · Fatture estere ${suffix}`, targetQuarter: thisQuarter });
+  startCards.b = await seed({ workspaceId: ids.wsStart, title: `LIBRA L2 · Pagamenti ${suffix}`, targetQuarter: thisQuarter });
+  startCards.progress = await seed({ workspaceId: ids.wsStart, title: `ORSA O1 · Solleciti ${suffix}`, status: "in_progress", targetQuarter: thisQuarter });
+  startCards.next = await seed({ workspaceId: ids.wsStart, title: `ORSA O2 · Riconciliazione ${suffix}`, targetQuarter: quarter.nextQuarter(thisQuarter) });
+  startCards.proposed = await seed({ workspaceId: ids.wsStart, title: `Proposta da decidere ${suffix}`, status: "proposed", review: "in_review" });
+  const startNeed = async (title: string, input: Record<string, unknown>, useCaseIds: string[]) =>
+    ok(await svc.createNeed(as("ls", ids.wsStart), { type: "requisito", title, ...input }, { useCaseIds }), title);
+  await startNeed(START.shared, { kind: "accesso", ownerSide: "cliente" }, [startCards.a.id, startCards.b.id]);
+  await startNeed(START.blocked, { kind: "contratto", ownerSide: "lateral_space", status: "bloccata" }, [startCards.b.id]);
+  await startNeed(START.progress, { kind: "dato" }, [startCards.progress.id]);
+  await startNeed(START.next, { kind: "regola" }, [startCards.next.id]);
 });
 
 beforeEach(() => {
@@ -341,7 +378,7 @@ after(async () => {
     else process.env[key] = value;
   }
   if (!enabled) return;
-  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.ws, ids.wsEmpty, ids.wsOther]]);
+  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.ws, ids.wsEmpty, ids.wsOther, ids.wsStart]]);
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [Object.keys(emails).map((person) => ids[person as Person])]);
   await q(`DELETE FROM organizations WHERE id = $1::uuid`, [ids.org]);
 });
@@ -450,6 +487,54 @@ test("Cosa serve: la sua vista, non nella Panoramica né nei vecchi link; senza 
   assert.ok(!empty.includes('data-slot="needs-requirements"') && !empty.includes('data-slot="needs-quarter"'), "nessun blocco vuoto");
   const overview = await hubHtml("builder", ids.ws, { vista: "panoramica" });
   assert.ok(!overview.includes('data-slot="needs-board"'), "solo nella sua vista");
+});
+
+test("Panoramica: il prossimo passo conta i requisiti degli use case di questo trimestre", opts, async () => {
+  const quarter = await import("./quarter.ts");
+  const thisQuarter = quarter.currentQuarter();
+  const sentence = `Per partire con il ${quarter.quarterLabel(thisQuarter)} servono ancora 2 requisiti: 1 è da chiedere e 1 è bloccato.`;
+  const href = `/dashboard/${ids.wsStart}/use-cases?vista=cosa-serve&trimestre=${thisQuarter}`;
+  for (const person of REVIEWERS) {
+    const page = await hubHtml(person, ids.wsStart, { vista: "panoramica" });
+    const box = between(page, 'data-slot="next-step"', "</section>");
+    assert.ok(box.includes(">Prossimo passo</h2>"), person);
+    // Il requisito in comune una volta, il bloccato anche se è di Lateral Space; non quelli dello use
+    // case già partito né del trimestre dopo; i requisiti prima della proposta da decidere.
+    assert.ok(box.includes(`<p class="text-sm">${sentence}</p>`), `${person}: ${box}`);
+    assert.match(box, new RegExp(`<a [^>]*href="${href.replace(/[?]/g, "\\?")}"[^>]*>Vedi cosa serve</a>`), person);
+    // Il solo pulsante pieno è il suo; «Nuovo use case» è bordato.
+    const filled = filledButtons(page);
+    assert.equal(filled.length, 1, person);
+    assert.ok(filled[0].includes(`href="${href}"`), filled[0]);
+    const header = between(page, 'data-slot="hub-header"', "</header>");
+    const newUseCase = [...header.matchAll(/<a\b[^>]*>/g)].map(([tag]) => tag).find((tag) => /href="[^"]*(?:nuovo=1|\/use-cases\/nuovo)"/.test(tag));
+    assert.ok(newUseCase && !/class="[^"]*\bbg-primary\b/.test(newUseCase), `${person}: «Nuovo use case» bordato`);
+    // La Panoramica conta le esigenze ma non le mostra.
+    assert.ok(!page.includes('data-slot="needs-board"'), person);
+    for (const title of Object.values(START)) assert.ok(!page.includes(title), `${person}: ${title}`);
+  }
+  // Lo sponsor del cliente (gestore) vede le cifre: i due use case di questo trimestre.
+  const manager = await hubHtml("manager", ids.wsStart, { vista: "panoramica" });
+  assert.ok(manager.includes('data-slot="overview-figures"'));
+  assert.match(manager, /data-figure="totale-trimestre"[^>]*><p[^>]*><span class="whitespace-nowrap">2<\/span><\/p><p class="text-sm">use case in questo trimestre</);
+  // Il link porta a «Cosa serve» del trimestre: proprio i requisiti contati, non gli altri.
+  const target = await hubHtml("builder", ids.wsStart, { vista: "cosa-serve", trimestre: thisQuarter });
+  assert.ok(target.includes(START.shared) && target.includes(START.blocked));
+  assert.ok(!target.includes(START.progress) && !target.includes(START.next));
+  // Con un filtro il riquadro non c'è: dice tutto il workspace.
+  const filtered = await hubHtml("builder", ids.wsStart, { vista: "panoramica", agente: "LIBRA" });
+  assert.ok(!filtered.includes('data-slot="next-step"') && filtered.includes('data-slot="phase-strip"'));
+  // Il contributore: le fasi, nessun riquadro, nessuna esigenza.
+  const contributor = await hubHtml("contributor", ids.wsStart, { vista: "panoramica" });
+  assert.ok(contributor.includes('data-slot="phase-strip"'));
+  for (const text of ['data-slot="next-step"', 'data-slot="overview-figures"', "Per partire con", "requisit", ...Object.values(START)]) {
+    assert.ok(!contributor.includes(text), `contributore: «${text}»`);
+  }
+  const { data } = await hubTree("contributor", ids.wsStart, { vista: "panoramica" });
+  assert.equal(data.needs, null);
+  // I revisori le leggono sulle corsie, non con un grafico del menu «⋯».
+  assert.ok((await hubTree("builder", ids.wsStart, { vista: "panoramica" })).data.needs?.length);
+  assert.equal((await hubTree("builder", ids.wsStart, { vista: "panoramica", mostra: "matrice" })).data.needs, null);
 });
 
 test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai le card dei dossier qui", opts, () => {

@@ -21,6 +21,7 @@ import { INFO_PROGRESS_PARAM, type InfoProgressState, type InfoProgressView } fr
 import { channelLabel } from "@/lib/use-cases/labels";
 import { laneBarScale, PANORAMA_SECTION_ID } from "@/lib/use-cases/lanes";
 import { buildNeedsBoard, panelNeeds, type NeedView } from "@/lib/use-cases/needs";
+import { overviewFigures, overviewNextStep, overviewSteps, portfolioLine } from "@/lib/use-cases/panoramica";
 import { abilitiesForUseCase, type UseCaseAbilities } from "@/lib/use-cases/permissions";
 import { compareQuarters, quarterLabel, WHEN_LATER_LABEL } from "@/lib/use-cases/quarter";
 import { USE_CASE_SOURCES } from "@/lib/use-cases/types";
@@ -33,7 +34,6 @@ import {
   hasActiveFilters,
   isContributorItem,
   parseHubParams,
-  roadmapTotals,
   shownChart,
   type AnyHubItem,
   type HubChartParam,
@@ -52,17 +52,18 @@ import { NeedsBoardView } from "./needs-board";
 import { EmptyState, HUB_TEXT, HubHeader, HubNotice, receiptText } from "./hub-header";
 import { ListFocusTarget } from "./list-focus";
 import { LANES_TEXT, PanoramaLanes, type LanesGrouping } from "./panorama-lanes";
+import { PanoramicaTop } from "./panoramica-top";
 import { PRIORITY_TEXT, PriorityView } from "./priority-view";
 import { QuickCreateSheet } from "./quick-create-sheet";
-import { RoadmapTiles } from "./roadmap-tiles";
 import { RoadmapValueCharts } from "./roadmap-value";
 import { UseCasePanel, type UseCasePanelData } from "./use-case-panel";
 import { hubHref, panelHref, withoutTransient, type HubQuery } from "./use-case-row";
 
 /**
  * La pagina «Use case» con l'area accesa (docs/use-case/DESIGN.md §4; PIANO-LAVORI H4a): testata,
- * le tre viste «Panoramica», «Da decidere» e «Cosa serve», i filtri, il pannello laterale
- * (`?apri=`) e il pannello rapido di «Nuovo use case» (`?nuovo=1`, solo Lateral Space).
+ * le tre viste «Panoramica» (in testa fasi, cifre e «Prossimo passo», poi le corsie), «Da decidere»
+ * e «Cosa serve», i filtri, il pannello laterale (`?apri=`) e il pannello rapido di «Nuovo use
+ * case» (`?nuovo=1`, solo Lateral Space).
  *
  * `loadUseCaseHub` legge tutto sul server, in una volta: la lista già proiettata per chi guarda
  * (`listHubItems`, una query; i contributori ricevono `ContributorUseCase` e nient'altro, D4 e
@@ -112,7 +113,8 @@ export interface UseCaseHubData {
   dossierColumn: DossierColumn | null;
   /**
    * «Cosa serve» (`listWorkspaceNeeds`): le esigenze non archiviate del workspace, solo per un
-   * revisore nella vista «Cosa serve» o con il pannello aperto; null altrimenti. Ai contributori mai.
+   * revisore nella vista «Cosa serve», con il pannello aperto e anche sulla Panoramica, per
+   * «Prossimo passo» (sulle corsie, non con un grafico); null altrimenti. Ai contributori mai.
    */
   needs: NeedView[] | null;
   /**
@@ -167,8 +169,9 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     reviewer && lanes && list.dossierRead === "ok"
       ? (items as readonly HubItem[]).filter((item) => item.phase === "in_realizzazione" && item.dossier).map((item) => item.id)
       : [];
-  // «Cosa serve»: le esigenze del workspace per la sua vista e per il pannello, solo ai revisori.
-  const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "cosa-serve" || Boolean(params.apri));
+  // «Cosa serve»: le esigenze del workspace per la sua vista, per il pannello e per «Prossimo passo»
+  // della Panoramica, solo ai revisori.
+  const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "cosa-serve" || lanes || Boolean(params.apri));
   const [dossierColumn, participation, subprocessorsPending, needs, info] = await Promise.all([
     inProgress.length ? dossierColumnOf(workspaceId, { userId: session.user.id, role: access.role }, inProgress) : null,
     view === "da-decidere" ? getPortfolioParticipation(workspaceId) : null,
@@ -356,10 +359,32 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
       : null;
   // Una card di «Per agente»: le corsie del solo agente, con l'ancora che le porta in vista e dà loro il fuoco.
   const agentHref = (param: string) => `${hubHref(basePath, navQuery, { mostra: null, agente: param })}#${PANORAMA_SECTION_ID.approvati}`;
-  // Provvisorio: le cifre e la curva di oggi, finché arrivano la testa della Panoramica e «Curva del valore» nel menu.
-  // Solo sopra le corsie: le altre viste non le calcolano.
+  // Provvisorio: la curva di oggi sopra le corsie, finché «Curva del valore» va nel menu «⋯».
+  // Solo sopra le corsie: le altre viste non la calcolano.
   const figureItems = reviewer && abilities.canSeeFigures && view === "panoramica" && !chart ? (filtered as HubItem[]) : null;
   const roadmapValue = figureItems && valueParams ? buildRoadmapValue(figureItems, valueParams, { plan: roadmapPlan(reviewerItems, valueParams) }) : null;
+
+  // La testa della Panoramica (solo con le corsie): fasi e cifre seguono i filtri, come le corsie;
+  // «Su tutto il portafoglio» e «Prossimo passo» dicono tutto il workspace e con un filtro non ci sono.
+  const overview =
+    view === "panoramica" && !chart && filtered.length > 0
+      ? {
+          steps: overviewSteps(filtered, { reviewer, decide: decideCount(decideItems) }),
+          figures: reviewer && abilities.canSeeFigures ? overviewFigures(filtered as HubItem[], list.today) : null,
+          line:
+            reviewer && abilities.canSeeFigures && !filtersActive && valueParams
+              ? portfolioLine(buildRoadmapValue(reviewerItems, valueParams, { plan: roadmapPlan(reviewerItems, valueParams) }))
+              : null,
+          nextStep: reviewer && !filtersActive ? overviewNextStep({ items: reviewerItems, needs: data.needs, today: list.today }) : null,
+        }
+      : null;
+  // Dove porta «Prossimo passo», senza i filtri di adesso: la vista mostra proprio quello che si è contato.
+  const nextStep = overview?.nextStep ?? null;
+  const nextStepHref = nextStep
+    ? nextStep.kind === "decisioni"
+      ? hubHref(basePath, {}, { vista: "da-decidere" })
+      : hubHref(basePath, {}, { vista: "cosa-serve", trimestre: nextStep.quarter })
+    : null;
 
   // «Cosa serve»: tutte le esigenze del workspace; con un filtro quelle degli use case che lo
   // passano (e quelle con la ricerca nel titolo). I codici in «Per» restano quelli di tutte le schede.
@@ -409,6 +434,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
         <HubHeader
           workspaceId={workspaceId}
           newHref={newHref}
+          newUseCaseVariant={nextStep ? "outline" : "default"}
           menu={
             abilities.canExport && data.activityMapping
               ? {
@@ -473,7 +499,16 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
             // Il titolo per i lettori di schermo prende il fuoco dopo «‹ Torna alla Panoramica».
             <div data-slot="panoramica" className="space-y-6">
               <ListFocusTarget title={HUB_TEXT.overviewView} />
-              {figureItems ? <RoadmapTiles totals={roadmapTotals(figureItems)} value={roadmapValue} /> : null}
+              {overview ? (
+                <PanoramicaTop
+                  steps={overview.steps}
+                  reviewer={reviewer}
+                  decideHref={viewHref("da-decidere")}
+                  figures={overview.figures}
+                  line={overview.line}
+                  nextStep={nextStep && nextStepHref ? { step: nextStep, href: nextStepHref } : null}
+                />
+              ) : null}
               {roadmapValue && valueParams && figureItems ? (
                 <RoadmapValueCharts
                   value={roadmapValue}

@@ -8,6 +8,7 @@ import {
   monthAt,
   monthIndex,
   monthLabel,
+  monthLongLabel,
   planMonths,
   quarterFirstMonth,
   quarterOfMonth,
@@ -219,6 +220,11 @@ test("mesi: indice, mese dopo e prima, etichetta italiana, trimestri", () => {
     ["gen 27", "feb 27", "mar 27", "apr 27", "mag 27", "giu 27", "lug 27", "ago 27", "set 27", "ott 27", "nov 27", "dic 27"],
   );
   assert.equal(monthLabel("2030-03"), "mar 30");
+  // Per esteso, nella riga «Su tutto il portafoglio» della Panoramica.
+  assert.equal(monthLongLabel("2027-08"), "agosto 2027");
+  assert.equal(monthLongLabel("2026-01"), "gennaio 2026");
+  assert.equal(monthLongLabel("2028-10"), "ottobre 2028");
+  assert.throws(() => monthLongLabel("2027-13"), RangeError);
   assert.equal(quarterFirstMonth("2027-Q2"), "2027-04");
   assert.equal(quarterOfMonth("2026-11"), "2026-Q4");
   assert.equal(quarterOfMonth("2027-03"), "2027-Q1");

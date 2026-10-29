@@ -389,15 +389,23 @@ test("bolle: con «Benefici e costi» nel workspace e un filtro che li esclude, 
 
 // ─── La Panoramica (la Roadmap di prima) ─────────────────────────────
 
-test("Panoramica: quattro cifre, J-curve con entrata in uso e pareggio, «Valore per tipo di ritorno», «Ipotesi di calcolo»", opts, async () => {
+test("Panoramica: quattro cifre, «Su tutto il portafoglio», J-curve con entrata in uso e pareggio, «Valore per tipo di ritorno», «Ipotesi di calcolo»", opts, async () => {
   for (const person of ["ls", "builder", "manager"] as const) {
     const page = await html(person, ids.wsV, { vista: "panoramica" });
     assert.ok(page.includes('data-slot="roadmap-value"'), person);
-    // 115,5 h + 62,4 h = 177,9 h; FIX_A + FIX_B: pareggio al mese 5 da nov 26, «apr 27».
-    assert.match(tileOf(page, "ore"), /Ore liberate all&#x27;anno\s+178 ore\s+su 2 use case/, person);
-    assert.match(tileOf(page, "pareggio"), /Pareggio\s+apr 27\s+su 2 use case/, person);
+    // 115,5 h + 62,4 h = 177,9 h; FIX_A + FIX_B: pareggio al mese 5 da nov 26, aprile 2027. Una riga
+    // sotto le cifre, al posto delle due cifre di prima.
+    assert.match(
+      page,
+      /<p data-slot="portfolio-line" class="text-sm text-muted-foreground">Su tutto il portafoglio: 178 ore liberate all&#x27;anno, pareggio previsto ad aprile 2027\.<\/p>/,
+      person,
+    );
+    assert.ok(!page.includes('data-figure="totale-ore"') && !page.includes('data-figure="totale-pareggio"'), person);
     assert.ok(page.includes('data-figure="totale-valore"') && page.includes('data-figure="totale-costo"'), person);
-    assert.match(page, /lg:grid-cols-4/, `${person}: quattro cifre`);
+    // B è in realizzazione: i suoi 1.680 € da misurare, fuori dal valore contato.
+    assert.match(tileOf(page, "da-misurare"), /fino a\s+1\.680 €\s+valore da misurare all&#x27;anno\s+su 1 use case/, person);
+    assert.match(tileOf(page, "trimestre"), /1\s+use case in questo trimestre\s+T\d \d{4}/, person);
+    assert.match(page, /@3xl\/hub:grid-cols-4/, `${person}: quattro cifre`);
   }
 
   const page = await html("builder", ids.wsV, { vista: "panoramica" });
@@ -446,7 +454,16 @@ test("senza modelli: nel menu solo «Matrice Valore × Costo» e le cifre di ogg
   assert.ok(!forced.includes("Ipotesi di calcolo"));
   const roadmap = await html("builder", ids.wsN, { vista: "panoramica" });
   assert.ok(roadmap.includes('data-figure="totale-valore"'));
-  for (const text of ['data-slot="roadmap-value"', 'data-figure="totale-ore"', 'data-figure="totale-pareggio"', "value-jcurve", "value-by-lever", "Ipotesi di calcolo"]) {
+  for (const text of [
+    'data-slot="roadmap-value"',
+    'data-slot="portfolio-line"',
+    'data-figure="totale-da-misurare"',
+    'data-figure="totale-ore"',
+    'data-figure="totale-pareggio"',
+    "value-jcurve",
+    "value-by-lever",
+    "Ipotesi di calcolo",
+  ]) {
     assert.ok(!roadmap.includes(text), `senza modelli: niente ${text}`);
   }
 });

@@ -251,6 +251,14 @@ export function monthLabel(month: string): string {
   return `${MONTH_SHORT_IT[m - 1]} ${String(year % 100).padStart(2, "0")}`;
 }
 
+const MONTH_LONG_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"] as const;
+
+/** «agosto 2027». */
+export function monthLongLabel(month: string): string {
+  const { year, month: m } = monthParts(month);
+  return `${MONTH_LONG_IT[m - 1]} ${year}`;
+}
+
 /** Primo mese di un trimestre: `2027-Q2` → `2027-04`. */
 export function quarterFirstMonth(quarter: string): MonthCode {
   const parsed = parseQuarter(quarter);

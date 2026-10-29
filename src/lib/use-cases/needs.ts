@@ -14,6 +14,9 @@
  *   «Cosa serve», il blocco del pannello e il capitolo della scheda, da un elenco già letto per i
  *   revisori. Nessun conteggio e nessun filtro per persona: «Chi» è un testo della riga, mai un
  *   criterio.
+ * - **Conteggi** (`NeedAskCounts`): i requisiti per gruppo di stato, come «Raccolta informazioni»
+ *   della scheda: da chiedere (da chiedere, manca il dato, risposta parziale), in attesa, da
+ *   verificare, bloccati, a posto. Sempre di esigenze, mai di persone, mai per «Chi» o per parte.
  *
  * Le esigenze non si cancellano: si archiviano. Le letture le portano solo ai revisori.
  * Modulo puro: import relativi `.ts` e `zod`; si usa anche nei componenti client.
@@ -642,6 +645,62 @@ export function needAlsoForText(count: number): string {
 
 export function isBoardEmpty(board: NeedsBoard): boolean {
   return !board.areas.length && !board.steps.length && !board.stepsDone.length && !board.quarter.length;
+}
+
+// ─── Conteggi dei requisiti ──────────────────────────────────────────
+
+/** I requisiti per gruppo di stato; `open` tutti tranne quelli a posto. Conteggi di esigenze, mai di persone. */
+export interface NeedAskCounts {
+  open: number;
+  toAsk: number;
+  waiting: number;
+  toVerify: number;
+  blocked: number;
+  done: number;
+}
+
+/** Il gruppo di ogni stato di un requisito; «a posto» è `isNeedDone`. */
+const ASK_GROUP_OF: Readonly<Record<ItemStatus, Exclude<keyof NeedAskCounts, "open">>> = {
+  da_chiedere: "toAsk",
+  mancante: "toAsk",
+  parziale: "toAsk",
+  chiesta: "waiting",
+  in_verifica: "toVerify",
+  bloccata: "blocked",
+  validata: "done",
+  non_applicabile: "done",
+};
+
+export function emptyNeedAskCounts(): NeedAskCounts {
+  return { open: 0, toAsk: 0, waiting: 0, toVerify: 0, blocked: 0, done: 0 };
+}
+
+/** Un requisito nel suo gruppo. Uno stato sconosciuto vale «da chiedere», come in `needStatusView`. */
+function countRequirement(counts: NeedAskCounts, status: NeedStatus): void {
+  const group = (NEED_REQUIREMENT_STATUSES as readonly string[]).includes(status) ? ASK_GROUP_OF[status as ItemStatus] : "toAsk";
+  counts[group] += 1;
+  if (group !== "done") counts.open += 1;
+}
+
+/**
+ * I requisiti non archiviati collegati ad almeno uno degli use case di `useCaseIds` (id in
+ * minuscolo), per gruppo di stato. Ognuno una volta sola, anche se serve a più use case. Contano
+ * tutti, da qualunque parte stia chi se ne occupa: la parte e «Chi» non sono un criterio.
+ */
+export function needAskCountsOf(
+  needs: readonly Pick<NeedView, "id" | "type" | "status" | "archivedAt" | "useCaseIds">[],
+  useCaseIds: ReadonlySet<string>,
+): NeedAskCounts {
+  const counts = emptyNeedAskCounts();
+  const seen = new Set<string>();
+  for (const need of needs) {
+    if (need.type !== "requisito" || need.archivedAt) continue;
+    const id = need.id.toLowerCase();
+    if (seen.has(id) || !need.useCaseIds.some((linked) => useCaseIds.has(linked.toLowerCase()))) continue;
+    seen.add(id);
+    countRequirement(counts, need.status);
+  }
+  return counts;
 }
 
 // ─── Pannello e scheda ───────────────────────────────────────────────

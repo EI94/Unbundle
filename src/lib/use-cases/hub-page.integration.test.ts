@@ -28,6 +28,8 @@ const { registerHooks } = nodeModule as unknown as {
 //   costo basso, zone, cifre della Panoramica, etichette delle fasce ed export le usano.
 // - Il contributore: titolo, fase e «Quando», solo «Cerca per titolo», codice e nota pubblica
 //   delle sole proprie proposte; nessun «€», nessun `[data-figure]`.
+// - La testa della Panoramica: le fasi, le cifre ai revisori e «Prossimo passo» con il solo pulsante
+//   pieno («Nuovo use case» bordato); con un filtro solo fasi e cifre, ai contributori solo le fasi.
 // - Vuoti, filtri senza risultati, i grafici del menu «⋯», pannello laterale e pannello rapido.
 // - «Agente» (rilascio «Panoramica»): il workspace P ha titoli con il prefisso dell'agente
 //   («LIBRA L1 · …») e uno senza; il filtro è solo dei revisori. Le corsie della Panoramica con il
@@ -266,6 +268,21 @@ function filledButtons(page: string): number {
     const classes = /class="([^"]*)"/.exec(tag)?.[1].split(/\s+/) ?? [];
     return classes.includes("bg-primary");
   }).length;
+}
+
+/** Il tag `<a>` di «Nuovo use case» nella testata: il link al pannello rapido o al modulo completo. */
+function newUseCaseTag(page: string): string {
+  const header = page.slice(page.indexOf('data-slot="hub-header"'), page.indexOf("</header>"));
+  const tag = [...header.matchAll(/<a\b[^>]*>/g)].map(([found]) => found).find((found) => /href="[^"]*(?:nuovo=1|\/use-cases\/nuovo)"/.test(found));
+  assert.ok(tag, "«Nuovo use case» nella testata");
+  return tag;
+}
+
+/** Il pezzo di HTML da `data-slot="<slot>"` alla chiusura della sua `</section>`. */
+function sectionOf(page: string, slot: string): string {
+  const start = page.indexOf(`data-slot="${slot}"`);
+  assert.ok(start >= 0, slot);
+  return page.slice(start, page.indexOf("</section>", start));
 }
 
 /** La vista a schermo (`data-view` della pagina). */
@@ -568,7 +585,7 @@ test("«Cosa serve»: un solo pulsante pieno, «Tipo» è un filtro, niente matr
   assert.ok(!page.includes('data-slot="show-toggle"') && !page.includes('data-slot="chart-header"'), "nessun interruttore e nessun grafico");
 });
 
-test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido per Lateral Space), menu «⋯» solo ai revisori", opts, async () => {
+test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido per Lateral Space), bordato con «Prossimo passo»; menu «⋯» solo ai revisori", opts, async () => {
   const ls = await html("ls", ids.wsA);
   assert.match(ls, /<h1[^>]*>Use case<\/h1>/);
   assert.ok(ls.includes("Dal basso e dall&#x27;alto: quali use case realizzare e quando.") || ls.includes("Dal basso e dall'alto: quali use case realizzare e quando."));
@@ -582,6 +599,21 @@ test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido pe
   for (const page of [ls, builder, contributor]) {
     assert.equal(filledButtons(page), 1, "un solo pulsante pieno");
   }
+  // Nella Panoramica con «Prossimo passo» (in A ci sono proposte da decidere) il pulsante pieno è il
+  // suo: «Nuovo use case» resta, bordato.
+  for (const person of ["ls", "builder"] as const) {
+    const overview = await html(person, ids.wsA, { vista: "panoramica" });
+    assert.equal(filledButtons(overview), 1, `${person}: un solo pulsante pieno`);
+    const box = sectionOf(overview, "next-step");
+    assert.equal(filledButtons(box), 1, `${person}: il pulsante pieno è in «Prossimo passo»`);
+    assert.ok(box.includes("aspettano una decisione.") && box.includes("Vedi le proposte"), box);
+    assert.match(box, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=da-decidere"`));
+    const button = newUseCaseTag(overview);
+    assert.ok(!/class="[^"]*\bbg-primary\b/.test(button), `${person}: «Nuovo use case» bordato`);
+    assert.match(button, /class="[^"]*\bdark:border-input\b/);
+  }
+  // Senza riquadro (il contributore) «Nuovo use case» resta pieno.
+  assert.match(newUseCaseTag(await html("contributor", ids.wsA, { vista: "panoramica" })), /class="[^"]*\bbg-primary\b/);
 });
 
 // ─── Fasce del workspace (D15) ───────────────────────────────────────
@@ -628,16 +660,23 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
   assert.match(approved, /data-slot="when-control"/);
 });
 
-test("fasce del workspace: «Costo impegnato» con il riferimento della fascia, «su N use case · M da fascia»", opts, async () => {
+test("fasce del workspace: «costo di avvio» con il riferimento della fascia, «su N use case · M da fascia»", opts, async () => {
   const page = await html("builder", ids.wsA, { vista: "panoramica" });
+  const figures = sectionOf(page, "overview-figures");
   // 30.000 € (importo) + 40.000 € (seconda fascia del workspace); con le predefinite sarebbe 95.000 €.
-  assert.ok(page.includes("70.000 €"), "Costo impegnato");
-  assert.ok(page.includes("su 2 use case · 1 da fascia"));
+  const cost = figures.slice(figures.indexOf('data-figure="totale-costo"'));
+  assert.match(cost, /^data-figure="totale-costo"[^>]*><p[^>]*><span class="whitespace-nowrap">70\.000 €<\/span><\/p><p class="text-sm">costo di avvio<\/p><p[^>]*>su 2 use case · 1 da fascia</);
   // 50.000 € + 25.000 €, «su 2 use case».
-  assert.ok(page.includes("75.000 €"), "Valore atteso all'anno");
+  const value = figures.slice(figures.indexOf('data-figure="totale-valore"'));
+  assert.match(value, /^data-figure="totale-valore"[^>]*><p[^>]*><span class="whitespace-nowrap">75\.000 €<\/span><\/p><p class="text-sm">valore contato all&#x27;anno<\/p><p[^>]*>su 2 use case</);
   assert.ok(page.includes("su 2 use case<"));
-  assert.ok(page.includes("Valore atteso all&#x27;anno") || page.includes("Valore atteso all'anno"));
-  assert.ok(!page.includes("Valore misurato"), "il valore misurato non c'è ancora");
+  for (const text of ["Valore misurato", "Valore atteso all", "Costo impegnato"]) assert.ok(!page.includes(text), text);
+  // Le fasi: le proposte da decidere, gli approvati delle corsie (con lo scaduto e la best practice),
+  // quello in realizzazione e quello realizzato.
+  const strip = sectionOf(page, "phase-strip").replace(/^[^>]*>|<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  assert.match(strip, /^Da decidere \d+ → Approvati 4 → In realizzazione 1 → Realizzati 1$/);
+  // Lo use case di questo trimestre e lo scaduto, come nella corsia.
+  assert.match(figures, /data-figure="totale-trimestre"[^>]*><p[^>]*><span class="whitespace-nowrap">2<\/span><\/p><p class="text-sm">use case in questo trimestre</);
   // La card della Panoramica: l'avvio con la sua fonte e gli euro all'anno, senza parola né «Valore:» e «Costo:».
   const amount = rowOf(page, cards.amount.id);
   assert.ok(amount.includes("avvio 30.000 €"), amount);
@@ -838,6 +877,15 @@ test("filtri: origine, tipo e «Altri filtri» ai revisori; senza risultati «Ne
   assert.ok(transformation.includes(`data-id="${cards.band.id}"`));
   assert.ok(!transformation.includes(`data-id="${cards.amount.id}"`));
   assert.ok(transformation.includes("Togli i filtri"));
+  // Con un filtro le fasi e le cifre seguono il filtro; «Su tutto il portafoglio» e «Prossimo passo»
+  // dicono tutto il workspace e non ci sono: il pulsante pieno torna «Nuovo use case».
+  assert.ok(transformation.includes('data-slot="phase-strip"') && transformation.includes('data-slot="overview-figures"'));
+  assert.ok(!transformation.includes('data-slot="next-step"') && !transformation.includes('data-slot="portfolio-line"'));
+  assert.equal(filledButtons(transformation), 1);
+  assert.match(newUseCaseTag(transformation), /class="[^"]*\bbg-primary\b/);
+  // Nessuno use case con questi filtri: niente testa, solo il vuoto delle corsie.
+  const nothing = await html("ls", ids.wsA, { vista: "panoramica", q: "nessuna-corrispondenza" });
+  assert.ok(nothing.includes("Nessuno use case con questi filtri.") && !nothing.includes('data-slot="panoramica-top"'));
   const none = await html("ls", ids.wsA, { vista: "da-decidere", q: "nessuna-corrispondenza" });
   assert.ok(none.includes("Nessuno use case con questi filtri."));
   assert.match(none, /href="\/dashboard\/[^"]+\/use-cases\?vista=da-decidere"[^>]*>Togli i filtri</);
@@ -1032,7 +1080,15 @@ test("contributore: titolo, fase e «Quando»; solo «Cerca per titolo»; codice
   assert.ok(!(await html("ls", ids.wsA, { vista: "da-decidere" })).includes('data-slot="answer-notice"'));
   const overview = await html("contributor", ids.wsA, { vista: "panoramica" });
   assert.ok(overview.includes(cards.amount.title) && overview.includes("Approvato · T"));
-  assert.ok(!overview.includes("Costo impegnato"));
+  // In testa solo le fasi: «In valutazione» senza numero; né cifre, né riga, né «Prossimo passo».
+  const strip = sectionOf(overview, "phase-strip");
+  const evaluating = strip.slice(strip.indexOf('data-step="da_decidere"'), strip.indexOf("</li>", strip.indexOf('data-step="da_decidere"')));
+  assert.ok(evaluating.includes(">In valutazione<"), evaluating);
+  assert.ok(!evaluating.includes("tabular-nums") && !evaluating.includes("—"), "nessun numero su «In valutazione»");
+  for (const text of ['data-slot="overview-figures"', 'data-slot="next-step"', 'data-slot="portfolio-line"', "costo di avvio", "Su tutto il portafoglio", "Prossimo passo"]) {
+    assert.ok(!overview.includes(text), `contributore: «${text}»`);
+  }
+  assert.equal(filledButtons(overview), 1, "il pulsante pieno resta «Nuovo use case»");
   // La ricerca del contributore: il codice di una proposta altrui non trova nulla.
   assert.ok((await html("contributor", ids.wsA, { vista: "panoramica", q: cards.amount.code })).includes("Nessuno use case con questi filtri."));
   assert.ok((await html("contributor", ids.wsA, { vista: "da-decidere", q: cards.ownByEmail.code })).includes(cards.ownByEmail.title));
@@ -1171,7 +1227,9 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   assert.ok(zReviewer.includes("Nessuno use case, per ora"));
   assert.ok(zReviewer.includes("Aggiungine uno o proponili da Activity mapping."));
   assert.equal(filledButtons(zReviewer), 1, "un solo pulsante pieno anche nel vuoto");
-  assert.ok((await html("contributor", ids.wsZ)).includes("Proponi il primo use case."));
+  assert.ok(!zReviewer.includes('data-slot="panoramica-top"'), "nessuna testa senza use case");
+  const zContributor = await html("contributor", ids.wsZ);
+  assert.ok(zContributor.includes("Proponi il primo use case.") && !zContributor.includes('data-slot="panoramica-top"'));
 
   const eDecide = await html("ls", ids.wsE, { vista: "da-decidere" });
   assert.ok(eDecide.includes("Niente da decidere") && eDecide.includes("Le nuove proposte arrivano qui.") && eDecide.includes("Vai alla Panoramica"));

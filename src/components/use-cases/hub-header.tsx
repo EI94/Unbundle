@@ -47,15 +47,18 @@ export interface HubHeaderProps {
   newHref: string;
   /** Menu «⋯», solo revisori (§4.1): i grafici (matrici e curva del valore), «Esporta Excel», «Proponi da Activity mapping»; senza, non c'è. */
   menu: { exportHref: string; activityMapping: ActivityMappingState; mappingHref: string; charts: readonly HubMenuLink[] } | null;
+  /** «Nuovo use case» pieno (predefinito) o bordato: bordato quando la Panoramica ha «Prossimo passo». */
+  newUseCaseVariant?: "default" | "outline";
   children?: ReactNode;
 }
 
 /**
  * La testata della pagina (docs/use-case/DESIGN.md §4.1): H1 «Use case», il sottotitolo di una
- * riga, il solo pulsante pieno «Nuovo use case» (pannello rapido per Lateral Space, modulo
- * completo per gli altri, §5.1) e il menu «⋯» dei revisori. Sotto, le viste e i filtri.
+ * riga, il pulsante pieno «Nuovo use case», bordato nella Panoramica quando c'è «Prossimo passo»:
+ * un solo pulsante pieno per schermata (pannello rapido per Lateral Space, modulo completo per gli
+ * altri, §5.1), e il menu «⋯» dei revisori. Sotto, le viste e i filtri.
  */
-export function HubHeader({ workspaceId, newHref, menu, children }: HubHeaderProps) {
+export function HubHeader({ workspaceId, newHref, menu, newUseCaseVariant = "default", children }: HubHeaderProps) {
   return (
     <header data-slot="hub-header" className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
@@ -64,7 +67,7 @@ export function HubHeader({ workspaceId, newHref, menu, children }: HubHeaderPro
           <p className="text-sm text-muted-foreground">{HUB_TEXT.subtitle}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button className="min-h-11 sm:min-h-8" render={<Link href={newHref} scroll={false} />} nativeButton={false}>
+          <Button variant={newUseCaseVariant} className="min-h-11 sm:min-h-8" render={<Link href={newHref} scroll={false} />} nativeButton={false}>
             <Plus aria-hidden />
             {HUB_TEXT.newUseCase}
           </Button>

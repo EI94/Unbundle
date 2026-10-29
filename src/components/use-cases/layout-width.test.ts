@@ -36,6 +36,8 @@ test("la pagina «Use case» è un contenitore: righe, lista e tabelle guardano 
     ["src/components/use-cases/use-case-row.tsx", "@min-[58rem]/hub:"],
     ["src/components/use-cases/priority-list.tsx", "@min-[58rem]/hub:"],
     ["src/components/use-cases/diffuse-list.tsx", "@4xl/hub:"],
+    // La testa della Panoramica: le fasi in fila e «Prossimo passo» su una riga dal riquadro di 42rem.
+    ["src/components/use-cases/panoramica-top.tsx", "@2xl/hub:"],
   ] as const) {
     // Ogni stringa del file (className, cn(…), costanti delle classi).
     const classes = [...read(file).matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");

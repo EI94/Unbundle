@@ -1230,6 +1230,35 @@ export function roadmapTotals(items: readonly HubItem[]): RoadmapTotals {
   return { expectedValue, committedCost };
 }
 
+/** «fino a 23.400 €» in testa alla Panoramica (solo revisori). */
+export interface PendingValueTotal {
+  amountEur: number;
+  /** Su quanti use case è calcolata (solo quelli con una parte da misurare). */
+  count: number;
+  /** «su 9 use case». */
+  note: string;
+}
+
+/**
+ * «Valore da misurare all'anno» in testa alla Panoramica. Non è un conto nuovo: somma, sugli stessi
+ * use case di «Valore atteso all'anno» (Prossimi e In realizzazione), i «fino a X €» delle card, cioè
+ * gli euro delle voci da misurare di «Benefici e costi» (`value.benefits.pendingEur`), gli stessi
+ * delle parti tratteggiate di «Valore per tipo di ritorno». null senza use case con una parte da
+ * misurare, anche quando il workspace conta le voci da misurare (`includeUnmeasured`: lo zero).
+ */
+export function pendingValueTotal(items: readonly HubItem[]): PendingValueTotal | null {
+  let amountEur = 0;
+  let count = 0;
+  for (const item of items) {
+    if (item.phase !== "approvato" && item.phase !== "in_realizzazione") continue;
+    const pending = item.value.benefits?.pendingEur ?? 0;
+    if (!Number.isFinite(pending) || pending <= 0) continue;
+    amountEur += pending;
+    count += 1;
+  }
+  return count ? { amountEur, count, note: totalsNote(count) } : null;
+}
+
 // ═══ Export «Use case» (§4.1) ════════════════════════════════════════
 
 export const EXPORT_SHEET_NAME = "Use case";

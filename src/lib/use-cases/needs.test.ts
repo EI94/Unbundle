@@ -8,12 +8,15 @@ import {
   quarterAskSummaryText,
   NEED_AREAS,
   NEED_ERRORS,
+  NEED_REQUIREMENT_STATUSES,
   buildNeedsBoard,
   componentFormulaText,
+  emptyNeedAskCounts,
   isBoardEmpty,
   isNeedDone,
   monthHeading,
   needAreaOf,
+  needAskCountsOf,
   needDueText,
   needListsOfUseCase,
   needOwnerText,
@@ -325,4 +328,48 @@ test("i testi di «Cosa serve»: le schede del trimestre, «Per N use case», «
 test("una riga nomina solo gli use case che chi guarda conosce", () => {
   const board = buildNeedsBoard([need({ title: "Con uno sconosciuto", useCaseIds: [A, "eeeeeeee-0000-4000-8000-000000000005"] })], ITEMS, { today: TODAY, params: PARAMS });
   assert.equal(board.areas[0].open[0].useCases.length, 1);
+});
+
+test("conteggi dei requisiti: ognuno una volta, solo quelli degli use case scelti, per gruppo di stato", () => {
+  const set = new Set([A, B, C]);
+  // Una sola esigenza per tre use case: conta una volta.
+  assert.deepEqual(needAskCountsOf([need({ useCaseIds: [A, B, C] })], set), { ...emptyNeedAskCounts(), open: 1, toAsk: 1 });
+  // Solo fuori: no; dentro e fuori: sì.
+  const outside = "eeeeeeee-0000-4000-8000-000000000005";
+  assert.deepEqual(needAskCountsOf([need({ useCaseIds: [outside] }), need({ useCaseIds: [] })], set), emptyNeedAskCounts());
+  assert.equal(needAskCountsOf([need({ useCaseIds: [outside, B] })], set).toAsk, 1);
+  // Solo requisiti non archiviati; ogni parte conta (la parte non è un criterio).
+  const kinds = [
+    need({ type: "passo", status: "proposta", useCaseIds: [A] }),
+    need({ status: "bloccata", archivedAt: "2026-10-20T10:00:00.000Z", useCaseIds: [A] }),
+    ...(["cliente", "lateral_space", "fornitore", "insieme", null] as const).map((ownerSide) => need({ ownerSide, useCaseIds: [A] })),
+  ];
+  assert.deepEqual(needAskCountsOf(kinds, set), { ...emptyNeedAskCounts(), open: 5, toAsk: 5 });
+  // Gli stati nei gruppi di «Raccolta informazioni»; «aperti» tutti tranne quelli a posto.
+  const statuses = NEED_REQUIREMENT_STATUSES.map((status) => need({ status, useCaseIds: [A] }));
+  assert.deepEqual(needAskCountsOf(statuses, set), { open: 6, toAsk: 3, waiting: 1, toVerify: 1, blocked: 1, done: 2 });
+  for (const status of NEED_REQUIREMENT_STATUSES) {
+    const counts = needAskCountsOf([need({ status, useCaseIds: [A] })], set);
+    assert.equal(counts.done === 1, isNeedDone("requisito", status), `${status}: «a posto» come isNeedDone`);
+    assert.equal(counts.open === 1, !isNeedDone("requisito", status), status);
+  }
+  const group = (status: (typeof NEED_REQUIREMENT_STATUSES)[number]) => {
+    const counts = needAskCountsOf([need({ status, useCaseIds: [A] })], set);
+    return (Object.keys(counts) as Array<keyof typeof counts>).filter((key) => key !== "open" && counts[key] === 1);
+  };
+  const expected: Record<string, string> = {
+    da_chiedere: "toAsk",
+    mancante: "toAsk",
+    parziale: "toAsk",
+    chiesta: "waiting",
+    in_verifica: "toVerify",
+    bloccata: "blocked",
+    validata: "done",
+    non_applicabile: "done",
+  };
+  assert.deepEqual(Object.keys(expected).sort(), [...NEED_REQUIREMENT_STATUSES].sort());
+  for (const status of NEED_REQUIREMENT_STATUSES) assert.deepEqual(group(status), [expected[status]], status);
+  // Gli id senza maiuscole: lo use case e l'esigenza ripetuta.
+  const shared = need({ status: "bloccata", useCaseIds: [A.toUpperCase()] });
+  assert.deepEqual(needAskCountsOf([shared, { ...shared, id: shared.id.toUpperCase() }], set), { ...emptyNeedAskCounts(), open: 1, blocked: 1 });
 });

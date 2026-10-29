@@ -28,6 +28,7 @@ import { PLAN_SOURCE_LABEL } from "./mcp/output.ts";
 import { SAVED_NEED_ACTION_LABEL } from "./mcp/tools.ts";
 import * as needs from "./needs.ts";
 import * as needsHistory from "./needs-history.ts";
+import * as panoramica from "./panoramica.ts";
 import * as valueCharts from "./value-charts.ts";
 import * as valueModel from "./value-model.ts";
 import * as valueParamsForm from "./value-params-form.ts";
@@ -335,6 +336,8 @@ test("copy-guard verde sulle etichette dell'area", () => {
     lanes.laneSummaryText(3, 24_500),
     lanes.laneMoreLabel(1),
     lanes.laneMoreLabel(3),
+    // La testa della Panoramica: le chiavi e le ancore delle fasi (i testi nel componente).
+    ...exportedStrings(panoramica),
     ...Object.values(PHASE_LABEL),
     ...Object.values(SUB_STATE_LABEL),
     ...WHEN_CHOICES.map((choice) => quarter.whenChoiceLabel(choice, now)),
