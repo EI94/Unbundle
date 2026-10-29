@@ -10,6 +10,13 @@
 //    their `.js` file, as the bundler does.
 // 3. scripts/connettore-test/app-resolve.mjs, unchanged, maps `@/…` and extensionless
 //    relative paths under src/ to files.
+// 4. `@swc/helpers` resolves to its CommonJS copy. Since 0.5.23 (with Next 16.4) its
+//    "exports" map has a "module-sync" condition, so the CommonJS files of Next
+//    (`next/link`, `next/navigation`…) `require()` the ESM copy. Node 24.4 cannot do that
+//    for a CommonJS module imported from ESM once a load hook is registered (the `.tsx`
+//    hook of src/components/use-cases/detail/referent/tsx-test-loader.ts):
+//    `require` in esm/translators throws «Cannot read properties of undefined (reading
+//    'exports')». The two copies are the same helpers; Next's bundles are unaffected.
 // Nothing else changes: other package imports and explicit `.ts` paths resolve as usual.
 import { existsSync } from "node:fs";
 import { createRequire, registerHooks } from "node:module";
@@ -27,12 +34,19 @@ const emptyModuleUrl = pathToFileURL(emptyModule).href;
 // map, so Node's ESM resolver wants the file name (`next/navigation.js`), as the bundler
 // does not. Only extensionless subpaths of `next` are retried, and only after a miss.
 const NEXT_SUBPATH = /^next\/[a-z0-9-]+(\/[a-z0-9-]+)*$/;
+// `…/node_modules/@swc/helpers/esm/_name.js` → `…/cjs/_name.cjs` (point 4 above).
+const SWC_HELPERS_ESM = /^(file:\/\/.*\/node_modules\/@swc\/helpers\/)esm\/([^/]+)\.js$/;
+
+function commonJsSwcHelpers(resolved) {
+  const match = SWC_HELPERS_ESM.exec(resolved.url);
+  return match ? { url: `${match[1]}cjs/${match[2]}.cjs`, format: "commonjs", shortCircuit: true } : resolved;
+}
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === "server-only") return { url: emptyModuleUrl, shortCircuit: true };
     try {
-      return nextResolve(specifier, context);
+      return commonJsSwcHelpers(nextResolve(specifier, context));
     } catch (error) {
       if (error?.code !== "ERR_MODULE_NOT_FOUND" || !NEXT_SUBPATH.test(specifier)) throw error;
       return nextResolve(`${specifier}.js`, context);
