@@ -170,7 +170,7 @@ function figureTiles(figures: OverviewFigures): FigureTile[] {
  * 1. le fasi, «Da decidere 4 → Approvati 45 → In realizzazione 1 → Realizzati —»: «Da decidere» apre
  *    la sua vista, le altre la loro sezione; lo zero è un trattino («nessuno» per i lettori di
  *    schermo) e non porta da nessuna parte. Ai contributori «In valutazione», senza numero;
- * 2. per i revisori le cifre, la cifra prima delle parole («50.366 €», «valore contato all'anno», «su
+ * 2. per i revisori le cifre, la cifra prima delle parole («50.367 €», «valore contato all'anno», «su
  *    17 use case»), e sotto «Su tutto il portafoglio: …»;
  * 3. per i revisori «Prossimo passo», con una frase e il solo pulsante pieno della pagina (la testata
  *    rende «Nuovo use case» bordato).

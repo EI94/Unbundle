@@ -360,7 +360,8 @@ test("cifre della Panoramica: beneficio contato e avvio entrano nei totali", () 
   const b = item({ valueModel: FIX_B, status: "in_progress" });
   const words = item({ valueModel: WORDS_ONLY });
   const totals = roadmapTotals([a, b, words]);
-  near(totals.expectedValue?.amountEur, 4042.5 + 2719, "valore atteso");
+  // Le cifre delle card, arrotondate una a una: 4.043 € + 2.719 €.
+  assert.equal(totals.expectedValue?.amountEur, 4_043 + 2_719, "valore atteso");
   assert.equal(totals.expectedValue?.count, 2);
   assert.equal(totals.committedCost?.amountEur, 560 + 280);
   assert.equal(totals.committedCost?.fromBand, 0);

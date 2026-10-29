@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ValueParts } from "./format.ts";
+import { agentParamOf } from "./agents.ts";
+import { formatEuro, type ValueParts } from "./format.ts";
 import {
   LANE_BAR_MIN,
   LANE_KEYS,
@@ -10,8 +11,10 @@ import {
   agentGroups,
   buildLanes,
   compareLaneItems,
+  countedEurOf,
   laneBarScale,
   laneBarWidth,
+  laneCountedText,
   laneMoreLabel,
   laneSummaryText,
   laneValueAmount,
@@ -181,6 +184,7 @@ test("contributori: le stesse corsie per titolo, senza «Scaduto», trimestre a 
     assert.equal(lane.countedEurYear, null, lane.key);
     for (const entry of lane.entries) assert.deepEqual([entry.expired, entry.quarterNote], [false, null], entry.item.title);
   }
+  assert.equal(lanes.inProgressCountedEurYear, null);
 });
 
 test("testi della corsia: «1 use case · 12.250 € contati all'anno», «Mostra l'altro», «Mostra gli altri 4»", () => {
@@ -224,15 +228,72 @@ test("gli euro delle corsie e di «In realizzazione» sono il «Valore atteso al
     hub({ targetQuarter: "2026-Q4", value: counted(12_250) }),
     hub({ targetQuarter: "2027-Q1", value: counted(5_000), kind: "da_diffondere" }),
     hub({ targetQuarter: null, value: counted(700) }),
+    hub({ targetQuarter: null, value: counted(1_000.5) }),
     hub({ targetQuarter: null, value: pending(9_000) }),
     hub({ phase: "in_realizzazione", value: counted(8_000) }),
     hub({ phase: "realizzato", value: counted(40_000) }),
   ];
   const lanes = buildLanes(items, TODAY);
   const lanesEur = lanes.lanes.reduce((sum, lane) => sum + (lane.countedEurYear ?? 0), 0);
-  const inProgressEur = lanes.inProgress.reduce((sum, item) => sum + (item.value.perYear?.amount ?? 0), 0);
-  assert.equal(lanesEur, 20_950);
-  assert.equal(lanesEur + inProgressEur, roadmapTotals(items).expectedValue?.amountEur);
+  assert.equal(lanesEur, 21_951, "1.000,5 € conta come la card lo scrive, 1.001 €");
+  assert.equal(lanes.inProgressCountedEurYear, 8_000);
+  assert.equal(lanesEur + (lanes.inProgressCountedEurYear ?? 0), roadmapTotals(items).expectedValue?.amountEur);
+});
+
+test("le cifre a schermo si sommano: le card fanno la corsia, le corsie e «In realizzazione» la cifra in testa, «Per agente» le corsie dell'agente", () => {
+  const items = [
+    hub({ title: "LIBRA L1 · Fatture estere", targetQuarter: "2026-Q4", value: counted(4_042.5) }),
+    hub({ title: "LIBRA L2 · Pagamenti", targetQuarter: "2026-Q4", value: counted(12_250) }),
+    hub({ title: "LIBRA L3 · Riconciliazione", targetQuarter: "2027-Q1", value: counted(11_042.5) }),
+    hub({ title: "SPICA P1 · Tesoreria", targetQuarter: "2027-Q1", value: counted(3_700.25) }),
+    hub({ title: "SPICA P2 · Cassa", targetQuarter: null, value: counted(2_365) }),
+    hub({ title: "ORSA O1 · Solleciti", phase: "in_realizzazione", value: counted(2_719.5) }),
+    hub({ title: "DENEB D1 · Onboarding", targetQuarter: "2027-Q1" }),
+    hub({ title: "Archivio", phase: "realizzato", value: counted(9_000.5) }),
+  ];
+  const lanes = buildLanes(items, TODAY);
+  // Ogni card arrotonda la sua cifra: 4.043 + 12.250, 11.043 + 3.700, 2.365; in realizzazione 2.720.
+  assert.deepEqual(
+    lanes.lanes.map((lane) => lane.countedEurYear),
+    [16_293, 14_743, 2_365],
+  );
+  assert.equal(lanes.inProgressCountedEurYear, 2_720);
+  assert.equal(laneCountedText(16_293), "16.293 € contati all'anno");
+  // La cifra in testa: 36.121 €, la somma delle parti (sommando prima e arrotondando dopo era 36.120 €).
+  const total = roadmapTotals(items).expectedValue?.amountEur;
+  assert.equal(total, 36_121);
+  assert.equal(lanes.lanes.reduce((sum, lane) => sum + (lane.countedEurYear ?? 0), 0) + (lanes.inProgressCountedEurYear ?? 0), total);
+  const groups = agentGroups(lanes.lanes);
+  assert.deepEqual(
+    groups.map((group) => [group.param, group.perYearEur]),
+    [
+      ["LIBRA", 27_336],
+      ["SPICA", 6_065],
+      ["DENEB", 0],
+    ],
+  );
+  assert.equal(groups.reduce((sum, group) => sum + group.perYearEur, 0) + (lanes.inProgressCountedEurYear ?? 0), total, "«Per agente» e «In realizzazione» fanno la cifra in testa");
+  // Le corsie di un agente (dopo un clic in «Per agente», `?agente=LIBRA`) fanno la sua card.
+  for (const group of groups) {
+    const own = buildLanes(
+      items.filter((item) => agentParamOf(item.title) === group.param),
+      TODAY,
+    );
+    assert.equal(
+      own.lanes.reduce((sum, lane) => sum + (lane.countedEurYear ?? 0), 0),
+      group.perYearEur,
+      group.label,
+    );
+  }
+});
+
+test("countedEurOf: la somma delle cifre delle card, arrotondate una a una; solo gli euro a schermo", () => {
+  assert.equal(countedEurOf([]), 0);
+  assert.equal(countedEurOf([{ value: counted(0.5) }, { value: counted(0.5) }]), 2, "due card da «1 €»");
+  assert.equal(countedEurOf([{ value: counted(2_183.4999999999995) }]), 2_184, "la tolleranza di `roundAmount`");
+  assert.equal(countedEurOf([{ value: counted(0) }, { value: counted(Number.NaN) }, { value: counted(-5) }, { value: NO_VALUE }, { value: pending(9_000) }]), 0);
+  // Una card sola: la cifra della corsia è la cifra della card.
+  for (let x = 0; x <= 20; x += 0.25) assert.equal(formatEuro(countedEurOf([{ value: counted(x) }])), formatEuro(x), String(x));
 });
 
 test("«Per agente»: un gruppo per agente del titolo, chi ha più euro in testa, «Altri use case» in fondo", () => {

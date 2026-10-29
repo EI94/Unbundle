@@ -103,7 +103,8 @@ export interface PanoramaLanesProps {
  * altri N». Le corsie stanno affiancate da 58rem del riquadro (`@container/hub`), prima una sotto
  * l'altra. Ai revisori di un workspace con gli agenti nel titolo, sopra, «Per trimestre | Per agente»:
  * per agente una card per agente al posto delle corsie (`AgentGrid`). Sotto «In realizzazione», aperta,
- * con le card dei dossier, e «Realizzati», chiusa, con il conto. I contributori vedono le stesse corsie
+ * con le card dei dossier e, ai revisori, i suoi euro contati come una corsia («In realizzazione 1 ·
+ * 2.719 € contati all'anno»), e «Realizzati», chiusa, con il conto. I contributori vedono le stesse corsie
  * con «N use case» e card con tag, titolo e fase, senza cifre. Con il filtro «Agente» (anche dopo un
  * clic in «Per agente») sopra le corsie una riga dice di chi sono, «LIBRA · 7 use case», con
  * «‹ Tutti gli agenti» quando c'è «Per agente», che torna alla card dell'agente e le dà il fuoco
@@ -261,7 +262,16 @@ export function PanoramaLanes({
           {/* L'ancora di «In realizzazione»: con `tabIndex` prende il fuoco, dal browser per le fasi (un `<a>` della pagina) e da `HashFocusLink` per «Vai alla Panoramica» di «Cosa serve». */}
           <h2 id={PANORAMA_SECTION_ID.inRealizzazione} tabIndex={-1} className="flex scroll-mt-24 items-baseline gap-2 text-sm font-semibold outline-none">
             {`${LANES_TEXT.inProgress} `}
-            <span className="text-xs font-normal text-muted-foreground tabular-nums">{inProgress.length}</span>
+            <span className="text-xs font-normal text-muted-foreground tabular-nums">
+              {inProgress.length}
+              {/* Gli euro contati, come una corsia: con le corsie (o «Per agente») fanno la cifra in testa. */}
+              {lanes.inProgressCountedEurYear ? (
+                <>
+                  {FIGURE_SEPARATOR}
+                  <span data-figure="in-realizzazione">{laneCountedText(lanes.inProgressCountedEurYear)}</span>
+                </>
+              ) : null}
+            </span>
           </h2>
           {column?.readOnlyNotice ? <DossierReadOnlyNotice /> : null}
           <ul className="grid gap-2 @xl/hub:grid-cols-2 @min-[58rem]/hub:grid-cols-3">

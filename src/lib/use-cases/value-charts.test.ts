@@ -31,7 +31,7 @@ import {
   roadmapValueItems,
 } from "./value-charts.ts";
 import { agentPalette, agentToneOf } from "./agents.ts";
-import { hoursFreedText, qualitativeCountText } from "./format.ts";
+import { hoursFreedText, qualitativeCountText, roundAmount } from "./format.ts";
 import { DEFAULT_VALUE_PARAMS, valueModelSchema, type ValueModel, type ValueParams } from "./value-model.ts";
 import { projectHubItem, type HubContext, type HubItem, type HubSourceRow } from "./views.ts";
 
@@ -562,7 +562,12 @@ test("Valore per tipo di ritorno: 8 righe, un segmento per use case dal più gra
     by.tempo.segments.map((segment) => segment.id),
     [a.id, b.id],
   );
-  near(by.tempo.total, 4042.5 + 2184, "totale contato");
+  // Il totale della riga è la somma delle cifre dei segmenti come le scrivono: 4.043 € + 2.184 €.
+  assert.equal(by.tempo.total, 4_043 + 2_184, "totale contato");
+  assert.equal(
+    by.tempo.total,
+    by.tempo.segments.reduce((sum, segment) => sum + roundAmount(segment.eur), 0),
+  );
   near(by.tempo.pendingTotal, 1680, "da misurare");
   assert.deepEqual(
     by.tempo.pending.map((segment) => segment.id),
@@ -585,7 +590,7 @@ test("Valore per tipo di ritorno: 8 righe, un segmento per use case dal più gra
   assert.equal(by.nuove_capacita.qualitativeCount, 1);
   assert.deepEqual(by.rischio.qualitative.map((segment) => segment.components[0].amount), ["qualitativo"]);
   assert.equal(by.ricavi.segments.length, 0, "da decidere: non è nella Roadmap");
-  near(chart.max, 4042.5 + 2184 + 1680, "la riga più lunga");
+  near(chart.max, 4_043 + 2_184 + 1680, "la riga più lunga");
 });
 
 test("«(n qualitativi)» conta le voci, non gli use case", () => {

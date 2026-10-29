@@ -712,6 +712,30 @@ test("cifre della Panoramica: «su N use case · M da fascia», quota delle orig
   assert.equal(totalsNote(7, 2), "su 7 use case · 2 da fascia");
 });
 
+test("cifre della Panoramica: la somma delle cifre delle card, arrotondate una a una; solo euro maggiori di zero", () => {
+  const items = [
+    item({ status: "accepted", targetQuarter: "2026-Q4", valueEurYear: 10.5 }),
+    item({ status: "in_progress", valueEurYear: 0.5 }),
+    item({ status: "accepted", valueEurYear: 0 }),
+    item({ status: "accepted", valueEurYear: -3 }),
+  ];
+  // 11 € + 1 €, come le due card li scrivono; lo zero e il negativo non sono cifre (non lo sono neanche nelle corsie).
+  const value = roadmapTotals(items).expectedValue;
+  assert.deepEqual([value?.amountEur, value?.count, value?.note], [12, 2, "su 2 use case"]);
+  const cost = roadmapTotals([item({ status: "accepted", costEurOnce: 0.5 }), item({ status: "accepted", costEurOnce: 1.5 })]).committedCost;
+  assert.equal(cost?.amountEur, 3, "1 € + 2 €, non 2 €");
+  // «fino a»: due «fino a 4.043 €» fanno 8.086 €, non 8.085 €.
+  const ctx: HubContext = { ...CTX, valueParams: { ...DEFAULT_VALUE_PARAMS, originMonth: "2026-10" } };
+  const half = valueModelSchema.parse({
+    v: 1,
+    primary: "ricavi",
+    components: [{ key: "ricavi", lever: "ricavi", label: "Più preventivi chiusi", kind: "euro", eurYear: 4_042.5, confidence: "da_misurare" }],
+  });
+  const pendingTwo = [item({ status: "accepted", valueModel: half }, ctx), item({ status: "in_progress", valueModel: half }, ctx)];
+  assert.equal(pendingTwo[0].value.benefits?.pendingEur, 4_042.5);
+  assert.deepEqual(pendingValueTotal(pendingTwo), { amountEur: 8_086, count: 2, note: "su 2 use case" });
+});
+
 test("«fino a» della Panoramica: i «da misurare» delle card approvate e in realizzazione con un modello; null senza", () => {
   const ctx: HubContext = { ...CTX, valueParams: { ...DEFAULT_VALUE_PARAMS, originMonth: "2026-10" } };
   // Solo da misurare: «da misurare · fino a 1.200 €».

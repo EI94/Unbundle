@@ -224,6 +224,46 @@ test("«In realizzazione»: la card del dossier se c'è, altrimenti «Senza doss
   assert.ok(!cardOf(down, without.id).includes("data-figure"), "in realizzazione nessuna cifra");
 });
 
+test("le cifre si sommano: le card fanno la corsia, «In realizzazione» dice i suoi euro, «Per agente» le corsie dell'agente", () => {
+  // Tre card da 1.000,5 €: ognuna «1.001 € all'anno», la corsia 3.003 € (sommando prima e arrotondando dopo, 3.002 €).
+  const three = Array.from({ length: 3 }, (_, index) => hub({ title: `Centesimi ${index}`, value: counted(1_000.5) }));
+  const html = render(three, { barScale: 1_000.5 });
+  for (const item of three) assert.ok(textOf(cardOf(html, item.id)).includes("1.001 € all'anno"), item.title);
+  const lane = html.slice(html.indexOf('data-lane="questo_trimestre"'), html.indexOf('data-lane="prossimo_trimestre"'));
+  assert.ok(textOf(lane).includes("3 use case · 3.003 € contati all'anno"), textOf(lane));
+  // «In realizzazione»: i suoi euro contati dopo il conto, come una corsia; senza euro solo il conto.
+  const building = hub({ title: "Avviato", phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier", value: counted(2_719) });
+  const quiet = hub({ title: "Avviato senza cifra", phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier" });
+  const progress = render([building, quiet]);
+  assert.match(
+    progress,
+    /<h2 id="panoramica-in-realizzazione"[^>]*>In realizzazione <span[^>]*>2 · <span data-figure="in-realizzazione">2\.719 € contati all&#x27;anno<\/span><\/span><\/h2>/,
+  );
+  assert.match(render([quiet]), /In realizzazione <span[^>]*>1<\/span><\/h2>/);
+  assert.deepEqual(findHubForbiddenIn([textOf(progress)], "area"), []);
+  // Ai contributori nessun euro, neanche in «In realizzazione».
+  const theirs = render([contributor({ title: "ORSA O1 · Solleciti", phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione", quando: null })]);
+  assert.ok(theirs.includes("In realizzazione") && !theirs.includes("€") && !theirs.includes("data-figure"), theirs);
+  // «Per agente»: due card di LIBRA con i centesimi in due corsie; la card dell'agente somma le loro cifre.
+  const libra = [
+    hub({ title: "LIBRA L1 · Fatture", value: counted(16_292.5) }),
+    hub({ title: "LIBRA L2 · Pagamenti", targetQuarter: "2027-Q1", value: counted(11_042.5) }),
+  ];
+  const grid = render(libra, {
+    grouping: {
+      active: "agente",
+      items: [
+        { key: "trimestre", label: "Per trimestre", href: `${BASE}?vista=panoramica` },
+        { key: "agente", label: "Per agente", href: `${BASE}?vista=panoramica&mostra=agenti` },
+      ],
+    },
+  });
+  const agentCard = grid.slice(grid.indexOf('data-agent="LIBRA"'));
+  assert.ok(textOf(agentCard).includes("27.336 € all'anno"), textOf(agentCard));
+  const lanesOfLibra = render(libra, { agentFilter: "LIBRA" });
+  assert.ok(textOf(lanesOfLibra).includes("16.293 € contati all'anno") && textOf(lanesOfLibra).includes("11.043 € contati all'anno"));
+});
+
 test("«Realizzati»: chiusi, con il conto, l'ancora, il mese e gli euro senza barra", () => {
   const old = hub({ title: "Prima", phase: "realizzato", subState: "realizzato", phaseLabel: "Realizzato", realizedOn: "2026-05-10" });
   const recent = hub({ title: "Dopo", phase: "realizzato", subState: "realizzato", phaseLabel: "Realizzato", realizedOn: "2026-09-10", value: counted(8_000) });

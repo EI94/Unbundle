@@ -6,8 +6,9 @@
  *   poi quanti use case approvati, in realizzazione e realizzati (anche «diffusa»). Ogni fase porta
  *   alla sua vista o alla sua sezione della Panoramica (`OVERVIEW_STEP_TARGET`).
  * - **Cifre** (`overviewFigures`): le cifre di prima, non conti nuovi. Valore e costo da
- *   `roadmapTotals`, gli use case di «Questo trimestre» quanti ne mostra la sua corsia (`buildLanes`,
- *   scaduti compresi), «fino a» la somma dei «fino a X €» delle card (`pendingValueTotal`).
+ *   `roadmapTotals`, somme delle cifre delle card arrotondate una a una, gli use case di «Questo
+ *   trimestre» quanti ne mostra la sua corsia (`buildLanes`, scaduti compresi), «fino a» la somma dei
+ *   «fino a X €» delle card (`pendingValueTotal`).
  * - **Su tutto il portafoglio** (`portfolioLine`): le ore e il pareggio di `buildRoadmapValue`.
  * - **Prossimo passo** (`overviewNextStep`): regole fisse, nell'ordine. Prima i requisiti degli use
  *   case approvati per questo trimestre (da chiedere, da verificare o bloccati, ognuno una volta),

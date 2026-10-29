@@ -15,6 +15,10 @@
  *   parte (la pillola «Approvato · T1 2027» lo dice già), nessun giudizio sul team.
  * - **Per agente.** Gli stessi use case delle corsie per agente del titolo (`agentGroups`): quanti,
  *   gli euro contati e in che corsie stanno.
+ * - **Somme.** Gli euro di una corsia, di «In realizzazione» e di un gruppo «Per agente» sono la
+ *   somma delle cifre delle loro card, ognuna già arrotondata all'euro come la scrive la card
+ *   (`countedEurOf`); così anche la cifra in testa (`roadmapTotals`). Le parti a schermo fanno
+ *   sempre il totale, con qualunque filtro.
  *
  * Art. 15.4: corsie, ordini, gruppi e colori non leggono mai chi ha proposto; l'agente è il prefisso
  * del titolo, mai una persona.
@@ -22,7 +26,7 @@
  * Modulo puro: solo import relativi `.ts`.
  */
 import { agentLabel, agentOfTitle, NO_AGENT_PARAM, type AgentParam } from "./agents.ts";
-import { FIGURE_SEPARATOR, formatEuro, formatInteger, perYearText, shownPerYear, valueScreenText, type ValueParts } from "./format.ts";
+import { FIGURE_SEPARATOR, formatEuro, formatInteger, perYearText, roundAmount, shownPerYear, valueScreenText, type ValueParts } from "./format.ts";
 import { quarterLabel, quarterOfDate, nextQuarter, WHEN_LATER_LABEL } from "./quarter.ts";
 import type { QuarterCode } from "./types.ts";
 import { byRealizedDesc, isContributorItem, quarterOfItem, roadmapGroupKey, roadmapGroupLabel, type AnyHubItem, type HubItem } from "./views.ts";
@@ -73,7 +77,7 @@ export interface Lane<T> {
   /** «T4», «T1», «Più avanti»: i chip dei gruppi «Per agente». */
   short: string;
   entries: LaneEntry<T>[];
-  /** Gli euro contati all'anno della corsia (revisori); null ai contributori. */
+  /** Gli euro contati all'anno della corsia (revisori), la somma delle cifre delle card (`countedEurOf`); null ai contributori. */
   countedEurYear: number | null;
 }
 
@@ -82,6 +86,8 @@ export interface PanoramaLanes<T> {
   lanes: Lane<T>[];
   /** «In realizzazione», per titolo. */
   inProgress: T[];
+  /** Gli euro contati all'anno di «In realizzazione» (revisori), come una corsia; null ai contributori. */
+  inProgressCountedEurYear: number | null;
   /** «Realizzati», dal più recente. */
   done: T[];
 }
@@ -187,12 +193,22 @@ export function buildLanes<T extends AnyHubItem>(items: readonly T[], today: str
       label: roadmapGroupLabel(key, today),
       short: shorts[key],
       entries: list,
-      countedEurYear: reviewers ? list.reduce((sum, entry) => sum + (shownPerYear((entry.item as HubItem).value)?.amount ?? 0), 0) : null,
+      countedEurYear: reviewers ? countedEurOf(list.map((entry) => entry.item as HubItem)) : null,
     };
   });
   const inProgress = items.filter((item) => item.phase === "in_realizzazione").sort(byTitle);
   const done = items.filter((item) => item.phase === "realizzato").sort(byRealizedDesc);
-  return { lanes, inProgress, done };
+  return { lanes, inProgress, inProgressCountedEurYear: reviewers ? countedEurOf(inProgress.map((item) => item as HubItem)) : null, done };
+}
+
+/**
+ * Gli euro contati all'anno di un gruppo di card: la somma delle cifre come le scrive ogni card,
+ * arrotondate all'euro una a una (`roundAmount`, come `formatEuro`), non la somma arrotondata alla
+ * fine. Così le card fanno la loro corsia, le corsie e «In realizzazione» la cifra in testa, «Per
+ * agente» le corsie dell'agente. Solo gli euro a schermo (`shownPerYear`); 0 senza.
+ */
+export function countedEurOf(items: readonly Pick<HubItem, "value">[]): number {
+  return items.reduce((sum, item) => sum + roundAmount(shownPerYear(item.value)?.amount ?? 0), 0);
 }
 
 /** «24.500 € contati all'anno»: gli euro contati di una corsia. */
@@ -257,7 +273,7 @@ export interface AgentGroup {
   agent: string | null;
   label: string;
   count: number;
-  /** Gli euro contati all'anno, sommati. */
+  /** Gli euro contati all'anno: la somma delle cifre delle card (`countedEurOf`). */
   perYearEur: number;
   /** Quanti hanno gli euro contati. */
   counted: number;
@@ -284,7 +300,7 @@ export function agentGroups(lanes: readonly Lane<Pick<HubItem, "title" | "value"
       group.count += 1;
       const perYear = shownPerYear(item.value);
       if (perYear) {
-        group.perYearEur += perYear.amount;
+        group.perYearEur += roundAmount(perYear.amount);
         group.counted += 1;
       }
       const chip = group.lanes.find((entry) => entry.key === lane.key);

@@ -34,13 +34,14 @@
  *   qualitative contate.
  *
  * Solo per i revisori: le schede arrivano già proiettate (`HubItem.valueModel`). Nessun
- * ordinamento o conteggio per persona. Nessun arrotondamento qui, tranne le etichette.
+ * ordinamento o conteggio per persona. Nessun arrotondamento qui, tranne le etichette e il totale
+ * di una riga di «Valore per tipo di ritorno», somma delle cifre dei suoi segmenti già arrotondate.
  *
  * Modulo puro: import relativi `.ts`.
  */
 import { LEVERS, type Lever } from "../uc/vocab.ts";
 import { NO_AGENT_LABEL, agentOfTitle, agentToneOf, paletteHasAgents, shortRefOf, type AgentPalette, type AgentTone } from "./agents.ts";
-import { FIGURE_SEPARATOR, formatEuro, formatInteger, lowerFirst } from "./format.ts";
+import { FIGURE_SEPARATOR, formatEuro, formatInteger, lowerFirst, roundAmount } from "./format.ts";
 import type { Origin } from "./types.ts";
 import { CURVE_EPSILON, componentResult, jCurve, monthLabel, planMonths, valueTotals, type JCurve, type PlannedMonths, type ValueTotals } from "./value-calc.ts";
 import { LEVER_LABELS, VALUE_CONFIDENCE_LABELS, type MonthCode, type ValueComponent, type ValueModel, type ValueParams } from "./value-model.ts";
@@ -648,7 +649,7 @@ export interface LeverRow {
   lever: Lever;
   /** «Risparmio di tempo». */
   label: string;
-  /** Contato, euro all'anno. */
+  /** Contato, euro all'anno: la somma delle cifre dei segmenti, ognuna arrotondata all'euro. */
   total: number;
   /** Un segmento per use case, dal più grande. */
   segments: LeverSegment[];
@@ -709,7 +710,7 @@ export function buildLeverChart(items: readonly HubItem[], params: ValueParams, 
       });
       const base = { id: item.id, code: item.code, title: item.title, group, groupLabel: groupLabelOf(palette, group), slot, components: lines };
       if (totals.byLever[lever] > 0) {
-        row.total += totals.byLever[lever];
+        row.total += roundAmount(totals.byLever[lever]);
         row.segments.push({ ...base, eur: totals.byLever[lever] });
       }
       if (totals.pendingByLever[lever] > 0) {

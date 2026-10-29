@@ -35,7 +35,7 @@ import type { CaseStatus } from "../uc/vocab.ts";
 import { agentParamOf, parseAgentParam, type AgentParam } from "./agents.ts";
 import { isAnswerPending } from "./answers.ts";
 import { COST_BANDS, costBandInfo, costLowBandFrom, isCostBand, isCostLowBand, resolveCostBands, type CostBandInfo } from "./cost-bands.ts";
-import { zoneText } from "./format.ts";
+import { roundAmount, shownPerYear, zoneText } from "./format.ts";
 import {
   COST_SOURCE_LABEL,
   KIND_LABEL,
@@ -1061,6 +1061,10 @@ export function byRealizedDesc<T extends AnyHubItem>(a: T, b: T): number {
 
 /** Una cifra in testa alla Panoramica (solo revisori, `overviewFigures` di `panoramica.ts`). */
 export interface RoadmapTile {
+  /**
+   * La somma delle cifre delle card, ognuna arrotondata all'euro; le corsie, «In realizzazione» e
+   * «Per agente» sommano le stesse cifre (`countedEurOf` di `lanes.ts`).
+   */
   amountEur: number;
   /** Su quanti use case è calcolata (solo quelli con una cifra). */
   count: number;
@@ -1097,10 +1101,12 @@ function shareOf(parts: Array<{ origin: Origin; amount: number }>): Record<Origi
 
 /**
  * Le cifre in testa alla Panoramica (§4.5; `overviewFigures` di `panoramica.ts`). «valore contato
- * all'anno»: somma sugli approvati e in realizzazione del miglior valore annuo (dossier, poi team).
- * «costo di avvio»: somma sugli approvati «Da costruire» e in realizzazione del costo di §7.2; una
- * fascia vale il suo riferimento nelle fasce del workspace, lo sforzo l'importo stimato. Una cifra
- * senza use case non si mostra. «Valore misurato» arriva con il ROI del dossier (H6a).
+ * all'anno»: somma sugli approvati e in realizzazione del miglior valore annuo (dossier, poi team),
+ * solo gli euro che le card scrivono (`shownPerYear`). «costo di avvio»: somma sugli approvati «Da
+ * costruire» e in realizzazione del costo di §7.2; una fascia vale il suo riferimento nelle fasce
+ * del workspace, lo sforzo l'importo stimato. Ogni cifra è la somma delle cifre delle card, ognuna
+ * arrotondata all'euro: le corsie, «In realizzazione» e «Per agente» sommano le stesse cifre. Una
+ * cifra senza use case non si mostra. «Valore misurato» arriva con il ROI del dossier (H6a).
  */
 export function roadmapTotals(items: readonly HubItem[]): RoadmapTotals {
   const value: Array<{ origin: Origin; amount: number }> = [];
@@ -1109,9 +1115,10 @@ export function roadmapTotals(items: readonly HubItem[]): RoadmapTotals {
     const upcoming = item.phase === "approvato";
     const inProgress = item.phase === "in_realizzazione";
     if (!upcoming && !inProgress) continue;
-    if (item.value.perYear) value.push({ origin: item.origin, amount: item.value.perYear.amount });
+    const perYear = shownPerYear(item.value);
+    if (perYear) value.push({ origin: item.origin, amount: roundAmount(perYear.amount) });
     if (item.cost && (inProgress || item.kind === "da_costruire")) {
-      cost.push({ origin: item.origin, amount: item.cost.referenceEur, fromBand: item.cost.fromBand });
+      cost.push({ origin: item.origin, amount: roundAmount(item.cost.referenceEur), fromBand: item.cost.fromBand });
     }
   }
   const expectedValue: RoadmapTile | null = value.length
@@ -1138,6 +1145,7 @@ export function roadmapTotals(items: readonly HubItem[]): RoadmapTotals {
 
 /** «fino a 23.400 €» in testa alla Panoramica (solo revisori). */
 export interface PendingValueTotal {
+  /** La somma dei «fino a X €» delle card, ognuno arrotondato all'euro. */
   amountEur: number;
   /** Su quanti use case è calcolata (solo quelli con una parte da misurare). */
   count: number;
@@ -1149,8 +1157,9 @@ export interface PendingValueTotal {
  * «valore da misurare all'anno» in testa alla Panoramica. Non è un conto nuovo: somma, sugli stessi
  * use case di «valore contato all'anno» (approvati e in realizzazione), i «fino a X €» delle card, cioè
  * gli euro delle voci da misurare di «Benefici e costi» (`value.benefits.pendingEur`), gli stessi
- * delle parti tratteggiate di «Valore per tipo di ritorno». null senza use case con una parte da
- * misurare, anche quando il workspace conta le voci da misurare (`includeUnmeasured`: lo zero).
+ * delle parti tratteggiate di «Valore per tipo di ritorno», ognuno arrotondato all'euro come lo
+ * scrive la card. null senza use case con una parte da misurare, anche quando il workspace conta le
+ * voci da misurare (`includeUnmeasured`: lo zero).
  */
 export function pendingValueTotal(items: readonly HubItem[]): PendingValueTotal | null {
   let amountEur = 0;
@@ -1159,7 +1168,7 @@ export function pendingValueTotal(items: readonly HubItem[]): PendingValueTotal 
     if (item.phase !== "approvato" && item.phase !== "in_realizzazione") continue;
     const pending = item.value.benefits?.pendingEur ?? 0;
     if (!Number.isFinite(pending) || pending <= 0) continue;
-    amountEur += pending;
+    amountEur += roundAmount(pending);
     count += 1;
   }
   return count ? { amountEur, count, note: totalsNote(count) } : null;

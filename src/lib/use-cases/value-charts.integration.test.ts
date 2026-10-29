@@ -65,6 +65,8 @@ const ids = {
   wsV: randomUUID(),
   /** Senza modelli: come oggi. */
   wsN: randomUUID(),
+  /** Le somme della Panoramica, con gli agenti nei titoli e i centesimi. */
+  wsS: randomUUID(),
   ls: randomUUID(),
   builder: randomUUID(),
   manager: randomUUID(),
@@ -123,6 +125,7 @@ const SMALL = {
 const codeBase = 30_000 + Math.floor(Math.random() * 60_000);
 let codeSeq = 0;
 const cards = {} as Record<"a" | "b" | "small" | "plain" | "plainN", { id: string; code: string }>;
+const sumCards = {} as Record<"libraL1" | "libraL2" | "libraL3" | "orsaO1", { id: string; code: string }>;
 
 async function seed(s: {
   workspaceId: string;
@@ -237,6 +240,14 @@ function tileOf(page: string, key: string): string {
 
 const count = (page: string, needle: string) => page.split(needle).length - 1;
 
+/** Gli euro di un intero italiano («16.293 € contati all'anno» → 16293). */
+const euros = (text: string) => Number(/(\d[\d.]*)\s*€/.exec(text)?.[1].replace(/\./g, "") ?? Number.NaN);
+
+/** Gli euro degli elementi con `data-figure="name"`, nell'ordine della pagina. */
+function figuresOf(page: string, name: string): number[] {
+  return [...page.matchAll(new RegExp(`data-figure="${name}"[^>]*>([^<]*)<`, "g"))].map((match) => euros(match[1]));
+}
+
 /** I pulsanti pieni della pagina: `[data-slot=button]` con la classe `bg-primary` (§5.7). */
 function filledButtons(page: string): number {
   return [...page.matchAll(/<(?:a|button)\b[^>]*>/g)].filter(([tag]) => {
@@ -288,27 +299,28 @@ before(async () => {
   const quarter = await import("./quarter.ts");
   const thisQuarter = quarter.currentQuarter();
 
-  process.env.USE_CASE_HUB_WORKSPACES = [ids.wsV, ids.wsN].join(",");
+  process.env.USE_CASE_HUB_WORKSPACES = [ids.wsV, ids.wsN, ids.wsS].join(",");
   process.env.UC_LS_EMAIL_DOMAINS = "ls.test";
   delete process.env.UC_ENABLED;
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione di prova valore', $2)`, [ids.org, `hub-grafici-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'Prova grafici'), ($2::uuid, $3::uuid, 'Prova senza modelli')`, [
-    ids.wsV,
-    ids.wsN,
-    ids.org,
-  ]);
+  await q(
+    `INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'Prova grafici'), ($2::uuid, $3::uuid, 'Prova senza modelli'), ($4::uuid, $3::uuid, 'Prova somme')`,
+    [ids.wsV, ids.wsN, ids.org, ids.wsS],
+  );
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
-    for (const workspaceId of [ids.wsV, ids.wsN]) {
+    for (const workspaceId of [ids.wsV, ids.wsN, ids.wsS]) {
       await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [workspaceId, ids[person], ROLES[person]]);
     }
   }
   // Il primo mese della curva fisso, come i golden: le cifre non dipendono dal giorno della prova.
-  await q(`INSERT INTO workspace_scoring_models (workspace_id, impact_flag_enabled, config) VALUES ($1::uuid, false, $2::jsonb)`, [
-    ids.wsV,
-    JSON.stringify({ valueParams: { originMonth: "2026-11" } }),
-  ]);
+  for (const workspaceId of [ids.wsV, ids.wsS]) {
+    await q(`INSERT INTO workspace_scoring_models (workspace_id, impact_flag_enabled, config) VALUES ($1::uuid, false, $2::jsonb)`, [
+      workspaceId,
+      JSON.stringify({ valueParams: { originMonth: "2026-11" } }),
+    ]);
+  }
 
   cards.a = await seed({ workspaceId: ids.wsV, title: `Smistamento ${suffix}`, targetQuarter: thisQuarter, valueModel: FIX_A });
   cards.b = await seed({ workspaceId: ids.wsV, title: `Fatture ${suffix}`, status: "in_progress", valueModel: FIX_B });
@@ -329,6 +341,17 @@ before(async () => {
     costEurOnce: 20_000,
     valueEurYear: 30_000,
   });
+  // Le somme: due FIX_A da 4.042,5 € (ognuna «4.043 €»), 12.250 € senza modello, FIX_B in realizzazione.
+  sumCards.libraL1 = await seed({ workspaceId: ids.wsS, title: `LIBRA L1 · Smistamento ${suffix}`, targetQuarter: thisQuarter, valueModel: FIX_A });
+  sumCards.libraL2 = await seed({ workspaceId: ids.wsS, title: `LIBRA L2 · Richieste ${suffix}`, targetQuarter: quarter.nextQuarter(thisQuarter), valueModel: FIX_A });
+  sumCards.libraL3 = await seed({
+    workspaceId: ids.wsS,
+    title: `LIBRA L3 · Fatture estere ${suffix}`,
+    targetQuarter: thisQuarter,
+    customScores: { impact: { efficiency: 4, profitability: 4 } },
+    valueEurYear: 12_250,
+  });
+  sumCards.orsaO1 = await seed({ workspaceId: ids.wsS, title: `ORSA O1 · Fatture ${suffix}`, status: "in_progress", valueModel: FIX_B });
 });
 
 after(async () => {
@@ -338,7 +361,7 @@ after(async () => {
     else process.env[key] = value;
   }
   if (!enabled) return;
-  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.wsV, ids.wsN]]);
+  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.wsV, ids.wsN, ids.wsS]]);
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [Object.keys(emails).map((person) => ids[person as Person])]);
   await q(`DELETE FROM organizations WHERE id = $1::uuid`, [ids.org]);
 });
@@ -426,7 +449,61 @@ test("Panoramica: quattro cifre e «Su tutto il portafoglio»; i grafici di «Be
     assert.match(tileOf(page, "da-misurare"), /fino a\s+1\.680 €\s+valore da misurare all&#x27;anno\s+su 1 use case/, person);
     assert.match(tileOf(page, "trimestre"), /1\s+use case in questo trimestre\s+T\d \d{4}/, person);
     assert.match(page, /@3xl\/hub:grid-cols-4/, `${person}: quattro cifre`);
+    // Le parti a schermo fanno la cifra in testa: A (4.043 €) e la scheda senza modello (30.000 €)
+    // nelle corsie, B in realizzazione (2.719 €), che lo dice accanto al conto.
+    assert.match(tileOf(page, "valore"), /36\.762 €\s+valore contato all&#x27;anno\s+su 3 use case/, person);
+    assert.deepEqual(figuresOf(page, "corsia"), [4_043, 30_000], person);
+    assert.ok(page.includes("1 use case · <span data-figure=\"corsia\">4.043 € contati all&#x27;anno</span>"), person);
+    assert.ok(page.includes("1 use case · <span data-figure=\"corsia\">30.000 € contati all&#x27;anno</span>"), person);
+    assert.match(page, /In realizzazione <span[^>]*>1 · <span data-figure="in-realizzazione">2\.719 € contati all&#x27;anno<\/span><\/span><\/h2>/, person);
+    assert.equal(
+      [...figuresOf(page, "corsia"), ...figuresOf(page, "in-realizzazione")].reduce((sum, eur) => sum + eur, 0),
+      euros(tileOf(page, "valore")),
+      person,
+    );
   }
+  // Il contributore: nessun euro.
+  const theirs = await html("contributor", ids.wsV, { vista: "panoramica" });
+  assert.ok(!theirs.includes("€") && !theirs.includes('data-figure="in-realizzazione"'));
+});
+
+test("le cifre della Panoramica si sommano: le card fanno la corsia, le corsie e «In realizzazione» la cifra in testa, «Per agente» le corsie dell'agente", opts, async () => {
+  const quarter = await import("./quarter.ts");
+  const sum = (list: number[]) => list.reduce((total, eur) => total + eur, 0);
+  for (const person of ["ls", "builder", "manager"] as const) {
+    // 4.043 + 4.043 + 12.250 + 2.719: 23.055 € (sommando prima e arrotondando dopo, 23.054 €).
+    const page = await html(person, ids.wsS, { vista: "panoramica" });
+    assert.match(tileOf(page, "valore"), /23\.055 €\s+valore contato all&#x27;anno\s+su 4 use case/, person);
+    assert.deepEqual(figuresOf(page, "corsia"), [16_293, 4_043], person);
+    assert.deepEqual(figuresOf(page, "in-realizzazione"), [2_719], person);
+    assert.equal(sum([...figuresOf(page, "corsia"), ...figuresOf(page, "in-realizzazione")]), 23_055, person);
+    // L'avvio: 560 + 560 + 280, sugli use case con un costo.
+    assert.match(tileOf(page, "costo"), /1\.400 €\s+costo di avvio\s+su 3 use case/, person);
+
+    // «Per agente»: la card di LIBRA è la somma delle sue card, 20.336 € (prima 20.335 €).
+    const grid = await html(person, ids.wsS, { vista: "panoramica", mostra: "agenti" });
+    const libra = itemOf(grid, 'data-slot="agent-card" data-agent="LIBRA"');
+    assert.equal(figuresOf(libra, "valore")[0], 20_336, person);
+    assert.ok(libra.includes("20.336 € all&#x27;anno"), person);
+    assert.equal(sum(figuresOf(grid, "valore")) + sum(figuresOf(grid, "in-realizzazione")), 23_055, `${person}: gli agenti e «In realizzazione» fanno la cifra in testa`);
+
+    // Le corsie di LIBRA, dopo il clic sulla sua card: la cifra in testa, le corsie e la card sono la stessa.
+    const own = await html(person, ids.wsS, { vista: "panoramica", agente: "LIBRA" });
+    assert.match(tileOf(own, "valore"), /20\.336 €\s+valore contato all&#x27;anno\s+su 3 use case/, person);
+    assert.deepEqual(figuresOf(own, "corsia"), [16_293, 4_043], person);
+    assert.ok(!own.includes('data-figure="in-realizzazione"'), `${person}: ORSA non è di LIBRA`);
+
+    // Un trimestre solo: una corsia, la cifra in testa.
+    const current = await html(person, ids.wsS, { vista: "panoramica", trimestre: quarter.currentQuarter() });
+    assert.equal(euros(tileOf(current, "valore")), 16_293, person);
+    assert.deepEqual(figuresOf(current, "corsia"), [16_293], person);
+  }
+
+  // «Valore per tipo di ritorno»: il totale della riga è la somma delle cifre dei segmenti, 4.043 + 4.043 + 2.184 (prima 10.269 €).
+  const curve = await html("builder", ids.wsS, { vista: "panoramica", mostra: "curva" });
+  const tempo = itemOf(curve, 'data-lever="tempo"');
+  assert.ok(tempo.includes("10.270 €"), "il totale della riga");
+  assert.ok(!tempo.includes("10.269 €"));
 });
 
 test("«Curva del valore» dal menu «⋯»: J-curve con entrata in uso e pareggio, «Valore per tipo di ritorno», «Ipotesi di calcolo»", opts, async () => {

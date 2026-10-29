@@ -161,6 +161,19 @@ test("cifre: valore e costo di `roadmapTotals`, gli use case della corsia di que
   const later = overviewFigures([hub({ targetQuarter: "2027-Q1", value: counted(1_000) })], TODAY);
   assert.equal(later?.quarter, null);
   assert.equal(later?.value?.amountEur, 1_000);
+  // Con i centesimi: le corsie e «In realizzazione» fanno la cifra in testa, come le card la scrivono.
+  const cents = [
+    hub({ value: counted(1_000.5) }),
+    hub({ value: counted(1_000.5) }),
+    hub({ targetQuarter: "2027-Q1", value: counted(4_042.5) }),
+    hub({ phase: "in_realizzazione", subState: "senza_dossier", value: counted(2_719.5) }),
+  ];
+  const centsLanes = buildLanes(cents, TODAY);
+  assert.equal(overviewFigures(cents, TODAY)?.value?.amountEur, 1_001 + 1_001 + 4_043 + 2_720);
+  assert.equal(
+    centsLanes.lanes.reduce((sum, lane) => sum + (lane.countedEurYear ?? 0), 0) + (centsLanes.inProgressCountedEurYear ?? 0),
+    overviewFigures(cents, TODAY)?.value?.amountEur,
+  );
   // Senza cifre: null.
   assert.equal(overviewFigures([], TODAY), null);
   assert.equal(overviewFigures([toDecide(), hub({ phase: "realizzato", subState: "realizzato", value: counted(1) })], TODAY), null);
