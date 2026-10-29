@@ -20,7 +20,7 @@ import {
   type DigestRow,
 } from "./digest.ts";
 import type { ValuationModel } from "./valuation.ts";
-import { buildDecideList, buildRoadmap, decideCount, projectHubItem, waitingDays, type HubContext, type HubSourceRow } from "./views.ts";
+import { buildDecideList, decideCount, projectHubItem, roadmapGroupKey, waitingDays, type HubContext, type HubSourceRow } from "./views.ts";
 
 // Riepilogo settimanale in campanella (docs/use-case/DESIGN.md §14.3, §4.3, §4.5, D8;
 // PIANO-LAVORI H4d). Dati inventati: codici XX-0000, nessun testo di scheda.
@@ -139,7 +139,7 @@ test("arrivata oggi: attesa zero, e la frase sull'attesa non si scrive", () => {
   assert.deepEqual(digestSignal(counts), { signalType: USE_CASE_DIGEST_SIGNAL, title: "2 use case da decidere", description: null });
 });
 
-test("«approvati non partiti»: trimestre passato e senza avvio, come «Scaduti» della Roadmap", () => {
+test("«approvati non partiti»: trimestre passato e senza avvio, come «Scaduto» nella Panoramica", () => {
   const rows = [
     row({ status: "accepted", targetQuarter: "2026-Q3" }), // scaduto
     row({ status: "accepted", targetQuarter: "2025-Q4" }), // scaduto da tempo
@@ -226,13 +226,14 @@ test("contatore, «da rivedere», attesa del più vecchio e «Scaduti» coincido
   ];
   const items = rows.map((r, i) => projectHubItem(pageRow(r, i + 1), CTX, null));
   const decide = buildDecideList(items);
-  const scaduti = buildRoadmap(items, TODAY).upcoming.find((group) => group.key === "scaduti");
+  // «Scaduto» nella Panoramica: approvati con un trimestre già passato.
+  const scaduti = items.filter((item) => item.phase === "approvato" && roadmapGroupKey(item.targetQuarter, TODAY) === "scaduti");
   const counts = digestCounts(rows, TODAY, noDossiers);
   assert.equal(counts.toDecide, decideCount(items));
   assert.equal(counts.toDecide, decide.count);
   assert.equal(counts.toReview, decide.waiting.filter((item) => item.subState === "da_rivedere").length);
   assert.equal(counts.oldestWaitingDays, waitingDays(decide.waiting[0].waitingSince, TODAY));
-  assert.equal(counts.notStarted, scaduti?.items.length ?? 0);
+  assert.equal(counts.notStarted, scaduti.length);
   assert.deepEqual(counts, { toDecide: 7, toReview: 2, oldestWaitingDays: 60, notStarted: 2 });
 });
 

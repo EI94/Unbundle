@@ -124,9 +124,7 @@ export function HubChartView({
     );
   }
 
-  const view = buildPriority(items, null);
-  // Senza tipo è sempre «Da costruire»: qui solo per il controllo dei tipi.
-  if (view.tipo !== "costruire") return null;
+  const view = buildPriority(items);
 
   if (view.list.length === 0) {
     // Nessuna scheda da mettere in ordine: «‹ Torna alla Panoramica» resta; «Togli i filtri» tiene il grafico.
@@ -164,7 +162,7 @@ export function HubChartView({
   const offItem = (item: HubItem): MatrixOffItem => ({ id: item.id, code: item.code, title: item.title, href: hrefOf(item.id) });
   const thresholds = model.thresholds ?? {};
   const highValue = typeof thresholds.highImpact === "number" ? thresholds.highImpact : DEFAULT_THRESHOLDS.highImpact;
-  // Con gli elenchi i chip di prima non si rendono: il loro numero e il loro link restano finché la matrice li chiede.
+  const off = view.offMatrix.items;
   return (
     <div data-slot="hub-chart" data-chart="matrice" className="space-y-4">
       {header}
@@ -173,13 +171,9 @@ export function HubChartView({
         highValue={highValue}
         lowCostX={costLowLinePosition(costLowBandOf(model))}
         bands={bands}
-        toEstimate={view.toEstimate}
-        toEstimateHref={hubHref(basePath, base)}
-        lists={{
-          toEstimate: view.toEstimateItems.map(offItem),
-          offMatrix: view.offMatrixItems.length ? { label: offMatrixLabel(view.offMatrix), items: view.offMatrixItems.map(offItem) } : null,
-          open,
-        }}
+        toEstimate={view.toEstimate.map(offItem)}
+        offMatrix={off.length ? { label: offMatrixLabel({ count: off.length, withoutBenefit: view.offMatrix.withoutBenefit }), items: off.map(offItem) } : null}
+        open={open}
       />
     </div>
   );

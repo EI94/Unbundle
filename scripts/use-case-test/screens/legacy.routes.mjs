@@ -51,7 +51,8 @@ const routes = [
 
   // The old addresses, followed by the browser: they land on the area (copy guard of the area).
   { name: "da-portfolio", path: "/dashboard/{ws:a}/portfolio?joined=1", copyGuard: "area", present: ["Benvenuto in"], absent: OLD_ENTRIES },
-  { name: "da-plan", path: "/dashboard/{ws:a}/plan", copyGuard: "area", present: ["Prossimi"], absent: OLD_ENTRIES },
+  // /plan opens the Panoramica: «Approvati» in its strip, for every account.
+  { name: "da-plan", path: "/dashboard/{ws:a}/plan", copyGuard: "area", present: ["Panoramica", "Approvati"], absent: OLD_ENTRIES },
   { name: "da-submit", path: "/dashboard/{ws:a}/portfolio/submit", copyGuard: "area", present: ["Nuovo use case"], absent: OLD_ENTRIES },
   { name: "da-review", path: "/dashboard/{ws:a}/portfolio/review/{uc:r06}", as: REVIEWERS, copyGuard: "area", present: ["{code:r06}"], absent: OLD_ENTRIES },
 

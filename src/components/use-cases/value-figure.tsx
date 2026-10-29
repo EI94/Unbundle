@@ -16,7 +16,7 @@ export interface ValueFigureProps {
   /** Il Valore della scheda (`valueFigure` di `valuation.ts`); `null` vale «da stimare». */
   value: ValueParts | null;
   /**
-   * «corta» (riga, pannello, card della Roadmap): con gli euro all'anno solo la cifra,
+   * «corta» (riga, pannello, matrice, card della Panoramica): con gli euro all'anno solo la cifra,
    * «12.250 €/anno»; senza, la parola, «Alto», oppure con «Benefici e costi»
    * «da misurare · fino a 5.840 €» o «qualitativo». «lunga» (scheda, §6.3): con gli euro all'anno
    * «12.250 € all'anno» con la loro fonte; senza, «Alto · 3,8» con la fonte del punteggio.
@@ -32,7 +32,7 @@ export interface ValueFigureProps {
    */
   withSource?: boolean;
   /**
-   * Nella forma corta, nelle colonne strette (riga di «Da decidere», lista di «Priorità»): la cifra
+   * Nella forma corta, nelle colonne strette (la riga di «Da decidere»): la cifra
    * va a capo dopo «·» se non ci sta, mai dentro una parte («da misurare ·» / «fino a 5.840 €»).
    * Senza, resta su una riga.
    */

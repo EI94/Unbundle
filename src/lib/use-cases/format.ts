@@ -8,10 +8,10 @@
  * - **Date**: `it-IT`, fuso `Europe/Rome`: «14 ott», «14 ott 2026», «ott 2026». Mai ISO a
  *   schermo: una data illeggibile dà `null`, e chi chiama non scrive nulla. Un timestamp senza
  *   zona si legge come UTC, mai nel fuso del processo (vedi `toInstant`).
- * - **Fonti** (§7.2, §14.3): corte nella riga, nel pannello e nella card della Roadmap
+ * - **Fonti** (§7.2, §14.3): corte nella riga, nel pannello e nelle card della Panoramica
  *   («team», «AI», «dossier», «stimato»), lunghe nella scheda («importo del team», «fascia
  *   del team», «stimato dall'impegno», «dal dossier»). Mai «da dossier».
- * - **Costo**: una sola forma corta per la riga e per la card della Roadmap («€€ · 40.000 € ·
+ * - **Costo**: una sola forma corta per la riga, il pannello e la matrice («€€ · 40.000 € ·
  *   team», «€€ · fascia · team», «€€€ · fascia · stimato», «da stimare»); la forma lunga
  *   della scheda scrive per una fascia la sua etichetta nelle fasce del workspace (D15), con
  *   l'iniziale minuscola: «€€ · fascia da 25.000 a 65.000 €». Le card della Panoramica scrivono
@@ -166,7 +166,7 @@ export function formatDate(value: Date | string | null | undefined): string | nu
   return instant ? DAY_MONTH_YEAR.format(instant) : null;
 }
 
-/** «ott 2026» (il mese di «Fatti» nella Roadmap). */
+/** «ott 2026» (il mese di «Realizzati» nella Panoramica). */
 export function formatMonthYear(value: Date | string | null | undefined): string | null {
   const instant = toInstant(value);
   return instant ? MONTH_YEAR.format(instant) : null;
@@ -271,7 +271,7 @@ export function valueWordText(value: Pick<ValueParts, "word" | "benefits"> | nul
  * La forma corta del Valore con la parola, per il MCP del team e l'export:
  * - con «Benefici e costi»: «Medio · 4.043 €/anno», «da misurare · fino a 5.840 €», «qualitativo»;
  * - senza: «Alto»; senza parola ma con gli euro all'anno «12.250 € all'anno»; altrimenti «da stimare».
- * Riga, pannello e card della Roadmap usano `valueScreenText`: con una cifra in euro solo la cifra.
+ * Riga, pannello e card della Panoramica usano `valueScreenText`: con una cifra in euro solo la cifra.
  */
 export function valueShortText(value: Pick<ValueParts, "word" | "perYear" | "benefits"> | null | undefined): string {
   const benefits = value?.benefits;
@@ -338,14 +338,6 @@ export function hasEuroValue(value: Pick<ValueParts, "perYear" | "benefits"> | n
 export function showsZone(value: Pick<ValueParts, "perYear" | "benefits"> | null | undefined): boolean {
   if (hasEuroValue(value)) return false;
   return !(value?.benefits && value.benefits.state !== "contato");
-}
-
-/**
- * Le colonne della lista di «Priorità»: «Origine» solo se le righe non hanno tutte la stessa origine
- * (altrimenti ripeterebbe la stessa parola in ogni riga), «Zona» solo se una riga la scrive (`showsZone`).
- */
-export function priorityListColumns(rows: readonly { origin: string; value: Pick<ValueParts, "perYear" | "benefits"> | null | undefined }[]): { origin: boolean; zone: boolean } {
-  return { origin: new Set(rows.map((row) => row.origin)).size > 1, zone: rows.some((row) => showsZone(row.value)) };
 }
 
 /** La forma corta a schermo: con gli euro all'anno solo la cifra, «12.250 €/anno»; altrimenti `valueShortText` («da misurare · fino a 5.840 €», «Alto», «qualitativo», «da stimare»). */
@@ -453,7 +445,7 @@ function costBandLabelOf(cost: CostParts, bands: readonly CostBandInfo[]): strin
 
 /**
  * Le parti del costo nella forma `form`:
- * - corta (riga, pannello, card della Roadmap): «€€ · 40.000 €» oppure «€€ · fascia», fonte
+ * - corta (riga, pannello, matrice): «€€ · 40.000 €» oppure «€€ · fascia», fonte
  *   «team», «dossier», «stimato»; con «Benefici e costi» «avvio 560 € · ricorrenti 600 €/anno»,
  *   senza fonte (`source` null);
  * - lunga (scheda): «€€ · 40.000 €» oppure «€€ · fascia da 25.000 a 65.000 €», fonte
@@ -477,9 +469,10 @@ export function costTextParts(cost: CostParts | null | undefined, form: SourceFo
 }
 
 /**
- * La forma corta del costo, una sola per la riga e per la card della Roadmap (§4.5, §4.6,
- * §7.2): «€€ · 40.000 € · team», «€€ · fascia · team», «€€€ · fascia · stimato»,
- * «€ · 18.500 € · dossier», «da stimare».
+ * La forma corta del costo, una sola per la riga, la matrice e il MCP del team (§4.6, §7.2):
+ * «€€ · 40.000 € · team», «€€ · fascia · team», «€€€ · fascia · stimato»,
+ * «€ · 18.500 € · dossier», «da stimare». Le card della Panoramica scrivono solo l'avvio
+ * (`startCostParts`).
  */
 export function costShortText(cost: CostParts | null | undefined, bands: readonly CostBandInfo[] = COST_BANDS): string {
   const parts = costTextParts(cost, "corta", bands);

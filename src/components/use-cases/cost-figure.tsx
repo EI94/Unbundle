@@ -9,7 +9,7 @@ export interface CostFigureProps {
   /** Le 5 fasce del workspace (D15, `resolveCostBands`), per l'etichetta di una fascia; predefinite `COST_BANDS`. */
   bands?: readonly CostBandInfo[];
   /**
-   * «corta» (riga, pannello, card della Roadmap, la stessa forma): «€€ · 40.000 € · team»,
+   * «corta» (riga, pannello e matrice, la stessa forma): «€€ · 40.000 € · team»,
    * «€€ · fascia · team», «€€€ · fascia · stimato», con «Benefici e costi» «avvio 560 € ·
    * ricorrenti 600 €/anno» (senza fonte: la dice la scheda); «lunga» (scheda, §6.3): «€€ · 40.000 €»
    * oppure «€€ · fascia da 25.000 a 65.000 €», con la fonte per esteso; «avvio» (card della
@@ -20,12 +20,10 @@ export interface CostFigureProps {
   /** «Costo: €€ · 40.000 € · team» nella riga (§4.6); «Costo di realizzazione» sopra la cifra nella scheda. */
   withLabel?: boolean;
   /**
-   * Forma corta: «avvio 6.450 €» e «ricorrenti 1.200 €/anno» una sotto l'altra, senza « · »: sempre
-   * (`true`, il pannello) o solo con le colonne della lista di «Priorità» (`"colonne"`, il riquadro
-   * `@container/hub` largo almeno 58rem). Senza, le due parti stanno in riga e vanno a capo solo
-   * dopo « · ».
+   * Forma corta: «avvio 6.450 €» e «ricorrenti 1.200 €/anno» una sotto l'altra, senza « · » (il
+   * pannello). Senza, le due parti stanno in riga e vanno a capo solo dopo « · ».
    */
-  stack?: boolean | "colonne";
+  stack?: boolean;
   className?: string;
 }
 
@@ -87,7 +85,7 @@ export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel
   return (
     <span data-figure="costo" data-estimated={parts.estimated ? "true" : undefined} data-cost-source={source ?? undefined} className={cn("text-sm", className)}>
       {withLabel && <span className="text-muted-foreground">{COST_LABEL_SHORT}: </span>}
-      {multi && stack === true ? (
+      {multi && stack ? (
         <span data-cost-parts="" className={cn("inline-flex flex-col", tone)}>
           {parts.figureParts.map((part) => (
             <span key={part} className="whitespace-nowrap">
@@ -96,10 +94,10 @@ export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel
           ))}
         </span>
       ) : multi ? (
-        <span data-cost-parts={stack === "colonne" ? "colonne" : undefined} className={cn(tone, stack === "colonne" && "@min-[58rem]/hub:inline-flex @min-[58rem]/hub:flex-col")}>
+        <span className={tone}>
           {parts.figureParts.map((part, index) => (
             <span key={part}>
-              {index > 0 ? <span className={stack === "colonne" ? "@min-[58rem]/hub:hidden" : undefined}>{FIGURE_SEPARATOR}</span> : null}
+              {index > 0 ? <span>{FIGURE_SEPARATOR}</span> : null}
               <span className="whitespace-nowrap">{part}</span>
             </span>
           ))}

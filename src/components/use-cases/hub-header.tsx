@@ -18,10 +18,6 @@ export const HUB_TEXT = Object.freeze({
   /** La stessa vista per i contributori, che non decidono: niente contatore (H4p). */
   contributorDecideView: "In valutazione",
   goToOverview: "Vai alla Panoramica",
-  /** Sopra un grafico del menu «⋯». */
-  backToOverview: "Torna alla Panoramica",
-  /** La voce del menu «⋯» e il titolo del grafico. */
-  curve: "Curva del valore",
   emptyTitle: "Nessuno use case, per ora",
   emptyReviewer: "Aggiungine uno o proponili da Activity mapping.",
   emptyContributor: "Proponi il primo use case.",

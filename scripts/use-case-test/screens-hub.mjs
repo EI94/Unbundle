@@ -51,7 +51,7 @@
 //
 // Checks on every page (failures, also with --smoke): status below 500, no «Application error»,
 // no uncaught exception, no horizontal scroll (scrollWidth ≤ innerWidth, with the element that
-// sticks out in the message); on the hub's lists, the columns (see «Hub layout» below); for contributors and
+// sticks out in the message); on the hub's rows and lanes, the columns (see «Hub layout» below); for contributors and
 // non-members of the route's workspace (art. 15.4, D4, D14): no [data-figure] element and no «€»
 // in the visible text; `absent` and `present`. Strict checks (failures, warnings with --smoke or
 // --warn-only): at most one filled button outside dialogs; every cost shown
@@ -70,15 +70,14 @@
 // exceptions and the art. 15.4 / D4 checks; the strict checks run only at --widths. From 768 px the
 // sidebar takes 256 px of the window, so layouts sized on the window (`md:`, `lg:`) can be wider
 // than the page: the default widths of 1440 and 400 never saw it (horizontal scroll at 768-1024 on
-// every view of the area). At 1280 px the page area is 960 px: the lists must have their columns.
+// every view of the area). At 1280 px the page area is 960 px: the rows and lanes must have their columns.
 //
 // Hub layout (failures, every width): with a page area (`@container/hub`, [data-slot=use-case-hub])
-// of at least 58rem (928 px) the «Priorità» list has its columns and header, the use case rows
-// are one line (priority-list.tsx, use-case-row.tsx) and the three lanes of the Panoramica stand
-// side by side; below 58rem the lanes are one column, one under the other (panorama-lanes.tsx). At
-// every width no cell of the «Priorità» list, no part of a row and no part of a lane card is wider
-// than its box (a value written over the cost next to it). Text cut on purpose (`truncate`,
-// overflow hidden) does not count.
+// of at least 58rem (928 px) the use case rows are one line (use-case-row.tsx) and the three lanes
+// of the Panoramica stand side by side; below 58rem the lanes are one column, one under the other
+// (panorama-lanes.tsx). At every width no part of a row and no part of a lane card is wider than
+// its box (a value written over the cost next to it). Text cut on purpose (`truncate`, overflow
+// hidden) does not count.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -141,7 +140,7 @@ const widths = opts.widths ?? [1440, 400];
 if (widths.some((w) => !Number.isInteger(w) || w < 320 || w > 3840)) throw new Error("--widths: integers between 320 and 3840");
 /** The tablet widths where every page is checked for horizontal scroll (see the header). */
 const DEFAULT_OVERFLOW_WIDTHS = [768, 900, 1024, 1280];
-/** From this page area (58rem) the «Priorità» list has columns and the rows are one line (see «Hub layout»). */
+/** From this page area (58rem) the rows are one line and the lanes stand side by side (see «Hub layout»). */
 const HUB_COLUMNS_FROM_PX = 928;
 const overflowWidths = (opts.overflowWidths ?? DEFAULT_OVERFLOW_WIDTHS).filter((w) => !widths.includes(w));
 if (overflowWidths.some((w) => !Number.isInteger(w) || w < 320 || w > 3840)) throw new Error("--overflow-widths: integers between 320 and 3840, or off");
@@ -341,44 +340,27 @@ function overflowCulprits(page) {
 }
 
 /**
- * The hub's lists on the page (see «Hub layout» in the header): page area, «Priorità» rows with and
- * without columns, rows on two lines, the columns of the Panoramica's lanes (null without lanes),
- * and the cells, row parts and lane card parts whose content is wider than their box (flex and grid
- * items, so their client width is their box). Nothing on the detail page.
+ * The hub's rows and lanes on the page (see «Hub layout» in the header): page area, rows on two
+ * lines, the columns of the Panoramica's lanes (null without lanes), and the row parts and lane card
+ * parts whose content is wider than their box (flex and grid items, so their client width is their
+ * box). Nothing on the detail page.
  */
 function hubLayout(page) {
   return evaluate(page, () => {
     const shown = (el) => el.getBoundingClientRect().width > 0 && getComputedStyle(el).display !== "none";
     const clips = (el) => ["hidden", "clip"].includes(getComputedStyle(el).overflowX);
     const text = (el) => (el.innerText ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
-    const cellsOf = (row) => {
-      const cells = [];
-      const walk = (node) => {
-        for (const child of node.children) {
-          if (getComputedStyle(child).display === "contents") walk(child);
-          else cells.push(child);
-        }
-      };
-      walk(row);
-      return cells;
-    };
     const hub = document.querySelector('[data-slot="use-case-hub"]');
-    const priorityRows = [...document.querySelectorAll('[data-slot="priority-row"]')].filter(shown);
-    const header = document.querySelector('[data-slot="priority-list"] > [aria-hidden]');
     const rows = [...document.querySelectorAll('[data-slot="use-case-row"] > a')].filter(shown);
     const laneCards = [...document.querySelectorAll('[data-slot="lane-card"] > a')].filter(shown);
     const lanes = document.querySelector('[data-slot="lanes"]');
     const boxes = [
-      ...priorityRows.flatMap(cellsOf),
       ...rows.flatMap((link) => [link, ...link.children]),
       ...laneCards.flatMap((link) => [link, ...link.children]),
     ].filter((el) => shown(el) && !clips(el));
     const wider = boxes.filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => `«${text(el)}» ${el.scrollWidth} > ${el.clientWidth} px`);
     return {
       hubWidth: hub ? Math.round(hub.getBoundingClientRect().width) : null,
-      priorityRows: priorityRows.length,
-      priorityWithoutColumns: priorityRows.filter((li) => getComputedStyle(li).display !== "grid").length,
-      priorityHeader: header ? shown(header) : null,
       rows: rows.length,
       rowsOnTwoLines: rows.filter((link) => getComputedStyle(link).flexDirection !== "row").length,
       // The used tracks of the lanes grid: «300px 300px 300px» side by side, «928px» one under the other.
@@ -474,11 +456,9 @@ try {
             const culprits = await overflowCulprits(page);
             failures.push(`horizontal scroll at ${width} px (${report.scrollWidth} > ${report.innerWidth})${culprits.length ? `: ${culprits.join(" | ")}` : ""}`);
           }
-          // Hub layout: the columns from 58rem of page area, and nothing wider than its column.
+          // Hub layout: rows and lanes from 58rem of page area, and nothing wider than its box.
           if (layout.hubWidth !== null && layout.hubWidth >= HUB_COLUMNS_FROM_PX) {
             const area = `a page area of ${layout.hubWidth} px (columns from ${HUB_COLUMNS_FROM_PX})`;
-            if (layout.priorityWithoutColumns) failures.push(`${layout.priorityWithoutColumns} «Priorità» rows without columns with ${area}`);
-            if (layout.priorityRows && layout.priorityHeader === false) failures.push(`«Priorità» list without its header with ${area}`);
             if (layout.rowsOnTwoLines) failures.push(`${layout.rowsOnTwoLines} rows on two lines with ${area}`);
             if (layout.laneColumns !== null && layout.laneColumns !== 3) failures.push(`lanes not side by side with ${area}: ${layout.laneColumns} columns`);
           } else if (layout.hubWidth !== null) {
@@ -486,7 +466,7 @@ try {
               failures.push(`lanes side by side in a page area of ${layout.hubWidth} px (one column below ${HUB_COLUMNS_FROM_PX}): ${layout.laneColumns} columns`);
             }
           }
-          if (layout.wider) failures.push(`${layout.wider} cells wider than their column at ${width} px: ${layout.widerText.join(" | ")}`);
+          if (layout.wider) failures.push(`${layout.wider} parts wider than their box at ${width} px: ${layout.widerText.join(" | ")}`);
           if (!nav.idle) warnings.push("network not quiet within the timeout");
           // Art. 15.4 and D4: contributors and non-members never get a figure or a euro amount.
           const restricted = item.audience !== "revisore";

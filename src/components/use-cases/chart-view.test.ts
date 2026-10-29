@@ -9,7 +9,7 @@ import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 
 // I grafici del menu «⋯» resi in HTML (rilascio «Panoramica»): «‹ Torna alla Panoramica» con il nome
 // del grafico, la matrice con i due elenchi chiusi sotto («N da stimare», «N senza beneficio
-// contato») al posto dei chip, il vuoto e «Curva del valore». Dati sintetici.
+// contato»), il vuoto e «Curva del valore». Dati sintetici.
 //
 // I vuoti vengono da hub-header.tsx, che porta con sé il menu «⋯» con le sue azioni del server (e il
 // database): qui il menu è un componente vuoto, il resto è quello vero.
@@ -144,7 +144,7 @@ function detailsOf(html: string, slot: string): string {
 
 const isOpen = (tag: string) => /\sopen\b/.test(tag.replace(/="[^"]*"/g, ""));
 
-test("matrice: sotto la legenda due elenchi chiusi al posto dei chip; l'indirizzo apre il suo", () => {
+test("matrice: sotto la legenda due elenchi chiusi; l'indirizzo apre il suo", () => {
   const one = { id: "11111111-0000-4000-8000-000000000001", code: "TJ-0003", title: "Bozza di registrazione", href: "/h?apri=11111111-0000-4000-8000-000000000001" };
   const off = { id: "22222222-0000-4000-8000-000000000002", code: null, title: "Meno errori nelle fatture", href: "/h?apri=22222222-0000-4000-8000-000000000002" };
   const html = renderToStaticMarkup(
@@ -152,9 +152,9 @@ test("matrice: sotto la legenda due elenchi chiusi al posto dei chip; l'indirizz
       points: [],
       highValue: 3.5,
       lowCostX: 2.5,
-      toEstimate: 1,
-      toEstimateHref: "/h",
-      lists: { toEstimate: [one], offMatrix: { label: "1 senza beneficio contato", items: [off] }, open: "fuori-matrice" },
+      toEstimate: [one],
+      offMatrix: { label: "1 senza beneficio contato", items: [off] },
+      open: "fuori-matrice",
     }),
   );
   const toEstimate = detailsTag(html, "to-estimate");
@@ -168,18 +168,16 @@ test("matrice: sotto la legenda due elenchi chiusi al posto dei chip; l'indirizz
   assert.match(detailsTag(html, "off-matrix"), /^<details data-slot="off-matrix" open=""/);
   const offList = detailsOf(html, "off-matrix");
   assert.ok(offList.includes("1 senza beneficio contato") && offList.includes(">Meno errori nelle fatture<"), "senza codice, il titolo solo");
-  assert.ok(!html.includes("to-estimate-chip") && !html.includes("off-matrix-chip"), "niente chip");
   // Gli elenchi stanno sotto la legenda, nella didascalia della matrice.
   assert.ok(html.indexOf('data-slot="matrix-legend"') < html.indexOf('data-slot="to-estimate"'));
   assert.ok(html.indexOf('data-slot="off-matrix"') < html.indexOf("</figcaption>"));
 
-  // Senza elenchi, i chip di prima (fino a quando escono dalla matrice).
-  const chips = renderToStaticMarkup(createElement(matrix.ValueCostMatrix, { points: [], highValue: 3.5, lowCostX: 2.5, toEstimate: 2, toEstimateHref: "/h?stima=mancante" }));
-  assert.ok(chips.includes('data-slot="to-estimate-chip"') && !chips.includes("<details"));
+  // Senza «Benefici e costi» solo il primo; senza `open` chiuso.
+  const only = renderToStaticMarkup(createElement(matrix.ValueCostMatrix, { points: [], highValue: 3.5, lowCostX: 2.5, toEstimate: [one] }));
+  assert.equal(isOpen(detailsTag(only, "to-estimate")), false);
+  assert.ok(!only.includes('data-slot="off-matrix"'));
   // Elenchi vuoti: niente.
-  const none = renderToStaticMarkup(
-    createElement(matrix.ValueCostMatrix, { points: [], highValue: 3.5, lowCostX: 2.5, toEstimate: 0, toEstimateHref: "/h", lists: { toEstimate: [], offMatrix: null, open: "mancante" } }),
-  );
+  const none = renderToStaticMarkup(createElement(matrix.ValueCostMatrix, { points: [], highValue: 3.5, lowCostX: 2.5, toEstimate: [], offMatrix: null, open: "mancante" }));
   assert.ok(!none.includes("<details") && !none.includes("da stimare"));
 });
 
@@ -211,7 +209,6 @@ test("«Matrice Valore × Costo» dal menu «⋯»: «‹ Torna alla Panoramica�
   assert.equal(isOpen(detailsTag(html, "off-matrix")), false);
   assert.match(off, /1 senza beneficio contato<\/summary>/);
   assert.ok(off.includes(`>${qualitative.code}<`));
-  assert.ok(!html.includes("to-estimate-chip"));
 });
 
 test("i vuoti dei grafici: «Nessuno use case da mettere in ordine», o «Togli i filtri» che tiene il grafico", () => {

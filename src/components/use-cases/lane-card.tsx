@@ -113,7 +113,7 @@ export function LaneCard({
   );
 }
 
-/** Il tag rosso «Scaduto» (§4.5): trimestre passato, senza avvio. Lo stesso nelle card della Panoramica e nella lista di «Priorità». */
+/** Il tag rosso «Scaduto» (§4.5) delle card della Panoramica: trimestre passato, senza avvio. */
 export function ExpiredTag({ className }: { className?: string }) {
   return (
     <span

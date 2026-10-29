@@ -10,30 +10,27 @@ import {
   HUB_SHOW_PARAMS,
   HUB_VIEWS,
   HUB_VIEW_ALIASES,
-  ROADMAP_DONE_PREVIEW,
   RUNS_PER_YEAR,
   applyHubFilters,
   bandText,
   buildDecideList,
   buildPriority,
-  buildRoadmap,
   claudeHoursPerYear,
   decideCount,
   defaultHubView,
   exportRow,
   hasActiveFilters,
-  hoursLabel,
   matchesSearch,
   monthLabel,
   parseHubParams,
   pendingValueTotal,
   projectHubItem,
   projectUseCaseDetail,
+  quarterOfItem,
   roadmapGroupKey,
   roadmapGroupLabel,
   roadmapTotals,
   romeDay,
-  shareLabel,
   shownChart,
   toEstimateLabel,
   totalsNote,
@@ -555,9 +552,9 @@ test("D17: «answered» solo dopo una risposta a «Serve info» non ancora decis
   assert.equal(reopened.answered, false, "riaperta dopo «Non avviare»");
 });
 
-// ─── «Priorità» e zone (§4.4, §7.4) ──────────────────────────────────
+// ─── Matrice Valore × Costo e zone (§4.4, §7.4) ───────────────────────
 
-test("«Priorità › Da costruire»: zona, poi Valore, poi Costo; «da stimare» in fondo; matrice con i soli stimati", () => {
+test("matrice Valore × Costo: «Da costruire», zona, poi Valore, poi Costo; «da stimare» in fondo; punti per i soli stimati", () => {
   const subito = item({ customScores: HIGH, costEurOnce: 18_000 });
   const subitoCheaper = item({ customScores: HIGH, costEurOnce: 9_000 });
   const pianificare = item({ customScores: HIGH, costEurOnce: 120_000, status: "accepted", targetQuarter: "2027-Q1" });
@@ -568,16 +565,15 @@ test("«Priorità › Da costruire»: zona, poi Valore, poi Costo; «da stimare�
   const postponed = item({ customScores: HIGH, costEurOnce: 5_000, reviewBy: "2026-12-01" });
   const bestPractice = item({ customScores: HIGH, costEurOnce: 5_000, portfolioKind: "best_practice", status: "accepted" });
   const started = item({ customScores: HIGH, costEurOnce: 5_000, status: "in_progress" });
-  const view = buildPriority([nonOra, missingCost, seAvanza, subito, pianificare, missingValue, subitoCheaper, postponed, bestPractice, started], null);
-  assert.equal(view.tipo, "costruire");
-  if (view.tipo !== "costruire") return;
+  const view = buildPriority([nonOra, missingCost, seAvanza, subito, pianificare, missingValue, subitoCheaper, postponed, bestPractice, started]);
   // A parità di zona e Valore, costo crescente; tra i «da stimare» prima chi ha il Valore.
   assert.deepEqual(
     view.list.map((i) => i.id),
     [subitoCheaper.id, subito.id, pianificare.id, seAvanza.id, nonOra.id, missingCost.id, missingValue.id],
   );
   assert.deepEqual(view.list.map((i) => i.zone), ["subito", "subito", "da_pianificare", "se_avanza_tempo", "non_ora", null, null]);
-  assert.equal(view.toEstimate, 2);
+  assert.deepEqual(view.toEstimate.map((i) => i.id), [missingCost.id, missingValue.id], "l'elenco «da stimare», nell'ordine della matrice");
+  assert.deepEqual(view.offMatrix, { items: [], withoutBenefit: 0 }, "nessuna scheda con «Benefici e costi»");
   assert.equal(view.points.length, 5);
   const point = view.points.find((p) => p.id === pianificare.id)!;
   assert.equal(point.approved, true, "pieno se approvato");
@@ -586,21 +582,7 @@ test("«Priorità › Da costruire»: zona, poi Valore, poi Costo; «da stimare�
   assert.equal(point.y, 4);
   assert.equal(view.points.find((p) => p.id === seAvanza.id)!.x, 1, "una fascia sta al centro");
   for (const excluded of [postponed, bestPractice, started]) assert.equal(view.list.includes(excluded), false);
-  assert.equal(toEstimateLabel(view.toEstimate), "2 da stimare");
-});
-
-test("«Priorità › Da diffondere»: best practice approvate, per ore della stima di Claude; senza stima in fondo", () => {
-  const intake = (minutes: number, frequency: string, people: number) => ({ timeSavedMinutesPerRun: minutes, frequency, beneficiaries: people });
-  const few = item({ portfolioKind: "best_practice", status: "accepted", intake: intake(10, "mensile", 2), title: "B" });
-  const many = item({ portfolioKind: "best_practice", status: "accepted", intake: intake(15, "giornaliera", 3), title: "C" });
-  const none = item({ portfolioKind: "best_practice", status: "accepted", title: "A" });
-  const toDecide = item({ portfolioKind: "best_practice", intake: intake(60, "giornaliera", 10) });
-  const done = item({ portfolioKind: "best_practice", status: "implemented", intake: intake(60, "giornaliera", 10) });
-  const view = buildPriority([none, few, toDecide, many, done], "diffondere");
-  assert.equal(view.tipo, "diffondere");
-  assert.deepEqual(view.list.map((i) => i.id), [many.id, few.id, none.id]);
-  assert.equal(many.claudeHoursPerYear, 180);
-  assert.equal(hoursLabel(1_250), "circa 1.250 ore all'anno");
+  assert.equal(toEstimateLabel(view.toEstimate.length), "2 da stimare");
 });
 
 test("stima di Claude (§7.5): minuti × volte all'anno × persone, alle decine; null con un dato mancante", () => {
@@ -665,68 +647,41 @@ test("workspaceValuationModel: la config normalizzata vince, le chiavi nuove arr
   assert.equal(workspaceValuationModel(MODEL, { thresholds: { costLowMaxEur: -5 } }).thresholds?.costLowBand, 1);
 });
 
-// ─── «Roadmap» (§4.5) ────────────────────────────────────────────────
+// ─── Trimestri e cifre della Panoramica (§4.5) ───────────────────────
+// Le corsie stanno in lanes.test.ts; qui le chiavi dei trimestri, che leggono anche la testa della
+// Panoramica, le due matrici del menu «⋯» e il riepilogo in campanella.
 
-test("Roadmap: Prossimi per trimestre con «Scaduti», In realizzazione, Fatti dal più recente", () => {
-  const past = item({ status: "accepted", targetQuarter: "2026-Q3", title: "Scaduto di prova" });
-  const current = item({ status: "accepted", targetQuarter: "2026-Q4", customScores: MID });
-  const currentHigh = item({ status: "accepted", targetQuarter: "2026-Q4", customScores: HIGH });
-  const next = item({ status: "accepted", targetQuarter: "2027-Q1" });
-  const later = item({ status: "accepted", targetQuarter: "2027-Q3" });
-  const laterSooner = item({ status: "accepted", targetQuarter: "2027-Q2" });
-  const noQuarter = item({ status: "accepted" });
-  const diffuse = item({ status: "accepted", portfolioKind: "best_practice", targetQuarter: "2027-Q1" });
-  const inProgress = item({ status: "in_progress" });
-  const doneOld = item({ status: "implemented", realizedOn: "2026-08-01" });
-  const doneNew = item({ status: "implemented", realizedOn: "2026-10-02" });
-  const doneNoEvent = item({ status: "implemented", statusChangedAt: new Date("2026-09-15T10:00:00Z") });
-  const decide = item({});
-  const roadmap = buildRoadmap(
-    [decide, later, next, past, noQuarter, current, currentHigh, laterSooner, diffuse, inProgress, doneOld, doneNew, doneNoEvent],
-    TODAY,
-  );
+test("trimestri rispetto a oggi: «Scaduti», questo, il prossimo, i successivi, «Più avanti»", () => {
+  const quarters = ["2026-Q3", "2026-Q4", "2027-Q1", "2027-Q2", "2027-Q3", null] as const;
   assert.deepEqual(
-    roadmap.upcoming.map((g) => [g.key, g.label, g.expired]),
+    quarters.map((quarter) => {
+      const key = roadmapGroupKey(quarter, TODAY);
+      return [key, roadmapGroupLabel(key, TODAY)];
+    }),
     [
-      ["scaduti", "Scaduti", true],
-      ["questo_trimestre", "Questo trimestre · T4 2026", false],
-      ["prossimo_trimestre", "Prossimo trimestre · T1 2027", false],
-      ["2027-Q2", "T2 2027", false],
-      ["2027-Q3", "T3 2027", false],
-      ["piu_avanti", "Più avanti", false],
+      ["scaduti", "Scaduti"],
+      ["questo_trimestre", "Questo trimestre · T4 2026"],
+      ["prossimo_trimestre", "Prossimo trimestre · T1 2027"],
+      ["2027-Q2", "T2 2027"],
+      ["2027-Q3", "T3 2027"],
+      ["piu_avanti", "Più avanti"],
     ],
   );
-  assert.deepEqual(roadmap.upcoming[0].items, [past]);
-  assert.deepEqual(roadmap.upcoming[1].items, [currentHigh, current], "per Valore decrescente");
-  assert.deepEqual(new Set(roadmap.upcoming[2].items), new Set([next, diffuse]), "le best practice approvate compaiono");
-  assert.deepEqual(roadmap.inProgress, [inProgress]);
-  assert.deepEqual(roadmap.done, [doneNew, doneNoEvent, doneOld]);
-  assert.equal(doneNoEvent.realizedOn, "2026-09-15", "senza Storia, il mese dell'ultimo cambio di stato");
-  assert.equal(ROADMAP_DONE_PREVIEW, 10);
-  assert.equal(roadmapGroupKey(null, TODAY), "piu_avanti");
   assert.equal(roadmapGroupKey("2026-Q4", "2027-01-02"), "scaduti", "a gennaio il T4 2026 è passato");
   assert.equal(roadmapGroupLabel("questo_trimestre", "2027-01-02"), "Questo trimestre · T1 2027");
+  // Il trimestre del contributore viene dall'etichetta di «Quando»; senza trimestre «Più avanti».
+  const own = contributorItem({ title: "Zeta", phase: "approvato", subState: "trimestre", phaseLabel: "Approvato · T3 2026", quando: "T3 2026" });
+  const later = contributorItem({ title: "Gamma", phase: "approvato", subState: "piu_avanti", phaseLabel: "Approvato · Più avanti", quando: "Più avanti" });
+  assert.equal(quarterOfItem(own), "2026-Q3");
+  assert.equal(quarterOfItem(later), null);
+  assert.equal(quarterOfItem(item({ status: "accepted", targetQuarter: "2027-Q1" })), "2027-Q1");
+  // Il mese di «Realizzati»: senza Storia, l'ultimo cambio di stato.
+  const doneNoEvent = item({ status: "implemented", statusChangedAt: new Date("2026-09-15T10:00:00Z") });
+  assert.equal(doneNoEvent.realizedOn, "2026-09-15");
+  assert.equal(item({ status: "implemented", realizedOn: "2026-10-02" }).realizedOn, "2026-10-02");
 });
 
-test("Roadmap del contributore: trimestre dall'etichetta di «Quando», ordine per titolo", () => {
-  const a = contributorItem({ title: "Zeta", phase: "approvato", subState: "trimestre", phaseLabel: "Approvato · T3 2026", quando: "T3 2026" });
-  const b = contributorItem({ title: "Beta", phase: "approvato", subState: "trimestre", phaseLabel: "Approvato · T1 2027", quando: "T1 2027" });
-  const c = contributorItem({ title: "Alfa", phase: "approvato", subState: "trimestre", phaseLabel: "Approvato · T1 2027", quando: "T1 2027" });
-  const d = contributorItem({ title: "Gamma", phase: "approvato", subState: "piu_avanti", phaseLabel: "Approvato · Più avanti", quando: "Più avanti" });
-  const e = contributorItem({ title: "Delta", phase: "realizzato", subState: "realizzato", phaseLabel: "Realizzato" });
-  const roadmap = buildRoadmap([a, b, c, d, e], TODAY);
-  assert.deepEqual(
-    roadmap.upcoming.map((g) => [g.key, g.items.map((i) => i.title)]),
-    [
-      ["scaduti", ["Zeta"]],
-      ["prossimo_trimestre", ["Alfa", "Beta"]],
-      ["piu_avanti", ["Gamma"]],
-    ],
-  );
-  assert.deepEqual(roadmap.done, [e]);
-});
-
-test("cifre della Roadmap: «su N use case · M da fascia», quota delle origini; nessuna cifra senza use case", () => {
+test("cifre della Panoramica: «su N use case · M da fascia», quota delle origini; nessuna cifra senza use case", () => {
   const items = [
     item({ status: "accepted", targetQuarter: "2026-Q4", valueEurYear: 60_000, costEurOnce: 40_000 }),
     item({ status: "accepted", origin: "transformation", valueEurYear: 40_000, costBand: 2 }),
@@ -755,7 +710,6 @@ test("cifre della Roadmap: «su N use case · M da fascia», quota delle origini
   assert.deepEqual(roadmapTotals([item({}), item({ status: "implemented", valueEurYear: 1 })]), { expectedValue: null, committedCost: null });
   assert.equal(totalsNote(9), "su 9 use case");
   assert.equal(totalsNote(7, 2), "su 7 use case · 2 da fascia");
-  assert.equal(shareLabel({ adoption: 60, transformation: 40 }), "AI Adoption 60% · AI Transformation 40%");
 });
 
 test("«fino a» della Panoramica: i «da misurare» delle card approvate e in realizzazione con un modello; null senza", () => {

@@ -32,7 +32,7 @@ export interface MatrixPoint {
   origin: Origin;
   /** Pieno se approvato, vuoto se da decidere. */
   approved: boolean;
-  /** Approvato con un trimestre passato e non partito: bordo rosso, «Scaduto» come nella Roadmap. */
+  /** Approvato con un trimestre passato e non partito: bordo rosso, «Scaduto» come nelle corsie della Panoramica. */
   expired?: boolean;
   /** Posizione del costo, da 0,5 a 5,5 sulla scala delle fasce del workspace (`costPosition`). */
   x: number;
@@ -61,25 +61,15 @@ export interface ValueCostMatrixProps {
   lowCostX: number;
   /** Le 5 fasce del costo del workspace (D15): tacche e loro etichette. */
   bands?: readonly CostBandInfo[];
-  /** Chip «N da stimare» e il suo link (lista con `stima=mancante`). */
-  toEstimate: number;
-  toEstimateHref: string;
+  /** Gli use case senza Valore o Costo: l'elenco chiuso «5 da stimare» sotto la matrice. */
+  toEstimate: readonly MatrixOffItem[];
   /**
-   * Chip «N senza beneficio contato» (`offMatrixLabel`) e il suo link (lista con
-   * `stima=fuori-matrice`): le schede con «Benefici e costi» che non hanno un punto qui.
+   * Le schede con «Benefici e costi» che non hanno un punto qui: l'elenco chiuso «2 senza beneficio
+   * contato» (`offMatrixLabel`) sotto il primo. Senza, nessun elenco.
    */
-  offMatrix?: { label: string; count: number; href: string } | null;
-  /**
-   * Gli use case senza Valore o Costo, e quelli con «Benefici e costi» senza un punto, in due elenchi
-   * chiusi sotto la matrice, al posto dei chip: «5 da stimare» e «2 senza beneficio contato»
-   * (`offMatrixLabel`). `open`: l'elenco che l'indirizzo chiede (`stima`), aperto quando la pagina si
-   * rende. Senza, i chip di prima.
-   */
-  lists?: {
-    toEstimate: readonly MatrixOffItem[];
-    offMatrix: { label: string; items: readonly MatrixOffItem[] } | null;
-    open: HubEstimateParam | null;
-  } | null;
+  offMatrix?: { label: string; items: readonly MatrixOffItem[] } | null;
+  /** L'elenco che l'indirizzo chiede (`stima`, un vecchio chip «N da stimare»), aperto quando la pagina si rende. */
+  open?: HubEstimateParam | null;
 }
 
 /** Il dominio dei due assi: da 0,5 a 5,5, con le tacche a 1, 2, 3, 4, 5. */
@@ -148,9 +138,9 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
  * Al passaggio del mouse codice, titolo, Valore, Costo e fonte; al clic,
  * o al tocco, il pannello laterale (il punto e il codice sono lo stesso link, largo abbastanza
  * per un dito). Senza trascinamento. Sotto la legenda, gli use case senza Valore o Costo, e quelli
- * con «Benefici e costi» senza un punto, in due elenchi chiusi (`lists`). Solo per i revisori.
+ * con «Benefici e costi» senza un punto, in due elenchi chiusi (`toEstimate`, `offMatrix`). Solo per i revisori.
  */
-export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BANDS, toEstimate, toEstimateHref, offMatrix = null, lists = null }: ValueCostMatrixProps) {
+export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BANDS, toEstimate, offMatrix = null, open = null }: ValueCostMatrixProps) {
   const placed = spread(points);
   // Le etichette si mettono per la matrice più piccola (320 px, al telefono) e per la più grande (600 px).
   // Ogni punto è un ostacolo; ha un'etichetta solo chi porta i codici del suo gruppo.
@@ -249,25 +239,18 @@ export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BAND
             </span>
           ) : null}
         </p>
-        {lists ? (
-          lists.toEstimate.length || lists.offMatrix ? (
-            <div className="space-y-1">
-              {lists.toEstimate.length ? (
-                <Disclosure slot="to-estimate" summary={toEstimateLabel(lists.toEstimate.length)} defaultOpen={lists.open === "mancante"}>
-                  <MatrixOffList items={lists.toEstimate} />
-                </Disclosure>
-              ) : null}
-              {lists.offMatrix ? (
-                <Disclosure slot="off-matrix" summary={lists.offMatrix.label} defaultOpen={lists.open === "fuori-matrice"}>
-                  <MatrixOffList items={lists.offMatrix.items} />
-                </Disclosure>
-              ) : null}
-            </div>
-          ) : null
-        ) : toEstimate > 0 || (offMatrix && offMatrix.count > 0) ? (
-          <div className="flex flex-wrap gap-2">
-            <ToEstimateChip count={toEstimate} href={toEstimateHref} />
-            {offMatrix && offMatrix.count > 0 ? <MatrixChip text={offMatrix.label} href={offMatrix.href} slot="off-matrix-chip" /> : null}
+        {toEstimate.length || offMatrix ? (
+          <div className="space-y-1">
+            {toEstimate.length ? (
+              <Disclosure slot="to-estimate" summary={toEstimateLabel(toEstimate.length)} defaultOpen={open === "mancante"}>
+                <MatrixOffList items={toEstimate} />
+              </Disclosure>
+            ) : null}
+            {offMatrix ? (
+              <Disclosure slot="off-matrix" summary={offMatrix.label} defaultOpen={open === "fuori-matrice"}>
+                <MatrixOffList items={offMatrix.items} />
+              </Disclosure>
+            ) : null}
           </div>
         ) : null}
         <p className="text-xs text-muted-foreground">{ZONE_HINT}</p>
@@ -286,29 +269,6 @@ function MatrixOffList({ items }: { items: readonly MatrixOffItem[] }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-/**
- * Il chip «5 da stimare» della matrice e della lista di «Priorità» (§4.4): gli use case senza
- * Valore o senza Costo stanno in un chip solo, che apre la lista con `stima=mancante`.
- */
-export function ToEstimateChip({ count, href }: { count: number; href: string }) {
-  if (count <= 0) return null;
-  return <MatrixChip text={toEstimateLabel(count)} href={href} slot="to-estimate-chip" />;
-}
-
-/** Un chip sotto la matrice che apre la lista filtrata: «5 da stimare», «2 senza beneficio contato». */
-function MatrixChip({ text, href, slot }: { text: string; href: string; slot: string }) {
-  return (
-    <Link
-      href={href}
-      scroll={false}
-      data-slot={slot}
-      className="inline-flex min-h-11 items-center self-start rounded-full border px-3 text-xs font-medium outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-7"
-    >
-      {text}
-    </Link>
   );
 }
 

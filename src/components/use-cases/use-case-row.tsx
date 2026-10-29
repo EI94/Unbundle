@@ -157,7 +157,7 @@ const ROW_LINK =
 /**
  * Una riga sola sulla larghezza del riquadro (`@container/hub`), non della finestra: i revisori da
  * 58rem (codice, titolo, origine, sotto-stato, Valore e Costo con la fonte, giorni), come le
- * colonne della lista di «Priorità», i contributori da 42rem (titolo e pillola).
+ * tre corsie della Panoramica, i contributori da 42rem (titolo e pillola).
  */
 const REVIEWER_ROW_LINK = `${ROW_LINK} @min-[58rem]/hub:flex-row @min-[58rem]/hub:items-center @min-[58rem]/hub:gap-4`;
 /** Il titolo: due righe nel riquadro stretto, una con le colonne (le stesse larghezze di `REVIEWER_ROW_LINK`). */

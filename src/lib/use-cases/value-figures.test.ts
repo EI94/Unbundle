@@ -37,7 +37,7 @@ import {
 } from "./views.ts";
 
 // «Benefici e costi» nelle cifre dell'area (spec di Pierpaolo, 25/10/2026): Valore e costo con un
-// modello, la forma breve delle righe, la matrice, le cifre della Roadmap e l'export. Dati sintetici.
+// modello, la forma breve delle righe, la matrice, le cifre della Panoramica e l'export. Dati sintetici.
 
 const TODAY = "2026-11-03";
 const PARAMS: ValueParams = { ...DEFAULT_VALUE_PARAMS, originMonth: "2026-11" };
@@ -222,9 +222,7 @@ test("modello senza beneficio contato: «da misurare · fino a X €» o «quali
   assert.equal(isToEstimate(words), false);
 
   const counted = item({ valueModel: FIX_A });
-  const view = buildPriority([counted, pending, words, item()], null);
-  assert.equal(view.tipo, "costruire");
-  if (view.tipo !== "costruire") return;
+  const view = buildPriority([counted, pending, words, item()]);
   assert.deepEqual(
     view.points.map((p) => p.id),
     [counted.id],
@@ -232,17 +230,19 @@ test("modello senza beneficio contato: «da misurare · fino a X €» o «quali
   );
   near(view.points[0].y, counted.value.score!, "y = punteggio interpolato");
   assert.equal(view.points[0].x, counted.cost!.position);
-  assert.equal(view.toEstimate, 1, "solo la scheda senza modello e senza valutazione");
+  assert.equal(view.toEstimate.length, 1, "solo la scheda senza modello e senza valutazione");
   assert.equal(view.list.at(-1)?.value.benefits, undefined, "la scheda da stimare resta in fondo");
-  // Fuori dalla matrice, ma contate a parte: il chip «2 senza beneficio contato o costo» (a pending manca anche il costo).
-  assert.deepEqual(view.offMatrix, { count: 2, withoutBenefit: 2 });
-  assert.equal(offMatrixLabel(view.offMatrix), "2 senza beneficio contato");
+  // Fuori dalla matrice, ma nel loro elenco «2 senza beneficio contato»: a tutte e due manca il beneficio contato (a pending anche il costo).
+  assert.equal(view.offMatrix.items.length, 2);
+  assert.equal(view.offMatrix.withoutBenefit, 2);
+  assert.deepEqual(new Set(view.offMatrix.items), new Set([pending, words]));
+  assert.equal(offMatrixLabel({ count: view.offMatrix.items.length, withoutBenefit: view.offMatrix.withoutBenefit }), "2 senza beneficio contato");
   assert.equal(offMatrixLabel({ count: 3, withoutBenefit: 2 }), "3 senza beneficio contato o costo");
   assert.equal(isOffMatrix(pending), true);
   assert.equal(isOffMatrix(words), true);
   assert.equal(isOffMatrix(counted), false);
   assert.equal(isOffMatrix(item()), false, "senza modello: è «da stimare», non fuori dalla matrice");
-  // Il filtro della lista: `stima=fuori-matrice`.
+  // `stima=fuori-matrice` filtra ancora (`applyHubFilters`): la pagina lo toglie solo sui grafici.
   const reviewer = { userId: "u1", email: "lead@lateralspace.it", emailVerified: true, role: "transformation_lead", isLateralSpace: true };
   const params = parseHubParams(new URLSearchParams("vista=priorita&mostra=lista&stima=fuori-matrice"), reviewer);
   assert.equal(params.stima, "fuori-matrice");
@@ -343,7 +343,7 @@ test("a schermo: con una cifra in euro solo la cifra, senza parola né zona; il 
   assert.equal(showsZone(item().value), true);
 });
 
-// ─── Valutazione del team, Roadmap, export ───────────────────────────
+// ─── Valutazione del team, cifre della Panoramica, export ────────────
 
 test("con un modello: valutazione del team (Riapri, Approva)", () => {
   assert.equal(hasTeamValuation({ valueModel: FIX_A }), true);
@@ -355,7 +355,7 @@ test("con un modello: valutazione del team (Riapri, Approva)", () => {
   assert.equal(teamValuationMissing({ value: null, cost: counted.cost ? { source: counted.cost.source } : null }), false);
 });
 
-test("cifre della Roadmap: beneficio contato e avvio entrano nei totali", () => {
+test("cifre della Panoramica: beneficio contato e avvio entrano nei totali", () => {
   const a = item({ valueModel: FIX_A });
   const b = item({ valueModel: FIX_B, status: "in_progress" });
   const words = item({ valueModel: WORDS_ONLY });

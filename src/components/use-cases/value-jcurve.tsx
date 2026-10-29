@@ -3,7 +3,7 @@ import { monthLabel } from "@/lib/use-cases/value-calc";
 import { curveScale, type RoadmapValue } from "@/lib/use-cases/value-charts";
 import { cn } from "@/lib/utils";
 
-/** Testi della J-curve della Roadmap (spec di Pierpaolo, 25/10/2026). */
+/** Testi della J-curve di «Curva del valore» (menu «⋯»; spec di Pierpaolo, 25/10/2026). */
 export const JCURVE_TEXT = Object.freeze({
   title: "Valore netto cumulato",
   goLive: "Entra in uso",
@@ -29,7 +29,7 @@ export interface ValueJCurveProps {
 }
 
 /**
- * La J-curve della Roadmap (spec di Pierpaolo, 25/10/2026): il valore netto cumulato delle schede
+ * La J-curve di «Curva del valore» (menu «⋯»; spec di Pierpaolo, 25/10/2026): il valore netto cumulato delle schede
  * approvate e in realizzazione con «Benefici e costi», mese per mese dall'origine delle ipotesi
  * (`jCurve` di value-calc). Area e linea, la linea dello zero, linee tratteggiate ai mesi di
  * entrata in uso, il punto di pareggio con la sua etichetta e il valore a fine orizzonte. SVG

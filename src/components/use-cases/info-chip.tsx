@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
  *
  * - `long`: nella testata della scheda, accanto alla pillola della fase: «Informazioni: in attesa»
  *   (solo lo stato; conteggi e che cosa resta in «Cosa serve»).
- * - `short`: nelle righe di «Da decidere» e nelle card della Roadmap («Info: da verificare»), solo per
+ * - `short`: nelle righe di «Da decidere» e nelle card della Panoramica («Info: da verificare»), solo per
  *   gli stati che chiedono a qualcuno di fare qualcosa (`showInRows`). Gli altri stanno nella scheda e
  *   nel filtro, non in ogni riga.
  */

@@ -12,10 +12,11 @@
  *   qui. La REST di oggi risponde ai soli revisori con `toUseCaseApiRow`
  *   (`src/lib/portfolio/use-case-client-rows.ts`). Chi gestisce il workspace riceve in più la proiezione di
  *   `projectForManager` (`src/lib/db/queries/use-case-hub.ts`), l'unico posto che la nomina.
- * - **Viste.** «Panoramica» (fasi, cifre, prossimo passo, corsie per trimestre; i vecchi
- *   «Priorità» e «Roadmap» valgono la Panoramica), «Da decidere» (giorni di attesa, contatore
- *   senza «Serve info»), «Cosa serve» (requisiti e prossimi passi degli use case, solo
- *   revisori). Nessun ordinamento, raggruppamento o conteggio per persona (art. 15.4).
+ * - **Viste.** «Panoramica» (qui i trimestri rispetto a oggi, le cifre e la matrice del menu «⋯»;
+ *   le corsie stanno in `lanes.ts`, la testa in `panoramica.ts`; i vecchi «Priorità» e «Roadmap»
+ *   dei link valgono la Panoramica), «Da decidere» (giorni di attesa, contatore senza «Serve
+ *   info»), «Cosa serve» (requisiti e prossimi passi degli use case, solo revisori). Nessun
+ *   ordinamento, raggruppamento o conteggio per persona (art. 15.4).
  * - **Costo.** Valore, costo, zone e costo basso passano da `valuation.ts` con il modello del
  *   workspace, quindi con le sue fasce (`resolveCostBands`, D15). Dove questo modulo scrive
  *   l'etichetta di una fascia riceve anche `bands` (predefinite `COST_BANDS`).
@@ -117,8 +118,8 @@ export function isHubChart(value: string | null): value is HubChartParam {
 
 /**
  * I valori di `stima`: «da stimare» e «fuori dalla matrice» (con «Benefici e costi», senza
- * beneficio contato o costo). Sui grafici `stima` non filtra: è il chip della matrice. Altrove
- * resta un filtro nascosto, per i vecchi link di «Priorità».
+ * beneficio contato o costo). Sui grafici `stima` non filtra: apre il suo elenco chiuso sotto la
+ * matrice. Altrove resta un filtro nascosto, per i vecchi link di «Priorità».
  */
 export const HUB_ESTIMATE_PARAMS = ["mancante", "fuori-matrice"] as const;
 export type HubEstimateParam = (typeof HUB_ESTIMATE_PARAMS)[number];
@@ -172,7 +173,7 @@ export interface HubParams {
   agente: AgentParam | null;
   lab: string | null;
   trimestre: QuarterCode | typeof LATER_QUARTER_PARAM | null;
-  /** «mancante»: il chip «N da stimare»; «fuori-matrice»: le schede con «Benefici e costi» senza un punto nella matrice. */
+  /** «mancante»: l'elenco «N da stimare» sotto la matrice; «fuori-matrice»: le schede con «Benefici e costi» senza un punto nella matrice. */
   stima: HubEstimateParam | null;
   /** «Raccolta informazioni» (`info-progress.ts`): solo per i revisori, come `stima`. */
   info: InfoProgressState | null;
@@ -211,7 +212,7 @@ function boundedText(value: string | null, min: number, max: number): string | n
 /**
  * I vecchi link di «Priorità» (`vista=priorita`): lì «Da costruire | Da diffondere» sceglieva la
  * lista, non filtrava. «Da diffondere» sono le best practice della Panoramica, senza grafico né «da
- * stimare»; «Da costruire» non filtra, e il chip «N da stimare» (`stima`) apre la matrice.
+ * stimare»; «Da costruire» non filtra, e il vecchio chip «N da stimare» (`stima`) apre la matrice.
  */
 function legacyPriority(p: Pick<HubParams, "tipo" | "mostra" | "stima">): Pick<HubParams, "tipo" | "mostra" | "stima"> {
   if (p.tipo === "diffondere") return { tipo: "diffondere", mostra: null, stima: null };
@@ -309,7 +310,7 @@ export function shownChart(mostra: HubShowParam | null, charts: readonly HubChar
 
 // ═══ Proiezione dei revisori (§4.6, §4.8, §6, §7) ════════════════════
 
-/** Il riepilogo minimo del dossier (Roadmap, «In realizzazione»; il ricco arriva in H6a). */
+/** Il riepilogo minimo del dossier («In realizzazione» della Panoramica; il ricco arriva in H6a). */
 export interface HubDossier {
   caseId: string;
   code: string;
@@ -362,7 +363,7 @@ export interface HubItem {
   /** Da quando aspetta una risposta (D8): ultimo «Riapri», poi arrivo; «Da rivedere» dalla data di revisione. */
   waitingSince: IsoDate;
   /**
-   * Il mese di «Fatti»: ultimo passaggio a «Realizzato» nella Storia; per le schede
+   * Il mese di «Realizzati»: ultimo passaggio a «Realizzato» nella Storia; per le schede
    * realizzate prima della Storia, l'ultimo cambio di stato. null fuori da «Realizzato».
    */
   realizedOn: IsoDate | null;
@@ -540,7 +541,8 @@ export const RUNS_PER_YEAR: Readonly<Record<string, number>> = Object.freeze({
  * Stima di Claude, non ufficiale (§7.5): minuti × volte all'anno × persone / 60, arrotondata
  * alle decine. null se manca un dato o se le ore sono zero (lo zero non si mostra); una stima
  * piccola ma vera non scende sotto 10, così non diventa mai «circa 0 ore all'anno». Non entra
- * in nessun totale né nella matrice: ordina solo la lista «Da diffondere».
+ * in nessun totale né nella matrice: in una corsia della Panoramica decide solo tra due best
+ * practice a pari Valore (`lanes.ts`); la mostrano il pannello laterale e il MCP del team.
  */
 export function claudeHoursPerYear(intake: unknown): number | null {
   const data = record(intake);
@@ -631,7 +633,7 @@ export function projectHubItem(row: HubSourceRow, ctx: HubContext, dossier: HubD
     problemPreview: preview(textOrNull(row.description)),
     arrivedOn,
     waitingSince: waitingStart({ subState: phase.subState, reviewBy, reopenedOn: row.reopenedOn, arrivedOn }),
-    // Solo per il mese di «Fatti»: i giorni di attesa non guardano mai l'ultimo cambio di stato.
+    // Solo per il mese di «Realizzati»: i giorni di attesa non guardano mai l'ultimo cambio di stato.
     realizedOn: phase.phase === "realizzato" ? (dateOnly(row.realizedOn) ?? romeDay(row.statusChangedAt)) : null,
     dossier,
     version: row.version,
@@ -798,7 +800,7 @@ export function matchesSearch(item: AnyHubItem, q: string | null): boolean {
 }
 
 /**
- * Senza Valore o senza Costo: «da stimare» (`stima=mancante`, chip «N da stimare»). Una scheda
+ * Senza Valore o senza Costo: «da stimare» (`stima=mancante`, l'elenco «N da stimare» sotto la matrice). Una scheda
  * con «Benefici e costi» non è mai da stimare, anche senza beneficio contato o senza costi.
  */
 export function isToEstimate(item: Pick<HubItem, "value" | "cost">): boolean {
@@ -809,8 +811,8 @@ export function isToEstimate(item: Pick<HubItem, "value" | "cost">): boolean {
 /**
  * Una scheda con «Benefici e costi» che non ha un punto nella matrice Valore × Costo: senza
  * beneficio contato (Valore «qualitativo» o «da misurare») o senza costo. Non è «da stimare»
- * (`isToEstimate`), ma la matrice la conta a parte (chip «N senza beneficio contato»), così non
- * sparisce: la lista la mostra con `stima=fuori-matrice`.
+ * (`isToEstimate`), ma la matrice la mette a parte (l'elenco «N senza beneficio contato»), così non
+ * sparisce; altrove `stima=fuori-matrice` la filtra.
  */
 export function isOffMatrix(item: Pick<HubItem, "value" | "cost">): boolean {
   return Boolean(item.value.benefits) && (item.value.score === null || item.cost === null);
@@ -898,7 +900,7 @@ export function decideCount(items: readonly AnyHubItem[]): number {
   return items.filter((item) => !isContributorItem(item) && isToDecide(item) && item.subState !== "serve_info").length;
 }
 
-// ═══ «Priorità» (§4.4) ═══════════════════════════════════════════════
+// ═══ La matrice Valore × Costo (menu «⋯») ════════════════════════════
 
 /** Un punto della matrice Valore × Costo di realizzazione. */
 export interface PriorityPoint {
@@ -915,41 +917,27 @@ export interface PriorityPoint {
   zone: Zone | null;
 }
 
-export type PriorityView =
-  | {
-      tipo: "costruire";
-      /** Gli use case con un punteggio del Valore e un Costo. */
-      points: PriorityPoint[];
-      /** Zona, poi Valore decrescente, poi Costo crescente; «da stimare» in fondo. */
-      list: HubItem[];
-      /** Chip «N da stimare» (`isToEstimate`). */
-      toEstimate: number;
-      /** Gli use case «da stimare» (`isToEstimate`), nell'ordine di `list`: l'elenco chiuso sotto la matrice. */
-      toEstimateItems: HubItem[];
-      /**
-       * Chip «N senza beneficio contato» (`isOffMatrix`): le schede con «Benefici e costi» che non
-       * hanno un punto; `withoutBenefit` quante perché manca il beneficio contato (le altre: il costo).
-       */
-      offMatrix: { count: number; withoutBenefit: number };
-      /** Le schede di `offMatrix`, nell'ordine di `list`: l'altro elenco chiuso sotto la matrice. */
-      offMatrixItems: HubItem[];
-    }
-  | {
-      tipo: "diffondere";
-      /** Ore all'anno della stima di Claude, dalla più alta; senza stima in fondo. */
-      list: HubItem[];
-    };
+/** «Matrice Valore × Costo» del menu «⋯» (§4.4): i punti e, sotto, i due elenchi chiusi. */
+export interface PriorityMatrix {
+  /** Gli use case con un punteggio del Valore e un Costo. */
+  points: PriorityPoint[];
+  /** Zona, poi Valore decrescente, poi Costo crescente; «da stimare» in fondo. */
+  list: HubItem[];
+  /** Gli use case «da stimare» (`isToEstimate`), nell'ordine di `list`: l'elenco «N da stimare». */
+  toEstimate: HubItem[];
+  /**
+   * Le schede con «Benefici e costi» che non hanno un punto (`isOffMatrix`), nell'ordine di `list`:
+   * l'elenco «N senza beneficio contato»; `withoutBenefit` quante perché manca il beneficio contato
+   * (le altre: il costo).
+   */
+  offMatrix: { items: HubItem[]; withoutBenefit: number };
+}
 
-/** Chi entra in «Priorità › Da costruire»: «Da valutare» (non le «Rimandate» in attesa) e «Approvato». */
+/** Chi entra nella matrice Valore × Costo: «Da costruire» in «Da valutare» (non le «Rimandate» in attesa) o «Approvato». */
 export function isPriorityCandidate(item: HubItem): boolean {
   if (item.kind !== "da_costruire") return false;
   if (item.phase === "approvato") return true;
   return item.phase === "da_valutare" && item.subState !== "rimandata";
-}
-
-/** «Da diffondere»: best practice approvate e non ancora diffuse. */
-export function isDiffuseCandidate(item: HubItem): boolean {
-  return item.kind === "da_diffondere" && item.phase === "approvato";
 }
 
 function zoneRank(zone: Zone | null): number {
@@ -972,23 +960,13 @@ function byPriority(a: HubItem, b: HubItem): number {
   );
 }
 
-/** La vista «Priorità», per il tipo scelto (predefinito «Da costruire»). Solo revisori. */
-export function buildPriority(items: readonly HubItem[], tipo: HubKindParam | null): PriorityView {
-  if (tipo === "diffondere") {
-    const list = items.filter(isDiffuseCandidate).sort(
-      (a, b) =>
-        Number(a.claudeHoursPerYear === null) - Number(b.claudeHoursPerYear === null) ||
-        (b.claudeHoursPerYear ?? 0) - (a.claudeHoursPerYear ?? 0) ||
-        byTitle(a, b),
-    );
-    return { tipo: "diffondere", list };
-  }
-  const candidates = items.filter(isPriorityCandidate);
-  const list = [...candidates].sort(byPriority);
+/** La matrice Valore × Costo del menu «⋯», sugli use case «Da costruire» (`isPriorityCandidate`). Solo revisori. */
+export function buildPriority(items: readonly HubItem[]): PriorityMatrix {
+  const list = items.filter(isPriorityCandidate).sort(byPriority);
   const points: PriorityPoint[] = [];
   for (const item of list) {
     // Un modello senza beneficio contato (o senza costo) non è da stimare e non ha un punto qui:
-    // lo conta il chip «N senza beneficio contato» (`isOffMatrix`).
+    // sta nell'elenco «N senza beneficio contato» (`isOffMatrix`).
     if (item.value.score === null || item.cost === null) continue;
     points.push({
       id: item.id,
@@ -1002,9 +980,12 @@ export function buildPriority(items: readonly HubItem[], tipo: HubKindParam | nu
     });
   }
   const off = list.filter(isOffMatrix);
-  const offMatrix = { count: off.length, withoutBenefit: off.filter((item) => item.value.score === null).length };
-  const toEstimateItems = list.filter(isToEstimate);
-  return { tipo: "costruire", points, list, toEstimate: toEstimateItems.length, toEstimateItems, offMatrix, offMatrixItems: off };
+  return {
+    points,
+    list,
+    toEstimate: list.filter(isToEstimate),
+    offMatrix: { items: off, withoutBenefit: off.filter((item) => item.value.score === null).length },
+  };
 }
 
 /** «5 da stimare». */
@@ -1017,36 +998,15 @@ export function offMatrixLabel(offMatrix: { count: number; withoutBenefit: numbe
   return offMatrix.withoutBenefit === offMatrix.count ? `${offMatrix.count} senza beneficio contato` : `${offMatrix.count} senza beneficio contato o costo`;
 }
 
-/** «circa 180 ore all'anno», «circa 1.250 ore all'anno» (Da diffondere, la stima di Claude in grigio). */
-export function hoursLabel(hours: number): string {
-  // Le migliaia col punto anche sotto 10.000: it-IT da solo non le raggruppa.
-  const text = String(Math.round(hours)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return `circa ${text} ore all'anno`;
-}
+// ═══ Trimestri (§4.5) ════════════════════════════════════════════════
 
-// ═══ «Roadmap» (§4.5) ════════════════════════════════════════════════
-
+/**
+ * Il posto del trimestre di uno use case approvato rispetto a oggi: lo leggono le corsie e la testa
+ * della Panoramica (`lanes.ts`, `panoramica.ts`), «Scaduto» e il «quando» delle bolle nelle due
+ * matrici del menu «⋯», il riepilogo in campanella.
+ */
 export type RoadmapGroupKey = "scaduti" | "questo_trimestre" | "prossimo_trimestre" | QuarterCode | "piu_avanti";
 
-export interface RoadmapGroup<T> {
-  key: RoadmapGroupKey;
-  /** «Scaduti», «Questo trimestre · T4 2026», «Prossimo trimestre · T1 2027», «T2 2027», «Più avanti». */
-  label: string;
-  /** Trimestre passato senza avvio: ogni scheda porta il tag rosso «Scaduto». */
-  expired: boolean;
-  items: T[];
-}
-
-export interface Roadmap<T> {
-  /** «Prossimi»: fase «Approvato», per trimestre; i gruppi vuoti non ci sono. */
-  upcoming: RoadmapGroup<T>[];
-  /** «In realizzazione». */
-  inProgress: T[];
-  /** «Fatti», dal più recente; i primi `ROADMAP_DONE_PREVIEW`, poi «Mostra tutti». */
-  done: T[];
-}
-
-export const ROADMAP_DONE_PREVIEW = 10;
 export const EXPIRED_TAG = "Scaduto";
 
 const QUARTER_LABEL = /^T([1-4]) ([0-9]{4})$/;
@@ -1089,34 +1049,7 @@ export function roadmapGroupLabel(key: RoadmapGroupKey, today: string): string {
   }
 }
 
-function groupRank(key: RoadmapGroupKey): [number, string] {
-  switch (key) {
-    case "scaduti":
-      return [0, ""];
-    case "questo_trimestre":
-      return [1, ""];
-    case "prossimo_trimestre":
-      return [2, ""];
-    case "piu_avanti":
-      return [4, ""];
-    default:
-      return [3, key];
-  }
-}
-
-/**
- * Dentro un gruppo: i revisori per Valore decrescente, poi titolo; i contributori per
- * titolo, perché non ricevono numeri e l'ordine non deve tradirli.
- */
-function byValueThenTitle<T extends AnyHubItem>(a: T, b: T): number {
-  if (!isContributorItem(a) && !isContributorItem(b)) {
-    const diff = (b.value.score ?? -Infinity) - (a.value.score ?? -Infinity);
-    if (diff) return diff;
-  }
-  return byTitle(a, b);
-}
-
-/** «Fatti» e «Realizzati» (`lanes.ts`): dal più recente; i contributori per titolo. */
+/** «Realizzati» della Panoramica (`lanes.ts`): dal più recente; i contributori per titolo. */
 export function byRealizedDesc<T extends AnyHubItem>(a: T, b: T): number {
   if (!isContributorItem(a) && !isContributorItem(b)) {
     const ra = a.realizedOn ?? "";
@@ -1126,34 +1059,7 @@ export function byRealizedDesc<T extends AnyHubItem>(a: T, b: T): number {
   return byTitle(a, b);
 }
 
-/** La vista «Roadmap»: Prossimi per trimestre (con «Scaduti»), In realizzazione, Fatti. */
-export function buildRoadmap<T extends AnyHubItem>(items: readonly T[], today: string): Roadmap<T> {
-  const groups = new Map<RoadmapGroupKey, T[]>();
-  for (const item of items) {
-    if (item.phase !== "approvato") continue;
-    const key = roadmapGroupKey(quarterOfItem(item), today);
-    const list = groups.get(key) ?? [];
-    list.push(item);
-    groups.set(key, list);
-  }
-  const upcoming = [...groups.entries()]
-    .sort(([a], [b]) => {
-      const [ra, qa] = groupRank(a);
-      const [rb, qb] = groupRank(b);
-      return ra - rb || (ra === 3 ? compareQuarters(qa, qb) : 0);
-    })
-    .map(([key, list]) => ({
-      key,
-      label: roadmapGroupLabel(key, today),
-      expired: key === "scaduti",
-      items: list.sort(byValueThenTitle),
-    }));
-  const inProgress = items.filter((item) => item.phase === "in_realizzazione").sort(byTitle);
-  const done = items.filter((item) => item.phase === "realizzato").sort(byRealizedDesc);
-  return { upcoming, inProgress, done };
-}
-
-/** Una cifra in testa alla Roadmap (solo revisori). */
+/** Una cifra in testa alla Panoramica (solo revisori, `overviewFigures` di `panoramica.ts`). */
 export interface RoadmapTile {
   amountEur: number;
   /** Su quanti use case è calcolata (solo quelli con una cifra). */
@@ -1167,9 +1073,9 @@ export interface RoadmapTile {
 }
 
 export interface RoadmapTotals {
-  /** «Valore atteso all'anno»: Prossimi e In realizzazione. null senza use case con una cifra. */
+  /** «valore contato all'anno»: approvati e in realizzazione. null senza use case con una cifra. */
   expectedValue: RoadmapTile | null;
-  /** «Costo impegnato»: Prossimi «Da costruire» e In realizzazione. null senza use case con un costo. */
+  /** «costo di avvio»: approvati «Da costruire» e in realizzazione. null senza use case con un costo. */
   committedCost: RoadmapTile | null;
 }
 
@@ -1189,17 +1095,12 @@ function shareOf(parts: Array<{ origin: Origin; amount: number }>): Record<Origi
   return { adoption, transformation: 100 - adoption };
 }
 
-/** «AI Adoption 60% · AI Transformation 40%». */
-export function shareLabel(share: Record<Origin, number>): string {
-  return `${ORIGIN_LABEL.adoption.chip} ${share.adoption}% · ${ORIGIN_LABEL.transformation.chip} ${share.transformation}%`;
-}
-
 /**
- * Le cifre in testa alla Roadmap (§4.5). «Valore atteso all'anno»: somma su Prossimi e In
- * realizzazione del miglior valore annuo (dossier, poi team). «Costo impegnato»: somma su
- * Prossimi «Da costruire» e In realizzazione del costo di §7.2; una fascia vale il suo
- * riferimento nelle fasce del workspace, lo sforzo l'importo stimato. Una cifra senza use
- * case non si mostra. «Valore misurato» arriva con il ROI del dossier (H6a).
+ * Le cifre in testa alla Panoramica (§4.5; `overviewFigures` di `panoramica.ts`). «valore contato
+ * all'anno»: somma sugli approvati e in realizzazione del miglior valore annuo (dossier, poi team).
+ * «costo di avvio»: somma sugli approvati «Da costruire» e in realizzazione del costo di §7.2; una
+ * fascia vale il suo riferimento nelle fasce del workspace, lo sforzo l'importo stimato. Una cifra
+ * senza use case non si mostra. «Valore misurato» arriva con il ROI del dossier (H6a).
  */
 export function roadmapTotals(items: readonly HubItem[]): RoadmapTotals {
   const value: Array<{ origin: Origin; amount: number }> = [];
@@ -1245,8 +1146,8 @@ export interface PendingValueTotal {
 }
 
 /**
- * «Valore da misurare all'anno» in testa alla Panoramica. Non è un conto nuovo: somma, sugli stessi
- * use case di «Valore atteso all'anno» (Prossimi e In realizzazione), i «fino a X €» delle card, cioè
+ * «valore da misurare all'anno» in testa alla Panoramica. Non è un conto nuovo: somma, sugli stessi
+ * use case di «valore contato all'anno» (approvati e in realizzazione), i «fino a X €» delle card, cioè
  * gli euro delle voci da misurare di «Benefici e costi» (`value.benefits.pendingEur`), gli stessi
  * delle parti tratteggiate di «Valore per tipo di ritorno». null senza use case con una parte da
  * misurare, anche quando il workspace conta le voci da misurare (`includeUnmeasured`: lo zero).

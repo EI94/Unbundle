@@ -108,7 +108,7 @@ export function compareQuarters(a: string, b: string): number {
   return pa.year * 4 + pa.quarter - (pb.year * 4 + pb.quarter);
 }
 
-/** Vero se il trimestre è già finito a Roma (in Roadmap: «Scaduto», se non è partito). */
+/** Vero se il trimestre è già finito a Roma (nella Panoramica: «Scaduto», se non è partito). */
 export function isPastQuarter(q: string, now: Date = new Date()): boolean {
   return compareQuarters(q, currentQuarter(now)) < 0;
 }
@@ -169,12 +169,6 @@ export function whenChoiceParts(choice: WhenChoice, now: Date = new Date()): { t
     case "piu_avanti":
       return { title: WHEN_LATER_LABEL, quarter: null };
   }
-}
-
-/** La forma corta di una scelta, per il `Select` in riga: «T4 2026», «T1 2027», «Più avanti». */
-export function whenChoiceShortLabel(choice: WhenChoice, now: Date = new Date()): string {
-  const parts = whenChoiceParts(choice, now);
-  return parts.quarter ?? parts.title;
 }
 
 /**

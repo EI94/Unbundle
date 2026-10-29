@@ -22,8 +22,6 @@ export interface ApproveDialogProps {
   item: Pick<DecisionItem, "code" | "hiddenFromSearch" | "value" | "cost">;
   /** Oggi a Roma (`AAAA-MM-GG`), letto sul server: le etichette dei trimestri. */
   today: string;
-  /** La scelta di «Quando» già fatta (il `Select` in riga di «Priorità»). */
-  defaultWhen?: WhenChoice | null;
   pending: boolean;
   onSubmit: (decision: PageDecision) => Promise<DecisionActionResult>;
   /** In fondo al dialogo: la nota pubblica da aggiornare dopo una risposta a «Serve info» (D17). */
@@ -36,9 +34,9 @@ export interface ApproveDialogProps {
  * Costo non sono ancora valutati dal team.». Per una scheda nascosta alla ricerca, la casella
  * «Mostralo ai colleghi», non spuntata.
  */
-export function ApproveDialog({ open, onOpenChange, item, today, defaultWhen = null, pending, onSubmit, extra }: ApproveDialogProps) {
+export function ApproveDialog({ open, onOpenChange, item, today, pending, onSubmit, extra }: ApproveDialogProps) {
   const questionId = useId();
-  const [when, setWhen] = useState<WhenChoice | null>(defaultWhen);
+  const [when, setWhen] = useState<WhenChoice | null>(null);
   const [showToColleagues, setShowToColleagues] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const text = dialogText("approva", item.code);

@@ -5,9 +5,10 @@
 //     --as ls-lead,function-lead,osservatore,sponsor-cliente --widths 1440,400 --label h4a
 //
 // Workspace «a» has the area on (start-app.mjs --flag USE_CASE_HUB_WORKSPACES=<id of «a»>) and the
-// cards of scripts/use-case-test/seed-hub.mjs. The three views for the four accounts, the charts of
-// the «⋯» menu in the Panoramica (?mostra=matrice|benefici|curva, with «Torna alla Panoramica»), the old
-// names ?vista=priorita and ?vista=roadmap, the side panel (reviewers on a card with a cost,
+// cards of scripts/use-case-test/seed-hub.mjs. The three views for the four accounts, «Per agente»
+// (?mostra=agenti), the charts of the «⋯» menu in the Panoramica (?mostra=matrice|benefici|curva,
+// with «Torna alla Panoramica»), the old names ?vista=priorita and ?vista=roadmap, which open the
+// Panoramica, the side panel (reviewers on a card with a cost,
 // osservatore on an own proposal with code and public note and on someone else's without them),
 // the quick panel of Lateral Space and filters without results. The driver checks every page: no horizontal scroll (also at the tablet
 // widths 768, 900 and 1024), at most one filled button outside dialogs, every cost with its source,
@@ -15,11 +16,20 @@
 //
 // Empty states of a workspace with no use case: set HUB_EMPTY_WORKSPACE_ID to an extra workspace
 // that is in USE_CASE_HUB_WORKSPACES, has no use case and gives the four accounts their roles of «a».
+//
+// A fuller portfolio in «a»: set HUB_PANORAMICA_SEED=1 when, on top of seed-hub.mjs, workspace «a» also
+// has approved titles with an agent prefix («LIBRA L1 · …») next to titles without one, approved or
+// in-progress cards with «Benefici e costi» and open requirements (a portfolio shaped like TopJet's).
+// seed-hub.mjs writes none of them: without the flag «Per agente» and «Curva del valore» are not
+// offered, their addresses open the lanes, and «Cosa serve» is empty.
 
 import { DEFAULT_REVIEW_TEAM_NAME } from "../../../src/lib/review-team.ts";
 import { ANSWER_TEXT, askedTitle, questionLabel } from "../../../src/lib/use-cases/answers.ts";
 
 const DECIDE = "/dashboard/{ws:a}/use-cases?vista=da-decidere";
+const OVERVIEW = "/dashboard/{ws:a}/use-cases?vista=panoramica";
+/** See the header: agents in the titles, «Benefici e costi» and requirements in workspace «a». */
+const FULL_SEED = process.env.HUB_PANORAMICA_SEED === "1";
 /** Workspace «a» has no team name of its own: the texts use the default one (DESIGN §14.2). */
 const TEAM = DEFAULT_REVIEW_TEAM_NAME;
 const REVIEWERS = ["ls-lead", "function-lead", "sponsor-cliente"];
@@ -31,11 +41,21 @@ const OTHERS_NOTES = ["Quante note spese arrivano ogni mese?", "Servono esempi d
 /** What a contributor never gets on these pages: the codes and notes of other people's proposals (D4, D13). */
 const NOT_FOR_CONTRIBUTOR = ["{code:r05}", "{code:r06}", "{code:r09}", "{code:r12}", ...OTHERS_NOTES, "Previsione della domanda", "Altri filtri", "Cerca per titolo o codice"];
 
+/**
+ * The Panoramica of the reviewers: «Approvati» in the strip «Fasi degli use case», the big numbers,
+ * «Prossimo passo» (proposals wait for a decision), the three lanes, «In realizzazione» and «Realizzati».
+ */
+const OVERVIEW_REVIEWER = ["Panoramica", "Approvati", "valore contato all'anno", "costo di avvio", "Prossimo passo", "Questo trimestre", "In realizzazione", "Realizzati"];
+/** The contributor's Panoramica: the strip with «Approvati» and the same lanes, with title and phase only. */
+const OVERVIEW_CONTRIBUTOR = ["Approvati", "In valutazione"];
+/** Never on the contributor's Panoramica: figures, the box, the needs, the agent filter. */
+const NOT_ON_CONTRIBUTOR_OVERVIEW = [...NOT_FOR_CONTRIBUTOR, "€", "costo di avvio", "Prossimo passo", "Cosa serve", "Agente"];
+
 const routes = [
   // The starting view of each role (§4.2): reviewers «Da decidere», the client's sponsor and contributors the Panoramica.
   { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: ["ls-lead", "function-lead"], present: ["Use case", "Nuovo use case", "In attesa di risposta"] },
-  { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: ["sponsor-cliente"], present: ["Prossimi", "In realizzazione", "Fatti", "Costo impegnato"] },
-  { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: CONTRIBUTOR, present: ["Prossimi", "Fatti"], absent: [...NOT_FOR_CONTRIBUTOR, "Costo impegnato", "Cosa serve"] },
+  { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: ["sponsor-cliente"], present: OVERVIEW_REVIEWER },
+  { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: NOT_ON_CONTRIBUTOR_OVERVIEW },
 
   // The three views.
   // H4p: un solo «da stimare» quando mancano Valore e Costo; il tipo solo per «Da diffondere».
@@ -56,14 +76,20 @@ const routes = [
     present: ["In valutazione", "{code:osservatore-email}", "Riepilogo delle chiamate di assistenza", "Proposto da te", "Rispondi", `${askedTitle(TEAM)}:`],
     absent: [...NOT_FOR_CONTRIBUTOR, "Da decidere", "In attesa di risposta", "Possibile doppione", "Valutata, da decidere"],
   },
-  // The Panoramica: for now the lanes of the Roadmap of before (release «Panoramica», WP3 replaces them).
-  { name: "panoramica", path: "/dashboard/{ws:a}/use-cases?vista=panoramica", as: REVIEWERS, present: ["Panoramica", "Valore atteso all'anno", "Costo impegnato", "use case", "Scaduti", "In realizzazione", "Fatti"] },
-  { name: "panoramica", path: "/dashboard/{ws:a}/use-cases?vista=panoramica", as: CONTRIBUTOR, present: ["Prossimi", "Fatti"], absent: [...NOT_FOR_CONTRIBUTOR, "Costo impegnato", "Valore atteso"] },
+  // The Panoramica: the strip, the big numbers and «Prossimo passo», then the three lanes per quarter.
+  { name: "panoramica", path: OVERVIEW, as: REVIEWERS, present: OVERVIEW_REVIEWER },
+  { name: "panoramica", path: OVERVIEW, as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: NOT_ON_CONTRIBUTOR_OVERVIEW },
+  // «Per trimestre | Per agente»: one card per agent of the titles, «Altri use case» last; reviewers
+  // only, when an approved title has an agent prefix (without one the address opens the lanes).
+  FULL_SEED
+    ? { name: "panoramica-agenti", path: `${OVERVIEW}&mostra=agenti`, as: REVIEWERS, present: ["Per trimestre", "Per agente", "Altri use case"] }
+    : { name: "panoramica-agenti", path: `${OVERVIEW}&mostra=agenti`, as: REVIEWERS, present: ["Approvati", "Questo trimestre"], absent: ["Per agente"] },
+  { name: "panoramica-agenti", path: `${OVERVIEW}&mostra=agenti`, as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: [...NOT_ON_CONTRIBUTOR_OVERVIEW, "Per agente"] },
   // H4p: ogni punto con il suo codice; i scaduti marcati; legenda corta. Opened from the «⋯» menu,
   // in place of the lanes, with «Torna alla Panoramica» above.
   {
     name: "panoramica-matrice",
-    path: "/dashboard/{ws:a}/use-cases?vista=panoramica&mostra=matrice",
+    path: `${OVERVIEW}&mostra=matrice`,
     as: REVIEWERS,
     present: ["Torna alla Panoramica", "Subito", "Da pianificare", "Se avanza tempo", "Non ora", "Le zone sono un suggerimento, non la decisione.", "{code:r06}", "{code:r09}", "da decidere"],
   },
@@ -71,35 +97,43 @@ const routes = [
   // model in the workspace; otherwise the page falls back to the matrix), with «Torna alla Panoramica».
   {
     name: "panoramica-benefici",
-    path: "/dashboard/{ws:a}/use-cases?vista=panoramica&mostra=benefici",
+    path: `${OVERVIEW}&mostra=benefici`,
     as: REVIEWERS,
     present: ["Torna alla Panoramica"],
     absent: ["Cosa serve per far avanzare", "Requisiti"],
   },
   // «Curva del valore» from the «⋯» menu: the J-curve, «Valore per tipo di ritorno» and «Ipotesi di
   // calcolo» in place of the lanes, with «Torna alla Panoramica». The menu offers it only when an
-  // approved or in-progress use case has a «Benefici e costi» model: seed-hub.mjs writes none yet,
-  // and without one ?mostra=curva shows the lanes.
-  {
-    name: "panoramica-curva",
-    path: "/dashboard/{ws:a}/use-cases?vista=panoramica&mostra=curva",
-    as: REVIEWERS,
-    present: ["Curva del valore", "Torna alla Panoramica", "Ipotesi di calcolo"],
-    absent: ["Cosa serve per far avanzare", "Requisiti"],
-  },
-  { name: "panoramica-curva", path: "/dashboard/{ws:a}/use-cases?vista=panoramica&mostra=curva", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Curva del valore", "Ipotesi di calcolo", "Torna alla Panoramica"] },
+  // approved or in-progress use case has a «Benefici e costi» model; without one ?mostra=curva opens the lanes.
+  FULL_SEED
+    ? {
+        name: "panoramica-curva",
+        path: `${OVERVIEW}&mostra=curva`,
+        as: REVIEWERS,
+        present: ["Curva del valore", "Torna alla Panoramica", "Ipotesi di calcolo"],
+        absent: ["Cosa serve per far avanzare", "Requisiti"],
+      }
+    : { name: "panoramica-curva", path: `${OVERVIEW}&mostra=curva`, as: REVIEWERS, present: ["Approvati", "Questo trimestre"], absent: ["Torna alla Panoramica", "Ipotesi di calcolo"] },
+  { name: "panoramica-curva", path: `${OVERVIEW}&mostra=curva`, as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: [...NOT_ON_CONTRIBUTOR_OVERVIEW, "Curva del valore", "Ipotesi di calcolo", "Torna alla Panoramica"] },
   // The old names of the Panoramica (bookmarks, e-mails already sent, the bell): they open it, with every other parameter.
-  { name: "alias-priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: REVIEWERS, present: ["Panoramica", "Valore atteso all'anno", "Scaduti"], absent: ["Torna alla Panoramica", "Scegli…"] },
-  { name: "alias-priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Matrice", "Cosa serve"] },
-  { name: "alias-roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: REVIEWERS, present: ["Panoramica", "Valore atteso all'anno", "Scaduti", "In realizzazione", "Fatti"] },
-  // «Cosa serve»: requirements and next steps, reviewers only, last in the switcher. seed-hub.mjs
-  // writes no needs, so the reviewers get the empty view, which points to the Panoramica (the seed
-  // has use cases in realization). With needs in the workspace it shows «Requisiti» with the counts
+  { name: "alias-priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: REVIEWERS, present: OVERVIEW_REVIEWER, absent: ["Torna alla Panoramica"] },
+  { name: "alias-priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: [...NOT_ON_CONTRIBUTOR_OVERVIEW, "Matrice"] },
+  { name: "alias-roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: REVIEWERS, present: OVERVIEW_REVIEWER, absent: ["Torna alla Panoramica"] },
+  { name: "alias-roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: NOT_ON_CONTRIBUTOR_OVERVIEW },
+  // «Cosa serve»: requirements and next steps, reviewers only, last in the switcher, with «Vai alla
+  // Panoramica» under them while use cases are in realization (the seed has some). seed-hub.mjs writes
+  // no needs, so the reviewers get the empty view. With needs it shows «Requisiti» with the counts
   // line («4 aperti · 3 da chiedere · 1 in attesa · 1 a posto») and one closed line per area, then
   // «Prossimi passi» open up to next month, with «Più avanti · N passi» and «Senza data · N passi» closed.
-  { name: "cosa-serve", path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve", as: REVIEWERS, present: ["Niente da chiedere per ora", "Vai alla Panoramica"], absent: ["Cosa serve per far avanzare"] },
+  {
+    name: "cosa-serve",
+    path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve",
+    as: REVIEWERS,
+    present: FULL_SEED ? ["Requisiti", "Vai alla Panoramica"] : ["Niente da chiedere per ora", "Vai alla Panoramica"],
+    absent: ["Cosa serve per far avanzare"],
+  },
   // Not for contributors: the page falls back to the Panoramica.
-  { name: "cosa-serve", path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Cosa serve", "Requisiti"] },
+  { name: "cosa-serve", path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve", as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: [...NOT_ON_CONTRIBUTOR_OVERVIEW, "Requisiti"] },
 
   // The side panel (§4.8).
   { name: "pannello", path: `${DECIDE}&apri={uc:r06}`, as: REVIEWERS, present: ["Smistamento richieste", "Apri la scheda", "Approva", "{code:r06}"] },
@@ -111,7 +145,7 @@ const routes = [
     present: ["{code:risposta}", questionLabel(TEAM), "Quante visite fate al mese?", "Risposta di chi ha proposto", "Circa 40 visite al mese, con un verbale ciascuna.", "Approva"],
     absent: ["La domanda del team"],
   },
-  { name: "pannello-approvato", path: "/dashboard/{ws:a}/use-cases?vista=panoramica&apri={uc:r09}", as: REVIEWERS, present: ["Quando", "Prossimo trimestre", "Apri la scheda"] },
+  { name: "pannello-approvato", path: `${OVERVIEW}&apri={uc:r09}`, as: REVIEWERS, present: ["Quando", "Prossimo trimestre", "Apri la scheda"] },
   {
     name: "pannello-proprio",
     path: "/dashboard/{ws:a}/use-cases?vista=da-decidere&apri={uc:osservatore-email}",

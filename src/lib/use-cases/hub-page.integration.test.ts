@@ -576,13 +576,13 @@ test("selettore delle viste: ai revisori «Panoramica», «Da decidere» e «Cos
   assert.deepEqual(contributor.map((segment) => segment.label), ["Panoramica", "In valutazione"]);
 });
 
-test("«Cosa serve»: un solo pulsante pieno, «Tipo» è un filtro, niente matrice né lista", opts, async () => {
+test("«Cosa serve»: un solo pulsante pieno, «Tipo» è un filtro, niente matrice né corsie", opts, async () => {
   const page = await html("ls", ids.wsA, { vista: "cosa-serve" });
   assert.equal(viewOf(page), "cosa-serve");
   assert.equal(filledButtons(page), 1, "un solo pulsante pieno");
   assert.ok(page.includes('aria-label="Tipo: Tutti"'), "«Tipo» come filtro");
   assert.ok(page.includes('data-slot="needs-board"'));
-  assert.ok(!page.includes('data-slot="value-cost-matrix"') && !page.includes('data-slot="priority-list"'));
+  assert.ok(!page.includes('data-slot="value-cost-matrix"') && !page.includes('data-slot="lanes"'));
   assert.ok(!page.includes('data-slot="show-toggle"') && !page.includes('data-slot="chart-header"'), "nessun interruttore e nessun grafico");
 });
 
@@ -624,7 +624,7 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
   const page = await html("ls", ids.wsA, { vista: "priorita", mostra: "matrice" });
   assert.equal(viewOf(page), "panoramica");
   assert.ok(page.includes('data-slot="value-cost-matrix"'));
-  assert.ok(!page.includes('data-slot="priority-list"'), "nessuna lista");
+  assert.ok(!page.includes('data-slot="lanes"'), "la matrice al posto delle corsie");
   // Dal menu «⋯»: sopra la matrice «‹ Torna alla Panoramica», che torna alle corsie, e il nome del grafico.
   assert.deepEqual(chartHeaderOf(page), { href: `/dashboard/${ids.wsA}/use-cases?vista=panoramica`, text: "Torna alla Panoramica", title: "Matrice Valore × Costo" });
   assert.ok(page.includes('data-chart="matrice"'));
@@ -649,10 +649,10 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
   assert.ok(page.includes("Le zone sono un suggerimento, non la decisione."));
 
   // Zone con la soglia del workspace: la matrice qui sopra le disegna, l'export le scrive (la prova
-  // dell'export «Fascia»). La lista di «Priorità» non c'è più: il vecchio link apre la Panoramica.
+  // dell'export «Fascia»). La lista di «Priorità» non c'è più: il vecchio link apre le corsie.
   const list = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista" });
   assert.equal(viewOf(list), "panoramica");
-  assert.ok(!list.includes('data-slot="priority-list"'));
+  assert.ok(list.includes('data-slot="lanes"') && !list.includes('data-slot="chart-header"'));
   // Senza la lista, «Approva» e «Quando» stanno nel pannello: su una da decidere le decisioni, su
   // una approvata il trimestre.
   const toDecide = await panelOf("ls", ids.wsA, { vista: "panoramica", apri: cards.toDecideScored.id });
@@ -755,9 +755,10 @@ test("«Da decidere»: righe con Valore e Costo con la fonte, giorni di attesa, 
 test("vecchi link di «Priorità»: la Panoramica", opts, async () => {
   const page = await html("ls", ids.wsA, { vista: "priorita" });
   assert.equal(viewOf(page), "panoramica");
-  for (const text of ['data-slot="priority-list"', 'data-slot="chart-header"', 'data-slot="value-cost-matrix"']) {
+  for (const text of ['data-slot="chart-header"', 'data-slot="value-cost-matrix"']) {
     assert.ok(!page.includes(text), `senza grafico: niente ${text}`);
   }
+  assert.ok(page.includes('data-slot="lanes"'), "le corsie");
   // «Da costruire | Da diffondere» sceglieva la lista: nella Panoramica «Tipo» è un filtro.
   assert.ok(page.includes('aria-label="Tipo: Tutti"'));
   assert.equal((page.match(/data-slot="filter-bar"/g) ?? []).length, 1, "una sola riga di filtri");
@@ -765,7 +766,6 @@ test("vecchi link di «Priorità»: la Panoramica", opts, async () => {
   assert.equal(viewOf(diffuse), "panoramica");
   assert.ok(diffuse.includes('aria-label="Tipo: Da diffondere"'));
   assert.ok(rowOf(diffuse, cards.bestPractice.id).includes(cards.bestPractice.title), "la best practice nella Panoramica");
-  assert.ok(!diffuse.includes('data-slot="diffuse-list"'));
   // Il chip «N da stimare» di prima (`tipo=costruire&stima=mancante`) apre la matrice: lì «da stimare» non filtra.
   const toEstimate = await html("ls", ids.wsA, { vista: "priorita", tipo: "costruire", stima: "mancante" });
   assert.ok(toEstimate.includes('data-chart="matrice"'));
@@ -842,7 +842,7 @@ test("grafici del menu «⋯»: tengono i filtri; «Torna alla Panoramica» li t
   assert.equal(chartHeaderOf(page).href, `/dashboard/${ids.wsA}/use-cases?vista=panoramica&amp;origine=adoption`);
   assert.match(page, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=panoramica&amp;mostra=matrice"[^>]*>Togli i filtri<`));
   assert.ok(page.includes('data-slot="value-cost-matrix"'));
-  assert.ok(!page.includes('data-slot="priority-list"'), "il grafico al posto delle corsie");
+  assert.ok(!page.includes('data-slot="lanes"'), "il grafico al posto delle corsie");
 
   // Nessuna scheda con questi filtri: «Torna alla Panoramica» resta sopra il vuoto.
   const none = await html("ls", ids.wsA, { vista: "priorita", mostra: "matrice", q: "nessuna-corrispondenza" });
@@ -883,7 +883,7 @@ function detailsOf(page: string, slot: string): { open: boolean; summary: string
   };
 }
 
-test("il chip «da stimare» resta alla matrice: un elenco chiuso sotto, che l'indirizzo apre", opts, async () => {
+test("«da stimare» resta alla matrice: un elenco chiuso sotto, che l'indirizzo apre", opts, async () => {
   // Gli use case da mettere in ordine senza Valore o senza Costo: tutti nell'elenco, con il loro codice.
   const toEstimate = [cards.newIdea, cards.serveInfo, cards.overdue, cards.answered, cards.ownByEmail, cards.ownAsked, cards.othersWithNote, cards.othersHidden];
   const page = await html("ls", ids.wsA, { vista: "panoramica", mostra: "matrice", stima: "mancante" });
@@ -901,7 +901,7 @@ test("il chip «da stimare» resta alla matrice: un elenco chiuso sotto, che l'i
     assert.ok(!list.html.includes(`>${card.code}<`), `${card.title}: non da stimare`);
   }
   assert.ok(!page.includes("Togli i filtri"), "non è un filtro");
-  assert.ok(!page.includes('data-slot="to-estimate-chip"') && !page.includes('data-slot="off-matrix"'), "niente chip; nessuna scheda con «Benefici e costi»");
+  assert.ok(!page.includes('data-slot="off-matrix"'), "nessuna scheda con «Benefici e costi»");
   assert.equal(chartHeaderOf(page).href, `/dashboard/${ids.wsA}/use-cases?vista=panoramica`, "il ritorno senza «da stimare»");
   // Senza `stima` l'elenco c'è, chiuso.
   assert.equal(detailsOf(await html("ls", ids.wsA, { vista: "panoramica", mostra: "matrice" }), "to-estimate").open, false);
@@ -928,8 +928,7 @@ test("«Tipo» sui grafici: le due matrici sono «Da costruire» e non lo hanno;
 
 test("niente si perde senza la lista di «Priorità»: nel pannello «Quando», «Approva» e «Segna come diffusa»", opts, async () => {
   const approved = await panelOf("ls", ids.wsA, { vista: "panoramica", apri: cards.amount.id });
-  assert.match(approved, /data-slot="when-control"/);
-  assert.ok(!approved.includes("Scegli…"), "il trimestre scelto, non un menu da riempire");
+  assert.match(approved, /role="radiogroup"[^>]*data-slot="when-control"|data-slot="when-control"[^>]*role="radiogroup"/, "il controllo segmentato");
   const toDecide = await panelOf("ls", ids.wsA, { vista: "panoramica", apri: cards.toDecideScored.id });
   assert.ok(toDecide.includes("Approva"));
   const best = await panelOf("ls", ids.wsA, { vista: "panoramica", apri: cards.bestPractice.id });

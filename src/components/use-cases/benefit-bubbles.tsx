@@ -6,7 +6,7 @@ import { BUBBLE_WHEN_LABEL, bubbleWhenText, groupLegend, type BenefitBubble, typ
 import { cn } from "@/lib/utils";
 import { GroupLegendItems, SLOT_BORDER, SLOT_FILL_MID, SLOT_FILL_SOFT } from "./value-chart-colors";
 
-/** Testi della «Matrice Facilità × Beneficio» (dal menu «⋯» di «Priorità»; spec di Pierpaolo, 25/10/2026). */
+/** Testi della «Matrice Facilità × Beneficio» (dal menu «⋯» della Panoramica; spec di Pierpaolo, 25/10/2026). */
 export const BUBBLES_TEXT = Object.freeze({
   label: "Matrice Facilità × Beneficio",
   benefitAxis: "Beneficio contato all'anno",
@@ -110,7 +110,7 @@ export interface BenefitBubblesProps {
 }
 
 /**
- * «Matrice Facilità × Beneficio» (dal menu «⋯» di «Priorità»; spec di Pierpaolo, 25/10/2026): la
+ * «Matrice Facilità × Beneficio» (dal menu «⋯» della Panoramica; spec di Pierpaolo, 25/10/2026): la
  * matrice a bolle facilità × beneficio, scritta a mano come la matrice Valore × Costo. x la
  * facilità da 1 (difficile) a 5 (facile), y il beneficio contato all'anno; la bolla è grande quanto
  * il costo di avvio, colorata per gruppo. Il bordo dice quando: scuro questo trimestre, pieno il

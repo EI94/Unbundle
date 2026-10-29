@@ -99,8 +99,7 @@ test("le righe con un <details> dentro sono <div>, non <p>: dentro un <p> il par
 test("i testi della vista «Cosa serve» passano la guardia delle parole", () => {
   // needs-board.tsx porta con sé la testata della pagina (e le sue azioni): qui se ne leggono i testi dal sorgente.
   const source = readFileSync(new URL("./needs-board.tsx", import.meta.url), "utf8");
-  // Rilascio «Panoramica»: niente più da «Priorità» né parole della vecchia Roadmap.
-  assert.ok(!source.includes("./priority-view"), "non dipende da priority-view.tsx");
+  // Rilascio «Panoramica»: niente parole della vecchia Roadmap.
   assert.ok(!source.includes("Roadmap"));
   const block = /export const NEEDS_BOARD_TEXT = Object\.freeze\(\{([\s\S]*?)\n\}\);/.exec(source)?.[1] ?? "";
   const texts = [...block.matchAll(/^\s+\w+: "([^"]*)",$/gm)].map((match) => match[1]);
