@@ -47,7 +47,7 @@ export interface HubChartViewProps {
   valueParams?: ValueParams | null;
   /** I colori dei gruppi, da tutte le schede del workspace (`groupPalette`). */
   palette?: GroupPalette | null;
-  /** I toni degli agenti del workspace (`workspaceAgentPalette`): i punti della «Matrice Valore × Costo». */
+  /** I toni degli agenti del workspace (`workspaceAgentPalette`): i punti, e le bolle e i segmenti senza `palette`. */
   agents?: AgentPalette | null;
   /** Il primo mese della curva segue il mese corrente: «Ipotesi di calcolo» lo dice. */
   followsCurrentMonth?: boolean;
@@ -116,7 +116,7 @@ export function HubChartView({
             value={value}
             items={items}
             params={valueParams}
-            palette={palette ?? groupPalette(planItems, valueParams)}
+            palette={palette ?? groupPalette(planItems, valueParams, agents)}
             hrefs={Object.fromEntries(value.cards.map((card) => [card.id, hrefOf(card.id)]))}
             followsCurrentMonth={followsCurrentMonth}
             settingsHref={settingsHref}
@@ -143,7 +143,7 @@ export function HubChartView({
 
   // Le bolle facilità × beneficio, con «Ipotesi di calcolo» sotto.
   if (shown === "benefici" && valueParams) {
-    const colors = palette ?? groupPalette(view.list, valueParams);
+    const colors = palette ?? groupPalette(view.list, valueParams, agents);
     const bubbles = buildBenefitBubbles(view.list, valueParams, today, colors);
     const hrefs = Object.fromEntries(bubbles.bubbles.map((bubble) => [bubble.id, hrefOf(bubble.id)]));
     return (

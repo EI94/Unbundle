@@ -3,7 +3,7 @@ import { FIGURE_SEPARATOR, formatEuro, oneoffRunParts, oneoffRunText, perYearSho
 import { UP_TO_WORD, VALUE_MODEL_STATE_LABEL } from "@/lib/use-cases/labels";
 import { shortRefOf } from "@/lib/use-cases/agents";
 import { placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
-import { BUBBLE_WHEN_LABEL, bubbleWhenText, groupLegend, type BenefitBubble, type BenefitBubbles, type BubbleWhen, type GroupPalette } from "@/lib/use-cases/value-charts";
+import { BUBBLE_WHEN_LABEL, bubbleWhenText, markLegend, type BenefitBubble, type BenefitBubbles, type BubbleWhen, type GroupPalette } from "@/lib/use-cases/value-charts";
 import { cn } from "@/lib/utils";
 import { GroupLegendItems, SLOT_BORDER, SLOT_FILL_MID, SLOT_FILL_SOFT } from "./value-chart-colors";
 
@@ -118,10 +118,10 @@ export interface BenefitBubblesProps {
  * «Matrice Facilità × Beneficio» (dal menu «⋯» della Panoramica; spec di Pierpaolo, 25/10/2026): la
  * matrice a bolle facilità × beneficio, scritta a mano come la matrice Valore × Costo. x la
  * facilità da 1 (difficile) a 5 (facile), y il beneficio contato all'anno; la bolla è grande quanto
- * il costo di avvio, colorata per gruppo. Il bordo dice quando: scuro questo trimestre, pieno il
- * prossimo, tratteggiato più avanti; il riempimento chiaro è «da decidere». Al passaggio del mouse,
- * o con la tastiera, codice, titolo e cifre; al clic il pannello laterale. Sotto i 768 px un elenco
- * al posto del grafico. Solo revisori.
+ * il costo di avvio, colorata per gruppo (con gli agenti nei titoli per l'agente del titolo, come la
+ * matrice). Il bordo dice quando: scuro questo trimestre, pieno il prossimo, tratteggiato più avanti;
+ * il riempimento chiaro è «da decidere». Al passaggio del mouse, o con la tastiera, codice, titolo e
+ * cifre; al clic il pannello laterale. Sotto i 768 px un elenco al posto del grafico. Solo revisori.
  *
  * Il riquadro, la griglia e le tacche sono SVG scritto a mano (niente recharts né d3); le bolle sono
  * link HTML posati sopra, come i punti della matrice Valore × Costo, perché ognuna si raggiunge con
@@ -139,10 +139,7 @@ export function BenefitBubbleChart({ chart, palette, hrefs }: BenefitBubblesProp
     }),
     LABEL_BOX,
   );
-  const legend = groupLegend(
-    palette,
-    chart.bubbles.map((bubble) => bubble.group),
-  );
+  const legend = markLegend(palette, chart.bubbles);
   const whens = WHEN_ORDER.filter((when) => chart.bubbles.some((bubble) => bubble.when === when));
   const list = [...chart.bubbles].sort((a, b) => b.ease - a.ease || b.benefit - a.benefit || (a.code ?? "").localeCompare(b.code ?? ""));
   return (
@@ -222,7 +219,7 @@ export function BenefitBubbleChart({ chart, palette, hrefs }: BenefitBubblesProp
             <GroupLegendItems entries={legend} />
             {whens.map((when) => (
               <span key={when} className="inline-flex items-center gap-1.5">
-                <span aria-hidden className={cn("size-3 shrink-0 rounded-full", bubbleClass({ slot: palette.single && !palette.agents ? 1 : 0, when }))} />
+                <span aria-hidden className={cn("size-3 shrink-0 rounded-full", bubbleClass({ slot: palette.single ? 1 : 0, when }))} />
                 {BUBBLE_WHEN_LABEL[when]}
               </span>
             ))}

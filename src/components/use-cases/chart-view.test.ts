@@ -294,6 +294,51 @@ test("con gli agenti nei titoli il grigio ha un nome solo: «Altri use case» ne
   assert.ok(byGroup.includes("· Gruppo Varie") && !byGroup.includes("Altri use case"));
 });
 
+test("«Matrice Facilità × Beneficio» e «Curva del valore» con gli agenti nei titoli: ogni segno nel tono dell'agente del suo titolo, come la matrice", () => {
+  // TopJet (29/10/2026): una copia approvata di un ORSA senza il prefisso, nel gruppo «ORSA».
+  const model = (group?: string) => ({ ...COUNTED, group });
+  const orsa = item({ title: "ORSA O1 · Voli pieni, vuoti ed empty leg", valueModel: model("ORSA"), customScores: HIGH, costEurOnce: 18_000 });
+  const copy = item({ title: "Controllo dei preventivi dei fornitori di catering", valueModel: model("ORSA"), customScores: HIGH, costEurOnce: 18_000 });
+  const libra = item({ title: "LIBRA L1 · Lettura delle fatture estere", valueModel: model("Operazioni"), customScores: HIGH, costEurOnce: 4_000 });
+  const proposal = item({ title: "IVA · Calcolo dell'imposta sui biglietti", valueModel: model(), customScores: HIGH, costEurOnce: 9_000, ...TO_DECIDE });
+  const items = [orsa, copy, libra, proposal];
+  const agents = agentPalette([{ title: orsa.title }, { title: libra.title }, { title: "SIRIO S1 · Cassa" }]);
+  const tone = (agent: string) => agentToneOf(agents, agent);
+  // Senza `palette`: anche le bolle e la curva leggono gli agenti, come la matrice.
+  const bubbles = view({ chart: "benefici", items, planItems: items, agents, query: { vista: "panoramica", mostra: "benefici" } });
+  const curve = view({ chart: "curva", items, planItems: items, agents, query: { vista: "panoramica", mostra: "curva" } });
+  const matrixHtml = view({ items, agents });
+  /** Le classi del segno: il `<span>` colorato dopo il link della bolla o del punto, il `<button>` del segmento. */
+  const classesAfter = (html: string, marker: string) => {
+    const from = marker.startsWith("data-segment") ? html.lastIndexOf("<button", html.indexOf(marker)) : html.indexOf(marker);
+    return /<(?:span|button) [^>]*class="([^"]*(?:uc-agente|uc-serie)[^"]*)"/.exec(html.slice(from))?.[1] ?? "";
+  };
+  const toneIn = (classes: string) => /uc-agente-(\d+)/.exec(classes)?.[1] ?? (/uc-serie-altro/.test(classes) ? "grigio" : "?");
+  const expected = { [orsa.id]: String(tone("ORSA")), [copy.id]: "grigio", [libra.id]: String(tone("LIBRA")), [proposal.id]: "grigio" };
+  for (const it of items) {
+    assert.equal(toneIn(classesAfter(bubbles, `data-bubble="${it.id}"`)), expected[it.id], `bolla ${it.title}`);
+    assert.equal(toneIn(classesAfter(matrixHtml, `data-point="${it.id}"`)), expected[it.id], `punto ${it.title}`);
+    if (it !== proposal) assert.equal(toneIn(classesAfter(curve, `data-segment="${it.id}"`)), expected[it.id], `segmento ${it.title}`);
+  }
+  // Nessun «Gruppo …» né il nome dell'agente in coda: l'agente è nel titolo.
+  assert.ok(bubbles.includes(`aria-label="${orsa.code} ${orsa.title}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`), "bolla");
+  assert.ok(bubbles.includes(`aria-label="${copy.code} ${copy.title}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`), "la copia senza prefisso");
+  assert.ok(curve.includes(`aria-label="${copy.code} ${copy.title}: 4.043 € all&#x27;anno · Risparmio di tempo"`), "segmento");
+  assert.ok(!/Gruppo (?:ORSA|Operazioni)|· ORSA"/.test(bubbles + curve));
+  // Le legende: gli agenti dei segni, poi «Altri use case», come la matrice.
+  const legendOf = (html: string, at: string) => {
+    const start = html.indexOf(">", html.indexOf(at)) + 1;
+    return html.slice(start, html.indexOf(/^<figcaption/.test(at) ? "</figcaption>" : "</p>", start)).replace(/<[^>]+>/g, "|").split("|").filter(Boolean);
+  };
+  assert.deepEqual(legendOf(bubbles, 'data-slot="bubbles-legend"').slice(0, 3), ["LIBRA", "ORSA", "Altri use case"]);
+  assert.deepEqual(legendOf(curve, "<figcaption").slice(0, 3), ["LIBRA", "ORSA", "Altri use case"]);
+  // Senza agenti nei titoli: i colori e i nomi dei gruppi, come sempre.
+  const plain = agentPalette([{ title: "Strategia per volo" }]);
+  const byGroup = view({ chart: "benefici", items, planItems: items, agents: plain, query: { vista: "panoramica", mostra: "benefici" } });
+  assert.ok(byGroup.includes("Gruppo ORSA") && byGroup.includes("bg-uc-serie-1") && !byGroup.includes("uc-agente"));
+  assert.equal(view({ chart: "benefici", items, planItems: items, query: { vista: "panoramica", mostra: "benefici" } }), byGroup, "senza tavolozza come senza agenti");
+});
+
 test("i vuoti dei grafici: «Nessuno use case da mettere in ordine», o «Togli i filtri» che tiene il grafico", () => {
   const empty = view({ items: [item({ customScores: HIGH, status: "in_progress" })] });
   assert.ok(empty.includes('data-slot="chart-header"') && empty.includes("Nessuno use case da mettere in ordine") && empty.includes("Valuta Valore e Costo in «Da decidere»."));

@@ -1,5 +1,5 @@
 import type { HubItem } from "@/lib/use-cases/views";
-import { buildLeverChart, groupLegend, groupOf, roadmapValueItems, type GroupPalette, type RoadmapValue } from "@/lib/use-cases/value-charts";
+import { buildLeverChart, groupOf, markLegend, roadmapValueItems, type GroupPalette, type RoadmapValue } from "@/lib/use-cases/value-charts";
 import type { ValueParams } from "@/lib/use-cases/value-model";
 import { ValueByLever } from "./value-by-lever";
 import { ValueJCurve } from "./value-jcurve";
@@ -32,9 +32,9 @@ export interface RoadmapValueChartsProps {
  */
 export function RoadmapValueCharts({ value, items, params, palette, hrefs, followsCurrentMonth = false, settingsHref = null }: RoadmapValueChartsProps) {
   const levers = buildLeverChart(items, params, palette);
-  const legend = groupLegend(
+  const legend = markLegend(
     palette,
-    roadmapValueItems(items).map((item) => groupOf(item.valueModel)),
+    roadmapValueItems(items).map((item) => ({ title: item.title, group: groupOf(item.valueModel) })),
   );
   return (
     <section aria-label={ROADMAP_VALUE_TEXT.label} data-slot="roadmap-value" className="space-y-3">

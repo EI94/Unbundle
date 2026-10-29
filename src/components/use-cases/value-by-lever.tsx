@@ -41,7 +41,8 @@ export interface ValueByLeverProps {
 
 /**
  * «Valore per tipo di ritorno» di «Curva del valore» (menu «⋯»): una riga per ognuno degli 8 tipi, con l'icona di
- * `LEVER_META` e una barra impilata, un segmento per use case dal più grande, colorato per gruppo.
+ * `LEVER_META` e una barra impilata, un segmento per use case dal più grande, colorato per gruppo
+ * (con gli agenti nei titoli per l'agente del titolo).
  * Ogni segmento è un bottone: apre un popover con le voci di quel tipo e «Apri». La parte da
  * misurare è tratteggiata e fuori dal totale; «(2 qualitativi)» conta le voci qualitative e apre i
  * loro use case. Tutte le righe usano la stessa scala. Sotto i 768 px un elenco al posto delle barre.

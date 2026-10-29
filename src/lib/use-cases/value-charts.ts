@@ -12,15 +12,14 @@
  *   gruppo («Altri gruppi (Amministrazione) e senza gruppo»), e ogni bolla o segmento dice il suo
  *   gruppo. La tavolozza si calcola su tutte le schede del workspace, non su quelle filtrate: un
  *   filtro non ridipinge un gruppo. Senza nessun gruppo: un colore solo, senza legenda dei gruppi.
- *   In un workspace con gli agenti nei titoli (rilascio «Panoramica») il colore dice sempre
- *   l'agente, come le card della Panoramica: un gruppo con il nome di un agente («LIBRA»), o le cui
- *   schede disegnate hanno tutte lo stesso agente nel titolo («Automazioni», tutte «AUTO X… · …»;
- *   una scheda chiusa non conta), prende il colore e il nome di quell'agente; gli altri gruppi,
- *   anche quelli con agenti diversi, sono grigi e i tre colori dei gruppi non ci sono. Lo stesso
- *   nella «Matrice Valore × Costo», che non ha gruppi: ogni punto ha il tono dell'agente del suo
- *   titolo (`agentPointSlot`), il grigio senza. Il grigio ha un nome solo, «Altri use case», come in
- *   «Per agente» e nel filtro «Agente», e lo dice la legenda; le bolle e i segmenti non dicono il
- *   loro colore, come i punti della matrice: niente «Gruppo …», «Senza gruppo» o «Altri gruppi».
+ *   In un workspace con gli agenti nei titoli (rilascio «Panoramica») il colore dice l'agente, e
+ *   l'agente viene solo dal titolo, come il tag delle card: ogni bolla, ogni segmento e ogni punto
+ *   della «Matrice Valore × Costo» ha il tono dell'agente del suo titolo (`markSlot`,
+ *   `agentPointSlot`), il grigio senza. Il gruppo non dà né il colore né il nome: un gruppo «ORSA»
+ *   non fa ORSA una scheda senza il prefisso, e i tre colori dei gruppi non ci sono. Il grigio ha un
+ *   nome solo, «Altri use case», come in «Per agente» e nel filtro «Agente», e lo dice la legenda
+ *   (`markLegend`); le bolle e i segmenti non dicono il loro colore, come i punti della matrice: il
+ *   titolo dice già l'agente. Niente «Gruppo …», «Senza gruppo» o «Altri gruppi».
  * - **Bolle** (`buildBenefitBubbles`): le schede della vista con un modello e la facilità; x la
  *   facilità da 1 a 5, y il beneficio contato all'anno, raggio `5 + 13·√(avvio / avvio massimo)`
  *   in pixel; il bordo dice quando (questo trimestre, prossimo, più avanti) e il riempimento
@@ -54,12 +53,13 @@ import { isPriorityCandidate, roadmapGroupKey, type HubChartParam, type HubItem 
 /** Quanti gruppi hanno un colore loro. */
 export const GROUP_COLOR_SLOTS = 3;
 
-/** Il colore di un gruppo che è un agente dei titoli: il tono dell'agente (`--uc-agente-*`). */
+/** Il colore dell'agente del titolo: il tono del suo tag (`--uc-agente-*`). */
 export type AgentGroupSlot = `agente-${AgentTone}`;
 
 /**
- * Il colore di un gruppo: 1, 2, 3, oppure 0, il grigio degli altri gruppi e delle schede senza
- * gruppo; con gli agenti nei titoli, il tono dell'agente (`agente-3`) o il grigio.
+ * Il colore di un segno dei grafici: 1, 2, 3, il colore del gruppo, oppure 0, il grigio degli altri
+ * gruppi e delle schede senza gruppo; con gli agenti nei titoli, il tono dell'agente del titolo
+ * (`agente-3`) o il grigio.
  */
 export type GroupSlot = 0 | 1 | 2 | 3 | AgentGroupSlot;
 
@@ -69,21 +69,21 @@ export interface GroupPalette {
   /** Nessuna scheda ha un gruppo: un colore solo (1), senza legenda dei gruppi. */
   single: boolean;
   /**
-   * Con gli agenti nei titoli: gruppo → l'agente che è (lo stesso nome, «LIBRA», o l'agente di tutte
-   * le sue schede) e il suo tono; gli altri gruppi, e tutto senza gruppi, in grigio. null senza
-   * agenti: i colori dei gruppi.
+   * Con gli agenti nei titoli: i toni del workspace (`workspaceAgentPalette`). Ogni bolla e ogni
+   * segmento ha il tono dell'agente del suo titolo (`markSlot`), mai del gruppo. null senza agenti: i
+   * colori dei gruppi.
    */
-  agents: Readonly<Record<string, GroupAgent>> | null;
+  agents: AgentPalette | null;
 }
 
-/** L'agente di un gruppo: il nome del tag («AUTO») e il suo tono. */
-export interface GroupAgent {
-  agent: string;
-  tone: AgentTone;
-}
+/** Una scheda per i colori dei gruppi: il modello. */
+export type GroupPaletteItem = Pick<HubItem, "valueModel">;
 
-/** Una scheda per i colori dei gruppi: il modello, la fase (la disegna un grafico?) e il titolo (l'agente). */
-export type GroupPaletteItem = Pick<HubItem, "valueModel" | "phase" | "kind" | "subState"> & { title?: string };
+/** Un segno di un grafico dei gruppi, una bolla o un segmento: il titolo (l'agente) e il gruppo. */
+export interface GroupMark {
+  title: string;
+  group: string | null;
+}
 
 /** I gruppi senza un colore loro, in grigio. */
 export const OTHER_GROUPS_LABEL = "Altri gruppi";
@@ -107,17 +107,12 @@ export function groupText(group: string | null): string {
  * I colori dei gruppi, dalle schede del workspace (tutte, non solo quelle filtrate): i gruppi dal
  * più grande (più schede con un modello; a pari schede più beneficio contato, se ci sono le
  * ipotesi `params`; poi il nome), i primi tre con un colore, gli altri in grigio. Con gli agenti dei
- * titoli (`agents`, `workspaceAgentPalette`) un gruppo ha il colore solo se è un agente: ha il nome
- * di un agente («LIBRA», «Libra»), oppure tutte le sue schede hanno lo stesso agente nel titolo
- * (TopJet: «Automazioni», sette schede «AUTO X… · …», è AUTO). Un gruppo con agenti diversi, o con
- * una scheda senza agente, resta grigio. L'agente lo dicono solo le schede che un grafico dei gruppi
- * disegna (`drawnInGroupCharts`): una proposta senza agente nelle bolle lascia il gruppo grigio, una
- * scheda chiusa, rimandata o realizzata, che nessun grafico mostra, no. La grandezza conta tutte.
+ * titoli (`agents`, `workspaceAgentPalette`) i gruppi non hanno colori: ogni segno prende il tono
+ * dell'agente del suo titolo (`markSlot`), come il tag della sua card.
  */
 export function groupPalette(items: readonly GroupPaletteItem[], params?: ValueParams | null, agents?: AgentPalette | null): GroupPalette {
+  if (paletteHasAgents(agents)) return { slots: {}, single: false, agents };
   const size = new Map<string, { cards: number; benefit: number }>();
-  // L'agente comune delle schede di ogni gruppo; null appena una scheda ne ha un altro o nessuno.
-  const shared = new Map<string, string | null>();
   for (const item of items) {
     const group = groupOf(item.valueModel);
     if (!group || !item.valueModel) continue;
@@ -125,25 +120,10 @@ export function groupPalette(items: readonly GroupPaletteItem[], params?: ValueP
     entry.cards += 1;
     if (params) entry.benefit += valueTotals(item.valueModel, params).benefit;
     size.set(group, entry);
-    // Una scheda che non si vede non toglie al gruppo il suo agente.
-    if (!drawnInGroupCharts(item)) continue;
-    const agent = item.title === undefined ? null : agentOfTitle(item.title);
-    shared.set(group, shared.has(group) && shared.get(group) !== agent ? null : agent);
   }
   const sorted = [...size.entries()]
     .sort(([a, sa], [b, sb]) => sb.cards - sa.cards || sb.benefit - sa.benefit || a.localeCompare(b, "it-IT"))
     .map(([group]) => group);
-  if (paletteHasAgents(agents)) {
-    const named: Record<string, GroupAgent> = {};
-    for (const group of sorted) {
-      // Prima il nome del gruppo, poi l'agente di tutte le sue schede.
-      const byName = agentNameOfGroup(group);
-      const agent = agentToneOf(agents, byName) ? byName : (shared.get(group) ?? null);
-      const tone = agentToneOf(agents, agent);
-      if (agent && tone) named[group] = { agent, tone };
-    }
-    return { slots: {}, single: sorted.length === 0, agents: named };
-  }
   const slots: Record<string, 1 | 2 | 3> = {};
   sorted.slice(0, GROUP_COLOR_SLOTS).forEach((group, index) => {
     slots[group] = (index + 1) as 1 | 2 | 3;
@@ -151,41 +131,25 @@ export function groupPalette(items: readonly GroupPaletteItem[], params?: ValueP
   return { slots, single: sorted.length === 0, agents: null };
 }
 
-/**
- * La scheda è in un grafico dei gruppi: una bolla di «Matrice Facilità × Beneficio»
- * (`buildBenefitBubbles`: «Da costruire», `isPriorityCandidate`, con la facilità) o un segmento di
- * «Curva del valore» e «Valore per tipo di ritorno» (`roadmapValueItems`: approvata o in
- * realizzazione). Chiusa, rimandata, realizzata, o una proposta senza facilità: in nessuno.
- */
-function drawnInGroupCharts(item: GroupPaletteItem): boolean {
-  if (!item.valueModel) return false;
-  if (item.phase === "approvato" || item.phase === "in_realizzazione") return true;
-  return isPriorityCandidate(item) && typeof item.valueModel.ease === "number";
-}
-
-/** Il nome dell'agente che un gruppo può essere: «Libra» e «LIBRA» sono LIBRA. */
-function agentNameOfGroup(group: string): string {
-  return group.toLocaleUpperCase("it-IT");
-}
-
-/** L'agente che il gruppo è, con il suo tono; null se il gruppo non è un agente. */
-function agentOfGroup(palette: GroupPalette, group: string | null): GroupAgent | null {
-  return palette.agents && group !== null && Object.prototype.hasOwnProperty.call(palette.agents, group) ? palette.agents[group] : null;
-}
-
+/** Il colore di un gruppo, senza agenti nei titoli: 1, 2, 3 o il grigio; 1 con un colore solo. */
 export function groupSlot(palette: GroupPalette, group: string | null): GroupSlot {
-  if (palette.agents) {
-    const agent = agentOfGroup(palette, group);
-    return agent ? `agente-${agent.tone}` : 0;
-  }
   if (palette.single) return 1;
   return group !== null && Object.prototype.hasOwnProperty.call(palette.slots, group) ? palette.slots[group] : 0;
 }
 
 /**
+ * Il colore di una bolla o di un segmento: con gli agenti nei titoli il tono dell'agente del suo
+ * titolo, come il tag e il punto della «Matrice Valore × Costo» (`agentPointSlot`), il grigio senza;
+ * altrimenti il colore del suo gruppo (`groupSlot`).
+ */
+export function markSlot(palette: GroupPalette, mark: GroupMark): GroupSlot {
+  return palette.agents ? (agentPointSlot(palette.agents, mark.title) ?? 0) : groupSlot(palette, mark.group);
+}
+
+/**
  * Il gruppo di una bolla o di un segmento, a parole: «Gruppo Vendite», «Senza gruppo». null con un
- * colore solo, e con gli agenti nei titoli: il colore lo dice la legenda, come per i punti della
- * matrice, e il grigio ha un nome solo, «Altri use case».
+ * colore solo, e con gli agenti nei titoli: il colore è dell'agente, che il titolo dice già, e lo
+ * dice la legenda, come per i punti della matrice.
  */
 export function groupLabelOf(palette: GroupPalette, group: string | null): string | null {
   if (palette.single || palette.agents) return null;
@@ -211,36 +175,40 @@ export function otherGroupsLabel(others: readonly string[], ungrouped: boolean):
 }
 
 /**
- * La legenda dei gruppi di un grafico: solo i colori che ci sono, nell'ordine dei colori; in fondo
- * il grigio, con i nomi dei gruppi che ci finiscono e «senza gruppo» se ci sono schede senza. Con
- * gli agenti nei titoli il grigio è «Altri use case», come nella «Matrice Valore × Costo».
+ * La legenda dei gruppi di un grafico, senza agenti nei titoli: solo i colori che ci sono,
+ * nell'ordine dei colori; in fondo il grigio, con i nomi dei gruppi che ci finiscono e «senza
+ * gruppo» se ci sono schede senza.
  */
 export function groupLegend(palette: GroupPalette, groups: readonly (string | null)[]): GroupLegendEntry[] {
   if (palette.single) return [];
   const present = new Set(groups.map((group) => groupSlot(palette, group)));
-  // Con gli agenti: i loro nomi in ordine alfabetico, come i toni; due gruppi dello stesso agente, un nome solo.
-  const entries: GroupLegendEntry[] = palette.agents
-    ? [...new Map(Object.values(palette.agents).map(({ agent, tone }) => [agent, { slot: `agente-${tone}` as const, label: agent }])).values()]
-        .filter((entry) => present.has(entry.slot))
-        .sort((a, b) => a.label.localeCompare(b.label, "it-IT"))
-    : Object.entries(palette.slots)
-        .filter(([, slot]) => present.has(slot))
-        .sort(([, a], [, b]) => a - b)
-        .map(([label, slot]) => ({ slot, label }));
-  if (present.has(0) && palette.agents) entries.push({ slot: 0, label: NO_AGENT_LABEL });
-  else if (present.has(0)) {
+  const entries: GroupLegendEntry[] = Object.entries(palette.slots)
+    .filter(([, slot]) => present.has(slot))
+    .sort(([, a], [, b]) => a - b)
+    .map(([label, slot]) => ({ slot, label }));
+  if (present.has(0)) {
     const others = [...new Set(groups.filter((group): group is string => group !== null && groupSlot(palette, group) === 0))].sort((a, b) => a.localeCompare(b, "it-IT"));
     entries.push({ slot: 0, label: otherGroupsLabel(others, groups.includes(null)) });
   }
   return entries;
 }
 
-// ─── I punti della «Matrice Valore × Costo» per agente ───────────────
+/**
+ * La legenda di un grafico dei gruppi (le bolle, «Valore per tipo di ritorno»): con gli agenti nei
+ * titoli quella della «Matrice Valore × Costo» (`agentPointLegend`: gli agenti dei segni, poi «Altri
+ * use case»), altrimenti quella dei gruppi (`groupLegend`).
+ */
+export function markLegend(palette: GroupPalette, marks: readonly GroupMark[]): GroupLegendEntry[] {
+  return palette.agents ? agentPointLegend(palette.agents, marks.map((mark) => mark.title)) : groupLegend(palette, marks.map((mark) => mark.group));
+}
+
+// ─── I colori per agente: punti, bolle e segmenti ────────────────────
 
 /**
- * Il colore di un punto della «Matrice Valore × Costo» in un workspace con gli agenti nei titoli
- * (`paletteHasAgents`): il tono dell'agente del titolo, come il suo tag; il grigio (0) senza agente
- * o per un agente senza tono (solo proposte). null senza agenti: la matrice resta per origine.
+ * Il colore di un punto della «Matrice Valore × Costo», e di una bolla o di un segmento (`markSlot`),
+ * in un workspace con gli agenti nei titoli (`paletteHasAgents`): il tono dell'agente del titolo,
+ * come il suo tag; il grigio (0) senza agente o per un agente senza tono (solo proposte). null senza
+ * agenti: la matrice resta per origine.
  */
 export function agentPointSlot(agents: AgentPalette | null | undefined, title: string): GroupSlot | null {
   if (!paletteHasAgents(agents)) return null;
@@ -249,9 +217,9 @@ export function agentPointSlot(agents: AgentPalette | null | undefined, title: s
 }
 
 /**
- * La legenda della «Matrice Valore × Costo» per agente: gli agenti con un tono che hanno un punto,
- * in ordine alfabetico come i toni, poi il grigio «Altri use case» se un punto non ha un agente con
- * un tono. Vuota senza agenti nei titoli.
+ * La legenda della «Matrice Valore × Costo» per agente, anche delle bolle e dei segmenti
+ * (`markLegend`): gli agenti con un tono che hanno un punto, in ordine alfabetico come i toni, poi il
+ * grigio «Altri use case» se un punto non ha un agente con un tono. Vuota senza agenti nei titoli.
  */
 export function agentPointLegend(agents: AgentPalette | null | undefined, titles: readonly string[]): GroupLegendEntry[] {
   if (!paletteHasAgents(agents)) return [];
@@ -425,7 +393,7 @@ export function buildBenefitBubbles(items: readonly HubItem[], params: ValuePara
       run: totals.run,
       group,
       groupLabel: groupLabelOf(palette, group),
-      slot: groupSlot(palette, group),
+      slot: markSlot(palette, { title: item.title, group }),
       when: bubbleWhen(item, today),
       expired: item.phase === "approvato" && roadmapGroupKey(item.targetQuarter, today) === "scaduti",
     });
@@ -697,7 +665,7 @@ export function buildLeverChart(items: readonly HubItem[], params: ValueParams, 
     const model = item.valueModel!;
     const totals = valueTotals(model, params);
     const group = groupOf(model);
-    const slot = groupSlot(palette, group);
+    const slot = markSlot(palette, { title: item.title, group });
     for (const lever of LEVERS) {
       const components = model.components.filter((component) => component.lever === lever);
       if (!components.length) continue;
