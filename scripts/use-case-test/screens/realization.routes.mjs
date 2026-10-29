@@ -7,7 +7,7 @@
 // Cards of scripts/use-case-test/seed-hub.mjs: r09 approved «Da costruire» without a dossier
 // («Avvia la realizzazione» only for Lateral Space), r12 with a dossier (the summary: status, the
 // one progress number, the three ROI figures, «Apri il dossier» only for who opens it). The
-// Roadmap's «In realizzazione» column has the dossier cards for reviewers. Contributors
+// Panoramica's «In realizzazione» column has the dossier cards for reviewers. Contributors
 // (`osservatore`) never see the chapter, the dossier cards or figures.
 
 const LS = ["ls-lead", "ls-analista"];
@@ -32,8 +32,8 @@ const routes = [
     present: ["Dossier", "Costo di realizzazione", "Beneficio all'anno", "Pareggio"],
   },
   { name: "realizzazione-avviata", path: card("r12"), as: CONTRIBUTOR, absent: ["Costo di realizzazione", "Apri il dossier", "Realizzazione"] },
-  { name: "roadmap-in-realizzazione", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: REVIEWERS, present: ["In realizzazione", "{code:r12}"] },
-  { name: "roadmap-in-realizzazione", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: CONTRIBUTOR, absent: ["indispensabili", "Tocca a te", "Prossima tappa"] },
+  { name: "panoramica-in-realizzazione", path: "/dashboard/{ws:a}/use-cases?vista=panoramica", as: REVIEWERS, present: ["In realizzazione", "{code:r12}"] },
+  { name: "panoramica-in-realizzazione", path: "/dashboard/{ws:a}/use-cases?vista=panoramica", as: CONTRIBUTOR, absent: ["indispensabili", "Tocca a te", "Prossima tappa"] },
   // «Avvia la realizzazione» (Lateral Space only): the form starts from the use case.
   { name: "avvia-realizzazione", path: "/dashboard/{ws:a}/casi-duso/nuovo?useCaseId={uc:r09}", as: ["ls-lead"], present: ["Avvia la realizzazione", "{code:r09}"], copyGuard: false },
 ];

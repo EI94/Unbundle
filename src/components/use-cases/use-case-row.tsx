@@ -42,7 +42,7 @@ import { ValueFigure } from "./value-figure";
 /** I parametri della pagina come testo (solo chiavi di `HUB_PARAM_KEYS`). */
 export type HubQuery = Partial<Record<HubParamKey, string>>;
 
-/** I parametri che non passano da una vista all'altra: pannelli, ricevute e il modo della Priorità. */
+/** I parametri che non passano da una vista all'altra: pannelli e ricevute. */
 export const TRANSIENT_KEYS: readonly HubParamKey[] = ["apri", "nuovo", "thanks", "created", "joined"];
 
 /** L'indirizzo della pagina con alcuni parametri cambiati (`null` lo toglie). */

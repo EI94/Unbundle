@@ -73,7 +73,7 @@ export function proxy(req: NextRequest) {
 
   const dashWs = pathname.match(/^\/dashboard\/([0-9a-f-]{36})/i);
   // «Avvia la realizzazione» senza uno use case (docs/use-case/DESIGN.md §2.3, §2.4; PIANO-LAVORI
-  // H6a): con l'area «Use case» accesa si sceglie lo use case in «Priorità». Qui e non in pagina,
+  // H6a): con l'area «Use case» accesa si sceglie lo use case nella Panoramica. Qui e non in pagina,
   // che sta sotto `casi-duso/loading.tsx` (un 307 lì sarebbe un 200 con una meta refresh). Solo
   // l'interruttore del workspace, senza database; la pagina ricontrolla chi può avviare.
   if (dashWs?.[1] && hasSession && /^\/dashboard\/[^/]+\/casi-duso\/nuovo\/?$/.test(pathname) && isUseCaseHubWorkspace(dashWs[1])) {

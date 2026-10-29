@@ -33,8 +33,8 @@ export interface SegmentedNavProps {
   size?: "md" | "sm";
   /**
    * Sotto `sm` i segmenti in una griglia di due colonne, tutti in vista, invece di una riga che
-   * scorre e taglia gli ultimi (le quattro viste degli use case non stanno in 360 px). Da `sm` la
-   * riga di sempre.
+   * scorre e taglia gli ultimi (le viste degli use case non stanno in 360 px); una dispari in
+   * fondo prende la riga intera. Da `sm` la riga di sempre.
    */
   gridOnPhone?: boolean;
   className?: string;
@@ -75,7 +75,7 @@ export function SegmentedNav({ items, active, ariaLabel, size = "md", gridOnPhon
           const current = item.key === active;
           const lockedText = typeof item.locked === "string" ? item.locked : item.locked ? "non ancora disponibile" : null;
           return (
-            <li key={item.key} className={gridOnPhone ? "min-w-0 sm:shrink-0" : "shrink-0"}>
+            <li key={item.key} className={gridOnPhone ? "min-w-0 sm:shrink-0 last:odd:col-span-2" : "shrink-0"}>
               <Link
                 ref={current ? activeRef : undefined}
                 href={item.href}

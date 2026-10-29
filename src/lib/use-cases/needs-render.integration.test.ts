@@ -20,8 +20,8 @@ const { registerHooks } = nodeModule as unknown as {
 //
 // - «Cosa serve»: la sua vista, solo per i revisori, ultima nel selettore: i requisiti per area (le
 //   righe a posto chiuse, «Per N use case» chiuso), i prossimi passi per mese (i fatti chiusi), «Cosa
-//   vi chiediamo questo trimestre» chiuso, una riga per gli use case in realizzazione con la Roadmap.
-//   Con un filtro, le esigenze degli use case che lo passano. «Priorità» non le ha più.
+//   vi chiediamo questo trimestre» chiuso, una riga per gli use case in realizzazione con la
+//   Panoramica. Con un filtro, le esigenze degli use case che lo passano. La Panoramica non le ha.
 // - Il pannello: al massimo tre esigenze aperte, le altre nella scheda.
 // - La scheda: il capitolo «Cosa serve» con la modifica; le action scrivono solo per i revisori.
 // - Chi non è revisore non riceve esigenze da nessuna parte: pagina, pannello, scheda, action.
@@ -435,8 +435,8 @@ test("Cosa serve: «Prossimi passi» per mese, i fatti chiusi; «Cosa vi chiedia
   assert.ok(!ask.includes(T.extract), "le righe a posto non si chiedono");
 });
 
-test("Cosa serve: la sua vista, non in Priorità né nella Roadmap; senza esigenze il vuoto", opts, async () => {
-  const notThere: Array<Record<string, string>> = [{}, { vista: "priorita" }, { vista: "priorita", tipo: "diffondere" }];
+test("Cosa serve: la sua vista, non nella Panoramica né nei vecchi link; senza esigenze il vuoto", opts, async () => {
+  const notThere: Array<Record<string, string>> = [{}, { vista: "panoramica" }, { vista: "priorita" }, { vista: "roadmap", tipo: "diffondere" }];
   for (const searchParams of notThere) {
     const page = await hubHtml("builder", ids.ws, searchParams);
     assert.ok(!page.includes('data-slot="needs-board"'), JSON.stringify(searchParams));
@@ -448,17 +448,17 @@ test("Cosa serve: la sua vista, non in Priorità né nella Roadmap; senza esigen
   assert.ok(blank.includes('data-slot="hub-empty"') && blank.includes("Niente da chiedere per ora"));
   assert.ok(blank.includes("Le esigenze si aggiungono dalla scheda di uno use case, nel capitolo «Cosa serve»."));
   assert.ok(!empty.includes('data-slot="needs-requirements"') && !empty.includes('data-slot="needs-quarter"'), "nessun blocco vuoto");
-  const roadmap = await hubHtml("builder", ids.ws, { vista: "roadmap" });
-  assert.ok(!roadmap.includes('data-slot="needs-board"'), "solo nella sua vista");
+  const overview = await hubHtml("builder", ids.ws, { vista: "panoramica" });
+  assert.ok(!overview.includes('data-slot="needs-board"'), "solo nella sua vista");
 });
 
-test("Cosa serve: gli use case in realizzazione si leggono nella Roadmap, mai le card dei dossier qui", opts, () => {
+test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai le card dei dossier qui", opts, () => {
   const emptyBoard = { areas: [], steps: [], stepsDone: [], quarter: [] };
   const render = (props: Record<string, unknown>) => readable(renderToStaticMarkup(createElementOf(board.NeedsBoardView, { hrefOf: (id: string) => `?apri=${id}`, ...props })));
-  const blank = render({ board: emptyBoard, inRealization: 1, roadmapHref: "/r" });
+  const blank = render({ board: emptyBoard, inRealization: 1, realizationHref: "/r" });
   assert.ok(blank.includes('data-slot="hub-empty"') && blank.includes("Niente da chiedere per ora"));
   assert.ok(blank.includes("1 use case è già in realizzazione."));
-  assert.match(blank, /<a [^>]*href="\/r"[^>]*>Vai alla Roadmap<\/a>/);
+  assert.match(blank, /<a [^>]*href="\/r"[^>]*>Vai alla Panoramica<\/a>/);
   assert.ok(!blank.includes('data-slot="dossier-card"'));
 
   const row = {
@@ -476,14 +476,14 @@ test("Cosa serve: gli use case in realizzazione si leggono nella Roadmap, mai le
     forLabel: null,
   };
   const filled = { ...emptyBoard, areas: [{ key: "accessi", label: "Accessi", open: [row], done: [] }] };
-  const two = render({ board: filled, inRealization: 2, roadmapHref: "/r" });
+  const two = render({ board: filled, inRealization: 2, realizationHref: "/r" });
   const line = between(two, 'data-slot="needs-in-progress"');
   assert.ok(two.indexOf('data-slot="needs-in-progress"') > two.indexOf('data-slot="needs-requirements"'), "dopo i blocchi");
-  assert.ok(line.includes("2 use case sono già in realizzazione.") && /href="\/r"[^>]*>Vai alla Roadmap</.test(line));
+  assert.ok(line.includes("2 use case sono già in realizzazione.") && /href="\/r"[^>]*>Vai alla Panoramica</.test(line));
   assert.ok(!two.includes('data-slot="dossier-card"'));
-  for (const props of [{ inRealization: 0, roadmapHref: "/r" }, { inRealization: 2, roadmapHref: null }]) {
+  for (const props of [{ inRealization: 0, realizationHref: "/r" }, { inRealization: 2, realizationHref: null }]) {
     const html = render({ board: filled, ...props });
-    assert.ok(!html.includes('data-slot="needs-in-progress"') && !html.includes("Vai alla Roadmap"), JSON.stringify(props));
+    assert.ok(!html.includes('data-slot="needs-in-progress"') && !html.includes("Vai alla Panoramica"), JSON.stringify(props));
   }
 });
 
@@ -507,8 +507,9 @@ test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerc
   for (const title of Object.values(T)) assert.ok(!none.includes(title), title);
 });
 
-test("Cosa serve: Priorità non legge né esigenze né dossier", opts, async () => {
-  const { data } = await hubTree("builder", ids.ws, { vista: "priorita" });
+test("Cosa serve: i grafici del menu «⋯» (prima in «Priorità») non leggono né esigenze né dossier", opts, async () => {
+  const { data } = await hubTree("builder", ids.ws, { vista: "priorita", mostra: "matrice" });
+  assert.equal(data.chart, "matrice");
   assert.equal(data.needs, null);
   assert.equal(data.dossierColumn, null);
 });
@@ -559,12 +560,12 @@ test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a p
   assert.ok(between(other, 'data-slot="section-needs"', "</section>").includes("Niente per ora."));
 });
 
-test("chi non è revisore: niente esigenze in «Cosa serve», Priorità, pannello, scheda e dati della pagina", opts, async () => {
+test("chi non è revisore: niente esigenze in «Cosa serve», Panoramica, pannello, scheda e dati della pagina", opts, async () => {
   const views: Array<Record<string, string>> = [
     { vista: "cosa-serve" },
     { vista: "cosa-serve", apri: cards.quarter.id },
     { vista: "priorita" },
-    { vista: "roadmap" },
+    { vista: "panoramica" },
     { vista: "da-decidere", apri: cards.own.id },
     { apri: cards.quarter.id },
   ];

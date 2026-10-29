@@ -135,12 +135,12 @@ export function bellText(templateKey: string, payload: Record<string, Json>, ext
 
 /**
  * Pagina interna della notifica (DESIGN §3.13.4): dentro il dossier, con le
- * rotte nuove; il riepilogo, che non ha un dossier, porta alla Roadmap.
+ * rotte nuove; il riepilogo, che non ha un dossier, porta alla Panoramica.
  */
 export function bellHref(i: { workspaceId: string; caseId: string | null; templateKey: string; payload: Record<string, Json> }): string | null {
   if (!UUID.test(i.workspaceId)) return null;
   const ws = `/dashboard/${i.workspaceId.toLowerCase()}`;
-  if (!i.caseId) return `${ws}/use-cases?vista=roadmap`;
+  if (!i.caseId) return `${ws}/use-cases?vista=panoramica`;
   if (!UUID.test(i.caseId)) return null;
   const base = `${ws}/casi-duso/${i.caseId.toLowerCase()}`;
   switch (i.templateKey) {

@@ -678,7 +678,7 @@ export const DIALOG_EXTRA_TEXT = Object.freeze({
 export function decisionToast(decision: Decision, today: string): string {
   switch (decision.type) {
     case "approva":
-      return "Approvato. Lo trovi nella Roadmap.";
+      return "Approvato. Lo trovi nella Panoramica.";
     case "rimanda":
       return `Rimandato al ${futureDayLabel(decision.reviewBy, today)}.`;
     case "serve_info":

@@ -455,9 +455,9 @@ test("area accesa: /portfolio, /portfolio/review/<id>, /portfolio/submit e /plan
     assert.equal((await open(pages.portfolio, "contributor", { workspaceId: ids.on })).digest, temporaryRedirect(`${hub}?vista=da-decidere`));
     assert.equal((await open(pages.review, "builder", { workspaceId: ids.on, useCaseId: cards.top.id })).digest, temporaryRedirect(`${hub}/${cards.top.id}`));
     assert.equal((await open(pages.submit, "contributor", { workspaceId: ids.on })).digest, temporaryRedirect(`${hub}/nuovo`));
-    assert.equal((await open(pages.plan, "manager", { workspaceId: ids.on })).digest, temporaryRedirect(`${hub}?vista=roadmap`));
+    assert.equal((await open(pages.plan, "manager", { workspaceId: ids.on })).digest, temporaryRedirect(`${hub}?vista=panoramica`));
     // Prima di ogni lettura: anche chi non è membro riceve il redirect; la pagina nuova decide.
-    assert.equal((await open(pages.plan, "outsider", { workspaceId: ids.on })).digest, temporaryRedirect(`${hub}?vista=roadmap`));
+    assert.equal((await open(pages.plan, "outsider", { workspaceId: ids.on })).digest, temporaryRedirect(`${hub}?vista=panoramica`));
   } finally {
     console.info = info;
   }
@@ -531,7 +531,7 @@ test("campanella: i link dei segnali seguono l'area del workspace", opts, async 
   const on = await signalsOf(ids.on, "function_lead", true);
   assert.equal(on.new_portfolio_item, `/dashboard/${ids.on}/use-cases/${cards.bottom.id}`);
   assert.equal(on.use_case_digest, `/dashboard/${ids.on}/use-cases?vista=da-decidere`);
-  assert.equal(on.use_case_quarter, `/dashboard/${ids.on}/use-cases?vista=roadmap`);
+  assert.equal(on.use_case_quarter, `/dashboard/${ids.on}/use-cases?vista=panoramica`);
   assert.equal(on.risk_alert, null);
   // Spenta: come oggi, solo il nuovo contributo, verso la revisione.
   const off = await signalsOf(ids.off, "function_lead", false);
@@ -543,10 +543,10 @@ test("campanella: i link dei segnali seguono l'area del workspace", opts, async 
 test("Intelligence: i segnali delle schede con il loro nome e i riepiloghi con il link, solo ai revisori", opts, async () => {
   areaOn();
   const reviewer = await html(pages.intelligence, "builder", { workspaceId: ids.on });
-  for (const label of ["Nuovo use case", "Use case", "Roadmap"]) assert.ok(reviewer.includes(`>${label}</span>`), `etichetta «${label}»`);
+  for (const label of ["Nuovo use case", "Use case", "Panoramica"]) assert.ok(reviewer.includes(`>${label}</span>`), `etichetta «${label}»`);
   for (const raw of ["new_portfolio_item", "use_case_digest", "use_case_quarter"]) assert.ok(!reviewer.includes(`>${raw}<`), `nessuna chiave grezza ${raw}`);
   assert.ok(reviewer.includes(`href="/dashboard/${ids.on}/use-cases?vista=da-decidere"`), "link del riepilogo");
-  assert.ok(reviewer.includes(`href="/dashboard/${ids.on}/use-cases?vista=roadmap"`), "link del trimestre");
+  assert.ok(reviewer.includes(`href="/dashboard/${ids.on}/use-cases?vista=panoramica"`), "link del trimestre");
   const contributor = await html(pages.intelligence, "contributor", { workspaceId: ids.on });
   for (const text of [`SEGNALE-SCHEDA-${suffix}`, `RIEPILOGO-${suffix}`, `TRIMESTRE-${suffix}`, "/use-cases?vista="]) {
     assert.ok(!contributor.includes(text), `contributore: «${text}»`);

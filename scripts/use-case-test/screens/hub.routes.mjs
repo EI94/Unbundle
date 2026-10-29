@@ -5,11 +5,11 @@
 //     --as ls-lead,function-lead,osservatore,sponsor-cliente --widths 1440,400 --label h4a
 //
 // Workspace «a» has the area on (start-app.mjs --flag USE_CASE_HUB_WORKSPACES=<id of «a»>) and the
-// cards of scripts/use-case-test/seed-hub.mjs. The four views for the four accounts, the list of
-// «Priorità» (the list by default; the matrix and the bubbles from the «⋯» menu,
-// ?mostra=matrice|benefici, with «Torna alla lista»), «Da diffondere», the side panel (reviewers on a card with a cost, osservatore on an own proposal with
-// code and public note and on someone else's without them), the quick panel of Lateral Space and
-// filters without results. The driver checks every page: no horizontal scroll (also at the tablet
+// cards of scripts/use-case-test/seed-hub.mjs. The three views for the four accounts, the charts of
+// the «⋯» menu in the Panoramica (?mostra=matrice|benefici, with «Torna alla Panoramica»), the old
+// names ?vista=priorita and ?vista=roadmap, the side panel (reviewers on a card with a cost,
+// osservatore on an own proposal with code and public note and on someone else's without them),
+// the quick panel of Lateral Space and filters without results. The driver checks every page: no horizontal scroll (also at the tablet
 // widths 768, 900 and 1024), at most one filled button outside dialogs, every cost with its source,
 // no figure and no «€» for the contributor.
 //
@@ -32,12 +32,12 @@ const OTHERS_NOTES = ["Quante note spese arrivano ogni mese?", "Servono esempi d
 const NOT_FOR_CONTRIBUTOR = ["{code:r05}", "{code:r06}", "{code:r09}", "{code:r12}", ...OTHERS_NOTES, "Previsione della domanda", "Altri filtri", "Cerca per titolo o codice"];
 
 const routes = [
-  // The starting view of each role (§4.2): reviewers «Da decidere», the client's sponsor and contributors «Roadmap».
+  // The starting view of each role (§4.2): reviewers «Da decidere», the client's sponsor and contributors the Panoramica.
   { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: ["ls-lead", "function-lead"], present: ["Use case", "Nuovo use case", "In attesa di risposta"] },
   { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: ["sponsor-cliente"], present: ["Prossimi", "In realizzazione", "Fatti", "Costo impegnato"] },
   { name: "partenza", path: "/dashboard/{ws:a}/use-cases", as: CONTRIBUTOR, present: ["Prossimi", "Fatti"], absent: [...NOT_FOR_CONTRIBUTOR, "Costo impegnato", "Cosa serve"] },
 
-  // The four views.
+  // The three views.
   // H4p: un solo «da stimare» quando mancano Valore e Costo; il tipo solo per «Da diffondere».
   // H7: an answered «Serve info» reads «Risposta ricevuta», not «Nuova»; one wording for the valued phase.
   {
@@ -56,40 +56,35 @@ const routes = [
     present: ["In valutazione", "{code:osservatore-email}", "Riepilogo delle chiamate di assistenza", "Proposto da te", "Rispondi", `${askedTitle(TEAM)}:`],
     absent: [...NOT_FOR_CONTRIBUTOR, "Da decidere", "In attesa di risposta", "Possibile doppione", "Valutata, da decidere"],
   },
-  // Without ?mostra= the list, at every width.
-  { name: "priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: REVIEWERS, present: ["{code:r06}", "Quando"] },
+  // The Panoramica: for now the lanes of the Roadmap of before (release «Panoramica», WP3 replaces them).
+  { name: "panoramica", path: "/dashboard/{ws:a}/use-cases?vista=panoramica", as: REVIEWERS, present: ["Panoramica", "Valore atteso all'anno", "Costo impegnato", "use case", "Scaduti", "In realizzazione", "Fatti"] },
+  { name: "panoramica", path: "/dashboard/{ws:a}/use-cases?vista=panoramica", as: CONTRIBUTOR, present: ["Prossimi", "Fatti"], absent: [...NOT_FOR_CONTRIBUTOR, "Costo impegnato", "Valore atteso"] },
   // H4p: ogni punto con il suo codice; i scaduti marcati; legenda corta. Opened from the «⋯» menu,
-  // in place of the list, with «Torna alla lista» above.
+  // in place of the lanes, with «Torna alla Panoramica» above.
   {
-    name: "priorita-matrice",
-    path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=matrice",
+    name: "panoramica-matrice",
+    path: "/dashboard/{ws:a}/use-cases?vista=panoramica&mostra=matrice",
     as: REVIEWERS,
-    present: ["Torna alla lista", "Subito", "Da pianificare", "Se avanza tempo", "Non ora", "Le zone sono un suggerimento, non la decisione.", "{code:r06}", "{code:r09}", "da decidere"],
+    present: ["Torna alla Panoramica", "Subito", "Da pianificare", "Se avanza tempo", "Non ora", "Le zone sono un suggerimento, non la decisione.", "{code:r06}", "{code:r09}", "da decidere"],
   },
-  // §4.4: il menu «Quando» parte da «Scegli…» sulle schede da decidere (la scelta apre «Approva»);
-  // il trimestre per intero e «Scaduto» sulle approvate.
-  // H7: the rows without Value or Cost in one chip «N da stimare», as in the matrix.
-  { name: "priorita-lista", path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=lista", as: REVIEWERS, present: ["Quando", "{code:r06}", "Scegli…", "Scaduto", "da stimare"], absent: ["Approva…", "{code:r04}"] },
-  { name: "priorita-diffondere", path: "/dashboard/{ws:a}/use-cases?vista=priorita&tipo=diffondere", as: REVIEWERS, present: ["Segna come diffusa", "ore all'anno"] },
   // «Matrice Facilità × Beneficio» from the «⋯» menu (the bubbles, only with a «Benefici e costi»
-  // model in the workspace; otherwise the page falls back to the matrix), with «Torna alla lista».
-  // The needs are no longer at the foot of «Priorità»: they have their own view.
+  // model in the workspace; otherwise the page falls back to the matrix), with «Torna alla Panoramica».
   {
-    name: "priorita-benefici",
-    path: "/dashboard/{ws:a}/use-cases?vista=priorita&mostra=benefici",
+    name: "panoramica-benefici",
+    path: "/dashboard/{ws:a}/use-cases?vista=panoramica&mostra=benefici",
     as: REVIEWERS,
-    present: ["Torna alla lista"],
+    present: ["Torna alla Panoramica"],
     absent: ["Cosa serve per far avanzare", "Requisiti"],
   },
-  // «Priorità» is not for contributors: the page falls back to the Roadmap.
-  { name: "priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Matrice", "Cosa serve"] },
-  { name: "roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: REVIEWERS, present: ["Valore atteso all'anno", "Costo impegnato", "use case", "Scaduti", "In realizzazione", "Fatti"] },
-  { name: "roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: CONTRIBUTOR, present: ["Prossimi", "Fatti"], absent: [...NOT_FOR_CONTRIBUTOR, "Costo impegnato", "Valore atteso"] },
+  // The old names of the Panoramica (bookmarks, e-mails already sent, the bell): they open it, with every other parameter.
+  { name: "alias-priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: REVIEWERS, present: ["Panoramica", "Valore atteso all'anno", "Scaduti"], absent: ["Torna alla Panoramica", "Scegli…"] },
+  { name: "alias-priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Matrice", "Cosa serve"] },
+  { name: "alias-roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: REVIEWERS, present: ["Panoramica", "Valore atteso all'anno", "Scaduti", "In realizzazione", "Fatti"] },
   // «Cosa serve»: requirements and next steps, reviewers only, last in the switcher. seed-hub.mjs
-  // writes no needs, so the reviewers get the empty view, which points to the Roadmap (the seed has
-  // use cases in realization); with needs in the workspace it shows «Requisiti» and «Prossimi passi».
-  { name: "cosa-serve", path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve", as: REVIEWERS, present: ["Niente da chiedere per ora", "Vai alla Roadmap"], absent: ["Cosa serve per far avanzare"] },
-  // Not for contributors: the page falls back to the Roadmap.
+  // writes no needs, so the reviewers get the empty view, which points to the Panoramica (the seed
+  // has use cases in realization); with needs in the workspace it shows «Requisiti» and «Prossimi passi».
+  { name: "cosa-serve", path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve", as: REVIEWERS, present: ["Niente da chiedere per ora", "Vai alla Panoramica"], absent: ["Cosa serve per far avanzare"] },
+  // Not for contributors: the page falls back to the Panoramica.
   { name: "cosa-serve", path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Cosa serve", "Requisiti"] },
 
   // The side panel (§4.8).
@@ -102,7 +97,7 @@ const routes = [
     present: ["{code:risposta}", questionLabel(TEAM), "Quante visite fate al mese?", "Risposta di chi ha proposto", "Circa 40 visite al mese, con un verbale ciascuna.", "Approva"],
     absent: ["La domanda del team"],
   },
-  { name: "pannello-approvato", path: "/dashboard/{ws:a}/use-cases?vista=roadmap&apri={uc:r09}", as: REVIEWERS, present: ["Quando", "Prossimo trimestre", "Apri la scheda"] },
+  { name: "pannello-approvato", path: "/dashboard/{ws:a}/use-cases?vista=panoramica&apri={uc:r09}", as: REVIEWERS, present: ["Quando", "Prossimo trimestre", "Apri la scheda"] },
   {
     name: "pannello-proprio",
     path: "/dashboard/{ws:a}/use-cases?vista=da-decidere&apri={uc:osservatore-email}",

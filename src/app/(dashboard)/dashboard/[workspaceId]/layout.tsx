@@ -53,9 +53,9 @@ export default async function WorkspaceLayout({
   }
 
   // P0-16 (docs/casi-duso/RUNBOOK.md §1): con l'area accesa «Casi d'uso» esce dalla barra e
-  // `/casi-duso` esatto va alla Roadmap solo quando ogni dossier completo ha la sua scheda
+  // `/casi-duso` esatto va alla Panoramica solo quando ogni dossier completo ha la sua scheda
   // (`dossierLinksReady`). Finché no, o se la lettura non riesce, la voce resta: un dossier
-  // senza scheda non sta né su una scheda né sulla Roadmap. Il redirect sta qui e non in
+  // senza scheda non sta né su una scheda né nella Panoramica. Il redirect sta qui e non in
   // pagina: sotto `casi-duso/loading.tsx` risponderebbe 200 con una meta refresh (H6a).
   const ucOn = process.env.UC_ENABLED === "true";
   let dossierLinksAreReady = false;

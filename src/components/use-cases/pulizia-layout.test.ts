@@ -27,21 +27,21 @@ before(async () => {
 
 const textOf = (html: string) => html.replace(/<[^>]+>/g, "");
 const VIEWS = [
+  { key: "panoramica", label: "Panoramica", href: "/h?vista=panoramica" },
   { key: "da-decidere", label: "Da decidere", count: 3, href: "/h?vista=da-decidere" },
-  { key: "priorita", label: "Priorità", href: "/h?vista=priorita" },
-  { key: "roadmap", label: "Roadmap", href: "/h?vista=roadmap" },
   { key: "cosa-serve", label: "Cosa serve", href: "/h?vista=cosa-serve" },
 ];
 
-test("le quattro viste: al telefono una griglia di due colonne, tutte in vista; da sm la riga di sempre", () => {
-  const html = renderToStaticMarkup(createElement(nav.SegmentedNav, { items: VIEWS, active: "priorita", ariaLabel: "Viste", gridOnPhone: true }));
+test("le tre viste: al telefono una griglia di due colonne, tutte in vista, l'ultima sulla riga intera; da sm la riga di sempre", () => {
+  const html = renderToStaticMarkup(createElement(nav.SegmentedNav, { items: VIEWS, active: "panoramica", ariaLabel: "Viste", gridOnPhone: true }));
   const ul = /<ul[^>]*class="([^"]*)"/.exec(html)?.[1].split(" ") ?? [];
   for (const cls of ["grid", "w-full", "grid-cols-2", "sm:inline-flex", "sm:w-auto"]) assert.ok(ul.includes(cls), cls);
   assert.ok(!ul.includes("inline-flex"), "al telefono non è una riga che scorre");
-  assert.equal((html.match(/<li class="min-w-0 sm:shrink-0">/g) ?? []).length, 4);
-  assert.equal((html.match(/justify-center sm:justify-start/g) ?? []).length, 4);
+  // «Panoramica | Da decidere 3» sopra, «Cosa serve» sotto: una dispari in fondo prende la riga intera.
+  assert.equal((html.match(/<li class="min-w-0 sm:shrink-0 last:odd:col-span-2">/g) ?? []).length, 3);
+  assert.equal((html.match(/justify-center sm:justify-start/g) ?? []).length, 3);
   // Senza la scelta (il dossier, gli altri usi) resta com'era.
-  const plain = renderToStaticMarkup(createElement(nav.SegmentedNav, { items: VIEWS, active: "priorita", ariaLabel: "Viste" }));
+  const plain = renderToStaticMarkup(createElement(nav.SegmentedNav, { items: VIEWS, active: "panoramica", ariaLabel: "Viste" }));
   assert.match(plain, /<ul class="max-w-full gap-1 overflow-x-auto rounded-2xl border bg-muted\/60 p-1 \[scrollbar-width:none\] inline-flex">/);
   assert.ok(!plain.includes("grid-cols-2") && !plain.includes("justify-center"));
   // La pagina «Use case» la chiede quando le viste sono più di due.

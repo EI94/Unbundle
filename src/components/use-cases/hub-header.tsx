@@ -12,9 +12,16 @@ export const HUB_TEXT = Object.freeze({
   subtitle: "Dal basso e dall'alto: quali use case realizzare e quando.",
   newUseCase: "Nuovo use case",
   viewsLabel: "Viste",
+  /** La prima vista, per tutti (rilascio «Panoramica»): al posto di «Priorità» e «Roadmap». */
+  overviewView: "Panoramica",
   decideView: "Da decidere",
   /** La stessa vista per i contributori, che non decidono: niente contatore (H4p). */
   contributorDecideView: "In valutazione",
+  goToOverview: "Vai alla Panoramica",
+  /** Sopra un grafico del menu «⋯». */
+  backToOverview: "Torna alla Panoramica",
+  /** La voce del menu «⋯» e il titolo del grafico. */
+  curve: "Curva del valore",
   emptyTitle: "Nessuno use case, per ora",
   emptyReviewer: "Aggiungine uno o proponili da Activity mapping.",
   emptyContributor: "Proponi il primo use case.",
@@ -29,11 +36,16 @@ export function receiptText(code: string | null, teamName: string): string {
   return code ? `Il codice è ${code}. ${evaluates}` : evaluates;
 }
 
+/** «1 use case è già in realizzazione» · «3 use case sono già in realizzazione»: li mostra la Panoramica, nella sezione «In realizzazione». */
+export function inRealizationText(count: number): string {
+  return count === 1 ? "1 use case è già in realizzazione." : `${count} use case sono già in realizzazione.`;
+}
+
 export interface HubHeaderProps {
   workspaceId: string;
   /** Dove porta «Nuovo use case»: il pannello rapido (Lateral Space) o il modulo completo. */
   newHref: string;
-  /** Menu «⋯», solo revisori (§4.1): i grafici di «Priorità», «Esporta Excel», «Proponi da Activity mapping»; senza, non c'è. */
+  /** Menu «⋯», solo revisori (§4.1): i grafici (matrici e curva del valore), «Esporta Excel», «Proponi da Activity mapping»; senza, non c'è. */
   menu: { exportHref: string; activityMapping: ActivityMappingState; mappingHref: string; charts: readonly HubMenuLink[] } | null;
   children?: ReactNode;
 }

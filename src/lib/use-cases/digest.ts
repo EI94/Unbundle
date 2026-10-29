@@ -7,7 +7,7 @@
  * - `use_case_digest`: «8 use case da decidere» · «3 sono da rivedere. Il più vecchio
  *   aspetta da 12 giorni.» · link `/use-cases?vista=da-decidere`;
  * - `use_case_quarter`, solo il primo lunedì del trimestre: «Nuovo trimestre: rivedi la
- *   roadmap» · «4 use case approvati non sono partiti.» · link `/use-cases?vista=roadmap`.
+ *   roadmap» · «4 use case approvati non sono partiti.» · link `/use-cases?vista=panoramica`.
  *
  * I numeri sono quelli della pagina, con le stesse funzioni di `views.ts`:
  * - «da decidere» è il contatore «Da decidere N»: tutto tranne «Serve info» (§1.2 punto 2);
@@ -48,7 +48,7 @@ export type HubSignalType = typeof USE_CASE_DIGEST_SIGNAL | typeof USE_CASE_QUAR
 /** Dove porta ogni segnale, sotto `/dashboard/<workspace>` (§14.3). Lo monta la campanella con H4i. */
 export const HUB_SIGNAL_PATH: Readonly<Record<HubSignalType, string>> = Object.freeze({
   use_case_digest: "/use-cases?vista=da-decidere",
-  use_case_quarter: "/use-cases?vista=roadmap",
+  use_case_quarter: "/use-cases?vista=panoramica",
 });
 
 /**
@@ -57,7 +57,7 @@ export const HUB_SIGNAL_PATH: Readonly<Record<HubSignalType, string>> = Object.f
  */
 export const HUB_SIGNAL_LABEL: Readonly<Record<HubSignalType, string>> = Object.freeze({
   use_case_digest: "Use case",
-  use_case_quarter: "Roadmap",
+  use_case_quarter: "Panoramica",
 });
 
 /** Il link di un segnale del riepilogo; null per ogni altro tipo. */

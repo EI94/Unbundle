@@ -276,7 +276,7 @@ test("l'AI Builder del cliente approva, rimanda e sceglie «Quando» dalla pagin
   const now = new Date();
   const card = await seed();
   const approved = ok(await actions.decideUseCaseAction(ids.ws, card.id, await versionOf(card.id), { type: "approva", quando: "questo_trimestre" }), "approva");
-  assert.equal(approved.message, "Approvato. Lo trovi nella Roadmap.");
+  assert.equal(approved.message, "Approvato. Lo trovi nella Panoramica.");
   let r = await row(card.id);
   assert.equal(r.status, "accepted");
   assert.equal(r.target_quarter, quarter.currentQuarter(now));

@@ -30,7 +30,7 @@ const CONTRIBUTOR = ["osservatore"];
 const OLD_ENTRIES = ["Raccolta & ranking", "Use cases", "Casi d'uso", "Piano"];
 /** What only who manages the workspace sees in Settings with the area on. */
 const MANAGER_SETTINGS = ["Nome del team che valuta", "Codici degli use case", "Fasce del costo", "Modello di valutazione", "Webhook WhatsApp del team"];
-/** The card signals' keys: Intelligence names them («Nuovo use case», «Use case», «Roadmap»). */
+/** The card signals' keys: Intelligence names them («Nuovo use case», «Use case», «Panoramica»). */
 const RAW_SIGNAL_KEYS = ["new_portfolio_item", "use_case_digest", "use_case_quarter"];
 
 const routes = [

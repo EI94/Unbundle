@@ -99,7 +99,7 @@ test("links go to the new dossier routes; the weekly summary to the Roadmap", ()
   assert.equal(href("owner_da_indicare"), `${base}/persone`);
   assert.equal(href("delega"), `${base}/persone`);
   assert.equal(href("qualcosa_di_nuovo"), base);
-  assert.equal(bellHref({ workspaceId: WS, caseId: null, templateKey: "riepilogo_settimanale", payload: {} }), `/dashboard/${WS}/use-cases?vista=roadmap`);
+  assert.equal(bellHref({ workspaceId: WS, caseId: null, templateKey: "riepilogo_settimanale", payload: {} }), `/dashboard/${WS}/use-cases?vista=panoramica`);
   assert.equal(bellHref({ workspaceId: "altro", caseId: CASE, templateKey: "gate_pronto", payload: {} }), null);
   assert.equal(bellHref({ workspaceId: WS, caseId: "javascript:alert(1)", templateKey: "gate_pronto", payload: {} }), null);
   assert.equal(bellHref({ workspaceId: WS.toUpperCase(), caseId: CASE.toUpperCase(), templateKey: "gate_pronto", payload: {} }), `${base}/via`);

@@ -311,9 +311,10 @@ export function hasPriorityValueModels(items: readonly HubItem[]): boolean {
 }
 
 /**
- * I grafici di «Priorità › Da costruire» nel menu «⋯» (solo revisori), su tutte le schede del
- * workspace: un filtro non toglie una voce. La matrice se una scheda entra in «Priorità», le bolle
- * se una di queste ha «Benefici e costi». Nessuna: nessun grafico.
+ * I grafici del menu «⋯», aperti nella Panoramica (solo revisori), su tutte le schede del
+ * workspace: un filtro non toglie una voce. La matrice se una scheda è da mettere in ordine («Da
+ * costruire», `isPriorityCandidate`), le bolle se una di queste ha «Benefici e costi». Nessuna:
+ * nessun grafico.
  */
 export function priorityCharts(items: readonly HubItem[]): HubChartParam[] {
   if (!items.some(isPriorityCandidate)) return [];

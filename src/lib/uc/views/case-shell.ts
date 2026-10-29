@@ -175,7 +175,7 @@ export function caseTrail(i: CaseTrailInput): CaseTrail {
   const code = i.parent.code?.trim() || null;
   return {
     kind: "use_case",
-    root: { label: "Use case", href: `${ws}/use-cases?vista=roadmap` },
+    root: { label: "Use case", href: `${ws}/use-cases?vista=panoramica` },
     parent: { label: code ?? i.parent.title, href: `${ws}/use-cases/${i.parent.id}?capitolo=realizzazione`, isCode: code !== null },
     current: { label: "Realizzazione", href: i.caseBase },
   };

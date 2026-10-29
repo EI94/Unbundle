@@ -22,13 +22,13 @@ const { registerHooks } = nodeModule as unknown as {
 // (`use-cases/page.tsx`) resa in questo processo con la sessione scelta dalla prova.
 //
 // - Vista di partenza per ruolo: Lateral Space e AI Builder del cliente «Da decidere» se c'è
-//   qualcosa da decidere, altrimenti «Priorità»; lo sponsor del cliente e i contributori la
-//   «Roadmap».
+//   qualcosa da decidere, altrimenti la Panoramica; lo sponsor del cliente e i contributori la
+//   Panoramica. I vecchi `?vista=priorita` e `?vista=roadmap` aprono la Panoramica.
 // - Fasce del costo del workspace diverse dalle predefinite: posizione in matrice, linea del
-//   costo basso, zone, cifre della Roadmap, etichette delle fasce ed export le usano.
+//   costo basso, zone, cifre della Panoramica, etichette delle fasce ed export le usano.
 // - Il contributore: titolo, fase e «Quando», solo «Cerca per titolo», codice e nota pubblica
 //   delle sole proprie proposte; nessun «€», nessun `[data-figure]`.
-// - Vuoti, filtri senza risultati, matrice e lista, pannello laterale e pannello rapido.
+// - Vuoti, filtri senza risultati, i grafici del menu «⋯», pannello laterale e pannello rapido.
 // - Parte dossier non disponibile (§4.9): «In realizzazione» mostra solo fase e titolo. La
 //   lettura del dossier fallisce per finta: `dossierSummaries` risponde «errore» quando la
 //   prova accende `__hubH4aDossierError`, altrimenti è quella vera.
@@ -60,6 +60,12 @@ type Page = (props: PageProps) => Promise<unknown>;
 type RouteGet = (req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;
 type HubModule = typeof import("../../components/use-cases/hub.tsx");
 type Access = typeof import("../workspace-access.ts");
+type PanelParts = {
+  toDecisionItem: typeof import("./decision-ui.ts").toDecisionItem;
+  WhenControl: typeof import("../../components/use-cases/when-control.tsx").WhenControl;
+  DecisionButtons: typeof import("../../components/use-cases/decision-buttons.tsx").DecisionButtons;
+  createElement: (type: unknown, props: unknown) => unknown;
+};
 
 let q: (text: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
 let renderToStaticMarkup: (element: unknown) => string;
@@ -67,6 +73,7 @@ let pageOfUseCases: Page;
 let exportGet: RouteGet;
 let hub: HubModule;
 let access: Access;
+let panelParts: PanelParts;
 let XLSX: typeof import("xlsx");
 let currentQuarter: () => string;
 let nextQuarter: (q: string) => string;
@@ -78,7 +85,7 @@ const ids = {
   wsA: randomUUID(),
   /** Area accesa, niente da decidere: solo una best practice approvata. */
   wsD: randomUUID(),
-  /** Area accesa, una sola scheda chiusa: niente da decidere, niente in Roadmap. */
+  /** Area accesa, una sola scheda chiusa: niente da decidere, niente nella Panoramica. */
   wsE: randomUUID(),
   /** Area accesa, nessuno use case. */
   wsZ: randomUUID(),
@@ -264,18 +271,35 @@ function rowOf(page: string, id: string): string {
 }
 
 /**
- * Sopra un grafico del menu «⋯»: il link di «‹ Torna alla lista» (con `&amp;`, com'è nell'HTML) e
+ * Sopra un grafico del menu «⋯»: il link di «‹ Torna alla Panoramica» (con `&amp;`, com'è nell'HTML) e
  * il nome del grafico. Dal riquadro alla chiusura dell'h2: il pulsante scrive il suo `data-slot` sull'`<a>`.
  */
 function chartHeaderOf(page: string): { href: string; text: string; title: string } {
   const start = page.indexOf('data-slot="chart-header"');
-  assert.ok(start >= 0, "«Torna alla lista» sopra il grafico");
+  assert.ok(start >= 0, "«Torna alla Panoramica» sopra il grafico");
   const header = page.slice(start, page.indexOf("</h2>", start) + 5);
   return {
     href: /<a [^>]*href="([^"]*)"/.exec(header)?.[1] ?? "",
     text: /<a [^>]*>([\s\S]*?)<\/a>/.exec(header)?.[1].replace(/<[^>]+>/g, "") ?? "",
     title: /<h2[^>]*>([^<]*)<\/h2>/.exec(header)?.[1] ?? "",
   };
+}
+
+/**
+ * Le decisioni del pannello aperto di un revisore (`?apri=`): «Quando» se è approvato, poi i
+ * pulsanti, con le prop che passa `UseCasePanel`. Il pannello vive in un portale, che non arriva
+ * nell'HTML: qui si rendono da soli i due componenti del suo blocco.
+ */
+async function panelOf(person: Person, workspaceId: string, searchParams: Record<string, string>): Promise<string> {
+  const { data, tree } = await hubTree(person, workspaceId, searchParams);
+  const panel = findProp(tree, "data").find((value) => (value as { projection?: string })?.projection === "revisore") as
+    | { item: Parameters<PanelParts["toDecisionItem"]>[0] & { phase: string }; candidates: unknown[] }
+    | undefined;
+  assert.ok(panel, "il pannello di un revisore");
+  assert.ok(data.abilities.canDecide, "chi guarda decide");
+  const props = { workspaceId, item: panelParts.toDecisionItem(panel.item), today: data.list.today, canDecide: true };
+  const when = panel.item.phase === "approvato" ? renderToStaticMarkup(panelParts.createElement(panelParts.WhenControl, { ...props, labelledBy: "quando" })) : "";
+  return when + renderToStaticMarkup(panelParts.createElement(panelParts.DecisionButtons, { ...props, candidates: panel.candidates }));
 }
 
 /** Le voci dei grafici nel menu «⋯» (`HubHeader.menu.charts`): il contenuto del menu non è nell'HTML finché è chiuso. */
@@ -333,6 +357,12 @@ before(async () => {
   exportGet = (await import("../../app/(dashboard)/dashboard/[workspaceId]/portfolio/export/route.ts")).GET as unknown as RouteGet;
   hub = await import("../../components/use-cases/hub.tsx");
   access = await import("../workspace-access.ts");
+  panelParts = {
+    toDecisionItem: (await import("./decision-ui.ts")).toDecisionItem,
+    WhenControl: (await import("../../components/use-cases/when-control.tsx")).WhenControl,
+    DecisionButtons: (await import("../../components/use-cases/decision-buttons.tsx")).DecisionButtons,
+    createElement: (type, props) => createElement(type as never, props as never),
+  };
   XLSX = await import("xlsx");
   const quarter = await import("./quarter.ts");
   currentQuarter = () => quarter.currentQuarter();
@@ -454,19 +484,19 @@ after(async () => {
 
 // ─── Vista di partenza (§4.2) ────────────────────────────────────────
 
-test("vista di partenza per ruolo: revisori «Da decidere» se c'è qualcosa, sponsor del cliente e contributori la Roadmap", opts, async () => {
+test("vista di partenza per ruolo: revisori «Da decidere» se c'è qualcosa, altrimenti la Panoramica; sponsor del cliente e contributori la Panoramica", opts, async () => {
   assert.equal(viewOf(await html("ls", ids.wsA)), "da-decidere", "Lateral Space");
   assert.equal(viewOf(await html("builder", ids.wsA)), "da-decidere", "AI Builder del cliente");
-  assert.equal(viewOf(await html("manager", ids.wsA)), "roadmap", "sponsor del cliente");
-  assert.equal(viewOf(await html("contributor", ids.wsA)), "roadmap", "contributore");
-  // Niente da decidere: i revisori partono da «Priorità».
-  assert.equal(viewOf(await html("ls", ids.wsD)), "priorita");
-  assert.equal(viewOf(await html("builder", ids.wsE)), "priorita");
-  assert.equal(viewOf(await html("contributor", ids.wsD)), "roadmap");
-  // Una vista scelta vince; «Priorità» e «Cosa serve» non sono dei contributori.
+  assert.equal(viewOf(await html("manager", ids.wsA)), "panoramica", "sponsor del cliente");
+  assert.equal(viewOf(await html("contributor", ids.wsA)), "panoramica", "contributore");
+  // Niente da decidere: i revisori partono dalla Panoramica.
+  assert.equal(viewOf(await html("ls", ids.wsD)), "panoramica");
+  assert.equal(viewOf(await html("builder", ids.wsE)), "panoramica");
+  assert.equal(viewOf(await html("contributor", ids.wsD)), "panoramica");
+  // Una vista scelta vince; il vecchio nome vale la Panoramica; «Cosa serve» non è dei contributori.
   assert.equal(viewOf(await html("manager", ids.wsA, { vista: "da-decidere" })), "da-decidere");
-  assert.equal(viewOf(await html("contributor", ids.wsA, { vista: "priorita" })), "roadmap");
-  assert.equal(viewOf(await html("contributor", ids.wsA, { vista: "cosa-serve" })), "roadmap");
+  assert.equal(viewOf(await html("contributor", ids.wsA, { vista: "priorita" })), "panoramica");
+  assert.equal(viewOf(await html("contributor", ids.wsA, { vista: "cosa-serve" })), "panoramica");
   assert.equal(viewOf(await html("manager", ids.wsA, { vista: "cosa-serve" })), "cosa-serve");
 });
 
@@ -482,16 +512,17 @@ function switcherOf(page: string): Array<{ label: string; count: string | null; 
   }));
 }
 
-test("selettore delle viste: ai revisori «Da decidere», «Priorità», «Roadmap» e «Cosa serve», senza contatore sull'ultima; al contributore due", opts, async () => {
+test("selettore delle viste: ai revisori «Panoramica», «Da decidere» e «Cosa serve», senza contatore sull'ultima; al contributore due", opts, async () => {
   for (const person of ["ls", "builder", "manager"] as const) {
-    const segments = switcherOf(await html(person, ids.wsA, { vista: "roadmap" }));
-    assert.deepEqual(segments.map((segment) => segment.label), ["Da decidere", "Priorità", "Roadmap", "Cosa serve"], person);
-    const last = segments[3];
+    const segments = switcherOf(await html(person, ids.wsA, { vista: "panoramica" }));
+    assert.deepEqual(segments.map((segment) => segment.label), ["Panoramica", "Da decidere", "Cosa serve"], person);
+    assert.equal(segments[0].href, `/dashboard/${ids.wsA}/use-cases?vista=panoramica`);
+    const last = segments[2];
     assert.equal(last.count, null, `${person}: nessun numero su «Cosa serve»`);
     assert.equal(last.href, `/dashboard/${ids.wsA}/use-cases?vista=cosa-serve`);
   }
-  const contributor = switcherOf(await html("contributor", ids.wsA, { vista: "roadmap" }));
-  assert.deepEqual(contributor.map((segment) => segment.label), ["In valutazione", "Roadmap"]);
+  const contributor = switcherOf(await html("contributor", ids.wsA, { vista: "panoramica" }));
+  assert.deepEqual(contributor.map((segment) => segment.label), ["Panoramica", "In valutazione"]);
 });
 
 test("«Cosa serve»: un solo pulsante pieno, «Tipo» è un filtro, niente matrice né lista", opts, async () => {
@@ -523,11 +554,13 @@ test("testata: H1, un solo pulsante pieno «Nuovo use case» (pannello rapido pe
 // ─── Fasce del workspace (D15) ───────────────────────────────────────
 
 test("fasce del workspace diverse dalle predefinite: matrice, linea del costo basso, zone ed etichette le usano", opts, async () => {
+  // Il vecchio link della matrice di «Priorità»: la stessa matrice, nella Panoramica.
   const page = await html("ls", ids.wsA, { vista: "priorita", mostra: "matrice" });
+  assert.equal(viewOf(page), "panoramica");
   assert.ok(page.includes('data-slot="value-cost-matrix"'));
-  assert.ok(!page.includes('data-slot="priority-list"'), "matrice e lista mai insieme");
-  // Dal menu «⋯»: sopra la matrice «‹ Torna alla lista», che torna alla lista, e il nome del grafico.
-  assert.deepEqual(chartHeaderOf(page), { href: `/dashboard/${ids.wsA}/use-cases?vista=priorita`, text: "Torna alla lista", title: "Matrice Valore × Costo" });
+  assert.ok(!page.includes('data-slot="priority-list"'), "nessuna lista");
+  // Dal menu «⋯»: sopra la matrice «‹ Torna alla Panoramica», che torna alle corsie, e il nome del grafico.
+  assert.deepEqual(chartHeaderOf(page), { href: `/dashboard/${ids.wsA}/use-cases?vista=panoramica`, text: "Torna alla Panoramica", title: "Matrice Valore × Costo" });
   assert.ok(page.includes('data-chart="matrice"'));
   // 30.000 € nella seconda fascia del workspace (15.001-40.000): 1,5 + 14.999/24.999 ≈ 2,1 → 32 %.
   // Con le fasce predefinite (25.001-65.000) sarebbe 1,625 → 22,5 %.
@@ -550,26 +583,20 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
   assert.ok(page.includes("Le zone sono un suggerimento, non la decisione."));
 
   // Zone con la soglia del workspace: la matrice qui sopra le disegna, l'export le scrive (la prova
-  // dell'export «Fascia»). Nella lista la zona va solo con un Valore senza euro: 50.000 €/anno
-  // basta, senza «Subito»; la da decidere con il solo punteggio (MID) resta «Non ora».
+  // dell'export «Fascia»). La lista di «Priorità» non c'è più: il vecchio link apre la Panoramica.
   const list = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista" });
-  assert.ok(list.includes('data-slot="priority-list"'));
-  assert.ok(!list.includes('data-slot="value-cost-matrix"'));
-  assert.doesNotMatch(rowOf(list, cards.amount.id), />Subito</);
-  assert.ok(rowOf(list, cards.amount.id).includes("50.000 €/anno"), rowOf(list, cards.amount.id));
-  assert.match(rowOf(list, cards.toDecideScored.id), />Non ora</);
-  assert.ok(list.includes(">Zona<"), "la colonna «Zona» c'è: una riga la scrive");
-  // «Quando» in riga per i revisori (§4.4): su una da decidere il menu parte da «Scegli…» (la
-  // scelta apre il dialogo «Approva»); su una approvata il trimestre.
-  assert.match(rowOf(list, cards.toDecideScored.id), /data-slot="when-control"/);
-  assert.ok(rowOf(list, cards.toDecideScored.id).includes("Scegli…"));
-  assert.doesNotMatch(rowOf(list, cards.toDecideScored.id), /Approva…/);
-  assert.match(rowOf(list, cards.amount.id), /data-slot="when-control"/);
-  assert.ok(!rowOf(list, cards.amount.id).includes("Scegli…"));
+  assert.equal(viewOf(list), "panoramica");
+  assert.ok(!list.includes('data-slot="priority-list"'));
+  // Senza la lista, «Approva» e «Quando» stanno nel pannello: su una da decidere le decisioni, su
+  // una approvata il trimestre.
+  const toDecide = await panelOf("ls", ids.wsA, { vista: "panoramica", apri: cards.toDecideScored.id });
+  assert.ok(toDecide.includes("Approva"), "«Approva» nel pannello");
+  const approved = await panelOf("ls", ids.wsA, { vista: "panoramica", apri: cards.amount.id });
+  assert.match(approved, /data-slot="when-control"/);
 });
 
 test("fasce del workspace: «Costo impegnato» con il riferimento della fascia, «su N use case · M da fascia»", opts, async () => {
-  const page = await html("builder", ids.wsA, { vista: "roadmap" });
+  const page = await html("builder", ids.wsA, { vista: "panoramica" });
   // 30.000 € (importo) + 40.000 € (seconda fascia del workspace); con le predefinite sarebbe 95.000 €.
   assert.ok(page.includes("70.000 €"), "Costo impegnato");
   assert.ok(page.includes("su 2 use case · 1 da fascia"));
@@ -578,7 +605,7 @@ test("fasce del workspace: «Costo impegnato» con il riferimento della fascia, 
   assert.ok(page.includes("su 2 use case<"));
   assert.ok(page.includes("Valore atteso all&#x27;anno") || page.includes("Valore atteso all'anno"));
   assert.ok(!page.includes("Valore misurato"), "il valore misurato non c'è ancora");
-  // La card della Roadmap: forma corta del costo con la fonte; il Valore con gli euro, senza parola.
+  // La card della Panoramica: forma corta del costo con la fonte; il Valore con gli euro, senza parola.
   const amount = rowOf(page, cards.amount.id);
   assert.ok(amount.includes("€€ · 30.000 €"), amount);
   assert.ok(amount.includes("50.000 €/anno"), amount);
@@ -650,94 +677,121 @@ test("«Da decidere»: righe con Valore e Costo con la fonte, giorni di attesa, 
   assert.ok(!page.includes(`data-id="${cards.realized.id}"`));
 });
 
-test("Priorità: senza scelta la lista, a ogni larghezza; i grafici nel menu «⋯»; «Da diffondere» con «Segna come diffusa»", opts, async () => {
+test("vecchi link di «Priorità»: la Panoramica", opts, async () => {
   const page = await html("ls", ids.wsA, { vista: "priorita" });
-  assert.ok(page.includes('data-slot="priority-list"'), "la lista");
-  for (const text of ['data-slot="value-cost-matrix"', "data-default-show", 'data-slot="chart-header"', 'data-slot="show-toggle"', 'aria-label="Matrice"']) {
-    assert.ok(!page.includes(text), `senza scelta: niente ${text}`);
+  assert.equal(viewOf(page), "panoramica");
+  for (const text of ['data-slot="priority-list"', 'data-slot="chart-header"', 'data-slot="value-cost-matrix"']) {
+    assert.ok(!page.includes(text), `senza grafico: niente ${text}`);
   }
-  // H4p: «Da costruire | Da diffondere» sta nel menu «Tipo» della riga dei filtri; i grafici nel menu «⋯».
-  assert.ok(page.includes('aria-label="Tipo: Da costruire"'));
+  // «Da costruire | Da diffondere» sceglieva la lista: nella Panoramica «Tipo» è un filtro.
+  assert.ok(page.includes('aria-label="Tipo: Tutti"'));
   assert.equal((page.match(/data-slot="filter-bar"/g) ?? []).length, 1, "una sola riga di filtri");
   const diffuse = await html("ls", ids.wsA, { vista: "priorita", tipo: "diffondere" });
-  assert.ok(diffuse.includes('data-slot="diffuse-list"'));
-  assert.ok(diffuse.includes("Segna come diffusa"));
-  assert.ok(rowOf(diffuse, cards.bestPractice.id).includes(cards.bestPractice.title));
-  assert.ok(!diffuse.includes('data-slot="value-cost-matrix"'));
-  // Il chip «N da stimare» porta alla lista (senza `mostra`, è la lista) con `stima=mancante`.
-  assert.match(page, /href="[^"]*vista=priorita&amp;tipo=costruire&amp;stima=mancante"[^>]*>\d+ da stimare</);
-  // `stima` resta nella Priorità: i link alle altre viste lo tolgono, e il contatore conta come loro.
-  const toEstimate = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista", stima: "mancante" });
-  assert.ok(toEstimate.includes("Togli i filtri"));
-  assert.match(toEstimate, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=roadmap"`));
-  assert.match(toEstimate, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=da-decidere"`));
-  assert.match(toEstimate, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=cosa-serve"`), "senza stima, mostra né tipo");
+  assert.equal(viewOf(diffuse), "panoramica");
+  assert.ok(diffuse.includes('aria-label="Tipo: Da diffondere"'));
+  assert.ok(rowOf(diffuse, cards.bestPractice.id).includes(cards.bestPractice.title), "la best practice nella Panoramica");
+  assert.ok(!diffuse.includes('data-slot="diffuse-list"'));
+  // Il chip «N da stimare» di prima (`tipo=costruire&stima=mancante`) apre la matrice: lì «da stimare» non filtra.
+  const toEstimate = await html("ls", ids.wsA, { vista: "priorita", tipo: "costruire", stima: "mancante" });
+  assert.ok(toEstimate.includes('data-chart="matrice"'));
+  assert.ok(toEstimate.includes(`data-point="${cards.amount.id}"`), "lo use case con importo ha il suo punto");
+  assert.ok(!toEstimate.includes("Togli i filtri"));
+  // `stima` non passa alle altre viste, e il contatore di «Da decidere» conta come loro.
+  const withEstimate = await html("ls", ids.wsA, { vista: "panoramica", stima: "mancante" });
+  assert.deepEqual(
+    switcherOf(withEstimate).map((segment) => segment.href),
+    ["panoramica", "da-decidere", "cosa-serve"].map((view) => `/dashboard/${ids.wsA}/use-cases?vista=${view}`),
+  );
   const decideCountOf = (html: string) => /Da decidere<\/span><span class="text-xs text-muted-foreground tabular-nums">(\d+)</.exec(html)?.[1];
-  assert.equal(decideCountOf(toEstimate), decideCountOf(page));
+  assert.ok(decideCountOf(page));
+  assert.equal(decideCountOf(withEstimate), decideCountOf(page));
+});
+
+test("vecchi link: ?vista=priorita e ?vista=roadmap aprono la Panoramica con gli altri parametri", opts, async () => {
+  for (const person of ["ls", "builder", "manager"] as const) {
+    const page = await html(person, ids.wsA, { vista: "roadmap", origine: "adoption", apri: cards.amount.id });
+    assert.equal(viewOf(page), "panoramica", person);
+    assert.match(page, /<a [^>]*aria-current="page"[^>]*><span>Panoramica<\/span>/, `${person}: «Panoramica» è la vista scelta`);
+    assert.ok(page.includes("Togli i filtri"), `${person}: l'origine resta un filtro`);
+    const { data } = await hubTree(person, ids.wsA, { vista: "roadmap", origine: "adoption", apri: cards.amount.id });
+    assert.equal(data.params.apri, cards.amount.id, `${person}: il pannello resta aperto`);
+    assert.equal(data.params.origine, "adoption");
+    const chart = await html(person, ids.wsA, { vista: "roadmap", mostra: "matrice" });
+    assert.ok(chart.includes('data-chart="matrice"'), person);
+    assert.equal(chartHeaderOf(chart).href, `/dashboard/${ids.wsA}/use-cases?vista=panoramica`, person);
+  }
+  // Il contributore non ha grafici né menu «⋯».
+  const contributor = await html("contributor", ids.wsA, { vista: "priorita", mostra: "matrice" });
+  assert.equal(viewOf(contributor), "panoramica");
+  assert.ok(!contributor.includes('data-slot="chart-header"') && !contributor.includes('data-slot="value-cost-matrix"'));
+  assert.ok(!contributor.includes('aria-label="Altre azioni"'), "niente menu «⋯»");
+});
+
+test("Panoramica: letture solo dove servono", opts, async () => {
+  const lanes = await hubTree("builder", ids.wsA, { vista: "panoramica" });
+  assert.equal(lanes.data.chart, null);
+  assert.deepEqual(lanes.data.charts, ["matrice"]);
+  // Un grafico del menu «⋯» al posto delle corsie: niente card dei dossier.
+  const matrix = await hubTree("builder", ids.wsA, { vista: "panoramica", mostra: "matrice" });
+  assert.equal(matrix.data.chart, "matrice");
+  assert.equal(matrix.data.dossierColumn, null);
+  // Il contributore: niente grafici, niente esigenze.
+  const contributor = await hubTree("contributor", ids.wsA, { vista: "panoramica" });
+  assert.deepEqual(contributor.data.charts, []);
+  assert.equal(contributor.data.chart, null);
+  assert.equal(contributor.data.needs, null);
+  // I sub-responsabili sono un avviso di Lateral Space: il revisore del cliente non li legge.
+  assert.equal(lanes.data.subprocessorsPending, false);
 });
 
 test("menu «⋯»: i grafici con i filtri di adesso, mai ai contributori", opts, async () => {
-  // Da un'altra vista, con un pannello aperto e «da stimare»: «Priorità › Da costruire» con l'origine
-  // di adesso, senza `stima` né `apri`. Nessuna scheda di A ha «Benefici e costi»: solo la matrice.
+  // Con un pannello aperto e «da stimare»: la Panoramica con l'origine di adesso, senza `stima` né
+  // `apri`. Nessuna scheda di A ha «Benefici e costi»: solo la matrice.
   for (const person of ["ls", "builder", "manager"] as const) {
-    const menu = await menuCharts(person, ids.wsA, { vista: "roadmap", origine: "transformation", stima: "mancante", apri: cards.amount.id });
+    const menu = await menuCharts(person, ids.wsA, { vista: "panoramica", origine: "transformation", stima: "mancante", apri: cards.amount.id });
     assert.ok(menu, person);
     assert.deepEqual(
       menu.charts,
-      [{ label: "Matrice Valore × Costo", href: `/dashboard/${ids.wsA}/use-cases?vista=priorita&tipo=costruire&mostra=matrice&origine=transformation` }],
+      [{ label: "Matrice Valore × Costo", href: `/dashboard/${ids.wsA}/use-cases?vista=panoramica&mostra=matrice&origine=transformation` }],
       person,
     );
   }
-  assert.equal(await menuCharts("contributor", ids.wsA, { vista: "roadmap" }), null, "niente menu «⋯» per il contributore");
+  assert.equal(await menuCharts("contributor", ids.wsA, { vista: "panoramica" }), null, "niente menu «⋯» per il contributore");
   // Nessuno use case da mettere in ordine (D: solo una best practice; E: una scheda chiusa): nessun grafico.
-  assert.deepEqual((await menuCharts("ls", ids.wsD, { vista: "roadmap" }))?.charts, []);
-  assert.deepEqual((await menuCharts("builder", ids.wsE, { vista: "roadmap" }))?.charts, []);
+  assert.deepEqual((await menuCharts("ls", ids.wsD, { vista: "panoramica" }))?.charts, []);
+  assert.deepEqual((await menuCharts("builder", ids.wsE, { vista: "panoramica" }))?.charts, []);
 });
 
-test("Priorità: un grafico tiene i filtri; «Torna alla lista» li tiene, «Togli i filtri» tiene il grafico", opts, async () => {
-  const page = await html("ls", ids.wsA, { vista: "priorita", tipo: "costruire", mostra: "matrice", origine: "adoption" });
-  assert.equal(chartHeaderOf(page).href, `/dashboard/${ids.wsA}/use-cases?vista=priorita&amp;tipo=costruire&amp;origine=adoption`);
-  assert.match(page, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=priorita&amp;tipo=costruire&amp;mostra=matrice"[^>]*>Togli i filtri<`));
+test("grafici del menu «⋯»: tengono i filtri; «Torna alla Panoramica» li tiene, «Togli i filtri» tiene il grafico", opts, async () => {
+  const page = await html("ls", ids.wsA, { vista: "panoramica", mostra: "matrice", origine: "adoption" });
+  assert.equal(chartHeaderOf(page).href, `/dashboard/${ids.wsA}/use-cases?vista=panoramica&amp;origine=adoption`);
+  assert.match(page, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=panoramica&amp;mostra=matrice"[^>]*>Togli i filtri<`));
   assert.ok(page.includes('data-slot="value-cost-matrix"'));
-  assert.ok(!page.includes('data-slot="priority-list"'), "il grafico al posto della lista");
+  assert.ok(!page.includes('data-slot="priority-list"'), "il grafico al posto delle corsie");
 
-  // Nessuna scheda con questi filtri: «Torna alla lista» resta sopra il vuoto.
+  // Nessuna scheda con questi filtri: «Torna alla Panoramica» resta sopra il vuoto.
   const none = await html("ls", ids.wsA, { vista: "priorita", mostra: "matrice", q: "nessuna-corrispondenza" });
   assert.equal(chartHeaderOf(none).title, "Matrice Valore × Costo");
   assert.ok(none.includes("Nessuno use case con questi filtri."));
   assert.ok(none.includes('data-chart="matrice"'));
 
-  // «Da diffondere» non ha grafici: `mostra` non conta.
-  const diffuse = await html("ls", ids.wsA, { vista: "priorita", tipo: "diffondere", mostra: "matrice" });
-  assert.ok(diffuse.includes('data-slot="diffuse-list"'));
-  assert.ok(!diffuse.includes('data-slot="chart-header"') && !diffuse.includes('data-slot="value-cost-matrix"'));
+  // La matrice è solo «Da costruire»: il tipo non filtra, «Tipo» non c'è, e resta nell'indirizzo per il ritorno.
+  const diffuse = await html("ls", ids.wsA, { vista: "panoramica", mostra: "matrice", tipo: "diffondere" });
+  assert.ok(diffuse.includes(`data-point="${cards.amount.id}"`), "la matrice con i suoi punti");
+  assert.ok(!diffuse.includes('aria-label="Tipo:'), "niente «Tipo» sulla matrice");
+  assert.ok(chartHeaderOf(diffuse).href.includes("&amp;tipo=diffondere"), chartHeaderOf(diffuse).href);
+  assert.ok(!diffuse.includes("Togli i filtri"), "il tipo non è un filtro sulla matrice");
 
-  // I vecchi link con `mostra=lista`: la lista, senza «Torna alla lista».
+  // I vecchi link: «Da diffondere» con `mostra` e `mostra=lista` aprono le corsie, senza grafico.
+  const oldDiffuse = await html("ls", ids.wsA, { vista: "priorita", tipo: "diffondere", mostra: "matrice" });
+  assert.equal(viewOf(oldDiffuse), "panoramica");
+  assert.ok(!oldDiffuse.includes('data-slot="chart-header"') && !oldDiffuse.includes('data-slot="value-cost-matrix"'));
   const oldList = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista" });
-  assert.ok(oldList.includes('data-slot="priority-list"'));
   assert.ok(!oldList.includes('data-slot="chart-header"') && !oldList.includes('data-slot="value-cost-matrix"'));
-  const toEstimate = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista", stima: "mancante" });
-  assert.ok(toEstimate.includes('data-slot="priority-list"') && !toEstimate.includes('data-slot="chart-header"'));
 
-  // «Torna alla lista» è un contorno: la pagina tiene un solo pulsante pieno, con la lista e con il grafico.
-  assert.equal(filledButtons(await html("ls", ids.wsA, { vista: "priorita" })), 1, "lista");
+  // «Torna alla Panoramica» è un contorno: la pagina tiene un solo pulsante pieno, con le corsie e con il grafico.
+  assert.equal(filledButtons(await html("ls", ids.wsA, { vista: "panoramica" })), 1, "corsie");
   assert.equal(filledButtons(page), 1, "matrice");
-});
-
-test("Priorità: una lista di soli use case con euro non ha la colonna «Zona»", opts, async () => {
-  // «Approvata con importo» (50.000 €/anno) e «Approvata con fascia» (25.000 €/anno): con una cifra
-  // in euro nessuna riga scrive la zona, e la lista perde la colonna invece di tenerla vuota.
-  const list = await html("ls", ids.wsA, { vista: "priorita", mostra: "lista", q: "Approvata con" });
-  const rows = [...list.matchAll(/data-slot="priority-row" data-id="([^"]+)"/g)].map((match) => match[1]).sort();
-  assert.deepEqual(rows, [cards.amount.id, cards.band.id].sort());
-  assert.ok(!list.includes(">Zona<"), "nessuna intestazione «Zona»");
-  const rowClasses = [...list.matchAll(/<li[^>]*data-slot="priority-row"[^>]*class="([^"]*)"/g)].map((match) => match[1]);
-  assert.equal(rowClasses.length, 2);
-  for (const classes of rowClasses) {
-    assert.ok(!classes.includes("7.25rem"), `senza la traccia della zona: ${classes}`);
-    assert.ok(classes.includes("@min-[58rem]/hub:grid-cols-[4.5rem_minmax(9rem,2fr)_8.25rem_minmax(7rem,1fr)_minmax(8.5rem,1.5fr)_minmax(6.5rem,1fr)]"), classes);
-  }
-  for (const card of [cards.amount, cards.band]) assert.ok(rowOf(list, card.id).includes("€/anno"), card.title);
 });
 
 test("filtri: origine, tipo e «Altri filtri» ai revisori; senza risultati «Nessuno use case con questi filtri.»", opts, async () => {
@@ -745,7 +799,7 @@ test("filtri: origine, tipo e «Altri filtri» ai revisori; senza risultati «Ne
   for (const text of ["Tutte", "AI Adoption", "AI Transformation", "Cerca per titolo o codice", "Altri filtri", ">Tipo:<"]) {
     assert.ok(page.includes(text), text);
   }
-  const transformation = await html("ls", ids.wsA, { vista: "roadmap", origine: "transformation" });
+  const transformation = await html("ls", ids.wsA, { vista: "panoramica", origine: "transformation" });
   assert.ok(transformation.includes(`data-id="${cards.band.id}"`));
   assert.ok(!transformation.includes(`data-id="${cards.amount.id}"`));
   assert.ok(transformation.includes("Togli i filtri"));
@@ -753,7 +807,7 @@ test("filtri: origine, tipo e «Altri filtri» ai revisori; senza risultati «Ne
   assert.ok(none.includes("Nessuno use case con questi filtri."));
   assert.match(none, /href="\/dashboard\/[^"]+\/use-cases\?vista=da-decidere"[^>]*>Togli i filtri</);
   // «Altri filtri»: un valore dell'indirizzo che nessuno use case ha resta scelto con il suo testo, mai la chiave.
-  const shared = await hubTree("ls", ids.wsA, { vista: "roadmap", canale: "team_mcp", trimestre: "2031-Q2" });
+  const shared = await hubTree("ls", ids.wsA, { vista: "panoramica", canale: "team_mcp", trimestre: "2031-Q2" });
   const [more] = findProp(shared.tree, "more") as Array<{ channels: Array<{ value: string; label: string }>; quarters: Array<{ value: string; label: string }> }>;
   assert.deepEqual(
     more.channels.find((option) => option.value === "team_mcp"),
@@ -772,7 +826,7 @@ test("filtri: origine, tipo e «Altri filtri» ai revisori; senza risultati «Ne
 // ─── Contributori (D4, D13) ──────────────────────────────────────────
 
 test("contributore: titolo, fase e «Quando»; solo «Cerca per titolo»; codice delle sole proprie; nessun numero", opts, async () => {
-  for (const vista of ["da-decidere", "roadmap"]) {
+  for (const vista of ["da-decidere", "panoramica"]) {
     const page = await html("contributor", ids.wsA, { vista });
     assert.ok(!page.includes("€"), `${vista}: «€»`);
     assert.ok(!page.includes("data-figure"), `${vista}: [data-figure]`);
@@ -809,20 +863,20 @@ test("contributore: titolo, fase e «Quando»; solo «Cerca per titolo»; codice
   assert.deepEqual(order, listed!.list.items.filter((item) => item.phase === "da_valutare").map((item) => item.id));
   // Ai revisori niente avviso.
   assert.ok(!(await html("ls", ids.wsA, { vista: "da-decidere" })).includes('data-slot="answer-notice"'));
-  const roadmap = await html("contributor", ids.wsA, { vista: "roadmap" });
-  assert.ok(roadmap.includes(cards.amount.title) && roadmap.includes("Approvato · T"));
-  assert.ok(!roadmap.includes("Costo impegnato"));
+  const overview = await html("contributor", ids.wsA, { vista: "panoramica" });
+  assert.ok(overview.includes(cards.amount.title) && overview.includes("Approvato · T"));
+  assert.ok(!overview.includes("Costo impegnato"));
   // La ricerca del contributore: il codice di una proposta altrui non trova nulla.
-  assert.ok((await html("contributor", ids.wsA, { vista: "roadmap", q: cards.amount.code })).includes("Nessuno use case con questi filtri."));
+  assert.ok((await html("contributor", ids.wsA, { vista: "panoramica", q: cards.amount.code })).includes("Nessuno use case con questi filtri."));
   assert.ok((await html("contributor", ids.wsA, { vista: "da-decidere", q: cards.ownByEmail.code })).includes(cards.ownByEmail.title));
 });
 
-test("Roadmap: «Scaduti» rosso con il tag «Scaduto» ai revisori; ai contributori in grigio e senza tag", opts, async () => {
-  const reviewer = await html("builder", ids.wsA, { vista: "roadmap" });
+test("Panoramica: «Scaduti» rosso con il tag «Scaduto» ai revisori; ai contributori in grigio e senza tag", opts, async () => {
+  const reviewer = await html("builder", ids.wsA, { vista: "panoramica" });
   // Il tema dell'app è scuro senza la classe `.dark`: il rosso è quello che si legge lì (H4p).
   assert.match(reviewer, /class="text-xs font-medium text-red-300">Scaduti</);
   assert.ok(rowOf(reviewer, cards.overdue.id).includes(">Scaduto<"));
-  const contributor = await html("contributor", ids.wsA, { vista: "roadmap" });
+  const contributor = await html("contributor", ids.wsA, { vista: "panoramica" });
   assert.match(contributor, /class="text-xs font-medium text-muted-foreground">Scaduti</);
   assert.ok(rowOf(contributor, cards.overdue.id).includes(cards.overdue.title));
   assert.ok(!contributor.includes(">Scaduto<"), "niente tag «Scaduto» al contributore");
@@ -833,13 +887,13 @@ test("Roadmap: «Scaduti» rosso con il tag «Scaduto» ai revisori; ai contribu
 
 test("parte dossier non disponibile: «In realizzazione» mostra solo fase e titolo, mai «Senza dossier»", opts, async () => {
   // Sezione Casi d'uso spenta: nessun dossier, e «Senza dossier» è vero.
-  const off = await html("ls", ids.wsA, { vista: "roadmap" });
+  const off = await html("ls", ids.wsA, { vista: "panoramica" });
   assert.ok(rowOf(off, cards.building.id).includes("In realizzazione · Senza dossier"));
   const flags = globalThis as { __hubH4aDossierError?: boolean };
   flags.__hubH4aDossierError = true;
   try {
     for (const person of ["ls", "manager", "contributor"] as const) {
-      const page = await html(person, ids.wsA, { vista: "roadmap" });
+      const page = await html(person, ids.wsA, { vista: "panoramica" });
       const card = rowOf(page, cards.building.id);
       assert.ok(card.includes(cards.building.title), person);
       assert.ok(card.includes(">In realizzazione<"), `${person}: ${card}`);
@@ -847,8 +901,8 @@ test("parte dossier non disponibile: «In realizzazione» mostra solo fase e tit
     }
     // Il pannello riceve lo stesso ripiego.
     for (const person of ["builder", "contributor"] as const) {
-      const { tree } = await hubTree(person, ids.wsA, { vista: "roadmap", apri: cards.building.id });
-      assert.deepEqual(findProp(tree, "dossierDown"), [true, true], `${person}: Roadmap e pannello`);
+      const { tree } = await hubTree(person, ids.wsA, { vista: "panoramica", apri: cards.building.id });
+      assert.deepEqual(findProp(tree, "dossierDown"), [true, true], `${person}: Panoramica e pannello`);
     }
   } finally {
     delete flags.__hubH4aDossierError;
@@ -937,7 +991,7 @@ test("pannello rapido: solo per Lateral Space, con le voci di «AI Lab»", opts,
 
 // ─── Vuoti (§4.3-4.5, §4.9) ──────────────────────────────────────────
 
-test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, roadmap vuota", opts, async () => {
+test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, Panoramica vuota", opts, async () => {
   const zReviewer = await html("ls", ids.wsZ);
   assert.ok(zReviewer.includes("Nessuno use case, per ora"));
   assert.ok(zReviewer.includes("Aggiungine uno o proponili da Activity mapping."));
@@ -945,14 +999,17 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   assert.ok((await html("contributor", ids.wsZ)).includes("Proponi il primo use case."));
 
   const eDecide = await html("ls", ids.wsE, { vista: "da-decidere" });
-  assert.ok(eDecide.includes("Niente da decidere") && eDecide.includes("Le nuove proposte arrivano qui.") && eDecide.includes("Vai a Priorità"));
+  assert.ok(eDecide.includes("Niente da decidere") && eDecide.includes("Le nuove proposte arrivano qui.") && eDecide.includes("Vai alla Panoramica"));
+  assert.match(eDecide, new RegExp(`href="/dashboard/${ids.wsE}/use-cases\\?vista=panoramica"[^>]*>Vai alla Panoramica<`));
   const eContributor = await html("contributor", ids.wsE, { vista: "da-decidere" });
   // H4p: per i contributori «In valutazione».
-  assert.ok(eContributor.includes("Nessuno use case in valutazione") && !eContributor.includes("Vai a Priorità"));
-  assert.ok((await html("ls", ids.wsE, { vista: "roadmap" })).includes("La roadmap è vuota"));
-  const ePriority = await html("ls", ids.wsE, { vista: "priorita" });
-  assert.ok(ePriority.includes("Nessuno use case da mettere in ordine"));
-  assert.ok((await html("ls", ids.wsE, { vista: "priorita", tipo: "diffondere" })).includes("Nessuna best practice approvata."));
+  assert.ok(eContributor.includes("Nessuno use case in valutazione") && !eContributor.includes("Vai alla Panoramica"));
+  // Le corsie sono ancora quelle della Roadmap di prima: il suo vuoto.
+  assert.ok((await html("ls", ids.wsE, { vista: "panoramica" })).includes("La roadmap è vuota"));
+  const eMatrix = await html("ls", ids.wsE, { vista: "panoramica", mostra: "matrice" });
+  assert.ok(eMatrix.includes("Nessuno use case da mettere in ordine"));
+  // «Da diffondere» di prima è il filtro della Panoramica: senza best practice, nessun risultato.
+  assert.ok((await html("ls", ids.wsE, { vista: "priorita", tipo: "diffondere" })).includes("Nessuno use case con questi filtri."));
   // D: solo una best practice approvata, nessuna da costruire con Valore e Costo.
-  assert.ok((await html("ls", ids.wsD, { vista: "priorita" })).includes("Nessuno use case da mettere in ordine"));
+  assert.ok((await html("ls", ids.wsD, { vista: "panoramica", mostra: "matrice" })).includes("Nessuno use case da mettere in ordine"));
 });

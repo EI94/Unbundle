@@ -87,7 +87,7 @@ test("signalHref: le regole della barra in alto, ad area accesa e spenta", () =>
   assert.equal(signalHref(WS, { ...item, relatedEntityType: null, relatedEntityId: null }, true), null);
   assert.equal(signalHref(WS, { ...item, relatedEntityType: null, relatedEntityId: null }, false), null);
   assert.equal(signalHref(WS, { signalType: "use_case_digest", relatedEntityType: null, relatedEntityId: null }, true), `/dashboard/${WS}/use-cases?vista=da-decidere`);
-  assert.equal(signalHref(WS, { signalType: "use_case_quarter", relatedEntityType: null, relatedEntityId: null }, true), `/dashboard/${WS}/use-cases?vista=roadmap`);
+  assert.equal(signalHref(WS, { signalType: "use_case_quarter", relatedEntityType: null, relatedEntityId: null }, true), `/dashboard/${WS}/use-cases?vista=panoramica`);
   assert.equal(signalHref(WS, { signalType: "use_case_digest", relatedEntityType: null, relatedEntityId: null }, false), null);
   assert.equal(signalHref(WS, { signalType: "risk_alert", relatedEntityType: null, relatedEntityId: null }, true), null);
 });

@@ -69,7 +69,7 @@ test("every read for the Use case page and the fallback sidebar goes through the
 
 /**
  * The two mount points of the hub's package H6a (docs/use-case/PIANO-LAVORI.md §4, H6a): the start
- * page (precompiled dossier, «Priorità» for an unknown use case) and the start action (the Storia
+ * page (precompiled dossier, the Panoramica for an unknown use case) and the start action (the Storia
  * row). They may import these hub modules and nothing else from the hub or the connector.
  */
 const H6A_MOUNTS: Readonly<Record<string, readonly string[]>> = {

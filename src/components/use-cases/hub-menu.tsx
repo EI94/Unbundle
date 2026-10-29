@@ -18,7 +18,7 @@ export const HUB_MENU_TEXT = Object.freeze({
   openMapping: "Apri Activity mapping",
 });
 
-/** Una voce che apre una pagina dell'area: i grafici di «Priorità» (`?mostra=matrice|benefici`). */
+/** Una voce che apre una pagina dell'area: i grafici della Panoramica (`?mostra=matrice|benefici|curva`). */
 export interface HubMenuLink {
   label: string;
   href: string;
@@ -26,7 +26,7 @@ export interface HubMenuLink {
 
 export interface HubMenuProps {
   workspaceId: string;
-  /** I grafici di «Priorità › Da costruire», in cima; vuoto senza use case da mettere in ordine. */
+  /** I grafici del menu (matrici e curva del valore), in cima; vuoto senza use case da mettere in ordine. */
   charts?: readonly HubMenuLink[];
   /** `/portfolio/export`: con l'area accesa il foglio «Use case» (§4.1). */
   exportHref: string;
@@ -37,10 +37,10 @@ export interface HubMenuProps {
 }
 
 /**
- * Il menu «⋯» della pagina, solo per i revisori (§4.1). In cima i grafici di «Priorità › Da
- * costruire»: «Matrice Valore × Costo» e, con «Benefici e costi», «Matrice Facilità × Beneficio»;
- * ognuno si apre al posto della lista, con i filtri di adesso. Poi «Esporta Excel» e «Proponi da
- * Activity mapping». L'ultimo, con attività da classificare, dice «Prima classifica le attività in
+ * Il menu «⋯» della pagina, solo per i revisori (§4.1). In cima i grafici: «Matrice Valore ×
+ * Costo», con «Benefici e costi» «Matrice Facilità × Beneficio», e «Curva del valore»; ognuno si
+ * apre nella Panoramica al posto delle corsie, con i filtri di adesso. Poi «Esporta Excel» e
+ * «Proponi da Activity mapping». L'ultimo, con attività da classificare, dice «Prima classifica le attività in
  * Activity mapping.» con il link; altrimenti chiede conferma e fa proporre a Claude nuovi use
  * case, che arrivano in «Da decidere», nascosti ai colleghi, mai approvati da soli (§8.5).
  */

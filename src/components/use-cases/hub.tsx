@@ -31,7 +31,9 @@ import {
   hasActiveFilters,
   isContributorItem,
   parseHubParams,
+  shownChart,
   type AnyHubItem,
+  type HubChartParam,
   type HubItem,
   type HubParams,
   type HubView,
@@ -45,6 +47,7 @@ import { FilterBar, type FilterOption } from "./filter-bar";
 import { infoFilterOptions } from "./info-chip";
 import { NeedsBoardView } from "./needs-board";
 import { EmptyState, HUB_TEXT, HubHeader, HubNotice, receiptText } from "./hub-header";
+import { ListFocusTarget } from "./list-focus";
 import { PRIORITY_TEXT, PriorityView } from "./priority-view";
 import { QuickCreateSheet } from "./quick-create-sheet";
 import { RoadmapView } from "./roadmap-view";
@@ -53,8 +56,8 @@ import { hubHref, panelHref, withoutTransient, type HubQuery } from "./use-case-
 
 /**
  * La pagina «Use case» con l'area accesa (docs/use-case/DESIGN.md §4; PIANO-LAVORI H4a): testata,
- * le quattro viste «Da decidere», «Priorità», «Roadmap» e «Cosa serve», i filtri, il pannello
- * laterale (`?apri=`) e il pannello rapido di «Nuovo use case» (`?nuovo=1`, solo Lateral Space).
+ * le tre viste «Panoramica», «Da decidere» e «Cosa serve», i filtri, il pannello laterale
+ * (`?apri=`) e il pannello rapido di «Nuovo use case» (`?nuovo=1`, solo Lateral Space).
  *
  * `loadUseCaseHub` legge tutto sul server, in una volta: la lista già proiettata per chi guarda
  * (`listHubItems`, una query; i contributori ricevono `ContributorUseCase` e nient'altro, D4 e
@@ -99,7 +102,7 @@ export interface UseCaseHubData {
   panelOwnAnswer: InfoAnswer | null;
   /**
    * Le card dei dossier della colonna «In realizzazione» (H6a, `dossierColumnOf`): solo per un
-   * revisore sulla Roadmap, con la parte del dossier che ha risposto; null altrimenti.
+   * revisore sulla Panoramica, senza grafico, con la parte del dossier che ha risposto; null altrimenti.
    */
   dossierColumn: DossierColumn | null;
   /**
@@ -122,9 +125,14 @@ export interface UseCaseHubData {
   info: Record<string, InfoProgressView> | null;
   /**
    * L'avviso dei sub-responsabili non ancora autorizzati dal cliente: solo per Lateral Space,
-   * sulla Roadmap (con l'area accesa `/casi-duso` porta qui), con la sezione Casi d'uso accesa.
+   * sulla Panoramica, senza grafico (con l'area accesa `/casi-duso` porta qui), con la sezione
+   * Casi d'uso accesa.
    */
   subprocessorsPending: boolean;
+  /** Le voci dei grafici del menu «⋯» (`priorityCharts`, su tutte le schede); [] ai contributori. */
+  charts: HubChartParam[];
+  /** Il grafico aperto nella Panoramica al posto delle corsie (`shownChart`); null senza. */
+  chart: HubChartParam | null;
 }
 
 /** Tutto quello che serve alla pagina, per chi guarda. null per chi non entra nell'area. */
@@ -144,9 +152,14 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
   if (!list) return null;
   const items: readonly AnyHubItem[] = list.items;
   const view = params.vista ?? defaultHubView(viewer, decideCount(items));
-  // La colonna «In realizzazione» con le card dei dossier (§4.5): un giro in più, solo sulla Roadmap.
+  // I grafici del menu «⋯» dei revisori, su tutte le schede: un filtro non toglie una voce.
+  const charts = reviewer && abilities.canSeePriority ? priorityCharts(list.items as HubItem[]) : [];
+  const chart = view === "panoramica" && reviewer ? shownChart(params.mostra, charts) : null;
+  // La Panoramica con le sue corsie, senza un grafico del menu «⋯».
+  const lanes = view === "panoramica" && chart === null;
+  // La colonna «In realizzazione» con le card dei dossier (§4.5): un giro in più, solo sulle corsie.
   const inProgress =
-    reviewer && view === "roadmap" && list.dossierRead === "ok"
+    reviewer && lanes && list.dossierRead === "ok"
       ? (items as readonly HubItem[]).filter((item) => item.phase === "in_realizzazione" && item.dossier).map((item) => item.id)
       : [];
   // «Cosa serve»: le esigenze del workspace per la sua vista e per il pannello, solo ai revisori.
@@ -154,7 +167,8 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
   const [dossierColumn, participation, subprocessorsPending, needs, info] = await Promise.all([
     inProgress.length ? dossierColumnOf(workspaceId, { userId: session.user.id, role: access.role }, inProgress) : null,
     view === "da-decidere" ? getPortfolioParticipation(workspaceId) : null,
-    reviewer && view === "roadmap" ? subprocessorsPendingForLs(workspaceId, session.user.id) : false,
+    // Solo a Lateral Space (la stessa regola di `getUcUserContext`): ai revisori del cliente nessuna lettura.
+    reviewer && abilities.isLateralSpace && lanes ? subprocessorsPendingForLs(workspaceId, session.user.id) : false,
     readsNeeds ? listWorkspaceNeeds(workspaceId, viewer) : null,
     // «Raccolta informazioni»: solo a chi vede «Cosa serve»; la lettura stessa risponde null agli altri.
     abilities.canSeeNeeds ? listInfoProgress(workspaceId, viewer, { now }) : null,
@@ -179,6 +193,8 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     participation,
     info,
     subprocessorsPending,
+    charts,
+    chart,
   };
 }
 
@@ -204,6 +220,9 @@ function queryOf(params: HubParams, view: HubView): HubQuery {
 }
 
 const byLabel = (a: FilterOption, b: FilterOption) => a.label.localeCompare(b.label, "it-IT");
+
+/** Le voci dei grafici nel menu «⋯» e i titoli sopra di loro. */
+const CHART_LABEL: Record<HubChartParam, string> = { matrice: PRIORITY_TEXT.matrix, benefici: PRIORITY_TEXT.benefits, curva: HUB_TEXT.curve };
 
 /**
  * Le voci di «Altri filtri» dagli use case del workspace: canali, aree, AI Lab e trimestri che ci
@@ -286,26 +305,27 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   const valueSettingsHref = abilities.canEditSettings ? `/dashboard/${workspaceId}/settings#${USE_CASE_VALUATION_ANCHOR}` : null;
   const query = queryOf(params, view);
   const navQuery = withoutTransient(query);
-  const ignoreKind = view === "priorita";
+  const chart = data.chart;
+  // Le due matrici sono solo «Da costruire»: lì il tipo non filtra e «Tipo» non c'è; resta nell'indirizzo per il ritorno.
+  const ignoreKind = chart === "matrice" || chart === "benefici";
+  // Sui grafici «da stimare» (`stima`) non filtra.
+  const shown: HubParams = chart ? { ...params, stima: null } : params;
   // «Raccolta informazioni» della scheda, per il filtro e i chip: solo per i revisori.
   const infoOf = (id: string): InfoProgressState | null => data.info?.[id.toLowerCase()]?.state ?? null;
-  const filtered = applyHubFilters(items, params, { ignoreKind, infoOf });
-  const filtersActive = hasActiveFilters(params, { ignoreKind });
-  const clearHref = hubHref(basePath, { vista: view, ...(ignoreKind && params.tipo ? { tipo: params.tipo } : {}), ...(params.mostra ? { mostra: params.mostra } : {}) });
+  const filtered = applyHubFilters(items, shown, { ignoreKind, infoOf });
+  const filtersActive = hasActiveFilters(shown, { ignoreKind });
+  const clearHref = hubHref(basePath, { vista: view, ...(view === "panoramica" && params.mostra ? { mostra: params.mostra } : {}) });
   const newHref = abilities.newUseCase === "pannello_rapido" ? hubHref(basePath, navQuery, { nuovo: "1" }) : fullFormPath(workspaceId);
-  // «da stimare» (`stima`) è il chip della Priorità, senza un controllo suo: non passa alle altre viste.
-  const viewHref = (key: HubView) => hubHref(basePath, navQuery, { vista: key, tipo: null, mostra: null, stima: null });
-  const decideItems = params.stima ? applyHubFilters(items, { ...params, stima: null }, { ignoreKind, infoOf }) : filtered;
-  // I grafici di «Priorità › Da costruire» stanno nel menu «⋯» dei revisori (`priorityCharts`, su tutte
-  // le schede: un filtro non toglie una voce). Si aprono in «Priorità» con i filtri di adesso, senza «da
-  // stimare» (`stima`): i suoi use case non hanno un punto. `?mostra=benefici` senza «Benefici e costi»
-  // (un vecchio link) vale la matrice, come prima.
-  const charts = abilities.canSeePriority ? priorityCharts(reviewerItems) : [];
-  const chartLinks = charts.map((key) => ({
-    label: key === "benefici" ? PRIORITY_TEXT.benefits : PRIORITY_TEXT.matrix,
-    href: hubHref(basePath, navQuery, { vista: "priorita", tipo: "costruire", mostra: key, stima: null }),
+  // «mostra» e «da stimare» non passano alle altre viste; il tipo sì, come l'origine.
+  const viewHref = (key: HubView) => hubHref(basePath, navQuery, { vista: key, mostra: null, stima: null });
+  // Il contatore di «Da decidere» conta come la sua vista: con il tipo, senza «da stimare».
+  const decideItems = applyHubFilters(items, { ...params, stima: null }, { infoOf });
+  // I grafici del menu «⋯» si aprono nella Panoramica con i filtri di adesso, senza «da stimare»
+  // (`stima`): i suoi use case non hanno un punto.
+  const chartLinks = data.charts.map((key) => ({
+    label: CHART_LABEL[key],
+    href: hubHref(basePath, navQuery, { vista: "panoramica", mostra: key, stima: null }),
   }));
-  const mostra = params.mostra === "benefici" && !charts.includes("benefici") ? "matrice" : params.mostra;
 
   // «Cosa serve»: tutte le esigenze del workspace; con un filtro quelle degli use case che lo
   // passano (e quelle con la ricerca nel titolo). I codici in «Per» restano quelli di tutte le schede.
@@ -332,13 +352,13 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
         }
     : null;
 
-  // I contributori non decidono: per loro la vista è «In valutazione», senza contatore (H4p).
+  // La Panoramica prima, per tutti. I contributori non decidono: per loro la vista è «In
+  // valutazione», senza contatore (H4p).
   const navItems = [
+    { key: "panoramica", label: HUB_TEXT.overviewView, href: viewHref("panoramica") },
     reviewer
       ? { key: "da-decidere", label: HUB_TEXT.decideView, count: decideCount(decideItems), href: viewHref("da-decidere") }
       : { key: "da-decidere", label: HUB_TEXT.contributorDecideView, href: viewHref("da-decidere") },
-    ...(abilities.canSeePriority ? [{ key: "priorita", label: "Priorità", href: viewHref("priorita") }] : []),
-    { key: "roadmap", label: "Roadmap", href: viewHref("roadmap") },
     ...(abilities.canSeeNeeds ? [{ key: "cosa-serve", label: "Cosa serve", href: viewHref("cosa-serve") }] : []),
   ];
 
@@ -347,9 +367,9 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   return (
     <PageContainer size="default">
       {/*
-        `@container/hub`: le righe, la lista di «Priorità» e le tabelle di «Cosa serve» cambiano forma
-        sulla larghezza di questo riquadro, non della finestra. Da 768 px la barra laterale ne prende
-        256: a 1024 px restano circa 700 px, e le colonne pensate per la finestra intera non ci stanno.
+        `@container/hub`: le righe e le tabelle di «Cosa serve» cambiano forma sulla larghezza di
+        questo riquadro, non della finestra. Da 768 px la barra laterale ne prende 256: a 1024 px
+        restano circa 700 px, e le colonne pensate per la finestra intera non ci stanno.
       */}
       <div data-slot="use-case-hub" data-view={view} className="@container/hub space-y-6">
         <HubHeader
@@ -373,7 +393,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 basePath={basePath}
                 query={query}
                 mode={reviewer ? "revisore" : "contributore"}
-                kind={view === "priorita" ? "priorita" : "filtro"}
+                kind={ignoreKind ? "nessuno" : "filtro"}
                 more={reviewer ? moreFilterOptions(reviewerItems, params, data.info) : undefined}
                 active={filtersActive}
                 clearHref={clearHref}
@@ -388,62 +408,68 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           </HubNotice>
         ) : null}
         <Welcome joined={params.joined} workspaceName={data.workspaceName} roleName={data.roleName} />
-        {data.subprocessorsPending && view === "roadmap" ? <SubprocessorsLsNotice workspaceId={workspaceId} workspaceName={data.workspaceName} /> : null}
+        {data.subprocessorsPending && view === "panoramica" && !chart ? <SubprocessorsLsNotice workspaceId={workspaceId} workspaceName={data.workspaceName} /> : null}
 
         {items.length === 0 ? (
           // «Nuovo use case» c'è già nella testata: il vuoto non ne aggiunge un secondo.
           <EmptyState title={HUB_TEXT.emptyTitle} body={reviewer ? HUB_TEXT.emptyReviewer : HUB_TEXT.emptyContributor} />
-        ) : view === "priorita" && list.projection !== "contributore" ? (
-          <PriorityView
-            workspaceId={workspaceId}
-            items={filtered as HubItem[]}
-            tipo={params.tipo}
-            mostra={mostra}
-            model={list.model}
-            valueParams={valueParams}
-            palette={palette}
-            followsCurrentMonth={followsCurrentMonth}
-            settingsHref={valueSettingsHref}
-            bands={list.costBands}
-            today={list.today}
-            canDecide={abilities.canDecide}
-            basePath={basePath}
-            query={query}
-            filtersActive={filtersActive}
-            clearHref={clearHref}
-            roadmapHref={viewHref("roadmap")}
-            info={data.info}
-          />
+        ) : view === "panoramica" ? (
+          chart && list.projection !== "contributore" ? (
+            // Un grafico del menu «⋯» al posto delle corsie, con «‹ Torna alla Panoramica» sopra.
+            <PriorityView
+              workspaceId={workspaceId}
+              items={filtered as HubItem[]}
+              tipo={null}
+              mostra={chart}
+              model={list.model}
+              valueParams={valueParams}
+              palette={palette}
+              followsCurrentMonth={followsCurrentMonth}
+              settingsHref={valueSettingsHref}
+              bands={list.costBands}
+              today={list.today}
+              canDecide={abilities.canDecide}
+              basePath={basePath}
+              query={query}
+              filtersActive={filtersActive}
+              clearHref={clearHref}
+              info={data.info}
+            />
+          ) : (
+            // Il titolo per i lettori di schermo prende il fuoco dopo «‹ Torna alla Panoramica».
+            <div data-slot="panoramica" className="space-y-6">
+              <ListFocusTarget title={HUB_TEXT.overviewView} />
+              <RoadmapView
+                items={filtered}
+                today={list.today}
+                showTiles={abilities.canSeeFigures}
+                bands={bands}
+                dossierDown={dossierDown}
+                dossierColumn={data.dossierColumn}
+                valueParams={valueParams}
+                palette={palette}
+                planItems={reviewer ? reviewerItems : null}
+                info={data.info}
+                followsCurrentMonth={followsCurrentMonth}
+                settingsHref={valueSettingsHref}
+                basePath={basePath}
+                query={query}
+                filtersActive={filtersActive}
+                clearHref={clearHref}
+              />
+            </div>
+          )
         ) : view === "cosa-serve" && list.projection !== "contributore" ? (
           needsBoard ? (
             <NeedsBoardView
               board={needsBoard}
               hrefOf={(id) => panelHref(basePath, query, id)}
               inRealization={(filtered as HubItem[]).filter((item) => item.phase === "in_realizzazione").length}
-              roadmapHref={viewHref("roadmap")}
+              realizationHref={viewHref("panoramica")}
               filtersActive={filtersActive}
               clearHref={clearHref}
             />
           ) : null
-        ) : view === "roadmap" ? (
-          <RoadmapView
-            items={filtered}
-            today={list.today}
-            showTiles={abilities.canSeeFigures}
-            bands={bands}
-            dossierDown={dossierDown}
-            dossierColumn={data.dossierColumn}
-            valueParams={valueParams}
-            palette={palette}
-            planItems={reviewer ? reviewerItems : null}
-            info={data.info}
-            followsCurrentMonth={followsCurrentMonth}
-            settingsHref={valueSettingsHref}
-            basePath={basePath}
-            query={query}
-            filtersActive={filtersActive}
-            clearHref={clearHref}
-          />
         ) : (
           <DecideView
             items={filtered}
@@ -452,7 +478,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
             basePath={basePath}
             query={query}
             bands={bands}
-            priorityHref={abilities.canSeePriority ? viewHref("priorita") : null}
+            overviewHref={abilities.canSeePriority ? viewHref("panoramica") : null}
             info={data.info}
             filtersActive={filtersActive}
             clearHref={clearHref}

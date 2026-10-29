@@ -1,10 +1,10 @@
 /**
- * Letture dell'area «Use case»: parametri, proiezioni per ruolo e le quattro viste
+ * Letture dell'area «Use case»: parametri, proiezioni per ruolo e le tre viste
  * (docs/use-case/DESIGN.md §4.2-4.7, §4.10, §6.9, §7.5, §9.3, §11; PIANO-LAVORI H2b).
  *
  * - **Parametri.** `parseHubParams` tiene solo i parametri dell'elenco di §4.2 e ignora
  *   tutti gli altri: nessun filtro per persona entra nemmeno scritto a mano nell'URL (§11).
- *   Ai contributori restano solo vista (tranne «Priorità» e «Cosa serve»), ricerca e ricevute.
+ *   Ai contributori restano solo vista (tranne «Cosa serve»), ricerca e ricevute.
  * - **Proiezioni.** I revisori ricevono `HubItem` (lista) e `UseCaseDetail` (scheda), senza
  *   il proponente; i contributori `ContributorUseCase` di `permissions.ts`, e nient'altro.
  *   Di `intake` i revisori ricevono solo le chiavi di `REVIEWER_INTAKE_KEYS`: un elenco di
@@ -12,11 +12,10 @@
  *   qui. La REST di oggi risponde ai soli revisori con `toUseCaseApiRow`
  *   (`src/lib/portfolio/use-case-client-rows.ts`). Chi gestisce il workspace riceve in più la proiezione di
  *   `projectForManager` (`src/lib/db/queries/use-case-hub.ts`), l'unico posto che la nomina.
- * - **Viste.** «Da decidere» (giorni di attesa, contatore senza «Serve info»), «Priorità»
- *   (zone, matrice Valore × Costo, lista, Da diffondere), «Roadmap» (trimestri con
- *   «Scaduti», cifre in testa «su N use case · M da fascia»), «Cosa serve» (requisiti e
- *   prossimi passi degli use case, solo revisori). Nessun ordinamento, raggruppamento o
- *   conteggio per persona (art. 15.4).
+ * - **Viste.** «Panoramica» (fasi, cifre, prossimo passo, corsie per trimestre; i vecchi
+ *   «Priorità» e «Roadmap» valgono la Panoramica), «Da decidere» (giorni di attesa, contatore
+ *   senza «Serve info»), «Cosa serve» (requisiti e prossimi passi degli use case, solo
+ *   revisori). Nessun ordinamento, raggruppamento o conteggio per persona (art. 15.4).
  * - **Costo.** Valore, costo, zone e costo basso passano da `valuation.ts` con il modello del
  *   workspace, quindi con le sue fasce (`resolveCostBands`, D15). Dove questo modulo scrive
  *   l'etichetta di una fascia riceve anche `bands` (predefinite `COST_BANDS`).
@@ -78,22 +77,48 @@ import { DEFAULT_VALUE_PARAMS, LEVER_LABELS, parseValueModel, type MonthCode, ty
 
 // ═══ Parametri della pagina (§4.2) ═══════════════════════════════════
 
-export const HUB_VIEWS = ["da-decidere", "priorita", "roadmap", "cosa-serve"] as const;
+/** Le viste, nell'ordine del selettore (rilascio «Panoramica»). */
+export const HUB_VIEWS = ["panoramica", "da-decidere", "cosa-serve"] as const;
 export type HubView = (typeof HUB_VIEWS)[number];
+
+/**
+ * I nomi delle viste di prima del rilascio «Panoramica», nei link che girano ancora: preferiti,
+ * email già partite, campanella, riepilogo, dossier. Si leggono come la vista a destra, con ogni
+ * altro parametro (`parseHubParams`); nessuno li scrive più, e non si tolgono.
+ */
+export const HUB_VIEW_ALIASES: Readonly<Record<string, HubView>> = Object.freeze({ priorita: "panoramica", roadmap: "panoramica" });
+
+/** La vista di `vista`: una delle viste o un vecchio nome. Maiuscole, «toString» e «__proto__» non valgono. */
+function viewOf(value: string | null): HubView | null {
+  if (value === null) return null;
+  return oneOf(HUB_VIEWS, value) ?? (Object.hasOwn(HUB_VIEW_ALIASES, value) ? HUB_VIEW_ALIASES[value] : null);
+}
 
 export const HUB_KIND_PARAMS = ["costruire", "diffondere"] as const;
 export type HubKindParam = (typeof HUB_KIND_PARAMS)[number];
 
 /**
- * «Priorità › Da costruire»: senza `mostra` (o con `lista` dei vecchi link) la lista; `matrice` e
- * `benefici` i grafici aperti dal menu «⋯».
+ * Che cosa mostra la Panoramica: senza `mostra` le corsie per trimestre; `agenti` gli stessi use
+ * case per agente; `matrice`, `benefici` e `curva` i grafici del menu «⋯», al posto delle corsie.
+ * Solo revisori. `lista` dei vecchi link di «Priorità» non vale più: la Panoramica.
  */
-export const HUB_SHOW_PARAMS = ["matrice", "benefici", "lista"] as const;
+export const HUB_SHOW_PARAMS = ["matrice", "benefici", "curva", "agenti"] as const;
 export type HubShowParam = (typeof HUB_SHOW_PARAMS)[number];
-/** Un grafico di «Priorità › Da costruire», aperto dal menu «⋯». */
-export type HubChartParam = Exclude<HubShowParam, "lista">;
 
-/** I valori di `stima`: «da stimare» e «fuori dalla matrice» (con «Benefici e costi», senza beneficio contato o costo). */
+/** I grafici del menu «⋯», aperti nella Panoramica al posto delle corsie. */
+export const HUB_CHART_PARAMS = ["matrice", "benefici", "curva"] as const;
+export type HubChartParam = (typeof HUB_CHART_PARAMS)[number];
+
+/** `mostra` apre un grafico del menu «⋯»? */
+export function isHubChart(value: string | null): value is HubChartParam {
+  return oneOf(HUB_CHART_PARAMS, value) !== null;
+}
+
+/**
+ * I valori di `stima`: «da stimare» e «fuori dalla matrice» (con «Benefici e costi», senza
+ * beneficio contato o costo). Sui grafici `stima` non filtra: è il chip della matrice. Altrove
+ * resta un filtro nascosto, per i vecchi link di «Priorità».
+ */
 export const HUB_ESTIMATE_PARAMS = ["mancante", "fuori-matrice"] as const;
 export type HubEstimateParam = (typeof HUB_ESTIMATE_PARAMS)[number];
 
@@ -180,32 +205,47 @@ function boundedText(value: string | null, min: number, max: number): string | n
 }
 
 /**
+ * I vecchi link di «Priorità» (`vista=priorita`): lì «Da costruire | Da diffondere» sceglieva la
+ * lista, non filtrava. «Da diffondere» sono le best practice della Panoramica, senza grafico né «da
+ * stimare»; «Da costruire» non filtra, e il chip «N da stimare» (`stima`) apre la matrice.
+ */
+function legacyPriority(p: Pick<HubParams, "tipo" | "mostra" | "stima">): Pick<HubParams, "tipo" | "mostra" | "stima"> {
+  if (p.tipo === "diffondere") return { tipo: "diffondere", mostra: null, stima: null };
+  return { tipo: null, mostra: isHubChart(p.mostra) ? p.mostra : p.stima ? "matrice" : null, stima: p.stima };
+}
+
+/**
  * I parametri della pagina, per chi guarda (§4.2, §4.7, §4.10, §11). Restano solo le chiavi
  * di `HUB_PARAM_KEYS`, con valori dell'elenco; ogni altro parametro (anche sul proponente) si
- * ignora. Ai contributori restano la vista (non «Priorità» né «Cosa serve»), la ricerca,
- * `apri` e le ricevute; il pannello rapido (`nuovo=1`) solo a chi lo apre (Lateral Space).
+ * ignora. I vecchi nomi delle viste valgono la Panoramica (`HUB_VIEW_ALIASES`), quelli di
+ * «Priorità» con `legacyPriority`. Ai contributori restano la vista (non «Cosa serve»), la
+ * ricerca, `apri` e le ricevute; il pannello rapido (`nuovo=1`) solo a chi lo apre (Lateral Space).
  */
 export function parseHubParams(raw: RawHubParams, viewer: UseCaseViewer): HubParams {
   const abilities = abilitiesForUseCase(viewer);
   const filters = abilities.canUseAllFilters;
-  let vista = oneOf(HUB_VIEWS, readParam(raw, "vista"));
-  if (vista === "priorita" && !abilities.canSeePriority) vista = null;
+  const rawVista = readParam(raw, "vista");
+  let vista = viewOf(rawVista);
   if (vista === "cosa-serve" && !abilities.canSeeNeeds) vista = null;
   const trimestreRaw = readParam(raw, "trimestre");
   const trimestre = trimestreRaw === LATER_QUARTER_PARAM ? LATER_QUARTER_PARAM : isQuarterCode(trimestreRaw) ? trimestreRaw : null;
   const apri = readParam(raw, "apri");
   const created = readParam(raw, "created");
+  let tipo = filters ? oneOf(HUB_KIND_PARAMS, readParam(raw, "tipo")) : null;
+  let mostra = filters ? oneOf(HUB_SHOW_PARAMS, readParam(raw, "mostra")) : null;
+  let stima = filters ? oneOf(HUB_ESTIMATE_PARAMS, readParam(raw, "stima")) : null;
+  if (rawVista === "priorita") ({ tipo, mostra, stima } = legacyPriority({ tipo, mostra, stima }));
   return {
     vista,
-    tipo: filters ? oneOf(HUB_KIND_PARAMS, readParam(raw, "tipo")) : null,
-    mostra: filters ? oneOf(HUB_SHOW_PARAMS, readParam(raw, "mostra")) : null,
+    tipo,
+    mostra,
     origine: filters ? oneOf(ORIGINS, readParam(raw, "origine")) : null,
     q: boundedText(readParam(raw, "q"), SEARCH_MIN, SEARCH_MAX),
     canale: filters ? oneOf(USE_CASE_SOURCES, readParam(raw, "canale")) : null,
     area: filters ? boundedText(readParam(raw, "area"), 1, AREA_MAX) : null,
     lab: filters ? boundedText(readParam(raw, "lab"), 1, LAB_MAX) : null,
     trimestre: filters ? trimestre : null,
-    stima: filters ? oneOf(HUB_ESTIMATE_PARAMS, readParam(raw, "stima")) : null,
+    stima,
     info: filters && abilities.canSeeNeeds ? parseInfoParam(readParam(raw, "info")) : null,
     apri: apri !== null && UUID.test(apri) ? apri.toLowerCase() : null,
     nuovo: abilities.newUseCase === "pannello_rapido" && readParam(raw, "nuovo") === "1",
@@ -217,8 +257,8 @@ export function parseHubParams(raw: RawHubParams, viewer: UseCaseViewer): HubPar
 
 /**
  * Ci sono filtri attivi («Togli i filtri», §4.7)? La vista, `apri` e le ricevute non sono
- * filtri. In «Priorità» il tipo è il selettore interno «Da costruire | Da diffondere», non un
- * filtro (§4.4): la vista passa `ignoreKind`, come ad `applyHubFilters`.
+ * filtri. Sulle due matrici del menu «⋯» (solo «Da costruire») il tipo non vale: la pagina
+ * passa `ignoreKind`, come ad `applyHubFilters`. Altrove il tipo è un filtro.
  */
 export function hasActiveFilters(params: HubParams, opts: { ignoreKind?: boolean } = {}): boolean {
   return Boolean(
@@ -236,15 +276,28 @@ export function hasActiveFilters(params: HubParams, opts: { ignoreKind?: boolean
 
 /**
  * Vista di partenza quando `vista` manca (§4.2): Lateral Space e revisori del cliente «Da
- * decidere» se c'è qualcosa da decidere, altrimenti «Priorità»; uno sponsor del cliente
- * (`exec_sponsor` che non è di Lateral Space) e i contributori la «Roadmap». «Cosa serve» non
+ * decidere» se c'è qualcosa da decidere, altrimenti la Panoramica; uno sponsor del cliente
+ * (`exec_sponsor` che non è di Lateral Space) e i contributori la Panoramica. «Cosa serve» non
  * è mai la vista di partenza.
  */
 export function defaultHubView(viewer: UseCaseViewer, decideCount: number): HubView {
   const abilities = abilitiesForUseCase(viewer);
-  if (!abilities.isReviewer) return "roadmap";
-  if (viewer.role === "exec_sponsor" && !abilities.isLateralSpace) return "roadmap";
-  return decideCount > 0 ? "da-decidere" : "priorita";
+  if (!abilities.isReviewer) return "panoramica";
+  if (viewer.role === "exec_sponsor" && !abilities.isLateralSpace) return "panoramica";
+  return decideCount > 0 ? "da-decidere" : "panoramica";
+}
+
+/**
+ * Il grafico del menu «⋯» che la Panoramica apre al posto delle corsie. `matrice` sempre (senza
+ * use case da mettere in ordine la pagina dice «Nessuno use case da mettere in ordine»);
+ * `benefici` solo se il menu lo offre, altrimenti la matrice (un vecchio link senza «Benefici e
+ * costi»); `curva` solo se il menu la offre, altrimenti le corsie. Senza grafico (o con `agenti`): null.
+ */
+export function shownChart(mostra: HubShowParam | null, charts: readonly HubChartParam[]): HubChartParam | null {
+  if (mostra === "matrice") return "matrice";
+  if (mostra === "benefici") return charts.includes("benefici") ? "benefici" : "matrice";
+  if (mostra === "curva") return charts.includes("curva") ? "curva" : null;
+  return null;
 }
 
 // ═══ Proiezione dei revisori (§4.6, §4.8, §6, §7) ════════════════════
@@ -758,8 +811,8 @@ export function isOffMatrix(item: Pick<HubItem, "value" | "cost">): boolean {
 
 /**
  * I filtri della pagina. I contributori hanno solo la ricerca; i revisori anche origine,
- * tipo (fuori da «Priorità», dove il tipo è il selettore interno: `ignoreKind`), canale,
- * area, AI Lab, trimestre e «da stimare». Nessun filtro per persona.
+ * tipo (non sulle due matrici del menu «⋯», che sono solo «Da costruire»: lì la pagina passa
+ * `ignoreKind`), canale, area, AI Lab, trimestre e «da stimare». Nessun filtro per persona.
  */
 export function applyHubFilters<T extends AnyHubItem>(
   items: readonly T[],

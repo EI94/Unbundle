@@ -26,7 +26,7 @@ export async function subprocessorsPendingForLs(workspaceId: string, userId: str
 
 /**
  * L'avviso discreto con il link a «Impostazioni › Sub-responsabili», da mostrare quando
- * `subprocessorsPendingForLs` è vero: con l'area «Use case» accesa sta sulla Roadmap, dove stanno
+ * `subprocessorsPendingForLs` è vero: con l'area «Use case» accesa sta sulla Panoramica, dove stanno
  * i dossier in realizzazione (la lista dei Casi d'uso ha il suo, uguale).
  */
 export function SubprocessorsLsNotice({

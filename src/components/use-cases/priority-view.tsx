@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { COST_BANDS, costLowLinePosition, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { DEFAULT_THRESHOLDS, costLowBandOf, type ValuationModel } from "@/lib/use-cases/valuation";
 import { buildBenefitBubbles, groupPalette, type GroupPalette } from "@/lib/use-cases/value-charts";
@@ -8,7 +6,7 @@ import type { ValueParams } from "@/lib/use-cases/value-model";
 import { buildPriority, offMatrixLabel, roadmapGroupKey, type HubChartParam, type HubItem, type HubKindParam, type HubShowParam } from "@/lib/use-cases/views";
 import { BenefitBubbleChart } from "./benefit-bubbles";
 import { DiffuseList } from "./diffuse-list";
-import { EmptyState, NoResults } from "./hub-header";
+import { EmptyState, HUB_TEXT, NoResults } from "./hub-header";
 import { BackToListLink, ListFocusTarget } from "./list-focus";
 import { PriorityList } from "./priority-list";
 import { hubHref, panelHref, withoutTransient, type HubQuery } from "./use-case-row";
@@ -22,24 +20,17 @@ export const PRIORITY_TEXT = Object.freeze({
   diffuse: "Da diffondere",
   matrix: "Matrice Valore × Costo",
   benefits: "Matrice Facilità × Beneficio",
-  backToList: "Torna alla lista",
   emptyBuildTitle: "Nessuno use case da mettere in ordine",
   emptyBuildBody: "Valuta Valore e Costo in «Da decidere».",
   emptyDiffuse: "Nessuna best practice approvata.",
-  goToRoadmap: "Vai alla Roadmap",
 });
-
-/** «1 use case è già in realizzazione» · «3 use case sono già in realizzazione»: li mostra la Roadmap, non «Priorità». */
-export function inRealizationText(count: number): string {
-  return count === 1 ? "1 use case è già in realizzazione." : `${count} use case sono già in realizzazione.`;
-}
 
 export interface PriorityViewProps {
   workspaceId: string;
   /** Gli use case dei revisori, già filtrati (il tipo qui non è un filtro). */
   items: readonly HubItem[];
   tipo: HubKindParam | null;
-  /** null o «lista»: la lista; «matrice» e «benefici»: un grafico del menu «⋯» al posto della lista, con «‹ Torna alla lista» sopra. */
+  /** null: la lista; «matrice» e «benefici»: un grafico del menu «⋯», con «‹ Torna alla Panoramica» sopra. */
   mostra: HubShowParam | null;
   model: ValuationModel;
   /** Le ipotesi di calcolo del workspace, per le bolle facilità × beneficio e il riquadro «Ipotesi di calcolo». */
@@ -57,8 +48,6 @@ export interface PriorityViewProps {
   query: HubQuery;
   filtersActive: boolean;
   clearHref: string;
-  /** Dove sta la Roadmap: nel vuoto di «Da costruire» rimanda agli use case già in realizzazione. */
-  roadmapHref?: string | null;
   /**
    * «Raccolta informazioni» per scheda (id in minuscolo), solo per i revisori: il chip corto nella
    * lista (SPEC §P2.10.5). null per chi non vede «Cosa serve».
@@ -67,27 +56,26 @@ export interface PriorityViewProps {
 }
 
 /**
- * Sopra un grafico del menu «⋯»: «‹ Torna alla lista», con gli stessi filtri, e il nome del grafico.
- * Tornando, il fuoco va al titolo della lista (`ListFocusTarget`), non sul `<body>`.
+ * Sopra un grafico del menu «⋯»: «‹ Torna alla Panoramica», con gli stessi filtri, e il nome del
+ * grafico. Tornando, il fuoco va al titolo della Panoramica (`ListFocusTarget`), non sul `<body>`.
  */
-function ChartHeader({ title, listHref }: { title: string; listHref: string }) {
+function ChartHeader({ title, backHref }: { title: string; backHref: string }) {
   return (
     <div data-slot="chart-header" className="flex flex-wrap items-center gap-x-3 gap-y-2">
-      <BackToListLink href={listHref}>{PRIORITY_TEXT.backToList}</BackToListLink>
+      <BackToListLink href={backHref}>{HUB_TEXT.backToOverview}</BackToListLink>
       <h2 className="text-base font-semibold">{title}</h2>
     </div>
   );
 }
 
 /**
- * «Priorità» (docs/use-case/DESIGN.md §4.4; solo revisori). «Da costruire | Da diffondere» sta
- * nel menu «Tipo» della riga dei filtri: qui solo il contenuto. Da costruire: le fasi «Da
- * valutare» (non le «Rimandate» in attesa) e «Approvato», come lista. Dal menu «⋯»
- * (`?mostra=matrice|benefici`) un grafico prende il posto della lista, mai i due insieme: la
+ * I grafici del menu «⋯», aperti nella Panoramica (`?vista=panoramica&mostra=matrice|benefici`;
+ * docs/use-case/DESIGN.md §4.4; solo revisori), con «‹ Torna alla Panoramica» sopra e gli stessi
+ * filtri. Da costruire: le fasi «Da valutare» (non le «Rimandate» in attesa) e «Approvato»; la
  * matrice Valore × Costo, oppure le bolle facilità × beneficio delle schede con «Benefici e
- * costi», con «Ipotesi di calcolo» sotto. Sopra il grafico «‹ Torna alla lista», con gli stessi
- * filtri. `?mostra=lista` dei vecchi link è la lista. Da diffondere: le best practice approvate,
- * per ore stimate. Valore, costo, zone e soglie sono quelli del modello e delle fasce del
+ * costi», con «Ipotesi di calcolo» sotto. La lista senza grafico e «Da diffondere» (le best
+ * practice approvate, per ore stimate) restano qui, ma la pagina non le apre più: le sostituisce
+ * la Panoramica. Valore, costo, zone e soglie sono quelli del modello e delle fasce del
  * workspace (D15, D18).
  */
 export function PriorityView({
@@ -107,7 +95,6 @@ export function PriorityView({
   query,
   filtersActive,
   clearHref,
-  roadmapHref = null,
   info = null,
 }: PriorityViewProps) {
   const view = buildPriority(items, tipo);
@@ -144,30 +131,21 @@ export function PriorityView({
 
   // Un grafico del menu «⋯» al posto della lista: le bolle solo con le ipotesi di calcolo, altrimenti la matrice.
   const chart: HubChartParam | null = mostra === "benefici" && valueParams ? "benefici" : mostra === "matrice" || mostra === "benefici" ? "matrice" : null;
-  const header = chart ? <ChartHeader title={chart === "benefici" ? PRIORITY_TEXT.benefits : PRIORITY_TEXT.matrix} listHref={hubHref(basePath, base, { mostra: null })} /> : null;
+  // «‹ Torna alla Panoramica»: le corsie, con gli stessi filtri e senza «da stimare».
+  const header = chart ? <ChartHeader title={chart === "benefici" ? PRIORITY_TEXT.benefits : PRIORITY_TEXT.matrix} backHref={hubHref(basePath, base, { mostra: null, stima: null })} /> : null;
 
   if (view.list.length === 0) {
-    const inRealization = items.filter((item) => item.phase === "in_realizzazione").length;
-    // Con un grafico aperto e nessuna scheda: «‹ Torna alla lista» resta; «Togli i filtri» tiene il grafico.
+    // Con un grafico aperto e nessuna scheda: «‹ Torna alla Panoramica» resta; «Togli i filtri» tiene il grafico.
     return (
       <div data-slot="priority-view" data-chart={chart ?? undefined} className="space-y-4">
         {header ?? <ListFocusTarget title={PRIORITY_TEXT.build} />}
-        {filtersActive ? (
-          <NoResults clearHref={clearHref} />
-        ) : inRealization > 0 && roadmapHref ? (
-          <EmptyState title={PRIORITY_TEXT.emptyBuildTitle} body={inRealizationText(inRealization)}>
-            <Button variant="outline" className="min-h-11 sm:min-h-8" render={<Link href={roadmapHref} scroll={false} />} nativeButton={false}>
-              {PRIORITY_TEXT.goToRoadmap}
-            </Button>
-          </EmptyState>
-        ) : (
-          <EmptyState title={PRIORITY_TEXT.emptyBuildTitle} body={PRIORITY_TEXT.emptyBuildBody} />
-        )}
+        {filtersActive ? <NoResults clearHref={clearHref} /> : <EmptyState title={PRIORITY_TEXT.emptyBuildTitle} body={PRIORITY_TEXT.emptyBuildBody} />}
       </div>
     );
   }
 
-  const toEstimateHref = hubHref(basePath, base, { tipo: "costruire", mostra: null, stima: "mancante" });
+  // Il chip «N da stimare» resta sul grafico.
+  const toEstimateHref = hubHref(basePath, base, { stima: "mancante" });
 
   // Le bolle facilità × beneficio, con «Ipotesi di calcolo» sotto.
   if (chart === "benefici" && valueParams) {
@@ -195,7 +173,7 @@ export function PriorityView({
     });
     const offMatrix =
       view.offMatrix.count > 0
-        ? { label: offMatrixLabel(view.offMatrix), count: view.offMatrix.count, href: hubHref(basePath, base, { tipo: "costruire", mostra: null, stima: "fuori-matrice" }) }
+        ? { label: offMatrixLabel(view.offMatrix), count: view.offMatrix.count, href: hubHref(basePath, base, { stima: "fuori-matrice" }) }
         : null;
     const thresholds = model.thresholds ?? {};
     const highValue = typeof thresholds.highImpact === "number" ? thresholds.highImpact : DEFAULT_THRESHOLDS.highImpact;
@@ -215,7 +193,7 @@ export function PriorityView({
     );
   }
 
-  // La lista, a ogni larghezza; il suo titolo per i lettori di schermo prende il fuoco dopo «‹ Torna alla lista».
+  // La lista, a ogni larghezza; il suo titolo per i lettori di schermo prende il fuoco dopo «‹ Torna alla Panoramica».
   return (
     <div data-slot="priority-view" className="space-y-4">
       <ListFocusTarget title={PRIORITY_TEXT.build} />

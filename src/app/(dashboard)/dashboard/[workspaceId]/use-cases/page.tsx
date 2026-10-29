@@ -93,8 +93,9 @@ async function contributorItems(workspaceId: string, user: SessionUser, rows: Us
 
 /**
  * `/use-cases` (docs/use-case/DESIGN.md §2.2, §4; PIANO-LAVORI H4a). Con l'area accesa per il
- * workspace (`USE_CASE_HUB_WORKSPACES`): la pagina «Use case» con le tre viste, i filtri e i
- * pannelli (`UseCaseHub`). Con l'area spenta: la pagina di oggi, con D4 per chi non valuta.
+ * workspace (`USE_CASE_HUB_WORKSPACES`): la pagina «Use case» con le tre viste («Panoramica», «Da
+ * decidere», «Cosa serve»), i filtri e i pannelli (`UseCaseHub`). Con l'area spenta: la pagina di
+ * oggi, con D4 per chi non valuta.
  */
 export default async function UseCasesPage({
   params,

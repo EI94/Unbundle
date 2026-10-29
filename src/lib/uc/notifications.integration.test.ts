@@ -479,10 +479,10 @@ test("bell: only for Lateral Space members of the case, marked read only by its 
   const lead = await unreadForUser(ids.lead, { workspaceId: ids.ws, executor: exec!, env });
   const kinds = new Set(lead.map((n) => n.templateKey));
   for (const k of ["risposta_ricevuta", "owner_da_indicare", "riepilogo_settimanale", "dato_scaduto"]) assert.ok(kinds.has(k), k);
-  // New routes: inside the dossier, the weekly summary to the Roadmap of the Use case page.
+  // New routes: inside the dossier, the weekly summary to the Panoramica of the Use case page.
   for (const n of lead) {
     if (n.caseId) assert.ok(n.href?.startsWith(`/dashboard/${ids.ws}/casi-duso/${state.caseId}`), n.href ?? "");
-    else assert.equal(n.href, `/dashboard/${ids.ws}/use-cases?vista=roadmap`);
+    else assert.equal(n.href, `/dashboard/${ids.ws}/use-cases?vista=panoramica`);
   }
   assert.equal(lead.find((n) => n.templateKey === "dato_scaduto")?.href?.includes("/domande/"), true);
   // First line from the dossier read now (no parent use case here), never in the description.

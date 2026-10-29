@@ -617,7 +617,7 @@ test("dialoghi: titoli, testi e pulsanti esatti di §14.3", () => {
 
 test("toast esatti di §14.3", () => {
   const toasts: Array<[Decision, string]> = [
-    [{ type: "approva", quando: "prossimo_trimestre" }, "Approvato. Lo trovi nella Roadmap."],
+    [{ type: "approva", quando: "prossimo_trimestre" }, "Approvato. Lo trovi nella Panoramica."],
     [{ type: "rimanda", reviewBy: "2027-01-14" }, "Rimandato al 14 gen."],
     [{ type: "serve_info", publicNote: "x" }, "Richiesta salvata. La nota è visibile a chi conosce il codice."],
     [{ type: "non_avviare", publicNote: "x" }, "Segnato come non avviato."],

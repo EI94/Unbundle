@@ -334,18 +334,18 @@ test("i segnali portano solo tipo, titolo e descrizione, con le parole dell'area
     assert.ok(!/[—–]/.test(`${signal.title}${signal.description}`), "niente trattini lunghi");
   }
   // Le etichette di Intelligence: titoli, non chiavi.
-  assert.deepEqual(HUB_SIGNAL_LABEL, { use_case_digest: "Use case", use_case_quarter: "Roadmap" });
+  assert.deepEqual(HUB_SIGNAL_LABEL, { use_case_digest: "Use case", use_case_quarter: "Panoramica" });
   for (const label of Object.values(HUB_SIGNAL_LABEL)) {
     assert.ok(!/_/.test(label), label);
     assert.deepEqual(findHubForbidden(label, "area"), [], label);
   }
 });
 
-test("link dei segnali: Da decidere e Roadmap; nessun link per gli altri tipi", () => {
+test("link dei segnali: Da decidere e Panoramica; nessun link per gli altri tipi", () => {
   const ws = "11111111-2222-4333-8444-555555555555";
-  assert.deepEqual(HUB_SIGNAL_PATH, { use_case_digest: "/use-cases?vista=da-decidere", use_case_quarter: "/use-cases?vista=roadmap" });
+  assert.deepEqual(HUB_SIGNAL_PATH, { use_case_digest: "/use-cases?vista=da-decidere", use_case_quarter: "/use-cases?vista=panoramica" });
   assert.equal(hubSignalHref(ws, "use_case_digest"), `/dashboard/${ws}/use-cases?vista=da-decidere`);
-  assert.equal(hubSignalHref(ws, "use_case_quarter"), `/dashboard/${ws}/use-cases?vista=roadmap`);
+  assert.equal(hubSignalHref(ws, "use_case_quarter"), `/dashboard/${ws}/use-cases?vista=panoramica`);
   for (const type of ["new_portfolio_item", "risk_alert", "toString", "__proto__", ""]) assert.equal(hubSignalHref(ws, type), null, type);
 });
 

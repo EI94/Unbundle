@@ -66,7 +66,7 @@ export interface UseCaseAbilities {
   projection: UseCaseProjection | null;
   /** Voce «Use case» e pagine dell'area. */
   canOpenArea: boolean;
-  /** Vista «Priorità» (matrice, lista, Da diffondere). */
+  /** I grafici del menu «⋯» (matrici e curva del valore), aperti nella Panoramica. */
   canSeePriority: boolean;
   /**
    * Valore, Costo, zone, euro, punteggi e cifre della Roadmap; anche «Benefici e costi»

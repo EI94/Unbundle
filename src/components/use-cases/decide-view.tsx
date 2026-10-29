@@ -5,7 +5,7 @@ import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
 import { buildDecideList, isContributorItem, type AnyHubItem } from "@/lib/use-cases/views";
-import { EmptyState, NoResults } from "./hub-header";
+import { EmptyState, HUB_TEXT, NoResults } from "./hub-header";
 import { CodeLabel, ROW_TEXT, UseCaseRow, isAskedOfViewer, panelHref, type HubQuery } from "./use-case-row";
 
 /** Testi della vista (docs/use-case/DESIGN.md §4.3, §14.3). */
@@ -15,7 +15,6 @@ export const DECIDE_TEXT = Object.freeze({
   emptyBody: "Le nuove proposte arrivano qui.",
   /** «In valutazione» dei contributori (H4p). */
   contributorEmptyTitle: "Nessuno use case in valutazione",
-  toPriority: "Vai a Priorità",
 });
 
 export interface DecideViewProps {
@@ -27,8 +26,8 @@ export interface DecideViewProps {
   basePath: string;
   query: HubQuery;
   bands?: readonly CostBandInfo[];
-  /** Il link «Vai a Priorità» del vuoto (solo revisori). */
-  priorityHref: string | null;
+  /** Il link «Vai alla Panoramica» del vuoto (solo revisori). */
+  overviewHref: string | null;
   /** Con filtri attivi il vuoto è «Nessuno use case con questi filtri.» (§4.9). */
   filtersActive: boolean;
   clearHref: string;
@@ -45,16 +44,16 @@ export interface DecideViewProps {
  * nell'ordine del server, le proprie proposte con la fase, e sopra la lista un avviso per ogni
  * propria proposta in «Serve info», con «Rispondi» (D17). L'ordine non cambia (art. 15.4).
  */
-export function DecideView({ items, teamName, today, basePath, query, bands, priorityHref, filtersActive, clearHref, info = null }: DecideViewProps) {
+export function DecideView({ items, teamName, today, basePath, query, bands, overviewHref, filtersActive, clearHref, info = null }: DecideViewProps) {
   const infoOf = (id: string) => info?.[id.toLowerCase()] ?? null;
   const list = buildDecideList(items);
   if (!list.waiting.length && !list.needInfo.length) {
     if (filtersActive) return <NoResults clearHref={clearHref} />;
     return (
-      <EmptyState title={priorityHref ? DECIDE_TEXT.emptyTitle : DECIDE_TEXT.contributorEmptyTitle} body={DECIDE_TEXT.emptyBody}>
-        {priorityHref ? (
-          <Link href={priorityHref} className="text-sm font-medium text-primary underline underline-offset-4 outline-none hover:decoration-2 focus-visible:decoration-2">
-            {DECIDE_TEXT.toPriority}
+      <EmptyState title={overviewHref ? DECIDE_TEXT.emptyTitle : DECIDE_TEXT.contributorEmptyTitle} body={DECIDE_TEXT.emptyBody}>
+        {overviewHref ? (
+          <Link href={overviewHref} className="text-sm font-medium text-primary underline underline-offset-4 outline-none hover:decoration-2 focus-visible:decoration-2">
+            {HUB_TEXT.goToOverview}
           </Link>
         ) : null}
       </EmptyState>

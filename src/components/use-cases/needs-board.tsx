@@ -7,9 +7,8 @@ import { FIGURE_SEPARATOR } from "@/lib/use-cases/format";
 import { isBoardEmpty, needDoneSummaryText, needForText, quarterAskSummaryText } from "@/lib/use-cases/needs";
 import { cn } from "@/lib/utils";
 import { Disclosure } from "./disclosure";
-import { EmptyState, NoResults } from "./hub-header";
+import { EmptyState, HUB_TEXT, NoResults, inRealizationText } from "./hub-header";
 import { NeedUseCaseLink, NeedUseCasesDisclosure } from "./need-use-cases";
-import { inRealizationText, PRIORITY_TEXT } from "./priority-view";
 
 /** Testi della vista «Cosa serve» (spec di Pierpaolo, 25/10/2026; rilascio «Pulizia»). */
 export const NEEDS_BOARD_TEXT = Object.freeze({
@@ -36,10 +35,10 @@ export interface NeedsBoardViewProps {
   board: NeedsBoard;
   /** id dello use case → il pannello laterale (`?apri=`). */
   hrefOf: (id: string) => string;
-  /** Quanti use case (filtrati) sono in realizzazione: i loro dossier stanno nella Roadmap. */
+  /** Quanti use case (filtrati) sono in realizzazione: i loro dossier stanno nella Panoramica. */
   inRealization?: number;
-  /** La Roadmap, per «Vai alla Roadmap». */
-  roadmapHref?: string | null;
+  /** La sezione «In realizzazione» della Panoramica, per «Vai alla Panoramica». */
+  realizationHref?: string | null;
   /** Con un filtro attivo il vuoto è «Niente da chiedere con questi filtri.» [Togli i filtri]. */
   filtersActive?: boolean;
   clearHref?: string;
@@ -55,24 +54,24 @@ export interface NeedsBoardViewProps {
  * 3. «Cosa vi chiediamo questo trimestre», chiuso di default: una scheda per use case approvato per
  *    il trimestre (anche se è già in realizzazione), con chi conferma, il ritorno da confermare,
  *    «Ci serve subito», «Dopo la scheda A.8», «Da decidere».
- * I dossier degli use case in realizzazione stanno nella Roadmap: qui solo una riga con il link.
+ * I dossier degli use case in realizzazione stanno nella Panoramica: qui solo una riga con il link.
  * «Per»: uno use case si legge per intero, più di uno dietro «Per N use case»; ognuno apre il
  * pannello. Nessun titolo visibile: la scheda attiva del selettore nomina la vista. Sotto i 56rem
  * del riquadro le tabelle diventano elenchi. Nessun conteggio e nessun filtro per persona: «Chi» è
  * un testo della riga. Componente senza stato: si rende sul server.
  */
-export function NeedsBoardView({ board, hrefOf, inRealization = 0, roadmapHref = null, filtersActive = false, clearHref }: NeedsBoardViewProps) {
-  const toRoadmap = inRealization > 0 && roadmapHref ? roadmapHref : null;
+export function NeedsBoardView({ board, hrefOf, inRealization = 0, realizationHref = null, filtersActive = false, clearHref }: NeedsBoardViewProps) {
+  const toRealization = inRealization > 0 && realizationHref ? realizationHref : null;
   if (isBoardEmpty(board)) {
     return (
       <div data-slot="needs-board">
         {filtersActive && clearHref ? (
           <NoResults clearHref={clearHref} title={NEEDS_BOARD_TEXT.noResults} />
         ) : (
-          <EmptyState title={NEEDS_BOARD_TEXT.emptyTitle} body={toRoadmap ? inRealizationText(inRealization) : NEEDS_BOARD_TEXT.emptyBody}>
-            {toRoadmap ? (
-              <Button variant="outline" className="min-h-11 sm:min-h-8" render={<Link href={toRoadmap} scroll={false} />} nativeButton={false}>
-                {PRIORITY_TEXT.goToRoadmap}
+          <EmptyState title={NEEDS_BOARD_TEXT.emptyTitle} body={toRealization ? inRealizationText(inRealization) : NEEDS_BOARD_TEXT.emptyBody}>
+            {toRealization ? (
+              <Button variant="outline" className="min-h-11 sm:min-h-8" render={<Link href={toRealization} />} nativeButton={false}>
+                {HUB_TEXT.goToOverview}
               </Button>
             ) : null}
           </EmptyState>
@@ -118,15 +117,14 @@ export function NeedsBoardView({ board, hrefOf, inRealization = 0, roadmapHref =
         </Disclosure>
       ) : null}
 
-      {toRoadmap ? (
+      {toRealization ? (
         <p data-slot="needs-in-progress" className="text-sm text-muted-foreground">
           {inRealizationText(inRealization)}{" "}
           <Link
-            href={toRoadmap}
-            scroll={false}
+            href={toRealization}
             className="rounded-sm font-medium text-primary underline underline-offset-4 outline-none hover:decoration-2 focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            {PRIORITY_TEXT.goToRoadmap}
+            {HUB_TEXT.goToOverview}
           </Link>
         </p>
       ) : null}

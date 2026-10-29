@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 
-// «‹ Torna alla lista» (rilascio «Pulizia», menu «⋯» di «Priorità»): il pulsante sparisce con il
-// grafico; il fuoco va al titolo della lista, non sul <body>, e solo dopo quel clic.
+// «‹ Torna alla Panoramica» (prima «‹ Torna alla lista», rilascio «Pulizia»), sopra i grafici del menu
+// «⋯»: il pulsante sparisce con il grafico; il fuoco va al titolo della Panoramica, non sul <body>, e
+// solo dopo quel clic.
 let focus: typeof import("./list-focus.tsx");
 let renderToStaticMarkup: (element: unknown) => string;
 let createElement: (type: unknown, props: unknown, ...children: unknown[]) => unknown;
@@ -18,7 +19,7 @@ before(async () => {
 
 const CLICK = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
 
-test("il segno di «‹ Torna alla lista» vale una volta, e solo per il clic che resta nella pagina", () => {
+test("il segno di «‹ Torna alla Panoramica» vale una volta, e solo per il clic che resta nella pagina", () => {
   assert.equal(focus.takeListFocus(), false, "senza clic il fuoco resta dov'è");
   focus.markListFocus();
   assert.equal(focus.takeListFocus(), true);
@@ -31,14 +32,16 @@ test("il segno di «‹ Torna alla lista» vale una volta, e solo per il clic ch
 test("il titolo della lista: solo per i lettori di schermo, raggiungibile dal codice e non dal Tab", () => {
   const html = renderToStaticMarkup(createElement(focus.ListFocusTarget, { title: "Da costruire" }));
   assert.equal(html, '<h2 tabindex="-1" data-slot="list-focus" class="sr-only">Da costruire</h2>');
-  const link = renderToStaticMarkup(createElement(focus.BackToListLink, { href: "/dashboard/x/use-cases?vista=priorita" }, "Torna alla lista"));
-  assert.match(link, /^<a [^>]*href="\/dashboard\/x\/use-cases\?vista=priorita"/);
-  assert.ok(link.includes("Torna alla lista"));
+  const link = renderToStaticMarkup(createElement(focus.BackToListLink, { href: "/dashboard/x/use-cases?vista=panoramica" }, "Torna alla Panoramica"));
+  assert.match(link, /^<a [^>]*href="\/dashboard\/x\/use-cases\?vista=panoramica"/);
+  assert.ok(link.includes("Torna alla Panoramica"));
 });
 
-test("«Priorità» mette il titolo nella lista e nel vuoto della lista, e «‹ Torna alla lista» sopra i grafici", () => {
+test("la Panoramica ha il suo titolo, e «‹ Torna alla Panoramica» sta sopra i grafici", () => {
+  const hub = readFileSync(new URL("./hub.tsx", import.meta.url), "utf8");
+  assert.ok(hub.includes("<ListFocusTarget title={HUB_TEXT.overviewView} />"), "il titolo della Panoramica, per il ritorno");
   const source = readFileSync(new URL("./priority-view.tsx", import.meta.url), "utf8");
-  assert.ok(source.includes("<BackToListLink href={listHref}>{PRIORITY_TEXT.backToList}</BackToListLink>"));
+  assert.ok(source.includes("<BackToListLink href={backHref}>{HUB_TEXT.backToOverview}</BackToListLink>"));
   assert.ok(source.includes("{header ?? <ListFocusTarget title={PRIORITY_TEXT.build} />}"), "nel vuoto, senza grafico");
   assert.match(source, /<ListFocusTarget title=\{PRIORITY_TEXT\.build\} \/>\s*<PriorityList\b/, "prima della lista");
   const own = readFileSync(new URL("./list-focus.tsx", import.meta.url), "utf8");

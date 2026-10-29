@@ -322,9 +322,9 @@ test("Roadmap: le card dei dossier in «In realizzazione» per i revisori, con l
       showTiles: false,
       dossierColumn: column,
       basePath: `/dashboard/${ids.ws}/use-cases`,
-      query: { vista: "roadmap" },
+      query: { vista: "panoramica" },
       filtersActive: false,
-      clearHref: `/dashboard/${ids.ws}/use-cases?vista=roadmap`,
+      clearHref: `/dashboard/${ids.ws}/use-cases?vista=panoramica`,
     }),
   );
   assert.ok(html.includes('data-slot="dossier-card"'), "la card del dossier");

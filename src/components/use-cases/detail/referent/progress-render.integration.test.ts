@@ -297,7 +297,7 @@ test("il contributore non vede né il chip né il riepilogo né il testo dello s
     const page = await detailHtml("contributor", cards[key]);
     for (const text of ["data-slot=\"info-chip\"", "data-slot=\"info-summary\"", "Informazioni:", "informazioni ricevute", progress.INFO_PROGRESS_TEXT.summaryHeading]) assert.ok(!page.includes(text), `${key}: ${text}`);
   }
-  for (const vista of ["da-decidere", "roadmap"]) {
+  for (const vista of ["da-decidere", "panoramica"]) {
     const page = await hubHtml("contributor", { vista });
     assert.ok(!page.includes('data-slot="info-chip"'), vista);
     assert.ok(!page.includes("Info: "), vista);
@@ -308,7 +308,8 @@ test("la pagina «Use case»: il chip corto solo per «da verificare» e «senza
   const decide = await hubHtml("builder", { vista: "da-decidere" });
   assert.ok(itemHtml(decide, "use-case-row", cards.verify).includes("Info: da verificare"));
   for (const key of ["ask", "wait"] as const) assert.ok(!itemHtml(decide, "use-case-row", cards[key]).includes('data-slot="info-chip"'), key);
-  const roadmap = await hubHtml("builder", { vista: "roadmap" });
+  // La Panoramica ha ancora le card della Roadmap di prima.
+  const roadmap = await hubHtml("builder", { vista: "panoramica" });
   assert.ok(itemHtml(roadmap, "roadmap-card", cards.silent).includes("Info: senza risposta"));
   assert.ok(!itemHtml(roadmap, "roadmap-card", cards.done).includes('data-slot="info-chip"'));
   // Il filtro «Informazioni»: cinque voci nell'ordine fisso.

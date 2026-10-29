@@ -11,12 +11,12 @@
 //
 // Workspace «a» of the fixtures has the area on, «b» off. Checks, each one printed:
 // - casi-duso/loading.tsx is there (the 307s below must not come from a page under it);
-// - /casi-duso: 307 to /use-cases?vista=roadmap when dossierLinksReady is true for «a» (read
+// - /casi-duso: 307 to /use-cases?vista=panoramica when dossierLinksReady is true for «a» (read
 //   here from the database: the unique index and no complete dossier without a card), otherwise
 //   the list stays (no redirect); with the area off it never goes to the hub;
-// - /casi-duso/nuovo without useCaseId: 307 to /use-cases?vista=priorita (src/proxy.ts), and an
+// - /casi-duso/nuovo without useCaseId: 307 to /use-cases?vista=panoramica (src/proxy.ts), and an
 //   empty or invalid useCaseId too; with the area off it stays;
-// - /casi-duso/nuovo?useCaseId=<a uuid not in the workspace>: the page sends to «Priorità» (under
+// - /casi-duso/nuovo?useCaseId=<a uuid not in the workspace>: the page sends to the Panoramica (under
 //   loading.tsx: 200 with a meta refresh, judged by the content);
 // - the e-mail links /casi-duso/<caseId> answer 200;
 // - with dossierLinksReady, no complete dossier of «a» without its card (the seed and
@@ -99,31 +99,30 @@ async function get(path) {
 const loading = "src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/loading.tsx";
 record("casi-duso/loading.tsx is there", existsSync(resolve(loading)) ? [] : [`${loading} missing`]);
 
-const roadmap = (ws) => `/dashboard/${ws}/use-cases?vista=roadmap`;
-const priorita = (ws) => `/dashboard/${ws}/use-cases?vista=priorita`;
+const panoramica = (ws) => `/dashboard/${ws}/use-cases?vista=panoramica`;
 
 {
   const res = await get(`/dashboard/${on}/casi-duso`);
   const failures = [];
   if (ready) {
     if (res.status !== 307) failures.push(`status ${res.status}, expected 307`);
-    if (res.location !== roadmap(on)) failures.push(`Location ${res.location}, expected ${roadmap(on)}`);
+    if (res.location !== panoramica(on)) failures.push(`Location ${res.location}, expected ${panoramica(on)}`);
   } else if (res.location) failures.push(`redirected to ${res.location} without dossierLinksReady`);
-  record(`area on   ${res.status} /casi-duso ${ready ? "→ Roadmap" : "stays (dossierLinksReady false)"}`, failures);
+  record(`area on   ${res.status} /casi-duso ${ready ? "→ Panoramica" : "stays (dossierLinksReady false)"}`, failures);
 }
 for (const query of ["", "?useCaseId=", "?useCaseId=non-valido", "?altro=1"]) {
   const res = await get(`/dashboard/${on}/casi-duso/nuovo${query}`);
   const failures = [];
   if (res.status !== 307) failures.push(`status ${res.status}, expected 307`);
-  if (res.location !== priorita(on)) failures.push(`Location ${res.location}, expected ${priorita(on)}`);
-  record(`area on   ${res.status} /casi-duso/nuovo${query} → Priorità`, failures);
+  if (res.location !== panoramica(on)) failures.push(`Location ${res.location}, expected ${panoramica(on)}`);
+  record(`area on   ${res.status} /casi-duso/nuovo${query} → Panoramica`, failures);
 }
 {
   const res = await get(`/dashboard/${on}/casi-duso/nuovo?useCaseId=${randomUUID()}`);
   const failures = [];
-  if (res.location && res.location !== priorita(on)) failures.push(`Location ${res.location}`);
-  if (!res.location && !res.body.replace(/&amp;/g, "&").includes(priorita(on))) failures.push(`status ${res.status} without a redirect to ${priorita(on)}`);
-  record(`area on   ${res.status} /casi-duso/nuovo?useCaseId=<not in the workspace> → Priorità`, failures);
+  if (res.location && res.location !== panoramica(on)) failures.push(`Location ${res.location}`);
+  if (!res.location && !res.body.replace(/&amp;/g, "&").includes(panoramica(on))) failures.push(`status ${res.status} without a redirect to ${panoramica(on)}`);
+  record(`area on   ${res.status} /casi-duso/nuovo?useCaseId=<not in the workspace> → Panoramica`, failures);
 }
 for (const path of [`/dashboard/${off}/casi-duso`, `/dashboard/${off}/casi-duso/nuovo`]) {
   const res = await get(path);

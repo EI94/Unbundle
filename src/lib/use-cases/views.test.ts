@@ -6,6 +6,9 @@ import type { ValuationModel } from "./valuation.ts";
 import {
   EXPORT_COLUMNS,
   HUB_PARAM_KEYS,
+  HUB_SHOW_PARAMS,
+  HUB_VIEWS,
+  HUB_VIEW_ALIASES,
   ROADMAP_DONE_PREVIEW,
   RUNS_PER_YEAR,
   applyHubFilters,
@@ -29,6 +32,7 @@ import {
   roadmapTotals,
   romeDay,
   shareLabel,
+  shownChart,
   toEstimateLabel,
   totalsNote,
   waitingDays,
@@ -169,17 +173,18 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
     viewer("transformation_lead", true),
   );
   assert.deepEqual(Object.keys(params), [...HUB_PARAM_KEYS]);
+  // `vista=priorita` vale la Panoramica; «Da diffondere» resta, senza grafico né «da stimare» (`legacyPriority`).
   assert.deepEqual(params, {
-    vista: "priorita",
+    vista: "panoramica",
     tipo: "diffondere",
-    mostra: "lista",
+    mostra: null,
     origine: "transformation",
     q: "smistamento richieste",
     canale: "slack_proposed",
     area: "Finanza",
     lab: "AI Lab Prova",
     trimestre: "2027-Q1",
-    stima: "mancante",
+    stima: null,
     info: "da_verificare",
     apri: uuid(1),
     nuovo: true,
@@ -201,19 +206,19 @@ test("parseHubParams: valori fuori elenco diventano null, anche da URLSearchPara
   }
   // `nuovo=1` è solo del pannello rapido di Lateral Space: l'AI Builder del cliente apre il modulo completo.
   assert.equal(parseHubParams({ nuovo: "1" }, lead).nuovo, false);
-  assert.equal(parseHubParams({ vista: ["roadmap", "priorita"], q: ["ab", "cd"] }, lead).vista, "roadmap");
+  assert.equal(parseHubParams({ vista: ["roadmap", "priorita"], q: ["ab", "cd"] }, lead).vista, "panoramica");
   assert.equal(parseHubParams({ q: "x".repeat(101) }, lead).q, null, "oltre 100 caratteri");
   assert.equal(parseHubParams({ q: "x".repeat(100) }, lead).q, "x".repeat(100));
   assert.equal(parseHubParams({ trimestre: "piu-avanti" }, lead).trimestre, "piu-avanti");
 });
 
-test("parseHubParams: al contributore restano vista (non «Priorità» né «Cosa serve»), ricerca, apri e ricevute", () => {
+test("parseHubParams: al contributore restano vista (non «Cosa serve»), ricerca, apri e ricevute", () => {
   const contributor = viewer("contributor");
   const params = parseHubParams(
     { vista: "priorita", tipo: "costruire", mostra: "matrice", origine: "adoption", q: "prezzi", canale: "learning", area: "Finanza", lab: "Lab", trimestre: "2027-Q1", stima: "mancante", info: "senza-risposta", nuovo: "1", thanks: "1", created: uuid(3), apri: uuid(4) },
     contributor,
   );
-  assert.equal(params.vista, null, "la Priorità non è per i contributori");
+  assert.equal(params.vista, "panoramica", "i vecchi nomi valgono la Panoramica");
   for (const key of ["tipo", "mostra", "origine", "canale", "area", "lab", "trimestre", "stima", "info"] as const) assert.equal(params[key], null, key);
   assert.equal(params.nuovo, false);
   assert.equal(params.q, "prezzi");
@@ -221,7 +226,8 @@ test("parseHubParams: al contributore restano vista (non «Priorità» né «Cos
   assert.equal(params.created, uuid(3));
   assert.equal(params.apri, uuid(4));
   assert.equal(parseHubParams({ vista: "da-decidere" }, contributor).vista, "da-decidere");
-  assert.equal(parseHubParams({ vista: "roadmap" }, contributor).vista, "roadmap");
+  assert.equal(parseHubParams({ vista: "roadmap" }, contributor).vista, "panoramica");
+  assert.equal(parseHubParams({ vista: "panoramica" }, contributor).vista, "panoramica");
   assert.equal(parseHubParams({ vista: "cosa-serve" }, contributor).vista, null, "«Cosa serve» non è per i contributori");
   // Chi non entra nell'area non ha filtri.
   assert.equal(parseHubParams({ origine: "adoption" }, viewer("learner")).origine, null);
@@ -237,10 +243,10 @@ test("parseHubParams: «Cosa serve» resta ai revisori", () => {
 
 test("hasActiveFilters: vista, apri e ricevute non sono filtri", () => {
   const lead = viewer("function_lead");
-  assert.equal(hasActiveFilters(parseHubParams({ vista: "roadmap", apri: uuid(5), thanks: "1" }, lead)), false);
+  assert.equal(hasActiveFilters(parseHubParams({ vista: "panoramica", apri: uuid(5), thanks: "1" }, lead)), false);
   assert.equal(hasActiveFilters(parseHubParams({ origine: "adoption" }, lead)), true);
   assert.equal(hasActiveFilters(parseHubParams({ q: "prezzi" }, lead)), true);
-  assert.equal(hasActiveFilters(parseHubParams({ vista: "roadmap", tipo: "diffondere" }, lead)), true);
+  assert.equal(hasActiveFilters(parseHubParams({ vista: "panoramica", tipo: "diffondere" }, lead)), true);
   // «Raccolta informazioni» è un filtro (Parte 2).
   assert.equal(hasActiveFilters(parseHubParams({ info: "in-attesa" }, lead)), true);
   assert.equal(hasActiveFilters(parseHubParams({ info: "bloccate" }, lead)), false, "un valore sconosciuto non vale");
@@ -261,28 +267,90 @@ test("parseHubParams: «info» solo per i revisori e solo con i valori noti", ()
   assert.equal(parseHubParams({ info: "complete" }, viewer("learner")).info, null);
 });
 
-test("hasActiveFilters: in «Priorità» il tipo è il selettore, non un filtro (ignoreKind)", () => {
+test("hasActiveFilters: sulle due matrici il tipo non è un filtro (ignoreKind)", () => {
   const lead = viewer("function_lead");
-  assert.equal(hasActiveFilters(parseHubParams({ vista: "priorita", tipo: "diffondere" }, lead), { ignoreKind: true }), false);
+  assert.equal(hasActiveFilters(parseHubParams({ vista: "panoramica", mostra: "matrice", tipo: "diffondere" }, lead), { ignoreKind: true }), false);
   assert.equal(hasActiveFilters(parseHubParams({ tipo: "costruire" }, lead), { ignoreKind: true }), false);
   assert.equal(
-    hasActiveFilters(parseHubParams({ vista: "priorita", tipo: "diffondere", origine: "adoption" }, lead), { ignoreKind: true }),
+    hasActiveFilters(parseHubParams({ vista: "panoramica", mostra: "matrice", tipo: "diffondere", origine: "adoption" }, lead), { ignoreKind: true }),
     true,
   );
 });
 
-test("defaultHubView: revisori «Da decidere» se c'è qualcosa, altrimenti «Priorità»; sponsor del cliente e contributori la Roadmap", () => {
+test("i vecchi link di «Priorità» e «Roadmap» valgono la Panoramica", () => {
+  const lead = viewer("function_lead");
+  const read = (raw: Record<string, string>) => {
+    const params = parseHubParams(raw, lead);
+    return { vista: params.vista, tipo: params.tipo, mostra: params.mostra, stima: params.stima };
+  };
+  // «Priorità»: «Da costruire | Da diffondere» sceglieva la lista; il chip «N da stimare» apre la matrice.
+  for (const [raw, expected] of [
+    [{ vista: "priorita" }, { tipo: null, mostra: null, stima: null }],
+    [{ vista: "priorita", tipo: "costruire" }, { tipo: null, mostra: null, stima: null }],
+    [{ vista: "priorita", tipo: "diffondere", mostra: "matrice", stima: "mancante" }, { tipo: "diffondere", mostra: null, stima: null }],
+    [{ vista: "priorita", mostra: "matrice" }, { tipo: null, mostra: "matrice", stima: null }],
+    [{ vista: "priorita", tipo: "costruire", stima: "mancante" }, { tipo: null, mostra: "matrice", stima: "mancante" }],
+    [{ vista: "priorita", mostra: "lista", stima: "fuori-matrice" }, { tipo: null, mostra: "matrice", stima: "fuori-matrice" }],
+  ] as const) {
+    assert.deepEqual(read(raw), { vista: "panoramica", ...expected }, JSON.stringify(raw));
+  }
+  // «Roadmap»: ogni parametro resta com'è.
+  const roadmap = parseHubParams(
+    { vista: "roadmap", tipo: "costruire", origine: "adoption", q: "fatture", canale: "team_mcp", trimestre: "2027-Q1", info: "in-attesa", apri: uuid(6), thanks: "1", created: uuid(7) },
+    lead,
+  );
+  assert.deepEqual(
+    [roadmap.vista, roadmap.tipo, roadmap.origine, roadmap.q, roadmap.canale, roadmap.trimestre, roadmap.info, roadmap.apri, roadmap.thanks, roadmap.created],
+    ["panoramica", "costruire", "adoption", "fatture", "team_mcp", "2027-Q1", "in_attesa", uuid(6), true, uuid(7)],
+  );
+  // `mostra=lista` non vale più: la Panoramica con le corsie.
+  assert.equal(parseHubParams({ mostra: "lista" }, lead).mostra, null);
+  // Il contributore non ha grafici.
+  const contributor = parseHubParams({ vista: "priorita", mostra: "matrice" }, viewer("contributor"));
+  assert.deepEqual([contributor.vista, contributor.mostra], ["panoramica", null]);
+  const fromSearch = parseHubParams(new URLSearchParams(`vista=priorita&apri=${uuid(8)}`), lead);
+  assert.deepEqual([fromSearch.vista, fromSearch.apri], ["panoramica", uuid(8)]);
+  // Solo i nomi esatti: niente maiuscole, niente chiavi ereditate.
+  for (const vista of ["toString", "__proto__", "Roadmap", "PRIORITA", "hasOwnProperty"]) assert.equal(parseHubParams({ vista }, lead).vista, null, vista);
+});
+
+test("HUB_VIEW_ALIASES: le chiavi non sono viste, i valori sì", () => {
+  assert.equal(HUB_VIEWS[0], "panoramica", "la Panoramica è la prima vista");
+  assert.deepEqual(Object.keys(HUB_VIEW_ALIASES).sort(), ["priorita", "roadmap"]);
+  for (const [alias, view] of Object.entries(HUB_VIEW_ALIASES)) {
+    assert.ok(!(HUB_VIEWS as readonly string[]).includes(alias), alias);
+    assert.ok(HUB_VIEWS.includes(view), view);
+  }
+  assert.ok(Object.isFrozen(HUB_VIEW_ALIASES));
+  assert.deepEqual([...HUB_SHOW_PARAMS], ["matrice", "benefici", "curva", "agenti"]);
+});
+
+test("shownChart: il grafico del menu «⋯» che la Panoramica apre", () => {
+  assert.equal(shownChart(null, []), null);
+  assert.equal(shownChart("agenti", ["matrice", "benefici", "curva"]), null, "per agente non è un grafico");
+  assert.equal(shownChart("matrice", []), "matrice", "anche senza use case da mettere in ordine");
+  assert.equal(shownChart("benefici", ["matrice"]), "matrice", "un vecchio link senza «Benefici e costi»");
+  assert.equal(shownChart("benefici", ["matrice", "benefici"]), "benefici");
+  assert.equal(shownChart("curva", ["matrice"]), null, "senza curva le corsie");
+  assert.equal(shownChart("curva", ["matrice", "curva"]), "curva");
+});
+
+test("defaultHubView: revisori «Da decidere» se c'è qualcosa, altrimenti la Panoramica; sponsor del cliente e contributori la Panoramica", () => {
   assert.equal(defaultHubView(viewer("transformation_lead", true), 3), "da-decidere");
-  assert.equal(defaultHubView(viewer("transformation_lead", true), 0), "priorita");
+  assert.equal(defaultHubView(viewer("transformation_lead", true), 0), "panoramica");
   assert.equal(defaultHubView(viewer("function_lead"), 2), "da-decidere");
-  assert.equal(defaultHubView(viewer("analyst"), 0), "priorita");
-  assert.equal(defaultHubView(viewer("exec_sponsor"), 5), "roadmap", "sponsor del cliente");
+  assert.equal(defaultHubView(viewer("analyst"), 0), "panoramica");
+  assert.equal(defaultHubView(viewer("exec_sponsor"), 5), "panoramica", "sponsor del cliente");
   assert.equal(defaultHubView(viewer("exec_sponsor", true), 5), "da-decidere", "sponsor di Lateral Space");
-  assert.equal(defaultHubView(viewer("contributor"), 5), "roadmap");
-  // «Cosa serve» non è mai la vista di partenza.
+  assert.equal(defaultHubView(viewer("contributor"), 5), "panoramica");
+  // «Cosa serve» non è mai la vista di partenza, un vecchio nome nemmeno.
   for (const role of ["exec_sponsor", "transformation_lead", "function_lead", "analyst", "contributor", "learner", null]) {
     for (const lateral of [false, true]) {
-      for (const count of [0, 4]) assert.notEqual(defaultHubView(viewer(role, lateral), count), "cosa-serve", `${role} ${lateral} ${count}`);
+      for (const count of [0, 4]) {
+        const view = defaultHubView(viewer(role, lateral), count);
+        assert.notEqual(view, "cosa-serve", `${role} ${lateral} ${count}`);
+        assert.ok(!Object.hasOwn(HUB_VIEW_ALIASES, view), `${role} ${lateral} ${count}`);
+      }
     }
   }
 });
@@ -326,7 +394,7 @@ test("filtri dei revisori: origine, tipo, canale, area, AI Lab, trimestre, da st
   assert.deepEqual(filter({ trimestre: "2027-Q1" }), [b.id]);
   assert.deepEqual(filter({ trimestre: "piu-avanti" }), [c.id]);
   assert.deepEqual(filter({ stima: "mancante" }), [b.id, c.id]);
-  // In «Priorità» il tipo è il selettore interno.
+  // Sulle due matrici il tipo non filtra.
   assert.deepEqual(
     applyHubFilters(all, parseHubParams({ tipo: "diffondere" }, lead), { ignoreKind: true }).map((i) => i.id),
     [a.id, b.id, c.id],

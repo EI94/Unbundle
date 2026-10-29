@@ -16,7 +16,7 @@
 // - area off: the same addresses answer 200 with today's page;
 // - still reachable with the area on: /portfolio/export, /share/portfolio/** (members go to
 //   the card), /casi-duso/<caseId>, /r/<token>, /api/r/** (the route's own 4xx for an unknown
-//   token); /casi-duso itself goes to the Roadmap only with dossierLinksReady (H6a);
+//   token); /casi-duso itself goes to the Panoramica only with dossierLinksReady (H6a);
 // - not-found under use-cases/loading.tsx (/use-cases/nuovo with the area off): 200, judged by
 //   the content (the noindex meta, and the area's not-found page as Chrome shows it, through
 //   scripts/uc-test/cdp.mjs), never by the status;
@@ -111,8 +111,8 @@ const REDIRECTS = [
   { from: "/portfolio/review", path: `/dashboard/${on}/portfolio/review/${onCard}`, to: `${hub(on)}/${onCard}` },
   { from: "/portfolio/review", path: `/dashboard/${on}/portfolio/review/${onCard}?x=1`, to: `${hub(on)}/${onCard}` },
   { from: "/portfolio/submit", path: `/dashboard/${on}/portfolio/submit`, to: `${hub(on)}/nuovo` },
-  { from: "/plan", path: `/dashboard/${on}/plan`, to: `${hub(on)}?vista=roadmap` },
-  { from: "/plan", path: `/dashboard/${on}/plan?vista=x`, to: `${hub(on)}?vista=roadmap` },
+  { from: "/plan", path: `/dashboard/${on}/plan`, to: `${hub(on)}?vista=panoramica` },
+  { from: "/plan", path: `/dashboard/${on}/plan?vista=x`, to: `${hub(on)}?vista=panoramica` },
 ];
 for (const { path, to } of REDIRECTS) {
   const res = await get(path);
@@ -170,16 +170,16 @@ if (caseId) {
 }
 {
   // /casi-duso itself redirects only with dossierLinksReady, from the workspace layout (H6a):
-  // 307 to the Roadmap when every dossier has its card, otherwise the list stays. This script
+  // 307 to the Panoramica when every dossier has its card, otherwise the list stays. This script
   // has no database: either answer is right, never a 308 or another Location (acceptance-hub.mjs
   // checks the 307 on a harness where dossierLinksReady is true).
   const res = await get(`/dashboard/${on}/casi-duso`);
   const failures = [];
-  const roadmap = `/dashboard/${on}/use-cases?vista=roadmap`;
-  if (res.status === 307 && res.location !== roadmap) failures.push(`Location ${res.location}, expected ${roadmap}`);
+  const panoramica = `/dashboard/${on}/use-cases?vista=panoramica`;
+  if (res.status === 307 && res.location !== panoramica) failures.push(`Location ${res.location}, expected ${panoramica}`);
   if (res.status !== 307 && res.location) failures.push(`status ${res.status} → ${res.location}`);
   if (res.status >= 500) failures.push(`status ${res.status}`);
-  record(`area on   ${res.status} /casi-duso (307 to the Roadmap only with dossierLinksReady)`, failures);
+  record(`area on   ${res.status} /casi-duso (307 to the Panoramica only with dossierLinksReady)`, failures);
 }
 {
   const res = await get("/r/0000000000000000000000");
@@ -284,7 +284,8 @@ const sameBar = (titles, expected) => {
   if (bar.find((entry) => entry.title === "Use case")?.href !== hub(on)) failures.push("«Use case» does not link /use-cases");
   record(`area on   sidebar: ${titles.length} entries, one «Use case»`, failures);
 }
-for (const rest of [`/use-cases?vista=roadmap`, `/use-cases/${onCard}`, `/use-cases/nuovo`, ...(caseId ? [`/casi-duso/${caseId}`] : [])]) {
+// `?vista=roadmap` is the old name of the Panoramica: it still opens the hub, under «Use case».
+for (const rest of [`/use-cases?vista=panoramica`, `/use-cases?vista=roadmap`, `/use-cases/${onCard}`, `/use-cases/nuovo`, ...(caseId ? [`/casi-duso/${caseId}`] : [])]) {
   const res = await get(`/dashboard/${on}${rest}`);
   const active = sidebarOf(res.body).filter((entry) => entry.active).map((entry) => entry.title);
   record(`area on   sidebar active on ${rest.replace(onCard, "{uc}").replace(caseId ?? "-", "{caseId}")}: ${active.join(", ") || "none"}`, active.join() === "Use case" ? [] : [`expected «Use case»`]);

@@ -246,7 +246,7 @@ html:has([data-use-case-root])
   --input: oklch(1 0 0 / 38%);
   --ring: oklch(0.85 0 0);
 }
-/* Use case, il segmento scelto delle viste («Da decidere | Priorità | Roadmap | Cosa serve»): con
+/* Use case, il segmento scelto delle viste («Panoramica | Da decidere | Cosa serve»): con
    il grigio a 0,68 il testo scelto e quello degli altri distano solo 2,5:1, e il fondo del segmento
    (1,04:1) e l'anello `ring-border` (1,1:1) non si vedono sul tema scuro. L'anello prende il colore
    dei bordi dei campi (3,4:1 sul segmento): si vede quale vista è aperta anche senza leggere il

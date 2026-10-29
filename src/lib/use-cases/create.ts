@@ -124,7 +124,7 @@ export function activityMappingPath(workspaceId: string): string {
 
 /** Dove porta il modulo completo dopo l'invio (§2.5, §5.5): la ricevuta in cima alla pagina. */
 export function receiptPath(workspaceId: string, useCaseId: string): string {
-  return `/dashboard/${workspaceId}/use-cases?vista=roadmap&thanks=1&created=${encodeURIComponent(useCaseId)}`;
+  return `/dashboard/${workspaceId}/use-cases?vista=panoramica&thanks=1&created=${encodeURIComponent(useCaseId)}`;
 }
 
 /** Il modulo completo. */

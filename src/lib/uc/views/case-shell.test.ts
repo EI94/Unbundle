@@ -111,7 +111,7 @@ test("the trail: use case, code, Realizzazione; the title without a code; the ol
   const withCode = caseTrail({ workspaceId: ws, caseBase, parent: { id: "u1", code: "XX-0012", title: "Smistamento richieste" } });
   assert.deepEqual(withCode, {
     kind: "use_case",
-    root: { label: "Use case", href: "/dashboard/w1/use-cases?vista=roadmap" },
+    root: { label: "Use case", href: "/dashboard/w1/use-cases?vista=panoramica" },
     parent: { label: "XX-0012", href: "/dashboard/w1/use-cases/u1?capitolo=realizzazione", isCode: true },
     current: { label: "Realizzazione", href: caseBase },
   });

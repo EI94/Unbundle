@@ -244,7 +244,7 @@ test("modulo completo: testi esatti di §5.3, nome del team senza articolo né �
   assert.equal(subtitle, `Racconta l'idea in modo semplice. La valuta ${DEFAULT_REVIEW_TEAM_NAME}: qui vedi come va.`);
   assert.doesNotMatch(subtitle, new RegExp(`\\b(il|lo|team) ${DEFAULT_REVIEW_TEAM_NAME}`, "i"));
   assert.equal(formSubtitle("CoE AI"), "Racconta l'idea in modo semplice. La valuta CoE AI: qui vedi come va.");
-  assert.equal(receiptPath(WS, UC), `/dashboard/${WS}/use-cases?vista=roadmap&thanks=1&created=${UC}`);
+  assert.equal(receiptPath(WS, UC), `/dashboard/${WS}/use-cases?vista=panoramica&thanks=1&created=${UC}`);
 });
 
 /** Un modulo come lo legge FormData: `get` dà null per un campo che non c'è. */

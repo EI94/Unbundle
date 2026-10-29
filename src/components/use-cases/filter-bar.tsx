@@ -53,11 +53,10 @@ export interface FilterBarProps {
   /** I contributori hanno solo «Cerca per titolo» (§4.7). */
   mode: "revisore" | "contributore";
   /**
-   * «Tipo»: un filtro (Tutti, Da costruire, Da diffondere) nelle viste «Da decidere», «Roadmap»
-   * e «Cosa serve»; in «Priorità» la scelta tra «Da costruire» e «Da diffondere» (predefinito «Da
-   * costruire», §4.4), nello stesso menu, così i controlli restano su due righe.
+   * «Tipo» è un filtro (Tutti, Da costruire, Da diffondere) in ogni vista; non c'è sulle due
+   * matrici del menu «⋯», che sono solo «Da costruire».
    */
-  kind: "filtro" | "priorita";
+  kind: "filtro" | "nessuno";
   /**
    * Le voci di «Altri filtri», dagli use case del workspace e con il valore scelto (solo revisori).
    * `infos`: «Informazioni» (Raccolta informazioni), solo gli stati che hanno una scheda; vuoto, il campo non c'è.
@@ -79,9 +78,6 @@ const KINDS: FilterOption[] = [
   { value: "costruire", label: "Da costruire" },
   { value: "diffondere", label: "Da diffondere" },
 ];
-
-/** In «Priorità» il tipo non è un filtro: o l'uno o l'altro. */
-const PRIORITY_KINDS: FilterOption[] = KINDS.slice(1);
 
 /** Larghezze del telefono: sotto `sm` di Tailwind (640 px). */
 const PHONE_QUERY = "(max-width: 639.98px)";
@@ -106,7 +102,7 @@ function useIsPhone(): boolean {
  * pagina (`@container/hub` di hub.tsx) larga almeno 42rem (672 px), dove «Tipo», l'origine e la
  * ricerca stanno in una riga e «Altri filtri» e «Togli i filtri» nella seconda; altrimenti dentro
  * «Altri filtri», come al telefono. Più stretta (accanto alla barra laterale da 768 a circa 975 px
- * di finestra) l'origine andava a capo da sola e i controlli di «Priorità» finivano su tre righe
+ * di finestra) l'origine andava a capo da sola e i controlli finivano su tre righe
  * (120 px a 768). Il contenuto di «Altri filtri» si apre fuori dal riquadro (portale): lì decide
  * `originShown`.
  */
@@ -121,8 +117,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 /**
  * La barra dei filtri (docs/use-case/DESIGN.md §4.4, §4.7), una riga sotto le viste che va a capo
  * solo se i controlli non ci stanno: al massimo due righe di controlli prima del contenuto. Revisori: «Tipo»
- * (filtro in «Da decidere», «Roadmap» e «Cosa serve»; in «Priorità» la scelta «Da costruire | Da
- * diffondere»), «Tutte · AI Adoption · AI
+ * (un filtro in ogni vista; non sulle due matrici del menu «⋯»), «Tutte · AI Adoption · AI
  * Transformation» (dentro «Altri filtri» al telefono e quando la pagina è più stretta di
  * {@link ORIGIN_INLINE}), «Cerca per titolo o codice», «Altri
  * filtri» (Canale, Area, AI Lab, Trimestre). Contributori: solo «Cerca per titolo». Ogni filtro è
@@ -165,13 +160,7 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
     <div data-slot="filter-bar" aria-busy={pending || undefined} className="flex min-w-0 flex-nowrap items-center gap-2 sm:flex-wrap">
       {reviewer ? (
         <>
-          <KindMenu
-            mode={kind}
-            value={kind === "priorita" ? (query.tipo === "diffondere" ? "diffondere" : "costruire") : (query.tipo ?? "")}
-            onChange={(value) =>
-              go(kind === "priorita" ? { tipo: value || "costruire", mostra: null, stima: null } : { tipo: value || null })
-            }
-          />
+          {kind === "filtro" ? <KindMenu value={query.tipo ?? ""} onChange={(value) => go({ tipo: value || null })} /> : null}
           <nav ref={originNav} aria-label={FILTER_TEXT.originLabel} className={cn("hidden max-w-full min-w-0 shrink-0", ORIGIN_INLINE)}>
             <ul className="inline-flex max-w-full gap-1 overflow-x-auto rounded-xl border bg-muted/60 p-1 [scrollbar-width:none]">
               {ORIGINS.map((option) => {
@@ -216,11 +205,10 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
   );
 }
 
-function KindMenu({ mode, value, onChange }: { mode: "filtro" | "priorita"; value: string; onChange: (value: string) => void }) {
-  const options = mode === "priorita" ? PRIORITY_KINDS : KINDS;
-  const label = options.find((option) => option.value === value)?.label ?? FILTER_TEXT.kindAll;
-  // La scelta di partenza: «Tutti» come filtro, «Da costruire» in «Priorità».
-  const chosen = value !== (mode === "priorita" ? "costruire" : "");
+function KindMenu({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const label = KINDS.find((option) => option.value === value)?.label ?? FILTER_TEXT.kindAll;
+  // La scelta di partenza è «Tutti».
+  const chosen = value !== "";
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -237,7 +225,7 @@ function KindMenu({ mode, value, onChange }: { mode: "filtro" | "priorita"; valu
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-auto min-w-44">
         <DropdownMenuRadioGroup value={value} onValueChange={(next) => onChange(typeof next === "string" ? next : "")}>
-          {options.map((option) => (
+          {KINDS.map((option) => (
             <DropdownMenuRadioItem key={option.value || "tutti"} value={option.value} className="min-h-10 sm:min-h-8">
               {option.label}
             </DropdownMenuRadioItem>

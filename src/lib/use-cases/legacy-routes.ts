@@ -16,13 +16,15 @@
  *   (nell'ordine in cui arrivano); ogni altro parametro cade, anche `waveBudget` e
  *   `waveDurationMonths`.
  * - `/portfolio/review/<id>` → `/use-cases/<id>`; `/portfolio/submit` → `/use-cases/nuovo`;
- *   `/plan` → `/use-cases?vista=roadmap`. Senza query.
- * - `/casi-duso` → `/use-cases?vista=roadmap` solo con `dossierLinksReady` vero (§10.4).
+ *   `/plan` → `/use-cases?vista=panoramica`. Senza query.
+ * - `/casi-duso` → `/use-cases?vista=panoramica` solo con `dossierLinksReady` vero (§10.4).
  *   Il redirect sta nel layout del workspace: sotto `casi-duso/loading.tsx` una pagina
  *   risponderebbe 200 con una meta refresh.
- * - `/casi-duso/nuovo` senza `useCaseId` → `/use-cases?vista=priorita`, in `src/proxy.ts`.
+ * - `/casi-duso/nuovo` senza `useCaseId` → `/use-cases?vista=panoramica`, in `src/proxy.ts`.
  *   Come per la pagina, conta solo il primo `useCaseId` e solo se è un UUID: un valore
  *   vuoto, non valido o ripetuto dopo un vuoto porterebbe alla procedura senza scheda.
+ * - `/use-cases?vista=priorita|roadmap` non si reindirizza: `parseHubParams` li legge come
+ *   Panoramica (`HUB_VIEW_ALIASES`), con ogni parametro.
  * - Restano com'erano: `/portfolio/export` (la rotta ignora `waveBudget` e
  *   `waveDurationMonths`), `/use-cases/**`, `/casi-duso/nuovo?useCaseId=<uuid>`,
  *   `/casi-duso/<caseId>/**`, `/r/**`, `/api/r/**`, `/share/portfolio/**` e ogni altro
@@ -60,7 +62,7 @@ export type SearchParamsInput =
 
 /** Il parametro della vista (`parseHubParams`, §4.2) e i suoi valori usati dai redirect. */
 export const HUB_VIEW_PARAM = "vista";
-export const HUB_VIEWS = { daDecidere: "da-decidere", priorita: "priorita", roadmap: "roadmap" } as const;
+export const HUB_VIEWS = { daDecidere: "da-decidere", panoramica: "panoramica" } as const;
 
 /** I parametri di `/portfolio` che passano: benvenuto e ricevuta (§5.5). */
 export const PORTFOLIO_PASS_THROUGH: readonly string[] = Object.freeze(["joined", "thanks", "created"]);
@@ -131,14 +133,14 @@ export function legacyRouteRedirect(pathname: string, searchParams?: SearchParam
     case "portfolio/submit":
       return { from: "/portfolio/submit", to: `${hub}/nuovo` };
     case "plan":
-      return { from: "/plan", to: withQuery(hub, [[HUB_VIEW_PARAM, HUB_VIEWS.roadmap]]) };
+      return { from: "/plan", to: withQuery(hub, [[HUB_VIEW_PARAM, HUB_VIEWS.panoramica]]) };
     case "casi-duso":
-      return opts.dossierLinksReady === true ? { from: "/casi-duso", to: withQuery(hub, [[HUB_VIEW_PARAM, HUB_VIEWS.roadmap]]) } : null;
+      return opts.dossierLinksReady === true ? { from: "/casi-duso", to: withQuery(hub, [[HUB_VIEW_PARAM, HUB_VIEWS.panoramica]]) } : null;
     case "casi-duso/nuovo": {
       // La stessa regola della pagina: conta solo il primo `useCaseId`, e solo se è un UUID.
       const first = params.find(([key]) => key === START_REALIZATION_PARAM)?.[1];
       const startsFromUseCase = first !== undefined && UUID_PATTERN.test(first);
-      return startsFromUseCase ? null : { from: "/casi-duso/nuovo", to: withQuery(hub, [[HUB_VIEW_PARAM, HUB_VIEWS.priorita]]) };
+      return startsFromUseCase ? null : { from: "/casi-duso/nuovo", to: withQuery(hub, [[HUB_VIEW_PARAM, HUB_VIEWS.panoramica]]) };
     }
   }
   if (rest.length === 3 && rest[0] === "portfolio" && rest[1] === "review") {

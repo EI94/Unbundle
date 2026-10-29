@@ -65,9 +65,9 @@ export default async function StartRealizationPage({
   const executor = await getAppUcExecutor();
   const context = useCaseId ? await readStartContext(executor, { workspaceId, useCaseId, userId: session.user.id }) : null;
   if (!context && isUseCaseHubWorkspace(workspaceId)) {
-    // Un dossier nasce solo da uno use case (DESIGN §2.3, §6.5): si sceglie in «Priorità».
+    // Un dossier nasce solo da uno use case (DESIGN §2.3, §6.5): si sceglie nella Panoramica.
     console.info(JSON.stringify(stubLogEntry("/casi-duso/nuovo")));
-    redirect(`${ws}/use-cases?${HUB_VIEW_PARAM}=${HUB_VIEWS.priorita}`);
+    redirect(`${ws}/use-cases?${HUB_VIEW_PARAM}=${HUB_VIEWS.panoramica}`);
   }
   if (!context) {
     return (
