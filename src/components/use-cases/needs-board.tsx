@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import type { NeedAreaTable, NeedRow, NeedsBoard, QuarterAsk } from "@/lib/use-cases/needs";
+import { FIGURE_SEPARATOR } from "@/lib/use-cases/format";
 import { isBoardEmpty, needDoneSummaryText, needForText, quarterAskSummaryText } from "@/lib/use-cases/needs";
 import { cn } from "@/lib/utils";
 import { Disclosure } from "./disclosure";
@@ -228,7 +229,7 @@ function NeedTable({ rows, hrefOf, labelledBy, withDue = true }: { rows: readonl
                 <td className="px-3 py-2">
                   <What row={row} />
                 </td>
-                <td className="px-3 py-2 break-words">{row.owner ?? <span className="text-muted-foreground">{NEEDS_BOARD_TEXT.none}</span>}</td>
+                <td className="px-3 py-2 break-words">{row.owner ? <OwnerText text={row.owner} /> : <span className="text-muted-foreground">{NEEDS_BOARD_TEXT.none}</span>}</td>
                 <td className="px-3 py-2">
                   <NeedFor row={row} hrefOf={hrefOf} />
                 </td>
@@ -256,6 +257,25 @@ function NeedTable({ rows, hrefOf, labelledBy, withDue = true }: { rows: readonl
           </li>
         ))}
       </ul>
+    </>
+  );
+}
+
+/**
+ * «Sistemi informativi · Cliente» nella colonna stretta «Chi»: il «·» va a capo con la parte che lo
+ * segue («Sistemi informativi» / «· Cliente»), mai da solo in fondo alla riga. Lo stesso testo.
+ */
+function OwnerText({ text }: { text: string }) {
+  const [first, ...rest] = text.split(FIGURE_SEPARATOR);
+  return (
+    <>
+      {first}
+      {rest.map((part, index) => (
+        <span key={index}>
+          {" "}
+          <span className="whitespace-nowrap">{`${FIGURE_SEPARATOR.trim()} ${part}`}</span>
+        </span>
+      ))}
     </>
   );
 }

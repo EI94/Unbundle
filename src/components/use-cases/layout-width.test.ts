@@ -95,8 +95,8 @@ test("la lista di «Priorità» e le righe dei revisori hanno le colonne da 58re
   }
   // Il chip di «Raccolta informazioni» sta sotto il titolo, non accanto: non gli toglie spazio.
   assert.match(list, /<span className="flex min-w-0 flex-col items-start gap-0\.5">\s*<Link/);
-  // L'origine si nasconde con le colonne solo quando non c'è la sua colonna.
-  assert.ok(list.includes('<span className={cn("min-w-0", !originColumn && "@min-[58rem]/hub:hidden")}>'));
+  // L'origine c'è solo quando c'è la sua colonna, anche nella riga stretta del telefono.
+  assert.match(list, /\{originColumn \? \(\s*<span className="min-w-0">\s*<OriginChip origin=\{item\.origin\} \/>/);
   // Valore va a capo dopo «·», nella lista e nella riga, invece di scrivere sopra il Costo.
   assert.match(list, /<ValueFigure value=\{item\.value\} withLabel wrap /);
   const row = read("src/components/use-cases/use-case-row.tsx");

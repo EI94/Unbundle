@@ -60,6 +60,9 @@ test("«Per 3 use case»: un link per use case, «codice · titolo» o il titolo
     const classes = /class="([^"]*)"/.exec(link[0])?.[1].split(" ") ?? [];
     assert.ok(classes.includes("underline") && classes.includes("hover:decoration-2"), link[0]);
     assert.ok(!classes.includes("hover:underline"), link[0]);
+    // La sottolineatura sta dentro la riga da 20 px: `line-clamp` (overflow nascosto) non la taglia.
+    assert.ok(classes.includes("underline-offset-2") && !classes.includes("underline-offset-4"), link[0]);
+    assert.match(link[2], /^<span class="line-clamp-2 leading-5 break-words">/, link[2]);
   }
   assert.ok(html.includes('title="XV-0001 · Smistamento"'));
   assert.ok(html.includes('title="Preventivi"'));

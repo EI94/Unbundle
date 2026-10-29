@@ -20,11 +20,21 @@ export function InfoSummary({ view, className }: { view: InfoProgressView | null
         <span className="min-w-0 break-words tabular-nums">
           <span className="font-medium">{view.count}</span>
           {/* Quelle da guardare fanno parte delle ricevute: tra parentesi, così i pezzi sommano al totale. */}
-          {view.receivedNote ? <span data-slot="info-received-note"> ({view.receivedNote})</span> : null}
+          {view.receivedNote ? (
+            <span data-slot="info-received-note">
+              {" "}
+              <span className="whitespace-nowrap">({view.receivedNote})</span>
+            </span>
+          ) : null}
+          {/* Al telefono va a capo tra un gruppo e l'altro, mai dentro («1 in» / «attesa»): ogni «· 1 in attesa» resta intero. */}
           {view.next ? (
             <span data-slot="info-next">
-              {INFO_PROGRESS_TEXT.next.separator}
-              {view.next}
+              {view.next.split(INFO_PROGRESS_TEXT.next.separator).map((piece, index) => (
+                <span key={index}>
+                  {" "}
+                  <span className="whitespace-nowrap">{`${INFO_PROGRESS_TEXT.next.separator.trim()} ${piece}`}</span>
+                </span>
+              ))}
             </span>
           ) : null}
         </span>

@@ -69,5 +69,8 @@ test("niente dal cliente: solo la frase, senza «che cosa resta»", () => {
 test("da verificare: tra parentesi dopo le ricevute, e ogni gruppo che resta, così i numeri fanno il totale", () => {
   const html = render(infoProgressView({ ...waiting, state: "da_verificare", received: 2, total: 5, toVerify: 1, waiting: 1, toAsk: 2 }));
   assert.equal(textOf(html), "2 di 5 informazioni ricevute (1 da verificare) · 1 in attesa · 2 da chiedere");
-  assert.match(html, /<span data-slot="info-received-note"> \(1 da verificare\)<\/span>/);
+  assert.match(html, /<span data-slot="info-received-note"> <span class="whitespace-nowrap">\(1 da verificare\)<\/span><\/span>/);
+  // Al telefono si va a capo solo tra un gruppo e l'altro: «(1 da verificare)», «· 1 in attesa» e «· 2 da chiedere» restano interi.
+  const whole = [...html.matchAll(/<span class="whitespace-nowrap">([^<]*)<\/span>/g)].map((match) => match[1]);
+  assert.deepEqual(whole, ["(1 da verificare)", "· 1 in attesa", "· 2 da chiedere"]);
 });

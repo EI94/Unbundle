@@ -363,7 +363,9 @@ test("Cosa serve: la vista dei revisori, una tabella per area, le righe a posto 
 
   const accessRow = between(requirements, `data-need="${needIds.access}"`, "</tr>");
   assert.ok(accessRow.includes(T.access));
-  assert.ok(accessRow.includes("Ufficio IT · Cliente"), "Chi: persona e parte");
+  assert.ok(accessRow.replace(/<!--.*?-->|<[^>]+>/g, "").includes("Ufficio IT · Cliente"), "Chi: persona e parte");
+  // Nella colonna stretta il «·» va a capo con «Cliente», mai da solo in fondo alla riga.
+  assert.ok(accessRow.includes('Ufficio IT<span> <span class="whitespace-nowrap">· Cliente</span></span>'), accessRow);
   // Due use case: «Per 2 use case», chiuso, con i due link al pannello.
   const per = detailsAround(accessRow, "Per 2 use case");
   assertClosed(per);

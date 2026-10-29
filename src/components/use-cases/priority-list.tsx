@@ -133,10 +133,12 @@ export function PriorityList({ workspaceId, items, today, canDecide, bands, base
                 </span>
               </span>
               <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @min-[58rem]/hub:contents">
-                {/* Con le colonne l'origine c'è solo se le righe ne hanno più di una; nella riga stretta sempre. */}
-                <span className={cn("min-w-0", !originColumn && "@min-[58rem]/hub:hidden")}>
-                  <OriginChip origin={item.origin} />
-                </span>
+                {/* L'origine c'è solo se le righe ne hanno più di una, con le colonne e nella riga stretta: lo stesso chip su ogni riga non dice niente. */}
+                {originColumn ? (
+                  <span className="min-w-0">
+                    <OriginChip origin={item.origin} />
+                  </span>
+                ) : null}
                 {/* Senza le colonne non c'è la riga delle intestazioni: ogni cifra porta la sua etichetta; senza Valore né Costo un solo «da stimare» (H4p). */}
                 {estimated ? (
                   <span data-figure="stima" data-estimated="true" className="text-sm text-muted-foreground @min-[58rem]/hub:hidden">

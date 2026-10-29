@@ -19,11 +19,12 @@ export function NeedUseCaseLink({ useCase, href, scroll = true }: { useCase: Nee
       data-need-use-case={useCase.id}
       title={useCase.code ? `${useCase.code} · ${useCase.title}` : useCase.title}
       className={cn(
-        "inline-flex items-center rounded-sm text-xs text-primary underline underline-offset-4 outline-none hover:decoration-2 focus-visible:ring-3 focus-visible:ring-ring/50",
+        "inline-flex items-center rounded-sm text-xs text-primary underline underline-offset-2 outline-none hover:decoration-2 focus-visible:ring-3 focus-visible:ring-ring/50",
         TARGET,
       )}
     >
-      <span className="line-clamp-2 break-words">
+      {/* Righe da 20 px e la sottolineatura a 2 px: sta dentro la riga, e `line-clamp` (overflow nascosto) non la taglia. */}
+      <span className="line-clamp-2 leading-5 break-words">
         {useCase.code ? (
           <>
             <span className="font-mono">{useCase.code}</span>
