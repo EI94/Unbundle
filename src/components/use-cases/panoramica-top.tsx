@@ -29,21 +29,28 @@ export const OVERVIEW_TEXT = Object.freeze({
 const NEXT_STEP_HEADING_ID = "panoramica-prossimo-passo";
 
 /**
- * La frase di «Prossimo passo»: «Per partire con il T4 2026 servono ancora 50 requisiti: 40 sono da
- * chiedere, 2 sono da verificare e 8 sono bloccati.», «… c'è 1 requisito da verificare.», «4 use
- * case aspettano una decisione.». Nomina ogni gruppo che conta e non è zero, con le parole e
- * nell'ordine della riga dei conteggi di «Cosa serve», dove porta il pulsante.
+ * La frase di «Prossimo passo»: «Per partire con il T4 2026: 40 requisiti da chiedere, 2 da verificare
+ * e 8 bloccati.», «… c'è 1 requisito da verificare.», «4 use case aspettano una decisione.». Nomina
+ * ogni gruppo che conta e non è zero, con le parole e nell'ordine della riga dei conteggi di «Cosa
+ * serve», dove porta il pulsante. Niente totale: quella riga conta anche quelli in attesa, e un
+ * numero che lì non c'è non si ritrova.
  */
 export function nextStepText(step: OverviewNextStep): string {
   if (step.kind === "decisioni") return step.count === 1 ? "1 use case aspetta una decisione." : `${formatInteger(step.count)} use case aspettano una decisione.`;
   const start = `Per partire con il ${quarterLabel(step.quarter)}`;
   const n = step.toAsk + step.toVerify + step.blocked;
-  const pieces = [
-    step.toAsk ? (step.toAsk === 1 ? "1 è da chiedere" : `${formatInteger(step.toAsk)} sono da chiedere`) : null,
-    step.toVerify ? (step.toVerify === 1 ? "1 è da verificare" : `${formatInteger(step.toVerify)} sono da verificare`) : null,
-    step.blocked ? (step.blocked === 1 ? "1 è bloccato" : `${formatInteger(step.blocked)} sono bloccati`) : null,
-  ].filter((piece): piece is string => piece !== null);
-  if (pieces.length > 1) return `${start} servono ancora ${formatInteger(n)} requisiti: ${pieces.slice(0, -1).join(", ")} e ${pieces[pieces.length - 1]}.`;
+  const groups = [
+    { count: step.toAsk, label: "da chiedere" },
+    { count: step.toVerify, label: "da verificare" },
+    { count: step.blocked, label: step.blocked === 1 ? "bloccato" : "bloccati" },
+  ].filter((group) => group.count > 0);
+  if (groups.length > 1) {
+    // «40 requisiti da chiedere, 2 da verificare e 8 bloccati»: il nome solo sul primo numero.
+    const pieces = groups.map((group, index) =>
+      index === 0 ? `${formatInteger(group.count)} ${group.count === 1 ? "requisito" : "requisiti"} ${group.label}` : `${formatInteger(group.count)} ${group.label}`,
+    );
+    return `${start}: ${pieces.slice(0, -1).join(", ")} e ${pieces[pieces.length - 1]}.`;
+  }
   // Un gruppo solo: la frase corta.
   if (step.toAsk) return n === 1 ? `${start} serve ancora 1 requisito da chiedere.` : `${start} servono ancora ${formatInteger(n)} requisiti da chiedere.`;
   if (step.toVerify) return n === 1 ? `${start} c'è 1 requisito da verificare.` : `${start} ci sono ${formatInteger(n)} requisiti da verificare.`;

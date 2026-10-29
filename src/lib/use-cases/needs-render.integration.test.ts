@@ -533,7 +533,7 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   const quarter = await import("./quarter.ts");
   const thisQuarter = quarter.currentQuarter();
   // Ogni gruppo che conta, con il suo nome: da chiedere, da verificare e bloccati.
-  const sentence = `Per partire con il ${quarter.quarterLabel(thisQuarter)} servono ancora 3 requisiti: 1 è da chiedere, 1 è da verificare e 1 è bloccato.`;
+  const sentence = `Per partire con il ${quarter.quarterLabel(thisQuarter)}: 1 requisito da chiedere, 1 da verificare e 1 bloccato.`;
   const href = `/dashboard/${ids.wsStart}/use-cases?vista=cosa-serve&trimestre=${thisQuarter}`;
   for (const person of REVIEWERS) {
     const page = await hubHtml(person, ids.wsStart, { vista: "panoramica" });
