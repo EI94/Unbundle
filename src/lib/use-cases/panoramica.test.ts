@@ -151,6 +151,13 @@ test("cifre: valore e costo di `roadmapTotals`, gli use case della corsia di que
   assert.deepEqual(figures.value, totals.expectedValue);
   assert.deepEqual(figures.cost, totals.committedCost);
   assert.equal(figures.value?.amountEur, 17_250);
+  // «costo di avvio» è l'avvio delle card «Da costruire» delle corsie: quello in realizzazione, che ha
+  // lo stesso costo ma nessun «avvio» sulla sua card, resta fuori.
+  const lanesView = buildLanes(items, TODAY);
+  const laneStartEur = lanesView.lanes.flatMap((lane) => lane.entries).reduce((sum, entry) => sum + (entry.item.kind === "da_costruire" ? (entry.item.cost?.referenceEur ?? 0) : 0), 0);
+  assert.equal(lanesView.inProgress.filter((item) => item.cost).length, 1, "in realizzazione con un costo");
+  assert.deepEqual([figures.cost?.amountEur, figures.cost?.note], [laneStartEur, "su 1 use case"]);
+  assert.equal(laneStartEur, 30_000);
   // La corsia: l'approvato del T4 e lo scaduto del T3; non quello già partito.
   assert.deepEqual(figures.quarter, { count: 2, quarter: "2026-Q4" });
   assert.equal(figures.quarter?.count, buildLanes(items, TODAY).lanes[0].entries.length);

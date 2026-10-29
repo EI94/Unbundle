@@ -699,15 +699,23 @@ test("cifre della Panoramica: «su N use case · M da fascia», quota delle orig
     share: { adoption: 60, transformation: 40 },
     note: "su 3 use case",
   });
-  // 40.000 (importo) + 65.000 (fascia 2) + 130.000 (sforzo 4) + 1.000 (in realizzazione); la best practice approvata no.
+  // 40.000 (importo) + 65.000 (fascia 2) + 130.000 (sforzo 4): gli approvati «Da costruire», l'avvio
+  // che le card scrivono nelle corsie. La best practice approvata no, e nemmeno quella in realizzazione.
   assert.deepEqual(totals.committedCost, {
-    amountEur: 236_000,
-    count: 4,
+    amountEur: 235_000,
+    count: 3,
     fromBand: 2,
     share: { adoption: 72, transformation: 28 },
-    note: "su 4 use case · 2 da fascia",
+    note: "su 3 use case · 2 da fascia",
   });
   assert.deepEqual(roadmapTotals([item({}), item({ status: "implemented", valueEurYear: 1 })]), { expectedValue: null, committedCost: null });
+  // Uno use case «Da costruire» che apre il suo dossier è già partito: il suo avvio esce dalla cifra,
+  // come esce dalla sua card, e il suo valore resta contato.
+  const approved = item({ status: "accepted", valueEurYear: 9_000, costEurOnce: 560 });
+  const started = item({ status: "in_progress", valueEurYear: 9_000, costEurOnce: 560 });
+  assert.equal(roadmapTotals([approved]).committedCost?.amountEur, 560);
+  assert.deepEqual(roadmapTotals([started]), { expectedValue: roadmapTotals([approved]).expectedValue, committedCost: null });
+  assert.equal(roadmapTotals([approved, started]).committedCost?.note, "su 1 use case");
   assert.equal(totalsNote(9), "su 9 use case");
   assert.equal(totalsNote(7, 2), "su 7 use case · 2 da fascia");
 });

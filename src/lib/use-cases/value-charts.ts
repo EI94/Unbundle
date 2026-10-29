@@ -27,9 +27,9 @@
  * - **Curva del valore** (`buildRoadmapValue`): le schede approvate o in realizzazione con un modello;
  *   mesi da `planMonths` sulle schede di tutto il workspace (`roadmapPlan`, come `get_use_case`
  *   del MCP: un filtro non sposta i mesi), curva da `jCurve` (`value-calc.ts`), ore contate,
- *   pareggio. Il costo di avvio entra nella curva con la regola di «Costo impegnato»
- *   (`roadmapTotals`): in realizzazione, oppure approvate «Da costruire»; una best practice
- *   approvata «Da diffondere» porta benefici e ricorrenti, non l'avvio.
+ *   pareggio. Il costo di avvio entra nella curva (`isCommittedCost`): in realizzazione, oppure
+ *   approvate «Da costruire»; una best practice approvata «Da diffondere» porta benefici e
+ *   ricorrenti, non l'avvio.
  * - **Valore per tipo di ritorno** (`buildLeverChart`): una riga per ognuno degli 8 tipi, un
  *   segmento per use case dal più grande; le voci da misurare a parte (fuori dal totale) e le
  *   qualitative contate.
@@ -451,8 +451,10 @@ export function roadmapValueItems(items: readonly HubItem[]): HubItem[] {
 }
 
 /**
- * L'avvio della scheda entra nei costi della curva? La regola di «Costo impegnato»
- * (`roadmapTotals`): in realizzazione, oppure approvata «Da costruire».
+ * L'avvio della scheda entra nei costi della curva? In realizzazione, oppure approvata «Da
+ * costruire». La cifra «costo di avvio» in testa alla Panoramica (`roadmapTotals`) conta solo le
+ * approvate «Da costruire», l'avvio che le card scrivono; la curva tiene anche quelle già partite,
+ * che l'avvio lo pagano nei mesi fino all'entrata in uso.
  */
 export function isCommittedCost(item: Pick<HubItem, "phase" | "kind">): boolean {
   return item.phase === "in_realizzazione" || (item.phase === "approvato" && item.kind === "da_costruire");

@@ -256,6 +256,11 @@ function figuresOf(page: string, name: string): number[] {
   return [...page.matchAll(new RegExp(`data-figure="${name}"[^>]*>([^<]*)<`, "g"))].map((match) => euros(match[1]));
 }
 
+/** Gli euro dell'avvio che le card scrivono («avvio 560 €»), nell'ordine della pagina. */
+function startCostsOf(page: string): number[] {
+  return [...page.matchAll(/data-figure="costo"[^>]*><span class="whitespace-nowrap">avvio ([^<]*)</g)].map((match) => euros(match[1]));
+}
+
 /** I pulsanti pieni della pagina: `[data-slot=button]` con la classe `bg-primary` (§5.7). */
 function filledButtons(page: string): number {
   return [...page.matchAll(/<(?:a|button)\b[^>]*>/g)].filter(([tag]) => {
@@ -492,6 +497,11 @@ test("Panoramica: quattro cifre e «Su tutto il portafoglio»; i grafici di «Be
       euros(tileOf(page, "valore")),
       person,
     );
+    // «costo di avvio» è l'avvio che le card delle corsie scrivono: A (560 €) e la scheda senza
+    // modello (20.000 €). B, in realizzazione, è già partita: la sua card non scrive l'avvio e i suoi
+    // 280 € non entrano (prima 20.840 € su 3 use case).
+    assert.deepEqual(startCostsOf(page), [560, 20_000], person);
+    assert.match(tileOf(page, "costo"), /20\.560 €\s+costo di avvio\s+su 2\u00a0use\u00a0case/, person);
   }
   // Il contributore: nessun euro.
   const theirs = await html("contributor", ids.wsV, { vista: "panoramica" });
@@ -508,8 +518,11 @@ test("le cifre della Panoramica si sommano: le card fanno la corsia, le corsie e
     assert.deepEqual(figuresOf(page, "corsia"), [16_293, 4_043], person);
     assert.deepEqual(figuresOf(page, "in-realizzazione"), [2_719], person);
     assert.equal(sum([...figuresOf(page, "corsia"), ...figuresOf(page, "in-realizzazione")]), 23_055, person);
-    // L'avvio: 560 + 560 + 280, sugli use case con un costo.
-    assert.match(tileOf(page, "costo"), /1\.400 €\s+costo di avvio\s+su 3\u00a0use\u00a0case/, person);
+    // L'avvio: 560 + 560, le due FIX_A di LIBRA nelle corsie, come le loro card lo scrivono; ORSA O1
+    // è in realizzazione, già partita, e i suoi 280 € non ci sono più (prima 1.400 € su 3 use case).
+    assert.deepEqual(startCostsOf(page), [560, 560], person);
+    assert.match(tileOf(page, "costo"), /1\.120 €\s+costo di avvio\s+su 2\u00a0use\u00a0case/, person);
+    assert.equal(sum(startCostsOf(page)), euros(tileOf(page, "costo")), person);
 
     // «Per agente»: la card di LIBRA è la somma delle sue card, 20.336 € (prima 20.335 €).
     const grid = await html(person, ids.wsS, { vista: "panoramica", mostra: "agenti" });

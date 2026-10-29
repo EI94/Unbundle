@@ -363,7 +363,9 @@ test("cifre della Panoramica: beneficio contato e avvio entrano nei totali", () 
   // Le cifre delle card, arrotondate una a una: 4.043 € + 2.719 €.
   assert.equal(totals.expectedValue?.amountEur, 4_043 + 2_719, "valore atteso");
   assert.equal(totals.expectedValue?.count, 2);
-  assert.equal(totals.committedCost?.amountEur, 560 + 280);
+  // L'avvio solo di A, approvata «Da costruire»: B è in realizzazione, già partita, e la sua card non lo scrive.
+  assert.equal(totals.committedCost?.amountEur, 560);
+  assert.equal(totals.committedCost?.count, 1);
   assert.equal(totals.committedCost?.fromBand, 0);
 });
 

@@ -1079,7 +1079,11 @@ export interface RoadmapTile {
 export interface RoadmapTotals {
   /** «valore contato all'anno»: approvati e in realizzazione. null senza use case con una cifra. */
   expectedValue: RoadmapTile | null;
-  /** «costo di avvio»: approvati «Da costruire» e in realizzazione. null senza use case con un costo. */
+  /**
+   * «costo di avvio»: solo gli approvati «Da costruire», le card che nelle corsie scrivono «avvio …».
+   * Uno use case in realizzazione è già partito: il suo avvio non è più da pianificare e la sua card
+   * non lo scrive. null senza use case con un costo.
+   */
   committedCost: RoadmapTile | null;
 }
 
@@ -1103,10 +1107,13 @@ function shareOf(parts: Array<{ origin: Origin; amount: number }>): Record<Origi
  * Le cifre in testa alla Panoramica (§4.5; `overviewFigures` di `panoramica.ts`). «valore contato
  * all'anno»: somma sugli approvati e in realizzazione del miglior valore annuo (dossier, poi team),
  * solo gli euro che le card scrivono (`shownPerYearEur`). «costo di avvio»: somma sugli approvati «Da
- * costruire» e in realizzazione del costo di §7.2; una fascia vale il suo riferimento nelle fasce
- * del workspace, lo sforzo l'importo stimato. Ogni cifra è la somma delle cifre delle card, ognuna
- * arrotondata all'euro: le corsie, «In realizzazione» e «Per agente» sommano le stesse cifre. Una
- * cifra senza use case non si mostra. «Valore misurato» arriva con il ROI del dossier (H6a).
+ * costruire» del costo di §7.2, cioè l'avvio che le loro card scrivono nelle corsie; una fascia vale
+ * il suo riferimento nelle fasce del workspace, lo sforzo l'importo stimato. Non conta gli use case
+ * in realizzazione: sono già partiti, la loro card non scrive l'avvio, e la cifra direbbe un avvio
+ * che a schermo non c'è (la curva del valore invece li tiene, `isCommittedCost` di
+ * `value-charts.ts`). Ogni cifra è la somma delle cifre delle card, ognuna arrotondata all'euro: le
+ * corsie, «In realizzazione» e «Per agente» sommano le stesse cifre. Una cifra senza use case non
+ * si mostra. «Valore misurato» arriva con il ROI del dossier (H6a).
  */
 export function roadmapTotals(items: readonly HubItem[]): RoadmapTotals {
   const value: Array<{ origin: Origin; amount: number }> = [];
@@ -1117,7 +1124,7 @@ export function roadmapTotals(items: readonly HubItem[]): RoadmapTotals {
     if (!upcoming && !inProgress) continue;
     const perYearEur = shownPerYearEur(item.value);
     if (perYearEur !== null) value.push({ origin: item.origin, amount: perYearEur });
-    if (item.cost && (inProgress || item.kind === "da_costruire")) {
+    if (item.cost && upcoming && item.kind === "da_costruire") {
       cost.push({ origin: item.origin, amount: roundAmount(item.cost.referenceEur), fromBand: item.cost.fromBand });
     }
   }
