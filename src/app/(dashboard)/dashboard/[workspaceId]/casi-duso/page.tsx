@@ -11,7 +11,7 @@ import { canManageWorkspaceSettings } from "@/lib/workspace-permissions";
 /**
  * Lista di ripiego dei dossier (DESIGN §2.1, §3.1, «La pagina /casi-duso di
  * oggi»): non si ridisegna e resta raggiungibile dalla barra di ripiego finché
- * manca P0-16; poi il layout del workspace la reindirizza alla Roadmap (H6a,
+ * manca P0-16; poi il layout del workspace la reindirizza alla Panoramica (H6a,
  * non qui). Usa la stessa card della colonna «In realizzazione», senza «Nuovo
  * caso»: un dossier parte solo dalla scheda di uno use case.
  *

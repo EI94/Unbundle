@@ -200,7 +200,7 @@ export const BUBBLE_WHEN_LABEL: Readonly<Record<BubbleWhen, string>> = Object.fr
   da_decidere: "da decidere",
 });
 
-/** Approvata per un trimestre già passato: «questo trimestre · scaduto», come il tag della Roadmap. */
+/** Approvata per un trimestre già passato: «questo trimestre · scaduto», come il tag «Scaduto» della Panoramica. */
 export const BUBBLE_EXPIRED_LABEL = "scaduto";
 
 /** «questo trimestre», «questo trimestre · scaduto», «più avanti»… */
@@ -251,7 +251,7 @@ export interface BenefitBubble {
   groupLabel: string | null;
   slot: GroupSlot;
   when: BubbleWhen;
-  /** Approvata con un trimestre passato e non partita («Scaduto» nella Roadmap): il bordo resta di questo trimestre. */
+  /** Approvata con un trimestre passato e non partita («Scaduto» nella Panoramica): il bordo resta di questo trimestre. */
   expired: boolean;
 }
 
@@ -265,7 +265,7 @@ export interface BenefitBubbles {
 }
 
 /**
- * La matrice a bolle facilità × beneficio di «Priorità» (dal menu «⋯»), dalle schede di «Da
+ * La matrice a bolle facilità × beneficio del menu «⋯» (nella Panoramica), dalle schede di «Da
  * costruire» (`isPriorityCandidate`) con un modello. Senza facilità una scheda non ha una x: si conta in `withoutEase`.
  */
 export function buildBenefitBubbles(items: readonly HubItem[], params: ValueParams, today: string, palette: GroupPalette): BenefitBubbles {

@@ -98,7 +98,7 @@ function candidates(w: number, h: number, r: number): Array<[number, number]> {
 
 /**
  * Le posizioni delle etichette, una per punto, nell'ordine dei punti (chi viene prima sceglie
- * prima: l'ordine è quello della lista di «Priorità», mai per persona).
+ * prima: l'ordine è quello della matrice, `buildPriority`, mai per persona).
  */
 export function placeMatrixLabels(points: readonly MatrixLabelInput[], options: MatrixLabelOptions = {}): Map<string, MatrixLabelPlacement> {
   const { boxPx, charPx, heightPx, dotPx } = { ...DEFAULTS, ...options };

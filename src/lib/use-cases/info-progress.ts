@@ -30,7 +30,7 @@ import { reviewerStatus } from "./referent/state.ts";
 export const INFO_PROGRESS_STATES = ["da_chiedere", "in_attesa", "da_verificare", "senza_risposta", "complete"] as const;
 export type InfoProgressState = (typeof INFO_PROGRESS_STATES)[number];
 
-/** Gli stati che chiedono a qualcuno di fare qualcosa: gli unici con il chip nelle righe e nelle schede della Roadmap. */
+/** Gli stati che chiedono a qualcuno di fare qualcosa: gli unici con il chip nelle righe e nelle card della Panoramica. */
 export const INFO_ROW_STATES: readonly InfoProgressState[] = Object.freeze(["da_verificare", "senza_risposta"]);
 
 /** I valori di `?info=` dell'area. */

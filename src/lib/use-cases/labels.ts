@@ -84,7 +84,7 @@ export const VALUE_EUR_SOURCE_LABEL: Readonly<Record<ValueEurSource, { short: st
 /**
  * Le fonti del costo di realizzazione, nell'ordine in cui vincono (§7.2): il dossier, la stima
  * di «Benefici e costi» (avvio e ricorrenti), l'importo e la fascia del team, l'impegno.
- * Forma corta nella riga e nella card della Roadmap, lunga nella scheda.
+ * Forma corta nella riga e nella card della Panoramica, lunga nella scheda.
  * Per il dossier: «dossier» e «dal dossier», mai «da dossier». Il costo che viene dal punteggio
  * di impegno (KPI `effort`) si dice in parole semplici, «stimato» e «stimato dall'impegno», non
  * «da sforzo» (H4p).
@@ -103,7 +103,7 @@ export const COST_SOURCE_LABEL: Readonly<Record<CostSource, { short: string; lon
 /** Testo «fascia» al posto dell'importo, quando il costo è una fascia (team o sforzo). */
 export const COST_BAND_WORD = "fascia";
 
-/** Le zone della matrice Valore × Costo (§7.4), nell'ordine della lista di «Priorità». */
+/** Le zone della matrice Valore × Costo (§7.4), nell'ordine di `buildPriority`. */
 export const ZONES = ["subito", "da_pianificare", "se_avanza_tempo", "non_ora"] as const;
 export type Zone = (typeof ZONES)[number];
 export const ZONE_LABEL: Readonly<Record<Zone, string>> = {

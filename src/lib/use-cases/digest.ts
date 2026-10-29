@@ -16,9 +16,9 @@
  *   «Riapri», altrimenti da `coalesce(submitted_at, created_at)`; per «Da rivedere» dalla
  *   data di revisione. Mai dall'ultimo cambio di stato;
  * - «approvati non partiti» sono gli approvati con un trimestre già finito e senza avvio,
- *   cioè il gruppo «Scaduti» della Roadmap (§3.6: «se non è partito, il tag rosso
- *   Scaduto»). Se lo stato dei dossier non si legge, il numero non si sa e non si scrive:
- *   un dossier avviato sembrerebbe un approvato fermo.
+ *   cioè quelli con «Scaduto» in testa a «Questo trimestre» della Panoramica (§3.6: «se non
+ *   è partito, il tag rosso Scaduto»). Se lo stato dei dossier non si legge, il numero non si
+ *   sa e non si scrive: un dossier avviato sembrerebbe un approvato fermo.
  *
  * I segnali portano solo numeri: mai titoli, testi, codici o note delle schede, mai una
  * scheda collegata (`related_entity_*` vuoti), mai una persona. Lo zero non si mostra:

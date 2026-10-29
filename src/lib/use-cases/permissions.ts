@@ -69,7 +69,7 @@ export interface UseCaseAbilities {
   /** I grafici del menu «⋯» (matrici e curva del valore), aperti nella Panoramica. */
   canSeePriority: boolean;
   /**
-   * Valore, Costo, zone, euro, punteggi e cifre della Roadmap; anche «Benefici e costi»
+   * Valore, Costo, zone, euro, punteggi e cifre della Panoramica; anche «Benefici e costi»
    * (`value_model`) e le «Ipotesi di calcolo» in sola lettura. Solo i revisori: la proiezione
    * del contributore non li porta mai.
    */

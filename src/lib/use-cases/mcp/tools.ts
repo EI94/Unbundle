@@ -478,7 +478,7 @@ function planCardOf(item: Pick<HubItem, "id" | "phase" | "targetQuarter" | "valu
 
 /**
  * I mesi di avvio e di entrata in uso di una scheda con «Benefici e costi», approvata o in
- * realizzazione, come nella Roadmap (`planMonths`). Solo «Più avanti» senza piano dipende dalle
+ * realizzazione, come in «Curva del valore» (`planMonths`). Solo «Più avanti» senza piano dipende dalle
  * altre schede (parte dopo l'ultimo trimestre usato): allora si leggono anche loro.
  */
 async function planOfDetail(principal: TeamPrincipal, deps: TeamToolDeps, detail: ReviewerDetail): Promise<PlannedMonths | null> {

@@ -39,7 +39,7 @@ export interface CostBandInfo {
   fromEur: number;
   /** A (euro, compreso); `null` per la quinta, che non ha un tetto. */
   toEur: number | null;
-  /** Valore che la fascia vale nei totali della Roadmap («Costo impegnato»). */
+  /** Valore che la fascia vale nei totali della Panoramica («costo di avvio»). */
   referenceEur: number;
 }
 
