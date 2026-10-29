@@ -350,12 +350,15 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
 
   // «Per trimestre | Per agente»: ai revisori, solo se un approvato ha l'agente nel titolo (un vecchio
   // `?mostra=agenti` senza prefissi mostra le corsie). «Per trimestre» tiene ogni filtro; «Per agente»
-  // toglie solo l'agente, e torna all'elenco degli agenti.
+  // toglie solo l'agente, e torna all'elenco degli agenti. Aperto dall'indirizzo, «Per agente» viene in
+  // vista, ma non sotto un pannello aperto, il pannello rapido o un avviso in testa (ricevuta,
+  // benvenuto), che restano in cima.
   const agentsInWorkspace = reviewer && reviewerItems.some((item) => item.phase === "approvato" && agentOfTitle(item.title) !== null);
   const grouping: LanesGrouping | null =
     view === "panoramica" && !chart && agentsInWorkspace
       ? {
           active: params.mostra === "agenti" ? "agente" : "trimestre",
+          landOnLoad: !params.apri && !params.nuovo && !params.thanks && !params.joined,
           items: [
             { key: "trimestre", label: LANES_TEXT.byQuarter, href: hubHref(basePath, navQuery, { mostra: null }) },
             { key: "agente", label: LANES_TEXT.byAgent, href: hubHref(basePath, navQuery, { mostra: "agenti", agente: null }) },

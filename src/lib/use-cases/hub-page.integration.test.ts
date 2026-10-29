@@ -1147,6 +1147,21 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
   // L'ancora della card, dove torna «‹ Tutti gli agenti».
   assert.match(libraCard, /<a id="agente-LIBRA" /);
   assert.equal(filledButtons(grid), 1, "un solo pulsante pieno");
+  // Aperto dall'indirizzo, «Per agente» viene in vista al caricamento: il segno nel gruppo, prima delle card.
+  const MARK = 'data-slot="reveal-on-load"';
+  assert.equal(grid.split(MARK).length - 1, 1);
+  assert.ok(grid.indexOf('data-slot="plan-grouping"') < grid.indexOf(MARK) && grid.indexOf(MARK) < grid.indexOf('data-slot="agent-grid"'));
+  // Sotto un pannello aperto, il pannello rapido (ls è di Lateral Space) o un avviso in testa la pagina resta in cima.
+  const groupingProp = async (extra: Record<string, string>) =>
+    (findProp((await hubTree("ls", ids.wsP, { vista: "panoramica", mostra: "agenti", ...extra })).tree, "grouping") as Array<{ landOnLoad?: boolean } | null>).find(Boolean);
+  assert.equal((await groupingProp({}))?.landOnLoad, true);
+  const notices: Array<Record<string, string>> = [{ apri: agentCards.libraL1.id }, { nuovo: "1" }, { thanks: "1" }, { joined: "1" }];
+  for (const extra of notices) assert.equal((await groupingProp(extra))?.landOnLoad, false, JSON.stringify(extra));
+  // Resa per intero; il pannello rapido legge l'indirizzo con il router di Next, che qui non c'è: lo prova l'albero qui sopra.
+  for (const extra of notices.filter((notice) => !notice.nuovo)) {
+    const page = await html("ls", ids.wsP, { vista: "panoramica", mostra: "agenti", ...extra });
+    assert.ok(page.includes('data-slot="agent-grid"') && !page.includes(MARK), JSON.stringify(extra));
+  }
 
   // Dopo il clic: le corsie del solo LIBRA, con il suo nome per i lettori di schermo.
   const libra = await html("ls", ids.wsP, { vista: "panoramica", agente: "LIBRA", origine: "adoption" });
@@ -1166,6 +1181,7 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
   const backLine = libra.slice(libra.indexOf('data-slot="agent-filter-line"'), libra.indexOf("</p>", libra.indexOf('data-slot="agent-filter-line"')));
   assert.equal(/<a [^>]*href="([^"]*)"/.exec(backLine)?.[1], `${base}?vista=panoramica&amp;mostra=agenti&amp;origine=adoption#agente-LIBRA`);
   assert.match(await html("ls", ids.wsP, { vista: "panoramica", agente: "altri" }), /aria-label="Altri use case per trimestre"/);
+  assert.ok(!libra.includes(MARK), "le corsie di un agente: le porta l'ancora");
 
   // Il contributore non ha la scelta: `mostra` non vale per lui.
   const contributor = await html("contributor", ids.wsP, { vista: "panoramica", mostra: "agenti" });
@@ -1173,6 +1189,7 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
   // Senza agenti nei titoli niente scelta, e un vecchio `mostra=agenti` mostra le corsie.
   const plain = await html("ls", ids.wsA, { vista: "panoramica", mostra: "agenti" });
   assert.ok(!plain.includes("plan-grouping") && !plain.includes("agent-grid") && plain.includes('data-slot="lanes"'));
+  for (const page of [contributor, plain]) assert.ok(!page.includes(MARK), "nessun segno senza «Per agente»");
 });
 
 // ─── Contributori (D4, D13) ──────────────────────────────────────────

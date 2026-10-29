@@ -25,7 +25,7 @@ import { AgentGrid } from "./agent-grid";
 import { Disclosure } from "./disclosure";
 import { EmptyState, HUB_TEXT, NoResults } from "./hub-header";
 import { LaneCard } from "./lane-card";
-import { HashFocusLink } from "./list-focus";
+import { HashFocusLink, RevealOnLoad } from "./list-focus";
 import { panelHref, type HubQuery } from "./use-case-row";
 
 /** Testi delle corsie della Panoramica (rilascio «Panoramica»). */
@@ -61,6 +61,11 @@ export function agentSectionLabel(name: string): string {
 export interface LanesGrouping {
   active: "trimestre" | "agente";
   items: SegmentedNavItem[];
+  /**
+   * Aperto dall'indirizzo, «Per agente» viene in vista e prende il fuoco al caricamento della pagina
+   * (`RevealOnLoad`); false sotto un pannello aperto, il pannello rapido o un avviso in testa.
+   */
+  landOnLoad?: boolean;
 }
 
 export interface PanoramaLanesProps {
@@ -103,9 +108,11 @@ export interface PanoramaLanesProps {
  * ognuna con «3 use case · 24.500 € contati all'anno», le prime 5 card e le altre dietro «Mostra gli
  * altri N». Le corsie stanno affiancate da 58rem del riquadro (`@container/hub`), prima una sotto
  * l'altra. Ai revisori di un workspace con gli agenti nel titolo, sopra, «Per trimestre | Per agente»:
- * per agente una card per agente al posto delle corsie (`AgentGrid`). Sotto «In realizzazione», aperta,
- * con le card dei dossier e, ai revisori, i suoi euro contati come una corsia («In realizzazione 1 ·
- * 2.719 € contati all'anno»), e «Realizzati», chiusa, con il conto. I contributori vedono le stesse corsie
+ * per agente una card per agente al posto delle corsie (`AgentGrid`). Aperta dall'indirizzo, «Per
+ * agente» viene in vista e prende il fuoco (`RevealOnLoad`); dopo un clic su «Per agente» la pagina
+ * resta dov'è. Sotto «In realizzazione», aperta, con le card dei dossier e, ai revisori, i suoi euro
+ * contati come una corsia («In realizzazione 1 · 2.719 € contati all'anno»), e «Realizzati», chiusa,
+ * con il conto. I contributori vedono le stesse corsie
  * con «N use case» e card con tag, titolo e fase, senza cifre. Con il filtro «Agente» (anche dopo un
  * clic in «Per agente») sopra le corsie una riga dice di chi sono, «LIBRA · 7 use case», con
  * «‹ Tutti gli agenti» quando c'è «Per agente», che torna alla card dell'agente e le dà il fuoco
@@ -189,6 +196,8 @@ export function PanoramaLanes({
           {grouping ? (
             <div data-slot="plan-grouping">
               <SegmentedNav size="sm" ariaLabel={LANES_TEXT.groupingLabel} active={grouping.active} items={grouping.items} />
+              {/* Qui e non in fondo alla sezione: con `space-y-3` un ultimo figlio in più darebbe un margine sotto le card. */}
+              {byAgent && grouping.landOnLoad ? <RevealOnLoad /> : null}
             </div>
           ) : null}
           {agentLine ? (

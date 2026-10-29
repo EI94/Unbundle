@@ -364,4 +364,15 @@ test("«Per trimestre | Per agente»: le card degli agenti al posto delle corsie
   assert.ok(!byQuarter.includes('data-slot="agent-filter-line"'), "senza il filtro nessuna riga");
   assert.ok(!render([libra]).includes("plan-grouping"), "senza la scelta niente controllo");
   assert.equal(lanes.agentSectionLabel("ORSA"), "Use case di ORSA per trimestre");
+  // Aperto dall'indirizzo, «Per agente» viene in vista: il segno sta nel gruppo, dopo i segmenti
+  // (in fondo alla sezione `space-y-3` darebbe un margine sotto le card), e solo per «Per agente».
+  const MARK = '<span hidden="" data-slot="reveal-on-load"></span>';
+  const landing = render([libra, plain], { grouping: { ...grouping("agente"), landOnLoad: true } });
+  assert.equal(landing.split(MARK).length - 1, 1);
+  assert.match(landing, /<div data-slot="plan-grouping"><nav [\s\S]*?<\/nav><span hidden="" data-slot="reveal-on-load"><\/span><\/div>/);
+  assert.ok(!byAgent.includes(MARK), "senza `landOnLoad` (un pannello, un avviso) niente segno");
+  assert.ok(!render([libra, plain], { grouping: { ...grouping("trimestre"), landOnLoad: true } }).includes(MARK), "le corsie: niente segno");
+  assert.ok(!render([libra], { agentFilter: "LIBRA", grouping: { ...grouping("trimestre"), landOnLoad: true } }).includes(MARK), "le corsie di un agente: le porta l'ancora");
+  const theirs = [contributor({ title: "LIBRA L1 · Fatture" })];
+  assert.ok(!render(theirs, { grouping: { ...grouping("agente"), landOnLoad: true } }).includes(MARK), "il contributore: le corsie");
 });

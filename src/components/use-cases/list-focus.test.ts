@@ -150,3 +150,61 @@ test("le ancore che cambiano vista usano `HashFocusLink`, e l'hub monta `HashFoc
   assert.match(own, /useEffect\(\(\) => \{\s*const id = takeHashFocus\(window\.location\.hash\);\s*if \(id\) focusHashTarget\(id\);\s*\}, \[pathname, search\]\);/);
   assert.match(own, /getElementById\(id\)\?\.focus\(\{ preventScroll: true \}\)/);
 });
+
+// «Per agente» aperto dall'indirizzo (rilascio «Panoramica», rifiniture): al telefono le card stavano
+// 1100 px sotto la piega. All'apertura della pagina vengono in vista, e la loro sezione prende il fuoco;
+// dopo un clic nell'app la pagina e il fuoco restano a Next.
+
+test("«Per agente» viene in vista solo all'apertura della pagina, ancora ferma e senza ancora", () => {
+  const LOAD = { hydrating: true, hash: "", scrollY: 0, focused: false };
+  assert.equal(focus.shouldRevealOnLoad(LOAD), true);
+  assert.equal(focus.shouldRevealOnLoad({ ...LOAD, hydrating: false }), false, "un clic nell'app: «Per agente», «‹ Tutti gli agenti», un filtro");
+  assert.equal(focus.shouldRevealOnLoad({ ...LOAD, hash: "#agente-LIBRA" }), false, "un'ancora: la porta il browser");
+  assert.equal(focus.shouldRevealOnLoad({ ...LOAD, scrollY: 40 }), false, "la pagina si è già mossa");
+  assert.equal(focus.shouldRevealOnLoad({ ...LOAD, focused: true }), false, "il fuoco è già altrove");
+});
+
+test("in vista solo se la prima card non c'è tutta; il fuoco sempre", () => {
+  const sectionWith = (cardBottom: number | null) => {
+    const calls: Array<[string, unknown]> = [];
+    const card = { getBoundingClientRect: () => ({ bottom: cardBottom }) };
+    const section = {
+      querySelector(selector: string) {
+        assert.equal(selector, "[data-slot=agent-card]");
+        return cardBottom === null ? null : card;
+      },
+      getBoundingClientRect: () => ({ bottom: 2000 }),
+      scrollIntoView: (options: unknown) => calls.push(["scroll", options]),
+      focus: (options: unknown) => calls.push(["focus", options]),
+    };
+    return { section: section as unknown as HTMLElement, calls };
+  };
+  // 400 × 860: la prima card finisce a 1241 px, sotto la piega.
+  const phone = sectionWith(1241);
+  focus.revealSection(phone.section, 860);
+  assert.deepEqual(phone.calls, [
+    ["scroll", { block: "start" }],
+    ["focus", { preventScroll: true }],
+  ]);
+  // 1440 × 900: la prima fila sta a 689–800 px, con le fasi e le cifre: la pagina resta in cima.
+  const desktop = sectionWith(800);
+  focus.revealSection(desktop.section, 900);
+  assert.deepEqual(desktop.calls, [["focus", { preventScroll: true }]]);
+  // Senza card, la sezione stessa.
+  const none = sectionWith(null);
+  focus.revealSection(none.section, 900);
+  assert.deepEqual(none.calls, [
+    ["scroll", { block: "start" }],
+    ["focus", { preventScroll: true }],
+  ]);
+});
+
+test("il segno di «Per agente»: nascosto, solo all'idratazione, e il segmento resta senza scorrere", () => {
+  assert.equal(renderToStaticMarkup(createElement(focus.RevealOnLoad, {})), '<span hidden="" data-slot="reveal-on-load"></span>');
+  const own = readFileSync(new URL("./list-focus.tsx", import.meta.url), "utf8");
+  assert.match(own, /useSyncExternalStore\(noSubscribe, \(\) => false, \(\) => true\)/);
+  assert.match(own, /shouldRevealOnLoad\(\{ hydrating,/, "solo all'apertura, mai dopo un clic");
+  // Il clic su «Per agente» non scorre e tiene il fuoco sul segmento.
+  const nav = readFileSync(new URL("../dashboard/segmented-nav.tsx", import.meta.url), "utf8");
+  assert.match(nav, /href=\{item\.href\}\s*scroll=\{false\}/);
+});

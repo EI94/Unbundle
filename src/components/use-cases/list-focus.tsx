@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
@@ -171,6 +171,65 @@ export function RevealOnMount() {
     details?.querySelector("summary")?.focus({ preventScroll: true });
   }, []);
   return <span ref={ref} hidden data-slot="reveal-on-mount" />;
+}
+
+/** Nessun negozio da seguire: `useSyncExternalStore` serve solo a sapere se React sta idratando la pagina. */
+function noSubscribe(): () => void {
+  return () => undefined;
+}
+
+/** La pagina quando «Per agente» monta. */
+export interface RevealPage {
+  /** React idrata l'HTML del server: la pagina si è appena aperta dall'indirizzo, non con un clic nell'app. */
+  hydrating: boolean;
+  /** L'ancora dell'indirizzo («#agente-LIBRA»), "" senza. */
+  hash: string;
+  scrollY: number;
+  /** Il fuoco è già su qualcosa che non è il `<body>`. */
+  focused: boolean;
+}
+
+/**
+ * «Per agente» viene in vista solo su una pagina appena aperta dall'indirizzo e ancora ferma. Non dopo
+ * un clic nell'app: «Per agente» resta dov'è con il fuoco sul segmento, «‹ Tutti gli agenti» porta il
+ * fuoco sulla card (`HashFocusLink`), un filtro lo lascia nel suo campo. Non con un'ancora, né se la
+ * pagina si è già mossa o il fuoco è già altrove.
+ */
+export function shouldRevealOnLoad(page: RevealPage): boolean {
+  return page.hydrating && page.hash === "" && page.scrollY === 0 && !page.focused;
+}
+
+/**
+ * La sezione viene in vista solo se la prima card degli agenti non sta tutta sullo schermo (a 400 px
+ * «Per agente» comincia a 1069 px; a 1440 × 900 la prima fila sta a 689–800 px con le fasi e le cifre,
+ * e la pagina resta in cima), con il suo margine sotto la barra in alto. Il fuoco va sempre alla
+ * sezione, senza scorrere ancora.
+ */
+export function revealSection(section: HTMLElement, viewportHeight: number): void {
+  const first = section.querySelector("[data-slot=agent-card]") ?? section;
+  if (first.getBoundingClientRect().bottom > viewportHeight) section.scrollIntoView({ block: "start" });
+  section.focus({ preventScroll: true });
+}
+
+/**
+ * Nel gruppo «Per trimestre | Per agente» di «Per agente» aperto dall'indirizzo («?vista=panoramica&
+ * mostra=agenti» scritto, nei preferiti o in un link): appena la pagina c'è, le card degli agenti vengono
+ * in vista e la loro sezione prende il fuoco, come dopo `?agente=LIBRA#panoramica-approvati`. Senza, al
+ * telefono la pagina si apriva in cima e le card stavano 1100 px più giù. A differenza di
+ * `RevealOnMount`, solo all'apertura della pagina: lo stesso indirizzo arriva dal clic su «Per agente» e
+ * da «‹ Tutti gli agenti», e lì pagina e fuoco restano a Next e a `HashFocusLink`.
+ */
+export function RevealOnLoad() {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  // Mentre React idrata legge l'ultima funzione (true); in una navigazione nell'app, quella di mezzo (false).
+  const hydrating = useSyncExternalStore(noSubscribe, () => false, () => true);
+  useEffect(() => {
+    const section = ref.current?.closest("section");
+    const active = document.activeElement;
+    if (!section || !shouldRevealOnLoad({ hydrating, hash: window.location.hash, scrollY: window.scrollY, focused: active !== null && active !== document.body })) return;
+    revealSection(section, document.documentElement.clientHeight);
+  }, [hydrating]);
+  return <span ref={ref} hidden data-slot="reveal-on-load" />;
 }
 
 /** Il titolo di una vista, solo per i lettori di schermo (sr-only): prende il fuoco dopo «‹ Torna alla Panoramica» o un `ViewFocusLink`. */
