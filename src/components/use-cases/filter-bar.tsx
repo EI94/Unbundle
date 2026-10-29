@@ -81,6 +81,15 @@ const KINDS: FilterOption[] = [
   { value: "diffondere", label: "Da diffondere" },
 ];
 
+/**
+ * «Altri filtri» resta sotto o sopra il suo bottone (o la barra, al telefono), mai di lato: base-ui
+ * sposta un popover a sinistra o a destra quando né sotto né sopra c'è posto per intero (in
+ * orizzontale a 844 × 390, in una finestra bassa come 1280 × 500 o 1024 × 600), e lì copriva la
+ * ricerca. Come le tendine di base-ui (`DROPDOWN_COLLISION_AVOIDANCE`): sopra o sotto, dove c'è più
+ * spazio, alto al più quello spazio (`--available-height`) e il resto scorre dentro.
+ */
+export const MORE_FILTERS_COLLISION = Object.freeze({ fallbackAxisSide: "none" as const });
+
 /** Larghezze del telefono: sotto `sm` di Tailwind (640 px). */
 const PHONE_QUERY = "(max-width: 639.98px)";
 
@@ -398,11 +407,13 @@ function MoreFilters({
       {/*
         Al telefono si apre sotto (o sopra) tutta la barra, non accanto al bottone: con la ✕ in fondo
         alla riga accanto al bottone non ci sta più, e sopra o sotto di lui usciva dallo schermo. Alto
-        al più lo spazio che resta, come le tendine: il resto scorre dentro.
+        al più lo spazio che resta, come le tendine: il resto scorre dentro. A ogni larghezza mai di
+        lato (`MORE_FILTERS_COLLISION`), dove copriva la ricerca.
       */}
       <PopoverContent
         align="end"
         anchor={phone ? anchor : undefined}
+        collisionAvoidance={MORE_FILTERS_COLLISION}
         className="max-h-(--available-height) w-72 max-w-[calc(100vw-2rem)] gap-3 overflow-y-auto overscroll-contain p-3"
       >
         {originInside ? (

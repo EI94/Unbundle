@@ -88,6 +88,35 @@ test("«Altri filtri»: niente «Togli i filtri» dentro; al telefono si apre co
   const content = /<PopoverContent\b[^>]*className="([^"]*)"/.exec(more)![1].split(" ");
   for (const name of ["max-h-(--available-height)", "w-72", "max-w-[calc(100vw-2rem)]", "overflow-y-auto", "overscroll-contain"]) assert.ok(content.includes(name), name);
   // Il riquadro di shadcn passa l'ancora a base-ui; senza, l'ancora è il bottone, come prima.
-  assert.match(POPOVER, /"align" \| "alignOffset" \| "anchor" \| "side" \| "sideOffset"/);
+  assert.match(POPOVER, /"align" \| "alignOffset" \| "anchor" \| "collisionAvoidance" \| "side" \| "sideOffset"/);
   assert.match(POPOVER, /anchor=\{anchor\}/);
+});
+
+// In orizzontale a 844 × 390 e in una finestra bassa (1280 × 500, 1024 × 600) né sotto né sopra
+// c'era posto per intero: base-ui apriva «Altri filtri» a sinistra o a destra (`data-side="left"`),
+// sopra la ricerca. Ora resta sull'asse verticale e scorre dentro, alto al più lo spazio che resta.
+test("«Altri filtri» si apre sotto o sopra il suo bottone, mai di lato; gli altri popover come prima", async () => {
+  assert.deepEqual(bar.MORE_FILTERS_COLLISION, { fallbackAxisSide: "none" }, "nessun ripiego sull'asse orizzontale");
+  assert.ok(Object.isFrozen(bar.MORE_FILTERS_COLLISION));
+  const more = SOURCE.slice(SOURCE.indexOf("function MoreFilters("), SOURCE.indexOf("function MoreField("));
+  assert.match(more, /<PopoverContent\b[^>]*\bcollisionAvoidance=\{MORE_FILTERS_COLLISION\}/);
+  assert.match(more, /<PopoverContent\b[^>]*className="[^"]*\bmax-h-\(--available-height\)[^"]*\boverflow-y-auto\b/, "alto al più lo spazio che resta, e scorre");
+  // Il riquadro di shadcn passa la regola al Positioner di base-ui; senza, resta quella di base-ui.
+  const { PopoverContent } = await import("../ui/popover.tsx");
+  const positionerOf = (props: Record<string, unknown>) =>
+    (PopoverContent(props as never) as unknown as { props: { children: { props: Record<string, unknown> } } }).props.children.props;
+  assert.equal(positionerOf({ collisionAvoidance: bar.MORE_FILTERS_COLLISION }).collisionAvoidance, bar.MORE_FILTERS_COLLISION);
+  assert.ok(!positionerOf({}).collisionAvoidance, "gli altri popover: il valore predefinito di base-ui");
+  assert.deepEqual([positionerOf({}).side, positionerOf({}).align], ["bottom", "center"]);
+  // Nessun altro popover dell'app la sceglie.
+  for (const file of [
+    "../../../src/components/use-cases/value-by-lever.tsx",
+    "../../../src/components/uc/ui/filter-popover.tsx",
+    "../../../src/components/uc/privacy/info-hint.tsx",
+    "../../../src/app/(dashboard)/dashboard/[workspaceId]/casi-duso/[caseId]/attivita/activity-filter.tsx",
+  ]) {
+    const other = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.ok(other.includes("<PopoverContent") && !other.includes("collisionAvoidance"), file);
+  }
+  assert.equal(SOURCE.split("collisionAvoidance=").length - 1, 1, "solo «Altri filtri» nella barra");
 });
