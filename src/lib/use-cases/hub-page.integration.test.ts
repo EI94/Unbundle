@@ -856,10 +856,50 @@ test("menu «⋯»: i grafici con i filtri di adesso, mai ai contributori", opts
   assert.deepEqual((await menuCharts("builder", ids.wsE, { vista: "panoramica" }))?.charts, []);
 });
 
+/**
+ * La ✕ «Togli i filtri» della barra dei revisori: quante (il nome per i lettori di schermo), l'indirizzo
+ * della prima e se è l'ultimo controllo della riga (dopo il suo `</svg>` la parola dal tablet, poi la
+ * fine della barra).
+ */
+function barClearOf(page: string): { count: number; href: string | null; last: boolean } {
+  const tags = [...page.matchAll(/<a\b[^>]*aria-label="Togli i filtri"[^>]*>/g)];
+  const first = tags[0];
+  const href = first ? (/href="([^"]*)"/.exec(first[0])?.[1] ?? null) : null;
+  const after = first ? page.slice(first.index + first[0].length) : "";
+  const last = Boolean(first) && after.slice(after.indexOf("</svg>") + 6).startsWith('<span class="hidden sm:inline">Togli i filtri</span></a></span></div>');
+  return { count: tags.length, href, last };
+}
+
+test("«Togli i filtri» nella riga dei filtri anche al telefono: la ✕ dei revisori in ogni vista, la parola dei contributori", opts, async () => {
+  const base = (workspaceId: string) => `/dashboard/${workspaceId}/use-cases`;
+  const views: Array<[string, Record<string, string>, string]> = [
+    [ids.wsA, { vista: "panoramica", origine: "adoption" }, `${base(ids.wsA)}?vista=panoramica`],
+    [ids.wsP, { vista: "panoramica", mostra: "agenti", origine: "adoption" }, `${base(ids.wsP)}?vista=panoramica&amp;mostra=agenti`],
+    [ids.wsA, { vista: "panoramica", mostra: "matrice", origine: "adoption" }, `${base(ids.wsA)}?vista=panoramica&amp;mostra=matrice`],
+    [ids.wsA, { vista: "da-decidere", tipo: "costruire" }, `${base(ids.wsA)}?vista=da-decidere`],
+    [ids.wsA, { vista: "cosa-serve", origine: "adoption" }, `${base(ids.wsA)}?vista=cosa-serve`],
+  ];
+  for (const person of ["ls", "builder", "manager"] as const) {
+    for (const [workspaceId, params, href] of views) {
+      const page = await html(person, workspaceId, params);
+      const label = `${person} ${JSON.stringify(params)}`;
+      assert.deepEqual(barClearOf(page), { count: 1, href, last: true }, label);
+      assert.ok(!page.includes("hidden sm:inline-flex"), `${label}: mai nascosta al telefono`);
+    }
+    assert.equal(barClearOf(await html(person, ids.wsA, { vista: "panoramica" })).count, 0, `${person}: senza filtri niente ✕`);
+  }
+  // Il contributore ha solo la ricerca: «Togli i filtri» resta la parola, anche al telefono.
+  for (const vista of ["da-decidere", "panoramica"]) {
+    const page = await html("contributor", ids.wsA, { vista, q: cards.ownByEmail.code });
+    assert.equal(barClearOf(page).count, 0, vista);
+    assert.match(page, new RegExp(`<span class="shrink-0"><a [^>]*href="${base(ids.wsA)}\\?vista=${vista}"[^>]*>Togli i filtri</a></span></div>`), vista);
+  }
+});
+
 test("grafici del menu «⋯»: tengono i filtri; «Torna alla Panoramica» li tiene, «Togli i filtri» tiene il grafico", opts, async () => {
   const page = await html("ls", ids.wsA, { vista: "panoramica", mostra: "matrice", origine: "adoption" });
   assert.equal(chartHeaderOf(page).href, `/dashboard/${ids.wsA}/use-cases?vista=panoramica&amp;origine=adoption`);
-  assert.match(page, new RegExp(`href="/dashboard/${ids.wsA}/use-cases\\?vista=panoramica&amp;mostra=matrice"[^>]*>Togli i filtri<`));
+  assert.match(page, new RegExp(`aria-label="Togli i filtri"[^>]*href="/dashboard/${ids.wsA}/use-cases\\?vista=panoramica&amp;mostra=matrice"`));
   assert.ok(page.includes('data-slot="value-cost-matrix"'));
   assert.ok(!page.includes('data-slot="lanes"'), "il grafico al posto delle corsie");
 

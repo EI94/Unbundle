@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, useTransition, type RefObject } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Search, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -150,9 +150,28 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
   }
 
   const reviewer = mode === "revisore";
+  /** La barra: al telefono «Altri filtri» si apre contro di lei, che con la ✕ non si sposta. */
+  const bar = useRef<HTMLDivElement>(null);
+  // Al telefono la riga dei revisori è piena («Tipo», la ricerca, «Altri filtri»): «Togli i filtri»
+  // è la sola ✕, 44 × 44 px, con il nome per chi legge lo schermo; dal tablet in su la parola. I
+  // contributori hanno solo la ricerca: la parola ci sta anche al telefono.
+  const iconOnPhone = reviewer && Boolean(more);
   const clear = active ? (
-    <Button variant="ghost" className="min-h-11 shrink-0 text-muted-foreground sm:min-h-8" render={<Link href={clearHref} scroll={false} />} nativeButton={false}>
-      {FILTER_TEXT.clear}
+    <Button
+      variant="ghost"
+      aria-label={iconOnPhone ? FILTER_TEXT.clear : undefined}
+      className={cn("min-h-11 shrink-0 text-muted-foreground sm:min-h-8", iconOnPhone && "min-w-11 px-0 sm:min-w-0 sm:px-2.5")}
+      render={<Link href={clearHref} scroll={false} />}
+      nativeButton={false}
+    >
+      {iconOnPhone ? (
+        <>
+          <X aria-hidden className="sm:hidden" />
+          <span className="hidden sm:inline">{FILTER_TEXT.clear}</span>
+        </>
+      ) : (
+        FILTER_TEXT.clear
+      )}
     </Button>
   ) : null;
 
@@ -160,7 +179,7 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
     // Dal tablet va a capo quando i controlli non ci stanno: accanto alla barra laterale (da 768 px)
     // restano anche solo 460 px, e una riga che non va a capo faceva scorrere di lato tutta la pagina.
     // Al telefono resta una riga: i controlli sono icone e la ricerca si stringe.
-    <div data-slot="filter-bar" aria-busy={pending || undefined} className="flex min-w-0 flex-nowrap items-center gap-2 sm:flex-wrap">
+    <div ref={bar} data-slot="filter-bar" aria-busy={pending || undefined} className="flex min-w-0 flex-nowrap items-center gap-2 sm:flex-wrap">
       {reviewer ? (
         <>
           {kind === "filtro" ? <KindMenu value={query.tipo ?? ""} onChange={(value) => go({ tipo: value || null })} /> : null}
@@ -201,9 +220,9 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
         phonePlaceholder={reviewer ? FILTER_TEXT.searchReviewerShort : FILTER_TEXT.searchContributor}
         onSearch={(text) => go({ q: text })}
       />
-      {reviewer && more ? <MoreFilters query={query} options={more} onChange={go} clear={clear} originShown={originShown} /> : null}
-      {/* Al telefono, per i revisori, «Togli i filtri» sta dentro «Altri filtri». */}
-      {clear ? <span className={cn("shrink-0", reviewer && more && "hidden sm:inline-flex")}>{clear}</span> : null}
+      {reviewer && more ? <MoreFilters query={query} options={more} onChange={go} anchor={bar} originShown={originShown} /> : null}
+      {/* L'ultimo controllo della riga, a ogni larghezza (al telefono, per i revisori, la ✕). */}
+      {clear ? <span className="shrink-0">{clear}</span> : null}
     </div>
   );
 }
@@ -326,7 +345,7 @@ function SearchField({
             send(text, epoch);
           }
         }}
-        className="h-11 pl-8 sm:h-8"
+        className="h-11 pl-8 text-ellipsis sm:h-8"
       />
     </div>
   );
@@ -336,19 +355,20 @@ function MoreFilters({
   query,
   options,
   onChange,
-  clear,
+  anchor,
   originShown,
 }: {
   query: HubQuery;
   options: NonNullable<FilterBarProps["more"]>;
   onChange: (change: Partial<Record<HubParamKey, string | null>>) => void;
-  /** «Togli i filtri», al telefono qui dentro. */
-  clear: ReactNode;
+  /** La barra dei filtri: al telefono il riquadro si apre contro di lei. */
+  anchor: RefObject<HTMLDivElement | null>;
   /** L'origine è a schermo nella barra? Se no, sta qui dentro. */
   originShown: () => boolean;
 }) {
   // Deciso all'apertura, dalla barra: il contenuto si apre in un portale, fuori dal riquadro della pagina.
   const [originInside, setOriginInside] = useState(true);
+  const phone = useIsPhone();
   const fields: Array<{ key: HubParamKey; label: string; any: string; list: FilterOption[] }> = [
     { key: "canale", label: FILTER_TEXT.channel, any: FILTER_TEXT.anyMasculine, list: options.channels },
     { key: "area", label: FILTER_TEXT.area, any: FILTER_TEXT.anyFeminine, list: options.areas },
@@ -369,13 +389,22 @@ function MoreFilters({
         if (open) setOriginInside(!originShown());
       }}
     >
-      <PopoverTrigger aria-label={FILTER_TEXT.more} render={<Button variant="outline" className="min-h-11 shrink-0 gap-1 px-2.5 sm:min-h-8" />}>
+      <PopoverTrigger aria-label={FILTER_TEXT.more} render={<Button variant="outline" className="min-h-11 min-w-11 shrink-0 gap-1 px-2.5 sm:min-h-8 sm:min-w-0" />}>
         <SlidersHorizontal aria-hidden className="text-muted-foreground" />
         <span className="hidden sm:inline">{FILTER_TEXT.more}</span>
         {countWithOrigin > 0 ? <span className="text-xs text-muted-foreground tabular-nums sm:@2xl/hub:hidden">{countWithOrigin}</span> : null}
         {count > 0 ? <span className="hidden text-xs text-muted-foreground tabular-nums sm:@2xl/hub:inline">{count}</span> : null}
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-72 max-w-[calc(100vw-2rem)] gap-3 p-3">
+      {/*
+        Al telefono si apre sotto (o sopra) tutta la barra, non accanto al bottone: con la ✕ in fondo
+        alla riga accanto al bottone non ci sta più, e sopra o sotto di lui usciva dallo schermo. Alto
+        al più lo spazio che resta, come le tendine: il resto scorre dentro.
+      */}
+      <PopoverContent
+        align="end"
+        anchor={phone ? anchor : undefined}
+        className="max-h-(--available-height) w-72 max-w-[calc(100vw-2rem)] gap-3 overflow-y-auto overscroll-contain p-3"
+      >
         {originInside ? (
           <MoreField
             label={FILTER_TEXT.originLabel}
@@ -388,7 +417,6 @@ function MoreFilters({
         {fields.map((field) => (
           <MoreField key={field.key} label={field.label} any={field.any} value={query[field.key] ?? null} list={field.list} onChange={(value) => onChange({ [field.key]: value })} />
         ))}
-        {clear ? <div className="sm:hidden">{clear}</div> : null}
       </PopoverContent>
     </Popover>
   );

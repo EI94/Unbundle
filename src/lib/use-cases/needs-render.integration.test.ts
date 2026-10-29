@@ -720,6 +720,8 @@ test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerc
   const byTitle = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: T.kickoff });
   assert.ok(between(byTitle, 'data-slot="needs-steps"').includes(T.kickoff), "un passo senza use case, per il titolo");
   assert.ok(!byTitle.includes(T.access));
+  // La ✕ «Togli i filtri» della barra, al telefono nella riga: torna a «Cosa serve» senza filtri.
+  assert.match(byTitle, new RegExp(`aria-label="Togli i filtri"[^>]*href="/dashboard/${ids.ws}/use-cases\\?vista=cosa-serve"`));
 
   // Nessuno use case ha questa origine: niente da chiedere, con «Togli i filtri».
   const none = await hubHtml("builder", ids.ws, { vista: "cosa-serve", origine: "transformation" });

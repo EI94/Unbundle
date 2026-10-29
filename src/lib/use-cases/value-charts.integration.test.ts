@@ -588,6 +588,8 @@ test("«Curva del valore» dal menu «⋯»: J-curve con entrata in uso e paregg
   assert.equal(chartHeaderOf(none).title, "Curva del valore");
   assert.ok(none.includes('data-chart="curva"') && none.includes("Nessuno use case con questi filtri."));
   assert.match(none, new RegExp(`href="/dashboard/${ids.wsV}/use-cases\\?vista=panoramica&amp;mostra=curva"[^>]*>Togli i filtri<`));
+  // La ✕ della barra tiene la curva anche lei, accanto al pulsante del vuoto.
+  assert.match(none, new RegExp(`aria-label="Togli i filtri"[^>]*href="/dashboard/${ids.wsV}/use-cases\\?vista=panoramica&amp;mostra=curva"`));
   assert.ok(!none.includes('data-slot="roadmap-value"'));
 });
 
