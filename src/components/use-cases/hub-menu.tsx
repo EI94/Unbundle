@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { proposeFromActivityMappingAction } from "@/lib/actions/use-case-create";
 import { ACTIVITY_MAPPING_TEXT, type ActivityMappingState } from "@/lib/use-cases/create";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { isNextNavigation } from "./decision-buttons";
 
 /** Testi del menu «⋯» (docs/use-case/DESIGN.md §4.1, §8.5, §14.3). */
@@ -92,7 +93,7 @@ export function HubMenu({ workspaceId, charts = [], exportHref, activityMapping,
             <>
               <DialogHeader>
                 <DialogTitle>{ACTIVITY_MAPPING_TEXT.dialogTitle}</DialogTitle>
-                <DialogDescription>{ACTIVITY_MAPPING_TEXT.dialogBody}</DialogDescription>
+                <DialogDescription>{keepTogether(ACTIVITY_MAPPING_TEXT.dialogBody)}</DialogDescription>
               </DialogHeader>
               <DialogFooter>
                 <DialogClose render={<Button variant="outline" className="min-h-11 sm:min-h-8" disabled={pending} />}>{ACTIVITY_MAPPING_TEXT.cancel}</DialogClose>
@@ -105,7 +106,7 @@ export function HubMenu({ workspaceId, charts = [], exportHref, activityMapping,
             <>
               <DialogHeader>
                 <DialogTitle>{ACTIVITY_MAPPING_TEXT.menuItem}</DialogTitle>
-                <DialogDescription>{ACTIVITY_MAPPING_TEXT.classifyFirst}</DialogDescription>
+                <DialogDescription>{keepTogether(ACTIVITY_MAPPING_TEXT.classifyFirst)}</DialogDescription>
               </DialogHeader>
               <DialogFooter>
                 <DialogClose render={<Button variant="outline" className="min-h-11 sm:min-h-8" />}>{ACTIVITY_MAPPING_TEXT.cancel}</DialogClose>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import type { ValueParams } from "@/lib/use-cases/value-model";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { VALUE_PARAMS_TEXT, valueParamsLines } from "@/lib/use-cases/value-params-form";
 import { cn } from "@/lib/utils";
 
@@ -34,11 +35,11 @@ export function ValueParamsSummary({
         {lines.map((line) => (
           <div key={line.key} className="contents">
             <dt className="text-muted-foreground">{line.label}</dt>
-            <dd className="tabular-nums sm:text-right">{line.value}</dd>
+            <dd className="tabular-nums sm:text-right">{keepTogether(line.value)}</dd>
           </div>
         ))}
       </dl>
-      <p className="mt-3 text-xs text-muted-foreground">{VALUE_PARAMS_TEXT.planRule}</p>
+      <p className="mt-3 text-xs text-muted-foreground">{keepTogether(VALUE_PARAMS_TEXT.planRule)}</p>
       {settingsHref ? (
         <p className="mt-2 text-xs text-muted-foreground">
           {VALUE_PARAMS_TEXT.editIn}{" "}

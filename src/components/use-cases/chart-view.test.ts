@@ -163,13 +163,13 @@ test("matrice: sotto la legenda due elenchi chiusi; l'indirizzo apre il suo", ()
   assert.match(toEstimate, /^<details data-slot="to-estimate"/);
   assert.equal(isOpen(toEstimate), false, "chiuso: l'indirizzo chiede l'altro");
   const estimate = detailsOf(html, "to-estimate");
-  assert.match(estimate, /<summary[^>]*>[\s\S]*1 da stimare<\/summary>/);
+  assert.match(estimate, /<summary[^>]*>[\s\S]*1\u00a0da stimare<\/summary>/);
   const link = /<a [^>]*href="\/h\?apri=11111111-0000-4000-8000-000000000001"[^>]*>([\s\S]*?)<\/a>/.exec(estimate);
   assert.ok(link, "il link al pannello");
   assert.ok(link[1].includes("TJ-0003") && link[1].includes("Bozza di registrazione"), link[1]);
   assert.match(detailsTag(html, "off-matrix"), /^<details data-slot="off-matrix" open=""/);
   const offList = detailsOf(html, "off-matrix");
-  assert.ok(offList.includes("1 senza beneficio contato") && offList.includes(">Meno errori nelle fatture<"), "senza codice, il titolo solo");
+  assert.ok(offList.includes("1\u00a0senza beneficio contato") && offList.includes(">Meno errori nelle fatture<"), "senza codice, il titolo solo");
   // L'elenco che l'indirizzo apre viene in vista appena c'è (un vecchio link lo lasciava sotto la piega); l'altro no.
   assert.ok(offList.includes('<span hidden="" data-slot="reveal-on-mount"></span>'));
   assert.ok(!estimate.includes("reveal-on-mount"));
@@ -204,7 +204,7 @@ test("«Matrice Valore × Costo» dal menu «⋯»: «‹ Torna alla Panoramica�
   // «da stimare»: aperto, perché l'indirizzo lo chiede; i link aprono il pannello e restano nel grafico.
   assert.equal(isOpen(detailsTag(html, "to-estimate")), true);
   const estimate = detailsOf(html, "to-estimate");
-  assert.match(estimate, /2 da stimare<\/summary>/);
+  assert.match(estimate, /2\u00a0da stimare<\/summary>/);
   for (const card of [missingCost, missingValue]) {
     assert.ok(estimate.includes(`>${card.code}<`), card.code ?? "");
     assert.ok(estimate.includes(`href="${BASE}?vista=panoramica&amp;mostra=matrice&amp;origine=adoption&amp;stima=mancante&amp;apri=${card.id}"`), card.code ?? "");
@@ -212,7 +212,7 @@ test("«Matrice Valore × Costo» dal menu «⋯»: «‹ Torna alla Panoramica�
   assert.ok(!estimate.includes(`>${valued.code}<`) && !estimate.includes(`>${building.code}<`), "solo quelli senza un punto, mai chi è già partito");
   const off = detailsOf(html, "off-matrix");
   assert.equal(isOpen(detailsTag(html, "off-matrix")), false);
-  assert.match(off, /1 senza beneficio contato<\/summary>/);
+  assert.match(off, /1\u00a0senza beneficio contato<\/summary>/);
   assert.ok(off.includes(`>${qualitative.code}<`));
 });
 
@@ -341,7 +341,7 @@ test("«Matrice Facilità × Beneficio» e «Curva del valore» con gli agenti n
 
 test("i vuoti dei grafici: «Nessuno use case da mettere in ordine», o «Togli i filtri» che tiene il grafico", () => {
   const empty = view({ items: [item({ customScores: HIGH, status: "in_progress" })] });
-  assert.ok(empty.includes('data-slot="chart-header"') && empty.includes("Nessuno use case da mettere in ordine") && empty.includes("Valuta Valore e Costo in «Da decidere»."));
+  assert.ok(empty.includes('data-slot="chart-header"') && empty.includes("Nessuno use case da mettere in ordine") && empty.includes("Valuta Valore e Costo in «Da\u00a0decidere»."));
   assert.ok(!empty.includes('data-slot="value-cost-matrix"'));
   const filtered = view({ items: [], filtersActive: true });
   assert.ok(filtered.includes("Nessuno use case con questi filtri."));

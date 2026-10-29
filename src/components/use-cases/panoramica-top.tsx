@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { formatEuro, formatInteger } from "@/lib/use-cases/format";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { OVERVIEW_STEP_TARGET, type OverviewFigures, type OverviewNextStep, type OverviewStep, type PortfolioLine } from "@/lib/use-cases/panoramica";
 import { quarterLabel } from "@/lib/use-cases/quarter";
 import { monthLongLabel } from "@/lib/use-cases/value-calc";
@@ -211,14 +212,14 @@ export function PanoramicaTop({ steps, reviewer, decideHref, figures, line, next
                     <span className="whitespace-nowrap">{tile.figure}</span>
                   </p>
                   <p className="text-sm">{tile.label}</p>
-                  <p className="text-xs text-muted-foreground">{tile.note}</p>
+                  <p className="text-xs text-muted-foreground">{keepTogether(tile.note)}</p>
                 </div>
               ))}
             </div>
           ) : null}
           {line ? (
             <p data-slot="portfolio-line" className="text-sm text-muted-foreground">
-              {portfolioLineText(line)}
+              {keepTogether(portfolioLineText(line))}
             </p>
           ) : null}
         </section>
@@ -234,7 +235,7 @@ export function PanoramicaTop({ steps, reviewer, decideHref, figures, line, next
             <h2 id={NEXT_STEP_HEADING_ID} className="text-sm font-semibold">
               {OVERVIEW_TEXT.nextStep}
             </h2>
-            <p className="text-sm">{nextStepText(nextStep.step)}</p>
+            <p className="text-sm">{keepTogether(nextStepText(nextStep.step))}</p>
           </div>
           {/* Il solo pulsante pieno della pagina: con il riquadro, «Nuovo use case» è bordato. Porta il fuoco al titolo della vista che apre. */}
           <Button className="min-h-11 shrink-0 self-start sm:min-h-8 @2xl/hub:self-center" render={<ViewFocusLink href={nextStep.href} />} nativeButton={false}>

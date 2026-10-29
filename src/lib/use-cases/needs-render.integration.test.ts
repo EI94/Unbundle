@@ -190,6 +190,9 @@ function readable(page: string): string {
   return page.replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
 }
 
+/** Lo spazio non separabile della pagina (`keepTogether`): un numero con la sua parola, il «·» con la parte prima. */
+const N = "\u00a0";
+
 async function hubHtml(person: Person, workspaceId: string, searchParams: Record<string, string> = {}): Promise<string> {
   signIn(person);
   const element = await pageOfUseCases({ params: Promise.resolve({ workspaceId }), searchParams: Promise.resolve(searchParams) });
@@ -440,11 +443,12 @@ test("Cosa serve: la vista dei revisori, una tabella per area, le righe a posto 
 
   const accessRow = between(requirements, `data-need="${needIds.access}"`, "</tr>");
   assert.ok(accessRow.includes(T.access));
-  assert.ok(accessRow.replace(/<!--.*?-->|<[^>]+>/g, "").includes("Ufficio IT · Cliente"), "Chi: persona e parte");
-  // Nella colonna stretta il «·» va a capo con «Cliente», mai da solo in fondo alla riga.
-  assert.ok(accessRow.includes('Ufficio IT<span> <span class="whitespace-nowrap">· Cliente</span></span>'), accessRow);
+  assert.ok(accessRow.replace(/<!--.*?-->|<[^>]+>/g, "").includes(`Ufficio IT${N}· Cliente`), "Chi: persona e parte");
+  // Nella colonna stretta il «·» resta con «Ufficio IT»: la riga va a capo dopo il «·», mai «· Cliente» in testa.
+  assert.ok(accessRow.includes(`<td class="px-3 py-2 break-words">Ufficio IT${N}· Cliente</td>`), accessRow);
+  assert.ok(!accessRow.includes('whitespace-nowrap">· '), "nessun «·» in testa a un pezzo");
   // Due use case: «Per 2 use case», chiuso, con i due link al pannello.
-  const per = detailsAround(accessRow, "Per 2 use case");
+  const per = detailsAround(accessRow, `Per 2${N}use${N}case`);
   assertClosed(per);
   assert.ok(per.includes('data-slot="need-use-cases"'));
   for (const card of [cards.quarter, cards.proposed]) {
@@ -454,7 +458,8 @@ test("Cosa serve: la vista dei revisori, una tabella per area, le righe a posto 
   assert.ok(per.includes(`Smistamento ${suffix}`) && per.includes(`Preventivi ${suffix}`), "codice e titolo");
   assert.ok(per.includes(`<span class="sr-only">: ${T.access}</span>`), "il titolo dell'esigenza per i lettori di schermo");
   assert.ok(accessRow.includes(">Chiesta, in attesa<"), "lo stato delle voci");
-  assert.ok(accessRow.includes(`>${format.formatDayInYear(dueSoon, today)}<`), "Entro");
+  // «Entro»: il giorno resta con il suo mese («15 nov»).
+  assert.ok(accessRow.includes(`>${format.formatDayInYear(dueSoon, today)?.replace(/ /g, N)}<`), "Entro");
   // Uno use case: il suo link per intero, senza <details>.
   const procedureRow = between(requirements, `data-need="${needIds.procedure}"`, "</tr>");
   assert.ok(procedureRow.includes(`>${cards.quarter.code}<`) && procedureRow.includes(`Smistamento ${suffix}`));
@@ -464,7 +469,7 @@ test("Cosa serve: la vista dei revisori, una tabella per area, le righe a posto 
 
   // Già a posto: in un <details> chiuso; archiviate e altri workspace: mai.
   const done = detailsAround(requirements, T.extract);
-  assert.ok(done.includes("Già a posto · 1"));
+  assert.ok(done.includes(`Già a posto${N}·${N}1`));
   assertClosed(done);
   assert.ok(between(requirements, `data-need="${needIds.decide}"`, "</tr>").includes("entro fine mese"));
   assert.ok(!page.includes(T.archived), "l'archiviata non c'è");
@@ -475,9 +480,12 @@ test("Cosa serve: la vista dei revisori, una tabella per area, le righe a posto 
   const other = between(requirements, 'data-need-area="altro"');
   assert.ok(!other.includes(">Entro</th>"), "nessuna colonna «Entro» senza date");
   assert.ok(other.includes(">Per</th>") && other.includes('class="w-[42%] px-3 py-2 font-medium"'), "le altre colonne si allargano");
-  // Nell'elenco ogni «·» va a capo con la parte che segue; un solo use case sta su una riga sua.
+  // Nell'elenco ogni «·» resta con la parte prima: ogni parte tranne l'ultima finisce con il «·», nessuna comincia con lui.
+  // Un solo use case sta su una riga sua.
   const accessItem = between(requirements, `data-need-item="${needIds.access}"`, "</summary>");
-  assert.match(accessItem, /<span data-meta="entro" class="inline-flex min-w-0 items-center gap-x-2"><span aria-hidden="true">·<\/span>/);
+  assert.match(accessItem, new RegExp(`<span data-meta="chi" class="inline-flex min-w-0 items-center gap-x-2"><span class="min-w-0">Ufficio IT${N}· Cliente</span><span aria-hidden="true">·</span></span><span data-meta="entro"`));
+  assert.match(accessItem, /<span data-meta="entro" class="inline-flex min-w-0 items-center gap-x-2"><span class="min-w-0"><span class="tabular-nums">[^<]*<\/span><\/span><\/span>/);
+  assert.doesNotMatch(accessItem, /data-meta="[a-z]+" class="[^"]*"><span aria-hidden="true">·/);
   const procedureItem = between(requirements, `data-need-item="${needIds.procedure}"`, "</li>");
   assert.match(procedureItem, /<span data-meta="per" class="flex min-w-0 basis-full"><a /);
   // I link restano nella vista: `?vista=cosa-serve&apri=<id>`.
@@ -490,18 +498,18 @@ test("Cosa serve: «Prossimi passi» per mese, i fatti chiusi; «Cosa vi chiedia
   assert.ok(steps.includes(`>${needs.monthHeading(dueSoon.slice(0, 7))}<`), "il mese della scadenza");
   assert.ok(steps.includes(T.kickoff) && steps.includes(">Confermato<"));
   const done = detailsAround(steps, T.demo);
-  assert.ok(done.includes("Fatto · 1"));
+  assert.ok(done.includes(`Fatto${N}·${N}1`));
 
   const quarter = between(page, 'data-slot="needs-quarter"');
   const opening = page.slice(page.lastIndexOf("<details", page.indexOf('data-slot="needs-quarter"')));
   assert.ok(opening.startsWith('<details data-slot="needs-quarter"'));
   assertClosed(opening);
   const summary = quarter.slice(0, quarter.indexOf("</summary>"));
-  assert.ok(summary.includes("Cosa vi chiediamo questo trimestre · 1 use case"));
+  assert.ok(summary.includes(`Cosa vi chiediamo questo trimestre${N}· 1${N}use${N}case`));
   const ask = between(quarter, `data-quarter-ask="${cards.quarter.id}"`, "</li><li data-quarter-ask");
   assert.equal(quarter.split("data-quarter-ask=").length - 1, 1, "solo lo use case approvato in questo trimestre");
   assert.ok(ask.includes(`Chi conferma i numeri: <span class="text-foreground">${FIX_A.confirmBy}</span>`));
-  assert.ok(ask.includes("6.600 all'anno × 1,5 min × 70% ≈ 116 h · 4.043 €"), "il ritorno da confermare");
+  assert.ok(ask.includes(`6.600${N}all'anno × 1,5${N}min × 70% ≈ 116${N}h${N}· 4.043${N}€`), "il ritorno da confermare");
   assert.ok(ask.includes("Meno errori di smistamento") && ask.includes("· da misurare"), "anche le voci da misurare");
   assert.ok(!ask.includes("Risposte anche fuori orario"), "le voci con una fonte non si chiedono");
   const section = (title: string, next?: string) => between(ask, `>${title}<`, next ? `>${next}<` : undefined);
@@ -523,7 +531,7 @@ test("Cosa serve: la sua vista, non nella Panoramica né nei vecchi link; senza 
   const empty = await hubHtml("manager", ids.wsEmpty, { vista: "cosa-serve" });
   const blank = between(empty, 'data-slot="needs-board"');
   assert.ok(blank.includes('data-slot="hub-empty"') && blank.includes("Niente da chiedere per ora"));
-  assert.ok(blank.includes("Le esigenze si aggiungono dalla scheda di uno use case, nel capitolo «Cosa serve»."));
+  assert.ok(blank.includes(`Le esigenze si aggiungono dalla scheda di uno use case, nel capitolo «Cosa${N}serve».`));
   assert.ok(!empty.includes('data-slot="needs-requirements"') && !empty.includes('data-slot="needs-quarter"'), "nessun blocco vuoto");
   const overview = await hubHtml("builder", ids.ws, { vista: "panoramica" });
   assert.ok(!overview.includes('data-slot="needs-board"'), "solo nella sua vista");
@@ -533,7 +541,7 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   const quarter = await import("./quarter.ts");
   const thisQuarter = quarter.currentQuarter();
   // Ogni gruppo che conta, con il suo nome: da chiedere, da verificare e bloccati.
-  const sentence = `Per partire con il ${quarter.quarterLabel(thisQuarter)}: 1 requisito da chiedere, 1 da verificare e 1 bloccato.`;
+  const sentence = `Per partire con il ${quarter.quarterLabel(thisQuarter).replace(" ", N)}: 1${N}requisito da chiedere, 1${N}da verificare e 1${N}bloccato.`;
   const href = `/dashboard/${ids.wsStart}/use-cases?vista=cosa-serve&trimestre=${thisQuarter}`;
   for (const person of REVIEWERS) {
     const page = await hubHtml(person, ids.wsStart, { vista: "panoramica" });
@@ -572,9 +580,9 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   for (const area of areas) assert.equal(area.opening, '<details data-slot="needs-area">', area.key);
   // Il requisito dei due use case di LIBRA: il tag dell'agente una volta sola, prima di «Per 2 use case».
   const shared = between(target, START.shared, "</tr>");
-  const tags = [...between(shared, 'data-slot="need-agents"', "Per 2 use case").matchAll(/data-slot="agent-tag"[^>]*><span class="truncate">([^<]*)</g)].map((match) => match[1]);
+  const tags = [...between(shared, 'data-slot="need-agents"', `Per 2${N}use${N}case`).matchAll(/data-slot="agent-tag"[^>]*><span class="truncate">([^<]*)</g)].map((match) => match[1]);
   assert.deepEqual(tags, ["LIBRA"]);
-  assert.ok(shared.indexOf('data-slot="need-agents"') < shared.indexOf("Per 2 use case"));
+  assert.ok(shared.indexOf('data-slot="need-agents"') < shared.indexOf(`Per 2${N}use${N}case`));
   // Il requisito di un solo use case: nessun tag, il link dice già «LIBRA L2».
   const blocked = between(target, START.blocked, "</tr>");
   assert.ok(!blocked.includes('data-slot="need-agents"'), blocked);
@@ -609,7 +617,7 @@ test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai
   const realizationHref = "/p#panoramica-in-realizzazione";
   const blank = render({ board: emptyBoard, inRealization: 1, realizationHref });
   assert.ok(blank.includes('data-slot="hub-empty"') && blank.includes("Niente da chiedere per ora"));
-  assert.ok(blank.includes("1 use case è già in realizzazione."));
+  assert.ok(blank.includes(`1${N}use${N}case è già in realizzazione.`));
   assert.match(blank, /<a [^>]*href="\/p#panoramica-in-realizzazione"[^>]*>Vai alla Panoramica<\/a>/);
   assert.ok(!blank.includes('data-slot="dossier-card"'));
 
@@ -632,7 +640,7 @@ test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai
   const two = render({ board: filled, inRealization: 2, realizationHref });
   const line = between(two, 'data-slot="needs-in-progress"');
   assert.ok(two.indexOf('data-slot="needs-in-progress"') > two.indexOf('data-slot="needs-requirements"'), "dopo i blocchi");
-  assert.ok(line.includes("2 use case sono già in realizzazione.") && /href="\/p#panoramica-in-realizzazione"[^>]*>Vai alla Panoramica</.test(line));
+  assert.ok(line.includes(`2${N}use${N}case sono già in realizzazione.`) && /href="\/p#panoramica-in-realizzazione"[^>]*>Vai alla Panoramica</.test(line));
   assert.ok(!two.includes('data-slot="dossier-card"'));
   assert.equal(summaryOf(two), "1 aperto · 1 da chiedere");
   for (const props of [{ inRealization: 0, realizationHref }, { inRealization: 2, realizationHref: null }]) {
@@ -684,23 +692,41 @@ test("Cosa serve: «Prossimi passi» aperti fino al mese di oggi, poi «Più ava
   // Dal mese prossimo, sotto «Più avanti», chiuso: novembre e gennaio.
   const later = detailsAround(html, `Fra tre mesi ${suffix}`);
   assert.match(later, /^<details data-slot="needs-steps-later">/);
-  assert.ok(later.includes("Più avanti · 2 passi") && later.includes(">Novembre 2026<") && later.includes(">Gennaio 2027<"));
+  assert.ok(later.includes(`Più avanti${N}· 2${N}passi`) && later.includes(">Novembre 2026<") && later.includes(">Gennaio 2027<"));
   assert.ok(later.includes(`Il mese prossimo ${suffix}`), "il mese prossimo sta in «Più avanti»");
   const undated = detailsAround(html, `Da fissare ${suffix}`);
   assert.match(undated, /^<details data-slot="needs-steps-undated">/);
-  assert.ok(undated.includes("Senza data · 1 passo"));
+  assert.ok(undated.includes(`Senza data${N}· 1${N}passo`));
   // Gli agenti dei titoli, una volta ciascuno, prima di «Per 3 use case»; nessuno senza prefisso.
   const withAgents = between(html, `Questo mese ${suffix}`, "</li>");
   const agentTags = between(withAgents, 'data-slot="need-agents"', 'data-slot="need-use-cases"');
   const names = [...agentTags.matchAll(/data-slot="agent-tag" data-tone="(\d+)"[^>]*><span class="truncate">([^<]*)</g)].map((match) => match[2]);
   assert.deepEqual(names, ["LIBRA", "ORSA"]);
-  assert.ok(withAgents.indexOf('data-meta="agenti"') < withAgents.indexOf("Per 3 use case"), "prima gli agenti");
+  assert.ok(withAgents.indexOf('data-meta="agenti"') < withAgents.indexOf(`Per 3${N}use${N}case`), "prima gli agenti");
   assert.ok(!between(html, `Il mese prossimo ${suffix}`, "</li>").includes('data-slot="need-agents"'), "senza prefisso, nessun tag");
   // Con un solo use case il link dice già l'agente: nessun tag, l'agente una volta sola, anche per i lettori di schermo.
   const single = between(html, `Un solo agente ${suffix}`, "</li>");
   assert.ok(!single.includes('data-slot="need-agents"') && !single.includes('data-slot="agent-tag"'), single);
   assert.equal(readable(single.replace(/<[^>]+>/g, "")).split("ORSA").length - 1, 1, "«ORSA» una volta");
   assert.ok(single.includes("TJ-0002") && single.includes("ORSA O1 · Solleciti ai clienti"));
+});
+
+test("una richiesta con «(12 €/mese)»: a schermo non va a capo dentro, in «Cosa serve» e nel pannello; il dato salvato resta com'è", opts, async () => {
+  const title = `Licenza del lettore (12 €/mese) ${suffix}`;
+  const card = await seed({ workspaceId: ids.wsOther, title: `Lettore ${suffix}`, status: "proposed", review: "in_review" });
+  const created = ok(await svc.createNeed(as("ls", ids.wsOther), { type: "requisito", kind: "contratto", title }, { useCaseIds: [card.id] }), title);
+  const shown = title.replace("12 €", `12${N}€`);
+  const board = await hubHtml("builder", ids.wsOther, { vista: "cosa-serve", q: card.code });
+  assert.ok(board.includes(shown) && !board.includes("(12 €/mese)"), "«Cosa serve»: «12» e «€/mese» restano insieme");
+  const { tree } = await hubTree("builder", ids.wsOther, { vista: "cosa-serve", apri: card.id });
+  const data = findProp(tree, "data").find((value) => (value as { projection?: string })?.projection === "revisore") as { needs: import("./needs.ts").PanelNeeds | null };
+  assert.ok(data.needs);
+  assert.equal(data.needs.rows[0].title, title, "i dati della pagina tengono lo spazio");
+  const block = readable(renderToStaticMarkup(createElementOf(panel.PanelNeedsBlock, { needs: data.needs, href: "#" })));
+  assert.ok(block.includes(shown), "il pannello");
+  // Salvato con lo spazio normale: lo leggono così il MCP del team e l'export.
+  const [row] = await q(`SELECT title FROM use_case_needs WHERE id = $1::uuid`, [created.id]);
+  assert.equal(row.title, title);
 });
 
 test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerca nel titolo, il vuoto dei filtri", opts, async () => {
@@ -714,7 +740,7 @@ test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerc
     [["accessi", '<details data-slot="needs-area" open="">', "Accessi · 1 in attesa"]],
   );
   // «Per» nomina comunque tutti gli use case dell'esigenza.
-  assert.ok(detailsAround(byCode, "Per 2 use case").includes(`>${cards.quarter.code}<`));
+  assert.ok(detailsAround(byCode, `Per 2${N}use${N}case`).includes(`>${cards.quarter.code}<`));
 
   // (La ricerca resta anche nel campo «Cerca»: il passo si cerca nei blocchi.)
   const byTitle = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: T.kickoff });
@@ -770,7 +796,7 @@ test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a p
   for (const key of ["access", "decide", "procedure", "other", "extract"] as const) assert.ok(section.includes(T[key]), key);
   assert.ok(!section.includes(T.kickoff), "i passi non collegati non ci sono");
   assert.ok(!section.includes(T.archived));
-  assert.ok(detailsAround(section, T.extract).includes("Già a posto · 1"));
+  assert.ok(detailsAround(section, T.extract).includes(`Già a posto${N}·${N}1`));
   // Gli altri use case dell'esigenza, chiusi: il link porta al loro capitolo «Cosa serve».
   const also = detailsAround(section, "Serve anche a un altro use case");
   assertClosed(also);
@@ -853,7 +879,11 @@ test("action: scrive solo un revisore, rilegge la pagina; versione vecchia e mot
 /** Le righe della Storia della scheda, senza la data: «Persona ls · Cosa serve: … · pagina». */
 function historyRows(page: string): string[] {
   const section = between(page, 'data-slot="section-history"', "</section>");
-  return [...section.matchAll(/<li data-action="([a-z_]+)"[^>]*>([^<]*)<\/li>/g)].map((match) => match[2].split(" · ").slice(1).join(" · "));
+  // A schermo il «·» resta con la parte prima (` ·`): le parti si confrontano con « · ».
+  return [...section.matchAll(/<li data-action="([a-z_]+)"[^>]*>([^<]*)<\/li>/g)].map((match) => {
+    assert.ok(!match[2].includes(" · "), match[2]);
+    return match[2].split(`${N}· `).slice(1).join(" · ");
+  });
 }
 
 test("Storia: i cambi di «Cosa serve» nelle righe della scheda per i revisori, senza testi; mai per chi non è revisore", opts, async () => {

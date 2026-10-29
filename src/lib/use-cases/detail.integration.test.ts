@@ -529,7 +529,7 @@ test("«Salva la valutazione»: KPI, valore all'anno e fascia; «valutata»; Sto
   assert.deepEqual([...(event.fields as string[])].sort(), ["costo", "kpi", "valore"]);
   // Con una cifra in euro la «Valutazione» scrive solo la cifra: niente parola, punteggio né zona.
   const valuation = sectionOf((await detailHtml("builder", card.id)).html, "section-valuation");
-  assert.ok(valuation.includes("60.000 € all&#x27;anno"), valuation);
+  assert.ok(valuation.includes("60.000\u00a0€\u00a0all&#x27;anno"), valuation);
   assert.ok(!valuation.includes("Zona:"), "senza zona");
   assert.ok(!valuation.includes("un suggerimento, non la decisione"));
   assert.ok(!valuation.includes("Alto · 4"));
@@ -830,9 +830,10 @@ test("«Storia»: righe senza testi, persona solo per le azioni del team, creazi
   ok(await actions.updateUseCaseFieldAction(ids.ws, card.id, await versionOf(card.id), "description", secret), "modifica");
   const { html } = await detailHtml("lsLead", card.id);
   const history = sectionOf(html, "section-history");
-  assert.ok(history.includes("Modificato: Problema · pagina"), history);
+  // Il «·» resta con la parte prima: la riga va a capo dopo, mai «· pagina» in testa.
+  assert.ok(history.includes("Modificato: Problema\u00a0· pagina"), history);
   assert.ok(history.includes(NAMES.builder), "la persona del team");
-  assert.ok(history.includes("Creato · dal modulo web"));
+  assert.ok(history.includes("Creato\u00a0· dal modulo web"));
   assert.ok(!/Creato[^<]*(Bruno|Carla|collega)/.test(history), "la creazione non dice chi ha proposto");
   assert.ok(!history.includes(secret), "nessun testo nella Storia");
   assert.ok(!history.includes("La storia parte dal"), "la Storia comincia con la scheda");

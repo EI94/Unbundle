@@ -18,6 +18,7 @@ import {
   VALUE_MODEL_LIMITS,
   type ValueParams,
 } from "@/lib/use-cases/value-model";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { cn } from "@/lib/utils";
 import {
   EASE_CHOICES,
@@ -147,7 +148,7 @@ export function ValueModelEditor({ draft, onChange, errors: saved, params, class
             <TextField id={`${baseId}-nota-ricorrenti`} label={TEXT.runCostNote} value={draft.runCostNote} max={VALUE_MODEL_LIMITS.runCostNote} error={errors["costs.runCostNote"]} onChange={(v) => set("runCostNote", v)} />
             {totals?.costs ? (
               <p data-slot="value-model-costs" className="text-sm font-medium tabular-nums">
-                {totals.costs}
+                {keepTogether(totals.costs)}
               </p>
             ) : null}
           </fieldset>
@@ -355,7 +356,7 @@ function ComponentFields({
       </div>
 
       <p data-slot="value-component-line" aria-live="polite" className="text-right text-sm font-medium tabular-nums">
-        {line}
+        {keepTogether(line)}
       </p>
     </div>
   );

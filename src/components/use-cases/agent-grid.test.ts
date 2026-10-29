@@ -40,6 +40,8 @@ function cardOf(html: string, param: string): string {
   return html.slice(start, html.indexOf("</li>", start));
 }
 const textOf = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
+/** Lo spazio non separabile: la cifra non va a capo dentro, il «·» resta con la parte prima. */
+const N = "\u00a0";
 
 test("una card per agente: il nome in maiuscolo, monospazio e nel suo colore; quanti use case; gli euro «su N use case»", () => {
   const html = render();
@@ -49,11 +51,12 @@ test("una card per agente: il nome in maiuscolo, monospazio e nel suo colore; qu
   const name = /<span class="([^"]*)">LIBRA<\/span>/.exec(libra)?.[1].split(" ") ?? [];
   for (const cls of ["font-mono", "uppercase", "tracking-wide", "font-semibold", `text-uc-agente-${AGENTS.tones.LIBRA}`]) assert.ok(name.includes(cls), cls);
   assert.ok(textOf(libra).includes("7 use case"));
-  assert.ok(textOf(libra).includes("12.300 € all'anno · su 3 use case"), textOf(libra));
-  assert.match(libra, /<span data-figure="valore" class="text-sm font-medium text-foreground tabular-nums">12\.300 € all&#x27;anno<\/span>/);
+  assert.ok(textOf(libra).includes(`12.300${N}€${N}all'anno${N}· su 3${N}use${N}case`), textOf(libra));
+  assert.ok(!textOf(libra).includes("12.300 € all'anno · su"), "mai «· su 3 use case» a capo da solo");
+  assert.match(libra, /<span data-figure="valore" class="text-sm font-medium text-foreground tabular-nums">12\.300\u00a0€\u00a0all&#x27;anno<\/span>/);
   // Tutti contati: niente «su N use case».
   const orsa = cardOf(html, "ORSA");
-  assert.ok(textOf(orsa).includes("3.000 € all'anno") && !textOf(orsa).includes("su 1 use case"));
+  assert.ok(textOf(orsa).includes(`3.000${N}€${N}all'anno`) && !textOf(orsa).includes("su 1"));
   // Nessuna cifra: lo dice, senza barra.
   const auto = cardOf(html, "AUTO");
   assert.ok(textOf(auto).includes("Nessuna cifra contata") && !auto.includes("data-figure"));

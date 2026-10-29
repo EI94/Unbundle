@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { FIGURE_SEPARATOR, formatEuro, oneoffRunParts, oneoffRunText, perYearShortText } from "@/lib/use-cases/format";
 import { UP_TO_WORD, VALUE_MODEL_STATE_LABEL } from "@/lib/use-cases/labels";
+import { SCREEN_SEPARATOR, joinPieces, keepTogether } from "@/lib/use-cases/line-breaks";
 import { shortRefOf } from "@/lib/use-cases/agents";
 import { placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
 import { BUBBLE_WHEN_LABEL, bubbleWhenText, markLegend, type BenefitBubble, type BenefitBubbles, type BubbleWhen, type GroupPalette } from "@/lib/use-cases/value-charts";
@@ -37,7 +38,7 @@ function benefitText(bubble: Pick<BenefitBubble, "benefit" | "pendingEur">): str
 
 /**
  * Le parti della riga sotto il titolo, nell'elenco al telefono: ognuna va a capo intera, mai
- * «1.200» da una parte e «€/anno» dall'altra.
+ * «1.200» da una parte e «€/anno» dall'altra, e il «·» resta con la parte prima (`joinPieces`).
  */
 export function bubbleSummaryParts(bubble: BenefitBubble): string[] {
   const parts = [`${BUBBLES_TEXT.ease} ${bubble.ease}`, benefitText(bubble), ...oneoffRunParts(bubble.oneoff, bubble.run), bubbleWhenText(bubble)];
@@ -145,7 +146,7 @@ export function BenefitBubbleChart({ chart, palette, hrefs }: BenefitBubblesProp
   return (
     <figure data-slot="benefit-bubbles" aria-label={BUBBLES_TEXT.label} className="w-full max-w-[720px] space-y-3">
       {chart.bubbles.length === 0 ? (
-        <p className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">{BUBBLES_TEXT.empty}</p>
+        <p className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">{keepTogether(BUBBLES_TEXT.empty)}</p>
       ) : (
         <>
           <div data-slot="benefit-bubbles-chart" className="hidden grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 md:grid">
@@ -200,12 +201,7 @@ export function BenefitBubbleChart({ chart, palette, hrefs }: BenefitBubblesProp
                     <span className="min-w-0 truncate font-medium">{bubble.title}</span>
                   </span>
                   <span data-slot="bubble-summary" className="text-xs text-muted-foreground">
-                    {bubbleSummaryParts(bubble).map((part, index) => (
-                      <span key={`${index}-${part}`}>
-                        {index ? FIGURE_SEPARATOR : null}
-                        <span className="whitespace-nowrap">{part}</span>
-                      </span>
-                    ))}
+                    {joinPieces(bubbleSummaryParts(bubble))}
                   </span>
                 </Link>
               </li>
@@ -227,7 +223,7 @@ export function BenefitBubbleChart({ chart, palette, hrefs }: BenefitBubblesProp
             <span className="hidden md:inline">{BUBBLES_TEXT.size}</span>
           </p>
         ) : null}
-        {chart.withoutEase > 0 ? <p className="text-xs text-muted-foreground">{withoutEaseText(chart.withoutEase)}</p> : null}
+        {chart.withoutEase > 0 ? <p className="text-xs text-muted-foreground">{keepTogether(withoutEaseText(chart.withoutEase))}</p> : null}
       </figcaption>
     </figure>
   );
@@ -287,7 +283,7 @@ function BubbleDot({ bubble, href, label: placement }: { bubble: BenefitBubble &
           <span className="block text-muted-foreground">{oneoffRunText(bubble.oneoff, bubble.run)}</span>
           <span className="block text-muted-foreground">
             {BUBBLES_TEXT.ease} {bubble.ease}
-            {FIGURE_SEPARATOR}
+            {SCREEN_SEPARATOR}
             {bubbleWhenText(bubble)}
           </span>
           {bubble.groupLabel ? <span className="block text-muted-foreground">{bubble.groupLabel}</span> : null}

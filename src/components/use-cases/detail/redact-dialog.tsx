@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { redactTextAction } from "@/lib/actions/use-case-edit";
 import type { DecisionItem } from "@/lib/use-cases/decision-ui";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import type { RedactableField } from "@/lib/use-cases/service";
 import { useDecisionRunner } from "../decision-buttons";
 
@@ -78,7 +79,7 @@ export function RedactDialog({ open, onOpenChange, workspaceId, item, options }:
         <form onSubmit={submit} noValidate aria-describedby={error ? errorId : undefined} className="grid gap-4">
           <DialogHeader>
             <DialogTitle>{REDACT_TEXT.title}</DialogTitle>
-            <DialogDescription>{REDACT_TEXT.description}</DialogDescription>
+            <DialogDescription>{keepTogether(REDACT_TEXT.description)}</DialogDescription>
           </DialogHeader>
           <div role="group" aria-labelledby={groupId} className="grid gap-0.5">
             <span id={groupId} className="sr-only">

@@ -102,6 +102,8 @@ function cardOf(html: string, id: string): string {
 }
 
 const textOf = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/&amp;/g, "&");
+/** Lo spazio non separabile (`keepTogether`): un numero resta con la sua parola, il «·» con la parte prima. */
+const N = "\u00a0";
 
 test("la card del revisore: il titolo intero prima di tag e cifre, il tag nascosto ai lettori di schermo, l'avvio con la fonte", () => {
   const libra = hub({ title: "LIBRA L1 · Lettura delle fatture estere", value: counted(12_250), cost: TEAM_30K });
@@ -117,15 +119,15 @@ test("la card del revisore: il titolo intero prima di tag e cifre, il tag nascos
   assert.ok(!link.includes("XX-"), "niente codice accanto al tag");
   // L'avvio: un importo del team con la sua fonte; «Benefici e costi» senza.
   assert.match(card, /data-figure="costo" data-cost-source="team_importo"/);
-  assert.ok(textOf(card).includes("avvio 30.000 € · team"), textOf(card));
+  assert.ok(textOf(card).includes(`avvio 30.000 €${N}· team`), textOf(card));
   assert.match(card, /data-source="team_importo"/);
   const model = cardOf(html, stima.id);
   assert.match(model, /data-figure="costo" data-cost-source="stima"/);
   assert.ok(textOf(model).includes("avvio 700 €") && !model.includes("data-source="), "«Benefici e costi»: niente fonte");
   // Il Valore: gli euro con la barra piena sulla scala; il tetto da misurare tratteggiato.
-  assert.ok(textOf(card).includes("12.250 € all'anno") && !card.includes("Valore: "), textOf(card));
+  assert.ok(textOf(card).includes(`12.250${N}€${N}all'anno`) && !card.includes("Valore: "), textOf(card));
   assert.match(card, /<span aria-hidden="true" data-slot="value-bar" data-bar="contato" class="block h-1\.5 w-full rounded-full bg-muted"><span class="block h-full rounded-full bg-uc-agente-\d+" style="width:38\.9%"><\/span>/);
-  assert.ok(textOf(model).includes("da misurare · fino a 5.840 €"));
+  assert.ok(textOf(model).includes(`da misurare${N}· fino a 5.840${N}€`));
   assert.match(model, /data-bar="da_misurare"[^>]*><span class="block h-full rounded-full border border-dashed border-uc-agente-\d+" style="width:18\.5%"/);
   // Senza agente: il codice e la barra grigia.
   const plain = hub({ title: "Smistamento delle richieste", value: counted(3_000) });
@@ -169,8 +171,9 @@ test("una corsia: «7 use case · … contati all'anno», le prime 5 card, poi �
   const seven = Array.from({ length: 7 }, (_, index) => hub({ title: `Corsia ${index}`, value: counted(1_000 * (index + 1)) }));
   const html = render(seven, { barScale: 7_000 });
   const lane = html.slice(html.indexOf('data-lane="questo_trimestre"'), html.indexOf('data-lane="prossimo_trimestre"'));
-  assert.match(lane, /<h2 id="lane-questo_trimestre" class="text-sm font-semibold">Questo trimestre · T4 2026<\/h2>/);
-  assert.ok(textOf(lane).includes("7 use case · 28.000 € contati all'anno"), textOf(lane));
+  assert.match(lane, /<h2 id="lane-questo_trimestre" class="text-sm font-semibold">Questo trimestre\u00a0· T4\u00a02026<\/h2>/);
+  assert.ok(textOf(lane).includes(`7${N}use${N}case${N}· 28.000${N}€ contati all'anno`), textOf(lane));
+  assert.ok(!textOf(lane).includes("7 use case · 28.000 €"), "mai il «·» o «€» in testa a una riga");
   assert.match(lane, /data-figure="corsia"/);
   const more = lane.indexOf('<details data-slot="lane-more"');
   assert.ok(more > 0, "le altre dietro un <details>");
@@ -228,16 +231,16 @@ test("le cifre si sommano: le card fanno la corsia, «In realizzazione» dice i 
   // Tre card da 1.000,5 €: ognuna «1.001 € all'anno», la corsia 3.003 € (sommando prima e arrotondando dopo, 3.002 €).
   const three = Array.from({ length: 3 }, (_, index) => hub({ title: `Centesimi ${index}`, value: counted(1_000.5) }));
   const html = render(three, { barScale: 1_000.5 });
-  for (const item of three) assert.ok(textOf(cardOf(html, item.id)).includes("1.001 € all'anno"), item.title);
+  for (const item of three) assert.ok(textOf(cardOf(html, item.id)).includes(`1.001${N}€${N}all'anno`), item.title);
   const lane = html.slice(html.indexOf('data-lane="questo_trimestre"'), html.indexOf('data-lane="prossimo_trimestre"'));
-  assert.ok(textOf(lane).includes("3 use case · 3.003 € contati all'anno"), textOf(lane));
+  assert.ok(textOf(lane).includes(`3${N}use${N}case${N}· 3.003${N}€ contati all'anno`), textOf(lane));
   // «In realizzazione»: i suoi euro contati dopo il conto, come una corsia; senza euro solo il conto.
   const building = hub({ title: "Avviato", phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier", value: counted(2_719) });
   const quiet = hub({ title: "Avviato senza cifra", phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier" });
   const progress = render([building, quiet]);
   assert.match(
     progress,
-    /<h2 id="panoramica-in-realizzazione"[^>]*>In realizzazione <span[^>]*>2 · <span data-figure="in-realizzazione">2\.719 € contati all&#x27;anno<\/span><\/span><\/h2>/,
+    /<h2 id="panoramica-in-realizzazione"[^>]*>In realizzazione <span[^>]*>2\u00a0· <span data-figure="in-realizzazione">2\.719\u00a0€ contati all&#x27;anno<\/span><\/span><\/h2>/,
   );
   assert.match(render([quiet]), /In realizzazione <span[^>]*>1<\/span><\/h2>/);
   assert.deepEqual(findHubForbiddenIn([textOf(progress)], "area"), []);
@@ -259,9 +262,9 @@ test("le cifre si sommano: le card fanno la corsia, «In realizzazione» dice i 
     },
   });
   const agentCard = grid.slice(grid.indexOf('data-agent="LIBRA"'));
-  assert.ok(textOf(agentCard).includes("27.336 € all'anno"), textOf(agentCard));
+  assert.ok(textOf(agentCard).includes(`27.336${N}€${N}all'anno`), textOf(agentCard));
   const lanesOfLibra = render(libra, { agentFilter: "LIBRA" });
-  assert.ok(textOf(lanesOfLibra).includes("16.293 € contati all'anno") && textOf(lanesOfLibra).includes("11.043 € contati all'anno"));
+  assert.ok(textOf(lanesOfLibra).includes(`16.293${N}€ contati all'anno`) && textOf(lanesOfLibra).includes(`11.043${N}€ contati all'anno`));
 });
 
 test("«Realizzati»: chiusi, con il conto, l'ancora, il mese e gli euro senza barra", () => {
@@ -274,7 +277,7 @@ test("«Realizzati»: chiusi, con il conto, l'ancora, il mese e gli euro senza b
   assert.ok(summary.includes('Realizzati <span class="text-xs font-normal text-muted-foreground tabular-nums">2</span>'), summary);
   assert.ok(html.indexOf(`data-id="${recent.id}"`) < html.indexOf(`data-id="${old.id}"`), "dal più recente");
   const card = cardOf(html, recent.id);
-  assert.ok(card.includes('data-lane="realizzati"') && textOf(card).includes("Realizzato · set 2026") && textOf(card).includes("8.000 € all'anno"), textOf(card));
+  assert.ok(card.includes('data-lane="realizzati"') && textOf(card).includes(`Realizzato${N}· set${N}2026`) && textOf(card).includes(`8.000${N}€${N}all'anno`), textOf(card));
   assert.ok(!card.includes("value-bar") && !card.includes('data-figure="costo"'));
 });
 
@@ -287,7 +290,9 @@ test("vuoti: «Niente in programma, per ora»; con i filtri «Niente in programm
   const own = contributor({ title: "La mia proposta", phase: "da_valutare", subState: "nuova", phaseLabel: "Da valutare · Nuova", quando: null, own: true });
   const mine = textOf(render([own], { contributor: true }));
   assert.ok(mine.includes("Niente in programma, per ora"), mine);
-  assert.ok(mine.includes("Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In valutazione»."), mine);
+  // Il nome della vista non va a capo: «In valutazione» resta intero.
+  assert.ok(mine.includes(`Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In${N}valutazione».`), mine);
+  assert.ok(!mine.includes("«In valutazione»"));
   for (const text of ["Nessuno use case è ancora approvato", "Approva uno use case", "nascost"]) assert.ok(!mine.includes(text), text);
   assert.deepEqual(findHubForbiddenIn([lanes.LANES_TEXT.emptyContributorBody], "area"), []);
   const filtered = render([decide], { filtersActive: true });
@@ -319,7 +324,7 @@ test("contributori: tag, titolo e la pillola della fase, per titolo; nessuna cif
   assert.ok((html.match(/data-slot="agent-tag"/g) ?? []).length === 3, "i tag dell'agente");
   assert.ok(html.includes("Approvato · T1 2027") && html.includes("Approvato · T3 2026"), "la pillola dice il trimestre");
   const next = html.slice(html.indexOf('data-lane="prossimo_trimestre"'));
-  assert.ok(next.includes('<p class="text-xs text-muted-foreground tabular-nums">2 use case</p>'));
+  assert.ok(next.includes(`<p class="text-xs text-muted-foreground tabular-nums">2${N}use${N}case</p>`));
   assert.ok(next.indexOf(alfa.id) < next.indexOf(zeta.id), "per titolo");
 });
 
@@ -345,13 +350,13 @@ test("«Per trimestre | Per agente»: le card degli agenti al posto delle corsie
   assert.match(drill, /aria-label="Use case di LIBRA per trimestre"/);
   // A schermo, sopra le corsie: di chi sono, quanti, e la strada per tornare agli agenti.
   const line = drill.slice(drill.indexOf('data-slot="agent-filter-line"'), drill.indexOf("</p>", drill.indexOf('data-slot="agent-filter-line"')));
-  assert.equal(textOf(line.slice(line.indexOf(">") + 1)), "LIBRA · 1 use caseTutti gli agenti");
+  assert.equal(textOf(line.slice(line.indexOf(">") + 1)), `LIBRA${N}· 1${N}use${N}caseTutti gli agenti`);
   // Il ritorno porta alla card di LIBRA (`#agente-LIBRA`): il link sparisce con il clic e il fuoco va lì, non sul <body>.
   assert.match(line, new RegExp(`<a [^>]*href="${BASE.replace(/[?]/g, "\\?")}\\?vista=panoramica&amp;mostra=agenti#agente-LIBRA"`));
   assert.ok(!line.includes("bg-primary"), "un link, non un pulsante pieno");
   const others = render([plain], { agentFilter: "altri" });
   assert.match(others, /aria-label="Altri use case per trimestre"/);
-  assert.ok(others.includes('data-slot="agent-filter-line"') && textOf(others).includes("Altri use case · 1 use case"));
+  assert.ok(others.includes('data-slot="agent-filter-line"') && textOf(others).includes(`Altri use case${N}· 1${N}use${N}case`));
   assert.ok(!others.includes("Tutti gli agenti"), "senza «Per agente» niente ritorno");
   assert.match(render([plain], { agentFilter: "altri", grouping: grouping("trimestre") }), /<a [^>]*href="[^"]*mostra=agenti#agente-altri"/);
   // Il segmento «Per agente» resta senza ancora (`scroll={false}`): resta a schermo, e il fuoco con lui.

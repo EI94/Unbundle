@@ -1,5 +1,6 @@
 import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
-import { FIGURE_SEPARATOR, costTextParts, startCostParts, type CostParts } from "@/lib/use-cases/format";
+import { costTextParts, startCostParts, type CostParts } from "@/lib/use-cases/format";
+import { SCREEN_SEPARATOR, keepTogether } from "@/lib/use-cases/line-breaks";
 import { cn } from "@/lib/utils";
 import { SourceTag } from "./source-tag";
 
@@ -47,7 +48,7 @@ export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel
         <span className="whitespace-nowrap">{start.figure}</span>
         {start.source ? (
           <>
-            <span>{FIGURE_SEPARATOR}</span>
+            <span>{SCREEN_SEPARATOR}</span>
             <SourceTag figure="costo" source={cost.source} />
           </>
         ) : null}
@@ -66,7 +67,7 @@ export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel
       >
         {withLabel && <div className="text-sm text-muted-foreground">{COST_LABEL_LONG}</div>}
         <div>
-          <span className={cn("text-xl font-semibold tracking-tight", parts.estimated && "text-muted-foreground")}>{parts.figure}</span>
+          <span className={cn("text-xl font-semibold tracking-tight", parts.estimated && "text-muted-foreground")}>{keepTogether(parts.figure)}</span>
         </div>
         {/* La fonte sulla riga sotto la cifra, come per il Valore: accanto, una cifra lunga la mandava a capo da sola. */}
         {source ? (
@@ -78,8 +79,8 @@ export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel
     );
   }
   // In riga, testo semplice che va a capo tra le parti: «Costo: €€ · 40.000 € · team». La cifra
-  // di «Benefici e costi» («avvio 1.050 € · ricorrenti 300 €/anno») è lunga: va a capo, ma solo tra
-  // «avvio …» e «ricorrenti …», mai dentro un importo; con `stack` le due parti stanno una sotto l'altra.
+  // di «Benefici e costi» («avvio 1.050 € · ricorrenti 300 €/anno») è lunga: va a capo dopo il «·»,
+  // tra «avvio …» e «ricorrenti …», mai dentro un importo; con `stack` le due parti stanno una sotto l'altra.
   const tone = parts.estimated ? "text-muted-foreground" : "font-medium";
   const multi = parts.figureParts.length > 1;
   return (
@@ -97,7 +98,7 @@ export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel
         <span className={tone}>
           {parts.figureParts.map((part, index) => (
             <span key={part}>
-              {index > 0 ? <span>{FIGURE_SEPARATOR}</span> : null}
+              {index > 0 ? <span>{SCREEN_SEPARATOR}</span> : null}
               <span className="whitespace-nowrap">{part}</span>
             </span>
           ))}
@@ -107,7 +108,7 @@ export function CostFigure({ cost, bands = COST_BANDS, form = "corta", withLabel
       )}
       {source && parts.source ? (
         <>
-          <span className="text-muted-foreground">{FIGURE_SEPARATOR}</span>
+          <span className="text-muted-foreground">{SCREEN_SEPARATOR}</span>
           <SourceTag figure="costo" source={source} />
         </>
       ) : null}

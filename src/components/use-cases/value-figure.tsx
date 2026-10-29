@@ -9,6 +9,7 @@ import {
   valueScreenText,
   type ValueParts,
 } from "@/lib/use-cases/format";
+import { SCREEN_SEPARATOR, keepTogether } from "@/lib/use-cases/line-breaks";
 import { cn } from "@/lib/utils";
 import { SourceTag } from "./source-tag";
 
@@ -68,7 +69,7 @@ export function ValueFigure({ value, form = "corta", withLabel = false, withSour
       <div data-figure="valore" data-estimated={estimated ? "true" : undefined} className={cn("min-w-0 space-y-1", className)}>
         {withLabel && <div className="text-sm text-muted-foreground">{VALUE_LABEL}</div>}
         <div>
-          <span className={cn("text-xl font-semibold tracking-tight", grey && "text-muted-foreground")}>{valueScreenLongText(value)}</span>
+          <span className={cn("text-xl font-semibold tracking-tight", grey && "text-muted-foreground")}>{keepTogether(valueScreenLongText(value))}</span>
         </div>
         {/* La fonte sulla riga sotto la cifra, come per il costo: lo stesso posto per le due cifre. */}
         {euro ? (
@@ -82,11 +83,11 @@ export function ValueFigure({ value, form = "corta", withLabel = false, withSour
         ) : null}
         {perYear && value?.perYear && (
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
-            <span>{perYear}</span>
+            <span>{keepTogether(perYear)}</span>
             <SourceTag figure="valore_anno" source={value.perYear.source} form="lunga" />
           </div>
         )}
-        {pending ? <div className="text-xs text-muted-foreground">{pending}</div> : null}
+        {pending ? <div className="text-xs text-muted-foreground">{keepTogether(pending)}</div> : null}
       </div>
     );
   }
@@ -98,7 +99,7 @@ export function ValueFigure({ value, form = "corta", withLabel = false, withSour
       <span className={cn(!wrap && "whitespace-nowrap", grey ? "text-muted-foreground" : "font-medium")}>{wrap ? <WrapAfterSeparator text={text} /> : text}</span>
       {withSource && !value?.benefits && (euro || value?.source) ? (
         <>
-          <span className="text-muted-foreground">{FIGURE_SEPARATOR}</span>
+          <span className="text-muted-foreground">{SCREEN_SEPARATOR}</span>
           {euro ? <SourceTag figure="valore_anno" source={euro.source} /> : value?.source ? <SourceTag figure="valore" source={value.source} /> : null}
         </>
       ) : null}

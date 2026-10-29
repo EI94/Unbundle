@@ -13,6 +13,7 @@ import {
   type PageDecision,
   type ReopenDestination,
 } from "@/lib/use-cases/decision-ui";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { cn } from "@/lib/utils";
 
 /**
@@ -66,7 +67,7 @@ export function DecisionDialog({
         <form onSubmit={submit} noValidate aria-describedby={error ? errorId : undefined} className="grid gap-4">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
-            {description ? <DialogDescription>{description}</DialogDescription> : null}
+            {description ? <DialogDescription>{keepTogether(description)}</DialogDescription> : null}
           </DialogHeader>
           {children}
           {error ? (

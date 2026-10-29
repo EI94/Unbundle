@@ -41,18 +41,19 @@ test("forma corta: con gli euro all'anno solo la cifra, senza la parola e non in
 
 test("forma corta con la fonte, senza modello: la fonte degli euro, «team» o «dossier»", () => {
   const team = render({ value: { score: 2, word: "basso", source: "team", perYear: { amount: 12_250, source: "team" } }, withSource: true });
-  assert.equal(textOf(team), "12.250 €/anno · team");
+  // Il «·» resta con la cifra: la fonte va a capo da sola, mai «· team» in testa a una riga.
+  assert.equal(textOf(team), "12.250 €/anno\u00a0· team");
   assert.match(team, /data-source="team"/);
   assert.equal(sourcesOf(team), 1);
   const dossier = render({ value: { score: 2, word: "basso", source: "ai", perYear: { amount: 12_250, source: "dossier" } }, withSource: true });
-  assert.equal(textOf(dossier), "12.250 €/anno · dossier");
+  assert.equal(textOf(dossier), "12.250 €/anno\u00a0· dossier");
   assert.match(dossier, /data-source="dossier"/);
   assert.doesNotMatch(dossier, /data-source="ai"/, "la fonte è quella della cifra scritta");
 });
 
 test("forma corta senza euro: la parola con la fonte del punteggio, come prima", () => {
   const html = render({ value: { score: 3.8, word: "alto", source: "ai", perYear: null }, withSource: true });
-  assert.equal(textOf(html), "Alto · AI");
+  assert.equal(textOf(html), "Alto\u00a0· AI");
   assert.match(html, /data-source="ai"/);
   // 0 € non è una cifra: resta la parola.
   assert.equal(textOf(render({ value: { score: 3.8, word: "alto", source: "team", perYear: { amount: 0, source: "team" } } })), "Alto");
@@ -61,12 +62,12 @@ test("forma corta senza euro: la parola con la fonte del punteggio, come prima",
 
 test("forma lunga con gli euro: una sola cifra grande con la sua fonte, senza parola né punteggio", () => {
   const html = render({ value: { score: 2.2, word: "basso", source: "team", perYear: { amount: 12_250, source: "dossier" } }, form: "lunga", withLabel: true });
-  assert.equal((html.match(/12\.250 € all&#x27;anno/g) ?? []).length, 1, html);
+  assert.equal((html.match(/12\.250\u00a0€\u00a0all&#x27;anno/g) ?? []).length, 1, html);
   assert.equal(sourcesOf(html), 1);
   assert.match(html, /data-source="dossier"[^>]*>dal dossier</);
   assert.doesNotMatch(html, /Basso · 2,2/);
   assert.doesNotMatch(html, /Basso|2,2/);
-  assert.match(html, /<span class="text-xl font-semibold tracking-tight">12\.250 € all&#x27;anno<\/span>/, "non in grigio");
+  assert.match(html, /<span class="text-xl font-semibold tracking-tight">12\.250\u00a0€\u00a0all&#x27;anno<\/span>/, "non in grigio");
   // La fonte sulla riga sotto la cifra, nello stesso posto del costo.
   assert.match(html, /<\/span><\/div><div data-slot="figure-source"><span data-source="dossier"/);
 });
@@ -76,21 +77,22 @@ test("forma lunga con «Benefici e costi»: le voci da misurare sotto la cifra; 
     value: { score: 1.4, word: "basso", source: "team", perYear: { amount: 12_250, source: "team" }, benefits: counted({ pendingEur: 1680 }) },
     form: "lunga",
   });
-  assert.ok(withPending.includes("e fino a 1.680 € da misurare"), withPending);
-  assert.ok(withPending.includes("12.250 € all&#x27;anno"));
+  assert.ok(withPending.includes("e fino a 1.680\u00a0€ da misurare"), withPending);
+  assert.ok(withPending.includes("12.250\u00a0€\u00a0all&#x27;anno"));
   assert.doesNotMatch(withPending, /Basso/);
 
   const pendingOnly = render({
     value: { score: null, word: null, source: "team", perYear: null, benefits: { state: "da_misurare", benefitEur: 0, pendingEur: 5840, hours: 0 } },
     form: "lunga",
   });
-  assert.match(pendingOnly, /<span class="text-xl font-semibold tracking-tight text-muted-foreground">da misurare · fino a 5\.840 €<\/span>/);
+  assert.match(pendingOnly, /<span class="text-xl font-semibold tracking-tight text-muted-foreground">da misurare\u00a0· fino a 5\.840\u00a0€<\/span>/);
   assert.doesNotMatch(pendingOnly, /e fino a/, "il tetto è già la cifra");
 });
 
 test("forma lunga senza euro: «Alto · 3,8» con la fonte del punteggio", () => {
   const html = render({ value: { score: 3.8, word: "alto", source: "ai", perYear: null }, form: "lunga" });
-  assert.match(html, />Alto · 3,8</);
+  // Un numero solo dopo l'ultimo «·» resta con il «·»: mai «3,8» da solo su una riga.
+  assert.match(html, />Alto\u00a0·\u00a03,8</);
   assert.match(html, /data-source="ai"[^>]*>AI</);
   assert.equal(sourcesOf(html), 1);
 });

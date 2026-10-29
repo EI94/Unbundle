@@ -18,6 +18,8 @@ before(async () => {
 
 const render = (view: ReturnType<typeof infoProgressView>) => renderToStaticMarkup(createElement(summary.InfoSummary, { view }));
 const textOf = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'");
+/** Lo spazio non separabile (`keepTogether`, `joinPieces`). */
+const N = "\u00a0";
 
 const waiting: InfoProgress = {
   state: "in_attesa",
@@ -41,7 +43,8 @@ test("senza stato non c'è niente", () => {
 
 test("in attesa: una riga con il conteggio e che cosa resta, senza la parola della testata", () => {
   const html = render(infoProgressView(waiting));
-  assert.equal(textOf(html), "0 di 6 informazioni ricevute · 4 in attesa · 2 da chiedere");
+  // Il «·» resta con il gruppo prima: la riga va a capo dopo, mai dentro un gruppo.
+  assert.equal(textOf(html), `0${N}di 6${N}informazioni ricevute${N}· 4${N}in${N}attesa${N}· 2${N}da${N}chiedere`);
   assert.match(html, /role="group"/);
   assert.match(html, /aria-label="Raccolta informazioni"/);
   assert.ok(!html.includes("Informazioni:"), "lo stato a parole sta solo nella testata");
@@ -68,9 +71,10 @@ test("niente dal cliente: solo la frase, senza «che cosa resta»", () => {
 
 test("da verificare: tra parentesi dopo le ricevute, e ogni gruppo che resta, così i numeri fanno il totale", () => {
   const html = render(infoProgressView({ ...waiting, state: "da_verificare", received: 2, total: 5, toVerify: 1, waiting: 1, toAsk: 2 }));
-  assert.equal(textOf(html), "2 di 5 informazioni ricevute (1 da verificare) · 1 in attesa · 2 da chiedere");
+  assert.equal(textOf(html), `2${N}di 5${N}informazioni ricevute (1 da verificare)${N}· 1${N}in${N}attesa${N}· 2${N}da${N}chiedere`);
   assert.match(html, /<span data-slot="info-received-note"> <span class="whitespace-nowrap">\(1 da verificare\)<\/span><\/span>/);
-  // Al telefono si va a capo solo tra un gruppo e l'altro: «(1 da verificare)», «· 1 in attesa» e «· 2 da chiedere» restano interi.
-  const whole = [...html.matchAll(/<span class="whitespace-nowrap">([^<]*)<\/span>/g)].map((match) => match[1]);
-  assert.deepEqual(whole, ["(1 da verificare)", "· 1 in attesa", "· 2 da chiedere"]);
+  // Al telefono si va a capo solo tra un gruppo e l'altro: «(1 da verificare)», «1 in attesa ·» e «2 da chiedere» restano interi,
+  // e nessuna riga comincia con il «·».
+  assert.match(html, new RegExp(`<span data-slot="info-next">${N}· 1${N}in${N}attesa${N}· 2${N}da${N}chiedere</span>`));
+  assert.ok(!/[ >]· /.test(html), "mai un «·» in testa a una riga");
 });

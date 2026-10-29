@@ -20,6 +20,7 @@ import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
 import { INFO_PROGRESS_PARAM, type InfoProgressState, type InfoProgressView } from "@/lib/use-cases/info-progress";
 import { channelLabel } from "@/lib/use-cases/labels";
 import { laneBarScale, PANORAMA_SECTION_ID } from "@/lib/use-cases/lanes";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { buildNeedsBoard, panelNeeds, type NeedView } from "@/lib/use-cases/needs";
 import { overviewFigures, overviewNextStep, overviewSteps, portfolioLine } from "@/lib/use-cases/panoramica";
 import { abilitiesForUseCase, type UseCaseAbilities } from "@/lib/use-cases/permissions";
@@ -287,7 +288,8 @@ function Welcome({ joined, workspaceName, roleName }: { joined: HubParams["joine
     return (
       <HubNotice tone="verde" title={`Benvenuto in ${workspaceName}!`} testId="workspace-welcome">
         Ora collabori come {roleName}
-        {joined === "upgraded" ? " e continui a seguire i tuoi corsi" : ""}. Per iniziare, proponi un use case con «Nuovo use case».
+        {joined === "upgraded" ? " e continui a seguire i tuoi corsi" : ""}.{" "}
+        {keepTogether("Per iniziare, proponi un use case con «Nuovo use case».")}
       </HubNotice>
     );
   }

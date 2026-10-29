@@ -58,7 +58,7 @@ test("una riga senza Valore né Costo dice che cosa è da stimare", () => {
 test("il costo del modello: mai spezzato dentro un importo; nel pannello una parte per riga", () => {
   const model = { source: "stima", amount: 22_200, band: 1, fromBand: false, runEurYear: 6_000 } as const;
   const inline = renderToStaticMarkup(createElement(cost.CostFigure, { cost: model, withLabel: true }));
-  assert.equal(textOf(inline), "Costo: avvio 22.200 € · ricorrenti 6.000 €/anno");
+  assert.equal(textOf(inline), "Costo: avvio 22.200 €\u00a0· ricorrenti 6.000 €/anno");
   for (const part of ["avvio 22.200 €", "ricorrenti 6.000 €/anno"]) assert.ok(inline.includes(`<span class="whitespace-nowrap">${part}</span>`), part);
   assert.ok(!inline.includes("data-cost-parts"), "in riga le due parti con « · »");
   // Nel pannello sempre una sotto l'altra.
@@ -67,7 +67,7 @@ test("il costo del modello: mai spezzato dentro un importo; nel pannello una par
   assert.ok(!panel.includes(" · "));
   // Una cifra di una parte sola non cambia.
   const single = renderToStaticMarkup(createElement(cost.CostFigure, { cost: { source: "team_importo", amount: 40_000, band: 2, fromBand: false }, stack: true }));
-  assert.equal(textOf(single), "€€ · 40.000 € · team");
+  assert.equal(textOf(single), "€€ · 40.000 €\u00a0· team");
   assert.ok(!single.includes("data-cost-parts"));
   assert.match(readFileSync(new URL("./use-case-panel.tsx", import.meta.url), "utf8"), /<CostFigure cost=\{item\.cost\} bands=\{bands\} withLabel stack \/>/);
 });

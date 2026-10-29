@@ -4,6 +4,7 @@ import type { UseCaseEventList, UseCaseEventRow } from "@/lib/db/queries/use-cas
 import { ANSWER_TEXT } from "@/lib/use-cases/answers";
 import { formatDate, formatDayInYear } from "@/lib/use-cases/format";
 import { WHAT_FIELD_LABEL, type WhatField } from "@/lib/use-cases/labels";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { NEED_HISTORY_TEXT, isNeedHistoryEvent, needHistoryText } from "@/lib/use-cases/needs-history";
 import { PHASE_LABEL } from "@/lib/use-cases/phase";
 import { REFERENT_HISTORY_PREFIX, historyActorText, isReferentHistoryEvent, referentHistoryText } from "@/lib/use-cases/referent/history";
@@ -251,7 +252,7 @@ export function SectionHistory({ events, kind, today, open = false, showAllHref,
             <ol className="space-y-1.5">
               {events.events.map((event) => (
                 <li key={event.id} data-action={event.action} className="text-sm break-words">
-                  {historyRowParts(event, { kind, today }).join(" · ")}
+                  {keepTogether(historyRowParts(event, { kind, today }).join(" · "))}
                 </li>
               ))}
             </ol>

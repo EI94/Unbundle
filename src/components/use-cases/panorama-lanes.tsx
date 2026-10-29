@@ -6,6 +6,7 @@ import type { DossierCardView } from "@/lib/uc/views/realization";
 import { agentLabel, NO_AGENT_PARAM, type AgentPalette } from "@/lib/use-cases/agents";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { FIGURE_SEPARATOR } from "@/lib/use-cases/format";
+import { SCREEN_SEPARATOR, keepTogether } from "@/lib/use-cases/line-breaks";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import {
   LANE_PREVIEW,
@@ -194,7 +195,7 @@ export function PanoramaLanes({
             <p data-slot="agent-filter-line" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <span>
                 <span className="font-semibold">{agentLine.name}</span>
-                <span className="text-muted-foreground tabular-nums">{`${FIGURE_SEPARATOR}${laneSummaryText(agentLine.count, null)}`}</span>
+                <span className="text-muted-foreground tabular-nums">{keepTogether(`${FIGURE_SEPARATOR}${laneSummaryText(agentLine.count, null)}`)}</span>
               </span>
               {agentLine.backHref ? (
                 <HashFocusLink
@@ -217,16 +218,16 @@ export function PanoramaLanes({
                 return (
                   <section key={lane.key} data-slot="lane" data-lane={lane.key} aria-labelledby={`lane-${lane.key}`} className="min-w-0 space-y-2">
                     <h2 id={`lane-${lane.key}`} className="text-sm font-semibold">
-                      {lane.label}
+                      {keepTogether(lane.label)}
                     </h2>
                     {lane.entries.length ? (
                       <>
                         <p className="text-xs text-muted-foreground tabular-nums">
-                          {laneSummaryText(lane.entries.length, null)}
+                          {keepTogether(laneSummaryText(lane.entries.length, null))}
                           {lane.countedEurYear ? (
                             <>
-                              {FIGURE_SEPARATOR}
-                              <span data-figure="corsia">{laneCountedText(lane.countedEurYear)}</span>
+                              {SCREEN_SEPARATOR}
+                              <span data-figure="corsia">{keepTogether(laneCountedText(lane.countedEurYear))}</span>
                             </>
                           ) : null}
                         </p>
@@ -267,8 +268,8 @@ export function PanoramaLanes({
               {/* Gli euro contati, come una corsia: con le corsie (o «Per agente») fanno la cifra in testa. */}
               {lanes.inProgressCountedEurYear ? (
                 <>
-                  {FIGURE_SEPARATOR}
-                  <span data-figure="in-realizzazione">{laneCountedText(lanes.inProgressCountedEurYear)}</span>
+                  {SCREEN_SEPARATOR}
+                  <span data-figure="in-realizzazione">{keepTogether(laneCountedText(lanes.inProgressCountedEurYear))}</span>
                 </>
               ) : null}
             </span>

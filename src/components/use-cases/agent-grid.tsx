@@ -1,6 +1,7 @@
 import { agentToneOf, type AgentPalette } from "@/lib/use-cases/agents";
 import { formatInteger, perYearText } from "@/lib/use-cases/format";
 import { agentCardId, type AgentGroup } from "@/lib/use-cases/lanes";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { totalsNote } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { AGENT_BAR_CLASS, AGENT_TEXT_CLASS, NEUTRAL_BAR_CLASS, NEUTRAL_TEXT_CLASS } from "./agent-tag";
@@ -67,9 +68,9 @@ function AgentCard({ group, href, agents, maxEur }: { group: AgentGroup; href: s
         {group.counted > 0 ? (
           <span className="text-xs text-muted-foreground">
             <span data-figure="valore" className="text-sm font-medium text-foreground tabular-nums">
-              {perYearText({ amount: group.perYearEur })}
+              {keepTogether(perYearText({ amount: group.perYearEur }))}
             </span>
-            {group.counted < group.count ? ` · ${totalsNote(group.counted)}` : null}
+            {group.counted < group.count ? keepTogether(` · ${totalsNote(group.counted)}`) : null}
           </span>
         ) : (
           <span className="text-xs text-muted-foreground">{AGENT_GRID_TEXT.noCounted}</span>

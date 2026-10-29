@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LEVER_META } from "@/components/uc/common/lever-icons";
-import { FIGURE_SEPARATOR, formatEuro, qualitativeCountText } from "@/lib/use-cases/format";
+import { formatEuro, qualitativeCountText } from "@/lib/use-cases/format";
+import { SCREEN_SEPARATOR, keepTogether } from "@/lib/use-cases/line-breaks";
 import type { GroupLegendEntry, LeverChart, LeverRow, LeverSegment } from "@/lib/use-cases/value-charts";
 import { cn } from "@/lib/utils";
 import { GroupLegendItems, SLOT_BORDER, SLOT_FILL, SLOT_FILL_SOFT } from "./value-chart-colors";
@@ -189,10 +190,10 @@ function UseCaseLines({ segment, row }: { segment: LeverSegment; row: LeverRow }
           <li key={line.key} className="text-sm">
             <p>{line.label}</p>
             <p className="text-xs text-muted-foreground">
-              <span className="text-foreground tabular-nums">{line.amount}</span>
-              {FIGURE_SEPARATOR}
+              <span className="text-foreground tabular-nums">{keepTogether(line.amount)}</span>
+              {SCREEN_SEPARATOR}
               {line.confidence}
-              {!line.counted && line.kind !== "qualitativo" ? `${FIGURE_SEPARATOR}${LEVER_CHART_TEXT.outOfTotal}` : ""}
+              {!line.counted && line.kind !== "qualitativo" ? `${SCREEN_SEPARATOR}${LEVER_CHART_TEXT.outOfTotal}` : ""}
             </p>
           </li>
         ))}
@@ -254,7 +255,7 @@ function PhoneRow({ row, hrefs }: { row: LeverRow; hrefs: Readonly<Record<string
     <li data-lever={row.lever} className="space-y-1">
       <p className="flex items-baseline justify-between gap-3 text-sm font-medium">
         <LeverName row={row} />
-        {row.total > 0 ? <span className="tabular-nums">{formatEuro(row.total)}</span> : null}
+        {row.total > 0 ? <span className="tabular-nums">{keepTogether(formatEuro(row.total))}</span> : null}
       </p>
       <ul>
         {row.segments.map((segment) => link(segment, formatEuro(segment.eur), "c"))}

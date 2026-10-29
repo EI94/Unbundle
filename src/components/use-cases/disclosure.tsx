@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { cn } from "@/lib/utils";
 
 /**
@@ -7,7 +8,8 @@ import { cn } from "@/lib/utils";
  * il suo `<details>`: chiusa resta chiusa anche dentro un «Già a posto» aperto. `id`: un'ancora sul
  * `<details>` stesso, come «Realizzati» della Panoramica (`#panoramica-realizzati`). `defaultOpen`:
  * aperto quando la pagina si rende (un link che chiede quell'elenco, una ricerca in «Cosa serve»);
- * poi lo apre e lo chiude chi guarda, come ogni `<details>`.
+ * poi lo apre e lo chiude chi guarda, come ogni `<details>`. Un riassunto di testo non va a capo
+ * dentro un numero né prima di un «·» (`keepTogether`).
  */
 export function Disclosure({
   summary,
@@ -35,7 +37,7 @@ export function Disclosure({
         )}
       >
         <ChevronRight aria-hidden className="size-4 shrink-0 transition-transform [[open]>summary>&]:rotate-90" />
-        {summary}
+        {typeof summary === "string" ? keepTogether(summary) : summary}
       </summary>
       <div className="mt-2">{children}</div>
     </details>

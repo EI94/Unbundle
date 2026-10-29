@@ -436,7 +436,9 @@ test("menu «⋯»: «Matrice Valore × Costo», «Matrice Facilità × Benefici
   // Nell'elenco il codice non va a capo («TJ-» / «0010») e ogni parte della riga resta intera.
   const phoneList = page.slice(page.indexOf('data-slot="benefit-bubbles-list"'));
   assert.ok(phoneList.includes(`<span class="shrink-0 font-mono text-xs whitespace-nowrap text-muted-foreground">${cards.a.code}</span>`), "il codice intero");
-  for (const part of ["4.043 €/anno", "avvio 560 €", "ricorrenti 600 €/anno"]) assert.ok(phoneList.includes(`<span class="whitespace-nowrap">${part}</span>`), part);
+  // Un testo solo, con le parti intere e il «·» che resta con la parte prima: la riga va a capo dopo il «·».
+  const parts = ["Facilità 4", "4.043 €/anno", "avvio 560 €", "ricorrenti 600 €/anno", "questo trimestre", "Gruppo Servizio clienti"].map((part) => part.replace(/ /g, "\u00a0"));
+  assert.ok(phoneList.includes(`<span data-slot="bubble-summary" class="text-xs text-muted-foreground">${parts.join("\u00a0· ")}</span>`), phoneList.slice(0, 1200));
   assert.ok(page.includes("Servizio clienti"), "la legenda dei gruppi");
   assert.ok(page.includes(">Senza gruppo<"), "il grigio dice che sono schede senza gruppo, non «Altro»");
   assert.ok(page.includes('data-slot="value-params-summary"') && page.includes("Ipotesi di calcolo"));
@@ -451,7 +453,7 @@ test("bolle: con «Benefici e costi» nel workspace e un filtro che li esclude, 
   const page = await html("builder", ids.wsV, { vista: "panoramica", mostra: "benefici", q: `Senza modello ${suffix}` });
   assert.equal(chartHeaderOf(page).title, "Matrice Facilità × Beneficio");
   assert.ok(page.includes('data-chart="benefici"'));
-  assert.ok(page.includes("Nessuno use case della vista ha la facilità in «Benefici e costi»."));
+  assert.ok(page.includes("Nessuno use case della vista ha la facilità in «Benefici\u00a0e\u00a0costi»."));
   assert.ok(!page.includes('data-slot="value-cost-matrix"'), "non la matrice");
   assert.ok(!page.includes("data-bubble="));
 });
@@ -469,22 +471,22 @@ test("Panoramica: quattro cifre e «Su tutto il portafoglio»; i grafici di «Be
     // sotto le cifre, al posto delle due cifre di prima.
     assert.match(
       page,
-      /<p data-slot="portfolio-line" class="text-sm text-muted-foreground">Su tutto il portafoglio: 178 ore liberate all&#x27;anno, pareggio previsto ad aprile 2027\.<\/p>/,
+      /<p data-slot="portfolio-line" class="text-sm text-muted-foreground">Su tutto il portafoglio: 178\u00a0ore liberate all&#x27;anno, pareggio previsto ad aprile\u00a02027\.<\/p>/,
       person,
     );
     assert.ok(!page.includes('data-figure="totale-ore"') && !page.includes('data-figure="totale-pareggio"'), person);
     assert.ok(page.includes('data-figure="totale-valore"') && page.includes('data-figure="totale-costo"'), person);
     // B è in realizzazione: i suoi 1.680 € da misurare, fuori dal valore contato.
-    assert.match(tileOf(page, "da-misurare"), /fino a\s+1\.680 €\s+valore da misurare all&#x27;anno\s+su 1 use case/, person);
-    assert.match(tileOf(page, "trimestre"), /1\s+use case in questo trimestre\s+T\d \d{4}/, person);
+    assert.match(tileOf(page, "da-misurare"), /fino a\s+1\.680 €\s+valore da misurare all&#x27;anno\s+su 1\u00a0use\u00a0case/, person);
+    assert.match(tileOf(page, "trimestre"), /1\s+use case in questo trimestre\s+T\d\u00a0\d{4}/, person);
     assert.match(page, /@3xl\/hub:grid-cols-4/, `${person}: quattro cifre`);
     // Le parti a schermo fanno la cifra in testa: A (4.043 €) e la scheda senza modello (30.000 €)
     // nelle corsie, B in realizzazione (2.719 €), che lo dice accanto al conto.
-    assert.match(tileOf(page, "valore"), /36\.762 €\s+valore contato all&#x27;anno\s+su 3 use case/, person);
+    assert.match(tileOf(page, "valore"), /36\.762 €\s+valore contato all&#x27;anno\s+su 3\u00a0use\u00a0case/, person);
     assert.deepEqual(figuresOf(page, "corsia"), [4_043, 30_000], person);
-    assert.ok(page.includes("1 use case · <span data-figure=\"corsia\">4.043 € contati all&#x27;anno</span>"), person);
-    assert.ok(page.includes("1 use case · <span data-figure=\"corsia\">30.000 € contati all&#x27;anno</span>"), person);
-    assert.match(page, /In realizzazione <span[^>]*>1 · <span data-figure="in-realizzazione">2\.719 € contati all&#x27;anno<\/span><\/span><\/h2>/, person);
+    assert.ok(page.includes("1\u00a0use\u00a0case\u00a0· <span data-figure=\"corsia\">4.043\u00a0€ contati all&#x27;anno</span>"), person);
+    assert.ok(page.includes("1\u00a0use\u00a0case\u00a0· <span data-figure=\"corsia\">30.000\u00a0€ contati all&#x27;anno</span>"), person);
+    assert.match(page, /In realizzazione <span[^>]*>1\u00a0· <span data-figure="in-realizzazione">2\.719\u00a0€ contati all&#x27;anno<\/span><\/span><\/h2>/, person);
     assert.equal(
       [...figuresOf(page, "corsia"), ...figuresOf(page, "in-realizzazione")].reduce((sum, eur) => sum + eur, 0),
       euros(tileOf(page, "valore")),
@@ -502,23 +504,23 @@ test("le cifre della Panoramica si sommano: le card fanno la corsia, le corsie e
   for (const person of ["ls", "builder", "manager"] as const) {
     // 4.043 + 4.043 + 12.250 + 2.719: 23.055 € (sommando prima e arrotondando dopo, 23.054 €).
     const page = await html(person, ids.wsS, { vista: "panoramica" });
-    assert.match(tileOf(page, "valore"), /23\.055 €\s+valore contato all&#x27;anno\s+su 4 use case/, person);
+    assert.match(tileOf(page, "valore"), /23\.055 €\s+valore contato all&#x27;anno\s+su 4\u00a0use\u00a0case/, person);
     assert.deepEqual(figuresOf(page, "corsia"), [16_293, 4_043], person);
     assert.deepEqual(figuresOf(page, "in-realizzazione"), [2_719], person);
     assert.equal(sum([...figuresOf(page, "corsia"), ...figuresOf(page, "in-realizzazione")]), 23_055, person);
     // L'avvio: 560 + 560 + 280, sugli use case con un costo.
-    assert.match(tileOf(page, "costo"), /1\.400 €\s+costo di avvio\s+su 3 use case/, person);
+    assert.match(tileOf(page, "costo"), /1\.400 €\s+costo di avvio\s+su 3\u00a0use\u00a0case/, person);
 
     // «Per agente»: la card di LIBRA è la somma delle sue card, 20.336 € (prima 20.335 €).
     const grid = await html(person, ids.wsS, { vista: "panoramica", mostra: "agenti" });
     const libra = itemOf(grid, 'data-slot="agent-card" data-agent="LIBRA"');
     assert.equal(figuresOf(libra, "valore")[0], 20_336, person);
-    assert.ok(libra.includes("20.336 € all&#x27;anno"), person);
+    assert.ok(libra.includes("20.336\u00a0€\u00a0all&#x27;anno"), person);
     assert.equal(sum(figuresOf(grid, "valore")) + sum(figuresOf(grid, "in-realizzazione")), 23_055, `${person}: gli agenti e «In realizzazione» fanno la cifra in testa`);
 
     // Le corsie di LIBRA, dopo il clic sulla sua card: la cifra in testa, le corsie e la card sono la stessa.
     const own = await html(person, ids.wsS, { vista: "panoramica", agente: "LIBRA" });
-    assert.match(tileOf(own, "valore"), /20\.336 €\s+valore contato all&#x27;anno\s+su 3 use case/, person);
+    assert.match(tileOf(own, "valore"), /20\.336 €\s+valore contato all&#x27;anno\s+su 3\u00a0use\u00a0case/, person);
     assert.deepEqual(figuresOf(own, "corsia"), [16_293, 4_043], person);
     assert.ok(!own.includes('data-figure="in-realizzazione"'), `${person}: ORSA non è di LIBRA`);
 
@@ -558,7 +560,7 @@ test("«Curva del valore» dal menu «⋯»: J-curve con entrata in uso e paregg
   assert.ok(page.includes('data-slot="value-jcurve"'));
   assert.equal(count(page, 'data-go-live="2027-01"'), 1, "una linea tratteggiata per mese di entrata in uso");
   assert.ok(page.includes("Pareggio · apr 27"));
-  assert.ok(page.includes("Da nov 26, per 24 mesi"));
+  assert.ok(page.includes("Da nov\u00a026, per 24\u00a0mesi"));
   assert.ok(page.includes('data-slot="value-jcurve-list"'), "sotto i 768 px, le tappe");
 
   assert.ok(page.includes('data-slot="value-by-lever"'));

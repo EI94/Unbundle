@@ -4,6 +4,7 @@ import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { formatMonthYear, perYearText, shownPerYear, type ValueParts } from "@/lib/use-cases/format";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { laneBarWidth, laneValueView, type LaneKey } from "@/lib/use-cases/lanes";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { EXPIRED_TAG, isContributorItem, type AnyHubItem, type HubItem } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { AGENT_BAR_CLASS, AgentTag, NEUTRAL_BAR_CLASS } from "./agent-tag";
@@ -152,11 +153,11 @@ function ReviewerDetails({
       <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         <span className="font-medium text-foreground">
           {subStateText(item)}
-          {month ? <span className="font-normal text-muted-foreground"> · {month}</span> : null}
+          {month ? <span className="font-normal text-muted-foreground">{keepTogether(` · ${month}`)}</span> : null}
         </span>
         {perYear ? (
           <span data-figure="valore" className="text-muted-foreground tabular-nums">
-            {perYear}
+            {keepTogether(perYear)}
           </span>
         ) : null}
       </span>
@@ -178,7 +179,7 @@ function LaneValue({ value, tone, barScale }: { value: ValueParts; tone: AgentTo
   const bar = tone ? AGENT_BAR_CLASS[tone] : NEUTRAL_BAR_CLASS;
   return (
     <span data-figure="valore" className="flex min-w-0 flex-col gap-1">
-      <span className={counted ? "text-xs font-medium text-foreground tabular-nums" : "text-xs text-muted-foreground tabular-nums"}>{view.text}</span>
+      <span className={counted ? "text-xs font-medium text-foreground tabular-nums" : "text-xs text-muted-foreground tabular-nums"}>{keepTogether(view.text)}</span>
       {width && view.bar ? (
         <span aria-hidden data-slot="value-bar" data-bar={view.bar.kind} className="block h-1.5 w-full rounded-full bg-muted">
           <span className={cn("block h-full rounded-full", counted ? bar.fill : cn("border border-dashed", bar.dashed))} style={{ width }} />

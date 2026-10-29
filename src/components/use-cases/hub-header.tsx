@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ActivityMappingState } from "@/lib/use-cases/create";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { cn } from "@/lib/utils";
 import { HubMenu, type HubMenuLink } from "./hub-menu";
 
@@ -77,12 +78,12 @@ export function HubHeader({ workspaceId, newHref, menu, newUseCaseVariant = "def
   );
 }
 
-/** Un vuoto della pagina: titolo, una riga e, se serve, un'azione (mai un secondo pulsante pieno). */
+/** Un vuoto della pagina: titolo, una riga e, se serve, un'azione (mai un secondo pulsante pieno). I nomi tra «…» non vanno a capo (`keepTogether`). */
 export function EmptyState({ title, body, children, className }: { title: string; body?: string | null; children?: ReactNode; className?: string }) {
   return (
     <div data-slot="hub-empty" className={cn("flex flex-col items-center gap-2 rounded-xl border border-dashed px-6 py-12 text-center", className)}>
-      <p className="font-medium">{title}</p>
-      {body ? <p className="max-w-md text-sm text-muted-foreground">{body}</p> : null}
+      <p className="font-medium">{keepTogether(title)}</p>
+      {body ? <p className="max-w-md text-sm text-muted-foreground">{keepTogether(body)}</p> : null}
       {children ? <div className="mt-2 flex flex-wrap items-center justify-center gap-2">{children}</div> : null}
     </div>
   );

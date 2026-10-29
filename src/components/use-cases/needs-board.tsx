@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { agentToneOf, type AgentPalette } from "@/lib/use-cases/agents";
 import type { NeedAreaTable, NeedRow, NeedStepMonth, NeedsBoard, QuarterAsk } from "@/lib/use-cases/needs";
-import { FIGURE_SEPARATOR } from "@/lib/use-cases/format";
+import { SCREEN_SEPARATOR, joinPieces, keepTogether, wholePiece } from "@/lib/use-cases/line-breaks";
 import {
   isBoardEmpty,
   needAgents,
@@ -132,19 +132,10 @@ export function NeedsBoardView({
         {board.areas.length ? (
           <>
             <p data-slot="needs-summary" className="text-sm text-muted-foreground tabular-nums">
-              {quarter ? (
-                // Il trimestre che si guarda, poi i conteggi: il «·» va a capo con il numero che lo segue.
-                <>
-                  {quarter}{" "}
-                  <span className="whitespace-nowrap">
-                    {`${FIGURE_SEPARATOR.trim()} `}
-                    <span className="font-medium text-foreground">{summaryFirst}</span>
-                  </span>
-                </>
-              ) : (
-                <span className="font-medium text-foreground">{summaryFirst}</span>
-              )}
-              <Pieces pieces={summaryRest} leading />
+              {/* Il trimestre che si guarda, poi i conteggi: il «·» resta con il pezzo prima, la riga va a capo dopo il «·», mai prima. */}
+              {quarter ? `${keepTogether(quarter)}${SCREEN_SEPARATOR}` : null}
+              <span className="font-medium text-foreground">{wholePiece(summaryFirst)}</span>
+              {summaryRest.length ? `${SCREEN_SEPARATOR}${joinPieces(summaryRest)}` : null}
             </p>
             <div className="space-y-1">
               {board.areas.map((area) => (
@@ -199,7 +190,7 @@ export function NeedsBoardView({
 
       {toRealization ? (
         <p data-slot="needs-in-progress" className="text-sm text-muted-foreground">
-          {inRealizationText(inRealization)}{" "}
+          {keepTogether(inRealizationText(inRealization))}{" "}
           <HashFocusLink
             href={toRealization}
             className="rounded-sm font-medium text-primary underline underline-offset-4 outline-none hover:decoration-2 focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -269,14 +260,14 @@ function NeedForCell({ row, hrefOf, palette }: { row: NeedRow; hrefOf: (id: stri
 function What({ row }: { row: NeedRow }) {
   return (
     <div className="min-w-0">
-      <p className="text-sm font-medium break-words">{row.title}</p>
-      {row.detail ? <p className="line-clamp-2 text-xs text-muted-foreground break-words">{row.detail}</p> : null}
+      <p className="text-sm font-medium break-words">{keepTogether(row.title)}</p>
+      {row.detail ? <p className="line-clamp-2 text-xs text-muted-foreground break-words">{keepTogether(row.detail)}</p> : null}
     </div>
   );
 }
 
 function Due({ row }: { row: NeedRow }) {
-  return <span className={cn("tabular-nums", row.due ? undefined : "text-muted-foreground")}>{row.due ?? NEEDS_BOARD_TEXT.none}</span>;
+  return <span className={cn("tabular-nums", row.due ? undefined : "text-muted-foreground")}>{keepTogether(row.due) ?? NEEDS_BOARD_TEXT.none}</span>;
 }
 
 /**
@@ -289,6 +280,7 @@ function AreaTable({ area, hrefOf, palette, open }: { area: NeedAreaTable; hrefO
   // «Entro» solo se una riga dell'area ha una data: una colonna di «—» non dice niente. La stessa
   // scelta per le righe aperte e quelle a posto, così le due tabelle hanno le stesse colonne.
   const withDue = [...area.open, ...area.done].some((row) => row.due);
+  const pieces = needAskPieces(area.counts);
   return (
     <section aria-labelledby={headingId} data-need-area={area.key}>
       <Disclosure
@@ -299,9 +291,7 @@ function AreaTable({ area, hrefOf, palette, open }: { area: NeedAreaTable; hrefO
             <span id={headingId} className="font-medium text-foreground">
               {area.label}
             </span>
-            <span className="tabular-nums">
-              <Pieces pieces={needAskPieces(area.counts)} leading />
-            </span>
+            <span className="tabular-nums">{pieces.length ? `${SCREEN_SEPARATOR}${joinPieces(pieces)}` : null}</span>
           </span>
         }
       >
@@ -377,7 +367,7 @@ function NeedTable({
                 <td className="px-3 py-2">
                   <What row={row} />
                 </td>
-                <td className="px-3 py-2 break-words">{row.owner ? <OwnerText text={row.owner} /> : <span className="text-muted-foreground">{NEEDS_BOARD_TEXT.none}</span>}</td>
+                <td className="px-3 py-2 break-words">{row.owner ? keepTogether(row.owner) : <span className="text-muted-foreground">{NEEDS_BOARD_TEXT.none}</span>}</td>
                 <td className="px-3 py-2">
                   <NeedForCell row={row} hrefOf={hrefOf} palette={palette} />
                 </td>
@@ -410,36 +400,8 @@ function NeedTable({
 }
 
 /**
- * Pezzi di testo uniti da « · », dove ogni «·» va a capo con il pezzo che lo segue, mai da solo in
- * fondo alla riga. Il primo pezzo è nudo; `leading`: anche il primo ha il suo «·» davanti (segue un
- * testo già scritto, come il nome di un'area).
- */
-function Pieces({ pieces, leading = false }: { pieces: readonly string[]; leading?: boolean }) {
-  const [first, ...rest] = leading ? [null, ...pieces] : pieces;
-  return (
-    <>
-      {first}
-      {rest.map((piece, index) => (
-        <span key={index}>
-          {" "}
-          <span className="whitespace-nowrap">{`${FIGURE_SEPARATOR.trim()} ${piece}`}</span>
-        </span>
-      ))}
-    </>
-  );
-}
-
-/**
- * «Sistemi informativi · Cliente» nella colonna stretta «Chi»: il «·» va a capo con la parte che lo
- * segue («Sistemi informativi» / «· Cliente»), mai da solo in fondo alla riga. Lo stesso testo.
- */
-function OwnerText({ text }: { text: string }) {
-  return <Pieces pieces={text.split(FIGURE_SEPARATOR)} />;
-}
-
-/**
- * «Chi · Entro · Per» sotto il titolo, per gli elenchi. Ogni « · » va a capo con la parte che lo
- * segue, mai da solo in fondo alla riga. Con più di uno use case gli agenti serviti («LIBRA»,
+ * «Chi · Entro · Per» sotto il titolo, per gli elenchi. Ogni «·» resta con la parte prima: la riga va
+ * a capo dopo il «·», mai prima. Con più di uno use case gli agenti serviti («LIBRA»,
  * «ORSA») su una riga loro, prima degli use case. Il link a un solo use case («TJ-0008 · ATLAS A1 ·
  * …», che dice già l'agente) sta su una riga sua: è lungo, ha già i suoi « · », e in mezzo alla riga
  * grigia non si capirebbe dove inizia. «Per 3 use case» chiude la riga senza «·» e, aperto, va a
@@ -449,8 +411,8 @@ function OwnerText({ text }: { text: string }) {
 function MetaLine({ row, hrefOf, palette }: { row: NeedRow; hrefOf: (id: string) => string; palette: AgentPalette | null }) {
   const agents = shownAgents(row);
   const parts: Array<{ key: string; node: ReactNode }> = [];
-  if (row.owner) parts.push({ key: "chi", node: row.owner });
-  if (row.due) parts.push({ key: "entro", node: <span className="tabular-nums">{row.due}</span> });
+  if (row.owner) parts.push({ key: "chi", node: keepTogether(row.owner) });
+  if (row.due) parts.push({ key: "entro", node: <span className="tabular-nums">{keepTogether(row.due)}</span> });
   if (!row.useCases.length && row.forLabel) parts.push({ key: "per", node: <NeedFor row={row} hrefOf={hrefOf} /> });
   const one = row.useCases.length === 1;
   const several = row.useCases.length > 1;
@@ -459,8 +421,8 @@ function MetaLine({ row, hrefOf, palette }: { row: NeedRow; hrefOf: (id: string)
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
       {parts.map((part, index) => (
         <span key={part.key} data-meta={part.key} className="inline-flex min-w-0 items-center gap-x-2">
-          {index ? <span aria-hidden>·</span> : null}
           <span className="min-w-0">{part.node}</span>
+          {index < parts.length - 1 ? <span aria-hidden>·</span> : null}
         </span>
       ))}
       {agents.length ? (
@@ -514,9 +476,9 @@ function AskList({ title, rows }: { title: string; rows: readonly NeedRow[] }) {
       <ul className="space-y-1 text-sm">
         {rows.map((row) => (
           <li key={row.id} data-need={row.id} className="flex flex-wrap items-baseline gap-x-2">
-            <span className="break-words">{row.title}</span>
+            <span className="break-words">{keepTogether(row.title)}</span>
             {row.owner || row.due ? (
-              <span className="text-xs text-muted-foreground">{[row.owner, row.due].filter(Boolean).join(" · ")}</span>
+              <span className="text-xs text-muted-foreground">{keepTogether([row.owner, row.due].filter(Boolean).join(" · "))}</span>
             ) : null}
           </li>
         ))}
@@ -534,7 +496,7 @@ function QuarterCard({ ask, href }: { ask: QuarterAsk; href: string }) {
           {ask.code ? (
             <>
               <span className="font-mono font-medium">{ask.code}</span>
-              <span className="text-muted-foreground"> · </span>
+              <span className="text-muted-foreground">{SCREEN_SEPARATOR}</span>
             </>
           ) : null}
           {ask.title}
@@ -552,8 +514,8 @@ function QuarterCard({ ask, href }: { ask: QuarterAsk; href: string }) {
             {ask.returns.map((line) => (
               <li key={line.key} data-return={line.key}>
                 <span className="font-medium">{line.label}</span>
-                <span className="text-muted-foreground"> · {line.confidence.toLowerCase()}</span>
-                <span className="block text-xs text-muted-foreground tabular-nums">{line.text}</span>
+                <span className="text-muted-foreground">{`${SCREEN_SEPARATOR}${line.confidence.toLowerCase()}`}</span>
+                <span className="block text-xs text-muted-foreground tabular-nums">{keepTogether(line.text)}</span>
               </li>
             ))}
           </ul>

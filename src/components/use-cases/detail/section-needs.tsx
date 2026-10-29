@@ -21,6 +21,7 @@ import {
 } from "@/lib/actions/use-case-needs";
 import { ACTION_FAILED_MESSAGE } from "@/lib/use-cases/decision-ui";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { cosaServeHref, type NeedReferentView, type UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
 import { REFERENT_UI_TEXT } from "@/lib/use-cases/referent/labels";
 import {
@@ -337,11 +338,11 @@ function NeedList({
         return (
           <li key={need.id} data-need={need.id} className="flex items-start gap-3 px-3 py-2.5">
             <div className="min-w-0 flex-1 space-y-1">
-              <p className="text-sm font-medium break-words">{row.title}</p>
-              {row.detail ? <p className="line-clamp-2 text-xs text-muted-foreground break-words">{row.detail}</p> : null}
+              <p className="text-sm font-medium break-words">{keepTogether(row.title)}</p>
+              {row.detail ? <p className="line-clamp-2 text-xs text-muted-foreground break-words">{keepTogether(row.detail)}</p> : null}
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                 <StatusDot tone={row.status.tone} label={row.status.label} />
-                {meta ? <span>{meta}</span> : null}
+                {meta ? <span>{keepTogether(meta)}</span> : null}
                 {others.length ? <NeedUseCasesDisclosure summary={needAlsoForText(others.length)} context={row.title} useCases={others} hrefOf={detailHrefOf} /> : null}
               </div>
               {referent ? (

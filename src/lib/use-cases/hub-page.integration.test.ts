@@ -284,6 +284,9 @@ function newUseCaseTag(page: string): string {
 }
 
 /** Il pezzo di HTML da `data-slot="<slot>"` alla chiusura della sua `</section>`. */
+/** Lo spazio non separabile della pagina (`keepTogether`): un numero con la sua parola, il «·» con la parte prima. */
+const N = "\u00a0";
+
 function sectionOf(page: string, slot: string): string {
   const start = page.indexOf(`data-slot="${slot}"`);
   assert.ok(start >= 0, slot);
@@ -685,12 +688,16 @@ test("fasce del workspace: «costo di avvio» con il riferimento della fascia, �
   const figures = sectionOf(page, "overview-figures");
   // 30.000 € (importo) + 40.000 € (seconda fascia del workspace); con le predefinite sarebbe 95.000 €.
   const cost = figures.slice(figures.indexOf('data-figure="totale-costo"'));
-  assert.match(cost, /^data-figure="totale-costo"[^>]*><p[^>]*><span class="whitespace-nowrap">70\.000 €<\/span><\/p><p class="text-sm">costo di avvio<\/p><p[^>]*>su 2 use case · 1 da fascia</);
+  assert.match(cost, /^data-figure="totale-costo"[^>]*><p[^>]*><span class="whitespace-nowrap">70\.000 €<\/span><\/p><p class="text-sm">costo di avvio<\/p><p[^>]*>su 2\u00a0use\u00a0case\u00a0· 1\u00a0da fascia</);
   // 50.000 € + 25.000 €, «su 2 use case».
   const value = figures.slice(figures.indexOf('data-figure="totale-valore"'));
-  assert.match(value, /^data-figure="totale-valore"[^>]*><p[^>]*><span class="whitespace-nowrap">75\.000 €<\/span><\/p><p class="text-sm">valore contato all&#x27;anno<\/p><p[^>]*>su 2 use case</);
-  assert.ok(page.includes("su 2 use case<"));
+  assert.match(value, /^data-figure="totale-valore"[^>]*><p[^>]*><span class="whitespace-nowrap">75\.000 €<\/span><\/p><p class="text-sm">valore contato all&#x27;anno<\/p><p[^>]*>su 2\u00a0use\u00a0case</);
+  assert.ok(page.includes(`su 2${N}use${N}case<`) && !page.includes("su 2 use case<"), "«su 2 use case» non va a capo");
   for (const text of ["Valore misurato", "Valore atteso all", "Costo impegnato"]) assert.ok(!page.includes(text), text);
+  // Nessun numero resta da solo in fondo a una riga: nelle cifre, in «Prossimo passo» e nei riassunti
+  // delle corsie mai uno spazio normale dopo una cifra (le cifre grandi non vanno a capo per intero).
+  const lines = [figures, page.includes('data-slot="next-step"') ? sectionOf(page, "next-step") : "", ...[...page.matchAll(/<p class="text-xs text-muted-foreground tabular-nums">([\s\S]*?)<\/p>/g)].map((match) => match[1])];
+  for (const line of lines) assert.doesNotMatch(line.replace(/^[^<>]*>/, "").replace(/<span class="whitespace-nowrap">[^<]*<\/span>/g, "").replace(/<[^>]+>/g, ""), /\d /, line);
   // Le fasi: le proposte da decidere, gli approvati delle corsie (con lo scaduto e la best practice),
   // quello in realizzazione e quello realizzato.
   const strip = sectionOf(page, "phase-strip").replace(/^[^>]*>|<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -701,7 +708,7 @@ test("fasce del workspace: «costo di avvio» con il riferimento della fascia, �
   const amount = rowOf(page, cards.amount.id);
   assert.ok(amount.includes("avvio 30.000 €"), amount);
   assert.match(amount, /data-source="team_importo"/);
-  assert.ok(amount.includes("50.000 € all&#x27;anno") || amount.includes("50.000 € all'anno"), amount);
+  assert.ok(amount.includes(`50.000${N}€${N}all&#x27;anno`), amount);
   assert.doesNotMatch(amount, />Alto</);
   assert.ok(!amount.includes("Valore: ") && !amount.includes("Costo: "), amount);
   const band = rowOf(page, cards.band.id);
@@ -717,8 +724,8 @@ test("fasce del workspace: «costo di avvio» con il riferimento della fascia, �
   assert.match(best, /data-figure="valore"/);
   assert.ok(!best.includes('data-figure="costo"'));
   // Le corsie per trimestre; «Realizzati» chiusi, con il mese.
-  assert.ok(page.includes("Questo trimestre · T"));
-  assert.ok(page.includes("Prossimo trimestre · T"));
+  assert.ok(page.includes(`Questo trimestre${N}· T`));
+  assert.ok(page.includes(`Prossimo trimestre${N}· T`));
   const done = page.slice(page.indexOf('data-slot="panoramica-realizzati"'), page.indexOf("</details>", page.indexOf('data-slot="panoramica-realizzati"')));
   assert.ok(done.includes(`data-id="${cards.realized.id}"`), "il realizzato dentro «Realizzati»");
   assert.match(rowOf(page, cards.realized.id), />Realizzato</);
@@ -949,7 +956,7 @@ test("«da stimare» resta alla matrice: un elenco chiuso sotto, che l'indirizzo
   assert.ok(page.includes('data-chart="matrice"'));
   const list = detailsOf(page, "to-estimate");
   assert.equal(list.open, true, "aperto: l'indirizzo lo chiede");
-  assert.equal(list.summary, `${toEstimate.length} da stimare`);
+  assert.equal(list.summary, `${toEstimate.length}${N}da stimare`);
   for (const card of toEstimate) {
     assert.ok(list.html.includes(`>${card.code}<`), `${card.title}: nell'elenco`);
     assert.match(list.html, new RegExp(`href="[^"]*apri=${card.id}"`), `${card.title}: il link al pannello`);
@@ -1374,7 +1381,8 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   // Il contributore non approva: il vuoto gli dice dove sono le proposte.
   const eContributorOverview = await html("contributor", ids.wsE, { vista: "panoramica" });
   assert.ok(eContributorOverview.includes("Niente in programma, per ora"), "le corsie vuote, non la pagina vuota");
-  assert.ok(eContributorOverview.includes("Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In valutazione»."));
+  assert.ok(eContributorOverview.includes(`Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In${N}valutazione».`));
+  assert.ok(!eContributorOverview.includes("«In valutazione»."), "il nome della vista non va a capo");
   assert.ok(!eContributorOverview.includes("Approva uno use case"));
   // Gli approvati ci sono ma sono nascosti alla ricerca: il contributore ha il vuoto, che dice solo
   // che cosa trova qui, mai che nel workspace niente è approvato.
@@ -1383,7 +1391,7 @@ test("vuoti: nessuno use case, niente da decidere, niente da mettere in ordine, 
   const hContributor = await html("contributor", ids.wsH, { vista: "panoramica" });
   assert.ok(hContributor.includes('data-slot="phase-strip"'), "la sua proposta c'è: la pagina non è vuota");
   assert.ok(hContributor.includes("Niente in programma, per ora"), "le corsie vuote");
-  assert.ok(hContributor.includes("Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In valutazione»."));
+  assert.ok(hContributor.includes(`Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In${N}valutazione».`));
   for (const text of ["Nessuno use case è ancora approvato", "Approva uno use case", cards.hHidden.title, cards.hHidden.id]) assert.ok(!hContributor.includes(text), text);
   const eMatrix = await html("ls", ids.wsE, { vista: "panoramica", mostra: "matrice" });
   assert.ok(eMatrix.includes("Nessuno use case da mettere in ordine"));

@@ -334,7 +334,7 @@ test("con l'autorizzazione e le email accese: la richiesta, le righe sotto le es
   assert.ok(page.includes(`regole-${suffix}.csv`));
   assert.ok(page.includes(`href="/dashboard/${ids.ws}/use-cases/${ids.card}/allegati/${flow.fileId}"`), "«Scarica» passa dalla rotta con il controllo");
   assert.ok(page.includes(T.fileDownload));
-  assert.match(page, /Risposte e file · 1/);
+  assert.match(page, /Risposte e file\u00a0·\u00a01/);
   assert.ok(page.includes(T.rowAddAnswer) && page.includes(T.rowAttachFile));
   assert.ok(!page.includes("In corso"), "nessun «In corso»");
 

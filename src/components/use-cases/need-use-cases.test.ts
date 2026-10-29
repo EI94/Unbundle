@@ -39,7 +39,7 @@ test("«Per 3 use case»: un <details> chiuso, con il titolo dell'esigenza solo 
   assert.doesNotMatch(opening.replace(/="[^"]*"/g, ""), /\sopen\b/, "chiuso di default: nessun attributo open");
   assert.match(opening, /open:basis-full/, "aperto prende tutta la riga");
   const summary = /<summary[^>]*>([\s\S]*?)<\/summary>/.exec(html)?.[1] ?? "";
-  assert.ok(summary.includes("Per 3 use case"));
+  assert.ok(summary.includes("Per 3\u00a0use\u00a0case"), summary);
   assert.ok(summary.includes('<span class="sr-only">: Accesso al gestionale</span>'));
 });
 
@@ -51,8 +51,8 @@ test("«Per 3 use case»: un link per use case, «codice · titolo» o il titolo
   assert.deepEqual(
     links.map((link) => [link[1], text(link[2])]),
     [
-      [REFS[0].id, "XV-0001 · Smistamento"],
-      [REFS[1].id, "XV-0002 · Fatture"],
+      [REFS[0].id, "XV-0001\u00a0· Smistamento"],
+      [REFS[1].id, "XV-0002\u00a0· Fatture"],
       [REFS[2].id, "Preventivi"],
     ],
   );
@@ -66,6 +66,8 @@ test("«Per 3 use case»: un link per use case, «codice · titolo» o il titolo
     assert.ok(classes.includes("underline-offset-2") && !classes.includes("underline-offset-4"), link[0]);
     assert.match(link[2], /^<span class="line-clamp-2 leading-5 break-words">/, link[2]);
   }
+  // Il «·» resta con il codice: «XV-0001 ·» / «Smistamento», mai il «·» in testa alla riga. Il `title` resta com'è.
+  assert.ok(html.includes('<span class="font-mono">XV-0001</span>\u00a0· Smistamento'));
   assert.ok(html.includes('title="XV-0001 · Smistamento"'));
   assert.ok(html.includes('title="Preventivi"'));
 });

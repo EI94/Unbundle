@@ -11,6 +11,7 @@ import { saveValuationAction } from "@/lib/actions/use-case-edit";
 import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import type { DecisionItem } from "@/lib/use-cases/decision-ui";
 import { VALUE_EUR_YEAR_MAX, parseEuroAmount } from "@/lib/use-cases/inputs";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import type { CostInput as CostValue } from "@/lib/use-cases/types";
 import type { ValueModel, ValueParams } from "@/lib/use-cases/value-model";
 import type { HubAiSuggestion } from "@/lib/use-cases/views";
@@ -336,7 +337,7 @@ export function ValuationForm({
           <ChevronRight aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
           <span className="flex min-w-0 flex-col gap-0.5">
             <span className="font-semibold">{VALUATION_FORM_TEXT.scores}</span>
-            <span className="text-xs text-muted-foreground">{VALUATION_FORM_TEXT.scoresHint}</span>
+            <span className="text-xs text-muted-foreground">{keepTogether(VALUATION_FORM_TEXT.scoresHint)}</span>
           </span>
         </summary>
         <div className="mt-4 space-y-5">

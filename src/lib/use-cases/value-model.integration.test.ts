@@ -322,7 +322,7 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   assert.match(editor, /Benefici e costi/);
   assert.match(editor, /116 h · 4\.043 €/, "la riga calcolata della voce a ore");
   assert.match(editor, /Contati: 116 h · 4\.043 € all&#x27;anno/);
-  assert.match(editor, /avvio 560 € · ricorrenti 600 €\/anno/);
+  assert.match(editor, /avvio 560\u00a0€\u00a0· ricorrenti 600\u00a0€\/anno/);
   assert.match(editor, /Avanzate/);
   assert.equal((editor.match(/data-slot="value-component"/g) ?? []).length, 2);
 
@@ -336,8 +336,8 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   assert.doesNotMatch(figures, /Basso/);
   // Nella riga stretta il Valore va a capo solo dopo «·»: la cifra resta intera.
   assert.ok(figures.includes('<span class="whitespace-nowrap">4.043 €/anno</span>'), figures);
-  assert.match(figures.replace(/<[^>]+>/g, ""), /avvio 560 € · ricorrenti 600 €\/anno/);
-  // La cifra del modello va a capo solo dopo «·»: «avvio …» e «ricorrenti …» restano interi.
+  assert.match(figures.replace(/<[^>]+>/g, ""), /avvio 560 €\u00a0· ricorrenti 600 €\/anno/);
+  // La cifra del modello va a capo solo dopo «·», che resta con «avvio …»: «avvio …» e «ricorrenti …» restano interi.
   for (const part of ["avvio 560 €", "ricorrenti 600 €/anno"]) assert.ok(figures.includes(`<span class="whitespace-nowrap">${part}</span>`), part);
   // Nella colonna di «Priorità» e nel pannello le due parti stanno una sotto l'altra, senza «·».
   const stacked = renderToStaticMarkup(createElement(CostFigure, { cost: detail.useCase.cost, withLabel: true, stack: true }));
@@ -351,7 +351,7 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   // La cifra grande: solo gli euro all'anno, senza parola né punteggio, scritti una volta sola.
   assert.doesNotMatch(long, /Basso/);
   assert.doesNotMatch(long, /1,4/);
-  assert.match(long, /4\.043 € all&#x27;anno/);
+  assert.match(long, /4\.043\u00a0€\u00a0all&#x27;anno/);
   assert.match(long, /stima del team/);
   assert.equal((longValue.match(/data-source=/g) ?? []).length, 1, longValue);
   // Le due fonti nello stesso posto: sulla riga sotto la cifra grande.

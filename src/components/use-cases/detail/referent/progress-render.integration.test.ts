@@ -268,7 +268,9 @@ test("la scheda: nella testata solo lo stato a parole, non una pillola; in cima 
   // In cima a «Cosa serve»: una riga, i conteggi e che cosa resta; niente titolo, chip o maiuscolo.
   const summary = summaryOf(page);
   const total = (await needsOf(cards.wait)).length;
-  assert.equal(textOf(summary), `0 di ${total} informazioni ricevute · 2 in attesa · ${total - 2} da chiedere`);
+  // A schermo ogni gruppo resta intero e il «·» con il gruppo prima (U+00A0).
+  const N = "\u00a0";
+  assert.equal(textOf(summary), `0${N}di ${total}${N}informazioni ricevute${N}· 2${N}in${N}attesa${N}· ${total - 2}${N}da${N}chiedere`);
   assert.match(summary, new RegExp(`aria-label="${progress.INFO_PROGRESS_TEXT.summaryHeading}"`));
   for (const text of ["Informazioni:", 'data-slot="info-chip"', "uppercase"]) assert.ok(!summary.includes(text), `riepilogo: ${text}`);
   // Da verificare e senza risposta: i conteggi giusti; la fase non cambia mai da sola.
@@ -276,19 +278,19 @@ test("la scheda: nella testata solo lo stato a parole, non una pillola; in cima 
   const verifyTotal = (await needsOf(cards.verify)).length;
   assert.ok(verify.includes("Informazioni: da verificare"));
   // La da verificare è tra le ricevute: tra parentesi, così ricevute e «da chiedere» fanno il totale.
-  assert.equal(textOf(summaryOf(verify)), `1 di ${verifyTotal} informazioni ricevute (1 da verificare) · ${verifyTotal - 1} da chiedere`);
+  assert.equal(textOf(summaryOf(verify)), `1${N}di ${verifyTotal}${N}informazioni ricevute (1 da verificare)${N}· ${verifyTotal - 1}${N}da${N}chiedere`);
   const silent = await detailHtml("builder", cards.silent);
   const silentTotal = (await needsOf(cards.silent)).length;
   assert.ok(silent.includes("Informazioni: senza risposta"));
-  assert.equal(textOf(summaryOf(silent)), `0 di ${silentTotal} informazioni ricevute · 2 senza risposta · ${silentTotal - 2} da chiedere`);
+  assert.equal(textOf(summaryOf(silent)), `0${N}di ${silentTotal}${N}informazioni ricevute${N}· 2${N}senza${N}risposta${N}· ${silentTotal - 2}${N}da${N}chiedere`);
   assert.ok(silent.includes("Scaduta senza risposta"), "la richiesta in rosso, con la sua data nelle «Richieste»");
   const done = await detailHtml("builder", cards.done);
   assert.ok(done.includes("Informazioni: complete"));
-  assert.ok(textOf(summaryOf(done)).endsWith(" · tutte a posto"), textOf(summaryOf(done)));
+  assert.ok(textOf(summaryOf(done)).endsWith(`${N}· tutte${N}a${N}posto`), textOf(summaryOf(done)));
   const ask = await detailHtml("builder", cards.ask);
   const askTotal = (await needsOf(cards.ask)).length;
   assert.ok(ask.includes("Informazioni: da chiedere"));
-  assert.ok(textOf(summaryOf(ask)).endsWith(` · ${askTotal} da chiedere`), textOf(summaryOf(ask)));
+  assert.ok(textOf(summaryOf(ask)).endsWith(`${N}· ${askTotal}${N}da${N}chiedere`), textOf(summaryOf(ask)));
   for (const key of CARDS) assert.equal(String((await q(`SELECT status FROM use_cases WHERE id = $1::uuid`, [cards[key]]))[0]?.status), phases[key], `${key}: la fase resta`);
 });
 

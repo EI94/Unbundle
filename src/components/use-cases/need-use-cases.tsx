@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SCREEN_SEPARATOR, keepTogether } from "@/lib/use-cases/line-breaks";
 import type { NeedUseCaseRef } from "@/lib/use-cases/needs";
 import { cn } from "@/lib/utils";
 import { Disclosure } from "./disclosure";
@@ -28,7 +29,7 @@ export function NeedUseCaseLink({ useCase, href, scroll = true }: { useCase: Nee
         {useCase.code ? (
           <>
             <span className="font-mono">{useCase.code}</span>
-            {" · "}
+            {SCREEN_SEPARATOR}
           </>
         ) : null}
         {useCase.title}
@@ -67,7 +68,7 @@ export function NeedUseCasesDisclosure({
       summaryClassName={cn("text-xs", TARGET)}
       summary={
         <>
-          {summary}
+          {keepTogether(summary)}
           <span className="sr-only">: {context}</span>
         </>
       }

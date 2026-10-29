@@ -14,6 +14,7 @@ import {
   type PageDecision,
   type PostponeKey,
 } from "@/lib/use-cases/decision-ui";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { DecisionChoiceGroup, DecisionDialog } from "./reopen-dialog";
 
 export interface PostponeDialogProps {
@@ -98,7 +99,7 @@ export function PostponeDialog({ open, onOpenChange, code, today, pending, onSub
           </div>
         ) : null}
       </div>
-      <p className="text-sm text-muted-foreground">{DIALOG_EXTRA_TEXT.postponeNote}</p>
+      <p className="text-sm text-muted-foreground">{keepTogether(DIALOG_EXTRA_TEXT.postponeNote)}</p>
       {extra}
     </DecisionDialog>
   );

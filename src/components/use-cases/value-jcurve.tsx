@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { formatEuro } from "@/lib/use-cases/format";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { monthLabel } from "@/lib/use-cases/value-calc";
 import { curveScale, type RoadmapValue } from "@/lib/use-cases/value-charts";
 import { cn } from "@/lib/utils";
@@ -61,7 +62,7 @@ export function ValueJCurve({ value }: ValueJCurveProps) {
         <h3 id="value-jcurve-title" className="text-sm font-semibold">
           {JCURVE_TEXT.title}
         </h3>
-        <p className="text-xs text-muted-foreground">{jCurveIntro(from, horizon)}</p>
+        <p className="text-xs text-muted-foreground">{keepTogether(jCurveIntro(from, horizon))}</p>
       </div>
 
       <div data-slot="value-jcurve-chart" aria-hidden className="hidden grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 md:grid">
@@ -216,8 +217,8 @@ export function ValueJCurve({ value }: ValueJCurveProps) {
 function Fact({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="space-y-0.5">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="tabular-nums">{value}</dd>
+      <dt className="text-muted-foreground">{keepTogether(label)}</dt>
+      <dd className="tabular-nums">{typeof value === "string" ? keepTogether(value) : value}</dd>
     </div>
   );
 }

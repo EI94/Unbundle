@@ -136,16 +136,16 @@ test("le cifre: valore, costo, trimestre, da misurare; prima la cifra, poi le pa
     const start = figures.indexOf(`data-figure="${key}"`);
     return figures.slice(start, figures.indexOf("</div>", start));
   };
-  assert.match(tileText("totale-valore"), /<span class="whitespace-nowrap">50\.366 €<\/span><\/p><p class="text-sm">valore contato all&#x27;anno<\/p><p class="text-xs text-muted-foreground">su 17 use case<\/p>/);
-  assert.match(tileText("totale-costo"), />75\.000 €<\/span><\/p><p class="text-sm">costo di avvio<\/p><p[^>]*>su 9 use case · 2 da fascia</);
-  assert.match(tileText("totale-trimestre"), />12<\/span><\/p><p class="text-sm">use case in questo trimestre<\/p><p[^>]*>T4 2026</);
+  assert.match(tileText("totale-valore"), /<span class="whitespace-nowrap">50\.366 €<\/span><\/p><p class="text-sm">valore contato all&#x27;anno<\/p><p class="text-xs text-muted-foreground">su 17\u00a0use\u00a0case<\/p>/);
+  assert.match(tileText("totale-costo"), />75\.000 €<\/span><\/p><p class="text-sm">costo di avvio<\/p><p[^>]*>su 9\u00a0use\u00a0case\u00a0· 2\u00a0da fascia</);
+  assert.match(tileText("totale-trimestre"), />12<\/span><\/p><p class="text-sm">use case in questo trimestre<\/p><p[^>]*>T4\u00a02026</);
   assert.match(
     tileText("totale-da-misurare"),
-    /<p class="text-2xl font-semibold tracking-tight tabular-nums"><span class="text-sm font-normal text-muted-foreground">fino a<\/span> <span class="whitespace-nowrap">23\.400 €<\/span><\/p><p class="text-sm">valore da misurare all&#x27;anno<\/p><p[^>]*>su 9 use case</,
+    /<p class="text-2xl font-semibold tracking-tight tabular-nums"><span class="text-sm font-normal text-muted-foreground">fino a<\/span> <span class="whitespace-nowrap">23\.400 €<\/span><\/p><p class="text-sm">valore da misurare all&#x27;anno<\/p><p[^>]*>su 9\u00a0use\u00a0case</,
   );
   assert.ok(!tileText("totale-valore").includes("fino a"), "«fino a» solo sul da misurare");
   assert.ok(!figures.includes("AI Adoption"), "niente quota delle origini");
-  assert.match(figures, /<p data-slot="portfolio-line" class="text-sm text-muted-foreground">Su tutto il portafoglio: 1\.404 ore liberate all&#x27;anno, pareggio previsto ad agosto 2027\.<\/p>/);
+  assert.match(figures, /<p data-slot="portfolio-line" class="text-sm text-muted-foreground">Su tutto il portafoglio: 1\.404\u00a0ore liberate all&#x27;anno, pareggio previsto ad agosto\u00a02027\.<\/p>/);
   // Tre e due cifre: le colonne che servono.
   const three = render({ figures: { ...FIGURES, pending: null } });
   assert.match(three, /class="grid grid-cols-2 gap-2 @3xl\/hub:gap-3 @3xl\/hub:grid-cols-3"/);
@@ -161,14 +161,16 @@ test("«Prossimo passo»: una frase e il solo pulsante pieno della testa", () =>
   const box = html.slice(html.indexOf('data-slot="next-step"'));
   assert.match(html, /<section aria-labelledby="panoramica-prossimo-passo" data-slot="next-step" class="[^"]*@2xl\/hub:flex-row/);
   assert.ok(box.includes('<h2 id="panoramica-prossimo-passo" class="text-sm font-semibold">Prossimo passo</h2>'));
-  assert.ok(box.includes("Per partire con il T4 2026: 60 requisiti da chiedere e 10 bloccati."));
+  // A schermo il numero resta con la sua parola: «T4 2026», «60 requisiti», «10 bloccati».
+  assert.ok(box.includes("Per partire con il T4\u00a02026: 60\u00a0requisiti da chiedere e 10\u00a0bloccati."), textOf(box));
+  assert.ok(!box.includes("60 requisiti"), "mai «60» / «requisiti» su due righe");
   const filled = filledButtons(html);
   assert.equal(filled.length, 1, "un solo pulsante pieno");
   assert.ok(filledButtons(box).length === 1, "dentro «Prossimo passo»");
   assert.match(filled[0], new RegExp(`href="${NEEDS.replace(/[?]/g, "\\?").replace(/&/g, "&amp;")}"`));
   assert.ok(textOf(box).includes("Vedi cosa serve"));
   const decisions = render({ nextStep: { step: { kind: "decisioni", count: 4 }, href: DECIDE } });
-  assert.ok(textOf(decisions).includes("4 use case aspettano una decisione.Vedi le proposte"));
+  assert.ok(textOf(decisions).includes("4\u00a0use\u00a0case aspettano una decisione.Vedi le proposte"));
   // Senza passo: nessun riquadro e nessun pulsante pieno.
   const none = render({ nextStep: null });
   assert.ok(!none.includes("next-step"));

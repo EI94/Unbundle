@@ -5,6 +5,7 @@ import { Radio } from "@base-ui/react/radio";
 import { RadioGroup } from "@base-ui/react/radio-group";
 import { setWhenAction } from "@/lib/actions/use-case-decisions";
 import { currentWhenChoice, instantOfDay, whenOptions, type DecisionItem } from "@/lib/use-cases/decision-ui";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { whenChoiceParts, whenLabel } from "@/lib/use-cases/quarter";
 import type { WhenChoice } from "@/lib/use-cases/types";
 import { cn } from "@/lib/utils";
@@ -45,7 +46,7 @@ export function WhenControl({ workspaceId, item, today, canDecide, labelledBy, c
   if (!canDecide) {
     return (
       <span data-slot="when-control" className={cn("text-sm", className)}>
-        {whenLabel(item.targetQuarter)}
+        {keepTogether(whenLabel(item.targetQuarter))}
       </span>
     );
   }

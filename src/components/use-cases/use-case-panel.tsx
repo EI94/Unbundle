@@ -12,6 +12,7 @@ import { DIALOG_COMMON_TEXT, PUBLIC_NOTE_TEXT, toDecisionItem, type DuplicateCan
 import { ESTIMATES_TEXT } from "@/lib/use-cases/estimates";
 import type { PanelNeeds } from "@/lib/use-cases/needs";
 import { RISK_LABEL } from "@/lib/use-cases/labels";
+import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
 import type { HubItem } from "@/lib/use-cases/views";
@@ -218,11 +219,9 @@ function ReviewerBody({
         <Block>
           {estimate.length ? (
             <div data-slot="claude-estimate" className="space-y-1 rounded-lg bg-muted px-3 py-2 text-sm">
-              <p className="text-xs font-medium text-muted-foreground">
-                {ESTIMATES_TEXT.title} · {ESTIMATES_TEXT.note}
-              </p>
+              <p className="text-xs font-medium text-muted-foreground">{keepTogether(`${ESTIMATES_TEXT.title} · ${ESTIMATES_TEXT.note}`)}</p>
               {estimate.map((line) => (
-                <p key={line}>{line}</p>
+                <p key={line}>{keepTogether(line)}</p>
               ))}
             </div>
           ) : null}
@@ -275,10 +274,10 @@ export function PanelNeedsBlock({ needs, href }: { needs: PanelNeeds; href: stri
         <ul className="space-y-2">
           {needs.rows.map((row) => (
             <li key={row.id} data-need={row.id} className="space-y-0.5">
-              <p className="text-sm break-words">{row.title}</p>
+              <p className="text-sm break-words">{keepTogether(row.title)}</p>
               <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                 <StatusDot tone={row.status.tone} label={row.status.label} />
-                {row.due ? <span className="tabular-nums">{row.due}</span> : null}
+                {row.due ? <span className="tabular-nums">{keepTogether(row.due)}</span> : null}
               </p>
             </li>
           ))}
@@ -288,7 +287,7 @@ export function PanelNeedsBlock({ needs, href }: { needs: PanelNeeds; href: stri
             href={href}
             className="inline-flex min-h-11 items-center gap-0.5 text-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:underline sm:min-h-8"
           >
-            {moreNeedsText(needs.more)}
+            {keepTogether(moreNeedsText(needs.more))}
             <ChevronRight aria-hidden className="size-4" />
           </Link>
         ) : null}
