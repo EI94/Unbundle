@@ -32,10 +32,11 @@ import {
   roadmapPlan,
   roadmapValueItems,
 } from "./value-charts.ts";
-import { NO_AGENT_LABEL, agentPalette, agentToneOf } from "./agents.ts";
+import { NO_AGENT_LABEL, agentFilterOptions, agentPalette, agentToneOf, workspaceAgentPalette } from "./agents.ts";
 import { hoursFreedText, qualitativeCountText, roundAmount } from "./format.ts";
 import { DEFAULT_VALUE_PARAMS, valueModelSchema, type ValueModel, type ValueParams } from "./value-model.ts";
-import { projectHubItem, type HubContext, type HubItem, type HubSourceRow } from "./views.ts";
+import type { UseCaseViewer } from "./permissions.ts";
+import { applyHubFilters, parseHubParams, projectHubItem, type HubContext, type HubItem, type HubSourceRow } from "./views.ts";
 
 // I dati dei grafici di «Benefici e costi» (spec di Pierpaolo, 25/10/2026): colori dei gruppi,
 // bolle facilità × beneficio, ore, J-curve e pareggio della Roadmap, «Valore per tipo di
@@ -136,8 +137,6 @@ function row(o: Partial<HubSourceRow> = {}): HubSourceRow {
 
 const item = (o: Partial<HubSourceRow> = {}): HubItem => projectHubItem(row(o), CTX, null);
 const TO_DECIDE = { status: "proposed", portfolioReviewStatus: "in_review", targetQuarter: null } as const;
-/** Una scheda approvata «Da costruire», per i colori dei gruppi: i grafici la disegnano. */
-const APPROVED = { phase: "approvato", kind: "da_costruire", subState: "trimestre" } as const;
 
 function near(actual: number | null | undefined, expected: number, label: string, eps = 1e-6) {
   assert.ok(typeof actual === "number" && Math.abs(actual - expected) <= eps, `${label}: ${actual} invece di ${expected}`);
@@ -147,8 +146,8 @@ function near(actual: number | null | undefined, expected: number, label: string
 
 test("colori dei gruppi: dal più grande, tre colori, il grigio dice chi c'è dentro; un filtro non ridipinge", () => {
   const groups = ["Vendite", "Vendite", "Vendite", "Amministrazione", "Produzione", "Logistica", "Logistica", null];
-  const items = groups.map((group) => ({ ...APPROVED, valueModel: group ? { ...SMALL, group } : SMALL }));
-  const palette = groupPalette([...items, { ...APPROVED, valueModel: null }, { ...APPROVED, valueModel: { ...SMALL, group: "  Produzione  " } }]);
+  const items = groups.map((group) => ({ valueModel: group ? { ...SMALL, group } : SMALL }));
+  const palette = groupPalette([...items, { valueModel: null }, { valueModel: { ...SMALL, group: "  Produzione  " } }]);
   assert.equal(palette.single, false);
   // Vendite 3 schede, Logistica 2, Produzione 2 (a pari schede il nome), Amministrazione 1.
   assert.deepEqual(palette.slots, { Vendite: 1, Logistica: 2, Produzione: 3 });
@@ -169,16 +168,16 @@ test("colori dei gruppi: dal più grande, tre colori, il grigio dice chi c'è de
   // A pari schede, con le ipotesi, vince il beneficio contato più alto.
   const tie = groupPalette(
     [
-      { ...APPROVED, valueModel: { ...SMALL, group: "Acquisti" } },
-      { ...APPROVED, valueModel: { ...FIX_A, group: "Zeta" } },
+      { valueModel: { ...SMALL, group: "Acquisti" } },
+      { valueModel: { ...FIX_A, group: "Zeta" } },
     ],
     PARAMS,
   );
   assert.deepEqual(tie.slots, { Zeta: 1, Acquisti: 2 });
   // Senza gruppi: un colore solo, nessuna legenda.
   const single = groupPalette([
-    { ...APPROVED, valueModel: SMALL },
-    { ...APPROVED, valueModel: null },
+    { valueModel: SMALL },
+    { valueModel: null },
   ]);
   assert.equal(single.single, true);
   assert.equal(groupSlot(single, null), 1);
@@ -348,6 +347,33 @@ test("matrice Valore × Costo con gli agenti nei titoli: il punto nel tono dell'
   ]);
   assert.deepEqual(agentPointLegend(agents, ["AUTO X1 · Bonifici"]), [{ slot: `agente-${agentToneOf(agents, "AUTO")}`, label: "AUTO" }], "solo gli agenti che hanno un punto");
   assert.deepEqual(agentPointLegend(agentPalette([]), ["LIBRA L1 · Fatture"]), []);
+});
+
+test("un agente senza tono (solo proposte) ha il suo nome in legenda, in grigio: «Altri use case» sono gli stessi di `agente=altri`", () => {
+  const model = { ...SMALL, ease: 4 };
+  const libra = item({ title: "LIBRA L1 · Lettura delle fatture estere", valueModel: model });
+  const iva = item({ title: "IVA I1 · Calcolo dell'imposta sui biglietti", valueModel: model, ...TO_DECIDE });
+  const plain = item({ title: "Controllo dei preventivi del catering", valueModel: model });
+  const all = [libra, iva, plain];
+  const agents = workspaceAgentPalette(all);
+  assert.equal(agentToneOf(agents, "IVA"), null, "IVA ha solo una proposta");
+  const palette = groupPalette(all, PARAMS, agents);
+  const legendOf = (items: readonly HubItem[]) => markLegend(palette, buildBenefitBubbles(items, PARAMS, TODAY, palette).bubbles);
+  assert.deepEqual(legendOf(all), [
+    { slot: `agente-${agentToneOf(agents, "LIBRA")}`, label: "LIBRA" },
+    { slot: 0, label: "IVA" },
+    { slot: 0, label: NO_AGENT_LABEL },
+  ]);
+  // Ogni voce della legenda è una voce del filtro «Agente», e il filtro tiene i segni di quella voce.
+  const manager = { userId: "u", role: "exec_sponsor", isLateralSpace: false } as unknown as UseCaseViewer;
+  const options = agentFilterOptions(all, null);
+  for (const option of options) {
+    const kept = applyHubFilters(all, parseHubParams({ vista: "panoramica", mostra: "benefici", agente: option.value }, manager), { ignoreKind: true });
+    assert.deepEqual(legendOf(kept).map((entry) => entry.label), [option.label], `agente=${option.value}`);
+  }
+  assert.deepEqual(options.map((option) => option.label), ["IVA", "LIBRA", NO_AGENT_LABEL]);
+  // La matrice Valore × Costo, la stessa legenda.
+  assert.deepEqual(agentPointLegend(agents, ["IVA I1 · Calcolo dell'imposta sui biglietti"]), [{ slot: 0, label: "IVA" }]);
 });
 
 test("niceScale: tacche tonde che comprendono lo zero; senza ampiezza da 0 a 1.000", () => {

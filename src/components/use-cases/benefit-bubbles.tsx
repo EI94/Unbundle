@@ -48,8 +48,8 @@ export function bubbleSummaryParts(bubble: BenefitBubble): string[] {
 
 /**
  * «Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre · Gruppo Vendite»
- * (con «· scaduto» se il trimestre è passato); con gli agenti nei titoli senza il gruppo, che la
- * legenda dice già.
+ * (con «· scaduto» se il trimestre è passato); con gli agenti nei titoli senza il gruppo: il colore
+ * è dell'agente del titolo, e lo dice la legenda (`groupLabelOf`).
  */
 export function bubbleSummary(bubble: BenefitBubble): string {
   return bubbleSummaryParts(bubble).join(FIGURE_SEPARATOR);

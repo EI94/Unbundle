@@ -218,22 +218,28 @@ export function agentPointSlot(agents: AgentPalette | null | undefined, title: s
 
 /**
  * La legenda della «Matrice Valore × Costo» per agente, anche delle bolle e dei segmenti
- * (`markLegend`): gli agenti con un tono che hanno un punto, in ordine alfabetico come i toni, poi il
- * grigio «Altri use case» se un punto non ha un agente con un tono. Vuota senza agenti nei titoli.
+ * (`markLegend`): gli agenti con un tono che hanno un punto, in ordine alfabetico come i toni; poi,
+ * in grigio, gli agenti senza tono (solo proposte) con il loro nome, come nel filtro «Agente»; poi
+ * il grigio «Altri use case» se un punto non ha il prefisso, gli stessi use case di `agente=altri`.
+ * Vuota senza agenti nei titoli.
  */
 export function agentPointLegend(agents: AgentPalette | null | undefined, titles: readonly string[]): GroupLegendEntry[] {
   if (!paletteHasAgents(agents)) return [];
   const shown = new Map<string, AgentTone>();
+  const toneless = new Set<string>();
   let others = false;
   for (const title of titles) {
     const agent = agentOfTitle(title);
     const tone = agentToneOf(agents, agent);
     if (agent && tone) shown.set(agent, tone);
+    else if (agent) toneless.add(agent);
     else others = true;
   }
-  const entries: GroupLegendEntry[] = [...shown.entries()]
-    .sort(([a], [b]) => a.localeCompare(b, "it-IT"))
-    .map(([agent, tone]) => ({ slot: `agente-${tone}` as const, label: agent }));
+  const byName = (a: string, b: string) => a.localeCompare(b, "it-IT");
+  const entries: GroupLegendEntry[] = [
+    ...[...shown.entries()].sort(([a], [b]) => byName(a, b)).map(([agent, tone]) => ({ slot: `agente-${tone}` as const, label: agent })),
+    ...[...toneless].sort(byName).map((agent) => ({ slot: 0 as const, label: agent })),
+  ];
   if (others) entries.push({ slot: 0, label: NO_AGENT_LABEL });
   return entries;
 }

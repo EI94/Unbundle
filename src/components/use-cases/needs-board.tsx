@@ -513,7 +513,7 @@ function QuarterCard({ ask, href }: { ask: QuarterAsk; href: string }) {
           <ul className="space-y-1 text-sm">
             {ask.returns.map((line) => (
               <li key={line.key} data-return={line.key}>
-                <span className="font-medium">{line.label}</span>
+                <span className="font-medium">{keepTogether(line.label)}</span>
                 <span className="text-muted-foreground">{`${SCREEN_SEPARATOR}${line.confidence.toLowerCase()}`}</span>
                 <span className="block text-xs text-muted-foreground tabular-nums">{keepTogether(line.text)}</span>
               </li>

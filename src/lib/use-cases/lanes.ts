@@ -17,7 +17,7 @@
  *   gli euro contati e in che corsie stanno.
  * - **Somme.** Gli euro di una corsia, di «In realizzazione» e di un gruppo «Per agente» sono la
  *   somma delle cifre delle loro card, ognuna già arrotondata all'euro come la scrive la card
- *   (`countedEurOf`); così anche la cifra in testa (`roadmapTotals`). Le parti a schermo fanno
+ *   (`shownPerYearEur`); così anche la cifra in testa (`roadmapTotals`). Le parti a schermo fanno
  *   sempre il totale, con qualunque filtro.
  *
  * Art. 15.4: corsie, ordini, gruppi e colori non leggono mai chi ha proposto; l'agente è il prefisso
@@ -26,7 +26,7 @@
  * Modulo puro: solo import relativi `.ts`.
  */
 import { agentLabel, agentOfTitle, NO_AGENT_PARAM, type AgentParam } from "./agents.ts";
-import { FIGURE_SEPARATOR, formatEuro, formatInteger, perYearText, roundAmount, shownPerYear, valueScreenText, type ValueParts } from "./format.ts";
+import { FIGURE_SEPARATOR, formatEuro, formatInteger, perYearText, shownPerYear, shownPerYearEur, valueScreenText, type ValueParts } from "./format.ts";
 import { quarterLabel, quarterOfDate, nextQuarter, WHEN_LATER_LABEL } from "./quarter.ts";
 import type { QuarterCode } from "./types.ts";
 import { byRealizedDesc, isContributorItem, quarterOfItem, roadmapGroupKey, roadmapGroupLabel, type AnyHubItem, type HubItem } from "./views.ts";
@@ -203,12 +203,12 @@ export function buildLanes<T extends AnyHubItem>(items: readonly T[], today: str
 
 /**
  * Gli euro contati all'anno di un gruppo di card: la somma delle cifre come le scrive ogni card,
- * arrotondate all'euro una a una (`roundAmount`, come `formatEuro`), non la somma arrotondata alla
- * fine. Così le card fanno la loro corsia, le corsie e «In realizzazione» la cifra in testa, «Per
- * agente» le corsie dell'agente. Solo gli euro a schermo (`shownPerYear`); 0 senza.
+ * arrotondate all'euro una a una (`shownPerYearEur`), non la somma arrotondata alla fine. Così le
+ * card fanno la loro corsia, le corsie e «In realizzazione» la cifra in testa, «Per agente» le
+ * corsie dell'agente. Solo gli euro a schermo; 0 senza.
  */
 export function countedEurOf(items: readonly Pick<HubItem, "value">[]): number {
-  return items.reduce((sum, item) => sum + roundAmount(shownPerYear(item.value)?.amount ?? 0), 0);
+  return items.reduce((sum, item) => sum + (shownPerYearEur(item.value) ?? 0), 0);
 }
 
 /** «24.500 € contati all'anno»: gli euro contati di una corsia. */
@@ -273,7 +273,7 @@ export interface AgentGroup {
   agent: string | null;
   label: string;
   count: number;
-  /** Gli euro contati all'anno: la somma delle cifre delle card (`countedEurOf`). */
+  /** Gli euro contati all'anno: la somma delle cifre delle card (`shownPerYearEur`), come `countedEurOf`. */
   perYearEur: number;
   /** Quanti hanno gli euro contati. */
   counted: number;
@@ -298,9 +298,9 @@ export function agentGroups(lanes: readonly Lane<Pick<HubItem, "title" | "value"
         groups.set(param, group);
       }
       group.count += 1;
-      const perYear = shownPerYear(item.value);
-      if (perYear) {
-        group.perYearEur += roundAmount(perYear.amount);
+      const perYearEur = shownPerYearEur(item.value);
+      if (perYearEur !== null) {
+        group.perYearEur += perYearEur;
         group.counted += 1;
       }
       const chip = group.lanes.find((entry) => entry.key === lane.key);

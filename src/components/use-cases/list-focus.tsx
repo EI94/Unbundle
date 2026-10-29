@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
@@ -173,15 +173,29 @@ export function RevealOnMount() {
   return <span ref={ref} hidden data-slot="reveal-on-mount" />;
 }
 
-/** Nessun negozio da seguire: `useSyncExternalStore` serve solo a sapere se React sta idratando la pagina. */
-function noSubscribe(): () => void {
-  return () => undefined;
+/**
+ * Il primo «Per agente» montato nel documento decide, una volta sola, se la pagina si è aperta
+ * dall'indirizzo. Non l'idratazione: sotto 768 px la barra laterale passa al telefono appena il guscio è
+ * idratato, e React rifà sul client la pagina ancora da idratare.
+ */
+let revealDecided = false;
+
+/** Il primo «Per agente» del documento prende la decisione e la toglie ai successivi. */
+export function takeRevealDecision(): boolean {
+  const first = !revealDecided;
+  revealDecided = true;
+  return first;
+}
+
+/** L'indirizzo è ancora quello con cui il browser ha aperto il documento (la voce «navigation»): nessun clic nell'app l'ha cambiato. */
+export function isLoadAddress(navigation: ReadonlyArray<{ name: string }>, href: string): boolean {
+  return navigation.length > 0 && navigation[0].name === href;
 }
 
 /** La pagina quando «Per agente» monta. */
 export interface RevealPage {
-  /** React idrata l'HTML del server: la pagina si è appena aperta dall'indirizzo, non con un clic nell'app. */
-  hydrating: boolean;
+  /** Il primo «Per agente» del documento, sull'indirizzo del caricamento: non un clic nell'app. */
+  fromAddress: boolean;
   /** L'ancora dell'indirizzo («#agente-LIBRA»), "" senza. */
   hash: string;
   scrollY: number;
@@ -196,7 +210,7 @@ export interface RevealPage {
  * pagina si è già mossa o il fuoco è già altrove.
  */
 export function shouldRevealOnLoad(page: RevealPage): boolean {
-  return page.hydrating && page.hash === "" && page.scrollY === 0 && !page.focused;
+  return page.fromAddress && page.hash === "" && page.scrollY === 0 && !page.focused;
 }
 
 /**
@@ -211,6 +225,26 @@ export function revealSection(section: HTMLElement, viewportHeight: number): voi
   section.focus({ preventScroll: true });
 }
 
+/** Quello che `RevealOnLoad` legge della pagina: `window` nell'app, un oggetto finto nei test. */
+export interface RevealWindow {
+  location: { hash: string; href: string };
+  scrollY: number;
+  performance: { getEntriesByType(type: "navigation"): ReadonlyArray<{ name: string }> };
+  document: { activeElement: Element | null; body: HTMLElement | null; documentElement: { clientHeight: number } };
+}
+
+/**
+ * L'effetto di `RevealOnLoad`: dal segno alla sua sezione, che viene in vista se è il primo «Per
+ * agente» del documento (`first`, da `takeRevealDecision`) e la pagina si è appena aperta dall'indirizzo.
+ */
+export function revealOnLoad(marker: Element | null, first: boolean, page: RevealWindow): void {
+  const fromAddress = first && isLoadAddress(page.performance.getEntriesByType("navigation"), page.location.href);
+  const section = marker?.closest("section");
+  const active = page.document.activeElement;
+  if (!section || !shouldRevealOnLoad({ fromAddress, hash: page.location.hash, scrollY: page.scrollY, focused: active !== null && active !== page.document.body })) return;
+  revealSection(section, page.document.documentElement.clientHeight);
+}
+
 /**
  * Nel gruppo «Per trimestre | Per agente» di «Per agente» aperto dall'indirizzo («?vista=panoramica&
  * mostra=agenti» scritto, nei preferiti o in un link): appena la pagina c'è, le card degli agenti vengono
@@ -221,14 +255,7 @@ export function revealSection(section: HTMLElement, viewportHeight: number): voi
  */
 export function RevealOnLoad() {
   const ref = useRef<HTMLSpanElement | null>(null);
-  // Mentre React idrata legge l'ultima funzione (true); in una navigazione nell'app, quella di mezzo (false).
-  const hydrating = useSyncExternalStore(noSubscribe, () => false, () => true);
-  useEffect(() => {
-    const section = ref.current?.closest("section");
-    const active = document.activeElement;
-    if (!section || !shouldRevealOnLoad({ hydrating, hash: window.location.hash, scrollY: window.scrollY, focused: active !== null && active !== document.body })) return;
-    revealSection(section, document.documentElement.clientHeight);
-  }, [hydrating]);
+  useEffect(() => revealOnLoad(ref.current, takeRevealDecision(), window), []);
   return <span ref={ref} hidden data-slot="reveal-on-load" />;
 }
 

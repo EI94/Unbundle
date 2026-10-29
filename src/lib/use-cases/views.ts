@@ -35,7 +35,7 @@ import type { CaseStatus } from "../uc/vocab.ts";
 import { agentParamOf, parseAgentParam, type AgentParam } from "./agents.ts";
 import { isAnswerPending } from "./answers.ts";
 import { COST_BANDS, costBandInfo, costLowBandFrom, isCostBand, isCostLowBand, resolveCostBands, type CostBandInfo } from "./cost-bands.ts";
-import { roundAmount, shownPerYear, zoneText } from "./format.ts";
+import { roundAmount, shownPerYearEur, zoneText } from "./format.ts";
 import {
   COST_SOURCE_LABEL,
   KIND_LABEL,
@@ -1063,7 +1063,7 @@ export function byRealizedDesc<T extends AnyHubItem>(a: T, b: T): number {
 export interface RoadmapTile {
   /**
    * La somma delle cifre delle card, ognuna arrotondata all'euro; le corsie, «In realizzazione» e
-   * «Per agente» sommano le stesse cifre (`countedEurOf` di `lanes.ts`).
+   * «Per agente» sommano le stesse cifre (`shownPerYearEur` di `format.ts`).
    */
   amountEur: number;
   /** Su quanti use case è calcolata (solo quelli con una cifra). */
@@ -1102,7 +1102,7 @@ function shareOf(parts: Array<{ origin: Origin; amount: number }>): Record<Origi
 /**
  * Le cifre in testa alla Panoramica (§4.5; `overviewFigures` di `panoramica.ts`). «valore contato
  * all'anno»: somma sugli approvati e in realizzazione del miglior valore annuo (dossier, poi team),
- * solo gli euro che le card scrivono (`shownPerYear`). «costo di avvio»: somma sugli approvati «Da
+ * solo gli euro che le card scrivono (`shownPerYearEur`). «costo di avvio»: somma sugli approvati «Da
  * costruire» e in realizzazione del costo di §7.2; una fascia vale il suo riferimento nelle fasce
  * del workspace, lo sforzo l'importo stimato. Ogni cifra è la somma delle cifre delle card, ognuna
  * arrotondata all'euro: le corsie, «In realizzazione» e «Per agente» sommano le stesse cifre. Una
@@ -1115,8 +1115,8 @@ export function roadmapTotals(items: readonly HubItem[]): RoadmapTotals {
     const upcoming = item.phase === "approvato";
     const inProgress = item.phase === "in_realizzazione";
     if (!upcoming && !inProgress) continue;
-    const perYear = shownPerYear(item.value);
-    if (perYear) value.push({ origin: item.origin, amount: roundAmount(perYear.amount) });
+    const perYearEur = shownPerYearEur(item.value);
+    if (perYearEur !== null) value.push({ origin: item.origin, amount: perYearEur });
     if (item.cost && (inProgress || item.kind === "da_costruire")) {
       cost.push({ origin: item.origin, amount: roundAmount(item.cost.referenceEur), fromBand: item.cost.fromBand });
     }

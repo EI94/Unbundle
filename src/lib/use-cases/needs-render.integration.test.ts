@@ -105,7 +105,7 @@ const FIX_A = {
   components: [
     { key: "capacita", lever: "nuove_capacita", label: "Risposte anche fuori orario", kind: "qualitativo", confidence: "fonte" },
     { key: "tempo", lever: "tempo", label: "Smistamento delle richieste", kind: "ore", volumeYear: 6600, minutesPerUnit: 1.5, automatablePct: 70, confidence: "ipotesi" },
-    { key: "qualita", lever: "qualita", label: "Meno errori di smistamento", kind: "qualitativo", confidence: "da_misurare" },
+    { key: "qualita", lever: "qualita", label: "Meno errori di smistamento entro 30 giorni", kind: "qualitativo", confidence: "da_misurare" },
   ],
   ease: 4,
   costs: { devDays: 4, internalHours: 16, runCostEurYear: 600 },
@@ -510,7 +510,7 @@ test("Cosa serve: «Prossimi passi» per mese, i fatti chiusi; «Cosa vi chiedia
   assert.equal(quarter.split("data-quarter-ask=").length - 1, 1, "solo lo use case approvato in questo trimestre");
   assert.ok(ask.includes(`Chi conferma i numeri: <span class="text-foreground">${FIX_A.confirmBy}</span>`));
   assert.ok(ask.includes(`6.600${N}all'anno × 1,5${N}min × 70% ≈ 116${N}h${N}· 4.043${N}€`), "il ritorno da confermare");
-  assert.ok(ask.includes("Meno errori di smistamento") && ask.includes("· da misurare"), "anche le voci da misurare");
+  assert.ok(ask.includes(`Meno errori di smistamento entro 30${N}giorni`) && ask.includes("· da misurare"), "anche le voci da misurare, con il numero e la sua parola insieme");
   assert.ok(!ask.includes("Risposte anche fuori orario"), "le voci con una fonte non si chiedono");
   const section = (title: string, next?: string) => between(ask, `>${title}<`, next ? `>${next}<` : undefined);
   assert.ok(section("Ci serve subito", "Dopo la scheda A.8").includes(T.access));

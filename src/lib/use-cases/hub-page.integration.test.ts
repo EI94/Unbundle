@@ -283,10 +283,10 @@ function newUseCaseTag(page: string): string {
   return tag;
 }
 
-/** Il pezzo di HTML da `data-slot="<slot>"` alla chiusura della sua `</section>`. */
 /** Lo spazio non separabile della pagina (`keepTogether`): un numero con la sua parola, il «·» con la parte prima. */
 const N = "\u00a0";
 
+/** Il pezzo di HTML da `data-slot="<slot>"` alla chiusura della sua `</section>`. */
 function sectionOf(page: string, slot: string): string {
   const start = page.indexOf(`data-slot="${slot}"`);
   assert.ok(start >= 0, slot);

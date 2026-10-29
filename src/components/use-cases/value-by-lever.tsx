@@ -36,7 +36,7 @@ export interface ValueByLeverProps {
   chart: LeverChart;
   /** id → il pannello laterale (`?apri=<id>`). */
   hrefs: Readonly<Record<string, string>>;
-  /** La legenda dei gruppi; vuota con un colore solo. */
+  /** La legenda dei segni (`markLegend`): gli agenti e «Altri use case», o i gruppi; vuota con un colore solo. */
   legend: readonly GroupLegendEntry[];
 }
 

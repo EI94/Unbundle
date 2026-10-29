@@ -325,6 +325,15 @@ export function shownPerYear(value: Pick<ValueParts, "perYear"> | null | undefin
   return perYear && Number.isFinite(perYear.amount) && perYear.amount > 0 ? perYear : null;
 }
 
+/**
+ * Gli euro all'anno come li scrive la card: `shownPerYear` arrotondato all'euro (`roundAmount`, come
+ * `formatEuro`); null senza una cifra a schermo. Le somme della Panoramica sommano questi.
+ */
+export function shownPerYearEur(value: Pick<ValueParts, "perYear"> | null | undefined): number | null {
+  const perYear = shownPerYear(value);
+  return perYear ? roundAmount(perYear.amount) : null;
+}
+
 /** Il Valore ha una cifra in euro: gli euro all'anno, oppure il tetto «da misurare · fino a X €» di «Benefici e costi». */
 export function hasEuroValue(value: Pick<ValueParts, "perYear" | "benefits"> | null | undefined): boolean {
   return shownPerYear(value) !== null || (value?.benefits?.state === "da_misurare" && value.benefits.pendingEur > 0);

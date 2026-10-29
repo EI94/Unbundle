@@ -82,8 +82,11 @@ test("«Altri filtri»: niente «Togli i filtri» dentro; al telefono si apre co
   assert.doesNotMatch(SOURCE, /clear=\{clear\}|<div className="sm:hidden">\{clear\}<\/div>/);
   assert.match(SOURCE, /<div ref=\{bar\} data-slot="filter-bar"/);
   assert.match(SOURCE, /<MoreFilters [^>]*anchor=\{bar\}/);
-  assert.match(SOURCE, /anchor=\{phone \? anchor : undefined\}/);
-  assert.match(SOURCE, /className="max-h-\(--available-height\) w-72 max-w-\[calc\(100vw-2rem\)\] gap-3 overflow-y-auto overscroll-contain p-3"/);
+  // Solo dentro «Altri filtri»: il telefono letto davvero, l'ancora solo lì; le classi in qualunque ordine.
+  const more = SOURCE.slice(SOURCE.indexOf("function MoreFilters("), SOURCE.indexOf("function MoreField("));
+  assert.match(more, /const phone = useIsPhone\(\);[\s\S]*<PopoverContent\b[^>]*\banchor=\{phone \? anchor : undefined\}/);
+  const content = /<PopoverContent\b[^>]*className="([^"]*)"/.exec(more)![1].split(" ");
+  for (const name of ["max-h-(--available-height)", "w-72", "max-w-[calc(100vw-2rem)]", "overflow-y-auto", "overscroll-contain"]) assert.ok(content.includes(name), name);
   // Il riquadro di shadcn passa l'ancora a base-ui; senza, l'ancora è il bottone, come prima.
   assert.match(POPOVER, /"align" \| "alignOffset" \| "anchor" \| "side" \| "sideOffset"/);
   assert.match(POPOVER, /anchor=\{anchor\}/);

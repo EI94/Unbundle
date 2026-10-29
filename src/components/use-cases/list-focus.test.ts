@@ -156,12 +156,23 @@ test("le ancore che cambiano vista usano `HashFocusLink`, e l'hub monta `HashFoc
 // dopo un clic nell'app la pagina e il fuoco restano a Next.
 
 test("«Per agente» viene in vista solo all'apertura della pagina, ancora ferma e senza ancora", () => {
-  const LOAD = { hydrating: true, hash: "", scrollY: 0, focused: false };
+  const LOAD = { fromAddress: true, hash: "", scrollY: 0, focused: false };
   assert.equal(focus.shouldRevealOnLoad(LOAD), true);
-  assert.equal(focus.shouldRevealOnLoad({ ...LOAD, hydrating: false }), false, "un clic nell'app: «Per agente», «‹ Tutti gli agenti», un filtro");
+  assert.equal(focus.shouldRevealOnLoad({ ...LOAD, fromAddress: false }), false, "un clic nell'app: «Per agente», «‹ Tutti gli agenti», un filtro");
   assert.equal(focus.shouldRevealOnLoad({ ...LOAD, hash: "#agente-LIBRA" }), false, "un'ancora: la porta il browser");
   assert.equal(focus.shouldRevealOnLoad({ ...LOAD, scrollY: 40 }), false, "la pagina si è già mossa");
   assert.equal(focus.shouldRevealOnLoad({ ...LOAD, focused: true }), false, "il fuoco è già altrove");
+});
+
+// Al telefono React non idrata la pagina: la barra laterale passa al telefono appena il guscio è
+// idratato e la pagina si rifà sul client. Decide allora l'indirizzo, una volta per documento.
+test("aperto dall'indirizzo: il primo «Per agente» del documento, sull'indirizzo del caricamento", () => {
+  const AGENTS = "https://app.test/dashboard/ws/use-cases?vista=panoramica&mostra=agenti";
+  assert.equal(focus.isLoadAddress([{ name: AGENTS }], AGENTS), true);
+  assert.equal(focus.isLoadAddress([{ name: "https://app.test/dashboard/ws/use-cases?vista=panoramica" }], AGENTS), false, "aperta su «Per trimestre», poi il clic su «Per agente»");
+  assert.equal(focus.isLoadAddress([], AGENTS), false, "senza la voce del caricamento");
+  assert.equal(focus.takeRevealDecision(), true);
+  assert.equal(focus.takeRevealDecision(), false, "«Per trimestre» e di nuovo «Per agente»: la pagina resta dov'è");
 });
 
 test("in vista solo se la prima card non c'è tutta; il fuoco sempre", () => {
@@ -199,11 +210,56 @@ test("in vista solo se la prima card non c'è tutta; il fuoco sempre", () => {
   ]);
 });
 
-test("il segno di «Per agente»: nascosto, solo all'idratazione, e il segmento resta senza scorrere", () => {
+test("«Per agente» dall'indirizzo: dal segno alla sua sezione, in vista e con il fuoco; dopo un clic nulla si muove", () => {
+  const AGENTS = "https://app.test/dashboard/ws/use-cases?vista=panoramica&mostra=agenti";
+  const pageWith = ({ loaded = AGENTS, hash = "", scrollY = 0, focused = false }: { loaded?: string; hash?: string; scrollY?: number; focused?: boolean } = {}) => {
+    const calls: Array<[string, unknown]> = [];
+    const body = {} as HTMLElement;
+    // 400 × 860: la prima card finisce a 1241 px, sotto la piega.
+    const section = {
+      querySelector: () => ({ getBoundingClientRect: () => ({ bottom: 1241 }) }),
+      scrollIntoView: (options: unknown) => calls.push(["scroll", options]),
+      focus: (options: unknown) => calls.push(["focus", options]),
+    };
+    const marker = { closest: (selector: string) => (selector === "section" ? section : null) } as unknown as Element;
+    const page = {
+      location: { hash, href: `${AGENTS}${hash}` },
+      scrollY,
+      performance: { getEntriesByType: (type: string) => (type === "navigation" ? [{ name: `${loaded}${hash}` }] : []) },
+      document: { activeElement: focused ? ({} as Element) : body, body, documentElement: { clientHeight: 860 } },
+    };
+    return { marker, page, calls };
+  };
+  const load = pageWith();
+  focus.revealOnLoad(load.marker, true, load.page);
+  assert.deepEqual(load.calls, [
+    ["scroll", { block: "start" }],
+    ["focus", { preventScroll: true }],
+  ]);
+  for (const [first, extra, why] of [
+    [false, {}, "un altro «Per agente» nello stesso documento"],
+    [true, { loaded: "https://app.test/dashboard/ws/use-cases?vista=panoramica" }, "aperta su «Per trimestre», poi il clic su «Per agente»"],
+    [true, { hash: "#agente-LIBRA" }, "un'ancora"],
+    [true, { scrollY: 40 }, "la pagina si è già mossa"],
+    [true, { focused: true }, "il fuoco è già altrove"],
+  ] as const) {
+    const page = pageWith(extra);
+    focus.revealOnLoad(page.marker, first, page.page);
+    assert.deepEqual(page.calls, [], why);
+  }
+  // Fuori da una sezione, o senza il segno: nulla.
+  const outside = pageWith();
+  focus.revealOnLoad({ closest: () => null } as unknown as Element, true, outside.page);
+  focus.revealOnLoad(null, true, outside.page);
+  assert.deepEqual(outside.calls, []);
+});
+
+test("il segno di «Per agente»: nascosto, solo all'apertura dall'indirizzo, e il segmento resta senza scorrere", () => {
   assert.equal(renderToStaticMarkup(createElement(focus.RevealOnLoad, {})), '<span hidden="" data-slot="reveal-on-load"></span>');
   const own = readFileSync(new URL("./list-focus.tsx", import.meta.url), "utf8");
-  assert.match(own, /useSyncExternalStore\(noSubscribe, \(\) => false, \(\) => true\)/);
-  assert.match(own, /shouldRevealOnLoad\(\{ hydrating,/, "solo all'apertura, mai dopo un clic");
+  // Il cablaggio, una riga senza logica: la decisione del documento e la pagina vera (`window`).
+  assert.match(own, /useEffect\(\(\) => revealOnLoad\(ref\.current, takeRevealDecision\(\), window\), \[\]\);/, "solo all'apertura, mai dopo un clic");
+  assert.doesNotMatch(own, /useSyncExternalStore/, "non l'idratazione, che al telefono manca");
   // Il clic su «Per agente» non scorre e tiene il fuoco sul segmento.
   const nav = readFileSync(new URL("../dashboard/segmented-nav.tsx", import.meta.url), "utf8");
   assert.match(nav, /href=\{item\.href\}\s*scroll=\{false\}/);

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { agentParamOf } from "./agents.ts";
-import { formatEuro, type ValueParts } from "./format.ts";
+import { formatEuro, shownPerYearEur, type ValueParts } from "./format.ts";
 import {
   LANE_BAR_MIN,
   LANE_KEYS,
@@ -294,6 +294,23 @@ test("countedEurOf: la somma delle cifre delle card, arrotondate una a una; solo
   assert.equal(countedEurOf([{ value: counted(0) }, { value: counted(Number.NaN) }, { value: counted(-5) }, { value: NO_VALUE }, { value: pending(9_000) }]), 0);
   // Una card sola: la cifra della corsia è la cifra della card.
   for (let x = 0; x <= 20; x += 0.25) assert.equal(formatEuro(countedEurOf([{ value: counted(x) }])), formatEuro(x), String(x));
+});
+
+test("shownPerYearEur: la cifra della card all'euro, una regola sola per corsie, «Per agente» e cifra in testa", () => {
+  assert.equal(shownPerYearEur(counted(1_000.5)), 1_001);
+  assert.equal(shownPerYearEur(counted(2_183.4999999999995)), 2_184);
+  assert.equal(shownPerYearEur(counted(0.3)), 0, "la card scrive «0 € all'anno»: conta nei «su N use case»");
+  for (const value of [counted(0), counted(Number.NaN), counted(-5), NO_VALUE, pending(9_000), null]) assert.equal(shownPerYearEur(value), null);
+  const items = [
+    hub({ title: "LIBRA L1 · Fatture", targetQuarter: "2026-Q4", value: counted(4_042.5) }),
+    hub({ title: "LIBRA L2 · Cassa", targetQuarter: null, value: counted(0.3) }),
+    hub({ title: "ORSA O1 · Solleciti", phase: "in_realizzazione", value: counted(2_719.5) }),
+  ];
+  const lanes = buildLanes(items, TODAY);
+  const [libra] = agentGroups(lanes.lanes);
+  assert.deepEqual([libra.perYearEur, libra.counted], [4_043, 2]);
+  assert.deepEqual([roadmapTotals(items).expectedValue?.amountEur, roadmapTotals(items).expectedValue?.count], [6_763, 3]);
+  assert.equal(countedEurOf(items), 6_763);
 });
 
 test("«Per agente»: un gruppo per agente del titolo, chi ha più euro in testa, «Altri use case» in fondo", () => {

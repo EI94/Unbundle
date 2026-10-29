@@ -237,11 +237,12 @@ test("«Matrice Valore × Costo» con gli agenti nei titoli: i punti nel tono de
   assert.match(dotOf(plain.id), /\bborder-uc-serie-altro\b.*\bbg-uc-serie-altro\b/);
   assert.match(dotOf(proposal.id), /\bborder-uc-serie-altro\b.*\bbg-background\b/, "un agente senza tono: grigio");
   assert.ok(!/(?:bg|border)-(?:indigo|teal)-500/.test(html.slice(html.indexOf('data-slot="value-cost-matrix"'))), "nessun colore dell'origine");
-  // La legenda: gli agenti dei punti, poi «Altri use case»; le fasi come prima, senza l'origine.
+  // La legenda: gli agenti dei punti, poi IVA, senza tono, in grigio con il suo nome, come nel filtro
+  // «Agente», poi «Altri use case» (solo i titoli senza il prefisso); le fasi come prima, senza l'origine.
   const legendStart = html.indexOf(">", html.indexOf('data-slot="matrix-legend"')) + 1;
   const legend = html.slice(legendStart, html.indexOf("</p>", legendStart));
   const legendText = legend.replace(/<[^>]+>/g, "|").split("|").filter(Boolean);
-  assert.deepEqual(legendText, ["DENEB", "LIBRA", "Altri use case", "approvato", "da decidere"]);
+  assert.deepEqual(legendText, ["DENEB", "LIBRA", "IVA", "Altri use case", "approvato", "da decidere"]);
   assert.ok(legend.includes(`bg-uc-agente-${tone("DENEB")}`) && legend.includes(`bg-uc-agente-${tone("LIBRA")}`) && legend.includes("bg-uc-serie-altro"));
   // Etichette, riquadri e nomi per i lettori di schermo restano quelli di prima.
   assert.ok(html.includes(`aria-label="${libra.code} ${libra.title}. Valore:`));
@@ -325,12 +326,12 @@ test("«Matrice Facilità × Beneficio» e «Curva del valore» con gli agenti n
   assert.ok(bubbles.includes(`aria-label="${copy.code} ${copy.title}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`), "la copia senza prefisso");
   assert.ok(curve.includes(`aria-label="${copy.code} ${copy.title}: 4.043 € all&#x27;anno · Risparmio di tempo"`), "segmento");
   assert.ok(!/Gruppo (?:ORSA|Operazioni)|· ORSA"/.test(bubbles + curve));
-  // Le legende: gli agenti dei segni, poi «Altri use case», come la matrice.
+  // Le legende: gli agenti dei segni, IVA (senza tono) con il suo nome, poi «Altri use case», come la matrice.
   const legendOf = (html: string, at: string) => {
     const start = html.indexOf(">", html.indexOf(at)) + 1;
     return html.slice(start, html.indexOf(/^<figcaption/.test(at) ? "</figcaption>" : "</p>", start)).replace(/<[^>]+>/g, "|").split("|").filter(Boolean);
   };
-  assert.deepEqual(legendOf(bubbles, 'data-slot="bubbles-legend"').slice(0, 3), ["LIBRA", "ORSA", "Altri use case"]);
+  assert.deepEqual(legendOf(bubbles, 'data-slot="bubbles-legend"').slice(0, 4), ["LIBRA", "ORSA", "IVA", "Altri use case"]);
   assert.deepEqual(legendOf(curve, "<figcaption").slice(0, 3), ["LIBRA", "ORSA", "Altri use case"]);
   // Senza agenti nei titoli: i colori e i nomi dei gruppi, come sempre.
   const plain = agentPalette([{ title: "Strategia per volo" }]);
