@@ -924,11 +924,15 @@ export type PriorityView =
       list: HubItem[];
       /** Chip «N da stimare» (`isToEstimate`). */
       toEstimate: number;
+      /** Gli use case «da stimare» (`isToEstimate`), nell'ordine di `list`: l'elenco chiuso sotto la matrice. */
+      toEstimateItems: HubItem[];
       /**
        * Chip «N senza beneficio contato» (`isOffMatrix`): le schede con «Benefici e costi» che non
        * hanno un punto; `withoutBenefit` quante perché manca il beneficio contato (le altre: il costo).
        */
       offMatrix: { count: number; withoutBenefit: number };
+      /** Le schede di `offMatrix`, nell'ordine di `list`: l'altro elenco chiuso sotto la matrice. */
+      offMatrixItems: HubItem[];
     }
   | {
       tipo: "diffondere";
@@ -999,7 +1003,8 @@ export function buildPriority(items: readonly HubItem[], tipo: HubKindParam | nu
   }
   const off = list.filter(isOffMatrix);
   const offMatrix = { count: off.length, withoutBenefit: off.filter((item) => item.value.score === null).length };
-  return { tipo: "costruire", points, list, toEstimate: list.filter(isToEstimate).length, offMatrix };
+  const toEstimateItems = list.filter(isToEstimate);
+  return { tipo: "costruire", points, list, toEstimate: toEstimateItems.length, toEstimateItems, offMatrix, offMatrixItems: off };
 }
 
 /** «5 da stimare». */

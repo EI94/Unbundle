@@ -26,7 +26,10 @@ export interface HubMenuLink {
 
 export interface HubMenuProps {
   workspaceId: string;
-  /** I grafici del menu (matrici e curva del valore), in cima; vuoto senza use case da mettere in ordine. */
+  /**
+   * I grafici del menu (`hubCharts`: le matrici, poi la curva del valore), in cima; vuoto senza use
+   * case da mettere in ordine e senza «Benefici e costi» tra gli approvati e in realizzazione.
+   */
   charts?: readonly HubMenuLink[];
   /** `/portfolio/export`: con l'area accesa il foglio «Use case» (§4.1). */
   exportHref: string;
@@ -38,8 +41,9 @@ export interface HubMenuProps {
 
 /**
  * Il menu «⋯» della pagina, solo per i revisori (§4.1). In cima i grafici: «Matrice Valore ×
- * Costo», con «Benefici e costi» «Matrice Facilità × Beneficio», e «Curva del valore»; ognuno si
- * apre nella Panoramica al posto delle corsie, con i filtri di adesso. Poi «Esporta Excel» e
+ * Costo», con «Benefici e costi» «Matrice Facilità × Beneficio», e «Curva del valore» quando un
+ * approvato o uno in realizzazione ha «Benefici e costi»; ognuno si apre nella Panoramica al posto
+ * delle corsie, con i filtri di adesso e «‹ Torna alla Panoramica» sopra. Poi «Esporta Excel» e
  * «Proponi da Activity mapping». L'ultimo, con attività da classificare, dice «Prima classifica le attività in
  * Activity mapping.» con il link; altrimenti chiede conferma e fa proporre a Claude nuovi use
  * case, che arrivano in «Da decidere», nascosti ai colleghi, mai approvati da soli (§8.5).

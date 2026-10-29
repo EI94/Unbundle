@@ -6,13 +6,13 @@ import { ValueJCurve } from "./value-jcurve";
 import { ValueParamsSummary } from "./value-params-summary";
 
 export const ROADMAP_VALUE_TEXT = Object.freeze({
-  label: "Benefici e costi della roadmap",
+  label: "Curva del valore",
 });
 
 export interface RoadmapValueChartsProps {
   /** I conti di `buildRoadmapValue`: ci sono solo se almeno una scheda ha «Benefici e costi». */
   value: RoadmapValue;
-  /** Le schede dei revisori della vista, già filtrate. */
+  /** Gli use case dei revisori della vista, già filtrati. */
   items: readonly HubItem[];
   params: ValueParams;
   palette: GroupPalette;
@@ -25,10 +25,10 @@ export interface RoadmapValueChartsProps {
 }
 
 /**
- * I grafici di «Benefici e costi» della Roadmap, sotto le cifre in testa (spec di Pierpaolo,
- * 25/10/2026): la J-curve e «Valore per tipo di ritorno», poi il riquadro chiuso «Ipotesi di
- * calcolo» con le ipotesi del workspace in sola lettura. Solo per i revisori, e solo se almeno una
- * scheda della vista ha un modello (chi chiama passa `value` solo allora).
+ * I grafici di «Curva del valore», dal menu «⋯» (`?mostra=curva`; spec di Pierpaolo, 25/10/2026):
+ * la J-curve e «Valore per tipo di ritorno», poi il riquadro chiuso «Ipotesi di calcolo» con le
+ * ipotesi del workspace in sola lettura. Solo per i revisori, e solo se almeno uno use case della
+ * vista ha un modello (chi chiama passa `value` solo allora).
  */
 export function RoadmapValueCharts({ value, items, params, palette, hrefs, followsCurrentMonth = false, settingsHref = null }: RoadmapValueChartsProps) {
   const levers = buildLeverChart(items, params, palette);

@@ -40,10 +40,12 @@ test("il titolo della lista: solo per i lettori di schermo, raggiungibile dal co
 test("la Panoramica ha il suo titolo, e «‹ Torna alla Panoramica» sta sopra i grafici", () => {
   const hub = readFileSync(new URL("./hub.tsx", import.meta.url), "utf8");
   assert.ok(hub.includes("<ListFocusTarget title={HUB_TEXT.overviewView} />"), "il titolo della Panoramica, per il ritorno");
-  const source = readFileSync(new URL("./priority-view.tsx", import.meta.url), "utf8");
-  assert.ok(source.includes("<BackToListLink href={backHref}>{HUB_TEXT.backToOverview}</BackToListLink>"));
-  assert.ok(source.includes("{header ?? <ListFocusTarget title={PRIORITY_TEXT.build} />}"), "nel vuoto, senza grafico");
-  assert.match(source, /<ListFocusTarget title=\{PRIORITY_TEXT\.build\} \/>\s*<PriorityList\b/, "prima della lista");
+  assert.equal(hub.split("<ListFocusTarget").length - 1, 1, "un titolo solo, quello delle corsie");
+  // I grafici del menu «⋯» stanno in chart-view.tsx: il ritorno sopra, mai un titolo da mettere a fuoco.
+  const source = readFileSync(new URL("./chart-view.tsx", import.meta.url), "utf8");
+  assert.ok(source.includes("<BackToListLink href={backHref}>{CHART_TEXT.back}</BackToListLink>"));
+  assert.ok(!source.includes("<ListFocusTarget"), "il titolo è della Panoramica");
+  assert.match(hub, /<HubChartView\b/, "il grafico al posto delle corsie");
   const own = readFileSync(new URL("./list-focus.tsx", import.meta.url), "utf8");
   assert.match(own, /useEffect\(\(\) => \{\s*if \(takeListFocus\(\)\) ref\.current\?\.focus\(\);\s*\}, \[\]\);/);
 });

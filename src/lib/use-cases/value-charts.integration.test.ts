@@ -18,12 +18,12 @@ const { registerHooks } = nodeModule as unknown as {
 // I grafici di «Benefici e costi» nella pagina vera (`use-cases/page.tsx`), resa in questo processo
 // con la sessione scelta dalla prova (spec di Pierpaolo, 25/10/2026):
 //
-// - Il menu «⋯»: le voci «Matrice Valore × Costo» e «Matrice Facilità × Beneficio» e, con
-//   `mostra=benefici`, la matrice a bolle nella Panoramica (facilità, beneficio, raggio, bordo per
-//   il quando, link al pannello) con «Ipotesi di calcolo» sotto.
-// - La Panoramica (per ora la Roadmap di prima): quattro cifre in testa, la J-curve (entrata in
-//   uso, pareggio), «Valore per tipo di ritorno» (un segmento per use case, la parte da misurare
-//   tratteggiata, «(n qualitativi)») e «Ipotesi di calcolo».
+// - Il menu «⋯»: le voci «Matrice Valore × Costo», «Matrice Facilità × Beneficio» e «Curva del
+//   valore». Con `mostra=benefici` la matrice a bolle nella Panoramica (facilità, beneficio, raggio,
+//   bordo per il quando, link al pannello) con «Ipotesi di calcolo» sotto; con `mostra=curva` la
+//   J-curve (entrata in uso, pareggio), «Valore per tipo di ritorno» (un segmento per use case, la
+//   parte da misurare tratteggiata, «(n qualitativi)») e «Ipotesi di calcolo», al posto delle corsie.
+// - La Panoramica: quattro cifre in testa e «Su tutto il portafoglio»; la curva non c'è più.
 // - Un workspace senza modelli resta com'è: solo la matrice nel menu, niente grafici di «Benefici e
 //   costi»; il contributore non vede nulla di tutto questo.
 //
@@ -237,6 +237,15 @@ function tileOf(page: string, key: string): string {
 
 const count = (page: string, needle: string) => page.split(needle).length - 1;
 
+/** I pulsanti pieni della pagina: `[data-slot=button]` con la classe `bg-primary` (§5.7). */
+function filledButtons(page: string): number {
+  return [...page.matchAll(/<(?:a|button)\b[^>]*>/g)].filter(([tag]) => {
+    if (!tag.includes('data-slot="button"')) return false;
+    const classes = /class="([^"]*)"/.exec(tag)?.[1].split(/\s+/) ?? [];
+    return classes.includes("bg-primary");
+  }).length;
+}
+
 before(async () => {
   if (!enabled) return;
   const { default: ts } = await import("typescript");
@@ -336,15 +345,23 @@ after(async () => {
 
 // ─── I grafici del menu «⋯» ──────────────────────────────────────────
 
-test("menu «⋯»: «Matrice Valore × Costo» e «Matrice Facilità × Beneficio»; le bolle con facilità, beneficio, quando e il link al pannello", opts, async () => {
+test("menu «⋯»: «Matrice Valore × Costo», «Matrice Facilità × Beneficio» e «Curva del valore»; le bolle con facilità, beneficio, quando e il link al pannello", opts, async () => {
   for (const person of ["ls", "builder", "manager"] as const) {
     const charts = await menuCharts(person, ids.wsV);
     assert.deepEqual(
       charts.map((chart) => chart.label),
-      ["Matrice Valore × Costo", "Matrice Facilità × Beneficio"],
+      ["Matrice Valore × Costo", "Matrice Facilità × Beneficio", "Curva del valore"],
       person,
     );
     assert.ok(charts[1].href.endsWith("?vista=panoramica&mostra=benefici"), `${person}: ${charts[1].href}`);
+    assert.ok(charts[2].href.endsWith("?vista=panoramica&mostra=curva"), `${person}: ${charts[2].href}`);
+    // Un filtro non toglie una voce: il menu dice il workspace.
+    const filtered = await menuCharts(person, ids.wsV, { vista: "panoramica", q: `Senza modello ${suffix}` });
+    assert.deepEqual(
+      filtered.map((chart) => chart.label),
+      ["Matrice Valore × Costo", "Matrice Facilità × Beneficio", "Curva del valore"],
+      person,
+    );
   }
 
   const page = await html("builder", ids.wsV, { vista: "panoramica", mostra: "benefici" });
@@ -387,12 +404,15 @@ test("bolle: con «Benefici e costi» nel workspace e un filtro che li esclude, 
   assert.ok(!page.includes("data-bubble="));
 });
 
-// ─── La Panoramica (la Roadmap di prima) ─────────────────────────────
+// ─── La Panoramica e «Curva del valore» ──────────────────────────────
 
-test("Panoramica: quattro cifre, «Su tutto il portafoglio», J-curve con entrata in uso e pareggio, «Valore per tipo di ritorno», «Ipotesi di calcolo»", opts, async () => {
+test("Panoramica: quattro cifre e «Su tutto il portafoglio»; i grafici di «Benefici e costi» stanno nel menu «⋯»", opts, async () => {
   for (const person of ["ls", "builder", "manager"] as const) {
     const page = await html(person, ids.wsV, { vista: "panoramica" });
-    assert.ok(page.includes('data-slot="roadmap-value"'), person);
+    for (const text of ['data-slot="roadmap-value"', 'data-slot="value-jcurve"', 'data-slot="value-by-lever"', 'data-slot="value-params-summary"']) {
+      assert.ok(!page.includes(text), `${person}: ${text} è in «Curva del valore»`);
+    }
+    assert.ok(page.includes('aria-label="Tipo: Tutti"'), `${person}: «Tipo» è un filtro`);
     // 115,5 h + 62,4 h = 177,9 h; FIX_A + FIX_B: pareggio al mese 5 da nov 26, aprile 2027. Una riga
     // sotto le cifre, al posto delle due cifre di prima.
     assert.match(
@@ -407,8 +427,28 @@ test("Panoramica: quattro cifre, «Su tutto il portafoglio», J-curve con entrat
     assert.match(tileOf(page, "trimestre"), /1\s+use case in questo trimestre\s+T\d \d{4}/, person);
     assert.match(page, /@3xl\/hub:grid-cols-4/, `${person}: quattro cifre`);
   }
+});
 
-  const page = await html("builder", ids.wsV, { vista: "panoramica" });
+test("«Curva del valore» dal menu «⋯»: J-curve con entrata in uso e pareggio, «Valore per tipo di ritorno», «Ipotesi di calcolo»", opts, async () => {
+  for (const person of ["ls", "builder", "manager"] as const) {
+    const page = await html(person, ids.wsV, { vista: "panoramica", mostra: "curva" });
+    assert.ok(page.includes('data-chart="curva"'), person);
+    // Sopra la curva «‹ Torna alla Panoramica», che torna alle corsie, e il nome del grafico.
+    assert.deepEqual(chartHeaderOf(page), { href: `/dashboard/${ids.wsV}/use-cases?vista=panoramica`, text: "Torna alla Panoramica", title: "Curva del valore" }, person);
+    assert.ok(page.includes('<section aria-label="Curva del valore" data-slot="roadmap-value"'), person);
+    // Al posto delle corsie e della testa, che hanno il titolo per i lettori di schermo.
+    for (const text of ['data-slot="panoramica"', 'data-slot="list-focus"', 'data-slot="lanes"', 'data-slot="overview-figures"']) assert.ok(!page.includes(text), `${person}: ${text}`);
+    assert.equal(filledButtons(page), 1, `${person}: un solo pulsante pieno`);
+    // Sulla curva «Tipo» resta un filtro (solo le due matrici sono «Da costruire»).
+    assert.ok(page.includes('aria-label="Tipo: Tutti"'), person);
+    // Impostazioni › Valutazione solo a chi gestisce il workspace (exec_sponsor, transformation_lead).
+    const start = page.indexOf('data-slot="value-params-summary"');
+    assert.ok(start >= 0 && page.includes("Ipotesi di calcolo"), person);
+    const summary = page.slice(start, page.indexOf("</details>", start));
+    assert.equal(summary.includes(`href="/dashboard/${ids.wsV}/settings#`), person !== "builder", `${person}: il link alle impostazioni`);
+  }
+
+  const page = await html("builder", ids.wsV, { vista: "panoramica", mostra: "curva" });
   assert.ok(page.includes('data-slot="value-jcurve"'));
   assert.equal(count(page, 'data-go-live="2027-01"'), 1, "una linea tratteggiata per mese di entrata in uso");
   assert.ok(page.includes("Pareggio · apr 27"));
@@ -436,6 +476,13 @@ test("Panoramica: quattro cifre, «Su tutto il portafoglio», J-curve con entrat
   assert.ok(page.includes("Ipotesi di calcolo"));
   // Il popover è chiuso: le voci non sono ancora nella pagina.
   assert.ok(!page.includes(`Smistamento delle richieste ${suffix}`));
+
+  // Nessuno use case con «Benefici e costi» con questi filtri: il vuoto, con «Togli i filtri» che tiene la curva.
+  const none = await html("builder", ids.wsV, { vista: "panoramica", mostra: "curva", q: `Senza modello ${suffix}` });
+  assert.equal(chartHeaderOf(none).title, "Curva del valore");
+  assert.ok(none.includes('data-chart="curva"') && none.includes("Nessuno use case con questi filtri."));
+  assert.match(none, new RegExp(`href="/dashboard/${ids.wsV}/use-cases\\?vista=panoramica&amp;mostra=curva"[^>]*>Togli i filtri<`));
+  assert.ok(!none.includes('data-slot="roadmap-value"'));
 });
 
 // ─── Come oggi ───────────────────────────────────────────────────────
@@ -452,6 +499,10 @@ test("senza modelli: nel menu solo «Matrice Valore × Costo» e le cifre di ogg
   assert.equal(chartHeaderOf(forced).title, "Matrice Valore × Costo");
   assert.ok(forced.includes('data-chart="matrice"'));
   assert.ok(!forced.includes("Ipotesi di calcolo"));
+  // Senza «Benefici e costi» tra gli approvati e in realizzazione la curva non c'è: `mostra=curva` mostra le corsie.
+  const curve = await html("builder", ids.wsN, { vista: "panoramica", mostra: "curva" });
+  assert.ok(!curve.includes('data-slot="chart-header"') && !curve.includes("data-chart="), "nessun grafico");
+  assert.ok(curve.includes('data-slot="panoramica"') && curve.includes('data-slot="lanes"'), "le corsie");
   const roadmap = await html("builder", ids.wsN, { vista: "panoramica" });
   assert.ok(roadmap.includes('data-figure="totale-valore"'));
   for (const text of [
@@ -470,10 +521,30 @@ test("senza modelli: nel menu solo «Matrice Valore × Costo» e le cifre di ogg
 
 test("contributore: nessun grafico, nessuna ipotesi, nessuna voce", opts, async () => {
   const overview = await html("contributor", ids.wsV, { vista: "panoramica" });
+  const curve = await html("contributor", ids.wsV, { vista: "panoramica", mostra: "curva" });
   const priority = await html("contributor", ids.wsV, { vista: "priorita", mostra: "benefici" });
-  for (const page of [overview, priority]) {
-    for (const text of ["roadmap-value", "benefit-bubbles", "value-jcurve", "value-by-lever", "data-figure", "Ipotesi di calcolo", "Pareggio", "Servizio clienti", "€", "Benefici", "Torna alla Panoramica", "Matrice", "chart-header"]) {
+  for (const page of [overview, curve, priority]) {
+    for (const text of [
+      "roadmap-value",
+      "benefit-bubbles",
+      "value-jcurve",
+      "value-by-lever",
+      "data-figure",
+      "data-chart",
+      "Ipotesi di calcolo",
+      "Pareggio",
+      "Servizio clienti",
+      "€",
+      "Benefici",
+      "Torna alla Panoramica",
+      "Matrice",
+      "Curva del valore",
+      "chart-header",
+      'aria-label="Altre azioni"',
+    ]) {
       assert.ok(!page.includes(text), `contributore: «${text}»`);
     }
   }
+  // La curva non è sua: `mostra` non vale per lui, la Panoramica resta quella di prima.
+  assert.equal(curve, overview);
 });

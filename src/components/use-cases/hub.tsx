@@ -25,7 +25,7 @@ import { overviewFigures, overviewNextStep, overviewSteps, portfolioLine } from 
 import { abilitiesForUseCase, type UseCaseAbilities } from "@/lib/use-cases/permissions";
 import { compareQuarters, quarterLabel, WHEN_LATER_LABEL } from "@/lib/use-cases/quarter";
 import { USE_CASE_SOURCES } from "@/lib/use-cases/types";
-import { buildRoadmapValue, groupPalette, priorityCharts, roadmapPlan } from "@/lib/use-cases/value-charts";
+import { buildRoadmapValue, groupPalette, hubCharts, roadmapPlan } from "@/lib/use-cases/value-charts";
 import {
   LATER_QUARTER_PARAM,
   applyHubFilters,
@@ -45,6 +45,7 @@ import {
 import { USE_CASE_VALUATION_ANCHOR } from "@/lib/use-cases/settings";
 import { roleLabel } from "@/lib/workspace-roles";
 import type { WorkspaceAccess } from "@/lib/workspace-access";
+import { CHART_TEXT, HubChartView } from "./chart-view";
 import { DecideView } from "./decide-view";
 import { FilterBar, type FilterOption } from "./filter-bar";
 import { infoFilterOptions } from "./info-chip";
@@ -53,9 +54,7 @@ import { EmptyState, HUB_TEXT, HubHeader, HubNotice, receiptText } from "./hub-h
 import { ListFocusTarget } from "./list-focus";
 import { LANES_TEXT, PanoramaLanes, type LanesGrouping } from "./panorama-lanes";
 import { PanoramicaTop } from "./panoramica-top";
-import { PRIORITY_TEXT, PriorityView } from "./priority-view";
 import { QuickCreateSheet } from "./quick-create-sheet";
-import { RoadmapValueCharts } from "./roadmap-value";
 import { UseCasePanel, type UseCasePanelData } from "./use-case-panel";
 import { hubHref, panelHref, withoutTransient, type HubQuery } from "./use-case-row";
 
@@ -136,7 +135,7 @@ export interface UseCaseHubData {
    * Casi d'uso accesa.
    */
   subprocessorsPending: boolean;
-  /** Le voci dei grafici del menu «⋯» (`priorityCharts`, su tutte le schede); [] ai contributori. */
+  /** Le voci dei grafici del menu «⋯» (`hubCharts`, su tutte le schede); [] ai contributori. */
   charts: HubChartParam[];
   /** Il grafico aperto nella Panoramica al posto delle corsie (`shownChart`); null senza. */
   chart: HubChartParam | null;
@@ -160,7 +159,7 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
   const items: readonly AnyHubItem[] = list.items;
   const view = params.vista ?? defaultHubView(viewer, decideCount(items));
   // I grafici del menu «⋯» dei revisori, su tutte le schede: un filtro non toglie una voce.
-  const charts = reviewer && abilities.canSeePriority ? priorityCharts(list.items as HubItem[]) : [];
+  const charts = reviewer && abilities.canSeePriority ? hubCharts(list.items as HubItem[]) : [];
   const chart = view === "panoramica" && reviewer ? shownChart(params.mostra, charts) : null;
   // La Panoramica con le sue corsie, senza un grafico del menu «⋯».
   const lanes = view === "panoramica" && chart === null;
@@ -231,7 +230,7 @@ function queryOf(params: HubParams, view: HubView): HubQuery {
 const byLabel = (a: FilterOption, b: FilterOption) => a.label.localeCompare(b.label, "it-IT");
 
 /** Le voci dei grafici nel menu «⋯» e i titoli sopra di loro. */
-const CHART_LABEL: Record<HubChartParam, string> = { matrice: PRIORITY_TEXT.matrix, benefici: PRIORITY_TEXT.benefits, curva: HUB_TEXT.curve };
+const CHART_LABEL: Record<HubChartParam, string> = { matrice: CHART_TEXT.matrice, benefici: CHART_TEXT.benefici, curva: CHART_TEXT.curva };
 
 /**
  * Le voci di «Altri filtri» dagli use case del workspace: canali, aree, agenti (il prefisso del
@@ -324,7 +323,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   const chart = data.chart;
   // Le due matrici sono solo «Da costruire»: lì il tipo non filtra e «Tipo» non c'è; resta nell'indirizzo per il ritorno.
   const ignoreKind = chart === "matrice" || chart === "benefici";
-  // Sui grafici «da stimare» (`stima`) non filtra.
+  // Sui grafici «da stimare» (`stima`) non filtra: apre il suo elenco sotto la matrice, e i link non lo portano.
   const shown: HubParams = chart ? { ...params, stima: null } : params;
   // «Raccolta informazioni» della scheda, per il filtro e i chip: solo per i revisori.
   const infoOf = (id: string): InfoProgressState | null => data.info?.[id.toLowerCase()]?.state ?? null;
@@ -359,11 +358,6 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
       : null;
   // Una card di «Per agente»: le corsie del solo agente, con l'ancora che le porta in vista e dà loro il fuoco.
   const agentHref = (param: string) => `${hubHref(basePath, navQuery, { mostra: null, agente: param })}#${PANORAMA_SECTION_ID.approvati}`;
-  // Provvisorio: la curva di oggi sopra le corsie, finché «Curva del valore» va nel menu «⋯».
-  // Solo sopra le corsie: le altre viste non la calcolano.
-  const figureItems = reviewer && abilities.canSeeFigures && view === "panoramica" && !chart ? (filtered as HubItem[]) : null;
-  const roadmapValue = figureItems && valueParams ? buildRoadmapValue(figureItems, valueParams, { plan: roadmapPlan(reviewerItems, valueParams) }) : null;
-
   // La testa della Panoramica (solo con le corsie): fasi e cifre seguono i filtri, come le corsie;
   // «Su tutto il portafoglio» e «Prossimo passo» dicono tutto il workspace e con un filtro non ci sono.
   const overview =
@@ -476,24 +470,22 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
         ) : view === "panoramica" ? (
           chart && list.projection !== "contributore" ? (
             // Un grafico del menu «⋯» al posto delle corsie, con «‹ Torna alla Panoramica» sopra.
-            <PriorityView
-              workspaceId={workspaceId}
+            <HubChartView
+              chart={chart}
               items={filtered as HubItem[]}
-              tipo={null}
-              mostra={chart}
+              planItems={reviewerItems}
               model={list.model}
               valueParams={valueParams}
-              palette={palette}
+              palette={palette ?? groupPalette(reviewerItems, valueParams)}
               followsCurrentMonth={followsCurrentMonth}
               settingsHref={valueSettingsHref}
               bands={list.costBands}
               today={list.today}
-              canDecide={abilities.canDecide}
               basePath={basePath}
               query={query}
               filtersActive={filtersActive}
               clearHref={clearHref}
-              info={data.info}
+              open={params.stima}
             />
           ) : (
             // Il titolo per i lettori di schermo prende il fuoco dopo «‹ Torna alla Panoramica».
@@ -507,17 +499,6 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                   figures={overview.figures}
                   line={overview.line}
                   nextStep={nextStep && nextStepHref ? { step: nextStep, href: nextStepHref } : null}
-                />
-              ) : null}
-              {roadmapValue && valueParams && figureItems ? (
-                <RoadmapValueCharts
-                  value={roadmapValue}
-                  items={figureItems}
-                  params={valueParams}
-                  palette={palette ?? groupPalette(reviewerItems, valueParams)}
-                  hrefs={Object.fromEntries(roadmapValue.cards.map((card) => [card.id, panelHref(basePath, query, card.id)]))}
-                  followsCurrentMonth={followsCurrentMonth}
-                  settingsHref={valueSettingsHref}
                 />
               ) : null}
               <PanoramaLanes
@@ -543,6 +524,8 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           needsBoard ? (
             <NeedsBoardView
               board={needsBoard}
+              today={list.today}
+              agents={agents}
               hrefOf={(id) => panelHref(basePath, query, id)}
               inRealization={(filtered as HubItem[]).filter((item) => item.phase === "in_realizzazione").length}
               realizationHref={`${viewHref("panoramica")}#${PANORAMA_SECTION_ID.inRealizzazione}`}

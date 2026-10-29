@@ -2,10 +2,23 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/uc/ui/status-dot";
-import type { NeedAreaTable, NeedRow, NeedsBoard, QuarterAsk } from "@/lib/use-cases/needs";
+import { agentToneOf, type AgentPalette } from "@/lib/use-cases/agents";
+import type { NeedAreaTable, NeedRow, NeedStepMonth, NeedsBoard, QuarterAsk } from "@/lib/use-cases/needs";
 import { FIGURE_SEPARATOR } from "@/lib/use-cases/format";
-import { isBoardEmpty, needDoneSummaryText, needForText, quarterAskSummaryText } from "@/lib/use-cases/needs";
+import {
+  isBoardEmpty,
+  needAgents,
+  needAskPieces,
+  needDoneSummaryText,
+  needForText,
+  needStepsLaterText,
+  needStepsUndatedText,
+  needsSummaryPieces,
+  quarterAskSummaryText,
+  stepsHorizon,
+} from "@/lib/use-cases/needs";
 import { cn } from "@/lib/utils";
+import { AgentTag } from "./agent-tag";
 import { Disclosure } from "./disclosure";
 import { EmptyState, HUB_TEXT, NoResults, inRealizationText } from "./hub-header";
 import { NeedUseCaseLink, NeedUseCasesDisclosure } from "./need-use-cases";
@@ -33,6 +46,10 @@ export const NEEDS_BOARD_TEXT = Object.freeze({
 
 export interface NeedsBoardViewProps {
   board: NeedsBoard;
+  /** Oggi (AAAA-MM-GG, Roma): quali mesi di «Prossimi passi» restano aperti. */
+  today: string;
+  /** I colori degli agenti della pagina (`agentPalette` su tutte le schede): gli stessi delle corsie. */
+  agents?: AgentPalette | null;
   /** id dello use case → il pannello laterale (`?apri=`). */
   hrefOf: (id: string) => string;
   /** Quanti use case (filtrati) sono in realizzazione: i loro dossier stanno nella Panoramica. */
@@ -45,22 +62,27 @@ export interface NeedsBoardViewProps {
 }
 
 /**
- * La vista «Cosa serve», solo per i revisori (spec di Pierpaolo, 25/10/2026; rilascio «Pulizia»).
- * Due blocchi aperti, ognuno solo se ha qualcosa, poi le schede del trimestre, chiuse:
- * 1. «Requisiti»: una tabella per area (Accessi, Dati e documenti, Regole e decisioni, Persone e
- *    ruoli, Contratto e governance, Altro) con Che cosa, Chi, Per, Stato ed Entro; le righe già a
- *    posto sono chiuse di default.
- * 2. «Prossimi passi», per mese; quelli fatti chiusi di default.
+ * La vista «Cosa serve», solo per i revisori e in sola lettura (spec di Pierpaolo, 25/10/2026;
+ * rilascio «Panoramica», 29/10/2026: più leggera, ogni richiesta una volta sola). Due blocchi,
+ * ognuno solo se ha qualcosa, poi le schede del trimestre, chiuse:
+ * 1. «Requisiti»: sotto il titolo la riga dei conteggi («86 aperti · 60 da chiedere · …»), poi una
+ *    riga chiusa per area (Accessi, Dati e documenti, Regole e decisioni, Persone e ruoli, Contratto
+ *    e governance, Altro) con i suoi conteggi, che si apre sulla sua tabella: Che cosa, Chi, Per,
+ *    Stato ed Entro, con le righe già a posto chiuse. Con un filtro le aree sono aperte.
+ * 2. «Prossimi passi»: aperti i mesi fino al prossimo (gli scaduti compresi), poi «Più avanti» e
+ *    «Senza data», chiusi; quelli fatti chiusi.
  * 3. «Cosa vi chiediamo questo trimestre», chiuso di default: una scheda per use case approvato per
  *    il trimestre (anche se è già in realizzazione), con chi conferma, il ritorno da confermare,
  *    «Ci serve subito», «Dopo la scheda A.8», «Da decidere».
- * I dossier degli use case in realizzazione stanno nella Panoramica: qui solo una riga con il link.
- * «Per»: uno use case si legge per intero, più di uno dietro «Per N use case»; ognuno apre il
- * pannello. Nessun titolo visibile: la scheda attiva del selettore nomina la vista. Sotto i 56rem
- * del riquadro le tabelle diventano elenchi. Nessun conteggio e nessun filtro per persona: «Chi» è
- * un testo della riga. Componente senza stato: si rende sul server.
+ * Gli use case in realizzazione stanno nella Panoramica: qui solo una riga con il link alla sua
+ * sezione «In realizzazione». «Per»: prima gli agenti serviti, letti dai titoli («LIBRA», «ORSA»),
+ * poi lo use case per intero, o più di uno dietro «Per N use case»; ognuno apre il pannello. Le
+ * richieste di un agente si leggono con il filtro «Agente». Nessun titolo visibile: la scheda attiva
+ * del selettore nomina la vista. Sotto i 56rem del riquadro le tabelle diventano elenchi. Si conta
+ * solo per stato, mai per persona: «Chi» è un testo della riga, mai contato né filtrato. Le
+ * esigenze si cambiano nella scheda dello use case. Componente senza stato: si rende sul server.
  */
-export function NeedsBoardView({ board, hrefOf, inRealization = 0, realizationHref = null, filtersActive = false, clearHref }: NeedsBoardViewProps) {
+export function NeedsBoardView({ board, today, agents = null, hrefOf, inRealization = 0, realizationHref = null, filtersActive = false, clearHref }: NeedsBoardViewProps) {
   const toRealization = inRealization > 0 && realizationHref ? realizationHref : null;
   if (isBoardEmpty(board)) {
     return (
@@ -79,29 +101,47 @@ export function NeedsBoardView({ board, hrefOf, inRealization = 0, realizationHr
       </div>
     );
   }
+  const [summaryFirst, ...summaryRest] = needsSummaryPieces(board.counts);
+  const { soon, later, undated } = stepsHorizon(board.steps, today);
+  const laterSteps = later.reduce((sum, month) => sum + month.rows.length, 0);
   return (
     <div data-slot="needs-board" className="space-y-8">
       {board.areas.length ? (
         <Block id="cosa-serve-requisiti" title={NEEDS_BOARD_TEXT.requirements} slot="needs-requirements">
-          {board.areas.map((area) => (
-            <AreaTable key={area.key} area={area} hrefOf={hrefOf} />
-          ))}
+          <p data-slot="needs-summary" className="text-sm text-muted-foreground tabular-nums">
+            <span className="font-medium text-foreground">{summaryFirst}</span>
+            <Pieces pieces={summaryRest} leading />
+          </p>
+          <div className="space-y-1">
+            {board.areas.map((area) => (
+              <AreaTable key={area.key} area={area} hrefOf={hrefOf} palette={agents} open={filtersActive} />
+            ))}
+          </div>
         </Block>
       ) : null}
 
       {board.steps.length || board.stepsDone.length ? (
         <Block id="cosa-serve-passi" title={NEEDS_BOARD_TEXT.steps} slot="needs-steps">
-          {board.steps.map((month) => (
-            <section key={month.key} aria-labelledby={`cosa-serve-mese-${month.key}`} className="space-y-2">
-              <h3 id={`cosa-serve-mese-${month.key}`} className="text-xs font-medium text-muted-foreground">
-                {month.label}
-              </h3>
-              <StepList rows={month.rows} hrefOf={hrefOf} />
-            </section>
+          {soon.map((month) => (
+            <StepMonth key={month.key} month={month} hrefOf={hrefOf} palette={agents} />
           ))}
+          {later.length ? (
+            <Disclosure summary={needStepsLaterText(laterSteps)} slot="needs-steps-later">
+              <div className="space-y-3">
+                {later.map((month) => (
+                  <StepMonth key={month.key} month={month} hrefOf={hrefOf} palette={agents} />
+                ))}
+              </div>
+            </Disclosure>
+          ) : null}
+          {undated ? (
+            <Disclosure summary={needStepsUndatedText(undated.rows.length)} slot="needs-steps-undated">
+              <StepList rows={undated.rows} hrefOf={hrefOf} palette={agents} />
+            </Disclosure>
+          ) : null}
           {board.stepsDone.length ? (
             <Disclosure summary={needDoneSummaryText("passo", board.stepsDone.length)} slot="needs-steps-done">
-              <StepList rows={board.stepsDone} hrefOf={hrefOf} />
+              <StepList rows={board.stepsDone} hrefOf={hrefOf} palette={agents} />
             </Disclosure>
           ) : null}
         </Block>
@@ -154,6 +194,29 @@ function NeedFor({ row, hrefOf }: { row: NeedRow; hrefOf: (id: string) => string
   return <NeedUseCasesDisclosure summary={needForText(row.useCases.length)} context={row.title} useCases={row.useCases} hrefOf={hrefOf} scroll={false} />;
 }
 
+/** I tag degli agenti che una riga serve («LIBRA», «ORSA»), nei colori della pagina: uno per agente. */
+function AgentTags({ agents, palette }: { agents: readonly string[]; palette: AgentPalette | null }) {
+  return (
+    <span data-slot="need-agents" className="flex min-w-0 flex-wrap items-center gap-1">
+      {agents.map((agent) => (
+        <AgentTag key={agent} label={agent} tone={agentToneOf(palette, agent)} />
+      ))}
+    </span>
+  );
+}
+
+/** La cella «Per» della tabella: prima gli agenti, se i titoli li hanno, poi «Per» com'era. */
+function NeedForCell({ row, hrefOf, palette }: { row: NeedRow; hrefOf: (id: string) => string; palette: AgentPalette | null }) {
+  const agents = needAgents(row.useCases);
+  if (!agents.length) return <NeedFor row={row} hrefOf={hrefOf} />;
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <AgentTags agents={agents} palette={palette} />
+      <NeedFor row={row} hrefOf={hrefOf} />
+    </div>
+  );
+}
+
 function What({ row }: { row: NeedRow }) {
   return (
     <div className="min-w-0">
@@ -167,22 +230,41 @@ function Due({ row }: { row: NeedRow }) {
   return <span className={cn("tabular-nums", row.due ? undefined : "text-muted-foreground")}>{row.due ?? NEEDS_BOARD_TEXT.none}</span>;
 }
 
-function AreaTable({ area, hrefOf }: { area: NeedAreaTable; hrefOf: (id: string) => string }) {
+/**
+ * Un'area di «Requisiti»: una riga chiusa con il nome e i suoi conteggi («Accessi · 12 da chiedere ·
+ * 4 in attesa · 3 a posto»), che si apre sulla tabella; `open` (un filtro attivo) la rende aperta. Il
+ * nome dà il titolo alla sezione e alle tabelle.
+ */
+function AreaTable({ area, hrefOf, palette, open }: { area: NeedAreaTable; hrefOf: (id: string) => string; palette: AgentPalette | null; open: boolean }) {
   const headingId = `cosa-serve-area-${area.key}`;
   // «Entro» solo se una riga dell'area ha una data: una colonna di «—» non dice niente. La stessa
   // scelta per le righe aperte e quelle a posto, così le due tabelle hanno le stesse colonne.
   const withDue = [...area.open, ...area.done].some((row) => row.due);
   return (
-    <section aria-labelledby={headingId} data-need-area={area.key} className="space-y-2">
-      <h3 id={headingId} className="text-xs font-medium text-muted-foreground">
-        {area.label}
-      </h3>
-      {area.open.length ? <NeedTable rows={area.open} hrefOf={hrefOf} labelledBy={headingId} withDue={withDue} /> : null}
-      {area.done.length ? (
-        <Disclosure summary={needDoneSummaryText("requisito", area.done.length)} slot="needs-area-done">
-          <NeedTable rows={area.done} hrefOf={hrefOf} labelledBy={headingId} withDue={withDue} />
-        </Disclosure>
-      ) : null}
+    <section aria-labelledby={headingId} data-need-area={area.key}>
+      <Disclosure
+        slot="needs-area"
+        defaultOpen={open}
+        summary={
+          <span className="min-w-0">
+            <span id={headingId} className="font-medium text-foreground">
+              {area.label}
+            </span>
+            <span className="tabular-nums">
+              <Pieces pieces={needAskPieces(area.counts)} leading />
+            </span>
+          </span>
+        }
+      >
+        <div className="space-y-2 pb-3">
+          {area.open.length ? <NeedTable rows={area.open} hrefOf={hrefOf} palette={palette} labelledBy={headingId} withDue={withDue} /> : null}
+          {area.done.length ? (
+            <Disclosure summary={needDoneSummaryText("requisito", area.done.length)} slot="needs-area-done">
+              <NeedTable rows={area.done} hrefOf={hrefOf} palette={palette} labelledBy={headingId} withDue={withDue} />
+            </Disclosure>
+          ) : null}
+        </div>
+      </Disclosure>
     </section>
   );
 }
@@ -195,7 +277,19 @@ function AreaTable({ area, hrefOf }: { area: NeedAreaTable; hrefOf: (id: string)
  * codici e i titoli senza tagliarli dopo poche parole. Senza date nell'area, niente «Entro» e
  * le altre colonne si allargano.
  */
-function NeedTable({ rows, hrefOf, labelledBy, withDue = true }: { rows: readonly NeedRow[]; hrefOf: (id: string) => string; labelledBy: string; withDue?: boolean }) {
+function NeedTable({
+  rows,
+  hrefOf,
+  palette,
+  labelledBy,
+  withDue = true,
+}: {
+  rows: readonly NeedRow[];
+  hrefOf: (id: string) => string;
+  palette: AgentPalette | null;
+  labelledBy: string;
+  withDue?: boolean;
+}) {
   return (
     <>
       <div className="hidden overflow-hidden rounded-lg border @4xl/hub:block">
@@ -229,7 +323,7 @@ function NeedTable({ rows, hrefOf, labelledBy, withDue = true }: { rows: readonl
                 </td>
                 <td className="px-3 py-2 break-words">{row.owner ? <OwnerText text={row.owner} /> : <span className="text-muted-foreground">{NEEDS_BOARD_TEXT.none}</span>}</td>
                 <td className="px-3 py-2">
-                  <NeedFor row={row} hrefOf={hrefOf} />
+                  <NeedForCell row={row} hrefOf={hrefOf} palette={palette} />
                 </td>
                 <td className="px-3 py-2">
                   <StatusDot tone={row.status.tone} label={row.status.label} />
@@ -251,10 +345,30 @@ function NeedTable({ rows, hrefOf, labelledBy, withDue = true }: { rows: readonl
               <What row={row} />
               <StatusDot tone={row.status.tone} label={row.status.label} className="shrink-0" />
             </div>
-            <MetaLine row={row} hrefOf={hrefOf} />
+            <MetaLine row={row} hrefOf={hrefOf} palette={palette} />
           </li>
         ))}
       </ul>
+    </>
+  );
+}
+
+/**
+ * Pezzi di testo uniti da « · », dove ogni «·» va a capo con il pezzo che lo segue, mai da solo in
+ * fondo alla riga. Il primo pezzo è nudo; `leading`: anche il primo ha il suo «·» davanti (segue un
+ * testo già scritto, come il nome di un'area).
+ */
+function Pieces({ pieces, leading = false }: { pieces: readonly string[]; leading?: boolean }) {
+  const [first, ...rest] = leading ? [null, ...pieces] : pieces;
+  return (
+    <>
+      {first}
+      {rest.map((piece, index) => (
+        <span key={index}>
+          {" "}
+          <span className="whitespace-nowrap">{`${FIGURE_SEPARATOR.trim()} ${piece}`}</span>
+        </span>
+      ))}
     </>
   );
 }
@@ -264,28 +378,19 @@ function NeedTable({ rows, hrefOf, labelledBy, withDue = true }: { rows: readonl
  * segue («Sistemi informativi» / «· Cliente»), mai da solo in fondo alla riga. Lo stesso testo.
  */
 function OwnerText({ text }: { text: string }) {
-  const [first, ...rest] = text.split(FIGURE_SEPARATOR);
-  return (
-    <>
-      {first}
-      {rest.map((part, index) => (
-        <span key={index}>
-          {" "}
-          <span className="whitespace-nowrap">{`${FIGURE_SEPARATOR.trim()} ${part}`}</span>
-        </span>
-      ))}
-    </>
-  );
+  return <Pieces pieces={text.split(FIGURE_SEPARATOR)} />;
 }
 
 /**
  * «Chi · Entro · Per» sotto il titolo, per gli elenchi. Ogni « · » va a capo con la parte che lo
- * segue, mai da solo in fondo alla riga. Il link a un solo use case («TJ-0008 · ATLAS A1 · …») sta
- * su una riga sua: è lungo, ha già i suoi « · », e in mezzo alla riga grigia non si capirebbe dove
- * inizia. «Per 3 use case» chiude la riga senza «·» e, aperto, va a capo da solo. Un `<div>`, non
- * un `<p>`: un `<details>` non è testo e dentro un `<p>` il parser spezzerebbe il DOM.
+ * segue, mai da solo in fondo alla riga. Gli agenti serviti («LIBRA», «ORSA») su una riga loro,
+ * prima degli use case. Il link a un solo use case («TJ-0008 · ATLAS A1 · …») sta su una riga sua:
+ * è lungo, ha già i suoi « · », e in mezzo alla riga grigia non si capirebbe dove inizia. «Per 3 use
+ * case» chiude la riga senza «·» e, aperto, va a capo da solo. Un `<div>`, non un `<p>`: un
+ * `<details>` non è testo e dentro un `<p>` il parser spezzerebbe il DOM.
  */
-function MetaLine({ row, hrefOf }: { row: NeedRow; hrefOf: (id: string) => string }) {
+function MetaLine({ row, hrefOf, palette }: { row: NeedRow; hrefOf: (id: string) => string; palette: AgentPalette | null }) {
+  const agents = needAgents(row.useCases);
   const parts: Array<{ key: string; node: ReactNode }> = [];
   if (row.owner) parts.push({ key: "chi", node: row.owner });
   if (row.due) parts.push({ key: "entro", node: <span className="tabular-nums">{row.due}</span> });
@@ -301,6 +406,11 @@ function MetaLine({ row, hrefOf }: { row: NeedRow; hrefOf: (id: string) => strin
           <span className="min-w-0">{part.node}</span>
         </span>
       ))}
+      {agents.length ? (
+        <span data-meta="agenti" className="flex min-w-0 basis-full">
+          <AgentTags agents={agents} palette={palette} />
+        </span>
+      ) : null}
       {one ? (
         <span data-meta="per" className="flex min-w-0 basis-full">
           <NeedFor row={row} hrefOf={hrefOf} />
@@ -311,7 +421,19 @@ function MetaLine({ row, hrefOf }: { row: NeedRow; hrefOf: (id: string) => strin
   );
 }
 
-function StepList({ rows, hrefOf }: { rows: readonly NeedRow[]; hrefOf: (id: string) => string }) {
+/** Un mese di «Prossimi passi»: il titolo («Novembre 2026», «Senza data») e i suoi passi. */
+function StepMonth({ month, hrefOf, palette }: { month: NeedStepMonth; hrefOf: (id: string) => string; palette: AgentPalette | null }) {
+  return (
+    <section aria-labelledby={`cosa-serve-mese-${month.key}`} className="space-y-2">
+      <h3 id={`cosa-serve-mese-${month.key}`} className="text-xs font-medium text-muted-foreground">
+        {month.label}
+      </h3>
+      <StepList rows={month.rows} hrefOf={hrefOf} palette={palette} />
+    </section>
+  );
+}
+
+function StepList({ rows, hrefOf, palette }: { rows: readonly NeedRow[]; hrefOf: (id: string) => string; palette: AgentPalette | null }) {
   return (
     <ul className="divide-y rounded-lg border">
       {rows.map((row) => (
@@ -320,7 +442,7 @@ function StepList({ rows, hrefOf }: { rows: readonly NeedRow[]; hrefOf: (id: str
             <What row={row} />
             <StatusDot tone={row.status.tone} label={row.status.label} className="shrink-0" />
           </div>
-          <MetaLine row={row} hrefOf={hrefOf} />
+          <MetaLine row={row} hrefOf={hrefOf} palette={palette} />
         </li>
       ))}
     </ul>

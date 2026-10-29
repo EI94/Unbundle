@@ -1,11 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { findHubForbiddenIn } from "./copy-guard.ts";
+import { FIGURE_SEPARATOR } from "./format.ts";
 import {
+  needAgents,
   needAlsoForText,
+  needAskPieces,
   needDoneSummaryText,
   needForText,
+  needStepsLaterText,
+  needStepsUndatedText,
+  needsSummaryPieces,
   quarterAskSummaryText,
+  stepsHorizon,
   NEED_AREAS,
   NEED_ERRORS,
   NEED_REQUIREMENT_STATUSES,
@@ -27,7 +34,9 @@ import {
   validateArchiveReason,
   validateNeedInput,
   validateNeedPatch,
+  type NeedAskCounts,
   type NeedBoardItem,
+  type NeedStepMonth,
   type NeedsBoardFilter,
   type NeedView,
 } from "./needs.ts";
@@ -372,4 +381,107 @@ test("conteggi dei requisiti: ognuno una volta, solo quelli degli use case scelt
   // Gli id senza maiuscole: lo use case e l'esigenza ripetuta.
   const shared = need({ status: "bloccata", useCaseIds: [A.toUpperCase()] });
   assert.deepEqual(needAskCountsOf([shared, { ...shared, id: shared.id.toUpperCase() }], set), { ...emptyNeedAskCounts(), open: 1, blocked: 1 });
+});
+
+test("Cosa serve: i requisiti contati per gruppo di stato, di tutta la vista e di ogni area; mai i passi né le archiviate", () => {
+  // Gli otto stati, a coppie in due aree: Accessi i primi quattro, Dati e documenti gli altri.
+  const statuses = NEED_REQUIREMENT_STATUSES.map((status, index) =>
+    need({ status, kind: index < 4 ? "accesso" : "dato", useCaseIds: [index % 2 ? B : A], title: `Requisito ${status}` }),
+  );
+  const extra = [
+    need({ type: "passo", status: "proposta", useCaseIds: [A] }),
+    need({ type: "passo", status: "fatta", useCaseIds: [A] }),
+    need({ status: "bloccata", kind: "accesso", archivedAt: "2026-10-20T10:00:00.000Z", useCaseIds: [A] }),
+  ];
+  const board = buildNeedsBoard([...statuses, ...extra], ITEMS, { today: TODAY, params: PARAMS });
+  assert.deepEqual(board.counts, { open: 6, toAsk: 3, waiting: 1, toVerify: 1, blocked: 1, done: 2 });
+  assert.deepEqual(
+    board.areas.map((area) => [area.key, area.counts]),
+    [
+      ["accessi", { open: 4, toAsk: 3, waiting: 1, toVerify: 0, blocked: 0, done: 0 }],
+      ["dati", { open: 2, toAsk: 0, waiting: 0, toVerify: 1, blocked: 1, done: 2 }],
+    ],
+  );
+  // I conteggi seguono il filtro: solo le esigenze degli use case che lo passano (qui A, gli stati pari).
+  const onlyA = buildNeedsBoard([...statuses, ...extra], ITEMS, { today: TODAY, params: PARAMS, only: { useCaseIds: new Set([A]), q: null } });
+  assert.deepEqual(onlyA.counts, { open: 3, toAsk: 2, waiting: 0, toVerify: 1, blocked: 0, done: 1 });
+  assert.deepEqual(
+    onlyA.areas.map((area) => area.counts.open + area.counts.done),
+    [2, 2],
+  );
+  // Uguali a quelli di `needAskCountsOf`, che dà i numeri di «Prossimo passo» della Panoramica.
+  assert.deepEqual(onlyA.counts, needAskCountsOf([...statuses, ...extra], new Set([A])));
+  assert.deepEqual(buildNeedsBoard([], ITEMS, { today: TODAY, params: PARAMS }).counts, emptyNeedAskCounts());
+});
+
+test("i testi dei conteggi: «86 aperti · 60 da chiedere · …», senza gli zeri; i passi «Più avanti» e «Senza data»", () => {
+  const counts = (o: Partial<NeedAskCounts>): NeedAskCounts => ({ ...emptyNeedAskCounts(), ...o });
+  const line = (o: Partial<NeedAskCounts>) => needsSummaryPieces(counts(o)).join(FIGURE_SEPARATOR);
+  assert.equal(line({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 }), "86 aperti · 60 da chiedere · 12 in attesa · 4 da verificare · 10 bloccati · 31 a posto");
+  assert.equal(line({ open: 1, toAsk: 1 }), "1 aperto · 1 da chiedere");
+  assert.equal(line({ done: 3 }), "Nessuno aperto · 3 a posto");
+  assert.equal(line({}), "Nessuno aperto");
+  assert.deepEqual(needAskPieces(counts({ open: 1, blocked: 1 })), ["1 bloccato"]);
+  assert.deepEqual(needAskPieces(counts({ open: 2, waiting: 2 })), ["2 in attesa"], "i gruppi a zero non ci sono");
+  assert.deepEqual(needAskPieces(counts({ open: 1200, toAsk: 1200 })), ["1.200 da chiedere"]);
+  assert.equal(needStepsLaterText(1), "Più avanti · 1 passo");
+  assert.equal(needStepsLaterText(6), "Più avanti · 6 passi");
+  assert.equal(needStepsUndatedText(1), "Senza data · 1 passo");
+  assert.equal(needStepsUndatedText(4), "Senza data · 4 passi");
+  const texts = [
+    ...needsSummaryPieces(counts({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 })),
+    ...needsSummaryPieces(counts({ open: 1, blocked: 1 })),
+    ...needsSummaryPieces(counts({})),
+    needStepsLaterText(1),
+    needStepsLaterText(6),
+    needStepsUndatedText(4),
+  ];
+  assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
+});
+
+test("«Prossimi passi»: aperti i mesi fino al prossimo, gli scaduti compresi; poi «Più avanti» e «Senza data»", () => {
+  const month = (key: string): NeedStepMonth => ({ key, label: key === "senza_data" ? "Senza data" : monthHeading(key), rows: [] });
+  const keys = (months: readonly NeedStepMonth[]) => months.map((m) => m.key);
+  const all = ["2026-09", "2026-10", "2026-11", "2026-12", "senza_data"].map(month);
+  const horizon = stepsHorizon(all, "2026-10-25");
+  assert.deepEqual(keys(horizon.soon), ["2026-09", "2026-10", "2026-11"], "settembre è scaduto: resta aperto");
+  assert.deepEqual(keys(horizon.later), ["2026-12"]);
+  assert.equal(horizon.undated?.key, "senza_data");
+  // Niente fino al mese prossimo: resta aperto il primo mese che c'è.
+  const far = stepsHorizon(["2027-02", "2027-03"].map(month), "2026-10-25");
+  assert.deepEqual([keys(far.soon), keys(far.later), far.undated], [["2027-02"], ["2027-03"], null]);
+  // Solo passi senza data: si leggono aperti.
+  const undated = stepsHorizon([month("senza_data")], "2026-10-25");
+  assert.deepEqual([keys(undated.soon), keys(undated.later), undated.undated], [["senza_data"], [], null]);
+  assert.deepEqual(stepsHorizon([], "2026-10-25"), { soon: [], later: [], undated: null });
+  // A dicembre il mese prossimo è gennaio dell'anno dopo.
+  const december = stepsHorizon(["2026-12", "2027-01", "2027-02"].map(month), "2026-12-10");
+  assert.deepEqual([keys(december.soon), keys(december.later)], [["2026-12", "2027-01"], ["2027-02"]]);
+  // I mesi di `buildNeedsBoard` vanno così come sono.
+  const board = buildNeedsBoard(
+    [
+      need({ type: "passo", title: "Fra due mesi", dueOn: "2026-12-15" }),
+      need({ type: "passo", title: "Il mese prossimo", dueOn: "2026-11-03" }),
+      need({ type: "passo", title: "Da fissare" }),
+    ],
+    ITEMS,
+    { today: TODAY, params: PARAMS },
+  );
+  const fromBoard = stepsHorizon(board.steps, TODAY);
+  assert.deepEqual([keys(fromBoard.soon), keys(fromBoard.later), fromBoard.undated?.rows.map((r) => r.title)], [["2026-11"], ["2026-12"], ["Da fissare"]]);
+});
+
+test("gli agenti di un'esigenza: dal titolo dei suoi use case, uno per agente; nessuno senza prefisso", () => {
+  assert.deepEqual(
+    needAgents([
+      { title: "LIBRA L1 · Lettura delle fatture estere" },
+      { title: "ORSA O1 · Solleciti ai clienti" },
+      { title: "LIBRA L3 · Riconciliazione dei pagamenti" },
+      { title: "Smistamento delle richieste" },
+    ]),
+    ["LIBRA", "ORSA"],
+  );
+  assert.deepEqual(needAgents([{ title: "TAIGETE T3 · Note spese" }, { title: "ALCIONE A1 · Budget" }]), ["ALCIONE", "TAIGETE"], "in ordine alfabetico");
+  assert.deepEqual(needAgents([{ title: "Strategia per volo" }]), []);
+  assert.deepEqual(needAgents([]), []);
 });

@@ -10,10 +10,11 @@
  *   `STATUS_GROUP_OF`), un passo è fatto. `done_at` segue questa regola (`needs-service.ts`).
  * - **Validazione** (`validateNeedInput`, `validateNeedPatch`): uno schema solo per la pagina e,
  *   più avanti, per il MCP del team. I messaggi sono in italiano.
- * - **Viste** (`buildNeedsBoard`, `panelNeeds`, `needListsOfUseCase`): i blocchi della vista
- *   «Cosa serve», il blocco del pannello e il capitolo della scheda, da un elenco già letto per i
- *   revisori. Nessun conteggio e nessun filtro per persona: «Chi» è un testo della riga, mai un
- *   criterio.
+ * - **Viste** (`buildNeedsBoard`, `stepsHorizon`, `panelNeeds`, `needListsOfUseCase`): i blocchi
+ *   della vista «Cosa serve», il blocco del pannello e il capitolo della scheda, da un elenco già
+ *   letto per i revisori. Gli agenti di una riga vengono dal titolo dei suoi use case
+ *   (`needAgents`). Nessun conteggio e nessun filtro per persona: «Chi» è un testo della riga, mai
+ *   un criterio.
  * - **Conteggi** (`NeedAskCounts`): i requisiti per gruppo di stato, come «Raccolta informazioni»
  *   della scheda: da chiedere (da chiedere, manca il dato, risposta parziale), in attesa, da
  *   verificare, bloccati, a posto. Sempre di esigenze, mai di persone, mai per «Chi» o per parte.
@@ -38,6 +39,7 @@ import {
 import { STATUS_COLOR, STATUS_LABEL } from "../uc/semaforo.ts";
 import { STATUS_GROUP_OF } from "../uc/views/status-groups.ts";
 import type { ItemStatus, SemaforoColor } from "../uc/vocab.ts";
+import { agentOfTitle } from "./agents.ts";
 import { FIGURE_SEPARATOR, formatDayInYear, formatEuro, formatInteger } from "./format.ts";
 import { isIsoDate, quarterOfDate } from "./quarter.ts";
 import type { IsoDate, Phase, QuarterCode } from "./types.ts";
@@ -454,6 +456,8 @@ export interface NeedAreaTable {
   open: NeedRow[];
   /** Già a posto: chiuse di default. */
   done: NeedRow[];
+  /** I requisiti dell'area per gruppo di stato, per la sua riga chiusa. */
+  counts: NeedAskCounts;
 }
 
 export interface NeedStepMonth {
@@ -493,6 +497,8 @@ export interface NeedsBoard {
   /** I passi fatti: chiusi di default. */
   stepsDone: NeedRow[];
   quarter: QuarterAsk[];
+  /** Tutti i requisiti della vista, con i filtri, per gruppo di stato: la riga sotto «Requisiti». */
+  counts: NeedAskCounts;
 }
 
 const MONTH_LONG = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", month: "long", year: "numeric" });
@@ -504,6 +510,35 @@ export function monthHeading(month: string): string {
   const [year, m] = month.split("-").map(Number);
   const text = MONTH_LONG.format(new Date(Date.UTC(year, m - 1, 15, 12)));
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** I mesi di «Prossimi passi»: aperti quelli a portata, poi «Più avanti» e «Senza data», chiusi. */
+export interface StepsHorizon {
+  soon: NeedStepMonth[];
+  later: NeedStepMonth[];
+  undated: NeedStepMonth | null;
+}
+
+/** Il mese dopo quello di oggi, `AAAA-MM`: «2026-10-29» → «2026-11»; da dicembre il gennaio dopo. */
+function nextMonthKey(today: string): string {
+  const [year, month] = today.split("-").map(Number);
+  return month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, "0")}`;
+}
+
+/**
+ * I «Prossimi passi» a portata: aperti i mesi fino al prossimo (gli scaduti compresi); gli altri
+ * sotto «Più avanti» e quelli senza data sotto «Senza data», chiusi. Senza passi fino al mese
+ * prossimo resta aperto il primo mese che c'è; con soli passi senza data si leggono aperti quelli.
+ * `steps` nell'ordine di `buildNeedsBoard`: dal mese più vicino, quelli senza data in fondo.
+ */
+export function stepsHorizon(steps: readonly NeedStepMonth[], today: string): StepsHorizon {
+  const dated = steps.filter((month) => month.key !== NO_DATE_KEY);
+  const undated = steps.find((month) => month.key === NO_DATE_KEY) ?? null;
+  if (!dated.length) return { soon: undated ? [undated] : [], later: [], undated: null };
+  const limit = nextMonthKey(today);
+  const near = dated.filter((month) => month.key <= limit);
+  const soon = near.length ? near : [dated[0]];
+  return { soon, later: dated.filter((month) => !soon.includes(month)), undated };
 }
 
 const DECIMAL = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 2 });
@@ -553,16 +588,18 @@ function passesBoardFilter(need: Pick<NeedView, "useCaseIds" | "title">, only: N
 
 /**
  * I tre blocchi della vista «Cosa serve»:
- * 1. i requisiti, una tabella per area, con quelli già a posto da parte;
+ * 1. i requisiti, una tabella per area, con quelli già a posto da parte, con i conteggi per gruppo
+ *    di stato (`counts`, di tutta la vista e di ogni area; i passi e le archiviate non contano);
  * 2. i prossimi passi per mese di scadenza, con quelli fatti da parte;
  * 3. una scheda per ogni use case approvato per questo trimestre (anche se è già in realizzazione):
  *    chi conferma, il ritorno da
  *    confermare (le voci a ipotesi e da misurare), i requisiti aperti divisi in «Ci serve subito»,
  *    «Dopo la scheda A.8» e «Da decidere» (le decisioni, qualunque sia il «quando»).
- * I dossier degli use case in realizzazione stanno nella Roadmap.
+ * Gli use case in realizzazione stanno nella Panoramica, sezione «In realizzazione».
  * `items` sono gli use case dei revisori del workspace: danno codici e titoli alle righe. `only`
  * restringe le esigenze a quelle degli use case che passano i filtri della pagina
- * (`NeedsBoardFilter`); le righe nominano comunque tutti gli use case collegati.
+ * (`NeedsBoardFilter`), conteggi compresi: con `trimestre` sono quelli di «Prossimo passo» della
+ * Panoramica. Le righe nominano comunque tutti gli use case collegati.
  */
 export function buildNeedsBoard(
   needs: readonly NeedView[],
@@ -573,14 +610,17 @@ export function buildNeedsBoard(
   const live = needs.filter((need) => !need.archivedAt && passesBoardFilter(need, opts.only ?? null)).slice().sort(compareNeeds);
   const rows = live.map((need) => ({ need, row: needRow(need, refs, opts.today) }));
 
-  const areas: NeedAreaTable[] = NEED_AREAS.map((area) => ({ key: area.key, label: area.label, open: [], done: [] }));
+  const areas: NeedAreaTable[] = NEED_AREAS.map((area) => ({ key: area.key, label: area.label, open: [], done: [], counts: emptyNeedAskCounts() }));
   const areaOf = new Map(areas.map((area) => [area.key, area]));
+  const counts = emptyNeedAskCounts();
   const months = new Map<string, NeedRow[]>();
   const stepsDone: NeedRow[] = [];
   for (const { need, row } of rows) {
     if (need.type === "requisito") {
       const table = areaOf.get(needAreaOf(need.kind))!;
       (row.done ? table.done : table.open).push(row);
+      countRequirement(table.counts, need.status);
+      countRequirement(counts, need.status);
       continue;
     }
     if (row.done) {
@@ -620,7 +660,7 @@ export function buildNeedsBoard(
       };
     });
 
-  return { areas: areas.filter((area) => area.open.length || area.done.length), steps, stepsDone, quarter };
+  return { areas: areas.filter((area) => area.open.length || area.done.length), steps, stepsDone, quarter, counts };
 }
 
 /** «Già a posto · 3», «Fatti · 2»: il titolo delle righe chiuse di default. */
@@ -641,6 +681,54 @@ export function needForText(count: number): string {
 /** «Serve anche a un altro use case», «Serve anche ad altri 22 use case»: nella scheda, gli altri use case dell'esigenza. */
 export function needAlsoForText(count: number): string {
   return count === 1 ? "Serve anche a un altro use case" : `Serve anche ad altri ${formatInteger(count)} use case`;
+}
+
+/**
+ * I gruppi di stato a parole, in quest'ordine e senza gli zeri: «60 da chiedere», «12 in attesa»,
+ * «4 da verificare», «1 bloccato» o «10 bloccati», «31 a posto». La riga chiusa di un'area.
+ */
+export function needAskPieces(counts: NeedAskCounts): string[] {
+  const pieces: string[] = [];
+  if (counts.toAsk) pieces.push(`${formatInteger(counts.toAsk)} da chiedere`);
+  if (counts.waiting) pieces.push(`${formatInteger(counts.waiting)} in attesa`);
+  if (counts.toVerify) pieces.push(`${formatInteger(counts.toVerify)} da verificare`);
+  if (counts.blocked) pieces.push(counts.blocked === 1 ? "1 bloccato" : `${formatInteger(counts.blocked)} bloccati`);
+  if (counts.done) pieces.push(`${formatInteger(counts.done)} a posto`);
+  return pieces;
+}
+
+/** La riga sotto «Requisiti»: «86 aperti», «1 aperto» o «Nessuno aperto», poi i gruppi di `needAskPieces`. */
+export function needsSummaryPieces(counts: NeedAskCounts): string[] {
+  const open = counts.open === 0 ? "Nessuno aperto" : counts.open === 1 ? "1 aperto" : `${formatInteger(counts.open)} aperti`;
+  return [open, ...needAskPieces(counts)];
+}
+
+/** «1 passo», «6 passi». */
+function stepsCountText(count: number): string {
+  return count === 1 ? "1 passo" : `${formatInteger(count)} passi`;
+}
+
+/** «Più avanti · 6 passi»: il titolo, chiuso, dei mesi dopo il prossimo. */
+export function needStepsLaterText(count: number): string {
+  return `Più avanti${FIGURE_SEPARATOR}${stepsCountText(count)}`;
+}
+
+/** «Senza data · 4 passi»: il titolo, chiuso, dei passi senza scadenza. */
+export function needStepsUndatedText(count: number): string {
+  return `${NO_DATE_LABEL}${FIGURE_SEPARATOR}${stepsCountText(count)}`;
+}
+
+/**
+ * Gli agenti che un'esigenza serve, dal titolo dei suoi use case («LIBRA L1 · …» → «LIBRA»): uno
+ * per agente, in ordine alfabetico; nessuno senza prefisso. Un nome in testa al titolo, mai una persona.
+ */
+export function needAgents(useCases: readonly Pick<NeedUseCaseRef, "title">[]): string[] {
+  const agents = new Set<string>();
+  for (const useCase of useCases) {
+    const agent = agentOfTitle(useCase.title);
+    if (agent) agents.add(agent);
+  }
+  return [...agents].sort((a, b) => a.localeCompare(b, "it-IT"));
 }
 
 export function isBoardEmpty(board: NeedsBoard): boolean {

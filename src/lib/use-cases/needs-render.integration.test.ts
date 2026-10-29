@@ -18,12 +18,14 @@ const { registerHooks } = nodeModule as unknown as {
 // «Cosa serve» nelle pagine vere (spec di Pierpaolo, 25/10/2026), rese in questo processo con la
 // sessione scelta dalla prova:
 //
-// - «Cosa serve»: la sua vista, solo per i revisori, ultima nel selettore: i requisiti per area (le
-//   righe a posto chiuse, «Per N use case» chiuso), i prossimi passi per mese (i fatti chiusi), «Cosa
-//   vi chiediamo questo trimestre» chiuso, una riga per gli use case in realizzazione con la
-//   Panoramica. Con un filtro, le esigenze degli use case che lo passano. La Panoramica non le
-//   mostra: ne conta i requisiti per «Prossimo passo» (quelli degli use case approvati per questo
-//   trimestre, ognuno una volta), in un workspace a parte.
+// - «Cosa serve»: la sua vista, solo per i revisori, ultima nel selettore: sotto «Requisiti» la riga
+//   dei conteggi, poi un'area chiusa per riga con i suoi conteggi (le righe a posto chiuse, «Per N
+//   use case» chiuso, prima gli agenti dei titoli), i prossimi passi aperti fino al mese prossimo
+//   («Più avanti» e «Senza data» chiusi, i fatti chiusi), «Cosa vi chiediamo questo trimestre»
+//   chiuso, una riga per gli use case in realizzazione con la Panoramica. Con un filtro, le esigenze
+//   degli use case che lo passano, con le aree aperte. La Panoramica non le mostra: ne conta i
+//   requisiti per «Prossimo passo» (quelli degli use case approvati per questo trimestre, ognuno una
+//   volta), in un workspace a parte, e «Cosa serve» del trimestre conta gli stessi.
 // - Il pannello: al massimo tre esigenze aperte, le altre nella scheda.
 // - La scheda: il capitolo «Cosa serve» con la modifica; le action scrivono solo per i revisori.
 // - Chi non è revisore non riceve esigenze da nessuna parte: pagina, pannello, scheda, action.
@@ -247,6 +249,23 @@ function detailsAround(page: string, marker: string): string {
   return page.slice(start, page.indexOf("</details>", at));
 }
 
+/** Il testo che si legge di un pezzo di HTML: senza tag (anche con «>» nelle classi, già senza entità), gli spazi uniti. */
+const textOf = (html: string) => html.replace(/<(?:[^>"]|"[^"]*")*>/g, "").replace(/\s+/g, " ").trim();
+
+/** La riga dei conteggi sotto «Requisiti» (`data-slot="needs-summary"`), come si legge. */
+function summaryOf(page: string): string {
+  return textOf(between(page, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, ""));
+}
+
+/** Ogni area di «Requisiti»: la chiave, l'apertura del suo `<details>` e il titolo chiuso, come si legge. */
+function areasOf(page: string): Array<{ key: string; opening: string; summary: string }> {
+  return [...page.matchAll(/<section aria-labelledby="[^"]*" data-need-area="([a-z]+)">(<details[^>]*>)<summary[^>]*>([\s\S]*?)<\/summary>/g)].map(([, key, opening, summary]) => ({
+    key,
+    opening,
+    summary: textOf(summary),
+  }));
+}
+
 before(async () => {
   if (!enabled) return;
   const { default: ts } = await import("typescript");
@@ -396,6 +415,24 @@ test("Cosa serve: la vista dei revisori, una tabella per area, le righe a posto 
   // Le aree nell'ordine della pagina, solo quelle con righe.
   const areas = [...requirements.matchAll(/data-need-area="([a-z]+)"/g)].map((match) => match[1]);
   assert.deepEqual(areas, ["accessi", "dati", "regole", "altro"]);
+  // Sotto «Requisiti» la riga dei conteggi, prima della prima area: i requisiti per stato, mai per persona.
+  assert.equal(summaryOf(page), "4 aperti · 3 da chiedere · 1 in attesa · 1 a posto");
+  assert.ok(requirements.indexOf('data-slot="needs-summary"') < requirements.indexOf("data-need-area="));
+  // Ogni area è una riga chiusa con il nome e i suoi conteggi; si apre sulla sua tabella.
+  assert.deepEqual(
+    areasOf(requirements).map((area) => [area.key, area.opening, area.summary]),
+    [
+      ["accessi", '<details data-slot="needs-area">', "Accessi · 1 in attesa"],
+      ["dati", '<details data-slot="needs-area">', "Dati e documenti · 1 da chiedere · 1 a posto"],
+      ["regole", '<details data-slot="needs-area">', "Regole e decisioni · 1 da chiedere"],
+      ["altro", '<details data-slot="needs-area">', "Altro · 1 da chiedere"],
+    ],
+  );
+  // Il nome dell'area dà il titolo alla sezione e alla tabella; l'h3 di prima non c'è.
+  assert.ok(requirements.includes('<span id="cosa-serve-area-accessi" class="font-medium text-foreground">Accessi</span>'));
+  assert.ok(requirements.includes('<table aria-labelledby="cosa-serve-area-accessi"') && !requirements.includes('<h3 id="cosa-serve-area-'));
+  // Senza prefissi nei titoli, nessun tag di agente.
+  assert.ok(!page.includes('data-slot="need-agents"'));
   for (const header of ["Che cosa", "Chi", "Per", "Stato", "Entro"]) assert.ok(requirements.includes(`>${header}</th>`), header);
 
   const accessRow = between(requirements, `data-need="${needIds.access}"`, "</tr>");
@@ -517,10 +554,17 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   const manager = await hubHtml("manager", ids.wsStart, { vista: "panoramica" });
   assert.ok(manager.includes('data-slot="overview-figures"'));
   assert.match(manager, /data-figure="totale-trimestre"[^>]*><p[^>]*><span class="whitespace-nowrap">2<\/span><\/p><p class="text-sm">use case in questo trimestre</);
-  // Il link porta a «Cosa serve» del trimestre: proprio i requisiti contati, non gli altri.
+  // Il link porta a «Cosa serve» del trimestre: proprio i requisiti contati, non gli altri, con gli
+  // stessi numeri del riquadro nella riga sotto «Requisiti».
   const target = await hubHtml("builder", ids.wsStart, { vista: "cosa-serve", trimestre: thisQuarter });
   assert.ok(target.includes(START.shared) && target.includes(START.blocked));
   assert.ok(!target.includes(START.progress) && !target.includes(START.next));
+  assert.equal(summaryOf(target), "2 aperti · 1 da chiedere · 1 bloccato");
+  // Il requisito dei due use case di LIBRA: il tag dell'agente una volta sola, prima di «Per 2 use case».
+  const shared = between(target, START.shared, "</tr>");
+  const tags = [...between(shared, 'data-slot="need-agents"', "Per 2 use case").matchAll(/data-slot="agent-tag"[^>]*><span class="truncate">([^<]*)</g)].map((match) => match[1]);
+  assert.deepEqual(tags, ["LIBRA"]);
+  assert.ok(shared.indexOf('data-slot="need-agents"') < shared.indexOf("Per 2 use case"));
   // Con un filtro il riquadro non c'è: dice tutto il workspace.
   const filtered = await hubHtml("builder", ids.wsStart, { vista: "panoramica", agente: "LIBRA" });
   assert.ok(!filtered.includes('data-slot="next-step"') && filtered.includes('data-slot="phase-strip"'));
@@ -538,12 +582,14 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
 });
 
 test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai le card dei dossier qui", opts, () => {
-  const emptyBoard = { areas: [], steps: [], stepsDone: [], quarter: [] };
-  const render = (props: Record<string, unknown>) => readable(renderToStaticMarkup(createElementOf(board.NeedsBoardView, { hrefOf: (id: string) => `?apri=${id}`, ...props })));
-  const blank = render({ board: emptyBoard, inRealization: 1, realizationHref: "/r" });
+  const emptyBoard = { areas: [], steps: [], stepsDone: [], quarter: [], counts: needs.emptyNeedAskCounts() };
+  const render = (props: Record<string, unknown>) =>
+    readable(renderToStaticMarkup(createElementOf(board.NeedsBoardView, { hrefOf: (id: string) => `?apri=${id}`, today: "2026-10-29", ...props })));
+  const realizationHref = "/p#panoramica-in-realizzazione";
+  const blank = render({ board: emptyBoard, inRealization: 1, realizationHref });
   assert.ok(blank.includes('data-slot="hub-empty"') && blank.includes("Niente da chiedere per ora"));
   assert.ok(blank.includes("1 use case è già in realizzazione."));
-  assert.match(blank, /<a [^>]*href="\/r"[^>]*>Vai alla Panoramica<\/a>/);
+  assert.match(blank, /<a [^>]*href="\/p#panoramica-in-realizzazione"[^>]*>Vai alla Panoramica<\/a>/);
   assert.ok(!blank.includes('data-slot="dossier-card"'));
 
   const row = {
@@ -560,22 +606,87 @@ test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai
     useCases: [],
     forLabel: null,
   };
-  const filled = { ...emptyBoard, areas: [{ key: "accessi", label: "Accessi", open: [row], done: [] }] };
-  const two = render({ board: filled, inRealization: 2, realizationHref: "/r" });
+  const oneToAsk = { ...needs.emptyNeedAskCounts(), open: 1, toAsk: 1 };
+  const filled = { ...emptyBoard, areas: [{ key: "accessi", label: "Accessi", open: [row], done: [], counts: oneToAsk }], counts: oneToAsk };
+  const two = render({ board: filled, inRealization: 2, realizationHref });
   const line = between(two, 'data-slot="needs-in-progress"');
   assert.ok(two.indexOf('data-slot="needs-in-progress"') > two.indexOf('data-slot="needs-requirements"'), "dopo i blocchi");
-  assert.ok(line.includes("2 use case sono già in realizzazione.") && /href="\/r"[^>]*>Vai alla Panoramica</.test(line));
+  assert.ok(line.includes("2 use case sono già in realizzazione.") && /href="\/p#panoramica-in-realizzazione"[^>]*>Vai alla Panoramica</.test(line));
   assert.ok(!two.includes('data-slot="dossier-card"'));
-  for (const props of [{ inRealization: 0, realizationHref: "/r" }, { inRealization: 2, realizationHref: null }]) {
+  assert.equal(summaryOf(two), "1 aperto · 1 da chiedere");
+  for (const props of [{ inRealization: 0, realizationHref }, { inRealization: 2, realizationHref: null }]) {
     const html = render({ board: filled, ...props });
     assert.ok(!html.includes('data-slot="needs-in-progress"') && !html.includes("Vai alla Panoramica"), JSON.stringify(props));
   }
+});
+
+test("Cosa serve: «Prossimi passi» aperti fino al mese prossimo, poi «Più avanti» e «Senza data» chiusi; gli agenti in «Per»", opts, async () => {
+  const { agentPalette } = await import("./agents.ts");
+  const step = (title: string, useCases: Array<{ id: string; code: string | null; title: string }> = []) => ({
+    id: randomUUID(),
+    type: "passo",
+    kind: "altro",
+    title: `${title} ${suffix}`,
+    detail: null,
+    owner: null,
+    status: { label: "Confermato", tone: "blu" },
+    done: false,
+    due: null,
+    availability: null,
+    useCases,
+    forLabel: null,
+  });
+  const ref = (code: string, title: string) => ({ id: randomUUID(), code, title });
+  const agentsRefs = [ref("TJ-0001", "LIBRA L1 · Lettura delle fatture estere"), ref("TJ-0002", "ORSA O1 · Solleciti ai clienti"), ref("TJ-0003", "LIBRA L3 · Riconciliazione")];
+  const plainRef = ref("TJ-0004", "Smistamento delle richieste");
+  const month = (key: string, label: string, rows: unknown[]) => ({ key, label, rows });
+  const steps = [
+    month("2026-10", "Ottobre 2026", [step("Questo mese", agentsRefs)]),
+    month("2026-11", "Novembre 2026", [step("Il mese prossimo", [plainRef])]),
+    month("2027-01", "Gennaio 2027", [step("Fra tre mesi")]),
+    month("senza_data", "Senza data", [step("Da fissare")]),
+  ];
+  const html = readable(
+    renderToStaticMarkup(
+      createElementOf(board.NeedsBoardView, {
+        board: { areas: [], steps, stepsDone: [], quarter: [], counts: needs.emptyNeedAskCounts() },
+        today: "2026-10-29",
+        agents: agentPalette([...agentsRefs, plainRef]),
+        hrefOf: (id: string) => `?apri=${id}`,
+      }),
+    ),
+  );
+  // Questo mese e il prossimo: aperti, fuori da ogni <details> (prima di loro ogni <details> è già chiuso).
+  for (const title of ["Questo mese", "Il mese prossimo"]) {
+    const before = html.slice(0, html.indexOf(`${title} ${suffix}`));
+    assert.equal(before.split("<details").length, before.split("</details>").length, `${title}: fuori da ogni <details>`);
+  }
+  assert.ok(html.includes(">Ottobre 2026<") && html.includes(">Novembre 2026<"));
+  const later = detailsAround(html, `Fra tre mesi ${suffix}`);
+  assert.match(later, /^<details data-slot="needs-steps-later">/);
+  assert.ok(later.includes("Più avanti · 1 passo") && later.includes(">Gennaio 2027<"));
+  const undated = detailsAround(html, `Da fissare ${suffix}`);
+  assert.match(undated, /^<details data-slot="needs-steps-undated">/);
+  assert.ok(undated.includes("Senza data · 1 passo"));
+  // Gli agenti dei titoli, una volta ciascuno, prima di «Per 3 use case»; nessuno senza prefisso.
+  const withAgents = between(html, `Questo mese ${suffix}`, "</li>");
+  const agentTags = between(withAgents, 'data-slot="need-agents"', 'data-slot="need-use-cases"');
+  const names = [...agentTags.matchAll(/data-slot="agent-tag" data-tone="(\d+)"[^>]*><span class="truncate">([^<]*)</g)].map((match) => match[2]);
+  assert.deepEqual(names, ["LIBRA", "ORSA"]);
+  assert.ok(withAgents.indexOf('data-meta="agenti"') < withAgents.indexOf("Per 3 use case"), "prima gli agenti");
+  assert.ok(!between(html, `Il mese prossimo ${suffix}`, "</li>").includes('data-slot="need-agents"'), "senza prefisso, nessun tag");
 });
 
 test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerca nel titolo, il vuoto dei filtri", opts, async () => {
   const byCode = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: cards.proposed.code });
   assert.ok(byCode.includes(T.access), "collegata allo use case cercato");
   for (const title of [T.extract, T.procedure, T.kickoff]) assert.ok(!byCode.includes(title), title);
+  // Con un filtro i conteggi seguono il filtro e le aree sono aperte: si legge subito quello che si cerca.
+  assert.equal(summaryOf(byCode), "1 aperto · 1 in attesa");
+  assert.deepEqual(
+    areasOf(byCode).map((area) => [area.key, area.opening, area.summary]),
+    [["accessi", '<details data-slot="needs-area" open="">', "Accessi · 1 in attesa"]],
+  );
   // «Per» nomina comunque tutti gli use case dell'esigenza.
   assert.ok(detailsAround(byCode, "Per 2 use case").includes(`>${cards.quarter.code}<`));
 
@@ -657,6 +768,7 @@ test("chi non è revisore: niente esigenze in «Cosa serve», Panoramica, pannel
   for (const searchParams of views) {
     const page = await hubHtml("contributor", ids.ws, searchParams);
     assert.ok(!page.includes('data-slot="needs-board"'), JSON.stringify(searchParams));
+    assert.ok(!page.includes('data-slot="needs-summary"') && !page.includes('data-slot="need-agents"'), JSON.stringify(searchParams));
     for (const title of Object.values(T)) assert.ok(!page.includes(title), `${JSON.stringify(searchParams)}: ${title}`);
     const { data, tree } = await hubTree("contributor", ids.ws, searchParams);
     assert.equal(data.needs, null);

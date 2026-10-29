@@ -6,7 +6,7 @@
 //
 // Workspace «a» has the area on (start-app.mjs --flag USE_CASE_HUB_WORKSPACES=<id of «a»>) and the
 // cards of scripts/use-case-test/seed-hub.mjs. The three views for the four accounts, the charts of
-// the «⋯» menu in the Panoramica (?mostra=matrice|benefici, with «Torna alla Panoramica»), the old
+// the «⋯» menu in the Panoramica (?mostra=matrice|benefici|curva, with «Torna alla Panoramica»), the old
 // names ?vista=priorita and ?vista=roadmap, the side panel (reviewers on a card with a cost,
 // osservatore on an own proposal with code and public note and on someone else's without them),
 // the quick panel of Lateral Space and filters without results. The driver checks every page: no horizontal scroll (also at the tablet
@@ -76,13 +76,27 @@ const routes = [
     present: ["Torna alla Panoramica"],
     absent: ["Cosa serve per far avanzare", "Requisiti"],
   },
+  // «Curva del valore» from the «⋯» menu: the J-curve, «Valore per tipo di ritorno» and «Ipotesi di
+  // calcolo» in place of the lanes, with «Torna alla Panoramica». The menu offers it only when an
+  // approved or in-progress use case has a «Benefici e costi» model: seed-hub.mjs writes none yet,
+  // and without one ?mostra=curva shows the lanes.
+  {
+    name: "panoramica-curva",
+    path: "/dashboard/{ws:a}/use-cases?vista=panoramica&mostra=curva",
+    as: REVIEWERS,
+    present: ["Curva del valore", "Torna alla Panoramica", "Ipotesi di calcolo"],
+    absent: ["Cosa serve per far avanzare", "Requisiti"],
+  },
+  { name: "panoramica-curva", path: "/dashboard/{ws:a}/use-cases?vista=panoramica&mostra=curva", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Curva del valore", "Ipotesi di calcolo", "Torna alla Panoramica"] },
   // The old names of the Panoramica (bookmarks, e-mails already sent, the bell): they open it, with every other parameter.
   { name: "alias-priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: REVIEWERS, present: ["Panoramica", "Valore atteso all'anno", "Scaduti"], absent: ["Torna alla Panoramica", "Scegli…"] },
   { name: "alias-priorita", path: "/dashboard/{ws:a}/use-cases?vista=priorita", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Matrice", "Cosa serve"] },
   { name: "alias-roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: REVIEWERS, present: ["Panoramica", "Valore atteso all'anno", "Scaduti", "In realizzazione", "Fatti"] },
   // «Cosa serve»: requirements and next steps, reviewers only, last in the switcher. seed-hub.mjs
   // writes no needs, so the reviewers get the empty view, which points to the Panoramica (the seed
-  // has use cases in realization); with needs in the workspace it shows «Requisiti» and «Prossimi passi».
+  // has use cases in realization). With needs in the workspace it shows «Requisiti» with the counts
+  // line («4 aperti · 3 da chiedere · 1 in attesa · 1 a posto») and one closed line per area, then
+  // «Prossimi passi» open up to next month, with «Più avanti · N passi» and «Senza data · N passi» closed.
   { name: "cosa-serve", path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve", as: REVIEWERS, present: ["Niente da chiedere per ora", "Vai alla Panoramica"], absent: ["Cosa serve per far avanzare"] },
   // Not for contributors: the page falls back to the Panoramica.
   { name: "cosa-serve", path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve", as: CONTRIBUTOR, present: ["Prossimi"], absent: [...NOT_FOR_CONTRIBUTOR, "Cosa serve", "Requisiti"] },

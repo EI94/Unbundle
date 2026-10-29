@@ -5,9 +5,11 @@ import { ORIGIN_LABEL, ZONE_HINT, ZONE_LABEL } from "@/lib/use-cases/labels";
 import { groupLabelTexts, groupNearPoints, placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
 import type { Origin } from "@/lib/use-cases/types";
 import type { CostFigure as CostFigureData, ValueFigure as ValueFigureData } from "@/lib/use-cases/valuation";
-import { EXPIRED_TAG, toEstimateLabel } from "@/lib/use-cases/views";
+import { EXPIRED_TAG, toEstimateLabel, type HubEstimateParam } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { CostFigure } from "./cost-figure";
+import { Disclosure } from "./disclosure";
+import { NeedUseCaseLink } from "./need-use-cases";
 import { ORIGIN_DOT_CLASS } from "./origin-chip";
 import { ValueFigure } from "./value-figure";
 
@@ -42,6 +44,15 @@ export interface MatrixPoint {
   href: string;
 }
 
+/** Uno use case senza un punto nella matrice, in un elenco sotto di lei: «TJ-0012 · Titolo», che apre il pannello. */
+export interface MatrixOffItem {
+  id: string;
+  code: string | null;
+  title: string;
+  /** Il pannello laterale (`?apri=<id>`). */
+  href: string;
+}
+
 export interface ValueCostMatrixProps {
   points: readonly MatrixPoint[];
   /** Soglia «Valore alto» del workspace (`thresholds.highImpact`, predefinita 3,5). */
@@ -58,6 +69,17 @@ export interface ValueCostMatrixProps {
    * `stima=fuori-matrice`): le schede con «Benefici e costi» che non hanno un punto qui.
    */
   offMatrix?: { label: string; count: number; href: string } | null;
+  /**
+   * Gli use case senza Valore o Costo, e quelli con «Benefici e costi» senza un punto, in due elenchi
+   * chiusi sotto la matrice, al posto dei chip: «5 da stimare» e «2 senza beneficio contato»
+   * (`offMatrixLabel`). `open`: l'elenco che l'indirizzo chiede (`stima`), aperto quando la pagina si
+   * rende. Senza, i chip di prima.
+   */
+  lists?: {
+    toEstimate: readonly MatrixOffItem[];
+    offMatrix: { label: string; items: readonly MatrixOffItem[] } | null;
+    open: HubEstimateParam | null;
+  } | null;
 }
 
 /** Il dominio dei due assi: da 0,5 a 5,5, con le tacche a 1, 2, 3, 4, 5. */
@@ -113,10 +135,10 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
 }
 
 /**
- * La matrice Valore × Costo di realizzazione di «Priorità › Da costruire» (docs/use-case/DESIGN.md
- * §4.4, §7.2, §7.4; D5, D15). Valore da 1 a 5 in verticale; costo da € a €€€€€ in orizzontale,
- * sulla scala delle fasce del workspace (un importo cade dentro la sua fascia, una fascia sola
- * al centro). Due linee tratteggiate: «Valore alto» e «Costo basso», soglie del workspace.
+ * La matrice Valore × Costo di realizzazione del menu «⋯», sugli use case «Da costruire»
+ * (docs/use-case/DESIGN.md §4.4, §7.2, §7.4; D5, D15). Valore da 1 a 5 in verticale; costo da €
+ * a €€€€€ in orizzontale, sulla scala delle fasce del workspace (un importo cade dentro la sua
+ * fascia, una fascia sola al centro). Due linee tratteggiate: «Valore alto» e «Costo basso», soglie del workspace.
  * Quattro zone in grigio: «Subito», «Da pianificare», «Se avanza tempo», «Non ora», ognuna dentro
  * la sua zona, di qua o di là della linea del costo basso (anche al telefono). Punti di
  * 10 px colorati per origine, pieni se approvati, vuoti se da decidere, con il bordo rosso se
@@ -125,9 +147,10 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
  * punti quasi nello stesso posto hanno un'etichetta sola con tutti i loro codici.
  * Al passaggio del mouse codice, titolo, Valore, Costo e fonte; al clic,
  * o al tocco, il pannello laterale (il punto e il codice sono lo stesso link, largo abbastanza
- * per un dito). Senza trascinamento. Solo per i revisori.
+ * per un dito). Senza trascinamento. Sotto la legenda, gli use case senza Valore o Costo, e quelli
+ * con «Benefici e costi» senza un punto, in due elenchi chiusi (`lists`). Solo per i revisori.
  */
-export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BANDS, toEstimate, toEstimateHref, offMatrix = null }: ValueCostMatrixProps) {
+export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BANDS, toEstimate, toEstimateHref, offMatrix = null, lists = null }: ValueCostMatrixProps) {
   const placed = spread(points);
   // Le etichette si mettono per la matrice più piccola (320 px, al telefono) e per la più grande (600 px).
   // Ogni punto è un ostacolo; ha un'etichetta solo chi porta i codici del suo gruppo.
@@ -226,7 +249,22 @@ export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BAND
             </span>
           ) : null}
         </p>
-        {toEstimate > 0 || (offMatrix && offMatrix.count > 0) ? (
+        {lists ? (
+          lists.toEstimate.length || lists.offMatrix ? (
+            <div className="space-y-1">
+              {lists.toEstimate.length ? (
+                <Disclosure slot="to-estimate" summary={toEstimateLabel(lists.toEstimate.length)} defaultOpen={lists.open === "mancante"}>
+                  <MatrixOffList items={lists.toEstimate} />
+                </Disclosure>
+              ) : null}
+              {lists.offMatrix ? (
+                <Disclosure slot="off-matrix" summary={lists.offMatrix.label} defaultOpen={lists.open === "fuori-matrice"}>
+                  <MatrixOffList items={lists.offMatrix.items} />
+                </Disclosure>
+              ) : null}
+            </div>
+          ) : null
+        ) : toEstimate > 0 || (offMatrix && offMatrix.count > 0) ? (
           <div className="flex flex-wrap gap-2">
             <ToEstimateChip count={toEstimate} href={toEstimateHref} />
             {offMatrix && offMatrix.count > 0 ? <MatrixChip text={offMatrix.label} href={offMatrix.href} slot="off-matrix-chip" /> : null}
@@ -235,6 +273,19 @@ export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BAND
         <p className="text-xs text-muted-foreground">{ZONE_HINT}</p>
       </figcaption>
     </figure>
+  );
+}
+
+/** Un elenco chiuso sotto la matrice: un link per use case, «TJ-0012 · Titolo», che apre il pannello e resta nella pagina. */
+function MatrixOffList({ items }: { items: readonly MatrixOffItem[] }) {
+  return (
+    <ul className="space-y-0.5">
+      {items.map((item) => (
+        <li key={item.id}>
+          <NeedUseCaseLink useCase={item} href={item.href} scroll={false} />
+        </li>
+      ))}
+    </ul>
   );
 }
 

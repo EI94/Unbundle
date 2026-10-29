@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { LEVERS } from "../uc/vocab.ts";
 import type { ValuationModel } from "./valuation.ts";
 import {
@@ -18,6 +19,7 @@ import {
   groupSlot,
   groupText,
   hasPriorityValueModels,
+  hubCharts,
   isCommittedCost,
   niceScale,
   otherGroupsLabel,
@@ -257,6 +259,25 @@ test("bolle: x facilità, y beneficio contato, dalla più grande; senza facilit�
   assert.deepEqual(priorityCharts([plain, small]), ["matrice", "benefici"]);
   assert.deepEqual(priorityCharts([small]), ["matrice", "benefici"]);
   assert.deepEqual(priorityCharts([]), []);
+});
+
+test("menu «⋯»: le due matrici, poi «Curva del valore» con un approvato o in realizzazione con «Benefici e costi»", () => {
+  const toDecide = item({ valueModel: SMALL, ...TO_DECIDE });
+  const approved = item({ valueModel: FIX_A });
+  const building = item({ valueModel: FIX_B, status: "in_progress" });
+  const plain = item({ customScores: { impact: { efficiency: 4 } } });
+  assert.deepEqual(hubCharts([]), [], "nessuna scheda: nessun grafico");
+  assert.deepEqual(hubCharts([toDecide]), ["matrice", "benefici"], "da valutare con un modello: le matrici, non la curva");
+  assert.deepEqual(hubCharts([approved]), ["matrice", "benefici", "curva"]);
+  assert.deepEqual(hubCharts([building]), ["curva"], "in realizzazione: non è da mettere in ordine, ma è nella curva");
+  assert.deepEqual(hubCharts([plain]), ["matrice"], "senza modello: solo la matrice");
+  assert.deepEqual(hubCharts([plain, building]), ["matrice", "curva"]);
+  // I filtri non contano: l'ordine delle schede non cambia nulla, e la pagina passa tutte le schede del workspace.
+  const all = [toDecide, approved, building, plain];
+  assert.deepEqual(hubCharts(all), ["matrice", "benefici", "curva"]);
+  assert.deepEqual(hubCharts([...all].reverse()), hubCharts(all));
+  const hub = readFileSync(new URL("../../components/use-cases/hub.tsx", import.meta.url), "utf8");
+  assert.ok(hub.includes("hubCharts(list.items as HubItem[])"), "il menu dalle schede di tutto il workspace, non da quelle filtrate");
 });
 
 // ─── Roadmap ─────────────────────────────────────────────────────────

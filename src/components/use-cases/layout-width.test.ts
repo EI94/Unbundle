@@ -125,6 +125,8 @@ test("la «Panoramica»: tre corsie da 58rem del riquadro, prima una sotto l'alt
     "src/components/use-cases/lane-card.tsx",
     "src/components/use-cases/agent-tag.tsx",
     "src/components/use-cases/agent-grid.tsx",
+    // I grafici del menu «⋯», al posto delle corsie.
+    "src/components/use-cases/chart-view.tsx",
   ]) {
     const classes = [...read(file).matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
     assert.doesNotMatch(classes, VIEWPORT_VARIANT, `${file}: una forma sulla larghezza della finestra`);

@@ -8,11 +8,13 @@ import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 // «Per 3 use case», «Serve anche ad altri 2 use case» (rilascio «Pulizia»): gli use case di
 // un'esigenza dietro un `<details>` chiuso, con il titolo dell'esigenza per i lettori di schermo.
 let needUseCases: typeof import("./need-use-cases.tsx");
+let disclosure: typeof import("./disclosure.tsx");
 let renderToStaticMarkup: (element: unknown) => string;
 let createElement: (type: unknown, props: unknown) => unknown;
 before(async () => {
   await enableTsxImports();
   needUseCases = await import("./need-use-cases.tsx");
+  disclosure = await import("./disclosure.tsx");
   const react = await import("react");
   createElement = (type, props) => react.createElement(type as never, props as never);
   ({ renderToStaticMarkup } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string });
@@ -77,6 +79,14 @@ test("la freccia segue solo il suo <details>: chiusa anche dentro un «Già a po
   assert.ok(!source.includes("group/disclosure") && !source.includes("group-open/"));
 });
 
+test("`defaultOpen`: aperto quando la pagina si rende; senza, chiuso come prima", () => {
+  const opening = (props: Record<string, unknown>) =>
+    /<details[^>]*>/.exec(renderToStaticMarkup(createElement(disclosure.Disclosure, { summary: "Accessi", slot: "needs-area", children: "x", ...props })))?.[0] ?? "";
+  assert.equal(opening({ defaultOpen: true }), '<details data-slot="needs-area" open="">');
+  assert.equal(opening({}), '<details data-slot="needs-area">', "nessun attributo open");
+  assert.equal(opening({ defaultOpen: false }), '<details data-slot="needs-area">');
+});
+
 test("le righe con un <details> dentro sono <div>, non <p>: dentro un <p> il parser spezzerebbe il DOM", () => {
   const meta = '<div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">';
   for (const file of ["./needs-board.tsx", "./detail/section-needs.tsx"]) {
@@ -89,6 +99,9 @@ test("le righe con un <details> dentro sono <div>, non <p>: dentro un <p> il par
 test("i testi della vista «Cosa serve» passano la guardia delle parole", () => {
   // needs-board.tsx porta con sé la testata della pagina (e le sue azioni): qui se ne leggono i testi dal sorgente.
   const source = readFileSync(new URL("./needs-board.tsx", import.meta.url), "utf8");
+  // Rilascio «Panoramica»: niente più da «Priorità» né parole della vecchia Roadmap.
+  assert.ok(!source.includes("./priority-view"), "non dipende da priority-view.tsx");
+  assert.ok(!source.includes("Roadmap"));
   const block = /export const NEEDS_BOARD_TEXT = Object\.freeze\(\{([\s\S]*?)\n\}\);/.exec(source)?.[1] ?? "";
   const texts = [...block.matchAll(/^\s+\w+: "([^"]*)",$/gm)].map((match) => match[1]);
   assert.ok(texts.includes("Requisiti") && texts.includes("Niente da chiedere con questi filtri."), block);

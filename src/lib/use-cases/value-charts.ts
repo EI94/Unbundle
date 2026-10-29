@@ -1,8 +1,8 @@
 /**
  * I dati dei grafici di «Benefici e costi» (spec di Pierpaolo, 25/10/2026): la matrice a bolle
- * facilità × beneficio di «Priorità» (dal menu «⋯»), le cifre in più della Roadmap («Ore liberate
- * all'anno», «Pareggio»), la J-curve e «Valore per tipo di ritorno». Qui solo numeri ed etichette;
- * i componenti disegnano.
+ * facilità × beneficio (dal menu «⋯»), le ore liberate e il pareggio della riga «Su tutto il
+ * portafoglio» della Panoramica, la J-curve e «Valore per tipo di ritorno» di «Curva del valore»
+ * (dal menu «⋯»). Qui solo numeri ed etichette; i componenti disegnano.
  *
  * - **Colore per gruppo** (`groupPalette`): i gruppi di `value_model.group`, dal più grande (più
  *   schede, poi più beneficio contato, poi il nome), prendono i primi tre colori; gli altri gruppi e
@@ -16,7 +16,7 @@
  *   facilità da 1 a 5, y il beneficio contato all'anno, raggio `5 + 13·√(avvio / avvio massimo)`
  *   in pixel; il bordo dice quando (questo trimestre, prossimo, più avanti) e il riempimento
  *   chiaro «da decidere».
- * - **Roadmap** (`buildRoadmapValue`): le schede approvate o in realizzazione con un modello;
+ * - **Curva del valore** (`buildRoadmapValue`): le schede approvate o in realizzazione con un modello;
  *   mesi da `planMonths` sulle schede di tutto il workspace (`roadmapPlan`, come `get_use_case`
  *   del MCP: un filtro non sposta i mesi), curva da `jCurve` (`value-calc.ts`), ore contate,
  *   pareggio. Il costo di avvio entra nella curva con la regola di «Costo impegnato»
@@ -305,31 +305,46 @@ export function buildBenefitBubbles(items: readonly HubItem[], params: ValuePara
   return { bubbles, scale: niceScale(0, maxBenefit), withoutEase };
 }
 
-/** Almeno una scheda di «Priorità › Da costruire» ha «Benefici e costi»: il menu «⋯» offre «Matrice Facilità × Beneficio». */
+/**
+ * Almeno una scheda da mettere in ordine («Da costruire», `isPriorityCandidate`) ha «Benefici e
+ * costi»: il menu «⋯» offre «Matrice Facilità × Beneficio».
+ */
 export function hasPriorityValueModels(items: readonly HubItem[]): boolean {
   return items.some((item) => item.valueModel !== null && isPriorityCandidate(item));
 }
 
 /**
- * I grafici del menu «⋯», aperti nella Panoramica (solo revisori), su tutte le schede del
- * workspace: un filtro non toglie una voce. La matrice se una scheda è da mettere in ordine («Da
- * costruire», `isPriorityCandidate`), le bolle se una di queste ha «Benefici e costi». Nessuna:
- * nessun grafico.
+ * Le due matrici del menu «⋯»: «Matrice Valore × Costo» se una scheda è da mettere in ordine («Da
+ * costruire», `isPriorityCandidate`), «Matrice Facilità × Beneficio» se una di queste ha «Benefici e
+ * costi». Nessuna: nessuna matrice. Tutti i grafici del menu li dà `hubCharts`.
  */
 export function priorityCharts(items: readonly HubItem[]): HubChartParam[] {
   if (!items.some(isPriorityCandidate)) return [];
   return hasPriorityValueModels(items) ? ["matrice", "benefici"] : ["matrice"];
 }
 
-// ─── Roadmap: ore, J-curve, pareggio ─────────────────────────────────
+/**
+ * I grafici del menu «⋯» (solo revisori), aperti nella Panoramica al posto delle corsie, su tutte le
+ * schede del workspace: un filtro non toglie una voce. Le due matrici di `priorityCharts`, poi
+ * «Curva del valore» quando una scheda approvata o in realizzazione ha «Benefici e costi»
+ * (`roadmapValueItems`).
+ */
+export function hubCharts(items: readonly HubItem[]): HubChartParam[] {
+  return roadmapValueItems(items).length ? [...priorityCharts(items), "curva"] : priorityCharts(items);
+}
 
-/** Le schede della Roadmap che entrano nei conti: approvate o in realizzazione, con un modello. */
+// ─── Curva del valore e Panoramica: ore, J-curve, pareggio ───────────
+
+/**
+ * Le schede che entrano nei conti di «Curva del valore» e della riga «Su tutto il portafoglio»:
+ * approvate o in realizzazione, con un modello.
+ */
 export function roadmapValueItems(items: readonly HubItem[]): HubItem[] {
   return items.filter((item) => item.valueModel !== null && (item.phase === "approvato" || item.phase === "in_realizzazione"));
 }
 
 /**
- * L'avvio della scheda entra nei costi della Roadmap? La regola di «Costo impegnato»
+ * L'avvio della scheda entra nei costi della curva? La regola di «Costo impegnato»
  * (`roadmapTotals`): in realizzazione, oppure approvata «Da costruire».
  */
 export function isCommittedCost(item: Pick<HubItem, "phase" | "kind">): boolean {
@@ -337,7 +352,7 @@ export function isCommittedCost(item: Pick<HubItem, "phase" | "kind">): boolean 
 }
 
 /**
- * I mesi di avvio e di entrata in uso delle schede della Roadmap con un modello, calcolati su
+ * I mesi di avvio e di entrata in uso delle schede della curva con un modello, calcolati su
  * `items` (tutte le schede dei revisori del workspace, non quelle filtrate: «Più avanti» dipende
  * dalle altre schede, e un filtro non deve spostarlo). Gli stessi di `get_use_case` del MCP.
  */
@@ -410,7 +425,7 @@ function nameOf(card: Pick<HubItem, "code" | "title">): string {
 }
 
 /**
- * I conti della Roadmap per le schede con un modello (`roadmapValueItems`): mesi di avvio e di
+ * I conti di «Curva del valore» per le schede con un modello (`roadmapValueItems`): mesi di avvio e di
  * entrata in uso (`planMonths`: il piano della scheda, oppure il trimestre approvato, l'origine,
  * «più avanti»), la J-curve (`jCurve`), le ore e il pareggio. null senza schede con un modello.
  *
@@ -539,7 +554,7 @@ function bySize(a: LeverSegment, b: LeverSegment): number {
 /**
  * «Valore per tipo di ritorno»: per ognuno degli 8 tipi, un segmento per use case con il suo
  * beneficio contato di quel tipo, dal più grande; a parte la parte da misurare (fuori dal totale)
- * e gli use case con voci qualitative. Le schede sono quelle della Roadmap (`roadmapValueItems`).
+ * e gli use case con voci qualitative. Le schede sono quelle della curva (`roadmapValueItems`).
  */
 export function buildLeverChart(items: readonly HubItem[], params: ValueParams, palette: GroupPalette): LeverChart {
   const rows: LeverRow[] = LEVERS.map((lever) => ({ lever, label: LEVER_LABELS[lever], total: 0, segments: [], pendingTotal: 0, pending: [], qualitative: [], qualitativeCount: 0 }));
