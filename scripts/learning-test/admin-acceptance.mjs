@@ -239,7 +239,8 @@ async function runAcceptance() {
     for(const suffix of ["/admin",`/${a.programId}/admin`]){
       const url=`${origin}/dashboard/${a.workspaceId}/learning${suffix}`;
       for(const headers of [{cookie:cookies["admin-bootstrap"]},{cookie:cookies["admin-bootstrap"],RSC:"1"}]){
-        const response=await fetch(url,{headers,redirect:"manual"});assert.equal(response.status,200);const text=await response.text();
+        // Since Next 16.3 an RSC request needs `_rsc` to match its router headers (validateRSCRequestHeaders), else 307: with only `RSC: 1` a bare `_rsc`.
+        const response=await fetch(headers.RSC?`${url}?_rsc`:url,{headers,redirect:"manual"});assert.equal(response.status,200);const text=await response.text();
         for(const marker of markers)assert.ok(!text.includes(marker),`Private marker in admin ${headers.RSC?"RSC":"HTML"}`);
         if(headers.RSC)rscBytes+=Buffer.byteLength(text);else{htmlBytes+=Buffer.byteLength(text);for(const match of text.matchAll(/<script[^>]+src="([^"]+)"/g))assets.add(match[1].replaceAll("&amp;","&"));}
       }

@@ -143,6 +143,15 @@ async function timed(url, headers) {
   return { status: res.status, ttfb: ttfb ?? total, bytes, total };
 }
 
+/**
+ * The URL of an RSC request. Since Next 16.3 `next start` checks that `_rsc` matches the router
+ * headers of an RSC request (experimental.validateRSCRequestHeaders, now on by default) and
+ * otherwise answers 307 with an empty body, which `redirect: "manual"` would measure. With only
+ * `RSC: 1` (no router headers) the expected value is empty: a bare `_rsc`. The pages are dynamic
+ * and fetched with `no-store`, so there is no cache to bust.
+ */
+const rscUrlOf = (url) => `${url}${url.includes("?") ? "&" : "?"}_rsc`;
+
 function p95(values) {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.ceil(0.95 * sorted.length) - 1)];
@@ -174,7 +183,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function roundTrips(url, headers) {
   await sleep(STATS_FLUSH_MS);
   const before = await commits();
-  const res = await fetch(url, { headers, redirect: "manual", cache: "no-store" });
+  const res = await fetch(rscUrlOf(url), { headers, redirect: "manual", cache: "no-store" });
   await res.arrayBuffer();
   await sleep(STATS_FLUSH_MS);
   const after = await commits();
@@ -205,12 +214,12 @@ for (const account of opts.as) {
       console.log(`FAIL  ${account}  ${route.path}  (stato ${warm.status})`);
       continue;
     }
-    await timed(url, rsc);
+    await timed(rscUrlOf(url), rsc);
     const first = [];
     const nav = [];
     for (let i = 0; i < opts.runs; i++) {
       first.push(await timed(url, html));
-      nav.push(await timed(`${url}${url.includes("?") ? "&" : "?"}_rsc=perf${i}`, rsc));
+      nav.push(await timed(rscUrlOf(url), rsc));
     }
     const row = {
       account,

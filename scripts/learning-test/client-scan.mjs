@@ -21,7 +21,8 @@ for (const asset of assets) {
   records.push({ path: target.pathname, bytes: Buffer.byteLength(text) });
 }
 for (const marker of forbidden) assert.ok(!html.includes(marker), `Private marker ${marker} in HTML`);
-const rsc = await fetch(url, { headers: { cookie, RSC: "1" }, redirect: "manual" }); assert.equal(rsc.status, 200);
+// Since Next 16.3 an RSC request needs `_rsc` to match its router headers (validateRSCRequestHeaders), else 307: with only `RSC: 1` a bare `_rsc`.
+const rsc = await fetch(`${url}?_rsc`, { headers: { cookie, RSC: "1" }, redirect: "manual" }); assert.equal(rsc.status, 200);
 const rscText = await rsc.text(); for (const marker of forbidden) assert.ok(!rscText.includes(marker), `Private marker ${marker} in RSC`);
 await writeFile(resolve(output, process.env.LEARNING_TEST_RUNTIME === "production" ? "client-scan-production.json" : "client-scan.json"), JSON.stringify({ timestamp: new Date().toISOString(), status: "PASS", environment: "actual local HTTP before attempt start", url, htmlBytes: Buffer.byteLength(html), rscBytes: Buffer.byteLength(rscText), checkedMarkers: forbidden, scripts: records }, null, 2));
 console.log(`PASS G04: learner HTML, RSC and ${records.length} actual client scripts contain no generic private-bank markers or correct_option_ids.`);

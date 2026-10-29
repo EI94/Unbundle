@@ -77,7 +77,8 @@ await check("A01-partial", "Unauthenticated activity redirects to login preservi
 });
 await check("G04-html", "Pre-submit HTML and RSC omit private grading markers", async () => {
   for (const headers of [{}, { RSC: "1" }]) {
-    const result = await page("learner-b", activityUrl, headers); assert.equal(result.status, 200);
+    // Since Next 16.3 an RSC request needs `_rsc` to match its router headers (validateRSCRequestHeaders), else 307: with only `RSC: 1` a bare `_rsc`.
+    const result = await page("learner-b", headers.RSC ? `${activityUrl}?_rsc` : activityUrl, headers); assert.equal(result.status, 200);
     assert.ok(!result.text.includes("PRIVATE_")); assert.ok(!result.text.includes("correct_option_ids"));
   }
 });
