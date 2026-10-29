@@ -80,11 +80,12 @@ export function ViewFocusLink({ onClick, ...props }: ComponentProps<typeof Link>
  * I link con un'ancora che porta in un'altra vista dell'hub: una card di «Per agente»
  * (`?agente=LIBRA#panoramica-approvati`), «‹ Tutti gli agenti» (`#agente-LIBRA`) e «Vai alla
  * Panoramica» di «Cosa serve» (`#panoramica-in-realizzazione`). Next scorre fino all'ancora, ma da
- * Next 16.4 non le dà più il fuoco (il suo `ScrollHandler` non chiama `focus()`, e l'opzione per il
- * comportamento di prima non c'è più): il fuoco restava sul link cliccato, che sparisce con il clic,
- * e cadeva sul `<body>`; un lettore di schermo ripartiva dalla cima della pagina. Il clic lascia
- * l'ancora come segno; `HashFocusOnCommit`, nell'hub, a navigazione confermata (dopo lo scorrimento
- * di Next) porta il fuoco sull'ancora, senza scorrere ancora, se l'indirizzo arrivato ha quell'ancora.
+ * Next 16.3 non le dà più il fuoco (il nuovo gestore dello scorrimento, `ScrollHandler` in 16.4, non
+ * chiama `focus()`, e da 16.4 l'opzione per il comportamento di prima non c'è più): il fuoco restava
+ * sul link cliccato, che sparisce con il clic, e cadeva sul `<body>`; un lettore di schermo ripartiva
+ * dalla cima della pagina. Il clic lascia l'ancora come segno; `HashFocusOnCommit`, nell'hub, a
+ * navigazione confermata (dopo lo scorrimento di Next) porta il fuoco sull'ancora, senza scorrere
+ * ancora, se l'indirizzo arrivato ha quell'ancora.
  * L'ancora deve poter prendere il fuoco: un link, o `tabIndex={-1}`.
  */
 let pendingHashFocus: string | null = null;

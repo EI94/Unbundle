@@ -19,10 +19,8 @@ export function GenerateUseCasesButton({
       const result = await generateUseCasesAction(workspaceId);
       toast.success(`${result.generated} use case generati con successo`);
       window.location.reload();
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Errore nella generazione"
-      );
+    } catch {
+      toast.error("Errore nella generazione");
     } finally {
       setLoading(false);
     }

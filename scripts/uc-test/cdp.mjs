@@ -126,6 +126,11 @@ export async function newPage(browser, { width = 1440, height, mobile, colorSche
   const { sessionId } = await browser.send("Target.attachToTarget", { targetId, flatten: true });
   const send = (method, params) => browser.send(method, params, sessionId);
   const inflight = new Set();
+  // The document (loaderId) of the main frame that sent each request. A request that the old
+  // document still had open when a new one commits is cancelled with it, and Chrome never
+  // reports its end (no loadingFinished, no loadingFailed): without this, waitIdle() would
+  // wait for it until its timeout.
+  const loaderOf = new Map();
   const page = {
     browser,
     sessionId,
@@ -150,12 +155,23 @@ export async function newPage(browser, { width = 1440, height, mobile, colorSche
         break;
       case "Network.requestWillBeSent":
         inflight.add(p.requestId);
+        if (p.frameId === targetId) loaderOf.set(p.requestId, p.loaderId);
         page.lastNetworkAt = Date.now();
         break;
       case "Network.loadingFinished":
       case "Network.loadingFailed":
         inflight.delete(p.requestId);
+        loaderOf.delete(p.requestId);
         page.lastNetworkAt = Date.now();
+        break;
+      case "Page.frameNavigated":
+        // A new document in the main frame (a client-side router navigation does not fire this).
+        if (p.frame?.id !== targetId) break;
+        for (const [id, loader] of loaderOf) {
+          if (loader === p.frame.loaderId) continue;
+          inflight.delete(id);
+          loaderOf.delete(id);
+        }
         break;
       case "Network.responseReceived":
         if (p.type === "Document" && p.frameId === targetId) page.status = p.response.status;

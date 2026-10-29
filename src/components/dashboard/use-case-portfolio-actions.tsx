@@ -55,8 +55,11 @@ export function UseCasePortfolioActions({
         await setUseCaseStatusAction(workspaceId, useCaseId, status);
         toast.success("Stato aggiornato");
         router.refresh();
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Errore");
+      } catch {
+        // In produzione React non porta al browser il messaggio di un errore
+        // lanciato da una server action (lo sostituisce con un testo inglese):
+        // il toast dice in italiano cosa non è andato.
+        toast.error("Stato non aggiornato. Riprova.");
       }
     });
   };
@@ -71,8 +74,8 @@ export function UseCasePortfolioActions({
         );
         toast.success("Quadrante aggiornato");
         router.refresh();
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Errore");
+      } catch {
+        toast.error("Quadrante non aggiornato. Riprova.");
       }
     });
   };

@@ -18,10 +18,8 @@ export function SuggestOKRsButton({ workspaceId }: SuggestOKRsButtonProps) {
     try {
       const result = await suggestOKRsAction(workspaceId);
       setSuggestions(result);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Errore nella generazione"
-      );
+    } catch {
+      toast.error("Errore nella generazione");
     } finally {
       setLoading(false);
     }

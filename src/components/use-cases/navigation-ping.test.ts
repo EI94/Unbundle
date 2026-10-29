@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 // ritardo»): `pingSuspendedRoot` non ricominciava da capo (si è nel rendering) e non contava il ping,
 // così le corsie restavano sospese per sempre (React #37805). La correzione di React (#36134) conta
 // il ping in `workInProgressRootPingedLanes`; con Next 16.2.3 la portava patches/next+16.2.3.patch,
-// da Next 16.4 c'è nel React che Next porta con sé e la patch non serve più. Qui si controlla che
+// da Next 16.3 c'è nel React che Next porta con sé e la patch non serve più. Qui si controlla che
 // nessuna patch di Next sia rimasta, che `next` ed `eslint-config-next` siano fissati alla stessa
 // versione, e che le quattro build di react-dom installate contino il ping.
 //

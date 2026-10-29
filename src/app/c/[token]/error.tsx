@@ -12,7 +12,7 @@ export default function CourseJoinError({
   error,
   reset,
 }: {
-  error: Error & { digest?: string };
+  error: unknown;
   reset: () => void;
 }) {
   useEffect(() => {

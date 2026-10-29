@@ -2,9 +2,11 @@
 
 import { catchError, type ErrorInfo } from "next/error";
 import { Button } from "@/components/ui/button";
+import { digestOf } from "@/lib/uc/log";
 
-function WidgetFallback({ title }: { title: string }, { error, retry }: ErrorInfo) {
-  const digest = (error as Error & { digest?: string }).digest;
+/** Il riquadro al posto del widget; il valore lanciato può non essere un `Error`, anche `null`. */
+export function WidgetFallback({ title }: { title: string }, { error, retry }: ErrorInfo) {
+  const digest = digestOf(error);
   return (
     <div role="alert" className="space-y-2 rounded-xl p-4 ring-1 ring-foreground/10">
       <p className="text-sm font-medium">{title} non si è caricato.</p>

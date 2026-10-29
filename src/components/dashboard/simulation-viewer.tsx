@@ -20,10 +20,8 @@ export function SimulationViewer({ workspaceId }: { workspaceId: string }) {
       const result = await generateSimulationAction(workspaceId);
       setSimulation(result);
       toast.success("Simulazione completata");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Errore nella simulazione"
-      );
+    } catch {
+      toast.error("Errore nella simulazione");
     } finally {
       setLoading(false);
     }

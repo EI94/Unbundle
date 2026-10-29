@@ -3,16 +3,19 @@
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/dashboard/page-container";
+import { digestOf } from "@/lib/uc/log";
 
 /**
  * Una pagina del dossier non si è caricata (DESIGN §3.14). Sta dentro il
  * layout del caso: testata e schede restano. Si registra solo il codice
- * dell'errore (`digest`), mai il messaggio.
+ * dell'errore (`digest`), mai il messaggio. Next passa il valore lanciato così
+ * com'è: da un Client Component può non essere un `Error`, anche `null`.
  */
-export default function CasePageError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
+export default function CasePageError({ error, retry }: { error: unknown; retry: () => void }) {
+  const digest = digestOf(error);
   useEffect(() => {
-    console.error("[uc] pagina del dossier non caricata", error.digest ?? "senza codice");
-  }, [error]);
+    console.error("[uc] pagina del dossier non caricata", digest ?? "senza codice");
+  }, [digest]);
   return (
     <PageContainer>
       <div role="alert" className="max-w-3xl space-y-3">
@@ -21,7 +24,7 @@ export default function CasePageError({ error, retry }: { error: Error & { diges
         <Button variant="outline" className="h-11 sm:h-8" onClick={() => retry()}>
           Riprova
         </Button>
-        {error.digest && <p className="text-xs text-muted-foreground">Codice: {error.digest}</p>}
+        {digest && <p className="text-xs text-muted-foreground">Codice: {digest}</p>}
       </div>
     </PageContainer>
   );

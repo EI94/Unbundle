@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useSyncExternalStore } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   startOpenSurveyAction,
@@ -26,11 +26,6 @@ function readExistingUrl(openToken: string): string | null {
   }
 }
 
-function subscribeStorage(onChange: () => void): () => void {
-  window.addEventListener("storage", onChange);
-  return () => window.removeEventListener("storage", onChange);
-}
-
 export function OpenSurveyStartForm({
   openToken,
   named,
@@ -41,6 +36,7 @@ export function OpenSurveyStartForm({
   const router = useRouter();
   const action = startOpenSurveyAction.bind(null, openToken);
   const [state, formAction, pending] = useActionState(action, INITIAL);
+  const [existingUrl, setExistingUrl] = useState<string | null>(null);
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
 
   function clearLocalError(name: string) {
@@ -53,8 +49,13 @@ export function OpenSurveyStartForm({
   }
 
   // Anti-duplicati: se da questo dispositivo la survey è già stata iniziata,
-  // proponi di riprenderla invece di crearne una nuova. Sul server, e all'idratazione, niente.
-  const existingUrl = useSyncExternalStore(subscribeStorage, () => readExistingUrl(openToken), () => null);
+  // proponi di riprenderla invece di crearne una nuova. Letta una volta al montaggio, dopo
+  // l'idratazione: un'altra scheda che la inizia non fa comparire l'avviso qui, né lo fa un nuovo
+  // rendering di questa dopo l'avvio, mentre si apre la survey.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage esiste solo nel browser, letto una volta al montaggio
+    setExistingUrl(readExistingUrl(openToken));
+  }, [openToken]);
 
   useEffect(() => {
     if (state.ok && state.data?.personalUrl) {

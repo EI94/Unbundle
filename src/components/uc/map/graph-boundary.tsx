@@ -4,11 +4,12 @@ import { useEffect } from "react";
 import { catchError, type ErrorInfo } from "next/error";
 import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { digestOf } from "@/lib/uc/log";
 
-function GraphFallback(props: { label?: string }, { error, retry }: ErrorInfo) {
-  const digest = (error as Error & { digest?: string }).digest;
+export function GraphFallback(props: { label?: string }, { error, retry }: ErrorInfo) {
+  // Da Next 16.3 `ErrorInfo.error` è `unknown` (si può lanciare qualsiasi valore, anche `null`).
+  const digest = digestOf(error);
   useEffect(() => {
-    // Da Next 16.3 `ErrorInfo.error` è `unknown` (si può lanciare qualsiasi valore).
     console.error("uc: la vista di analisi della mappa non si è caricata", digest ?? (error instanceof Error ? error.message : String(error)));
   }, [digest, error]);
   return (

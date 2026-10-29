@@ -3,13 +3,15 @@
 import { useEffect } from "react";
 import { catchError, type ErrorInfo } from "next/error";
 import { Button } from "@/components/ui/button";
+import { digestOf } from "@/lib/uc/log";
 
 /**
  * Un riquadro pesante che non si carica non fa cadere la pagina (DESIGN §3.14):
- * resta il resto, con «Riprova». Si registra solo il codice dell'errore.
+ * resta il resto, con «Riprova». Si registra solo il codice dell'errore; il
+ * valore lanciato può non essere un `Error`, anche `null`.
  */
-function WidgetError({ title }: { title: string }, { error, retry }: ErrorInfo) {
-  const digest = (error as Error & { digest?: string }).digest;
+export function WidgetError({ title }: { title: string }, { error, retry }: ErrorInfo) {
+  const digest = digestOf(error);
   useEffect(() => {
     console.error("[uc] riquadro non caricato", digest ?? "senza codice");
   }, [digest]);

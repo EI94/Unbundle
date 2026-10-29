@@ -19,10 +19,8 @@ export function GenerateReportButton({
       await generateReportAction(workspaceId);
       toast.success("Report generato con successo");
       window.location.reload();
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Errore nella generazione"
-      );
+    } catch {
+      toast.error("Errore nella generazione");
     } finally {
       setLoading(false);
     }

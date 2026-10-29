@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
  * `retry` rilegge i dati del segmento e lo rende di nuovo (guida di Next
  * `03-file-conventions/error.md`).
  */
-export default function UseCasesError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
+export default function UseCasesError({ retry }: { error: unknown; retry: () => void }) {
   return (
     <PageContainer size="default">
       <div role="alert" className="flex flex-col items-start gap-3">

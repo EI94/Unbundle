@@ -24,10 +24,8 @@ export function GenerateValueMapButton({
       const result = await generateValueMapAction(workspaceId);
       toast.success(`${result.positioned} attività posizionate sulla mappa`);
       router.refresh();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Errore nella generazione"
-      );
+    } catch {
+      toast.error("Errore nella generazione");
     } finally {
       setLoading(false);
     }

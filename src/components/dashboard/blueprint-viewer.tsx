@@ -29,10 +29,8 @@ export function BlueprintViewer({
       const result = await generateBlueprintsAction(workspaceId);
       setBlueprints(result);
       toast.success(`${result.length} blueprint generati`);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Errore nella generazione"
-      );
+    } catch {
+      toast.error("Errore nella generazione");
     } finally {
       setLoading(false);
     }

@@ -9,7 +9,7 @@ import { LinkCard, ReferentShell } from "@/components/uc/referente/link-card";
  * richiesta. Le risposte inviate restano salve; le bozze non inviate restano
  * anche sul dispositivo, salvo le voci personali.
  */
-export default function ReferentLinkError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
+export default function ReferentLinkError({ retry }: { error: unknown; retry: () => void }) {
   return (
     <ReferentShell>
       <LinkCard title="Qualcosa non ha funzionato" body="Può essere un problema momentaneo di connessione. Le risposte che hai già inviato sono salve: riprova tra poco.">

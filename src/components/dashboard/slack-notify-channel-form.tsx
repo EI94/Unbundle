@@ -26,8 +26,8 @@ export function SlackNotifyChannelForm({
             ? "Canale salvato. Ricordati di aggiungere il bot al canale."
             : "Notifiche nel canale disattivate."
         );
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Salvataggio non riuscito. Riprova.");
+      } catch {
+        toast.error("Salvataggio non riuscito. Riprova.");
       }
     });
   };

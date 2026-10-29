@@ -74,7 +74,7 @@ test("la Panoramica, «Cosa serve» e «Da decidere» hanno il loro titolo; «�
   assert.match(own, /useEffect\(\(\) => \{\s*if \(takeListFocus\(\)\) ref\.current\?\.focus\(\);\s*\}, \[\]\);/);
 });
 
-// I link con un'ancora che cambiano vista (rilascio «Panoramica»): da Next 16.4 Next scorre all'ancora
+// I link con un'ancora che cambiano vista (rilascio «Panoramica»): da Next 16.3 Next scorre all'ancora
 // ma non le dà più il fuoco. Il clic lascia l'ancora come segno, l'hub la mette a fuoco a navigazione
 // confermata: una card di «Per agente», «‹ Tutti gli agenti» e «Vai alla Panoramica» di «Cosa serve».
 test("l'ancora di un link: decodificata come fa Next, e nessuna senza `#`", () => {
