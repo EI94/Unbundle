@@ -64,6 +64,17 @@
   --color-uc-serie-2: var(--uc-serie-2);
   --color-uc-serie-3: var(--uc-serie-3);
   --color-uc-serie-altro: var(--uc-serie-altro);
+  /* Use case, «Panoramica»: i colori degli agenti (vedi --uc-agente-* sotto). */
+  --color-uc-agente-1: var(--uc-agente-1);
+  --color-uc-agente-2: var(--uc-agente-2);
+  --color-uc-agente-3: var(--uc-agente-3);
+  --color-uc-agente-4: var(--uc-agente-4);
+  --color-uc-agente-5: var(--uc-agente-5);
+  --color-uc-agente-6: var(--uc-agente-6);
+  --color-uc-agente-7: var(--uc-agente-7);
+  --color-uc-agente-8: var(--uc-agente-8);
+  --color-uc-agente-9: var(--uc-agente-9);
+  --color-uc-agente-10: var(--uc-agente-10);
 }
 
 :root {
@@ -121,6 +132,24 @@
   --uc-serie-2: #d95926;
   --uc-serie-3: #199e70;
   --uc-serie-altro: oklch(0.6 0.01 260);
+
+  /* Use case, «Panoramica»: i colori degli agenti, il nome in testa al titolo («LIBRA L1 · …»),
+     solo sul tag e sulla barra del valore. Dieci toni con la stessa luminosità e la stessa
+     saturazione, a passi uguali di circa 33° da 50° a 350°, in un ordine che allontana due agenti
+     vicini nell'alfabeto: ogni tono sta almeno a 100° dal precedente (e il primo dal decimo).
+     Nessun tono tra 350° e 50°: è il rosso di «Scaduto» (text-red-300 a 20°, --uc-rosso a 25°).
+     Testo del tag sul suo fondo al 16% almeno 7,9:1, bordo del tag al 55% almeno 3,6:1, barra
+     piena su --card almeno 10:1. Solo tema scuro, mai sulle pagine .survey-light. */
+  --uc-agente-1: oklch(0.8 0.1 83);
+  --uc-agente-2: oklch(0.8 0.1 183);
+  --uc-agente-3: oklch(0.8 0.1 283);
+  --uc-agente-4: oklch(0.8 0.1 50);
+  --uc-agente-5: oklch(0.8 0.1 150);
+  --uc-agente-6: oklch(0.8 0.1 250);
+  --uc-agente-7: oklch(0.8 0.1 350);
+  --uc-agente-8: oklch(0.8 0.1 117);
+  --uc-agente-9: oklch(0.8 0.1 217);
+  --uc-agente-10: oklch(0.8 0.1 317);
 }
 
 @layer base {

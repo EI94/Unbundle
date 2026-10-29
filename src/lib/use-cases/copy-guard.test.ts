@@ -5,6 +5,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import * as costInputState from "../../components/use-cases/cost-input-state.ts";
+import * as agents from "./agents.ts";
 import * as costBands from "./cost-bands.ts";
 import {
   AREA_SOURCE_DIRS,
@@ -326,6 +327,8 @@ test("copy-guard verde sulle etichette dell'area", () => {
     ...exportedStrings(inputs),
     ...exportedStrings(quarter),
     ...exportedStrings(costInputState),
+    // «Agente» (rilascio «Panoramica»): «Altri use case».
+    ...exportedStrings(agents),
     ...Object.values(PHASE_LABEL),
     ...Object.values(SUB_STATE_LABEL),
     ...WHEN_CHOICES.map((choice) => quarter.whenChoiceLabel(choice, now)),

@@ -29,6 +29,8 @@ const { registerHooks } = nodeModule as unknown as {
 // - Il contributore: titolo, fase e «Quando», solo «Cerca per titolo», codice e nota pubblica
 //   delle sole proprie proposte; nessun «€», nessun `[data-figure]`.
 // - Vuoti, filtri senza risultati, i grafici del menu «⋯», pannello laterale e pannello rapido.
+// - «Agente» (rilascio «Panoramica»): il workspace P ha titoli con il prefisso dell'agente
+//   («LIBRA L1 · …») e uno senza; il filtro è solo dei revisori.
 // - Parte dossier non disponibile (§4.9): «In realizzazione» mostra solo fase e titolo. La
 //   lettura del dossier fallisce per finta: `dossierSummaries` risponde «errore» quando la
 //   prova accende `__hubH4aDossierError`, altrimenti è quella vera.
@@ -89,6 +91,8 @@ const ids = {
   wsE: randomUUID(),
   /** Area accesa, nessuno use case. */
   wsZ: randomUUID(),
+  /** Area accesa, titoli con il prefisso dell'agente («LIBRA L1 · …») e uno senza (rilascio «Panoramica»). */
+  wsP: randomUUID(),
   ls: randomUUID(),
   builder: randomUUID(),
   manager: randomUUID(),
@@ -204,6 +208,12 @@ const cards = {} as Record<
   | "bestPractice"
   | "dBest"
   | "eClosed",
+  { id: string; code: string; title: string }
+>;
+
+/** Le schede del workspace P: una per agente (due per LIBRA) e una senza prefisso. */
+const agentCards = {} as Record<
+  "libraL1" | "libraL2" | "autoH1" | "orsaO1" | "plain" | "sirioS1" | "maiaM1" | "spicaP1" | "denebD1",
   { id: string; code: string; title: string }
 >;
 
@@ -368,7 +378,7 @@ before(async () => {
   currentQuarter = () => quarter.currentQuarter();
   nextQuarter = (value) => quarter.nextQuarter(value);
 
-  process.env.USE_CASE_HUB_WORKSPACES = [ids.wsA, ids.wsD, ids.wsE, ids.wsZ].join(",");
+  process.env.USE_CASE_HUB_WORKSPACES = [ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.wsP].join(",");
   process.env.UC_LS_EMAIL_DOMAINS = "ls.test";
   delete process.env.UC_ENABLED;
 
@@ -378,9 +388,10 @@ before(async () => {
        ($1::uuid, $5::uuid, 'Prova H4a A'), ($2::uuid, $5::uuid, 'Prova H4a D'), ($3::uuid, $5::uuid, 'Prova H4a E'), ($4::uuid, $5::uuid, 'Prova H4a Z')`,
     [ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.org],
   );
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Prova H4a P')`, [ids.wsP, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
-    for (const workspaceId of [ids.wsA, ids.wsD, ids.wsE, ids.wsZ]) {
+    for (const workspaceId of [ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.wsP]) {
       await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [workspaceId, ids[person], ROLES[person]]);
     }
   }
@@ -467,6 +478,27 @@ before(async () => {
   cards.bestPractice = await seed({ title: `Best practice ${suffix}`, kind: "best_practice", status: "accepted", review: "scored" });
   cards.dBest = await seed({ workspaceId: ids.wsD, title: `Best practice di D ${suffix}`, kind: "best_practice", status: "accepted", review: "scored" });
   cards.eClosed = await seed({ workspaceId: ids.wsE, title: `Chiusa di E ${suffix}`, status: "rejected", review: "scored" });
+
+  // Workspace P: gli agenti dal titolo (rilascio «Panoramica»). Due LIBRA con gli euro, un agente
+  // senza cifre, uno scaduto, uno senza prefisso e senza trimestre, poi le altre fasi.
+  const wsP = ids.wsP;
+  const accepted = { workspaceId: wsP, status: "accepted", review: "scored" };
+  agentCards.libraL1 = await seed({ ...accepted, title: `LIBRA L1 · Lettura delle fatture estere ${suffix}`, targetQuarter: thisQuarter, valueEurYear: 12_250, costEurOnce: 700 });
+  agentCards.libraL2 = await seed({
+    ...accepted,
+    title: `LIBRA L2 · Riconciliazione dei pagamenti ${suffix}`,
+    targetQuarter: nextQuarter(thisQuarter),
+    valueEurYear: 5_000,
+    costBand: 2,
+    origin: "adoption",
+  });
+  agentCards.autoH1 = await seed({ ...accepted, title: `AUTO H1 · Cedolini consegnati ${suffix}`, targetQuarter: nextQuarter(nextQuarter(thisQuarter)) });
+  agentCards.orsaO1 = await seed({ ...accepted, title: `ORSA O1 · Solleciti ai clienti ${suffix}`, targetQuarter: "2020-Q1", valueEurYear: 3_000 });
+  agentCards.plain = await seed({ ...accepted, title: `Smistamento delle richieste ${suffix}` });
+  agentCards.sirioS1 = await seed({ workspaceId: wsP, title: `SIRIO S1 · Budget di cassa ${suffix}`, status: "in_progress", review: "scored" });
+  agentCards.maiaM1 = await seed({ workspaceId: wsP, title: `MAIA M1 · Report mensile ${suffix}`, status: "implemented", review: "scored", valueEurYear: 8_000 });
+  agentCards.spicaP1 = await seed({ workspaceId: wsP, title: `SPICA P1 · Note spese ${suffix}`, review: "needs_inputs" });
+  agentCards.denebD1 = await seed({ ...accepted, title: `DENEB D1 · Buone pratiche di onboarding ${suffix}`, kind: "best_practice", targetQuarter: thisQuarter });
 });
 
 after(async () => {
@@ -477,7 +509,7 @@ after(async () => {
   }
   if (!enabled) return;
   // I workspace portano via schede, iscrizioni e modelli di valutazione.
-  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.wsA, ids.wsD, ids.wsE, ids.wsZ]]);
+  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.wsA, ids.wsD, ids.wsE, ids.wsZ, ids.wsP]]);
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [Object.keys(emails).map((person) => ids[person as Person])]);
   await q(`DELETE FROM organizations WHERE id = $1::uuid`, [ids.org]);
 });
@@ -821,6 +853,45 @@ test("filtri: origine, tipo e «Altri filtri» ai revisori; senza risultati «Ne
   const plain = await html("ls", ids.wsA, { vista: "da-decidere" });
   const forged = await html("ls", ids.wsA, { vista: "da-decidere", proponente: emails.contributor, proposedBy: ids.contributor, autore: "x", persona: "y" });
   assert.equal(forged, plain);
+});
+
+// ─── «Agente» (rilascio «Panoramica») ─────────────────────────────────
+
+test("filtro «Agente»: il prefisso del titolo, solo ai revisori", opts, async () => {
+  const all = Object.values(agentCards);
+  /** Le schede del workspace P a schermo, nell'ordine di `agentCards`. */
+  const shown = (page: string) => all.filter((card) => page.includes(`data-id="${card.id}"`)).map((card) => card.title);
+  const libra = await html("ls", ids.wsP, { vista: "panoramica", agente: "LIBRA" });
+  assert.equal(viewOf(libra), "panoramica");
+  assert.deepEqual(shown(libra), [agentCards.libraL1.title, agentCards.libraL2.title]);
+  assert.ok(libra.includes("Togli i filtri"));
+  const others = await html("ls", ids.wsP, { vista: "panoramica", agente: "altri" });
+  assert.deepEqual(shown(others), [agentCards.plain.title], "«Altri use case»: i titoli senza prefisso");
+  // Le voci di «Agente», da tutte le schede del workspace (anche quelle da decidere), «Altri use case» in fondo.
+  const { tree } = await hubTree("ls", ids.wsP, { vista: "panoramica", agente: "LIBRA" });
+  const [more] = findProp(tree, "more") as Array<{ agents: Array<{ value: string; label: string }> }>;
+  assert.deepEqual(
+    more.agents.map((option) => option.value),
+    ["AUTO", "DENEB", "LIBRA", "MAIA", "ORSA", "SIRIO", "SPICA", "altri"],
+  );
+  assert.equal(more.agents.at(-1)?.label, "Altri use case");
+  // Il filtro passa alle altre viste con il selettore, come l'area, e restringe «Da decidere».
+  const segments = switcherOf(libra);
+  assert.ok(segments.every((segment) => segment.href.includes("agente=LIBRA")), JSON.stringify(segments));
+  assert.deepEqual(shown(await html("ls", ids.wsP, { vista: "da-decidere", agente: "SPICA" })), [agentCards.spicaP1.title]);
+  assert.deepEqual(shown(await html("ls", ids.wsP, { vista: "da-decidere", agente: "LIBRA" })), []);
+  // Senza prefissi nei titoli il campo non c'è.
+  const [moreA] = findProp((await hubTree("ls", ids.wsA, { vista: "panoramica" })).tree, "more") as Array<{ agents: unknown[] }>;
+  assert.deepEqual(moreA.agents, []);
+  // Il contributore: nessun «Agente», il filtro dell'indirizzo non vale.
+  const contributor = await html("contributor", ids.wsP, { vista: "panoramica", agente: "LIBRA" });
+  for (const card of [agentCards.libraL1, agentCards.libraL2, agentCards.autoH1, agentCards.orsaO1, agentCards.plain]) {
+    assert.ok(contributor.includes(`data-id="${card.id}"`), card.title);
+  }
+  assert.ok(!contributor.includes("Agente") && !contributor.includes("Togli i filtri"));
+  const forContributor = await hubTree("contributor", ids.wsP, { vista: "panoramica", agente: "LIBRA" });
+  assert.equal(forContributor.data.params.agente, null);
+  assert.deepEqual(findProp(forContributor.tree, "more"), [undefined]);
 });
 
 // ─── Contributori (D4, D13) ──────────────────────────────────────────

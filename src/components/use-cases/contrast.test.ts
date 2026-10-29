@@ -156,6 +156,72 @@ test("nell'area «Use case» il segmento scelto si vede anche senza il colore de
   assert.ok(read("src/components/use-cases/when-control.tsx").includes("data-checked:inset-ring data-checked:inset-ring-input"), "«Quando»: anello della scelta");
 });
 
+test("i colori degli agenti si leggono nel tema scuro", () => {
+  const t = area;
+  // Dieci toni in :root, pieni, con la stessa luminosità e la stessa saturazione.
+  const declared = [...block(":root {").body.matchAll(/--uc-agente-(\d+):\s*oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\)/g)].map((match) => ({
+    tone: Number(match[1]),
+    L: Number(match[2]),
+    C: Number(match[3]),
+    h: Number(match[4]),
+  }));
+  assert.deepEqual(declared.map((entry) => entry.tone), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.equal(new Set(declared.map((entry) => `${entry.L} ${entry.C}`)).size, 1, "stessa luminosità e saturazione");
+  assert.equal(new Set(declared.map((entry) => entry.h)).size, 10, "dieci toni diversi");
+  for (const tone of declared) assert.equal(t[`uc-agente-${tone.tone}`].alpha, 1, `uc-agente-${tone.tone} pieno`);
+  // Nessun rosso: è di «Scaduto» (text-red-300 a 20°, --uc-rosso a 25°). Due toni di fila (due
+  // agenti vicini nell'alfabeto, anche il decimo e il primo) stanno lontani.
+  const hueDistance = (a: number, b: number) => Math.min(Math.abs(a - b) % 360, 360 - (Math.abs(a - b) % 360));
+  for (const tone of declared) assert.ok(hueDistance(tone.h, 20) >= 30, `uc-agente-${tone.tone}: ${tone.h}° è rosso`);
+  declared.forEach((tone, index) => {
+    const next = declared[(index + 1) % declared.length];
+    assert.ok(hueDistance(tone.h, next.h) >= 100, `uc-agente-${tone.tone} e uc-agente-${next.tone}: ${hueDistance(tone.h, next.h)}°`);
+  });
+  // Solo tema scuro: le pagine chiare non li ridefiniscono.
+  assert.ok(!block(".survey-light {").body.includes("--uc-agente"), "niente agenti sulle pagine chiare");
+  for (const tone of declared) assert.ok(css.includes(`--color-uc-agente-${tone.tone}: var(--uc-agente-${tone.tone});`), `--color-uc-agente-${tone.tone}`);
+
+  // Le opacità del tag, dal sorgente: il fondo e il bordo, uguali per tutti i toni.
+  const source = read("src/components/use-cases/agent-tag.tsx");
+  const alphaOf = (kind: "bg" | "border", tone: number) => {
+    const match = new RegExp(`\\b${kind}-uc-agente-${tone}\\/(\\d+)\\b`).exec(source);
+    assert.ok(match, `${kind}-uc-agente-${tone}/NN nel tag`);
+    return Number(match[1]) / 100;
+  };
+  const fill = alphaOf("bg", 1);
+  const edge = alphaOf("border", 1);
+  assert.deepEqual([fill, edge], [0.16, 0.55]);
+  for (const tone of declared) assert.deepEqual([alphaOf("bg", tone.tone), alphaOf("border", tone.tone)], [fill, edge], `uc-agente-${tone.tone}`);
+
+  // Le superfici della card: la card, il fondo della pagina e la card al passaggio del mouse.
+  const surfaces: Array<[string, number[]]> = [
+    ["card", t.card.rgb],
+    ["background", t.background.rgb],
+    ["muted/50 sulla card", over(t.muted.rgb, t.card.rgb, 0.5)],
+  ];
+  for (const tone of declared) {
+    const color = t[`uc-agente-${tone.tone}`].rgb;
+    for (const [name, surface] of surfaces) {
+      const tagFill = over(color, surface, fill);
+      atLeast(ratio(color, tagFill), 4.5, `testo di uc-agente-${tone.tone} sul suo fondo, su ${name}`);
+      atLeast(ratio(over(color, surface, edge), surface), 3, `bordo del tag uc-agente-${tone.tone} su ${name}`);
+      // Il nome scritto nel suo colore senza fondo (`AGENT_TEXT_CLASS`) e la barra del valore.
+      atLeast(ratio(color, surface), 4.5, `testo di uc-agente-${tone.tone} su ${name}`);
+      atLeast(ratio(color, surface), 3, `barra uc-agente-${tone.tone} su ${name}`);
+    }
+    // La barra sulla sua traccia (`bg-muted`).
+    atLeast(ratio(color, t.muted.rgb), 3, `barra uc-agente-${tone.tone} sulla traccia`);
+  }
+  // Il tag neutro (un agente senza tono): il bordo dei campi dell'area e il testo pieno.
+  assert.ok(source.includes('NEUTRAL_TAG_CLASS = "border-input text-foreground"'), "tag neutro con border-input");
+  for (const [name, surface] of surfaces) {
+    atLeast(ratio(on(t.input, surface), surface), 3, `bordo del tag neutro su ${name}`);
+    atLeast(ratio(t.foreground.rgb, surface), 4.5, `testo del tag neutro su ${name}`);
+  }
+  // La barra senza agente: il grigio dei testi secondari dell'area.
+  atLeast(ratio(on(t["muted-foreground"], t.muted.rgb), t.muted.rgb), 3, "barra senza agente sulla traccia");
+});
+
 test("il layout dell'area porta il segno, senza un riquadro in più", () => {
   const layout = read("src/app/(dashboard)/dashboard/[workspaceId]/use-cases/layout.tsx");
   assert.ok(layout.includes('data-use-case-root=""'));

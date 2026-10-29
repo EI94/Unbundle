@@ -31,6 +31,7 @@
  */
 import type { UseCase } from "../db/schema.ts";
 import type { CaseStatus } from "../uc/vocab.ts";
+import { agentParamOf, parseAgentParam, type AgentParam } from "./agents.ts";
 import { isAnswerPending } from "./answers.ts";
 import { COST_BANDS, costBandInfo, costLowBandFrom, isCostBand, isCostLowBand, resolveCostBands, type CostBandInfo } from "./cost-bands.ts";
 import { zoneText } from "./format.ts";
@@ -144,6 +145,7 @@ export const HUB_PARAM_KEYS = [
   "q",
   "canale",
   "area",
+  "agente",
   "lab",
   "trimestre",
   "stima",
@@ -166,6 +168,8 @@ export interface HubParams {
   /** Canale come valore di `use_cases.source` (§4.7). */
   canale: string | null;
   area: string | null;
+  /** «Agente»: il prefisso del titolo («LIBRA», `agents.ts`) o «altri», mai una persona. */
+  agente: AgentParam | null;
   lab: string | null;
   trimestre: QuarterCode | typeof LATER_QUARTER_PARAM | null;
   /** «mancante»: il chip «N da stimare»; «fuori-matrice»: le schede con «Benefici e costi» senza un punto nella matrice. */
@@ -218,8 +222,9 @@ function legacyPriority(p: Pick<HubParams, "tipo" | "mostra" | "stima">): Pick<H
  * I parametri della pagina, per chi guarda (§4.2, §4.7, §4.10, §11). Restano solo le chiavi
  * di `HUB_PARAM_KEYS`, con valori dell'elenco; ogni altro parametro (anche sul proponente) si
  * ignora. I vecchi nomi delle viste valgono la Panoramica (`HUB_VIEW_ALIASES`), quelli di
- * «Priorità» con `legacyPriority`. Ai contributori restano la vista (non «Cosa serve»), la
- * ricerca, `apri` e le ricevute; il pannello rapido (`nuovo=1`) solo a chi lo apre (Lateral Space).
+ * «Priorità» con `legacyPriority`. «Agente» è il prefisso del titolo (`parseAgentParam`), mai una
+ * persona. Ai contributori restano la vista (non «Cosa serve»), la ricerca, `apri` e le ricevute,
+ * senza «Agente»; il pannello rapido (`nuovo=1`) solo a chi lo apre (Lateral Space).
  */
 export function parseHubParams(raw: RawHubParams, viewer: UseCaseViewer): HubParams {
   const abilities = abilitiesForUseCase(viewer);
@@ -243,6 +248,7 @@ export function parseHubParams(raw: RawHubParams, viewer: UseCaseViewer): HubPar
     q: boundedText(readParam(raw, "q"), SEARCH_MIN, SEARCH_MAX),
     canale: filters ? oneOf(USE_CASE_SOURCES, readParam(raw, "canale")) : null,
     area: filters ? boundedText(readParam(raw, "area"), 1, AREA_MAX) : null,
+    agente: filters ? parseAgentParam(readParam(raw, "agente")) : null,
     lab: filters ? boundedText(readParam(raw, "lab"), 1, LAB_MAX) : null,
     trimestre: filters ? trimestre : null,
     stima,
@@ -267,6 +273,7 @@ export function hasActiveFilters(params: HubParams, opts: { ignoreKind?: boolean
       params.q ||
       params.canale ||
       params.area ||
+      params.agente ||
       params.lab ||
       params.trimestre ||
       params.stima ||
@@ -812,7 +819,8 @@ export function isOffMatrix(item: Pick<HubItem, "value" | "cost">): boolean {
 /**
  * I filtri della pagina. I contributori hanno solo la ricerca; i revisori anche origine,
  * tipo (non sulle due matrici del menu «⋯», che sono solo «Da costruire»: lì la pagina passa
- * `ignoreKind`), canale, area, AI Lab, trimestre e «da stimare». Nessun filtro per persona.
+ * `ignoreKind`), canale, area, agente (il prefisso del titolo, o «altri» senza: `agentParamOf`),
+ * AI Lab, trimestre e «da stimare». Nessun filtro per persona.
  */
 export function applyHubFilters<T extends AnyHubItem>(
   items: readonly T[],
@@ -826,6 +834,7 @@ export function applyHubFilters<T extends AnyHubItem>(
     if (params.tipo && !opts.ignoreKind && item.kind !== (params.tipo === "diffondere" ? "da_diffondere" : "da_costruire")) return false;
     if (params.canale && (item.source ?? "activity_mapping") !== params.canale) return false;
     if (params.area && (item.area === null || fold(item.area) !== fold(params.area))) return false;
+    if (params.agente && agentParamOf(item.title) !== params.agente) return false;
     if (params.lab && (item.aiLab === null || fold(item.aiLab) !== fold(params.lab))) return false;
     if (params.trimestre) {
       if (item.phase !== "approvato") return false;

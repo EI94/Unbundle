@@ -14,6 +14,7 @@ import { reviewTeamName } from "@/lib/review-team";
 import { activityMappingPath, fullFormPath, type ActivityMappingState } from "@/lib/use-cases/create";
 import { activityMappingReadiness, quickCreateOptions, type QuickCreateOptions } from "@/lib/use-cases/create-data";
 import { toDuplicateCandidates } from "@/lib/use-cases/decision-ui";
+import { agentFilterOptions } from "@/lib/use-cases/agents";
 import { answersOf, type InfoAnswer } from "@/lib/use-cases/answers";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
 import { INFO_PROGRESS_PARAM, type InfoProgressState, type InfoProgressView } from "@/lib/use-cases/info-progress";
@@ -207,6 +208,7 @@ function queryOf(params: HubParams, view: HubView): HubQuery {
   if (params.q) query.q = params.q;
   if (params.canale) query.canale = params.canale;
   if (params.area) query.area = params.area;
+  if (params.agente) query.agente = params.agente;
   if (params.lab) query.lab = params.lab;
   if (params.trimestre) query.trimestre = params.trimestre;
   if (params.stima) query.stima = params.stima;
@@ -225,15 +227,16 @@ const byLabel = (a: FilterOption, b: FilterOption) => a.label.localeCompare(b.la
 const CHART_LABEL: Record<HubChartParam, string> = { matrice: PRIORITY_TEXT.matrix, benefici: PRIORITY_TEXT.benefits, curva: HUB_TEXT.curve };
 
 /**
- * Le voci di «Altri filtri» dagli use case del workspace: canali, aree, AI Lab e trimestri che ci
- * sono. Un valore dell'indirizzo che nessuno use case ha più (un link condiviso, l'ultimo use case
- * di quel trimestre spostato) resta scelto, con il suo testo: «T1 2027», «MCP del team».
+ * Le voci di «Altri filtri» dagli use case del workspace: canali, aree, agenti (il prefisso del
+ * titolo), AI Lab e trimestri che ci sono. Un valore dell'indirizzo che nessuno use case ha più (un
+ * link condiviso, l'ultimo use case di quel trimestre spostato) resta scelto, con il suo testo:
+ * «T1 2027», «MCP del team».
  */
 function moreFilterOptions(
   items: readonly HubItem[],
   params: HubParams,
   info: UseCaseHubData["info"],
-): { channels: FilterOption[]; areas: FilterOption[]; labs: FilterOption[]; quarters: FilterOption[]; infos: FilterOption[] } {
+): { channels: FilterOption[]; areas: FilterOption[]; agents: FilterOption[]; labs: FilterOption[]; quarters: FilterOption[]; infos: FilterOption[] } {
   const channels = new Map<string, string>();
   const areas = new Map<string, string>();
   const labs = new Map<string, string>();
@@ -258,6 +261,8 @@ function moreFilterOptions(
   return {
     channels: asOptions(channels),
     areas: asOptions(areas),
+    // «Agente»: dai titoli, «Altri use case» in fondo; senza prefissi il campo non c'è.
+    agents: agentFilterOptions(items, params.agente),
     labs: asOptions(labs),
     quarters: [
       ...[...quarters].sort(compareQuarters).map((value) => ({ value, label: quarterLabel(value) })),

@@ -34,6 +34,7 @@ export const FILTER_TEXT = Object.freeze({
   more: "Altri filtri",
   channel: "Canale",
   area: "Area",
+  agent: "Agente",
   lab: "AI Lab",
   quarter: "Trimestre",
   anyMasculine: "Tutti",
@@ -59,9 +60,10 @@ export interface FilterBarProps {
   kind: "filtro" | "nessuno";
   /**
    * Le voci di «Altri filtri», dagli use case del workspace e con il valore scelto (solo revisori).
+   * `agents`: «Agente» (il prefisso del titolo, mai una persona), solo se un titolo lo ha; vuoto, il campo non c'è.
    * `infos`: «Informazioni» (Raccolta informazioni), solo gli stati che hanno una scheda; vuoto, il campo non c'è.
    */
-  more?: { channels: FilterOption[]; areas: FilterOption[]; labs: FilterOption[]; quarters: FilterOption[]; infos?: FilterOption[] };
+  more?: { channels: FilterOption[]; areas: FilterOption[]; agents?: FilterOption[]; labs: FilterOption[]; quarters: FilterOption[]; infos?: FilterOption[] };
   /** Filtri attivi: compare «Togli i filtri». */
   active: boolean;
   clearHref: string;
@@ -120,7 +122,8 @@ const SEARCH_DEBOUNCE_MS = 350;
  * (un filtro in ogni vista; non sulle due matrici del menu «⋯»), «Tutte · AI Adoption · AI
  * Transformation» (dentro «Altri filtri» al telefono e quando la pagina è più stretta di
  * {@link ORIGIN_INLINE}), «Cerca per titolo o codice», «Altri
- * filtri» (Canale, Area, AI Lab, Trimestre). Contributori: solo «Cerca per titolo». Ogni filtro è
+ * filtri» (Canale, Area, Agente, AI Lab, Trimestre, Informazioni; «Agente» è il prefisso del titolo,
+ * mai una persona). Contributori: solo «Cerca per titolo». Ogni filtro è
  * un parametro dell'indirizzo; con filtri attivi compare «Togli i filtri». Filtri per proponente
  * non esistono (art. 15.4): `parseHubParams` li scarterebbe comunque.
  */
@@ -349,6 +352,8 @@ function MoreFilters({
   const fields: Array<{ key: HubParamKey; label: string; any: string; list: FilterOption[] }> = [
     { key: "canale", label: FILTER_TEXT.channel, any: FILTER_TEXT.anyMasculine, list: options.channels },
     { key: "area", label: FILTER_TEXT.area, any: FILTER_TEXT.anyFeminine, list: options.areas },
+    // «Agente»: il prefisso del titolo («LIBRA L1 · …»), mai una persona; senza prefissi il campo non c'è.
+    ...(options.agents?.length ? [{ key: "agente" as const, label: FILTER_TEXT.agent, any: FILTER_TEXT.anyMasculine, list: options.agents }] : []),
     { key: "lab", label: FILTER_TEXT.lab, any: FILTER_TEXT.anyMasculine, list: options.labs },
     { key: "trimestre", label: FILTER_TEXT.quarter, any: FILTER_TEXT.anyMasculine, list: options.quarters },
     // «Informazioni»: lo stato della raccolta di ogni scheda, mai una persona; senza stati il campo non c'è.

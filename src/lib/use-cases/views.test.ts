@@ -154,6 +154,7 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
       q: "  smistamento   richieste ",
       canale: "slack_proposed",
       area: "Finanza",
+      agente: "LIBRA",
       lab: "AI Lab Prova",
       trimestre: "2027-Q1",
       stima: "mancante",
@@ -182,6 +183,7 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
     q: "smistamento richieste",
     canale: "slack_proposed",
     area: "Finanza",
+    agente: "LIBRA",
     lab: "AI Lab Prova",
     trimestre: "2027-Q1",
     stima: null,
@@ -197,7 +199,7 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
 test("parseHubParams: valori fuori elenco diventano null, anche da URLSearchParams e con parametri ripetuti", () => {
   const lead = viewer("function_lead");
   const params = parseHubParams(
-    new URLSearchParams("vista=tutte&tipo=altro&mostra=griglia&origine=entrambe&q=a&canale=email&trimestre=2027-Q5&stima=si&info=bloccate&apri=12&nuovo=1&thanks=2&created=x&joined=0"),
+    new URLSearchParams("vista=tutte&tipo=altro&mostra=griglia&origine=entrambe&q=a&canale=email&agente=libra&trimestre=2027-Q5&stima=si&info=bloccate&apri=12&nuovo=1&thanks=2&created=x&joined=0"),
     lead,
   );
   for (const key of HUB_PARAM_KEYS) {
@@ -215,11 +217,11 @@ test("parseHubParams: valori fuori elenco diventano null, anche da URLSearchPara
 test("parseHubParams: al contributore restano vista (non «Cosa serve»), ricerca, apri e ricevute", () => {
   const contributor = viewer("contributor");
   const params = parseHubParams(
-    { vista: "priorita", tipo: "costruire", mostra: "matrice", origine: "adoption", q: "prezzi", canale: "learning", area: "Finanza", lab: "Lab", trimestre: "2027-Q1", stima: "mancante", info: "senza-risposta", nuovo: "1", thanks: "1", created: uuid(3), apri: uuid(4) },
+    { vista: "priorita", tipo: "costruire", mostra: "matrice", origine: "adoption", q: "prezzi", canale: "learning", area: "Finanza", agente: "LIBRA", lab: "Lab", trimestre: "2027-Q1", stima: "mancante", info: "senza-risposta", nuovo: "1", thanks: "1", created: uuid(3), apri: uuid(4) },
     contributor,
   );
   assert.equal(params.vista, "panoramica", "i vecchi nomi valgono la Panoramica");
-  for (const key of ["tipo", "mostra", "origine", "canale", "area", "lab", "trimestre", "stima", "info"] as const) assert.equal(params[key], null, key);
+  for (const key of ["tipo", "mostra", "origine", "canale", "area", "agente", "lab", "trimestre", "stima", "info"] as const) assert.equal(params[key], null, key);
   assert.equal(params.nuovo, false);
   assert.equal(params.q, "prezzi");
   assert.equal(params.thanks, true);
@@ -249,6 +251,10 @@ test("hasActiveFilters: vista, apri e ricevute non sono filtri", () => {
   assert.equal(hasActiveFilters(parseHubParams({ vista: "panoramica", tipo: "diffondere" }, lead)), true);
   // «Raccolta informazioni» è un filtro (Parte 2).
   assert.equal(hasActiveFilters(parseHubParams({ info: "in-attesa" }, lead)), true);
+  // «Agente» è un filtro (rilascio «Panoramica»), anche «Altri use case».
+  assert.equal(hasActiveFilters(parseHubParams({ agente: "LIBRA" }, lead)), true);
+  assert.equal(hasActiveFilters(parseHubParams({ agente: "altri" }, lead)), true);
+  assert.equal(hasActiveFilters(parseHubParams({ agente: "libra" }, lead)), false, "le minuscole non valgono");
   assert.equal(hasActiveFilters(parseHubParams({ info: "bloccate" }, lead)), false, "un valore sconosciuto non vale");
 });
 
@@ -399,6 +405,31 @@ test("filtri dei revisori: origine, tipo, canale, area, AI Lab, trimestre, da st
     applyHubFilters(all, parseHubParams({ tipo: "diffondere" }, lead), { ignoreKind: true }).map((i) => i.id),
     [a.id, b.id, c.id],
   );
+});
+
+test("filtro «Agente»: il prefisso del titolo, «altri» senza; i contributori restano come sono", () => {
+  const lead = viewer("function_lead");
+  const l1 = item({ title: "LIBRA L1 · Lettura delle fatture estere" });
+  const l2 = item({ title: "LIBRA L2 · Riconciliazione dei pagamenti" });
+  const auto = item({ title: "AUTO H1 · Cedolini consegnati" });
+  const plain = item({ title: "Smistamento delle richieste" });
+  const all = [l1, auto, plain, l2];
+  const filter = (raw: Record<string, string>) => applyHubFilters(all, parseHubParams(raw, lead)).map((i) => i.id);
+  assert.deepEqual(filter({ agente: "LIBRA" }), [l1.id, l2.id]);
+  assert.deepEqual(filter({ agente: "AUTO" }), [auto.id]);
+  assert.deepEqual(filter({ agente: "altri" }), [plain.id], "gli use case senza prefisso");
+  assert.deepEqual(filter({ agente: "SIRIO" }), [], "un agente che non c'è");
+  assert.deepEqual(filter({ agente: "libra" }), [l1.id, auto.id, plain.id, l2.id], "un valore non valido non filtra");
+  assert.deepEqual(filter({ agente: "LIBRA", q: "pagamenti" }), [l2.id], "con la ricerca");
+  // Le righe dei contributori non si filtrano (e il contributore non ha «Agente»).
+  const own = contributorItem({ title: "Smistamento turni" });
+  assert.deepEqual(applyHubFilters([own], parseHubParams({ agente: "LIBRA" }, lead)), [own]);
+  assert.equal(parseHubParams({ agente: "LIBRA" }, viewer("contributor")).agente, null);
+  assert.equal(parseHubParams({ agente: "LIBRA" }, viewer("learner")).agente, null);
+});
+
+test("HUB_PARAM_KEYS: «agente» subito dopo «area», nell'ordine degli indirizzi", () => {
+  assert.equal(HUB_PARAM_KEYS.indexOf("agente"), HUB_PARAM_KEYS.indexOf("area") + 1);
 });
 
 test("filtro «Informazioni»: lo stato derivato della scheda, i contributori restano come sono", () => {

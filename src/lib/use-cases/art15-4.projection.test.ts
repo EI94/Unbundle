@@ -119,6 +119,8 @@ test("parseHubParams scarta proponente, proposedBy, autore, persona e ogni param
   for (const role of ["transformation_lead", "exec_sponsor", "function_lead", "analyst", "contributor", "learner", null]) {
     const params = parseHubParams(raw, { ...contributor, role });
     assert.deepEqual(Object.keys(params), [...HUB_PARAM_KEYS], String(role));
+    // «Agente» è il prefisso del titolo, mai una persona: senza `agente` nell'indirizzo resta vuoto.
+    assert.equal(params.agente, null, String(role));
     for (const value of Object.values(params)) {
       assert.ok(value !== OTHER_EMAIL && value !== OTHER && value !== "proponente" && value !== "persona", String(role));
     }
