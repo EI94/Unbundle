@@ -18,7 +18,9 @@
  *   una scheda chiusa non conta), prende il colore e il nome di quell'agente; gli altri gruppi,
  *   anche quelli con agenti diversi, sono grigi e i tre colori dei gruppi non ci sono. Lo stesso
  *   nella «Matrice Valore × Costo», che non ha gruppi: ogni punto ha il tono dell'agente del suo
- *   titolo (`agentPointSlot`), il grigio senza.
+ *   titolo (`agentPointSlot`), il grigio senza. Il grigio ha un nome solo, «Altri use case», come in
+ *   «Per agente» e nel filtro «Agente», e lo dice la legenda; le bolle e i segmenti non dicono il
+ *   loro colore, come i punti della matrice: niente «Gruppo …», «Senza gruppo» o «Altri gruppi».
  * - **Bolle** (`buildBenefitBubbles`): le schede della vista con un modello e la facilità; x la
  *   facilità da 1 a 5, y il beneficio contato all'anno, raggio `5 + 13·√(avvio / avvio massimo)`
  *   in pixel; il bordo dice quando (questo trimestre, prossimo, più avanti) e il riempimento
@@ -181,12 +183,13 @@ export function groupSlot(palette: GroupPalette, group: string | null): GroupSlo
 }
 
 /**
- * Il gruppo di una bolla o di un segmento, a parole: «Gruppo Vendite», «Senza gruppo»; un gruppo
- * che è un agente con il nome dell'agente, «LIBRA» o «AUTO», come il suo tag. null con un colore solo.
+ * Il gruppo di una bolla o di un segmento, a parole: «Gruppo Vendite», «Senza gruppo». null con un
+ * colore solo, e con gli agenti nei titoli: il colore lo dice la legenda, come per i punti della
+ * matrice, e il grigio ha un nome solo, «Altri use case».
  */
 export function groupLabelOf(palette: GroupPalette, group: string | null): string | null {
-  if (palette.single) return null;
-  return agentOfGroup(palette, group)?.agent ?? groupText(group);
+  if (palette.single || palette.agents) return null;
+  return groupText(group);
 }
 
 export interface GroupLegendEntry {
@@ -209,7 +212,8 @@ export function otherGroupsLabel(others: readonly string[], ungrouped: boolean):
 
 /**
  * La legenda dei gruppi di un grafico: solo i colori che ci sono, nell'ordine dei colori; in fondo
- * il grigio, con i nomi dei gruppi che ci finiscono e «senza gruppo» se ci sono schede senza.
+ * il grigio, con i nomi dei gruppi che ci finiscono e «senza gruppo» se ci sono schede senza. Con
+ * gli agenti nei titoli il grigio è «Altri use case», come nella «Matrice Valore × Costo».
  */
 export function groupLegend(palette: GroupPalette, groups: readonly (string | null)[]): GroupLegendEntry[] {
   if (palette.single) return [];
@@ -223,7 +227,8 @@ export function groupLegend(palette: GroupPalette, groups: readonly (string | nu
         .filter(([, slot]) => present.has(slot))
         .sort(([, a], [, b]) => a - b)
         .map(([label, slot]) => ({ slot, label }));
-  if (present.has(0)) {
+  if (present.has(0) && palette.agents) entries.push({ slot: 0, label: NO_AGENT_LABEL });
+  else if (present.has(0)) {
     const others = [...new Set(groups.filter((group): group is string => group !== null && groupSlot(palette, group) === 0))].sort((a, b) => a.localeCompare(b, "it-IT"));
     entries.push({ slot: 0, label: otherGroupsLabel(others, groups.includes(null)) });
   }
@@ -375,7 +380,7 @@ export interface BenefitBubble {
   /** Raggio in pixel. */
   r: number;
   group: string | null;
-  /** «Gruppo Vendite», «Senza gruppo»; null se nessuna scheda ha un gruppo (un colore solo). */
+  /** «Gruppo Vendite», «Senza gruppo»; null con un colore solo o con gli agenti nei titoli (`groupLabelOf`). */
   groupLabel: string | null;
   slot: GroupSlot;
   when: BubbleWhen;
@@ -636,7 +641,7 @@ export interface LeverSegment {
   title: string;
   /** Il gruppo dello use case (`groupOf`); null senza gruppo. */
   group: string | null;
-  /** «Gruppo Vendite», «Senza gruppo»; null se nessuna scheda ha un gruppo (un colore solo). */
+  /** «Gruppo Vendite», «Senza gruppo»; null con un colore solo o con gli agenti nei titoli (`groupLabelOf`). */
   groupLabel: string | null;
   slot: GroupSlot;
   /** Euro all'anno di questo tipo per questo use case. */

@@ -4,6 +4,7 @@ import * as nodeModule from "node:module";
 import { agentPalette, agentToneOf } from "../../lib/use-cases/agents.ts";
 import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
 import type { ValuationModel } from "../../lib/use-cases/valuation.ts";
+import { groupPalette } from "../../lib/use-cases/value-charts.ts";
 import { DEFAULT_VALUE_PARAMS, valueModelSchema, type ValueParams } from "../../lib/use-cases/value-model.ts";
 import { projectHubItem, type HubContext, type HubItem, type HubSourceRow } from "../../lib/use-cases/views.ts";
 import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
@@ -250,6 +251,47 @@ test("«Matrice Valore × Costo» con gli agenti nei titoli: i punti nel tono de
   assert.ok(byOrigin.includes("bg-indigo-500") && byOrigin.includes("border-teal-500") && !byOrigin.includes("uc-agente"));
   assert.ok(byOrigin.includes(">AI Transformation<") && !byOrigin.includes("Altri use case"));
   assert.equal(view({ items }), byOrigin, "senza tavolozza come senza agenti");
+});
+
+test("con gli agenti nei titoli il grigio ha un nome solo: «Altri use case» nelle tre legende, nessun «Gruppo …» sui segni", () => {
+  // TopJet con «TJ-0051» (29/10/2026): una copia senza il prefisso nel gruppo «Varie».
+  const model = (group: string) => ({ ...COUNTED, group });
+  const auto = item({ title: "AUTO X1 · Estratti conto in Echo", valueModel: model("Automazioni"), customScores: HIGH, costEurOnce: 4_000 });
+  const libra = item({ title: "LIBRA L1 · Lettura delle fatture estere", valueModel: model("LIBRA"), customScores: HIGH, costEurOnce: 18_000 });
+  const copy = item({ title: "Controllo dei preventivi dei fornitori di catering", valueModel: model("Varie"), customScores: HIGH, costEurOnce: 9_000 });
+  const items = [auto, libra, copy];
+  const agents = agentPalette([{ title: auto.title }, { title: libra.title }]);
+  const palette = groupPalette(items, PARAMS, agents);
+  const bubbles = view({ chart: "benefici", items, planItems: items, agents, palette, query: { vista: "panoramica", mostra: "benefici" } });
+  const curve = view({ chart: "curva", items, planItems: items, agents, palette, query: { vista: "panoramica", mostra: "curva" } });
+  const matrixHtml = view({ items, agents });
+  /** Le voci di una legenda, dal suo attributo alla sua chiusura. */
+  const legendOf = (html: string, at: string, end: string) => {
+    const start = html.indexOf(">", html.indexOf(at)) + 1;
+    return html.slice(start, html.indexOf(end, start));
+  };
+  const texts = (legend: string) => legend.replace(/<[^>]+>/g, "|").split("|").filter(Boolean);
+  const legends = [
+    legendOf(bubbles, 'data-slot="bubbles-legend"', "</p>"),
+    legendOf(curve, "<figcaption", "</figcaption>"),
+    legendOf(matrixHtml, 'data-slot="matrix-legend"', "</p>"),
+  ];
+  for (const legend of legends) {
+    assert.ok(texts(legend).includes("Altri use case"), legend);
+    assert.ok(legend.includes("bg-uc-serie-altro"), "il grigio");
+  }
+  assert.deepEqual(texts(legends[0]).slice(0, 3), ["AUTO", "LIBRA", "Altri use case"]);
+  // La bolla e il segmento grigi non dicono il loro colore, come il punto della matrice: lo dice la legenda.
+  assert.ok(bubbles.includes(`aria-label="${copy.code} ${copy.title}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`), "bolla");
+  assert.ok(curve.includes(`aria-label="${copy.code} ${copy.title}: 4.043 € all&#x27;anno · Risparmio di tempo"`), "segmento");
+  assert.ok(bubbles.includes(`aria-label="${auto.code} ${auto.title}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`), "nemmeno «· AUTO»");
+  for (const html of [bubbles, curve]) {
+    for (const text of ["Altri gruppi", "Gruppo ", "Senza gruppo"]) assert.ok(!html.includes(text), text);
+  }
+  // Senza agenti nei titoli: i nomi dei gruppi, come sempre.
+  const plain = agentPalette([{ title: "Strategia per volo" }]);
+  const byGroup = view({ chart: "benefici", items, planItems: items, agents: plain, query: { vista: "panoramica", mostra: "benefici" } });
+  assert.ok(byGroup.includes("· Gruppo Varie") && !byGroup.includes("Altri use case"));
 });
 
 test("i vuoti dei grafici: «Nessuno use case da mettere in ordine», o «Togli i filtri» che tiene il grafico", () => {

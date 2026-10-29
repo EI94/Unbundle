@@ -3,9 +3,9 @@ import { cn } from "@/lib/utils";
 
 /**
  * I colori dei gruppi nei grafici di «Benefici e costi»: i token `--uc-serie-*` di globals.css
- * (tema scuro di base e chiaro), tre colori e il grigio di «Altro» (0); con gli agenti nei titoli i
- * toni degli agenti (`--uc-agente-*`, gli stessi dei tag della Panoramica). Le classi sono scritte
- * per intero, così Tailwind le trova.
+ * (tema scuro di base e chiaro), tre colori e il grigio (0) degli altri gruppi; con gli agenti nei
+ * titoli i toni degli agenti (`--uc-agente-*`, gli stessi dei tag della Panoramica) e il grigio di
+ * «Altri use case». Le classi sono scritte per intero, così Tailwind le trova.
  */
 export const SLOT_FILL: Readonly<Record<GroupSlot, string>> = {
   0: "bg-uc-serie-altro",

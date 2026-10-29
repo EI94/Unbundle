@@ -67,6 +67,8 @@ const ids = {
   wsN: randomUUID(),
   /** Le somme della Panoramica, con gli agenti nei titoli e i centesimi. */
   wsS: randomUUID(),
+  /** Con gli agenti nei titoli (rilascio «Panoramica») e i gruppi di «Benefici e costi». */
+  wsT: randomUUID(),
   ls: randomUUID(),
   builder: randomUUID(),
   manager: randomUUID(),
@@ -126,6 +128,8 @@ const codeBase = 30_000 + Math.floor(Math.random() * 60_000);
 let codeSeq = 0;
 const cards = {} as Record<"a" | "b" | "small" | "plain" | "plainN", { id: string; code: string }>;
 const sumCards = {} as Record<"libraL1" | "libraL2" | "libraL3" | "orsaO1", { id: string; code: string }>;
+/** Il workspace T: LIBRA nel gruppo «LIBRA», AUTO in «Automazioni», una scheda senza prefisso in «Varie». */
+const agentCards = {} as Record<"libra" | "auto" | "varie", { id: string; code: string }>;
 
 async function seed(s: {
   workspaceId: string;
@@ -299,23 +303,24 @@ before(async () => {
   const quarter = await import("./quarter.ts");
   const thisQuarter = quarter.currentQuarter();
 
-  process.env.USE_CASE_HUB_WORKSPACES = [ids.wsV, ids.wsN, ids.wsS].join(",");
+  process.env.USE_CASE_HUB_WORKSPACES = [ids.wsV, ids.wsN, ids.wsS, ids.wsT].join(",");
   process.env.UC_LS_EMAIL_DOMAINS = "ls.test";
   delete process.env.UC_ENABLED;
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione di prova valore', $2)`, [ids.org, `hub-grafici-${ids.org}`]);
   await q(
-    `INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'Prova grafici'), ($2::uuid, $3::uuid, 'Prova senza modelli'), ($4::uuid, $3::uuid, 'Prova somme')`,
-    [ids.wsV, ids.wsN, ids.org, ids.wsS],
+    `INSERT INTO workspaces (id, organization_id, name)
+     VALUES ($1::uuid, $3::uuid, 'Prova grafici'), ($2::uuid, $3::uuid, 'Prova senza modelli'), ($4::uuid, $3::uuid, 'Prova somme'), ($5::uuid, $3::uuid, 'Prova grafici con agenti')`,
+    [ids.wsV, ids.wsN, ids.org, ids.wsS, ids.wsT],
   );
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
-    for (const workspaceId of [ids.wsV, ids.wsN, ids.wsS]) {
+    for (const workspaceId of [ids.wsV, ids.wsN, ids.wsS, ids.wsT]) {
       await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [workspaceId, ids[person], ROLES[person]]);
     }
   }
   // Il primo mese della curva fisso, come i golden: le cifre non dipendono dal giorno della prova.
-  for (const workspaceId of [ids.wsV, ids.wsS]) {
+  for (const workspaceId of [ids.wsV, ids.wsS, ids.wsT]) {
     await q(`INSERT INTO workspace_scoring_models (workspace_id, impact_flag_enabled, config) VALUES ($1::uuid, false, $2::jsonb)`, [
       workspaceId,
       JSON.stringify({ valueParams: { originMonth: "2026-11" } }),
@@ -352,6 +357,12 @@ before(async () => {
     valueEurYear: 12_250,
   });
   sumCards.orsaO1 = await seed({ workspaceId: ids.wsS, title: `ORSA O1 · Fatture ${suffix}`, status: "in_progress", valueModel: FIX_B });
+  // Workspace T: i toni in ordine alfabetico; «Archivio delle ricevute» (come «TJ-0051» della prova
+  // di TopJet) non ha il prefisso, nel gruppo «Varie».
+  const scored = { customScores: { impact: { efficiency: 4, profitability: 4 } }, costEurOnce: 20_000, valueEurYear: 30_000 };
+  agentCards.libra = await seed({ workspaceId: ids.wsT, title: `LIBRA L1 · Fatture ${suffix}`, targetQuarter: thisQuarter, valueModel: { ...FIX_A, group: "LIBRA" }, ...scored });
+  agentCards.auto = await seed({ workspaceId: ids.wsT, title: `AUTO X1 · Estratti conto ${suffix}`, targetQuarter: thisQuarter, valueModel: { ...FIX_A, group: "Automazioni" }, ...scored });
+  agentCards.varie = await seed({ workspaceId: ids.wsT, title: `Archivio delle ricevute ${suffix}`, targetQuarter: thisQuarter, valueModel: { ...FIX_A, group: "Varie" }, ...scored });
 });
 
 after(async () => {
@@ -361,7 +372,7 @@ after(async () => {
     else process.env[key] = value;
   }
   if (!enabled) return;
-  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.wsV, ids.wsN, ids.wsS]]);
+  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.wsV, ids.wsN, ids.wsS, ids.wsT]]);
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [Object.keys(emails).map((person) => ids[person as Person])]);
   await q(`DELETE FROM organizations WHERE id = $1::uuid`, [ids.org]);
 });
@@ -560,6 +571,37 @@ test("«Curva del valore» dal menu «⋯»: J-curve con entrata in uso e paregg
   assert.ok(none.includes('data-chart="curva"') && none.includes("Nessuno use case con questi filtri."));
   assert.match(none, new RegExp(`href="/dashboard/${ids.wsV}/use-cases\\?vista=panoramica&amp;mostra=curva"[^>]*>Togli i filtri<`));
   assert.ok(!none.includes('data-slot="roadmap-value"'));
+});
+
+// ─── Con gli agenti nei titoli ───────────────────────────────────────
+
+/** Le voci di una legenda, dal suo attributo `start` a `end`. */
+function legendOf(page: string, start: string, end: string): string[] {
+  const from = page.indexOf(">", page.indexOf(start)) + 1;
+  return page.slice(from, page.indexOf(end, from)).replace(/<[^>]+>/g, "|").split("|").filter(Boolean);
+}
+
+test("con gli agenti nei titoli il grigio ha un nome solo, «Altri use case», nelle tre legende; nessun segno dice il suo gruppo", opts, async () => {
+  const bubbles = await html("builder", ids.wsT, { vista: "panoramica", mostra: "benefici" });
+  const curve = await html("builder", ids.wsT, { vista: "panoramica", mostra: "curva" });
+  const matrix = await html("builder", ids.wsT, { vista: "panoramica", mostra: "matrice" });
+  assert.deepEqual(legendOf(bubbles, 'data-slot="bubbles-legend"', "</p>").slice(0, 3), ["AUTO", "LIBRA", "Altri use case"]);
+  assert.deepEqual(legendOf(curve, '<figcaption class="flex', "</figcaption>"), ["AUTO", "LIBRA", "Altri use case"]);
+  assert.deepEqual(legendOf(matrix, 'data-slot="matrix-legend"', "</p>").slice(0, 3), ["AUTO", "LIBRA", "Altri use case"]);
+  // La bolla e il segmento grigi finiscono con il quando e il tipo di ritorno, come il punto della matrice.
+  const { code } = agentCards.varie;
+  assert.ok(
+    bubbles.includes(`aria-label="${code} Archivio delle ricevute ${suffix}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`),
+    itemOf(bubbles, `data-bubble="${agentCards.varie.id}"`),
+  );
+  assert.ok(itemOf(curve, 'data-lever="tempo"').includes(`aria-label="${code} Archivio delle ricevute ${suffix}: 4.043 € all&#x27;anno · Risparmio di tempo"`));
+  for (const page of [bubbles, curve, matrix]) {
+    const chart = page.slice(page.indexOf('data-slot="hub-chart"'));
+    for (const text of ["Altri gruppi", "Gruppo ", "Senza gruppo"]) assert.ok(!chart.includes(text), text);
+  }
+  // Il contributore non vede grafici.
+  const theirs = await html("contributor", ids.wsT, { vista: "panoramica", mostra: "benefici" });
+  assert.ok(!theirs.includes("data-chart=") && !theirs.includes("Altri use case"));
 });
 
 // ─── Come oggi ───────────────────────────────────────────────────────

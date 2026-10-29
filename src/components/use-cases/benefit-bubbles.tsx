@@ -45,7 +45,11 @@ export function bubbleSummaryParts(bubble: BenefitBubble): string[] {
   return parts;
 }
 
-/** «Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre · Gruppo Vendite» (con «· scaduto» se il trimestre è passato). */
+/**
+ * «Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre · Gruppo Vendite»
+ * (con «· scaduto» se il trimestre è passato); con gli agenti nei titoli senza il gruppo, che la
+ * legenda dice già.
+ */
 export function bubbleSummary(bubble: BenefitBubble): string {
   return bubbleSummaryParts(bubble).join(FIGURE_SEPARATOR);
 }
