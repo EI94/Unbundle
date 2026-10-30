@@ -153,7 +153,7 @@ test("le ancore che cambiano vista usano `HashFocusLink`, e l'hub monta `HashFoc
 
 // «Per agente» aperto dall'indirizzo (rilascio «Panoramica», rifiniture): al telefono le card stavano
 // 1100 px sotto la piega. All'apertura della pagina vengono in vista, e la loro sezione prende il fuoco;
-// dopo un clic nell'app la pagina e il fuoco restano a Next.
+// dopo un clic nell'app la pagina e il fuoco restano a Next e a `HashFocusLink`.
 
 test("«Per agente» viene in vista solo all'apertura della pagina, ancora ferma e senza ancora", () => {
   const LOAD = { fromAddress: true, hash: "", scrollY: 0, focused: false };
