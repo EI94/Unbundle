@@ -14,18 +14,20 @@
  * - **Contributori.** Le stesse corsie, per titolo: nessuna cifra, niente «Scaduto» né trimestre a
  *   parte (la pillola «Approvato · T1 2027» lo dice già), nessun giudizio sul team.
  * - **Per agente.** Gli stessi use case delle corsie per agente del titolo (`agentGroups`): quanti,
- *   gli euro contati e in che corsie stanno.
+ *   gli euro contati e in che corsie stanno; sotto, a parte, gli euro contati dei suoi use case «In
+ *   realizzazione» («+ 4.043 € in realizzazione»), che la sezione sotto conta già.
  * - **Somme.** Gli euro di una corsia, di «In realizzazione» e di un gruppo «Per agente» sono la
  *   somma delle cifre delle loro card, ognuna già arrotondata all'euro come la scrive la card
  *   (`shownPerYearEur`); così anche la cifra in testa (`roadmapTotals`). Le parti a schermo fanno
- *   sempre il totale, con qualunque filtro.
+ *   sempre il totale, con qualunque filtro. La cifra di un agente più i suoi «in realizzazione» fanno
+ *   la cifra in testa delle sue corsie (`?agente=LIBRA`).
  *
  * Art. 15.4: corsie, ordini, gruppi e colori non leggono mai chi ha proposto; l'agente è il prefisso
  * del titolo, mai una persona.
  *
  * Modulo puro: solo import relativi `.ts`.
  */
-import { agentLabel, agentOfTitle, NO_AGENT_PARAM, type AgentParam } from "./agents.ts";
+import { agentLabel, agentOfTitle, agentParamOf, NO_AGENT_PARAM, type AgentParam } from "./agents.ts";
 import { FIGURE_SEPARATOR, formatEuro, formatInteger, perYearText, shownPerYear, shownPerYearEur, valueScreenText, type ValueParts } from "./format.ts";
 import { quarterLabel, quarterOfDate, nextQuarter, WHEN_LATER_LABEL } from "./quarter.ts";
 import type { QuarterCode } from "./types.ts";
@@ -216,6 +218,11 @@ export function laneCountedText(eur: number): string {
   return `${formatEuro(eur)} contati all'anno`;
 }
 
+/** «+ 4.043 € in realizzazione»: in «Per agente», sotto la cifra dell'agente, gli euro contati dei suoi use case in realizzazione. */
+export function agentInProgressText(eur: number): string {
+  return `+ ${formatEuro(eur)} in realizzazione`;
+}
+
 /** «3 use case · 24.500 € contati all'anno»; «3 use case» senza euro contati (e ai contributori). */
 export function laneSummaryText(count: number, eur: number | null): string {
   const cases = `${formatInteger(count)} use case`;
@@ -277,6 +284,11 @@ export interface AgentGroup {
   perYearEur: number;
   /** Quanti hanno gli euro contati. */
   counted: number;
+  /**
+   * Gli euro contati all'anno dei suoi use case «In realizzazione», sommati come `perYearEur`; fuori
+   * da `perYearEur`, perché «In realizzazione» sotto le card li conta già. 0 senza.
+   */
+  inProgressEur: number;
   /** In che corsie stanno, nell'ordine delle corsie; le corsie vuote no. */
   lanes: Array<{ key: LaneKey; short: string; label: string; count: number }>;
 }
@@ -284,9 +296,14 @@ export interface AgentGroup {
 /**
  * I gruppi «Per agente» dalle corsie: un giro sulle corsie, nel loro ordine. In testa chi ha più
  * euro contati, poi più use case, poi il nome; «Altri use case» in fondo. Gli use case e gli euro
- * dei gruppi sono quelli delle corsie, né uno di più né uno di meno.
+ * dei gruppi sono quelli delle corsie, né uno di più né uno di meno. Gli use case in realizzazione
+ * (`inProgress`) danno solo `inProgressEur`, e solo a un gruppo che ha già use case nelle corsie:
+ * un agente che ha solo use case in realizzazione non ha una card.
  */
-export function agentGroups(lanes: readonly Lane<Pick<HubItem, "title" | "value">>[]): AgentGroup[] {
+export function agentGroups(
+  lanes: readonly Lane<Pick<HubItem, "title" | "value">>[],
+  inProgress: readonly Pick<HubItem, "title" | "value">[] = [],
+): AgentGroup[] {
   const groups = new Map<AgentParam, AgentGroup>();
   for (const lane of lanes) {
     for (const { item } of lane.entries) {
@@ -294,7 +311,7 @@ export function agentGroups(lanes: readonly Lane<Pick<HubItem, "title" | "value"
       const param = agent ?? NO_AGENT_PARAM;
       let group = groups.get(param);
       if (!group) {
-        group = { param, agent, label: agentLabel(param), count: 0, perYearEur: 0, counted: 0, lanes: [] };
+        group = { param, agent, label: agentLabel(param), count: 0, perYearEur: 0, counted: 0, inProgressEur: 0, lanes: [] };
         groups.set(param, group);
       }
       group.count += 1;
@@ -307,6 +324,10 @@ export function agentGroups(lanes: readonly Lane<Pick<HubItem, "title" | "value"
       if (chip) chip.count += 1;
       else group.lanes.push({ key: lane.key, short: lane.short, label: lane.label, count: 1 });
     }
+  }
+  for (const item of inProgress) {
+    const group = groups.get(agentParamOf(item.title));
+    if (group) group.inProgressEur += shownPerYearEur(item.value) ?? 0;
   }
   return [...groups.values()].sort(
     (a, b) =>

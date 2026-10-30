@@ -218,7 +218,7 @@ export function PanoramaLanes({
             </p>
           ) : null}
           {byAgent ? (
-            <AgentGrid groups={agentGroups(lanes.lanes as Lane<HubItem>[])} hrefOf={agentHref} agents={agents} />
+            <AgentGrid groups={agentGroups(lanes.lanes as Lane<HubItem>[], lanes.inProgress as HubItem[])} hrefOf={agentHref} agents={agents} />
           ) : (
             <div data-slot="lanes" className="grid gap-6 @min-[58rem]/hub:grid-cols-3 @min-[58rem]/hub:gap-4">
               {lanes.lanes.map((lane) => {

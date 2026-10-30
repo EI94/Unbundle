@@ -3,7 +3,7 @@
  *
  * - **Numeri e unità**: un numero resta con la parola che lo segue («40 requisiti», «12 €/mese»,
  *   «T4 2026», «17 use case»), un importo con «all'anno», un mese con il suo anno («agosto 2027»,
- *   «nov 26»).
+ *   «nov 26»), un «+» con il numero dopo («+ 4.043 €»).
  * - **Nomi tra «…»**: un nome corto («In valutazione», «Da decidere») resta intero, fino a
  *   `QUOTED_NAME_MAX` caratteri; uno più lungo va a capo come il resto, così un telefono stretto non
  *   scorre mai di lato.
@@ -51,8 +51,9 @@ export function keepTogether<T extends string | null | undefined>(text: T): T {
       .replace(/(\d) use case\b/g, `$1${NBSP}use${NBSP}case`)
       .replace(/€ (all['’]anno|al mese)/g, `€${NBSP}$1`)
       .replace(MONTH_YEAR, `$1${NBSP}$2`)
-      // 4. Un numero e quello che lo segue: «40 requisiti», «12 €/mese», «T4 2026».
-      .replace(/(\d) (?=\S)/g, `$1${NBSP}`) as T
+      // 4. Un numero e quello che lo segue: «40 requisiti», «12 €/mese», «T4 2026»; un «+» e il suo numero.
+      .replace(/(\d) (?=\S)/g, `$1${NBSP}`)
+      .replace(/\+ (?=\d)/g, `+${NBSP}`) as T
   );
 }
 

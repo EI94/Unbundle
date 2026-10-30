@@ -9,6 +9,7 @@ import {
   PANORAMA_SECTION_ID,
   QUALITATIVE_RETURN_LABEL,
   agentGroups,
+  agentInProgressText,
   buildLanes,
   compareLaneItems,
   countedEurOf,
@@ -360,4 +361,63 @@ test("«Per agente»: un gruppo per agente del titolo, chi ha più euro in testa
   );
   for (const group of groups) assert.equal(group.lanes.reduce((sum, lane) => sum + lane.count, 0), group.count, group.label);
   assert.deepEqual(agentGroups(buildLanes([], TODAY).lanes), []);
+});
+
+test("«Per agente»: gli euro contati in realizzazione a parte, sotto la cifra; con la cifra fanno la cifra in testa delle corsie dell'agente", () => {
+  const items = [
+    hub({ title: "LIBRA L1 · Fatture estere", targetQuarter: "2026-Q4", value: counted(12_250) }),
+    hub({ title: "LIBRA L2 · Riconciliazione", targetQuarter: "2027-Q1", value: counted(11_042.5) }),
+    hub({ title: "LIBRA L3 · Scadenzario", phase: "in_realizzazione", value: counted(4_042.5) }),
+    hub({ title: "LIBRA L4 · Note di credito", phase: "in_realizzazione", value: pending(9_000) }),
+    hub({ title: "LIBRA L5 · Archivio", phase: "realizzato", value: counted(9_000) }),
+    hub({ title: "ORSA O1 · Solleciti", targetQuarter: "2026-Q4", value: counted(3_000) }),
+    hub({ title: "ORSA O2 · Promemoria", phase: "in_realizzazione", value: counted(50_000) }),
+    hub({ title: "DENEB D1 · Onboarding", targetQuarter: "2027-Q1" }),
+    hub({ title: "DENEB D2 · Accessi", phase: "in_realizzazione", value: counted(0.3) }),
+    hub({ title: "SIRIO S1 · Cassa", phase: "in_realizzazione", value: counted(60_000) }),
+    hub({ title: "Smistamento delle richieste", targetQuarter: null }),
+    hub({ title: "Archivio delle mail", phase: "in_realizzazione", value: counted(2_000) }),
+  ];
+  const lanes = buildLanes(items, TODAY);
+  const groups = agentGroups(lanes.lanes, lanes.inProgress);
+  // La card di LIBRA: «23.293 € all'anno», sotto «+ 4.043 € in realizzazione»; dopo il clic la cifra in testa è 27.336 €.
+  // Gli euro in realizzazione non spostano l'ordine (ORSA resta dopo LIBRA); «0 € all'anno» di DENEB D2 non dà la nota;
+  // SIRIO, solo in realizzazione, non ha una card.
+  assert.deepEqual(
+    groups.map((group) => [group.param, group.perYearEur, group.inProgressEur]),
+    [
+      ["LIBRA", 23_293, 4_043],
+      ["ORSA", 3_000, 50_000],
+      ["DENEB", 0, 0],
+      ["altri", 0, 2_000],
+    ],
+  );
+  assert.equal(agentInProgressText(4_043), "+ 4.043 € in realizzazione");
+  // Il resto della card è quello delle sole corsie.
+  const lanesOnly = agentGroups(lanes.lanes);
+  assert.ok(lanesOnly.every((group) => group.inProgressEur === 0));
+  assert.deepEqual(
+    groups.map((group) => ({ ...group, inProgressEur: 0 })),
+    lanesOnly,
+  );
+  // La cifra della card più la nota: la cifra in testa delle corsie dell'agente (`?agente=LIBRA`).
+  for (const group of groups) {
+    const own = items.filter((item) => agentParamOf(item.title) === group.param);
+    assert.equal(group.perYearEur + group.inProgressEur, roadmapTotals(own).expectedValue?.amountEur ?? 0, group.label);
+  }
+  assert.equal(roadmapTotals(items.filter((item) => agentParamOf(item.title) === "LIBRA")).expectedValue?.amountEur, 27_336);
+  // La pagina «Per agente» non conta due volte: le card e «In realizzazione» fanno la cifra in testa, le note no.
+  const total = roadmapTotals(items).expectedValue?.amountEur;
+  assert.equal(groups.reduce((sum, group) => sum + group.perYearEur, 0) + (lanes.inProgressCountedEurYear ?? 0), total);
+  // Le note sono gli euro di «In realizzazione» degli agenti con una card: manca solo SIRIO.
+  assert.equal(groups.reduce((sum, group) => sum + group.inProgressEur, 0) + 60_000, lanes.inProgressCountedEurYear);
+  // Ai contributori nessuna cifra, neanche qui.
+  const forContributor = buildLanes(
+    [contributor({ title: "LIBRA L1 · Fatture estere" }), contributor({ title: "LIBRA L3 · Scadenzario", phase: "in_realizzazione" })],
+    TODAY,
+  );
+  assert.deepEqual(
+    agentGroups(forContributor.lanes as never, forContributor.inProgress as never).map((group) => [group.param, group.perYearEur, group.inProgressEur]),
+    [["LIBRA", 0, 0]],
+  );
 });

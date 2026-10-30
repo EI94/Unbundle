@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { findHubForbidden } from "./copy-guard.ts";
 import { formatEuro, perYearText } from "./format.ts";
-import { laneSummaryText } from "./lanes.ts";
+import { agentInProgressText, laneSummaryText } from "./lanes.ts";
 import { NBSP, QUOTED_NAME_MAX, SCREEN_SEPARATOR, joinPieces, keepTogether, wholePiece } from "./line-breaks.ts";
 import { needsSummaryPieces } from "./needs.ts";
 import { quarterLabel } from "./quarter.ts";
@@ -45,6 +45,8 @@ test("keepTogether: numeri con la loro parola, nomi tra «…» interi, il «·�
     ["Il codice è TJ-0012. Il team lo valuta: la fase la trovi qui.", "Il codice è TJ-0012. Il team lo valuta: la fase la trovi qui."],
     ["TJ-0007 · LIBRA L1 · Lettura", `TJ-0007${N}· LIBRA L1${N}· Lettura`],
     ["Più avanti", "Più avanti"],
+    ["+ 4.043 € in realizzazione", `+${N}4.043${N}€ in realizzazione`],
+    ["+ Aggiungi problema", "+ Aggiungi problema"],
   ];
   for (const [input, expected] of cases) {
     const out = keepTogether(input);
@@ -93,7 +95,7 @@ test("solo la pagina: il MCP del team, l'export e i testi condivisi non usano li
   ];
   for (const file of files) assert.ok(!read(file).includes("line-breaks"), file);
   // I testi condivisi: spazi normali, come li leggono il MCP e l'export.
-  for (const text of [formatEuro(40_000), perYearText({ amount: 12_250 }), laneSummaryText(3, 24_500), ...needsSummaryPieces({ open: 4, toAsk: 3, waiting: 1, toVerify: 0, blocked: 0, done: 1 }), totalsNote(9, 2), quarterLabel("2026-Q4")]) {
+  for (const text of [formatEuro(40_000), perYearText({ amount: 12_250 }), laneSummaryText(3, 24_500), agentInProgressText(4_043), ...needsSummaryPieces({ open: 4, toAsk: 3, waiting: 1, toVerify: 0, blocked: 0, done: 1 }), totalsNote(9, 2), quarterLabel("2026-Q4")]) {
     assert.ok(text && !text.includes(N), JSON.stringify(text));
   }
 });

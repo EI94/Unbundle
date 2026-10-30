@@ -343,6 +343,14 @@ test("«Per trimestre | Per agente»: le card degli agenti al posto delle corsie
   assert.match(byAgent, /<div data-slot="plan-grouping"><nav aria-label="Raggruppa"/);
   assert.match(byAgent, /aria-current="page"[^>]*><span>Per agente<\/span>/);
   assert.ok(byAgent.includes('data-slot="agent-grid"') && !byAgent.includes('data-slot="lanes"'));
+  assert.ok(!byAgent.includes("agent-in-progress"));
+  // Un use case di LIBRA in realizzazione: la sua card lo dice sotto la cifra, «In realizzazione» sotto lo conta.
+  const building = hub({ title: "LIBRA L3 · Scadenzario", phase: "in_realizzazione", value: counted(4_042.5) });
+  const withBuilding = render([libra, plain, building], { grouping: grouping("agente") });
+  const libraCard = withBuilding.slice(withBuilding.indexOf('data-agent="LIBRA"'), withBuilding.indexOf("</li>", withBuilding.indexOf('data-agent="LIBRA"')));
+  assert.ok(textOf(libraCard).includes(`12.250${N}€${N}all'anno+${N}4.043${N}€ in realizzazione`), textOf(libraCard));
+  assert.match(withBuilding, /<span data-figure="in-realizzazione">4\.043\u00a0€ contati all&#x27;anno<\/span>/);
+  assert.equal(withBuilding.split('data-slot="agent-in-progress"').length - 1, 1, "solo la card di LIBRA");
   const byQuarter = render([libra, plain], { grouping: grouping("trimestre") });
   assert.ok(byQuarter.includes('data-slot="lanes"') && !byQuarter.includes('data-slot="agent-grid"'));
   assert.match(byQuarter, /aria-current="page"[^>]*><span>Per trimestre<\/span>/);

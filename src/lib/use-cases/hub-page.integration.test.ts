@@ -219,9 +219,9 @@ const cards = {} as Record<
   { id: string; code: string; title: string }
 >;
 
-/** Le schede del workspace P: una per agente (due per LIBRA) e una senza prefisso. */
+/** Le schede del workspace P: una per agente (tre per LIBRA, una in realizzazione) e una senza prefisso. */
 const agentCards = {} as Record<
-  "libraL1" | "libraL2" | "autoH1" | "orsaO1" | "plain" | "sirioS1" | "maiaM1" | "spicaP1" | "denebD1",
+  "libraL1" | "libraL2" | "libraL3" | "autoH1" | "orsaO1" | "plain" | "sirioS1" | "maiaM1" | "spicaP1" | "denebD1",
   { id: string; code: string; title: string }
 >;
 
@@ -521,7 +521,8 @@ before(async () => {
   cards.hOwn = await seed({ workspaceId: ids.wsH, title: `Mia proposta di H ${suffix}`, review: "needs_inputs", proposedBy: emails.contributor });
 
   // Workspace P: gli agenti dal titolo (rilascio «Panoramica»). Due LIBRA con gli euro, un agente
-  // senza cifre, uno scaduto, uno senza prefisso e senza trimestre, poi le altre fasi.
+  // senza cifre, uno scaduto, uno senza prefisso e senza trimestre, poi le altre fasi: un terzo LIBRA
+  // in realizzazione con gli euro, SIRIO solo in realizzazione e senza cifra.
   const wsP = ids.wsP;
   const accepted = { workspaceId: wsP, status: "accepted", review: "scored" };
   agentCards.libraL1 = await seed({ ...accepted, title: `LIBRA L1 · Lettura delle fatture estere ${suffix}`, targetQuarter: thisQuarter, valueEurYear: 12_250, costEurOnce: 700 });
@@ -533,6 +534,7 @@ before(async () => {
     costBand: 2,
     origin: "adoption",
   });
+  agentCards.libraL3 = await seed({ workspaceId: wsP, title: `LIBRA L3 · Scadenzario dei fornitori ${suffix}`, status: "in_progress", review: "scored", valueEurYear: 4_043 });
   agentCards.autoH1 = await seed({ ...accepted, title: `AUTO H1 · Cedolini consegnati ${suffix}`, targetQuarter: nextQuarter(nextQuarter(thisQuarter)) });
   agentCards.orsaO1 = await seed({ ...accepted, title: `ORSA O1 · Solleciti ai clienti ${suffix}`, targetQuarter: "2020-Q1", valueEurYear: 3_000 });
   agentCards.plain = await seed({ ...accepted, title: `Smistamento delle richieste ${suffix}` });
@@ -1047,7 +1049,7 @@ test("filtro «Agente»: il prefisso del titolo, solo ai revisori", opts, async 
   const shown = (page: string) => all.filter((card) => page.includes(`data-id="${card.id}"`)).map((card) => card.title);
   const libra = await html("ls", ids.wsP, { vista: "panoramica", agente: "LIBRA" });
   assert.equal(viewOf(libra), "panoramica");
-  assert.deepEqual(shown(libra), [agentCards.libraL1.title, agentCards.libraL2.title]);
+  assert.deepEqual(shown(libra), [agentCards.libraL1.title, agentCards.libraL2.title, agentCards.libraL3.title], "anche «In realizzazione»");
   assert.ok(libra.includes("Togli i filtri"));
   const others = await html("ls", ids.wsP, { vista: "panoramica", agente: "altri" });
   assert.deepEqual(shown(others), [agentCards.plain.title], "«Altri use case»: i titoli senza prefisso");
@@ -1146,6 +1148,22 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
   assert.equal(/<a [^>]*href="([^"]*)"/.exec(libraCard)?.[1], `${base}?vista=panoramica&amp;origine=adoption&amp;agente=LIBRA#panoramica-approvati`);
   // L'ancora della card, dove torna «‹ Tutti gli agenti».
   assert.match(libraCard, /<a id="agente-LIBRA" /);
+  // La cifra di LIBRA: le sue corsie (12.250 € + 5.000 €); sotto, in grigio e fuori dalla cifra, il suo use case in realizzazione.
+  assert.match(libraCard, /<span data-figure="valore" [^>]*>17\.250\u00a0€\u00a0all&#x27;anno<\/span>/);
+  assert.match(libraCard, /<span data-slot="agent-in-progress" class="text-xs text-muted-foreground tabular-nums">\+\u00a04\.043\u00a0€ in realizzazione<\/span>/);
+  assert.equal(grid.split('data-slot="agent-in-progress"').length - 1, 1, "solo LIBRA: SIRIO, solo in realizzazione, non ha una card");
+  // La pagina fa ancora la cifra in testa: le card e «In realizzazione» (4.043 €), la nota non conta due volte.
+  const figureOf = (page: string) => {
+    const tile = sectionOf(page, "overview-figures");
+    const amount = /^data-figure="totale-valore"[^>]*><p[^>]*><span class="whitespace-nowrap">([\d.]+) €<\/span>/.exec(tile.slice(tile.indexOf('data-figure="totale-valore"')))?.[1];
+    assert.ok(amount, "«valore contato all'anno»");
+    return Number(amount.replace(/\./g, ""));
+  };
+  const eurOf = (text: string) => Number(text.replace(/\./g, ""));
+  const agentGrid = grid.slice(grid.indexOf('data-slot="agent-grid"'), grid.indexOf("</ul>", grid.indexOf('data-slot="agent-grid"')));
+  const cardsEur = [...agentGrid.matchAll(/<span data-figure="valore" [^>]*>([\d.]+)\u00a0€/g)].reduce((sum, match) => sum + eurOf(match[1]), 0);
+  const inProgressEur = eurOf(/<span data-figure="in-realizzazione">([\d.]+)\u00a0€/.exec(grid)?.[1] ?? "0");
+  assert.deepEqual([cardsEur, inProgressEur, figureOf(grid)], [20_250, 4_043, 24_293]);
   assert.equal(filledButtons(grid), 1, "un solo pulsante pieno");
   // Aperto dall'indirizzo, «Per agente» viene in vista al caricamento: il segno nel gruppo, prima delle card.
   const MARK = 'data-slot="reveal-on-load"';
@@ -1163,15 +1181,17 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
     assert.ok(page.includes('data-slot="agent-grid"') && !page.includes(MARK), JSON.stringify(extra));
   }
 
-  // Dopo il clic: le corsie del solo LIBRA, con il suo nome per i lettori di schermo.
+  // Dopo il clic: le corsie del solo LIBRA, con il suo nome per i lettori di schermo, e sotto il suo use case in realizzazione.
   const libra = await html("ls", ids.wsP, { vista: "panoramica", agente: "LIBRA", origine: "adoption" });
   assert.match(libra, /<section id="panoramica-approvati" tabindex="-1" aria-label="Use case di LIBRA per trimestre" data-slot="panorama-plan"/);
   assert.deepEqual(
     Object.values(agentCards)
       .filter((card) => libra.includes(`data-id="${card.id}"`))
       .map((card) => card.id),
-    [agentCards.libraL1.id, agentCards.libraL2.id],
+    [agentCards.libraL1.id, agentCards.libraL2.id, agentCards.libraL3.id],
   );
+  // La cifra in testa dove porta il clic: la cifra della card più la sua nota, 17.250 € + 4.043 €.
+  assert.equal(figureOf(libra), 21_293);
   // «Per trimestre» tiene ogni filtro; «Per agente» toglie solo l'agente.
   const [byQuarter, byAgent] = groupingOf(libra);
   assert.deepEqual([byQuarter.current, byAgent.current], [true, false]);
@@ -1186,6 +1206,7 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
   // Il contributore non ha la scelta: `mostra` non vale per lui.
   const contributor = await html("contributor", ids.wsP, { vista: "panoramica", mostra: "agenti" });
   assert.ok(!contributor.includes("plan-grouping") && !contributor.includes("agent-grid") && contributor.includes('data-slot="lanes"'));
+  assert.ok(!contributor.includes("agent-in-progress") && !contributor.includes("€"), "nessuna cifra al contributore");
   // Senza agenti nei titoli niente scelta, e un vecchio `mostra=agenti` mostra le corsie.
   const plain = await html("ls", ids.wsA, { vista: "panoramica", mostra: "agenti" });
   assert.ok(!plain.includes("plan-grouping") && !plain.includes("agent-grid") && plain.includes('data-slot="lanes"'));

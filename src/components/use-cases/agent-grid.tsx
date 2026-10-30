@@ -1,6 +1,6 @@
 import { agentToneOf, type AgentPalette } from "@/lib/use-cases/agents";
 import { formatInteger, perYearText } from "@/lib/use-cases/format";
-import { agentCardId, type AgentGroup } from "@/lib/use-cases/lanes";
+import { agentCardId, agentInProgressText, type AgentGroup } from "@/lib/use-cases/lanes";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { totalsNote } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
@@ -24,9 +24,12 @@ export interface AgentGridProps {
 /**
  * «Per agente» (rilascio «Panoramica»): una card per agente del titolo, «Altri use case» in fondo.
  * In ogni card il nome nel colore dell'agente, quanti use case, gli euro contati all'anno («12.300 €
- * all'anno · su 3 use case» quando non tutti ne hanno, altrimenti «Nessuna cifra contata»), una barra
- * sulla scala del gruppo più grande e i trimestri («T4 · 3», «Più avanti · 1»). Un clic porta alle
- * corsie del solo agente (`?agente=LIBRA#panoramica-approvati`): Next scorre all'ancora e
+ * all'anno · su 3 use case» quando non tutti ne hanno, altrimenti «Nessuna cifra contata»), sotto, in
+ * grigio, gli euro contati dei suoi use case in realizzazione («+ 4.043 € in realizzazione»: fuori
+ * dalla cifra, perché «In realizzazione» sotto le card li conta già; la cifra più questi fanno la
+ * cifra in testa dopo il clic), una barra sulla scala del gruppo più grande e i trimestri («T4 · 3»,
+ * «Più avanti · 1»). Un clic porta alle corsie del solo agente
+ * (`?agente=LIBRA#panoramica-approvati`): Next scorre all'ancora e
  * `HashFocusLink` le dà il fuoco, così un lettore di schermo sente «Use case di LIBRA per trimestre».
  * Ogni card ha la sua ancora (`agentCardId`, `agente-LIBRA`): «‹ Tutti gli agenti» riporta il fuoco
  * sulla card aperta.
@@ -75,6 +78,11 @@ function AgentCard({ group, href, agents, maxEur }: { group: AgentGroup; href: s
         ) : (
           <span className="text-xs text-muted-foreground">{AGENT_GRID_TEXT.noCounted}</span>
         )}
+        {group.inProgressEur > 0 ? (
+          <span data-slot="agent-in-progress" className="text-xs text-muted-foreground tabular-nums">
+            {keepTogether(agentInProgressText(group.inProgressEur))}
+          </span>
+        ) : null}
         {group.perYearEur > 0 && maxEur > 0 ? (
           <span aria-hidden data-slot="agent-bar" className="block h-1.5 rounded-full bg-muted">
             <span className={cn("block h-full rounded-full", bar.fill)} style={{ width: `${Math.max(4, Math.round((100 * group.perYearEur) / maxEur))}%` }} />

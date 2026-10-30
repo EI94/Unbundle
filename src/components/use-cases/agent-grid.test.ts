@@ -24,10 +24,10 @@ const NEXT = { key: "prossimo_trimestre", short: "T1", label: "Prossimo trimestr
 const LATER = { key: "piu_avanti", short: "Più avanti", label: "Più avanti" } as const;
 
 const GROUPS: AgentGroup[] = [
-  { param: "LIBRA", agent: "LIBRA", label: "LIBRA", count: 7, perYearEur: 12_300, counted: 3, lanes: [{ ...NOW, count: 3 }, { ...NEXT, count: 3 }, { ...LATER, count: 1 }] },
-  { param: "ORSA", agent: "ORSA", label: "ORSA", count: 1, perYearEur: 3_000, counted: 1, lanes: [{ ...NOW, count: 1 }] },
-  { param: "AUTO", agent: "AUTO", label: "AUTO", count: 2, perYearEur: 0, counted: 0, lanes: [{ ...NEXT, count: 2 }] },
-  { param: "altri", agent: null, label: "Altri use case", count: 2, perYearEur: 0, counted: 0, lanes: [{ ...LATER, count: 2 }] },
+  { param: "LIBRA", agent: "LIBRA", label: "LIBRA", count: 7, perYearEur: 12_300, counted: 3, inProgressEur: 0, lanes: [{ ...NOW, count: 3 }, { ...NEXT, count: 3 }, { ...LATER, count: 1 }] },
+  { param: "ORSA", agent: "ORSA", label: "ORSA", count: 1, perYearEur: 3_000, counted: 1, inProgressEur: 0, lanes: [{ ...NOW, count: 1 }] },
+  { param: "AUTO", agent: "AUTO", label: "AUTO", count: 2, perYearEur: 0, counted: 0, inProgressEur: 0, lanes: [{ ...NEXT, count: 2 }] },
+  { param: "altri", agent: null, label: "Altri use case", count: 2, perYearEur: 0, counted: 0, inProgressEur: 0, lanes: [{ ...LATER, count: 2 }] },
 ];
 const AGENTS = agentPalette([{ title: "AUTO H1 · Cedolini" }, { title: "LIBRA L1 · Fatture" }, { title: "ORSA O1 · Solleciti" }]);
 /** La pagina passa i link così: le corsie del solo agente, senza `mostra`, con l'ancora. */
@@ -62,6 +62,28 @@ test("una card per agente: il nome in maiuscolo, monospazio e nel suo colore; qu
   assert.ok(textOf(auto).includes("Nessuna cifra contata") && !auto.includes("data-figure"));
   assert.ok(!auto.includes('data-slot="agent-bar"'), "senza euro niente barra");
   assert.equal(grid.AGENT_GRID_TEXT.noCounted, "Nessuna cifra contata");
+});
+
+test("sotto la cifra, in grigio, gli euro contati in realizzazione: fuori dalla cifra, dalla barra e dalla scala", () => {
+  const html = render([{ ...GROUPS[0], inProgressEur: 4_043 }, { ...GROUPS[1], inProgressEur: 50_000 }, ...GROUPS.slice(2)]);
+  const libra = cardOf(html, "LIBRA");
+  assert.match(libra, /<span data-slot="agent-in-progress" class="text-xs text-muted-foreground tabular-nums">\+\u00a04\.043\u00a0€ in realizzazione<\/span>/);
+  // Dopo la cifra e prima della barra; la cifra resta quella delle corsie.
+  assert.ok(libra.indexOf('data-figure="valore"') < libra.indexOf("agent-in-progress") && libra.indexOf("agent-in-progress") < libra.indexOf("agent-bar"));
+  assert.match(libra, /<span data-figure="valore" [^>]*>12\.300\u00a0€\u00a0all&#x27;anno<\/span>/);
+  assert.ok(!/data-figure="[^"]*"[^>]*>[^<]*in realizzazione/.test(libra), "la nota non è una cifra della card");
+  // La barra resta sulla cifra delle corsie: 3.000 su 12.300, anche con 50.000 € in realizzazione.
+  const orsa = cardOf(html, "ORSA");
+  assert.match(orsa, /style="width:24%"/);
+  assert.ok(textOf(orsa).includes(`+${N}50.000${N}€ in realizzazione`), textOf(orsa));
+  // Senza euro in realizzazione niente nota.
+  for (const param of ["AUTO", "altri"]) assert.ok(!cardOf(html, param).includes("agent-in-progress"), param);
+  assert.ok(!render().includes("agent-in-progress"));
+  // Senza cifra nelle corsie: «Nessuna cifra contata», poi la nota, senza barra.
+  const auto = cardOf(render([{ ...GROUPS[2], inProgressEur: 2_000 }]), "AUTO");
+  assert.ok(textOf(auto).includes(`Nessuna cifra contata+${N}2.000${N}€ in realizzazione`), textOf(auto));
+  assert.ok(!auto.includes('data-slot="agent-bar"'));
+  assert.deepEqual(findHubForbiddenIn([textOf(html)], "area"), []);
 });
 
 test("la barra sulla scala del gruppo più grande, nascosta ai lettori di schermo; i trimestri con il nome intero per i lettori di schermo", () => {
