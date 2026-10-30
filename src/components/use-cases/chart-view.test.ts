@@ -146,6 +146,15 @@ function detailsOf(html: string, slot: string): string {
 
 const isOpen = (tag: string) => /\sopen\b/.test(tag.replace(/="[^"]*"/g, ""));
 
+/** Le sezioni chiuse sotto le bolle, che fanno da legenda: il nome, il riassunto e gli use case che aprono. */
+function bubbleSectionsOf(html: string): Array<{ label: string; summary: string; ids: string[] }> {
+  return [...html.matchAll(/<details data-slot="bubbles-section"[^>]*><summary[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/g)].map((match) => ({
+    label: /<span class="text-foreground">([^<]*)<\/span>/.exec(match[1])?.[1] ?? "",
+    summary: match[1],
+    ids: [...match[2].matchAll(/apri=([0-9a-f-]{36})/g)].map((link) => link[1]),
+  }));
+}
+
 test("matrice: sotto la legenda due elenchi chiusi; l'indirizzo apre il suo", () => {
   const one = { id: "11111111-0000-4000-8000-000000000001", code: "TJ-0003", title: "Bozza di registrazione", href: "/h?apri=11111111-0000-4000-8000-000000000001" };
   const off = { id: "22222222-0000-4000-8000-000000000002", code: null, title: "Meno errori nelle fatture", href: "/h?apri=22222222-0000-4000-8000-000000000002" };
@@ -246,7 +255,19 @@ test("«Matrice Valore × Costo» con gli agenti nei titoli: i punti nel tono de
   assert.ok(legend.includes(`bg-uc-agente-${tone("DENEB")}`) && legend.includes(`bg-uc-agente-${tone("LIBRA")}`) && legend.includes("bg-uc-serie-altro"));
   // Etichette, riquadri e nomi per i lettori di schermo restano quelli di prima.
   assert.ok(html.includes(`aria-label="${libra.code} ${libra.title}. Valore:`));
-  assert.deepEqual([...html.matchAll(/data-slot="matrix-label"[^>]*>([^<]*)</g)].map((match) => match[1]).sort(), ["DENEB D1", "IVA", "LIBRA L1", plain.code].sort());
+  // Tre punti nella fascia «€» allo stesso Valore sono un gruppo fitto: senza etichetta, si leggono
+  // nell'elenco della loro zona con il tag; il punto da solo ha il suo codice, con l'alone della pagina.
+  assert.deepEqual([...html.matchAll(/data-slot="matrix-label"[^>]*><text[^>]*>([^<]*)</g)].map((match) => match[1]), [plain.code]);
+  assert.match(html, /<text x="2" y="10" paint-order="stroke" stroke-width="3" stroke-linejoin="round" class="fill-muted-foreground stroke-background group-hover:fill-foreground">/);
+  const zones = [...html.matchAll(/<details data-slot="matrix-zone"[\s\S]*?<\/details>/g)].map((match) => match[0]);
+  assert.equal(zones.length, 2);
+  // Il nome e il conto sono un testo solo: il «·» resta con il nome, «3 use case» intero.
+  assert.ok(zones[0].includes('>Subito</span>\u00a0· <span class="whitespace-nowrap tabular-nums">3\u00a0use\u00a0case</span>'), zones[0]);
+  for (const [tag, card] of [["LIBRA L1", libra], ["DENEB D1", deneb], ["IVA", proposal]] as const) {
+    assert.ok(zones[0].includes(`>${tag}</span> <span class="sr-only">· </span>`), tag);
+    assert.ok(zones[0].includes(`apri=${card.id}`), `${tag}: apre il pannello`);
+  }
+  assert.ok(zones[1].includes(">Da pianificare<") && zones[1].includes(`>${plain.code}</span> ${plain.title}`), zones[1]);
   // Senza agenti nei titoli: l'origine, come sempre.
   const byOrigin = view({ items, agents: agentPalette([{ title: "Strategia per volo" }]) });
   assert.ok(byOrigin.includes("bg-indigo-500") && byOrigin.includes("border-teal-500") && !byOrigin.includes("uc-agente"));
@@ -272,8 +293,11 @@ test("con gli agenti nei titoli il grigio ha un nome solo: «Altri use case» ne
     return html.slice(start, html.indexOf(end, start));
   };
   const texts = (legend: string) => legend.replace(/<[^>]+>/g, "|").split("|").filter(Boolean);
+  // La legenda delle bolle sono i titoli delle sezioni dell'elenco sotto il grafico.
   const legends = [
-    legendOf(bubbles, 'data-slot="bubbles-legend"', "</p>"),
+    bubbleSectionsOf(bubbles)
+      .map((section) => section.summary)
+      .join(""),
     legendOf(curve, "<figcaption", "</figcaption>"),
     legendOf(matrixHtml, 'data-slot="matrix-legend"', "</p>"),
   ];
@@ -281,7 +305,10 @@ test("con gli agenti nei titoli il grigio ha un nome solo: «Altri use case» ne
     assert.ok(texts(legend).includes("Altri use case"), legend);
     assert.ok(legend.includes("bg-uc-serie-altro"), "il grigio");
   }
-  assert.deepEqual(texts(legends[0]).slice(0, 3), ["AUTO", "LIBRA", "Altri use case"]);
+  assert.deepEqual(
+    bubbleSectionsOf(bubbles).map((section) => section.label),
+    ["AUTO", "LIBRA", "Altri use case"],
+  );
   // La bolla e il segmento grigi non dicono il loro colore, come il punto della matrice: lo dice la legenda.
   assert.ok(bubbles.includes(`aria-label="${copy.code} ${copy.title}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre"`), "bolla");
   assert.ok(curve.includes(`aria-label="${copy.code} ${copy.title}: 4.043 € all&#x27;anno · Risparmio di tempo"`), "segmento");
@@ -331,7 +358,17 @@ test("«Matrice Facilità × Beneficio» e «Curva del valore» con gli agenti n
     const start = html.indexOf(">", html.indexOf(at)) + 1;
     return html.slice(start, html.indexOf(/^<figcaption/.test(at) ? "</figcaption>" : "</p>", start)).replace(/<[^>]+>/g, "|").split("|").filter(Boolean);
   };
-  assert.deepEqual(legendOf(bubbles, 'data-slot="bubbles-legend"').slice(0, 4), ["LIBRA", "ORSA", "IVA", "Altri use case"]);
+  // Le sezioni sotto le bolle fanno da legenda: ogni bolla in quella dell'agente del suo titolo, IVA in grigio.
+  const sections = bubbleSectionsOf(bubbles);
+  assert.deepEqual(
+    sections.map((section) => section.label),
+    ["LIBRA", "ORSA", "IVA", "Altri use case"],
+  );
+  assert.deepEqual(
+    sections.map((section) => section.ids),
+    [[libra.id], [orsa.id], [proposal.id], [copy.id]],
+  );
+  assert.ok(sections[0].summary.includes(`bg-uc-agente-${tone("LIBRA")}`) && sections[2].summary.includes("bg-uc-serie-altro") && sections[3].summary.includes("bg-uc-serie-altro"));
   assert.deepEqual(legendOf(curve, "<figcaption").slice(0, 3), ["LIBRA", "ORSA", "Altri use case"]);
   // Senza agenti nei titoli: i colori e i nomi dei gruppi, come sempre.
   const plain = agentPalette([{ title: "Strategia per volo" }]);
@@ -368,6 +405,32 @@ test("«Curva del valore»: J-curve, «Valore per tipo di ritorno» e «Ipotesi 
   assert.ok(none.includes('data-slot="chart-header"') && none.includes("Nessuno use case con questi filtri."));
   assert.match(none, new RegExp(`href="${BASE}\\?vista=panoramica&amp;mostra=curva"[^>]*>Togli i filtri<`));
   assert.ok(!none.includes('data-slot="roadmap-value"'));
+});
+
+test("«Curva del valore» in una pagina stretta: un tipo di ritorno per sezione chiusa con la somma delle cifre arrotondate, un mese di entrata in uso per sezione", () => {
+  // Sette use case da 4.042,5 € all'anno: ognuno scrive 4.043 €, la sezione 7 × 4.043 = 28.301 €
+  // (non 28.298 € dal totale senza arrotondare), come la riga delle barre.
+  const items = Array.from({ length: 7 }, (_, i) => item({ title: i === 0 ? "LIBRA L1 · Lettura delle fatture estere" : `Smistamento ${i}`, valueModel: COUNTED }));
+  const html = view({ chart: "curva", items, planItems: items, query: { vista: "panoramica", mostra: "curva" }, clearHref: `${BASE}?vista=panoramica&mostra=curva` });
+  const N = " ";
+  // La sola sezione, «Risparmio di tempo»: dalla sua apertura alla fine dell'elenco.
+  const start = html.indexOf('<details data-slot="lever-section"');
+  const lever = /^<details[^>]*><summary[^>]*>([\s\S]*?)<\/summary>([\s\S]*)$/.exec(html.slice(start, html.indexOf("</figure>", start)));
+  assert.ok(start >= 0 && lever, "la sezione di «Risparmio di tempo»");
+  assert.equal(html.indexOf('<details data-slot="lever-section"', start + 1), -1, "un tipo solo");
+  // Il nome e il totale sono un testo solo: il «·» resta con il nome, la cifra intera.
+  assert.ok(lever[1].includes(`>Risparmio di tempo</span>${N}· <span class="whitespace-nowrap tabular-nums">28.301${N}€</span>`), lever[1]);
+  // I primi cinque, poi «Mostra gli altri 2» con gli altri due.
+  const [first, rest] = lever[2].split('<details data-slot="lever-more"');
+  assert.equal([...first.matchAll(/data-slot="chart-use-case"/g)].length, 5);
+  assert.ok(rest.includes(">Mostra gli altri 2<") && [...rest.matchAll(/data-slot="chart-use-case"/g)].length === 2, rest);
+  assert.ok(first.includes(`>LIBRA L1</span> <span class="sr-only">· </span>Lettura delle fatture estere`), "il tag dell'agente, come nelle card");
+  assert.ok(first.includes(`tabular-nums">4.043${N}€</span>`), "la cifra di ogni use case, intera");
+  // Le tappe della curva e i mesi di entrata in uso, chiusi: «Entra in uso · gen 27 · 7 use case».
+  const month = /<details data-slot="jcurve-go-live"[^>]*><summary[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/.exec(html);
+  assert.ok(month && month[1].includes(`>Entra in uso${N}· gen${N}27</span>${N}· <span class="whitespace-nowrap tabular-nums">7${N}use${N}case</span>`), month?.[1]);
+  assert.equal([...month[2].matchAll(/data-slot="chart-use-case"/g)].length, 7);
+  for (const it of items) assert.ok(month[2].includes(`apri=${it.id}`), it.title);
 });
 
 test("i testi dei grafici passano la guardia delle parole", () => {

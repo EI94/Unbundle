@@ -72,21 +72,39 @@ test("il costo del modello: mai spezzato dentro un importo; nel pannello una par
   assert.match(readFileSync(new URL("./use-case-panel.tsx", import.meta.url), "utf8"), /<CostFigure cost=\{item\.cost\} bands=\{bands\} withLabel stack \/>/);
 });
 
-test("matrice: due punti quasi nello stesso posto restano al loro costo e hanno un'etichetta sola con i due codici", () => {
+test("matrice: punti quasi nello stesso posto si aprono a sciame nella loro fascia; senza etichetta, sono nell'elenco della zona", () => {
   const value = { word: "basso", score: 2.5, source: "team", perYear: { amount: 12_250, source: "team" }, benefits: null } as const;
   const costOf = (amount: number) => ({ source: "team_importo", amount, band: 1, fromBand: false }) as const;
   const point = (id: string, code: string, x: number) => ({ id, code, title: code, origin: "transformation", approved: true, x, y: 2.5, value, cost: costOf(1000), href: `/h?apri=${id}` }) as const;
-  // 1,1 e 1,17 sulla scala del costo: 12 % e 13,4 %, 1,4 punti percentuali (4 px su 320).
+  // 1,1 e 1,17 sulla scala del costo: 12 % e 13,4 %, 4 px su 304 (il telefono più stretto).
   const points = [point("aaaaaaaa-0000-4000-8000-000000000001", "TJ-0001", 1.1), point("aaaaaaaa-0000-4000-8000-000000000004", "TJ-0004", 1.17), point("aaaaaaaa-0000-4000-8000-000000000007", "TJ-0007", 3)];
   const html = renderToStaticMarkup(createElement(matrix.ValueCostMatrix, { points, highValue: 3.5, lowCostX: 1.5, toEstimate: [] }));
-  const labels = [...html.matchAll(/data-slot="matrix-label"[^>]*>([^<]*)</g)].map((match) => match[1]);
-  assert.deepEqual(labels, ["TJ-0001, TJ-0004", "TJ-0007"], "nessun codice sparisce");
-  const left = (id: string) => Number(new RegExp(`left:([\\d.]+)%;top:[\\d.]+%"[^>]*><a[^>]*data-point="${id}"`).exec(html)?.[1]);
-  assert.ok(Math.abs(left(points[0].id) - 12) < 0.01 && Math.abs(left(points[1].id) - 13.4) < 0.01, "le posizioni restano quelle del costo");
+  const labels = (markup: string) => [...markup.matchAll(/data-slot="matrix-label"[^>]*><text[^>]*>([^<]*)</g)].map((match) => match[1]);
+  assert.deepEqual(labels(html), ["TJ-0007"], "solo il punto isolato ha il codice accanto");
+  const at = (id: string) => {
+    const match = new RegExp(`left:([\\d.]+)%;top:([\\d.]+)%"[^>]*><a[^>]*data-point="${id}"`).exec(html);
+    return { left: Number(match?.[1]), top: Number(match?.[2]) };
+  };
+  // Il primo resta al suo costo; il secondo si sposta di lato quanto basta (11 px su 304), dentro la fascia «€», alla stessa altezza.
+  assert.ok(Math.abs(at(points[0].id).left - 12) < 0.01, JSON.stringify(at(points[0].id)));
+  const second = at(points[1].id);
+  assert.ok(second.left >= 12 + (11 / 304) * 100 - 0.01 && second.left <= 20, JSON.stringify(second));
+  assert.ok(Math.abs(second.top - 60) < 0.01 && Math.abs(at(points[0].id).top - 60) < 0.01, "il Valore resta");
+  // Quindici punti a Valore 1 nella stessa fascia: salgono di poco per far posto, mai sotto l'1 (90 %).
+  const floor = Array.from({ length: 15 }, (_, i) => ({ ...point(`bbbbbbbb-0000-4000-8000-0000000000${String(i).padStart(2, "0")}`, `TJ-01${String(i).padStart(2, "0")}`, 0.6), y: 1 }));
+  const crowded = renderToStaticMarkup(createElement(matrix.ValueCostMatrix, { points: floor, highValue: 3.5, lowCostX: 1.5, toEstimate: [] }));
+  const tops = [...crowded.matchAll(/left:[\d.]+%;top:([\d.]+)%"[^>]*><a[^>]*data-point=/g)].map((match) => Number(match[1]));
+  assert.equal(tops.length, 15);
+  assert.ok(tops.every((top) => top <= 90 + 1e-9 && top >= 90 - 0.2 * 20 - 1e-9), JSON.stringify(tops));
+  // I due punti vicini si leggono nell'elenco della loro zona, chiuso sotto la legenda.
+  const zone = /<details data-slot="matrix-zone"[\s\S]*?<\/details>/.exec(html)?.[0] ?? "";
+  assert.ok(zone.includes('>Se avanza tempo</span>\u00a0· <span class="whitespace-nowrap tabular-nums">2\u00a0use\u00a0case</span>'), zone);
+  for (const code of ["TJ-0001", "TJ-0004"]) assert.ok(zone.includes(`>${code}</span> ${code}`), code);
   // L'asse del Valore dice che è un punteggio: gli altri schermi scrivono gli euro.
   assert.ok(html.includes(">Valore (punteggio 1–5)<"));
-  // Un titolo con l'agente: accanto al punto il tag delle card della Panoramica, non il codice.
+  // Un titolo con l'agente: nell'elenco il tag delle card della Panoramica, non il codice.
   const tagged = [{ ...points[0], title: "LIBRA L1 · Lettura delle fatture estere" }, points[1], points[2]];
   const withAgent = renderToStaticMarkup(createElement(matrix.ValueCostMatrix, { points: tagged, highValue: 3.5, lowCostX: 1.5, toEstimate: [] }));
-  assert.deepEqual([...withAgent.matchAll(/data-slot="matrix-label"[^>]*>([^<]*)</g)].map((match) => match[1]), ["LIBRA L1, TJ-0004", "TJ-0007"]);
+  assert.deepEqual(labels(withAgent), ["TJ-0007"]);
+  assert.ok(withAgent.includes('>LIBRA L1</span> <span class="sr-only">· </span>Lettura delle fatture estere'));
 });

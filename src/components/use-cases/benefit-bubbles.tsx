@@ -1,12 +1,14 @@
 import Link from "next/link";
+import { shortRefOf } from "@/lib/use-cases/agents";
+import { packStrip, swarm } from "@/lib/use-cases/chart-layout";
 import { FIGURE_SEPARATOR, formatEuro, oneoffRunParts, oneoffRunText, perYearShortText } from "@/lib/use-cases/format";
 import { UP_TO_WORD, VALUE_MODEL_STATE_LABEL } from "@/lib/use-cases/labels";
 import { SCREEN_SEPARATOR, joinPieces, keepTogether } from "@/lib/use-cases/line-breaks";
-import { shortRefOf } from "@/lib/use-cases/agents";
 import { placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
-import { BUBBLE_WHEN_LABEL, bubbleWhenText, markLegend, type BenefitBubble, type BenefitBubbles, type BubbleWhen, type GroupPalette } from "@/lib/use-cases/value-charts";
+import { BUBBLE_WHEN_LABEL, bubbleWhenText, markLegendGroups, type BenefitBubble, type BenefitBubbles, type BubbleWhen, type GroupPalette } from "@/lib/use-cases/value-charts";
 import { cn } from "@/lib/utils";
-import { GroupLegendItems, SLOT_BORDER, SLOT_FILL_MID, SLOT_FILL_SOFT } from "./value-chart-colors";
+import { CHART_LABEL_CHAR_PX, ChartLabel, ChartListSection, ChartUseCaseLink } from "./chart-label";
+import { SLOT_BORDER, SLOT_FILL, SLOT_FILL_MID, SLOT_FILL_SOFT } from "./value-chart-colors";
 
 /** Testi della «Matrice Facilità × Beneficio» (dal menu «⋯» della Panoramica; spec di Pierpaolo, 25/10/2026). */
 export const BUBBLES_TEXT = Object.freeze({
@@ -17,6 +19,8 @@ export const BUBBLES_TEXT = Object.freeze({
   hard: "difficile",
   easy: "facile",
   size: "Bolla più grande: costo di avvio più alto.",
+  /** La striscia sotto lo zero: le bolle senza un beneficio contato (da misurare o qualitativo). */
+  notCounted: "non contato",
   empty: "Nessuno use case della vista ha la facilità in «Benefici e costi».",
 });
 
@@ -37,12 +41,13 @@ function benefitText(bubble: Pick<BenefitBubble, "benefit" | "pendingEur">): str
 }
 
 /**
- * Le parti della riga sotto il titolo, nell'elenco al telefono: ognuna va a capo intera, mai
+ * Le parti della riga sotto il titolo, nell'elenco sotto il grafico: ognuna va a capo intera, mai
  * «1.200» da una parte e «€/anno» dall'altra, e il «·» resta con la parte prima (`joinPieces`).
+ * `withGroup: false` nell'elenco, dove il gruppo è il titolo della sezione.
  */
-export function bubbleSummaryParts(bubble: BenefitBubble): string[] {
+export function bubbleSummaryParts(bubble: BenefitBubble, { withGroup = true }: { withGroup?: boolean } = {}): string[] {
   const parts = [`${BUBBLES_TEXT.ease} ${bubble.ease}`, benefitText(bubble), ...oneoffRunParts(bubble.oneoff, bubble.run), bubbleWhenText(bubble)];
-  if (bubble.groupLabel) parts.push(bubble.groupLabel);
+  if (withGroup && bubble.groupLabel) parts.push(bubble.groupLabel);
   return parts;
 }
 
@@ -75,38 +80,110 @@ function leftPct(ease: number): number {
   return ((Math.min(5.5, Math.max(0.5, ease)) - 0.5) / 5) * 100;
 }
 
-/** Il beneficio dall'alto, con un margine perché le bolle a zero restino dentro. */
-function topPct(benefit: number, max: number): number {
-  const share = max > 0 ? Math.min(1, Math.max(0, benefit / max)) : 0;
-  return 4 + (1 - share) * 92;
-}
-
-/** Bolle nello stesso punto (stessa facilità, beneficio quasi uguale): si aprono di poco a raggiera. */
-function spread(bubbles: readonly BenefitBubble[], max: number): Array<BenefitBubble & { left: number; top: number }> {
-  const keyOf = (bubble: BenefitBubble) => `${bubble.ease}|${Math.round(topPct(bubble.benefit, max) / 3)}`;
-  const sizes = new Map<string, number>();
-  for (const bubble of bubbles) sizes.set(keyOf(bubble), (sizes.get(keyOf(bubble)) ?? 0) + 1);
-  const seen = new Map<string, number>();
-  return bubbles.map((bubble) => {
-    const key = keyOf(bubble);
-    const size = sizes.get(key) ?? 1;
-    const index = seen.get(key) ?? 0;
-    seen.set(key, index + 1);
-    const left = leftPct(bubble.ease);
-    const top = topPct(bubble.benefit, max);
-    if (size === 1) return { ...bubble, left, top };
-    const angle = (2 * Math.PI * index) / size;
-    return { ...bubble, left: left + 3 * Math.cos(angle), top: top + 3 * Math.sin(angle) };
-  });
-}
-
 const WHEN_ORDER: readonly BubbleWhen[] = ["questo_trimestre", "prossimo_trimestre", "piu_avanti", "da_decidere"];
 
 /**
- * La misura del riquadro delle bolle, per mettere i codici (`placeMatrixLabels`): il grafico si
- * disegna da 768 px, largo 600-640 px circa, alto tre quarti.
+ * Il riquadro delle bolle, in pixel: il grafico si disegna da una pagina larga 36rem (576 px), dove
+ * è largo 496 px, fino a 640 px (la figura è larga al massimo 720 px). Bolle ed etichette si
+ * calcolano su 480 px; la parte del beneficio contato è alta tre quarti della larghezza.
  */
-const LABEL_BOX = { boxPx: 600, maxBoxPx: 640, aspect: 0.75 } as const;
+const PLOT = Object.freeze({ minPx: 480, maxPx: 640, aspect: 0.75 });
+/** Tra la linea dello zero e la prima bolla della striscia «non contato», in pixel. */
+const STRIP_GAP = 10;
+
+interface BubbleLayout {
+  /** Le misure del riquadro su cui si calcola, in pixel: la parte del beneficio più la striscia. */
+  width: number;
+  height: number;
+  /** Il beneficio (da 0 al massimo della scala) in percentuale dall'alto. */
+  topOf: (benefit: number) => number;
+  /** La striscia delle bolle senza beneficio contato, in percentuale dall'alto; null se non ce ne sono. */
+  strip: { top: number; middle: number } | null;
+  /** Le bolle nell'ordine ricevuto (dalla più grande: le piccole restano sopra), con la loro posizione in percentuale. */
+  bubbles: Array<BenefitBubble & { left: number; top: number }>;
+}
+
+/**
+ * Dove sta ogni bolla. Con un beneficio contato: alla sua altezza, e di lato nella colonna della
+ * sua facilità quanto basta per non toccare le altre (`swarm`). Senza: nella striscia «non
+ * contato» sotto lo zero, ognuna nella colonna della sua facilità, il più in alto possibile
+ * (`packStrip`). Su TopJet 28 bolle su 46 erano una sopra l'altra sullo zero, a facilità 2, 3 e 4.
+ */
+function layoutBubbles(bubbles: readonly BenefitBubble[], max: number): BubbleLayout {
+  const W = PLOT.minPx;
+  const countedHeight = W * PLOT.aspect;
+  const yOf = (benefit: number) => {
+    const share = max > 0 ? Math.min(1, Math.max(0, benefit / max)) : 0;
+    return (0.04 + (1 - share) * 0.92) * countedHeight;
+  };
+  const column = (bubble: BenefitBubble) => {
+    const x = (leftPct(bubble.ease) / 100) * W;
+    const half = W / 10;
+    return { x, lo: x - half + bubble.r + 2, hi: x + half - bubble.r - 2 };
+  };
+  const counted = bubbles.filter((bubble) => bubble.benefit > 0);
+  const swarmed = swarm(
+    counted.map((bubble) => ({ ...column(bubble), y: yOf(bubble.benefit), r: bubble.r })),
+    { gap: 2 },
+  );
+  const zeroY = yOf(0);
+  const rest = bubbles.filter((bubble) => !(bubble.benefit > 0));
+  const strip = rest.length
+    ? packStrip(
+        rest.map((bubble) => ({ ...column(bubble), r: bubble.r })),
+        { top: zeroY + STRIP_GAP, gap: 2, placed: swarmed.map((spot, index) => ({ x: spot.x, y: spot.y, r: counted[index].r })) },
+      )
+    : null;
+  const H = Math.max(countedHeight, strip ? strip.bottom + 6 : 0);
+  const at = new Map<string, { x: number; y: number }>();
+  counted.forEach((bubble, index) => at.set(bubble.id, swarmed[index]));
+  rest.forEach((bubble, index) => at.set(bubble.id, strip!.placements[index]));
+  return {
+    width: W,
+    height: H,
+    topOf: (benefit) => (yOf(benefit) / H) * 100,
+    strip: strip ? { top: (zeroY / H) * 100, middle: ((zeroY + STRIP_GAP + H) / 2 / H) * 100 } : null,
+    bubbles: bubbles.map((bubble) => {
+      const spot = at.get(bubble.id)!;
+      return { ...bubble, left: (spot.x / W) * 100, top: (spot.y / H) * 100 };
+    }),
+  };
+}
+
+/** «Questo trimestre». */
+function sentenceCase(text: string): string {
+  return text.charAt(0).toLocaleUpperCase("it-IT") + text.slice(1);
+}
+
+interface BubbleSection {
+  key: string;
+  label: string;
+  /** Il segno del gruppo: il colore, oppure il bordo del «quando» con un colore solo. */
+  marker: string;
+  bubbles: BenefitBubble[];
+}
+
+/**
+ * Le sezioni dell'elenco sotto il grafico, che sono anche la legenda dei colori (`markLegendGroups`):
+ * con gli agenti nei titoli una per agente del titolo, quelli con un tono in ordine alfabetico, poi in
+ * grigio quelli con sole proposte, poi il grigio «Altri use case»; senza agenti una per colore del
+ * gruppo, il grigio in fondo; con un colore solo una per «quando». Dentro, dalla più facile, poi dal
+ * beneficio più alto.
+ */
+function bubbleSections(bubbles: readonly BenefitBubble[], palette: GroupPalette): BubbleSection[] {
+  const sorted = [...bubbles].sort((a, b) => b.ease - a.ease || b.benefit - a.benefit || (a.code ?? "").localeCompare(b.code ?? ""));
+  if (palette.single) {
+    return WHEN_ORDER.map((when) => ({
+      key: when,
+      label: sentenceCase(BUBBLE_WHEN_LABEL[when]),
+      marker: bubbleClass({ slot: 1, when }),
+      bubbles: sorted.filter((bubble) => bubble.when === when),
+    })).filter((section) => section.bubbles.length);
+  }
+  return markLegendGroups(palette, sorted)
+    .map(({ entry, marks }) => ({ key: `${entry.slot}-${entry.label}`, label: entry.label, marker: SLOT_FILL[entry.slot], bubbles: marks }))
+    .filter((section) => section.bubbles.length);
+}
 
 export interface BenefitBubblesProps {
   chart: BenefitBubbles;
@@ -121,107 +198,124 @@ export interface BenefitBubblesProps {
  * facilità da 1 (difficile) a 5 (facile), y il beneficio contato all'anno; la bolla è grande quanto
  * il costo di avvio, colorata per gruppo (con gli agenti nei titoli per l'agente del titolo, come la
  * matrice). Il bordo dice quando: scuro questo trimestre, pieno il prossimo, tratteggiato più avanti;
- * il riempimento chiaro è «da decidere». Al passaggio del mouse, o con la tastiera, codice, titolo e
- * cifre; al clic il pannello laterale. Sotto i 768 px un elenco al posto del grafico. Solo revisori.
+ * il riempimento chiaro è «da decidere». Le bolle senza un
+ * beneficio contato (da misurare o qualitative) stanno nella striscia «non contato» sotto lo zero;
+ * nessuna bolla ne copre un'altra (`layoutBubbles`). Al passaggio del mouse, o con la tastiera,
+ * codice, titolo e cifre; al clic il pannello laterale. Sotto il grafico l'elenco per gruppo (o per
+ * agente), in sezioni chiuse: è anche la legenda dei colori. In una pagina più stretta di 36rem
+ * (il telefono, il tablet accanto alla barra) solo l'elenco. Solo revisori.
  *
  * Il riquadro, la griglia e le tacche sono SVG scritto a mano (niente recharts né d3); le bolle sono
  * link HTML posati sopra, come i punti della matrice Valore × Costo, perché ognuna si raggiunge con
- * la tastiera, si tocca con un dito e apre il pannello. Ogni codice va dove non copre altre bolle né
- * altri codici (`placeMatrixLabels`); se non c'è posto, non si scrive (resta nel riquadro e
- * nell'etichetta per i lettori di schermo).
+ * la tastiera, si tocca con un dito e apre il pannello. Il tag o il codice sta accanto alle sole
+ * bolle isolate con un beneficio contato, dove non copre altre bolle, altri codici né la striscia
+ * (`placeMatrixLabels`), con un alone del colore della pagina; le altre si leggono nell'elenco, nel
+ * riquadro e nell'etichetta per i lettori di schermo.
  */
 export function BenefitBubbleChart({ chart, palette, hrefs }: BenefitBubblesProps) {
-  const max = chart.scale.max;
-  const placed = spread(chart.bubbles, max);
+  const layout = layoutBubbles(chart.bubbles, chart.scale.max);
+  const strip = layout.strip;
   const labels = placeMatrixLabels(
-    placed.flatMap((bubble) => {
-      const text = shortRefOf(bubble);
-      return text ? [{ id: bubble.id, left: bubble.left, top: bubble.top, text, radiusPx: bubble.r }] : [];
-    }),
-    LABEL_BOX,
+    layout.bubbles.map((bubble) => ({ id: bubble.id, left: bubble.left, top: bubble.top, text: bubble.benefit > 0 ? (shortRefOf(bubble) ?? "") : "", radiusPx: bubble.r })),
+    {
+      boxPx: PLOT.minPx,
+      maxBoxPx: PLOT.maxPx,
+      aspect: layout.height / layout.width,
+      charPx: CHART_LABEL_CHAR_PX,
+      // Nessun codice nella striscia: lì le bolle sono fitte, e un codice sembrerebbe di un'altra.
+      obstacles: strip ? (box) => [{ x: 0, y: (strip.top / 100) * box.h - 1, w: box.w, h: box.h }] : undefined,
+    },
   );
-  const legend = markLegend(palette, chart.bubbles);
-  const whens = WHEN_ORDER.filter((when) => chart.bubbles.some((bubble) => bubble.when === when));
-  const list = [...chart.bubbles].sort((a, b) => b.ease - a.ease || b.benefit - a.benefit || (a.code ?? "").localeCompare(b.code ?? ""));
+  const sections = bubbleSections(chart.bubbles, palette);
+  // Con un colore solo le sezioni sono per «quando»: la legenda del bordo sarebbe un doppione.
+  const whens = palette.single ? [] : WHEN_ORDER.filter((when) => chart.bubbles.some((bubble) => bubble.when === when));
   return (
     <figure data-slot="benefit-bubbles" aria-label={BUBBLES_TEXT.label} className="w-full max-w-[720px] space-y-3">
       {chart.bubbles.length === 0 ? (
         <p className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">{keepTogether(BUBBLES_TEXT.empty)}</p>
       ) : (
-        <>
-          <div data-slot="benefit-bubbles-chart" className="hidden grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 md:grid">
-            <div />
-            <p className="pb-1 text-xs text-muted-foreground">{BUBBLES_TEXT.benefitAxis}</p>
-            <div className="relative" aria-hidden>
-              {chart.scale.ticks.map((tick) => (
-                <span key={tick} className="absolute right-0 -translate-y-1/2 text-[11px] whitespace-nowrap text-muted-foreground tabular-nums" style={{ top: `${topPct(tick, max)}%` }}>
-                  {formatEuro(tick)}
-                </span>
-              ))}
-            </div>
-            <div className="relative aspect-[4/3] w-full">
-              <svg aria-hidden viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full overflow-visible">
-                <rect x="0" y="0" width="100" height="100" className="fill-muted/30 stroke-border" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-                {chart.scale.ticks.map((tick) => (
-                  <line key={tick} x1="0" x2="100" y1={topPct(tick, max)} y2={topPct(tick, max)} className="stroke-border/60" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-                ))}
-              </svg>
-              <ul className="absolute inset-0">
-                {placed.map((bubble) => (
-                  <BubbleDot key={bubble.id} bubble={bubble} href={hrefs[bubble.id] ?? "#"} label={labels.get(bubble.id) ?? null} />
-                ))}
-              </ul>
-            </div>
-            <div />
-            <div className="relative h-5" aria-hidden>
-              {[1, 2, 3, 4, 5].map((tick) => (
-                <span key={tick} className="absolute top-1 -translate-x-1/2 text-[11px] text-muted-foreground tabular-nums" style={{ left: `${leftPct(tick)}%` }}>
-                  {tick}
-                </span>
-              ))}
-            </div>
-            <div />
-            <p className="flex justify-between pt-1 text-xs text-muted-foreground">
-              <span>{BUBBLES_TEXT.hard}</span>
-              <span>{BUBBLES_TEXT.easeAxis}</span>
-              <span>{BUBBLES_TEXT.easy}</span>
-            </p>
-          </div>
-          <ul data-slot="benefit-bubbles-list" className="space-y-2 md:hidden">
-            {list.map((bubble) => (
-              <li key={bubble.id}>
-                <Link
-                  href={hrefs[bubble.id] ?? "#"}
-                  scroll={false}
-                  className="flex min-h-11 flex-col gap-0.5 rounded-lg border px-3 py-2 outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
-                >
-                  <span className="flex min-w-0 items-center gap-2 text-sm">
-                    <span aria-hidden className={cn("size-3 shrink-0 rounded-full", bubbleClass(bubble))} />
-                    {bubble.code ? <span className="shrink-0 font-mono text-xs whitespace-nowrap text-muted-foreground">{bubble.code}</span> : null}
-                    <span className="min-w-0 truncate font-medium">{bubble.title}</span>
-                  </span>
-                  <span data-slot="bubble-summary" className="text-xs text-muted-foreground">
-                    {joinPieces(bubbleSummaryParts(bubble))}
-                  </span>
-                </Link>
-              </li>
+        <div data-slot="benefit-bubbles-chart" className="hidden grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 @xl/hub:grid">
+          <div />
+          <p className="pb-1 text-xs text-muted-foreground">{BUBBLES_TEXT.benefitAxis}</p>
+          <div className="relative" aria-hidden>
+            {chart.scale.ticks.map((tick) => (
+              <span key={tick} className="absolute right-0 -translate-y-1/2 text-[11px] whitespace-nowrap text-muted-foreground tabular-nums" style={{ top: `${layout.topOf(tick)}%` }}>
+                {formatEuro(tick)}
+              </span>
             ))}
-          </ul>
-        </>
+            {strip ? (
+              <span data-slot="bubbles-strip-label" className="absolute right-0 -translate-y-1/2 text-[11px] whitespace-nowrap text-muted-foreground" style={{ top: `${strip.middle}%` }}>
+                {BUBBLES_TEXT.notCounted}
+              </span>
+            ) : null}
+          </div>
+          <div className="relative w-full" style={{ aspectRatio: `${layout.width} / ${Math.round(layout.height)}` }}>
+            <svg aria-hidden viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full overflow-visible">
+              <rect x="0" y="0" width="100" height="100" className="fill-muted/30 stroke-border" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+              {chart.scale.ticks.map((tick) => (
+                <line key={tick} x1="0" x2="100" y1={layout.topOf(tick)} y2={layout.topOf(tick)} className="stroke-border/60" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+              ))}
+            </svg>
+            <ul className="absolute inset-0">
+              {layout.bubbles.map((bubble) => (
+                <BubbleDot key={bubble.id} bubble={bubble} href={hrefs[bubble.id] ?? "#"} label={labels.get(bubble.id) ?? null} />
+              ))}
+            </ul>
+          </div>
+          <div />
+          <div className="relative h-5" aria-hidden>
+            {[1, 2, 3, 4, 5].map((tick) => (
+              <span key={tick} className="absolute top-1 -translate-x-1/2 text-[11px] text-muted-foreground tabular-nums" style={{ left: `${leftPct(tick)}%` }}>
+                {tick}
+              </span>
+            ))}
+          </div>
+          <div />
+          <p className="flex justify-between pt-1 text-xs text-muted-foreground">
+            <span>{BUBBLES_TEXT.hard}</span>
+            <span>{BUBBLES_TEXT.easeAxis}</span>
+            <span>{BUBBLES_TEXT.easy}</span>
+          </p>
+        </div>
       )}
       <figcaption className="space-y-2">
         {chart.bubbles.length ? (
           <p data-slot="bubbles-legend" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            <GroupLegendItems entries={legend} />
             {whens.map((when) => (
               <span key={when} className="inline-flex items-center gap-1.5">
-                <span aria-hidden className={cn("size-3 shrink-0 rounded-full", bubbleClass({ slot: palette.single ? 1 : 0, when }))} />
+                <span aria-hidden className={cn("size-3 shrink-0 rounded-full", bubbleClass({ slot: 0, when }))} />
                 {BUBBLE_WHEN_LABEL[when]}
               </span>
             ))}
-            {/* Al telefono l'elenco ha pallini tutti uguali: la misura non dice niente. */}
-            <span className="hidden md:inline">{BUBBLES_TEXT.size}</span>
+            {/* Nell'elenco i pallini sono tutti uguali: la misura la dice solo il grafico. */}
+            <span className="hidden @xl/hub:inline">{BUBBLES_TEXT.size}</span>
           </p>
+        ) : null}
+        {sections.length ? (
+          // Su una pagina larga 42rem due colonne: undici agenti in sei righe sotto il grafico.
+          <div data-slot="benefit-bubbles-list" className="grid content-start gap-x-6 gap-y-1 @2xl/hub:grid-cols-2">
+            {sections.map((section) => (
+              <ChartListSection
+                key={section.key}
+                slot="bubbles-section"
+                marker={<span aria-hidden className={cn("size-2.5 shrink-0 rounded-full", section.marker)} />}
+                label={section.label}
+                count={section.bubbles.length}
+              >
+                {section.bubbles.map((bubble) => (
+                  <li key={bubble.id}>
+                    <ChartUseCaseLink
+                      href={hrefs[bubble.id] ?? "#"}
+                      code={bubble.code}
+                      title={bubble.title}
+                      marker={<span aria-hidden className={cn("size-3 shrink-0 rounded-full", bubbleClass(bubble))} />}
+                      detail={<span data-slot="bubble-summary">{joinPieces(bubbleSummaryParts(bubble, { withGroup: false }))}</span>}
+                    />
+                  </li>
+                ))}
+              </ChartListSection>
+            ))}
+          </div>
         ) : null}
         {chart.withoutEase > 0 ? <p className="text-xs text-muted-foreground">{keepTogether(withoutEaseText(chart.withoutEase))}</p> : null}
       </figcaption>
@@ -257,17 +351,8 @@ function BubbleDot({ bubble, href, label: placement }: { bubble: BenefitBubble &
           className={cn("rounded-full ring-2 ring-background transition-transform group-hover:scale-110", bubbleClass(bubble))}
           style={{ width: size, height: size }}
         />
-        {short && placement && !placement.crowded ? (
-          // Il tag dell'agente o il codice accanto alla bolla, dove non copre altre bolle né altri codici.
-          <span
-            aria-hidden
-            data-slot="bubble-label"
-            className="pointer-events-none absolute rounded-sm bg-background/80 px-0.5 font-mono text-[10px] leading-[13px] whitespace-nowrap text-muted-foreground group-hover:text-foreground"
-            style={{ left: `calc(50% + ${placement.dx}px)`, top: `calc(50% + ${placement.dy}px)` }}
-          >
-            {short}
-          </span>
-        ) : null}
+        {/* Il tag dell'agente o il codice accanto alla bolla isolata, dove non copre altre bolle né altri codici. */}
+        {short && placement ? <ChartLabel slot="bubble-label" text={short} dx={placement.dx} dy={placement.dy} /> : null}
         <span
           aria-hidden
           className={cn(

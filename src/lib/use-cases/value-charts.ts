@@ -21,8 +21,9 @@
  *   (`markLegend`); le bolle e i segmenti non dicono il loro colore, come i punti della matrice: il
  *   titolo dice già l'agente. Niente «Gruppo …», «Senza gruppo» o «Altri gruppi».
  * - **Bolle** (`buildBenefitBubbles`): le schede della vista con un modello e la facilità; x la
- *   facilità da 1 a 5, y il beneficio contato all'anno, raggio `5 + 13·√(avvio / avvio massimo)`
- *   in pixel; il bordo dice quando (questo trimestre, prossimo, più avanti) e il riempimento
+ *   facilità da 1 a 5, y il beneficio contato all'anno, raggio `4 + 9·√(avvio / avvio massimo)`
+ *   in pixel (da 8 a 26 px di diametro: con TopJet 46 bolle stanno nelle cinque colonne della
+ *   facilità senza coprirsi); il bordo dice quando (questo trimestre, prossimo, più avanti) e il riempimento
  *   chiaro «da decidere».
  * - **Curva del valore** (`buildRoadmapValue`): le schede approvate o in realizzazione con un modello;
  *   mesi da `planMonths` sulle schede di tutto il workspace (`roadmapPlan`, come `get_use_case`
@@ -202,6 +203,22 @@ export function markLegend(palette: GroupPalette, marks: readonly GroupMark[]): 
   return palette.agents ? agentPointLegend(palette.agents, marks.map((mark) => mark.title)) : groupLegend(palette, marks.map((mark) => mark.group));
 }
 
+/**
+ * Le voci della legenda (`markLegend`) con i loro segni, nell'ordine dato: le sezioni dell'elenco
+ * sotto le bolle, che fanno anche da legenda. Con gli agenti nei titoli una voce per agente del
+ * titolo (anche due agenti con lo stesso tono restano due voci, e un agente senza tono ha la sua,
+ * grigia), poi «Altri use case» con i titoli senza il prefisso; senza agenti una voce per colore
+ * del gruppo, il grigio in fondo. Ogni segno sta in una voce sola. Vuota con un colore solo.
+ */
+export function markLegendGroups<T extends GroupMark>(palette: GroupPalette, marks: readonly T[]): Array<{ entry: GroupLegendEntry; marks: T[] }> {
+  const legend = markLegend(palette, marks);
+  if (palette.agents) {
+    const labelOf = (mark: T) => agentOfTitle(mark.title) ?? NO_AGENT_LABEL;
+    return legend.map((entry) => ({ entry, marks: marks.filter((mark) => labelOf(mark) === entry.label) }));
+  }
+  return legend.map((entry) => ({ entry, marks: marks.filter((mark) => groupSlot(palette, mark.group) === entry.slot) }));
+}
+
 // ─── I colori per agente: punti, bolle e segmenti ────────────────────
 
 /**
@@ -316,9 +333,9 @@ export function bubbleWhenText(bubble: Pick<BenefitBubble, "when" | "expired">):
 }
 
 /** Raggio minimo e quanto cresce con il costo di avvio, in pixel. */
-export const BUBBLE_RADIUS = Object.freeze({ min: 5, grow: 13 });
+export const BUBBLE_RADIUS = Object.freeze({ min: 4, grow: 9 });
 
-/** `5 + 13·√(avvio / avvio massimo)`; con l'avvio massimo a zero, il minimo. */
+/** `4 + 9·√(avvio / avvio massimo)`; con l'avvio massimo a zero, il minimo. */
 export function bubbleRadius(oneoff: number, maxOneoff: number): number {
   if (!(maxOneoff > 0) || !(oneoff > 0)) return BUBBLE_RADIUS.min;
   return BUBBLE_RADIUS.min + BUBBLE_RADIUS.grow * Math.sqrt(Math.min(1, oneoff / maxOneoff));

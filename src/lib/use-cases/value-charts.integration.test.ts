@@ -430,20 +430,22 @@ test("menu «⋯»: «Matrice Valore × Costo», «Matrice Facilità × Benefici
   assert.match(a, /data-when="questo_trimestre"/);
   assert.ok(a.includes(`aria-label="${cards.a.code} Smistamento ${suffix}. Facilità 4 · 4.043 €/anno · avvio 560 € · ricorrenti 600 €/anno · questo trimestre · Gruppo Servizio clienti"`), a);
   assert.ok(a.includes(`apri=${cards.a.id}`), "il clic apre il pannello");
-  assert.match(a, /width:36px;height:36px/, "avvio massimo: raggio 18 px");
+  assert.match(a, /width:26px;height:26px/, "avvio massimo: raggio 13 px");
   const small = itemOf(page, `data-bubble="${cards.small.id}"`);
   assert.match(small, /data-when="da_decidere"/);
-  assert.match(small, /width:23px;height:23px/, "5 + 13·√(140 / 560) = 11,5 px");
+  assert.match(small, /width:17px;height:17px/, "4 + 9·√(140 / 560) = 8,5 px");
   assert.match(small, /bg-uc-serie-altro\/15/, "senza gruppo, da decidere: grigio chiaro");
   assert.ok(!page.includes(`data-bubble="${cards.b.id}"`), "in realizzazione: non è da mettere in ordine");
   assert.ok(!page.includes(`data-bubble="${cards.plain.id}"`), "senza modello: non è tra le bolle");
-  assert.ok(page.includes('data-slot="benefit-bubbles-list"'), "sotto i 768 px, l'elenco");
+  assert.ok(page.includes('data-slot="benefit-bubbles-list"'), "sotto il grafico, e al suo posto al telefono, l'elenco per gruppo");
   // Nell'elenco il codice non va a capo («TJ-» / «0010») e ogni parte della riga resta intera.
   const phoneList = page.slice(page.indexOf('data-slot="benefit-bubbles-list"'));
-  assert.ok(phoneList.includes(`<span class="shrink-0 font-mono text-xs whitespace-nowrap text-muted-foreground">${cards.a.code}</span>`), "il codice intero");
+  assert.ok(phoneList.includes(`<span class="font-mono text-xs whitespace-nowrap text-muted-foreground">${cards.a.code}</span>`), "il codice intero");
+  assert.equal(count(phoneList, 'data-slot="bubbles-section"'), 2, "una sezione chiusa per gruppo: Servizio clienti e Senza gruppo");
   // Un testo solo, con le parti intere e il «·» che resta con la parte prima: la riga va a capo dopo il «·».
-  const parts = ["Facilità 4", "4.043 €/anno", "avvio 560 €", "ricorrenti 600 €/anno", "questo trimestre", "Gruppo Servizio clienti"].map((part) => part.replace(/ /g, "\u00a0"));
-  assert.ok(phoneList.includes(`<span data-slot="bubble-summary" class="text-xs text-muted-foreground">${parts.join("\u00a0· ")}</span>`), phoneList.slice(0, 1200));
+  // Il gruppo non c'è: lo dice il titolo della sezione.
+  const parts = ["Facilità 4", "4.043 €/anno", "avvio 560 €", "ricorrenti 600 €/anno", "questo trimestre"].map((part) => part.replace(/ /g, "\u00a0"));
+  assert.ok(phoneList.includes(`<span data-slot="bubble-summary">${parts.join("\u00a0· ")}</span>`), phoneList.slice(0, 1200));
   assert.ok(page.includes("Servizio clienti"), "la legenda dei gruppi");
   assert.ok(page.includes(">Senza gruppo<"), "il grigio dice che sono schede senza gruppo, non «Altro»");
   assert.ok(page.includes('data-slot="value-params-summary"') && page.includes("Ipotesi di calcolo"));
@@ -574,7 +576,7 @@ test("«Curva del valore» dal menu «⋯»: J-curve con entrata in uso e paregg
   assert.equal(count(page, 'data-go-live="2027-01"'), 1, "una linea tratteggiata per mese di entrata in uso");
   assert.ok(page.includes("Pareggio · apr 27"));
   assert.ok(page.includes("Da nov\u00a026, per 24\u00a0mesi"));
-  assert.ok(page.includes('data-slot="value-jcurve-list"'), "sotto i 768 px, le tappe");
+  assert.ok(page.includes('data-slot="value-jcurve-list"'), "in una pagina stretta, le tappe");
 
   assert.ok(page.includes('data-slot="value-by-lever"'));
   const tempo = itemOf(page, 'data-lever="tempo"');
@@ -593,7 +595,7 @@ test("«Curva del valore» dal menu «⋯»: J-curve con entrata in uso e paregg
     assert.ok(page.includes(label), `la riga «${label}»`);
   }
   assert.ok(!page.includes(`data-segment="${cards.small.id}"`), "da decidere: non è nel piano");
-  assert.ok(page.includes('data-slot="value-by-lever-list"'), "sotto i 768 px, l'elenco");
+  assert.ok(page.includes('data-slot="value-by-lever-list"'), "in una pagina stretta, un tipo per sezione chiusa");
   assert.ok(page.includes("Ipotesi di calcolo"));
   // Il popover è chiuso: le voci non sono ancora nella pagina.
   assert.ok(!page.includes(`Smistamento delle richieste ${suffix}`));
@@ -616,11 +618,16 @@ function legendOf(page: string, start: string, end: string): string[] {
   return page.slice(from, page.indexOf(end, from)).replace(/<[^>]+>/g, "|").split("|").filter(Boolean);
 }
 
+/** I nomi delle sezioni chiuse sotto le bolle, che fanno da legenda dei colori. */
+function bubbleSectionLabels(page: string): string[] {
+  return [...page.matchAll(/<details data-slot="bubbles-section"[^>]*><summary[^>]*>[\s\S]*?<span class="text-foreground">([^<]*)<\/span>/g)].map((match) => match[1]);
+}
+
 test("con gli agenti nei titoli il grigio ha un nome solo, «Altri use case», nelle tre legende; nessun segno dice il suo gruppo", opts, async () => {
   const bubbles = await html("builder", ids.wsT, { vista: "panoramica", mostra: "benefici" });
   const curve = await html("builder", ids.wsT, { vista: "panoramica", mostra: "curva" });
   const matrix = await html("builder", ids.wsT, { vista: "panoramica", mostra: "matrice" });
-  assert.deepEqual(legendOf(bubbles, 'data-slot="bubbles-legend"', "</p>").slice(0, 3), ["AUTO", "LIBRA", "Altri use case"]);
+  assert.deepEqual(bubbleSectionLabels(bubbles), ["AUTO", "LIBRA", "Altri use case"]);
   assert.deepEqual(legendOf(curve, '<figcaption class="flex', "</figcaption>"), ["AUTO", "LIBRA", "Altri use case"]);
   assert.deepEqual(legendOf(matrix, 'data-slot="matrix-legend"', "</p>").slice(0, 3), ["AUTO", "LIBRA", "Altri use case"]);
   // La bolla e il segmento grigi finiscono con il quando e il tipo di ritorno, come il punto della matrice.
@@ -674,7 +681,7 @@ test("con gli agenti nei titoli: ogni bolla, segmento e punto ha il tono dell'ag
   );
   assert.ok(itemOf(curve, 'data-lever="tempo"').includes(`aria-label="${titleCards.libra.code} LIBRA L1 · Fatture ${suffix}: da misurare, fino a 1.680 €, fuori dal totale · Risparmio di tempo"`));
   assert.ok(!/Gruppo (?:ORSA|Operazioni)|Altri gruppi/.test(bubbles + curve));
-  assert.deepEqual(legendOf(bubbles, 'data-slot="bubbles-legend"', "</p>").slice(0, 4), ["DENEB", "ORSA", "SIRIO", "Altri use case"]);
+  assert.deepEqual(bubbleSectionLabels(bubbles), ["DENEB", "ORSA", "SIRIO", "Altri use case"]);
   assert.deepEqual(legendOf(curve, '<figcaption class="flex', "</figcaption>"), ["DENEB", "LIBRA", "ORSA", "SIRIO", "Altri use case", "da misurare"]);
   assert.deepEqual(legendOf(matrix, 'data-slot="matrix-legend"', "</p>").slice(0, 4), ["DENEB", "ORSA", "SIRIO", "Altri use case"]);
 });

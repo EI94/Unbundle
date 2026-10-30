@@ -89,6 +89,30 @@ test("la «Panoramica»: tre corsie da 58rem del riquadro, prima una sotto l'alt
   assert.ok(read("scripts/use-case-test/screens-hub.mjs").includes("if (layout.laneColumns"));
 });
 
+test("i grafici del menu «⋯»: grafico o elenco sulla larghezza del riquadro (36rem), mai della finestra", () => {
+  // A 768 px di finestra la pagina ha 464 px: le bolle e la curva, disegnate da `md:`, ci stavano
+  // strette e le etichette, messe per 600 px, coprivano le bolle vicine. Ora da una pagina di 36rem.
+  const files = [
+    "src/components/use-cases/value-cost-matrix.tsx",
+    "src/components/use-cases/benefit-bubbles.tsx",
+    "src/components/use-cases/value-jcurve.tsx",
+    "src/components/use-cases/value-by-lever.tsx",
+    "src/components/use-cases/roadmap-value.tsx",
+    "src/components/use-cases/chart-label.tsx",
+  ];
+  for (const file of files) {
+    const classes = [...read(file).matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
+    assert.doesNotMatch(classes, VIEWPORT_VARIANT, `${file}: una forma sulla larghezza della finestra`);
+  }
+  assert.match(read("src/components/use-cases/benefit-bubbles.tsx"), /data-slot="benefit-bubbles-chart" className="hidden grid-cols-\[4\.5rem_minmax\(0,1fr\)\] gap-x-2 @xl\/hub:grid"/);
+  const curve = read("src/components/use-cases/value-jcurve.tsx");
+  assert.match(curve, /data-slot="value-jcurve-chart" aria-hidden className="hidden grid-cols-\[4\.5rem_minmax\(0,1fr\)\] gap-x-2 @xl\/hub:grid"/);
+  assert.match(curve, /data-slot="value-jcurve-list" className="space-y-3 text-sm @xl\/hub:hidden"/);
+  const levers = read("src/components/use-cases/value-by-lever.tsx");
+  assert.match(levers, /data-slot="value-by-lever-bars" className="hidden space-y-1 @xl\/hub:block"/);
+  assert.match(levers, /data-slot="value-by-lever-list" className="space-y-1 @xl\/hub:hidden"/);
+});
+
 test("la barra dei filtri va a capo dal tablet e resta una riga al telefono", () => {
   assert.match(read("src/components/use-cases/filter-bar.tsx"), /data-slot="filter-bar"[^>]*className="flex min-w-0 flex-nowrap items-center gap-2 sm:flex-wrap"/);
 });

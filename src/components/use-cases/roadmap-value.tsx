@@ -39,7 +39,7 @@ export function RoadmapValueCharts({ value, items, params, palette, hrefs, follo
   return (
     <section aria-label={ROADMAP_VALUE_TEXT.label} data-slot="roadmap-value" className="space-y-3">
       <div className="rounded-xl border bg-card p-4">
-        <ValueJCurve value={value} />
+        <ValueJCurve value={value} hrefs={hrefs} />
       </div>
       <div className="rounded-xl border bg-card p-4">
         <ValueByLever chart={levers} hrefs={hrefs} legend={legend} />

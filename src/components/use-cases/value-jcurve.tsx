@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
+import { shortRefOf } from "@/lib/use-cases/agents";
 import { formatEuro } from "@/lib/use-cases/format";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { monthLabel } from "@/lib/use-cases/value-calc";
 import { curveScale, type RoadmapValue } from "@/lib/use-cases/value-charts";
 import { cn } from "@/lib/utils";
+import { ChartListSection, ChartUseCaseLink } from "./chart-label";
 
 /** Testi della J-curve di «Curva del valore» (menu «⋯»; spec di Pierpaolo, 25/10/2026). */
 export const JCURVE_TEXT = Object.freeze({
@@ -28,6 +30,8 @@ export function afterMonthsText(months: number): string {
 
 export interface ValueJCurveProps {
   value: RoadmapValue;
+  /** id → il pannello laterale: gli use case che entrano in uso, nell'elenco al telefono. */
+  hrefs?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -36,9 +40,12 @@ export interface ValueJCurveProps {
  * (`jCurve` di value-calc). Area e linea, la linea dello zero, linee tratteggiate ai mesi di
  * entrata in uso, il punto di pareggio con la sua etichetta e il valore a fine orizzonte. SVG
  * scritto a mano come la matrice Valore × Costo; al passaggio del mouse il mese con il netto e chi
- * entra in uso. Sotto i 768 px, e per i lettori di schermo, le stesse cifre come elenco e tabella.
+ * entra in uso. In una pagina più stretta di 36rem (il telefono, il tablet accanto alla barra) le
+ * tappe al posto del grafico: punto più basso, pareggio e valore a fine orizzonte, poi un mese di
+ * entrata in uso per sezione chiusa («Entra in uso · gen 27 · 17 use case»), con gli use case su
+ * due righe come nelle card. Per i lettori di schermo, da 36rem in su, la tabella mese per mese.
  */
-export function ValueJCurve({ value }: ValueJCurveProps) {
+export function ValueJCurve({ value, hrefs = {} }: ValueJCurveProps) {
   const { curve, goLives, low } = value;
   const horizon = curve.months.length - 1;
   const scale = curveScale(Math.min(...curve.net), Math.max(...curve.net));
@@ -65,7 +72,7 @@ export function ValueJCurve({ value }: ValueJCurveProps) {
         <p className="text-xs text-muted-foreground">{keepTogether(jCurveIntro(from, horizon))}</p>
       </div>
 
-      <div data-slot="value-jcurve-chart" aria-hidden className="hidden grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 md:grid">
+      <div data-slot="value-jcurve-chart" aria-hidden className="hidden grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2 @xl/hub:grid">
         <div className="relative">
           {scale.ticks.map((tick) => (
             <span key={tick} className="absolute right-0 -translate-y-1/2 text-[11px] whitespace-nowrap text-muted-foreground tabular-nums" style={{ top: `${y(tick)}%` }}>
@@ -168,22 +175,39 @@ export function ValueJCurve({ value }: ValueJCurveProps) {
         </p>
       </div>
 
-      {/* Al telefono: le tappe della curva, senza grafico. */}
-      <dl data-slot="value-jcurve-list" className="space-y-2 text-sm md:hidden">
-        {low ? <Fact label={JCURVE_TEXT.low} value={`${formatEuro(low.net)} · ${low.label}`} /> : null}
-        {goLives.map((mark) => (
-          <Fact key={mark.index} label={`${JCURVE_TEXT.goLive} · ${mark.label}`} value={<Names names={mark.names} />} />
-        ))}
-        {value.breakevenText ? <Fact label={JCURVE_TEXT.breakeven} value={value.breakevenText} /> : null}
-        <Fact label={afterMonthsText(horizon)} value={formatEuro(end)} />
-      </dl>
+      {/* Al telefono: le tappe della curva, senza grafico; i mesi di entrata in uso chiusi. */}
+      <div data-slot="value-jcurve-list" className="space-y-3 text-sm @xl/hub:hidden">
+        <dl className="space-y-2">
+          {low ? <Fact label={JCURVE_TEXT.low} value={`${formatEuro(low.net)} · ${low.label}`} /> : null}
+          {value.breakevenText ? <Fact label={JCURVE_TEXT.breakeven} value={value.breakevenText} /> : null}
+          <Fact label={afterMonthsText(horizon)} value={formatEuro(end)} />
+        </dl>
+        {goLives.length ? (
+          <div className="space-y-1">
+            {goLives.map((mark) => {
+              const cards = value.cards
+                .filter((card) => card.goLive === mark.index)
+                .sort((a, b) => (shortRefOf(a) ?? a.title).localeCompare(shortRefOf(b) ?? b.title, "it-IT"));
+              return (
+                <ChartListSection key={mark.index} slot="jcurve-go-live" label={`${JCURVE_TEXT.goLive} · ${mark.label}`} count={cards.length}>
+                  {cards.map((card) => (
+                    <li key={card.id}>
+                      <ChartUseCaseLink href={hrefs[card.id] ?? "#"} code={card.code} title={card.title} />
+                    </li>
+                  ))}
+                </ChartListSection>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
 
       {/*
-        Per i lettori di schermo, da tablet in su: la curva mese per mese. `sr-only` sta sul riquadro,
+        Per i lettori di schermo, da una pagina di 36rem in su: la curva mese per mese. `sr-only` sta sul riquadro,
         non sulla tabella: con `display: table` la larghezza di 1 px non vale, e le righe lunghe di
         «Entrata in uso» allargavano la pagina.
       */}
-      <div className="sr-only hidden md:block">
+      <div className="sr-only hidden @xl/hub:block">
         <table>
           <caption>{JCURVE_TEXT.title}</caption>
           <thead>
@@ -220,19 +244,5 @@ function Fact({ label, value }: { label: string; value: ReactNode }) {
       <dt className="text-muted-foreground">{keepTogether(label)}</dt>
       <dd className="tabular-nums">{typeof value === "string" ? keepTogether(value) : value}</dd>
     </div>
-  );
-}
-
-/** «LIBRA L1, TJ-0006»: ogni nome intero su una riga, mai «TJ-» da una parte e «0006» dall'altra. */
-function Names({ names }: { names: readonly string[] }) {
-  return (
-    <>
-      {names.map((name, index) => (
-        <span key={`${index}-${name}`}>
-          {index ? " " : null}
-          <span className="whitespace-nowrap">{index < names.length - 1 ? `${name},` : name}</span>
-        </span>
-      ))}
-    </>
   );
 }

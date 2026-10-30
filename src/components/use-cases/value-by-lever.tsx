@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LEVER_META } from "@/components/uc/common/lever-icons";
 import { formatEuro, qualitativeCountText } from "@/lib/use-cases/format";
+import { laneMoreLabel } from "@/lib/use-cases/lanes";
 import { SCREEN_SEPARATOR, keepTogether } from "@/lib/use-cases/line-breaks";
 import type { GroupLegendEntry, LeverChart, LeverRow, LeverSegment } from "@/lib/use-cases/value-charts";
 import { cn } from "@/lib/utils";
+import { ChartUseCaseLink } from "./chart-label";
+import { Disclosure } from "./disclosure";
 import { GroupLegendItems, SLOT_BORDER, SLOT_FILL, SLOT_FILL_SOFT } from "./value-chart-colors";
 
 /** Testi di «Valore per tipo di ritorno» (spec di Pierpaolo, 25/10/2026). */
@@ -21,7 +24,12 @@ export const LEVER_CHART_TEXT = Object.freeze({
   perYear: "all'anno",
   pendingLegend: "da misurare",
   upTo: "fino a",
+  qualitative: "qualitativo",
+  showLess: "Mostra meno",
 });
+
+/** Al telefono, in un tipo aperto: i primi use case; gli altri dietro «Mostra gli altri N». */
+export const LEVER_PHONE_PREVIEW = 5;
 
 /** «XX-0007 Smistamento: 4.043 € all'anno» (con «da misurare, fuori dal totale» per la parte tratteggiata). */
 function segmentLabel(segment: LeverSegment, row: LeverRow, pending: boolean): string {
@@ -46,7 +54,10 @@ export interface ValueByLeverProps {
  * (con gli agenti nei titoli per l'agente del titolo).
  * Ogni segmento è un bottone: apre un popover con le voci di quel tipo e «Apri». La parte da
  * misurare è tratteggiata e fuori dal totale; «(2 qualitativi)» conta le voci qualitative e apre i
- * loro use case. Tutte le righe usano la stessa scala. Sotto i 768 px un elenco al posto delle barre.
+ * loro use case. Tutte le righe usano la stessa scala. In una pagina più stretta di 36rem (il
+ * telefono, il tablet accanto alla barra) un tipo per sezione chiusa con il suo totale, al posto
+ * delle barre: dentro, gli use case su due righe come nelle card, i primi cinque e gli altri dietro
+ * «Mostra gli altri N».
  *
  * Senza recharts né d3, con i token del tema. I segmenti sono bottoni HTML e non rettangoli SVG:
  * ognuno si raggiunge con la tastiera e apre il suo popover, come i punti della matrice Valore × Costo.
@@ -63,19 +74,19 @@ export function ValueByLever({ chart, hrefs, legend }: ValueByLeverProps) {
         <p className="text-xs text-muted-foreground">{LEVER_CHART_TEXT.intro}</p>
       </div>
 
-      <ul data-slot="value-by-lever-bars" className="hidden space-y-1 md:block">
+      <ul data-slot="value-by-lever-bars" className="hidden space-y-1 @xl/hub:block">
         {rows.map((row) => (
           <BarRow key={row.lever} row={row} max={chart.max} hrefs={hrefs} />
         ))}
       </ul>
 
-      <ul data-slot="value-by-lever-list" className="space-y-3 md:hidden">
+      <div data-slot="value-by-lever-list" className="space-y-1 @xl/hub:hidden">
         {rows
           .filter((row) => row.segments.length || row.pending.length || row.qualitative.length)
           .map((row) => (
             <PhoneRow key={row.lever} row={row} hrefs={hrefs} />
           ))}
-      </ul>
+      </div>
 
       {legend.length || anyPending ? (
         <figcaption className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -233,35 +244,72 @@ function QualitativePopover({ row, hrefs }: { row: LeverRow; hrefs: Readonly<Rec
   );
 }
 
-/** Al telefono: il tipo con il suo totale e, sotto, gli use case come link. */
+/**
+ * Al telefono: il tipo con il suo totale in una sezione chiusa (la somma delle cifre dei suoi use
+ * case, ognuna arrotondata all'euro come la scrive la riga); dentro gli use case come link, prima i
+ * contati, poi i da misurare e i qualitativi, i primi cinque e gli altri dietro «Mostra gli altri N».
+ */
 function PhoneRow({ row, hrefs }: { row: LeverRow; hrefs: Readonly<Record<string, string>> }) {
-  const link = (segment: LeverSegment, text: string, kind: string) => (
+  const entries = [
+    ...row.segments.map((segment) => ({ segment, kind: "c" as const, text: keepTogether(formatEuro(segment.eur)) })),
+    ...row.pending.map((segment) => ({ segment, kind: "p" as const, text: keepTogether(`${LEVER_CHART_TEXT.pending} · ${LEVER_CHART_TEXT.upTo} ${formatEuro(segment.eur)}`) })),
+    ...row.qualitative.map((segment) => ({ segment, kind: "q" as const, text: LEVER_CHART_TEXT.qualitative })),
+  ];
+  const link = ({ segment, kind, text }: (typeof entries)[number]) => (
     <li key={`${kind}-${segment.id}`}>
-      <Link href={hrefs[segment.id] ?? "#"} scroll={false} className="flex min-h-11 items-center gap-2 rounded-md px-1 text-sm outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50">
-        <span
-          aria-hidden
-          className={cn(
-            "size-2.5 shrink-0 rounded-[2px]",
-            kind === "c" ? SLOT_FILL[segment.slot] : kind === "p" ? cn("border border-dashed", SLOT_BORDER[segment.slot]) : cn("border", SLOT_BORDER[segment.slot]),
-          )}
-        />
-        {segment.code ? <span className="font-mono text-xs text-muted-foreground">{segment.code}</span> : null}
-        <span className="min-w-0 flex-1 truncate">{segment.title}</span>
-        <span className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">{text}</span>
-      </Link>
+      <ChartUseCaseLink
+        href={hrefs[segment.id] ?? "#"}
+        code={segment.code}
+        title={segment.title}
+        marker={
+          <span
+            aria-hidden
+            className={cn(
+              "size-2.5 shrink-0 rounded-[2px]",
+              kind === "c" ? SLOT_FILL[segment.slot] : kind === "p" ? cn("border border-dashed", SLOT_BORDER[segment.slot]) : cn("border", SLOT_BORDER[segment.slot]),
+            )}
+          />
+        }
+        aside={text}
+      />
     </li>
   );
+  const first = entries.slice(0, LEVER_PHONE_PREVIEW);
+  const rest = entries.slice(LEVER_PHONE_PREVIEW);
+  const Icon = LEVER_META[row.lever].icon;
   return (
-    <li data-lever={row.lever} className="space-y-1">
-      <p className="flex items-baseline justify-between gap-3 text-sm font-medium">
-        <LeverName row={row} />
-        {row.total > 0 ? <span className="tabular-nums">{keepTogether(formatEuro(row.total))}</span> : null}
-      </p>
-      <ul>
-        {row.segments.map((segment) => link(segment, formatEuro(segment.eur), "c"))}
-        {row.pending.map((segment) => link(segment, `${LEVER_CHART_TEXT.pending} · ${LEVER_CHART_TEXT.upTo} ${formatEuro(segment.eur)}`, "p"))}
-        {row.qualitative.map((segment) => link(segment, "qualitativo", "q"))}
-      </ul>
-    </li>
+    <Disclosure
+      slot="lever-section"
+      summary={
+        // Il nome e il totale sono un testo solo, come nelle altre sezioni: il «·» resta con il nome.
+        <span data-lever={row.lever} className="inline-flex min-w-0 items-center gap-1.5">
+          <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <span className="min-w-0">
+            <span className="text-foreground">{row.label}</span>
+            {SCREEN_SEPARATOR}
+            {/* Il totale contato; senza, «da misurare» o «qualitativo», come le righe dentro. */}
+            <span className="whitespace-nowrap tabular-nums">
+              {keepTogether(row.total > 0 ? formatEuro(row.total) : row.pending.length ? LEVER_CHART_TEXT.pending : LEVER_CHART_TEXT.qualitative)}
+            </span>
+          </span>
+        </span>
+      }
+    >
+      <ul>{first.map(link)}</ul>
+      {rest.length ? (
+        // Il riassunto resta a schermo anche aperto («Mostra meno»), come nelle corsie: il fuoco non si perde.
+        <Disclosure
+          slot="lever-more"
+          summary={
+            <>
+              <span className="[[open]>summary>&]:hidden">{laneMoreLabel(rest.length)}</span>
+              <span className="hidden [[open]>summary>&]:inline">{LEVER_CHART_TEXT.showLess}</span>
+            </>
+          }
+        >
+          <ul>{rest.map(link)}</ul>
+        </Disclosure>
+      ) : null}
+    </Disclosure>
   );
 }

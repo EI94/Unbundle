@@ -270,7 +270,10 @@ test("niente testo sbiadito nell'area «Use case»", () => {
   const matrix = read("src/components/use-cases/value-cost-matrix.tsx");
   assert.ok(!matrix.includes("opacity-60"), "matrice: codici più tenui");
   assert.ok(!matrix.includes("max-md:opacity-60"), "matrice: codici più tenui al telefono");
-  assert.ok(matrix.includes("label && !label.crowded"), "matrice: il codice che coprirebbe qualcosa non c'è");
+  assert.ok(matrix.includes("{short && label ? <ChartLabel"), "matrice: il codice che coprirebbe qualcosa non c'è");
+  // I codici accanto ai punti hanno l'alone del colore della pagina, non un riquadro velato.
+  const label = read("src/components/use-cases/chart-label.tsx");
+  assert.ok(label.includes('paintOrder="stroke"') && label.includes("fill-muted-foreground stroke-background"), "l'alone dei codici");
   assert.ok(!read("src/components/use-cases/value-jcurve.tsx").includes("stroke-muted-foreground/60"), "curva: la linea del go-live a 60%");
   assert.ok(!read("src/components/use-cases/detail/referent/requests-list.tsx").includes("text-amber-700"), "avvisi in ambra fissa");
   assert.ok(!read("src/components/ui/command.tsx").includes("border-input/30"), "ricerca: bordo del campo al 30%");

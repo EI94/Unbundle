@@ -25,6 +25,7 @@ import {
   hubCharts,
   isCommittedCost,
   markLegend,
+  markLegendGroups,
   markSlot,
   niceScale,
   otherGroupsLabel,
@@ -376,6 +377,57 @@ test("un agente senza tono (solo proposte) ha il suo nome in legenda, in grigio:
   assert.deepEqual(agentPointLegend(agents, ["IVA I1 · Calcolo dell'imposta sui biglietti"]), [{ slot: 0, label: "IVA" }]);
 });
 
+test("le sezioni sotto le bolle sono la legenda: ogni segno nella voce dell'agente del suo titolo, o del colore del suo gruppo", () => {
+  const agents = agentPalette([{ title: "LIBRA L1 · Lettura delle fatture estere" }, { title: "ORSA O1 · Solleciti ai clienti" }]);
+  const palette = groupPalette([{ valueModel: { ...SMALL, group: "ORSA" } }], PARAMS, agents);
+  const marks = [
+    { title: "ORSA O1 · Solleciti ai clienti", group: "Automazioni" },
+    { title: "Controllo dei preventivi del catering", group: "ORSA" },
+    { title: "IVA · Calcolo dell'imposta", group: null },
+    { title: "LIBRA L2 · Pagamenti", group: null },
+    { title: "ORSA O2 · Voli", group: null },
+  ];
+  const groups = markLegendGroups(palette, marks);
+  // Le voci di `markLegend`, nel suo ordine: gli agenti con un tono, IVA (solo proposte) in grigio con il suo nome, «Altri use case».
+  assert.deepEqual(
+    groups.map(({ entry }) => entry),
+    markLegend(palette, marks),
+  );
+  assert.deepEqual(
+    groups.map(({ entry, marks: inside }) => [entry.label, inside.map((mark) => mark.title)]),
+    [
+      ["LIBRA", ["LIBRA L2 · Pagamenti"]],
+      ["ORSA", ["ORSA O1 · Solleciti ai clienti", "ORSA O2 · Voli"]],
+      ["IVA", ["IVA · Calcolo dell'imposta"]],
+      [NO_AGENT_LABEL, ["Controllo dei preventivi del catering"]],
+    ],
+  );
+  // Due voci grigie, IVA e «Altri use case»: ognuna con i suoi, nessun segno due volte.
+  assert.equal(groups.reduce((sum, group) => sum + group.marks.length, 0), marks.length);
+  // Senza agenti: una voce per colore del gruppo, il grigio in fondo con i gruppi senza colore e chi non ne ha.
+  const plain = groupPalette(
+    ["A", "A", "B", "B", "C", "C", "D"].map((group) => ({ valueModel: { ...SMALL, group } })),
+    PARAMS,
+    null,
+  );
+  const byGroup = markLegendGroups(plain, [
+    { title: "uno", group: "A" },
+    { title: "due", group: "D" },
+    { title: "tre", group: null },
+    { title: "quattro", group: "B" },
+  ]);
+  assert.deepEqual(
+    byGroup.map(({ entry, marks: inside }) => [entry.label, inside.map((mark) => mark.title)]),
+    [
+      ["A", ["uno"]],
+      ["B", ["quattro"]],
+      [otherGroupsLabel(["D"], true), ["due", "tre"]],
+    ],
+  );
+  // Con un colore solo, nessuna voce.
+  assert.deepEqual(markLegendGroups(groupPalette([], PARAMS, null), [{ title: "uno", group: null }]), []);
+});
+
 test("niceScale: tacche tonde che comprendono lo zero; senza ampiezza da 0 a 1.000", () => {
   assert.deepEqual(niceScale(0, 4042.5).ticks, [0, 1000, 2000, 3000, 4000, 5000]);
   const both = niceScale(-840, 2719);
@@ -401,11 +453,11 @@ test("curveScale: una piccola discesa sotto lo zero non schiaccia la J", () => {
 
 // ─── Bolle ───────────────────────────────────────────────────────────
 
-test("bolle: raggio 5 + 13·√(avvio / avvio massimo)", () => {
-  assert.equal(bubbleRadius(560, 560), 18);
-  assert.equal(bubbleRadius(140, 560), 11.5);
-  assert.equal(bubbleRadius(0, 560), 5);
-  assert.equal(bubbleRadius(0, 0), 5, "nessun avvio: tutte al minimo");
+test("bolle: raggio 4 + 9·√(avvio / avvio massimo)", () => {
+  assert.equal(bubbleRadius(560, 560), 13);
+  assert.equal(bubbleRadius(140, 560), 8.5);
+  assert.equal(bubbleRadius(0, 560), 4);
+  assert.equal(bubbleRadius(0, 0), 4, "nessun avvio: tutte al minimo");
 });
 
 test("bolle: il bordo dice quando, il riempimento chiaro «da decidere»", () => {
@@ -444,12 +496,12 @@ test("bolle: x facilità, y beneficio contato, dalla più grande; senza facilit�
   near(big.benefit, 4042.5, "beneficio contato");
   near(big.hours, 115.5, "ore");
   assert.equal(big.oneoff, 560);
-  assert.equal(big.r, 18);
+  assert.equal(big.r, 13);
   assert.equal(big.when, "questo_trimestre");
   assert.equal(big.group, "Servizio clienti");
   assert.equal(big.slot, 1, "Servizio clienti ha due schede, Amministrazione una");
   assert.equal(big.groupLabel, "Gruppo Servizio clienti");
-  assert.equal(little.r, 11.5);
+  assert.equal(little.r, 8.5);
   assert.equal(little.when, "da_decidere");
   assert.equal(little.slot, 0, "senza gruppo: grigio");
   assert.equal(chart.scale.max, 5000);

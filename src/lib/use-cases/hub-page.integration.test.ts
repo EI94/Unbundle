@@ -654,9 +654,12 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
   assert.ok(page.includes('data-chart="matrice"'));
   // 30.000 € nella seconda fascia del workspace (15.001-40.000): 1,5 + 14.999/24.999 ≈ 2,1 → 32 %.
   // Con le fasce predefinite (25.001-65.000) sarebbe 1,625 → 22,5 %.
+  // Lo use case a fascia sola (30 %, più sotto) viene prima nella lista, allo stesso Valore e a 2
+  // punti percentuali: questo si sposta di lato quanto basta per non toccarlo (11 px sui 304 del
+  // telefono, 3,6 punti), e resta nella seconda fascia (20-40 %).
   const point = new RegExp(`left:([\\d.]+)%;top:([\\d.]+)%"[^>]*><a[^>]*data-point="${cards.amount.id}"`).exec(page);
   assert.ok(point, "punto dello use case con importo");
-  assert.ok(Math.abs(Number(point[1]) - 32) < 0.1, `posizione del costo ${point[1]}`);
+  assert.ok(Math.abs(Number(point[1]) - (30 + (11 / 304) * 100)) < 0.1 && Number(point[1]) < 40, `posizione del costo ${point[1]}`);
   assert.ok(Math.abs(Number(point[2]) - 30) < 0.1, `Valore 4 → 30 %: ${point[2]}`);
   // Una fascia sola sta al centro della sua fascia: la seconda → 30 %.
   const band = new RegExp(`left:([\\d.]+)%;top:([\\d.]+)%"[^>]*><a[^>]*data-point="${cards.band.id}"`).exec(page);
@@ -668,8 +671,8 @@ test("fasce del workspace diverse dalle predefinite: matrice, linea del costo ba
   for (const label of BANDS_A.labels) assert.ok(page.includes(`title="${label}"`), `etichetta della fascia ${label}`);
   for (const zone of ["Subito", "Da pianificare", "Se avanza tempo", "Non ora"]) assert.ok(page.includes(zone), zone);
   // Le etichette stanno dalla loro parte della linea del costo basso (40 %), anche al telefono.
-  assert.match(page, /style="max-width:calc\(40% - 0\.75rem\)"[^>]*>Se avanza tempo</);
-  assert.match(page, /style="left:calc\(40% \+ 0\.5rem\)"[^>]*>Non ora</);
+  assert.match(page, /style="max-width:calc\(40% - 0\.75rem\);[^"]*"[^>]*>Se avanza tempo</);
+  assert.match(page, /style="left:calc\(40% \+ 0\.5rem\);[^"]*"[^>]*>Non ora</);
   assert.ok(page.includes("Le zone sono un suggerimento, non la decisione."));
 
   // Zone con la soglia del workspace: la matrice qui sopra le disegna, l'export le scrive (la prova

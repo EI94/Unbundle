@@ -1,14 +1,17 @@
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { shortRefOf, type AgentPalette } from "@/lib/use-cases/agents";
 import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { costShortText, valueScreenText } from "@/lib/use-cases/format";
-import { ORIGIN_LABEL, ZONE_HINT, ZONE_LABEL } from "@/lib/use-cases/labels";
-import { groupLabelTexts, groupNearPoints, placeMatrixLabels, type MatrixLabelPlacement } from "@/lib/use-cases/matrix-labels";
+import { swarm } from "@/lib/use-cases/chart-layout";
+import { ORIGIN_LABEL, ZONES, ZONE_HINT, ZONE_LABEL, type Zone } from "@/lib/use-cases/labels";
+import { placeMatrixLabels, placeZoneLabels, zoneLabelRect, type MatrixLabelPlacement, type ZoneLabelInput, type ZoneLabelSpot } from "@/lib/use-cases/matrix-labels";
 import type { Origin } from "@/lib/use-cases/types";
 import type { CostFigure as CostFigureData, ValueFigure as ValueFigureData } from "@/lib/use-cases/valuation";
 import { agentPointLegend, agentPointSlot, type GroupSlot } from "@/lib/use-cases/value-charts";
 import { EXPIRED_TAG, toEstimateLabel, type HubEstimateParam } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
+import { CHART_LABEL_CHAR_PX, ChartLabel, ChartListSection, ChartUseCaseLink } from "./chart-label";
 import { CostFigure } from "./cost-figure";
 import { Disclosure } from "./disclosure";
 import { RevealOnMount } from "./list-focus";
@@ -42,6 +45,8 @@ export interface MatrixPoint {
   x: number;
   /** Valore, da 1 a 5. */
   y: number;
+  /** La zona (`zoneOf`): il gruppo dell'elenco sotto la matrice. Senza, quella dove cade il punto. */
+  zone?: Zone | null;
   value: ValueFigureData;
   cost: CostFigureData;
   /** Apre il pannello laterale (`?apri=<id>`). */
@@ -95,43 +100,88 @@ function topPct(y: number): number {
   return ((MIN + SPAN - Math.min(5.5, Math.max(0.5, y))) / SPAN) * 100;
 }
 
-const clamp = (pct: number) => Math.min(97, Math.max(3, pct));
-
 /** Le etichette delle zone, grigie; vanno a capo dentro la loro zona. */
 const ZONE_TEXT = "absolute text-xs leading-tight break-words text-muted-foreground";
 
 /**
- * Punti che cadono nello stesso posto (stessa fascia, stesso Valore): si aprono a raggiera di
- * poco, così ognuno resta cliccabile. Punti quasi nello stesso posto restano dove sono (la
- * posizione è il loro costo), ma il primo porta l'etichetta con tutti i codici del gruppo
- * («TJ-0001, TJ-0004», `groupNearPoints`): senza, il secondo codice copriva il primo e uno use case
- * spariva dal grafico. Un titolo con l'agente dà il tag al posto del codice («LIBRA L1, TJ-0004»),
- * come le card della Panoramica (`shortRefOf`). Nessun ordine per persona: l'ordine è quello della lista.
+ * Il riquadro della matrice, in pixel: 304 al telefono più stretto (360 px di finestra), 576 al più
+ * largo (la figura è larga al massimo 600 px). Punti e posizioni delle etichette si calcolano lì.
  */
-function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: number; top: number; labelText: string }> {
-  const groups = new Map<string, number>();
-  const seen = new Map<string, number>();
-  for (const point of points) {
-    const key = `${leftPct(point.x).toFixed(1)}|${topPct(point.y).toFixed(1)}`;
-    groups.set(key, (groups.get(key) ?? 0) + 1);
-  }
-  const placed = points.map((point) => {
-    const left = leftPct(point.x);
-    const top = topPct(point.y);
-    const key = `${left.toFixed(1)}|${top.toFixed(1)}`;
-    const size = groups.get(key) ?? 1;
-    const index = seen.get(key) ?? 0;
-    seen.set(key, index + 1);
-    if (size === 1) return { ...point, left: clamp(left), top: clamp(top) };
-    const angle = (2 * Math.PI * index) / size;
-    const radius = 2.2;
-    return { ...point, left: clamp(left + radius * Math.cos(angle)), top: clamp(top + radius * Math.sin(angle)) };
+const MATRIX_BOX = Object.freeze({ minPx: 304, midPx: 440, maxPx: 576 });
+/**
+ * Le etichette che non stanno nel riquadro del telefono si scrivono da 440 px in su: la pagina larga
+ * almeno 29rem (464 px, meno l'asse del Valore). Classi scritte per intero, così Tailwind le trova.
+ */
+const WIDE_LABEL_CLASS = "hidden @min-[29rem]/hub:block";
+/** Il raggio del pallino, bordo compreso (10 px). */
+const DOT_R = 5;
+/** Di quanto un punto può salire o scendere per far posto agli altri, in punti di Valore. */
+const VALUE_JITTER = 0.2;
+
+/** Il lato della linea del costo basso e la metà del Valore di ogni zona. */
+const ZONE_PLACE: Readonly<Record<Zone, Pick<ZoneLabelInput, "side" | "half">>> = {
+  subito: { side: "low", half: "top" },
+  da_pianificare: { side: "high", half: "top" },
+  se_avanza_tempo: { side: "low", half: "bottom" },
+  non_ora: { side: "high", half: "bottom" },
+};
+const ZONE_INPUTS: readonly ZoneLabelInput[] = ZONES.map((key) => ({ key, text: ZONE_LABEL[key], ...ZONE_PLACE[key] }));
+
+type PlacedPoint = MatrixPoint & { left: number; top: number; zoneKey: Zone };
+
+/**
+ * Lo sciame dei punti (`swarm`, sul riquadro più piccolo): un punto resta nella sua fascia di costo
+ * e alla sua altezza, e si sposta di lato quanto basta per non toccare gli altri; se la fascia è
+ * piena a quell'altezza sale o scende di 0,2 punti di Valore al massimo, mai oltre la linea del
+ * «Valore alto» né fuori da 1-5. Su TopJet quindici use case nella colonna «€» con Valore tra 1,6
+ * e 2,1 erano un solo grumo di pallini; ora ognuno si vede e si clicca. Prima i punti più vicini al
+ * bordo della loro metà (sotto la linea dal Valore più basso, sopra dal più alto), che hanno meno
+ * spazio per spostarsi; a pari Valore l'ordine della lista. Nessun ordine per persona.
+ */
+function layoutPoints(points: readonly MatrixPoint[], highValue: number, lowCostX: number): PlacedPoint[] {
+  const W = MATRIX_BOX.minPx;
+  const px = (pct: number) => (pct / 100) * W;
+  const highY = px(topPct(highValue));
+  const isHigh = (point: MatrixPoint) => point.y >= highValue;
+  const order = points.map((_, index) => index).sort((a, b) => {
+    const pa = points[a];
+    const pb = points[b];
+    if (isHigh(pa) !== isHigh(pb)) return isHigh(pa) ? -1 : 1;
+    return isHigh(pa) ? pb.y - pa.y : pa.y - pb.y;
   });
-  const texts = groupLabelTexts(
-    placed.map((point) => shortRefOf(point)),
-    groupNearPoints(placed),
+  const swarmed = swarm(
+    order.map((index) => {
+      const point = points[index];
+      // La fascia del costo: da 0,5 a 1,5 la prima, e così via.
+      const band = Math.min(5, Math.max(1, Math.ceil(point.x - 0.5)));
+      return {
+        x: px(leftPct(point.x)),
+        y: px(topPct(point.y)),
+        r: DOT_R,
+        lo: px(leftPct(band - 0.5)) + DOT_R + 1,
+        hi: px(leftPct(band + 0.5)) - DOT_R - 1,
+        dy: VALUE_JITTER * (W / SPAN),
+        yLo: isHigh(point) ? px(topPct(5)) : highY + DOT_R + 1,
+        yHi: isHigh(point) ? highY - DOT_R - 1 : px(topPct(1)),
+      };
+    }),
+    { gap: 1 },
   );
-  return placed.map((point, index) => ({ ...point, labelText: texts[index] }));
+  const at = new Map(order.map((index, k) => [index, swarmed[k]]));
+  return points.map((point, index) => {
+    const low = point.x <= lowCostX;
+    const zoneKey = point.zone ?? (isHigh(point) ? (low ? "subito" : "da_pianificare") : low ? "se_avanza_tempo" : "non_ora");
+    const spot = at.get(index)!;
+    return { ...point, left: (spot.x / W) * 100, top: (spot.y / W) * 100, zoneKey };
+  });
+}
+
+/** La posizione del nome di una zona: nell'angolo esterno, o accanto alla linea del «Valore alto». */
+function zoneStyle(zone: ZoneLabelInput, spot: ZoneLabelSpot, lowLeft: number, highTop: number): CSSProperties {
+  // A sinistra della linea del costo basso, oppure a destra: l'etichetta non la passa.
+  const horizontal = zone.side === "low" ? { maxWidth: `calc(${lowLeft}% - 0.75rem)` } : { left: `calc(${lowLeft}% + 0.5rem)` };
+  if (zone.half === "top") return { ...horizontal, ...(spot === "outer" ? { top: "0.375rem" } : { bottom: `calc(${100 - highTop}% + 0.375rem)` }) };
+  return { ...horizontal, ...(spot === "outer" ? { bottom: "0.375rem" } : { top: `calc(${highTop}% + 0.375rem)` }) };
 }
 
 /**
@@ -140,33 +190,53 @@ function spread(points: readonly MatrixPoint[]): Array<MatrixPoint & { left: num
  * a €€€€€ in orizzontale, sulla scala delle fasce del workspace (un importo cade dentro la sua
  * fascia, una fascia sola al centro). Due linee tratteggiate: «Valore alto» e «Costo basso», soglie del workspace.
  * Quattro zone in grigio: «Subito», «Da pianificare», «Se avanza tempo», «Non ora», ognuna dentro
- * la sua zona, di qua o di là della linea del costo basso (anche al telefono). Punti di
- * 10 px colorati per origine (in un workspace con gli agenti nei titoli per agente, nel tono del suo
- * tag, grigi senza: `agentPointSlot`), pieni se approvati, vuoti se da decidere, con il bordo rosso se
- * scaduti; ogni punto ha accanto il suo codice, messo dove non copre gli altri
- * (`placeMatrixLabels`; dove coprirebbe qualcosa non c'è, come nelle bolle facilità × beneficio);
- * punti quasi nello stesso posto hanno un'etichetta sola con tutti i loro codici.
- * Al passaggio del mouse codice, titolo, Valore, Costo e fonte; al clic,
- * o al tocco, il pannello laterale (il punto e il codice sono lo stesso link, largo abbastanza
- * per un dito). Senza trascinamento. Sotto la legenda, gli use case senza Valore o Costo, e quelli
- * con «Benefici e costi» senza un punto, in due elenchi chiusi (`toEstimate`, `offMatrix`). Solo per i revisori.
+ * la sua zona, di qua o di là della linea del costo basso (anche al telefono): nell'angolo esterno,
+ * o accanto alla linea del «Valore alto» se l'angolo esterno è pieno di punti (`placeZoneLabels`).
+ * Punti di 10 px colorati per origine (in un workspace con gli agenti nei titoli per agente, nel
+ * tono del suo tag, grigi senza: `agentPointSlot`), pieni se approvati, vuoti se da decidere, con
+ * il bordo rosso se scaduti. Punti nello stesso posto si aprono a sciame dentro la loro fascia
+ * (`layoutPoints`), così nessuno copre un altro. Il tag o il codice sta accanto ai soli punti
+ * isolati, dove è libero a ogni larghezza (`placeMatrixLabels`: non copre punti, nomi delle zone
+ * né linee tratteggiate), con un alone del colore della pagina; i gruppi fitti si leggono
+ * nell'elenco per zona sotto la legenda. Al passaggio del mouse codice, titolo, Valore, Costo e
+ * fonte; al clic, o al tocco, il pannello laterale (il punto e il codice sono lo stesso link,
+ * largo abbastanza per un dito). Senza trascinamento. Sotto la legenda gli use case per zona, poi
+ * quelli senza Valore o Costo e quelli con «Benefici e costi» senza un punto, tutti in elenchi
+ * chiusi (`toEstimate`, `offMatrix`). Solo per i revisori.
  */
 export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BANDS, toEstimate, offMatrix = null, open = null, agents = null }: ValueCostMatrixProps) {
-  const placed = spread(points);
+  const placed = layoutPoints(points, highValue, lowCostX);
   // Per agente solo se i titoli del workspace li portano; altrimenti per origine, come sempre.
   const agentLegend = agentPointLegend(agents, points.map((point) => point.title));
-  // Le etichette si mettono per la matrice più piccola (320 px, al telefono) e per la più grande (600 px).
-  // Ogni punto è un ostacolo; ha un'etichetta solo chi porta i codici del suo gruppo.
-  const labels = placeMatrixLabels(
-    placed.map((point) => ({ id: point.id, left: point.left, top: point.top, text: point.labelText })),
-    { boxPx: 320, maxBoxPx: 600 },
-  );
   const anyExpired = points.some((point) => point.expired);
   const highTop = topPct(highValue);
   const lowLeft = leftPct(lowCostX);
-  // A sinistra della linea del costo basso, oppure a destra: l'etichetta non la passa.
-  const lowSide = { maxWidth: `calc(${lowLeft}% - 0.75rem)` };
-  const highSide = { left: `calc(${lowLeft}% + 0.5rem)` };
+  const geometry = { lowLeftPct: lowLeft, highTopPct: highTop };
+  const widths = [MATRIX_BOX.minPx, MATRIX_BOX.midPx, MATRIX_BOX.maxPx];
+  const spots = placeZoneLabels(
+    ZONE_INPUTS,
+    placed.map((point) => ({ left: point.left, top: point.top, radiusPx: DOT_R })),
+    geometry,
+    widths,
+  );
+  // Le etichette: dalla matrice più piccola (304 px, al telefono) alla più grande (576 px), oppure
+  // solo da 440 px. Ogni punto è un ostacolo, e così i nomi delle zone e le due linee tratteggiate.
+  const labels = placeMatrixLabels(
+    placed.map((point) => ({ id: point.id, left: point.left, top: point.top, text: shortRefOf(point) ?? "" })),
+    {
+      boxPx: MATRIX_BOX.minPx,
+      maxBoxPx: MATRIX_BOX.maxPx,
+      wideFromPx: MATRIX_BOX.midPx,
+      charPx: CHART_LABEL_CHAR_PX,
+      dotPx: 2 * DOT_R,
+      obstacles: (box) => [
+        ...ZONE_INPUTS.map((zone) => zoneLabelRect(zone, spots[zone.key], geometry, box)),
+        { x: 0, y: (highTop / 100) * box.h - 2, w: box.w, h: 4 },
+        { x: (lowLeft / 100) * box.w - 2, y: 0, w: 4, h: box.h },
+      ],
+    },
+  );
+  const byZone = ZONES.map((zone) => ({ zone, points: placed.filter((point) => point.zoneKey === zone) })).filter((group) => group.points.length);
   return (
     <figure data-slot="value-cost-matrix" aria-label={MATRIX_TEXT.label} className="w-full max-w-[600px] space-y-3">
       {points.length === 0 ? (
@@ -192,18 +262,19 @@ export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BAND
               <line x1="0" x2="100" y1={highTop} y2={highTop} className="stroke-muted-foreground/70" strokeWidth="1.25" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
               <line x1={lowLeft} x2={lowLeft} y1="0" y2="100" className="stroke-muted-foreground/70" strokeWidth="1.25" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
             </svg>
-            <span aria-hidden className={cn(ZONE_TEXT, "top-1.5 left-2")} style={lowSide}>
-              {ZONE_LABEL.subito}
-            </span>
-            <span aria-hidden className={cn(ZONE_TEXT, "top-1.5 right-2 text-right")} style={highSide}>
-              {ZONE_LABEL.da_pianificare}
-            </span>
-            <span aria-hidden className={cn(ZONE_TEXT, "bottom-1.5 left-2")} style={lowSide}>
-              {ZONE_LABEL.se_avanza_tempo}
-            </span>
-            <span aria-hidden className={cn(ZONE_TEXT, "right-2 bottom-1.5 text-right")} style={highSide}>
-              {ZONE_LABEL.non_ora}
-            </span>
+            {ZONE_INPUTS.map((zone) => (
+              <span
+                key={zone.key}
+                aria-hidden
+                data-slot="zone-label"
+                data-zone={zone.key}
+                data-spot={spots[zone.key]}
+                className={cn(ZONE_TEXT, zone.side === "low" ? "left-2" : "right-2 text-right")}
+                style={zoneStyle(zone, spots[zone.key], lowLeft, highTop)}
+              >
+                {zone.text}
+              </span>
+            ))}
             <ul className="absolute inset-0">
               {placed.map((point) => (
                 <MatrixDot key={point.id} point={point} bands={bands} label={labels.get(point.id) ?? null} slot={agentPointSlot(agents, point.title)} />
@@ -256,8 +327,18 @@ export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BAND
             </span>
           ) : null}
         </p>
-        {toEstimate.length || offMatrix ? (
+        {byZone.length || toEstimate.length || offMatrix ? (
           <div className="space-y-1">
+            {/* I punti per zona: i gruppi fitti, che nel grafico non hanno etichetta, si leggono qui. */}
+            {byZone.map(({ zone, points: inZone }) => (
+              <ChartListSection key={zone} slot="matrix-zone" label={ZONE_LABEL[zone]} count={inZone.length}>
+                {inZone.map((point) => (
+                  <li key={point.id}>
+                    <ChartUseCaseLink href={point.href} code={point.code} title={point.title} marker={<PointMark point={point} slot={agentPointSlot(agents, point.title)} />} />
+                  </li>
+                ))}
+              </ChartListSection>
+            ))}
             {toEstimate.length ? (
               <Disclosure slot="to-estimate" summary={toEstimateLabel(toEstimate.length)} defaultOpen={open === "mancante"}>
                 <MatrixOffList items={toEstimate} />
@@ -297,19 +378,37 @@ const RING_CLASS: Readonly<Record<Origin, string>> = {
   transformation: "border-indigo-500",
 };
 
+/** Il pallino di un punto: il colore dell'agente o dell'origine, pieno se approvato, il bordo rosso se scaduto. */
+function PointMark({ point, slot, className }: { point: MatrixPoint; slot: GroupSlot | null; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "size-2.5 shrink-0 rounded-full border-2",
+        slot === null ? RING_CLASS[point.origin] : SLOT_BORDER[slot],
+        point.approved ? (slot === null ? ORIGIN_DOT_CLASS[point.origin] : SLOT_FILL[slot]) : "bg-background",
+        point.expired && "ring-2 ring-red-500 ring-offset-1 ring-offset-background",
+        className,
+      )}
+    />
+  );
+}
+
 function MatrixDot({
   point,
   bands,
   label,
   slot,
 }: {
-  point: MatrixPoint & { left: number; top: number; labelText: string };
+  point: PlacedPoint;
   bands: readonly CostBandInfo[];
+  /** Dove sta il tag accanto al punto; null: il punto non è isolato, o il tag non sta libero. */
   label: MatrixLabelPlacement | null;
   /** Il tono dell'agente del punto (`agentPointSlot`, 0 il grigio); null: il colore dell'origine. */
   slot: GroupSlot | null;
 }) {
   const text = `${point.code ? `${point.code} ` : ""}${point.title}. Valore: ${valueScreenText(point.value)}. Costo: ${costShortText(point.cost, bands)}`;
+  const short = shortRefOf(point);
   // Il riquadro si apre verso il centro, così non esce dalla matrice.
   const toLeft = point.left > 50;
   const above = point.top > 35;
@@ -324,29 +423,8 @@ function MatrixDot({
         data-expired={point.expired ? "true" : undefined}
         className="group relative flex size-8 touch-manipulation items-center justify-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50 pointer-coarse:size-11"
       >
-        <span
-          aria-hidden
-          className={cn(
-            "size-2.5 rounded-full border-2 transition-transform group-hover:scale-125",
-            slot === null ? RING_CLASS[point.origin] : SLOT_BORDER[slot],
-            point.approved ? (slot === null ? ORIGIN_DOT_CLASS[point.origin] : SLOT_FILL[slot]) : "bg-background",
-            point.expired && "ring-2 ring-red-500 ring-offset-1 ring-offset-background",
-          )}
-        />
-        {point.labelText && label && !label.crowded ? (
-          <span
-            aria-hidden
-            data-slot="matrix-label"
-            className={cn(
-              "pointer-events-none absolute rounded-sm bg-background/80 px-0.5 font-mono text-[10px] leading-[13px] whitespace-nowrap text-muted-foreground group-hover:text-foreground",
-              // Sotto i 768 px, dove coprirebbe un altro punto, il codice non c'è (più tenue era 2,2:1 sul fondo).
-              label.crowdedSmall && "max-md:hidden",
-            )}
-            style={{ left: `calc(50% + ${label.dx}px)`, top: `calc(50% + ${label.dy}px)` }}
-          >
-            {point.labelText}
-          </span>
-        ) : null}
+        <PointMark point={point} slot={slot} className="transition-transform group-hover:scale-125" />
+        {short && label ? <ChartLabel slot="matrix-label" text={short} dx={label.dx} dy={label.dy} className={label.wide ? WIDE_LABEL_CLASS : undefined} /> : null}
         <span
           aria-hidden
           className={cn(
