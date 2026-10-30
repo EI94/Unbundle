@@ -1,7 +1,7 @@
 /**
  * File dell'export del catalogo (PIANO §5.9): JSON (la fotografia), Markdown
  * (dizionario dati e catalogo, `catalogToMarkdown`) ed Excel (`catalogToSheets`
- * scritto con `xlsx`, come `portfolio/export/route.ts`).
+ * scritto con `spreadsheet/write.ts`, come `portfolio/export/route.ts`).
  *
  * - `parseStoredSnapshot`: legge una fotografia congelata da `uc_catalog_versions`
  *   e controlla che sia proprio quella del caso chiesto.
@@ -12,10 +12,11 @@
  * - `encodeForTransfer`: gzip per il trasporto, se il browser lo accetta.
  *
  * La fotografia arriva già filtrata per il ruolo (`snapshotForViewer`): qui non
- * si decide chi vede cosa. Modulo puro (solo `xlsx` per scrivere il foglio).
+ * si decide chi vede cosa. Modulo puro (solo `spreadsheet/write.ts` per
+ * scrivere il foglio).
  */
 import { gzipSync } from "node:zlib";
-import * as XLSX from "xlsx";
+import { appendSheet, jsonToSheet, newWorkbook, writeXlsx } from "../../spreadsheet/write.ts";
 import { CATALOG_SNAPSHOT_SCHEMA, isPersonalClass, type CatalogSnapshot, type SnapshotItem } from "../snapshot.ts";
 import { fail, ok, type Result } from "../types.ts";
 import { PRIVACY_CLASSES, isVocab } from "../vocab.ts";
@@ -75,14 +76,13 @@ export function parseStoredSnapshot(raw: unknown, expect: { caseId: string; work
   return ok(withoutPersonalValues(value as unknown as CatalogSnapshot));
 }
 
-/** Fogli → file Excel (`XLSX.write` con `type: "buffer"`). Le celle sono già protette da `sheetText`. */
+/** Fogli → file Excel (`writeXlsx`, compresso). Le celle sono già protette da `sheetText`. */
 export function sheetsToXlsx(sheets: readonly CatalogSheet[]): Uint8Array {
-  const workbook = XLSX.utils.book_new();
+  const workbook = newWorkbook();
   for (const sheet of sheets) {
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheet.rows), sheet.name);
+    appendSheet(workbook, jsonToSheet(sheet.rows), sheet.name);
   }
-  const out = XLSX.write(workbook, { bookType: "xlsx", type: "buffer", compression: true }) as Uint8Array;
-  return new Uint8Array(out);
+  return new Uint8Array(writeXlsx(workbook, { compression: true }));
 }
 
 export interface RenderedExport {

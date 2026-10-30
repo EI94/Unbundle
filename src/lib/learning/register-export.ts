@@ -1,5 +1,5 @@
-import * as XLSX from "xlsx";
 import { ACCENT, CONTENT_W, GRAY, INK, LIGHT, MARGIN, PdfBuilder } from "../documents/pdf.ts";
+import { aoaToSheet, appendSheet, encodeRange, newWorkbook, writeXlsx } from "../spreadsheet/write.ts";
 import type { TrainingRegister } from "./register";
 import { dateTime, isoDay, longDate, sessionLabel, sessionStateLabel as sessionState } from "./register-format.ts";
 import { companyDomain } from "./register-model.ts";
@@ -224,16 +224,16 @@ export function registerPdf(register: TrainingRegister, meta: ExportMeta) {
 // ─── Excel ─────────────────────────────────────────────────────────────
 
 function sheet(rows: (string | number | null)[][], widths: number[], filter = true) {
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const ws = aoaToSheet(rows);
   ws["!cols"] = widths.map((wch) => ({ wch }));
-  if (filter && rows.length > 1) ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: rows[0].length - 1 } }) };
+  if (filter && rows.length > 1) ws["!autofilter"] = { ref: encodeRange({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: rows[0].length - 1 } }) };
   return ws;
 }
 
 export function registerXlsx(register: TrainingRegister, meta: ExportMeta) {
   const org = register.organization;
   const t = register.totals;
-  const book = XLSX.utils.book_new();
+  const book = newWorkbook();
   book.Props = { Title: `${registerTitle} — ${org.name}`, Author: register.provider.platform, Subject: registerSubtitle };
   const sessionByKey = new Map(register.sessions.map((s) => [sessionKey(s), s]));
 
@@ -265,9 +265,9 @@ export function registerXlsx(register: TrainingRegister, meta: ExportMeta) {
   ];
   if (register.scoped) cover.push(["", ""], ["Nota", "Copia limitata ai percorsi gestiti da chi l'ha generata."]);
   if (register.domain && register.withoutCompany > 0) cover.push(["", ""], ["Nota", scopeNote(register.withoutCompany)]);
-  XLSX.utils.book_append_sheet(book, sheet(cover, [42, 90], false), "Registro");
+  appendSheet(book, sheet(cover, [42, 90], false), "Registro");
 
-  XLSX.utils.book_append_sheet(book, sheet([
+  appendSheet(book, sheet([
     ["Nome", "Email", "Società", "Percorso", "Modulo", "Turno", "Sessione", "Sessione svolta", "Fonte", "Accesso dal link", "Momento dell'accesso",
       "Esercitazioni richieste", "Esercitazioni consegnate", "Stato", "Nota del formatore", "Registrata da", "Registrata il"],
     ...register.participants.map((p) => {
@@ -281,35 +281,35 @@ export function registerXlsx(register: TrainingRegister, meta: ExportMeta) {
     }),
   ], [26, 30, 22, 30, 28, 12, 30, 10, 22, 18, 24, 12, 12, 36, 30, 22, 18]), "Partecipanti");
 
-  XLSX.utils.book_append_sheet(book, sheet([
+  appendSheet(book, sheet([
     ["Percorso", "Modulo", "Turno", "Inizio", "Fine", "Durata (minuti)", "Stato", "Iscritti", "Partecipanti dalla piattaforma", "Presenze registrate dal formatore",
       "Iscritti senza partecipazione documentata", "Con tutte le esercitazioni", "Art. 4 in vigore"],
     ...register.sessions.map((s) => [s.programTitle, s.moduleTitle, s.cohortId, dateTime(s.startsAt), dateTime(s.endsAt), s.durationMinutes,
       sessionState[s.state], s.enrolled, s.participants, s.manualParticipants, s.undocumented, s.allExercises, article4Label[s.article4]]),
   ], [30, 28, 12, 18, 18, 10, 24, 10, 14, 14, 16, 14, 30]), "Sessioni");
 
-  XLSX.utils.book_append_sheet(book, sheet([
+  appendSheet(book, sheet([
     ["Percorso", "Versione", "Impronta del contenuto", "Pubblicato il", "Modulo", "Obiettivo", "Durata (minuti)", "Programma", "Competenze trattate", "Esercitazioni"],
     ...register.programs.flatMap((p) => p.modules.map((m) => [p.title, p.contentVersion, p.packHash, longDate(p.publishedAt), m.title, m.objective ?? "",
       m.durationMinutes ?? "", m.agenda.map((b) => `${b.from}–${b.to}' ${b.title}`).join("; "), m.competencies.join("; "), m.exercises.join("; ")])),
   ], [30, 14, 66, 16, 28, 50, 10, 60, 40, 50]), "Contenuti");
 
-  XLSX.utils.book_append_sheet(book, sheet([
+  appendSheet(book, sheet([
     ["Percorso", "Materiale", "File", "Per", "Modulo", "Impronta SHA-256", "Caricato il"],
     ...register.programs.flatMap((p) => p.materials.map((m) => [p.title, m.title, m.fileName, audienceLabel(m.audience), m.moduleId ?? "Tutto il percorso", m.sha256, dateTime(m.createdAt)])),
   ], [30, 30, 30, 14, 16, 66, 18]), "Materiali");
 
-  XLSX.utils.book_append_sheet(book, sheet([
+  appendSheet(book, sheet([
     ["Rilevazione", "Stato", "Avviata il", "Risposte complete"],
     ...register.needsAssessments.map((a) => [a.name, a.status, longDate(a.createdAt), a.completed]),
   ], [40, 14, 18, 16]), "Rilevazione bisogni");
 
-  XLSX.utils.book_append_sheet(book, sheet([
+  appendSheet(book, sheet([
     ["Persona", "Email", "Modulo", "Turno", "Registrata il", "Registrata da", "Annullata il", "Annullata da", "Motivo"],
     ...register.corrections.map((c) => [c.personName, c.personEmail ?? "", c.moduleTitle, c.cohortId, dateTime(c.recordedAt), c.recordedBy, dateTime(c.voidedAt), c.voidedBy, c.voidReason]),
   ], [26, 30, 28, 12, 18, 22, 18, 22, 40]), "Correzioni");
 
-  XLSX.utils.book_append_sheet(book, sheet([
+  appendSheet(book, sheet([
     ["Note"],
     ["Quadro di riferimento"], ...legalFramework.map((p) => [p]),
     [""], ["Come il registro risponde ai criteri dell'art. 4"], ...criteriaMap.map(([k, v]) => [`${k}: ${v}`]),
@@ -319,5 +319,5 @@ export function registerXlsx(register: TrainingRegister, meta: ExportMeta) {
     [""], ["Limiti"], ...limits.map((p) => [p]),
   ], [160], false), "Note");
 
-  return Buffer.from(XLSX.write(book, { type: "buffer", bookType: "xlsx", compression: true }) as Buffer);
+  return Buffer.from(writeXlsx(book, { compression: true }));
 }

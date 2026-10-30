@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import { appendSheet, jsonToSheet, newWorkbook, writeXlsx } from "../spreadsheet/write.ts";
 import type {
   AiReadinessAnswer,
   AiReadinessDashboard,
@@ -97,7 +97,7 @@ function evidenceArray(value: unknown): Array<Record<string, unknown>> {
 }
 
 export function buildAiReadinessExcelBuffer(payload: AiReadinessExportPayload) {
-  const workbook = XLSX.utils.book_new();
+  const workbook = newWorkbook();
   const pillarRows = payload.template.pillars.map((pillar) => ({
     Pillar: pillar.title,
     Score: displayScore(payload.dashboard.pillarScores[pillar.id]),
@@ -197,22 +197,22 @@ export function buildAiReadinessExcelBuffer(payload: AiReadinessExportPayload) {
     { Field: "Raw response sheet", Value: payload.includeRawResponses ? "included" : "pseudonymized only" },
   ];
 
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), "Summary");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(pillarRows), "Pillar Scores");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sectionRows), "Section Scores");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(aggregatedRows), "Responses Aggregated");
+  appendSheet(workbook, jsonToSheet(summaryRows), "Summary");
+  appendSheet(workbook, jsonToSheet(pillarRows), "Pillar Scores");
+  appendSheet(workbook, jsonToSheet(sectionRows), "Section Scores");
+  appendSheet(workbook, jsonToSheet(aggregatedRows), "Responses Aggregated");
   if (payload.includeRawResponses) {
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rawRows), "Responses Raw");
+    appendSheet(workbook, jsonToSheet(rawRows), "Responses Raw");
   }
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(useCaseRows), "Use Cases");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(useCaseRows), "Use Case Scoring");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(insightRows), "Intelligence Insights");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(roadmapRows), "Roadmap Waves");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows.concat(aggregatedRows.map((row) => ({ Metric: `Unit ${row.Unit}`, Value: row.Score })))), "Dashboard Data");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(dictionaryRows), "Data Dictionary");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(auditRows), "Audit Export Info");
+  appendSheet(workbook, jsonToSheet(useCaseRows), "Use Cases");
+  appendSheet(workbook, jsonToSheet(useCaseRows), "Use Case Scoring");
+  appendSheet(workbook, jsonToSheet(insightRows), "Intelligence Insights");
+  appendSheet(workbook, jsonToSheet(roadmapRows), "Roadmap Waves");
+  appendSheet(workbook, jsonToSheet(summaryRows.concat(aggregatedRows.map((row) => ({ Metric: `Unit ${row.Unit}`, Value: row.Score })))), "Dashboard Data");
+  appendSheet(workbook, jsonToSheet(dictionaryRows), "Data Dictionary");
+  appendSheet(workbook, jsonToSheet(auditRows), "Audit Export Info");
 
-  return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  return writeXlsx(workbook);
 }
 
 function escapePdfText(text: string) {

@@ -7,9 +7,9 @@
  *
  * Ogni testo passa da `sheetText` (niente formule). Nessun dato del caso oltre
  * al titolo della domanda e alle etichette delle colonne. Modulo puro (solo
- * `xlsx` per scrivere il file).
+ * `spreadsheet/write.ts` per scrivere il file).
  */
-import * as XLSX from "xlsx";
+import { aoaToSheet, appendSheet, newWorkbook, writeXlsx } from "../../spreadsheet/write.ts";
 import { pasteOptionsFromConfig } from "../answers/table-paste.ts";
 import { sheetText } from "../export/sheets.ts";
 import type { Json } from "../types.ts";
@@ -38,11 +38,11 @@ export function tableTemplateRows(i: { title: string; config: Record<string, Jso
 /** File `.xlsx` del modello, come buffer. */
 export function tableTemplateWorkbook(i: { title: string; config: Record<string, Json> }): Buffer {
   const { rows } = tableTemplateRows(i);
-  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  const sheet = aoaToSheet(rows);
   sheet["!cols"] = (rows[0] ?? []).map((c) => ({ wch: Math.min(Math.max(String(c).length + 2, 14), 60) }));
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, sheet, "Modello");
-  return XLSX.write(book, { bookType: "xlsx", type: "buffer" }) as Buffer;
+  const book = newWorkbook();
+  appendSheet(book, sheet, "Modello");
+  return writeXlsx(book);
 }
 
 /** Nome del file scaricato: `modello-<chiave della voce>.xlsx`, solo caratteri sicuri. */

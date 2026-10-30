@@ -19,7 +19,7 @@
  * Riceve la fotografia già filtrata per la visibilità (`snapshotForViewer`) e
  * toglie di nuovo i valori personali (`withoutPersonalValues`). Modulo puro.
  */
-import * as XLSX from "xlsx";
+import { appendSheet, jsonToSheet, newWorkbook, writeXlsx } from "../../spreadsheet/write.ts";
 import type { CatalogSnapshot, SnapshotAnswer, SnapshotItem, ValueHiddenReason } from "../snapshot.ts";
 import type { Json } from "../types.ts";
 import type { AnswerKind, ItemStatus } from "../vocab.ts";
@@ -240,9 +240,9 @@ export function clientCatalogSheets(c: ClientCatalog): ClientSheet[] {
 
 /** Fogli → file Excel, come `sheetsToXlsx` (le celle sono già protette da `sheetText`). */
 function clientSheetsToXlsx(sheets: readonly ClientSheet[]): Uint8Array {
-  const workbook = XLSX.utils.book_new();
-  for (const sheet of sheets) XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheet.rows), sheet.name);
-  return new Uint8Array(XLSX.write(workbook, { bookType: "xlsx", type: "buffer", compression: true }) as Uint8Array);
+  const workbook = newWorkbook();
+  for (const sheet of sheets) appendSheet(workbook, jsonToSheet(sheet.rows), sheet.name);
+  return new Uint8Array(writeXlsx(workbook, { compression: true }));
 }
 
 /** Il file Excel del cliente, dalla fotografia già filtrata per il ruolo. */

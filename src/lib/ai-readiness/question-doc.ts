@@ -1,4 +1,3 @@
-import XLSXStyle from "xlsx-js-style";
 import type { AiReadinessTemplateDefinition } from "./types";
 import type { UseCaseBlock } from "./use-case-form";
 
@@ -21,6 +20,7 @@ export type QuestionDocPayload = {
 };
 
 import { INK, ACCENT, GRAY, LIGHT, HAIR, esc, PdfBuilder, PAGE_W, PAGE_H, MARGIN, CONTENT_W } from "../documents/pdf.ts";
+import { writeStyledXlsx, type StyledCell as Cell } from "../spreadsheet/write.ts";
 
 function typeLabel(t: string) {
   return t === "scale"
@@ -277,11 +277,6 @@ const XL_ACCENT = "067A6E";
 const XL_LIGHT = "F1F5F4";
 const XL_GRAY = "6B7280";
 
-type Cell = {
-  v: string;
-  s?: Record<string, unknown>;
-};
-
 function headerCell(v: string): Cell {
   return {
     v,
@@ -328,7 +323,6 @@ function bodyCell(v: string, opts: { bold?: boolean; gray?: boolean; band?: bool
 
 export function buildQuestionDocXlsx(payload: QuestionDocPayload) {
   const def = payload.definition;
-  const wb = XLSXStyle.utils.book_new();
 
   // ── Copertina ──
   const scored = def.questions.filter((q) => q.answerType !== "text").length;
@@ -364,14 +358,6 @@ export function buildQuestionDocXlsx(payload: QuestionDocPayload) {
       ),
     ],
   ];
-  const cover = XLSXStyle.utils.aoa_to_sheet(coverRows);
-  cover["!cols"] = [{ wch: 20 }, { wch: 70 }];
-  cover["!merges"] = [
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } },
-    { s: { r: 2, c: 0 }, e: { r: 2, c: 1 } },
-    { s: { r: 10, c: 0 }, e: { r: 10, c: 1 } },
-  ];
-  XLSXStyle.utils.book_append_sheet(wb, cover, "Copertina");
 
   // ── Domande ──
   const header = [
@@ -421,24 +407,37 @@ export function buildQuestionDocXlsx(payload: QuestionDocPayload) {
       r += 1;
     }
   }
-  const sheet = XLSXStyle.utils.aoa_to_sheet(rows);
-  sheet["!cols"] = [
-    { wch: 4 },
-    { wch: 20 },
-    { wch: 44 },
-    { wch: 36 },
-    { wch: 12 },
-    { wch: 7 },
-    { wch: 26 },
-    { wch: 26 },
-    { wch: 26 },
-    { wch: 26 },
-    { wch: 26 },
-    { wch: 44 },
-  ];
-  sheet["!rows"] = [{ hpt: 26 }];
-  sheet["!merges"] = merges;
-  XLSXStyle.utils.book_append_sheet(wb, sheet, "Domande");
 
-  return XLSXStyle.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  return writeStyledXlsx([
+    {
+      name: "Copertina",
+      rows: coverRows,
+      cols: [{ wch: 20 }, { wch: 70 }],
+      merges: [
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 1 } },
+        { s: { r: 10, c: 0 }, e: { r: 10, c: 1 } },
+      ],
+    },
+    {
+      name: "Domande",
+      rows,
+      cols: [
+        { wch: 4 },
+        { wch: 20 },
+        { wch: 44 },
+        { wch: 36 },
+        { wch: 12 },
+        { wch: 7 },
+        { wch: 26 },
+        { wch: 26 },
+        { wch: 26 },
+        { wch: 26 },
+        { wch: 26 },
+        { wch: 44 },
+      ],
+      rowHeights: [{ hpt: 26 }],
+      merges,
+    },
+  ]);
 }

@@ -1,4 +1,3 @@
-import * as XLSX from "xlsx";
 import { auth } from "@/lib/auth";
 import { getPortfolioContributionsByWorkspace } from "@/lib/db/queries/use-cases";
 import { getOrCreateWorkspaceScoringModel } from "@/lib/db/queries/scoring-model";
@@ -14,6 +13,7 @@ import {
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { EXPORT_COLUMNS, EXPORT_SHEET_NAME } from "@/lib/use-cases/views";
+import { appendSheet, jsonToSheet, newWorkbook, writeXlsx, type WorkBook } from "@/lib/spreadsheet/write";
 
 /**
  * «Esporta Excel» (docs/use-case/DESIGN.md §4.1, §9.3, §12.1; D4).
@@ -36,8 +36,8 @@ function fileName(workspaceName: string, suffix: string): string {
   return `${safeName || "unbundle"}-${suffix}.xlsx`;
 }
 
-function xlsxResponse(workbook: XLSX.WorkBook, name: string): Response {
-  const file = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
+function xlsxResponse(workbook: WorkBook, name: string): Response {
+  const file = writeXlsx(workbook);
   return new Response(file, {
     headers: {
       "Content-Type":
@@ -91,10 +91,10 @@ export async function GET(
     if (!exported) {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(
+    const workbook = newWorkbook();
+    appendSheet(
       workbook,
-      XLSX.utils.json_to_sheet(exported.rows, { header: [...EXPORT_COLUMNS] }),
+      jsonToSheet(exported.rows, { header: [...EXPORT_COLUMNS] }),
       EXPORT_SHEET_NAME
     );
     return xlsxResponse(workbook, fileName(workspace.name, "use-case"));
@@ -127,7 +127,7 @@ export async function GET(
     waveDurationMonths,
   });
 
-  const workbook = XLSX.utils.book_new();
+  const workbook = newWorkbook();
 
   const portfolioRows = contributions
     .slice()
@@ -160,9 +160,9 @@ export async function GET(
         "Impatto ambientale e sociale": item.sustainabilityImpact ?? "",
       };
     });
-  XLSX.utils.book_append_sheet(
+  appendSheet(
     workbook,
-    XLSX.utils.json_to_sheet(portfolioRows),
+    jsonToSheet(portfolioRows),
     "Portfolio"
   );
 
@@ -188,7 +188,7 @@ export async function GET(
       Descrizione: item.useCase.description ?? "",
     }))
   );
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(waveRows), "Waves");
+  appendSheet(workbook, jsonToSheet(waveRows), "Waves");
 
   const summaryRows = [
     { Voce: "Workspace", Valore: workspace.name },
@@ -204,7 +204,7 @@ export async function GET(
     },
     { Voce: "Valore economico validato", Valore: "" },
   ];
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), "Summary");
+  appendSheet(workbook, jsonToSheet(summaryRows), "Summary");
 
   return xlsxResponse(workbook, fileName(workspace.name, "portfolio"));
 }
