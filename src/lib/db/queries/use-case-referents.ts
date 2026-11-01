@@ -32,8 +32,17 @@ import {
 import { createReferentDispatchStore, runReferentDispatchWith } from "@/lib/db/queries/use-case-referent-dispatch";
 import { cleanupPendingFiles, deleteFileObjects, collectDeletedFileRows } from "@/lib/db/queries/use-case-referent-files";
 import { dispatchRequesterAlerts, purgeOldNotifications } from "@/lib/db/queries/use-case-notifications";
-import { dispatchCaseAlerts, purgeOldCaseAlerts, readinessSyncFor, syncReadyCards } from "@/lib/db/queries/use-case-alerts";
-import { cardSyncStatements } from "@/lib/use-cases/case-alerts/sql";
+import {
+  dispatchCaseAlerts,
+  noticeSubprocessorsWait,
+  purgeOldCaseAlerts,
+  readinessSyncFor,
+  subprocessorsNoticeFor,
+  syncReadyCards,
+  syncSubprocessorsNotices,
+} from "@/lib/db/queries/use-case-alerts";
+import { cardSyncStatements, subprocessorsWaitNoticeStatements } from "@/lib/use-cases/case-alerts/sql";
+import { clientNoticesEnabled } from "@/lib/use-cases/client-notices";
 import { inRomeSendWindow, romeDate } from "@/lib/uc/calendar";
 import { userContextFrom } from "@/lib/uc/lateral-space";
 import { canDeclareSubprocessors } from "@/lib/uc/legal/subprocessors";
@@ -235,6 +244,26 @@ async function deliveryGates(executor: UcExecutor, workspaceId: string, company:
   // ma non potrebbe rispondere: niente richieste né promemoria finché non tornano.
   if (!referentPublicWritesAvailable(env)) return rfail("risposte_non_attive");
   return null;
+}
+
+/**
+ * (0025) Chi agisce è di Lateral Space, riletto adesso (email verificata di un dominio di
+ * `UC_LS_EMAIL_DOMAINS`): solo le sue azioni fanno partire «Autorizza i fornitori».
+ */
+async function actsAsLateralSpace(executor: UcExecutor, userId: string, env: Env): Promise<boolean> {
+  return (await loadUserContext(executor, userId, lsDomainsOf(env)))?.isLateralSpace === true;
+}
+
+/**
+ * (0025) Una porta di invio ha rifiutato perché manca l'«ok sui sub-responsabili»: se chi ha provato
+ * è di Lateral Space, l'avviso «Autorizza i fornitori» a chi può darlo (in un batch suo, mai un
+ * errore in più). Il rifiuto torna com'è.
+ */
+async function gateRefused(executor: UcExecutor, ctx: WriteContext, userId: string, useCaseId: string, gate: ReferentFailure, env: Env): Promise<ReferentFailure> {
+  if (gate.error === "sub_responsabili_mancanti" && clientNoticesEnabled(ctx.workspaceId, env) && (await actsAsLateralSpace(executor, userId, env))) {
+    await noticeSubprocessorsWait(ctx.workspaceId, useCaseId, env);
+  }
+  return gate;
 }
 
 // ─── Il pannello (§5) ────────────────────────────────────────────────
@@ -763,7 +792,13 @@ export const prepareReferentQuestions = guardedReferent(
       linkedNeeds: needs,
       existingImportKeys: new Set(keyRows.map((r) => String(r.import_key))),
     });
-    if (missing.length === 0) return ok({ added: 0, gaps: gaps.length });
+    // (0025) «Prepara le domande» di Lateral Space: se il lavoro aspetta l'ok del cliente, «Autorizza i fornitori».
+    const supplierNotice = await subprocessorsNoticeFor(ctx.workspaceId, env);
+    const notice = supplierNotice && (await actsAsLateralSpace(executor, writer.userId, env)) ? supplierNotice : null;
+    if (missing.length === 0) {
+      if (notice) await noticeSubprocessorsWait(ctx.workspaceId, card.id, env);
+      return ok({ added: 0, gaps: gaps.length });
+    }
     const values = missing.map((q) => preparedNeedInput(q, card.id));
     const ws = cast(ctx.workspaceId, "uuid");
     const ucId = cast(card.id, "uuid");
@@ -786,7 +821,11 @@ export const prepareReferentQuestions = guardedReferent(
 )
 SELECT id FROM ins`);
     const readiness = await readinessSyncFor(ctx.workspaceId, env);
-    const run = await referentBatch(executor, [insert, ...cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId, readiness })]);
+    const run = await referentBatch(executor, [
+      insert,
+      ...cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId, readiness }),
+      ...(notice ? subprocessorsWaitNoticeStatements({ workspaceId: ctx.workspaceId, useCaseId: card.id, notice }) : []),
+    ]);
     if (!run.ok) return run;
     return ok({ added: run.rows[0].length, gaps: gaps.length });
   },
@@ -851,7 +890,7 @@ async function sendReferentRequestOnce(
   const card = await readCard(executor, ctx.workspaceId, useCaseId);
   if (!card) return rfail("non_trovato");
   const gate = await deliveryGates(executor, ctx.workspaceId, card.company, deps.env);
-  if (gate) return gate;
+  if (gate) return gateRefused(executor, ctx, writer.userId, card.id, gate, deps.env);
   if (!deps.requester.emailVerified) return rfail("email_non_verificata");
   const parsed = parseSendInput(input);
   if (!parsed.ok) return parsed;
@@ -1188,7 +1227,7 @@ export const addToReferentRequest = guardedReferent(
     const card = await readCard(executor, ctx.workspaceId, useCaseId);
     if (!card) return rfail("non_trovato");
     const gate = await deliveryGates(executor, ctx.workspaceId, card.company, deps.env);
-    if (gate) return gate;
+    if (gate) return gateRefused(executor, ctx, writer.userId, card.id, gate, deps.env);
     const request = await readRequest(executor, ctx.workspaceId, card.id, requestId, now);
     if (!request || request.status !== "inviata") return rfail("richiesta_chiusa");
     if (request.version !== expectedVersion) return rfail("versione_superata");
@@ -1262,7 +1301,7 @@ export const remindReferentRequest = guardedReferent(
     const card = await readCard(executor, ctx.workspaceId, useCaseId);
     if (!card) return rfail("non_trovato");
     const gate = await deliveryGates(executor, ctx.workspaceId, card.company, deps.env);
-    if (gate) return gate;
+    if (gate) return gateRefused(executor, ctx, writer.userId, card.id, gate, deps.env);
     const request = await readRequest(executor, ctx.workspaceId, card.id, requestId, now);
     if (!request) return rfail("richiesta_chiusa");
     if (request.version !== expectedVersion && request.status === "inviata") return rfail("versione_superata");
@@ -1575,7 +1614,7 @@ export interface ReferentCronCounts {
   notificationsPurged: number;
   /** (0025) Use case diventati «Pronto da avviare» che nessuna scrittura aveva visto. */
   readyAnnounced: number;
-  /** (0025) Email «Pronto da avviare» partite, in attesa, annullate. */
+  /** (0025) Email «Pronto da avviare» e «Autorizza i fornitori» partite, in attesa, annullate. */
   caseAlertsSent: number;
   caseAlertsHeld: number;
   caseAlertsCancelled: number;
@@ -1620,8 +1659,8 @@ function cronRequestOf(r: UcRow): CronRequest {
  * della coda, referenti non più raggiungibili, scadenze, richieste complete, bozze, file in attesa,
  * oggetti dell'archivio, conservazione, promemoria (solo nella finestra di Roma, solo con l'email
  * configurata e l'autorizzazione ai fornitori), limiti di frequenza, invio, avvisi a chi ha chiesto,
- * (0025) «Pronto da avviare» e le sue email, notifiche vecchie. Ogni passo conta i suoi errori senza
- * fermare gli altri. Solo conteggi.
+ * (0025) «Pronto da avviare», «Autorizza i fornitori» e le loro email, notifiche vecchie. Ogni passo
+ * conta i suoi errori senza fermare gli altri. Solo conteggi.
  */
 export async function runReferentCron(o: { env: Env; now?: Date; mailer?: UcMailer; lsDomains?: readonly string[] }): Promise<ReferentCronCounts> {
   const now = o.now ?? new Date();
@@ -1817,6 +1856,11 @@ LIMIT 200`),
     const ready = await syncReadyCards({ env, now });
     counts.readyAnnounced += ready.announced;
     counts.errors += ready.errors;
+  });
+  // 11e (0025). «Autorizza i fornitori» dove l'interruttore del cliente è acceso: si ripete ogni 7
+  // giorni finché il lavoro aspetta l'ok; con l'ok niente.
+  await step("cron_fornitori", async () => {
+    counts.errors += (await syncSubprocessorsNotices({ env, now })).errors;
   });
   await step("cron_avvisi_use_case", async () => {
     const alerts = await dispatchCaseAlerts({ env, now, limit: 50, mailer: o.mailer });

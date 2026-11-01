@@ -13,17 +13,24 @@
  *   due scritture insieme avvisano una volta, uno use case che resta pronto non avvisa più.
  * - `lsReviewerRecipientsSql`: i revisori di Lateral Space del workspace (ruolo da revisore, email
  *   verificata di un dominio di `UC_LS_EMAIL_DOMAINS`), mai chi ha agito.
+ * - `subprocessorsWaitNoticeStatements`: «Autorizza i fornitori» a chi può dare l'«ok sui
+ *   sub-responsabili» (`declarerRecipientsSql`, la regola di `canDeclareSubprocessors`), quando il
+ *   lavoro su uno use case approvato e pianificato aspetta l'ok; al massimo una volta ogni 7 giorni
+ *   per workspace, sotto un lock per workspace. Solo dopo `clientNoticesEnabled` (lo controlla chi
+ *   chiama).
  *
  * Art. 15.4: nessun ORDER BY, GROUP BY o conteggio per persona (i conteggi sono di schede).
  *
  * Modulo puro: import relativi `.ts`.
  */
 import { ROME_QUARTER_NOW_SQL, readyCardPredicate } from "../../db/use-case-hub-alerts-ddl.ts";
-import { SUBPROCESSORS_VERSION } from "../../uc/legal/subprocessors.ts";
+import { CLIENT_SIDE_SQL } from "../../db/use-case-hub-referents-ddl.ts";
+import { SUBPROCESSOR_DECLARER_ROLES, SUBPROCESSORS_VERSION } from "../../uc/legal/subprocessors.ts";
 import { cast, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
 import { PORTFOLIO_REVIEWER_ROLES } from "../../workspace-permissions.ts";
 import { currentQuarter, nextQuarter } from "../quarter.ts";
 import { READINESS_LATER_RULE } from "../readiness.ts";
+import { ASKABLE_STATUSES } from "../referent/questions.ts";
 import type { AlertSchedule } from "../referent/alerts.ts";
 import { infoCompleteSyncStatements, uuidOf } from "../referent/sql.ts";
 
@@ -237,4 +244,99 @@ export function cardSyncStatements(i: {
   if (i.readiness) out.push(readinessSyncSql({ workspaceId: i.workspaceId, useCaseIds: i.useCaseIds, needId: i.needId, actorUserId: i.actorUserId, readiness: i.readiness }));
   if (i.info !== false) out.push(info);
   return out;
+}
+
+// ─── «Autorizza i fornitori» ─────────────────────────────────────────
+
+/**
+ * Le persone che possono dare l'«ok sui sub-responsabili» (`canDeclareSubprocessors`): membri
+ * dell'organizzazione o del workspace con ruolo (prima nell'organizzazione, poi nel workspace)
+ * Sponsor esecutivo, Responsabile della trasformazione o Responsabile di funzione, email verificata
+ * e non di Lateral Space. Senza domini di Lateral Space nessuno. Alias propri; nessun ORDER BY,
+ * nessun conteggio; 200 al massimo.
+ */
+export function declarerRecipientsSql(workspace: SqlFragment, lsDomains: readonly string[]): SqlFragment {
+  return ucSql`SELECT ru.id AS user_id
+FROM workspaces rw
+JOIN users ru ON ru.id IN (
+  SELECT rm.user_id FROM memberships rm WHERE rm.organization_id = rw.organization_id
+  UNION SELECT rwm.user_id FROM workspace_memberships rwm WHERE rwm.workspace_id = rw.id
+)
+WHERE rw.id = ${workspace}
+  AND ${ROLE_SQL} = ANY(${cast([...SUBPROCESSOR_DECLARER_ROLES], "text[]")})
+  AND ru.email_verified IS NOT NULL AND NOT ${lsDomainSql(lsDomains)}
+  AND cardinality(${domainsParam(lsDomains)}) > 0
+LIMIT 200`;
+}
+
+/**
+ * Lo use case `alias` aspetta l'«ok sui sub-responsabili» per chiedere (la regola di
+ * `waitsForSubprocessorsOk` senza l'ok, che si guarda a parte): approvato, non archiviato, senza
+ * dossier completo, un trimestre da quello di adesso, almeno un'informazione del cliente da chiedere.
+ */
+export function waitingForOkSql(alias: string, o: { clock?: Date; dossiers: boolean }): SqlFragment {
+  if (!ALIAS.test(alias)) throw new Error("Alias non valido");
+  const lanes = READINESS_LATER_RULE === "oltre_il_prossimo";
+  const a = alias;
+  const from = lanes ? `'${currentQuarter(o.clock ?? new Date())}'` : quarterNowSql(o.clock);
+  const upTo = lanes ? ` AND ${a}.target_quarter <= '${nextQuarter(currentQuarter(o.clock ?? new Date()))}'` : "";
+  const dossier = o.dossiers
+    ? ` AND NOT EXISTS (SELECT 1 FROM uc_cases wc WHERE wc.portfolio_use_case_id = ${a}.id AND wc.workspace_id = ${a}.workspace_id AND wc.setup_completed_at IS NOT NULL)`
+    : "";
+  const askable = ASKABLE_STATUSES.map((x) => `'${x}'`).join(", ");
+  return raw(`(${a}.status = 'accepted' AND ${a}.portfolio_review_status IS DISTINCT FROM 'archived'
+  AND ${a}.target_quarter IS NOT NULL AND ${a}.target_quarter >= ${from}${upTo}${dossier}
+  AND EXISTS (SELECT 1 FROM use_case_needs wn JOIN use_case_need_links wl ON wl.need_id = wn.id
+              WHERE wl.use_case_id = ${a}.id AND wn.workspace_id = ${a}.workspace_id AND wn.type = 'requisito'
+                AND wn.archived_at IS NULL AND ${CLIENT_SIDE_SQL("wn")} AND wn.status IN (${askable})))`);
+}
+
+/** Quanti giorni passano al massimo tra due avvisi «Autorizza i fornitori» dello stesso workspace. */
+export const SUBPROCESSORS_NOTICE_DAYS = 7;
+
+/**
+ * «Autorizza i fornitori»: [il lock per workspace, l'avviso]. Lo use case è quello dato (approvato o
+ * pianificato adesso, o di cui si preparano o chiedono le informazioni) oppure, per il cron, lo use
+ * case in attesa toccato per ultimo (si ordinano schede, non persone). Si scrive solo se l'ok manca,
+ * se nel workspace non c'è già un avviso (riga o email) degli ultimi 7 giorni e se qualcuno può darlo:
+ * una riga nella campanella per ogni persona che può dare l'ok, sullo use case, e la sua email il
+ * prossimo giorno lavorativo alle 9. Senza nessuno, niente: riprova la prossima volta.
+ */
+export function subprocessorsWaitNoticeStatements(i: { workspaceId: string; useCaseId: string | null; notice: ReadinessSync }): UcStatement[] {
+  const n = i.notice;
+  const ws = id(i.workspaceId, "workspace");
+  const ts = clockOf(n.clock);
+  // L'email il prossimo giorno lavorativo alle 9: in 7 giorni non c'è un'altra email di questo tipo da unire.
+  const next = cast(n.schedule.nextAt.toISOString(), "timestamptz");
+  const one = i.useCaseId ? ucSql` AND u.id = ${id(i.useCaseId, "use case")}` : raw("");
+  const days = cast(SUBPROCESSORS_NOTICE_DAYS, "int");
+  return [
+    toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('use-case-fornitori:' || ${ws}::text))`),
+    toStatement(ucSql`WITH card AS (
+  SELECT u.id AS use_case_id, u.workspace_id FROM use_cases u
+  WHERE u.workspace_id = ${ws}${one} AND ${waitingForOkSql("u", { clock: n.clock, dossiers: n.dossiers })}
+  ORDER BY u.updated_at DESC, u.id
+  LIMIT 1
+), open AS (
+  SELECT c.use_case_id, c.workspace_id FROM card c
+  WHERE NOT ${subprocessorsAckSql(raw("c.workspace_id"))}
+    AND NOT EXISTS (SELECT 1 FROM use_case_notifications pn
+                    WHERE pn.workspace_id = c.workspace_id AND pn.kind = 'fornitori' AND pn.first_event_at > ${ts} - make_interval(days => ${days}))
+    AND NOT EXISTS (SELECT 1 FROM use_case_alert_emails pe
+                    WHERE pe.workspace_id = c.workspace_id AND pe.kind = 'fornitori' AND pe.created_at > ${ts} - make_interval(days => ${days}))
+), who AS (
+  SELECT o.workspace_id, o.use_case_id, d.user_id
+  FROM open o CROSS JOIN LATERAL (${declarerRecipientsSql(raw("o.workspace_id"), n.lsDomains)}) d
+), bell AS (
+  INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day, first_event_at, last_event_at)
+  SELECT w.workspace_id, w.use_case_id, w.user_id, 'fornitori', (${ts} AT TIME ZONE 'Europe/Rome')::date, ${ts}, ${ts}
+  FROM who w
+  ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO NOTHING
+  RETURNING 1
+)
+INSERT INTO use_case_alert_emails (workspace_id, recipient_user_id, kind, send_on, scheduled_at, due_at, created_at)
+SELECT w.workspace_id, w.user_id, 'fornitori', ${cast(n.schedule.nextDay, "date")}, ${next}, ${next}, ${ts} FROM who w
+ON CONFLICT (workspace_id, recipient_user_id, kind, send_on) DO NOTHING
+RETURNING id`),
+  ];
 }

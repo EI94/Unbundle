@@ -3,7 +3,18 @@ import assert from "node:assert/strict";
 import { alertSchedule } from "../referent/alerts.ts";
 import { infoCompleteSyncStatements } from "../referent/sql.ts";
 import { toStatement } from "../../uc/sql/statement.ts";
-import { cardSyncStatements, lsReviewerRecipientsSql, readinessSyncSql, readyNowSql, subprocessorsAckSql, type ReadinessSync } from "./sql.ts";
+import {
+  SUBPROCESSORS_NOTICE_DAYS,
+  cardSyncStatements,
+  declarerRecipientsSql,
+  lsReviewerRecipientsSql,
+  readinessSyncSql,
+  readyNowSql,
+  subprocessorsAckSql,
+  subprocessorsWaitNoticeStatements,
+  waitingForOkSql,
+  type ReadinessSync,
+} from "./sql.ts";
 import { raw } from "../../uc/sql/statement.ts";
 
 // I costruttori SQL di «Pronto da avviare» (0025), senza database. UUID inventati.
@@ -61,4 +72,25 @@ test("la regola e l'ok in SQL", () => {
   assert.doesNotMatch(toStatement(readyNowSql("u", { dossiers: false })).text, /uc_cases/);
   assert.throws(() => readyNowSql("u;", { dossiers: false }));
   assert.equal(toStatement(subprocessorsAckSql(raw("n.workspace_id"))).text, "EXISTS (SELECT 1 FROM uc_subprocessor_acks ak WHERE ak.workspace_id = n.workspace_id AND ak.list_version = '2026-10')");
+});
+
+test("«Autorizza i fornitori»: chi può dare l'ok, lo use case che aspetta, al massimo ogni 7 giorni, sotto un lock per workspace", () => {
+  const d = toStatement(declarerRecipientsSql(raw("o.workspace_id"), readiness.lsDomains));
+  assert.ok(d.params.some((p) => JSON.stringify(p) === JSON.stringify(["exec_sponsor", "transformation_lead", "function_lead"])));
+  assert.match(d.text, /ru\.email_verified IS NOT NULL AND NOT coalesce\(lower\(substring\(btrim\(ru\.email\) from '@\(\[\^@\]\+\)\$'\)\) = ANY\(\$\d+::text\[\]\), false\)/);
+  assert.match(d.text, /AND cardinality\(\$\d+::text\[\]\) > 0/, "senza domini di Lateral Space nessuno");
+  const w = toStatement(waitingForOkSql("u", { dossiers: true })).text;
+  assert.match(w, /wn\.status IN \('da_chiedere', 'mancante', 'parziale'\)/);
+  assert.doesNotMatch(w, /best_practice/, "di qualunque tipo");
+  const [lock, notice] = subprocessorsWaitNoticeStatements({ workspaceId: WS, useCaseId: UC, notice: readiness });
+  assert.match(lock.text, /pg_advisory_xact_lock\(hashtext\('use-case-fornitori:' \|\| \$1::uuid::text\)\)/);
+  assert.equal(SUBPROCESSORS_NOTICE_DAYS, 7);
+  assert.match(notice.text, /NOT EXISTS \(SELECT 1 FROM uc_subprocessor_acks/);
+  assert.match(notice.text, /pn\.kind = 'fornitori' AND pn\.first_event_at > /);
+  assert.match(notice.text, /pe\.kind = 'fornitori' AND pe\.created_at > /);
+  assert.match(notice.text, /ORDER BY u\.updated_at DESC, u\.id\s+LIMIT 1/, "si ordinano schede, mai persone");
+  assert.equal(notice.text.match(/ORDER BY/g)?.length, 1);
+  assert.doesNotMatch(notice.text, /GROUP BY|count\(/);
+  const cron = subprocessorsWaitNoticeStatements({ workspaceId: WS, useCaseId: null, notice: readiness });
+  assert.doesNotMatch(cron[1].text, /AND u\.id = \$/, "il cron: lo use case in attesa toccato per ultimo");
 });

@@ -5,6 +5,7 @@ import type { MailResult, OutgoingEmail, UcMailer } from "../../uc/notify/dispat
 import {
   planCaseAlert,
   renderReadyAlert,
+  renderSuppliersAlert,
   runCaseAlertDispatch,
   type CaseAlertFacts,
   type CaseAlertStore,
@@ -42,9 +43,12 @@ const item = (over: Partial<ReadyItemFacts> = {}): ReadyItemFacts => ({ useCaseI
 const facts = (over: Partial<CaseAlertFacts> = {}): CaseAlertFacts => ({
   company: "TopJet",
   readyNoticesOn: true,
+  referentsOn: true,
+  clientNoticesOn: true,
   subprocessorsAuthorized: true,
-  recipient: { email: "lead@lateralspace.ai", verified: true, lateralSpace: true, reviewer: true },
+  recipient: { email: "lead@lateralspace.ai", verified: true, lateralSpace: true, reviewer: true, canDeclare: false },
   items: [item()],
+  suppliersRowUnread: false,
   ...over,
 });
 const plan = (f: CaseAlertFacts, e: ClaimedCaseAlert = claimed(), env: Record<string, string | undefined> = ENV, now = at("2026-11-02", 10)) => planCaseAlert(e, f, { env, origin: ORIGIN, now });
@@ -60,11 +64,11 @@ test("piano: configurazione, funzione, autorizzazione, nell'ordine; poi età, de
 test("destinatario: solo un revisore di Lateral Space verificato, ricontrollato adesso (mai il cliente)", () => {
   const bad = [
     null,
-    { email: "lead@lateralspace.ai", verified: false, lateralSpace: true, reviewer: true },
-    { email: "lead@lateralspace.ai", verified: true, lateralSpace: false, reviewer: true },
-    { email: "lead@lateralspace.ai", verified: true, lateralSpace: true, reviewer: false },
-    { email: "Nome <lead@lateralspace.ai>", verified: true, lateralSpace: true, reviewer: true },
-    { email: null, verified: true, lateralSpace: true, reviewer: true },
+    { email: "lead@lateralspace.ai", verified: false, lateralSpace: true, reviewer: true, canDeclare: false },
+    { email: "lead@lateralspace.ai", verified: true, lateralSpace: false, reviewer: true, canDeclare: true },
+    { email: "lead@lateralspace.ai", verified: true, lateralSpace: true, reviewer: false, canDeclare: false },
+    { email: "Nome <lead@lateralspace.ai>", verified: true, lateralSpace: true, reviewer: true, canDeclare: false },
+    { email: null, verified: true, lateralSpace: true, reviewer: true, canDeclare: false },
   ];
   for (const recipient of bad) assert.deepEqual(plan(facts({ recipient })), { action: "cancel", reason: "destinatario_non_valido" }, JSON.stringify(recipient));
 });
@@ -79,7 +83,55 @@ test("voci: solo gli use case ancora pronti e con la riga ancora non letta; ness
   assert.deepEqual(p.useCaseIds, [UC1, UC3], "senza doppioni, nell'ordine");
   assert.equal(p.to, "lead@lateralspace.ai");
   // Un tipo che questo motore non sa scrivere si annulla.
-  assert.deepEqual(plan(facts(), claimed({ kind: "fornitori" })), { action: "cancel", reason: "nessuna_voce" });
+  assert.deepEqual(plan(facts(), claimed({ kind: "altro" as never })), { action: "cancel", reason: "nessuna_voce" });
+});
+
+const suppliers = (over: Partial<CaseAlertFacts> = {}) =>
+  facts({
+    subprocessorsAuthorized: false,
+    recipient: { email: "responsabile@topjet.example", verified: true, lateralSpace: false, reviewer: true, canDeclare: true },
+    items: [],
+    suppliersRowUnread: true,
+    ...over,
+  });
+const supplier = claimed({ kind: "fornitori" });
+
+test("«Autorizza i fornitori»: configurazione, funzione, interruttore del cliente, ok dato, età, chi può dare l'ok, riga già aperta", () => {
+  assert.deepEqual(plan(suppliers(), supplier, { ...ENV, RESEND_API_KEY: undefined }), { action: "hold", reason: "email_non_configurata" });
+  assert.deepEqual(plan(suppliers({ referentsOn: false }), supplier), { action: "hold", reason: "funzione_spenta" });
+  assert.deepEqual(plan(suppliers({ clientNoticesOn: false }), supplier), { action: "cancel", reason: "avvisi_cliente_spenti" });
+  assert.deepEqual(plan(suppliers({ subprocessorsAuthorized: true }), supplier), { action: "cancel", reason: "autorizzazione_data" });
+  assert.deepEqual(plan(suppliers(), claimed({ kind: "fornitori", dueAt: at("2026-10-28", 9) })), { action: "cancel", reason: "troppo_vecchia" });
+  for (const recipient of [null, { email: "lead@lateralspace.ai", verified: true, lateralSpace: true, reviewer: true, canDeclare: false }, { email: "Nome <r@topjet.example>", verified: true, lateralSpace: false, reviewer: true, canDeclare: true }]) {
+    assert.deepEqual(plan(suppliers({ recipient }), supplier), { action: "cancel", reason: "destinatario_non_valido" }, JSON.stringify(recipient));
+  }
+  assert.deepEqual(plan(suppliers({ suppliersRowUnread: false }), supplier), { action: "cancel", reason: "gia_vista" });
+  const p = plan(suppliers(), supplier);
+  assert.equal(p.action, "send");
+  if (p.action !== "send") return;
+  assert.equal(p.to, "responsabile@topjet.example");
+  assert.deepEqual(p.useCaseIds, []);
+  // Senza l'ok non resta in attesa: è proprio l'email che chiede l'ok.
+  assert.equal(plan(suppliers({ readyNoticesOn: false }), supplier).action, "send");
+});
+
+test("«Autorizza i fornitori», parola per parola: il link a Impostazioni, nessun dato degli use case", () => {
+  const r = renderSuppliersAlert({ company: "TopJet", link: `${ORIGIN}/dashboard/${WS}/settings#sub-responsabili` });
+  assert.equal(r.subject, "TopJet: serve il tuo ok sui fornitori di Lateral Space");
+  assert.ok(
+    r.text.startsWith(
+      [
+        "Buongiorno,",
+        "per raccogliere le informazioni sugli use case di TopJet, Lateral Space usa alcuni fornitori, per esempio quello delle email. Prima serve l'ok di una persona di TopJet con il tuo ruolo.",
+        `Apri Impostazioni › Sub-responsabili: ${ORIGIN}/dashboard/${WS}/settings#sub-responsabili`,
+        "Ricevi questa email perché puoi dare questa autorizzazione per TopJet. Quando qualcuno l'avrà data, non ne riceverai altre.",
+      ].join("\n\n"),
+    ),
+    r.text,
+  );
+  assert.doesNotMatch(r.text + r.html + r.subject, /caso d'uso|casi d'uso|TJ-\d/i);
+  const p = plan(suppliers(), supplier);
+  assert.ok(p.action === "send" && p.rendered.text.includes(`${ORIGIN}/dashboard/${WS}/settings#sub-responsabili`));
 });
 
 test("testo con uno use case, parola per parola, con il link a «Realizzazione»", () => {

@@ -10,7 +10,7 @@ import { getUcUserContext, ucLsDomains } from "@/lib/db/queries/uc-access";
 import { assignUseCaseCodeSafely } from "@/lib/db/queries/use-case-codes";
 import { dossierStateForUseCase, type DossierState } from "@/lib/db/queries/use-case-dossiers";
 import { insertUseCaseEventFrom, type ServiceEventAction } from "@/lib/db/queries/use-case-events";
-import { readinessSyncFor, withReadinessFallback } from "@/lib/db/queries/use-case-alerts";
+import { readinessSyncFor, subprocessorsNoticeFor, withReadinessFallback } from "@/lib/db/queries/use-case-alerts";
 import { ucToDrizzle } from "@/lib/db/use-case-hub-uc-drizzle";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import type { UseCaseEventField } from "@/lib/db/use-case-hub-ddl";
@@ -54,7 +54,7 @@ import { portfolioKindOf } from "./labels";
 import { abilitiesForUseCase, isHiddenFromSearch, isOwnProposal, type UseCaseAbilities } from "./permissions";
 import { phaseOfUseCase, type UseCasePhase } from "./phase";
 import { romeToday } from "./quarter";
-import { cardSyncStatements } from "./case-alerts/sql";
+import { cardSyncStatements, subprocessorsWaitNoticeStatements } from "./case-alerts/sql";
 import { readinessInputsChanged } from "./readiness";
 import { isUseCaseHubWorkspace } from "./rollout";
 import {
@@ -497,6 +497,12 @@ interface CardWrite {
    * `ai_suggestion` cambiano senza alzare `version`.
    */
   sameStamp?: boolean;
+  /**
+   * (0025) «Approva» e «Quando»: se chi scrive è di Lateral Space e lo use case adesso aspetta l'«ok
+   * sui sub-responsabili» del cliente, nello stesso batch l'avviso «Autorizza i fornitori» (solo con
+   * `USE_CASE_CLIENT_NOTICES` acceso per il workspace).
+   */
+  notifySubprocessors?: boolean;
 }
 
 function eventActor(ctx: WriteContext, actor: Actor) {
@@ -512,12 +518,18 @@ function eventActor(ctx: WriteContext, actor: Actor) {
 async function executeCardWrite(
   ctx: WriteContext,
   write: SQL,
-  card: { useCaseId: string; actorUserId: string | null; readinessChanged: boolean },
+  card: { useCaseId: string; actorUserId: string | null; readinessChanged: boolean; subprocessors?: boolean },
 ): Promise<{ rows: Record<string, unknown>[] }> {
   const alone = () => db.execute(write) as Promise<{ rows: Record<string, unknown>[] }>;
-  const readiness = card.readinessChanged ? await readinessSyncFor(ctx.workspaceId, process.env, ctx.now ?? new Date()) : null;
-  if (!readiness) return alone();
-  const sync = cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.useCaseId], actorUserId: card.actorUserId, readiness, info: false });
+  const now = ctx.now ?? new Date();
+  const readiness = card.readinessChanged ? await readinessSyncFor(ctx.workspaceId, process.env, now) : null;
+  const notice = card.subprocessors ? await subprocessorsNoticeFor(ctx.workspaceId, process.env, now) : null;
+  if (!readiness && !notice) return alone();
+  // Prima il lock per scheda (il passaggio a «pronto»), poi quello per workspace (l'avviso al cliente): sempre in quest'ordine.
+  const sync = [
+    ...(readiness ? cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.useCaseId], actorUserId: card.actorUserId, readiness, info: false }) : []),
+    ...(notice ? subprocessorsWaitNoticeStatements({ workspaceId: ctx.workspaceId, useCaseId: card.useCaseId, notice }) : []),
+  ];
   return withReadinessFallback(
     ctx.workspaceId,
     async () => {
@@ -568,6 +580,7 @@ async function commitWrite(
     actorUserId: actor.kind === "persona" ? actor.userId : null,
     // Con la lettura del dossier fallita la regola non si può controllare: lo farà il cron.
     readinessChanged: loaded.dossierRead !== "errore" && readinessInputsChanged(loaded.row, write.after),
+    subprocessors: write.notifySubprocessors === true && actor.kind === "persona" && actor.abilities?.isLateralSpace === true,
   });
   if (rows.length === 0) return missingOrStale(ctx.workspaceId, id);
   return reloadCard(ctx.workspaceId, loaded);
@@ -1327,6 +1340,7 @@ export const decideUseCase = guarded("decide_use_case", async function decideUse
     action: result.action,
     fields: result.fields,
     after: applyDecisionPatch({ ...loaded.row, intake: loaded.row.intake ?? null }, result.patch),
+    notifySubprocessors: decision?.type === "approva",
   });
 });
 
@@ -1348,6 +1362,7 @@ export const setWhen = guarded("set_when", async function setWhen(
     action: result.action,
     fields: result.fields,
     after: applyDecisionPatch({ ...loaded.row, intake: loaded.row.intake ?? null }, result.patch),
+    notifySubprocessors: true,
   });
 });
 

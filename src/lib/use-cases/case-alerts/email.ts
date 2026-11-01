@@ -1,13 +1,17 @@
 /**
  * Le email dei due avvisi della 0025 (`use_case_alert_emails`): «Pronto da avviare» ai revisori di
- * Lateral Space. Al massimo un'email al giorno per persona e tipo, solo da lunedì a venerdì dalle 9
- * alle 18 di Roma, feste escluse, con il trasporto Resend dei dossier e gli stessi controlli degli
- * avvisi a chi ha chiesto (`referent/alerts.ts`): email configurata, funzione accesa, autorizzazione
- * ai sub-responsabili (l'email porta codice e titolo dello use case del cliente, e Resend è uno dei
- * sub-responsabili).
+ * Lateral Space e «Autorizza i fornitori» a chi può dare l'«ok sui sub-responsabili» del cliente. Al
+ * massimo un'email al giorno per persona e tipo, solo da lunedì a venerdì dalle 9 alle 18 di Roma,
+ * feste escluse, con il trasporto Resend dei dossier e gli stessi controlli degli avvisi a chi ha
+ * chiesto (`referent/alerts.ts`): email configurata, funzione accesa e, per «Pronto da avviare»,
+ * l'autorizzazione ai sub-responsabili (l'email porta codice e titolo dello use case del cliente, e
+ * Resend è uno dei sub-responsabili).
  *
- * Il testo nomina lo use case (codice, titolo, trimestre) e il cliente: mai le informazioni del
- * cliente, i valori, una persona. Il link apre la scheda al capitolo «Realizzazione».
+ * «Pronto da avviare» nomina lo use case (codice, titolo, trimestre) e il cliente; il link apre la
+ * scheda al capitolo «Realizzazione». «Autorizza i fornitori» non porta nessun dato degli use case:
+ * solo il nome del cliente e il link a Impostazioni › Sub-responsabili, e parte solo con
+ * `USE_CASE_CLIENT_NOTICES` acceso per il workspace. Mai le informazioni del cliente, i valori, una
+ * persona.
  *
  * Calendario, piano, testi e motore: tutto puro. Le letture e le scritture le fa
  * `queries/use-case-alerts.ts` attraverso `CaseAlertStore`.
@@ -29,7 +33,7 @@ import { quarterLabel } from "../quarter.ts";
 import { isStaleAlert } from "../referent/alerts.ts";
 import { labelOfUseCase } from "../referent/email.ts";
 import { companyLabel } from "../referent/labels.ts";
-import { cardLinkTo } from "../referent/links.ts";
+import { cardLinkTo, settingsLink } from "../referent/links.ts";
 
 // ── Righe e fatti ─────────────────────────────────────────────────────
 
@@ -61,15 +65,22 @@ export interface CaseAlertFacts {
   company: string;
   /** `readyNoticesEnabled(workspaceId, env)`: area accesa e non un'anteprima. */
   readyNoticesOn: boolean;
+  /** `referentAskEnabled(workspaceId, env)`: «Chiedi al referente» acceso. */
+  referentsOn: boolean;
+  /** `clientNoticesEnabled(workspaceId, env)`: `USE_CASE_CLIENT_NOTICES` acceso per il workspace. */
+  clientNoticesOn: boolean;
   /** L'autorizzazione all'elenco dei sub-responsabili di adesso. */
   subprocessorsAuthorized: boolean;
   /**
    * null quando l'utente non c'è più. email in minuscolo; `lateralSpace` = email verificata di un
-   * dominio di Lateral Space; `reviewer` = ruolo di adesso tra quelli da revisore.
+   * dominio di Lateral Space; `reviewer` = ruolo di adesso tra quelli da revisore; `canDeclare` =
+   * `canDeclareSubprocessors` adesso.
    */
-  recipient: { email: string | null; verified: boolean; lateralSpace: boolean; reviewer: boolean } | null;
+  recipient: { email: string | null; verified: boolean; lateralSpace: boolean; reviewer: boolean; canDeclare: boolean } | null;
   /** «Pronto da avviare»: gli use case dell'email, nell'ordine in cui sono diventati pronti. */
   items: ReadyItemFacts[];
+  /** «Autorizza i fornitori»: la persona ha ancora una riga «Autorizza i fornitori» non letta. */
+  suppliersRowUnread: boolean;
 }
 
 export interface ReadyEntry {
@@ -86,11 +97,30 @@ export interface ReadyAlertInput {
 export type CaseAlertPlan =
   | { action: "send"; to: string; rendered: RenderedEmail; useCaseIds: string[] }
   | { action: "hold"; reason: "email_non_configurata" | "funzione_spenta" | "sub_responsabili_mancanti" }
-  | { action: "cancel"; reason: "troppo_vecchia" | "destinatario_non_valido" | "nessuna_voce" };
+  | {
+      action: "cancel";
+      reason: "troppo_vecchia" | "destinatario_non_valido" | "nessuna_voce" | "avvisi_cliente_spenti" | "autorizzazione_data" | "gia_vista";
+    };
+
+/**
+ * «Autorizza i fornitori», in quest'ordine: configurazione, funzione, interruttore del cliente, ok
+ * già dato, età, destinatario (chi può dare l'ok, adesso), riga già aperta.
+ */
+function planSuppliersAlert(e: ClaimedCaseAlert, f: CaseAlertFacts, o: { origin: string; now: Date }): CaseAlertPlan {
+  if (!f.referentsOn) return { action: "hold", reason: "funzione_spenta" };
+  if (!f.clientNoticesOn) return { action: "cancel", reason: "avvisi_cliente_spenti" };
+  if (f.subprocessorsAuthorized) return { action: "cancel", reason: "autorizzazione_data" };
+  if (isStaleAlert(e.dueAt, o.now)) return { action: "cancel", reason: "troppo_vecchia" };
+  const r = f.recipient;
+  if (!r || !r.canDeclare || !isPlainAddress(r.email)) return { action: "cancel", reason: "destinatario_non_valido" };
+  if (!f.suppliersRowUnread) return { action: "cancel", reason: "gia_vista" };
+  return { action: "send", to: r.email.trim().toLowerCase(), rendered: renderSuppliersAlert({ company: f.company, link: settingsLink(o.origin, e.workspaceId) }), useCaseIds: [] };
+}
 
 /** Il piano di una riga, in quest'ordine: configurazione, funzione, autorizzazione, età, destinatario, voci. */
 export function planCaseAlert(e: ClaimedCaseAlert, f: CaseAlertFacts, o: { env: DispatchEnv; origin: string; now: Date }): CaseAlertPlan {
   if (!ucEmailConfig(o.env).ok) return { action: "hold", reason: "email_non_configurata" };
+  if (e.kind === "fornitori") return planSuppliersAlert(e, f, o);
   if (e.kind !== "pronto") return { action: "cancel", reason: "nessuna_voce" };
   if (!f.readyNoticesOn) return { action: "hold", reason: "funzione_spenta" };
   if (!f.subprocessorsAuthorized) return { action: "hold", reason: "sub_responsabili_mancanti" };
@@ -140,6 +170,19 @@ export function renderReadyAlert(i: ReadyAlertInput): RenderedEmail {
   }
   blocks.push({ small: READY_FOOTER });
   return render(oneLine(`${i.entries.length} use case di ${company} pronti da avviare`, 200), blocks);
+}
+
+/** «Autorizza i fornitori», parola per parola: il nome del cliente e il link, nessun dato degli use case. */
+export function renderSuppliersAlert(i: { company: string; link: string }): RenderedEmail {
+  const company = oneLine(companyLabel(i.company), 80);
+  return render(oneLine(`${company}: serve il tuo ok sui fornitori di Lateral Space`, 200), [
+    { p: "Buongiorno," },
+    {
+      p: `per raccogliere le informazioni sugli use case di ${company}, Lateral Space usa alcuni fornitori, per esempio quello delle email. Prima serve l'ok di una persona di ${company} con il tuo ruolo.`,
+    },
+    { link: { href: i.link, label: "Apri Impostazioni › Sub-responsabili" } },
+    { small: `Ricevi questa email perché puoi dare questa autorizzazione per ${company}. Quando qualcuno l'avrà data, non ne riceverai altre.` },
+  ]);
 }
 
 // ── Motore ────────────────────────────────────────────────────────────
