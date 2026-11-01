@@ -11,7 +11,6 @@ import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { DIALOG_COMMON_TEXT, PUBLIC_NOTE_TEXT, toDecisionItem, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
 import { ESTIMATES_TEXT } from "@/lib/use-cases/estimates";
 import type { PanelNeeds } from "@/lib/use-cases/needs";
-import { RISK_LABEL } from "@/lib/use-cases/labels";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
@@ -19,6 +18,7 @@ import type { HubItem } from "@/lib/use-cases/views";
 import { AnswerForm } from "./answer-form";
 import { CostFigure } from "./cost-figure";
 import { DecisionButtons } from "./decision-buttons";
+import { RiskChips } from "./detail/risk-chips";
 import { KindLabel } from "./kind-label";
 import { OriginChip } from "./origin-chip";
 import { PhasePill } from "./phase-pill";
@@ -34,7 +34,21 @@ export const PANEL_TEXT = Object.freeze({
   close: "Chiudi",
   problem: "Problema",
   needs: "Cosa serve",
+  nextStep: "Prossimo passo:",
 });
+
+/**
+ * «Prossimo passo:» del pannello (rilascio 3, `panelNextStep` di hub.tsx): il passo e chi lo fa,
+ * come nel riquadro della scheda, e il pulsante principale delle decisioni pieno o bordato.
+ */
+export interface PanelNextStep {
+  /** «Chiedere le informazioni a TopJet». */
+  title: string;
+  /** «Tocca ad AI Builder. 7 delle 10 informazioni sono ancora da chiedere.»; vuota quando non c'è niente da dire. */
+  line: string;
+  /** Il pulsante principale delle decisioni: pieno solo quando il passo è una decisione di chi guarda. */
+  decisionPrimary: "default" | "outline";
+}
 
 /** «Altre 2 nella scheda»: le esigenze aperte oltre le tre del pannello. */
 export function moreNeedsText(count: number): string {
@@ -52,6 +66,8 @@ export type UseCasePanelData =
       answers: InfoAnswer[];
       /** «Cosa serve»: al massimo tre esigenze aperte dello use case (`panelNeeds`); null senza. */
       needs?: PanelNeeds | null;
+      /** «Prossimo passo:» sotto i chip (`panelNextStep`); null senza. */
+      nextStep?: PanelNextStep | null;
     }
   | {
       projection: "contributore";
@@ -81,11 +97,13 @@ export interface UseCasePanelProps {
 
 /**
  * Il pannello laterale della pagina (`?apri=<id>`, docs/use-case/DESIGN.md §4.8), un `Sheet` di
- * circa 480 px. Revisori: codice, titolo, origine, tipo e fase; il problema in due righe; Valore
+ * circa 480 px. Revisori: codice, titolo, origine, tipo e fase; sotto, «Prossimo passo:» con chi lo
+ * fa, come nel riquadro della scheda (rilascio 3); il problema in due righe; Valore
  * e Costo con la loro fonte; il riquadro «Stima di Claude, non ufficiale» se ci sono dati
- * raccolti; i chip di rischio; dopo una risposta a «Serve info» la domanda del team e l'ultima
+ * raccolti; i chip di rischio, nei token del tema; dopo una risposta a «Serve info» la domanda del team e l'ultima
  * risposta di chi ha proposto (D17: è la risposta che l'ha riportato in «Da decidere», con la
- * pillola «Nuova»); le decisioni per fase (un solo pulsante pieno, §6.4) e, se approvato,
+ * pillola «Nuova»); le decisioni per fase (un solo pulsante pieno, §6.4, e solo quando il passo è
+ * una decisione di chi guarda: «Approva» bordato in «Serve info» e «Rimandata», «Riapri» bordato) e, se approvato,
  * «Quando»; «Apri la scheda ›». Contributori: titolo e fase con «Quando» nella stessa
  * pillola («Approvato · T1 2027», come nella riga e nella card); delle proprie proposte anche
  * codice, «Proposto da te», nota pubblica in sola lettura, in «Serve info» «Rispondi» (D17) e
@@ -139,6 +157,7 @@ export function UseCasePanel({ workspaceId, data, closeHref, detailHref, today, 
             estimate={data.estimate}
             answers={data.answers}
             needs={data.needs ?? null}
+            nextStep={data.nextStep ?? null}
             needsHref={`${detailHref}?capitolo=cosa-serve`}
             today={today}
             canDecide={canDecide}
@@ -176,6 +195,7 @@ function ReviewerBody({
   estimate,
   answers,
   needs,
+  nextStep,
   needsHref,
   today,
   canDecide,
@@ -189,6 +209,7 @@ function ReviewerBody({
   estimate: string[];
   answers: readonly InfoAnswer[];
   needs: PanelNeeds | null;
+  nextStep: PanelNextStep | null;
   needsHref: string;
   today: string;
   canDecide: boolean;
@@ -209,6 +230,7 @@ function ReviewerBody({
           <KindLabel kind={item.kind} />
           <PhasePill label={shownPhaseLabel(item, dossierDown)} tone={item.tone} />
         </div>
+        {nextStep ? <PanelNextStepLine step={nextStep} /> : null}
         {item.problemPreview ? <SheetDescription className="line-clamp-2 text-sm text-foreground">{item.problemPreview}</SheetDescription> : null}
       </Block>
       <Block className="grid gap-2 px-4 py-3 sm:grid-cols-2">
@@ -225,15 +247,7 @@ function ReviewerBody({
               ))}
             </div>
           ) : null}
-          {item.risks.length ? (
-            <ul className="flex flex-wrap gap-1.5">
-              {item.risks.map((risk) => (
-                <li key={risk} className="rounded-full border border-amber-300/70 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-100">
-                  {RISK_LABEL[risk]}
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <RiskChips risks={item.risks} />
         </Block>
       ) : null}
       {needs ? <PanelNeedsBlock needs={needs} href={needsHref} /> : null}
@@ -258,10 +272,27 @@ function ReviewerBody({
               <WhenControl workspaceId={workspaceId} item={decisionItem} today={today} canDecide={canDecide} labelledBy={whenId} />
             </div>
           ) : null}
-          <DecisionButtons workspaceId={workspaceId} item={decisionItem} today={today} canDecide={canDecide} candidates={candidates} />
+          <DecisionButtons
+            workspaceId={workspaceId}
+            item={decisionItem}
+            today={today}
+            canDecide={canDecide}
+            candidates={candidates}
+            primaryVariant={nextStep?.decisionPrimary ?? "default"}
+          />
         </Block>
       ) : null}
     </div>
+  );
+}
+
+/** «Prossimo passo: Chiedere le informazioni a TopJet. Tocca ad AI Builder. …»: una riga sotto i chip. */
+export function PanelNextStepLine({ step }: { step: PanelNextStep }) {
+  return (
+    <p data-slot="panel-next-step" className="text-sm break-words">
+      <span className="font-medium">{PANEL_TEXT.nextStep}</span> {keepTogether(step.title)}.
+      {step.line ? <span className="text-muted-foreground"> {keepTogether(step.line)}</span> : null}
+    </p>
   );
 }
 

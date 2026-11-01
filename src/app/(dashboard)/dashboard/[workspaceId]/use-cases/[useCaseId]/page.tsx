@@ -7,7 +7,7 @@ import { useCases, workspaceConnectorConfigs } from "@/lib/db/schema";
 import { getUseCaseById, getUseCaseKRLinks } from "@/lib/db/queries/use-cases";
 import { dossierStateForUseCase, realizationOfUseCase } from "@/lib/db/queries/use-case-dossiers";
 import { listUseCaseEvents, USE_CASE_EVENTS_DEFAULT_LIMIT } from "@/lib/db/queries/use-case-events";
-import { getUseCaseDetail, viewerFromSession } from "@/lib/db/queries/use-case-hub";
+import { getUseCaseDetail, viewerFromSession, workspaceAgentToneOf } from "@/lib/db/queries/use-case-hub";
 import { listWorkspaceNeeds, needUseCaseRefs } from "@/lib/db/queries/use-case-needs";
 import { loadUseCaseInfoProgress } from "@/lib/db/queries/use-case-info-progress";
 import { loadUseCaseReferentPanel } from "@/lib/db/queries/use-case-referents";
@@ -105,6 +105,15 @@ export default async function UseCaseDetailPage({
   const chapter = chapterFromParam(query.capitolo);
   const historyAll = query.storia === "tutta";
   const reviewer = result.projection !== "contributore";
+  // Il colore dell'agente del titolo, quello delle card della Panoramica (rilascio 3): solo ai
+  // revisori, in parallelo alle altre letture. Facoltativo: se la lettura non riesce, tag e percorso
+  // restano neutri e la scheda si apre lo stesso.
+  const agentTone = reviewer
+    ? workspaceAgentToneOf(workspaceId, result.useCase.title).catch((error: unknown) => {
+        console.error("[use-case-detail] agent_tone_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
+        return null;
+      })
+    : null;
   // Il riepilogo ricco del dossier (H6a) solo quando il capitolo «Realizzazione» c'è e la parte
   // del dossier ha risposto: i contributori non lo ricevono (il capitolo non è per loro).
   const readsRealization = reviewer && result.dossierRead === "ok" && showsRealization(result.useCase);
@@ -165,6 +174,7 @@ export default async function UseCaseDetailPage({
         infoProgress={infoProgress}
         teamName={reviewTeamName(access.workspace)}
         companyName={access.workspace.name}
+        agentTone={await agentTone}
       />
     </PageContainer>
   );

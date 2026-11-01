@@ -781,8 +781,14 @@ test("pannello: al massimo tre esigenze aperte, le altre nella scheda; senza esi
     assert.ok(data?.needs, vista);
     assert.equal(data.needs.rows.length, 3, vista);
     assert.equal(data.needs.more, 1, "quattro aperte: tre e «Un'altra»");
-    assert.equal(data.needs.rows[0].title, T.access, "prima la scadenza più vicina");
+    assert.equal(data.needs.rows[0].title, T.access);
     assert.ok(data.needs.rows.every((row) => !row.done));
+    // Le prime tre del pannello sono le prime tre righe di «Cosa serve» della scheda (rilascio 3).
+    const scheda = between(await detailHtml("builder", cards.quarter.id), 'data-slot="needs-requirements"');
+    const first = [...scheda.matchAll(/data-need="([^"]+)"/g)].map((match) => match[1]).slice(0, 3);
+    assert.deepEqual(data.needs.rows.map((row) => row.id), first, vista);
+    // Lo stato a schermo: il gruppo dei cinque.
+    assert.equal(data.needs.rows[0].status.label, "In attesa");
   }
   assert.ok(data?.needs);
   const html = readable(renderToStaticMarkup(createElementOf(panel.PanelNeedsBlock, { needs: data.needs, href: `/dashboard/${ids.ws}/use-cases/${cards.quarter.id}?capitolo=cosa-serve` })));

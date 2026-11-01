@@ -21,6 +21,7 @@ import { INFO_PROGRESS_PARAM, type InfoProgressState, type InfoProgressView } fr
 import { channelLabel } from "@/lib/use-cases/labels";
 import { laneBarScale, PANORAMA_SECTION_ID } from "@/lib/use-cases/lanes";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
+import { nextStepOf } from "@/lib/use-cases/guided";
 import { buildNeedsBoard, panelNeeds, type NeedView } from "@/lib/use-cases/needs";
 import { overviewFigures, overviewNextStep, overviewSteps, portfolioLine } from "@/lib/use-cases/panoramica";
 import { abilitiesForUseCase, type UseCaseAbilities } from "@/lib/use-cases/permissions";
@@ -56,7 +57,7 @@ import { HashFocusOnCommit, ListFocusTarget } from "./list-focus";
 import { LANES_TEXT, PanoramaLanes, type LanesGrouping } from "./panorama-lanes";
 import { PanoramicaTop } from "./panoramica-top";
 import { QuickCreateSheet } from "./quick-create-sheet";
-import { UseCasePanel, type UseCasePanelData } from "./use-case-panel";
+import { UseCasePanel, type PanelNextStep, type UseCasePanelData } from "./use-case-panel";
 import { hubHref, panelHref, withoutTransient, type HubQuery } from "./use-case-row";
 
 /**
@@ -303,6 +304,36 @@ function Welcome({ joined, workspaceName, roleName }: { joined: HubParams["joine
   return null;
 }
 
+/**
+ * «Prossimo passo:» del pannello di un revisore (rilascio 3): la regola del riquadro della scheda
+ * (`nextStepOf`), con «Raccolta informazioni» della lista (`listInfoProgress`) e senza referenti,
+ * riepilogo del dossier e Storia, che il pannello non legge. Così i motivi che bloccano «Chiedi al
+ * referente» (G4, G6) si leggono come G5, senza pulsante: il pannello non ne ha. Il pulsante
+ * principale delle decisioni resta pieno solo quando il passo è una decisione di chi guarda; per
+ * «Serve info», «Rimanda» e «Riapri» è bordato, come nella scheda.
+ */
+export function panelNextStep(item: HubItem, data: Pick<UseCaseHubData, "workspaceId" | "abilities" | "list" | "teamName" | "workspaceName" | "info">): PanelNextStep {
+  const step = nextStepOf({
+    workspaceId: data.workspaceId,
+    item,
+    today: data.list.today,
+    teamName: data.teamName,
+    companyName: data.workspaceName,
+    canDecide: data.abilities.canDecide,
+    canOpenAnyDossier: data.abilities.canOpenAnyDossier,
+    // Senza esigenze del cliente la lista non ha la scheda: «nessuna da chiedere», come nella scheda.
+    info: data.abilities.canSeeNeeds ? (data.info?.[item.id.toLowerCase()] ?? null) : null,
+    referents: null,
+    askEntry: null,
+    // Un dossier che c'è: la variante «dossier» della scheda senza riepilogo (E6).
+    realizationVariant: item.phase === "in_realizzazione" && item.dossier ? "dossier" : null,
+    realization: null,
+    dossierRead: data.list.dossierRead,
+    closedOn: null,
+  });
+  return { title: step.title, line: step.line, decisionPrimary: step.action.type === "decisione" && step.mine ? "default" : "outline" };
+}
+
 /** La pagina «Use case» con l'area accesa, dai dati di `loadUseCaseHub`. */
 export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   const { workspaceId, basePath, abilities, params, view, list } = data;
@@ -411,6 +442,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           estimate: data.panelEstimate,
           answers: data.panelAnswers,
           needs: data.needs ? panelNeeds(data.needs, panelItem, list.today) : null,
+          nextStep: panelNextStep(panelItem, data),
         }
     : null;
 

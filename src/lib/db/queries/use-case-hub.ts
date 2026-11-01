@@ -8,7 +8,7 @@ import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { dossierSummaries, type DossierSummary } from "@/lib/db/queries/use-case-dossiers";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import { isLateralSpaceEmail } from "@/lib/uc/lateral-space";
-import { paletteForTitles, workspaceAgentPalette, type AgentPalette } from "@/lib/use-cases/agents";
+import { agentOfTitle, agentToneOf, paletteForTitles, workspaceAgentPalette, type AgentPalette, type AgentTone } from "@/lib/use-cases/agents";
 import { pendingAnswer, type InfoAnswer } from "@/lib/use-cases/answers";
 import { resolveCostBands, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import {
@@ -313,6 +313,53 @@ export async function listHubItems(workspaceId: string, viewer: UseCaseViewer, o
     valueParams: ctx.valueParams,
     followsCurrentMonth: ctx.followsCurrentMonth,
   };
+}
+
+/**
+ * Le colonne che servono alla fase di ogni scheda del workspace (`phaseInputOf`), più il titolo: niente
+ * testi lunghi, niente cifre. Di `intake` solo i tre campi tecnici che la fase legge.
+ */
+async function selectPaletteRows(workspaceId: string) {
+  return db
+    .select({
+      id: useCases.id,
+      title: useCases.title,
+      status: useCases.status,
+      portfolioReviewStatus: useCases.portfolioReviewStatus,
+      reviewedBy: useCases.reviewedBy,
+      publicNote: useCases.publicNote,
+      intake: sql<UseCase["intake"]>`jsonb_strip_nulls(jsonb_build_object(
+        'possibleDuplicateOf', ${useCases.intake}->'possibleDuplicateOf',
+        'archiveReason', ${useCases.intake}->'archiveReason',
+        'duplicateOfCode', ${useCases.intake}->'duplicateOfCode'))`,
+      reviewBy: useCases.reviewBy,
+      portfolioKind: useCases.portfolioKind,
+      targetQuarter: useCases.targetQuarter,
+    })
+    .from(useCases)
+    .where(eq(useCases.workspaceId, workspaceId));
+}
+
+/**
+ * Il tono dell'agente del titolo di una scheda (rilascio 3: il tag della testata, il percorso e «Con
+ * LIBRA» di «Come cambia il lavoro»): lo stesso delle card della Panoramica, cioè la tavolozza degli
+ * use case di tutto il workspace nelle fasi della Panoramica (`workspaceAgentPalette`, come
+ * `listHubItems`), per chiunque guardi. null senza il prefisso nel titolo, per un agente che non ha
+ * un tono (solo proposte) o con un workspace che non è un UUID. Una lettura in più per scheda, con le
+ * sole colonne della fase e il titolo (`selectPaletteRows`), e i dossier come la lista.
+ */
+export async function workspaceAgentToneOf(workspaceId: string, title: string, now: Date = new Date()): Promise<AgentTone | null> {
+  const agent = agentOfTitle(title);
+  if (!agent || !isUuid(workspaceId)) return null;
+  await ensureDbSchema();
+  const rows = await selectPaletteRows(workspaceId);
+  const dossiers = await readDossiers(
+    workspaceId,
+    rows.map((row) => row.id),
+  );
+  const today = romeToday(now);
+  const palette = workspaceAgentPalette(rows.map((row) => ({ title: row.title, phase: phaseOfUseCase(phaseInputOf(row, dossiers.of(row.id), today)).phase })));
+  return agentToneOf(palette, agent);
 }
 
 // ═══ Scheda (§6) ═════════════════════════════════════════════════════

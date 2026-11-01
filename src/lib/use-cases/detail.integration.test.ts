@@ -78,6 +78,7 @@ let aiBoxModule: typeof import("../../components/use-cases/detail/ai-suggestion-
 let realizationModule: typeof import("../../components/use-cases/detail/section-realization.tsx");
 let inlineModule: typeof import("../../components/use-cases/detail/inline-text-field.tsx");
 let hideModule: typeof import("../../components/use-cases/detail/hide-from-search-item.tsx");
+let hubQueries: typeof import("../db/queries/use-case-hub.ts");
 let notFoundPage: () => unknown;
 let pages: { detail: Page; nuovo: Page };
 let renderToStaticMarkup: (element: unknown) => string;
@@ -392,6 +393,7 @@ before(async () => {
   realizationModule = await component("section-realization");
   inlineModule = await component("inline-text-field");
   hideModule = await component("hide-from-search-item");
+  hubQueries = await import("../db/queries/use-case-hub.ts");
   const page = async (path: string): Promise<Page> => (await import(path)).default as Page;
   pages = {
     detail: await page("../../app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx"),
@@ -820,6 +822,35 @@ test("una scheda per riga della tabella: il passo del riquadro, al massimo un pu
     const contributor = (await detailHtml("contributor", card.id)).html;
     for (const slot of ["use-case-path", "next-step", "impatto", "fold", "scheda-grid"]) assert.ok(!contributor.includes(`data-slot="${slot}"`), `${label}, contributore: ${slot}`);
   }
+});
+
+test("il colore dell'agente: il tag della testata, il percorso e «Con …» con il tono delle card della Panoramica; neutro senza tono; mai al contributore", opts, async () => {
+  const libra = await seed({ title: `LIBRA L1 · Tono di prova ${suffix}`, status: "accepted", review: "scored", targetQuarter: "2027-Q1" });
+  await seed({ title: `ALCIONE A1 · Tono di prova ${suffix}`, status: "accepted", review: "scored", targetQuarter: "2027-Q1" });
+  // Un agente con sole proposte non ha un tono: il suo tag resta neutro.
+  const proposal = await seed({ title: `ZETAX Z1 · Solo proposta ${suffix}` });
+  const plain = await seed({ title: `Senza agente ${suffix}`, status: "accepted", review: "scored", targetQuarter: "2027-Q1" });
+  // Il tono è quello della Panoramica: la tavolozza degli use case di tutto il workspace.
+  const viewer = hubQueries.viewerFromSession({ id: ids.lsLead, email: emails.lsLead, emailVerified: true }, "transformation_lead");
+  const list = await hubQueries.listHubItems(ids.ws, viewer);
+  assert.ok(list);
+  const tone = await hubQueries.workspaceAgentToneOf(ids.ws, libra.title);
+  assert.ok(tone !== null && tone === list.agents.tones.LIBRA, `LIBRA: ${tone}`);
+  assert.equal(await hubQueries.workspaceAgentToneOf(ids.ws, proposal.title), null, "sole proposte: nessun tono");
+  assert.equal(await hubQueries.workspaceAgentToneOf(ids.ws, plain.title), null, "senza prefisso: nessun tono");
+  assert.equal(await hubQueries.workspaceAgentToneOf("non-un-uuid", libra.title), null);
+  for (const person of ["lsLead", "builder"] as const) {
+    const { html } = await detailHtml(person, libra.id);
+    assert.match(html, new RegExp(`data-slot="agent-tag" data-tone="${tone}" aria-hidden="true" class="[^"]*border-uc-agente-${tone}/55 bg-uc-agente-${tone}/16 text-uc-agente-${tone}`), `${person}: il tag`);
+    assert.match(html, new RegExp(`data-slot="use-case-path" class="[^"]*\\[--path-c:var\\(--uc-agente-${tone}\\)\\]`), `${person}: il percorso`);
+    assert.match(html, new RegExp(`data-slot="work-flow" class="[^"]*\\[--path-c:var\\(--uc-agente-${tone}\\)\\]`), `${person}: «Con LIBRA»`);
+    const neutral = (await detailHtml(person, proposal.id)).html;
+    assert.match(neutral, /data-slot="agent-tag" data-tone="neutro"/, `${person}: tag neutro`);
+    assert.ok(!/\[--path-c:var\(--uc-agente-/.test(neutral), `${person}: percorso nel colore del testo`);
+    assert.ok(!(await detailHtml(person, plain.id)).html.includes('data-slot="agent-tag"'), `${person}: senza prefisso, nessun tag`);
+  }
+  const contributor = (await detailHtml("contributor", libra.id)).html;
+  assert.ok(!contributor.includes('data-slot="agent-tag"') && !contributor.includes("--uc-agente-"), "il contributore: nessun colore d'agente");
 });
 
 test("«Realizzazione»: «Avvia la realizzazione» solo a Lateral Space con la sezione Casi d'uso accesa; «Segna come in realizzazione» con la sezione spenta", opts, async () => {

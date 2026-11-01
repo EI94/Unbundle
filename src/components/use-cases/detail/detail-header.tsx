@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
-import { titleAgent } from "@/lib/use-cases/agents";
+import { titleAgent, type AgentTone } from "@/lib/use-cases/agents";
 import type { DecisionItem } from "@/lib/use-cases/decision-ui";
 import type { Phase, SubState } from "@/lib/use-cases/types";
 import { cn } from "@/lib/utils";
@@ -44,6 +44,8 @@ export interface DetailHeaderProps {
    */
   reviewer?: {
     item: Pick<DecisionItem, "id" | "code" | "version" | "hiddenFromSearch">;
+    /** Il tono dell'agente del titolo, come sulle card della Panoramica (`workspaceAgentToneOf`); null: il tag neutro. */
+    agentTone?: AgentTone | null;
     /** `canSetHiddenFromSearch`. */
     canSetHidden: boolean;
     /** «Oscura testo»: Lateral Space con ruolo da revisore e chi gestisce il workspace (§1.2 punto 10). */
@@ -123,7 +125,7 @@ export function DetailHeader({ workspaceId, card, reviewer, titleEdit, marker, c
       {back}
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          {agent ? <AgentTag label={agent.label} tone={null} decorative /> : null}
+          {agent ? <AgentTag label={agent.label} tone={reviewer.agentTone ?? null} decorative /> : null}
           {card.code ? <p className="font-mono text-sm text-muted-foreground">{card.code}</p> : null}
         </div>
         <ActionMenu items={items} label={DETAIL_HEADER_TEXT.moreActions} className="shrink-0" />

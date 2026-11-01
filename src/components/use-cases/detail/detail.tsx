@@ -1,5 +1,6 @@
 import type { UseCaseDetailResult } from "@/lib/db/queries/use-case-hub";
 import type { UseCaseRealization } from "@/lib/uc/views/realization";
+import type { AgentTone } from "@/lib/use-cases/agents";
 import { answersOf } from "@/lib/use-cases/answers";
 import type { UseCaseEventList } from "@/lib/db/queries/use-case-events";
 import { DIALOG_COMMON_TEXT, PUBLIC_NOTE_TEXT, toDecisionItem, toDuplicateCandidates, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
@@ -209,6 +210,11 @@ export interface UseCaseDetailViewProps {
   teamName: string;
   /** Il nome del workspace (`access.workspace.name`): «Chiedere le informazioni a TopJet». */
   companyName?: string | null;
+  /**
+   * Il tono dell'agente del titolo (`workspaceAgentToneOf`), lo stesso delle card della Panoramica:
+   * il tag della testata, il percorso e «Con LIBRA». null: neutri. Solo ai revisori.
+   */
+  agentTone?: AgentTone | null;
   className?: string;
 }
 
@@ -244,6 +250,7 @@ export function UseCaseDetailView({
   infoProgress = null,
   teamName,
   companyName = null,
+  agentTone = null,
   className,
 }: UseCaseDetailViewProps) {
   if (result.projection === "contributore") {
@@ -344,13 +351,14 @@ export function UseCaseDetailView({
         titleEdit={abilities.canEditWhat ? { item: { id: detail.id, version: detail.version }, label: WHAT_FIELD_LABEL.title[detail.kind] ?? "Titolo", max: TEXT_LIMITS.title } : null}
         reviewer={{
           item: { id: detail.id, code: detail.code, version: detail.version, hiddenFromSearch: detail.hiddenFromSearch },
+          agentTone,
           canSetHidden: abilities.canSetHiddenFromSearch,
           canRedact: abilities.canRedact,
           redactOptions: abilities.canRedact ? redactOptions(detail) : [],
         }}
       />
       <Arrival initial={arrival} ids={targets} />
-      {path ? <UseCasePath path={path} className="mt-4" /> : null}
+      {path ? <UseCasePath path={path} tone={agentTone} className="mt-4" /> : null}
       {/* «Serve info» e «Non avviare» si aprono con il testo del campo «Nota pubblica»; un solo pulsante pieno per pagina. */}
       <PublicNoteDraftProvider>
         <PagePrimaryProvider>
@@ -368,7 +376,7 @@ export function UseCaseDetailView({
             <div data-slot="scheda-grid" className="mt-8 grid gap-8 @min-[58rem]/scheda:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/scheda:gap-x-8">
               <div data-slot="scheda-main" className="min-w-0 space-y-10 @min-[58rem]/scheda:col-start-1 @min-[58rem]/scheda:row-start-1">
                 <ImpactBlock view={impact} value={detail.value} cost={detail.cost} costBands={result.costBands} risks={detail.risks} />
-                <WorkFlow workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} />
+                <WorkFlow workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} tone={agentTone} />
                 {abilities.canSeeNeeds && needs ? (
                   <SectionNeeds
                     workspaceId={workspaceId}

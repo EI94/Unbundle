@@ -289,6 +289,13 @@ const GUIDED_FILES = [
   "src/components/use-cases/detail/fold.tsx",
   "src/components/use-cases/detail/arrival.tsx",
   "src/components/use-cases/detail/referent/dialog-host.tsx",
+  // Cambiati dalla scheda guidata (rilascio 3): «Cosa serve» compatto, la vista «Cosa serve», il
+  // pannello con i chip di rischio nei token, la testata con il tag dell'agente.
+  "src/components/use-cases/detail/section-needs.tsx",
+  "src/components/use-cases/needs-board.tsx",
+  "src/components/use-cases/use-case-panel.tsx",
+  "src/components/use-cases/detail/detail-header.tsx",
+  "src/components/use-cases/detail/detail.tsx",
 ];
 
 test("la scheda guidata usa solo i token del tema: niente `dark:` né colori della tavolozza", () => {
@@ -319,6 +326,21 @@ test("il percorso della scheda: l'anello del passo «adesso» al 50% e il pallin
     atLeast(ratio(over(color, t.background.rgb, 0.5), t.background.rgb), 3, `anello «adesso» in uc-agente-${tone}`);
     atLeast(ratio(t.background.rgb, color), 4.5, `segno di «fatto» su uc-agente-${tone}`);
   }
+});
+
+test("il pannello usa i chip di rischio della scheda: niente più ambra", () => {
+  const panel = read("src/components/use-cases/use-case-panel.tsx");
+  assert.ok(panel.includes('import { RiskChips } from "./detail/risk-chips";') && panel.includes("<RiskChips risks={item.risks} />"));
+  assert.doesNotMatch(panel, /amber|(?<![\w-])dark:/);
+});
+
+test("il tag dell'agente nella testata, il percorso e «Con LIBRA» prendono il tono del workspace, nei token", () => {
+  const header = read("src/components/use-cases/detail/detail-header.tsx");
+  assert.ok(header.includes("tone={reviewer.agentTone ?? null}"), "il tag della testata con il tono");
+  const detail = read("src/components/use-cases/detail/detail.tsx");
+  assert.ok(detail.includes("<UseCasePath path={path} tone={agentTone}") && detail.includes("tone={agentTone} />"), "percorso e «Come cambia il lavoro» con il tono");
+  const tag = read("src/components/use-cases/agent-tag.tsx");
+  for (let tone = 1; tone <= 10; tone++) assert.ok(tag.includes(`text-uc-agente-${tone}`), `tag uc-agente-${tone} nei token`);
 });
 
 test("i chip di rischio di «Impatto»: il bordo dei campi e l'icona gialla del semaforo, entrambi almeno 3:1", () => {

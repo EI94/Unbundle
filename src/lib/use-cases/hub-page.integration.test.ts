@@ -80,6 +80,8 @@ let exportGet: RouteGet;
 let hub: HubModule;
 let access: Access;
 let panelParts: PanelParts;
+let panelModule: typeof import("../../components/use-cases/use-case-panel.tsx");
+let guided: typeof import("./guided.ts");
 let XLSX: typeof import("xlsx");
 let currentQuarter: () => string;
 let nextQuarter: (q: string) => string;
@@ -399,6 +401,8 @@ before(async () => {
     DecisionButtons: (await import("../../components/use-cases/decision-buttons.tsx")).DecisionButtons,
     createElement: (type, props) => createElement(type as never, props as never),
   };
+  panelModule = await import("../../components/use-cases/use-case-panel.tsx");
+  guided = await import("./guided.ts");
   XLSX = await import("xlsx");
   const quarter = await import("./quarter.ts");
   currentQuarter = () => quarter.currentQuarter();
@@ -995,6 +999,69 @@ test("«Tipo» sui grafici: le due matrici sono «Da costruire» e non lo hanno;
     assert.ok(!diffuse.includes("Nessuno use case"), mostra);
   }
   assert.ok((await html("ls", ids.wsA, { vista: "panoramica" })).includes('aria-label="Tipo: Tutti"'), "la Panoramica");
+});
+
+test("pannello: «Prossimo passo:» sotto i chip, con chi lo fa, come nella scheda; il pulsante pieno solo quando la decisione è di chi guarda", opts, async () => {
+  type Step = import("../../components/use-cases/use-case-panel.tsx").PanelNextStep;
+  const team = guided.toTeam(DEFAULT_REVIEW_TEAM_NAME);
+  const panelData = async (person: Person, workspaceId: string, apri: string) => {
+    const { data, tree } = await hubTree(person, workspaceId, { vista: "panoramica", apri });
+    const found = findProp(tree, "data").find((value) => (value as { projection?: string })?.projection) as
+      | { projection: string; item: Parameters<PanelParts["toDecisionItem"]>[0]; candidates?: unknown[]; nextStep?: Step | null }
+      | undefined;
+    assert.ok(found, apri);
+    return { data, panel: found };
+  };
+  const buttons = (workspaceId: string, today: string, panel: { item: Parameters<PanelParts["toDecisionItem"]>[0]; candidates?: unknown[]; nextStep?: Step | null }) =>
+    renderToStaticMarkup(
+      panelParts.createElement(panelParts.DecisionButtons, {
+        workspaceId,
+        item: panelParts.toDecisionItem(panel.item),
+        today,
+        canDecide: true,
+        candidates: panel.candidates ?? [],
+        primaryVariant: panel.nextStep?.decisionPrimary ?? "default",
+      }),
+    );
+  for (const person of ["ls", "builder"] as const) {
+    // Da decidere, valutata: «Decidere se approvarlo», «Approva» pieno.
+    const scored = await panelData(person, ids.wsA, cards.toDecideScored.id);
+    assert.equal(scored.panel.projection, "revisore");
+    assert.equal(scored.panel.nextStep?.title, "Decidere se approvarlo", person);
+    assert.ok(scored.panel.nextStep?.line.startsWith(team), `${person}: ${scored.panel.nextStep?.line}`);
+    assert.equal(scored.panel.nextStep?.decisionPrimary, "default");
+    assert.equal(filledButtons(buttons(ids.wsA, scored.data.list.today, scored.panel)), 1, `${person}: «Approva» pieno`);
+    // «Serve info»: tocca a chi ha proposto, «Approva» bordato.
+    const asked = await panelData(person, ids.wsA, cards.serveInfo.id);
+    assert.deepEqual([asked.panel.nextStep?.title, asked.panel.nextStep?.line], ["Aspettare la risposta di chi ha proposto", "Tocca a chi ha proposto. La domanda è nella nota pubblica."]);
+    assert.equal(asked.panel.nextStep?.decisionPrimary, "outline");
+    const askedButtons = buttons(ids.wsA, asked.data.list.today, asked.panel);
+    assert.ok(askedButtons.includes("Approva"));
+    assert.equal(filledButtons(askedButtons), 0, `${person}: «Approva» bordato in «Serve info»`);
+    // Approvata per un trimestre finito: «Scegliere un nuovo trimestre», nessun pulsante pieno.
+    const overdue = await panelData(person, ids.wsA, cards.overdue.id);
+    assert.equal(overdue.panel.nextStep?.title, "Scegliere un nuovo trimestre");
+    assert.equal(overdue.panel.nextStep?.decisionPrimary, "outline");
+    // Chiusa: «Riapri» bordato.
+    const closed = await panelData(person, ids.wsE, cards.eClosed.id);
+    assert.equal(closed.panel.nextStep?.decisionPrimary, "outline");
+    const closedButtons = buttons(ids.wsE, closed.data.list.today, closed.panel);
+    assert.ok(closedButtons.includes("Riapri"));
+    assert.equal(filledButtons(closedButtons), 0, `${person}: «Riapri» bordato`);
+    // Best practice approvata: «Segna come diffusa» pieno.
+    const best = await panelData(person, ids.wsA, cards.bestPractice.id);
+    assert.equal(best.panel.nextStep?.title, "Diffondere la best practice");
+    assert.equal(filledButtons(buttons(ids.wsA, best.data.list.today, best.panel)), 1);
+  }
+  // La riga sotto i chip: «Prossimo passo:», il passo con il punto, poi in grigio chi lo fa.
+  const { panel } = await panelData("ls", ids.wsA, cards.serveInfo.id);
+  const line = renderToStaticMarkup(panelParts.createElement(panelModule.PanelNextStepLine, { step: panel.nextStep }));
+  assert.match(line, /^<p data-slot="panel-next-step" class="text-sm break-words"><span class="font-medium">Prossimo passo:<\/span> Aspettare la risposta di chi ha proposto\.<span class="text-muted-foreground"> Tocca a chi ha proposto\. La domanda è nella nota pubblica\.<\/span><\/p>$/);
+  // Il contributore: niente «Prossimo passo», niente regole del team.
+  const own = await panelData("contributor", ids.wsA, cards.ownByEmail.id);
+  assert.equal(own.panel.projection, "contributore");
+  assert.ok(!("nextStep" in own.panel));
+  assert.ok(!(await html("contributor", ids.wsA, { vista: "panoramica", apri: cards.ownByEmail.id })).includes("panel-next-step"));
 });
 
 test("niente si perde senza la lista di «Priorità»: nel pannello «Quando», «Approva» e «Segna come diffusa»", opts, async () => {
