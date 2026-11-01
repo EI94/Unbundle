@@ -19,7 +19,7 @@ test("keepTogether: numeri con la loro parola, nomi tra «…» interi, il «·�
   const cases: Array<[string, string]> = [
     ["Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In valutazione».", `Qui trovi gli use case approvati visibili a tutti. Le proposte sono in «In${N}valutazione».`],
     ["Conferma a Intesa dell'attivazione di FileGate (12 €/mese)", `Conferma a Intesa dell'attivazione di FileGate (12${N}€/mese)`],
-    ["Per partire con il T4 2026: 40 requisiti da chiedere, 2 da verificare e 8 bloccati.", `Per partire con il T4${N}2026: 40${N}requisiti da chiedere, 2${N}da verificare e 8${N}bloccati.`],
+    ["Per partire con il T4 2026: 40 requisiti da chiedere, 2 da verificare e 8 fermi.", `Per partire con il T4${N}2026: 40${N}requisiti da chiedere, 2${N}da verificare e 8${N}fermi.`],
     ["4 use case aspettano una decisione.", `4${N}use${N}case aspettano una decisione.`],
     ["Su tutto il portafoglio: 1.404 ore liberate all'anno, pareggio previsto ad agosto 2027.", `Su tutto il portafoglio: 1.404${N}ore liberate all'anno, pareggio previsto ad agosto${N}2027.`],
     ["su 9 use case · 2 da fascia", `su 9${N}use${N}case${N}· 2${N}da fascia`],

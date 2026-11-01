@@ -17,7 +17,12 @@
  *   un criterio.
  * - **Conteggi** (`NeedAskCounts`): i requisiti per gruppo di stato, come «Raccolta informazioni»
  *   della scheda: da chiedere (da chiedere, manca il dato, risposta parziale), in attesa, da
- *   verificare, bloccati, a posto. Sempre di esigenze, mai di persone, mai per «Chi» o per parte.
+ *   verificare, fermi, a posto. Sempre di esigenze, mai di persone, mai per «Chi» o per parte.
+ * - **Cinque gruppi a schermo** (`needRequestGroupView`, rilascio 3): le righe dei requisiti della
+ *   scheda, del pannello e della vista «Cosa serve» dicono il gruppo («Da chiedere», «In attesa»,
+ *   «Da verificare», «Ferma», «A posto») con il dettaglio quando serve («manca il dato»). Gli otto
+ *   stati restano nel modulo di modifica (`needStatusChoices`), nel MCP del team e nell'export
+ *   (`needStatusView`, «Bloccata»).
  *
  * Le esigenze non si cancellano: si archiviano. Le letture le portano solo ai revisori.
  * Modulo puro: import relativi `.ts` e `zod`; si usa anche nei componenti client.
@@ -372,7 +377,13 @@ export interface NeedRow {
   detail: string | null;
   /** «Giulia, ufficio acquisti · Cliente»; null senza nessuno. */
   owner: string | null;
+  /**
+   * Lo stato a schermo: per un requisito il suo gruppo dei cinque («Da chiedere», «In attesa», «Da
+   * verificare», «Ferma», «A posto», `needRequestGroupView`), per un passo il suo stato («Proposto»).
+   */
   status: { label: string; tone: SemaforoColor };
+  /** Il dettaglio dello stato di un requisito nel suo gruppo: «manca il dato», «risposta parziale», «non si applica»; null senza o per un passo. */
+  statusNote: string | null;
   done: boolean;
   /** «15 nov», «entro fine mese»; con «(proposta)» se la data non è ancora confermata, tranne su un passo «Proposto». */
   due: string | null;
@@ -433,12 +444,16 @@ export function needsActionFirst(
   return compareNeeds(a, b);
 }
 
-/** La riga di un'esigenza, con gli use case che chi guarda conosce. */
+/**
+ * La riga di un'esigenza, con gli use case che chi guarda conosce. Un requisito dice il suo gruppo
+ * dei cinque e il dettaglio (`needRequestGroupView`); un passo il suo stato.
+ */
 export function needRow(need: NeedView, useCases: ReadonlyMap<string, NeedUseCaseRef>, today: string): NeedRow {
   const linked = need.useCaseIds.flatMap((id) => {
     const ref = useCases.get(id.toLowerCase());
     return ref ? [ref] : [];
   });
+  const group = need.type === "requisito" ? needRequestGroupView(need.status) : null;
   return {
     id: need.id,
     type: need.type,
@@ -446,7 +461,8 @@ export function needRow(need: NeedView, useCases: ReadonlyMap<string, NeedUseCas
     title: need.title,
     detail: need.detail,
     owner: needOwnerText(need),
-    status: needStatusView(need.type, need.status),
+    status: group ? { label: group.label, tone: group.tone } : needStatusView(need.type, need.status),
+    statusNote: group?.note ?? null,
     done: isNeedDone(need.type, need.status),
     // Un passo «Proposto» è da confermare tutto, data compresa: a schermo «(proposta)» ripeterebbe lo
     // stato accanto («Proposto · 3 dic (proposta)»). Il MCP del team tiene `needDueText` com'è.
@@ -695,14 +711,15 @@ export function needAlsoForText(count: number): string {
 
 /**
  * I gruppi di stato a parole, in quest'ordine e senza gli zeri: «60 da chiedere», «12 in attesa»,
- * «4 da verificare», «1 bloccato» o «10 bloccati», «31 a posto». La riga chiusa di un'area.
+ * «4 da verificare», «1 fermo» o «10 fermi» (requisiti, al maschile come «aperti»), «31 a posto».
+ * La riga chiusa di un'area.
  */
 export function needAskPieces(counts: NeedAskCounts): string[] {
   const pieces: string[] = [];
   if (counts.toAsk) pieces.push(`${formatInteger(counts.toAsk)} da chiedere`);
   if (counts.waiting) pieces.push(`${formatInteger(counts.waiting)} in attesa`);
   if (counts.toVerify) pieces.push(`${formatInteger(counts.toVerify)} da verificare`);
-  if (counts.blocked) pieces.push(counts.blocked === 1 ? "1 bloccato" : `${formatInteger(counts.blocked)} bloccati`);
+  if (counts.blocked) pieces.push(counts.blocked === 1 ? "1 fermo" : `${formatInteger(counts.blocked)} fermi`);
   if (counts.done) pieces.push(`${formatInteger(counts.done)} a posto`);
   return pieces;
 }
@@ -758,7 +775,7 @@ export interface NeedAskCounts {
 }
 
 /** Il gruppo di ogni stato di un requisito; «a posto» è `isNeedDone`. */
-const ASK_GROUP_OF: Readonly<Record<ItemStatus, Exclude<keyof NeedAskCounts, "open">>> = {
+const ASK_GROUP_OF: Readonly<Record<ItemStatus, NeedRequestGroup>> = {
   da_chiedere: "toAsk",
   mancante: "toAsk",
   parziale: "toAsk",
@@ -771,11 +788,70 @@ const ASK_GROUP_OF: Readonly<Record<ItemStatus, Exclude<keyof NeedAskCounts, "op
 
 /**
  * Il gruppo di stato di un requisito: da chiedere (da chiedere, manca il dato, risposta parziale),
- * in attesa, da verificare, bloccato, a posto. Uno stato sconosciuto vale «da chiedere», come in
- * `needStatusView`. Lo usano i conteggi e i cinque gruppi a schermo (`requestGroupView`).
+ * in attesa, da verificare, fermo, a posto. Uno stato sconosciuto vale «da chiedere», come in
+ * `needStatusView`. Lo usano i conteggi e i cinque gruppi a schermo (`needRequestGroupView`).
  */
-export function askGroupOf(status: NeedStatus): Exclude<keyof NeedAskCounts, "open"> {
+export function askGroupOf(status: NeedStatus): NeedRequestGroup {
   return (NEED_REQUIREMENT_STATUSES as readonly string[]).includes(status) ? ASK_GROUP_OF[status as ItemStatus] : "toAsk";
+}
+
+// ─── I cinque gruppi a schermo ───────────────────────────────────────
+
+/** Uno dei cinque gruppi di stato dei requisiti, con la chiave dei conteggi. */
+export type NeedRequestGroup = Exclude<keyof NeedAskCounts, "open">;
+
+/**
+ * I testi dei cinque gruppi e il dettaglio dello stato dentro il suo gruppo (rilascio 3). «Ferma»
+ * per un requisito «bloccata»: lo decide chi legge la pagina (decisione 1 del rilascio 3); il
+ * modulo di modifica, il MCP del team e l'export tengono «Bloccata».
+ */
+export const NEED_REQUEST_GROUP_TEXT = Object.freeze({
+  groups: Object.freeze({
+    toAsk: "Da chiedere",
+    waiting: "In attesa",
+    toVerify: "Da verificare",
+    blocked: "Ferma",
+    done: "A posto",
+  }) satisfies Readonly<Record<NeedRequestGroup, string>>,
+  notes: Object.freeze({
+    mancante: "manca il dato",
+    parziale: "risposta parziale",
+    non_applicabile: "non si applica",
+  }),
+});
+
+const REQUEST_GROUP_TONE: Readonly<Record<NeedRequestGroup, SemaforoColor>> = Object.freeze({
+  toAsk: "grigio",
+  waiting: "blu",
+  toVerify: "giallo",
+  blocked: "lucchetto",
+  done: "verde",
+});
+
+export interface NeedRequestGroupView {
+  group: NeedRequestGroup;
+  /** «Da chiedere», «In attesa», «Da verificare», «Ferma», «A posto». */
+  label: string;
+  tone: SemaforoColor;
+  /** Il dettaglio dello stato dentro il gruppo: «manca il dato», «risposta parziale», «non si applica»; null senza. */
+  note: string | null;
+}
+
+/**
+ * Lo stato di un requisito nei cinque gruppi che si leggono a schermo (gli otto stati restano nel
+ * modulo di modifica, nel MCP del team e nell'export): da chiedere (anche «manca il dato» e
+ * «risposta parziale»), in attesa, da verificare, ferma, a posto (anche «non si applica»). Uno
+ * stato sconosciuto vale «da chiedere», come in `needStatusView`.
+ */
+export function needRequestGroupView(status: NeedStatus): NeedRequestGroupView {
+  const group = askGroupOf(status);
+  const notes: Readonly<Record<string, string>> = NEED_REQUEST_GROUP_TEXT.notes;
+  return {
+    group,
+    label: NEED_REQUEST_GROUP_TEXT.groups[group],
+    tone: REQUEST_GROUP_TONE[group],
+    note: Object.prototype.hasOwnProperty.call(notes, status) ? notes[status] : null,
+  };
 }
 
 export function emptyNeedAskCounts(): NeedAskCounts {
@@ -826,19 +902,18 @@ function linkedTo(need: Pick<NeedView, "useCaseIds">, useCaseId: string): boolea
   return need.useCaseIds.some((linked) => linked.toLowerCase() === id);
 }
 
-/** Le aperte, prima quelle con la scadenza più vicina. */
-function compareOpen(a: NeedView, b: NeedView): number {
-  if (a.dueOn !== b.dueOn) {
-    if (!a.dueOn) return 1;
-    if (!b.dueOn) return -1;
-    return a.dueOn.localeCompare(b.dueOn);
-  }
-  return compareNeeds(a, b);
-}
-
-/** Il blocco «Cosa serve» del pannello: le esigenze aperte dello use case, al massimo tre. null senza. */
+/**
+ * Il blocco «Cosa serve» del pannello: le esigenze aperte dello use case, al massimo tre, nell'ordine
+ * della scheda (rilascio 3), così le prime tre del pannello sono le prime tre righe di «Cosa serve»:
+ * prima i requisiti, quelli da verificare in testa e poi l'ordine del team (`needsActionFirst`),
+ * poi i prossimi passi nell'ordine del team. null senza.
+ */
 export function panelNeeds(needs: readonly NeedView[], item: NeedUseCaseRef, today: string): PanelNeeds | null {
-  const open = needs.filter((need) => !need.archivedAt && linkedTo(need, item.id) && !isNeedDone(need.type, need.status)).sort(compareOpen);
+  const live = needs.filter((need) => !need.archivedAt && linkedTo(need, item.id) && !isNeedDone(need.type, need.status));
+  const open = [
+    ...live.filter((need) => need.type === "requisito").sort(needsActionFirst),
+    ...live.filter((need) => need.type !== "requisito").sort(compareNeeds),
+  ];
   if (!open.length) return null;
   const refs = refsOf([item]);
   return { rows: open.slice(0, PANEL_NEEDS_MAX).map((need) => needRow(need, refs, today)), more: Math.max(0, open.length - PANEL_NEEDS_MAX) };

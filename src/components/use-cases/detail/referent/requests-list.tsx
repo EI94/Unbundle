@@ -33,15 +33,18 @@ export function requestActionsShown(request: Pick<ReferentRequestView, "status" 
  * confronto tra persone (art. 15.4).
  */
 export function RequestsList({
-  id,
+  bare = false,
   workspaceId,
   useCaseId,
   requests,
   canAsk,
   onOpen,
 }: {
-  /** L'ancora del blocco («Vedi le richieste» del riquadro «Prossimo passo»). */
-  id?: string;
+  /**
+   * Solo le righe, senza titolo né sezione: le mette nella sua piega chi le mostra («Richieste
+   * inviate · N» di «Cosa serve», rilascio 3), che ha il titolo e l'ancora.
+   */
+  bare?: boolean;
   workspaceId: string;
   useCaseId: string;
   requests: readonly ReferentRequestView[];
@@ -50,16 +53,20 @@ export function RequestsList({
 }) {
   const headingId = useId();
   if (requests.length === 0) return null;
+  const rows = (
+    <ul data-slot={bare ? "referent-requests" : undefined} className="divide-y rounded-lg border">
+      {requests.map((request) => (
+        <RequestRow key={request.id} workspaceId={workspaceId} useCaseId={useCaseId} request={request} canAsk={canAsk} onOpen={onOpen} />
+      ))}
+    </ul>
+  );
+  if (bare) return rows;
   return (
-    <section id={id} aria-labelledby={headingId} data-slot="referent-requests" className={id ? "scroll-mt-20 space-y-2" : "space-y-2"}>
-      <h3 id={headingId} tabIndex={id ? -1 : undefined} className="text-sm font-medium outline-none">
+    <section aria-labelledby={headingId} data-slot="referent-requests" className="space-y-2">
+      <h3 id={headingId} className="text-sm font-medium">
         {T.requestsHeading}
       </h3>
-      <ul className="divide-y rounded-lg border">
-        {requests.map((request) => (
-          <RequestRow key={request.id} workspaceId={workspaceId} useCaseId={useCaseId} request={request} canAsk={canAsk} onOpen={onOpen} />
-        ))}
-      </ul>
+      {rows}
     </section>
   );
 }

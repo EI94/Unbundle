@@ -277,6 +277,7 @@ export function PanelNeedsBlock({ needs, href }: { needs: PanelNeeds; href: stri
               <p className="text-sm break-words">{keepTogether(row.title)}</p>
               <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                 <StatusDot tone={row.status.tone} label={row.status.label} />
+                {row.statusNote ? <span>{row.statusNote}</span> : null}
                 {row.due ? <span className="tabular-nums">{keepTogether(row.due)}</span> : null}
               </p>
             </li>

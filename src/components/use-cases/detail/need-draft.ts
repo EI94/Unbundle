@@ -23,6 +23,7 @@ import {
   type NeedType,
   type NeedView,
 } from "../../../lib/use-cases/needs.ts";
+import { formatInteger } from "../../../lib/use-cases/format.ts";
 
 export interface NeedDraft {
   type: NeedType;
@@ -52,6 +53,13 @@ export const NEED_FORM_TEXT = Object.freeze({
   add: "Aggiungi",
   link: "Collega un'esigenza",
   edit: "Modifica",
+  /** Il nome del menu «⋯» di una riga: «Azioni: Accesso al gestionale». */
+  rowActions: "Azioni",
+  /** Le righe dei requisiti aperti oltre le prime cinque. */
+  moreRowsOne: "Mostra l'altra",
+  moreRowsMany: "Mostra le altre {n}",
+  /** «Prossimi passi · 2»: quanti passi restano da fare; senza, il titolo da solo. */
+  stepsSummary: "Prossimi passi · {n}",
   addTitle: "Aggiungi a «Cosa serve»",
   editTitle: "Modifica",
   linkTitle: "Collega un'esigenza che c'è già",
@@ -82,6 +90,16 @@ export const NEED_FORM_TEXT = Object.freeze({
 });
 
 /** Una bozza nuova: requisito da chiedere, oppure passo proposto. */
+/** «Mostra le altre 9», «Mostra l'altra»: le righe dei requisiti aperti oltre le prime cinque. */
+export function moreRowsText(count: number): string {
+  return count === 1 ? NEED_FORM_TEXT.moreRowsOne : NEED_FORM_TEXT.moreRowsMany.replace("{n}", formatInteger(count));
+}
+
+/** «Prossimi passi · 2» con i passi da fare; senza passi da fare, «Prossimi passi» (i fatti stanno dentro, in «Fatti · N»). */
+export function stepsSummaryText(open: number): string {
+  return open > 0 ? NEED_FORM_TEXT.stepsSummary.replace("{n}", formatInteger(open)) : NEED_FORM_TEXT.steps;
+}
+
 export function emptyNeedDraft(type: NeedType = "requisito"): NeedDraft {
   return {
     type,

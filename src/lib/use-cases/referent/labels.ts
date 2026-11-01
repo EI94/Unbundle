@@ -83,6 +83,8 @@ export const REFERENT_UI_TEXT = Object.freeze({
   rowAttachFile: "Allega un file",
   // Blocco «Richieste»
   requestsHeading: "Richieste",
+  /** Il titolo, chiuso di default, delle richieste di «Cosa serve» della scheda (rilascio 3). */
+  requestsSentSummary: "Richieste inviate · {n}",
   requestLines: Object.freeze({
     sent: "Inviata il {data} · scade il {scadenza}",
     reminded: "Promemoria inviato il {data}",

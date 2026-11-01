@@ -161,8 +161,8 @@ test("«Prossimo passo»: una frase e il solo pulsante pieno della testa", () =>
   const box = html.slice(html.indexOf('data-slot="next-step"'));
   assert.match(html, /<section aria-labelledby="panoramica-prossimo-passo" data-slot="next-step" class="[^"]*@2xl\/hub:flex-row/);
   assert.ok(box.includes('<h2 id="panoramica-prossimo-passo" class="text-sm font-semibold">Prossimo passo</h2>'));
-  // A schermo il numero resta con la sua parola: «T4 2026», «60 requisiti», «10 bloccati».
-  assert.ok(box.includes("Per partire con il T4\u00a02026: 60\u00a0requisiti da chiedere e 10\u00a0bloccati."), textOf(box));
+  // A schermo il numero resta con la sua parola: «T4 2026», «60 requisiti», «10 fermi».
+  assert.ok(box.includes("Per partire con il T4\u00a02026: 60\u00a0requisiti da chiedere e 10\u00a0fermi."), textOf(box));
   assert.ok(!box.includes("60 requisiti"), "mai «60» / «requisiti» su due righe");
   const filled = filledButtons(html);
   assert.equal(filled.length, 1, "un solo pulsante pieno");
@@ -180,17 +180,17 @@ test("«Prossimo passo»: una frase e il solo pulsante pieno della testa", () =>
 test("le frasi di «Prossimo passo», al singolare e al plurale", () => {
   const q = "2026-Q4" as const;
   const cases: Array<[OverviewNextStep, string]> = [
-    // TopJet il 29/10/2026: la riga di «Cosa serve» del trimestre dice «40 da chiedere · 17 in attesa · 2 da verificare · 8 bloccati».
-    [{ kind: "requisiti", quarter: q, toAsk: 40, toVerify: 2, blocked: 8 }, "Per partire con il T4 2026: 40 requisiti da chiedere, 2 da verificare e 8 bloccati."],
-    [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 1, blocked: 1 }, "Per partire con il T4 2026: 1 requisito da chiedere, 1 da verificare e 1 bloccato."],
-    [{ kind: "requisiti", quarter: q, toAsk: 60, toVerify: 0, blocked: 10 }, "Per partire con il T4 2026: 60 requisiti da chiedere e 10 bloccati."],
-    [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 0, blocked: 1 }, "Per partire con il T4 2026: 1 requisito da chiedere e 1 bloccato."],
+    // TopJet il 29/10/2026: la riga di «Cosa serve» del trimestre dice «40 da chiedere · 17 in attesa · 2 da verificare · 8 fermi».
+    [{ kind: "requisiti", quarter: q, toAsk: 40, toVerify: 2, blocked: 8 }, "Per partire con il T4 2026: 40 requisiti da chiedere, 2 da verificare e 8 fermi."],
+    [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 1, blocked: 1 }, "Per partire con il T4 2026: 1 requisito da chiedere, 1 da verificare e 1 fermo."],
+    [{ kind: "requisiti", quarter: q, toAsk: 60, toVerify: 0, blocked: 10 }, "Per partire con il T4 2026: 60 requisiti da chiedere e 10 fermi."],
+    [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 0, blocked: 1 }, "Per partire con il T4 2026: 1 requisito da chiedere e 1 fermo."],
     [{ kind: "requisiti", quarter: q, toAsk: 3, toVerify: 2, blocked: 0 }, "Per partire con il T4 2026: 3 requisiti da chiedere e 2 da verificare."],
-    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 1, blocked: 4 }, "Per partire con il T4 2026: 1 requisito da verificare e 4 bloccati."],
+    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 1, blocked: 4 }, "Per partire con il T4 2026: 1 requisito da verificare e 4 fermi."],
     [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 0, blocked: 0 }, "Per partire con il T4 2026 serve ancora 1 requisito da chiedere."],
     [{ kind: "requisiti", quarter: q, toAsk: 1_250, toVerify: 0, blocked: 0 }, "Per partire con il T4 2026 servono ancora 1.250 requisiti da chiedere."],
-    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 0, blocked: 1 }, "Per partire con il T4 2026 serve ancora 1 requisito bloccato."],
-    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 0, blocked: 10 }, "Per partire con il T4 2026 servono ancora 10 requisiti bloccati."],
+    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 0, blocked: 1 }, "Per partire con il T4 2026 serve ancora 1 requisito fermo."],
+    [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 0, blocked: 10 }, "Per partire con il T4 2026 servono ancora 10 requisiti fermi."],
     [{ kind: "requisiti", quarter: q, toAsk: 0, toVerify: 1, blocked: 0 }, "Per partire con il T4 2026 c'è 1 requisito da verificare."],
     [{ kind: "requisiti", quarter: "2027-Q1", toAsk: 0, toVerify: 5, blocked: 0 }, "Per partire con il T1 2027 ci sono 5 requisiti da verificare."],
     [{ kind: "decisioni", count: 1 }, "1 use case aspetta una decisione."],

@@ -2,8 +2,9 @@
 
 import { useId, useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Link2, MessageSquarePlus, Paperclip, Pencil, Plus, Send } from "lucide-react";
+import { Link2, Plus, Send } from "lucide-react";
 import { toast } from "sonner";
+import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,10 +21,11 @@ import {
   type NeedActionResult,
 } from "@/lib/actions/use-case-needs";
 import { ACTION_FAILED_MESSAGE } from "@/lib/use-cases/decision-ui";
+import { formatInteger } from "@/lib/use-cases/format";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { cosaServeHref, type NeedReferentView, type UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
-import { REFERENT_UI_TEXT } from "@/lib/use-cases/referent/labels";
+import { REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import {
   NEED_AVAILABILITY_LABEL,
   NEED_KIND_LABEL,
@@ -35,6 +37,7 @@ import {
   needDoneSummaryText,
   needRow,
   needStatusChoices,
+  needsActionFirst,
   validateArchiveReason,
   type NeedType,
   type NeedUseCaseRef,
@@ -57,6 +60,8 @@ import {
   NEED_FORM_CHOICES,
   NEED_FORM_TEXT as TEXT,
   draftFromNeed,
+  moreRowsText,
+  stepsSummaryText,
   emptyNeedDraft,
   needCreatePayload,
   needDraftErrors,
@@ -103,14 +108,21 @@ type Dialog =
   | { mode: "collega" }
   | null;
 
+/** Le righe dei requisiti aperti che si vedono subito; le altre sotto «Mostra le altre N». */
+export const NEED_ROWS_SHOWN = 5;
+
 /**
- * Il capitolo «Cosa serve» della scheda, solo per i revisori (spec di Pierpaolo, 25/10/2026): i
- * requisiti e i prossimi passi collegati a questo use case, con stato, chi e scadenza; i requisiti
- * già a posto e i passi fatti sono chiusi di default. «Aggiungi» apre il modulo (l'esigenza nasce
- * collegata a questo use case); «Modifica» lo apre sull'esigenza, con «Scollega da questo use
- * case» e «Archivia» (con il motivo: non si cancella niente); «Collega un'esigenza» sceglie una
- * delle altre del workspace. Ogni modifica porta la versione letta: se qualcuno l'ha appena
- * cambiata, il toast lo dice e la pagina si rilegge.
+ * Il capitolo «Cosa serve» della scheda, solo per i revisori (spec di Pierpaolo, 25/10/2026;
+ * rilascio 3, compatto): la riga dei conteggi, poi i requisiti aperti collegati a questo use case,
+ * prima quelli da verificare e poi l'ordine del team (`needsActionFirst`), i primi cinque in vista
+ * e gli altri sotto «Mostra le altre N»; poi, chiusi, «Prossimi passi · N», «Già a posto · N» e
+ * «Richieste inviate · N». Ogni riga dice il gruppo dello stato («Da chiedere», «In attesa», «Da
+ * verificare», «Ferma», «A posto») con tipo, chi, scadenza e il dettaglio dello stato, e ha un solo
+ * menu «⋯» con «Aggiungi una risposta», «Allega un file» e «Modifica». «Aggiungi» apre il modulo
+ * (l'esigenza nasce collegata a questo use case); «Modifica» lo apre sull'esigenza, con
+ * «Scollega da questo use case» e «Archivia» (con il motivo: non si cancella niente); «Collega
+ * un'esigenza» sceglie una delle altre del workspace. Ogni modifica porta la versione letta: se
+ * qualcuno l'ha appena cambiata, il toast lo dice e la pagina si rilegge.
  */
 export function SectionNeeds({
   workspaceId,
@@ -170,7 +182,11 @@ export function SectionNeeds({
   }
 
   const doneRequirements = requirements.filter((need) => isNeedDone(need.type, need.status));
-  const openRequirements = requirements.filter((need) => !isNeedDone(need.type, need.status));
+  // Prima quello che chiede di agire (le risposte da verificare), poi l'ordine del team: le prime
+  // tre righe sono quelle del pannello (`panelNeeds`).
+  const openRequirements = requirements.filter((need) => !isNeedDone(need.type, need.status)).sort(needsActionFirst);
+  const shownRequirements = openRequirements.slice(0, NEED_ROWS_SHOWN);
+  const moreRequirements = openRequirements.slice(NEED_ROWS_SHOWN);
   const doneSteps = steps.filter((need) => isNeedDone(need.type, need.status));
   const openSteps = steps.filter((need) => !isNeedDone(need.type, need.status));
   const list = (needs: readonly NeedView[]) => (
@@ -199,6 +215,7 @@ export function SectionNeeds({
   // può aggiungerlo: la finestra lo offre. Spento da un altro motivo, «Prepara le domande» resta nel capitolo.
   const entry = feature ? askEntry(feature) : null;
   const askBlocked = !entry?.canOpen;
+  const requests = feature?.requests ?? [];
 
   return (
     <section id={id} aria-labelledby={headingId} data-slot="section-needs" className={cn("scroll-mt-20 space-y-4", className)}>
@@ -210,15 +227,35 @@ export function SectionNeeds({
       {requirements.length ? (
         <div data-slot="needs-requirements" className="space-y-2">
           <h3 className="text-sm font-medium">{TEXT.requirements}</h3>
-          {openRequirements.length ? list(openRequirements) : null}
-          {doneRequirements.length ? <Disclosure summary={needDoneSummaryText("requisito", doneRequirements.length)}>{list(doneRequirements)}</Disclosure> : null}
+          {shownRequirements.length ? list(shownRequirements) : null}
+          {moreRequirements.length ? (
+            <Disclosure summary={moreRowsText(moreRequirements.length)} slot="needs-more">
+              {list(moreRequirements)}
+            </Disclosure>
+          ) : null}
         </div>
       ) : null}
-      {steps.length ? (
-        <div data-slot="needs-steps" className="space-y-2">
-          <h3 className="text-sm font-medium">{TEXT.steps}</h3>
-          {openSteps.length ? list(openSteps) : null}
-          {doneSteps.length ? <Disclosure summary={needDoneSummaryText("passo", doneSteps.length)}>{list(doneSteps)}</Disclosure> : null}
+      {steps.length || doneRequirements.length || requests.length ? (
+        <div className="space-y-1">
+          {steps.length ? (
+            <Disclosure summary={stepsSummaryText(openSteps.length)} slot="needs-steps">
+              <div className="space-y-2">
+                {openSteps.length ? list(openSteps) : null}
+                {doneSteps.length ? <Disclosure summary={needDoneSummaryText("passo", doneSteps.length)}>{list(doneSteps)}</Disclosure> : null}
+              </div>
+            </Disclosure>
+          ) : null}
+          {doneRequirements.length ? (
+            <Disclosure summary={needDoneSummaryText("requisito", doneRequirements.length)} slot="needs-done">
+              {list(doneRequirements)}
+            </Disclosure>
+          ) : null}
+          {/* Le richieste ai referenti, chiuse: l'ancora di «Vedi le richieste» del riquadro «Prossimo passo». */}
+          {feature && requests.length ? (
+            <Disclosure id="richieste" summary={fillText(REFERENT_UI_TEXT.requestsSentSummary, { n: formatInteger(requests.length) })} slot="needs-requests" className="scroll-mt-20">
+              <RequestsList bare workspaceId={workspaceId} useCaseId={useCaseId} requests={requests} canAsk={canEdit && feature.canAsk} onOpen={setReferentDialog} />
+            </Disclosure>
+          ) : null}
         </div>
       ) : null}
       {canEdit ? (
@@ -260,9 +297,6 @@ export function SectionNeeds({
         </div>
       ) : null}
       {canEdit && feature?.canAsk && entry && boxAsk !== "gate" ? <GateNotice id={gatesId} gates={entry.gates} /> : null}
-      {feature ? (
-        <RequestsList id="richieste" workspaceId={workspaceId} useCaseId={useCaseId} requests={feature.requests} canAsk={canEdit && feature.canAsk} onOpen={setReferentDialog} />
-      ) : null}
 
       {canEdit && (dialog?.mode === "aggiungi" || dialog?.mode === "modifica") ? (
         <NeedFormDialog
@@ -318,6 +352,35 @@ interface NeedListReferent {
   onOpen: (dialog: ReferentDialog) => void;
 }
 
+/**
+ * Le voci del «⋯» di una riga (un solo menu per riga, rilascio 3): «Aggiungi una risposta» e «Allega
+ * un file» quando l'esigenza accetta una risposta del team, poi «Modifica». Vuoto per chi non
+ * modifica: allora il menu non c'è.
+ */
+export function needRowActions({
+  need,
+  canEdit,
+  answerable,
+  onOpen,
+  onEdit,
+}: {
+  need: { id: string; title: string };
+  canEdit: boolean;
+  answerable: boolean;
+  onOpen: ((dialog: ReferentDialog) => void) | null;
+  onEdit: () => void;
+}): ActionMenuItem[] {
+  if (!canEdit) return [];
+  const reply: ActionMenuItem[] =
+    answerable && onOpen
+      ? [
+          { label: REFERENT_UI_TEXT.rowAddAnswer, onSelect: () => onOpen({ kind: "answer", need }) },
+          { label: REFERENT_UI_TEXT.rowAttachFile, onSelect: () => onOpen({ kind: "file", need }) },
+        ]
+      : [];
+  return [...reply, { label: TEXT.edit, onSelect: onEdit }];
+}
+
 function NeedList({
   needs,
   useCaseId,
@@ -344,10 +407,18 @@ function NeedList({
       {needs.map((need) => {
         const row = needRow(need, refs, today);
         const others = row.useCases.filter((ref) => ref.id.toLowerCase() !== self);
-        const meta = [need.type === "requisito" ? NEED_KIND_LABEL[need.kind] : null, row.owner, row.due].filter(Boolean).join(" · ");
+        // Tipo · chi · scadenza · il dettaglio dello stato («manca il dato»), dopo il gruppo.
+        const meta = [need.type === "requisito" ? NEED_KIND_LABEL[need.kind] : null, row.owner, row.due, row.statusNote].filter(Boolean).join(" · ");
+        const actions = needRowActions({
+          need: { id: need.id, title: row.title },
+          canEdit,
+          answerable: Boolean(referent?.answerable.has(need.id.toLowerCase())),
+          onOpen: referent?.onOpen ?? null,
+          onEdit: () => onEdit(need),
+        });
         return (
-          <li key={need.id} data-need={need.id} className="flex items-start gap-3 px-3 py-2.5">
-            <div className="min-w-0 flex-1 space-y-1">
+          <li key={need.id} data-need={need.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 px-3 py-2.5">
+            <div className="min-w-0 space-y-1">
               <p className="text-sm font-medium break-words">{keepTogether(row.title)}</p>
               {row.detail ? <p className="line-clamp-2 text-xs text-muted-foreground break-words">{keepTogether(row.detail)}</p> : null}
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -366,39 +437,7 @@ function NeedList({
                 />
               ) : null}
             </div>
-            {canEdit ? (
-              <div className="flex shrink-0 flex-col items-center sm:flex-row">
-                {referent?.answerable.has(need.id.toLowerCase()) ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-11 shrink-0 sm:size-8"
-                      aria-label={`${REFERENT_UI_TEXT.rowAddAnswer}: ${row.title}`}
-                      title={REFERENT_UI_TEXT.rowAddAnswer}
-                      onClick={() => referent.onOpen({ kind: "answer", need: { id: need.id, title: row.title } })}
-                    >
-                      <MessageSquarePlus aria-hidden />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-11 shrink-0 sm:size-8"
-                      aria-label={`${REFERENT_UI_TEXT.rowAttachFile}: ${row.title}`}
-                      title={REFERENT_UI_TEXT.rowAttachFile}
-                      onClick={() => referent.onOpen({ kind: "file", need: { id: need.id, title: row.title } })}
-                    >
-                      <Paperclip aria-hidden />
-                    </Button>
-                  </>
-                ) : null}
-                <Button type="button" variant="ghost" size="icon" className="size-11 shrink-0 sm:size-8" aria-label={`${TEXT.edit}: ${row.title}`} onClick={() => onEdit(need)}>
-                  <Pencil aria-hidden />
-                </Button>
-              </div>
-            ) : null}
+            {actions.length ? <ActionMenu items={actions} label={`${TEXT.rowActions}: ${row.title}`} className="shrink-0" /> : null}
           </li>
         );
       })}

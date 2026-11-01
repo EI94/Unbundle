@@ -66,6 +66,7 @@ let format: typeof import("./format.ts");
 let hub: typeof import("../../components/use-cases/hub.tsx");
 let board: typeof import("../../components/use-cases/needs-board.tsx");
 let panel: typeof import("../../components/use-cases/use-case-panel.tsx");
+let sectionNeeds: typeof import("../../components/use-cases/detail/section-needs.tsx");
 let actions: typeof import("../actions/use-case-needs.ts");
 let access: typeof import("../workspace-access.ts");
 
@@ -325,6 +326,7 @@ before(async () => {
   hub = await import("../../components/use-cases/hub.tsx");
   board = await import("../../components/use-cases/needs-board.tsx");
   panel = await import("../../components/use-cases/use-case-panel.tsx");
+  sectionNeeds = await import("../../components/use-cases/detail/section-needs.tsx");
   actions = await import("../actions/use-case-needs.ts");
   access = await import("../workspace-access.ts");
   const quarter = await import("./quarter.ts");
@@ -457,7 +459,9 @@ test("Cosa serve: la vista dei revisori, una tabella per area, le righe a posto 
   }
   assert.ok(per.includes(`Smistamento ${suffix}`) && per.includes(`Preventivi ${suffix}`), "codice e titolo");
   assert.ok(per.includes(`<span class="sr-only">: ${T.access}</span>`), "il titolo dell'esigenza per i lettori di schermo");
-  assert.ok(accessRow.includes(">Chiesta, in attesa<"), "lo stato delle voci");
+  // Lo stato a schermo è il gruppo dei cinque («In attesa»), non l'etichetta del modulo («Chiesta, in attesa»).
+  assert.ok(accessRow.includes(">In attesa<"), "lo stato delle voci");
+  assert.ok(!requirements.includes("Chiesta, in attesa") && !requirements.includes("Non ancora chiesta"), "gli otto stati restano nel modulo");
   // «Entro»: il giorno resta con il suo mese («15 nov»).
   assert.ok(accessRow.includes(`>${format.formatDayInYear(dueSoon, today)?.replace(/ /g, N)}<`), "Entro");
   // Uno use case: il suo link per intero, senza <details>.
@@ -540,8 +544,8 @@ test("Cosa serve: la sua vista, non nella Panoramica né nei vecchi link; senza 
 test("Panoramica: il prossimo passo conta i requisiti degli use case di questo trimestre", opts, async () => {
   const quarter = await import("./quarter.ts");
   const thisQuarter = quarter.currentQuarter();
-  // Ogni gruppo che conta, con il suo nome: da chiedere, da verificare e bloccati.
-  const sentence = `Per partire con il ${quarter.quarterLabel(thisQuarter).replace(" ", N)}: 1${N}requisito da chiedere, 1${N}da verificare e 1${N}bloccato.`;
+  // Ogni gruppo che conta, con il suo nome: da chiedere, da verificare e fermi (i «bloccata» si leggono fermi).
+  const sentence = `Per partire con il ${quarter.quarterLabel(thisQuarter).replace(" ", N)}: 1${N}requisito da chiedere, 1${N}da verificare e 1${N}fermo.`;
   const href = `/dashboard/${ids.wsStart}/use-cases?vista=cosa-serve&trimestre=${thisQuarter}`;
   for (const person of REVIEWERS) {
     const page = await hubHtml(person, ids.wsStart, { vista: "panoramica" });
@@ -572,8 +576,11 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   const target = await hubHtml("builder", ids.wsStart, { vista: "cosa-serve", trimestre: thisQuarter });
   assert.ok(target.includes(START.shared) && target.includes(START.blocked) && target.includes(START.verify));
   assert.ok(!target.includes(START.progress) && !target.includes(START.next));
-  assert.equal(summaryOf(target), `${quarter.quarterLabel(thisQuarter)} · 3 aperti · 1 da chiedere · 1 da verificare · 1 bloccato`);
-  for (const piece of ["1 da chiedere", "1 da verificare", "1 bloccato"]) assert.ok(summaryOf(target).includes(piece), piece);
+  assert.equal(summaryOf(target), `${quarter.quarterLabel(thisQuarter)} · 3 aperti · 1 da chiedere · 1 da verificare · 1 fermo`);
+  for (const piece of ["1 da chiedere", "1 da verificare", "1 fermo"]) assert.ok(summaryOf(target).includes(piece), piece);
+  // Le righe: il requisito bloccato si legge «Ferma», quello da verificare «Da verificare»; mai «Bloccata».
+  assert.ok(target.includes(">Ferma<") && target.includes(">Da verificare<"));
+  assert.ok(!target.includes(">Bloccata<") && !/bloccat/i.test(summaryOf(target)));
   // Il filtro del trimestre non apre le aree: si arriva sui conteggi, non su tutte le tabelle.
   const areas = areasOf(target);
   assert.ok(areas.length > 0);
@@ -806,10 +813,107 @@ test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a p
   assert.ok(also.includes(cards.proposed.code) && also.includes(`Preventivi ${suffix}`));
   assert.ok(also.includes(`: ${T.access}`), "il titolo dell'esigenza per i lettori di schermo");
   assert.ok(!section.includes("Anche per"));
-  assert.ok(section.includes(`aria-label="Modifica: ${T.access}"`));
+  // Un solo «⋯» per riga, con il titolo dell'esigenza nel nome; niente più icone «Modifica: …».
+  assert.ok(section.includes(`aria-label="Azioni: ${T.access}"`));
+  assert.ok(!section.includes('aria-label="Modifica: '));
+  assert.equal(section.split('aria-label="Azioni: ').length - 1, 5, "una per riga: quattro aperte e una a posto");
+  // Lo stato: il gruppo dei cinque, mai l'etichetta del modulo.
+  assert.ok(section.includes(">In attesa<") && section.includes(">Da chiedere<") && section.includes(">A posto<"));
+  assert.ok(!section.includes("Chiesta, in attesa") && !section.includes("Non ancora chiesta"));
+  // Quattro aperte: nessun «Mostra le altre»; nessuna richiesta: niente «Richieste inviate».
+  assert.ok(!section.includes("Mostra le altre") && !section.includes("Mostra l'altra"));
+  assert.ok(!section.includes("Richieste inviate") && !section.includes('id="richieste"'));
   assert.ok(section.includes(">Aggiungi<") && section.includes(">Collega un'esigenza<"));
   const other = await detailHtml("builder", cards.progress.id);
   assert.ok(between(other, 'data-slot="section-needs"', "</section>").includes("Niente per ora."));
+});
+
+test("scheda compatta: i primi cinque aperti, prima da verificare; «Mostra le altre N», «Prossimi passi», «Già a posto», chiusi", opts, () => {
+  let n = 0;
+  const view = (over: Partial<import("./needs.ts").NeedView>): import("./needs.ts").NeedView => {
+    n += 1;
+    return {
+      id: randomUUID(),
+      type: "requisito",
+      kind: "dato",
+      title: `Riga ${n} ${suffix}`,
+      detail: null,
+      ownerLabel: null,
+      ownerSide: null,
+      status: "da_chiedere",
+      availability: null,
+      dueOn: null,
+      dueLabel: null,
+      dueIsProposal: false,
+      forLabel: null,
+      sortOrder: n,
+      version: 1,
+      importKey: null,
+      createdAt: "2026-10-01T10:00:00.000Z",
+      updatedAt: "2026-10-01T10:00:00.000Z",
+      doneAt: null,
+      archivedAt: null,
+      archiveReason: null,
+      useCaseIds: [cards.quarter.id],
+      ...over,
+    };
+  };
+  const open = [
+    view({ title: `Uno ${suffix}`, status: "chiesta" }),
+    view({ title: `Due ${suffix}`, status: "mancante" }),
+    view({ title: `Tre ${suffix}`, status: "bloccata" }),
+    view({ title: `Quattro ${suffix}`, status: "parziale" }),
+    view({ title: `Cinque ${suffix}` }),
+    view({ title: `Sei ${suffix}` }),
+    // L'ultima per l'ordine del team, ma con una risposta da guardare: va in testa.
+    view({ title: `Risposta ${suffix}`, status: "in_verifica" }),
+  ];
+  const done = view({ title: `Fatta ${suffix}`, status: "non_applicabile" });
+  const steps = [view({ type: "passo", title: `Passo aperto ${suffix}`, status: "confermata" }), view({ type: "passo", title: `Passo fatto ${suffix}`, status: "fatta" })];
+  const render = (requirements: import("./needs.ts").NeedView[]) =>
+    readable(
+      renderToStaticMarkup(
+        createElementOf(sectionNeeds.SectionNeeds, {
+          workspaceId: ids.ws,
+          useCaseId: cards.quarter.id,
+          requirements,
+          steps,
+          linkable: [],
+          refs: {},
+          today,
+          canEdit: true,
+        }),
+      ),
+    );
+  const html = render([...open, done]);
+  const requirements = between(html, 'data-slot="needs-requirements"', 'data-slot="needs-more"');
+  const shown = [...requirements.matchAll(/data-need="([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(shown, [open[6], ...open.slice(0, 4)].map((need) => need.id), "cinque in vista, prima quella da verificare");
+  // Le altre due sotto «Mostra le altre 2», chiuse.
+  const more = detailsAround(html, `Sei ${suffix}`);
+  assertClosed(more);
+  assert.ok(more.includes(`Mostra le altre 2`) && more.includes(`Cinque ${suffix}`));
+  // I gruppi dei cinque con il dettaglio dello stato; mai le etichette del modulo.
+  for (const label of [">Da verificare<", ">In attesa<", ">Da chiedere<", ">Ferma<", ">A posto<"]) assert.ok(html.includes(label), label);
+  for (const note of ["manca il dato", "risposta parziale", "non si applica"]) assert.ok(html.includes(note), note);
+  for (const old of ["Bloccata", "Chiesta, in attesa", "Manca il dato", "Risposta parziale", "Non si applica", "Non ancora chiesta"]) assert.ok(!html.includes(old), old);
+  // Un solo «⋯» per riga, mai le tre icone.
+  assert.equal(html.split('aria-label="Azioni: ').length - 1, open.length + 1 + steps.length);
+  assert.ok(!html.includes('aria-label="Modifica: ') && !html.includes('aria-label="Aggiungi una risposta: '));
+  // Poi, chiusi: «Prossimi passi · 1» (con «Fatto · 1» dentro) e «Già a posto · 1»; niente «Richieste inviate» senza la funzione.
+  const stepsBlock = detailsAround(html, `Passo aperto ${suffix}`);
+  assertClosed(stepsBlock);
+  assert.ok(stepsBlock.includes(`Prossimi passi${N}·${N}1`) && stepsBlock.includes(`Fatto${N}·${N}1`));
+  const doneBlock = detailsAround(html, `Fatta ${suffix}`);
+  assertClosed(doneBlock);
+  assert.ok(doneBlock.includes(`Già a posto${N}·${N}1`));
+  assert.ok(html.indexOf("Mostra le altre") < html.indexOf("Prossimi passi") && html.indexOf("Prossimi passi") < html.indexOf("Già a posto"), "l'ordine della scheda");
+  assert.ok(!html.includes("Richieste inviate"));
+  // Sei aperte: «Mostra l'altra».
+  const six = render(open.slice(0, 6));
+  assert.ok(six.includes("Mostra l'altra") && !six.includes("Mostra le altre"));
+  // Cinque o meno: nessun «Mostra».
+  assert.ok(!render(open.slice(0, 5)).includes("Mostra l"));
 });
 
 test("chi non è revisore: niente esigenze in «Cosa serve», Panoramica, pannello, scheda e dati della pagina", opts, async () => {

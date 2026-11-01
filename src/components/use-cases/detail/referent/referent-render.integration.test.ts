@@ -60,6 +60,7 @@ let pub: typeof import("../../../../lib/db/queries/use-case-referent-public.ts")
 let dispatch: typeof import("../../../../lib/db/queries/use-case-referent-dispatch.ts");
 let files: typeof import("../../../../lib/db/queries/use-case-referent-files.ts");
 let askState: typeof import("./ask-dialog-state.ts");
+let sectionNeeds: typeof import("../section-needs.tsx");
 let labels: typeof import("../../../../lib/use-cases/referent/labels.ts");
 let createElementOf: (type: unknown, props: Record<string, unknown>) => unknown;
 
@@ -197,6 +198,7 @@ before(async () => {
   dispatch = await import("../../../../lib/db/queries/use-case-referent-dispatch.ts");
   files = await import("../../../../lib/db/queries/use-case-referent-files.ts");
   askState = await import("./ask-dialog-state.ts");
+  sectionNeeds = await import("../section-needs.tsx");
   labels = await import("../../../../lib/use-cases/referent/labels.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione scheda referenti', $2)`, [ids.org, `hub-scheda-ref-${ids.org}`]);
@@ -412,7 +414,19 @@ test("con l'autorizzazione e le email accese: la richiesta, le righe sotto le es
   assert.ok(page.includes(`href="/dashboard/${ids.ws}/use-cases/${ids.card}/allegati/${flow.fileId}"`), "«Scarica» passa dalla rotta con il controllo");
   assert.ok(page.includes(T.fileDownload));
   assert.match(page, /Risposte e file\u00a0·\u00a01/);
-  assert.ok(page.includes(T.rowAddAnswer) && page.includes(T.rowAttachFile));
+  // «Aggiungi una risposta» e «Allega un file» stanno nel «⋯» della riga (rilascio 3): un menu per
+  // riga, niente più icone; si aprono dove l'esigenza accetta una risposta del team.
+  assert.ok(page.includes('aria-label="Azioni: '));
+  assert.ok(!page.includes(`aria-label="${T.rowAddAnswer}: `) && !page.includes(`aria-label="${T.rowAttachFile}: `), "niente più icone");
+  const [shown] = findProp(await detailElement("builder"), "referents").filter(Boolean) as Panel[];
+  assert.ok(shown?.answerableNeedIds.map((id) => id.toLowerCase()).includes(n2.toLowerCase()), "l'esigenza accetta una risposta del team");
+  const rowActions = (answerable: boolean) =>
+    sectionNeeds.needRowActions({ need: { id: n2, title: "x" }, canEdit: true, answerable, onOpen: () => {}, onEdit: () => {} }).map((item) => item.label);
+  assert.deepEqual(rowActions(true), [T.rowAddAnswer, T.rowAttachFile, "Modifica"]);
+  assert.deepEqual(rowActions(false), ["Modifica"]);
+  // Le richieste stanno chiuse sotto «Richieste inviate · 1», con l'ancora di «Vedi le richieste».
+  assert.match(page, /<details id="richieste" data-slot="needs-requests" class="scroll-mt-20">/);
+  assert.match(page, /Richieste inviate\u00a0·\u00a01/);
   assert.ok(!page.includes("In corso"), "nessun «In corso»");
 
   // Il contributore: niente richieste, niente referenti, niente risposte, niente file.

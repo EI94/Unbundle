@@ -289,7 +289,7 @@ test("prossimo passo e «Cosa serve» del trimestre, dove porta il pulsante: gli
   assert.ok(step?.kind === "requisiti");
   assert.deepEqual({ toAsk: board.counts.toAsk, toVerify: board.counts.toVerify, blocked: board.counts.blocked }, { toAsk: step.toAsk, toVerify: step.toVerify, blocked: step.blocked });
   // I numeri del riquadro si leggono nella riga sotto «Requisiti», con le stesse parole.
-  assert.deepEqual(needsSummaryPieces(board.counts), ["7 aperti", "3 da chiedere", "1 in attesa", "2 da verificare", "1 bloccato", "1 a posto"]);
+  assert.deepEqual(needsSummaryPieces(board.counts), ["7 aperti", "3 da chiedere", "1 in attesa", "2 da verificare", "1 fermo", "1 a posto"]);
 });
 
 test("prossimo passo: le decisioni senza approvati di questo trimestre o senza esigenze; altrimenti niente", () => {

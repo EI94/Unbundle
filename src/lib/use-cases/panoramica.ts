@@ -11,7 +11,7 @@
  *   «fino a X €» delle card (`pendingValueTotal`).
  * - **Su tutto il portafoglio** (`portfolioLine`): le ore e il pareggio di `buildRoadmapValue`.
  * - **Prossimo passo** (`overviewNextStep`): regole fisse, nell'ordine. Prima i requisiti degli use
- *   case approvati per questo trimestre (da chiedere, da verificare o bloccati, ognuno una volta),
+ *   case approvati per questo trimestre (da chiedere, da verificare o fermi, ognuno una volta),
  *   poi le decisioni; altrimenti niente.
  *
  * Art. 15.4: conteggi di use case o di esigenze, mai di persone; nessun conto per «Chi» o per parte.
@@ -131,9 +131,9 @@ export type OverviewNextStep =
  * regole fisse:
  * 1. i requisiti degli use case approvati per questo trimestre (non quelli già partiti, scaduti o di
  *    altri trimestri: gli stessi che prende il filtro `trimestre` di «Cosa serve») da chiedere, da
- *    verificare o bloccati, con i tre conteggi: sono quelli della riga sotto «Requisiti» di «Cosa
+ *    verificare o fermi, con i tre conteggi: sono quelli della riga sotto «Requisiti» di «Cosa
  *    serve» del trimestre, dove porta il pulsante («T4 2026 · 67 aperti · 40 da chiedere · 17 in
- *    attesa · 2 da verificare · 8 bloccati · 1 a posto»), e la frase li nomina tutti;
+ *    attesa · 2 da verificare · 8 fermi · 1 a posto»), e la frase li nomina tutti;
  * 2. altrimenti gli use case che aspettano una decisione (`decideCount`);
  * 3. altrimenti null: niente riquadro.
  * Ogni requisito conta una volta, anche se serve a più use case (`needAskCountsOf`). `needs` null

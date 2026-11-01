@@ -31,7 +31,7 @@ const NEXT_STEP_HEADING_ID = "panoramica-prossimo-passo";
 
 /**
  * La frase di «Prossimo passo»: «Per partire con il T4 2026: 40 requisiti da chiedere, 2 da verificare
- * e 8 bloccati.», «… c'è 1 requisito da verificare.», «4 use case aspettano una decisione.». Nomina
+ * e 8 fermi.», «… c'è 1 requisito da verificare.», «4 use case aspettano una decisione.». Nomina
  * ogni gruppo che conta e non è zero, con le parole e nell'ordine della riga dei conteggi di «Cosa
  * serve», dove porta il pulsante. Niente totale: quella riga conta anche quelli in attesa, e un
  * numero che lì non c'è non si ritrova.
@@ -43,10 +43,10 @@ export function nextStepText(step: OverviewNextStep): string {
   const groups = [
     { count: step.toAsk, label: "da chiedere" },
     { count: step.toVerify, label: "da verificare" },
-    { count: step.blocked, label: step.blocked === 1 ? "bloccato" : "bloccati" },
+    { count: step.blocked, label: step.blocked === 1 ? "fermo" : "fermi" },
   ].filter((group) => group.count > 0);
   if (groups.length > 1) {
-    // «40 requisiti da chiedere, 2 da verificare e 8 bloccati»: il nome solo sul primo numero.
+    // «40 requisiti da chiedere, 2 da verificare e 8 fermi»: il nome solo sul primo numero.
     const pieces = groups.map((group, index) =>
       index === 0 ? `${formatInteger(group.count)} ${group.count === 1 ? "requisito" : "requisiti"} ${group.label}` : `${formatInteger(group.count)} ${group.label}`,
     );
@@ -55,7 +55,7 @@ export function nextStepText(step: OverviewNextStep): string {
   // Un gruppo solo: la frase corta.
   if (step.toAsk) return n === 1 ? `${start} serve ancora 1 requisito da chiedere.` : `${start} servono ancora ${formatInteger(n)} requisiti da chiedere.`;
   if (step.toVerify) return n === 1 ? `${start} c'è 1 requisito da verificare.` : `${start} ci sono ${formatInteger(n)} requisiti da verificare.`;
-  return n === 1 ? `${start} serve ancora 1 requisito bloccato.` : `${start} servono ancora ${formatInteger(n)} requisiti bloccati.`;
+  return n === 1 ? `${start} serve ancora 1 requisito fermo.` : `${start} servono ancora ${formatInteger(n)} requisiti fermi.`;
 }
 
 /** Il pulsante di «Prossimo passo»: le proposte per le decisioni, «Cosa serve» per i requisiti. */

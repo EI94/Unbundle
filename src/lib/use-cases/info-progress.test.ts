@@ -127,13 +127,14 @@ test("da verificare, ricevute e chiuse", () => {
   assert.equal(none?.next, null);
 });
 
-test("bloccate: da chiedere, e quante sono bloccate", () => {
+test("bloccate: da chiedere, e quante sono ferme (a schermo «ferma», come nelle righe)", () => {
   const v = view(needs("bloccata", "validata", "validata"), []);
   assert.equal(v?.state, "da_chiedere");
   assert.equal(v?.count, "2 di 3 informazioni ricevute");
-  assert.equal(v?.line, "2 di 3 informazioni ricevute · 1 da chiedere, bloccata");
+  assert.equal(v?.line, "2 di 3 informazioni ricevute · 1 da chiedere, ferma");
   const two = view(needs("bloccata", "bloccata", "validata"), []);
-  assert.equal(two?.line, "1 di 3 informazioni ricevute · 2 da chiedere, bloccate");
+  assert.equal(two?.line, "1 di 3 informazioni ricevute · 2 da chiedere, ferme");
+  for (const text of Object.values(INFO_PROGRESS_TEXT.next)) assert.ok(!/bloccat/i.test(text), text);
 });
 
 test("una chiesta senza richiesta: in attesa senza data; una scaduta e una nuova viva: in attesa", () => {
@@ -209,7 +210,7 @@ test("i conteggi per stato delle esigenze: da verificare, in attesa, senza rispo
   assert.deepEqual({ toVerify: p.toVerify, waiting: p.waiting, unanswered: p.unanswered, blockedCount: p.blockedCount, toAsk: p.toAsk }, { toVerify: 1, waiting: 1, unanswered: 1, blockedCount: 1, toAsk: 1 });
   assert.equal(p.state, "da_verificare");
   // Ogni gruppo non ricevuto ha il suo pezzo: 1 ricevuta + 1 + 1 + 1 + 1 = 5.
-  assert.equal(infoProgressView(p)?.line, "1 di 5 informazioni ricevute (1 da verificare) · 1 senza risposta · 1 in attesa · 1 da chiedere · 1 bloccata");
+  assert.equal(infoProgressView(p)?.line, "1 di 5 informazioni ricevute (1 da verificare) · 1 senza risposta · 1 in attesa · 1 da chiedere · 1 ferma");
 });
 
 test("che cosa resta: le ricevute e i pezzi fanno il totale; «complete» non dice mai «da chiedere»", () => {

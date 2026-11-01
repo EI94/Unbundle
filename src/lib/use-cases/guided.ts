@@ -33,14 +33,13 @@ import { titleAgent } from "./agents.ts";
 import { decisionLayout, decisionNote, dossierSituation, instantOfDay, reopenDestination, type DecisionItem } from "./decision-ui.ts";
 import { FIGURE_SEPARATOR, formatDayInYear, formatEuro, formatInteger, lowerFirst, shownPerYear, showsZone, zoneText } from "./format.ts";
 import type { InfoProgressView } from "./info-progress.ts";
-import { askGroupOf, componentFormulaText, returnsToConfirm, type NeedStatus } from "./needs.ts";
+import { NEED_REQUEST_GROUP_TEXT, componentFormulaText, needRequestGroupView, returnsToConfirm, type NeedRequestGroup, type NeedRequestGroupView, type NeedStatus } from "./needs.ts";
 import { isPastQuarter, parseQuarter, quarterLabel } from "./quarter.ts";
 import type { ReferentGate } from "./referent/contract.ts";
 import { companyLabel } from "./referent/labels.ts";
 import type { Phase, SubState, UseCaseKind } from "./types.ts";
 import type { CostFigure, ValueFigure } from "./valuation.ts";
 import { VALUE_CONFIDENCE_LABELS, type ValueModel, type ValueParams } from "./value-model.ts";
-import type { SemaforoColor } from "../uc/vocab.ts";
 import type { Zone } from "./labels.ts";
 
 // ═══ Testi ═══════════════════════════════════════════════════════════
@@ -223,18 +222,9 @@ export const GUIDED_TEXT = Object.freeze({
     lastChange: "ultimo cambiamento il {giorno}",
     noChange: "nessun cambiamento",
   }),
-  requestGroups: Object.freeze({
-    toAsk: "Da chiedere",
-    waiting: "In attesa",
-    toVerify: "Da verificare",
-    blocked: "Ferma",
-    done: "A posto",
-  }),
-  requestNotes: Object.freeze({
-    mancante: "manca il dato",
-    parziale: "risposta parziale",
-    non_applicabile: "non si applica",
-  }),
+  // I cinque gruppi delle richieste stanno con le righe di «Cosa serve» (`needs.ts`), che li scrivono.
+  requestGroups: NEED_REQUEST_GROUP_TEXT.groups,
+  requestNotes: NEED_REQUEST_GROUP_TEXT.notes,
 });
 
 const fill = (template: string, values: Readonly<Record<string, string | number>>): string =>
@@ -1109,37 +1099,16 @@ export function arrivalTarget(chapter: string | null | undefined, ids: readonly 
 
 // ═══ I cinque gruppi delle richieste ═════════════════════════════════
 
-export type RequestGroup = "toAsk" | "waiting" | "toVerify" | "blocked" | "done";
-
-export interface RequestGroupView {
-  group: RequestGroup;
-  /** «Da chiedere», «In attesa», «Da verificare», «Ferma», «A posto». */
-  label: string;
-  tone: SemaforoColor;
-  /** Il dettaglio dello stato dentro il gruppo: «manca il dato», «risposta parziale», «non si applica»; null senza. */
-  note: string | null;
-}
-
-const GROUP_TONE: Readonly<Record<RequestGroup, SemaforoColor>> = Object.freeze({
-  toAsk: "grigio",
-  waiting: "blu",
-  toVerify: "giallo",
-  blocked: "lucchetto",
-  done: "verde",
-});
+export type RequestGroup = NeedRequestGroup;
+export type RequestGroupView = NeedRequestGroupView;
 
 /**
  * Lo stato di un requisito nei cinque gruppi che si leggono a schermo (gli otto stati restano nel
  * modulo di modifica, nel MCP del team e nell'export): da chiedere (anche «manca il dato» e
- * «risposta parziale»), in attesa, da verificare, ferma, a posto (anche «non si applica»).
+ * «risposta parziale»), in attesa, da verificare, ferma, a posto (anche «non si applica»). È
+ * `needRequestGroupView` di needs.ts, che scrive le righe di «Cosa serve» della scheda, del
+ * pannello e della vista.
  */
 export function requestGroupView(status: NeedStatus): RequestGroupView {
-  const group = askGroupOf(status);
-  const notes = GUIDED_TEXT.requestNotes as Readonly<Record<string, string>>;
-  return {
-    group,
-    label: GUIDED_TEXT.requestGroups[group],
-    tone: GROUP_TONE[group],
-    note: Object.prototype.hasOwnProperty.call(notes, status) ? notes[status] : null,
-  };
+  return needRequestGroupView(status);
 }

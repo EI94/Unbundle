@@ -16,6 +16,7 @@ import {
   NEED_AREAS,
   NEED_ERRORS,
   NEED_REQUIREMENT_STATUSES,
+  NEED_STEP_STATUSES,
   buildNeedsBoard,
   componentFormulaText,
   emptyNeedAskCounts,
@@ -29,7 +30,9 @@ import {
   needOwnerText,
   askGroupOf,
   compareNeeds,
+  needRequestGroupView,
   needRow,
+  needStatusChoices,
   needStatusView,
   needsActionFirst,
   panelNeeds,
@@ -139,6 +142,37 @@ test("vocabolari: aree dai tipi, stati per tipo, fatto e colori", () => {
   assert.equal(needDueText(proposedStep, TODAY), "3 dic (proposta)", "il MCP del team la tiene");
   assert.equal(needRow({ ...proposedStep, status: "confermata" }, new Map(), TODAY).due, "3 dic (proposta)", "un passo confermato con la data ancora da confermare");
   assert.equal(needRow(need({ dueOn: "2026-12-03", dueIsProposal: true }), new Map(), TODAY).due, "3 dic (proposta)", "un requisito");
+});
+
+test("le righe dei requisiti dicono il gruppo dei cinque e il dettaglio; i passi il loro stato; il modulo e il MCP gli otto stati", () => {
+  const expected: Record<string, [string, string, string | null]> = {
+    da_chiedere: ["Da chiedere", "grigio", null],
+    mancante: ["Da chiedere", "grigio", "manca il dato"],
+    parziale: ["Da chiedere", "grigio", "risposta parziale"],
+    chiesta: ["In attesa", "blu", null],
+    in_verifica: ["Da verificare", "giallo", null],
+    bloccata: ["Ferma", "lucchetto", null],
+    validata: ["A posto", "verde", null],
+    non_applicabile: ["A posto", "verde", "non si applica"],
+  };
+  assert.deepEqual([...NEED_REQUIREMENT_STATUSES].sort(), Object.keys(expected).sort());
+  for (const status of NEED_REQUIREMENT_STATUSES) {
+    const row = needRow(need({ status }), new Map(), TODAY);
+    assert.deepEqual([row.status.label, row.status.tone, row.statusNote], expected[status], status);
+    assert.deepEqual(row.status, { label: needRequestGroupView(status).label, tone: needRequestGroupView(status).tone }, status);
+  }
+  // Un passo: il suo stato, senza dettaglio, com'era.
+  for (const status of NEED_STEP_STATUSES) {
+    const row = needRow(need({ type: "passo", status }), new Map(), TODAY);
+    assert.deepEqual(row.status, needStatusView("passo", status), status);
+    assert.equal(row.statusNote, null, status);
+  }
+  // Gli otto stati restano nel modulo di modifica e nella lettura del MCP del team, con «Bloccata».
+  const choices = needStatusChoices("requisito");
+  assert.deepEqual(choices.map((choice) => choice.value), [...NEED_REQUIREMENT_STATUSES], "gli otto stati");
+  assert.deepEqual(choices.map((choice) => choice.label), NEED_REQUIREMENT_STATUSES.map((status) => needStatusView("requisito", status).label));
+  assert.ok(choices.some((choice) => choice.label === "Bloccata") && !choices.some((choice) => choice.label === "Ferma"));
+  assert.equal(needStatusView("requisito", "bloccata").label, "Bloccata");
 });
 
 test("validazione: stato predefinito per tipo, testi ripuliti, errori in italiano", () => {
@@ -264,8 +298,15 @@ test("pannello: al massimo tre aperte, prima le più vicine; la scheda: per tipo
     need({ title: "Di un altro", useCaseIds: [B] }),
   ];
   const panel = panelNeeds(needs, ITEMS[1], TODAY);
-  assert.deepEqual(panel?.rows.map((r) => r.title), ["Domani", "Passo", "Fra un mese"]);
+  // L'ordine della scheda: prima i requisiti (l'ordine del team, poi la scadenza), poi i passi.
+  assert.deepEqual(panel?.rows.map((r) => r.title), ["Domani", "Fra un mese", "Senza data"]);
   assert.equal(panel?.more, 1);
+  // Una risposta da verificare va in testa, come nella scheda.
+  const withAnswer = [...needs, need({ title: "Risposta arrivata", status: "in_verifica", sortOrder: 9, useCaseIds: [A] })];
+  assert.deepEqual(panelNeeds(withAnswer, ITEMS[1], TODAY)?.rows.map((r) => r.title), ["Risposta arrivata", "Domani", "Fra un mese"]);
+  // Solo passi: i passi, nell'ordine del team.
+  const onlySteps = [need({ type: "passo", status: "proposta", title: "Dopo", sortOrder: 2, useCaseIds: [A] }), need({ type: "passo", status: "confermata", title: "Prima", sortOrder: 1, useCaseIds: [A] })];
+  assert.deepEqual(panelNeeds(onlySteps, ITEMS[1], TODAY)?.rows.map((r) => r.title), ["Prima", "Dopo"]);
   assert.equal(panelNeeds(needs, ITEMS[2], TODAY), null, "nessuna esigenza: nessun blocco");
 
   const lists = needListsOfUseCase(needs, A);
@@ -420,11 +461,11 @@ test("Cosa serve: i requisiti contati per gruppo di stato, di tutta la vista e d
 test("i testi dei conteggi: «86 aperti · 60 da chiedere · …», senza gli zeri; i passi «Più avanti» e «Senza data»", () => {
   const counts = (o: Partial<NeedAskCounts>): NeedAskCounts => ({ ...emptyNeedAskCounts(), ...o });
   const line = (o: Partial<NeedAskCounts>) => needsSummaryPieces(counts(o)).join(FIGURE_SEPARATOR);
-  assert.equal(line({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 }), "86 aperti · 60 da chiedere · 12 in attesa · 4 da verificare · 10 bloccati · 31 a posto");
+  assert.equal(line({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 }), "86 aperti · 60 da chiedere · 12 in attesa · 4 da verificare · 10 fermi · 31 a posto");
   assert.equal(line({ open: 1, toAsk: 1 }), "1 aperto · 1 da chiedere");
   assert.equal(line({ done: 3 }), "Nessuno aperto · 3 a posto");
   assert.equal(line({}), "Nessuno aperto");
-  assert.deepEqual(needAskPieces(counts({ open: 1, blocked: 1 })), ["1 bloccato"]);
+  assert.deepEqual(needAskPieces(counts({ open: 1, blocked: 1 })), ["1 fermo"], "requisiti, al maschile come «aperti»");
   assert.deepEqual(needAskPieces(counts({ open: 2, waiting: 2 })), ["2 in attesa"], "i gruppi a zero non ci sono");
   assert.deepEqual(needAskPieces(counts({ open: 1200, toAsk: 1200 })), ["1.200 da chiedere"]);
   assert.equal(needStepsLaterText(1), "Più avanti · 1 passo");

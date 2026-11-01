@@ -266,6 +266,21 @@ function What({ row }: { row: NeedRow }) {
   );
 }
 
+/**
+ * Lo stato di una riga: il gruppo dei cinque («Da chiedere», «In attesa», «Da verificare», «Ferma»,
+ * «A posto») per un requisito, lo stato per un passo, e sotto, in grigio, il dettaglio quando c'è
+ * («manca il dato», «risposta parziale», «non si applica»): su una riga sua, così una colonna
+ * stretta non lo taglia.
+ */
+function Status({ row, className }: { row: NeedRow; className?: string }) {
+  return (
+    <span data-slot="need-status" className={cn("flex min-w-0 flex-col gap-0.5", className)}>
+      <StatusDot tone={row.status.tone} label={row.status.label} />
+      {row.statusNote ? <span className="text-xs text-muted-foreground">{row.statusNote}</span> : null}
+    </span>
+  );
+}
+
 function Due({ row }: { row: NeedRow }) {
   return <span className={cn("tabular-nums", row.due ? undefined : "text-muted-foreground")}>{keepTogether(row.due) ?? NEEDS_BOARD_TEXT.none}</span>;
 }
@@ -372,7 +387,7 @@ function NeedTable({
                   <NeedForCell row={row} hrefOf={hrefOf} palette={palette} />
                 </td>
                 <td className="px-3 py-2">
-                  <StatusDot tone={row.status.tone} label={row.status.label} />
+                  <Status row={row} />
                 </td>
                 {withDue ? (
                   <td className="px-3 py-2">
@@ -389,7 +404,7 @@ function NeedTable({
           <li key={row.id} data-need-item={row.id} className="space-y-1.5 px-3 py-2.5">
             <div className={ROW_HEAD}>
               <What row={row} />
-              <StatusDot tone={row.status.tone} label={row.status.label} className="shrink-0" />
+              <Status row={row} className="shrink-0 @md/hub:items-end" />
             </div>
             <MetaLine row={row} hrefOf={hrefOf} palette={palette} />
           </li>

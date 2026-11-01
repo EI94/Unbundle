@@ -78,7 +78,7 @@ export interface InfoProgress {
   until: string | null;
   /** senza_risposta: «scaduta» se una richiesta senza risposta è scaduta, altrimenti «ultimo_promemoria». */
   silentReason: "scaduta" | "ultimo_promemoria" | null;
-  /** da_chiedere: ogni esigenza aperta è «Bloccata» (non si può chiedere finché non si sblocca). */
+  /** da_chiedere: ogni esigenza aperta è ferma («Bloccata» nel modulo: non si può chiedere finché non si sblocca). */
   blocked: boolean;
   /** «N di M informazioni ricevute»: esigenze della scheda, mai persone. received = in_verifica + validata. */
   received: number;
@@ -91,7 +91,7 @@ export interface InfoProgress {
   waiting: number;
   /** Esigenze «chiesta» la cui ultima richiesta è senza risposta (scaduta, o dopo l'ultimo promemoria). */
   unanswered: number;
-  /** Esigenze «bloccata»: non si possono chiedere finché non si sbloccano. */
+  /** Esigenze «bloccata» (a schermo «ferme»): non si possono chiedere finché non si sbloccano. */
   blockedCount: number;
 }
 
@@ -140,17 +140,18 @@ export const INFO_PROGRESS_TEXT = Object.freeze({
   }),
   count: Object.freeze({ one: "{received} di 1 informazione ricevuta", many: "{received} di {total} informazioni ricevute", none: "Nessuna informazione serve dal cliente." }),
   // Che cosa resta, dopo il conteggio: un pezzo per gruppo, separati da « · », che con le ricevute
-  // fanno il totale; «da verificare» sta tra parentesi dopo le ricevute, perché ne fa parte.
+  // fanno il totale; «da verificare» sta tra parentesi dopo le ricevute, perché ne fa parte. Le
+  // «bloccata» si leggono «ferme», come nelle righe (rilascio 3); il modulo dice ancora «Bloccata».
   next: Object.freeze({
     separator: " · ",
     toAsk: "{n} da chiedere",
     waiting: "{n} in attesa",
     toVerify: "{n} da verificare",
     unanswered: "{n} senza risposta",
-    blockedOne: "1 da chiedere, bloccata",
-    blockedMany: "{n} da chiedere, bloccate",
-    blockedShortOne: "1 bloccata",
-    blockedShortMany: "{n} bloccate",
+    blockedOne: "1 da chiedere, ferma",
+    blockedMany: "{n} da chiedere, ferme",
+    blockedShortOne: "1 ferma",
+    blockedShortMany: "{n} ferme",
     oneDone: "a posto",
     allDone: "tutte a posto",
   }),
@@ -279,9 +280,9 @@ const fill = (template: string, values: Record<string, string | number>) => temp
 
 /**
  * Che cosa resta: un pezzo per ogni gruppo non ricevuto con almeno un'esigenza, nell'ordine degli
- * stati (senza risposta, in attesa, da chiedere, bloccate), così il primo dice lo stato della
- * testata e ricevute più pezzi fanno il totale. Le bloccate da sole «1 da chiedere, bloccata»;
- * accanto ad altre, «1 bloccata». null quando non resta niente.
+ * stati (senza risposta, in attesa, da chiedere, ferme), così il primo dice lo stato della
+ * testata e ricevute più pezzi fanno il totale. Le ferme da sole «1 da chiedere, ferma»; accanto
+ * ad altre, «1 ferma». null quando non resta niente.
  */
 function infoNext(p: InfoProgress): string | null {
   const n = INFO_PROGRESS_TEXT.next;
