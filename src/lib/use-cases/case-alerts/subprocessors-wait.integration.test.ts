@@ -232,6 +232,27 @@ test("«Prepara le domande» e «Chiedi al referente» bloccato dall'ok; aprire 
   assert.deepEqual(await recipients(ws2), people(...DECLARERS));
 });
 
+test("«Prepara le domande» e «Chiedi al referente» rifiutato di un revisore del cliente: niente", opts, async () => {
+  const ws = await workspace({ notices: true });
+  const id = await card(ws, { status: "accepted", quarter, needStatus: null });
+  ok(await referents.prepareReferentQuestions(as(ws, "lead"), id));
+  const [prepared] = await q(`SELECT count(*)::int AS n FROM use_case_need_links WHERE use_case_id = $1::uuid`, [id]);
+  assert.ok(Number(prepared.n) > 0, "le domande ci sono: il silenzio non è un'azione mancata");
+  assert.deepEqual(await recipients(ws), [], "lo avvia solo Lateral Space");
+  const ws2 = await workspace({ notices: true });
+  const id2 = await card(ws2, { status: "accepted", quarter });
+  const [n] = await q(`SELECT n.id FROM use_case_needs n JOIN use_case_need_links l ON l.need_id = n.id WHERE l.use_case_id = $1::uuid`, [id2]);
+  const refused = await referents.sendReferentRequest(
+    as(ws2, "transformation"),
+    id2,
+    { contact: { kind: "nuovo", displayName: "Mario Rossi", email: `mario.cliente.${suffix}@topjet.test` }, needIds: [String(n.id)] },
+    { env: { ...process.env, ...SEND_ENV }, requester: { name: "Persona transformation", emailVerified: true } },
+  );
+  assert.equal(refused.ok, false);
+  assert.equal((refused as { error: string }).error, "sub_responsabili_mancanti");
+  assert.deepEqual(await recipients(ws2), [], "lo avvia solo Lateral Space");
+});
+
 test("al massimo una volta ogni 7 giorni per workspace, anche con due approvazioni insieme; il cron ripete dopo", opts, async () => {
   const ws = await workspace({ notices: true });
   const [a, b] = [await card(ws), await card(ws)];
