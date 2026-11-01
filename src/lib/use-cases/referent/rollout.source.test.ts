@@ -20,7 +20,8 @@ test("«Cosa serve» si scrive anche senza le tabelle della 0024: la sincronizza
   const start = source.indexOf("async function executeWithInfoSync(");
   const body = source.slice(start, source.indexOf("\n}\n", start));
   const gate = body.indexOf("!(await infoSyncAvailable())");
-  const sync = body.indexOf("infoCompleteSyncStatements(cards)");
+  // (0025) La sincronizzazione è `cardSyncStatements`: «Informazioni complete» e, con la 0025, «Pronto da avviare».
+  const sync = body.indexOf("cardSyncStatements({ ...cards");
   assert.ok(gate > 0 && sync > gate, "prima la sonda, poi la sincronizzazione");
 });
 

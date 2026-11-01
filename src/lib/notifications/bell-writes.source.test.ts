@@ -27,7 +27,7 @@ function sources(dir: string): string[] {
 
 const files = sources(join(root, "src")).sort();
 const IS_READ_WRITE = /set\s+is_read\s*=\s*true|\.set\(\s*\{\s*isRead:\s*true/i;
-const BUILDERS = /\b(notifyReviewersSql|notifyExpiredRequestsSql|infoCompleteSyncStatements)\s*\(\s*\{[^}]*\bclock\s*:/;
+const BUILDERS = /\b(notifyReviewersSql|notifyExpiredRequestsSql|infoCompleteSyncStatements|cardSyncStatements|readinessSyncSql|subprocessorsWaitNoticeStatements)\s*\(\s*\{[^}]*\bclock\s*:/;
 
 test("nessuno scrive weekly_signals.is_read = true, tranne il riepilogo settimanale", () => {
   const found = files.filter((file) => IS_READ_WRITE.test(readFileSync(join(root, file), "utf8")));
@@ -44,6 +44,9 @@ test("nessun file di produzione passa clock: ai costruttori delle notifiche", ()
   const found = files.filter((file) => BUILDERS.test(readFileSync(join(root, file), "utf8")));
   assert.deepEqual(found, []);
   assert.ok(BUILDERS.test("notifyReviewersSql({ workspaceId, kind: 'risposte', actorUserId: null, clock: fixed })"));
+  // (0025) Anche i costruttori di «Pronto da avviare» e «Autorizza i fornitori».
+  assert.ok(BUILDERS.test("cardSyncStatements({ workspaceId, actorUserId: null, readiness, clock: fixed })"));
+  assert.ok(BUILDERS.test("subprocessorsWaitNoticeStatements({ workspaceId, useCaseId: null, clock: fixed })"));
 });
 
 test("portfolio.ts non esporta più markSignalReadAction", () => {

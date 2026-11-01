@@ -489,7 +489,9 @@ export const INFO_SYNC_TABLES_PRESENT_SQL = `SELECT (to_regclass('public.use_cas
 /**
  * «Informazioni complete»: [il lock per scheda, la sincronizzazione], in fondo al batch e in
  * quest'ordine. L'avviso parte solo al passaggio a «completa» di una scheda con almeno una richiesta,
- * a tutti i revisori tranne chi l'ha completata.
+ * a tutti i revisori tranne chi l'ha completata. (0025) Con `afterReadyNotice` (il passaggio a
+ * «pronto» di `cardSyncStatements` è nello stesso batch, prima): chi ha appena ricevuto «Pronto da
+ * avviare» per la stessa scheda e lo stesso evento non riceve anche questa riga.
  */
 export function infoCompleteSyncStatements(i: {
   workspaceId: string;
@@ -497,8 +499,15 @@ export function infoCompleteSyncStatements(i: {
   needId?: string | null;
   actorUserId: string | null;
   clock?: Date;
+  afterReadyNotice?: boolean;
 }): [UcStatement, UcStatement] {
   const ts = clockOf(i.clock);
+  const notReady = i.afterReadyNotice
+    ? ucSql`
+WHERE NOT EXISTS (SELECT 1 FROM use_case_notifications pr
+                  WHERE pr.recipient_user_id = r.user_id AND pr.use_case_id = b.use_case_id AND pr.kind = 'pronto'
+                    AND pr.rome_day = (${ts} AT TIME ZONE 'Europe/Rome')::date AND pr.last_event_at >= ${ts})`
+    : raw("");
   const lock = toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('use-case-info:' || u.id::text))
 FROM use_cases u
 WHERE ${targetCards(i)}
@@ -531,7 +540,7 @@ ORDER BY u.id`);
 )
 INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day, first_event_at, last_event_at)
 SELECT b.workspace_id, b.use_case_id, r.user_id, 'complete', (${ts} AT TIME ZONE 'Europe/Rome')::date, ${ts}, ${ts}
-FROM became b CROSS JOIN LATERAL (${reviewerRecipientsSql(raw("b.workspace_id"), i.actorUserId)}) r
+FROM became b CROSS JOIN LATERAL (${reviewerRecipientsSql(raw("b.workspace_id"), i.actorUserId)}) r${notReady}
 ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET last_event_at = greatest(use_case_notifications.last_event_at, EXCLUDED.last_event_at), read_at = NULL`);
   return [lock, sync];
 }

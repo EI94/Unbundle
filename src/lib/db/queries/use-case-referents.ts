@@ -32,6 +32,8 @@ import {
 import { createReferentDispatchStore, runReferentDispatchWith } from "@/lib/db/queries/use-case-referent-dispatch";
 import { cleanupPendingFiles, deleteFileObjects, collectDeletedFileRows } from "@/lib/db/queries/use-case-referent-files";
 import { dispatchRequesterAlerts, purgeOldNotifications } from "@/lib/db/queries/use-case-notifications";
+import { dispatchCaseAlerts, purgeOldCaseAlerts, readinessSyncFor, syncReadyCards } from "@/lib/db/queries/use-case-alerts";
+import { cardSyncStatements } from "@/lib/use-cases/case-alerts/sql";
 import { inRomeSendWindow, romeDate } from "@/lib/uc/calendar";
 import { userContextFrom } from "@/lib/uc/lateral-space";
 import { canDeclareSubprocessors } from "@/lib/uc/legal/subprocessors";
@@ -68,7 +70,6 @@ import {
   completeHandledRequestsStatements,
   draftsCleanupStatements,
   expireStatements,
-  infoCompleteSyncStatements,
   lockRequestsOfNeedSql,
   needTransitionSql,
   openItemsCountSql,
@@ -784,7 +785,8 @@ export const prepareReferentQuestions = guardedReferent(
   RETURNING 1
 )
 SELECT id FROM ins`);
-    const run = await referentBatch(executor, [insert, ...infoCompleteSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId })]);
+    const readiness = await readinessSyncFor(ctx.workspaceId, env);
+    const run = await referentBatch(executor, [insert, ...cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId, readiness })]);
     if (!run.ok) return run;
     return ok({ added: run.rows[0].length, gaps: gaps.length });
   },
@@ -1031,7 +1033,7 @@ RETURNING id`,
     referentEventSql({ workspaceId: ctx.workspaceId, useCaseId: card.id, code: "inviata", actor }),
     toStatement(ucSql`INSERT INTO use_case_referent_emails (workspace_id, contact_id, request_id, template, dedupe_key, due_at, scheduled_at)
 VALUES (${ws}, ${cast(contactId, "uuid")}, ${cast(requestId, "uuid")}, 'richiesta', ${cast(`ric:${requestId}:1`, "text")}, now(), now())`),
-    ...infoCompleteSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId }),
+    ...cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId, readiness: await readinessSyncFor(ctx.workspaceId, deps.env, now) }),
   );
   const run = await referentBatch(executor, statements);
   if (!run.ok) {
@@ -1219,7 +1221,7 @@ export const addToReferentRequest = guardedReferent(
       itemsInsertSql(ctx.workspaceId, card.id, request.id, unique, request.needIds.length),
       needTransitionSql({ workspaceId: ctx.workspaceId, needIds: unique, from: ["da_chiedere", "mancante", "parziale"], silentIds, to: "chiesta", actor, expect: { count: unique.length, code: "domande_cambiate" } }),
       referentEventSql({ workspaceId: ctx.workspaceId, useCaseId: card.id, code: "domande_aggiunte", actor }),
-      ...infoCompleteSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId }),
+      ...cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId, readiness: await readinessSyncFor(ctx.workspaceId, deps.env, now) }),
     );
     if (check.ok) {
       statements.push(
@@ -1309,7 +1311,7 @@ export const revokeReferentRequest = guardedReferent(
         actor: persona(writer.userId),
         failCode: "versione_superata",
       }),
-      ...infoCompleteSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId }),
+      ...cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId, readiness: await readinessSyncFor(ctx.workspaceId, env, now) }),
     ]);
     if (!run.ok) return run;
     return ok(null);
@@ -1450,6 +1452,7 @@ export const eraseReferentData = guardedReferent(
         reason: "cancellazione",
         anonymizeContact: hubOnly && !contact.anonymized,
         useCaseIds: cards.map((r) => String(r.use_case_id)),
+        readiness: await readinessSyncFor(ctx.workspaceId, deps.env),
       }),
     );
     if (!run.ok) return run.error === "referente_in_dossier" || run.error === "richieste_aperte" || run.error === "firmatario_designato" ? rfail("riprova") : run;
@@ -1493,7 +1496,7 @@ RETURNING id`,
       referentEventSql({ workspaceId: ctx.workspaceId, useCaseId, code: "risposta_team", actor }),
       // (Parte 3) La domanda del referente su questa esigenza è fatta: se non resta altro, la richiesta si completa.
       ...completeHandledRequestsStatements({ workspaceId: ctx.workspaceId, needId }),
-      ...infoCompleteSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [useCaseId], needId, actorUserId: writer.userId }),
+      ...cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [useCaseId], needId, actorUserId: writer.userId, readiness: await readinessSyncFor(ctx.workspaceId, env) }),
     ]);
     if (!run.ok) return run;
     return ok({ answerId });
@@ -1570,6 +1573,12 @@ export interface ReferentCronCounts {
   alertsHeld: number;
   alertsCancelled: number;
   notificationsPurged: number;
+  /** (0025) Use case diventati «Pronto da avviare» che nessuna scrittura aveva visto. */
+  readyAnnounced: number;
+  /** (0025) Email «Pronto da avviare» partite, in attesa, annullate. */
+  caseAlertsSent: number;
+  caseAlertsHeld: number;
+  caseAlertsCancelled: number;
 }
 
 async function eachBatch(executor: UcExecutor, groups: readonly (readonly UcStatement[])[], counts: ReferentCronCounts, op: string): Promise<number> {
@@ -1611,7 +1620,8 @@ function cronRequestOf(r: UcRow): CronRequest {
  * della coda, referenti non più raggiungibili, scadenze, richieste complete, bozze, file in attesa,
  * oggetti dell'archivio, conservazione, promemoria (solo nella finestra di Roma, solo con l'email
  * configurata e l'autorizzazione ai fornitori), limiti di frequenza, invio, avvisi a chi ha chiesto,
- * notifiche vecchie. Ogni passo conta i suoi errori senza fermare gli altri. Solo conteggi.
+ * (0025) «Pronto da avviare» e le sue email, notifiche vecchie. Ogni passo conta i suoi errori senza
+ * fermare gli altri. Solo conteggi.
  */
 export async function runReferentCron(o: { env: Env; now?: Date; mailer?: UcMailer; lsDomains?: readonly string[] }): Promise<ReferentCronCounts> {
   const now = o.now ?? new Date();
@@ -1635,6 +1645,10 @@ export async function runReferentCron(o: { env: Env; now?: Date; mailer?: UcMail
     alertsHeld: 0,
     alertsCancelled: 0,
     notificationsPurged: 0,
+    readyAnnounced: 0,
+    caseAlertsSent: 0,
+    caseAlertsHeld: 0,
+    caseAlertsCancelled: 0,
   };
   const executor = await getAppUcExecutor();
   const store = createReferentDispatchStore(executor, { env, now });
@@ -1662,11 +1676,13 @@ WHERE r.status = 'inviata' AND (c.id IS NULL OR NOT c.is_active OR c.anonymized_
 LIMIT 200`),
     ]);
     const requests = gone.map(cronRequestOf);
+    const readiness = new Map<string, Awaited<ReturnType<typeof readinessSyncFor>>>();
+    for (const r of requests) if (!readiness.has(r.workspaceId)) readiness.set(r.workspaceId, await readinessSyncFor(r.workspaceId, env, now));
     counts.revoked += await eachBatch(
       executor,
       requests.map((r) => [
         ...revokeStatements({ workspaceId: r.workspaceId, target: { requestId: r.id, statuses: ["inviata"] }, reason: "referente_non_attivo", actor: { kind: "sistema" } }),
-        ...infoCompleteSyncStatements({ workspaceId: r.workspaceId, useCaseIds: [r.useCaseId], actorUserId: null }),
+        ...cardSyncStatements({ workspaceId: r.workspaceId, useCaseIds: [r.useCaseId], actorUserId: null, readiness: readiness.get(r.workspaceId) ?? null }),
       ]),
       counts,
       "cron_revoca",
@@ -1794,9 +1810,25 @@ LIMIT 200`),
     counts.alertsCancelled += alerts.cancelled;
     counts.failed += alerts.failed;
   });
+  // 11c (0025). «Pronto da avviare»: ogni use case approvato si ricontrolla (un trimestre passato, un
+  // dossier collegato dai dossier, un passaggio che nessuna scrittura ha visto), senza doppioni. 11d.
+  // Le email degli avvisi della 0025.
+  await step("cron_pronti", async () => {
+    const ready = await syncReadyCards({ env, now });
+    counts.readyAnnounced += ready.announced;
+    counts.errors += ready.errors;
+  });
+  await step("cron_avvisi_use_case", async () => {
+    const alerts = await dispatchCaseAlerts({ env, now, limit: 50, mailer: o.mailer });
+    counts.caseAlertsSent += alerts.sent;
+    counts.caseAlertsHeld += alerts.held + alerts.notConfigured;
+    counts.caseAlertsCancelled += alerts.cancelled;
+    counts.failed += alerts.failed;
+  });
   await step("cron_notifiche_vecchie", async () => {
     const purged = await purgeOldNotifications(now);
     counts.notificationsPurged += purged.notifications;
+    await purgeOldCaseAlerts(now);
   });
   return counts;
 }

@@ -17,7 +17,8 @@
 import { contactRefsSql } from "../../db/queries/uc-retention.ts";
 import { contactAnonymizeSql, contactHasNoOpenRequestsSql, contactNotDesignatedSql } from "../../uc/sql/request-commands.ts";
 import { cast, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
-import { infoCompleteSyncStatements, referentEventsForRequestsSql, revokeStatements, uuidOf, type ReferentActor } from "./sql.ts";
+import { cardSyncStatements, type ReadinessSync } from "../case-alerts/sql.ts";
+import { referentEventsForRequestsSql, revokeStatements, uuidOf, type ReferentActor } from "./sql.ts";
 
 function hubOnlyCondition(workspaceId: string, contactId: string): SqlFragment {
   const c = () => cast(uuidOf(contactId, "referente"), "uuid");
@@ -53,7 +54,9 @@ function contactRequests(workspaceId: string, contactId: string): SqlFragment {
  *    chi chiama prima del batch): le guardie dei dossier e l'anonimizzazione della riga `uc_contacts`;
  *    un dossier che nel frattempo lo usa fa fallire il batch con `referente_in_dossier`;
  * 5. una riga «dati del referente cancellati» nella Storia di ogni use case toccato, e il segno
- *    «Informazioni complete» delle schede `useCaseIds` (lette prima del batch).
+ *    «Informazioni complete» delle schede `useCaseIds` (lette prima del batch); con `readiness`
+ *    (l'action dei revisori, con la 0025) anche lo stato di «Pronto da avviare», che il comando
+ *    dell'operatore lascia al prossimo giro del cron (una domanda riaperta non avvisa mai).
  * Una seconda volta non cambia niente.
  */
 export function referentEraseStatements(i: {
@@ -63,6 +66,7 @@ export function referentEraseStatements(i: {
   reason: "cancellazione";
   anonymizeContact?: boolean;
   useCaseIds?: readonly string[];
+  readiness?: ReadinessSync | null;
 }): UcStatement[] {
   const ws = cast(uuidOf(i.workspaceId, "workspace"), "uuid");
   const c = cast(uuidOf(i.contactId, "referente"), "uuid");
@@ -105,7 +109,7 @@ FROM use_case_referent_requests r
 WHERE ${mine} AND r.purged_at = now()`),
   );
   if (i.useCaseIds && i.useCaseIds.length) {
-    statements.push(...infoCompleteSyncStatements({ workspaceId: i.workspaceId, useCaseIds: i.useCaseIds, actorUserId: i.actorUserId }));
+    statements.push(...cardSyncStatements({ workspaceId: i.workspaceId, useCaseIds: i.useCaseIds, actorUserId: i.actorUserId, readiness: i.readiness ?? null }));
   }
   return statements;
 }

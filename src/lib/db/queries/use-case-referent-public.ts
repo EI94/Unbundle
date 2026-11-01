@@ -23,6 +23,7 @@ import { clientUploadAvailable } from "@/lib/uc/storage";
 import type { Result } from "@/lib/uc/types";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import { alertSchedule } from "@/lib/use-cases/referent/alerts";
+import { cardSyncStatements } from "@/lib/use-cases/case-alerts/sql";
 import {
   REFERENT_LIMITS,
   type DraftResult,
@@ -38,7 +39,6 @@ import { REFERENT_ERROR_MESSAGES, REFERENT_PRIVACY_CONTACT, REFERENT_PRIVACY_NOT
 import {
   cancelQueuedForRequestsStatements,
   draftsCleanupStatements,
-  infoCompleteSyncStatements,
   needTransitionSql,
   notifyReviewersSql,
   openItemSql,
@@ -521,7 +521,9 @@ ON CONFLICT (dedupe_key) DO NOTHING`),
       schedule: alertSchedule(now),
       now,
     }),
-    ...infoCompleteSyncStatements({ workspaceId: link.workspaceId, useCaseIds: [link.useCaseId], actorUserId }),
+    // Le risposte del referente non chiudono mai un'esigenza («Da verificare», «Manca il dato»): niente
+    // «Pronto da avviare» da controllare qui (`readiness: null`), solo «Informazioni complete».
+    ...cardSyncStatements({ workspaceId: link.workspaceId, useCaseIds: [link.useCaseId], actorUserId, readiness: null }),
     toStatement(ucSql`SELECT r.status, ${openItemsCountSql("r")} AS open_items FROM use_case_referent_requests r WHERE r.id = ${req} AND r.workspace_id = ${ws}`),
   );
   const run = await referentBatch(executor, statements);

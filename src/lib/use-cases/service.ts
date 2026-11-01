@@ -10,6 +10,8 @@ import { getUcUserContext, ucLsDomains } from "@/lib/db/queries/uc-access";
 import { assignUseCaseCodeSafely } from "@/lib/db/queries/use-case-codes";
 import { dossierStateForUseCase, type DossierState } from "@/lib/db/queries/use-case-dossiers";
 import { insertUseCaseEventFrom, type ServiceEventAction } from "@/lib/db/queries/use-case-events";
+import { readinessSyncFor, withReadinessFallback } from "@/lib/db/queries/use-case-alerts";
+import { ucToDrizzle } from "@/lib/db/use-case-hub-uc-drizzle";
 import { getWorkspaceById } from "@/lib/db/queries/workspaces";
 import type { UseCaseEventField } from "@/lib/db/use-case-hub-ddl";
 import { aiMayWriteSuggestion, deriveUseCasePortfolioMetrics, type DerivedUseCaseScores } from "@/lib/db/use-case-scoring";
@@ -52,6 +54,8 @@ import { portfolioKindOf } from "./labels";
 import { abilitiesForUseCase, isHiddenFromSearch, isOwnProposal, type UseCaseAbilities } from "./permissions";
 import { phaseOfUseCase, type UseCasePhase } from "./phase";
 import { romeToday } from "./quarter";
+import { cardSyncStatements } from "./case-alerts/sql";
+import { readinessInputsChanged } from "./readiness";
 import { isUseCaseHubWorkspace } from "./rollout";
 import {
   KINDS,
@@ -500,8 +504,35 @@ function eventActor(ctx: WriteContext, actor: Actor) {
 }
 
 /**
+ * La scrittura e, se serve, il controllo di «Pronto da avviare» nella stessa transazione: solo quando
+ * la scrittura cambia una colonna della regola (stato, revisione, trimestre, tipo) e con la 0025 e
+ * l'area accesa (`readinessSyncFor`), il batch è [la scrittura, il lock per scheda, il passaggio a
+ * «pronto»]; altrimenti la sola scrittura, come prima. Le righe sono sempre quelle della scrittura.
+ */
+async function executeCardWrite(
+  ctx: WriteContext,
+  write: SQL,
+  card: { useCaseId: string; actorUserId: string | null; readinessChanged: boolean },
+): Promise<{ rows: Record<string, unknown>[] }> {
+  const alone = () => db.execute(write) as Promise<{ rows: Record<string, unknown>[] }>;
+  const readiness = card.readinessChanged ? await readinessSyncFor(ctx.workspaceId, process.env, ctx.now ?? new Date()) : null;
+  if (!readiness) return alone();
+  const sync = cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.useCaseId], actorUserId: card.actorUserId, readiness, info: false });
+  return withReadinessFallback(
+    ctx.workspaceId,
+    async () => {
+      const [result] = await db.batch([db.execute(write), ...sync.map((statement) => db.execute(ucToDrizzle(statement)))]);
+      return result as unknown as { rows: Record<string, unknown>[] };
+    },
+    alone,
+  );
+}
+
+/**
  * Aggiorna la scheda e scrive la sua riga di Storia nello stesso statement, solo se la
- * versione è ancora `expectedVersion`. Poi rilegge la scheda.
+ * versione è ancora `expectedVersion`. Poi rilegge la scheda. (0025) Un cambio di stato, revisione,
+ * trimestre o tipo porta nella stessa transazione il controllo di «Pronto da avviare»
+ * (`executeCardWrite`): la scheda restituita non cambia.
  */
 async function commitWrite(
   ctx: WriteContext,
@@ -532,7 +563,12 @@ async function commitWrite(
     phaseBefore: phaseCode(loaded.phase),
     phaseAfter: phaseCode(phaseOf(write.after, loaded.dossier, loaded.today)),
   });
-  const { rows } = await db.execute(sql`${ctes} ${event} RETURNING (SELECT version FROM upd) AS version`);
+  const { rows } = await executeCardWrite(ctx, sql`${ctes} ${event} RETURNING (SELECT version FROM upd) AS version`, {
+    useCaseId: id,
+    actorUserId: actor.kind === "persona" ? actor.userId : null,
+    // Con la lettura del dossier fallita la regola non si può controllare: lo farà il cron.
+    readinessChanged: loaded.dossierRead !== "errore" && readinessInputsChanged(loaded.row, write.after),
+  });
   if (rows.length === 0) return missingOrStale(ctx.workspaceId, id);
   return reloadCard(ctx.workspaceId, loaded);
 }
@@ -1785,14 +1821,19 @@ export const recordRealizationStarted = guarded("record_realization_started", as
     phaseBefore: phaseCode(before),
     phaseAfter: phaseCode(loaded.phase),
   });
-  await db.execute(sql`WITH card AS (
+  // (0025) Con il dossier lo use case non è più «pronto da avviare»: lo stato si azzera subito, senza avvisi.
+  await executeCardWrite(
+    ctx,
+    sql`WITH card AS (
       SELECT u.id, u.workspace_id FROM use_cases u
       WHERE u.id = ${loaded.row.id}::uuid AND u.workspace_id = ${ctx.workspaceId}::uuid
         AND NOT EXISTS (
           SELECT 1 FROM use_case_events e
           WHERE e.use_case_id = u.id AND e.action = 'realizzazione_avviata'
         )
-    ) ${event}`);
+    ) ${event}`,
+    { useCaseId: loaded.row.id, actorUserId: actor.userId, readinessChanged: true },
+  );
   return { ok: true, value: undefined };
 });
 

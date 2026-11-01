@@ -44,8 +44,10 @@ const NEW_TABLES =
 const TABLE_FILES = new Set([
   "src/lib/db/schema.ts",
   "src/lib/db/use-case-hub-referents-ddl.ts",
-  // (0025) «Pronto da avviare» e «Autorizza i fornitori»: il DDL.
+  // (0025) «Pronto da avviare» e «Autorizza i fornitori»: il DDL, i costruttori SQL e la coda delle email.
   "src/lib/db/use-case-hub-alerts-ddl.ts",
+  "src/lib/use-cases/case-alerts/sql.ts",
+  "src/lib/db/queries/use-case-alerts.ts",
   // Il servizio e le sue basi, la pagina pubblica, i file, l'invio delle email.
   "src/lib/db/queries/use-case-referents.ts",
   "src/lib/db/queries/use-case-referent-base.ts",
@@ -120,7 +122,8 @@ test("le rotte pubbliche importano solo i moduli ammessi", () => {
 const LOG_FILES = files.filter(
   (file) =>
     file.startsWith("src/lib/use-cases/referent/") ||
-    /^src\/lib\/db\/queries\/(use-case-referent|use-case-notifications|use-case-info-progress|bell-state)/.test(file) ||
+    /^src\/lib\/db\/queries\/(use-case-referent|use-case-notifications|use-case-info-progress|use-case-alerts|bell-state)/.test(file) ||
+    file.startsWith("src/lib/use-cases/case-alerts/") ||
     file.startsWith("src/lib/notifications/bell") ||
     file === "src/lib/actions/use-case-referents.ts" ||
     file === "src/lib/actions/notifications.ts" ||

@@ -37,7 +37,6 @@ import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/r
 import { requestReferentUserSql } from "@/lib/use-cases/referent/people";
 import {
   completeHandledRequestsStatements,
-  infoCompleteSyncStatements,
   lockRequestsOfNeedSql,
   needTransitionSql,
   notifyReviewersSql,
@@ -47,6 +46,8 @@ import {
   type ReferentActor,
 } from "@/lib/use-cases/referent/sql";
 import type { ServiceResult, WriteContext } from "@/lib/use-cases/service";
+import { readinessSyncFor } from "@/lib/db/queries/use-case-alerts";
+import { cardSyncStatements, type ReadinessSync } from "@/lib/use-cases/case-alerts/sql";
 
 /**
  * I file di «Chiedi al referente» (SPEC §2.3 `use-case-referent-files.ts`, §3.8, §3.9): la stessa
@@ -235,7 +236,7 @@ function resultOf(f: FileRow, status: ReferentUploadResult["status"], extra: { s
  * team non lo accetta (`acceptedTeamFileEffects`); un rifiuto, o il controllo scaduto, non lascia
  * niente da disfare.
  */
-function reviewerEffects(f: FileRow, outcome: "pulito" | "in_revisione", validate: boolean): UcStatement[] {
+function reviewerEffects(f: FileRow, outcome: "pulito" | "in_revisione", validate: boolean, readiness: ReadinessSync | null): UcStatement[] {
   const userId = f.uploadedByUserId;
   if (!userId) return [];
   const actor: ReferentActor = { kind: "persona", userId };
@@ -266,7 +267,7 @@ function reviewerEffects(f: FileRow, outcome: "pulito" | "in_revisione", validat
       now,
     }),
   );
-  out.push(...infoCompleteSyncStatements({ workspaceId: f.workspaceId, useCaseIds: [f.useCaseId], needId: f.needId, actorUserId: userId }));
+  out.push(...cardSyncStatements({ workspaceId: f.workspaceId, useCaseIds: [f.useCaseId], needId: f.needId, actorUserId: userId, readiness }));
   return out;
 }
 
@@ -347,7 +348,7 @@ WHERE id = ${id} AND scan_status = 'in_quarantena' AND deleted_at IS NULL`),
   const mime = report.mime ?? "application/octet-stream";
   const finalPath = referentBlobPath("standard", f.workspaceId, f.useCaseId, f.id);
   await store.put(finalPath, bytes, { contentType: mime });
-  const effects = f.source === "revisore" ? reviewerEffects(f, outcome.status, i.validate === true) : [];
+  const effects = f.source === "revisore" ? reviewerEffects(f, outcome.status, i.validate === true, await readinessSyncFor(f.workspaceId, env)) : [];
   const update = toStatement(
     requireRows(
       ucSql`UPDATE use_case_need_files SET scan_status = ${cast(outcome.status, "text")}, mime = ${cast(mime, "text")}, size_bytes = ${cast(report.sizeBytes > 0 ? report.sizeBytes : null, "int")},
@@ -602,7 +603,9 @@ WHERE id = ${id} AND scan_status = 'in_revisione' AND deleted_at IS NULL RETURNI
               }),
             ]
           : []),
-        ...(f.source === "revisore" ? infoCompleteSyncStatements({ workspaceId: f.workspaceId, useCaseIds: [f.useCaseId], needId: f.needId, actorUserId: writer.userId }) : []),
+        ...(f.source === "revisore"
+          ? cardSyncStatements({ workspaceId: f.workspaceId, useCaseIds: [f.useCaseId], needId: f.needId, actorUserId: writer.userId, readiness: await readinessSyncFor(f.workspaceId, env, now) })
+          : []),
       ]);
       if (!run.ok) return run;
       return { ok: true, value: { status: "pulito" } };

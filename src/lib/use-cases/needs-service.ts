@@ -15,7 +15,9 @@ import {
 import { NEED_HISTORY_FIELD, needHistoryCode, needStateCode, type NeedHistoryChange } from "./needs-history";
 import { fail, guarded, invalid, personaWriter, type Failure, type WriteContext } from "./service";
 import { ucToDrizzle } from "@/lib/db/use-case-hub-uc-drizzle";
-import { INFO_SYNC_TABLES_PRESENT_SQL, infoCompleteSyncStatements } from "./referent/sql";
+import { INFO_SYNC_TABLES_PRESENT_SQL } from "./referent/sql";
+import { cardSyncStatements } from "./case-alerts/sql";
+import { readinessSyncFor, withReadinessFallback } from "@/lib/db/queries/use-case-alerts";
 import type { ServiceResult } from "./types";
 
 /**
@@ -124,7 +126,10 @@ async function linkTargetsOf(workspaceId: string, raw: readonly unknown[] | unde
  * La scrittura, poi il lock per scheda e la sincronizzazione di «Informazioni complete» (SPEC
  * §P2.6.2 evento 4, §P2.9.1 T13), in un solo `db.batch` (una transazione): le righe della scrittura
  * sono quelle di prima. Il lock arriva dopo i lock di riga della scrittura e sempre in ordine di
- * `use_cases.id`, così due scritture si aspettano invece di bloccarsi a vicenda.
+ * `use_cases.id`, così due scritture si aspettano invece di bloccarsi a vicenda. (0025) Con la 0025
+ * e l'area accesa, tra il lock e «Informazioni complete» anche il passaggio a «Pronto da avviare»
+ * (`cardSyncStatements`): un'informazione «A posto», archiviata, scollegata o spostata dalla parte
+ * di Lateral Space può rendere pronto uno use case approvato.
  */
 let infoSyncTablesPresent = false;
 
@@ -147,9 +152,14 @@ async function executeWithInfoSync(
   if ((!(cards.useCaseIds?.length) && !cards.needId) || !(await infoSyncAvailable())) {
     return db.execute(write) as Promise<{ rows: Record<string, unknown>[] }>;
   }
-  const [lock, sync] = infoCompleteSyncStatements(cards);
-  const [result] = await db.batch([db.execute(write), db.execute(ucToDrizzle(lock)), db.execute(ucToDrizzle(sync))]);
-  return result as unknown as { rows: Record<string, unknown>[] };
+  const run = async (readiness: Awaited<ReturnType<typeof readinessSyncFor>>) => {
+    const sync = cardSyncStatements({ ...cards, readiness }).map((statement) => db.execute(ucToDrizzle(statement)));
+    const [result] = await db.batch([db.execute(write), ...sync]);
+    return result as unknown as { rows: Record<string, unknown>[] };
+  };
+  const readiness = await readinessSyncFor(cards.workspaceId);
+  if (!readiness) return run(null);
+  return withReadinessFallback(cards.workspaceId, () => run(readiness), () => run(null));
 }
 
 /**
