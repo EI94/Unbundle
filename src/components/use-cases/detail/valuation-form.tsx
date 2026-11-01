@@ -512,6 +512,8 @@ export function ValuationEditor({
   const [editing, setEditing] = useState(false);
   const [prefill, setPrefill] = useState<KpiValues | null>(null);
   const [formKey, setFormKey] = useState(0);
+  // Chiuso il modulo («Annulla» o «Salva»), il fuoco torna su «Modifica valutazione», non sul body.
+  const editButton = useRef<HTMLButtonElement | null>(null);
 
   function open(values: KpiValues | null) {
     setPrefill(values);
@@ -569,10 +571,13 @@ export function ValuationEditor({
             costBands={costBands}
             valueModel={valueModel}
             valueParams={valueParams}
-            onDone={() => setEditing(false)}
+            onDone={() => {
+              setEditing(false);
+              requestAnimationFrame(() => editButton.current?.focus());
+            }}
           />
         ) : (
-          <Button type="button" variant="outline" data-arrival-focus="" className="min-h-11 sm:min-h-8" onClick={() => open(null)}>
+          <Button ref={editButton} type="button" variant="outline" data-arrival-focus="" className="min-h-11 sm:min-h-8" onClick={() => open(null)}>
             {VALUATION_FORM_TEXT.edit}
           </Button>
         )
