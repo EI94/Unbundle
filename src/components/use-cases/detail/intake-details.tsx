@@ -216,6 +216,8 @@ export interface IntakeDetailsProps {
   proposer?: ProposerRows | null;
   /** I titoli della guida del connettore per strumenti e agente collegato. */
   labels?: Pick<GuideLabels, "tools" | "agents"> | null;
+  /** Senza la sua piega: il contenuto e basta, dentro la piega «Dettagli» della scheda. */
+  bare?: boolean;
   className?: string;
 }
 
@@ -235,7 +237,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
  * revisori. «Proposto da» ed «Email indicata» solo per chi gestisce il workspace: è l'unico
  * punto della scheda che li mostra (art. 15.4).
  */
-export function IntakeDetails({ workspaceId, detail, canEdit, proposer, labels, className }: IntakeDetailsProps) {
+export function IntakeDetails({ workspaceId, detail, canEdit, proposer, labels, bare = false, className }: IntakeDetailsProps) {
   const collected = collectedDataRows(detail.intake, labels ?? NO_GUIDE_LABELS);
   const duplicate = detail.possibleDuplicateOf?.trim() ? detail.possibleDuplicateOf : null;
   const duplicateField = (
@@ -256,13 +258,8 @@ export function IntakeDetails({ workspaceId, detail, canEdit, proposer, labels, 
   const requirements = detail.requirements?.filter((item) => item.trim()) ?? [];
   const dependencies = detail.dataDependencies?.filter((item) => item.trim()) ?? [];
   const arrived = formatDate(detail.arrivedOn);
-  return (
-    <details data-slot="intake-details" className={cn("group rounded-lg border border-border", className)}>
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 px-3 text-sm font-medium select-none [&::-webkit-details-marker]:hidden">
-        <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
-        {DETAILS_TEXT.title}
-      </summary>
-      <div className="space-y-4 border-t border-border px-3 py-3">
+  const body = (
+      <div className={cn("space-y-4", bare ? null : "border-t border-border px-3 py-3")}>
         {collected.length ? (
           <div className="space-y-2">
             <h3 className="text-sm font-medium">{DETAILS_TEXT.collected}</h3>
@@ -303,6 +300,21 @@ export function IntakeDetails({ workspaceId, detail, canEdit, proposer, labels, 
         {/* Vuoto: solo «+ Aggiungi possibile doppione di», come i campi vuoti di «Cosa è». */}
         {duplicate ? <dl>{duplicateField}</dl> : canEdit ? <div className="flex flex-wrap">{duplicateField}</div> : null}
       </div>
+  );
+  if (bare) {
+    return (
+      <div data-slot="intake-details" className={className}>
+        {body}
+      </div>
+    );
+  }
+  return (
+    <details data-slot="intake-details" className={cn("group rounded-lg border border-border", className)}>
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 px-3 text-sm font-medium select-none [&::-webkit-details-marker]:hidden">
+        <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+        {DETAILS_TEXT.title}
+      </summary>
+      {body}
     </details>
   );
 }

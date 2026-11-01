@@ -790,7 +790,9 @@ test("pannello: al massimo tre esigenze aperte, le altre nella scheda; senza esi
 
 test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a posto chiuse e la modifica", opts, async () => {
   const page = await detailHtml("builder", cards.quarter.id);
-  assert.ok(page.includes('href="#cosa-serve"'), "l'ancora");
+  // Nessuna barra delle ancore: `?capitolo=cosa-serve` arriva alla sezione, sempre aperta, e al suo titolo.
+  assert.ok(!page.includes('href="#cosa-serve"') && page.includes('<section id="cosa-serve"'), "l'ancora è la sezione");
+  assert.match(page, /<h2 id="cosa-serve-titolo" tabindex="-1"/);
   const section = between(page, 'data-slot="section-needs"', "</section>");
   assert.ok(section.includes(">Requisiti<"));
   for (const key of ["access", "decide", "procedure", "other", "extract"] as const) assert.ok(section.includes(T[key]), key);

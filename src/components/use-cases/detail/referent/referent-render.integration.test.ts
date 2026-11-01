@@ -61,6 +61,7 @@ let dispatch: typeof import("../../../../lib/db/queries/use-case-referent-dispat
 let files: typeof import("../../../../lib/db/queries/use-case-referent-files.ts");
 let askState: typeof import("./ask-dialog-state.ts");
 let labels: typeof import("../../../../lib/use-cases/referent/labels.ts");
+let createElementOf: (type: unknown, props: Record<string, unknown>) => unknown;
 
 const suffix = randomBytes(3).toString("hex");
 const ids = { org: randomUUID(), ws: randomUUID(), builder: randomUUID(), federico: randomUUID(), contributor: randomUUID(), card: randomUUID() };
@@ -175,6 +176,7 @@ before(async () => {
   const sql = neon(url!);
   q = (text, params = []) => sql.query(text, params) as Promise<Record<string, unknown>[]>;
   const { createElement } = await import("react");
+  createElementOf = (type, props) => createElement(type as never, props as never);
   const { renderToStaticMarkup: toHtml } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string };
   const { AppRouterContext } = (await import("next/dist/shared/lib/app-router-context.shared-runtime.js")) as unknown as {
     AppRouterContext: import("react").Context<object | null>;
@@ -273,6 +275,81 @@ test("un revisore vede «Chiedi al referente» spento e ogni motivo insieme, con
   const contributor = await detailHtml("contributor");
   for (const text of [T.ask, T.prepare, T.gates.emailNotConfigured, T.requestsHeading, "Cosa serve"]) assert.ok(!contributor.includes(text), `contributore: ${text}`);
   assert.equal(findProp(await detailElement("contributor"), "referents").filter(Boolean).length, 0, "nessun pannello al contributore");
+});
+
+/** I pulsanti pieni (`[data-slot=button].bg-primary`, anche i link) di un pezzo di HTML, con il loro testo. */
+function filledIn(html: string): string[] {
+  return [...html.matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/g)]
+    .filter(([, , attrs]) => /\sdata-slot="button"/.test(attrs) && (/\sclass="([^"]*)"/.exec(attrs)?.[1].split(/\s+/) ?? []).includes("bg-primary"))
+    .map(([, , , body]) => body.replace(/<[^>]+>/g, "").trim());
+}
+
+/** Il riquadro «Prossimo passo» e la sezione «Cosa serve» di una scheda. */
+function boxAndNeeds(html: string): { box: string; needs: string } {
+  const box = html.slice(html.indexOf('data-slot="next-step"'), html.indexOf('data-slot="scheda-grid"'));
+  const start = html.indexOf('data-slot="section-needs"');
+  return { box, needs: html.slice(start, html.indexOf("</section>", html.indexOf('id="richieste"') > start ? html.indexOf('id="richieste"') : start)) };
+}
+
+test("approvata con domande da chiedere: il riquadro dice il motivo (G4, G6) o ha «Chiedi al referente» pieno (G5), mai due volte con «Cosa serve»", opts, async () => {
+  const T = labels.REFERENT_UI_TEXT;
+  const card = randomUUID();
+  const quarter = await import("../../../../lib/use-cases/quarter.ts");
+  await q(
+    `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, origin, code, target_quarter, source)
+     VALUES ($1::uuid, $2::uuid, $3, 'Un problema scritto in prosa', 'accepted', 'scored', 'use_case_ai', 'adoption', $4, $5, 'web_proposed')`,
+    [card, ids.ws, `Approvata ${suffix}`, `RF-${9000 + Math.floor(Math.random() * 900)}`, quarter.currentQuarter()],
+  );
+  ok(await referents.prepareReferentQuestions(as("builder"), card), "Prepara le domande");
+  signIn("builder");
+  const element = await pageOfDetail({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId: card }), searchParams: Promise.resolve({}) });
+  const html = readable(renderToStaticMarkup(element));
+  // Senza l'autorizzazione dei fornitori (la persona di funzione la può dare): G4, con «Apri Impostazioni».
+  const g4 = boxAndNeeds(html);
+  assert.match(g4.box, /data-key="G4"/);
+  assert.match(g4.box, /data-gate="sub_responsabili_mancanti"/);
+  assert.match(g4.box, /role="status"/);
+  assert.deepEqual(filledIn(html), [T.gates.subprocessorsLink], "il solo pulsante pieno della pagina");
+  for (const [part, text] of [
+    [g4.box, "riquadro"],
+    [g4.needs, "riga"],
+  ] as const) {
+    assert.ok(!part.includes(`>${T.ask}</button>`), `${text}: nessun «Chiedi al referente»`);
+  }
+  assert.ok(!html.includes('data-slot="referent-gates"'), "il motivo non si ripete sotto la riga");
+
+  // Con un pannello aperto (nessun motivo che blocca): G5, un solo «Chiedi al referente», pieno, nel riquadro.
+  const view = (function find(node: unknown): { type: (props: object) => unknown; props: Record<string, unknown> } | null {
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const found = find(child);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (!node || typeof node !== "object" || !("props" in node)) return null;
+    const el = node as { type: unknown; props: Record<string, unknown> };
+    if (typeof el.type === "function" && (el.type as { name?: string }).name === "UseCaseDetailView") return el as never;
+    return find(el.props.children);
+  })(element);
+  assert.ok(view, "la pagina monta UseCaseDetailView");
+  const panel = view.props.referents as { gates: unknown[]; available: boolean };
+  const render = (gates: unknown[]) => readable(renderToStaticMarkup(createElementOf(view.type, { ...view.props, referents: { ...panel, available: true, gates } })));
+  const open = render([]);
+  const g5 = boxAndNeeds(open);
+  assert.match(g5.box, /data-key="G5"/);
+  assert.deepEqual(filledIn(open), [T.ask], "un solo pulsante pieno: «Chiedi al referente»");
+  assert.deepEqual(filledIn(g5.box), [T.ask], "nel riquadro");
+  assert.equal((open.match(new RegExp(`>${T.ask}</button>`, "g")) ?? []).length, 1, "una volta sola nella pagina");
+  // Solo un motivo di sistema: G6 lo dice da solo, senza pulsanti.
+  const system = render([{ code: "email_non_configurata", message: T.gates.emailNotConfigured }]);
+  const g6 = boxAndNeeds(system);
+  assert.match(g6.box, /data-key="G6"/);
+  assert.match(g6.box, /data-gate="email_non_configurata"/);
+  assert.ok(g6.box.includes(`>${T.gates.emailNotConfigured}</p>`), "la riga è il motivo, senza «Tocca a»");
+  assert.deepEqual(filledIn(system), []);
+  assert.ok(!system.includes(`>${T.ask}</button>`) && !system.includes('data-slot="referent-gates"'));
+  await q(`DELETE FROM use_cases WHERE id = $1::uuid`, [card]);
 });
 
 test("con l'autorizzazione e le email accese: la richiesta, le righe sotto le esigenze, le risposte e i file con «Scarica»", opts, async () => {

@@ -371,6 +371,27 @@ function hubLayout(page) {
   });
 }
 
+/**
+ * The guided use case page (release 3): the path's current step, the old chapter bar, the box and
+ * the ids of the page. On a reviewer's card the path has exactly one `aria-current="step"`; a closed
+ * card has no path (its box reads «Fuori dal percorso»); no page has the old «Capitoli» bar; no id
+ * is used twice.
+ */
+function detailMeasures(page) {
+  return evaluate(page, () => {
+    const path = document.querySelector('[data-slot="use-case-path"]');
+    const ids = new Map();
+    for (const el of document.querySelectorAll("[id]")) ids.set(el.id, (ids.get(el.id) ?? 0) + 1);
+    return {
+      box: Boolean(document.querySelector('[data-slot="next-step"]')),
+      path: Boolean(path),
+      pathCurrent: path ? path.querySelectorAll('[aria-current="step"]').length : 0,
+      chapterNav: Boolean(document.querySelector('nav[aria-label="Capitoli"]')),
+      duplicateIds: [...ids].filter(([, n]) => n > 1).map(([id]) => id).slice(0, 5),
+    };
+  });
+}
+
 // ─── Run ─────────────────────────────────────────────────────────────
 
 const routes = await loadRoutes();
@@ -445,6 +466,7 @@ try {
           const report = await pageReport(page);
           const hub = await hubMeasures(page);
           const layout = await hubLayout(page);
+          const detail = await detailMeasures(page);
           const file = await screenshot(page, join(outDir, account, String(width), `${item.letter}-${item.name}.png`));
           const failures = [];
           const warnings = [];
@@ -467,6 +489,11 @@ try {
             }
           }
           if (layout.wider) failures.push(`${layout.wider} parts wider than their box at ${width} px: ${layout.widerText.join(" | ")}`);
+          // The guided card: one current step on the path (none without a path: a closed card), no chapter bar, unique ids.
+          if (detail.chapterNav) failures.push("the old «Capitoli» bar is on the page");
+          if (detail.path && detail.pathCurrent !== 1) failures.push(`${detail.pathCurrent} aria-current="step" on the path (one expected)`);
+          if (detail.box && !detail.path && detail.pathCurrent !== 0) failures.push("a current step without a path");
+          if (detail.duplicateIds.length) failures.push(`ids used twice: ${detail.duplicateIds.join(", ")}`);
           if (!nav.idle) warnings.push("network not quiet within the timeout");
           // Art. 15.4 and D4: contributors and non-members never get a figure or a euro amount.
           const restricted = item.audience !== "revisore";

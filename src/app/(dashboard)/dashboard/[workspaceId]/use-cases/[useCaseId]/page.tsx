@@ -164,6 +164,7 @@ export default async function UseCaseDetailPage({
         referents={referents}
         infoProgress={infoProgress}
         teamName={reviewTeamName(access.workspace)}
+        companyName={access.workspace.name}
       />
     </PageContainer>
   );

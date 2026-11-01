@@ -46,7 +46,9 @@ import { NeedUseCasesDisclosure } from "../need-use-cases";
 import { DecisionChoiceGroup, DecisionDialog } from "../reopen-dialog";
 import { InfoSummary } from "./info-summary";
 import { askEntry } from "./referent/ask-dialog-state";
-import { ReferentDialogs, type ReferentDialog } from "./referent/dialogs";
+import { NEXT_STEP_IDS } from "./next-step-box";
+import { useReferentDialog } from "./referent/dialog-host";
+import type { ReferentDialog } from "./referent/dialogs";
 import { GateNotice } from "./referent/gate-notice";
 import { NeedReferentBlock } from "./referent/need-referent-block";
 import { PrepareButton } from "./referent/prepare-button";
@@ -85,7 +87,12 @@ export interface SectionNeedsProps {
   referents?: UseCaseReferentPanel | null;
   /** «Raccolta informazioni» della scheda (`loadUseCaseInfoProgress`, solo revisori): la riga dei conteggi in cima al capitolo. */
   infoProgress?: InfoProgressView | null;
-  id?: string;
+  /**
+   * Il riquadro «Prossimo passo» parla già di «Chiedi al referente» (rilascio 3): `ask` quando ha il
+   * pulsante (G5), `gate` quando la sua riga è il motivo che lo blocca (G4, G6). Allora qui non si
+   * ripetono il pulsante e il motivo.
+   */
+  boxAsk?: "ask" | "gate" | null;
   className?: string;
 }
 
@@ -116,21 +123,23 @@ export function SectionNeeds({
   canEdit,
   referents = null,
   infoProgress = null,
-  id = "cosa-serve",
+  boxAsk = null,
   className,
 }: SectionNeedsProps) {
+  const id = "cosa-serve";
   const headingId = `${id}-titolo`;
   const gatesId = `${id}-chiedi-motivi`;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [referentDialog, setReferentDialog] = useState<ReferentDialog | null>(null);
+  // Le finestre di «Chiedi al referente» sono della pagina (`ReferentDialogHost`): una alla volta.
+  const openReferent = useReferentDialog();
+  const setReferentDialog = (next: ReferentDialog) => openReferent?.(next);
   const refMap = useMemo(() => new Map(Object.entries(refs)), [refs]);
   const detailHrefOf = (id: string) => cosaServeHref(workspaceId, id);
   const empty = !requirements.length && !steps.length;
   // «Chiedi al referente»: solo con la funzione accesa per il workspace e gli archivi pronti.
   const feature = referents?.available ? referents : null;
-  const needTitles = useMemo(() => new Map([...requirements, ...steps].map((need) => [need.id.toLowerCase(), need.title])), [requirements, steps]);
   const answerable = useMemo(() => new Set((feature?.answerableNeedIds ?? []).map((needId) => needId.toLowerCase())), [feature]);
 
   /** Manda una scrittura: toast, rilettura dopo una versione superata; chiude il dialogo se va bene. */
@@ -192,8 +201,8 @@ export function SectionNeeds({
   const askBlocked = !entry?.canOpen;
 
   return (
-    <section id={id} aria-labelledby={headingId} data-slot="section-needs" className={cn("scroll-mt-28 space-y-4", className)}>
-      <h2 id={headingId} className="text-base font-semibold">
+    <section id={id} aria-labelledby={headingId} data-slot="section-needs" className={cn("scroll-mt-20 space-y-4", className)}>
+      <h2 id={headingId} tabIndex={-1} className="text-base font-semibold outline-none">
         {TEXT.title}
       </h2>
       <InfoSummary view={infoProgress} />
@@ -228,12 +237,14 @@ export function SectionNeeds({
             «Prepara le domande» sta nella finestra di «Chiedi al referente»; qui solo quando qualcosa si
             può preparare ma un altro motivo tiene la finestra chiusa (preparare non manda niente).
           */}
-          {feature?.canAsk && entry?.showPrepare ? <PrepareButton workspaceId={workspaceId} useCaseId={useCaseId} describedBy={gatesId} /> : null}
+          {feature?.canAsk && entry?.showPrepare ? (
+            <PrepareButton workspaceId={workspaceId} useCaseId={useCaseId} describedBy={boxAsk === "gate" ? NEXT_STEP_IDS.line : gatesId} />
+          ) : null}
           {/*
             L'azione principale del capitolo, ma non della pagina: un solo pulsante pieno per pagina (la
             decisione). «secondary» la distingue da «Aggiungi» e «Prepara le domande».
           */}
-          {feature?.canAsk ? (
+          {feature?.canAsk && !boxAsk ? (
             <Button
               type="button"
               variant="secondary"
@@ -248,8 +259,10 @@ export function SectionNeeds({
           ) : null}
         </div>
       ) : null}
-      {canEdit && feature?.canAsk && entry ? <GateNotice id={gatesId} gates={entry.gates} /> : null}
-      {feature ? <RequestsList workspaceId={workspaceId} useCaseId={useCaseId} requests={feature.requests} canAsk={canEdit && feature.canAsk} onOpen={setReferentDialog} /> : null}
+      {canEdit && feature?.canAsk && entry && boxAsk !== "gate" ? <GateNotice id={gatesId} gates={entry.gates} /> : null}
+      {feature ? (
+        <RequestsList id="richieste" workspaceId={workspaceId} useCaseId={useCaseId} requests={feature.requests} canAsk={canEdit && feature.canAsk} onOpen={setReferentDialog} />
+      ) : null}
 
       {canEdit && (dialog?.mode === "aggiungi" || dialog?.mode === "modifica") ? (
         <NeedFormDialog
@@ -282,9 +295,6 @@ export function SectionNeeds({
             )
           }
         />
-      ) : null}
-      {canEdit && feature ? (
-        <ReferentDialogs dialog={referentDialog} workspaceId={workspaceId} useCaseId={useCaseId} panel={feature} needTitles={needTitles} onClose={() => setReferentDialog(null)} />
       ) : null}
       {canEdit && dialog?.mode === "collega" ? (
         <LinkNeedDialog

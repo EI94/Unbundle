@@ -2,7 +2,7 @@ import { COST_BANDS, type CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { showsZone, zoneText } from "@/lib/use-cases/format";
 import type { Dimension, ValuationModel } from "@/lib/use-cases/valuation";
 import type { ValueParams } from "@/lib/use-cases/value-model";
-import { hubValueParams, type UseCaseDetail } from "@/lib/use-cases/views";
+import { hubValueParams, type HubAiSuggestion, type UseCaseDetail } from "@/lib/use-cases/views";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
 import { cn } from "@/lib/utils";
 import { CostFigure } from "../cost-figure";
@@ -74,6 +74,22 @@ export function personKpiValues(
   return out;
 }
 
+/**
+ * Il «Suggerimento AI» ha qualcosa da mostrare: una motivazione, o un punteggio da 1 a 5 di un KPI
+ * del modello. Lo stesso controllo del riquadro (`hasAiSuggestion`), sul server, per la riga della
+ * piega chiusa.
+ */
+export function aiSuggestionShown(suggestion: Pick<HubAiSuggestion, "scores" | "rationale"> | null | undefined, groups: readonly ValuationKpiGroup[]): boolean {
+  if (suggestion?.rationale?.trim()) return true;
+  return groups.some((group) =>
+    group.kpis.some((kpi) => {
+      const dim = suggestion?.scores?.[group.dimension];
+      const value = dim && typeof dim === "object" ? (dim as Record<string, unknown>)[kpi.id] : undefined;
+      return typeof value === "number" && Number.isFinite(value) && value >= 1 && value <= 5;
+    }),
+  );
+}
+
 export interface SectionValuationProps {
   workspaceId: string;
   detail: Pick<
@@ -90,13 +106,13 @@ export interface SectionValuationProps {
   esgEnabled: boolean;
   /** `canEditValuation`: tutti i revisori. */
   canEdit: boolean;
-  id?: string;
   className?: string;
 }
 
 /**
- * Il capitolo «Valutazione» della scheda, solo per i revisori (docs/use-case/DESIGN.md §6.3,
- * §6.7, §7): Valore e Costo di realizzazione, due cifre grandi con la loro fonte (una colonna sul
+ * Il contenuto della piega «Valutazione del team» della scheda (rilascio 3), solo per i revisori
+ * (docs/use-case/DESIGN.md §6.3, §6.7, §7): senza ancora né titolo, che sono della piega. Valore e
+ * Costo di realizzazione, due cifre grandi con la loro fonte (una colonna sul
  * telefono), la zona come suggerimento, solo per un Valore senza cifra in euro (`showsZone`), un
  * solo riquadro «Stime non ufficiali» (la stima di Claude e quella di chi ha proposto, se ci sono
  * dati, e il «Suggerimento AI», sotto la frase «Conta la valutazione del team.»), i chip di
@@ -112,17 +128,12 @@ export function SectionValuation({
   today,
   esgEnabled,
   canEdit,
-  id = "valutazione",
   className,
 }: SectionValuationProps) {
-  const headingId = `${id}-titolo`;
   const params = valueParams ?? hubValueParams({ today: today ?? new Date().toISOString().slice(0, 10) });
   const groups = valuationKpiGroups(model, { esgEnabled });
   return (
-    <section id={id} aria-labelledby={headingId} data-slot="section-valuation" className={cn("scroll-mt-28 space-y-4", className)}>
-      <h2 id={headingId} className="text-base font-semibold">
-        {SECTION_VALUATION_TEXT.title}
-      </h2>
+    <div data-slot="section-valuation" className={cn("space-y-4", className)}>
       <div className="grid gap-4 sm:grid-cols-2">
         <ValueFigure value={detail.value} form="lunga" withLabel />
         <CostFigure cost={detail.cost} bands={costBands} form="lunga" withLabel />
@@ -150,6 +161,6 @@ export function SectionValuation({
         canEdit={canEdit}
         risks={<RiskChips risks={detail.risks} />}
       />
-    </section>
+    </div>
   );
 }

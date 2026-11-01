@@ -314,8 +314,12 @@ test("le sorgenti: «Prepara le domande» sta nella finestra, senza toast, e non
   const button = dialog.slice(dialog.lastIndexOf("<Button", at), at);
   assert.match(button, /type="button"/);
   const section = readFileSync(new URL("../section-needs.tsx", import.meta.url), "utf8");
-  // Nel capitolo «Prepara le domande» c'è solo quando la finestra non si apre e qualcosa si può preparare.
-  assert.match(section, /\{feature\?\.canAsk && entry\?\.showPrepare \? <PrepareButton workspaceId=\{workspaceId\} useCaseId=\{useCaseId\} describedBy=\{gatesId\} \/> : null\}/);
+  // Nel capitolo «Prepara le domande» c'è solo quando la finestra non si apre e qualcosa si può preparare;
+  // il motivo che lo descrive è la riga del riquadro «Prossimo passo» quando lo dice lei (G4, G6).
+  assert.match(
+    section,
+    /\{feature\?\.canAsk && entry\?\.showPrepare \? \(\s*<PrepareButton workspaceId=\{workspaceId\} useCaseId=\{useCaseId\} describedBy=\{boxAsk === "gate" \? NEXT_STEP_IDS\.line : gatesId\} \/>\s*\) : null\}/,
+  );
   assert.equal((section.match(/<PrepareButton\b/g) ?? []).length, 1);
   assert.ok(!section.includes("prepareReferentQuestionsAction"));
   assert.equal((section.match(/REFERENT_UI_TEXT\.ask\b/g) ?? []).length, 1, "un solo «Chiedi al referente»");

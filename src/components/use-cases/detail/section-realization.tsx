@@ -25,6 +25,8 @@ export const SECTION_REALIZATION_TEXT = Object.freeze({
   dossierClosed: "Il dossier è chiuso.",
   unavailable: "Il riepilogo del dossier non è disponibile ora.",
   diffusedOn: "Diffusa il",
+  /** «Avvia» e «Segna come in realizzazione» nella piega quando il riquadro «Prossimo passo» non li ha. */
+  notReady: "Le informazioni non sono ancora tutte a posto.",
 });
 
 /** Come è andata la lettura del dossier (`UseCaseDetailResult.dossierRead`). */
@@ -84,15 +86,19 @@ export interface SectionRealizationProps {
   canOpenAnyDossier: boolean;
   /** Il riepilogo ricco del dossier per chi guarda (`realizationOfUseCase`); null se non letto. */
   realization?: UseCaseRealization | null;
-  /** La scheda ha già il suo pulsante pieno (in «Decisione»): «Apri il dossier» diventa `outline`. */
-  primaryTaken?: boolean;
-  id?: string;
+  /**
+   * Il riquadro «Prossimo passo» ha «Avvia la realizzazione» o «Segna come in realizzazione»
+   * (G9): qui non si ripetono. Senza, nella piega stanno `outline`, con la riga che dice perché il
+   * passo non è ancora quello.
+   */
+  boxOwnsStart?: boolean;
   className?: string;
 }
 
 /**
- * Il capitolo «Realizzazione» della scheda (docs/use-case/DESIGN.md §6.5, §6.7; PIANO-LAVORI H4b,
- * H6a): la fase, «Avvia la realizzazione» per Lateral Space con la sezione Casi d'uso accesa,
+ * Il contenuto della piega «Realizzazione» della scheda (docs/use-case/DESIGN.md §6.5, §6.7;
+ * PIANO-LAVORI H4b, H6a; rilascio 3: senza ancora né titolo, che sono della piega, e senza pulsanti
+ * pieni, che sono del riquadro «Prossimo passo»): la fase, «Avvia la realizzazione» per Lateral Space con la sezione Casi d'uso accesa,
  * «Segna come in realizzazione» con la sezione spenta, «La realizzazione la avvia Lateral Space.»
  * per i revisori del cliente, il riepilogo del dossier con i componenti dei Casi d'uso
  * (`RealizationSummary`: stato, «0 di 245 indispensabili a posto», prossima tappa, costo,
@@ -108,38 +114,38 @@ export function SectionRealization({
   canMarkInProgress,
   canOpenAnyDossier,
   realization = null,
-  primaryTaken = false,
-  id = "realizzazione",
+  boxOwnsStart = false,
   className,
 }: SectionRealizationProps) {
-  const headingId = `${id}-titolo`;
   const variant = realizationVariant(item, { dossierRead, canStartRealization, canMarkInProgress, realization });
   const dossier = item.dossier;
   const diffusedOn = variant === "diffusa" && item.realizedOn ? formatDayInYear(item.realizedOn, today) : null;
   return (
-    <section id={id} aria-labelledby={headingId} data-slot="section-realization" data-variant={variant} className={cn("scroll-mt-28 space-y-3", className)}>
-      <h2 id={headingId} className="text-base font-semibold">
-        {SECTION_REALIZATION_TEXT.title}
-      </h2>
-
+    <div data-slot="section-realization" data-variant={variant} className={cn("space-y-3", className)}>
       {variant === "avvia" ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-3 rounded-lg border border-border p-3">
           <div className="space-y-0.5 text-sm">
             <p className="font-medium">{SECTION_REALIZATION_TEXT.notStarted}</p>
             <p className="text-muted-foreground">{SECTION_REALIZATION_TEXT.notStartedHint}</p>
           </div>
-          <Button
-            render={<Link href={`/dashboard/${workspaceId}/casi-duso/nuovo?useCaseId=${item.id}`} />}
-            nativeButton={false}
-            className="min-h-11 shrink-0 sm:min-h-8"
-          >
-            {SECTION_REALIZATION_TEXT.start}
-          </Button>
+          {boxOwnsStart ? null : (
+            <div className="space-y-1.5">
+              <Button
+                render={<Link href={`/dashboard/${workspaceId}/casi-duso/nuovo?useCaseId=${item.id}`} />}
+                nativeButton={false}
+                variant="outline"
+                className="min-h-11 shrink-0 sm:min-h-8"
+              >
+                {SECTION_REALIZATION_TEXT.start}
+              </Button>
+              <p className="text-sm text-muted-foreground">{SECTION_REALIZATION_TEXT.notReady}</p>
+            </div>
+          )}
         </div>
       ) : null}
 
-      {variant === "segna" ? (
-        <div>
+      {variant === "segna" && !boxOwnsStart ? (
+        <div className="space-y-1.5">
           <MarkInProgressButton
             workspaceId={workspaceId}
             // Al browser solo quello che serve al pulsante, non la scheda intera.
@@ -147,6 +153,7 @@ export function SectionRealization({
             canMarkInProgress={canMarkInProgress}
             dossiersEnabled={false}
           />
+          <p className="text-sm text-muted-foreground">{SECTION_REALIZATION_TEXT.notReady}</p>
         </div>
       ) : null}
 
@@ -155,7 +162,7 @@ export function SectionRealization({
       {variant === "riepilogo" && realization?.state === "avviata" ? (
         // Senza il conto del dossier, una scheda con «Benefici e costi» non ripete «da calcolare»: le
         // sue cifre sono nella Valutazione, poco sopra.
-        <RealizationSummary dossier={realization.dossier} primary={!primaryTaken} hideEmptyFigures={Boolean(item.valueModel)} />
+        <RealizationSummary dossier={realization.dossier} primary={false} hideEmptyFigures={Boolean(item.valueModel)} />
       ) : null}
 
       {variant === "dossier" && dossier ? (
@@ -192,6 +199,6 @@ export function SectionRealization({
           {SECTION_REALIZATION_TEXT.diffusedOn} {diffusedOn}.
         </p>
       ) : null}
-    </section>
+    </div>
   );
 }

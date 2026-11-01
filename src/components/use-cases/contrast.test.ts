@@ -278,3 +278,42 @@ test("niente testo sbiadito nell'area «Use case»", () => {
   assert.ok(!read("src/components/use-cases/detail/referent/requests-list.tsx").includes("text-amber-700"), "avvisi in ambra fissa");
   assert.ok(!read("src/components/ui/command.tsx").includes("border-input/30"), "ricerca: bordo del campo al 30%");
 });
+
+/** I file nuovi della scheda guidata (rilascio 3): solo i token del tema, niente `dark:` né colori fissi. */
+const GUIDED_FILES = [
+  "src/components/use-cases/detail/use-case-path.tsx",
+  "src/components/use-cases/detail/next-step-box.tsx",
+  "src/components/use-cases/detail/fold.tsx",
+  "src/components/use-cases/detail/arrival.tsx",
+  "src/components/use-cases/detail/referent/dialog-host.tsx",
+];
+
+test("la scheda guidata usa solo i token del tema: niente `dark:` né colori della tavolozza", () => {
+  for (const file of GUIDED_FILES) {
+    const source = read(file);
+    assert.doesNotMatch(source, /(?<![\w-])dark:/, `${file}: una variante dark:`);
+    assert.doesNotMatch(source, /\b(?:amber|red|green|emerald|yellow|teal|indigo|blue|orange)-\d/, `${file}: un colore fisso`);
+  }
+});
+
+test("il percorso della scheda: l'anello del passo «adesso» al 50% e il pallino «dopo» si vedono sul tema scuro", () => {
+  const t = area;
+  const path = read("src/components/use-cases/detail/use-case-path.tsx");
+  assert.ok(path.includes("ring-[color-mix(in_oklab,var(--path-c)_50%,transparent)]"), "l'anello al 50% del colore del percorso");
+  assert.ok(path.includes("[--path-c:var(--foreground)]"), "senza agente il colore del testo");
+  for (const [name, surface] of [
+    ["background", t.background.rgb],
+    ["card", t.card.rgb],
+  ] as const) {
+    atLeast(ratio(over(t.foreground.rgb, surface, 0.5), surface), 3, `anello «adesso» su ${name}`);
+    atLeast(ratio(t.foreground.rgb, surface), 4.5, `bordo «adesso» su ${name}`);
+    atLeast(ratio(on(t.input, surface), surface), 3, `bordo «dopo» su ${name}`);
+    atLeast(ratio(t.background.rgb, t.foreground.rgb), 4.5, `segno di «fatto» sul pallino pieno`);
+  }
+  // Il colore di un agente, quando il percorso lo prende, tiene l'anello e il segno di «fatto».
+  for (let tone = 1; tone <= 10; tone++) {
+    const color = t[`uc-agente-${tone}`].rgb;
+    atLeast(ratio(over(color, t.background.rgb, 0.5), t.background.rgb), 3, `anello «adesso» in uc-agente-${tone}`);
+    atLeast(ratio(t.background.rgb, color), 4.5, `segno di «fatto» su uc-agente-${tone}`);
+  }
+});

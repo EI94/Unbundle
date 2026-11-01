@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
 import type { UseCaseEventList, UseCaseEventRow } from "@/lib/db/queries/use-case-events";
 import { ANSWER_TEXT } from "@/lib/use-cases/answers";
 import { formatDate, formatDayInYear } from "@/lib/use-cases/format";
@@ -225,48 +224,38 @@ export interface SectionHistoryProps {
   events: UseCaseEventList;
   kind: UseCaseKind;
   today: string;
-  /** Il capitolo si apre già aperto (`?capitolo=storia`, «Mostra tutto»). */
-  open?: boolean;
   /** Il link di «Mostra tutto», se ci sono righe più vecchie. */
   showAllHref?: string | null;
-  id?: string;
   className?: string;
 }
 
 /**
- * Il capitolo «Storia» della scheda, solo per i revisori e chiuso (docs/use-case/DESIGN.md §6.6,
- * §10.3, §11): le ultime 50 righe di `use_case_events`, poi «Mostra tutto». Nessun testo, nessun
- * filtro, ordinamento o conteggio per persona; la creazione non dice chi ha proposto.
+ * Il contenuto della piega «Storia» della scheda, solo per i revisori (docs/use-case/DESIGN.md
+ * §6.6, §10.3, §11; rilascio 3: titolo, ancora e apertura sono della piega): le ultime 50 righe di
+ * `use_case_events`, poi «Mostra tutto». Nessun testo, nessun filtro, ordinamento o conteggio per
+ * persona; la creazione non dice chi ha proposto.
  */
-export function SectionHistory({ events, kind, today, open = false, showAllHref, id = "storia", className }: SectionHistoryProps) {
+export function SectionHistory({ events, kind, today, showAllHref, className }: SectionHistoryProps) {
   const start = historyStartText(events);
   return (
-    <section id={id} aria-label={HISTORY_TEXT.title} data-slot="section-history" className={cn("scroll-mt-28", className)}>
-      <details open={open} className="group">
-        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-base font-semibold select-none [&::-webkit-details-marker]:hidden">
-          <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
-          <h2 className="inline">{HISTORY_TEXT.title}</h2>
-        </summary>
-        <div className="space-y-3 pt-2">
-          {events.events.length ? (
-            <ol className="space-y-1.5">
-              {events.events.map((event) => (
-                <li key={event.id} data-action={event.action} className="text-sm break-words">
-                  {keepTogether(historyRowParts(event, { kind, today }).join(" · "))}
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="text-sm text-muted-foreground">{HISTORY_TEXT.empty}</p>
-          )}
-          {events.hasMore && showAllHref ? (
-            <Link href={showAllHref} scroll={false} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 hover:decoration-2 sm:min-h-8">
-              {HISTORY_TEXT.showAll}
-            </Link>
-          ) : null}
-          {start ? <p className="text-sm text-muted-foreground">{start}</p> : null}
-        </div>
-      </details>
-    </section>
+    <div data-slot="section-history" className={cn("space-y-3", className)}>
+      {events.events.length ? (
+        <ol className="space-y-1.5">
+          {events.events.map((event) => (
+            <li key={event.id} data-action={event.action} className="text-sm break-words">
+              {keepTogether(historyRowParts(event, { kind, today }).join(" · "))}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-sm text-muted-foreground">{HISTORY_TEXT.empty}</p>
+      )}
+      {events.hasMore && showAllHref ? (
+        <Link href={showAllHref} scroll={false} className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 hover:decoration-2 sm:min-h-8">
+          {HISTORY_TEXT.showAll}
+        </Link>
+      ) : null}
+      {start ? <p className="text-sm text-muted-foreground">{start}</p> : null}
+    </div>
   );
 }

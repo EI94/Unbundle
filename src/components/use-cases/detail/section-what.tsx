@@ -5,6 +5,8 @@ import { WHAT_FIELD_LABEL, type WhatField } from "@/lib/use-cases/labels";
 import type { UseCaseKind } from "@/lib/use-cases/types";
 import type { UseCaseDetail } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
+import { KindLabel } from "../kind-label";
+import { OriginChip } from "../origin-chip";
 import { AddDetails } from "./add-details";
 import { InlineTextField, type InlineFieldOption } from "./inline-text-field";
 
@@ -90,6 +92,20 @@ export function whatFieldRows(detail: WhatSource, opts: { esgEnabled: boolean })
   return rows;
 }
 
+/** I campi di «Come cambia il lavoro» (problema, come funziona, chi controlla, limiti): gli altri stanno in «Dettagli». */
+export const WHAT_FLOW_FIELDS: readonly WhatField[] = Object.freeze(["description", "flowDescription", "humanInTheLoop", "guardrails"]);
+
+/** I campi di «Dettagli»: tutti quelli di `whatFieldRows` tranne il titolo e quelli di «Come cambia il lavoro». */
+export function detailsFieldRows(detail: WhatSource, opts: { esgEnabled: boolean }): WhatFieldRow[] {
+  return whatFieldRows(detail, opts).filter((row) => row.field !== "title" && !WHAT_FLOW_FIELDS.includes(row.field));
+}
+
+/** Le etichette di «Dettagli» che non sono campi del testo. */
+export const DETAILS_FIELDS_TEXT = Object.freeze({
+  kind: "Tipo",
+  origin: "Origine",
+});
+
 export interface SectionWhatProps {
   workspaceId: string;
   /** La scheda dei revisori (`UseCaseDetail`): «Cosa è» non va mai ai contributori (§6.7). */
@@ -125,7 +141,7 @@ export function SectionWhat({ workspaceId, detail, canEdit, esgEnabled, areaOpti
   const headingId = `${id}-titolo`;
   const item = { id: detail.id, version: detail.version };
   // Il titolo si legge e si modifica nella testata: qui non si ripete (H4p).
-  const rows = whatFieldRows(detail, { esgEnabled }).filter((row) => row.field !== "title");
+  const rows = whatFieldRows(detail, { esgEnabled }).filter((row) => WHAT_FLOW_FIELDS.includes(row.field));
   const filled = rows.filter((row) => hasFieldText(row.value));
   const empty = canEdit ? rows.filter((row) => !hasFieldText(row.value)) : [];
   const field = (row: WhatFieldRow, compact: boolean) => (
@@ -145,7 +161,7 @@ export function SectionWhat({ workspaceId, detail, canEdit, esgEnabled, areaOpti
   );
   return (
     <section id={id} aria-labelledby={headingId} data-slot="section-what" className={cn("scroll-mt-28 space-y-4", className)}>
-      <h2 id={headingId} className="text-base font-semibold">
+      <h2 id={headingId} tabIndex={-1} className="text-base font-semibold outline-none">
         {SECTION_WHAT_TITLE}
       </h2>
       {filled.length ? <dl className="grid gap-4">{filled.map((row) => field(row, false))}</dl> : null}
@@ -158,5 +174,69 @@ export function SectionWhat({ workspaceId, detail, canEdit, esgEnabled, areaOpti
       ) : null}
       {details}
     </section>
+  );
+}
+
+export interface DetailsFieldsProps {
+  workspaceId: string;
+  detail: WhatSource & Pick<UseCaseDetail, "id" | "version" | "origin">;
+  canEdit: boolean;
+  esgEnabled: boolean;
+  areaOptions?: readonly InlineFieldOption[] | null;
+  /** I dati raccolti da Claude, canale, urgenza e il resto (`IntakeDetails` senza la sua piega). */
+  intake?: ReactNode;
+}
+
+/**
+ * Il contenuto della piega «Dettagli» (rilascio 3): tipo e origine, i campi che «Come cambia il
+ * lavoro» non mostra (impatto atteso, dati, area, AI Lab, ESG) modificabili sul posto, i vuoti
+ * dietro «Aggiungi altri campi», poi i dati raccolti da Claude. Solo per i revisori.
+ */
+export function DetailsFields({ workspaceId, detail, canEdit, esgEnabled, areaOptions, intake }: DetailsFieldsProps) {
+  const item = { id: detail.id, version: detail.version };
+  const rows = detailsFieldRows(detail, { esgEnabled });
+  const filled = rows.filter((row) => hasFieldText(row.value));
+  const empty = canEdit ? rows.filter((row) => !hasFieldText(row.value)) : [];
+  const field = (row: WhatFieldRow, compact: boolean) => (
+    <InlineTextField
+      key={row.field}
+      workspaceId={workspaceId}
+      item={item}
+      field={row.field}
+      label={row.label}
+      value={row.value}
+      max={row.max}
+      multiline={row.multiline}
+      options={row.field === "area" ? areaOptions : null}
+      canEdit={canEdit}
+      compact={compact}
+    />
+  );
+  return (
+    <div data-slot="details-fields" className="space-y-4">
+      <dl className="grid gap-4">
+        <div className="space-y-1">
+          <dt className="text-sm text-muted-foreground">{DETAILS_FIELDS_TEXT.kind}</dt>
+          <dd>
+            <KindLabel kind={detail.kind} className="text-sm text-foreground" />
+          </dd>
+        </div>
+        <div className="space-y-1">
+          <dt className="text-sm text-muted-foreground">{DETAILS_FIELDS_TEXT.origin}</dt>
+          <dd>
+            <OriginChip origin={detail.origin} variant="lunga" />
+          </dd>
+        </div>
+        {filled.map((row) => field(row, false))}
+      </dl>
+      {empty.length ? (
+        <AddDetails>
+          <div data-slot="what-empty-fields" className="contents">
+            {empty.map((row) => field(row, true))}
+          </div>
+        </AddDetails>
+      ) : null}
+      {intake}
+    </div>
   );
 }

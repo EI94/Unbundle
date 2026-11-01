@@ -142,3 +142,25 @@ test("lo script delle schermate controlla lo scorrimento orizzontale e le colonn
   assert.match(screens, /if \(report\.horizontalOverflow\) \{/);
   assert.match(screens, /failures\.push\(`horizontal scroll at \$\{width\} px/);
 });
+
+test("la scheda guidata: un contenitore, due colonne da 58rem della scheda, il percorso in riga da 40rem, mai la finestra", () => {
+  const detail = read("src/components/use-cases/detail/detail.tsx");
+  assert.match(detail, /data-slot="use-case-detail" data-projection=\{result\.projection\} className=\{cn\("@container\/scheda mx-auto w-full max-w-5xl min-w-0", className\)\}/);
+  assert.ok(detail.includes('data-slot="scheda-grid" className="mt-8 grid gap-8 @min-[58rem]/scheda:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/scheda:gap-x-8"'));
+  // Il contributore tiene la sua colonna di lettura.
+  assert.match(detail, /data-projection="contributore" className=\{cn\("mx-auto w-full max-w-3xl min-w-0 space-y-6", className\)\}/);
+  const path = read("src/components/use-cases/detail/use-case-path.tsx");
+  assert.ok(path.includes('"grid-cols-3 @min-[40rem]/scheda:grid-cols-6"') && path.includes('"grid-cols-2 @min-[40rem]/scheda:grid-cols-4"'));
+  assert.ok(read("src/components/use-cases/detail/next-step-box.tsx").includes("@2xl/scheda:flex-row"));
+  for (const file of [
+    "src/components/use-cases/detail/detail.tsx",
+    "src/components/use-cases/detail/use-case-path.tsx",
+    "src/components/use-cases/detail/next-step-box.tsx",
+    "src/components/use-cases/detail/fold.tsx",
+    "src/components/use-cases/detail/arrival.tsx",
+    "src/components/use-cases/detail/referent/dialog-host.tsx",
+  ]) {
+    const classes = [...read(file).matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
+    assert.doesNotMatch(classes, VIEWPORT_VARIANT, `${file}: una forma sulla larghezza della finestra`);
+  }
+});

@@ -152,6 +152,13 @@ export interface DecisionButtonsProps {
   canDecide: boolean;
   /** Gli use case dello stesso workspace, per «Doppione di…». */
   candidates?: readonly DuplicateCandidate[];
+  /**
+   * Il pulsante principale pieno (`default`, come oggi) oppure `outline`: nel riquadro «Prossimo
+   * passo» della scheda è pieno solo quando il passo è di chi guarda.
+   */
+  primaryVariant?: "default" | "outline";
+  /** Le decisioni `outline` in testa al menu «⋯» invece che in riga (riquadro «Prossimo passo»). */
+  outlineInMenu?: boolean;
   className?: string;
 }
 
@@ -163,16 +170,17 @@ export interface DecisionButtonsProps {
  * `version` letta con la pagina (o lasciata dall'ultima scrittura). Chi non decide non vede
  * niente: mai pulsanti spenti.
  */
-export function DecisionButtons({ workspaceId, item, today, canDecide, candidates, className }: DecisionButtonsProps) {
+export function DecisionButtons({ workspaceId, item, today, canDecide, candidates, primaryVariant = "default", outlineInMenu = false, className }: DecisionButtonsProps) {
   const [open, setOpen] = useState<DecisionKey | null>(null);
   const [notePrefill, setNotePrefill] = useState<string | null>(null);
   /** Dopo una risposta a «Serve info» (D17): la nota pubblica da aggiornare nel dialogo; null se il dialogo non la propone. */
   const [answeredNote, setAnsweredNote] = useState<string | null>(null);
   const noteDraft = usePublicNoteDraft();
   const { run, pending } = useDecisionRunner();
-  const buttons = decisionLayout(item, { canDecide });
-  const primary = buttons.primary;
-  if (!primary && buttons.outline.length === 0 && buttons.menu.length === 0) return null;
+  const layout = decisionLayout(item, { canDecide });
+  const primary = layout.primary;
+  if (!primary && layout.outline.length === 0 && layout.menu.length === 0) return null;
+  const buttons = outlineInMenu ? { outline: [], menu: [...layout.outline, ...layout.menu] } : layout;
 
   function openDialog(key: DecisionKey) {
     // La nota appena scritta nel campo del capitolo, anche se il suo salvataggio è in corso.
@@ -208,7 +216,7 @@ export function DecisionButtons({ workspaceId, item, today, canDecide, candidate
   return (
     <div data-slot="decision-buttons" className={cn("flex flex-wrap items-center gap-2", className)}>
       {primary ? (
-        <Button type="button" className="min-h-11 sm:min-h-8" onClick={() => openDialog(primary)}>
+        <Button type="button" variant={primaryVariant} className="min-h-11 sm:min-h-8" onClick={() => openDialog(primary)}>
           {DECISION_LABEL[primary]}
         </Button>
       ) : null}
@@ -268,16 +276,18 @@ export interface MarkInProgressButtonProps {
   canMarkInProgress: boolean;
   /** Sezione Casi d'uso accesa per il workspace: allora c'è «Avvia la realizzazione». */
   dossiersEnabled: boolean;
+  /** `outline` (come oggi), oppure pieno nel riquadro «Prossimo passo» quando il passo è di chi guarda. */
+  variant?: "default" | "outline";
   className?: string;
 }
 
 /**
  * «Segna come in realizzazione» (docs/use-case/DESIGN.md §3.7, §6.5, §14.3), pulsante
- * `outline` del capitolo «Realizzazione»: solo Lateral Space, use case approvato «Da
+ * `outline` della piega «Realizzazione», pieno nel riquadro «Prossimo passo»: solo Lateral Space, use case approvato «Da
  * costruire» senza dossier, con la sezione Casi d'uso spenta per il workspace. Altrimenti non
  * c'è. Chiede conferma; il servizio rifà ogni controllo.
  */
-export function MarkInProgressButton({ workspaceId, item, canMarkInProgress, dossiersEnabled, className }: MarkInProgressButtonProps) {
+export function MarkInProgressButton({ workspaceId, item, canMarkInProgress, dossiersEnabled, variant = "outline", className }: MarkInProgressButtonProps) {
   const [open, setOpen] = useState(false);
   const { run, pending } = useDecisionRunner();
   if (!showMarkInProgress(item, { canMarkInProgress, dossiersEnabled })) return null;
@@ -290,7 +300,7 @@ export function MarkInProgressButton({ workspaceId, item, canMarkInProgress, dos
 
   return (
     <>
-      <Button type="button" variant="outline" className={cn("min-h-11 sm:min-h-8", className)} onClick={() => setOpen(true)}>
+      <Button type="button" variant={variant} className={cn("min-h-11 sm:min-h-8", className)} onClick={() => setOpen(true)}>
         {DECISION_LABEL.segna_in_realizzazione}
       </Button>
       {open ? (

@@ -77,7 +77,6 @@ let formModule: typeof import("../../components/use-cases/detail/valuation-form.
 let aiBoxModule: typeof import("../../components/use-cases/detail/ai-suggestion-box.tsx");
 let realizationModule: typeof import("../../components/use-cases/detail/section-realization.tsx");
 let inlineModule: typeof import("../../components/use-cases/detail/inline-text-field.tsx");
-let chapterNavModule: typeof import("../../components/use-cases/detail/chapter-nav.tsx");
 let hideModule: typeof import("../../components/use-cases/detail/hide-from-search-item.tsx");
 let notFoundPage: () => unknown;
 let pages: { detail: Page; nuovo: Page };
@@ -295,6 +294,36 @@ function findProp(page: unknown, name: string): unknown[] {
     .map((el) => el.props![name]);
 }
 
+/** Il pezzo di HTML da `id="<id>"` alla sezione successiva (le schede del lato, le pieghe). */
+function blockOf(html: string, id: string): string {
+  const start = html.indexOf(`id="${id}"`);
+  if (start === -1) return "";
+  const end = html.indexOf("<section", start + 10);
+  return html.slice(start, end === -1 ? undefined : end);
+}
+
+/** Il pezzo di HTML tra `start` (compreso) e il primo `end` dopo. */
+function between(html: string, start: string, end: string): string {
+  const from = html.indexOf(start);
+  if (from === -1) return "";
+  const to = html.indexOf(end, from + start.length);
+  return html.slice(from, to === -1 ? undefined : to);
+}
+
+/** I pulsanti pieni dell'HTML (`[data-slot=button].bg-primary`), con il loro testo. */
+function filledButtons(html: string): string[] {
+  return [...html.matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/g)]
+    .filter(([, , attrs]) => /\sdata-slot="button"/.test(attrs) && (/\sclass="([^"]*)"/.exec(attrs)?.[1].split(/\s+/) ?? []).includes("bg-primary"))
+    .map(([, , , body]) => body.replace(/<[^>]+>/g, "").trim());
+}
+
+/** Gli `id` dell'HTML che compaiono più di una volta. */
+function duplicateIds(html: string): string[] {
+  const seen = new Map<string, number>();
+  for (const [, id] of html.matchAll(/\sid="([^"]+)"/g)) seen.set(id, (seen.get(id) ?? 0) + 1);
+  return [...seen].filter(([, n]) => n > 1).map(([id]) => id);
+}
+
 /** Il testo di un capitolo nell'HTML, da `data-slot="<slot>"` alla sezione successiva. */
 function sectionOf(html: string, slot: string): string {
   const start = html.indexOf(`data-slot="${slot}"`);
@@ -362,7 +391,6 @@ before(async () => {
   aiBoxModule = await component("ai-suggestion-box");
   realizationModule = await component("section-realization");
   inlineModule = await component("inline-text-field");
-  chapterNavModule = await component("chapter-nav");
   hideModule = await component("hide-from-search-item");
   const page = async (path: string): Promise<Page> => (await import(path)).default as Page;
   pages = {
@@ -655,7 +683,7 @@ test("«Oscura testo»: Lateral Space con ruolo da revisore e chi gestisce il wo
 
 // ═══ La pagina per ruolo (§6.7, §6.9, §11) ═══════════════════════════
 
-test("revisori: i cinque capitoli; «Proposto da» ed «Email indicata» solo a chi gestisce il workspace", opts, async () => {
+test("revisori: percorso, «Prossimo passo» e pieghe; «Proposto da» ed «Email indicata» solo a chi gestisce il workspace", opts, async () => {
   const proposer = `proponente.${suffix}@cliente.test`;
   const submitter = `indicata.${suffix}@cliente.test`;
   const card = await seed({
@@ -666,7 +694,7 @@ test("revisori: i cinque capitoli; «Proposto da» ed «Email indicata» solo a 
     intake: { contractVersion: 2, frequency: "giornaliera", beneficiaries: 3, timeSavedMinutesPerRun: 15, submitterEmail: submitter, flags: { personalData: true } },
   });
   const sponsor = await detailHtml("sponsor", card.id);
-  for (const text of ["Cos&#x27;è", "Valutazione", "Decisione", "Realizzazione", "Storia", "Dettagli", "Proposto da", proposer, "Email indicata", submitter]) {
+  for (const text of ["Prossimo passo", "Percorso dello use case", "Cos&#x27;è", "Valutazione del team", "Realizzazione", "Storia", "Dettagli", "Proposto da", proposer, "Email indicata", submitter]) {
     assert.ok(sponsor.html.includes(text), `chi gestisce il workspace: manca «${text}»`);
   }
   // H4p: un solo riquadro di stime, con la frase che dice cosa conta.
@@ -676,16 +704,17 @@ test("revisori: i cinque capitoli; «Proposto da» ed «Email indicata» solo a 
   assert.ok(sponsor.html.includes("Dati personali"), "chip di rischio");
   for (const person of ["builder", "lsAnalyst"] as const) {
     const { html } = await detailHtml(person, card.id);
-    assert.ok(html.includes("Cos&#x27;è") && html.includes("Valutazione") && html.includes("Storia"), person);
+    assert.ok(html.includes("Prossimo passo") && html.includes("Valutazione del team") && html.includes("Storia"), person);
+    assert.ok(!html.includes('aria-label="Capitoli"'), `${person}: nessuna barra delle ancore`);
     for (const text of ["Proposto da", proposer, "Email indicata", submitter]) assert.ok(!html.includes(text), `${person}: «${text}»`);
   }
 });
 
-test("revisori: «Oscura testo» per Lateral Space e chi gestisce il workspace, non per l'AI Builder del cliente; ancore per ruolo", opts, async () => {
+test("revisori: «Oscura testo» per Lateral Space e chi gestisce il workspace, non per l'AI Builder del cliente; «Archivia» nelle decisioni; ancore per ruolo", opts, async () => {
   const card = await seed({ description: "Un problema", publicNote: "Una nota" });
   const reviewerProp = async (person: Person) => {
     const { element } = await detailHtml(person, card.id);
-    const [reviewer] = findProp(element, "reviewer") as Array<{ canRedact: boolean; redactOptions: Array<{ field: string }>; canArchive: boolean } | null>;
+    const [reviewer] = findProp(element, "reviewer") as Array<{ canRedact: boolean; redactOptions: Array<{ field: string }> } | null>;
     return reviewer;
   };
   assert.equal((await reviewerProp("builder"))?.canRedact, false);
@@ -694,12 +723,23 @@ test("revisori: «Oscura testo» per Lateral Space e chi gestisce il workspace, 
     const reviewer = await reviewerProp(person);
     assert.equal(reviewer?.canRedact, true, person);
     assert.deepEqual(reviewer?.redactOptions.map((option) => option.field), ["titolo", "problema", "nota_pubblica"], person);
-    assert.equal(reviewer?.canArchive, true, `${person}: «Archivia» da «Da valutare»`);
+    assert.ok(!Object.hasOwn(reviewer ?? {}, "canArchive"), `${person}: «Archivia» non sta più nella testata`);
   }
-  const { element } = await detailHtml("builder", card.id, { capitolo: "valutazione" });
-  const [chapters] = findProp(element, "chapters") as Array<Array<{ id: string }>>;
-  assert.deepEqual(chapters.map((chapter) => chapter.id), ["cosa-e", "valutazione", "decisione", "cosa-serve", "storia"], "senza «Realizzazione» prima dell'approvazione");
+  const { element, html } = await detailHtml("builder", card.id, { capitolo: "valutazione" });
+  // «Archivia» sta nel menu «⋯ Altre decisioni» del riquadro, per le fasi di `decisionLayout`.
+  const [step] = findProp(element, "step") as Array<{ key: string; decisions: string }>;
+  const [boxItem] = findProp(element, "item").filter((value) => (value as { phaseLabel?: string })?.phaseLabel) as Array<Parameters<typeof import("./decision-ui.ts").decisionLayout>[0]>;
+  assert.deepEqual([step.key, step.decisions], ["H7", "full"]);
+  const { decisionLayout } = await import("./decision-ui.ts");
+  assert.ok(decisionLayout(boxItem, { canDecide: true }).menu.includes("archivia"));
+  assert.ok(html.includes('aria-label="Altre decisioni"'), "il menu delle decisioni nel riquadro");
+  const [ids] = findProp(element, "ids") as Array<string[]>;
+  assert.deepEqual(ids, ["decisione", "impatto", "cosa-e", "cosa-serve", "nota-pubblica", "valutazione", "dettagli", "storia"], "senza «Realizzazione» e «Quando» prima dell'approvazione");
   assert.deepEqual(findProp(element, "initial"), ["valutazione"], "?capitolo=");
+  assert.match(html, /<details id="valutazione" open="" data-slot="fold"/, "la piega aperta dal server");
+  assert.doesNotMatch(html, /<details id="storia" open=""/);
+  const plain = await detailHtml("builder", card.id, { capitolo: "realizzazione" });
+  assert.deepEqual(findProp(plain.element, "initial"), ["decisione"], "«Realizzazione» senza la piega: il riquadro");
 });
 
 test("contributore: titolo e fase; delle sue proposte codice e nota pubblica, anche nascoste; nascosta altrui «non trovato»", opts, async () => {
@@ -713,7 +753,10 @@ test("contributore: titolo e fase; delle sue proposte codice e nota pubblica, an
 
   const mine = await detailHtml("contributor", own.id);
   for (const text of [own.code!, own.title, "Da valutare · Serve info", "Nota pubblica", note]) assert.ok(mine.html.includes(text), `propria: manca «${text}»`);
-  for (const text of ["Cosa è", "Valutazione", "Storia", "Problema di prova", internal, "€", "data-figure", "Oscura"]) assert.ok(!mine.html.includes(text), `propria: «${text}»`);
+  for (const text of ["Cosa è", "Valutazione", "Storia", "Problema di prova", internal, "€", "data-figure", "Oscura", 'data-slot="use-case-path"', 'data-slot="next-step"', "Prossimo passo", "Percorso dello use case"]) {
+    assert.ok(!mine.html.includes(text), `propria: «${text}»`);
+  }
+  assert.match(mine.html, /data-slot="use-case-detail" data-projection="contributore" class="mx-auto w-full max-w-3xl min-w-0 space-y-6"/, "la scheda di prima");
 
   const mineHidden = await detailHtml("contributor", ownHidden.id);
   assert.ok(mineHidden.html.includes(ownHidden.code!) && mineHidden.html.includes(ownHidden.title), "propria nascosta: c'è, con il codice");
@@ -721,7 +764,9 @@ test("contributore: titolo e fase; delle sue proposte codice e nota pubblica, an
 
   const theirs = await detailHtml("contributor", others.id);
   assert.ok(theirs.html.includes(others.title) && theirs.html.includes("Approvato · T1 2027"));
-  for (const text of [others.code!, `Nota altrui ${suffix}`, "€", "data-figure", "Valore", "Problema di prova"]) assert.ok(!theirs.html.includes(text), `altrui: «${text}»`);
+  for (const text of [others.code!, `Nota altrui ${suffix}`, "€", "data-figure", "Valore", "Problema di prova", 'data-slot="use-case-path"', 'data-slot="next-step"', 'data-slot="fold"']) {
+    assert.ok(!theirs.html.includes(text), `altrui: «${text}»`);
+  }
   // Al contributore nessun dato oltre alla sua proiezione, nemmeno nelle prop dei pezzi del browser.
   const [card] = findProp(theirs.element, "card") as Array<Record<string, unknown>>;
   assert.deepEqual(Object.keys(card).sort(), ["code", "id", "phase", "phaseLabel", "subState", "title"]);
@@ -739,6 +784,36 @@ test("contributore: titolo e fase; delle sue proposte codice e nota pubblica, an
   const otherWorkspace = await seed({ workspaceId: ids.wsOff });
   const wrong = await open(pages.detail, "builder", { workspaceId: ids.ws, useCaseId: otherWorkspace.id });
   assert.match(wrong.digest ?? "", NOT_FOUND, "una scheda di un altro workspace");
+});
+
+test("una scheda per riga della tabella: il passo del riquadro, al massimo un pulsante pieno, nessun id doppio; il contributore senza percorso né riquadro", opts, async () => {
+  const cases: Array<[string, CardSeed, Record<"lsLead" | "builder", string>, number]> = [
+    ["nuova", {}, { lsLead: "H7", builder: "H7" }, 1],
+    ["serve info", { review: "needs_inputs", reviewedBy: ids.lsLead, publicNote: "Quante?" }, { lsLead: "H1", builder: "H1" }, 0],
+    ["approvata per un trimestre, senza informazioni", { status: "accepted", review: "scored", targetQuarter: "2027-Q1" }, { lsLead: "G9", builder: "G9" }, -1],
+    ["approvata più avanti", { status: "accepted", review: "scored" }, { lsLead: "G3", builder: "G3" }, 0],
+    ["in realizzazione senza dossier", { status: "in_progress", review: "scored", targetQuarter: "2027-Q1" }, { lsLead: "E2", builder: "E2" }, 1],
+    ["realizzata", { status: "implemented", review: "scored" }, { lsLead: "D1", builder: "D1" }, 0],
+    ["non avviata", { status: "rejected", review: "scored" }, { lsLead: "C", builder: "C" }, 0],
+    ["best practice approvata", { status: "accepted", review: "scored", kind: "best_practice" }, { lsLead: "F1", builder: "F1" }, 1],
+  ];
+  for (const [label, over, keys, filled] of cases) {
+    const card = await seed(over);
+    for (const person of ["lsLead", "builder"] as const) {
+      const { html } = await detailHtml(person, card.id);
+      assert.match(html, new RegExp(`data-slot="next-step" data-key="${keys[person]}"`), `${label}, ${person}: il passo`);
+      const full = filledButtons(html);
+      assert.ok(full.length <= 1, `${label}, ${person}: ${full.join(", ")}`);
+      // -1: dipende da chi guarda (G9: Lateral Space avvia, o segna con la sezione spenta; il cliente no).
+      if (filled >= 0) assert.equal(full.length, filled, `${label}, ${person}: pulsanti pieni`);
+      assert.deepEqual(duplicateIds(html), [], `${label}, ${person}: id doppi`);
+      const current = html.match(/aria-current="step"/g) ?? [];
+      assert.equal(current.length, label === "non avviata" ? 0 : 1, `${label}, ${person}: aria-current`);
+      if (label === "non avviata") assert.ok(!html.includes('data-slot="use-case-path"') && html.includes("Fuori dal percorso"));
+    }
+    const contributor = (await detailHtml("contributor", card.id)).html;
+    for (const slot of ["use-case-path", "next-step", "impatto", "fold", "scheda-grid"]) assert.ok(!contributor.includes(`data-slot="${slot}"`), `${label}, contributore: ${slot}`);
+  }
 });
 
 test("«Realizzazione»: «Avvia la realizzazione» solo a Lateral Space con la sezione Casi d'uso accesa; «Segna come in realizzazione» con la sezione spenta", opts, async () => {
@@ -781,32 +856,41 @@ test("«Cosa è»: un campo vuoto è solo «+ Aggiungi …», senza la riga dell
     const card = await seed({ intake: { contractVersion: 2, area: "amministrazione", tools: ["foglio_calcolo"], relatedAgent: "atlante" } });
     const { html } = await detailHtml("builder", card.id);
     const what = sectionOf(html, "section-what");
-    assert.ok(what.includes(">Amministrazione<"), "l'area con il titolo della guida");
-    assert.ok(!what.includes("amministrazione<"), "mai la chiave dell'area");
-    assert.ok(what.includes("Foglio di calcolo") && !what.includes("foglio calcolo"), "lo strumento con il titolo della guida");
-    assert.ok(what.includes(">ATLANTE<"), "l'agente collegato con il nome del catalogo");
+    const details = sectionOf(html, "details-fields");
+    assert.ok(details.includes(">Amministrazione<"), "l'area con il titolo della guida, in «Dettagli»");
+    assert.ok(!html.includes("amministrazione<"), "mai la chiave dell'area");
+    assert.ok(details.includes("Foglio di calcolo") && !details.includes("foglio calcolo"), "lo strumento con il titolo della guida");
+    assert.ok(details.includes(">ATLANTE<"), "l'agente collegato con il nome del catalogo");
     // Pieni con l'etichetta; vuoti in una sola riga di «+ Aggiungi …», senza etichetta (§6.2).
-    assert.ok(what.includes(">Problema</dt>") && what.includes(">Area</dt>"));
-    const emptyRow = what.indexOf('data-slot="what-empty-fields"');
-    assert.ok(emptyRow > what.indexOf(">Area</dt>"), "i campi vuoti dopo quelli pieni");
-    for (const label of ["Come funziona", "Chi controlla", "Limiti", "Impatto atteso", "Dati", "AI Lab"]) {
-      assert.ok(what.includes(inlineModule.addLabelOf(label)), `manca «${inlineModule.addLabelOf(label)}»`);
-      assert.ok(!what.includes(`>${label}<`), `${label}: nessuna riga d'etichetta per un campo vuoto`);
+    assert.ok(what.includes(">Problema</dt>") && details.includes(">Area</dt>"));
+    assert.ok(details.includes(">Tipo</dt>") && details.includes(">Origine</dt>"), "tipo e origine in «Dettagli»");
+    assert.ok(details.indexOf('data-slot="what-empty-fields"') > details.indexOf(">Area</dt>"), "i campi vuoti dopo quelli pieni");
+    for (const [part, labels] of [
+      [what, ["Come funziona", "Chi controlla", "Limiti"]],
+      [details, ["Impatto atteso", "Dati", "AI Lab"]],
+    ] as const) {
+      for (const label of labels) {
+        assert.ok(part.includes(inlineModule.addLabelOf(label)), `manca «${inlineModule.addLabelOf(label)}»`);
+        assert.ok(!part.includes(`>${label}<`), `${label}: nessuna riga d'etichetta per un campo vuoto`);
+      }
     }
-    assert.ok(what.includes("+ Aggiungi possibile doppione di") && !what.includes(">Possibile doppione di<"), "«Dettagli»: lo stesso");
+    assert.ok(details.includes("+ Aggiungi possibile doppione di") && !details.includes(">Possibile doppione di<"), "«Dettagli»: lo stesso");
+    assert.match(html, /<details id="dettagli" data-slot="fold"[\s\S]*?<h2 class="text-base font-semibold">Dettagli<\/h2><span[^>]*>area<\/span>/, "la riga della piega: i campi pieni");
   } finally {
     await q(`DELETE FROM workspace_connector_configs WHERE workspace_id = $1::uuid`, [ids.ws]);
   }
 });
 
-test("«Decisione»: nota pubblica con l'avviso; per una scheda nascosta la seconda riga; un solo pulsante pieno", opts, async () => {
+test("«Nota pubblica» accanto: l'avviso; per una scheda nascosta la seconda riga; un solo pulsante pieno, nel riquadro", opts, async () => {
   const card = await seed({ intake: { hiddenFromSearch: true }, origin: "transformation" });
   const { html } = await detailHtml("builder", card.id);
-  const decision = sectionOf(html, "section-decision");
+  const decision = blockOf(html, "nota-pubblica");
+  assert.ok(decision.includes("Nota pubblica (facoltativa)"));
   assert.ok(decision.includes("Chi conosce il codice la legge tramite Claude. Non scrivere dati personali."));
   assert.ok(decision.includes("Questa scheda è nascosta alla ricerca: tramite Claude chi conosce il codice vede solo la fase."));
   const filled = html.match(/data-slot="button"[^>]*class="[^"]*bg-primary[^"]*"/g) ?? [];
   assert.equal(filled.length, 1, "un solo pulsante pieno nella pagina (Approva)");
+  assert.deepEqual(filledButtons(between(html, 'data-slot="next-step"', "</section>")), ["Approva"], "nel riquadro «Prossimo passo»");
 });
 
 test("«Decisione» dopo una risposta a «Serve info»: prima la domanda del team, poi le risposte di chi ha proposto (D17)", opts, async () => {
@@ -814,7 +898,7 @@ test("«Decisione» dopo una risposta a «Serve info»: prima la domanda del tea
   const answer = `Circa 40 visite al mese ${suffix}`;
   const card = await seed({ publicNote: question, intake: { risposte: [{ at: "2026-10-02T09:00:00.000Z", text: answer }] } });
   const { html } = await detailHtml("builder", card.id);
-  const decision = sectionOf(html, "section-decision");
+  const decision = blockOf(html, "nota-pubblica");
   const asked = decision.indexOf(question);
   const answers = decision.indexOf('data-slot="proposer-answers"');
   assert.ok(asked > 0, "la domanda nel campo «Nota pubblica»");
@@ -861,39 +945,21 @@ test("area spenta per il workspace: la scheda di oggi; `/use-cases/nuovo` rispon
 
 // ═══ I pezzi puri dei capitoli ═══════════════════════════════════════
 
-test("capitoli: `?capitolo=`, ancore per ruolo, «Realizzazione» dalla fase Approvato in poi", opts, () => {
-  const { chapterFromParam, detailChapters, showsRealization } = detailModule;
+test("capitoli: `?capitolo=` e i suoi alias; «Realizzazione» dalla fase Approvato in poi", opts, () => {
+  const { chapterFromParam, showsRealization } = detailModule;
   assert.equal(chapterFromParam("realizzazione"), "realizzazione");
   assert.equal(chapterFromParam(["storia"]), "storia");
   assert.equal(chapterFromParam("cosa"), "cosa-e");
+  assert.equal(chapterFromParam("Cos'è"), "cosa-e");
+  for (const chapter of ["decisione", "cosa-serve", "valutazione", "dettagli"]) assert.equal(chapterFromParam(chapter), chapter);
   assert.equal(chapterFromParam("proponente"), null);
   assert.equal(chapterFromParam(undefined), null);
-  assert.deepEqual(detailChapters({ isReviewer: false, canSeeHistory: false }, { showRealization: true }), []);
-  assert.deepEqual(
-    detailChapters({ isReviewer: true, canSeeHistory: true }, { showRealization: true }).map((c) => c.label),
-    ["Cos'è", "Valutazione", "Decisione", "Realizzazione", "Storia"],
-  );
-  assert.deepEqual(
-    detailChapters({ isReviewer: true, canSeeHistory: true, canSeeNeeds: true }, { showRealization: true }).map((c) => c.label),
-    ["Cos'è", "Valutazione", "Decisione", "Cosa serve", "Realizzazione", "Storia"],
-  );
-  assert.deepEqual(detailChapters({ isReviewer: false, canSeeHistory: false, canSeeNeeds: false }, { showRealization: true }), []);
   assert.equal(showsRealization({ phase: "da_valutare", kind: "da_costruire", dossier: null }), false);
   assert.equal(showsRealization({ phase: "approvato", kind: "da_costruire", dossier: null }), true);
   assert.equal(showsRealization({ phase: "chiuso", kind: "da_costruire", dossier: null }), false);
   assert.equal(showsRealization({ phase: "chiuso", kind: "da_costruire", dossier: { status: "chiuso" } }), true);
   assert.equal(showsRealization({ phase: "realizzato", kind: "da_diffondere", dossier: null }), true);
   assert.equal(showsRealization({ phase: "in_realizzazione", kind: "da_diffondere", dossier: null }), false);
-
-  // L'ancora del capitolo in vista: l'ultimo salito sopra la linea; in fondo alla pagina l'ultimo visibile.
-  const sections = (tops: number[]) => ["cosa-e", "valutazione", "decisione", "realizzazione", "storia"].map((id, i) => ({ id, top: tops[i] }));
-  const view = { line: 130, height: 800, atBottom: false };
-  assert.equal(chapterNavModule.activeChapterAt(sections([250, 900, 1500, 2100, 2400]), view), "cosa-e", "in cima: il primo");
-  assert.equal(chapterNavModule.activeChapterAt(sections([-600, 112, 700, 1300, 1600]), view), "valutazione", "arrivato con un'ancora (scroll-mt-28)");
-  assert.equal(chapterNavModule.activeChapterAt(sections([-1400, -700, 40, 400, 650]), view), "decisione", "la linea, non la finestra");
-  assert.equal(chapterNavModule.activeChapterAt(sections([-1400, -700, 40, 400, 650]), { ...view, atBottom: true }), "storia", "in fondo: l'ultimo visibile");
-  assert.equal(chapterNavModule.activeChapterAt(sections([-1400, -700, 40, 400, 900]), { ...view, atBottom: true }), "realizzazione");
-  assert.equal(chapterNavModule.activeChapterAt([], view), null);
 });
 
 test("«Oscura testo»: solo i campi con un testo, etichette del tipo, mai un testo già oscurato", opts, () => {
@@ -1237,13 +1303,41 @@ if (process.env.HUB_DETAIL_HARNESS === "1") {
       }
     });
 
-    test("nel browser: `?capitolo=` tiene evidenziata la sua ancora anche per i capitoli in fondo; scorrendo, il capitolo in vista", async () => {
+    test("nel browser: `?capitolo=` apre la sua piega dal server, la porta in cima e le dà il fuoco; `#storia` la apre; «Cosa serve» dà il fuoco al titolo", async () => {
       const ws = fixtures.workspaces.a.workspaceId;
       const cdp = await loadCdp();
       const browser = await cdp.launchBrowser({ colorScheme: "dark" });
-      const current = (tab: unknown) =>
-        cdp.evaluate(tab, () => document.querySelector('nav[aria-label="Capitoli"] a[aria-current="location"]')?.getAttribute("data-chapter") ?? null);
+      const cookie = await cookieOf("ls-lead", `/dashboard/${ws}/use-cases`);
+      /** Dove è arrivata la pagina: la piega aperta, il fuoco dentro, la cima della piega (o la pagina in fondo). */
+      const landed = (tab: unknown, id: string) =>
+        cdp.evaluate(
+          tab,
+          (target: string) => {
+            const el = document.getElementById(target);
+            const root = document.scrollingElement ?? document.documentElement;
+            return {
+              open: el instanceof HTMLDetailsElement ? el.open : null,
+              focusInside: Boolean(el && document.activeElement && el.contains(document.activeElement)),
+              focusTag: document.activeElement?.tagName.toLowerCase() ?? null,
+              focusId: document.activeElement?.id ?? null,
+              top: el ? Math.round(el.getBoundingClientRect().top) : null,
+              atBottom: root.scrollTop + window.innerHeight >= root.scrollHeight - 2,
+              chapterBar: Boolean(document.querySelector('nav[aria-label="Capitoli"]')),
+            };
+          },
+          id,
+        );
       try {
+        // Il server rende la piega già aperta: si vede anche prima che il browser faccia qualcosa.
+        for (const [key, chapter] of [
+          ["r09", "realizzazione"],
+          ["r17", "storia"],
+          ["r09", "valutazione"],
+          ["r09", "dettagli"],
+        ] as const) {
+          const html = (await get(`/dashboard/${ws}/use-cases/${seeded("a", key).id}?capitolo=${chapter}`, cookie)).body;
+          assert.match(html, new RegExp(`<details id="${chapter}" open=""`), `?capitolo=${chapter}: aperta dal server`);
+        }
         for (const width of [1440, 400]) {
           const tab = await cdp.newPage(browser, { width });
           await cdp.loginAs(tab, "ls-lead", { to: `/dashboard/${ws}`, loginOrigin: login });
@@ -1251,25 +1345,26 @@ if (process.env.HUB_DETAIL_HARNESS === "1") {
             ["r09", "realizzazione"],
             ["r17", "storia"],
             ["r09", "valutazione"],
+            ["r09", "dettagli"],
           ] as const) {
             await cdp.navigate(tab, `${app}/dashboard/${ws}/use-cases/${seeded("a", key).id}?capitolo=${chapter}`);
             await sleep(600);
-            assert.equal(await current(tab), chapter, `${width} px, ?capitolo=${chapter}: l'ancora evidenziata`);
+            const at = await landed(tab, chapter);
+            assert.equal(at.open, true, `${width} px, ?capitolo=${chapter}: aperta`);
+            assert.ok(at.focusInside, `${width} px, ?capitolo=${chapter}: il fuoco dentro (${at.focusTag})`);
+            assert.ok((at.top !== null && at.top >= 0 && at.top <= 120) || at.atBottom, `${width} px, ?capitolo=${chapter}: in cima (${at.top} px)`);
+            assert.equal(at.chapterBar, false, "nessuna barra delle ancore");
           }
-          // La persona scorre (rotella) fino in cima: il capitolo in vista è il primo.
-          await cdp.evaluate(tab, () => {
-            window.dispatchEvent(new WheelEvent("wheel", { deltaY: -400, bubbles: true }));
-            window.scrollTo(0, 0);
-          });
-          await sleep(400);
-          assert.equal(await current(tab), "cosa-e", `${width} px: in cima, «Cosa è»`);
-          // Fino in fondo: l'ultimo capitolo visibile.
-          await cdp.evaluate(tab, () => {
-            window.dispatchEvent(new WheelEvent("wheel", { deltaY: 400, bubbles: true }));
-            window.scrollTo(0, document.documentElement.scrollHeight);
-          });
-          await sleep(400);
-          assert.equal(await current(tab), "storia", `${width} px: in fondo, «Storia»`);
+          // Un indirizzo copiato prima, con l'ancora della Storia: la piega si apre.
+          await cdp.navigate(tab, `${app}/dashboard/${ws}/use-cases/${seeded("a", "r17").id}#storia`);
+          await sleep(600);
+          const hashed = await landed(tab, "storia");
+          assert.equal(hashed.open, true, `${width} px, #storia: aperta`);
+          // «Cosa serve» (email, campanella): la sezione, sempre aperta, con il fuoco sul titolo.
+          await cdp.navigate(tab, `${app}/dashboard/${ws}/use-cases/${seeded("a", "r09").id}?capitolo=cosa-serve`);
+          await sleep(600);
+          const needs = await landed(tab, "cosa-serve");
+          assert.equal(needs.focusId, "cosa-serve-titolo", `${width} px: il fuoco sul titolo di «Cosa serve»`);
           await cdp.closePage(tab);
         }
       } finally {

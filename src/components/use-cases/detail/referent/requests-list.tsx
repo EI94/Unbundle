@@ -33,12 +33,15 @@ export function requestActionsShown(request: Pick<ReferentRequestView, "status" 
  * confronto tra persone (art. 15.4).
  */
 export function RequestsList({
+  id,
   workspaceId,
   useCaseId,
   requests,
   canAsk,
   onOpen,
 }: {
+  /** L'ancora del blocco («Vedi le richieste» del riquadro «Prossimo passo»). */
+  id?: string;
   workspaceId: string;
   useCaseId: string;
   requests: readonly ReferentRequestView[];
@@ -48,8 +51,8 @@ export function RequestsList({
   const headingId = useId();
   if (requests.length === 0) return null;
   return (
-    <section aria-labelledby={headingId} data-slot="referent-requests" className="space-y-2">
-      <h3 id={headingId} className="text-sm font-medium">
+    <section id={id} aria-labelledby={headingId} data-slot="referent-requests" className={id ? "scroll-mt-20 space-y-2" : "space-y-2"}>
+      <h3 id={headingId} tabIndex={id ? -1 : undefined} className="text-sm font-medium outline-none">
         {T.requestsHeading}
       </h3>
       <ul className="divide-y rounded-lg border">

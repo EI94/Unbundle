@@ -2,7 +2,9 @@ import type { UseCaseDetailResult } from "@/lib/db/queries/use-case-hub";
 import type { UseCaseRealization } from "@/lib/uc/views/realization";
 import { answersOf } from "@/lib/use-cases/answers";
 import type { UseCaseEventList } from "@/lib/db/queries/use-case-events";
-import { decisionLayout, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
+import { DIALOG_COMMON_TEXT, PUBLIC_NOTE_TEXT, toDecisionItem, toDuplicateCandidates, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
+import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
+import { GUIDED_TEXT, arrivalTarget, detailTargetIds, foldSummaries, nextStepOf, pathOfUseCase, type NextStep } from "@/lib/use-cases/guided";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { TEXT_LIMITS } from "@/lib/use-cases/inputs";
 import { WHAT_FIELD_LABEL } from "@/lib/use-cases/labels";
@@ -12,26 +14,43 @@ import type { UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
 import type { RedactableField } from "@/lib/use-cases/service";
 import type { UseCaseDetail } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
+import { PublicNoteDraftProvider } from "../decision-buttons";
+import { ProposerAnswers } from "../proposer-answers";
 import { OwnMarker, othersCardNote } from "../use-case-row";
-import { ContributorDecisionSection, SectionDecision } from "./section-decision";
-import { ChapterNav, type ChapterLink } from "./chapter-nav";
+import { WhenControl } from "../when-control";
+import { Arrival } from "./arrival";
 import { DetailHeader } from "./detail-header";
+import { Fold } from "./fold";
 import { IntakeDetails, type GuideLabels } from "./intake-details";
+import { NextStepBox, PagePrimaryProvider } from "./next-step-box";
+import { PublicNoteField } from "./public-note-field";
 import type { RedactOption } from "./redact-dialog";
+import { askEntry } from "./referent/ask-dialog-state";
+import { ReferentDialogHost } from "./referent/dialog-host";
+import { ContributorDecisionSection } from "./section-decision";
 import { SectionHistory } from "./section-history";
 import { SectionNeeds } from "./section-needs";
-import { SectionRealization } from "./section-realization";
-import { SectionValuation } from "./section-valuation";
-import { SectionWhat } from "./section-what";
+import { SectionRealization, realizationVariant } from "./section-realization";
+import { SectionValuation, aiSuggestionShown, valuationKpiGroups } from "./section-valuation";
+import { DetailsFields, SectionWhat, detailsFieldRows, hasFieldText } from "./section-what";
+import { UseCasePath } from "./use-case-path";
 
 // ═══ Capitoli (§6.1, §6.7) ═══════════════════════════════════════════
 
-/** I capitoli della scheda, nell'ordine delle ancore (§6.1, §14.3). */
+/** Un'ancora della scheda: l'`id` del blocco e il suo nome. */
+export interface ChapterLink {
+  /** L'ancora (`id` del blocco o della piega), es. «valutazione». */
+  id: string;
+  label: string;
+}
+
+/** I `?capitolo=` della scheda, nell'ordine della pagina (§6.1, §14.3; rilascio 3). */
 export const DETAIL_CHAPTERS = [
+  { id: "decisione", label: "Prossimo passo" },
   { id: "cosa-e", label: "Cos'è" },
-  { id: "valutazione", label: "Valutazione" },
-  { id: "decisione", label: "Decisione" },
   { id: "cosa-serve", label: "Cosa serve" },
+  { id: "valutazione", label: "Valutazione del team" },
+  { id: "dettagli", label: "Dettagli" },
   { id: "realizzazione", label: "Realizzazione" },
   { id: "storia", label: "Storia" },
 ] as const satisfies readonly ChapterLink[];
@@ -58,24 +77,6 @@ export function showsRealization(item: Pick<UseCaseDetail, "phase" | "kind"> & {
   if (item.kind === "da_diffondere") return item.phase === "approvato" || item.phase === "realizzato";
   if (item.phase === "approvato" || item.phase === "in_realizzazione" || item.phase === "realizzato") return true;
   return item.phase === "chiuso" && Boolean(item.dossier);
-}
-
-/**
- * Le ancore di chi guarda (§6.7): i revisori «Cos'è», «Valutazione», «Decisione», «Cosa serve»,
- * «Realizzazione» (quando c'è) e «Storia»; il contributore nessuna (la sua scheda è testata e
- * nota pubblica, §6.9). Mai ancore spente.
- */
-export function detailChapters(
-  abilities: Pick<UseCaseAbilities, "isReviewer" | "canSeeHistory"> & Partial<Pick<UseCaseAbilities, "canSeeNeeds">>,
-  opts: { showRealization: boolean },
-): ChapterLink[] {
-  if (!abilities.isReviewer) return [];
-  return DETAIL_CHAPTERS.filter((chapter) => {
-    if (chapter.id === "cosa-serve") return abilities.canSeeNeeds === true;
-    if (chapter.id === "realizzazione") return opts.showRealization;
-    if (chapter.id === "storia") return abilities.canSeeHistory;
-    return true;
-  }).map(({ id, label }) => ({ id, label }));
 }
 
 // ═══ «Oscura testo» (§6.8) ═══════════════════════════════════════════
@@ -201,18 +202,28 @@ export interface UseCaseDetailViewProps {
    * cliente. Il chip accanto alla fase e il riepilogo in cima a «Cosa serve».
    */
   infoProgress?: InfoProgressView | null;
-  /** Il nome del team che valuta, da solo (§14.2): i testi del contributore. */
+  /** Il nome del team che valuta, da solo (§14.2): «Tocca a …» e i testi del contributore. */
   teamName: string;
+  /** Il nome del workspace (`access.workspace.name`): «Chiedere le informazioni a TopJet». */
+  companyName?: string | null;
   className?: string;
 }
 
+/** La riga dei controlli di «Cosa serve» che il riquadro «Prossimo passo» ha già (§8.4). */
+function boxAskOf(step: NextStep): "ask" | "gate" | null {
+  if (step.key === "G5") return "ask";
+  return step.key === "G4" || step.key === "G6" ? "gate" : null;
+}
+
 /**
- * La scheda `/use-cases/[id]` con l'area accesa (docs/use-case/DESIGN.md §6): testata, ancore e i
- * capitoli per ruolo (§6.7). I revisori leggono e modificano «Cos'è» e «Valutazione», decidono
- * in «Decisione» (D3), vedono «Realizzazione» e «Storia»; «Avvia la realizzazione» solo Lateral
- * Space. Chi gestisce il workspace vede anche «Proposto da» ed «Email indicata» e può oscurare
- * un testo. Il contributore vede titolo e fase, e delle sue proposte codice e nota pubblica
- * (D4, D13): i dati gli arrivano già proiettati dal server.
+ * La scheda `/use-cases/[id]` con l'area accesa (docs/use-case/DESIGN.md §6; rilascio 3 «Scheda
+ * guidata»). Ai revisori: la testata, il percorso dello use case, il riquadro «Prossimo passo» con
+ * il solo pulsante pieno della pagina quando il passo è loro, poi su due colonne (dai 58rem della
+ * scheda) il contenuto, «Quando» e la nota pubblica accanto, e le pieghe «Valutazione del team»,
+ * «Dettagli», «Realizzazione» (quando c'è) e «Storia». Chi gestisce il workspace vede anche
+ * «Proposto da» ed «Email indicata» e può oscurare un testo. Il contributore vede la scheda di
+ * prima: titolo e fase, e delle sue proposte codice e nota pubblica (D4, D13), con i dati già
+ * proiettati dal server.
  */
 export function UseCaseDetailView({
   workspaceId,
@@ -229,6 +240,7 @@ export function UseCaseDetailView({
   referents = null,
   infoProgress = null,
   teamName,
+  companyName = null,
   className,
 }: UseCaseDetailViewProps) {
   if (result.projection === "contributore") {
@@ -255,105 +267,186 @@ export function UseCaseDetailView({
   }
 
   const detail = result.useCase;
+  const today = result.today;
   const proposer = result.projection === "gestore" ? result.useCase.proposer : null;
   const showRealization = showsRealization(detail);
-  const chapters = detailChapters(abilities, { showRealization });
-  const layout = decisionLayout(detail, { canDecide: abilities.canDecide });
-  const canArchive = layout.menu.includes("archivia") || layout.outline.includes("archivia");
-  const closedOn = closedOnFrom(events);
+  const variant = showRealization
+    ? realizationVariant(detail, {
+        dossierRead: result.dossierRead,
+        canStartRealization: abilities.canStartRealization,
+        canMarkInProgress: abilities.canMarkInProgress,
+        realization,
+      })
+    : null;
+  const realizationFold = variant !== null && variant !== "fase";
+  const needsShown = abilities.canSeeNeeds && needs !== null;
+  const info = abilities.canSeeNeeds ? infoProgress : null;
+  const feature = abilities.canSeeNeeds && referents?.available ? referents : null;
+  const entry = feature ? askEntry(feature) : null;
+  const step = nextStepOf({
+    workspaceId,
+    item: detail,
+    today,
+    teamName,
+    companyName,
+    canDecide: abilities.canDecide,
+    canOpenAnyDossier: abilities.canOpenAnyDossier,
+    info,
+    referents: abilities.canSeeNeeds && referents ? { available: referents.available, canAsk: referents.canAsk, gates: referents.gates, requestCount: referents.requests.length } : null,
+    askEntry: entry,
+    realizationVariant: variant,
+    realization,
+    dossierRead: result.dossierRead,
+    closedOn: closedOnFrom(events),
+  });
+  const path = pathOfUseCase({ item: detail, today, info, dossierRead: result.dossierRead });
+  const historyShown = abilities.canSeeHistory && Boolean(events);
+  const targets = detailTargetIds({
+    phase: detail.phase,
+    needs: needsShown,
+    requests: Boolean(feature && feature.requests.length > 0),
+    realization: realizationFold,
+    history: historyShown,
+  });
+  const arrival = arrivalTarget(chapter ?? null, targets);
+  const opens = (id: string) => arrival === id;
+  const groups = valuationKpiGroups(result.model, { esgEnabled: result.esgEnabled });
+  const summaries = foldSummaries({
+    valuation: {
+      estimates: unofficialEstimateLines(detail.intake).length > 0,
+      aiSuggestion: aiSuggestionShown(detail.aiSuggestion, groups),
+      value: detail.value,
+      zone: detail.zone,
+    },
+    filledDetails: detailsFieldRows(detail, { esgEnabled: result.esgEnabled })
+      .filter((row) => hasFieldText(row.value))
+      .map((row) => row.label),
+    realization: realizationFold && variant ? { variant, realization, dossier: detail.dossier, realizedOn: detail.realizedOn } : null,
+    events: historyShown && events ? events.events : null,
+    today,
+  });
+  // Al browser solo le parti delle decisioni, non la scheda intera; dei candidati solo id, codice e titolo.
+  const decisionItem = toDecisionItem(detail);
+  const needTitles = needs ? Object.fromEntries([...needs.lists.requirements, ...needs.lists.steps].map((need) => [need.id.toLowerCase(), need.title])) : {};
+  const t = GUIDED_TEXT.folds;
 
   return (
-    <div data-slot="use-case-detail" data-projection={result.projection} className={cn("mx-auto w-full max-w-3xl min-w-0", className)}>
+    <div data-slot="use-case-detail" data-projection={result.projection} className={cn("@container/scheda mx-auto w-full max-w-5xl min-w-0", className)}>
       <DetailHeader
         workspaceId={workspaceId}
-        card={{
-          id: detail.id,
-          title: detail.title,
-          code: detail.code,
-          phase: detail.phase,
-          subState: detail.subState,
-          phaseLabel: detail.phaseLabel,
-          tone: detail.tone,
-          origin: detail.origin,
-          kind: detail.kind,
-        }}
+        card={{ id: detail.id, title: detail.title, code: detail.code, phase: detail.phase, subState: detail.subState, phaseLabel: detail.phaseLabel }}
         titleEdit={abilities.canEditWhat ? { item: { id: detail.id, version: detail.version }, label: WHAT_FIELD_LABEL.title[detail.kind] ?? "Titolo", max: TEXT_LIMITS.title } : null}
         reviewer={{
           item: { id: detail.id, code: detail.code, version: detail.version, hiddenFromSearch: detail.hiddenFromSearch },
           canSetHidden: abilities.canSetHiddenFromSearch,
-          canArchive,
           canRedact: abilities.canRedact,
           redactOptions: abilities.canRedact ? redactOptions(detail) : [],
         }}
-        infoProgress={abilities.canSeeNeeds ? infoProgress : null}
       />
-      <ChapterNav chapters={chapters} initial={chapter ?? null} className="mt-4" />
-      <div className="mt-6 space-y-10">
-        <SectionWhat
-          workspaceId={workspaceId}
-          detail={detail}
-          canEdit={abilities.canEditWhat}
-          esgEnabled={result.esgEnabled}
-          areaOptions={guide?.areas ?? null}
-          details={<IntakeDetails workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} proposer={proposer} labels={guide} />}
-        />
-        <SectionValuation
-          workspaceId={workspaceId}
-          detail={detail}
-          model={result.model}
-          costBands={result.costBands}
-          valueParams={result.valueParams}
-          today={result.today}
-          esgEnabled={result.esgEnabled}
-          canEdit={abilities.canEditValuation}
-        />
-        <SectionDecision
-          workspaceId={workspaceId}
-          item={detail}
-          today={result.today}
-          canDecide={abilities.canDecide}
-          candidates={candidates}
-          closedOn={closedOn ? closedOn.toISOString() : null}
-          answers={answersOf(detail.intake)}
-          className="scroll-mt-28"
-        />
-        {abilities.canSeeNeeds && needs ? (
-          <SectionNeeds
-            workspaceId={workspaceId}
-            useCaseId={detail.id}
-            requirements={needs.lists.requirements}
-            steps={needs.lists.steps}
-            linkable={needs.lists.linkable}
-            refs={needs.refs}
-            today={result.today}
-            canEdit={abilities.canEditNeeds}
-            referents={referents}
-            infoProgress={infoProgress}
-          />
-        ) : null}
-        {showRealization ? (
-          <SectionRealization
-            workspaceId={workspaceId}
-            item={detail}
-            today={result.today}
-            dossierRead={result.dossierRead}
-            canStartRealization={abilities.canStartRealization}
-            canMarkInProgress={abilities.canMarkInProgress}
-            canOpenAnyDossier={abilities.canOpenAnyDossier}
-            realization={realization}
-            primaryTaken={layout.primary !== null}
-          />
-        ) : null}
-        {abilities.canSeeHistory && events ? (
-          <SectionHistory
-            events={events}
-            kind={detail.kind}
-            today={result.today}
-            open={chapter === "storia" || historyAll}
-            showAllHref={historyAll ? null : historyAllHref}
-          />
-        ) : null}
-      </div>
+      <Arrival initial={arrival} ids={targets} />
+      {path ? <UseCasePath path={path} className="mt-4" /> : null}
+      {/* «Serve info» e «Non avviare» si aprono con il testo del campo «Nota pubblica»; un solo pulsante pieno per pagina. */}
+      <PublicNoteDraftProvider>
+        <PagePrimaryProvider>
+          <ReferentDialogHost workspaceId={workspaceId} useCaseId={detail.id} panel={feature} canEdit={abilities.canEditNeeds} needTitles={needTitles}>
+            <NextStepBox
+              workspaceId={workspaceId}
+              step={step}
+              item={decisionItem}
+              today={today}
+              canDecide={abilities.canDecide}
+              candidates={toDuplicateCandidates(candidates)}
+              canMarkInProgress={abilities.canMarkInProgress}
+              className="mt-4"
+            />
+            <div data-slot="scheda-grid" className="mt-8 grid gap-8 @min-[58rem]/scheda:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/scheda:gap-x-8">
+              <div data-slot="scheda-main" className="min-w-0 space-y-10 @min-[58rem]/scheda:col-start-1 @min-[58rem]/scheda:row-start-1">
+                <SectionWhat workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} esgEnabled={result.esgEnabled} areaOptions={guide?.areas ?? null} />
+                {abilities.canSeeNeeds && needs ? (
+                  <SectionNeeds
+                    workspaceId={workspaceId}
+                    useCaseId={detail.id}
+                    requirements={needs.lists.requirements}
+                    steps={needs.lists.steps}
+                    linkable={needs.lists.linkable}
+                    refs={needs.refs}
+                    today={today}
+                    canEdit={abilities.canEditNeeds}
+                    referents={referents}
+                    infoProgress={infoProgress}
+                    boxAsk={boxAskOf(step)}
+                  />
+                ) : null}
+              </div>
+              <aside data-slot="scheda-aside" className="min-w-0 space-y-4 self-start @min-[58rem]/scheda:col-start-2 @min-[58rem]/scheda:row-span-2 @min-[58rem]/scheda:row-start-1">
+                {detail.phase === "approvato" ? (
+                  <section id="quando" aria-labelledby="quando-titolo" className="scroll-mt-20 space-y-3 rounded-xl border bg-card p-4">
+                    <h2 id="quando-titolo" tabIndex={-1} className="text-sm font-semibold outline-none">
+                      {DIALOG_COMMON_TEXT.when}
+                    </h2>
+                    <WhenControl
+                      workspaceId={workspaceId}
+                      item={decisionItem}
+                      today={today}
+                      canDecide={abilities.canDecide}
+                      labelledBy="quando-titolo"
+                      className="@min-[58rem]/scheda:max-w-none @min-[58rem]/scheda:grid-cols-1"
+                    />
+                  </section>
+                ) : null}
+                <section id="nota-pubblica" aria-label={PUBLIC_NOTE_TEXT.label} tabIndex={-1} className="scroll-mt-20 space-y-4 rounded-xl border bg-card p-4 outline-none">
+                  <PublicNoteField workspaceId={workspaceId} item={decisionItem} canEdit={abilities.canDecide} />
+                  <ProposerAnswers answers={answersOf(detail.intake)} />
+                </section>
+              </aside>
+              <div data-slot="detail-folds" className="min-w-0 @min-[58rem]/scheda:col-start-1 @min-[58rem]/scheda:row-start-2">
+                <Fold id="valutazione" title={t.valutazione} summary={summaries.valutazione} open={opens("valutazione")}>
+                  <SectionValuation
+                    workspaceId={workspaceId}
+                    detail={detail}
+                    model={result.model}
+                    costBands={result.costBands}
+                    valueParams={result.valueParams}
+                    today={today}
+                    esgEnabled={result.esgEnabled}
+                    canEdit={abilities.canEditValuation}
+                  />
+                </Fold>
+                <Fold id="dettagli" title={t.dettagli} summary={summaries.dettagli} open={opens("dettagli")}>
+                  <DetailsFields
+                    workspaceId={workspaceId}
+                    detail={detail}
+                    canEdit={abilities.canEditWhat}
+                    esgEnabled={result.esgEnabled}
+                    areaOptions={guide?.areas ?? null}
+                    intake={<IntakeDetails workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} proposer={proposer} labels={guide} bare />}
+                  />
+                </Fold>
+                {realizationFold ? (
+                  <Fold id="realizzazione" title={t.realizzazione} summary={summaries.realizzazione} open={opens("realizzazione")}>
+                    <SectionRealization
+                      workspaceId={workspaceId}
+                      item={detail}
+                      today={today}
+                      dossierRead={result.dossierRead}
+                      canStartRealization={abilities.canStartRealization}
+                      canMarkInProgress={abilities.canMarkInProgress}
+                      canOpenAnyDossier={abilities.canOpenAnyDossier}
+                      realization={realization}
+                      boxOwnsStart={step.key === "G9"}
+                    />
+                  </Fold>
+                ) : null}
+                {abilities.canSeeHistory && events ? (
+                  <Fold id="storia" title={t.storia} summary={summaries.storia} open={opens("storia") || historyAll}>
+                    <SectionHistory events={events} kind={detail.kind} today={today} showAllHref={historyAll ? null : historyAllHref} />
+                  </Fold>
+                ) : null}
+              </div>
+            </div>
+          </ReferentDialogHost>
+        </PagePrimaryProvider>
+      </PublicNoteDraftProvider>
     </div>
   );
 }

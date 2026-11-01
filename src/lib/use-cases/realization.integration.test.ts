@@ -294,6 +294,75 @@ test("capitolo «Realizzazione»: riepilogo per ogni revisore, «Apri il dossier
   assert.ok(!own.includes("section-realization") && !own.includes("Costo di realizzazione"), "il contributore non riceve il capitolo");
 });
 
+/** I pulsanti pieni (`[data-slot=button].bg-primary`, anche i link) di un pezzo di HTML, con il loro testo. */
+function filledIn(html: string): string[] {
+  return [...html.matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/g)]
+    .filter(([, , attrs]) => /\sdata-slot="button"/.test(attrs) && (/\sclass="([^"]*)"/.exec(attrs)?.[1].split(/\s+/) ?? []).includes("bg-primary"))
+    .map(([, , , body]) => body.replace(/<[^>]+>/g, "").trim());
+}
+
+/** La scheda: l'elemento della pagina e i suoi pezzi (riquadro, piega «Realizzazione»). */
+async function schedaOf(person: Person, useCaseId: string) {
+  signIn(person);
+  const element = await detailPage({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId }), searchParams: Promise.resolve({}) });
+  const html = renderToStaticMarkup(element);
+  return {
+    element,
+    html,
+    box: html.slice(html.indexOf('data-slot="next-step"'), html.indexOf('data-slot="scheda-grid"')),
+    fold: html.includes('id="realizzazione"') ? html.slice(html.indexOf('<details id="realizzazione"'), html.indexOf("</details>", html.indexOf('<details id="realizzazione"'))) : "",
+  };
+}
+
+test("piega «Realizzazione» e riquadro: «Avvia» pieno nel riquadro quando è pronto (G9), outline nella piega quando mancano informazioni; dossier non letto: E7", opts, async () => {
+  const ready = randomUUID();
+  await q(
+    `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, code, source, origin, target_quarter)
+     VALUES ($1::uuid, $2::uuid, $3, 'Problema', 'accepted', 'scored', 'use_case_ai', $4, 'web_proposed', 'adoption', '2027-Q1')`,
+    [ready, ids.ws, `Pronta ${suffix}`, `${prefix}-0090`],
+  );
+  const start = `/dashboard/${ids.ws}/casi-duso/nuovo?useCaseId=${ready}`;
+  const lead = await schedaOf("lsLead", ready);
+  assert.match(lead.box, /data-key="G9"/);
+  assert.deepEqual(filledIn(lead.html), ["Avvia la realizzazione"], "il solo pulsante pieno della pagina");
+  assert.deepEqual(filledIn(lead.box), ["Avvia la realizzazione"], "nel riquadro");
+  assert.ok(lead.box.includes(`href="${start}"`));
+  assert.ok(lead.fold.includes("La realizzazione non è ancora partita.") && !lead.fold.includes("Avvia la realizzazione"), "la piega non lo ripete");
+  const builder = await schedaOf("builder", ready);
+  assert.match(builder.box, /data-key="G9"/);
+  assert.ok(builder.box.includes("Tocca a Lateral Space. Da Prova H6 non serve nessuna informazione."));
+  assert.deepEqual(filledIn(builder.html), [], "il revisore del cliente non avvia");
+  assert.ok(!builder.html.includes("casi-duso/nuovo"));
+
+  // Un'informazione ancora da chiedere: il riquadro chiede le informazioni, «Avvia» resta outline nella piega.
+  const need = randomUUID();
+  await q(`INSERT INTO use_case_needs (id, workspace_id, type, title, status, owner_side) VALUES ($1::uuid, $2::uuid, 'requisito', 'Quante fatture al mese?', 'da_chiedere', 'cliente')`, [need, ids.ws]);
+  await q(`INSERT INTO use_case_need_links (need_id, use_case_id) VALUES ($1::uuid, $2::uuid)`, [need, ready]);
+  const pending = await schedaOf("lsLead", ready);
+  assert.doesNotMatch(pending.box, /data-key="G9"/);
+  assert.match(pending.box, /data-key="G[456]"/);
+  assert.ok(pending.fold.includes("Avvia la realizzazione"), "nella piega");
+  assert.ok(!filledIn(pending.html).includes("Avvia la realizzazione"), "outline");
+  assert.ok(pending.fold.includes(`href="${start}"`) && pending.fold.includes("Le informazioni non sono ancora tutte a posto."));
+
+  // In realizzazione con la lettura del dossier fallita: E7, niente di pieno.
+  const started = await schedaOf("lsLead", ids.fromConnector);
+  const view = (function find(node: unknown): { type: unknown; props: Record<string, unknown> } | null {
+    if (Array.isArray(node)) return node.map(find).find(Boolean) ?? null;
+    if (!node || typeof node !== "object" || !("props" in node)) return null;
+    const el = node as { type: unknown; props: Record<string, unknown> };
+    if (typeof el.type === "function" && (el.type as { name?: string }).name === "UseCaseDetailView") return el;
+    return find(el.props.children);
+  })(started.element);
+  assert.ok(view, "la pagina monta UseCaseDetailView");
+  const failed = renderToStaticMarkup(createElementOf(view.type, { ...view.props, result: { ...(view.props.result as object), dossierRead: "errore" }, realization: null }));
+  assert.match(failed, /data-slot="next-step" data-key="E7"/);
+  assert.ok(failed.includes("Il riepilogo del dossier non è disponibile ora."));
+  assert.deepEqual(filledIn(failed), [], "E7: niente di pieno");
+  assert.match(failed, /data-step="realizzazione" data-state="adesso"[^>]*aria-current="step"/);
+  await q(`DELETE FROM use_cases WHERE id = $1::uuid`, [ready]);
+});
+
 test("Panoramica: le card dei dossier in «In realizzazione» per i revisori, con la mini barra e il contesto; sezione spenta, nessuna card", opts, async () => {
   const column = await dossiers.dossierColumnOf(ids.ws, viewer("builder", "function_lead"), [ids.fromConnector, ids.fromPage, ids.practice]);
   assert.equal(column.state, "pronta");

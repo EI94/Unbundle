@@ -23,6 +23,7 @@ import { ESTIMATES_TEXT } from "@/lib/use-cases/estimates";
 import { AiSuggestionBox, hasAiSuggestion } from "./ai-suggestion-box";
 import type { ValuationKpiGroup } from "./section-valuation";
 import { draftErrorsFromService, draftFromModel, modelFromDraft, sameValueModel, type ValueModelDraft } from "./value-model-draft";
+import { usePagePrimaryClaim } from "./next-step-box";
 import { ValueModelEditor } from "./value-model-editor";
 
 /** I testi del modulo (§6.3, §14.3). */
@@ -243,6 +244,8 @@ export function ValuationForm({
   const [stale, setStale] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { run, pending } = useDecisionRunner();
+  // «Salva la valutazione» è il pulsante pieno della pagina finché il modulo è aperto.
+  usePagePrimaryClaim();
   const formRef = useRef<HTMLFormElement>(null);
   // Dopo un «Salva» non riuscito il fuoco va al primo campo con un errore (anche dentro un riquadro
   // che l'errore ha appena aperto): un contatore, perché lo stesso errore può tornare due volte.
@@ -569,7 +572,7 @@ export function ValuationEditor({
             onDone={() => setEditing(false)}
           />
         ) : (
-          <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" onClick={() => open(null)}>
+          <Button type="button" variant="outline" data-arrival-focus="" className="min-h-11 sm:min-h-8" onClick={() => open(null)}>
             {VALUATION_FORM_TEXT.edit}
           </Button>
         )

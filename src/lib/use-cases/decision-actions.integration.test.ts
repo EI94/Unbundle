@@ -50,7 +50,13 @@ type DecisionUi = typeof import("./decision-ui.ts");
 type Quarter = typeof import("./quarter.ts");
 type Service = typeof import("./service.ts");
 type Section = typeof import("../../components/use-cases/detail/section-decision.tsx");
+type Box = typeof import("../../components/use-cases/detail/next-step-box.tsx");
+type NoteField = typeof import("../../components/use-cases/detail/public-note-field.tsx");
+type Detail = typeof import("../../components/use-cases/detail/detail.tsx");
+type Guided = typeof import("./guided.ts");
 type Buttons = typeof import("../../components/use-cases/decision-buttons.tsx");
+type PageProps = { params: Promise<Record<string, string>>; searchParams?: Promise<Record<string, string>> };
+type Page = (props: PageProps) => Promise<unknown>;
 type Result = import("./decision-ui.ts").DecisionActionResult;
 type Item = import("./decision-ui.ts").DecisionItem;
 
@@ -59,6 +65,11 @@ let ui: DecisionUi;
 let quarter: Quarter;
 let svc: Service;
 let section: Section;
+let box: Box;
+let noteField: NoteField;
+let detailModule: Detail;
+let guided: Guided;
+let detailPage: Page;
 let buttons: Buttons;
 let renderToStaticMarkup: (element: unknown) => string;
 let createElement: typeof import("react").createElement;
@@ -218,6 +229,11 @@ before(async () => {
   quarter = await import("./quarter.ts");
   svc = await import("./service.ts");
   section = await import("../../components/use-cases/detail/section-decision.tsx");
+  box = await import("../../components/use-cases/detail/next-step-box.tsx");
+  noteField = await import("../../components/use-cases/detail/public-note-field.tsx");
+  detailModule = await import("../../components/use-cases/detail/detail.tsx");
+  guided = await import("./guided.ts");
+  detailPage = (await import("../../app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx")).default as Page;
   buttons = await import("../../components/use-cases/decision-buttons.tsx");
   const react = await import("react");
   createElement = react.createElement;
@@ -653,7 +669,7 @@ test("i testi del browser coincidono con quelli del servizio", opts, () => {
   assert.equal(ui.REDACTED_PLACEHOLDER, svc.REDACTED_TEXT);
 });
 
-// ─── Il capitolo «Decisione» reso per ruolo e per fase ───────────────
+// ─── Il riquadro «Prossimo passo» reso per ruolo e per fase ──────────
 
 interface RenderedButton {
   label: string;
@@ -661,13 +677,14 @@ interface RenderedButton {
   disabled: boolean;
 }
 
-/** I `<button>` della pagina: testo (o `aria-label`), pieno (`[data-slot=button].bg-primary`), spento. */
+/** I `<button>` e i link-pulsante della pagina: testo (o `aria-label`), pieno (`[data-slot=button].bg-primary`), spento. */
 function buttonsIn(html: string): RenderedButton[] {
   const out: RenderedButton[] = [];
-  for (const match of html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)) {
-    const attrs = match[1];
+  for (const match of html.matchAll(/<(button|a)\b([^>]*)>([\s\S]*?)<\/\1>/g)) {
+    const [, tag, attrs, body] = match;
+    if (tag === "a" && !/\sdata-slot="button"/.test(attrs)) continue;
     const classes = /\sclass="([^"]*)"/.exec(attrs)?.[1].split(/\s+/) ?? [];
-    const label = /\saria-label="([^"]*)"/.exec(attrs)?.[1] ?? match[2].replace(/<[^>]+>/g, "").trim();
+    const label = /\saria-label="([^"]*)"/.exec(attrs)?.[1] ?? body.replace(/<[^>]+>/g, "").trim();
     out.push({
       label,
       filled: /\sdata-slot="button"/.test(attrs) && classes.includes("bg-primary"),
@@ -703,22 +720,44 @@ function decisionItem(over: Partial<Item>): Item {
   };
 }
 
-function renderSection(item: Item, canDecide = true): string {
-  return renderToStaticMarkup(createElement(section.SectionDecision, { workspaceId: ids.ws, item, today: quarter.romeToday(), canDecide }));
+/** Il riquadro «Prossimo passo» come lo rende la scheda: `nextStepOf` sul server, poi il pezzo del browser. */
+function renderBox(item: Item, canDecide = true): string {
+  const today = quarter.romeToday();
+  const step = guided.nextStepOf({
+    workspaceId: ids.ws,
+    item: { ...item, realizedOn: null },
+    today,
+    teamName: DEFAULT_REVIEW_TEAM_NAME,
+    companyName: "Prova H3b",
+    canDecide,
+    canOpenAnyDossier: false,
+    info: null,
+    referents: null,
+    askEntry: null,
+    realizationVariant: null,
+    realization: null,
+    dossierRead: "ok",
+    closedOn: null,
+  });
+  return renderToStaticMarkup(createElement(box.NextStepBox, { workspaceId: ids.ws, step, item, today, canDecide, canMarkInProgress: false }));
 }
 
-test("capitolo «Decisione»: i pulsanti di §6.4 per fase, un solo pulsante pieno, mai pulsanti spenti", opts, () => {
+test("riquadro «Prossimo passo»: i pulsanti di §6.4 per fase, pieno solo il passo di chi guarda, mai pulsanti spenti", opts, () => {
   const cases: Array<[string, Partial<Item>, string | null, string[]]> = [
     ["da valutare", {}, "Approva", ["Rimanda", "Serve info", "Non avviare", "Altre decisioni"]],
-    ["approvato da costruire", { phase: "approvato", subState: "piu_avanti", phaseLabel: "Approvato · Più avanti" }, null, ["Non avviare", "Altre decisioni"]],
-    ["approvato da diffondere", { phase: "approvato", subState: "piu_avanti", phaseLabel: "Approvato · Più avanti", kind: "da_diffondere" }, "Segna come diffusa", ["Non avviare", "Altre decisioni"]],
-    ["in realizzazione senza dossier", { phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier" }, "Segna come realizzato", ["Non avviare", "Altre decisioni"]],
-    ["in realizzazione, dossier chiuso", { phase: "in_realizzazione", subState: "dossier", phaseLabel: "In realizzazione · Chiuso", dossier: { status: "chiuso" } }, null, ["Non avviare", "Altre decisioni"]],
+    // «Serve info» e «Rimandata»: la decisione non è il passo di chi guarda, «Approva» resta outline.
+    ["serve info", { subState: "serve_info", phaseLabel: "Da valutare · Serve info" }, null, ["Approva", "Rimanda", "Serve info", "Non avviare", "Altre decisioni"]],
+    ["rimandata", { subState: "rimandata", phaseLabel: "Da valutare · Rimandata", reviewBy: "2099-01-14" }, null, ["Approva", "Rimanda", "Serve info", "Non avviare", "Altre decisioni"]],
+    ["approvato da costruire", { phase: "approvato", subState: "piu_avanti", phaseLabel: "Approvato · Più avanti" }, null, ["Altre decisioni"]],
+    ["approvato da diffondere", { phase: "approvato", subState: "piu_avanti", phaseLabel: "Approvato · Più avanti", kind: "da_diffondere" }, "Segna come diffusa", ["Altre decisioni"]],
+    ["in realizzazione senza dossier", { phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier" }, "Segna come realizzato", ["Altre decisioni"]],
+    ["in realizzazione, dossier chiuso", { phase: "in_realizzazione", subState: "dossier", phaseLabel: "In realizzazione · Chiuso", dossier: { status: "chiuso" } }, null, ["Altre decisioni"]],
     ["in realizzazione, dossier in uso", { phase: "in_realizzazione", subState: "dossier", phaseLabel: "In realizzazione · In uso", dossier: { status: "in_esercizio" } }, "Segna come realizzato", []],
     ["in realizzazione, dossier attivo", { phase: "in_realizzazione", subState: "dossier", phaseLabel: "In realizzazione · In sviluppo", dossier: { status: "in_sviluppo" } }, null, []],
     ["realizzato", { phase: "realizzato", subState: "realizzato", phaseLabel: "Realizzato" }, null, ["Altre decisioni"]],
-    ["chiuso", { phase: "chiuso", subState: "non_avviato", phaseLabel: "Chiuso · Non avviato" }, "Riapri", []],
-    ["chiuso archiviato, dossier chiuso", { phase: "chiuso", subState: "archiviato", phaseLabel: "Chiuso · Archiviato", dossier: { status: "chiuso" } }, "Riapri", []],
+    // «Riapri» c'è, ma outline: fuori dal percorso nessun passo è di chi guarda.
+    ["chiuso", { phase: "chiuso", subState: "non_avviato", phaseLabel: "Chiuso · Non avviato" }, null, ["Riapri"]],
+    ["chiuso archiviato, dossier chiuso", { phase: "chiuso", subState: "archiviato", phaseLabel: "Chiuso · Archiviato", dossier: { status: "chiuso" } }, null, ["Riapri"]],
     // «Non avviare» con il dossier chiuso (§6.5): «Riapri» il servizio lo rifiuta, quindi non c'è.
     ["chiuso non avviato, dossier chiuso", { phase: "chiuso", subState: "non_avviato", phaseLabel: "Chiuso · Non avviato", dossier: { status: "chiuso" } }, null, []],
     // Archiviata ma ancora `rejected`, con un dossier (righe di prima dell'area): lo stesso.
@@ -730,7 +769,7 @@ test("capitolo «Decisione»: i pulsanti di §6.4 per fase, un solo pulsante pie
     ],
   ];
   for (const [label, over, primary, others] of cases) {
-    const html = renderSection(decisionItem(over));
+    const html = renderBox(decisionItem(over));
     const shown = buttonsIn(html);
     const filled = shown.filter((b) => b.filled);
     assert.ok(filled.length <= 1, `${label}: ${filled.length} pulsanti pieni`);
@@ -739,9 +778,11 @@ test("capitolo «Decisione»: i pulsanti di §6.4 per fase, un solo pulsante pie
     assert.ok(!shown.some((b) => b.disabled), `${label}: nessun pulsante spento`);
     assert.doesNotMatch(html, /<[^>]+\sdisabled(?:=""|(?=[\s/>]))/, `${label}: nessun controllo spento`);
   }
+  // Fuori dal percorso il titolo è «Fuori dal percorso».
+  assert.ok(readableText(renderBox(decisionItem({ phase: "chiuso", subState: "non_avviato", phaseLabel: "Chiuso · Non avviato" }))).includes("Fuori dal percorso"));
 });
 
-/** Gli elementi React di un albero non ancora reso, in profondità. */
+/** Gli elementi React di un albero non ancora reso, in profondità (anche le prop che sono elementi). */
 function* elementsIn(node: unknown): Generator<{ type: unknown; props: Record<string, unknown> }> {
   if (Array.isArray(node)) {
     for (const child of node) yield* elementsIn(child);
@@ -750,64 +791,79 @@ function* elementsIn(node: unknown): Generator<{ type: unknown; props: Record<st
   if (!node || typeof node !== "object" || !("props" in node)) return;
   const element = node as { type: unknown; props: Record<string, unknown> };
   yield element;
-  yield* elementsIn(element.props.children);
+  for (const value of Object.values(element.props)) if (value && typeof value === "object") yield* elementsIn(value);
 }
 
-test("capitolo «Decisione»: ai pezzi del browser solo le parti delle decisioni e id, codice e titolo dei candidati", opts, () => {
-  const detail = {
-    ...decisionItem({ publicNote: "Nota" }),
-    reviewNotes: "NOTA INTERNA",
-    description: "PROBLEMA DELLA SCHEDA",
-  };
-  // Come li passerebbe la scheda: gli `HubItem` interi del workspace.
-  const candidates = [
-    { id: randomUUID(), code: "XX-0007", title: "Smistamento email", publicNote: "NOTA DI UN ALTRO", problemPreview: "PROBLEMA DI UN ALTRO", value: { score: 4 } },
-    { id: randomUUID(), code: null, title: "Bozza", reviewNotes: "NOTA INTERNA DI UN ALTRO", dossier: { status: "raccolta" } },
-  ];
-  const tree = section.SectionDecision({ workspaceId: ids.ws, item: detail, today: quarter.romeToday(), canDecide: true, candidates });
+/** La scheda resa dalla pagina vera con la sessione di `person`: l'albero e l'HTML. */
+async function detailOf(person: Person, useCaseId: string): Promise<{ tree: unknown; html: string }> {
+  signIn(person);
+  const page = await detailPage({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId }), searchParams: Promise.resolve({}) });
+  const view = [...elementsIn(page)].find((element) => element.type === detailModule.UseCaseDetailView);
+  assert.ok(view, "la pagina monta UseCaseDetailView");
+  return { tree: detailModule.UseCaseDetailView(view.props as never), html: renderToStaticMarkup(page) };
+}
+
+test("riquadro «Prossimo passo»: ai pezzi del browser solo le parti delle decisioni e id, codice e titolo dei candidati", opts, async () => {
+  const card = await seed({ publicNote: "Nota" });
+  await q(`UPDATE use_cases SET review_notes = 'NOTA INTERNA', description = 'PROBLEMA DELLA SCHEDA' WHERE id = $1::uuid`, [card.id]);
+  const other = await seed({ title: "Smistamento email" });
+  await q(`UPDATE use_cases SET review_notes = 'NOTA INTERNA DI UN ALTRO', public_note = 'NOTA DI UN ALTRO' WHERE id = $1::uuid`, [other.id]);
+  const { tree } = await detailOf("manager", card.id);
   const clientParts = [...elementsIn(tree)].filter((element) => typeof element.type === "function");
-  const decisionButtons = clientParts.find((element) => element.type === buttons.DecisionButtons);
-  assert.ok(decisionButtons, "i pulsanti ci sono");
-  assert.deepEqual(decisionButtons.props.candidates, candidates.map(({ id, code, title }) => ({ id, code, title })));
-  assert.deepEqual(decisionButtons.props.item, ui.toDecisionItem(detail));
-  for (const part of clientParts) {
-    const props = JSON.stringify({ ...part.props, children: undefined });
-    for (const text of ["NOTA INTERNA", "PROBLEMA", "NOTA DI UN ALTRO", "raccolta"]) assert.ok(!props.includes(text), `${text} non arriva al browser`);
+  const boxPart = clientParts.find((element) => element.type === box.NextStepBox);
+  assert.ok(boxPart, "il riquadro c'è");
+  assert.deepEqual(Object.keys(boxPart.props.item as object).sort(), Object.keys(ui.toDecisionItem(boxPart.props.item as Item)).sort(), "solo le parti delle decisioni");
+  const candidates = boxPart.props.candidates as Array<Record<string, unknown>>;
+  assert.ok(candidates.length >= 2);
+  for (const candidate of candidates) assert.deepEqual(Object.keys(candidate).sort(), ["code", "id", "title"]);
+  for (const name of ["NextStepBox", "PublicNoteField", "WhenControl", "DecisionButtons"]) {
+    for (const part of clientParts.filter((element) => (element.type as { name?: string }).name === name)) {
+      const props = JSON.stringify({ ...part.props, children: undefined });
+      for (const text of ["NOTA INTERNA", "PROBLEMA", "NOTA DI UN ALTRO"]) assert.ok(!props.includes(text), `${name}: ${text} non arriva al browser`);
+    }
   }
 });
 
-test("capitolo «Decisione»: riga della decisione, «Quando» solo da approvato, nota pubblica con l'avviso", opts, async () => {
+test("riquadro e lato: la riga del passo, «Quando» solo da approvato, la nota pubblica con l'avviso", opts, async () => {
   const { findHubForbidden } = await import("./copy-guard.ts");
   const now = new Date();
-  const toDecide = renderSection(decisionItem({ waitingSince: ui.addDays(quarter.romeToday(now), -6) }));
-  // H4p: la fase sta nella pillola della testata; qui solo l'attesa.
-  assert.ok(readableText(toDecide).includes("Decisione"));
-  assert.ok(readableText(toDecide).includes("In attesa da 6 giorni"));
-  assert.ok(!readableText(toDecide).includes("Da decidere ·"));
-  assert.ok(!toDecide.includes("Questo trimestre"), "«Quando» solo in fase Approvato");
-  assert.ok(readableText(toDecide).includes("Nota pubblica"));
-  assert.ok(readableText(toDecide).includes("Chi conosce il codice la legge tramite Claude. Non scrivere dati personali."));
-  assert.ok(!toDecide.includes("Questa scheda è nascosta alla ricerca"));
-  assert.deepEqual(findHubForbidden(readableText(toDecide), "area"), []);
+  const toDecide = readableText(renderBox(decisionItem({ waitingSince: ui.addDays(quarter.romeToday(now), -6) })));
+  assert.ok(toDecide.includes("Prossimo passo") && toDecide.includes("Valutare e decidere"));
+  assert.ok(toDecide.includes(`Tocca ad ${DEFAULT_REVIEW_TEAM_NAME}. In attesa da 6 giorni.`));
+  assert.ok(!toDecide.includes("Da decidere ·"));
+  assert.deepEqual(findHubForbidden(toDecide, "area"), []);
 
-  const hidden = renderSection(decisionItem({ hiddenFromSearch: true, publicNote: "Quante richieste arrivano a settimana?" }));
+  const card = await seed({});
+  const page = (await detailOf("builder", card.id)).html;
+  assert.ok(!page.includes("Questo trimestre"), "«Quando» solo in fase Approvato");
+  assert.ok(!page.includes('id="quando"'));
+  const note = page.slice(page.indexOf('id="nota-pubblica"'));
+  assert.ok(readableText(note).includes("Nota pubblica (facoltativa)"));
+  assert.ok(readableText(note).includes("Chi conosce il codice la legge tramite Claude. Non scrivere dati personali."));
+  assert.ok(!note.includes("Questa scheda è nascosta alla ricerca"));
+
+  const hidden = renderToStaticMarkup(
+    createElement(noteField.PublicNoteField, { workspaceId: ids.ws, item: decisionItem({ hiddenFromSearch: true, publicNote: "Quante richieste arrivano a settimana?" }), canEdit: true }),
+  );
   assert.ok(readableText(hidden).includes("Questa scheda è nascosta alla ricerca: tramite Claude chi conosce il codice vede solo la fase."));
   assert.ok(hidden.includes("Quante richieste arrivano a settimana?"));
 
-  const approved = renderSection(
-    decisionItem({ phase: "approvato", subState: "trimestre", phaseLabel: `Approvato · ${quarter.quarterLabel(quarter.currentQuarter(now))}`, targetQuarter: quarter.currentQuarter(now) }),
-  );
-  const text = readableText(approved);
-  assert.ok(!text.includes("Approvato ·"), "la fase non si ripete sotto «Decisione»");
+  const approvedCard = await seed({ status: "accepted", review: "scored", targetQuarter: quarter.currentQuarter(now) });
+  const approved = (await detailOf("builder", approvedCard.id)).html;
+  const when = approved.slice(approved.indexOf('id="quando"'), approved.indexOf('id="nota-pubblica"'));
+  const text = readableText(when);
+  assert.ok(text.includes("Quando"));
+  assert.ok(!readableText(approved.slice(approved.indexOf('data-slot="next-step"'), approved.indexOf('data-slot="scheda-grid"'))).includes("Approvato ·"), "la fase non si ripete nel riquadro");
   // «Quando»: la parola e il trimestre su due righe, mai a capo tra le scelte (H4p).
   for (const choice of ["questo_trimestre", "prossimo_trimestre", "piu_avanti"] as const) {
     const parts = quarter.whenChoiceParts(choice, now);
     assert.ok(text.includes(parts.title), parts.title);
     if (parts.quarter) assert.ok(text.includes(parts.quarter), parts.quarter);
   }
-  for (const option of ui.whenOptions(now)) assert.ok(approved.includes(`aria-label="${option.label}"`), option.label);
-  const savedChoice = /<[^>]*aria-label="Questo trimestre[^"]*"[^>]*>/.exec(approved)?.[0] ?? "";
+  for (const option of ui.whenOptions(now)) assert.ok(when.includes(`aria-label="${option.label}"`), option.label);
+  const savedChoice = /<[^>]*aria-label="Questo trimestre[^"]*"[^>]*>/.exec(when)?.[0] ?? "";
   assert.ok(savedChoice.includes('role="radio"') && savedChoice.includes('aria-checked="true"'), "la scelta salvata è selezionata");
+  assert.match(when, /aria-labelledby="quando-titolo"/);
   assert.deepEqual(findHubForbidden(text, "area"), []);
 });
 
@@ -829,9 +885,10 @@ test("capitolo «Decisione» per il contributore: la nota pubblica delle proprie
   assert.equal(renderToStaticMarkup(createElement(section.ContributorDecisionSection, { workspaceId: ids.ws, teamName: DEFAULT_REVIEW_TEAM_NAME, useCase: { ...base, own: false } })), "", "proposta altrui");
   assert.equal(renderToStaticMarkup(createElement(section.ContributorDecisionSection, { workspaceId: ids.ws, teamName: DEFAULT_REVIEW_TEAM_NAME, useCase: { ...closed, own: true, code: "XX-0012", publicNote: null } })), "");
   // Senza `canDecide` (chi non decide) nessun pulsante, nessun campo da scrivere.
-  const readOnly = renderToStaticMarkup(createElement(section.SectionDecision, { workspaceId: ids.ws, item: decisionItem({ publicNote: "Nota" }), today, canDecide: false }));
-  assert.deepEqual(buttonsIn(readOnly), []);
-  assert.ok(!readOnly.includes("<textarea"));
+  assert.deepEqual(buttonsIn(renderBox(decisionItem({ publicNote: "Nota" }), false)), []);
+  const readOnly = renderToStaticMarkup(createElement(noteField.PublicNoteField, { workspaceId: ids.ws, item: decisionItem({ publicNote: "Nota" }), canEdit: false }));
+  assert.ok(!readOnly.includes("<textarea") && readOnly.includes("Nota"));
+  void today;
 });
 
 test("«Segna come in realizzazione» si mostra solo a Lateral Space, approvato «Da costruire», senza dossier, sezione spenta", opts, () => {

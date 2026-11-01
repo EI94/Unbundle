@@ -43,6 +43,12 @@ export interface InlineTextFieldProps {
    * la matita; aperto è il campo «Titolo», come gli altri.
    */
   variant?: "campo" | "titolo";
+  /**
+   * `titolo`: il titolo senza il prefisso dell'agente («LIBRA L1 · »), che il tag della testata
+   * mostra già: si legge `rest`, e il prefisso resta per i lettori di schermo. Si modifica sempre il
+   * titolo intero. Vale solo finché il titolo è quello della pagina.
+   */
+  displayValue?: { prefix: string; rest: string } | null;
   className?: string;
 }
 
@@ -105,6 +111,7 @@ export function InlineTextField({
   compact = false,
   placeholder,
   variant = "campo",
+  displayValue = null,
   className,
 }: InlineTextFieldProps) {
   const inputId = useId();
@@ -188,7 +195,16 @@ export function InlineTextField({
   if (variant === "titolo" && !editing) {
     return (
       <div data-slot="inline-text-field" data-field={field} className={cn("group flex min-w-0 items-start gap-1.5", className)}>
-        <h1 className="min-w-0 text-2xl font-semibold tracking-tight break-words">{shown}</h1>
+        <h1 className="min-w-0 text-2xl font-semibold tracking-tight break-words">
+          {displayValue && shown === value ? (
+            <>
+              <span className="sr-only">{displayValue.prefix}</span>
+              {displayValue.rest}
+            </>
+          ) : (
+            shown
+          )}
+        </h1>
         {canEdit ? (
           <Button
             ref={editButton}
