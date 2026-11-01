@@ -27,6 +27,7 @@ import {
 import { confirmLearningNavigation } from "@/components/learning/use-unsaved-changes";
 import { USE_CASE_NAV_MATCH, isNavItemActive } from "@/components/dashboard/nav-active";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ThemeMenuGroup } from "@/components/theme/theme-menu";
 import {
   LayoutDashboard,
   Building2,
@@ -168,7 +169,7 @@ export function AppSidebar({
             Unbundle
           </span>
           {workspaceName && (
-            <span className="text-xs text-sidebar-foreground/50 truncate max-w-[160px]">
+            <span className="text-xs text-sidebar-foreground/50 light:text-sidebar-foreground/70 truncate max-w-[160px]">
               {workspaceName}
             </span>
           )}
@@ -245,6 +246,8 @@ export function AppSidebar({
                     I miei workspace
                   </Link>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <ThemeMenuGroup />
                 <DropdownMenuSeparator />
                 <DropdownMenuItem>
                   <button

@@ -1,7 +1,7 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
-import { THEME_PROVIDER_PROPS, THEME_SCOPE_ATTRIBUTE, THEME_STORAGE_KEY, toasterTheme } from "./theme-config.ts";
+import { THEME_MENU_LABEL, THEME_OPTIONS, THEME_PROVIDER_PROPS, THEME_SCOPE_ATTRIBUTE, THEME_STORAGE_KEY, toasterTheme } from "./theme-config.ts";
 import { readRepo } from "./test-support/color.ts";
 import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.ts";
 
@@ -10,9 +10,13 @@ import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.t
 let renderToStaticMarkup: (element: unknown) => string;
 let createElement: (type: unknown, props: unknown, ...children: unknown[]) => unknown;
 let ThemeProvider: unknown;
+let ThemeMenuGroup: unknown;
+let MenuRoot: unknown;
 before(async () => {
   await enableTsxImports();
   ({ ThemeProvider } = await import("./theme-provider.tsx"));
+  ({ ThemeMenuGroup } = await import("./theme-menu.tsx"));
+  MenuRoot = (await import("@base-ui/react/menu")).Menu.Root;
   const react = await import("react");
   createElement = (type, props, ...children) => react.createElement(type as never, props as never, ...(children as never[]));
   ({ renderToStaticMarkup } = (await import("react-dom/server")) as unknown as { renderToStaticMarkup: (element: unknown) => string });
@@ -89,4 +93,42 @@ test("il layout di base: il tema per primo nel body, attorno a tutto il resto", 
   assert.ok(inner.startsWith("<ThemeProvider>"), inner.slice(0, 80));
   assert.ok(inner.endsWith("</ThemeProvider>"), inner.slice(-80));
   for (const child of ["<TooltipProvider>{children}</TooltipProvider>", "<Toaster richColors"]) assert.ok(inner.includes(child), child);
+});
+
+test("il menu «Tema»: «Scuro», «Chiaro», «Come il sistema», in quest'ordine, come voci a scelta singola", () => {
+  assert.equal(THEME_MENU_LABEL, "Tema");
+  assert.deepEqual(THEME_OPTIONS, [
+    { value: "dark", label: "Scuro" },
+    { value: "light", label: "Chiaro" },
+    { value: "system", label: "Come il sistema" },
+  ]);
+  // Il gruppo come lo disegna Base UI (aperto, senza il portale): l'etichetta e tre `menuitemradio`.
+  const html = renderToStaticMarkup(createElement(ThemeProvider, {}, createElement(MenuRoot, { open: true }, createElement(ThemeMenuGroup, {}))));
+  const group = html.slice(html.indexOf("</script>") + "</script>".length);
+  assert.match(group, /^<div role="group" data-slot="dropdown-menu-group"><div [^>]*data-slot="dropdown-menu-label"[^>]*>Tema<\/div>/);
+  const items = [...group.matchAll(/<div [^>]*role="menuitemradio"[^>]*aria-checked="(true|false)"[^>]*>([\s\S]*?)<\/div>/g)];
+  assert.deepEqual(items.map((item) => item[2].replace(/<[^>]+>/g, "")), ["Scuro", "Chiaro", "Come il sistema"]);
+  // Nell'HTML del server il tema non è ancora letto: vale il predefinito, «Scuro».
+  assert.deepEqual(items.map((item) => item[1]), ["true", "false", "false"]);
+  // Le icone non si leggono: dicono la stessa cosa del testo.
+  for (const icon of ["lucide-moon", "lucide-sun", "lucide-monitor"]) assert.match(group, new RegExp(`class="lucide ${icon}[^"]*" aria-hidden="true"`), icon);
+  const menu = readRepo("src/components/theme/theme-menu.tsx");
+  assert.ok(menu.includes('const value: ThemeChoice = isChoice(theme) ? theme : "dark";'), "un valore salvato sconosciuto vale «Scuro»");
+  assert.ok(!menu.includes("closeOnClick"), "il menu resta aperto dopo la scelta");
+});
+
+test("il menu «Tema» sta sotto il nome, in fondo alla barra laterale, tra «I miei workspace» e «Esci»", () => {
+  const sidebar = readRepo("src/components/dashboard/app-sidebar.tsx");
+  assert.ok(sidebar.includes('import { ThemeMenuGroup } from "@/components/theme/theme-menu";'));
+  const footer = sidebar.slice(sidebar.indexOf("<SidebarFooter>"), sidebar.indexOf("</SidebarFooter>"));
+  const content = footer.slice(footer.indexOf("<DropdownMenuContent"), footer.indexOf("</DropdownMenuContent>"));
+  assert.ok(content.length > 0, "il menu sotto il nome");
+  const order = ["I miei workspace", "<DropdownMenuSeparator />", "<ThemeMenuGroup />", "<DropdownMenuSeparator />", "Esci"].map((needle) => content.indexOf(needle));
+  assert.ok(order.every((index) => index >= 0), String(order));
+  assert.ok(order[1] < order[2] && order[2] < content.lastIndexOf("<DropdownMenuSeparator />") && order[0] < order[1] && content.lastIndexOf("<DropdownMenuSeparator />") < order[4], "l'ordine delle voci");
+  assert.equal(sidebar.match(/<ThemeMenuGroup \/>/g)?.length, 1);
+  // Il nome del workspace sotto «Unbundle»: al 50% sul grigio chiaro sarebbe 3,4:1, col tema chiaro va al 70%.
+  assert.ok(sidebar.includes("text-sidebar-foreground/50 light:text-sidebar-foreground/70"), "il nome del workspace nel tema chiaro");
+  // La stessa barra (e lo stesso menu) per /dashboard e per ogni workspace.
+  for (const file of ["src/components/dashboard/dashboard-list-shell.tsx", "src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx"]) assert.ok(readRepo(file).includes("<AppSidebar"), file);
 });
