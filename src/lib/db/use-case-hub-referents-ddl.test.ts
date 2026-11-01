@@ -197,8 +197,8 @@ test("la sonda copre ogni tabella, indice e vincolo con nome, le colonne della P
   assert.ok(USE_CASE_REFERENTS_PROBE_SQL.includes(eventFieldsProbeSql(USE_CASE_EVENT_FIELDS_0024)));
 });
 
-test("ensure-schema: versione 18, la 0024 dopo la 0023, con timeout e lock, e la sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 18;/);
+test("ensure-schema: versione 18 o dopo, la 0024 dopo la 0023, con timeout e lock, e la sonda in AND", () => {
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 18, "ENSURE_VERSION almeno 18 (la 0025 la porta a 19)");
   assert.match(ensureSchema, /import \{ USE_CASE_REFERENTS_DDL, USE_CASE_REFERENTS_PROBE_SQL \} from "\.\/use-case-hub-referents-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const history = runOnce.indexOf("await runUseCaseHistoryDdl();");

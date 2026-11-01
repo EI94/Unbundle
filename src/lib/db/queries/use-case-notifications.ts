@@ -1,7 +1,8 @@
 import "server-only";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { afterResponse } from "@/lib/db/queries/use-case-referent-base";
-import { NOTIFICATION_RETENTION_DAYS, type FollowUpReason, type UseCaseNotificationKind } from "@/lib/db/use-case-hub-referents-ddl";
+import { NOTIFICATION_RETENTION_DAYS, type FollowUpReason } from "@/lib/db/use-case-hub-referents-ddl";
+import type { UseCaseNoticeKind } from "@/lib/db/use-case-hub-alerts-ddl";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { RETRY_DELAY_MINUTES, type DispatchEnv, type UcMailer } from "@/lib/uc/notify/dispatch";
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/use-cases/referent/alerts";
 import { inRomeSendWindow } from "@/lib/uc/calendar";
 import { openItemsCountSql } from "@/lib/use-cases/referent/sql";
+import { readyNowSql, subprocessorsAckSql } from "@/lib/use-cases/case-alerts/sql";
 import { PORTFOLIO_REVIEWER_ROLES } from "@/lib/workspace-permissions";
 
 /**
@@ -69,17 +71,36 @@ async function tablePresent(executor: UcExecutor): Promise<boolean> {
   return rowBool(row?.ok);
 }
 
-/** Le righe della persona nel workspace, dalle più recenti, degli ultimi `days` giorni (§P2.6.4). */
+/** Le tabelle che la lettura della campanella guarda: le notifiche, i dossier, l'«ok sui sub-responsabili». */
+async function bellTables(executor: UcExecutor): Promise<{ notifications: boolean; dossiers: boolean; acks: boolean }> {
+  const [[row]] = await executor.batch([
+    toStatement(ucSql`SELECT to_regclass('public.use_case_notifications') IS NOT NULL AS notifications,
+  to_regclass('public.uc_cases') IS NOT NULL AS dossiers, to_regclass('public.uc_subprocessor_acks') IS NOT NULL AS acks`),
+  ]);
+  return { notifications: rowBool(row?.notifications), dossiers: rowBool(row?.dossiers), acks: rowBool(row?.acks) };
+}
+
+/**
+ * Le righe della persona nel workspace, dalle più recenti, degli ultimi `days` giorni (§P2.6.4).
+ * (0025) Una riga si toglie da sola quando non vale più, senza scrivere niente: «Pronto da avviare»
+ * appena lo use case non è più pronto (un'informazione riaperta, «Più avanti», un trimestre passato,
+ * un dossier avviato), «Autorizza i fornitori» appena qualcuno ha dato l'ok.
+ */
 export async function listUseCaseBellRows(i: { userId: string; workspaceId: string; limit: number; days: number; now: Date }): Promise<BellUseCaseInput[]> {
   if (!isUuid(i.userId) || !isUuid(i.workspaceId)) return [];
   const executor = await getAppUcExecutor();
-  if (!(await tablePresent(executor))) return [];
+  const tables = await bellTables(executor);
+  if (!tables.notifications) return [];
+  const ready = ucSql`
+  AND (n.kind <> 'pronto' OR ${readyNowSql("u", { dossiers: tables.dossiers })})`;
+  const suppliers = tables.acks ? ucSql`
+  AND (n.kind <> 'fornitori' OR NOT ${subprocessorsAckSql(raw("n.workspace_id"))})` : raw("");
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT n.id, n.use_case_id, n.kind, n.answers, n.unknowns, n.documents, n.follow_up, n.last_event_at, n.read_at, u.code, u.title
 FROM use_case_notifications n
 JOIN use_cases u ON u.id = n.use_case_id AND u.workspace_id = n.workspace_id
 WHERE n.recipient_user_id = ${cast(i.userId, "uuid")} AND n.workspace_id = ${cast(i.workspaceId, "uuid")}
-  AND n.last_event_at > ${cast(i.now.toISOString(), "timestamptz")} - make_interval(days => ${cast(Math.max(1, Math.floor(i.days)), "int")})
+  AND n.last_event_at > ${cast(i.now.toISOString(), "timestamptz")} - make_interval(days => ${cast(Math.max(1, Math.floor(i.days)), "int")})${ready}${suppliers}
 ORDER BY n.last_event_at DESC, n.id
 LIMIT ${cast(Math.max(1, Math.min(200, Math.floor(i.limit))), "int")}`),
   ]);
@@ -87,7 +108,7 @@ LIMIT ${cast(Math.max(1, Math.min(200, Math.floor(i.limit))), "int")}`),
     const id = rowString(r.id);
     const useCaseId = rowString(r.use_case_id);
     const lastEventAt = rowDate(r.last_event_at);
-    const kind = rowString(r.kind) as UseCaseNotificationKind | null;
+    const kind = rowString(r.kind) as UseCaseNoticeKind | null;
     if (!id || !useCaseId || !lastEventAt || !kind) return [];
     return [
       {

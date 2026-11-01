@@ -17,10 +17,11 @@
  */
 import type { UcBellItem } from "../uc/notify/bell.ts";
 import { formatRelativeIt } from "../uc/views/format.ts";
-import type { FollowUpReason, UseCaseNotificationKind } from "../db/use-case-hub-referents-ddl.ts";
+import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
+import type { UseCaseNoticeKind } from "../db/use-case-hub-alerts-ddl.ts";
 import { hubSignalHref } from "../use-cases/digest.ts";
 import { noticeContextOf, noticeTextOf } from "../use-cases/notices.ts";
-import { cosaServeHref } from "../use-cases/referent/contract.ts";
+import { cosaServeHref, realizzazioneHref, subprocessorsSettingsHref } from "../use-cases/referent/contract.ts";
 
 export type BellSource = "segnale" | "dossier" | "use_case";
 
@@ -167,7 +168,7 @@ export interface BellUseCaseInput {
   useCaseId: string;
   code: string | null;
   title: string;
-  kind: UseCaseNotificationKind;
+  kind: UseCaseNoticeKind;
   answers: number;
   unknowns: number;
   documents: number;
@@ -228,7 +229,17 @@ export function dossierEntry(item: UcBellItem, useCaseHub: boolean): BellEntry {
   };
 }
 
-/** Una notifica di use case: codice e titolo, cosa è successo, i conteggi; porta a «Cosa serve». */
+/**
+ * Dove porta una notifica di use case: «Pronto da avviare» alla scheda, al capitolo «Realizzazione»;
+ * «Autorizza i fornitori» a Impostazioni › Sub-responsabili; le altre a «Cosa serve».
+ */
+export function noticeHref(workspaceId: string, n: Pick<BellUseCaseInput, "kind" | "useCaseId">): string {
+  if (n.kind === "pronto") return realizzazioneHref(workspaceId, n.useCaseId);
+  if (n.kind === "fornitori") return subprocessorsSettingsHref(workspaceId);
+  return cosaServeHref(workspaceId, n.useCaseId);
+}
+
+/** Una notifica di use case: codice e titolo, cosa è successo, i conteggi; porta dove si agisce (`noticeHref`). */
 export function noticeEntry(workspaceId: string, n: BellUseCaseInput, now: Date): BellEntry {
   const activityAt = iso(n.lastEventAt);
   const text = noticeTextOf(n);
@@ -239,7 +250,7 @@ export function noticeEntry(workspaceId: string, n: BellUseCaseInput, now: Date)
     context: noticeContextOf(n.code, n.title),
     title: text.title,
     description: text.description,
-    href: cosaServeHref(workspaceId, n.useCaseId),
+    href: noticeHref(workspaceId, n),
     activityAt,
     when: formatRelativeIt(n.lastEventAt, now) ?? "",
     unread: n.readAt === null,

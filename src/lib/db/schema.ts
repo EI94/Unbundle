@@ -47,8 +47,8 @@ import type {
   ReferentRequestStatus,
   ReferentRevokeReason,
   RequesterEmailStatus,
-  UseCaseNotificationKind,
 } from "./use-case-hub-referents-ddl.ts";
+import type { CaseAlertEmailStatus, CaseAlertKind, UseCaseNoticeKind } from "./use-case-hub-alerts-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
@@ -1139,7 +1139,7 @@ export const useCaseNotifications = pgTable(
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
     recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    kind: varchar("kind", { length: 16 }).$type<UseCaseNotificationKind>().notNull(),
+    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind>().notNull(),
     romeDay: date("rome_day", { mode: "string" }).notNull(),
     answers: smallint("answers").notNull().default(0),
     unknowns: smallint("unknowns").notNull().default(0),
@@ -1200,6 +1200,55 @@ export const useCaseRequesterEmailItems = pgTable(
     updatedAt: tz("updated_at").defaultNow().notNull(),
   },
   (t) => [primaryKey({ name: "use_case_requester_email_items_pkey", columns: [t.emailId, t.requestId] }), index("use_case_requester_email_items_request_idx").on(t.requestId)]
+);
+
+// «Pronto da avviare» e «Autorizza i fornitori» (drizzle/0025_use_case_alerts.sql). CHECK e indici
+// parziali stanno solo nella migrazione e in src/lib/db/use-case-hub-alerts-ddl.ts.
+
+export const useCaseReadyState = pgTable("use_case_ready_state", {
+  useCaseId: uuid("use_case_id").primaryKey().references(() => useCases.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  readySince: tz("ready_since"),
+  readyQuarter: varchar("ready_quarter", { length: 7 }),
+  updatedAt: tz("updated_at").defaultNow().notNull(),
+});
+
+export const useCaseAlertEmails = pgTable(
+  "use_case_alert_emails",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 10 }).$type<CaseAlertKind>().notNull(),
+    sendOn: date("send_on", { mode: "string" }).notNull(),
+    status: varchar("status", { length: 10 }).$type<CaseAlertEmailStatus>().notNull().default("in_coda"),
+    holdReason: varchar("hold_reason", { length: 40 }),
+    cancelReason: varchar("cancel_reason", { length: 40 }),
+    lastErrorCode: varchar("last_error_code", { length: 60 }),
+    attempts: smallint("attempts").notNull().default(0),
+    scheduledAt: tz("scheduled_at").notNull(),
+    dueAt: tz("due_at").notNull(),
+    leaseUntil: tz("lease_until"),
+    sentAt: tz("sent_at"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    unique("use_case_alert_emails_day_unique").on(t.workspaceId, t.recipientUserId, t.kind, t.sendOn),
+    index("use_case_alert_emails_workspace_idx").on(t.workspaceId, t.kind, t.createdAt),
+    index("use_case_alert_emails_gc_idx").on(t.createdAt),
+  ]
+);
+
+export const useCaseAlertEmailItems = pgTable(
+  "use_case_alert_email_items",
+  {
+    emailId: uuid("email_id").notNull().references(() => useCaseAlertEmails.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    readySince: tz("ready_since").notNull(),
+  },
+  (t) => [primaryKey({ name: "use_case_alert_email_items_pkey", columns: [t.emailId, t.useCaseId] }), index("use_case_alert_email_items_use_case_idx").on(t.useCaseId)]
 );
 
 export type WorkspaceBellState = typeof workspaceBellState.$inferSelect;

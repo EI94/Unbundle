@@ -32,6 +32,17 @@ test("documenti, nessuna risposta, informazioni complete", () => {
   assert.deepEqual(noticeTextOf(n({ kind: "complete" })), { title: "Informazioni complete", description: "Ci sono tutte le informazioni che servono dal cliente." });
 });
 
+test("(0025) «Pronto da avviare» e «Autorizza i fornitori»: titolo e una frase, mai conteggi né «caso d'uso»", () => {
+  assert.deepEqual(noticeTextOf(n({ kind: "pronto" })), { title: "Pronto da avviare", description: "Non manca niente dal cliente: si può avviare la realizzazione." });
+  assert.deepEqual(noticeTextOf(n({ kind: "pronto", answers: 3, documents: 2 })), noticeTextOf(n({ kind: "pronto" })), "i conteggi non contano");
+  assert.deepEqual(noticeTextOf(n({ kind: "fornitori" })), {
+    title: "Autorizza i fornitori",
+    description: "Serve il tuo ok sui sub-responsabili, in Impostazioni, per chiedere le informazioni di questo use case.",
+  });
+  for (const text of Object.values(USE_CASE_NOTICE_TEXT.titles)) assert.doesNotMatch(text, /caso d'uso|casi d'uso/i);
+  assert.doesNotMatch(USE_CASE_NOTICE_TEXT.ready + USE_CASE_NOTICE_TEXT.suppliers, /caso d'uso|casi d'uso/i);
+});
+
 test("contesto: codice e titolo, o il titolo; al massimo 120 caratteri", () => {
   assert.equal(noticeContextOf("TJ-0004", "Fatture  fornitori"), "TJ-0004 · Fatture fornitori");
   assert.equal(noticeContextOf(null, "Fatture fornitori"), "Fatture fornitori");

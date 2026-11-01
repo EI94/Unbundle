@@ -39,11 +39,13 @@ function read(file: string): string {
 }
 
 const NEW_TABLES =
-  /\b(use_case_referent_\w+|use_case_need_answers|use_case_need_files|weekly_signal_reads|workspace_bell_state|use_case_notifications|use_case_info_state|use_case_requester_email\w*|useCaseReferent\w*|useCaseNeedAnswers|useCaseNeedFiles|weeklySignalReads|workspaceBellState|useCaseNotifications|useCaseInfoState|useCaseRequesterEmail\w*)\b/;
+  /\b(use_case_referent_\w+|use_case_need_answers|use_case_need_files|weekly_signal_reads|workspace_bell_state|use_case_notifications|use_case_info_state|use_case_requester_email\w*|use_case_ready_state|use_case_alert_email\w*|useCaseReferent\w*|useCaseNeedAnswers|useCaseNeedFiles|weeklySignalReads|workspaceBellState|useCaseNotifications|useCaseInfoState|useCaseRequesterEmail\w*|useCaseReadyState|useCaseAlertEmail\w*)\b/;
 
 const TABLE_FILES = new Set([
   "src/lib/db/schema.ts",
   "src/lib/db/use-case-hub-referents-ddl.ts",
+  // (0025) «Pronto da avviare» e «Autorizza i fornitori»: il DDL.
+  "src/lib/db/use-case-hub-alerts-ddl.ts",
   // Il servizio e le sue basi, la pagina pubblica, i file, l'invio delle email.
   "src/lib/db/queries/use-case-referents.ts",
   "src/lib/db/queries/use-case-referent-base.ts",

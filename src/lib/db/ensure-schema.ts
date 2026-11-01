@@ -6,6 +6,7 @@ import { USE_CASE_HUB_DDL, USE_CASE_HUB_PROBE_SQL } from "./use-case-hub-ddl.ts"
 import { USE_CASE_VALUE_DDL, USE_CASE_VALUE_PROBE_SQL } from "./use-case-hub-value-ddl.ts";
 import { USE_CASE_HISTORY_DDL, USE_CASE_HISTORY_PROBE_SQL } from "./use-case-hub-history-ddl.ts";
 import { USE_CASE_REFERENTS_DDL, USE_CASE_REFERENTS_PROBE_SQL } from "./use-case-hub-referents-ddl.ts";
+import { USE_CASE_ALERTS_DDL, USE_CASE_ALERTS_PROBE_SQL } from "./use-case-hub-alerts-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -25,7 +26,7 @@ import { USE_CASE_REFERENTS_DDL, USE_CASE_REFERENTS_PROBE_SQL } from "./use-case
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 18;
+const ENSURE_VERSION = 19;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -636,6 +637,11 @@ async function runOnce(): Promise<void> {
   // transazione lunga, se la 0024 non è stata applicata a mano prima del rilascio) lo registra e
   // l'app serve senza la funzione (`referentStoreReady`, le letture con `to_regclass`).
   await runUseCaseReferentsDdlSafely();
+
+  // «Pronto da avviare» e «Autorizza i fornitori» (drizzle/0025_use_case_alerts.sql) ──────
+  // Dopo la 0024 (allarga il CHECK dei tipi di use_case_notifications). Come la 0024 non blocca il
+  // resto dell'app: senza la 0025 chi scrive salta gli avvisi nuovi (`caseAlertsStoreReady`).
+  await runUseCaseAlertsDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -654,6 +660,20 @@ async function runUseCaseReferentsDdlSafely(): Promise<void> {
   } catch (err) {
     referentsDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0024 self-heal failed, the app keeps serving without «Chiedi al referente» (apply drizzle/0024 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0025, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let alertsDdlFailedAt: number | null = null;
+
+/** La 0025 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. */
+async function runUseCaseAlertsDdlSafely(): Promise<void> {
+  try {
+    await runUseCaseAlertsDdl();
+    alertsDdlFailedAt = null;
+  } catch (err) {
+    alertsDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0025 self-heal failed, the app keeps serving without «Pronto da avviare» and «Autorizza i fornitori» (apply drizzle/0025 by hand):", err);
   }
 }
 
@@ -724,6 +744,21 @@ export async function runUseCaseReferentsDdl(statements: readonly string[] = USE
   await client.transaction([
     client.query("SELECT set_config('lock_timeout', '3s', true)"),
     client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-referents-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
+/**
+ * Applica il DDL della 0025 in una sola transazione, serializzata dallo stesso advisory lock del file,
+ * con `lock_timeout` di 3s come la 0024 (il blocco dei tipi prende un ACCESS EXCLUSIVE su
+ * `use_case_notifications` solo se l'elenco va allargato). In produzione il file si applica a mano
+ * prima del rilascio: qui il self-heal trova lo schema già aggiornato e non fa niente.
+ */
+export async function runUseCaseAlertsDdl(statements: readonly string[] = USE_CASE_ALERTS_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-alerts-ddl'))"),
     ...statements.map((statement) => client.query(statement)),
   ]);
 }
@@ -839,6 +874,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(USE_CASE_VALUE_PROBE_SQL)}
         AND ${sql.raw(USE_CASE_HISTORY_PROBE_SQL)}
         AND ${sql.raw(USE_CASE_REFERENTS_PROBE_SQL)}
+        AND ${sql.raw(USE_CASE_ALERTS_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -863,6 +899,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (referentsDdlFailedAt !== null && Date.now() - referentsDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       referentsDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runUseCaseReferentsDdlSafely);
+    }
+    // La 0025 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (alertsDdlFailedAt !== null && Date.now() - alertsDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      alertsDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runUseCaseAlertsDdlSafely);
     }
     return ensurePromise;
   }

@@ -12,6 +12,7 @@ import {
   laterIso,
   mergeBell,
   noticeEntry,
+  noticeHref,
   parseBellReadRef,
   parseBellWriteBody,
   parseUpTo,
@@ -108,6 +109,29 @@ test("righe: segnale, dossier, use case", () => {
   assert.equal(n.description, "2 risposte da verificare in «Cosa serve».");
   assert.equal(n.href, `/dashboard/${WS}/use-cases/${UC}?capitolo=cosa-serve`);
   assert.equal(n.unread, true);
+});
+
+test("(0025) «Pronto da avviare» porta a «Realizzazione», «Autorizza i fornitori» a Impostazioni; gli altri a «Cosa serve»", () => {
+  const row = (kind: Parameters<typeof noticeEntry>[1]["kind"]) =>
+    noticeEntry(WS, { id: ID(4), useCaseId: UC, code: "TJ-0004", title: "Fatture fornitori", kind, answers: 0, unknowns: 0, documents: 0, followUp: kind === "senza_risposta" ? "scaduta" : null, lastEventAt: new Date("2026-10-27T11:00:00.456Z"), readAt: null }, NOW);
+  const ready = row("pronto");
+  assert.deepEqual([ready.context, ready.title, ready.description, ready.href], [
+    "TJ-0004 · Fatture fornitori",
+    "Pronto da avviare",
+    "Non manca niente dal cliente: si può avviare la realizzazione.",
+    `/dashboard/${WS}/use-cases/${UC}?capitolo=realizzazione`,
+  ]);
+  const suppliers = row("fornitori");
+  assert.deepEqual([suppliers.context, suppliers.title, suppliers.description, suppliers.href], [
+    "TJ-0004 · Fatture fornitori",
+    "Autorizza i fornitori",
+    "Serve il tuo ok sui sub-responsabili, in Impostazioni, per chiedere le informazioni di questo use case.",
+    `/dashboard/${WS}/settings#sub-responsabili`,
+  ]);
+  for (const kind of ["risposte", "documenti", "senza_risposta", "complete"] as const) {
+    assert.equal(row(kind).href, `/dashboard/${WS}/use-cases/${UC}?capitolo=cosa-serve`, kind);
+    assert.equal(noticeHref(WS, { kind, useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}?capitolo=cosa-serve`, kind);
+  }
 });
 
 test("dal client: riferimenti, corpi e istanti si controllano", () => {

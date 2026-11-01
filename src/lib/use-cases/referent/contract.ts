@@ -31,6 +31,8 @@ export const subprocessorsSettingsHref = (workspaceId: string) => `/dashboard/${
 export const REFERENT_CRON_PATH = "/api/cron/use-case-referents";
 // (Parte 2) Nessun tipo di segnale in `weekly_signals`: le righe della campanella sono use_case_notifications.
 export const cosaServeHref = (workspaceId: string, useCaseId: string) => `/dashboard/${workspaceId}/use-cases/${useCaseId}?capitolo=cosa-serve`;
+/** (0025) «Pronto da avviare»: la scheda al capitolo «Realizzazione», dove si avvia. */
+export const realizzazioneHref = (workspaceId: string, useCaseId: string) => `/dashboard/${workspaceId}/use-cases/${useCaseId}?capitolo=realizzazione`;
 
 export const REFERENT_LIMITS = Object.freeze({
   questionsPerRequest: 20,

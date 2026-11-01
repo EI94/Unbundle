@@ -1,15 +1,24 @@
 /**
  * I testi delle notifiche degli use case nella campanella (SPEC §P2.6.5): risposte arrivate, nuovi
- * documenti, nessuna risposta, informazioni complete. Una riga dice per quale use case (codice e
+ * documenti, nessuna risposta, informazioni complete e (0025) «Pronto da avviare» per Lateral Space,
+ * «Autorizza i fornitori» per chi può dare l'ok del cliente. Una riga dice per quale use case (codice e
  * titolo, nella prima riga), che cosa è successo e quante risposte o documenti: mai il testo delle
  * risposte, mai i nomi dei file, mai il nome o l'email del referente, mai una persona.
  *
  * Modulo puro: import relativi `.ts`.
  */
-import type { FollowUpReason, UseCaseNotificationKind } from "../db/use-case-hub-referents-ddl.ts";
+import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
+import type { UseCaseNoticeKind } from "../db/use-case-hub-alerts-ddl.ts";
 
 export const USE_CASE_NOTICE_TEXT = Object.freeze({
-  titles: Object.freeze({ risposte: "Risposte arrivate", documenti: "Nuovi documenti", senza_risposta: "Nessuna risposta", complete: "Informazioni complete" } satisfies Record<UseCaseNotificationKind, string>),
+  titles: Object.freeze({
+    risposte: "Risposte arrivate",
+    documenti: "Nuovi documenti",
+    senza_risposta: "Nessuna risposta",
+    complete: "Informazioni complete",
+    pronto: "Pronto da avviare",
+    fornitori: "Autorizza i fornitori",
+  } satisfies Record<UseCaseNoticeKind, string>),
   answers: Object.freeze({ one: "1 risposta", many: "{n} risposte" }),
   documents: Object.freeze({ one: "1 documento", many: "{n} documenti" }),
   unknowns: Object.freeze({ one: "1 «Non lo so»", many: "{n} «Non lo so»" }),
@@ -23,6 +32,8 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
     scaduta: "Il link è scaduto e restano domande senza risposta.",
   } satisfies Record<FollowUpReason, string>),
   complete: "Ci sono tutte le informazioni che servono dal cliente.",
+  ready: "Non manca niente dal cliente: si può avviare la realizzazione.",
+  suppliers: "Serve il tuo ok sui sub-responsabili, in Impostazioni, per chiedere le informazioni di questo use case.",
   contextSeparator: " · ",
 });
 
@@ -32,7 +43,7 @@ const safe = (n: number) => (Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
 
 /** Titolo e descrizione di una riga, dai soli conteggi e dal codice del seguito. */
 export function noticeTextOf(n: {
-  kind: UseCaseNotificationKind;
+  kind: UseCaseNoticeKind;
   answers: number;
   unknowns: number;
   documents: number;
@@ -41,6 +52,8 @@ export function noticeTextOf(n: {
   const t = USE_CASE_NOTICE_TEXT;
   const title = t.titles[n.kind];
   if (n.kind === "complete") return { title, description: t.complete };
+  if (n.kind === "pronto") return { title, description: t.ready };
+  if (n.kind === "fornitori") return { title, description: t.suppliers };
   if (n.kind === "senza_risposta") return { title, description: t.followUp[n.followUp ?? "scaduta"] };
   const answers = safe(n.answers);
   const documents = safe(n.documents);
