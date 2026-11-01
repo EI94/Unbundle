@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, type ComponentProps, type MouseEvent, type ReactNode } from "react";
+import { hashTargetOf } from "../list-focus";
 
 /** Le ancore che un `#ancora` dell'indirizzo può raggiungere (`detailTargetIds`), dell'ultimo `Arrival` montato. */
 let knownIds: readonly string[] = [];
@@ -38,6 +39,17 @@ export function arriveAt(id: string): boolean {
   return true;
 }
 
+/**
+ * L'ancora della scheda che un `#ancora` dell'indirizzo raggiunge, o null. Decodifica come
+ * `hashTargetOf`: un'ancora malformata («#%», «#100%», un link copiato a metà) resta com'è, non è
+ * nessuna delle nostre e non porta la scheda nel confine d'errore, perché l'effetto di `Arrival`
+ * che la legge è dentro React.
+ */
+export function knownAnchorOf(hash: string, ids: readonly string[]): string | null {
+  const id = hashTargetOf(hash);
+  return id !== null && ids.includes(id) ? id : null;
+}
+
 export interface ArrivalProps {
   /** `?capitolo=` già risolto (`arrivalTarget`): l'ancora a cui arriva la pagina; null senza. */
   initial: string | null;
@@ -54,10 +66,7 @@ export function Arrival({ initial, ids }: ArrivalProps) {
   const key = ids.join(" ");
   useEffect(() => {
     knownIds = key ? key.split(" ") : [];
-    const fromHash = () => {
-      const hash = decodeURIComponent(window.location.hash.slice(1));
-      return knownIds.includes(hash) ? hash : null;
-    };
+    const fromHash = () => knownAnchorOf(window.location.hash, knownIds);
     const target = initial ?? fromHash();
     if (target) arriveAt(target);
     const onHash = () => {

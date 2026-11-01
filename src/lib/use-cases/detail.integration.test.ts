@@ -31,7 +31,8 @@ const { registerHooks } = nodeModule as unknown as {
 //   guardano il contenuto: scheda nascosta altrui «Use case non trovato» con `noindex` (sotto
 //   loading.tsx lo stato è 200), `/use-cases/nuovo` con l'area spenta, la versione superata con
 //   il toast e il testo che resta nel campo, «Modifica valutazione» che dopo una versione
-//   superata non riporta indietro la valutazione di un collega, e l'ancora di `?capitolo=`.
+//   superata non riporta indietro la valutazione di un collega, l'ancora di `?capitolo=` e un
+//   `#ancora` storpiata («#%») che apre la scheda invece del confine d'errore.
 //   run-db-tests.mjs (`npm run test:use-cases:db`) NON le esegue: non passa HUB_DETAIL_HARNESS
 //   né le porte. Si lanciano a mano, con l'app avviata da
 //   `node scripts/uc-test/start-app.mjs --flag USE_CASE_HUB_WORKSPACES=<id del workspace «a»>`:
@@ -1404,6 +1405,23 @@ if (process.env.HUB_DETAIL_HARNESS === "1") {
           await sleep(600);
           const needs = await landed(tab, "cosa-serve");
           assert.equal(needs.focusId, "cosa-serve-titolo", `${width} px: il fuoco sul titolo di «Cosa serve»`);
+          // Un link storpiato («#%», «#100%», copiato a metà): la scheda si apre, non il confine d'errore.
+          // Ogni volta un'altra scheda, così il browser carica la pagina invece di cambiare solo l'ancora.
+          for (const [key, hash] of [
+            ["r17", "%"],
+            ["r09", "100%"],
+            ["r17", "%E0%A4%A"],
+          ] as const) {
+            await cdp.navigate(tab, `${app}/dashboard/${ws}/use-cases/${seeded("a", key).id}#${hash}`);
+            await sleep(600);
+            const shown = await cdp.evaluate(tab, () => ({
+              detail: Boolean(document.querySelector('[data-slot="use-case-detail"]')?.checkVisibility()),
+              broken: document.body.innerText.includes("Non riusciamo a caricare gli use case."),
+            }));
+            assert.deepEqual(shown, { detail: true, broken: false }, `${width} px, #${hash}: la scheda, non l'errore`);
+            const uriErrors = (tab as { errors: Array<{ text: string }> }).errors.filter((error) => /URIError/.test(error.text));
+            assert.deepEqual(uriErrors, [], `${width} px, #${hash}: nessun URIError`);
+          }
           await cdp.closePage(tab);
         }
       } finally {
