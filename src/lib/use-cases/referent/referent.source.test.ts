@@ -70,6 +70,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/queries/uc-retention.ts",
   // I controlli dello schema sul cluster locale di prova (0024 tolta e rimessa).
   "scripts/use-case-test/schema-check.mjs",
+  // (0025) La prova nel browser delle due righe nuove, sul database usa e getta del harness.
+  "scripts/use-case-test/case-alerts-acceptance.mjs",
 ]);
 
 test("le tabelle nuove si nominano solo nei moduli della funzione", () => {
