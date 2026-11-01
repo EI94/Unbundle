@@ -1,15 +1,19 @@
 "use client"
 
+import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import { toasterTheme } from "@/components/theme/theme-config"
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
+  // Chiaro solo sulle pagine del dashboard con il tema «Chiaro»; altrove "system", come prima.
+  const { resolvedTheme } = useTheme()
+  const pathname = usePathname()
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={toasterTheme(resolvedTheme, pathname)}
       className="toaster group"
       icons={{
         success: (

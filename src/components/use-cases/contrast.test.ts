@@ -6,7 +6,8 @@ import { readdirSync, readFileSync } from "node:fs";
 // (il blocco `[data-use-case-root]` di globals.css, sopra `:root`) e le pagine pubbliche chiare
 // (`.survey-light`: /rispondi, /r, /a, /s). Qui i rapporti di contrasto WCAG calcolati dai token
 // oklch del CSS, e nei sorgenti le classi che li abbassavano (testo sbiadito, codici della matrice
-// più tenui, avvisi in ambra fissa), perché non tornino.
+// più tenui, avvisi in ambra fissa), perché non tornino. Il tema «Chiaro» del dashboard, che chi
+// guarda sceglie dal menu sotto il suo nome, ha i suoi test in src/components/theme/.
 
 const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
 const css = read("src/app/globals.css");
@@ -177,7 +178,7 @@ test("i colori degli agenti si leggono nel tema scuro", () => {
     const next = declared[(index + 1) % declared.length];
     assert.ok(hueDistance(tone.h, next.h) >= 100, `uc-agente-${tone.tone} e uc-agente-${next.tone}: ${hueDistance(tone.h, next.h)}°`);
   });
-  // Solo tema scuro: le pagine chiare non li ridefiniscono.
+  // Le pagine pubbliche chiare non li ridefiniscono (il tema «Chiaro» del dashboard sì, in fondo a globals.css).
   assert.ok(!block(".survey-light {").body.includes("--uc-agente"), "niente agenti sulle pagine chiare");
   for (const tone of declared) assert.ok(css.includes(`--color-uc-agente-${tone.tone}: var(--uc-agente-${tone.tone});`), `--color-uc-agente-${tone.tone}`);
 

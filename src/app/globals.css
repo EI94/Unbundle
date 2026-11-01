@@ -1,8 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./theme-palette.css";
+@import "./theme-viz.css";
 
 @custom-variant dark (&:is(.dark *));
+/* Solo nel tema «Chiaro» del dashboard (vedi il blocco in fondo): per i pochi casi che i token non
+   raggiungono. Il test della guardia dei colori dice in quali file si può usare. */
+@custom-variant light (&:where(:root[data-theme="light"]:has([data-theme-scope]) *));
 
 @theme inline {
   --color-background: var(--background);
@@ -139,7 +144,8 @@
      vicini nell'alfabeto: ogni tono sta almeno a 100° dal precedente (e il primo dal decimo).
      Nessun tono tra 350° e 50°: è il rosso di «Scaduto» (text-red-300 a 20°, --uc-rosso a 25°).
      Testo del tag sul suo fondo al 16% almeno 7,9:1, bordo del tag al 55% almeno 3,6:1, barra
-     piena su --card almeno 10:1. Solo tema scuro, mai sulle pagine .survey-light. */
+     piena su --card almeno 10:1. Mai sulle pagine .survey-light; il tema «Chiaro» del dashboard ha
+     i suoi, in fondo al file. */
   --uc-agente-1: oklch(0.8 0.1 83);
   --uc-agente-2: oklch(0.8 0.1 183);
   --uc-agente-3: oklch(0.8 0.1 283);
@@ -283,4 +289,125 @@ html:has([data-use-case-root])
    tastiera vale l'alone di sempre. */
 [data-use-case-root] [data-slot="segmented-nav"] [aria-current="page"]:not(:focus-visible) {
   --tw-ring-color: var(--input);
+}
+
+/* Tema «Chiaro» del dashboard. Vale solo quando chi guarda l'ha scelto (next-themes scrive
+   `data-theme` su <html>, vedi src/components/theme/) e solo sulle pagine del dashboard, che
+   portano il segno `data-theme-scope` ((dashboard)/layout.tsx): le pagine pubbliche (/r,
+   /rispondi, /a, /s, /login…) restano come sono qualunque tema il browser abbia salvato, e le
+   e-mail non leggono questi token. «Scuro» resta il predefinito: nessun blocco qui sopra cambia.
+   «Molto chiaro»: testi almeno 4,5:1 (i grigi secondari 6,8–8,1:1), bordi dei campi, fuoco e
+   segni dei grafici almeno 3:1, sulle superfici del dashboard. Gli stessi toni del tema scuro per il
+   semaforo, i gruppi dei grafici e i dieci agenti, con la luminosità girata per il fondo chiaro. */
+:root[data-theme="light"]:has([data-theme-scope]) {
+  color-scheme: light;
+  --background: oklch(0.985 0.002 260);
+  --foreground: oklch(0.18 0.01 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.01 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.01 260);
+  --primary: oklch(0.22 0.01 260);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.955 0.004 260);
+  --secondary-foreground: oklch(0.24 0.01 260);
+  --muted: oklch(0.955 0.004 260);
+  --muted-foreground: oklch(0.43 0.01 260);
+  --accent: oklch(0.94 0.005 260);
+  --accent-foreground: oklch(0.2 0.01 260);
+  --destructive: oklch(0.5 0.19 25);
+  --border: oklch(0.9 0.004 260);
+  --input: oklch(0.6 0.01 260);
+  --ring: oklch(0.2 0.01 260);
+  --chart-1: oklch(0.5 0.15 260);
+  --chart-2: oklch(0.5 0.09 180);
+  --chart-3: oklch(0.5 0.15 140);
+  --chart-4: oklch(0.5 0.15 320);
+  --chart-5: oklch(0.55 0.12 60);
+  --sidebar: oklch(0.97 0.003 260);
+  --sidebar-foreground: oklch(0.2 0.01 260);
+  --sidebar-primary: oklch(0.22 0.01 260);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.925 0.005 260);
+  --sidebar-accent-foreground: oklch(0.16 0.01 260);
+  --sidebar-border: oklch(0.9 0.004 260);
+  --sidebar-ring: oklch(0.2 0.01 260);
+
+  /* Semaforo: gli stessi toni del tema scuro, dentro la gamma dello schermo, almeno 5,3:1 sulla
+     card, su muted e sul loro fondo (il giallo ha un fondo giallo, non il suo tono al 10%). */
+  --uc-verde: oklch(0.47 0.125 150);
+  --uc-verde-bg: oklch(0.47 0.125 150 / 0.1);
+  --uc-blu: oklch(0.48 0.12 245);
+  --uc-blu-bg: oklch(0.48 0.12 245 / 0.1);
+  --uc-giallo: oklch(0.5 0.1 85);
+  --uc-giallo-bg: oklch(0.82 0.14 85 / 0.2);
+  --uc-rosso: oklch(0.5 0.18 25);
+  --uc-rosso-bg: oklch(0.5 0.18 25 / 0.1);
+  --uc-grigio: oklch(0.46 0.01 260);
+  --uc-grigio-bg: oklch(0.46 0.01 260 / 0.1);
+  --uc-lucchetto: oklch(0.47 0.14 300);
+  --uc-lucchetto-bg: oklch(0.47 0.14 300 / 0.1);
+
+  /* I gruppi dei grafici: gli stessi tre toni del tema scuro (entro 3°), almeno 3:1 sulla card,
+     e per chi non distingue rosso e verde lontani almeno quanto nel tema scuro. */
+  --uc-serie-1: #2a78d6;
+  --uc-serie-2: #c5531f;
+  --uc-serie-3: #118a5f;
+  --uc-serie-altro: oklch(0.62 0.01 260);
+
+  /* I dieci agenti: gli stessi toni, nello stesso ordine, con la stessa luminosità e la stessa
+     saturazione tra loro. Testo almeno 6,1:1 sulla card, 4,8:1 sul fondo del tag al 16%. */
+  --uc-agente-1: oklch(0.47 0.08 83);
+  --uc-agente-2: oklch(0.47 0.08 183);
+  --uc-agente-3: oklch(0.47 0.08 283);
+  --uc-agente-4: oklch(0.47 0.08 50);
+  --uc-agente-5: oklch(0.47 0.08 150);
+  --uc-agente-6: oklch(0.47 0.08 250);
+  --uc-agente-7: oklch(0.47 0.08 350);
+  --uc-agente-8: oklch(0.47 0.08 117);
+  --uc-agente-9: oklch(0.47 0.08 217);
+  --uc-agente-10: oklch(0.47 0.08 317);
+}
+/* Nel tema chiaro l'area «Use case» e il dossier non hanno bisogno dei loro valori (sono per il
+   tema scuro, qui sopra): i token globali chiari superano già le loro soglie. Così i loro blocchi
+   restano come sono e qui tornano ai valori della pagina, anche nei pannelli che si aprono sopra. */
+:root[data-theme="light"]:has([data-theme-scope])
+  :is(
+    [data-use-case-root],
+    [data-uc-case-root],
+    [data-slot="sheet-content"],
+    [data-slot="dialog-content"],
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="select-content"],
+    [data-slot="decision-dialog"],
+    [data-slot="redact-dialog"],
+    [data-slot="use-case-panel"],
+    [data-slot="quick-create-sheet"]
+  ) {
+  --muted-foreground: inherit;
+  --input: inherit;
+  --ring: inherit;
+}
+/* Il bordo del tag di un agente: al 55% del tono resterebbe 2,4:1 sul chiaro; all'80% del colore
+   del testo (il tono) è almeno 3,9:1. Il tag neutro tiene il bordo dei campi. */
+:root[data-theme="light"]:has([data-theme-scope]) [data-slot="agent-tag"]:not([data-tone="neutro"]) {
+  border-color: color-mix(in oklab, currentColor 80%, transparent);
+}
+/* I toast colorati nel tema chiaro: i toni del semaforo su un fondo pieno appena tinto (testo
+   almeno 5,5:1), al posto dei colori di Sonner (3,1–4,4:1). */
+:root[data-theme="light"]:has([data-theme-scope]) [data-sonner-toaster][data-sonner-theme="light"] {
+  --success-bg: oklch(0.965 0.02 150);
+  --success-border: oklch(0.85 0.06 150);
+  --success-text: var(--uc-verde);
+  --info-bg: oklch(0.965 0.015 245);
+  --info-border: oklch(0.85 0.05 245);
+  --info-text: var(--uc-blu);
+  --warning-bg: oklch(0.97 0.035 90);
+  --warning-border: oklch(0.86 0.09 88);
+  --warning-text: var(--uc-giallo);
+  --error-bg: oklch(0.965 0.015 25);
+  --error-border: oklch(0.85 0.07 25);
+  --error-text: var(--uc-rosso);
 }

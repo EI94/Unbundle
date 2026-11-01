@@ -34,7 +34,8 @@
     "test:connector:db": "node --no-warnings scripts/connettore-test/run-db-tests.mjs",
     "test:use-cases": "node --no-warnings --test \"src/lib/use-cases/**/*.test.ts\" \"src/lib/db/use-case-hub*.test.ts\" \"src/components/use-cases/**/*.test.ts\" \"src/components/dashboard/nav-active.test.ts\" \"src/components/dashboard/action-error-toast.test.ts\" \"src/lib/review-team*.test.ts\" \"src/lib/notifications/bell*.test.ts\" \"src/components/portfolio/**/*.test.ts\"",
     "test:use-cases:db": "node --no-warnings scripts/use-case-test/run-db-tests.mjs",
-    "test": "npm run test:portfolio && npm run test:mcp && npm run test:slack && npm run test:workspace-collaboration && npm run test:auth && npm run test:ai-readiness && npm run test:learning && npm run test:uc && npm run test:connector && npm run test:use-cases"
+    "test:theme": "node --no-warnings --test \"src/components/theme/**/*.test.ts\"",
+    "test": "npm run test:portfolio && npm run test:mcp && npm run test:slack && npm run test:workspace-collaboration && npm run test:auth && npm run test:ai-readiness && npm run test:learning && npm run test:uc && npm run test:connector && npm run test:use-cases && npm run test:theme"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.68",

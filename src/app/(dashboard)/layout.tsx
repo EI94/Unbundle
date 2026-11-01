@@ -8,7 +8,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false, nocache: true, noarchive: true },
 };
 
-/** Solo auth: la sidebar per `/dashboard` è in `DashboardListShell`; per workspace in `[workspaceId]/layout`. */
+/**
+ * Solo auth: la sidebar per `/dashboard` è in `DashboardListShell`; per workspace in `[workspaceId]/layout`.
+ * `data-theme-scope`: il segno delle pagine del dashboard, dove vale il tema «Chiaro» quando chi
+ * guarda l'ha scelto (globals.css, src/components/theme/). `contents`: nessun riquadro in più.
+ */
 export default async function DashboardRootLayout({
   children,
 }: {
@@ -16,5 +20,9 @@ export default async function DashboardRootLayout({
 }) {
   await requireSession();
 
-  return <>{children}</>;
+  return (
+    <div data-theme-scope="" className="contents">
+      {children}
+    </div>
+  );
 }

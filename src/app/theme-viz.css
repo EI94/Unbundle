@@ -1,0 +1,3 @@
+/* I colori dei grafici disegnati con valori fissi (SVG, recharts, d3), come token `--viz-*` per i
+   due temi: nel tema scuro i valori di sempre, nel tema «Chiaro» gli stessi toni per il fondo
+   chiaro. Vuoto finché i grafici non li usano. */

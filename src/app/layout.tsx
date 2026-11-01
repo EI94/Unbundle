@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ThemeProvider } from "@/components/theme/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -109,12 +110,16 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        {/* JSON-LD globali: Organization + WebSite. Una sola volta sito-wide. */}
-        <script
-          {...jsonLdScriptProps([organizationJsonLd(), websiteJsonLd()])}
-        />
-        <TooltipProvider>{children}</TooltipProvider>
-        <Toaster richColors position="bottom-right" />
+        {/* Il tema scelto (Scuro, Chiaro, Come il sistema): per primo, così il suo script scrive
+            `data-theme` su <html> prima che la pagina si disegni. */}
+        <ThemeProvider>
+          {/* JSON-LD globali: Organization + WebSite. Una sola volta sito-wide. */}
+          <script
+            {...jsonLdScriptProps([organizationJsonLd(), websiteJsonLd()])}
+          />
+          <TooltipProvider>{children}</TooltipProvider>
+          <Toaster richColors position="bottom-right" />
+        </ThemeProvider>
       </body>
     </html>
   );
