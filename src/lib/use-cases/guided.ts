@@ -211,6 +211,7 @@ export const GUIDED_TEXT = Object.freeze({
     zone: "zona: {zona}",
     editValuation: "modifica benefici e costi",
     moreFields: " e altri {n}",
+    moreFieldsOne: " e un altro",
     toComplete: "da completare",
     notStarted: "non ancora partita",
     dossier: "dossier {stato}",
@@ -1021,7 +1022,7 @@ export function foldSummaries(input: FoldSummaryInput): FoldSummaries {
   ].filter((piece): piece is string => piece !== null);
   const filled = input.filledDetails.map((label) => lowerFirst(label));
   const dettagli = filled.length
-    ? `${filled.slice(0, 3).join(FIGURE_SEPARATOR)}${filled.length > 3 ? fill(t.moreFields, { n: formatInteger(filled.length - 3) }) : ""}`
+    ? `${filled.slice(0, 3).join(FIGURE_SEPARATOR)}${filled.length === 4 ? t.moreFieldsOne : filled.length > 4 ? fill(t.moreFields, { n: formatInteger(filled.length - 3) }) : ""}`
     : t.toComplete;
   const latest = input.events?.[0]?.at ?? null;
   const latestDay = latest ? formatDayInYear(latest, instantOfDay(input.today)) : null;

@@ -637,6 +637,7 @@ test("foldSummaries: valutazione, dettagli, realizzazione, storia", () => {
   // La zona solo per un Valore senza euro.
   assert.equal(foldSummaries({ ...base, valuation: { ...base.valuation, value: { perYear: { amount: 10, source: "team" }, benefits: null }, zone: "subito" } }).valutazione, "modifica benefici e costi");
   assert.equal(foldSummaries({ ...base, filledDetails: ["AI Lab"] }).dettagli, "AI Lab");
+  assert.equal(foldSummaries({ ...base, filledDetails: ["Impatto atteso", "Dati", "Area", "AI Lab"] }).dettagli, "impatto atteso · dati · area e un altro");
   assert.equal(foldSummaries({ ...base, events: [] }).storia, "nessun cambiamento");
   const summary = (variant: Parameters<typeof foldSummaries>[0]["realization"]) => foldSummaries({ ...base, realization: variant }).realizzazione;
   assert.equal(summary({ variant: "avvia", realization: null, dossier: null, realizedOn: null }), "non ancora partita");
