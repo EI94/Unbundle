@@ -233,11 +233,11 @@ export function AppSidebar({
                   <span className="truncate font-medium text-sidebar-foreground">
                     {user.name ?? "Utente"}
                   </span>
-                  <span className="truncate text-xs text-sidebar-foreground/60">
+                  <span className="truncate text-xs text-sidebar-foreground/60 light:text-sidebar-foreground/70">
                     {user.email}
                   </span>
                 </div>
-                <ChevronUp className="h-4 w-4 text-sidebar-foreground/60" />
+                <ChevronUp className="h-4 w-4 text-sidebar-foreground/60 light:text-sidebar-foreground/70" />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="w-56">
                 <DropdownMenuItem>

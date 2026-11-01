@@ -106,6 +106,8 @@ test("il menu «Tema»: «Scuro», «Chiaro», «Come il sistema», in quest'ord
   const html = renderToStaticMarkup(createElement(ThemeProvider, {}, createElement(MenuRoot, { open: true }, createElement(ThemeMenuGroup, {}))));
   const group = html.slice(html.indexOf("</script>") + "</script>".length);
   assert.match(group, /^<div role="group" data-slot="dropdown-menu-group"><div [^>]*data-slot="dropdown-menu-label"[^>]*>Tema<\/div>/);
+  // L'etichetta nel grigio del testo secondario: quello delle etichette dei menu è 4,2:1 sul popover scuro.
+  assert.match(group, /data-slot="dropdown-menu-label" class="[^"]*\btext-secondary-foreground\b[^"]*"/);
   const items = [...group.matchAll(/<div [^>]*role="menuitemradio"[^>]*aria-checked="(true|false)"[^>]*>([\s\S]*?)<\/div>/g)];
   assert.deepEqual(items.map((item) => item[2].replace(/<[^>]+>/g, "")), ["Scuro", "Chiaro", "Come il sistema"]);
   // Nell'HTML del server il tema non è ancora letto: vale il predefinito, «Scuro».
@@ -129,6 +131,8 @@ test("il menu «Tema» sta sotto il nome, in fondo alla barra laterale, tra «I 
   assert.equal(sidebar.match(/<ThemeMenuGroup \/>/g)?.length, 1);
   // Il nome del workspace sotto «Unbundle»: al 50% sul grigio chiaro sarebbe 3,4:1, col tema chiaro va al 70%.
   assert.ok(sidebar.includes("text-sidebar-foreground/50 light:text-sidebar-foreground/70"), "il nome del workspace nel tema chiaro");
+  // L'e-mail e la freccia sotto il nome: al 60% sul grigio della voce aperta sarebbero 4,4:1 nel chiaro.
+  assert.equal(sidebar.match(/text-sidebar-foreground\/60 light:text-sidebar-foreground\/70/g)?.length, 2, "e-mail e freccia nel tema chiaro");
   // La stessa barra (e lo stesso menu) per /dashboard e per ogni workspace.
   for (const file of ["src/components/dashboard/dashboard-list-shell.tsx", "src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx"]) assert.ok(readRepo(file).includes("<AppSidebar"), file);
 });

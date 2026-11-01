@@ -433,7 +433,7 @@ export function ChatInterface({
                   ? "Attendi la risposta..."
                   : "Scrivi la tua risposta..."
               }
-              className="w-full resize-none rounded-xl border border-border bg-card px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[48px] max-h-[200px] disabled:opacity-30 disabled:cursor-not-allowed"
+              className="w-full resize-none rounded-xl border border-border light:border-input bg-card px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[48px] max-h-[200px] disabled:opacity-30 disabled:cursor-not-allowed"
               rows={1}
               disabled={isLoading}
             />

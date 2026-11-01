@@ -26,7 +26,8 @@ export function ThemeMenuGroup() {
 
   return (
     <DropdownMenuGroup>
-      <DropdownMenuLabel>{THEME_MENU_LABEL}</DropdownMenuLabel>
+      {/* Il grigio delle etichette dei menu è 4,2:1 sul popover scuro: qui quello del testo secondario. */}
+      <DropdownMenuLabel className="text-secondary-foreground">{THEME_MENU_LABEL}</DropdownMenuLabel>
       <DropdownMenuRadioGroup value={value} onValueChange={(next) => { if (isChoice(next)) setTheme(next); }}>
         {THEME_OPTIONS.map((option) => {
           const Icon = ICONS[option.value];

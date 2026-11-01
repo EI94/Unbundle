@@ -411,3 +411,11 @@ html:has([data-use-case-root])
   --error-border: oklch(0.85 0.07 25);
   --error-text: var(--uc-rosso);
 }
+/* Le righe delle liste del dossier (prossimi passi, domande, documenti, KPI e le loro intestazioni,
+   costi, leve…) dicono il fuoco della tastiera solo con il fondo (`focus-visible:bg-muted/50`),
+   1,1:1 sulla card chiara: nel tema chiaro un contorno pieno di --ring, dentro la riga (le liste
+   tagliano quello che sporge). */
+:root[data-theme="light"]:has([data-theme-scope]) [data-uc-case-root] :is(li, section) > a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}

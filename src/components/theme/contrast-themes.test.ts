@@ -162,6 +162,10 @@ test("tema chiaro: testi molto chiari su ogni superficie", () => {
   atLeast(ratio(t.destructive.rgb, wash), 4.5, "destructive sul suo fondo al 10%");
 });
 
+test("l'etichetta «Tema» del menu si legge nei due temi", () => {
+  for (const [name, t] of [["scuro", dark], ["chiaro", light]] as const) atLeast(contrast(t["secondary-foreground"], t.popover.rgb), 4.5, `secondary-foreground sul popover, tema ${name}`);
+});
+
 test("tema chiaro: bordi dei campi, fuoco e linee almeno 3:1", () => {
   const t = light;
   for (const [name, surface] of lightSurfaces(t)) {
@@ -185,6 +189,9 @@ test("tema chiaro: la barra laterale, grigio chiaro sulla pagina", () => {
   for (const alpha of [0.7, 0.6]) atLeast(contrast(t["sidebar-foreground"], sidebar, alpha), 4.5, `sidebar-foreground/${alpha * 100}`);
   assert.ok(contrast(t["sidebar-foreground"], sidebar, 0.5) < 4.5, "al 50% non basta: per questo la riga del workspace prende /70");
   atLeast(contrast(t["sidebar-foreground"], t["sidebar-accent"].rgb), 7, "sidebar-foreground sulla voce accesa");
+  // L'e-mail sotto il nome mentre il menu è aperto (il pulsante prende sidebar-accent): /70 nel chiaro.
+  atLeast(contrast(t["sidebar-foreground"], t["sidebar-accent"].rgb, 0.7), 4.5, "sidebar-foreground/70 sulla voce aperta");
+  assert.ok(contrast(t["sidebar-foreground"], t["sidebar-accent"].rgb, 0.6) < 4.5, "al 60% non basterebbe");
   atLeast(contrast(t["sidebar-accent-foreground"], t["sidebar-accent"].rgb), 7, "sidebar-accent-foreground");
   atLeast(contrast(t["sidebar-primary-foreground"], t["sidebar-primary"].rgb), 7, "sidebar-primary-foreground");
   atLeast(contrast(t["sidebar-ring"], sidebar, 0.5), 3, "sidebar-ring/50");
@@ -273,6 +280,14 @@ test("tema chiaro: l'area «Use case» e il dossier tornano ai token della pagin
   for (const root of ["[data-use-case-root]", "[data-uc-case-root]"]) assert.ok(reset.selector.includes(root), root);
   // Ogni token che i blocchi scuri cambiano è azzerato.
   for (const name of [...Object.keys(declarations(area.body)), ...Object.keys(declarations(dossier.body))]) assert.ok(name in declarations(reset.body), name);
+});
+
+test("tema chiaro: le righe delle liste del dossier dicono il fuoco con un contorno pieno", () => {
+  const rule = rules.find((r) => r.selector === `${LIGHT} [data-uc-case-root] :is(li, section) > a:focus-visible`);
+  assert.ok(rule, "il contorno del fuoco delle righe del dossier");
+  assert.match(rule.body, /outline: 2px solid var\(--ring\);\s*outline-offset: -2px;/);
+  for (const surface of ["card", "muted"]) atLeast(contrast(light.ring, light[surface].rgb), 3, `ring pieno su ${surface}`);
+  atLeast(contrast(light.ring, over(light.muted.rgb, light.card.rgb, 0.5)), 3, "ring pieno sulla riga col fuoco");
 });
 
 test("tema chiaro: i toast colorati con i toni del semaforo", () => {
