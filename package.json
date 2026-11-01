@@ -12,7 +12,7 @@
     "test:slack": "node --no-warnings --test src/lib/slack/use-case-agent.test.ts",
     "test:workspace-collaboration": "node --no-warnings --test src/lib/db/queries/workspace-collaboration.test.ts src/lib/workspace-roles.test.ts src/lib/firebase/auth-errors.test.ts",
     "test:auth": "node --no-warnings --test src/lib/auth/session-signal.test.ts src/lib/auth/workspace-isolation.test.ts src/lib/firebase/private-key.test.ts",
-    "test:ai-readiness": "node --no-warnings --test src/lib/ai-readiness/scoring.test.ts src/lib/ai-readiness/export.test.ts src/lib/ai-readiness/intelligence.test.ts src/lib/ai-readiness/draft.test.ts src/lib/ai-readiness/template-scope.test.ts src/lib/ai-readiness/question-doc.test.ts src/lib/ai-readiness/use-case-form.test.ts src/lib/ai-readiness/form-validation.test.ts src/lib/ai-readiness/survey-track.test.ts src/components/ai-readiness/open-survey-start-form.test.ts",
+    "test:ai-readiness": "node --no-warnings --test src/lib/ai-readiness/scoring.test.ts src/lib/ai-readiness/export.test.ts src/lib/ai-readiness/intelligence.test.ts src/lib/ai-readiness/draft.test.ts src/lib/ai-readiness/template-scope.test.ts src/lib/ai-readiness/question-doc.test.ts src/lib/spreadsheet/write.test.ts src/lib/ai-readiness/use-case-form.test.ts src/lib/ai-readiness/form-validation.test.ts src/lib/ai-readiness/survey-track.test.ts src/components/ai-readiness/open-survey-start-form.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck && npm run test",
     "db:push": "dotenv -e .env.local -- drizzle-kit push",

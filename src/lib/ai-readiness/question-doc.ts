@@ -20,7 +20,7 @@ export type QuestionDocPayload = {
 };
 
 import { INK, ACCENT, GRAY, LIGHT, HAIR, esc, PdfBuilder, PAGE_W, PAGE_H, MARGIN, CONTENT_W } from "../documents/pdf.ts";
-import { writeStyledXlsx, type StyledCell as Cell } from "../spreadsheet/write.ts";
+import { writeStyledXlsx, type StyledCell as Cell } from "../spreadsheet/write-styled.ts";
 
 function typeLabel(t: string) {
   return t === "scale"
