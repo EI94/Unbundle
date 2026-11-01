@@ -419,6 +419,20 @@ export function compareNeeds(a: Pick<NeedView, "sortOrder" | "dueOn" | "title" |
   return a.title.localeCompare(b.title, "it-IT") || a.id.localeCompare(b.id);
 }
 
+/**
+ * Prima quello che chiede di agire: i requisiti «Da verificare» (è arrivata una risposta o un
+ * documento da guardare), poi l'ordine scelto dal team (`compareNeeds`).
+ */
+export function needsActionFirst(
+  a: Pick<NeedView, "type" | "status" | "sortOrder" | "dueOn" | "title" | "id">,
+  b: Pick<NeedView, "type" | "status" | "sortOrder" | "dueOn" | "title" | "id">,
+): number {
+  const verifyA = a.type === "requisito" && a.status === "in_verifica";
+  const verifyB = b.type === "requisito" && b.status === "in_verifica";
+  if (verifyA !== verifyB) return verifyA ? -1 : 1;
+  return compareNeeds(a, b);
+}
+
 /** La riga di un'esigenza, con gli use case che chi guarda conosce. */
 export function needRow(need: NeedView, useCases: ReadonlyMap<string, NeedUseCaseRef>, today: string): NeedRow {
   const linked = need.useCaseIds.flatMap((id) => {
@@ -755,13 +769,22 @@ const ASK_GROUP_OF: Readonly<Record<ItemStatus, Exclude<keyof NeedAskCounts, "op
   non_applicabile: "done",
 };
 
+/**
+ * Il gruppo di stato di un requisito: da chiedere (da chiedere, manca il dato, risposta parziale),
+ * in attesa, da verificare, bloccato, a posto. Uno stato sconosciuto vale «da chiedere», come in
+ * `needStatusView`. Lo usano i conteggi e i cinque gruppi a schermo (`requestGroupView`).
+ */
+export function askGroupOf(status: NeedStatus): Exclude<keyof NeedAskCounts, "open"> {
+  return (NEED_REQUIREMENT_STATUSES as readonly string[]).includes(status) ? ASK_GROUP_OF[status as ItemStatus] : "toAsk";
+}
+
 export function emptyNeedAskCounts(): NeedAskCounts {
   return { open: 0, toAsk: 0, waiting: 0, toVerify: 0, blocked: 0, done: 0 };
 }
 
 /** Un requisito nel suo gruppo. Uno stato sconosciuto vale «da chiedere», come in `needStatusView`. */
 function countRequirement(counts: NeedAskCounts, status: NeedStatus): void {
-  const group = (NEED_REQUIREMENT_STATUSES as readonly string[]).includes(status) ? ASK_GROUP_OF[status as ItemStatus] : "toAsk";
+  const group = askGroupOf(status);
   counts[group] += 1;
   if (group !== "done") counts.open += 1;
 }

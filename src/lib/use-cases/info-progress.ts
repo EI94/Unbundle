@@ -123,6 +123,11 @@ export interface InfoProgressView {
   showInRows: boolean;
   received: number;
   total: number;
+  /**
+   * I conteggi di `InfoProgress`, per il riquadro «Prossimo passo» della scheda: esigenze, mai
+   * persone. `since` e `reminded` solo in attesa.
+   */
+  counts: Pick<InfoProgress, "toAsk" | "toVerify" | "waiting" | "unanswered" | "blockedCount" | "since" | "reminded">;
 }
 
 export const INFO_PROGRESS_TEXT = Object.freeze({
@@ -316,5 +321,6 @@ export function infoProgressView(p: InfoProgress | null): InfoProgressView | nul
     showInRows: INFO_ROW_STATES.includes(p.state),
     received: p.received,
     total: p.total,
+    counts: { toAsk: p.toAsk, toVerify: p.toVerify, waiting: p.waiting, unanswered: p.unanswered, blockedCount: p.blockedCount, since: p.since, reminded: p.reminded },
   };
 }

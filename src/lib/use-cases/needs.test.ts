@@ -27,8 +27,11 @@ import {
   needDueText,
   needListsOfUseCase,
   needOwnerText,
+  askGroupOf,
+  compareNeeds,
   needRow,
   needStatusView,
+  needsActionFirst,
   panelNeeds,
   returnsToConfirm,
   validateArchiveReason,
@@ -484,4 +487,22 @@ test("gli agenti di un'esigenza: dal titolo dei suoi use case, uno per agente; n
   assert.deepEqual(needAgents([{ title: "TAIGETE T3 · Note spese" }, { title: "ALCIONE A1 · Budget" }]), ["ALCIONE", "TAIGETE"], "in ordine alfabetico");
   assert.deepEqual(needAgents([{ title: "Strategia per volo" }]), []);
   assert.deepEqual(needAgents([]), []);
+});
+
+test("needsActionFirst: prima i requisiti da verificare, poi l'ordine del team; askGroupOf dà i gruppi dei conteggi", () => {
+  const a = need({ id: "a", title: "Alfa", sortOrder: 2, status: "da_chiedere" });
+  const b = need({ id: "b", title: "Beta", sortOrder: 5, status: "in_verifica" });
+  const c = need({ id: "c", title: "Gamma", sortOrder: 1, status: "chiesta" });
+  const d = need({ id: "d", title: "Delta", sortOrder: 9, status: "in_verifica" });
+  const step = need({ id: "e", title: "Passo", sortOrder: 0, type: "passo", status: "in_verifica" as NeedView["status"] });
+  assert.deepEqual([a, b, c, d, step].sort(needsActionFirst).map((n) => n.id), ["b", "d", "e", "c", "a"]);
+  assert.deepEqual([a, c].sort(needsActionFirst), [a, c].sort(compareNeeds), "senza risposte da guardare: l'ordine del team");
+  assert.deepEqual(
+    NEED_REQUIREMENT_STATUSES.map((status) => askGroupOf(status)),
+    NEED_REQUIREMENT_STATUSES.map((status) => {
+      const counts = needAskCountsOf([need({ status, useCaseIds: ["u"] })], new Set(["u"]));
+      return (Object.keys(counts) as Array<keyof NeedAskCounts>).find((key) => key !== "open" && counts[key] === 1);
+    }),
+    "lo stesso gruppo dei conteggi",
+  );
 });

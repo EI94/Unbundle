@@ -233,6 +233,17 @@ test("che cosa resta: le ricevute e i pezzi fanno il totale; «complete» non di
   assert.equal(received.line, "2 di 2 informazioni ricevute (1 da verificare)");
 });
 
+test("la vista porta i conteggi per il riquadro «Prossimo passo», gli stessi dello stato derivato", () => {
+  const n = needs("in_verifica", "chiesta", "chiesta", "bloccata", "da_chiedere");
+  const p = deriveInfoProgress(n, [ask(n[1].id, { reminderCount: 2 }), ask(n[2].id)], NOW)!;
+  assert.deepEqual(infoProgressView(p)?.counts, { toAsk: 1, toVerify: 1, waiting: 1, unanswered: 1, blockedCount: 1, since: null, reminded: false });
+  const waiting = needs("chiesta", "da_chiedere");
+  const w = deriveInfoProgress(waiting, [ask(waiting[0].id, { reminderCount: 1 })], NOW)!;
+  assert.equal(w.state, "in_attesa");
+  assert.deepEqual(infoProgressView(w)?.counts, { toAsk: 1, toVerify: 0, waiting: 1, unanswered: 0, blockedCount: 0, since: w.since, reminded: true });
+  assert.ok(w.since, "in attesa: il giorno della richiesta");
+});
+
 test("una sola informazione, a posto: «1 di 1 informazione ricevuta · a posto»", () => {
   assert.equal(view(needs("validata"), [])?.line, "1 di 1 informazione ricevuta · a posto");
 });

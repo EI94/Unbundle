@@ -20,6 +20,7 @@ import {
   type HubCopyScope,
 } from "./copy-guard.ts";
 import * as format from "./format.ts";
+import * as guided from "./guided.ts";
 import { costLongText, costShortText, costSourceText, valueEurSourceText, valueLongText } from "./format.ts";
 import * as inputs from "./inputs.ts";
 import * as labels from "./labels.ts";
@@ -362,6 +363,8 @@ test("copy-guard verde sulle etichette dell'area", () => {
     ...exportedStrings(valueModel),
     ...exportedStrings(valueParamsForm),
     ...exportedStrings(format),
+    // La scheda guidata (rilascio 3): percorso, «Prossimo passo», «Impatto», pieghe.
+    ...exportedStrings(guided),
     ...Object.values(PLAN_SOURCE_LABEL),
     ...Object.values(SAVED_NEED_ACTION_LABEL),
     format.hoursFreedText(116),
