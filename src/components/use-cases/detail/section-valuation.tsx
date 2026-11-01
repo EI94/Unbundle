@@ -5,9 +5,6 @@ import type { ValueParams } from "@/lib/use-cases/value-model";
 import { hubValueParams, type HubAiSuggestion, type UseCaseDetail } from "@/lib/use-cases/views";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
 import { cn } from "@/lib/utils";
-import { CostFigure } from "../cost-figure";
-import { ValueFigure } from "../value-figure";
-import { RiskChips } from "./risk-chips";
 import { ValuationEditor } from "./valuation-form";
 
 /** I testi del capitolo (§6.3, §14.3). */
@@ -111,13 +108,12 @@ export interface SectionValuationProps {
 
 /**
  * Il contenuto della piega «Valutazione del team» della scheda (rilascio 3), solo per i revisori
- * (docs/use-case/DESIGN.md §6.3, §6.7, §7): senza ancora né titolo, che sono della piega. Valore e
- * Costo di realizzazione, due cifre grandi con la loro fonte (una colonna sul
- * telefono), la zona come suggerimento, solo per un Valore senza cifra in euro (`showsZone`), un
- * solo riquadro «Stime non ufficiali» (la stima di Claude e quella di chi ha proposto, se ci sono
- * dati, e il «Suggerimento AI», sotto la frase «Conta la valutazione del team.»), i chip di
- * rischio e «Modifica valutazione», che apre il modulo sul posto. Il costo usa le fasce del
- * workspace (D15).
+ * (docs/use-case/DESIGN.md §6.3, §6.7, §7): senza ancora né titolo, che sono della piega, e senza
+ * le cifre e i rischi, che stanno in «Impatto». La zona come suggerimento, solo per un Valore
+ * senza cifra in euro (`showsZone`), un solo riquadro «Stime non ufficiali» (la stima di Claude e
+ * quella di chi ha proposto, se ci sono dati, e il «Suggerimento AI», sotto la frase «Conta la
+ * valutazione del team.») e «Modifica valutazione», che apre il modulo sul posto. Il costo usa le
+ * fasce del workspace (D15).
  */
 export function SectionValuation({
   workspaceId,
@@ -134,11 +130,7 @@ export function SectionValuation({
   const groups = valuationKpiGroups(model, { esgEnabled });
   return (
     <div data-slot="section-valuation" className={cn("space-y-4", className)}>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <ValueFigure value={detail.value} form="lunga" withLabel />
-        <CostFigure cost={detail.cost} bands={costBands} form="lunga" withLabel />
-      </div>
-      {/* Con una cifra in euro basta la cifra: la zona resta nella matrice. */}
+      {/* Le cifre e i rischi stanno in «Impatto», in testa alla scheda. Con una cifra in euro basta la cifra: la zona resta nella matrice. */}
       {showsZone(detail.value) ? (
         <p className="text-sm">
           <span className="text-muted-foreground">{SECTION_VALUATION_TEXT.zone}: </span>
@@ -159,7 +151,6 @@ export function SectionValuation({
         valueParams={params}
         estimateLines={unofficialEstimateLines(detail.intake)}
         canEdit={canEdit}
-        risks={<RiskChips risks={detail.risks} />}
       />
     </div>
   );

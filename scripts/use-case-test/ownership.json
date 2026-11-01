@@ -248,7 +248,7 @@
       "files": [
         "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx",
         "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/{loading,not-found}.tsx",
-        "src/components/use-cases/detail/{detail,detail-header,use-case-path,next-step-box,fold,arrival,section-what,intake-details,inline-text-field,section-valuation,valuation-form,claude-estimate-box,ai-suggestion-box,risk-chips,section-realization,section-history,redact-dialog,hide-from-search-item}.tsx",
+        "src/components/use-cases/detail/{detail,detail-header,use-case-path,next-step-box,impact-block,work-flow,fold,arrival,section-what,intake-details,inline-text-field,section-valuation,valuation-form,claude-estimate-box,ai-suggestion-box,risk-chips,section-realization,section-history,redact-dialog,hide-from-search-item}.tsx",
         "src/components/use-cases/detail/referent/dialog-host.tsx",
         "src/lib/actions/use-case-edit.ts",
         "scripts/use-case-test/screens/detail.routes.mjs"

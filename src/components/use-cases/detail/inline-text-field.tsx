@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { updateUseCaseFieldAction, type EditableUseCaseField } from "@/lib/actions/use-case-edit";
 import type { DecisionItem } from "@/lib/use-cases/decision-ui";
+import { GUIDED_TEXT, WORK_CLAMP_AFTER } from "@/lib/use-cases/guided";
 import { cn } from "@/lib/utils";
 import { useDecisionRunner } from "../decision-buttons";
 
@@ -49,8 +50,22 @@ export interface InlineTextFieldProps {
    * titolo intero. Vale solo finché il titolo è quello della pagina.
    */
   displayValue?: { prefix: string; rest: string } | null;
+  /**
+   * «Come cambia il lavoro»: il nome del passo («Oggi», «Con LIBRA») al posto dell'etichetta finché
+   * non si modifica; mentre si modifica l'etichetta resta quella del campo («Problema»). Con il nome
+   * del passo il campo non usa `dt` e `dd`, e vuoto mostra il nome e «+ Aggiungi …».
+   */
+  heading?: ReactNode;
+  /**
+   * Un testo lungo si mostra corto (cinque righe) con «Leggi tutto» e «Mostra meno»: lo decide il
+   * server (`workClamps`); un testo breve non si taglia mai.
+   */
+  clamp?: boolean;
   className?: string;
 }
+
+/** Il nome del passo di «Come cambia il lavoro», sopra il testo. */
+const HEADING_CLASS = "text-xs font-medium tracking-wide text-muted-foreground uppercase";
 
 export interface InlineFieldOption {
   value: string;
@@ -112,10 +127,14 @@ export function InlineTextField({
   placeholder,
   variant = "campo",
   displayValue = null,
+  heading,
+  clamp = false,
   className,
 }: InlineTextFieldProps) {
   const inputId = useId();
   const errorId = useId();
+  const textId = useId();
+  const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -129,9 +148,10 @@ export function InlineTextField({
 
   if (!canEdit && !hasValue) return null;
 
-  // Fuori dal `<dl>` (riga compatta) etichetta e valore non sono `dt` e `dd`.
-  const LabelTag = compact ? "div" : "dt";
-  const ValueTag = compact ? "div" : "dd";
+  // Fuori dal `<dl>` (riga compatta, passi di «Come cambia il lavoro») etichetta e valore non sono `dt` e `dd`.
+  const LabelTag = compact || heading ? "div" : "dt";
+  const ValueTag = compact || heading ? "div" : "dd";
+  const clamped = clamp && (shown ?? "").trim().length > WORK_CLAMP_AFTER;
   const addButton = (
     <button
       ref={editButton}
@@ -142,10 +162,11 @@ export function InlineTextField({
       {addLabelOf(label)}
     </button>
   );
-  // Campo vuoto e chiuso nella riga compatta: solo «+ Aggiungi …» (§6.2).
-  if (compact && !editing && !hasValue) {
+  // Campo vuoto e chiuso nella riga compatta: solo «+ Aggiungi …» (§6.2); in un passo, sotto il suo nome.
+  if ((compact || heading) && !editing && !hasValue) {
     return (
-      <div data-slot="inline-text-field" data-field={field} className={cn("min-w-0", className)}>
+      <div data-slot="inline-text-field" data-field={field} className={cn("min-w-0", heading && "space-y-1", className)}>
+        {heading ? <div className={HEADING_CLASS}>{heading}</div> : null}
         {addButton}
       </div>
     );
@@ -225,7 +246,9 @@ export function InlineTextField({
 
   return (
     <div data-slot="inline-text-field" data-field={field} className={cn("group min-w-0 space-y-1", compact && "basis-full", className)}>
-      <LabelTag className="text-sm text-muted-foreground">{editing ? <label htmlFor={inputId}>{label}</label> : label}</LabelTag>
+      <LabelTag className={heading && !editing ? HEADING_CLASS : "text-sm text-muted-foreground"}>
+        {editing ? <label htmlFor={inputId}>{label}</label> : (heading ?? label)}
+      </LabelTag>
       <ValueTag className="min-w-0">
         {editing ? (
           <div className="space-y-2">
@@ -299,7 +322,24 @@ export function InlineTextField({
           </div>
         ) : hasValue ? (
           <div className="flex min-w-0 items-start gap-1.5">
-            <p className={cn("min-w-0 flex-1 text-sm break-words whitespace-pre-line", mono && "font-mono")}>{optionLabelOf(shown, choices)}</p>
+            {clamped ? (
+              <div className="min-w-0 flex-1 space-y-1">
+                <p id={textId} className={cn("text-sm break-words whitespace-pre-line", !expanded && "line-clamp-5")}>
+                  {optionLabelOf(shown, choices)}
+                </p>
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  aria-controls={textId}
+                  className="-ml-1 inline-flex min-h-11 items-center rounded-md px-1 text-sm text-foreground underline underline-offset-4 outline-none hover:decoration-2 focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8"
+                  onClick={() => setExpanded((open) => !open)}
+                >
+                  {expanded ? GUIDED_TEXT.work.readLess : GUIDED_TEXT.work.readMore}
+                </button>
+              </div>
+            ) : (
+              <p className={cn("min-w-0 flex-1 text-sm break-words whitespace-pre-line", mono && "font-mono")}>{optionLabelOf(shown, choices)}</p>
+            )}
             {canEdit ? (
               <Button
                 ref={editButton}

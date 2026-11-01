@@ -555,9 +555,14 @@ test("«Salva la valutazione»: KPI, valore all'anno e fascia; «valutata»; Sto
   const [event] = (await storia(card.id)).slice(-1);
   assert.equal(event.action, "valutato");
   assert.deepEqual([...(event.fields as string[])].sort(), ["costo", "kpi", "valore"]);
-  // Con una cifra in euro la «Valutazione» scrive solo la cifra: niente parola, punteggio né zona.
-  const valuation = sectionOf((await detailHtml("builder", card.id)).html, "section-valuation");
-  assert.ok(valuation.includes("60.000\u00a0€\u00a0all&#x27;anno"), valuation);
+  // Con una cifra in euro «Impatto» scrive solo la cifra, con la fonte; la «Valutazione» niente parola, punteggio né zona.
+  const page = (await detailHtml("builder", card.id)).html;
+  const impact = sectionOf(page, "impatto");
+  assert.match(impact, /data-variant="E"/);
+  assert.ok(impact.includes("60.000 € <span") && impact.includes("all&#x27;anno") && impact.includes('data-source="team"'), impact);
+  assert.ok(impact.includes('data-figure="costo"') && impact.includes('data-cost-source="team_fascia"'), "il costo con la sua fonte");
+  const valuation = sectionOf(page, "section-valuation");
+  assert.ok(!valuation.includes('data-figure="valore"') && !valuation.includes('data-figure="costo"'), "le cifre stanno in «Impatto»");
   assert.ok(!valuation.includes("Zona:"), "senza zona");
   assert.ok(!valuation.includes("un suggerimento, non la decisione"));
   assert.ok(!valuation.includes("Alto · 4"));
@@ -694,14 +699,15 @@ test("revisori: percorso, «Prossimo passo» e pieghe; «Proposto da» ed «Emai
     intake: { contractVersion: 2, frequency: "giornaliera", beneficiaries: 3, timeSavedMinutesPerRun: 15, submitterEmail: submitter, flags: { personalData: true } },
   });
   const sponsor = await detailHtml("sponsor", card.id);
-  for (const text of ["Prossimo passo", "Percorso dello use case", "Cos&#x27;è", "Valutazione del team", "Realizzazione", "Storia", "Dettagli", "Proposto da", proposer, "Email indicata", submitter]) {
+  for (const text of ["Prossimo passo", "Percorso dello use case", "Impatto", "Come cambia il lavoro", "Valutazione del team", "Realizzazione", "Storia", "Dettagli", "Proposto da", proposer, "Email indicata", submitter]) {
     assert.ok(sponsor.html.includes(text), `chi gestisce il workspace: manca «${text}»`);
   }
   // H4p: un solo riquadro di stime, con la frase che dice cosa conta.
   assert.ok(sponsor.html.includes("Stime non ufficiali") && sponsor.html.includes("Conta la valutazione del team."));
   assert.ok(!sponsor.html.includes("Stima di Claude, non ufficiale"));
   assert.ok(sponsor.html.includes("Circa 180 ore all&#x27;anno (15 minuti × 240 volte × 3 persone)."));
-  assert.ok(sponsor.html.includes("Dati personali"), "chip di rischio");
+  assert.ok(sectionOf(sponsor.html, "impatto").includes("Dati personali"), "chip di rischio, in «Impatto»");
+  assert.ok(!sponsor.html.includes("Cos&#x27;è"), "niente più «Cos'è»");
   for (const person of ["builder", "lsAnalyst"] as const) {
     const { html } = await detailHtml(person, card.id);
     assert.ok(html.includes("Prossimo passo") && html.includes("Valutazione del team") && html.includes("Storia"), person);
@@ -855,14 +861,16 @@ test("«Cosa è»: un campo vuoto è solo «+ Aggiungi …», senza la riga dell
   try {
     const card = await seed({ intake: { contractVersion: 2, area: "amministrazione", tools: ["foglio_calcolo"], relatedAgent: "atlante" } });
     const { html } = await detailHtml("builder", card.id);
-    const what = sectionOf(html, "section-what");
+    const what = sectionOf(html, "work-flow");
     const details = sectionOf(html, "details-fields");
     assert.ok(details.includes(">Amministrazione<"), "l'area con il titolo della guida, in «Dettagli»");
     assert.ok(!html.includes("amministrazione<"), "mai la chiave dell'area");
     assert.ok(details.includes("Foglio di calcolo") && !details.includes("foglio calcolo"), "lo strumento con il titolo della guida");
     assert.ok(details.includes(">ATLANTE<"), "l'agente collegato con il nome del catalogo");
     // Pieni con l'etichetta; vuoti in una sola riga di «+ Aggiungi …», senza etichetta (§6.2).
-    assert.ok(what.includes(">Problema</dt>") && details.includes(">Area</dt>"));
+    // I passi di «Come cambia il lavoro» con il loro nome, mai dt e dd; «Dettagli» con le etichette.
+    assert.ok(what.includes(">Oggi</div>") && !what.includes("<dt") && details.includes(">Area</dt>"));
+    assert.ok(what.includes('aria-label="Modifica problema"'), "si modifica con l'etichetta del campo");
     assert.ok(details.includes(">Tipo</dt>") && details.includes(">Origine</dt>"), "tipo e origine in «Dettagli»");
     assert.ok(details.indexOf('data-slot="what-empty-fields"') > details.indexOf(">Area</dt>"), "i campi vuoti dopo quelli pieni");
     for (const [part, labels] of [
@@ -951,7 +959,7 @@ test("capitoli: `?capitolo=` e i suoi alias; «Realizzazione» dalla fase Approv
   assert.equal(chapterFromParam(["storia"]), "storia");
   assert.equal(chapterFromParam("cosa"), "cosa-e");
   assert.equal(chapterFromParam("Cos'è"), "cosa-e");
-  for (const chapter of ["decisione", "cosa-serve", "valutazione", "dettagli"]) assert.equal(chapterFromParam(chapter), chapter);
+  for (const chapter of ["decisione", "impatto", "cosa-serve", "valutazione", "dettagli"]) assert.equal(chapterFromParam(chapter), chapter);
   assert.equal(chapterFromParam("proponente"), null);
   assert.equal(chapterFromParam(undefined), null);
   assert.equal(showsRealization({ phase: "da_valutare", kind: "da_costruire", dossier: null }), false);
@@ -1422,10 +1430,13 @@ if (process.env.HUB_DETAIL_HARNESS === "1") {
         await new Promise((resolve) => setTimeout(resolve, 1500));
         const still = await cdp.evaluate(page, () => ({
           value: (document.querySelector('[data-field="flowDescription"] textarea') as HTMLTextAreaElement | null)?.value ?? null,
-          limits: document.body.innerText.includes("Limiti di un collega"),
+          // I limiti stanno nella piega chiusa «Cosa l'agente non fa mai», che dice quanti sono.
+          limits: document.body.textContent?.includes("Limiti di un collega") ?? false,
+          summary: document.body.innerText.replace(/\u00a0/g, " ").includes("non fa mai · 1 limite"),
         }));
         assert.equal(still.value, typed, "il testo scritto resta nel campo");
         assert.equal(still.limits, true, "la pagina si è ricaricata con la modifica del collega");
+        assert.equal(still.summary, true, "la riga della piega dei limiti riletta");
         const [r] = (await client.query(`SELECT flow_description FROM use_cases WHERE id = $1::uuid`, [id])).rows;
         assert.equal(r.flow_description, null, "niente salvato con la versione vecchia");
         await cdp.closePage(page);

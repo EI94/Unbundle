@@ -357,6 +357,25 @@ test("HTML: editor «Benefici e costi», cifre della riga e riquadro «Ipotesi d
   // Le due fonti nello stesso posto: sulla riga sotto la cifra grande.
   assert.equal((long.match(/<div data-slot="figure-source"><span data-source=/g) ?? []).length, 2, long);
 
+  // «Impatto» in testa alla scheda: le voci con il loro conto fuori dall'editor, la fonte, il costo e quando rientra l'avvio.
+  const { ImpactBlock } = await import("../../components/use-cases/detail/impact-block.tsx");
+  const { impactView } = await import("./guided.ts");
+  const view = impactView({ value: detail.useCase.value, cost: detail.useCase.cost, valueModel: detail.useCase.valueModel, params: detail.valueParams, unofficial: false });
+  assert.equal(view.variant, "A");
+  const impact = renderToStaticMarkup(
+    createElement(ImpactBlock, { view, value: detail.useCase.value, cost: detail.useCase.cost, costBands: detail.costBands, risks: detail.useCase.risks }),
+  );
+  const impactText = impact.replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'").replace(/\u00a0/g, " ");
+  assert.match(impactText, /116 ore all'anno/);
+  assert.match(impactText, /4\.043 € all'anno · team/);
+  assert.match(impactText, /a 35 € l'ora/);
+  assert.ok(impactText.includes("Smistamento delle richieste · 6.600 all'anno × 1,5 min × 70% ≈ 116 h · 4.043 € · ipotesi"), impactText);
+  assert.ok(impactText.includes("Meno errori di smistamento") && impactText.includes("Ipotesi da confermare"), "il chip della voce qualitativa e quello delle ipotesi");
+  assert.ok(impactText.includes("L'avvio rientra in circa 2 mesi a regime, senza contare i 4 giorni di sviluppo."), impactText);
+  assert.ok(impactText.includes("Da dove vengono i numeri") && impactText.includes("Chi conferma i numeri") && impactText.includes("Responsabile di prova"));
+  assert.match(impact, /data-figure="costo" data-cost-source="stima"/);
+  assert.ok(!impact.includes('data-slot="valuation-form"'), "fuori dall'editor");
+
   const summary = renderToStaticMarkup(createElement(ValueParamsSummary, { params: detail.valueParams }));
   assert.match(summary, /Ipotesi di calcolo/);
   assert.match(summary, /Costo di un&#x27;ora di lavoro/);

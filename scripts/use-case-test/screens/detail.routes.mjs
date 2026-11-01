@@ -22,16 +22,18 @@ const CONTRIBUTOR = ["osservatore"];
 const card = (key, query = "") => `/dashboard/{ws:a}/use-cases/{uc:${key}}${query}`;
 
 const routes = [
-  // Reviewers (release 3): the path, «Prossimo passo», the content and the closed folds; no chapter bar
-  // and no «Decisione» chapter. The contributor: title and phase, no code of someone else.
-  // H4p: il titolo una volta sola (nessun campo «Titolo» chiuso), i campi vuoti dietro «Aggiungi altri campi» (H7: non si confonde con «Dettagli»).
+  // Reviewers (release 3): the path, «Prossimo passo», «Impatto», «Come cambia il lavoro» and the closed
+  // folds; no chapter bar, no «Cos'è» and no «Decisione» chapter. The contributor: title and phase, no
+  // code of someone else. H4p: il titolo una volta sola (nessun campo «Titolo» chiuso).
   {
     name: "scheda-da-valutare",
     path: card("r01"),
     as: REVIEWERS,
-    present: ["{code:r01}", "Prossimo passo", "Cos'è", "Valutazione del team", "Dettagli", "Storia", "Aggiungi altri campi"],
-    absent: ["Cosa è", "+ Aggiungi", "Aggiungi dettagli", "Capitoli", "Decisione", "Da scrivere"],
+    present: ["{code:r01}", "Prossimo passo", "Impatto", "Come cambia il lavoro", "Valutazione del team", "Dettagli", "Storia"],
+    absent: ["Cos'è", "Cosa è", "Aggiungi dettagli", "Capitoli", "Decisione", "Da scrivere", "Vuoto."],
   },
+  // The empty fields of «Dettagli» behind one «Aggiungi altri campi» (H7: non si confonde con «Dettagli»), in its fold.
+  { name: "scheda-dettagli", path: card("r01", "?capitolo=dettagli"), as: REVIEWERS, present: ["Aggiungi altri campi", "Tipo", "Origine"], absent: ["Aggiungi dettagli"] },
   // H7: on someone else's card one line says why only title and phase.
   {
     name: "scheda-da-valutare",
@@ -42,12 +44,14 @@ const routes = [
   },
   // H7: the public note is optional next to «Approva»; no empty «Stime non ufficiali» box.
   { name: "scheda-nota-facoltativa", path: card("r06"), as: REVIEWERS, present: ["Nota pubblica (facoltativa)", "Approva"], absent: ["Stime non ufficiali"] },
-  // Un solo riquadro di stime, parole semplici (H4p), nella piega «Valutazione del team».
+  // The risk chips in «Impatto», on the default view; one estimates box, in plain words (H4p), in the
+  // «Valutazione del team» fold.
+  { name: "scheda-connettore", path: card("r03"), as: REVIEWERS, present: ["Impatto", "Dati personali"], absent: ["semaforo", "da sforzo", "Stima di Claude"] },
   {
-    name: "scheda-connettore",
+    name: "scheda-connettore-valutazione",
     path: card("r03", "?capitolo=valutazione"),
     as: REVIEWERS,
-    present: ["Stime non ufficiali", "Conta la valutazione del team.", "Suggerimento AI", "Dati personali"],
+    present: ["Stime non ufficiali", "Conta la valutazione del team.", "Suggerimento AI"],
     absent: ["semaforo", "da sforzo", "Stima di Claude"],
   },
   { name: "scheda-approvata", path: card("r09"), as: REVIEWERS, present: ["Realizzazione"] },

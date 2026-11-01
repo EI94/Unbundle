@@ -152,6 +152,9 @@ test("la scheda guidata: un contenitore, due colonne da 58rem della scheda, il p
   const path = read("src/components/use-cases/detail/use-case-path.tsx");
   assert.ok(path.includes('"grid-cols-3 @min-[40rem]/scheda:grid-cols-6"') && path.includes('"grid-cols-2 @min-[40rem]/scheda:grid-cols-4"'));
   assert.ok(read("src/components/use-cases/detail/next-step-box.tsx").includes("@2xl/scheda:flex-row"));
+  // «Impatto»: la cifra grande accanto alle altre da 28rem della scheda; «Come cambia il lavoro»: i tre passi in riga da 40rem.
+  assert.ok(read("src/components/use-cases/detail/impact-block.tsx").includes('"grid gap-x-8 gap-y-2 @md/scheda:grid-cols-[auto_minmax(0,1fr)] @md/scheda:items-end"'));
+  assert.ok(read("src/components/use-cases/detail/work-flow.tsx").includes("@min-[40rem]/scheda:grid-cols-[minmax(0,1fr)_1.25rem_minmax(0,1fr)_1.25rem_minmax(0,1fr)]"));
   for (const file of [
     "src/components/use-cases/detail/detail.tsx",
     "src/components/use-cases/detail/use-case-path.tsx",
@@ -159,6 +162,8 @@ test("la scheda guidata: un contenitore, due colonne da 58rem della scheda, il p
     "src/components/use-cases/detail/fold.tsx",
     "src/components/use-cases/detail/arrival.tsx",
     "src/components/use-cases/detail/referent/dialog-host.tsx",
+    "src/components/use-cases/detail/impact-block.tsx",
+    "src/components/use-cases/detail/work-flow.tsx",
   ]) {
     const classes = [...read(file).matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
     assert.doesNotMatch(classes, VIEWPORT_VARIANT, `${file}: una forma sulla larghezza della finestra`);

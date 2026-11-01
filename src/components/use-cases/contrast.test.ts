@@ -281,6 +281,9 @@ test("niente testo sbiadito nell'area «Use case»", () => {
 
 /** I file nuovi della scheda guidata (rilascio 3): solo i token del tema, niente `dark:` né colori fissi. */
 const GUIDED_FILES = [
+  "src/components/use-cases/detail/impact-block.tsx",
+  "src/components/use-cases/detail/work-flow.tsx",
+  "src/components/use-cases/detail/risk-chips.tsx",
   "src/components/use-cases/detail/use-case-path.tsx",
   "src/components/use-cases/detail/next-step-box.tsx",
   "src/components/use-cases/detail/fold.tsx",
@@ -315,5 +318,19 @@ test("il percorso della scheda: l'anello del passo «adesso» al 50% e il pallin
     const color = t[`uc-agente-${tone}`].rgb;
     atLeast(ratio(over(color, t.background.rgb, 0.5), t.background.rgb), 3, `anello «adesso» in uc-agente-${tone}`);
     atLeast(ratio(t.background.rgb, color), 4.5, `segno di «fatto» su uc-agente-${tone}`);
+  }
+});
+
+test("i chip di rischio di «Impatto»: il bordo dei campi e l'icona gialla del semaforo, entrambi almeno 3:1", () => {
+  const t = area;
+  const chips = read("src/components/use-cases/detail/risk-chips.tsx");
+  assert.ok(chips.includes("border border-input") && chips.includes("text-foreground") && chips.includes("text-uc-giallo"));
+  assert.doesNotMatch(chips, /amber/);
+  for (const [name, surface] of [
+    ["background", t.background.rgb],
+    ["card", t.card.rgb],
+  ] as const) {
+    atLeast(ratio(on(t.input, surface), surface), 3, `bordo del chip su ${name}`);
+    atLeast(ratio(t["uc-giallo"].rgb, surface), 3, `icona gialla su ${name}`);
   }
 });

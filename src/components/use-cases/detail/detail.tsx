@@ -4,7 +4,7 @@ import { answersOf } from "@/lib/use-cases/answers";
 import type { UseCaseEventList } from "@/lib/db/queries/use-case-events";
 import { DIALOG_COMMON_TEXT, PUBLIC_NOTE_TEXT, toDecisionItem, toDuplicateCandidates, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
-import { GUIDED_TEXT, arrivalTarget, detailTargetIds, foldSummaries, nextStepOf, pathOfUseCase, type NextStep } from "@/lib/use-cases/guided";
+import { GUIDED_TEXT, arrivalTarget, detailTargetIds, foldSummaries, impactView, nextStepOf, pathOfUseCase, type NextStep } from "@/lib/use-cases/guided";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { TEXT_LIMITS } from "@/lib/use-cases/inputs";
 import { WHAT_FIELD_LABEL } from "@/lib/use-cases/labels";
@@ -21,6 +21,7 @@ import { WhenControl } from "../when-control";
 import { Arrival } from "./arrival";
 import { DetailHeader } from "./detail-header";
 import { Fold } from "./fold";
+import { ImpactBlock } from "./impact-block";
 import { IntakeDetails, type GuideLabels } from "./intake-details";
 import { NextStepBox, PagePrimaryProvider } from "./next-step-box";
 import { PublicNoteField } from "./public-note-field";
@@ -32,8 +33,9 @@ import { SectionHistory } from "./section-history";
 import { SectionNeeds } from "./section-needs";
 import { SectionRealization, realizationVariant } from "./section-realization";
 import { SectionValuation, aiSuggestionShown, valuationKpiGroups } from "./section-valuation";
-import { DetailsFields, SectionWhat, detailsFieldRows, hasFieldText } from "./section-what";
+import { DetailsFields, detailsFieldRows, hasFieldText } from "./section-what";
 import { UseCasePath } from "./use-case-path";
+import { WorkFlow } from "./work-flow";
 
 // ═══ Capitoli (§6.1, §6.7) ═══════════════════════════════════════════
 
@@ -47,7 +49,8 @@ export interface ChapterLink {
 /** I `?capitolo=` della scheda, nell'ordine della pagina (§6.1, §14.3; rilascio 3). */
 export const DETAIL_CHAPTERS = [
   { id: "decisione", label: "Prossimo passo" },
-  { id: "cosa-e", label: "Cos'è" },
+  { id: "impatto", label: "Impatto" },
+  { id: "cosa-e", label: "Come cambia il lavoro" },
   { id: "cosa-serve", label: "Cosa serve" },
   { id: "valutazione", label: "Valutazione del team" },
   { id: "dettagli", label: "Dettagli" },
@@ -311,10 +314,13 @@ export function UseCaseDetailView({
   const arrival = arrivalTarget(chapter ?? null, targets);
   const opens = (id: string) => arrival === id;
   const groups = valuationKpiGroups(result.model, { esgEnabled: result.esgEnabled });
+  const estimates = unofficialEstimateLines(detail.intake).length > 0;
+  const aiShown = aiSuggestionShown(detail.aiSuggestion, groups);
+  const impact = impactView({ value: detail.value, cost: detail.cost, valueModel: detail.valueModel, params: result.valueParams, unofficial: estimates || aiShown });
   const summaries = foldSummaries({
     valuation: {
-      estimates: unofficialEstimateLines(detail.intake).length > 0,
-      aiSuggestion: aiSuggestionShown(detail.aiSuggestion, groups),
+      estimates,
+      aiSuggestion: aiShown,
       value: detail.value,
       zone: detail.zone,
     },
@@ -361,7 +367,8 @@ export function UseCaseDetailView({
             />
             <div data-slot="scheda-grid" className="mt-8 grid gap-8 @min-[58rem]/scheda:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/scheda:gap-x-8">
               <div data-slot="scheda-main" className="min-w-0 space-y-10 @min-[58rem]/scheda:col-start-1 @min-[58rem]/scheda:row-start-1">
-                <SectionWhat workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} esgEnabled={result.esgEnabled} areaOptions={guide?.areas ?? null} />
+                <ImpactBlock view={impact} value={detail.value} cost={detail.cost} costBands={result.costBands} risks={detail.risks} />
+                <WorkFlow workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} />
                 {abilities.canSeeNeeds && needs ? (
                   <SectionNeeds
                     workspaceId={workspaceId}

@@ -9,9 +9,10 @@ export interface RiskChipsProps {
 }
 
 /**
- * I chip di rischio del capitolo «Valutazione» (docs/use-case/DESIGN.md §6.3, §7.3): «Serve
+ * I chip di rischio di «Impatto» (docs/use-case/DESIGN.md §6.3, §7.3; rilascio 3): «Serve
  * decisione AI Board», «Dati personali», «Sicurezza». Solo un segnale: non cambiano Valore, Costo
- * o zona. Il testo c'è sempre, l'icona non è mai sola.
+ * o zona. Il testo c'è sempre, l'icona non è mai sola. Solo i token del tema: il bordo dei campi e
+ * l'icona nel giallo del semaforo.
  */
 export function RiskChips({ risks, className }: RiskChipsProps) {
   if (!risks.length) return null;
@@ -21,9 +22,9 @@ export function RiskChips({ risks, className }: RiskChipsProps) {
         <li
           key={risk}
           data-risk={risk}
-          className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 px-2 py-0.5 text-xs font-medium text-foreground"
+          className="inline-flex items-center gap-1 rounded-full border border-input px-2 py-0.5 text-xs font-medium text-foreground"
         >
-          <TriangleAlert aria-hidden className="size-3 text-amber-500" />
+          <TriangleAlert aria-hidden className="size-3 text-uc-giallo" />
           {RISK_LABEL[risk]}
         </li>
       ))}
