@@ -217,7 +217,7 @@ function ActivityCard({
 
       <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
         {act.workType && (
-          <span className="text-muted-foreground/70">
+          <span className="text-muted-foreground/70 light:text-muted-foreground">
             {workTypeLabels[act.workType] ?? act.workType}
           </span>
         )}
@@ -248,7 +248,7 @@ function ActivityCard({
 
       {act.onetTaskId && (
         <p
-          className="mt-1 text-[10px] text-muted-foreground/50 font-mono"
+          className="mt-1 text-[10px] text-muted-foreground/50 light:text-muted-foreground font-mono"
           title={`O*NET SOC: ${act.onetTaskId}`}
         >
           O*NET {act.onetTaskId}

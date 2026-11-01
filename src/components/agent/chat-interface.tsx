@@ -350,7 +350,7 @@ export function ChatInterface({
                             key={i}
                             className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all ${
                               isDone
-                                ? "border-border/30 text-muted-foreground/50"
+                                ? "border-border/30 text-muted-foreground/50 light:text-muted-foreground"
                                 : "border-foreground/10 text-foreground animate-pulse"
                             }`}
                           >
@@ -439,7 +439,7 @@ export function ChatInterface({
             />
             {isLoading && (
               <div className="absolute inset-0 rounded-xl bg-card/60 flex items-center justify-center cursor-not-allowed">
-                <span className="text-xs text-muted-foreground/60">
+                <span className="text-xs text-muted-foreground/60 light:text-muted-foreground">
                   Attendi la risposta...
                 </span>
               </div>

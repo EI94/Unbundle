@@ -71,7 +71,7 @@ export function hueOf(rgb: Rgb): number {
 
 export const hueDistance = (a: number, b: number) => Math.min(Math.abs(a - b) % 360, 360 - (Math.abs(a - b) % 360));
 
-/** Un colore scritto nel CSS: `oklch(L C h)`, `oklch(L C h / a)` (anche in %), `#rrggbb`. */
+/** Un colore scritto nel CSS: `oklch(L C h)`, `oklch(L C h / a)` (anche in %), `#rrggbb`, `#rgb`, `rgba(r, g, b, a)`. */
 export function parseColor(value: string): Color {
   const ok = /^oklch\(\s*([\d.]+)(%)?\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+)(%)?)?\s*\)$/.exec(value.trim());
   if (ok) {
@@ -81,9 +81,16 @@ export function parseColor(value: string): Color {
     const alpha = ok[5] === undefined ? 1 : Number(ok[5]) / (ok[6] ? 100 : 1);
     return { rgb: srgb(L, C, h), alpha, L, C, h, inGamut: inGamut(L, C, h) };
   }
-  const hex = /^#([0-9a-fA-F]{6})$/.exec(value.trim());
+  const rgba = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(value.trim());
+  if (rgba) {
+    const rgb = [rgba[1], rgba[2], rgba[3]].map((v) => Number(v) / 255) as Rgb;
+    const [L, a, b] = oklab(rgb);
+    return { rgb, alpha: rgba[4] === undefined ? 1 : Number(rgba[4]), L, C: Math.hypot(a, b), h: hueOf(rgb), inGamut: true };
+  }
+  const short = /^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/.exec(value.trim());
+  const hex = short ? `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}` : /^#[0-9a-fA-F]{6}$/.test(value.trim()) ? value.trim() : null;
   if (hex) {
-    const rgb = hexRgb(value);
+    const rgb = hexRgb(hex);
     const [L, a, b] = oklab(rgb);
     return { rgb, alpha: 1, L, C: Math.hypot(a, b), h: hueOf(rgb), inGamut: true };
   }

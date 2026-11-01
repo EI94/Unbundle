@@ -282,7 +282,7 @@ export function DepartmentDashboard({
                             </span>
                           )}
                           {act.onetTaskId && (
-                            <span className="font-mono text-muted-foreground/50">
+                            <span className="font-mono text-muted-foreground/50 light:text-muted-foreground">
                               O*NET {act.onetTaskId}
                             </span>
                           )}
@@ -315,7 +315,7 @@ export function DepartmentDashboard({
                   <ArrowRight className="h-3 w-3 shrink-0" />
                   <span className="truncate">{target.title}</span>
                   {dep.dependencyType && (
-                    <span className="shrink-0 text-muted-foreground/50">
+                    <span className="shrink-0 text-muted-foreground/50 light:text-muted-foreground">
                       ({dep.dependencyType})
                     </span>
                   )}

@@ -66,9 +66,9 @@ export function PillarRadar({
       {hasData && (
         <polygon
           points={scorePolygon}
-          fill="oklch(0.72 0.17 160)"
+          fill="var(--viz-readiness)"
           fillOpacity={0.25}
-          stroke="oklch(0.72 0.17 160)"
+          stroke="var(--viz-readiness)"
           strokeWidth={2}
         />
       )}
@@ -80,7 +80,7 @@ export function PillarRadar({
         return (
           <g key={pillar.title}>
             {hasData && pillar.score != null && (
-              <circle cx={px} cy={py} r={3.5} fill="oklch(0.72 0.17 160)" />
+              <circle cx={px} cy={py} r={3.5} fill="var(--viz-readiness)" />
             )}
             <text
               x={lx}

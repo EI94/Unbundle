@@ -14,17 +14,17 @@ const STREAM_CONFIG: Record<
   { color: string; label: string; description: string }
 > = {
   automate: {
-    color: "#22c55e",
+    color: "var(--viz-wardley-automate)",
     label: "Automate",
     description: "Questo lavoro non dovrebbe esistere nella sua forma attuale",
   },
   differentiate: {
-    color: "#8b5cf6",
+    color: "var(--viz-wardley-differentiate)",
     label: "Differentiate",
     description: "Qui concentrare l'energia umana",
   },
   innovate: {
-    color: "#f59e0b",
+    color: "var(--viz-wardley-innovate)",
     label: "Innovate",
     description: "Questo valore prima non esisteva",
   },
@@ -175,7 +175,7 @@ export function WardleyMap({ activities, nodes }: WardleyMapProps) {
       })
       .attr("fill", (d) => {
         const stream = normalizeClassification(d.activity.classification);
-        return STREAM_CONFIG[stream ?? ""]?.color ?? "#64748b";
+        return STREAM_CONFIG[stream ?? ""]?.color ?? "var(--viz-wardley-other)";
       })
       .attr("stroke", "var(--color-background)")
       .attr("stroke-width", 1)

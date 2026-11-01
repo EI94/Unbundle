@@ -13,11 +13,12 @@ import {
 } from "recharts";
 import type { UseCaseMatrixPoint } from "@/lib/portfolio/use-case-client-rows";
 
+/** I colori delle categorie: token di src/app/theme-viz.css, per i due temi. */
 const categoryColors: Record<string, string> = {
-  quick_win: "#22c55e",
-  strategic_bet: "#8b5cf6",
-  capability_builder: "#3b82f6",
-  not_yet: "#94a3b8",
+  quick_win: "var(--viz-matrix-quick-win)",
+  strategic_bet: "var(--viz-matrix-strategic-bet)",
+  capability_builder: "var(--viz-matrix-capability-builder)",
+  not_yet: "var(--viz-matrix-not-yet)",
 };
 
 interface UseCaseMatrixProps {
@@ -65,8 +66,8 @@ export function UseCaseMatrix({ useCases, onSelect }: UseCaseMatrixProps) {
               offset={20}
             />
           </YAxis>
-          <ReferenceLine x={3.5} stroke="#666" strokeDasharray="5 5" />
-          <ReferenceLine y={3.5} stroke="#666" strokeDasharray="5 5" />
+          <ReferenceLine x={3.5} stroke="var(--viz-matrix-reference)" strokeDasharray="5 5" />
+          <ReferenceLine y={3.5} stroke="var(--viz-matrix-reference)" strokeDasharray="5 5" />
           <Tooltip
             content={({ payload }) => {
               if (!payload?.length) return null;

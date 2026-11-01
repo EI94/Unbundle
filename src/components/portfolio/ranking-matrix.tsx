@@ -62,26 +62,27 @@ const reviewStatusLabels: Record<string, string> = {
   archived: "Archiviato",
 };
 
+/** I colori delle fasce di sostenibilità: token di src/app/theme-viz.css, per i due temi. */
 const sustainabilityPalette = {
   neutral: {
-    fill: "#64748b",
-    soft: "rgba(100, 116, 139, 0.14)",
-    stroke: "#475569",
+    fill: "var(--viz-portfolio-neutral-fill)",
+    soft: "var(--viz-portfolio-neutral-soft)",
+    stroke: "var(--viz-portfolio-neutral-stroke)",
   },
   red: {
-    fill: "#ef4444",
-    soft: "rgba(239, 68, 68, 0.16)",
-    stroke: "#b91c1c",
+    fill: "var(--viz-portfolio-red-fill)",
+    soft: "var(--viz-portfolio-red-soft)",
+    stroke: "var(--viz-portfolio-red-stroke)",
   },
   yellow: {
-    fill: "#f59e0b",
-    soft: "rgba(245, 158, 11, 0.18)",
-    stroke: "#b45309",
+    fill: "var(--viz-portfolio-yellow-fill)",
+    soft: "var(--viz-portfolio-yellow-soft)",
+    stroke: "var(--viz-portfolio-yellow-stroke)",
   },
   green: {
-    fill: "#22c55e",
-    soft: "rgba(34, 197, 94, 0.18)",
-    stroke: "#15803d",
+    fill: "var(--viz-portfolio-green-fill)",
+    soft: "var(--viz-portfolio-green-soft)",
+    stroke: "var(--viz-portfolio-green-stroke)",
   },
 } as const;
 
@@ -343,9 +344,9 @@ export function RankingMatrix({
           >
             <defs>
               <linearGradient id="portfolio-bg" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="rgba(16,185,129,0.10)" />
-                <stop offset="55%" stopColor="rgba(15,23,42,0.02)" />
-                <stop offset="100%" stopColor="rgba(245,158,11,0.10)" />
+                <stop offset="0%" stopColor="var(--viz-portfolio-bg-start)" />
+                <stop offset="55%" stopColor="var(--viz-portfolio-bg-middle)" />
+                <stop offset="100%" stopColor="var(--viz-portfolio-bg-end)" />
               </linearGradient>
             </defs>
             <rect x={0} y={0} width={width} height={height} fill="url(#portfolio-bg)" />
@@ -355,21 +356,21 @@ export function RankingMatrix({
               y={padT}
               width={width - padR - hiX}
               height={hiY - padT}
-              fill="rgba(34,197,94,0.10)"
+              fill="var(--viz-portfolio-zone-quick-win)"
             />
             <rect
               x={padL}
               y={padT}
               width={hiX - padL}
               height={hiY - padT}
-              fill="rgba(59,130,246,0.08)"
+              fill="var(--viz-portfolio-zone-strategic-bet)"
             />
             <rect
               x={hiX}
               y={hiY}
               width={width - padR - hiX}
               height={height - padB - hiY}
-              fill="rgba(245,158,11,0.10)"
+              fill="var(--viz-portfolio-zone-capability-builder)"
             />
 
             {Array.from({ length: 6 }).map((_, index) => {
@@ -383,14 +384,14 @@ export function RankingMatrix({
                     y1={padT}
                     x2={x}
                     y2={height - padB}
-                    stroke="rgba(148,163,184,0.18)"
+                    stroke="var(--viz-portfolio-grid)"
                   />
                   <line
                     x1={padL}
                     y1={y}
                     x2={width - padR}
                     y2={y}
-                    stroke="rgba(148,163,184,0.18)"
+                    stroke="var(--viz-portfolio-grid)"
                   />
                   <text
                     x={x}
@@ -417,7 +418,7 @@ export function RankingMatrix({
               y1={padT}
               x2={padL}
               y2={height - padB}
-              stroke="rgba(100,116,139,0.7)"
+              stroke="var(--viz-portfolio-axis)"
               strokeWidth={1.5}
             />
             <line
@@ -425,7 +426,7 @@ export function RankingMatrix({
               y1={height - padB}
               x2={width - padR}
               y2={height - padB}
-              stroke="rgba(100,116,139,0.7)"
+              stroke="var(--viz-portfolio-axis)"
               strokeWidth={1.5}
             />
 
@@ -435,7 +436,7 @@ export function RankingMatrix({
               x2={hiX}
               y2={height - padB}
               strokeDasharray="6 4"
-              stroke="rgba(71,85,105,0.8)"
+              stroke="var(--viz-portfolio-threshold)"
             />
             <line
               x1={padL}
@@ -443,7 +444,7 @@ export function RankingMatrix({
               x2={width - padR}
               y2={hiY}
               strokeDasharray="6 4"
-              stroke="rgba(71,85,105,0.8)"
+              stroke="var(--viz-portfolio-threshold)"
             />
 
             <text
@@ -522,7 +523,7 @@ export function RankingMatrix({
                       cy={item.y}
                       r={size}
                       fill={item.palette.fill}
-                      stroke={isActive ? "#0f172a" : item.palette.stroke}
+                      stroke={isActive ? "var(--viz-portfolio-active-stroke)" : item.palette.stroke}
                       strokeWidth={isActive ? 2.5 : 2}
                     />
                   ) : (
@@ -533,7 +534,7 @@ export function RankingMatrix({
                       height={size}
                       rx={4}
                       fill={item.palette.fill}
-                      stroke={isActive ? "#0f172a" : item.palette.stroke}
+                      stroke={isActive ? "var(--viz-portfolio-active-stroke)" : item.palette.stroke}
                       strokeWidth={isActive ? 2.5 : 2}
                     />
                   )}
