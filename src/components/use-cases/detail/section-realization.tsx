@@ -27,7 +27,12 @@ export const SECTION_REALIZATION_TEXT = Object.freeze({
   diffusedOn: "Diffusa il",
   /** «Avvia» e «Segna come in realizzazione» nella piega quando il riquadro «Prossimo passo» non li ha. */
   notReady: "Le informazioni non sono ancora tutte a posto.",
+  /** Lo stesso quando il riquadro è G3: approvato per più avanti o con il trimestre finito. */
+  notInQuarter: "Prima si sceglie il trimestre in «Quando».",
 });
+
+/** Perché «Avvia» e «Segna» nella piega non sono ancora il passo: le informazioni o il trimestre (G3). */
+export type StartHint = "informazioni" | "trimestre";
 
 /** Come è andata la lettura del dossier (`UseCaseDetailResult.dossierRead`). */
 export type DossierRead = "ok" | "spenta" | "errore";
@@ -92,6 +97,8 @@ export interface SectionRealizationProps {
    * passo non è ancora quello.
    */
   boxOwnsStart?: boolean;
+  /** La riga sotto «Avvia» e «Segna» quando il riquadro non li ha: `trimestre` con il riquadro G3. */
+  startHint?: StartHint;
   className?: string;
 }
 
@@ -115,8 +122,10 @@ export function SectionRealization({
   canOpenAnyDossier,
   realization = null,
   boxOwnsStart = false,
+  startHint = "informazioni",
   className,
 }: SectionRealizationProps) {
+  const hint = startHint === "trimestre" ? SECTION_REALIZATION_TEXT.notInQuarter : SECTION_REALIZATION_TEXT.notReady;
   const variant = realizationVariant(item, { dossierRead, canStartRealization, canMarkInProgress, realization });
   const dossier = item.dossier;
   const diffusedOn = variant === "diffusa" && item.realizedOn ? formatDayInYear(item.realizedOn, today) : null;
@@ -138,7 +147,7 @@ export function SectionRealization({
               >
                 {SECTION_REALIZATION_TEXT.start}
               </Button>
-              <p className="text-sm text-muted-foreground">{SECTION_REALIZATION_TEXT.notReady}</p>
+              <p className="text-sm text-muted-foreground">{hint}</p>
             </div>
           )}
         </div>
@@ -153,7 +162,7 @@ export function SectionRealization({
             canMarkInProgress={canMarkInProgress}
             dossiersEnabled={false}
           />
-          <p className="text-sm text-muted-foreground">{SECTION_REALIZATION_TEXT.notReady}</p>
+          <p className="text-sm text-muted-foreground">{hint}</p>
         </div>
       ) : null}
 

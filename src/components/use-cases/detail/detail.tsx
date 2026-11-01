@@ -449,6 +449,7 @@ export function UseCaseDetailView({
                       canOpenAnyDossier={abilities.canOpenAnyDossier}
                       realization={realization}
                       boxOwnsStart={step.key === "G9"}
+                      startHint={step.key === "G3" ? "trimestre" : "informazioni"}
                     />
                   </Fold>
                 ) : null}

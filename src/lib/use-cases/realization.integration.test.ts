@@ -334,6 +334,28 @@ test("piega «Realizzazione» e riquadro: «Avvia» pieno nel riquadro quando è
   assert.deepEqual(filledIn(builder.html), [], "il revisore del cliente non avvia");
   assert.ok(!builder.html.includes("casi-duso/nuovo"));
 
+  // Approvato per più avanti o con il trimestre finito, senza informazioni da chiedere (G3): la piega
+  // dice il trimestre, non le informazioni, che il percorso dice «nessuna da chiedere».
+  for (const [label, quarterValue, title] of [
+    ["più avanti", null, "Approvato per più avanti"],
+    ["trimestre finito", "2020-Q1", "Scegliere un nuovo trimestre"],
+  ] as const) {
+    const later = randomUUID();
+    await q(
+      `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, code, source, origin, target_quarter)
+       VALUES ($1::uuid, $2::uuid, $3, 'Problema', 'accepted', 'scored', 'use_case_ai', $4, 'web_proposed', 'adoption', $5)`,
+      [later, ids.ws, `Più avanti ${suffix} ${label}`, `${prefix}-${quarterValue ? "0092" : "0091"}`, quarterValue],
+    );
+    const g3 = await schedaOf("lsLead", later);
+    assert.match(g3.box, /data-key="G3"/, label);
+    assert.ok(g3.box.includes(title), label);
+    assert.match(g3.html, /data-step="informazioni"[\s\S]*?nessuna da chiedere/, `${label}: il percorso`);
+    assert.ok(g3.fold.includes("Avvia la realizzazione") && !filledIn(g3.html).includes("Avvia la realizzazione"), `${label}: outline nella piega`);
+    assert.ok(g3.fold.includes("Prima si sceglie il trimestre in «Quando»."), `${label}: il motivo è il trimestre`);
+    assert.ok(!g3.fold.includes("Le informazioni non sono ancora tutte a posto."), `${label}: nessuna frase sulle informazioni`);
+    await q(`DELETE FROM use_cases WHERE id = $1::uuid`, [later]);
+  }
+
   // Un'informazione ancora da chiedere: il riquadro chiede le informazioni, «Avvia» resta outline nella piega.
   const need = randomUUID();
   await q(`INSERT INTO use_case_needs (id, workspace_id, type, title, status, owner_side) VALUES ($1::uuid, $2::uuid, 'requisito', 'Quante fatture al mese?', 'da_chiedere', 'cliente')`, [need, ids.ws]);
