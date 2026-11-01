@@ -169,3 +169,12 @@ test("la scheda guidata: un contenitore, due colonne da 58rem della scheda, il p
     assert.doesNotMatch(classes, VIEWPORT_VARIANT, `${file}: una forma sulla larghezza della finestra`);
   }
 });
+
+test("«Quando»: le tre scelte restano su una riga e una parola lunga va a capo, mai tagliata", () => {
+  // Nella card «Quando» della scheda (p-4 e bordo) a 400 px ogni scelta ha 94 px: «Prossimo trimestre»
+  // ne vuole 104 e con `truncate` diventava «Prossimo trime…» (a 375 anche «Questo trime…»).
+  const when = read("src/components/use-cases/when-control.tsx");
+  assert.ok(when.includes('"grid w-full max-w-md grid-cols-3 gap-1 rounded-lg bg-muted p-1"'), "tre scelte in una riga");
+  assert.ok(when.includes('<span className="w-full text-xs leading-tight text-balance">{parts.title}</span>'), "il titolo va a capo, bilanciato");
+  assert.doesNotMatch(when, /\btruncate\b/, "nessuna etichetta tagliata con «…»");
+});

@@ -29,7 +29,9 @@ export interface WhenControlProps {
  * (T4 2026)», «Prossimo trimestre (T1 2027)», «Più avanti».
  * - La scelta cambia solo il trimestre (`setWhenAction`). Un trimestre che non è né questo né il
  *   prossimo (passato, o scelto via MCP del team) non seleziona nessuna scelta. Il trimestre sta
- *   sotto la parola e il controllo non va mai a capo (pannello, telefono).
+ *   sotto la parola e il controllo non va mai a capo (pannello, telefono): le tre scelte restano su
+ *   una riga, e una parola che non ci sta va a capo dentro la sua scelta («Prossimo / trimestre»)
+ *   invece di finire tagliata con «…» (la card «Quando» della scheda a 400 px, il pannello a 375).
  * - Chi non decide legge il trimestre («T1 2027», «Più avanti»).
  * - Da decidere non c'è: il trimestre si sceglie approvando, nel dialogo di «Approva».
  * Le scritture portano `today`, il giorno delle etichette: se nel frattempo è cominciato un
@@ -85,7 +87,7 @@ export function WhenControl({ workspaceId, item, today, canDecide, labelledBy, c
             aria-label={option.label}
             className="flex min-h-11 min-w-0 cursor-pointer flex-col items-center justify-center rounded-md px-1.5 py-1 text-center text-muted-foreground outline-none transition-colors select-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-checked:bg-background data-checked:text-foreground data-checked:shadow-sm data-checked:inset-ring data-checked:inset-ring-input"
           >
-            <span className="w-full truncate text-xs leading-tight">{parts.title}</span>
+            <span className="w-full text-xs leading-tight text-balance">{parts.title}</span>
             {parts.quarter ? <span className="text-sm leading-tight font-medium whitespace-nowrap">{parts.quarter}</span> : null}
           </Radio.Root>
         );
