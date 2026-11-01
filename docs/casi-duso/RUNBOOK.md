@@ -347,7 +347,7 @@ Due avvisi nella campanella, con l'email del giorno lavorativo dopo (stesso tras
 
 1. Restore point su Neon.
 2. `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0025_use_case_alerts.sql` (allarga il CHECK dei tipi di `use_case_notifications` con `pronto` e `fornitori`, crea `use_case_ready_state`, `use_case_alert_emails`, `use_case_alert_email_items`, e segna subito come già pronti gli use case pronti oggi: nessuno riceve notizie vecchie).
-3. `SELECT <USE_CASE_ALERTS_PROBE_SQL>` (da `src/lib/db/use-case-hub-alerts-ddl.ts`) deve dare `true`; oppure `use-case-admin doctor` deve dire `migrazione0025: true`.
+3. `SELECT <USE_CASE_ALERTS_PROBE_SQL>` (da `src/lib/db/use-case-hub-alerts-ddl.ts`) deve dare `true`; oppure `use-case-admin doctor` (con `USE_CASE_ADMIN_DATABASE_URL` nel comando, come nel controllo di «Accendere gli avvisi al cliente» qui sotto) deve dire `migrazione0025: true`.
 4. Mai drizzle-kit, mai `db:push`. Il self-heal (`ENSURE_VERSION` 19) trova lo schema aggiornato e non fa niente. Senza la 0025 l'app funziona come prima e non scrive nessuno dei due avvisi.
 
 Il ramo non si pubblica prima della revisione: le anteprime usano il database di produzione e il self-heal applicherebbe la 0025 lì.
@@ -356,7 +356,7 @@ Il ramo non si pubblica prima della revisione: le anteprime usano il database di
 
 1. Vercel › Settings › Environment Variables › Production: `USE_CASE_CLIENT_NOTICES=<uuid del workspace>` (più workspace: `<uuid>,<uuid>`).
 2. Redeploy: una variabile nuova vale solo dal deploy dopo.
-3. Controllo: `USE_CASE_CLIENT_NOTICES=<uuid> USE_CASE_HUB_WORKSPACES=<come su Vercel> UC_LS_EMAIL_DOMAINS=<come su Vercel> node --no-warnings scripts/use-case-admin.ts doctor --workspace <uuid>` deve dire `avvisiCliente: true`; `chiPuòAutorizzare: false` vuol dire che nel workspace nessuno può dare l'ok (nessun avviso parte finché non c'è).
+3. Controllo, di sola lettura: `USE_CASE_ADMIN_DATABASE_URL=<URL di produzione, solo nel comando> USE_CASE_CLIENT_NOTICES=<uuid> USE_CASE_HUB_WORKSPACES=<come su Vercel> UC_LS_EMAIL_DOMAINS=<come su Vercel> node --no-warnings scripts/use-case-admin.ts doctor --workspace <uuid>` (lo script non legge file d'ambiente: senza l'URL non trova il database) deve dire `avvisiCliente: true`; `chiPuòAutorizzare: false` vuol dire che nel workspace nessuno può dare l'ok (nessun avviso parte finché non c'è).
 
 Spegnere: togliere l'UUID e rifare il deploy. Le email già in coda si annullano all'invio (`avvisi_cliente_spenti`); le righe già nella campanella restano finché l'ok manca.
 

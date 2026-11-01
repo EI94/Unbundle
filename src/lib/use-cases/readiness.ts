@@ -64,10 +64,13 @@ export function isScheduledQuarter(targetQuarter: string | null, today: string):
 const isDone = (status: string) => (READY_NEED_STATUSES as readonly string[]).includes(status);
 
 /**
- * Pronto da avviare. Mirrors release 3's G9 (`isReadyToStart` in `src/lib/use-cases/guided.ts`,
- * stream unbundle-rifiniture): same inputs, same answer. At merge keep one and keep the parity test
- * (`readiness.integration.test.ts`, SQL against TypeScript). Nessuna informazione del cliente vuol
- * dire pronto; uno stato sconosciuto conta come non fatto.
+ * Pronto da avviare: la regola del riquadro «Prossimo passo» della scheda (G9, `isReadyToStart` in
+ * `guided.ts`), riscritta sugli ingressi che ha il database. Gli argomenti sono diversi (qui le
+ * informazioni del cliente, là lo stato di «Raccolta informazioni»), la risposta è la stessa su ogni
+ * valore che il database accetta: la prova di parità (`readiness.integration.test.ts`) confronta la
+ * regola in SQL con questa e con G9. Si scostano solo su un trimestre illeggibile, che il vincolo di
+ * `use_cases.target_quarter` non lascia scrivere: G9 lo conta come non finito, qui non è pianificato.
+ * Nessuna informazione del cliente vuol dire pronto; uno stato sconosciuto conta come non fatto.
  */
 export function isReadyToStart(i: ReadinessInput): boolean {
   if (i.kind !== "da_costruire" || i.phase !== "approvato") return false;

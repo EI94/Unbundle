@@ -378,7 +378,7 @@ test("il seme della migrazione: gli use case già pronti si segnano, nessun avvi
   assert.deepEqual(await who(cardId), []);
 });
 
-test("parità: la regola in SQL dà la stessa risposta di isReadyToStart su una matrice di use case", opts, async () => {
+test("parità: la regola in SQL dà la stessa risposta di isReadyToStart e della scheda su una matrice di use case", opts, async () => {
   const matrix: Array<{ status: string; review: string; kind: string; quarter: string | null; needs: Array<{ status: string; side: string | null; type?: string }>; dossier?: boolean }> = [];
   const quarters = [quarter, "2020-Q1", null, "2099-Q2"];
   for (const status of ["accepted", "proposed", "in_progress", "implemented", "rejected"]) {
@@ -397,7 +397,8 @@ test("parità: la regola in SQL dà la stessa risposta di isReadyToStart su una 
     { status: "accepted", review: "scored", kind: "use_case_ai", quarter, needs: [], dossier: true },
   );
   const today = String((await q(`SELECT (now() AT TIME ZONE 'Europe/Rome')::date::text AS d`))[0].d);
-  const { clientSideNeeds } = await import("../info-progress.ts");
+  const { clientSideNeeds, deriveInfoProgress } = await import("../info-progress.ts");
+  const { isReadyToStart: isPageReady } = await import("../guided.ts");
   const { kindOf } = await import("../labels.ts");
   for (const m of matrix) {
     const cardId = await card({ status: m.status, review: m.review, kind: m.kind, quarter: m.quarter });
@@ -417,7 +418,7 @@ test("parità: la regola in SQL dà la stessa risposta di isReadyToStart su una 
     const [[row]] = await (await getAppUcExecutor()).batch([
       toStatement(ucSql`SELECT ${sqlMod.readyNowSql("u", { dossiers: true })} AS ready FROM use_cases u WHERE u.id = ${cast(cardId, "uuid")}`),
     ]);
-    const phase = phaseMod.phaseOfUseCase({
+    const position = phaseMod.phaseOfUseCase({
       status: m.status,
       portfolioReviewStatus: m.review,
       reviewedBy: null,
@@ -430,15 +431,15 @@ test("parità: la regola in SQL dà la stessa risposta di isReadyToStart su una 
       dossierStatus: caseCode ? "raccolta" : null,
       duplicateOfCode: null,
       today,
-    } as Parameters<typeof phaseMod.phaseOfUseCase>[0]).phase;
-    const expected = readinessMod.isReadyToStart({
-      kind: kindOf(m.kind),
-      phase,
-      targetQuarter: m.quarter,
-      clientNeeds: clientSideNeeds(facts as Parameters<typeof clientSideNeeds>[0], cardId),
-      today,
-    });
+    } as Parameters<typeof phaseMod.phaseOfUseCase>[0]);
+    const phase = position.phase;
+    const clientNeeds = clientSideNeeds(facts as Parameters<typeof clientSideNeeds>[0], cardId);
+    const expected = readinessMod.isReadyToStart({ kind: kindOf(m.kind), phase, targetQuarter: m.quarter, clientNeeds, today });
     assert.equal(row.ready, expected, JSON.stringify(m));
+    // La stessa risposta del riquadro «Prossimo passo» della scheda (G9 in guided.ts).
+    const info = deriveInfoProgress(clientNeeds, [], new Date());
+    const page = isPageReady({ phase, subState: position.subState, kind: kindOf(m.kind), targetQuarter: m.quarter }, info ? { state: info.state } : null, today);
+    assert.equal(row.ready, page, `come la scheda: ${JSON.stringify(m)}`);
   }
   assert.ok(matrix.length >= 30, String(matrix.length));
 });

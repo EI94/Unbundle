@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PHASES } from "./types.ts";
-import { NEED_REQUIREMENT_STATUSES } from "./needs.ts";
+import { PHASES, SUB_STATES } from "./types.ts";
+import { NEED_REQUIREMENT_STATUSES, type NeedStatus } from "./needs.ts";
+import { isReadyToStart as isPageReady } from "./guided.ts";
+import { deriveInfoProgress } from "./info-progress.ts";
 import {
   READINESS_LATER_RULE,
   READY_NEED_STATUSES,
@@ -86,4 +88,30 @@ test("le colonne che contano per la regola", () => {
   assert.equal(readinessInputsChanged(before, { ...before, portfolioReviewStatus: "archived" }), true);
   assert.equal(readinessInputsChanged(before, { ...before, targetQuarter: "2026-Q4" }), true);
   assert.equal(readinessInputsChanged(before, { ...before, portfolioKind: "best_practice" }), true);
+});
+
+test("pronto da avviare dice quello che dice la scheda (G9 di guided.ts) su ogni valore che il database accetta", () => {
+  const quarters = ["2026-Q4", "2027-Q1", "2028-Q3", "2026-Q3", "2020-Q1", null];
+  const needSets: { status: NeedStatus }[][] = [[], ...NEED_REQUIREMENT_STATUSES.map((status) => [{ status }]), [{ status: "validata" }, { status: "non_applicabile" }], [{ status: "validata" }, { status: "parziale" }]];
+  let cases = 0;
+  let readyCases = 0;
+  for (const phase of PHASES) {
+    for (const subState of SUB_STATES[phase]) {
+      for (const kind of ["da_costruire", "da_diffondere"] as const) {
+        for (const targetQuarter of quarters) {
+          // La fase arriva da phaseOfUseCase: approvato vuol dire «trimestre» con un trimestre, «più avanti» senza.
+          if (phase === "approvato" && (subState === "trimestre") !== (targetQuarter !== null)) continue;
+          for (const clientNeeds of needSets) {
+            const info = deriveInfoProgress(clientNeeds.map((need, i) => ({ id: `n${i}`, status: need.status })), [], new Date(`${TODAY}T10:00:00Z`));
+            const page = isPageReady({ phase, subState, kind, targetQuarter }, info ? { state: info.state } : null, TODAY);
+            assert.equal(isReadyToStart({ kind, phase, targetQuarter, clientNeeds, today: TODAY }), page, JSON.stringify({ phase, subState, kind, targetQuarter, clientNeeds }));
+            cases++;
+            if (page) readyCases++;
+          }
+        }
+      }
+    }
+  }
+  assert.ok(cases > 1000, String(cases));
+  assert.ok(readyCases > 0 && readyCases < cases, `${readyCases} pronti su ${cases}`);
 });
