@@ -4,6 +4,11 @@
  * lettura. Verde (uscita 0) solo se passano tutti; altrimenti rosso (uscita 1), con il comando
  * che sistema ogni controllo. I doppioni contano con la stessa condizione della 0020. Controlli
  * in `src/lib/use-cases/admin/doctor.ts`.
+ *
+ * (0025) In più, solo da leggere (non cambiano verde o rosso): `migrazione0025` (la sonda della
+ * 0025), e per workspace `avvisiCliente` (`USE_CASE_CLIENT_NOTICES` acceso per il workspace, con
+ * «Chiedi al referente», come lo vede l'app con le stesse variabili) e `chiPuòAutorizzare` (c'è
+ * almeno una persona del cliente che può dare l'«ok sui sub-responsabili»: sì o no, mai quante).
  */
 import { parseLsDomains } from "../../src/lib/uc/lateral-space.ts";
 import { done, scopeQuery, stopped, type AdminCommand } from "../../src/lib/use-cases/admin/cli.ts";
@@ -12,6 +17,10 @@ import { DUPLICATE_CARDS_SQL } from "../../src/lib/use-cases/admin/dossier-dups.
 import { pendingOriginCount } from "../../src/lib/use-cases/admin/origin.ts";
 import { SCHEMA_FACTS_SQL, schemaFactsFrom } from "../../src/lib/use-cases/admin/schema.ts";
 import { readOriginCandidates } from "./origin.ts";
+import { USE_CASE_ALERTS_PROBE_SQL } from "../../src/lib/db/use-case-hub-alerts-ddl.ts";
+import { cast, toStatement, ucSql } from "../../src/lib/uc/sql/statement.ts";
+import { declarerRecipientsSql } from "../../src/lib/use-cases/case-alerts/sql.ts";
+import { clientNoticesEnabled } from "../../src/lib/use-cases/client-notices.ts";
 
 const filter = (withWorkspace: boolean, column: string) => (withWorkspace ? ` AND ${column} = $1::uuid` : "");
 
@@ -82,6 +91,19 @@ export const command: AdminCommand = {
         scoringVersion: versions.get(id) ?? 1,
       };
     });
+    // (0025) Solo da leggere: la migrazione, gli avvisi al cliente, chi può dare l'ok (sì o no).
+    const m0025 = (await ctx.db.read(`SELECT ${USE_CASE_ALERTS_PROBE_SQL} AS ok`))[0]?.ok === true;
+    const lsDomains = parseLsDomains(ctx.lsEmailDomains);
+    const declarers = new Map<string, boolean>();
+    for (const ws of perWorkspace) {
+      if (lsDomains.length === 0) {
+        declarers.set(ws.id, false);
+        continue;
+      }
+      const statement = toStatement(ucSql`SELECT EXISTS (${declarerRecipientsSql(cast(ws.id, "uuid"), lsDomains)}) AS ok`);
+      declarers.set(ws.id, (await ctx.db.read(statement.text, statement.params))[0]?.ok === true);
+    }
+
     const result = evaluateDoctor({
       m0019: facts.m0019,
       m0020: facts.m0020,
@@ -104,7 +126,10 @@ export const command: AdminCommand = {
         scoringVersion: ws.scoringVersion,
         // Come la vede l'app con le stesse variabili (`*` = ogni workspace, meno USE_CASE_HUB_EXCLUDE).
         areaAccesa: ctx.hubWorkspaces.has(ws.id.toLowerCase()),
+        avvisiCliente: clientNoticesEnabled(ws.id, ctx.featureEnv ?? {}),
+        chiPuòAutorizzare: declarers.get(ws.id) === true,
       })),
+      migrazione0025: m0025,
     };
     return result.green ? done(output) : stopped(output);
   },

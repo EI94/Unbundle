@@ -8,7 +8,9 @@
  *         --environment local|preview|production [--production-approved]]
  *   env: USE_CASE_ADMIN_DATABASE_URL (a mano, nella shell); UC_LS_EMAIL_DOMAINS (origin, codes, doctor);
  *        USE_CASE_HUB_WORKSPACES e USE_CASE_HUB_EXCLUDE, facoltative, come su Vercel (origin, codes,
- *        scoring-v2, doctor): con `*` l'area è accesa per ogni workspace del database, tranne gli esclusi
+ *        scoring-v2, doctor): con `*` l'area è accesa per ogni workspace del database, tranne gli esclusi;
+ *        USE_CASE_CLIENT_NOTICES, USE_CASE_REFERENTS e VERCEL_ENV, facoltative, come su Vercel (doctor:
+ *        `avvisiCliente`)
  *
  * Comandi, in quest'ordine (DESIGN §10.5):
  *   dossier-dups  [--detach <caseId>[,<caseId>…]]  doppioni tra dossier e scheda, prima della 0020
@@ -138,6 +140,12 @@ async function main(argv: readonly string[]): Promise<AdminOutcome> {
     db,
     lsEmailDomains: process.env.UC_LS_EMAIL_DOMAINS?.trim() || null,
     hubWorkspaces,
+    featureEnv: {
+      USE_CASE_CLIENT_NOTICES: process.env.USE_CASE_CLIENT_NOTICES,
+      USE_CASE_REFERENTS: process.env.USE_CASE_REFERENTS,
+      VERCEL_ENV: process.env.VERCEL_ENV,
+      ...hubEnv,
+    },
     readJsonFile,
     // Il piano, prima delle scritture: nello stesso flusso, prima del risultato.
     print: (output) => process.stdout.write(json({ ...output, ...where })),

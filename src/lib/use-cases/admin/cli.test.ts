@@ -189,8 +189,19 @@ function adminSources(): string[] {
   return files.sort();
 }
 
-/** Le variabili che lo script legge dalla shell: nessun'altra. */
-const ALLOWED_ENV = new Set(["USE_CASE_ADMIN_DATABASE_URL", "UC_LS_EMAIL_DOMAINS", "USE_CASE_HUB_WORKSPACES", "USE_CASE_HUB_EXCLUDE"]);
+/**
+ * Le variabili che lo script legge dalla shell: nessun'altra. (0025) Più tre interruttori dell'app,
+ * mai un database né un segreto, che `doctor` legge per dire se gli avvisi al cliente sono accesi.
+ */
+const ALLOWED_ENV = new Set([
+  "USE_CASE_ADMIN_DATABASE_URL",
+  "UC_LS_EMAIL_DOMAINS",
+  "USE_CASE_HUB_WORKSPACES",
+  "USE_CASE_HUB_EXCLUDE",
+  "USE_CASE_CLIENT_NOTICES",
+  "USE_CASE_REFERENTS",
+  "VERCEL_ENV",
+]);
 
 function envProblems(file: string, source = readFileSync(join(ROOT, file), "utf8")): string[] {
   const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);

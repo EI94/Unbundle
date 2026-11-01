@@ -265,6 +265,12 @@ export interface AdminContext {
    * volta). Vuota se manca.
    */
   hubWorkspaces: ReadonlySet<string>;
+  /**
+   * (0025) Gli interruttori dell'app letti dalla shell, come su Vercel (facoltativi):
+   * `USE_CASE_CLIENT_NOTICES`, `USE_CASE_REFERENTS`, `VERCEL_ENV`, `USE_CASE_HUB_WORKSPACES`,
+   * `USE_CASE_HUB_EXCLUDE`. Solo `doctor` li legge, per dire se gli avvisi al cliente sono accesi.
+   */
+  featureEnv?: Readonly<Record<string, string | undefined>>;
   /** Un file JSON dell'operatore (`--prefixes`, `--decisions`), al massimo 1 MB. */
   readJsonFile(path: string): unknown;
   /** Stampa un documento subito: il piano, prima di scrivere. */

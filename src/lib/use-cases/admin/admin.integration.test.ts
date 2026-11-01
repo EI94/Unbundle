@@ -698,10 +698,21 @@ test("doctor: sola lettura, verde solo quando il workspace è pronto", opts, asy
   const failing = (red.last.controlli as Array<{ controllo: string; ok: boolean }>).filter((c) => !c.ok).map((c) => c.controllo);
   assert.deepEqual(failing, ["scoring_v2"], "origin, codes e dossier-links fatti");
   const [wsA] = red.last.workspaces as Array<Record<string, unknown>>;
-  assert.deepEqual(wsA, { workspace: ids.wsA, nome: NAME_AB, rigaConfig: true, senzaCodice: 0, origineDaDecidere: 0, dossierLinksReady: true, scoringVersion: 1, areaAccesa: false });
+  const { chiPuòAutorizzare, ...rest } = wsA;
+  assert.deepEqual(rest, { workspace: ids.wsA, nome: NAME_AB, rigaConfig: true, senzaCodice: 0, origineDaDecidere: 0, dossierLinksReady: true, scoringVersion: 1, areaAccesa: false, avvisiCliente: false });
+  assert.equal(typeof chiPuòAutorizzare, "boolean", "sì o no, mai quante persone");
+  assert.equal(typeof red.last.migrazione0025, "boolean");
   // Con l'interruttore di produzione («*») l'area è accesa anche per lui; l'esclusione la spegne.
   const star = runAdmin(["doctor", "--workspace", ids.wsA], { env: { USE_CASE_HUB_WORKSPACES: "*" } });
   assert.equal((star.last.workspaces as Array<Record<string, unknown>>)[0].areaAccesa, true);
+  // (0025) Gli avvisi al cliente: solo con il workspace in USE_CASE_CLIENT_NOTICES e l'area accesa; «*» non vale.
+  assert.equal((star.last.workspaces as Array<Record<string, unknown>>)[0].avvisiCliente, false);
+  const notices = runAdmin(["doctor", "--workspace", ids.wsA], { env: { USE_CASE_HUB_WORKSPACES: "*", USE_CASE_CLIENT_NOTICES: ids.wsA } });
+  assert.equal((notices.last.workspaces as Array<Record<string, unknown>>)[0].avvisiCliente, true);
+  const wildcard = runAdmin(["doctor", "--workspace", ids.wsA], { env: { USE_CASE_HUB_WORKSPACES: "*", USE_CASE_CLIENT_NOTICES: "*" } });
+  assert.equal((wildcard.last.workspaces as Array<Record<string, unknown>>)[0].avvisiCliente, false);
+  const referentsOff = runAdmin(["doctor", "--workspace", ids.wsA], { env: { USE_CASE_HUB_WORKSPACES: "*", USE_CASE_CLIENT_NOTICES: ids.wsA, USE_CASE_REFERENTS: "off" } });
+  assert.equal((referentsOff.last.workspaces as Array<Record<string, unknown>>)[0].avvisiCliente, false);
   const out = runAdmin(["doctor", "--workspace", ids.wsA], { env: { USE_CASE_HUB_WORKSPACES: "*", USE_CASE_HUB_EXCLUDE: ids.wsA } });
   assert.equal((out.last.workspaces as Array<Record<string, unknown>>)[0].areaAccesa, false);
   const noConfig = runAdmin(["doctor", "--workspace", ids.wsD]);

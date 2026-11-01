@@ -270,6 +270,7 @@ Riferimento: la SPEC del pacchetto (parti 1 e 2). La funzione vive nell'area «U
 | `BLOB_READ_WRITE_TOKEN` | già impostata | Store privato: caricamenti diretti fino a 20 MB. Senza, solo fino a 4 MB passando dal server. |
 | `CRON_SECRET` | già impostata | `/api/cron/use-case-referents` (lun–ven alle 09:00 UTC) risponde 401 se manca o è diversa. |
 | `UC_ENABLED` | non letta qui | `UC_ENABLED=false` ferma solo i dossier. |
+| `USE_CASE_CLIENT_NOTICES` | **assente (spenta ovunque)**; a mano, un workspace alla volta | Gli avvisi alle persone del cliente (oggi solo «Autorizza i fornitori», §10.8): UUID di workspace separati da virgole. `*` non accende niente, una voce che non è un UUID intero si ignora. Vale solo dove vale anche «Chiedi al referente» (area accesa, `USE_CASE_REFERENTS` non `off`, mai in anteprima). |
 
 ### 10.2 Migrazione 0024 (a mano, prima del deploy)
 
@@ -332,3 +333,38 @@ Il referente risponde sempre dal link personale, senza entrare: essere referente
 - **Email**: oggetto «{Azienda}: sei il referente per «{use case}»», prima riga «{Nome} ti ha indicato come referente per lo use case «{use case}» e ti chiede alcune informazioni.». A chi, al momento dell'invio, è membro del workspace senza essere revisore (corsista, contributore) con la stessa email verificata, richiesta e promemoria aggiungono «Hai già un account Unbundle: per rispondere non serve entrare, basta questo link.», senza link alla dashboard. I revisori hanno la riga del team con il link alla scheda (§10, Parte 3). Si ricalcola a ogni invio: chi si iscrive dopo la richiesta riceve la riga nei promemoria.
 - **«Correggi l'email»** (solo referenti dell'hub): il collegamento all'account segue l'indirizzo nuovo (l'account con quell'email verificata se è del workspace, altrimenti nessuno).
 - Controllo di sola lettura di un referente (UUID inventati): `SELECT user_id IS NOT NULL AS collegato, is_active FROM uc_contacts WHERE workspace_id = '<ws>' AND id = '<referente>';`
+
+### 10.8 «Pronto da avviare» e «Autorizza i fornitori» (0025)
+
+Due avvisi nella campanella, con l'email del giorno lavorativo dopo (stesso trasporto, mittente `UC_EMAIL_FROM` sul sottodominio delle notifiche, reply-to `UC_EMAIL_REPLY_TO`; le email partono solo dal cron dei referenti, lun–ven alle 09:00 UTC, dentro la finestra di Roma). La fase di uno use case resta una decisione di una persona: niente si avvia da solo.
+
+- **«Pronto da avviare»**, solo ai revisori di Lateral Space del workspace (ruolo da revisore, email verificata di `UC_LS_EMAIL_DOMAINS`), mai a chi ha agito: uno use case «Da costruire» approvato per questo trimestre o dopo, senza dossier, con ogni informazione del cliente «A posto» o «Non si applica» (o nessuna). Una volta per passaggio (`use_case_ready_state`); la riga porta al capitolo «Realizzazione» e sparisce appena lo use case non è più pronto. L'email resta in attesa senza l'ok sui sub-responsabili (`sub_responsabili_mancanti`, come ogni email dell'area) e si annulla da sola dopo 2 giorni lavorativi. Non dipende da `USE_CASE_CLIENT_NOTICES`. Lo stesso giorno un revisore di Lateral Space non riceve anche «Informazioni complete» per lo stesso use case.
+- **«Autorizza i fornitori»**, solo con `USE_CASE_CLIENT_NOTICES` acceso per il workspace, solo a chi può dare l'ok (Sponsor esecutivo, Responsabile della trasformazione, Responsabile di funzione, email verificata fuori da Lateral Space): quando una persona di Lateral Space approva o pianifica uno use case con informazioni da chiedere, prepara le domande o prova a chiedere al referente mentre l'ok manca, e dal cron. Al massimo una volta ogni 7 giorni per workspace. La riga porta a Impostazioni › Sub-responsabili; l'email non porta dati degli use case. Con l'ok le righe spariscono, le email in coda si annullano (`autorizzazione_data`) e non si scrive più niente.
+
+**Prima di accendere `USE_CASE_CLIENT_NOTICES`**: l'email di «Autorizza i fornitori» passa da Resend, che è uno dei sub-responsabili da autorizzare. La decisione è del proprietario (o del legale); senza, si lascia spenta.
+
+**Migrazione 0025 (a mano, prima del deploy)**, come la 0024 (§10.2):
+
+1. Restore point su Neon.
+2. `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0025_use_case_alerts.sql` (allarga il CHECK dei tipi di `use_case_notifications` con `pronto` e `fornitori`, crea `use_case_ready_state`, `use_case_alert_emails`, `use_case_alert_email_items`, e segna subito come già pronti gli use case pronti oggi: nessuno riceve notizie vecchie).
+3. `SELECT <USE_CASE_ALERTS_PROBE_SQL>` (da `src/lib/db/use-case-hub-alerts-ddl.ts`) deve dare `true`; oppure `use-case-admin doctor` deve dire `migrazione0025: true`.
+4. Mai drizzle-kit, mai `db:push`. Il self-heal (`ENSURE_VERSION` 19) trova lo schema aggiornato e non fa niente. Senza la 0025 l'app funziona come prima e non scrive nessuno dei due avvisi.
+
+Il ramo non si pubblica prima della revisione: le anteprime usano il database di produzione e il self-heal applicherebbe la 0025 lì.
+
+**Accendere gli avvisi al cliente per un workspace**:
+
+1. Vercel › Settings › Environment Variables › Production: `USE_CASE_CLIENT_NOTICES=<uuid del workspace>` (più workspace: `<uuid>,<uuid>`).
+2. Redeploy: una variabile nuova vale solo dal deploy dopo.
+3. Controllo: `USE_CASE_CLIENT_NOTICES=<uuid> USE_CASE_HUB_WORKSPACES=<come su Vercel> UC_LS_EMAIL_DOMAINS=<come su Vercel> node --no-warnings scripts/use-case-admin.ts doctor --workspace <uuid>` deve dire `avvisiCliente: true`; `chiPuòAutorizzare: false` vuol dire che nel workspace nessuno può dare l'ok (nessun avviso parte finché non c'è).
+
+Spegnere: togliere l'UUID e rifare il deploy. Le email già in coda si annullano all'invio (`avvisi_cliente_spenti`); le righe già nella campanella restano finché l'ok manca.
+
+**Controllo di sola lettura** (UUID inventati):
+```sql
+SELECT ready_since, ready_quarter FROM use_case_ready_state WHERE use_case_id = '<use case>';
+SELECT kind, status, hold_reason, cancel_reason, send_on FROM use_case_alert_emails WHERE workspace_id = '<ws>' ORDER BY created_at DESC LIMIT 20;
+```
+
+**Ritorno indietro** (Vercel Hobby, un passo, senza skew protection): il codice di prima mostrerebbe le righe `pronto` e `fornitori` senza titolo e con un link a «Cosa serve». Deploy la sera e `main` fermo per circa 24 ore. Se si torna indietro, il proprietario (mai un agente) cancella in produzione `DELETE FROM use_case_notifications WHERE kind IN ('pronto', 'fornitori');`. Le tabelle della 0025 possono restare: il codice di prima non le legge.
+
