@@ -36,7 +36,7 @@ import {
 } from "./ask-dialog-state";
 import { AskPeopleStep, type AskPeopleList } from "./ask-people";
 import { AskPreviewStep } from "./ask-preview";
-import { AskQuestionsStep } from "./ask-questions";
+import { AskQuestionsStep, prepareIsNext } from "./ask-questions";
 import {
   againLineOf,
   askErrorStep,
@@ -400,6 +400,7 @@ export function AskSteps({
   }
 
   const busy = sending || prep.pending;
+  const prepareOffer = askPrepareOffer(panel, mode);
   const name = person?.displayName ?? "";
   const tickedIds = (() => {
     const chosen = new Set(draft.needIds.map((id) => id.toLowerCase()));
@@ -415,7 +416,7 @@ export function AskSteps({
     step === 1
       ? { kind: "submit", label: T.next }
       : step === 2
-        ? { kind: "submit", label: questionsNextLabel(tickedIds.length) }
+        ? { kind: "submit", label: questionsNextLabel(tickedIds.length), quiet: Boolean(asked && prepareIsNext(asked.questions, { offer: prepareOffer, done: prepared })) }
         : blocked || !person
           ? { kind: "close", label: T.close }
           : { kind: "submit", label: sendLabel(person) };
@@ -465,7 +466,7 @@ export function AskSteps({
                 questions={asked.questions}
                 selected={draft.needIds}
                 errors={errors}
-                prepare={{ offer: askPrepareOffer(panel, mode), pending: prep.pending, done: prepared, error: prepareError, onPrepare: () => void prepareQuestions() }}
+                prepare={{ offer: prepareOffer, pending: prep.pending, done: prepared, error: prepareError, onPrepare: () => void prepareQuestions() }}
                 prepareStatusRef={statusRef}
                 message={draft.message}
                 limits={panel.limits}
@@ -501,8 +502,12 @@ export function AskSteps({
   );
 }
 
-/** Il pulsante pieno del piede: il passo dopo (un `submit` del modulo del passo), oppure «Chiudi» quando un motivo blocca l'invio. */
-export type AskPrimary = { kind: "submit"; label: string } | { kind: "close"; label: string };
+/**
+ * Il pulsante pieno del piede: il passo dopo (un `submit` del modulo del passo), oppure «Chiudi» quando
+ * un motivo blocca l'invio. `quiet`: il passo dopo è un altro pulsante del corpo («Prepara le domande»
+ * senza domande da fare), e questo resta non pieno.
+ */
+export type AskPrimary = { kind: "submit"; label: string; quiet?: boolean } | { kind: "close"; label: string };
 
 /**
  * La barra dei passi: tre voci con il loro cerchio (fatto: la spunta; adesso: il bordo pieno; dopo:
@@ -567,7 +572,7 @@ export function AskFooter({
         </Button>
       )}
       {primary.kind === "submit" ? (
-        <Button type="submit" form={formId} className={TOUCH} aria-busy={busy || undefined}>
+        <Button type="submit" form={formId} variant={primary.quiet ? "outline" : "default"} className={TOUCH} aria-busy={busy || undefined}>
           {primary.label}
         </Button>
       ) : (

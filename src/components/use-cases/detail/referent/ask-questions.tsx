@@ -31,6 +31,14 @@ export interface AskPrepareProps {
 }
 
 /**
+ * Su «Cosa chiedi» senza domande da fare ma con domande standard da preparare (layout «empty»), il
+ * passo dopo è «Prepara le domande»: pieno lui, non «Avanti · 0 domande» del piede.
+ */
+export function prepareIsNext(questions: AskQuestions, prepare: Pick<AskPrepareProps, "offer" | "done">): boolean {
+  return questions.layout === "empty" && Boolean(prepare.offer) && prepare.done === null;
+}
+
+/**
  * «Cosa chiedi» (rilascio 4, §8): le domande proposte alla persona, spuntate; le altre della scheda
  * chiuse sotto «Altre domande di questo use case · n», con il loro «Chi»; nessuna per la persona:
  * tutte, aperte e non spuntate. Poi «Prepara le domande» quando mancano domande standard, e il
@@ -73,6 +81,9 @@ export function AskQuestionsStep({
   const list = (items: Parameters<typeof NeedChecklist>[0]["items"]) => (
     <NeedChecklist labelledBy={ids.heading} describedBy={listDescribed} items={items} selected={selected} invalid={Boolean(error)} onChange={onChange} />
   );
+  // Niente da chiedere ma domande standard da preparare: il passo dopo è «Prepara le domande», ed è
+  // lui il pulsante pieno (il piede allora non lo è, `prepareIsNext` in ask-steps.tsx).
+  const prepareFilled = prepareIsNext(questions, prepare);
   return (
     <div data-slot="ask-questions" className="space-y-3">
       {againLine ? <p className="text-sm break-words text-muted-foreground">{againLine}</p> : null}
@@ -113,7 +124,7 @@ export function AskQuestionsStep({
         <div data-slot="referent-ask-prepare" className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Button
             type="button"
-            variant="outline"
+            variant={prepareFilled ? "default" : "outline"}
             className="min-h-11 sm:min-h-8"
             aria-describedby={ids.prepare}
             aria-busy={prepare.pending || undefined}

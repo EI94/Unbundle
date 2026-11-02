@@ -173,6 +173,23 @@ test("«Cosa chiedi»: le proposte spuntate, le altre chiuse con il loro «Chi»
   assert.doesNotMatch(html, COURSE);
 });
 
+test("«Cosa chiedi» senza domande da fare ma con domande da preparare: «Prepara le domande» pieno, il piede no", () => {
+  const empty = renderQuestions({ questions: { layout: "empty" }, selected: [] });
+  assert.ok(empty.includes(T.questionsEmpty));
+  assert.deepEqual(filled(empty), [REFERENT_UI_TEXT.prepare], "il passo dopo è «Prepara le domande»");
+  assert.equal(questions.prepareIsNext({ layout: "empty" }, { offer: { count: 2, hint: "x" }, done: null }), true);
+  // Fatto (anche senza domande nuove), o niente da preparare, o domande da fare: non più.
+  assert.equal(questions.prepareIsNext({ layout: "empty" }, { offer: { count: 2, hint: "x" }, done: "Aggiunte 2 domande a «Cosa serve»." }), false);
+  assert.equal(questions.prepareIsNext({ layout: "empty" }, { offer: null, done: null }), false);
+  assert.equal(questions.prepareIsNext({ layout: "all", items: [] }, { offer: { count: 2, hint: "x" }, done: null }), false);
+  // Con domande da fare «Prepara le domande» resta non pieno.
+  assert.deepEqual(filled(renderQuestions({ questions: { layout: "all", items: [{ id: "q2", title: "Quale gestionale?", meta: null }] }, selected: [] })), []);
+  // Il piede: «Avanti · 0 domande» non pieno quando il passo dopo è «Prepara le domande», sempre un submit.
+  const foot = readable(renderToStaticMarkup(h(steps.AskFooter, { formId: "passo", back: true, busy: false, primary: { kind: "submit", label: "Avanti · 0 domande", quiet: true }, onBack: () => {}, onCancel: () => {} })));
+  assert.deepEqual(filled(foot), []);
+  assert.match(foot, /<button[^>]*type="submit"[^>]*form="passo"[^>]*>Avanti · 0 domande<\/button>|<button[^>]*form="passo"[^>]*type="submit"[^>]*>Avanti · 0 domande<\/button>/);
+});
+
 const PARTS = referentRequestPreview({ company: "Alfa Jet (prova)", useCase: { code: "AJ-0002", title: "Lettura delle fatture" }, requesterName: "Giulia Neri", questions: 2, message: "Ci serve per fine mese.", today: new Date("2026-11-02T10:00:00Z") });
 
 function renderPreview(over: Record<string, unknown> = {}) {
