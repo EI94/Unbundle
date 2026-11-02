@@ -17,8 +17,9 @@
 // case approved with a client question still to ask while the workspace has no «ok sui
 // sub-responsabili» (one «Autorizza i fornitori» row for function-lead, who can give it). Then, for
 // each width:
-//  1. ls-lead sees «Pronto da avviare»; its click opens the use case at «Realizzazione» (the chapter
-//     marked as the current one, its section in view);
+//  1. ls-lead sees «Pronto da avviare»; its click opens the use case at «Realizzazione»: the
+//     «Realizzazione» fold of the guided card (release 3, in place of the chapter bar) open, in view
+//     and with the focus inside it, and no «Capitoli» bar on the page;
 //  2. function-lead sees «Autorizza i fornitori» and no «Pronto da avviare»; its click opens
 //     Impostazioni with «Sub-responsabili» in view;
 //  3. osservatore (contributor) sees neither row;
@@ -155,13 +156,22 @@ function state(page) {
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < window.innerHeight;
     };
+    // The «Realizzazione» fold of the guided card (`<details id="realizzazione" data-slot="fold">`):
+    // `?capitolo=realizzazione` opens it from the server, brings it to the top and focuses its summary.
+    const fold = document.getElementById("realizzazione");
+    const active = document.activeElement;
+    const isFold = fold instanceof HTMLDetailsElement && fold.dataset.slot === "fold";
     return {
       open,
       rows: rows.map((el) => ({ href: el.getAttribute("href"), text: el.textContent.replace(/\s+/g, " ").trim() })),
       overflow: document.documentElement.scrollWidth > window.innerWidth,
       url: location.pathname + location.search + location.hash,
-      chapter: document.querySelector('[data-slot=chapter-nav] [data-chapter="realizzazione"]')?.getAttribute("aria-current") ?? null,
-      realizationInView: inView(document.getElementById("realizzazione")),
+      chapterBar: Boolean(document.querySelector("[data-slot=chapter-nav]")),
+      realizationFold: isFold,
+      realizationOpen: isFold && fold.open,
+      realizationFocus: Boolean(fold && active && active !== document.body && fold.contains(active)),
+      focused: active && active !== document.body ? `${active.tagName.toLowerCase()}${active.dataset?.slot ? `[${active.dataset.slot}]` : ""}${active.id ? `#${active.id}` : ""}` : "body",
+      realizationInView: inView(fold),
       subprocessorsInView: inView(document.getElementById("sub-responsabili")),
     };
   });
@@ -226,12 +236,18 @@ try {
       record(`${tag} ls-lead sees «${READY}»`, [...(ready ? [] : [`rows: ${JSON.stringify(s.rows.map((r) => r.text.slice(0, 60)))}`]), ...(suppliersRow(s) ? [`«${SUPPLIERS}» reached Lateral Space`] : []), ...(s.overflow ? ["horizontal scroll"] : [])]);
       if (ready) {
         await clickAt(page, `[data-slot=dropdown-menu-content] a[href$="${readyPath}?capitolo=realizzazione"]`);
-        s = await waitFor(page, (x) => x.url.startsWith(`${readyPath}?capitolo=realizzazione`) && !x.open && x.realizationInView && x.chapter === "location");
+        s = await waitFor(page, (x) => x.url.startsWith(`${readyPath}?capitolo=realizzazione`) && !x.open && x.realizationOpen && x.realizationFocus && x.realizationInView);
+        // The state a second later: nothing (the closing menu, a late render) takes the focus back.
+        await sleep(1000);
+        s = await state(page);
         record(`${tag} its click opens the use case at «Realizzazione»`, [
           ...(s.url.startsWith(`${readyPath}?capitolo=realizzazione`) ? [] : [`url ${s.url}`]),
           ...(s.open ? ["menu still open"] : []),
+          ...(s.realizationFold ? [] : ["«Realizzazione» is not a fold of the card"]),
+          ...(s.realizationFold && !s.realizationOpen ? ["the «Realizzazione» fold is closed"] : []),
+          ...(s.realizationFocus ? [] : [`focus not in «Realizzazione» (on ${s.focused})`]),
           ...(s.realizationInView ? [] : ["«Realizzazione» not in view"]),
-          ...(s.chapter === "location" ? [] : [`chapter marker ${s.chapter}`]),
+          ...(s.chapterBar ? ["the old «Capitoli» bar is on the page"] : []),
           ...(s.overflow ? ["horizontal scroll"] : []),
         ]);
       }
