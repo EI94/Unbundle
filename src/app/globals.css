@@ -453,3 +453,9 @@ html:has([data-use-case-root])
 :root[data-theme="light"]:has([data-theme-scope]) [data-slot="outcome-swatch"] {
   border-color: color-mix(in oklab, currentColor 80%, transparent);
 }
+/* Il percorso della scheda di uno use case (rilascio 3): l'alone del passo «adesso» al 50% del
+   colore dell'agente resterebbe 2,2–2,3:1 sul chiaro; al 70% è almeno 3,2:1, come i 3:1 che ha
+   nel tema scuro. Senza agente il percorso prende il colore del testo, che al 50% fa già 3,5:1. */
+:root[data-theme="light"]:has([data-theme-scope]) [data-slot="use-case-path"]:not([data-tone="neutro"]) [data-state="adesso"] > [aria-hidden] {
+  --tw-ring-color: color-mix(in oklab, var(--path-c) 70%, transparent);
+}

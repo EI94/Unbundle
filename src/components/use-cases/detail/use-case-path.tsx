@@ -31,7 +31,8 @@ const BULLET = {
  * una best practice, in tre colonne sul telefono e in una riga da 40rem della scheda. Lo stato di
  * ogni passo lo dicono il bordo del pallino, il peso dell'etichetta e il testo nascosto « (fatto)»
  * o « (adesso)», mai il solo colore; il passo corrente ha `aria-current="step"`. I passi non sono
- * link. Reso sul server.
+ * link. Reso sul server. `data-tone` dice al tema «Chiaro» se il percorso ha il colore di un
+ * agente: lì l'alone del passo «adesso» sale al 70% (vedi in fondo a globals.css).
  */
 export function UseCasePath({ path, tone = null, className }: { path: UseCasePathView; tone?: AgentTone | null; className?: string }) {
   const t = GUIDED_TEXT.path;
@@ -42,6 +43,7 @@ export function UseCasePath({ path, tone = null, className }: { path: UseCasePat
     <ol
       aria-label={t.ariaLabel}
       data-slot="use-case-path"
+      data-tone={tone ?? "neutro"}
       className={cn(
         "grid gap-y-3 [--path-c:var(--foreground)]",
         spread ? "grid-cols-2 @min-[40rem]/scheda:grid-cols-4" : "grid-cols-3 @min-[40rem]/scheda:grid-cols-6",

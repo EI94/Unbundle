@@ -844,11 +844,13 @@ test("il colore dell'agente: il tag della testata, il percorso e «Con …» con
   for (const person of ["lsLead", "builder"] as const) {
     const { html } = await detailHtml(person, libra.id);
     assert.match(html, new RegExp(`data-slot="agent-tag" data-tone="${tone}" aria-hidden="true" class="[^"]*border-uc-agente-${tone}/55 bg-uc-agente-${tone}/16 text-uc-agente-${tone}`), `${person}: il tag`);
-    assert.match(html, new RegExp(`data-slot="use-case-path" class="[^"]*\\[--path-c:var\\(--uc-agente-${tone}\\)\\]`), `${person}: il percorso`);
+    // `data-tone` dice al tema «Chiaro» che il percorso ha il colore di un agente (l'alone di «adesso» al 70%).
+    assert.match(html, new RegExp(`data-slot="use-case-path" data-tone="${tone}" class="[^"]*\\[--path-c:var\\(--uc-agente-${tone}\\)\\]`), `${person}: il percorso`);
     assert.match(html, new RegExp(`data-slot="work-flow" class="[^"]*\\[--path-c:var\\(--uc-agente-${tone}\\)\\]`), `${person}: «Con LIBRA»`);
     const neutral = (await detailHtml(person, proposal.id)).html;
     assert.match(neutral, /data-slot="agent-tag" data-tone="neutro"/, `${person}: tag neutro`);
     assert.ok(!/\[--path-c:var\(--uc-agente-/.test(neutral), `${person}: percorso nel colore del testo`);
+    assert.match(neutral, /data-slot="use-case-path" data-tone="neutro" class=/, `${person}: percorso senza agente`);
     assert.ok(!(await detailHtml(person, plain.id)).html.includes('data-slot="agent-tag"'), `${person}: senza prefisso, nessun tag`);
   }
   const contributor = (await detailHtml("contributor", libra.id)).html;
