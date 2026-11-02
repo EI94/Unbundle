@@ -129,42 +129,67 @@ export const REFERENT_UI_TEXT = Object.freeze({
   eraseConfirmText:
     "Cancelliamo le sue risposte e i suoi file su tutti gli use case di questo workspace e revochiamo i suoi link. Le domande aperte tornano da chiedere. Non si può annullare.",
   eraseConfirm: "Cancella i dati",
-  // Finestra «Chiedi al referente»
+  // Finestra «Chiedi al referente» in tre passi (rilascio 4): «A chi», «Cosa chiedi», «Controlla e invia».
   askDialog: Object.freeze({
     title: "Chiedi al referente",
     titleAgain: "Chiedi di nuovo",
-    confirm: "Invia la richiesta",
+    steps: Object.freeze({ label: "Passi", who: "A chi", what: "Cosa chiedi", check: "Controlla e invia", done: " (fatto)", now: " (adesso)" }),
+    cancel: "Annulla",
+    next: "Avanti",
+    back: "Indietro",
+    nextOne: "Avanti · 1 domanda",
+    nextMany: "Avanti · {n} domande",
+    send: "Invia a {Nome}",
+    close: "Chiudi",
+    // Passo 1 «A chi»
     whoLabel: "A chi chiedi?",
-    whoPlaceholder: "Scegli un referente",
-    option: "{Nome} · {ruolo} · {email}",
-    optionNoRole: "{Nome} · {email}",
-    optionNoEmail: "{Nome} · {ruolo}",
-    optionNameOnly: "{Nome}",
+    whoLead: "Scegli chi conosce i dati: ti proponiamo solo le domande che lo riguardano.",
+    whoMissing: "Scegli un referente",
     suffix: Object.freeze({ senza_email: "(senza email)", lateral_space: "(di Lateral Space)", richiesta_aperta: "(richiesta già aperta)", sei_tu: "(sei tu)" }),
-    // (Parte 3) Il contatto è un revisore del workspace: in coda all'opzione, « · Fa parte del team».
+    // (Parte 3) Il contatto è un revisore del workspace: in coda alla riga, « · Fa parte del team».
     teamTag: "Fa parte del team",
-    // (Parte 3) Sotto il selettore, quando chi guarda è tra i contatti (opzione «(sei tu)», non selezionabile).
+    // (Parte 3) Sotto l'elenco, quando chi guarda è tra i contatti (riga «(sei tu)», non si sceglie).
     selfHint: "Non serve chiedere a te stesso: rispondi direttamente qui in «Cosa serve», con «Aggiungi una risposta» o «Allega un file».",
-    newContact: "+ Nuovo referente",
-    // (Referente già iscritto) I due gruppi del selettore, quando ci sono anche persone del workspace.
+    // (Referente già iscritto) I due gruppi dell'elenco, quando ci sono anche persone del workspace.
     contactsGroup: "Referenti",
     membersGroup: "Persone del workspace",
+    peopleLoading: "Carico le persone del workspace…",
+    peopleFailed: "Adesso non riesco a mostrare le persone del workspace: puoi scegliere un referente o una persona nuova.",
+    newPerson: "Una persona nuova",
     newName: "Nome e cognome",
     newEmail: "Email",
     newRole: "Ruolo (facoltativo)",
     newHint: "Una persona del cliente. Non può avere un'email di Lateral Space.",
     otherRequestsHint: "{Nome} ha già domande aperte su altri use case: i promemoria arriveranno in un'unica email.",
+    // Passo 2 «Cosa chiedi»
+    whatHeading: "Cosa chiedi a {Nome}?",
+    againTo: "A {Nome} · {email}",
+    questionsNone: "Nessuna domanda è segnata per {Nome}: scegli tu quelle da fare.",
+    questionsOthers: "Altre domande di questo use case · {n}",
+    questionsFor: "{Nome} vede solo il testo delle domande, non i dettagli.",
+    questionsEmpty: "Non ci sono ancora domande da fare.",
+    // «Aggiungi domande» (una richiesta viva): il titolo dell'elenco e il suggerimento.
     questionsLabel: "Cosa chiedi",
     questionsHint: "Il referente vede solo il testo delle domande, non i dettagli.",
-    questionsEmpty: "Non ci sono domande da fare: aggiungile in «Cosa serve» o usa «Prepara le domande».",
     // Sotto «Cosa chiedi», accanto a «Prepara le domande», quando mancano domande standard.
     prepareHintOne: "Aggiunge la domanda standard sul dato che manca: arriva già spuntata.",
     prepareHintMany: "Aggiunge {n} domande standard sui dati che mancano: arrivano già spuntate.",
     messageLabel: "Messaggio (facoltativo)",
     messagePlaceholder: "Per esempio: ci serve per la stima di fine mese.",
     messageHint: "Non scrivere dati sanitari, nomi, email o telefoni di altre persone.",
-    summary:
-      "Mandiamo un'email a {email} da «Lateral Space via Unbundle». Se risponde all'email, la risposta arriva a te ({tuaEmail}). Il link vale 30 giorni; se serve, partono due promemoria dopo 3 e 7 giorni lavorativi.",
+    // Passo 3 «Controlla e invia»
+    checkHeading: "Ecco l'email che riceve {Nome}.",
+    previewLabel: "Anteprima dell'email",
+    from: "Da",
+    to: "A",
+    subject: "Oggetto",
+    toValue: "{Nome} · {email}",
+    questionsOnLink: "Aprendo il link trova queste domande:",
+    replyNote: "Le risposte all'email arrivano a te ({tuaEmail}). Se serve, partono due promemoria dopo 3 e 7 giorni lavorativi.",
+    newTab: " (si apre in una nuova scheda)",
+    // Dopo l'ok sui fornitori dato in un'altra scheda, una volta sola.
+    okGiven: "Ok di {Azienda} dato.",
+    okSend: " Puoi inviare.",
   }),
   correctDialog: Object.freeze({
     title: "Correggi l'email",

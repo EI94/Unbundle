@@ -306,11 +306,8 @@ export interface UseCaseReferentPanel {
   gates: ReferentGate[];
   /** Attivi, non anonimizzati; in ordine di created_at, id (mai per nome). */
   contacts: ReferentContactOption[];
-  /**
-   * (Referente già iscritto) Dopo i referenti: le persone del workspace con un account, in ordine
-   * alfabetico. Vuoto per chi non vede già le persone del workspace o non può chiedere.
-   */
-  members: ReferentMemberOption[];
+  // (Rilascio 4) Le persone del workspace non stanno più nel pannello di ogni scheda: la finestra le
+  // legge quando si apre (`listReferentPeopleAction`).
   /** Di questo use case, dalla più recente, al massimo 20. */
   requests: ReferentRequestView[];
   /** Chiave: id dell'esigenza in minuscolo, per le esigenze collegate a questa scheda. */

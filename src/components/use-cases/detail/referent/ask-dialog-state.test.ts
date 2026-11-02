@@ -5,10 +5,10 @@ import { REFERENT_LIMITS, type ReferentContactOption, type ReferentGate, type Re
 import { REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT } from "../../../../lib/use-cases/referent/labels.ts";
 import {
   ASK_MODE,
-  ASK_OPTION_CLASS,
   MEMBER_PREFIX,
   NEW_CONTACT,
   askAgainMode,
+  askDialogEntry,
   askDraftErrors,
   askEntry,
   askErrorView,
@@ -16,17 +16,14 @@ import {
   askPayload,
   askPrepareOffer,
   askSelfHint,
-  askSummary,
-  contactChoiceGroups,
-  contactChoices,
-  contactOptionLabel,
+  contactRowLine,
   initialAskDraft,
-  memberOptionLabel,
+  memberRowLine,
   mergeAskSelection,
 } from "./ask-dialog-state.ts";
 import { referentOutcome } from "./referent-outcome.ts";
 
-// La finestra «Chiedi al referente» e «Chiedi di nuovo» (SPEC §5.2, §9.3, §P3.7), senza React.
+// La finestra «Chiedi al referente» e «Chiedi di nuovo» (SPEC §5.2, §9.3, §P3.7; rilascio 4 §3, §6), senza React.
 const T = REFERENT_UI_TEXT.askDialog;
 const N1 = "11111111-1111-4111-8111-111111111111";
 const N2 = "22222222-2222-4222-8222-222222222222";
@@ -49,38 +46,30 @@ const panel: Pick<UseCaseReferentPanel, "contacts" | "askableNeedIds" | "limits"
   requester: { name: "Giulia Neri", email: "giulia@topjet.it" },
 };
 
-test("bozza di partenza: tutte le domande che si possono chiedere spuntate, nessun referente scelto", () => {
+test("bozza di partenza: nessuno scelto e nessuna spunta (le spunte arrivano con la persona, in «Cosa chiedi»)", () => {
   const draft = initialAskDraft(panel);
   assert.equal(draft.choice, null);
-  assert.deepEqual(draft.needIds, [N1, N2, N3]);
+  assert.deepEqual(draft.needIds, []);
   assert.equal(draft.message, "");
 });
 
-test("le voci del selettore: nome · ruolo · email coperta, «Fa parte del team», i motivi, poi «+ Nuovo referente»", () => {
-  assert.equal(contactOptionLabel(MARIO), "Mario Rossi · Ufficio acquisti · m•••@topjet.it");
-  assert.equal(contactOptionLabel(FEDERICO), `Federico Barsi · f•••@topjet.it · ${T.teamTag}`);
-  assert.equal(contactOptionLabel(NOMAIL), `Anna Verdi · Logistica ${T.suffix.senza_email}`);
-  assert.equal(contactOptionLabel(contact({ id: "x", displayName: "Solo nome" })), "Solo nome");
-  // Chi guarda: «(sei tu)», non selezionabile; il motivo basta, senza «Fa parte del team».
-  assert.equal(contactOptionLabel(ME), `Giulia Neri · g•••@topjet.it ${T.suffix.sei_tu}`);
-  const choices = contactChoices(panel);
-  assert.deepEqual(
-    choices.map((c) => [c.label, c.disabled]),
-    [
-      ["Mario Rossi · Ufficio acquisti · m•••@topjet.it", false],
-      [`Federico Barsi · f•••@topjet.it · ${T.teamTag}`, false],
-      [`Giulia Neri · g•••@topjet.it ${T.suffix.sei_tu}`, true],
-      [`Anna Verdi · Logistica ${T.suffix.senza_email}`, true],
-      [`Luca Bianchi · l•••@topjet.it ${T.suffix.richiesta_aperta}`, true],
-      [T.newContact, false],
-    ],
-  );
-  assert.equal(choices.at(-1)?.value, NEW_CONTACT);
-  // Nessun numero, nessun dato di altre aree nelle voci.
-  for (const choice of choices) assert.doesNotMatch(choice.label, /\d|corso|formazione/i, choice.label);
+test("le righe di «A chi»: ruolo · email coperta, «Fa parte del team», i motivi; mai un numero, mai i corsi", () => {
+  assert.equal(contactRowLine(MARIO), "Ufficio acquisti · m•••@topjet.it");
+  assert.equal(contactRowLine(FEDERICO), `f•••@topjet.it · ${T.teamTag}`);
+  assert.equal(contactRowLine(NOMAIL), `Logistica ${T.suffix.senza_email}`);
+  assert.equal(contactRowLine(OPEN), `l•••@topjet.it ${T.suffix.richiesta_aperta}`);
+  assert.equal(contactRowLine(contact({ id: "x", displayName: "Solo nome" })), "");
+  assert.equal(contactRowLine(contact({ id: "x", displayName: "Solo nome", selectable: false, reason: "lateral_space" })), T.suffix.lateral_space);
+  // Chi guarda: «(sei tu)», non si sceglie; il motivo basta, senza «Fa parte del team».
+  assert.equal(contactRowLine(ME), `g•••@topjet.it ${T.suffix.sei_tu}`);
+  const sara: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-000000000001", displayName: "Sara Conti", emailMasked: "s•••@topjet.it", team: false };
+  assert.equal(memberRowLine(sara), "s•••@topjet.it");
+  assert.equal(memberRowLine({ ...sara, team: true }), `s•••@topjet.it · ${T.teamTag}`);
+  assert.equal(memberRowLine({ ...sara, emailMasked: null }), "");
+  for (const line of [MARIO, FEDERICO, ME, NOMAIL, OPEN].map(contactRowLine)) assert.doesNotMatch(line, /\d|corso|formazione|partecipant|learner/i, line);
 });
 
-test("il suggerimento «sei tu» sotto il selettore, solo quando chi guarda è tra i referenti", () => {
+test("il suggerimento «sei tu» sotto l'elenco, solo quando chi guarda è tra i referenti", () => {
   assert.equal(askSelfHint(panel), T.selfHint);
   assert.equal(askSelfHint({ contacts: [MARIO, FEDERICO] }), null);
 });
@@ -92,8 +81,9 @@ test("domande aperte su altri use case: un sì, mai un numero", () => {
 });
 
 test("controlli prima dell'invio: referente, nome, email, domande, messaggio", () => {
-  const base = initialAskDraft(panel);
-  assert.deepEqual(askDraftErrors(base, panel), { contact: T.whoPlaceholder });
+  const base = { ...initialAskDraft(panel), needIds: [N1, N2, N3] };
+  assert.deepEqual(askDraftErrors(base, panel), { contact: T.whoMissing });
+  assert.equal(T.whoMissing, "Scegli un referente");
   assert.deepEqual(askDraftErrors({ ...base, choice: MARIO.id }, panel), {});
   assert.deepEqual(askDraftErrors({ ...base, choice: ME.id }, panel), { contact: REFERENT_ERROR_MESSAGES.referente_sei_tu });
   assert.deepEqual(askDraftErrors({ ...base, choice: NOMAIL.id }, panel), { contact: REFERENT_ERROR_MESSAGES.email_mancante_esistente });
@@ -109,7 +99,7 @@ test("controlli prima dell'invio: referente, nome, email, domande, messaggio", (
 test("il contenuto dell'action: referente esistente o nuovo, domande nell'ordine della scheda, testi puliti", () => {
   const draft = { ...initialAskDraft(panel), choice: MARIO.id, needIds: [N3, N1], message: "  Ci serve per la stima.  " };
   assert.deepEqual(askPayload(draft, panel), { contact: { kind: "esistente", contactId: MARIO.id }, needIds: [N1, N3], message: "Ci serve per la stima." });
-  const fresh = { ...initialAskDraft(panel), choice: NEW_CONTACT, name: " Paola Neri ", email: " paola@topjet.it ", role: "  ", message: "   " };
+  const fresh = { ...initialAskDraft(panel), choice: NEW_CONTACT, name: " Paola Neri ", email: " paola@topjet.it ", role: "  ", message: "   ", needIds: [N1, N2, N3] };
   assert.deepEqual(askPayload(fresh, panel), {
     contact: { kind: "nuovo", displayName: "Paola Neri", email: "paola@topjet.it", roleLabel: null },
     needIds: [N1, N2, N3],
@@ -127,22 +117,8 @@ test("«Chiedi di nuovo»: il referente della richiesta resta scelto, le sue dom
   assert.deepEqual(draft.needIds, [N2], "solo le domande di prima che si possono ancora chiedere");
   // La sua richiesta aperta è proprio quella che si sostituisce: si può tenere.
   assert.deepEqual(askDraftErrors(draft, panel, mode), {});
-  const choices = contactChoices(panel, mode);
-  assert.equal(choices.some((c) => c.value === NEW_CONTACT), false, "il referente non si cambia");
-  assert.deepEqual(choices.filter((c) => !c.disabled).map((c) => c.value), [OPEN.id]);
-  assert.equal(choices.find((c) => c.value === OPEN.id)?.label, "Luca Bianchi · l•••@topjet.it");
   assert.deepEqual(askPayload(draft, panel, mode), { contact: { kind: "esistente", contactId: OPEN.id }, needIds: [N2], message: null, previousRequestId: request.id });
   assert.equal(ASK_MODE.kind, "ask");
-});
-
-test("il riepilogo: l'indirizzo scritto per un referente nuovo, quello intero quando arriva, altrimenti quello coperto", () => {
-  assert.equal(askSummary(panel, { choice: null, email: "" }, null), null);
-  assert.equal(
-    askSummary(panel, { choice: NEW_CONTACT, email: " paola@topjet.it " }, null),
-    "Mandiamo un'email a paola@topjet.it da «Lateral Space via Unbundle». Se risponde all'email, la risposta arriva a te (giulia@topjet.it). Il link vale 30 giorni; se serve, partono due promemoria dopo 3 e 7 giorni lavorativi.",
-  );
-  assert.match(askSummary(panel, { choice: MARIO.id, email: "" }, null) ?? "", /^Mandiamo un'email a m•••@topjet\.it /);
-  assert.match(askSummary(panel, { choice: MARIO.id, email: "" }, "mario.rossi@topjet.it") ?? "", /^Mandiamo un'email a mario\.rossi@topjet\.it /);
 });
 
 test("errori del server: i campi nella finestra, gli altri nell'area degli errori; «sei tu» sempre nell'area, e sotto «Email» per un referente nuovo", () => {
@@ -171,36 +147,13 @@ const SARA: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-0000000000
 const PAOLO: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-000000000002", displayName: "Paolo Galli", emailMasked: "p•••@topjet.it", team: true };
 const withMembers = { ...panel, members: [PAOLO, SARA] };
 
-test("persone del workspace: dopo i referenti, prima di «+ Nuovo referente»; nome ed email coperta, «Fa parte del team» per i revisori", () => {
-  assert.equal(memberOptionLabel(SARA), "Sara Conti · s•••@topjet.it");
-  assert.equal(memberOptionLabel(PAOLO), `Paolo Galli · p•••@topjet.it · ${T.teamTag}`);
-  assert.equal(memberOptionLabel({ ...SARA, emailMasked: null }), "Sara Conti");
-  const choices = contactChoices(withMembers);
-  assert.deepEqual(
-    choices.map((c) => c.group),
-    ["referenti", "referenti", "referenti", "referenti", "referenti", "persone", "persone", "nuovo"],
-  );
-  assert.deepEqual(choices.filter((c) => c.group === "persone").map((c) => [c.value, c.disabled]), [
-    [`${MEMBER_PREFIX}${PAOLO.userId}`, false],
-    [`${MEMBER_PREFIX}${SARA.userId}`, false],
-  ]);
-  // Nessun ruolo, nessun numero, niente dei corsi.
-  for (const choice of choices) assert.doesNotMatch(choice.label, /\d|corso|formazione|partecipant|learner|contributor|Contributore/i, choice.label);
-  const groups = contactChoiceGroups(choices);
-  assert.deepEqual(groups.map((g) => [g.label, g.choices.length]), [[T.contactsGroup, 5], [T.membersGroup, 2], [null, 1]]);
-  // Senza persone: un elenco solo, come prima.
-  assert.deepEqual(contactChoiceGroups(contactChoices(panel)).map((g) => g.label), [null]);
-  // «Chiedi di nuovo»: il referente non si cambia, le persone non ci sono.
-  const again = contactChoices(withMembers, { kind: "again", lockedContactId: MARIO.id, previousRequestId: "x", liveHint: false });
-  assert.equal(again.some((c) => c.group === "persone"), false);
-});
-
 test("persone del workspace: il contenuto dell'action è { kind: «membro», userId }; il server ricontrolla tutto", () => {
-  const draft = { ...initialAskDraft(withMembers), choice: `${MEMBER_PREFIX}${SARA.userId}` };
+  const draft = { ...initialAskDraft(withMembers), choice: `${MEMBER_PREFIX}${SARA.userId}`, needIds: [N1, N2, N3] };
   assert.deepEqual(askDraftErrors(draft, withMembers), {});
   assert.deepEqual(askPayload(draft, withMembers), { contact: { kind: "membro", userId: SARA.userId }, needIds: [N1, N2, N3], message: null });
   assert.deepEqual(askDraftErrors({ ...draft, choice: `${MEMBER_PREFIX}dddddddd-0000-4000-8000-000000000009` }, withMembers), { contact: REFERENT_ERROR_MESSAGES.persona_non_disponibile });
-  assert.match(askSummary(withMembers, { choice: draft.choice, email: "" }, "non-deve-servire@topjet.it") ?? "", /^Mandiamo un'email a s•••@topjet\.it /);
+  // Le persone non ancora arrivate: la persona scelta non si trova, come una tolta.
+  assert.deepEqual(askDraftErrors(draft, { ...panel, members: null }), { contact: REFERENT_ERROR_MESSAGES.persona_non_disponibile });
   assert.equal(askOtherRequestsHint(withMembers, { choice: draft.choice }), null);
   // Un errore sull'email di una persona scelta dall'elenco va nell'area degli errori (non c'è un campo «Email»).
   const ls = REFERENT_ERROR_MESSAGES.referente_lateral_space;
@@ -208,14 +161,14 @@ test("persone del workspace: il contenuto dell'action è { kind: «membro», use
 });
 
 // (Referente già iscritto, revisione) Il risultato vero dell'action passa da `referentOutcome` (chiudere
-// o no) e poi da `askErrorView` (dove scrivere l'errore), nell'ordine di `ask-dialog.tsx` `confirm()`.
+// o no) e poi da `askErrorView` (dove scrivere l'errore).
 function afterSend(result: Extract<Parameters<typeof askErrorView>[0], { ok: false }>, draft: { choice: string | null }) {
   const outcome = referentOutcome(result, { inDialog: true });
   if (outcome.close) return { closed: true, refresh: outcome.refresh, toast: outcome.toast?.text ?? null, view: null };
   return { closed: false, refresh: outcome.refresh, toast: null, view: askErrorView(result, draft) };
 }
 
-test("«+ Nuovo referente» con l'email di un referente disattivato: la finestra resta aperta, l'errore sotto «Email», la bozza resta", () => {
+test("«Una persona nuova» con l'email di un referente disattivato: la finestra resta aperta, l'errore sotto «Email», la bozza resta", () => {
   const text = REFERENT_ERROR_MESSAGES.referente_disattivato;
   assert.equal(text, "Questa email è di un referente non più attivo: usa un altro indirizzo.");
   assert.deepEqual(afterSend({ ok: false, code: "referente_disattivato", message: text, fieldErrors: { email: text } }, { choice: NEW_CONTACT }), {
@@ -226,35 +179,6 @@ test("«+ Nuovo referente» con l'email di un referente disattivato: la finestra
   });
 });
 
-test("una persona del workspace che non si può più scegliere: il suo testo, la pagina si rilegge e la finestra si chiude", () => {
-  const text = REFERENT_ERROR_MESSAGES.persona_non_disponibile;
-  assert.equal(text, "Questa persona non si può più scegliere: scegline un'altra.");
-  assert.notEqual(text, REFERENT_ERROR_MESSAGES.referente_non_valido, "non parla di un referente");
-  assert.deepEqual(afterSend({ ok: false, code: "persona_non_disponibile", message: text }, { choice: `${MEMBER_PREFIX}${SARA.userId}` }), {
-    closed: true,
-    refresh: true,
-    toast: text,
-    view: null,
-  });
-  // Il referente scelto dall'elenco dei referenti e disattivato nel frattempo: come prima.
-  assert.deepEqual(afterSend({ ok: false, code: "referente_non_valido", message: REFERENT_ERROR_MESSAGES.referente_non_valido }, { choice: MARIO.id }).closed, true);
-});
-
-test("su un telefono le voci di «A chi chiedi?» vanno a capo: «Fa parte del team» non si taglia", () => {
-  // `SelectItem` mette il testo in un `ItemText` `shrink-0 whitespace-nowrap`, in un elenco largo come il
-  // selettore (circa 311 px a 375 px) e senza puntini: la classe lo lascia andare a capo.
-  for (const rule of ["[&>*:first-child]:whitespace-normal", "[&>*:first-child]:min-w-0", "[&>*:first-child]:shrink", "[&>*:first-child]:[overflow-wrap:anywhere]"]) {
-    assert.ok(ASK_OPTION_CLASS.split(" ").includes(rule), rule);
-  }
-  const source = readFileSync(new URL("./ask-dialog.tsx", import.meta.url), "utf8");
-  const items = source.match(/<SelectItem\b[^>]*>/g) ?? [];
-  assert.ok(items.length >= 2, "le voci dei gruppi e quelle senza gruppo");
-  for (const item of items) assert.match(item, /className=\{ASK_OPTION_CLASS\}/, item);
-  // L'etichetta lunga di prova sta davvero oltre una riga a 375 px (circa 265 px di testo a 14 px).
-  assert.ok(memberOptionLabel({ ...SARA, displayName: "Federico Barsi", emailMasked: "f•••@topjet.it", team: true }).length > 40);
-});
-
-// «Prepara le domande» dentro «Chiedi al referente» (rilascio «Pulizia»).
 const GATE: Record<ReferentGate["code"], ReferentGate> = {
   sub_responsabili_mancanti: { code: "sub_responsabili_mancanti", message: REFERENT_UI_TEXT.gates.subprocessorsCanDeclare, canDeclare: true, settingsHref: "/dashboard/x/settings#sub-responsabili", linkLabel: REFERENT_UI_TEXT.gates.subprocessorsLink },
   email_non_configurata: { code: "email_non_configurata", message: REFERENT_UI_TEXT.gates.emailNotConfigured },
@@ -262,24 +186,57 @@ const GATE: Record<ReferentGate["code"], ReferentGate> = {
   email_non_verificata: { code: "email_non_verificata", message: REFERENT_UI_TEXT.gates.emailNotVerified },
   nessuna_domanda: { code: "nessuna_domanda", message: REFERENT_UI_TEXT.gates.noQuestions },
 };
+const SUB_OTHER: ReferentGate = { code: "sub_responsabili_mancanti", message: REFERENT_UI_TEXT.gates.subprocessorsOther, canDeclare: false, settingsHref: "/dashboard/x/settings#sub-responsabili", linkLabel: REFERENT_UI_TEXT.gates.subprocessorsLink };
 
-test("«Chiedi al referente» si apre quando niente blocca, o quando manca solo cosa chiedere e «Prepara le domande» può aggiungerlo", () => {
-  assert.deepEqual(askEntry({ gates: [], preparable: [] }), { canOpen: true, gates: [], showPrepare: false });
-  // Solo «Non ci sono domande da fare», ma ci sono domande standard da preparare: si apre, nessun avviso.
-  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: ["frequenza", "tempo"] }), { canOpen: true, gates: [], showPrepare: false });
-  // Niente da preparare: spento, e il motivo nomina solo «Aggiungi», non un «Prepara le domande» che non c'è.
+test("il riquadro «Prossimo passo» (G5): «Chiedi al referente» quando niente blocca, o manca solo cosa chiedere e si può preparare", () => {
+  assert.deepEqual(askEntry({ gates: [], preparable: [] }), { canOpen: true, gates: [] });
+  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: ["frequenza", "tempo"] }), { canOpen: true, gates: [] });
+  // Niente da preparare: il motivo nomina solo «Aggiungi», non un «Prepara le domande» che non c'è.
   const page = { ...GATE.nessuna_domanda, message: REFERENT_UI_TEXT.gates.noQuestionsPage };
-  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: [] }), { canOpen: false, gates: [page], showPrepare: false });
+  assert.deepEqual(askEntry({ gates: [GATE.nessuna_domanda], preparable: [] }), { canOpen: false, gates: [page] });
   assert.ok(!REFERENT_UI_TEXT.gates.noQuestionsPage.includes(REFERENT_UI_TEXT.prepare));
-  // Con un altro motivo e niente da preparare: ogni motivo, nell'ordine del server; cambia solo quello.
-  assert.deepEqual(askEntry({ gates: [GATE.email_non_configurata, GATE.nessuna_domanda], preparable: [] }), { canOpen: false, gates: [GATE.email_non_configurata, page], showPrepare: false });
-  // Un altro motivo blocca ma si può preparare: spento con ogni motivo, e «Prepara le domande» accanto,
-  // quindi il motivo del server che lo nomina resta com'è.
+  assert.deepEqual(askEntry({ gates: [GATE.email_non_configurata, GATE.nessuna_domanda], preparable: [] }), { canOpen: false, gates: [GATE.email_non_configurata, page] });
   const gates = [GATE.sub_responsabili_mancanti, GATE.email_non_configurata, GATE.nessuna_domanda];
-  assert.deepEqual(askEntry({ gates, preparable: ["frequenza"] }), { canOpen: false, gates, showPrepare: true });
-  // Anche un motivo di chi guarda (email non verificata) lascia preparare.
-  assert.deepEqual(askEntry({ gates: [GATE.email_non_verificata, GATE.nessuna_domanda], preparable: ["frequenza"] }), { canOpen: false, gates: [GATE.email_non_verificata, GATE.nessuna_domanda], showPrepare: true });
-  assert.deepEqual(askEntry({ gates: [GATE.risposte_non_attive], preparable: ["frequenza"] }), { canOpen: false, gates: [GATE.risposte_non_attive], showPrepare: true });
+  assert.deepEqual(askEntry({ gates, preparable: ["frequenza"] }), { canOpen: false, gates });
+  assert.ok(!Object.hasOwn(askEntry({ gates, preparable: ["frequenza"] }), "showPrepare"), "«Prepara le domande» sta solo nella finestra");
+});
+
+const entryPanel = (over: Partial<Pick<UseCaseReferentPanel, "available" | "canAsk" | "gates" | "askableNeedIds" | "preparable">> = {}) => ({
+  available: true,
+  canAsk: true,
+  gates: [] as ReferentGate[],
+  askableNeedIds: [N1],
+  preparable: [] as UseCaseReferentPanel["preparable"],
+  ...over,
+});
+
+test("(rilascio 4) la riga di «Cosa serve» ha «Chiedi al referente» solo per chi può arrivare in fondo (la tabella di §3)", () => {
+  // Nessun motivo: si apre.
+  assert.deepEqual(askDialogEntry(entryPanel()), { canOpen: true, canAskAgain: true, sendGates: [], notice: null });
+  // Manca l'ok sui fornitori e chi guarda lo può dare: si apre, il motivo in cima e in «Controlla e invia».
+  assert.deepEqual(askDialogEntry(entryPanel({ gates: [GATE.sub_responsabili_mancanti] })), { canOpen: true, canAskAgain: true, sendGates: [GATE.sub_responsabili_mancanti], notice: GATE.sub_responsabili_mancanti });
+  // L'ok lo dà un'altra persona (Lateral Space, un analista del cliente): niente pulsante, lo dice il riquadro.
+  assert.equal(askDialogEntry(entryPanel({ gates: [SUB_OTHER] })).canOpen, false);
+  assert.equal(askDialogEntry(entryPanel({ gates: [SUB_OTHER, GATE.email_non_configurata] })).canOpen, false);
+  // L'email di chi guarda non è verificata: niente pulsante.
+  assert.equal(askDialogEntry(entryPanel({ gates: [GATE.email_non_verificata] })).canOpen, false);
+  // Email o risposte dal link spente: nessuno le accende, si apre e lo dice.
+  for (const system of [GATE.email_non_configurata, GATE.risposte_non_attive]) {
+    const entry = askDialogEntry(entryPanel({ gates: [system] }));
+    assert.deepEqual([entry.canOpen, entry.notice?.code, entry.sendGates.map((g) => g.code)], [true, system.code, [system.code]]);
+  }
+  // Fornitori (li dà chi guarda) ed email spente: tutti in ordine, il primo in cima.
+  const both = askDialogEntry(entryPanel({ gates: [GATE.sub_responsabili_mancanti, GATE.email_non_configurata, GATE.nessuna_domanda] }));
+  assert.deepEqual([both.canOpen, both.notice?.code, both.sendGates.map((g) => g.code)], [true, "sub_responsabili_mancanti", ["sub_responsabili_mancanti", "email_non_configurata"]]);
+  // Niente da chiedere ma qualcosa da preparare (G1, G9): si apre («Prepara le domande» in «Cosa chiedi»); niente «Chiedi di nuovo».
+  const prepOnly = askDialogEntry(entryPanel({ gates: [GATE.nessuna_domanda], askableNeedIds: [], preparable: ["frequenza"] }));
+  assert.deepEqual([prepOnly.canOpen, prepOnly.canAskAgain, prepOnly.sendGates], [true, false, []]);
+  // Niente da chiedere né da preparare: niente pulsante, e niente lo sostituisce.
+  assert.equal(askDialogEntry(entryPanel({ gates: [GATE.nessuna_domanda], askableNeedIds: [] })).canOpen, false);
+  // Funzione spenta o chi guarda non chiede: mai.
+  assert.equal(askDialogEntry(entryPanel({ available: false })).canOpen, false);
+  assert.equal(askDialogEntry(entryPanel({ canAsk: false })).canOpen, false);
+  assert.equal(askDialogEntry(entryPanel({ gates: [GATE.email_non_verificata] })).canAskAgain, false);
 });
 
 test("l'offerta di «Prepara le domande» nella finestra: solo in «Chiedi al referente» e solo con qualcosa da aggiungere", () => {
@@ -293,38 +250,25 @@ test("l'offerta di «Prepara le domande» nella finestra: solo in «Chiedi al re
 
 test("dopo «Prepara le domande» le nuove arrivano spuntate, quelle tolte restano tolte, quelle che non si chiedono più escono", () => {
   const again = askAgainMode({ id: "bbbbbbbb-0000-4000-8000-000000000001", status: "scaduta", contact: { id: MARIO.id, name: MARIO.displayName, roleLabel: null, emailMasked: null, hubOnly: true } });
-  // N2 era stata tolta: resta tolta; N3 è nuova: spuntata in «Chiedi al referente», no in «Chiedi di nuovo».
   assert.deepEqual(mergeAskSelection([N1], [N1, N2], [N1, N2, N3], ASK_MODE), [N1, N3]);
   assert.deepEqual(mergeAskSelection([N1], [N1, N2], [N1, N2, N3], again), [N1]);
-  // N1 non si può più chiedere: esce.
   assert.deepEqual(mergeAskSelection([N1, N2], [N1, N2], [N2, N3]), [N2, N3]);
-  // Gli id si confrontano in minuscolo; l'ordine è quello del pannello.
   assert.deepEqual(mergeAskSelection([N3], [N3.toUpperCase()], [N2.toUpperCase(), N3.toUpperCase(), N1.toUpperCase()]), [N2, N3, N1]);
-  // La finestra aperta senza domande: le sei preparate arrivano tutte spuntate.
-  const six = Array.from({ length: 6 }, (_, i) => `4444444${i}-4444-4444-8444-444444444444`);
-  assert.deepEqual(mergeAskSelection([], [], six), six);
 });
 
-test("le sorgenti: «Prepara le domande» sta nella finestra, senza toast, e non manda la richiesta; nel capitolo un solo pulsante", () => {
-  const dialog = readFileSync(new URL("./ask-dialog.tsx", import.meta.url), "utf8");
-  assert.match(dialog, /prep\.run\(\(\) => prepareReferentQuestionsAction\(workspaceId, useCaseId\), \{ inDialog: true, successToast: false \}\)/);
-  // Il <Button> che scrive «Prepara le domande» è dentro il <form> della finestra: type="button".
-  const at = dialog.indexOf("{REFERENT_UI_TEXT.prepare}");
-  assert.ok(at > 0, "il pulsante nella finestra");
-  const button = dialog.slice(dialog.lastIndexOf("<Button", at), at);
-  assert.match(button, /type="button"/);
+test("le sorgenti: un solo «Chiedi al referente» nella riga, mai spento; niente «Prepara le domande» né motivi fuori dalla finestra", () => {
   const section = readFileSync(new URL("../section-needs.tsx", import.meta.url), "utf8");
-  // Nel capitolo «Prepara le domande» c'è solo quando la finestra non si apre e qualcosa si può preparare;
-  // il motivo che lo descrive è la riga del riquadro «Prossimo passo» quando lo dice lei (G4, G6).
-  assert.match(
-    section,
-    /\{feature\?\.canAsk && entry\?\.showPrepare \? \(\s*<PrepareButton workspaceId=\{workspaceId\} useCaseId=\{useCaseId\} describedBy=\{boxAsk === "gate" \? NEXT_STEP_IDS\.line : gatesId\} \/>\s*\) : null\}/,
-  );
-  assert.equal((section.match(/<PrepareButton\b/g) ?? []).length, 1);
-  assert.ok(!section.includes("prepareReferentQuestionsAction"));
   assert.equal((section.match(/REFERENT_UI_TEXT\.ask\b/g) ?? []).length, 1, "un solo «Chiedi al referente»");
-  // Fuori dalla finestra prepara e basta: toast e rilettura come prima, niente richiesta.
-  const standalone = readFileSync(new URL("./prepare-button.tsx", import.meta.url), "utf8");
-  assert.match(standalone, /run\(\(\) => prepareReferentQuestionsAction\(workspaceId, useCaseId\), \{ inDialog: false \}\)/);
-  assert.ok(!standalone.includes("sendReferentRequest"));
+  assert.match(section, /\{feature\?\.canAsk && boxAsk !== "ask" && entry\?\.canOpen \? \(/);
+  assert.match(section, /const entry = feature \? askDialogEntry\(feature\) : null;/);
+  for (const gone of ["PrepareButton", "GateNotice", "prepareReferentQuestionsAction", "REFERENT_UI_TEXT.prepare", "disabled={askBlocked}"]) assert.ok(!section.includes(gone), gone);
+  const steps = readFileSync(new URL("./ask-steps.tsx", import.meta.url), "utf8");
+  assert.match(steps, /prep\.run\(\(\) => prepareReferentQuestionsAction\(workspaceId, useCaseId\), \{ inDialog: true, successToast: false \}\)/);
+  // Il pulsante di «Prepara le domande» è dentro il <form> della finestra: type="button".
+  const questions = readFileSync(new URL("./ask-questions.tsx", import.meta.url), "utf8");
+  const at = questions.indexOf("{REFERENT_UI_TEXT.prepare}");
+  assert.ok(at > 0, "il pulsante nella finestra");
+  assert.match(questions.slice(questions.lastIndexOf("<Button", at), at), /type="button"/);
+  // Il pulsante di conferma non si spegne mai.
+  assert.ok(!/disabled=\{/.test(steps), "nessun pulsante spento nella finestra");
 });

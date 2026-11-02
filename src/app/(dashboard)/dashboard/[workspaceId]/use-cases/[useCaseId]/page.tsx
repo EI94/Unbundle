@@ -64,15 +64,17 @@ async function duplicateCandidatesOf(workspaceId: string) {
 /**
  * I titoli della guida del connettore del workspace, letta una volta (§6.2): le aree (l'elenco
  * da cui si sceglie l'area, se c'è; altrimenti l'area resta un testo libero), gli strumenti e gli
- * agenti del catalogo, per mostrare i titoli e mai le chiavi. Si salva sempre l'id.
+ * agenti del catalogo, per mostrare i titoli e mai le chiavi. Si salva sempre l'id. (Rilascio 4)
+ * Dalla stessa riga anche il nome del cliente del connettore («TopJet e Aliserio»), per le parole
+ * dell'azienda di «Chiedi al referente»; null senza.
  */
-async function guideLabelsOf(workspaceId: string): Promise<GuideLabels> {
+async function guideLabelsOf(workspaceId: string): Promise<{ labels: GuideLabels; displayName: string | null }> {
   const [config] = await db
-    .select({ guide: workspaceConnectorConfigs.guide })
+    .select({ guide: workspaceConnectorConfigs.guide, workspaceDisplayName: workspaceConnectorConfigs.workspaceDisplayName })
     .from(workspaceConnectorConfigs)
     .where(eq(workspaceConnectorConfigs.workspaceId, workspaceId))
     .limit(1);
-  return guideLabels(config?.guide);
+  return { labels: guideLabels(config?.guide), displayName: config?.workspaceDisplayName?.trim() || null };
 }
 
 /**
@@ -117,7 +119,7 @@ export default async function UseCaseDetailPage({
   // Il riepilogo ricco del dossier (H6a) solo quando il capitolo «Realizzazione» c'è e la parte
   // del dossier ha risposto: i contributori non lo ricevono (il capitolo non è per loro).
   const readsRealization = reviewer && result.dossierRead === "ok" && showsRealization(result.useCase);
-  const [events, candidates, guide, realization, workspaceNeeds] = reviewer
+  const [events, candidates, guideRow, realization, workspaceNeeds] = reviewer
     ? await Promise.all([
         // Le righe di «Cosa serve» solo a chi vede le esigenze (`canSeeNeeds`, drizzle/0023).
         abilities.canSeeHistory
@@ -130,6 +132,7 @@ export default async function UseCaseDetailPage({
         abilities.canSeeNeeds ? listWorkspaceNeeds(workspaceId, viewer) : null,
       ])
     : [null, [], null, null, null];
+  const guide = guideRow?.labels ?? null;
   const needLists = workspaceNeeds ? needListsOfUseCase(workspaceNeeds, result.useCase.id) : null;
   // «Cosa serve», «Chiedi al referente» e «Raccolta informazioni»: solo a chi vede le esigenze
   // (`canSeeNeeds`); le letture stesse rispondono null a tutti gli altri.
@@ -174,6 +177,7 @@ export default async function UseCaseDetailPage({
         infoProgress={infoProgress}
         teamName={reviewTeamName(access.workspace)}
         companyName={access.workspace.name}
+        companyDisplayName={guideRow?.displayName ?? null}
         agentTone={await agentTone}
       />
     </PageContainer>

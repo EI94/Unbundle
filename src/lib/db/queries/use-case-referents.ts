@@ -147,10 +147,10 @@ function memberIsLateralSpace(m: Pick<WorkspaceMemberFacts, "userId" | "email">,
 }
 
 /**
- * Le persone del workspace del selettore, dopo i referenti (`pickerMembersOf`): una voce per persona,
- * mai chi è già un referente (per account, per email verificata o per email del contatto), mai chi
- * guarda, mai Lateral Space; nome, email coperta e «Fa parte del team». Con `learners` anche i
- * partecipanti ai corsi del workspace, senza niente che li distingua.
+ * Le persone del workspace di «A chi», dopo i referenti (`pickerMembersOf`), solo per
+ * `listReferentPickerPeople`: una voce per persona, mai chi è già un referente (per account, per email
+ * verificata o per email del contatto), mai chi guarda, mai Lateral Space; nome, email coperta e «Fa
+ * parte del team». Con `learners` anche i partecipanti ai corsi del workspace, senza niente che li distingua.
  */
 function pickerOptionsOf(i: {
   all: readonly WorkspaceMemberFacts[];
@@ -437,7 +437,6 @@ function emptyPanel(available: boolean, canAsk: boolean): UseCaseReferentPanel {
     canReviewFiles: false,
     gates: [],
     contacts: [],
-    members: [],
     requests: [],
     needs: {},
     askableNeedIds: [],
@@ -563,16 +562,8 @@ export async function loadUseCaseReferentPanel(i: {
       };
     });
 
-    // (Referente già iscritto) Dopo i referenti, le persone del workspace con un account: solo a chi può
-    // chiedere e vede già le persone in Impostazioni › Persone; una voce per persona, mai chi guarda,
-    // mai Lateral Space, mai i partecipanti ai corsi. Solo nome, email coperta e «Fa parte del team».
-    // (Rilascio 4) La finestra in tre passi legge le persone da `listReferentPickerPeople`, che ha
-    // anche i partecipanti ai corsi del workspace e non sta nel pannello di ogni scheda.
-    let members: ReferentMemberOption[] = [];
-    if (canAsk && canSeeWorkspacePeople(i.role)) {
-      const [all, known] = await Promise.all([readWorkspaceMembers(executor, ws), readPersonContacts(executor, ws)]);
-      members = pickerOptionsOf({ all, known, people, viewerUserId: i.session.id, lsDomains, lsMembers, learners: false });
-    }
+    // (Rilascio 4) Le persone del workspace non stanno nel pannello di ogni scheda: la finestra le legge
+    // quando si apre (`listReferentPickerPeople`), con i partecipanti ai corsi del workspace.
 
     // Richieste.
     const today = romeDate(now);
@@ -750,7 +741,6 @@ export async function loadUseCaseReferentPanel(i: {
       canReviewFiles,
       gates,
       contacts,
-      members,
       requests: requestViews,
       needs: needsView,
       askableNeedIds: askable.map((n) => n.id.toLowerCase()),

@@ -330,30 +330,43 @@ test("preparazione: autorizzazione, domande, un referente senza account, uno dis
   await q(`INSERT INTO learning_enrollments (workspace_id, program_id, user_id, module_id, cohort_id) VALUES ($1::uuid, $2::uuid, $3::uuid, 'm1', 'c1')`, [ids.ws, ids.program, ids.corsista]);
 });
 
-test("selettore: le persone che chi guarda vede già in Impostazioni › Persone, senza ruoli né corsi", opts, async () => {
+test("selettore: le persone del workspace nell'elenco della finestra, senza ruoli né corsi; la scheda non le porta", opts, async () => {
   const panel = await panelFor("builder", cards.contrib);
   assert.ok(panel?.available);
-  // Il contributore e i revisori, in ordine alfabetico; mai la corsista, Lateral Space o chi guarda.
+  // (Rilascio 4) Il pannello di ogni scheda non ha più le persone del workspace.
+  assert.ok(!Object.hasOwn(panel!, "members"), "nessuna persona nel pannello della scheda");
+  // L'elenco della finestra: il contributore, i revisori e i partecipanti ai corsi del workspace, in
+  // ordine alfabetico; mai Lateral Space o chi guarda.
+  const list = ok(await referents.listReferentPickerPeople(as("builder"), cards.contrib, ENV), "elenco");
   assert.deepEqual(
-    panel!.members.map((m) => [m.userId, m.displayName, m.team]),
+    list.members.map((m) => [m.userId, m.displayName, m.team]),
     [
       [ids.contrib, NAME.contrib, false],
+      [ids.corsista, NAME.corsista, false],
       [ids.federico, NAME.federico, true],
+      [ids.lia, EXTRA.lia.name, false],
       [ids.sponsor, EXTRA.sponsor.name, true],
+      [ids.sara, EXTRA.sara.name, false],
       [ids.analyst, EXTRA.analyst.name, true],
     ],
   );
-  for (const m of panel!.members) assert.match(m.emailMasked ?? "", /^[a-z]•••@topjet\.test$/, "email coperta");
+  for (const m of list.members) assert.match(m.emailMasked ?? "", /^[a-z]•••@topjet\.test$/, "email coperta");
   assert.ok(panel!.contacts.some((c) => c.id === contacts.mario), "i referenti restano");
   assert.ok(!panel!.contacts.some((c) => c.id === contacts.elena), "un referente disattivato non si propone");
-  const json = JSON.stringify(panel);
-  for (const word of [COURSE_TITLE, ids.program, ids.corsista, emails.corsista, ids.ls, emails.ls, emails.contrib, emails.federico, "learning", "Formazione", "learner", "contributor"]) {
-    assert.ok(!json.includes(word), word);
+  for (const [label, value] of [
+    ["pannello", panel],
+    ["elenco", list],
+  ] as const) {
+    const json = JSON.stringify(value);
+    for (const word of [COURSE_TITLE, ids.program, emails.corsista, ids.ls, emails.ls, emails.contrib, emails.federico, "learning", "Formazione", "learner", "contributor"]) {
+      assert.ok(!json.includes(word), `${label}: ${word}`);
+    }
   }
+  assert.ok(!JSON.stringify(panel).includes(ids.corsista), "la partecipante mai nel pannello");
   const { PANEL_VIEW_KEYS, keyPaths } = await import("./view.ts");
   assert.deepEqual(keyPaths(panel, { dictionaries: ["needs"] }).filter((k) => !PANEL_VIEW_KEYS.includes(k)), []);
   // Un altro revisore vede Giulia; un contributore e una corsista non vedono il pannello.
-  assert.ok((await panelFor("federico", cards.contrib))!.members.some((m) => m.userId === ids.builder));
+  assert.ok(ok(await referents.listReferentPickerPeople(as("federico"), cards.contrib, ENV), "elenco di Federico").members.some((m) => m.userId === ids.builder));
   assert.equal(await panelFor("contrib", cards.contrib), null);
   assert.equal(await panelFor("corsista", cards.contrib), null);
 });
@@ -435,9 +448,10 @@ test("(rilascio 4) l'elenco della finestra: i partecipanti ai corsi di questo wo
   if (!byContrib.ok) assert.match(byContrib.error, /^(permesso_mancante|funzione_spenta)$/);
   // Una scheda d'un altro workspace o inventata: niente.
   refused(await pickerFor(as("builder"), randomUUID()), "non_trovato", "una scheda inventata");
-  // Il pannello di ogni scheda non ha i partecipanti ai corsi.
+  // Il pannello di ogni scheda non ha le persone del workspace.
   const panel = await panelFor("builder", cards.contrib);
-  for (const userId of LISTED) assert.ok(!panel!.members.some((m) => m.userId === userId), "mai nel pannello della scheda");
+  assert.ok(!Object.hasOwn(panel!, "members"), "mai nel pannello della scheda");
+  for (const userId of LISTED) assert.ok(!JSON.stringify(panel).includes(userId), "nessun partecipante nel pannello");
 });
 
 test("(rilascio 4) l'indirizzo intero della persona scelta: per un partecipante dell'elenco sì, per gli altri no", opts, async () => {
@@ -500,7 +514,7 @@ test("un contributore scelto dall'elenco: referente collegato, email con «Hai g
   noDashboard(sent.mail, "contributore");
   // Adesso è un referente: nel selettore una sola voce, quella del referente.
   const panel = await panelFor("builder", cards.contrib2);
-  assert.ok(!panel!.members.some((m) => m.userId === ids.contrib));
+  assert.ok(!ok(await referents.listReferentPickerPeople(as("builder"), cards.contrib2, ENV), "elenco").members.some((m) => m.userId === ids.contrib));
   assert.equal(panel!.contacts.filter((c) => c.id === row.id).length, 1);
   // Sceglierlo di nuovo dall'elenco (pagina vecchia) usa lo stesso referente: nessuna riga in più.
   const again = await ask(cards.contrib2, { kind: "membro", userId: ids.contrib });
@@ -523,7 +537,9 @@ test("un revisore scelto dall'elenco: la riga del team con il link alla scheda",
   assert.ok(!sent.mail.text.includes(ACCOUNT_LINE));
   const panel = await panelFor("builder", cards.contrib2);
   assert.equal(panel!.contacts.find((c) => c.id === row.id)?.team, true, "«Fa parte del team»");
-  assert.deepEqual(panel!.members.map((m) => m.userId), [ids.sponsor, ids.analyst], "gli altri membri che si possono proporre sono ormai referenti");
+  const listed = ok(await referents.listReferentPickerPeople(as("builder"), cards.contrib2, ENV), "elenco").members.map((m) => m.userId);
+  assert.ok(!listed.includes(ids.federico) && !listed.includes(ids.contrib), "chi è ormai referente non è fra le persone");
+  for (const userId of [ids.sponsor, ids.analyst]) assert.ok(listed.includes(userId), "gli altri membri restano");
 });
 
 test("una corsista scritta in «+ Nuovo referente»: collegata al suo account, la riga, nessuna campanella per lei", opts, async () => {
@@ -600,7 +616,8 @@ test("chi si iscrive dopo la richiesta: il promemoria ha la riga, riletta all'in
   assert.match(reminders[0].subject, /^Promemoria: /);
   assert.ok(reminders[0].text.includes(ACCOUNT_LINE));
   noDashboard(reminders[0], "promemoria");
-  assert.equal(await panelFor("builder", cards.tardi).then((p) => p!.members.some((m) => m.userId === ids.tardi)), false, "una corsista non entra nell'elenco");
+  // (Rilascio 4) È ormai un referente (la sua email verificata è quella del contatto): non ha una seconda voce fra le persone.
+  assert.equal(ok(await referents.listReferentPickerPeople(as("builder"), cards.tardi, ENV), "elenco").members.some((m) => m.userId === ids.tardi), false, "una voce sola: il referente");
 });
 
 test("«Correggi l'email» di un referente dell'hub: il collegamento all'account segue l'indirizzo nuovo", opts, async () => {
@@ -643,7 +660,7 @@ test("(revisione) l'email di un referente collegato cambia in un dossier: il col
   assert.equal(option!.team, false, "Luca non ha un account");
   const forBuilder = await panelFor("builder", cards.dossier1);
   assert.equal(forBuilder!.contacts.find((c) => c.id === contactId)?.team, false);
-  assert.ok(forBuilder!.members.some((m) => m.userId === ids.federico), "Federico torna fra le persone del workspace");
+  assert.ok(ok(await referents.listReferentPickerPeople(as("builder"), cards.dossier1, ENV), "elenco").members.some((m) => m.userId === ids.federico), "Federico torna fra le persone del workspace");
 
   // Federico chiede a Luca: non è una richiesta a se stesso, l'email parte a Luca senza righe dell'account.
   const [n0] = await needsOf(cards.dossier1);
@@ -698,6 +715,6 @@ test("(revisione) due revisori aggiungono insieme la stessa persona: un referent
   assert.deepEqual([await requestContact(third.requestId), await requestContact(fourth.requestId)], [String(typed[0].id), String(typed[0].id)]);
   // Adesso è fra i «Referenti», non più fra le persone del workspace.
   const panel = await panelFor("builder", cards.dossier2);
-  assert.ok(!panel!.members.some((m) => m.userId === ids.dario));
+  assert.ok(!ok(await referents.listReferentPickerPeople(as("builder"), cards.dossier2, ENV), "elenco").members.some((m) => m.userId === ids.dario));
   assert.equal(panel!.contacts.filter((x) => x.id === String(rows[0].id)).length, 1);
 });

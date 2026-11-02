@@ -229,53 +229,44 @@ after(async () => {
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [PEOPLE.map((p) => ids[p])]);
 });
 
-test("un revisore vede «Chiedi al referente» spento e ogni motivo insieme, con «Prepara le domande» accanto finché c'è da preparare; il contributore niente", opts, async () => {
+test("(rilascio 4) un revisore che può arrivare in fondo ha «Chiedi al referente» nella riga, mai spento; niente «Prepara le domande» né motivi fuori dalla finestra; il contributore niente", opts, async () => {
   const T = labels.REFERENT_UI_TEXT;
   const askButton = (html: string) => new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*?${T.ask}</button>`).exec(html)?.[0] ?? "";
-  const prepareButton = (html: string) => new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*?${T.prepare}</button>`).exec(html)?.[0] ?? "";
-  // Prima di preparare: niente da chiedere, e le email e i fornitori tengono chiusa la finestra; le
-  // domande standard si possono preparare lo stesso, con «Prepara le domande» accanto, e il motivo
-  // «Non ci sono domande da fare» che lo nomina dice il vero.
+  // Prima di preparare: niente da chiedere ma qualcosa da preparare; mancano l'ok sui fornitori (la
+  // persona di funzione lo può dare) e le email (nessuno le accende): la finestra si apre e lo dice.
   const empty = await detailHtml("builder");
-  assert.match(askButton(empty), /disabled=""/);
-  const prepare = prepareButton(empty);
-  assert.ok(prepare, "«Prepara le domande» nel capitolo");
-  assert.doesNotMatch(prepare, /disabled=""|aria-disabled="true"/);
-  assert.match(prepare, /aria-describedby="cosa-serve-chiedi-motivi"/);
-  const emptyGates = empty.slice(empty.indexOf('data-slot="referent-gates"'));
-  for (const gate of ["sub_responsabili_mancanti", "email_non_configurata", "nessuna_domanda"]) assert.ok(emptyGates.includes(`data-gate="${gate}"`), gate);
-  assert.ok(emptyGates.includes(T.gates.noQuestions), "il motivo «Non ci sono domande da fare»");
-  assert.ok(!empty.includes(T.gates.noQuestionsPage));
-  // Anche con l'email di chi guarda non verificata (un motivo suo) si può preparare.
+  const ask = askButton(empty);
+  assert.ok(ask, "«Chiedi al referente» nella riga");
+  assert.doesNotMatch(ask, /disabled=""|aria-disabled="true"/, "mai spento");
+  assert.doesNotMatch(ask, /bg-primary/, "secondario: il pulsante pieno è della pagina");
+  assert.ok(!empty.includes(`>${T.prepare}<`) && !empty.includes(`${T.prepare}</button>`), "«Prepara le domande» sta nella finestra");
+  assert.ok(!empty.includes('data-slot="referent-gates"'), "i motivi non stanno sotto la riga");
+  // Con l'email di chi guarda non verificata (un motivo che solo lui può togliere): nessun pulsante, nessun «Prepara».
   state.__hubServeSession = { user: { id: ids.builder, email: emails.builder, emailVerified: false, name: NAMES.builder, image: null } };
   const unverified = readable(renderToStaticMarkup(await pageOfDetail({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId: ids.card }), searchParams: Promise.resolve({}) })));
-  assert.ok(unverified.includes('data-gate="email_non_verificata"'), "il motivo dell'email non verificata");
-  assert.ok(prepareButton(unverified), "«Prepara le domande» anche con l'email non verificata");
-  // Il pulsante chiama l'azione di sempre: la stessa scrittura del server.
+  assert.equal(askButton(unverified), "", "chi non può finire non entra nei passi");
+  assert.ok(!unverified.includes(T.prepare));
+  // «Prepara le domande» della finestra chiama l'azione di sempre: la stessa scrittura del server.
   ok(await referents.prepareReferentQuestions(as("builder"), ids.card), "Prepara le domande");
   flow.needs = await needsOfCard();
   assert.ok(flow.needs.length >= 4, `domande preparate: ${flow.needs.length}`);
   const page = await detailHtml("builder");
-  for (const text of [T.ask, labels.REFERENT_UI_TEXT.gates.emailNotConfigured, T.gates.subprocessorsLink]) assert.ok(page.includes(text), text);
-  // Dopo averle preparate non manca più niente da preparare: «Prepara le domande» sparisce dal
-  // capitolo, e con le domande da fare non c'è più il motivo «Non ci sono domande da fare».
+  assert.ok(askButton(page), "«Chiedi al referente» nella riga");
+  assert.doesNotMatch(askButton(page), /disabled=""/);
   assert.ok(!page.includes(T.prepare), "nessun «Prepara le domande» nel capitolo");
-  assert.ok(!page.includes('data-gate="nessuna_domanda"'));
-  assert.ok(!page.includes('data-slot="prepare-reason"'));
-  // La persona di funzione può dare l'autorizzazione lei stessa: il testo lo dice, con il nome dell'azienda.
-  assert.ok(page.includes(`TopJet prova ${suffix} deve autorizzare i fornitori che usiamo`), "fornitori da autorizzare");
-  assert.match(page, /data-slot="referent-gates"[^>]*role="status"|role="status"[^>]*data-slot="referent-gates"/);
-  assert.ok(page.includes(`/dashboard/${ids.ws}/settings#sub-responsabili`));
-  // Il pulsante è spento e dice perché.
-  const ask = askButton(page);
-  assert.ok(ask, "il pulsante «Chiedi al referente»");
-  assert.match(ask, /disabled=""/);
-  assert.match(ask, /aria-describedby="cosa-serve-chiedi-motivi"/);
+  assert.ok(!page.includes('data-slot="referent-gates"'));
+  assert.ok(!page.includes('data-slot="referent-ask"'), "la finestra si apre solo con un clic");
+  // Il pannello porta i motivi per la finestra: l'ok sui fornitori (lo può dare chi guarda) e le email.
+  const [panel] = findProp(await detailElement("builder"), "referents").filter(Boolean) as Panel[];
+  assert.deepEqual(panel.gates.map((g) => g.code), ["sub_responsabili_mancanti", "email_non_configurata"]);
+  assert.ok(panel.gates[0].message.includes(`TopJet prova ${suffix} deve autorizzare i fornitori che usiamo`), "fornitori da autorizzare");
+  assert.ok(!Object.hasOwn(panel, "members"), "le persone del workspace non stanno nel pannello della scheda");
   assert.ok(!page.includes(T.requestsHeading), "nessuna richiesta ancora");
   assert.ok(!page.includes("In corso"));
 
   const contributor = await detailHtml("contributor");
   for (const text of [T.ask, T.prepare, T.gates.emailNotConfigured, T.requestsHeading, "Cosa serve"]) assert.ok(!contributor.includes(text), `contributore: ${text}`);
+  assert.ok(!contributor.includes('data-slot="referent-ask"'));
   assert.equal(findProp(await detailElement("contributor"), "referents").filter(Boolean).length, 0, "nessun pannello al contributore");
 });
 
@@ -293,7 +284,7 @@ function boxAndNeeds(html: string): { box: string; needs: string } {
   return { box, needs: html.slice(start, html.indexOf("</section>", html.indexOf('id="richieste"') > start ? html.indexOf('id="richieste"') : start)) };
 }
 
-test("approvata con domande da chiedere: il riquadro dice il motivo (G4, G6) o ha «Chiedi al referente» pieno (G5), mai due volte con «Cosa serve»", opts, async () => {
+test("approvata con domande da chiedere: il riquadro dice il motivo (G4, G6) o ha «Chiedi al referente» pieno (G5); la riga lo ha solo per chi può arrivare in fondo", opts, async () => {
   const T = labels.REFERENT_UI_TEXT;
   const card = randomUUID();
   const quarter = await import("../../../../lib/use-cases/quarter.ts");
@@ -306,21 +297,18 @@ test("approvata con domande da chiedere: il riquadro dice il motivo (G4, G6) o h
   signIn("builder");
   const element = await pageOfDetail({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId: card }), searchParams: Promise.resolve({}) });
   const html = readable(renderToStaticMarkup(element));
-  // Senza l'autorizzazione dei fornitori (la persona di funzione la può dare): G4, con «Apri Impostazioni».
+  const askCount = (part: string) => (part.match(new RegExp(`>${T.ask}</button>`, "g")) ?? []).length;
+  // Senza l'autorizzazione dei fornitori (la persona di funzione la può dare): G4, con «Apri Impostazioni»
+  // pieno nel riquadro; la riga ha «Chiedi al referente» secondario, che apre i passi (l'ok è nell'ultimo).
   const g4 = boxAndNeeds(html);
   assert.match(g4.box, /data-key="G4"/);
   assert.match(g4.box, /data-gate="sub_responsabili_mancanti"/);
   assert.match(g4.box, /role="status"/);
   assert.deepEqual(filledIn(html), [T.gates.subprocessorsLink], "il solo pulsante pieno della pagina");
-  for (const [part, text] of [
-    [g4.box, "riquadro"],
-    [g4.needs, "riga"],
-  ] as const) {
-    assert.ok(!part.includes(`>${T.ask}</button>`), `${text}: nessun «Chiedi al referente»`);
-  }
+  assert.equal(askCount(g4.box), 0, "riquadro: nessun «Chiedi al referente»");
+  assert.equal(askCount(g4.needs), 1, "riga: «Chiedi al referente» per chi può dare l'ok");
   assert.ok(!html.includes('data-slot="referent-gates"'), "il motivo non si ripete sotto la riga");
 
-  // Con un pannello aperto (nessun motivo che blocca): G5, un solo «Chiedi al referente», pieno, nel riquadro.
   const view = (function find(node: unknown): { type: (props: object) => unknown; props: Record<string, unknown> } | null {
     if (Array.isArray(node)) {
       for (const child of node) {
@@ -335,22 +323,42 @@ test("approvata con domande da chiedere: il riquadro dice il motivo (G4, G6) o h
     return find(el.props.children);
   })(element);
   assert.ok(view, "la pagina monta UseCaseDetailView");
-  const panel = view.props.referents as { gates: unknown[]; available: boolean };
-  const render = (gates: unknown[]) => readable(renderToStaticMarkup(createElementOf(view.type, { ...view.props, referents: { ...panel, available: true, gates } })));
+  const panel = view.props.referents as Panel;
+  const render = (gates: unknown[], over: Partial<Panel> = {}) =>
+    readable(renderToStaticMarkup(createElementOf(view.type, { ...view.props, referents: { ...panel, available: true, gates, ...over } })));
+  const SUB = panel.gates.find((g) => g.code === "sub_responsabili_mancanti")!;
+  // L'ok lo dà un'altra persona (Lateral Space, un analista del cliente): G4 dice chi, la riga non ha il pulsante.
+  const other = render([{ ...SUB, canDeclare: false, message: T.gates.subprocessorsOther.replaceAll("{Azienda}", `TopJet prova ${suffix}`) }]);
+  assert.match(boxAndNeeds(other).box, /data-key="G4"/);
+  assert.equal(askCount(other), 0, "chi non può dare l'ok non entra nei passi");
+  assert.deepEqual(filledIn(other), []);
+  // Nessun motivo: G5, un solo «Chiedi al referente», pieno, nel riquadro; la riga non lo ripete.
   const open = render([]);
   const g5 = boxAndNeeds(open);
   assert.match(g5.box, /data-key="G5"/);
   assert.deepEqual(filledIn(open), [T.ask], "un solo pulsante pieno: «Chiedi al referente»");
   assert.deepEqual(filledIn(g5.box), [T.ask], "nel riquadro");
-  assert.equal((open.match(new RegExp(`>${T.ask}</button>`, "g")) ?? []).length, 1, "una volta sola nella pagina");
-  // Solo un motivo di sistema: G6 lo dice da solo, senza pulsanti.
+  assert.equal(askCount(open), 1, "una volta sola nella pagina");
+  // Solo un motivo di sistema: G6 lo dice da solo, senza pulsanti; la riga ha «Chiedi al referente» secondario.
   const system = render([{ code: "email_non_configurata", message: T.gates.emailNotConfigured }]);
   const g6 = boxAndNeeds(system);
   assert.match(g6.box, /data-key="G6"/);
   assert.match(g6.box, /data-gate="email_non_configurata"/);
   assert.ok(g6.box.includes(`>${T.gates.emailNotConfigured}</p>`), "la riga è il motivo, senza «Tocca a»");
   assert.deepEqual(filledIn(system), []);
-  assert.ok(!system.includes(`>${T.ask}</button>`) && !system.includes('data-slot="referent-gates"'));
+  assert.equal(askCount(g6.box), 0);
+  assert.equal(askCount(g6.needs), 1, "la riga apre i passi, che lo dicono");
+  assert.doesNotMatch(new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*?${T.ask}</button>`).exec(system)?.[0] ?? "", /disabled=""/);
+  // L'email di chi guarda non verificata: G6 lo dice, nessun pulsante.
+  const unverified = render([{ code: "email_non_verificata", message: T.gates.emailNotVerified }]);
+  assert.match(boxAndNeeds(unverified).box, /data-key="G6"/);
+  assert.equal(askCount(unverified), 0);
+  // Niente da chiedere e niente da preparare: nessun pulsante, niente al suo posto.
+  const nothing = render([{ code: "nessuna_domanda", message: T.gates.noQuestions }], { askableNeedIds: [], preparable: [] });
+  assert.equal(askCount(nothing), 0);
+  for (const page of [html, other, open, system, unverified, nothing]) {
+    assert.ok(!page.includes('data-slot="referent-gates"') && !page.includes(`${T.prepare}</button>`), "niente motivi né «Prepara le domande» fuori dalla finestra");
+  }
   await q(`DELETE FROM use_cases WHERE id = $1::uuid`, [card]);
 });
 
@@ -436,29 +444,29 @@ test("con l'autorizzazione e le email accese: la richiesta, le righe sotto le es
   }
 });
 
-test("il selettore: il proprio contatto «(sei tu)» e non si sceglie, un collega revisore «Fa parte del team»", opts, async () => {
+test("«A chi»: il proprio contatto «(sei tu)» e non si sceglie, un collega revisore «Fa parte del team»", opts, async () => {
   const [panel] = findProp(await detailElement("builder"), "referents").filter(Boolean) as Panel[];
   assert.ok(panel?.available);
-  const choices = askState.contactChoices(panel);
-  const own = choices.find((c) => c.value === contacts.builder);
-  const colleague = choices.find((c) => c.value === contacts.federico);
-  const mario = choices.find((c) => c.value === MARIO.id);
+  const A = labels.REFERENT_UI_TEXT.askDialog;
+  const own = panel.contacts.find((c) => c.id === contacts.builder);
+  const colleague = panel.contacts.find((c) => c.id === contacts.federico);
+  const mario = panel.contacts.find((c) => c.id === MARIO.id);
   assert.ok(own && colleague && mario);
-  assert.ok(own.label.endsWith(labels.REFERENT_UI_TEXT.askDialog.suffix.sei_tu), own.label);
-  assert.equal(own.disabled, true);
-  assert.ok(colleague.label.includes(labels.REFERENT_UI_TEXT.askDialog.teamTag), colleague.label);
-  assert.equal(colleague.disabled, false);
-  assert.ok(!mario.label.includes(labels.REFERENT_UI_TEXT.askDialog.teamTag));
-  assert.ok(mario.label.endsWith(labels.REFERENT_UI_TEXT.askDialog.suffix.richiesta_aperta), "Mario ha già una richiesta su questa scheda");
-  assert.equal(askState.askSelfHint(panel), labels.REFERENT_UI_TEXT.askDialog.selfHint);
+  assert.ok(askState.contactRowLine(own).endsWith(A.suffix.sei_tu), askState.contactRowLine(own));
+  assert.equal(own.selectable, false);
+  assert.ok(askState.contactRowLine(colleague).includes(A.teamTag), askState.contactRowLine(colleague));
+  assert.equal(colleague.selectable, true);
+  assert.ok(!askState.contactRowLine(mario).includes(A.teamTag));
+  assert.ok(askState.contactRowLine(mario).endsWith(A.suffix.richiesta_aperta), "Mario ha già una richiesta su questa scheda");
+  assert.equal(askState.askSelfHint(panel), A.selfHint);
   // Federico vede il contrario: Giulia «Fa parte del team», lui «(sei tu)».
   const [forFederico] = findProp(await detailElement("federico"), "referents").filter(Boolean) as Panel[];
-  const fromFederico = askState.contactChoices(forFederico);
-  assert.ok(fromFederico.find((c) => c.value === contacts.builder)?.label.includes(labels.REFERENT_UI_TEXT.askDialog.teamTag));
-  assert.ok(fromFederico.find((c) => c.value === contacts.federico)?.label.endsWith(labels.REFERENT_UI_TEXT.askDialog.suffix.sei_tu));
-  // Mai un numero, un corso o un altro ruolo nelle voci.
-  for (const choice of [...choices, ...fromFederico]) assert.doesNotMatch(choice.label, /corso|formazione|learner|contributor/i, choice.label);
-  // Il contributore non riceve né il pannello né le voci.
+  assert.ok(askState.contactRowLine(forFederico.contacts.find((c) => c.id === contacts.builder)!).includes(A.teamTag));
+  assert.ok(askState.contactRowLine(forFederico.contacts.find((c) => c.id === contacts.federico)!).endsWith(A.suffix.sei_tu));
+  // Mai un numero, un corso o un altro ruolo nelle righe; le persone del workspace non stanno nel pannello.
+  for (const option of [...panel.contacts, ...forFederico.contacts]) assert.doesNotMatch(askState.contactRowLine(option), /\d|corso|formazione|learner|contributor/i, option.displayName);
+  assert.ok(!Object.hasOwn(panel, "members") && !Object.hasOwn(forFederico, "members"));
+  // Il contributore non riceve né il pannello né le righe.
   const contributor = await detailHtml("contributor");
-  for (const text of [labels.REFERENT_UI_TEXT.askDialog.teamTag, labels.REFERENT_UI_TEXT.askDialog.suffix.sei_tu, labels.REFERENT_UI_TEXT.askDialog.selfHint]) assert.ok(!contributor.includes(text), text);
+  for (const text of [A.teamTag, A.suffix.sei_tu, A.selfHint]) assert.ok(!contributor.includes(text), text);
 });

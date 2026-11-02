@@ -9,7 +9,7 @@ import { GUIDED_TEXT, arrivalTarget, detailTargetIds, foldSummaries, impactView,
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { TEXT_LIMITS } from "@/lib/use-cases/inputs";
 import { WHAT_FIELD_LABEL } from "@/lib/use-cases/labels";
-import type { NeedUseCaseRef, UseCaseNeedLists } from "@/lib/use-cases/needs";
+import { needOwnerText, type NeedUseCaseRef, type UseCaseNeedLists } from "@/lib/use-cases/needs";
 import type { UseCaseAbilities } from "@/lib/use-cases/permissions";
 import type { UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
 import type { RedactableField } from "@/lib/use-cases/service";
@@ -213,6 +213,12 @@ export interface UseCaseDetailViewProps {
   /** Il nome del workspace (`access.workspace.name`): «Chiedere le informazioni a TopJet». */
   companyName?: string | null;
   /**
+   * (Rilascio 4) Il nome del cliente del connettore (`workspace_connector_configs.workspace_display_name`,
+   * «TopJet e Aliserio»): con il nome del workspace, le parole dell'azienda che la proposta delle
+   * domande di «Chiedi al referente» non scambia mai per una persona. null senza.
+   */
+  companyDisplayName?: string | null;
+  /**
    * Il tono dell'agente del titolo (`workspaceAgentToneOf`), lo stesso delle card della Panoramica:
    * il tag della testata, il percorso e «Con LIBRA». null: neutri. Solo ai revisori.
    */
@@ -252,6 +258,7 @@ export function UseCaseDetailView({
   infoProgress = null,
   teamName,
   companyName = null,
+  companyDisplayName = null,
   agentTone = null,
   className,
 }: UseCaseDetailViewProps) {
@@ -345,7 +352,10 @@ export function UseCaseDetailView({
   });
   // Al browser solo le parti delle decisioni, non la scheda intera; dei candidati solo id, codice e titolo.
   const decisionItem = toDecisionItem(detail);
-  const needTitles = needs ? Object.fromEntries([...needs.lists.requirements, ...needs.lists.steps].map((need) => [need.id.toLowerCase(), need.title])) : {};
+  // Delle esigenze della scheda alle finestre di «Chiedi al referente»: titolo, «Chi» come lo mostra la riga e il testo libero «Chi».
+  const needInfo = needs
+    ? Object.fromEntries([...needs.lists.requirements, ...needs.lists.steps].map((need) => [need.id.toLowerCase(), { title: need.title, owner: needOwnerText(need), ownerLabel: need.ownerLabel }]))
+    : {};
   const t = GUIDED_TEXT.folds;
 
   return (
@@ -367,7 +377,16 @@ export function UseCaseDetailView({
         {/* «Serve info» e «Non avviare» si aprono con il testo del campo «Nota pubblica»; un solo pulsante pieno per pagina. */}
         <PublicNoteDraftProvider>
           <PagePrimaryProvider>
-            <ReferentDialogHost workspaceId={workspaceId} useCaseId={detail.id} panel={feature} canEdit={abilities.canEditNeeds} needTitles={needTitles}>
+            <ReferentDialogHost
+              workspaceId={workspaceId}
+              useCaseId={detail.id}
+              panel={feature}
+              canEdit={abilities.canEditNeeds}
+              needInfo={needInfo}
+              card={{ code: detail.code, title: detail.title }}
+              companyName={companyName}
+              companyDisplayName={companyDisplayName}
+            >
               <NextStepBox
                 workspaceId={workspaceId}
                 step={step}

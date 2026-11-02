@@ -31,9 +31,13 @@ export function describedBy(id: string, hint?: string | null, error?: string | n
   return ids.length ? ids.join(" ") : undefined;
 }
 
-/** Un elenco di domande da spuntare, con il titolo di ogni esigenza. */
+/**
+ * Un elenco di domande da spuntare, con il titolo di ogni esigenza e, se c'è, una riga grigia sotto
+ * (rilascio 4: il «Chi» delle domande che non sono proposte alla persona scelta).
+ */
 export function NeedChecklist({
   labelledBy,
+  describedBy,
   items,
   selected,
   onChange,
@@ -41,7 +45,8 @@ export function NeedChecklist({
   invalid,
 }: {
   labelledBy: string;
-  items: ReadonlyArray<{ id: string; title: string }>;
+  describedBy?: string;
+  items: ReadonlyArray<{ id: string; title: string; meta?: string | null }>;
   selected: readonly string[];
   onChange: (next: string[]) => void;
   disabledIds?: ReadonlySet<string>;
@@ -51,7 +56,7 @@ export function NeedChecklist({
   return (
     // Senza una sua altezza massima: la finestra scorre già, e una lista che scorre dentro una finestra
     // che scorre tagliava a metà la sesta domanda senza una barra visibile (le domande preparate sono lunghe).
-    <ul role="group" aria-labelledby={labelledBy} className={cn("space-y-0.5 rounded-lg border p-1", invalid && "border-destructive")}>
+    <ul role="group" aria-labelledby={labelledBy} aria-describedby={describedBy} className={cn("space-y-0.5 rounded-lg border p-1", invalid && "border-destructive")}>
       {items.map((item) => {
         const checked = chosen.has(item.id);
         const disabled = disabledIds?.has(item.id) && !checked;
@@ -64,7 +69,10 @@ export function NeedChecklist({
                 disabled={disabled}
                 onCheckedChange={(next) => onChange(next === true ? items.map((i) => i.id).filter((id) => chosen.has(id) || id === item.id) : selected.filter((id) => id !== item.id))}
               />
-              <span className="min-w-0 break-words">{item.title}</span>
+              <span className="min-w-0 break-words">
+                {item.title}
+                {item.meta ? <span className="block text-xs text-muted-foreground">{item.meta}</span> : null}
+              </span>
             </label>
           </li>
         );

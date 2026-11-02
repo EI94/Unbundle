@@ -6,7 +6,8 @@ import { REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import { AddDialog } from "./add-dialog";
 import { AnswerDialog } from "./answer-dialog";
 import { askAgainMode } from "./ask-dialog-state";
-import { AskDialog } from "./ask-dialog";
+import { AskSteps, type AskStepsContext } from "./ask-steps";
+import type { AskSession } from "./ask-steps-state";
 import { ConfirmDialog, CorrectEmailDialog, EraseContactDialog } from "./contact-dialogs";
 import { FileDialog } from "./file-dialog";
 
@@ -26,6 +27,12 @@ export type ReferentDialog =
   | { kind: "deleteFile"; fileId: string }
   | { kind: "rejectFile"; fileId: string };
 
+/** «Chiedi al referente» in tre passi: quello che la finestra riceve dalla pagina, e dove lascia la bozza. */
+export interface ReferentAskContext extends AskStepsContext {
+  /** La bozza di «Chiedi al referente» chiuso senza inviare (null: niente da riprendere). */
+  onKeep: (keep: AskSession | null) => void;
+}
+
 /** Disegna la finestra aperta; `onClose` la chiude (dopo un invio riuscito, o con «Annulla»). */
 export function ReferentDialogs({
   dialog,
@@ -33,6 +40,7 @@ export function ReferentDialogs({
   useCaseId,
   panel,
   needTitles,
+  ask,
   onClose,
 }: {
   dialog: ReferentDialog | null;
@@ -40,23 +48,42 @@ export function ReferentDialogs({
   useCaseId: string;
   panel: UseCaseReferentPanel;
   needTitles: ReadonlyMap<string, string>;
+  ask: ReferentAskContext;
   onClose: () => void;
 }) {
   if (!dialog) return null;
+  const { onKeep, ...context } = ask;
   switch (dialog.kind) {
     case "ask":
-      return <AskDialog workspaceId={workspaceId} useCaseId={useCaseId} panel={panel} needTitles={needTitles} onClose={onClose} />;
+      return (
+        <AskSteps
+          {...context}
+          workspaceId={workspaceId}
+          useCaseId={useCaseId}
+          panel={panel}
+          onDismiss={(keep) => {
+            onKeep(keep);
+            onClose();
+          }}
+          onSent={() => {
+            onKeep(null);
+            onClose();
+          }}
+        />
+      );
     case "again":
       return (
-        <AskDialog
+        <AskSteps
           key={dialog.request.id}
+          {...context}
+          saved={null}
           workspaceId={workspaceId}
           useCaseId={useCaseId}
           panel={panel}
           mode={askAgainMode(dialog.request)}
           previous={dialog.request}
-          needTitles={needTitles}
-          onClose={onClose}
+          onDismiss={onClose}
+          onSent={onClose}
         />
       );
     case "add":

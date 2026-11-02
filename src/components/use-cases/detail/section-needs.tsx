@@ -49,13 +49,10 @@ import { NeedUseCasesDisclosure } from "../need-use-cases";
 import { DecisionChoiceGroup, DecisionDialog } from "../reopen-dialog";
 import { useLanding } from "./arrival";
 import { InfoSummary } from "./info-summary";
-import { askEntry } from "./referent/ask-dialog-state";
-import { NEXT_STEP_IDS } from "./next-step-box";
+import { askDialogEntry } from "./referent/ask-dialog-state";
 import { useReferentDialog } from "./referent/dialog-host";
 import type { ReferentDialog } from "./referent/dialogs";
-import { GateNotice } from "./referent/gate-notice";
 import { NeedReferentBlock } from "./referent/need-referent-block";
-import { PrepareButton } from "./referent/prepare-button";
 import { RequestsList } from "./referent/requests-list";
 import {
   NEED_FORM_CHOICES,
@@ -95,8 +92,9 @@ export interface SectionNeedsProps {
   infoProgress?: InfoProgressView | null;
   /**
    * Il riquadro «Prossimo passo» parla già di «Chiedi al referente» (rilascio 3): `ask` quando ha il
-   * pulsante (G5), `gate` quando la sua riga è il motivo che lo blocca (G4, G6). Allora qui non si
-   * ripetono il pulsante e il motivo.
+   * pulsante (G5), e allora qui non si ripete; `gate` quando la sua riga è il motivo che lo blocca
+   * (G4, G6). (Rilascio 4) Il motivo resta solo nel riquadro; il pulsante della riga c'è quando chi
+   * guarda può arrivare in fondo ai passi (`askDialogEntry`).
    */
   boxAsk?: "ask" | "gate" | null;
   className?: string;
@@ -141,7 +139,6 @@ export function SectionNeeds({
 }: SectionNeedsProps) {
   const id = "cosa-serve";
   const headingId = `${id}-titolo`;
-  const gatesId = `${id}-chiedi-motivi`;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -216,10 +213,11 @@ export function SectionNeeds({
       }
     />
   );
-  // «Chiedi al referente» si apre anche quando manca solo qualcosa da chiedere e «Prepara le domande»
-  // può aggiungerlo: la finestra lo offre. Spento da un altro motivo, «Prepara le domande» resta nel capitolo.
-  const entry = feature ? askEntry(feature) : null;
-  const askBlocked = !entry?.canOpen;
+  // (Rilascio 4, §3) «Chiedi al referente» c'è solo quando chi guarda può arrivare in fondo ai passi:
+  // nessun motivo, l'ok sui fornitori che può dare lui, o le email spente (la finestra lo dice). Mai
+  // spento: chi non può finire legge il motivo nel riquadro «Prossimo passo». «Prepara le domande» sta
+  // nella finestra, in «Cosa chiedi».
+  const entry = feature ? askDialogEntry(feature) : null;
   const requests = feature?.requests ?? [];
 
   return (
@@ -276,32 +274,17 @@ export function SectionNeeds({
             </Button>
           ) : null}
           {/*
-            «Prepara le domande» sta nella finestra di «Chiedi al referente»; qui solo quando qualcosa si
-            può preparare ma un altro motivo tiene la finestra chiusa (preparare non manda niente).
-          */}
-          {feature?.canAsk && entry?.showPrepare ? (
-            <PrepareButton workspaceId={workspaceId} useCaseId={useCaseId} describedBy={boxAsk === "gate" ? NEXT_STEP_IDS.line : gatesId} />
-          ) : null}
-          {/*
             L'azione principale del capitolo, ma non della pagina: un solo pulsante pieno per pagina (la
-            decisione). «secondary» la distingue da «Aggiungi» e «Prepara le domande».
+            decisione). «secondary» la distingue da «Aggiungi»; con G5 il riquadro ha già quello pieno.
           */}
-          {feature?.canAsk && !boxAsk ? (
-            <Button
-              type="button"
-              variant="secondary"
-              className="min-h-11 sm:min-h-8"
-              disabled={askBlocked}
-              aria-describedby={askBlocked ? gatesId : undefined}
-              onClick={() => setReferentDialog({ kind: "ask" })}
-            >
+          {feature?.canAsk && boxAsk !== "ask" && entry?.canOpen ? (
+            <Button type="button" variant="secondary" className="min-h-11 sm:min-h-8" onClick={() => setReferentDialog({ kind: "ask" })}>
               <Send aria-hidden />
               {REFERENT_UI_TEXT.ask}
             </Button>
           ) : null}
         </div>
       ) : null}
-      {canEdit && feature?.canAsk && entry && boxAsk !== "gate" ? <GateNotice id={gatesId} gates={entry.gates} /> : null}
 
       {canEdit && (dialog?.mode === "aggiungi" || dialog?.mode === "modifica") ? (
         <NeedFormDialog

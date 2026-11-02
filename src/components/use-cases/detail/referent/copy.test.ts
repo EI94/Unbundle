@@ -39,7 +39,7 @@ function texts(file: string): string[] {
 }
 
 test("i file ci sono", () => {
-  assert.ok(FILES.length >= 18, String(FILES.length));
+  assert.ok(FILES.length >= 25, String(FILES.length));
   for (const file of FILES) assert.ok(texts(file).length > 0, file);
 });
 

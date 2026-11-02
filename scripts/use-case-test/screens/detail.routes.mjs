@@ -55,6 +55,9 @@ const routes = [
     absent: ["semaforo", "da sforzo", "Stima di Claude"],
   },
   { name: "scheda-approvata", path: card("r09"), as: REVIEWERS, present: ["Realizzazione"] },
+  // Release 4: «Prepara le domande» and the reasons that block a request live only inside the three
+  // steps of «Chiedi al referente» (the dialog opens on a click, never with the page).
+  { name: "scheda-cosa-serve", path: card("r09", "?capitolo=cosa-serve"), as: REVIEWERS, absent: ["Prepara le domande", "Invia la richiesta", "Controlla e invia"] },
   { name: "scheda-approvata", path: card("r09"), as: CONTRIBUTOR, absent: ["{code:r09}", "Realizzazione"] },
   { name: "scheda-capitolo", path: card("r09", "?capitolo=realizzazione"), as: ["ls-lead"], present: ["Avvia la realizzazione"] },
   { name: "scheda-capitolo", path: card("r09", "?capitolo=realizzazione"), as: ["function-lead", "sponsor-cliente"], present: ["La realizzazione la avvia Lateral Space."], absent: ["Avvia la realizzazione"] },
