@@ -32,6 +32,14 @@ import {
   compareNeeds,
   compareStepsByDate,
   NEED_ROWS_SHOWN,
+  NEED_GROUP_KEYS,
+  NEED_TIMELINE_TEXT,
+  clientGroupLabel,
+  moreStepsText,
+  needGroupLabel,
+  needGroupOf,
+  splitTimeline,
+  type NeedTimelineSection,
   needRequestGroupView,
   needRow,
   needStatusChoices,
@@ -338,6 +346,141 @@ test("compareStepsByDate: dalla scadenza più vicina, quelle senza data in fondo
   const same = [need({ id: "y", title: "Zucca", dueOn: "2026-11-05" }), need({ id: "x", title: "Albero", dueOn: "2026-11-05" })];
   assert.deepEqual(same.sort(compareStepsByDate).map((n) => n.title), ["Albero", "Zucca"]);
   assert.equal(NEED_ROWS_SHOWN, 5);
+});
+
+test("Cosa serve per chi deve muoversi: un gruppo per organizzazione, ogni requisito una volta, prima da verificare; a posto da parte", () => {
+  const needs = [
+    need({ title: "Del cliente", ownerSide: "cliente", ownerLabel: "Aldo Prova", sortOrder: 2, useCaseIds: [A, B] }),
+    need({ title: "Insieme", ownerSide: "insieme", sortOrder: 1, useCaseIds: [A] }),
+    need({ title: "Risposta da guardare", ownerSide: "cliente", status: "in_verifica", sortOrder: 9, useCaseIds: [A] }),
+    need({ title: "Senza parte", ownerSide: null, useCaseIds: [B] }),
+    need({ title: "Di Lateral Space", ownerSide: "lateral_space", status: "bloccata", useCaseIds: [A] }),
+    need({ title: "Del fornitore", ownerSide: "fornitore", status: "chiesta" }),
+    need({ title: "A posto del fornitore", ownerSide: "fornitore", status: "validata", useCaseIds: [A] }),
+    need({ title: "A posto del cliente", ownerSide: "cliente", status: "non_applicabile", useCaseIds: [A] }),
+    need({ title: "Archiviata", ownerSide: "cliente", archivedAt: "2026-10-20T10:00:00.000Z", useCaseIds: [A] }),
+    need({ type: "passo", status: "proposta", title: "Un passo", ownerSide: "cliente", useCaseIds: [A] }),
+  ];
+  const board = buildNeedsBoard(needs, ITEMS, { today: TODAY, params: PARAMS });
+  assert.deepEqual(
+    board.groups.map((group) => [group.key, group.open.map((row) => row.title)]),
+    [
+      ["cliente", ["Risposta da guardare", "Insieme", "Del cliente"]],
+      ["fornitore", ["Del fornitore"]],
+      ["lateral_space", ["Di Lateral Space"]],
+      ["nessuno", ["Senza parte"]],
+    ],
+    "«Insieme» con il cliente, prima da verificare (needsActionFirst), senza parte in fondo; i passi e l'archiviata no",
+  );
+  assert.deepEqual(board.done.map((row) => row.title), ["A posto del cliente", "A posto del fornitore"], "a posto da parte, nell'ordine dei gruppi");
+  const ids = [...board.groups.flatMap((group) => group.open), ...board.done].map((row) => row.id);
+  assert.equal(new Set(ids).size, ids.length, "ognuno una volta, anche se serve a più use case");
+  // La riga è quella della scheda e del pannello: il gruppo dei cinque, «Chi» con la parte.
+  const client = board.groups[0].open[2];
+  assert.equal(client.owner, "Aldo Prova · Cliente");
+  assert.deepEqual(client.useCases.map((ref) => ref.code), ["XV-0001", "XV-0002"]);
+  assert.equal(board.groups[0].open[1].owner, "Insieme", "«Insieme» lo dice nel suo «Chi»");
+  assert.equal(board.groups[2].open[0].status.label, "Ferma");
+  // I gruppi vuoti non ci sono; i conteggi restano quelli di tutti i requisiti.
+  const onlyClient = buildNeedsBoard([needs[0], needs[7]], ITEMS, { today: TODAY, params: PARAMS });
+  assert.deepEqual(onlyClient.groups.map((group) => group.key), ["cliente"]);
+  assert.equal(onlyClient.counts.open + onlyClient.counts.done, 2);
+  const onlyDone = buildNeedsBoard([needs[6]], ITEMS, { today: TODAY, params: PARAMS });
+  assert.deepEqual([onlyDone.groups, onlyDone.done.map((row) => row.title)], [[], ["A posto del fornitore"]]);
+  // Le parti nei gruppi.
+  assert.deepEqual(
+    (["cliente", "insieme", "fornitore", "lateral_space", null] as const).map((side) => needGroupOf(side)),
+    ["cliente", "cliente", "fornitore", "lateral_space", "nessuno"],
+  );
+  assert.deepEqual([...NEED_GROUP_KEYS], ["cliente", "fornitore", "lateral_space", "nessuno"]);
+});
+
+test("i gruppi seguono i filtri della pagina e la ricerca nel titolo, mai «Chi» né la parte", () => {
+  const needs = [
+    need({ title: "Accesso al gestionale", ownerSide: "cliente", ownerLabel: "Giulia", useCaseIds: [A] }),
+    need({ title: "Contratto del lettore", ownerSide: "fornitore", useCaseIds: [B] }),
+    need({ type: "passo", title: "Avvio", dueOn: "2026-11-03", useCaseIds: [A] }),
+    need({ type: "passo", title: "Demo del lettore", dueOn: "2026-11-10", useCaseIds: [B] }),
+  ];
+  const onlyA = buildNeedsBoard(needs, ITEMS, { today: TODAY, params: PARAMS, only: { useCaseIds: new Set([A]), q: null } });
+  assert.deepEqual(onlyA.groups.map((group) => [group.key, group.open.map((row) => row.title)]), [["cliente", ["Accesso al gestionale"]]]);
+  assert.deepEqual(onlyA.timeline.sections.flatMap((section) => section.items.map((item) => item.title)), ["Avvio"]);
+  const searched = buildNeedsBoard(needs, ITEMS, { today: TODAY, params: PARAMS, only: { useCaseIds: new Set(), q: "lettore" } });
+  assert.deepEqual(searched.groups.map((group) => group.key), ["fornitore"]);
+  assert.deepEqual(searched.timeline.sections.flatMap((section) => section.items.map((item) => item.title)), ["Demo del lettore"]);
+  for (const q of ["Giulia", "Cliente", "fornitore"]) {
+    const board = buildNeedsBoard(needs, ITEMS, { today: TODAY, params: PARAMS, only: { useCaseIds: new Set(), q } });
+    assert.deepEqual(board.groups, [], `«${q}» non trova nulla (art. 15.4)`);
+  }
+});
+
+test("la linea del tempo: «Prima di oggi», un mese per volta da quello di oggi, «Senza data»; i fatti da parte", () => {
+  const needs = [
+    need({ type: "passo", status: "confermata", title: "Scaduto a settembre", dueOn: "2026-09-30" }),
+    need({ type: "passo", status: "proposta", title: "Scaduto questo mese", dueOn: "2026-10-20", sortOrder: 0 }),
+    need({ type: "passo", status: "proposta", title: "Oggi", dueOn: TODAY, sortOrder: 5 }),
+    need({ type: "passo", status: "proposta", title: "Fine mese", dueOn: "2026-10-31" }),
+    need({ type: "passo", status: "confermata", title: "Il mese prossimo", dueOn: "2026-11-03" }),
+    need({ type: "passo", status: "proposta", title: "A gennaio", dueOn: "2027-01-15" }),
+    need({ type: "passo", status: "proposta", title: "Da fissare, primo per il team", sortOrder: 0 }),
+    need({ type: "passo", status: "proposta", title: "Da fissare", sortOrder: 1, dueLabel: "entro fine anno" }),
+    need({ type: "passo", status: "fatta", title: "Fatto dopo", dueOn: "2026-10-10" }),
+    need({ type: "passo", status: "fatta", title: "Fatto prima", dueOn: "2026-09-10" }),
+    need({ type: "passo", status: "proposta", title: "Archiviato", dueOn: "2026-10-01", archivedAt: "2026-10-20T10:00:00.000Z" }),
+    need({ title: "Un requisito", dueOn: "2026-10-01" }),
+  ];
+  const { timeline } = buildNeedsBoard(needs, ITEMS, { today: TODAY, params: PARAMS });
+  assert.deepEqual(
+    timeline.sections.map((section) => [section.key, section.label, section.items.map((item) => item.title)]),
+    [
+      ["prima", "Prima di oggi", ["Scaduto a settembre", "Scaduto questo mese"]],
+      ["2026-10", "Ottobre 2026", ["Oggi", "Fine mese"]],
+      ["2026-11", "Novembre 2026", ["Il mese prossimo"]],
+      ["2027-01", "Gennaio 2027", ["A gennaio"]],
+      ["senza_data", "Senza data", ["Da fissare, primo per il team", "Da fissare"]],
+    ],
+    "gli scaduti prima, anche di questo mese; oggi non è scaduto; i mesi vuoti non ci sono",
+  );
+  assert.equal(NEED_TIMELINE_TEXT.before, "Prima di oggi");
+  const item = timeline.sections[0].items[0];
+  assert.deepEqual([item.dueOn, item.due, item.status.label], ["2026-09-30", "30 set", "Confermato"]);
+  assert.deepEqual([timeline.sections[4].items[1].dueOn, timeline.sections[4].items[1].due], [null, "entro fine anno"]);
+  assert.deepEqual(timeline.done.map((row) => row.title), ["Fatto prima", "Fatto dopo"], "i fatti per data");
+  // Solo passi senza data; nessun passo.
+  assert.deepEqual(buildNeedsBoard([needs[6]], ITEMS, { today: TODAY, params: PARAMS }).timeline.sections.map((s) => s.key), ["senza_data"]);
+  assert.deepEqual(buildNeedsBoard([needs[11]], ITEMS, { today: TODAY, params: PARAMS }).timeline, { sections: [], done: [] });
+});
+
+test("la linea del tempo si chiude dopo i primi cinque: la sezione spezzata ripete il titolo; «Mostra gli altri N»", () => {
+  const section = (key: string, n: number): NeedTimelineSection => ({
+    key,
+    label: key,
+    items: Array.from({ length: n }, (_, i) => ({ ...needRow(need({ type: "passo", title: `${key}-${i}` }), new Map(), TODAY), dueOn: null })),
+  });
+  const titles = (sections: readonly NeedTimelineSection[]) => sections.map((s) => [s.key, s.items.map((item) => item.title)]);
+  const split = splitTimeline([section("prima", 3), section("2026-11", 4), section("senza_data", 2)]);
+  assert.deepEqual(titles(split.visible), [["prima", ["prima-0", "prima-1", "prima-2"]], ["2026-11", ["2026-11-0", "2026-11-1"]]]);
+  assert.deepEqual(titles(split.hidden), [["2026-11", ["2026-11-2", "2026-11-3"]], ["senza_data", ["senza_data-0", "senza_data-1"]]]);
+  assert.equal(split.hiddenCount, 4);
+  assert.deepEqual(splitTimeline([section("prima", 5)]).hidden, [], "cinque: niente da chiudere");
+  assert.equal(splitTimeline([section("prima", 8)]).hiddenCount, 3);
+  assert.deepEqual(splitTimeline([]), { visible: [], hidden: [], hiddenCount: 0 });
+  assert.equal(moreStepsText(1), "Mostra l'altro");
+  assert.equal(moreStepsText(36), "Mostra gli altri 36");
+  assert.equal(moreStepsText(1200), "Mostra gli altri 1.200");
+});
+
+test("il nome del gruppo del cliente: quello del connettore, altrimenti il workspace; gli altri gruppi", () => {
+  assert.equal(clientGroupLabel("  Alfa   e Beta ", "Alfa"), "Alfa e Beta");
+  assert.equal(clientGroupLabel(null, "Alfa (prova)"), "Alfa (prova)");
+  assert.equal(clientGroupLabel("   ", "Alfa"), "Alfa");
+  assert.equal(clientGroupLabel(null, null), "la tua azienda");
+  assert.deepEqual(
+    NEED_GROUP_KEYS.map((key) => needGroupLabel(key, "Alfa e Beta")),
+    ["Alfa e Beta", "Fornitori", "Lateral Space", "Da assegnare"],
+  );
+  const texts = [...NEED_GROUP_KEYS.map((key) => needGroupLabel(key, "Alfa")), NEED_TIMELINE_TEXT.before, moreStepsText(1), moreStepsText(3)];
+  assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
 });
 
 test("le righe chiuse di default: «Già a posto · n», «Fatto · 1», «Fatti · n»", () => {

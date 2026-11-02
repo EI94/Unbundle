@@ -42,6 +42,7 @@ import {
   type UseCaseNeedType,
 } from "../db/use-case-hub-value-ddl.ts";
 import { STATUS_COLOR, STATUS_LABEL } from "../uc/semaforo.ts";
+import { companyLabel } from "./referent/labels.ts";
 import { STATUS_GROUP_OF } from "../uc/views/status-groups.ts";
 import type { ItemStatus, SemaforoColor } from "../uc/vocab.ts";
 import { agentOfTitle } from "./agents.ts";
@@ -539,7 +540,107 @@ export interface QuarterAsk extends NeedUseCaseRef {
   toDecide: NeedRow[];
 }
 
+// ─── Chi deve muoversi (rilascio 4) ──────────────────────────────────
+
+/**
+ * I gruppi di «Cosa serve», nell'ordine della pagina: chi deve muoversi, per organizzazione e mai per
+ * persona. Il cliente (anche le cose da fare «Insieme», che lo dicono nel loro «Chi»), i fornitori,
+ * Lateral Space, e in fondo i requisiti senza parte.
+ */
+export const NEED_GROUP_KEYS = Object.freeze(["cliente", "fornitore", "lateral_space", "nessuno"] as const);
+export type NeedGroupKey = (typeof NEED_GROUP_KEYS)[number];
+
+/** I titoli dei gruppi; quello del cliente è il suo nome (`clientGroupLabel`). */
+export const NEED_GROUP_TEXT = Object.freeze({
+  fornitore: "Fornitori",
+  lateral_space: "Lateral Space",
+  nessuno: "Da assegnare",
+}) satisfies Readonly<Record<Exclude<NeedGroupKey, "cliente">, string>>;
+
+/** Il gruppo di un requisito dalla sua parte: «Insieme» sta con il cliente, senza parte «Da assegnare». */
+export function needGroupOf(side: NeedOwnerSide | null): NeedGroupKey {
+  if (side === "cliente" || side === "insieme") return "cliente";
+  if (side === "fornitore" || side === "lateral_space") return side;
+  return "nessuno";
+}
+
+/**
+ * Il nome del cliente sopra il suo gruppo: il nome che il connettore dà al workspace («TopJet e
+ * Aliserio»), altrimenti il nome del workspace come lo dicono i testi del referente (`companyLabel`).
+ */
+export function clientGroupLabel(displayName: string | null | undefined, workspaceName: string | null | undefined): string {
+  const clean = typeof displayName === "string" ? displayName.replace(/\s+/g, " ").trim() : "";
+  return clean || companyLabel(workspaceName);
+}
+
+/** Il titolo di un gruppo: il nome del cliente, «Fornitori», «Lateral Space», «Da assegnare». */
+export function needGroupLabel(key: NeedGroupKey, clientLabel: string): string {
+  return key === "cliente" ? clientLabel : NEED_GROUP_TEXT[key];
+}
+
+/** Un gruppo di «Cosa serve»: i suoi requisiti aperti, prima quelli da verificare (`needsActionFirst`). */
+export interface NeedGroup {
+  key: NeedGroupKey;
+  open: NeedRow[];
+}
+
+/** I testi della linea del tempo dei prossimi passi. */
+export const NEED_TIMELINE_TEXT = Object.freeze({
+  before: "Prima di oggi",
+});
+
+/** Un passo della linea del tempo: la riga, con la sua data per `<time dateTime>`. */
+export interface NeedTimelineItem extends NeedRow {
+  dueOn: IsoDate | null;
+}
+
+export interface NeedTimelineSection {
+  /** `prima`, `AAAA-MM` o `senza_data`. */
+  key: string;
+  /** «Prima di oggi», «Novembre 2026», «Senza data». */
+  label: string;
+  items: NeedTimelineItem[];
+}
+
+export interface NeedTimeline {
+  /** «Prima di oggi» (i passi scaduti), un mese per volta da quello di oggi, «Senza data»; solo quelle con passi. */
+  sections: NeedTimelineSection[];
+  /** I passi fatti: chiusi di default. */
+  done: NeedRow[];
+}
+
+const BEFORE_KEY = "prima";
+
+/** «Mostra l'altro», «Mostra gli altri 36»: i passi della linea del tempo oltre i primi. */
+export function moreStepsText(count: number): string {
+  return count === 1 ? "Mostra l'altro" : `Mostra gli altri ${formatInteger(count)}`;
+}
+
+/**
+ * La linea del tempo divisa dove si chiude: i primi `shown` passi in vista, gli altri sotto «Mostra gli
+ * altri N». Una sezione spezzata ripete il suo titolo dentro la parte chiusa.
+ */
+export function splitTimeline(sections: readonly NeedTimelineSection[], shown: number = NEED_ROWS_SHOWN): { visible: NeedTimelineSection[]; hidden: NeedTimelineSection[]; hiddenCount: number } {
+  const visible: NeedTimelineSection[] = [];
+  const hidden: NeedTimelineSection[] = [];
+  let left = Math.max(0, shown);
+  for (const section of sections) {
+    const head = section.items.slice(0, left);
+    const rest = section.items.slice(left);
+    left -= head.length;
+    if (head.length) visible.push({ ...section, items: head });
+    if (rest.length) hidden.push({ ...section, items: rest });
+  }
+  return { visible, hidden, hiddenCount: hidden.reduce((sum, section) => sum + section.items.length, 0) };
+}
+
 export interface NeedsBoard {
+  /** (Rilascio 4) I gruppi con almeno un requisito aperto, nell'ordine di `NEED_GROUP_KEYS`: ogni requisito aperto una volta. */
+  groups: NeedGroup[];
+  /** (Rilascio 4) I requisiti a posto, nell'ordine dei gruppi: chiusi di default. */
+  done: NeedRow[];
+  /** (Rilascio 4) I prossimi passi per data (`compareStepsByDate`) e quelli fatti. */
+  timeline: NeedTimeline;
   /** Le aree con almeno una riga, nell'ordine di `NEED_AREAS`. */
   areas: NeedAreaTable[];
   /** I prossimi passi da fare, per mese di scadenza; quelli senza data in fondo. */
@@ -680,6 +781,37 @@ export function buildNeedsBoard(
     .sort(([a], [b]) => (a === NO_DATE_KEY ? 1 : b === NO_DATE_KEY ? -1 : a.localeCompare(b)))
     .map(([key, monthRows]) => ({ key, label: key === NO_DATE_KEY ? NO_DATE_LABEL : monthHeading(key), rows: monthRows }));
 
+  // (Rilascio 4) Chi deve muoversi: ogni requisito aperto una volta, nel gruppo della sua parte, prima
+  // quelli da verificare (`needsActionFirst`, come nella scheda e nel pannello); quelli a posto da parte,
+  // nell'ordine dei gruppi. I passi sulla linea del tempo, per data (`compareStepsByDate`): prima quelli
+  // scaduti, poi un mese per volta da quello di oggi, quelli senza data in fondo.
+  const rowOf = new Map(rows.map(({ need, row }) => [need.id, row]));
+  const byGroup = new Map(NEED_GROUP_KEYS.map((key) => [key, { open: [] as NeedView[], done: [] as NeedView[] }]));
+  const openSteps: NeedView[] = [];
+  const doneSteps: NeedView[] = [];
+  for (const { need, row } of rows) {
+    if (need.type === "requisito") {
+      const group = byGroup.get(needGroupOf(need.ownerSide))!;
+      (row.done ? group.done : group.open).push(need);
+    } else (row.done ? doneSteps : openSteps).push(need);
+  }
+  const groups = NEED_GROUP_KEYS.flatMap((key): NeedGroup[] => {
+    const open = byGroup.get(key)!.open.sort(needsActionFirst);
+    return open.length ? [{ key, open: open.map((need) => rowOf.get(need.id)!) }] : [];
+  });
+  const done = NEED_GROUP_KEYS.flatMap((key) => byGroup.get(key)!.done.sort(needsActionFirst).map((need) => rowOf.get(need.id)!));
+  const sections: NeedTimelineSection[] = [];
+  for (const need of openSteps.sort(compareStepsByDate)) {
+    const key = !need.dueOn ? NO_DATE_KEY : need.dueOn < opts.today ? BEFORE_KEY : need.dueOn.slice(0, 7);
+    let section = sections.at(-1);
+    if (section?.key !== key) {
+      section = { key, label: key === BEFORE_KEY ? NEED_TIMELINE_TEXT.before : key === NO_DATE_KEY ? NO_DATE_LABEL : monthHeading(key), items: [] };
+      sections.push(section);
+    }
+    section.items.push({ ...rowOf.get(need.id)!, dueOn: need.dueOn });
+  }
+  const timeline: NeedTimeline = { sections, done: doneSteps.sort(compareStepsByDate).map((need) => rowOf.get(need.id)!) };
+
   const current = quarterOfDate(opts.today);
   // Approvato per questo trimestre, anche se nel frattempo è già partito (in realizzazione con il
   // trimestre di oggi): il ritorno da confermare e le richieste aperte servono ancora.
@@ -706,7 +838,7 @@ export function buildNeedsBoard(
       };
     });
 
-  return { areas: areas.filter((area) => area.open.length || area.done.length), steps, stepsDone, quarter, counts };
+  return { groups, done, timeline, areas: areas.filter((area) => area.open.length || area.done.length), steps, stepsDone, quarter, counts };
 }
 
 /** «Già a posto · 3», «Fatti · 2»: il titolo delle righe chiuse di default. */
