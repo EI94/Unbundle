@@ -919,6 +919,25 @@ async function guideAreas(workspaceId: string): Promise<string[] | null> {
   return ids.length ? ids : null;
 }
 
+/**
+ * Il nome che il connettore dà al workspace («TopJet e Aliserio»): il titolo del gruppo del cliente
+ * nella vista «Cosa serve» (rilascio 4, `clientGroupLabel`). null senza nome o se la lettura non
+ * riesce: allora il gruppo prende il nome del workspace.
+ */
+export async function connectorDisplayNameOf(workspaceId: string): Promise<string | null> {
+  try {
+    const [config] = await db
+      .select({ name: workspaceConnectorConfigs.workspaceDisplayName })
+      .from(workspaceConnectorConfigs)
+      .where(eq(workspaceConnectorConfigs.workspaceId, workspaceId))
+      .limit(1);
+    return config?.name?.trim() || null;
+  } catch (error) {
+    logSafeError("use-case-service", "connector_display_name_failed", error);
+    return null;
+  }
+}
+
 /** L'errore dell'area fuori dalla guida, con il testo di `validateUseCaseChanges`; null se va bene. */
 function areaOutsideGuide(area: string, areas: readonly string[]): string | null {
   const checked = validateUseCaseChanges({ area }, { areaOptions: areas });

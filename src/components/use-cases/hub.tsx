@@ -22,7 +22,7 @@ import { channelLabel } from "@/lib/use-cases/labels";
 import { laneBarScale, PANORAMA_SECTION_ID } from "@/lib/use-cases/lanes";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { nextStepOf } from "@/lib/use-cases/guided";
-import { buildNeedsBoard, panelNeeds, type NeedView } from "@/lib/use-cases/needs";
+import { buildNeedsBoard, clientGroupLabel, panelNeeds, type NeedView } from "@/lib/use-cases/needs";
 import { overviewFigures, overviewNextStep, overviewSteps, portfolioLine } from "@/lib/use-cases/panoramica";
 import { abilitiesForUseCase, type UseCaseAbilities } from "@/lib/use-cases/permissions";
 import { compareQuarters, quarterLabel, WHEN_LATER_LABEL } from "@/lib/use-cases/quarter";
@@ -45,6 +45,7 @@ import {
   type RawHubParams,
 } from "@/lib/use-cases/views";
 import { USE_CASE_VALUATION_ANCHOR } from "@/lib/use-cases/settings";
+import { connectorDisplayNameOf } from "@/lib/use-cases/service";
 import { roleLabel } from "@/lib/workspace-roles";
 import type { WorkspaceAccess } from "@/lib/workspace-access";
 import { CHART_TEXT, HubChartView } from "./chart-view";
@@ -120,6 +121,12 @@ export interface UseCaseHubData {
    */
   needs: NeedView[] | null;
   /**
+   * (Rilascio 4) Il nome che il connettore dà al workspace («TopJet e Aliserio»), il titolo del gruppo
+   * del cliente in «Cosa serve» (`connectorDisplayNameOf`): letto solo per un revisore in quella vista;
+   * null altrimenti, senza nome o se la lettura non riesce.
+   */
+  connectorDisplayName: string | null;
+  /**
    * «Partecipazione per area» (la scheda di «Raccolta & ranking», che con l'area accesa è la vista
    * «Da decidere»): solo etichette e numeri per area e società, mai chi propone (art. 15.4). Solo
    * sulla vista «Da decidere», per ogni ruolo come su /portfolio; null altrove o senza aree nella
@@ -175,7 +182,7 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
   // della Panoramica, solo ai revisori. «Prossimo passo» c'è solo sulle corsie senza filtri: con un
   // filtro le corsie non le leggono.
   const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "cosa-serve" || (lanes && !hasActiveFilters(params)) || Boolean(params.apri));
-  const [dossierColumn, participation, subprocessorsPending, needs, info] = await Promise.all([
+  const [dossierColumn, participation, subprocessorsPending, needs, info, connectorDisplayName] = await Promise.all([
     inProgress.length ? dossierColumnOf(workspaceId, { userId: session.user.id, role: access.role }, inProgress) : null,
     view === "da-decidere" ? getPortfolioParticipation(workspaceId) : null,
     // Solo a Lateral Space (la stessa regola di `getUcUserContext`): ai revisori del cliente nessuna lettura.
@@ -183,6 +190,8 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     readsNeeds ? listWorkspaceNeeds(workspaceId, viewer) : null,
     // «Raccolta informazioni»: solo a chi vede «Cosa serve»; la lettura stessa risponde null agli altri.
     abilities.canSeeNeeds ? listInfoProgress(workspaceId, viewer, { now }) : null,
+    // Il titolo del gruppo del cliente di «Cosa serve» (rilascio 4): solo in quella vista.
+    view === "cosa-serve" && readsNeeds ? connectorDisplayNameOf(workspaceId) : null,
   ]);
   return {
     workspaceId,
@@ -201,6 +210,7 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     panelOwnAnswer: opened && opened.projection === "contributore" ? opened.answer : null,
     dossierColumn,
     needs,
+    connectorDisplayName,
     participation,
     info,
     subprocessorsPending,
@@ -461,7 +471,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   return (
     <PageContainer size="default">
       {/*
-        `@container/hub`: le righe e le tabelle di «Cosa serve» cambiano forma sulla larghezza di
+        `@container/hub`: le righe e le colonne di «Cosa serve» cambiano forma sulla larghezza di
         questo riquadro, non della finestra. Da 768 px la barra laterale ne prende 256: a 1024 px
         restano circa 700 px, e le colonne pensate per la finestra intera non ci stanno.
       */}
@@ -572,7 +582,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
               <ListFocusTarget key="cosa-serve" title="Cosa serve" />
               <NeedsBoardView
                 board={needsBoard}
-                today={list.today}
+                clientLabel={clientGroupLabel(data.connectorDisplayName, data.workspaceName)}
                 agents={agents}
                 hrefOf={(id) => panelHref(basePath, query, id)}
                 inRealization={(filtered as HubItem[]).filter((item) => item.phase === "in_realizzazione").length}

@@ -8,11 +8,7 @@ import {
   needAskPieces,
   needDoneSummaryText,
   needForText,
-  needStepsLaterText,
-  needStepsUndatedText,
   needsSummaryPieces,
-  quarterAskSummaryText,
-  stepsHorizon,
   NEED_AREAS,
   NEED_ERRORS,
   NEED_REQUIREMENT_STATUSES,
@@ -51,8 +47,7 @@ import {
   validateNeedInput,
   validateNeedPatch,
   type NeedAskCounts,
-  type NeedBoardItem,
-  type NeedStepMonth,
+  type NeedUseCaseRef,
   type NeedsBoardFilter,
   type NeedView,
 } from "./needs.ts";
@@ -109,10 +104,10 @@ const FIX_A: ValueModel = {
 const A = "aaaaaaaa-0000-4000-8000-000000000001";
 const B = "bbbbbbbb-0000-4000-8000-000000000002";
 const C = "cccccccc-0000-4000-8000-000000000003";
-const ITEMS: NeedBoardItem[] = [
-  { id: B, code: "XV-0002", title: "Fatture", phase: "approvato", targetQuarter: "2027-Q1", valueModel: null },
-  { id: A, code: "XV-0001", title: "Smistamento", phase: "approvato", targetQuarter: "2026-Q4", valueModel: FIX_A },
-  { id: C, code: "XV-0003", title: "Preventivi", phase: "da_valutare", targetQuarter: null, valueModel: null },
+const ITEMS: NeedUseCaseRef[] = [
+  { id: B, code: "XV-0002", title: "Fatture" },
+  { id: A, code: "XV-0001", title: "Smistamento" },
+  { id: C, code: "XV-0003", title: "Preventivi" },
 ];
 
 test("vocabolari: aree dai tipi, stati per tipo, fatto e colori", () => {
@@ -237,7 +232,7 @@ test("il ritorno da confermare: le voci a ipotesi e da misurare, con la formula"
   assert.deepEqual(returnsToConfirm(null, PARAMS), []);
 });
 
-test("Cosa serve: requisiti per area, a posto da parte; passi per mese; questo trimestre per use case", () => {
+test("Cosa serve: le righe dei gruppi con «Chi», «Entro» e «Per»; a posto da parte; i passi sulla linea del tempo", () => {
   const needs = [
     need({ kind: "accesso", title: "Accesso al gestionale", useCaseIds: [A.toUpperCase(), B], dueOn: "2026-11-15", ownerLabel: "Giulia", ownerSide: "cliente", availability: "subito" }),
     need({ kind: "dato", title: "Estratto delle fatture", status: "validata", useCaseIds: [B] }),
@@ -253,49 +248,36 @@ test("Cosa serve: requisiti per area, a posto da parte; passi per mese; questo t
   ];
   const board = buildNeedsBoard(needs, ITEMS, { today: TODAY, params: PARAMS });
   assert.deepEqual(
-    board.areas.map((area) => [area.label, area.open.map((r) => r.title), area.done.map((r) => r.title)]),
+    board.groups.map((group) => [group.key, group.open.map((r) => r.title)]),
     [
-      ["Accessi", ["Accesso al gestionale"], []],
-      ["Dati e documenti", ["Procedura di smistamento"], ["Estratto delle fatture"]],
-      ["Regole e decisioni", ["Chi approva le risposte"], []],
-      ["Persone e ruoli", ["Un referente"], []],
-      ["Contratto e governance", [], ["DPA firmato"]],
+      ["cliente", ["Accesso al gestionale"]],
+      ["nessuno", ["Chi approva le risposte", "Procedura di smistamento", "Un referente"]],
     ],
-    "l'archiviata non c'è; le aree vuote nemmeno",
+    "l'archiviata non c'è; i gruppi vuoti nemmeno; le aree non dividono più; poi l'ordine del team e il titolo",
   );
-  const access = board.areas[0].open[0];
+  assert.deepEqual(board.done.map((r) => r.title), ["DPA firmato", "Estratto delle fatture"], "senza parte tutti e due: l'ordine del team, poi il titolo");
+  const access = board.groups[0].open[0];
   assert.deepEqual(access.useCases.map((ref) => ref.code), ["XV-0001", "XV-0002"], "per codice, anche con l'id in maiuscolo");
   assert.equal(access.owner, "Giulia · Cliente");
   assert.equal(access.due, "15 nov");
-  assert.equal(board.areas[3].open[0].forLabel, "Tutto il programma");
+  assert.equal(board.groups[1].open[2].forLabel, "Tutto il programma");
+  assert.equal(board.groups[1].open[1].statusNote, "risposta parziale");
 
   assert.deepEqual(
-    board.steps.map((month) => [month.label, month.rows.map((r) => r.title)]),
+    board.timeline.sections.map((section) => [section.label, section.items.map((r) => r.title)]),
     [
       ["Novembre 2026", ["Avvio con il team"]],
       ["Dicembre 2026", ["Demo"]],
       ["Senza data", ["Da fissare"]],
     ],
   );
-  assert.deepEqual(board.stepsDone.map((r) => r.title), ["Kick-off"]);
-
-  assert.deepEqual(board.quarter.map((card) => card.code), ["XV-0001"], "solo gli approvati di questo trimestre");
-  const [card] = board.quarter;
-  assert.equal(card.confirmBy, "Responsabile del servizio clienti");
-  assert.equal(card.returns[0].text, "6.600 all'anno × 1,5 min × 70% ≈ 116 h · 4.043 €");
-  assert.deepEqual(card.now.map((r) => r.title), ["Accesso al gestionale"]);
-  assert.deepEqual(card.afterA8.map((r) => r.title), ["Procedura di smistamento"]);
-  assert.deepEqual(card.toDecide.map((r) => r.title), ["Chi approva le risposte"]);
+  assert.deepEqual(board.timeline.done.map((r) => [r.title, r.dueOn]), [["Kick-off", "2026-10-10"]]);
   assert.equal(isBoardEmpty(board), false);
   assert.equal(isBoardEmpty(buildNeedsBoard([], ITEMS.slice(0, 1), { today: TODAY, params: PARAMS })), true);
-  // Approvato per questo trimestre e già partito: la sua scheda resta, con il ritorno da confermare.
-  const started = buildNeedsBoard([], [{ ...ITEMS[1], phase: "in_realizzazione" }, { ...ITEMS[0], phase: "in_realizzazione" }], { today: TODAY, params: PARAMS });
-  assert.deepEqual(
-    started.quarter.map((card) => card.code),
-    ["XV-0001"],
-    "in realizzazione con il trimestre di oggi sì, con un altro trimestre no",
-  );
-  assert.ok(started.quarter[0].returns.length > 0);
+  // Solo passi, solo requisiti a posto, solo passi fatti: la vista non è vuota.
+  for (const only of [needs[9], needs[1], needs[10]]) assert.equal(isBoardEmpty(buildNeedsBoard([only], ITEMS, { today: TODAY })), false, only.title);
+  // Senza le ipotesi di calcolo: la stessa vista (le schede del trimestre non ci sono più).
+  assert.deepEqual(buildNeedsBoard(needs, ITEMS, { today: TODAY }), board);
 });
 
 test("pannello: al massimo tre aperte, prima le più vicine; la scheda: per tipo e le collegabili", () => {
@@ -497,13 +479,14 @@ test("Cosa serve con un filtro: le esigenze degli use case che lo passano, con t
     need({ type: "passo", title: "Avvio con il team", dueOn: "2026-11-03", useCaseIds: [A] }),
   ];
   const titles = (board: ReturnType<typeof buildNeedsBoard>) => [
-    ...board.areas.flatMap((area) => [...area.open, ...area.done].map((row) => row.title)),
-    ...board.steps.flatMap((month) => month.rows.map((row) => row.title)),
+    ...board.groups.flatMap((group) => group.open.map((row) => row.title)),
+    ...board.done.map((row) => row.title),
+    ...board.timeline.sections.flatMap((section) => section.items.map((row) => row.title)),
   ];
   const board = buildNeedsBoard(needs, ITEMS, { today: TODAY, params: PARAMS, only: { useCaseIds: new Set([A]), q: null } });
   assert.deepEqual(titles(board), ["Accesso al gestionale", "Avvio con il team"], "collegate ad A, anche con l'id in maiuscolo");
   assert.deepEqual(
-    board.areas[0].open[0].useCases.map((ref) => ref.code),
+    board.groups[0].open[0].useCases.map((ref) => ref.code),
     ["XV-0001", "XV-0002"],
     "«Per» nomina anche gli use case fuori dal filtro",
   );
@@ -517,7 +500,7 @@ test("Cosa serve con un filtro: le esigenze senza use case, la ricerca solo nel 
   const access = need({ kind: "accesso", title: "Accesso al GESTIONALE" });
   const owner = need({ title: "Un'altra cosa", ownerLabel: "Giulia", ownerSide: "cliente", detail: "Serve il gestionale di Giulia" });
   const titlesWith = (only: NeedsBoardFilter | null) =>
-    buildNeedsBoard([loose, access, owner], ITEMS, { today: TODAY, params: PARAMS, only }).areas.flatMap((area) => area.open.map((row) => row.title));
+    buildNeedsBoard([loose, access, owner], ITEMS, { today: TODAY, params: PARAMS, only }).groups.flatMap((group) => group.open.map((row) => row.title));
 
   assert.ok(titlesWith(null).includes("Un referente"), "senza filtro c'è");
   assert.ok(!titlesWith({ useCaseIds: new Set([A]), q: null }).includes("Un referente"), "con un filtro no");
@@ -528,27 +511,18 @@ test("Cosa serve con un filtro: le esigenze senza use case, la ricerca solo nel 
   }
 });
 
-test("Cosa serve con un filtro: le schede del trimestre solo degli use case che lo passano", () => {
-  const items: NeedBoardItem[] = [...ITEMS, { id: "dddddddd-0000-4000-8000-000000000004", code: "XV-0004", title: "Ordini", phase: "approvato", targetQuarter: "2026-Q4", valueModel: null }];
-  assert.deepEqual(buildNeedsBoard([], items, { today: TODAY, params: PARAMS }).quarter.map((card) => card.code), ["XV-0001", "XV-0004"]);
-  const only = { useCaseIds: new Set(["dddddddd-0000-4000-8000-000000000004"]), q: null };
-  assert.deepEqual(buildNeedsBoard([], items, { today: TODAY, params: PARAMS, only }).quarter.map((card) => card.code), ["XV-0004"]);
-});
-
-test("i testi di «Cosa serve»: le schede del trimestre, «Per N use case», «Serve anche a…»", () => {
-  assert.equal(quarterAskSummaryText(1), "Cosa vi chiediamo questo trimestre · 1 use case");
-  assert.equal(quarterAskSummaryText(17), "Cosa vi chiediamo questo trimestre · 17 use case");
+test("i testi di «Cosa serve»: «Per N use case», «Serve anche a…»", () => {
   assert.equal(needForText(3), "Per 3 use case");
   assert.equal(needAlsoForText(1), "Serve anche a un altro use case");
   assert.equal(needAlsoForText(2), "Serve anche ad altri 2 use case");
   assert.equal(needAlsoForText(22), "Serve anche ad altri 22 use case");
-  const texts = [quarterAskSummaryText(1), quarterAskSummaryText(17), needForText(3), needAlsoForText(1), needAlsoForText(2), needAlsoForText(22)];
+  const texts = [needForText(3), needAlsoForText(1), needAlsoForText(2), needAlsoForText(22)];
   assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
 });
 
 test("una riga nomina solo gli use case che chi guarda conosce", () => {
   const board = buildNeedsBoard([need({ title: "Con uno sconosciuto", useCaseIds: [A, "eeeeeeee-0000-4000-8000-000000000005"] })], ITEMS, { today: TODAY, params: PARAMS });
-  assert.equal(board.areas[0].open[0].useCases.length, 1);
+  assert.equal(board.groups[0].open[0].useCases.length, 1);
 });
 
 test("conteggi dei requisiti: ognuno una volta, solo quelli degli use case scelti, per gruppo di stato", () => {
@@ -595,8 +569,8 @@ test("conteggi dei requisiti: ognuno una volta, solo quelli degli use case scelt
   assert.deepEqual(needAskCountsOf([shared, { ...shared, id: shared.id.toUpperCase() }], set), { ...emptyNeedAskCounts(), open: 1, blocked: 1 });
 });
 
-test("Cosa serve: i requisiti contati per gruppo di stato, di tutta la vista e di ogni area; mai i passi né le archiviate", () => {
-  // Gli otto stati, a coppie in due aree: Accessi i primi quattro, Dati e documenti gli altri.
+test("Cosa serve: i requisiti contati per gruppo di stato, di tutta la vista; mai i passi né le archiviate", () => {
+  // Gli otto stati, in due use case.
   const statuses = NEED_REQUIREMENT_STATUSES.map((status, index) =>
     need({ status, kind: index < 4 ? "accesso" : "dato", useCaseIds: [index % 2 ? B : A], title: `Requisito ${status}` }),
   );
@@ -607,26 +581,19 @@ test("Cosa serve: i requisiti contati per gruppo di stato, di tutta la vista e d
   ];
   const board = buildNeedsBoard([...statuses, ...extra], ITEMS, { today: TODAY, params: PARAMS });
   assert.deepEqual(board.counts, { open: 6, toAsk: 3, waiting: 1, toVerify: 1, blocked: 1, done: 2 });
-  assert.deepEqual(
-    board.areas.map((area) => [area.key, area.counts]),
-    [
-      ["accessi", { open: 4, toAsk: 3, waiting: 1, toVerify: 0, blocked: 0, done: 0 }],
-      ["dati", { open: 2, toAsk: 0, waiting: 0, toVerify: 1, blocked: 1, done: 2 }],
-    ],
-  );
+  // Le stesse righe nei gruppi e a posto: ogni requisito una volta.
+  assert.equal(board.groups.reduce((sum, group) => sum + group.open.length, 0), board.counts.open);
+  assert.equal(board.done.length, board.counts.done);
   // I conteggi seguono il filtro: solo le esigenze degli use case che lo passano (qui A, gli stati pari).
   const onlyA = buildNeedsBoard([...statuses, ...extra], ITEMS, { today: TODAY, params: PARAMS, only: { useCaseIds: new Set([A]), q: null } });
   assert.deepEqual(onlyA.counts, { open: 3, toAsk: 2, waiting: 0, toVerify: 1, blocked: 0, done: 1 });
-  assert.deepEqual(
-    onlyA.areas.map((area) => area.counts.open + area.counts.done),
-    [2, 2],
-  );
+  assert.equal(onlyA.groups.reduce((sum, group) => sum + group.open.length, 0) + onlyA.done.length, 4);
   // Uguali a quelli di `needAskCountsOf`, che dà i numeri di «Prossimo passo» della Panoramica.
   assert.deepEqual(onlyA.counts, needAskCountsOf([...statuses, ...extra], new Set([A])));
   assert.deepEqual(buildNeedsBoard([], ITEMS, { today: TODAY, params: PARAMS }).counts, emptyNeedAskCounts());
 });
 
-test("i testi dei conteggi: «86 aperti · 60 da chiedere · …», senza gli zeri; i passi «Più avanti» e «Senza data»", () => {
+test("i testi dei conteggi: «86 aperti · 60 da chiedere · …», senza gli zeri", () => {
   const counts = (o: Partial<NeedAskCounts>): NeedAskCounts => ({ ...emptyNeedAskCounts(), ...o });
   const line = (o: Partial<NeedAskCounts>) => needsSummaryPieces(counts(o)).join(FIGURE_SEPARATOR);
   assert.equal(line({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 }), "86 aperti · 60 da chiedere · 12 in attesa · 4 da verificare · 10 fermi · 31 a posto");
@@ -636,51 +603,12 @@ test("i testi dei conteggi: «86 aperti · 60 da chiedere · …», senza gli ze
   assert.deepEqual(needAskPieces(counts({ open: 1, blocked: 1 })), ["1 fermo"], "requisiti, al maschile come «aperti»");
   assert.deepEqual(needAskPieces(counts({ open: 2, waiting: 2 })), ["2 in attesa"], "i gruppi a zero non ci sono");
   assert.deepEqual(needAskPieces(counts({ open: 1200, toAsk: 1200 })), ["1.200 da chiedere"]);
-  assert.equal(needStepsLaterText(1), "Più avanti · 1 passo");
-  assert.equal(needStepsLaterText(6), "Più avanti · 6 passi");
-  assert.equal(needStepsUndatedText(1), "Senza data · 1 passo");
-  assert.equal(needStepsUndatedText(4), "Senza data · 4 passi");
   const texts = [
     ...needsSummaryPieces(counts({ open: 86, toAsk: 60, waiting: 12, toVerify: 4, blocked: 10, done: 31 })),
     ...needsSummaryPieces(counts({ open: 1, blocked: 1 })),
     ...needsSummaryPieces(counts({})),
-    needStepsLaterText(1),
-    needStepsLaterText(6),
-    needStepsUndatedText(4),
   ];
   assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
-});
-
-test("«Prossimi passi»: aperti i mesi fino a quello di oggi, gli scaduti compresi; poi «Più avanti» e «Senza data»", () => {
-  const month = (key: string): NeedStepMonth => ({ key, label: key === "senza_data" ? "Senza data" : monthHeading(key), rows: [] });
-  const keys = (months: readonly NeedStepMonth[]) => months.map((m) => m.key);
-  const all = ["2026-09", "2026-10", "2026-11", "2026-12", "senza_data"].map(month);
-  const horizon = stepsHorizon(all, "2026-10-25");
-  assert.deepEqual(keys(horizon.soon), ["2026-09", "2026-10"], "settembre è scaduto: resta aperto");
-  assert.deepEqual(keys(horizon.later), ["2026-11", "2026-12"], "dal mese prossimo, sotto «Più avanti»");
-  assert.equal(horizon.undated?.key, "senza_data");
-  // Niente fino a questo mese: resta aperto il primo mese che c'è.
-  const far = stepsHorizon(["2027-02", "2027-03"].map(month), "2026-10-25");
-  assert.deepEqual([keys(far.soon), keys(far.later), far.undated], [["2027-02"], ["2027-03"], null]);
-  // Solo passi senza data: si leggono aperti.
-  const undated = stepsHorizon([month("senza_data")], "2026-10-25");
-  assert.deepEqual([keys(undated.soon), keys(undated.later), undated.undated], [["senza_data"], [], null]);
-  assert.deepEqual(stepsHorizon([], "2026-10-25"), { soon: [], later: [], undated: null });
-  // A dicembre resta aperto dicembre; gennaio dell'anno dopo è già «Più avanti».
-  const december = stepsHorizon(["2026-12", "2027-01", "2027-02"].map(month), "2026-12-10");
-  assert.deepEqual([keys(december.soon), keys(december.later)], [["2026-12"], ["2027-01", "2027-02"]]);
-  // I mesi di `buildNeedsBoard` vanno così come sono.
-  const board = buildNeedsBoard(
-    [
-      need({ type: "passo", title: "Fra due mesi", dueOn: "2026-12-15" }),
-      need({ type: "passo", title: "Il mese prossimo", dueOn: "2026-11-03" }),
-      need({ type: "passo", title: "Da fissare" }),
-    ],
-    ITEMS,
-    { today: TODAY, params: PARAMS },
-  );
-  const fromBoard = stepsHorizon(board.steps, TODAY);
-  assert.deepEqual([keys(fromBoard.soon), keys(fromBoard.later), fromBoard.undated?.rows.map((r) => r.title)], [["2026-11"], ["2026-12"], ["Da fissare"]]);
 });
 
 test("gli agenti di un'esigenza: dal titolo dei suoi use case, uno per agente; nessuno senza prefisso", () => {

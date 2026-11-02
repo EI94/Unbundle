@@ -42,12 +42,14 @@ test("la pagina «Use case» è un contenitore: righe, corsie e tabelle guardano
     assert.doesNotMatch(classes, VIEWPORT_VARIANT, `${file}: una forma sulla larghezza della finestra`);
     assert.ok(classes.includes(`${variant}grid`) || classes.includes(`${variant}flex-row`), `${file}: le colonne sulla larghezza del riquadro (${variant})`);
   }
+  // «Cosa serve» (rilascio 4): la lista e accanto la linea del tempo dai 58rem del riquadro, mai sulla
+  // finestra; le righe sono un elenco a ogni larghezza (la tabella non c'è più).
   const needs = read("src/components/use-cases/needs-board.tsx");
-  assert.match(needs, /className="hidden overflow-hidden rounded-lg border @4xl\/hub:block"/);
-  assert.match(needs, /data-slot="needs-list" className="divide-y rounded-lg border @4xl\/hub:hidden"/);
-  // Le schede del trimestre in due colonne sulla larghezza del riquadro, non della finestra.
-  assert.ok(needs.includes("@4xl/hub:grid-cols-2"));
-  assert.ok(!needs.includes("lg:grid-cols-2"));
+  assert.ok(needs.includes('"grid gap-8 @min-[58rem]/hub:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/hub:gap-x-8"'), "la griglia della vista");
+  assert.match(needs, /data-slot="needs-list" className="divide-y rounded-lg border"/);
+  assert.ok(!needs.includes("<table") && !needs.includes("@4xl/hub:"), "nessuna tabella e nessuna forma da 56rem");
+  const classes = [...needs.matchAll(/["`]([^"`\n]*)["`]/g)].map((match) => match[1]).join(" ");
+  assert.doesNotMatch(classes, VIEWPORT_VARIANT, "needs-board.tsx: una forma sulla larghezza della finestra");
 });
 
 test("le righe dei revisori hanno le colonne da 58rem del riquadro", () => {

@@ -18,13 +18,14 @@ const { registerHooks } = nodeModule as unknown as {
 // «Cosa serve» nelle pagine vere (spec di Pierpaolo, 25/10/2026), rese in questo processo con la
 // sessione scelta dalla prova:
 //
-// - «Cosa serve»: la sua vista, solo per i revisori, ultima nel selettore: sotto «Requisiti» la riga
-//   dei conteggi, poi un'area chiusa per riga con i suoi conteggi (le righe a posto chiuse, «Per N
-//   use case» chiuso, prima gli agenti dei titoli), i prossimi passi aperti fino al mese di oggi
-//   («Più avanti» e «Senza data» chiusi, i fatti chiusi), «Cosa vi chiediamo questo trimestre»
-//   chiuso, una riga per gli use case in realizzazione con la Panoramica. Con un filtro, le esigenze
-//   degli use case che lo passano; con una ricerca le aree aperte, con il trimestre di «Prossimo
-//   passo» chiuse, il trimestre in testa ai conteggi. La Panoramica non le mostra: ne conta i
+// - «Cosa serve»: la sua vista, solo per i revisori, ultima nel selettore: una lista sola (rilascio 4),
+//   in cima la riga dei conteggi, poi i requisiti per chi deve muoversi (un gruppo per organizzazione,
+//   cinque righe in vista e «Mostra le altre N» chiuso, «Per N use case» chiuso con prima gli agenti
+//   dei titoli), «Già a posto» chiuso, e accanto la linea del tempo dei prossimi passi per data
+//   («Prima di oggi», i mesi, «Senza data»; i primi cinque, «Mostra gli altri N» e i fatti chiusi);
+//   una riga per gli use case in realizzazione con la Panoramica. Con un filtro, le esigenze degli use
+//   case che lo passano; con una ricerca le parti chiuse aperte, con il trimestre di «Prossimo passo»
+//   chiuse, il trimestre in testa ai conteggi. La Panoramica non le mostra: ne conta i
 //   requisiti per «Prossimo passo» (quelli degli use case approvati per questo trimestre, ognuno una
 //   volta), in un workspace a parte, e «Cosa serve» del trimestre conta gli stessi.
 // - Il pannello: al massimo tre esigenze aperte, le altre nella scheda.
@@ -263,13 +264,14 @@ function summaryOf(page: string): string {
   return textOf(between(page, 'data-slot="needs-summary"', "</p>").replace(/^[^>]*>/, ""));
 }
 
-/** Ogni area di «Requisiti»: la chiave, l'apertura del suo `<details>` e il titolo chiuso, come si legge. */
-function areasOf(page: string): Array<{ key: string; opening: string; summary: string }> {
-  return [...page.matchAll(/<section aria-labelledby="[^"]*" data-need-area="([a-z]+)">(<details[^>]*>)<summary[^>]*>([\s\S]*?)<\/summary>/g)].map(([, key, opening, summary]) => ({
-    key,
-    opening,
-    summary: textOf(summary),
-  }));
+/** I gruppi di «Cosa serve» (rilascio 4): la chiave e il titolo, nell'ordine della pagina. */
+function groupsOf(page: string): Array<{ key: string; heading: string }> {
+  return [...page.matchAll(/<section aria-labelledby="(cosa-serve-gruppo-[a-z_]+)" data-need-group="([a-z_]+)"[^>]*><h2 id="\1" class="text-sm font-semibold">([^<]*)<\/h2>/g)].map(([, , key, heading]) => ({ key, heading }));
+}
+
+/** Le parti chiuse della vista aperte quando la pagina si rende (`open=""`). */
+function openFolds(page: string): string[] {
+  return [...page.matchAll(/<details data-slot="(needs-[a-z-]+)" open="">/g)].map((match) => match[1]);
 }
 
 before(async () => {
@@ -412,45 +414,44 @@ after(async () => {
 
 // ─── Cosa serve ──────────────────────────────────────────────────────
 
-test("Cosa serve: la vista dei revisori, una tabella per area, le righe a posto chiuse, «Per» che apre il pannello", opts, async () => {
+test("Cosa serve: la vista dei revisori, una lista per chi deve muoversi, «Già a posto» chiuso, «Per» che apre il pannello", opts, async () => {
   for (const person of REVIEWERS) {
     const page = await hubHtml(person, ids.ws, { vista: "cosa-serve" });
     assert.ok(page.includes('data-slot="needs-board"'), person);
-    assert.ok(page.includes(">Requisiti<"), person);
+    assert.deepEqual(groupsOf(page).map((group) => group.key), ["cliente", "nessuno"], person);
   }
   const page = await hubHtml("builder", ids.ws, { vista: "cosa-serve" });
-  const requirements = between(page, 'data-slot="needs-requirements"', 'data-slot="needs-steps"');
-  // Le aree nell'ordine della pagina, solo quelle con righe.
-  const areas = [...requirements.matchAll(/data-need-area="([a-z]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(areas, ["accessi", "dati", "regole", "altro"]);
-  // Sotto «Requisiti» la riga dei conteggi, prima della prima area: i requisiti per stato, mai per persona.
+  const board = between(page, '<div data-slot="needs-board"');
+  // In cima, primo <p> della vista, la riga dei conteggi: i requisiti per stato, mai per persona.
   assert.equal(summaryOf(page), "4 aperti · 3 da chiedere · 1 in attesa · 1 a posto");
-  assert.ok(requirements.indexOf('data-slot="needs-summary"') < requirements.indexOf("data-need-area="));
-  // Ogni area è una riga chiusa con il nome e i suoi conteggi; si apre sulla sua tabella.
-  assert.deepEqual(
-    areasOf(requirements).map((area) => [area.key, area.opening, area.summary]),
-    [
-      ["accessi", '<details data-slot="needs-area">', "Accessi · 1 in attesa"],
-      ["dati", '<details data-slot="needs-area">', "Dati e documenti · 1 da chiedere · 1 a posto"],
-      ["regole", '<details data-slot="needs-area">', "Regole e decisioni · 1 da chiedere"],
-      ["altro", '<details data-slot="needs-area">', "Altro · 1 da chiedere"],
-    ],
-  );
-  // Il nome dell'area dà il titolo alla sezione e alla tabella; l'h3 di prima non c'è.
-  assert.ok(requirements.includes('<span id="cosa-serve-area-accessi" class="font-medium text-foreground">Accessi</span>'));
-  assert.ok(requirements.includes('<table aria-labelledby="cosa-serve-area-accessi"') && !requirements.includes('<h3 id="cosa-serve-area-'));
-  // Senza prefissi nei titoli, nessun tag di agente.
+  assert.equal(board.indexOf("<p"), board.indexOf('<p data-slot="needs-summary"'));
+  // I gruppi per organizzazione: il cliente con il nome del workspace (nessun nome del connettore),
+  // le cose da fare «Insieme» dentro; senza parte «Da assegnare». Nessun numero nei titoli.
+  assert.deepEqual(groupsOf(page), [
+    { key: "cliente", heading: "Prova cosa serve" },
+    { key: "nessuno", heading: "Da assegnare" },
+  ]);
+  const groups = between(page, 'data-slot="needs-groups"', 'data-slot="needs-timeline"');
+  const rowIds = (html: string) => [...html.matchAll(/<li data-need="([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(rowIds(between(groups, 'data-need-group="cliente"', 'data-need-group="nessuno"')), [needIds.access, needIds.decide]);
+  assert.deepEqual(rowIds(between(groups, 'data-need-group="nessuno"', 'data-slot="needs-done"')), [needIds.procedure, needIds.other]);
+  // Niente più «Requisiti», aree, tabelle, schede del trimestre; nessun tag di agente senza prefissi.
+  for (const gone of [">Requisiti<", "data-need-area", "<table", "data-need-item", "needs-quarter", "Cosa vi chiediamo", "Dopo la scheda A.8"]) assert.ok(!page.includes(gone), gone);
   assert.ok(!page.includes('data-slot="need-agents"'));
-  for (const header of ["Che cosa", "Chi", "Per", "Stato", "Entro"]) assert.ok(requirements.includes(`>${header}</th>`), header);
 
-  const accessRow = between(requirements, `data-need="${needIds.access}"`, "</tr>");
+  const accessRow = between(groups, `data-need="${needIds.access}"`, "</summary>");
   assert.ok(accessRow.includes(T.access));
-  assert.ok(accessRow.replace(/<!--.*?-->|<[^>]+>/g, "").includes(`Ufficio IT${N}· Cliente`), "Chi: persona e parte");
-  // Nella colonna stretta il «·» resta con «Ufficio IT»: la riga va a capo dopo il «·», mai «· Cliente» in testa.
-  assert.ok(accessRow.includes(`<td class="px-3 py-2 break-words">Ufficio IT${N}· Cliente</td>`), accessRow);
-  assert.ok(!accessRow.includes('whitespace-nowrap">· '), "nessun «·» in testa a un pezzo");
+  // «Chi»: persona e parte; il «·» resta con «Ufficio IT»: la riga va a capo dopo il «·», mai prima.
+  assert.match(accessRow, new RegExp(`<span data-meta="chi" class="inline-flex min-w-0 items-center gap-x-2"><span class="min-w-0">Ufficio IT${N}· Cliente</span><span aria-hidden="true">·</span></span><span data-meta="entro"`));
+  assert.match(accessRow, /<span data-meta="entro" class="inline-flex min-w-0 items-center gap-x-2"><span class="min-w-0"><span class="tabular-nums">[^<]*<\/span><\/span><\/span>/);
+  assert.doesNotMatch(accessRow, /data-meta="[a-z]+" class="[^"]*"><span aria-hidden="true">·/);
+  // «Entro»: il giorno resta con il suo mese («15 nov»).
+  assert.ok(accessRow.includes(`>${format.formatDayInYear(dueSoon, today)?.replace(/ /g, N)}<`), "Entro");
+  // Lo stato a schermo è il gruppo dei cinque («In attesa»), non l'etichetta del modulo («Chiesta, in attesa»).
+  assert.ok(accessRow.includes(">In attesa<"), "lo stato delle voci");
+  assert.ok(!groups.includes("Chiesta, in attesa") && !groups.includes("Non ancora chiesta"), "gli otto stati restano nel modulo");
   // Due use case: «Per 2 use case», chiuso, con i due link al pannello.
-  const per = detailsAround(accessRow, `Per 2${N}use${N}case`);
+  const per = detailsAround(groups, `Per 2${N}use${N}case`);
   assertClosed(per);
   assert.ok(per.includes('data-slot="need-use-cases"'));
   for (const card of [cards.quarter, cards.proposed]) {
@@ -459,69 +460,52 @@ test("Cosa serve: la vista dei revisori, una tabella per area, le righe a posto 
   }
   assert.ok(per.includes(`Smistamento ${suffix}`) && per.includes(`Preventivi ${suffix}`), "codice e titolo");
   assert.ok(per.includes(`<span class="sr-only">: ${T.access}</span>`), "il titolo dell'esigenza per i lettori di schermo");
-  // Lo stato a schermo è il gruppo dei cinque («In attesa»), non l'etichetta del modulo («Chiesta, in attesa»).
-  assert.ok(accessRow.includes(">In attesa<"), "lo stato delle voci");
-  assert.ok(!requirements.includes("Chiesta, in attesa") && !requirements.includes("Non ancora chiesta"), "gli otto stati restano nel modulo");
-  // «Entro»: il giorno resta con il suo mese («15 nov»).
-  assert.ok(accessRow.includes(`>${format.formatDayInYear(dueSoon, today)?.replace(/ /g, N)}<`), "Entro");
-  // Uno use case: il suo link per intero, senza <details>.
-  const procedureRow = between(requirements, `data-need="${needIds.procedure}"`, "</tr>");
+  // «Insieme»: nel gruppo del cliente, lo dice il suo «Chi»; la scadenza a parole.
+  const decideRow = between(groups, `data-need="${needIds.decide}"`, "</li>");
+  assert.ok(decideRow.includes(`<span class="min-w-0">Insieme</span>`) && decideRow.includes("entro fine mese"), decideRow);
+  // Uno use case: il suo link per intero, su una riga sua, senza <details>.
+  const procedureRow = between(groups, `data-need="${needIds.procedure}"`, "</li>");
   assert.ok(procedureRow.includes(`>${cards.quarter.code}<`) && procedureRow.includes(`Smistamento ${suffix}`));
   assert.match(procedureRow, new RegExp(`href="[^"]*apri=${cards.quarter.id}"`));
+  assert.match(procedureRow, /<span data-meta="per" class="flex min-w-0 basis-full"><a /);
   assert.ok(!procedureRow.includes('data-slot="need-use-cases"'));
   assert.ok(procedureRow.includes("(proposta)"), "la data da confermare");
 
-  // Già a posto: in un <details> chiuso; archiviate e altri workspace: mai.
-  const done = detailsAround(requirements, T.extract);
+  // Già a posto: dopo i gruppi, in un <details> chiuso; archiviate e altri workspace: mai.
+  const done = detailsAround(groups, T.extract);
+  assert.match(done, /^<details data-slot="needs-done">/);
   assert.ok(done.includes(`Già a posto${N}·${N}1`));
   assertClosed(done);
-  assert.ok(between(requirements, `data-need="${needIds.decide}"`, "</tr>").includes("entro fine mese"));
   assert.ok(!page.includes(T.archived), "l'archiviata non c'è");
   assert.ok(!page.includes(T.foreign), "le esigenze di un altro workspace non ci sono");
-  assert.ok(requirements.includes('data-slot="needs-list"'), "sotto i 56rem del riquadro, l'elenco");
-  // «Entro» solo nelle aree con una data: «Altro» non ne ha, e non ha una colonna di «—».
-  assert.ok(between(requirements, 'data-need-area="accessi"', 'data-need-area="dati"').includes(">Entro</th>"));
-  const other = between(requirements, 'data-need-area="altro"');
-  assert.ok(!other.includes(">Entro</th>"), "nessuna colonna «Entro» senza date");
-  assert.ok(other.includes(">Per</th>") && other.includes('class="w-[42%] px-3 py-2 font-medium"'), "le altre colonne si allargano");
-  // Nell'elenco ogni «·» resta con la parte prima: ogni parte tranne l'ultima finisce con il «·», nessuna comincia con lui.
-  // Un solo use case sta su una riga sua.
-  const accessItem = between(requirements, `data-need-item="${needIds.access}"`, "</summary>");
-  assert.match(accessItem, new RegExp(`<span data-meta="chi" class="inline-flex min-w-0 items-center gap-x-2"><span class="min-w-0">Ufficio IT${N}· Cliente</span><span aria-hidden="true">·</span></span><span data-meta="entro"`));
-  assert.match(accessItem, /<span data-meta="entro" class="inline-flex min-w-0 items-center gap-x-2"><span class="min-w-0"><span class="tabular-nums">[^<]*<\/span><\/span><\/span>/);
-  assert.doesNotMatch(accessItem, /data-meta="[a-z]+" class="[^"]*"><span aria-hidden="true">·/);
-  const procedureItem = between(requirements, `data-need-item="${needIds.procedure}"`, "</li>");
-  assert.match(procedureItem, /<span data-meta="per" class="flex min-w-0 basis-full"><a /);
+  assert.deepEqual(openFolds(page), [], "niente aperto di default");
   // I link restano nella vista: `?vista=cosa-serve&apri=<id>`.
   assert.ok(page.includes(`href="/dashboard/${ids.ws}/use-cases?vista=cosa-serve&apri=${cards.proposed.id}"`));
+  // Il solo pulsante pieno della pagina è «Nuovo use case» della testata.
+  assert.equal(filledButtons(page).length, 1);
 });
 
-test("Cosa serve: «Prossimi passi» per mese, i fatti chiusi; «Cosa vi chiediamo questo trimestre», chiuso, per use case approvato", opts, async () => {
+test("Cosa serve: «Prossimi passi» accanto alla lista, per data con la data sopra, i fatti chiusi; niente più schede del trimestre", opts, async () => {
   const page = await hubHtml("ls", ids.ws, { vista: "cosa-serve" });
-  const steps = between(page, 'data-slot="needs-steps"', 'data-slot="needs-quarter"');
-  assert.ok(steps.includes(`>${needs.monthHeading(dueSoon.slice(0, 7))}<`), "il mese della scadenza");
-  assert.ok(steps.includes(T.kickoff) && steps.includes(">Confermato<"));
+  // La lista e accanto la linea del tempo, sul riquadro della pagina.
+  assert.ok(page.includes('<div data-slot="needs-layout" class="grid gap-8 @min-[58rem]/hub:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/hub:gap-x-8">'));
+  assert.ok(page.indexOf('data-slot="needs-groups"') < page.indexOf('data-slot="needs-timeline"'), "la linea del tempo dopo la lista");
+  const steps = between(page, '<aside data-slot="needs-timeline"', "</aside>");
+  assert.ok(steps.includes('<h2 id="cosa-serve-passi" class="text-sm font-semibold">Prossimi passi</h2>'));
+  // Il passo fra venti giorni: nel suo mese (oggi non è scaduto), la data su una riga sua, lo stato e «Chi».
+  assert.ok(steps.includes(`>${needs.monthHeading(dueSoon.slice(0, 7))}</h3>`), "il mese della scadenza");
+  assert.ok(!steps.includes(">Prima di oggi<"), "nessun passo scaduto");
+  const kickoff = between(steps, `data-need="${needIds.kickoff}"`, "</li>");
+  assert.match(kickoff, new RegExp(`<time dateTime="${dueSoon}" class="block text-xs font-medium tabular-nums">`));
+  assert.ok(kickoff.includes(T.kickoff) && kickoff.includes(">Confermato<") && kickoff.includes('<span data-meta="chi" class="min-w-0">Lateral Space</span>'));
   const done = detailsAround(steps, T.demo);
+  assert.match(done, /^<details data-slot="needs-steps-done">/);
   assert.ok(done.includes(`Fatto${N}·${N}1`));
-
-  const quarter = between(page, 'data-slot="needs-quarter"');
-  const opening = page.slice(page.lastIndexOf("<details", page.indexOf('data-slot="needs-quarter"')));
-  assert.ok(opening.startsWith('<details data-slot="needs-quarter"'));
-  assertClosed(opening);
-  const summary = quarter.slice(0, quarter.indexOf("</summary>"));
-  assert.ok(summary.includes(`Cosa vi chiediamo questo trimestre${N}· 1${N}use${N}case`));
-  const ask = between(quarter, `data-quarter-ask="${cards.quarter.id}"`, "</li><li data-quarter-ask");
-  assert.equal(quarter.split("data-quarter-ask=").length - 1, 1, "solo lo use case approvato in questo trimestre");
-  assert.ok(ask.includes(`Chi conferma i numeri: <span class="text-foreground">${FIX_A.confirmBy}</span>`));
-  assert.ok(ask.includes(`6.600${N}all'anno × 1,5${N}min × 70% ≈ 116${N}h${N}· 4.043${N}€`), "il ritorno da confermare");
-  assert.ok(ask.includes(`Meno errori di smistamento entro 30${N}giorni`) && ask.includes("· da misurare"), "anche le voci da misurare, con il numero e la sua parola insieme");
-  assert.ok(!ask.includes("Risposte anche fuori orario"), "le voci con una fonte non si chiedono");
-  const section = (title: string, next?: string) => between(ask, `>${title}<`, next ? `>${next}<` : undefined);
-  assert.ok(section("Ci serve subito", "Dopo la scheda A.8").includes(T.access));
-  assert.ok(section("Ci serve subito", "Dopo la scheda A.8").includes(T.other), "senza «quando»: subito");
-  assert.ok(section("Dopo la scheda A.8", "Da decidere").includes(T.procedure));
-  assert.ok(section("Da decidere").includes(T.decide));
-  assert.ok(!ask.includes(T.extract), "le righe a posto non si chiedono");
+  assertClosed(done);
+  // Le schede del trimestre non ci sono più: il ritorno da confermare resta nella scheda di ogni use case.
+  for (const gone of ["needs-quarter", "data-quarter-ask", "Cosa vi chiediamo questo trimestre", "Chi conferma i numeri", "Il ritorno da confermare", FIX_A.confirmBy, "Ci serve subito", "Dopo la scheda A.8", "4.043"]) {
+    assert.ok(!page.includes(gone), gone);
+  }
 });
 
 test("Cosa serve: la sua vista, non nella Panoramica né nei vecchi link; senza esigenze il vuoto", opts, async () => {
@@ -536,7 +520,7 @@ test("Cosa serve: la sua vista, non nella Panoramica né nei vecchi link; senza 
   const blank = between(empty, 'data-slot="needs-board"');
   assert.ok(blank.includes('data-slot="hub-empty"') && blank.includes("Niente da chiedere per ora"));
   assert.ok(blank.includes(`Le esigenze si aggiungono dalla scheda di uno use case, nel capitolo «Cosa${N}serve».`));
-  assert.ok(!empty.includes('data-slot="needs-requirements"') && !empty.includes('data-slot="needs-quarter"'), "nessun blocco vuoto");
+  assert.ok(!empty.includes('data-slot="needs-summary"') && !empty.includes('data-slot="needs-groups"') && !empty.includes('data-slot="needs-timeline"'), "nessun blocco vuoto");
   const overview = await hubHtml("builder", ids.ws, { vista: "panoramica" });
   assert.ok(!overview.includes('data-slot="needs-board"'), "solo nella sua vista");
 });
@@ -581,17 +565,16 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   // Le righe: il requisito bloccato si legge «Ferma», quello da verificare «Da verificare»; mai «Bloccata».
   assert.ok(target.includes(">Ferma<") && target.includes(">Da verificare<"));
   assert.ok(!target.includes(">Bloccata<") && !/bloccat/i.test(summaryOf(target)));
-  // Il filtro del trimestre non apre le aree: si arriva sui conteggi, non su tutte le tabelle.
-  const areas = areasOf(target);
-  assert.ok(areas.length > 0);
-  for (const area of areas) assert.equal(area.opening, '<details data-slot="needs-area">', area.key);
+  // Il filtro del trimestre non apre le parti chiuse: si arriva sui conteggi e sui primi requisiti di ogni gruppo.
+  assert.deepEqual(groupsOf(target).map((group) => group.key), ["cliente", "lateral_space", "nessuno"]);
+  assert.deepEqual(openFolds(target), []);
   // Il requisito dei due use case di LIBRA: il tag dell'agente una volta sola, prima di «Per 2 use case».
-  const shared = between(target, START.shared, "</tr>");
+  const shared = between(target, START.shared, "</li>");
   const tags = [...between(shared, 'data-slot="need-agents"', `Per 2${N}use${N}case`).matchAll(/data-slot="agent-tag"[^>]*><span class="truncate">([^<]*)</g)].map((match) => match[1]);
   assert.deepEqual(tags, ["LIBRA"]);
   assert.ok(shared.indexOf('data-slot="need-agents"') < shared.indexOf(`Per 2${N}use${N}case`));
   // Il requisito di un solo use case: nessun tag, il link dice già «LIBRA L2».
-  const blocked = between(target, START.blocked, "</tr>");
+  const blocked = between(target, START.blocked, "</li>");
   assert.ok(!blocked.includes('data-slot="need-agents"'), blocked);
   assert.ok(blocked.includes(`LIBRA L2 · Pagamenti ${suffix}`));
   // Con un filtro il riquadro non c'è: dice tutto il workspace.
@@ -618,9 +601,9 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
 });
 
 test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai le card dei dossier qui", opts, () => {
-  const emptyBoard = { areas: [], steps: [], stepsDone: [], quarter: [], counts: needs.emptyNeedAskCounts() };
+  const emptyBoard = { groups: [], done: [], timeline: { sections: [], done: [] }, counts: needs.emptyNeedAskCounts() };
   const render = (props: Record<string, unknown>) =>
-    readable(renderToStaticMarkup(createElementOf(board.NeedsBoardView, { hrefOf: (id: string) => `?apri=${id}`, today: "2026-10-29", ...props })));
+    readable(renderToStaticMarkup(createElementOf(board.NeedsBoardView, { hrefOf: (id: string) => `?apri=${id}`, clientLabel: "Prova", ...props })));
   const realizationHref = "/p#panoramica-in-realizzazione";
   const blank = render({ board: emptyBoard, inRealization: 1, realizationHref });
   assert.ok(blank.includes('data-slot="hub-empty"') && blank.includes("Niente da chiedere per ora"));
@@ -643,10 +626,10 @@ test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai
     forLabel: null,
   };
   const oneToAsk = { ...needs.emptyNeedAskCounts(), open: 1, toAsk: 1 };
-  const filled = { ...emptyBoard, areas: [{ key: "accessi", label: "Accessi", open: [row], done: [], counts: oneToAsk }], counts: oneToAsk };
+  const filled = { ...emptyBoard, groups: [{ key: "cliente", open: [row] }], counts: oneToAsk };
   const two = render({ board: filled, inRealization: 2, realizationHref });
   const line = between(two, 'data-slot="needs-in-progress"');
-  assert.ok(two.indexOf('data-slot="needs-in-progress"') > two.indexOf('data-slot="needs-requirements"'), "dopo i blocchi");
+  assert.ok(two.indexOf('data-slot="needs-in-progress"') > two.indexOf('data-slot="needs-layout"'), "dopo la lista e la linea del tempo");
   assert.ok(line.includes(`2${N}use${N}case sono già in realizzazione.`) && /href="\/p#panoramica-in-realizzazione"[^>]*>Vai alla Panoramica</.test(line));
   assert.ok(!two.includes('data-slot="dossier-card"'));
   assert.equal(summaryOf(two), "1 aperto · 1 da chiedere");
@@ -656,63 +639,70 @@ test("Cosa serve: gli use case in realizzazione si leggono nella Panoramica, mai
   }
 });
 
-test("Cosa serve: «Prossimi passi» aperti fino al mese di oggi, poi «Più avanti» e «Senza data» chiusi; gli agenti in «Per»", opts, async () => {
+test("Cosa serve: la linea del tempo, «Prima di oggi» in testa, i primi cinque, «Mostra gli altri N» e «Fatti · N» chiusi; gli agenti in «Per»", opts, async () => {
   const { agentPalette } = await import("./agents.ts");
-  const step = (title: string, useCases: Array<{ id: string; code: string | null; title: string }> = []) => ({
+  const step = (title: string, useCases: Array<{ id: string; code: string | null; title: string }> = [], dueOn: string | null = null, status = { label: "Confermato", tone: "blu" }) => ({
     id: randomUUID(),
     type: "passo",
     kind: "altro",
     title: `${title} ${suffix}`,
     detail: null,
     owner: null,
-    status: { label: "Confermato", tone: "blu" },
+    status,
+    statusNote: null,
     done: false,
-    due: null,
+    due: dueOn ? format.formatDayInYear(dueOn, "2026-11-02") : null,
     availability: null,
     useCases,
     forLabel: null,
+    dueOn,
   });
   const ref = (code: string, title: string) => ({ id: randomUUID(), code, title });
   const agentsRefs = [ref("TJ-0001", "LIBRA L1 · Lettura delle fatture estere"), ref("TJ-0002", "ORSA O1 · Solleciti ai clienti"), ref("TJ-0003", "LIBRA L3 · Riconciliazione")];
   const plainRef = ref("TJ-0004", "Smistamento delle richieste");
-  const month = (key: string, label: string, rows: unknown[]) => ({ key, label, rows });
-  const steps = [
-    month("2026-10", "Ottobre 2026", [step("Questo mese", agentsRefs), step("Un solo agente", [agentsRefs[1]])]),
-    month("2026-11", "Novembre 2026", [step("Il mese prossimo", [plainRef])]),
-    month("2027-01", "Gennaio 2027", [step("Fra tre mesi")]),
-    month("senza_data", "Senza data", [step("Da fissare")]),
+  const section = (key: string, label: string, items: unknown[]) => ({ key, label, items });
+  const sections = [
+    section("prima", "Prima di oggi", [step("Scaduto", agentsRefs, "2026-10-20"), step("Un solo agente", [agentsRefs[1]], "2026-10-28")]),
+    section("2026-11", "Novembre 2026", [step("Il mese prossimo", [plainRef], "2026-11-03"), step("Novembre due", [], "2026-11-10"), step("Novembre tre", [], "2026-11-20"), step("Novembre quattro", [], "2026-11-25")]),
+    section("senza_data", "Senza data", [step("Da fissare")]),
   ];
   const html = readable(
     renderToStaticMarkup(
       createElementOf(board.NeedsBoardView, {
-        board: { areas: [], steps, stepsDone: [], quarter: [], counts: needs.emptyNeedAskCounts() },
-        today: "2026-10-29",
+        board: { groups: [], done: [], timeline: { sections, done: [step("Fatto", [], "2026-10-01", { label: "Fatto", tone: "verde" })] }, counts: needs.emptyNeedAskCounts() },
+        clientLabel: "Prova",
         agents: agentPalette([...agentsRefs, plainRef]),
         hrefOf: (id: string) => `?apri=${id}`,
       }),
     ),
   );
-  // Questo mese: aperto, fuori da ogni <details> (prima di lui ogni <details> è già chiuso).
-  const before = html.slice(0, html.indexOf(`Questo mese ${suffix}`));
-  assert.equal(before.split("<details").length, before.split("</details>").length, "Questo mese: fuori da ogni <details>");
-  assert.ok(html.includes(">Ottobre 2026<"));
-  // Dal mese prossimo, sotto «Più avanti», chiuso: novembre e gennaio.
-  const later = detailsAround(html, `Fra tre mesi ${suffix}`);
-  assert.match(later, /^<details data-slot="needs-steps-later">/);
-  assert.ok(later.includes(`Più avanti${N}· 2${N}passi`) && later.includes(">Novembre 2026<") && later.includes(">Gennaio 2027<"));
-  assert.ok(later.includes(`Il mese prossimo ${suffix}`), "il mese prossimo sta in «Più avanti»");
-  const undated = detailsAround(html, `Da fissare ${suffix}`);
-  assert.match(undated, /^<details data-slot="needs-steps-undated">/);
-  assert.ok(undated.includes(`Senza data${N}· 1${N}passo`));
+  // Senza requisiti: la riga dei conteggi resta in cima, poi «Niente da chiedere per ora.»; accanto i passi.
+  assert.equal(summaryOf(html), "Nessuno aperto");
+  assert.ok(html.includes('<p data-slot="needs-none" class="text-sm text-muted-foreground">Niente da chiedere per ora.</p>'));
+  const aside = between(html, '<aside data-slot="needs-timeline"', "</aside>");
+  // I primi cinque prima di «Mostra gli altri N»: «Prima di oggi» in testa, poi novembre.
+  const visible = aside.slice(0, aside.indexOf('<details data-slot="needs-steps-more"'));
+  assert.deepEqual([...visible.matchAll(/<h3 [^>]*>([^<]*)<\/h3>/g)].map((m) => m[1]), ["Prima di oggi", "Novembre 2026"]);
+  assert.equal(visible.split("<li data-need=").length - 1, 5);
+  // Gli altri sotto «Mostra gli altri 2», chiuso: novembre ripete il suo titolo, poi «Senza data».
+  const more = detailsAround(aside, `Novembre quattro ${suffix}`);
+  assert.match(more, /^<details data-slot="needs-steps-more">/);
+  assertClosed(more);
+  assert.ok(more.includes(`Mostra gli altri 2`) && more.includes(">Novembre 2026</h3>") && more.includes(">Senza data</h3>") && more.includes(`Da fissare ${suffix}`));
+  const done = detailsAround(aside, `Fatto ${suffix}`);
+  assert.match(done, /^<details data-slot="needs-steps-done">/);
+  assert.ok(done.includes(`Fatto${N}·${N}1`));
+  // La data: un <time> su una riga sua.
+  assert.match(aside, /<time dateTime="2026-10-20" class="block text-xs font-medium tabular-nums">20(?:\u00a0| )ott<\/time>/);
   // Gli agenti dei titoli, una volta ciascuno, prima di «Per 3 use case»; nessuno senza prefisso.
-  const withAgents = between(html, `Questo mese ${suffix}`, "</li>");
+  const withAgents = between(aside, `Scaduto ${suffix}`, "</summary>");
   const agentTags = between(withAgents, 'data-slot="need-agents"', 'data-slot="need-use-cases"');
   const names = [...agentTags.matchAll(/data-slot="agent-tag" data-tone="(\d+)"[^>]*><span class="truncate">([^<]*)</g)].map((match) => match[2]);
   assert.deepEqual(names, ["LIBRA", "ORSA"]);
   assert.ok(withAgents.indexOf('data-meta="agenti"') < withAgents.indexOf(`Per 3${N}use${N}case`), "prima gli agenti");
-  assert.ok(!between(html, `Il mese prossimo ${suffix}`, "</li>").includes('data-slot="need-agents"'), "senza prefisso, nessun tag");
+  assert.ok(!between(aside, `Il mese prossimo ${suffix}`, "</li>").includes('data-slot="need-agents"'), "senza prefisso, nessun tag");
   // Con un solo use case il link dice già l'agente: nessun tag, l'agente una volta sola, anche per i lettori di schermo.
-  const single = between(html, `Un solo agente ${suffix}`, "</li>");
+  const single = between(aside, `Un solo agente ${suffix}`, "</li>");
   assert.ok(!single.includes('data-slot="need-agents"') && !single.includes('data-slot="agent-tag"'), single);
   assert.equal(readable(single.replace(/<[^>]+>/g, "")).split("ORSA").length - 1, 1, "«ORSA» una volta");
   assert.ok(single.includes("TJ-0002") && single.includes("ORSA O1 · Solleciti ai clienti"));
@@ -740,12 +730,9 @@ test("Cosa serve con i filtri: le esigenze degli use case che passano, la ricerc
   const byCode = await hubHtml("builder", ids.ws, { vista: "cosa-serve", q: cards.proposed.code });
   assert.ok(byCode.includes(T.access), "collegata allo use case cercato");
   for (const title of [T.extract, T.procedure, T.kickoff]) assert.ok(!byCode.includes(title), title);
-  // Con una ricerca i conteggi seguono il filtro e le aree sono aperte: si legge subito quello che si cerca.
+  // Con una ricerca i conteggi seguono il filtro; il gruppo è quello del requisito trovato.
   assert.equal(summaryOf(byCode), "1 aperto · 1 in attesa");
-  assert.deepEqual(
-    areasOf(byCode).map((area) => [area.key, area.opening, area.summary]),
-    [["accessi", '<details data-slot="needs-area" open="">', "Accessi · 1 in attesa"]],
-  );
+  assert.deepEqual(groupsOf(byCode).map((group) => group.key), ["cliente"]);
   // «Per» nomina comunque tutti gli use case dell'esigenza.
   assert.ok(detailsAround(byCode, `Per 2${N}use${N}case`).includes(`>${cards.quarter.code}<`));
 

@@ -131,7 +131,7 @@ export type OverviewNextStep =
  * regole fisse:
  * 1. i requisiti degli use case approvati per questo trimestre (non quelli già partiti, scaduti o di
  *    altri trimestri: gli stessi che prende il filtro `trimestre` di «Cosa serve») da chiedere, da
- *    verificare o fermi, con i tre conteggi: sono quelli della riga sotto «Requisiti» di «Cosa
+ *    verificare o fermi, con i tre conteggi: sono quelli della riga dei conteggi in cima a «Cosa
  *    serve» del trimestre, dove porta il pulsante («T4 2026 · 67 aperti · 40 da chiedere · 17 in
  *    attesa · 2 da verificare · 8 fermi · 1 a posto»), e la frase li nomina tutti;
  * 2. altrimenti gli use case che aspettano una decisione (`decideCount`);

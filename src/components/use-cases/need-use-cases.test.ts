@@ -105,7 +105,39 @@ test("i testi della vista «Cosa serve» passano la guardia delle parole", () =>
   assert.ok(!source.includes("Roadmap"));
   const block = /export const NEEDS_BOARD_TEXT = Object\.freeze\(\{([\s\S]*?)\n\}\);/.exec(source)?.[1] ?? "";
   const texts = [...block.matchAll(/^\s+\w+: "([^"]*)",$/gm)].map((match) => match[1]);
-  assert.ok(texts.includes("Requisiti") && texts.includes("Niente da chiedere con questi filtri."), block);
+  // Rilascio 4: la lista sola non ha più «Requisiti» né le schede del trimestre.
+  assert.ok(texts.includes("Prossimi passi") && texts.includes("Niente da chiedere con questi filtri."), block);
+  for (const gone of ["Requisiti", "Cosa vi chiediamo", "Il ritorno da confermare", "Dopo la scheda A.8", "Chi conferma i numeri"]) assert.ok(!texts.some((text) => text.includes(gone)), gone);
   assert.equal(texts.length, block.split("\n").filter((line) => line.trim()).length, "ogni voce è una stringa su una riga");
   assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
+});
+
+test("needs-board.tsx si rende sul server: dai moduli «use client» importa solo componenti; need-draft.ts non ha la direttiva", () => {
+  const read = (file: string) => readFileSync(new URL(file, import.meta.url), "utf8");
+  const board = read("./needs-board.tsx");
+  assert.ok(!/^\s*["']use client["']/.test(board), "needs-board.tsx è un componente del server");
+  const imports = [...board.matchAll(/import\s+(type\s+)?\{([^}]*)\}\s+from\s+"([^"]+)"/g)].map(([, type, names, from]) => ({ type: Boolean(type), names: names.split(",").map((name) => name.trim()).filter(Boolean), from }));
+  const fileOf = (from: string) =>
+    from.startsWith("@/") ? new URL(`../../${from.slice(2)}`, import.meta.url) : new URL(from, new URL("./needs-board.tsx", import.meta.url));
+  let clientModules = 0;
+  for (const entry of imports) {
+    if (entry.type) continue;
+    const base = fileOf(entry.from);
+    const source = [".tsx", ".ts", "/index.tsx", "/index.ts"].map((ext) => {
+      try {
+        return readFileSync(new URL(`${base.href}${ext}`), "utf8");
+      } catch {
+        return null;
+      }
+    }).find((text) => text !== null);
+    if (source === undefined || source === null) continue;
+    if (!/^\s*["']use client["']/.test(source)) continue;
+    clientModules += 1;
+    for (const name of entry.names) assert.match(name.replace(/^type\s+/, ""), /^[A-Z]/, `${entry.from}: «${name}» da un modulo client non è un componente`);
+  }
+  assert.ok(clientModules >= 1, "almeno list-focus.tsx (HashFocusLink)");
+  // moreRowsText e NEED_ROWS_SHOWN arrivano da moduli senza direttiva: si possono chiamare sul server.
+  assert.match(board, /import \{ moreRowsText \} from "\.\/detail\/need-draft";/);
+  assert.ok(!/^\s*["']use client["']/.test(read("./detail/need-draft.ts")), "need-draft.ts senza direttiva");
+  assert.ok(!/^\s*["']use client["']/.test(readFileSync(new URL("../../lib/use-cases/needs.ts", import.meta.url), "utf8")), "needs.ts senza direttiva");
 });

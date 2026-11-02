@@ -10,9 +10,11 @@
  *   `STATUS_GROUP_OF`), un passo è fatto. `done_at` segue questa regola (`needs-service.ts`).
  * - **Validazione** (`validateNeedInput`, `validateNeedPatch`): uno schema solo per la pagina e,
  *   più avanti, per il MCP del team. I messaggi sono in italiano.
- * - **Viste** (`buildNeedsBoard`, `stepsHorizon`, `panelNeeds`, `needListsOfUseCase`): i blocchi
- *   della vista «Cosa serve», il blocco del pannello e il capitolo della scheda, da un elenco già
- *   letto per i revisori. Gli agenti di una riga vengono dal titolo dei suoi use case
+ * - **Viste** (`buildNeedsBoard`, `panelNeeds`, `needListsOfUseCase`): la vista «Cosa serve» (una
+ *   lista sola per chi deve muoversi, con la linea del tempo dei prossimi passi, rilascio 4), il
+ *   blocco del pannello e il capitolo della scheda, da un elenco già letto per i revisori. Le stesse
+ *   righe, lo stesso ordine (`needsActionFirst`, `compareStepsByDate`) e le stesse cinque in vista
+ *   (`NEED_ROWS_SHOWN`) nei tre posti. Gli agenti di una riga vengono dal titolo dei suoi use case
  *   (`needAgents`). Nessun conteggio e nessun filtro per persona: «Chi» è un testo della riga, mai
  *   un criterio.
  * - **Conteggi** (`NeedAskCounts`): i requisiti per gruppo di stato, come «Raccolta informazioni»
@@ -47,8 +49,8 @@ import { STATUS_GROUP_OF } from "../uc/views/status-groups.ts";
 import type { ItemStatus, SemaforoColor } from "../uc/vocab.ts";
 import { agentOfTitle } from "./agents.ts";
 import { FIGURE_SEPARATOR, formatDayInYear, formatEuro, formatInteger } from "./format.ts";
-import { isIsoDate, quarterOfDate } from "./quarter.ts";
-import type { IsoDate, Phase, QuarterCode } from "./types.ts";
+import { isIsoDate } from "./quarter.ts";
+import type { IsoDate } from "./types.ts";
 import { componentResult } from "./value-calc.ts";
 import { VALUE_CONFIDENCE_LABELS, type ValueComponent, type ValueModel, type ValueParams } from "./value-model.ts";
 
@@ -101,7 +103,7 @@ export const NEED_STEP_STATUS_LABEL: Readonly<Record<NeedStepStatus, string>> = 
 
 const STEP_TONE: Readonly<Record<NeedStepStatus, SemaforoColor>> = { proposta: "grigio", confermata: "blu", fatta: "verde" };
 
-/** Le aree delle tabelle di «Cosa serve», nell'ordine della pagina, con i tipi che raccolgono. */
+/** Le aree dei tipi di esigenza (il modulo e il MCP del team), con i tipi che raccolgono; la vista «Cosa serve» non le divide più (rilascio 4). */
 export const NEED_AREAS = Object.freeze([
   { key: "accessi", label: "Accessi", kinds: ["accesso"] },
   { key: "dati", label: "Dati e documenti", kinds: ["dato", "documento"] },
@@ -362,13 +364,6 @@ export interface NeedUseCaseRef {
   title: string;
 }
 
-/** Le colonne di uno use case che servono a «Questo trimestre». */
-export interface NeedBoardItem extends NeedUseCaseRef {
-  phase: Phase;
-  targetQuarter: QuarterCode | null;
-  valueModel: ValueModel | null;
-}
-
 /** Una riga di «Cosa serve», già scritta per lo schermo. */
 export interface NeedRow {
   id: string;
@@ -500,24 +495,6 @@ function refsOf(items: readonly NeedUseCaseRef[]): Map<string, NeedUseCaseRef> {
 
 // ─── La vista «Cosa serve» ───────────────────────────────────────────
 
-export interface NeedAreaTable {
-  key: NeedAreaKey;
-  label: string;
-  /** Da fare, nell'ordine di `compareNeeds`. */
-  open: NeedRow[];
-  /** Già a posto: chiuse di default. */
-  done: NeedRow[];
-  /** I requisiti dell'area per gruppo di stato, per la sua riga chiusa. */
-  counts: NeedAskCounts;
-}
-
-export interface NeedStepMonth {
-  /** `AAAA-MM`, oppure `senza_data`. */
-  key: string;
-  label: string;
-  rows: NeedRow[];
-}
-
 /** Una riga del ritorno da confermare: «6.600 all'anno × 1,5 min × 70% ≈ 116 h · 4.043 €». */
 export interface ReturnToConfirm {
   key: string;
@@ -525,19 +502,6 @@ export interface ReturnToConfirm {
   text: string;
   /** «Ipotesi», «Da misurare». */
   confidence: string;
-}
-
-/** «Cosa vi chiediamo questo trimestre»: una scheda per use case approvato per il trimestre, anche se già partito. */
-export interface QuarterAsk extends NeedUseCaseRef {
-  /** Chi conferma i numeri (`value_model.confirmBy`). */
-  confirmBy: string | null;
-  returns: ReturnToConfirm[];
-  /** Requisiti aperti che servono subito (o senza «quando»). */
-  now: NeedRow[];
-  /** Requisiti aperti che servono dopo la scheda A.8. */
-  afterA8: NeedRow[];
-  /** Decisioni aperte. */
-  toDecide: NeedRow[];
 }
 
 // ─── Chi deve muoversi (rilascio 4) ──────────────────────────────────
@@ -605,8 +569,8 @@ export interface NeedTimelineSection {
 export interface NeedTimeline {
   /** «Prima di oggi» (i passi scaduti), un mese per volta da quello di oggi, «Senza data»; solo quelle con passi. */
   sections: NeedTimelineSection[];
-  /** I passi fatti: chiusi di default. */
-  done: NeedRow[];
+  /** I passi fatti, per data: chiusi di default. */
+  done: NeedTimelineItem[];
 }
 
 const BEFORE_KEY = "prima";
@@ -635,20 +599,13 @@ export function splitTimeline(sections: readonly NeedTimelineSection[], shown: n
 }
 
 export interface NeedsBoard {
-  /** (Rilascio 4) I gruppi con almeno un requisito aperto, nell'ordine di `NEED_GROUP_KEYS`: ogni requisito aperto una volta. */
+  /** I gruppi con almeno un requisito aperto, nell'ordine di `NEED_GROUP_KEYS`: ogni requisito aperto una volta. */
   groups: NeedGroup[];
-  /** (Rilascio 4) I requisiti a posto, nell'ordine dei gruppi: chiusi di default. */
+  /** I requisiti a posto, nell'ordine dei gruppi: chiusi di default. */
   done: NeedRow[];
-  /** (Rilascio 4) I prossimi passi per data (`compareStepsByDate`) e quelli fatti. */
+  /** I prossimi passi per data (`compareStepsByDate`) e quelli fatti. */
   timeline: NeedTimeline;
-  /** Le aree con almeno una riga, nell'ordine di `NEED_AREAS`. */
-  areas: NeedAreaTable[];
-  /** I prossimi passi da fare, per mese di scadenza; quelli senza data in fondo. */
-  steps: NeedStepMonth[];
-  /** I passi fatti: chiusi di default. */
-  stepsDone: NeedRow[];
-  quarter: QuarterAsk[];
-  /** Tutti i requisiti della vista, con i filtri, per gruppo di stato: la riga sotto «Requisiti». */
+  /** Tutti i requisiti della vista, con i filtri, per gruppo di stato: la riga dei conteggi in cima. */
   counts: NeedAskCounts;
 }
 
@@ -661,31 +618,6 @@ export function monthHeading(month: string): string {
   const [year, m] = month.split("-").map(Number);
   const text = MONTH_LONG.format(new Date(Date.UTC(year, m - 1, 15, 12)));
   return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-/** I mesi di «Prossimi passi»: aperti quelli a portata, poi «Più avanti» e «Senza data», chiusi. */
-export interface StepsHorizon {
-  soon: NeedStepMonth[];
-  later: NeedStepMonth[];
-  undated: NeedStepMonth | null;
-}
-
-/**
- * I «Prossimi passi» a portata: aperti i mesi fino a quello di oggi (gli scaduti compresi); gli
- * altri, dal mese prossimo, sotto «Più avanti» e quelli senza data sotto «Senza data», chiusi. Senza
- * passi fino a questo mese resta aperto il primo mese che c'è; con soli passi senza data si leggono
- * aperti quelli. `steps` nell'ordine di `buildNeedsBoard`: dal mese più vicino, quelli senza data in
- * fondo.
- */
-export function stepsHorizon(steps: readonly NeedStepMonth[], today: string): StepsHorizon {
-  const dated = steps.filter((month) => month.key !== NO_DATE_KEY);
-  const undated = steps.find((month) => month.key === NO_DATE_KEY) ?? null;
-  if (!dated.length) return { soon: undated ? [undated] : [], later: [], undated: null };
-  // Il mese di oggi, `AAAA-MM`: «2026-10-29» → «2026-10».
-  const limit = today.slice(0, 7);
-  const near = dated.filter((month) => month.key <= limit);
-  const soon = near.length ? near : [dated[0]];
-  return { soon, later: dated.filter((month) => !soon.includes(month)), undated };
 }
 
 const DECIMAL = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 2 });
@@ -734,66 +666,42 @@ function passesBoardFilter(need: Pick<NeedView, "useCaseIds" | "title">, only: N
 }
 
 /**
- * I tre blocchi della vista «Cosa serve»:
- * 1. i requisiti, una tabella per area, con quelli già a posto da parte, con i conteggi per gruppo
- *    di stato (`counts`, di tutta la vista e di ogni area; i passi e le archiviate non contano);
- * 2. i prossimi passi per mese di scadenza, con quelli fatti da parte;
- * 3. una scheda per ogni use case approvato per questo trimestre (anche se è già in realizzazione):
- *    chi conferma, il ritorno da
- *    confermare (le voci a ipotesi e da misurare), i requisiti aperti divisi in «Ci serve subito»,
- *    «Dopo la scheda A.8» e «Da decidere» (le decisioni, qualunque sia il «quando»).
+ * La vista «Cosa serve» come una lista sola (rilascio 4): ogni requisito una volta, sotto chi deve
+ * muoversi, e la linea del tempo dei prossimi passi.
+ * 1. `groups`: i requisiti aperti per organizzazione, mai per persona (`needGroupOf`): il cliente
+ *    (con le cose da fare «Insieme»), i fornitori, Lateral Space, quelli senza parte; in ogni gruppo
+ *    prima quelli da verificare, poi l'ordine del team (`needsActionFirst`, come nella scheda e nel
+ *    pannello); solo i gruppi con righe. `done`: quelli a posto, nell'ordine dei gruppi.
+ * 2. `timeline`: i passi da fare per data (`compareStepsByDate`), in sezioni: «Prima di oggi» (gli
+ *    scaduti, anche di questo mese), un mese per volta da quello di oggi, «Senza data»; i fatti da parte.
+ * 3. `counts`: i requisiti della vista per gruppo di stato (i passi e le archiviate non contano).
  * Gli use case in realizzazione stanno nella Panoramica, sezione «In realizzazione».
  * `items` sono gli use case dei revisori del workspace: danno codici e titoli alle righe. `only`
  * restringe le esigenze a quelle degli use case che passano i filtri della pagina
  * (`NeedsBoardFilter`), conteggi compresi: con `trimestre` sono quelli di «Prossimo passo» della
- * Panoramica. Le righe nominano comunque tutti gli use case collegati.
+ * Panoramica. Le righe nominano comunque tutti gli use case collegati. `params` (le ipotesi di
+ * calcolo) non serve più alla vista: le schede del trimestre, con il ritorno da confermare, sono
+ * uscite nel rilascio 4 (il ritorno resta nella scheda di ogni use case).
  */
 export function buildNeedsBoard(
   needs: readonly NeedView[],
-  items: readonly NeedBoardItem[],
-  opts: { today: string; params: Pick<ValueParams, "hourlyCostEur" | "includeUnmeasured">; only?: NeedsBoardFilter | null },
+  items: readonly NeedUseCaseRef[],
+  opts: { today: string; params?: Pick<ValueParams, "hourlyCostEur" | "includeUnmeasured">; only?: NeedsBoardFilter | null },
 ): NeedsBoard {
   const refs = refsOf(items);
   const live = needs.filter((need) => !need.archivedAt && passesBoardFilter(need, opts.only ?? null)).slice().sort(compareNeeds);
-  const rows = live.map((need) => ({ need, row: needRow(need, refs, opts.today) }));
-
-  const areas: NeedAreaTable[] = NEED_AREAS.map((area) => ({ key: area.key, label: area.label, open: [], done: [], counts: emptyNeedAskCounts() }));
-  const areaOf = new Map(areas.map((area) => [area.key, area]));
+  const rowOf = new Map(live.map((need) => [need.id, needRow(need, refs, opts.today)]));
   const counts = emptyNeedAskCounts();
-  const months = new Map<string, NeedRow[]>();
-  const stepsDone: NeedRow[] = [];
-  for (const { need, row } of rows) {
-    if (need.type === "requisito") {
-      const table = areaOf.get(needAreaOf(need.kind))!;
-      (row.done ? table.done : table.open).push(row);
-      countRequirement(table.counts, need.status);
-      countRequirement(counts, need.status);
-      continue;
-    }
-    if (row.done) {
-      stepsDone.push(row);
-      continue;
-    }
-    const key = need.dueOn ? need.dueOn.slice(0, 7) : NO_DATE_KEY;
-    months.set(key, [...(months.get(key) ?? []), row]);
-  }
-  const steps = [...months.entries()]
-    .sort(([a], [b]) => (a === NO_DATE_KEY ? 1 : b === NO_DATE_KEY ? -1 : a.localeCompare(b)))
-    .map(([key, monthRows]) => ({ key, label: key === NO_DATE_KEY ? NO_DATE_LABEL : monthHeading(key), rows: monthRows }));
-
-  // (Rilascio 4) Chi deve muoversi: ogni requisito aperto una volta, nel gruppo della sua parte, prima
-  // quelli da verificare (`needsActionFirst`, come nella scheda e nel pannello); quelli a posto da parte,
-  // nell'ordine dei gruppi. I passi sulla linea del tempo, per data (`compareStepsByDate`): prima quelli
-  // scaduti, poi un mese per volta da quello di oggi, quelli senza data in fondo.
-  const rowOf = new Map(rows.map(({ need, row }) => [need.id, row]));
   const byGroup = new Map(NEED_GROUP_KEYS.map((key) => [key, { open: [] as NeedView[], done: [] as NeedView[] }]));
   const openSteps: NeedView[] = [];
   const doneSteps: NeedView[] = [];
-  for (const { need, row } of rows) {
+  for (const need of live) {
+    const done = rowOf.get(need.id)!.done;
     if (need.type === "requisito") {
       const group = byGroup.get(needGroupOf(need.ownerSide))!;
-      (row.done ? group.done : group.open).push(need);
-    } else (row.done ? doneSteps : openSteps).push(need);
+      (done ? group.done : group.open).push(need);
+      countRequirement(counts, need.status);
+    } else (done ? doneSteps : openSteps).push(need);
   }
   const groups = NEED_GROUP_KEYS.flatMap((key): NeedGroup[] => {
     const open = byGroup.get(key)!.open.sort(needsActionFirst);
@@ -810,45 +718,13 @@ export function buildNeedsBoard(
     }
     section.items.push({ ...rowOf.get(need.id)!, dueOn: need.dueOn });
   }
-  const timeline: NeedTimeline = { sections, done: doneSteps.sort(compareStepsByDate).map((need) => rowOf.get(need.id)!) };
-
-  const current = quarterOfDate(opts.today);
-  // Approvato per questo trimestre, anche se nel frattempo è già partito (in realizzazione con il
-  // trimestre di oggi): il ritorno da confermare e le richieste aperte servono ancora.
-  const quarter = items
-    .filter((item) => (item.phase === "approvato" || item.phase === "in_realizzazione") && item.targetQuarter === current)
-    .filter((item) => !opts.only || opts.only.useCaseIds.has(item.id.toLowerCase()))
-    .slice()
-    .sort(byCode)
-    .map((item): QuarterAsk => {
-      const id = item.id.toLowerCase();
-      const open = rows.filter(({ need, row }) => need.type === "requisito" && !row.done && need.useCaseIds.some((linked) => linked.toLowerCase() === id));
-      const toDecide = open.filter(({ need }) => need.kind === "decisione").map(({ row }) => row);
-      const afterA8 = open.filter(({ need }) => need.kind !== "decisione" && need.availability === "dopo_a8").map(({ row }) => row);
-      const now = open.filter(({ need }) => need.kind !== "decisione" && need.availability !== "dopo_a8").map(({ row }) => row);
-      return {
-        id: item.id,
-        code: item.code,
-        title: item.title,
-        confirmBy: item.valueModel?.confirmBy ?? null,
-        returns: returnsToConfirm(item.valueModel, opts.params),
-        now,
-        afterA8,
-        toDecide,
-      };
-    });
-
-  return { groups, done, timeline, areas: areas.filter((area) => area.open.length || area.done.length), steps, stepsDone, quarter, counts };
+  const stepsDone = doneSteps.sort(compareStepsByDate).map((need) => ({ ...rowOf.get(need.id)!, dueOn: need.dueOn }));
+  return { groups, done, timeline: { sections, done: stepsDone }, counts };
 }
 
 /** «Già a posto · 3», «Fatti · 2»: il titolo delle righe chiuse di default. */
 export function needDoneSummaryText(type: NeedType, count: number): string {
   return `${type === "requisito" ? "Già a posto" : count === 1 ? "Fatto" : "Fatti"} · ${count}`;
-}
-
-/** «Cosa vi chiediamo questo trimestre · 17 use case»: il titolo, chiuso di default, delle schede del trimestre. */
-export function quarterAskSummaryText(count: number): string {
-  return `Cosa vi chiediamo questo trimestre · ${formatInteger(count)} use case`;
 }
 
 /** «Per 3 use case»: nella vista «Cosa serve», gli use case di un'esigenza quando sono più di uno. */
@@ -876,25 +752,10 @@ export function needAskPieces(counts: NeedAskCounts): string[] {
   return pieces;
 }
 
-/** La riga sotto «Requisiti»: «86 aperti», «1 aperto» o «Nessuno aperto», poi i gruppi di `needAskPieces`. */
+/** La riga dei conteggi in cima a «Cosa serve»: «86 aperti», «1 aperto» o «Nessuno aperto», poi i gruppi di `needAskPieces`. */
 export function needsSummaryPieces(counts: NeedAskCounts): string[] {
   const open = counts.open === 0 ? "Nessuno aperto" : counts.open === 1 ? "1 aperto" : `${formatInteger(counts.open)} aperti`;
   return [open, ...needAskPieces(counts)];
-}
-
-/** «1 passo», «6 passi». */
-function stepsCountText(count: number): string {
-  return count === 1 ? "1 passo" : `${formatInteger(count)} passi`;
-}
-
-/** «Più avanti · 6 passi»: il titolo, chiuso, dei mesi dopo il prossimo. */
-export function needStepsLaterText(count: number): string {
-  return `Più avanti${FIGURE_SEPARATOR}${stepsCountText(count)}`;
-}
-
-/** «Senza data · 4 passi»: il titolo, chiuso, dei passi senza scadenza. */
-export function needStepsUndatedText(count: number): string {
-  return `${NO_DATE_LABEL}${FIGURE_SEPARATOR}${stepsCountText(count)}`;
 }
 
 /**
@@ -910,8 +771,9 @@ export function needAgents(useCases: readonly Pick<NeedUseCaseRef, "title">[]): 
   return [...agents].sort((a, b) => a.localeCompare(b, "it-IT"));
 }
 
+/** Niente da mostrare: nessun requisito (aperto o a posto) e nessun passo. */
 export function isBoardEmpty(board: NeedsBoard): boolean {
-  return !board.areas.length && !board.steps.length && !board.stepsDone.length && !board.quarter.length;
+  return !board.groups.length && !board.done.length && !board.timeline.sections.length && !board.timeline.done.length;
 }
 
 // ─── Conteggi dei requisiti ──────────────────────────────────────────

@@ -133,16 +133,17 @@ const routes = [
   { name: "alias-roadmap", path: "/dashboard/{ws:a}/use-cases?vista=roadmap", as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: NOT_ON_CONTRIBUTOR_OVERVIEW },
   // «Cosa serve»: requirements and next steps, reviewers only, last in the switcher, with «Vai alla
   // Panoramica» under them while use cases are in realization (the seed has some). seed-hub.mjs writes
-  // no needs, so the reviewers get the empty view. With needs it shows «Requisiti» with the counts
-  // line («4 aperti · 3 da chiedere · 1 in attesa · 1 a posto») and one closed line per area, then
-  // «Prossimi passi» open up to this month, with «Più avanti · N passi» and «Senza data · N passi» closed.
-  // Without requirements «Requisiti» says «Niente da chiedere per ora.» above the other blocks.
+  // no needs, so the reviewers get the empty view. With needs (release 4) it is one list: the counts
+  // line on top («4 aperti · 3 da chiedere · 1 in attesa · 1 a posto»), the open requirements grouped
+  // by who has to move (the client, «Fornitori», «Lateral Space»), five rows each and «Mostra le altre
+  // N» closed, «Già a posto · N» closed, and «Prossimi passi» beside them from 58rem of the page («Prima
+  // di oggi», the months, «Senza data»; five in view). No «Requisiti», no areas, no quarter cards.
   {
     name: "cosa-serve",
     path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve",
     as: REVIEWERS,
-    present: FULL_SEED ? ["Requisiti", "Vai alla Panoramica"] : ["Niente da chiedere per ora", "Vai alla Panoramica"],
-    absent: ["Cosa serve per far avanzare"],
+    present: FULL_SEED ? ["aperti", "Vai alla Panoramica"] : ["Niente da chiedere per ora", "Vai alla Panoramica"],
+    absent: ["Cosa serve per far avanzare", "Requisiti", "Cosa vi chiediamo questo trimestre", "Il ritorno da confermare"],
   },
   // Not for contributors: the page falls back to the Panoramica.
   { name: "cosa-serve", path: "/dashboard/{ws:a}/use-cases?vista=cosa-serve", as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: [...NOT_ON_CONTRIBUTOR_OVERVIEW, "Requisiti"] },
