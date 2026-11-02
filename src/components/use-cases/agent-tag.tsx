@@ -3,10 +3,12 @@ import { cn } from "@/lib/utils";
 
 /**
  * Il tag dell'agente (rilascio «Panoramica»): «LIBRA L1», il prefisso del titolo nel colore
- * dell'agente (`--uc-agente-*` di globals.css, solo tema scuro). Il colore sta solo sul tag e sulla
- * barra del valore; il resto della pagina resta neutro. Un agente senza tono (fuori dalla tavolozza
- * della pagina) ha il tag neutro: bordo dei campi e testo pieno. Angoli arrotondati, mai una
- * pillola: non deve sembrare una fase. Le classi sono scritte per intero, così Tailwind le trova.
+ * dell'agente (`--uc-agente-*` di globals.css, nei due temi: in «Chiaro» le stesse tinte, più scure,
+ * e il bordo del tag all'80% del suo colore, con la regola di `[data-slot="agent-tag"]` che legge
+ * `data-tone`). Il colore sta solo sul tag e sulla barra del valore; il resto della pagina resta
+ * neutro. Un agente senza tono (fuori dalla tavolozza della pagina) ha il tag neutro: bordo dei
+ * campi e testo pieno. Angoli arrotondati, mai una pillola: non deve sembrare una fase. Le classi
+ * sono scritte per intero, così Tailwind le trova.
  */
 export const AGENT_TAG_CLASS: Readonly<Record<AgentTone, string>> = {
   1: "border-uc-agente-1/55 bg-uc-agente-1/16 text-uc-agente-1",
