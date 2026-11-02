@@ -1,9 +1,8 @@
 "use client";
 
 import { useId } from "react";
-import { BellRing, ListPlus, RotateCcw, Send, Unlink } from "lucide-react";
+import { RotateCcw, Send } from "lucide-react";
 import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
-import { StatusDot } from "@/components/uc/ui/status-dot";
 import { Button } from "@/components/ui/button";
 import { remindReferentRequestAction, retryReferentRequestEmailAction } from "@/lib/actions/use-case-referents";
 import type { ReferentRequestView } from "@/lib/use-cases/referent/contract";
@@ -14,22 +13,46 @@ import { useReferentRunner } from "./referent-actions";
 const T = REFERENT_UI_TEXT;
 const ACTION = "min-h-11 sm:min-h-7";
 
-/** Le azioni che si vedono su una richiesta: le altre stanno in «Altro». Pure, per i test. */
-export function requestActionsShown(request: Pick<ReferentRequestView, "status" | "actions">, canAsk: boolean) {
+/** Una voce di «Altro» di una richiesta: si sceglie, oppure è spenta con il suo motivo. */
+export type RequestMenuKey = "remind" | "add" | "revoke" | "correct" | "erase";
+
+/**
+ * (Rilascio 4, §11) Cosa si vede su una richiesta: al massimo un pulsante («Riprova l'invio» quando
+ * l'email non è partita, altrimenti «Chiedi di nuovo» quando la richiesta è senza risposta e chi guarda
+ * può arrivare in fondo ai passi) e il resto in «Altro», secondo lo stato. Puro, per i test.
+ */
+export function requestActionsShown(
+  request: Pick<ReferentRequestView, "status" | "silent" | "actions">,
+  canAsk: boolean,
+  canAskAgain: boolean,
+): { primary: "retry" | "askAgain" | null; menu: { key: RequestMenuKey; allowed: boolean; reason: string | null }[] } {
+  if (!canAsk) return { primary: null, menu: [] };
+  const a = request.actions;
+  const primary = a.retry ? "retry" : a.askAgain && canAskAgain ? "askAgain" : null;
   const live = request.status === "inviata";
-  return {
-    remind: canAsk && live,
-    add: canAsk && live,
-    revoke: canAsk && live && request.actions.revoke,
-    askAgain: canAsk && request.actions.askAgain,
-    retry: canAsk && request.actions.retry,
-  };
+  const correct = { key: "correct" as const, allowed: a.correctEmail, reason: a.correctEmail ? null : T.correctEmailInDossier };
+  const erase = { key: "erase" as const, allowed: true, reason: null };
+  const menu: { key: RequestMenuKey; allowed: boolean; reason: string | null }[] = [];
+  if (live) {
+    menu.push({ key: "remind", allowed: a.remind.allowed, reason: a.remind.allowed ? null : a.remind.reason });
+    menu.push({ key: "add", allowed: a.add.allowed, reason: a.add.allowed ? null : a.add.reason });
+    if (a.revoke) menu.push({ key: "revoke", allowed: true, reason: null });
+    menu.push(correct);
+  } else if (request.status === "scaduta" && a.askAgain) {
+    // Scaduta con domande aperte («Nessuna risposta»).
+    menu.push(correct);
+  } else if (request.status === "completata" && a.revoke) {
+    menu.push({ key: "revoke", allowed: true, reason: null });
+  }
+  if (a.erase) menu.push(erase);
+  return { primary, menu };
 }
 
 /**
- * Il blocco «Richieste» del capitolo «Cosa serve» (SPEC §5.2, §P2.10.7): per ogni richiesta di
- * questo use case, dalla più recente, il referente, lo stato (puntino più parola), le righe già
- * scritte dal server, gli avvisi e le azioni. Nessun tempo di risposta, nessun «aperto», nessun
+ * Il blocco «Richieste» del capitolo «Cosa serve» (SPEC §5.2, §P2.10.7; rilascio 4 §11): per ogni
+ * richiesta di questo use case, dalla più recente, il referente, una parola sola calcolata dal server
+ * («In attesa», «Nessuna risposta», «Risposte ricevute», «Chiusa»), le righe già scritte dal server,
+ * gli avvisi, al massimo un pulsante e «Altro». Nessun tempo di risposta, nessun «aperto», nessun
  * confronto tra persone (art. 15.4).
  */
 export function RequestsList({
@@ -38,6 +61,7 @@ export function RequestsList({
   useCaseId,
   requests,
   canAsk,
+  canAskAgain = false,
   onOpen,
 }: {
   /**
@@ -49,6 +73,8 @@ export function RequestsList({
   useCaseId: string;
   requests: readonly ReferentRequestView[];
   canAsk: boolean;
+  /** (Rilascio 4) `askDialogEntry(panel).canAskAgain`: «Chiedi di nuovo» solo a chi può arrivare in fondo ai passi. */
+  canAskAgain?: boolean;
   onOpen: (dialog: ReferentDialog) => void;
 }) {
   const headingId = useId();
@@ -56,7 +82,7 @@ export function RequestsList({
   const rows = (
     <ul data-slot={bare ? "referent-requests" : undefined} className="divide-y rounded-lg border">
       {requests.map((request) => (
-        <RequestRow key={request.id} workspaceId={workspaceId} useCaseId={useCaseId} request={request} canAsk={canAsk} onOpen={onOpen} />
+        <RequestRow key={request.id} workspaceId={workspaceId} useCaseId={useCaseId} request={request} canAsk={canAsk} canAskAgain={canAskAgain} onOpen={onOpen} />
       ))}
     </ul>
   );
@@ -76,29 +102,35 @@ function RequestRow({
   useCaseId,
   request,
   canAsk,
+  canAskAgain,
   onOpen,
 }: {
   workspaceId: string;
   useCaseId: string;
   request: ReferentRequestView;
   canAsk: boolean;
+  canAskAgain: boolean;
   onOpen: (dialog: ReferentDialog) => void;
 }) {
-  const hintId = useId();
   const { pending, run } = useReferentRunner();
-  const shown = requestActionsShown(request, canAsk);
+  const shown = requestActionsShown(request, canAsk, canAskAgain);
   const contact = { id: request.contact.id, name: request.contact.name };
-  const remindReason = shown.remind && !request.actions.remind.allowed ? request.actions.remind.reason : null;
-  const addReason = shown.add && !request.actions.add.allowed ? request.actions.add.reason : null;
-  const hints = [...new Set([remindReason, addReason].filter((hint): hint is string => Boolean(hint)))];
-  const more: ActionMenuItem[] = canAsk
-    ? [
-        request.actions.correctEmail
-          ? { label: T.correctEmail, onSelect: () => onOpen({ kind: "correct", contact }) }
-          : { label: T.correctEmail, disabled: true, hint: T.correctEmailInDossier },
-        ...(request.actions.erase ? [{ label: T.erase, destructive: true, onSelect: () => onOpen({ kind: "erase", contact }) }] : []),
-      ]
-    : [];
+  const remind = () => {
+    if (!pending) void run(() => remindReferentRequestAction(workspaceId, useCaseId, request.id, request.version), { inDialog: false });
+  };
+  const LABEL: Record<RequestMenuKey, string> = { remind: T.remind, add: T.add, revoke: T.revoke, correct: T.correctEmail, erase: T.erase };
+  const ACT: Record<RequestMenuKey, () => void> = {
+    remind,
+    add: () => onOpen({ kind: "add", request }),
+    revoke: () => onOpen({ kind: "revoke", request }),
+    correct: () => onOpen({ kind: "correct", contact }),
+    erase: () => onOpen({ kind: "erase", contact }),
+  };
+  const more: ActionMenuItem[] = shown.menu.map((item) =>
+    item.allowed
+      ? { label: LABEL[item.key], onSelect: ACT[item.key], ...(item.key === "erase" ? { destructive: true } : {}) }
+      : { label: LABEL[item.key], disabled: true, ...(item.reason ? { hint: item.reason } : {}) },
+  );
 
   return (
     <li data-slot="referent-request" data-status={request.status} data-id={request.id} className="space-y-2 px-3 py-2.5">
@@ -108,7 +140,10 @@ function RequestRow({
             {request.contact.name}
             {request.contact.roleLabel ? <span className="font-normal text-muted-foreground"> · {request.contact.roleLabel}</span> : null}
           </p>
-          <StatusDot tone={request.tone} label={request.statusLabel} />
+          {/* Una parola sola, senza puntino: i cinque colori restano quelli dei gruppi di «Cosa serve». */}
+          <p data-slot="referent-request-word" className="text-xs font-medium">
+            {request.statusLabel}
+          </p>
         </div>
         {more.length ? <ActionMenu items={more} trigger="altro" label={T.more} className="shrink-0" /> : null}
       </div>
@@ -131,64 +166,25 @@ function RequestRow({
         </div>
       ) : null}
       {request.email.state !== "partita" && request.email.label ? <p className="text-xs break-words text-muted-foreground">{request.email.label}</p> : null}
-      {shown.askAgain || shown.retry || shown.remind || shown.add || shown.revoke ? (
-        <div className="flex flex-wrap items-center gap-1">
-          {shown.askAgain ? (
-            <Button type="button" variant="outline" size="sm" className={ACTION} onClick={() => onOpen({ kind: "again", request })}>
-              <Send aria-hidden />
-              {T.askAgain}
-            </Button>
-          ) : null}
-          {shown.retry ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={ACTION}
-              aria-busy={pending || undefined}
-              onClick={() => {
-                if (!pending) void run(() => retryReferentRequestEmailAction(workspaceId, useCaseId, request.id, request.version), { inDialog: false });
-              }}
-            >
-              <RotateCcw aria-hidden />
-              {T.retry}
-            </Button>
-          ) : null}
-          {shown.remind ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={ACTION}
-              disabled={!request.actions.remind.allowed}
-              aria-busy={pending || undefined}
-              aria-describedby={remindReason ? hintId : undefined}
-              onClick={() => {
-                if (!pending) void run(() => remindReferentRequestAction(workspaceId, useCaseId, request.id, request.version), { inDialog: false });
-              }}
-            >
-              <BellRing aria-hidden />
-              {T.remind}
-            </Button>
-          ) : null}
-          {shown.add ? (
-            <Button type="button" variant="ghost" size="sm" className={ACTION} disabled={!request.actions.add.allowed} onClick={() => onOpen({ kind: "add", request })}>
-              <ListPlus aria-hidden />
-              {T.add}
-            </Button>
-          ) : null}
-          {shown.revoke ? (
-            <Button type="button" variant="ghost" size="sm" className={`${ACTION} text-muted-foreground`} onClick={() => onOpen({ kind: "revoke", request })}>
-              <Unlink aria-hidden />
-              {T.revoke}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-      {hints.length ? (
-        <p id={hintId} className="text-xs break-words text-muted-foreground">
-          {hints.join(" ")}
-        </p>
+      {shown.primary === "retry" ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={ACTION}
+          aria-busy={pending || undefined}
+          onClick={() => {
+            if (!pending) void run(() => retryReferentRequestEmailAction(workspaceId, useCaseId, request.id, request.version), { inDialog: false });
+          }}
+        >
+          <RotateCcw aria-hidden />
+          {T.retry}
+        </Button>
+      ) : shown.primary === "askAgain" ? (
+        <Button type="button" variant="outline" size="sm" className={ACTION} onClick={() => onOpen({ kind: "again", request })}>
+          <Send aria-hidden />
+          {T.askAgain}
+        </Button>
       ) : null}
     </li>
   );

@@ -9,8 +9,6 @@
  *
  * Modulo puro: import relativi `.ts`, si usa anche nei componenti client.
  */
-import type { SemaforoColor } from "../../uc/vocab.ts";
-import type { ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
 
 /** Riempie `{chiave}` con i valori dati; i segnaposto senza valore restano com'erano. */
 export function fillText(template: string, values: Readonly<Record<string, string | number>>): string {
@@ -245,26 +243,18 @@ export const REFERENT_UI_TEXT = Object.freeze({
   }),
 });
 
-// ─── Stati delle richieste (§5.2) ────────────────────────────────────
+// ─── Stati delle richieste (§5.2; rilascio 4 §11) ────────────────────
 
-export const REFERENT_STATUS_LABEL: Readonly<Record<ReferentRequestStatus, string>> = Object.freeze({
-  inviata: "In attesa",
-  completata: "Risposte ricevute",
-  scaduta: "Scaduta",
-  revocata: "Revocata",
-});
-
-export const REFERENT_STATUS_TONE: Readonly<Record<ReferentRequestStatus, SemaforoColor>> = Object.freeze({
-  inviata: "blu",
-  completata: "verde",
-  scaduta: "giallo",
-  revocata: "grigio",
-});
-
-/** (Parte 2) Le due varianti «senza risposta» degli stati: sempre in rosso. */
-export const REFERENT_SILENT_STATUS = Object.freeze({
-  live: { label: "Senza risposta", tone: "rosso" as SemaforoColor },
-  expired: { label: "Scaduta senza risposta", tone: "rosso" as SemaforoColor },
+/**
+ * (Rilascio 4) La parola di una richiesta in «Richieste inviate», una sola e senza colore: i cinque
+ * colori restano quelli dei gruppi di «Cosa serve». «Nessuna risposta» è la parola della campanella
+ * per lo stesso fatto.
+ */
+export const REFERENT_REQUEST_WORD = Object.freeze({
+  waiting: "In attesa",
+  silent: "Nessuna risposta",
+  answered: "Risposte ricevute",
+  closed: "Chiusa",
 });
 
 // ─── Pagina pubblica (§4.4) ──────────────────────────────────────────

@@ -302,7 +302,8 @@ test("la scheda: niente chip nella testata; il passo «Informazioni» del percor
   assert.match(silent, /<details id="richieste"/, "l'ancora c'è");
   assert.ok(!silent.includes("Informazioni: senza risposta"));
   assert.equal(textOf(summaryOf(silent)), `0${N}di ${silentTotal}${N}informazioni ricevute${N}· 2${N}senza${N}risposta${N}· ${silentTotal - 2}${N}da${N}chiedere`);
-  assert.ok(silent.includes("Scaduta senza risposta"), "la richiesta in rosso, con la sua data nelle «Richieste»");
+  // (Rilascio 4) Una parola sola, la stessa della campanella: «Nessuna risposta».
+  assert.ok(silent.includes('data-slot="referent-request-word" class="text-xs font-medium">Nessuna risposta</p>'), "la richiesta scaduta senza risposta, in una parola, nelle «Richieste»");
   const done = await detailHtml("builder", cards.done);
   assert.match(infoStepOf(done), /data-state="fatto"/);
   assert.ok(textOf(infoStepOf(done)).endsWith("a posto"), textOf(infoStepOf(done)));
@@ -396,7 +397,7 @@ test("`?capitolo=richieste`: «Richieste inviate» aperta dal server con «Chied
   assert.equal(landing.target, "richieste", "arriva a «Richieste inviate» (il fuoco va al suo riassunto)");
   assert.ok(landing.tag, "la piega «Richieste inviate» c'è");
   assert.match(landing.tag!, /\sopen=""/, "aperta dal server");
-  assert.ok(landing.requests.includes("Chiedi di nuovo") && landing.requests.includes("Scaduta senza risposta"), "la richiesta scaduta con «Chiedi di nuovo»");
+  assert.ok(landing.requests.includes("Chiedi di nuovo") && landing.requests.includes("Nessuna risposta"), "la richiesta scaduta con «Chiedi di nuovo»");
   // Con `?capitolo=cosa-serve` (risposte, documenti, informazioni complete) la piega resta chiusa.
   const needs = await landingOf("builder", cards.silent, "/x?capitolo=cosa-serve");
   assert.equal(needs.target, "cosa-serve");

@@ -69,7 +69,7 @@ import {
   type UseCaseReferentPanel,
 } from "@/lib/use-cases/referent/contract";
 import { contactHubOnlyReadSql, contactHubOnlySql, contactUseCasesSql, referentEraseStatements, referentPurgeStatements } from "@/lib/use-cases/referent/erase";
-import { REFERENT_ERROR_MESSAGES, REFERENT_SILENT_STATUS, REFERENT_UI_TEXT, companyLabel, fillText } from "@/lib/use-cases/referent/labels";
+import { REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, companyLabel, fillText } from "@/lib/use-cases/referent/labels";
 import { gapsOf, missingPreparedQuestions, preparedNeedInput } from "@/lib/use-cases/referent/prepare";
 import { askableNeeds, answerableNeeds } from "@/lib/use-cases/referent/questions";
 import { manualReminderCheck, referentReminderDue, retentionDue, sameRomeDay, isStaleEmail, type ReminderState } from "@/lib/use-cases/referent/schedule";
@@ -102,7 +102,7 @@ import {
 import { reviewerStatus } from "@/lib/use-cases/referent/state";
 import { checkQuestionTitle, checkRequestMessage, checkReviewerAnswer } from "@/lib/use-cases/referent/text";
 import { formatFileSize } from "@/lib/use-cases/referent/upload-transport";
-import { maskEmail, needReferentLine, referentDateLabel, requestLines, requestStatusView, type LatestAskForNeed } from "@/lib/use-cases/referent/view";
+import { maskEmail, needReferentLine, referentDateLabel, requestLines, requestWordOf, type LatestAskForNeed } from "@/lib/use-cases/referent/view";
 import type { UseCaseNeedLists } from "@/lib/use-cases/needs";
 import type { ServiceResult, WriteContext } from "@/lib/use-cases/service";
 
@@ -571,8 +571,6 @@ export async function loadUseCaseReferentPanel(i: {
     const requestViews: ReferentRequestView[] = requests.map((r) => {
       const live = r.status === "inviata";
       const silentRequest = live && r.reminderCount >= 2 && r.openItems > 0;
-      const base = requestStatusView(r.status);
-      const view = silentRequest ? REFERENT_SILENT_STATUS.live : r.status === "scaduta" && r.openItems > 0 ? REFERENT_SILENT_STATUS.expired : base;
       const notices: string[] = [];
       if (live && !ack) notices.push(T.notices.remindersStopped);
       if (live && r.sentAt && !r.hasValidToken) notices.push(T.notices.emailChanged);
@@ -629,8 +627,7 @@ export async function loadUseCaseReferentPanel(i: {
         version: r.version,
         contact: { id: r.contactId, name, roleLabel: r.roleLabel, emailMasked: maskEmail(r.contactEmail), hubOnly: hubOnly.get(r.contactId) === true },
         status: r.status,
-        statusLabel: view.label,
-        tone: view.tone,
+        statusLabel: requestWordOf({ status: r.status, silent: silentRequest, openItems: r.openItems }),
         silent: silentRequest,
         lines: requestLines(
           {

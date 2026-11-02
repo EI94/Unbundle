@@ -410,9 +410,15 @@ test("con l'autorizzazione e le email accese: la richiesta, le righe sotto le es
   assert.ok(page.includes(T.requestsHeading));
   const requests = page.slice(page.indexOf('data-slot="referent-requests"'));
   assert.ok(requests.includes(MARIO.name));
-  assert.ok(requests.includes(labels.REFERENT_STATUS_LABEL.inviata), "In attesa");
+  // (Rilascio 4) Una parola sola, senza puntino; al massimo un pulsante, il resto in «Altro».
+  assert.match(requests, /<p data-slot="referent-request-word" class="text-xs font-medium">In attesa<\/p>/);
+  assert.ok(!/data-slot="status-dot"/.test(requests.slice(0, requests.indexOf("</li>"))), "nessun puntino sulla richiesta");
   assert.match(requests, /Inviata il \d{2}\/\d{2} · scade il \d{2}\/\d{2}/);
-  for (const action of [T.remind, T.add, T.revoke, T.more]) assert.ok(requests.includes(action), action);
+  assert.ok(requests.includes(`>${T.more}<`), "«Altro»");
+  const row = requests.slice(0, requests.indexOf("</li>"));
+  for (const action of [T.remind, T.add, T.revoke]) assert.ok(!row.includes(`${action}</button>`), `${action} sta in «Altro»`);
+  const rowButtons = [...row.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1].replace(/<[^>]+>/g, "").trim()).filter((text) => text !== T.more);
+  assert.ok(rowButtons.length <= 1, JSON.stringify(rowButtons));
   // Sotto le esigenze: la riga della richiesta, poi risposte e file chiusi sotto «Risposte e file · n».
   assert.match(page, new RegExp(`Chiesta a ${MARIO.name} il \\d{2}/\\d{2} · Risposta ricevuta il \\d{2}/\\d{2}`));
   assert.ok(page.includes(ANSWER), "la risposta del referente");

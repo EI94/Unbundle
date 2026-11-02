@@ -256,7 +256,15 @@ export function SectionNeeds({
           {/* Le richieste ai referenti, chiuse: l'ancora di «Vedi le richieste» del riquadro «Prossimo passo»; aperte con `?capitolo=richieste` (`useLanding`). */}
           {feature && requests.length ? (
             <Disclosure id="richieste" defaultOpen={requestsOpen} summary={fillText(REFERENT_UI_TEXT.requestsSentSummary, { n: formatInteger(requests.length) })} slot="needs-requests" className="scroll-mt-20">
-              <RequestsList bare workspaceId={workspaceId} useCaseId={useCaseId} requests={requests} canAsk={canEdit && feature.canAsk} onOpen={setReferentDialog} />
+              <RequestsList
+                bare
+                workspaceId={workspaceId}
+                useCaseId={useCaseId}
+                requests={requests}
+                canAsk={canEdit && feature.canAsk}
+                canAskAgain={Boolean(entry?.canAskAgain)}
+                onOpen={setReferentDialog}
+              />
             </Disclosure>
           ) : null}
         </div>

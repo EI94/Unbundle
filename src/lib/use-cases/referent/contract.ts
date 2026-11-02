@@ -6,7 +6,6 @@
  * Modulo puro: import relativi `.ts`, nessun `server-only`, si usa anche nei componenti client.
  */
 import type { Issue } from "../../uc/answers/issues.ts";
-import type { SemaforoColor } from "../../uc/vocab.ts";
 import type { ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
 export type { ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
 
@@ -229,9 +228,9 @@ export interface ReferentRequestView {
   contact: { id: string; name: string; roleLabel: string | null; emailMasked: string | null; hubOnly: boolean };
   /** Stato per i revisori. Una richiesta «inviata» oltre `expires_at` si mostra «scaduta». Non esiste «in corso». */
   status: ReferentRequestStatus;
+  /** (Rilascio 4) La parola della richiesta, una sola (`requestWordOf`): «In attesa», «Nessuna risposta», «Risposte ricevute», «Chiusa». */
   statusLabel: string;
-  tone: SemaforoColor;
-  /** (Parte 2) Viva, reminder_count = 2 e domande aperte: statusLabel «Senza risposta», tono rosso, «Chiedi di nuovo» ammesso. */
+  /** (Parte 2) Viva, reminder_count = 2 e domande aperte: «Nessuna risposta», «Chiedi di nuovo» ammesso. */
   silent: boolean;
   /** Righe già scritte in italiano, per esempio «Inviata il 27/10 · scade il 26/11». Niente conteggi, mai dalla lettura dell'informativa. */
   lines: string[];

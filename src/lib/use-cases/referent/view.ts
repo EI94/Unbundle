@@ -16,10 +16,9 @@
  * Modulo puro.
  */
 import { parseCivilDate, romeDate } from "../../uc/calendar.ts";
-import type { SemaforoColor } from "../../uc/vocab.ts";
 import type { ReferentItemState, ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
 import type { ReferentAskView, ReferentFileView, ReferentQuestionView } from "./contract.ts";
-import { REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, REFERENT_STATUS_LABEL, REFERENT_STATUS_TONE, REFERENT_UI_TEXT, fillText } from "./labels.ts";
+import { REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, REFERENT_REQUEST_WORD, REFERENT_UI_TEXT, fillText } from "./labels.ts";
 import { nextReminderOn } from "./schedule.ts";
 import { privacyAccepted, reviewerStatus } from "./state.ts";
 
@@ -49,9 +48,18 @@ export function maskEmail(email: string | null): string | null {
   return `${clean[0]}•••${clean.slice(at)}`;
 }
 
-/** Parola e colore dello stato di una richiesta. */
-export function requestStatusView(status: ReferentRequestStatus): { label: string; tone: SemaforoColor } {
-  return { label: REFERENT_STATUS_LABEL[status], tone: REFERENT_STATUS_TONE[status] };
+/**
+ * (Rilascio 4, §11) La parola di una richiesta, una sola, calcolata qui per tutti: «In attesa» (viva),
+ * «Nessuna risposta» (viva dopo i due promemoria con domande aperte, oppure scaduta con domande
+ * aperte), «Risposte ricevute» (completata), «Chiusa» (scaduta senza domande aperte, o revocata).
+ * `status` è quello dei revisori (`reviewerStatus`: oltre la scadenza è già «scaduta»).
+ */
+export function requestWordOf(r: { status: ReferentRequestStatus; silent: boolean; openItems: number }): string {
+  const w = REFERENT_REQUEST_WORD;
+  if (r.status === "inviata") return r.silent ? w.silent : w.waiting;
+  if (r.status === "completata") return w.answered;
+  if (r.status === "scaduta" && r.openItems > 0) return w.silent;
+  return w.closed;
 }
 
 /** Le colonne di una richiesta per le sue righe. Nessun campo dell'informativa, nessuna differenza tra date. */
@@ -314,7 +322,6 @@ export const PANEL_VIEW_KEYS: readonly string[] = Object.freeze([
   "requests[].contact.hubOnly",
   "requests[].status",
   "requests[].statusLabel",
-  "requests[].tone",
   "requests[].silent",
   "requests[].lines",
   "requests[].lines[]",
