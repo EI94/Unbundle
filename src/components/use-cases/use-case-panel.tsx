@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useRef, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, X } from "lucide-react";
@@ -25,6 +25,7 @@ import { PhasePill } from "./phase-pill";
 import { ProposerAnswers } from "./proposer-answers";
 import { OwnAnswer } from "./proposer-answers";
 import { OwnMarker, othersCardNote, shownPhaseLabel } from "./use-case-row";
+import { focusPanelStart } from "./panel-focus";
 import { ValueFigure } from "./value-figure";
 import { WhenControl } from "./when-control";
 
@@ -108,7 +109,7 @@ export interface UseCasePanelProps {
  * pillola («Approvato · T1 2027», come nella riga e nella card); delle proprie proposte anche
  * codice, «Proposto da te», nota pubblica in sola lettura, in «Serve info» «Rispondi» (D17) e
  * «Apri la scheda ›». Delle proposte altrui niente link alla scheda: direbbe le stesse cose
- * (D4, D13).
+ * (D4, D13). All'apertura il fuoco va a «Chiudi» senza far scorrere il pannello (`focusPanelStart`).
  */
 export function UseCasePanel({ workspaceId, data, closeHref, detailHref, today, canDecide, bands, dossierDown = false, teamName }: UseCasePanelProps) {
   const router = useRouter();
@@ -121,6 +122,7 @@ export function UseCasePanel({ workspaceId, data, closeHref, detailHref, today, 
     setOpen(true);
   }
   const [, startTransition] = useTransition();
+  const closeRef = useRef<HTMLButtonElement>(null);
   const item = data.item;
 
   function close() {
@@ -138,6 +140,7 @@ export function UseCasePanel({ workspaceId, data, closeHref, detailHref, today, 
         side="right"
         showCloseButton={false}
         data-slot="use-case-panel"
+        initialFocus={(openType) => focusPanelStart(openType, closeRef.current, document.activeElement)}
         className="gap-0 overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-[480px]"
       >
         <SheetHeader className="flex-row items-start justify-between gap-3 border-b px-4 py-3">
@@ -145,7 +148,7 @@ export function UseCasePanel({ workspaceId, data, closeHref, detailHref, today, 
             {code ? <p className="font-mono text-xs text-muted-foreground">{code}</p> : null}
             <SheetTitle className="text-base leading-snug font-semibold">{item.title}</SheetTitle>
           </div>
-          <SheetClose render={<Button variant="ghost" size="icon" className="size-11 shrink-0 sm:size-8" aria-label={PANEL_TEXT.close} />}>
+          <SheetClose ref={closeRef} render={<Button variant="ghost" size="icon" className="size-11 shrink-0 sm:size-8" aria-label={PANEL_TEXT.close} />}>
             <X aria-hidden />
           </SheetClose>
         </SheetHeader>
