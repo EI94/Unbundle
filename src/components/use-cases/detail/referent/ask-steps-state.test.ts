@@ -11,6 +11,7 @@ import {
   enterQuestions,
   firstStep,
   initialSession,
+  isRepeatActivation,
   mergeTicks,
   okNoticeOf,
   personOf,
@@ -20,6 +21,7 @@ import {
   sendLabel,
   stepErrors,
   stepItems,
+  STEP_SETTLE_MS,
   toLine,
   type AskNeedInfo,
 } from "./ask-steps-state.ts";
@@ -218,4 +220,15 @@ test("«A» e «Invia a …»: il nome con l'indirizzo intero quando è arrivato
   assert.equal(toLine({ displayName: "Lia Esempio", email: null }, null), "Lia Esempio");
   assert.equal(sendLabel(person), "Invia a Lia Esempio");
   assert.equal(againLineOf("Aldo Prova", "a•••@alfa.test"), "A Aldo Prova · a•••@alfa.test");
+});
+
+test("dopo un cambio di passo il piede aspetta: il secondo clic di un doppio clic e un clic troppo vicino non contano", () => {
+  assert.equal(STEP_SETTLE_MS, 450);
+  assert.equal(isRepeatActivation({ clickCount: 2, msSinceStep: 5000 }), true, "doppio clic");
+  assert.equal(isRepeatActivation({ clickCount: 3, msSinceStep: Number.POSITIVE_INFINITY }), true);
+  assert.equal(isRepeatActivation({ clickCount: 1, msSinceStep: 120 }), true, "subito dopo il passo");
+  assert.equal(isRepeatActivation({ clickCount: 0, msSinceStep: 449 }), true, "Invio dalla tastiera, subito dopo il passo");
+  assert.equal(isRepeatActivation({ clickCount: 1, msSinceStep: 450 }), false);
+  assert.equal(isRepeatActivation({ clickCount: 0, msSinceStep: 2000 }), false, "Invio dalla tastiera");
+  assert.equal(isRepeatActivation({ clickCount: 1, msSinceStep: Number.POSITIVE_INFINITY }), false, "primo passo dopo l'apertura");
 });

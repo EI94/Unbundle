@@ -276,7 +276,7 @@ test("«Controlla e invia» con l'ok sui fornitori da dare: il motivo e «Apri I
 });
 
 test("il piede: «Annulla» o «Indietro» e il passo dopo pieno; con un motivo «Chiudi», niente di pieno", () => {
-  const foot = (primary: unknown, back = false) => readable(renderToStaticMarkup(h(steps.AskFooter, { formId: "passo", back, busy: false, primary, onBack: () => {}, onCancel: () => {} })));
+  const foot = (primary: unknown, back = false) => readable(renderToStaticMarkup(h(steps.AskFooter, { formId: "passo", back, busy: false, primary, tooSoon: () => false, onBack: () => {}, onCancel: () => {} })));
   const one = foot({ kind: "submit", label: T.next });
   assert.deepEqual(filled(one), [T.next]);
   assert.ok(one.includes(`>${T.cancel}</button>`));
@@ -291,8 +291,37 @@ test("il piede: «Annulla» o «Indietro» e il passo dopo pieno; con un motivo 
   assert.deepEqual(filled(closed), [], "con un motivo nessun «Invia»");
   assert.ok(closed.includes(`>${T.close}</button>`) && !closed.includes("Invia a"));
   for (const html of [one, two, send, closed]) assert.doesNotMatch(html, /disabled=""/, "mai spento");
-  const busy = readable(renderToStaticMarkup(h(steps.AskFooter, { formId: "passo", back: true, busy: true, primary: { kind: "submit", label: "Invia a Lia Esempio" }, onBack: () => {}, onCancel: () => {} })));
+  const busy = readable(renderToStaticMarkup(h(steps.AskFooter, { formId: "passo", back: true, busy: true, primary: { kind: "submit", label: "Invia a Lia Esempio" }, tooSoon: () => false, onBack: () => {}, onCancel: () => {} })));
   assert.match(busy, /aria-busy="true"/);
+});
+
+test("il piede non conta il secondo clic di un doppio clic né un clic subito dopo il cambio di passo: «Invia» non parte dal clic di «Avanti»", () => {
+  // Il pulsante del passo sta nello stesso punto nei tre passi (stessa altezza della finestra): il secondo
+  // clic di un doppio clic su «Avanti · n domande» cadrebbe su «Invia a …».
+  const tooSoon = (clickCount: number, at: number) => clickCount > 1 || at < 1000;
+  const calls: string[] = [];
+  type Clickable = { props: { type?: string; onClick?: (event: { detail: number; timeStamp: number; preventDefault: () => void }) => void } };
+  const footer = (primary: unknown) =>
+    steps.AskFooter({ formId: "passo", back: true, busy: false, primary, tooSoon, onBack: () => calls.push("indietro"), onCancel: () => calls.push("chiudi") } as Parameters<typeof steps.AskFooter>[0]) as unknown as { props: { children: Clickable[] } };
+  const click = (button: Clickable, detail: number, timeStamp: number) => {
+    let prevented = false;
+    button.props.onClick?.({ detail, timeStamp, preventDefault: () => (prevented = true) });
+    return prevented;
+  };
+  const [back, send] = footer({ kind: "submit", label: "Invia a Lia Esempio" }).props.children;
+  assert.equal(send.props.type, "submit");
+  assert.equal(click(send, 2, 5000), true, "il secondo clic di un doppio clic non invia");
+  assert.equal(click(send, 1, 500), true, "un clic subito dopo il cambio di passo non invia");
+  assert.equal(click(send, 1, 5000), false, "un clic deciso invia");
+  click(back, 2, 5000);
+  assert.deepEqual(calls, [], "«Indietro» non risponde al secondo clic di un doppio clic");
+  click(back, 1, 500);
+  assert.deepEqual(calls, ["indietro"], "un clic deciso su «Indietro» vale anche subito dopo il passo");
+  const [, close] = footer({ kind: "close", label: T.close }).props.children;
+  click(close, 2, 5000);
+  assert.deepEqual(calls, ["indietro"], "«Chiudi» non risponde al secondo clic");
+  click(close, 1, 500);
+  assert.deepEqual(calls, ["indietro", "chiudi"]);
 });
 
 test("la barra dei passi: tre voci, una sola «adesso» con aria-current, lo stato anche senza colore", () => {

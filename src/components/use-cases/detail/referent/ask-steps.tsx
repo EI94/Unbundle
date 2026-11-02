@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition, type FormEvent, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
@@ -43,6 +43,7 @@ import {
   enterQuestions,
   firstStep,
   initialSession,
+  isRepeatActivation,
   mergeTicks,
   okNoticeOf,
   personOf,
@@ -241,6 +242,12 @@ export function AskSteps({
     if (revealKind && revealId) reveal({ kind: revealKind, id: revealId });
   }, [revealKind, revealId, reveal]);
 
+  // Quando è cambiato il passo (lo segna l'effetto qui sotto): il piede non conta un clic che arriva subito
+  // dopo, né il secondo di un doppio clic (`isRepeatActivation`). `at` è il `timeStamp` dell'evento.
+  const stepAt = useRef<number | null>(null);
+  const tooSoon = (clickCount: number, at: number) =>
+    isRepeatActivation({ clickCount, msSinceStep: stepAt.current === null ? Number.POSITIVE_INFINITY : at - stepAt.current });
+
   // Un passo nuovo: il corpo torna in cima e il titolo del passo prende il fuoco (niente tastiera sul telefono).
   const firstRender = useRef(true);
   useEffect(() => {
@@ -248,6 +255,7 @@ export function AskSteps({
       firstRender.current = false;
       return;
     }
+    stepAt.current = performance.now();
     bodyRef.current?.scrollTo({ top: 0 });
     headingRef.current?.focus({ preventScroll: true });
   }, [step]);
@@ -314,7 +322,7 @@ export function AskSteps({
 
   function next(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (sending || prep.pending) return;
+    if (sending || prep.pending || tooSoon(0, event.timeStamp)) return;
     if (step === 1) {
       const found = stepErrors(1, draft, lookup, mode);
       if (Object.keys(found).length) {
@@ -494,7 +502,7 @@ export function AskSteps({
               />
             ) : null}
           </form>
-          <AskFooter formId={formId} back={back} busy={busy} primary={primary} onBack={() => goTo((step - 1) as AskStep)} onCancel={dismiss} />
+          <AskFooter formId={formId} back={back} busy={busy} primary={primary} tooSoon={tooSoon} onBack={() => goTo((step - 1) as AskStep)} onCancel={dismiss} />
         </div>
       </DialogContent>
     </Dialog>
@@ -556,6 +564,7 @@ export function AskFooter({
   back,
   busy,
   primary,
+  tooSoon,
   onBack,
   onCancel,
 }: {
@@ -563,26 +572,43 @@ export function AskFooter({
   back: boolean;
   busy: boolean;
   primary: AskPrimary;
+  /** Per il pulsante del passo: il secondo clic di un doppio clic, o un clic subito dopo il cambio di passo, non conta. */
+  tooSoon: (clickCount: number, at: number) => boolean;
   onBack: () => void;
   onCancel: () => void;
 }) {
+  // «Indietro», «Annulla» e «Chiudi» non contano solo il secondo clic di un doppio clic (che sul passo
+  // dopo cadrebbe su di loro): un clic deciso subito dopo il cambio di passo resta valido.
+  const guarded = (run: () => void) => (event: MouseEvent<HTMLButtonElement>) => {
+    if (event.detail > 1) return;
+    run();
+  };
   return (
     <div data-slot="ask-footer" className="flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 px-4 py-3 sm:flex-row sm:justify-end sm:px-6">
       {back ? (
-        <Button type="button" variant="outline" className={TOUCH} onClick={onBack}>
+        <Button type="button" variant="outline" className={TOUCH} onClick={guarded(onBack)}>
           {T.back}
         </Button>
       ) : (
-        <Button type="button" variant="outline" className={TOUCH} onClick={onCancel}>
+        <Button type="button" variant="outline" className={TOUCH} onClick={guarded(onCancel)}>
           {T.cancel}
         </Button>
       )}
       {primary.kind === "submit" ? (
-        <Button type="submit" form={formId} variant={primary.quiet ? "outline" : "default"} className={TOUCH} aria-busy={busy || undefined}>
+        <Button
+          type="submit"
+          form={formId}
+          variant={primary.quiet ? "outline" : "default"}
+          className={TOUCH}
+          aria-busy={busy || undefined}
+          onClick={(event) => {
+            if (tooSoon(event.detail, event.timeStamp)) event.preventDefault();
+          }}
+        >
           {primary.label}
         </Button>
       ) : (
-        <Button type="button" variant="outline" className={TOUCH} onClick={onCancel}>
+        <Button type="button" variant="outline" className={TOUCH} onClick={guarded(onCancel)}>
           {primary.label}
         </Button>
       )}
