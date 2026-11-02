@@ -5,7 +5,7 @@ import { answersOf } from "@/lib/use-cases/answers";
 import type { UseCaseEventList } from "@/lib/db/queries/use-case-events";
 import { DIALOG_COMMON_TEXT, PUBLIC_NOTE_TEXT, toDecisionItem, toDuplicateCandidates, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
-import { GUIDED_TEXT, arrivalTarget, detailTargetIds, foldSummaries, impactView, nextStepOf, pathOfUseCase, type NextStep } from "@/lib/use-cases/guided";
+import { GUIDED_TEXT, arrivalTarget, detailTargetIds, foldSummaries, impactView, nextStepOf, pathOfUseCase, startsInBox, type NextStep } from "@/lib/use-cases/guided";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { TEXT_LIMITS } from "@/lib/use-cases/inputs";
 import { WHAT_FIELD_LABEL } from "@/lib/use-cases/labels";
@@ -318,7 +318,10 @@ export function UseCaseDetailView({
     realization: realizationFold,
     history: historyShown,
   });
-  const arrival = arrivalTarget(chapter ?? null, targets);
+  // «Avvia la realizzazione» o «Segna come in realizzazione» nel riquadro (G9): la piega non li
+  // ripete, e `?capitolo=realizzazione` («Pronto da avviare») arriva al riquadro.
+  const startInBox = startsInBox(step);
+  const arrival = arrivalTarget(chapter ?? null, targets, step);
   const opens = (id: string) => arrival === id;
   const groups = valuationKpiGroups(result.model, { esgEnabled: result.esgEnabled });
   const estimates = unofficialEstimateLines(detail.intake).length > 0;
@@ -448,7 +451,7 @@ export function UseCaseDetailView({
                       canMarkInProgress={abilities.canMarkInProgress}
                       canOpenAnyDossier={abilities.canOpenAnyDossier}
                       realization={realization}
-                      boxOwnsStart={step.key === "G9"}
+                      boxOwnsStart={startInBox}
                       startHint={step.key === "G3" ? "trimestre" : "informazioni"}
                     />
                   </Fold>

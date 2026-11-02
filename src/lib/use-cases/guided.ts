@@ -1089,11 +1089,24 @@ export function detailTargetIds(input: TargetInput): string[] {
 }
 
 /**
- * Dove arriva `?capitolo=`: l'ancora stessa, se la pagina ce l'ha; «Realizzazione» senza la sua
- * piega va al riquadro «Prossimo passo»; altrimenti la cima della pagina (null).
+ * Il riquadro «Prossimo passo» ha «Avvia la realizzazione» o «Segna come in realizzazione» (G9,
+ * lo use case è pronto e il passo è di chi guarda): la piega «Realizzazione» non li ripete.
  */
-export function arrivalTarget(chapter: string | null | undefined, ids: readonly string[]): string | null {
+export function startsInBox(step: Pick<NextStep, "key" | "action">): boolean {
+  return step.key === "G9" && (step.action.type === "avvia" || step.action.type === "segna_in_realizzazione");
+}
+
+/**
+ * Dove arriva `?capitolo=`: l'ancora stessa, se la pagina ce l'ha; «Realizzazione» va al riquadro
+ * «Prossimo passo» quando la piega non c'è o quando l'avvio sta nel riquadro (`startsInBox` del
+ * passo: «Pronto da avviare» della campanella e delle email, anche quelle già partite, porta lì
+ * dove si avvia); altrimenti la cima della pagina (null). Quando lo use case non è più pronto
+ * (partito, trimestre finito, informazioni da chiedere) lo stesso link apre la piega, che dice il
+ * dossier o perché «Avvia» non è ancora il passo.
+ */
+export function arrivalTarget(chapter: string | null | undefined, ids: readonly string[], step: Pick<NextStep, "key" | "action"> | null = null): string | null {
   if (!chapter) return null;
+  if (chapter === ANCHOR.realizzazione && step && startsInBox(step)) return ANCHOR.decisione;
   if (ids.includes(chapter)) return chapter;
   return chapter === ANCHOR.realizzazione ? ANCHOR.decisione : null;
 }

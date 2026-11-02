@@ -662,6 +662,25 @@ test("detailTargetIds e arrivalTarget: le ancore che ci sono; «Realizzazione» 
   assert.equal(arrivalTarget(null, few), null);
 });
 
+test("arrivalTarget: «Realizzazione» va al riquadro quando l'avvio è lì (G9), anche dai link già mandati", () => {
+  const all = detailTargetIds({ phase: "approvato", needs: true, requests: true, realization: true, history: true });
+  const avvia = { key: "G9", action: { type: "avvia", href: `/dashboard/${WS}/casi-duso/nuovo?useCaseId=${UC}`, label: "Avvia la realizzazione" } } as const;
+  const segna = { key: "G9", action: { type: "segna_in_realizzazione" } } as const;
+  // «Pronto da avviare» (campanella, email) porta a `?capitolo=realizzazione`: con l'avvio nel riquadro la piega non ha niente da fare.
+  assert.equal(arrivalTarget("realizzazione", all, avvia), "decisione");
+  assert.equal(arrivalTarget("realizzazione", all, segna), "decisione");
+  // Il revisore del cliente («Tocca a Lateral Space.») e chi non può avviare restano sulla piega, che dice chi avvia.
+  assert.equal(arrivalTarget("realizzazione", all, { key: "G9", action: { type: "none" } }), "realizzazione");
+  // Non più pronto (trimestre finito, informazioni da chiedere, già partito): la piega, con «Avvia» outline o il dossier.
+  assert.equal(arrivalTarget("realizzazione", all, { key: "G3", action: { type: "none" } }), "realizzazione");
+  assert.equal(arrivalTarget("realizzazione", all, { key: "G5", action: { type: "chiedi", label: "Chiedi al referente" } }), "realizzazione");
+  assert.equal(arrivalTarget("realizzazione", all, { key: "E5", action: { type: "dossier", href: "/x", label: "Apri il dossier", variant: "outline" } }), "realizzazione");
+  assert.equal(arrivalTarget("realizzazione", all, null), "realizzazione");
+  // Gli altri capitoli non cambiano.
+  assert.equal(arrivalTarget("storia", all, avvia), "storia");
+  assert.equal(arrivalTarget("cosa-serve", all, avvia), "cosa-serve");
+});
+
 test("Come cambia il lavoro: etichette per tipo e agente, limiti, testi lunghi corti", () => {
   assert.deepEqual(workFlowLabels("da_costruire", "LIBRA L1 · Smistamento delle pratiche"), { today: "Oggi", agent: "Con LIBRA", human: "Decide una persona", limits: "Cosa LIBRA non fa mai" });
   assert.deepEqual(workFlowLabels("da_costruire", "Smistamento delle pratiche"), { today: "Oggi", agent: "Con l'agente", human: "Decide una persona", limits: "Cosa l'agente non fa mai" });

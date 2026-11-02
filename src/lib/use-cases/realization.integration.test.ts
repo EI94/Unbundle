@@ -463,3 +463,97 @@ test("card v1 «Claude per Unbundle»: nessun token nuovo in un workspace acceso
   const [{ n }] = await q(`SELECT count(*)::int AS n FROM workspace_integration_tokens WHERE workspace_id = $1::uuid`, [ids.ws]);
   assert.equal(n, 0);
 });
+
+/** L'elemento `Arrival` della scheda: l'ancora a cui la pagina arriva con il suo `?capitolo=` (`initial`). */
+function arrivalOf(page: unknown): string | null {
+  type El = { type?: unknown; props?: Record<string, unknown> };
+  const named = (node: unknown, name: string): El | null => {
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const found = named(child, name);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (!node || typeof node !== "object" || !("props" in node)) return null;
+    const el = node as El;
+    if (typeof el.type === "function" && (el.type as { name?: string }).name === name) return el;
+    return named(el.props?.children, name);
+  };
+  const view = named(page, "UseCaseDetailView");
+  assert.ok(view, "la pagina monta UseCaseDetailView");
+  // UseCaseDetailView è un componente del server senza hook: chiamato con le sue props dà l'albero della scheda.
+  const arrival = named((view.type as (props: unknown) => unknown)(view.props), "Arrival");
+  assert.ok(arrival, "la scheda monta Arrival");
+  return (arrival.props?.initial as string | null | undefined) ?? null;
+}
+
+/** La scheda aperta da un link (campanella, email): il riquadro, la piega «Realizzazione», dove arriva e quale piega il server apre. */
+async function landingOf(person: Person, useCaseId: string, href: string) {
+  signIn(person);
+  const searchParams = Object.fromEntries(new URL(href, "https://app.example.test").searchParams);
+  const element = await detailPage({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId }), searchParams: Promise.resolve(searchParams) });
+  const html = renderToStaticMarkup(element);
+  const foldAt = html.indexOf('<details id="realizzazione"');
+  return {
+    box: html.slice(html.indexOf('data-slot="next-step"'), html.indexOf('data-slot="scheda-grid"')),
+    fold: foldAt === -1 ? "" : html.slice(foldAt, html.indexOf("</details>", foldAt)),
+    target: arrivalOf(element),
+    opened: [...html.matchAll(/<details id="([a-z-]+)"[^>]*\sopen=""/g)].map((m) => m[1]),
+  };
+}
+
+test("«Pronto da avviare»: la campanella e l'email arrivano al riquadro con «Avvia la realizzazione», anche i link già mandati; non più pronto, alla piega", opts, async () => {
+  const { noticeHref } = await import("../notifications/bell.ts");
+  const { cardLinkTo } = await import("./referent/links.ts");
+  const ready = randomUUID();
+  await q(
+    `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, code, source, origin, target_quarter)
+     VALUES ($1::uuid, $2::uuid, $3, 'Problema', 'accepted', 'scored', 'use_case_ai', $4, 'web_proposed', 'adoption', '2027-Q1')`,
+    [ready, ids.ws, `Pronta da avviare ${suffix}`, `${prefix}-0095`],
+  );
+  try {
+    // Gli indirizzi di oggi: `?capitolo=realizzazione`, come nelle email già partite.
+    const links = { campanella: noticeHref(ids.ws, { kind: "pronto", useCaseId: ready }), email: cardLinkTo("https://app.example.test", ids.ws, ready, "realizzazione") };
+    for (const href of Object.values(links)) assert.ok(href.endsWith(`/use-cases/${ready}?capitolo=realizzazione`), href);
+    for (const [variant, workspaces, label] of [
+      ["sezione Casi d'uso accesa", `${ids.ws},${ids.wsOff}`, "Avvia la realizzazione"],
+      ["sezione Casi d'uso spenta", ids.wsOff, "Segna come in realizzazione"],
+    ] as const) {
+      process.env.UC_WORKSPACE_IDS = workspaces;
+      try {
+        for (const [from, href] of Object.entries(links)) {
+          const landing = await landingOf("lsLead", ready, href);
+          assert.match(landing.box, /data-key="G9"/, `${variant}, ${from}`);
+          assert.ok(landing.box.includes(label), `${variant}, ${from}: «${label}» nel riquadro`);
+          assert.ok(landing.fold.includes("non ancora partita") && !landing.fold.includes(label), `${variant}, ${from}: la piega c'è e non lo ripete`);
+          assert.equal(landing.target, "decisione", `${variant}, ${from}: arriva al riquadro «Prossimo passo», non alla piega senza pulsante`);
+          assert.deepEqual(landing.opened, [], `${variant}, ${from}: nessuna piega aperta`);
+        }
+      } finally {
+        process.env.UC_WORKSPACE_IDS = `${ids.ws},${ids.wsOff}`;
+      }
+    }
+    // Il revisore del cliente (un link inoltrato): il riquadro dice «Tocca a Lateral Space.», la piega chi avvia.
+    const client = await landingOf("builder", ready, links.campanella);
+    assert.match(client.box, /data-key="G9"/);
+    assert.equal(client.target, "realizzazione");
+    assert.deepEqual(client.opened, ["realizzazione"]);
+    assert.ok(client.fold.includes("La realizzazione la avvia Lateral Space."));
+    // Non più pronto, il trimestre è finito (G3): la piega, con «Avvia» outline e il motivo.
+    await q(`UPDATE use_cases SET target_quarter = '2020-Q1' WHERE id = $1::uuid`, [ready]);
+    const expired = await landingOf("lsLead", ready, links.email);
+    assert.match(expired.box, /data-key="G3"/);
+    assert.equal(expired.target, "realizzazione");
+    assert.deepEqual(expired.opened, ["realizzazione"]);
+    assert.ok(expired.fold.includes("Avvia la realizzazione") && expired.fold.includes("Prima si sceglie il trimestre in «Quando»."));
+    // Già partito (la scheda del connettore ha il suo dossier): la piega con il dossier.
+    const started = await landingOf("lsLead", ids.fromConnector, noticeHref(ids.ws, { kind: "pronto", useCaseId: ids.fromConnector }));
+    assert.doesNotMatch(started.box, /data-key="G9"/);
+    assert.equal(started.target, "realizzazione");
+    assert.deepEqual(started.opened, ["realizzazione"]);
+    assert.ok(started.fold.includes("Apri il dossier"));
+  } finally {
+    await q(`DELETE FROM use_cases WHERE id = $1::uuid`, [ready]);
+  }
+});

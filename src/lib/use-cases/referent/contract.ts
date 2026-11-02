@@ -31,7 +31,11 @@ export const subprocessorsSettingsHref = (workspaceId: string) => `/dashboard/${
 export const REFERENT_CRON_PATH = "/api/cron/use-case-referents";
 // (Parte 2) Nessun tipo di segnale in `weekly_signals`: le righe della campanella sono use_case_notifications.
 export const cosaServeHref = (workspaceId: string, useCaseId: string) => `/dashboard/${workspaceId}/use-cases/${useCaseId}?capitolo=cosa-serve`;
-/** (0025) «Pronto da avviare»: la scheda al capitolo «Realizzazione», dove si avvia. */
+/**
+ * (0025) «Pronto da avviare»: la scheda a `?capitolo=realizzazione`. Sulla scheda pronta l'avvio sta
+ * nel riquadro «Prossimo passo» (G9) e l'arrivo va lì (`arrivalTarget`), anche dalle email già
+ * partite; quando lo use case non è più pronto lo stesso link apre la piega «Realizzazione».
+ */
 export const realizzazioneHref = (workspaceId: string, useCaseId: string) => `/dashboard/${workspaceId}/use-cases/${useCaseId}?capitolo=realizzazione`;
 
 export const REFERENT_LIMITS = Object.freeze({

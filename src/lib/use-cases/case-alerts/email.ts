@@ -8,10 +8,11 @@
  * Resend è uno dei sub-responsabili).
  *
  * «Pronto da avviare» nomina lo use case (codice, titolo, trimestre) e il cliente; il link apre la
- * scheda al capitolo «Realizzazione». «Autorizza i fornitori» non porta nessun dato degli use case:
- * solo il nome del cliente e il link a Impostazioni › Sub-responsabili, e parte solo con
- * `USE_CASE_CLIENT_NOTICES` acceso per il workspace. Mai le informazioni del cliente, i valori, una
- * persona.
+ * scheda a `?capitolo=realizzazione`, che sulla scheda ancora pronta arriva al riquadro «Prossimo
+ * passo» con «Avvia la realizzazione» (`arrivalTarget`). «Autorizza i fornitori» non porta nessun
+ * dato degli use case: solo il nome del cliente e il link a Impostazioni › Sub-responsabili, e
+ * parte solo con `USE_CASE_CLIENT_NOTICES` acceso per il workspace. Mai le informazioni del cliente,
+ * i valori, una persona.
  *
  * Calendario, piano, testi e motore: tutto puro. Le letture e le scritture le fa
  * `queries/use-case-alerts.ts` attraverso `CaseAlertStore`.

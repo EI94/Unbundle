@@ -17,9 +17,12 @@
 // case approved with a client question still to ask while the workspace has no «ok sui
 // sub-responsabili» (one «Autorizza i fornitori» row for function-lead, who can give it). Then, for
 // each width:
-//  1. ls-lead sees «Pronto da avviare»; its click opens the use case at «Realizzazione»: the
-//     «Realizzazione» fold of the guided card (release 3, in place of the chapter bar) open, in view
-//     and with the focus inside it, and no «Capitoli» bar on the page;
+//  1. ls-lead sees «Pronto da avviare»; its click opens the use case (`?capitolo=realizzazione`, the
+//     address of the e-mails already sent too) at the «Prossimo passo» box of the guided card, which
+//     on a ready card holds «Avvia la realizzazione» (the «Realizzazione» fold no longer repeats it):
+//     the box in view with the focus inside it (its heading) and «Avvia la realizzazione» whole in
+//     the window, the «Realizzazione» fold closed, still so a second later (the closing menu does not
+//     take the focus back to the bell), and no «Capitoli» bar on the page;
 //  2. function-lead sees «Autorizza i fornitori» and no «Pronto da avviare»; its click opens
 //     Impostazioni with «Sub-responsabili» in view;
 //  3. osservatore (contributor) sees neither row;
@@ -156,8 +159,16 @@ function state(page) {
       const r = el.getBoundingClientRect();
       return r.bottom > 0 && r.top < window.innerHeight;
     };
-    // The «Realizzazione» fold of the guided card (`<details id="realizzazione" data-slot="fold">`):
-    // `?capitolo=realizzazione` opens it from the server, brings it to the top and focuses its summary.
+    const whole = (el) => {
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth;
+    };
+    // The «Prossimo passo» box (`<section id="decisione" data-slot="next-step">`): on a ready card
+    // (G9) `?capitolo=realizzazione` brings it to the top and focuses its heading; the «Realizzazione»
+    // fold (`<details id="realizzazione" data-slot="fold">`) stays closed.
+    const box = document.getElementById("decisione");
+    const start = box ? [...box.querySelectorAll("a, button")].find((el) => el.textContent.replace(/\s+/g, " ").trim() === "Avvia la realizzazione") : null;
     const fold = document.getElementById("realizzazione");
     const active = document.activeElement;
     const isFold = fold instanceof HTMLDetailsElement && fold.dataset.slot === "fold";
@@ -167,11 +178,14 @@ function state(page) {
       overflow: document.documentElement.scrollWidth > window.innerWidth,
       url: location.pathname + location.search + location.hash,
       chapterBar: Boolean(document.querySelector("[data-slot=chapter-nav]")),
+      box: box?.dataset.slot === "next-step" ? (box.dataset.key ?? "") : null,
+      boxFocus: Boolean(box && active && active !== document.body && box.contains(active)),
+      boxInView: inView(box),
+      startWhole: whole(start),
+      startFilled: Boolean(start?.classList.contains("bg-primary")),
       realizationFold: isFold,
       realizationOpen: isFold && fold.open,
-      realizationFocus: Boolean(fold && active && active !== document.body && fold.contains(active)),
       focused: active && active !== document.body ? `${active.tagName.toLowerCase()}${active.dataset?.slot ? `[${active.dataset.slot}]` : ""}${active.id ? `#${active.id}` : ""}` : "body",
-      realizationInView: inView(fold),
       subprocessorsInView: inView(document.getElementById("sub-responsabili")),
     };
   });
@@ -236,20 +250,24 @@ try {
       record(`${tag} ls-lead sees «${READY}»`, [...(ready ? [] : [`rows: ${JSON.stringify(s.rows.map((r) => r.text.slice(0, 60)))}`]), ...(suppliersRow(s) ? [`«${SUPPLIERS}» reached Lateral Space`] : []), ...(s.overflow ? ["horizontal scroll"] : [])]);
       if (ready) {
         await clickAt(page, `[data-slot=dropdown-menu-content] a[href$="${readyPath}?capitolo=realizzazione"]`);
-        s = await waitFor(page, (x) => x.url.startsWith(`${readyPath}?capitolo=realizzazione`) && !x.open && x.realizationOpen && x.realizationFocus && x.realizationInView);
+        s = await waitFor(page, (x) => x.url.startsWith(`${readyPath}?capitolo=realizzazione`) && !x.open && x.boxFocus && x.boxInView && x.startWhole);
         // The state a second later: nothing (the closing menu, a late render) takes the focus back.
         await sleep(1000);
         s = await state(page);
-        record(`${tag} its click opens the use case at «Realizzazione»`, [
+        record(`${tag} its click opens the use case at «Prossimo passo», with «Avvia la realizzazione» in view`, [
           ...(s.url.startsWith(`${readyPath}?capitolo=realizzazione`) ? [] : [`url ${s.url}`]),
           ...(s.open ? ["menu still open"] : []),
+          ...(s.box === "G9" ? [] : [`the box is ${s.box === null ? "missing" : `step ${s.box}`}, not G9`]),
+          ...(s.boxFocus ? [] : [`focus not in «Prossimo passo» (on ${s.focused})`]),
+          ...(s.boxInView ? [] : ["«Prossimo passo» not in view"]),
+          ...(s.startWhole ? [] : ["«Avvia la realizzazione» not whole in the window"]),
+          ...(s.startFilled ? [] : ["«Avvia la realizzazione» is not the filled button"]),
           ...(s.realizationFold ? [] : ["«Realizzazione» is not a fold of the card"]),
-          ...(s.realizationFold && !s.realizationOpen ? ["the «Realizzazione» fold is closed"] : []),
-          ...(s.realizationFocus ? [] : [`focus not in «Realizzazione» (on ${s.focused})`]),
-          ...(s.realizationInView ? [] : ["«Realizzazione» not in view"]),
+          ...(s.realizationOpen ? ["the «Realizzazione» fold is open"] : []),
           ...(s.chapterBar ? ["the old «Capitoli» bar is on the page"] : []),
           ...(s.overflow ? ["horizontal scroll"] : []),
         ]);
+        console.log(`     focus on ${s.focused}`);
       }
 
       await loginAs(page, "function-lead", { to: `/dashboard/${ws}/use-cases` });

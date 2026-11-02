@@ -230,7 +230,8 @@ export function dossierEntry(item: UcBellItem, useCaseHub: boolean): BellEntry {
 }
 
 /**
- * Dove porta una notifica di use case: «Pronto da avviare» alla scheda, al capitolo «Realizzazione»;
+ * Dove porta una notifica di use case: «Pronto da avviare» alla scheda a `?capitolo=realizzazione`
+ * (sulla scheda pronta il riquadro «Prossimo passo», dove si avvia; vedi `arrivalTarget`);
  * «Autorizza i fornitori» a Impostazioni › Sub-responsabili; le altre a «Cosa serve».
  */
 export function noticeHref(workspaceId: string, n: Pick<BellUseCaseInput, "kind" | "useCaseId">): string {
