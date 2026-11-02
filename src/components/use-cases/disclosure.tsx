@@ -9,7 +9,9 @@ import { cn } from "@/lib/utils";
  * `<details>` stesso, come «Realizzati» della Panoramica (`#panoramica-realizzati`). `defaultOpen`:
  * aperto quando la pagina si rende (un link che chiede quell'elenco, una ricerca in «Cosa serve»);
  * poi lo apre e lo chiude chi guarda, come ogni `<details>`. Un riassunto di testo non va a capo
- * dentro un numero né prima di un «·» (`keepTogether`).
+ * dentro un numero né prima di un «·» (`keepTogether`). `summaryDescribedBy`: l'id di un testo già in
+ * pagina che i lettori di schermo leggono come descrizione del riassunto (il titolo della riga), senza
+ * ripeterlo nel riassunto.
  */
 export function Disclosure({
   summary,
@@ -19,6 +21,7 @@ export function Disclosure({
   children,
   className,
   summaryClassName,
+  summaryDescribedBy,
 }: {
   summary: ReactNode;
   slot?: string;
@@ -27,10 +30,12 @@ export function Disclosure({
   children: ReactNode;
   className?: string;
   summaryClassName?: string;
+  summaryDescribedBy?: string;
 }) {
   return (
     <details id={id} data-slot={slot} className={className} open={defaultOpen || undefined}>
       <summary
+        aria-describedby={summaryDescribedBy}
         className={cn(
           "inline-flex min-h-11 cursor-pointer list-none items-center gap-1.5 rounded-md text-sm text-muted-foreground outline-none select-none marker:hidden hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-8 [&::-webkit-details-marker]:hidden",
           summaryClassName,

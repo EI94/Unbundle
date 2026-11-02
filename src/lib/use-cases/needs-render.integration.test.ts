@@ -459,7 +459,10 @@ test("Cosa serve: la vista dei revisori, una lista per chi deve muoversi, «Già
     assert.match(per, new RegExp(`href="[^"]*apri=${card.id}"`), "il link apre il pannello");
   }
   assert.ok(per.includes(`Smistamento ${suffix}`) && per.includes(`Preventivi ${suffix}`), "codice e titolo");
-  assert.ok(per.includes(`<span class="sr-only">: ${T.access}</span>`), "il titolo dell'esigenza per i lettori di schermo");
+  // Il titolo dell'esigenza per i lettori di schermo: la descrizione del riassunto (il titolo della
+  // riga, già in pagina), senza ripeterlo in un testo nascosto.
+  assert.ok(per.includes(`aria-describedby="cosa-serve-titolo-${needIds.access}"`) && groups.includes(`id="cosa-serve-titolo-${needIds.access}"`), "il titolo dell'esigenza per i lettori di schermo");
+  assert.ok(!per.includes('class="sr-only">: '), "il titolo non si ripete");
   // «Insieme»: nel gruppo del cliente, lo dice il suo «Chi»; la scadenza a parole.
   const decideRow = between(groups, `data-need="${needIds.decide}"`, "</li>");
   assert.ok(decideRow.includes(`<span class="min-w-0">Insieme</span>`) && decideRow.includes("entro fine mese"), decideRow);
@@ -558,8 +561,11 @@ test("Panoramica: il prossimo passo conta i requisiti degli use case di questo t
   // stessi numeri del riquadro nella riga sotto «Requisiti», che comincia dal trimestre: ogni numero
   // della frase si ritrova con la sua parola.
   const target = await hubHtml("builder", ids.wsStart, { vista: "cosa-serve", trimestre: thisQuarter });
-  assert.ok(target.includes(START.shared) && target.includes(START.blocked) && target.includes(START.verify));
-  assert.ok(!target.includes(START.progress) && !target.includes(START.next));
+  // I titoli in pagina vanno a capo solo dove si può (`keepTogether`, spazi non separabili): si cercano
+  // nel testo con gli spazi normali.
+  const targetText = target.replaceAll(N, " ");
+  assert.ok(targetText.includes(START.shared) && targetText.includes(START.blocked) && targetText.includes(START.verify));
+  assert.ok(!targetText.includes(START.progress) && !targetText.includes(START.next));
   assert.equal(summaryOf(target), `${quarter.quarterLabel(thisQuarter)} · 3 aperti · 1 da chiedere · 1 da verificare · 1 fermo`);
   for (const piece of ["1 da chiedere", "1 da verificare", "1 fermo"]) assert.ok(summaryOf(target).includes(piece), piece);
   // Le righe: il requisito bloccato si legge «Ferma», quello da verificare «Da verificare»; mai «Bloccata».

@@ -200,6 +200,25 @@ test("ogni requisito una volta; «Già a posto · N» chiuso dopo i gruppi, nell
   assert.ok(groupsColumn.lastIndexOf('data-need-group="') < groupsColumn.indexOf('data-slot="needs-done"'), "dopo i gruppi");
 });
 
+test("«Per N use case»: il titolo della riga lo leggono come descrizione, senza ripeterlo in ogni riga", () => {
+  const list = fixture();
+  const html = render(build(list));
+  const shared = list.find((n) => n.title === "Insieme 2");
+  assert.ok(shared);
+  // Il riassunto rimanda al titolo della sua riga, che c'è una volta sola nella pagina.
+  assert.match(html, new RegExp(`<summary aria-describedby="cosa-serve-titolo-${shared.id}"[^>]*>`));
+  assert.equal(html.split(`id="cosa-serve-titolo-${shared.id}"`).length - 1, 1);
+  assert.match(html, new RegExp(`<p id="cosa-serve-titolo-${shared.id}"[^>]*>Insieme[ ${N}]2</p>`));
+  // Niente più copia del titolo per i lettori di schermo («Per 2 use case: Insieme 2»).
+  assert.ok(!html.includes('class="sr-only">: '), "il titolo non si ripete");
+  // Ogni descrizione rimanda a un id che c'è, e ogni id della vista è unico.
+  const described = [...html.matchAll(/aria-describedby="([^"]+)"/g)].flatMap((m) => m[1].split(" "));
+  assert.ok(described.length > 0);
+  for (const id of described) assert.ok(html.includes(`id="${id}"`), id);
+  const all = [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(new Set(all).size, all.length, "id unici");
+});
+
 test("«Prossimi passi»: accanto alla lista, «Prima di oggi» in testa, i primi cinque, la sezione spezzata ripete il titolo, «Fatti · N»", () => {
   const list = fixture();
   const html = render(build(list));

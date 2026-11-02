@@ -43,6 +43,16 @@ test("«Per 3 use case»: un <details> chiuso, con il titolo dell'esigenza solo 
   assert.ok(summary.includes('<span class="sr-only">: Accesso al gestionale</span>'));
 });
 
+test("«Per 3 use case» con `contextId`: il titolo già in pagina come descrizione, nessuna copia nascosta", () => {
+  const html = renderToStaticMarkup(
+    createElement(needUseCases.NeedUseCasesDisclosure, { summary: "Per 3 use case", contextId: "cosa-serve-titolo-x", useCases: REFS, hrefOf }),
+  );
+  assert.match(html, /<summary aria-describedby="cosa-serve-titolo-x"/);
+  assert.ok(!html.includes("sr-only"), "niente testo solo per i lettori di schermo");
+  // Senza `contextId` nessuna descrizione: la copia del titolo resta (la scheda, «Serve anche ad altri N»).
+  assert.doesNotMatch(render(), /aria-describedby/);
+});
+
 test("«Per 3 use case»: un link per use case, «codice · titolo» o il titolo solo", () => {
   const html = render();
   const links = [...html.matchAll(/<a [^>]*data-need-use-case="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)];

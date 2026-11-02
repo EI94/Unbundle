@@ -185,6 +185,13 @@ function Group({ group, clientLabel, hrefOf, palette, open }: { group: NeedGroup
 }
 
 /**
+ * L'id del titolo di una riga o di un passo (`cosa-serve-titolo-{id}`): «Per N use case» lo legge come
+ * descrizione, invece di ripetere il titolo per i lettori di schermo in ogni riga. Ogni esigenza è una
+ * volta sola nella vista, quindi l'id è unico.
+ */
+const titleIdOf = (id: string) => `cosa-serve-titolo-${id}`;
+
+/**
  * «Per» di una riga: senza use case collegati il testo libero (o «—»); con uno solo il suo link,
  * «TJ-0012 · Smistamento»; con più di uno «Per N use case», chiuso, che si apre sui link. Ogni link
  * apre il pannello.
@@ -192,7 +199,7 @@ function Group({ group, clientLabel, hrefOf, palette, open }: { group: NeedGroup
 function NeedFor({ row, hrefOf }: { row: NeedRow; hrefOf: (id: string) => string }) {
   if (!row.useCases.length) return <span className={row.forLabel ? undefined : "text-muted-foreground"}>{row.forLabel ?? NEEDS_BOARD_TEXT.none}</span>;
   if (row.useCases.length === 1) return <NeedUseCaseLink useCase={row.useCases[0]} href={hrefOf(row.useCases[0].id)} scroll={false} />;
-  return <NeedUseCasesDisclosure summary={needForText(row.useCases.length)} context={row.title} useCases={row.useCases} hrefOf={hrefOf} scroll={false} />;
+  return <NeedUseCasesDisclosure summary={needForText(row.useCases.length)} contextId={titleIdOf(row.id)} useCases={row.useCases} hrefOf={hrefOf} scroll={false} />;
 }
 
 /** I tag degli agenti che una riga serve («LIBRA», «ORSA»), nei colori della pagina: uno per agente. */
@@ -225,7 +232,9 @@ function RowList({ rows, hrefOf, palette }: { rows: readonly NeedRow[]; hrefOf: 
     <ul data-slot="needs-list" className="divide-y rounded-lg border">
       {rows.map((row) => (
         <li key={row.id} data-need={row.id} className="space-y-1 px-3 py-2.5">
-          <p className="text-sm font-medium break-words">{keepTogether(row.title)}</p>
+          <p id={titleIdOf(row.id)} className="text-sm font-medium break-words">
+            {keepTogether(row.title)}
+          </p>
           <MetaLine row={row} hrefOf={hrefOf} palette={palette} status />
         </li>
       ))}
@@ -360,7 +369,9 @@ function TimelineItem({ item, hrefOf, palette }: { item: NeedTimelineItem; hrefO
       ) : item.due ? (
         <span className="block text-xs font-medium">{keepTogether(item.due)}</span>
       ) : null}
-      <p className="text-sm break-words">{keepTogether(item.title)}</p>
+      <p id={titleIdOf(item.id)} className="text-sm break-words">
+        {keepTogether(item.title)}
+      </p>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
         <StatusDot tone={item.status.tone} label={item.status.label} />
         {item.owner ? (

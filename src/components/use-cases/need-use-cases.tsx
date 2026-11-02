@@ -43,19 +43,25 @@ export function NeedUseCaseLink({ useCase, href, scroll = true }: { useCase: Nee
  * use case». Il `<details>` nativo si apre con Invio o Spazio e si annuncia come pulsante chiuso o
  * aperto; i suoi link entrano nell'ordine del Tab solo da aperto. `context` (il titolo
  * dell'esigenza) lo leggono solo i lettori di schermo: «Per 3 use case: Accesso al gestionale».
+ * Con `contextId` (l'id del titolo già in pagina, la vista «Cosa serve») il titolo non si ripete:
+ * i lettori di schermo lo leggono come descrizione del riassunto (`aria-describedby`).
  * Aperto, prende tutta la riga (`open:basis-full`). Senza stato: si rende sul server (la vista
  * «Cosa serve») e nel client (il capitolo della scheda).
  */
 export function NeedUseCasesDisclosure({
   summary,
   context,
+  contextId,
   useCases,
   hrefOf,
   scroll = true,
   className,
 }: {
   summary: string;
-  context: string;
+  /** Il titolo dell'esigenza, solo per i lettori di schermo; con `contextId` non serve. */
+  context?: string;
+  /** L'id del titolo dell'esigenza già in pagina: la descrizione del riassunto, senza ripeterlo. */
+  contextId?: string;
   useCases: readonly NeedUseCaseRef[];
   hrefOf: (id: string) => string;
   scroll?: boolean;
@@ -66,10 +72,11 @@ export function NeedUseCasesDisclosure({
       slot="need-use-cases"
       className={cn("min-w-0 open:basis-full", className)}
       summaryClassName={cn("text-xs", TARGET)}
+      summaryDescribedBy={contextId}
       summary={
         <>
           {keepTogether(summary)}
-          <span className="sr-only">: {context}</span>
+          {!contextId && context ? <span className="sr-only">: {context}</span> : null}
         </>
       }
     >
