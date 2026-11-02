@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { THEME_BOOT_SCRIPT } from "@/components/theme/theme-config";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -109,9 +110,15 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        {/* Prima del corpo della pagina: sulle pagine del dashboard il tema scelto vale già al primo
+            fotogramma, anche su una rete lenta (theme-config.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
         {/* Il tema scelto (Scuro, Chiaro, Come il sistema): per primo, così il suo script scrive
-            `data-theme` su <html> prima che la pagina si disegni. */}
+            `data-theme` su <html> prima del resto della pagina (sul dashboard lo script del <head>
+            l'ha già scritto), e lo cambia quando si sceglie dal menu. */}
         <ThemeProvider>
           {/* JSON-LD globali: Organization + WebSite. Una sola volta sito-wide. */}
           <script

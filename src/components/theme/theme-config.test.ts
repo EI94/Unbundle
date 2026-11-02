@@ -1,7 +1,8 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
-import { THEME_MENU_LABEL, THEME_OPTIONS, THEME_PROVIDER_PROPS, THEME_SCOPE_ATTRIBUTE, THEME_STORAGE_KEY, toasterTheme } from "./theme-config.ts";
+import { runInNewContext } from "node:vm";
+import { THEME_BOOT_SCRIPT, THEME_MENU_LABEL, THEME_OPTIONS, THEME_PROVIDER_PROPS, THEME_SCOPE_ATTRIBUTE, THEME_STORAGE_KEY, toasterTheme } from "./theme-config.ts";
 import { readRepo } from "./test-support/color.ts";
 import { enableTsxImports } from "../use-cases/detail/referent/tsx-test-loader.ts";
 
@@ -135,4 +136,140 @@ test("il menu «Tema» sta sotto il nome, in fondo alla barra laterale, tra «I 
   assert.equal(sidebar.match(/text-sidebar-foreground\/60 light:text-sidebar-foreground\/70/g)?.length, 2, "e-mail e freccia nel tema chiaro");
   // La stessa barra (e lo stesso menu) per /dashboard e per ogni workspace.
   for (const file of ["src/components/dashboard/dashboard-list-shell.tsx", "src/app/(dashboard)/dashboard/[workspaceId]/layout.tsx"]) assert.ok(readRepo(file).includes("<AppSidebar"), file);
+});
+
+type FakeNode = { attributes: Record<string, string>; removed: boolean; setAttribute(name: string, value: string): void; remove(): void };
+
+/**
+ * Uno script del tema in un browser finto: il percorso, la scelta salvata (o la memoria bloccata) e il
+ * tema del sistema. Dice il `data-theme` di <html>, quanti segni `data-theme-scope` ci sono nel <head>
+ * e cosa succede a DOMContentLoaded.
+ */
+function runThemeScript(script: string, path: string, { stored = null, systemDark = false, blocked = false }: { stored?: string | null; systemDark?: boolean; blocked?: boolean } = {}) {
+  const html: Record<string, string> = {};
+  const head: FakeNode[] = [];
+  const listeners: Array<[string, () => void]> = [];
+  const document = {
+    documentElement: { setAttribute: (name: string, value: string) => void (html[name] = value), style: {} },
+    head: { appendChild: (node: FakeNode) => void head.push(node) },
+    createElement: (): FakeNode => ({
+      attributes: {},
+      removed: false,
+      setAttribute(name: string, value: string) { this.attributes[name] = value; },
+      remove() { this.removed = true; },
+    }),
+    addEventListener: (type: string, listener: () => void) => void listeners.push([type, listener]),
+  };
+  const localStorage = {
+    getItem: (key: string) => {
+      if (blocked) throw new Error("memoria bloccata");
+      return key === THEME_STORAGE_KEY ? stored : null;
+    },
+  };
+  const matchMedia = (query: string) => ({ matches: query === "(prefers-color-scheme: dark)" ? systemDark : !systemDark });
+  runInNewContext(script, { location: { pathname: path }, document, localStorage, matchMedia, window: { matchMedia } });
+  const marks = () => head.filter((node) => !node.removed && THEME_SCOPE_ATTRIBUTE in node.attributes).length;
+  return {
+    theme: html[THEME_PROVIDER_PROPS.attribute],
+    marks: marks(),
+    afterLoad: () => {
+      for (const [type, listener] of listeners) if (type === "DOMContentLoaded") listener();
+      return marks();
+    },
+  };
+}
+
+test("sulle pagine del dashboard il tema scelto vale già nel <head>, prima che il browser legga il corpo", () => {
+  for (const path of ["/dashboard", "/dashboard/ws-1", "/dashboard/ws-1/use-cases", "/dashboard/ws-1/casi-duso/c-1/attivita"]) {
+    const page = runThemeScript(THEME_BOOT_SCRIPT, path, { stored: "light" });
+    assert.equal(page.theme, "light", path);
+    // Il segno provvisorio nel <head> fa valere subito i colori chiari di globals.css…
+    assert.equal(page.marks, 1, `${path}: il segno nel <head>`);
+    // …e sparisce quando la pagina è letta tutta, dove c'è quello vero di (dashboard)/layout.
+    assert.equal(page.afterLoad(), 0, `${path}: il segno provvisorio sparisce`);
+  }
+  // Le scelte come le legge next-themes: niente di salvato è «Scuro», «Come il sistema» segue il sistema.
+  assert.equal(runThemeScript(THEME_BOOT_SCRIPT, "/dashboard/ws-1").theme, "dark");
+  assert.equal(runThemeScript(THEME_BOOT_SCRIPT, "/dashboard/ws-1", { stored: "dark" }).theme, "dark");
+  assert.equal(runThemeScript(THEME_BOOT_SCRIPT, "/dashboard/ws-1", { stored: "system", systemDark: false }).theme, "light");
+  assert.equal(runThemeScript(THEME_BOOT_SCRIPT, "/dashboard/ws-1", { stored: "system", systemDark: true }).theme, "dark");
+  // La memoria del browser bloccata: «Scuro», senza errori.
+  assert.equal(runThemeScript(THEME_BOOT_SCRIPT, "/dashboard/ws-1", { blocked: true }).theme, "dark");
+  // I colori chiari valgono con questo segno: lo stesso attributo che cerca globals.css.
+  assert.ok(readRepo("src/app/globals.css").includes(`:root[data-theme="light"]:has([${THEME_SCOPE_ATTRIBUTE}])`));
+});
+
+test("lo script del <head> sceglie il tema come next-themes, e non tocca le pagine pubbliche", () => {
+  const html = renderToStaticMarkup(createElement(ThemeProvider, {}, createElement("p", {}, "pagina")));
+  const nextThemes = /^<script type="text\/javascript">([\s\S]*)<\/script>/.exec(html)![1];
+  for (const stored of [null, "dark", "light", "system"]) {
+    for (const systemDark of [false, true]) {
+      const ours = runThemeScript(THEME_BOOT_SCRIPT, "/dashboard/ws-1", { stored, systemDark }).theme;
+      const theirs = runThemeScript(nextThemes, "/dashboard/ws-1", { stored, systemDark }).theme;
+      assert.equal(ours, theirs, `salvato ${stored}, sistema ${systemDark ? "scuro" : "chiaro"}`);
+    }
+  }
+  for (const path of ["/", "/login", "/r/token", "/rispondi/token", "/a/token", "/s/token", "/c/token", "/invite/token", "/dashboardx", "/privacy/ai-readiness"]) {
+    const page = runThemeScript(THEME_BOOT_SCRIPT, path, { stored: "light" });
+    assert.equal(page.theme, undefined, `${path}: lo script del <head> non scrive il tema`);
+    assert.equal(page.marks, 0, `${path}: nessun segno`);
+  }
+});
+
+test("il layout di base: lo script del tema nel <head>, prima del corpo della pagina", () => {
+  const layout = readRepo("src/app/layout.tsx");
+  assert.ok(layout.includes('import { THEME_BOOT_SCRIPT } from "@/components/theme/theme-config";'));
+  const [open, close] = [layout.indexOf("<head>"), layout.indexOf("</head>")];
+  assert.ok(layout.indexOf("<html") < open && open < close && close < layout.indexOf("<body"), "il <head> prima del <body>");
+  const inner = layout.slice(open + "<head>".length, close).replace(/\{\/\*[\s\S]*?\*\/\}/g, "").trim();
+  assert.equal(inner, "<script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />");
+});
+
+test("scegliere una voce del menu «Tema» cambia il tema e lo salva in questo browser; un valore sconosciuto no", () => {
+  // Il gestore vero del gruppo, preso dal render dentro il ThemeProvider: setTheme di next-themes scrive
+  // la scelta in localStorage sotto la chiave del tema.
+  let onValueChange: ((value: unknown) => void) | undefined;
+  const find = (node: unknown): void => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) return node.forEach(find);
+    const props = (node as { props?: Record<string, unknown> }).props;
+    if (!props) return;
+    if (typeof props.onValueChange === "function") onValueChange = props.onValueChange as (value: unknown) => void;
+    find(props.children);
+  };
+  const Capture = () => {
+    const element = (ThemeMenuGroup as () => unknown)();
+    find(element);
+    return element;
+  };
+  const writes: Array<[string, string]> = [];
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: { getItem: () => null, setItem: (key: string, value: string) => writes.push([key, value]), removeItem() {} },
+  });
+  try {
+    renderToStaticMarkup(createElement(ThemeProvider, {}, createElement(MenuRoot, { open: true }, createElement(Capture, {}))));
+    assert.equal(typeof onValueChange, "function", "il gruppo ha un gestore della scelta");
+    for (const option of THEME_OPTIONS) onValueChange!(option.value);
+    for (const unknown of ["blu", "", undefined, null]) onValueChange!(unknown);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "localStorage", previous);
+    else delete (globalThis as { localStorage?: unknown }).localStorage;
+  }
+  assert.deepEqual(writes, [
+    ["unbundle-theme", "dark"],
+    ["unbundle-theme", "light"],
+    ["unbundle-theme", "system"],
+  ]);
+});
+
+test("i toast e le pagine dicono chiaro sulle stesse pagine: il gruppo (dashboard) serve solo /dashboard", () => {
+  // toasterTheme e lo script del <head> riconoscono il dashboard dal percorso (/dashboard…), i colori
+  // dal segno di (dashboard)/layout: una pagina nuova nel gruppo fuori da /dashboard avrebbe la pagina
+  // chiara, i toast "system" e un lampo scuro al caricamento.
+  const entries = readdirSync(new URL("../../app/(dashboard)", import.meta.url), { withFileTypes: true })
+    .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name))
+    .sort();
+  assert.deepEqual(entries, ["dashboard/", "layout.tsx"]);
 });

@@ -5,10 +5,11 @@ import type { ThemeProviderProps } from "next-themes";
  * ogni workspace, sotto una chiave sua (quella delle pagine pubbliche /a e /s è
  * `unbundle-survey-theme`, che resta com'è). «Scuro» è il predefinito per tutti.
  *
- * next-themes scrive il tema in `data-theme` su <html> con uno script in linea che gira prima che
- * la pagina si disegni (niente lampo dell'altro tema al caricamento). I colori del tema chiaro
- * stanno in globals.css sotto `:root[data-theme="light"]:has([data-theme-scope])`: valgono solo
- * sulle pagine del dashboard, che portano il segno `data-theme-scope`.
+ * next-themes scrive il tema in `data-theme` su <html> con uno script in linea all'inizio del corpo
+ * della pagina, e sulle pagine del dashboard THEME_BOOT_SCRIPT lo scrive già nel <head> (niente
+ * lampo dell'altro tema al caricamento). I colori del tema chiaro stanno in globals.css sotto
+ * `:root[data-theme="light"]:has([data-theme-scope])`: valgono solo sulle pagine del dashboard, che
+ * portano il segno `data-theme-scope`.
  */
 export const THEME_STORAGE_KEY = "unbundle-theme";
 
@@ -27,6 +28,17 @@ export const THEME_PROVIDER_PROPS = {
   storageKey: THEME_STORAGE_KEY,
   disableTransitionOnChange: true,
 } satisfies Omit<ThemeProviderProps, "children">;
+
+/**
+ * Lo script nel <head> del layout di base, per le pagine del dashboard (/dashboard e sotto): scrive il
+ * tema scelto in `data-theme` (come next-themes: niente di salvato vale «Scuro», «Come il sistema»
+ * segue il sistema) e mette nel <head> un segno `data-theme-scope` provvisorio, prima che il browser
+ * legga il corpo della pagina. Così il primo fotogramma è già del tema scelto: lo script di
+ * next-themes sta nel corpo, e il browser può disegnare la pagina una prima volta prima di
+ * eseguirlo, o prima di leggere il segno vero di (dashboard)/layout. Il segno provvisorio sparisce a
+ * DOMContentLoaded, quando quello vero è nella pagina; le pagine pubbliche non lo hanno mai.
+ */
+export const THEME_BOOT_SCRIPT = `(function(){try{var p=location.pathname;if(p!=="/dashboard"&&p.indexOf("/dashboard/")!==0)return;var t;try{t=localStorage.getItem(${JSON.stringify(THEME_PROVIDER_PROPS.storageKey)})}catch(e){}t=t||${JSON.stringify(THEME_PROVIDER_PROPS.defaultTheme)};if(t==="system")t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.setAttribute(${JSON.stringify(THEME_PROVIDER_PROPS.attribute)},t);var m=document.createElement("meta");m.setAttribute("name","unbundle-theme-scope");m.setAttribute(${JSON.stringify(THEME_SCOPE_ATTRIBUTE)},"");document.head.appendChild(m);document.addEventListener("DOMContentLoaded",function(){m.remove()})}catch(e){}})()`;
 
 /** Le tre voci del menu, in quest'ordine. */
 export const THEME_OPTIONS: ReadonlyArray<{ value: ThemeChoice; label: string }> = [
