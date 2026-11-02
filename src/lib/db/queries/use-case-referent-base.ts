@@ -23,6 +23,7 @@ import {
   workspaceMembersSql,
   type ReferentPerson,
   type WorkspaceMemberFacts,
+  type WorkspaceMembersOptions,
 } from "@/lib/use-cases/referent/people";
 import { personaWriter, type ServiceResult, type WriteContext } from "@/lib/use-cases/service";
 import type { IsoDate } from "@/lib/use-cases/types";
@@ -388,13 +389,14 @@ export async function readEmailPerson(executor: UcExecutor, workspaceId: string,
 
 /**
  * Le persone del workspace che il selettore può proporre (`workspaceMembersSql`): account verificati,
- * ruolo diverso da `learner`. Con `userId` una sola persona, o nessuna. Mai mostrate oltre a nome, email
- * coperta e «Fa parte del team»; nessun dato dei corsi.
+ * ruolo diverso da `learner`; (rilascio 4) con `learners: true` anche i partecipanti ai corsi di questo
+ * workspace. Con `userId` una sola persona, o nessuna. Mai mostrate oltre a nome, email coperta e «Fa
+ * parte del team»; nessun dato dei corsi. Il controllo di chi guarda resta senza l'opzione.
  */
-export async function readWorkspaceMembers(executor: UcExecutor, workspaceId: string, userId: string | null = null): Promise<WorkspaceMemberFacts[]> {
+export async function readWorkspaceMembers(executor: UcExecutor, workspaceId: string, userId: string | null = null, o: WorkspaceMembersOptions = {}): Promise<WorkspaceMemberFacts[]> {
   if (!isUuid(workspaceId) || (userId !== null && !isUuid(userId))) return [];
-  const [rows] = await executor.batch([workspaceMembersSql(workspaceId, userId)]);
-  return rows.map((r) => memberFactsOf(r)).filter((m): m is WorkspaceMemberFacts => m !== null);
+  const [rows] = await executor.batch([workspaceMembersSql(workspaceId, userId, o)]);
+  return rows.map((r) => memberFactsOf(r, o)).filter((m): m is WorkspaceMemberFacts => m !== null);
 }
 
 /** Un contatto del workspace, non anonimizzato, letto per riconoscere la stessa persona. */

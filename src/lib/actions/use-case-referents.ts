@@ -27,18 +27,20 @@ import {
   correctReferentEmail,
   deleteNeedFile,
   eraseReferentData,
+  listReferentPickerPeople,
   prepareReferentQuestions,
   remindReferentRequest,
   removeNeedAnswer,
   retryReferentRequestEmail,
   revealReferentContactEmail,
+  revealReferentMemberEmail,
   reviewNeedFile,
   revokeReferentRequest,
   sendReferentRequest,
   type ReferentFailure,
 } from "@/lib/db/queries/use-case-referents";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
-import type { AddToReferentRequestInput, FileReviewOutcome, ReferentActionResult, SendReferentRequestInput } from "@/lib/use-cases/referent/contract";
+import type { AddToReferentRequestInput, FileReviewOutcome, ReferentActionResult, ReferentMemberOption, SendReferentRequestInput } from "@/lib/use-cases/referent/contract";
 import { REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import type { ServiceResult, WriteContext } from "@/lib/use-cases/service";
@@ -197,6 +199,31 @@ export async function revealReferentContactEmailAction(workspaceId: string, useC
   const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   const result = await revealReferentContactEmail(p.ctx, useCaseId, contactId);
+  if (result.ok) return { ok: true, data: { email: result.value.email }, message: null };
+  return { ok: false, code: result.error, message: result.message };
+}
+
+/**
+ * (Rilascio 4) Le persone del workspace per «A chi», lette quando la finestra si apre: membri e
+ * partecipanti ai corsi del workspace, nome ed email coperta. Solo lettura.
+ */
+export async function listReferentPeopleAction(workspaceId: string, useCaseId: string): Promise<ReferentActionResult<{ members: ReferentMemberOption[] }>> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId)) return failure("non_trovato");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  const result = await listReferentPickerPeople(p.ctx, useCaseId);
+  if (result.ok) return { ok: true, data: { members: result.value.members }, message: null };
+  return { ok: false, code: result.error, message: result.message };
+}
+
+/** (Rilascio 4) L'indirizzo intero della persona scelta in «A chi», per «Controlla e invia». Solo lettura. */
+export async function revealReferentMemberEmailAction(workspaceId: string, useCaseId: string, userId: string): Promise<ReferentActionResult<{ email: string }>> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(userId)) return failure("non_trovato");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  const result = await revealReferentMemberEmail(p.ctx, useCaseId, userId);
   if (result.ok) return { ok: true, data: { email: result.value.email }, message: null };
   return { ok: false, code: result.error, message: result.message };
 }

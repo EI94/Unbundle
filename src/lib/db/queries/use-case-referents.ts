@@ -146,6 +146,33 @@ function memberIsLateralSpace(m: Pick<WorkspaceMemberFacts, "userId" | "email">,
   return !checkContactEmail({ email: m.email, user, lsDomains, lsMemberEmails: lsMembers }).ok;
 }
 
+/**
+ * Le persone del workspace del selettore, dopo i referenti (`pickerMembersOf`): una voce per persona,
+ * mai chi è già un referente (per account, per email verificata o per email del contatto), mai chi
+ * guarda, mai Lateral Space; nome, email coperta e «Fa parte del team». Con `learners` anche i
+ * partecipanti ai corsi del workspace, senza niente che li distingua.
+ */
+function pickerOptionsOf(i: {
+  all: readonly WorkspaceMemberFacts[];
+  known: readonly { userId: string | null; email: string | null }[];
+  people: ReadonlyMap<string, { userId: string | null }>;
+  viewerUserId: string;
+  lsDomains: readonly string[];
+  lsMembers: readonly string[];
+  learners: boolean;
+}): ReferentMemberOption[] {
+  const contactUserIds = new Set<string>();
+  for (const c of i.known) if (c.userId) contactUserIds.add(c.userId);
+  for (const person of i.people.values()) if (person.userId) contactUserIds.add(person.userId);
+  const contactEmails = new Set(i.known.map((c) => c.email).filter((e): e is string => Boolean(e)));
+  return pickerMembersOf(i.all, {
+    viewerUserId: i.viewerUserId,
+    dedupe: { contactEmails, contactUserIds },
+    isLateralSpace: (m) => memberIsLateralSpace(m, i.lsDomains, i.lsMembers),
+    learners: i.learners,
+  }).map((m) => ({ userId: m.userId, displayName: m.displayName, emailMasked: maskEmail(m.email), team: m.team }));
+}
+
 /** Il prossimo stato da `reviewerStatus` per una riga letta. */
 function statusOf(row: UcRow, now: Date): "inviata" | "completata" | "scaduta" | "revocata" {
   const status = (rowString(row.status) ?? "inviata") as "inviata" | "completata" | "scaduta" | "revocata";
@@ -539,18 +566,12 @@ export async function loadUseCaseReferentPanel(i: {
     // (Referente già iscritto) Dopo i referenti, le persone del workspace con un account: solo a chi può
     // chiedere e vede già le persone in Impostazioni › Persone; una voce per persona, mai chi guarda,
     // mai Lateral Space, mai i partecipanti ai corsi. Solo nome, email coperta e «Fa parte del team».
+    // (Rilascio 4) La finestra in tre passi legge le persone da `listReferentPickerPeople`, che ha
+    // anche i partecipanti ai corsi del workspace e non sta nel pannello di ogni scheda.
     let members: ReferentMemberOption[] = [];
     if (canAsk && canSeeWorkspacePeople(i.role)) {
       const [all, known] = await Promise.all([readWorkspaceMembers(executor, ws), readPersonContacts(executor, ws)]);
-      const contactUserIds = new Set<string>();
-      for (const c of known) if (c.userId) contactUserIds.add(c.userId);
-      for (const person of people.values()) if (person.userId) contactUserIds.add(person.userId);
-      const contactEmails = new Set(known.map((c) => c.email).filter((e): e is string => Boolean(e)));
-      members = pickerMembersOf(all, {
-        viewerUserId: i.session.id,
-        dedupe: { contactEmails, contactUserIds },
-        isLateralSpace: (m) => memberIsLateralSpace(m, lsDomains, lsMembers),
-      }).map((m) => ({ userId: m.userId, displayName: m.displayName, emailMasked: maskEmail(m.email), team: m.team }));
+      members = pickerOptionsOf({ all, known, people, viewerUserId: i.session.id, lsDomains, lsMembers, learners: false });
     }
 
     // Richieste.
@@ -957,15 +978,16 @@ async function sendReferentRequestOnce(
   } else {
     // (Referente già iscritto) Una persona del workspace scelta dall'elenco: tutto si ricontrolla qui.
     // Chi guarda deve già vedere le persone del workspace (Impostazioni › Persone); la persona è ancora
-    // del workspace, con l'email verificata, non è un partecipante ai corsi, non è di Lateral Space e
-    // non è chi chiede. Il suo referente si riusa se c'è (per account o per email), altrimenti nasce
-    // collegato al suo account.
-    // Il ruolo di chi chiede si rilegge qui (`readWorkspaceMembers` vuole un ruolo diverso da `learner`).
+    // del workspace (rilascio 4: anche come partecipante ai corsi di questo workspace), con l'email
+    // verificata, non è di Lateral Space e non è chi chiede. Il suo referente si riusa se c'è (per
+    // account o per email), altrimenti nasce collegato al suo account; l'email gli dice che ha già un
+    // account (`accountNotice`), mai un link alla dashboard.
+    // Il ruolo di chi chiede si rilegge qui (`readWorkspaceMembers` senza opzione vuole un ruolo diverso da `learner`).
     const [self] = await readWorkspaceMembers(executor, ctx.workspaceId, writer.userId);
     if (!self || !canSeeWorkspacePeople(self.role)) return rfail("permesso_mancante");
-    // Una persona che non si può più scegliere (tolta dal workspace, diventata partecipante ai corsi,
-    // email non più verificata, un id inventato): non è mai stata un referente, quindi un testo suo.
-    const [member] = await readWorkspaceMembers(executor, ctx.workspaceId, parsed.contact.userId);
+    // Una persona che non si può più scegliere (tolta dal workspace o dal corso, email non più
+    // verificata, un id inventato): non è mai stata un referente, quindi un testo suo.
+    const [member] = await readWorkspaceMembers(executor, ctx.workspaceId, parsed.contact.userId, { learners: true });
     if (!member) return rfail("persona_non_disponibile");
     if (memberIsLateralSpace(member, lsDomains, lsMembers)) return rfail("referente_lateral_space");
     if (member.userId === writer.userId.toLowerCase()) return rfail("referente_sei_tu");
@@ -1418,6 +1440,63 @@ export const revealReferentContactEmail = guardedReferent(
     if (rowBool(hub?.hub_only)) return ok({ email });
     const viewer = await loadUserContext(executor, writer.userId, lsDomainsOf(env));
     return ok({ email: viewer?.isLateralSpace === true ? email : null });
+  },
+);
+
+/**
+ * (Rilascio 4) Le persone del workspace per «A chi» della finestra «Chiedi al referente», lette quando
+ * la finestra si apre (mai nel pannello di ogni scheda): i membri e i partecipanti ai corsi di questo
+ * workspace con un account verificato, che non sono già referenti, non sono di Lateral Space e non
+ * sono chi guarda, in ordine alfabetico; nome, email coperta e «Fa parte del team». Solo a chi può
+ * chiedere (`canEditNeeds`) e vede già le persone del workspace; agli altri un elenco vuoto. Nessun
+ * dato dei corsi, nessun conteggio; nei log solo l'operazione e il codice.
+ */
+export const listReferentPickerPeople = guardedReferent(
+  "persone_selettore",
+  async function listReferentPickerPeople(ctx: WriteContext, useCaseId: string, env: Env = process.env): Promise<ServiceResult<{ members: ReferentMemberOption[] }> | ReferentFailure> {
+    const writer = await referentWriter(ctx, env);
+    if (!writer.ok) return writer;
+    if (!isUuid(useCaseId)) return rfail("non_trovato");
+    const executor = await getAppUcExecutor();
+    const card = await readCard(executor, ctx.workspaceId, useCaseId);
+    if (!card) return rfail("non_trovato");
+    const ws = ctx.workspaceId.toLowerCase();
+    // Il ruolo di chi guarda, riletto adesso: senza le persone in Impostazioni, nessuna persona qui.
+    const [self] = await readWorkspaceMembers(executor, ws, writer.userId);
+    if (!self || !canSeeWorkspacePeople(self.role)) return ok({ members: [] });
+    const [contactRows] = await executor.batch([contactsSql(ws)]);
+    const [people, known, lsMembers, all] = await Promise.all([
+      readReferentPeople(executor, ws, contactRows.map((r) => String(r.id))),
+      readPersonContacts(executor, ws),
+      readLsMemberEmails(executor, ws),
+      readWorkspaceMembers(executor, ws, null, { learners: true }),
+    ]);
+    return ok({ members: pickerOptionsOf({ all, known, people, viewerUserId: writer.userId, lsDomains: lsDomainsOf(env), lsMembers, learners: true }) });
+  },
+);
+
+/**
+ * (Rilascio 4) L'indirizzo intero della persona scelta in «A chi», per «A» di «Controlla e invia»:
+ * solo per una persona che l'elenco può proporre (anche un partecipante ai corsi del workspace), mai
+ * Lateral Space, mai chi guarda, e solo a chi vede già le persone del workspace. Una persona alla
+ * volta: gli indirizzi dell'elenco non arrivano mai insieme al browser. Solo lettura.
+ */
+export const revealReferentMemberEmail = guardedReferent(
+  "indirizzo_persona",
+  async function revealReferentMemberEmail(ctx: WriteContext, useCaseId: string, userId: string, env: Env = process.env): Promise<ServiceResult<{ email: string }> | ReferentFailure> {
+    const writer = await referentWriter(ctx, env);
+    if (!writer.ok) return writer;
+    if (!isUuid(useCaseId) || !isUuid(userId)) return rfail("non_trovato");
+    const executor = await getAppUcExecutor();
+    const card = await readCard(executor, ctx.workspaceId, useCaseId);
+    if (!card) return rfail("non_trovato");
+    const [self] = await readWorkspaceMembers(executor, ctx.workspaceId, writer.userId);
+    if (!self || !canSeeWorkspacePeople(self.role)) return rfail("permesso_mancante");
+    const [member] = await readWorkspaceMembers(executor, ctx.workspaceId, userId, { learners: true });
+    if (!member) return rfail("persona_non_disponibile");
+    if (memberIsLateralSpace(member, lsDomainsOf(env), await readLsMemberEmails(executor, ctx.workspaceId))) return rfail("referente_lateral_space");
+    if (member.userId === writer.userId.toLowerCase()) return rfail("referente_sei_tu");
+    return ok({ email: member.email });
   },
 );
 

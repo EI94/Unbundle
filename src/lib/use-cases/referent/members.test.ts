@@ -8,6 +8,7 @@ import { REFERENT_UI_TEXT } from "./labels.ts";
 import {
   NO_PERSON,
   canSeeWorkspacePeople,
+  isPickableMemberRole,
   linkNewContactUserSql,
   memberDisplayName,
   memberFactsOf,
@@ -115,6 +116,64 @@ test("selettore: una voce per persona, mai chi guarda, mai Lateral Space, in ord
   });
   assert.deepEqual(deduped.map((m) => m.userId), [BRUNO]);
   for (const m of out) assert.deepEqual(Object.keys(m).sort(), ["displayName", "email", "team", "userId"], "nessun ruolo, nessun conteggio");
+});
+
+// ── (Rilascio 4) I partecipanti ai corsi del workspace nel selettore ──────
+
+const OLD_LAST = "WHERE m.role IS NOT NULL AND m.role <> 'learner'";
+const LEARNERS_LAST = `WHERE m.role IS NOT NULL AND (m.role <> 'learner' OR EXISTS (
+  SELECT 1 FROM workspace_memberships lwm
+  WHERE lwm.workspace_id = $N::uuid AND lwm.user_id = m.user_id::uuid AND lwm.role = 'learner'))`;
+
+test("la SQL senza l'opzione è quella di prima, parola per parola; con l'opzione cambia solo l'ultima condizione", () => {
+  for (const userId of [null, ANNA]) {
+    const before = workspaceMembersSql(WS, userId);
+    for (const o of [{}, { learners: false }]) {
+      const same = workspaceMembersSql(WS, userId, o);
+      assert.equal(same.text, before.text);
+      assert.deepEqual(same.params, before.params);
+    }
+    assert.ok(before.text.endsWith(`) m\n${OLD_LAST}`), "l'ultima riga di sempre");
+    const learners = workspaceMembersSql(WS, userId, { learners: true });
+    const n = before.params.length + 1;
+    assert.equal(learners.text, before.text.slice(0, -OLD_LAST.length) + LEARNERS_LAST.replace("$N", `$${n}`));
+    assert.deepEqual(learners.params, [...before.params, WS], "il workspace è un parametro legato, non `pw0`");
+  }
+});
+
+test("la SQL con i partecipanti ai corsi: solo una riga «learner» di questo workspace, niente dei corsi, nessun ordinamento", () => {
+  const s = workspaceMembersSql(WS, null, { learners: true });
+  assert.doesNotMatch(s.text, /learning_/i, "nessuna tabella dei corsi");
+  assert.doesNotMatch(s.text, /\bORDER\s+BY\b|\bGROUP\s+BY\b|count\(/i);
+  assert.match(s.text, /email_verified IS NOT NULL/);
+  assert.match(s.text, /EXISTS \(\s*SELECT 1 FROM workspace_memberships lwm\s+WHERE lwm\.workspace_id = \$\d+::uuid AND lwm\.user_id = m\.user_id::uuid AND lwm\.role = 'learner'\)/);
+  // `pw0` vive solo dentro la tabella derivata `m`: dopo «) m» non compare più.
+  const outer = s.text.slice(s.text.lastIndexOf(") m\n"));
+  assert.doesNotMatch(outer, /\bpw0\b/);
+  assert.doesNotMatch(outer, /\bmemberships om\b/, "il ruolo dell'organizzazione non basta");
+});
+
+test("le righe con i partecipanti ai corsi: il ruolo «learner» entra solo con l'opzione; chi guarda resta fuori", () => {
+  const row = { user_id: ANNA, name: "Anna Verdi", email: "anna@topjet.test", role: "learner" };
+  assert.equal(memberFactsOf(row), null);
+  assert.equal(memberFactsOf(row, { learners: false }), null);
+  assert.deepEqual(memberFactsOf(row, { learners: true }), { userId: ANNA, name: "Anna Verdi", email: "anna@topjet.test", role: "learner" });
+  assert.equal(memberFactsOf({ ...row, role: "" }, { learners: true }), null, "senza ruolo mai");
+  assert.equal(memberFactsOf({ ...row, role: null }, { learners: true }), null);
+  for (const role of ["learner", "contributor", "function_lead"]) assert.equal(isPickableMemberRole(role), true, role);
+  for (const role of [null, undefined, ""]) assert.equal(isPickableMemberRole(role), false, String(role));
+  // Chi guarda non diventa mai «chi vede le persone» perché partecipa a un corso.
+  assert.equal(canSeeWorkspacePeople("learner"), false);
+  const members = [member(ANNA, "Anna Verdi", "anna@topjet.test", "learner"), member(BRUNO, "Bruno Bianchi", "bruno@topjet.test", "function_lead"), member(CARLA, "Carla Neri", "carla@ls.test", "learner")];
+  const none = { contactEmails: new Set<string>(), contactUserIds: new Set<string>() };
+  const isLs = (m: WorkspaceMemberFacts) => m.email.endsWith("@ls.test");
+  assert.deepEqual(pickerMembersOf(members, { viewerUserId: ME, dedupe: none, isLateralSpace: isLs }).map((m) => m.userId), [BRUNO], "senza l'opzione come prima");
+  const withLearners = pickerMembersOf(members, { viewerUserId: ME, dedupe: none, isLateralSpace: isLs, learners: true });
+  assert.deepEqual(withLearners.map((m) => [m.displayName, m.team]), [["Anna Verdi", false], ["Bruno Bianchi", true]], "nello stesso elenco, alfabetico; Lateral Space mai");
+  for (const m of withLearners) assert.deepEqual(Object.keys(m).sort(), ["displayName", "email", "team", "userId"], "niente che distingua un partecipante");
+  // Un partecipante già referente (per email o per account) non ha una seconda voce; chi guarda mai.
+  assert.deepEqual(pickerMembersOf(members, { viewerUserId: ANNA, dedupe: none, isLateralSpace: isLs, learners: true }).map((m) => m.userId), [BRUNO]);
+  assert.deepEqual(pickerMembersOf(members, { viewerUserId: ME, dedupe: { contactEmails: new Set(["anna@topjet.test"]), contactUserIds: new Set() }, isLateralSpace: isLs, learners: true }).map((m) => m.userId), [BRUNO]);
 });
 
 // ── Il collegamento all'account ──────────────────────────────────────

@@ -146,23 +146,46 @@ export function personFactsOf(row: Readonly<Record<string, unknown>> | undefined
 /**
  * Chi guarda può già vedere le persone del workspace (Impostazioni › Persone, «Chi ha accesso»)? La
  * pagina delle impostazioni si apre a ogni ruolo tranne `learner` (`requireWorkspacePage`) e lì
- * l'elenco mostra nome ed email di chi ha accesso, tutti tranne i partecipanti ai corsi. Il selettore
- * di «Chiedi al referente» mostra le stesse persone e niente di più, solo a chi le vede già.
+ * l'elenco mostra nome ed email di chi ha accesso. Solo chi le vede già (chi guarda, mai un
+ * partecipante ai corsi) riceve l'elenco del selettore di «Chiedi al referente».
  */
 export function canSeeWorkspacePeople(role: string | null | undefined): boolean {
   return typeof role === "string" && role.length > 0 && role !== "learner";
 }
 
 /**
- * Le persone che il selettore può proporre: account con l'email verificata e un ruolo nel workspace
- * diverso da `learner` (le stesse di «Chi ha accesso»). Un partecipante ai corsi non è nell'elenco:
- * chi guarda non lo vede in Impostazioni, quindi non lo vede nemmeno qui (si riconosce solo quando
- * qualcuno scrive la sua email in «+ Nuovo referente»). Con `userId` una persona sola (il server
- * ricontrolla la scelta). Nessun ORDER BY: l'ordine lo dà `pickerMembersOf`.
+ * (Rilascio 4) Una persona che il selettore può proporre: un ruolo qualsiasi nel workspace, anche
+ * `learner` (decisione del titolare: le persone dei corsi del workspace sono referenti possibili). Vale
+ * solo per le persone proposte, mai per chi guarda (`canSeeWorkspacePeople`).
  */
-export function workspaceMembersSql(workspaceId: string, userId: string | null = null): UcStatement {
+export function isPickableMemberRole(role: string | null | undefined): boolean {
+  return typeof role === "string" && role.length > 0;
+}
+
+/** (Rilascio 4) Con `learners` l'elenco ha anche i partecipanti ai corsi di questo workspace. */
+export interface WorkspaceMembersOptions {
+  learners?: boolean;
+}
+
+/**
+ * Le persone che il selettore può proporre: account con l'email verificata e un ruolo nel workspace
+ * (organizzazione o workspace, come «Chi ha accesso»), di norma diverso da `learner`. (Rilascio 4)
+ * Con `learners: true` anche chi ha il ruolo effettivo `learner` **e** una riga `learner` in
+ * `workspace_memberships` di questo workspace (la scrive solo l'iscrizione a un corso,
+ * `lib/learning/join.ts`): mai il partecipante di un altro workspace, di un'altra organizzazione o
+ * con il solo ruolo `learner` dell'organizzazione. Nessun dato dei corsi: niente tabelle `learning_`.
+ * Con `userId` una persona sola (il server ricontrolla la scelta). Nessun ORDER BY: l'ordine lo dà
+ * `pickerMembersOf`. Senza l'opzione il testo è quello di prima, parola per parola.
+ */
+export function workspaceMembersSql(workspaceId: string, userId: string | null = null, o: WorkspaceMembersOptions = {}): UcStatement {
   const ws = cast(uuid(workspaceId, "workspace"), "uuid");
   const one = userId === null ? raw("") : ucSql` AND pu.id = ${cast(uuid(userId, "persona"), "uuid")}`;
+  // `pw0` c'è solo dentro la tabella derivata `m`: fuori, il workspace è di nuovo il parametro legato.
+  const roles = o.learners
+    ? ucSql`WHERE m.role IS NOT NULL AND (m.role <> 'learner' OR EXISTS (
+  SELECT 1 FROM workspace_memberships lwm
+  WHERE lwm.workspace_id = ${ws} AND lwm.user_id = m.user_id::uuid AND lwm.role = 'learner'))`
+    : raw(`WHERE m.role IS NOT NULL AND m.role <> 'learner'`);
   return toStatement(ucSql`SELECT m.user_id, m.name, m.email, m.role FROM (
   SELECT pu.id::text AS user_id, pu.name, lower(btrim(pu.email)) AS email, ${effectiveRole("pu.id", "pw0.id")} AS role
   FROM users pu JOIN workspaces pw0 ON pw0.id = ${ws}
@@ -170,7 +193,7 @@ export function workspaceMembersSql(workspaceId: string, userId: string | null =
     AND (EXISTS (SELECT 1 FROM memberships om WHERE om.organization_id = pw0.organization_id AND om.user_id = pu.id)
       OR EXISTS (SELECT 1 FROM workspace_memberships owm WHERE owm.workspace_id = pw0.id AND owm.user_id = pu.id))
 ) m
-WHERE m.role IS NOT NULL AND m.role <> 'learner'`);
+${roles}`);
 }
 
 /** Una persona del workspace letta da `workspaceMembersSql`. */
@@ -181,12 +204,13 @@ export interface WorkspaceMemberFacts {
   role: string;
 }
 
-export function memberFactsOf(row: Readonly<Record<string, unknown>> | undefined): WorkspaceMemberFacts | null {
+/** Una riga di `workspaceMembersSql` → la persona; con `learners` anche un partecipante ai corsi. */
+export function memberFactsOf(row: Readonly<Record<string, unknown>> | undefined, o: WorkspaceMembersOptions = {}): WorkspaceMemberFacts | null {
   if (!row) return null;
   const userId = typeof row.user_id === "string" && UUID.test(row.user_id) ? row.user_id.toLowerCase() : null;
   const email = typeof row.email === "string" ? row.email.trim().toLowerCase() : "";
   const role = typeof row.role === "string" ? row.role : "";
-  if (!userId || !email.includes("@") || !canSeeWorkspacePeople(role)) return null;
+  if (!userId || !email.includes("@") || !(o.learners ? isPickableMemberRole(role) : canSeeWorkspacePeople(role))) return null;
   const name = typeof row.name === "string" ? row.name.replace(/\s+/g, " ").trim() : "";
   return { userId, name: name || null, email, role };
 }
@@ -213,19 +237,21 @@ export interface PickerDedupe {
  * Le persone del selettore, dopo i referenti: una per persona (mai una seconda voce per chi è già un
  * referente, per email o per account), mai chi guarda, mai Lateral Space (`isLateralSpace`), in ordine
  * alfabetico di nome. Art. 15.4: nessun conteggio e nessun ruolo; l'unica informazione in più è
- * «Fa parte del team» per i revisori, la stessa dei referenti.
+ * «Fa parte del team» per i revisori, la stessa dei referenti. (Rilascio 4) Con `learners` anche i
+ * partecipanti ai corsi del workspace, nello stesso elenco e senza niente che li distingua.
  */
 export function pickerMembersOf(
   members: readonly WorkspaceMemberFacts[],
-  o: { viewerUserId: string | null; dedupe: PickerDedupe; isLateralSpace: (m: WorkspaceMemberFacts) => boolean },
+  o: { viewerUserId: string | null; dedupe: PickerDedupe; isLateralSpace: (m: WorkspaceMemberFacts) => boolean; learners?: boolean },
 ): { userId: string; displayName: string; email: string; team: boolean }[] {
   const viewer = o.viewerUserId?.toLowerCase() ?? null;
   const seen = new Set<string>();
   const out: { userId: string; displayName: string; email: string; team: boolean }[] = [];
+  const pickable = o.learners ? isPickableMemberRole : canSeeWorkspacePeople;
   for (const m of members) {
     if (seen.has(m.userId) || m.userId === viewer) continue;
     if (o.dedupe.contactUserIds.has(m.userId) || o.dedupe.contactEmails.has(m.email)) continue;
-    if (!canSeeWorkspacePeople(m.role) || o.isLateralSpace(m)) continue;
+    if (!pickable(m.role) || o.isLateralSpace(m)) continue;
     seen.add(m.userId);
     out.push({ userId: m.userId, displayName: memberDisplayName(m), email: m.email, team: canReviewWorkspacePortfolio(m.role) });
   }

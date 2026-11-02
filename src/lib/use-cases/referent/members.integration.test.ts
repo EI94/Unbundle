@@ -68,7 +68,31 @@ const ids = {
   tardi: randomUUID(),
   program: randomUUID(),
   dario: randomUUID(),
+  // (Rilascio 4) I partecipanti ai corsi nel selettore, e chi li guarda.
+  sisterWs: randomUUID(),
+  sponsor: randomUUID(),
+  analyst: randomUUID(),
+  lia: randomUUID(),
+  sara: randomUUID(),
+  sister: randomUUID(),
+  far: randomUUID(),
+  orgLearner: randomUUID(),
+  unverified: randomUUID(),
+  lsLearner: randomUUID(),
 };
+/** (Rilascio 4) Le persone in più: chi guarda (sponsor, analista) e i partecipanti ai corsi, di qui e d'altrove. */
+const EXTRA = {
+  sponsor: { name: "Ornella Sponsor", email: `ornella.${suffix}@topjet.test` },
+  analyst: { name: "Teo Analisi", email: `teo.${suffix}@topjet.test` },
+  lia: { name: "Lia Esempio", email: `lia.${suffix}@topjet.test` },
+  sara: { name: "Sara Prova", email: `sara.${suffix}@topjet.test` },
+  sister: { name: "Nina Sorella", email: `nina.${suffix}@topjet.test` },
+  far: { name: "Ivo Lontano", email: `ivo.${suffix}@altra.test` },
+  orgLearner: { name: "Olga Gruppo", email: `olga.${suffix}@topjet.test` },
+  unverified: { name: "Ugo Attesa", email: `ugo.${suffix}@topjet.test` },
+  lsLearner: { name: "Lino Laterale", email: `lino.${suffix}@ls.test` },
+} as const;
+type Extra = keyof typeof EXTRA;
 type Person = "builder" | "federico" | "corsista" | "contrib" | "ls";
 const PEOPLE: Person[] = ["builder", "federico", "corsista", "contrib", "ls"];
 const ROLE: Record<Person, string> = { builder: "function_lead", federico: "function_lead", corsista: "learner", contrib: "contributor", ls: "transformation_lead" };
@@ -103,6 +127,8 @@ const cards = {
   race2: randomUUID(),
   race3: randomUUID(),
   race4: randomUUID(),
+  lia: randomUUID(),
+  sara: randomUUID(),
 };
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-iscritti-"));
 
@@ -238,6 +264,27 @@ before(async () => {
   // Una persona di un altro workspace: mai referente qui, nemmeno con il suo id.
   await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, 'Esterno Altri', now())`, [ids.outsider, OUTSIDER]);
   await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'contributor')`, [ids.otherWs, ids.outsider]);
+  // (Rilascio 4) Un altro workspace della stessa organizzazione, e i partecipanti ai corsi: di questo
+  // workspace (verificati, uno senza email verificata, uno di Lateral Space), di quell'altro, di
+  // un'altra organizzazione, e uno con il solo ruolo «learner» dell'organizzazione.
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet sorella')`, [ids.sisterWs, ids.org]);
+  for (const key of Object.keys(EXTRA) as Extra[]) {
+    await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, ${key === "unverified" ? "NULL" : "now()"})`, [ids[key], EXTRA[key].email, EXTRA[key].name]);
+  }
+  const extraRole: [Extra, string, string][] = [
+    ["sponsor", ids.ws, "exec_sponsor"],
+    ["analyst", ids.ws, "analyst"],
+    ["lia", ids.ws, "learner"],
+    ["sara", ids.ws, "learner"],
+    ["unverified", ids.ws, "learner"],
+    ["lsLearner", ids.ws, "learner"],
+    ["sister", ids.sisterWs, "learner"],
+    ["far", ids.otherWs, "learner"],
+  ];
+  for (const [key, ws, role] of extraRole) {
+    await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ws, ids[key], role]);
+  }
+  await q(`INSERT INTO memberships (user_id, organization_id, role) VALUES ($1::uuid, $2::uuid, 'learner')`, [ids.orgLearner, ids.org]);
   for (const [code, card] of Object.entries(cards)) {
     await q(
       `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, code, source)
@@ -257,10 +304,10 @@ after(async () => {
   if (!enabled) return;
   await q(`DELETE FROM uc_rate_limits WHERE bucket LIKE 'ucq:%'`);
   await q(`DELETE FROM learning_enrollments WHERE workspace_id = $1::uuid`, [ids.ws]);
-  await q(`DELETE FROM uc_contacts WHERE workspace_id = ANY($1::uuid[])`, [[ids.ws, ids.otherWs]]);
-  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.ws, ids.otherWs]]);
+  await q(`DELETE FROM uc_contacts WHERE workspace_id = ANY($1::uuid[])`, [[ids.ws, ids.otherWs, ids.sisterWs]]);
+  await q(`DELETE FROM workspaces WHERE id = ANY($1::uuid[])`, [[ids.ws, ids.otherWs, ids.sisterWs]]);
   await q(`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, [[ids.org, ids.otherOrg]]);
-  await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [[...PEOPLE.map((p) => ids[p]), ids.outsider, ids.tardi, ids.dario]]);
+  await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [[...PEOPLE.map((p) => ids[p]), ids.outsider, ids.tardi, ids.dario, ...(Object.keys(EXTRA) as Extra[]).map((k) => ids[k])]]);
 });
 
 test("preparazione: autorizzazione, domande, un referente senza account, uno disattivato, la corsista iscritta al corso", opts, async () => {
@@ -286,12 +333,14 @@ test("preparazione: autorizzazione, domande, un referente senza account, uno dis
 test("selettore: le persone che chi guarda vede già in Impostazioni › Persone, senza ruoli né corsi", opts, async () => {
   const panel = await panelFor("builder", cards.contrib);
   assert.ok(panel?.available);
-  // Il contributore e il revisore, in ordine alfabetico; mai la corsista, Lateral Space o chi guarda.
+  // Il contributore e i revisori, in ordine alfabetico; mai la corsista, Lateral Space o chi guarda.
   assert.deepEqual(
     panel!.members.map((m) => [m.userId, m.displayName, m.team]),
     [
       [ids.contrib, NAME.contrib, false],
       [ids.federico, NAME.federico, true],
+      [ids.sponsor, EXTRA.sponsor.name, true],
+      [ids.analyst, EXTRA.analyst.name, true],
     ],
   );
   for (const m of panel!.members) assert.match(m.emailMasked ?? "", /^[a-z]•••@topjet\.test$/, "email coperta");
@@ -314,12 +363,22 @@ test("scelte forzate: chi chiede, Lateral Space, la corsista dall'elenco, un alt
   const send = (userId: string) => referents.sendReferentRequest(as("builder"), cards.forged, { contact: { kind: "membro", userId }, needIds: [n0] }, { env: ENV, requester: requester("builder") });
   refused(await send(ids.builder), "referente_sei_tu", "chi chiede");
   refused(await send(ids.ls), "referente_lateral_space", "Lateral Space");
+  refused(await send(ids.lsLearner), "referente_lateral_space", "un partecipante ai corsi di Lateral Space");
   // (Revisione) Una persona che non si può scegliere non è mai stata un referente: il suo testo, e la
   // pagina si rilegge (codice «superato»).
   const { REFERENT_ERROR_MESSAGES } = await import("./labels.ts");
   const { REFERENT_STALE_CODES } = await import("../../../components/use-cases/detail/referent/referent-outcome.ts");
   assert.ok(REFERENT_STALE_CODES.has("persona_non_disponibile"));
-  for (const [userId, label] of [[ids.corsista, "una corsista non è nell'elenco"], [ids.outsider, "un altro workspace"], [randomUUID(), "un id inventato"]] as const) {
+  // (Rilascio 4) I partecipanti ai corsi di questo workspace si scelgono; quelli d'altrove, con il solo
+  // ruolo dell'organizzazione o senza email verificata no.
+  for (const [userId, label] of [
+    [ids.sister, "una partecipante di un altro workspace della stessa organizzazione"],
+    [ids.far, "un partecipante di un'altra organizzazione"],
+    [ids.orgLearner, "il solo ruolo «learner» dell'organizzazione"],
+    [ids.unverified, "senza email verificata"],
+    [ids.outsider, "un altro workspace"],
+    [randomUUID(), "un id inventato"],
+  ] as const) {
     const result = await send(userId);
     refused(result, "persona_non_disponibile", label);
     if (!result.ok) assert.equal(result.message, REFERENT_ERROR_MESSAGES.persona_non_disponibile, label);
@@ -330,6 +389,99 @@ test("scelte forzate: chi chiede, Lateral Space, la corsista dall'elenco, un alt
   assert.equal((await q(`SELECT 1 FROM use_case_referent_requests WHERE use_case_id = $1::uuid`, [cards.forged])).length, 0, "nessuna richiesta");
   assert.equal((await q(`SELECT 1 FROM uc_contacts WHERE workspace_id = $1::uuid AND user_id IS NOT NULL`, [ids.ws])).length, 0, "nessun referente nuovo");
   assert.equal((await q(`SELECT 1 FROM use_case_referent_emails WHERE workspace_id = $1::uuid`, [ids.ws])).length, 0, "nessuna email in coda");
+});
+
+// ── (Rilascio 4) La finestra in tre passi: le persone lette quando si apre ──
+
+const COURSE_WORDS = ["learner", "learning", "corso", "formazione", "partecipant"];
+
+async function pickerFor(ctx: Ctx, card: string) {
+  return referents.listReferentPickerPeople(ctx, card, ENV);
+}
+function asViewer(userId: string, role: string): Ctx {
+  return { workspaceId: ids.ws, actor: { userId, role, isLateralSpace: false, kind: "persona" }, channel: "pagina" };
+}
+const LISTED = [ids.lia, ids.sara, ids.corsista];
+const NEVER = [ids.sister, ids.far, ids.orgLearner, ids.unverified, ids.lsLearner, ids.ls, ids.outsider];
+
+test("(rilascio 4) l'elenco della finestra: i partecipanti ai corsi di questo workspace per ogni revisore, mai quelli d'altrove", opts, async () => {
+  const viewers: [string, Ctx][] = [
+    ["function_lead", as("builder")],
+    ["exec_sponsor", asViewer(ids.sponsor, "exec_sponsor")],
+    ["analyst", asViewer(ids.analyst, "analyst")],
+    ["Lateral Space", as("ls")],
+  ];
+  for (const [label, ctx] of viewers) {
+    const result = ok(await pickerFor(ctx, cards.contrib), label);
+    const listed = result.members.map((m) => m.userId);
+    for (const userId of LISTED) assert.ok(listed.includes(userId), `${label}: un partecipante ai corsi di questo workspace è nell'elenco`);
+    for (const userId of NEVER) assert.ok(!listed.includes(userId), `${label}: ${userId} mai`);
+    assert.ok(!listed.includes(String(ctx.actor.userId)), `${label}: mai chi guarda`);
+    // Alfabetico, nome ed email coperta, «Fa parte del team» solo per i revisori; niente che distingua un partecipante.
+    const names = result.members.map((m) => m.displayName);
+    assert.deepEqual(names, [...names].sort((a, b) => new Intl.Collator("it", { sensitivity: "base" }).compare(a, b)), label);
+    for (const m of result.members) {
+      assert.deepEqual(Object.keys(m).sort(), ["displayName", "emailMasked", "team", "userId"], label);
+      assert.match(m.emailMasked ?? "", /^[a-z]•••@topjet\.test$/, `${label}: email coperta`);
+    }
+    assert.equal(result.members.find((m) => m.userId === ids.lia)?.team, false);
+    assert.equal(result.members.find((m) => m.userId === ids.federico)?.team, true);
+    const json = JSON.stringify(result);
+    for (const word of [...COURSE_WORDS, COURSE_TITLE, ids.program, EXTRA.lia.email, EXTRA.sara.email, emails.corsista]) assert.ok(!json.toLowerCase().includes(word.toLowerCase()), `${label}: ${word}`);
+  }
+  // Un contributore non chiede: nessun elenco.
+  const byContrib = await pickerFor(as("contrib"), cards.contrib);
+  assert.equal(byContrib.ok, false, "un contributore non riceve l'elenco");
+  if (!byContrib.ok) assert.match(byContrib.error, /^(permesso_mancante|funzione_spenta)$/);
+  // Una scheda d'un altro workspace o inventata: niente.
+  refused(await pickerFor(as("builder"), randomUUID()), "non_trovato", "una scheda inventata");
+  // Il pannello di ogni scheda non ha i partecipanti ai corsi.
+  const panel = await panelFor("builder", cards.contrib);
+  for (const userId of LISTED) assert.ok(!panel!.members.some((m) => m.userId === userId), "mai nel pannello della scheda");
+});
+
+test("(rilascio 4) l'indirizzo intero della persona scelta: per un partecipante dell'elenco sì, per gli altri no", opts, async () => {
+  const reveal = (userId: string, ctx: Ctx = as("builder")) => referents.revealReferentMemberEmail(ctx, cards.lia, userId, ENV);
+  assert.deepEqual(ok(await reveal(ids.lia), "partecipante"), { email: EXTRA.lia.email });
+  assert.deepEqual(ok(await reveal(ids.lia, asViewer(ids.analyst, "analyst")), "dall'analista"), { email: EXTRA.lia.email });
+  assert.deepEqual(ok(await reveal(ids.federico), "un revisore"), { email: emails.federico });
+  for (const userId of [ids.sister, ids.far, ids.orgLearner, ids.unverified, ids.outsider, randomUUID()]) refused(await reveal(userId), "persona_non_disponibile", userId);
+  refused(await reveal(ids.lsLearner), "referente_lateral_space", "partecipante di Lateral Space");
+  refused(await reveal(ids.ls), "referente_lateral_space", "Lateral Space");
+  refused(await reveal(ids.builder), "referente_sei_tu", "chi guarda");
+  const byContrib = await reveal(ids.lia, as("contrib"));
+  assert.equal(byContrib.ok, false, "un contributore no");
+  const json = JSON.stringify(await reveal(ids.lia));
+  for (const word of COURSE_WORDS) assert.ok(!json.toLowerCase().includes(word), word);
+});
+
+test("(rilascio 4) chiedere a un partecipante ai corsi: referente collegato, la riga dell'account, nessun link alla dashboard, nessuna campanella", opts, async () => {
+  const sent = await ask(cards.lia, { kind: "membro", userId: ids.lia });
+  assert.equal(sent.contactName, EXTRA.lia.name);
+  const [row] = await contactRow(EXTRA.lia.email);
+  assert.deepEqual([row?.display_name, row?.user_id], [EXTRA.lia.name, ids.lia], "il referente nasce collegato al suo account");
+  assert.equal(sent.mail.to, EXTRA.lia.email);
+  assert.ok(sent.mail.text.includes(ACCOUNT_LINE), "«Hai già un account Unbundle…»");
+  assert.ok(!sent.mail.text.includes(TEAM_LINE));
+  noDashboard(sent.mail, "partecipante");
+  for (const word of COURSE_WORDS) assert.ok(!sent.mail.text.toLowerCase().includes(word), word);
+  assert.equal((await q(`SELECT 1 FROM use_case_notifications WHERE recipient_user_id = $1::uuid`, [ids.lia])).length, 0, "nessuna campanella per lei");
+  const forLearner = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.lia, role: "learner", useCaseHub: true, env: ENV });
+  assert.equal(forLearner.entries.filter((e) => e.source === "use_case").length, 0);
+  // Adesso è un referente: nell'elenco non c'è più come persona.
+  assert.ok(!ok(await pickerFor(as("builder"), cards.contrib2), "elenco").members.some((m) => m.userId === ids.lia));
+});
+
+test("(rilascio 4) un partecipante tolto dal workspace fra l'elenco e l'invio: «persona_non_disponibile», niente scritto", opts, async () => {
+  assert.ok(ok(await pickerFor(as("builder"), cards.sara), "elenco").members.some((m) => m.userId === ids.sara));
+  await q(`DELETE FROM workspace_memberships WHERE workspace_id = $1::uuid AND user_id = $2::uuid`, [ids.ws, ids.sara]);
+  assert.ok(!ok(await pickerFor(as("builder"), cards.sara), "elenco dopo").members.some((m) => m.userId === ids.sara));
+  const [n0] = await needsOf(cards.sara);
+  const result = await referents.sendReferentRequest(as("builder"), cards.sara, { contact: { kind: "membro", userId: ids.sara }, needIds: [n0] }, { env: ENV, requester: requester("builder") });
+  refused(result, "persona_non_disponibile", "tolta");
+  refused(await referents.revealReferentMemberEmail(as("builder"), cards.sara, ids.sara, ENV), "persona_non_disponibile", "indirizzo");
+  assert.equal((await q(`SELECT 1 FROM use_case_referent_requests WHERE use_case_id = $1::uuid`, [cards.sara])).length, 0);
+  assert.equal((await contactRow(EXTRA.sara.email)).length, 0);
 });
 
 const flow = { learner: { token: "", needId: "" } };
@@ -371,7 +523,7 @@ test("un revisore scelto dall'elenco: la riga del team con il link alla scheda",
   assert.ok(!sent.mail.text.includes(ACCOUNT_LINE));
   const panel = await panelFor("builder", cards.contrib2);
   assert.equal(panel!.contacts.find((c) => c.id === row.id)?.team, true, "«Fa parte del team»");
-  assert.equal(panel!.members.length, 0, "tutti i membri che si possono proporre sono ormai referenti");
+  assert.deepEqual(panel!.members.map((m) => m.userId), [ids.sponsor, ids.analyst], "gli altri membri che si possono proporre sono ormai referenti");
 });
 
 test("una corsista scritta in «+ Nuovo referente»: collegata al suo account, la riga, nessuna campanella per lei", opts, async () => {
@@ -390,7 +542,7 @@ test("una corsista scritta in «+ Nuovo referente»: collegata al suo account, l
   assert.ok((await pub.saveReferentDraft(resolved.link, { needId: sent.needIds[0], text: "Una volta alla settimana.", dontKnow: false }, V)).ok);
   assert.ok((await pub.submitReferentAnswers(resolved.link, {}, V)).ok);
   const rows = await q(`SELECT recipient_user_id::text AS who FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'risposte' ORDER BY recipient_user_id`, [cards.learner]);
-  assert.deepEqual(rows.map((r) => r.who), [ids.builder, ids.federico, ids.ls].sort(), "solo i revisori (anche Lateral Space), mai lei");
+  assert.deepEqual(rows.map((r) => r.who), [ids.builder, ids.federico, ids.ls, ids.sponsor, ids.analyst].sort(), "solo i revisori (anche Lateral Space), mai lei");
   assert.equal((await q(`SELECT 1 FROM use_case_notifications WHERE recipient_user_id = ANY($1::uuid[])`, [[ids.corsista, ids.contrib]])).length, 0);
   assert.equal((await q(`SELECT 1 FROM use_case_requester_emails WHERE recipient_user_id = ANY($1::uuid[])`, [[ids.corsista, ids.contrib]])).length, 0);
   const forLearner = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.corsista, role: "learner", useCaseHub: true, env: ENV });

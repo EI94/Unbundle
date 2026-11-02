@@ -209,9 +209,11 @@ export interface ReferentContactOption {
 
 /**
  * (Referente già iscritto) Una persona del workspace che ha già un account Unbundle e non è ancora tra
- * i referenti: le stesse persone che chi guarda vede in Impostazioni › Persone («Chi ha accesso»), mai
- * i partecipanti ai corsi, mai Lateral Space, mai chi guarda. Nome ed email coperta, più «Fa parte del
- * team» per i revisori; nessun ruolo, niente dei corsi. Sceglierla crea (o riusa) il suo referente.
+ * i referenti: le persone che chi guarda vede in Impostazioni › Persone («Chi ha accesso») e, dal
+ * rilascio 4, nella finestra in tre passi anche i partecipanti ai corsi di questo workspace
+ * (`listReferentPeopleAction`); mai Lateral Space, mai chi guarda. Nome ed email coperta, più «Fa
+ * parte del team» per i revisori; nessun ruolo, niente dei corsi, niente che distingua un
+ * partecipante. Sceglierla crea (o riusa) il suo referente.
  */
 export interface ReferentMemberOption {
   userId: string;
