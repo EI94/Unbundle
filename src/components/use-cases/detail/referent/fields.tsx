@@ -67,7 +67,10 @@ export function NeedChecklist({
                 className="mt-0.5"
                 checked={checked}
                 disabled={disabled}
-                onCheckedChange={(next) => onChange(next === true ? items.map((i) => i.id).filter((id) => chosen.has(id) || id === item.id) : selected.filter((id) => id !== item.id))}
+                // Dalla selezione intera, non dalle sole voci di questo elenco: «Cosa chiedi» ne mostra due
+                // (le proposte e «Altre domande di questo use case») con la stessa selezione, e una spunta
+                // in uno non deve togliere quelle dell'altro. L'ordine della scheda lo rifà chi manda.
+                onCheckedChange={(next) => onChange(next === true ? [...selected.filter((id) => id !== item.id), item.id] : selected.filter((id) => id !== item.id))}
               />
               <span className="min-w-0 break-words">
                 {item.title}
