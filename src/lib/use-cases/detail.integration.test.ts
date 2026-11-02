@@ -31,8 +31,9 @@ const { registerHooks } = nodeModule as unknown as {
 //   guardano il contenuto: scheda nascosta altrui «Use case non trovato» con `noindex` (sotto
 //   loading.tsx lo stato è 200), `/use-cases/nuovo` con l'area spenta, la versione superata con
 //   il toast e il testo che resta nel campo, «Modifica valutazione» che dopo una versione
-//   superata non riporta indietro la valutazione di un collega, l'ancora di `?capitolo=` e un
-//   `#ancora` storpiata («#%») che apre la scheda invece del confine d'errore.
+//   superata non riporta indietro la valutazione di un collega, l'ancora di `?capitolo=` (anche con
+//   Indietro e Avanti del browser tra due `?capitolo=` della stessa scheda) e un `#ancora` storpiata
+//   («#%») che apre la scheda invece del confine d'errore.
 //   run-db-tests.mjs (`npm run test:use-cases:db`) NON le esegue: non passa HUB_DETAIL_HARNESS
 //   né le porte. Si lanciano a mano, con l'app avviata da
 //   `node scripts/uc-test/start-app.mjs --flag USE_CASE_HUB_WORKSPACES=<id del workspace «a»>`:
@@ -1434,6 +1435,71 @@ if (process.env.HUB_DETAIL_HARNESS === "1") {
             assert.deepEqual(shown, { detail: true, broken: false }, `${width} px, #${hash}: la scheda, non l'errore`);
             const uriErrors = (tab as { errors: Array<{ text: string }> }).errors.filter((error) => /URIError/.test(error.text));
             assert.deepEqual(uriErrors, [], `${width} px, #${hash}: nessun URIError`);
+          }
+          await cdp.closePage(tab);
+        }
+      } finally {
+        await browser.close();
+      }
+    });
+
+    test("nel browser: Indietro e Avanti tra due `?capitolo=` della stessa scheda arrivano all'ancora dell'indirizzo a cui si torna", async () => {
+      // Con la chiave dell'arrivo presa dall'indirizzo, Indietro da ?capitolo=storia a ?capitolo=dettagli
+      // lasciava aperta «Storia» con il fuoco su di lei e «Dettagli» chiusa, e Avanti il contrario: Next
+      // rende prima la pagina di prima con l'indirizzo nuovo. Indietro e Avanti veri (la cronologia del browser).
+      const ws = fixtures.workspaces.a.workspaceId;
+      const card = `/dashboard/${ws}/use-cases/${seeded("a", "r17").id}`;
+      const cdp = await loadCdp();
+      const browser = await cdp.launchBrowser({ colorScheme: "dark" });
+      /** Le pieghe aperte e la piega che ha il fuoco. */
+      const folds = (tab: unknown) =>
+        cdp.evaluate(tab, () => {
+          const active = document.activeElement;
+          return {
+            search: location.search,
+            open: [...document.querySelectorAll("details[data-slot=fold]")].filter((d) => (d as HTMLDetailsElement).open).map((d) => d.id),
+            focusIn: active && active !== document.body ? (active.closest("details[data-slot=fold]")?.id ?? null) : null,
+          };
+        }) as Promise<{ search: string; open: string[]; focusIn: string | null }>;
+      /** Aspetta che l'indirizzo e le pieghe siano quelli attesi, poi un secondo: deve restare così. */
+      const settle = async (tab: unknown, search: string, chapter: string | null) => {
+        const ok = (at: Awaited<ReturnType<typeof folds>>) => at.search === search && at.open.join() === (chapter ?? "") && (chapter === null || at.focusIn === chapter);
+        const start = Date.now();
+        let at = await folds(tab);
+        while (!ok(at) && Date.now() - start < 10_000) {
+          await sleep(150);
+          at = await folds(tab);
+        }
+        await sleep(1000);
+        return folds(tab);
+      };
+      const step = async (tab: { send(method: string, params?: object): Promise<{ currentIndex: number; entries: Array<{ id: number }> }> }, delta: -1 | 1) => {
+        const history = await tab.send("Page.getNavigationHistory");
+        await tab.send("Page.navigateToHistoryEntry", { entryId: history.entries[history.currentIndex + delta].id });
+      };
+      try {
+        for (const width of [1440, 400]) {
+          const tab = await cdp.newPage(browser, { width });
+          await cdp.loginAs(tab, "ls-lead", { to: `/dashboard/${ws}`, loginOrigin: login });
+          for (const [from, to] of [
+            ["dettagli", "storia"],
+            [null, "storia"],
+          ] as const) {
+            const fromSearch = from ? `?capitolo=${from}` : "";
+            await cdp.navigate(tab, `${app}${card}${fromSearch}`);
+            const loaded = await settle(tab, fromSearch, from);
+            assert.deepEqual([loaded.open, loaded.focusIn], [from ? [from] : [], from], `${width} px, ${fromSearch || "senza capitolo"}: il caricamento`);
+            // Un link della stessa scheda (Link di Next, `router.push`) a ?capitolo=storia.
+            await cdp.evaluate(tab, (href: string) => (window as unknown as { next: { router: { push(href: string): void } } }).next.router.push(href), `${card}?capitolo=${to}`);
+            const pushed = await settle(tab, `?capitolo=${to}`, to);
+            assert.deepEqual([pushed.search, pushed.open, pushed.focusIn], [`?capitolo=${to}`, [to], to], `${width} px, ${fromSearch || "senza capitolo"} → ?capitolo=${to}`);
+            await step(tab, -1);
+            const back = await settle(tab, fromSearch, from);
+            assert.deepEqual([back.search, back.open], [fromSearch, from ? [from] : []], `${width} px, Indietro a ${fromSearch || "senza capitolo"}: le pieghe aperte`);
+            if (from) assert.equal(back.focusIn, from, `${width} px, Indietro a ${fromSearch}: il fuoco nella piega`);
+            await step(tab, 1);
+            const forward = await settle(tab, `?capitolo=${to}`, to);
+            assert.deepEqual([forward.search, forward.open, forward.focusIn], [`?capitolo=${to}`, [to], to], `${width} px, Avanti a ?capitolo=${to}`);
           }
           await cdp.closePage(tab);
         }

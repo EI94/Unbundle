@@ -38,6 +38,13 @@
 //  3. function-lead sees «Nessuna risposta»; its click (`?capitolo=richieste`) opens the card with
 //     «Richieste inviate» of «Cosa serve» open, the focus on its summary and «Chiedi di nuovo» of the
 //     expired request whole in the window, still so a second later;
+//  3b. the two bell addresses of that card and the browser's Back and Forward between them:
+//     function-lead loads it at `?capitolo=cosa-serve` (the address of «Risposte arrivate»), clicks
+//     «Nessuna risposta» in the bell (`?capitolo=richieste`, «Richieste inviate» open), then Back
+//     (real history traversal) lands on «Cosa serve» with the focus on its heading and «Richieste
+//     inviate» closed, and Forward on «Richieste inviate» open with the focus on its summary, each
+//     still so a second later (before the fix Back kept «Richieste inviate» open with the focus on
+//     it, and Forward closed it and put the focus on the heading of «Cosa serve»);
 //  4. osservatore (contributor) sees none of the three rows;
 //  5. no horizontal scroll at any step (scrollWidth ≤ innerWidth).
 // Last (the ok is append-only): the ok is given and, after a reload, function-lead's row is gone while
@@ -225,6 +232,8 @@ function state(page) {
     const isRequests = requests instanceof HTMLDetailsElement && requests.dataset.slot === "needs-requests";
     const summary = isRequests ? requests.querySelector(":scope > summary") : null;
     const askAgain = isRequests ? [...requests.querySelectorAll("a, button")].find((el) => el.textContent.replace(/\s+/g, " ").trim() === "Chiedi di nuovo") : null;
+    // «Cosa serve» (`<section id="cosa-serve">`): `?capitolo=cosa-serve` focuses its heading.
+    const needsHeading = document.getElementById("cosa-serve-titolo");
     return {
       open,
       rows: rows.map((el) => ({ href: el.getAttribute("href"), text: el.textContent.replace(/\s+/g, " ").trim() })),
@@ -243,27 +252,54 @@ function state(page) {
       requestsFocus: Boolean(summary && active === summary),
       requestsInView: inView(summary),
       askAgainWhole: whole(askAgain),
+      needsFocus: Boolean(needsHeading && active === needsHeading),
+      needsInView: inView(needsHeading),
       focused: active && active !== document.body ? `${active.tagName.toLowerCase()}${active.dataset?.slot ? `[${active.dataset.slot}]` : ""}${active.id ? `#${active.id}` : ""}` : "body",
       subprocessorsInView: inView(document.getElementById("sub-responsabili")),
     };
   });
 }
 
-async function clickAt(page, selector) {
-  const box = await evaluate(page, (sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return null;
-    el.scrollIntoView({ block: "center" });
-    const r = el.getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  }, selector);
+/**
+ * A real click on `selector`. By default the element is first brought to the middle of the window;
+ * with `{ inPlace: true }` the page is not scrolled (the bell and its menu on a card scrolled down to
+ * «Cosa serve», as a person clicks them): the click waits until the element is whole in the window
+ * and has kept its place for 150 ms (the menu settles where its anchor is).
+ */
+async function clickAt(page, selector, { inPlace = false } = {}) {
+  const at = () =>
+    evaluate(
+      page,
+      (sel, scroll) => {
+        const el = document.querySelector(sel);
+        if (!el) return null;
+        if (scroll) el.scrollIntoView({ block: "center" });
+        const r = el.getBoundingClientRect();
+        const whole = r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth;
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2, whole };
+      },
+      selector,
+      !inPlace,
+    );
+  let box = await at();
+  if (inPlace) {
+    const start = Date.now();
+    for (;;) {
+      await sleep(150);
+      const next = await at();
+      const settled = box && next && next.whole && next.x === box.x && next.y === box.y;
+      box = next;
+      if (settled || Date.now() - start > 5_000) break;
+    }
+    if (box && !box.whole) throw new Error(`Not whole in the window: ${selector}`);
+  }
   if (!box) throw new Error(`Nothing to click: ${selector}`);
   for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
     await page.send("Input.dispatchMouseEvent", { type, x: box.x, y: box.y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1 });
   }
 }
-async function openBell(page) {
-  await clickAt(page, "[data-slot=notifications-bell]");
+async function openBell(page, options) {
+  await clickAt(page, "[data-slot=notifications-bell]", options);
   for (let i = 0; i < 40; i++) {
     const s = await state(page);
     if (s.open) {
@@ -360,6 +396,27 @@ async function whenChange(page, tag, label, key, foldOpen) {
   console.log(`     scrollY ${before.scrollY} → ${after.scrollY}, «${label}» top ${before.top} → ${after.top}, focus on ${after.focused}`);
   return after;
 }
+
+/** The browser's Back (-1) or Forward (+1): a real history traversal, as the toolbar button does. */
+async function historyGo(page, delta) {
+  const history = await page.send("Page.getNavigationHistory");
+  const entry = history.entries[history.currentIndex + delta];
+  if (!entry) throw new Error(`No history entry at ${delta}`);
+  await page.send("Page.navigateToHistoryEntry", { entryId: entry.id });
+}
+
+/** Where `?capitolo=cosa-serve` and `?capitolo=richieste` of the silent card landed: the failures. */
+function silentLanding(s, chapter) {
+  const failures = [...(s.url === `${silentPath}?capitolo=${chapter}` ? [] : [`url ${s.url}`]), ...(s.open ? ["menu still open"] : [])];
+  if (!s.requests) return [...failures, "no «Richieste inviate» on the card"];
+  if (chapter === "richieste") {
+    failures.push(...(s.requestsOpen ? [] : ["«Richieste inviate» is closed"]), ...(s.requestsFocus ? [] : [`focus not on the summary of «Richieste inviate» (on ${s.focused})`]), ...(s.requestsInView ? [] : ["«Richieste inviate» not in view"]));
+  } else {
+    failures.push(...(s.requestsOpen ? ["«Richieste inviate» is open"] : []), ...(s.needsFocus ? [] : [`focus not on the heading of «Cosa serve» (on ${s.focused})`]), ...(s.needsInView ? [] : ["«Cosa serve» not in view"]));
+  }
+  return [...failures, ...(s.overflow ? ["horizontal scroll"] : [])];
+}
+const silentLanded = (chapter) => (s) => silentLanding(s, chapter).length === 0;
 
 const READY = "Pronto da avviare";
 const SUPPLIERS = "Autorizza i fornitori";
@@ -461,6 +518,32 @@ try {
           ...(s.overflow ? ["horizontal scroll"] : []),
         ]);
         console.log(`     focus on ${s.focused}`);
+
+        // 3b. Back and Forward between the two bell addresses of the card: each lands where its address says.
+        await navigate(page, `${app}${silentPath}?capitolo=cosa-serve`);
+        s = await waitFor(page, silentLanded("cosa-serve"));
+        await sleep(1000);
+        s = await state(page);
+        record(`${tag} ?capitolo=cosa-serve lands on «Cosa serve» with «Richieste inviate» closed`, silentLanding(s, "cosa-serve"));
+        s = await openBell(page, { inPlace: true });
+        if (silentRow(s)) {
+          await clickAt(page, `[data-slot=dropdown-menu-content] a[href$="${silentPath}?capitolo=richieste"]`, { inPlace: true });
+          s = await waitFor(page, silentLanded("richieste"));
+          await sleep(1000);
+          s = await state(page);
+          record(`${tag} from that address, «${SILENT}» in the bell opens «Richieste inviate»`, silentLanding(s, "richieste"));
+          for (const [delta, chapter, label] of [
+            [-1, "cosa-serve", "Back"],
+            [1, "richieste", "Forward"],
+          ]) {
+            await historyGo(page, delta);
+            s = await waitFor(page, silentLanded(chapter));
+            await sleep(1000);
+            s = await state(page);
+            record(`${tag} ${label} to ?capitolo=${chapter} lands ${chapter === "richieste" ? "on «Richieste inviate», open" : "on «Cosa serve», «Richieste inviate» closed"}`, silentLanding(s, chapter));
+            console.log(`     focus on ${s.focused}`);
+          }
+        } else record(`${tag} «${SILENT}» in the bell on the card`, [`rows: ${JSON.stringify(s.rows.map((r) => r.text.slice(0, 60)))}`]);
       }
 
       await loginAs(page, "osservatore", { to: `/dashboard/${ws}/use-cases` });

@@ -314,7 +314,7 @@ Regole del Firewall di Vercel (chiave: IP), accanto a quelle di `/r/`: `GET /ris
   SELECT kind, rome_day, answers, unknowns, documents, read_at FROM use_case_notifications
    WHERE workspace_id = '<ws>' AND recipient_user_id = '<utente>' ORDER BY last_event_at DESC LIMIT 20;
   ```
-- Dove portano le righe degli use case: «Risposte arrivate», «Nuovi documenti» e «Informazioni complete» a «Cosa serve» della scheda (`?capitolo=cosa-serve`); «Nessuna risposta» a «Richieste inviate» (`?capitolo=richieste`), la piega delle richieste dentro «Cosa serve», aperta, con il fuoco sul suo riassunto e «Chiedi di nuovo» accanto alla richiesta (senza richieste a vista la scheda arriva a «Cosa serve»); «Pronto da avviare» e «Autorizza i fornitori» come in §10.8.
+- Dove portano le righe degli use case: «Risposte arrivate», «Nuovi documenti» e «Informazioni complete» a «Cosa serve» della scheda (`?capitolo=cosa-serve`); «Nessuna risposta» a «Richieste inviate» (`?capitolo=richieste`), la piega delle richieste dentro «Cosa serve», aperta, con il fuoco sul suo riassunto e «Chiedi di nuovo» accanto alla richiesta (senza richieste a vista la scheda arriva a «Cosa serve»); «Pronto da avviare» e «Autorizza i fornitori» come in §10.8. Indietro e Avanti del browser tra due di questi indirizzi della stessa scheda (per esempio «Cosa serve» e poi «Nessuna risposta») arrivano dove dice l'indirizzo a cui si torna: Indietro a `?capitolo=cosa-serve` dà il fuoco al titolo di «Cosa serve» con «Richieste inviate» chiusa, Avanti a `?capitolo=richieste` la riapre con il fuoco sul suo riassunto; lo stesso vale per le pieghe («Dettagli», «Storia»).
 - Le notifiche e gli avvisi più vecchi di 90 giorni si cancellano (cron, passo 12).
 
 ### 10.6 Avvisi per email a chi ha chiesto

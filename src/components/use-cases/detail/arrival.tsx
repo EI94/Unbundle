@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ComponentProps, type MouseEvent, type ReactNode } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { arrivalTargetIn } from "@/lib/use-cases/guided";
 import { hashTargetOf } from "../list-focus";
 
@@ -51,9 +51,10 @@ export function knownAnchorOf(hash: string, ids: readonly string[], startInBox =
 }
 
 /**
- * Una navigazione verso la scheda: il percorso e `?capitolo=` come stanno nell'indirizzo. La
- * rilettura della pagina dopo un'azione (`router.refresh`, `revalidatePath`) non la cambia, anche se
- * intanto il passo è cambiato; un link a un altro `?capitolo=` (campanella, email) sì.
+ * Una navigazione verso la scheda: il percorso e il `?capitolo=` della pagina resa (la prop `chapter`
+ * di `Arrival`, dalla stessa resa del server di `initial`). La rilettura della pagina dopo un'azione
+ * (`router.refresh`, `revalidatePath`) non la cambia, anche se intanto il passo è cambiato; un link a
+ * un altro `?capitolo=` (campanella, email) sì, e così Indietro e Avanti del browser.
  */
 export function navigationKey(pathname: string | null, chapter: string | null): string {
   return `${pathname ?? ""}?capitolo=${chapter ?? ""}`;
@@ -85,6 +86,14 @@ export function useLanding(): string | null {
 export interface ArrivalProps {
   /** `?capitolo=` già risolto (`arrivalTarget`): l'ancora a cui arriva la pagina; null senza. */
   initial: string | null;
+  /**
+   * Il `?capitolo=` della pagina (`chapterFromParam`), dalla stessa resa di `initial`: con il percorso,
+   * la chiave della navigazione. Non dall'indirizzo (`useSearchParams`): con Indietro e Avanti tra due
+   * `?capitolo=` della stessa scheda Next rende prima la pagina di prima con l'indirizzo nuovo (il
+   * `useDeferredValue` di layout-router), e una chiave dall'indirizzo si legava all'`initial` di prima
+   * per tutta la navigazione: la piega dell'indirizzo di prima aperta, il fuoco su di lei.
+   */
+  chapter?: string | null;
   /** Le ancore della scheda di chi guarda (`detailTargetIds`). */
   ids: readonly string[];
   /** «Avvia la realizzazione» o «Segna come in realizzazione» stanno nel riquadro (`startsInBox`): per un `#ancora`. */
@@ -101,10 +110,12 @@ export interface ArrivalProps {
  * `?capitolo=realizzazione` per tutta la visita) non riporta la pagina all'ancora, non apre né chiude
  * pieghe e non sposta il fuoco, anche quando il passo cambia e lo stesso `?capitolo=` oggi si
  * risolverebbe altrove (G9 ↔ G3 con «Quando»). L'ancora risolta e le ancore della scheda si leggono
- * dall'ultima resa (`latest`), senza far ripartire l'arrivo.
+ * dall'ultima resa (`latest`), senza far ripartire l'arrivo. La chiave e l'ancora risolta vengono
+ * dalla stessa resa (`chapter`, `initial`), così Indietro e Avanti arrivano all'ancora dell'indirizzo
+ * a cui si torna.
  */
-export function Arrival({ initial, ids, startInBox = false, children }: ArrivalProps) {
-  const navigation = navigationKey(usePathname(), useSearchParams()?.get("capitolo") ?? null);
+export function Arrival({ initial, chapter = null, ids, startInBox = false, children }: ArrivalProps) {
+  const navigation = navigationKey(usePathname(), chapter);
   const [stored, setStored] = useState<Landing>(() => landingFor(null, navigation, initial));
   const landing = landingFor(stored, navigation, initial);
   if (landing !== stored) setStored(landing);

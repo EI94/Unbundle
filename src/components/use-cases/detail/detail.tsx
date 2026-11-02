@@ -362,7 +362,7 @@ export function UseCaseDetailView({
           redactOptions: abilities.canRedact ? redactOptions(detail) : [],
         }}
       />
-      <Arrival initial={arrival} ids={targets} startInBox={startInBox}>
+      <Arrival initial={arrival} chapter={chapter ?? null} ids={targets} startInBox={startInBox}>
         {path ? <UseCasePath path={path} tone={agentTone} className="mt-4" /> : null}
         {/* «Serve info» e «Non avviare» si aprono con il testo del campo «Nota pubblica»; un solo pulsante pieno per pagina. */}
         <PublicNoteDraftProvider>

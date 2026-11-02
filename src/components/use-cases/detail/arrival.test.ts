@@ -91,7 +91,37 @@ test("Arrival: l'effetto dell'arrivo riparte solo con la navigazione, non con l'
   const deps = [...body.matchAll(/\}, (\[[^\]]*\])\);/g)].map((m) => m[1]);
   assert.deepEqual(deps, ["[navigation]", "[]"], "l'arrivo non riparte con `initial`, `ids` o `startInBox`");
   assert.match(body, /const \{ target, ids: known, startInBox: inBox \} = latest\.current;/, "l'ancora risolta e le ancore della scheda dall'ultima resa");
-  assert.match(body, /navigationKey\(usePathname\(\), useSearchParams\(\)\?\.get\("capitolo"\) \?\? null\)/, "la navigazione: il percorso e `?capitolo=` dell'indirizzo");
+  assert.match(body, /navigationKey\(usePathname\(\), chapter\)/, "la navigazione: il percorso e il `?capitolo=` della pagina resa");
+});
+
+test("Indietro e Avanti tra due `?capitolo=` della stessa scheda: la chiave viene dalla resa di `initial`, non dall'indirizzo", () => {
+  const card = "/dashboard/w/use-cases/u";
+  const key = (chapter: string | null) => arrival.navigationKey(card, chapter);
+  // Il caricamento con ?capitolo=dettagli, poi un link a ?capitolo=storia.
+  const loaded = arrival.landingFor(null, key("dettagli"), "dettagli");
+  const pushed = arrival.landingFor(loaded, key("storia"), "storia");
+  assert.deepEqual(pushed, { navigation: key("storia"), target: "storia" });
+  // Indietro: Next rende prima la pagina di ?capitolo=storia (il `useDeferredValue` di layout-router)
+  // con l'indirizzo già a ?capitolo=dettagli, poi quella di ?capitolo=dettagli. Con la chiave e
+  // l'ancora dalla stessa resa la prima resa non cambia nulla e la seconda arriva a «Dettagli».
+  const stale = arrival.landingFor(pushed, key("storia"), "storia");
+  assert.equal(stale, pushed, "la resa di prima tiene il suo arrivo");
+  const back = arrival.landingFor(stale, key("dettagli"), "dettagli");
+  assert.deepEqual(back, { navigation: key("dettagli"), target: "dettagli" }, "Indietro: «Dettagli»");
+  // Avanti, allo stesso modo: «Storia».
+  const forward = arrival.landingFor(arrival.landingFor(back, key("dettagli"), "dettagli"), key("storia"), "storia");
+  assert.deepEqual(forward, { navigation: key("storia"), target: "storia" }, "Avanti: «Storia»");
+  // Con la chiave dall'indirizzo (?capitolo=dettagli) e l'ancora della resa di prima («storia») l'arrivo
+  // nuovo nasceva con l'ancora sbagliata e la teneva per tutta la navigazione: questo non deve tornare.
+  const fromAddress = arrival.landingFor(pushed, key("dettagli"), "storia");
+  assert.equal(arrival.landingFor(fromAddress, key("dettagli"), "dettagli"), fromAddress);
+  assert.equal(fromAddress.target, "storia");
+  // Il sorgente: nessun `useSearchParams` nell'arrivo; la scheda gli passa lo stesso `chapter` che risolve in `initial`.
+  const source = readFileSync(new URL("./arrival.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /useSearchParams\(/, "la chiave non viene dall'indirizzo");
+  const detail = readFileSync(new URL("./detail.tsx", import.meta.url), "utf8");
+  assert.match(detail, /const arrival = arrivalTarget\(chapter \?\? null, targets, step\);/);
+  assert.match(detail, /<Arrival initial=\{arrival\} chapter=\{chapter \?\? null\} /, "`initial` e `chapter` dalla stessa resa");
 });
 
 test("le pieghe nascono aperte dall'arrivo della navigazione, non da una prop del passo di adesso", () => {
