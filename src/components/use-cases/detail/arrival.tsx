@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, type ComponentProps, type MouseEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ComponentProps, type MouseEvent, type ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { arrivalTargetIn } from "@/lib/use-cases/guided";
 import { hashTargetOf } from "../list-focus";
-
-/** Le ancore che un `#ancora` dell'indirizzo può raggiungere (`detailTargetIds`), dell'ultimo `Arrival` montato. */
-let knownIds: readonly string[] = [];
 
 /**
  * Il punto dentro un'ancora che prende il fuoco: quello segnato (`data-arrival-focus`), il
@@ -40,14 +39,47 @@ export function arriveAt(id: string): boolean {
 }
 
 /**
- * L'ancora della scheda che un `#ancora` dell'indirizzo raggiunge, o null. Decodifica come
- * `hashTargetOf`: un'ancora malformata («#%», «#100%», un link copiato a metà) resta com'è, non è
- * nessuna delle nostre e non porta la scheda nel confine d'errore, perché l'effetto di `Arrival`
- * che la legge è dentro React.
+ * L'ancora della scheda a cui arriva un `#ancora` dell'indirizzo, o null: la stessa regola di
+ * `?capitolo=` (`arrivalTargetIn`), così «#realizzazione» su una scheda pronta va al riquadro
+ * «Prossimo passo», dove si avvia. Decodifica come `hashTargetOf`: un'ancora malformata («#%»,
+ * «#100%», un link copiato a metà) resta com'è, non è nessuna delle nostre e non porta la scheda nel
+ * confine d'errore, perché l'effetto di `Arrival` che la legge è dentro React.
  */
-export function knownAnchorOf(hash: string, ids: readonly string[]): string | null {
+export function knownAnchorOf(hash: string, ids: readonly string[], startInBox = false): string | null {
   const id = hashTargetOf(hash);
-  return id !== null && ids.includes(id) ? id : null;
+  return id === null ? null : arrivalTargetIn(id, ids, startInBox);
+}
+
+/**
+ * Una navigazione verso la scheda: il percorso e `?capitolo=` come stanno nell'indirizzo. La
+ * rilettura della pagina dopo un'azione (`router.refresh`, `revalidatePath`) non la cambia, anche se
+ * intanto il passo è cambiato; un link a un altro `?capitolo=` (campanella, email) sì.
+ */
+export function navigationKey(pathname: string | null, chapter: string | null): string {
+  return `${pathname ?? ""}?capitolo=${chapter ?? ""}`;
+}
+
+/** L'arrivo di una navigazione: la sua chiave (`navigationKey`) e l'ancora risolta quando è arrivata. */
+export interface Landing {
+  navigation: string;
+  target: string | null;
+}
+
+/**
+ * L'arrivo da tenere: quello di prima per la stessa navigazione (una rilettura dopo «Quando», un
+ * requisito aggiunto, una decisione del riquadro: niente si apre, si chiude o si sposta da sé), un
+ * arrivo nuovo con l'ancora risolta adesso per una navigazione nuova.
+ */
+export function landingFor(previous: Landing | null, navigation: string, target: string | null): Landing {
+  return previous !== null && previous.navigation === navigation ? previous : { navigation, target };
+}
+
+/** L'ancora a cui è arrivata la navigazione di adesso: una piega nasce aperta se è lei. */
+const LandingContext = createContext<string | null>(null);
+
+/** L'ancora dell'arrivo (`Arrival`), null senza `?capitolo=` o fuori dalla scheda. */
+export function useLanding(): string | null {
+  return useContext(LandingContext);
 }
 
 export interface ArrivalProps {
@@ -55,28 +87,46 @@ export interface ArrivalProps {
   initial: string | null;
   /** Le ancore della scheda di chi guarda (`detailTargetIds`). */
   ids: readonly string[];
+  /** «Avvia la realizzazione» o «Segna come in realizzazione» stanno nel riquadro (`startsInBox`): per un `#ancora`. */
+  startInBox?: boolean;
+  /** La scheda: le pieghe leggono l'arrivo con `useLanding`. */
+  children?: ReactNode;
 }
 
 /**
  * L'arrivo sulla scheda (rilascio 3, al posto delle schede-ancora): con `?capitolo=` (email,
  * campanella, pannello) la pagina va a quell'ancora; senza, a un `#ancora` dell'indirizzo che la
- * pagina conosce (link copiati prima). Anche a ogni `hashchange`. Non disegna niente.
+ * pagina conosce (link copiati prima). Anche a ogni `hashchange`. Una volta per navigazione
+ * (`navigationKey`): la rilettura dopo un'azione sullo stesso indirizzo (che resta, per esempio,
+ * `?capitolo=realizzazione` per tutta la visita) non riporta la pagina all'ancora, non apre né chiude
+ * pieghe e non sposta il fuoco, anche quando il passo cambia e lo stesso `?capitolo=` oggi si
+ * risolverebbe altrove (G9 ↔ G3 con «Quando»). L'ancora risolta e le ancore della scheda si leggono
+ * dall'ultima resa (`latest`), senza far ripartire l'arrivo.
  */
-export function Arrival({ initial, ids }: ArrivalProps) {
-  const key = ids.join(" ");
+export function Arrival({ initial, ids, startInBox = false, children }: ArrivalProps) {
+  const navigation = navigationKey(usePathname(), useSearchParams()?.get("capitolo") ?? null);
+  const [stored, setStored] = useState<Landing>(() => landingFor(null, navigation, initial));
+  const landing = landingFor(stored, navigation, initial);
+  if (landing !== stored) setStored(landing);
+  const latest = useRef({ target: landing.target, ids, startInBox });
   useEffect(() => {
-    knownIds = key ? key.split(" ") : [];
-    const fromHash = () => knownAnchorOf(window.location.hash, knownIds);
-    const target = initial ?? fromHash();
-    if (target) arriveAt(target);
+    latest.current = { target: landing.target, ids, startInBox };
+  });
+  useEffect(() => {
+    const { target, ids: known, startInBox: inBox } = latest.current;
+    const to = target ?? knownAnchorOf(window.location.hash, known, inBox);
+    if (to) arriveAt(to);
+  }, [navigation]);
+  useEffect(() => {
     const onHash = () => {
-      const next = fromHash();
-      if (next) arriveAt(next);
+      const { ids: known, startInBox: inBox } = latest.current;
+      const to = knownAnchorOf(window.location.hash, known, inBox);
+      if (to) arriveAt(to);
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, [initial, key]);
-  return null;
+  }, []);
+  return <LandingContext value={landing.target}>{children}</LandingContext>;
 }
 
 /** Il link tranquillo nel testo del riquadro, sottolineato. */

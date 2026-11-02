@@ -6,6 +6,7 @@ import { findHubForbiddenIn } from "./copy-guard.ts";
 import {
   GUIDED_TEXT,
   arrivalTarget,
+  arrivalTargetIn,
   detailTargetIds,
   foldSummaries,
   impactView,
@@ -14,6 +15,7 @@ import {
   nextStepOf,
   paybackText,
   requestGroupView,
+  startsInBox,
   toTeam,
   pathOfUseCase,
   workClamps,
@@ -679,6 +681,20 @@ test("arrivalTarget: «Realizzazione» va al riquadro quando l'avvio è lì (G9)
   // Gli altri capitoli non cambiano.
   assert.equal(arrivalTarget("storia", all, avvia), "storia");
   assert.equal(arrivalTarget("cosa-serve", all, avvia), "cosa-serve");
+});
+
+test("arrivalTargetIn: la regola di arrivalTarget con `startsInBox` già detto, per `?capitolo=` e per un `#ancora`", () => {
+  const all = detailTargetIds({ phase: "approvato", needs: true, requests: true, realization: true, history: true });
+  const avvia = { key: "G9", action: { type: "avvia", href: `/dashboard/${WS}/casi-duso/nuovo?useCaseId=${UC}`, label: "Avvia la realizzazione" } } as const;
+  const steps = [avvia, { key: "G9", action: { type: "segna_in_realizzazione" } }, { key: "G9", action: { type: "none" } }, { key: "G3", action: { type: "none" } }, null] as const;
+  for (const chapter of [null, "realizzazione", "richieste", "storia", "quando", "decisione", "nessuna"]) {
+    for (const step of steps) {
+      assert.equal(arrivalTargetIn(chapter, all, step !== null && startsInBox(step)), arrivalTarget(chapter, all, step), `${chapter} ${step?.key ?? "-"}`);
+    }
+  }
+  // Un vecchio link «…#realizzazione» su una scheda pronta: il riquadro, come `?capitolo=realizzazione`.
+  assert.equal(arrivalTargetIn("realizzazione", all, true), "decisione");
+  assert.equal(arrivalTargetIn("realizzazione", all, false), "realizzazione");
 });
 
 test("arrivalTarget: «Richieste inviate» («Nessuna risposta») si apre se c'è, altrimenti «Cosa serve»", () => {

@@ -47,6 +47,7 @@ import { cn } from "@/lib/utils";
 import { Disclosure } from "../disclosure";
 import { NeedUseCasesDisclosure } from "../need-use-cases";
 import { DecisionChoiceGroup, DecisionDialog } from "../reopen-dialog";
+import { useLanding } from "./arrival";
 import { InfoSummary } from "./info-summary";
 import { askEntry } from "./referent/ask-dialog-state";
 import { NEXT_STEP_IDS } from "./next-step-box";
@@ -98,11 +99,6 @@ export interface SectionNeedsProps {
    * ripetono il pulsante e il motivo.
    */
   boxAsk?: "ask" | "gate" | null;
-  /**
-   * «Richieste inviate» aperta quando la pagina si rende: la chiede `?capitolo=richieste` («Nessuna
-   * risposta» della campanella e delle email a chi ha chiesto), dove si chiede di nuovo.
-   */
-  requestsOpen?: boolean;
   className?: string;
 }
 
@@ -141,7 +137,6 @@ export function SectionNeeds({
   referents = null,
   infoProgress = null,
   boxAsk = null,
-  requestsOpen = false,
   className,
 }: SectionNeedsProps) {
   const id = "cosa-serve";
@@ -159,6 +154,10 @@ export function SectionNeeds({
   // «Chiedi al referente»: solo con la funzione accesa per il workspace e gli archivi pronti.
   const feature = referents?.available ? referents : null;
   const answerable = useMemo(() => new Set((feature?.answerableNeedIds ?? []).map((needId) => needId.toLowerCase())), [feature]);
+  // «Richieste inviate» aperta quando la pagina arriva con `?capitolo=richieste` («Nessuna risposta»
+  // della campanella e delle email a chi ha chiesto), dove si chiede di nuovo: l'arrivo della
+  // navigazione (`Arrival`), non quello che lo stesso indirizzo darebbe dopo una rilettura.
+  const requestsOpen = useLanding() === "richieste";
 
   /** Manda una scrittura: toast, rilettura dopo una versione superata; chiude il dialogo se va bene. */
   function send(call: () => Promise<NeedActionResult>, onFieldErrors?: (errors: Record<string, string>) => void): Promise<boolean> {
@@ -256,7 +255,7 @@ export function SectionNeeds({
               {list(doneRequirements)}
             </Disclosure>
           ) : null}
-          {/* Le richieste ai referenti, chiuse: l'ancora di «Vedi le richieste» del riquadro «Prossimo passo»; aperte con `?capitolo=richieste`. */}
+          {/* Le richieste ai referenti, chiuse: l'ancora di «Vedi le richieste» del riquadro «Prossimo passo»; aperte con `?capitolo=richieste` (`useLanding`). */}
           {feature && requests.length ? (
             <Disclosure id="richieste" defaultOpen={requestsOpen} summary={fillText(REFERENT_UI_TEXT.requestsSentSummary, { n: formatInteger(requests.length) })} slot="needs-requests" className="scroll-mt-20">
               <RequestsList bare workspaceId={workspaceId} useCaseId={useCaseId} requests={requests} canAsk={canEdit && feature.canAsk} onOpen={setReferentDialog} />

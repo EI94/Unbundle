@@ -26,6 +26,13 @@
 //     the box in view with the focus inside it (its heading) and «Avvia la realizzazione» whole in
 //     the window, the «Realizzazione» fold closed, still so a second later (the closing menu does not
 //     take the focus back to the bell), and no «Capitoli» bar on the page;
+//  1b. on that address (it keeps `?capitolo=realizzazione` for the whole visit) ls-lead clicks «Più
+//     avanti» in «Quando»: the page reloads its data, the card goes from G9 to G3, and the arrival
+//     does not run again: the focus stays on the clicked choice, the choice stays in the window where
+//     it was (no scroll jump), the «Realizzazione» fold stays closed; ls-lead opens the fold, clicks
+//     «Questo trimestre», the card is G9 again, and the focus, the window and the open fold stay as
+//     they were (before the fix the fold opened and closed by itself and the page jumped to it and
+//     back to the box, the focus with it);
 //  2. function-lead sees «Autorizza i fornitori» and no «Pronto da avviare»; its click opens
 //     Impostazioni with «Sub-responsabili» in view;
 //  3. function-lead sees «Nessuna risposta»; its click (`?capitolo=richieste`) opens the card with
@@ -277,6 +284,83 @@ async function waitFor(page, predicate, timeoutMs = 15_000) {
   return s;
 }
 
+/**
+ * The «Quando» control of the card and the page around it: the choice `label` starts with
+ * («Più avanti», «Questo trimestre»), where it is in the window, the focus, the box's step and the
+ * «Realizzazione» fold.
+ */
+function whenState(page, label) {
+  return evaluate(page, (prefix) => {
+    const radio = [...document.querySelectorAll("[data-slot=when-control] [role=radio]")].find((el) => (el.getAttribute("aria-label") ?? "").startsWith(prefix)) ?? null;
+    const r = radio?.getBoundingClientRect();
+    const fold = document.getElementById("realizzazione");
+    const active = document.activeElement;
+    return {
+      radio: Boolean(radio),
+      label: radio?.getAttribute("aria-label") ?? null,
+      checked: radio?.getAttribute("aria-checked") === "true",
+      top: r ? Math.round(r.top) : null,
+      whole: Boolean(r && r.width > 0 && r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth),
+      focusOnRadio: Boolean(radio && active === radio),
+      focused: active && active !== document.body ? `${active.tagName.toLowerCase()}${active.id ? `#${active.id}` : ""}${active.getAttribute("aria-label") ? `[${active.getAttribute("aria-label")}]` : ""}${active.closest("details[id]") ? ` in #${active.closest("details[id]").id}` : ""}` : "body",
+      box: document.getElementById("decisione")?.dataset.key ?? null,
+      foldOpen: fold instanceof HTMLDetailsElement ? fold.open : null,
+      scrollY: Math.round(window.scrollY),
+      url: location.pathname + location.search + location.hash,
+      overflow: document.documentElement.scrollWidth > window.innerWidth,
+    };
+  }, label);
+}
+
+/** The choice of «Quando» whose label starts with `label`, brought to the middle of the window as a person scrolls to it: its centre. */
+async function scrollToWhen(page, label) {
+  const at = await evaluate(page, (prefix) => {
+    const radio = [...document.querySelectorAll("[data-slot=when-control] [role=radio]")].find((el) => (el.getAttribute("aria-label") ?? "").startsWith(prefix));
+    if (!radio) return null;
+    radio.scrollIntoView({ block: "center" });
+    const r = radio.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }, label);
+  if (!at) throw new Error(`No «${label}» in «Quando»`);
+  await sleep(300);
+  return at;
+}
+
+/**
+ * One «Quando» change on the landing address: the place of the choice in the window, the click (real
+ * mouse events), the page reading its data again until the box shows `key`, then 1.5 s for a late
+ * arrival. The choice must keep the focus and its place in the window (at most 48 px: the box above
+ * changes height between G9 and G3), the fold must keep `foldOpen`.
+ */
+async function whenChange(page, tag, label, key, foldOpen) {
+  const at = await scrollToWhen(page, label);
+  const before = await whenState(page, label);
+  for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
+    await page.send("Input.dispatchMouseEvent", { type, x: at.x, y: at.y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1 });
+  }
+  const start = Date.now();
+  let after = await whenState(page, label);
+  while (after.box !== key && Date.now() - start < 15_000) {
+    await sleep(150);
+    after = await whenState(page, label);
+  }
+  await sleep(1500);
+  after = await whenState(page, label);
+  const moved = before.top !== null && after.top !== null ? after.top - before.top : null;
+  record(`${tag} «${label}» in «Quando» on the landing address (card ${before.box} → ${key}) keeps the focus, the window and the fold`, [
+    ...(after.url.startsWith(`${readyPath}?capitolo=realizzazione`) ? [] : [`url ${after.url}`]),
+    ...(after.box === key ? [] : [`the box is ${after.box}, not ${key}`]),
+    ...(after.checked ? [] : [`«${label}» is not the chosen one`]),
+    ...(after.focusOnRadio ? [] : [`focus left «${label}» (on ${after.focused})`]),
+    ...(after.whole ? [] : [`«${label}» is no longer whole in the window`]),
+    ...(moved !== null && Math.abs(moved) <= 48 ? [] : [`«${label}» moved ${moved} px in the window (scrollY ${before.scrollY} → ${after.scrollY})`]),
+    ...(after.foldOpen === foldOpen ? [] : [`the «Realizzazione» fold ${after.foldOpen ? "opened" : "closed"} by itself`]),
+    ...(after.overflow ? ["horizontal scroll"] : []),
+  ]);
+  console.log(`     scrollY ${before.scrollY} → ${after.scrollY}, «${label}» top ${before.top} → ${after.top}, focus on ${after.focused}`);
+  return after;
+}
+
 const READY = "Pronto da avviare";
 const SUPPLIERS = "Autorizza i fornitori";
 const SILENT = "Nessuna risposta";
@@ -321,6 +405,20 @@ try {
           ...(s.overflow ? ["horizontal scroll"] : []),
         ]);
         console.log(`     focus on ${s.focused}`);
+
+        // 1b. «Quando» on the same address: G9 → G3 with the fold closed, then G3 → G9 with the fold
+        // the person opened. The arrival belongs to the click of the bell, not to the reloads after it.
+        if (s.box === "G9") {
+          await whenChange(page, tag, "Più avanti", "G3", false);
+          const fold = await whenState(page, "Più avanti");
+          if (fold.foldOpen === false) {
+            await clickAt(page, "details#realizzazione > summary");
+            await sleep(500);
+          }
+          const opened = await whenState(page, "Più avanti");
+          if (opened.foldOpen !== true) record(`${tag} ls-lead opens the «Realizzazione» fold`, ["the fold did not open"]);
+          await whenChange(page, tag, "Questo trimestre", "G9", true);
+        }
       }
 
       await loginAs(page, "function-lead", { to: `/dashboard/${ws}/use-cases` });

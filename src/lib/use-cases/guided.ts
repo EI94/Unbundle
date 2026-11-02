@@ -1106,8 +1106,17 @@ export function startsInBox(step: Pick<NextStep, "key" | "action">): boolean {
  * dossier o perché «Avvia» non è ancora il passo.
  */
 export function arrivalTarget(chapter: string | null | undefined, ids: readonly string[], step: Pick<NextStep, "key" | "action"> | null = null): string | null {
+  return arrivalTargetIn(chapter, ids, step !== null && startsInBox(step));
+}
+
+/**
+ * La regola di `arrivalTarget` con la risposta di `startsInBox` già data: il server la usa per
+ * `?capitolo=`, il browser (`Arrival`) per un `#ancora` dell'indirizzo, così un vecchio link copiato
+ * con «#realizzazione» su una scheda pronta arriva anche lui al riquadro, dove si avvia.
+ */
+export function arrivalTargetIn(chapter: string | null | undefined, ids: readonly string[], startInBox: boolean): string | null {
   if (!chapter) return null;
-  if (chapter === ANCHOR.realizzazione && step && startsInBox(step)) return ANCHOR.decisione;
+  if (chapter === ANCHOR.realizzazione && startInBox) return ANCHOR.decisione;
   if (ids.includes(chapter)) return chapter;
   if (chapter === ANCHOR.richieste && ids.includes(ANCHOR.cosaServe)) return ANCHOR.cosaServe;
   return chapter === ANCHOR.realizzazione ? ANCHOR.decisione : null;

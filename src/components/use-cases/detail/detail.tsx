@@ -321,10 +321,10 @@ export function UseCaseDetailView({
     history: historyShown,
   });
   // «Avvia la realizzazione» o «Segna come in realizzazione» nel riquadro (G9): la piega non li
-  // ripete, e `?capitolo=realizzazione` («Pronto da avviare») arriva al riquadro.
+  // ripete, e `?capitolo=realizzazione` («Pronto da avviare») arriva al riquadro. Quale piega si apre
+  // lo decide `Arrival` una volta per navigazione: le pieghe e «Richieste inviate» lo leggono da lui.
   const startInBox = startsInBox(step);
   const arrival = arrivalTarget(chapter ?? null, targets, step);
-  const opens = (id: string) => arrival === id;
   const groups = valuationKpiGroups(result.model, { esgEnabled: result.esgEnabled });
   const estimates = unofficialEstimateLines(detail.intake).length > 0;
   const aiShown = aiSuggestionShown(detail.aiSuggestion, groups);
@@ -362,113 +362,113 @@ export function UseCaseDetailView({
           redactOptions: abilities.canRedact ? redactOptions(detail) : [],
         }}
       />
-      <Arrival initial={arrival} ids={targets} />
-      {path ? <UseCasePath path={path} tone={agentTone} className="mt-4" /> : null}
-      {/* «Serve info» e «Non avviare» si aprono con il testo del campo «Nota pubblica»; un solo pulsante pieno per pagina. */}
-      <PublicNoteDraftProvider>
-        <PagePrimaryProvider>
-          <ReferentDialogHost workspaceId={workspaceId} useCaseId={detail.id} panel={feature} canEdit={abilities.canEditNeeds} needTitles={needTitles}>
-            <NextStepBox
-              workspaceId={workspaceId}
-              step={step}
-              item={decisionItem}
-              today={today}
-              canDecide={abilities.canDecide}
-              candidates={toDuplicateCandidates(candidates)}
-              canMarkInProgress={abilities.canMarkInProgress}
-              className="mt-4"
-            />
-            <div data-slot="scheda-grid" className="mt-8 grid gap-8 @min-[58rem]/scheda:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/scheda:gap-x-8">
-              <div data-slot="scheda-main" className="min-w-0 space-y-10 @min-[58rem]/scheda:col-start-1 @min-[58rem]/scheda:row-start-1">
-                <ImpactBlock view={impact} value={detail.value} cost={detail.cost} costBands={result.costBands} risks={detail.risks} />
-                <WorkFlow workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} tone={agentTone} />
-                {abilities.canSeeNeeds && needs ? (
-                  <SectionNeeds
-                    workspaceId={workspaceId}
-                    useCaseId={detail.id}
-                    requirements={needs.lists.requirements}
-                    steps={needs.lists.steps}
-                    linkable={needs.lists.linkable}
-                    refs={needs.refs}
-                    today={today}
-                    canEdit={abilities.canEditNeeds}
-                    referents={referents}
-                    infoProgress={infoProgress}
-                    boxAsk={boxAskOf(step)}
-                    requestsOpen={opens("richieste")}
-                  />
-                ) : null}
-              </div>
-              <aside data-slot="scheda-aside" className="min-w-0 space-y-4 self-start @min-[58rem]/scheda:col-start-2 @min-[58rem]/scheda:row-span-2 @min-[58rem]/scheda:row-start-1">
-                {detail.phase === "approvato" ? (
-                  <section id="quando" aria-labelledby="quando-titolo" className="scroll-mt-20 space-y-3 rounded-xl border bg-card p-4">
-                    <h2 id="quando-titolo" tabIndex={-1} className="text-sm font-semibold outline-none">
-                      {DIALOG_COMMON_TEXT.when}
-                    </h2>
-                    <WhenControl
+      <Arrival initial={arrival} ids={targets} startInBox={startInBox}>
+        {path ? <UseCasePath path={path} tone={agentTone} className="mt-4" /> : null}
+        {/* «Serve info» e «Non avviare» si aprono con il testo del campo «Nota pubblica»; un solo pulsante pieno per pagina. */}
+        <PublicNoteDraftProvider>
+          <PagePrimaryProvider>
+            <ReferentDialogHost workspaceId={workspaceId} useCaseId={detail.id} panel={feature} canEdit={abilities.canEditNeeds} needTitles={needTitles}>
+              <NextStepBox
+                workspaceId={workspaceId}
+                step={step}
+                item={decisionItem}
+                today={today}
+                canDecide={abilities.canDecide}
+                candidates={toDuplicateCandidates(candidates)}
+                canMarkInProgress={abilities.canMarkInProgress}
+                className="mt-4"
+              />
+              <div data-slot="scheda-grid" className="mt-8 grid gap-8 @min-[58rem]/scheda:grid-cols-[minmax(0,1fr)_18rem] @min-[58rem]/scheda:gap-x-8">
+                <div data-slot="scheda-main" className="min-w-0 space-y-10 @min-[58rem]/scheda:col-start-1 @min-[58rem]/scheda:row-start-1">
+                  <ImpactBlock view={impact} value={detail.value} cost={detail.cost} costBands={result.costBands} risks={detail.risks} />
+                  <WorkFlow workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} tone={agentTone} />
+                  {abilities.canSeeNeeds && needs ? (
+                    <SectionNeeds
                       workspaceId={workspaceId}
-                      item={decisionItem}
+                      useCaseId={detail.id}
+                      requirements={needs.lists.requirements}
+                      steps={needs.lists.steps}
+                      linkable={needs.lists.linkable}
+                      refs={needs.refs}
                       today={today}
-                      canDecide={abilities.canDecide}
-                      labelledBy="quando-titolo"
-                      className="@min-[58rem]/scheda:max-w-none @min-[58rem]/scheda:grid-cols-1"
+                      canEdit={abilities.canEditNeeds}
+                      referents={referents}
+                      infoProgress={infoProgress}
+                      boxAsk={boxAskOf(step)}
                     />
+                  ) : null}
+                </div>
+                <aside data-slot="scheda-aside" className="min-w-0 space-y-4 self-start @min-[58rem]/scheda:col-start-2 @min-[58rem]/scheda:row-span-2 @min-[58rem]/scheda:row-start-1">
+                  {detail.phase === "approvato" ? (
+                    <section id="quando" aria-labelledby="quando-titolo" className="scroll-mt-20 space-y-3 rounded-xl border bg-card p-4">
+                      <h2 id="quando-titolo" tabIndex={-1} className="text-sm font-semibold outline-none">
+                        {DIALOG_COMMON_TEXT.when}
+                      </h2>
+                      <WhenControl
+                        workspaceId={workspaceId}
+                        item={decisionItem}
+                        today={today}
+                        canDecide={abilities.canDecide}
+                        labelledBy="quando-titolo"
+                        className="@min-[58rem]/scheda:max-w-none @min-[58rem]/scheda:grid-cols-1"
+                      />
+                    </section>
+                  ) : null}
+                  <section id="nota-pubblica" aria-label={PUBLIC_NOTE_TEXT.label} tabIndex={-1} className="scroll-mt-20 space-y-4 rounded-xl border bg-card p-4 outline-none">
+                    <PublicNoteField workspaceId={workspaceId} item={decisionItem} canEdit={abilities.canDecide} />
+                    <ProposerAnswers answers={answersOf(detail.intake)} />
                   </section>
-                ) : null}
-                <section id="nota-pubblica" aria-label={PUBLIC_NOTE_TEXT.label} tabIndex={-1} className="scroll-mt-20 space-y-4 rounded-xl border bg-card p-4 outline-none">
-                  <PublicNoteField workspaceId={workspaceId} item={decisionItem} canEdit={abilities.canDecide} />
-                  <ProposerAnswers answers={answersOf(detail.intake)} />
-                </section>
-              </aside>
-              <div data-slot="detail-folds" className="min-w-0 @min-[58rem]/scheda:col-start-1 @min-[58rem]/scheda:row-start-2">
-                <Fold id="valutazione" title={t.valutazione} summary={summaries.valutazione} open={opens("valutazione")}>
-                  <SectionValuation
-                    workspaceId={workspaceId}
-                    detail={detail}
-                    model={result.model}
-                    costBands={result.costBands}
-                    valueParams={result.valueParams}
-                    today={today}
-                    esgEnabled={result.esgEnabled}
-                    canEdit={abilities.canEditValuation}
-                  />
-                </Fold>
-                <Fold id="dettagli" title={t.dettagli} summary={summaries.dettagli} open={opens("dettagli")}>
-                  <DetailsFields
-                    workspaceId={workspaceId}
-                    detail={detail}
-                    canEdit={abilities.canEditWhat}
-                    esgEnabled={result.esgEnabled}
-                    areaOptions={guide?.areas ?? null}
-                    intake={<IntakeDetails workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} proposer={proposer} labels={guide} bare />}
-                  />
-                </Fold>
-                {realizationFold ? (
-                  <Fold id="realizzazione" title={t.realizzazione} summary={summaries.realizzazione} open={opens("realizzazione")}>
-                    <SectionRealization
+                </aside>
+                <div data-slot="detail-folds" className="min-w-0 @min-[58rem]/scheda:col-start-1 @min-[58rem]/scheda:row-start-2">
+                  <Fold id="valutazione" title={t.valutazione} summary={summaries.valutazione}>
+                    <SectionValuation
                       workspaceId={workspaceId}
-                      item={detail}
+                      detail={detail}
+                      model={result.model}
+                      costBands={result.costBands}
+                      valueParams={result.valueParams}
                       today={today}
-                      dossierRead={result.dossierRead}
-                      canStartRealization={abilities.canStartRealization}
-                      canMarkInProgress={abilities.canMarkInProgress}
-                      canOpenAnyDossier={abilities.canOpenAnyDossier}
-                      realization={realization}
-                      boxOwnsStart={startInBox}
-                      startHint={step.key === "G3" ? "trimestre" : "informazioni"}
+                      esgEnabled={result.esgEnabled}
+                      canEdit={abilities.canEditValuation}
                     />
                   </Fold>
-                ) : null}
-                {abilities.canSeeHistory && events ? (
-                  <Fold id="storia" title={t.storia} summary={summaries.storia} open={opens("storia") || historyAll}>
-                    <SectionHistory events={events} kind={detail.kind} today={today} showAllHref={historyAll ? null : historyAllHref} />
+                  <Fold id="dettagli" title={t.dettagli} summary={summaries.dettagli}>
+                    <DetailsFields
+                      workspaceId={workspaceId}
+                      detail={detail}
+                      canEdit={abilities.canEditWhat}
+                      esgEnabled={result.esgEnabled}
+                      areaOptions={guide?.areas ?? null}
+                      intake={<IntakeDetails workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} proposer={proposer} labels={guide} bare />}
+                    />
                   </Fold>
-                ) : null}
+                  {realizationFold ? (
+                    <Fold id="realizzazione" title={t.realizzazione} summary={summaries.realizzazione}>
+                      <SectionRealization
+                        workspaceId={workspaceId}
+                        item={detail}
+                        today={today}
+                        dossierRead={result.dossierRead}
+                        canStartRealization={abilities.canStartRealization}
+                        canMarkInProgress={abilities.canMarkInProgress}
+                        canOpenAnyDossier={abilities.canOpenAnyDossier}
+                        realization={realization}
+                        boxOwnsStart={startInBox}
+                        startHint={step.key === "G3" ? "trimestre" : "informazioni"}
+                      />
+                    </Fold>
+                  ) : null}
+                  {abilities.canSeeHistory && events ? (
+                    <Fold id="storia" title={t.storia} summary={summaries.storia} open={historyAll}>
+                      <SectionHistory events={events} kind={detail.kind} today={today} showAllHref={historyAll ? null : historyAllHref} />
+                    </Fold>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          </ReferentDialogHost>
-        </PagePrimaryProvider>
-      </PublicNoteDraftProvider>
+            </ReferentDialogHost>
+          </PagePrimaryProvider>
+        </PublicNoteDraftProvider>
+      </Arrival>
     </div>
   );
 }

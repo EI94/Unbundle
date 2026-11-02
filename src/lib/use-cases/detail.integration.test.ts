@@ -1343,7 +1343,7 @@ if (process.env.HUB_DETAIL_HARNESS === "1") {
       }
     });
 
-    test("nel browser: `?capitolo=` apre la sua piega dal server, la porta in cima e le dà il fuoco; `#storia` la apre; «Cosa serve» dà il fuoco al titolo", async () => {
+    test("nel browser: `?capitolo=` apre la sua piega dal server, la porta in cima e le dà il fuoco; `#storia` la apre; «Cosa serve» dà il fuoco al titolo; sulla scheda pronta «Realizzazione» (anche «#realizzazione») arriva al riquadro", async () => {
       const ws = fixtures.workspaces.a.workspaceId;
       const cdp = await loadCdp();
       const browser = await cdp.launchBrowser({ colorScheme: "dark" });
@@ -1369,8 +1369,10 @@ if (process.env.HUB_DETAIL_HARNESS === "1") {
         );
       try {
         // Il server rende la piega già aperta: si vede anche prima che il browser faccia qualcosa.
+        // «Realizzazione» su r12, che ha il suo dossier; r09 è pronta da avviare (G9 per ls-lead) e
+        // `?capitolo=realizzazione` lì arriva al riquadro «Prossimo passo», qui sotto.
         for (const [key, chapter] of [
-          ["r09", "realizzazione"],
+          ["r12", "realizzazione"],
           ["r17", "storia"],
           ["r09", "valutazione"],
           ["r09", "dettagli"],
@@ -1382,7 +1384,7 @@ if (process.env.HUB_DETAIL_HARNESS === "1") {
           const tab = await cdp.newPage(browser, { width });
           await cdp.loginAs(tab, "ls-lead", { to: `/dashboard/${ws}`, loginOrigin: login });
           for (const [key, chapter] of [
-            ["r09", "realizzazione"],
+            ["r12", "realizzazione"],
             ["r17", "storia"],
             ["r09", "valutazione"],
             ["r09", "dettagli"],
@@ -1394,6 +1396,17 @@ if (process.env.HUB_DETAIL_HARNESS === "1") {
             assert.ok(at.focusInside, `${width} px, ?capitolo=${chapter}: il fuoco dentro (${at.focusTag})`);
             assert.ok((at.top !== null && at.top >= 0 && at.top <= 120) || at.atBottom, `${width} px, ?capitolo=${chapter}: in cima (${at.top} px)`);
             assert.equal(at.chapterBar, false, "nessuna barra delle ancore");
+          }
+          // La scheda pronta (G9): «Pronto da avviare» (`?capitolo=realizzazione`) e un vecchio link copiato
+          // con «#realizzazione» arrivano al riquadro con «Avvia la realizzazione»; la piega resta chiusa.
+          for (const address of ["?capitolo=realizzazione", "#realizzazione"]) {
+            await cdp.navigate(tab, `${app}/dashboard/${ws}/use-cases/${seeded("a", "r09").id}${address}`);
+            await sleep(600);
+            const box = await landed(tab, "decisione");
+            const fold = await landed(tab, "realizzazione");
+            assert.ok(box.focusInside, `${width} px, ${address}: il fuoco nel riquadro (${box.focusTag}#${box.focusId})`);
+            assert.ok((box.top !== null && box.top >= 0 && box.top <= 120) || box.atBottom, `${width} px, ${address}: il riquadro in cima (${box.top} px)`);
+            assert.equal(fold.open, false, `${width} px, ${address}: la piega «Realizzazione» chiusa`);
           }
           // Un indirizzo copiato prima, con l'ancora della Storia: la piega si apre.
           await cdp.navigate(tab, `${app}/dashboard/${ws}/use-cases/${seeded("a", "r17").id}#storia`);
