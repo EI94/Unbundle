@@ -162,16 +162,17 @@ export const REFERENT_UI_TEXT = Object.freeze({
     // Passo 2 «Cosa chiedi»
     whatHeading: "Cosa chiedi a {Nome}?",
     againTo: "A {Nome} · {email}",
-    questionsNone: "Nessuna domanda è segnata per {Nome}: scegli tu quelle da fare.",
+    questionsNone: "Nessuna domanda è segnata per {Nome}: scegli tu.",
     questionsOthers: "Altre domande di questo use case · {n}",
-    questionsFor: "{Nome} vede solo il testo delle domande, non i dettagli.",
     questionsEmpty: "Non ci sono ancora domande da fare.",
     // «Aggiungi domande» (una richiesta viva): il titolo dell'elenco e il suggerimento.
     questionsLabel: "Cosa chiedi",
     questionsHint: "Il referente vede solo il testo delle domande, non i dettagli.",
     // Sotto «Cosa chiedi», accanto a «Prepara le domande», quando mancano domande standard.
-    prepareHintOne: "Aggiunge la domanda standard sul dato che manca: arriva già spuntata.",
-    prepareHintMany: "Aggiunge {n} domande standard sui dati che mancano: arrivano già spuntate.",
+    prepareHintOne: "Aggiunge una domanda standard, già spuntata.",
+    prepareHintMany: "Aggiunge {n} domande standard, già spuntate.",
+    // Il messaggio sta chiuso sotto questo titolo; aperto ha la sua etichetta.
+    messageAdd: "Aggiungi un messaggio",
     messageLabel: "Messaggio (facoltativo)",
     messagePlaceholder: "Per esempio: ci serve per la stima di fine mese.",
     messageHint: "Non scrivere dati sanitari, nomi, email o telefoni di altre persone.",

@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 import { ListPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,7 +16,6 @@ export interface AskQuestionsIds {
   heading: string;
   list: string;
   error: string;
-  hint: string;
   prepare: string;
   message: string;
 }
@@ -42,7 +41,8 @@ export function prepareIsNext(questions: AskQuestions, prepare: Pick<AskPrepareP
  * «Cosa chiedi» (rilascio 4, §8): le domande proposte alla persona, spuntate; le altre della scheda
  * chiuse sotto «Altre domande di questo use case · n», con il loro «Chi»; nessuna per la persona:
  * tutte, aperte e non spuntate. Poi «Prepara le domande» quando mancano domande standard, e il
- * messaggio. Le domande già chieste, ferme o con risposta non ci sono.
+ * messaggio, chiuso sotto «Aggiungi un messaggio» (cosa riceve la persona lo mostra il passo dopo).
+ * Le domande già chieste, ferme o con risposta non ci sono.
  */
 export function AskQuestionsStep({
   ids,
@@ -77,13 +77,17 @@ export function AskQuestionsStep({
   onMessage: (value: string) => void;
 }) {
   const error = errors.needIds || null;
-  const listDescribed = [ids.hint, error ? ids.error : null].filter(Boolean).join(" ");
+  const listDescribed = error ? ids.error : undefined;
   const list = (items: Parameters<typeof NeedChecklist>[0]["items"]) => (
     <NeedChecklist labelledBy={ids.heading} describedBy={listDescribed} items={items} selected={selected} invalid={Boolean(error)} onChange={onChange} />
   );
   // Niente da chiedere ma domande standard da preparare: il passo dopo è «Prepara le domande», ed è
   // lui il pulsante pieno (il piede allora non lo è, `prepareIsNext` in ask-steps.tsx).
   const prepareFilled = prepareIsNext(questions, prepare);
+  // Il messaggio sta chiuso sotto «Aggiungi un messaggio»: aperto tornando al passo con un messaggio già
+  // scritto, e aperto (per sempre, finché il passo c'è) quando ha un errore, che prende il fuoco.
+  const [messageOpen, setMessageOpen] = useState(() => message.trim().length > 0 || Boolean(errors.message));
+  if (errors.message && !messageOpen) setMessageOpen(true);
   return (
     <div data-slot="ask-questions" className="space-y-3">
       {againLine ? <p className="text-sm break-words text-muted-foreground">{againLine}</p> : null}
@@ -111,11 +115,6 @@ export function AskQuestionsStep({
         {error ? (
           <p id={ids.error} role="alert" className="text-xs text-destructive">
             {error}
-          </p>
-        ) : null}
-        {questions.layout !== "empty" ? (
-          <p id={ids.hint} className="text-xs text-muted-foreground">
-            {fillText(T.questionsFor, { Nome: name })}
           </p>
         ) : null}
       </div>
@@ -150,18 +149,20 @@ export function AskQuestionsStep({
           {prepare.error}
         </p>
       ) : null}
-      <Field id={ids.message} label={T.messageLabel} hint={T.messageHint} error={errors.message}>
-        <Textarea
-          id={ids.message}
-          value={message}
-          rows={3}
-          maxLength={limits.messageMax}
-          placeholder={T.messagePlaceholder}
-          aria-invalid={errors.message ? true : undefined}
-          aria-describedby={describedBy(ids.message, T.messageHint, errors.message)}
-          onChange={(event) => onMessage(event.target.value)}
-        />
-      </Field>
+      <Disclosure slot="ask-message" summary={T.messageAdd} defaultOpen={messageOpen}>
+        <Field id={ids.message} label={T.messageLabel} hint={T.messageHint} error={errors.message}>
+          <Textarea
+            id={ids.message}
+            value={message}
+            rows={3}
+            maxLength={limits.messageMax}
+            placeholder={T.messagePlaceholder}
+            aria-invalid={errors.message ? true : undefined}
+            aria-describedby={describedBy(ids.message, T.messageHint, errors.message)}
+            onChange={(event) => onMessage(event.target.value)}
+          />
+        </Field>
+      </Disclosure>
     </div>
   );
 }

@@ -126,7 +126,6 @@ export function AskSteps({
     what: `${baseId}-cosa`,
     whatList: `${baseId}-cosa-elenco`,
     whatError: `${baseId}-cosa-errore`,
-    whatHint: `${baseId}-cosa-aiuto`,
     prepare: `${baseId}-prepara`,
     message: `${baseId}-messaggio`,
     check: `${baseId}-controlla`,
@@ -459,7 +458,7 @@ export function AskSteps({
               />
             ) : step === 2 && asked ? (
               <AskQuestionsStep
-                ids={{ heading: ids.what, list: ids.whatList, error: ids.whatError, hint: ids.whatHint, prepare: ids.prepare, message: ids.message }}
+                ids={{ heading: ids.what, list: ids.whatList, error: ids.whatError, prepare: ids.prepare, message: ids.message }}
                 headingRef={headingRef}
                 name={name}
                 againLine={!ask && person ? againLineOf(person.displayName, revealedEmail ?? person.email) : null}

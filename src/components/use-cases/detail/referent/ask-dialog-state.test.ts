@@ -241,7 +241,7 @@ test("(rilascio 4) la riga di «Cosa serve» ha «Chiedi al referente» solo per
 
 test("l'offerta di «Prepara le domande» nella finestra: solo in «Chiedi al referente» e solo con qualcosa da aggiungere", () => {
   const six = ["frequenza", "tempo", "persone", "sistemi", "esempio", "costi"] as const;
-  assert.deepEqual(askPrepareOffer({ preparable: [...six] }, ASK_MODE), { count: 6, hint: "Aggiunge 6 domande standard sui dati che mancano: arrivano già spuntate." });
+  assert.deepEqual(askPrepareOffer({ preparable: [...six] }, ASK_MODE), { count: 6, hint: "Aggiunge 6 domande standard, già spuntate." });
   assert.deepEqual(askPrepareOffer({ preparable: ["tempo"] }), { count: 1, hint: T.prepareHintOne });
   const again = askAgainMode({ id: "bbbbbbbb-0000-4000-8000-000000000001", status: "scaduta", contact: { id: MARIO.id, name: MARIO.displayName, roleLabel: null, emailMasked: null, hubOnly: true } });
   assert.equal(askPrepareOffer({ preparable: [...six] }, again), null, "non in «Chiedi di nuovo»");

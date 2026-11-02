@@ -132,7 +132,7 @@ function renderQuestions(over: Record<string, unknown> = {}) {
   return readable(
     renderToStaticMarkup(
       h(questions.AskQuestionsStep, {
-        ids: { heading: "cosa", list: "cosa-elenco", error: "cosa-errore", hint: "cosa-aiuto", prepare: "prepara", message: "messaggio" },
+        ids: { heading: "cosa", list: "cosa-elenco", error: "cosa-errore", prepare: "prepara", message: "messaggio" },
         name: "Lia Esempio",
         againLine: null,
         questions: {
@@ -142,7 +142,7 @@ function renderQuestions(over: Record<string, unknown> = {}) {
         },
         selected: ["q1"],
         errors: {},
-        prepare: { offer: { count: 2, hint: "Aggiunge 2 domande standard sui dati che mancano: arrivano già spuntate." }, pending: false, done: null, error: null, onPrepare: () => {} },
+        prepare: { offer: { count: 2, hint: "Aggiunge 2 domande standard, già spuntate." }, pending: false, done: null, error: null, onPrepare: () => {} },
         message: "",
         limits: REFERENT_LIMITS,
         onChange: () => {},
@@ -159,18 +159,26 @@ test("«Cosa chiedi»: le proposte spuntate, le altre chiuse con il loro «Chi»
   assert.match(html, /<details data-slot="ask-others"/);
   assert.ok(html.includes("Altre domande di questo use case · 1") || html.includes("Altre domande di questo use case · 1"));
   assert.ok(html.includes("Sistemi informativi · Cliente"), "il «Chi» delle altre");
-  assert.ok(html.includes(T.questionsFor.replace("{Nome}", "Lia Esempio")));
+  // Pochi testi propri (rilascio 4, A1): niente riga «vede solo il testo delle domande» (cosa riceve la
+  // persona lo mostra «Controlla e invia»), il messaggio chiuso sotto «Aggiungi un messaggio».
+  assert.ok(!html.includes("vede solo il testo delle domande"), "niente riga «vede solo il testo»");
+  assert.match(html, /<details data-slot="ask-message"><summary[^>]*>[\s\S]*?Aggiungi un messaggio<\/summary>/);
+  assert.ok(html.includes("Aggiunge 2 domande standard, già spuntate."));
   assert.deepEqual(filled(html), [], "nessun controllo pieno nel corpo");
   assert.equal(buttons(html), 1, "al massimo un pulsante nel corpo: «Prepara le domande»");
   assert.ok(html.includes(REFERENT_UI_TEXT.prepare));
   const none = renderQuestions({ questions: { layout: "all", items: [{ id: "q2", title: "Quale gestionale?", meta: null }] }, selected: [] });
-  assert.ok(none.includes("Nessuna domanda è segnata per Lia Esempio: scegli tu quelle da fare."));
+  assert.ok(none.includes("Nessuna domanda è segnata per Lia Esempio: scegli tu."));
   assert.ok(!none.includes("ask-others"));
   const empty = renderQuestions({ questions: { layout: "empty" }, selected: [] });
   assert.ok(empty.includes(T.questionsEmpty));
   const error = renderQuestions({ errors: { needIds: "Scegli almeno una domanda aperta." } });
   assert.match(error, /<p id="cosa-errore" role="alert"[^>]*>Scegli almeno una domanda aperta\.<\/p>/);
   assert.doesNotMatch(html, COURSE);
+  // Il messaggio: chiuso senza testo; aperto tornando con un messaggio già scritto o con un suo errore.
+  assert.match(html, /<details data-slot="ask-message"><summary/, "chiuso");
+  assert.match(renderQuestions({ message: "Ci serve per fine mese." }), /<details data-slot="ask-message" open=""/);
+  assert.match(renderQuestions({ errors: { message: "Al massimo 1000 caratteri." } }), /<details data-slot="ask-message" open=""/);
 });
 
 test("«Cosa chiedi» senza domande da fare ma con domande da preparare: «Prepara le domande» pieno, il piede no", () => {
