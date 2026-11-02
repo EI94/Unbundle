@@ -111,7 +111,7 @@ test("righe: segnale, dossier, use case", () => {
   assert.equal(n.unread, true);
 });
 
-test("(0025) «Pronto da avviare» porta a «Realizzazione», «Autorizza i fornitori» a Impostazioni; gli altri a «Cosa serve»", () => {
+test("(0025) «Pronto da avviare» porta a «Realizzazione», «Autorizza i fornitori» a Impostazioni, «Nessuna risposta» (senza_risposta) a «Richieste inviate»; risposte, documenti e informazioni complete a «Cosa serve»", () => {
   const row = (kind: Parameters<typeof noticeEntry>[1]["kind"]) =>
     noticeEntry(WS, { id: ID(4), useCaseId: UC, code: "TJ-0004", title: "Fatture fornitori", kind, answers: 0, unknowns: 0, documents: 0, followUp: kind === "senza_risposta" ? "scaduta" : null, lastEventAt: new Date("2026-10-27T11:00:00.456Z"), readAt: null }, NOW);
   const ready = row("pronto");
