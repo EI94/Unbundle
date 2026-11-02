@@ -920,6 +920,21 @@ test("scheda compatta: i primi cinque aperti, prima da verificare; «Mostra le a
   assert.ok(six.includes("Mostra l'altra") && !six.includes("Mostra le altre"));
   // Cinque o meno: nessun «Mostra».
   assert.ok(!render(open.slice(0, 5)).includes("Mostra l"));
+  // (Rilascio 4) «Prossimi passi» dalla scadenza più vicina, anche contro l'ordine del team; quelli
+  // senza data in fondo: lo stesso ordine del pannello e della linea del tempo di «Cosa serve».
+  const dated = [
+    view({ type: "passo", title: `Passo senza data ${suffix}`, status: "proposta" }),
+    view({ type: "passo", title: `Passo di dicembre ${suffix}`, status: "confermata", dueOn: "2026-12-01" }),
+    view({ type: "passo", title: `Passo di novembre ${suffix}`, status: "proposta", dueOn: "2026-11-03" }),
+  ];
+  const datedHtml = readable(
+    renderToStaticMarkup(
+      createElementOf(sectionNeeds.SectionNeeds, { workspaceId: ids.ws, useCaseId: cards.quarter.id, requirements: [], steps: dated, linkable: [], refs: {}, today, canEdit: true }),
+    ),
+  );
+  const at = [`Passo di novembre ${suffix}`, `Passo di dicembre ${suffix}`, `Passo senza data ${suffix}`].map((title) => datedHtml.indexOf(title));
+  assert.ok(at.every((index, i) => index > 0 && (i === 0 || index > at[i - 1])), `l'ordine per data: ${JSON.stringify(at)}`);
+  assert.ok(detailsAround(datedHtml, `Passo senza data ${suffix}`).includes(`Prossimi passi${N}·${N}3`));
 });
 
 test("chi non è revisore: niente esigenze in «Cosa serve», Panoramica, pannello, scheda e dati della pagina", opts, async () => {

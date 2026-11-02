@@ -30,6 +30,8 @@ import {
   needOwnerText,
   askGroupOf,
   compareNeeds,
+  compareStepsByDate,
+  NEED_ROWS_SHOWN,
   needRequestGroupView,
   needRow,
   needStatusChoices,
@@ -304,15 +306,38 @@ test("pannello: al massimo tre aperte, prima le più vicine; la scheda: per tipo
   // Una risposta da verificare va in testa, come nella scheda.
   const withAnswer = [...needs, need({ title: "Risposta arrivata", status: "in_verifica", sortOrder: 9, useCaseIds: [A] })];
   assert.deepEqual(panelNeeds(withAnswer, ITEMS[1], TODAY)?.rows.map((r) => r.title), ["Risposta arrivata", "Domani", "Fra un mese"]);
-  // Solo passi: i passi, nell'ordine del team.
+  // Solo passi senza data: i passi, nell'ordine del team.
   const onlySteps = [need({ type: "passo", status: "proposta", title: "Dopo", sortOrder: 2, useCaseIds: [A] }), need({ type: "passo", status: "confermata", title: "Prima", sortOrder: 1, useCaseIds: [A] })];
   assert.deepEqual(panelNeeds(onlySteps, ITEMS[1], TODAY)?.rows.map((r) => r.title), ["Prima", "Dopo"]);
+  // (Rilascio 4) I passi dalla scadenza più vicina, anche contro l'ordine del team; quelli senza data in fondo.
+  const datedSteps = [
+    need({ type: "passo", status: "proposta", title: "Senza data, primo per il team", sortOrder: 0, useCaseIds: [A] }),
+    need({ type: "passo", status: "confermata", title: "A dicembre", sortOrder: 1, dueOn: "2026-12-01", useCaseIds: [A] }),
+    need({ type: "passo", status: "proposta", title: "A novembre", sortOrder: 2, dueOn: "2026-11-03", useCaseIds: [A] }),
+  ];
+  assert.deepEqual(panelNeeds(datedSteps, ITEMS[1], TODAY)?.rows.map((r) => r.title), ["A novembre", "A dicembre", "Senza data, primo per il team"]);
   assert.equal(panelNeeds(needs, ITEMS[2], TODAY), null, "nessuna esigenza: nessun blocco");
 
   const lists = needListsOfUseCase(needs, A);
   assert.deepEqual(lists.requirements.map((n) => n.title).sort(), ["Domani", "Fatta", "Fra un mese", "Senza data"]);
   assert.deepEqual(lists.steps.map((n) => n.title), ["Passo"]);
   assert.deepEqual(lists.linkable.map((n) => n.title), ["Di un altro"]);
+});
+
+test("compareStepsByDate: dalla scadenza più vicina, quelle senza data in fondo, poi l'ordine del team; cinque righe in vista", () => {
+  const a = need({ id: "a", title: "Alfa", sortOrder: 3, dueOn: "2026-11-20" });
+  const b = need({ id: "b", title: "Beta", sortOrder: 1, dueOn: "2026-11-05" });
+  const c = need({ id: "c", title: "Gamma", sortOrder: 0, dueOn: null });
+  const d = need({ id: "d", title: "Delta", sortOrder: 2, dueOn: "2026-11-05" });
+  const e = need({ id: "e", title: "Epsilon", sortOrder: 0, dueOn: "2026-10-01" });
+  const f = need({ id: "f", title: "Zeta", sortOrder: 1, dueOn: null });
+  assert.deepEqual([a, b, c, d, e, f].sort(compareStepsByDate).map((n) => n.id), ["e", "b", "d", "a", "c", "f"], "la data prima dell'ordine del team; a parità, l'ordine del team");
+  // Senza date è l'ordine del team (`compareNeeds`).
+  assert.deepEqual([f, c].sort(compareStepsByDate), [f, c].sort(compareNeeds));
+  // A parità di data e di ordine, il titolo: lo stesso di `compareNeeds`.
+  const same = [need({ id: "y", title: "Zucca", dueOn: "2026-11-05" }), need({ id: "x", title: "Albero", dueOn: "2026-11-05" })];
+  assert.deepEqual(same.sort(compareStepsByDate).map((n) => n.title), ["Albero", "Zucca"]);
+  assert.equal(NEED_ROWS_SHOWN, 5);
 });
 
 test("le righe chiuse di default: «Già a posto · n», «Fatto · 1», «Fatti · n»", () => {

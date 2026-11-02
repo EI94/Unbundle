@@ -31,7 +31,9 @@ import {
   NEED_KIND_LABEL,
   NEED_LIMITS,
   NEED_OWNER_SIDE_LABEL,
+  NEED_ROWS_SHOWN,
   NEED_TYPE_LABEL,
+  compareStepsByDate,
   isNeedDone,
   needAlsoForText,
   needDoneSummaryText,
@@ -107,14 +109,12 @@ type Dialog =
   | { mode: "collega" }
   | null;
 
-/** Le righe dei requisiti aperti che si vedono subito; le altre sotto «Mostra le altre N». */
-export const NEED_ROWS_SHOWN = 5;
-
 /**
  * Il capitolo «Cosa serve» della scheda, solo per i revisori (spec di Pierpaolo, 25/10/2026;
  * rilascio 3, compatto): la riga dei conteggi, poi i requisiti aperti collegati a questo use case,
  * prima quelli da verificare e poi l'ordine del team (`needsActionFirst`), i primi cinque in vista
- * e gli altri sotto «Mostra le altre N»; poi, chiusi, «Prossimi passi · N», «Già a posto · N» e
+ * (`NEED_ROWS_SHOWN`, gli stessi di ogni gruppo della vista «Cosa serve») e gli altri sotto «Mostra
+ * le altre N»; poi, chiusi, «Prossimi passi · N» (dalla scadenza più vicina), «Già a posto · N» e
  * «Richieste inviate · N». Ogni riga dice il gruppo dello stato («Da chiedere», «In attesa», «Da
  * verificare», «Ferma», «A posto») con tipo, chi, scadenza e il dettaglio dello stato, e ha un solo
  * menu «⋯» con «Aggiungi una risposta», «Allega un file» e «Modifica». «Aggiungi» apre il modulo
@@ -189,8 +189,10 @@ export function SectionNeeds({
   const openRequirements = requirements.filter((need) => !isNeedDone(need.type, need.status)).sort(needsActionFirst);
   const shownRequirements = openRequirements.slice(0, NEED_ROWS_SHOWN);
   const moreRequirements = openRequirements.slice(NEED_ROWS_SHOWN);
-  const doneSteps = steps.filter((need) => isNeedDone(need.type, need.status));
-  const openSteps = steps.filter((need) => !isNeedDone(need.type, need.status));
+  // I prossimi passi dalla scadenza più vicina, quelli senza data in fondo (`compareStepsByDate`):
+  // lo stesso ordine del pannello e della linea del tempo di «Cosa serve» (rilascio 4).
+  const doneSteps = steps.filter((need) => isNeedDone(need.type, need.status)).sort(compareStepsByDate);
+  const openSteps = steps.filter((need) => !isNeedDone(need.type, need.status)).sort(compareStepsByDate);
   const list = (needs: readonly NeedView[]) => (
     <NeedList
       needs={needs}

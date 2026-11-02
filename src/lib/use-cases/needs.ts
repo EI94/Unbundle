@@ -431,6 +431,26 @@ export function compareNeeds(a: Pick<NeedView, "sortOrder" | "dueOn" | "title" |
 }
 
 /**
+ * L'ordine dei prossimi passi (rilascio 4): dalla scadenza più vicina, quelli senza data in fondo,
+ * poi l'ordine del team (`compareNeeds`). Lo stesso nel capitolo della scheda, nel pannello laterale
+ * e nella linea del tempo di «Cosa serve».
+ */
+export function compareStepsByDate(a: Pick<NeedView, "sortOrder" | "dueOn" | "title" | "id">, b: Pick<NeedView, "sortOrder" | "dueOn" | "title" | "id">): number {
+  if (a.dueOn !== b.dueOn) {
+    if (!a.dueOn) return 1;
+    if (!b.dueOn) return -1;
+    return a.dueOn.localeCompare(b.dueOn);
+  }
+  return compareNeeds(a, b);
+}
+
+/**
+ * Le righe dei requisiti aperti che si vedono subito, le altre sotto «Mostra le altre N»: le stesse
+ * cinque nel capitolo della scheda e in ogni gruppo di «Cosa serve» (rilascio 4).
+ */
+export const NEED_ROWS_SHOWN = 5;
+
+/**
  * Prima quello che chiede di agire: i requisiti «Da verificare» (è arrivata una risposta o un
  * documento da guardare), poi l'ordine scelto dal team (`compareNeeds`).
  */
@@ -906,13 +926,13 @@ function linkedTo(need: Pick<NeedView, "useCaseIds">, useCaseId: string): boolea
  * Il blocco «Cosa serve» del pannello: le esigenze aperte dello use case, al massimo tre, nell'ordine
  * della scheda (rilascio 3), così le prime tre del pannello sono le prime tre righe di «Cosa serve»:
  * prima i requisiti, quelli da verificare in testa e poi l'ordine del team (`needsActionFirst`),
- * poi i prossimi passi nell'ordine del team. null senza.
+ * poi i prossimi passi dalla scadenza più vicina (`compareStepsByDate`, rilascio 4). null senza.
  */
 export function panelNeeds(needs: readonly NeedView[], item: NeedUseCaseRef, today: string): PanelNeeds | null {
   const live = needs.filter((need) => !need.archivedAt && linkedTo(need, item.id) && !isNeedDone(need.type, need.status));
   const open = [
     ...live.filter((need) => need.type === "requisito").sort(needsActionFirst),
-    ...live.filter((need) => need.type !== "requisito").sort(compareNeeds),
+    ...live.filter((need) => need.type !== "requisito").sort(compareStepsByDate),
   ];
   if (!open.length) return null;
   const refs = refsOf([item]);
