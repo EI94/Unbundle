@@ -436,6 +436,12 @@ html:has([data-use-case-root])
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
+/* Il pannello aperto delle schede (Tabs) prende il fuoco della tastiera (Base UI gli dà tabindex 0)
+   e con `outline-none` non lo dice: nel tema chiaro un contorno pieno di --ring, fuori dal pannello. */
+:root[data-theme="light"]:has([data-theme-scope]) [data-slot="tabs-content"]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
 /* AI Readiness, il radar: il punteggio sotto il nome del pilastro (10 px, al 55% del testo) sarebbe
    4,1:1 sulla card chiara; al 75% è 8,4:1. */
 :root[data-theme="light"]:has([data-theme-scope]) [data-slot="pillar-radar-score"] {

@@ -323,6 +323,20 @@ test("tema chiaro: le voci dei menu e delle tendine dicono la voce della tastier
   for (const slot of [...items, "command-item"]) assert.ok(primitives.includes(`data-slot="${slot}"`), slot);
 });
 
+test("tema chiaro: il pannello aperto delle schede (Tabs) dice il fuoco della tastiera con un contorno pieno", () => {
+  // Base UI dà al pannello aperto tabindex 0 e TabsContent ha `outline-none`: senza questa regola il
+  // fuoco ci arriva e non si vede (nessun contorno, nessuna ombra, nessun bordo).
+  const rule = rules.find((r) => r.selector === `${LIGHT} [data-slot="tabs-content"]:focus-visible`);
+  assert.ok(rule, "il contorno del fuoco del pannello delle schede");
+  assert.match(rule.body, /outline: 2px solid var\(--ring\);\s*outline-offset: 2px;/);
+  // Il contorno sta fuori dal pannello, sul fondo della pagina o della card che lo contiene.
+  for (const surface of ["background", "card"]) atLeast(contrast(light.ring, light[surface].rgb), 3, `ring pieno su ${surface}`);
+  // Il pannello ha ancora questo nome, e le sue classi (il tema scuro) restano quelle di prima.
+  const tabs = readRepo("src/components/ui/tabs.tsx");
+  assert.ok(tabs.includes('data-slot="tabs-content"'), "lo slot del pannello");
+  assert.ok(tabs.includes('cn("flex-1 text-sm outline-none", className)'), "le classi del pannello");
+});
+
 test("tema chiaro: l'interruttore spento dei risultati di Learning si vede (pista e pallino almeno 3:1)", () => {
   const toggle = readRepo("src/components/learning/results-toggle.tsx");
   assert.ok(toggle.includes('"bg-muted-foreground/40 light:bg-input"'), "la pista spenta nel tema chiaro");
