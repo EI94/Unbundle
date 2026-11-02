@@ -21,6 +21,8 @@ const LIGHT_ALLOWED = [
   "src/components/learning/results-toggle.tsx",
   // La casella nativa del catalogo del dossier: `[color-scheme:dark]` la disegnerebbe scura sul bianco.
   "src/components/uc/catalog/checkbox.ts",
+  // Il bordo del fuoco dei pulsanti distruttivi: al 40% di --destructive sarebbe 2,1:1 sul bianco, pieno 6,6:1.
+  "src/components/ui/button.tsx",
 ];
 
 test("nessun colore fisso nuovo nel dashboard: si usano i token del tema", () => {

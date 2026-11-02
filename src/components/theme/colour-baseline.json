@@ -229,7 +229,8 @@
     "dark": 4
   },
   "src/components/ui/button.tsx": {
-    "dark": 9
+    "dark": 9,
+    "light": 1
   },
   "src/components/ui/checkbox.tsx": {
     "dark": 4

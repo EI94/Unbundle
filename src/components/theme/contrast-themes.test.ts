@@ -395,3 +395,24 @@ test("tema chiaro: la legenda degli esiti di Learning ha il bordo del colore del
   assert.ok(format.includes('return "border-border bg-muted text-foreground";'));
   for (const surface of ["background", "card"]) atLeast(contrast(light.foreground, light[surface].rgb, alpha), 3, `bordo della legenda neutra su ${surface}`);
 });
+
+test("tema chiaro: i pulsanti distruttivi dicono il fuoco della tastiera con il bordo pieno", () => {
+  const button = readRepo("src/components/ui/button.tsx");
+  const variant = /destructive:\s*"([^"]+)"/.exec(button)?.[1] ?? "";
+  const classes = variant.split(/\s+/);
+  // Nel tema scuro il bordo resta al 40% e l'alone al 20%, come prima; nel chiaro il bordo è pieno.
+  for (const name of ["focus-visible:border-destructive/40", "focus-visible:ring-destructive/20", "dark:focus-visible:ring-destructive/40", "light:focus-visible:border-destructive"]) {
+    assert.ok(classes.includes(name), `${name} nella variante destructive`);
+  }
+  assert.equal(button.match(/(?<![\w-])light:/g)?.length, 1, "la sola classe light: del pulsante");
+  assert.equal(f2(contrast(dark.destructive, dark.background.rgb, 0.4)), "1.72", "il bordo del tema scuro non cambia");
+  for (const [name, surface] of lightSurfaces(light)) {
+    const edge = light.destructive.rgb;
+    // Prima: il bordo al 40% era 2,0–2,1:1, sotto i 3:1 del fuoco del tema chiaro.
+    assert.ok(contrast(light.destructive, surface, 0.4) < 3, `${name}: il bordo al 40% basterebbe`);
+    atLeast(ratio(edge, surface), 3, `bordo del fuoco di un pulsante distruttivo su ${name}`);
+    // Il bordo si stacca anche dall'alone che lo circonda (ring-destructive/20) e dal fondo del pulsante (bg-destructive/10, /20 al passaggio).
+    atLeast(ratio(edge, over(edge, surface, 0.2)), 3, `bordo sull'alone al 20% su ${name}`);
+    for (const fill of [0.1, 0.2]) atLeast(ratio(edge, over(edge, surface, fill)), 3, `bordo sul fondo al ${fill * 100}% su ${name}`);
+  }
+});
