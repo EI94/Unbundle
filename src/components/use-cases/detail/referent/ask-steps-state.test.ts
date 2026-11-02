@@ -94,7 +94,7 @@ test("la persona scelta: referente, persona del workspace, persona nuova, o quel
   assert.equal(personOf(initialAskDraft(panel, again, { needIds: [] }), people, again, request)?.displayName, "Ex Referente", "anche se non è più tra i referenti");
 });
 
-test("«Cosa chiedi»: le domande della persona e le generiche spuntate, le altre a parte con il loro «Chi»", () => {
+test("«Cosa chiedi»: le domande della persona e le generiche spuntate, le altre a parte con il loro «Chi»; nessuna che la nomini: tutte, nessuna spuntata", () => {
   const forAldo = questionsOf({ askableNeedIds: panel.askableNeedIds, needInfo, person: { displayName: "Aldo Prova", roleLabel: "Tesoreria" }, orgWords: ORG });
   assert.equal(forAldo.questions.layout, "split");
   if (forAldo.questions.layout !== "split") return;
@@ -108,9 +108,22 @@ test("«Cosa chiedi»: le domande della persona e le generiche spuntate, le altr
   assert.deepEqual(questionsOf({ askableNeedIds: panel.askableNeedIds, needInfo, person: { displayName: "Lia Esempio", roleLabel: null }, orgWords: ORG }).proposed, [Q1, Q3]);
   // Nessuna per la persona e niente di generico: tutte, non spuntate.
   const none = questionsOf({ askableNeedIds: [Q2, Q4], needInfo, person: { displayName: "Bruna Esempio", roleLabel: null }, orgWords: ORG });
-  assert.deepEqual(none, { questions: { layout: "all", items: [{ id: Q2, title: "Chi registra le fatture?", meta: null }, { id: Q4, title: "Quanto costa un errore?", meta: null }] }, proposed: [] });
+  assert.deepEqual(none, { questions: { layout: "all", items: [{ id: Q2, title: "Chi registra le fatture?", meta: null }, { id: Q4, title: "Quanto costa un errore?", meta: null }] }, proposed: [], fresh: [] });
+  // Nessuna per la persona ma una generica (Q1, il «Chi» dice solo l'azienda): tutte, aperte e non
+  // spuntate; la generica non si propone da sola a chi nessun «Chi» nomina.
+  const onlyGeneric = questionsOf({ askableNeedIds: panel.askableNeedIds, needInfo, person: { displayName: "Bruna Esempio", roleLabel: null }, orgWords: ORG });
+  assert.deepEqual(onlyGeneric.questions, { layout: "all", items: [Q1, Q2, Q3, Q4].map((id) => ({ id, title: needInfo[id].title, meta: null })) });
+  assert.deepEqual([onlyGeneric.proposed, onlyGeneric.fresh], [[], [Q1]]);
+  // Lo stesso con un ruolo che dice solo l'azienda («Responsabile Belmonte»).
+  assert.equal(questionsOf({ askableNeedIds: panel.askableNeedIds, needInfo, person: { displayName: "Dario Esempio", roleLabel: "Responsabile Belmonte" }, orgWords: ORG }).questions.layout, "all");
+  // Dopo «Prepara le domande» (Q5, generica, arrivata a finestra aperta): arriva spuntata, Q1 no.
+  const Q5 = N(5);
+  const prepared = { ...needInfo, [Q5]: { title: "Quante volte al mese?", owner: null, ownerLabel: null } };
+  const after = questionsOf({ askableNeedIds: [Q1, Q2, Q3, Q4, Q5], needInfo: prepared, person: { displayName: "Bruna Esempio", roleLabel: null }, orgWords: ORG });
+  assert.equal(after.questions.layout, "all");
+  assert.deepEqual(mergeTicks([], [Q1, Q2, Q3, Q4], [Q1, Q2, Q3, Q4, Q5], after.fresh), [Q5]);
   // Niente da chiedere: solo «Prepara le domande».
-  assert.deepEqual(questionsOf({ askableNeedIds: [], needInfo, person: { displayName: "x", roleLabel: null }, orgWords: ORG }), { questions: { layout: "empty" }, proposed: [] });
+  assert.deepEqual(questionsOf({ askableNeedIds: [], needInfo, person: { displayName: "x", roleLabel: null }, orgWords: ORG }), { questions: { layout: "empty" }, proposed: [], fresh: [] });
   // «Chiedi di nuovo»: le domande di prima, mai i nomi.
   assert.deepEqual(questionsOf({ askableNeedIds: panel.askableNeedIds, needInfo, person: { displayName: "Lia Esempio", roleLabel: null }, orgWords: ORG, previous: [Q4] }).proposed, [Q4]);
 });

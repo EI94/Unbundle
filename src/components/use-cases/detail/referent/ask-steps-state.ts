@@ -118,7 +118,10 @@ export type AskQuestions =
 /**
  * Le domande che si possono chiedere, per la persona scelta: quelle che la riguardano e quelle
  * generiche spuntate in cima, le altre chiuse sotto «Altre domande di questo use case · n», con il loro
- * «Chi». Nessuna per la persona: tutte, non spuntate e aperte. In «Chiedi di nuovo» le domande di prima.
+ * «Chi». Nessuna che nomini la persona (`matched` falso): tutte, non spuntate e aperte, anche le
+ * generiche, perché una «Decisione» scritta per il team non si propone a chi nessun «Chi» nomina.
+ * In «Chiedi di nuovo» le domande di prima. `fresh`: le domande che, arrivando a finestra aperta
+ * («Prepara le domande»), arrivano spuntate (`mergeTicks`): le proposte, generiche comprese.
  */
 export function questionsOf(input: {
   askableNeedIds: readonly string[];
@@ -126,9 +129,9 @@ export function questionsOf(input: {
   person: Pick<AskPerson, "displayName" | "roleLabel">;
   orgWords: ReadonlySet<string>;
   previous?: readonly string[] | null;
-}): { questions: AskQuestions; proposed: string[] } {
+}): { questions: AskQuestions; proposed: string[]; fresh: string[] } {
   const ids = input.askableNeedIds.map(lower);
-  if (ids.length === 0) return { questions: { layout: "empty" }, proposed: [] };
+  if (ids.length === 0) return { questions: { layout: "empty" }, proposed: [], fresh: [] };
   const item = (id: string, withMeta: boolean): AskQuestionItem => ({ id, title: input.needInfo[id]?.title ?? id, meta: withMeta ? (input.needInfo[id]?.owner ?? null) : null });
   const result = questionsForPerson({
     person: { displayName: input.person.displayName, roleLabel: input.person.roleLabel },
@@ -136,8 +139,8 @@ export function questionsOf(input: {
     orgWords: input.orgWords,
     previous: input.previous ?? null,
   });
-  if (result.proposed.length === 0) return { questions: { layout: "all", items: ids.map((id) => item(id, false)) }, proposed: [] };
-  return { questions: { layout: "split", proposed: result.proposed.map((id) => item(id, false)), others: result.others.map((id) => item(id, true)) }, proposed: result.proposed };
+  if (result.proposed.length === 0 || !result.matched) return { questions: { layout: "all", items: ids.map((id) => item(id, false)) }, proposed: [], fresh: result.proposed };
+  return { questions: { layout: "split", proposed: result.proposed.map((id) => item(id, false)), others: result.others.map((id) => item(id, true)) }, proposed: result.proposed, fresh: result.proposed };
 }
 
 /** Le spunte all'arrivo su «Cosa chiedi»: le prime 20 proposte. */
@@ -157,7 +160,8 @@ export function enterQuestions(session: AskSession, person: Pick<AskPerson, "key
 /**
  * Le spunte quando le domande cambiano a finestra aperta (dopo «Prepara le domande», o una domanda
  * risposta dalla scheda): restano quelle ancora da chiedere; le nuove arrivano spuntate solo se sono
- * proposte alla persona e solo in «Chiedi al referente»; l'ordine è quello della scheda.
+ * fra le proposte (`fresh` di `questionsOf`, generiche comprese) e solo in «Chiedi al referente»;
+ * l'ordine è quello della scheda.
  */
 export function mergeTicks(selected: readonly string[], seen: readonly string[], askableNow: readonly string[], proposedNow: readonly string[], mode: AskMode = ASK_MODE): string[] {
   const chosen = new Set(selected.map(lower));

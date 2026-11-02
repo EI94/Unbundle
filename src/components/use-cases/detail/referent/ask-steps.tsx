@@ -214,7 +214,7 @@ export function AskSteps({
   const askableKey = panel.askableNeedIds.map((id) => id.toLowerCase()).join(" ");
   if (session.seen.join(" ") !== askableKey) {
     const now = panel.askableNeedIds.map((id) => id.toLowerCase());
-    setSession((s) => ({ ...s, seen: now, draft: { ...s.draft, needIds: mergeTicks(s.draft.needIds, s.seen, now, asked?.proposed ?? [], mode) } }));
+    setSession((s) => ({ ...s, seen: now, draft: { ...s.draft, needIds: mergeTicks(s.draft.needIds, s.seen, now, asked?.fresh ?? [], mode) } }));
     setErrors((current) => (current.needIds ? { ...current, needIds: "" } : current));
   }
 
