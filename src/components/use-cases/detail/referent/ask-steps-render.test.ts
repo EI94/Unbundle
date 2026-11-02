@@ -190,6 +190,13 @@ test("«Cosa chiedi» senza domande da fare ma con domande da preparare: «Prepa
   assert.match(foot, /<button[^>]*type="submit"[^>]*form="passo"[^>]*>Avanti · 0 domande<\/button>|<button[^>]*form="passo"[^>]*type="submit"[^>]*>Avanti · 0 domande<\/button>/);
 });
 
+test("la finestra ha la stessa altezza nei tre passi: il piede non si sposta da un passo all'altro", () => {
+  // Centrata e alta quanto il passo (max-h), saltava a ogni passo e il secondo clic su «Avanti» cadeva fuori.
+  assert.match(steps.ASK_DIALOG_CLASS, /(^| )h-\[min\(calc\(100dvh-2rem\),52rem\)\]( |$)/);
+  assert.doesNotMatch(steps.ASK_DIALOG_CLASS, /max-h-/);
+  for (const piece of ["flex", "flex-col", "overflow-hidden", "p-0", "sm:max-w-lg"]) assert.ok(steps.ASK_DIALOG_CLASS.split(" ").includes(piece), piece);
+});
+
 const PARTS = referentRequestPreview({ company: "Alfa Jet (prova)", useCase: { code: "AJ-0002", title: "Lettura delle fatture" }, requesterName: "Giulia Neri", questions: 2, message: "Ci serve per fine mese.", today: new Date("2026-11-02T10:00:00Z") });
 
 function renderPreview(over: Record<string, unknown> = {}) {

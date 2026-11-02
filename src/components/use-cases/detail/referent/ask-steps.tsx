@@ -433,7 +433,7 @@ export function AskSteps({
         showCloseButton={false}
         data-slot="decision-dialog"
         initialFocus={headingRef}
-        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+        className={ASK_DIALOG_CLASS}
       >
         <div data-slot="referent-ask" data-step={step} className="flex min-h-0 flex-1 flex-col">
           <div className="space-y-3 px-4 pt-4 sm:px-6 sm:pt-5">
@@ -501,6 +501,13 @@ export function AskSteps({
     </Dialog>
   );
 }
+
+/**
+ * La finestra ha la stessa altezza nei tre passi (lo schermo meno 2rem, al massimo 52rem) e scorre
+ * dentro il corpo: centrata e alta quanto il passo, saltava a ogni passo, e il secondo clic dove era
+ * «Avanti» cadeva fuori e la chiudeva. Piede e intestazione restano fermi.
+ */
+export const ASK_DIALOG_CLASS = "flex h-[min(calc(100dvh-2rem),52rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg";
 
 /**
  * Il pulsante pieno del piede: il passo dopo (un `submit` del modulo del passo), oppure «Chiudi» quando
