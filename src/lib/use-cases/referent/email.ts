@@ -159,27 +159,42 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
   return render(subjectOf(`Promemoria: domande aperte su ${n} use case di ${company(input.company)}`), blocks);
 }
 
+/** L'email «richiesta» (§7) prima del rendering: l'oggetto e i blocchi, nell'ordine dell'email. */
+export interface ReferentRequestParts {
+  subject: string;
+  blocks: Block[];
+}
+
+/**
+ * (Rilascio 4) L'oggetto e i blocchi dell'email «richiesta»: li usano l'invio (`renderReferentEmail`)
+ * e l'anteprima di «Controlla e invia» (`preview.ts`), così l'anteprima è l'email vera.
+ */
+export function referentRequestParts(input: Extract<ReferentEmailInput, { template: "richiesta" }>): ReferentRequestParts {
+  const uc = labelOfUseCase(input.useCase);
+  const link = checkReferentLink(input.link);
+  // (Referente già iscritto) L'email dice subito che la persona è stata indicata come referente.
+  const blocks: Block[] = [
+    { p: "Buongiorno," },
+    { p: `${name(input.requesterName)} ti ha indicato come referente per lo use case «${uc}» e ti chiede alcune informazioni.` },
+    { p: input.questions === 1 ? "È una domanda sola." : `Le domande sono ${input.questions}.` },
+  ];
+  if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
+  blocks.push(
+    { p: "Bastano pochi minuti e puoi rispondere anche dal telefono. Se non sai una risposta, scegli «Non lo so». Se hai un documento utile, allegalo: prima togli nomi e dati personali." },
+    { link: { href: link, label: "Apri le domande" } },
+    { small: expiry(input.expiresAt) },
+    ...teamAccessBlocks(input.cardLink, input.accountNotice === true),
+    { small: replyLine(input.replyToKnown, input.requesterName) },
+  );
+  return { subject: subjectOf(`${company(input.company)}: sei il referente per «${uc}»`), blocks };
+}
+
 /** I testi di §7. */
 export function renderReferentEmail(input: ReferentEmailInput): RenderedEmail {
   switch (input.template) {
     case "richiesta": {
-      const uc = labelOfUseCase(input.useCase);
-      const link = checkReferentLink(input.link);
-      // (Referente già iscritto) L'email dice subito che la persona è stata indicata come referente.
-      const blocks: Block[] = [
-        { p: "Buongiorno," },
-        { p: `${name(input.requesterName)} ti ha indicato come referente per lo use case «${uc}» e ti chiede alcune informazioni.` },
-        { p: input.questions === 1 ? "È una domanda sola." : `Le domande sono ${input.questions}.` },
-      ];
-      if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
-      blocks.push(
-        { p: "Bastano pochi minuti e puoi rispondere anche dal telefono. Se non sai una risposta, scegli «Non lo so». Se hai un documento utile, allegalo: prima togli nomi e dati personali." },
-        { link: { href: link, label: "Apri le domande" } },
-        { small: expiry(input.expiresAt) },
-        ...teamAccessBlocks(input.cardLink, input.accountNotice === true),
-        { small: replyLine(input.replyToKnown, input.requesterName) },
-      );
-      return render(subjectOf(`${company(input.company)}: sei il referente per «${uc}»`), blocks);
+      const parts = referentRequestParts(input);
+      return render(parts.subject, parts.blocks);
     }
     case "promemoria": {
       if (input.entries.length === 0) throw new Error("Promemoria senza voci");
