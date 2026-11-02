@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
 import {
   atLeast,
   COLOR_VALUE,
@@ -321,6 +322,49 @@ test("tema chiaro: le voci dei menu e delle tendine dicono la voce della tastier
   // Le voci hanno ancora questi nomi.
   const primitives = ["dropdown-menu", "select", "command"].map((name) => readRepo(`src/components/ui/${name}.tsx`)).join("\n");
   for (const slot of [...items, "command-item"]) assert.ok(primitives.includes(`data-slot="${slot}"`), slot);
+});
+
+test("tema chiaro: ogni voce di menu o tendina di Base UI nel codice ha uno slot del contorno del fuoco", () => {
+  // La regola del contorno riconosce le voci solo dal data-slot, che Base UI non mette: una voce
+  // scritta direttamente con Menu.Item o Menu.LinkItem (la campanella, i link del «⋯») senza uno di
+  // questi slot resterebbe col solo fondo, 1,2:1 sul popover chiaro.
+  const items = ["dropdown-menu-item", "dropdown-menu-radio-item", "dropdown-menu-checkbox-item", "dropdown-menu-sub-trigger", "select-item"];
+  const rule = rules.find((r) => r.selector.startsWith(`${LIGHT}\n  :is(`) && r.selector.includes(":focus-visible") && items.every((slot) => r.selector.includes(`[data-slot="${slot}"]`)));
+  assert.ok(rule, "il contorno del fuoco delle voci dei menu e delle tendine");
+  const slots = new Set([...rule.selector.matchAll(/\[data-slot="([^"]+)"\]/g)].map((m) => m[1]));
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(new URL(`../../../${dir}`, import.meta.url), { withFileTypes: true })) {
+      const path = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(path);
+      else if (path.endsWith(".tsx") && !path.endsWith(".test.tsx")) files.push(path);
+    }
+  };
+  walk("src");
+  const open = /<(\w+)\.(Item|LinkItem|CheckboxItem|RadioItem|SubmenuTrigger)\b/g;
+  const missing: string[] = [];
+  let seen = 0;
+  for (const file of files) {
+    const source = readRepo(file);
+    if (!/from "@base-ui\/react\/(menu|select)"/.test(source)) continue;
+    for (const match of source.matchAll(open)) {
+      // L'apertura del tag fino al suo `>`, fuori dalle graffe (le frecce `=>` stanno dentro).
+      let depth = 0;
+      let end = match.index + match[0].length;
+      for (; end < source.length; end++) {
+        const ch = source[end];
+        if (ch === "{") depth++;
+        else if (ch === "}") depth--;
+        else if (ch === ">" && depth === 0) break;
+      }
+      const tag = source.slice(match.index, end);
+      seen++;
+      const slot = /data-slot="([^"]+)"/.exec(tag)?.[1];
+      if (!slot || !slots.has(slot)) missing.push(`${file}:${source.slice(0, match.index).split("\n").length} ${match[1]}.${match[2]}`);
+    }
+  }
+  assert.ok(seen > 0, "le voci di Base UI nel codice");
+  assert.deepEqual(missing, [], "voci senza contorno del fuoco nel tema chiaro");
 });
 
 test("tema chiaro: il pannello aperto delle schede (Tabs) dice il fuoco della tastiera con un contorno pieno", () => {

@@ -73,6 +73,7 @@ export function ActionMenu({ items, trigger = "icon", label, align = "end", clas
           item.href && !item.disabled ? (
             <MenuPrimitive.LinkItem
               key={`${item.label}-${item.href}`}
+              data-slot="dropdown-menu-item"
               closeOnClick
               render={<Link href={item.href} />}
               className={cn(ITEM, item.destructive && "focus:bg-destructive/10")}

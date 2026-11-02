@@ -256,6 +256,7 @@ export function NotificationsBell({ workspaceId, initial }: NotificationsBellPro
             <span className="text-xs font-medium text-muted-foreground">{BELL_TEXT.title}</span>
             {model.showReadAll ? (
               <Menu.Item
+                data-slot="dropdown-menu-item"
                 closeOnClick={false}
                 onClick={() => void onReadAll()}
                 className="inline-flex min-h-11 cursor-default items-center rounded-md px-2 text-xs font-medium text-primary outline-hidden select-none data-highlighted:bg-accent sm:min-h-7"
@@ -289,6 +290,7 @@ export function NotificationsBell({ workspaceId, initial }: NotificationsBellPro
                 return row.href ? (
                   <Menu.LinkItem
                     key={row.key}
+                    data-slot="dropdown-menu-item"
                     href={row.href}
                     closeOnClick={false}
                     data-unread={row.unread || undefined}
@@ -301,7 +303,7 @@ export function NotificationsBell({ workspaceId, initial }: NotificationsBellPro
                     {content}
                   </Menu.LinkItem>
                 ) : (
-                  <Menu.Item key={row.key} closeOnClick={false} data-unread={row.unread || undefined} className={className} onClick={(event) => onRow(event, row.key)}>
+                  <Menu.Item key={row.key} data-slot="dropdown-menu-item" closeOnClick={false} data-unread={row.unread || undefined} className={className} onClick={(event) => onRow(event, row.key)}>
                     {content}
                   </Menu.Item>
                 );
@@ -311,6 +313,7 @@ export function NotificationsBell({ workspaceId, initial }: NotificationsBellPro
           {model.showEmailToggle ? (
             <div className="sticky -bottom-2 -mx-2 -mb-2 mt-2 border-t bg-popover px-2 py-1.5">
               <Menu.CheckboxItem
+                data-slot="dropdown-menu-checkbox-item"
                 checked={emailChecked}
                 closeOnClick={false}
                 onCheckedChange={(checked) => void onEmailAlerts(checked)}
