@@ -50,7 +50,7 @@ export function UseCaseMatrix({ useCases, onSelect }: UseCaseMatrixProps) {
             tickCount={6}
             name="Fattibilita'"
           >
-            <Label value="Fattibilita'" position="bottom" offset={20} />
+            <Label value="Fattibilita'" position="bottom" offset={20} fill="var(--viz-matrix-label)" />
           </XAxis>
           <YAxis
             type="number"
@@ -64,6 +64,7 @@ export function UseCaseMatrix({ useCases, onSelect }: UseCaseMatrixProps) {
               angle={-90}
               position="left"
               offset={20}
+              fill="var(--viz-matrix-label)"
             />
           </YAxis>
           <ReferenceLine x={3.5} stroke="var(--viz-matrix-reference)" strokeDasharray="5 5" />

@@ -82,7 +82,7 @@ export function ResultsIndividual({ rows, activities, base, turno, refreshedAt, 
 
 function Legend({ status }: { status: string }) {
   return <span className="inline-flex items-center gap-1.5">
-    <span aria-hidden className={cn("inline-block size-3 rounded border", outcomeTone(status))} />
+    <span aria-hidden data-slot="outcome-swatch" className={cn("inline-block size-3 rounded border", outcomeTone(status))} />
     {outcomeLabel(status)}
   </span>;
 }

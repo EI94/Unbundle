@@ -419,3 +419,37 @@ html:has([data-use-case-root])
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
+/* Le voci dei menu, delle tendine e della ricerca dei duplicati dicono la voce attiva della tastiera
+   solo con il fondo (`focus:bg-accent`, `data-selected:bg-muted`), 1,1–1,2:1 sul popover chiaro: nel
+   tema chiaro anche un contorno pieno di --ring, dentro la voce (il menu taglia quello che sporge).
+   Nei menu e nelle tendine solo dalla tastiera (:focus-visible: con il mouse il contorno non c'è);
+   nella ricerca sulla voce scelta, come il suo fondo. */
+:root[data-theme="light"]:has([data-theme-scope])
+  :is(
+    [data-slot="dropdown-menu-item"],
+    [data-slot="dropdown-menu-radio-item"],
+    [data-slot="dropdown-menu-checkbox-item"],
+    [data-slot="dropdown-menu-sub-trigger"],
+    [data-slot="select-item"]
+  ):focus-visible,
+:root[data-theme="light"]:has([data-theme-scope]) [data-slot="command-item"][data-selected="true"] {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+/* AI Readiness, il radar: il punteggio sotto il nome del pilastro (10 px, al 55% del testo) sarebbe
+   4,1:1 sulla card chiara; al 75% è 8,4:1. */
+:root[data-theme="light"]:has([data-theme-scope]) [data-slot="pillar-radar-score"] {
+  opacity: 0.75;
+}
+/* La parte «da verificare» della barra degli indispensabili: il giallo al 40% sarebbe 1,8:1 sul
+   binario chiaro; al 75% è almeno 3:1 sul binario e sulla card, e 2 px del binario la staccano dal
+   verde «a posto» (i due pieni, uno accanto all'altro, sarebbero 1,7:1). */
+:root[data-theme="light"]:has([data-theme-scope]) [data-slot="progress-to-gate"] [role="progressbar"] > span + span {
+  background-color: color-mix(in oklab, var(--uc-giallo) 75%, transparent);
+  box-shadow: inset 2px 0 0 var(--muted);
+}
+/* La legenda degli esiti nei risultati di Learning: il quadratino tinto (1,2:1) con il bordo al 40%
+   (2,1:1) prende il bordo dal colore del suo esito, come i tag degli agenti. */
+:root[data-theme="light"]:has([data-theme-scope]) [data-slot="outcome-swatch"] {
+  border-color: color-mix(in oklab, currentColor 80%, transparent);
+}

@@ -191,7 +191,8 @@
   },
   "src/components/learning/results-toggle.tsx": {
     "palette": 1,
-    "whiteBlack": 1
+    "whiteBlack": 1,
+    "light": 1
   },
   "src/components/portfolio/notifications-bell.tsx": {
     "palette": 1,

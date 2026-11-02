@@ -34,6 +34,7 @@
   --viz-matrix-capability-builder: #3b82f6;
   --viz-matrix-not-yet: #94a3b8;
   --viz-matrix-reference: #666;
+  --viz-matrix-label: #808080;
 
   /* La Wardley map (maps/wardley-map.tsx, d3): i tre flussi, anche come testo nel suggerimento. */
   --viz-wardley-automate: #22c55e;
@@ -74,6 +75,7 @@
   --viz-matrix-capability-builder: #2563eb;
   --viz-matrix-not-yet: #64748b;
   --viz-matrix-reference: #666;
+  --viz-matrix-label: oklch(0.43 0.01 260);
 
   --viz-wardley-automate: #15803d;
   --viz-wardley-differentiate: #7c3aed;

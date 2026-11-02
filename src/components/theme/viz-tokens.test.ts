@@ -51,6 +51,8 @@ const BEFORE: Record<string, string> = {
   "--viz-matrix-capability-builder": "#3b82f6",
   "--viz-matrix-not-yet": "#94a3b8",
   "--viz-matrix-reference": "#666",
+  // Le etichette «Fattibilita'» e «Impatto» degli assi: il grigio che recharts scrive da sé.
+  "--viz-matrix-label": "#808080",
   "--viz-wardley-automate": "#22c55e",
   "--viz-wardley-differentiate": "#8b5cf6",
   "--viz-wardley-innovate": "#f59e0b",
@@ -103,6 +105,12 @@ test("nel tema chiaro i punti, le barre e le linee che dicono qualcosa almeno 3:
   }
   // I flussi della Wardley map sono anche il testo dell'etichetta nel suggerimento (su --card).
   for (const name of ["--viz-wardley-automate", "--viz-wardley-differentiate", "--viz-wardley-innovate", "--viz-wardley-other"]) atLeast(ratio(seen(name, WHITE), WHITE), 4.5, name);
+  // Le etichette degli assi della matrice dei use case sono testo (14 px) sulla card e sulla pagina:
+  // il grigio di recharts sarebbe 3,9:1 sul bianco.
+  for (const [surfaceName, surface] of [["card", WHITE], ["fondo", PAGE]] as const) atLeast(ratio(seen("--viz-matrix-label", surface), surface), 4.5, `--viz-matrix-label su ${surfaceName}`);
+  assert.ok(ratio(parseColor(dark["--viz-matrix-label"]).rgb, WHITE) < 4.5, "il grigio di recharts non basta sul bianco");
+  const matrix = readRepo("src/components/dashboard/use-case-matrix.tsx");
+  assert.equal(matrix.match(/<Label[^>]*fill="var\(--viz-matrix-label\)"/g)?.length, 2, "le due etichette degli assi");
   // Il radar: la stessa tinta del tema scuro, dentro la gamma dello schermo.
   assert.equal(color("--viz-readiness").h, parseColor(dark["--viz-readiness"]).h);
   assert.ok(color("--viz-readiness").inGamut);

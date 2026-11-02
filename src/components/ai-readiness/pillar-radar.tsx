@@ -99,6 +99,7 @@ export function PillarRadar({
               className="fill-current"
               fontSize={10}
               opacity={0.55}
+              data-slot="pillar-radar-score"
             >
               {pillar.score != null ? pillar.score.toFixed(1) : "N/D"}
             </text>

@@ -2,7 +2,8 @@
 /**
  * Il censimento dei colori fissi nel codice del dashboard (src/components/** e src/app/(dashboard)/**,
  * senza i test): per file, le classi di colore di Tailwind (`text-emerald-300`), il bianco e il nero
- * (`bg-white`), gli esadecimali, i colori scritti come `rgb(…)`/`hsl(…)`/`oklch(…)`, i testi dei token
+ * (`bg-white`), gli esadecimali (anche in `text-[#…]`), i nomi dei colori CSS negli attributi e negli stili
+ * (`fill="white"`), i colori scritti come `rgb(…)`/`hsl(…)`/`oklch(…)`, i testi dei token
  * sbiaditi (`text-muted-foreground/50`), le classi `dark:` (non valgono mai: nessun elemento ha
  * `.dark`) e le classi `light:` (solo nel tema «Chiaro»).
  *
@@ -22,10 +23,18 @@ import { paletteClasses } from "./palette-roles.mjs";
 export const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const BASELINE = "src/components/theme/colour-baseline.json";
 export const SCOPES = ["src/components", "src/app/(dashboard)"];
-export const KINDS = ["palette", "whiteBlack", "hex", "colorFunction", "fadedText", "dark", "light"];
+export const KINDS = ["palette", "whiteBlack", "hex", "namedColor", "colorFunction", "fadedText", "dark", "light"];
 
 const WHITE_BLACK = /(?<![\w-])(?:[\w-]+:)*(?:bg|text|border|ring|outline|fill|stroke|from|via|to|shadow|divide|placeholder|decoration|accent|caret)-(?:white|black)(?:\/\d+|\/\[[^\]]+\])?(?![\w-])/g;
-const HEX = /["'`(\s:,]#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
+// Anche dentro un valore arbitrario di Tailwind: `text-[#22c55e]`, `bg-[#0f172a]/50`, `fill-[#fff]`.
+const HEX = /["'`(\s:,[]#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
+// I nomi dei colori CSS scritti in un attributo o in uno stile (`fill="white"`, `style={{ color: "black" }}`,
+// `stopColor="red"`) e dentro un valore arbitrario (`text-[red]`). currentColor, transparent e inherit non contano.
+const NAMED = "white|black|red|green|blue|yellow|orange|purple|pink|brown|gr[ae]y|silver|gold|navy|teal|cyan|aqua|magenta|fuchsia|lime|olive|maroon|crimson|indigo|violet|coral|salmon|tomato|khaki|beige|ivory|tan|turquoise|orchid|plum|lavender|steelblue|skyblue|royalblue|darkred|darkgreen|darkblue|lightgr[ae]y|darkgr[ae]y|whitesmoke|gainsboro";
+const NAMED_COLOR = new RegExp(
+  `(?:\\b(?:fill|stroke|stopColor|floodColor|lightingColor|color|background|backgroundColor|borderColor|outlineColor)\\s*[=:]\\s*\\{?\\s*["'\`](?:${NAMED})["'\`])|(?:-\\[(?:${NAMED})\\])`,
+  "gi",
+);
 const COLOR_FUNCTION = /\b(?:oklch|rgba?|hsla?)\(/g;
 const FADED_TEXT = /(?<![\w-])(?:[\w-]+:)*text-(?:foreground|muted-foreground|sidebar-foreground|card-foreground|popover-foreground|primary|primary-foreground|secondary-foreground|accent-foreground)\/\d+/g;
 const DARK = /(?<![\w-])dark:[\w\-/[\]#.:&*>=()'"]+/g;
@@ -54,6 +63,7 @@ export function count(source) {
     palette,
     whiteBlack: (source.match(WHITE_BLACK) ?? []).filter((match) => !/(^|:)dark:/.test(match)).length,
     hex: (source.match(HEX) ?? []).length,
+    namedColor: (source.match(NAMED_COLOR) ?? []).length,
     colorFunction: (source.match(COLOR_FUNCTION) ?? []).length,
     fadedText: (source.match(FADED_TEXT) ?? []).filter((match) => !/(^|:)(dark|light):/.test(match)).length,
     dark: (source.match(DARK) ?? []).length,

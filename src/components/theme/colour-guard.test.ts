@@ -17,6 +17,8 @@ const LIGHT_ALLOWED = [
   "src/components/dashboard/activity-sidebar.tsx",
   "src/components/dashboard/department-dashboard.tsx",
   "src/components/agent/chat-interface.tsx",
+  // L'interruttore spento dei risultati di Learning: al 40% del grigio secondario sarebbe 2:1 sulla card chiara.
+  "src/components/learning/results-toggle.tsx",
   // La casella nativa del catalogo del dossier: `[color-scheme:dark]` la disegnerebbe scura sul bianco.
   "src/components/uc/catalog/checkbox.ts",
 ];
@@ -66,7 +68,14 @@ test("il censimento conta quello che deve", () => {
       'fill="#22c55e" stroke="rgba(1,2,3,0.5)"',
     ].join("\n"),
   );
-  assert.deepEqual(counts, { palette: 2, whiteBlack: 1, hex: 1, colorFunction: 1, fadedText: 1, dark: 1, light: 1 });
+  assert.deepEqual(counts, { palette: 2, whiteBlack: 1, hex: 1, namedColor: 0, colorFunction: 1, fadedText: 1, dark: 1, light: 1 });
+  // Anche i colori scritti come valore arbitrario di Tailwind e i nomi dei colori CSS negli attributi e negli stili.
+  assert.deepEqual(
+    census.count('className="text-[#22c55e] bg-[#0f172a]/50 fill-[#fff] stroke-[red]" fill="white" stopColor="red" style={{ color: "black" }}'),
+    { palette: 0, whiteBlack: 0, hex: 3, namedColor: 4, colorFunction: 0, fadedText: 0, dark: 0, light: 0 },
+  );
+  // currentColor, transparent e i token non sono colori fissi.
+  assert.equal(census.count('fill="currentColor" stroke="transparent" style={{ color: "var(--foreground)" }} className="text-[var(--viz-x)]"').namedColor, 0);
   // I test e i loro aiuti non contano; le pagine del dashboard e i componenti sì.
   const files = (census.files() as string[]).map((file) => file.slice(census.REPO.length + 1));
   assert.ok(files.some((file) => file.startsWith("src/app/(dashboard)/")));

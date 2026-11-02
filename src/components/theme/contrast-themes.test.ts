@@ -303,3 +303,95 @@ test("tema chiaro: i toast colorati con i toni del semaforo", () => {
     atLeast(ratio(resolve(values[`--${kind}-text`]).rgb, bg.rgb), 5.5, `testo del toast ${kind}`);
   }
 });
+
+test("tema chiaro: le voci dei menu e delle tendine dicono la voce della tastiera con un contorno pieno", () => {
+  const items = ["dropdown-menu-item", "dropdown-menu-radio-item", "dropdown-menu-checkbox-item", "dropdown-menu-sub-trigger", "select-item"];
+  const rule = rules.find((r) => r.selector.startsWith(`${LIGHT}\n  :is(`) && r.selector.includes(":focus-visible") && items.every((slot) => r.selector.includes(`[data-slot="${slot}"]`)));
+  assert.ok(rule, "il contorno del fuoco delle voci dei menu e delle tendine");
+  assert.ok(rule.selector.includes(`${LIGHT} [data-slot="command-item"][data-selected="true"]`), "e la voce scelta della ricerca dei duplicati");
+  assert.match(rule.body, /outline: 2px solid var\(--ring\);\s*outline-offset: -2px;/);
+  // Il fondo da solo non basta: accent e muted sul popover restano sotto 3:1.
+  assert.ok(ratio(light.accent.rgb, light.popover.rgb) < 3 && ratio(light.muted.rgb, light.popover.rgb) < 3);
+  for (const surface of ["popover", "accent", "muted"]) atLeast(contrast(light.ring, light[surface].rgb), 3, `ring pieno su ${surface}`);
+  atLeast(contrast(light.ring, over(light.destructive.rgb, light.popover.rgb, 0.1)), 3, "ring pieno su «Esci» col fuoco");
+  // Il tema scuro non cambia: la regola vale solo col tema chiaro.
+  const parts = rule.selector.split(/,\n(?=\S)/);
+  assert.equal(parts.length, 2);
+  assert.ok(parts.every((part) => part.startsWith(LIGHT)), "solo nel tema chiaro");
+  // Le voci hanno ancora questi nomi.
+  const primitives = ["dropdown-menu", "select", "command"].map((name) => readRepo(`src/components/ui/${name}.tsx`)).join("\n");
+  for (const slot of [...items, "command-item"]) assert.ok(primitives.includes(`data-slot="${slot}"`), slot);
+});
+
+test("tema chiaro: l'interruttore spento dei risultati di Learning si vede (pista e pallino almeno 3:1)", () => {
+  const toggle = readRepo("src/components/learning/results-toggle.tsx");
+  assert.ok(toggle.includes('"bg-muted-foreground/40 light:bg-input"'), "la pista spenta nel tema chiaro");
+  assert.ok(toggle.includes("bg-white"), "il pallino bianco");
+  const white: Rgb = [1, 1, 1];
+  // Prima: 2:1 sulla card e 2:1 tra pallino e pista.
+  assert.ok(ratio(over(light["muted-foreground"].rgb, light.card.rgb, 0.4), light.card.rgb) < 3);
+  for (const surface of ["card", "muted"]) atLeast(contrast(light.input, light[surface].rgb), 3, `pista spenta su ${surface}`);
+  atLeast(ratio(white, light.input.rgb), 3, "pallino bianco sulla pista spenta");
+});
+
+test("tema chiaro: il punteggio sotto i pilastri del radar di AI Readiness si legge", () => {
+  const rule = rules.find((r) => r.selector === `${LIGHT} [data-slot="pillar-radar-score"]`);
+  assert.ok(rule, "l'opacità del punteggio nel tema chiaro");
+  const opacity = Number(/opacity: ([\d.]+);/.exec(rule.body)?.[1]);
+  const radar = readRepo("src/components/ai-readiness/pillar-radar.tsx");
+  assert.match(radar, /className="fill-current"\s*fontSize=\{10\}\s*opacity=\{0\.55\}\s*data-slot="pillar-radar-score"/);
+  // Il radar scrive nel colore del testo della sua card (`text-foreground`, ai-readiness/page.tsx).
+  assert.match(readRepo("src/app/(dashboard)/dashboard/[workspaceId]/ai-readiness/page.tsx"), /<CardContent className="text-foreground">\s*<PillarRadar/);
+  atLeast(contrast(light.foreground, light.card.rgb, opacity), 4.5, "punteggio del radar, tema chiaro");
+  assert.ok(contrast(light.foreground, light.card.rgb, 0.55) < 4.5, "al 55% non basterebbe nel tema chiaro");
+  // Nel tema scuro resta al 55%, 5,6:1.
+  atLeast(contrast(dark.foreground, dark.card.rgb, 0.55), 4.5, "punteggio del radar, tema scuro");
+});
+
+test("tema chiaro: la parte «da verificare» della barra degli indispensabili si vede e si stacca dal verde", () => {
+  const rule = rules.find((r) => r.selector === `${LIGHT} [data-slot="progress-to-gate"] [role="progressbar"] > span + span`);
+  assert.ok(rule, "il giallo della barra nel tema chiaro");
+  const mix = /background-color: color-mix\(in oklab, var\(--uc-giallo\) (\d+)%, transparent\);/.exec(rule.body);
+  assert.ok(mix, "il giallo più pieno");
+  assert.match(rule.body, /box-shadow: inset 2px 0 0 var\(--muted\);/, "la fessura del colore del binario");
+  const track = light.muted.rgb;
+  const yellow = over(light["uc-giallo"].rgb, track, Number(mix[1]) / 100);
+  atLeast(ratio(yellow, track), 3, "giallo sul binario e sulla fessura");
+  for (const surface of ["card", "background"]) atLeast(ratio(yellow, light[surface].rgb), 3, `giallo su ${surface} in fondo alla barra`);
+  atLeast(ratio(light["uc-verde"].rgb, track), 3, "verde accanto alla fessura");
+  // Senza la fessura i due pieni, uno accanto all'altro, non si staccherebbero; al 40% il giallo non si vedrebbe.
+  assert.ok(ratio(yellow, light["uc-verde"].rgb) < 3, "per questo la fessura");
+  assert.ok(ratio(over(light["uc-giallo"].rgb, track, 0.4), track) < 3, "al 40% non basterebbe");
+  // La barra è ancora fatta così: il verde, poi il giallo, dentro `role="progressbar"`, in ogni misura.
+  const source = readRepo("src/components/uc/ui/progress-to-gate.tsx");
+  assert.match(source, /role="progressbar"[\s\S]*?>\s*<span className="h-full bg-uc-verde"[^>]*\/>\s*\{review > 0 && <span className="h-full bg-uc-giallo\/40"/);
+  assert.equal(source.match(/data-slot="progress-to-gate"/g)?.length, 3, "le tre misure portano il nome");
+});
+
+test("tema chiaro: la legenda degli esiti di Learning ha il bordo del colore dell'esito", () => {
+  const rule = rules.find((r) => r.selector === `${LIGHT} [data-slot="outcome-swatch"]`);
+  assert.ok(rule, "il bordo della legenda nel tema chiaro");
+  const edge = /border-color: color-mix\(in oklab, currentColor (\d+)%, transparent\);/.exec(rule.body);
+  assert.ok(edge);
+  const alpha = Number(edge[1]) / 100;
+  const individual = readRepo("src/components/learning/results-individual.tsx");
+  assert.ok(individual.includes('<span aria-hidden data-slot="outcome-swatch" className={cn("inline-block size-3 rounded border", outcomeTone(status))} />'));
+  const format = readRepo("src/components/learning/results-format.tsx");
+  const palette = declarations(topLevelRules(readRepo("src/app/theme-palette.css")).find((r) => r.selector === LIGHT)!.body);
+  const tones: Array<[string, string, string]> = [
+    ["consolidated", "emerald-300", "emerald-500"],
+    ["needs_practice", "amber-200", "amber-500"],
+  ];
+  for (const [status, text, border] of tones) {
+    assert.ok(format.includes(`if (status === "${status}") return "border-${border}/40 bg-${border}/15 text-${text}";`), status);
+    const tone = parseColor(palette[`--palette-text-${text}`]).rgb;
+    const before = parseColor(palette[`--palette-border-${border}`]).rgb;
+    for (const surface of ["background", "card"]) {
+      const s = light[surface].rgb;
+      atLeast(ratio(over(tone, s, alpha), s), 3, `bordo della legenda ${status} su ${surface}`);
+      assert.ok(ratio(over(before, s, 0.4), s) < 3, `${status}: il bordo al 40% basterebbe`);
+    }
+  }
+  assert.ok(format.includes('return "border-border bg-muted text-foreground";'));
+  for (const surface of ["background", "card"]) atLeast(contrast(light.foreground, light[surface].rgb, alpha), 3, `bordo della legenda neutra su ${surface}`);
+});
