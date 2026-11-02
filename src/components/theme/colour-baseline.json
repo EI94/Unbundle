@@ -269,9 +269,6 @@
     "palette": 3,
     "dark": 3
   },
-  "src/components/use-cases/detail/risk-chips.tsx": {
-    "palette": 2
-  },
   "src/components/use-cases/hub-header.tsx": {
     "palette": 4
   },
@@ -291,10 +288,6 @@
   },
   "src/components/use-cases/settings/valuation-settings.tsx": {
     "palette": 4
-  },
-  "src/components/use-cases/use-case-panel.tsx": {
-    "palette": 3,
-    "dark": 3
   },
   "src/components/use-cases/use-case-row.tsx": {
     "palette": 2
