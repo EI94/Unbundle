@@ -50,6 +50,15 @@ const OVERVIEW_REVIEWER = ["Panoramica", "Approvati", "valore contato all'anno",
 const OVERVIEW_CONTRIBUTOR = ["Approvati", "In valutazione"];
 /** Never on the contributor's Panoramica: figures, the box, the needs, the agent filter. */
 const NOT_ON_CONTRIBUTOR_OVERVIEW = [...NOT_FOR_CONTRIBUTOR, "€", "costo di avvio", "Prossimo passo", "Cosa serve", "Agente"];
+/**
+ * The headers of the closed lists by zone under «Matrice Valore × Costo», as body.innerText has
+ * them: the zone name and «N use case» kept whole by non-breaking spaces, the «·» after the name
+ * (`ChartListSection`). The counts are those of seed-hub.mjs in workspace «a» (1 · 3 · 2 · 2, the
+ * same for the three reviewers at every width); with a fuller portfolio only the name and its «·».
+ */
+const MATRIX_ZONES = FULL_SEED
+  ? ["Subito\u00a0· ", "Da pianificare\u00a0· ", "Se avanza tempo\u00a0· ", "Non ora\u00a0· "]
+  : ["Subito\u00a0· 1\u00a0use\u00a0case", "Da pianificare\u00a0· 3\u00a0use\u00a0case", "Se avanza tempo\u00a0· 2\u00a0use\u00a0case", "Non ora\u00a0· 2\u00a0use\u00a0case"];
 
 const routes = [
   // The starting view of each role (§4.2): reviewers «Da decidere», the client's sponsor and contributors the Panoramica.
@@ -85,13 +94,15 @@ const routes = [
     ? { name: "panoramica-agenti", path: `${OVERVIEW}&mostra=agenti`, as: REVIEWERS, present: ["Per trimestre", "Per agente", "Altri use case"] }
     : { name: "panoramica-agenti", path: `${OVERVIEW}&mostra=agenti`, as: REVIEWERS, present: ["Approvati", "Questo trimestre"], absent: ["Per agente"] },
   { name: "panoramica-agenti", path: `${OVERVIEW}&mostra=agenti`, as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: [...NOT_ON_CONTRIBUTOR_OVERVIEW, "Per agente"] },
-  // H4p: ogni punto con il suo codice; i scaduti marcati; legenda corta. Opened from the «⋯» menu,
-  // in place of the lanes, with «Torna alla Panoramica» above.
+  // H4p: i scaduti marcati; legenda corta. Opened from the «⋯» menu, in place of the lanes, with
+  // «Torna alla Panoramica» above. Since 07aad144 the codes are no longer on the chart (only a tag
+  // next to an isolated point, and none on a phone): they are in the closed lists by zone under it,
+  // so the page is checked on their headers.
   {
     name: "panoramica-matrice",
     path: `${OVERVIEW}&mostra=matrice`,
     as: REVIEWERS,
-    present: ["Torna alla Panoramica", "Subito", "Da pianificare", "Se avanza tempo", "Non ora", "Le zone sono un suggerimento, non la decisione.", "{code:r06}", "{code:r09}", "da decidere"],
+    present: ["Torna alla Panoramica", "Subito", "Da pianificare", "Se avanza tempo", "Non ora", "Le zone sono un suggerimento, non la decisione.", ...MATRIX_ZONES, "da decidere"],
   },
   // «Matrice Facilità × Beneficio» from the «⋯» menu (the bubbles, only with a «Benefici e costi»
   // model in the workspace; otherwise the page falls back to the matrix), with «Torna alla Panoramica».
