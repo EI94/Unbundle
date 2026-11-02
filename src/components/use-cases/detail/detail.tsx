@@ -53,6 +53,8 @@ export const DETAIL_CHAPTERS = [
   { id: "impatto", label: "Impatto" },
   { id: "cosa-e", label: "Come cambia il lavoro" },
   { id: "cosa-serve", label: "Cosa serve" },
+  // La piega delle richieste ai referenti dentro «Cosa serve»: «Nessuna risposta» (campanella, email) la apre.
+  { id: "richieste", label: "Richieste inviate" },
   { id: "valutazione", label: "Valutazione del team" },
   { id: "dettagli", label: "Dettagli" },
   { id: "realizzazione", label: "Realizzazione" },
@@ -393,6 +395,7 @@ export function UseCaseDetailView({
                     referents={referents}
                     infoProgress={infoProgress}
                     boxAsk={boxAskOf(step)}
+                    requestsOpen={opens("richieste")}
                   />
                 ) : null}
               </div>

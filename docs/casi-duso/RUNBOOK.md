@@ -314,6 +314,7 @@ Regole del Firewall di Vercel (chiave: IP), accanto a quelle di `/r/`: `GET /ris
   SELECT kind, rome_day, answers, unknowns, documents, read_at FROM use_case_notifications
    WHERE workspace_id = '<ws>' AND recipient_user_id = '<utente>' ORDER BY last_event_at DESC LIMIT 20;
   ```
+- Dove portano le righe degli use case: «Risposte arrivate», «Nuovi documenti» e «Informazioni complete» a «Cosa serve» della scheda (`?capitolo=cosa-serve`); «Nessuna risposta» a «Richieste inviate» (`?capitolo=richieste`), la piega delle richieste dentro «Cosa serve», aperta, con il fuoco sul suo riassunto e «Chiedi di nuovo» accanto alla richiesta (senza richieste a vista la scheda arriva a «Cosa serve»); «Pronto da avviare» e «Autorizza i fornitori» come in §10.8.
 - Le notifiche e gli avvisi più vecchi di 90 giorni si cancellano (cron, passo 12).
 
 ### 10.6 Avvisi per email a chi ha chiesto
@@ -321,6 +322,7 @@ Regole del Firewall di Vercel (chiave: IP), accanto a quelle di `/r/`: `GET /ris
 - Coda: `use_case_requester_emails` (una riga per persona, workspace e giorno di Roma) con le voci in `use_case_requester_email_items`. Al massimo un'email al giorno per persona, lun–ven 9–18 di Roma, festivi esclusi.
 - Le risposte del referente partono subito (prima email del giorno); documenti e «Nessuna risposta» vanno nell'email del giorno lavorativo dopo, alle 9 (o si uniscono a quella di oggi se non è ancora partita).
 - In attesa (`hold_reason`): `email_non_configurata`, `sub_responsabili_mancanti`, `funzione_spenta`. Annullate (`cancel_reason`): `destinatario_non_valido` (email non verificata, non più revisore), `avvisi_spenti` (la persona ha tolto la spunta nella campanella), `nessuna_voce`, `troppo_vecchia` (più di 2 giorni lavorativi dopo `due_at`, che i nuovi tentativi non spostano).
+- Il link di ogni voce porta alla scheda: a «Cosa serve» quando ci sono risposte, documenti o «Non lo so» da guardare; a «Richieste inviate» (`?capitolo=richieste`, aperta) quando la voce è solo «Nessuna risposta» (ultimo promemoria o link scaduto), dove si chiede di nuovo. Con il codice di prima (ritorno indietro) un link `?capitolo=richieste` apre la scheda in cima.
 - Mai nel testo: risposte, nomi di file, nome o email del referente.
 
 

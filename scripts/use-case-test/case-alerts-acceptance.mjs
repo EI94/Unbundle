@@ -1,5 +1,6 @@
-// Browser acceptance of the two 0025 bell rows, «Pronto da avviare» and «Autorizza i fornitori», on
-// the hub's local harness (a production build, the Firebase Auth emulator and a throwaway clone).
+// Browser acceptance of the two 0025 bell rows, «Pronto da avviare» and «Autorizza i fornitori», and
+// of where «Nessuna risposta» lands on the guided card (release 3), on the hub's local harness (a
+// production build, the Firebase Auth emulator and a throwaway clone).
 // It uses scripts/uc-test/cdp.mjs as a library and signs in through scripts/uc-test/browser-login.mjs,
 // like scripts/use-case-test/bell-acceptance.mjs.
 //
@@ -15,8 +16,10 @@
 // a seeded use case approved for this quarter with nothing open from the client, made ready (one
 // «Pronto da avviare» row for each Lateral Space reviewer, ls-lead included), and another seeded use
 // case approved with a client question still to ask while the workspace has no «ok sui
-// sub-responsabili» (one «Autorizza i fornitori» row for function-lead, who can give it). Then, for
-// each width:
+// sub-responsabili» (one «Autorizza i fornitori» row for function-lead, who can give it); on a third
+// seeded use case a request to a synthetic referent sent 31 days ago and expired now, with the app's
+// own statements too (`needTransitionSql`, `referentEventSql`, then the cron's `expireStatements`,
+// which writes the «Nessuna risposta» rows of the workspace's reviewers). Then, for each width:
 //  1. ls-lead sees «Pronto da avviare»; its click opens the use case (`?capitolo=realizzazione`, the
 //     address of the e-mails already sent too) at the «Prossimo passo» box of the guided card, which
 //     on a ready card holds «Avvia la realizzazione» (the «Realizzazione» fold no longer repeats it):
@@ -25,17 +28,22 @@
 //     take the focus back to the bell), and no «Capitoli» bar on the page;
 //  2. function-lead sees «Autorizza i fornitori» and no «Pronto da avviare»; its click opens
 //     Impostazioni with «Sub-responsabili» in view;
-//  3. osservatore (contributor) sees neither row;
-//  4. no horizontal scroll at any step (scrollWidth ≤ innerWidth).
+//  3. function-lead sees «Nessuna risposta»; its click (`?capitolo=richieste`) opens the card with
+//     «Richieste inviate» of «Cosa serve» open, the focus on its summary and «Chiedi di nuovo» of the
+//     expired request whole in the window, still so a second later;
+//  4. osservatore (contributor) sees none of the three rows;
+//  5. no horizontal scroll at any step (scrollWidth ≤ innerWidth).
 // Last (the ok is append-only): the ok is given and, after a reload, function-lead's row is gone while
 // ls-lead's row stays. Writes only to the throwaway harness database (127.0.0.1, uc_test, hub_<id>).
 // Exit 1 on any failure.
 import { createRequire } from "node:module";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { closePage, evaluate, launchBrowser, loginAs, navigate, newPage } from "../uc-test/cdp.mjs";
 import { cardSyncStatements, subprocessorsWaitNoticeStatements } from "../../src/lib/use-cases/case-alerts/sql.ts";
 import { alertSchedule } from "../../src/lib/use-cases/referent/alerts.ts";
+import { expireStatements, needTransitionSql, referentEventSql } from "../../src/lib/use-cases/referent/sql.ts";
 import { ROME_QUARTER_NOW_SQL } from "../../src/lib/db/use-case-hub-alerts-ddl.ts";
 import { SUBPROCESSORS_VERSION } from "../../src/lib/uc/legal/subprocessors.ts";
 import { UC_TEST_APP_PORT, UC_TEST_DB, UC_TEST_HOST, UC_TEST_LOGIN_PORT, UC_TEST_LS_DOMAIN, UC_TEST_PORT, UC_TEST_USER, ucTestRoot } from "../uc-test/config.mjs";
@@ -63,14 +71,16 @@ const lead = fixtures.accounts?.["function-lead"];
 const lsLead = fixtures.accounts?.["ls-lead"];
 const observer = fixtures.accounts?.osservatore;
 const seeded = fixtures.hub?.useCases?.a ?? [];
-if (!ws || !lead?.id || !lsLead?.id || !observer?.id || seeded.length < 4) {
-  throw new Error("The manifest needs workspace «a», function-lead, ls-lead, osservatore and four seeded use cases (seed-hub.mjs)");
+if (!ws || !lead?.id || !lsLead?.id || !observer?.id || seeded.length < 5) {
+  throw new Error("The manifest needs workspace «a», function-lead, ls-lead, osservatore and five seeded use cases (seed-hub.mjs)");
 }
 // Not the two cards of bell-acceptance.mjs (the first two).
 const readyCard = seeded[2].id;
 const waitingCard = seeded[3].id;
+const silentCard = seeded[4].id;
 const app = `http://${UC_TEST_HOST}:${UC_TEST_APP_PORT}`;
 const readyPath = `/dashboard/${ws}/use-cases/${readyCard}`;
+const silentPath = `/dashboard/${ws}/use-cases/${silentCard}`;
 const settingsPath = `/dashboard/${ws}/settings`;
 
 const { Client } = createRequire(resolve("package.json"))("pg");
@@ -100,6 +110,8 @@ async function seed() {
     if (acks.rowCount) throw new Error("Workspace «a» already has the ok on the sub-processors: start from a fresh clone");
     const dossiers = (await client.query(`SELECT 1 FROM uc_cases WHERE portfolio_use_case_id = ANY($1::uuid[]) AND setup_completed_at IS NOT NULL`, [[readyCard, waitingCard]])).rowCount;
     if (dossiers) throw new Error("The chosen seeded use cases have a dossier: the fixtures changed");
+    const asked = (await client.query(`SELECT 1 FROM use_case_referent_requests WHERE use_case_id = $1::uuid`, [silentCard])).rowCount;
+    if (asked) throw new Error("The third seeded use case already has a request to a referent: start from a fresh clone");
     const now = new Date();
     const context = { lsDomains: [UC_TEST_LS_DOMAIN], dossiers: true, schedule: alertSchedule(now), now };
     await client.query("BEGIN");
@@ -123,6 +135,34 @@ async function seed() {
       await client.query(`UPDATE use_cases SET target_quarter = ${ROME_QUARTER_NOW_SQL} WHERE id = ANY($1::uuid[])`, [[readyCard, waitingCard]]);
       await exec(client, cardSyncStatements({ workspaceId: ws, useCaseIds: [readyCard], actorUserId: null, readiness: context, info: false }));
       await exec(client, subprocessorsWaitNoticeStatements({ workspaceId: ws, useCaseId: waitingCard, notice: context }));
+      // «Nessuna risposta»: one question to a synthetic referent, sent 31 days ago, its link expired a
+      // minute ago; the send's need transition and Story row, then the expiry as the cron runs it.
+      const question = "Quanti contratti attivi ci sono?";
+      const silentNeed = await client.query(
+        `INSERT INTO use_case_needs (workspace_id, type, kind, title, owner_side, status) VALUES ($1::uuid, 'requisito', 'dato', $2, 'cliente', 'da_chiedere') RETURNING id`,
+        [ws, question],
+      );
+      const needId = silentNeed.rows[0].id;
+      await client.query(`INSERT INTO use_case_need_links (need_id, use_case_id) VALUES ($1::uuid, $2::uuid)`, [needId, silentCard]);
+      const contact = await client.query(
+        `INSERT INTO uc_contacts (workspace_id, display_name, email, created_by_user_id) VALUES ($1::uuid, 'Referente di prova', 'referente-di-prova@cliente.test', $2::uuid) RETURNING id`,
+        [ws, lead.id],
+      );
+      const requestId = randomUUID();
+      await client.query(
+        `INSERT INTO use_case_referent_requests (id, workspace_id, use_case_id, contact_id, requested_by_user_id, requester_name, created_at, sent_at, last_email_at, expires_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'Prova function-lead', now() - interval '31 days', now() - interval '31 days', now() - interval '31 days', now() - interval '1 minute')`,
+        [requestId, ws, silentCard, contact.rows[0].id, lead.id],
+      );
+      await client.query(`INSERT INTO use_case_referent_request_items (request_id, need_id, workspace_id, position, question) VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4)`, [requestId, needId, ws, question]);
+      const asker = { kind: "persona", userId: lead.id };
+      await exec(client, [
+        needTransitionSql({ workspaceId: ws, needIds: [needId], from: ["da_chiedere"], to: "chiesta", actor: asker, expect: { count: 1, code: "domande_cambiate" } }),
+        referentEventSql({ workspaceId: ws, useCaseId: silentCard, code: "inviata", actor: asker }),
+      ]);
+      await exec(client, expireStatements({ workspaceId: ws, useCaseId: silentCard, requestId, actorUserId: null, schedule: context.schedule, now }));
+      const silentRows = await client.query(`SELECT 1 FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'senza_risposta' AND recipient_user_id = $2::uuid`, [silentCard, lead.id]);
+      if (!silentRows.rowCount) throw new Error("The expiry wrote no «Nessuna risposta» row for function-lead");
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
@@ -172,6 +212,12 @@ function state(page) {
     const fold = document.getElementById("realizzazione");
     const active = document.activeElement;
     const isFold = fold instanceof HTMLDetailsElement && fold.dataset.slot === "fold";
+    // «Richieste inviate» (`<details id="richieste" data-slot="needs-requests">` in «Cosa serve»):
+    // `?capitolo=richieste` opens it from the server, brings it to the top and focuses its summary.
+    const requests = document.getElementById("richieste");
+    const isRequests = requests instanceof HTMLDetailsElement && requests.dataset.slot === "needs-requests";
+    const summary = isRequests ? requests.querySelector(":scope > summary") : null;
+    const askAgain = isRequests ? [...requests.querySelectorAll("a, button")].find((el) => el.textContent.replace(/\s+/g, " ").trim() === "Chiedi di nuovo") : null;
     return {
       open,
       rows: rows.map((el) => ({ href: el.getAttribute("href"), text: el.textContent.replace(/\s+/g, " ").trim() })),
@@ -185,6 +231,11 @@ function state(page) {
       startFilled: Boolean(start?.classList.contains("bg-primary")),
       realizationFold: isFold,
       realizationOpen: isFold && fold.open,
+      requests: isRequests,
+      requestsOpen: isRequests && requests.open,
+      requestsFocus: Boolean(summary && active === summary),
+      requestsInView: inView(summary),
+      askAgainWhole: whole(askAgain),
       focused: active && active !== document.body ? `${active.tagName.toLowerCase()}${active.dataset?.slot ? `[${active.dataset.slot}]` : ""}${active.id ? `#${active.id}` : ""}` : "body",
       subprocessorsInView: inView(document.getElementById("sub-responsabili")),
     };
@@ -228,8 +279,10 @@ async function waitFor(page, predicate, timeoutMs = 15_000) {
 
 const READY = "Pronto da avviare";
 const SUPPLIERS = "Autorizza i fornitori";
+const SILENT = "Nessuna risposta";
 const readyRow = (s) => s.rows.find((r) => r.href?.endsWith(`${readyPath}?capitolo=realizzazione`) && r.text.includes(READY));
 const suppliersRow = (s) => s.rows.find((r) => r.href?.endsWith(`${settingsPath}#sub-responsabili`) && r.text.includes(SUPPLIERS));
+const silentRow = (s) => s.rows.find((r) => r.href?.endsWith(`${silentPath}?capitolo=richieste`) && r.text.includes(SILENT));
 
 const browser = await launchBrowser({ colorScheme: "dark" });
 try {
@@ -289,11 +342,34 @@ try {
         ]);
       }
 
+      await navigate(page, `${app}/dashboard/${ws}/use-cases`);
+      s = await openBell(page);
+      const silent = silentRow(s);
+      record(`${tag} function-lead sees «${SILENT}»`, [...(silent ? [] : [`rows: ${JSON.stringify(s.rows.map((r) => `${r.text.slice(0, 60)} → ${r.href}`))}`]), ...(s.overflow ? ["horizontal scroll"] : [])]);
+      if (silent) {
+        await clickAt(page, `[data-slot=dropdown-menu-content] a[href$="${silentPath}?capitolo=richieste"]`);
+        s = await waitFor(page, (x) => x.url.startsWith(`${silentPath}?capitolo=richieste`) && !x.open && x.requestsOpen && x.requestsFocus && x.askAgainWhole);
+        await sleep(1000);
+        s = await state(page);
+        record(`${tag} its click opens «Richieste inviate» with «Chiedi di nuovo» in view`, [
+          ...(s.url.startsWith(`${silentPath}?capitolo=richieste`) ? [] : [`url ${s.url}`]),
+          ...(s.open ? ["menu still open"] : []),
+          ...(s.requests ? [] : ["no «Richieste inviate» on the card"]),
+          ...(s.requests && !s.requestsOpen ? ["«Richieste inviate» is closed"] : []),
+          ...(s.requestsFocus ? [] : [`focus not on the summary of «Richieste inviate» (on ${s.focused})`]),
+          ...(s.requestsInView ? [] : ["«Richieste inviate» not in view"]),
+          ...(s.askAgainWhole ? [] : ["«Chiedi di nuovo» not whole in the window"]),
+          ...(s.chapterBar ? ["the old «Capitoli» bar is on the page"] : []),
+          ...(s.overflow ? ["horizontal scroll"] : []),
+        ]);
+        console.log(`     focus on ${s.focused}`);
+      }
+
       await loginAs(page, "osservatore", { to: `/dashboard/${ws}/use-cases` });
       s = await openBell(page);
-      record(`${tag} osservatore (contributor) sees neither row`, [
-        ...(readyRow(s) || suppliersRow(s) ? ["a 0025 row reached a contributor"] : []),
-        ...(s.rows.some((r) => r.text.includes(READY) || r.text.includes(SUPPLIERS)) ? ["a 0025 title in the bell"] : []),
+      record(`${tag} osservatore (contributor) sees none of the three rows`, [
+        ...(readyRow(s) || suppliersRow(s) || silentRow(s) ? ["a use case row reached a contributor"] : []),
+        ...(s.rows.some((r) => r.text.includes(READY) || r.text.includes(SUPPLIERS) || r.text.includes(SILENT)) ? ["one of the three titles in the bell"] : []),
         ...(s.overflow ? ["horizontal scroll"] : []),
       ]);
     } finally {

@@ -1100,14 +1100,16 @@ export function startsInBox(step: Pick<NextStep, "key" | "action">): boolean {
  * Dove arriva `?capitolo=`: l'ancora stessa, se la pagina ce l'ha; «Realizzazione» va al riquadro
  * «Prossimo passo» quando la piega non c'è o quando l'avvio sta nel riquadro (`startsInBox` del
  * passo: «Pronto da avviare» della campanella e delle email, anche quelle già partite, porta lì
- * dove si avvia); altrimenti la cima della pagina (null). Quando lo use case non è più pronto
- * (partito, trimestre finito, informazioni da chiedere) lo stesso link apre la piega, che dice il
+ * dove si avvia); «Richieste inviate» («Nessuna risposta») senza richieste a vista va a «Cosa
+ * serve»; altrimenti la cima della pagina (null). Quando lo use case non è più pronto (partito,
+ * trimestre finito, informazioni da chiedere) il link di «Realizzazione» apre la piega, che dice il
  * dossier o perché «Avvia» non è ancora il passo.
  */
 export function arrivalTarget(chapter: string | null | undefined, ids: readonly string[], step: Pick<NextStep, "key" | "action"> | null = null): string | null {
   if (!chapter) return null;
   if (chapter === ANCHOR.realizzazione && step && startsInBox(step)) return ANCHOR.decisione;
   if (ids.includes(chapter)) return chapter;
+  if (chapter === ANCHOR.richieste && ids.includes(ANCHOR.cosaServe)) return ANCHOR.cosaServe;
   return chapter === ANCHOR.realizzazione ? ANCHOR.decisione : null;
 }
 

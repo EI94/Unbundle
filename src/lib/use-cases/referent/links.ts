@@ -2,7 +2,8 @@
  * Il link alla scheda di uno use case, al capitolo «Cosa serve», nelle email (SPEC §P2.7.4 e Parte 3
  * §P3.4): nell'avviso a chi ha chiesto e, solo per un referente che è già revisore del workspace,
  * nell'email al referente («Hai già accesso a Unbundle: puoi rispondere anche dalla scheda.»).
- * (0025) Anche la scheda al capitolo «Realizzazione» («Pronto da avviare») e Impostazioni ›
+ * (0025) Anche la scheda a `?capitolo=realizzazione` («Pronto da avviare»), a `?capitolo=richieste`
+ * («Nessuna risposta» a chi ha chiesto: «Richieste inviate», dove si chiede di nuovo) e Impostazioni ›
  * Sub-responsabili («Autorizza i fornitori»), con lo stesso controllo della forma.
  *
  * Il link apre la dashboard: serve l'accesso, quindi non dà niente a chi non ce l'ha. Si costruisce
@@ -40,19 +41,21 @@ export function checkCardLink(link: string): string {
 }
 
 /** I capitoli della scheda che un'email può aprire. */
-export type CardLinkChapter = "cosa-serve" | "realizzazione";
+export const CARD_LINK_CHAPTERS = ["cosa-serve", "realizzazione", "richieste"] as const;
+export type CardLinkChapter = (typeof CARD_LINK_CHAPTERS)[number];
 
 /** Il link alla scheda, a un capitolo: come `cardLink` (che resta per «Cosa serve»). */
 export function cardLinkTo(origin: string, workspaceId: string, useCaseId: string, chapter: CardLinkChapter): string {
   const link = cardLink(origin, workspaceId, useCaseId);
   if (chapter === "cosa-serve") return link;
-  if (chapter !== "realizzazione") throw new Error("Capitolo non ammesso nel link");
-  return checkChapterLink(`${link.slice(0, -CARD_QUERY.length)}?capitolo=realizzazione`, chapter);
+  if (!CARD_LINK_CHAPTERS.includes(chapter)) throw new Error("Capitolo non ammesso nel link");
+  return checkChapterLink(`${link.slice(0, -CARD_QUERY.length)}?capitolo=${chapter}`, chapter);
 }
 
 /** Il link alla scheda a quel capitolo è pulito? La forma di `cardLinkTo`, nient'altro. */
 export function checkChapterLink(link: string, chapter: CardLinkChapter): string {
   if (chapter === "cosa-serve") return checkCardLink(link);
+  if (!CARD_LINK_CHAPTERS.includes(chapter)) throw new Error("Capitolo non ammesso nel link");
   let url: URL;
   try {
     url = new URL(link);
@@ -60,7 +63,7 @@ export function checkChapterLink(link: string, chapter: CardLinkChapter): string
     throw new Error("Link della scheda non valido");
   }
   if (url.protocol !== "https:" && !(url.protocol === "http:" && LOOPBACK.test(url.hostname))) throw new Error("Il link della scheda deve essere https");
-  if (url.username || url.password || url.hash || url.search !== "?capitolo=realizzazione") throw new Error("Il link della scheda non può avere altri parametri");
+  if (url.username || url.password || url.hash || url.search !== `?capitolo=${chapter}`) throw new Error("Il link della scheda non può avere altri parametri");
   if (!CARD_PATH.test(url.pathname)) throw new Error("Percorso del link della scheda non ammesso");
   return url.toString();
 }

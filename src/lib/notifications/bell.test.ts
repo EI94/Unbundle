@@ -128,10 +128,18 @@ test("(0025) «Pronto da avviare» porta a «Realizzazione», «Autorizza i forn
     "Serve il tuo ok sui sub-responsabili, in Impostazioni, per chiedere le informazioni di questo use case.",
     `/dashboard/${WS}/settings#sub-responsabili`,
   ]);
-  for (const kind of ["risposte", "documenti", "senza_risposta", "complete"] as const) {
+  for (const kind of ["risposte", "documenti", "complete"] as const) {
     assert.equal(row(kind).href, `/dashboard/${WS}/use-cases/${UC}?capitolo=cosa-serve`, kind);
     assert.equal(noticeHref(WS, { kind, useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}?capitolo=cosa-serve`, kind);
   }
+  // «Nessuna risposta»: dove si chiede di nuovo, «Richieste inviate» di «Cosa serve» (rilascio 3: una piega chiusa).
+  const silent = row("senza_risposta");
+  assert.deepEqual([silent.title, silent.description, silent.href], [
+    "Nessuna risposta",
+    "Il link è scaduto e restano domande senza risposta.",
+    `/dashboard/${WS}/use-cases/${UC}?capitolo=richieste`,
+  ]);
+  assert.equal(noticeHref(WS, { kind: "senza_risposta", useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}?capitolo=richieste`);
 });
 
 test("dal client: riferimenti, corpi e istanti si controllano", () => {

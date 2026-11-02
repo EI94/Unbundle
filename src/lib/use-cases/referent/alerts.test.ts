@@ -15,6 +15,7 @@ import {
   type RequesterAlertInput,
   type RequesterAlertStore,
 } from "./alerts.ts";
+import { cardLinkTo, checkChapterLink } from "./links.ts";
 
 // L'avviso per email a chi ha chiesto (SPEC §P2.7). Dati inventati.
 const at = (d: string, h: number, m = 0) => romeLocalToUtc(d, h, m);
@@ -105,6 +106,40 @@ test("piano: nell'ordine di §P2.7.3", () => {
   }
   const both = plan(facts({ items: [item({ followUp: "ultimo_promemoria", answers: 0 }), item({ requestId: "r2", followUp: "scaduta", answers: 0 })] }));
   assert.ok(both.action === "send" && both.input.entries[0].followUp === "scaduta", "«scaduta» vince");
+});
+
+test("piano: il link di una voce con il solo seguito porta a «Richieste inviate», con risposte o documenti a «Cosa serve»", () => {
+  const cosaServe = `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=cosa-serve`;
+  const richieste = `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=richieste`;
+  const linkOf = (items: AlertItemFacts[]) => {
+    const p = plan(facts({ items }));
+    assert.equal(p.action, "send");
+    return p.action === "send" ? p.input.entries.map((e) => e.link) : [];
+  };
+  // «Nessuna risposta» (ultimo promemoria o link scaduto): si chiede di nuovo da «Richieste inviate».
+  assert.deepEqual(linkOf([item({ answers: 0, followUp: "scaduta" })]), [richieste]);
+  assert.deepEqual(linkOf([item({ answers: 0, followUp: "ultimo_promemoria" })]), [richieste]);
+  // Con risposte, documenti o «Non lo so» da guardare: «Cosa serve», anche se c'è il seguito.
+  assert.deepEqual(linkOf([item({ answers: 1 })]), [cosaServe]);
+  assert.deepEqual(linkOf([item({ answers: 0, documents: 1, followUp: "scaduta" })]), [cosaServe]);
+  assert.deepEqual(linkOf([item({ answers: 0, unknowns: 1, followUp: "ultimo_promemoria" })]), [cosaServe]);
+  // Due richieste della stessa scheda: decide la voce unita.
+  assert.deepEqual(linkOf([item({ answers: 0, followUp: "scaduta" }), item({ requestId: "r2", answers: 2 })]), [cosaServe]);
+  assert.deepEqual(linkOf([item({ answers: 0, followUp: "ultimo_promemoria" }), item({ requestId: "r2", answers: 0, followUp: "scaduta" })]), [richieste]);
+  // Un seguito non più vero cade: con le risposte resta «Cosa serve».
+  assert.deepEqual(linkOf([item({ answers: 1, followUp: "scaduta", stillWaiting: false })]), [cosaServe]);
+  // Il testo dell'email porta quel link.
+  const expired = plan(facts({ items: [item({ answers: 0, followUp: "scaduta" })] }));
+  if (expired.action === "send") has(renderRequesterAlert(expired.input).text, richieste);
+});
+
+test("cardLinkTo: «Richieste inviate» con la stessa forma degli altri capitoli", () => {
+  assert.equal(cardLinkTo(ORIGIN, WS.toUpperCase(), UC1, "richieste"), `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=richieste`);
+  assert.equal(checkChapterLink(`${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=richieste`, "richieste"), `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=richieste`);
+  assert.throws(() => checkChapterLink(`${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=richieste&x=1`, "richieste"));
+  assert.throws(() => checkChapterLink(`${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=cosa-serve`, "richieste"));
+  assert.throws(() => checkChapterLink(`https://u:p@app.example.test/dashboard/${WS}/use-cases/${UC1}?capitolo=richieste`, "richieste"));
+  assert.throws(() => cardLinkTo("http://app.example.test", WS, UC1, "richieste"));
 });
 
 test("piano: un seguito non più vero si toglie all'invio (risposta arrivata, chiesto di nuovo)", () => {

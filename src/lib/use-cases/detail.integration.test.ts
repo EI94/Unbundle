@@ -991,7 +991,7 @@ test("capitoli: `?capitolo=` e i suoi alias; «Realizzazione» dalla fase Approv
   assert.equal(chapterFromParam(["storia"]), "storia");
   assert.equal(chapterFromParam("cosa"), "cosa-e");
   assert.equal(chapterFromParam("Cos'è"), "cosa-e");
-  for (const chapter of ["decisione", "impatto", "cosa-serve", "valutazione", "dettagli"]) assert.equal(chapterFromParam(chapter), chapter);
+  for (const chapter of ["decisione", "impatto", "cosa-serve", "richieste", "valutazione", "dettagli"]) assert.equal(chapterFromParam(chapter), chapter);
   assert.equal(chapterFromParam("proponente"), null);
   assert.equal(chapterFromParam(undefined), null);
   assert.equal(showsRealization({ phase: "da_valutare", kind: "da_costruire", dossier: null }), false);

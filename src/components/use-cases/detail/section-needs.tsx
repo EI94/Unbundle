@@ -98,6 +98,11 @@ export interface SectionNeedsProps {
    * ripetono il pulsante e il motivo.
    */
   boxAsk?: "ask" | "gate" | null;
+  /**
+   * «Richieste inviate» aperta quando la pagina si rende: la chiede `?capitolo=richieste` («Nessuna
+   * risposta» della campanella e delle email a chi ha chiesto), dove si chiede di nuovo.
+   */
+  requestsOpen?: boolean;
   className?: string;
 }
 
@@ -136,6 +141,7 @@ export function SectionNeeds({
   referents = null,
   infoProgress = null,
   boxAsk = null,
+  requestsOpen = false,
   className,
 }: SectionNeedsProps) {
   const id = "cosa-serve";
@@ -250,9 +256,9 @@ export function SectionNeeds({
               {list(doneRequirements)}
             </Disclosure>
           ) : null}
-          {/* Le richieste ai referenti, chiuse: l'ancora di «Vedi le richieste» del riquadro «Prossimo passo». */}
+          {/* Le richieste ai referenti, chiuse: l'ancora di «Vedi le richieste» del riquadro «Prossimo passo»; aperte con `?capitolo=richieste`. */}
           {feature && requests.length ? (
-            <Disclosure id="richieste" summary={fillText(REFERENT_UI_TEXT.requestsSentSummary, { n: formatInteger(requests.length) })} slot="needs-requests" className="scroll-mt-20">
+            <Disclosure id="richieste" defaultOpen={requestsOpen} summary={fillText(REFERENT_UI_TEXT.requestsSentSummary, { n: formatInteger(requests.length) })} slot="needs-requests" className="scroll-mt-20">
               <RequestsList bare workspaceId={workspaceId} useCaseId={useCaseId} requests={requests} canAsk={canEdit && feature.canAsk} onOpen={setReferentDialog} />
             </Disclosure>
           ) : null}

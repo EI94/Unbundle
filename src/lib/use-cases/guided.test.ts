@@ -681,6 +681,15 @@ test("arrivalTarget: «Realizzazione» va al riquadro quando l'avvio è lì (G9)
   assert.equal(arrivalTarget("cosa-serve", all, avvia), "cosa-serve");
 });
 
+test("arrivalTarget: «Richieste inviate» («Nessuna risposta») si apre se c'è, altrimenti «Cosa serve»", () => {
+  const all = detailTargetIds({ phase: "approvato", needs: true, requests: true, realization: true, history: true });
+  const noRequests = detailTargetIds({ phase: "approvato", needs: true, requests: false, realization: true, history: true });
+  const noNeeds = detailTargetIds({ phase: "approvato", needs: false, requests: true, realization: true, history: true });
+  assert.equal(arrivalTarget("richieste", all), "richieste");
+  assert.equal(arrivalTarget("richieste", noRequests), "cosa-serve", "senza richieste a vista, il capitolo che le conterrebbe");
+  assert.equal(arrivalTarget("richieste", noNeeds), null, "senza «Cosa serve», la cima della pagina");
+});
+
 test("Come cambia il lavoro: etichette per tipo e agente, limiti, testi lunghi corti", () => {
   assert.deepEqual(workFlowLabels("da_costruire", "LIBRA L1 · Smistamento delle pratiche"), { today: "Oggi", agent: "Con LIBRA", human: "Decide una persona", limits: "Cosa LIBRA non fa mai" });
   assert.deepEqual(workFlowLabels("da_costruire", "Smistamento delle pratiche"), { today: "Oggi", agent: "Con l'agente", human: "Decide una persona", limits: "Cosa l'agente non fa mai" });

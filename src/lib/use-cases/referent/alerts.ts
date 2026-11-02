@@ -7,7 +7,8 @@
  *
  * Il testo nomina lo use case (codice e titolo) e i conteggi: mai il testo delle risposte, i nomi
  * dei file, il nome o l'email del referente, i titoli o i dettagli delle esigenze, punteggi o valori.
- * Il link porta alla scheda, al capitolo «Cosa serve».
+ * Il link porta alla scheda, a «Cosa serve»; una voce con il solo seguito («Nessuna risposta») a
+ * «Richieste inviate», aperta, dove si chiede di nuovo.
  *
  * Calendario, pianificazione, testi e motore: tutto puro. Le letture e le scritture le fa
  * `queries/use-case-notifications.ts` attraverso `RequesterAlertStore`.
@@ -35,7 +36,7 @@ import { oneLine, render, type Block, type RenderedEmail } from "../../uc/notify
 import type { FollowUpReason } from "../../db/use-case-hub-referents-ddl.ts";
 import { companyLabel } from "./labels.ts";
 import { labelOfUseCase } from "./email.ts";
-import { cardLink } from "./links.ts";
+import { cardLink, cardLinkTo } from "./links.ts";
 
 // ── Calendario ────────────────────────────────────────────────────────
 
@@ -130,6 +131,16 @@ export type AlertPlan =
 /** Il link alla scheda, al capitolo «Cosa serve» (`links.ts`, lo usa anche l'email al referente revisore). */
 export { cardLink };
 
+/**
+ * Dove porta la voce di una scheda: con il solo seguito (ultimo promemoria, link scaduto) a
+ * «Richieste inviate», dove si chiede di nuovo; con risposte, documenti o «Non lo so» da guardare a
+ * «Cosa serve».
+ */
+function entryLink(origin: string, workspaceId: string, useCaseId: string, e: Pick<AlertEntry, "answers" | "unknowns" | "documents" | "followUp">): string {
+  const followUpOnly = e.followUp !== null && e.answers === 0 && e.unknowns === 0 && e.documents === 0;
+  return cardLinkTo(origin, workspaceId, useCaseId, followUpOnly ? "richieste" : "cosa-serve");
+}
+
 /** Il piano di una riga, nell'ordine di §P2.7.3. */
 export function planRequesterAlert(e: ClaimedAlert, f: AlertFacts, o: { env: DispatchEnv; origin: string; now: Date }): AlertPlan {
   if (!ucEmailConfig(o.env).ok) return { action: "hold", reason: "email_non_configurata" };
@@ -159,7 +170,8 @@ export function planRequesterAlert(e: ClaimedAlert, f: AlertFacts, o: { env: Dis
         unknowns: item.unknowns,
         documents: item.documents,
         followUp: item.followUp,
-        link: cardLink(o.origin, e.workspaceId, item.useCaseId),
+        // Il capitolo si decide sulla voce unita, qui sotto.
+        link: "",
       });
       continue;
     }
@@ -171,7 +183,7 @@ export function planRequesterAlert(e: ClaimedAlert, f: AlertFacts, o: { env: Dis
   return {
     action: "send",
     to: r.email.trim().toLowerCase(),
-    input: { company: f.company, entries: [...byUseCase.values()] },
+    input: { company: f.company, entries: [...byUseCase].map(([useCaseId, entry]) => ({ ...entry, link: entryLink(o.origin, e.workspaceId, useCaseId, entry) })) },
     sentRequestIds: kept.map((i) => i.requestId),
     dropped,
   };

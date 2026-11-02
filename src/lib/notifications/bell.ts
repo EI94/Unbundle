@@ -21,7 +21,7 @@ import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
 import type { UseCaseNoticeKind } from "../db/use-case-hub-alerts-ddl.ts";
 import { hubSignalHref } from "../use-cases/digest.ts";
 import { noticeContextOf, noticeTextOf } from "../use-cases/notices.ts";
-import { cosaServeHref, realizzazioneHref, subprocessorsSettingsHref } from "../use-cases/referent/contract.ts";
+import { cosaServeHref, realizzazioneHref, richiesteHref, subprocessorsSettingsHref } from "../use-cases/referent/contract.ts";
 
 export type BellSource = "segnale" | "dossier" | "use_case";
 
@@ -232,11 +232,14 @@ export function dossierEntry(item: UcBellItem, useCaseHub: boolean): BellEntry {
 /**
  * Dove porta una notifica di use case: «Pronto da avviare» alla scheda a `?capitolo=realizzazione`
  * (sulla scheda pronta il riquadro «Prossimo passo», dove si avvia; vedi `arrivalTarget`);
- * «Autorizza i fornitori» a Impostazioni › Sub-responsabili; le altre a «Cosa serve».
+ * «Autorizza i fornitori» a Impostazioni › Sub-responsabili; «Nessuna risposta» a «Richieste
+ * inviate», dove si chiede di nuovo; le altre (risposte, documenti, informazioni complete) a «Cosa
+ * serve».
  */
 export function noticeHref(workspaceId: string, n: Pick<BellUseCaseInput, "kind" | "useCaseId">): string {
   if (n.kind === "pronto") return realizzazioneHref(workspaceId, n.useCaseId);
   if (n.kind === "fornitori") return subprocessorsSettingsHref(workspaceId);
+  if (n.kind === "senza_risposta") return richiesteHref(workspaceId, n.useCaseId);
   return cosaServeHref(workspaceId, n.useCaseId);
 }
 

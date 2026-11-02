@@ -32,6 +32,11 @@ export const REFERENT_CRON_PATH = "/api/cron/use-case-referents";
 // (Parte 2) Nessun tipo di segnale in `weekly_signals`: le righe della campanella sono use_case_notifications.
 export const cosaServeHref = (workspaceId: string, useCaseId: string) => `/dashboard/${workspaceId}/use-cases/${useCaseId}?capitolo=cosa-serve`;
 /**
+ * «Nessuna risposta»: la scheda con «Richieste inviate» di «Cosa serve» aperta e il fuoco sul suo
+ * riassunto, dove si chiede di nuovo; senza richieste a vista arriva a «Cosa serve» (`arrivalTarget`).
+ */
+export const richiesteHref = (workspaceId: string, useCaseId: string) => `/dashboard/${workspaceId}/use-cases/${useCaseId}?capitolo=richieste`;
+/**
  * (0025) «Pronto da avviare»: la scheda a `?capitolo=realizzazione`. Sulla scheda pronta l'avvio sta
  * nel riquadro «Prossimo passo» (G9) e l'arrivo va lì (`arrivalTarget`), anche dalle email già
  * partite; quando lo use case non è più pronto lo stesso link apre la piega «Realizzazione».

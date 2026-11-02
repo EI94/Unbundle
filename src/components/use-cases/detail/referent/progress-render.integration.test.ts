@@ -352,3 +352,88 @@ test("la pagina «Use case»: il chip corto solo per «da verificare» e «senza
   assert.equal(forContributor?.info, null);
   assert.equal(forContributor?.params.info, null);
 });
+
+/** L'elemento `Arrival` della scheda: l'ancora a cui la pagina arriva con il suo `?capitolo=` (`initial`). */
+function arrivalOf(page: unknown): string | null {
+  type El = { type?: unknown; props?: Record<string, unknown> };
+  const named = (node: unknown, name: string): El | null => {
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const found = named(child, name);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (!node || typeof node !== "object" || !("props" in node)) return null;
+    const el = node as El;
+    if (typeof el.type === "function" && (el.type as { name?: string }).name === name) return el;
+    return named(el.props?.children, name);
+  };
+  const view = named(page, "UseCaseDetailView");
+  assert.ok(view, "la pagina monta UseCaseDetailView");
+  // UseCaseDetailView è un componente del server senza hook: chiamato con le sue props dà l'albero della scheda.
+  const arrival = named((view.type as (props: unknown) => unknown)(view.props), "Arrival");
+  return (arrival?.props?.initial as string | null | undefined) ?? null;
+}
+
+/** La scheda aperta da un link (campanella, email): dove arriva, il tag e il contenuto di «Richieste inviate». */
+async function landingOf(person: Person, card: string, href: string) {
+  state.__hubServeSession = session(person);
+  const searchParams = Object.fromEntries(new URL(href, "http://localhost:3000").searchParams);
+  const element = await pageOfDetail({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId: card }), searchParams: Promise.resolve(searchParams) });
+  const html = readable(renderToStaticMarkup(element));
+  const tag = /<details id="richieste"[^>]*>/.exec(html);
+  return {
+    html,
+    target: person === "contributor" ? null : arrivalOf(element),
+    tag: tag?.[0] ?? null,
+    requests: tag ? html.slice(tag.index, html.indexOf("</details>", tag.index)) : "",
+  };
+}
+
+test("`?capitolo=richieste`: «Richieste inviate» aperta dal server con «Chiedi di nuovo»; senza richieste, «Cosa serve»", opts, async () => {
+  const landing = await landingOf("builder", cards.silent, "/x?capitolo=richieste");
+  assert.equal(landing.target, "richieste", "arriva a «Richieste inviate» (il fuoco va al suo riassunto)");
+  assert.ok(landing.tag, "la piega «Richieste inviate» c'è");
+  assert.match(landing.tag!, /\sopen=""/, "aperta dal server");
+  assert.ok(landing.requests.includes("Chiedi di nuovo") && landing.requests.includes("Scaduta senza risposta"), "la richiesta scaduta con «Chiedi di nuovo»");
+  // Con `?capitolo=cosa-serve` (risposte, documenti, informazioni complete) la piega resta chiusa.
+  const needs = await landingOf("builder", cards.silent, "/x?capitolo=cosa-serve");
+  assert.equal(needs.target, "cosa-serve");
+  assert.ok(needs.tag && !/\sopen=""/.test(needs.tag), "con «Cosa serve» «Richieste inviate» resta chiusa");
+  // Una scheda senza richieste: arriva a «Cosa serve», nessuna piega da aprire.
+  const none = await landingOf("builder", cards.ask, "/x?capitolo=richieste");
+  assert.equal(none.target, "cosa-serve");
+  assert.equal(none.tag, null);
+  assert.match(none.html, /id="cosa-serve"/);
+  // Il contributore: la sua scheda, senza «Cosa serve» né richieste.
+  const contributor = await landingOf("contributor", cards.silent, "/x?capitolo=richieste");
+  assert.ok(!contributor.html.includes('id="cosa-serve"') && contributor.tag === null && !contributor.html.includes("Chiedi di nuovo"));
+});
+
+test("«Nessuna risposta»: la riga della campanella e l'email di chi ha chiesto con il solo seguito portano a «Richieste inviate»", opts, async () => {
+  const { noticeHref } = await import("../../../../lib/notifications/bell.ts");
+  const { planRequesterAlert } = await import("../../../../lib/use-cases/referent/alerts.ts");
+  const now = new Date();
+  // L'email a chi ha chiesto con il solo seguito («il link è scaduto»), come la pianifica l'invio.
+  const plan = planRequesterAlert(
+    { id: "a1", workspaceId: ids.ws, recipientUserId: ids.builder, sendOn: "2026-11-02", scheduledAt: now, dueAt: now, attempts: 0 },
+    {
+      company: "Raccolta informazioni",
+      featureOn: true,
+      subprocessorsAuthorized: true,
+      recipient: { email: emails.builder, verified: true, reviewer: true, alertsOn: true },
+      items: [{ requestId: randomUUID(), useCaseId: cards.silent, code: "RI-1", title: "Scheda silent", createdAt: now, answers: 0, unknowns: 0, documents: 0, followUp: "scaduta", requestPurged: false }],
+    },
+    { env: ENV, origin: "http://localhost:3000", now },
+  );
+  assert.equal(plan.action, "send");
+  const links = { campanella: noticeHref(ids.ws, { kind: "senza_risposta", useCaseId: cards.silent }), email: plan.action === "send" ? plan.input.entries[0].link : "" };
+  for (const [from, href] of Object.entries(links)) {
+    assert.ok(href.endsWith(`/use-cases/${cards.silent}?capitolo=richieste`), `${from}: ${href.replace(ids.ws, "<ws>").replace(cards.silent, "<uc>")}`);
+    const landing = await landingOf("builder", cards.silent, href);
+    assert.equal(landing.target, "richieste", from);
+    assert.match(landing.tag ?? "", /\sopen=""/, from);
+    assert.ok(landing.requests.includes("Chiedi di nuovo"), from);
+  }
+});
