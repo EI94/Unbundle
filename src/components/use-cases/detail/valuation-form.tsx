@@ -22,7 +22,7 @@ import { useDecisionRunner } from "../decision-buttons";
 import { ESTIMATES_TEXT } from "@/lib/use-cases/estimates";
 import { AiSuggestionBox, hasAiSuggestion } from "./ai-suggestion-box";
 import type { ValuationKpiGroup } from "./section-valuation";
-import { draftErrorsFromService, draftFromModel, modelFromDraft, sameValueModel, type ValueModelDraft } from "./value-model-draft";
+import { VALUATION_PREFILL_EVENT, draftErrorsFromService, draftFromModel, draftWithComponent, modelFromDraft, sameValueModel, type ValuationPrefill, type ValueModelDraft } from "./value-model-draft";
 import { usePagePrimaryClaim } from "./next-step-box";
 import { ValueModelEditor } from "./value-model-editor";
 
@@ -198,6 +198,8 @@ export interface ValuationFormProps {
   valueModel?: ValueModel | null;
   /** Le ipotesi del workspace, per le righe calcolate dell'editor. */
   valueParams: ValueParams;
+  /** (Rilascio 5) Una voce nuova già scritta («Aggiungi alla stima» del blocco «Referente»). */
+  extraComponent?: ValuationPrefill["component"] | null;
   onDone: () => void;
   className?: string;
 }
@@ -227,12 +229,13 @@ export function ValuationForm({
   costBands = COST_BANDS,
   valueModel = null,
   valueParams,
+  extraComponent = null,
   onDone,
   className,
 }: ValuationFormProps) {
   const formId = useId();
   const [base, setBase] = useState<ValuationBase>(() => valuationBaseOf(item.version, saved, valueEurYear, savedCost, valueModel));
-  const [draft, setDraft] = useState<ValueModelDraft>(() => draftFromModel(valueModel));
+  const [draft, setDraft] = useState<ValueModelDraft>(() => (extraComponent ? draftWithComponent(draftFromModel(valueModel), extraComponent) : draftFromModel(valueModel)));
   const [modelErrors, setModelErrors] = useState<Record<string, string>>({});
   // I punteggi di oggi aperti se la scheda non ha un modello ma ha già una valutazione, oppure se arriva l'AI.
   const [scoresOpen, setScoresOpen] = useState(() => valueModel === null && (Object.keys(saved).length > 0 || valueEurYear !== null || base.cost !== null || initial !== saved));
@@ -511,12 +514,28 @@ export function ValuationEditor({
 }: ValuationEditorProps) {
   const [editing, setEditing] = useState(false);
   const [prefill, setPrefill] = useState<KpiValues | null>(null);
+  const [extra, setExtra] = useState<ValuationPrefill["component"] | null>(null);
   const [formKey, setFormKey] = useState(0);
+  // (Rilascio 5) «Aggiungi alla stima» del blocco «Referente»: il modulo si apre con la voce nuova.
+  useEffect(() => {
+    if (!canEdit) return;
+    const onPrefill = (event: Event) => {
+      const detail = (event as CustomEvent<ValuationPrefill>).detail;
+      if (!detail?.component) return;
+      setPrefill(null);
+      setExtra(detail.component);
+      setFormKey((key) => key + 1);
+      setEditing(true);
+    };
+    window.addEventListener(VALUATION_PREFILL_EVENT, onPrefill);
+    return () => window.removeEventListener(VALUATION_PREFILL_EVENT, onPrefill);
+  }, [canEdit]);
   // Chiuso il modulo («Annulla» o «Salva»), il fuoco torna su «Modifica valutazione», non sul body.
   const editButton = useRef<HTMLButtonElement | null>(null);
 
   function open(values: KpiValues | null) {
     setPrefill(values);
+    setExtra(null);
     setFormKey((key) => key + 1);
     setEditing(true);
   }
@@ -571,8 +590,10 @@ export function ValuationEditor({
             costBands={costBands}
             valueModel={valueModel}
             valueParams={valueParams}
+            extraComponent={extra}
             onDone={() => {
               setEditing(false);
+              setExtra(null);
               requestAnimationFrame(() => editButton.current?.focus());
             }}
           />

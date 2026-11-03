@@ -41,7 +41,9 @@ import {
 } from "@/lib/db/queries/use-case-referents";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import type { AddToReferentRequestInput, FileReviewOutcome, ReferentActionResult, ReferentMemberOption, SendReferentRequestInput } from "@/lib/use-cases/referent/contract";
-import { REFERENT_ASSIGN_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { REFERENT_ASSIGN_TEXT, REFERENT_BLOCK_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { adoptReferentEstimate, keepTeamEstimate, markCorrectionDone } from "@/lib/db/queries/use-case-referent-check";
+import { formatCountIt } from "@/lib/uc/views/format";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import type { ServiceResult, WriteContext } from "@/lib/use-cases/service";
 import { getCollaboratorAccess, type WorkspaceAccess } from "@/lib/workspace-access";
@@ -139,6 +141,45 @@ export async function sendReferentRequestAction(workspaceId: string, useCaseId: 
   // (Rilascio 5) «Scegli il referente» e «Cambia referente»: «{Nome} è il referente: l'email parte adesso.»
   const referentChosen = (input as { kind?: unknown }).kind === "referente" && !(input as { previousRequestId?: unknown }).previousRequestId;
   return done(workspaceId, useCaseId, result, (v) => ({ data: { requestId: v.requestId }, message: fillText(referentChosen ? REFERENT_ASSIGN_TEXT.sentReferent : T.sent, { Nome: v.contactName }) }));
+}
+
+// ─── (Rilascio 5, §9.3) Quello che il team fa con la risposta del referente ──
+
+/** «Usa la stima di {Nome}»: la voce «ore» prende i numeri del referente; poi l'esito. */
+export async function adoptReferentEstimateAction(
+  workspaceId: string,
+  useCaseId: string,
+  requestId: string,
+  versions: { requestVersion: number; useCaseVersion: number },
+): Promise<ReferentActionResult<{ before: number; after: number }>> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(requestId) || !isRecord(versions) || !isVersion(versions.requestVersion) || !isVersion(versions.useCaseVersion)) return failure("non_trovato");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  const result = await adoptReferentEstimate(p.ctx, useCaseId, requestId, { requestVersion: versions.requestVersion, useCaseVersion: versions.useCaseVersion });
+  if (!result.ok && result.error === "stima_cambiata") {
+    refresh(workspaceId, useCaseId);
+    return failure("stima_cambiata", REFERENT_BLOCK_TEXT.adoptChanged);
+  }
+  return done(workspaceId, useCaseId, result, (v) => ({ data: v, message: fillText(REFERENT_BLOCK_TEXT.adoptedToast, { prima: formatCountIt(v.before), dopo: formatCountIt(v.after) }) }));
+}
+
+/** «Tieni la nostra», «Fatto» sulla stima, «Non serve». */
+export async function keepTeamEstimateAction(workspaceId: string, useCaseId: string, requestId: string, requestVersion: number): Promise<ReferentActionResult> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(requestId) || !isVersion(requestVersion)) return failure("non_trovato");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  return done(workspaceId, useCaseId, await keepTeamEstimate(p.ctx, useCaseId, requestId, requestVersion), () => ({ data: null, message: null }));
+}
+
+/** «Fatto» sulla correzione dello use case. */
+export async function markCorrectionDoneAction(workspaceId: string, useCaseId: string, requestId: string, requestVersion: number): Promise<ReferentActionResult> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(requestId) || !isVersion(requestVersion)) return failure("non_trovato");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  return done(workspaceId, useCaseId, await markCorrectionDone(p.ctx, useCaseId, requestId, requestVersion), () => ({ data: null, message: null }));
 }
 
 /** «Aggiungi domande» a una richiesta viva. */

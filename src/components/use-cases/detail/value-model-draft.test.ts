@@ -175,3 +175,14 @@ test("copy-guard verde sui testi dell'editor", () => {
   const texts = [...Object.values(VALUE_MODEL_EDITOR_TEXT), ...Object.values(VALUE_MODEL_DRAFT_ERRORS)];
   assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
 });
+
+test("(rilascio 5) «Aggiungi alla stima»: la voce del referente in fondo, con una chiave nuova e il ritorno principale se manca", async () => {
+  const { draftFromModel, draftWithComponent } = await import("./value-model-draft.ts");
+  const component = { lever: "tempo" as const, label: "Lavoro di oggi", kind: "ore" as const, volumeYear: "240", unit: "", minutesPerUnit: "30", automatablePct: "", eurYear: "", confidence: "fonte" as const, indicator: "", basis: "Stima del referente del 3 nov." };
+  const empty = draftWithComponent(draftFromModel(null), component);
+  assert.equal(empty.primary, "tempo");
+  assert.deepEqual(empty.components.map((c) => [c.key, c.volumeYear, c.minutesPerUnit, c.automatablePct, c.confidence]), [["voce-1", "240", "30", "", "fonte"]]);
+  const withOne = draftWithComponent({ ...draftFromModel(null), primary: "output", components: [{ ...component, key: "voce-1", lever: "output" }] }, component);
+  assert.equal(withOne.primary, "output", "il ritorno principale scelto resta");
+  assert.deepEqual(withOne.components.map((c) => c.key), ["voce-1", "voce-2"]);
+});

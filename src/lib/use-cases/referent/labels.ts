@@ -60,6 +60,10 @@ export const REFERENT_UI_TEXT = Object.freeze({
   teamAuthorFallback: "Il team",
   referentAuthorFallback: "Referente",
   dontKnowAnswer: "Non ce l'ha",
+  /** (Rilascio 5, §9.4) Le chiusure nuove del referente sotto l'esigenza. */
+  alreadyAttachedAnswer: "Dice che è già allegato",
+  whoMightKnow: "Chi potrebbe saperlo: «{testo}»",
+  commentLine: "Commento: «{testo}»",
   removeAnswer: "Elimina la risposta",
   removeAnswerConfirmTitle: "Eliminare la risposta?",
   removeAnswerConfirmText: "Il testo si cancella e non si può recuperare.",
@@ -359,6 +363,10 @@ export const REFERENT_BLOCK_TEXT = Object.freeze({
   notUsed: "Stima del referente non usata.",
   teamAdded: "Il team ha aggiunto una stima.",
   adoptedToast: "Stima aggiornata: {prima} → {dopo} ore di lavoro l'anno.",
+  adoptChanged: "La stima del team è cambiata dopo la risposta: rivedila in «Valutazione del team».",
+  /** «Aggiungi alla stima»: la voce nuova già scritta in «Modifica valutazione». */
+  prefillLabel: "Lavoro di oggi",
+  prefillBasis: "Stima del referente del {data}.",
   keptToast: "Fatto.",
   // Il menu «Altro» e le azioni sulla richiesta
   more: "Altro",

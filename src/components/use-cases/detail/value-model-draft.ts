@@ -195,6 +195,22 @@ function componentDraftOf(component: ValueComponent): ComponentDraft {
   };
 }
 
+/**
+ * (Rilascio 5, §9.3) «Aggiungi alla stima» del blocco «Referente»: apre «Modifica valutazione» con una
+ * voce nuova già scritta con i numeri del referente. Un evento della pagina, perché il blocco e la
+ * piega «Valutazione del team» sono due parti lontane della scheda; il salvataggio resta quello di sempre.
+ */
+export const VALUATION_PREFILL_EVENT = "uc:valutazione-prefill";
+export interface ValuationPrefill {
+  component: Omit<ComponentDraft, "key">;
+}
+
+/** La bozza con la voce nuova in fondo (chiave nuova), e «Risparmio di tempo» come ritorno principale se non c'è. */
+export function draftWithComponent(draft: ValueModelDraft, component: Omit<ComponentDraft, "key">): ValueModelDraft {
+  const added = { ...component, key: newComponentKey(draft.components) };
+  return { ...draft, primary: draft.primary ?? component.lever, components: [...draft.components, added] };
+}
+
 /** Una chiave nuova, unica nella bozza: `voce-1`, `voce-2`, … */
 export function newComponentKey(components: readonly Pick<ComponentDraft, "key">[]): string {
   const used = new Set(components.map((c) => c.key));

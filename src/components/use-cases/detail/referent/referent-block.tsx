@@ -3,9 +3,18 @@
 import { RotateCcw, Send, UserRound } from "lucide-react";
 import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
 import { Button } from "@/components/ui/button";
-import { remindReferentRequestAction, retryReferentRequestEmailAction } from "@/lib/actions/use-case-referents";
+import {
+  adoptReferentEstimateAction,
+  keepTeamEstimateAction,
+  markCorrectionDoneAction,
+  remindReferentRequestAction,
+  retryReferentRequestEmailAction,
+} from "@/lib/actions/use-case-referents";
+import { formatDayInYear } from "@/lib/use-cases/format";
 import type { UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
-import { REFERENT_BLOCK_TEXT } from "@/lib/use-cases/referent/labels";
+import { REFERENT_BLOCK_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { arriveAt } from "../arrival";
+import { VALUATION_PREFILL_EVENT, type ValuationPrefill } from "../value-model-draft";
 import { REFERENT_STATE_TEXT, REFERENT_STATE_TONE } from "@/lib/use-cases/referent/use-case-state";
 import { SEMAFORO_TONE } from "@/components/uc/common/semaforo-tone";
 import { cn } from "@/lib/utils";
@@ -31,9 +40,9 @@ export interface ReferentBlockProps {
   canEditValuation: boolean;
   today: string;
   onOpen: (dialog: ReferentDialog) => void;
+  /** La versione dello use case letta (per «Usa la stima di {Nome}»). */
+  useCaseVersion?: number;
   /** (§9.2, §9.3) Le azioni del team sulla risposta. */
-  onReview?: (key: BlockButton["key"]) => void;
-  reviewPending?: boolean;
   withReview?: boolean;
 }
 
@@ -42,8 +51,9 @@ export interface ReferentBlockProps {
  * è, la sua conferma e la sua stima quando arrivano, le azioni sulla sua richiesta. Mai un pulsante
  * pieno: quello della pagina sta nel riquadro «Prossimo passo».
  */
-export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsChoose, canEditValuation, today, onOpen, onReview, reviewPending = false, withReview = false }: ReferentBlockProps) {
+export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsChoose, canEditValuation, today, onOpen, useCaseVersion, withReview = false }: ReferentBlockProps) {
   const { pending, run } = useReferentRunner();
+  const review = useReferentRunner();
   const referent = panel.referent ?? null;
   const request = referentRequestOf(panel);
   const entry = assignEntry(panel);
@@ -67,8 +77,46 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
     else if (key === "askAgain") onOpen({ kind: "assign", mode: "di_nuovo" });
     else if (key === "retry" && request) {
       if (!pending) void run(() => retryReferentRequestEmailAction(workspaceId, useCaseId, request.id, request.version), { inDialog: false });
-    } else onReview?.(key);
+    } else onReview(key);
   };
+  // (§9.2, §9.3) La risposta del referente: un clic, mai in silenzio; la pagina si rilegge.
+  const check = referent?.check ?? null;
+  const starId = referent?.referentRequestId ?? null;
+  function onReview(key: BlockButton["key"]) {
+    if (!check || !starId || review.pending) return;
+    if (key === "review") {
+      arriveAt("valutazione");
+      return;
+    }
+    if (key === "addEstimate") {
+      const component: ValuationPrefill["component"] = {
+        lever: "tempo",
+        label: T.prefillLabel,
+        kind: "ore",
+        volumeYear: check.timesPerMonth !== null ? String(Math.round(check.timesPerMonth * 12 * 100) / 100).replace(".", ",") : "",
+        unit: "",
+        minutesPerUnit: check.minutesEach !== null ? String(check.minutesEach).replace(".", ",") : "",
+        automatablePct: "",
+        eurYear: "",
+        confidence: "fonte",
+        indicator: "",
+        basis: fillText(T.prefillBasis, { data: formatDayInYear(check.submittedAt, `${today}T12:00:00Z`) ?? "" }),
+      };
+      arriveAt("valutazione");
+      requestAnimationFrame(() => window.dispatchEvent(new CustomEvent<ValuationPrefill>(VALUATION_PREFILL_EVENT, { detail: { component } })));
+      return;
+    }
+    if (key === "adopt") {
+      void review.run(() => adoptReferentEstimateAction(workspaceId, useCaseId, starId, { requestVersion: check.version, useCaseVersion: useCaseVersion ?? -1 }), { inDialog: false, refreshOnSuccess: true });
+      return;
+    }
+    if (key === "correctionDone") {
+      void review.run(() => markCorrectionDoneAction(workspaceId, useCaseId, starId, check.version), { inDialog: false, refreshOnSuccess: true, successToast: false });
+      return;
+    }
+    void review.run(() => keepTeamEstimateAction(workspaceId, useCaseId, starId, check.version), { inDialog: false, refreshOnSuccess: true, successToast: false });
+  }
+  const reviewPending = review.pending;
   const menuAct: Record<BlockMenuKey, () => void> = {
     remind: () => {
       if (request && !pending) void run(() => remindReferentRequestAction(workspaceId, useCaseId, request.id, request.version), { inDialog: false });

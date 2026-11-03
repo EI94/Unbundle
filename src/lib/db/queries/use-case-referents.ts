@@ -737,7 +737,8 @@ export async function loadUseCaseReferentPanel(i: {
       const answers: NeedAnswerView[] = answerRows
         .filter((a) => String(a.need_id).toLowerCase() === id)
         // Una domanda risposta solo con un file: la riga della risposta non ha testo, si vede solo il file.
-        .filter((a) => rowBool(a.dont_know) || Boolean(rowString(a.body)?.trim()))
+        // (Rilascio 5) «È già allegato» e un commento sono voci anche senza testo.
+        .filter((a) => rowBool(a.dont_know) || rowBool(a.already_attached) || Boolean(rowString(a.body)?.trim()) || Boolean(rowString(a.comment)?.trim()))
         .map((a) => {
           const source = rowString(a.source) === "revisore" ? "revisore" : "referente";
           const at = rowDate(a.submitted_at) ?? now;
@@ -753,6 +754,8 @@ export async function loadUseCaseReferentPanel(i: {
             dateLabel: referentDateLabel(at, today),
             text: rowBool(a.dont_know) ? null : rowString(a.body),
             dontKnow: rowBool(a.dont_know),
+            alreadyAttached: rowBool(a.already_attached) && !rowBool(a.dont_know),
+            comment: rowString(a.comment)?.trim() || null,
             canRemove: canAsk,
           };
         });

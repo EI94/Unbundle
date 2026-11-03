@@ -17,6 +17,8 @@ export interface NeedAnswerRow {
   /** Il testo così com'è, oppure «Non lo sa». */
   body: string;
   dontKnow: boolean;
+  /** (Rilascio 5) «Chi potrebbe saperlo: «…»» con «Non ce l'ho», altrimenti «Commento: «…»»; null senza. */
+  comment: string | null;
   canRemove: boolean;
 }
 
@@ -54,8 +56,9 @@ function answerRow(answer: NeedAnswerView, canEdit: boolean): NeedAnswerRow {
   return {
     id: answer.id,
     header: fillText(T.entryHeader, { autore: answer.authorLabel, data: answer.dateLabel }),
-    body: answer.text ?? (answer.dontKnow ? T.dontKnowAnswer : ""),
-    dontKnow: answer.text === null && answer.dontKnow,
+    body: answer.text ?? (answer.dontKnow ? T.dontKnowAnswer : answer.alreadyAttached ? T.alreadyAttachedAnswer : ""),
+    dontKnow: answer.text === null && (answer.dontKnow || answer.alreadyAttached === true),
+    comment: answer.comment ? fillText(answer.dontKnow ? T.whoMightKnow : T.commentLine, { testo: answer.comment }) : null,
     canRemove: canEdit && answer.canRemove,
   };
 }
@@ -84,7 +87,7 @@ function fileRow(file: NeedFileView, opts: { canEdit: boolean; canReviewFiles: b
 export function needReferentRows(view: NeedReferentView | null | undefined, opts: { canEdit: boolean; canReviewFiles: boolean }): NeedReferentRows {
   if (!view) return EMPTY_NEED_REFERENT_ROWS;
   // Una risposta senza testo e senza «Non lo so» (la domanda risposta solo con un file) non è una voce: c'è il file.
-  const answers = view.answers.filter((answer) => answer.dontKnow || Boolean(answer.text?.trim())).map((answer) => answerRow(answer, opts.canEdit));
+  const answers = view.answers.filter((answer) => answer.dontKnow || answer.alreadyAttached === true || Boolean(answer.text?.trim()) || Boolean(answer.comment?.trim())).map((answer) => answerRow(answer, opts.canEdit));
   const files = view.files.filter((file) => file.status !== "in_revisione" || opts.canReviewFiles).map((file) => fileRow(file, opts));
   const count = answers.length + files.length;
   const saysSilent = /senza risposta/i.test(view.line ?? "");

@@ -52,7 +52,12 @@ export function NeedReferentBlock({
             {rows.answers.map((answer) => (
               <li key={answer.id} data-slot="need-answer" className="space-y-0.5">
                 <p className="text-xs text-muted-foreground">{answer.header}</p>
-                <p className={answer.dontKnow ? "text-sm text-muted-foreground italic" : "text-sm break-words whitespace-pre-wrap"}>{answer.body}</p>
+                {answer.body ? <p className={answer.dontKnow ? "text-sm text-muted-foreground italic" : "text-sm break-words whitespace-pre-wrap"}>{answer.body}</p> : null}
+                {answer.comment ? (
+                  <p data-slot="need-answer-comment" className="text-sm break-words text-muted-foreground">
+                    {answer.comment}
+                  </p>
+                ) : null}
                 {answer.canRemove ? (
                   <Button type="button" variant="ghost" size="sm" className="-ml-2 min-h-11 text-muted-foreground sm:min-h-7"
                     aria-label={`${REFERENT_UI_TEXT.removeAnswer}: ${answer.header}`}

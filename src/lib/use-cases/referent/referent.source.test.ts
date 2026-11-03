@@ -56,6 +56,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/queries/use-case-referent-public.ts",
   "src/lib/db/queries/use-case-referent-files.ts",
   "src/lib/db/queries/use-case-referent-dispatch.ts",
+  // (Rilascio 5) Quello che il team fa con la risposta del referente; gli stati sulle card e nelle righe.
+  "src/lib/db/queries/use-case-referent-check.ts",
   // La campanella e «Raccolta informazioni».
   "src/lib/db/queries/use-case-notifications.ts",
   "src/lib/db/queries/use-case-info-progress.ts",

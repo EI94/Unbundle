@@ -73,7 +73,7 @@ import {
   type WhenInput,
 } from "./types";
 import type { Dimension, LegacyScoreColumns } from "./valuation";
-import type { ValueModel } from "./value-model";
+import { valueModelSchema, type ValueModel } from "./value-model";
 
 /**
  * Servizio unico di scrittura dell'area «Use case» (docs/use-case/DESIGN.md §9.1, §9.2,
@@ -1321,6 +1321,25 @@ export const saveValuation = guarded("save_valuation", async function saveValuat
   if (!validated.ok) return invalid(validated.fieldErrors);
   const { kpis, valueEurYear, cost, model: valueModel } = validated.valuation;
   return writeValuation(ctx, prep, expectedVersion, { kpis, valueEurYear, cost, model: valueModel }, model);
+});
+
+/**
+ * (Rilascio 5, §9.3) «Usa la stima di {Nome}»: solo «Benefici e costi», con la versione letta, per la
+ * stessa strada di «Salva la valutazione» (la Storia «Benefici e costi», la versione + 1, chi ha
+ * valutato). Il modello passa da `valueModelSchema`.
+ */
+export const saveValueModel = guarded("save_value_model", async function saveValueModel(
+  ctx: WriteContext,
+  id: string,
+  expectedVersion: number,
+  valueModel: unknown,
+): Promise<ServiceResult<UseCaseCard>> {
+  const prep = await prepare(ctx, id, expectedVersion, "canEditValuation");
+  if (!prep.ok) return prep;
+  const parsed = valueModelSchema.safeParse(valueModel);
+  if (!parsed.success) return fail("dati_non_validi");
+  const model = await workspaceModel(ctx.workspaceId);
+  return writeValuation(ctx, prep, expectedVersion, { model: parsed.data }, model);
 });
 
 // ═══ decideUseCase, setWhen, setHiddenFromSearch ═════════════════════

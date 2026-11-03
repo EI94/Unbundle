@@ -107,3 +107,29 @@ test("un PDF non controllato in tempo: la riga lo dice, anche senza altre voci",
   assert.equal(rows.notice, "File non controllato in tempo: chiedi di caricarlo di nuovo.");
   assert.equal(rows.summary, null);
 });
+
+test("(rilascio 5, §9.4) «Non ce l'ha» con «Chi potrebbe saperlo», «Dice che è già allegato», il commento di un file", () => {
+  const rows = needReferentRows(
+    {
+      needId: "n9",
+      line: null,
+      silent: false,
+      answers: [
+        { id: "b1", source: "referente", authorLabel: "Aldo Prova", dateLabel: "03/11", text: null, dontKnow: true, comment: "l'ufficio acquisti", canRemove: true },
+        { id: "b2", source: "referente", authorLabel: "Aldo Prova", dateLabel: "03/11", text: null, dontKnow: false, alreadyAttached: true, comment: null, canRemove: true },
+        { id: "b3", source: "referente", authorLabel: "Aldo Prova", dateLabel: "03/11", text: null, dontKnow: false, comment: "è nel file della domanda 2", canRemove: true },
+      ],
+      files: [],
+    },
+    { canEdit: true, canReviewFiles: true },
+  );
+  assert.deepEqual(
+    rows.answers.map((a) => [a.body, a.dontKnow, a.comment]),
+    [
+      ["Non ce l'ha", true, "Chi potrebbe saperlo: «l'ufficio acquisti»"],
+      ["Dice che è già allegato", true, null],
+      ["", false, "Commento: «è nel file della domanda 2»"],
+    ],
+  );
+  assert.equal(rows.summary, "Risposte e file · 3");
+});

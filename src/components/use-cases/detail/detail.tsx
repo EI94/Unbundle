@@ -435,6 +435,7 @@ export function UseCaseDetailView({
                       boxAsk={boxAskOf(step)}
                       boxOwnsChoose={step.action.type === "referente" && step.action.mode === "scegli"}
                       canEditValuation={abilities.canEditValuation}
+                      useCaseVersion={detail.version}
                     />
                   ) : null}
                 </div>

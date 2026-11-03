@@ -418,6 +418,8 @@ export const PANEL_VIEW_KEYS: readonly string[] = Object.freeze([
   "needs{}.answers[].text",
   "needs{}.answers[].dontKnow",
   "needs{}.answers[].canRemove",
+  "needs{}.answers[].alreadyAttached",
+  "needs{}.answers[].comment",
   "needs{}.files",
   "needs{}.files[].id",
   "needs{}.files[].name",

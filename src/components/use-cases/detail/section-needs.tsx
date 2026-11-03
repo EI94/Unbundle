@@ -105,6 +105,8 @@ export interface SectionNeedsProps {
   boxOwnsChoose?: boolean;
   /** (Rilascio 5) `canEditValuation`: le azioni del team sulla stima del referente. */
   canEditValuation?: boolean;
+  /** (Rilascio 5) La versione dello use case letta, per «Usa la stima di {Nome}». */
+  useCaseVersion?: number;
   className?: string;
 }
 
@@ -143,6 +145,7 @@ export function SectionNeeds({
   boxAsk = null,
   boxOwnsChoose = false,
   canEditValuation = false,
+  useCaseVersion,
   className,
 }: SectionNeedsProps) {
   const id = "cosa-serve";
@@ -248,6 +251,8 @@ export function SectionNeeds({
           canEditValuation={canEditValuation}
           today={today}
           onOpen={setReferentDialog}
+          useCaseVersion={useCaseVersion}
+          withReview
         />
       ) : null}
       <InfoSummary view={infoProgress} />

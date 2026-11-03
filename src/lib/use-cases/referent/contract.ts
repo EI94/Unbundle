@@ -309,6 +309,10 @@ export interface NeedAnswerView {
   dateLabel: string;
   text: string | null;
   dontKnow: boolean;
+  /** (Rilascio 5) «È già allegato». */
+  alreadyAttached?: boolean;
+  /** (Rilascio 5) Il commento del referente («Chi potrebbe saperlo?» con «Non ce l'ho»). */
+  comment?: string | null;
   canRemove: boolean;
 }
 
