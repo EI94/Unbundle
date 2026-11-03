@@ -214,8 +214,9 @@ test("email: il link con un token nuovo, la risposta a chi ha chiesto, nessun to
   const [m] = mailer.outbox;
   assert.equal(m.to, REFERENT_EMAIL);
   assert.equal(m.replyTo, emails.builder);
-  assert.ok(m.subject.startsWith("TopJet prova: sei il referente per «"), m.subject);
-  assert.ok(m.text.includes("Persona builder ti ha indicato come referente per lo use case «"), m.text);
+  // (Rilascio 5, §8.4) Una richiesta di sole domande: «alcune domande su …».
+  assert.ok(m.subject.startsWith("TopJet prova: alcune domande su «"), m.subject);
+  assert.ok(m.text.includes("Persona builder ti chiede alcune informazioni sullo use case «"), m.text);
   state.token = tokenOf(m) ?? "";
   assert.match(state.token, /^ucq_/);
   const tokens = await q(`SELECT token_hash, recipient_hash, issued_for FROM use_case_referent_tokens WHERE request_id = $1::uuid`, [state.requestId]);

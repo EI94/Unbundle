@@ -143,7 +143,7 @@ export const REFERENT_UI_TEXT = Object.freeze({
     whoLabel: "A chi chiedi?",
     whoLead: "Scegli chi conosce i dati: ti proponiamo solo le domande che lo riguardano.",
     whoMissing: "Scegli un referente",
-    suffix: Object.freeze({ senza_email: "(senza email)", lateral_space: "(di Lateral Space)", richiesta_aperta: "(richiesta già aperta)", sei_tu: "(sei tu)" }),
+    suffix: Object.freeze({ senza_email: "(senza email)", lateral_space: "(di Lateral Space)", richiesta_aperta: "(richiesta già aperta)", sei_tu: "(sei tu)", referente: "(è il referente)" }),
     // (Parte 3) Il contatto è un revisore del workspace: in coda alla riga, « · Fa parte del team».
     teamTag: "Fa parte del team",
     // (Parte 3) Sotto l'elenco, quando chi guarda è tra i contatti (riga «(sei tu)», non si sceglie).
@@ -277,6 +277,94 @@ export const REFERENT_ESTIMATE_TEXT = Object.freeze({
   minutesMany: "{n} minuti",
   /** Quando la stima non dice che cosa si conta, o la parola non passa i controlli. */
   defaultUnit: "volte",
+});
+
+// ─── «Scegli il referente» e il blocco «Referente» (rilascio 5, §8, §9) ─
+
+/**
+ * (Rilascio 5, §8.2) La finestra di una schermata che sceglie il referente e gli manda subito il suo
+ * compito: la conferma dello use case, la stima del tempo e poche domande.
+ */
+export const REFERENT_ASSIGN_TEXT = Object.freeze({
+  title: Object.freeze({ scegli: "Scegli il referente", cambia: "Cambia referente", di_nuovo: "Chiedi di nuovo", chiedi: "Chiedi al referente" }),
+  leadMany: "Riceve subito un'email: conferma lo use case, stima il tempo e risponde a {n} domande.",
+  leadOne: "Riceve subito un'email: conferma lo use case, stima il tempo e risponde a una domanda.",
+  leadNone: "Riceve subito un'email: conferma lo use case e stima il tempo.",
+  askMany: "{Nome} riceve subito un'email con {n} domande.",
+  askOne: "{Nome} riceve subito un'email con una domanda.",
+  changeHint: "{Nome} non riceve più promemoria e il suo link smette di funzionare.",
+  replaceHint: "Le domande che ha già ricevuto passano qui: il link di prima smette di funzionare.",
+  droppedOne: "Una frase della descrizione resta fuori: ha importi, percentuali o dati personali.",
+  droppedMany: "{k} frasi della descrizione restano fuori: hanno importi, percentuali o dati personali.",
+  whoLabel: "Chi è il referente?",
+  isReferent: "(è il referente)",
+  hasQuestions: "(ha già delle domande aperte)",
+  to: "A {Nome} · {email}",
+  questionsSome: "Domande · {t} di {a}",
+  questionsAll: "Domande · {n}",
+  fileRequired: "Serve un file",
+  restOne: "L'altra resta da chiedere.",
+  restMany: "Le altre {k} restano da chiedere.",
+  questionsEmpty: "Nessuna domanda: riceve solo la conferma e la stima.",
+  preview: "Cosa riceve {Nome}",
+  previewSomeone: "Cosa riceve",
+  onPage: "Nella pagina trova:",
+  noTeamEstimate: "Nessuna stima del team: gli chiediamo quante volte al mese e quanti minuti.",
+  send: "Invia a {Nome}",
+  sendBare: "Invia",
+  chooseFirst: "Scegli il referente.",
+  sentReferent: "{Nome} è il referente: l'email parte adesso.",
+  sent: "Richiesta inviata a {Nome}.",
+  /** «Chiedi a un'altra persona» (§8.4): la finestra in tre passi per chi non è il referente. */
+  other: "Chiedi a un'altra persona",
+  hintsLead: "Secondo {Nome}, potrebbe saperlo:",
+});
+
+/** (Rilascio 5, §9.1, §9.2) Il blocco «Referente» della scheda e la riga sotto il titolo. */
+export const REFERENT_BLOCK_TEXT = Object.freeze({
+  heading: "Referente",
+  headerLine: "Referente: {Nome} · {stato}",
+  missing: "Manca il referente.",
+  choose: "Scegli il referente",
+  teamTag: "Fa parte del team",
+  waitingLine: "{stato} · inviata il {inviata} · scade il {scade}",
+  expiredLine: "{stato} · inviata il {inviata} · scaduta il {scade}",
+  remindedTail: " · promemoria inviato il {data}",
+  answeredOn: "Ha risposto il {data}.",
+  confirmed: "Lo use case: confermato.",
+  toCorrect: "Lo use case: da correggere.",
+  corrected: "Lo use case: corretto il {data}.",
+  noConfirm: "Lo use case: nessuna conferma.",
+  timeTeam: "Il tempo: il team stimava {ore}.",
+  timeNoTeam: "Il tempo: nessuna stima del team.",
+  saysYes: "{Nome}: sì.",
+  saysLess: "{Nome}: è di meno.",
+  saysMore: "{Nome}: è di più.",
+  numbersTail: " Circa {ore} ({n} al mese, {m}).",
+  numbersNoTeam: "{Nome}: circa {ore} ({n} al mese, {m}).",
+  teamChanged: "La stima del team è cambiata dopo la risposta.",
+  hoursShort: "{n} ore",
+  hourOne: "1 ora",
+  hourLess: "meno di un'ora",
+  // Le azioni del team sulla risposta (§9.2, §9.3)
+  done: "Fatto",
+  adopt: "Usa la stima di {Nome}",
+  keep: "Tieni la nostra",
+  review: "Rivedi la stima",
+  addEstimate: "Aggiungi alla stima",
+  notNeeded: "Non serve",
+  adoptedOn: "Stima del referente usata il {data}.",
+  kept: "Tenuta la stima del team.",
+  seenOn: "Vista il {data}.",
+  notUsed: "Stima del referente non usata.",
+  teamAdded: "Il team ha aggiunto una stima.",
+  adoptedToast: "Stima aggiornata: {prima} → {dopo} ore di lavoro l'anno.",
+  keptToast: "Fatto.",
+  // Il menu «Altro» e le azioni sulla richiesta
+  more: "Altro",
+  change: "Cambia referente",
+  askMore: "Chiedi al referente",
+  revokeReferent: "{Nome} non è più il referente: il suo link smette di funzionare.",
 });
 
 // ─── Pagina pubblica (§4.4) ──────────────────────────────────────────

@@ -206,12 +206,12 @@ const richiesta = (over: Partial<{ accountNotice: boolean; cardLink: string | nu
     accountNotice: over.accountNotice,
   });
 
-test("richiesta: dice subito che la persona è il referente; il link, i 30 giorni e il piè di pagina restano", () => {
+test("richiesta di sole domande: dice chi chiede e su quale use case; il link, i 30 giorni e il piè di pagina restano", () => {
   const m = richiesta();
-  assert.equal(m.subject, "TopJet: sei il referente per «TJ-0004 · Fatture fornitori»");
+  assert.equal(m.subject, "TopJet: alcune domande su «TJ-0004 · Fatture fornitori»");
   const lines = m.text.split("\n").map((l) => l.trim()).filter(Boolean);
   assert.equal(lines[0], "Buongiorno,");
-  assert.equal(lines[1], "Federico Barsi ti ha indicato come referente per lo use case «TJ-0004 · Fatture fornitori» e ti chiede alcune informazioni.");
+  assert.equal(lines[1], "Federico Barsi ti chiede alcune informazioni sullo use case «TJ-0004 · Fatture fornitori».");
   assert.ok(m.text.includes("Le domande sono 2."));
   assert.ok(richiesta({ questions: 1 }).text.includes("È una domanda sola."));
   assert.ok(m.text.includes(LINK) && m.text.includes("Il link scade il 26 novembre 2026.") && m.text.includes("Lateral Space via Unbundle."));

@@ -37,6 +37,7 @@ import { NEED_REQUEST_GROUP_TEXT, componentFormulaText, needRequestGroupView, re
 import { isPastQuarter, parseQuarter, quarterLabel } from "./quarter.ts";
 import type { ReferentGate } from "./referent/contract.ts";
 import { companyLabel } from "./referent/labels.ts";
+import type { ReferentStateKey } from "./referent/use-case-state.ts";
 import type { Phase, SubState, UseCaseKind } from "./types.ts";
 import type { CostFigure, ValueFigure } from "./valuation.ts";
 import { VALUE_CONFIDENCE_LABELS, type ValueModel, type ValueParams } from "./value-model.ts";
@@ -128,6 +129,19 @@ export const GUIDED_TEXT = Object.freeze({
     waitingSince: "In attesa dal {giorno}",
     reminded: "promemoria inviato",
     remindedAlone: "Promemoria inviato.",
+    // (Rilascio 5, §9.6) Il referente dello use case.
+    verifyCorrection: "Il referente chiede di correggere lo use case.",
+    verifyEstimate: "Il referente ha una stima diversa del tempo.",
+    verifyNoTeam: "Il referente ha dato una stima del tempo.",
+    referentSilent: "Il referente non ha risposto.",
+    chooseTitle: "Scegliere il referente",
+    chooseLine: "Il referente conferma lo use case, stima il tempo e risponde alle domande.",
+    chooseLineNoQuestions: "Il referente conferma lo use case e stima il tempo.",
+    chooseButton: "Scegli il referente",
+    referentTurn: "Tocca al referente.",
+    otherTitle: "Chiedere a un'altra persona",
+    otherLine: "Il referente non ha queste informazioni: chiedi a un'altra persona.",
+    otherButton: "Chiedi a un'altra persona",
     unblock: "Sbloccare le informazioni ferme",
     blockedOne: "1 ferma: si chiede quando si sblocca.",
     blockedMany: "{n} ferme: si chiedono quando si sbloccano.",
@@ -290,6 +304,11 @@ function quarterExpired(targetQuarter: string | null, today: string): boolean {
 }
 
 /** Il passo «Approvato» è fatto. */
+/** (Rilascio 5) Il trimestre di uno use case approvato vale (la piega «Realizzazione» dice il motivo giusto). */
+export function quarterHolding(item: Pick<GuidedItem, "phase" | "subState" | "kind" | "targetQuarter">, today: string): boolean {
+  return approvedDone(item, today);
+}
+
 function approvedDone(item: Pick<GuidedItem, "phase" | "subState" | "kind" | "targetQuarter">, today: string): boolean {
   if (item.phase === "in_realizzazione" || item.phase === "realizzato") return true;
   if (item.phase !== "approvato") return false;
@@ -466,6 +485,11 @@ export type NextStepAction =
   | { type: "decisione" }
   /** «Chiedi al referente»: apre la finestra. */
   | { type: "chiedi"; label: string }
+  /**
+   * (Rilascio 5) Il referente: «Scegli il referente» (la finestra di una schermata), «Chiedi al
+   * referente» (domande al referente) o «Chiedi a un'altra persona» (la finestra in tre passi).
+   */
+  | { type: "referente"; mode: "scegli" | "chiedi" | "altra"; label: string }
   /** «Apri Impostazioni» (autorizzazione dei fornitori). */
   | { type: "impostazioni"; href: string; label: string }
   /** Un'ancora della pagina («Vedi le risposte» → #cosa-serve). */
@@ -519,6 +543,20 @@ export interface NextStepInput {
   referents: { available: boolean; canAsk: boolean; gates: readonly ReferentGate[]; requestCount: number } | null;
   /** `askEntry(referents)` della finestra; null senza «Chiedi al referente». */
   askEntry: { canOpen: boolean; gates: readonly ReferentGate[] } | null;
+  /**
+   * (Rilascio 5, §9.6) Il referente dello use case: lo stato, che cosa aspetta il team, se chi guarda
+   * lo può scegliere adesso (niente blocca l'invio), quante domande da chiedere non ha già rifiutato
+   * (null nel pannello laterale: niente pulsanti). null: lo use case non ha un referente da scegliere,
+   * e ogni passo resta quello del rilascio 4.
+   */
+  referent?: {
+    state: ReferentStateKey;
+    review: "correzione" | "stima" | null;
+    canChoose: boolean;
+    askableForReferent: number | null;
+    /** La stima da verificare è del referente senza una stima del team. */
+    noTeamEstimate?: boolean;
+  } | null;
   /** `realizationVariant(...)`; null quando non si conosce (pannello). */
   realizationVariant: GuidedRealizationVariant | null;
   /** Il riepilogo del dossier (`realizationOfUseCase`); null se non letto. */
@@ -567,6 +605,7 @@ const ANCHOR = Object.freeze({
   dettagli: "dettagli",
   realizzazione: "realizzazione",
   storia: "storia",
+  referente: "referente",
 });
 
 /**
@@ -685,23 +724,46 @@ function approvedStep(input: NextStepInput): NextStep {
   const team = toTeam(input.teamName);
   const company = companyLabel(input.companyName);
   const counts = info?.counts ?? null;
+  // (Rilascio 5) Il referente: solo per uno use case che ne ha uno da scegliere (null: il rilascio 4).
+  const ref = input.referent ?? null;
+  const hasReferent = ref !== null && ref.state !== "manca";
 
-  if (info && counts && counts.toVerify > 0) {
+  const reviewLine = ref?.review === "correzione" ? t.verifyCorrection : ref?.review === "stima" ? (ref.noTeamEstimate ? t.verifyNoTeam : t.verifyEstimate) : null;
+  if ((info && counts && counts.toVerify > 0) || reviewLine) {
+    const countLine = info && counts && counts.toVerify > 0 ? `${info.receivedNote ? `${info.count} (${info.receivedNote})` : info.count}.` : null;
     return step("G1", {
       title: t.verify,
-      line: sentence(team, `${info.receivedNote ? `${info.count} (${info.receivedNote})` : info.count}.`),
-      action: { type: "vai", id: ANCHOR.cosaServe, label: t.seeAnswers },
+      line: sentence(team, reviewLine, countLine),
+      action: { type: "vai", id: reviewLine ? ANCHOR.referente : ANCHOR.cosaServe, label: t.seeAnswers },
       mine: true,
     });
   }
-  if (counts && counts.unanswered > 0) {
+  if ((counts && counts.unanswered > 0) || ref?.state === "nessuna_risposta") {
     const toRequests = Boolean(referents?.available && referents.requestCount > 0);
+    const unanswered = counts && counts.unanswered > 0 ? (counts.unanswered === 1 ? t.unansweredOne : fill(t.unansweredMany, { n: formatInteger(counts.unanswered) })) : t.referentSilent;
     return step("G2", {
       title: t.chase,
-      line: sentence(team, counts.unanswered === 1 ? t.unansweredOne : fill(t.unansweredMany, { n: formatInteger(counts.unanswered) })),
-      action: { type: "vai", id: toRequests ? ANCHOR.richieste : ANCHOR.cosaServe, label: t.seeRequests },
+      line: sentence(team, unanswered),
+      action: { type: "vai", id: ref?.state === "nessuna_risposta" ? ANCHOR.referente : toRequests ? ANCHOR.richieste : ANCHOR.cosaServe, label: t.seeRequests },
       mine: true,
     });
+  }
+  if (ref?.state === "manca" && !isReadyToStart(item, info, today)) {
+    const gate = referents?.available ? (referents.gates.find((g) => g.code !== "nessuna_domanda") ?? null) : null;
+    if (gate?.code === "sub_responsabili_mancanti") {
+      return step("G4", {
+        title: t.authorize,
+        line: gate.message,
+        gate: gate.code,
+        action: gate.canDeclare ? { type: "impostazioni", href: gate.settingsHref, label: gate.linkLabel } : { type: "none" },
+        mine: gate.canDeclare,
+      });
+    }
+    const toAsk = counts?.toAsk ?? 0;
+    const line = toAsk > 0 ? t.chooseLine : t.chooseLineNoQuestions;
+    if (ref.canChoose && !gate) return step("G5", { title: t.chooseTitle, line: sentence(team, line), action: { type: "referente", mode: "scegli", label: t.chooseButton }, mine: true });
+    if (!gate) return step("G6", { title: t.chooseTitle, line: sentence(team, line) });
+    return step("G6", { title: t.chooseTitle, line: SYSTEM_GATES.includes(gate.code) ? gate.message : sentence(team, gate.message), gate: gate.code });
   }
   if (!approvedDone(item, today)) {
     const later = item.subState === "piu_avanti" || !item.targetQuarter;
@@ -727,6 +789,7 @@ function approvedStep(input: NextStepInput): NextStep {
     if (variant === "segna") return step("G9", { title: t.start, line: sentence(lsTurn, why), action: { type: "segna_in_realizzazione" }, mine: true });
     return step("G9", { title: t.start, line: sentence(lsTurn, why) });
   }
+  if (ref?.state === "in_attesa") return step("G7", { title: t.wait, line: sentence(t.referentTurn, waitingTail(counts, today)) });
   const askTitle = fill(t.askTitle, { azienda: company });
   if (counts && info && counts.toAsk > 0) {
     const firstGate = referents?.available ? (referents.gates[0] ?? null) : null;
@@ -741,21 +804,17 @@ function approvedStep(input: NextStepInput): NextStep {
     }
     const asks = toAskSentence(counts.toAsk, info.total);
     if (referents?.available && referents.canAsk && askEntry?.canOpen) {
+      if (hasReferent && ref.askableForReferent !== null) {
+        if (ref.askableForReferent > 0) return step("G5", { title: askTitle, line: sentence(team, asks), action: { type: "referente", mode: "chiedi", label: t.ask }, mine: true });
+        return step("G5", { title: t.otherTitle, line: sentence(team, t.otherLine), action: { type: "referente", mode: "altra", label: t.otherButton }, mine: true });
+      }
       return step("G5", { title: askTitle, line: sentence(team, asks), action: { type: "chiedi", label: t.ask }, mine: true });
     }
     const gate = referents?.available ? (askEntry?.gates[0] ?? referents.gates[0] ?? null) : null;
     if (!gate) return step("G6", { title: askTitle, line: sentence(team, asks) });
     return step("G6", { title: askTitle, line: SYSTEM_GATES.includes(gate.code) ? gate.message : sentence(team, gate.message), gate: gate.code });
   }
-  if (counts && counts.waiting > 0) {
-    const since = counts.since ? day(counts.since, today) : null;
-    const tail = since
-      ? `${fill(t.waitingSince, { giorno: since })}${counts.reminded ? `, ${t.reminded}` : ""}.`
-      : counts.reminded
-        ? t.remindedAlone
-        : null;
-    return step("G7", { title: t.wait, line: sentence(t.referents, tail) });
-  }
+  if (counts && counts.waiting > 0) return step("G7", { title: t.wait, line: sentence(t.referents, waitingTail(counts, today)) });
   if (counts && counts.blockedCount > 0) {
     return step("G8", {
       title: t.unblock,
@@ -764,6 +823,14 @@ function approvedStep(input: NextStepInput): NextStep {
   }
   // Non succede: una raccolta non completa ha sempre qualcosa da chiedere, da aspettare o fermo.
   return step("G7", { title: t.wait, line: t.referents });
+}
+
+/** «In attesa dal 3 nov, promemoria inviato.» (o solo «Promemoria inviato.»), oppure null. */
+function waitingTail(counts: GuidedInfo["counts"] | null, today: string): string | null {
+  const t = GUIDED_TEXT.box;
+  if (!counts) return null;
+  const since = counts.since ? day(counts.since, today) : null;
+  return since ? `${fill(t.waitingSince, { giorno: since })}${counts.reminded ? `, ${t.reminded}` : ""}.` : counts.reminded ? t.remindedAlone : null;
 }
 
 function toDecideStep({ item, today, teamName }: NextStepInput): NextStep {

@@ -259,7 +259,8 @@ test("dopo «Prepara le domande» le nuove arrivano spuntate, quelle tolte resta
 test("le sorgenti: un solo «Chiedi al referente» nella riga, mai spento; niente «Prepara le domande» né motivi fuori dalla finestra", () => {
   const section = readFileSync(new URL("../section-needs.tsx", import.meta.url), "utf8");
   assert.equal((section.match(/REFERENT_UI_TEXT\.ask\b/g) ?? []).length, 1, "un solo «Chiedi al referente»");
-  assert.match(section, /\{feature\?\.canAsk && boxAsk !== "ask" && entry\?\.canOpen \? \(/);
+  // (Rilascio 5, §8.4) Su uno use case con il referente da scegliere, «Chiedi a un'altra persona» solo con un referente.
+  assert.match(section, /\{feature\?\.canAsk && entry\?\.canOpen && \(eligible \? hasReferent : boxAsk !== "ask"\) \? \(/);
   assert.match(section, /const entry = feature \? askDialogEntry\(feature\) : null;/);
   for (const gone of ["PrepareButton", "GateNotice", "prepareReferentQuestionsAction", "REFERENT_UI_TEXT.prepare", "disabled={askBlocked}"]) assert.ok(!section.includes(gone), gone);
   const steps = readFileSync(new URL("./ask-steps.tsx", import.meta.url), "utf8");

@@ -43,6 +43,7 @@ export function NeedChecklist({
   onChange,
   disabledIds,
   invalid,
+  sub,
 }: {
   labelledBy: string;
   describedBy?: string;
@@ -51,6 +52,8 @@ export function NeedChecklist({
   onChange: (next: string[]) => void;
   disabledIds?: ReadonlySet<string>;
   invalid?: boolean;
+  /** (Rilascio 5) Sotto ogni voce spuntata una seconda casella («Serve un file»). */
+  sub?: { label: string; selected: readonly string[]; onChange: (next: string[]) => void };
 }) {
   const chosen = new Set(selected);
   return (
@@ -77,6 +80,15 @@ export function NeedChecklist({
                 {item.meta ? <span className="block text-xs text-muted-foreground">{item.meta}</span> : null}
               </span>
             </label>
+            {sub && checked ? (
+              <label data-slot="need-checklist-sub" className="ml-8 flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted/50 sm:min-h-8">
+                <Checkbox
+                  checked={sub.selected.includes(item.id)}
+                  onCheckedChange={(next) => sub.onChange(next === true ? [...sub.selected.filter((id) => id !== item.id), item.id] : sub.selected.filter((id) => id !== item.id))}
+                />
+                {sub.label}
+              </label>
+            ) : null}
           </li>
         );
       })}

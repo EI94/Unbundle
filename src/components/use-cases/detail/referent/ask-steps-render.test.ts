@@ -56,7 +56,8 @@ function filled(html: string): string[] {
     .map(([, , , body]) => readable(body.replace(/<[^>]+>/g, "")).trim());
 }
 const buttons = (html: string) => (html.match(/<button\b/g) ?? []).length;
-const COURSE = /learner|corso|formazione|partecipant/i;
+// Parole intere: «un'informazione» (rilascio 5, l'email di sole domande) non è «formazione».
+const COURSE = /\b(learner|corso|formazione|partecipant)/i;
 
 function contact(over: Partial<ReferentContactOption> & { id: string; displayName: string }): ReferentContactOption {
   return { roleLabel: null, emailMasked: null, selectable: true, reason: null, team: false, hasOtherRequests: false, ...over };

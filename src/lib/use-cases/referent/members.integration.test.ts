@@ -478,7 +478,8 @@ test("(rilascio 4) chiedere a un partecipante ai corsi: referente collegato, la 
   assert.ok(sent.mail.text.includes(ACCOUNT_LINE), "«Hai già un account Unbundle…»");
   assert.ok(!sent.mail.text.includes(TEAM_LINE));
   noDashboard(sent.mail, "partecipante");
-  for (const word of COURSE_WORDS) assert.ok(!sent.mail.text.toLowerCase().includes(word), word);
+  // Parole intere: «un'informazione» dell'email (rilascio 5) non è «formazione».
+  for (const word of COURSE_WORDS) assert.ok(!new RegExp(`\\b${word}`).test(sent.mail.text.toLowerCase()), word);
   assert.equal((await q(`SELECT 1 FROM use_case_notifications WHERE recipient_user_id = $1::uuid`, [ids.lia])).length, 0, "nessuna campanella per lei");
   const forLearner = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.lia, role: "learner", useCaseHub: true, env: ENV });
   assert.equal(forLearner.entries.filter((e) => e.source === "use_case").length, 0);
@@ -506,8 +507,9 @@ test("un contributore scelto dall'elenco: referente collegato, email con «Hai g
   const [row] = await contactRow(emails.contrib);
   assert.deepEqual([row?.display_name, row?.user_id], [NAME.contrib, ids.contrib], "il referente nasce collegato al suo account");
   assert.equal(sent.mail.to, emails.contrib);
-  assert.equal(sent.mail.subject, `TopJet iscritti: sei il referente per «${(await q(`SELECT code FROM use_cases WHERE id = $1::uuid`, [cards.contrib]))[0].code} · Scheda contrib»`);
-  assert.ok(sent.mail.text.includes(`${NAME.builder} ti ha indicato come referente per lo use case «`));
+  // (Rilascio 5, §8.4) Una richiesta di sole domande: «alcune domande su …».
+  assert.equal(sent.mail.subject, `TopJet iscritti: alcune domande su «${(await q(`SELECT code FROM use_cases WHERE id = $1::uuid`, [cards.contrib]))[0].code} · Scheda contrib»`);
+  assert.ok(sent.mail.text.includes(`${NAME.builder} ti chiede alcune informazioni sullo use case «`));
   assert.ok(sent.mail.text.includes(ACCOUNT_LINE));
   assert.ok(!sent.mail.text.includes(TEAM_LINE));
   assert.ok(sent.mail.text.includes(`/rispondi/${sent.token}`), "il link personale c'è sempre");

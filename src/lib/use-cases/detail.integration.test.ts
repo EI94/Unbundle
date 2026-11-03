@@ -801,7 +801,9 @@ test("una scheda per riga della tabella: il passo del riquadro, al massimo un pu
     ["nuova", {}, { lsLead: "H7", builder: "H7" }, 1],
     ["serve info", { review: "needs_inputs", reviewedBy: ids.lsLead, publicNote: "Quante?" }, { lsLead: "H1", builder: "H1" }, 0],
     ["approvata per un trimestre, senza informazioni", { status: "accepted", review: "scored", targetQuarter: "2027-Q1" }, { lsLead: "G9", builder: "G9" }, -1],
-    ["approvata più avanti", { status: "accepted", review: "scored" }, { lsLead: "G3", builder: "G3" }, 0],
+    // (Rilascio 5, D51) Senza referente il riquadro chiede prima il referente, anche senza trimestre: qui
+    // l'ok sui fornitori manca, quindi G4 (il cliente lo dà, Lateral Space no).
+    ["approvata più avanti", { status: "accepted", review: "scored" }, { lsLead: "G4", builder: "G4" }, -1],
     ["in realizzazione senza dossier", { status: "in_progress", review: "scored", targetQuarter: "2027-Q1" }, { lsLead: "E2", builder: "E2" }, 1],
     ["realizzata", { status: "implemented", review: "scored" }, { lsLead: "D1", builder: "D1" }, 0],
     ["non avviata", { status: "rejected", review: "scored" }, { lsLead: "C", builder: "C" }, 0],

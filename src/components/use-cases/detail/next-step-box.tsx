@@ -88,6 +88,19 @@ export function NextStepBox({ workspaceId, step, item, today, canDecide, candida
         </Button>
       ) : null;
       break;
+    case "referente":
+      primary = openReferent ? (
+        <Button
+          type="button"
+          variant={variant}
+          className={touch}
+          data-action="next-step-referent"
+          onClick={() => openReferent(action.mode === "altra" ? { kind: "other" } : { kind: "assign", mode: action.mode })}
+        >
+          {action.label}
+        </Button>
+      ) : null;
+      break;
     case "impostazioni":
     case "avvia":
       primary = (

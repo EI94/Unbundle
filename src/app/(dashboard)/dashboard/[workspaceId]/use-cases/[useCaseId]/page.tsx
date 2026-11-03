@@ -12,6 +12,7 @@ import { listWorkspaceNeeds, needUseCaseRefs } from "@/lib/db/queries/use-case-n
 import { loadUseCaseInfoProgress } from "@/lib/db/queries/use-case-info-progress";
 import { loadUseCaseReferentPanel } from "@/lib/db/queries/use-case-referents";
 import { needListsOfUseCase } from "@/lib/use-cases/needs";
+import { eligibleForReferent } from "@/lib/use-cases/referent/use-case-state";
 import { abilitiesForUseCase, projectForContributor } from "@/lib/use-cases/permissions";
 import type { PhaseInput } from "@/lib/use-cases/phase";
 import { romeToday } from "@/lib/use-cases/quarter";
@@ -152,6 +153,7 @@ export default async function UseCaseDetailPage({
           session: { id: session.user.id, name: session.user.name ?? null, email: session.user.email, emailVerified: session.user.emailVerified === true },
           role: access.role,
           needs: needLists,
+          eligible: result.projection !== "contributore" && eligibleForReferent({ portfolioKind: result.useCase.kind === "da_diffondere" ? "best_practice" : "use_case_ai", phase: result.useCase.phase }),
         })
       : null,
     abilities.canSeeNeeds && needLists

@@ -25,6 +25,8 @@ export interface AskNeedInfo {
   owner: string | null;
   /** Il testo libero «Chi», per la proposta delle domande. */
   ownerLabel: string | null;
+  /** (Rilascio 5) Il tipo dell'esigenza: «Documento» spunta «Serve un file» di default. */
+  kind?: string | null;
 }
 
 /** La finestra fra un passo e l'altro: la bozza, il passo, per chi sono le spunte e le domande già viste. */

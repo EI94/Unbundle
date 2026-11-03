@@ -5,7 +5,7 @@ import { answersOf } from "@/lib/use-cases/answers";
 import type { UseCaseEventList } from "@/lib/db/queries/use-case-events";
 import { DIALOG_COMMON_TEXT, PUBLIC_NOTE_TEXT, toDecisionItem, toDuplicateCandidates, type DuplicateCandidate } from "@/lib/use-cases/decision-ui";
 import { unofficialEstimateLines } from "@/lib/use-cases/estimates";
-import { GUIDED_TEXT, arrivalTarget, detailTargetIds, foldSummaries, impactView, nextStepOf, pathOfUseCase, startsInBox, type NextStep } from "@/lib/use-cases/guided";
+import { GUIDED_TEXT, arrivalTarget, detailTargetIds, foldSummaries, impactView, nextStepOf, pathOfUseCase, quarterHolding, startsInBox, type NextStep } from "@/lib/use-cases/guided";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { TEXT_LIMITS } from "@/lib/use-cases/inputs";
 import { WHAT_FIELD_LABEL } from "@/lib/use-cases/labels";
@@ -28,6 +28,10 @@ import { NextStepBox, PagePrimaryProvider } from "./next-step-box";
 import { PublicNoteField } from "./public-note-field";
 import type { RedactOption } from "./redact-dialog";
 import { askEntry } from "./referent/ask-dialog-state";
+import { assignEntry, requestsShown } from "./referent/assign-dialog-state";
+import { referentHeaderLine } from "./referent/referent-block-view";
+import { referentDescription } from "@/lib/use-cases/referent/description";
+import { teamEstimateOf } from "@/lib/use-cases/referent/estimate";
 import { ReferentDialogHost } from "./referent/dialog-host";
 import { ContributorDecisionSection } from "./section-decision";
 import { SectionHistory } from "./section-history";
@@ -302,6 +306,18 @@ export function UseCaseDetailView({
   const info = abilities.canSeeNeeds ? infoProgress : null;
   const feature = abilities.canSeeNeeds && referents?.available ? referents : null;
   const entry = feature ? askEntry(feature) : null;
+  // (Rilascio 5, §9.6) Il referente dello use case per il riquadro: solo per uno use case che ne ha uno da scegliere.
+  const assignE = feature ? assignEntry(feature) : null;
+  const referentInput =
+    feature?.eligible && abilities.canEditNeeds
+      ? {
+          state: feature.referent?.state ?? ("manca" as const),
+          review: feature.referent?.review ?? null,
+          canChoose: Boolean(assignE?.canOpen && assignE.sendGates.length === 0),
+          askableForReferent: feature.referent ? feature.referent.askableForReferent.length : null,
+          noTeamEstimate: Boolean(feature.referent?.check && feature.referent.check.team === null),
+        }
+      : null;
   const step = nextStepOf({
     workspaceId,
     item: detail,
@@ -313,6 +329,7 @@ export function UseCaseDetailView({
     info,
     referents: abilities.canSeeNeeds && referents ? { available: referents.available, canAsk: referents.canAsk, gates: referents.gates, requestCount: referents.requests.length } : null,
     askEntry: entry,
+    referent: referentInput,
     realizationVariant: variant,
     realization,
     dossierRead: result.dossierRead,
@@ -323,7 +340,7 @@ export function UseCaseDetailView({
   const targets = detailTargetIds({
     phase: detail.phase,
     needs: needsShown,
-    requests: Boolean(feature && feature.requests.length > 0),
+    requests: Boolean(feature && requestsShown(feature).length > 0),
     realization: realizationFold,
     history: historyShown,
   });
@@ -354,7 +371,7 @@ export function UseCaseDetailView({
   const decisionItem = toDecisionItem(detail);
   // Delle esigenze della scheda alle finestre di «Chiedi al referente»: titolo, «Chi» come lo mostra la riga e il testo libero «Chi».
   const needInfo = needs
-    ? Object.fromEntries([...needs.lists.requirements, ...needs.lists.steps].map((need) => [need.id.toLowerCase(), { title: need.title, owner: needOwnerText(need), ownerLabel: need.ownerLabel }]))
+    ? Object.fromEntries([...needs.lists.requirements, ...needs.lists.steps].map((need) => [need.id.toLowerCase(), { title: need.title, owner: needOwnerText(need), ownerLabel: need.ownerLabel, kind: need.kind }]))
     : {};
   const t = GUIDED_TEXT.folds;
 
@@ -370,6 +387,7 @@ export function UseCaseDetailView({
           canSetHidden: abilities.canSetHiddenFromSearch,
           canRedact: abilities.canRedact,
           redactOptions: abilities.canRedact ? redactOptions(detail) : [],
+          referentLine: feature?.eligible ? referentHeaderLine(feature.referent) : null,
         }}
       />
       <Arrival initial={arrival} chapter={chapter ?? null} ids={targets} startInBox={startInBox}>
@@ -386,6 +404,7 @@ export function UseCaseDetailView({
               card={{ code: detail.code, title: detail.title }}
               companyName={companyName}
               companyDisplayName={companyDisplayName}
+              assign={{ description: referentDescription(detail.description), team: teamEstimateOf(detail.valueModel) }}
             >
               <NextStepBox
                 workspaceId={workspaceId}
@@ -414,6 +433,8 @@ export function UseCaseDetailView({
                       referents={referents}
                       infoProgress={infoProgress}
                       boxAsk={boxAskOf(step)}
+                      boxOwnsChoose={step.action.type === "referente" && step.action.mode === "scegli"}
+                      canEditValuation={abilities.canEditValuation}
                     />
                   ) : null}
                 </div>
@@ -473,7 +494,7 @@ export function UseCaseDetailView({
                         canOpenAnyDossier={abilities.canOpenAnyDossier}
                         realization={realization}
                         boxOwnsStart={startInBox}
-                        startHint={step.key === "G3" ? "trimestre" : "informazioni"}
+                        startHint={step.key === "G3" || (referentInput !== null && !quarterHolding(detail, today)) ? "trimestre" : "informazioni"}
                       />
                     </Fold>
                   ) : null}

@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import { addToReferentRequestAction } from "@/lib/actions/use-case-referents";
 import type { ReferentRequestView, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
-import { REFERENT_UI_TEXT } from "@/lib/use-cases/referent/labels";
+import { REFERENT_ASSIGN_TEXT, REFERENT_UI_TEXT } from "@/lib/use-cases/referent/labels";
 import { DecisionDialog } from "../../reopen-dialog";
 import { addPayload, addRoom, addSelectionError, addableNeedIds, initialAddSelection } from "./add-dialog-state";
 import { NeedChecklist } from "./fields";
@@ -31,10 +31,14 @@ export function AddDialog({
 }) {
   const labelId = useId();
   const { pending, run } = useReferentRunner();
-  const [selected, setSelected] = useState<string[]>(() => initialAddSelection(panel, request));
+  // (Rilascio 5, §3.7) Al referente non si richiede una domanda a cui ha risposto «Non ce l'ho».
+  const declined = new Set(panel.referent && panel.referent.contact.id.toLowerCase() === request.contact.id.toLowerCase() ? panel.referent.declinedNeedIds : []);
+  const view = declined.size ? { ...panel, askableNeedIds: panel.askableNeedIds.filter((id) => !declined.has(id.toLowerCase())) } : panel;
+  const [selected, setSelected] = useState<string[]>(() => initialAddSelection(view, request));
+  const [files, setFiles] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const room = addRoom(panel, request);
-  const items = addableNeedIds(panel, request).map((id) => ({ id, title: needTitles.get(id) ?? id }));
+  const items = addableNeedIds(view, request).map((id) => ({ id, title: needTitles.get(id) ?? id }));
   const full = new Set(selected.length >= room ? items.map((item) => item.id) : []);
 
   async function confirm() {
@@ -43,7 +47,7 @@ export function AddDialog({
       setError(local);
       return;
     }
-    const { outcome } = await run(() => addToReferentRequestAction(workspaceId, useCaseId, request.id, request.version, addPayload(panel, selected)), { inDialog: true });
+    const { outcome } = await run(() => addToReferentRequestAction(workspaceId, useCaseId, request.id, request.version, { ...addPayload(view, selected), fileRequired: files.filter((id) => selected.includes(id)) }), { inDialog: true });
     if (outcome.close) onClose();
     else setError(outcome.error);
   }
@@ -75,6 +79,7 @@ export function AddDialog({
               setSelected(next);
               setError(null);
             }}
+            sub={{ label: REFERENT_ASSIGN_TEXT.fileRequired, selected: files, onChange: setFiles }}
           />
         ) : (
           <p className="text-sm text-muted-foreground">{REFERENT_UI_TEXT.addReasons.nothing}</p>

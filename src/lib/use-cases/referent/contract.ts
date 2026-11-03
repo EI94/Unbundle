@@ -229,7 +229,7 @@ export interface ReferentContactOption {
   emailMasked: string | null;
   selectable: boolean;
   /** (Parte 3) «sei_tu»: il contatto è chi guarda (account collegato o email verificata): risponde dalla scheda. */
-  reason: "senza_email" | "lateral_space" | "richiesta_aperta" | "sei_tu" | null;
+  reason: "senza_email" | "lateral_space" | "richiesta_aperta" | "sei_tu" | "referente" | null;
   /**
    * (Parte 3) Il contatto è adesso un revisore di questo workspace: il selettore aggiunge «Fa parte del
    * team». Falso per tutti gli altri ruoli e per chi non ha un account; nessuna altra informazione su
@@ -241,6 +241,11 @@ export interface ReferentContactOption {
    * arriveranno in un'unica email.» (un sì o un no, mai un numero).
    */
   hasOtherRequests: boolean;
+  /**
+   * (Rilascio 5) La richiesta viva di questa persona su questo use case, se c'è: «referente» (è il
+   * referente) o «domande» (ha già delle domande aperte: sceglierla come referente la sostituisce, D49).
+   */
+  liveRequest?: { id: string; kind: "referente" | "domande" } | null;
 }
 
 /**
@@ -275,6 +280,10 @@ export interface ReferentRequestView {
   notices: string[];
   email: { state: "in_partenza" | "partita" | "non_partita"; label: string | null };
   needIds: string[];
+  /** (Rilascio 5) Le domande ancora aperte di questa richiesta (quelle che un cambio di referente porta con sé). */
+  openNeedIds?: string[];
+  /** (Rilascio 5) «referente»: la richiesta al referente (con la conferma e la stima); «domande»: solo domande. */
+  kind?: "referente" | "domande";
   actions: {
     remind: { allowed: boolean; reason: string | null };
     add: { allowed: boolean; reason: string | null };
@@ -288,6 +297,9 @@ export interface ReferentRequestView {
   };
   createdAt: string;
   expiresAt: string;
+  /** (Rilascio 5) Quando è partita l'email della richiesta, e l'ultimo promemoria (per il blocco «Referente»). */
+  sentAt?: string | null;
+  lastReminderAt?: string | null;
 }
 
 export interface NeedAnswerView {
@@ -331,6 +343,56 @@ export interface NeedReferentView {
   reviewExpired?: boolean;
 }
 
+/**
+ * (Rilascio 5, §9.2, §9.5) Il referente dello use case per il blocco «Referente» di «Cosa serve»:
+ * calcolato dalle richieste (mai salvato). R* è l'ultima richiesta al referente (la conferma e la
+ * stima), R l'ultima non revocata alla sua persona (attesa, promemoria, revoca, «Chiedi di nuovo»).
+ * Mai conteggi per persona; l'email arriva coperta.
+ */
+export interface ReferentBlockView {
+  contact: { id: string; name: string; roleLabel: string | null; emailMasked: string | null; team: boolean };
+  /** R: la richiesta su cui agiscono promemoria, revoca, «Chiedi di nuovo», «Correggi l'email». */
+  requestId: string | null;
+  /** R*: l'ultima richiesta al referente. */
+  referentRequestId: string;
+  state: "in_attesa" | "nessuna_risposta" | "da_verificare" | "fatto";
+  /** Che cosa aspetta il team dalla risposta: una correzione, una stima, niente. */
+  review: "correzione" | "stima" | null;
+  /** R è viva («inviata» e non scaduta). */
+  live: boolean;
+  /** La conferma e la stima di R* (null: non è mai arrivata, solo dopo un ritorno alla versione di prima). */
+  check: ReferentBlockCheck | null;
+  /** Le domande a cui il referente ha risposto «Non ce l'ho» e ancora da chiedere (§3.7). */
+  declinedNeedIds: string[];
+  /** Fino a 3 «Chi potrebbe saperlo?» del referente sulle domande che non ha (§8.4). */
+  hints: string[];
+  /** Le domande da chiedere che il referente non ha già rifiutato (per «Chiedi al referente»). */
+  askableForReferent: string[];
+}
+
+/** (Rilascio 5) La conferma e la stima del referente come le legge il blocco (§9.2). */
+export interface ReferentBlockCheck {
+  submittedAt: string | null;
+  confirm: "si" | "correggi" | null;
+  note: string | null;
+  estimate: "si" | "meno" | "piu" | null;
+  timesPerMonth: number | null;
+  minutesEach: number | null;
+  correctionDoneAt: string | null;
+  outcome: "adottata" | "tenuta" | null;
+  outcomeAt: string | null;
+  /** La stima del team che il referente ha visto (l'istantanea), in ore di lavoro. */
+  team: { key: string; volumeYear: number; minutes: number; hours: number; perMonth: number | null } | null;
+  /** La stima del team di adesso è diversa dall'istantanea. */
+  teamChanged: boolean;
+  /** Lo use case ha adesso una stima del team in ore. */
+  teamNow: boolean;
+  /** Le ore di lavoro l'anno del referente, quando ha dato almeno un numero. */
+  referentHours: number | null;
+  /** La versione della richiesta R* (per le azioni del team sulla risposta). */
+  version: number;
+}
+
 export interface UseCaseReferentPanel {
   /** Funzione accesa e archivi pronti; false → REVIEWER_UI non mostra niente di questa funzione. */
   available: boolean;
@@ -364,6 +426,18 @@ export interface UseCaseReferentPanel {
   /** clientUploadAvailable(process.env) */
   upload: { clientMode: boolean };
   limits: typeof REFERENT_LIMITS;
+  /**
+   * (Rilascio 5) Lo use case ha un referente da scegliere («Da costruire», in valutazione o approvato):
+   * il blocco «Referente» c'è. false: «Chiedi al referente» del rilascio 4, come prima.
+   */
+  eligible?: boolean;
+  /** (Rilascio 5) Il referente dello use case; null: manca (o lo use case non ne ha uno da scegliere). */
+  referent?: ReferentBlockView | null;
+  /**
+   * (Rilascio 5, §3.1) L'ultima richiesta al referente, anche revocata (null: mai): la finestra la
+   * rimanda al server, che rifiuta l'invio se nel frattempo un collega ha scelto un altro referente.
+   */
+  latestReferentRequestId?: string | null;
 }
 
 export type PreparedQuestionKey = "frequenza" | "tempo" | "persone" | "sistemi" | "esempio" | "costi";

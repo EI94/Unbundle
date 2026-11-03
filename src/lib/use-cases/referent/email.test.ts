@@ -26,11 +26,12 @@ test("{UC}: codice e titolo, o il solo titolo; al massimo 120 caratteri", () => 
 
 test("richiesta: oggetto e testo, con e senza messaggio e risposta all'email", () => {
   const one = renderReferentEmail({ template: "richiesta", company: "TopJet", useCase: UC, requesterName: "Giulia Neri", questions: 1, message: null, expiresAt: EXPIRES, link: LINK, replyToKnown: true });
-  assert.equal(one.subject, "TopJet: sei il referente per «TJ-0004 · Fatture fornitori»");
+  // (Rilascio 5, §8.4) Solo domande: l'oggetto e la prima riga non dicono più «sei il referente».
+  assert.equal(one.subject, "TopJet: alcune domande su «TJ-0004 · Fatture fornitori»");
   has(one.text, "Buongiorno,");
-  has(one.text, "Giulia Neri ti ha indicato come referente per lo use case «TJ-0004 · Fatture fornitori» e ti chiede alcune informazioni.");
+  has(one.text, "Giulia Neri ti chiede alcune informazioni sullo use case «TJ-0004 · Fatture fornitori».");
   has(one.text, "È una domanda sola.");
-  has(one.text, "Bastano pochi minuti e puoi rispondere anche dal telefono. Se non sai una risposta, scegli «Non ce l'ho». Se hai un documento utile, allegalo: prima togli nomi e dati personali.");
+  has(one.text, "Bastano pochi minuti e puoi rispondere anche dal telefono. Se un'informazione non ce l'hai, scegli «Non ce l'ho». Se hai un documento utile, allegalo: prima togli nomi e dati personali.");
   has(one.text, "Apri le domande");
   has(one.text, LINK);
   has(one.text, "Il link scade il 26 novembre 2026.");

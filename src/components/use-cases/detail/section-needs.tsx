@@ -25,7 +25,7 @@ import { formatInteger } from "@/lib/use-cases/format";
 import type { InfoProgressView } from "@/lib/use-cases/info-progress";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { cosaServeHref, type NeedReferentView, type UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
-import { REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { REFERENT_ASSIGN_TEXT, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import {
   NEED_AVAILABILITY_LABEL,
   NEED_KIND_LABEL,
@@ -52,6 +52,8 @@ import { DecisionChoiceGroup, DecisionDialog } from "../reopen-dialog";
 import { useLanding } from "./arrival";
 import { InfoSummary } from "./info-summary";
 import { askDialogEntry } from "./referent/ask-dialog-state";
+import { requestsShown } from "./referent/assign-dialog-state";
+import { ReferentBlock } from "./referent/referent-block";
 import { useReferentDialog } from "./referent/dialog-host";
 import type { ReferentDialog } from "./referent/dialogs";
 import { NeedReferentBlock } from "./referent/need-referent-block";
@@ -99,6 +101,10 @@ export interface SectionNeedsProps {
    * guarda può arrivare in fondo ai passi (`askDialogEntry`).
    */
   boxAsk?: "ask" | "gate" | null;
+  /** (Rilascio 5) Il riquadro «Prossimo passo» ha il pulsante pieno «Scegli il referente». */
+  boxOwnsChoose?: boolean;
+  /** (Rilascio 5) `canEditValuation`: le azioni del team sulla stima del referente. */
+  canEditValuation?: boolean;
   className?: string;
 }
 
@@ -135,6 +141,8 @@ export function SectionNeeds({
   referents = null,
   infoProgress = null,
   boxAsk = null,
+  boxOwnsChoose = false,
+  canEditValuation = false,
   className,
 }: SectionNeedsProps) {
   const id = "cosa-serve";
@@ -220,13 +228,28 @@ export function SectionNeeds({
   // spento: chi non può finire legge il motivo nel riquadro «Prossimo passo». «Prepara le domande» sta
   // nella finestra, in «Cosa chiedi».
   const entry = feature ? askDialogEntry(feature) : null;
-  const requests = feature?.requests ?? [];
+  // (Rilascio 5, D34) Le richieste al referente le dice il suo blocco: qui le altre.
+  const requests = feature ? requestsShown(feature) : [];
+  const eligible = Boolean(feature?.eligible);
+  const hasReferent = Boolean(feature?.referent);
 
   return (
     <section id={id} aria-labelledby={headingId} data-slot="section-needs" className={cn("scroll-mt-20 space-y-4", className)}>
       <h2 id={headingId} tabIndex={-1} className="text-base font-semibold outline-none">
         {TEXT.title}
       </h2>
+      {feature && eligible ? (
+        <ReferentBlock
+          workspaceId={workspaceId}
+          useCaseId={useCaseId}
+          panel={feature}
+          canEdit={canEdit}
+          boxOwnsChoose={boxOwnsChoose}
+          canEditValuation={canEditValuation}
+          today={today}
+          onOpen={setReferentDialog}
+        />
+      ) : null}
       <InfoSummary view={infoProgress} />
       {empty ? <p className="text-sm text-muted-foreground">{TEXT.empty}</p> : null}
       {requirements.length ? (
@@ -287,10 +310,14 @@ export function SectionNeeds({
             L'azione principale del capitolo, ma non della pagina: un solo pulsante pieno per pagina (la
             decisione). «secondary» la distingue da «Aggiungi»; con G5 il riquadro ha già quello pieno.
           */}
-          {feature?.canAsk && boxAsk !== "ask" && entry?.canOpen ? (
-            <Button type="button" variant="secondary" className="min-h-11 sm:min-h-8" onClick={() => setReferentDialog({ kind: "ask" })}>
+          {/*
+            (Rilascio 5, §8.4) Su uno use case con il referente da scegliere il referente si sceglie nel
+            suo blocco; qui, quando c'è, «Chiedi a un'altra persona» per chi non è il referente.
+          */}
+          {feature?.canAsk && entry?.canOpen && (eligible ? hasReferent : boxAsk !== "ask") ? (
+            <Button type="button" variant="secondary" className="min-h-11 sm:min-h-8" onClick={() => setReferentDialog(eligible ? { kind: "other" } : { kind: "ask" })}>
               <Send aria-hidden />
-              {REFERENT_UI_TEXT.ask}
+              {eligible ? REFERENT_ASSIGN_TEXT.other : REFERENT_UI_TEXT.ask}
             </Button>
           ) : null}
         </div>

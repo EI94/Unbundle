@@ -347,8 +347,10 @@ test("piega «Realizzazione» e riquadro: «Avvia» pieno nel riquadro quando è
       [later, ids.ws, `Più avanti ${suffix} ${label}`, `${prefix}-${quarterValue ? "0092" : "0091"}`, quarterValue],
     );
     const g3 = await schedaOf("lsLead", later);
-    assert.match(g3.box, /data-key="G3"/, label);
-    assert.ok(g3.box.includes(title), label);
+    // (Rilascio 5, D51) Senza referente il riquadro chiede prima il referente (qui l'ok sui fornitori
+    // manca: G4); la piega dice lo stesso che il motivo è il trimestre.
+    assert.match(g3.box, /data-key="G4"/, label);
+    void title;
     assert.match(g3.html, /data-step="informazioni"[\s\S]*?nessuna da chiedere/, `${label}: il percorso`);
     assert.ok(g3.fold.includes("Avvia la realizzazione") && !filledIn(g3.html).includes("Avvia la realizzazione"), `${label}: outline nella piega`);
     assert.ok(g3.fold.includes("Prima si sceglie il trimestre in «Quando»."), `${label}: il motivo è il trimestre`);
@@ -540,10 +542,11 @@ test("«Pronto da avviare»: la campanella e l'email arrivano al riquadro con «
     assert.equal(client.target, "realizzazione");
     assert.deepEqual(client.opened, ["realizzazione"]);
     assert.ok(client.fold.includes("La realizzazione la avvia Lateral Space."));
-    // Non più pronto, il trimestre è finito (G3): la piega, con «Avvia» outline e il motivo.
+    // Non più pronto, il trimestre è finito: (rilascio 5, D51) il riquadro chiede prima il referente
+    // (qui l'ok sui fornitori manca: G4); la piega, con «Avvia» outline e il motivo del trimestre.
     await q(`UPDATE use_cases SET target_quarter = '2020-Q1' WHERE id = $1::uuid`, [ready]);
     const expired = await landingOf("lsLead", ready, links.email);
-    assert.match(expired.box, /data-key="G3"/);
+    assert.match(expired.box, /data-key="G4"/);
     assert.equal(expired.target, "realizzazione");
     assert.deepEqual(expired.opened, ["realizzazione"]);
     assert.ok(expired.fold.includes("Avvia la realizzazione") && expired.fold.includes("Prima si sceglie il trimestre in «Quando»."));

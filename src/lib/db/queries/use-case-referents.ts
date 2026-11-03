@@ -66,6 +66,7 @@ import {
   type ReferentContactOption,
   type ReferentGate,
   type ReferentMemberOption,
+  type ReferentBlockView,
   type ReferentRequestView,
   type UseCaseReferentPanel,
 } from "@/lib/use-cases/referent/contract";
@@ -102,6 +103,9 @@ import {
   type WorkspaceMemberFacts,
 } from "@/lib/use-cases/referent/people";
 import { reviewerStatus } from "@/lib/use-cases/referent/state";
+import { referentBlockOf, referentContactOf, type BlockRequestFact, type ReferentCheckRow } from "@/lib/use-cases/referent/block";
+import { teamEstimateOf } from "@/lib/use-cases/referent/estimate";
+import { latestRequest } from "@/lib/use-cases/referent/use-case-state";
 import { checkQuestionTitle, checkRequestMessage, checkReviewerAnswer } from "@/lib/use-cases/referent/text";
 import { formatFileSize } from "@/lib/use-cases/referent/upload-transport";
 import { maskEmail, needReferentLine, referentDateLabel, requestLines, requestWordOf, type LatestAskForNeed } from "@/lib/use-cases/referent/view";
@@ -320,6 +324,40 @@ interface RequestRow {
   needIds: string[];
   hasValidToken: boolean;
   richiesta: { pending: boolean; sent: boolean; total: number };
+  /** (Rilascio 5) Le domande ancora aperte (quelle che un cambio di referente porta). */
+  openNeedIds: string[];
+  /** (Rilascio 5) La conferma e la stima, solo per una richiesta al referente. */
+  check: ReferentCheckRow | null;
+}
+
+const uuidList = (value: unknown): string[] =>
+  String(value ?? "")
+    .replace(/[{}]/g, "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(isUuid);
+
+/** (Rilascio 5) La riga della conferma letta con la richiesta (colonne `k_*`), oppure null. */
+function checkRowOf(r: UcRow): ReferentCheckRow | null {
+  if (!rowBool(r.has_check)) return null;
+  const num = (v: unknown) => (v === null || v === undefined ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+  const confirm = rowString(r.k_confirm);
+  const estimate = rowString(r.k_estimate);
+  const outcome = rowString(r.k_outcome);
+  return {
+    submittedAt: rowDate(r.k_submitted_at),
+    confirm: confirm === "si" || confirm === "correggi" ? confirm : null,
+    confirmNote: rowString(r.k_note),
+    estimate: estimate === "si" || estimate === "meno" || estimate === "piu" ? estimate : null,
+    timesPerMonth: num(r.k_times),
+    minutesEach: num(r.k_minutes),
+    teamComponentKey: rowString(r.k_team_key),
+    teamVolumeYear: num(r.k_team_volume),
+    teamMinutes: num(r.k_team_minutes),
+    correctionDoneAt: rowDate(r.k_correction_done_at),
+    estimateOutcome: outcome === "adottata" || outcome === "tenuta" ? outcome : null,
+    estimateOutcomeAt: rowDate(r.k_outcome_at),
+  };
 }
 
 function requestRowOf(r: UcRow, now: Date): RequestRow | null {
@@ -355,6 +393,8 @@ function requestRowOf(r: UcRow, now: Date): RequestRow | null {
     needIds,
     hasValidToken: rowBool(r.has_valid_token),
     richiesta: { pending: rowBool(r.richiesta_pending), sent: rowBool(r.richiesta_sent), total: rowNumber(r.richiesta_total) ?? 0 },
+    openNeedIds: uuidList(r.open_need_ids),
+    check: checkRowOf(r),
   };
 }
 
@@ -368,9 +408,14 @@ function requestsSql(workspaceId: string, useCaseId: string): UcStatement {
   EXISTS (SELECT 1 FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta'
     AND (e.status = 'in_coda' OR (e.status = 'errore' AND e.attempts < 3))) AS richiesta_pending,
   EXISTS (SELECT 1 FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta' AND e.status = 'inviata') AS richiesta_sent,
-  (SELECT count(*)::int FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta') AS richiesta_total
+  (SELECT count(*)::int FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta') AS richiesta_total,
+  (SELECT array_agg(oi2.need_id::text ORDER BY oi2.position) FROM use_case_referent_request_items oi2 WHERE oi2.request_id = r.id AND ${openItemSql("oi2", "r")}) AS open_need_ids,
+  (k.request_id IS NOT NULL) AS has_check, k.submitted_at AS k_submitted_at, k.confirm AS k_confirm, k.confirm_note AS k_note, k.estimate AS k_estimate,
+  k.times_per_month AS k_times, k.minutes_each AS k_minutes, k.team_component_key AS k_team_key, k.team_volume_year AS k_team_volume, k.team_minutes AS k_team_minutes,
+  k.correction_done_at AS k_correction_done_at, k.estimate_outcome AS k_outcome, k.estimate_outcome_at AS k_outcome_at
 FROM use_case_referent_requests r
 LEFT JOIN uc_contacts c ON c.id = r.contact_id AND c.workspace_id = r.workspace_id
+LEFT JOIN use_case_referent_checks k ON k.request_id = r.id
 WHERE r.workspace_id = ${cast(workspaceId, "uuid")} AND r.use_case_id = ${cast(useCaseId, "uuid")}
 ORDER BY r.created_at DESC, r.id
 LIMIT ${cast(RESULT_CAP, "int")}`);
@@ -385,12 +430,12 @@ ORDER BY c.created_at, c.id`);
 }
 
 function liveOnUseCaseSql(workspaceId: string, useCaseId: string): UcStatement {
-  return toStatement(ucSql`SELECT r.contact_id FROM use_case_referent_requests r
+  return toStatement(ucSql`SELECT r.id, r.contact_id, EXISTS (SELECT 1 FROM use_case_referent_checks k WHERE k.request_id = r.id) AS referent_request FROM use_case_referent_requests r
 WHERE r.workspace_id = ${cast(workspaceId, "uuid")} AND r.use_case_id = ${cast(useCaseId, "uuid")} AND r.status = 'inviata' AND r.expires_at > now()`);
 }
 
 function answersSql(workspaceId: string, useCaseId: string): UcStatement {
-  return toStatement(ucSql`SELECT a.id, a.need_id, a.source, a.body, a.dont_know, a.submitted_at, a.request_id,
+  return toStatement(ucSql`SELECT a.id, a.need_id, a.source, a.body, a.dont_know, a.submitted_at, a.request_id, a.comment, a.already_attached,
   coalesce(c.display_name, '') AS contact_name, coalesce(nullif(btrim(u.name), ''), '') AS author_name
 FROM use_case_need_answers a
 LEFT JOIN use_case_referent_requests r ON r.id = a.request_id
@@ -462,6 +507,8 @@ export async function loadUseCaseReferentPanel(i: {
   session: { id: string; name: string | null; email: string; emailVerified: boolean };
   role: string | null;
   needs: UseCaseNeedLists;
+  /** (Rilascio 5) Lo use case ha un referente da scegliere (`eligibleForReferent`): il blocco «Referente». */
+  eligible?: boolean;
   env?: Env;
   now?: Date;
 }): Promise<UseCaseReferentPanel | null> {
@@ -530,6 +577,13 @@ export async function loadUseCaseReferentPanel(i: {
 
     // Referenti: attivi, in ordine di arrivo, email mascherate.
     const liveHere = new Set(liveRows.map((r) => String(r.contact_id).toLowerCase()));
+    // (Rilascio 5) La richiesta viva di ogni persona qui: «(è il referente)» o «(ha già delle domande aperte)».
+    const liveByContact = new Map<string, { id: string; kind: "referente" | "domande" }>();
+    for (const r of liveRows) {
+      const contact = String(r.contact_id).toLowerCase();
+      const kind = rowBool(r.referent_request) ? "referente" : "domande";
+      if (!liveByContact.has(contact) || kind === "referente") liveByContact.set(contact, { id: String(r.id).toLowerCase(), kind });
+    }
     const userCtx = new Map<string, Awaited<ReturnType<typeof loadUserContext>>>();
     for (const r of contactRows) {
       const userId = rowString(r.user_id);
@@ -561,6 +615,7 @@ export async function loadUseCaseReferentPanel(i: {
         reason,
         team: person.reviewer,
         hasOtherRequests: rowBool(r.has_live) && !liveHere.has(id),
+        liveRequest: liveByContact.get(id) ?? null,
       };
     });
 
@@ -651,6 +706,8 @@ export async function loadUseCaseReferentPanel(i: {
         notices,
         email: emailState,
         needIds: r.needIds,
+        openNeedIds: r.openNeedIds,
+        kind: r.check ? "referente" : "domande",
         actions: {
           remind,
           add,
@@ -662,6 +719,8 @@ export async function loadUseCaseReferentPanel(i: {
         },
         createdAt: r.createdAt.toISOString(),
         expiresAt: r.expiresAt.toISOString(),
+        sentAt: r.sentAt ? r.sentAt.toISOString() : null,
+        lastReminderAt: r.lastReminderAt ? r.lastReminderAt.toISOString() : null,
       };
     });
 
@@ -730,6 +789,45 @@ export async function loadUseCaseReferentPanel(i: {
       needsView[id] = { needId: id, line: needReferentLine(latestLine, today, uc), silent: silentNeed, answers, files, reviewExpired: reviewExpired.has(id) };
     }
 
+    // (Rilascio 5, §9.5) Il referente dello use case, dalle richieste: mai salvato, mai contato per persona.
+    let referent: ReferentBlockView | null = null;
+    const latestReferentRequestId = latestRequest(requests.filter((r) => r.check !== null))?.id ?? null;
+    if (i.eligible === true) {
+      const facts: BlockRequestFact[] = requests.map((r) => ({
+        id: r.id,
+        version: r.version,
+        contactId: r.contactId,
+        contactName: r.contactName,
+        roleLabel: r.roleLabel,
+        emailMasked: maskEmail(r.contactEmail),
+        team: people.get(r.contactId)?.reviewer ?? false,
+        status: r.storedStatus,
+        createdAt: r.createdAt,
+        expiresAt: r.expiresAt,
+        reminderCount: r.reminderCount,
+        openTask: r.openItems,
+        check: r.check,
+      }));
+      const referentContact = referentContactOf(facts);
+      const declined = referentContact ? await readDeclinedNeedIds(executor, ws, uc, referentContact) : new Set<string>();
+      const referentRequestIds = new Set(requests.filter((r) => r.contactId === referentContact).map((r) => r.id));
+      const hints = referentContact
+        ? answerRows
+            .filter((a) => rowBool(a.dont_know) && rowString(a.comment)?.trim() && referentRequestIds.has(String(a.request_id ?? "").toLowerCase()) && declined.has(String(a.need_id).toLowerCase()))
+            .map((a) => String(a.comment).replace(/\s+/g, " ").trim())
+        : [];
+      referent = referentBlockOf({
+        eligible: true,
+        requests: facts,
+        clientRequirementToVerify: i.needs.requirements.some((n) => n.status === "in_verifica" && !n.archivedAt && [null, "cliente", "insieme"].includes(n.ownerSide ?? null)),
+        teamNow: teamEstimateOf(card.valueModel),
+        now,
+        declinedNeedIds: [...declined],
+        hints,
+        askableNeedIds: askable.map((n) => n.id.toLowerCase()),
+      });
+    }
+
     const existingKeys = new Set(keyRows.map((r) => String(r.import_key)));
     const preparable = missingPreparedQuestions({ useCaseId: uc, intake: card.intake, valueModel: card.valueModel, linkedNeeds: cardNeeds, existingImportKeys: existingKeys }).map((q) => q.key);
     const prepareGaps = gapsOf({ useCaseId: uc, intake: card.intake, valueModel: card.valueModel, linkedNeeds: cardNeeds }).length > 0;
@@ -749,6 +847,9 @@ export async function loadUseCaseReferentPanel(i: {
       requester: { name: i.session.name?.trim() || "", email: i.session.email ? i.session.email.toLowerCase() : null },
       upload: { clientMode: clientUploadAvailable(env) },
       limits: REFERENT_LIMITS,
+      eligible: i.eligible === true,
+      referent,
+      latestReferentRequestId,
     };
   } catch (error) {
     logReferentError("pannello", error, { workspaceId: ws });
@@ -785,7 +886,13 @@ function latestForLine(asks: readonly AskRow[], now: Date): LatestAskForNeed | n
 /** Le domande standard che mancano alla scheda, in un solo statement; una seconda volta: niente. */
 export const prepareReferentQuestions = guardedReferent(
   "prepara_domande",
-  async function prepareReferentQuestions(ctx: WriteContext, useCaseId: string, env: Env = process.env): Promise<ServiceResult<{ added: number; gaps: number }> | ReferentFailure> {
+  async function prepareReferentQuestions(
+    ctx: WriteContext,
+    useCaseId: string,
+    env: Env = process.env,
+    /** (Rilascio 5, D32) Le domande standard da non aggiungere: «Scegli il referente» salta frequenza e tempo, che chiede già la stima. */
+    skip: readonly string[] = [],
+  ): Promise<ServiceResult<{ added: number; gaps: number }> | ReferentFailure> {
     const writer = await referentWriter(ctx, env);
     if (!writer.ok) return writer;
     if (!isUuid(useCaseId)) return rfail("non_trovato");
@@ -795,13 +902,14 @@ export const prepareReferentQuestions = guardedReferent(
     const needs = await readCardNeeds(executor, ctx.workspaceId, card.id);
     const gaps = gapsOf({ useCaseId: card.id, intake: card.intake, valueModel: card.valueModel, linkedNeeds: needs });
     const [keyRows] = await executor.batch([importKeysSql(ctx.workspaceId, card.id)]);
+    const skipped = new Set(skip);
     const missing = missingPreparedQuestions({
       useCaseId: card.id,
       intake: card.intake,
       valueModel: card.valueModel,
       linkedNeeds: needs,
       existingImportKeys: new Set(keyRows.map((r) => String(r.import_key))),
-    });
+    }).filter((q) => !skipped.has(q.key));
     // (0025) «Prepara le domande» di Lateral Space: se il lavoro aspetta l'ok del cliente, «Autorizza i fornitori».
     const supplierNotice = await subprocessorsNoticeFor(ctx.workspaceId, env);
     const notice = supplierNotice && (await actsAsLateralSpace(executor, writer.userId, env)) ? supplierNotice : null;

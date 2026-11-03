@@ -14,7 +14,7 @@ import {
   sendReferentRequestAction,
 } from "@/lib/actions/use-case-referents";
 import type { ReferentActionResult, ReferentMemberOption, ReferentRequestView, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
-import { REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, companyLabel } from "@/lib/use-cases/referent/labels";
+import { REFERENT_ASSIGN_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, companyLabel, fillText } from "@/lib/use-cases/referent/labels";
 import { orgWordsOf } from "@/lib/use-cases/referent/match";
 import { referentRequestPreview, requesterNameOf } from "@/lib/use-cases/referent/preview";
 import { cn } from "@/lib/utils";
@@ -92,6 +92,11 @@ export interface AskStepsProps extends AskStepsContext {
   onDismiss: (keep: AskSession | null) => void;
   /** Inviata: la bozza si cancella. */
   onSent: () => void;
+  /**
+   * (Rilascio 5, §8.4) «Chiedi a un'altra persona»: la stessa finestra per chi non è il referente; la
+   * riga del referente non si sceglie («(è il referente)») e in cima i suoi «Chi potrebbe saperlo?».
+   */
+  other?: boolean;
 }
 
 /**
@@ -103,7 +108,8 @@ export interface AskStepsProps extends AskStepsContext {
 export function AskSteps({
   workspaceId,
   useCaseId,
-  panel,
+  panel: panelIn,
+  other = false,
   mode = ASK_MODE,
   previous = null,
   needInfo,
@@ -116,6 +122,8 @@ export function AskSteps({
   onDismiss,
   onSent,
 }: AskStepsProps) {
+  const panel = useMemo(() => (other ? otherPanelOf(panelIn) : panelIn), [other, panelIn]);
+  const otherHints = other && panelIn.referent?.hints.length ? { lead: fillText(REFERENT_ASSIGN_TEXT.hintsLead, { Nome: panelIn.referent.contact.name }), items: panelIn.referent.hints } : null;
   const baseId = useId();
   const formId = `${baseId}-passo`;
   const ids = {
@@ -444,7 +452,7 @@ export function AskSteps({
       >
         <div data-slot="referent-ask" data-step={step} className="flex min-h-0 flex-1 flex-col">
           <div className="space-y-3 px-4 pt-4 sm:px-6 sm:pt-5">
-            <DialogTitle>{ask ? T.title : T.titleAgain}</DialogTitle>
+            <DialogTitle>{other ? REFERENT_ASSIGN_TEXT.other : ask ? T.title : T.titleAgain}</DialogTitle>
             {!ask && mode.liveHint ? <DialogDescription>{REFERENT_UI_TEXT.askAgainLiveHint}</DialogDescription> : null}
             <AskStepBar step={step} />
           </div>
@@ -461,6 +469,7 @@ export function AskSteps({
                 limits={panel.limits}
                 selfHint={askSelfHint(panel)}
                 otherHint={askOtherRequestsHint(panel, draft)}
+                hints={otherHints}
                 onChoice={(value) => update({ choice: value }, ["contact"])}
                 onField={(key, value) => update({ [key]: value } as Partial<AskDraft>, [key === "name" ? "displayName" : key === "role" ? "roleLabel" : "email"])}
               />
@@ -507,6 +516,13 @@ export function AskSteps({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** (Rilascio 5) «Chiedi a un'altra persona»: il referente resta nell'elenco ma non si sceglie. */
+export function otherPanelOf(panel: UseCaseReferentPanel): UseCaseReferentPanel {
+  const referentId = panel.referent?.contact.id.toLowerCase() ?? null;
+  if (!referentId) return panel;
+  return { ...panel, contacts: panel.contacts.map((c) => (c.id.toLowerCase() === referentId ? { ...c, selectable: false, reason: "referente" as const } : c)) };
 }
 
 /**

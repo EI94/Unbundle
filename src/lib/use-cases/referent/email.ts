@@ -222,21 +222,22 @@ export function referentRequestParts(input: Extract<ReferentEmailInput, { templa
     );
     return { subject: subjectOf(`${company(input.company)}: sei il referente per «${uc}»`), blocks };
   }
-  // (Referente già iscritto) L'email dice subito che la persona è stata indicata come referente.
+  // (Rilascio 5, §8.4) Solo domande («Chiedi a un'altra persona», «Chiedi al referente»): l'email non
+  // dice più «sei il referente», che vale solo per la richiesta al referente.
   const blocks: Block[] = [
     { p: "Buongiorno," },
-    { p: `${name(input.requesterName)} ti ha indicato come referente per lo use case «${uc}» e ti chiede alcune informazioni.` },
+    { p: `${name(input.requesterName)} ti chiede alcune informazioni sullo use case «${uc}».` },
     { p: input.questions === 1 ? "È una domanda sola." : `Le domande sono ${input.questions}.` },
   ];
   if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
   blocks.push(
-    { p: "Bastano pochi minuti e puoi rispondere anche dal telefono. Se non sai una risposta, scegli «Non ce l'ho». Se hai un documento utile, allegalo: prima togli nomi e dati personali." },
+    { p: "Bastano pochi minuti e puoi rispondere anche dal telefono. Se un'informazione non ce l'hai, scegli «Non ce l'ho». Se hai un documento utile, allegalo: prima togli nomi e dati personali." },
     { link: { href: link, label: "Apri le domande" } },
     { small: expiry(input.expiresAt) },
     ...teamAccessBlocks(input.cardLink, input.accountNotice === true),
     { small: replyLine(input.replyToKnown, input.requesterName) },
   );
-  return { subject: subjectOf(`${company(input.company)}: sei il referente per «${uc}»`), blocks };
+  return { subject: subjectOf(`${company(input.company)}: alcune domande su «${uc}»`), blocks };
 }
 
 /** I testi di §7. */

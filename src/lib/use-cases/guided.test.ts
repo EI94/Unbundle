@@ -729,3 +729,63 @@ test("i testi della scheda guidata passano copy-guard: «use case», mai «caso 
   assert.ok(strings.length > 100, `${strings.length} testi`);
   assert.deepEqual(findHubForbiddenIn(strings, "area"), []);
 });
+
+// ─── Rilascio 5: il referente nel riquadro (§9.6) ────────────────────
+
+type RefInput = NonNullable<NextStepInput["referent"]>;
+const referent = (over: Partial<RefInput> = {}): RefInput => ({ state: "manca", review: null, canChoose: true, askableForReferent: null, ...over });
+
+test("rilascio 5: senza referente, «Scegliere il referente» prima di «Quando» e dopo G1, G2; uno use case pronto resta G9", () => {
+  const info = progress({ received: 0, total: 10, toAsk: 7 });
+  const g5 = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent() }));
+  assert.deepEqual(brief(g5), { key: "G5", title: "Scegliere il referente", line: `${T} Il referente conferma lo use case, stima il tempo e risponde alle domande.`, action: "referente", mine: true, decisions: "compact" });
+  assert.deepEqual(g5.action, { type: "referente", mode: "scegli", label: "Scegli il referente" });
+  // Senza un trimestre (il G3 di oggi su 15 card di TopJet): prima il referente.
+  const later = nextStepOf(input({ item: approved({ subState: "piu_avanti", targetQuarter: null }), info, referents: panel([]), askEntry: entry([]), referent: referent() }));
+  assert.equal(later.key, "G5");
+  assert.equal(later.title, "Scegliere il referente");
+  // Nessuna domanda da chiedere: solo la conferma e la stima.
+  const none = nextStepOf(input({ item: approved({ subState: "piu_avanti", targetQuarter: null }), info: null, referents: panel([]), askEntry: entry([]), referent: referent() }));
+  assert.equal(none.line, `${T} Il referente conferma lo use case e stima il tempo.`);
+  // L'email non attiva (il harness): G6 con il motivo, nessun pulsante.
+  const g6 = nextStepOf(input({ item: approved(), info, referents: panel([gate.email]), askEntry: entry([gate.email]), referent: referent({ canChoose: false }) }));
+  assert.deepEqual(brief(g6), { key: "G6", title: "Scegliere il referente", line: gate.email.message, action: "none", mine: false, decisions: "compact" });
+  // L'ok sui fornitori: G4 come oggi.
+  const g4 = nextStepOf(input({ item: approved(), info, referents: panel([gate.subprocessors(true)]), askEntry: entry([gate.subprocessors(true)]), referent: referent({ canChoose: false }) }));
+  assert.deepEqual([g4.key, g4.action.type, g4.mine], ["G4", "impostazioni", true]);
+  // Pronto da avviare (informazioni complete): G9, il referente non blocca (D36).
+  assert.equal(nextStepOf(input({ item: approved(), info: COMPLETE, referents: panel([]), askEntry: entry([]), referent: referent() })).key, "G9");
+  // Le risposte da verificare vengono prima.
+  assert.equal(nextStepOf(input({ item: approved(), info: progress({ toVerify: 2, received: 2 }), referents: panel([]), askEntry: entry([]), referent: referent() })).key, "G1");
+});
+
+test("rilascio 5: con il referente, G1 per la sua risposta, G2 senza risposta, G7 «Tocca al referente.», poi le domande", () => {
+  const info = progress({ received: 0, total: 10, toAsk: 7 });
+  const correction = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "da_verificare", review: "correzione" }) }));
+  assert.deepEqual(brief(correction), { key: "G1", title: "Verificare le risposte arrivate", line: `${T} Il referente chiede di correggere lo use case.`, action: "vai", mine: true, decisions: "compact" });
+  assert.deepEqual(correction.action, { type: "vai", id: "referente", label: "Vedi le risposte" });
+  assert.equal(nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "da_verificare", review: "stima" }) })).line, `${T} Il referente ha una stima diversa del tempo.`);
+  assert.equal(nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "da_verificare", review: "stima", noTeamEstimate: true }) })).line, `${T} Il referente ha dato una stima del tempo.`);
+  const silent = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "nessuna_risposta" }) }));
+  assert.deepEqual([silent.key, silent.line], ["G2", `${T} Il referente non ha risposto.`]);
+  assert.deepEqual(silent.action, { type: "vai", id: "referente", label: "Vedi le richieste" });
+  const waiting = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "in_attesa" }) }));
+  assert.deepEqual(brief(waiting), { key: "G7", title: "Aspettare le risposte", line: "Tocca al referente.", action: "none", mine: false, decisions: "compact" });
+  const more = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "fatto", askableForReferent: 3 }) }));
+  assert.deepEqual(more.action, { type: "referente", mode: "chiedi", label: "Chiedi al referente" });
+  assert.equal(more.title, "Chiedere le informazioni a TopJet");
+  const other = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "fatto", askableForReferent: 0 }) }));
+  assert.deepEqual(brief(other), { key: "G5", title: "Chiedere a un'altra persona", line: `${T} Il referente non ha queste informazioni: chiedi a un'altra persona.`, action: "referente", mine: true, decisions: "compact" });
+  assert.deepEqual(other.action, { type: "referente", mode: "altra", label: "Chiedi a un'altra persona" });
+  // Il pannello laterale (askableForReferent null): il G5 di oggi, senza nomi.
+  assert.equal(nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "fatto", askableForReferent: null }) })).action.type, "chiedi");
+});
+
+test("rilascio 5: con referent null ogni passo resta quello del rilascio 4", () => {
+  const info = progress({ received: 0, total: 10, toAsk: 7, waiting: 1 });
+  for (const over of [{}, { subState: "piu_avanti" as const, targetQuarter: null }, { targetQuarter: "2026-Q2" }]) {
+    const a = nextStepOf(input({ item: approved(over), info, referents: panel([]), askEntry: entry([]) }));
+    const b = nextStepOf(input({ item: approved(over), info, referents: panel([]), askEntry: entry([]), referent: null }));
+    assert.deepEqual(a, b);
+  }
+});

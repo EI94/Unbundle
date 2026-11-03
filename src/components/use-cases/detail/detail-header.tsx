@@ -11,6 +11,7 @@ import type { Phase, SubState } from "@/lib/use-cases/types";
 import { cn } from "@/lib/utils";
 import { AgentTag } from "../agent-tag";
 import { PhasePill } from "../phase-pill";
+import { InPageLink } from "./arrival";
 import { useHideFromSearchItem } from "./hide-from-search-item";
 import { InlineTextField } from "./inline-text-field";
 import { REDACT_TEXT, RedactDialog, type RedactOption } from "./redact-dialog";
@@ -51,6 +52,8 @@ export interface DetailHeaderProps {
     /** «Oscura testo»: Lateral Space con ruolo da revisore e chi gestisce il workspace (§1.2 punto 10). */
     canRedact: boolean;
     redactOptions: readonly RedactOption[];
+    /** (Rilascio 5, §9.1) «Referente: {Nome} · {stato}», un link al blocco «Referente»; null senza referente. */
+    referentLine?: string | null;
   } | null;
   /**
    * Il titolo si modifica qui, nella testata (`canEditWhat`): una volta sola (H4p). Senza, il
@@ -59,6 +62,8 @@ export interface DetailHeaderProps {
   titleEdit?: { item: Pick<DecisionItem, "id" | "version">; label: string; max: number } | null;
   /** Accanto alla pillola: «Proposto da te» (D13), per il contributore. */
   marker?: ReactNode;
+  /** (Rilascio 5, §9.1) Il contributore: la parola dello stato del referente dopo la pillola (niente nomi). */
+  referentState?: ReactNode;
   className?: string;
 }
 
@@ -70,7 +75,7 @@ export interface DetailHeaderProps {
  * il titolo intero. Al contributore la testata di prima: titolo e fase, e il codice solo delle sue
  * proposte, con «Copia link».
  */
-export function DetailHeader({ workspaceId, card, reviewer, titleEdit, marker, className }: DetailHeaderProps) {
+export function DetailHeader({ workspaceId, card, reviewer, titleEdit, marker, referentState, className }: DetailHeaderProps) {
   const [dialog, setDialog] = useState<"oscura" | null>(null);
   const hideItem = useHideFromSearchItem({
     workspaceId,
@@ -114,6 +119,7 @@ export function DetailHeader({ workspaceId, card, reviewer, titleEdit, marker, c
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {marker}
           <PhasePill label={card.phaseLabel} phase={card.phase} subState={card.subState} />
+          {referentState}
         </div>
       </header>
     );
@@ -155,6 +161,13 @@ export function DetailHeader({ workspaceId, card, reviewer, titleEdit, marker, c
           )}
         </h1>
       )}
+      {reviewer.referentLine ? (
+        <p data-slot="referent-line" className="text-sm break-words text-muted-foreground">
+          <InPageLink id="referente" className="rounded-sm underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/50">
+            {reviewer.referentLine}
+          </InPageLink>
+        </p>
+      ) : null}
       {dialog === "oscura" ? (
         <RedactDialog
           open

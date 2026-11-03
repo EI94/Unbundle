@@ -44,7 +44,6 @@ export function AskPreviewStep({
   okNotice: string | null;
   error: string | null;
 }) {
-  const blocks = previewBlocks(parts);
   return (
     <div data-slot="ask-check" className="space-y-4">
       <h3 id={headingId} ref={headingRef} tabIndex={-1} className="rounded-sm text-sm font-medium break-words outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -73,50 +72,7 @@ export function AskPreviewStep({
           ))}
         </div>
       ) : null}
-      <section aria-label={T.previewLabel} data-slot="ask-preview" className="rounded-lg border bg-card text-sm">
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-b px-3 py-2 text-xs">
-          <dt className="text-muted-foreground">{T.from}</dt>
-          <dd className="min-w-0 break-words">{PREVIEW_SENDER}</dd>
-          <dt className="text-muted-foreground">{T.to}</dt>
-          <dd data-slot="ask-preview-to" className="min-w-0 [overflow-wrap:anywhere]">
-            {to}
-          </dd>
-          <dt className="text-muted-foreground">{T.subject}</dt>
-          <dd data-slot="ask-preview-subject" className="min-w-0 break-words font-medium">
-            {parts.subject}
-          </dd>
-        </dl>
-        <div data-slot="ask-preview-body" className="space-y-3 px-3 py-3">
-          {blocks.map((block, index) =>
-            block.kind === "p" ? (
-              <p key={index} className="break-words">
-                {block.text}
-              </p>
-            ) : block.kind === "quote" ? (
-              <blockquote key={index} className="border-l-2 pl-3 break-words whitespace-pre-line text-muted-foreground">
-                {block.text}
-              </blockquote>
-            ) : block.kind === "link" ? (
-              <p key={index}>
-                <span data-slot="ask-preview-link" className="inline-flex rounded-md border px-3 py-1.5 font-medium">
-                  {block.label}
-                </span>
-              </p>
-            ) : block.kind === "list" ? (
-              <ul key={index} className="list-disc space-y-0.5 pl-5">
-                {block.items.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            ) : (
-              <p key={index} className="text-xs break-words text-muted-foreground">
-                {block.text}
-              </p>
-            ),
-          )}
-          <p className="text-xs text-muted-foreground">{PREVIEW_FOOTER}</p>
-        </div>
-      </section>
+      <EmailPreview to={to} parts={parts} />
       <div className="space-y-1.5">
         <p className="text-sm">{T.questionsOnLink}</p>
         <ol data-slot="ask-preview-questions" className="list-decimal space-y-0.5 pl-5 text-sm">
@@ -134,5 +90,56 @@ export function AskPreviewStep({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/** (Rilascio 5) L'email com'è: «Da», «A», «Oggetto» e i blocchi, con il link solo come etichetta. */
+export function EmailPreview({ to, parts }: { to: string; parts: ReferentRequestParts }) {
+  const blocks = previewBlocks(parts);
+  return (
+    <section aria-label={T.previewLabel} data-slot="ask-preview" className="rounded-lg border bg-card text-sm">
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-b px-3 py-2 text-xs">
+        <dt className="text-muted-foreground">{T.from}</dt>
+        <dd className="min-w-0 break-words">{PREVIEW_SENDER}</dd>
+        <dt className="text-muted-foreground">{T.to}</dt>
+        <dd data-slot="ask-preview-to" className="min-w-0 [overflow-wrap:anywhere]">
+          {to}
+        </dd>
+        <dt className="text-muted-foreground">{T.subject}</dt>
+        <dd data-slot="ask-preview-subject" className="min-w-0 break-words font-medium">
+          {parts.subject}
+        </dd>
+      </dl>
+      <div data-slot="ask-preview-body" className="space-y-3 px-3 py-3">
+        {blocks.map((block, index) =>
+          block.kind === "p" ? (
+            <p key={index} className="break-words">
+              {block.text}
+            </p>
+          ) : block.kind === "quote" ? (
+            <blockquote key={index} className="border-l-2 pl-3 break-words whitespace-pre-line text-muted-foreground">
+              {block.text}
+            </blockquote>
+          ) : block.kind === "link" ? (
+            <p key={index}>
+              <span data-slot="ask-preview-link" className="inline-flex rounded-md border px-3 py-1.5 font-medium">
+                {block.label}
+              </span>
+            </p>
+          ) : block.kind === "list" ? (
+            <ul key={index} className="list-disc space-y-0.5 pl-5">
+              {block.items.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          ) : (
+            <p key={index} className="text-xs break-words text-muted-foreground">
+              {block.text}
+            </p>
+          ),
+        )}
+        <p className="text-xs text-muted-foreground">{PREVIEW_FOOTER}</p>
+      </div>
+    </section>
   );
 }

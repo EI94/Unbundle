@@ -58,6 +58,10 @@ const routes = [
   // Release 4: «Prepara le domande» and the reasons that block a request live only inside the three
   // steps of «Chiedi al referente» (the dialog opens on a click, never with the page).
   { name: "scheda-cosa-serve", path: card("r09", "?capitolo=cosa-serve"), as: REVIEWERS, absent: ["Prepara le domande", "Invia la richiesta", "Controlla e invia"] },
+  // Release 5 «Referente in un tocco»: the «Referente» block first in «Cosa serve», with «Manca il
+  // referente.» and «Scegli il referente»; the release 4 «Chiedi al referente» row is gone on a use case
+  // whose referent is chosen here (the dialog opens on a click, never with the page).
+  { name: "scheda-referente", path: card("r09", "?capitolo=cosa-serve"), as: REVIEWERS, present: ["Referente", "Manca il referente."], absent: ["Chiedi al referente", "Invia a", "Cosa riceve"] },
   { name: "scheda-approvata", path: card("r09"), as: CONTRIBUTOR, absent: ["{code:r09}", "Realizzazione"] },
   { name: "scheda-capitolo", path: card("r09", "?capitolo=realizzazione"), as: ["ls-lead"], present: ["Avvia la realizzazione"] },
   { name: "scheda-capitolo", path: card("r09", "?capitolo=realizzazione"), as: ["function-lead", "sponsor-cliente"], present: ["La realizzazione la avvia Lateral Space."], absent: ["Avvia la realizzazione"] },

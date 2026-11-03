@@ -49,12 +49,15 @@ export interface ReferentRequestPreviewInput {
   message: string | null;
   /** Adesso: la scadenza è adesso più i giorni del link. */
   today: Date;
+  /** (Rilascio 5) «referente»: l'email della richiesta al referente (conferma, stima, domande). */
+  kind?: "referente" | "domande";
 }
 
 /** L'oggetto e i blocchi dell'email che riceve il referente, senza il link vero né la riga dell'account. */
 export function referentRequestPreview(input: ReferentRequestPreviewInput): ReferentRequestParts {
   return referentRequestParts({
     template: "richiesta",
+    ...(input.kind ? { kind: input.kind } : {}),
     company: input.company ?? "",
     useCase: input.useCase,
     requesterName: input.requesterName,

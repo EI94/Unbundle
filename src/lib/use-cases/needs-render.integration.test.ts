@@ -794,12 +794,20 @@ test("pannello: al massimo tre esigenze aperte, le altre nella scheda; senza esi
   assert.equal(noneData.needs, null);
 });
 
+/** «Cosa serve» fino alla sua chiusura: (rilascio 5) il blocco «Referente» in cima è una sezione sua. */
+function needsSectionOf(html: string): string {
+  const start = html.indexOf('data-slot="section-needs"');
+  const block = html.indexOf('data-slot="referent-block"', start);
+  const from = block > 0 ? html.indexOf("</section>", block) + "</section>".length : start;
+  return html.slice(start, html.indexOf("</section>", from));
+}
+
 test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a posto chiuse e la modifica", opts, async () => {
   const page = await detailHtml("builder", cards.quarter.id);
   // Nessuna barra delle ancore: `?capitolo=cosa-serve` arriva alla sezione, sempre aperta, e al suo titolo.
   assert.ok(!page.includes('href="#cosa-serve"') && page.includes('<section id="cosa-serve"'), "l'ancora è la sezione");
   assert.match(page, /<h2 id="cosa-serve-titolo" tabindex="-1"/);
-  const section = between(page, 'data-slot="section-needs"', "</section>");
+  const section = needsSectionOf(page);
   assert.ok(section.includes(">Requisiti<"));
   for (const key of ["access", "decide", "procedure", "other", "extract"] as const) assert.ok(section.includes(T[key]), key);
   assert.ok(!section.includes(T.kickoff), "i passi non collegati non ci sono");
@@ -824,7 +832,7 @@ test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a p
   assert.ok(!section.includes("Richieste inviate") && !section.includes('id="richieste"'));
   assert.ok(section.includes(">Aggiungi<") && section.includes(">Collega un'esigenza<"));
   const other = await detailHtml("builder", cards.progress.id);
-  assert.ok(between(other, 'data-slot="section-needs"', "</section>").includes("Niente per ora."));
+  assert.ok(needsSectionOf(other).includes("Niente per ora."));
 });
 
 test("scheda compatta: i primi cinque aperti, prima da verificare; «Mostra le altre N», «Prossimi passi», «Già a posto», chiusi", opts, () => {

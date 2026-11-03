@@ -41,7 +41,7 @@ import {
 } from "@/lib/db/queries/use-case-referents";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import type { AddToReferentRequestInput, FileReviewOutcome, ReferentActionResult, ReferentMemberOption, SendReferentRequestInput } from "@/lib/use-cases/referent/contract";
-import { REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { REFERENT_ASSIGN_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import type { ServiceResult, WriteContext } from "@/lib/use-cases/service";
 import { getCollaboratorAccess, type WorkspaceAccess } from "@/lib/workspace-access";
@@ -110,12 +110,13 @@ function afterFiles(workspaceId: string): void {
 }
 
 /** «Prepara le domande». */
-export async function prepareReferentQuestionsAction(workspaceId: string, useCaseId: string): Promise<ReferentActionResult<{ added: number }>> {
+export async function prepareReferentQuestionsAction(workspaceId: string, useCaseId: string, skip?: readonly string[]): Promise<ReferentActionResult<{ added: number }>> {
   if (!isUuid(workspaceId) || !isUuid(useCaseId)) return failure("non_trovato");
   const session = await requireSession();
   const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
-  const result = await prepareReferentQuestions(p.ctx, useCaseId);
+  const keys = Array.isArray(skip) ? skip.filter((k): k is string => typeof k === "string" && /^[a-z]{1,20}$/.test(k)) : [];
+  const result = await prepareReferentQuestions(p.ctx, useCaseId, process.env, keys);
   return done(workspaceId, useCaseId, result, (v) => {
     const gaps = (v as { gaps?: number }).gaps ?? v.added;
     const message = v.added === 1 ? T.prepareOne : v.added > 1 ? fillText(T.prepareMany, { n: v.added }) : gaps > 0 ? T.prepareAlready : T.prepareNothing;
@@ -135,7 +136,9 @@ export async function sendReferentRequestAction(workspaceId: string, useCaseId: 
     requester: { name: p.session.user.name ?? null, emailVerified: p.session.user.emailVerified === true },
   });
   if (result.ok) scheduleReferentDispatch(result.value.requestId);
-  return done(workspaceId, useCaseId, result, (v) => ({ data: { requestId: v.requestId }, message: fillText(T.sent, { Nome: v.contactName }) }));
+  // (Rilascio 5) «Scegli il referente» e «Cambia referente»: «{Nome} è il referente: l'email parte adesso.»
+  const referentChosen = (input as { kind?: unknown }).kind === "referente" && !(input as { previousRequestId?: unknown }).previousRequestId;
+  return done(workspaceId, useCaseId, result, (v) => ({ data: { requestId: v.requestId }, message: fillText(referentChosen ? REFERENT_ASSIGN_TEXT.sentReferent : T.sent, { Nome: v.contactName }) }));
 }
 
 /** «Aggiungi domande» a una richiesta viva. */

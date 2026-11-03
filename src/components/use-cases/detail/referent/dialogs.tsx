@@ -2,7 +2,9 @@
 
 import { deleteNeedFileAction, removeNeedAnswerAction, reviewNeedFileAction, revokeReferentRequestAction } from "@/lib/actions/use-case-referents";
 import type { ReferentRequestView, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
-import { REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { REFERENT_BLOCK_TEXT, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { AssignDialog, type AssignContext } from "./assign-dialog";
+import type { AssignMode } from "./assign-dialog-state";
 import { AddDialog } from "./add-dialog";
 import { AnswerDialog } from "./answer-dialog";
 import { askAgainMode } from "./ask-dialog-state";
@@ -18,7 +20,11 @@ export type ReferentDialog =
   | { kind: "ask" }
   | { kind: "again"; request: ReferentRequestView }
   | { kind: "add"; request: ReferentRequestView }
-  | { kind: "revoke"; request: ReferentRequestView }
+  | { kind: "revoke"; request: ReferentRequestView; referent?: boolean }
+  /** (Rilascio 5) «Scegli il referente», «Cambia referente», «Chiedi di nuovo», «Chiedi al referente». */
+  | { kind: "assign"; mode: AssignMode }
+  /** (Rilascio 5) «Chiedi a un'altra persona»: la finestra in tre passi, per chi non è il referente. */
+  | { kind: "other" }
   | { kind: "correct"; contact: { id: string; name: string } }
   | { kind: "erase"; contact: { id: string; name: string } }
   | { kind: "answer"; need: { id: string; title: string } }
@@ -31,6 +37,8 @@ export type ReferentDialog =
 export interface ReferentAskContext extends AskStepsContext {
   /** La bozza di «Chiedi al referente» chiuso senza inviare (null: niente da riprendere). */
   onKeep: (keep: AskSession | null) => void;
+  /** (Rilascio 5) Quello che serve a «Scegli il referente»: la descrizione e la stima come le vede il referente. */
+  assign: AssignContext;
 }
 
 /** Disegna la finestra aperta; `onClose` la chiude (dopo un invio riuscito, o con «Annulla»). */
@@ -52,8 +60,23 @@ export function ReferentDialogs({
   onClose: () => void;
 }) {
   if (!dialog) return null;
-  const { onKeep, ...context } = ask;
+  const { onKeep, assign, ...context } = ask;
   switch (dialog.kind) {
+    case "assign":
+      return <AssignDialog key={dialog.mode} {...context} {...assign} workspaceId={workspaceId} useCaseId={useCaseId} panel={panel} mode={dialog.mode} onClose={onClose} />;
+    case "other":
+      return (
+        <AskSteps
+          {...context}
+          saved={null}
+          workspaceId={workspaceId}
+          useCaseId={useCaseId}
+          panel={panel}
+          other
+          onDismiss={onClose}
+          onSent={onClose}
+        />
+      );
     case "ask":
       return (
         <AskSteps
@@ -92,7 +115,7 @@ export function ReferentDialogs({
       return (
         <ConfirmDialog
           title={T.revokeConfirmTitle}
-          description={fillText(T.revokeConfirmText, { Nome: dialog.request.contact.name })}
+          description={fillText(dialog.referent ? REFERENT_BLOCK_TEXT.revokeReferent : T.revokeConfirmText, { Nome: dialog.request.contact.name })}
           confirmLabel={T.revokeConfirm}
           action={() => revokeReferentRequestAction(workspaceId, useCaseId, dialog.request.id, dialog.request.version)}
           onClose={onClose}

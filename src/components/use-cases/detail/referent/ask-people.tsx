@@ -72,6 +72,10 @@ export function AskPeopleStep({
   otherHint,
   onChoice,
   onField,
+  heading,
+  lead,
+  rowLine,
+  hints,
 }: {
   ids: AskPeopleIds;
   headingRef?: RefObject<HTMLHeadingElement | null>;
@@ -85,6 +89,14 @@ export function AskPeopleStep({
   otherHint: string | null;
   onChoice: (value: string) => void;
   onField: (key: "name" | "email" | "role", value: string) => void;
+  /** (Rilascio 5) Il titolo dell'elenco («Chi è il referente?»); di default «A chi chiedi?». */
+  heading?: string;
+  /** (Rilascio 5) La riga sotto il titolo; null: nessuna. */
+  lead?: string | null;
+  /** (Rilascio 5) La riga grigia di un referente, al posto di quella del rilascio 4. */
+  rowLine?: (option: ReferentContactOption) => string | null;
+  /** (Rilascio 5) «Secondo {Nome}, potrebbe saperlo:» e fino a 3 commenti del referente. */
+  hints?: { lead: string; items: readonly string[] } | null;
 }) {
   const members = people.state === "failed" ? [] : people.members;
   // I titoli dei gruppi solo quando ci sono sia referenti sia persone del workspace (§6).
@@ -94,9 +106,19 @@ export function AskPeopleStep({
   return (
     <div data-slot="ask-people" className="space-y-3">
       <h3 id={ids.heading} ref={headingRef} tabIndex={-1} className="rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        {T.whoLabel}
+        {heading ?? T.whoLabel}
       </h3>
-      <p className="text-sm text-muted-foreground">{T.whoLead}</p>
+      {lead === undefined ? <p className="text-sm text-muted-foreground">{T.whoLead}</p> : lead ? <p className="text-sm text-muted-foreground">{lead}</p> : null}
+      {hints && hints.items.length ? (
+        <div data-slot="ask-hints" className="space-y-1">
+          <p className="text-sm text-muted-foreground">{hints.lead}</p>
+          {hints.items.map((item, index) => (
+            <blockquote key={index} className="line-clamp-2 border-l-2 pl-3 text-sm break-words text-muted-foreground">
+              {item}
+            </blockquote>
+          ))}
+        </div>
+      ) : null}
       {notice ? (
         <p data-slot="ask-notice" data-gate={notice.code} className="text-sm break-words text-muted-foreground">
           {notice.message}
@@ -115,7 +137,7 @@ export function AskPeopleStep({
       >
         {contacts.length && grouped ? <p className="px-2 pt-1 text-xs font-medium text-muted-foreground">{T.contactsGroup}</p> : null}
         {contacts.map((option) => (
-          <Choice key={option.id} value={option.id} name={option.displayName} line={contactRowLine(option) || null} disabled={!option.selectable} />
+          <Choice key={option.id} value={option.id} name={option.displayName} line={(rowLine ? rowLine(option) : contactRowLine(option)) || null} disabled={!option.selectable} />
         ))}
         {grouped ? <p className="px-2 pt-2 text-xs font-medium text-muted-foreground">{T.membersGroup}</p> : null}
         {people.state === "loading" && members.length === 0 ? (

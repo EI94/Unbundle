@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ReferentMemberOption, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
 import type { AskNeedInfo, AskSession } from "./ask-steps-state";
+import type { AssignContext } from "./assign-dialog";
 import { ReferentDialogs, type ReferentDialog } from "./dialogs";
 
 /** Apre una finestra di «Chiedi al referente»; null fuori dalla scheda o senza la funzione. */
@@ -17,6 +18,8 @@ export function useReferentDialog(): OpenReferentDialog | null {
 
 /** Il titolo di «Cosa serve» (`section-needs.tsx`, tabIndex -1): il fuoco ci va quando il pulsante di partenza non c'è più. */
 export const COSA_SERVE_HEADING_ID = "cosa-serve-titolo";
+/** (Rilascio 5) Il titolo del blocco «Referente»: il fuoco ci va quando il pulsante di partenza non c'è più. */
+export const REFERENT_HEADING_ID = "referente-titolo";
 
 export interface ReferentDialogHostProps {
   workspaceId: string;
@@ -33,6 +36,8 @@ export interface ReferentDialogHostProps {
   companyName: string | null;
   /** Il nome del cliente del connettore, per le parole dell'azienda della proposta delle domande. */
   companyDisplayName: string | null;
+  /** (Rilascio 5) La descrizione e la stima del team come le vede il referente, per «Cosa riceve {Nome}». */
+  assign?: AssignContext;
   children: ReactNode;
 }
 
@@ -44,14 +49,16 @@ export interface ReferentDialogHostProps {
  * referente» chiusa senza inviare resta per la vita della pagina (solo qui, mai nel browser) e
  * l'ultimo elenco delle persone del workspace serve mentre arriva di nuovo.
  */
-export function ReferentDialogHost({ workspaceId, useCaseId, panel, canEdit, needInfo, card, companyName, companyDisplayName, children }: ReferentDialogHostProps) {
+const NO_ASSIGN: AssignContext = Object.freeze({ description: Object.freeze({ text: null, dropped: 0 }), team: null });
+
+export function ReferentDialogHost({ workspaceId, useCaseId, panel, canEdit, needInfo, card, companyName, companyDisplayName, assign = NO_ASSIGN, children }: ReferentDialogHostProps) {
   const [dialog, setDialog] = useState<ReferentDialog | null>(null);
   const [saved, setSaved] = useState<AskSession | null>(null);
   const [peopleCache, setPeopleCache] = useState<readonly ReferentMemberOption[] | null>(null);
   const trigger = useRef<{ element: HTMLElement | null; ask: boolean }>({ element: null, ask: false });
   const feature = canEdit && panel?.available ? panel : null;
   const open = useCallback<OpenReferentDialog>((next) => {
-    trigger.current = { element: document.activeElement instanceof HTMLElement ? document.activeElement : null, ask: next.kind === "ask" || next.kind === "again" };
+    trigger.current = { element: document.activeElement instanceof HTMLElement ? document.activeElement : null, ask: next.kind === "ask" || next.kind === "again" || next.kind === "assign" || next.kind === "other" };
     setDialog(next);
   }, []);
   const close = useCallback(() => {
@@ -62,13 +69,13 @@ export function ReferentDialogHost({ workspaceId, useCaseId, panel, canEdit, nee
     // «Chiedi al referente», se il pulsante non c'è più, al titolo di «Cosa serve» (mai sul fondo della pagina).
     requestAnimationFrame(() => {
       if (back?.isConnected) back.focus({ preventScroll: true });
-      else if (ask) document.getElementById(COSA_SERVE_HEADING_ID)?.focus({ preventScroll: true });
+      else if (ask) (document.getElementById(REFERENT_HEADING_ID) ?? document.getElementById(COSA_SERVE_HEADING_ID))?.focus({ preventScroll: true });
     });
   }, []);
   const onPeople = useCallback((members: readonly ReferentMemberOption[]) => setPeopleCache(members), []);
   const value = useMemo(() => (feature ? open : null), [feature, open]);
   const titles = useMemo(() => new Map(Object.entries(needInfo).map(([id, info]) => [id, info.title])), [needInfo]);
-  const ask = { needInfo, card, companyName, companyDisplayName, saved, peopleCache, onPeople, onKeep: setSaved };
+  const ask = { needInfo, card, companyName, companyDisplayName, saved, peopleCache, onPeople, onKeep: setSaved, assign };
   return (
     <ReferentDialogContext value={value}>
       {children}
