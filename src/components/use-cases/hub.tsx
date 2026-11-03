@@ -197,7 +197,8 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
   const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "cosa-serve" || (lanes && !hasActiveFilters(params)) || Boolean(params.apri));
   const [dossierColumn, participation, subprocessorsPending, needs, info, connectorDisplayName, referents] = await Promise.all([
     inProgress.length ? dossierColumnOf(workspaceId, { userId: session.user.id, role: access.role }, inProgress) : null,
-    view === "da-decidere" ? getPortfolioParticipation(workspaceId) : null,
+    // (Rilascio 5, §12, D29) «Partecipazione per area» in fondo alla Panoramica (le corsie, non un grafico), per ogni ruolo.
+    lanes ? getPortfolioParticipation(workspaceId) : null,
     // Solo a Lateral Space (la stessa regola di `getUcUserContext`): ai revisori del cliente nessuna lettura.
     reviewer && abilities.isLateralSpace && lanes ? subprocessorsPendingForLs(workspaceId, session.user.id) : false,
     readsNeeds ? listWorkspaceNeeds(workspaceId, viewer) : null,
@@ -518,7 +519,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                   exportHref: `/dashboard/${workspaceId}/portfolio/export`,
                   activityMapping: data.activityMapping,
                   mappingHref: activityMappingPath(workspaceId),
-                  charts: chartLinks,
+
                 }
               : null
           }
@@ -571,6 +572,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
               filtersActive={filtersActive}
               clearHref={clearHref}
               open={params.stima}
+              charts={chartLinks}
             />
           ) : (
             // Il titolo per i lettori di schermo prende il fuoco dopo «‹ Torna alla Panoramica».
@@ -600,6 +602,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 filtersActive={filtersActive}
                 clearHref={clearHref}
                 grouping={grouping}
+                charts={chartLinks}
                 agentHref={agentHref}
                 agentFilter={params.agente}
                 contributor={!reviewer}
@@ -644,7 +647,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           </>
         )}
 
-        {view === "da-decidere" && data.participation ? <ParticipationCard participation={data.participation} /> : null}
+        {view === "panoramica" && !chart && data.participation ? <ParticipationCard participation={data.participation} /> : null}
       </div>
 
       {panelData ? (

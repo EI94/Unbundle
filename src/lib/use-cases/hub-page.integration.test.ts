@@ -346,10 +346,12 @@ async function panelOf(person: Person, workspaceId: string, searchParams: Record
 }
 
 /** Le voci dei grafici nel menu «⋯» (`HubHeader.menu.charts`): il contenuto del menu non è nell'HTML finché è chiuso. */
+/** (Rilascio 5, §12) I grafici di «Grafici» nella Panoramica (null senza il menu «⋯»), e se il «⋯» ne ha ancora. */
 async function menuCharts(person: Person, workspaceId: string, searchParams: Record<string, string>) {
   const { tree } = await hubTree(person, workspaceId, searchParams);
-  const [menu] = findProp(tree, "menu") as Array<{ charts: Array<{ label: string; href: string }> } | null>;
-  return menu;
+  const [menu] = findProp(tree, "menu") as Array<Record<string, unknown> | null>;
+  const [charts] = findProp(tree, "charts") as Array<Array<{ label: string; href: string }>>;
+  return menu ? { charts: charts ?? [], inMenu: Object.hasOwn(menu, "charts") } : null;
 }
 
 before(async () => {
@@ -862,7 +864,7 @@ test("Panoramica: letture solo dove servono", opts, async () => {
   assert.equal(lanes.data.subprocessorsPending, false);
 });
 
-test("menu «⋯»: i grafici con i filtri di adesso, mai ai contributori", opts, async () => {
+test("(rilascio 5) «Grafici»: i grafici con i filtri di adesso a vista nella Panoramica, non più nel «⋯»; mai ai contributori", opts, async () => {
   // Con un pannello aperto e «da stimare»: la Panoramica con l'origine di adesso, senza `stima` né
   // `apri`. Nessuna scheda di A ha «Benefici e costi»: solo la matrice.
   for (const person of ["ls", "builder", "manager"] as const) {
@@ -873,6 +875,7 @@ test("menu «⋯»: i grafici con i filtri di adesso, mai ai contributori", opts
       [{ label: "Matrice Valore × Costo", href: `/dashboard/${ids.wsA}/use-cases?vista=panoramica&mostra=matrice&origine=transformation` }],
       person,
     );
+    assert.equal(menu.inMenu, false, `${person}: il «⋯» ha solo «Esporta Excel» e «Proponi da Activity mapping»`);
   }
   assert.equal(await menuCharts("contributor", ids.wsA, { vista: "panoramica" }), null, "niente menu «⋯» per il contributore");
   // Nessuno use case da mettere in ordine (D: solo una best practice; E: una scheda chiusa): nessun grafico.
@@ -1290,7 +1293,8 @@ test("Panoramica «Per agente»: una card per agente, poi le corsie del solo age
   assert.ok(!contributor.includes("agent-in-progress") && !contributor.includes("€"), "nessuna cifra al contributore");
   // Senza agenti nei titoli niente scelta, e un vecchio `mostra=agenti` mostra le corsie.
   const plain = await html("ls", ids.wsA, { vista: "panoramica", mostra: "agenti" });
-  assert.ok(!plain.includes("plan-grouping") && !plain.includes("agent-grid") && plain.includes('data-slot="lanes"'));
+  // (Rilascio 5) La riga resta per «Grafici», senza «Per trimestre | Per agente».
+  assert.ok(!plain.includes('aria-label="Raggruppa"') && !plain.includes("agent-grid") && plain.includes('data-slot="lanes"'));
   for (const page of [contributor, plain]) assert.ok(!page.includes(MARK), "nessun segno senza «Per agente»");
 });
 

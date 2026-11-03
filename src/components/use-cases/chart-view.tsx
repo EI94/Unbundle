@@ -5,6 +5,7 @@ import { buildBenefitBubbles, buildRoadmapValue, groupPalette, roadmapPlan, type
 import type { ValueParams } from "@/lib/use-cases/value-model";
 import { buildPriority, offMatrixLabel, roadmapGroupKey, type HubChartParam, type HubEstimateParam, type HubItem } from "@/lib/use-cases/views";
 import { BenefitBubbleChart } from "./benefit-bubbles";
+import { ChartsMenu, type ChartsMenuLink } from "./charts-menu";
 import { EmptyState, NoResults } from "./hub-header";
 import { BackToListLink } from "./list-focus";
 import { RoadmapValueCharts } from "./roadmap-value";
@@ -26,11 +27,13 @@ export const CHART_TEXT = Object.freeze({
  * Sopra un grafico del menu «⋯»: «‹ Torna alla Panoramica», con gli stessi filtri, e il nome del
  * grafico. Tornando, il fuoco va al titolo della Panoramica (`ListFocusTarget`), non sul `<body>`.
  */
-export function ChartHeader({ title, backHref }: { title: string; backHref: string }) {
+export function ChartHeader({ title, backHref, charts = [] }: { title: string; backHref: string; charts?: readonly ChartsMenuLink[] }) {
   return (
     <div data-slot="chart-header" className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <BackToListLink href={backHref}>{CHART_TEXT.back}</BackToListLink>
-      <h2 className="text-base font-semibold">{title}</h2>
+      {/* (Rilascio 5, §12) Gli altri grafici, a vista accanto al ritorno. */}
+      <ChartsMenu links={charts} className="ml-auto" />
+      <h2 className="basis-full text-base font-semibold">{title}</h2>
     </div>
   );
 }
@@ -62,6 +65,8 @@ export interface HubChartViewProps {
   clearHref: string;
   /** `stima` dell'indirizzo: l'elenco sotto la matrice aperto quando la pagina si rende (un vecchio chip «N da stimare»). */
   open: HubEstimateParam | null;
+  /** (Rilascio 5, §12) I grafici, nel menu «Grafici» accanto a «‹ Torna alla Panoramica». */
+  charts?: readonly ChartsMenuLink[];
 }
 
 /**
@@ -97,12 +102,13 @@ export function HubChartView({
   filtersActive,
   clearHref,
   open,
+  charts = [],
 }: HubChartViewProps) {
   const base = withoutTransient(query);
   // Le bolle solo con le ipotesi di calcolo, altrimenti la matrice.
   const shown: HubChartParam = chart === "benefici" && !valueParams ? "matrice" : chart;
   // «‹ Torna alla Panoramica»: le corsie, con gli stessi filtri e senza «da stimare».
-  const header = <ChartHeader title={CHART_TEXT[shown]} backHref={hubHref(basePath, base, { mostra: null, stima: null })} />;
+  const header = <ChartHeader title={CHART_TEXT[shown]} backHref={hubHref(basePath, base, { mostra: null, stima: null })} charts={charts} />;
   const hrefOf = (id: string) => panelHref(basePath, query, id);
 
   // «Curva del valore»: i conti delle schede filtrate, con i mesi di tutto il workspace.

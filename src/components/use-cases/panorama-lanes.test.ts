@@ -1,5 +1,6 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import * as nodeModule from "node:module";
 import { agentPalette } from "../../lib/use-cases/agents.ts";
 import { findHubForbiddenIn } from "../../lib/use-cases/copy-guard.ts";
@@ -345,7 +346,7 @@ test("«Per trimestre | Per agente»: le card degli agenti al posto delle corsie
   });
   const byAgent = render([libra, plain], { grouping: grouping("agente") });
   assert.match(byAgent, /aria-label="Use case per agente" data-slot="panorama-plan"/);
-  assert.match(byAgent, /<div data-slot="plan-grouping"><nav aria-label="Raggruppa"/);
+  assert.match(byAgent, /<div data-slot="plan-grouping" class="flex flex-wrap items-center justify-between gap-2"><nav aria-label="Raggruppa"/);
   assert.match(byAgent, /aria-current="page"[^>]*><span>Per agente<\/span>/);
   assert.ok(byAgent.includes('data-slot="agent-grid"') && !byAgent.includes('data-slot="lanes"'));
   assert.ok(!byAgent.includes("agent-in-progress"));
@@ -382,10 +383,26 @@ test("«Per trimestre | Per agente»: le card degli agenti al posto delle corsie
   const MARK = '<span hidden="" data-slot="reveal-on-load"></span>';
   const landing = render([libra, plain], { grouping: { ...grouping("agente"), landOnLoad: true } });
   assert.equal(landing.split(MARK).length - 1, 1);
-  assert.match(landing, /<div data-slot="plan-grouping"><nav [\s\S]*?<\/nav><span hidden="" data-slot="reveal-on-load"><\/span><\/div>/);
+  assert.match(landing, /<div data-slot="plan-grouping" class="[^"]*"><nav [\s\S]*?<\/nav><span hidden="" data-slot="reveal-on-load"><\/span><\/div>/);
   assert.ok(!byAgent.includes(MARK), "senza `landOnLoad` (un pannello, un avviso) niente segno");
   assert.ok(!render([libra, plain], { grouping: { ...grouping("trimestre"), landOnLoad: true } }).includes(MARK), "le corsie: niente segno");
   assert.ok(!render([libra], { agentFilter: "LIBRA", grouping: { ...grouping("trimestre"), landOnLoad: true } }).includes(MARK), "le corsie di un agente: le porta l'ancora");
   const theirs = [contributor({ title: "LIBRA L1 · Fatture" })];
   assert.ok(!render(theirs, { grouping: { ...grouping("agente"), landOnLoad: true } }).includes(MARK), "il contributore: le corsie");
+});
+
+test("(rilascio 5, §12) «Grafici» a vista nella riga di «Per trimestre | Per agente», anche da solo; mai ai contributori", () => {
+  const item = hub({ title: "LIBRA L1 · Fatture", targetQuarter: "2026-Q4" });
+  const charts = [{ label: "Matrice Valore × Costo", href: `${BASE}?vista=panoramica&mostra=matrice` }];
+  const alone = render([item], { charts });
+  assert.match(alone, /<div data-slot="plan-grouping"[^>]*><span aria-hidden="true"><\/span><button[^>]*data-action="charts-menu"/);
+  assert.ok(alone.includes(">Grafici<"));
+  assert.ok(!render([item], {}).includes("Grafici"), "senza grafici (i contributori) niente");
+});
+
+test("(rilascio 5, §12, D29) «Partecipazione per area» in fondo alla Panoramica con le corsie, per ogni ruolo; non su «Da decidere» né su un grafico", () => {
+  const source = readFileSync(new URL("./hub.tsx", import.meta.url), "utf8").replace(/\s+/g, " ");
+  assert.match(source, /lanes \? getPortfolioParticipation\(workspaceId\) : null/);
+  assert.match(source, /\{view === "panoramica" && !chart && data\.participation \? <ParticipationCard participation=\{data\.participation\} \/> : null\}/);
+  assert.doesNotMatch(source, /view === "da-decidere" && data\.participation/);
 });

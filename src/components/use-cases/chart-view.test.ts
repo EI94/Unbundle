@@ -439,5 +439,10 @@ test("i testi dei grafici passano la guardia delle parole", () => {
   const header = renderToStaticMarkup(createElement(charts.ChartHeader, { title: charts.CHART_TEXT.curva, backHref: `${BASE}?vista=panoramica` }));
   assert.match(header, /^<div data-slot="chart-header" class="flex flex-wrap items-center gap-x-3 gap-y-2">/);
   assert.match(header, new RegExp(`<a [^>]*href="${BASE}\\?vista=panoramica"`));
-  assert.ok(header.endsWith("<h2 class=\"text-base font-semibold\">Curva del valore</h2></div>"));
+  assert.ok(header.endsWith("<h2 class=\"basis-full text-base font-semibold\">Curva del valore</h2></div>"));
+  assert.ok(!header.includes("Grafici"), "senza grafici niente menu");
+  // (Rilascio 5, §12) «Grafici» accanto a «‹ Torna alla Panoramica», con le voci dei grafici.
+  const withMenu = renderToStaticMarkup(createElement(charts.ChartHeader, { title: charts.CHART_TEXT.curva, backHref: `${BASE}?vista=panoramica`, charts: [{ label: charts.CHART_TEXT.matrice, href: `${BASE}?vista=panoramica&mostra=matrice` }] }));
+  assert.ok(withMenu.indexOf("Torna alla Panoramica") < withMenu.indexOf(">Grafici<") && withMenu.indexOf(">Grafici<") < withMenu.indexOf("<h2"), withMenu);
+  assert.match(withMenu, /data-action="charts-menu"/);
 });

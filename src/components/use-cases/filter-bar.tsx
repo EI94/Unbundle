@@ -228,7 +228,7 @@ function ReferentMenu({ menu, onChange }: { menu: ReferentFilterMenu; onChange: 
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={`${FILTER_TEXT.referent}: ${chosen?.word ?? FILTER_TEXT.referentAll}`}
-        data-slot="filter-referent"
+        data-action="filter-referent"
         render={<Button variant="outline" className="min-h-11 min-w-0 shrink gap-1 px-2.5 sm:min-h-8" />}
       >
         <MenuTrigger name={FILTER_TEXT.referent} chosen={chosen?.word ?? null} />
@@ -256,7 +256,7 @@ function AreaMenu({ value, options, onChange }: { value: string; options: Filter
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label={`${FILTER_TEXT.area}: ${chosen ?? FILTER_TEXT.anyFeminine}`}
-        data-slot="filter-area"
+        data-action="filter-area"
         render={<Button variant="outline" className="min-h-11 min-w-0 shrink gap-1 px-2.5 sm:min-h-8" />}
       >
         <span className="sm:hidden">{FILTER_TEXT.area}</span>

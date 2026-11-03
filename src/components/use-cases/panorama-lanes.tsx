@@ -24,6 +24,7 @@ import { isContributorItem, type AnyHubItem, type HubItem } from "@/lib/use-case
 import { AgentGrid } from "./agent-grid";
 import { Disclosure } from "./disclosure";
 import { EmptyState, HUB_TEXT, NoResults } from "./hub-header";
+import { ChartsMenu, type ChartsMenuLink } from "./charts-menu";
 import { LaneCard } from "./lane-card";
 import { HashFocusLink, RevealOnLoad } from "./list-focus";
 import { panelHref, type HubQuery } from "./use-case-row";
@@ -93,6 +94,8 @@ export interface PanoramaLanesProps {
   clearHref: string;
   /** «Per trimestre | Per agente»; null senza (contributori, workspace senza prefissi, grafici). */
   grouping: LanesGrouping | null;
+  /** (Rilascio 5, §12) I grafici, a vista nella riga di «Per trimestre | Per agente»: solo ai revisori. */
+  charts?: readonly ChartsMenuLink[];
   /** Le corsie di un agente da «Per agente» (`?agente=…#panoramica-approvati`). */
   agentHref: (param: string) => string;
   /** L'agente del filtro «Agente», per il nome della sezione; null senza. */
@@ -134,6 +137,7 @@ export function PanoramaLanes({
   filtersActive,
   clearHref,
   grouping,
+  charts = [],
   agentHref,
   agentFilter,
   contributor = false,
@@ -193,11 +197,12 @@ export function PanoramaLanes({
       {planned ? (
         // L'ancora delle corsie: «Per agente» ci porta con `?agente=…#panoramica-approvati`, Next ci scorre e `HashFocusLink` le dà il fuoco.
         <section id={PANORAMA_SECTION_ID.approvati} tabIndex={-1} aria-label={planLabel} data-slot="panorama-plan" className="scroll-mt-24 space-y-3 outline-none">
-          {grouping ? (
-            <div data-slot="plan-grouping">
-              <SegmentedNav size="sm" ariaLabel={LANES_TEXT.groupingLabel} active={grouping.active} items={grouping.items} />
+          {grouping || charts.length ? (
+            <div data-slot="plan-grouping" className="flex flex-wrap items-center justify-between gap-2">
+              {grouping ? <SegmentedNav size="sm" ariaLabel={LANES_TEXT.groupingLabel} active={grouping.active} items={grouping.items} /> : <span aria-hidden />}
+              <ChartsMenu links={charts} />
               {/* Qui e non in fondo alla sezione: con `space-y-3` un ultimo figlio in più darebbe un margine sotto le card. */}
-              {byAgent && grouping.landOnLoad ? <RevealOnLoad /> : null}
+              {grouping && byAgent && grouping.landOnLoad ? <RevealOnLoad /> : null}
             </div>
           ) : null}
           {agentLine ? (

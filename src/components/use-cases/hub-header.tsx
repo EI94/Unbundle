@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import type { ActivityMappingState } from "@/lib/use-cases/create";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { cn } from "@/lib/utils";
-import { HubMenu, type HubMenuLink } from "./hub-menu";
+import { HubMenu } from "./hub-menu";
 
 /** Testi della testata e dei vuoti della pagina (docs/use-case/DESIGN.md §4.1, §4.9, §5.5, §14.3). */
 export const HUB_TEXT = Object.freeze({
@@ -43,7 +43,8 @@ export interface HubHeaderProps {
   /** Dove porta «Nuovo use case»: il pannello rapido (Lateral Space) o il modulo completo. */
   newHref: string;
   /** Menu «⋯», solo revisori (§4.1): i grafici (matrici e curva del valore), «Esporta Excel», «Proponi da Activity mapping»; senza, non c'è. */
-  menu: { exportHref: string; activityMapping: ActivityMappingState; mappingHref: string; charts: readonly HubMenuLink[] } | null;
+  /** (Rilascio 5, §12) «⋯» ha solo «Esporta Excel» e «Proponi da Activity mapping»: i grafici sono in «Grafici». */
+  menu: { exportHref: string; activityMapping: ActivityMappingState; mappingHref: string } | null;
   /** «Nuovo use case» pieno (predefinito) o bordato: bordato quando la Panoramica ha «Prossimo passo». */
   newUseCaseVariant?: "default" | "outline";
   children?: ReactNode;
@@ -69,7 +70,7 @@ export function HubHeader({ workspaceId, newHref, menu, newUseCaseVariant = "def
             {HUB_TEXT.newUseCase}
           </Button>
           {menu ? (
-            <HubMenu workspaceId={workspaceId} charts={menu.charts} exportHref={menu.exportHref} activityMapping={menu.activityMapping} mappingHref={menu.mappingHref} />
+            <HubMenu workspaceId={workspaceId} exportHref={menu.exportHref} activityMapping={menu.activityMapping} mappingHref={menu.mappingHref} />
           ) : null}
         </div>
       </div>
