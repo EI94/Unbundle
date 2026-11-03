@@ -13,10 +13,12 @@ export const dynamic = "force-dynamic";
  * la funzione spenta hanno ciascuno la sua scheda, resa qui con i metadati `noindex` del layout.
  * Solo letture: nessuna scrittura su GET, così prefetch e scanner dei link non lasciano tracce.
  */
-export default async function ReferentAskRoute({ params }: { params: Promise<{ token: string }> }) {
+export default async function ReferentAskRoute({ params, searchParams }: { params: Promise<{ token: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const { token } = await params;
+  // (Rilascio 5) Il passo della richiesta al referente (`?passo=1|2|3`): la pagina lo riporta al primo non fatto.
+  const passo = (await searchParams)?.passo;
   const now = new Date();
   const page = await loadReferentAskPage(token, { env: process.env, now });
   if (page.access !== "ok") return <StateScreen kind={stateCardKindOf(page.access)} />;
-  return <ReferentAskPage token={token} initialView={page.view} today={romeDate(now)} />;
+  return <ReferentAskPage token={token} initialView={page.view} today={romeDate(now)} initialStep={typeof passo === "string" ? passo : null} />;
 }

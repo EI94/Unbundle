@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Notice, PRIMARY_CLASS } from "@/components/uc/referente/screen";
 import { ActionBar } from "@/components/uc/referente/step-bar";
-import { REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
+import { REFERENT_CHECK_TEXT, REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
 
 /**
  * In fondo alle domande (SPEC §4.4 punto 5): «Invia le risposte», fisso in basso al telefono, e la frase
@@ -15,7 +15,7 @@ import { REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
 /** L'errore generale dell'invio: la pagina ci porta il fuoco (e lo scorre in vista), sopra la barra fissa del telefono. */
 export const SUBMIT_ERROR_ID = "ucq-invio-errore";
 
-export function SubmitBar({ hint, error, busy, onSubmit }: { hint: string; error: string | null; busy: boolean; onSubmit: () => void }) {
+export function SubmitBar({ hint, error, busy, onSubmit, onBack }: { hint: string; error: string | null; busy: boolean; onSubmit: () => void; onBack?: () => void }) {
   return (
     <div className="mt-6 space-y-3">
       {error ? (
@@ -24,7 +24,12 @@ export function SubmitBar({ hint, error, busy, onSubmit }: { hint: string; error
         </div>
       ) : null}
       <p className="text-sm break-words text-muted-foreground">{hint}</p>
-      <ActionBar>
+      <ActionBar className={onBack ? "flex-col-reverse sm:flex-row" : undefined}>
+        {onBack ? (
+          <Button type="button" variant="ghost" className="min-h-11 h-auto px-3 text-base" onClick={onBack}>
+            {REFERENT_CHECK_TEXT.back}
+          </Button>
+        ) : null}
         <Button type="button" className={PRIMARY_CLASS} disabled={busy} aria-busy={busy || undefined} onClick={onSubmit}>
           {busy ? <Loader2 className="animate-spin" aria-hidden /> : null}
           {REFERENT_PUBLIC_TEXT.submit}

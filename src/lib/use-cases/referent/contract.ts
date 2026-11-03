@@ -23,6 +23,8 @@ export const REFERENT_API = {
   uploadComplete: "upload-complete",
   fileRemove: "file-remove",
   fileConfirm: "file-confirm",
+  /** (Rilascio 5) La conferma dello use case e la stima del tempo. */
+  check: "check",
 } as const;
 export const reviewerFilesBase = (workspaceId: string, useCaseId: string) => `/dashboard/${workspaceId}/use-cases/${useCaseId}/allegati`;
 export const reviewerFileHref = (workspaceId: string, useCaseId: string, fileId: string) => `${reviewerFilesBase(workspaceId, useCaseId)}/${fileId}`;
@@ -84,6 +86,25 @@ export interface ReferentAskView {
   questions: ReferentQuestionView[];
   /** Blob configurato fuori dal harness. */
   upload: { clientMode: boolean };
+  /** (Rilascio 5) «referente»: la richiesta al referente, con la conferma e la stima; «domande»: solo domande. */
+  kind: "referente" | "domande";
+  /** (Rilascio 5) La conferma dello use case e la stima del tempo: solo per le richieste al referente. */
+  check: ReferentCheckView | null;
+}
+
+/**
+ * (Rilascio 5, §6.1) Quello che il referente conferma: la descrizione senza importi, quote, punteggi o
+ * dati personali, la stima del team in ore di lavoro (mai euro, quota che si risparmia, ore liberate,
+ * fiducia, fonte, punteggi), e la sua bozza.
+ */
+export interface ReferentCheckView {
+  /** `referentDescription()`: le frasi che il referente può vedere; null quando non ne resta nessuna. */
+  description: string | null;
+  /** La stima del team di adesso (§3.3), oppure null. `key`, `volumeYear` e `minutes` tornano come `teamSeen`. */
+  team: null | { key: string; volumeYear: number; minutes: number; hours: number; perMonth: number | null; perYear: number | null; unit: string | null; label: string | null };
+  /** La bozza; la stima è vuota quando l'istantanea salvata non è più la stima di adesso (`stale`). */
+  draft: { confirm: "si" | "correggi" | null; note: string | null; estimate: "si" | "meno" | "piu" | null; timesPerMonth: number | null; minutesEach: number | null; stale: boolean; savedAt: string | null };
+  submittedAt: string | null;
 }
 
 export interface ReferentQuestionView {
@@ -149,6 +170,14 @@ export interface DraftBody {
 }
 export interface SubmitBody {
   needIds?: string[];
+}
+/** (Rilascio 5) Il passo «Lo use case» o il passo «Il tempo». */
+export type CheckBody =
+  | { step: 1; confirm: "si" | "correggi" | null; note: string | null }
+  | { step: 2; teamSeen: { key: string; volumeYear: number; minutes: number } | null; estimate: "si" | "meno" | "piu" | null; timesPerMonth: number | string | null; minutesEach: number | string | null };
+export interface CheckResult {
+  savedAt: string;
+  warnings: Issue[];
 }
 export interface UploadTokenBody {
   needId: string;

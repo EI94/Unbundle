@@ -1,5 +1,5 @@
 import { parseApiResponse, type ApiResult } from "@/lib/uc/views/referente-form";
-import { referentApiBase, REFERENT_API, type DraftBody, type DraftResult, type ReferentAskView, type SubmitBody, type SubmitResult } from "@/lib/use-cases/referent/contract";
+import { referentApiBase, REFERENT_API, type CheckBody, type CheckResult, type DraftBody, type DraftResult, type ReferentAskView, type SubmitBody, type SubmitResult } from "@/lib/use-cases/referent/contract";
 
 /**
  * Chiamate della pagina `/rispondi/<token>` alle sue API (SPEC §4.2): sempre JSON, niente cache,
@@ -51,6 +51,11 @@ export function acceptPrivacy(token: string, version: string): Promise<ApiResult
 
 export function saveDraft(token: string, body: DraftBody, keepalive = false): Promise<ApiResult<DraftResult>> {
   return call(token, REFERENT_API.draft, { method: "POST", body, keepalive });
+}
+
+/** (Rilascio 5) La bozza della conferma (passo 1) o della stima (passo 2). */
+export function saveCheck(token: string, body: CheckBody, keepalive = false): Promise<ApiResult<CheckResult>> {
+  return call(token, REFERENT_API.check, { method: "POST", body, keepalive });
 }
 
 export function submitAnswers(token: string, body: SubmitBody = {}): Promise<ApiResult<SubmitResult>> {

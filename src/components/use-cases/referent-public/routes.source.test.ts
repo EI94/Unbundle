@@ -32,6 +32,8 @@ const ROUTES: Record<string, RouteSpec> = {
   "upload-complete/route.ts": { method: "POST", write: true, rate: "invio", maxDuration: 60, command: "completeReferentClientUpload" },
   "file-remove/route.ts": { method: "POST", write: true, rate: "bozza", command: "removeReferentFile" },
   "file-confirm/route.ts": { method: "POST", write: true, rate: "bozza", command: "confirmReferentFile" },
+  // (Rilascio 5) La conferma dello use case e la stima del tempo.
+  "check/route.ts": { method: "POST", write: true, rate: "bozza", command: "saveReferentCheck" },
 };
 
 function walk(dir: string, out: string[] = []): string[] {

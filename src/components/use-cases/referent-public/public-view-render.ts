@@ -12,7 +12,7 @@
 import { formatCountIt, formatLongDayIt } from "../../../lib/uc/views/format.ts";
 import type { ReferentAskView, ReferentFileView, ReferentPageResult, ReferentQuestionView, ReferentUploadResult, SubmitResult } from "../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_LIMITS } from "../../../lib/use-cases/referent/contract.ts";
-import { REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, companyLabel, fillText, privacyNoticeTexts } from "../../../lib/use-cases/referent/labels.ts";
+import { REFERENT_CHECK_TEXT, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, companyLabel, fillText, privacyNoticeTexts } from "../../../lib/use-cases/referent/labels.ts";
 import { referentDateLabel } from "../../../lib/use-cases/referent/view.ts";
 
 const T = REFERENT_PUBLIC_TEXT;
@@ -64,7 +64,8 @@ export function headerTexts(view: ReferentAskView): HeaderTexts {
   return {
     company: companyLabel(view.company),
     title: code ? `${code} · ${view.useCase.title}` : view.useCase.title,
-    requestedBy: fillText(T.requestedBy, { Nome: name }),
+    // (Rilascio 5) La richiesta al referente lo dice subito: «{Nome} ti ha indicato come referente.»
+    requestedBy: fillText(view.kind === "referente" ? REFERENT_CHECK_TEXT.requestedBy : T.requestedBy, { Nome: name }),
     message: message ? { title: fillText(T.messageTitle, { Nome: name }), text: message } : null,
   };
 }

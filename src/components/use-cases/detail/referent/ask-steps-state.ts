@@ -179,13 +179,9 @@ export function questionsNextLabel(ticked: number): string {
  * Il pulsante del passo sta nello stesso punto del piede in tutti e tre i passi: un doppio clic, o un
  * secondo tocco ravvicinato, premerebbe anche quello del passo dopo, e in «Controlla e invia» è «Invia».
  * Dopo un cambio di passo il piede aspetta `STEP_SETTLE_MS` e non conta il secondo clic di un doppio clic.
+ * (Rilascio 5) La regola sta in `repeat-guard.ts`: la usa anche la pagina del referente.
  */
-export const STEP_SETTLE_MS = 450;
-
-/** Il clic (o l'invio del modulo) arriva troppo presto dopo il cambio di passo, o è il secondo di un doppio clic. */
-export function isRepeatActivation(input: { clickCount: number; msSinceStep: number }): boolean {
-  return input.clickCount > 1 || input.msSinceStep < STEP_SETTLE_MS;
-}
+export { STEP_SETTLE_MS, isRepeatActivation } from "../../../../lib/use-cases/referent/repeat-guard.ts";
 
 /** «Invia a Mario Rossi». */
 export function sendLabel(person: Pick<AskPerson, "displayName">): string {

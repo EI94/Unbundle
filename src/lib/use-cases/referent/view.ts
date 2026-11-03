@@ -17,7 +17,7 @@
  */
 import { parseCivilDate, romeDate } from "../../uc/calendar.ts";
 import type { ReferentItemState, ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
-import type { ReferentAskView, ReferentFileView, ReferentQuestionView } from "./contract.ts";
+import type { ReferentAskView, ReferentCheckView, ReferentFileView, ReferentQuestionView } from "./contract.ts";
 import { REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, REFERENT_REQUEST_WORD, REFERENT_UI_TEXT, fillText } from "./labels.ts";
 import { nextReminderOn } from "./schedule.ts";
 import { privacyAccepted, reviewerStatus } from "./state.ts";
@@ -189,6 +189,10 @@ export interface PublicRows {
   items: PublicItemRow[];
   privacyContact: string;
   clientMode: boolean;
+  /** (Rilascio 5) La conferma e la stima: solo per una richiesta al referente. */
+  check?: ReferentCheckView | null;
+  /** (Rilascio 5) Adesso, per sapere se la conferma si può ancora inviare (di default l'orologio). */
+  now?: Date;
 }
 
 function fileView(f: PublicFileRow): ReferentFileView {
@@ -232,8 +236,12 @@ export function toPublicView(rows: PublicRows): ReferentAskView {
     .filter((i) => i.open || (i.state !== "aperta" && i.visible) || isHandled(i))
     .slice()
     .sort((a, b) => a.position - b.position);
-  const open = shown.filter((i) => i.open).length;
-  const answered = shown.filter((i) => !i.open && i.state !== "aperta").length;
+  const check = rows.check ?? null;
+  // (Rilascio 5) La conferma ancora da inviare tiene aperta la pagina, anche senza domande.
+  const live = rows.request.status === "inviata" && rows.request.expiresAt.getTime() > (rows.now ?? new Date()).getTime();
+  const checkOpen = check !== null && check.submittedAt === null && live;
+  const open = shown.filter((i) => i.open).length + (checkOpen ? 1 : 0);
+  const answered = shown.filter((i) => !i.open && i.state !== "aperta").length + (check?.submittedAt ? 1 : 0);
   const handled = shown.filter(isHandled).length;
   // (Parte 3) Tutto fatto dal team, niente dal referente: «vuota», mai «Hai risposto a tutte le domande».
   const state: ReferentAskView["state"] = open > 0 ? "aperta" : answered > 0 || (rows.request.status === "completata" && handled === 0) ? "completata" : "vuota";
@@ -247,6 +255,8 @@ export function toPublicView(rows: PublicRows): ReferentAskView {
     expiresOn: romeDate(rows.request.expiresAt),
     questions: shown.map(questionView),
     upload: { clientMode: rows.clientMode },
+    kind: check ? "referente" : "domande",
+    check,
   };
 }
 
@@ -289,6 +299,28 @@ export const PUBLIC_VIEW_KEYS: readonly string[] = Object.freeze([
   "questions[].files[].submitted",
   "upload",
   "upload.clientMode",
+  // (Rilascio 5) La richiesta al referente: la conferma e la stima, mai euro, quote o punteggi.
+  "kind",
+  "check",
+  "check.description",
+  "check.team",
+  "check.team.key",
+  "check.team.volumeYear",
+  "check.team.minutes",
+  "check.team.hours",
+  "check.team.perMonth",
+  "check.team.perYear",
+  "check.team.unit",
+  "check.team.label",
+  "check.draft",
+  "check.draft.confirm",
+  "check.draft.note",
+  "check.draft.estimate",
+  "check.draft.timesPerMonth",
+  "check.draft.minutesEach",
+  "check.draft.stale",
+  "check.draft.savedAt",
+  "check.submittedAt",
 ]);
 
 /** Ogni chiave del pannello dei revisori (`UseCaseReferentPanel` e le viste dentro). `{}` = chiave di un dizionario. */

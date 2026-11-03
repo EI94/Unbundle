@@ -44,7 +44,7 @@ const opts = { skip: !enabled };
 
 type Ctx = import("../../../lib/use-cases/service.ts").WriteContext;
 type Mail = import("../../../lib/uc/notify/dispatch.ts").OutgoingEmail;
-type Page = (props: { params: Promise<{ token: string }> }) => Promise<unknown>;
+type Page = (props: { params: Promise<{ token: string }>; searchParams?: Promise<Record<string, string | undefined>> }) => Promise<unknown>;
 
 let q: (text: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
 let renderToStaticMarkup: (element: unknown) => string;
@@ -87,9 +87,14 @@ function readable(html: string): string {
   return html.replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
 }
 
-async function html(token: string): Promise<string> {
-  const element = await page({ params: Promise.resolve({ token }) });
+async function html(token: string, passo?: string): Promise<string> {
+  const element = await page({ params: Promise.resolve({ token }), searchParams: Promise.resolve(passo ? { passo } : {}) });
   return readable(renderToStaticMarkup(element));
+}
+
+/** I pulsanti pieni della pagina (quelli senza `variant`: il colore primario). */
+function filledButtons(page: string): string[] {
+  return [...page.matchAll(/<button[^>]*class="[^"]*\bbg-primary\b[^"]*"[^>]*>([\s\S]*?)<\/button>/g)].map((m) => m[1].replace(/<[^>]+>/g, "").trim());
 }
 
 const needs: string[] = [];
@@ -312,4 +317,50 @@ test("le schede dei link che non si possono usare, senza dati della richiesta", 
     assert.doesNotMatch(p, /href="[^"]*\/(dashboard|login)\b/);
     assert.ok(p.includes("Lateral Space via Unbundle."));
   }
+});
+
+test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente», i passi, «È così?» con la descrizione, un solo pulsante pieno", opts, async () => {
+  const sent = ok(
+    await referents.sendReferentRequest(
+      as(),
+      ids.useCase,
+      { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Aldo Prova", email: `aldo.prova.${suffix}@topjet.test` }, needIds: needs.slice(5, 6) },
+      { env: ENV, requester: { name: "Giulia Neri", emailVerified: true } },
+    ),
+    "invio al referente",
+  );
+  const outbox: Mail[] = [];
+  await dispatch.dispatchReferentEmails({ requestId: sent.requestId, env: ENV, mailer: { async send(m: Mail) { outbox.push(m); return { ok: true as const }; } }, sendIntervalMs: 0 });
+  const token = /\/rispondi\/(ucq_[A-Za-z0-9_-]{32})/.exec(outbox[0]?.text ?? "")?.[1];
+  assert.ok(token);
+  const privacyFirst = await html(token!);
+  assert.ok(privacyFirst.includes("Giulia Neri ti ha indicato come referente."));
+  assert.ok(privacyFirst.includes("Prima di iniziare") && !privacyFirst.includes("È così?"), "prima l'informativa");
+  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: "ucq-2026-10-1" }, new Date()), "informativa");
+  // Il passo 1, anche chiedendo il passo 2 (riportato al primo non fatto).
+  for (const passo of [undefined, "2", "3", "x"]) {
+    const step1 = await html(token!, passo);
+    assert.match(step1, /<ol aria-label="Passi"/);
+    for (const text of ["Lo use case", "Il tempo", "Le domande", "È così?", "Sì, è così", "Correggi"]) assert.ok(step1.includes(text), `${passo}: ${text}`);
+    assert.equal((step1.match(/aria-current="step"/g) ?? []).length, 1);
+    assert.deepEqual(filledButtons(step1), ["Sì, è così"], `${passo}: un solo pulsante pieno`);
+    assert.ok(!step1.includes(titles[5]), "le domande vengono dopo");
+  }
+  // La descrizione privata della scheda (il test la chiama DESCRIZIONE-RISERVATA) è la descrizione: qui si vede.
+  assert.ok((await html(token!)).includes("DESCRIZIONE-RISERVATA"), "la descrizione, senza importi né dati personali");
+  // Fatto il passo 1, il passo 2 senza stima del team: le due domande e «Avanti» pieno.
+  const link = await linkOf(token!);
+  pok(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, new Date()), "sì");
+  const step2 = await html(token!);
+  for (const text of ["Quanto tempo vi prende questo lavoro?", "Quante volte al mese?", "Quanti minuti ogni volta?", "Basta una stima.", "Indietro"]) assert.ok(step2.includes(text), text);
+  assert.deepEqual(filledButtons(step2), ["Avanti"]);
+  assert.match(step2, /inputMode="decimal"|inputmode="decimal"/);
+  // ?passo=1 vale: si può tornare indietro.
+  assert.ok((await html(token!, "1")).includes("È così?"));
+  // Fatti tutti e due, il passo 3 con le domande e «Indietro».
+  pok(await pub.saveReferentCheck(link, { step: 2, teamSeen: null, estimate: null, timesPerMonth: 20, minutesEach: 30 }, new Date()), "tempo");
+  const step3 = await html(token!);
+  assert.ok(step3.includes(titles[5]) && step3.includes("Indietro"));
+  assert.deepEqual(filledButtons(step3), ["Invia le risposte"]);
+  for (const forbidden of ["98765", "98.765", "NOTA-RISERVATA", PROPOSER]) assert.ok(!step3.includes(forbidden));
 });

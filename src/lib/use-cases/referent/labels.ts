@@ -338,6 +338,48 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   aria: Object.freeze({ removeFile: "Togli {file}", dismissRejected: "Nascondi {file}", files: "File allegati" }),
 });
 
+// ─── La pagina del referente: la conferma e la stima (rilascio 5, §7) ─
+
+/**
+ * (Rilascio 5) I passi di una richiesta al referente: «Lo use case» (è descritto bene?), «Il tempo» (la
+ * stima del team in ore di lavoro, oppure le due domande senza stima), «Le domande». Testi corti: il
+ * passo dice solo quello che serve per rispondere.
+ */
+export const REFERENT_CHECK_TEXT = Object.freeze({
+  requestedBy: "{Nome} ti ha indicato come referente.",
+  steps: Object.freeze({ label: "Passi", useCase: "Lo use case", time: "Il tempo", questions: "Le domande", done: " (fatto)", current: " (adesso)" }),
+  confirm: Object.freeze({
+    title: "È così?",
+    group: "Lo use case è descritto bene?",
+    yes: "Sì, è così",
+    fix: "Correggi",
+    noteLabel: "Cosa cambieresti?",
+    notePlaceholder: "Per esempio: le fatture arrivano anche via PEC.",
+    noteMissing: "Scrivi cosa cambieresti.",
+  }),
+  estimate: Object.freeze({
+    group: "La stima ti torna?",
+    yes: "Sì",
+    less: "È di meno",
+    more: "È di più",
+    numbersLead: "Se vuoi, dacci i tuoi numeri:",
+    perMonthUnit: "{Unita} al mese",
+    perMonth: "Volte al mese",
+    minutesEach: "Minuti ogni volta",
+    noTeamTitle: "Quanto tempo vi prende questo lavoro?",
+    noTeamTimes: "Quante volte al mese?",
+    noTeamMinutes: "Quanti minuti ogni volta?",
+    noTeamHint: "Basta una stima.",
+    noTeamMissing: "Scrivi quante volte al mese e quanti minuti ogni volta.",
+    invalid: "Scrivi un numero, per esempio 20 o 1,5.",
+    pick: "Scegli una risposta.",
+    stale: "Il team ha appena cambiato la stima: controlla di nuovo.",
+  }),
+  back: "Indietro",
+  next: "Avanti",
+  send: "Invia",
+});
+
 // ─── Informativa (§5.3) ──────────────────────────────────────────────
 
 /**
@@ -476,6 +518,12 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   nessun_altro_revisore:
     "Questo PDF ha poco testo, forse è una scansione: lo deve controllare un'altra persona del team, e qui non c'è. Allega un PDF con testo, un DOCX o un file di testo.",
   quarantena_scaduta: "Il controllo del file non è finito: caricalo di nuovo.",
+  // (Rilascio 5) La conferma dello use case e la stima del tempo.
+  conferma_mancante: "Prima conferma lo use case, o scrivi cosa cambieresti.",
+  stima_mancante: "Prima rispondi sulla stima del tempo.",
+  stima_cambiata: "Il team ha appena cambiato la stima: controlla di nuovo.",
+  numero_non_valido: "Scrivi un numero, per esempio 20 o 1,5.",
+  nota_troppo_lunga: "Al massimo 1.000 caratteri.",
 });
 
 /** Il messaggio di un codice, con i segnaposto riempiti; un codice sconosciuto dà «Non riusciamo a salvare. Riprova.». */

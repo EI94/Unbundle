@@ -26,6 +26,8 @@ import { alertSchedule } from "@/lib/use-cases/referent/alerts";
 import { cardSyncStatements } from "@/lib/use-cases/case-alerts/sql";
 import {
   REFERENT_LIMITS,
+  type CheckResult,
+  type ReferentCheckView,
   type DraftResult,
   type ReferentAskView,
   type ReferentClientTicket,
@@ -53,6 +55,9 @@ import { HANDLED_NEED_STATUSES, privacyAccepted } from "@/lib/use-cases/referent
 import { checkDraftText, checkSubmitText } from "@/lib/use-cases/referent/text";
 import { hashReferentToken, looksLikeReferentToken, RECIPIENT_HASH_SQL } from "@/lib/use-cases/referent/tokens";
 import { toPublicView, type PublicFileRow, type PublicItemRow } from "@/lib/use-cases/referent/view";
+import { referentDescription } from "@/lib/use-cases/referent/description";
+import { REFERENT_NUMBER_MAX, referentNumber, sameTeamEstimate, teamEstimateOf, teamSnapshotOf, type TeamSnapshot } from "@/lib/use-cases/referent/estimate";
+import { REFERENT_CHECK_LIMITS } from "@/lib/db/use-case-hub-referent-check-ddl";
 import type { ReferentItemState, ReferentRequestStatus } from "@/lib/db/use-case-hub-referents-ddl";
 
 /**
@@ -157,6 +162,18 @@ interface FileFact extends PublicFileRow {
   rejectionReason: string | null;
 }
 
+/** (Rilascio 5) La riga della conferma di una richiesta al referente, come è salvata. */
+interface CheckFact {
+  confirm: "si" | "correggi" | null;
+  note: string | null;
+  team: TeamSnapshot | null;
+  estimate: "si" | "meno" | "piu" | null;
+  timesPerMonth: number | null;
+  minutesEach: number | null;
+  updatedAt: Date;
+  submittedAt: Date | null;
+}
+
 interface RequestFacts {
   status: ReferentRequestStatus;
   expiresAt: Date;
@@ -171,6 +188,10 @@ interface RequestFacts {
   items: ItemFact[];
   answers: AnswerFact[];
   files: FileFact[];
+  /** (Rilascio 5) La descrizione e il modello del valore dello use case, per la conferma e la stima. */
+  description: string | null;
+  valueModel: unknown;
+  check: CheckFact | null;
 }
 
 function requestStatements(link: ReferentLink): UcStatement[] {
@@ -178,8 +199,11 @@ function requestStatements(link: ReferentLink): UcStatement[] {
   const ws = cast(link.workspaceId, "uuid");
   return [
     toStatement(ucSql`SELECT r.status, r.expires_at, r.privacy_accepted_at, r.privacy_notice_version, r.requester_name, r.requested_by_user_id, r.message,
-  u.code, u.title, w.name AS company
+  u.code, u.title, w.name AS company, u.description, u.value_model,
+  c.request_id IS NOT NULL AS has_check, c.confirm, c.confirm_note, c.team_component_key, c.team_volume_year, c.team_minutes,
+  c.estimate, c.times_per_month, c.minutes_each, c.updated_at AS check_updated_at, c.submitted_at AS check_submitted_at
 FROM use_case_referent_requests r JOIN use_cases u ON u.id = r.use_case_id AND u.workspace_id = r.workspace_id JOIN workspaces w ON w.id = r.workspace_id
+LEFT JOIN use_case_referent_checks c ON c.request_id = r.id AND c.workspace_id = r.workspace_id
 WHERE r.id = ${req} AND r.workspace_id = ${ws}`),
     toStatement(ucSql`SELECT i.need_id, i.position, i.question, i.state, ${openItemSql("i", "r")} AS open,
   EXISTS (SELECT 1 FROM use_case_needs vn JOIN use_case_need_links vl ON vl.need_id = vn.id AND vl.use_case_id = r.use_case_id
@@ -255,6 +279,77 @@ async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promi
         rejectionReason,
       };
     }),
+    description: rowString(r.description),
+    valueModel: rowJsonValue(r.value_model),
+    check: rowBool(r.has_check) ? checkFactOf(r) : null,
+  };
+}
+
+/** Un numero di una colonna numeric (testo dal driver), oppure null. */
+function rowNumeric(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : Number(String(value));
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Il modello del valore: jsonb arriva come testo dal driver locale, come oggetto da Neon. */
+function rowJsonValue(value: unknown): unknown {
+  if (typeof value !== "string") return value ?? null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function checkFactOf(r: UcRow): CheckFact {
+  const confirm = rowString(r.confirm);
+  const estimate = rowString(r.estimate);
+  const key = rowString(r.team_component_key);
+  const volume = rowNumeric(r.team_volume_year);
+  const minutes = rowNumeric(r.team_minutes);
+  return {
+    confirm: confirm === "si" || confirm === "correggi" ? confirm : null,
+    note: rowString(r.confirm_note),
+    team: key !== null && volume !== null && minutes !== null ? { key, volumeYear: volume, minutes } : null,
+    estimate: estimate === "si" || estimate === "meno" || estimate === "piu" ? estimate : null,
+    timesPerMonth: rowNumeric(r.times_per_month),
+    minutesEach: rowNumeric(r.minutes_each),
+    updatedAt: rowDate(r.check_updated_at) ?? new Date(0),
+    submittedAt: rowDate(r.check_submitted_at),
+  };
+}
+
+/** Il passo «Il tempo» è stato salvato (una scelta o un numero). */
+function estimateSaved(c: CheckFact): boolean {
+  return c.estimate !== null || c.timesPerMonth !== null || c.minutesEach !== null;
+}
+
+/**
+ * (Rilascio 5, §6.1) La conferma e la stima come le vede il referente: la descrizione filtrata, la stima
+ * del team di adesso, la sua bozza. Una stima salvata su un'istantanea che non è più quella di adesso
+ * è «stale»: la pagina la mostra vuota con «Il team ha appena cambiato la stima: controlla di nuovo.».
+ */
+function checkViewOf(facts: RequestFacts): ReferentCheckView | null {
+  const c = facts.check;
+  if (!c) return null;
+  const team = teamEstimateOf(facts.valueModel);
+  const saved = estimateSaved(c);
+  const stale = c.submittedAt === null && saved && !sameTeamEstimate(c.team, teamSnapshotOf(team));
+  const any = c.confirm !== null || saved;
+  return {
+    description: referentDescription(facts.description).text,
+    team: team ? { key: team.key, volumeYear: team.volumeYear, minutes: team.minutes, hours: team.hours, perMonth: team.perMonth, perYear: team.perYear, unit: team.unit, label: team.label } : null,
+    draft: {
+      confirm: c.confirm,
+      note: c.note,
+      estimate: stale ? null : c.estimate,
+      timesPerMonth: stale ? null : c.timesPerMonth,
+      minutesEach: stale ? null : c.minutesEach,
+      stale,
+      savedAt: any ? c.updatedAt.toISOString() : null,
+    },
+    submittedAt: c.submittedAt ? c.submittedAt.toISOString() : null,
   };
 }
 
@@ -297,6 +392,8 @@ export async function loadReferentAskView(link: ReferentLink, o: { env: Env; now
     items,
     privacyContact: REFERENT_PRIVACY_CONTACT(o.env),
     clientMode: clientUploadAvailable(o.env),
+    check: checkViewOf(facts),
+    now: o.now,
   });
 }
 
@@ -381,6 +478,87 @@ RETURNING updated_at`),
   return { ok: true, value: { savedAt: savedAt.toISOString(), warnings } };
 }
 
+// ─── La conferma e la stima (rilascio 5, §6.2) ───────────────────────
+
+function teamSeenOf(value: unknown): { ok: true; value: TeamSnapshot | null } | { ok: false } {
+  if (value === null || value === undefined) return { ok: true, value: null };
+  if (typeof value !== "object" || Array.isArray(value)) return { ok: false };
+  const v = value as Record<string, unknown>;
+  if (typeof v.key !== "string" || !v.key || v.key.length > 40) return { ok: false };
+  if (typeof v.volumeYear !== "number" || !Number.isFinite(v.volumeYear) || typeof v.minutes !== "number" || !Number.isFinite(v.minutes)) return { ok: false };
+  return { ok: true, value: { key: v.key, volumeYear: v.volumeYear, minutes: v.minutes } };
+}
+
+/** Lo statement della bozza: solo sulla riga di una richiesta viva, mai dopo l'invio. */
+function checkUpdateSql(link: ReferentLink, set: ReturnType<typeof ucSql>): UcStatement {
+  return toStatement(ucSql`UPDATE use_case_referent_checks c SET ${set}, updated_at = now()
+FROM use_case_referent_requests r
+WHERE c.request_id = ${cast(link.requestId, "uuid")} AND c.workspace_id = ${cast(link.workspaceId, "uuid")} AND r.id = c.request_id
+  AND r.status = 'inviata' AND r.expires_at > now() AND c.submitted_at IS NULL
+RETURNING c.updated_at`);
+}
+
+/**
+ * (Rilascio 5, §6.2) La bozza del passo «Lo use case» (`{ step: 1, confirm, note }`) o del passo «Il
+ * tempo» (`{ step: 2, teamSeen, estimate, timesPerMonth, minutesEach }`).
+ * - Il passo 1 scrive solo la conferma e la nota: non legge mai la stima, così un cambio del team non lo
+ *   respinge. La nota passa dai controlli delle risposte (dati sanitari rifiutati, il resto avvisi).
+ * - Il passo 2 legge la stima del team di adesso: se non è quella che il referente ha visto (`teamSeen`)
+ *   non scrive niente e risponde `stima_cambiata`; altrimenti un solo UPDATE scrive l'istantanea e la
+ *   risposta (quello che manca diventa NULL), così un cambio dell'istantanea toglie sempre la risposta di prima.
+ */
+export async function saveReferentCheck(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<CheckResult>> {
+  if (!link.privacyAccepted) return pfail("informativa_da_leggere");
+  if (!writable(link, now)) return notAvailable();
+  const step = field(body, "step");
+  if (step !== 1 && step !== 2) return pfail("dati_non_validi", "Dati non validi.");
+  const executor = await getAppUcExecutor();
+  const facts = await readRequestFacts(executor, link);
+  if (!facts || facts.status !== "inviata" || !facts.check) return notAvailable();
+  if (facts.check.submittedAt) return pfail("gia_inviata");
+  let warnings: Issue[] = [];
+  let statement: UcStatement;
+  if (step === 1) {
+    const confirm = field(body, "confirm");
+    const rawNote = field(body, "note");
+    if ((confirm !== null && confirm !== "si" && confirm !== "correggi") || (rawNote !== null && rawNote !== undefined && typeof rawNote !== "string")) {
+      return pfail("dati_non_validi", "Dati non validi.");
+    }
+    let note: string | null = typeof rawNote === "string" ? rawNote.replace(/\r\n?/g, "\n").trim() : null;
+    if (!note || confirm !== "correggi") note = null;
+    if (note && note.length > REFERENT_CHECK_LIMITS.noteMax) return pfail("nota_troppo_lunga");
+    if (note) {
+      const check = checkDraftText(note);
+      if (!check.ok) return pfail(check.issues[0]?.code ?? "risposte_da_correggere", check.issues[0]?.message, check.issues);
+      warnings = check.warnings;
+    }
+    statement = checkUpdateSql(link, ucSql`confirm = ${cast(confirm, "text")}, confirm_note = ${cast(note, "text")}`);
+  } else {
+    const seen = teamSeenOf(field(body, "teamSeen"));
+    const estimate = field(body, "estimate");
+    if (!seen.ok || (estimate !== null && estimate !== undefined && estimate !== "si" && estimate !== "meno" && estimate !== "piu")) return pfail("dati_non_validi", "Dati non validi.");
+    const times = referentNumber(field(body, "timesPerMonth"), REFERENT_NUMBER_MAX.timesPerMonth);
+    const minutes = referentNumber(field(body, "minutesEach"), REFERENT_NUMBER_MAX.minutesEach);
+    if (!times.ok || !minutes.ok) return pfail("numero_non_valido");
+    const current = teamSnapshotOf(teamEstimateOf(facts.valueModel));
+    if (!sameTeamEstimate(seen.value, current)) return pfail("stima_cambiata");
+    const choice = estimate === undefined ? null : estimate;
+    if (current === null && choice !== null) return pfail("dati_non_validi", "Dati non validi.");
+    // «Sì» (o nessuna scelta, con la stima del team) non porta numeri: quelli sono del team.
+    const numbers = current !== null && (choice === "si" || choice === null) ? { t: null, m: null } : { t: times.value, m: minutes.value };
+    statement = checkUpdateSql(
+      link,
+      ucSql`team_component_key = ${cast(current?.key ?? null, "text")}, team_volume_year = ${cast(current?.volumeYear ?? null, "numeric")}, team_minutes = ${cast(current?.minutes ?? null, "numeric")},
+  estimate = ${cast(choice, "text")}, times_per_month = ${cast(numbers.t, "numeric")}, minutes_each = ${cast(numbers.m, "numeric")}`,
+    );
+  }
+  const run = await referentBatch(executor, [statement]);
+  if (!run.ok) return pfail(run.error, run.message);
+  const savedAt = rowDate(run.rows[0]?.[0]?.updated_at);
+  if (!savedAt) return notAvailable();
+  return { ok: true, value: { savedAt: savedAt.toISOString(), warnings } };
+}
+
 interface Target {
   needId: string;
   dontKnow: boolean;
@@ -438,8 +616,22 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
     }
     ready.push({ needId, dontKnow, hasDraft: draft !== null, hasText: !dontKnow && text !== null, documents: files.length });
   }
+  // (Rilascio 5, §6.2 punto 2) La conferma e la stima, quando la richiesta è al referente: la conferma
+  // data (con «Correggi», una nota), il passo «Il tempo» completo per la sua istantanea. Mai un confronto
+  // con la stima di adesso: un cambio dopo la risposta lo vede il team sulla scheda.
+  const check = facts.check && !facts.check.submittedAt ? facts.check : null;
+  if (check) {
+    const note = check.note?.trim() ?? "";
+    if (!check.confirm || (check.confirm === "correggi" && note.length < 2)) return pfail("conferma_mancante");
+    if (check.confirm === "correggi") {
+      const text = checkSubmitText(note, "conferma");
+      if (!text.ok) issues.push(...text.issues);
+    }
+    const complete = check.team ? check.estimate !== null : check.timesPerMonth !== null && check.minutesEach !== null;
+    if (!complete) return pfail("stima_mancante");
+  }
   if (issues.length > 0) return pfail("risposte_da_correggere", undefined, issues);
-  if (ready.length === 0) return pfail("nessuna_risposta");
+  if (ready.length === 0 && !check) return pfail("nessuna_risposta");
 
   // (Parte 3) Chi risponde, se è anche una persona di Unbundle: non riceve la notifica né l'avviso di
   // quello che ha fatto lui. Si rilegge adesso (ruolo e account di questo momento); la Storia resta «Referente».
@@ -452,7 +644,9 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
   const drafted = ready.filter((t) => t.hasDraft).map((t) => t.needId);
   const fileOnly = ready.filter((t) => !t.hasDraft).map((t) => t.needId);
   // Le risposte con un testo; una domanda con solo file conta tra i documenti, mai due volte.
-  const answers = ready.filter((t) => t.hasText).length;
+  // (Rilascio 5, §13) La conferma inviata conta come una risposta: la campanella e l'avviso partono
+  // anche quando il referente ha detto solo «Sì» e «Sì».
+  const answers = ready.filter((t) => t.hasText).length + (check ? 1 : 0);
   const unknowns = unknownIds.length;
   const documents = ready.reduce((n, t) => n + t.documents, 0);
   const completedFilter = ucSql`r.id = ${req} AND r.workspace_id = ${ws} AND r.status = 'completata' AND r.completed_at = now()`;
@@ -481,8 +675,9 @@ ${casTail("upd", drafted.length, "conflitto")}`),
 ${casTail("ins", fileOnly.length, "domanda_non_disponibile")}`),
     );
   }
-  statements.push(
-    toStatement(ucSql`WITH upd AS (
+  if (all.length) {
+    statements.push(
+      toStatement(ucSql`WITH upd AS (
   UPDATE use_case_referent_request_items i
   SET state = CASE WHEN i.need_id = ANY(${cast(unknownIds, "uuid[]")}) THEN 'non_so' ELSE 'risposta' END, answered_at = now()
   FROM use_case_referent_requests r
@@ -491,12 +686,28 @@ ${casTail("ins", fileOnly.length, "domanda_non_disponibile")}`),
   RETURNING i.need_id
 )
 ${casTail("upd", all.length, "conflitto")}`),
-    toStatement(ucSql`UPDATE use_case_need_files SET submitted_at = now()
+      toStatement(ucSql`UPDATE use_case_need_files SET submitted_at = now()
 WHERE request_id = ${req} AND workspace_id = ${ws} AND need_id = ANY(${cast(all, "uuid[]")})
   AND deleted_at IS NULL AND submitted_at IS NULL AND scan_status IN ('pulito', 'in_revisione')`),
-  );
+    );
+  }
+  if (check) {
+    // La conferma e la stima inviate, prima del completamento (che conta ancora la conferma da inviare).
+    statements.push(
+      toStatement(ucSql`WITH upd AS (
+  UPDATE use_case_referent_checks SET submitted_at = now(), updated_at = now()
+  WHERE request_id = ${req} AND workspace_id = ${ws} AND submitted_at IS NULL
+  RETURNING request_id
+)
+${casTail("upd", 1, "conflitto")}`),
+    );
+  }
   if (answerIds.length) statements.push(needTransitionSql({ workspaceId: link.workspaceId, needIds: answerIds, from: ["chiesta"], to: "in_verifica", actor: REFERENT_ACTOR }));
   if (unknownIds.length) statements.push(needTransitionSql({ workspaceId: link.workspaceId, needIds: unknownIds, from: ["chiesta"], to: "mancante", actor: REFERENT_ACTOR }));
+  if (check) {
+    statements.push(referentEventSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, code: check.confirm === "correggi" ? "correzione" : "conferma", actor: REFERENT_ACTOR }));
+    if (check.estimate !== "si") statements.push(referentEventSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, code: "stima_diversa", actor: REFERENT_ACTOR }));
+  }
   statements.push(
     referentEventSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, code: "risposte", actor: REFERENT_ACTOR }),
     toStatement(ucSql`UPDATE use_case_referent_requests r SET status = 'completata', completed_at = now(), version = version + 1
@@ -533,7 +744,7 @@ ON CONFLICT (dedupe_key) DO NOTHING`),
   }
   const last = run.rows[run.rows.length - 1]?.[0];
   const open = rowNumber(last?.open_items) ?? 0;
-  return { ok: true, value: { submitted: ready.length, open, state: rowString(last?.status) === "completata" || open === 0 ? "completata" : "aperta" } };
+  return { ok: true, value: { submitted: ready.length + (check ? 1 : 0), open, state: rowString(last?.status) === "completata" || open === 0 ? "completata" : "aperta" } };
 }
 
 // ─── File del referente ──────────────────────────────────────────────
@@ -665,4 +876,10 @@ export const REFERENT_PUBLIC_STATUS: Readonly<Record<string, number>> = Object.f
   file_non_trovato: 404,
   testo_troppo_lungo: 422,
   modalita_non_disponibile: 409,
+  // (Rilascio 5) La conferma e la stima.
+  conferma_mancante: 422,
+  stima_mancante: 422,
+  stima_cambiata: 409,
+  numero_non_valido: 422,
+  nota_troppo_lunga: 422,
 });

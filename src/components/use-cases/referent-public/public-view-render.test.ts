@@ -43,6 +43,8 @@ function view(over: Partial<ReferentAskView> = {}): ReferentAskView {
     expiresOn: "2026-11-26",
     questions: [question(0), question(1)],
     upload: { clientMode: true },
+    kind: "domande",
+    check: null,
     ...over,
   };
 }
