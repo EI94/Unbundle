@@ -474,3 +474,14 @@ test("tema chiaro: i pulsanti distruttivi dicono il fuoco della tastiera con il 
     for (const fill of [0.1, 0.2]) atLeast(ratio(edge, over(edge, surface, fill)), 3, `bordo sul fondo al ${fill * 100}% su ${name}`);
   }
 });
+
+test("(rilascio 5) le icone dello stato del referente: almeno 3:1 sulla card, nei due temi", () => {
+  // `REFERENT_STATE_TONE`: grigio, blu, rosso, giallo, verde; la parola è text-muted-foreground (già provata).
+  for (const [name, theme] of [["scuro", dark], ["chiaro", light]] as const) {
+    for (const tone of ["grigio", "blu", "rosso", "giallo", "verde"]) {
+      const color = theme[`uc-${tone}`];
+      const card = theme.card.alpha < 1 ? over(theme.card.rgb, theme.background.rgb, theme.card.alpha) : theme.card.rgb;
+      atLeast(contrast(color, card), 3, `uc-${tone} su card, tema ${name}`);
+    }
+  }
+});

@@ -139,8 +139,45 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
       : { label: item.label, disabled: true, ...(item.reason ? { hint: item.reason } : {}) },
   );
 
+  const buttonOf = (button: BlockButton) => (
+    <Button
+      key={button.key}
+      type="button"
+      variant={button.variant}
+      size="sm"
+      className={cn(ACTION, button.variant === "link" && "px-0")}
+      aria-busy={(button.key === "retry" ? pending : reviewPending) || undefined}
+      data-action={`referent-${button.key}`}
+      onClick={() => act(button.key)}
+    >
+      {button.key === "retry" ? <RotateCcw aria-hidden /> : button.key === "choose" || button.key === "askAgain" ? <Send aria-hidden /> : null}
+      {button.label}
+    </Button>
+  );
+
+  // «Manca il referente»: una riga sola, il titolo, la frase e (quando chi guarda può) «Scegli il referente».
+  if (model.state === "manca") {
+    return (
+      <section id={REFERENT_BLOCK_IDS.section} aria-labelledby={REFERENT_BLOCK_IDS.heading} data-slot="referent-block" data-state="manca" className="scroll-mt-20 rounded-xl border bg-card px-4 py-3">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+            <h3 id={REFERENT_BLOCK_IDS.heading} tabIndex={-1} className="rounded-sm text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {T.heading}
+            </h3>
+            {model.lines.map((line, index) => (
+              <p key={index} className="text-sm break-words text-muted-foreground">
+                {line.text}
+              </p>
+            ))}
+          </div>
+          {model.buttons.map(buttonOf)}
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <section id={REFERENT_BLOCK_IDS.section} aria-labelledby={REFERENT_BLOCK_IDS.heading} data-slot="referent-block" data-state={model.state} className="scroll-mt-20 space-y-2 rounded-xl border bg-card p-4">
+    <section id={REFERENT_BLOCK_IDS.section} aria-labelledby={REFERENT_BLOCK_IDS.heading} data-slot="referent-block" data-state={model.state} className="scroll-mt-20 space-y-2 rounded-xl border bg-card px-4 py-3">
       <div className="flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0 space-y-1">
           <h3 id={REFERENT_BLOCK_IDS.heading} tabIndex={-1} className="rounded-sm text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -187,21 +224,7 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
       ) : null}
       {model.buttons.length ? (
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {model.buttons.map((button) => (
-            <Button
-              key={button.key}
-              type="button"
-              variant={button.variant}
-              size="sm"
-              className={cn(ACTION, button.variant === "link" && "px-0")}
-              aria-busy={(button.key === "retry" ? pending : reviewPending) || undefined}
-              data-action={`referent-${button.key}`}
-              onClick={() => act(button.key)}
-            >
-              {button.key === "retry" ? <RotateCcw aria-hidden /> : button.key === "choose" || button.key === "askAgain" ? <Send aria-hidden /> : null}
-              {button.label}
-            </Button>
-          ))}
+          {model.buttons.map(buttonOf)}
         </div>
       ) : null}
     </section>

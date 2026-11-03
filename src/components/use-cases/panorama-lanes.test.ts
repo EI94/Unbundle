@@ -136,7 +136,7 @@ test("la card del revisore: il titolo intero prima di tag e cifre, il tag nascos
   assert.match(neutral, /class="block h-full rounded-full bg-muted-foreground" style="width:25\.0%"/);
 });
 
-test("la card: «Scaduto» e il trimestre a parte, «Da diffondere» senza costo, «Valore: da stimare», il chip di «Raccolta informazioni»", () => {
+test("la card: «Scaduto» e il trimestre a parte, «Da diffondere» senza costo, «Valore: da stimare», lo stato del referente", () => {
   const overdue = hub({ title: "ORSA O1 · Solleciti", targetQuarter: "2026-Q3" });
   const best = hub({ title: "Buone pratiche", kind: "da_diffondere", targetQuarter: "2027-Q1", cost: TEAM_30K });
   const later = hub({ title: "Più tardi", targetQuarter: "2027-Q3", value: QUALITATIVE });
@@ -155,12 +155,14 @@ test("la card: «Scaduto» e il trimestre a parte, «Da diffondere» senza costo
     unanswered: 3,
     blockedCount: 0,
   });
-  const html = render([overdue, best, later], { info: { [overdue.id.toLowerCase()]: info } });
+  void info;
+  // (Rilascio 5) Lo stato del referente al posto del chip corto di «Raccolta informazioni».
+  const html = render([overdue, best, later], { referentStates: { [overdue.id.toLowerCase()]: "nessuna_risposta" } });
   const late = cardOf(html, overdue.id);
   assert.ok(late.includes(">Scaduto<") && late.includes(">T3 2026<"), late);
   assert.match(late, /Valore: <\/span><span[^>]*>da stimare</);
   assert.ok(!late.includes('data-figure="costo"'), "senza costo niente «da stimare» del costo");
-  assert.ok(late.includes('data-slot="info-chip"') && late.includes("Info: senza risposta"));
+  assert.ok(late.includes('data-slot="referent-chip" data-state="nessuna_risposta"') && late.includes(">Nessuna risposta<") && !late.includes('data-slot="info-chip"'));
   const diffuse = cardOf(html, best.id);
   assert.ok(diffuse.includes("Da diffondere") && !diffuse.includes('data-figure="costo"'), "le best practice senza costo");
   const after = cardOf(html, later.id);
@@ -319,7 +321,10 @@ test("contributori: tag, titolo e la pillola della fase, per titolo; nessuna cif
     unanswered: 0,
     blockedCount: 0,
   });
-  const html = render([zeta, overdue, alfa], { info: { [zeta.id.toLowerCase()]: info }, barScale: 0 });
+  void info;
+  // (Rilascio 5) Ai contributori lo stato del referente, solo la parola, sotto la pillola.
+  const html = render([zeta, overdue, alfa], { referentStates: { [zeta.id.toLowerCase()]: "in_attesa" }, barScale: 0 });
+  assert.ok(cardOf(html, zeta.id).includes('data-slot="referent-chip" data-state="in_attesa"') && cardOf(html, zeta.id).includes(">In attesa del referente<"));
   for (const text of ["data-figure", "€", "value-bar", "info-chip", "Scaduto", "text-red-300", ">T3 2026<", "avvio"]) assert.ok(!html.includes(text), text);
   assert.ok((html.match(/data-slot="agent-tag"/g) ?? []).length === 3, "i tag dell'agente");
   assert.ok(html.includes("Approvato · T1 2027") && html.includes("Approvato · T3 2026"), "la pillola dice il trimestre");

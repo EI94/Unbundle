@@ -6,10 +6,10 @@ import { PHASE_LABEL, VALUED_PILL } from "@/lib/use-cases/phase";
 import type { ContributorUseCase } from "@/lib/use-cases/permissions";
 import { HUB_PARAM_KEYS, isContributorItem, waitingDays, waitingLabel, type AnyHubItem, type HubItem, type HubParamKey } from "@/lib/use-cases/views";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
-import type { InfoProgressView } from "@/lib/use-cases/info-progress";
+import type { ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import { cn } from "@/lib/utils";
 import { CostFigure } from "./cost-figure";
-import { InfoChip } from "./info-chip";
+import { ReferentChip } from "./referent-chip";
 import { KindLabel } from "./kind-label";
 import { OriginChip } from "./origin-chip";
 import { PhasePill } from "./phase-pill";
@@ -120,11 +120,8 @@ export interface UseCaseRowProps {
   today: string;
   /** Le fasce del costo del workspace (D15). */
   bands?: readonly CostBandInfo[];
-  /**
-   * «Raccolta informazioni» della scheda (solo revisori): il chip corto, solo per gli stati che
-   * chiedono a qualcuno di fare qualcosa («Info: da verificare», «Info: senza risposta»).
-   */
-  info?: InfoProgressView | null;
+  /** (Rilascio 5, §10.3) Lo stato del referente (tutti i ruoli; ai contributori solo la parola). */
+  referentState?: ReferentStateKey | null;
 }
 
 /** Testi della riga (§4.6, §14.3; D17). */
@@ -147,9 +144,9 @@ export function othersCardNote(teamName: string): string {
 }
 
 /** Una riga della lista (§4.6). Il link è tutta la riga: dentro non ci sono altri controlli. */
-export function UseCaseRow({ item, href, variant = "plain", today, bands, info = null }: UseCaseRowProps) {
-  if (isContributorItem(item)) return <ContributorRow item={item} href={href} />;
-  return <ReviewerRow item={item} href={href} variant={variant} today={today} bands={bands} info={info} />;
+export function UseCaseRow({ item, href, variant = "plain", today, bands, referentState = null }: UseCaseRowProps) {
+  if (isContributorItem(item)) return <ContributorRow item={item} href={href} referentState={referentState} />;
+  return <ReviewerRow item={item} href={href} variant={variant} today={today} bands={bands} referentState={referentState} />;
 }
 
 const ROW_LINK =
@@ -196,14 +193,14 @@ function ReviewerRow({
   variant,
   today,
   bands,
-  info,
+  referentState,
 }: {
   item: HubItem;
   href: string;
   variant: "decide" | "plain";
   today: string;
   bands?: readonly CostBandInfo[];
-  info: InfoProgressView | null;
+  referentState: ReferentStateKey | null;
 }) {
   const days = variant === "decide" ? waitingLabel(waitingDays(item.waitingSince, today)) : null;
   return (
@@ -231,7 +228,7 @@ function ReviewerRow({
               {reviewerSubStateText(item)}
             </span>
           ) : null}
-          <InfoChip view={info} variant="short" className="shrink-0 @min-[58rem]/hub:order-last" />
+          <ReferentChip state={referentState} className="shrink-0 @min-[58rem]/hub:order-last" />
           <RowFigures item={item} bands={bands} />
           {days ? <span className="hidden shrink-0 text-xs whitespace-nowrap text-muted-foreground @min-[58rem]/hub:order-last @min-[58rem]/hub:inline @min-[58rem]/hub:w-20 @min-[58rem]/hub:text-right">{days}</span> : null}
         </span>
@@ -254,12 +251,12 @@ export function isAskedOfViewer(item: ContributorUseCase): item is Extract<Contr
   return item.own && item.phase === "da_valutare" && item.subState === "serve_info";
 }
 
-function ContributorRow({ item, href }: { item: ContributorUseCase; href: string }) {
+function ContributorRow({ item, href, referentState }: { item: ContributorUseCase; href: string; referentState: ReferentStateKey | null }) {
   const asked = isAskedOfViewer(item);
   // La scheda «In valutazione» dice già la fase: delle proposte altrui in «Da valutare» la
   // pillola ripeterebbe il nome della scheda su ogni riga. Le proprie la tengono (con il
   // sotto-stato, D13), e così si vedono.
-  const showPhase = item.own || item.phase !== "da_valutare";
+  const showPhase = item.own || item.phase !== "da_valutare" || Boolean(referentState);
   return (
     <li data-slot="use-case-row" data-id={item.id} data-own={item.own ? "true" : undefined}>
       <Link href={href} scroll={false} className={CONTRIBUTOR_ROW_LINK}>
@@ -270,7 +267,8 @@ function ContributorRow({ item, href }: { item: ContributorUseCase; href: string
         {showPhase ? (
           <span className="flex min-w-0 flex-wrap items-center gap-2 @2xl/hub:shrink-0">
             {item.own ? <OwnMarker /> : null}
-            <PhasePill label={item.phaseLabel} phase={item.phase} subState={item.subState} />
+            {item.own || item.phase !== "da_valutare" ? <PhasePill label={item.phaseLabel} phase={item.phase} subState={item.subState} /> : null}
+            <ReferentChip state={referentState} />
             {asked ? <span className="text-xs font-medium text-primary underline underline-offset-4">{ROW_TEXT.answer}</span> : null}
           </span>
         ) : null}

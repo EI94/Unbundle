@@ -11,6 +11,7 @@ import { getUseCaseDetail, viewerFromSession, workspaceAgentToneOf } from "@/lib
 import { listWorkspaceNeeds, needUseCaseRefs } from "@/lib/db/queries/use-case-needs";
 import { loadUseCaseInfoProgress } from "@/lib/db/queries/use-case-info-progress";
 import { loadUseCaseReferentPanel } from "@/lib/db/queries/use-case-referents";
+import { listReferentStates } from "@/lib/db/queries/use-case-referent-states";
 import { needListsOfUseCase } from "@/lib/use-cases/needs";
 import { eligibleForReferent } from "@/lib/use-cases/referent/use-case-state";
 import { abilitiesForUseCase, projectForContributor } from "@/lib/use-cases/permissions";
@@ -161,6 +162,11 @@ export default async function UseCaseDetailPage({
       : null,
   ]);
 
+  // (Rilascio 5, §9.1) Al contributore la sola parola dello stato del referente, dopo la pillola della fase.
+  const contributorReferentState = reviewer
+    ? null
+    : ((await listReferentStates(workspaceId, viewer, [{ id: result.useCase.id, phase: result.useCase.phase }]))?.states[result.useCase.id.toLowerCase()] ?? null);
+
   return (
     <PageContainer size="default">
       <UseCaseDetailView
@@ -181,6 +187,7 @@ export default async function UseCaseDetailPage({
         companyName={access.workspace.name}
         companyDisplayName={guideRow?.displayName ?? null}
         agentTone={await agentTone}
+        contributorReferentState={contributorReferentState}
       />
     </PageContainer>
   );

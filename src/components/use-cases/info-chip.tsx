@@ -10,9 +10,9 @@ import { cn } from "@/lib/utils";
  *
  * - `long`: nella testata della scheda, accanto alla pillola della fase: «Informazioni: in attesa»
  *   (solo lo stato; conteggi e che cosa resta in «Cosa serve»).
- * - `short`: nelle righe di «Da decidere» e nelle card della Panoramica («Info: da verificare»), solo per
- *   gli stati che chiedono a qualcuno di fare qualcosa (`showInRows`). Gli altri stanno nella scheda e
- *   nel filtro, non in ogni riga.
+ *
+ * (Rilascio 5, §10.3) Nelle righe e nelle card il chip corto non c'è più: c'è lo stato del referente
+ * (`referent-chip.tsx`). Il filtro «Informazioni» resta in «Altri filtri».
  */
 export interface InfoChipProps {
   text: string;
@@ -26,9 +26,8 @@ export interface InfoChipProps {
 const CHIP_CLASS = "inline-flex max-w-full min-w-0 items-center gap-1 align-middle text-xs text-muted-foreground";
 
 /** Che cosa mostra il chip; null quando non c'è niente da mostrare. Puro, lo prova `info-chip.test.ts`. */
-export function infoChipProps(view: InfoProgressView | null | undefined, variant: "long" | "short"): InfoChipProps | null {
+export function infoChipProps(view: InfoProgressView | null | undefined, variant: "long"): InfoChipProps | null {
   if (!view) return null;
-  if (variant === "short" && !view.showInRows) return null;
   return {
     text: variant === "long" ? view.label : view.chip,
     ariaLabel: view.ariaLabel,
@@ -38,11 +37,11 @@ export function infoChipProps(view: InfoProgressView | null | undefined, variant
   };
 }
 
-export function InfoChip({ view, variant, className }: { view: InfoProgressView | null | undefined; variant: "long" | "short"; className?: string }) {
+export function InfoChip({ view, variant, className }: { view: InfoProgressView | null | undefined; variant: "long"; className?: string }) {
   const props = infoChipProps(view, variant);
   if (!props) return null;
   return (
-    <span data-slot="info-chip" data-state={props.state} role="img" aria-label={props.ariaLabel} title={variant === "short" ? props.ariaLabel : undefined} className={cn(props.className, className)}>
+    <span data-slot="info-chip" data-state={props.state} role="img" aria-label={props.ariaLabel} className={cn(props.className, className)}>
       <ClipboardList aria-hidden className={cn("size-3.5 shrink-0", props.iconClass)} />
       <span aria-hidden className="truncate">
         {props.text}

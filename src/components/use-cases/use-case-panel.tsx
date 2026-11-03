@@ -22,6 +22,8 @@ import { RiskChips } from "./detail/risk-chips";
 import { KindLabel } from "./kind-label";
 import { OriginChip } from "./origin-chip";
 import { PhasePill } from "./phase-pill";
+import { ReferentChip } from "./referent-chip";
+import type { ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import { ProposerAnswers } from "./proposer-answers";
 import { OwnAnswer } from "./proposer-answers";
 import { OwnMarker, othersCardNote, shownPhaseLabel } from "./use-case-row";
@@ -94,6 +96,8 @@ export interface UseCasePanelProps {
   dossierDown?: boolean;
   /** Il nome del team che valuta, da solo (§14.2): «La domanda di AI Builder». */
   teamName: string;
+  /** (Rilascio 5, §10.3) Lo stato del referente dello use case (tutti i ruoli; solo la parola). */
+  referentState?: ReferentStateKey | null;
 }
 
 /**
@@ -111,7 +115,7 @@ export interface UseCasePanelProps {
  * «Apri la scheda ›». Delle proposte altrui niente link alla scheda: direbbe le stesse cose
  * (D4, D13). All'apertura il fuoco va a «Chiudi» senza far scorrere il pannello (`focusPanelStart`).
  */
-export function UseCasePanel({ workspaceId, data, closeHref, detailHref, today, canDecide, bands, dossierDown = false, teamName }: UseCasePanelProps) {
+export function UseCasePanel({ workspaceId, data, closeHref, detailHref, today, canDecide, bands, dossierDown = false, teamName, referentState = null }: UseCasePanelProps) {
   const router = useRouter();
   const [open, setOpen] = useState(true);
   // Ogni pagina che arriva dal server porta dati nuovi e il pannello si riapre: anche lo stesso
@@ -167,9 +171,10 @@ export function UseCasePanel({ workspaceId, data, closeHref, detailHref, today, 
             bands={bands}
             dossierDown={dossierDown}
             teamName={teamName}
+            referentState={referentState}
           />
         ) : (
-          <ContributorBody workspaceId={workspaceId} item={data.item} answer={data.answer} dossierDown={dossierDown} teamName={teamName} />
+          <ContributorBody workspaceId={workspaceId} item={data.item} answer={data.answer} dossierDown={dossierDown} teamName={teamName} referentState={referentState} />
         )}
         {showDetailLink ? (
           <div className="border-t px-4 py-3">
@@ -205,6 +210,7 @@ function ReviewerBody({
   bands,
   dossierDown,
   teamName,
+  referentState,
 }: {
   workspaceId: string;
   item: HubItem;
@@ -219,6 +225,7 @@ function ReviewerBody({
   bands?: readonly CostBandInfo[];
   dossierDown: boolean;
   teamName: string;
+  referentState: ReferentStateKey | null;
 }) {
   const decisionItem = toDecisionItem(item);
   const whenId = `pannello-quando-${item.id}`;
@@ -232,6 +239,7 @@ function ReviewerBody({
           <OriginChip origin={item.origin} />
           <KindLabel kind={item.kind} />
           <PhasePill label={shownPhaseLabel(item, dossierDown)} tone={item.tone} />
+          <ReferentChip state={referentState} />
         </div>
         {nextStep ? <PanelNextStepLine step={nextStep} /> : null}
         {item.problemPreview ? <SheetDescription className="line-clamp-2 text-sm text-foreground">{item.problemPreview}</SheetDescription> : null}
@@ -337,12 +345,14 @@ function ContributorBody({
   answer,
   dossierDown,
   teamName,
+  referentState,
 }: {
   workspaceId: string;
   item: ContributorUseCase;
   answer: InfoAnswer | null;
   dossierDown: boolean;
   teamName: string;
+  referentState: ReferentStateKey | null;
 }) {
   // «Serve info» su una propria proposta: la domanda e «Rispondi» (D17).
   const asked = item.own && item.phase === "da_valutare" && item.subState === "serve_info";
@@ -352,6 +362,7 @@ function ContributorBody({
         <div className="flex flex-wrap items-center gap-2">
           {item.own ? <OwnMarker /> : null}
           <PhasePill label={shownPhaseLabel(item, dossierDown)} phase={item.phase} subState={item.subState} />
+          <ReferentChip state={referentState} />
         </div>
         {/* Delle proposte altrui solo titolo e fase (D4, D13): una riga dice perché (H7). */}
         {item.own ? null : <p className="text-xs text-muted-foreground">{othersCardNote(teamName)}</p>}

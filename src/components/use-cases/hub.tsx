@@ -5,6 +5,8 @@ import { getUseCaseDetail, listHubItems, viewerFromSession, type HubList } from 
 import { dossierColumnOf } from "@/lib/db/queries/use-case-dossiers";
 import { listWorkspaceNeeds } from "@/lib/db/queries/use-case-needs";
 import { listInfoProgress } from "@/lib/db/queries/use-case-info-progress";
+import { listReferentStates } from "@/lib/db/queries/use-case-referent-states";
+import type { ReferentReview, ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import type { DossierColumn } from "@/lib/db/queries/uc-nav";
 import { getPortfolioParticipation } from "@/lib/db/queries/portfolio-participation";
 import type { Participation } from "@/lib/portfolio/participation";
@@ -140,6 +142,13 @@ export interface UseCaseHubData {
    */
   info: Record<string, InfoProgressView> | null;
   /**
+   * (Rilascio 5, §10.2) Lo stato del referente di ogni use case che chi guarda vede (id in minuscolo),
+   * per tutti i ruoli: il chip delle card e delle righe e il filtro «Referente». null con la funzione spenta.
+   */
+  referentStates: Record<string, ReferentStateKey> | null;
+  /** (Rilascio 5) Solo ai revisori: che cosa aspetta il team dalla risposta del referente. */
+  referentReview: Record<string, ReferentReview> | null;
+  /**
    * L'avviso dei sub-responsabili non ancora autorizzati dal cliente: solo per Lateral Space,
    * sulla Panoramica, senza grafico (con l'area accesa `/casi-duso` porta qui), con la sezione
    * Casi d'uso accesa.
@@ -182,7 +191,7 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
   // della Panoramica, solo ai revisori. «Prossimo passo» c'è solo sulle corsie senza filtri: con un
   // filtro le corsie non le leggono.
   const readsNeeds = reviewer && abilities.canSeeNeeds && (view === "cosa-serve" || (lanes && !hasActiveFilters(params)) || Boolean(params.apri));
-  const [dossierColumn, participation, subprocessorsPending, needs, info, connectorDisplayName] = await Promise.all([
+  const [dossierColumn, participation, subprocessorsPending, needs, info, connectorDisplayName, referents] = await Promise.all([
     inProgress.length ? dossierColumnOf(workspaceId, { userId: session.user.id, role: access.role }, inProgress) : null,
     view === "da-decidere" ? getPortfolioParticipation(workspaceId) : null,
     // Solo a Lateral Space (la stessa regola di `getUcUserContext`): ai revisori del cliente nessuna lettura.
@@ -192,6 +201,8 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     abilities.canSeeNeeds ? listInfoProgress(workspaceId, viewer, { now }) : null,
     // Il titolo del gruppo del cliente di «Cosa serve» (rilascio 4): solo in quella vista.
     view === "cosa-serve" && readsNeeds ? connectorDisplayNameOf(workspaceId) : null,
+    // (Rilascio 5) Lo stato del referente degli use case che chi guarda vede: per tutti i ruoli.
+    listReferentStates(workspaceId, viewer, items, { now }),
   ]);
   return {
     workspaceId,
@@ -213,6 +224,8 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     connectorDisplayName,
     participation,
     info,
+    referentStates: referents?.states ?? null,
+    referentReview: referents?.review ?? null,
     subprocessorsPending,
     charts,
     chart,
@@ -322,7 +335,8 @@ function Welcome({ joined, workspaceName, roleName }: { joined: HubParams["joine
  * principale delle decisioni resta pieno solo quando il passo è una decisione di chi guarda; per
  * «Serve info», «Rimanda» e «Riapri» è bordato, come nella scheda.
  */
-export function panelNextStep(item: HubItem, data: Pick<UseCaseHubData, "workspaceId" | "abilities" | "list" | "teamName" | "workspaceName" | "info">): PanelNextStep {
+export function panelNextStep(item: HubItem, data: Pick<UseCaseHubData, "workspaceId" | "abilities" | "list" | "teamName" | "workspaceName" | "info"> & Partial<Pick<UseCaseHubData, "referentStates" | "referentReview">>): PanelNextStep {
+  const referentState = data.referentStates?.[item.id.toLowerCase()] ?? null;
   const step = nextStepOf({
     workspaceId: data.workspaceId,
     item,
@@ -335,6 +349,8 @@ export function panelNextStep(item: HubItem, data: Pick<UseCaseHubData, "workspa
     info: data.abilities.canSeeNeeds ? (data.info?.[item.id.toLowerCase()] ?? null) : null,
     referents: null,
     askEntry: null,
+    // (Rilascio 5, D46) Lo stato del referente, senza nomi né pulsanti.
+    referent: referentState ? { state: referentState, review: data.referentReview?.[item.id.toLowerCase()] ?? null, canChoose: false, askableForReferent: null } : null,
     // Un dossier che c'è: la variante «dossier» della scheda senza riepilogo (E6).
     realizationVariant: item.phase === "in_realizzazione" && item.dossier ? "dossier" : null,
     realization: null,
@@ -563,7 +579,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 bands={bands}
                 dossierDown={dossierDown}
                 dossierColumn={data.dossierColumn}
-                info={data.info}
+                referentStates={data.referentStates}
                 basePath={basePath}
                 query={query}
                 filtersActive={filtersActive}
@@ -606,7 +622,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
               query={query}
               bands={bands}
               overviewHref={abilities.canSeePriority ? viewHref("panoramica") : null}
-              info={data.info}
+              referentStates={data.referentStates}
               filtersActive={filtersActive}
               clearHref={clearHref}
             />
@@ -628,6 +644,7 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           bands={bands}
           dossierDown={dossierDown}
           teamName={data.teamName}
+          referentState={data.referentStates?.[panelData.item.id.toLowerCase()] ?? null}
         />
       ) : null}
       {data.quickCreate ? <QuickCreateSheet workspaceId={workspaceId} aiLabs={data.quickCreate.aiLabs} lastAiLab={data.quickCreate.lastAiLab} /> : null}

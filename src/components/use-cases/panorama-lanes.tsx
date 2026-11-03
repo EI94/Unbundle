@@ -7,7 +7,7 @@ import { agentLabel, NO_AGENT_PARAM, type AgentPalette } from "@/lib/use-cases/a
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { FIGURE_SEPARATOR } from "@/lib/use-cases/format";
 import { SCREEN_SEPARATOR, keepTogether } from "@/lib/use-cases/line-breaks";
-import type { InfoProgressView } from "@/lib/use-cases/info-progress";
+import type { ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import {
   LANE_PREVIEW,
   PANORAMA_SECTION_ID,
@@ -85,8 +85,8 @@ export interface PanoramaLanesProps {
    * le card dello use case.
    */
   dossierColumn?: DossierColumn | null;
-  /** «Raccolta informazioni» per scheda (id in minuscolo), solo per i revisori: il chip delle card. */
-  info?: Readonly<Record<string, InfoProgressView>> | null;
+  /** (Rilascio 5) Lo stato del referente per scheda (id in minuscolo), per tutti i ruoli: il chip delle card. */
+  referentStates?: Readonly<Record<string, ReferentStateKey>> | null;
   basePath: string;
   query: HubQuery;
   filtersActive: boolean;
@@ -128,7 +128,7 @@ export function PanoramaLanes({
   bands,
   dossierDown = false,
   dossierColumn = null,
-  info = null,
+  referentStates = null,
   basePath,
   query,
   filtersActive,
@@ -150,7 +150,7 @@ export function PanoramaLanes({
   const reviewers = items.every((item) => !isContributorItem(item));
   const byAgent = reviewers && grouping?.active === "agente";
   const href = (id: string) => panelHref(basePath, query, id);
-  const infoOf = (id: string) => info?.[id.toLowerCase()] ?? null;
+  const stateOf = (id: string) => referentStates?.[id.toLowerCase()] ?? null;
   const column = reviewers && dossierColumn?.state === "pronta" ? dossierColumn : null;
   const inProgress = inProgressOrder(lanes.inProgress, column?.cards ?? []);
   const cardOf = (id: string): DossierCardView | undefined => column?.byUseCase.get(id.toLowerCase());
@@ -185,7 +185,7 @@ export function PanoramaLanes({
       barScale={barScale}
       dossierDown={dossierDown}
       bands={bands}
-      info={infoOf(entry.item.id)}
+      referentState={stateOf(entry.item.id)}
     />
   );
   return (
@@ -300,7 +300,7 @@ export function PanoramaLanes({
                   agents={agents}
                   dossierDown={dossierDown}
                   bands={bands}
-                  info={infoOf(item.id)}
+                  referentState={stateOf(item.id)}
                 />
               );
             })}
@@ -323,7 +323,7 @@ export function PanoramaLanes({
         >
           <ul className="grid gap-2 @xl/hub:grid-cols-2 @min-[58rem]/hub:grid-cols-3">
             {lanes.done.map((item) => (
-              <LaneCard key={item.id} item={item} place="realizzati" href={href(item.id)} agents={agents} bands={bands} info={infoOf(item.id)} />
+              <LaneCard key={item.id} item={item} place="realizzati" href={href(item.id)} agents={agents} bands={bands} referentState={stateOf(item.id)} />
             ))}
           </ul>
         </Disclosure>

@@ -43,6 +43,7 @@ const OPEN_TASK_CALLS: Record<string, string> = {
   "src/lib/db/queries/use-case-referents.ts": "pannello, «Chiedi di nuovo», lettura della richiesta, cron «senza più domande aperte», promemoria",
   "src/lib/db/queries/use-case-referent-dispatch.ts": "le email: i promemoria partono anche senza domande; le parole usano openQuestionsOf (meno la conferma)",
   "src/lib/db/queries/use-case-referent-public.ts": "l'invio delle risposte completa la richiesta solo con niente di aperto, e lo stato dopo l'invio",
+  "src/lib/db/queries/use-case-referent-states.ts": "(rilascio 5) lo stato del referente sulle card: «In attesa» e «Nessuna risposta» finché qualcosa è aperto, anche la sola conferma",
 };
 
 /** Le domande aperte una per una (`openItemSql` o `state = 'aperta'` in linea): per domanda, mai la conferma. */

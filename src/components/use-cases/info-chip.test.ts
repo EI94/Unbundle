@@ -28,15 +28,11 @@ const base: InfoProgress = {
 };
 const view = (over: Partial<InfoProgress> = {}): InfoProgressView => infoProgressView({ ...base, ...over })!;
 
-test("lungo nella testata: solo lo stato a parole; corto nelle righe: «Info: …», solo per gli stati che chiedono di fare qualcosa", () => {
+test("lungo nella testata: solo lo stato a parole (rilascio 5: il chip corto delle righe non c'è più)", () => {
   const toVerify = view();
   assert.deepEqual(chip.infoChipProps(toVerify, "long")?.text, "Informazioni: da verificare");
-  assert.deepEqual(chip.infoChipProps(toVerify, "short")?.text, "Info: da verificare");
   assert.equal(chip.infoChipProps(toVerify, "long")?.ariaLabel, "Informazioni: da verificare");
-  const silent = view({ state: "senza_risposta", silentReason: "scaduta" });
-  assert.equal(chip.infoChipProps(silent, "short")?.text, "Info: senza risposta");
   for (const state of ["da_chiedere", "in_attesa", "complete"] as const) {
-    assert.equal(chip.infoChipProps(view({ state, since: state === "in_attesa" ? "2026-10-27" : null }), "short"), null, state);
     assert.ok(chip.infoChipProps(view({ state, since: state === "in_attesa" ? "2026-10-27" : null }), "long"), state);
   }
   const waiting = view({ state: "in_attesa", since: "2026-10-27", reminded: true });
@@ -58,15 +54,18 @@ test("il tono colora solo l'icona; niente pillola, bordo o puntino, nessuna clas
   assert.doesNotMatch(source, /rounded-full|PhasePill|phase-pill|StatusDot/);
 });
 
-test("il chip corto arriva nelle card della Panoramica: hub → PanoramaLanes → LaneCard", () => {
+test("(rilascio 5) lo stato del referente arriva nelle card della Panoramica e nelle righe: hub → PanoramaLanes → LaneCard, DecideView → UseCaseRow", () => {
   const flat = (file: string) => readFileSync(new URL(file, import.meta.url), "utf8").replace(/\s+/g, " ");
   const hub = flat("./hub.tsx");
   const lanes = hub.slice(hub.indexOf("<PanoramaLanes "), hub.indexOf("/>", hub.indexOf("<PanoramaLanes ")));
-  assert.match(lanes, /\binfo=\{data\.info\}/);
+  assert.match(lanes, /\breferentStates=\{data\.referentStates\}/);
+  const decide = hub.slice(hub.indexOf("<DecideView "), hub.indexOf("/>", hub.indexOf("<DecideView ")));
+  assert.match(decide, /\breferentStates=\{data\.referentStates\}/);
   const view = flat("./panorama-lanes.tsx");
   const cards = [...view.matchAll(/<LaneCard [^>]*?\/>/g)].map((match) => match[0]);
   assert.equal(cards.length, 3, "corsie, «In realizzazione» e «Realizzati»");
-  for (const card of cards) assert.match(card, /\binfo=\{infoOf\(/, card);
-  assert.match(view, /const infoOf = \(id: string\) => info\?\.\[id\.toLowerCase\(\)\] \?\? null;/);
-  assert.match(flat("./lane-card.tsx"), /<InfoChip view=\{info\} variant="short" className="flex" \/>/);
+  for (const card of cards) assert.match(card, /\breferentState=\{stateOf\(/, card);
+  const laneCard = flat("./lane-card.tsx");
+  assert.equal((laneCard.match(/<ReferentChip state=\{referentState\}/g) ?? []).length, 2, "revisori e contributori");
+  assert.ok(!laneCard.includes("InfoChip") && !flat("./use-case-row.tsx").includes("InfoChip"), "il chip corto di «Raccolta informazioni» non c'è più");
 });

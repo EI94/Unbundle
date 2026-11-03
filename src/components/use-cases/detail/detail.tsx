@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 import { PublicNoteDraftProvider } from "../decision-buttons";
 import { ProposerAnswers } from "../proposer-answers";
 import { OwnMarker, othersCardNote } from "../use-case-row";
+import { ReferentChip } from "../referent-chip";
+import type { ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import { WhenControl } from "../when-control";
 import { Arrival } from "./arrival";
 import { DetailHeader } from "./detail-header";
@@ -227,6 +229,8 @@ export interface UseCaseDetailViewProps {
    * il tag della testata, il percorso e «Con LIBRA». null: neutri. Solo ai revisori.
    */
   agentTone?: AgentTone | null;
+  /** (Rilascio 5, §9.1) Al contributore: lo stato del referente, solo la parola. */
+  contributorReferentState?: ReferentStateKey | null;
   className?: string;
 }
 
@@ -264,6 +268,7 @@ export function UseCaseDetailView({
   companyName = null,
   companyDisplayName = null,
   agentTone = null,
+  contributorReferentState = null,
   className,
 }: UseCaseDetailViewProps) {
   if (result.projection === "contributore") {
@@ -281,6 +286,7 @@ export function UseCaseDetailView({
             phaseLabel: useCase.phaseLabel,
           }}
           marker={useCase.own ? <OwnMarker /> : null}
+          referentState={<ReferentChip state={contributorReferentState} />}
         />
         {/* Delle proposte altrui solo titolo e fase (D4, D13): una riga dice perché (H7). */}
         {useCase.own ? null : <p className="text-sm text-muted-foreground">{othersCardNote(teamName)}</p>}

@@ -1038,9 +1038,10 @@ test("pannello: «Prossimo passo:» sotto i chip, con chi lo fa, come nella sche
     const askedButtons = buttons(ids.wsA, asked.data.list.today, asked.panel);
     assert.ok(askedButtons.includes("Approva"));
     assert.equal(filledButtons(askedButtons), 0, `${person}: «Approva» bordato in «Serve info»`);
-    // Approvata per un trimestre finito: «Scegliere un nuovo trimestre», nessun pulsante pieno.
+    // Approvata per un trimestre finito, senza referente: (rilascio 5, D51) prima «Scegliere il
+    // referente», senza pulsanti nel pannello (D46).
     const overdue = await panelData(person, ids.wsA, cards.overdue.id);
-    assert.equal(overdue.panel.nextStep?.title, "Scegliere un nuovo trimestre");
+    assert.equal(overdue.panel.nextStep?.title, "Scegliere il referente");
     assert.equal(overdue.panel.nextStep?.decisionPrimary, "outline");
     // Chiusa: «Riapri» bordato.
     const closed = await panelData(person, ids.wsE, cards.eClosed.id);

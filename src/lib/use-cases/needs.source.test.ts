@@ -69,6 +69,9 @@ const TABLE_FILES = new Set([
   "src/lib/db/queries/use-case-referent-files.ts",
   "src/lib/db/queries/use-case-info-progress.ts",
   "src/lib/use-cases/referent/sql.ts",
+  // (Rilascio 5) Lo stato del referente sulle card: quali use case hanno un requisito del cliente da
+  // verificare (solo gli id, nessun testo delle esigenze).
+  "src/lib/db/queries/use-case-referent-states.ts",
   // (0025) «Pronto da avviare»: la regola in SQL (le informazioni del cliente tutte a posto), letta
   // dal seme della migrazione e dai costruttori degli avvisi; nessun testo delle esigenze esce.
   "src/lib/db/use-case-hub-alerts-ddl.ts",

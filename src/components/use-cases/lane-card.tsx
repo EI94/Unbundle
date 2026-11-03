@@ -2,14 +2,14 @@ import Link from "next/link";
 import { agentToneOf, titleAgent, type AgentPalette, type AgentTone } from "@/lib/use-cases/agents";
 import type { CostBandInfo } from "@/lib/use-cases/cost-bands";
 import { formatMonthYear, perYearText, shownPerYear, type ValueParts } from "@/lib/use-cases/format";
-import type { InfoProgressView } from "@/lib/use-cases/info-progress";
+import type { ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import { laneBarWidth, laneValueView, type LaneKey } from "@/lib/use-cases/lanes";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
 import { EXPIRED_TAG, isContributorItem, type AnyHubItem, type HubItem } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { AGENT_BAR_CLASS, AgentTag, NEUTRAL_BAR_CLASS } from "./agent-tag";
 import { CostFigure } from "./cost-figure";
-import { InfoChip } from "./info-chip";
+import { ReferentChip } from "./referent-chip";
 import { KindLabel } from "./kind-label";
 import { PhasePill } from "./phase-pill";
 import { CodeLabel, shownPhaseLabel, subStateText, visibleCode } from "./use-case-row";
@@ -34,8 +34,11 @@ export interface LaneCardProps {
   /** La lettura del dossier è in errore (§4.9): «In realizzazione» mostra solo la fase. */
   dossierDown?: boolean;
   bands?: readonly CostBandInfo[];
-  /** «Raccolta informazioni» (solo revisori): il chip corto sotto il titolo, solo «da verificare» e «senza risposta». */
-  info?: InfoProgressView | null;
+  /**
+   * (Rilascio 5, §10.3) Lo stato del referente (tutti i ruoli): il chip sotto il titolo, al posto del chip
+   * corto di «Raccolta informazioni»; ai contributori sotto la pillola della fase, solo la parola.
+   */
+  referentState?: ReferentStateKey | null;
 }
 
 /**
@@ -66,7 +69,7 @@ export function LaneCard({
   barScale = 0,
   dossierDown = false,
   bands,
-  info = null,
+  referentState = null,
 }: LaneCardProps) {
   const agent = titleAgent(item.title);
   const reviewer = isContributorItem(item) ? null : item;
@@ -91,12 +94,13 @@ export function LaneCard({
           </span>
           {reviewer ? (
             <>
-              <InfoChip view={info} variant="short" className="flex" />
+              <ReferentChip state={referentState} className="flex" />
               <ReviewerDetails item={reviewer} place={place} tone={tone} barScale={barScale} dossierDown={dossierDown} />
             </>
           ) : (
             <span className="flex flex-wrap items-center gap-2">
               <PhasePill label={shownPhaseLabel(item, dossierDown)} phase={item.phase} subState={item.subState} />
+              <ReferentChip state={referentState} />
             </span>
           )}
         </span>
