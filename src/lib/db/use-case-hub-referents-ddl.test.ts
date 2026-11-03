@@ -30,6 +30,7 @@ import {
 } from "./use-case-hub-referents-ddl.ts";
 import { USE_CASE_EVENT_FIELDS_0023, USE_CASE_HISTORY_DDL, eventFieldsProbeSql, eventFieldsWideningDdl } from "./use-case-hub-history-ddl.ts";
 import * as schema from "./schema.ts";
+import { REFERENT_CHECK_ADDED_COLUMNS } from "./use-case-hub-referent-check-ddl.ts";
 
 // Migrazione 0024 e self-heal: «Chiedi al referente», campanella per persona e avanzamento delle
 // informazioni (SPEC chiedi §1, §P2.2). Le prove sul database stanno nelle suite di integrazione di
@@ -244,7 +245,8 @@ test("schema.ts: le colonne Drizzle sono le colonne del DDL, nello stesso ordine
     const table = DRIZZLE_TABLES[name];
     assert.equal(getTableName(table), name);
     const columns = Object.values(getTableColumns(table)).map((column) => column.name);
-    assert.deepEqual(columns, ddlColumns(name), name);
+    // (0026) Le colonne che la 0026 aggiunge in fondo a due tabelle della 0024.
+    assert.deepEqual(columns, [...ddlColumns(name), ...(REFERENT_CHECK_ADDED_COLUMNS[name] ?? [])], name);
   }
   // Le colonne aggiunte dalla Parte 2.
   assert.ok(ddlColumns("use_case_notifications").includes("unknowns"));

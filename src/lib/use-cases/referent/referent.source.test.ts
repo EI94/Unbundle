@@ -48,6 +48,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/use-case-hub-alerts-ddl.ts",
   "src/lib/use-cases/case-alerts/sql.ts",
   "src/lib/db/queries/use-case-alerts.ts",
+  // (0026) «Referente in un tocco»: il DDL della conferma, della stima e delle chiusure.
+  "src/lib/db/use-case-hub-referent-check-ddl.ts",
   // Il servizio e le sue basi, la pagina pubblica, i file, l'invio delle email.
   "src/lib/db/queries/use-case-referents.ts",
   "src/lib/db/queries/use-case-referent-base.ts",

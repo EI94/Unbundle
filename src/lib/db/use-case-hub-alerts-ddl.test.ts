@@ -174,8 +174,8 @@ test("la sonda copre ogni tabella, indice e vincolo con nome, e il CHECK dei tip
   assert.ok(CASE_ALERTS_TABLES_PRESENT_SQL.includes("'''pronto'''") && CASE_ALERTS_TABLES_PRESENT_SQL.includes("'''fornitori'''"));
 });
 
-test("ensure-schema: versione 19, la 0025 dopo la 0024, non fatale, con timeout e lock, e la sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 19;/);
+test("ensure-schema: versione 19 o dopo, la 0025 dopo la 0024, non fatale, con timeout e lock, e la sonda in AND", () => {
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 19, "ENSURE_VERSION almeno 19 (la 0026 la porta a 20)");
   assert.match(ensureSchema, /import \{ USE_CASE_ALERTS_DDL, USE_CASE_ALERTS_PROBE_SQL \} from "\.\/use-case-hub-alerts-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const referents = runOnce.indexOf("await runUseCaseReferentsDdlSafely();");

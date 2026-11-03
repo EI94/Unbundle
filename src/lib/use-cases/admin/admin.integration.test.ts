@@ -702,6 +702,7 @@ test("doctor: sola lettura, verde solo quando il workspace è pronto", opts, asy
   assert.deepEqual(rest, { workspace: ids.wsA, nome: NAME_AB, rigaConfig: true, senzaCodice: 0, origineDaDecidere: 0, dossierLinksReady: true, scoringVersion: 1, areaAccesa: false, avvisiCliente: false });
   assert.equal(typeof chiPuòAutorizzare, "boolean", "sì o no, mai quante persone");
   assert.equal(typeof red.last.migrazione0025, "boolean");
+  assert.equal(typeof red.last.migrazione0026, "boolean", "(0026) la sonda della 0026, solo da leggere");
   // Con l'interruttore di produzione («*») l'area è accesa anche per lui; l'esclusione la spegne.
   const star = runAdmin(["doctor", "--workspace", ids.wsA], { env: { USE_CASE_HUB_WORKSPACES: "*" } });
   assert.equal((star.last.workspaces as Array<Record<string, unknown>>)[0].areaAccesa, true);

@@ -976,6 +976,8 @@ export const useCaseReferentRequestItems = pgTable(
     state: varchar("state", { length: 10 }).$type<ReferentItemState>().notNull().default("aperta"),
     addedAt: tz("added_at").defaultNow().notNull(),
     answeredAt: tz("answered_at"),
+    /** (0026) «Serve un file»: lo sceglie chi chiede, la domanda si chiude solo con un file (o «Non ce l'ho»). */
+    fileRequired: boolean("file_required").notNull().default(false),
   },
   (t) => [
     primaryKey({ name: "use_case_referent_request_items_pkey", columns: [t.requestId, t.needId] }),
@@ -1002,6 +1004,37 @@ export const useCaseReferentTokens = pgTable(
   (t) => [unique("use_case_referent_tokens_hash_unique").on(t.tokenHash), index("use_case_referent_tokens_request_idx").on(t.requestId)]
 );
 
+/**
+ * (0026) La conferma dello use case e la stima del tempo del referente: una riga per ogni richiesta al
+ * referente, creata con la richiesta (segna la richiesta come «al referente»). Il referente scrive le
+ * bozze e la invia con «Invia»; il team chiude la sua revisione. Chi l'ha chiusa sta solo nella Storia.
+ */
+export const useCaseReferentChecks = pgTable(
+  "use_case_referent_checks",
+  {
+    requestId: uuid("request_id").primaryKey().references(() => useCaseReferentRequests.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    confirm: varchar("confirm", { length: 8 }).$type<"si" | "correggi">(),
+    confirmNote: varchar("confirm_note", { length: 1000 }),
+    /** L'istantanea della stima del team che il referente ha visto (tutte e tre o nessuna). */
+    teamComponentKey: varchar("team_component_key", { length: 40 }),
+    teamVolumeYear: numeric("team_volume_year", { precision: 14, scale: 2 }),
+    teamMinutes: numeric("team_minutes", { precision: 12, scale: 2 }),
+    estimate: varchar("estimate", { length: 6 }).$type<"si" | "meno" | "piu">(),
+    timesPerMonth: numeric("times_per_month", { precision: 12, scale: 2 }),
+    minutesEach: numeric("minutes_each", { precision: 10, scale: 2 }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+    submittedAt: tz("submitted_at"),
+    correctionDoneAt: tz("correction_done_at"),
+    estimateOutcome: varchar("estimate_outcome", { length: 8 }).$type<"adottata" | "tenuta">(),
+    estimateOutcomeAt: tz("estimate_outcome_at"),
+    purgedAt: tz("purged_at"),
+  },
+  (t) => [index("use_case_referent_checks_use_case_idx").on(t.useCaseId), index("use_case_referent_checks_workspace_idx").on(t.workspaceId)]
+);
+
 export const useCaseNeedAnswers = pgTable(
   "use_case_need_answers",
   {
@@ -1021,6 +1054,10 @@ export const useCaseNeedAnswers = pgTable(
     removedAt: tz("removed_at"),
     removedByUserId: uuid("removed_by_user_id").references(() => users.id, { onDelete: "set null" }),
     removedReason: varchar("removed_reason", { length: 14 }).$type<"revisore" | "conservazione" | "cancellazione">(),
+    /** (0026) «Chi potrebbe saperlo?» con «Non ce l'ho», il commento con un file o «È già allegato»; solo del referente. */
+    comment: varchar("comment", { length: 1000 }),
+    /** (0026) «È già allegato»: la risposta è in un file di un'altra domanda o già dato al team. */
+    alreadyAttached: boolean("already_attached").notNull().default(false),
   },
   (t) => [index("use_case_need_answers_need_idx").on(t.needId, t.submittedAt), index("use_case_need_answers_workspace_idx").on(t.workspaceId)]
 );

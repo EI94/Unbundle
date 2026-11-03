@@ -370,3 +370,32 @@ SELECT kind, status, hold_reason, cancel_reason, send_on FROM use_case_alert_ema
 
 **Ritorno indietro** (Vercel Hobby, un passo, senza skew protection): il codice di prima mostrerebbe le righe `pronto` e `fornitori` senza titolo e con un link a «Cosa serve». Deploy la sera e `main` fermo per circa 24 ore. Se si torna indietro, il proprietario (mai un agente) cancella in produzione `DELETE FROM use_case_notifications WHERE kind IN ('pronto', 'fornitori');`. Le tabelle della 0025 possono restare: il codice di prima non le legge.
 
+
+### 10.9 «Referente in un tocco» (0026)
+
+Il rilascio 5: i revisori scelgono il referente di uno use case con un'azione sola; il referente riceve subito l'email, conferma lo use case («Sì, è così» / «Correggi»), stima il tempo del lavoro (sempre in ore, mai euro) e chiude ogni domanda (una risposta, un file, «Non ce l'ho» o «È già allegato»). Il referente di uno use case non è una colonna: è il contatto dell'ultima richiesta al referente (`use_case_referent_checks`), nessuno quando quella è revocata.
+
+**Migrazione 0026 (a mano, prima del deploy)**, come la 0024 (§10.2) e la 0025 (§10.8):
+
+1. Prima del deploy, il proprietario: restore point su Neon, poi `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0026_use_case_referent_check.sql` (crea `use_case_referent_checks`, aggiunge `file_required` a `use_case_referent_request_items`, `comment` e `already_attached` a `use_case_need_answers` e un solo CHECK, `use_case_need_answers_comment_check`; non scrive dati).
+2. `SELECT <USE_CASE_REFERENT_CHECK_PROBE_SQL>` (da `src/lib/db/use-case-hub-referent-check-ddl.ts`) deve dare `true`, oppure `use-case-admin doctor` (con `USE_CASE_ADMIN_DATABASE_URL` nel comando, come in §10.8) deve dire `migrazione0026: true`.
+3. Mai drizzle-kit, mai `db:push`. Il self-heal (`ENSURE_VERSION` 20) trova lo schema aggiornato e non fa niente. Senza la 0026 l'app serve senza «Chiedi al referente» (il pannello non c'è) e la pagina del referente dice «Non disponibile».
+4. Il ramo non si pubblica prima della revisione: le anteprime usano il database di produzione e il self-heal applicherebbe la 0026 lì. La serie va in produzione tutta insieme, la sera, con `main` fermo per circa 24 ore dopo (Vercel Hobby: niente skew protection, ritorno indietro di un passo).
+5. Ritorno indietro, prima di premerlo: il codice di prima vede una richiesta al referente come una richiesta con le sole domande, quindi la completa senza la conferma (subito, se non ha domande). Il proprietario (mai un agente) legge il numero e decide se revocarle prima: `SELECT count(*) FROM use_case_referent_requests r JOIN use_case_referent_checks c ON c.request_id = r.id WHERE r.status = 'inviata' AND c.submitted_at IS NULL;` (solo un numero). Gli oggetti della 0026 restano.
+6. Ritorno indietro, mentre il codice di prima è in produzione: la sua cancellazione, la sua conservazione di 12 mesi e la sua pulizia delle bozze non tolgono commenti e note di conferma. Subito dopo ogni «Cancella i dati di questa persona» fatto sul codice di prima, il proprietario esegue la pulizia (il cron del codice nuovo esegue ogni giorno gli stessi tre statement, `REFERENT_CHECK_SWEEP_SQL`, dopo il ritorno avanti):
+```sql
+UPDATE use_case_need_answers SET comment = NULL, updated_at = now() WHERE comment IS NOT NULL AND removed_at IS NOT NULL;
+UPDATE use_case_referent_checks c SET confirm_note = NULL, purged_at = coalesce(c.purged_at, now()), updated_at = now()
+  FROM use_case_referent_requests r WHERE c.request_id = r.id AND r.purged_at IS NOT NULL AND c.confirm_note IS NOT NULL;
+UPDATE use_case_referent_checks c SET confirm = NULL, confirm_note = NULL, estimate = NULL, times_per_month = NULL, minutes_each = NULL, updated_at = now()
+  FROM use_case_referent_requests r WHERE c.request_id = r.id AND c.submitted_at IS NULL AND r.status <> 'inviata'
+  AND (c.confirm IS NOT NULL OR c.confirm_note IS NOT NULL OR c.estimate IS NOT NULL OR c.times_per_month IS NOT NULL OR c.minutes_each IS NOT NULL);
+```
+7. Dopo il ritorno avanti, una richiesta al referente che il codice di prima ha completato senza la conferma si mostra «Il referente ha risposto» con «Lo use case: nessuna conferma.» sulla scheda: «Chiedi di nuovo» non c'è; «Cambia referente», o la stessa persona scelta di nuovo, chiede la conferma.
+
+**Controllo di sola lettura** (UUID inventati):
+```sql
+SELECT r.status, c.confirm IS NOT NULL AS confermato, c.estimate, c.submitted_at IS NOT NULL AS inviata
+FROM use_case_referent_requests r JOIN use_case_referent_checks c ON c.request_id = r.id
+WHERE r.use_case_id = '<use case>' ORDER BY r.created_at DESC, r.id DESC LIMIT 5;
+```
