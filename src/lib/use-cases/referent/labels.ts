@@ -258,6 +258,27 @@ export const REFERENT_REQUEST_WORD = Object.freeze({
   closed: "Chiusa",
 });
 
+// ─── La stima del tempo (rilascio 5, §3.3) ───────────────────────────
+
+/**
+ * (Rilascio 5) La stima del team in parole semplici, sempre in ore di lavoro (mai euro, quote o
+ * punteggi): la vede il referente al passo «Il tempo», chi chiede in «Cosa riceve {Nome}», il team sulla
+ * scheda. `estimate.ts` sceglie quale frase e riempie i numeri.
+ */
+export const REFERENT_ESTIMATE_TEXT = Object.freeze({
+  hoursOne: "1 ora di lavoro l'anno",
+  hoursLess: "meno di un'ora di lavoro l'anno",
+  hoursMany: "{n} ore di lavoro l'anno",
+  question: "Il team stima {ore}: ti torna?",
+  statement: "Il team stima {ore}.",
+  perMonth: "Circa {n} {unita} al mese, {minuti} ogni volta.",
+  perYear: "Circa {n} {unita} l'anno, {minuti} ogni volta.",
+  minutesOne: "1 minuto",
+  minutesMany: "{n} minuti",
+  /** Quando la stima non dice che cosa si conta, o la parola non passa i controlli. */
+  defaultUnit: "volte",
+});
+
 // ─── Pagina pubblica (§4.4) ──────────────────────────────────────────
 
 export const REFERENT_PUBLIC_TEXT = Object.freeze({
