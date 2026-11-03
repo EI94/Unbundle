@@ -46,3 +46,21 @@ test("chi ha agito: «Referente» dalla pagina pubblica, «Unbundle» per il res
   assert.equal(historyActorText({ actorKind: "sistema", channel: "altro" }), "Unbundle");
   assert.equal(historyActorText({ actorKind: "persona", channel: "pagina" }), null);
 });
+
+test("(rilascio 5) i codici di «Referente in un tocco»: parola per parola di §5.5, mai più lunghi della colonna", () => {
+  const expected: Record<string, string> = {
+    referente: "referente scelto e richiesta inviata",
+    referente_cambiato: "referente cambiato",
+    conferma: "lo use case è confermato",
+    correzione: "chiesta una correzione dello use case",
+    correzione_fatta: "correzione fatta",
+    stima_diversa: "stima del tempo diversa",
+    stima_adottata: "stima del referente usata",
+    stima_tenuta: "stima del team tenuta",
+  };
+  for (const [code, text] of Object.entries(expected)) {
+    assert.ok(isReferentHistoryCode(code), code);
+    assert.equal(referentHistoryText({ phaseAfter: code }), `Chiedi al referente: ${text}`);
+  }
+  for (const code of REFERENT_HISTORY_CODES) assert.ok(code.length <= 40, code);
+});

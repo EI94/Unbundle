@@ -20,7 +20,7 @@ import {
   type ReferentDispatchSummary,
   type ReferentRequestFacts,
 } from "@/lib/use-cases/referent/dispatch";
-import { lockRequestsSql, notifyReviewersSql, openItemsCountSql, queueRequesterAlertSql, referentEventsForRequestsSql, validLinkSql } from "@/lib/use-cases/referent/sql";
+import { checkPendingCountSql, lockRequestsSql, notifyReviewersSql, openItemsCountSql, queueRequesterAlertSql, referentEventsForRequestsSql, validLinkSql } from "@/lib/use-cases/referent/sql";
 import { newReferentToken } from "@/lib/use-cases/referent/tokens";
 import { PORTFOLIO_REVIEWER_ROLES } from "@/lib/workspace-permissions";
 
@@ -69,13 +69,17 @@ function scopeOf(requestId: string | null): ReturnType<typeof ucSql> {
 /** Le colonne di una richiesta per il motore; la voce del promemoria con il suo tipo. */
 function requestFactsSql(i: { emailId: string; template: ReferentEmailTemplate; requestId: string | null; workspaceId: string }): UcStatement {
   const ws = cast(i.workspaceId, "uuid");
-  const common = raw(`r.id, r.use_case_id, r.status, r.expires_at, r.sent_at, r.reminder_count, r.last_email_at, r.message, r.requester_name, r.requested_by_user_id, r.created_at,
-  (r.status = 'inviata' AND r.revoked_at IS NULL AND r.expires_at > now()) AS live, u.code, u.title`);
+  // (Rilascio 5) Una richiesta al referente (la riga della conferma c'è) e la sua conferma ancora da inviare.
+  const common = ucSql`${raw(`r.id, r.use_case_id, r.status, r.expires_at, r.sent_at, r.reminder_count, r.last_email_at, r.message, r.requester_name, r.requested_by_user_id, r.created_at,
+  (r.status = 'inviata' AND r.revoked_at IS NULL AND r.expires_at > now()) AS live, u.code, u.title,
+  EXISTS (SELECT 1 FROM use_case_referent_checks k WHERE k.request_id = r.id) AS referent_request,`)}
+  ${checkPendingCountSql("r")} AS check_pending`;
   // Già partita ma senza link valido per l'indirizzo di adesso («Correggi l'email»).
   const changed = ucSql`(r.sent_at IS NOT NULL AND NOT ${validLinkSql("r")}) AS address_changed`;
   if (i.template !== "promemoria") {
     return toStatement(ucSql`SELECT ${common}, ${changed}, ${openItemsCountSql("r")} AS open_items, 0 AS new_questions, NULL::text AS item_kind, false AS already_sent,
-  (SELECT count(*)::int FROM use_case_referent_request_items x WHERE x.request_id = r.id AND x.answered_at >= (date_trunc('day', now() AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'Europe/Rome')) AS answered_today
+  (SELECT count(*)::int FROM use_case_referent_request_items x WHERE x.request_id = r.id AND x.answered_at >= (date_trunc('day', now() AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'Europe/Rome'))
+  + (SELECT count(*)::int FROM use_case_referent_checks xc WHERE xc.request_id = r.id AND xc.submitted_at >= (date_trunc('day', now() AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'Europe/Rome')) AS answered_today
 FROM use_case_referent_requests r JOIN use_cases u ON u.id = r.use_case_id AND u.workspace_id = r.workspace_id
 WHERE r.id = ${cast(i.requestId, "uuid")} AND r.workspace_id = ${ws}`);
   }
@@ -112,6 +116,8 @@ function requestFactsOf(r: UcRow): ReferentRequestFacts | null {
     answeredToday: rowNumber(r.answered_today) ?? 0,
     item: kind ? { kind, alreadySent: rowBool(r.already_sent) } : null,
     addressChanged: rowBool(r.address_changed),
+    referentRequest: rowBool(r.referent_request),
+    checkPending: (rowNumber(r.check_pending) ?? 0) > 0,
   };
 }
 

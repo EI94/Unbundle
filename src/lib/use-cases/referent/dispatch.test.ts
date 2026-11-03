@@ -407,3 +407,34 @@ test("piano: senza le risposte dal link (UC_SECRET mancante) richieste e promemo
   assert.equal(confirm.action, "send");
   assert.equal(plan(email(), facts({ publicWritesOn: true })).action, "send");
 });
+
+test("(rilascio 5) piano: la richiesta al referente parte anche senza domande; l'email conta solo le domande", () => {
+  const LINK = "http://localhost:3000/rispondi/ucq_" + "A".repeat(32);
+  const zero = plan(email(), facts({ requests: [request({ openItems: 1, checkPending: true, referentRequest: true })] }));
+  assert.equal(zero.action, "send");
+  if (zero.action === "send") {
+    const input = zero.build({ [R1]: LINK });
+    assert.ok(input.template === "richiesta" && input.kind === "referente" && input.questions === 0, JSON.stringify(input));
+  }
+  const three = plan(email(), facts({ requests: [request({ openItems: 4, checkPending: true, referentRequest: true })] }));
+  if (three.action === "send") {
+    const input = three.build({ [R1]: LINK });
+    assert.ok(input.template === "richiesta" && input.questions === 3);
+  } else assert.fail("attesa send");
+  // Una richiesta di sole domande: i testi del rilascio 4.
+  const plain = plan(email(), facts());
+  if (plain.action === "send") {
+    const input = plain.build({ [R1]: LINK });
+    assert.ok(input.template === "richiesta" && input.kind === "domande" && input.questions === 2);
+  }
+  // Il promemoria con la conferma da inviare: la voce lo dice, e conta solo le domande.
+  const reminder = plan(
+    email({ template: "promemoria", requestId: null, dedupeKey: "pa:c1:2026-11-05" }),
+    facts({ requests: [request({ openItems: 1, checkPending: true, referentRequest: true, item: { kind: "primo", alreadySent: false }, lastEmailAt: romeLocalToUtc("2026-10-30", 10) })] }),
+  );
+  assert.equal(reminder.action, "send");
+  if (reminder.action === "send") {
+    const input = reminder.build({ [R1]: LINK });
+    assert.ok(input.template === "promemoria" && input.entries[0].checkPending === true && input.entries[0].openQuestions === 0, JSON.stringify(input));
+  }
+});

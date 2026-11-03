@@ -30,6 +30,15 @@ export const REFERENT_HISTORY_CODES = [
   "email_corretta",
   "dati_cancellati",
   "conservazione",
+  // (Rilascio 5) «Referente in un tocco».
+  "referente",
+  "referente_cambiato",
+  "conferma",
+  "correzione",
+  "correzione_fatta",
+  "stima_diversa",
+  "stima_adottata",
+  "stima_tenuta",
 ] as const;
 export type ReferentHistoryCode = (typeof REFERENT_HISTORY_CODES)[number];
 
@@ -55,6 +64,14 @@ export const REFERENT_HISTORY_TEXT: Readonly<Record<ReferentHistoryCode, string>
   email_corretta: "email del referente corretta",
   dati_cancellati: "dati del referente cancellati",
   conservazione: "risposte e file cancellati dopo 12 mesi",
+  referente: "referente scelto e richiesta inviata",
+  referente_cambiato: "referente cambiato",
+  conferma: "lo use case è confermato",
+  correzione: "chiesta una correzione dello use case",
+  correzione_fatta: "correzione fatta",
+  stima_diversa: "stima del tempo diversa",
+  stima_adottata: "stima del referente usata",
+  stima_tenuta: "stima del team tenuta",
 });
 
 /** (Parte 2) Chi ha agito, per le righe automatiche di «Cosa serve» e di questa funzione. */

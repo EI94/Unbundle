@@ -347,10 +347,26 @@ export interface SendReferentRequestInput {
   message?: string | null;
   /** «Chiedi di nuovo»: la richiesta che questa sostituisce (scaduta, o viva «Senza risposta»). */
   previousRequestId?: string | null;
+  /**
+   * (Rilascio 5) «referente»: la richiesta al referente dello use case (la conferma, la stima, le
+   * domande, anche nessuna); «domande» (o assente): solo domande, come nel rilascio 4.
+   */
+  kind?: "referente" | "domande";
+  /** (Rilascio 5) Le domande con «Serve un file»: un sottoinsieme di `needIds`. */
+  fileRequired?: string[];
+  /**
+   * (Rilascio 5, solo «referente») L'ultima richiesta al referente come la vedeva la finestra (null se
+   * non c'era): un'altra persona che nel frattempo ha scelto il referente fa rifiutare l'invio.
+   */
+  expectedReferentRequestId?: string | null;
+  /** (Rilascio 5, solo «referente») «Cambia referente»: le richieste vive del referente di prima si revocano. */
+  replaceReferent?: boolean;
 }
 
 export interface AddToReferentRequestInput {
   needIds: string[];
+  /** (Rilascio 5) Le domande nuove con «Serve un file». */
+  fileRequired?: string[];
 }
 
 export type FileReviewOutcome = "accetta" | "rifiuta";

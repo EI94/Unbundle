@@ -438,6 +438,9 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   domande_cambiate: "Qualcuno ha appena cambiato queste domande. Ho ricaricato i dati: riprova.",
   messaggio_troppo_lungo: "Il messaggio può avere al massimo 1.000 caratteri.",
   richiesta_chiusa: "Questa richiesta è chiusa.",
+  // (Rilascio 5) Un altro revisore ha scelto o cambiato il referente mentre la finestra era aperta.
+  referente_gia_scelto: "Nel frattempo un collega ha cambiato il referente: ricarico la scheda.",
+  referente_uguale: "È già il referente: scegli un'altra persona.",
   promemoria_gia_inviato: "Oggi a {Nome} è già partita un'email: puoi mandare un promemoria domani.",
   non_ancora_inviata: "L'email della richiesta non è ancora partita: usa «Riprova l'invio».",
   nessuna_domanda_aperta: "Non ci sono più domande aperte in questa richiesta.",

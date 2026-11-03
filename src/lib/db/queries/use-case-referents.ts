@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
+import { REFERENT_CHECK_SWEEP_SQL } from "@/lib/db/use-case-hub-referent-check-ddl";
 import { loadUserContext } from "@/lib/db/queries/uc-cases";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import {
@@ -81,6 +82,7 @@ import {
   expireStatements,
   lockRequestsOfNeedSql,
   needTransitionSql,
+  openItemSql,
   openItemsCountSql,
   validLinkSql,
   referentEventSql,
@@ -848,7 +850,22 @@ type ContactInput =
   | { kind: "nuovo"; displayName: string; email: string; roleLabel: string | null }
   | { kind: "membro"; userId: string };
 
-function parseSendInput(raw: unknown): { ok: true; contact: ContactInput; needIds: string[]; message: string | null; previousRequestId: string | null } | ReferentFailure {
+interface ParsedSendInput {
+  ok: true;
+  contact: ContactInput;
+  needIds: string[];
+  message: string | null;
+  previousRequestId: string | null;
+  /** (Rilascio 5) «referente» o «domande» (assente = «domande», il rilascio 4). */
+  kind: "referente" | "domande";
+  /** (Rilascio 5) Le domande con «Serve un file» (un sottoinsieme di `needIds`). */
+  fileRequired: string[];
+  /** (Rilascio 5) L'ultima richiesta al referente come la vedeva la finestra; undefined: non detta. */
+  expectedReferentRequestId: string | null | undefined;
+  replaceReferent: boolean;
+}
+
+function parseSendInput(raw: unknown): ParsedSendInput | ReferentFailure {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return rfail("dati_non_validi", REFERENT_ERROR_MESSAGES.riprova);
   const r = raw as Record<string, unknown>;
   const c = r.contact as Record<string, unknown> | undefined;
@@ -868,7 +885,93 @@ function parseSendInput(raw: unknown): { ok: true; contact: ContactInput; needId
   const message = r.message === undefined || r.message === null ? null : typeof r.message === "string" ? r.message : null;
   const previous = r.previousRequestId === undefined || r.previousRequestId === null ? null : isUuid(r.previousRequestId) ? r.previousRequestId.toLowerCase() : "x";
   if (previous === "x") return rfail("richiesta_chiusa");
-  return { ok: true, contact, needIds: (ids as string[]).map((x) => x.toLowerCase()), message, previousRequestId: previous };
+  // (Rilascio 5) Il tipo, «Serve un file», la richiesta al referente vista dalla finestra, «Cambia referente».
+  if (r.kind !== undefined && r.kind !== null && r.kind !== "referente" && r.kind !== "domande") return rfail("dati_non_validi", REFERENT_ERROR_MESSAGES.riprova);
+  const kind = r.kind === "referente" ? "referente" : "domande";
+  const files = r.fileRequired === undefined || r.fileRequired === null ? [] : r.fileRequired;
+  if (!Array.isArray(files) || !files.every(isUuid)) return rfail("domande_cambiate");
+  const expected = r.expectedReferentRequestId === undefined ? undefined : r.expectedReferentRequestId === null ? null : isUuid(r.expectedReferentRequestId) ? r.expectedReferentRequestId.toLowerCase() : "x";
+  if (expected === "x") return rfail("referente_gia_scelto");
+  if (r.replaceReferent !== undefined && typeof r.replaceReferent !== "boolean") return rfail("dati_non_validi", REFERENT_ERROR_MESSAGES.riprova);
+  return {
+    ok: true,
+    contact,
+    needIds: (ids as string[]).map((x) => x.toLowerCase()),
+    message,
+    previousRequestId: previous,
+    kind,
+    fileRequired: (files as string[]).map((x) => x.toLowerCase()),
+    expectedReferentRequestId: expected,
+    replaceReferent: r.replaceReferent === true,
+  };
+}
+
+/** (Rilascio 5) L'ultima richiesta al referente dello use case (R*, §3.1), per data e poi id: mai per persona. */
+function latestReferentRequestSql(workspaceId: string, useCaseId: string): UcStatement {
+  return toStatement(ucSql`SELECT r.id, r.contact_id, r.status, r.requested_by_user_id, (now() - r.created_at) < interval '60 seconds' AS recent
+FROM use_case_referent_requests r JOIN use_case_referent_checks c ON c.request_id = r.id
+WHERE r.workspace_id = ${cast(workspaceId, "uuid")} AND r.use_case_id = ${cast(useCaseId, "uuid")}
+ORDER BY r.created_at DESC, r.id DESC
+LIMIT 1`);
+}
+
+interface LatestReferentRequest {
+  id: string;
+  contactId: string;
+  revoked: boolean;
+  requestedBy: string | null;
+  recent: boolean;
+}
+
+async function readLatestReferentRequest(executor: UcExecutor, workspaceId: string, useCaseId: string): Promise<LatestReferentRequest | null> {
+  const [[row]] = await executor.batch([latestReferentRequestSql(workspaceId, useCaseId)]);
+  if (!row) return null;
+  return {
+    id: String(row.id).toLowerCase(),
+    contactId: String(row.contact_id).toLowerCase(),
+    revoked: rowString(row.status) === "revocata",
+    requestedBy: rowString(row.requested_by_user_id)?.toLowerCase() ?? null,
+    recent: rowBool(row.recent),
+  };
+}
+
+/**
+ * (Rilascio 5, §3.1) Un referente alla volta: nel batch di invio, prima di tutto, il lock dello use case
+ * e la richiesta al referente più recente uguale a quella che la finestra aveva visto. Il batch gira a
+ * READ COMMITTED (uc-executor non passa opzioni): ogni statement dopo il lock vede quello che le
+ * transazioni prima hanno scritto, quindi due invii insieme non fanno due referenti.
+ */
+function referentCasStatements(workspaceId: string, useCaseId: string, expected: string | null): UcStatement[] {
+  return [
+    toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('ucref:' || ${cast(useCaseId, "text")}))`),
+    toStatement(ucSql`SELECT uc_require((SELECT r.id FROM use_case_referent_requests r JOIN use_case_referent_checks c ON c.request_id = r.id
+  WHERE r.workspace_id = ${cast(workspaceId, "uuid")} AND r.use_case_id = ${cast(useCaseId, "uuid")}
+  ORDER BY r.created_at DESC, r.id DESC LIMIT 1) IS NOT DISTINCT FROM ${cast(expected, "uuid")}, 'referente_gia_scelto') AS ok`),
+  ];
+}
+
+/**
+ * (Rilascio 5, §3.7) Le domande a cui il referente ha risposto «Non ce l'ho»: l'ultima sua domanda su
+ * quell'esigenza, tra le sue richieste su questo use case, è «non_so» e l'esigenza è ancora da chiedere.
+ * La scelta dell'ultima è in TypeScript; la lettura filtra sul referente, non conta né ordina per persona.
+ */
+async function readDeclinedNeedIds(executor: UcExecutor, workspaceId: string, useCaseId: string, contactId: string): Promise<Set<string>> {
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT i.need_id, i.state, r.id AS request_id, r.created_at, n.status AS need_status
+FROM use_case_referent_request_items i
+JOIN use_case_referent_requests r ON r.id = i.request_id AND r.workspace_id = i.workspace_id
+JOIN use_case_needs n ON n.id = i.need_id AND n.workspace_id = r.workspace_id
+WHERE r.workspace_id = ${cast(workspaceId, "uuid")} AND r.use_case_id = ${cast(useCaseId, "uuid")} AND r.contact_id = ${cast(contactId, "uuid")}`),
+  ]);
+  const latest = new Map<string, { at: number; id: string; state: string; needStatus: string }>();
+  for (const row of rows) {
+    const needId = String(row.need_id).toLowerCase();
+    const at = rowDate(row.created_at)?.getTime() ?? 0;
+    const id = String(row.request_id).toLowerCase();
+    const best = latest.get(needId);
+    if (!best || at > best.at || (at === best.at && id > best.id)) latest.set(needId, { at, id, state: rowString(row.state) ?? "", needStatus: rowString(row.need_status) ?? "" });
+  }
+  return new Set([...latest].filter(([, v]) => v.state === "non_so" && ["mancante", "da_chiedere", "parziale"].includes(v.needStatus)).map(([id]) => id));
 }
 
 /** «Chiedi al referente» e «Chiedi di nuovo»: una richiesta, le sue domande, le esigenze «chiesta», la Storia e l'email in coda. */
@@ -994,6 +1097,26 @@ async function sendReferentRequestOnce(
     }
   }
 
+  // (Rilascio 5, §3.1) Un referente alla volta: la richiesta al referente più recente è quella che la
+  // finestra aveva visto. Un secondo invio uguale entro 60 secondi (doppio clic, rete lenta) dà la
+  // stessa richiesta senza scrivere niente.
+  const referentKind = parsed.kind === "referente";
+  const latestReferent = await readLatestReferentRequest(executor, ctx.workspaceId, card.id);
+  const referentContact = latestReferent && !latestReferent.revoked ? latestReferent.contactId : null;
+  if (referentKind) {
+    const expected = parsed.expectedReferentRequestId ?? null;
+    if ((latestReferent?.id ?? null) !== expected) {
+      if (latestReferent && latestReferent.recent && latestReferent.requestedBy === writer.userId.toLowerCase() && latestReferent.contactId === contactId) {
+        return ok({ requestId: latestReferent.id, contactName });
+      }
+      return rfail("referente_gia_scelto");
+    }
+    if (parsed.replaceReferent) {
+      if (!referentContact) return rfail("referente_gia_scelto");
+      if (referentContact === contactId) return rfail("referente_uguale");
+    } else if (referentContact && referentContact !== contactId) return rfail("referente_gia_scelto");
+  }
+
   // 11 (prima della 7 quando c'è): la richiesta di prima.
   let replaceLive: { id: string; version: number } | null = null;
   if (parsed.previousRequestId) {
@@ -1011,25 +1134,59 @@ WHERE r.id = ${cast(parsed.previousRequestId, "uuid")} AND r.workspace_id = ${ca
   }
 
   // 7. Nessun'altra richiesta viva per questa persona su questo use case (un referente che c'era già).
-  if (!newContact) {
+  // (Rilascio 5, D48, D49) Una richiesta al referente revoca, nello stesso batch, le richieste vive di
+  // sole domande della persona scelta e, con «Cambia referente», ogni richiesta viva del referente di
+  // prima su questo use case; le loro domande aperte passano alla richiesta nuova.
+  const revokeTargets: { id: string; version: number }[] = [];
+  if (!newContact || referentKind) {
     const [live] = await executor.batch([
-      toStatement(ucSql`SELECT r.id FROM use_case_referent_requests r
-WHERE r.workspace_id = ${cast(ctx.workspaceId, "uuid")} AND r.use_case_id = ${cast(card.id, "uuid")} AND r.contact_id = ${cast(contactId, "uuid")}
+      toStatement(ucSql`SELECT r.id, r.version, r.contact_id, EXISTS (SELECT 1 FROM use_case_referent_checks k WHERE k.request_id = r.id) AS referent_request
+FROM use_case_referent_requests r
+WHERE r.workspace_id = ${cast(ctx.workspaceId, "uuid")} AND r.use_case_id = ${cast(card.id, "uuid")}
 AND r.status = 'inviata' AND r.expires_at > now()`),
     ]);
-    if (live.some((r) => String(r.id).toLowerCase() !== replaceLive?.id)) return rfail("richiesta_aperta");
+    const others = live.filter((r) => String(r.id).toLowerCase() !== replaceLive?.id);
+    const mine = others.filter((r) => String(r.contact_id).toLowerCase() === contactId);
+    const target = (r: UcRow) => ({ id: String(r.id).toLowerCase(), version: rowNumber(r.version) ?? 1 });
+    if (referentKind) {
+      if (mine.some((r) => rowBool(r.referent_request))) return rfail("richiesta_aperta");
+      revokeTargets.push(...mine.map(target));
+      if (parsed.replaceReferent && referentContact) revokeTargets.push(...others.filter((r) => String(r.contact_id).toLowerCase() === referentContact).map(target));
+    } else if (mine.length > 0) return rfail("richiesta_aperta");
   }
+  // Le domande aperte delle richieste da revocare che nessun'altra richiesta viva chiede ancora.
+  let carried: string[] = [];
+  if (revokeTargets.length) {
+    const revokeIds = cast(revokeTargets.map((t) => t.id), "uuid[]");
+    const [rows] = await executor.batch([
+      toStatement(ucSql`SELECT DISTINCT it.need_id FROM use_case_referent_request_items it JOIN use_case_referent_requests r ON r.id = it.request_id AND r.workspace_id = it.workspace_id
+WHERE r.workspace_id = ${cast(ctx.workspaceId, "uuid")} AND r.id = ANY(${revokeIds}) AND ${openItemSql("it", "r")}
+  AND NOT EXISTS (SELECT 1 FROM use_case_referent_request_items o JOIN use_case_referent_requests ro ON ro.id = o.request_id
+    WHERE o.need_id = it.need_id AND o.state = 'aperta' AND ro.status = 'inviata' AND ro.expires_at > now() AND ro.id <> ALL(${revokeIds}))`),
+    ]);
+    carried = rows.map((r) => String(r.need_id).toLowerCase());
+  }
+  const carriedSet = new Set(carried);
 
-  // 8. Le domande.
+  // 8. Le domande. (Rilascio 5) Una richiesta al referente può non averne: riceve la conferma e la stima.
   const unique = [...new Set(parsed.needIds)];
-  if (unique.length === 0) return rfail("nessuna_domanda", undefined, { needIds: REFERENT_ERROR_MESSAGES.nessuna_domanda });
+  if (unique.length === 0 && !referentKind) return rfail("nessuna_domanda", undefined, { needIds: REFERENT_ERROR_MESSAGES.nessuna_domanda });
   if (unique.length !== parsed.needIds.length) return rfail("domande_cambiate");
   if (unique.length > MAX_QUESTIONS) return rfail("troppe_domande", undefined, { needIds: REFERENT_ERROR_MESSAGES.troppe_domande });
+  const fileRequired = [...new Set(parsed.fileRequired)];
+  if (!fileRequired.every((id) => unique.includes(id))) return rfail("domande_cambiate");
   const needs = await readCardNeeds(executor, ctx.workspaceId, card.id);
   const asks = await readAsksForNeeds(executor, ctx.workspaceId, needs.map((n) => n.id));
   const silent = silentOf(needs, asks, now);
   const askable = new Map(askableNeeds(needs, card.id, { silentNeedIds: silent }).map((n) => [n.id.toLowerCase(), n]));
+  // (Rilascio 5) Le domande portate dalle richieste revocate si possono chiedere anche se sono «Chiesta».
+  for (const need of needs) if (carriedSet.has(need.id.toLowerCase()) && !askable.has(need.id.toLowerCase())) askable.set(need.id.toLowerCase(), need);
   if (!unique.every((id) => askable.has(id))) return rfail("domande_cambiate");
+  // (Rilascio 5, §3.7) Al referente non si richiede una domanda a cui ha già risposto «Non ce l'ho».
+  if (!referentKind && referentContact !== null && referentContact === contactId) {
+    const declined = await readDeclinedNeedIds(executor, ctx.workspaceId, card.id, referentContact);
+    if (unique.some((id) => declined.has(id))) return rfail("domande_cambiate");
+  }
   // 9. I titoli. 10. Il messaggio.
   for (const id of unique) {
     const title = askable.get(id)!.title;
@@ -1038,16 +1195,21 @@ AND r.status = 'inviata' AND r.expires_at > now()`),
   }
   const message = checkRequestMessage(parsed.message);
   if (!message.ok) return rfail(message.code, message.message, { message: message.message });
-  const silentIds = unique.filter((id) => silent.has(id));
+  const silentIds = unique.filter((id) => silent.has(id) && !carriedSet.has(id));
 
-  // Il batch (§3.2).
+  // Il batch (§3.2). (Rilascio 5) Una richiesta al referente parte con il lock e il controllo del referente.
   const requestId = randomUUID();
   const ws = cast(ctx.workspaceId, "uuid");
   const ucId = cast(card.id, "uuid");
   const actor = persona(writer.userId);
-  const statements: UcStatement[] = [...lazyExpiry(ctx, card.id, now, { previousRequestId: parsed.previousRequestId, needIds: unique })];
+  const statements: UcStatement[] = referentKind ? referentCasStatements(ctx.workspaceId, card.id, parsed.expectedReferentRequestId ?? null) : [];
+  statements.push(...lazyExpiry(ctx, card.id, now, { previousRequestId: parsed.previousRequestId, needIds: unique }));
   if (replaceLive) {
     statements.push(...revokeStatements({ workspaceId: ctx.workspaceId, target: { requestId: replaceLive.id, version: replaceLive.version, statuses: ["inviata"] }, reason: "sostituita", actor, failCode: "richiesta_chiusa" }));
+  }
+  if (revokeTargets.length) {
+    // Le domande aperte tornano «Non ancora chiesta» e la transizione qui sotto le chiede subito di nuovo.
+    statements.push(...revokeStatements({ workspaceId: ctx.workspaceId, target: { requests: revokeTargets }, reason: "revisore", actor, failCode: "versione_superata" }));
   }
   if (silentIds.length) statements.push(silentGuardSql(ctx.workspaceId, silentIds));
   if (newContact) {
@@ -1068,23 +1230,38 @@ RETURNING id`,
         "non_trovato",
       ),
     ),
-    itemsInsertSql(ctx.workspaceId, card.id, requestId, unique, 0),
-    needTransitionSql({
-      workspaceId: ctx.workspaceId,
-      needIds: unique,
-      from: ["da_chiedere", "mancante", "parziale"],
-      silentIds,
-      to: "chiesta",
-      actor,
-      expect: { count: unique.length, code: "domande_cambiate" },
-    }),
-    referentEventSql({ workspaceId: ctx.workspaceId, useCaseId: card.id, code: "inviata", actor }),
+  );
+  if (unique.length) statements.push(itemsInsertSql(ctx.workspaceId, card.id, requestId, unique, 0, fileRequired));
+  if (referentKind) {
+    // La riga della conferma nasce con la richiesta: la segna come richiesta al referente.
+    statements.push(
+      toStatement(ucSql`INSERT INTO use_case_referent_checks (request_id, workspace_id, use_case_id) VALUES (${cast(requestId, "uuid")}, ${ws}, ${ucId})`),
+    );
+  }
+  if (unique.length) {
+    statements.push(
+      needTransitionSql({
+        workspaceId: ctx.workspaceId,
+        needIds: unique,
+        from: ["da_chiedere", "mancante", "parziale"],
+        silentIds,
+        to: "chiesta",
+        actor,
+        expect: { count: unique.length, code: "domande_cambiate" },
+      }),
+    );
+  }
+  statements.push(
+    referentEventSql({ workspaceId: ctx.workspaceId, useCaseId: card.id, code: referentKind ? (parsed.replaceReferent ? "referente_cambiato" : "referente") : "inviata", actor }),
     toStatement(ucSql`INSERT INTO use_case_referent_emails (workspace_id, contact_id, request_id, template, dedupe_key, due_at, scheduled_at)
 VALUES (${ws}, ${cast(contactId, "uuid")}, ${cast(requestId, "uuid")}, 'richiesta', ${cast(`ric:${requestId}:1`, "text")}, now(), now())`),
     ...cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId, readiness: await readinessSyncFor(ctx.workspaceId, deps.env, now) }),
   );
   const run = await referentBatch(executor, statements);
   if (!run.ok) {
+    // (Rilascio 5) Un altro invio è arrivato prima, dentro il lock: se era lo stesso (doppio clic con un
+    // referente nuovo) il secondo giro ritrova il referente e la richiesta appena creati, senza scrivere.
+    if (run.error === "referente_gia_scelto" && referentKind && !retried) return sendReferentRequestOnce(ctx, useCaseId, input, deps, true);
     if (run.error === "email_in_uso") {
       // (Corsa) Fra i controlli e il batch un'altra persona ha creato il referente con la stessa
       // email (per esempio due revisori scelgono insieme la stessa persona): il batch non ha scritto
@@ -1097,12 +1274,15 @@ VALUES (${ws}, ${cast(contactId, "uuid")}, ${cast(requestId, "uuid")}, 'richiest
   return ok({ requestId, contactName });
 }
 
-/** Le domande nuove della richiesta, alle posizioni dopo `offset`, con il titolo dell'esigenza di adesso. */
-function itemsInsertSql(workspaceId: string, useCaseId: string, requestId: string, needIds: readonly string[], offset: number): UcStatement {
+/**
+ * Le domande nuove della richiesta, alle posizioni dopo `offset`, con il titolo dell'esigenza di adesso.
+ * (Rilascio 5) Con «Serve un file» per quelle in `fileRequired`.
+ */
+function itemsInsertSql(workspaceId: string, useCaseId: string, requestId: string, needIds: readonly string[], offset: number, fileRequired: readonly string[] = []): UcStatement {
   const ws = cast(workspaceId, "uuid");
   return toStatement(ucSql`WITH ins AS (
-  INSERT INTO use_case_referent_request_items (request_id, need_id, workspace_id, position, question)
-  SELECT ${cast(requestId, "uuid")}, n.id, n.workspace_id, (${cast(offset, "int")} + x.ord)::smallint, n.title
+  INSERT INTO use_case_referent_request_items (request_id, need_id, workspace_id, position, question, file_required)
+  SELECT ${cast(requestId, "uuid")}, n.id, n.workspace_id, (${cast(offset, "int")} + x.ord)::smallint, n.title, n.id = ANY(${cast([...fileRequired], "uuid[]")})
   FROM unnest(${cast([...needIds], "uuid[]")}) WITH ORDINALITY AS x(id, ord)
   JOIN use_case_needs n ON n.id = x.id
   JOIN use_case_need_links l ON l.need_id = n.id AND l.use_case_id = ${cast(useCaseId, "uuid")}
@@ -1240,17 +1420,29 @@ export const addToReferentRequest = guardedReferent(
     const request = await readRequest(executor, ctx.workspaceId, card.id, requestId, now);
     if (!request || request.status !== "inviata") return rfail("richiesta_chiusa");
     if (request.version !== expectedVersion) return rfail("versione_superata");
-    const raw = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>).needIds : undefined;
+    const body = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+    const raw = body.needIds;
     const ids = Array.isArray(raw) && raw.every(isUuid) ? (raw as string[]).map((x) => x.toLowerCase()) : null;
     if (!ids || ids.length === 0) return rfail("nessuna_domanda", undefined, { needIds: REFERENT_ERROR_MESSAGES.nessuna_domanda });
     const unique = [...new Set(ids)];
     if (unique.length !== ids.length || unique.some((id) => request.needIds.includes(id))) return rfail("domande_cambiate");
+    // (Rilascio 5) «Serve un file» sulle domande nuove: un sottoinsieme di quelle aggiunte.
+    const rawFiles = body.fileRequired === undefined || body.fileRequired === null ? [] : body.fileRequired;
+    if (!Array.isArray(rawFiles) || !rawFiles.every(isUuid)) return rfail("domande_cambiate");
+    const fileRequired = [...new Set((rawFiles as string[]).map((x) => x.toLowerCase()))];
+    if (!fileRequired.every((id) => unique.includes(id))) return rfail("domande_cambiate");
     if (request.needIds.length + unique.length > MAX_QUESTIONS) return rfail("troppe_domande", undefined, { needIds: REFERENT_ERROR_MESSAGES.troppe_domande });
     const needs = await readCardNeeds(executor, ctx.workspaceId, card.id);
     const asks = await readAsksForNeeds(executor, ctx.workspaceId, needs.map((n) => n.id));
     const silent = silentOf(needs, asks, now);
     const askable = new Map(askableNeeds(needs, card.id, { silentNeedIds: silent }).map((n) => [n.id.toLowerCase(), n]));
     if (!unique.every((id) => askable.has(id))) return rfail("domande_cambiate");
+    // (Rilascio 5, §3.7) Alla richiesta del referente non si aggiunge una domanda a cui ha risposto «Non ce l'ho».
+    const latestReferent = await readLatestReferentRequest(executor, ctx.workspaceId, card.id);
+    if (latestReferent && !latestReferent.revoked && latestReferent.contactId === request.contactId) {
+      const declined = await readDeclinedNeedIds(executor, ctx.workspaceId, card.id, request.contactId);
+      if (unique.some((id) => declined.has(id))) return rfail("domande_cambiate");
+    }
     for (const id of unique) {
       const title = askable.get(id)!.title;
       const check = checkQuestionTitle(title);
@@ -1266,7 +1458,7 @@ export const addToReferentRequest = guardedReferent(
     ];
     if (silentIds.length) statements.push(silentGuardSql(ctx.workspaceId, silentIds));
     statements.push(
-      itemsInsertSql(ctx.workspaceId, card.id, request.id, unique, request.needIds.length),
+      itemsInsertSql(ctx.workspaceId, card.id, request.id, unique, request.needIds.length, fileRequired),
       needTransitionSql({ workspaceId: ctx.workspaceId, needIds: unique, from: ["da_chiedere", "mancante", "parziale"], silentIds, to: "chiesta", actor, expect: { count: unique.length, code: "domande_cambiate" } }),
       referentEventSql({ workspaceId: ctx.workspaceId, useCaseId: card.id, code: "domande_aggiunte", actor }),
       ...cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId, readiness: await readinessSyncFor(ctx.workspaceId, deps.env, now) }),
@@ -1618,7 +1810,7 @@ export const removeNeedAnswer = guardedReferent(
     const run = await referentBatch(executor, [
       toStatement(
         requireRows(
-          ucSql`UPDATE use_case_need_answers SET body = NULL, removed_at = now(), removed_by_user_id = ${cast(writer.userId, "uuid")}, removed_reason = 'revisore', updated_at = now()
+          ucSql`UPDATE use_case_need_answers SET body = NULL, comment = NULL, removed_at = now(), removed_by_user_id = ${cast(writer.userId, "uuid")}, removed_reason = 'revisore', updated_at = now()
 WHERE id = ${cast(answerId, "uuid")} AND workspace_id = ${cast(ctx.workspaceId, "uuid")} AND use_case_id = ${cast(useCaseId, "uuid")} AND removed_at IS NULL AND status = 'inviata'
 RETURNING id`,
           1,
@@ -1885,6 +2077,9 @@ LIMIT 200`),
       "cron_conservazione_richiesta",
     );
     if (due.length) counts.blobs += await deleteFileObjects(await collectDeletedFileRows(null, 200), env);
+    // (Rilascio 5) La pulizia di RUNBOOK §10.9 punto 6, idempotente: sul codice nuovo non trova niente;
+    // dopo un ritorno indietro toglie i commenti e le note che il codice di prima ha lasciato.
+    await executor.batch(REFERENT_CHECK_SWEEP_SQL.map((text) => ({ text, params: [] })));
   });
 
   // 9. Promemoria: un'email al giorno per persona, con tutte le sue richieste dovute.

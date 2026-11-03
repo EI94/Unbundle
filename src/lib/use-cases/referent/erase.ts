@@ -48,8 +48,8 @@ function contactRequests(workspaceId: string, contactId: string): SqlFragment {
  * 1. le sue richieste vive (e completate) revocate, motivo «cancellazione» (le domande aperte tornano
  *    da chiedere);
  * 2. ogni suo link cancellato (con l'impronta dell'email), ogni email in coda per lui annullata;
- * 3. risposte (anche bozze) senza testo, file segnati cancellati con il nome tolto, messaggi delle
- *    richieste tolti (`purged_at`);
+ * 3. risposte (anche bozze) senza testo né commento, file segnati cancellati con il nome tolto,
+ *    messaggi delle richieste e note della conferma tolti (`purged_at`);
  * 4. con `anonymizeContact` (il referente è solo degli use case e non è già anonimizzato: lo legge
  *    chi chiama prima del batch): le guardie dei dossier e l'anonimizzazione della riga `uc_contacts`;
  *    un dossier che nel frattempo lo usa fa fallire il batch con `referente_in_dossier`;
@@ -84,9 +84,13 @@ FROM use_case_referent_emails e
 WHERE it.email_id = e.id AND e.workspace_id = ${ws} AND e.contact_id = ${c} AND it.state = 'in_coda'`),
     toStatement(ucSql`UPDATE use_case_referent_emails SET status = 'annullata', cancel_reason = 'cancellazione', lease_until = NULL, updated_at = now()
 WHERE workspace_id = ${ws} AND contact_id = ${c} AND status IN ('in_coda', 'errore')`),
-    toStatement(ucSql`UPDATE use_case_need_answers a SET body = NULL, removed_at = coalesce(a.removed_at, now()), removed_reason = coalesce(a.removed_reason, 'cancellazione'), updated_at = now()
+    toStatement(ucSql`UPDATE use_case_need_answers a SET body = NULL, comment = NULL, removed_at = coalesce(a.removed_at, now()), removed_reason = coalesce(a.removed_reason, 'cancellazione'), updated_at = now()
 FROM use_case_referent_requests r
-WHERE a.request_id = r.id AND ${mine} AND (a.body IS NOT NULL OR a.removed_at IS NULL)`),
+WHERE a.request_id = r.id AND ${mine} AND (a.body IS NOT NULL OR a.comment IS NOT NULL OR a.removed_at IS NULL)`),
+    // (Rilascio 5) La nota della conferma è un testo della persona: si toglie; i numeri della stima restano (non sono personali).
+    toStatement(ucSql`UPDATE use_case_referent_checks c SET confirm_note = NULL, purged_at = coalesce(c.purged_at, now()), updated_at = now()
+FROM use_case_referent_requests r
+WHERE c.request_id = r.id AND ${mine} AND (c.confirm_note IS NOT NULL OR c.purged_at IS NULL)`),
     toStatement(ucSql`UPDATE use_case_need_files f SET deleted_at = coalesce(f.deleted_at, now()), deleted_reason = coalesce(f.deleted_reason, 'cancellazione'), file_name = 'file'
 FROM use_case_referent_requests r
 WHERE f.request_id = r.id AND ${mine} AND (f.deleted_at IS NULL OR f.file_name <> 'file')`),
@@ -126,7 +130,10 @@ export function referentPurgeStatements(i: { workspaceId: string; requestId: str
   return [
     toStatement(ucSql`UPDATE use_case_referent_requests SET message = NULL, purged_at = now()
 WHERE id = ${req()} AND workspace_id = ${ws} AND status <> 'inviata' AND purged_at IS NULL`),
-    toStatement(ucSql`UPDATE use_case_need_answers SET body = NULL, removed_at = coalesce(removed_at, now()), removed_reason = coalesce(removed_reason, 'conservazione'), updated_at = now()
+    toStatement(ucSql`UPDATE use_case_need_answers SET body = NULL, comment = NULL, removed_at = coalesce(removed_at, now()), removed_reason = coalesce(removed_reason, 'conservazione'), updated_at = now()
+WHERE request_id = ${req()} AND workspace_id = ${ws}`),
+    // (Rilascio 5) La nota della conferma si toglie con le risposte; i numeri della stima restano.
+    toStatement(ucSql`UPDATE use_case_referent_checks SET confirm_note = NULL, purged_at = coalesce(purged_at, now()), updated_at = now()
 WHERE request_id = ${req()} AND workspace_id = ${ws}`),
     toStatement(ucSql`UPDATE use_case_need_files SET deleted_at = coalesce(deleted_at, now()), deleted_reason = coalesce(deleted_reason, 'conservazione'), file_name = 'file'
 WHERE request_id = ${req()} AND workspace_id = ${ws}`),

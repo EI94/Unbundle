@@ -127,3 +127,51 @@ test("il link: https (http solo in locale), nessun parametro o frammento, solo /
     assert.throws(() => checkReferentLink(bad), bad);
   }
 });
+
+test("(rilascio 5) richiesta al referente: le due cose, una domanda o più, «Inizia», «Non ce l'ho»", () => {
+  const base = { template: "richiesta" as const, kind: "referente" as const, company: "TopJet", useCase: UC, requesterName: "Giulia Neri", message: null, expiresAt: EXPIRES, link: LINK, replyToKnown: true };
+  const zero = renderReferentEmail({ ...base, questions: 0 });
+  assert.equal(zero.subject, "TopJet: sei il referente per «TJ-0004 · Fatture fornitori»");
+  has(zero.text, "Buongiorno,");
+  has(zero.text, "Giulia Neri ti ha indicato come referente per lo use case «TJ-0004 · Fatture fornitori».");
+  has(zero.text, "Ti chiediamo due cose: confermare che lo use case è descritto bene e dirci quanto tempo prende questo lavoro.");
+  has(zero.text, "Bastano pochi minuti, anche dal telefono. Se un'informazione non ce l'hai, scegli «Non ce l'ho».");
+  has(zero.text, "Inizia");
+  has(zero.text, LINK);
+  has(zero.text, "Il link scade il 26 novembre 2026.");
+  has(zero.text, "Il link è personale: non inoltrarlo. Per un dubbio rispondi a questa email: arriva a Giulia Neri.");
+  assert.ok(!zero.text.includes("Apri le domande") && !zero.text.includes("Non lo so"));
+  clean(zero);
+  has(renderReferentEmail({ ...base, questions: 1 }).text, "Ti chiediamo di confermare che lo use case è descritto bene, di dirci quanto tempo prende questo lavoro e di rispondere a una domanda.");
+  const many = renderReferentEmail({ ...base, questions: 5, message: "Grazie!", replyToKnown: false });
+  has(many.text, "Ti chiediamo di confermare che lo use case è descritto bene, di dirci quanto tempo prende questo lavoro e di rispondere a 5 domande.");
+  has(many.text, "Grazie!");
+  has(many.text, "Il link è personale: non inoltrarlo.");
+  clean(many);
+  // Senza `kind`, i testi del rilascio 4.
+  has(renderReferentEmail({ ...base, kind: undefined, questions: 2 }).text, "Le domande sono 2.");
+});
+
+test("(rilascio 5) promemoria con la conferma da inviare: oggetto, «la tua conferma», le domande se ci sono, «Riprendi»", () => {
+  const zero = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry({ openQuestions: 0, checkPending: true })], replyToKnown: true, replyName: "Giulia Neri" });
+  assert.equal(zero.subject, "Promemoria: la tua conferma su «TJ-0004 · Fatture fornitori»");
+  has(zero.text, "ti ricordiamo che Giulia Neri aspetta la tua conferma sullo use case «TJ-0004 · Fatture fornitori».");
+  has(zero.text, "Quello che hai già scritto è salvato: riparti da dove eri rimasto.");
+  has(zero.text, "Riprendi");
+  clean(zero);
+  has(renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry({ openQuestions: 1, checkPending: true })], replyToKnown: false, replyName: null }).text, "aspetta la tua conferma sullo use case «TJ-0004 · Fatture fornitori» e una risposta.");
+  const last = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry({ kind: "ultimo", openQuestions: 4, checkPending: true })], replyToKnown: false, replyName: null });
+  assert.equal(last.subject, "Ultimo promemoria: la tua conferma su «TJ-0004 · Fatture fornitori»");
+  has(last.text, "aspetta la tua conferma sullo use case «TJ-0004 · Fatture fornitori» e le risposte a 4 domande.");
+  has(last.text, "È l'ultimo promemoria che ti mandiamo.");
+  const multi = renderReferentEmail({
+    template: "promemoria",
+    company: "TopJet",
+    entries: [entry({ checkPending: true, openQuestions: 2 }), entry({ link: LINK2, useCase: { code: "TJ-0005", title: "Ordini" }, checkPending: true, openQuestions: 0 })],
+    replyToKnown: false,
+    replyName: null,
+  });
+  has(multi.text, "«TJ-0004 · Fatture fornitori», chiede Giulia Neri: la conferma e 2 domande aperte.");
+  has(multi.text, "«TJ-0005 · Ordini», chiede Giulia Neri: la conferma.");
+  clean(multi);
+});

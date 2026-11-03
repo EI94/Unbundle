@@ -122,9 +122,26 @@ export function openItemSql(item: string, request: string): SqlFragment {
     WHERE oin.id = ${item}.need_id AND oin.workspace_id = ${request}.workspace_id AND oin.status = 'chiesta' AND oin.archived_at IS NULL))`);
 }
 
-/** Quante domande aperte ha la richiesta `r` (sottoquery per scheda, mai per persona). */
-export function openItemsCountSql(request: string): SqlFragment {
+/** Quante domande aperte ha la richiesta `r`, senza la conferma (per le parole: «{n} domande»). */
+export function openQuestionsCountSql(request: string): SqlFragment {
   return ucSql`(SELECT count(*)::int FROM use_case_referent_request_items oi WHERE oi.request_id = ${raw(request)}.id AND ${openItemSql("oi", request)})`;
+}
+
+/** (Rilascio 5) La richiesta `r` è al referente e la sua conferma non è ancora inviata: 1, altrimenti 0. */
+export function checkPendingCountSql(request: string): SqlFragment {
+  if (!/^[a-z][a-z0-9_]*$/.test(request)) throw new Error("Alias non valido");
+  return raw(`(SELECT count(*)::int FROM use_case_referent_checks oc WHERE oc.request_id = ${request}.id AND oc.submitted_at IS NULL)`);
+}
+
+/**
+ * Quante cose aperte ha la richiesta `r` per il referente (sottoquery per scheda, mai per persona): le
+ * domande aperte più 1 finché la conferma di una richiesta al referente non è inviata (rilascio 5, §5.2,
+ * D42). Così il team, il cron e le risposte del team non completano una richiesta il cui referente deve
+ * ancora confermare lo use case, e promemoria, «Chiedi di nuovo» e «Nessuna risposta» valgono anche
+ * con zero domande. Le parole delle email usano `openQuestionsCountSql`.
+ */
+export function openItemsCountSql(request: string): SqlFragment {
+  return ucSql`(${openQuestionsCountSql(request)} + ${checkPendingCountSql(request)})`;
 }
 
 /**
@@ -204,6 +221,11 @@ WHERE a.request_id = r.id AND a.workspace_id = ${ws} AND a.status = 'bozza' AND 
     toStatement(ucSql`UPDATE use_case_need_files f SET deleted_at = now(), deleted_reason = 'bozza_chiusa'
 FROM use_case_referent_requests r
 WHERE f.request_id = r.id AND f.workspace_id = ${ws} AND f.submitted_at IS NULL AND f.deleted_at IS NULL AND ${i.filter}`),
+    // (Rilascio 5) La bozza della conferma e della stima: si svuota, la riga resta (segna la richiesta al referente).
+    toStatement(ucSql`UPDATE use_case_referent_checks c SET confirm = NULL, confirm_note = NULL, estimate = NULL, times_per_month = NULL, minutes_each = NULL, updated_at = now()
+FROM use_case_referent_requests r
+WHERE c.request_id = r.id AND c.workspace_id = ${ws} AND c.submitted_at IS NULL
+  AND (c.confirm IS NOT NULL OR c.confirm_note IS NOT NULL OR c.estimate IS NOT NULL OR c.times_per_month IS NOT NULL OR c.minutes_each IS NOT NULL) AND ${i.filter}`),
     toStatement(ucSql`UPDATE use_case_referent_requests r SET drafts_cleared_at = now()
 WHERE r.workspace_id = ${ws} AND r.drafts_cleared_at IS NULL AND ${i.filter}`),
   ];
@@ -282,9 +304,14 @@ RETURNING id`),
 
 // ─── Revoca ──────────────────────────────────────────────────────────
 
-/** Le richieste revocate adesso, in questa transazione (alias `r`). */
-export function justRevokedFilter(workspaceId: string): SqlFragment {
-  return ucSql`r.workspace_id = ${id(workspaceId, "workspace")} AND r.status = 'revocata' AND r.revoked_at = now()`;
+/**
+ * Le richieste revocate adesso, in questa transazione (alias `r`). (Rilascio 5) Con `reason`, solo quelle
+ * revocate per quel motivo: un invio che revoca la richiesta di prima («sostituita») e quelle del
+ * referente di prima («revisore») nello stesso batch non ripete la Storia né sposta due volte le domande.
+ */
+export function justRevokedFilter(workspaceId: string, reason?: ReferentRevokeReason): SqlFragment {
+  const why = reason ? ucSql` AND r.revoked_reason = ${cast(reason, "text")}` : raw("");
+  return ucSql`r.workspace_id = ${id(workspaceId, "workspace")} AND r.status = 'revocata' AND r.revoked_at = now()${why}`;
 }
 
 /**
@@ -296,28 +323,38 @@ export function justRevokedFilter(workspaceId: string): SqlFragment {
  */
 export function revokeStatements(i: {
   workspaceId: string;
-  target: { requestId: string; version?: number | null; statuses?: readonly ("inviata" | "completata")[] } | { contactId: string };
+  target:
+    | { requestId: string; version?: number | null; statuses?: readonly ("inviata" | "completata")[] }
+    | { contactId: string }
+    /** (Rilascio 5) Più richieste vive, ognuna con la versione letta: «Cambia referente». */
+    | { requests: readonly { id: string; version: number }[] };
   reason: ReferentRevokeReason;
   actor: ReferentActor;
-  /** Con un id: il batch fallisce con questo codice se la richiesta non si revoca (versione, stato). */
+  /** Con un id (o un elenco): il batch fallisce con questo codice se non si revocano tutte (versione, stato). */
   failCode?: string;
 }): UcStatement[] {
   const ws = id(i.workspaceId, "workspace");
-  const statuses = "requestId" in i.target ? (i.target.statuses ?? ["inviata", "completata"]) : ["inviata", "completata"];
+  const statuses = "requestId" in i.target ? (i.target.statuses ?? ["inviata", "completata"]) : "requests" in i.target ? ["inviata"] : ["inviata", "completata"];
   const match =
     "requestId" in i.target
       ? ucSql`id = ${id(i.target.requestId, "richiesta")}${typeof i.target.version === "number" ? ucSql` AND version = ${cast(i.target.version, "int")}` : raw("")}`
-      : ucSql`contact_id = ${id(i.target.contactId, "referente")}`;
+      : "requests" in i.target
+        ? ucSql`(id::text || ':' || version::text) = ANY(${cast(
+            i.target.requests.map((r) => `${uuidOf(r.id, "richiesta")}:${Math.trunc(r.version)}`),
+            "text[]",
+          )})`
+        : ucSql`contact_id = ${id(i.target.contactId, "referente")}`;
   const update = ucSql`UPDATE use_case_referent_requests SET status = 'revocata', revoked_at = now(), revoked_by_user_id = ${cast(actorUserIdOf(i.actor), "uuid")},
     revoked_reason = ${cast(i.reason, "text")}, version = version + 1
   WHERE workspace_id = ${ws} AND ${match} AND status = ANY(${cast([...statuses], "text[]")})
   RETURNING id`;
+  const expected = "requestId" in i.target ? 1 : "requests" in i.target ? i.target.requests.length : null;
   const first =
-    "requestId" in i.target && i.failCode
+    expected !== null && i.failCode
       ? toStatement(ucSql`WITH rev AS (${update})
-${casTail("rev", 1, i.failCode)}`)
+${casTail("rev", expected, i.failCode)}`)
       : toStatement(update);
-  const filter = justRevokedFilter(i.workspaceId);
+  const filter = justRevokedFilter(i.workspaceId, i.reason);
   const statements: UcStatement[] = [
     first,
     toStatement(ucSql`UPDATE use_case_referent_tokens t SET revoked_at = now()
@@ -435,11 +472,13 @@ ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET
 function expiredNowFilter(i: { workspaceId: string; useCaseId: string | null; reask?: { previousRequestId: string | null; needIds: readonly string[] } }): SqlFragment {
   const prev = i.reask ? ucSql` AND r.id IS DISTINCT FROM ${cast(i.reask.previousRequestId ? uuidOf(i.reask.previousRequestId, "richiesta") : null, "uuid")}` : raw("");
   const needs = i.reask && i.reask.needIds.length ? ucSql` AND n.id <> ALL(${cast(i.reask.needIds.map((x) => uuidOf(x, "esigenza")), "uuid[]")})` : raw("");
+  // (Rilascio 5) Anche una richiesta al referente senza domande, scaduta con la conferma ancora da inviare.
   return ucSql`${justExpiredFilter(i.workspaceId, i.useCaseId)} AND r.reminder_count < 2${prev}
-    AND EXISTS (SELECT 1 FROM use_case_referent_request_items i
+    AND (EXISTS (SELECT 1 FROM use_case_referent_request_items i
                 JOIN use_case_needs n ON n.id = i.need_id AND n.workspace_id = r.workspace_id
                 JOIN use_case_need_links l ON l.need_id = n.id AND l.use_case_id = r.use_case_id
-                WHERE i.request_id = r.id AND i.state = 'aperta' AND n.status = 'chiesta' AND n.archived_at IS NULL${needs})`;
+                WHERE i.request_id = r.id AND i.state = 'aperta' AND n.status = 'chiesta' AND n.archived_at IS NULL${needs})
+      OR EXISTS (SELECT 1 FROM use_case_referent_checks c WHERE c.request_id = r.id AND c.submitted_at IS NULL))`;
 }
 
 /**

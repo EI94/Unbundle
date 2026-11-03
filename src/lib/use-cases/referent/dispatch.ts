@@ -90,6 +90,15 @@ export interface ReferentRequestFacts {
    * verificata di chi ha chiesto. Riletto a ogni invio: nessuna email a se stessi.
    */
   selfRequest?: boolean;
+  /** (Rilascio 5) Una richiesta al referente (con la conferma e la stima). */
+  referentRequest?: boolean;
+  /** (Rilascio 5) La conferma non è ancora inviata: conta 1 in `openItems`, mai tra le domande delle email. */
+  checkPending?: boolean;
+}
+
+/** (Rilascio 5) Le domande aperte di una richiesta, senza la conferma ancora da inviare. */
+export function openQuestionsOf(r: Pick<ReferentRequestFacts, "openItems" | "checkPending">): number {
+  return Math.max(0, r.openItems - (r.checkPending ? 1 : 0));
 }
 
 export interface ReferentDeliveryFacts {
@@ -245,13 +254,14 @@ export function planReferentDelivery(
         company: f.company,
         useCase: req.useCase,
         requesterName: req.requesterName,
-        questions: req.openItems,
+        questions: openQuestionsOf(req),
         message: req.message,
         expiresAt: req.expiresAt,
         link: linkOf(links, req.id),
         replyToKnown,
         cardLink: cardLinkOf(e, f, req, o.origin),
         accountNotice: accountNoticeOf(f),
+        kind: req.referentRequest ? "referente" : "domande",
       }),
       after: [{ requestId: req.id, reminder: null, first: true, manual: false }],
     };
@@ -277,7 +287,7 @@ export function planReferentDelivery(
         useCase: req.useCase,
         requesterName: req.requesterName,
         submitted,
-        openQuestions: req.live ? req.openItems : 0,
+        openQuestions: req.live ? openQuestionsOf(req) : 0,
         expiresAt: req.expiresAt,
       }),
       after: [{ requestId: req.id, reminder: null, first: false, manual: false }],
@@ -319,11 +329,12 @@ export function planReferentDelivery(
             useCase: x.useCase,
             requesterName: x.requesterName,
             kind: x.item!.kind,
-            openQuestions: x.openItems,
+            openQuestions: openQuestionsOf(x),
             newQuestions: x.newQuestions,
             expiresAt: x.expiresAt,
             link: linkOf(links, x.id),
             cardLink: cardLinkOf(e, f, x, o.origin),
+            checkPending: x.checkPending === true,
           }),
         ),
     }),

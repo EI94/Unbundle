@@ -27,6 +27,11 @@ export interface ReminderEntry {
   link: string;
   /** (Parte 3) Solo per un referente che è già revisore del workspace: il link alla scheda, al capitolo «Cosa serve». */
   cardLink?: string | null;
+  /**
+   * (Rilascio 5) Una richiesta al referente con la conferma ancora da inviare: il promemoria parla della
+   * conferma, e `openQuestions` conta solo le domande (può essere zero).
+   */
+  checkPending?: boolean;
 }
 
 export type ReferentEmailInput =
@@ -44,6 +49,11 @@ export type ReferentEmailInput =
       cardLink?: string | null;
       /** (Referente già iscritto) Membro del workspace che non è revisore: «Hai già un account Unbundle: …». */
       accountNotice?: boolean;
+      /**
+       * (Rilascio 5) «referente»: la richiesta al referente (conferma, stima e `questions` domande, anche
+       * zero); «domande» o assente: i testi del rilascio 4.
+       */
+      kind?: "referente" | "domande";
     }
   /** Da 1 a n voci, nell'ordine di creazione delle richieste. replyName c'è solo se tutte le voci hanno chi chiede uguale e la risposta all'email arriva a quella persona. */
   | { template: "promemoria"; company: string; entries: ReminderEntry[]; replyToKnown: boolean; replyName: string | null; accountNotice?: boolean }
@@ -118,6 +128,22 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
     ]);
   }
   const last = e.kind === "ultimo";
+  if (e.checkPending) {
+    // (Rilascio 5) La conferma del referente non è ancora arrivata: il promemoria parla di quella.
+    const q = e.openQuestions;
+    const answers = q <= 0 ? "" : q === 1 ? " e una risposta" : ` e le risposte a ${q} domande`;
+    return render(subjectOf(`${last ? "Ultimo promemoria" : "Promemoria"}: la tua conferma su «${uc}»`), [
+      { p: "Buongiorno," },
+      { p: `ti ricordiamo che ${name(e.requesterName)} aspetta la tua conferma sullo use case «${uc}»${answers}.` },
+      last
+        ? { p: "È l'ultimo promemoria che ti mandiamo. Se non hai le informazioni, scegli «Non lo so»: anche questa è una risposta utile." }
+        : { p: "Quello che hai già scritto è salvato: riparti da dove eri rimasto." },
+      { link: { href: link, label: "Riprendi" } },
+      { small: expiry(e.expiresAt) },
+      ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
+      reply,
+    ]);
+  }
   return render(subjectOf(`${last ? "Ultimo promemoria" : "Promemoria"}: ${openWord(e.openQuestions)} su «${uc}»`), [
     { p: "Buongiorno," },
     {
@@ -143,8 +169,10 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
   else if (input.accountNotice === true) blocks.push({ small: ACCOUNT_NOTICE_LINE_MANY });
   for (const e of input.entries) {
     const uc = labelOfUseCase(e.useCase);
+    // (Rilascio 5) Con la conferma ancora da inviare: «la conferma e {n} domande aperte».
+    const what = e.checkPending ? `la conferma${e.openQuestions > 0 ? ` e ${openWord(e.openQuestions)}` : ""}` : openWord(e.openQuestions);
     blocks.push(
-      { p: `«${uc}», chiede ${name(e.requesterName)}: ${openWord(e.openQuestions)}${e.kind === "nuove" ? ", con domande nuove" : ""}.` },
+      { p: `«${uc}», chiede ${name(e.requesterName)}: ${what}${e.kind === "nuove" ? ", con domande nuove" : ""}.` },
       { small: `${expiry(e.expiresAt)}${e.kind === "ultimo" ? " È l'ultimo promemoria per questo use case." : ""}` },
       { link: { href: checkReferentLink(e.link), label: "Apri le domande" } },
     );
@@ -172,6 +200,28 @@ export interface ReferentRequestParts {
 export function referentRequestParts(input: Extract<ReferentEmailInput, { template: "richiesta" }>): ReferentRequestParts {
   const uc = labelOfUseCase(input.useCase);
   const link = checkReferentLink(input.link);
+  if (input.kind === "referente") {
+    // (Rilascio 5, §5.3) La richiesta al referente: confermare lo use case, stimare il tempo, le domande.
+    const n = input.questions;
+    const ask =
+      n <= 0
+        ? "Ti chiediamo due cose: confermare che lo use case è descritto bene e dirci quanto tempo prende questo lavoro."
+        : `Ti chiediamo di confermare che lo use case è descritto bene, di dirci quanto tempo prende questo lavoro e di rispondere a ${n === 1 ? "una domanda" : `${n} domande`}.`;
+    const blocks: Block[] = [
+      { p: "Buongiorno," },
+      { p: `${name(input.requesterName)} ti ha indicato come referente per lo use case «${uc}».` },
+      { p: ask },
+    ];
+    if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
+    blocks.push(
+      { p: "Bastano pochi minuti, anche dal telefono. Se un'informazione non ce l'hai, scegli «Non ce l'ho»." },
+      { link: { href: link, label: "Inizia" } },
+      { small: expiry(input.expiresAt) },
+      ...teamAccessBlocks(input.cardLink, input.accountNotice === true),
+      { small: replyLine(input.replyToKnown, input.requesterName) },
+    );
+    return { subject: subjectOf(`${company(input.company)}: sei il referente per «${uc}»`), blocks };
+  }
   // (Referente già iscritto) L'email dice subito che la persona è stata indicata come referente.
   const blocks: Block[] = [
     { p: "Buongiorno," },
