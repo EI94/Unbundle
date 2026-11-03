@@ -30,7 +30,7 @@ test("richiesta: oggetto e testo, con e senza messaggio e risposta all'email", (
   has(one.text, "Buongiorno,");
   has(one.text, "Giulia Neri ti ha indicato come referente per lo use case «TJ-0004 · Fatture fornitori» e ti chiede alcune informazioni.");
   has(one.text, "È una domanda sola.");
-  has(one.text, "Bastano pochi minuti e puoi rispondere anche dal telefono. Se non sai una risposta, scegli «Non lo so». Se hai un documento utile, allegalo: prima togli nomi e dati personali.");
+  has(one.text, "Bastano pochi minuti e puoi rispondere anche dal telefono. Se non sai una risposta, scegli «Non ce l'ho». Se hai un documento utile, allegalo: prima togli nomi e dati personali.");
   has(one.text, "Apri le domande");
   has(one.text, LINK);
   has(one.text, "Il link scade il 26 novembre 2026.");
@@ -63,7 +63,7 @@ test("promemoria con una voce: primo, manuale, ultimo, nuove", () => {
   has(manuale.text, "Il link è personale: non inoltrarlo.");
   const ultimo = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry({ kind: "ultimo", openQuestions: 2 })], replyToKnown: true, replyName: "Giulia Neri" });
   assert.equal(ultimo.subject, "Ultimo promemoria: 2 domande aperte su «TJ-0004 · Fatture fornitori»");
-  has(ultimo.text, "È l'ultimo promemoria che ti mandiamo. Se non hai le informazioni, scegli «Non lo so»: anche questa è una risposta utile.");
+  has(ultimo.text, "È l'ultimo promemoria che ti mandiamo. Se non hai le informazioni, scegli «Non ce l'ho»: anche questa è una risposta utile.");
   assert.ok(!ultimo.text.includes("riparti da dove eri rimasto"));
   const nuove = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry({ kind: "nuove", newQuestions: 2, openQuestions: 4 })], replyToKnown: true, replyName: "Giulia Neri" });
   assert.equal(nuove.subject, "Nuove domande su «TJ-0004 · Fatture fornitori»");

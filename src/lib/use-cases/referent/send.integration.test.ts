@@ -276,12 +276,17 @@ test("pagina pubblica: il link, l'informativa, le bozze e i loro controlli", opt
   void n3;
 });
 
-test("invio delle risposte: un nome blocca e non scrive niente; poi risposte, «Non lo so», notifiche, avviso, conferma", opts, async () => {
+test("invio delle risposte: tutto o niente; un nome blocca e non scrive niente; poi risposte, «Non ce l'ho», notifiche, avviso, conferma", opts, async () => {
   const now = new Date();
   const resolved = await pub.resolveReferentToken(state.token, now);
   assert.ok(resolved.access === "ok");
   if (resolved.access !== "ok") return;
-  const [n1, n2] = state.needs;
+  const [n1, n2, n3] = state.needs;
+  // (Rilascio 5, D17) Tutto o niente: prima ogni domanda va chiusa.
+  const open = await pub.submitReferentAnswers(resolved.link, {}, now);
+  assert.ok(!open.ok && open.code === "domande_aperte", JSON.stringify(open));
+  if (!open.ok) assert.deepEqual(open.issues?.map((i) => i.field), [n3]);
+  assert.ok((await pub.saveReferentDraft(resolved.link, { needId: n3, text: "Usiamo Excel e il gestionale", dontKnow: false }, now)).ok);
   const blocked = await pub.submitReferentAnswers(resolved.link, {}, now);
   assert.ok(!blocked.ok && blocked.code === "risposte_da_correggere", JSON.stringify(blocked));
   if (!blocked.ok) assert.ok(blocked.issues?.every((i) => i.field === n1));
@@ -290,21 +295,22 @@ test("invio delle risposte: un nome blocca e non scrive niente; poi risposte, «
   const before = await useCaseSnapshot();
   const done = await pub.submitReferentAnswers(resolved.link, {}, now);
   assert.ok(done.ok, JSON.stringify(done));
-  if (done.ok) assert.deepEqual(done.value, { submitted: 2, open: 1, state: "aperta" });
+  if (done.ok) assert.deepEqual(done.value, { submitted: 3, open: 0, state: "completata" });
   assert.equal(await statusOf(n1), "in_verifica");
   assert.equal(await statusOf(n2), "mancante");
+  assert.equal(await statusOf(n3), "in_verifica");
   assert.equal(await useCaseSnapshot(), before, "la scheda non si tocca");
   const items = await q(`SELECT need_id::text AS id, state FROM use_case_referent_request_items WHERE request_id = $1::uuid ORDER BY position`, [state.requestId]);
-  assert.deepEqual(items.map((i) => i.state), ["risposta", "non_so", "aperta"]);
+  assert.deepEqual(items.map((i) => i.state), ["risposta", "non_so", "risposta"]);
   // Una riga per revisore (il builder, l'analyst, Lateral Space), nessuna per il contributore.
   const notes = await q(`SELECT recipient_user_id::text AS who, kind, answers, unknowns, documents, read_at FROM use_case_notifications WHERE use_case_id = $1::uuid ORDER BY recipient_user_id`, [ids.useCase]);
   assert.deepEqual(notes.map((n) => n.who).sort(), [ids.builder, ids.analyst, ids.ls].sort());
-  for (const n of notes) assert.deepEqual([n.kind, n.answers, n.unknowns, n.documents, n.read_at], ["risposte", 1, 1, 0, null]);
+  for (const n of notes) assert.deepEqual([n.kind, n.answers, n.unknowns, n.documents, n.read_at], ["risposte", 2, 1, 0, null]);
   const alerts = await q(
     `SELECT e.recipient_user_id::text AS who, i.answers, i.unknowns FROM use_case_requester_emails e JOIN use_case_requester_email_items i ON i.email_id = e.id WHERE i.request_id = $1::uuid`,
     [state.requestId],
   );
-  assert.deepEqual(alerts, [{ who: ids.builder, answers: 1, unknowns: 1 }]);
+  assert.deepEqual(alerts, [{ who: ids.builder, answers: 2, unknowns: 1 }]);
   const conferma = await q(`SELECT dedupe_key FROM use_case_referent_emails WHERE request_id = $1::uuid AND template = 'conferma'`, [state.requestId]);
   assert.equal(conferma.length, 1);
   // Gli eventi della Storia: «cosa_serve» dal sistema (pagina pubblica) e «risposte».
@@ -336,7 +342,7 @@ test("pannello: righe, risposte, maschere; un contributore non lo riceve", opts,
   if (!panel) return;
   assert.equal(panel.available, true);
   assert.deepEqual(panel.gates, []);
-  assert.deepEqual(panel.askableNeedIds.slice().sort(), [state.needs[1], ...state.needs.slice(3)].sort(), "le tre non ancora chieste e il «Non lo so» (mancante)");
+  assert.deepEqual(panel.askableNeedIds.slice().sort(), [state.needs[1], ...state.needs.slice(3)].sort(), "le tre non ancora chieste e il «Non ce l'ho» (mancante)");
   assert.equal(panel.requests.length, 1);
   assert.equal(panel.requests[0].contact.emailMasked?.startsWith("m•••@"), true);
   assert.ok(!JSON.stringify(panel).includes(REFERENT_EMAIL), "mai l'email intera del referente");
@@ -354,19 +360,15 @@ test("pannello: righe, risposte, maschere; un contributore non lo riceve", opts,
   assert.equal(contributor, null);
 });
 
-test("ultima risposta: richiesta completata; il link resta per vedere, le bozze delle ritirate si cancellano", opts, async () => {
+test("ultima risposta: richiesta completata; il link resta per vedere, niente si riscrive", opts, async () => {
   const now = new Date();
-  const resolved = await pub.resolveReferentToken(state.token, now);
-  assert.ok(resolved.access === "ok");
-  if (resolved.access !== "ok") return;
-  const n3 = state.needs[2];
-  assert.ok((await pub.saveReferentDraft(resolved.link, { needId: n3, text: "Usiamo Excel e il gestionale", dontKnow: false }, now)).ok);
-  const done = await pub.submitReferentAnswers(resolved.link, { needIds: [n3] }, now);
-  assert.ok(done.ok && done.value.state === "completata", JSON.stringify(done));
   const [r] = await q(`SELECT status, completed_at FROM use_case_referent_requests WHERE id = $1::uuid`, [state.requestId]);
   assert.equal(r.status, "completata");
+  assert.ok(r.completed_at);
   const view = await pub.loadReferentAskPage(state.token, { env: ENV, now });
   assert.ok(view.access === "ok" && view.view.state === "completata");
-  // La conferma è una al giorno.
+  if (view.access === "ok") assert.deepEqual(view.view.questions.map((q) => q.state), ["inviata", "inviata", "inviata"]);
+  // Le bozze delle richieste chiuse non restano; la conferma è una al giorno.
+  assert.equal((await q(`SELECT 1 FROM use_case_need_answers WHERE request_id = $1::uuid AND status = 'bozza'`, [state.requestId])).length, 0);
   assert.equal((await q(`SELECT 1 FROM use_case_referent_emails WHERE request_id = $1::uuid AND template = 'conferma'`, [state.requestId])).length, 1);
 });

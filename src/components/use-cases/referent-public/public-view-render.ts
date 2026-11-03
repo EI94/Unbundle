@@ -12,7 +12,7 @@
 import { formatCountIt, formatLongDayIt } from "../../../lib/uc/views/format.ts";
 import type { ReferentAskView, ReferentFileView, ReferentPageResult, ReferentQuestionView, ReferentUploadResult, SubmitResult } from "../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_LIMITS } from "../../../lib/use-cases/referent/contract.ts";
-import { REFERENT_CHECK_TEXT, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, companyLabel, fillText, privacyNoticeTexts } from "../../../lib/use-cases/referent/labels.ts";
+import { REFERENT_CHECK_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, companyLabel, fillText, privacyNoticeTexts } from "../../../lib/use-cases/referent/labels.ts";
 import { referentDateLabel } from "../../../lib/use-cases/referent/view.ts";
 
 const T = REFERENT_PUBLIC_TEXT;
@@ -91,8 +91,13 @@ export function screenOf(view: ReferentAskView): ScreenKind {
   return view.state === "completata" ? "completed" : "empty";
 }
 
-export function finalCardText(kind: "completed" | "empty"): string {
-  return kind === "completed" ? T.completed : T.empty;
+export function finalCardText(kind: "completed" | "empty", view?: ReferentAskView, today?: string): string {
+  if (kind === "completed") {
+    // (Rilascio 5) «Hai risposto il 3/11. Grazie!»
+    const on = view ? lastSentOn(view) : null;
+    return on && today ? fillText(T.answeredOn, { data: referentDateLabel(on, today) }) : T.completed;
+  }
+  return T.empty;
 }
 
 export interface QuestionSection {
@@ -125,13 +130,95 @@ export function hasOpenQuestions(view: ReferentAskView): boolean {
  * Una domanda già inviata, in sola lettura: «Inviata il 27/10», il testo o «Non lo so», i nomi dei
  * file. `today` è il giorno di Roma (`YYYY-MM-DD`): l'anno compare solo se è un altro.
  */
-export function sentAnswerView(q: ReferentQuestionView, today: string): { sentOn: string; text: string | null; files: string[] } | null {
+export function sentAnswerView(q: ReferentQuestionView, today: string): { sentOn: string; text: string | null; files: string[]; comment?: string | null } | null {
   if (q.state !== "inviata" || !q.answer) return null;
+  // (Rilascio 5) «Non ce l'ho», «È già allegato», il commento o «Chi potrebbe saperlo».
+  const comment = q.answer.comment?.trim() ? fillText(q.answer.dontKnow ? T.sentWhoKnows : T.sentComment, { testo: q.answer.comment.trim() }) : null;
   return {
     sentOn: fillText(T.sentOn, { data: referentDateLabel(q.answer.submittedAt, today) }),
-    text: q.answer.dontKnow ? T.dontKnow : q.answer.text?.trim() ? q.answer.text : null,
+    text: q.answer.dontKnow ? T.dontKnow : q.answer.alreadyAttached ? T.alreadyAttached : q.answer.text?.trim() ? q.answer.text : null,
     files: q.files.map((f) => f.name),
+    ...(comment ? { comment } : {}),
   };
+}
+
+// ─── Le chiusure (rilascio 5, §3.6) ──────────────────────────────────
+
+/** Quello che c'è adesso in una domanda aperta, per sapere se è chiusa. */
+export interface ClosureState {
+  text: string;
+  dontKnow: boolean;
+  alreadyAttached: boolean;
+  files: readonly PublicFile[];
+}
+
+/** Un file che chiude la domanda: caricato e controllato, senza una conferma che manca. */
+export function usableFile(f: Pick<PublicFile, "status" | "needsConfirmation" | "submitted">): boolean {
+  return (f.status === "pulito" || f.status === "in_revisione") && !f.needsConfirmation;
+}
+
+/** La domanda è chiusa: un testo (non su «Serve un file»), un file, «Non ce l'ho» o «È già allegato». */
+export function questionClosed(q: Pick<ReferentQuestionView, "state" | "fileRequired">, c: ClosureState | null): boolean {
+  if (q.state !== "aperta") return true;
+  if (!c) return false;
+  if (c.dontKnow || c.alreadyAttached) return true;
+  if (c.files.some(usableFile)) return true;
+  return !q.fileRequired && c.text.trim().length > 0;
+}
+
+/** Il commento si offre solo con una chiusura senza testo: «Non ce l'ho», «È già allegato» o un file. */
+export function commentOffered(c: Pick<ClosureState, "dontKnow" | "alreadyAttached" | "files">): boolean {
+  return c.dontKnow || c.alreadyAttached || c.files.some(usableFile);
+}
+
+/** «Una domanda», «5 domande». */
+export function questionsHeading(n: number): string {
+  return n === 1 ? T.questionsOne : fillText(T.questionsMany, { n });
+}
+
+/** «3 di 5 fatte». */
+export function doneCountText(done: number, total: number): string {
+  return fillText(T.doneCount, { k: done, n: total });
+}
+
+/** «Manca ancora la domanda 4.», «Mancano ancora le domande 2, 4 e 6.» (i numeri di «Domanda k di n»). */
+export function missingText(positions: readonly number[]): string {
+  const list = [...positions].sort((a, b) => a - b);
+  if (list.length === 1) return fillText(T.missingOne, { k: list[0] });
+  const joined = `${list.slice(0, -1).join(", ")} e ${list[list.length - 1]}`;
+  return fillText(T.missingMany, { list: joined });
+}
+
+/** La riga sotto una domanda che manca. */
+export function closeHint(fileRequired: boolean): string {
+  return fileRequired ? REFERENT_ERROR_MESSAGES.domanda_aperta_file : REFERENT_ERROR_MESSAGES.domanda_aperta;
+}
+
+/** «Si salva da solo: puoi tornare fino al 3 dicembre 2026.» */
+export function savesItselfText(view: ReferentAskView): string {
+  return fillText(T.savesItself, { data: expiryLabel(view.expiresOn) });
+}
+
+/** (Rilascio 5) Il giorno dell'ultimo invio del referente (la conferma o una risposta), oppure null. */
+export function lastSentOn(view: ReferentAskView): string | null {
+  const dates = [view.check?.submittedAt ?? null, ...view.questions.map((q) => q.answer?.submittedAt ?? null)].filter((d): d is string => Boolean(d));
+  if (!dates.length) return null;
+  return dates.sort().at(-1) ?? null;
+}
+
+/** (Rilascio 5) La conferma e la stima inviate, in sola lettura: «Lo use case: …», «Il tempo: …», i numeri. */
+export function sentCheckLines(view: ReferentAskView): { useCase: string; note: string | null; time: string; numbers: string | null } | null {
+  const c = view.check;
+  if (!c?.submittedAt) return null;
+  const d = c.draft;
+  const useCase = d.confirm === "correggi" ? T.sentUseCaseFix : T.sentUseCaseYes;
+  const time = d.estimate === "meno" ? T.sentTimeLess : d.estimate === "piu" ? T.sentTimeMore : d.estimate === "si" ? T.sentTimeYes : T.sentTimeOwn;
+  const fmt = (n: number) => String(n).replace(".", ",");
+  const numbers =
+    d.timesPerMonth !== null || d.minutesEach !== null
+      ? fillText(T.sentTimeNumbers, { n: d.timesPerMonth !== null ? fmt(d.timesPerMonth) : "—", m: d.minutesEach !== null ? fmt(d.minutesEach) : "—" })
+      : null;
+  return { useCase, note: d.confirm === "correggi" ? (d.note?.trim() || null) : null, time, numbers };
 }
 
 /** Il testo di una domanda a cui ha già pensato il team: mai cosa ha scritto, mai chi. */
@@ -217,11 +304,15 @@ export function submitHint(view: ReferentAskView): string {
   return fillText(T.submitHint, { data: expiryLabel(view.expiresOn) });
 }
 
-/** La schermata dopo l'invio. */
+/**
+ * La schermata dopo l'invio. (Rilascio 5) Si invia solo con tutto chiuso: «Grazie, è tutto.» e «{Nome} lo
+ * vede subito.», senza pulsanti; resta il ripiego del rilascio 4 se qualcosa è ancora aperto.
+ */
 export function thanksTexts(result: SubmitResult, view: ReferentAskView): { title: string; seen: string; remaining: string | null; back: string | null } {
   const data = expiryLabel(view.expiresOn);
-  const remaining = result.open <= 0 ? null : result.open === 1 ? fillText(T.remainingOne, { data }) : fillText(T.remainingMany, { n: result.open, data });
-  return { title: T.thanksTitle, seen: fillText(T.thanksSeen, { Nome: view.requester.name }), remaining, back: remaining ? T.backToQuestions : null };
+  if (result.open <= 0) return { title: T.thanksDone, seen: fillText(T.thanksSeenNow, { Nome: view.requester.name }), remaining: null, back: null };
+  const remaining = result.open === 1 ? fillText(T.remainingOne, { data }) : fillText(T.remainingMany, { n: result.open, data });
+  return { title: T.thanksTitle, seen: fillText(T.thanksSeen, { Nome: view.requester.name }), remaining, back: T.backToQuestions };
 }
 
 /** I problemi dell'invio per domanda (`field` = id dell'esigenza), e la prima domanda da mostrare. */

@@ -22,6 +22,16 @@ import {
   stateCardText,
   submitHint,
   thanksTexts,
+  closeHint,
+  commentOffered,
+  doneCountText,
+  lastSentOn,
+  missingText,
+  questionClosed,
+  questionsHeading,
+  savesItselfText,
+  sentCheckLines,
+  usableFile,
 } from "./public-view-render.ts";
 
 // Dalla vista della richiesta a quello che la pagina `/rispondi/<token>` mostra (SPEC §4.4, §P3.7).
@@ -29,7 +39,7 @@ import {
 const N = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333"];
 
 function question(i: number, over: Partial<ReferentQuestionView> = {}): ReferentQuestionView {
-  return { needId: N[i], position: i + 1, title: `Domanda ${i}`, state: "aperta", draft: null, answer: null, files: [], ...over };
+  return { needId: N[i], position: i + 1, title: `Domanda ${i}`, state: "aperta", fileRequired: false, draft: null, answer: null, files: [], ...over };
 }
 
 function view(over: Partial<ReferentAskView> = {}): ReferentAskView {
@@ -115,11 +125,11 @@ test("«Domanda n di m» in ordine di posizione, e la fine", () => {
   assert.equal(finalCardText("empty"), "Non ci sono più domande per te. Grazie per la disponibilità.");
 });
 
-test("una domanda inviata: «Inviata il 27/10», il testo o «Non lo so», i nomi dei file", () => {
-  const sent = question(0, { state: "inviata", answer: { text: "Ogni giorno", dontKnow: false, submittedAt: "2026-10-27T09:00:00.000Z" }, files: [file({ submitted: true })] });
+test("una domanda inviata: «Inviata il 27/10», il testo o «Non ce l'ho», i nomi dei file", () => {
+  const sent = question(0, { state: "inviata", answer: { text: "Ogni giorno", dontKnow: false, alreadyAttached: false, comment: null, submittedAt: "2026-10-27T09:00:00.000Z" }, files: [file({ submitted: true })] });
   assert.deepEqual(sentAnswerView(sent, "2026-10-28"), { sentOn: "Inviata il 27/10", text: "Ogni giorno", files: ["preventivo.pdf"] });
-  const unknown = question(0, { state: "inviata", answer: { text: null, dontKnow: true, submittedAt: "2025-12-30T09:00:00.000Z" } });
-  assert.deepEqual(sentAnswerView(unknown, "2026-10-28"), { sentOn: "Inviata il 30/12/2025", text: "Non lo so", files: [] });
+  const unknown = question(0, { state: "inviata", answer: { text: null, dontKnow: true, alreadyAttached: false, comment: null, submittedAt: "2025-12-30T09:00:00.000Z" } });
+  assert.deepEqual(sentAnswerView(unknown, "2026-10-28"), { sentOn: "Inviata il 30/12/2025", text: "Non ce l'ho", files: [] });
   assert.equal(sentAnswerView(question(0), "2026-10-28"), null);
 });
 
@@ -175,9 +185,10 @@ test("gli stati dei file, «in revisione» e la conferma", () => {
 test("invio: la frase con la data, il ringraziamento, le domande che restano", () => {
   assert.equal(expiryLabel("2026-11-26"), "26 novembre 2026");
   assert.equal(submitHint(view()), "Invii solo le domande a cui hai risposto. Le altre restano qui: puoi tornare con lo stesso link fino al 26 novembre 2026.");
+  // (Rilascio 5) Si invia solo con tutto chiuso: «Grazie, è tutto.», senza pulsanti.
   assert.deepEqual(thanksTexts({ submitted: 2, open: 0, state: "completata" }, view()), {
-    title: "Grazie, abbiamo ricevuto le tue risposte.",
-    seen: "Giulia Neri le vede subito.",
+    title: "Grazie, è tutto.",
+    seen: "Giulia Neri lo vede subito.",
     remaining: null,
     back: null,
   });
@@ -209,4 +220,73 @@ test("la pagina usa solo i campi del contratto: un campo in più nella vista non
   const leaky = { ...view(), proposedBy: "proponente@topjet.it", reviewNotes: "NOTA-RISERVATA", valueEurYear: 98765 } as ReferentAskView;
   const shown = JSON.stringify([headerTexts(leaky), privacyTexts(leaky), questionSections(leaky).map((s) => [s.label, s.title]), submitHint(leaky)]);
   for (const secret of ["proponente@topjet.it", "NOTA-RISERVATA", "98765"]) assert.ok(!shown.includes(secret), secret);
+});
+
+// ─── Rilascio 5: le chiusure (§3.6, §7.5, §7.6) ──────────────────────
+
+test("(rilascio 5) una domanda è chiusa da un testo, un file, «Non ce l'ho» o «È già allegato»; su «Serve un file» il testo no", () => {
+  const open = question(0);
+  const needs = question(0, { fileRequired: true });
+  const none = { text: "", dontKnow: false, alreadyAttached: false, files: [] };
+  assert.equal(questionClosed(open, none), false);
+  assert.equal(questionClosed(open, null), false);
+  assert.equal(questionClosed(open, { ...none, text: "  " }), false);
+  assert.equal(questionClosed(open, { ...none, text: "Ogni giorno" }), true);
+  assert.equal(questionClosed(needs, { ...none, text: "Ogni giorno" }), false, "«Serve un file»: il testo non basta");
+  assert.equal(questionClosed(needs, { ...none, dontKnow: true }), true);
+  assert.equal(questionClosed(needs, { ...none, alreadyAttached: true }), true);
+  assert.equal(questionClosed(needs, { ...none, files: [file({ status: "pulito" })] }), true);
+  assert.equal(questionClosed(needs, { ...none, files: [file({ status: "in_quarantena" })] }), false, "il controllo non è finito");
+  assert.equal(questionClosed(needs, { ...none, files: [file({ status: "pulito", needsConfirmation: true })] }), false, "il file con nomi va confermato");
+  assert.equal(questionClosed(needs, { ...none, files: [file({ status: "rifiutato" })] }), false);
+  assert.equal(questionClosed(question(0, { state: "gestita" }), null), true);
+  assert.equal(questionClosed(question(0, { state: "inviata" }), null), true);
+  assert.equal(usableFile(file({ status: "in_revisione" })), true);
+});
+
+test("(rilascio 5) il commento solo con una chiusura senza testo; i testi della lista, del conteggio, di quello che manca", () => {
+  assert.equal(commentOffered({ dontKnow: false, alreadyAttached: false, files: [] }), false);
+  assert.equal(commentOffered({ dontKnow: true, alreadyAttached: false, files: [] }), true);
+  assert.equal(commentOffered({ dontKnow: false, alreadyAttached: true, files: [] }), true);
+  assert.equal(commentOffered({ dontKnow: false, alreadyAttached: false, files: [file({ status: "pulito" })] }), true);
+  assert.equal(questionsHeading(1), "Una domanda");
+  assert.equal(questionsHeading(5), "5 domande");
+  assert.equal(doneCountText(3, 5), "3 di 5 fatte");
+  assert.equal(missingText([4]), "Manca ancora la domanda 4.");
+  assert.equal(missingText([6, 2, 4]), "Mancano ancora le domande 2, 4 e 6.");
+  assert.equal(missingText([2, 3]), "Mancano ancora le domande 2 e 3.");
+  assert.equal(closeHint(false), "Per chiudere: rispondi, allega un file o scegli «Non ce l'ho».");
+  assert.equal(closeHint(true), "Per chiudere: allega il file o scegli «Non ce l'ho».");
+  assert.equal(savesItselfText(view()), "Si salva da solo: puoi tornare fino al 26 novembre 2026.");
+});
+
+test("(rilascio 5) dopo l'invio: «Hai risposto il …», la conferma e la stima in sola lettura, «Non ce l'ho», «È già allegato», il commento", () => {
+  const sent = (over: Partial<NonNullable<ReferentQuestionView["answer"]>>) =>
+    question(0, { state: "inviata", answer: { text: null, dontKnow: false, alreadyAttached: false, comment: null, submittedAt: "2026-11-03T09:00:00.000Z", ...over } });
+  assert.deepEqual(sentAnswerView(sent({ alreadyAttached: true, comment: "È nel file della domanda 2." }), "2026-11-04"), {
+    sentOn: "Inviata il 03/11",
+    text: "È già allegato",
+    files: [],
+    comment: "Commento: È nel file della domanda 2.",
+  });
+  assert.deepEqual(sentAnswerView(sent({ dontKnow: true, comment: "l'ufficio acquisti" }), "2026-11-04")?.comment, "Chi potrebbe saperlo: l'ufficio acquisti");
+  const check = (draft: Partial<NonNullable<ReferentAskView["check"]>["draft"]>, submittedAt: string | null = "2026-11-03T10:00:00.000Z"): ReferentAskView["check"] => ({
+    description: null,
+    team: null,
+    draft: { confirm: "si", note: null, estimate: "si", timesPerMonth: null, minutesEach: null, stale: false, savedAt: null, ...draft },
+    submittedAt,
+  });
+  const done = view({ state: "completata", kind: "referente", check: check({}), questions: [sent({ text: "Ogni giorno" })] });
+  assert.equal(lastSentOn(done), "2026-11-03T10:00:00.000Z");
+  assert.equal(finalCardText("completed", done, "2026-11-04"), "Hai risposto il 03/11. Grazie!");
+  assert.equal(finalCardText("completed"), "Hai risposto a tutte le domande. Grazie!");
+  assert.deepEqual(sentCheckLines(done), { useCase: "Lo use case: sì, è così.", note: null, time: "Il tempo: sì.", numbers: null });
+  assert.deepEqual(sentCheckLines(view({ check: check({ confirm: "correggi", note: "Anche via PEC", estimate: "meno", timesPerMonth: 200, minutesEach: 1.5 }) })), {
+    useCase: "Lo use case: da correggere.",
+    note: "Anche via PEC",
+    time: "Il tempo: è di meno.",
+    numbers: "200 volte al mese, 1,5 minuti ogni volta.",
+  });
+  assert.equal(sentCheckLines(view({ check: check({ estimate: null, timesPerMonth: 20, minutesEach: 30 }) }))?.time, "Il tempo:");
+  assert.equal(sentCheckLines(view({ check: check({}, null) })), null, "solo dopo l'invio");
 });

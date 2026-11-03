@@ -133,7 +133,7 @@ export { cardLink };
 
 /**
  * Dove porta la voce di una scheda: con il solo seguito (ultimo promemoria, link scaduto) a
- * «Richieste inviate», dove si chiede di nuovo; con risposte, documenti o «Non lo so» da guardare a
+ * «Richieste inviate», dove si chiede di nuovo; con risposte, documenti o «Non ce l'ho» da guardare a
  * «Cosa serve».
  */
 function entryLink(origin: string, workspaceId: string, useCaseId: string, e: Pick<AlertEntry, "answers" | "unknowns" | "documents" | "followUp">): string {
@@ -229,7 +229,7 @@ export function renderRequesterAlert(i: RequesterAlertInput): RenderedEmail {
   for (const e of i.entries) {
     blocks.push({ p: `«${labelOfUseCase(e.useCase)}»: ${joinFacts(factsOf(e))}.` });
     if (e.answers > 0 || e.documents > 0) blocks.push({ small: "Da verificare in «Cosa serve»." });
-    if (e.unknowns > 0 && !e.followUp) blocks.push({ small: "Per i «Non lo so» puoi chiedere a un'altra persona." });
+    if (e.unknowns > 0 && !e.followUp) blocks.push({ small: "Per i «Non ce l'ho» puoi chiedere a un'altra persona." });
     if (e.followUp) blocks.push({ small: "Puoi chiedere di nuovo o chiedere a un'altra persona." });
     blocks.push({ link: { href: e.link, label: "Apri «Cosa serve»" } });
   }

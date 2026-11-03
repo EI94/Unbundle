@@ -255,7 +255,7 @@ test("pagina pubblica: «gestita» si vede senza bozza, risposta o file; mai cos
   const view = toPublicView(rows([item({}), handled]));
   assert.equal(view.state, "aperta");
   const q = view.questions.find((x) => x.needId === R2)!;
-  assert.deepEqual(q, { needId: R2, position: 2, title: "Ogni quanto fate questo lavoro?", state: "gestita", draft: null, answer: null, files: [] });
+  assert.deepEqual(q, { needId: R2, position: 2, title: "Ogni quanto fate questo lavoro?", state: "gestita", fileRequired: false, draft: null, answer: null, files: [] });
   assert.ok(!JSON.stringify(view).includes("BOZZA-DEL-REFERENTE"));
   // Un'esigenza tornata indietro a mano è ritirata: non si vede.
   const withdrawn = toPublicView(rows([item({}), item({ needId: R2, position: 2, open: false, handled: false })]));

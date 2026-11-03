@@ -141,7 +141,7 @@ after(async () => {
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [Object.keys(emails).map((p) => ids[p as Person])]);
 });
 
-const state = { requestId: "", contactId: "", token: "", needs: [] as string[] };
+const state = { namedFileId: "", requestId: "", contactId: "", token: "", needs: [] as string[] };
 
 
 type Files = typeof import("../../db/queries/use-case-referent-files.ts");
@@ -213,16 +213,13 @@ test("referente: un file con nomi va confermato prima dell'invio; poi l'invio lo
   const blocked = await pub.submitReferentAnswers(link, { needIds: [state.needs[1]] }, new Date());
   assert.ok(!blocked.ok && blocked.code === "file_da_confermare", JSON.stringify(blocked));
   assert.ok((await pub.confirmReferentFile(link, { fileId: up.value.fileId })).ok);
-  const done = await pub.submitReferentAnswers(link, { needIds: [state.needs[1]] }, new Date());
-  assert.ok(done.ok, JSON.stringify(done));
-  assert.equal(await statusOf(state.needs[1]), "in_verifica");
-  const row = await fileRow(up.value.fileId);
-  assert.ok(row.submitted_at);
-  const removed = await pub.removeReferentFile(link, { fileId: up.value.fileId }, ENV);
-  assert.ok(!removed.ok && removed.code === "file_gia_inviato");
-  // «Nuovi documenti»: il file pulito conta nella notifica delle risposte.
-  const notes = await q(`SELECT documents FROM use_case_notifications WHERE use_case_id = $1::uuid AND recipient_user_id = $2::uuid AND kind = 'risposte'`, [ids.useCase, ids.analyst]);
-  assert.equal(Number(notes[0]?.documents), 1);
+  // (Rilascio 5, D17) Tutto o niente: con la terza domanda ancora aperta l'invio dice quale manca.
+  assert.ok((await pub.saveReferentDraft(link, { needId: state.needs[0], text: null, dontKnow: true }, new Date())).ok);
+  const open = await pub.submitReferentAnswers(link, {}, new Date());
+  assert.ok(!open.ok && open.code === "domande_aperte", JSON.stringify(open));
+  if (!open.ok) assert.deepEqual(open.issues?.map((i) => i.field), [state.needs[2]]);
+  state.namedFileId = up.value.fileId;
+  assert.equal((await fileRow(up.value.fileId)).submitted_at, null, "niente inviato");
 });
 
 test("referente: dati sanitari → rifiutato, nessun oggetto, il motivo resta", opts, async () => {
@@ -245,8 +242,16 @@ test("referente: un PDF con poco testo va in revisione, si può inviare, lo cont
   assert.ok(String(row.blob_path).startsWith("uc/s/"));
   // Prima dell'invio nessuno lo controlla.
   refused(await files.reviewNeedFile(as("builder"), ids.useCase, up.value.fileId, "accetta", ENV), "file_non_trovato");
-  const done = await pub.submitReferentAnswers(link, { needIds: [state.needs[2]] }, new Date());
+  const done = await pub.submitReferentAnswers(link, {}, new Date());
   assert.ok(done.ok, JSON.stringify(done));
+  // Il file con i nomi, confermato, parte con lo stesso invio e non si toglie più.
+  assert.equal(await statusOf(state.needs[1]), "in_verifica");
+  assert.ok((await fileRow(state.namedFileId)).submitted_at);
+  const removed = await pub.removeReferentFile(link, { fileId: state.namedFileId }, ENV);
+  assert.ok(!removed.ok && removed.code === "file_gia_inviato");
+  // «Nuovi documenti»: i due file contano nella notifica delle risposte.
+  const notes = await q(`SELECT documents FROM use_case_notifications WHERE use_case_id = $1::uuid AND recipient_user_id = $2::uuid AND kind = 'risposte'`, [ids.useCase, ids.analyst]);
+  assert.equal(Number(notes[0]?.documents), 2);
   // Annunciato all'arrivo, come documento (non come «risposta»: solo un file, nessun testo).
   const arrived = await q(`SELECT answers, documents FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'risposte' AND recipient_user_id = $2::uuid`, [ids.useCase, ids.builder]);
   assert.ok(Number(arrived[0]?.documents) >= 1, JSON.stringify(arrived));

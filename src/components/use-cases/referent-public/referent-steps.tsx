@@ -75,8 +75,8 @@ function Choice({ pressed, filled, onClick, children, busy }: { pressed: boolean
 }
 
 export interface StepActions {
-  /** Salva una bozza del passo: true se il server l'ha salvata. */
-  save: (body: CheckBody) => Promise<boolean>;
+  /** Salva una bozza del passo: true se il server l'ha salvata. `keepalive`: chi chiude la pagina. */
+  save: (body: CheckBody, keepalive?: boolean) => Promise<boolean>;
   /** Il passo dopo (o l'invio, sull'ultimo passo): `e` per il controllo del doppio clic. */
   next: (e: React.MouseEvent<HTMLButtonElement> | null) => void;
   /** È un doppio clic o un clic troppo vicino al cambio di passo. */
@@ -111,6 +111,21 @@ export function ConfirmStep({ check, title, actions, errorFromServer }: { check:
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
   }, []);
+
+  // Chi chiude la pagina con la nota non ancora salvata: un ultimo salvataggio che sopravvive alla chiusura.
+  const noteText = useRef(note);
+  useEffect(() => {
+    noteText.current = note;
+  }, [note]);
+  useEffect(() => {
+    const onHide = () => {
+      if (check.draft.confirm !== "correggi") return;
+      const text = noteText.current;
+      if (text.trim() !== lastSaved.current.trim()) void actions.save({ step: 1, confirm: "correggi", note: text }, true);
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, [actions, check.draft.confirm]);
 
   const onYes = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (actions.tooSoon(e)) return;
@@ -239,8 +254,32 @@ export function EstimateStep({
   };
   const schedule = (t: string, m: string) => {
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void saveNumbers(team ? draft.estimate : null, t, m), AUTOSAVE_MS);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      void saveNumbers(team ? draft.estimate : null, t, m);
+    }, AUTOSAVE_MS);
   };
+
+  // Chi chiude la pagina con un numero non ancora salvato: un ultimo salvataggio che sopravvive alla chiusura.
+  const pendingRef = useRef({ times, minutes, estimate: draft.estimate });
+  useEffect(() => {
+    pendingRef.current = { times, minutes, estimate: draft.estimate };
+  }, [times, minutes, draft.estimate]);
+  useEffect(() => {
+    const onHide = () => {
+      if (!timer.current) return;
+      clearTimeout(timer.current);
+      timer.current = null;
+      const p = pendingRef.current;
+      const tt = numberField(p.times, "timesPerMonth");
+      const mm = numberField(p.minutes, "minutesEach");
+      if (!tt.ok || !mm.ok) return;
+      const estimate = team ? p.estimate : null;
+      void actions.save({ step: 2, teamSeen: team ? { key: team.key, volumeYear: team.volumeYear, minutes: team.minutes } : null, estimate, timesPerMonth: tt.value, minutesEach: mm.value }, true);
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, [actions, team]);
 
   const pick = (estimate: "si" | "meno" | "piu", e: React.MouseEvent<HTMLButtonElement>) => {
     if (estimate === "si" && !last) {

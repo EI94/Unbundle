@@ -188,6 +188,9 @@ async function answerByLink(token: string, needId: string, text: string) {
   const resolved = await pub.resolveReferentToken(token, V);
   if (resolved.access !== "ok") assert.fail("link");
   assert.ok((await pub.saveReferentDraft(resolved.link, { needId, text, dontKnow: false }, V)).ok, "bozza");
+  // (Rilascio 5, D17) Tutto o niente: le altre domande della richiesta si chiudono con «Non ce l'ho».
+  const others = await q(`SELECT need_id::text AS id FROM use_case_referent_request_items WHERE request_id = $1::uuid AND state = 'aperta' AND need_id <> $2::uuid`, [resolved.link.requestId, needId]);
+  for (const o of others) assert.ok((await pub.saveReferentDraft(resolved.link, { needId: String(o.id), text: null, dontKnow: true }, V)).ok, "«Non ce l'ho»");
   const submitted = await pub.submitReferentAnswers(resolved.link, {}, V);
   assert.ok(submitted.ok, JSON.stringify(submitted));
 }

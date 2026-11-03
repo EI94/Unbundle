@@ -16,7 +16,12 @@ export const AUTOSAVE_DELAY_MS = 1500;
 
 export interface DraftValue {
   text: string;
+  /** «Non ce l'ho» (rilascio 5; nel rilascio 4 «Non lo so»). */
   dontKnow: boolean;
+  /** (Rilascio 5) «È già allegato». */
+  alreadyAttached?: boolean;
+  /** (Rilascio 5) Il commento, o «Chi potrebbe saperlo?» con «Non ce l'ho». */
+  comment?: string;
 }
 
 /** Un problema del testo, come lo restituisce il server (`Issue`). */
@@ -55,10 +60,14 @@ export type AutosaveEvent =
   | { type: "blocked"; value: DraftValue; issues: readonly DraftIssue[] }
   | { type: "failure"; value: DraftValue };
 
-/** Lo stesso valore, per il server: testo senza spazi ai bordi; con «Non lo so» il testo non conta. */
+/**
+ * Lo stesso valore, per il server: testo e commento senza spazi ai bordi; con «Non ce l'ho» o «È già
+ * allegato» il testo non conta.
+ */
 export function sameDraft(a: DraftValue, b: DraftValue): boolean {
-  if (a.dontKnow !== b.dontKnow) return false;
-  return a.dontKnow || a.text.trim() === b.text.trim();
+  if (a.dontKnow !== b.dontKnow || (a.alreadyAttached ?? false) !== (b.alreadyAttached ?? false)) return false;
+  if ((a.comment ?? "").trim() !== (b.comment ?? "").trim()) return false;
+  return a.dontKnow || a.alreadyAttached === true || a.text.trim() === b.text.trim();
 }
 
 export function initialAutosave(value: DraftValue, savedAt: string | null = null): AutosaveState {

@@ -194,7 +194,7 @@ test("testo: solo documenti, solo «Non lo so», risposte e «Non lo so», solo 
   const unknown = renderRequesterAlert({ company: "TopJet", entries: [entry({ unknowns: 1 })] });
   assert.equal(unknown.subject, "Il referente non sa rispondere su «TJ-0004 · Fatture fornitori»");
   has(unknown.text, "il referente non ha l'informazione per 1 domanda.");
-  has(unknown.text, "Per i «Non lo so» puoi chiedere a un'altra persona.");
+  has(unknown.text, "Per i «Non ce l'ho» puoi chiedere a un'altra persona.");
   assert.ok(!unknown.text.includes("Da verificare"));
   const mixed = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 3, unknowns: 2 })] });
   has(mixed.text, "«TJ-0004 · Fatture fornitori»: sono arrivate 3 risposte e il referente non ha l'informazione per 2 domande.");
@@ -204,7 +204,7 @@ test("testo: solo documenti, solo «Non lo so», risposte e «Non lo so», solo 
   has(last.text, "Puoi chiedere di nuovo o chiedere a un'altra persona.");
   const expired = renderRequesterAlert({ company: "TopJet", entries: [entry({ followUp: "scaduta", unknowns: 1 })] });
   has(expired.text, "il link è scaduto e restano domande senza risposta");
-  assert.ok(!expired.text.includes("Per i «Non lo so»"), "con il seguito, solo la sua riga");
+  assert.ok(!expired.text.includes("Per i «Non ce l'ho»"), "con il seguito, solo la sua riga");
   const all = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 2, documents: 1, followUp: "ultimo_promemoria" })] });
   has(all.text, "sono arrivate 2 risposte, c'è 1 documento nuovo e è partito l'ultimo promemoria e restano domande senza risposta.");
   for (const m of [docs, unknown, mixed, last, expired, all]) safe(m);

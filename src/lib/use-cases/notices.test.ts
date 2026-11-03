@@ -11,10 +11,10 @@ test("risposte: solo risposte, risposte e documenti, risposte e «Non lo so», s
   assert.deepEqual(noticeTextOf(n({ answers: 2, documents: 1 })), { title: "Risposte arrivate", description: "2 risposte e 1 documento da verificare in «Cosa serve»." });
   assert.deepEqual(noticeTextOf(n({ answers: 1, unknowns: 2 })), {
     title: "Risposte arrivate",
-    description: "1 risposta da verificare in «Cosa serve». 2 «Non lo so»: serve chiedere a qualcun altro.",
+    description: "1 risposta da verificare in «Cosa serve». 2 «Non ce l'ho»: serve chiedere a qualcun altro.",
   });
   const onlyUnknown = noticeTextOf(n({ unknowns: 1 }));
-  assert.deepEqual(onlyUnknown, { title: "Risposte arrivate", description: "1 «Non lo so»: serve chiedere a qualcun altro." });
+  assert.deepEqual(onlyUnknown, { title: "Risposte arrivate", description: "1 «Non ce l'ho»: serve chiedere a qualcun altro." });
   assert.ok(!onlyUnknown.description.includes("da verificare"), "solo «Non lo so»: niente «da verificare»");
   assert.deepEqual(noticeTextOf(n()), { title: "Risposte arrivate", description: "Da verificare in «Cosa serve»." });
   assert.deepEqual(noticeTextOf(n({ answers: -3, documents: Number.NaN })), { title: "Risposte arrivate", description: "Da verificare in «Cosa serve»." });

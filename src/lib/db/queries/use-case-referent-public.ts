@@ -145,6 +145,8 @@ interface ItemFact {
   visible: boolean;
   /** (Parte 3) L'esigenza è già «Da verificare» o «A posto» (`itemHandledByTeam`). */
   handled: boolean;
+  /** (Rilascio 5) «Serve un file». */
+  fileRequired: boolean;
 }
 
 interface AnswerFact {
@@ -152,6 +154,9 @@ interface AnswerFact {
   status: "bozza" | "inviata";
   body: string | null;
   dontKnow: boolean;
+  /** (Rilascio 5) «È già allegato» e il commento. */
+  alreadyAttached: boolean;
+  comment: string | null;
   updatedAt: Date;
   submittedAt: Date | null;
 }
@@ -205,7 +210,7 @@ function requestStatements(link: ReferentLink): UcStatement[] {
 FROM use_case_referent_requests r JOIN use_cases u ON u.id = r.use_case_id AND u.workspace_id = r.workspace_id JOIN workspaces w ON w.id = r.workspace_id
 LEFT JOIN use_case_referent_checks c ON c.request_id = r.id AND c.workspace_id = r.workspace_id
 WHERE r.id = ${req} AND r.workspace_id = ${ws}`),
-    toStatement(ucSql`SELECT i.need_id, i.position, i.question, i.state, ${openItemSql("i", "r")} AS open,
+    toStatement(ucSql`SELECT i.need_id, i.position, i.question, i.state, i.file_required, ${openItemSql("i", "r")} AS open,
   EXISTS (SELECT 1 FROM use_case_needs vn JOIN use_case_need_links vl ON vl.need_id = vn.id AND vl.use_case_id = r.use_case_id
           WHERE vn.id = i.need_id AND vn.workspace_id = r.workspace_id AND vn.archived_at IS NULL) AS visible,
   EXISTS (SELECT 1 FROM use_case_needs hn JOIN use_case_need_links hl ON hl.need_id = hn.id AND hl.use_case_id = r.use_case_id
@@ -213,7 +218,7 @@ WHERE r.id = ${req} AND r.workspace_id = ${ws}`),
 FROM use_case_referent_request_items i JOIN use_case_referent_requests r ON r.id = i.request_id
 WHERE i.request_id = ${req} AND r.workspace_id = ${ws}
 ORDER BY i.position`),
-    toStatement(ucSql`SELECT a.need_id, a.status, a.body, a.dont_know, a.updated_at, a.submitted_at
+    toStatement(ucSql`SELECT a.need_id, a.status, a.body, a.dont_know, a.already_attached, a.comment, a.updated_at, a.submitted_at
 FROM use_case_need_answers a
 WHERE a.request_id = ${req} AND a.workspace_id = ${ws} AND a.removed_at IS NULL
 ORDER BY a.created_at, a.id`),
@@ -253,12 +258,15 @@ async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promi
       open: rowBool(i.open),
       visible: rowBool(i.visible),
       handled: rowBool(i.handled),
+      fileRequired: rowBool(i.file_required),
     })),
     answers: answers.map((a: UcRow) => ({
       needId: String(a.need_id).toLowerCase(),
       status: rowString(a.status) === "inviata" ? "inviata" : "bozza",
       body: rowString(a.body),
       dontKnow: rowBool(a.dont_know),
+      alreadyAttached: rowBool(a.already_attached),
+      comment: rowString(a.comment),
       updatedAt: rowDate(a.updated_at) ?? new Date(0),
       submittedAt: rowDate(a.submitted_at),
     })),
@@ -373,8 +381,10 @@ export async function loadReferentAskView(link: ReferentLink, o: { env: Env; now
       open: i.open && facts.status === "inviata" && facts.expiresAt.getTime() > o.now.getTime(),
       visible: i.visible,
       handled: i.handled,
-      draft: draft ? { body: draft.body, dontKnow: draft.dontKnow, updatedAt: draft.updatedAt } : null,
-      answer: answer && answer.submittedAt ? { body: answer.body, dontKnow: answer.dontKnow, submittedAt: answer.submittedAt } : null,
+      fileRequired: i.fileRequired,
+      draft: draft ? { body: draft.body, dontKnow: draft.dontKnow, alreadyAttached: draft.alreadyAttached, comment: draft.comment, updatedAt: draft.updatedAt } : null,
+      answer:
+        answer && answer.submittedAt ? { body: answer.body, dontKnow: answer.dontKnow, alreadyAttached: answer.alreadyAttached, comment: answer.comment, submittedAt: answer.submittedAt } : null,
       files: facts.files.filter((f) => f.needId === i.needId && liveFile(f, o.now)),
     };
   });
@@ -428,47 +438,72 @@ WHERE id = ${cast(link.requestId, "uuid")} AND workspace_id = ${cast(link.worksp
   return { ok: true, value: { accepted: true } };
 }
 
+/**
+ * La bozza di una domanda: il testo, «Non ce l'ho» (`dontKnow`), «È già allegato» (`alreadyAttached`) e il
+ * commento (rilascio 5, §3.6, §6.2). «Non ce l'ho» ed «È già allegato» si escludono e tolgono il testo; il
+ * commento c'è solo con una delle due o con un file che si può inviare. Le regole stanno qui e nell'invio,
+ * con i test: nessun CHECK nuovo sulla tabella (la regola di §0 della SPEC).
+ */
 export async function saveReferentDraft(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<DraftResult>> {
   if (!link.privacyAccepted) return pfail("informativa_da_leggere");
   if (!writable(link, now)) return notAvailable();
   const needId = field(body, "needId");
   const rawText = field(body, "text");
   const dontKnowRaw = field(body, "dontKnow");
-  if (!isUuid(needId) || (rawText !== null && rawText !== undefined && typeof rawText !== "string") || (dontKnowRaw !== undefined && typeof dontKnowRaw !== "boolean")) {
+  const attachedRaw = field(body, "alreadyAttached");
+  const rawComment = field(body, "comment");
+  if (
+    !isUuid(needId) ||
+    (rawText !== null && rawText !== undefined && typeof rawText !== "string") ||
+    (dontKnowRaw !== undefined && typeof dontKnowRaw !== "boolean") ||
+    (attachedRaw !== undefined && typeof attachedRaw !== "boolean") ||
+    (rawComment !== null && rawComment !== undefined && typeof rawComment !== "string")
+  ) {
     return pfail("dati_non_validi", "Dati non validi.");
   }
   const dontKnow = dontKnowRaw === true;
+  const alreadyAttached = attachedRaw === true;
+  if (dontKnow && alreadyAttached) return pfail("dati_non_validi", "Dati non validi.");
   let text: string | null = typeof rawText === "string" ? rawText.replace(/\r\n?/g, "\n").trim() : null;
-  if (!text || dontKnow) text = null;
+  if (!text || dontKnow || alreadyAttached) text = null;
   if (text && text.length > REFERENT_LIMITS.answerMax) return pfail("testo_troppo_lungo");
+  let comment: string | null = typeof rawComment === "string" ? rawComment.replace(/\r\n?/g, "\n").trim() : null;
+  if (!comment) comment = null;
+  if (comment && comment.length > REFERENT_CHECK_LIMITS.commentMax) return pfail("nota_troppo_lunga");
   let warnings: Issue[] = [];
-  if (text) {
-    const check = checkDraftText(text);
+  for (const value of [text, comment]) {
+    if (!value) continue;
+    const check = checkDraftText(value);
     if (!check.ok) return pfail(check.issues[0]?.code ?? "risposte_da_correggere", check.issues[0]?.message, check.issues);
-    warnings = check.warnings;
+    warnings = [...warnings, ...check.warnings];
   }
   const executor = await getAppUcExecutor();
   const need = cast(needId.toLowerCase(), "uuid");
   const req = cast(link.requestId, "uuid");
   const [[state]] = await executor.batch([
     toStatement(ucSql`SELECT ${openItemSql("i", "r")} AS open,
-  (SELECT a.status FROM use_case_need_answers a WHERE a.request_id = r.id AND a.need_id = i.need_id) AS answer_status
+  (SELECT a.status FROM use_case_need_answers a WHERE a.request_id = r.id AND a.need_id = i.need_id) AS answer_status,
+  EXISTS (SELECT 1 FROM use_case_need_files f WHERE f.request_id = r.id AND f.need_id = i.need_id AND f.deleted_at IS NULL AND f.submitted_at IS NULL
+          AND f.scan_status IN ('pulito', 'in_revisione')) AS has_file
 FROM use_case_referent_request_items i JOIN use_case_referent_requests r ON r.id = i.request_id
 WHERE i.request_id = ${req} AND i.need_id = ${need} AND r.workspace_id = ${cast(link.workspaceId, "uuid")} AND r.status = 'inviata' AND r.expires_at > now()`),
   ]);
   if (!state) return notAvailable();
   if (rowString(state.answer_status) === "inviata") return pfail("gia_inviata");
   if (!rowBool(state.open)) return notAvailable();
+  // Il commento solo con una chiusura senza testo: «Non ce l'ho», «È già allegato» o un file.
+  if (comment && !dontKnow && !alreadyAttached && !rowBool(state.has_file)) return pfail("dati_non_validi", "Dati non validi.");
   const run = await referentBatch(executor, [
-    toStatement(ucSql`INSERT INTO use_case_need_answers (workspace_id, use_case_id, need_id, request_id, source, body, dont_know, status)
-SELECT n.workspace_id, l.use_case_id, n.id, r.id, 'referente', ${cast(text, "text")}, ${cast(dontKnow, "boolean")}, 'bozza'
+    toStatement(ucSql`INSERT INTO use_case_need_answers (workspace_id, use_case_id, need_id, request_id, source, body, dont_know, already_attached, comment, status)
+SELECT n.workspace_id, l.use_case_id, n.id, r.id, 'referente', ${cast(text, "text")}, ${cast(dontKnow, "boolean")}, ${cast(alreadyAttached, "boolean")}, ${cast(comment, "text")}, 'bozza'
 FROM use_case_referent_request_items i
 JOIN use_case_referent_requests r ON r.id = i.request_id
 JOIN use_case_needs n ON n.id = i.need_id AND n.workspace_id = r.workspace_id
 JOIN use_case_need_links l ON l.need_id = n.id AND l.use_case_id = r.use_case_id
 WHERE i.request_id = ${req} AND i.need_id = ${need} AND r.workspace_id = ${cast(link.workspaceId, "uuid")} AND r.status = 'inviata' AND r.expires_at > now()
   AND i.state = 'aperta' AND n.status = 'chiesta' AND n.archived_at IS NULL AND n.type = 'requisito'
-ON CONFLICT (request_id, need_id) WHERE request_id IS NOT NULL DO UPDATE SET body = EXCLUDED.body, dont_know = EXCLUDED.dont_know, updated_at = now()
+ON CONFLICT (request_id, need_id) WHERE request_id IS NOT NULL DO UPDATE SET body = EXCLUDED.body, dont_know = EXCLUDED.dont_know,
+  already_attached = EXCLUDED.already_attached, comment = EXCLUDED.comment, updated_at = now()
   WHERE use_case_need_answers.status = 'bozza'
 RETURNING updated_at`),
   ]);
@@ -562,59 +597,83 @@ export async function saveReferentCheck(link: ReferentLink, body: unknown, now: 
 interface Target {
   needId: string;
   dontKnow: boolean;
+  /** (Rilascio 5) «È già allegato»: conta come una risposta, l'esigenza va «Da verificare». */
+  alreadyAttached: boolean;
   hasDraft: boolean;
   /** C'è un testo: solo così conta come «risposta» (un file da solo conta tra i documenti). */
   hasText: boolean;
   documents: number;
 }
 
-/** L'invio delle risposte (§3.8): tutto in un batch, oppure niente. */
+/**
+ * (Rilascio 5, §3.6) Una domanda aperta è chiusa da: un testo (non su «Serve un file»), un file che si
+ * può inviare, «Non ce l'ho» o «È già allegato». Il messaggio di quello che manca, per domanda.
+ */
+function closureOf(i: { fileRequired: boolean }, draft: AnswerFact | null, files: number): "testo" | "file" | "non_so" | "allegato" | null {
+  if (draft?.dontKnow) return "non_so";
+  if (draft?.alreadyAttached) return "allegato";
+  if (files > 0) return "file";
+  if (!i.fileRequired && draft?.body?.trim()) return "testo";
+  return null;
+}
+
+/**
+ * L'invio (§3.8; rilascio 5 §6.2): tutto in un batch, oppure niente; e (D17) solo quando ogni domanda
+ * aperta è chiusa, la conferma data e la stima completa. Altrimenti `domande_aperte` con una voce per
+ * domanda che manca; una domanda aggiunta dal team mentre la pagina era aperta (`shown` non la ha) dà
+ * `domande_nuove` e la pagina si rilegge.
+ */
 export async function submitReferentAnswers(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<SubmitResult>> {
   if (!link.privacyAccepted) return pfail("informativa_da_leggere");
   if (!writable(link, now)) return notAvailable();
-  const rawIds = field(body, "needIds");
-  let wanted: string[] | null = null;
-  if (rawIds !== undefined && rawIds !== null) {
-    if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.length > REFERENT_LIMITS.questionsPerRequest || !rawIds.every(isUuid)) return pfail("dati_non_validi", "Dati non validi.");
-    wanted = [...new Set(rawIds.map((x) => (x as string).toLowerCase()))];
-  }
+  const idsOf = (raw: unknown): string[] | null | "x" => {
+    if (raw === undefined || raw === null) return null;
+    if (!Array.isArray(raw) || raw.length > REFERENT_LIMITS.questionsPerRequest || !raw.every(isUuid)) return "x";
+    return [...new Set(raw.map((x) => (x as string).toLowerCase()))];
+  };
+  const wanted = idsOf(field(body, "needIds"));
+  const shown = idsOf(field(body, "shown"));
+  if (wanted === "x" || shown === "x") return pfail("dati_non_validi", "Dati non validi.");
   const executor = await getAppUcExecutor();
   const facts = await readRequestFacts(executor, link);
   if (!facts || facts.status !== "inviata") return notAvailable();
   if (!privacyAccepted(facts)) return pfail("informativa_da_leggere");
 
-  const openIds = new Set(facts.items.filter((i) => i.open).map((i) => i.needId));
+  const openItems = facts.items.filter((i) => i.open);
+  const openIds = new Set(openItems.map((i) => i.needId));
   const pending = (needId: string) => facts.files.filter((f) => f.needId === needId && !f.submitted && liveFile(f, now));
   const usable = (needId: string) => pending(needId).filter((f) => f.scanStatus === "pulito" || f.scanStatus === "in_revisione");
   const draftOf = (needId: string) => facts.answers.find((a) => a.needId === needId && a.status === "bozza") ?? null;
-
-  let candidates: string[];
-  if (wanted) {
-    if (wanted.some((id) => !openIds.has(id))) return notAvailable();
-    candidates = wanted;
-  } else {
-    candidates = facts.items.filter((i) => i.open && (draftOf(i.needId) !== null || usable(i.needId).length > 0)).map((i) => i.needId);
+  // `needIds` del rilascio 4: solo domande ancora aperte (le altre non sono più per il referente).
+  if (wanted && wanted.some((id) => !openIds.has(id))) return notAvailable();
+  // Una domanda aperta che la pagina non mostrava: aggiunta dal team intanto.
+  if (shown) {
+    const fresh = openItems.filter((i) => !shown.includes(i.needId));
+    if (fresh.length) return pfail("domande_nuove", undefined, fresh.map((i) => ({ code: "domande_nuove", message: MSG.domande_nuove, field: i.needId })));
   }
 
   const issues: Issue[] = [];
+  const missing: Issue[] = [];
   const ready: Target[] = [];
-  for (const needId of candidates) {
+  for (const item of openItems) {
+    const needId = item.needId;
     const draft = draftOf(needId);
     const files = usable(needId);
-    const dontKnow = draft?.dontKnow === true;
-    const text = draft?.body?.trim() ? draft.body : null;
-    if (dontKnow && files.length > 0) return pfail("non_so_con_file");
-    if (!dontKnow && !text && files.length === 0) {
-      if (wanted) return pfail("risposta_vuota", MSG.risposta_vuota_pubblica);
+    const closure = closureOf(item, draft, files.length);
+    if (closure === "non_so" && files.length > 0) return pfail("non_so_con_file");
+    if (closure === null) {
+      missing.push({ code: "domanda_aperta", message: item.fileRequired ? MSG.domanda_aperta_file : MSG.domanda_aperta, field: needId });
       continue;
     }
     if (pending(needId).some((f) => f.scanStatus === "in_quarantena")) return pfail("file_in_controllo");
     if (files.some((f) => f.personalWarning && !f.warningConfirmed)) return pfail("file_da_confermare");
-    if (text) {
-      const check = checkSubmitText(text, needId);
+    const text = closure === "testo" || (closure === "file" && !item.fileRequired && draft?.body?.trim()) ? (draft?.body ?? null) : null;
+    for (const [value, where] of [[text, needId], [closure !== "testo" ? (draft?.comment ?? null) : null, `${needId}.commento`]] as const) {
+      if (!value) continue;
+      const check = checkSubmitText(value, where);
       if (!check.ok) issues.push(...check.issues);
     }
-    ready.push({ needId, dontKnow, hasDraft: draft !== null, hasText: !dontKnow && text !== null, documents: files.length });
+    ready.push({ needId, dontKnow: closure === "non_so", alreadyAttached: closure === "allegato", hasDraft: draft !== null, hasText: text !== null, documents: files.length });
   }
   // (Rilascio 5, §6.2 punto 2) La conferma e la stima, quando la richiesta è al referente: la conferma
   // data (con «Correggi», una nota), il passo «Il tempo» completo per la sua istantanea. Mai un confronto
@@ -630,6 +689,7 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
     const complete = check.team ? check.estimate !== null : check.timesPerMonth !== null && check.minutesEach !== null;
     if (!complete) return pfail("stima_mancante");
   }
+  if (missing.length > 0) return pfail("domande_aperte", missing.length === 1 ? MSG.domande_aperte_una : MSG.domande_aperte, missing);
   if (issues.length > 0) return pfail("risposte_da_correggere", undefined, issues);
   if (ready.length === 0 && !check) return pfail("nessuna_risposta");
 
@@ -641,12 +701,16 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
   const all = ready.map((t) => t.needId);
   const unknownIds = ready.filter((t) => t.dontKnow).map((t) => t.needId);
   const answerIds = ready.filter((t) => !t.dontKnow).map((t) => t.needId);
+  // (Rilascio 5) Un testo che non chiude la domanda (con un file su «Serve un file») non parte; il
+  // commento parte solo con una chiusura senza testo.
+  const textless = ready.filter((t) => !t.hasText && t.hasDraft).map((t) => t.needId);
+  const commentless = ready.filter((t) => t.hasText && t.hasDraft).map((t) => t.needId);
   const drafted = ready.filter((t) => t.hasDraft).map((t) => t.needId);
   const fileOnly = ready.filter((t) => !t.hasDraft).map((t) => t.needId);
   // Le risposte con un testo; una domanda con solo file conta tra i documenti, mai due volte.
   // (Rilascio 5, §13) La conferma inviata conta come una risposta: la campanella e l'avviso partono
   // anche quando il referente ha detto solo «Sì» e «Sì».
-  const answers = ready.filter((t) => t.hasText).length + (check ? 1 : 0);
+  const answers = ready.filter((t) => t.hasText || t.alreadyAttached).length + (check ? 1 : 0);
   const unknowns = unknownIds.length;
   const documents = ready.reduce((n, t) => n + t.documents, 0);
   const completedFilter = ucSql`r.id = ${req} AND r.workspace_id = ${ws} AND r.status = 'completata' AND r.completed_at = now()`;
@@ -656,7 +720,9 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
   if (drafted.length) {
     statements.push(
       toStatement(ucSql`WITH upd AS (
-  UPDATE use_case_need_answers SET status = 'inviata', submitted_at = now(), updated_at = now()
+  UPDATE use_case_need_answers SET status = 'inviata', submitted_at = now(), updated_at = now(),
+    body = CASE WHEN need_id = ANY(${cast(textless, "uuid[]")}) THEN NULL ELSE body END,
+    comment = CASE WHEN need_id = ANY(${cast(commentless, "uuid[]")}) THEN NULL ELSE comment END
   WHERE request_id = ${req} AND workspace_id = ${ws} AND need_id = ANY(${cast(drafted, "uuid[]")}) AND status = 'bozza'
   RETURNING id
 )
@@ -865,6 +931,9 @@ export const REFERENT_PUBLIC_STATUS: Readonly<Record<string, number>> = Object.f
   informativa_cambiata: 409,
   domanda_non_disponibile: 404,
   gia_inviata: 409,
+  // (Rilascio 5) Le domande ancora da chiudere, o domande nuove del team.
+  domande_aperte: 422,
+  domande_nuove: 409,
   risposte_da_correggere: 422,
   nessuna_risposta: 409,
   risposta_vuota: 422,

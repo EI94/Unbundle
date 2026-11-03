@@ -227,7 +227,7 @@ test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Ho le
   assertNothingPrivate(first);
 });
 
-test("dopo l'informativa: le domande con risposta, «Non lo so», file e invio", opts, async () => {
+test("dopo l'informativa: le domande con risposta, «Non ce l'ho», «È già allegato», file e invio", opts, async () => {
   pok(await pub.acceptReferentPrivacy(await linkOf(state.token), { version: "ucq-2026-10-1" }, new Date()), "informativa");
   const shown = await html(state.token);
   for (const text of [
@@ -237,12 +237,14 @@ test("dopo l'informativa: le domande con risposta, «Non lo so», file e invio",
     titles[1],
     "La tua risposta",
     "Scrivi qui. Bastano poche righe.",
-    "Non lo so",
-    "Il file non contiene dati sanitari né dati personali che non ti abbiamo chiesto.",
+    "Non ce l'ho",
+    "È già allegato",
     "Allega un file",
-    "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 4 MB. Niente foto.",
-    "Invia le risposte",
-    "Invii solo le domande a cui hai risposto. Le altre restano qui: puoi tornare con lo stesso link fino al",
+    "2 domande",
+    "Per ognuna: rispondi, allega un file o scegli «Non ce l'ho».",
+    "0 di 2 fatte",
+    "Invia",
+    "Si salva da solo: puoi tornare fino al",
   ]) {
     assert.ok(shown.includes(text), text);
   }
@@ -267,11 +269,11 @@ test("(Parte 3) una domanda a cui ha già pensato il team: «Non serve più», m
   assert.ok(done.includes("Non ci sono più domande per te. Grazie per la disponibilità."));
   assert.ok(!done.includes("Hai risposto a tutte le domande. Grazie!"));
   assert.equal((done.match(/Non serve più: ci ha già pensato il team\./g) ?? []).length, 2);
-  assert.doesNotMatch(done, /<textarea|type="file"|Invia le risposte/);
+  assert.doesNotMatch(done, /<textarea|type="file"|>Invia</);
   assertNothingPrivate(done, ["TESTO-DEL-TEAM", "ALTRO-TESTO-DEL-TEAM"]);
 });
 
-test("una risposta inviata si legge, in sola lettura, con «Inviata il …»; poi «Hai risposto a tutte le domande»", opts, async () => {
+test("una risposta inviata si legge, in sola lettura, con «Inviata il …»; poi «Hai risposto il … Grazie!»", opts, async () => {
   const link = await sendLink(`anna.bianchi.${suffix}@topjet.test`, needs.slice(2, 3));
   const l = await linkOf(link.token);
   pok(await pub.acceptReferentPrivacy(l, { version: "ucq-2026-10-1" }, new Date()), "informativa");
@@ -281,10 +283,10 @@ test("una risposta inviata si legge, in sola lettura, con «Inviata il …»; po
   assert.ok(draftPage.includes("Due persone, mezza giornata."), "la bozza torna nel campo");
   pok(await pub.submitReferentAnswers(l2, {}, new Date()), "invio");
   const sent = await html(link.token);
-  assert.ok(sent.includes("Hai risposto a tutte le domande. Grazie!"));
+  assert.match(sent, /Hai risposto il \d{2}\/\d{2}\. Grazie!/);
   assert.match(sent, /Inviata il \d{2}\/\d{2}/);
   assert.ok(sent.includes("Due persone, mezza giornata."));
-  assert.doesNotMatch(sent, /<textarea|Invia le risposte/);
+  assert.doesNotMatch(sent, /<textarea|>Invia</);
   assertNothingPrivate(sent);
 });
 
@@ -361,6 +363,6 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
   pok(await pub.saveReferentCheck(link, { step: 2, teamSeen: null, estimate: null, timesPerMonth: 20, minutesEach: 30 }, new Date()), "tempo");
   const step3 = await html(token!);
   assert.ok(step3.includes(titles[5]) && step3.includes("Indietro"));
-  assert.deepEqual(filledButtons(step3), ["Invia le risposte"]);
+  assert.deepEqual(filledButtons(step3), ["Invia"]);
   for (const forbidden of ["98765", "98.765", "NOTA-RISERVATA", PROPOSER]) assert.ok(!step3.includes(forbidden));
 });

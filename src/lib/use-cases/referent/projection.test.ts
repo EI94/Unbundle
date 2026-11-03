@@ -73,7 +73,7 @@ test("vista pubblica: solo le chiavi del contratto, nessun dato seminato", () =>
   assert.deepEqual(view.questions[1].files.map((f) => f.id), ["f1"]);
   assert.equal(view.questions[1].files[0].needsConfirmation, true);
   assert.equal(view.questions[0].state, "inviata");
-  assert.deepEqual(view.questions[0].answer, { text: "Excel", dontKnow: false, submittedAt: at("2026-11-03").toISOString() });
+  assert.deepEqual(view.questions[0].answer, { text: "Excel", dontKnow: false, alreadyAttached: false, comment: null, submittedAt: at("2026-11-03").toISOString() });
   assert.equal(view.state, "aperta");
   assert.equal(view.expiresOn, "2026-11-26");
   assert.deepEqual(view.privacy, { accepted: true, version: REFERENT_PRIVACY_NOTICE.version, contact: "privacy@example.test" });

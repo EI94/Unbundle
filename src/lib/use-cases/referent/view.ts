@@ -159,8 +159,10 @@ export interface PublicItemRow {
    * (`itemHandledByTeam`: «Da verificare» o «A posto»): si mostra «gestita».
    */
   handled?: boolean;
-  draft: { body: string | null; dontKnow: boolean; updatedAt: Date } | null;
-  answer: { body: string | null; dontKnow: boolean; submittedAt: Date } | null;
+  /** (Rilascio 5) «Serve un file». */
+  fileRequired?: boolean;
+  draft: { body: string | null; dontKnow: boolean; alreadyAttached?: boolean; comment?: string | null; updatedAt: Date } | null;
+  answer: { body: string | null; dontKnow: boolean; alreadyAttached?: boolean; comment?: string | null; submittedAt: Date } | null;
   files: PublicFileRow[];
 }
 
@@ -213,15 +215,25 @@ function fileView(f: PublicFileRow): ReferentFileView {
 const isHandled = (i: PublicItemRow) => !i.open && i.state === "aperta" && i.visible && i.handled === true;
 
 function questionView(i: PublicItemRow): ReferentQuestionView {
-  if (isHandled(i)) return { needId: i.needId, position: i.position, title: i.question, state: "gestita", draft: null, answer: null, files: [] };
+  const fileRequired = i.fileRequired === true;
+  if (isHandled(i)) return { needId: i.needId, position: i.position, title: i.question, state: "gestita", fileRequired, draft: null, answer: null, files: [] };
   const sent = !i.open;
+  // (Rilascio 5) Le chiusure lette come sono salvate: «Non ce l'ho» vince, poi «È già allegato», poi il testo.
+  const closureOf = (dontKnow: boolean, attached: boolean | undefined) => ({ dontKnow, alreadyAttached: !dontKnow && attached === true });
   return {
     needId: i.needId,
     position: i.position,
     title: i.question,
     state: sent ? "inviata" : "aperta",
-    draft: !sent && i.draft ? { text: i.draft.body ?? "", dontKnow: i.draft.dontKnow, savedAt: i.draft.updatedAt.toISOString() } : null,
-    answer: sent && i.answer ? { text: i.answer.body, dontKnow: i.answer.dontKnow, submittedAt: i.answer.submittedAt.toISOString() } : null,
+    fileRequired,
+    draft:
+      !sent && i.draft
+        ? { text: i.draft.dontKnow || i.draft.alreadyAttached ? "" : (i.draft.body ?? ""), ...closureOf(i.draft.dontKnow, i.draft.alreadyAttached), comment: i.draft.comment ?? null, savedAt: i.draft.updatedAt.toISOString() }
+        : null,
+    answer:
+      sent && i.answer
+        ? { text: i.answer.body, ...closureOf(i.answer.dontKnow, i.answer.alreadyAttached), comment: i.answer.comment ?? null, submittedAt: i.answer.submittedAt.toISOString() }
+        : null,
     files: i.files.filter((f) => (sent ? f.submitted : true) && f.scanStatus !== "rifiutato").map(fileView),
   };
 }
@@ -280,13 +292,18 @@ export const PUBLIC_VIEW_KEYS: readonly string[] = Object.freeze([
   "questions[].position",
   "questions[].title",
   "questions[].state",
+  "questions[].fileRequired",
   "questions[].draft",
   "questions[].draft.text",
   "questions[].draft.dontKnow",
+  "questions[].draft.alreadyAttached",
+  "questions[].draft.comment",
   "questions[].draft.savedAt",
   "questions[].answer",
   "questions[].answer.text",
   "questions[].answer.dontKnow",
+  "questions[].answer.alreadyAttached",
+  "questions[].answer.comment",
   "questions[].answer.submittedAt",
   "questions[].files",
   "questions[].files[].id",

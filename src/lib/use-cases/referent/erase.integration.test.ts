@@ -140,7 +140,7 @@ after(async () => {
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [Object.keys(emails).map((p) => ids[p as Person])]);
 });
 
-const state = { requestId: "", contactId: "", token: "", needs: [] as string[] };
+const state = { requestId: "", secondRequestId: "", contactId: "", token: "", needs: [] as string[] };
 
 
 type AdminRow = Record<string, unknown>;
@@ -178,7 +178,8 @@ test("preparazione: una richiesta con una risposta inviata e una bozza", opts, a
   );
   ok(await referents.prepareReferentQuestions(as("builder"), ids.useCase));
   state.needs = await needIds();
-  const sent = ok(await referents.sendReferentRequest(as("builder"), ids.useCase, { contact: { kind: "nuovo", displayName: "Mario Rossi", email: REFERENT_EMAIL }, needIds: state.needs.slice(0, 2), message: "Messaggio di prova" }, { env: ENV, requester: requester("builder") }));
+  // (Rilascio 5, D17) L'invio è tutto o niente: la risposta inviata in una richiesta, la bozza in una seconda, viva.
+  const sent = ok(await referents.sendReferentRequest(as("builder"), ids.useCase, { contact: { kind: "nuovo", displayName: "Mario Rossi", email: REFERENT_EMAIL }, needIds: state.needs.slice(0, 1), message: "Messaggio di prova" }, { env: ENV, requester: requester("builder") }));
   state.requestId = sent.requestId;
   const mailer = fakeMailer();
   await dispatch.dispatchReferentEmails({ requestId: sent.requestId, env: ENV, mailer, sendIntervalMs: 0 });
@@ -192,7 +193,17 @@ test("preparazione: una richiesta con una risposta inviata e una bozza", opts, a
   if (link.access !== "ok") return assert.fail("link");
   assert.ok((await pub.saveReferentDraft(link.link, { needId: state.needs[0], text: "Circa 20 al giorno", dontKnow: false }, new Date())).ok);
   assert.ok((await pub.submitReferentAnswers(link.link, { needIds: [state.needs[0]] }, new Date())).ok);
-  assert.ok((await pub.saveReferentDraft(link.link, { needId: state.needs[1], text: "Bozza", dontKnow: false }, new Date())).ok);
+  const second = ok(await referents.sendReferentRequest(as("builder"), ids.useCase, { contact: { kind: "esistente", contactId: state.contactId }, needIds: state.needs.slice(1, 2) }, { env: ENV, requester: requester("builder") }));
+  state.secondRequestId = second.requestId;
+  const mailer2 = fakeMailer();
+  await dispatch.dispatchReferentEmails({ requestId: second.requestId, env: ENV, mailer: mailer2, sendIntervalMs: 0 });
+  const token2 = tokenOf(mailer2.outbox[0]) ?? "";
+  const r2 = await pub.resolveReferentToken(token2, new Date());
+  if (r2.access !== "ok") return assert.fail("link 2");
+  assert.ok((await pub.acceptReferentPrivacy(r2.link, { version: "ucq-2026-10-1" }, new Date())).ok);
+  const l2 = await pub.resolveReferentToken(token2, new Date());
+  if (l2.access !== "ok") return assert.fail("link 2");
+  assert.ok((await pub.saveReferentDraft(l2.link, { needId: state.needs[1], text: "Bozza", dontKnow: false }, new Date())).ok);
 });
 
 test("a secco: il piano, nessuna scrittura; nessun nome, email o testo nell'uscita", opts, async () => {
@@ -220,6 +231,7 @@ test("con --apply: lo stesso risultato della scheda, in una transazione; poi nie
   const answers = await q(`SELECT body, status FROM use_case_need_answers WHERE request_id = $1::uuid`, [state.requestId]);
   assert.ok(answers.every((a) => a.body === null));
   assert.equal(answers.filter((a) => a.status === "bozza").length, 0, "le bozze si cancellano");
+  assert.equal((await q(`SELECT 1 FROM use_case_need_answers WHERE request_id = $1::uuid AND status = 'bozza'`, [state.secondRequestId])).length, 0, "anche quelle della richiesta viva");
   assert.equal(await statusOf(state.needs[1]), "da_chiedere", "la domanda aperta torna da chiedere");
   assert.equal(await statusOf(state.needs[0]), "in_verifica", "la risposta già data resta come stato");
   const [c] = await q(`SELECT anonymized_at FROM uc_contacts WHERE id = $1::uuid`, [state.contactId]);

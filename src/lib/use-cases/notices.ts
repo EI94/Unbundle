@@ -21,7 +21,7 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   } satisfies Record<UseCaseNoticeKind, string>),
   answers: Object.freeze({ one: "1 risposta", many: "{n} risposte" }),
   documents: Object.freeze({ one: "1 documento", many: "{n} documenti" }),
-  unknowns: Object.freeze({ one: "1 «Non lo so»", many: "{n} «Non lo so»" }),
+  unknowns: Object.freeze({ one: "1 «Non ce l'ho»", many: "{n} «Non ce l'ho»" }),
   join: " e ",
   toVerify: "{A} da verificare in «Cosa serve».",
   askSomeoneElse: "{u}: serve chiedere a qualcun altro.",

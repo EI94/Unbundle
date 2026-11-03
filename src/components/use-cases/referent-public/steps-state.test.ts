@@ -23,7 +23,7 @@ import {
 // (Rilascio 5, §7.1, §7.7) I passi della pagina del referente: quali, quando sono fatti, dove si arriva.
 
 const N = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
-const question = (i: number, over: Partial<ReferentQuestionView> = {}): ReferentQuestionView => ({ needId: N[i], position: i + 1, title: `Domanda ${i}`, state: "aperta", draft: null, answer: null, files: [], ...over });
+const question = (i: number, over: Partial<ReferentQuestionView> = {}): ReferentQuestionView => ({ needId: N[i], position: i + 1, title: `Domanda ${i}`, state: "aperta", fileRequired: false, draft: null, answer: null, files: [], ...over });
 const TEAM = { key: "tempo-1", volumeYear: 3000, minutes: 12, hours: 600, perMonth: 250, perYear: null, unit: "pratiche", label: null };
 const draft = (over: Partial<ReferentCheckView["draft"]> = {}): ReferentCheckView["draft"] => ({ confirm: null, note: null, estimate: null, timesPerMonth: null, minutesEach: null, stale: false, savedAt: null, ...over });
 const check = (over: Partial<ReferentCheckView> = {}, d: Partial<ReferentCheckView["draft"]> = {}): ReferentCheckView => ({ description: "Le fatture arrivano via PEC.", team: TEAM, draft: draft(d), submittedAt: null, ...over });

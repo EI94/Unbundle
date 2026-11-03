@@ -136,7 +136,7 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
       { p: "Buongiorno," },
       { p: `ti ricordiamo che ${name(e.requesterName)} aspetta la tua conferma sullo use case «${uc}»${answers}.` },
       last
-        ? { p: "È l'ultimo promemoria che ti mandiamo. Se non hai le informazioni, scegli «Non lo so»: anche questa è una risposta utile." }
+        ? { p: "È l'ultimo promemoria che ti mandiamo. Se non hai le informazioni, scegli «Non ce l'ho»: anche questa è una risposta utile." }
         : { p: "Quello che hai già scritto è salvato: riparti da dove eri rimasto." },
       { link: { href: link, label: "Riprendi" } },
       { small: expiry(e.expiresAt) },
@@ -150,7 +150,7 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
       p: `ti ricordiamo che ${name(e.requesterName)} aspetta le tue risposte sullo use case «${uc}»: ${e.openQuestions === 1 ? "c'è ancora una domanda aperta" : `ci sono ancora ${e.openQuestions} domande aperte`}.`,
     },
     last
-      ? { p: "È l'ultimo promemoria che ti mandiamo. Se non hai le informazioni, scegli «Non lo so»: anche questa è una risposta utile." }
+      ? { p: "È l'ultimo promemoria che ti mandiamo. Se non hai le informazioni, scegli «Non ce l'ho»: anche questa è una risposta utile." }
       : { p: "Quello che hai già scritto è salvato: riparti da dove eri rimasto." },
     { link: { href: link, label: "Riprendi le domande" } },
     { small: expiry(e.expiresAt) },
@@ -230,7 +230,7 @@ export function referentRequestParts(input: Extract<ReferentEmailInput, { templa
   ];
   if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
   blocks.push(
-    { p: "Bastano pochi minuti e puoi rispondere anche dal telefono. Se non sai una risposta, scegli «Non lo so». Se hai un documento utile, allegalo: prima togli nomi e dati personali." },
+    { p: "Bastano pochi minuti e puoi rispondere anche dal telefono. Se non sai una risposta, scegli «Non ce l'ho». Se hai un documento utile, allegalo: prima togli nomi e dati personali." },
     { link: { href: link, label: "Apri le domande" } },
     { small: expiry(input.expiresAt) },
     ...teamAccessBlocks(input.cardLink, input.accountNotice === true),

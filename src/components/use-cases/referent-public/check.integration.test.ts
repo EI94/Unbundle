@@ -276,20 +276,27 @@ test("l'invio vuole la conferma e la stima; poi la richiesta senza domande si co
   assert.equal(second.ok, false);
 });
 
-test("«Correggi» e una stima diversa: la Storia lo dice; con domande la richiesta resta aperta per quelle che mancano", opts, async () => {
+test("«Correggi» e una stima diversa: la Storia lo dice; con domande si invia solo quando sono tutte chiuse", opts, async () => {
   const card = await newCard(null);
   const { link, requestId } = await referentLink(card.id, card.needs.slice(0, 2));
   const now = new Date();
   okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note: "Le fatture arrivano anche via PEC." }, now));
   okPub(await pub.saveReferentCheck(link, { step: 2, teamSeen: null, estimate: null, timesPerMonth: "20", minutesEach: "30" }, now));
   okPub(await pub.saveReferentDraft(link, { needId: card.needs[0], text: "Circa 20 al giorno", dontKnow: false }, now));
+  const open = await pub.submitReferentAnswers(link, {}, now);
+  assert.ok(!open.ok && open.code === "domande_aperte");
+  if (!open.ok) assert.deepEqual(open.issues?.map((i) => i.field), [card.needs[1]]);
+  assert.equal((await checkRow(requestId)).sent, false, "niente di scritto");
+  okPub(await pub.saveReferentDraft(link, { needId: card.needs[1], text: null, dontKnow: true, comment: "Lo sa l'ufficio acquisti" }, now));
   const done = okPub(await pub.submitReferentAnswers(link, {}, now), "invio");
-  assert.deepEqual(done, { submitted: 2, open: 1, state: "aperta" });
+  assert.deepEqual(done, { submitted: 3, open: 0, state: "completata" });
   assert.equal((await checkRow(requestId)).sent, true);
   const codes = (await q(`SELECT phase_after FROM use_case_events WHERE use_case_id = $1::uuid AND 'richiesta_referente' = ANY(fields)`, [card.id])).map((r) => String(r.phase_after));
   for (const code of ["correzione", "stima_diversa", "risposte"]) assert.ok(codes.includes(code), `${code} in ${codes}`);
-  const notes = await q(`SELECT answers FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'risposte'`, [card.id]);
-  assert.ok(notes.length > 0 && notes.every((n) => Number(n.answers) === 2), JSON.stringify(notes));
+  const notes = await q(`SELECT answers, unknowns FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'risposte'`, [card.id]);
+  assert.ok(notes.length > 0 && notes.every((n) => Number(n.answers) === 2 && Number(n.unknowns) === 1), JSON.stringify(notes));
+  const [sent] = await q(`SELECT dont_know, comment FROM use_case_need_answers WHERE request_id = $1::uuid AND need_id = $2::uuid`, [requestId, card.needs[1]]);
+  assert.deepEqual(sent, { dont_know: true, comment: "Lo sa l'ufficio acquisti" }, "«Chi potrebbe saperlo?» parte con «Non ce l'ho»");
 });
 
 test("la rotta POST …/check: la bozza dal link, con gli stessi controlli e i suoi codici HTTP", opts, async () => {

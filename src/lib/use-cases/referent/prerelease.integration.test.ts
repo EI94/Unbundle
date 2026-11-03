@@ -239,7 +239,7 @@ test("preparazione: le domande standard su ogni scheda", opts, async () => {
 
 test("un revisore che è anche il referente non accetta né apre per il controllo il PDF scansionato che ha mandato dal link; un altro revisore sì", opts, async () => {
   const needs = await needsOf(cards.self);
-  const asked = await ask("federico", cards.self, contacts.claudio, needs.slice(0, 2));
+  const asked = await ask("federico", cards.self, contacts.claudio, needs.slice(0, 1));
   const link = await openLink(asked.token);
   const up = await pub.uploadReferentFileServer(link, { needId: needs[0], fileName: "fattura-scansionata.pdf", declaration: true, bytes: await scanPdf() }, ENV);
   assert.ok(up.ok && up.value.status === "in_revisione", JSON.stringify(up));
@@ -420,13 +420,16 @@ test("un contatto creato in «Persone» di un dossier non è «solo degli use ca
 
 test("«File non controllato in tempo» solo per file che il team ha visto, finché l'esigenza è aperta; i 7 giorni contano dall'invio", opts, async () => {
   const needs = await needsOf(cards.review);
-  const asked = await ask("federico", cards.review, contacts.mario, needs.slice(0, 3));
+  // (Rilascio 5, D17) L'invio è tutto o niente: la bozza mai inviata sta in una richiesta, il file inviato in un'altra.
+  const asked = await ask("federico", cards.review, contacts.mario, needs.slice(0, 1));
   const link = await openLink(asked.token);
+  const askedLate = await ask("federico", cards.review, contacts.claudio, needs.slice(1, 2));
+  const linkLate = await openLink(askedLate.token);
   const draft = await pub.uploadReferentFileServer(link, { needId: needs[0], fileName: "bozza.pdf", declaration: true, bytes: await scanPdf() }, ENV);
-  const late = await pub.uploadReferentFileServer(link, { needId: needs[1], fileName: "inviato-tardi.pdf", declaration: true, bytes: await scanPdf() }, ENV);
+  const late = await pub.uploadReferentFileServer(linkLate, { needId: needs[1], fileName: "inviato-tardi.pdf", declaration: true, bytes: await scanPdf() }, ENV);
   assert.ok(draft.ok && draft.value.status === "in_revisione" && late.ok && late.value.status === "in_revisione");
   if (!draft.ok || !late.ok) return;
-  assert.ok((await pub.submitReferentAnswers(link, { needIds: [needs[1]] }, V)).ok, "invio del secondo");
+  assert.ok((await pub.submitReferentAnswers(linkLate, {}, V)).ok, "invio del secondo");
   const team = await files.uploadReviewerFileServer(as("claudio"), cards.review, { needId: needs[2], fileName: "team.pdf", declaration: true, bytes: await scanPdf() }, ENV);
   assert.ok(team.ok && team.value.status === "in_revisione");
   if (!team.ok) return;

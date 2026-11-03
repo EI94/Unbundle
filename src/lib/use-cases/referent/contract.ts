@@ -119,10 +119,12 @@ export interface ReferentQuestionView {
    * mai cosa hanno scritto gli altri.
    */
   state: "aperta" | "inviata" | "gestita";
-  /** Solo mentre è «aperta». */
-  draft: { text: string; dontKnow: boolean; savedAt: string } | null;
+  /** (Rilascio 5) «Serve un file»: lo ha scelto chi chiede; la domanda si chiude con un file, «È già allegato» o «Non ce l'ho». */
+  fileRequired: boolean;
+  /** Solo mentre è «aperta». (Rilascio 5) `dontKnow` è «Non ce l'ho»; `alreadyAttached` «È già allegato»; `comment` il commento o «Chi potrebbe saperlo?». */
+  draft: { text: string; dontKnow: boolean; alreadyAttached: boolean; comment: string | null; savedAt: string } | null;
   /** Quando è «inviata». */
-  answer: { text: string | null; dontKnow: boolean; submittedAt: string } | null;
+  answer: { text: string | null; dontKnow: boolean; alreadyAttached: boolean; comment: string | null; submittedAt: string } | null;
   files: ReferentFileView[];
 }
 
@@ -167,9 +169,15 @@ export interface DraftBody {
   needId: string;
   text: string | null;
   dontKnow: boolean;
+  /** (Rilascio 5) «È già allegato»: esclude «Non ce l'ho» e il testo. */
+  alreadyAttached?: boolean;
+  /** (Rilascio 5) Il commento: solo con «Non ce l'ho», «È già allegato» o un file. */
+  comment?: string | null;
 }
 export interface SubmitBody {
   needIds?: string[];
+  /** (Rilascio 5) Le domande aperte che la pagina mostrava: una domanda nuova del team fa rileggere la pagina. */
+  shown?: string[];
 }
 /** (Rilascio 5) Il passo «Lo use case» o il passo «Il tempo». */
 export type CheckBody =

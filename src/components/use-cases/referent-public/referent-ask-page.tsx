@@ -2,13 +2,26 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { SECONDARY_CLASS } from "@/components/uc/referente/screen";
+import { Notice, SECONDARY_CLASS } from "@/components/uc/referente/screen";
 import type { CheckBody, ReferentAskView, ReferentCheckView, SubmitResult } from "@/lib/use-cases/referent/contract";
-import { REFERENT_ERROR_MESSAGES, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
+import { REFERENT_ERROR_MESSAGES, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import { acceptPrivacy, fetchAskView, saveCheck, submitAnswers } from "./api";
 import { PrivacyCard, PrivacyFooter } from "./privacy-card";
 import { QuestionCard, questionTitleId, type FlushDraft } from "./question-card";
-import { finalCardText, headerTexts, issuesByQuestion, privacyTexts, questionSections, screenOf, submitHint, thanksTexts } from "./public-view-render";
+import {
+  doneCountText,
+  finalCardText,
+  headerTexts,
+  issuesByQuestion,
+  missingText,
+  privacyTexts,
+  questionSections,
+  questionsHeading,
+  savesItselfText,
+  screenOf,
+  sentCheckLines,
+  thanksTexts,
+} from "./public-view-render";
 import { ConfirmStep, EstimateStep, ReferentStepBar, stepTitleId, type StepActions } from "./referent-steps";
 import { MessageCard, PublicShell } from "./state-card";
 import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepSearch, stepStates, stepsOf, type CheckStep } from "./steps-state";
@@ -26,6 +39,7 @@ import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
  */
 
 const THANKS_TITLE_ID = "ucq-grazie";
+const QUESTIONS_TITLE_ID = "ucq-domande";
 
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
@@ -49,6 +63,10 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const [stepError, setStepError] = useState<{ step: CheckStep; message: string } | null>(null);
   const [staleNotice, setStaleNotice] = useState(false);
   const checkInFlight = useRef<Promise<boolean> | null>(null);
+  // (Rilascio 5) Le domande chiuse (per «{k} di {n} fatte») e quelle che «Invia» ha trovato aperte.
+  const [closedMap, setClosedMap] = useState<Map<string, boolean>>(() => new Map());
+  const [missing, setMissing] = useState<string[]>([]);
+  const [newQuestions, setNewQuestions] = useState(false);
   const [declared, setDeclared] = useState(false);
   const [privacyBusy, setPrivacyBusy] = useState(false);
   const [privacyError, setPrivacyError] = useState<string | null>(null);
@@ -107,6 +125,17 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     },
     [reload],
   );
+
+  const onClosure = useCallback((needId: string, closed: boolean) => {
+    const key = needId.toLowerCase();
+    setClosedMap((current) => {
+      if (current.get(key) === closed) return current;
+      const next = new Map(current);
+      next.set(key, closed);
+      return next;
+    });
+    if (closed) setMissing((current) => (current.includes(key) ? current.filter((id) => id !== key) : current));
+  }, []);
 
   const clearIssues = useCallback((needId: string) => {
     const key = needId.toLowerCase();
@@ -169,11 +198,11 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
 
   /** Una bozza del passo 1 o 2; `stima_cambiata` rilegge la vista con la stima nuova. */
   const saveStep = useCallback(
-    async (body: CheckBody): Promise<boolean> => {
+    async (body: CheckBody, keepalive = false): Promise<boolean> => {
       setCheckSave("saving");
       setStepError(null);
       const run = (async () => {
-        const r = await saveCheck(token, body);
+        const r = await saveCheck(token, body, keepalive);
         if (r.ok) {
           setCheckSave("saved");
           return true;
@@ -264,7 +293,18 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       setFocusTarget(questionTitleId(unsaved[0]));
       return;
     }
-    const r = await submitAnswers(token);
+    // (Rilascio 5) «Invia» solo con ogni domanda chiusa: dice quali mancano, senza chiamare il server.
+    const openNow = sections.filter((q) => q.kind === "aperta").map((q) => q.needId.toLowerCase());
+    const stillOpen = openNow.filter((id) => closedMap.get(id) !== true);
+    if (stillOpen.length > 0) {
+      setSubmitBusy(false);
+      setMissing(stillOpen);
+      setFocusTarget(questionTitleId(stillOpen[0]));
+      return;
+    }
+    setMissing([]);
+    setNewQuestions(false);
+    const r = await submitAnswers(token, { shown: openNow });
     if (r.ok) {
       await reload();
       setSubmitBusy(false);
@@ -283,6 +323,21 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       const target: CheckStep = r.code === "conferma_mancante" ? 1 : 2;
       goTo(target);
       setStepError({ step: target, message: r.message });
+      return;
+    }
+    // (Rilascio 5) Domande nuove del team mentre la pagina era aperta: si rilegge e lo si dice.
+    if (r.code === "domande_nuove") {
+      await reload();
+      setNewQuestions(true);
+      const fresh = r.issues.map((i) => i.field?.toLowerCase()).filter((id): id is string => Boolean(id));
+      setMissing(fresh);
+      if (fresh[0]) setFocusTarget(questionTitleId(fresh[0]));
+      return;
+    }
+    if (r.code === "domande_aperte") {
+      const open = r.issues.map((i) => i.field?.toLowerCase()).filter((id): id is string => Boolean(id));
+      setMissing(open);
+      if (open[0]) setFocusTarget(questionTitleId(open[0]));
       return;
     }
     const mapped = issuesByQuestion(r.issues, order);
@@ -349,6 +404,9 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   }
 
   const readOnly = screen === "completed" || screen === "empty";
+  const sentCheck = readOnly ? sentCheckLines(view) : null;
+  const doneCount = sections.filter((q) => q.kind !== "aperta" || closedMap.get(q.needId.toLowerCase()) === true).length;
+  const missingPositions = sections.map((q, i) => (missing.includes(q.needId.toLowerCase()) ? i + 1 : 0)).filter((n) => n > 0);
 
   if (stepped && screen === "questions" && step !== 3) {
     // (Rilascio 5) I passi «Lo use case» e «Il tempo».
@@ -387,9 +445,36 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
         </>
       ) : null}
       {screen === "privacy" ? <PrivacyCard texts={privacy} busy={privacyBusy} error={privacyError} onAccept={() => void onAccept()} /> : null}
-      {readOnly ? <MessageCard as="h2" titleId={FINAL_TITLE_ID} title={finalCardText(screen)} /> : null}
+      {readOnly ? (
+        <MessageCard
+          as="h2"
+          titleId={FINAL_TITLE_ID}
+          title={finalCardText(screen, view, today)}
+          text={
+            sentCheck ? (
+              <>
+                <p>{sentCheck.useCase}</p>
+                {sentCheck.note ? <blockquote className="rounded-xl bg-muted/50 px-4 py-3 whitespace-pre-line">{sentCheck.note}</blockquote> : null}
+                <p>
+                  {sentCheck.time}
+                  {sentCheck.numbers ? ` ${sentCheck.numbers}` : ""}
+                </p>
+              </>
+            ) : undefined
+          }
+        />
+      ) : null}
+      {screen === "questions" && sections.length > 0 ? (
+        <div className="mt-6 space-y-2">
+          <h2 id={QUESTIONS_TITLE_ID} tabIndex={-1} className="text-xl font-semibold outline-none">
+            {questionsHeading(sections.length)}
+          </h2>
+          <p className="text-base break-words text-muted-foreground">{REFERENT_PUBLIC_TEXT.questionsLead}</p>
+          {newQuestions ? <Notice tone="info">{REFERENT_ERROR_MESSAGES.domande_nuove}</Notice> : null}
+        </div>
+      ) : null}
       {screen === "questions" || (readOnly && sections.length > 0) ? (
-        <div className="mt-6 space-y-4" aria-labelledby={readOnly ? FINAL_TITLE_ID : undefined}>
+        <div className="mt-6 space-y-4" aria-labelledby={readOnly ? FINAL_TITLE_ID : QUESTIONS_TITLE_ID}>
           {sections.map((section) => (
             <QuestionCard
               key={`${section.needId}:${section.kind}:${generation}`}
@@ -404,12 +489,22 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
               registerFlush={registerFlush}
               onStale={onStale}
               onEdit={clearIssues}
+              missing={missing.includes(section.needId.toLowerCase())}
+              onClosure={onClosure}
             />
           ))}
+          {screen === "questions" ? <p className="text-sm break-words text-muted-foreground">{savesItselfText(view)}</p> : null}
         </div>
       ) : null}
       {screen === "questions" ? (
-        <SubmitBar hint={submitHint(view)} error={submitError} busy={submitBusy} onSubmit={() => void onSubmit()} onBack={stepped ? () => goTo(2) : undefined} />
+        <SubmitBar
+          status={doneCountText(doneCount, sections.length)}
+          missing={missingPositions.length ? { text: missingText(missingPositions), goLabel: fillText(REFERENT_PUBLIC_TEXT.goToQuestion, { k: missingPositions[0] }), onGo: () => focusById(questionTitleId(missing[0])) } : null}
+          error={submitError}
+          busy={submitBusy}
+          onSubmit={() => void onSubmit()}
+          onBack={stepped ? () => goTo(2) : undefined}
+        />
       ) : null}
     </PublicShell>
   );

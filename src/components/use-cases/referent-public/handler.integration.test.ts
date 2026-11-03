@@ -257,11 +257,20 @@ test("dalle rotte: informativa, bozza bloccata dal controllo del testo, bozza, f
   const warned = await call("draft", state.token, { body: { needId: n0, text: `Chiedete a mario.rossi.${suffix}@topjet.test`, dontKnow: false } });
   assert.equal(warned.status, 200);
   assert.ok(Array.isArray(warned.json.data?.warnings) && (warned.json.data.warnings as unknown[]).length > 0, "un avviso sotto il campo");
+  // (Rilascio 5, D17) Prima di tutto ogni domanda va chiusa: la seconda non ha niente.
+  const open = await call("submit", state.token, { body: {} });
+  assert.equal(open.status, 422);
+  assert.equal(open.json.error, "domande_aperte");
+  assert.deepEqual(open.json.issues?.map((i) => i.field?.toLowerCase()), [n1.toLowerCase()]);
+  const closedLater = await call("draft", state.token, { body: { needId: n1, text: null, dontKnow: true } });
+  assert.equal(closedLater.status, 200);
   const refused = await call("submit", state.token, { body: {} });
   assert.equal(refused.status, 422);
   assert.equal(refused.json.error, "risposte_da_correggere");
   assert.ok(refused.json.issues?.some((i) => i.field?.toLowerCase() === n0.toLowerCase()), "il problema è sulla sua domanda");
   assert.equal((await q(`SELECT status FROM use_case_needs WHERE id = $1::uuid`, [n0]))[0].status, "chiesta", "niente inviato");
+  // Toglie «Non ce l'ho» per allegare un file.
+  assert.equal((await call("draft", state.token, { body: { needId: n1, text: null, dontKnow: false } })).status, 200);
 
   const saved = await call("draft", state.token, { body: { needId: n0, text: "Circa 20 fatture al giorno, 5.000 all'anno.", dontKnow: false } });
   assert.equal(saved.status, 200);
