@@ -502,16 +502,18 @@ test("(rilascio 5) il referente scelto: il blocco «Referente» con la richiesta
   const [before] = findProp(await detailElement("builder"), "referents").filter(Boolean) as Panel[];
   assert.equal(before.referent ?? null, null, "prima: nessun referente");
   const free = (await needsOfCard()).filter((id) => before.askableNeedIds.includes(id));
-  // «Scegli il referente» come lo manda la finestra: la richiesta al referente, una domanda con «Serve un file».
-  const sent = ok(
-    await referents.sendReferentRequest(
-      as("builder"),
-      ids.card,
-      { kind: "referente", contact: { kind: "esistente", contactId: contacts.federico }, needIds: free.slice(0, 1), fileRequired: free.slice(0, 1), expectedReferentRequestId: before.latestReferentRequestId ?? null },
-      { env: ENV, requester: { name: NAMES.builder, emailVerified: true } },
-    ),
-    "scegli il referente",
+  // «Scegli il referente» con il contenuto che manda la finestra (`assignPayload`): la richiesta al
+  // referente, una domanda con «Serve un file», la richiesta al referente vista (nessuna).
+  const assign = await import("./assign-dialog-state.ts");
+  const payload = assign.assignPayload(
+    { choice: contacts.federico, name: "", email: "", role: "", needIds: free.slice(0, 1), fileRequired: free.slice(0, 1), message: "" },
+    { mode: "scegli", questions: free, panel: before, previous: null },
   );
+  assert.deepEqual([payload.kind, payload.expectedReferentRequestId, payload.fileRequired], ["referente", null, free.slice(0, 1)]);
+  const sent = ok(await referents.sendReferentRequest(as("builder"), ids.card, payload, { env: ENV, requester: { name: NAMES.builder, emailVerified: true } }), "scegli il referente");
+  // Lo stesso clic ripetuto (rete lenta, doppio clic) entro 60 secondi: la stessa richiesta, niente di nuovo.
+  const again = ok(await referents.sendReferentRequest(as("builder"), ids.card, payload, { env: ENV, requester: { name: NAMES.builder, emailVerified: true } }), "di nuovo");
+  assert.equal(again.requestId, sent.requestId);
   await dispatch.dispatchReferentEmails({ requestId: sent.requestId, env: ENV, mailer: fakeMailer(), sendIntervalMs: 0 });
   const element = await detailElement("builder");
   const [panel] = findProp(element, "referents").filter(Boolean) as Panel[];
@@ -542,4 +544,22 @@ test("(rilascio 5) il referente scelto: il blocco «Referente» con la richiesta
   // Il contributore: niente nome, niente blocco.
   const contributor = await detailHtml("contributor");
   for (const text of [NAMES.federico, 'data-slot="referent-block"', 'data-slot="referent-line"', A.other]) assert.ok(!contributor.includes(text), text);
+
+  // «Cambia referente» con il contenuto della finestra: Mario, che ha già delle domande aperte (D49),
+  // diventa il referente; la richiesta di Federico è revocata e le domande aperte passano a Mario.
+  const row = assign.assignContactRow(panel.contacts.find((c) => c.id === MARIO.id)!, panel);
+  assert.deepEqual(row, { selectable: true, suffix: A.hasQuestions });
+  const draft = { choice: MARIO.id, name: "", email: "", role: "", needIds: [] as string[], fileRequired: [] as string[], message: "" };
+  const carried = assign.carriedNeedIds(panel, "cambia", draft);
+  assert.ok(carried.length > 0, "le domande aperte di Mario e di Federico");
+  const questions = assign.assignQuestionIds(panel, "cambia", carried, Object.keys(panel.needs));
+  const change = assign.assignPayload({ ...draft, needIds: carried }, { mode: "cambia", questions, panel, previous: null });
+  assert.deepEqual([change.kind, change.replaceReferent, change.expectedReferentRequestId], ["referente", true, sent.requestId]);
+  const changed = ok(await referents.sendReferentRequest(as("builder"), ids.card, change, { env: ENV, requester: { name: NAMES.builder, emailVerified: true } }), "cambia referente");
+  const [federicoRequest] = await q(`SELECT status FROM use_case_referent_requests WHERE id = $1::uuid`, [sent.requestId]);
+  assert.equal(federicoRequest.status, "revocata");
+  const [after] = findProp(await detailElement("builder"), "referents").filter(Boolean) as Panel[];
+  assert.equal(after.referent?.contact.id, MARIO.id);
+  assert.equal(after.referent?.referentRequestId, changed.requestId);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM use_case_referent_requests WHERE use_case_id = $1::uuid AND contact_id = $2::uuid AND status = 'inviata'`, [ids.card, MARIO.id]))[0].n, 1, "una sola richiesta viva a Mario");
 });

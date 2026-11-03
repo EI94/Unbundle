@@ -777,6 +777,9 @@ test("rilascio 5: con il referente, G1 per la sua risposta, G2 senza risposta, G
   const other = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "fatto", askableForReferent: 0 }) }));
   assert.deepEqual(brief(other), { key: "G5", title: "Chiedere a un'altra persona", line: `${T} Il referente non ha queste informazioni: chiedi a un'altra persona.`, action: "referente", mine: true, decisions: "compact" });
   assert.deepEqual(other.action, { type: "referente", mode: "altra", label: "Chiedi a un'altra persona" });
+  // Con un motivo che blocca (l'email non attiva): G6 con il titolo «Chiedere a un'altra persona» e il motivo.
+  const blocked = nextStepOf(input({ item: approved(), info, referents: panel([gate.email]), askEntry: entry([gate.email]), referent: referent({ state: "fatto", askableForReferent: 0 }) }));
+  assert.deepEqual([blocked.key, blocked.title, blocked.line, blocked.action.type], ["G6", "Chiedere a un'altra persona", gate.email.message, "none"]);
   // Il pannello laterale (askableForReferent null): il G5 di oggi, senza nomi.
   assert.equal(nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "fatto", askableForReferent: null }) })).action.type, "chiedi");
 });

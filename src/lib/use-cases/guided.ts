@@ -811,8 +811,10 @@ function approvedStep(input: NextStepInput): NextStep {
       return step("G5", { title: askTitle, line: sentence(team, asks), action: { type: "chiedi", label: t.ask }, mine: true });
     }
     const gate = referents?.available ? (askEntry?.gates[0] ?? referents.gates[0] ?? null) : null;
-    if (!gate) return step("G6", { title: askTitle, line: sentence(team, asks) });
-    return step("G6", { title: askTitle, line: SYSTEM_GATES.includes(gate.code) ? gate.message : sentence(team, gate.message), gate: gate.code });
+    // (Rilascio 5) Il referente non ha queste informazioni: il titolo dice a chi chiedere, la riga il motivo che blocca.
+    const gateTitle = hasReferent && ref.askableForReferent === 0 ? t.otherTitle : askTitle;
+    if (!gate) return step("G6", { title: gateTitle, line: sentence(team, asks) });
+    return step("G6", { title: gateTitle, line: SYSTEM_GATES.includes(gate.code) ? gate.message : sentence(team, gate.message), gate: gate.code });
   }
   if (counts && counts.waiting > 0) return step("G7", { title: t.wait, line: sentence(t.referents, waitingTail(counts, today)) });
   if (counts && counts.blockedCount > 0) {
