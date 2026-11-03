@@ -212,11 +212,23 @@ function findProp(node: unknown, name: string): unknown[] {
 }
 
 /** Le voci dei grafici nel menu «⋯» (`HubHeader.menu.charts`). */
+/**
+ * (Rilascio 5, §12) I grafici di «Grafici», a vista nella Panoramica (non più nel menu «⋯», che resta
+ * con «Esporta Excel» e «Proponi da Activity mapping»).
+ */
 async function menuCharts(person: Person, workspaceId: string, searchParams: Record<string, string> = {}) {
-  const { tree } = await hubTree(person, workspaceId, searchParams);
-  const [menu] = findProp(tree, "menu") as Array<{ charts: Array<{ label: string; href: string }> } | null>;
+  const { tree } = await hubTree(person, workspaceId, { vista: "panoramica", ...searchParams });
+  const [menu] = findProp(tree, "menu") as Array<Record<string, unknown> | null>;
   assert.ok(menu, `${person}: il menu «⋯»`);
-  return menu.charts;
+  assert.ok(!Object.hasOwn(menu, "charts"), `${person}: il menu «⋯» senza grafici`);
+  const [charts] = findProp(tree, "charts") as Array<Array<{ label: string; href: string }>>;
+  return charts ?? [];
+}
+
+/** (Rilascio 5, D25) «Tipo» della barra dei filtri (`kind` di FilterBar): «filtro», o «nessuno» sulle due matrici; è in «Altri filtri». */
+async function filterKind(person: Person, workspaceId: string, searchParams: Record<string, string>): Promise<string[]> {
+  const { tree } = await hubTree(person, workspaceId, searchParams);
+  return (findProp(tree, "kind") as unknown[]).filter((v): v is string => v === "filtro" || v === "nessuno");
 }
 
 /** «‹ Torna alla Panoramica» e il nome del grafico: dal riquadro alla chiusura dell'h2 (il pulsante scrive il suo `data-slot` sull'`<a>`). */
@@ -402,7 +414,7 @@ after(async () => {
 
 // ─── I grafici del menu «⋯» ──────────────────────────────────────────
 
-test("menu «⋯»: «Matrice Valore × Costo», «Matrice Facilità × Beneficio» e «Curva del valore»; le bolle con facilità, beneficio, quando e il link al pannello", opts, async () => {
+test("(rilascio 5) «Grafici»: «Matrice Valore × Costo», «Matrice Facilità × Beneficio» e «Curva del valore»; le bolle con facilità, beneficio, quando e il link al pannello", opts, async () => {
   for (const person of ["ls", "builder", "manager"] as const) {
     const charts = await menuCharts(person, ids.wsV);
     assert.deepEqual(
@@ -467,13 +479,13 @@ test("bolle: con «Benefici e costi» nel workspace e un filtro che li esclude, 
 
 // ─── La Panoramica e «Curva del valore» ──────────────────────────────
 
-test("Panoramica: quattro cifre e «Su tutto il portafoglio»; i grafici di «Benefici e costi» stanno nel menu «⋯»", opts, async () => {
+test("Panoramica: quattro cifre e «Su tutto il portafoglio»; i grafici di «Benefici e costi» stanno in «Grafici»", opts, async () => {
   for (const person of ["ls", "builder", "manager"] as const) {
     const page = await html(person, ids.wsV, { vista: "panoramica" });
     for (const text of ['data-slot="roadmap-value"', 'data-slot="value-jcurve"', 'data-slot="value-by-lever"', 'data-slot="value-params-summary"']) {
       assert.ok(!page.includes(text), `${person}: ${text} è in «Curva del valore»`);
     }
-    assert.ok(page.includes('aria-label="Tipo: Tutti"'), `${person}: «Tipo» è un filtro`);
+    assert.deepEqual(await filterKind(person, ids.wsV, { vista: "panoramica" }), ["filtro"], `${person}: «Tipo» è un filtro`);
     // 115,5 h + 62,4 h = 177,9 h; FIX_A + FIX_B: pareggio al mese 5 da nov 26, aprile 2027. Una riga
     // sotto le cifre, al posto delle due cifre di prima.
     assert.match(
@@ -552,7 +564,7 @@ test("le cifre della Panoramica si sommano: le card fanno la corsia, le corsie e
   assert.ok(!tempo.includes("10.269 €"));
 });
 
-test("«Curva del valore» dal menu «⋯»: J-curve con entrata in uso e pareggio, «Valore per tipo di ritorno», «Ipotesi di calcolo»", opts, async () => {
+test("«Curva del valore» da «Grafici»: J-curve con entrata in uso e pareggio, «Valore per tipo di ritorno», «Ipotesi di calcolo»", opts, async () => {
   for (const person of ["ls", "builder", "manager"] as const) {
     const page = await html(person, ids.wsV, { vista: "panoramica", mostra: "curva" });
     assert.ok(page.includes('data-chart="curva"'), person);
@@ -563,7 +575,7 @@ test("«Curva del valore» dal menu «⋯»: J-curve con entrata in uso e paregg
     for (const text of ['data-slot="panoramica"', 'data-slot="list-focus"', 'data-slot="lanes"', 'data-slot="overview-figures"']) assert.ok(!page.includes(text), `${person}: ${text}`);
     assert.equal(filledButtons(page), 1, `${person}: un solo pulsante pieno`);
     // Sulla curva «Tipo» resta un filtro (solo le due matrici sono «Da costruire»).
-    assert.ok(page.includes('aria-label="Tipo: Tutti"'), person);
+    assert.deepEqual(await filterKind(person, ids.wsV, { vista: "panoramica", mostra: "curva" }), ["filtro"], person);
     // Impostazioni › Valutazione solo a chi gestisce il workspace (exec_sponsor, transformation_lead).
     const start = page.indexOf('data-slot="value-params-summary"');
     assert.ok(start >= 0 && page.includes("Ipotesi di calcolo"), person);
@@ -688,7 +700,7 @@ test("con gli agenti nei titoli: ogni bolla, segmento e punto ha il tono dell'ag
 
 // ─── Come oggi ───────────────────────────────────────────────────────
 
-test("senza modelli: nel menu solo «Matrice Valore × Costo» e le cifre di oggi; `mostra=benefici` vale la matrice", opts, async () => {
+test("senza modelli: in «Grafici» solo «Matrice Valore × Costo» e le cifre di oggi; `mostra=benefici` vale la matrice", opts, async () => {
   assert.deepEqual(
     (await menuCharts("builder", ids.wsN)).map((chart) => chart.label),
     ["Matrice Valore × Costo"],
