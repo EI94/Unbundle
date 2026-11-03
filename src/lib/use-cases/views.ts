@@ -75,6 +75,7 @@ import {
 } from "./valuation.ts";
 import { modelEstimate } from "./value-calc.ts";
 import { parseInfoParam, type InfoProgressState } from "./info-progress.ts";
+import { referentStateFromParam, type ReferentStateKey } from "./referent/use-case-state.ts";
 import { DEFAULT_VALUE_PARAMS, LEVER_LABELS, parseValueModel, type MonthCode, type ValueModel, type ValueParams } from "./value-model.ts";
 
 // ═══ Parametri della pagina (§4.2) ═══════════════════════════════════
@@ -144,6 +145,7 @@ export const HUB_PARAM_KEYS = [
   "mostra",
   "origine",
   "q",
+  "referente",
   "canale",
   "area",
   "agente",
@@ -166,6 +168,11 @@ export interface HubParams {
   mostra: HubShowParam | null;
   origine: Origin | null;
   q: string | null;
+  /**
+   * (Rilascio 5, §11.1) Lo stato del referente (`REFERENT_STATE_PARAM`), per tutti i ruoli: un filtro
+   * per stato dello use case, mai per persona (un nome o un'email non sono un valore: null).
+   */
+  referente: ReferentStateKey | null;
   /** Canale come valore di `use_cases.source` (§4.7). */
   canale: string | null;
   area: string | null;
@@ -247,6 +254,7 @@ export function parseHubParams(raw: RawHubParams, viewer: UseCaseViewer): HubPar
     mostra,
     origine: filters ? oneOf(ORIGINS, readParam(raw, "origine")) : null,
     q: boundedText(readParam(raw, "q"), SEARCH_MIN, SEARCH_MAX),
+    referente: referentStateFromParam(readParam(raw, "referente")),
     canale: filters ? oneOf(USE_CASE_SOURCES, readParam(raw, "canale")) : null,
     area: filters ? boundedText(readParam(raw, "area"), 1, AREA_MAX) : null,
     agente: filters ? parseAgentParam(readParam(raw, "agente")) : null,
@@ -272,6 +280,7 @@ export function hasActiveFilters(params: HubParams, opts: { ignoreKind?: boolean
     (params.tipo && !opts.ignoreKind) ||
       params.origine ||
       params.q ||
+      params.referente ||
       params.canale ||
       params.area ||
       params.agente ||
@@ -827,10 +836,12 @@ export function isOffMatrix(item: Pick<HubItem, "value" | "cost">): boolean {
 export function applyHubFilters<T extends AnyHubItem>(
   items: readonly T[],
   params: HubParams,
-  opts: { ignoreKind?: boolean; infoOf?: (id: string) => InfoProgressState | null } = {},
+  opts: { ignoreKind?: boolean; infoOf?: (id: string) => InfoProgressState | null; referentOf?: (id: string) => ReferentStateKey | null } = {},
 ): T[] {
   return items.filter((item) => {
     if (!matchesSearch(item, params.q)) return false;
+    // (Rilascio 5) Lo stato del referente vale per tutti, contributori compresi.
+    if (params.referente && (opts.referentOf?.(item.id) ?? null) !== params.referente) return false;
     if (isContributorItem(item)) return true;
     if (params.origine && item.origin !== params.origine) return false;
     if (params.tipo && !opts.ignoreKind && item.kind !== (params.tipo === "diffondere" ? "da_diffondere" : "da_costruire")) return false;

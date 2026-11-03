@@ -153,7 +153,8 @@ test("nell'area «Use case» il segmento scelto si vede anche senza il colore de
   atLeast(ratio(on(t.input, track), track), 3, "anello del segmento scelto sulla cornice");
   atLeast(ratio(on(t.input, t.muted.rgb), t.muted.rgb), 3, "anello di «Quando» su muted");
   assert.match(css, /\[data-use-case-root\] \[data-slot="segmented-nav"\] \[aria-current="page"\]:not\(:focus-visible\) \{\s*--tw-ring-color: var\(--input\);/);
-  assert.ok(read("src/components/use-cases/filter-bar.tsx").includes('"bg-background text-foreground shadow-sm ring-1 ring-input"'), "origine: anello del segmento scelto");
+  // (Rilascio 5, D25) L'origine non è più un segmento della barra: sta in «Altri filtri», come scelta.
+  assert.ok(!read("src/components/use-cases/filter-bar.tsx").includes("ring-1 ring-input"), "origine: in «Altri filtri», non più un segmento");
   assert.ok(read("src/components/use-cases/when-control.tsx").includes("data-checked:inset-ring data-checked:inset-ring-input"), "«Quando»: anello della scelta");
 });
 

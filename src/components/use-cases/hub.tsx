@@ -6,7 +6,8 @@ import { dossierColumnOf } from "@/lib/db/queries/use-case-dossiers";
 import { listWorkspaceNeeds } from "@/lib/db/queries/use-case-needs";
 import { listInfoProgress } from "@/lib/db/queries/use-case-info-progress";
 import { listReferentStates } from "@/lib/db/queries/use-case-referent-states";
-import type { ReferentReview, ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
+import { REFERENT_STATE_PARAM, type ReferentReview, type ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
+import { referentFilterOptions } from "@/lib/use-cases/referent/filter";
 import type { DossierColumn } from "@/lib/db/queries/uc-nav";
 import { getPortfolioParticipation } from "@/lib/db/queries/portfolio-participation";
 import type { Participation } from "@/lib/portfolio/participation";
@@ -47,7 +48,8 @@ import {
   type RawHubParams,
 } from "@/lib/use-cases/views";
 import { USE_CASE_VALUATION_ANCHOR } from "@/lib/use-cases/settings";
-import { connectorDisplayNameOf } from "@/lib/use-cases/service";
+import { connectorGuideOf } from "@/lib/use-cases/service";
+import { areaLabelOf, guideAreaLabels } from "@/lib/use-cases/guide-areas";
 import { roleLabel } from "@/lib/workspace-roles";
 import type { WorkspaceAccess } from "@/lib/workspace-access";
 import { CHART_TEXT, HubChartView } from "./chart-view";
@@ -128,6 +130,8 @@ export interface UseCaseHubData {
    * null altrimenti, senza nome o se la lettura non riesce.
    */
   connectorDisplayName: string | null;
+  /** (Rilascio 5, §11.2) id → titolo delle aree della guida del connettore, per il filtro «Area» (solo revisori). */
+  areaLabels: Record<string, string> | null;
   /**
    * «Partecipazione per area» (la scheda di «Raccolta & ranking», che con l'area accesa è la vista
    * «Da decidere»): solo etichette e numeri per area e società, mai chi propone (art. 15.4). Solo
@@ -200,7 +204,8 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     // «Raccolta informazioni»: solo a chi vede «Cosa serve»; la lettura stessa risponde null agli altri.
     abilities.canSeeNeeds ? listInfoProgress(workspaceId, viewer, { now }) : null,
     // Il titolo del gruppo del cliente di «Cosa serve» (rilascio 4): solo in quella vista.
-    view === "cosa-serve" && readsNeeds ? connectorDisplayNameOf(workspaceId) : null,
+    // (Rilascio 5) Il nome del cliente (per «Cosa serve») e le aree della guida (per il filtro «Area»): una lettura, solo ai revisori.
+    reviewer ? connectorGuideOf(workspaceId) : null,
     // (Rilascio 5) Lo stato del referente degli use case che chi guarda vede: per tutti i ruoli.
     listReferentStates(workspaceId, viewer, items, { now }),
   ]);
@@ -221,7 +226,8 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     panelOwnAnswer: opened && opened.projection === "contributore" ? opened.answer : null,
     dossierColumn,
     needs,
-    connectorDisplayName,
+    connectorDisplayName: view === "cosa-serve" && readsNeeds ? (connectorDisplayName?.displayName ?? null) : null,
+    areaLabels: connectorDisplayName ? Object.fromEntries(guideAreaLabels(connectorDisplayName.areas)) : null,
     participation,
     info,
     referentStates: referents?.states ?? null,
@@ -239,6 +245,7 @@ function queryOf(params: HubParams, view: HubView): HubQuery {
   if (params.mostra) query.mostra = params.mostra;
   if (params.origine) query.origine = params.origine;
   if (params.q) query.q = params.q;
+  if (params.referente) query.referente = REFERENT_STATE_PARAM[params.referente];
   if (params.canale) query.canale = params.canale;
   if (params.area) query.area = params.area;
   if (params.agente) query.agente = params.agente;
@@ -269,8 +276,10 @@ function moreFilterOptions(
   items: readonly HubItem[],
   params: HubParams,
   info: UseCaseHubData["info"],
+  areaLabels: UseCaseHubData["areaLabels"] = null,
 ): { channels: FilterOption[]; areas: FilterOption[]; agents: FilterOption[]; labs: FilterOption[]; quarters: FilterOption[]; infos: FilterOption[] } {
   const channels = new Map<string, string>();
+  const labels = new Map(Object.entries(areaLabels ?? {}));
   const areas = new Map<string, string>();
   const labs = new Map<string, string>();
   const quarters = new Set<string>();
@@ -278,7 +287,8 @@ function moreFilterOptions(
   for (const item of items) {
     const source = item.source ?? "activity_mapping";
     if ((USE_CASE_SOURCES as readonly string[]).includes(source)) channels.set(source, channelLabel(source));
-    if (item.area) areas.set(item.area, item.area);
+    // (Rilascio 5, D28) Il titolo della guida, o l'id reso leggibile: mai l'id a schermo.
+    if (item.area) areas.set(item.area, areaLabelOf(item.area, labels));
     if (item.aiLab) labs.set(item.aiLab, item.aiLab);
     if (item.phase === "approvato") {
       if (item.targetQuarter) quarters.add(item.targetQuarter);
@@ -286,7 +296,7 @@ function moreFilterOptions(
     }
   }
   if (params.canale && !channels.has(params.canale)) channels.set(params.canale, channelLabel(params.canale));
-  if (params.area && !areas.has(params.area)) areas.set(params.area, params.area);
+  if (params.area && !areas.has(params.area)) areas.set(params.area, areaLabelOf(params.area, labels));
   if (params.lab && !labs.has(params.lab)) labs.set(params.lab, params.lab);
   if (params.trimestre === LATER_QUARTER_PARAM) later = true;
   else if (params.trimestre) quarters.add(params.trimestre);
@@ -390,14 +400,18 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
   const shown: HubParams = chart ? { ...params, stima: null } : params;
   // «Raccolta informazioni» della scheda, per il filtro e i chip: solo per i revisori.
   const infoOf = (id: string): InfoProgressState | null => data.info?.[id.toLowerCase()]?.state ?? null;
-  const filtered = applyHubFilters(items, shown, { ignoreKind, infoOf });
+  // (Rilascio 5) Lo stato del referente di ogni use case, per il filtro «Referente» e i chip.
+  const referentOf = (id: string): ReferentStateKey | null => data.referentStates?.[id.toLowerCase()] ?? null;
+  const filtered = applyHubFilters(items, shown, { ignoreKind, infoOf, referentOf });
+  // Le voci di «Referente»: gli stati degli use case con gli altri filtri (non questo), più quello scelto.
+  const referentMenu = referentFilterOptions(applyHubFilters(items, { ...shown, referente: null }, { ignoreKind, infoOf, referentOf }), referentOf, params.referente, reviewer);
   const filtersActive = hasActiveFilters(shown, { ignoreKind });
   const clearHref = hubHref(basePath, { vista: view, ...(view === "panoramica" && params.mostra ? { mostra: params.mostra } : {}) });
   const newHref = abilities.newUseCase === "pannello_rapido" ? hubHref(basePath, navQuery, { nuovo: "1" }) : fullFormPath(workspaceId);
   // «mostra» e «da stimare» non passano alle altre viste; il tipo sì, come l'origine.
   const viewHref = (key: HubView) => hubHref(basePath, navQuery, { vista: key, mostra: null, stima: null });
   // Il contatore di «Da decidere» conta come la sua vista: con il tipo, senza «da stimare».
-  const decideItems = applyHubFilters(items, { ...params, stima: null }, { infoOf });
+  const decideItems = applyHubFilters(items, { ...params, stima: null }, { infoOf, referentOf });
   // I grafici del menu «⋯» si aprono nella Panoramica con i filtri di adesso, senza «da stimare»
   // (`stima`): i suoi use case non hanno un punto.
   const chartLinks = data.charts.map((key) => ({
@@ -517,7 +531,8 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
                 query={query}
                 mode={reviewer ? "revisore" : "contributore"}
                 kind={ignoreKind ? "nessuno" : "filtro"}
-                more={reviewer ? moreFilterOptions(reviewerItems, params, data.info) : undefined}
+                more={reviewer ? moreFilterOptions(reviewerItems, params, data.info, data.areaLabels) : undefined}
+                referent={data.referentStates ? referentMenu : null}
                 active={filtersActive}
                 clearHref={clearHref}
               />

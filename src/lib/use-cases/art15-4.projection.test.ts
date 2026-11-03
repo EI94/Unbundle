@@ -126,6 +126,10 @@ test("parseHubParams scarta proponente, proposedBy, autore, persona e ogni param
     }
   }
   assert.equal(HUB_PARAM_KEYS.some((key) => PERSON_KEY.test(key) || /propon|autor|person/i.test(key)), false);
+  // (Rilascio 5) «referente» è lo stato dello use case, mai una persona: un nome o un'email valgono null.
+  for (const role of ["transformation_lead", "contributor"]) {
+    for (const value of [OTHER, OTHER_EMAIL]) assert.equal(parseHubParams({ referente: value }, { ...contributor, role }).referente, null, `${role}: ?referente=${value}`);
+  }
 });
 
 test("contributore, proposta altrui: esattamente {id, title, phase, subState, phaseLabel, quando, own: false}", () => {

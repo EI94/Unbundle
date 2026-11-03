@@ -51,9 +51,10 @@ test("revisori, con un filtro: «Togli i filtri» è l'ultimo controllo della ri
     assert.ok(html.endsWith(`<span class="hidden sm:inline">Togli i filtri</span></a></span></div>`), html.slice(-200));
     assert.match(html, /<span class="shrink-0"><a\b[^>]*aria-label="Togli i filtri"[^>]*><svg\b[^>]*class="lucide lucide-x sm:hidden" aria-hidden="true">/);
     assert.ok(!html.includes("hidden sm:inline-flex"));
-    // L'ordine del fuoco è quello della riga: «Tipo», la ricerca, «Altri filtri», «Togli i filtri».
+    // (Rilascio 5) L'ordine del fuoco è quello della riga: «Area», la ricerca, «Altri filtri», «Togli i filtri»; «Tipo» sta dentro «Altri filtri».
     const at = (text: string) => html.indexOf(text);
-    if (kind === "filtro") assert.ok(at('aria-label="Tipo:') >= 0 && at('aria-label="Tipo:') < at('type="search"'));
+    assert.ok(at('aria-label="Area:') >= 0 && at('aria-label="Area:') < at('type="search"'));
+    assert.ok(!html.includes('aria-label="Tipo:'));
     assert.ok(at('type="search"') < at('aria-label="Altri filtri"') && at('aria-label="Altri filtri"') < at('aria-label="Togli i filtri"'));
     assert.deepEqual(findHubForbiddenIn([html.replace(/<[^>]+>/g, " ")], "area"), []);
   }
@@ -119,4 +120,21 @@ test("«Altri filtri» si apre sotto o sopra il suo bottone, mai di lato; gli al
     assert.ok(other.includes("<PopoverContent") && !other.includes("collisionAvoidance"), file);
   }
   assert.equal(SOURCE.split("collisionAvoidance=").length - 1, 1, "solo «Altri filtri» nella barra");
+});
+
+test("(rilascio 5) «Referente»: nella prima riga per i revisori e per i contributori, con la scelta nel nome; nascosto quando non serve", () => {
+  const menu = { options: [{ value: "manca", label: "Manca il referente · 49", word: "Manca il referente" }], shown: true, selected: null };
+  const html = render({ basePath: BASE, query: { vista: "panoramica" }, mode: "revisore", kind: "filtro", more: MORE, active: false, clearHref: BASE, referent: menu });
+  assert.ok(html.indexOf('aria-label="Referente: Tutti"') >= 0 && html.indexOf('aria-label="Referente: Tutti"') < html.indexOf('aria-label="Area: Tutte"'), "prima «Referente», poi «Area»");
+  const chosen = render({ basePath: BASE, query: { vista: "panoramica", referente: "manca" }, mode: "revisore", kind: "filtro", more: MORE, active: true, clearHref: BASE, referent: { ...menu, selected: "manca" } });
+  assert.ok(chosen.includes('aria-label="Referente: Manca il referente"'));
+  const contributor = render({ basePath: BASE, query: { vista: "da-decidere" }, mode: "contributore", kind: "filtro", active: false, clearHref: BASE, referent: { ...menu, options: [{ value: "manca", label: "Manca il referente", word: "Manca il referente" }, { value: "in-attesa", label: "In attesa del referente", word: "In attesa del referente" }] } });
+  assert.ok(contributor.includes('aria-label="Referente: Tutti"'));
+  assert.ok(!contributor.includes('aria-label="Area:') && !contributor.includes("Altri filtri"), "i contributori: solo «Referente» e la ricerca");
+  const hidden = render({ basePath: BASE, query: { vista: "da-decidere" }, mode: "contributore", kind: "filtro", active: false, clearHref: BASE, referent: { ...menu, shown: false } });
+  assert.ok(!hidden.includes("Referente"));
+  // L'area mostra il titolo, mai l'id.
+  const areas = render({ basePath: BASE, query: { vista: "panoramica", area: "amministrazione_finanza" }, mode: "revisore", kind: "filtro", more: { ...MORE, areas: [{ value: "amministrazione_finanza", label: "Amministrazione e finanza" }] }, active: true, clearHref: BASE });
+  assert.ok(areas.includes('aria-label="Area: Amministrazione e finanza"'));
+  assert.ok(!areas.replace(/href="[^"]*"/g, "").includes("amministrazione_finanza"), "nessun id a schermo");
 });

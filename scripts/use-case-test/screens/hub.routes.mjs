@@ -88,6 +88,11 @@ const routes = [
   // The Panoramica: the strip, the big numbers and «Prossimo passo», then the three lanes per quarter.
   { name: "panoramica", path: OVERVIEW, as: REVIEWERS, present: OVERVIEW_REVIEWER },
   { name: "panoramica", path: OVERVIEW, as: CONTRIBUTOR, present: OVERVIEW_CONTRIBUTOR, absent: NOT_ON_CONTRIBUTOR_OVERVIEW },
+  // Release 5: the first filter row has «Referente» (every role, words only for contributors) and, for
+  // reviewers, «Area»; «Tipo» and the origin live in «Altri filtri». `?referente=manca` filters by the
+  // referent's state of each use case, never by a person.
+  { name: "panoramica-referente", path: `${OVERVIEW}&referente=manca`, as: REVIEWERS, present: ["Manca il referente", "Togli i filtri"] },
+  { name: "panoramica-referente", path: `${OVERVIEW}&referente=manca`, as: CONTRIBUTOR, absent: NOT_ON_CONTRIBUTOR_OVERVIEW },
   // «Per trimestre | Per agente»: one card per agent of the titles, «Altri use case» last; reviewers
   // only, when an approved title has an agent prefix (without one the address opens the lanes).
   FULL_SEED

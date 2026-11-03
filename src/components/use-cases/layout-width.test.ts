@@ -115,23 +115,23 @@ test("i grafici del menu «⋯»: grafico o elenco sulla larghezza del riquadro 
   assert.match(levers, /data-slot="value-by-lever-list" className="space-y-1 @xl\/hub:hidden"/);
 });
 
-test("la barra dei filtri va a capo dal tablet e resta una riga al telefono", () => {
-  assert.match(read("src/components/use-cases/filter-bar.tsx"), /data-slot="filter-bar"[^>]*className="flex min-w-0 flex-nowrap items-center gap-2 sm:flex-wrap"/);
+test("(rilascio 5) la barra dei filtri: i revisori con i pulsanti nella prima riga e la ricerca sotto al telefono, una riga dai 42rem; i contributori una riga al telefono", () => {
+  const bar = read("src/components/use-cases/filter-bar.tsx");
+  assert.match(bar, /data-slot="filter-bar"[^>]*className=\{cn\("flex min-w-0 items-center gap-2", reviewer \? FILTER_ROW_REVIEWER : FILTER_ROW_CONTRIBUTOR\)\}/);
+  assert.match(bar, /export const FILTER_ROW_REVIEWER = "flex-wrap";/);
+  assert.match(bar, /export const FILTER_ROW_CONTRIBUTOR = "flex-nowrap sm:flex-wrap";/);
+  assert.match(bar, /export const SEARCH_REVIEWER = "order-last basis-full sm:@2xl\/hub:order-none sm:@2xl\/hub:max-w-xs sm:@2xl\/hub:basis-56";/);
 });
 
-test("l'origine sta nella barra dei filtri solo con la pagina larga almeno 42rem, altrimenti in «Altri filtri»", () => {
-  // A 768 px, accanto alla barra laterale, la pagina ha 464 px: con l'origine nella barra i controlli
-  // della prima vista andavano su tre righe. Da 42rem «Tipo», origine e ricerca stanno in una riga, il resto nella seconda.
+test("(rilascio 5, D25) «Tipo» e l'origine stanno sempre dentro «Altri filtri»; nella prima riga «Referente» e «Area»", () => {
   const bar = read("src/components/use-cases/filter-bar.tsx");
-  assert.match(bar, /const ORIGIN_INLINE = "sm:@2xl\/hub:block";/);
-  assert.match(bar, /<nav ref=\{originNav\} aria-label=\{FILTER_TEXT\.originLabel\} className=\{cn\("hidden max-w-full min-w-0 shrink-0", ORIGIN_INLINE\)\}>/);
-  // Il numero di «Altri filtri» conta l'origine quando sta dentro: le stesse condizioni, rovesciate.
-  assert.match(bar, /tabular-nums sm:@2xl\/hub:hidden">\{countWithOrigin\}/);
-  assert.match(bar, /hidden text-xs text-muted-foreground tabular-nums sm:@2xl\/hub:inline">\{count\}/);
-  // Dentro «Altri filtri» (un portale, fuori dal riquadro) lo decide la barra all'apertura.
-  assert.match(bar, /if \(open\) setOriginInside\(!originShown\(\)\);/);
-  assert.match(bar, /\{originInside \? \(\s*<MoreField\s+label=\{FILTER_TEXT\.originLabel\}/);
-  assert.doesNotMatch(bar, /<div className="sm:hidden">\s*<MoreField/, "l'origine dentro «Altri filtri» non segue più solo la finestra");
+  assert.doesNotMatch(bar, /ORIGIN_INLINE|originNav|<KindMenu/);
+  const more = bar.slice(bar.indexOf("function MoreFilters("), bar.indexOf("function MoreField("));
+  assert.match(more, /key: "tipo" as const, label: FILTER_TEXT\.kindLabel/);
+  assert.match(more, /\{ key: "origine", label: FILTER_TEXT\.originLabel/);
+  assert.doesNotMatch(more, /key: "area"/, "l'area è nella prima riga");
+  const row = bar.slice(bar.indexOf("<div ref={bar}"), bar.indexOf("</div>", bar.indexOf("<div ref={bar}")));
+  assert.ok(row.indexOf("<ReferentMenu") < row.indexOf("<AreaMenu") && row.indexOf("<AreaMenu") < row.indexOf("<SearchField"), "«Referente», «Area», poi la ricerca");
 });
 
 test("lo script delle schermate controlla lo scorrimento orizzontale e le colonne a 768, 900, 1024 e 1280 px", () => {

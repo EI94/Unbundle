@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { INFO_PROGRESS_TEXT } from "@/lib/use-cases/info-progress";
+import type { ReferentFilterMenu } from "@/lib/use-cases/referent/filter";
 import { SEARCH_MAX, SEARCH_MIN, type HubParamKey } from "@/lib/use-cases/views";
 import { cn } from "@/lib/utils";
 import { hubHref, withoutTransient, type HubQuery } from "./use-case-row";
@@ -37,6 +38,9 @@ export const FILTER_TEXT = Object.freeze({
   agent: "Agente",
   lab: "AI Lab",
   quarter: "Trimestre",
+  /** (Rilascio 5, §11.2) Lo stato del referente, nella prima riga. */
+  referent: "Referente",
+  referentAll: "Tutti",
   anyMasculine: "Tutti",
   anyFeminine: "Tutte",
   clear: "Togli i filtri",
@@ -67,7 +71,11 @@ export interface FilterBarProps {
   /** Filtri attivi: compare «Togli i filtri». */
   active: boolean;
   clearHref: string;
+  /** (Rilascio 5, §11.2) Il filtro «Referente» nella prima riga, per tutti i ruoli; null senza la funzione. */
+  referent?: ReferentFilterMenu | null;
 }
+
+export type { ReferentFilterMenu } from "@/lib/use-cases/referent/filter";
 
 const ORIGINS: FilterOption[] = [
   { value: "", label: FILTER_TEXT.originAll },
@@ -109,15 +117,13 @@ function useIsPhone(): boolean {
 }
 
 /**
- * Dove sta «Tutte · AI Adoption · AI Transformation»: nella barra solo dal tablet (`sm`) e con la
- * pagina (`@container/hub` di hub.tsx) larga almeno 42rem (672 px), dove «Tipo», l'origine e la
- * ricerca stanno in una riga e «Altri filtri» e «Togli i filtri» nella seconda; altrimenti dentro
- * «Altri filtri», come al telefono. Più stretta (accanto alla barra laterale da 768 a circa 975 px
- * di finestra) l'origine andava a capo da sola e i controlli finivano su tre righe
- * (120 px a 768). Il contenuto di «Altri filtri» si apre fuori dal riquadro (portale): lì decide
- * `originShown`.
+ * (Rilascio 5, §11.2) La riga dei revisori va a capo: al telefono e con la pagina stretta i pulsanti
+ * nella prima riga e la ricerca sotto, per intero (`SEARCH_REVIEWER`); dai 640 px con la pagina larga
+ * almeno 42rem una riga sola. Quella dei contributori resta una riga al telefono e va a capo dal tablet.
  */
-const ORIGIN_INLINE = "sm:@2xl/hub:block";
+export const FILTER_ROW_REVIEWER = "flex-wrap";
+export const FILTER_ROW_CONTRIBUTOR = "flex-nowrap sm:flex-wrap";
+export const SEARCH_REVIEWER = "order-last basis-full sm:@2xl/hub:order-none sm:@2xl/hub:max-w-xs sm:@2xl/hub:basis-56";
 
 /** Il valore «nessun filtro» dentro le scelte di «Altri filtri». */
 const ANY = "__tutti__";
@@ -126,29 +132,25 @@ const ANY = "__tutti__";
 const SEARCH_DEBOUNCE_MS = 350;
 
 /**
- * La barra dei filtri (docs/use-case/DESIGN.md §4.4, §4.7), una riga sotto le viste che va a capo
- * solo se i controlli non ci stanno: al massimo due righe di controlli prima del contenuto. Revisori: «Tipo»
- * (un filtro in ogni vista; non sulle due matrici del menu «⋯»), «Tutte · AI Adoption · AI
- * Transformation» (dentro «Altri filtri» al telefono e quando la pagina è più stretta di
- * {@link ORIGIN_INLINE}), «Cerca per titolo o codice», «Altri
- * filtri» (Canale, Area, Agente, AI Lab, Trimestre, Informazioni; «Agente» è il prefisso del titolo,
- * mai una persona). Contributori: solo «Cerca per titolo». Ogni filtro è
- * un parametro dell'indirizzo; con filtri attivi compare «Togli i filtri». Filtri per proponente
- * non esistono (art. 15.4): `parseHubParams` li scarterebbe comunque.
+ * La barra dei filtri (docs/use-case/DESIGN.md §4.4, §4.7; rilascio 5, §11.2). Revisori: dai 640 px e
+ * con la pagina larga almeno 42rem una riga sola, «Referente», «Area», «Cerca per titolo o codice»,
+ * «Altri filtri», «Togli i filtri»; più stretta, i pulsanti nella prima riga e la ricerca sotto, per
+ * intero. «Altri filtri» ha «Tipo», «Origine», «Canale», «Agente» (il prefisso del titolo, mai una
+ * persona), «AI Lab», «Trimestre» e «Informazioni». Contributori: «Referente» (solo le parole, e solo
+ * quando cambia qualcosa) e «Cerca per titolo». Ogni filtro è un parametro dell'indirizzo; con filtri
+ * attivi compare «Togli i filtri». Filtri per persona non esistono (art. 15.4): `parseHubParams` li
+ * scarterebbe comunque.
  */
-export function FilterBar({ basePath, query, mode, kind, more, active, clearHref }: FilterBarProps) {
+export function FilterBar({ basePath, query, mode, kind, more, active, clearHref, referent = null }: FilterBarProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const base = withoutTransient(query);
   const address = hubHref(basePath, query);
   /**
    * Le scelte mandate e non ancora arrivate, per l'indirizzo a schermo: una scelta fatta mentre
-   * l'altra è in viaggio (un'origine, poi la ricerca) le porta tutte, invece di toglierne una.
+   * l'altra è in viaggio (un'area, poi la ricerca) le porta tutte, invece di toglierne una.
    */
   const inFlight = useRef<{ address: string; change: Partial<Record<HubParamKey, string | null>> }>({ address, change: {} });
-  /** «Tutte · AI Adoption · AI Transformation» nella barra: a schermo solo con {@link ORIGIN_INLINE}. */
-  const originNav = useRef<HTMLElement>(null);
-  const originShown = () => (originNav.current ? getComputedStyle(originNav.current).display !== "none" : false);
 
   function go(change: Partial<Record<HubParamKey, string | null>>) {
     const merged = { ...(inFlight.current.address === address ? inFlight.current.change : {}), ...change };
@@ -161,9 +163,8 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
   const reviewer = mode === "revisore";
   /** La barra: al telefono «Altri filtri» si apre contro di lei, che con la ✕ non si sposta. */
   const bar = useRef<HTMLDivElement>(null);
-  // Al telefono la riga dei revisori è piena («Tipo», la ricerca, «Altri filtri»): «Togli i filtri»
-  // è la sola ✕, 44 × 44 px, con il nome per chi legge lo schermo; dal tablet in su la parola. I
-  // contributori hanno solo la ricerca: la parola ci sta anche al telefono.
+  // Al telefono la prima riga dei revisori è piena: «Togli i filtri» è la sola ✕, 44 × 44 px, con il
+  // nome per chi legge lo schermo; dal tablet in su la parola. Ai contributori la parola ci sta.
   const iconOnPhone = reviewer && Boolean(more);
   const clear = active ? (
     <Button
@@ -183,81 +184,95 @@ export function FilterBar({ basePath, query, mode, kind, more, active, clearHref
       )}
     </Button>
   ) : null;
+  const areaOptions = reviewer ? (more?.areas ?? []) : [];
 
   return (
-    // Dal tablet va a capo quando i controlli non ci stanno: accanto alla barra laterale (da 768 px)
-    // restano anche solo 460 px, e una riga che non va a capo faceva scorrere di lato tutta la pagina.
-    // Al telefono resta una riga: i controlli sono icone e la ricerca si stringe.
-    <div ref={bar} data-slot="filter-bar" aria-busy={pending || undefined} className="flex min-w-0 flex-nowrap items-center gap-2 sm:flex-wrap">
-      {reviewer ? (
-        <>
-          {kind === "filtro" ? <KindMenu value={query.tipo ?? ""} onChange={(value) => go({ tipo: value || null })} /> : null}
-          <nav ref={originNav} aria-label={FILTER_TEXT.originLabel} className={cn("hidden max-w-full min-w-0 shrink-0", ORIGIN_INLINE)}>
-            <ul className="inline-flex max-w-full gap-1 overflow-x-auto rounded-xl border bg-muted/60 p-1 [scrollbar-width:none]">
-              {ORIGINS.map((option) => {
-                const current = (query.origine ?? "") === option.value;
-                return (
-                  <li key={option.value || "tutte"} className="shrink-0">
-                    <Link
-                      href={hubHref(basePath, base, { origine: option.value || null })}
-                      scroll={false}
-                      aria-current={current ? "true" : undefined}
-                      onClick={(event) => {
-                        // Il clic semplice passa da `go`, con le scelte in viaggio; gli altri (nuova scheda) restano del link.
-                        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                        event.preventDefault();
-                        go({ origine: option.value || null });
-                      }}
-                      className={cn(
-                        "flex min-h-11 items-center rounded-lg px-2.5 text-xs font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-7",
-                        current ? "bg-background text-foreground shadow-sm ring-1 ring-input" : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {option.label}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-        </>
-      ) : null}
+    // I revisori: al telefono (e con la pagina stretta) i pulsanti nella prima riga e la ricerca sotto,
+    // per intero; dai 640 px con la pagina larga una riga. Mai di lato: nessuno scorrimento orizzontale.
+    <div ref={bar} data-slot="filter-bar" aria-busy={pending || undefined} className={cn("flex min-w-0 items-center gap-2", reviewer ? FILTER_ROW_REVIEWER : FILTER_ROW_CONTRIBUTOR)}>
+      {referent?.shown ? <ReferentMenu menu={referent} onChange={(value) => go({ referente: value || null })} /> : null}
+      {reviewer && areaOptions.length ? <AreaMenu value={query.area ?? ""} options={areaOptions} onChange={(value) => go({ area: value || null })} /> : null}
       <SearchField
         initial={query.q ?? ""}
         address={hubHref(basePath, query)}
         label={reviewer ? FILTER_TEXT.searchReviewer : FILTER_TEXT.searchContributor}
         phonePlaceholder={reviewer ? FILTER_TEXT.searchReviewerShort : FILTER_TEXT.searchContributor}
         onSearch={(text) => go({ q: text })}
+        className={reviewer ? SEARCH_REVIEWER : undefined}
       />
-      {reviewer && more ? <MoreFilters query={query} options={more} onChange={go} anchor={bar} originShown={originShown} /> : null}
-      {/* L'ultimo controllo della riga, a ogni larghezza (al telefono, per i revisori, la ✕). */}
+      {reviewer && more ? <MoreFilters query={query} options={more} kind={kind} onChange={go} anchor={bar} /> : null}
+      {/* L'ultimo controllo della prima riga (al telefono, per i revisori, la ✕). */}
       {clear ? <span className="shrink-0">{clear}</span> : null}
     </div>
   );
 }
 
-function KindMenu({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const label = KINDS.find((option) => option.value === value)?.label ?? FILTER_TEXT.kindAll;
-  // La scelta di partenza è «Tutti».
-  const chosen = value !== "";
+/** Il pulsante di una tendina della prima riga: al telefono la parola (con «1» se c'è una scelta), dal tablet anche la scelta. */
+function MenuTrigger({ name, chosen }: { name: string; chosen: string | null }) {
+  return (
+    <>
+      <span className="sm:hidden">{name}</span>
+      {chosen ? <span className="text-xs text-muted-foreground tabular-nums sm:hidden">1</span> : null}
+      <span className="hidden max-w-56 truncate sm:inline">
+        <span className="text-muted-foreground">{name}:</span> {chosen ?? FILTER_TEXT.referentAll}
+      </span>
+      <ChevronDown aria-hidden className="text-muted-foreground" />
+    </>
+  );
+}
+
+/** (Rilascio 5, §11.2) «Referente»: «Tutti» e gli stati, con il numero ai revisori (per stato, mai per persona). */
+function ReferentMenu({ menu, onChange }: { menu: ReferentFilterMenu; onChange: (value: string) => void }) {
+  const chosen = menu.options.find((option) => option.value === menu.selected) ?? null;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        aria-label={`${FILTER_TEXT.kindLabel}: ${label}`}
-        render={<Button variant="outline" className="min-h-11 shrink-0 gap-1 px-2.5 sm:min-h-8" />}
+        aria-label={`${FILTER_TEXT.referent}: ${chosen?.word ?? FILTER_TEXT.referentAll}`}
+        data-slot="filter-referent"
+        render={<Button variant="outline" className="min-h-11 min-w-0 shrink gap-1 px-2.5 sm:min-h-8" />}
       >
-        {/* Al telefono la parola «Tipo» (con «1» se la scelta non è quella di partenza, come «Altri filtri»); dal tablet in su anche la scelta. */}
-        <span className="sm:hidden">{FILTER_TEXT.kindLabel}</span>
+        <MenuTrigger name={FILTER_TEXT.referent} chosen={chosen?.word ?? null} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-auto min-w-56">
+        <DropdownMenuRadioGroup value={menu.selected ?? ""} onValueChange={(next) => onChange(typeof next === "string" ? next : "")}>
+          <DropdownMenuRadioItem value="" className="min-h-10 sm:min-h-8">
+            {FILTER_TEXT.referentAll}
+          </DropdownMenuRadioItem>
+          {menu.options.map((option) => (
+            <DropdownMenuRadioItem key={option.value} value={option.value} className="min-h-10 sm:min-h-8">
+              {option.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** (Rilascio 5, §11.2, D27) «Area»: «Tutte» e i titoli della guida delle aree usate; il valore resta l'id salvato. */
+function AreaMenu({ value, options, onChange }: { value: string; options: FilterOption[]; onChange: (value: string) => void }) {
+  const chosen = options.find((option) => option.value === value)?.label ?? null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`${FILTER_TEXT.area}: ${chosen ?? FILTER_TEXT.anyFeminine}`}
+        data-slot="filter-area"
+        render={<Button variant="outline" className="min-h-11 min-w-0 shrink gap-1 px-2.5 sm:min-h-8" />}
+      >
+        <span className="sm:hidden">{FILTER_TEXT.area}</span>
         {chosen ? <span className="text-xs text-muted-foreground tabular-nums sm:hidden">1</span> : null}
-        <span className="hidden sm:inline">
-          <span className="text-muted-foreground">{FILTER_TEXT.kindLabel}:</span> {label}
+        <span className="hidden max-w-56 truncate sm:inline">
+          <span className="text-muted-foreground">{FILTER_TEXT.area}:</span> {chosen ?? FILTER_TEXT.anyFeminine}
         </span>
         <ChevronDown aria-hidden className="text-muted-foreground" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-auto min-w-44">
+      <DropdownMenuContent align="start" className="w-auto min-w-56">
         <DropdownMenuRadioGroup value={value} onValueChange={(next) => onChange(typeof next === "string" ? next : "")}>
-          {KINDS.map((option) => (
-            <DropdownMenuRadioItem key={option.value || "tutti"} value={option.value} className="min-h-10 sm:min-h-8">
+          <DropdownMenuRadioItem value="" className="min-h-10 sm:min-h-8">
+            {FILTER_TEXT.anyFeminine}
+          </DropdownMenuRadioItem>
+          {options.map((option) => (
+            <DropdownMenuRadioItem key={option.value} value={option.value} className="min-h-10 sm:min-h-8">
               {option.label}
             </DropdownMenuRadioItem>
           ))}
@@ -279,6 +294,7 @@ function SearchField({
   label,
   phonePlaceholder,
   onSearch,
+  className,
 }: {
   initial: string;
   /** L'indirizzo della pagina a schermo: cambia quando arriva una navigazione. */
@@ -288,6 +304,8 @@ function SearchField({
   /** Il segnaposto al telefono, che ci sta per intero. */
   phonePlaceholder: string;
   onSearch: (text: string | null) => void;
+  /** (Rilascio 5) Dove sta nella riga dei revisori: sotto i pulsanti al telefono. */
+  className?: string;
 }) {
   const phone = useIsPhone();
   const placeholder = phone ? phonePlaceholder : label;
@@ -331,7 +349,7 @@ function SearchField({
   );
 
   return (
-    <div className="relative min-w-0 flex-1 basis-24 sm:max-w-xs sm:basis-56">
+    <div className={cn("relative min-w-0 flex-1 basis-24 sm:max-w-xs sm:basis-56", className)}>
       <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="search"
@@ -363,24 +381,24 @@ function SearchField({
 function MoreFilters({
   query,
   options,
+  kind,
   onChange,
   anchor,
-  originShown,
 }: {
   query: HubQuery;
   options: NonNullable<FilterBarProps["more"]>;
+  /** «Tipo» è un filtro tranne sulle due matrici del menu «⋯». */
+  kind: FilterBarProps["kind"];
   onChange: (change: Partial<Record<HubParamKey, string | null>>) => void;
   /** La barra dei filtri: al telefono il riquadro si apre contro di lei. */
   anchor: RefObject<HTMLDivElement | null>;
-  /** L'origine è a schermo nella barra? Se no, sta qui dentro. */
-  originShown: () => boolean;
 }) {
-  // Deciso all'apertura, dalla barra: il contenuto si apre in un portale, fuori dal riquadro della pagina.
-  const [originInside, setOriginInside] = useState(true);
   const phone = useIsPhone();
+  // (Rilascio 5, D25) «Tipo» e «Origine» stanno qui dentro; «Area» è nella prima riga.
   const fields: Array<{ key: HubParamKey; label: string; any: string; list: FilterOption[] }> = [
+    ...(kind === "filtro" ? [{ key: "tipo" as const, label: FILTER_TEXT.kindLabel, any: FILTER_TEXT.kindAll, list: KINDS.filter((option) => option.value) }] : []),
+    { key: "origine", label: FILTER_TEXT.originLabel, any: FILTER_TEXT.originAll, list: ORIGINS.filter((option) => option.value) },
     { key: "canale", label: FILTER_TEXT.channel, any: FILTER_TEXT.anyMasculine, list: options.channels },
-    { key: "area", label: FILTER_TEXT.area, any: FILTER_TEXT.anyFeminine, list: options.areas },
     // «Agente»: il prefisso del titolo («LIBRA L1 · …»), mai una persona; senza prefissi il campo non c'è.
     ...(options.agents?.length ? [{ key: "agente" as const, label: FILTER_TEXT.agent, any: FILTER_TEXT.anyMasculine, list: options.agents }] : []),
     { key: "lab", label: FILTER_TEXT.lab, any: FILTER_TEXT.anyMasculine, list: options.labs },
@@ -389,20 +407,12 @@ function MoreFilters({
     ...(options.infos?.length ? [{ key: "info" as const, label: INFO_PROGRESS_TEXT.filterLabel, any: INFO_PROGRESS_TEXT.filterAny, list: options.infos }] : []),
   ];
   const count = fields.filter((field) => query[field.key]).length;
-  // Quando l'origine sta qui dentro (telefono, pagina stretta) conta anche lei: le classi del numero
-  // sono le stesse di ORIGIN_INLINE, rovesciate, perché il bottone sta nel riquadro della pagina.
-  const countWithOrigin = count + (query.origine ? 1 : 0);
   return (
-    <Popover
-      onOpenChange={(open) => {
-        if (open) setOriginInside(!originShown());
-      }}
-    >
+    <Popover>
       <PopoverTrigger aria-label={FILTER_TEXT.more} render={<Button variant="outline" className="min-h-11 min-w-11 shrink-0 gap-1 px-2.5 sm:min-h-8 sm:min-w-0" />}>
         <SlidersHorizontal aria-hidden className="text-muted-foreground" />
         <span className="hidden sm:inline">{FILTER_TEXT.more}</span>
-        {countWithOrigin > 0 ? <span className="text-xs text-muted-foreground tabular-nums sm:@2xl/hub:hidden">{countWithOrigin}</span> : null}
-        {count > 0 ? <span className="hidden text-xs text-muted-foreground tabular-nums sm:@2xl/hub:inline">{count}</span> : null}
+        {count > 0 ? <span className="text-xs text-muted-foreground tabular-nums">{count}</span> : null}
       </PopoverTrigger>
       {/*
         Al telefono si apre sotto (o sopra) tutta la barra, non accanto al bottone: con la ✕ in fondo
@@ -416,15 +426,6 @@ function MoreFilters({
         collisionAvoidance={MORE_FILTERS_COLLISION}
         className="max-h-(--available-height) w-72 max-w-[calc(100vw-2rem)] gap-3 overflow-y-auto overscroll-contain p-3"
       >
-        {originInside ? (
-          <MoreField
-            label={FILTER_TEXT.originLabel}
-            any={FILTER_TEXT.originAll}
-            value={query.origine ?? null}
-            list={ORIGINS.filter((option) => option.value)}
-            onChange={(value) => onChange({ origine: value })}
-          />
-        ) : null}
         {fields.map((field) => (
           <MoreField key={field.key} label={field.label} any={field.any} value={query[field.key] ?? null} list={field.list} onChange={(value) => onChange({ [field.key]: value })} />
         ))}

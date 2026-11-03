@@ -938,6 +938,25 @@ export async function connectorDisplayNameOf(workspaceId: string): Promise<strin
   }
 }
 
+/**
+ * (Rilascio 5, §11.2) Dalla stessa riga del connettore: il nome del cliente («TopJet e Aliserio») e le
+ * aree della guida (`guide -> 'areas'`), per i titoli del filtro «Area». Una lettura sola; null
+ * senza configurazione o se la lettura non riesce (allora i titoli sono gli id resi leggibili).
+ */
+export async function connectorGuideOf(workspaceId: string): Promise<{ displayName: string | null; areas: unknown } | null> {
+  try {
+    const [config] = await db
+      .select({ name: workspaceConnectorConfigs.workspaceDisplayName, areas: sql<unknown>`${workspaceConnectorConfigs.guide} -> 'areas'` })
+      .from(workspaceConnectorConfigs)
+      .where(eq(workspaceConnectorConfigs.workspaceId, workspaceId))
+      .limit(1);
+    return config ? { displayName: config.name?.trim() || null, areas: config.areas ?? null } : null;
+  } catch (error) {
+    logSafeError("use-case-service", "connector_guide_failed", error);
+    return null;
+  }
+}
+
 /** L'errore dell'area fuori dalla guida, con il testo di `validateUseCaseChanges`; null se va bene. */
 function areaOutsideGuide(area: string, areas: readonly string[]): string | null {
   const checked = validateUseCaseChanges({ area }, { areaOptions: areas });

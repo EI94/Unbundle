@@ -241,6 +241,11 @@ async function html(person: Person, workspaceId: string, searchParams: Record<st
 }
 
 /** I dati della pagina e l'albero degli elementi, senza renderli (per i pannelli, che vivono in un portale). */
+/** (Rilascio 5) «Tipo» della barra dei filtri (`kind` di FilterBar): «filtro», o «nessuno» sulle due matrici. */
+function filterKinds(tree: unknown): string[] {
+  return (findProp(tree, "kind") as unknown[]).filter((v): v is string => v === "filtro" || v === "nessuno");
+}
+
 async function hubTree(person: Person, workspaceId: string, searchParams: Record<string, string>) {
   const workspaceAccess = await access.getWorkspaceAccessForUser(ids[person], workspaceId);
   assert.ok(workspaceAccess, `${person} è nel workspace`);
@@ -608,7 +613,9 @@ test("«Cosa serve»: un solo pulsante pieno, «Tipo» è un filtro, niente matr
   const page = await html("ls", ids.wsA, { vista: "cosa-serve" });
   assert.equal(viewOf(page), "cosa-serve");
   assert.equal(filledButtons(page), 1, "un solo pulsante pieno");
-  assert.ok(page.includes('aria-label="Tipo: Tutti"'), "«Tipo» come filtro");
+  // (Rilascio 5, D25) «Tipo» è un filtro dentro «Altri filtri»; nella prima riga «Referente».
+  assert.ok(page.includes('aria-label="Referente: Tutti"') && page.includes('aria-label="Altri filtri"'), "la prima riga");
+  assert.deepEqual(filterKinds((await hubTree("ls", ids.wsA, { vista: "cosa-serve" })).tree), ["filtro"], "«Tipo» come filtro");
   assert.ok(page.includes('data-slot="needs-board"'));
   assert.ok(!page.includes('data-slot="value-cost-matrix"') && !page.includes('data-slot="lanes"'));
   assert.ok(!page.includes('data-slot="show-toggle"') && !page.includes('data-slot="chart-header"'), "nessun interruttore e nessun grafico");
@@ -795,11 +802,12 @@ test("vecchi link di «Priorità»: la Panoramica", opts, async () => {
   }
   assert.ok(page.includes('data-slot="lanes"'), "le corsie");
   // «Da costruire | Da diffondere» sceglieva la lista: nella Panoramica «Tipo» è un filtro.
-  assert.ok(page.includes('aria-label="Tipo: Tutti"'));
+  assert.deepEqual(filterKinds((await hubTree("ls", ids.wsA, { vista: "priorita" })).tree), ["filtro"]);
   assert.equal((page.match(/data-slot="filter-bar"/g) ?? []).length, 1, "una sola riga di filtri");
   const diffuse = await html("ls", ids.wsA, { vista: "priorita", tipo: "diffondere" });
   assert.equal(viewOf(diffuse), "panoramica");
-  assert.ok(diffuse.includes('aria-label="Tipo: Da diffondere"'));
+  // (Rilascio 5) «Tipo» sta in «Altri filtri»: la scelta si vede nel numero e in «Togli i filtri».
+  assert.ok(diffuse.includes("Togli i filtri"));
   assert.ok(rowOf(diffuse, cards.bestPractice.id).includes(cards.bestPractice.title), "la best practice nella Panoramica");
   // Il chip «N da stimare» di prima (`tipo=costruire&stima=mancante`) apre la matrice: lì «da stimare» non filtra.
   const toEstimate = await html("ls", ids.wsA, { vista: "priorita", tipo: "costruire", stima: "mancante" });
@@ -991,14 +999,14 @@ test("«Tipo» sui grafici: le due matrici sono «Da costruire» e non lo hanno;
     // In A nessuno ha «Benefici e costi»: anche le bolle aprono la matrice.
     const page = await html("ls", ids.wsA, { vista: "panoramica", mostra });
     assert.ok(page.includes('data-chart="matrice"'), mostra);
-    assert.ok(!page.includes('aria-label="Tipo:'), `${mostra}: niente «Tipo»`);
+    assert.deepEqual(filterKinds((await hubTree("ls", ids.wsA, { vista: "panoramica", mostra })).tree), ["nessuno"], `${mostra}: niente «Tipo»`);
     // `tipo=diffondere` non svuota la matrice e resta nel ritorno.
     const diffuse = await html("ls", ids.wsA, { vista: "panoramica", mostra, tipo: "diffondere" });
     assert.ok(diffuse.includes(`data-point="${cards.amount.id}"`) && diffuse.includes('data-slot="to-estimate"'), mostra);
     assert.ok(chartHeaderOf(diffuse).href.includes("&amp;tipo=diffondere"), chartHeaderOf(diffuse).href);
     assert.ok(!diffuse.includes("Nessuno use case"), mostra);
   }
-  assert.ok((await html("ls", ids.wsA, { vista: "panoramica" })).includes('aria-label="Tipo: Tutti"'), "la Panoramica");
+  assert.deepEqual(filterKinds((await hubTree("ls", ids.wsA, { vista: "panoramica" })).tree), ["filtro"], "la Panoramica");
 });
 
 test("pannello: «Prossimo passo:» sotto i chip, con chi lo fa, come nella scheda; il pulsante pieno solo quando la decisione è di chi guarda", opts, async () => {
@@ -1076,9 +1084,11 @@ test("niente si perde senza la lista di «Priorità»: nel pannello «Quando», 
 
 test("filtri: origine, tipo e «Altri filtri» ai revisori; senza risultati «Nessuno use case con questi filtri.»", opts, async () => {
   const page = await html("ls", ids.wsA, { vista: "da-decidere" });
-  for (const text of ["Tutte", "AI Adoption", "AI Transformation", "Cerca per titolo o codice", "Altri filtri", ">Tipo:<"]) {
+  // (Rilascio 5, §11.2) La prima riga: «Referente», la ricerca, «Altri filtri» (con «Tipo» e l'origine).
+  for (const text of ['aria-label="Referente: Tutti"', "Cerca per titolo o codice", "Altri filtri"]) {
     assert.ok(page.includes(text), text);
   }
+  assert.ok(!page.includes(">Tipo:<") && !page.includes('aria-label="Tipo:'), "«Tipo»: dentro «Altri filtri»");
   const transformation = await html("ls", ids.wsA, { vista: "panoramica", origine: "transformation" });
   assert.ok(transformation.includes(`data-id="${cards.band.id}"`));
   assert.ok(!transformation.includes(`data-id="${cards.amount.id}"`));

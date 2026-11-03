@@ -151,6 +151,7 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
       mostra: "lista",
       origine: "transformation",
       q: "  smistamento   richieste ",
+      referente: "in-attesa",
       canale: "slack_proposed",
       area: "Finanza",
       agente: "LIBRA",
@@ -180,6 +181,7 @@ test("parseHubParams: solo le chiavi dell'elenco, con valori validi; ogni altro 
     mostra: null,
     origine: "transformation",
     q: "smistamento richieste",
+    referente: "in_attesa",
     canale: "slack_proposed",
     area: "Finanza",
     agente: "LIBRA",
@@ -877,4 +879,14 @@ test("riga dell'export: colonne di §4.1, fasce del workspace, «da stimare» do
   assert.equal(monthLabel("2027-01-31"), "gen 2027");
   // Senza `bandLabel` (figure costruite altrove) vale l'etichetta di `bands`.
   assert.equal(bandText({ ...it.cost!, bandLabel: undefined }), `€€ · ${COST_BANDS[1].label}`);
+});
+
+test("(rilascio 5) «referente»: lo stato del referente per ogni ruolo, solo i valori dell'elenco, nei filtri attivi; il contributore filtrato per stato", () => {
+  for (const role of ["transformation_lead", "function_lead", "analyst", "contributor"] as const) {
+    assert.equal(parseHubParams({ referente: "manca" }, viewer(role)).referente, "manca", role);
+    assert.equal(parseHubParams({ referente: "ha-risposto" }, viewer(role)).referente, "fatto", role);
+    for (const bad of ["Aldo Prova", "aldo@cliente.test", "fatto", "in_attesa", ""]) assert.equal(parseHubParams({ referente: bad }, viewer(role)).referente, null, `${role} ${bad}`);
+  }
+  assert.ok(hasActiveFilters(parseHubParams({ referente: "nessuna-risposta" }, viewer("contributor"))));
+  assert.deepEqual(HUB_PARAM_KEYS.slice(HUB_PARAM_KEYS.indexOf("q"), HUB_PARAM_KEYS.indexOf("q") + 2), ["q", "referente"]);
 });
