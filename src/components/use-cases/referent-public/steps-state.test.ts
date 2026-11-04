@@ -119,9 +119,8 @@ test("i campi dei numeri: la virgola, i limiti, le etichette e i segnaposto del 
   assert.deepEqual(numberField("tanti", "timesPerMonth"), { ok: false });
   assert.equal(numberText(1.5), "1,5");
   assert.equal(numberText(null), "");
-  assert.equal(perMonthLabel("fatture"), "Fatture al mese");
-  assert.equal(perMonthLabel(null), "Volte al mese");
-  assert.equal(perMonthLabel("  "), "Volte al mese");
+  // Mai l'unità del modello (al singolare: «Fattura estera al mese»): sempre «Volte al mese».
+  assert.equal(perMonthLabel(), "Volte al mese");
   assert.equal(placeholderOf(291.666), "291,7");
   assert.equal(placeholderOf(12), "12");
 });

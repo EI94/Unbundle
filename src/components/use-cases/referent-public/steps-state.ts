@@ -12,7 +12,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import type { ReferentAskView, ReferentCheckView } from "../../../lib/use-cases/referent/contract.ts";
-import { REFERENT_CHECK_TEXT, fillText } from "../../../lib/use-cases/referent/labels.ts";
+import { REFERENT_CHECK_TEXT } from "../../../lib/use-cases/referent/labels.ts";
 import { parseItalianNumber, referentNumber, REFERENT_NUMBER_MAX } from "../../../lib/use-cases/referent/estimate.ts";
 export { isRepeatActivation, STEP_SETTLE_MS } from "../../../lib/use-cases/referent/repeat-guard.ts";
 
@@ -104,11 +104,9 @@ export function numberText(value: number | null): string {
   return String(value).replace(".", ",");
 }
 
-/** L'etichetta del primo campo con la stima del team: «Fatture al mese», altrimenti «Volte al mese». */
-export function perMonthLabel(unit: string | null): string {
-  const clean = unit?.trim();
-  if (!clean) return T.estimate.perMonth;
-  return fillText(T.estimate.perMonthUnit, { Unita: clean[0].toLocaleUpperCase("it-IT") + clean.slice(1) });
+/** L'etichetta del primo campo con la stima del team: sempre «Volte al mese» (l'unità del modello è al singolare). */
+export function perMonthLabel(): string {
+  return T.estimate.perMonth;
 }
 
 /** Il segnaposto di un campo: il numero del team, scritto come nel campo. */

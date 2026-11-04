@@ -122,12 +122,20 @@ export function teamEstimateStatement(t: Pick<TeamEstimate, "hours">): string {
   return fillText(T.statement, { ore: hoursText(t.hours) });
 }
 
-/** «Circa 292 fatture al mese, 12 minuti ogni volta.» (sotto le 12 volte l'anno: «… l'anno, …»). */
+/** «1 volta», «250 volte». */
+function timesText(n: number): string {
+  return n === 1 ? T.timesOne : fillText(T.timesMany, { n: formatCountIt(n) });
+}
+
+/**
+ * «Circa 250 volte al mese, 12 minuti ogni volta.» (sotto le 12 volte l'anno: «… l'anno, …»). Mai
+ * l'unità del modello dopo il numero: è al singolare («Circa 250 pratica in entrata al mese» non si legge);
+ * che cosa si conta lo dice già il nome del componente sopra la domanda.
+ */
 export function teamEstimateDetail(t: Pick<TeamEstimate, "perMonth" | "perYear" | "unit" | "minutes">): string {
-  const unita = t.unit ?? T.defaultUnit;
   const minuti = minutesText(t.minutes);
-  if (t.perMonth === null) return fillText(T.perYear, { n: formatCountIt(t.perYear ?? 0), unita, minuti });
-  return fillText(T.perMonth, { n: formatCountIt(t.perMonth), unita, minuti });
+  if (t.perMonth === null) return fillText(T.perYear, { volte: timesText(t.perYear ?? 0), minuti });
+  return fillText(T.perMonth, { volte: timesText(t.perMonth), minuti });
 }
 
 /**

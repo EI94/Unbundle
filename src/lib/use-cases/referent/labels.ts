@@ -275,12 +275,13 @@ export const REFERENT_ESTIMATE_TEXT = Object.freeze({
   hoursMany: "{n} ore di lavoro l'anno",
   question: "Il team stima {ore}: ti torna?",
   statement: "Il team stima {ore}.",
-  perMonth: "Circa {n} {unita} al mese, {minuti} ogni volta.",
-  perYear: "Circa {n} {unita} l'anno, {minuti} ogni volta.",
+  /** Sempre «volte»: l'unità del modello è scritta al singolare («pratica in entrata») e dopo un numero non si legge. */
+  perMonth: "Circa {volte} al mese, {minuti} ogni volta.",
+  perYear: "Circa {volte} l'anno, {minuti} ogni volta.",
+  timesOne: "1 volta",
+  timesMany: "{n} volte",
   minutesOne: "1 minuto",
   minutesMany: "{n} minuti",
-  /** Quando la stima non dice che cosa si conta, o la parola non passa i controlli. */
-  defaultUnit: "volte",
 });
 
 // ─── «Scegli il referente» e il blocco «Referente» (rilascio 5, §8, §9) ─
@@ -491,7 +492,6 @@ export const REFERENT_CHECK_TEXT = Object.freeze({
     less: "È di meno",
     more: "È di più",
     numbersLead: "Se vuoi, dacci i tuoi numeri:",
-    perMonthUnit: "{Unita} al mese",
     perMonth: "Volte al mese",
     minutesEach: "Minuti ogni volta",
     noTeamTitle: "Quanto tempo vi prende questo lavoro?",

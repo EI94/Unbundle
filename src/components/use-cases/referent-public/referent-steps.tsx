@@ -326,7 +326,7 @@ export function EstimateStep({
   const field = (which: "times" | "minutes") => {
     const isTimes = which === "times";
     const value = isTimes ? times : minutes;
-    const label = team ? (isTimes ? perMonthLabel(team.unit) : T.estimate.minutesEach) : isTimes ? T.estimate.noTeamTimes : T.estimate.noTeamMinutes;
+    const label = team ? (isTimes ? perMonthLabel() : T.estimate.minutesEach) : isTimes ? T.estimate.noTeamTimes : T.estimate.noTeamMinutes;
     const placeholder = team ? (isTimes ? placeholderOf(team.perMonth ?? (team.volumeYear / 12)) : placeholderOf(team.minutes)) : "";
     const inputId = `${id}-${which}`;
     return (

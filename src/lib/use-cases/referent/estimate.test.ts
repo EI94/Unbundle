@@ -67,9 +67,13 @@ test("i testi: ore, minuti, al mese o l'anno, con la virgola", () => {
   const tj = teamEstimateOf(model(ore("tempo-1", 3000, 12, { unit: "pratiche" })))!;
   assert.equal(teamEstimateQuestion(tj), "Il team stima 600 ore di lavoro l'anno: ti torna?");
   assert.equal(teamEstimateStatement({ hours: 600 }), "Il team stima 600 ore di lavoro l'anno.");
-  assert.equal(teamEstimateDetail(tj), "Circa 292 fatture al mese, 12 minuti ogni volta.");
+  // L'unità del modello è al singolare («pratica in entrata»): dopo un numero si dice sempre «volte».
+  assert.equal(teamEstimateDetail(tj), "Circa 250 volte al mese, 12 minuti ogni volta.");
+  assert.equal(teamEstimateDetail({ perMonth: 250, perYear: null, unit: "pratica in entrata", minutes: 12 }), "Circa 250 volte al mese, 12 minuti ogni volta.");
+  assert.equal(teamEstimateDetail({ perMonth: 1, perYear: null, unit: "riepilogo periodico", minutes: 30 }), "Circa 1 volta al mese, 30 minuti ogni volta.");
   assert.equal(teamEstimateDetail({ perMonth: 250, perYear: null, unit: null, minutes: 12 }), "Circa 250 volte al mese, 12 minuti ogni volta.");
   assert.equal(teamEstimateDetail({ perMonth: null, perYear: 6, unit: null, minutes: 30 }), "Circa 6 volte l'anno, 30 minuti ogni volta.");
+  assert.equal(teamEstimateDetail({ perMonth: null, perYear: 1, unit: "revisione annuale", minutes: 1 }), "Circa 1 volta l'anno, 1 minuto ogni volta.");
 });
 
 test("i numeri in italiano: virgola, punto delle migliaia, spazi; non negativi, al massimo due decimali", () => {
