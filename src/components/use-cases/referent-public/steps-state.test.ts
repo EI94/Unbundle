@@ -18,6 +18,8 @@ import {
   stepSearch,
   stepStates,
   stepsOf,
+  stepOfSubmitRefusal,
+  stepOneWarning,
 } from "./steps-state.ts";
 
 // (Rilascio 5, §7.1, §7.7) I passi della pagina del referente: quali, quando sono fatti, dove si arriva.
@@ -123,4 +125,28 @@ test("i campi dei numeri: la virgola, i limiti, le etichette e i segnaposto del 
   assert.equal(perMonthLabel(), "Volte al mese");
   assert.equal(placeholderOf(291.666), "291,7");
   assert.equal(placeholderOf(12), "12");
+});
+
+test("un «Invia» rifiutato per la conferma o la stima riporta al suo passo, con il messaggio lì", () => {
+  assert.deepEqual(stepOfSubmitRefusal({ code: "conferma_mancante", message: "Manca la conferma." }), { step: 1, message: "Manca la conferma." });
+  assert.deepEqual(stepOfSubmitRefusal({ code: "stima_mancante", message: "Manca la stima." }), { step: 2, message: "Manca la stima." });
+  // La nota di «Correggi» con un nome o un'email: il campo «conferma» non è di nessuna domanda, si torna al passo 1.
+  const NAME = "Non scrivere nomi di persone: indica il ruolo.";
+  assert.deepEqual(stepOfSubmitRefusal({ code: "risposte_da_correggere", message: "Alcune risposte vanno corrette: le trovi evidenziate.", issues: [{ field: "conferma", message: NAME }] }), { step: 1, message: NAME });
+  assert.deepEqual(
+    stepOfSubmitRefusal({ code: "risposte_da_correggere", message: "x", issues: [{ field: "aaaaaaaa-0000-4000-8000-000000000001", message: "Sulla domanda" }, { field: "conferma", message: NAME }] }),
+    { step: 1, message: NAME },
+    "prima la nota, poi le domande",
+  );
+  // Le domande da correggere restano dove sono: evidenziate sulla loro domanda.
+  assert.equal(stepOfSubmitRefusal({ code: "risposte_da_correggere", message: "x", issues: [{ field: "aaaaaaaa-0000-4000-8000-000000000001", message: "Sulla domanda" }] }), null);
+  assert.equal(stepOfSubmitRefusal({ code: "domande_aperte", message: "x", issues: [] }), null);
+  assert.equal(stepOfSubmitRefusal({ code: "rete", message: "x" }), null);
+});
+
+test("l'avviso di una bozza si dice solo per la nota del passo 1, il primo del server", () => {
+  assert.equal(stepOneWarning({ step: 1 }, [{ message: "Non scrivere nomi di persone." }, { message: "altro" }]), "Non scrivere nomi di persone.");
+  assert.equal(stepOneWarning({ step: 1 }, []), null, "una bozza pulita toglie l'avviso di prima");
+  assert.equal(stepOneWarning({ step: 1 }, undefined), null);
+  assert.equal(stepOneWarning({ step: 2 }, [{ message: "x" }]), null);
 });

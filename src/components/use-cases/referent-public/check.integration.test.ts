@@ -326,3 +326,31 @@ test("la rotta POST …/check: la bozza dal link, con gli stessi controlli e i s
   );
   assert.equal(res.status, 404);
 });
+
+test("la nota di «Correggi» con un nome o un'email: la bozza si salva con l'avviso, «Invia» la respinge sul campo «conferma» e la pagina torna al passo 1", opts, async () => {
+  const steps = await import("./steps-state.ts");
+  for (const note of ["Le fatture le manda mario.rossi@acme.test ogni lunedì.", "Il controllo lo fa Mario Rossi, non l'ufficio acquisti."]) {
+    const card = await newCard(MODEL);
+    const { link, requestId } = await referentLink(card.id, []);
+    const now = new Date();
+    const saved = okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note }, now), "bozza con l'avviso");
+    const warning = steps.stepOneWarning({ step: 1 }, saved.warnings);
+    assert.ok(warning, `l'avviso sotto «Cosa cambieresti?»: ${note}`);
+    okPub(await pub.saveReferentCheck(link, { step: 2, teamSeen, estimate: "si" }, now), "stima");
+    const sent = await pub.submitReferentAnswers(link, { shown: [] }, now);
+    assert.equal(sent.ok, false);
+    if (sent.ok) continue;
+    assert.equal(sent.code, "risposte_da_correggere");
+    assert.deepEqual([...new Set((sent.issues ?? []).map((i) => i.field))], ["conferma"]);
+    // La pagina torna al passo 1 con il messaggio del server, lo stesso dell'avviso.
+    const back = steps.stepOfSubmitRefusal(sent);
+    assert.deepEqual(back, { step: 1, message: sent.issues![0].message });
+    assert.equal(back?.message, warning);
+    assert.equal((await checkRow(requestId)).sent, false, "niente è partito");
+    // Senza il nome la nota passa e «Invia» va.
+    const clean = okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note: "Il controllo lo fa l'ufficio contabilità." }, now), "nota pulita");
+    assert.equal(steps.stepOneWarning({ step: 1 }, clean.warnings), null);
+    okPub(await pub.submitReferentAnswers(link, { shown: [] }, now), "invio");
+    assert.equal((await checkRow(requestId)).sent, true);
+  }
+});

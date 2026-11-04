@@ -87,10 +87,24 @@ export interface StepActions {
 
 // ─── Passo 1 «Lo use case» ───────────────────────────────────────────
 
-export function ConfirmStep({ check, title, actions, errorFromServer }: { check: ReferentCheckView; title: string; actions: StepActions; errorFromServer: string | null }) {
+export function ConfirmStep({
+  check,
+  title,
+  actions,
+  errorFromServer,
+  warningFromServer = null,
+}: {
+  check: ReferentCheckView;
+  title: string;
+  actions: StepActions;
+  errorFromServer: string | null;
+  /** L'avviso del server sull'ultima bozza della nota (un nome, un'email, un telefono), come sotto le domande. */
+  warningFromServer?: string | null;
+}) {
   const id = useId();
   const noteId = `${id}-nota`;
   const errId = `${id}-errore`;
+  const warnId = `${id}-avviso`;
   const fixing = check.draft.confirm === "correggi";
   const [note, setNote] = useState(check.draft.note ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +112,8 @@ export function ConfirmStep({ check, title, actions, errorFromServer }: { check:
   const lastSaved = useRef(check.draft.note ?? "");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const shownError = error ?? errorFromServer;
+  // L'avviso non si ripete sotto l'errore che dice la stessa cosa (dopo «Invia»).
+  const shownWarning = warningFromServer && warningFromServer !== shownError ? warningFromServer : null;
 
   const saveNote = async (text: string) => {
     if (timer.current) clearTimeout(timer.current);
@@ -180,7 +196,7 @@ export function ConfirmStep({ check, title, actions, errorFromServer }: { check:
             value={note}
             placeholder={T.confirm.notePlaceholder}
             aria-invalid={shownError ? true : undefined}
-            aria-describedby={shownError ? errId : undefined}
+            aria-describedby={[shownError ? errId : null, shownWarning ? warnId : null].filter(Boolean).join(" ") || undefined}
             onChange={(e) => {
               const text = e.target.value;
               setNote(text);
@@ -194,6 +210,11 @@ export function ConfirmStep({ check, title, actions, errorFromServer }: { check:
           {shownError ? (
             <p id={errId} role="alert" className="text-sm break-words text-uc-rosso">
               {shownError}
+            </p>
+          ) : null}
+          {shownWarning ? (
+            <p id={warnId} className="rounded-lg bg-uc-giallo-bg px-3 py-2 text-sm break-words">
+              {shownWarning}
             </p>
           ) : null}
           <div className="pt-2">

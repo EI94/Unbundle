@@ -109,6 +109,33 @@ export function perMonthLabel(): string {
   return T.estimate.perMonth;
 }
 
+// ─── I rifiuti che riportano a un passo ──────────────────────────────
+
+/**
+ * (Rilascio 5) Il passo a cui riporta un «Invia» rifiutato per la conferma o la stima, con il messaggio
+ * da dire lì; null per tutti gli altri rifiuti (le domande hanno il loro posto). La nota di «Correggi»
+ * con un nome, un'email o un telefono torna con `risposte_da_correggere` e il campo `conferma`: nessuna
+ * domanda la mostra, quindi la si mostra al passo 1, sotto «Cosa cambieresti?».
+ */
+export function stepOfSubmitRefusal(r: { code: string; message: string; issues?: readonly { field?: string; message: string }[] }): { step: CheckStep; message: string } | null {
+  if (r.code === "conferma_mancante") return { step: 1, message: r.message };
+  if (r.code === "stima_mancante") return { step: 2, message: r.message };
+  if (r.code === "risposte_da_correggere") {
+    const confirm = r.issues?.find((i) => i.field === "conferma");
+    if (confirm) return { step: 1, message: confirm.message };
+  }
+  return null;
+}
+
+/**
+ * (Rilascio 5) L'avviso da dire subito dopo il salvataggio di una bozza: solo il passo 1 (la nota di
+ * «Correggi»), il primo avviso del server. La bozza si salva lo stesso; all'invio un nome e cognome o
+ * un'email la fermano.
+ */
+export function stepOneWarning(body: { step: number }, warnings: readonly { message: string }[] | undefined): string | null {
+  return body.step === 1 ? (warnings?.[0]?.message ?? null) : null;
+}
+
 /** Il segnaposto di un campo: il numero del team, scritto come nel campo. */
 export function placeholderOf(n: number | null): string {
   return n === null ? "" : numberText(Math.round(n * 10) / 10);

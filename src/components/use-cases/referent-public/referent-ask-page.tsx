@@ -24,7 +24,7 @@ import {
 } from "./public-view-render";
 import { ConfirmStep, EstimateStep, ReferentStepBar, stepTitleId, type StepActions } from "./referent-steps";
 import { MessageCard, PublicShell } from "./state-card";
-import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepSearch, stepStates, stepsOf, type CheckStep } from "./steps-state";
+import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepOfSubmitRefusal, stepOneWarning, stepSearch, stepStates, stepsOf, type CheckStep } from "./steps-state";
 import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
 
 /**
@@ -61,6 +61,8 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const stepChangedAt = useRef(0);
   const [checkSave, setCheckSave] = useState<"saving" | "saved" | "error" | null>(null);
   const [stepError, setStepError] = useState<{ step: CheckStep; message: string } | null>(null);
+  /** (Rilascio 5) L'avviso dell'ultima bozza della nota di «Correggi» (un nome, un'email, un telefono). */
+  const [noteWarning, setNoteWarning] = useState<string | null>(null);
   const [staleNotice, setStaleNotice] = useState(false);
   const checkInFlight = useRef<Promise<boolean> | null>(null);
   // (Rilascio 5) Le domande chiuse (per «{k} di {n} fatte») e quelle che «Invia» ha trovato aperte.
@@ -205,6 +207,10 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
         const r = await saveCheck(token, body, keepalive);
         if (r.ok) {
           setCheckSave("saved");
+          // Una nota con un nome, un'email o un telefono si salva con un avviso (all'invio un nome e
+          // cognome o un'email la fermano): lo si dice subito sotto «Cosa cambieresti?», come fanno
+          // le domande; l'ultima bozza decide.
+          if (body.step === 1) setNoteWarning(stepOneWarning(body, r.data.warnings));
           return true;
         }
         setCheckSave("error");
@@ -318,11 +324,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       return;
     }
     if (r.code === "domanda_non_disponibile" || r.code === "informativa_da_leggere") void reload();
-    // (Rilascio 5) La conferma o la stima mancano: si torna al loro passo, con il messaggio lì.
-    if (stepped && (r.code === "conferma_mancante" || r.code === "stima_mancante")) {
-      const target: CheckStep = r.code === "conferma_mancante" ? 1 : 2;
-      goTo(target);
-      setStepError({ step: target, message: r.message });
+    // (Rilascio 5) La conferma o la stima mancano, o la nota di «Correggi» va corretta: si torna al loro
+    // passo, con il messaggio lì (mai «le trovi evidenziate» senza niente di evidenziato).
+    const back = stepped ? stepOfSubmitRefusal(r) : null;
+    if (back) {
+      goTo(back.step);
+      setStepError(back);
       return;
     }
     // (Rilascio 5) Domande nuove del team mentre la pagina era aperta: si rilegge e lo si dice.
@@ -419,7 +426,14 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           {checkSave ? REFERENT_PUBLIC_TEXT.autosave[checkSave] : ""}
         </p>
         {step === 1 ? (
-          <ConfirmStep key={`1:${generation}`} check={check} title={view.useCase.title} actions={confirmActions} errorFromServer={stepError?.step === 1 ? stepError.message : null} />
+          <ConfirmStep
+            key={`1:${generation}`}
+            check={check}
+            title={view.useCase.title}
+            actions={confirmActions}
+            errorFromServer={stepError?.step === 1 ? stepError.message : null}
+            warningFromServer={noteWarning}
+          />
         ) : (
           <EstimateStep
             key={`2:${generation}:${check.team?.key ?? "nessuna"}`}
