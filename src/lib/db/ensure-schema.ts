@@ -823,8 +823,8 @@ export async function runUseCaseReferentCheckDdl(statements: readonly string[] =
 /**
  * Applica il DDL della 0027 in una sola transazione, serializzata dallo stesso advisory lock del file,
  * con `lock_timeout` di 3s come la 0026 (la colonna nuova e il CHECK dell'invio allargato prendono un
- * lock breve su `use_case_referent_checks`). In produzione il file si applica a mano prima del rilascio:
- * qui il self-heal trova lo schema già aggiornato e non fa niente.
+ * lock breve su `use_case_referent_checks`). In produzione la applica questo self-heal, al primo avvio
+ * dopo il deploy, come la 0026 (RUNBOOK §10.10); il file a mano resta la strada di riserva.
  */
 export async function runUseCaseReferentBenefitsDdl(statements: readonly string[] = USE_CASE_REFERENT_BENEFITS_DDL): Promise<void> {
   const client = db.$client;

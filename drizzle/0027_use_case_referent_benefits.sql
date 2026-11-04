@@ -14,10 +14,11 @@
 --     stesso nome, NOT VALID poi VALIDATE): la condizione nuova è quella di prima in OR, quindi ogni riga
 --     di prima resta valida, e il codice del rilascio 5 non scrive mai benefits.
 -- Nessun dato scritto, nessuna colonna cambiata, nessuna tabella tolta.
--- Scritta a mano, idempotente. Si applica con:
+-- Scritta a mano, idempotente. In produzione la applica il self-heal dell'app al primo avvio dopo il deploy
+-- (RUNBOOK §10.10): gli stessi statement, nello stesso ordine, sono in
+-- src/lib/db/use-case-hub-referent-benefits-ddl.ts (ensureDbSchema, dopo la 0026). Solo come strada di
+-- riserva, a mano:
 --   psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0027_use_case_referent_benefits.sql
--- Gli stessi statement, nello stesso ordine, sono in src/lib/db/use-case-hub-referent-benefits-ddl.ts per
--- il self-heal (ensureDbSchema, dopo la 0026).
 
 SELECT set_config('lock_timeout', '3s', true);
 SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-referent-benefits-ddl'));

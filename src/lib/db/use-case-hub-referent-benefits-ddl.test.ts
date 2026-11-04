@@ -243,6 +243,19 @@ test("la pulizia: gli stessi tre statement del RUNBOOK §10.10 punto 6, caratter
   assert.match(section, /psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle\/0027_use_case_referent_benefits\.sql/);
 });
 
+test("RUNBOOK §10.10: la 0027 la applica il self-heal al primo avvio, il file a mano è la riserva, il doctor dopo il deploy, il 05/11 alle 09:45", () => {
+  const section = runbook.slice(runbook.indexOf("### 10.10"), runbook.indexOf("### 10.11"));
+  assert.match(section, /\*\*Migrazione 0027 \(la applica l'app, al primo avvio dopo il deploy\)\*\*/);
+  assert.doesNotMatch(section, /a mano, prima del deploy/);
+  assert.match(section, /La strada di riserva, solo allora, è il file a mano: `psql/);
+  assert.match(section, /Subito dopo il deploy: .*`migrazione0027: true`/);
+  assert.match(section, /il 05\/11\/2026 alle 09:45/);
+  assert.match(section, /con `main` fermo per circa 24 ore dopo/);
+  assert.doesNotMatch(section, /la sera/);
+  assert.match(migration, /In produzione la applica il self-heal dell'app al primo avvio dopo il deploy/);
+  assert.match(ensureSchema, /In produzione la applica questo self-heal, al primo avvio\s+\* dopo il deploy, come la 0026 \(RUNBOOK §10\.10\)/);
+});
+
 test("schema.ts: le colonne Drizzle sono le colonne del DDL, nello stesso ordine", () => {
   assert.equal(getTableName(schema.useCaseReferentCheckBenefits), "use_case_referent_check_benefits");
   const columns = Object.values(getTableColumns(schema.useCaseReferentCheckBenefits)).map((column) => column.name);
