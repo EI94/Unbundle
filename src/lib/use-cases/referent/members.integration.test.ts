@@ -508,8 +508,8 @@ test("un contributore scelto dall'elenco: referente collegato, email con «Hai g
   assert.deepEqual([row?.display_name, row?.user_id], [NAME.contrib, ids.contrib], "il referente nasce collegato al suo account");
   assert.equal(sent.mail.to, emails.contrib);
   // (Rilascio 5, §8.4) Una richiesta di sole domande: «alcune domande su …».
-  assert.equal(sent.mail.subject, `TopJet iscritti: alcune domande su «${(await q(`SELECT code FROM use_cases WHERE id = $1::uuid`, [cards.contrib]))[0].code} · Scheda contrib»`);
-  assert.ok(sent.mail.text.includes(`${NAME.builder} ti chiede alcune informazioni sullo use case «`));
+  assert.equal(sent.mail.subject, `TopJet iscritti: alcune domande sul caso d'uso «${(await q(`SELECT code FROM use_cases WHERE id = $1::uuid`, [cards.contrib]))[0].code} · Scheda contrib»`);
+  assert.ok(sent.mail.text.includes(`${NAME.builder} ti chiede alcune informazioni sul caso d'uso «`));
   assert.ok(sent.mail.text.includes(ACCOUNT_LINE));
   assert.ok(!sent.mail.text.includes(TEAM_LINE));
   assert.ok(sent.mail.text.includes(`/rispondi/${sent.token}`), "il link personale c'è sempre");
@@ -615,7 +615,7 @@ test("chi si iscrive dopo la richiesta: il promemoria ha la riga, riletta all'in
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const reminders = mailer.outbox.filter((m) => m.to === TARDI);
   assert.equal(reminders.length, 1, JSON.stringify(counts));
-  assert.match(reminders[0].subject, /^Promemoria: /);
+  assert.match(reminders[0].subject, /^[^:]+: promemoria /);
   assert.ok(reminders[0].text.includes(ACCOUNT_LINE));
   noDashboard(reminders[0], "promemoria");
   // (Rilascio 4) È ormai un referente (la sua email verificata è quella del contatto): non ha una seconda voce fra le persone.

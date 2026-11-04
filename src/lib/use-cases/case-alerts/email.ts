@@ -7,7 +7,8 @@
  * l'autorizzazione ai sub-responsabili (l'email porta codice e titolo dello use case del cliente, e
  * Resend è uno dei sub-responsabili).
  *
- * «Pronto da avviare» nomina lo use case (codice, titolo, trimestre) e il cliente; il link apre la
+ * (Rilascio 5.1) Fuori dalla dashboard «caso d'uso», mai «use case»; l'oggetto comincia con il nome
+ * del cliente. «Pronto da avviare» nomina il caso d'uso (codice, titolo, trimestre) e il cliente; il link apre la
  * scheda a `?capitolo=realizzazione`, che sulla scheda ancora pronta arriva al riquadro «Prossimo
  * passo» con «Avvia la realizzazione» (`arrivalTarget`). «Autorizza i fornitori» non porta nessun
  * dato degli use case: solo il nome del cliente e il link a Impostazioni › Sub-responsabili, e
@@ -159,18 +160,18 @@ export function renderReadyAlert(i: ReadyAlertInput): RenderedEmail {
     const e = i.entries[0];
     const uc = labelOfUseCase(e.useCase);
     blocks.push(
-      { p: `lo use case «${uc}» di ${company} è pronto da avviare: è approvato per ${quarterText(e.quarter)} e non manca niente dal cliente.` },
-      { link: { href: e.link, label: "Apri lo use case" } },
+      { p: `il caso d'uso «${uc}» di ${company} è pronto da avviare: è approvato per ${quarterText(e.quarter)} e non manca niente dal cliente.` },
+      { link: { href: e.link, label: "Apri il caso d'uso" } },
       { small: READY_FOOTER },
     );
-    return render(oneLine(`Pronto da avviare: ${uc}`, 200), blocks);
+    return render(oneLine(`${company}: il caso d'uso «${uc}» è pronto da avviare`, 200), blocks);
   }
-  blocks.push({ p: `ci sono ${i.entries.length} use case di ${company} pronti da avviare: sono approvati e non manca niente dal cliente.` });
+  blocks.push({ p: `ci sono ${i.entries.length} casi d'uso di ${company} pronti da avviare: sono approvati e non manca niente dal cliente.` });
   for (const e of i.entries) {
-    blocks.push({ p: `«${labelOfUseCase(e.useCase)}» · ${quarterText(e.quarter)}` }, { link: { href: e.link, label: "Apri lo use case" } });
+    blocks.push({ p: `«${labelOfUseCase(e.useCase)}» · ${quarterText(e.quarter)}` }, { link: { href: e.link, label: "Apri il caso d'uso" } });
   }
   blocks.push({ small: READY_FOOTER });
-  return render(oneLine(`${i.entries.length} use case di ${company} pronti da avviare`, 200), blocks);
+  return render(oneLine(`${company}: ${i.entries.length} casi d'uso pronti da avviare`, 200), blocks);
 }
 
 /** «Autorizza i fornitori», parola per parola: il nome del cliente e il link, nessun dato degli use case. */
@@ -179,7 +180,7 @@ export function renderSuppliersAlert(i: { company: string; link: string }): Rend
   return render(oneLine(`${company}: serve il tuo ok sui fornitori di Lateral Space`, 200), [
     { p: "Buongiorno," },
     {
-      p: `per raccogliere le informazioni sugli use case di ${company}, Lateral Space usa alcuni fornitori, per esempio quello delle email. Prima serve l'ok di una persona di ${company} con il tuo ruolo.`,
+      p: `per raccogliere le informazioni sui casi d'uso di ${company}, Lateral Space usa alcuni fornitori, per esempio quello delle email. Prima serve l'ok di una persona di ${company} con il tuo ruolo.`,
     },
     { link: { href: i.link, label: "Apri Impostazioni › Sub-responsabili" } },
     { small: `Ricevi questa email perché puoi dare questa autorizzazione per ${company}. Quando qualcuno l'avrà data, non ne riceverai altre.` },

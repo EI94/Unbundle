@@ -184,14 +184,16 @@ test("con l'ok: parte, dal mittente delle notifiche con il reply-to; senza gli u
   const lead = byTo.get(PEOPLE.lsLead.email);
   const analyst = byTo.get(PEOPLE.lsAnalyst.email);
   assert.ok(lead && analyst);
-  assert.equal(lead.mail.subject, "2 use case di TopJet pronti da avviare");
-  assert.match(analyst.mail.subject, /^Pronto da avviare: CO-\d+ · Ordini clienti$/);
+  assert.equal(lead.mail.subject, "TopJet: 2 casi d'uso pronti da avviare");
+  assert.match(analyst.mail.subject, /^TopJet: il caso d'uso «CO-\d+ · Ordini clienti» è pronto da avviare$/);
   for (const m of [lead, analyst]) {
     assert.equal(m.mail.from, SEND_ENV.UC_EMAIL_FROM);
     assert.equal(m.mail.replyTo, "persona@example.test");
     assert.match(m.key, /^ca:[0-9a-f-]{36}:a1$/);
     assert.ok(m.mail.text.includes(`/dashboard/${ids.ws}/use-cases/`) && m.mail.text.includes("?capitolo=realizzazione"));
-    assert.doesNotMatch(m.mail.text, /caso d'uso/i);
+    // (Rilascio 5.1) Fuori dalla dashboard «caso d'uso», mai «use case» (gli indirizzi a parte).
+    assert.doesNotMatch(m.mail.text.replace(/https?:\/\/\S+/g, ""), /\buse[\s-]*cases?\b/i);
+    assert.match(m.mail.text, /cas[oi] d'uso/);
   }
   assert.ok(!byTo.has(PEOPLE.client.email), "mai al cliente");
   assert.equal((await queue("lsLead"))[0].status, "inviata");

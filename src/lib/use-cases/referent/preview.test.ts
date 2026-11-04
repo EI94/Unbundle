@@ -39,11 +39,12 @@ test("l'anteprima: oggetto e blocchi uguali all'email vera con il link finto e l
     assert.deepEqual(preview, real, `${questions} domande, messaggio ${message ?? "no"}`);
   }
   const one = referentRequestPreview({ company: "Alfa Jet (prova)", useCase: UC, requesterName: "Aldo Prova", questions: 1, message: null, today: TODAY });
-  assert.equal(one.subject, "Alfa Jet (prova): alcune domande su «AJ-0002 · Lettura delle fatture estere»");
+  assert.equal(one.subject, "Alfa Jet (prova): alcune domande sul caso d'uso «AJ-0002 · Lettura delle fatture estere»");
   // (Rilascio 5) La richiesta al referente: la stessa email dell'invio, con la conferma e la stima.
   const referent = referentRequestPreview({ kind: "referente", company: "Alfa Jet (prova)", useCase: UC, requesterName: "Aldo Prova", questions: 5, message: null, today: TODAY });
   assert.deepEqual(referent, referentRequestParts({ ...base, kind: "referente", questions: 5, message: null, link: PREVIEW_LINK }));
-  assert.equal(referent.subject, "Alfa Jet (prova): sei il referente per «AJ-0002 · Lettura delle fatture estere»");
+  // (Rilascio 5.1) L'anteprima nella dashboard mostra l'email com'è: «caso d'uso», come la legge il referente.
+  assert.equal(referent.subject, "Alfa Jet (prova): sei il referente per il caso d'uso «AJ-0002 · Lettura delle fatture estere»");
   assert.ok(one.blocks.some((b) => "small" in b && b.small === "Il link scade il 2 dicembre 2026."), "la scadenza: oggi più 30 giorni");
   assert.ok(one.blocks.some((b) => "p" in b && b.p === "È una domanda sola."));
   assert.ok(one.blocks.some((b) => "small" in b && b.small.endsWith("arriva a Aldo Prova.")), "la risposta all'email arriva a chi chiede");
@@ -63,7 +64,7 @@ test("a schermo il link è solo «Apri le domande»: l'indirizzo finto non si mo
   const blocks = previewBlocks(preview);
   assert.deepEqual(
     blocks.map((b) => b.kind),
-    ["p", "p", "p", "quote", "p", "link", "small", "small"],
+    ["p", "p", "p", "p", "quote", "p", "link", "small", "small"],
   );
   assert.deepEqual(blocks.find((b) => b.kind === "link"), { kind: "link", label: "Apri le domande" });
   const shown = JSON.stringify(blocks);

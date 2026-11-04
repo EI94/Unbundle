@@ -288,9 +288,9 @@ test("(rilascio 5) dopo l'invio: «Hai risposto il …», la conferma e la stima
   assert.equal(finalCardText("completed", done, "2026-11-04"), "Hai risposto il 03/11. Grazie!");
   assert.equal(finalCardText("completed"), "Hai risposto a tutte le domande. Grazie!");
   // Una richiesta inviata con la stima del tempo del rilascio 5: si legge come allora.
-  assert.deepEqual(sentCheckLines(done), { useCase: "Lo use case: sì, è così.", note: null, time: "Il tempo: sì.", numbers: null, benefits: [] });
+  assert.deepEqual(sentCheckLines(done), { useCase: "Il caso d'uso: sì, è così.", note: null, time: "Il tempo: sì.", numbers: null, benefits: [] });
   assert.deepEqual(sentCheckLines(view({ check: check({ confirm: "correggi", note: "Anche via PEC", estimate: "meno", timesPerMonth: 200, minutesEach: 1.5 }) })), {
-    useCase: "Lo use case: da correggere.",
+    useCase: "Il caso d'uso: da correggere.",
     note: "Anche via PEC",
     time: "Il tempo: è di meno.",
     numbers: "200 volte al mese, 1,5 minuti ogni volta.",
@@ -309,7 +309,7 @@ test("(rilascio 5) dopo l'invio: «Hai risposto il …», la conferma e la stima
     },
   });
   assert.deepEqual(sentCheckLines(perBenefit), {
-    useCase: "Lo use case: sì, è così.",
+    useCase: "Il caso d'uso: sì, è così.",
     note: null,
     time: null,
     numbers: null,

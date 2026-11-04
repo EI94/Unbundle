@@ -115,43 +115,44 @@ test("«Autorizza i fornitori»: configurazione, funzione, interruttore del clie
   assert.equal(plan(suppliers({ readyNoticesOn: false }), supplier).action, "send");
 });
 
-test("«Autorizza i fornitori», parola per parola: il link a Impostazioni, nessun dato degli use case", () => {
+test("«Autorizza i fornitori», parola per parola: il link a Impostazioni, nessun dato dei casi d'uso", () => {
   const r = renderSuppliersAlert({ company: "TopJet", link: `${ORIGIN}/dashboard/${WS}/settings#sub-responsabili` });
   assert.equal(r.subject, "TopJet: serve il tuo ok sui fornitori di Lateral Space");
   assert.ok(
     r.text.startsWith(
       [
         "Buongiorno,",
-        "per raccogliere le informazioni sugli use case di TopJet, Lateral Space usa alcuni fornitori, per esempio quello delle email. Prima serve l'ok di una persona di TopJet con il tuo ruolo.",
+        "per raccogliere le informazioni sui casi d'uso di TopJet, Lateral Space usa alcuni fornitori, per esempio quello delle email. Prima serve l'ok di una persona di TopJet con il tuo ruolo.",
         `Apri Impostazioni › Sub-responsabili: ${ORIGIN}/dashboard/${WS}/settings#sub-responsabili`,
         "Ricevi questa email perché puoi dare questa autorizzazione per TopJet. Quando qualcuno l'avrà data, non ne riceverai altre.",
       ].join("\n\n"),
     ),
     r.text,
   );
-  assert.doesNotMatch(r.text + r.html + r.subject, /caso d'uso|casi d'uso|TJ-\d/i);
+  assert.doesNotMatch(r.text + r.html + r.subject, /TJ-\d/i);
+  assert.doesNotMatch((r.text + r.html + r.subject).replace(/https?:\/\/[^\s"<]+/g, ""), /\buse[\s-]*cases?\b/i, "(rilascio 5.1) fuori dalla dashboard mai «use case»");
   const p = plan(suppliers(), supplier);
   assert.ok(p.action === "send" && p.rendered.text.includes(`${ORIGIN}/dashboard/${WS}/settings#sub-responsabili`));
 });
 
-test("testo con uno use case, parola per parola, con il link a «Realizzazione»", () => {
+test("testo con un caso d'uso, parola per parola, con il link a «Realizzazione»", () => {
   const r = renderReadyAlert({ company: "TopJet", entries: [{ useCase: { code: "TJ-0004", title: "Fatture fornitori" }, quarter: "2027-Q1", link: `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=realizzazione` }] });
-  assert.equal(r.subject, "Pronto da avviare: TJ-0004 · Fatture fornitori");
+  assert.equal(r.subject, "TopJet: il caso d'uso «TJ-0004 · Fatture fornitori» è pronto da avviare");
   assert.ok(
     r.text.startsWith(
       [
         "Buongiorno,",
-        "lo use case «TJ-0004 · Fatture fornitori» di TopJet è pronto da avviare: è approvato per T1 2027 e non manca niente dal cliente.",
-        `Apri lo use case: ${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=realizzazione`,
+        "il caso d'uso «TJ-0004 · Fatture fornitori» di TopJet è pronto da avviare: è approvato per T1 2027 e non manca niente dal cliente.",
+        `Apri il caso d'uso: ${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=realizzazione`,
         "Ricevi questa email perché sei di Lateral Space e puoi avviare la realizzazione.",
       ].join("\n\n"),
     ),
     r.text,
   );
-  assert.doesNotMatch(r.text + r.html + r.subject, /caso d'uso|casi d'uso/i);
+  assert.doesNotMatch((r.text + r.html + r.subject).replace(/https?:\/\/[^\s"<]+/g, ""), /\buse[\s-]*cases?\b/i, "(rilascio 5.1) fuori dalla dashboard mai «use case»");
 });
 
-test("testo con più use case: uno per riga, ognuno con il suo link", () => {
+test("testo con più casi d'uso: uno per riga, ognuno con il suo link", () => {
   const r = renderReadyAlert({
     company: "TopJet",
     entries: [
@@ -160,11 +161,12 @@ test("testo con più use case: uno per riga, ognuno con il suo link", () => {
       { useCase: { code: null, title: "Senza codice" }, quarter: "2026-Q4", link: `${ORIGIN}/dashboard/${WS}/use-cases/${UC3}?capitolo=realizzazione` },
     ],
   });
-  assert.equal(r.subject, "3 use case di TopJet pronti da avviare");
-  for (const line of ["ci sono 3 use case di TopJet pronti da avviare: sono approvati e non manca niente dal cliente.", "«TJ-0004 · Fatture fornitori» · T1 2027", "«TJ-0009 · Ordini» · T4 2026", "«Senza codice» · T4 2026"]) {
+  assert.equal(r.subject, "TopJet: 3 casi d'uso pronti da avviare");
+  for (const line of ["ci sono 3 casi d'uso di TopJet pronti da avviare: sono approvati e non manca niente dal cliente.", "«TJ-0004 · Fatture fornitori» · T1 2027", "«TJ-0009 · Ordini» · T4 2026", "«Senza codice» · T4 2026"]) {
     assert.ok(r.text.includes(line), line);
   }
-  assert.equal(r.text.match(/Apri lo use case: /g)?.length, 3);
+  assert.equal(r.text.match(/Apri il caso d'uso: /g)?.length, 3);
+  assert.doesNotMatch((r.text + r.html + r.subject).replace(/https?:\/\/[^\s"<]+/g, ""), /\buse[\s-]*cases?\b/i, "(rilascio 5.1) fuori dalla dashboard mai «use case»");
   assert.throws(() => renderReadyAlert({ company: "TopJet", entries: [] }));
 });
 

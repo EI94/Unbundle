@@ -2,8 +2,10 @@
  * «Chiedi al referente»: tutti i testi italiani, parola per parola dalla SPEC (§4, §5, §P2.10).
  * La pagina pubblica e il capitolo «Cosa serve» li importano da qui e non scrivono testi propri.
  *
- * Regole dei testi (copy-guard e `copy.test.ts`): «use case», mai «caso d'uso»; frasi corte e
- * attive; niente «token», «MCP», «workflow»; gli stati delle informazioni si chiamano come nel
+ * Regole dei testi (copy-guard e `copy.test.ts`): nella dashboard «use case», mai «caso d'uso»;
+ * (rilascio 5.1, decisione del titolare del 04/11/2026) sulla pagina pubblica `/rispondi` e nelle
+ * email «caso d'uso», mai «use case» (REFERENT_PUBLIC_TEXT, REFERENT_CHECK_TEXT, l'informativa, i
+ * messaggi della pagina pubblica); frasi corte e attive; niente «token», «MCP», «workflow»; gli stati delle informazioni si chiamano come nel
  * modulo di «Cosa serve» («A posto», «Risposta parziale», «Manca il dato»), mai con i nomi interni.
  * I segnaposto `{Nome}`, `{Azienda}`, `{data}`… li riempiono le funzioni di questo modulo.
  *
@@ -519,8 +521,8 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   thanksDone: "Grazie, è tutto.",
   thanksSeenNow: "{Nome} lo vede subito.",
   answeredOn: "Hai risposto il {data}. Grazie!",
-  sentUseCaseYes: "Lo use case: sì, è così.",
-  sentUseCaseFix: "Lo use case: da correggere.",
+  sentUseCaseYes: "Il caso d'uso: sì, è così.",
+  sentUseCaseFix: "Il caso d'uso: da correggere.",
   sentTimeYes: "Il tempo: sì.",
   sentTimeLess: "Il tempo: è di meno.",
   sentTimeMore: "Il tempo: è di più.",
@@ -541,10 +543,10 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
 export const REFERENT_CHECK_TEXT = Object.freeze({
   requestedBy: "{Nome} ti ha indicato come referente.",
   // (Rilascio 5.1) Il passo 2 è l'impatto: ogni beneficio, non solo il tempo.
-  steps: Object.freeze({ label: "Passi", useCase: "Lo use case", time: "L'impatto", questions: "Le domande", done: " (fatto)", current: " (adesso)" }),
+  steps: Object.freeze({ label: "Passi", useCase: "Il caso d'uso", time: "L'impatto", questions: "Le domande", done: " (fatto)", current: " (adesso)" }),
   confirm: Object.freeze({
     title: "È così?",
-    group: "Lo use case è descritto bene?",
+    group: "Il caso d'uso è descritto bene?",
     yes: "Sì, è così",
     fix: "Correggi",
     noteLabel: "Cosa cambieresti?",
@@ -580,16 +582,16 @@ export const REFERENT_PRIVACY_NOTICE = Object.freeze({
   title: "Prima di iniziare",
   lead: "Ti chiediamo del tuo lavoro, non di te.",
   summary: Object.freeze([
-    "Le risposte e i file li vedono solo Lateral Space e chi valuta gli use case di {Azienda}.",
+    "Le risposte e i file li vedono solo Lateral Space e chi valuta i casi d'uso di {Azienda}.",
     "Il link è solo tuo e vale fino al {data}.",
   ]),
   fullTextLabel: "Leggi l'informativa completa",
   paragraphs: Object.freeze([
-    "Lateral Space raccoglie queste informazioni per conto di {Azienda}, per valutare e preparare lo use case. Le usiamo solo per questo.",
-    "Ti chiediamo informazioni sul lavoro, non su di te. Se scrivi il nome di un collega o alleghi un file con nomi, email o telefoni, li usiamo solo per questo use case. Non servono dati sanitari, codici fiscali, date di nascita o preferenze su genere, età, origine o religione: se ne troviamo, ti chiediamo di toglierli.",
+    "Lateral Space raccoglie queste informazioni per conto di {Azienda}, per valutare e preparare il caso d'uso. Le usiamo solo per questo.",
+    "Ti chiediamo informazioni sul lavoro, non su di te. Se scrivi il nome di un collega o alleghi un file con nomi, email o telefoni, li usiamo solo per questo caso d'uso. Non servono dati sanitari, codici fiscali, date di nascita o preferenze su genere, età, origine o religione: se ne troviamo, ti chiediamo di toglierli.",
     "Ogni file passa da un controllo automatico prima di essere usato.",
     "Salviamo le tue risposte, i file che alleghi, il tuo nome, l'email con cui ti abbiamo scritto e quando hai premuto «Iniziamo». Dell'indirizzo IP teniamo solo un'impronta cifrata, mai il numero, per due giorni.",
-    "{Richiedente} e le altre persone di {Azienda} che valutano gli use case vedono le tue risposte e quando sono arrivate. Non misuriamo i tuoi tempi e non facciamo classifiche tra persone.",
+    "{Richiedente} e le altre persone di {Azienda} che valutano i casi d'uso vedono le tue risposte e quando sono arrivate. Non misuriamo i tuoi tempi e non facciamo classifiche tra persone.",
     "Teniamo risposte e file per 12 mesi dopo la chiusura della richiesta, poi li cancelliamo.",
     "Puoi chiedere di vedere, correggere o cancellare i tuoi dati scrivendo a {contatto}. Puoi anche fare reclamo al Garante per la protezione dei dati personali.",
     "Il link è personale e scade dopo 30 giorni. Non inoltrarlo.",
@@ -708,7 +710,8 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
     "Questo PDF ha poco testo, forse è una scansione: lo deve controllare un'altra persona del team, e qui non c'è. Allega un PDF con testo, un DOCX o un file di testo.",
   quarantena_scaduta: "Il controllo del file non è finito: caricalo di nuovo.",
   // (Rilascio 5) La conferma dello use case e la stima del tempo.
-  conferma_mancante: "Prima conferma lo use case, o scrivi cosa cambieresti.",
+  // Pagina pubblica: «caso d'uso» (rilascio 5.1).
+  conferma_mancante: "Prima conferma il caso d'uso, o scrivi cosa cambieresti.",
   stima_mancante: "Prima rispondi sull'impatto: manca ancora una risposta.",
   stima_cambiata: "Il team ha appena cambiato la stima: controlla di nuovo.",
   numero_non_valido: "Scrivi un numero, per esempio 20 o 1,5.",

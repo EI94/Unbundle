@@ -343,7 +343,9 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
   for (const passo of [undefined, "2", "3", "x"]) {
     const step1 = await html(token!, passo);
     assert.match(step1, /<ol aria-label="Passi"/);
-    for (const text of ["Lo use case", "L'impatto", "Le domande", "È così?", "Sì, è così", "Correggi"]) assert.ok(step1.includes(text), `${passo}: ${text}`);
+    for (const text of ["Il caso d'uso", "L'impatto", "Le domande", "È così?", "Sì, è così", "Correggi"]) assert.ok(step1.includes(text), `${passo}: ${text}`);
+    const visible = step1.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<[^>]+>/g, " ");
+    assert.ok(!/\buse[\s-]*cases?\b/i.test(visible), `${passo}: (rilascio 5.1) mai «use case» a schermo`);
     assert.equal((step1.match(/aria-current="step"/g) ?? []).length, 1);
     assert.deepEqual(filledButtons(step1), ["Sì, è così"], `${passo}: un solo pulsante pieno`);
     assert.ok(!step1.includes(titles[5]), "le domande vengono dopo");

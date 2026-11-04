@@ -465,7 +465,7 @@ test("le due strade si incontrano: una risposta dalla scheda ferma il promemoria
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const toMario = mailer.outbox.filter((m) => m.to === MARIO);
   assert.equal(toMario.length, 1, JSON.stringify(counts));
-  assert.match(toMario[0].subject, /^Promemoria: una domanda aperta su «/);
+  assert.match(toMario[0].subject, /^[^:]+: promemoria sul caso d'uso «/);
   // Anche la seconda dalla scheda: niente resta, la richiesta si chiude subito.
   ok(await referents.addReviewerAnswer(as("builder"), cards.mario, m1, { text: "Usano il gestionale e Excel." }), "seconda risposta del team");
   [req] = await q(`SELECT status, completed_at FROM use_case_referent_requests WHERE id = $1::uuid`, [flow.mario.requestId]);
@@ -528,7 +528,7 @@ test("D-B21: dopo l'ultimo promemoria «Nessuna risposta» non arriva al revisor
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const last = mailer.outbox.filter((m) => m.to === emails.federico);
   assert.equal(last.length, 1, "l'ultimo promemoria parte comunque");
-  assert.match(last[0].subject, /^Ultimo promemoria/);
+  assert.match(last[0].subject, /^[^:]+: ultimo promemoria/);
   const [req] = await q(`SELECT reminder_count FROM use_case_referent_requests WHERE id = $1::uuid`, [sent.requestId]);
   assert.equal(Number(req.reminder_count), 2);
   // La campanella: Giulia (chi ha chiesto) e Claudio sì; Federico, che non ha risposto, no.

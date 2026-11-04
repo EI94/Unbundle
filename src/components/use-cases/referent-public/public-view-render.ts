@@ -207,7 +207,7 @@ export function lastSentOn(view: ReferentAskView): string | null {
   return dates.sort().at(-1) ?? null;
 }
 
-/** (Rilascio 5) La conferma e la stima inviate, in sola lettura: «Lo use case: …», «Il tempo: …», i numeri. */
+/** (Rilascio 5) La conferma e la stima inviate, in sola lettura: «Il caso d'uso: …», «Il tempo: …», i numeri. */
 export function sentCheckLines(view: ReferentAskView): {
   useCase: string;
   note: string | null;

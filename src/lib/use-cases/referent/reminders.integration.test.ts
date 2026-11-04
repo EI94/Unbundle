@@ -234,7 +234,7 @@ test("primo promemoria al terzo giorno lavorativo; mai due email lo stesso giorn
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const mails = promemoria(mailer.outbox);
   assert.equal(mails.length, 1, JSON.stringify(counts));
-  assert.match(mails[0].subject, /^Promemoria: 2 domande aperte su «/);
+  assert.match(mails[0].subject, /^[^:]+: promemoria sul caso d'uso «/);
   assert.match(mails[0].text, /\/rispondi\/ucq_/);
   const [r] = await q(`SELECT reminder_count, last_reminder_at FROM use_case_referent_requests WHERE id = $1::uuid`, [requestId]);
   assert.equal(Number(r.reminder_count), 1);
@@ -254,7 +254,7 @@ test("ultimo promemoria al settimo giorno: «Senza risposta» per i revisori e u
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const mails = promemoria(mailer.outbox);
   assert.equal(mails.length, 1);
-  assert.match(mails[0].subject, /^Ultimo promemoria: /);
+  assert.match(mails[0].subject, /^[^:]+: ultimo promemoria /);
   const [r] = await q(`SELECT reminder_count FROM use_case_referent_requests WHERE id = $1::uuid`, [state.requestId]);
   assert.equal(Number(r.reminder_count), 2);
   const notes = await q(`SELECT recipient_user_id::text AS who, follow_up FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'senza_risposta'`, [ids.useCase]);
@@ -285,7 +285,7 @@ test("tre richieste alla stessa persona dovute lo stesso giorno: un'unica email 
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const mails = promemoria(mailer.outbox, OTHER_REFERENT);
   assert.equal(mails.length, 1, JSON.stringify(counts));
-  assert.match(mails[0].subject, /^Promemoria: domande aperte su 3 use case di TopJet prova$/);
+  assert.match(mails[0].subject, /^TopJet prova: promemoria su 3 casi d'uso$/);
   assert.equal((mails[0].text.match(/\/rispondi\/ucq_/g) ?? []).length >= 3, true);
   const tokens = await q(`SELECT DISTINCT request_id FROM use_case_referent_tokens WHERE request_id = ANY($1::uuid[]) AND issued_for = 'promemoria'`, [requests]);
   assert.equal(tokens.length, 3);

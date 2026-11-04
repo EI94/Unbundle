@@ -5,7 +5,8 @@
  * lunedì a venerdì dalle 9 alle 18, feste escluse; con il trasporto Resend dei dossier e gli stessi
  * controlli (email configurata, autorizzazione ai sub-responsabili, funzione accesa).
  *
- * Il testo nomina lo use case (codice e titolo) e i conteggi: mai il testo delle risposte, i nomi
+ * Il testo nomina il caso d'uso (codice e titolo) e i conteggi (rilascio 5.1: fuori dalla dashboard
+ * «caso d'uso», mai «use case»; l'oggetto comincia con il nome dell'azienda): mai il testo delle risposte, i nomi
  * dei file, il nome o l'email del referente, i titoli o i dettagli delle esigenze, punteggi o valori.
  * Il link porta alla scheda, a «Cosa serve»; una voce con il solo seguito («Nessuna risposta») a
  * «Richieste inviate», aperta, dove si chiede di nuovo.
@@ -193,7 +194,9 @@ export function planRequesterAlert(e: ClaimedAlert, f: AlertFacts, o: { env: Dis
 
 function joinFacts(parts: readonly string[]): string {
   if (parts.length <= 1) return parts[0] ?? "";
-  return `${parts.slice(0, -1).join(", ")} e ${parts[parts.length - 1]}`;
+  const last = parts[parts.length - 1];
+  // (Rilascio 5.1) «… ed è partito l'ultimo promemoria», mai «e è».
+  return `${parts.slice(0, -1).join(", ")} ${/^[eè]/i.test(last) ? "ed" : "e"} ${last}`;
 }
 
 function factsOf(e: AlertEntry): string[] {
@@ -207,13 +210,14 @@ function factsOf(e: AlertEntry): string[] {
 }
 
 function subjectOf(i: RequesterAlertInput): string {
-  if (i.entries.length !== 1) return `Novità su ${i.entries.length} use case di ${oneLine(companyLabel(i.company), 80)}`;
+  const company = oneLine(companyLabel(i.company), 80);
+  if (i.entries.length !== 1) return `${company}: novità su ${i.entries.length} casi d'uso`;
   const e = i.entries[0];
   const uc = labelOfUseCase(e.useCase);
-  if (e.answers > 0) return `Risposte arrivate su «${uc}»`;
-  if (e.documents > 0) return `Nuovi documenti su «${uc}»`;
-  if (e.unknowns > 0) return `Il referente non sa rispondere su «${uc}»`;
-  return `Nessuna risposta su «${uc}»`;
+  if (e.answers > 0) return `${company}: risposte arrivate sul caso d'uso «${uc}»`;
+  if (e.documents > 0) return `${company}: nuovi documenti sul caso d'uso «${uc}»`;
+  if (e.unknowns > 0) return `${company}: il referente non sa rispondere sul caso d'uso «${uc}»`;
+  return `${company}: nessuna risposta sul caso d'uso «${uc}»`;
 }
 
 /** L'email a chi ha chiesto, parola per parola. */
@@ -223,8 +227,8 @@ export function renderRequesterAlert(i: RequesterAlertInput): RenderedEmail {
   const blocks: Block[] = [{ p: "Buongiorno," }];
   blocks.push(
     i.entries.length === 1
-      ? { p: `ci sono novità sullo use case «${labelOfUseCase(i.entries[0].useCase)}» di ${company}.` }
-      : { p: `ci sono novità su ${i.entries.length} use case di ${company}.` },
+      ? { p: `ci sono novità sul caso d'uso «${labelOfUseCase(i.entries[0].useCase)}» di ${company}.` }
+      : { p: `ci sono novità su ${i.entries.length} casi d'uso di ${company}.` },
   );
   for (const e of i.entries) {
     blocks.push({ p: `«${labelOfUseCase(e.useCase)}»: ${joinFacts(factsOf(e))}.` });

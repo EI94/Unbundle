@@ -39,7 +39,7 @@ export function stepsOf(view: ReferentAskView): CheckStep[] {
   return openQuestions(view) > 0 ? [1, 2, 3] : [1, 2];
 }
 
-/** «Lo use case» è fatto: «Sì, è così», oppure «Correggi» con una nota di almeno 2 caratteri. */
+/** «Il caso d'uso» (passo 1) è fatto: «Sì, è così», oppure «Correggi» con una nota di almeno 2 caratteri. */
 export function confirmDone(draft: ReferentCheckView["draft"]): boolean {
   if (draft.confirm === "si") return true;
   return draft.confirm === "correggi" && (draft.note ?? "").trim().length >= 2;
@@ -94,7 +94,7 @@ export function stepSearch(step: CheckStep): string {
   return `?passo=${step}`;
 }
 
-/** Il testo del passo per i lettori di schermo: «Lo use case (fatto)», «L'impatto (adesso)». */
+/** Il testo del passo per i lettori di schermo: «Il caso d'uso (fatto)», «L'impatto (adesso)». */
 export function stepLabel(step: CheckStep, state: "done" | "current" | "later"): { text: string; suffix: string } {
   const text = step === 1 ? T.steps.useCase : step === 2 ? T.steps.time : T.steps.questions;
   return { text, suffix: state === "done" ? T.steps.done : state === "current" ? T.steps.current : "" };

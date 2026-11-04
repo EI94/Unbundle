@@ -122,7 +122,7 @@ test("la barra: fatto, adesso, dopo; i nomi e il testo per i lettori di schermo"
     { step: 2, state: "later" },
     { step: 3, state: "later" },
   ]);
-  assert.deepEqual(stepLabel(1, "done"), { text: "Lo use case", suffix: " (fatto)" });
+  assert.deepEqual(stepLabel(1, "done"), { text: "Il caso d'uso", suffix: " (fatto)" });
   assert.deepEqual(stepLabel(2, "current"), { text: "L'impatto", suffix: " (adesso)" });
   assert.deepEqual(stepLabel(3, "later"), { text: "Le domande", suffix: "" });
 });

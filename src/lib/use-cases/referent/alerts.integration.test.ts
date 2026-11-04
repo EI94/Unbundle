@@ -225,7 +225,7 @@ test("risposte, poi documenti, poi il seguito sulla stessa richiesta lo stesso g
   const { s, mailer } = await sendAt(new Date(at.getTime() + 240_000));
   assert.equal(s.sent, 1, JSON.stringify(s));
   assert.equal(mailer.outbox[0].to, emails.builder);
-  assert.match(mailer.outbox[0].subject, /^Novità su 2 use case di TopJet prova$/);
+  assert.match(mailer.outbox[0].subject, /^TopJet prova: novità su 2 casi d'uso$/);
   assert.ok(!mailer.outbox[0].text.includes("Mario Rossi") && !mailer.outbox[0].text.includes(REFERENT_EMAIL));
   assert.match(mailer.outbox[0].text, /\?capitolo=cosa-serve/);
 });

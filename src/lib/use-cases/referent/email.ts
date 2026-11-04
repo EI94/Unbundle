@@ -1,6 +1,11 @@
 /**
  * Le email di «Chiedi al referente» (SPEC §7, parola per parola): richiesta, promemoria (uno o più
- * use case della stessa persona), conferma dopo l'invio delle risposte.
+ * casi d'uso della stessa persona), conferma dopo l'invio delle risposte.
+ *
+ * (Rilascio 5.1, decisione del titolare del 04/11/2026) Fuori dalla dashboard si dice «caso d'uso»,
+ * mai «use case»: ogni oggetto comincia con il nome dell'azienda e nomina il caso d'uso
+ * («TopJet: sei il referente per il caso d'uso «TJ-0004 · Fatture fornitori»»), e la richiesta dice in
+ * una riga che cos'è un caso d'uso (`whatIsACaseLine`).
  *
  * Regole: testo semplice più HTML minimo con il motore dei dossier (`email-render.ts`): nessuna
  * immagine, nessun tracciamento, il pulsante del link più l'indirizzo in chiaro, il piè di pagina
@@ -89,13 +94,21 @@ const company = (s: string) => oneLine(companyLabel(s), 80);
 const subjectOf = (s: string) => oneLine(s, 200);
 const expiry = (d: Date) => `Il link scade il ${formatDateIt(d)}.`;
 
+/** (Rilascio 5.1) Che cos'è un caso d'uso, in una riga, per chi lo legge per la prima volta. */
+export function whatIsACaseLine(companyName: string): string {
+  return `Un caso d'uso è un'attività di lavoro che ${company(companyName)} sta valutando di semplificare con l'intelligenza artificiale.`;
+}
+
+/** (Rilascio 5.1) L'oggetto di ogni email al referente: «{Azienda}: …». */
+const subjectFor = (companyName: string, what: string) => subjectOf(`${company(companyName)}: ${what}`);
+
 function replyLine(known: boolean, requesterName: string): string {
-  return known ? `Il link è personale: non inoltrarlo. Per un dubbio rispondi a questa email: arriva a ${name(requesterName)}.` : "Il link è personale: non inoltrarlo.";
+  return known ? `Il link è solo tuo: non inoltrarlo. Per un dubbio rispondi a questa email: arriva a ${name(requesterName)}.` : "Il link è solo tuo: non inoltrarlo.";
 }
 
 /** (Parte 3) La riga per un referente che è già revisore del workspace, e il suo link alla scheda. */
 export const TEAM_ACCESS_LINE = "Hai già accesso a Unbundle: puoi rispondere anche dalla scheda.";
-export const TEAM_ACCESS_LINE_MANY = "Hai già accesso a Unbundle: puoi rispondere anche dalle schede degli use case.";
+export const TEAM_ACCESS_LINE_MANY = "Hai già accesso a Unbundle: puoi rispondere anche dalle schede dei casi d'uso.";
 export const TEAM_ACCESS_LINK_LABEL = "Apri la scheda";
 
 /**
@@ -118,9 +131,9 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
   const link = checkReferentLink(e.link);
   const reply = { small: replyLine(input.replyToKnown, e.requesterName) };
   if (e.kind === "nuove") {
-    return render(subjectOf(`Nuove domande su «${uc}»`), [
+    return render(subjectFor(input.company, `nuove domande sul caso d'uso «${uc}»`), [
       { p: "Buongiorno," },
-      { p: `${name(e.requesterName)} ha aggiunto ${questionsWord(e.newQuestions)} sullo use case «${uc}»: le trovi insieme alle altre, con lo stesso link.` },
+      { p: `${name(e.requesterName)} ha aggiunto ${questionsWord(e.newQuestions)} sul caso d'uso «${uc}»: le trovi insieme alle altre, con lo stesso link.` },
       { link: { href: link, label: "Apri le domande" } },
       { small: expiry(e.expiresAt) },
       ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
@@ -128,30 +141,30 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
     ]);
   }
   const last = e.kind === "ultimo";
+  const subject = subjectFor(input.company, `${last ? "ultimo promemoria" : "promemoria"} sul caso d'uso «${uc}»`);
+  const closing = last
+    ? { p: "È l'ultimo promemoria che ti mandiamo. Se non hai le informazioni, scegli «Non ce l'ho»: anche questa è una risposta utile." }
+    : { p: "Quello che hai già scritto è salvato: riparti da dove eri rimasto." };
   if (e.checkPending) {
     // (Rilascio 5) La conferma del referente non è ancora arrivata: il promemoria parla di quella.
     const q = e.openQuestions;
     const answers = q <= 0 ? "" : q === 1 ? " e una risposta" : ` e le risposte a ${q} domande`;
-    return render(subjectOf(`${last ? "Ultimo promemoria" : "Promemoria"}: la tua conferma su «${uc}»`), [
+    return render(subject, [
       { p: "Buongiorno," },
-      { p: `ti ricordiamo che ${name(e.requesterName)} aspetta la tua conferma sullo use case «${uc}»${answers}.` },
-      last
-        ? { p: "È l'ultimo promemoria che ti mandiamo. Se non hai le informazioni, scegli «Non ce l'ho»: anche questa è una risposta utile." }
-        : { p: "Quello che hai già scritto è salvato: riparti da dove eri rimasto." },
+      { p: `ti ricordiamo che ${name(e.requesterName)} aspetta la tua conferma sul caso d'uso «${uc}»${answers}.` },
+      closing,
       { link: { href: link, label: "Riprendi" } },
       { small: expiry(e.expiresAt) },
       ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
       reply,
     ]);
   }
-  return render(subjectOf(`${last ? "Ultimo promemoria" : "Promemoria"}: ${openWord(e.openQuestions)} su «${uc}»`), [
+  return render(subject, [
     { p: "Buongiorno," },
     {
-      p: `ti ricordiamo che ${name(e.requesterName)} aspetta le tue risposte sullo use case «${uc}»: ${e.openQuestions === 1 ? "c'è ancora una domanda aperta" : `ci sono ancora ${e.openQuestions} domande aperte`}.`,
+      p: `ti ricordiamo che ${name(e.requesterName)} aspetta le tue risposte sul caso d'uso «${uc}»: ${e.openQuestions === 1 ? "c'è ancora una domanda aperta" : `ci sono ancora ${e.openQuestions} domande aperte`}.`,
     },
-    last
-      ? { p: "È l'ultimo promemoria che ti mandiamo. Se non hai le informazioni, scegli «Non ce l'ho»: anche questa è una risposta utile." }
-      : { p: "Quello che hai già scritto è salvato: riparti da dove eri rimasto." },
+    closing,
     { link: { href: link, label: "Riprendi le domande" } },
     { small: expiry(e.expiresAt) },
     ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
@@ -163,7 +176,7 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
   const n = input.entries.length;
   const blocks: Block[] = [
     { p: "Buongiorno," },
-    { p: `ti ricordiamo che ci sono ancora domande aperte su ${n} use case di ${company(input.company)}. Quello che hai già scritto è salvato.` },
+    { p: `ti ricordiamo che ci sono ancora domande aperte su ${n} casi d'uso di ${company(input.company)}. Quello che hai già scritto è salvato.` },
   ];
   if (input.entries.some((e) => e.cardLink)) blocks.push({ small: TEAM_ACCESS_LINE_MANY });
   else if (input.accountNotice === true) blocks.push({ small: ACCOUNT_NOTICE_LINE_MANY });
@@ -173,7 +186,7 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
     const what = e.checkPending ? `la conferma${e.openQuestions > 0 ? ` e ${openWord(e.openQuestions)}` : ""}` : openWord(e.openQuestions);
     blocks.push(
       { p: `«${uc}», chiede ${name(e.requesterName)}: ${what}${e.kind === "nuove" ? ", con domande nuove" : ""}.` },
-      { small: `${expiry(e.expiresAt)}${e.kind === "ultimo" ? " È l'ultimo promemoria per questo use case." : ""}` },
+      { small: `${expiry(e.expiresAt)}${e.kind === "ultimo" ? " È l'ultimo promemoria per questo caso d'uso." : ""}` },
       { link: { href: checkReferentLink(e.link), label: "Apri le domande" } },
     );
     if (e.cardLink) blocks.push({ link: { href: checkCardLink(e.cardLink), label: TEAM_ACCESS_LINK_LABEL } });
@@ -181,10 +194,10 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
   blocks.push({
     small:
       input.replyToKnown && input.replyName
-        ? `I link sono personali: non inoltrarli. Per un dubbio rispondi a questa email: arriva a ${name(input.replyName)}.`
-        : "I link sono personali: non inoltrarli.",
+        ? `I link sono solo tuoi: non inoltrarli. Per un dubbio rispondi a questa email: arriva a ${name(input.replyName)}.`
+        : "I link sono solo tuoi: non inoltrarli.",
   });
-  return render(subjectOf(`Promemoria: domande aperte su ${n} use case di ${company(input.company)}`), blocks);
+  return render(subjectFor(input.company, `promemoria su ${n} casi d'uso`), blocks);
 }
 
 /** L'email «richiesta» (§7) prima del rendering: l'oggetto e i blocchi, nell'ordine dell'email. */
@@ -201,15 +214,16 @@ export function referentRequestParts(input: Extract<ReferentEmailInput, { templa
   const uc = labelOfUseCase(input.useCase);
   const link = checkReferentLink(input.link);
   if (input.kind === "referente") {
-    // (Rilascio 5, §5.3) La richiesta al referente: confermare lo use case, stimare il tempo, le domande.
+    // (Rilascio 5, §5.3) La richiesta al referente: confermare il caso d'uso, l'impatto, le domande.
     const n = input.questions;
     const ask =
       n <= 0
-        ? "Ti chiediamo due cose: confermare che lo use case è descritto bene e dirci quanto tempo prende questo lavoro."
-        : `Ti chiediamo di confermare che lo use case è descritto bene, di dirci quanto tempo prende questo lavoro e di rispondere a ${n === 1 ? "una domanda" : `${n} domande`}.`;
+        ? "Ti chiediamo due cose: confermare che è descritto bene e aiutarci a stimarne l'impatto."
+        : `Ti chiediamo di confermare che è descritto bene, di aiutarci a stimarne l'impatto e di rispondere a ${n === 1 ? "una domanda" : `${n} domande`}.`;
     const blocks: Block[] = [
       { p: "Buongiorno," },
-      { p: `${name(input.requesterName)} ti ha indicato come referente per lo use case «${uc}».` },
+      { p: `${name(input.requesterName)} ti ha indicato come referente per il caso d'uso «${uc}».` },
+      { p: whatIsACaseLine(input.company) },
       { p: ask },
     ];
     if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
@@ -220,24 +234,25 @@ export function referentRequestParts(input: Extract<ReferentEmailInput, { templa
       ...teamAccessBlocks(input.cardLink, input.accountNotice === true),
       { small: replyLine(input.replyToKnown, input.requesterName) },
     );
-    return { subject: subjectOf(`${company(input.company)}: sei il referente per «${uc}»`), blocks };
+    return { subject: subjectFor(input.company, `sei il referente per il caso d'uso «${uc}»`), blocks };
   }
   // (Rilascio 5, §8.4) Solo domande («Chiedi a un'altra persona», «Chiedi al referente»): l'email non
   // dice più «sei il referente», che vale solo per la richiesta al referente.
   const blocks: Block[] = [
     { p: "Buongiorno," },
-    { p: `${name(input.requesterName)} ti chiede alcune informazioni sullo use case «${uc}».` },
+    { p: `${name(input.requesterName)} ti chiede alcune informazioni sul caso d'uso «${uc}».` },
+    { p: whatIsACaseLine(input.company) },
     { p: input.questions === 1 ? "È una domanda sola." : `Le domande sono ${input.questions}.` },
   ];
   if (input.message && input.message.trim()) blocks.push({ quote: multiLine(input.message, 1000) });
   blocks.push(
-    { p: "Bastano pochi minuti e puoi rispondere anche dal telefono. Se un'informazione non ce l'hai, scegli «Non ce l'ho». Se hai un documento utile, allegalo: prima togli nomi e dati personali." },
+    { p: "Bastano pochi minuti, anche dal telefono. Se un'informazione non ce l'hai, scegli «Non ce l'ho». Se hai un documento utile, allegalo." },
     { link: { href: link, label: "Apri le domande" } },
     { small: expiry(input.expiresAt) },
     ...teamAccessBlocks(input.cardLink, input.accountNotice === true),
     { small: replyLine(input.replyToKnown, input.requesterName) },
   );
-  return { subject: subjectOf(`${company(input.company)}: alcune domande su «${uc}»`), blocks };
+  return { subject: subjectFor(input.company, `alcune domande sul caso d'uso «${uc}»`), blocks };
 }
 
 /** I testi di §7. */
@@ -256,7 +271,7 @@ export function renderReferentEmail(input: ReferentEmailInput): RenderedEmail {
       const one = input.submitted === 1;
       const blocks: Block[] = [
         { p: "Buongiorno," },
-        { p: `grazie: abbiamo ricevuto ${one ? "la tua risposta" : "le tue risposte"} sullo use case «${uc}» e ${one ? "l'abbiamo passata" : "le abbiamo passate"} a ${name(input.requesterName)}.` },
+        { p: `grazie: abbiamo ricevuto ${one ? "la tua risposta" : "le tue risposte"} sul caso d'uso «${uc}» e ${one ? "l'abbiamo passata" : "le abbiamo passate"} a ${name(input.requesterName)}.` },
       ];
       if (input.openQuestions > 0) {
         blocks.push({
@@ -264,7 +279,7 @@ export function renderReferentEmail(input: ReferentEmailInput): RenderedEmail {
         });
       }
       blocks.push({ small: "In questa email non ci sono le tue risposte." });
-      return render(subjectOf(`Grazie: risposte ricevute su «${uc}»`), blocks);
+      return render(subjectFor(input.company, `grazie per le risposte sul caso d'uso «${uc}»`), blocks);
     }
   }
 }

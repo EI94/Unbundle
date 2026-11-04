@@ -8,6 +8,10 @@
  *   «Raccolta & ranking» (e «Raccolta e ranking»), «Quick Win», «Strategic Bet»,
  *   «Capability Builder», «Not Yet», «wave», «Effort», «Impact», «Feasibility». «Casi
  *   d'uso» resta: è il nome della sezione dei dossier («la sezione Casi d'uso è spenta», §14.3).
+ * - **`esterno`** (rilascio 5.1, decisione del titolare del 04/11/2026): i testi che leggono le
+ *   persone fuori dalla dashboard, cioè la pagina pubblica del referente `/rispondi` e le email
+ *   dell'area. Lì si dice «caso d'uso» e mai «use case»; le altre parole vietate dell'area restano
+ *   vietate. La dashboard resta `area` («use case»).
  * - **`vecchio_nome`**: i file che stanno fuori dall'area e citano il vecchio nome
  *   (`OLD_NAME_SOURCES`: `src/lib/slack/**`, la pagina di condivisione, `claude-mcp-card.tsx`,
  *   `scoring-model-form.tsx`). Lì si cerca solo «Raccolta & ranking» e «Raccolta e ranking»:
@@ -26,10 +30,10 @@
  * Modulo puro, senza import: lo importa anche uno script `.mjs`.
  */
 
-export type HubCopyScope = "area" | "vecchio_nome";
+export type HubCopyScope = "area" | "vecchio_nome" | "esterno";
 
 export interface HubCopyRule {
-  id: "caso_d_uso" | "vecchio_nome" | "quick_win" | "strategic_bet" | "capability_builder" | "not_yet" | "wave" | "effort" | "impact" | "feasibility";
+  id: "caso_d_uso" | "use_case" | "vecchio_nome" | "quick_win" | "strategic_bet" | "capability_builder" | "not_yet" | "wave" | "effort" | "impact" | "feasibility";
   /** La parola vietata come la scrive §14.5. */
   word: string;
   /** Con `g` e `i`: tutte le occorrenze, senza distinguere maiuscole. */
@@ -38,20 +42,24 @@ export interface HubCopyRule {
 }
 
 const AREA: readonly HubCopyScope[] = ["area"];
-const EVERYWHERE: readonly HubCopyScope[] = ["area", "vecchio_nome"];
+const OUTSIDE: readonly HubCopyScope[] = ["esterno"];
+/** Le parole vietate sia nella dashboard sia fuori (pagina pubblica, email). */
+const AREA_AND_OUTSIDE: readonly HubCopyScope[] = ["area", "esterno"];
+const EVERYWHERE: readonly HubCopyScope[] = ["area", "vecchio_nome", "esterno"];
 
 /** Le parole vietate di §14.5. Gli spazi possono essere anche trattini o a capo. */
 export const HUB_COPY_RULES: readonly HubCopyRule[] = [
   { id: "caso_d_uso", word: "caso d'uso", pattern: /\bcaso\s+d['’]\s*uso\b/gi, scopes: AREA },
+  { id: "use_case", word: "use case", pattern: /\buse[\s-]*cases?\b/gi, scopes: OUTSIDE },
   { id: "vecchio_nome", word: "Raccolta & ranking", pattern: /\braccolta\s*(?:&amp;|&|\be\b)\s*ranking\b/gi, scopes: EVERYWHERE },
-  { id: "quick_win", word: "Quick Win", pattern: /\bquick[\s-]*wins?\b/gi, scopes: AREA },
-  { id: "strategic_bet", word: "Strategic Bet", pattern: /\bstrategic[\s-]*bets?\b/gi, scopes: AREA },
-  { id: "capability_builder", word: "Capability Builder", pattern: /\bcapability[\s-]*builders?\b/gi, scopes: AREA },
-  { id: "not_yet", word: "Not Yet", pattern: /\bnot[\s-]*yet\b/gi, scopes: AREA },
-  { id: "wave", word: "wave", pattern: /\bwaves?\b/gi, scopes: AREA },
-  { id: "effort", word: "Effort", pattern: /\beffort\b/gi, scopes: AREA },
-  { id: "impact", word: "Impact", pattern: /\bimpact\b/gi, scopes: AREA },
-  { id: "feasibility", word: "Feasibility", pattern: /\bfeasibility\b/gi, scopes: AREA },
+  { id: "quick_win", word: "Quick Win", pattern: /\bquick[\s-]*wins?\b/gi, scopes: AREA_AND_OUTSIDE },
+  { id: "strategic_bet", word: "Strategic Bet", pattern: /\bstrategic[\s-]*bets?\b/gi, scopes: AREA_AND_OUTSIDE },
+  { id: "capability_builder", word: "Capability Builder", pattern: /\bcapability[\s-]*builders?\b/gi, scopes: AREA_AND_OUTSIDE },
+  { id: "not_yet", word: "Not Yet", pattern: /\bnot[\s-]*yet\b/gi, scopes: AREA_AND_OUTSIDE },
+  { id: "wave", word: "wave", pattern: /\bwaves?\b/gi, scopes: AREA_AND_OUTSIDE },
+  { id: "effort", word: "Effort", pattern: /\beffort\b/gi, scopes: AREA_AND_OUTSIDE },
+  { id: "impact", word: "Impact", pattern: /\bimpact\b/gi, scopes: AREA_AND_OUTSIDE },
+  { id: "feasibility", word: "Feasibility", pattern: /\bfeasibility\b/gi, scopes: AREA_AND_OUTSIDE },
 ];
 
 export interface HubCopyMatch {
@@ -86,6 +94,12 @@ export function findHubForbiddenIn(texts: Iterable<string>, scope: HubCopyScope)
 
 /** Le cartelle dei componenti dell'area: i loro testi (`.ts` e `.tsx`) si controllano con l'ambito `area`. */
 export const AREA_SOURCE_DIRS: readonly string[] = ["src/components/use-cases/"];
+
+/**
+ * (Rilascio 5.1) La pagina pubblica del referente: i suoi testi si controllano con l'ambito `esterno`
+ * («caso d'uso», mai «use case»), anche se la cartella dei componenti sta dentro l'area.
+ */
+export const OUTSIDE_SOURCE_DIRS: readonly string[] = ["src/components/use-cases/referent-public/", "src/app/rispondi/"];
 
 /**
  * I file fuori dall'area che citano il vecchio nome (DESIGN §14.5): una cartella finisce con
@@ -135,6 +149,7 @@ function inList(path: string, list: readonly string[]): boolean {
 export function copyScopeOfFile(path: string): HubCopyScope | null {
   const normalized = path.replaceAll("\\", "/").replace(/^\.\//, "");
   if (!SOURCE_FILE.test(normalized) || TEST_FILE.test(normalized)) return null;
+  if (inList(normalized, OUTSIDE_SOURCE_DIRS)) return "esterno";
   if (inList(normalized, AREA_SOURCE_DIRS)) return "area";
   if (inList(normalized, OLD_NAME_SOURCES)) return "vecchio_nome";
   return null;

@@ -206,18 +206,19 @@ const richiesta = (over: Partial<{ accountNotice: boolean; cardLink: string | nu
     accountNotice: over.accountNotice,
   });
 
-test("richiesta di sole domande: dice chi chiede e su quale use case; il link, i 30 giorni e il piè di pagina restano", () => {
+test("richiesta di sole domande: dice chi chiede e su quale caso d'uso; il link, i 30 giorni e il piè di pagina restano", () => {
   const m = richiesta();
-  assert.equal(m.subject, "TopJet: alcune domande su «TJ-0004 · Fatture fornitori»");
+  assert.equal(m.subject, "TopJet: alcune domande sul caso d'uso «TJ-0004 · Fatture fornitori»");
   const lines = m.text.split("\n").map((l) => l.trim()).filter(Boolean);
   assert.equal(lines[0], "Buongiorno,");
-  assert.equal(lines[1], "Fabio Esempio ti chiede alcune informazioni sullo use case «TJ-0004 · Fatture fornitori».");
+  assert.equal(lines[1], "Fabio Esempio ti chiede alcune informazioni sul caso d'uso «TJ-0004 · Fatture fornitori».");
   assert.ok(m.text.includes("Le domande sono 2."));
   assert.ok(richiesta({ questions: 1 }).text.includes("È una domanda sola."));
   assert.ok(m.text.includes(LINK) && m.text.includes("Il link scade il 26 novembre 2026.") && m.text.includes("Lateral Space via Unbundle."));
   assert.ok(!m.text.includes(ACCOUNT_NOTICE_LINE) && !m.text.includes(TEAM_ACCESS_LINE), "senza account nel workspace: nessuna delle due righe");
   assert.ok(richiesta({ title: "x".repeat(400) }).subject.length <= 200, "l'oggetto resta entro 200 caratteri");
-  for (const part of [m.subject, m.text, m.html]) assert.doesNotMatch(part, /caso d'uso|\bwave\b|\btoken\b|\bMCP\b|\bworkflow\b/i);
+  // (Rilascio 5.1) Fuori dalla dashboard «caso d'uso», mai «use case».
+  for (const part of [m.subject, m.text, m.html]) assert.doesNotMatch(part, /\buse[\s-]*cases?\b|\bwave\b|\btoken\b|\bMCP\b|\bworkflow\b/i);
 });
 
 test("richiesta a chi ha già un account (corsista, contributore): la riga, mai un link alla dashboard", () => {

@@ -5,11 +5,12 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { copyScopeOfFile, findHubForbidden } from "../../../lib/use-cases/copy-guard.ts";
-import { REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT } from "../../../lib/use-cases/referent/labels.ts";
+import { REFERENT_CHECK_TEXT, REFERENT_IMPACT_TEXT, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT } from "../../../lib/use-cases/referent/labels.ts";
 
-// I testi della pagina `/rispondi/<token>` (SPEC §9.2): «use case», mai «caso d'uso» né «wave»; niente
-// parole tecniche per il referente; e nessun testo scritto nei componenti: vengono tutti da labels.ts
-// (`REFERENT_PUBLIC_TEXT`, l'informativa).
+// I testi della pagina `/rispondi/<token>` (SPEC §9.2): (rilascio 5.1, decisione del titolare del
+// 04/11/2026) «caso d'uso», mai «use case» né «wave» (ambito `esterno`); niente parole tecniche per il
+// referente; e nessun testo scritto nei componenti: vengono tutti da labels.ts (`REFERENT_PUBLIC_TEXT`,
+// i passi, l'impatto, l'informativa).
 
 const root = fileURLToPath(new URL("../../../..", import.meta.url));
 const DIRS = ["src/components/use-cases/referent-public", "src/app/rispondi"];
@@ -98,21 +99,25 @@ test("il controllo trova i file della pagina pubblica", () => {
   ]) {
     assert.ok(files.includes(expected), expected);
   }
-  // La cartella dei componenti è nell'area del controllo dei testi dell'hub.
-  assert.equal(copyScopeOfFile("src/components/use-cases/referent-public/question-card.tsx"), "area");
+  // (Rilascio 5.1) La cartella dei componenti e la rotta sono fuori dalla dashboard: ambito `esterno`.
+  assert.equal(copyScopeOfFile("src/components/use-cases/referent-public/question-card.tsx"), "esterno");
+  assert.equal(copyScopeOfFile("src/app/rispondi/[token]/page.tsx"), "esterno");
 });
 
 test("nessuna parola vietata né tecnica nei testi della pagina", () => {
   const bad: string[] = [];
   for (const file of files) {
     for (const l of literals(file)) {
-      if (findHubForbidden(l.text, "area").length > 0 || (looksLikeCopy(l) && TECH.test(l.text))) bad.push(`${file}: ${l.text}`);
+      if (findHubForbidden(l.text, "esterno").length > 0 || (looksLikeCopy(l) && TECH.test(l.text))) bad.push(`${file}: ${l.text}`);
     }
   }
-  for (const text of [...strings(REFERENT_PUBLIC_TEXT), ...strings(REFERENT_PRIVACY_NOTICE)]) {
-    if (findHubForbidden(text, "area").length > 0 || TECH.test(text)) bad.push(`testo: ${text}`);
+  for (const text of [...strings(REFERENT_PUBLIC_TEXT), ...strings(REFERENT_CHECK_TEXT), ...strings(REFERENT_IMPACT_TEXT), ...strings(REFERENT_PRIVACY_NOTICE)]) {
+    if (findHubForbidden(text, "esterno").length > 0 || TECH.test(text)) bad.push(`testo: ${text}`);
   }
   assert.deepEqual(bad, []);
+  // «caso d'uso» c'è davvero, dove il referente lo legge.
+  assert.ok(strings(REFERENT_CHECK_TEXT).some((t) => /caso d'uso/.test(t)));
+  assert.ok(strings(REFERENT_PRIVACY_NOTICE).some((t) => /casi? d'uso|caso d'uso/.test(t)));
 });
 
 test("i componenti non scrivono testi: arrivano da labels.ts", () => {

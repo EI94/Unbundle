@@ -69,8 +69,10 @@ test("nell'area: ogni parola vietata di §14.5, senza distinguere maiuscole", ()
   }
   assert.deepEqual(
     HUB_COPY_RULES.map((r) => r.word),
-    ["caso d'uso", "Raccolta & ranking", "Quick Win", "Strategic Bet", "Capability Builder", "Not Yet", "wave", "Effort", "Impact", "Feasibility"],
+    ["caso d'uso", "use case", "Raccolta & ranking", "Quick Win", "Strategic Bet", "Capability Builder", "Not Yet", "wave", "Effort", "Impact", "Feasibility"],
   );
+  // «use case» vale solo fuori dalla dashboard (rilascio 5.1).
+  assert.deepEqual(HUB_COPY_RULES.find((r) => r.id === "use_case")?.scopes, ["esterno"]);
 });
 
 test("nell'area passano i testi di §14.3, «Casi d'uso» come nome della sezione e il nome del team", () => {
@@ -114,11 +116,29 @@ test("fuori dall'area: solo «Raccolta & ranking» e «Raccolta e ranking»", ()
   );
 });
 
+test("(rilascio 5.1) fuori dalla dashboard: «caso d'uso» sì, «use case» no, le altre parole vietate restano", () => {
+  assert.deepEqual(findHubForbidden("Il caso d'uso è descritto bene?", "esterno"), []);
+  assert.deepEqual(findHubForbidden("Lo use case è descritto bene? Due use-case.", "esterno").map((m) => [m.rule, m.match]), [
+    ["use_case", "use case"],
+    ["use_case", "use-case"],
+  ]);
+  assert.deepEqual(findHubForbidden("wave, Quick Win, Impact e Raccolta & ranking", "esterno").map((m) => m.rule), ["wave", "quick_win", "impact", "vecchio_nome"]);
+  // La dashboard non cambia: «use case» sì, «caso d'uso» no.
+  assert.deepEqual(findHubForbidden("Lo use case è descritto bene?", "area"), []);
+  assert.deepEqual(findHubForbidden("Il caso d'uso", "area").map((m) => m.rule), ["caso_d_uso"]);
+});
+
 test("ambito di un file: componenti dell'area, file del vecchio nome, nient'altro", () => {
   const cases: Array<[string, HubCopyScope | null]> = [
     ["src/components/use-cases/cost-input.tsx", "area"],
     ["src/components/use-cases/cost-input-state.ts", "area"],
     ["src/components/use-cases/detail/section-what.tsx", "area"],
+    // (Rilascio 5.1) La pagina pubblica del referente è fuori dalla dashboard.
+    ["src/components/use-cases/referent-public/question-card.tsx", "esterno"],
+    ["src/components/use-cases/referent-public/public-view-render.ts", "esterno"],
+    ["src/app/rispondi/[token]/page.tsx", "esterno"],
+    ["src/components/use-cases/referent-public/copy.test.ts", null],
+    ["src/components/use-cases/detail/referent/assign-dialog.tsx", "area"],
     ["src/components/use-cases/cost-input.test.ts", null],
     ["src/lib/slack/use-case-agent.ts", "vecchio_nome"],
     ["src/lib/slack/use-case-agent.test.ts", null],
