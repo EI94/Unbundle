@@ -584,7 +584,7 @@ test("(rilascio 5.1) la risposta per beneficio sulla scheda: ogni voce con la ri
   assert.ok(token, "il link del referente");
   const first = await pub.resolveReferentToken(token!, new Date());
   if (first.access !== "ok") assert.fail("link");
-  ok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-10-1" }, new Date()) as never, "informativa");
+  ok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-1" }, new Date()) as never, "informativa");
   const resolved = await pub.resolveReferentToken(token!, new Date());
   if (resolved.access !== "ok") assert.fail("link");
   const link = resolved.link;

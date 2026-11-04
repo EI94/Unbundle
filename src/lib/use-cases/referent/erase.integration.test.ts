@@ -188,7 +188,7 @@ test("preparazione: una richiesta con una risposta inviata e una bozza", opts, a
   const resolved = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(resolved.access === "ok");
   if (resolved.access !== "ok") return;
-  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-10-1" }, new Date())).ok);
+  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-1" }, new Date())).ok);
   const link = await pub.resolveReferentToken(state.token, new Date());
   if (link.access !== "ok") return assert.fail("link");
   assert.ok((await pub.saveReferentDraft(link.link, { needId: state.needs[0], text: "Circa 20 al giorno", dontKnow: false }, new Date())).ok);
@@ -200,7 +200,7 @@ test("preparazione: una richiesta con una risposta inviata e una bozza", opts, a
   const token2 = tokenOf(mailer2.outbox[0]) ?? "";
   const r2 = await pub.resolveReferentToken(token2, new Date());
   if (r2.access !== "ok") return assert.fail("link 2");
-  assert.ok((await pub.acceptReferentPrivacy(r2.link, { version: "ucq-2026-10-1" }, new Date())).ok);
+  assert.ok((await pub.acceptReferentPrivacy(r2.link, { version: "ucq-2026-11-1" }, new Date())).ok);
   const l2 = await pub.resolveReferentToken(token2, new Date());
   if (l2.access !== "ok") return assert.fail("link 2");
   assert.ok((await pub.saveReferentDraft(l2.link, { needId: state.needs[1], text: "Bozza", dontKnow: false }, new Date())).ok);

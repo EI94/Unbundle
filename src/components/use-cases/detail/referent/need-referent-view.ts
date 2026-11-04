@@ -30,7 +30,6 @@ export interface NeedFileRow {
   inReview: boolean;
   /** «Da controllare: PDF con poco testo». */
   reviewLabel: string | null;
-  personalWarning: string | null;
   href: string | null;
   /** «Scarica», oppure «Scarica per controllarlo» per un PDF da controllare. */
   downloadLabel: string;
@@ -72,7 +71,6 @@ function fileRow(file: NeedFileView, opts: { canEdit: boolean; canReviewFiles: b
     sizeLabel: file.sizeLabel,
     inReview,
     reviewLabel: inReview ? T.fileInReview : null,
-    personalWarning: file.personalWarning ? T.filePersonalWarning : null,
     href: file.href,
     downloadLabel: inReview ? T.fileDownloadToReview : T.fileDownload,
     canDelete: opts.canEdit && file.canDelete,

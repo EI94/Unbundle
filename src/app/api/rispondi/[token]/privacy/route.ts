@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * `POST /api/rispondi/[token]/privacy` `{ version }`: «Ho letto, iniziamo». L'accettazione si registra
+ * `POST /api/rispondi/[token]/privacy` `{ version }`: «Iniziamo» di «Prima di iniziare». L'accettazione si registra
  * sulla richiesta con la versione dell'informativa; senza, il link non salva bozze, file o risposte.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {

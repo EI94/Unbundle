@@ -104,7 +104,7 @@ export function ConfirmStep({
   title: string;
   actions: StepActions;
   errorFromServer: string | null;
-  /** L'avviso del server sull'ultima bozza della nota (un nome, un'email, un telefono), come sotto le domande. */
+  /** L'avviso del server sull'ultima bozza della nota (un codice fiscale, una data di nascita), come sotto le domande. */
   warningFromServer?: string | null;
 }) {
   const id = useId();

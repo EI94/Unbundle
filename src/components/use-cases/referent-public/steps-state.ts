@@ -125,8 +125,9 @@ export function numberText(value: number | null): string {
 /**
  * (Rilascio 5) Il passo a cui riporta un «Invia» rifiutato per la conferma o la stima, con il messaggio
  * da dire lì; null per tutti gli altri rifiuti (le domande hanno il loro posto). La nota di «Correggi»
- * con un nome, un'email o un telefono torna con `risposte_da_correggere` e il campo `conferma`: nessuna
- * domanda la mostra, quindi la si mostra al passo 1, sotto «Cosa cambieresti?».
+ * con un dato che qui non teniamo (rilascio 5.1: dati sanitari, codici fiscali, date di nascita; nomi,
+ * email e telefoni passano) torna con `risposte_da_correggere` e il campo `conferma`: nessuna domanda la
+ * mostra, quindi la si mostra al passo 1, sotto «Cosa cambieresti?».
  */
 export function stepOfSubmitRefusal(r: { code: string; message: string; issues?: readonly { field?: string; message: string }[] }): { step: CheckStep; message: string } | null {
   if (r.code === "conferma_mancante") return { step: 1, message: r.message };
@@ -143,8 +144,8 @@ export function stepOfSubmitRefusal(r: { code: string; message: string; issues?:
 
 /**
  * (Rilascio 5) L'avviso da dire subito dopo il salvataggio di una bozza: solo il passo 1 (la nota di
- * «Correggi»), il primo avviso del server. La bozza si salva lo stesso; all'invio un nome e cognome o
- * un'email la fermano.
+ * «Correggi»), il primo avviso del server (rilascio 5.1: un codice fiscale o una data di nascita; mai
+ * nomi, email o telefoni). La bozza si salva lo stesso; all'invio quel dato la ferma.
  */
 export function stepOneWarning(body: { step: number }, warnings: readonly { message: string }[] | undefined): string | null {
   return body.step === 1 ? (warnings?.[0]?.message ?? null) : null;

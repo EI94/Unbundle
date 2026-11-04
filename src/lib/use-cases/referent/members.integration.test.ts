@@ -554,7 +554,7 @@ test("una corsista scritta in «+ Nuovo referente»: collegata al suo account, l
   // Risponde dal link come chiunque: la pagina non legge la sessione.
   const first = await pub.resolveReferentToken(sent.token, V);
   if (first.access !== "ok") assert.fail(first.access);
-  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-10-1" }, V)).ok);
+  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-1" }, V)).ok);
   const resolved = await pub.resolveReferentToken(sent.token, V);
   if (resolved.access !== "ok") assert.fail(resolved.access);
   assert.ok((await pub.saveReferentDraft(resolved.link, { needId: sent.needIds[0], text: "Una volta alla settimana.", dontKnow: false }, V)).ok);

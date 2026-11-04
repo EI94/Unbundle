@@ -14,7 +14,6 @@ const file = (over: Partial<NeedFileView>): NeedFileView => ({
   source: "referente",
   authorLabel: "Mario Rossi",
   status: "pulito",
-  personalWarning: false,
   href: "/dashboard/ws/use-cases/uc/allegati/f1",
   canDelete: true,
   canReview: false,
@@ -28,7 +27,7 @@ const view: NeedReferentView = {
     { id: "a1", source: "referente", authorLabel: "Mario Rossi", dateLabel: "28/10", text: "Ogni lunedì,\n  circa due ore.", dontKnow: false, canRemove: true },
     { id: "a2", source: "revisore", authorLabel: "Giulia Neri (team)", dateLabel: "29/10", text: null, dontKnow: true, canRemove: false },
   ],
-  files: [file({}), file({ id: "f2", name: "scansione.pdf", status: "in_revisione", personalWarning: true, canReview: true, canDelete: false })],
+  files: [file({}), file({ id: "f2", name: "scansione.pdf", status: "in_revisione", canReview: true, canDelete: false })],
 };
 
 test("senza richiesta e senza voci non si mostra niente", () => {
@@ -61,16 +60,18 @@ test("«Risposte e file · n»: conta le voci di questa esigenza; i file «Da co
   assert.equal(others.summary, "Risposte e file · 3");
   assert.deepEqual(others.files.map((f) => f.id), ["f1"]);
   assert.deepEqual(
-    [others.files[0].downloadLabel, others.files[0].reviewLabel, others.files[0].personalWarning, others.files[0].canDelete, others.files[0].href],
-    [T.fileDownload, null, null, true, "/dashboard/ws/use-cases/uc/allegati/f1"],
+    [others.files[0].downloadLabel, others.files[0].reviewLabel, others.files[0].canDelete, others.files[0].href],
+    [T.fileDownload, null, true, "/dashboard/ws/use-cases/uc/allegati/f1"],
   );
   const ls = needReferentRows(view, { canEdit: true, canReviewFiles: true });
   assert.equal(ls.summary, "Risposte e file · 4");
   const review = ls.files.find((f) => f.id === "f2");
   assert.deepEqual(
-    [review?.inReview, review?.reviewLabel, review?.downloadLabel, review?.personalWarning, review?.canReview, review?.canDelete],
-    [true, T.fileInReview, T.fileDownloadToReview, T.filePersonalWarning, true, false],
+    [review?.inReview, review?.reviewLabel, review?.downloadLabel, review?.canReview, review?.canDelete],
+    [true, T.fileInReview, T.fileDownloadToReview, true, false],
   );
+  // (Rilascio 5.1) Nessun file dice più «Può contenere dati personali».
+  assert.ok(ls.files.every((f) => !Object.values(f).includes("Può contenere dati personali")));
 });
 
 test("«Senza risposta»: un solo segnale, solo se la riga non lo dice già", () => {

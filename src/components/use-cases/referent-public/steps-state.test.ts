@@ -43,7 +43,7 @@ const confirmed = (impact = true, over: Partial<ReferentCheckView> = {}): Refere
 function view(over: Partial<ReferentAskView> = {}): ReferentAskView {
   return {
     state: "aperta",
-    privacy: { accepted: true, version: "ucq-2026-10-1", contact: "privacy@example.test" },
+    privacy: { accepted: true, version: "ucq-2026-11-1", contact: "privacy@example.test" },
     company: "TopJet",
     useCase: { code: "TJ-0002", title: "Fatture fornitori" },
     requester: { name: "Giulia Neri" },
@@ -152,7 +152,7 @@ test("i campi dei numeri: la virgola, i limiti, le etichette e i segnaposto del 
 test("un «Invia» rifiutato per la conferma o la stima riporta al suo passo, con il messaggio lì", () => {
   assert.deepEqual(stepOfSubmitRefusal({ code: "conferma_mancante", message: "Manca la conferma." }), { step: 1, message: "Manca la conferma." });
   assert.deepEqual(stepOfSubmitRefusal({ code: "stima_mancante", message: "Manca la stima." }), { step: 2, message: "Manca la stima." });
-  // La nota di «Correggi» con un nome o un'email: il campo «conferma» non è di nessuna domanda, si torna al passo 1.
+  // La nota di «Correggi» con un dato che qui non teniamo: il campo «conferma» non è di nessuna domanda, si torna al passo 1.
   const NAME = "Non scrivere nomi di persone: indica il ruolo.";
   assert.deepEqual(stepOfSubmitRefusal({ code: "risposte_da_correggere", message: "Alcune risposte vanno corrette: le trovi evidenziate.", issues: [{ field: "conferma", message: NAME }] }), { step: 1, message: NAME });
   assert.deepEqual(

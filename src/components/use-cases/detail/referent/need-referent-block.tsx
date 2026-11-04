@@ -75,7 +75,6 @@ export function NeedReferentBlock({
                   <span className="min-w-0 font-medium break-all">{file.name}</span>
                   {file.sizeLabel ? <span className="text-xs text-muted-foreground">{file.sizeLabel}</span> : null}
                   {file.reviewLabel ? <StatusDot tone="giallo" label={file.reviewLabel} /> : null}
-                  {file.personalWarning ? <StatusDot tone="giallo" label={file.personalWarning} /> : null}
                 </p>
                 <div className="flex flex-wrap items-center gap-1">
                   {file.href ? (

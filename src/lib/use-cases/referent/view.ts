@@ -18,7 +18,7 @@
 import { parseCivilDate, romeDate } from "../../uc/calendar.ts";
 import type { ReferentItemState, ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
 import type { ReferentAskView, ReferentCheckView, ReferentFileView, ReferentQuestionView } from "./contract.ts";
-import { REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, REFERENT_REQUEST_WORD, REFERENT_UI_TEXT, fillText } from "./labels.ts";
+import { REFERENT_PRIVACY_NOTICE, REFERENT_REQUEST_WORD, REFERENT_UI_TEXT, fillText } from "./labels.ts";
 import { nextReminderOn } from "./schedule.ts";
 import { privacyAccepted, reviewerStatus } from "./state.ts";
 
@@ -172,8 +172,6 @@ export interface PublicFileRow {
   sizeBytes: number | null;
   scanStatus: ReferentFileView["status"];
   message: string | null;
-  personalWarning: boolean;
-  warningConfirmed: boolean;
   submitted: boolean;
 }
 
@@ -197,18 +195,9 @@ export interface PublicRows {
   now?: Date;
 }
 
+/** (Rilascio 5.1) Un file della pagina: mai un avviso su nomi, email o telefoni, niente da confermare. */
 function fileView(f: PublicFileRow): ReferentFileView {
-  const warning = f.personalWarning ? REFERENT_PUBLIC_TEXT.fileWarning : null;
-  return {
-    id: f.id,
-    name: f.fileName,
-    sizeBytes: f.sizeBytes,
-    status: f.scanStatus,
-    message: f.message,
-    warning,
-    needsConfirmation: f.personalWarning && !f.warningConfirmed && !f.submitted,
-    submitted: f.submitted,
-  };
+  return { id: f.id, name: f.fileName, sizeBytes: f.sizeBytes, status: f.scanStatus, message: f.message, submitted: f.submitted };
 }
 
 /** (Parte 3) Una domanda a cui ha già pensato il team: solo il titolo, mai quello che hanno scritto gli altri. */
@@ -311,8 +300,6 @@ export const PUBLIC_VIEW_KEYS: readonly string[] = Object.freeze([
   "questions[].files[].sizeBytes",
   "questions[].files[].status",
   "questions[].files[].message",
-  "questions[].files[].warning",
-  "questions[].files[].needsConfirmation",
   "questions[].files[].submitted",
   "upload",
   "upload.clientMode",
@@ -436,7 +423,6 @@ export const PANEL_VIEW_KEYS: readonly string[] = Object.freeze([
   "needs{}.files[].source",
   "needs{}.files[].authorLabel",
   "needs{}.files[].status",
-  "needs{}.files[].personalWarning",
   "needs{}.files[].href",
   "needs{}.files[].canDelete",
   "needs{}.files[].canReview",

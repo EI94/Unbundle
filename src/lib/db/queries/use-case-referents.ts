@@ -481,7 +481,7 @@ ORDER BY a.submitted_at DESC, a.id`);
 }
 
 function filesSql(workspaceId: string, useCaseId: string): UcStatement {
-  return toStatement(ucSql`SELECT f.id, f.need_id, f.source, f.file_name, f.size_bytes, f.scan_status, f.personal_warning, f.created_at, f.submitted_at,
+  return toStatement(ucSql`SELECT f.id, f.need_id, f.source, f.file_name, f.size_bytes, f.scan_status, f.created_at, f.submitted_at,
   f.uploaded_by_user_id, coalesce(c.display_name, '') AS contact_name, coalesce(nullif(btrim(u.name), ''), '') AS author_name,
   CASE WHEN f.source = 'referente' THEN ${requestReferentUserSql("r")} ELSE f.uploaded_by_user_id END AS owner_user_id
 FROM use_case_need_files f
@@ -824,7 +824,6 @@ export async function loadUseCaseReferentPanel(i: {
                   : T.teamAuthorFallback
                 : rowString(f.contact_name) || T.referentAuthorFallback,
             status,
-            personalWarning: rowBool(f.personal_warning),
             href: status === "pulito" || reviewable ? reviewerFileHref(ws, uc, fileId) : null,
             canDelete: canAsk,
             canReview: reviewable,

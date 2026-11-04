@@ -153,9 +153,9 @@ export interface ClosureState {
   files: readonly PublicFile[];
 }
 
-/** Un file che chiude la domanda: caricato e controllato, senza una conferma che manca. */
-export function usableFile(f: Pick<PublicFile, "status" | "needsConfirmation" | "submitted">): boolean {
-  return (f.status === "pulito" || f.status === "in_revisione") && !f.needsConfirmation;
+/** Un file che chiude la domanda: caricato e controllato. */
+export function usableFile(f: Pick<PublicFile, "status">): boolean {
+  return f.status === "pulito" || f.status === "in_revisione";
 }
 
 /** La domanda è chiusa: un testo (non su «Serve un file»), un file, «Non ce l'ho» o «È già allegato». */
@@ -277,15 +277,15 @@ export function fileFromUpload(r: ReferentUploadResult): PublicFile {
     sizeBytes: r.sizeBytes,
     status: r.status,
     message: r.message,
-    warning: r.warning,
-    needsConfirmation: r.needsConfirmation,
     submitted: false,
   };
 }
 
-/** Lo stato di un file in parole: «Controllo in corso…», «Allegato», «In controllo da Lateral Space…», «Non accettato: …». */
+/** Lo stato di un file in parole: «Controllo in corso…», «Allegato», «Lo controlla il team…», «Non accettato. …». */
 export function fileStateLabel(f: Pick<PublicFile, "status" | "message">): string {
-  return fillText(T.fileStates[f.status], { message: f.message?.trim() || "" }).replace(/:\s*$/, "");
+  const message = f.message?.trim() || "";
+  const label = fillText(T.fileStates[f.status], { message });
+  return message ? label : label.replace(/[.:]\s*$/, "");
 }
 
 export interface FileRow {
@@ -293,8 +293,6 @@ export interface FileRow {
   name: string;
   state: string;
   tone: "info" | "ok" | "attenzione" | "errore";
-  /** «Il file sembra contenere nomi…» con «Togli» e «Servono, lo lascio». */
-  confirm: { warning: string; keep: string } | null;
   /** «Togli»: solo per i file non ancora inviati e non rifiutati (un file rifiutato è già cancellato). */
   removable: boolean;
 }
@@ -306,17 +304,14 @@ export function fileRow(f: PublicFile): FileRow {
     name: f.name,
     state: fileStateLabel(f),
     tone,
-    confirm: f.needsConfirmation && !f.submitted && f.status !== "rifiutato" ? { warning: T.fileWarning, keep: T.keepFile } : null,
     removable: !f.submitted && f.status !== "rifiutato",
   };
 }
 
-/** Si può inviare la domanda con questi file: nessun controllo in corso, nessuna conferma che manca. */
-export function filesBlockSubmit(files: readonly PublicFile[]): "file_in_controllo" | "file_da_confermare" | null {
+/** Si può inviare la domanda con questi file: nessun controllo in corso. (Rilascio 5.1) Niente da confermare. */
+export function filesBlockSubmit(files: readonly PublicFile[]): "file_in_controllo" | null {
   const live = files.filter((f) => !f.submitted && f.status !== "rifiutato");
-  if (live.some((f) => f.status === "in_quarantena")) return "file_in_controllo";
-  if (live.some((f) => f.needsConfirmation)) return "file_da_confermare";
-  return null;
+  return live.some((f) => f.status === "in_quarantena") ? "file_in_controllo" : null;
 }
 
 // ─── Invio ───────────────────────────────────────────────────────────

@@ -239,7 +239,7 @@ ORDER BY i.position`),
 FROM use_case_need_answers a
 WHERE a.request_id = ${req} AND a.workspace_id = ${ws} AND a.removed_at IS NULL
 ORDER BY a.created_at, a.id`),
-    toStatement(ucSql`SELECT f.id, f.need_id, f.file_name, f.size_bytes, f.scan_status, f.rejection_reason, f.personal_warning, f.warning_confirmed_at, f.submitted_at, f.created_at
+    toStatement(ucSql`SELECT f.id, f.need_id, f.file_name, f.size_bytes, f.scan_status, f.rejection_reason, f.submitted_at, f.created_at
 FROM use_case_need_files f
 WHERE f.request_id = ${req} AND f.workspace_id = ${ws} AND f.deleted_at IS NULL
 ORDER BY f.created_at, f.id`),
@@ -303,8 +303,6 @@ async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promi
         sizeBytes: rowNumber(f.size_bytes),
         scanStatus,
         message: scanStatus === "in_revisione" ? REFERENT_ERROR_MESSAGES.pdf_in_revisione : scanStatus === "rifiutato" ? rejectionMessage(rejectionReason) : null,
-        personalWarning: rowBool(f.personal_warning),
-        warningConfirmed: rowDate(f.warning_confirmed_at) !== null,
         submitted: rowDate(f.submitted_at) !== null,
         createdAt: rowDate(f.created_at) ?? new Date(0),
         rejectionReason,
@@ -786,7 +784,6 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
       continue;
     }
     if (pending(needId).some((f) => f.scanStatus === "in_quarantena")) return pfail("file_in_controllo");
-    if (files.some((f) => f.personalWarning && !f.warningConfirmed)) return pfail("file_da_confermare");
     const text = closure === "testo" || (closure === "file" && !item.fileRequired && draft?.body?.trim()) ? (draft?.body ?? null) : null;
     for (const [value, where] of [[text, needId], [closure !== "testo" ? (draft?.comment ?? null) : null, `${needId}.commento`]] as const) {
       if (!value) continue;
@@ -1025,6 +1022,10 @@ WHERE id = ${cast(file.id, "uuid")} AND request_id = ${cast(link.requestId, "uui
   return { ok: true, value: { removed: true } };
 }
 
+/**
+ * «Servono, lo lascio» del rilascio 5: (rilascio 5.1) la pagina non lo chiede più e l'invio non lo
+ * aspetta. Resta per una pagina aperta prima del rilascio, che lo chiede ancora prima di inviare.
+ */
 export async function confirmReferentFile(link: ReferentLink, body: unknown): Promise<PublicOutcome<{ confirmed: true }>> {
   if (!link.privacyAccepted) return pfail("informativa_da_leggere");
   const executor = await getAppUcExecutor();
@@ -1087,7 +1088,6 @@ export const REFERENT_PUBLIC_STATUS: Readonly<Record<string, number>> = Object.f
   risposta_vuota: 422,
   non_so_con_file: 409,
   file_in_controllo: 409,
-  file_da_confermare: 409,
   troppi_file: 409,
   file_gia_inviato: 409,
   file_non_trovato: 404,

@@ -99,8 +99,6 @@ export function OpenQuestionCard({
   token,
   section,
   clientMode,
-  declared,
-  onDeclared,
   issues,
   disabled,
   registerFlush,
@@ -113,8 +111,6 @@ export function OpenQuestionCard({
   token: string;
   section: QuestionSection;
   clientMode: boolean;
-  declared: boolean;
-  onDeclared: (v: boolean) => void;
   /** I problemi dell'ultimo invio su questa domanda. */
   issues: readonly string[];
   disabled: boolean;
@@ -304,9 +300,9 @@ export function OpenQuestionCard({
       ) : null}
 
       {!value.dontKnow && !attached ? (
-        <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} declared={declared} onDeclared={onDeclared} allowUpload disabled={blocked} tooSoon={tooSoon} />
+        <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} allowUpload disabled={blocked} tooSoon={tooSoon} />
       ) : files.some((f) => f.status !== "rifiutato") ? (
-        <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} declared={declared} onDeclared={onDeclared} allowUpload={false} disabled={blocked} />
+        <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} allowUpload={false} disabled={blocked} />
       ) : null}
 
       <div role="group" aria-label={T.aria.closures} className="flex flex-wrap gap-2">

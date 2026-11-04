@@ -206,7 +206,7 @@ test("un'informativa vecchia si mostra di nuovo e blocca le bozze; una domanda r
   const resolved = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(resolved.access === "ok");
   if (resolved.access !== "ok") return;
-  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-10-1" }, new Date())).ok);
+  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-1" }, new Date())).ok);
   await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2025-01-1' WHERE id = $1::uuid`, [state.requestId]);
   const old = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(old.access === "ok" && !old.link.privacyAccepted);

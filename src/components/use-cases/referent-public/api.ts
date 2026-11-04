@@ -65,7 +65,3 @@ export function submitAnswers(token: string, body: SubmitBody = {}): Promise<Api
 export function removeFile(token: string, fileId: string): Promise<ApiResult<{ removed: true }>> {
   return call(token, REFERENT_API.fileRemove, { method: "POST", body: { fileId } });
 }
-
-export function confirmFile(token: string, fileId: string): Promise<ApiResult<{ confirmed: true }>> {
-  return call(token, REFERENT_API.fileConfirm, { method: "POST", body: { fileId } });
-}

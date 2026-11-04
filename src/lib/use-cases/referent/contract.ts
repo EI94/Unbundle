@@ -159,10 +159,6 @@ export interface ReferentFileView {
   status: "in_quarantena" | "in_revisione" | "pulito" | "rifiutato";
   /** Messaggio di rifiuto o di revisione, in italiano. */
   message: string | null;
-  /** Nomi, email o telefoni trovati nel file (solo codici, mai i valori). */
-  warning: string | null;
-  /** Avviso presente e non ancora confermato: serve «Servono, lo lascio» prima di inviare. */
-  needsConfirmation: boolean;
   submitted: boolean;
 }
 
@@ -173,8 +169,6 @@ export interface ReferentUploadResult {
   status: "pulito" | "in_revisione" | "rifiutato";
   usable: boolean;
   message: string | null;
-  warning: string | null;
-  needsConfirmation: boolean;
 }
 
 export interface ReferentClientTicket {
@@ -359,8 +353,6 @@ export interface NeedFileView {
   source: "referente" | "revisore";
   authorLabel: string;
   status: "pulito" | "in_revisione";
-  /** «Può contenere dati personali»: dai codici degli avvisi, mai dai valori. */
-  personalWarning: boolean;
   /** null quando chi guarda non lo può scaricare. */
   href: string | null;
   canDelete: boolean;

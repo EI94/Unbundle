@@ -250,7 +250,7 @@ test("pagina pubblica: «gestita» si vede senza bozza, risposta o file; mai cos
     open: false,
     handled: true,
     draft: { body: "BOZZA-DEL-REFERENTE", dontKnow: false, updatedAt: NOW },
-    files: [{ id: "f1", fileName: "bozza.pdf", sizeBytes: 10, scanStatus: "pulito", message: null, personalWarning: false, warningConfirmed: false, submitted: false }],
+    files: [{ id: "f1", fileName: "bozza.pdf", sizeBytes: 10, scanStatus: "pulito", message: null, submitted: false }],
   });
   const view = toPublicView(rows([item({}), handled]));
   assert.equal(view.state, "aperta");

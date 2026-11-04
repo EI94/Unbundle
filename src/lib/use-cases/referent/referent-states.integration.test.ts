@@ -92,7 +92,7 @@ async function answered(useCaseId: string, step1: { confirm: "si" | "correggi"; 
   assert.ok(token);
   const first = await pub.resolveReferentToken(token!, new Date());
   if (first.access !== "ok") assert.fail("link");
-  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-10-1" }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-1" }, new Date()) as never, "informativa");
   const link = await pub.resolveReferentToken(token!, new Date());
   if (link.access !== "ok") assert.fail("link");
   pok(await pub.saveReferentCheck(link.link, { step: 1, ...step1 }, new Date()) as never, "passo 1");

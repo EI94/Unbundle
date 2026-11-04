@@ -5,10 +5,10 @@ import { Disclosure, Notice, PRIMARY_CLASS } from "@/components/uc/referente/scr
 import { ActionBar } from "@/components/uc/referente/step-bar";
 
 /**
- * «Prima di iniziare» (SPEC §4.4 punto 3, §5.3): l'informativa a due livelli. Tre punti da sapere, il
- * testo completo in un riquadro chiuso e «Ho letto, iniziamo», fisso in basso al telefono. Finché non
- * lo preme, il referente non vede domande, bozze o caricamenti. Dopo, l'informativa resta nel piè di
- * pagina («Come usiamo le tue risposte»).
+ * «Prima di iniziare» (SPEC §4.4 punto 3, §5.3): l'informativa a due livelli. (Rilascio 5.1) Corta e
+ * calma: una riga e due punti, il testo completo a un tocco («Leggi l'informativa completa») e
+ * «Iniziamo», fisso in basso al telefono. Finché non lo preme, il referente non vede domande, bozze o
+ * caricamenti. Dopo, l'informativa resta nel piè di pagina («Come usiamo le tue risposte»).
  */
 
 export interface PrivacyTexts {

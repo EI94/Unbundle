@@ -68,7 +68,6 @@ export const REFERENT_UI_TEXT = Object.freeze({
   removeAnswerConfirmTitle: "Eliminare la risposta?",
   removeAnswerConfirmText: "Il testo si cancella e non si può recuperare.",
   removeConfirm: "Elimina",
-  filePersonalWarning: "Può contenere dati personali",
   fileDownload: "Scarica",
   fileDelete: "Elimina",
   fileDeleteConfirmTitle: "Eliminare il file?",
@@ -212,11 +211,9 @@ export const REFERENT_UI_TEXT = Object.freeze({
     title: "Allega un file",
     help: "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 20 MB. Niente foto.",
     helpServerOnly: "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 4 MB. Niente foto.",
-    declaration: "Il file non contiene dati sanitari né dati personali che non servono.",
     confirm: "Allega",
     /** «Allega» premuto senza aver scelto un file. */
     chooseFile: "Scegli un file da allegare.",
-    personalWarning: "Allegato. Il file sembra contenere nomi, email o telefoni di persone: se non servono, toglilo e caricalo di nuovo.",
     /** (Parte 2) */
     validate: "L'ho già verificata: segna l'informazione come «A posto»",
   }),
@@ -460,16 +457,22 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   attach: "Allega un file",
   attachHelp: "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 20 MB. Niente foto.",
   attachHelpServerOnly: "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 4 MB. Niente foto.",
-  declaration: "Il file non contiene dati sanitari né dati personali che non ti abbiamo chiesto.",
   fileStates: Object.freeze({
     in_quarantena: "Controllo in corso…",
     pulito: "Allegato",
     in_revisione: "Lo controlla il team prima di usarlo: puoi inviare lo stesso",
-    rifiutato: "Non accettato: {message}",
+    rifiutato: "Non accettato. {message}",
   }),
   removeFile: "Togli",
-  fileWarning: "Il file sembra contenere nomi, email o telefoni di persone. Se non servono, toglili e caricalo di nuovo.",
-  keepFile: "Servono, lo lascio",
+  /**
+   * (Rilascio 5.1) I rifiuti dei dati che qui non teniamo, detti con calma: nomi, email e telefoni nei
+   * file passano, il controllo automatico resta.
+   */
+  fileRejected: Object.freeze({
+    sanitario: "Il file ha dati sanitari, che qui non teniamo: non l'abbiamo salvato. Se ti serve, toglili e caricalo di nuovo.",
+    identificativi: "Il file ha codici fiscali o date di nascita, che qui non teniamo: non l'abbiamo salvato. Se ti serve, toglili e caricalo di nuovo.",
+    discriminatorio: "Il file ha preferenze su genere, età, origine o religione, che qui non teniamo: non l'abbiamo salvato. Se ti serve, toglile e caricalo di nuovo.",
+  }),
   autosave: Object.freeze({ saved: "Salvato", saving: "Salvataggio…", error: "Non salvato: riprova" }),
   submit: "Invia",
   submitHint: "Invii solo le domande a cui hai risposto. Le altre restano qui: puoi tornare con lo stesso link fino al {data}.",
@@ -512,8 +515,6 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   missingOne: "Manca ancora la domanda {k}.",
   missingMany: "Mancano ancora le domande {list}.",
   goToQuestion: "Vai alla domanda {k}",
-  declarationConfirm: "Confermo, scelgo il file",
-  declarationCancel: "Annulla",
   send: "Invia",
   thanksDone: "Grazie, è tutto.",
   thanksSeenNow: "{Nome} lo vede subito.",
@@ -568,31 +569,33 @@ export const REFERENT_CHECK_TEXT = Object.freeze({
 // ─── Informativa (§5.3) ──────────────────────────────────────────────
 
 /**
- * L'informativa a due livelli della pagina pubblica, versione `ucq-2026-10-1`. L'accettazione si
- * registra sulla richiesta con questa versione; una versione nuova mostra di nuovo il riquadro.
+ * L'informativa a due livelli della pagina pubblica, versione `ucq-2026-11-1` (rilascio 5.1: nomi,
+ * email e telefoni non si bloccano più, «basta che lo diciamo prima nelle informative», decisione del
+ * titolare del 04/11/2026). Sopra due righe calme; il testo completo, intero, a un tocco. L'accettazione
+ * si registra sulla richiesta con questa versione; una versione nuova mostra di nuovo il riquadro.
  * Testo legale da confermare con il titolare (indirizzo di contatto, 12 mesi).
  */
 export const REFERENT_PRIVACY_NOTICE = Object.freeze({
-  version: "ucq-2026-10-1",
+  version: "ucq-2026-11-1",
   title: "Prima di iniziare",
-  lead: "Tre cose da sapere sulle tue risposte.",
+  lead: "Ti chiediamo del tuo lavoro, non di te.",
   summary: Object.freeze([
-    "Ti chiediamo del lavoro, non di te. Nelle risposte il sistema blocca dati sanitari, nomi, email e telefoni di persone. Nei file ti avvisiamo se ne troviamo: toglili tu.",
-    "Le risposte e i file li vedono solo Lateral Space e le persone di {Azienda} che valutano gli use case.",
+    "Le risposte e i file li vedono solo Lateral Space e chi valuta gli use case di {Azienda}.",
     "Il link è solo tuo e vale fino al {data}.",
   ]),
   fullTextLabel: "Leggi l'informativa completa",
   paragraphs: Object.freeze([
     "Lateral Space raccoglie queste informazioni per conto di {Azienda}, per valutare e preparare lo use case. Le usiamo solo per questo.",
-    "Ti chiediamo informazioni sul lavoro, non su di te. Nelle risposte non scrivere dati sanitari, nomi di persone, email, telefoni, date di nascita o preferenze su genere, età, origine o religione: il sistema li blocca. Nei file non possiamo bloccare tutto: se troviamo nomi, email o telefoni ti avvisiamo. Toglili prima di caricare.",
-    "Salviamo le tue risposte, i file che alleghi, il tuo nome, l'email con cui ti abbiamo scritto e quando hai letto questa informativa. Dell'indirizzo IP teniamo solo un'impronta cifrata, mai il numero, per due giorni.",
+    "Ti chiediamo informazioni sul lavoro, non su di te. Se scrivi il nome di un collega o alleghi un file con nomi, email o telefoni, li usiamo solo per questo use case. Non servono dati sanitari, codici fiscali, date di nascita o preferenze su genere, età, origine o religione: se ne troviamo, ti chiediamo di toglierli.",
+    "Ogni file passa da un controllo automatico prima di essere usato.",
+    "Salviamo le tue risposte, i file che alleghi, il tuo nome, l'email con cui ti abbiamo scritto e quando hai premuto «Iniziamo». Dell'indirizzo IP teniamo solo un'impronta cifrata, mai il numero, per due giorni.",
     "{Richiedente} e le altre persone di {Azienda} che valutano gli use case vedono le tue risposte e quando sono arrivate. Non misuriamo i tuoi tempi e non facciamo classifiche tra persone.",
     "Teniamo risposte e file per 12 mesi dopo la chiusura della richiesta, poi li cancelliamo.",
     "Puoi chiedere di vedere, correggere o cancellare i tuoi dati scrivendo a {contatto}. Puoi anche fare reclamo al Garante per la protezione dei dati personali.",
     "Il link è personale e scade dopo 30 giorni. Non inoltrarlo.",
   ]),
   footerLabel: "Come usiamo le tue risposte",
-  button: "Ho letto, iniziamo",
+  button: "Iniziamo",
   error: "Non riesco a registrarlo. Riprova tra poco.",
 });
 
@@ -687,7 +690,7 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   riprova: "Non riusciamo a salvare. Riprova.",
   // Pagina pubblica (§4.3)
   link_non_valido: "Questo link non è più valido. Chiedi a chi te l'ha mandato un link nuovo.",
-  informativa_da_leggere: "Prima leggi l'informativa e premi «Ho letto, iniziamo».",
+  informativa_da_leggere: "Prima premi «Iniziamo».",
   informativa_cambiata: "L'informativa è cambiata: ricarica la pagina e leggila di nuovo.",
   gia_inviata: "Hai già inviato questa risposta.",
   risposte_da_correggere: "Alcune risposte vanno corrette: le trovi evidenziate.",
@@ -695,7 +698,6 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   risposta_vuota_pubblica: "Scrivi la risposta, scegli «Non ce l'ho» o allega un file.",
   non_so_con_file: "Hai allegato un file: togli «Non ce l'ho» oppure togli il file.",
   file_in_controllo: "Aspetta che finisca il controllo del file, poi invia.",
-  file_da_confermare: "Un file sembra contenere nomi, email o telefoni: toglilo oppure conferma che servono, poi invia.",
   file_gia_inviato: "Questo file è già stato inviato: non si può togliere.",
   modalita_non_disponibile: "Per questo file serve il caricamento diretto, che qui non è attivo: usa un file fino a 4 MB.",
   domanda_non_disponibile_pubblica: "Questa domanda non è più tra quelle per te.",

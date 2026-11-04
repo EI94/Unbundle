@@ -32,11 +32,11 @@ test("un CSV pulito è pulito, senza avvisi", () => {
   assert.equal(out.message, null);
 });
 
-test("nomi, email o telefoni: pulito con l'avviso «Può contenere dati personali»", () => {
+test("(rilascio 5.1) nomi, email o telefoni: pulito, senza messaggio; resta solo il fatto del controllo", () => {
   const out = decide(Buffer.from(`Referente Mario Rossi, mario.rossi@example.com\n${LINES.join("\n")}\n`), "contatti.txt");
   assert.equal(out.status, "pulito");
+  assert.equal(out.message, null);
   assert.equal(out.personalWarning, true);
-  assert.equal(out.message, REFERENT_PUBLIC_TEXT.fileWarning);
   assert.ok((out.findings.avvisi ?? []).some((c) => (PERSONAL_WARNING_CODES as readonly string[]).includes(c)));
 });
 
@@ -55,6 +55,13 @@ test("dati sanitari o discriminatori: rifiutato, con il motivo", () => {
   const disc = decide(Buffer.from(`${LINES.join("\n")}\nIl cliente preferisce solo piloti donne\n`), "note.txt");
   assert.equal(disc.status, "rifiutato");
   assert.equal(disc.reason, "testo_discriminatorio");
+  // (Rilascio 5.1) I messaggi calmi: mai «nomi, email, telefoni», che qui passano.
+  assert.equal(health.message, REFERENT_PUBLIC_TEXT.fileRejected.sanitario);
+  assert.equal(disc.message, REFERENT_PUBLIC_TEXT.fileRejected.discriminatorio);
+  const taxCode = decide(Buffer.from(`${LINES.join("\n")}\nCodice RSSMRA80A01H501U\n`), "note.txt");
+  assert.equal(taxCode.status, "rifiutato");
+  assert.equal(taxCode.message, REFERENT_PUBLIC_TEXT.fileRejected.identificativi);
+  for (const m of [health.message, disc.message, taxCode.message]) assert.doesNotMatch(String(m), /nomi|email|telefon/i);
 });
 
 test("percorsi: solo questa scheda di questo workspace", () => {
@@ -72,9 +79,10 @@ test("percorsi: solo questa scheda di questo workspace", () => {
   assert.equal(isReferentQuarantinePath(std, WS, UC), false);
 });
 
-test("richiesta di caricamento: dichiarazione, estensione e dimensione", () => {
+test("richiesta di caricamento: estensione e dimensione (la dichiarazione non serve più)", () => {
   assert.equal(referentUploadCheck({ fileName: "a.csv", size: 10, declaration: true, mode: "server" }).ok, true);
-  assert.equal(referentUploadCheck({ fileName: "a.csv", size: 10, declaration: false, mode: "server" }).ok, false);
+  assert.equal(referentUploadCheck({ fileName: "a.csv", size: 10, declaration: false, mode: "server" }).ok, true, "(rilascio 5.1) la dichiarazione non serve più");
+  assert.equal(referentUploadCheck({ fileName: "a.csv", size: 10, mode: "server" }).ok, true);
   assert.equal(referentUploadCheck({ fileName: "a.exe", size: 10, declaration: true, mode: "server" }).ok, false);
   assert.equal(referentUploadCheck({ fileName: "a.png", size: 10, declaration: true, mode: "server" }).ok, false, "niente immagini");
   assert.equal(referentUploadCheck({ fileName: "a.pdf", size: 5 * 1024 * 1024, declaration: true, mode: "server" }).ok, false, "oltre 4 MB dal server");

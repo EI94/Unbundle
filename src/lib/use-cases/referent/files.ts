@@ -7,17 +7,20 @@
  *   passa mai (`isReferentBlobPath`).
  * - Esito (`referentFileDecision`, da `decideUpload` dei dossier): un PDF con poco testo (forse una
  *   scansione) **non si rifiuta**: diventa `in_revisione` e lo controlla una persona di Lateral Space
- *   entro 7 giorni. Nomi, email o telefoni nel file danno un avviso visibile («Può contenere dati
- *   personali»): il referente deve confermarlo. Dati sanitari, discriminatori, codici fiscali o date
- *   di nascita: rifiutato, l'oggetto si cancella.
+ *   entro 7 giorni. Dati sanitari, discriminatori, codici fiscali o date di nascita: rifiutato,
+ *   l'oggetto si cancella, con un messaggio calmo. (Rilascio 5.1, decisione del titolare del
+ *   04/11/2026) Nomi, email o telefoni nel file non chiedono più niente a nessuno: il file è pulito,
+ *   `personalWarning` resta solo come fatto del controllo (la colonna `personal_warning`), mai a
+ *   schermo e mai da confermare.
  * - Richiesta di caricamento (`referentUploadCheck`): `checkUploadRequest` dei dossier con la zona
- *   standard (dichiarazione, estensione, dimensione).
+ *   standard (estensione, dimensione). (Rilascio 5.1) Senza la dichiarazione dei dossier: l'informativa
+ *   lo dice prima, la pagina non chiede più di spuntare niente. I dossier (`/r`) la chiedono come prima.
  *
  * Modulo puro.
  */
 import { isUcBlobPath, ucBlobPath } from "../../uc/files/filename.ts";
 import type { InspectReport, ScanFindings } from "../../uc/files/inspect.ts";
-import { checkUploadRequest, decideUpload, type UploadRequest } from "../../uc/files/upload.ts";
+import { DELETION_REASONS, checkUploadRequest, decideUpload, type UploadRequest } from "../../uc/files/upload.ts";
 import type { ScanResult } from "../../uc/text/scan.ts";
 import type { Result } from "../../uc/types.ts";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT } from "./labels.ts";
@@ -27,7 +30,7 @@ export const PENDING_QUARANTINE_MS = 60 * 60 * 1000;
 /** Quanto aspetta un PDF in revisione (= `REVIEW_TTL_MS` dei dossier). */
 export const REVIEW_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** I codici degli avvisi che fanno mostrare «Può contenere dati personali». */
+/** I codici degli avvisi di nomi, email o telefoni nel file (`personal_warning`): un fatto del controllo, mai un avviso a schermo. */
 export const PERSONAL_WARNING_CODES = ["testo_nomi_persona", "testo_contatti", "testo_identificativi"] as const;
 
 export function referentBlobPath(area: "quarantena" | "standard", workspaceId: string, useCaseId: string, fileId: string): string {
@@ -58,19 +61,34 @@ export interface ReferentFileOutcome {
 export function referentFileDecision(report: InspectReport, scan: ScanResult | null): ReferentFileOutcome {
   const decision = decideUpload(report, scan, { zone: "standard", a8Resolved: false });
   if (decision.status === "rifiutato") {
-    return { status: "rifiutato", reason: decision.reason ?? "rifiutato", message: decision.message, findings: decision.findings, personalWarning: false };
+    const reason = decision.reason ?? "rifiutato";
+    return { status: "rifiutato", reason, message: REFERENT_FILE_REJECTIONS[reason] ?? decision.message, findings: decision.findings, personalWarning: false };
   }
   const avvisi = decision.findings.avvisi ?? [];
   const personalWarning = avvisi.some((code) => (PERSONAL_WARNING_CODES as readonly string[]).includes(code));
   if (decision.status === "revisione_manuale") {
     return { status: "in_revisione", reason: null, message: REFERENT_ERROR_MESSAGES.pdf_in_revisione, findings: decision.findings, personalWarning };
   }
-  return { status: "pulito", reason: null, message: personalWarning ? REFERENT_PUBLIC_TEXT.fileWarning : null, findings: decision.findings, personalWarning };
+  return { status: "pulito", reason: null, message: null, findings: decision.findings, personalWarning };
 }
 
-/** La richiesta di caricamento: dichiarazione, nome con estensione ammessa, dimensione entro il limite. */
-export function referentUploadCheck(i: { fileName: unknown; size: unknown; declaration: unknown; mode: "server" | "client" }): Result<UploadRequest> {
-  return checkUploadRequest({ ...i, zone: "standard" });
+/**
+ * (Rilascio 5.1) I messaggi calmi dei rifiuti per i dati che qui non teniamo, al posto di quelli dei
+ * dossier (che parlano anche di nomi, email e telefoni, che qui passano).
+ */
+const REFERENT_FILE_REJECTIONS: Readonly<Record<string, string>> = Object.freeze({
+  [DELETION_REASONS.sanitario]: REFERENT_PUBLIC_TEXT.fileRejected.sanitario,
+  [DELETION_REASONS.dati_personali]: REFERENT_PUBLIC_TEXT.fileRejected.identificativi,
+  [DELETION_REASONS.testo_discriminatorio]: REFERENT_PUBLIC_TEXT.fileRejected.discriminatorio,
+});
+
+/**
+ * La richiesta di caricamento: nome con estensione ammessa, dimensione entro il limite. (Rilascio
+ * 5.1) La dichiarazione dei dossier non serve più: `declaration` si accetta e si ignora, così una
+ * pagina aperta prima del rilascio carica come prima.
+ */
+export function referentUploadCheck(i: { fileName: unknown; size: unknown; declaration?: unknown; mode: "server" | "client" }): Result<UploadRequest> {
+  return checkUploadRequest({ fileName: i.fileName, size: i.size, mode: i.mode, declaration: true, zone: "standard" });
 }
 
 /** Il messaggio di un motivo di rifiuto salvato, per chi guarda un file non accettato. */

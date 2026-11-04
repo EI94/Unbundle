@@ -224,7 +224,7 @@ test("la lettura dell'informativa non cambia la vista dei revisori", opts, async
   const before = JSON.stringify((await panelFor("builder"))!.requests);
   const resolved = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(resolved.access === "ok");
-  if (resolved.access === "ok") assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-10-1" }, new Date())).ok);
+  if (resolved.access === "ok") assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-1" }, new Date())).ok);
   assert.equal(JSON.stringify((await panelFor("builder"))!.requests), before);
 });
 

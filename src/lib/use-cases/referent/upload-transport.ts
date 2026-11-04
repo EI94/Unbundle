@@ -4,7 +4,7 @@
  * (`/dashboard/<ws>/use-cases/<id>/allegati/upload*`). Sul modello di
  * `src/components/uc/documents/upload-transport.ts`:
  *
- * - fino a 4 MB: modalità server (multipart `file`, `needId`, `declaration`);
+ * - fino a 4 MB: modalità server (multipart `file`, `needId`);
  * - oltre 4 MB, con il caricamento diretto attivo (`clientMode`): `upload-token` crea la riga in
  *   quarantena e un token per un solo percorso, il browser carica su Vercel Blob privato,
  *   `upload-complete` avvia i controlli;
@@ -12,7 +12,9 @@
  *
  * Le chiamate del referente partono senza cookie e senza `Referer` (il link sta solo
  * nell'indirizzo della chiamata, mai salvato). Il revisore manda anche `validate` («L'ho già
- * verificata», Parte 2). Nessun `server-only`: si usa nei componenti client.
+ * verificata», Parte 2). (Rilascio 5.1) Niente più dichiarazione da spuntare: le chiamate mandano
+ * ancora `declaration: true`, che il server di adesso ignora e quello del rilascio 5 (un ritorno
+ * indietro) chiede. Nessun `server-only`: si usa nei componenti client.
  */
 import { formatNumberIt } from "../../uc/views/format.ts";
 import { REFERENT_API, REFERENT_LIMITS, referentApiBase, reviewerFilesBase, type ReferentUploadResult } from "./contract.ts";
@@ -69,8 +71,6 @@ export function asUploadResult(data: unknown): ReferentUploadResult | null {
     status,
     usable: d.usable === true,
     message: typeof d.message === "string" ? d.message : null,
-    warning: typeof d.warning === "string" ? d.warning : null,
-    needsConfirmation: d.needsConfirmation === true,
   };
 }
 
@@ -86,11 +86,11 @@ async function postJson(dest: ReferentUploadDestination, path: string, body: unk
   }
 }
 
-async function serverUpload(dest: ReferentUploadDestination, file: File, opts: { declaration: boolean; validate?: boolean }): Promise<ReferentUploadOutcome> {
+async function serverUpload(dest: ReferentUploadDestination, file: File, opts: { validate?: boolean }): Promise<ReferentUploadOutcome> {
   const form = new FormData();
   form.set("file", file, file.name);
   form.set("needId", dest.needId);
-  form.set("declaration", opts.declaration ? "true" : "false");
+  form.set("declaration", "true");
   if (dest.kind === "revisore" && opts.validate) form.set("validate", "true");
   let result: Parsed;
   try {
@@ -104,9 +104,9 @@ async function serverUpload(dest: ReferentUploadDestination, file: File, opts: {
   return uploaded ? { ok: true, file: uploaded } : { ok: false, code: "errore", message: GENERIC };
 }
 
-async function clientUpload(dest: ReferentUploadDestination, file: File, opts: { declaration: boolean; validate?: boolean }): Promise<ReferentUploadOutcome> {
+async function clientUpload(dest: ReferentUploadDestination, file: File, opts: { validate?: boolean }): Promise<ReferentUploadOutcome> {
   const validate = dest.kind === "revisore" && opts.validate ? { validate: true } : {};
-  const ticket = await postJson(dest, REFERENT_API.uploadToken, { needId: dest.needId, fileName: file.name, size: file.size, declaration: opts.declaration, ...validate });
+  const ticket = await postJson(dest, REFERENT_API.uploadToken, { needId: dest.needId, fileName: file.name, size: file.size, declaration: true, ...validate });
   if (!ticket.ok) return ticket;
   const t = ticket.data as { fileId?: unknown; pathname?: unknown; clientToken?: unknown; contentType?: unknown } | null;
   if (!t || typeof t.fileId !== "string" || typeof t.pathname !== "string" || typeof t.clientToken !== "string") return { ok: false, code: "errore", message: GENERIC };
@@ -129,7 +129,7 @@ async function clientUpload(dest: ReferentUploadDestination, file: File, opts: {
 export function uploadReferentFile(
   dest: ReferentUploadDestination,
   file: File,
-  opts: { declaration: boolean; clientMode: boolean; validate?: boolean },
+  opts: { clientMode: boolean; validate?: boolean },
 ): Promise<ReferentUploadOutcome> {
   if (file.size <= REFERENT_LIMITS.serverMaxBytes) return serverUpload(dest, file, opts);
   if (!opts.clientMode) return Promise.resolve({ ok: false, code: "modalita_non_disponibile", message: REFERENT_ERROR_MESSAGES.modalita_non_disponibile });

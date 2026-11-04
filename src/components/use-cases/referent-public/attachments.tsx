@@ -7,15 +7,15 @@ import { cn } from "@/lib/utils";
 import { REFERENT_LIMITS } from "@/lib/use-cases/referent/contract";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import { uploadReferentFile } from "@/lib/use-cases/referent/upload-transport";
-import { confirmFile, removeFile } from "./api";
-import { attachHelp, fileFromUpload, fileRow, type FileRow, type PublicFile } from "./public-view-render";
+import { removeFile } from "./api";
+import { fileFromUpload, fileRow, type FileRow, type PublicFile } from "./public-view-render";
 
 /**
- * I file di una domanda (SPEC §4.4 punto 4; rilascio 5 §7.5): «Allega un file», che al primo tocco della
- * visita apre la dichiarazione dentro la domanda («Confermo, scelgo il file» apre la scelta del file), l'elenco con lo stato di ogni file e «Togli» per quelli non ancora inviati. Un file in cui
- * troviamo nomi, email o telefoni chiede «Servono, lo lascio» prima di poter partire; un PDF con poco
- * testo lo controlla Lateral Space e si può inviare lo stesso. Un file rifiutato è già cancellato: la riga
- * resta finché il referente non la chiude.
+ * I file di una domanda (SPEC §4.4 punto 4): «Allega un file», che apre subito la scelta del file
+ * (rilascio 5.1: niente dichiarazione da confermare, niente avviso su nomi, email o telefoni), l'elenco
+ * con lo stato di ogni file e «Togli» per quelli non ancora inviati. Il controllo automatico resta: un
+ * PDF con poco testo lo controlla Lateral Space e si può inviare lo stesso; un file rifiutato è già
+ * cancellato e la riga resta finché il referente non la chiude.
  *
  * Stesso caricamento dei file del dossier (tipi, limiti, controlli, Blob privato), dalle API di questo
  * link. Aree di tocco di almeno 44 px, nomi lunghi che vanno a capo.
@@ -36,8 +36,6 @@ export function Attachments({
   files,
   onFiles,
   clientMode,
-  declared,
-  onDeclared,
   allowUpload,
   disabled,
   tooSoon,
@@ -47,9 +45,6 @@ export function Attachments({
   files: PublicFile[];
   onFiles: (update: (current: PublicFile[]) => PublicFile[]) => void;
   clientMode: boolean;
-  /** La dichiarazione sui file vale per tutta la visita. */
-  declared: boolean;
-  onDeclared: (v: boolean) => void;
   /** false con «Non ce l'ho» o «È già allegato»: si possono solo togliere i file già caricati. */
   allowUpload: boolean;
   disabled: boolean;
@@ -61,8 +56,6 @@ export function Attachments({
   const [uploading, setUploading] = useState<string | null>(null);
   const [busyFile, setBusyFile] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  /** Il pannello della dichiarazione, aperto al primo «Allega un file» della visita. */
-  const [asking, setAsking] = useState(false);
   const live = files.filter((f) => f.status !== "rifiutato");
   const blocked = disabled || uploading !== null;
 
@@ -74,7 +67,7 @@ export function Attachments({
       return;
     }
     setUploading(file.name);
-    const result = await uploadReferentFile({ kind: "referente", token, needId }, file, { declaration: declared, clientMode });
+    const result = await uploadReferentFile({ kind: "referente", token, needId }, file, { clientMode });
     setUploading(null);
     if (!result.ok) {
       setError(result.message);
@@ -96,18 +89,6 @@ export function Attachments({
     setError(r.message);
   }
 
-  async function onKeep(row: FileRow) {
-    setError(null);
-    setBusyFile(row.id);
-    const r = await confirmFile(token, row.id);
-    setBusyFile(null);
-    if (!r.ok) {
-      setError(r.message);
-      return;
-    }
-    onFiles((current) => current.map((f) => (f.id === row.id ? { ...f, needsConfirmation: false } : f)));
-  }
-
   const rows = files.map(fileRow);
 
   return (
@@ -125,7 +106,7 @@ export function Attachments({
                     <span className={cn("min-w-0", row.tone === "errore" && "text-uc-rosso")}>{row.state}</span>
                   </p>
                 </div>
-                {row.removable && !row.confirm ? (
+                {row.removable ? (
                   <Button
                     type="button"
                     variant="ghost"
@@ -150,26 +131,6 @@ export function Attachments({
                   </Button>
                 ) : null}
               </div>
-              {row.confirm ? (
-                <div className="mt-2 space-y-2 rounded-lg bg-uc-giallo-bg px-3 py-2" role="status">
-                  <p className="text-sm break-words">{row.confirm.warning}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="min-h-11 text-base"
-                      disabled={disabled || busyFile !== null}
-                      aria-label={fillText(T.aria.removeFile, { file: row.name })}
-                      onClick={() => void onRemove(row)}
-                    >
-                      {T.removeFile}
-                    </Button>
-                    <Button type="button" variant="outline" className="min-h-11 text-base" disabled={disabled || busyFile !== null} onClick={() => void onKeep(row)}>
-                      {row.confirm.keep}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
             </li>
           ))}
           {uploading ? (
@@ -200,48 +161,20 @@ export function Attachments({
               if (file) void onFile(file);
             }}
           />
-          {/* (Rilascio 5) «Allega un file» non è mai spento: al primo tocco della visita chiede la dichiarazione, qui dentro. */}
-          {asking ? (
-            <div className="min-w-0 space-y-3 rounded-lg border border-dashed border-border px-3 py-3" data-slot="file-declaration">
-              <p className="text-base break-words">{T.declaration}</p>
-              <p className="text-sm break-words text-muted-foreground">{attachHelp(clientMode)}</p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-11 text-base"
-                  disabled={blocked}
-                  onClick={(e) => {
-                    // Il secondo clic di un doppio clic su «Allega un file» arriva qui: la dichiarazione la dà solo un clic voluto.
-                    if (e.detail > 1) return;
-                    onDeclared(true);
-                    setAsking(false);
-                    input.current?.click();
-                  }}
-                >
-                  {T.declarationConfirm}
-                </Button>
-                <Button type="button" variant="ghost" className="min-h-11 text-base" onClick={() => setAsking(false)}>
-                  {T.declarationCancel}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <Button
-              type="button"
-              variant="outline"
-              className="min-h-11 text-base"
-              aria-busy={uploading !== null || undefined}
-              onClick={(e) => {
-                if (blocked || e.detail > 1 || tooSoon?.(e)) return;
-                if (!declared) setAsking(true);
-                else input.current?.click();
-              }}
-            >
-              {uploading ? <Loader2 className="animate-spin" aria-hidden /> : <Paperclip aria-hidden />}
-              {uploading ? T.uploading : T.attach}
-            </Button>
-          )}
+          {/* (Rilascio 5.1) «Allega un file» apre subito la scelta del file: le regole le dice l'informativa, prima. */}
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11 text-base"
+            aria-busy={uploading !== null || undefined}
+            onClick={(e) => {
+              if (blocked || e.detail > 1 || tooSoon?.(e)) return;
+              input.current?.click();
+            }}
+          >
+            {uploading ? <Loader2 className="animate-spin" aria-hidden /> : <Paperclip aria-hidden />}
+            {uploading ? T.uploading : T.attach}
+          </Button>
         </div>
       ) : null}
 

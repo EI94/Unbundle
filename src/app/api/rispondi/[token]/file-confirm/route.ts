@@ -5,8 +5,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * `POST /api/rispondi/[token]/file-confirm` `{ fileId }`: «Servono, lo lascio» su un file in cui
- * abbiamo trovato nomi, email o telefoni. Senza questa conferma il file non parte.
+ * `POST /api/rispondi/[token]/file-confirm` `{ fileId }`: «Servono, lo lascio» del rilascio 5 su un
+ * file in cui abbiamo trovato nomi, email o telefoni. (Rilascio 5.1) La pagina non lo chiede più e
+ * l'invio non lo aspetta: resta solo per una pagina aperta prima del rilascio.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;

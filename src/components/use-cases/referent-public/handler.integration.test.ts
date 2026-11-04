@@ -171,7 +171,7 @@ test("GET: la vista con il link giusto, senza scrivere niente; un link sconosciu
     const r = await call("", token, { method: "GET" });
     assert.equal(r.status, 404, token);
     assert.equal(r.json.error, "link_non_valido");
-    const w = await call("privacy", token, { body: { version: "ucq-2026-10-1" } });
+    const w = await call("privacy", token, { body: { version: "ucq-2026-11-1" } });
     assert.equal(w.status, 404);
     assert.equal(w.json.error, "link_non_valido");
   }
@@ -179,7 +179,7 @@ test("GET: la vista con il link giusto, senza scrivere niente; un link sconosciu
 
 test("scritture: un'origine diversa o assente → 403 origine_non_ammessa, niente scritto", opts, async () => {
   for (const origin of ["https://altro.example", null, "null"]) {
-    const r = await call("privacy", state.token, { body: { version: "ucq-2026-10-1" }, origin });
+    const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-1" }, origin });
     assert.equal(r.status, 403, String(origin));
     assert.equal(r.json.error, "origine_non_ammessa");
   }
@@ -201,7 +201,7 @@ test("su Vercel (anteprima o produzione) senza UC_SECRET le scritture rispondono
   try {
     for (const env of ["preview", "production"]) {
       process.env.VERCEL_ENV = env;
-      const r = await call("privacy", state.token, { body: { version: "ucq-2026-10-1" } });
+      const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-1" } });
       assert.equal(r.status, 503, env);
       assert.equal(r.json.error, "non_disponibile");
     }
@@ -226,7 +226,7 @@ test("la funzione spenta o il workspace fuori dall'area: link non valido, come o
     assert.equal((await call("", state.token, { method: "GET" })).json.error, "link_non_valido");
     delete process.env.USE_CASE_REFERENTS;
     process.env.USE_CASE_HUB_WORKSPACES = randomUUID();
-    assert.equal((await call("privacy", state.token, { body: { version: "ucq-2026-10-1" } })).json.error, "link_non_valido");
+    assert.equal((await call("privacy", state.token, { body: { version: "ucq-2026-11-1" } })).json.error, "link_non_valido");
     // Spegnere i dossier non spegne questa funzione.
     process.env.USE_CASE_HUB_WORKSPACES = ids.ws;
     process.env.UC_ENABLED = "false";
@@ -244,7 +244,7 @@ test("dalle rotte: informativa, bozza bloccata dal controllo del testo, bozza, f
   const early = await call("draft", state.token, { body: { needId: n0, text: "Ogni giorno", dontKnow: false } });
   assert.equal(early.status, 409);
   assert.equal(early.json.error, "informativa_da_leggere");
-  const accepted = await call("privacy", state.token, { body: { version: "ucq-2026-10-1" } });
+  const accepted = await call("privacy", state.token, { body: { version: "ucq-2026-11-1" } });
   assert.equal(accepted.status, 200);
   assert.deepEqual(accepted.json.data, { accepted: true });
 
@@ -253,8 +253,12 @@ test("dalle rotte: informativa, bozza bloccata dal controllo del testo, bozza, f
   assert.equal(blocked.status, 422);
   assert.match(String(blocked.json.error), /^testo_/);
   assert.equal((await q(`SELECT count(*)::int AS n FROM use_case_need_answers WHERE request_id = $1::uuid`, [state.requestId]))[0].n, 0);
-  // Email e telefoni nella bozza: salvata con un avviso, poi l'invio la rifiuta sulla sua domanda.
-  const warned = await call("draft", state.token, { body: { needId: n0, text: `Chiedete a mario.rossi.${suffix}@topjet.test`, dontKnow: false } });
+  // (Rilascio 5.1) Email e telefoni nella bozza: salvata senza avvisi.
+  const named = await call("draft", state.token, { body: { needId: n0, text: `Chiedete a mario.rossi.${suffix}@topjet.test o al +39 333 1234567`, dontKnow: false } });
+  assert.equal(named.status, 200);
+  assert.deepEqual(named.json.data?.warnings, [], "nessun avviso per un'email o un telefono");
+  // Un codice fiscale: salvata con un avviso, poi l'invio la rifiuta sulla sua domanda.
+  const warned = await call("draft", state.token, { body: { needId: n0, text: "Il fornitore ha codice RSSMRA80A01H501U", dontKnow: false } });
   assert.equal(warned.status, 200);
   assert.ok(Array.isArray(warned.json.data?.warnings) && (warned.json.data.warnings as unknown[]).length > 0, "un avviso sotto il campo");
   // (Rilascio 5, D17) Prima di tutto ogni domanda va chiusa: la seconda non ha niente.
@@ -284,11 +288,14 @@ test("dalle rotte: informativa, bozza bloccata dal controllo del testo, bozza, f
     form.set("declaration", "true");
     return call("upload", state.token, { form });
   };
+  // (Rilascio 5.1) Senza la dichiarazione il file entra lo stesso: la pagina non la chiede più.
   const noDeclaration = new FormData();
   noDeclaration.set("file", new File(["a;b\n1;2\n"], "x.csv", { type: "text/csv" }));
   noDeclaration.set("needId", n1);
-  noDeclaration.set("declaration", "false");
-  assert.notEqual((await call("upload", state.token, { form: noDeclaration })).status, 200, "senza la dichiarazione il file non entra");
+  const free = await call("upload", state.token, { form: noDeclaration });
+  assert.equal(free.status, 200, JSON.stringify(free.json));
+  assert.equal(free.json.data?.status, "pulito");
+  assert.equal((await call("file-remove", state.token, { body: { fileId: free.json.data?.fileId } })).status, 200);
   const first = await upload();
   assert.equal(first.status, 200, JSON.stringify(first.json));
   assert.equal(first.json.data?.status, "pulito");
@@ -316,7 +323,7 @@ test("limite per link: la 31ª apertura in un minuto → 429 con Retry-After", o
   let last = 0;
   let retry: string | null = null;
   for (let i = 0; i < 31; i++) {
-    const r = await call("privacy", state.token, { body: { version: "ucq-2026-10-1" } });
+    const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-1" } });
     last = r.status;
     retry = r.headers.get("retry-after");
   }

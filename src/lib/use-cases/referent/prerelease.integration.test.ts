@@ -159,7 +159,7 @@ async function ask(by: Person, card: string, contactId: string, needIds: string[
 async function openLink(token: string): Promise<Link> {
   const first = await pub.resolveReferentToken(token, V);
   if (first.access !== "ok") assert.fail(`link: ${first.access}`);
-  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-10-1" }, V)).ok, "informativa");
+  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-1" }, V)).ok, "informativa");
   const again = await pub.resolveReferentToken(token, V);
   if (again.access !== "ok") assert.fail("link dopo l'informativa");
   return again.link;

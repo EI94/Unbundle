@@ -260,7 +260,7 @@ test("pagina pubblica: il link, l'informativa, le bozze e i loro controlli", opt
   if (!draft.ok) assert.equal(draft.code, "informativa_da_leggere");
   const wrong = await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2025-01-1" }, now);
   assert.ok(!wrong.ok && wrong.code === "informativa_cambiata");
-  assert.deepEqual(await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-10-1" }, now), { ok: true, value: { accepted: true } });
+  assert.deepEqual(await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-1" }, now), { ok: true, value: { accepted: true } });
   const [r] = await q(`SELECT status FROM use_case_referent_requests WHERE id = $1::uuid`, [state.requestId]);
   assert.equal(r.status, "inviata", "leggere l'informativa non cambia lo stato");
   const again = await pub.resolveReferentToken(state.token, now);
@@ -268,16 +268,20 @@ test("pagina pubblica: il link, l'informativa, le bozze e i loro controlli", opt
   if (again.access !== "ok") return;
   const health = await pub.saveReferentDraft(again.link, { needId: n1, text: "Il collega è in malattia per una visita medica", dontKnow: false }, now);
   assert.ok(!health.ok, "dati sanitari rifiutati");
+  // (Rilascio 5.1) Un nome passa, senza avvisi; un codice fiscale è un avviso nella bozza.
   const named = await pub.saveReferentDraft(again.link, { needId: n1, text: "Le controlla Mario Bianchi, circa 20 al giorno", dontKnow: false }, now);
   assert.ok(named.ok, JSON.stringify(named));
-  if (named.ok) assert.ok(named.value.warnings.length > 0);
+  if (named.ok) assert.deepEqual(named.value.warnings, []);
+  const taxCode = await pub.saveReferentDraft(again.link, { needId: n1, text: "Le controlla il fornitore RSSMRA80A01H501U, circa 20 al giorno", dontKnow: false }, now);
+  assert.ok(taxCode.ok, JSON.stringify(taxCode));
+  if (taxCode.ok) assert.ok(taxCode.value.warnings.length > 0);
   assert.ok((await pub.saveReferentDraft(again.link, { needId: n2, text: null, dontKnow: true }, now)).ok);
   const foreign = await pub.saveReferentDraft(again.link, { needId: state.needs[4], text: "x", dontKnow: false }, now);
   assert.ok(!foreign.ok && foreign.code === "domanda_non_disponibile");
   void n3;
 });
 
-test("invio delle risposte: tutto o niente; un nome blocca e non scrive niente; poi risposte, «Non ce l'ho», notifiche, avviso, conferma", opts, async () => {
+test("invio delle risposte: tutto o niente; un codice fiscale blocca e non scrive niente; poi risposte, «Non ce l'ho», notifiche, avviso, conferma", opts, async () => {
   const now = new Date();
   const resolved = await pub.resolveReferentToken(state.token, now);
   assert.ok(resolved.access === "ok");

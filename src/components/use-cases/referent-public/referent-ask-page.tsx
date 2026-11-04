@@ -67,7 +67,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const stepChangedAt = useRef(0);
   const [checkSave, setCheckSave] = useState<"saving" | "saved" | "error" | null>(null);
   const [stepError, setStepError] = useState<{ step: CheckStep; message: string } | null>(null);
-  /** (Rilascio 5) L'avviso dell'ultima bozza della nota di «Correggi» (un nome, un'email, un telefono). */
+  /** (Rilascio 5) L'avviso dell'ultima bozza della nota di «Correggi» (rilascio 5.1: un codice fiscale o una data di nascita). */
   const [noteWarning, setNoteWarning] = useState<string | null>(null);
   const [staleNotice, setStaleNotice] = useState(false);
   const checkInFlight = useRef<Promise<boolean> | null>(null);
@@ -75,7 +75,6 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const [closedMap, setClosedMap] = useState<Map<string, boolean>>(() => new Map());
   const [missing, setMissing] = useState<string[]>([]);
   const [newQuestions, setNewQuestions] = useState(false);
-  const [declared, setDeclared] = useState(false);
   const [privacyBusy, setPrivacyBusy] = useState(false);
   const [privacyError, setPrivacyError] = useState<string | null>(null);
   const [submitBusy, setSubmitBusy] = useState(false);
@@ -221,9 +220,9 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
         const r = await saveCheck(token, body, keepalive);
         if (r.ok) {
           setCheckSave("saved");
-          // Una nota con un nome, un'email o un telefono si salva con un avviso (all'invio un nome e
-          // cognome o un'email la fermano): lo si dice subito sotto «Cosa cambieresti?», come fanno
-          // le domande; l'ultima bozza decide.
+          // Una nota con un codice fiscale o una data di nascita si salva con un avviso (all'invio la
+          // ferma; nomi, email e telefoni passano, rilascio 5.1): lo si dice subito sotto «Cosa
+          // cambieresti?», come fanno le domande; l'ultima bozza decide.
           if (body.step === 1) setNoteWarning(stepOneWarning(body, r.data.warnings));
           return true;
         }
@@ -531,8 +530,6 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
                   section={section}
                   today={today}
                   clientMode={view.upload.clientMode}
-                  declared={declared}
-                  onDeclared={setDeclared}
                   issues={issues.get(section.needId.toLowerCase()) ?? []}
                   disabled={submitBusy}
                   registerFlush={registerFlush}

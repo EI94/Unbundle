@@ -48,8 +48,8 @@ function rows(over: Partial<PublicRows["request"]> = {}): PublicRows {
         draft: { body: "circa 20", dontKnow: false, updatedAt: at("2026-11-03") },
         answer: null,
         files: [
-          { id: "f1", fileName: "esempio.csv", sizeBytes: 120, scanStatus: "pulito", message: null, personalWarning: true, warningConfirmed: false, submitted: false },
-          { id: "f2", fileName: "rifiutato.txt", sizeBytes: 10, scanStatus: "rifiutato", message: "no", personalWarning: false, warningConfirmed: false, submitted: false },
+          { id: "f1", fileName: "esempio.csv", sizeBytes: 120, scanStatus: "pulito", message: null, submitted: false },
+          { id: "f2", fileName: "rifiutato.txt", sizeBytes: 10, scanStatus: "rifiutato", message: "no", submitted: false },
         ],
         ...(dbNeed as object),
       },
@@ -71,7 +71,8 @@ test("vista pubblica: solo le chiavi del contratto, nessun dato seminato", () =>
   // In ordine di posizione; ritirate e scollegate non si vedono; i rifiutati non si vedono.
   assert.deepEqual(view.questions.map((q) => q.needId), ["n2", "n1"]);
   assert.deepEqual(view.questions[1].files.map((f) => f.id), ["f1"]);
-  assert.equal(view.questions[1].files[0].needsConfirmation, true);
+  // (Rilascio 5.1) Un file con nomi, email o telefoni non chiede più conferma: la vista non ne parla.
+  assert.deepEqual(Object.keys(view.questions[1].files[0]).sort(), ["id", "message", "name", "sizeBytes", "status", "submitted"]);
   assert.equal(view.questions[0].state, "inviata");
   assert.deepEqual(view.questions[0].answer, { text: "Excel", dontKnow: false, alreadyAttached: false, comment: null, submittedAt: at("2026-11-03").toISOString() });
   assert.equal(view.state, "aperta");

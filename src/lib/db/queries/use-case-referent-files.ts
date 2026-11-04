@@ -33,7 +33,7 @@ import {
   referentFileDecision,
   referentUploadCheck,
 } from "@/lib/use-cases/referent/files";
-import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/referent/labels";
+import { REFERENT_ERROR_MESSAGES } from "@/lib/use-cases/referent/labels";
 import { requestReferentUserSql } from "@/lib/use-cases/referent/people";
 import {
   completeHandledRequestsStatements,
@@ -59,7 +59,8 @@ import { cardSyncStatements, type ReadinessSync } from "@/lib/use-cases/case-ale
  * - **Esiti**: pulito → `uc/s/<ws>/<uc>/<id>`; PDF con poco testo → `in_revisione`, spostato subito
  *   in `uc/s/` (la quarantena non durerebbe 7 giorni) e scaricabile solo da Lateral Space finché non
  *   lo accetta un'altra persona; rifiutato → nessun oggetto, solo il codice del motivo.
- * - **Nomi, email o telefoni** nel file: un avviso (`personal_warning`); il referente lo conferma.
+ * - **Nomi, email o telefoni** nel file: (rilascio 5.1) solo un fatto del controllo (`personal_warning`),
+ *   mai un avviso a schermo né una conferma.
  * - **Effetti** di un file del team pulito (o in revisione): l'esigenza passa a «Da verificare» (o
  *   «A posto» con «L'ho già verificata» e un file pulito), la Storia, e per un file pulito i
  *   «Nuovi documenti» ai revisori e l'avviso a chi ha chiesto; tutto nello stesso batch.
@@ -83,8 +84,6 @@ interface FileRow {
   blobPath: string | null;
   sha256: string | null;
   createdAt: Date;
-  personalWarning: boolean;
-  warningConfirmed: boolean;
   submitted: boolean;
   deleted: boolean;
 }
@@ -108,8 +107,6 @@ function fileRowOf(r: UcRow | undefined): FileRow | null {
     blobPath: rowString(r.blob_path),
     sha256: rowString(r.sha256),
     createdAt,
-    personalWarning: rowBool(r.personal_warning),
-    warningConfirmed: rowDate(r.warning_confirmed_at) !== null,
     submitted: rowDate(r.submitted_at) !== null,
     deleted: rowDate(r.deleted_at) !== null,
   };
@@ -119,7 +116,7 @@ async function loadFile(executor: UcExecutor, workspaceId: string, fileId: strin
   if (!isUuid(fileId)) return null;
   const [[row]] = await executor.batch([
     toStatement(ucSql`SELECT id, workspace_id, use_case_id, need_id, request_id, source, uploaded_by_user_id, file_name, max_bytes, scan_status, quarantine_path, blob_path,
-  sha256, created_at, personal_warning, warning_confirmed_at, submitted_at, deleted_at
+  sha256, created_at, submitted_at, deleted_at
 FROM use_case_need_files WHERE id = ${cast(fileId, "uuid")} AND workspace_id = ${cast(workspaceId, "uuid")}`),
   ]);
   return fileRowOf(row);
@@ -216,18 +213,9 @@ RETURNING id`,
   ];
 }
 
-function resultOf(f: FileRow, status: ReferentUploadResult["status"], extra: { sizeBytes: number | null; message: string | null; personalWarning: boolean }): ReferentUploadResult {
-  const warning = extra.personalWarning ? REFERENT_PUBLIC_TEXT.fileWarning : null;
-  return {
-    fileId: f.id,
-    fileName: f.fileName,
-    sizeBytes: extra.sizeBytes,
-    status,
-    usable: status !== "rifiutato",
-    message: extra.message,
-    warning,
-    needsConfirmation: f.source === "referente" && extra.personalWarning && status !== "rifiutato",
-  };
+/** (Rilascio 5.1) Il risultato di un caricamento: mai un avviso su nomi, email o telefoni, niente da confermare. */
+function resultOf(f: FileRow, status: ReferentUploadResult["status"], extra: { sizeBytes: number | null; message: string | null }): ReferentUploadResult {
+  return { fileId: f.id, fileName: f.fileName, sizeBytes: extra.sizeBytes, status, usable: status !== "rifiutato", message: extra.message };
 }
 
 /**
@@ -315,7 +303,7 @@ export async function processReferentFile(i: { fileId: string; bytes?: Uint8Arra
 WHERE id = ${id} AND scan_status = 'in_quarantena' AND deleted_at IS NULL`),
     ]);
     if (!run.ok) return failCode(run.error);
-    return ok(resultOf(f, "rifiutato", { sizeBytes: extra.size ?? null, message, personalWarning: false }));
+    return ok(resultOf(f, "rifiutato", { sizeBytes: extra.size ?? null, message }));
   };
 
   let bytes = i.bytes ?? null;
@@ -367,14 +355,14 @@ RETURNING id`,
     return failCode(run.error);
   }
   await safeDelete(store, [f.quarantinePath]);
-  return ok(resultOf(f, outcome.status, { sizeBytes: report.sizeBytes > 0 ? report.sizeBytes : null, message: outcome.message, personalWarning: outcome.personalWarning }));
+  return ok(resultOf(f, outcome.status, { sizeBytes: report.sizeBytes > 0 ? report.sizeBytes : null, message: outcome.message }));
 }
 
 async function loadFileAnyWorkspace(executor: UcExecutor, fileId: string): Promise<FileRow | null> {
   if (!isUuid(fileId)) return null;
   const [[row]] = await executor.batch([
     toStatement(ucSql`SELECT id, workspace_id, use_case_id, need_id, request_id, source, uploaded_by_user_id, file_name, max_bytes, scan_status, quarantine_path, blob_path,
-  sha256, created_at, personal_warning, warning_confirmed_at, submitted_at, deleted_at
+  sha256, created_at, submitted_at, deleted_at
 FROM use_case_need_files WHERE id = ${cast(fileId, "uuid")}`),
   ]);
   return fileRowOf(row);

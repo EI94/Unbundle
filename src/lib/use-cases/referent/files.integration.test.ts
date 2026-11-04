@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
+import { REFERENT_PUBLIC_TEXT } from "./labels.ts";
 
 // I file di «Chiedi al referente» sul database di prova (SPEC §2.3, §3.8, §3.9): caricamento dal link
 // e dalla scheda, controllo del contenuto, avvisi da confermare, PDF in revisione controllati da
@@ -177,16 +178,14 @@ test("preparazione: autorizzazione, domande, richiesta, link con l'informativa l
   // Prima dell'informativa niente file.
   const early = await pub.uploadReferentFileServer(resolved.link, { needId: state.needs[0], fileName: "a.csv", declaration: true, bytes: CLEAN }, ENV);
   assert.ok(!early.ok && early.code === "informativa_da_leggere");
-  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-10-1" }, new Date())).ok);
+  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-1" }, new Date())).ok);
   const again = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(again.access === "ok");
   if (again.access === "ok") link = again.link;
 });
 
-test("referente: un CSV pulito è pulito e nell'archivio della scheda; senza dichiarazione no", opts, async () => {
-  const noDecl = await pub.uploadReferentFileServer(link, { needId: state.needs[0], fileName: "a.csv", declaration: false, bytes: CLEAN }, ENV);
-  assert.equal(noDecl.ok, false);
-  const up = await pub.uploadReferentFileServer(link, { needId: state.needs[0], fileName: "regole.csv", declaration: true, bytes: CLEAN }, ENV);
+test("referente: un CSV pulito è pulito e nell'archivio della scheda; (rilascio 5.1) senza dichiarazione", opts, async () => {
+  const up = await pub.uploadReferentFileServer(link, { needId: state.needs[0], fileName: "regole.csv", declaration: false, bytes: CLEAN }, ENV);
   assert.ok(up.ok, JSON.stringify(up));
   if (!up.ok) return;
   assert.equal(up.value.status, "pulito");
@@ -206,13 +205,13 @@ test("referente: un CSV pulito è pulito e nell'archivio della scheda; senza dic
   assert.equal((await fileRow(up.value.fileId)).deleted_reason, "referente");
 });
 
-test("referente: un file con nomi va confermato prima dell'invio; poi l'invio lo segna inviato e non si toglie più", opts, async () => {
-  const up = await pub.uploadReferentFileServer(link, { needId: state.needs[1], fileName: "contatti.txt", declaration: true, bytes: NAMED }, ENV);
-  assert.ok(up.ok && up.value.status === "pulito" && up.value.needsConfirmation, JSON.stringify(up));
+test("referente: (rilascio 5.1) un file con nomi è pulito, senza dichiarazione né conferma; poi l'invio lo segna inviato e non si toglie più", opts, async () => {
+  const up = await pub.uploadReferentFileServer(link, { needId: state.needs[1], fileName: "contatti.txt", declaration: false, bytes: NAMED }, ENV);
+  assert.ok(up.ok && up.value.status === "pulito" && up.value.usable && up.value.message === null, JSON.stringify(up));
   if (!up.ok) return;
-  const blocked = await pub.submitReferentAnswers(link, { needIds: [state.needs[1]] }, new Date());
-  assert.ok(!blocked.ok && blocked.code === "file_da_confermare", JSON.stringify(blocked));
-  assert.ok((await pub.confirmReferentFile(link, { fileId: up.value.fileId })).ok);
+  assert.deepEqual(Object.keys(up.value).sort(), ["fileId", "fileName", "message", "sizeBytes", "status", "usable"], "nessun avviso, niente da confermare");
+  // Il fatto del controllo resta nella colonna, mai a schermo.
+  assert.equal((await fileRow(up.value.fileId)).personal_warning, true);
   // (Rilascio 5, D17) Tutto o niente: con la terza domanda ancora aperta l'invio dice quale manca.
   assert.ok((await pub.saveReferentDraft(link, { needId: state.needs[0], text: null, dontKnow: true }, new Date())).ok);
   const open = await pub.submitReferentAnswers(link, {}, new Date());
@@ -226,6 +225,8 @@ test("referente: dati sanitari → rifiutato, nessun oggetto, il motivo resta", 
   const up = await pub.uploadReferentFileServer(link, { needId: state.needs[2], fileName: "note.txt", declaration: true, bytes: HEALTH }, ENV);
   assert.ok(up.ok && up.value.status === "rifiutato", JSON.stringify(up));
   if (!up.ok) return;
+  // (Rilascio 5.1) Detto con calma, senza «nomi, email, telefoni».
+  assert.equal(up.value.message, REFERENT_PUBLIC_TEXT.fileRejected.sanitario);
   const row = await fileRow(up.value.fileId);
   assert.equal(row.scan_status, "rifiutato");
   assert.equal(row.blob_path, null);

@@ -108,7 +108,7 @@ async function referentLink(useCaseId: string, needIds: string[]): Promise<{ tok
   const first = await pub.resolveReferentToken(token, new Date());
   assert.ok(first.access === "ok");
   if (first.access !== "ok") throw new Error("link");
-  ok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-10-1" }, new Date()) as never, "informativa");
+  ok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-1" }, new Date()) as never, "informativa");
   const again = await pub.resolveReferentToken(token, new Date());
   if (again.access !== "ok") throw new Error("link");
   return { token, requestId: sent.requestId, link: again.link };
@@ -234,7 +234,7 @@ test("passo 1: la bozza della conferma, i controlli della nota, mai respinta da 
   okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note: null }, now), "correggi senza nota");
   assert.deepEqual([(await checkRow(requestId)).confirm, (await checkRow(requestId)).confirm_note], ["correggi", null]);
   const named = okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note: "Le controlla Mario Bianchi, anche via PEC" }, now), "con un nome");
-  assert.ok(named.warnings.length > 0, "un nome è un avviso nella bozza");
+  assert.deepEqual(named.warnings, [], "(rilascio 5.1) un nome non è più un avviso");
   // «Sì, è così» toglie la nota.
   okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: "resta?" }, now), "sì");
   assert.deepEqual([(await checkRow(requestId)).confirm, (await checkRow(requestId)).confirm_note], ["si", null]);
@@ -390,14 +390,22 @@ test("una voce aggiunta dal team mentre la pagina era aperta riporta al passo 2;
   assert.equal(codes.filter((c) => c === "stima_diversa").length, 1);
 });
 
-test("il commento di una riga con un nome o un'email: la bozza si salva, «Invia» lo respinge e la pagina torna al passo 2", opts, async () => {
+test("(rilascio 5.1) il commento di una riga con un nome o un'email passa; con un codice fiscale la bozza si salva, «Invia» lo respinge e la pagina torna al passo 2", opts, async () => {
   const steps = await import("./steps-state.ts");
+  const named = await newCard(MODEL);
+  const first = await referentLink(named.id, []);
+  const now = new Date();
+  okPub(await pub.saveReferentCheck(first.link, { step: 1, confirm: "si", note: null }, now));
+  await answerAll(first.link);
+  okPub(await pub.saveReferentCheck(first.link, benefit("costi-1", "si", { comment: "Lo sa mario.rossi@acme.test, oppure Mario Rossi al +39 333 1234567." }), now), "bozza con l'email");
+  okPub(await pub.submitReferentAnswers(first.link, {}, now), "invio con nome, email e telefono");
+  assert.equal((await checkRow(first.requestId)).sent, true);
+
   const card = await newCard(MODEL);
   const { link, requestId } = await referentLink(card.id, []);
-  const now = new Date();
   okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, now));
   await answerAll(link);
-  okPub(await pub.saveReferentCheck(link, benefit("costi-1", "si", { comment: "Lo sa mario.rossi@acme.test" }), now), "bozza con l'email");
+  okPub(await pub.saveReferentCheck(link, benefit("costi-1", "si", { comment: "Il codice è RSSMRA80A01H501U." }), now), "bozza con il codice fiscale");
   const sent = await pub.submitReferentAnswers(link, {}, now);
   assert.equal(sent.ok, false);
   if (!sent.ok) {
@@ -465,30 +473,38 @@ test("la rotta POST …/check: la bozza dal link, con gli stessi controlli e i s
   assert.equal(res.status, 404);
 });
 
-test("la nota di «Correggi» con un nome o un'email: la bozza si salva con l'avviso, «Invia» la respinge sul campo «conferma» e la pagina torna al passo 1", opts, async () => {
+test("(rilascio 5.1) la nota di «Correggi» con un nome o un'email si salva senza avvisi e parte; con un codice fiscale la bozza ha l'avviso, «Invia» la respinge sul campo «conferma» e la pagina torna al passo 1", opts, async () => {
   const steps = await import("./steps-state.ts");
   for (const note of ["Le fatture le manda mario.rossi@acme.test ogni lunedì.", "Il controllo lo fa Mario Rossi, non l'ufficio acquisti."]) {
     const card = await newCard(MODEL);
     const { link, requestId } = await referentLink(card.id, []);
     const now = new Date();
-    const saved = okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note }, now), "bozza con l'avviso");
-    const warning = steps.stepOneWarning({ step: 1 }, saved.warnings);
-    assert.ok(warning, `l'avviso sotto «Cosa cambieresti?»: ${note}`);
+    const saved = okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note }, now), "bozza");
+    assert.equal(steps.stepOneWarning({ step: 1 }, saved.warnings), null, `nessun avviso: ${note}`);
     await answerAll(link);
-    const sent = await pub.submitReferentAnswers(link, { shown: [] }, now);
-    assert.equal(sent.ok, false);
-    if (sent.ok) continue;
+    okPub(await pub.submitReferentAnswers(link, { shown: [] }, now), `invio: ${note}`);
+    assert.equal((await checkRow(requestId)).sent, true);
+  }
+  const card = await newCard(MODEL);
+  const { link, requestId } = await referentLink(card.id, []);
+  const now = new Date();
+  const saved = okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note: "Il codice del fornitore è RSSMRA80A01H501U." }, now), "bozza con l'avviso");
+  const warning = steps.stepOneWarning({ step: 1 }, saved.warnings);
+  assert.ok(warning, "l'avviso sotto «Cosa cambieresti?»");
+  await answerAll(link);
+  const sent = await pub.submitReferentAnswers(link, { shown: [] }, now);
+  assert.equal(sent.ok, false);
+  if (!sent.ok) {
     assert.equal(sent.code, "risposte_da_correggere");
     assert.deepEqual([...new Set((sent.issues ?? []).map((i) => i.field))], ["conferma"]);
     // La pagina torna al passo 1 con il messaggio del server, lo stesso dell'avviso.
     const back = steps.stepOfSubmitRefusal(sent);
     assert.deepEqual(back, { step: 1, message: sent.issues![0].message });
     assert.equal(back?.message, warning);
-    assert.equal((await checkRow(requestId)).sent, false, "niente è partito");
-    // Senza il nome la nota passa e «Invia» va.
-    const clean = okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note: "Il controllo lo fa l'ufficio contabilità." }, now), "nota pulita");
-    assert.equal(steps.stepOneWarning({ step: 1 }, clean.warnings), null);
-    okPub(await pub.submitReferentAnswers(link, { shown: [] }, now), "invio");
-    assert.equal((await checkRow(requestId)).sent, true);
   }
+  assert.equal((await checkRow(requestId)).sent, false, "niente è partito");
+  const clean = okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note: "Il controllo lo fa l'ufficio contabilità." }, now), "nota pulita");
+  assert.equal(steps.stepOneWarning({ step: 1 }, clean.warnings), null);
+  okPub(await pub.submitReferentAnswers(link, { shown: [] }, now), "invio");
+  assert.equal((await checkRow(requestId)).sent, true);
 });

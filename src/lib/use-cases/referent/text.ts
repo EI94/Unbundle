@@ -1,24 +1,32 @@
 /**
  * Il controllo dei testi di «Chiedi al referente» (SPEC §2.1 `text.ts`), con la scansione dei
- * dossier (`scanText`, contesto «risposta»): dati sanitari e discriminatori bloccano sempre; nomi e
- * cognomi, email, telefoni, date di nascita e codici fiscali bloccano all'invio.
+ * dossier (`scanText`, contesto «risposta»).
  *
- * - **Bozza** del referente: si rifiutano solo dati sanitari e discriminatori; il resto torna come
- *   avviso, perché una bozza si corregge prima di inviarla.
- * - **Invio** del referente: si rifiuta ogni risultato bloccante; il campo dell'avviso è la domanda.
+ * - **Referente** (rilascio 5.1, decisione del titolare del 04/11/2026: «basta che lo diciamo prima
+ *   nelle informative»): nomi, email e telefoni non bloccano più e non danno avvisi. Dati sanitari e
+ *   discriminatori si rifiutano sempre (anche nella bozza); codici fiscali e date di nascita sono un
+ *   avviso nella bozza e si rifiutano all'invio. Vale per le risposte, la nota di «Correggi» e i
+ *   commenti del passo «L'impatto».
  * - **Messaggio** e **titoli delle domande** del revisore: arrivano al referente (il messaggio anche
- *   nell'email), quindi stesso contesto delle risposte: l'email o il telefono di un'altra persona
- *   si rifiuta con `testo_contatto`.
- * - **Risposta del team** dalla scheda: lo stesso controllo dell'invio.
+ *   nell'email), quindi l'email o il telefono di un'altra persona si rifiuta con `testo_contatto`.
+ * - **Risposta del team** dalla scheda: lo stesso controllo del messaggio.
  *
  * Gli avvisi portano solo il codice e il messaggio, mai il testo trovato. Modulo puro.
  */
 import { issue, type Issue } from "../../uc/answers/issues.ts";
-import { HARD_BLOCK_CATEGORIES, findingMessage, scanText, type Finding } from "../../uc/text/scan.ts";
+import { HARD_BLOCK_CATEGORIES, findingMessage, scanText, type Finding, type ScanCategory } from "../../uc/text/scan.ts";
 import { REFERENT_LIMITS } from "./contract.ts";
 import { REFERENT_ERROR_MESSAGES } from "./labels.ts";
 
 const OPTS = { context: "risposta" } as const;
+
+/**
+ * (Rilascio 5.1) Le categorie che contano per un testo del referente: nomi di persone, email e
+ * telefoni (`nome_persona`, `contatto`) restano fuori.
+ */
+export const REFERENT_TEXT_CATEGORIES: readonly ScanCategory[] = ["sanitario", "discriminatorio", "codice_fiscale", "data_nascita"];
+
+const forReferent = (findings: readonly Finding[]) => findings.filter((f) => REFERENT_TEXT_CATEGORIES.includes(f.category));
 
 function issuesOf(findings: readonly Finding[], field?: string): Issue[] {
   const seen = new Set<string>();
@@ -32,20 +40,20 @@ function issuesOf(findings: readonly Finding[], field?: string): Issue[] {
   return out;
 }
 
-/** Bozza: si rifiutano solo i dati sanitari e discriminatori; il resto sono avvisi. */
+/** Bozza del referente: si rifiutano solo i dati sanitari e discriminatori; codici fiscali e date di nascita sono avvisi; nomi, email e telefoni niente. */
 export function checkDraftText(text: string): { ok: true; warnings: Issue[] } | { ok: false; issues: Issue[] } {
   const scan = scanText(text, OPTS);
   const hard = scan.blocking.filter((f) => HARD_BLOCK_CATEGORIES.includes(f.category));
   if (hard.length > 0) return { ok: false, issues: issuesOf(hard) };
-  return { ok: true, warnings: issuesOf([...scan.blocking, ...scan.warnings]) };
+  return { ok: true, warnings: issuesOf(forReferent([...scan.blocking, ...scan.warnings])) };
 }
 
-/** Invio: ogni risultato bloccante è un avviso sul campo `field` (l'id dell'esigenza). */
+/** Invio del referente: dati sanitari, discriminatori, codici fiscali e date di nascita sono un avviso sul campo `field`; nomi, email e telefoni passano. */
 export function checkSubmitText(text: string, field: string): { ok: true } | { ok: false; issues: Issue[] } {
-  const scan = scanText(text, OPTS);
-  if (scan.blocking.length === 0) return { ok: true };
-  const hard = scan.blocking.filter((f) => HARD_BLOCK_CATEGORIES.includes(f.category));
-  return { ok: false, issues: issuesOf(hard.length ? [...hard, ...scan.blocking] : scan.blocking, field) };
+  const blocking = forReferent(scanText(text, OPTS).blocking);
+  if (blocking.length === 0) return { ok: true };
+  const hard = blocking.filter((f) => HARD_BLOCK_CATEGORIES.includes(f.category));
+  return { ok: false, issues: issuesOf(hard.length ? [...hard, ...blocking] : blocking, field) };
 }
 
 function firstBlocking(text: string): { code: string; message: string } | null {

@@ -203,7 +203,7 @@ function assertNothingPrivate(page: string, extra: string[] = []) {
 
 const state = { token: "", requestId: "" };
 
-test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Ho letto, iniziamo»", opts, async () => {
+test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Iniziamo»", opts, async () => {
   const link = await sendLink(`mario.rossi.${suffix}@topjet.test`, needs.slice(0, 2), "Ci serve per la stima di fine mese.");
   Object.assign(state, link);
   const first = await html(link.token);
@@ -214,9 +214,9 @@ test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Ho le
     "Il messaggio di Giulia Neri",
     "Ci serve per la stima di fine mese.",
     "Prima di iniziare",
-    "Tre cose da sapere sulle tue risposte.",
+    "Ti chiediamo del tuo lavoro, non di te.",
     "Leggi l'informativa completa",
-    "Ho letto, iniziamo",
+    "Iniziamo",
     "Come usiamo le tue risposte",
   ]) {
     assert.ok(first.includes(text), text);
@@ -228,7 +228,7 @@ test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Ho le
 });
 
 test("dopo l'informativa: le domande con risposta, «Non ce l'ho», «È già allegato», file e invio", opts, async () => {
-  pok(await pub.acceptReferentPrivacy(await linkOf(state.token), { version: "ucq-2026-10-1" }, new Date()), "informativa");
+  pok(await pub.acceptReferentPrivacy(await linkOf(state.token), { version: "ucq-2026-11-1" }, new Date()), "informativa");
   const shown = await html(state.token);
   for (const text of [
     "Domanda 1 di 2",
@@ -276,7 +276,7 @@ test("(Parte 3) una domanda a cui ha già pensato il team: «Non serve più», m
 test("una risposta inviata si legge, in sola lettura, con «Inviata il …»; poi «Hai risposto il … Grazie!»", opts, async () => {
   const link = await sendLink(`anna.bianchi.${suffix}@topjet.test`, needs.slice(2, 3));
   const l = await linkOf(link.token);
-  pok(await pub.acceptReferentPrivacy(l, { version: "ucq-2026-10-1" }, new Date()), "informativa");
+  pok(await pub.acceptReferentPrivacy(l, { version: "ucq-2026-11-1" }, new Date()), "informativa");
   const l2 = await linkOf(link.token);
   pok(await pub.saveReferentDraft(l2, { needId: needs[2], text: "Due persone, mezza giornata.", dontKnow: false }, new Date()), "bozza");
   const draftPage = await html(link.token);
@@ -338,7 +338,7 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
   const privacyFirst = await html(token!);
   assert.ok(privacyFirst.includes("Giulia Neri ti ha indicato come referente."));
   assert.ok(privacyFirst.includes("Prima di iniziare") && !privacyFirst.includes("È così?"), "prima l'informativa");
-  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: "ucq-2026-10-1" }, new Date()), "informativa");
+  pok(await pub.acceptReferentPrivacy(await linkOf(token!), { version: "ucq-2026-11-1" }, new Date()), "informativa");
   // Il passo 1, anche chiedendo il passo 2 (riportato al primo non fatto).
   for (const passo of [undefined, "2", "3", "x"]) {
     const step1 = await html(token!, passo);

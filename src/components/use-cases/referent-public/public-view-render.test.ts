@@ -45,7 +45,7 @@ function question(i: number, over: Partial<ReferentQuestionView> = {}): Referent
 function view(over: Partial<ReferentAskView> = {}): ReferentAskView {
   return {
     state: "aperta",
-    privacy: { accepted: true, version: "ucq-2026-10-1", contact: "pierpaolo@lateralspace.ai" },
+    privacy: { accepted: true, version: "ucq-2026-11-1", contact: "pierpaolo@lateralspace.ai" },
     company: "TopJet",
     useCase: { code: "TJ-0004", title: "Fatture fornitori" },
     requester: { name: "Giulia Neri" },
@@ -65,8 +65,6 @@ const file = (over: Partial<ReferentFileView> = {}): ReferentFileView => ({
   sizeBytes: 1200,
   status: "pulito",
   message: null,
-  warning: null,
-  needsConfirmation: false,
   submitted: false,
   ...over,
 });
@@ -97,16 +95,27 @@ test("intestazione: azienda, «CODICE · Titolo», chi chiede e il suo messaggio
 });
 
 test("informativa: prima di tutto finché non è letta; i segnaposto riempiti", () => {
-  assert.equal(screenOf(view({ privacy: { accepted: false, version: "ucq-2026-10-1", contact: "x@y.it" } })), "privacy");
+  assert.equal(screenOf(view({ privacy: { accepted: false, version: "ucq-2026-11-1", contact: "x@y.it" } })), "privacy");
   assert.equal(screenOf(view()), "questions");
   const p = privacyTexts(view());
   assert.equal(p.title, "Prima di iniziare");
-  assert.equal(p.button, "Ho letto, iniziamo");
-  assert.equal(p.summary.length, 3);
-  assert.ok(p.summary[1].includes("le persone di TopJet"));
-  assert.ok(p.summary[2].endsWith("fino al 26 novembre 2026."));
+  assert.equal(p.button, "Iniziamo");
+  // (Rilascio 5.1) Corta e calma: una riga e due punti, nessuna parola che spaventa; il resto a un tocco.
+  assert.equal(p.lead, "Ti chiediamo del tuo lavoro, non di te.");
+  assert.equal(p.summary.length, 2);
+  assert.ok(p.summary[0].includes("di TopJet"));
+  assert.ok(p.summary[1].endsWith("fino al 26 novembre 2026."));
+  assert.ok([p.lead, ...p.summary].every((t) => !/blocc|dati personali|sanitar|nomi|email|telefon/i.test(t)), "niente allarmi sopra");
+  assert.equal(p.fullTextLabel, "Leggi l'informativa completa");
+  // L'informativa completa resta intera: chi, cosa, chi vede, controllo dei file, quanto, diritti, Garante.
+  assert.ok(p.paragraphs.some((t) => t.startsWith("Lateral Space raccoglie queste informazioni per conto di TopJet")));
   assert.ok(p.paragraphs.some((t) => t.startsWith("Giulia Neri e le altre persone di TopJet")));
+  assert.ok(p.paragraphs.some((t) => t.includes("controllo automatico")));
+  assert.ok(p.paragraphs.some((t) => t.includes("12 mesi")));
+  assert.ok(p.paragraphs.some((t) => t.includes("Garante per la protezione dei dati personali")));
   assert.ok(p.paragraphs.some((t) => t.includes("pierpaolo@lateralspace.ai")));
+  assert.ok(p.paragraphs.some((t) => t.includes("nomi, email o telefoni") && t.includes("li usiamo solo per questo")));
+  assert.ok(!p.paragraphs.some((t) => /il sistema li blocca|blocca/i.test(t)), "il sistema non blocca più nomi, email e telefoni");
   assert.ok(![...p.summary, ...p.paragraphs].some((t) => /\{[A-Za-z]+\}/.test(t)), "nessun segnaposto vuoto");
 });
 
@@ -157,29 +166,28 @@ test("la riga d'aiuto dei file: 20 MB con il caricamento diretto, 4 MB senza", (
   assert.equal(attachHelp(false), "PDF, Word, Excel, PowerPoint, CSV o testo. Fino a 4 MB. Niente foto.");
 });
 
-test("gli stati dei file, «in revisione» e la conferma", () => {
+test("gli stati dei file e «in revisione»; (rilascio 5.1) niente più da confermare", () => {
   assert.equal(fileStateLabel(file({ status: "in_quarantena" })), "Controllo in corso…");
   assert.equal(fileStateLabel(file()), "Allegato");
   assert.equal(fileStateLabel(file({ status: "in_revisione" })), "Lo controlla il team prima di usarlo: puoi inviare lo stesso");
-  assert.equal(fileStateLabel(file({ status: "rifiutato", message: "Contiene dati sanitari." })), "Non accettato: Contiene dati sanitari.");
+  assert.equal(fileStateLabel(file({ status: "rifiutato", message: REFERENT_PUBLIC_TEXT.fileRejected.sanitario })), `Non accettato. ${REFERENT_PUBLIC_TEXT.fileRejected.sanitario}`);
   assert.equal(fileStateLabel(file({ status: "rifiutato", message: null })), "Non accettato");
 
-  const warned = fileRow(file({ status: "in_revisione", warning: "testo_contatti", needsConfirmation: true }));
-  assert.deepEqual(warned.confirm, { warning: REFERENT_PUBLIC_TEXT.fileWarning, keep: "Servono, lo lascio" });
-  assert.equal(warned.tone, "attenzione");
-  assert.equal(warned.removable, true);
+  const review = fileRow(file({ status: "in_revisione" }));
+  assert.deepEqual(Object.keys(review).sort(), ["id", "name", "removable", "state", "tone"], "nessuna conferma nella riga");
+  assert.equal(review.tone, "attenzione");
+  assert.equal(review.removable, true);
   assert.equal(fileRow(file({ submitted: true })).removable, false, "un file inviato non si toglie");
   assert.equal(fileRow(file({ status: "rifiutato" })).removable, false, "un file rifiutato è già cancellato");
-  assert.equal(fileRow(file({ needsConfirmation: true, submitted: true })).confirm, null);
 
   assert.equal(filesBlockSubmit([file()]), null);
   assert.equal(filesBlockSubmit([file({ status: "in_revisione" })]), null, "un PDF in revisione si invia lo stesso");
   assert.equal(filesBlockSubmit([file({ status: "in_quarantena" })]), "file_in_controllo");
-  assert.equal(filesBlockSubmit([file({ needsConfirmation: true })]), "file_da_confermare");
-  assert.equal(filesBlockSubmit([file({ needsConfirmation: true, status: "rifiutato" })]), null);
+  assert.equal(filesBlockSubmit([file({ status: "in_quarantena", submitted: true })]), null);
 
-  const up = fileFromUpload({ fileId: "f9", fileName: "a.xlsx", sizeBytes: 10, status: "in_revisione", usable: true, message: "m", warning: null, needsConfirmation: false });
-  assert.deepEqual(up, { id: "f9", name: "a.xlsx", sizeBytes: 10, status: "in_revisione", message: "m", warning: null, needsConfirmation: false, submitted: false });
+  // Una risposta del server del rilascio 5 (con l'avviso) arriva a schermo senza l'avviso.
+  const up = fileFromUpload({ fileId: "f9", fileName: "a.xlsx", sizeBytes: 10, status: "in_revisione", usable: true, message: "m", ...({ warning: "x", needsConfirmation: true } as object) });
+  assert.deepEqual(up, { id: "f9", name: "a.xlsx", sizeBytes: 10, status: "in_revisione", message: "m", submitted: false });
 });
 
 test("invio: la frase con la data, il ringraziamento, le domande che restano", () => {
@@ -237,7 +245,6 @@ test("(rilascio 5) una domanda è chiusa da un testo, un file, «Non ce l'ho» o
   assert.equal(questionClosed(needs, { ...none, alreadyAttached: true }), true);
   assert.equal(questionClosed(needs, { ...none, files: [file({ status: "pulito" })] }), true);
   assert.equal(questionClosed(needs, { ...none, files: [file({ status: "in_quarantena" })] }), false, "il controllo non è finito");
-  assert.equal(questionClosed(needs, { ...none, files: [file({ status: "pulito", needsConfirmation: true })] }), false, "il file con nomi va confermato");
   assert.equal(questionClosed(needs, { ...none, files: [file({ status: "rifiutato" })] }), false);
   assert.equal(questionClosed(question(0, { state: "gestita" }), null), true);
   assert.equal(questionClosed(question(0, { state: "inviata" }), null), true);
