@@ -4,7 +4,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { neon } from "@neondatabase/serverless";
 import { createUcExecutor, type UcExecutor } from "../db/uc-executor.ts";
 import { declareSubprocessors, loadSubprocessorAck } from "../db/queries/uc-subprocessors.ts";
-import { SUBPROCESSORS_VERSION, subprocessorsRecordText } from "./legal/subprocessors.ts";
+import { SUBPROCESSORS_VERSION, subprocessorsLsRecordText, subprocessorsRecordText } from "./legal/subprocessors.ts";
 
 // Opt-in integration suite for the sub-processor authorization (GDPR art. 28, par. 2),
 // on the isolated local harness only:
@@ -45,6 +45,8 @@ const ids = {
   analyst: randomUUID(),
   learner: randomUUID(),
   lsLead: randomUUID(),
+  lsAnalyst: randomUUID(),
+  wsLs: randomUUID(),
   orgLead: randomUUID(),
   orgContributor: randomUUID(),
 };
@@ -105,6 +107,10 @@ before(async () => {
     [ids.ws, ids.wsGone, ids.builder, ids.unverified, ids.analyst, ids.learner],
   );
   await q(`INSERT INTO memberships (user_id, organization_id, role) VALUES ($1::uuid, $2::uuid, 'transformation_lead')`, [ids.lsLead, ids.org]);
+  // (Release 5.1) A Lateral Space analyst of the organization, and a workspace that only Lateral Space authorizes.
+  await q(`INSERT INTO users (id, name, email, email_verified) VALUES ($1::uuid, 'Analista LS di prova', $2, now())`, [ids.lsAnalyst, `sub-analista-ls-${suffix}@ls.test`]);
+  await q(`INSERT INTO memberships (user_id, organization_id, role) VALUES ($1::uuid, $2::uuid, 'analyst')`, [ids.lsAnalyst, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Cliente solo LS')`, [ids.wsLs, ids.org]);
   // Two client people of the organization, as in getWorkspaceAccessForUser: the organization role wins.
   await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Terzo workspace')`, [ids.ws3, ids.org]);
   await q(`INSERT INTO users (id, name, email, email_verified) VALUES ($1::uuid, NULL, $3, now()), ($2::uuid, NULL, $4, now())`, [
@@ -123,13 +129,14 @@ before(async () => {
 
 after(async () => {
   if (!sql) return;
-  await q(`DELETE FROM workspaces WHERE id IN ($1::uuid, $2::uuid, $3::uuid, $4::uuid)`, [ids.ws, ids.ws2, ids.wsGone, ids.ws3]);
+  await q(`DELETE FROM workspaces WHERE id IN ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid)`, [ids.ws, ids.ws2, ids.wsGone, ids.ws3, ids.wsLs]);
   await q(`DELETE FROM organizations WHERE id IN ($1::uuid, $2::uuid)`, [ids.org, ids.org2]);
-  await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [[ids.builder, ids.unverified, ids.analyst, ids.learner, ids.lsLead, ids.orgLead, ids.orgContributor]]);
+  await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [[ids.builder, ids.unverified, ids.analyst, ids.learner, ids.lsLead, ids.lsAnalyst, ids.orgLead, ids.orgContributor]]);
 });
 
-test("refused: Lateral Space, a learner, an analyst, an unverified email, another workspace, an old list, an unticked box", opts, async () => {
-  assert.equal(codeOf(await declare(ids.lsLead)), "non_autorizzato", "Lateral Space only reads, whatever its role");
+test("refused: a Lateral Space analyst, a learner, an analyst, an unverified email, another workspace, an old list, an unticked box", opts, async () => {
+  assert.equal(codeOf(await declare(ids.lsAnalyst)), "non_autorizzato", "(release 5.1) Lateral Space only with a reviewer role that authorizes");
+  assert.equal(codeOf(await declare(ids.lsLead, { confirmed: false })), "conferma_mancante", "the click is the confirmation");
   assert.equal(codeOf(await declare(ids.learner)), "non_autorizzato");
   assert.equal(codeOf(await declare(ids.analyst)), "non_autorizzato");
   assert.equal(codeOf(await declare(ids.unverified)), "non_autorizzato");
@@ -183,8 +190,39 @@ test("declaring the same version again succeeds without a second row", opts, asy
   const both = await Promise.all([declare(ids.builder), declare(ids.builder)]);
   assert.ok(both.every((x) => x.ok));
   assert.equal((await rowsFor(ids.ws)).length, 1);
-  // Lateral Space is refused even once the workspace is authorized.
-  assert.equal(codeOf(await declare(ids.lsLead)), "non_autorizzato");
+  // (Release 5.1) Lateral Space on an authorized workspace: no second row, the client's row stays.
+  const ls = await declare(ids.lsLead);
+  assert.ok(ls.ok && !ls.value.created && ls.value.ack.registeredBy === "cliente", JSON.stringify(ls));
+  assert.equal((await rowsFor(ids.ws)).length, 1);
+  assert.equal((await rowsFor(ids.ws))[0].declared_by_user_id, ids.builder);
+});
+
+test("(release 5.1) Lateral Space with a reviewer role registers the client's ok with one click: the honest text, the person, the role", opts, async () => {
+  const r = await declare(ids.lsLead, { workspaceId: ids.wsLs });
+  assert.ok(r.ok, r.ok ? "" : r.message);
+  assert.equal(r.value.created, true);
+  assert.equal(r.value.ack.registeredBy, "lateral_space");
+  assert.equal(r.value.ack.declaredByRole, "transformation_lead", "the organization role of Lateral Space");
+  const rows = await rowsFor(ids.wsLs);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].statement_text, subprocessorsLsRecordText("Cliente solo LS"));
+  assert.match(String(rows[0].statement_text), /^Registrato da Lateral Space per conto di Cliente solo LS/);
+  assert.equal(rows[0].declared_by_user_id, ids.lsLead);
+  const ack = await loadSubprocessorAck(exec!, ids.wsLs);
+  assert.equal(ack?.registeredBy, "lateral_space");
+  assert.equal(ack?.declaredByName, `sub-lead-${suffix}@ls.test`, "without a name, the e-mail of who registered it");
+  // A row written by hand that starts the same way reads as registered by Lateral Space.
+  const handWritten = randomUUID();
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Prova a mano')`, [handWritten, ids.org]);
+  try {
+    await q(
+      `INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role) VALUES ($1::uuid, $2, $3, $4::uuid, 'exec_sponsor')`,
+      [handWritten, SUBPROCESSORS_VERSION, "Registrato da Lateral Space per il workspace di prova Esempio: testo sintetico.", ids.lsLead],
+    );
+    assert.equal((await loadSubprocessorAck(exec!, handWritten))?.registeredBy, "lateral_space");
+  } finally {
+    await q(`DELETE FROM workspaces WHERE id = $1::uuid`, [handWritten]);
+  }
 });
 
 test("the authorization is append-only: no UPDATE, no DELETE, the declaring user cannot be deleted", opts, async () => {

@@ -217,5 +217,84 @@ test("con la funzione spenta e senza dossier la scheda non c'è; l'action rispon
   }
 });
 
+/** Il primo elemento React dell'albero che soddisfa `pred` (senza renderizzarlo). */
+function findElement(node: unknown, pred: (el: { type: unknown; props: Record<string, unknown> }) => boolean): { type: unknown; props: Record<string, unknown> } | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findElement(child, pred);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!node || typeof node !== "object" || !("props" in node)) return null;
+  const el = node as { type: unknown; props: Record<string, unknown> };
+  if (pred(el)) return el;
+  return findElement(el.props.children, pred);
+}
+const textOf = (node: unknown): string =>
+  Array.isArray(node) ? node.map(textOf).join("") : typeof node === "string" || typeof node === "number" ? String(node) : node && typeof node === "object" && "props" in node ? textOf((node as { props: { children?: unknown } }).props.children) : "";
+
+test("(rilascio 5.1) Lateral Space con un ruolo da revisore registra l'ok del cliente con un clic; la scheda dice chi e quando", opts, async () => {
+  const { SubprocessorsCard } = await import("../../../components/workspace/subprocessors-card.tsx");
+  const labels = await import("../../uc/legal/subprocessors.ts");
+  const third = randomUUID();
+  process.env.USE_CASE_HUB_WORKSPACES = [ids.ws, ids.other, third].join(",");
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Cliente solo LS')`, [third, ids.org]);
+  try {
+    for (const person of ["ls", "analyst"] as Person[]) await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [third, ids[person], ROLE[person]]);
+    // Senza l'ok: Lateral Space vede il testo onesto e un solo pulsante, senza la casella dei poteri.
+    const before = await SubprocessorsCard({ workspaceId: third, workspaceName: "Cliente solo LS", userId: ids.ls, workspaceRole: "transformation_lead" });
+    const form = findElement(before, (el) => typeof el.type === "function" && (el.type as { name?: string }).name === "SubprocessorsForm");
+    assert.ok(form, "il modulo c'è");
+    assert.equal(form.props.statement, labels.subprocessorsLsStatement("Cliente solo LS"));
+    assert.equal(form.props.oneClickLabel, "Registra l'ok di Cliente solo LS");
+    assert.equal(form.props.powersText, undefined, "nessuna casella «Ho i poteri…»");
+    // Un analista di Lateral Space legge soltanto.
+    const reader = await SubprocessorsCard({ workspaceId: third, workspaceName: "Cliente solo LS", userId: ids.analyst, workspaceRole: "analyst" });
+    assert.equal(findElement(reader, (el) => typeof el.type === "function" && (el.type as { name?: string }).name === "SubprocessorsForm"), null);
+    assert.ok(textOf(reader).includes(labels.subprocessorsWaitingLine("Cliente solo LS")));
+    // Il clic: l'azione di sempre, con la stessa conferma del server.
+    signIn("analyst");
+    const { declareSubprocessorsAction } = await import("../../actions/uc-subprocessors.ts");
+    assert.equal((await declareSubprocessorsAction(third, "2026-10", true)).ok, false, "un analista no");
+    signIn("ls");
+    const result = await declareSubprocessorsAction(third, "2026-10", true);
+    assert.ok(result.ok, JSON.stringify(result));
+    assert.equal(result.message, "Ok registrato per conto del cliente.");
+    const [row] = await q(`SELECT statement_text, declared_by_user_id::text AS who, declared_by_role FROM uc_subprocessor_acks WHERE workspace_id = $1::uuid`, [third]);
+    assert.equal(row.statement_text, labels.subprocessorsLsRecordText("Cliente solo LS"));
+    assert.equal(row.who, ids.ls);
+    assert.equal(row.declared_by_role, "transformation_lead");
+    // Dopo: la riga dice che l'ha registrato Lateral Space, con il nome, e quando.
+    const after = await SubprocessorsCard({ workspaceId: third, workspaceName: "Cliente solo LS", userId: ids.builder, workspaceRole: "function_lead" });
+    const line = findElement(after, (el) => el.props["data-registered-by"] !== undefined);
+    assert.equal(line?.props["data-registered-by"], "lateral_space");
+    assert.match(textOf(line), /^Ok di Cliente solo LS registrato da Lateral Space \(Persona ls\) il \d{2}\/\d{2}\/\d{4} alle \d{2}:\d{2} \(lista 2026-10\)\.$/);
+  } finally {
+    await q(`DELETE FROM workspaces WHERE id = $1::uuid`, [third]);
+    process.env.USE_CASE_HUB_WORKSPACES = ENV.USE_CASE_HUB_WORKSPACES;
+  }
+});
+
+test("(rilascio 5.1) una riga scritta a mano che comincia con «Registrato da Lateral Space» si legge come registrata da Lateral Space", opts, async () => {
+  const { SubprocessorsCard } = await import("../../../components/workspace/subprocessors-card.tsx");
+  const manual = randomUUID();
+  process.env.USE_CASE_HUB_WORKSPACES = [ids.ws, ids.other, manual].join(",");
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Workspace di prova a mano')`, [manual, ids.org]);
+  try {
+    await q(
+      `INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role) VALUES ($1::uuid, '2026-10', $2, $3::uuid, 'exec_sponsor')`,
+      [manual, "Registrato da Lateral Space per il workspace di prova Esempio: testo sintetico della prova.", ids.ls],
+    );
+    const card = await SubprocessorsCard({ workspaceId: manual, workspaceName: "Workspace di prova a mano", userId: ids.builder, workspaceRole: "function_lead" });
+    const line = findElement(card, (el) => el.props["data-registered-by"] !== undefined);
+    assert.equal(line?.props["data-registered-by"], "lateral_space");
+    assert.match(textOf(line), /^Ok di Workspace di prova a mano registrato da Lateral Space \(Persona ls\) il /);
+  } finally {
+    await q(`DELETE FROM workspaces WHERE id = $1::uuid`, [manual]);
+    process.env.USE_CASE_HUB_WORKSPACES = ENV.USE_CASE_HUB_WORKSPACES;
+  }
+});
+
 // Gli aiuti di prova comuni alle suite di «Chiedi al referente»: questa non li usa tutti.
 void (() => [pub, dispatch, refused, fakeMailer, tokenOf, statusOf, useCaseSnapshot, state]);

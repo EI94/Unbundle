@@ -47,7 +47,7 @@ import { cardSyncStatements, subprocessorsWaitNoticeStatements } from "@/lib/use
 import { clientNoticesEnabled } from "@/lib/use-cases/client-notices";
 import { inRomeSendWindow, romeDate } from "@/lib/uc/calendar";
 import { userContextFrom } from "@/lib/uc/lateral-space";
-import { canDeclareSubprocessors } from "@/lib/uc/legal/subprocessors";
+import { subprocessorDeclarerOf } from "@/lib/uc/legal/subprocessors";
 import { ucEmailConfig, type UcMailer } from "@/lib/uc/notify/dispatch";
 import { checkContactEmail } from "@/lib/uc/permissions";
 import { rowBool, rowDate, rowJson, rowNumber, rowString } from "@/lib/uc/sql/readiness";
@@ -599,10 +599,12 @@ export async function loadUseCaseReferentPanel(i: {
     const gates: ReferentGate[] = [];
     if (!ack) {
       const declarer = userContextFrom({ id: i.session.id, email: i.session.email, emailVerified: i.session.emailVerified }, lsDomains);
-      const canDeclare = canDeclareSubprocessors(declarer, i.role, lsDomains);
+      // (Rilascio 5.1) Anche Lateral Space, con un ruolo da revisore che autorizza, arriva al pulsante: per conto del cliente.
+      const who = subprocessorDeclarerOf(declarer, i.role, lsDomains);
+      const canDeclare = who !== null;
       gates.push({
         code: "sub_responsabili_mancanti",
-        message: fillText(canDeclare ? T.gates.subprocessorsCanDeclare : T.gates.subprocessorsOther, { Azienda: company }),
+        message: fillText(who === "cliente" ? T.gates.subprocessorsCanDeclare : who === "lateral_space" ? T.gates.subprocessorsLsCanDeclare : T.gates.subprocessorsOther, { Azienda: company }),
         canDeclare,
         settingsHref: subprocessorsSettingsHref(ws),
         linkLabel: T.gates.subprocessorsLink,

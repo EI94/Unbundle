@@ -10,7 +10,14 @@
  * nell'organizzazione del workspace, poi quello nel workspace.
  */
 import { userContextFrom } from "../../uc/lateral-space.ts";
-import { SUBPROCESSORS_VERSION, checkSubprocessorDeclaration, subprocessorsRecordText } from "../../uc/legal/subprocessors.ts";
+import {
+  SUBPROCESSORS_VERSION,
+  checkSubprocessorDeclaration,
+  isLsRegisteredStatement,
+  subprocessorsLsRecordText,
+  subprocessorsRecordText,
+  type SubprocessorDeclarer,
+} from "../../uc/legal/subprocessors.ts";
 import { isUuid } from "../../uc/ids.ts";
 import { rowDate, rowString } from "../../uc/sql/readiness.ts";
 import { cast, toStatement, ucSql, type UcStatement } from "../../uc/sql/statement.ts";
@@ -22,10 +29,15 @@ export interface SubprocessorAck {
   declaredAt: Date;
   declaredByName: string;
   declaredByRole: string;
+  /**
+   * (Rilascio 5.1) Chi l'ha registrato: il cliente, oppure Lateral Space per conto del cliente (il testo
+   * salvato comincia con «Registrato da Lateral Space», anche una riga scritta a mano).
+   */
+  registeredBy: SubprocessorDeclarer;
 }
 
 function ackStatement(workspaceId: string, version: string): UcStatement {
-  return toStatement(ucSql`SELECT a.list_version, a.declared_at, a.declared_by_role,
+  return toStatement(ucSql`SELECT a.list_version, a.declared_at, a.declared_by_role, left(a.statement_text, 200) AS statement_head,
   coalesce(nullif(btrim(u.name), ''), u.email) AS declared_by_name
 FROM uc_subprocessor_acks a
 JOIN users u ON u.id = a.declared_by_user_id
@@ -42,6 +54,7 @@ function toAck(row: UcRow | undefined): SubprocessorAck | null {
     declaredAt,
     declaredByName: rowString(row.declared_by_name) ?? "",
     declaredByRole: rowString(row.declared_by_role) ?? "",
+    registeredBy: isLsRegisteredStatement(rowString(row.statement_head)) ? "lateral_space" : "cliente",
   };
 }
 
@@ -55,10 +68,12 @@ export async function loadSubprocessorAck(executor: UcExecutor, workspaceId: str
 const NOT_FOUND = "Workspace non trovato o non accessibile.";
 
 /**
- * Registra l'autorizzazione. Rifiuta chi non è una persona del cliente con un
- * ruolo ammesso, una versione dell'elenco diversa da quella corrente e la
- * casella non spuntata. Dichiarare di nuovo la stessa versione riesce senza
- * aggiungere righe (`created: false`).
+ * Registra l'autorizzazione. Rifiuta chi non può darla (una persona del cliente
+ * o, rilascio 5.1, di Lateral Space con un ruolo ammesso), una versione
+ * dell'elenco diversa da quella corrente e la conferma che manca. Il testo
+ * salvato è quello del cliente o, per Lateral Space, quello «Registrato da
+ * Lateral Space per conto di …». Dichiarare di nuovo la stessa versione riesce
+ * senza aggiungere righe (`created: false`): la prima riga resta.
  */
 export async function declareSubprocessors(
   executor: UcExecutor,
@@ -86,7 +101,7 @@ WHERE u.id = ${cast(i.userId, "uuid")} AND w.id = ${cast(i.workspaceId, "uuid")}
 
   const [inserted, current] = await executor.batch([
     toStatement(ucSql`INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role)
-VALUES (${cast(i.workspaceId, "uuid")}, ${cast(SUBPROCESSORS_VERSION, "text")}, ${cast(subprocessorsRecordText(rowString(row.workspace_name)), "text")},
+VALUES (${cast(i.workspaceId, "uuid")}, ${cast(SUBPROCESSORS_VERSION, "text")}, ${cast(check.value === "lateral_space" ? subprocessorsLsRecordText(rowString(row.workspace_name)) : subprocessorsRecordText(rowString(row.workspace_name)), "text")},
   ${cast(i.userId, "uuid")}, ${cast(workspaceRole, "text")})
 ON CONFLICT (workspace_id, list_version) DO NOTHING
 RETURNING id`),

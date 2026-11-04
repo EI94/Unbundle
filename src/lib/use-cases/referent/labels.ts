@@ -32,8 +32,10 @@ export const REFERENT_UI_TEXT = Object.freeze({
   // Avvisi che bloccano «Chiedi al referente»
   gates: Object.freeze({
     subprocessorsCanDeclare: "{Azienda} deve autorizzare i fornitori che usiamo, per esempio quello delle email: puoi farlo tu, in Impostazioni › Sub-responsabili.",
+    // (Rilascio 5.1) Lateral Space, con un ruolo da revisore che autorizza, registra l'ok per conto del cliente.
+    subprocessorsLsCanDeclare: "Manca l'ok di {Azienda} sui fornitori che usiamo, per esempio quello delle email: puoi registrarlo tu per conto di {Azienda}, in Impostazioni › Sub-responsabili.",
     subprocessorsOther:
-      "{Azienda} deve autorizzare i fornitori che usiamo, per esempio quello delle email. La dà una persona di {Azienda} con ruolo Sponsor esecutivo, Responsabile della trasformazione o Responsabile di funzione, in Impostazioni › Sub-responsabili.",
+      "{Azienda} deve autorizzare i fornitori che usiamo, per esempio quello delle email. La dà una persona di {Azienda} con ruolo Sponsor esecutivo, Responsabile della trasformazione o Responsabile di funzione, oppure Lateral Space per suo conto, in Impostazioni › Sub-responsabili.",
     subprocessorsLink: "Apri Impostazioni",
     emailNotConfigured: "Le email non sono ancora attive: per ora non possiamo scrivere al referente.",
     publicWritesOff: "Le risposte dal link non sono attive in questo momento: per ora non possiamo scrivere al referente. Riprova più tardi.",

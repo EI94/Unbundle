@@ -76,7 +76,7 @@ export interface CaseAlertFacts {
   /**
    * null quando l'utente non c'è più. email in minuscolo; `lateralSpace` = email verificata di un
    * dominio di Lateral Space; `reviewer` = ruolo di adesso tra quelli da revisore; `canDeclare` =
-   * `canDeclareSubprocessors` adesso.
+   * `subprocessorDeclarerOf` = «cliente» adesso (rilascio 5.1: Lateral Space non riceve questo avviso).
    */
   recipient: { email: string | null; verified: boolean; lateralSpace: boolean; reviewer: boolean; canDeclare: boolean } | null;
   /** «Pronto da avviare»: gli use case dell'email, nell'ordine in cui sono diventati pronti. */

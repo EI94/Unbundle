@@ -447,3 +447,14 @@ Nessuna migrazione: solo testi e regole del codice.
   4. Per Gmail (e Apple Mail) serve un certificato: VMC (con marchio registrato) oppure CMC (marchio in uso da almeno un anno, senza registrazione), da un'autorità ammessa (per esempio DigiCert o Sectigo). Senza certificato Gmail non mostra il logo.
   5. Il record: `default._bimi.lateralspace.ai TXT "v=BIMI1; l=https://<dominio>/bimi/lateral-space.svg; a=https://<dominio>/bimi/lateral-space.pem"` (il mittente `notifiche.lateralspace.ai` usa quello del dominio principale se non ne ha uno suo).
   6. Controllo: un validatore BIMI pubblico sul dominio, poi in Gmail «Mostra originale» di un'email nuova.
+
+### 10.13 L'ok sui sub-responsabili registrato da Lateral Space
+
+Decisione del titolare del 04/11/2026, senza un documento: l'«ok sui sub-responsabili» di un cliente lo può registrare anche Lateral Space, per conto del cliente, con un clic. Nessuna migrazione: la stessa tabella `uc_subprocessor_acks`, a sola aggiunta.
+
+- **Chi**: una persona di Lateral Space (email verificata di `UC_LS_EMAIL_DOMAINS`) con ruolo Sponsor esecutivo, Responsabile della trasformazione o Responsabile di funzione nell'organizzazione o nel workspace (gli stessi ruoli del cliente). Un analista di Lateral Space legge soltanto. Il cliente autorizza come prima, con la casella «Ho i poteri…».
+- **Come**: Impostazioni › Sub-responsabili mostra a Lateral Space il testo «Per conto di {cliente}: {cliente}, titolare del trattamento, autorizza Lateral Space … L'ok lo registra Lateral Space. …» e un solo pulsante, non pieno, «Registra l'ok di {cliente}» (nessuna casella). Il testo salvato comincia con «Registrato da Lateral Space per conto di {cliente}» e porta l'elenco della versione; la persona e il ruolo stanno in `declared_by_user_id` e `declared_by_role`.
+- **Dopo**: la riga a schermo dice «Ok di {cliente} registrato da Lateral Space ({Nome}) il {data} alle {ora} (lista {versione}).». Anche una riga scritta a mano il cui testo comincia con «Registrato da Lateral Space» (come quella del workspace di prova del 04/11) si legge così. Le righe del cliente restano «Autorizzati da {Nome} il …».
+- **Dove arriva Lateral Space**: il riquadro «Prossimo passo» (G4, «Autorizzare i fornitori»), «Scegli il referente» e «Chiedi al referente» danno a chi può registrare l'ok il link «Apri Impostazioni», con la riga «Manca l'ok di {cliente} sui fornitori che usiamo, …: puoi registrarlo tu per conto di {cliente}, in Impostazioni › Sub-responsabili.». L'avviso «Autorizza i fornitori» (campanella ed email, §10.8) resta un avviso al cliente: non va a Lateral Space.
+- **Ritorno indietro**: il codice del rilascio 5 legge la stessa riga (l'ok c'è, le porte si aprono) e la mostra come «Autorizzati da {Nome} il …».
+- **Controllo di sola lettura** (UUID inventati): `SELECT left(statement_text, 60) AS inizio, declared_by_role, declared_at FROM uc_subprocessor_acks WHERE workspace_id = '<ws>';`

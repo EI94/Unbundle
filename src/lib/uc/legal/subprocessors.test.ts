@@ -5,11 +5,17 @@ import {
   SUBPROCESSORS,
   SUBPROCESSORS_POWERS_TEXT,
   SUBPROCESSORS_VERSION,
+  LS_REGISTERED_PREFIX,
   canDeclareSubprocessors,
   checkSubprocessorDeclaration,
+  isLsRegisteredStatement,
   romeDateTimeLabel,
+  subprocessorDeclarerOf,
   subprocessorsDeclaredLine,
+  subprocessorsLsButton,
   subprocessorsLsNotice,
+  subprocessorsLsRecordText,
+  subprocessorsLsStatement,
   subprocessorsRecordText,
   subprocessorsStatement,
   subprocessorsWaitingLine,
@@ -58,16 +64,21 @@ test("the stored text holds the statement, the list of this version and the chec
   assert.ok(text.endsWith(SUBPROCESSORS_POWERS_TEXT));
 });
 
-test("only a verified client person with a manager role can declare", () => {
+test("a verified client person with a manager role declares; (release 5.1) so does Lateral Space with the same roles, on the client's behalf", () => {
   for (const role of ["exec_sponsor", "transformation_lead", "function_lead"]) {
     assert.equal(canDeclareSubprocessors(client, role, LS), true, role);
-    assert.equal(canDeclareSubprocessors(lateral, role, LS), false, `Lateral Space ${role}`);
+    assert.equal(subprocessorDeclarerOf(client, role, LS), "cliente", role);
+    assert.equal(canDeclareSubprocessors(lateral, role, LS), true, `Lateral Space ${role}`);
+    assert.equal(subprocessorDeclarerOf(lateral, role, LS), "lateral_space", `Lateral Space ${role}`);
     assert.equal(canDeclareSubprocessors(lateralUnverified, role, LS), false, `unverified Lateral Space domain ${role}`);
     assert.equal(canDeclareSubprocessors(unverifiedClient, role, LS), false, `unverified client ${role}`);
   }
   for (const role of ["analyst", "contributor", "learner", "", "ls_lead"]) {
     assert.equal(canDeclareSubprocessors(client, role, LS), false, role);
+    assert.equal(canDeclareSubprocessors(lateral, role, LS), false, `Lateral Space ${role}`);
   }
+  // A Lateral Space flag without the domain in the list is not Lateral Space.
+  assert.equal(subprocessorDeclarerOf({ ...lateral, emailDomain: "altro.test" }, "exec_sponsor", LS), null);
   assert.equal(canDeclareSubprocessors(null, "function_lead", LS), false);
   assert.equal(canDeclareSubprocessors(client, null, LS), false);
 });
@@ -84,12 +95,15 @@ test("without the Lateral Space domains nobody can declare, as the rest of the s
 
 test("the server check refuses the wrong person, an old list and an unticked box, in this order", () => {
   const base = { user: client, workspaceRole: "function_lead", lsDomains: LS, listVersion: SUBPROCESSORS_VERSION, confirmed: true };
-  assert.deepEqual(checkSubprocessorDeclaration(base), { ok: true, value: null });
+  assert.deepEqual(checkSubprocessorDeclaration(base), { ok: true, value: "cliente" });
+  assert.deepEqual(checkSubprocessorDeclaration({ ...base, user: lateral }), { ok: true, value: "lateral_space" }, "(release 5.1) Lateral Space, one click");
   const code = (over: Partial<typeof base> & Record<string, unknown>) => {
     const r = checkSubprocessorDeclaration({ ...base, ...over } as typeof base);
     return r.ok ? "ok" : r.code;
   };
-  assert.equal(code({ user: lateral }), "non_autorizzato");
+  assert.equal(code({ user: lateralUnverified }), "non_autorizzato");
+  assert.equal(code({ user: lateral, workspaceRole: "analyst" }), "non_autorizzato");
+  assert.equal(code({ user: lateral, confirmed: false }), "conferma_mancante", "the click is the confirmation");
   assert.equal(code({ workspaceRole: "learner" }), "non_autorizzato");
   assert.equal(code({ workspaceRole: "analyst", listVersion: "2025-01" }), "non_autorizzato");
   assert.equal(code({ listVersion: "2025-01" }), "versione_superata");
@@ -109,10 +123,47 @@ test("declared and waiting lines, with the date and time of Rome", () => {
   );
   assert.equal(
     subprocessorsWaitingLine("Cliente Esempio"),
-    "La conferma la dà un responsabile di Cliente Esempio (ruolo Responsabile di funzione o superiore).",
+    "La conferma la dà un responsabile di Cliente Esempio (ruolo Responsabile di funzione o superiore), oppure Lateral Space per suo conto.",
   );
   assert.equal(
     subprocessorsLsNotice("Cliente Esempio"),
-    "Sub-responsabili non ancora autorizzati da Cliente Esempio: chiedi la conferma in Impostazioni.",
+    "Sub-responsabili non ancora autorizzati da Cliente Esempio: l'ok si dà in Impostazioni.",
+  );
+});
+
+test("(release 5.1) Lateral Space on the client's behalf: the honest statement, one button, a stored text that says so", () => {
+  assert.equal(
+    subprocessorsLsStatement("Cliente Esempio"),
+    "Per conto di Cliente Esempio: Cliente Esempio, titolare del trattamento, autorizza Lateral Space a ricorrere ai sub-responsabili elencati, " +
+      "ai sensi dell'art. 28, paragrafo 2, del GDPR. L'ok lo registra Lateral Space. Lateral Space impone loro gli stessi obblighi di protezione dei dati " +
+      "dell'accordo con Cliente Esempio (art. 28, paragrafo 4) e informa Cliente Esempio prima di aggiungerne o sostituirne uno, così può opporsi.",
+  );
+  assert.equal(subprocessorsLsButton("Cliente Esempio"), "Registra l'ok di Cliente Esempio");
+  const text = subprocessorsLsRecordText("Cliente Esempio");
+  assert.ok(text.startsWith("Registrato da Lateral Space per conto di Cliente Esempio, con «Registra l'ok di Cliente Esempio» in Impostazioni › Sub-responsabili.\n"), text);
+  assert.ok(text.includes(subprocessorsLsStatement("Cliente Esempio")));
+  assert.ok(text.includes(`Sub-responsabili (lista ${SUBPROCESSORS_VERSION}):`));
+  assert.equal(text.split("\n").filter((line) => line.startsWith("- ")).length, SUBPROCESSORS.length);
+  assert.ok(!text.includes(SUBPROCESSORS_POWERS_TEXT), "never «Ho i poteri…» for Lateral Space");
+  assert.ok(!subprocessorsLsStatement("Cliente Esempio").includes("autorizzo"), "never in the client's first person");
+  // The prefix recognizes the new rows and a row written by hand on 04/11 (synthetic text here), never a client row.
+  assert.equal(LS_REGISTERED_PREFIX, "Registrato da Lateral Space");
+  assert.equal(isLsRegisteredStatement(text), true);
+  assert.equal(isLsRegisteredStatement("Registrato da Lateral Space per il workspace di prova Esempio: …"), true);
+  assert.equal(isLsRegisteredStatement(subprocessorsRecordText("Cliente Esempio")), false);
+  assert.equal(isLsRegisteredStatement(null), false);
+  const at = new Date("2026-11-04T09:20:00Z");
+  assert.equal(
+    subprocessorsDeclaredLine({ declaredByName: "Aldo Prova", declaredAt: at, listVersion: "2026-10", registeredBy: "lateral_space", companyName: "Cliente Esempio" }),
+    "Ok di Cliente Esempio registrato da Lateral Space (Aldo Prova) il 04/11/2026 alle 10:20 (lista 2026-10).",
+  );
+  assert.equal(
+    subprocessorsDeclaredLine({ declaredByName: " ", declaredAt: at, listVersion: "2026-10", registeredBy: "lateral_space", companyName: "Cliente Esempio" }),
+    "Ok di Cliente Esempio registrato da Lateral Space il 04/11/2026 alle 10:20 (lista 2026-10).",
+  );
+  assert.equal(
+    subprocessorsDeclaredLine({ declaredByName: "Giulia Rossi", declaredAt: at, listVersion: "2026-10", registeredBy: "cliente", companyName: "Cliente Esempio" }),
+    "Autorizzati da Giulia Rossi il 04/11/2026 alle 10:20 (lista 2026-10).",
+    "a client row reads as before",
   );
 });

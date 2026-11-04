@@ -6,7 +6,7 @@ import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { logSafeError } from "@/lib/log/safe-error";
 import { inRomeSendWindow } from "@/lib/uc/calendar";
 import { isLateralSpaceEmail, parseLsDomains, userContextFrom } from "@/lib/uc/lateral-space";
-import { canDeclareSubprocessors } from "@/lib/uc/legal/subprocessors";
+import { subprocessorDeclarerOf } from "@/lib/uc/legal/subprocessors";
 import { RETRY_DELAY_MINUTES, type DispatchEnv, type UcMailer } from "@/lib/uc/notify/dispatch";
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
 import { cast, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
@@ -346,7 +346,9 @@ ORDER BY i.ready_since, i.use_case_id`),
                 verified,
                 lateralSpace: isLateralSpaceEmail({ email, emailVerified: verified }, lsDomains),
                 reviewer: canReviewWorkspacePortfolio(role),
-                canDeclare: canDeclareSubprocessors(userContextFrom({ id: userId, email, emailVerified: verified }, lsDomains), role, lsDomains),
+                // «Autorizza i fornitori» resta un avviso al cliente: (rilascio 5.1) Lateral Space, che ora può
+                // registrare l'ok per suo conto, ci arriva dalla scheda e da Impostazioni, mai da questa email.
+                canDeclare: subprocessorDeclarerOf(userContextFrom({ id: userId, email, emailVerified: verified }, lsDomains), role, lsDomains) === "cliente",
               }
             : null,
         suppliersRowUnread: rowBool(head?.suppliers_unread),

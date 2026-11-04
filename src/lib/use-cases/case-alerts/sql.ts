@@ -249,10 +249,11 @@ export function cardSyncStatements(i: {
 // ─── «Autorizza i fornitori» ─────────────────────────────────────────
 
 /**
- * Le persone che possono dare l'«ok sui sub-responsabili» (`canDeclareSubprocessors`): membri
- * dell'organizzazione o del workspace con ruolo (prima nell'organizzazione, poi nel workspace)
- * Sponsor esecutivo, Responsabile della trasformazione o Responsabile di funzione, email verificata
- * e non di Lateral Space. Senza domini di Lateral Space nessuno. Alias propri; nessun ORDER BY,
+ * Le persone del cliente che possono dare l'«ok sui sub-responsabili» (`subprocessorDeclarerOf` =
+ * «cliente»): membri dell'organizzazione o del workspace con ruolo (prima nell'organizzazione, poi nel
+ * workspace) Sponsor esecutivo, Responsabile della trasformazione o Responsabile di funzione, email
+ * verificata e non di Lateral Space. (Rilascio 5.1) Lateral Space può registrare l'ok per conto del
+ * cliente, ma «Autorizza i fornitori» resta un avviso al cliente: Lateral Space ci arriva dalla scheda. Senza domini di Lateral Space nessuno. Alias propri; nessun ORDER BY,
  * nessun conteggio; 200 al massimo.
  */
 export function declarerRecipientsSql(workspace: SqlFragment, lsDomains: readonly string[]): SqlFragment {

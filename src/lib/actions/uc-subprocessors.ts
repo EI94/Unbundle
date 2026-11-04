@@ -12,7 +12,8 @@ import { ucFailure, ucSectionAvailable, type UcActionResult } from "./uc-action-
 
 /**
  * Impostazioni › «Sub-responsabili»: la persona del cliente autorizza Lateral
- * Space a ricorrere ai sub-responsabili elencati (GDPR art. 28, par. 2). Chi può
+ * Space a ricorrere ai sub-responsabili elencati (GDPR art. 28, par. 2), oppure
+ * (rilascio 5.1) Lateral Space registra l'ok per conto del cliente. Chi può
  * farlo, la versione dell'elenco e la casella si ricontrollano sul server
  * (`declareSubprocessors`), mai fidandosi del browser. Vale anche senza i dossier, dove è accesa
  * «Chiedi al referente» con i suoi archivi pronti: le sue email vogliono la stessa autorizzazione.
@@ -24,10 +25,12 @@ export async function declareSubprocessorsAction(workspaceId: string, listVersio
     const available = await ucSectionAvailable(workspaceId);
     if (!available.ok) return available;
   }
+  let byLateralSpace = false;
   try {
     const executor = await getAppUcExecutor();
     const result = await declareSubprocessors(executor, { workspaceId, userId: session.user.id, lsDomains: ucLsDomains(), listVersion, confirmed });
     if (!result.ok) return ucFailure(result.code, result.message);
+    byLateralSpace = result.value.ack.registeredBy === "lateral_space";
   } catch (error) {
     ucLogError({ area: "uc", op: "sub_responsabili", workspaceId }, error);
     return ucFailure("non_disponibile", "Autorizzazione non registrata. Riprova tra poco.");
@@ -35,5 +38,5 @@ export async function declareSubprocessorsAction(workspaceId: string, listVersio
   revalidatePath(`/dashboard/${workspaceId}/settings`);
   revalidatePath(`/dashboard/${workspaceId}/casi-duso`);
   revalidatePath(`/dashboard/${workspaceId}/use-cases`, "layout");
-  return { ok: true, data: null, message: "Autorizzazione registrata." };
+  return { ok: true, data: null, message: byLateralSpace ? "Ok registrato per conto del cliente." : "Autorizzazione registrata." };
 }

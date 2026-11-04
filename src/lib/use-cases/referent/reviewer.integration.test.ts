@@ -186,6 +186,21 @@ test("pannello: porte nell'ordine (prima l'autorizzazione, poi l'email); null pe
   const before = await panelFor("builder");
   assert.ok(before);
   assert.deepEqual(before!.gates.map((g) => g.code), ["sub_responsabili_mancanti"]);
+  // (Rilascio 5.1) Lateral Space con un ruolo da revisore che autorizza arriva al pulsante: l'ok lo registra per conto del cliente.
+  const { REFERENT_UI_TEXT, fillText } = await import("./labels.ts");
+  const client = before!.gates[0] as { canDeclare?: boolean; message: string };
+  assert.equal(client.canDeclare, true);
+  assert.equal(client.message, fillText(REFERENT_UI_TEXT.gates.subprocessorsCanDeclare, { Azienda: "TopJet prova" }));
+  const lsGate = (await panelFor("ls"))!.gates[0] as { code: string; canDeclare?: boolean; message: string; settingsHref?: string };
+  assert.equal(lsGate.code, "sub_responsabili_mancanti");
+  assert.equal(lsGate.canDeclare, true, "Lateral Space può registrare l'ok");
+  assert.equal(lsGate.message, fillText(REFERENT_UI_TEXT.gates.subprocessorsLsCanDeclare, { Azienda: "TopJet prova" }));
+  assert.equal(lsGate.settingsHref, `/dashboard/${ids.ws}/settings#sub-responsabili`);
+  const analystGate = (await panelFor("analyst"))?.gates[0] as { canDeclare?: boolean; message: string } | undefined;
+  if (analystGate) {
+    assert.equal(analystGate.canDeclare, false, "un analista no");
+    assert.ok(analystGate.message.includes("oppure Lateral Space per suo conto"));
+  }
   const unconfigured = await referents.loadUseCaseReferentPanel({
     workspaceId: ids.ws,
     useCaseId: ids.useCase,

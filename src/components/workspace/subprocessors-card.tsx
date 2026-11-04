@@ -9,8 +9,10 @@ import {
   SUBPROCESSORS,
   SUBPROCESSORS_POWERS_TEXT,
   SUBPROCESSORS_VERSION,
-  canDeclareSubprocessors,
+  subprocessorDeclarerOf,
   subprocessorsDeclaredLine,
+  subprocessorsLsButton,
+  subprocessorsLsStatement,
   subprocessorsStatement,
   subprocessorsWaitingLine,
 } from "@/lib/uc/legal/subprocessors";
@@ -25,6 +27,11 @@ import { SubprocessorsForm } from "./subprocessors-form";
  * accesa per il workspace e lo schema uc è aggiornato, oppure dove è accesa «Chiedi al referente»
  * (le sue email vogliono la stessa autorizzazione) con i suoi archivi pronti; altrimenti, o se la
  * lettura non riesce, non mostra nulla e il resto della pagina resta com'è.
+ *
+ * (Rilascio 5.1) Una persona di Lateral Space con un ruolo da revisore che autorizza registra l'ok per
+ * conto del cliente con un clic («Registra l'ok di {cliente}», un pulsante non pieno, senza la casella
+ * dei poteri); la riga dell'ok dato dice chi l'ha registrato e quando, anche per una riga scritta a mano
+ * che comincia con «Registrato da Lateral Space».
  */
 export async function SubprocessorsCard({
   workspaceId,
@@ -49,7 +56,7 @@ export async function SubprocessorsCard({
     if (!(error instanceof UcAccessError)) ucLogError({ area: "uc", op: "sub_responsabili", workspaceId }, error);
     return null;
   }
-  const canDeclare = !ack && canDeclareSubprocessors(user, workspaceRole, ucLsDomains());
+  const declarer = ack ? null : subprocessorDeclarerOf(user, workspaceRole, ucLsDomains());
 
   return (
     <SettingsSection
@@ -72,14 +79,21 @@ export async function SubprocessorsCard({
         {ack ? (
           <p className="flex items-start gap-2 text-sm">
             <CheckCircle className="mt-0.5 size-4 shrink-0 text-green-400" aria-hidden />
-            {subprocessorsDeclaredLine(ack)}
+            <span data-registered-by={ack.registeredBy}>{subprocessorsDeclaredLine({ ...ack, companyName: workspaceName })}</span>
           </p>
-        ) : canDeclare ? (
+        ) : declarer === "cliente" ? (
           <SubprocessorsForm
             workspaceId={workspaceId}
             listVersion={SUBPROCESSORS_VERSION}
             statement={subprocessorsStatement(workspaceName)}
             powersText={SUBPROCESSORS_POWERS_TEXT}
+          />
+        ) : declarer === "lateral_space" ? (
+          <SubprocessorsForm
+            workspaceId={workspaceId}
+            listVersion={SUBPROCESSORS_VERSION}
+            statement={subprocessorsLsStatement(workspaceName)}
+            oneClickLabel={subprocessorsLsButton(workspaceName)}
           />
         ) : (
           <p className="text-sm text-muted-foreground">{subprocessorsWaitingLine(workspaceName)}</p>
