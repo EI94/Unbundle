@@ -98,7 +98,7 @@ test("promemoria con più voci: un blocco per caso d'uso, il suo link, chi chied
     replyName: null,
   });
   assert.equal(two.subject, "TopJet: promemoria su 2 casi d'uso");
-  has(two.text, "ti ricordiamo che ci sono ancora domande aperte su 2 casi d'uso di TopJet. Quello che hai già scritto è salvato.");
+  has(two.text, "ti ricordiamo che aspettiamo la tua risposta su 2 casi d'uso di TopJet. Quello che hai già scritto è salvato.");
   has(two.text, "«TJ-0004 · Fatture fornitori», chiede Giulia Neri: 2 domande aperte.");
   has(two.text, "«Ordini clienti», chiede Luca Verdi: una domanda aperta.");
   has(two.text, "Il link scade il 26 novembre 2026. È l'ultimo promemoria per questo caso d'uso.");
@@ -189,9 +189,15 @@ test("(rilascio 5) promemoria con la conferma da inviare: oggetto, «la tua conf
     replyToKnown: false,
     replyName: null,
   });
-  has(multi.text, "«TJ-0004 · Fatture fornitori», chiede Giulia Neri: la conferma e 2 domande aperte.");
-  has(multi.text, "«TJ-0005 · Ordini», chiede Giulia Neri: la conferma.");
+  has(multi.text, "«TJ-0004 · Fatture fornitori», chiede Giulia Neri: la tua conferma e 2 domande aperte.");
+  has(multi.text, "«TJ-0005 · Ordini», chiede Giulia Neri: la tua conferma.");
+  // (Rilascio 5.1) Mai «domande aperte» né «Apri le domande» per una voce che aspetta solo la conferma: «Riprendi», come il promemoria di un caso d'uso solo.
+  has(multi.text, "ti ricordiamo che aspettiamo la tua risposta su 2 casi d'uso di TopJet.");
+  assert.ok(!multi.text.includes("Apri le domande"), multi.text);
+  assert.equal(multi.text.split("Riprendi").length - 1, 2);
   clean(multi);
+  const mixed = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry({ openQuestions: 2 }), entry({ link: LINK2, checkPending: true, openQuestions: 0 })], replyToKnown: false, replyName: null });
+  assert.equal([mixed.text.split("Apri le domande").length - 1, mixed.text.split("Riprendi").length - 1].join(","), "1,1");
 });
 
 // ─── Rilascio 5.1: il marchio in cima alle email ─────────────────────

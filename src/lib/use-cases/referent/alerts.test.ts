@@ -181,8 +181,9 @@ test("testo: una scheda con risposte", () => {
   const m = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 1 })] });
   assert.equal(m.subject, "TopJet: risposte arrivate sul caso d'uso «TJ-0004 · Fatture fornitori»");
   has(m.text, "Buongiorno,");
-  has(m.text, "ci sono novità sul caso d'uso «TJ-0004 · Fatture fornitori» di TopJet.");
-  has(m.text, "«TJ-0004 · Fatture fornitori»: è arrivata 1 risposta.");
+  // Con un caso d'uso solo, il titolo una volta: l'oggetto lo dice già, il testo non lo ripete.
+  has(m.text, "ci sono novità sul caso d'uso «TJ-0004 · Fatture fornitori» di TopJet: è arrivata 1 risposta.");
+  assert.equal(m.text.split("TJ-0004 · Fatture fornitori").length - 1, 1, "il titolo una volta sola nel testo");
   has(m.text, "Da verificare in «Cosa serve».");
   has(m.text, "Apri «Cosa serve»");
   has(m.text, `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=cosa-serve`);
@@ -192,33 +193,46 @@ test("testo: una scheda con risposte", () => {
 test("testo: solo documenti, solo «Non lo so», risposte e «Non lo so», solo il seguito", () => {
   const docs = renderRequesterAlert({ company: "TopJet", entries: [entry({ documents: 5 })] });
   assert.equal(docs.subject, "TopJet: nuovi documenti sul caso d'uso «TJ-0004 · Fatture fornitori»");
-  has(docs.text, "«TJ-0004 · Fatture fornitori»: ci sono 5 documenti nuovi.");
+  has(docs.text, "ci sono novità sul caso d'uso «TJ-0004 · Fatture fornitori» di TopJet: ci sono 5 documenti nuovi.");
   const unknown = renderRequesterAlert({ company: "TopJet", entries: [entry({ unknowns: 1 })] });
   assert.equal(unknown.subject, "TopJet: il referente non sa rispondere sul caso d'uso «TJ-0004 · Fatture fornitori»");
   has(unknown.text, "il referente non ha l'informazione per 1 domanda.");
   has(unknown.text, "Per i «Non ce l'ho» puoi chiedere a un'altra persona.");
   assert.ok(!unknown.text.includes("Da verificare"));
   const mixed = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 3, unknowns: 2 })] });
-  has(mixed.text, "«TJ-0004 · Fatture fornitori»: sono arrivate 3 risposte e il referente non ha l'informazione per 2 domande.");
+  has(mixed.text, "di TopJet: sono arrivate 3 risposte e il referente non ha l'informazione per 2 domande.");
   const last = renderRequesterAlert({ company: "TopJet", entries: [entry({ followUp: "ultimo_promemoria" })] });
   assert.equal(last.subject, "TopJet: nessuna risposta sul caso d'uso «TJ-0004 · Fatture fornitori»");
-  has(last.text, "è partito l'ultimo promemoria e restano domande senza risposta.");
+  has(last.text, "ci sono novità sul caso d'uso «TJ-0004 · Fatture fornitori» di TopJet. È partito l'ultimo promemoria e restano domande senza risposta.");
   has(last.text, "Puoi chiedere di nuovo o chiedere a un'altra persona.");
+  // Il seguito è una frase a sé: mai «… per 1 domanda e il link è scaduto e restano …»; con il link scaduto l'oggetto dice «nessuna risposta».
   const expired = renderRequesterAlert({ company: "TopJet", entries: [entry({ followUp: "scaduta", unknowns: 1 })] });
-  has(expired.text, "il link è scaduto e restano domande senza risposta");
+  assert.equal(expired.subject, "TopJet: nessuna risposta sul caso d'uso «TJ-0004 · Fatture fornitori»");
+  has(expired.text, "di TopJet: il referente non ha l'informazione per 1 domanda. Il link è scaduto e restano domande senza risposta.");
+  assert.ok(!/ e il link è scaduto/.test(expired.text));
   assert.ok(!expired.text.includes("Per i «Non ce l'ho»"), "con il seguito, solo la sua riga");
   const all = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 2, documents: 1, followUp: "ultimo_promemoria" })] });
-  has(all.text, "sono arrivate 2 risposte, c'è 1 documento nuovo ed è partito l'ultimo promemoria e restano domande senza risposta.");
-  for (const m of [docs, unknown, mixed, last, expired, all]) safe(m);
+  has(all.text, "di TopJet: sono arrivate 2 risposte e c'è 1 documento nuovo. È partito l'ultimo promemoria e restano domande senza risposta.");
+  for (const m of [docs, unknown, mixed, last, expired, all]) {
+    safe(m);
+    assert.equal(m.text.split("TJ-0004 · Fatture fornitori").length - 1, 1, `il titolo una volta sola: ${m.subject}`);
+    assert.ok(!/ e [^.]* e restano/.test(m.text), `mai due «e» di fila: ${m.subject}`);
+  }
 });
 
 test("testo: più schede", () => {
   const m = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 1 }), entry({ useCase: { code: null, title: "Ordini clienti" }, documents: 2, link: cardLink(ORIGIN, WS, UC2) })] });
   assert.equal(m.subject, "TopJet: novità su 2 casi d'uso");
   has(m.text, "ci sono novità su 2 casi d'uso di TopJet.");
+  has(m.text, "«TJ-0004 · Fatture fornitori»: è arrivata 1 risposta.");
   has(m.text, "«Ordini clienti»: ci sono 2 documenti nuovi.");
   has(m.text, `${ORIGIN}/dashboard/${WS}/use-cases/${UC2}?capitolo=cosa-serve`);
   safe(m);
+  // Con più casi d'uso, una riga per ognuno; il seguito resta una frase a sé.
+  const follow = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 2, followUp: "ultimo_promemoria" }), entry({ useCase: { code: null, title: "Ordini clienti" }, followUp: "scaduta", link: cardLink(ORIGIN, WS, UC2) })] });
+  has(follow.text, "«TJ-0004 · Fatture fornitori»: sono arrivate 2 risposte. È partito l'ultimo promemoria e restano domande senza risposta.");
+  has(follow.text, "«Ordini clienti»: il link è scaduto e restano domande senza risposta.");
+  safe(follow);
   assert.throws(() => renderRequesterAlert({ company: "TopJet", entries: [] }));
 });
 

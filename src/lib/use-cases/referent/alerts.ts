@@ -204,9 +204,27 @@ function factsOf(e: AlertEntry): string[] {
   if (e.answers > 0) out.push(e.answers === 1 ? "è arrivata 1 risposta" : `sono arrivate ${e.answers} risposte`);
   if (e.unknowns > 0) out.push(e.unknowns === 1 ? "il referente non ha l'informazione per 1 domanda" : `il referente non ha l'informazione per ${e.unknowns} domande`);
   if (e.documents > 0) out.push(e.documents === 1 ? "c'è 1 documento nuovo" : `ci sono ${e.documents} documenti nuovi`);
-  if (e.followUp === "ultimo_promemoria") out.push("è partito l'ultimo promemoria e restano domande senza risposta");
-  if (e.followUp === "scaduta") out.push("il link è scaduto e restano domande senza risposta");
   return out;
+}
+
+/** (Rilascio 5.1) Il seguito è una frase a sé, mai attaccato ai fatti con un'altra «e». */
+function followUpSentence(e: AlertEntry): string | null {
+  if (e.followUp === "ultimo_promemoria") return "È partito l'ultimo promemoria e restano domande senza risposta.";
+  if (e.followUp === "scaduta") return "Il link è scaduto e restano domande senza risposta.";
+  return null;
+}
+
+/**
+ * La riga di una voce: `lead` («ci sono novità sul caso d'uso «…» di TopJet» con una voce sola, ««Ordini»»
+ * con più voci), i fatti («: sono arrivate 2 risposte e c'è 1 documento nuovo.») e il seguito. Con solo il
+ * seguito: «… di TopJet. Il link è scaduto …» (una voce), ««Ordini»: il link è scaduto …» (più voci).
+ */
+function entryLine(lead: string, e: AlertEntry, single: boolean): string {
+  const facts = factsOf(e);
+  const follow = followUpSentence(e);
+  if (facts.length > 0) return `${lead}: ${joinFacts(facts)}.${follow ? ` ${follow}` : ""}`;
+  if (!follow) return `${lead}.`;
+  return single ? `${lead}. ${follow}` : `${lead}: ${follow.charAt(0).toLowerCase()}${follow.slice(1)}`;
 }
 
 function subjectOf(i: RequesterAlertInput): string {
@@ -216,7 +234,8 @@ function subjectOf(i: RequesterAlertInput): string {
   const uc = labelOfUseCase(e.useCase);
   if (e.answers > 0) return `${company}: risposte arrivate sul caso d'uso «${uc}»`;
   if (e.documents > 0) return `${company}: nuovi documenti sul caso d'uso «${uc}»`;
-  if (e.unknowns > 0) return `${company}: il referente non sa rispondere sul caso d'uso «${uc}»`;
+  // Con il link scaduto l'oggetto non dice «non sa rispondere»: restano domande senza risposta.
+  if (e.unknowns > 0 && e.followUp !== "scaduta") return `${company}: il referente non sa rispondere sul caso d'uso «${uc}»`;
   return `${company}: nessuna risposta sul caso d'uso «${uc}»`;
 }
 
@@ -225,13 +244,13 @@ export function renderRequesterAlert(i: RequesterAlertInput, brand?: EmailBrand)
   if (i.entries.length === 0) throw new Error("Avviso senza voci");
   const company = oneLine(companyLabel(i.company), 80);
   const blocks: Block[] = [{ p: "Buongiorno," }];
-  blocks.push(
-    i.entries.length === 1
-      ? { p: `ci sono novità sul caso d'uso «${labelOfUseCase(i.entries[0].useCase)}» di ${company}.` }
-      : { p: `ci sono novità su ${i.entries.length} casi d'uso di ${company}.` },
-  );
+  // (Rilascio 5.1) Con un caso d'uso solo, il titolo una volta: «ci sono novità sul caso d'uso «…» di
+  // {Azienda}: …». Con più casi d'uso, una riga per ognuno.
+  const single = i.entries.length === 1;
+  if (!single) blocks.push({ p: `ci sono novità su ${i.entries.length} casi d'uso di ${company}.` });
   for (const e of i.entries) {
-    blocks.push({ p: `«${labelOfUseCase(e.useCase)}»: ${joinFacts(factsOf(e))}.` });
+    const label = `«${labelOfUseCase(e.useCase)}»`;
+    blocks.push({ p: entryLine(single ? `ci sono novità sul caso d'uso ${label} di ${company}` : label, e, single) });
     if (e.answers > 0 || e.documents > 0) blocks.push({ small: "Da verificare in «Cosa serve»." });
     if (e.unknowns > 0 && !e.followUp) blocks.push({ small: "Per i «Non ce l'ho» puoi chiedere a un'altra persona." });
     if (e.followUp) blocks.push({ small: "Puoi chiedere di nuovo o chiedere a un'altra persona." });

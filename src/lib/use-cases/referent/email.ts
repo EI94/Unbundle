@@ -176,18 +176,19 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
   const n = input.entries.length;
   const blocks: Block[] = [
     { p: "Buongiorno," },
-    { p: `ti ricordiamo che ci sono ancora domande aperte su ${n} casi d'uso di ${company(input.company)}. Quello che hai già scritto è salvato.` },
+    { p: `ti ricordiamo che aspettiamo la tua risposta su ${n} casi d'uso di ${company(input.company)}. Quello che hai già scritto è salvato.` },
   ];
   if (input.entries.some((e) => e.cardLink)) blocks.push({ small: TEAM_ACCESS_LINE_MANY });
   else if (input.accountNotice === true) blocks.push({ small: ACCOUNT_NOTICE_LINE_MANY });
   for (const e of input.entries) {
     const uc = labelOfUseCase(e.useCase);
-    // (Rilascio 5) Con la conferma ancora da inviare: «la conferma e {n} domande aperte».
-    const what = e.checkPending ? `la conferma${e.openQuestions > 0 ? ` e ${openWord(e.openQuestions)}` : ""}` : openWord(e.openQuestions);
+    // (Rilascio 5) Con la conferma ancora da inviare: «la tua conferma e {n} domande aperte», e «Riprendi»
+    // come nel promemoria di un caso d'uso solo (rilascio 5.1: mai «Apri le domande» senza domande).
+    const what = e.checkPending ? `la tua conferma${e.openQuestions > 0 ? ` e ${openWord(e.openQuestions)}` : ""}` : openWord(e.openQuestions);
     blocks.push(
       { p: `«${uc}», chiede ${name(e.requesterName)}: ${what}${e.kind === "nuove" ? ", con domande nuove" : ""}.` },
       { small: `${expiry(e.expiresAt)}${e.kind === "ultimo" ? " È l'ultimo promemoria per questo caso d'uso." : ""}` },
-      { link: { href: checkReferentLink(e.link), label: "Apri le domande" } },
+      { link: { href: checkReferentLink(e.link), label: e.checkPending ? "Riprendi" : "Apri le domande" } },
     );
     if (e.cardLink) blocks.push({ link: { href: checkCardLink(e.cardLink), label: TEAM_ACCESS_LINK_LABEL } });
   }
