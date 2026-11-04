@@ -7,7 +7,7 @@
  * - **ore**: volte e minuti del team, «Ti torna?» con «Sì» / «È di meno» / «È di più» e due numeri facoltativi;
  * - **ore_numeri**: una voce a ore senza i numeri del team: si chiedono i due numeri;
  * - **euro**: gli euro del team, «Ti torna?» con «Sì» / «È di meno» / «È di più» e una cifra facoltativa;
- * - **fatto**: una voce qualitativa (o in euro senza cifra): «Succede davvero?» con «Sì» / «No» / «Non so».
+ * - **fatto**: una voce qualitativa (o in euro senza cifra): «Ti torna?» con «Sì» / «No» / «Non so».
  *
  * Modulo puro, senza `zod`: lo carica anche la pagina pubblica.
  */

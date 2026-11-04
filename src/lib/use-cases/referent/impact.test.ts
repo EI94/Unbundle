@@ -80,10 +80,10 @@ test("le domande: ore al mese o l'anno, singolare e plurale, i decimali, gli eur
   assert.equal(q(ore("t", 0, 12)), "Controllo delle fatture: quante volte al mese, e quanti minuti ogni volta?");
   assert.equal(q(euro("e", 4000)), "Meno solleciti: circa 4.000 € l'anno. Ti torna?");
   assert.equal(q(euro("e", 1234.56)), "Meno solleciti: circa 1.235 € l'anno. Ti torna?");
-  assert.equal(q(euro("e", 0)), "Meno solleciti. Succede davvero?", "senza cifra il referente non inventa euro");
-  assert.equal(q(fatto("q")), "Meno errori nelle registrazioni. Succede davvero?");
-  assert.equal(q(fatto("q", { label: "Meno errori." })), "Meno errori. Succede davvero?", "niente doppio punto");
-  assert.equal(q(fatto("q", { label: "Clienti più contenti!" })), "Clienti più contenti! Succede davvero?");
+  assert.equal(q(euro("e", 0)), "Meno solleciti. Ti torna?", "senza cifra il referente non inventa euro");
+  assert.equal(q(fatto("q")), "Meno errori nelle registrazioni. Ti torna?");
+  assert.equal(q(fatto("q", { label: "Meno errori." })), "Meno errori. Ti torna?", "niente doppio punto");
+  assert.equal(q(fatto("q", { label: "Clienti più contenti!" })), "Clienti più contenti! Ti torna?");
   assert.equal(q(ore("t", 3000, 12, { label: "Lettura:" })), "Lettura: circa 250 volte al mese, 12 minuti ogni volta. Ti torna?");
   assert.equal(euroText(0.2), "meno di 1 €");
 });
@@ -99,7 +99,7 @@ test("il nome: quello della voce se passa i controlli, altrimenti il tipo di rit
       assert.doesNotMatch(question, /@|%|FONTE/);
       if (kind === "ore") assert.match(question, /volte al mese, 12 minuti ogni volta\. Ti torna\?$/);
       if (kind === "euro") assert.match(question, /circa 4\.000 € l'anno\. Ti torna\?$/);
-      if (kind === "qualitativo") assert.match(question, /\. Succede davvero\?$/);
+      if (kind === "qualitativo") assert.match(question, /\. Ti torna\?$/);
     }
   }
   assert.equal(impactRowsOf(model(fatto("k", { lever: "sconosciuta", label: "" })))![0].label, LEVER_LABELS.tempo);

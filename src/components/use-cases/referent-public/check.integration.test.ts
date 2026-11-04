@@ -309,7 +309,7 @@ test("passo 2 per beneficio: la cifra vista è quella di adesso, le scelte e i n
   assert.equal(await flagOf(requestId), false);
 });
 
-test("una voce a ore senza i numeri del team: i due numeri, tutti e due per inviare; una voce in euro senza cifra: «Succede davvero?»", opts, async () => {
+test("una voce a ore senza i numeri del team: i due numeri, tutti e due per inviare; una voce in euro senza cifra: «Ti torna?»", opts, async () => {
   const model = {
     v: 1,
     primary: "tempo",

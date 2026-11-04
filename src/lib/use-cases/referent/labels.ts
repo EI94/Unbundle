@@ -299,9 +299,10 @@ export const REFERENT_IMPACT_TEXT = Object.freeze({
   oreYear: "{label}: circa {volte} l'anno, {minuti} ogni volta. Ti torna?",
   oreNumbers: "{label}: quante volte al mese, e quanti minuti ogni volta?",
   euro: "{label}: circa {euro} l'anno. Ti torna?",
-  fatto: "{label}. Succede davvero?",
+  // (Rilascio 5.1, decisione del titolare del 04/11/2026) «Ti torna?» come sulle cifre del team.
+  fatto: "{label}. Ti torna?",
   /** Il nome finisce già con «?» o «!». */
-  fattoBare: "{label} Succede davvero?",
+  fattoBare: "{label} Ti torna?",
   euroAmount: "{n} €",
   euroLess: "meno di 1 €",
   yes: "Sì",
