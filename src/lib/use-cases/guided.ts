@@ -131,12 +131,13 @@ export const GUIDED_TEXT = Object.freeze({
     remindedAlone: "Promemoria inviato.",
     // (Rilascio 5, §9.6) Il referente dello use case.
     verifyCorrection: "Il referente chiede di correggere lo use case.",
-    verifyEstimate: "Il referente ha una stima diversa del tempo.",
+    // (Rilascio 5.1) Su una voce qualunque di «Benefici e costi», non solo sul tempo.
+    verifyEstimate: "Il referente ha una stima diversa da quella del team.",
     verifyNoTeam: "Il referente ha dato una stima del tempo.",
     referentSilent: "Il referente non ha risposto.",
     chooseTitle: "Scegliere il referente",
-    chooseLine: "Il referente conferma lo use case, stima il tempo e risponde alle domande.",
-    chooseLineNoQuestions: "Il referente conferma lo use case e stima il tempo.",
+    chooseLine: "Il referente conferma lo use case e l'impatto, poi risponde alle domande.",
+    chooseLineNoQuestions: "Il referente conferma lo use case e l'impatto.",
     chooseButton: "Scegli il referente",
     referentTurn: "Tocca al referente.",
     otherTitle: "Chiedere a un'altra persona",

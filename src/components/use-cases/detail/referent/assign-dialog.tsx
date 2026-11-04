@@ -16,7 +16,8 @@ import {
   sendReferentRequestAction,
 } from "@/lib/actions/use-case-referents";
 import type { ReferentActionResult, UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
-import { teamEstimateDetail, teamEstimateStatement, type TeamEstimate } from "@/lib/use-cases/referent/estimate";
+import { benefitQuestion } from "@/lib/use-cases/referent/impact-text";
+import type { ImpactRow } from "@/lib/use-cases/referent/impact";
 import { REFERENT_ASSIGN_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, companyLabel, fillText } from "@/lib/use-cases/referent/labels";
 import { orgWordsOf } from "@/lib/use-cases/referent/match";
 import { referentRequestPreview, requesterNameOf } from "@/lib/use-cases/referent/preview";
@@ -61,10 +62,11 @@ const FAILED: ReferentActionResult<never> = { ok: false, code: "riprova", messag
 /** «Scegli il referente» non propone le domande standard di frequenza e tempo: le chiede già la stima (D32). */
 const PREPARE_SKIP = ["frequenza", "tempo"] as const;
 
-/** Quello che «Scegli il referente» mostra in «Cosa riceve {Nome}»: la descrizione e la stima come le vede il referente. */
+/** Quello che «Scegli il referente» mostra in «Cosa riceve {Nome}»: la descrizione e (rilascio 5.1) l'impatto come li vede il referente. */
 export interface AssignContext {
   description: { text: string | null; dropped: number };
-  team: TeamEstimate | null;
+  /** Le righe del passo «L'impatto» (`impactRowsOf`); null senza modello del valore. */
+  benefits: readonly ImpactRow[] | null;
 }
 
 export interface AssignDialogProps extends Omit<AskStepsContext, "saved">, AssignContext {
@@ -95,7 +97,7 @@ export function AssignDialog({
   peopleCache,
   onPeople,
   description,
-  team,
+  benefits,
   onClose,
 }: AssignDialogProps) {
   const baseId = useId();
@@ -507,10 +509,14 @@ export function AssignDialog({
                   {kind === "referente" ? (
                     <>
                       <blockquote className="rounded-lg bg-muted/50 px-3 py-2 break-words whitespace-pre-line">{description.text ?? card.title}</blockquote>
-                      {team ? (
-                        <p className="break-words">
-                          {teamEstimateStatement(team)} <span className="text-muted-foreground">{teamEstimateDetail(team)}</span>
-                        </p>
+                      {benefits ? (
+                        <ul data-slot="assign-benefits" className="list-disc space-y-0.5 pl-5">
+                          {benefits.map((row) => (
+                            <li key={row.key} className="break-words">
+                              {benefitQuestion(row)}
+                            </li>
+                          ))}
+                        </ul>
                       ) : (
                         <p className="break-words text-muted-foreground">{T.noTeamEstimate}</p>
                       )}

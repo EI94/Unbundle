@@ -175,9 +175,9 @@ test("le spunte: 5 di 7 (D31), le portate prima; «Serve un file» per i documen
 });
 
 test("le frasi: il numero vero di domande; «chiedi» e «Chiedi di nuovo» di sole domande dicono il nome", () => {
-  assert.equal(assignLeadFor("scegli", "referente", 5, "Aldo"), "Riceve subito un'email: conferma lo use case, stima il tempo e risponde a 5 domande.");
-  assert.equal(assignLeadFor("scegli", "referente", 1, "Aldo"), "Riceve subito un'email: conferma lo use case, stima il tempo e risponde a una domanda.");
-  assert.equal(assignLeadFor("cambia", "referente", 0, "Aldo"), "Riceve subito un'email: conferma lo use case e stima il tempo.");
+  assert.equal(assignLeadFor("scegli", "referente", 5, "Aldo"), "Riceve subito un'email: conferma lo use case e l'impatto, poi risponde a 5 domande.");
+  assert.equal(assignLeadFor("scegli", "referente", 1, "Aldo"), "Riceve subito un'email: conferma lo use case e l'impatto, poi risponde a una domanda.");
+  assert.equal(assignLeadFor("cambia", "referente", 0, "Aldo"), "Riceve subito un'email: conferma lo use case e l'impatto.");
   assert.equal(assignLeadFor("chiedi", "domande", 2, "Aldo"), "Aldo riceve subito un'email con 2 domande.");
   assert.equal(assignLeadFor("di_nuovo", "domande", 1, "Aldo"), "Aldo riceve subito un'email con una domanda.");
   assert.equal(droppedLine(0), null);

@@ -49,7 +49,7 @@ export interface ReferentDialogHostProps {
  * referente» chiusa senza inviare resta per la vita della pagina (solo qui, mai nel browser) e
  * l'ultimo elenco delle persone del workspace serve mentre arriva di nuovo.
  */
-const NO_ASSIGN: AssignContext = Object.freeze({ description: Object.freeze({ text: null, dropped: 0 }), team: null });
+const NO_ASSIGN: AssignContext = Object.freeze({ description: Object.freeze({ text: null, dropped: 0 }), benefits: null });
 
 export function ReferentDialogHost({ workspaceId, useCaseId, panel, canEdit, needInfo, card, companyName, companyDisplayName, assign = NO_ASSIGN, children }: ReferentDialogHostProps) {
   const [dialog, setDialog] = useState<ReferentDialog | null>(null);

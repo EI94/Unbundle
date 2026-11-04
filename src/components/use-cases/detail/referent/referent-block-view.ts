@@ -3,8 +3,9 @@
  * del referente, dal pannello. Nessun pulsante pieno (quello della pagina sta nel riquadro «Prossimo
  * passo»), nessun conteggio per persona. Modulo puro: lo prova `referent-block-view.test.ts`.
  */
-import type { ReferentBlockCheck, ReferentBlockView, ReferentRequestView } from "../../../../lib/use-cases/referent/contract.ts";
-import { formatDecimalIt, hoursText, minutesText } from "../../../../lib/use-cases/referent/estimate.ts";
+import type { ReferentBlockBenefit, ReferentBlockCheck, ReferentBlockView, ReferentRequestView } from "../../../../lib/use-cases/referent/contract.ts";
+import { formatDecimalIt, hoursText, minutesText, referentHours } from "../../../../lib/use-cases/referent/estimate.ts";
+import { euroText } from "../../../../lib/use-cases/referent/impact-text.ts";
 import { REFERENT_BLOCK_TEXT, REFERENT_UI_TEXT, fillText } from "../../../../lib/use-cases/referent/labels.ts";
 import { REFERENT_STATE_TEXT, type ReferentStateKey } from "../../../../lib/use-cases/referent/use-case-state.ts";
 import { formatDayInYear } from "../../../../lib/use-cases/format.ts";
@@ -16,6 +17,8 @@ export interface BlockButton {
   key: BlockButtonKey;
   label: string;
   variant: "outline" | "ghost" | "link";
+  /** (Rilascio 5.1) La voce di «Benefici e costi» su cui agisce (le azioni per beneficio). */
+  benefit?: string;
 }
 
 export type BlockMenuKey = "remind" | "askMore" | "change" | "revoke" | "correct" | "erase";
@@ -27,8 +30,20 @@ export interface BlockMenuItem {
 }
 
 export type BlockLine = { kind: "text" | "muted"; text: string } | { kind: "quote"; text: string };
+/** (Rilascio 5.1) Una voce di «Benefici e costi» con la risposta del referente e, quando aspetta il team, i suoi pulsanti. */
+export interface BenefitLines {
+  key: string;
+  /** «Controllo delle fatture: il team stimava 600 ore di lavoro l'anno.» */
+  head: string;
+  /** «Aldo: è di più. Circa 720 ore (300 al mese, 12 minuti).» */
+  says: string;
+  comment: string | null;
+  /** Le righe grigie: la cifra cambiata, la voce tolta, la decisione del team. */
+  notes: string[];
+  buttons: BlockButton[];
+}
 /** Una riga della conferma e della stima: anche «Fatto» della correzione, subito sotto la nota che chiude (§9.2). */
-export type CheckLine = BlockLine | { kind: "button"; button: BlockButton };
+export type CheckLine = BlockLine | { kind: "button"; button: BlockButton } | { kind: "benefit"; benefit: BenefitLines };
 
 export interface ReferentBlockModel {
   state: ReferentStateKey;
@@ -76,15 +91,89 @@ function hoursShort(hours: number): string {
   return fillText(T.hoursShort, { n: formatDecimalIt(h) });
 }
 
+/** (Rilascio 5.1) La cifra del team che il referente ha visto su una voce, e la sua risposta, in parole. */
+function benefitTexts(b: ReferentBlockBenefit, name: string): { head: string; says: string } {
+  const label = b.label.replace(/[\s.:;,]+$/u, "");
+  const t = b.team;
+  if (b.form === "ore") {
+    const head = fillText(T.benefitTeamOre, { label, ore: hoursText(((t.volumeYear ?? 0) * (t.minutes ?? 0)) / 60) });
+    let says = fillText(b.answer === "meno" ? T.saysLess : b.answer === "piu" ? T.saysMore : T.saysYes, { Nome: name });
+    if ((b.answer === "meno" || b.answer === "piu") && (b.timesPerMonth !== null || b.minutesEach !== null)) {
+      const snapshot = { volumeYear: t.volumeYear ?? 0, minutes: t.minutes ?? 0 };
+      const hours = referentHours(snapshot, { timesPerMonth: b.timesPerMonth, minutesEach: b.minutesEach }) ?? 0;
+      says += fillText(T.numbersTail, { ore: hoursShort(hours), n: formatDecimalIt(b.timesPerMonth ?? snapshot.volumeYear / 12), m: minutesText(b.minutesEach ?? snapshot.minutes) });
+    }
+    return { head, says };
+  }
+  if (b.form === "ore_numeri") {
+    const head = fillText(T.benefitTeamOreNone, { label });
+    const hours = referentHours(null, { timesPerMonth: b.timesPerMonth, minutesEach: b.minutesEach });
+    const says =
+      hours !== null && b.timesPerMonth !== null && b.minutesEach !== null
+        ? fillText(T.numbersNoTeam, { Nome: name, ore: hoursText(hours), n: formatDecimalIt(b.timesPerMonth), m: minutesText(b.minutesEach) })
+        : fillText(T.saysYes, { Nome: name });
+    return { head, says };
+  }
+  if (b.form === "euro") {
+    const head = fillText(T.benefitTeamEuro, { label, euro: euroText(t.eurYear ?? 0) });
+    let says = fillText(b.answer === "meno" ? T.saysLess : b.answer === "piu" ? T.saysMore : T.saysYes, { Nome: name });
+    if ((b.answer === "meno" || b.answer === "piu") && b.eurYear !== null) says += fillText(T.euroTail, { euro: euroText(b.eurYear) });
+    return { head, says };
+  }
+  const head = fillText(T.benefitTeamFatto, { label });
+  const says = fillText(b.answer === "no" ? T.saysNotHappens : b.answer === "non_so" ? T.saysDunno : T.saysHappens, { Nome: name });
+  return { head, says };
+}
+
+/** (Rilascio 5.1) La riga dopo la decisione del team su una voce, oppure null. */
+export function benefitOutcomeLine(b: ReferentBlockBenefit, today: string): string | null {
+  if (b.outcome === "adottata") return fillText(T.adoptedOn, { data: day(b.outcomeAt, today) });
+  if (b.outcome !== "tenuta") return null;
+  if (b.form === "ore_numeri") return T.notUsed;
+  return b.adoptable ? T.kept : fillText(T.seenOn, { data: day(b.outcomeAt, today) });
+}
+
+/** (Rilascio 5.1) I pulsanti del team su una voce che aspetta (§9.3 per beneficio). */
+export function benefitButtonsOf(b: ReferentBlockBenefit, name: string, canEditValuation: boolean): BlockButton[] {
+  if (!b.needsReview || b.changed === "tolta") return [];
+  const out: BlockButton[] = [];
+  if (b.adoptable) {
+    if (canEditValuation && b.changed === null) out.push({ key: "adopt", label: fillText(T.adopt, { Nome: name }), variant: "outline", benefit: b.key });
+    out.push({ key: "keep", label: b.form === "ore_numeri" ? T.notNeeded : T.keep, variant: "ghost", benefit: b.key });
+    return out;
+  }
+  if (b.form === "ore" || b.form === "euro") out.push({ key: "review", label: T.review, variant: "link", benefit: b.key });
+  out.push({ key: "seen", label: T.done, variant: "ghost", benefit: b.key });
+  return out;
+}
+
+/** (Rilascio 5.1) Le righe di una voce, senza i pulsanti (li aggiunge `referentBlockModel`). */
+export function benefitLinesOf(b: ReferentBlockBenefit, name: string, today: string, withReview: boolean): BenefitLines {
+  const { head, says } = benefitTexts(b, name);
+  const notes: string[] = [];
+  if (b.changed === "cambiata") notes.push(T.teamChanged);
+  if (b.changed === "tolta") notes.push(T.benefitGone);
+  if (withReview) {
+    const outcome = benefitOutcomeLine(b, today);
+    if (outcome) notes.push(outcome);
+  }
+  return { key: b.key, head, says, comment: b.comment, notes, buttons: [] };
+}
+
 /** Le righe della conferma e della stima (§9.2), più le righe dopo la decisione del team. */
-export function checkLinesOf(check: ReferentBlockCheck, name: string, today: string, withReview: boolean): BlockLine[] {
-  const out: BlockLine[] = [];
+export function checkLinesOf(check: ReferentBlockCheck, name: string, today: string, withReview: boolean): CheckLine[] {
+  const out: CheckLine[] = [];
   if (!check.submittedAt) return [{ kind: "text", text: T.noConfirm }];
   out.push({ kind: "text", text: fillText(T.answeredOn, { data: day(check.submittedAt, today) }) });
   if (check.confirm === "correggi") {
     out.push({ kind: "text", text: check.correctionDoneAt ? fillText(T.corrected, { data: day(check.correctionDoneAt, today) }) : T.toCorrect });
     if (check.note) out.push({ kind: "quote", text: check.note });
   } else out.push({ kind: "text", text: T.confirmed });
+  // (Rilascio 5.1) Le risposte per beneficio, nell'ordine delle righe che il referente ha visto.
+  if (check.benefits) {
+    for (const b of check.benefits) out.push({ kind: "benefit", benefit: benefitLinesOf(b, name, today, withReview) });
+    return out;
+  }
   const perMonth = check.timesPerMonth ?? (check.team ? check.team.volumeYear / 12 : null);
   const minutes = check.minutesEach ?? (check.team ? check.team.minutes : null);
   if (check.team) {
@@ -121,12 +210,12 @@ export function outcomeLine(check: ReferentBlockCheck, today: string): string | 
   return null;
 }
 
-/** I pulsanti del team sulla risposta (§9.2), quando la decisione manca. */
+/** I pulsanti del team sulla risposta (§9.2), quando la decisione manca. (Rilascio 5.1) Per beneficio, quelli di ogni voce stanno sotto la voce. */
 export function reviewButtonsOf(check: ReferentBlockCheck | null, name: string, canEditValuation: boolean): BlockButton[] {
   if (!check?.submittedAt) return [];
   const out: BlockButton[] = [];
   if (check.confirm === "correggi" && !check.correctionDoneAt) out.push({ key: "correctionDone", label: T.done, variant: "ghost" });
-  if (check.outcome) return out;
+  if (check.benefits || check.outcome) return out;
   const numbers = check.timesPerMonth !== null || check.minutesEach !== null;
   if (check.team && (check.estimate === "meno" || check.estimate === "piu")) {
     if (numbers) {
@@ -196,6 +285,12 @@ export function referentBlockModel(i: ReferentBlockInput): ReferentBlockModel {
       checkLines.splice(at, 0, { kind: "button", button: fix });
     }
     buttons.push(...review.filter((b) => b.key !== "correctionDone"));
+    // (Rilascio 5.1) I pulsanti di ogni voce, sotto la voce.
+    for (const line of checkLines) {
+      if (line.kind !== "benefit") continue;
+      const b = ref.check?.benefits?.find((x) => x.key === line.benefit.key);
+      if (b) line.benefit.buttons = benefitButtonsOf(b, name, i.canEditValuation === true);
+    }
   }
   if (i.canAsk) {
     if (r && ref.live) menu.push({ key: "remind", label: REFERENT_UI_TEXT.remind, allowed: r.actions.remind.allowed, reason: r.actions.remind.allowed ? null : r.actions.remind.reason });

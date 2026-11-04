@@ -342,9 +342,10 @@ export const REFERENT_IMPACT_TEXT = Object.freeze({
  */
 export const REFERENT_ASSIGN_TEXT = Object.freeze({
   title: Object.freeze({ scegli: "Scegli il referente", cambia: "Cambia referente", di_nuovo: "Chiedi di nuovo", chiedi: "Chiedi al referente" }),
-  leadMany: "Riceve subito un'email: conferma lo use case, stima il tempo e risponde a {n} domande.",
-  leadOne: "Riceve subito un'email: conferma lo use case, stima il tempo e risponde a una domanda.",
-  leadNone: "Riceve subito un'email: conferma lo use case e stima il tempo.",
+  // (Rilascio 5.1) L'impatto: ogni voce di «Benefici e costi», o il tempo senza modello del valore.
+  leadMany: "Riceve subito un'email: conferma lo use case e l'impatto, poi risponde a {n} domande.",
+  leadOne: "Riceve subito un'email: conferma lo use case e l'impatto, poi risponde a una domanda.",
+  leadNone: "Riceve subito un'email: conferma lo use case e l'impatto.",
   askMany: "{Nome} riceve subito un'email con {n} domande.",
   askOne: "{Nome} riceve subito un'email con una domanda.",
   changeHint: "{Nome} non riceve più promemoria e il suo link smette di funzionare.",
@@ -360,7 +361,7 @@ export const REFERENT_ASSIGN_TEXT = Object.freeze({
   fileRequired: "Serve un file",
   restOne: "L'altra resta da chiedere.",
   restMany: "Le altre {k} restano da chiedere.",
-  questionsEmpty: "Nessuna domanda: riceve solo la conferma e la stima.",
+  questionsEmpty: "Nessuna domanda: conferma solo lo use case e l'impatto.",
   preview: "Cosa riceve {Nome}",
   previewSomeone: "Cosa riceve",
   onPage: "Nella pagina trova:",

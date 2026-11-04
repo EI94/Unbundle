@@ -563,3 +563,60 @@ test("(rilascio 5) il referente scelto: il blocco «Referente» con la richiesta
   assert.equal(after.referent?.referentRequestId, changed.requestId);
   assert.equal((await q(`SELECT count(*)::int AS n FROM use_case_referent_requests WHERE use_case_id = $1::uuid AND contact_id = $2::uuid AND status = 'inviata'`, [ids.card, MARIO.id]))[0].n, 1, "una sola richiesta viva a Mario");
 });
+
+test("(rilascio 5.1) la risposta per beneficio sulla scheda: ogni voce con la risposta accanto, «Usa la stima di {Nome}» sotto la voce, mai pieno; il contributore niente", opts, async () => {
+  const B = labels.REFERENT_BLOCK_TEXT;
+  const model = {
+    v: 1,
+    primary: "tempo",
+    components: [
+      { kind: "ore", key: "tempo-1", lever: "tempo", label: "Controllo delle fatture", confidence: "ipotesi", volumeYear: 3000, minutesPerUnit: 12, automatablePct: 50 },
+      { kind: "euro", key: "costi-1", lever: "costi", label: "Meno solleciti", confidence: "ipotesi", eurYear: 4000 },
+      { kind: "qualitativo", key: "qualita-1", lever: "qualita", label: "Meno errori", confidence: "da_misurare" },
+    ],
+  };
+  await q(`UPDATE use_cases SET value_model = $2::jsonb WHERE id = $1::uuid`, [ids.card, JSON.stringify(model)]);
+  const [panel] = findProp(await detailElement("builder"), "referents").filter(Boolean) as Panel[];
+  const requestId = panel.referent!.referentRequestId;
+  const mailer = fakeMailer();
+  await dispatch.dispatchReferentEmails({ requestId, env: ENV, mailer, sendIntervalMs: 0 });
+  const token = /\/rispondi\/(ucq_[A-Za-z0-9_-]{32})/.exec(mailer.outbox[0]?.text ?? "")?.[1];
+  assert.ok(token, "il link del referente");
+  const first = await pub.resolveReferentToken(token!, new Date());
+  if (first.access !== "ok") assert.fail("link");
+  ok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-10-1" }, new Date()) as never, "informativa");
+  const resolved = await pub.resolveReferentToken(token!, new Date());
+  if (resolved.access !== "ok") assert.fail("link");
+  const link = resolved.link;
+  ok(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, new Date()) as never, "passo 1");
+  const seen = { "tempo-1": { kind: "ore", volumeYear: 3000, minutes: 12, eurYear: null }, "costi-1": { kind: "euro", volumeYear: null, minutes: null, eurYear: 4000 }, "qualita-1": { kind: "qualitativo", volumeYear: null, minutes: null, eurYear: null } };
+  ok(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: seen["tempo-1"], answer: "piu", timesPerMonth: 300 } }, new Date()) as never, "ore");
+  ok(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "costi-1", seen: seen["costi-1"], answer: "si" } }, new Date()) as never, "euro");
+  ok(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "qualita-1", seen: seen["qualita-1"], answer: "no", comment: "Solo a fine mese." } }, new Date()) as never, "qualitativa");
+  const view = await pub.loadReferentAskPage(token!, { env: ENV, now: new Date() });
+  if (view.access !== "ok") assert.fail("vista");
+  for (const qn of view.view.questions.filter((x) => x.state === "aperta")) ok(await pub.saveReferentDraft(link, { needId: qn.needId, text: null, dontKnow: true }, new Date()) as never, "non ce l'ho");
+  ok(await pub.submitReferentAnswers(link, {}, new Date()) as never, "invia");
+
+  const page = await detailHtml("builder");
+  const block = page.slice(page.indexOf('data-slot="referent-block"'), page.indexOf("</section>", page.indexOf('data-slot="referent-block"')));
+  for (const text of [
+    "Controllo delle fatture: il team stimava 600 ore di lavoro l'anno.",
+    "è di più. Circa 720 ore (300 al mese, 12 minuti).",
+    "Meno solleciti: il team stimava 4.000 € l'anno.",
+    "Meno errori.",
+    "non succede.",
+    "Solo a fine mese.",
+  ]) {
+    assert.ok(block.includes(text), text);
+  }
+  assert.equal((block.match(/data-slot="referent-benefit-answer"/g) ?? []).length, 3);
+  assert.match(block, /data-action="referent-adopt" data-benefit="tempo-1"/);
+  assert.match(block, /data-action="referent-seen" data-benefit="qualita-1"/);
+  assert.ok(!/data-benefit="costi-1"[^>]*data-action|data-action="[^"]+" data-benefit="costi-1"/.test(block), "«Sì»: niente da decidere");
+  assert.ok(block.includes(`${labels.fillText(B.adopt, { Nome: MARIO.name })}</button>`));
+  assert.doesNotMatch(block, /bg-primary/, "nessun pulsante pieno nel blocco");
+  assert.ok(!block.includes("Il tempo:"), "niente righe della stima del tempo del rilascio 5");
+  const contributor = await detailHtml("contributor");
+  for (const text of ["Controllo delle fatture: il team stimava", "Solo a fine mese.", "referent-benefit-answer", "4.000 €"]) assert.ok(!contributor.includes(text), text);
+});

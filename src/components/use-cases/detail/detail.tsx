@@ -33,7 +33,7 @@ import { askEntry } from "./referent/ask-dialog-state";
 import { assignEntry, requestsShown } from "./referent/assign-dialog-state";
 import { referentHeaderLine } from "./referent/referent-block-view";
 import { referentDescription } from "@/lib/use-cases/referent/description";
-import { teamEstimateOf } from "@/lib/use-cases/referent/estimate";
+import { impactRowsOf } from "@/lib/use-cases/referent/impact";
 import { ReferentDialogHost } from "./referent/dialog-host";
 import { ContributorDecisionSection } from "./section-decision";
 import { SectionHistory } from "./section-history";
@@ -321,7 +321,8 @@ export function UseCaseDetailView({
           review: feature.referent?.review ?? null,
           canChoose: Boolean(assignE?.canOpen && assignE.sendGates.length === 0),
           askableForReferent: feature.referent ? feature.referent.askableForReferent.length : null,
-          noTeamEstimate: Boolean(feature.referent?.check && feature.referent.check.team === null),
+          // (Rilascio 5.1) Le risposte per beneficio non sono «una stima del tempo senza quella del team».
+          noTeamEstimate: Boolean(feature.referent?.check && feature.referent.check.team === null && !feature.referent.check.benefits),
         }
       : null;
   const step = nextStepOf({
@@ -410,7 +411,7 @@ export function UseCaseDetailView({
               card={{ code: detail.code, title: detail.title }}
               companyName={companyName}
               companyDisplayName={companyDisplayName}
-              assign={{ description: referentDescription(detail.description), team: teamEstimateOf(detail.valueModel) }}
+              assign={{ description: referentDescription(detail.description), benefits: impactRowsOf(detail.valueModel) }}
             >
               <NextStepBox
                 workspaceId={workspaceId}

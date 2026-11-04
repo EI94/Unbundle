@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import type { ReferentBlockCheck, ReferentBlockView, ReferentRequestView } from "../../../../lib/use-cases/referent/contract.ts";
 import { findHubForbidden } from "../../../../lib/use-cases/copy-guard.ts";
 import { blockCheckOf } from "../../../../lib/use-cases/referent/block.ts";
-import { checkLinesOf, outcomeLine, referentBlockModel, referentHeaderLine, reviewButtonsOf } from "./referent-block-view.ts";
+import { benefitButtonsOf, benefitLinesOf, checkLinesOf, outcomeLine, referentBlockModel, referentHeaderLine, reviewButtonsOf, type CheckLine } from "./referent-block-view.ts";
+
+/** Il testo di una riga della conferma (il pulsante: la sua etichetta; una voce: la sua prima riga). */
+const txt = (l: CheckLine) => (l.kind === "button" ? l.button.label : l.kind === "benefit" ? l.benefit.head : l.text);
 
 // Il blocco «Referente» (rilascio 5, SPEC §9.2): righe e pulsanti per stato, nessun pulsante pieno, nessun conteggio per persona.
 
@@ -92,17 +95,17 @@ test("nessuna risposta: «Chiedi di nuovo» visibile, non pieno", () => {
 
 test("ha risposto: la conferma, la stima del team e quella del referente; mai «Revoca il link» su una risposta", () => {
   const yes = referentBlockModel({ ...base, referent: REF({ state: "fatto", live: false, check: CHECK() }), request: { ...R, status: "completata" }, canAskMore: true });
-  assert.deepEqual(yes.checkLines.map((l) => (l.kind === "button" ? l.button.label : l.text)), ["Ha risposto il 3 nov.", "Lo use case: confermato.", "Il tempo: il team stimava 600 ore di lavoro l'anno.", "Aldo Prova: sì."]);
+  assert.deepEqual(yes.checkLines.map(txt), ["Ha risposto il 3 nov.", "Lo use case: confermato.", "Il tempo: il team stimava 600 ore di lavoro l'anno.", "Aldo Prova: sì."]);
   assert.deepEqual(yes.menu.map((i) => i.key), ["askMore", "change", "erase"]);
   const less = checkLinesOf(CHECK({ confirm: "correggi", note: "Arrivano anche via PEC.", estimate: "meno", timesPerMonth: 200, minutesEach: 10, referentHours: 400 }), "Aldo Prova", TODAY, false);
   assert.deepEqual(
-    less.map((l) => `${l.kind}:${l.text}`),
+    less.map((l) => `${l.kind}:${txt(l)}`),
     ["text:Ha risposto il 3 nov.", "text:Lo use case: da correggere.", "quote:Arrivano anche via PEC.", "text:Il tempo: il team stimava 600 ore di lavoro l'anno.", "text:Aldo Prova: è di meno. Circa 400 ore (200 al mese, 10 minuti)."],
   );
   const changed = checkLinesOf(CHECK({ estimate: "piu", teamChanged: true }), "Aldo Prova", TODAY, false);
-  assert.deepEqual(changed.slice(-2).map((l) => l.text), ["Aldo Prova: è di più.", "La stima del team è cambiata dopo la risposta."]);
+  assert.deepEqual(changed.slice(-2).map(txt), ["Aldo Prova: è di più.", "La stima del team è cambiata dopo la risposta."]);
   const noTeam = checkLinesOf(CHECK({ team: null, estimate: null, timesPerMonth: 20, minutesEach: 30, referentHours: 120, teamNow: false }), "Aldo Prova", TODAY, false);
-  assert.deepEqual(noTeam.slice(-2).map((l) => l.text), ["Il tempo: nessuna stima del team.", "Aldo Prova: circa 120 ore di lavoro l'anno (20 al mese, 30 minuti)."]);
+  assert.deepEqual(noTeam.slice(-2).map(txt), ["Il tempo: nessuna stima del team.", "Aldo Prova: circa 120 ore di lavoro l'anno (20 al mese, 30 minuti)."]);
   const old = referentBlockModel({ ...base, referent: REF({ state: "fatto", live: false, check: CHECK({ submittedAt: null, confirm: null, estimate: null }) }), request: { ...R, status: "completata" } });
   assert.deepEqual(old.checkLines, [{ kind: "text", text: "Lo use case: nessuna conferma." }], "dopo un ritorno alla versione di prima (RUNBOOK §10.9 punto 7)");
 });
@@ -127,7 +130,7 @@ test("le azioni del team sulla risposta (§9.2): usare, tenere, rivedere, aggiun
 });
 
 test("i testi del blocco passano il controllo dell'area", () => {
-  const lines = checkLinesOf(CHECK({ confirm: "correggi", note: "n", estimate: "meno", timesPerMonth: 2, referentHours: 4 }), "Aldo", TODAY, true).map((l) => l.text);
+  const lines = checkLinesOf(CHECK({ confirm: "correggi", note: "n", estimate: "meno", timesPerMonth: 2, referentHours: 4 }), "Aldo", TODAY, true).map(txt);
   for (const text of lines) assert.deepEqual(findHubForbidden(text, "area"), [], text);
 });
 
@@ -149,11 +152,11 @@ test("dopo «Usa la stima di …»: «Stima del referente usata il …», mai «
     benefits: null,
   };
   const teamNow = { key: "pratiche", volumeYear: 1800, minutes: 8.5, hours: 255, perMonth: 150, perYear: null, unit: "pratiche", label: null };
-  const lines = checkLinesOf(blockCheckOf(row, 3, teamNow), "Bruna Esempio", TODAY, true).map((l) => l.text);
+  const lines = checkLinesOf(blockCheckOf(row, 3, teamNow), "Bruna Esempio", TODAY, true).map(txt);
   assert.ok(!lines.includes("La stima del team è cambiata dopo la risposta."), JSON.stringify(lines));
   assert.ok(lines.includes("Stima del referente usata il 3 nov."), JSON.stringify(lines));
   // Il team cambia ancora la stima dopo l'adozione: la riga torna.
-  const later = checkLinesOf(blockCheckOf(row, 3, { ...teamNow, volumeYear: 2400 }), "Bruna Esempio", TODAY, true).map((l) => l.text);
+  const later = checkLinesOf(blockCheckOf(row, 3, { ...teamNow, volumeYear: 2400 }), "Bruna Esempio", TODAY, true).map(txt);
   assert.ok(later.includes("La stima del team è cambiata dopo la risposta."), JSON.stringify(later));
 });
 
@@ -178,4 +181,78 @@ test("«Fatto» della correzione sta subito sotto la nota; i pulsanti della stim
   // Senza le azioni del team (withReview false) nessun pulsante tra le righe.
   const plain = referentBlockModel({ ...base, referent: REF({ state: "da_verificare", review: "correzione", live: false, check: both }), request: { ...R, status: "completata" } });
   assert.ok(!plain.checkLines.some((l) => l.kind === "button"));
+});
+
+// ─── (Rilascio 5.1) La risposta per beneficio ────────────────────────
+
+type Benefit = NonNullable<ReferentBlockCheck["benefits"]>[number];
+const BENEFIT = (over: Partial<Benefit> = {}): Benefit => ({
+  key: "tempo-1",
+  form: "ore",
+  label: "Controllo delle fatture",
+  team: { kind: "ore", volumeYear: 3000, minutes: 12, eurYear: null },
+  answer: "si",
+  timesPerMonth: null,
+  minutesEach: null,
+  eurYear: null,
+  comment: null,
+  outcome: null,
+  outcomeAt: null,
+  changed: null,
+  needsReview: false,
+  adoptable: false,
+  ...over,
+});
+const EURO = (over: Partial<Benefit> = {}) => BENEFIT({ key: "costi-1", form: "euro", label: "Meno solleciti", team: { kind: "euro", volumeYear: null, minutes: null, eurYear: 4000 }, ...over });
+const FATTO = (over: Partial<Benefit> = {}) => BENEFIT({ key: "qualita-1", form: "fatto", label: "Meno errori", team: { kind: "qualitativo", volumeYear: null, minutes: null, eurYear: null }, ...over });
+const NUMERI = (over: Partial<Benefit> = {}) => BENEFIT({ key: "tempo-2", form: "ore_numeri", label: "Archiviazione", team: { kind: "ore", volumeYear: 0, minutes: 0, eurYear: null }, answer: null, ...over });
+const lineOf = (b: Benefit, review = false) => {
+  const l = benefitLinesOf(b, "Aldo Prova", TODAY, review);
+  return [l.head, l.says, ...(l.comment ? [`«${l.comment}»`] : []), ...l.notes];
+};
+
+test("per beneficio: ogni voce con la cifra che il referente ha visto e la sua risposta, in parole semplici", () => {
+  assert.deepEqual(lineOf(BENEFIT()), ["Controllo delle fatture: il team stimava 600 ore di lavoro l'anno.", "Aldo Prova: sì."]);
+  assert.deepEqual(lineOf(BENEFIT({ answer: "piu", timesPerMonth: 300 })), ["Controllo delle fatture: il team stimava 600 ore di lavoro l'anno.", "Aldo Prova: è di più. Circa 720 ore (300 al mese, 12 minuti)."]);
+  assert.deepEqual(lineOf(BENEFIT({ answer: "meno", minutesEach: 9 }))[1], "Aldo Prova: è di meno. Circa 450 ore (250 al mese, 9 minuti).");
+  assert.deepEqual(lineOf(BENEFIT({ answer: "meno" }))[1], "Aldo Prova: è di meno.");
+  assert.deepEqual(lineOf(EURO({ answer: "meno", eurYear: 3500 })), ["Meno solleciti: il team stimava 4.000 € l'anno.", "Aldo Prova: è di meno. Circa 3.500 € l'anno."]);
+  assert.deepEqual(lineOf(EURO()), ["Meno solleciti: il team stimava 4.000 € l'anno.", "Aldo Prova: sì."]);
+  assert.deepEqual(lineOf(FATTO({ answer: "no", comment: "Solo a fine mese." })), ["Meno errori.", "Aldo Prova: non succede.", "«Solo a fine mese.»"]);
+  assert.deepEqual(lineOf(FATTO())[1], "Aldo Prova: succede.");
+  assert.deepEqual(lineOf(FATTO({ answer: "non_so" }))[1], "Aldo Prova: non lo sa.");
+  assert.deepEqual(lineOf(NUMERI({ timesPerMonth: 20, minutesEach: 5 })), ["Archiviazione: nessuna stima del team.", "Aldo Prova: circa 20 ore di lavoro l'anno (20 al mese, 5 minuti)."]);
+  assert.deepEqual(lineOf(BENEFIT({ answer: "piu", changed: "cambiata" })).slice(-1), ["La stima del team è cambiata dopo la risposta."]);
+  assert.deepEqual(lineOf(FATTO({ changed: "tolta" })).slice(-1), ["Questa voce non c'è più nella valutazione."]);
+  // Dopo la decisione del team.
+  const at = "2026-11-04T09:00:00.000Z";
+  assert.deepEqual(lineOf(BENEFIT({ answer: "piu", timesPerMonth: 300, outcome: "adottata", outcomeAt: at, adoptable: true }), true).slice(-1), ["Stima del referente usata il 4 nov."]);
+  assert.deepEqual(lineOf(BENEFIT({ answer: "piu", timesPerMonth: 300, outcome: "tenuta", outcomeAt: at, adoptable: true }), true).slice(-1), ["Tenuta la stima del team."]);
+  assert.deepEqual(lineOf(FATTO({ answer: "no", outcome: "tenuta", outcomeAt: at }), true).slice(-1), ["Vista il 4 nov."]);
+  assert.deepEqual(lineOf(NUMERI({ timesPerMonth: 20, minutesEach: 5, outcome: "tenuta", outcomeAt: at, adoptable: true }), true).slice(-1), ["Stima del referente non usata."]);
+  for (const b of [BENEFIT({ answer: "piu", timesPerMonth: 300 }), EURO({ answer: "meno", eurYear: 1 }), FATTO({ answer: "no" }), NUMERI({ timesPerMonth: 1, minutesEach: 1 })]) {
+    for (const text of lineOf(b, true)) assert.deepEqual(findHubForbidden(text, "area"), [], text);
+  }
+});
+
+test("per beneficio: i pulsanti del team sotto ogni voce che aspetta, mai pieni; «Usa la stima di …» solo con numeri e il permesso", () => {
+  const keys = (b: Benefit, can = true) => benefitButtonsOf(b, "Aldo Prova", can).map((x) => `${x.key}:${x.variant}:${x.label}:${x.benefit}`);
+  assert.deepEqual(keys(BENEFIT({ answer: "piu", timesPerMonth: 300, needsReview: true, adoptable: true })), ["adopt:outline:Usa la stima di Aldo Prova:tempo-1", "keep:ghost:Tieni la nostra:tempo-1"]);
+  assert.deepEqual(keys(BENEFIT({ answer: "piu", timesPerMonth: 300, needsReview: true, adoptable: true }), false), ["keep:ghost:Tieni la nostra:tempo-1"]);
+  assert.deepEqual(keys(BENEFIT({ answer: "piu", timesPerMonth: 300, needsReview: true, adoptable: true, changed: "cambiata" })), ["keep:ghost:Tieni la nostra:tempo-1"], "una cifra cambiata non si sovrascrive");
+  assert.deepEqual(keys(EURO({ answer: "meno", needsReview: true })), ["review:link:Rivedi la stima:costi-1", "seen:ghost:Fatto:costi-1"]);
+  assert.deepEqual(keys(FATTO({ answer: "no", needsReview: true })), ["seen:ghost:Fatto:qualita-1"]);
+  assert.deepEqual(keys(NUMERI({ timesPerMonth: 20, minutesEach: 5, needsReview: true, adoptable: true })), ["adopt:outline:Usa la stima di Aldo Prova:tempo-2", "keep:ghost:Non serve:tempo-2"]);
+  assert.deepEqual(keys(BENEFIT()), [], "«Sì»: niente da decidere");
+  assert.deepEqual(keys(FATTO({ answer: "no", needsReview: true, changed: "tolta" })), [], "una voce tolta");
+  // Nel blocco: le righe di ogni voce con i loro pulsanti; in fondo niente, salvo «Fatto» della correzione sotto la nota.
+  const check = CHECK({ team: null, estimate: null, confirm: "correggi", note: "Anche via PEC.", benefits: [BENEFIT({ answer: "piu", timesPerMonth: 300, needsReview: true, adoptable: true }), FATTO({ answer: "no", needsReview: true }), EURO()] });
+  const m = referentBlockModel({ ...base, referent: REF({ state: "da_verificare", review: "correzione", live: false, check }), request: { ...R, status: "completata" }, withReview: true, canEditValuation: true });
+  assert.deepEqual(m.buttons, []);
+  const shape = m.checkLines.map((l) => (l.kind === "benefit" ? `voce:${l.benefit.key}:${l.benefit.buttons.map((b) => b.key).join("+")}` : l.kind === "button" ? `pulsante:${l.button.key}` : `${l.kind}:${l.text}`));
+  assert.deepEqual(shape, ["text:Ha risposto il 3 nov.", "text:Lo use case: da correggere.", "quote:Anche via PEC.", "pulsante:correctionDone", "voce:tempo-1:adopt+keep", "voce:qualita-1:seen", "voce:costi-1:"]);
+  assert.ok(!m.checkLines.some((l) => l.kind === "text" && l.text.startsWith("Il tempo:")), "niente righe della stima del tempo del rilascio 5");
+  // Senza le azioni (il pannello di lato): solo le righe.
+  const plain = referentBlockModel({ ...base, referent: REF({ state: "da_verificare", review: "stima", live: false, check }), request: { ...R, status: "completata" } });
+  assert.ok(plain.checkLines.every((l) => l.kind !== "benefit" || l.benefit.buttons.length === 0));
 });

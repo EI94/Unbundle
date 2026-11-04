@@ -4,7 +4,9 @@ import { RotateCcw, Send, UserRound } from "lucide-react";
 import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import {
+  adoptReferentBenefitAction,
   adoptReferentEstimateAction,
+  keepReferentBenefitAction,
   keepTeamEstimateAction,
   markCorrectionDoneAction,
   remindReferentRequestAction,
@@ -20,7 +22,7 @@ import { SEMAFORO_TONE } from "@/components/uc/common/semaforo-tone";
 import { cn } from "@/lib/utils";
 import { assignEntry, assignModeOf, referentRequestOf } from "./assign-dialog-state";
 import type { ReferentDialog } from "./dialogs";
-import { referentBlockModel, type BlockButton, type BlockMenuKey } from "./referent-block-view";
+import { referentBlockModel, type BenefitLines, type BlockButton, type BlockMenuKey } from "./referent-block-view";
 import { useReferentRunner } from "./referent-actions";
 
 const T = REFERENT_BLOCK_TEXT;
@@ -72,12 +74,13 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
   const tone = SEMAFORO_TONE[REFERENT_STATE_TONE[model.state]];
   const contact = referent ? { id: referent.contact.id, name: referent.contact.name } : null;
 
-  const act = (key: BlockButton["key"]) => {
+  const act = (key: BlockButton["key"], benefit?: string) => {
     if (key === "choose") onOpen({ kind: "assign", mode: "scegli" });
     else if (key === "askAgain") onOpen({ kind: "assign", mode: "di_nuovo" });
     else if (key === "retry" && request) {
       if (!pending) void run(() => retryReferentRequestEmailAction(workspaceId, useCaseId, request.id, request.version), { inDialog: false });
-    } else onReview(key);
+    } else if (benefit) onBenefit(key, benefit);
+    else onReview(key);
   };
   // (§9.2, §9.3) La risposta del referente: un clic, mai in silenzio; la pagina si rilegge.
   const check = referent?.check ?? null;
@@ -116,6 +119,19 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
     }
     void review.run(() => keepTeamEstimateAction(workspaceId, useCaseId, starId, check.version), { inDialog: false, refreshOnSuccess: true, successToast: false });
   }
+  // (Rilascio 5.1) Su una voce: «Usa la stima di {Nome}» cambia solo i suoi numeri; «Tieni la nostra», «Fatto», «Non serve» l'esito.
+  function onBenefit(key: BlockButton["key"], benefit: string) {
+    if (!check || !starId || review.pending) return;
+    if (key === "review") {
+      arriveAt("valutazione");
+      return;
+    }
+    if (key === "adopt") {
+      void review.run(() => adoptReferentBenefitAction(workspaceId, useCaseId, starId, benefit, { requestVersion: check.version, useCaseVersion: useCaseVersion ?? -1 }), { inDialog: false, refreshOnSuccess: true });
+      return;
+    }
+    void review.run(() => keepReferentBenefitAction(workspaceId, useCaseId, starId, benefit, check.version), { inDialog: false, refreshOnSuccess: true, successToast: false });
+  }
   const reviewPending = review.pending;
   const menuAct: Record<BlockMenuKey, () => void> = {
     remind: () => {
@@ -148,7 +164,8 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
       className={cn(ACTION, button.variant === "link" && "px-0")}
       aria-busy={(button.key === "retry" ? pending : reviewPending) || undefined}
       data-action={`referent-${button.key}`}
-      onClick={() => act(button.key)}
+      data-benefit={button.benefit}
+      onClick={() => act(button.key, button.benefit)}
     >
       {button.key === "retry" ? <RotateCcw aria-hidden /> : button.key === "choose" || button.key === "askAgain" ? <Send aria-hidden /> : null}
       {button.label}
@@ -210,7 +227,9 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
       {model.checkLines.length ? (
         <div data-slot="referent-check" className="space-y-1">
           {model.checkLines.map((line, index) =>
-            line.kind === "button" ? (
+            line.kind === "benefit" ? (
+              <BenefitAnswer key={line.benefit.key} lines={line.benefit} buttonOf={buttonOf} />
+            ) : line.kind === "button" ? (
               <div key={index} className="pb-1">
                 {buttonOf(line.button)}
               </div>
@@ -232,5 +251,22 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** (Rilascio 5.1) Una voce di «Benefici e costi» con la risposta del referente e i pulsanti del team su quella voce. */
+function BenefitAnswer({ lines, buttonOf }: { lines: BenefitLines; buttonOf: (button: BlockButton) => React.ReactNode }) {
+  return (
+    <div data-slot="referent-benefit-answer" data-benefit={lines.key} className="space-y-0.5 border-t pt-2 first:border-t-0">
+      <p className="text-sm font-medium break-words">{lines.head}</p>
+      <p className="text-sm break-words">{lines.says}</p>
+      {lines.comment ? <blockquote className="rounded-lg bg-muted/50 px-3 py-2 text-sm break-words whitespace-pre-line">{lines.comment}</blockquote> : null}
+      {lines.notes.map((note, index) => (
+        <p key={index} className="text-xs break-words text-muted-foreground">
+          {note}
+        </p>
+      ))}
+      {lines.buttons.length ? <div className="flex flex-wrap items-center gap-2 pt-1">{lines.buttons.map(buttonOf)}</div> : null}
+    </div>
   );
 }
