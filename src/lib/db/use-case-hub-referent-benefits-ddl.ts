@@ -9,7 +9,8 @@
  *    (falso: la stima del tempo del rilascio 5, una sola);
  * 3. `use_case_referent_check_benefits`: una riga per voce, con l'istantanea della cifra del team che il
  *    referente ha visto (volte e minuti per «ore», euro per «euro», niente per «qualitativo»), la sua
- *    risposta, i suoi numeri facoltativi, un commento breve e l'esito del team (usata o tenuta);
+ *    risposta («Non so» vale su ogni voce, senza numeri), i suoi numeri facoltativi, un commento breve e
+ *    l'esito del team (usata o tenuta);
  * 4. per ultimo il CHECK dell'invio della 0026 (`use_case_referent_checks_submitted_check`) diventa più
  *    largo, con lo stesso nome: una conferma inviata con le risposte per beneficio non ha la stima del
  *    tempo del rilascio 5. Ogni riga che la 0026 accetta resta accettata, e il codice del rilascio 5 non
@@ -32,9 +33,10 @@ export const REFERENT_BENEFIT_KINDS = ["ore", "euro", "qualitativo"] as const;
 export type ReferentBenefitKind = (typeof REFERENT_BENEFIT_KINDS)[number];
 
 /**
- * La risposta del referente a una voce: «Sì», «È di meno», «È di più» su una cifra del team; «Sì», «No»,
- * «Non so» su un beneficio senza cifra. Nessuna risposta (NULL) quando il team non ha i numeri di una voce
- * «ore»: il referente scrive i suoi due numeri.
+ * La risposta del referente a una voce: «Sì», «È di meno», «È di più» su una cifra del team; «Sì», «No» su
+ * un beneficio senza cifra; «Non so» su ogni voce (decisione del titolare del 04/11/2026), sempre senza
+ * numeri. Nessuna risposta (NULL) quando il team non ha i numeri di una voce «ore» e il referente scrive
+ * i suoi due numeri; oppure «Non so» al posto dei numeri.
  */
 export const REFERENT_BENEFIT_ANSWERS = ["si", "meno", "piu", "no", "non_so"] as const;
 export type ReferentBenefitAnswer = (typeof REFERENT_BENEFIT_ANSWERS)[number];
@@ -115,8 +117,9 @@ END $$;`,
     OR (kind = 'euro' AND team_eur_year IS NOT NULL AND team_volume_year IS NULL AND team_minutes IS NULL AND times_per_month IS NULL AND minutes_each IS NULL)
     OR (kind = 'qualitativo' AND team_volume_year IS NULL AND team_minutes IS NULL AND team_eur_year IS NULL AND times_per_month IS NULL AND minutes_each IS NULL AND eur_year IS NULL)),
   CONSTRAINT use_case_referent_check_benefits_form_check CHECK (answer IS NULL
+    OR answer = 'non_so'
     OR (answer IN ('si', 'meno', 'piu') AND ((kind = 'ore' AND team_volume_year > 0 AND team_minutes > 0) OR (kind = 'euro' AND team_eur_year > 0)))
-    OR (answer IN ('si', 'no', 'non_so') AND (kind = 'qualitativo' OR (kind = 'euro' AND team_eur_year = 0)))),
+    OR (answer IN ('si', 'no') AND (kind = 'qualitativo' OR (kind = 'euro' AND team_eur_year = 0)))),
   CONSTRAINT use_case_referent_check_benefits_numbers_check CHECK ((times_per_month IS NULL AND minutes_each IS NULL AND eur_year IS NULL)
     OR (answer IS NOT NULL AND answer IN ('meno', 'piu'))
     OR (answer IS NULL AND kind = 'ore' AND NOT (team_volume_year > 0 AND team_minutes > 0))),

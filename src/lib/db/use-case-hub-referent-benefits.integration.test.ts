@@ -5,9 +5,10 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 // Schema della 0027 sul database di prova dell'hub (le risposte del referente per ogni voce di «Benefici e
 // costi»): il file due volte e il self-heal due volte non cambiano niente; su uno schema della 0026 il CHECK
-// dell'invio si allarga una volta sola e tiene le righe di prima; ogni CHECK della tabella nuova rifiuta la
-// riga sbagliata e accetta quella giusta; le scritture del rilascio 5 funzionano ancora; la pulizia di
-// RUNBOOK §10.10 punto 6 toglie solo quello che dice.
+// dell'invio si allarga una volta sola e tiene le righe di prima; su un database con la sola 0026 il self-heal
+// crea la tabella con «Non so» su ogni voce; ogni CHECK della tabella nuova rifiuta la riga sbagliata e
+// accetta quella giusta («Non so» anche sulle cifre del team, mai con numeri); le scritture del rilascio 5
+// funzionano ancora; la pulizia di RUNBOOK §10.10 punto 6 toglie solo quello che dice.
 //
 // - Con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database hub_<id> su 127.0.0.1):
 //   lo schema lo porta il vero ensureDbSchema(); il file si applica come un unico testo (una transazione
@@ -162,6 +163,43 @@ ALTER TABLE use_case_referent_checks ADD CONSTRAINT use_case_referent_checks_sub
   assert.equal(kept.length, 2, "le righe del rilascio 5 restano, con benefits falso");
 });
 
+test("su un database con la sola 0026 il self-heal crea la tabella nuova con «Non so» su ogni voce (in una transazione annullata)", opts, async () => {
+  // Tutto in un solo testo, quindi in una transazione implicita: la 0027 tolta (tabella, colonna, CHECK
+  // allargato), gli statement del self-heal, le prove, poi un errore voluto che annulla tutto.
+  const marker = `prova-0027-annullata-${suffix}`;
+  const ore = `'ore', 'Controllo delle fatture'`;
+  const text = [
+    `DELETE FROM use_case_referent_checks;`,
+    `DROP TABLE use_case_referent_check_benefits;`,
+    `ALTER TABLE use_case_referent_checks DROP CONSTRAINT use_case_referent_checks_submitted_check;`,
+    `ALTER TABLE use_case_referent_checks DROP COLUMN benefits;`,
+    `ALTER TABLE use_case_referent_checks ADD CONSTRAINT use_case_referent_checks_submitted_check CHECK (${SUBMITTED_0026});`,
+    `DO $$ BEGIN IF to_regclass('public.use_case_referent_check_benefits') IS NOT NULL THEN RAISE EXCEPTION 'la 0027 non è stata tolta'; END IF; END $$;`,
+    ...ddl.USE_CASE_REFERENT_BENEFITS_DDL,
+    `DO $$ DECLARE req uuid := gen_random_uuid(); BEGIN
+  INSERT INTO use_case_referent_requests (id, workspace_id, use_case_id, contact_id, requester_name, status, expires_at)
+    VALUES (req, '${ids.ws}', '${ids.useCase}', gen_random_uuid(), 'Persona di prova', 'inviata', now() + interval '30 days');
+  INSERT INTO use_case_referent_checks (request_id, workspace_id, use_case_id, benefits) VALUES (req, '${ids.ws}', '${ids.useCase}', true);
+  INSERT INTO use_case_referent_check_benefits (request_id, workspace_id, component_key, position, kind, label, team_volume_year, team_minutes, answer)
+    VALUES (req, '${ids.ws}', 'tempo-1', 1, ${ore}, 3000, 12, 'non_so'), (req, '${ids.ws}', 'tempo-2', 2, ${ore}, 0, 0, 'non_so');
+  INSERT INTO use_case_referent_check_benefits (request_id, workspace_id, component_key, position, kind, label, team_eur_year, answer)
+    VALUES (req, '${ids.ws}', 'costi-1', 3, 'euro', 'Meno solleciti', 4000, 'non_so');
+  BEGIN
+    INSERT INTO use_case_referent_check_benefits (request_id, workspace_id, component_key, position, kind, label, team_volume_year, team_minutes, answer, times_per_month)
+      VALUES (req, '${ids.ws}', 'tempo-3', 4, ${ore}, 3000, 12, 'non_so', 3);
+    RAISE EXCEPTION 'numeri con «Non so» accettati';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  RAISE EXCEPTION '${marker}';
+END $$;`,
+  ].join("\n");
+  await rejects(text, [], marker);
+  // Annullata: la tabella, la colonna e il CHECK allargato ci sono ancora, come prima.
+  const [row] = await q(`SELECT ${ddl.USE_CASE_REFERENT_BENEFITS_PROBE_SQL} AS current`);
+  assert.equal(row.current, true);
+  assert.match(await submittedDefinition(), /benefits OR/);
+});
+
 test("il CHECK dell'invio allargato: con le risposte per beneficio niente stima del tempo; senza, la regola della 0026", opts, async () => {
   const now = new Date().toISOString();
   await newCheck(await newRequest(), { submitted_at: now, confirm: "si", benefits: true });
@@ -206,13 +244,20 @@ test("ogni CHECK della tabella nuova rifiuta la riga sbagliata e accetta quella 
     [{ ...fatto, team_eur_year: 0 }, "use_case_referent_check_benefits_shape_check"],
     [{ ...ore, answer: "no" }, "use_case_referent_check_benefits_form_check"],
     [{ ...fatto, answer: "meno" }, "use_case_referent_check_benefits_form_check"],
-    [{ ...euro, answer: "non_so" }, "use_case_referent_check_benefits_form_check"],
     [{ ...euro, team_eur_year: 0, answer: "piu" }, "use_case_referent_check_benefits_form_check"],
     [{ ...ore, team_minutes: 0, answer: "si" }, "use_case_referent_check_benefits_form_check"],
     [{ ...ore, answer: "si", times_per_month: 3 }, "use_case_referent_check_benefits_numbers_check"],
     [{ ...ore, times_per_month: 3 }, "use_case_referent_check_benefits_numbers_check"],
     [{ ...euro, answer: "si", eur_year: 10 }, "use_case_referent_check_benefits_numbers_check"],
     [{ ...euro, team_eur_year: 0, answer: "no", eur_year: 10 }, "use_case_referent_check_benefits_numbers_check"],
+    // (Decisione del titolare del 04/11/2026) «Non so» su ogni voce, mai con dei numeri.
+    [{ ...ore, answer: "non_so", times_per_month: 3 }, "use_case_referent_check_benefits_numbers_check"],
+    [{ ...ore, answer: "non_so", minutes_each: 3 }, "use_case_referent_check_benefits_numbers_check"],
+    [{ ...ore, team_volume_year: 0, answer: "non_so", times_per_month: 20, minutes_each: 5 }, "use_case_referent_check_benefits_numbers_check"],
+    [{ ...euro, answer: "non_so", eur_year: 10 }, "use_case_referent_check_benefits_numbers_check"],
+    [{ ...fatto, answer: "non_so", eur_year: 10 }, "use_case_referent_check_benefits_numbers_check"],
+    [{ ...ore, team_volume_year: 0, answer: "si" }, "use_case_referent_check_benefits_form_check"],
+    [{ ...ore, team_volume_year: 0, answer: "meno" }, "use_case_referent_check_benefits_form_check"],
     [{ ...ore, outcome: "tenuta" }, "use_case_referent_check_benefits_outcome_pair_check"],
   ];
   for (const [values, constraint] of bad) {
@@ -229,6 +274,11 @@ test("ogni CHECK della tabella nuova rifiuta la riga sbagliata e accetta quella 
     // Una voce «ore» senza i numeri del team: i due numeri del referente, senza risposta.
     [{ ...ore, team_volume_year: 0, team_minutes: 12, times_per_month: 20, minutes_each: 5 }, { ...euro, team_eur_year: 0, answer: "si" }],
     [{ ...ore, answer: "meno", times_per_month: 100, outcome: "adottata", outcome_at: now }, { ...euro, answer: "piu", outcome: "tenuta", outcome_at: now }],
+    // «Non so» su una cifra del team (ore ed euro), su una voce a ore senza i numeri del team, senza cifra in
+    // euro e qualitativa: niente numeri, il commento facoltativo, l'esito del team come per le altre.
+    [{ ...ore, answer: "non_so" }, { ...euro, answer: "non_so", comment: "Non lo seguo io." }, { ...fatto, answer: "non_so" }],
+    [{ ...ore, team_volume_year: 0, team_minutes: 0, answer: "non_so" }, { ...euro, team_eur_year: 0, answer: "non_so" }],
+    [{ ...ore, team_volume_year: 0, team_minutes: 12, answer: "non_so", outcome: "tenuta", outcome_at: now }, { ...euro, answer: "non_so", outcome: "tenuta", outcome_at: now }],
   ];
   for (const rows of good) {
     const requestId = await newRequest();

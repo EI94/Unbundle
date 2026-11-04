@@ -5,8 +5,9 @@
 --   - use_case_referent_checks.benefits: la conferma ha una risposta per ogni voce (falso: la stima del
 --     tempo del rilascio 5, una sola, come prima);
 --   - use_case_referent_check_benefits: una riga per voce, con l'istantanea della cifra del team che il
---     referente ha visto, la sua risposta («Sì», «È di meno», «È di più»; «Sì», «No», «Non so»), i suoi
---     numeri facoltativi, un commento breve e l'esito del team;
+--     referente ha visto, la sua risposta («Sì», «È di meno», «È di più»; «Sì», «No»; «Non so» su ogni
+--     voce, anche a ore senza i numeri del team, sempre senza numeri), i suoi numeri facoltativi, un
+--     commento breve e l'esito del team;
 --   - per ultimo allarga, con lo stesso nome, il CHECK dell'invio della 0026
 --     (use_case_referent_checks_submitted_check): una conferma inviata per beneficio non ha la stima del
 --     tempo del rilascio 5. È l'unico statement non solo additivo (DROP CONSTRAINT e ADD CONSTRAINT dello
@@ -54,8 +55,9 @@ CREATE TABLE IF NOT EXISTS use_case_referent_check_benefits (
     OR (kind = 'euro' AND team_eur_year IS NOT NULL AND team_volume_year IS NULL AND team_minutes IS NULL AND times_per_month IS NULL AND minutes_each IS NULL)
     OR (kind = 'qualitativo' AND team_volume_year IS NULL AND team_minutes IS NULL AND team_eur_year IS NULL AND times_per_month IS NULL AND minutes_each IS NULL AND eur_year IS NULL)),
   CONSTRAINT use_case_referent_check_benefits_form_check CHECK (answer IS NULL
+    OR answer = 'non_so'
     OR (answer IN ('si', 'meno', 'piu') AND ((kind = 'ore' AND team_volume_year > 0 AND team_minutes > 0) OR (kind = 'euro' AND team_eur_year > 0)))
-    OR (answer IN ('si', 'no', 'non_so') AND (kind = 'qualitativo' OR (kind = 'euro' AND team_eur_year = 0)))),
+    OR (answer IN ('si', 'no') AND (kind = 'qualitativo' OR (kind = 'euro' AND team_eur_year = 0)))),
   CONSTRAINT use_case_referent_check_benefits_numbers_check CHECK ((times_per_month IS NULL AND minutes_each IS NULL AND eur_year IS NULL)
     OR (answer IS NOT NULL AND answer IN ('meno', 'piu'))
     OR (answer IS NULL AND kind = 'ore' AND NOT (team_volume_year > 0 AND team_minutes > 0))),

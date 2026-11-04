@@ -158,6 +158,26 @@ test("i CHECK sono gli elenchi del vocabolario e i limiti del modello del valore
   assert.match(t, /workspace_id uuid NOT NULL REFERENCES workspaces\(id\) ON DELETE CASCADE/);
   assert.match(t, /CONSTRAINT use_case_referent_check_benefits_pkey PRIMARY KEY \(request_id, component_key\)/);
   assert.doesNotMatch(t, /REFERENCES uc_|_by_user_id|contact_id|email/, "nessuna persona sulla riga (art. 15.4)");
+  // (Decisione del titolare del 04/11/2026) «Non so» vale su ogni voce, anche a ore senza i numeri del team;
+  // «Sì» / «È di meno» / «È di più» solo su una cifra del team, «Sì» / «No» solo senza cifra.
+  assert.ok(
+    normalize(t).includes(
+      normalize(`CONSTRAINT use_case_referent_check_benefits_form_check CHECK (answer IS NULL
+    OR answer = 'non_so'
+    OR (answer IN ('si', 'meno', 'piu') AND ((kind = 'ore' AND team_volume_year > 0 AND team_minutes > 0) OR (kind = 'euro' AND team_eur_year > 0)))
+    OR (answer IN ('si', 'no') AND (kind = 'qualitativo' OR (kind = 'euro' AND team_eur_year = 0)))),`),
+    ),
+    "il CHECK della forma",
+  );
+  // I numeri solo con «È di meno» / «È di più», o senza risposta su una voce a ore senza i numeri del team: mai con «Non so».
+  assert.ok(
+    normalize(t).includes(
+      normalize(`CONSTRAINT use_case_referent_check_benefits_numbers_check CHECK ((times_per_month IS NULL AND minutes_each IS NULL AND eur_year IS NULL)
+    OR (answer IS NOT NULL AND answer IN ('meno', 'piu'))
+    OR (answer IS NULL AND kind = 'ore' AND NOT (team_volume_year > 0 AND team_minutes > 0))),`),
+    ),
+    "il CHECK dei numeri",
+  );
 });
 
 test("la sonda copre la tabella, l'indice, ogni vincolo con nome, la colonna nuova e il CHECK allargato", () => {
