@@ -3,10 +3,12 @@
  * costi», le scelte, la risposta in sola lettura, le cifre in italiano. Le usano la pagina del referente,
  * l'anteprima di «Scegli il referente» e il blocco «Referente» della scheda.
  *
- * Quattro forme, una per voce:
- * - **ore**: volte e minuti del team, «Ti torna?» con «Sì» / «È di meno» / «È di più» e due numeri facoltativi;
- * - **ore_numeri**: una voce a ore senza i numeri del team: si chiedono i due numeri;
- * - **euro**: gli euro del team, «Ti torna?» con «Sì» / «È di meno» / «È di più» e una cifra facoltativa;
+ * Quattro forme, una per voce, e su ognuna «Non so» (decisione del titolare del 04/11/2026), mai con numeri:
+ * - **ore**: volte e minuti del team, «Ti torna?» con «Sì» / «È di meno» / «È di più» / «Non so» e due
+ *   numeri facoltativi;
+ * - **ore_numeri**: una voce a ore senza i numeri del team: si chiedono i due numeri, oppure «Non so»;
+ * - **euro**: gli euro del team, «Ti torna?» con «Sì» / «È di meno» / «È di più» / «Non so» e una cifra
+ *   facoltativa;
  * - **fatto**: una voce qualitativa (o in euro senza cifra): «Ti torna?» con «Sì» / «No» / «Non so».
  *
  * Modulo puro, senza `zod`: lo carica anche la pagina pubblica.
@@ -40,23 +42,14 @@ export function benefitFormOf(team: BenefitTeam): BenefitForm {
   return "fatto";
 }
 
-/** Le scelte di una forma, nell'ordine dei pulsanti (nessuna per «ore_numeri»). */
+/** Le scelte di una forma, nell'ordine dei pulsanti: «Non so» sempre per ultimo (da sola per «ore_numeri», accanto ai due numeri). */
 export function benefitChoices(form: BenefitForm): { answer: ReferentBenefitAnswer; label: string }[] {
+  const dunno = { answer: "non_so" as const, label: T.dunno };
   if (form === "ore" || form === "euro") {
-    return [
-      { answer: "si", label: T.yes },
-      { answer: "meno", label: T.less },
-      { answer: "piu", label: T.more },
-    ];
+    return [{ answer: "si", label: T.yes }, { answer: "meno", label: T.less }, { answer: "piu", label: T.more }, dunno];
   }
-  if (form === "fatto") {
-    return [
-      { answer: "si", label: T.yes },
-      { answer: "no", label: T.no },
-      { answer: "non_so", label: T.dunno },
-    ];
-  }
-  return [];
+  if (form === "fatto") return [{ answer: "si", label: T.yes }, { answer: "no", label: T.no }, dunno];
+  return [dunno];
 }
 
 /** Le risposte che una forma accetta (null: nessuna scelta, solo con i due numeri o come bozza). */
@@ -104,9 +97,9 @@ export interface BenefitDraft {
   eurYear: number | null;
 }
 
-/** La riga ha una risposta che la chiude, per la sua forma. */
+/** La riga ha una risposta che la chiude, per la sua forma: una sua scelta, o i due numeri su una voce a ore senza quelli del team. */
 export function benefitAnswered(form: BenefitForm, d: BenefitDraft): boolean {
-  if (form === "ore_numeri") return d.timesPerMonth !== null && d.minutesEach !== null;
+  if (form === "ore_numeri" && d.answer === null) return d.timesPerMonth !== null && d.minutesEach !== null;
   return d.answer !== null && answersOf(form).includes(d.answer);
 }
 
@@ -119,7 +112,7 @@ function numberIt(n: number): string {
 export function benefitSentLine(row: { label: string; team: BenefitTeam }, d: BenefitDraft): string {
   const form = benefitFormOf(row.team);
   const label = bare(row.label);
-  if (form === "ore_numeri") {
+  if (form === "ore_numeri" && d.answer !== "non_so") {
     return fillText(T.sentNumbers, { label, n: d.timesPerMonth !== null ? numberIt(d.timesPerMonth) : "—", m: d.minutesEach !== null ? minutesText(d.minutesEach) : "—" });
   }
   const head =

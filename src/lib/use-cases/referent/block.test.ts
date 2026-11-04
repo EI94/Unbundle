@@ -153,4 +153,17 @@ test("(rilascio 5.1) una voce nel blocco: la risposta, se aspetta il team, se c'
   assert.equal(check.benefits?.length, 1);
   assert.equal(check.team, null);
   assert.equal(blockCheckOf(CHECK({ submittedAt: day(2), confirm: "si" }), 1, TEAM).benefits, null, "una conferma del rilascio 5");
+  // (Decisione del titolare del 04/11/2026) «Non so» su una cifra del team: aspetta il team, niente da usare.
+  const dunno = { ...ore, answer: "non_so" as const, timesPerMonth: null, comment: null };
+  assert.deepEqual([blockBenefitOf(dunno, impactRowsOf(model(12))).needsReview, blockBenefitOf(dunno, impactRowsOf(model(12))).adoptable], [true, false]);
+  const euroDunno: StoredBenefit = { ...dunno, key: "costi-1", position: 2, label: "Meno solleciti", team: { kind: "euro", volumeYear: null, minutes: null, eurYear: 4000 } };
+  assert.deepEqual([blockBenefitOf(euroDunno, impactRowsOf(model(12))).needsReview, blockBenefitOf(euroDunno, impactRowsOf(model(12))).adoptable], [true, false]);
+  // Lo stato: «Risposte da verificare» con «non_sa», mai «stima» (non è una stima diversa); dopo «Fatto», «Il referente ha risposto».
+  const sentDunno = CHECK({ submittedAt: day(2), confirm: "si", benefits: [dunno, { ...euroDunno, answer: "si" }] });
+  const view = referentBlockOf(input([req({ status: "completata", openTask: 0, check: sentDunno })]))!;
+  assert.deepEqual([view.state, view.review], ["da_verificare", "non_sa"]);
+  const withDiff = referentBlockOf(input([req({ status: "completata", openTask: 0, check: CHECK({ ...sentDunno, benefits: [dunno, { ...euroDunno, answer: "meno" }] }) })]))!;
+  assert.deepEqual([withDiff.state, withDiff.review], ["da_verificare", "stima"], "una stima diversa viene prima");
+  const seen = referentBlockOf(input([req({ status: "completata", openTask: 0, check: CHECK({ ...sentDunno, benefits: [{ ...dunno, outcome: "tenuta", outcomeAt: day(3) }] }) })]))!;
+  assert.deepEqual([seen.state, seen.review], ["fatto", null]);
 });

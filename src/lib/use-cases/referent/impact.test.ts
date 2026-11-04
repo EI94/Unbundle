@@ -5,11 +5,15 @@ import { LEVER_LABELS } from "../value-model.ts";
 import { REFERENT_IMPACT_TEXT } from "./labels.ts";
 import { benefitAnswered, benefitChoices, benefitFormOf, benefitQuestion, benefitSentLine, euroText } from "./impact-text.ts";
 import {
+  BENEFIT_DIFFERS_SQL,
   BENEFIT_REVIEW_SQL,
+  BENEFIT_UNKNOWN_SQL,
   adoptedTeamOf,
   benefitAdoptionPatch,
   benefitAnswerOf,
+  benefitDiffers,
   benefitNeedsReview,
+  benefitUnknown,
   benefitTeamFromBody,
   impactRowByKey,
   impactRowsOf,
@@ -63,10 +67,11 @@ test("le forme: con i numeri del team, senza, in euro, qualitativa (anche in eur
   assert.deepEqual(forms, ["ore", "ore_numeri", "ore_numeri", "ore_numeri", "euro", "fatto"]);
   assert.deepEqual(impactRowsOf(model(fatto("g")))?.map((r) => r.form), ["fatto"]);
   assert.equal(benefitFormOf({ kind: "euro", volumeYear: null, minutes: null, eurYear: 0.004 }), "fatto");
-  assert.deepEqual(benefitChoices("ore").map((c) => c.label), ["Sì", "È di meno", "È di più"]);
-  assert.deepEqual(benefitChoices("euro").map((c) => c.answer), ["si", "meno", "piu"]);
+  // (Decisione del titolare del 04/11/2026) «Non so» su ogni forma, per ultimo; da solo accanto ai due numeri.
+  assert.deepEqual(benefitChoices("ore").map((c) => c.label), ["Sì", "È di meno", "È di più", "Non so"]);
+  assert.deepEqual(benefitChoices("euro").map((c) => c.answer), ["si", "meno", "piu", "non_so"]);
   assert.deepEqual(benefitChoices("fatto").map((c) => c.label), ["Sì", "No", "Non so"]);
-  assert.deepEqual(benefitChoices("ore_numeri"), []);
+  assert.deepEqual(benefitChoices("ore_numeri"), [{ answer: "non_so", label: "Non so" }]);
 });
 
 test("le domande: ore al mese o l'anno, singolare e plurale, i decimali, gli euro, il qualitativo", () => {
@@ -114,6 +119,12 @@ test("la risposta di una riga: le scelte della sua forma, i numeri solo con «È
   assert.deepEqual(benefitAnswerOf("ore", { answer: "meno", timesPerMonth: 8_333_334 }), { ok: false, code: "numero_non_valido" });
   assert.deepEqual(benefitAnswerOf("ore_numeri", { timesPerMonth: "20", minutesEach: "1,5" }), { ok: true, value: { answer: null, timesPerMonth: 20, minutesEach: 1.5, eurYear: null } });
   assert.deepEqual(benefitAnswerOf("ore_numeri", { answer: "si" }), { ok: false, code: "dati_non_validi" });
+  // «Non so» su ogni forma numerica: nessun numero, anche se la pagina ne manda.
+  assert.deepEqual(benefitAnswerOf("ore_numeri", { answer: "non_so", timesPerMonth: "20", minutesEach: "5" }), { ok: true, value: { answer: "non_so", timesPerMonth: null, minutesEach: null, eurYear: null } });
+  assert.deepEqual(benefitAnswerOf("ore", { answer: "non_so", timesPerMonth: "300", minutesEach: "15" }), { ok: true, value: { answer: "non_so", timesPerMonth: null, minutesEach: null, eurYear: null } });
+  assert.deepEqual(benefitAnswerOf("euro", { answer: "non_so", eurYear: "3.500" }), { ok: true, value: { answer: "non_so", timesPerMonth: null, minutesEach: null, eurYear: null } });
+  assert.deepEqual(benefitAnswerOf("ore_numeri", { answer: "no" }), { ok: false, code: "dati_non_validi" });
+  assert.deepEqual(benefitAnswerOf("euro", { answer: "no" }), { ok: false, code: "dati_non_validi" });
   assert.deepEqual(benefitAnswerOf("euro", { answer: "meno", eurYear: "3.500", timesPerMonth: "9" }), { ok: true, value: { answer: "meno", timesPerMonth: null, minutesEach: null, eurYear: 3500 } });
   assert.deepEqual(benefitAnswerOf("euro", { answer: "si", eurYear: "3.500" }), { ok: true, value: { answer: "si", timesPerMonth: null, minutesEach: null, eurYear: null } });
   assert.deepEqual(benefitAnswerOf("euro", { answer: "meno", eurYear: 1_000_000_001 }), { ok: false, code: "numero_non_valido" });
@@ -130,6 +141,11 @@ test("quando una riga è chiusa: una scelta della sua forma, oppure i due numeri
   assert.equal(benefitAnswered("euro", draft({ answer: "si" })), true);
   assert.equal(benefitAnswered("fatto", draft({ answer: "non_so" })), true);
   assert.equal(benefitAnswered("fatto", draft({ answer: "meno" })), false);
+  // «Non so» chiude ogni forma, anche la voce a ore senza i numeri del team, senza numeri.
+  assert.equal(benefitAnswered("ore", draft({ answer: "non_so" })), true);
+  assert.equal(benefitAnswered("euro", draft({ answer: "non_so" })), true);
+  assert.equal(benefitAnswered("ore_numeri", draft({ answer: "non_so" })), true);
+  assert.equal(benefitAnswered("ore_numeri", draft({ answer: "si" })), false);
 });
 
 test("la cifra vista e quella di adesso: tipo e numeri a due decimali", () => {
@@ -146,7 +162,7 @@ test("la cifra vista e quella di adesso: tipo e numeri a due decimali", () => {
   assert.equal(benefitTeamFromBody(null), null);
 });
 
-test("la revisione del team: «È di meno», «È di più», «No» o i due numeri, finché il team non decide", () => {
+test("la revisione del team: «È di meno», «È di più», «No», i due numeri o «Non so» su una cifra, finché il team non decide", () => {
   const oreTeam = { kind: "ore" as const, volumeYear: 3000, minutes: 12, eurYear: null };
   const none = { kind: "ore" as const, volumeYear: 0, minutes: 12, eurYear: null };
   const q = { kind: "qualitativo" as const, volumeYear: null, minutes: null, eurYear: null };
@@ -159,9 +175,27 @@ test("la revisione del team: «È di meno», «È di più», «No» o i due nume
   assert.equal(benefitNeedsReview(b(none, { timesPerMonth: 20, minutesEach: 5 })), true);
   assert.equal(benefitNeedsReview(b(none, { timesPerMonth: 20 })), false, "non ancora chiusa");
   assert.equal(benefitNeedsReview(b(q, { answer: "no" })), true);
-  assert.equal(benefitNeedsReview(b(q, { answer: "non_so" })), false);
+  assert.equal(benefitNeedsReview(b(q, { answer: "non_so" })), false, "«Non so» su un beneficio senza cifra non chiede niente");
   assert.equal(storedBenefitAnswered(b(q, { answer: "si" })), true);
-  assert.equal(BENEFIT_REVIEW_SQL("b"), "(b.outcome IS NULL AND (b.answer IN ('meno', 'piu', 'no') OR (b.answer IS NULL AND b.times_per_month IS NOT NULL AND b.minutes_each IS NOT NULL)))");
+  // (Decisione del titolare del 04/11/2026) «Non so» su una cifra del team (ore, euro, anche al posto dei due
+  // numeri) aspetta il team, ma non è una stima diversa.
+  const euroTeam = { kind: "euro" as const, volumeYear: null, minutes: null, eurYear: 4000 };
+  const euroZero = { kind: "euro" as const, volumeYear: null, minutes: null, eurYear: 0 };
+  for (const team of [oreTeam, none, euroTeam]) {
+    const unknown = b(team as unknown as typeof oreTeam, { answer: "non_so" });
+    assert.equal(benefitNeedsReview(unknown), true, `${team.kind} ${team.volumeYear}`);
+    assert.equal(benefitUnknown(unknown), true);
+    assert.equal(benefitDiffers(unknown), false);
+    assert.equal(benefitNeedsReview(b(team as unknown as typeof oreTeam, { answer: "non_so", outcome: "tenuta" })), false, "dopo «Fatto»");
+  }
+  assert.equal(benefitUnknown(b(euroZero as unknown as typeof oreTeam, { answer: "non_so" })), false);
+  assert.equal(benefitUnknown(b(q, { answer: "non_so" })), false);
+  assert.equal(benefitDiffers(b(oreTeam, { answer: "meno" })), true);
+  assert.equal(benefitDiffers(b(none, { timesPerMonth: 20, minutesEach: 5 })), true);
+  assert.equal(benefitUnknown(b(oreTeam, { answer: "meno" })), false);
+  assert.equal(BENEFIT_DIFFERS_SQL("b"), "(b.outcome IS NULL AND (b.answer IN ('meno', 'piu', 'no') OR (b.answer IS NULL AND b.times_per_month IS NOT NULL AND b.minutes_each IS NOT NULL)))");
+  assert.equal(BENEFIT_UNKNOWN_SQL("b"), "(b.outcome IS NULL AND b.answer = 'non_so' AND (b.kind = 'ore' OR (b.kind = 'euro' AND b.team_eur_year > 0)))");
+  assert.equal(BENEFIT_REVIEW_SQL("b"), `(${BENEFIT_DIFFERS_SQL("b")} OR ${BENEFIT_UNKNOWN_SQL("b")})`);
 });
 
 test("«Usa la stima di {Nome}»: solo i numeri dati, solo su quella voce", () => {
@@ -174,6 +208,9 @@ test("«Usa la stima di {Nome}»: solo i numeri dati, solo su quella voce", () =
   assert.deepEqual(benefitAdoptionPatch(d(oreTeam, { answer: "meno", minutesEach: 9 })), { minutesPerUnit: 9 });
   assert.deepEqual(benefitAdoptionPatch(d(oreTeam, { answer: "meno" })), {}, "senza numeri non c'è niente da usare");
   assert.deepEqual(benefitAdoptionPatch(d(oreTeam, { answer: "si" })), {});
+  assert.deepEqual(benefitAdoptionPatch(d(oreTeam, { answer: "non_so" })), {}, "«Non so» non ha niente da usare");
+  assert.deepEqual(benefitAdoptionPatch(d(none, { answer: "non_so" })), {});
+  assert.deepEqual(benefitAdoptionPatch(d(euroTeam as never, { answer: "non_so" })), {});
   assert.deepEqual(benefitAdoptionPatch(d(euroTeam as never, { answer: "piu", eurYear: 5200 })), { eurYear: 5200 });
   assert.deepEqual(benefitAdoptionPatch(d(none, { timesPerMonth: 20, minutesEach: 5 })), { volumeYear: 240, minutesPerUnit: 5 });
   assert.deepEqual(adoptedTeamOf(d(oreTeam, { answer: "piu", timesPerMonth: 300 })), { kind: "ore", volumeYear: 3600, minutes: 12, eurYear: null });
@@ -187,6 +224,9 @@ test("in sola lettura dopo l'invio: la risposta di ogni riga, con i numeri dati"
   assert.equal(benefitSentLine(rows[2], draft({ answer: "meno", eurYear: 3500 })), "Meno solleciti: è di meno. Circa 3.500 € l'anno.");
   assert.equal(benefitSentLine(rows[3], draft({ answer: "no" })), "Meno errori nelle registrazioni: no.");
   assert.equal(benefitSentLine(rows[3], draft({ answer: "non_so" })), "Meno errori nelle registrazioni: non so.");
+  assert.equal(benefitSentLine(rows[0], draft({ answer: "non_so" })), "Controllo delle fatture: non so.");
+  assert.equal(benefitSentLine(rows[1], draft({ answer: "non_so" })), "Archiviazione: non so.", "al posto dei due numeri");
+  assert.equal(benefitSentLine(rows[2], draft({ answer: "non_so" })), "Meno solleciti: non so.");
   // Una riga senza risposta: «nessuna risposta», mai «sì».
   assert.equal(benefitSentLine(rows[0], draft({ answer: null })), "Controllo delle fatture: nessuna risposta.");
   assert.equal(benefitSentLine(rows[2], draft({ answer: null })), "Meno solleciti: nessuna risposta.");

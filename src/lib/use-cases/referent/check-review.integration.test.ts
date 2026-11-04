@@ -484,6 +484,82 @@ test("per beneficio: una voce tolta dal team dopo la risposta si chiude con «Fa
   assert.equal(list2?.states[card2], "fatto");
 });
 
+test("per beneficio: «Non so» su ogni voce con una cifra (anche al posto dei due numeri) aspetta il team senza dire «diversa»; mai «Usa la stima», «Fatto» chiude", opts, async () => {
+  const view = await import("../../../components/use-cases/detail/referent/referent-block-view.ts");
+  const states = await import("../../db/queries/use-case-referent-states.ts");
+  const viewer = { userId: ids.builder, email: `builder.${suffix}@cliente.test`, emailVerified: true, role: "function_lead", isLateralSpace: false } as never;
+  const card = await newCard(MODEL_ALL);
+  // La pagina manda anche dei numeri: il server li toglie (con «Non so» non ci sono mai).
+  const DUNNO = [
+    { key: "tempo-1", seen: SEEN_ALL["tempo-1"], answer: "non_so", timesPerMonth: 300, minutesEach: 5 },
+    { key: "costi-1", seen: SEEN_ALL["costi-1"], answer: "non_so", eurYear: "3.500", comment: "Lo segue l'amministrazione." },
+    { key: "qualita-1", seen: SEEN_ALL["qualita-1"], answer: "non_so" },
+    { key: "tempo-2", seen: SEEN_ALL["tempo-2"], answer: "non_so", timesPerMonth: 20, minutesEach: 5 },
+  ];
+  const requestId = await answered(card, { confirm: "si", note: null }, DUNNO);
+  const rows = await q(`SELECT component_key, answer, times_per_month, minutes_each, eur_year, comment FROM use_case_referent_check_benefits WHERE request_id = $1::uuid ORDER BY position`, [requestId]);
+  assert.deepEqual(
+    rows.map((r) => [r.component_key, r.answer, r.times_per_month, r.minutes_each, r.eur_year, r.comment]),
+    [
+      ["tempo-1", "non_so", null, null, null, null],
+      ["costi-1", "non_so", null, null, null, "Lo segue l'amministrazione."],
+      ["qualita-1", "non_so", null, null, null, null],
+      ["tempo-2", "non_so", null, null, null, null],
+    ],
+  );
+  const codes = await story(card);
+  assert.ok(codes.some((c) => c.endsWith(":conferma")), JSON.stringify(codes));
+  assert.ok(!codes.some((c) => c.endsWith(":stima_diversa")), "«Non so» non è una stima diversa");
+  const before = await panelOf(card);
+  assert.deepEqual([before.referent?.state, before.referent?.review], ["da_verificare", "non_sa"]);
+  assert.deepEqual(
+    before.referent?.check?.benefits?.map((b) => [b.key, b.form, b.answer, b.needsReview, b.adoptable]),
+    [
+      ["tempo-1", "ore", "non_so", true, false],
+      ["costi-1", "euro", "non_so", true, false],
+      ["qualita-1", "fatto", "non_so", false, false],
+      ["tempo-2", "ore_numeri", "non_so", true, false],
+    ],
+  );
+  const list = await states.listReferentStates(ids.ws, viewer, [{ id: card, phase: "approvato" }], { env: ENV });
+  assert.deepEqual([list?.states[card], list?.review?.[card]], ["da_verificare", "non_sa"], "la lista dice lo stesso");
+  // Sulla scheda: «non lo sa.», mai «Usa la stima di …»; «Rivedi la stima» e «Fatto».
+  for (const b of before.referent!.check!.benefits!) {
+    const lines = view.benefitLinesOf(b, "Aldo Prova", "2026-11-05", true);
+    assert.equal(lines.says, "Aldo Prova: non lo sa.", b.key);
+    const keys = view.benefitButtonsOf(b, "Aldo Prova", true).map((x) => x.key);
+    assert.deepEqual(keys, b.form === "fatto" ? [] : ["review", "seen"], b.key);
+  }
+  const rv = await requestVersion(requestId);
+  const v = await versionOf(card);
+  for (const key of ["tempo-1", "costi-1", "tempo-2"]) {
+    refused(await check.adoptReferentBenefit(ctx(), card, requestId, key, { requestVersion: rv, useCaseVersion: v }, ENV), "dati_non_validi", `${key}: niente da usare`);
+  }
+  refused(await check.keepReferentBenefit(ctx(), card, requestId, "qualita-1", rv, ENV), "dati_non_validi", "«Non so» senza cifra: niente da chiudere");
+  // «Fatto» su ogni voce: l'esito «tenuta», il modello non cambia; poi «Il referente ha risposto».
+  for (const key of ["tempo-1", "costi-1"]) ok(await check.keepReferentBenefit(ctx(), card, requestId, key, await requestVersion(requestId), ENV), key);
+  assert.deepEqual([(await panelOf(card)).referent?.state, (await panelOf(card)).referent?.review], ["da_verificare", "non_sa"], "resta la voce senza i numeri del team");
+  ok(await check.keepReferentBenefit(ctx(), card, requestId, "tempo-2", await requestVersion(requestId), ENV), "tempo-2");
+  assert.equal(await versionOf(card), v, "il modello non cambia");
+  assert.deepEqual((await modelOf(card)).components, MODEL_ALL.components);
+  assert.deepEqual(await benefitOutcomes(requestId), { "tempo-1": "tenuta", "costi-1": "tenuta", "qualita-1": null, "tempo-2": "tenuta" });
+  const after = await panelOf(card);
+  assert.deepEqual([after.referent?.state, after.referent?.review], ["fatto", null]);
+  for (const b of after.referent!.check!.benefits!.filter((x) => x.form !== "fatto")) {
+    assert.match(view.benefitLinesOf(b, "Aldo Prova", "2026-11-05", true).notes.at(-1) ?? "", /^Vista il /, b.key);
+  }
+  const list2 = await states.listReferentStates(ids.ws, viewer, [{ id: card, phase: "approvato" }], { env: ENV });
+  assert.deepEqual([list2?.states[card], list2?.review?.[card]], ["fatto", null]);
+
+  // Una stima diversa e un «Non so» insieme: la riga del riquadro dice la stima diversa.
+  const card2 = await newCard(MODEL_ALL);
+  await answered(card2, { confirm: "si", note: null }, [DIFFERENT[0], DUNNO[1], DUNNO[2], DUNNO[3]]);
+  assert.equal((await panelOf(card2)).referent?.review, "stima");
+  const list3 = await states.listReferentStates(ids.ws, viewer, [{ id: card2, phase: "approvato" }], { env: ENV });
+  assert.equal(list3?.review?.[card2], "stima");
+  assert.ok((await story(card2)).some((c) => c.endsWith(":stima_diversa")));
+});
+
 test("ritorno indietro e avanti: la stima del rilascio 5 scritta sopra una bozza per beneficio si legge come rilascio 5, mai come le righe di prima", opts, async () => {
   const states = await import("../../db/queries/use-case-referent-states.ts");
   const viewer = { userId: ids.builder, email: `builder.${suffix}@cliente.test`, emailVerified: true, role: "function_lead", isLateralSpace: false } as never;

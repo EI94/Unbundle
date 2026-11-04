@@ -9,7 +9,7 @@ import { cast, raw, toStatement, ucSql } from "@/lib/uc/sql/statement";
 import { abilitiesForUseCase, type UseCaseViewer } from "@/lib/use-cases/permissions";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import { openItemsCountSql } from "@/lib/use-cases/referent/sql";
-import { BENEFITS_FLAG_SQL, BENEFIT_REVIEW_SQL } from "@/lib/use-cases/referent/impact";
+import { BENEFITS_FLAG_SQL, BENEFIT_DIFFERS_SQL, BENEFIT_UNKNOWN_SQL } from "@/lib/use-cases/referent/impact";
 import { eligibleForReferent, referentStateOf, type ReferentRequestFact, type ReferentReview, type ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import type { Phase } from "@/lib/use-cases/types";
 
@@ -22,7 +22,7 @@ import type { Phase } from "@/lib/use-cases/types";
  * (`contact_id`) non esce mai di qui (art. 15.4).
  *
  * Ai contributori arrivano solo gli stati degli use case che vedono (gli id che la pagina passa),
- * mai che cosa aspetta il team; ai revisori anche quello («correzione» o «stima»).
+ * mai che cosa aspetta il team; ai revisori anche quello («correzione», «stima» o «non_sa»).
  */
 
 export interface ReferentStateEntry {
@@ -61,7 +61,8 @@ export async function listReferentStates(
   ${openItemsCountSql("r")} AS open_task,
   (c.request_id IS NOT NULL) AS has_check, c.submitted_at, c.confirm, c.correction_done_at, c.estimate, c.estimate_outcome, c.team_component_key,
   coalesce(${raw(BENEFITS_FLAG_SQL("c"))}, false) AS benefits,
-  EXISTS (SELECT 1 FROM use_case_referent_check_benefits b WHERE b.request_id = c.request_id AND c.submitted_at IS NOT NULL AND ${raw(BENEFITS_FLAG_SQL("c"))} AND ${raw(BENEFIT_REVIEW_SQL("b"))}) AS benefit_review
+  EXISTS (SELECT 1 FROM use_case_referent_check_benefits b WHERE b.request_id = c.request_id AND c.submitted_at IS NOT NULL AND ${raw(BENEFITS_FLAG_SQL("c"))} AND ${raw(BENEFIT_DIFFERS_SQL("b"))}) AS benefit_review,
+  EXISTS (SELECT 1 FROM use_case_referent_check_benefits b WHERE b.request_id = c.request_id AND c.submitted_at IS NOT NULL AND ${raw(BENEFITS_FLAG_SQL("c"))} AND ${raw(BENEFIT_UNKNOWN_SQL("b"))}) AS benefit_unknown
 FROM use_case_referent_requests r LEFT JOIN use_case_referent_checks c ON c.request_id = r.id
 WHERE r.workspace_id = ${ws} AND (r.status <> 'revocata' OR c.request_id IS NOT NULL)`),
       toStatement(ucSql`SELECT DISTINCT l.use_case_id
@@ -99,6 +100,7 @@ FROM use_cases u WHERE u.workspace_id = ${ws}`),
               teamComponentKey: rowString(r.team_component_key),
               benefits: rowBool(r.benefits),
               benefitReview: rowBool(r.benefit_review),
+              benefitUnknown: rowBool(r.benefit_unknown),
             }
           : null,
       });

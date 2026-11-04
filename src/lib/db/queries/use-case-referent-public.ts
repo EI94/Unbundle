@@ -61,7 +61,7 @@ import { REFERENT_CHECK_LIMITS } from "@/lib/db/use-case-hub-referent-check-ddl"
 import { REFERENT_BENEFIT_LIMITS } from "@/lib/db/use-case-hub-referent-benefits-ddl";
 import {
   benefitAnswerOf,
-  benefitNeedsReview,
+  benefitDiffers,
   BENEFITS_FLAG_SQL,
   benefitTeamFromBody,
   impactRowsOf,
@@ -804,7 +804,7 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
   // (una voce aggiunta dal team intanto riporta al passo); le risposte di voci tolte dal team si cancellano.
   const check = facts.check && !facts.check.submittedAt ? facts.check : null;
   const rows = check ? impactRowsOf(facts.valueModel) : null;
-  let benefitDiffers = false;
+  let differs = false;
   let goneKeys: string[] = [];
   if (check) {
     const note = check.note?.trim() ?? "";
@@ -824,7 +824,8 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
       if (unanswered.length) return pfail("stima_mancante", undefined, unanswered.map((row) => ({ code: "stima_mancante", message: MSG.stima_mancante, field: `beneficio.${row.key}` })));
       for (const row of rows) {
         const b = stored.get(row.key)!;
-        if (benefitNeedsReview(b)) benefitDiffers = true;
+        // «Non so» su una cifra aspetta il team sulla scheda, ma non è una stima diversa (nessuna riga «stima diversa» nella Storia).
+        if (benefitDiffers(b)) differs = true;
         if (b.comment) {
           const text = checkSubmitText(b.comment, `beneficio.${row.key}`);
           if (!text.ok) issues.push(...text.issues);
@@ -834,7 +835,7 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
     } else {
       const complete = !check.benefits && (check.team ? check.estimate !== null : check.timesPerMonth !== null && check.minutesEach !== null);
       if (!complete) return pfail("stima_mancante");
-      benefitDiffers = check.estimate !== "si";
+      differs = check.estimate !== "si";
     }
   }
   if (missing.length > 0) return pfail("domande_aperte", missing.length === 1 ? MSG.domande_aperte_una : MSG.domande_aperte, missing);
@@ -927,7 +928,7 @@ ${casTail("upd", 1, "conflitto")}`),
   if (check) {
     statements.push(referentEventSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, code: check.confirm === "correggi" ? "correzione" : "conferma", actor: REFERENT_ACTOR }));
     // (Rilascio 5.1) Una sola riga per l'invio, anche con più voci diverse da quelle del team.
-    if (benefitDiffers) statements.push(referentEventSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, code: "stima_diversa", actor: REFERENT_ACTOR }));
+    if (differs) statements.push(referentEventSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, code: "stima_diversa", actor: REFERENT_ACTOR }));
   }
   statements.push(
     referentEventSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, code: "risposte", actor: REFERENT_ACTOR }),

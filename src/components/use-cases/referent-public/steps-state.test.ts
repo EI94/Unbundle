@@ -85,6 +85,16 @@ test("quando un passo è fatto: la conferma con una nota vera, la stima per la s
   assert.equal(benefitDone({ ...NUMERI, draft: rowDraft({ timesPerMonth: 20, minutesEach: 5 }) }), true);
   assert.equal(benefitDone({ ...FATTO, draft: rowDraft({ answer: "meno" }) }), false, "una scelta che non è della sua forma");
   assert.equal(benefitDone({ ...EURO, draft: rowDraft({ comment: "Solo il commento" }) }), false);
+  // (Decisione del titolare del 04/11/2026) «Non so» chiude ogni forma di riga, anche la voce a ore senza i numeri del team.
+  for (const row of [ORE, EURO, FATTO, NUMERI]) {
+    assert.equal(benefitDone({ ...row, draft: rowDraft({ answer: "non_so" }) }), true, row.form);
+    assert.equal(benefitDone({ ...row, draft: rowDraft({ answer: "non_so", stale: true }) }), false, `${row.form}: mai su una cifra cambiata`);
+  }
+  const dunno = [ORE, EURO, FATTO, NUMERI].map((row) => ({ ...row, draft: rowDraft({ answer: "non_so" }) }));
+  assert.equal(estimateDone(check({ benefits: dunno })), true, "«Non so» su ogni riga: il passo 2 è fatto");
+  assert.deepEqual(missingBenefits(check({ benefits: [...dunno.slice(0, 3), NUMERI] })), ["tempo-2"]);
+  assert.equal(firstOpenStep(view({ check: confirmed(true, { benefits: dunno }) })), 3, "con domande si va al passo 3");
+  assert.equal(benefitDone({ ...NUMERI, draft: rowDraft({ answer: "si" }) }), false, "una voce a ore senza numeri: solo i numeri o «Non so»");
   // Senza modello: i due numeri del tempo (rilascio 5).
   assert.equal(estimateDone(check({ benefits: null }, { timesPerMonth: 20 })), false);
   assert.equal(estimateDone(check({ benefits: null }, { timesPerMonth: 20, minutesEach: 3 })), true);

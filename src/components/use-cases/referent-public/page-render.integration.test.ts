@@ -396,7 +396,8 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
     }
     assert.deepEqual(filledButtons(impact), ["Avanti"], "le scelte sono a levetta, il pulsante pieno è il passo dopo");
     assert.equal((impact.match(/data-slot="referent-benefit"/g) ?? []).length, 3);
-    assert.equal((impact.match(/aria-pressed="false"/g) ?? []).length, 9, "tre scelte per riga, nessuna premuta");
+    // (Decisione del titolare del 04/11/2026) «Non so» anche sulle cifre del team: quattro scelte a ore e in euro, tre sulla qualitativa.
+    assert.equal((impact.match(/aria-pressed="false"/g) ?? []).length, 11, "4 + 4 + 3 scelte, nessuna premuta");
     for (const forbidden of ["FONTE-RISERVATA", "automatable", "50%", "ipotesi", "da_misurare", titles[5]]) assert.ok(!impact.includes(forbidden), forbidden);
   } finally {
     await q(`UPDATE use_cases SET value_model = NULL WHERE id = $1::uuid`, [ids.useCase]);

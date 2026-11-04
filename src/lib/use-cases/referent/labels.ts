@@ -316,6 +316,8 @@ export const REFERENT_IMPACT_TEXT = Object.freeze({
   minutesEach: "Minuti ogni volta",
   eurYear: "Euro l'anno",
   numbersMissing: "Scrivi quante volte al mese e quanti minuti ogni volta.",
+  /** (Rilascio 5.1) Una voce a ore senza i numeri del team: i due numeri, oppure «Non so». */
+  numbersOrDunno: "Scrivi i due numeri, oppure scegli «Non so».",
   invalid: "Scrivi un numero, per esempio 20 o 1,5.",
   pick: "Scegli una risposta.",
   missingOne: "Manca ancora una risposta: la trovi evidenziata.",

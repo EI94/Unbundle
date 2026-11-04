@@ -221,6 +221,10 @@ test("per beneficio: ogni voce con la cifra che il referente ha visto e la sua r
   assert.deepEqual(lineOf(FATTO({ answer: "no", comment: "Solo a fine mese." })), ["Meno errori.", "Aldo Prova: non succede.", "«Solo a fine mese.»"]);
   assert.deepEqual(lineOf(FATTO())[1], "Aldo Prova: succede.");
   assert.deepEqual(lineOf(FATTO({ answer: "non_so" }))[1], "Aldo Prova: non lo sa.");
+  // (Decisione del titolare del 04/11/2026) «Non so» su una cifra del team, anche al posto dei due numeri: «non lo sa.», nessun numero.
+  assert.deepEqual(lineOf(BENEFIT({ answer: "non_so" })), ["Controllo delle fatture: il team stimava 600 ore di lavoro l'anno.", "Aldo Prova: non lo sa."]);
+  assert.deepEqual(lineOf(EURO({ answer: "non_so" })), ["Meno solleciti: il team stimava 4.000 € l'anno.", "Aldo Prova: non lo sa."]);
+  assert.deepEqual(lineOf(NUMERI({ answer: "non_so", comment: "Lo sa l'amministrazione." })), ["Archiviazione: nessuna stima del team.", "Aldo Prova: non lo sa.", "«Lo sa l'amministrazione.»"]);
   assert.deepEqual(lineOf(NUMERI({ timesPerMonth: 20, minutesEach: 5 })), ["Archiviazione: nessuna stima del team.", "Aldo Prova: circa 20 ore di lavoro l'anno (20 al mese, 5 minuti)."]);
   assert.deepEqual(lineOf(BENEFIT({ answer: "piu", changed: "cambiata" })).slice(-1), ["La stima del team è cambiata dopo la risposta."]);
   assert.deepEqual(lineOf(FATTO({ changed: "tolta" })).slice(-1), ["Questa voce non c'è più nella valutazione."]);
@@ -234,7 +238,11 @@ test("per beneficio: ogni voce con la cifra che il referente ha visto e la sua r
   assert.deepEqual(lineOf(BENEFIT({ answer: "piu", timesPerMonth: 300, outcome: "tenuta", outcomeAt: at, adoptable: true }), true).slice(-1), ["Tenuta la stima del team."]);
   assert.deepEqual(lineOf(FATTO({ answer: "no", outcome: "tenuta", outcomeAt: at }), true).slice(-1), ["Vista il 4 nov."]);
   assert.deepEqual(lineOf(NUMERI({ timesPerMonth: 20, minutesEach: 5, outcome: "tenuta", outcomeAt: at, adoptable: true }), true).slice(-1), ["Stima del referente non usata."]);
-  for (const b of [BENEFIT({ answer: "piu", timesPerMonth: 300 }), EURO({ answer: "meno", eurYear: 1 }), FATTO({ answer: "no" }), NUMERI({ timesPerMonth: 1, minutesEach: 1 })]) {
+  // «Non so» chiuso con «Fatto»: vista, mai «Stima del referente non usata.» né «Tenuta la stima del team.».
+  for (const b of [BENEFIT({ answer: "non_so" }), EURO({ answer: "non_so" }), NUMERI({ answer: "non_so" })]) {
+    assert.deepEqual(lineOf({ ...b, outcome: "tenuta", outcomeAt: at }, true).slice(-1), ["Vista il 4 nov."], b.key);
+  }
+  for (const b of [BENEFIT({ answer: "piu", timesPerMonth: 300 }), EURO({ answer: "meno", eurYear: 1 }), FATTO({ answer: "no" }), NUMERI({ timesPerMonth: 1, minutesEach: 1 }), BENEFIT({ answer: "non_so" }), NUMERI({ answer: "non_so" })]) {
     for (const text of lineOf(b, true)) assert.deepEqual(findHubForbidden(text, "area"), [], text);
   }
 });
@@ -248,6 +256,12 @@ test("per beneficio: i pulsanti del team sotto ogni voce che aspetta, mai pieni;
   assert.deepEqual(keys(FATTO({ answer: "no", needsReview: true })), ["seen:ghost:Fatto:qualita-1"]);
   assert.deepEqual(keys(NUMERI({ timesPerMonth: 20, minutesEach: 5, needsReview: true, adoptable: true })), ["adopt:outline:Usa la stima di Aldo Prova:tempo-2", "keep:ghost:Non serve:tempo-2"]);
   assert.deepEqual(keys(BENEFIT()), [], "«Sì»: niente da decidere");
+  // «Non so» su una cifra del team: mai «Usa la stima di …»; «Rivedi la stima» e «Fatto», come «È di meno» senza numeri.
+  assert.deepEqual(keys(BENEFIT({ answer: "non_so", needsReview: true })), ["review:link:Rivedi la stima:tempo-1", "seen:ghost:Fatto:tempo-1"]);
+  assert.deepEqual(keys(EURO({ answer: "non_so", needsReview: true })), ["review:link:Rivedi la stima:costi-1", "seen:ghost:Fatto:costi-1"]);
+  assert.deepEqual(keys(NUMERI({ answer: "non_so", needsReview: true })), ["review:link:Rivedi la stima:tempo-2", "seen:ghost:Fatto:tempo-2"]);
+  assert.deepEqual(keys(NUMERI({ answer: "non_so", needsReview: true }), false), ["review:link:Rivedi la stima:tempo-2", "seen:ghost:Fatto:tempo-2"], "senza il permesso: gli stessi, nessuno da usare");
+  assert.deepEqual(keys(FATTO({ answer: "non_so" })), [], "«Non so» senza cifra: niente da decidere");
   // Una voce tolta dalla valutazione dopo la risposta: solo «Fatto», così lo use case non resta in «Risposte da verificare».
   assert.deepEqual(keys(FATTO({ answer: "no", needsReview: true, changed: "tolta" })), ["seen:ghost:Fatto:qualita-1"], "una voce tolta: solo «Fatto»");
   assert.deepEqual(keys(BENEFIT({ answer: "piu", timesPerMonth: 300, needsReview: true, adoptable: true, changed: "tolta" })), ["seen:ghost:Fatto:tempo-1"], "una voce a ore tolta: niente «Usa la stima»");

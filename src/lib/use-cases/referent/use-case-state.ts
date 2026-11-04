@@ -75,8 +75,10 @@ export interface ReferentCheckFact {
   teamComponentKey: string | null;
   /** (Rilascio 5.1) La conferma ha le risposte per beneficio; assente o falso: la stima del tempo del rilascio 5. */
   benefits?: boolean;
-  /** (Rilascio 5.1) Una risposta per beneficio aspetta il team (`benefitNeedsReview`, `BENEFIT_REVIEW_SQL`). */
+  /** (Rilascio 5.1) Una risposta per beneficio diversa da quella del team aspetta il team (`benefitDiffers`, `BENEFIT_DIFFERS_SQL`). */
   benefitReview?: boolean;
+  /** (Rilascio 5.1) Un «Non so» su una cifra del team aspetta il team (`benefitUnknown`, `BENEFIT_UNKNOWN_SQL`). */
+  benefitUnknown?: boolean;
 }
 
 /** Una richiesta dello use case, con il conteggio delle cose ancora aperte per il referente. */
@@ -113,20 +115,24 @@ export function referentRequestsOf<T extends ReferentRequestFact>(requests: read
   return { latestReferent, referent: contact, current };
 }
 
-/** Che cosa aspetta il team dalla risposta del referente: una correzione, una stima, niente. */
-export type ReferentReview = "correzione" | "stima" | null;
+/**
+ * Che cosa aspetta il team dalla risposta del referente: una correzione, una stima diversa, (rilascio 5.1)
+ * una stima che il referente non sa («Non so» su una cifra), niente.
+ */
+export type ReferentReview = "correzione" | "stima" | "non_sa" | null;
 
 /**
  * `needsReview` (§3.2): la conferma è inviata e il referente chiede di correggere lo use case (finché il
  * team non preme «Fatto»), oppure ha una stima diversa senza esito, oppure ha dato i suoi numeri senza
  * una stima del team e lo use case non ne ha ancora una (si chiude da sola appena il team la aggiunge).
  * (Rilascio 5.1) Con le risposte per beneficio: una voce che aspetta il team («È di meno», «È di più»,
- * «No», i due numeri), finché il team non decide su quella voce; una conferma conta una volta sola.
+ * «No», i due numeri; prima di tutto, poi «Non so» su una cifra), finché il team non decide su quella
+ * voce; una conferma conta una volta sola.
  */
 export function reviewOf(check: ReferentCheckFact | null, hasTeamEstimateNow: boolean): ReferentReview {
   if (!check || !check.submittedAt) return null;
   if (check.confirm === "correggi" && !check.correctionDoneAt) return "correzione";
-  if (check.benefits) return check.benefitReview ? "stima" : null;
+  if (check.benefits) return check.benefitReview ? "stima" : check.benefitUnknown ? "non_sa" : null;
   if (check.estimateOutcome) return null;
   if (check.estimate === "meno" || check.estimate === "piu") return "stima";
   if (check.teamComponentKey === null && !hasTeamEstimateNow) return "stima";

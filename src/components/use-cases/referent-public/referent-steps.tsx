@@ -16,9 +16,9 @@ import { benefitDone, numberField, numberText, placeholderOf, stepLabel, type Ch
 /**
  * (Rilascio 5, SPEC §7.1–§7.4) I passi di una richiesta al referente: la barra dei passi, «Lo use case»
  * («È così?», la descrizione, «Sì, è così» / «Correggi» con «Cosa cambieresti?») e, (rilascio 5.1),
- * «L'impatto»: una riga per ogni voce di «Benefici e costi» con un tocco («Sì» / «È di meno» / «È di più»
- * con i numeri facoltativi, o «Sì» / «No» / «Non so», o i due numeri quando il team non li ha) e un
- * commento facoltativo; senza modello del valore le due domande del tempo. Un solo pulsante pieno per
+ * «L'impatto»: una riga per ogni voce di «Benefici e costi» con un tocco («Sì» / «È di meno» / «È di più» /
+ * «Non so» con i numeri facoltativi, o «Sì» / «No» / «Non so», o i due numeri quando il team non li ha
+ * oppure «Non so») e un commento facoltativo; senza modello del valore le due domande del tempo. Un solo pulsante pieno per
  * passo: il passo dopo. Le scelte sono pulsanti a levetta (`aria-pressed`) in un gruppo con il suo nome.
  * I testi vengono da labels.ts.
  */
@@ -468,7 +468,11 @@ function rowDraftOf(row: ReferentBenefitView, s: RowState): BenefitDraftView | n
   if (!t.ok || !m.ok || !e.ok) return null;
   const different = s.answer === "meno" || s.answer === "piu";
   const comment = s.comment.trim() ? s.comment : null;
-  if (row.form === "ore_numeri") return { answer: null, timesPerMonth: t.value, minutesEach: m.value, eurYear: null, comment, stale: false };
+  if (row.form === "ore_numeri") {
+    // «Non so» al posto dei due numeri: nessun numero va al server.
+    if (s.answer === "non_so") return { answer: "non_so", timesPerMonth: null, minutesEach: null, eurYear: null, comment, stale: false };
+    return { answer: null, timesPerMonth: t.value, minutesEach: m.value, eurYear: null, comment, stale: false };
+  }
   if (row.form === "ore") return { answer: s.answer, timesPerMonth: different ? t.value : null, minutesEach: different ? m.value : null, eurYear: null, comment, stale: false };
   if (row.form === "euro") return { answer: s.answer, timesPerMonth: null, minutesEach: null, eurYear: different ? e.value : null, comment, stale: false };
   return { answer: s.answer, timesPerMonth: null, minutesEach: null, eurYear: null, comment, stale: false };
@@ -595,14 +599,17 @@ function BenefitRow({
     setError(null);
     onEdit(row.key);
     const base = rowDraftOf(row, stateRef.current) ? stateRef.current : { ...stateRef.current, times: "", minutes: "", euro: "" };
-    commit({ ...base, answer }, "subito");
+    // Su una voce a ore senza i numeri del team «Non so» prende il posto dei due numeri: i campi si svuotano.
+    commit(row.form === "ore_numeri" ? { ...base, answer, times: "", minutes: "" } : { ...base, answer }, "subito");
     if ((answer === "meno" || answer === "piu") && row.form !== "fatto") requestAnimationFrame(() => firstNumber.current?.focus());
   };
 
   const typed = (patch: Partial<RowState>) => {
     setError(null);
     onEdit(row.key);
-    commit({ ...stateRef.current, ...patch }, "dopo");
+    // Un numero scritto su una voce a ore senza i numeri del team toglie «Non so».
+    const numbers = row.form === "ore_numeri" && ("times" in patch || "minutes" in patch);
+    commit({ ...stateRef.current, ...patch, ...(numbers ? { answer: null } : {}) }, "dopo");
   };
   const blurred = () => {
     const d = rowDraftOf(row, stateRef.current);
@@ -620,12 +627,23 @@ function BenefitRow({
   const showNumbers = row.form === "ore_numeri" || (row.form !== "fatto" && different);
   const current = rowDraftOf(row, state);
   const done = current !== null && benefitAnswered(row.form, current);
-  const missingLine = row.form === "ore_numeri" ? I.numbersMissing : I.pick;
+  const missingLine = row.form === "ore_numeri" ? I.numbersOrDunno : I.pick;
+  // Quattro scelte su due righe al telefono, tre su una; «Non so» da solo sotto i due numeri.
+  const choiceGrid = choices.length === 3 ? "grid-cols-3" : "grid-cols-2";
   const describedBy = error ? errId : undefined;
   const commentId = benefitCommentId(row.key);
   const commentNote = commentError ?? commentWarning;
   const commentNoteId = `${id}-commento-nota`;
   const numberPlaceholder = (n: number | null) => (n !== null && n > 0 ? placeholderOf(n) : "");
+  const choiceButtons = (
+    <div className={cn("grid gap-2 sm:flex sm:flex-wrap", choiceGrid)}>
+      {choices.map((c) => (
+        <Choice key={c.answer} pressed={state.answer === c.answer} filled={false} onClick={(e) => pick(c.answer, e)}>
+          {c.label}
+        </Choice>
+      ))}
+    </div>
+  );
 
   return (
     <div
@@ -640,15 +658,7 @@ function BenefitRow({
       <p id={titleId} tabIndex={-1} className="rounded-md text-base leading-snug font-medium break-words outline-none focus-visible:ring-3 focus-visible:ring-ring/40">
         {benefitQuestion(row)}
       </p>
-      {choices.length ? (
-        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
-          {choices.map((c) => (
-            <Choice key={c.answer} pressed={state.answer === c.answer} filled={false} onClick={(e) => pick(c.answer, e)}>
-              {c.label}
-            </Choice>
-          ))}
-        </div>
-      ) : null}
+      {row.form !== "ore_numeri" ? choiceButtons : null}
       {showNumbers ? (
         <div className="space-y-2">
           {row.form !== "ore_numeri" ? <p className="text-sm text-muted-foreground">{row.form === "euro" ? I.euroLead : I.numbersLead}</p> : null}
@@ -693,6 +703,7 @@ function BenefitRow({
           </div>
         </div>
       ) : null}
+      {row.form === "ore_numeri" ? choiceButtons : null}
       {error ? (
         <p id={errId} role="alert" className="text-sm break-words text-uc-rosso">
           {error}

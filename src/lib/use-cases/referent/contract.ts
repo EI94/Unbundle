@@ -388,7 +388,7 @@ export interface ReferentBlockView {
   referentRequestId: string;
   state: "in_attesa" | "nessuna_risposta" | "da_verificare" | "fatto";
   /** Che cosa aspetta il team dalla risposta: una correzione, una stima, niente. */
-  review: "correzione" | "stima" | null;
+  review: "correzione" | "stima" | "non_sa" | null;
   /** R è viva («inviata» e non scaduta). */
   live: boolean;
   /** La conferma e la stima di R* (null: non è mai arrivata, solo dopo un ritorno alla versione di prima). */

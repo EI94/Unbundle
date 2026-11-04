@@ -10,7 +10,7 @@ import type { ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.
 import type { ReferentCheckConfirm, ReferentCheckEstimate, ReferentCheckOutcome } from "../../db/use-case-hub-referent-check-ddl.ts";
 import type { ReferentBlockBenefit, ReferentBlockCheck, ReferentBlockView } from "./contract.ts";
 import { adoptionPatch, referentHours, sameTeamEstimate, type TeamEstimate } from "./estimate.ts";
-import { adoptedTeamOf, benefitAdoptionPatch, benefitNeedsReview, sameBenefitTeam, type ImpactRow, type StoredBenefit } from "./impact.ts";
+import { adoptedTeamOf, benefitAdoptionPatch, benefitDiffers, benefitNeedsReview, benefitUnknown, sameBenefitTeam, type ImpactRow, type StoredBenefit } from "./impact.ts";
 import { benefitFormOf } from "./impact-text.ts";
 import { referentRequestsOf, referentStateOf, type ReferentRequestFact } from "./use-case-state.ts";
 
@@ -86,7 +86,8 @@ function factOf(r: BlockRequestFact): ReferentRequestFact {
           estimateOutcome: r.check.estimateOutcome,
           teamComponentKey: r.check.teamComponentKey,
           benefits: r.check.benefits !== null,
-          benefitReview: (r.check.benefits ?? []).some((b) => benefitNeedsReview(b)),
+          benefitReview: (r.check.benefits ?? []).some((b) => benefitDiffers(b)),
+          benefitUnknown: (r.check.benefits ?? []).some((b) => benefitUnknown(b)),
         }
       : null,
   };

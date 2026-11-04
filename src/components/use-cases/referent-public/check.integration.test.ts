@@ -337,6 +337,65 @@ test("una voce a ore senza i numeri del team: i due numeri, tutti e due per invi
   assert.equal(codes.filter((c) => c === "stima_diversa").length, 1, "i due numeri del referente sono una stima da vedere");
 });
 
+test("(decisione del titolare del 04/11/2026) «Non so» su ogni forma di riga: niente numeri salvati, conta come risposta, l'invio parte senza «stima diversa»", opts, async () => {
+  const model = {
+    v: 1,
+    primary: "tempo",
+    components: [
+      { kind: "ore", key: "tempo-1", lever: "tempo", label: "Controllo delle fatture", confidence: "ipotesi", volumeYear: 3000, minutesPerUnit: 12, automatablePct: 50 },
+      { kind: "ore", key: "tempo-2", lever: "tempo", label: "Archiviazione", confidence: "ipotesi", volumeYear: 0, minutesPerUnit: 0, automatablePct: 40 },
+      { kind: "euro", key: "costi-1", lever: "costi", label: "Meno solleciti", confidence: "ipotesi", eurYear: 4321 },
+      { kind: "qualitativo", key: "qualita-1", lever: "qualita", label: "Meno errori", confidence: "da_misurare" },
+    ],
+  };
+  const card = await newCard(model);
+  const { link, requestId, token } = await referentLink(card.id, card.needs.slice(0, 1));
+  const now = new Date();
+  const rows = (await viewOf(token)).check!.benefits!;
+  assert.deepEqual(rows.map((r) => [r.key, r.form]), [["tempo-1", "ore"], ["tempo-2", "ore_numeri"], ["costi-1", "euro"], ["qualita-1", "fatto"]]);
+  const seen = Object.fromEntries(rows.map((r) => [r.key, r.team]));
+  const save = (key: string, answer: string | null, extra: Record<string, unknown> = {}) => pub.saveReferentCheck(link, { step: 2, benefit: { key, seen: seen[key], answer, ...extra } }, now);
+  okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, now));
+  // «Non so» con dei numeri dalla pagina: il server non ne salva nessuno.
+  okPub(await save("tempo-1", "non_so", { timesPerMonth: "200", minutesEach: "5" }), "ore");
+  okPub(await save("costi-1", "non_so", { eurYear: "3.500", comment: "  Lo segue l'amministrazione.  " }), "euro");
+  okPub(await save("qualita-1", "non_so"), "qualitativa");
+  // La voce a ore senza i numeri del team: prima i numeri, poi «Non so» al loro posto.
+  okPub(await save("tempo-2", null, { timesPerMonth: "20", minutesEach: "4" }), "i due numeri");
+  assert.deepEqual((await benefitRows(requestId)).find((b) => b.key === "tempo-2"), { key: "tempo-2", position: 2, kind: "ore", label: "Archiviazione", tv: "0.00", tm: "0.00", te: null, answer: null, t: "20.00", m: "4.00", e: null, comment: null });
+  okPub(await save("tempo-2", "non_so", { timesPerMonth: "20", minutesEach: "4" }), "non so");
+  assert.deepEqual(
+    (await benefitRows(requestId)).map((b) => [b.key, b.answer, b.t, b.m, b.e, b.comment]),
+    [
+      ["tempo-1", "non_so", null, null, null, null],
+      ["tempo-2", "non_so", null, null, null, null],
+      ["costi-1", "non_so", null, null, null, "Lo segue l'amministrazione."],
+      ["qualita-1", "non_so", null, null, null, null],
+    ],
+  );
+  failed(await save("tempo-2", "si"), "dati_non_validi", "sulla voce senza i numeri del team: solo i numeri o «Non so»");
+  failed(await save("costi-1", "no"), "dati_non_validi");
+  // La vista: ogni riga chiusa da «Non so»; il passo 2 è fatto e si va alle domande.
+  const drafts = (await viewOf(token)).check!.benefits!.map((b) => b.draft);
+  assert.deepEqual(drafts.map((d) => [d?.answer, d?.timesPerMonth, d?.minutesEach, d?.eurYear, d?.stale]), Array.from({ length: 4 }, () => ["non_so", null, null, null, false]));
+  const steps = await import("./steps-state.ts");
+  assert.equal(steps.estimateDone((await viewOf(token)).check!), true);
+  assert.equal(steps.firstOpenStep(await viewOf(token)), 3);
+  // L'invio: la domanda, poi una risposta sola per la conferma; nessuna «stima diversa» nella Storia.
+  failed(await pub.submitReferentAnswers(link, {}, now), "domande_aperte");
+  const need = card.needs[0];
+  okPub(await pub.saveReferentDraft(link, { needId: need, text: null, dontKnow: true }, now) as never, "la domanda");
+  const done = okPub(await pub.submitReferentAnswers(link, {}, now), "invio");
+  assert.deepEqual([done.open, done.state], [0, "completata"]);
+  assert.equal((await checkRow(requestId)).sent, true);
+  const codes = (await q(`SELECT phase_after FROM use_case_events WHERE use_case_id = $1::uuid AND 'richiesta_referente' = ANY(fields)`, [card.id])).map((r) => String(r.phase_after));
+  assert.ok(codes.includes("conferma"), JSON.stringify(codes));
+  assert.ok(!codes.includes("stima_diversa"), "«Non so» non è una stima diversa");
+  // Dopo l'invio, in sola lettura: «non so.» su ogni riga.
+  const sent = (await viewOf(token)).check!.benefits!;
+  assert.deepEqual(sent.map((b) => [b.key, b.draft?.answer]), [["tempo-1", "non_so"], ["tempo-2", "non_so"], ["costi-1", "non_so"], ["qualita-1", "non_so"]]);
+});
+
 test("l'invio vuole la conferma e ogni riga; poi la richiesta senza domande si completa, con la campanella e l'avviso come una risposta sola", opts, async () => {
   const card = await newCard(MODEL);
   const { link, requestId, token } = await referentLink(card.id, []);

@@ -766,6 +766,10 @@ test("rilascio 5: con il referente, G1 per la sua risposta, G2 senza risposta, G
   assert.deepEqual(correction.action, { type: "vai", id: "referente", label: "Vedi le risposte" });
   assert.equal(nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "da_verificare", review: "stima" }) })).line, `${T} Il referente ha una stima diversa da quella del team.`);
   assert.equal(nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "da_verificare", review: "stima", noTeamEstimate: true }) })).line, `${T} Il referente ha dato una stima del tempo.`);
+  // (Rilascio 5.1) «Non so» su una cifra del team: la stima resta da guardare, senza dire «diversa».
+  const unknown = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "da_verificare", review: "non_sa" }) }));
+  assert.deepEqual([unknown.key, unknown.line], ["G1", `${T} Il referente non sa rispondere su una stima.`]);
+  assert.deepEqual(unknown.action, { type: "vai", id: "referente", label: "Vedi le risposte" });
   const silent = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "nessuna_risposta" }) }));
   assert.deepEqual([silent.key, silent.line], ["G2", `${T} Il referente non ha risposto.`]);
   assert.deepEqual(silent.action, { type: "vai", id: "referente", label: "Vedi le richieste" });

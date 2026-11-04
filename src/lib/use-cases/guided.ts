@@ -134,6 +134,8 @@ export const GUIDED_TEXT = Object.freeze({
     // (Rilascio 5.1) Su una voce qualunque di «Benefici e costi», non solo sul tempo.
     verifyEstimate: "Il referente ha una stima diversa da quella del team.",
     verifyNoTeam: "Il referente ha dato una stima del tempo.",
+    // (Rilascio 5.1) «Non so» su una cifra del team: la stima resta da guardare.
+    verifyUnknown: "Il referente non sa rispondere su una stima.",
     referentSilent: "Il referente non ha risposto.",
     chooseTitle: "Scegliere il referente",
     chooseLine: "Il referente conferma lo use case e l'impatto, poi risponde alle domande.",
@@ -552,7 +554,7 @@ export interface NextStepInput {
    */
   referent?: {
     state: ReferentStateKey;
-    review: "correzione" | "stima" | null;
+    review: "correzione" | "stima" | "non_sa" | null;
     canChoose: boolean;
     askableForReferent: number | null;
     /** La stima da verificare è del referente senza una stima del team. */
@@ -729,7 +731,8 @@ function approvedStep(input: NextStepInput): NextStep {
   const ref = input.referent ?? null;
   const hasReferent = ref !== null && ref.state !== "manca";
 
-  const reviewLine = ref?.review === "correzione" ? t.verifyCorrection : ref?.review === "stima" ? (ref.noTeamEstimate ? t.verifyNoTeam : t.verifyEstimate) : null;
+  const reviewLine =
+    ref?.review === "correzione" ? t.verifyCorrection : ref?.review === "stima" ? (ref.noTeamEstimate ? t.verifyNoTeam : t.verifyEstimate) : ref?.review === "non_sa" ? t.verifyUnknown : null;
   if ((info && counts && counts.toVerify > 0) || reviewLine) {
     const countLine = info && counts && counts.toVerify > 0 ? `${info.receivedNote ? `${info.count} (${info.receivedNote})` : info.count}.` : null;
     return step("G1", {

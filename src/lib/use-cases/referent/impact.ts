@@ -9,7 +9,9 @@
  *   Senza modello, o con un modello senza voci, null: resta la stima del tempo del rilascio 5.
  * - **La risposta** (`benefitAnswerOf`): i controlli di quello che la pagina manda per una riga.
  * - **La revisione del team** (`benefitNeedsReview`, `BENEFIT_REVIEW_SQL`): il referente dice «È di
- *   meno», «È di più» o «No», oppure scrive i due numeri che il team non aveva, e il team non ha ancora deciso.
+ *   meno», «È di più» o «No», oppure scrive i due numeri che il team non aveva (`benefitDiffers`), oppure
+ *   (decisione del titolare del 04/11/2026) «Non so» su una voce in ore o in euro (`benefitUnknown`), e il
+ *   team non ha ancora deciso.
  * - **L'adozione** (`benefitAdoptionPatch`): «Usa la stima di {Nome}» cambia solo i numeri di quella voce.
  *
  * Modulo puro.
@@ -102,7 +104,8 @@ export type BenefitAnswerCheck = { ok: true; value: BenefitDraft } | { ok: false
 
 /**
  * Quello che la pagina manda per una riga, per la sua forma: la scelta (o nessuna, come bozza), i numeri
- * solo con «È di meno» / «È di più» (o i due numeri senza la cifra del team), mai numeri con «Sì», «No» o «Non so».
+ * solo con «È di meno» / «È di più» (o i due numeri senza la cifra del team), mai numeri con «Sì», «No» o
+ * «Non so» («Non so» vale su ogni forma, anche al posto dei due numeri).
  */
 export function benefitAnswerOf(form: BenefitForm, body: { answer?: unknown; timesPerMonth?: unknown; minutesEach?: unknown; eurYear?: unknown }): BenefitAnswerCheck {
   const raw = body.answer === undefined ? null : body.answer;
@@ -113,7 +116,10 @@ export function benefitAnswerOf(form: BenefitForm, body: { answer?: unknown; tim
   const euro = referentNumber(body.eurYear, REFERENT_BENEFIT_LIMITS.eurYearMax);
   if (!times.ok || !minutes.ok || !euro.ok) return { ok: false, code: "numero_non_valido" };
   const different = answer === "meno" || answer === "piu";
-  if (form === "ore_numeri") return { ok: true, value: { answer: null, timesPerMonth: times.value, minutesEach: minutes.value, eurYear: null } };
+  if (form === "ore_numeri") {
+    if (answer === "non_so") return { ok: true, value: { answer, timesPerMonth: null, minutesEach: null, eurYear: null } };
+    return { ok: true, value: { answer: null, timesPerMonth: times.value, minutesEach: minutes.value, eurYear: null } };
+  }
   if (form === "ore") return { ok: true, value: { answer, timesPerMonth: different ? times.value : null, minutesEach: different ? minutes.value : null, eurYear: null } };
   if (form === "euro") return { ok: true, value: { answer, timesPerMonth: null, minutesEach: null, eurYear: different ? euro.value : null } };
   return { ok: true, value: { answer, timesPerMonth: null, minutesEach: null, eurYear: null } };
@@ -168,14 +174,31 @@ export function storedBenefitAnswered(b: Pick<StoredBenefit, "team" | "answer" |
   return benefitAnswered(benefitFormOf(b.team), b);
 }
 
+type ReviewFacts = Pick<StoredBenefit, "team" | "answer" | "timesPerMonth" | "minutesEach" | "eurYear" | "outcome">;
+
 /**
- * La risposta aspetta il team: «È di meno», «È di più» o «No», oppure i due numeri su una voce senza i
- * numeri del team; e il team non ha ancora deciso. «Sì» e «Non so» non chiedono niente.
+ * La risposta è diversa da quella del team: «È di meno», «È di più» o «No», oppure i due numeri su una voce
+ * senza i numeri del team; e il team non ha ancora deciso.
  */
-export function benefitNeedsReview(b: Pick<StoredBenefit, "team" | "answer" | "timesPerMonth" | "minutesEach" | "eurYear" | "outcome">): boolean {
+export function benefitDiffers(b: ReviewFacts): boolean {
   if (b.outcome !== null || !storedBenefitAnswered(b)) return false;
+  if (b.answer === "non_so") return false;
   if (benefitFormOf(b.team) === "ore_numeri") return true;
   return b.answer === "meno" || b.answer === "piu" || b.answer === "no";
+}
+
+/**
+ * (Decisione del titolare del 04/11/2026) Il referente non sa la cifra di una voce in ore o in euro («Non
+ * so», anche al posto dei due numeri) e il team non ha ancora deciso: la stima resta da guardare. «Non so» su
+ * una voce senza cifra (qualitativa, o in euro senza cifra) non chiede niente, come «Sì».
+ */
+export function benefitUnknown(b: ReviewFacts): boolean {
+  return b.outcome === null && b.answer === "non_so" && benefitFormOf(b.team) !== "fatto";
+}
+
+/** La risposta aspetta il team: diversa dalla sua (`benefitDiffers`) o «Non so» su una sua cifra (`benefitUnknown`). «Sì» non chiede niente. */
+export function benefitNeedsReview(b: ReviewFacts): boolean {
+  return benefitDiffers(b) || benefitUnknown(b);
 }
 
 /**
@@ -188,9 +211,16 @@ export function benefitNeedsReview(b: Pick<StoredBenefit, "team" | "answer" | "t
 export const BENEFITS_FLAG_SQL = (alias: string) =>
   `(${alias}.benefits AND ${alias}.team_component_key IS NULL AND ${alias}.estimate IS NULL AND ${alias}.times_per_month IS NULL AND ${alias}.minutes_each IS NULL)`;
 
-/** La stessa regola in SQL, su una riga `alias` di `use_case_referent_check_benefits`. */
-export const BENEFIT_REVIEW_SQL = (alias: string) =>
+/** `benefitDiffers` in SQL, su una riga `alias` di `use_case_referent_check_benefits`. */
+export const BENEFIT_DIFFERS_SQL = (alias: string) =>
   `(${alias}.outcome IS NULL AND (${alias}.answer IN ('meno', 'piu', 'no') OR (${alias}.answer IS NULL AND ${alias}.times_per_month IS NOT NULL AND ${alias}.minutes_each IS NOT NULL)))`;
+
+/** `benefitUnknown` in SQL: «Non so» su una voce in ore, o in euro con la cifra del team (le colonne hanno due decimali, come `benefitFormOf`). */
+export const BENEFIT_UNKNOWN_SQL = (alias: string) =>
+  `(${alias}.outcome IS NULL AND ${alias}.answer = 'non_so' AND (${alias}.kind = 'ore' OR (${alias}.kind = 'euro' AND ${alias}.team_eur_year > 0)))`;
+
+/** `benefitNeedsReview` in SQL. */
+export const BENEFIT_REVIEW_SQL = (alias: string) => `(${BENEFIT_DIFFERS_SQL(alias)} OR ${BENEFIT_UNKNOWN_SQL(alias)})`;
 
 /** Quello che «Usa la stima di {Nome}» cambia nella voce: solo i numeri dati; vuoto se non c'è niente da usare. */
 export function benefitAdoptionPatch(b: Pick<StoredBenefit, "team" | "answer" | "timesPerMonth" | "minutesEach" | "eurYear">): { volumeYear?: number; minutesPerUnit?: number; eurYear?: number } {

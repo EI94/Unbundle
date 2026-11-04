@@ -135,4 +135,10 @@ test("(rilascio 5.1) la revisione per beneficio: una voce da vedere, finché il 
   const r = req({ status: "completata", openTask: 0, check: check({ ...sent, benefitReview: true }) });
   assert.deepEqual(referentStateOf(input([r])), { state: "da_verificare", review: "stima" });
   assert.deepEqual(referentStateOf(input([{ ...r, check: check({ ...sent, benefitReview: false }) }])), { state: "fatto", review: null });
+  // (Decisione del titolare del 04/11/2026) «Non so» su una cifra del team: da verificare, ma non una stima diversa.
+  assert.equal(reviewOf(check({ ...sent, benefitUnknown: true }), true), "non_sa");
+  assert.equal(reviewOf(check({ ...sent, benefitReview: true, benefitUnknown: true }), true), "stima", "una stima diversa viene prima");
+  assert.equal(reviewOf(check({ ...sent, confirm: "correggi", benefitUnknown: true }), true), "correzione");
+  assert.equal(reviewOf(check({ ...sent, submittedAt: null, benefitUnknown: true }), true), null);
+  assert.deepEqual(referentStateOf(input([{ ...r, check: check({ ...sent, benefitUnknown: true }) }])), { state: "da_verificare", review: "non_sa" });
 });
