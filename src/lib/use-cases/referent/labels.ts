@@ -182,7 +182,8 @@ export const REFERENT_UI_TEXT = Object.freeze({
     messageAdd: "Aggiungi un messaggio",
     messageLabel: "Messaggio (facoltativo)",
     messagePlaceholder: "Per esempio: ci serve per la stima di fine mese.",
-    messageHint: "Non scrivere dati sanitari, nomi, email o telefoni di altre persone.",
+    // (Rilascio 5.1) Nomi, email e telefoni passano, come per il referente.
+    messageHint: "Non scrivere dati sanitari, codici fiscali o date di nascita.",
     // Passo 3 «Controlla e invia»
     checkHeading: "Ecco l'email che riceve {Nome}.",
     previewLabel: "Anteprima dell'email",
@@ -206,7 +207,7 @@ export const REFERENT_UI_TEXT = Object.freeze({
   answerDialog: Object.freeze({
     title: "Aggiungi una risposta",
     field: "Risposta",
-    hint: "La vedono solo le persone che valutano gli use case. Non scrivere dati sanitari, nomi, email o telefoni di persone.",
+    hint: "La vedono solo le persone che valutano gli use case. Non scrivere dati sanitari, codici fiscali o date di nascita.",
     confirm: "Salva la risposta",
     /** (Parte 2) «L'ho già verificata»: l'informazione diventa «A posto» nello stesso passo. */
     validate: "L'ho già verificata: segna l'informazione come «A posto»",

@@ -173,7 +173,9 @@ test("porte sul referente e sulle domande", opts, async () => {
   refused(await send({ contact: { kind: "nuovo", displayName: "Mario Rossi", email: REFERENT_EMAIL }, needIds: [] }), "nessuna_domanda");
   const otherNeed = randomUUID();
   refused(await send({ contact: { kind: "nuovo", displayName: "Mario Rossi", email: REFERENT_EMAIL }, needIds: [otherNeed] }), "domande_cambiate");
-  refused(await send({ contact: { kind: "nuovo", displayName: "Mario Rossi", email: REFERENT_EMAIL }, needIds: needs, message: "Scrivi a mario.rossi@topjet.it" }), "testo_contatto");
+  // (Rilascio 5.1) Nomi, email e telefoni nel messaggio passano; un codice fiscale o un dato sanitario no.
+  refused(await send({ contact: { kind: "nuovo", displayName: "Mario Rossi", email: REFERENT_EMAIL }, needIds: needs, message: "Il codice è RSSMRA80A01H501U" }), "testo_codice_fiscale");
+  refused(await send({ contact: { kind: "nuovo", displayName: "Mario Rossi", email: REFERENT_EMAIL }, needIds: needs, message: "Il collega è in malattia per una visita medica" }), "testo_sanitario");
   assert.equal((await q(`SELECT 1 FROM uc_contacts WHERE workspace_id = $1::uuid`, [ids.ws])).length, 0);
 });
 

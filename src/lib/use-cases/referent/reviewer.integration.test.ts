@@ -251,8 +251,12 @@ test("risposta del team: «Da verificare», oppure «A posto» con «L'ho già v
   ok(await referents.addReviewerAnswer(as("builder"), ids.useCase, n5, { text: "Tre persone", validate: true }), "risposta verificata");
   assert.equal(await statusOf(n5), "validata");
   refused(await referents.addReviewerAnswer(as("builder"), ids.useCase, randomUUID(), { text: "x" }), "domanda_non_disponibile");
-  const named = await referents.addReviewerAnswer(as("builder"), ids.useCase, n4, { text: "Lo sa Mario Bianchi" });
-  assert.equal(named.ok, false);
+  // (Rilascio 5.1) Un nome, un'email e un telefono passano, come nelle risposte del referente; un codice fiscale no.
+  const named = ok(await referents.addReviewerAnswer(as("builder"), ids.useCase, n4, { text: "Lo sa Mario Bianchi (mario.bianchi@cliente.test, +39 333 1234567)" }), "con un nome");
+  assert.equal((await q(`SELECT body FROM use_case_need_answers WHERE id = $1::uuid`, [named.answerId]))[0].body, "Lo sa Mario Bianchi (mario.bianchi@cliente.test, +39 333 1234567)");
+  refused(await referents.addReviewerAnswer(as("builder"), ids.useCase, n4, { text: "Il codice è RSSMRA80A01H501U" }), "testo_codice_fiscale");
+  refused(await referents.addReviewerAnswer(as("builder"), ids.useCase, n4, { text: "Il collega è in malattia per una visita medica" }), "testo_sanitario");
+  ok(await referents.removeNeedAnswer(as("builder"), ids.useCase, named.answerId), "elimina quella con il nome");
   const contributor = await referents.addReviewerAnswer(as("contributor"), ids.useCase, n4, { text: "x" });
   assert.equal(contributor.ok, false);
   ok(await referents.removeNeedAnswer(as("builder"), ids.useCase, answer.answerId), "elimina");

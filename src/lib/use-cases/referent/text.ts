@@ -7,9 +7,12 @@
  *   discriminatori si rifiutano sempre (anche nella bozza); codici fiscali e date di nascita sono un
  *   avviso nella bozza e si rifiutano all'invio. Vale per le risposte, la nota di «Correggi» e i
  *   commenti del passo «L'impatto».
- * - **Messaggio** e **titoli delle domande** del revisore: arrivano al referente (il messaggio anche
- *   nell'email), quindi l'email o il telefono di un'altra persona si rifiuta con `testo_contatto`.
- * - **Risposta del team** dalla scheda: lo stesso controllo del messaggio.
+ * - **Messaggio** del revisore al referente (anche nell'email) e **risposta del team** dalla scheda
+ *   (rilascio 5.1, decisione del titolare del 04/11/2026): le stesse regole del referente, senza bozza.
+ *   Nomi, email e telefoni di altre persone passano; dati sanitari, discriminatori, codici fiscali e date
+ *   di nascita si rifiutano (prima i sanitari e i discriminatori).
+ * - **Titoli delle domande** (e i nomi delle voci che il referente legge): l'email o il telefono di
+ *   un'altra persona si rifiuta ancora con `testo_contatto`, un nome con `testo_nome_persona`.
  *
  * Gli avvisi portano solo il codice e il messaggio, mai il testo trovato. Modulo puro.
  */
@@ -56,6 +59,13 @@ export function checkSubmitText(text: string, field: string): { ok: true } | { o
   return { ok: false, issues: issuesOf(hard.length ? [...hard, ...blocking] : blocking, field) };
 }
 
+/** (Rilascio 5.1) Un testo del team per il referente o sulla scheda: il primo dato che il referente non potrebbe scrivere, oppure null. */
+function firstTeamBlocking(text: string): { code: string; message: string } | null {
+  const blocking = forReferent(scanText(text, OPTS).blocking);
+  const first = blocking.find((f) => HARD_BLOCK_CATEGORIES.includes(f.category)) ?? blocking[0];
+  return first ? { code: `testo_${first.category}`, message: findingMessage(first.category) } : null;
+}
+
 function firstBlocking(text: string): { code: string; message: string } | null {
   const scan = scanText(text, OPTS);
   const hard = scan.blocking.find((f) => HARD_BLOCK_CATEGORIES.includes(f.category));
@@ -63,14 +73,14 @@ function firstBlocking(text: string): { code: string; message: string } | null {
   return first ? { code: `testo_${first.category}`, message: findingMessage(first.category) } : null;
 }
 
-/** Il messaggio facoltativo del revisore: vuoto vale null, al massimo 1.000 caratteri, niente nomi, email o telefoni. */
+/** Il messaggio facoltativo del revisore: vuoto vale null, al massimo 1.000 caratteri; nomi, email e telefoni passano, il resto come per il referente. */
 export function checkRequestMessage(text: string | null): { ok: true; value: string | null } | { ok: false; code: string; message: string } {
   if (text === null || text === undefined) return { ok: true, value: null };
   if (typeof text !== "string") return { ok: false, code: "dati_non_validi", message: REFERENT_ERROR_MESSAGES.riprova };
   const clean = text.replace(/\r\n?/g, "\n").trim();
   if (!clean) return { ok: true, value: null };
   if (clean.length > REFERENT_LIMITS.messageMax) return { ok: false, code: "messaggio_troppo_lungo", message: REFERENT_ERROR_MESSAGES.messaggio_troppo_lungo };
-  const blocked = firstBlocking(clean);
+  const blocked = firstTeamBlocking(clean);
   return blocked ? { ok: false, ...blocked } : { ok: true, value: clean };
 }
 
@@ -80,11 +90,11 @@ export function checkQuestionTitle(title: string): { ok: true } | { ok: false; c
   return blocked ? { ok: false, ...blocked } : { ok: true };
 }
 
-/** La risposta del team dalla scheda: da 1 a 4.000 caratteri, senza dati personali o sanitari. */
+/** La risposta del team dalla scheda: da 1 a 4.000 caratteri; nomi, email e telefoni passano, il resto come per il referente. */
 export function checkReviewerAnswer(text: string): { ok: true; value: string } | { ok: false; code: string; message: string } {
   const clean = typeof text === "string" ? text.replace(/\r\n?/g, "\n").trim() : "";
   if (!clean) return { ok: false, code: "risposta_vuota", message: REFERENT_ERROR_MESSAGES.risposta_vuota };
   if (clean.length > REFERENT_LIMITS.answerMax) return { ok: false, code: "testo_troppo_lungo", message: REFERENT_ERROR_MESSAGES.testo_troppo_lungo };
-  const blocked = firstBlocking(clean);
+  const blocked = firstTeamBlocking(clean);
   return blocked ? { ok: false, ...blocked } : { ok: true, value: clean };
 }

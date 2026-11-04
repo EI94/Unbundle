@@ -37,17 +37,35 @@ test("invio: nomi, email e telefoni passano; salute e codici fiscali bloccano, c
   if (!mixed.ok) assert.deepEqual([...new Set(mixed.issues.map((i) => i.code))], ["testo_sanitario"], "solo il dato sanitario, mai il nome");
 });
 
-test("messaggio del revisore: vuoto è null, al massimo 1.000 caratteri, niente contatti", () => {
+/** (Rilascio 5.1) Quello che il team non può scrivere al referente né sulla scheda, come il referente: il codice del primo. */
+const TEAM_REFUSED: ReadonlyArray<[string, string]> = [
+  ["Il collega è in malattia per una visita medica.", "testo_sanitario"],
+  ["Ha una diagnosi di diabete", "testo_sanitario"],
+  ["Il codice è RSSMRA80A01H501U.", "testo_codice_fiscale"],
+  ["È nato il 01/01/1980.", "testo_data_nascita"],
+];
+/** (Rilascio 5.1, decisione del titolare del 04/11/2026) Nomi, email e telefoni di altre persone passano. */
+const TEAM_ACCEPTED = [
+  "Per dubbi scrivi a mario.rossi@cliente.test",
+  "Oppure chiama il +39 333 1234567",
+  "Le controlla Mario Rossi, chiedi a lui o a Bruna Esempio.",
+  "Il responsabile è Aldo Prova (aldo.prova@cliente.test, 333 1234567).",
+];
+
+test("messaggio del revisore: vuoto è null, al massimo 1.000 caratteri; nomi, email e telefoni passano, il resto come per il referente", () => {
   assert.deepEqual(checkRequestMessage(null), { ok: true, value: null });
   assert.deepEqual(checkRequestMessage("   "), { ok: true, value: null });
   assert.deepEqual(checkRequestMessage(" Ciao, \r\ngrazie "), { ok: true, value: "Ciao, \ngrazie" });
   assert.deepEqual(checkRequestMessage("a".repeat(1001)), { ok: false, code: "messaggio_troppo_lungo", message: REFERENT_ERROR_MESSAGES.messaggio_troppo_lungo });
-  const email = checkRequestMessage("Per dubbi scrivi a mario.rossi@topjet.it");
-  assert.equal(email.ok, false);
-  if (!email.ok) assert.equal(email.code, "testo_contatto");
-  const phone = checkRequestMessage("Oppure chiama il +39 333 1234567");
-  assert.equal(phone.ok, false);
-  if (!phone.ok) assert.equal(phone.code, "testo_contatto");
+  for (const text of TEAM_ACCEPTED) assert.deepEqual(checkRequestMessage(text), { ok: true, value: text }, text);
+  for (const [text, code] of TEAM_REFUSED) {
+    const out = checkRequestMessage(text);
+    assert.equal(out.ok ? null : out.code, code, text);
+    // Lo stesso testo il referente non lo può inviare.
+    assert.equal(checkSubmitText(text, NEED).ok, false, text);
+  }
+  const mixed = checkRequestMessage("Mario Rossi ha una diagnosi di diabete, il codice è RSSMRA80A01H501U");
+  assert.equal(mixed.ok ? null : mixed.code, "testo_sanitario", "prima il dato sanitario, mai il nome");
   assert.equal(checkRequestMessage(42 as unknown as string).ok, false);
 });
 
@@ -58,11 +76,15 @@ test("titolo di una domanda: niente contatti né nomi", () => {
   assert.deepEqual(checkQuestionTitle("Quante fatture arrivano ogni mese?"), { ok: true });
 });
 
-test("risposta del team: da 1 a 4.000 caratteri, senza dati personali", () => {
+test("risposta del team: da 1 a 4.000 caratteri; nomi, email e telefoni passano, il resto come per il referente", () => {
   assert.deepEqual(checkReviewerAnswer("  "), { ok: false, code: "risposta_vuota", message: REFERENT_ERROR_MESSAGES.risposta_vuota });
   assert.deepEqual(checkReviewerAnswer("a".repeat(4001)), { ok: false, code: "testo_troppo_lungo", message: REFERENT_ERROR_MESSAGES.testo_troppo_lungo });
   assert.deepEqual(checkReviewerAnswer(" 20 al giorno \r\n "), { ok: true, value: "20 al giorno" });
-  assert.equal(checkReviewerAnswer("Le controlla Mario Rossi").ok, false);
+  for (const text of TEAM_ACCEPTED) assert.deepEqual(checkReviewerAnswer(text), { ok: true, value: text }, text);
+  for (const [text, code] of TEAM_REFUSED) {
+    const out = checkReviewerAnswer(text);
+    assert.equal(out.ok ? null : out.code, code, text);
+  }
 });
 
 test("informativa: l'indirizzo per i dati è quello esplicito, poi il reply-to, poi il mittente (che può non ricevere posta)", () => {
