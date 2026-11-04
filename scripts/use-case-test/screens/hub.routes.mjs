@@ -91,7 +91,9 @@ const routes = [
   // Release 5: the first filter row has «Referente» (every role, words only for contributors) and, for
   // reviewers, «Area»; «Tipo» and the origin live in «Altri filtri». `?referente=manca` filters by the
   // referent's state of each use case, never by a person.
-  { name: "panoramica-referente", path: `${OVERVIEW}&referente=manca`, as: REVIEWERS, present: ["Manca il referente", "Togli i filtri"] },
+  // On phones (400 px) «Togli i filtri» is the icon-only ✕ with that aria-label (filter-bar.tsx), not text on
+  // the page, so only the state word is required; probe-critical clicks the ✕ at 400 by its label.
+  { name: "panoramica-referente", path: `${OVERVIEW}&referente=manca`, as: REVIEWERS, present: ["Manca il referente"] },
   { name: "panoramica-referente", path: `${OVERVIEW}&referente=manca`, as: CONTRIBUTOR, absent: NOT_ON_CONTRIBUTOR_OVERVIEW },
   // «Per trimestre | Per agente»: one card per agent of the titles, «Altri use case» last; reviewers
   // only, when an approved title has an agent prefix (without one the address opens the lanes).
