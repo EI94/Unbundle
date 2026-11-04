@@ -224,6 +224,10 @@ test("per beneficio: ogni voce con la cifra che il referente ha visto e la sua r
   assert.deepEqual(lineOf(NUMERI({ timesPerMonth: 20, minutesEach: 5 })), ["Archiviazione: nessuna stima del team.", "Aldo Prova: circa 20 ore di lavoro l'anno (20 al mese, 5 minuti)."]);
   assert.deepEqual(lineOf(BENEFIT({ answer: "piu", changed: "cambiata" })).slice(-1), ["La stima del team è cambiata dopo la risposta."]);
   assert.deepEqual(lineOf(FATTO({ changed: "tolta" })).slice(-1), ["Questa voce non c'è più nella valutazione."]);
+  // Una riga senza risposta salvata: mai «sì» o «succede» al posto del referente.
+  for (const b of [BENEFIT({ answer: null }), EURO({ answer: null }), FATTO({ answer: null }), NUMERI({ timesPerMonth: 20, minutesEach: null })]) {
+    assert.equal(lineOf(b)[1], "Aldo Prova: nessuna risposta.", b.key);
+  }
   // Dopo la decisione del team.
   const at = "2026-11-04T09:00:00.000Z";
   assert.deepEqual(lineOf(BENEFIT({ answer: "piu", timesPerMonth: 300, outcome: "adottata", outcomeAt: at, adoptable: true }), true).slice(-1), ["Stima del referente usata il 4 nov."]);

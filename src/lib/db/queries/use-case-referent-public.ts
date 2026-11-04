@@ -62,6 +62,7 @@ import { REFERENT_BENEFIT_LIMITS } from "@/lib/db/use-case-hub-referent-benefits
 import {
   benefitAnswerOf,
   benefitNeedsReview,
+  BENEFITS_FLAG_SQL,
   benefitTeamFromBody,
   impactRowsOf,
   sameBenefitTeam,
@@ -223,7 +224,7 @@ function requestStatements(link: ReferentLink): UcStatement[] {
     toStatement(ucSql`SELECT r.status, r.expires_at, r.privacy_accepted_at, r.privacy_notice_version, r.requester_name, r.requested_by_user_id, r.message,
   u.code, u.title, w.name AS company, u.description, u.value_model,
   c.request_id IS NOT NULL AS has_check, c.confirm, c.confirm_note, c.team_component_key, c.team_volume_year, c.team_minutes,
-  c.estimate, c.times_per_month, c.minutes_each, c.updated_at AS check_updated_at, c.submitted_at AS check_submitted_at, c.benefits AS check_benefits
+  c.estimate, c.times_per_month, c.minutes_each, c.updated_at AS check_updated_at, c.submitted_at AS check_submitted_at, ${raw(BENEFITS_FLAG_SQL("c"))} AS check_benefits
 FROM use_case_referent_requests r JOIN use_cases u ON u.id = r.use_case_id AND u.workspace_id = r.workspace_id JOIN workspaces w ON w.id = r.workspace_id
 LEFT JOIN use_case_referent_checks c ON c.request_id = r.id AND c.workspace_id = r.workspace_id
 WHERE r.id = ${req} AND r.workspace_id = ${ws}`),

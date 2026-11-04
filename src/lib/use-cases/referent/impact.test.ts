@@ -187,6 +187,10 @@ test("in sola lettura dopo l'invio: la risposta di ogni riga, con i numeri dati"
   assert.equal(benefitSentLine(rows[2], draft({ answer: "meno", eurYear: 3500 })), "Meno solleciti: è di meno. Circa 3.500 € l'anno.");
   assert.equal(benefitSentLine(rows[3], draft({ answer: "no" })), "Meno errori nelle registrazioni: no.");
   assert.equal(benefitSentLine(rows[3], draft({ answer: "non_so" })), "Meno errori nelle registrazioni: non so.");
+  // Una riga senza risposta: «nessuna risposta», mai «sì».
+  assert.equal(benefitSentLine(rows[0], draft({ answer: null })), "Controllo delle fatture: nessuna risposta.");
+  assert.equal(benefitSentLine(rows[2], draft({ answer: null })), "Meno solleciti: nessuna risposta.");
+  assert.equal(benefitSentLine(rows[3], draft({ answer: null })), "Meno errori nelle registrazioni: nessuna risposta.");
 });
 
 test("i testi del passo: italiano semplice, nessuna parola tecnica, «use case» e «caso d'uso» fuori", () => {

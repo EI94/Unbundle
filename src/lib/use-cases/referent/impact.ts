@@ -178,6 +178,16 @@ export function benefitNeedsReview(b: Pick<StoredBenefit, "team" | "answer" | "t
   return b.answer === "meno" || b.answer === "piu" || b.answer === "no";
 }
 
+/**
+ * La conferma ha davvero le risposte per beneficio, in SQL su una riga `alias` di
+ * `use_case_referent_checks`: `benefits` e nessuna colonna della stima del tempo del rilascio 5. Il 5.1
+ * svuota sempre quelle colonne quando scrive una voce; dopo un ritorno indietro il codice di prima le
+ * scrive (la sua stima, poi «Invia») senza toccare `benefits`: allora l'ultima risposta è la sua, e la
+ * conferma si legge come nel rilascio 5 (RUNBOOK §10.10). Ogni lettore di `benefits` passa da qui.
+ */
+export const BENEFITS_FLAG_SQL = (alias: string) =>
+  `(${alias}.benefits AND ${alias}.team_component_key IS NULL AND ${alias}.estimate IS NULL AND ${alias}.times_per_month IS NULL AND ${alias}.minutes_each IS NULL)`;
+
 /** La stessa regola in SQL, su una riga `alias` di `use_case_referent_check_benefits`. */
 export const BENEFIT_REVIEW_SQL = (alias: string) =>
   `(${alias}.outcome IS NULL AND (${alias}.answer IN ('meno', 'piu', 'no') OR (${alias}.answer IS NULL AND ${alias}.times_per_month IS NOT NULL AND ${alias}.minutes_each IS NOT NULL)))`;

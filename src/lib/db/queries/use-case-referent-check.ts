@@ -2,9 +2,9 @@ import "server-only";
 import { getAppUcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { guardedReferent, isUuid, isVersion, readCard, referentBatch, referentWriter, rfail, type Env, type ReferentFailure } from "@/lib/db/queries/use-case-referent-base";
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
-import { cast, requireRows, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
+import { cast, raw, requireRows, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 import { adoptionPatch, hoursComponentByKey, sameTeamEstimate } from "@/lib/use-cases/referent/estimate";
-import { adoptedTeamOf, benefitAdoptionPatch, benefitNeedsReview, impactRowByKey, sameBenefitTeam, storedBenefitOf, type StoredBenefit } from "@/lib/use-cases/referent/impact";
+import { BENEFITS_FLAG_SQL, adoptedTeamOf, benefitAdoptionPatch, benefitNeedsReview, impactRowByKey, sameBenefitTeam, storedBenefitOf, type StoredBenefit } from "@/lib/use-cases/referent/impact";
 import { referentEventSql, type ReferentActor } from "@/lib/use-cases/referent/sql";
 import { personaWriter, saveValueModel, type ServiceResult, type WriteContext } from "@/lib/use-cases/service";
 
@@ -55,7 +55,7 @@ async function readCheck(workspaceId: string, useCaseId: string, requestId: stri
   const executor = await getAppUcExecutor();
   const [[row]] = await executor.batch([
     toStatement(ucSql`SELECT r.id, r.version, c.submitted_at, c.confirm, c.correction_done_at, c.estimate, c.times_per_month, c.minutes_each,
-  c.team_component_key, c.team_volume_year, c.team_minutes, c.estimate_outcome, c.benefits
+  c.team_component_key, c.team_volume_year, c.team_minutes, c.estimate_outcome, ${raw(BENEFITS_FLAG_SQL("c"))} AS benefits
 FROM use_case_referent_requests r JOIN use_case_referent_checks c ON c.request_id = r.id
 WHERE r.id = ${cast(requestId, "uuid")} AND r.workspace_id = ${cast(workspaceId, "uuid")} AND r.use_case_id = ${cast(useCaseId, "uuid")} AND r.status <> 'revocata'`),
   ]);

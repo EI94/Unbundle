@@ -484,6 +484,40 @@ test("per beneficio: una voce tolta dal team dopo la risposta si chiude con «Fa
   assert.equal(list2?.states[card2], "fatto");
 });
 
+test("ritorno indietro e avanti: la stima del rilascio 5 scritta sopra una bozza per beneficio si legge come rilascio 5, mai come le righe di prima", opts, async () => {
+  const states = await import("../../db/queries/use-case-referent-states.ts");
+  const viewer = { userId: ids.builder, email: `builder.${suffix}@cliente.test`, emailVerified: true, role: "function_lead", isLateralSpace: false } as never;
+  // Il rilascio 5.1: la conferma e una sola riga, «Sì» sulla voce a ore (benefits diventa vero).
+  const card = await newCard(MODEL_ALL);
+  const requestId = await answered(card, { confirm: "si", note: null }, [{ key: "tempo-1", seen: SEEN_ALL["tempo-1"], answer: "si" }], { send: false });
+  assert.equal((await q(`SELECT benefits FROM use_case_referent_checks WHERE request_id = $1::uuid`, [requestId]))[0].benefits, true);
+  // Il ritorno al rilascio 5: il suo passo 2 «È di meno» (200 al mese, 10 minuti) sull'istantanea della voce «ore», senza toccare `benefits`.
+  await q(`UPDATE use_case_referent_checks SET team_component_key = 'tempo-1', team_volume_year = 3000, team_minutes = 12, estimate = 'meno', times_per_month = 200, minutes_each = 10, updated_at = now() WHERE request_id = $1::uuid`, [requestId]);
+  // Di nuovo il 5.1, prima di «Invia»: le righe di prima non valgono (l'ultima risposta è la stima del rilascio 5); si risponde di nuovo.
+  const draftView = await pub.loadReferentAskView(links.get(requestId)!, { env: ENV, now: new Date() });
+  assert.deepEqual(draftView.check?.benefits?.map((b) => [b.key, b.draft?.answer ?? null]), [["tempo-1", null], ["costi-1", null], ["qualita-1", null], ["tempo-2", null]]);
+  const refused5 = await pub.submitReferentAnswers(links.get(requestId)!, {}, new Date());
+  assert.equal(refused5.ok ? "ok" : refused5.code, "stima_mancante");
+  // Il rilascio 5 invia (le sue scritture: `submitted_at`, la richiesta completata).
+  await q(`UPDATE use_case_referent_checks SET submitted_at = now(), updated_at = now() WHERE request_id = $1::uuid`, [requestId]);
+  await q(`UPDATE use_case_referent_requests SET status = 'completata', completed_at = now(), version = version + 1 WHERE id = $1::uuid`, [requestId]);
+  assert.equal((await q(`SELECT benefits FROM use_case_referent_checks WHERE request_id = $1::uuid`, [requestId]))[0].benefits, true, "la colonna resta vera");
+  // La scheda: la stima del rilascio 5 («È di meno», 400 ore), da verificare; nessuna riga per beneficio.
+  const panel = await panelOf(card);
+  assert.equal(panel.referent?.check?.benefits ?? null, null);
+  assert.deepEqual([panel.referent?.check?.estimate, panel.referent?.check?.referentHours], ["meno", 400]);
+  assert.deepEqual([panel.referent?.state, panel.referent?.review], ["da_verificare", "stima"]);
+  const list = await states.listReferentStates(ids.ws, viewer, [{ id: card, phase: "approvato" }], { env: ENV });
+  assert.deepEqual([list?.states[card], list?.review?.[card]], ["da_verificare", "stima"]);
+  // La pagina del referente, dopo l'invio: la sua stima del tempo, non «Controllo delle fatture: sì».
+  const sentView = await pub.loadReferentAskView(links.get(requestId)!, { env: ENV, now: new Date() });
+  assert.equal(sentView.check?.benefits ?? null, null);
+  // «Usa la stima di {Nome}» del rilascio 5 vale di nuovo; le azioni per beneficio no.
+  refused(await check.keepReferentBenefit(ctx(), card, requestId, "tempo-1", await requestVersion(requestId), ENV), "non_trovato");
+  ok(await check.adoptReferentEstimate(ctx(), card, requestId, { requestVersion: await requestVersion(requestId), useCaseVersion: await versionOf(card) }, ENV), "adotta");
+  assert.equal((await panelOf(card)).referent?.state, "fatto");
+});
+
 test("per beneficio: «Tieni la nostra» su una voce, «Sì» non ha niente da tenere; la bozza resta del referente fino a «Invia»", opts, async () => {
   const card = await newCard(MODEL_ALL);
   const COMMENT = "Bozza RK-COMMENTO-4471";

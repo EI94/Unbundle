@@ -106,7 +106,7 @@ import {
 import { reviewerStatus } from "@/lib/use-cases/referent/state";
 import { referentBlockOf, referentContactOf, type BlockRequestFact, type ReferentCheckRow } from "@/lib/use-cases/referent/block";
 import { teamEstimateOf } from "@/lib/use-cases/referent/estimate";
-import { impactRowsOf, storedBenefitOf } from "@/lib/use-cases/referent/impact";
+import { BENEFITS_FLAG_SQL, impactRowsOf, storedBenefitOf } from "@/lib/use-cases/referent/impact";
 import { eligibleForReferent, latestRequest } from "@/lib/use-cases/referent/use-case-state";
 import { dossierStateForUseCase } from "@/lib/db/queries/use-case-dossiers";
 import { phaseOfUseCase } from "@/lib/use-cases/phase";
@@ -433,7 +433,7 @@ function requestsSql(workspaceId: string, useCaseId: string): UcStatement {
   ${raw(sentOnly("k.times_per_month"))} AS k_times, ${raw(sentOnly("k.minutes_each"))} AS k_minutes, ${raw(sentOnly("k.team_component_key"))} AS k_team_key,
   ${raw(sentOnly("k.team_volume_year"))} AS k_team_volume, ${raw(sentOnly("k.team_minutes"))} AS k_team_minutes,
   k.correction_done_at AS k_correction_done_at, k.estimate_outcome AS k_outcome, k.estimate_outcome_at AS k_outcome_at,
-  ${raw(sentOnly("k.benefits"))} AS k_benefits
+  ${raw(sentOnly(BENEFITS_FLAG_SQL("k")))} AS k_benefits
 FROM use_case_referent_requests r
 LEFT JOIN uc_contacts c ON c.id = r.contact_id AND c.workspace_id = r.workspace_id
 LEFT JOIN use_case_referent_checks k ON k.request_id = r.id

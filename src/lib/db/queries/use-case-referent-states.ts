@@ -9,7 +9,7 @@ import { cast, raw, toStatement, ucSql } from "@/lib/uc/sql/statement";
 import { abilitiesForUseCase, type UseCaseViewer } from "@/lib/use-cases/permissions";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import { openItemsCountSql } from "@/lib/use-cases/referent/sql";
-import { BENEFIT_REVIEW_SQL } from "@/lib/use-cases/referent/impact";
+import { BENEFITS_FLAG_SQL, BENEFIT_REVIEW_SQL } from "@/lib/use-cases/referent/impact";
 import { eligibleForReferent, referentStateOf, type ReferentRequestFact, type ReferentReview, type ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import type { Phase } from "@/lib/use-cases/types";
 
@@ -60,8 +60,8 @@ export async function listReferentStates(
       toStatement(ucSql`SELECT r.id, r.use_case_id, r.contact_id, r.status, r.expires_at, r.created_at, r.reminder_count,
   ${openItemsCountSql("r")} AS open_task,
   (c.request_id IS NOT NULL) AS has_check, c.submitted_at, c.confirm, c.correction_done_at, c.estimate, c.estimate_outcome, c.team_component_key,
-  coalesce(c.benefits, false) AS benefits,
-  EXISTS (SELECT 1 FROM use_case_referent_check_benefits b WHERE b.request_id = c.request_id AND c.submitted_at IS NOT NULL AND ${raw(BENEFIT_REVIEW_SQL("b"))}) AS benefit_review
+  coalesce(${raw(BENEFITS_FLAG_SQL("c"))}, false) AS benefits,
+  EXISTS (SELECT 1 FROM use_case_referent_check_benefits b WHERE b.request_id = c.request_id AND c.submitted_at IS NOT NULL AND ${raw(BENEFITS_FLAG_SQL("c"))} AND ${raw(BENEFIT_REVIEW_SQL("b"))}) AS benefit_review
 FROM use_case_referent_requests r LEFT JOIN use_case_referent_checks c ON c.request_id = r.id
 WHERE r.workspace_id = ${ws} AND (r.status <> 'revocata' OR c.request_id IS NOT NULL)`),
       toStatement(ucSql`SELECT DISTINCT l.use_case_id

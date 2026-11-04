@@ -97,7 +97,7 @@ function benefitTexts(b: ReferentBlockBenefit, name: string): { head: string; sa
   const t = b.team;
   if (b.form === "ore") {
     const head = fillText(T.benefitTeamOre, { label, ore: hoursText(((t.volumeYear ?? 0) * (t.minutes ?? 0)) / 60) });
-    let says = fillText(b.answer === "meno" ? T.saysLess : b.answer === "piu" ? T.saysMore : T.saysYes, { Nome: name });
+    let says = fillText(b.answer === "meno" ? T.saysLess : b.answer === "piu" ? T.saysMore : b.answer === "si" ? T.saysYes : T.saysNothing, { Nome: name });
     if ((b.answer === "meno" || b.answer === "piu") && (b.timesPerMonth !== null || b.minutesEach !== null)) {
       const snapshot = { volumeYear: t.volumeYear ?? 0, minutes: t.minutes ?? 0 };
       const hours = referentHours(snapshot, { timesPerMonth: b.timesPerMonth, minutesEach: b.minutesEach }) ?? 0;
@@ -111,17 +111,17 @@ function benefitTexts(b: ReferentBlockBenefit, name: string): { head: string; sa
     const says =
       hours !== null && b.timesPerMonth !== null && b.minutesEach !== null
         ? fillText(T.numbersNoTeam, { Nome: name, ore: hoursText(hours), n: formatDecimalIt(b.timesPerMonth), m: minutesText(b.minutesEach) })
-        : fillText(T.saysYes, { Nome: name });
+        : fillText(T.saysNothing, { Nome: name });
     return { head, says };
   }
   if (b.form === "euro") {
     const head = fillText(T.benefitTeamEuro, { label, euro: euroText(t.eurYear ?? 0) });
-    let says = fillText(b.answer === "meno" ? T.saysLess : b.answer === "piu" ? T.saysMore : T.saysYes, { Nome: name });
+    let says = fillText(b.answer === "meno" ? T.saysLess : b.answer === "piu" ? T.saysMore : b.answer === "si" ? T.saysYes : T.saysNothing, { Nome: name });
     if ((b.answer === "meno" || b.answer === "piu") && b.eurYear !== null) says += fillText(T.euroTail, { euro: euroText(b.eurYear) });
     return { head, says };
   }
   const head = fillText(T.benefitTeamFatto, { label });
-  const says = fillText(b.answer === "no" ? T.saysNotHappens : b.answer === "non_so" ? T.saysDunno : T.saysHappens, { Nome: name });
+  const says = fillText(b.answer === "no" ? T.saysNotHappens : b.answer === "non_so" ? T.saysDunno : b.answer === "si" ? T.saysHappens : T.saysNothing, { Nome: name });
   return { head, says };
 }
 

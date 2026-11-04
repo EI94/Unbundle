@@ -123,7 +123,7 @@ export function benefitSentLine(row: { label: string; team: BenefitTeam }, d: Be
     return fillText(T.sentNumbers, { label, n: d.timesPerMonth !== null ? numberIt(d.timesPerMonth) : "—", m: d.minutesEach !== null ? minutesText(d.minutesEach) : "—" });
   }
   const head =
-    d.answer === "meno" ? T.sentLess : d.answer === "piu" ? T.sentMore : d.answer === "no" ? T.sentNo : d.answer === "non_so" ? T.sentDunno : T.sentYes;
+    d.answer === "meno" ? T.sentLess : d.answer === "piu" ? T.sentMore : d.answer === "no" ? T.sentNo : d.answer === "non_so" ? T.sentDunno : d.answer === "si" ? T.sentYes : T.sentNothing;
   let line = fillText(head, { label });
   if (form === "ore" && (d.timesPerMonth !== null || d.minutesEach !== null)) {
     const perMonth = d.timesPerMonth ?? (row.team.volumeYear ?? 0) / 12;
