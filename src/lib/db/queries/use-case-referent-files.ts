@@ -13,13 +13,11 @@ import {
   type ReferentFailure,
   type ReferentLink,
 } from "@/lib/db/queries/use-case-referent-base";
-import { inspectFile } from "@/lib/uc/files/inspect";
 import { UC_ALLOWED_UPLOAD_MIME_TYPES } from "@/lib/uc/files/sniff";
-import { servedMime, textForScan, UPLOAD_MESSAGES } from "@/lib/uc/files/upload";
+import { servedMime, UPLOAD_MESSAGES } from "@/lib/uc/files/upload";
 import { rowBool, rowDate, rowJson, rowNumber, rowString } from "@/lib/uc/sql/readiness";
 import { cast, jsonb, raw, requireRows, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
 import { clientUploadAvailable, clientUploadToken, ucStore, type UcObjectStore } from "@/lib/uc/storage";
-import { scanText } from "@/lib/uc/text/scan";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import { abilitiesForUseCase, type UseCaseViewer } from "@/lib/use-cases/permissions";
 import { alertSchedule } from "@/lib/use-cases/referent/alerts";
@@ -27,10 +25,10 @@ import { REFERENT_LIMITS, type ReferentClientTicket, type ReferentUploadResult }
 import {
   PENDING_QUARANTINE_MS,
   REVIEW_TTL_MS,
+  checkReferentFile,
   isReferentBlobPath,
   isReferentQuarantinePath,
   referentBlobPath,
-  referentFileDecision,
   referentUploadCheck,
 } from "@/lib/use-cases/referent/files";
 import { REFERENT_ERROR_MESSAGES } from "@/lib/use-cases/referent/labels";
@@ -317,9 +315,8 @@ WHERE id = ${id} AND scan_status = 'in_quarantena' AND deleted_at IS NULL`),
   }
   if (bytes.byteLength > f.maxBytes) return reject("file_troppo_grande", UPLOAD_MESSAGES.file_troppo_grande);
 
-  const report = inspectFile(bytes, f.fileName, { zone: "standard", a8Resolved: false, maxBytes: f.maxBytes });
-  const scan = report.extractedText ? scanText(textForScan(report.extractedText), { context: "commento" }) : null;
-  const outcome = referentFileDecision(report, scan);
+  // (Rilascio 5.1) Nomi, email e telefoni nelle colonne di un CSV o di un XLSX passano, come nel testo.
+  const { report, outcome } = checkReferentFile(bytes, f.fileName, f.maxBytes);
   if (outcome.status === "rifiutato") {
     return reject(outcome.reason ?? "rifiutato", outcome.message ?? "Il file non è stato accettato.", {
       mime: report.mime,

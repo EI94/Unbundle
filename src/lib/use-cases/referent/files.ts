@@ -5,13 +5,15 @@
  * - Percorsi: `uc/q/<ws>/<useCaseId>/<fileId>` in quarantena (al massimo 1 ora), poi
  *   `uc/s/<ws>/<useCaseId>/<fileId>`. Un percorso di un altro workspace o di un'altra scheda non
  *   passa mai (`isReferentBlobPath`).
- * - Esito (`referentFileDecision`, da `decideUpload` dei dossier): un PDF con poco testo (forse una
+ * - Esito (`checkReferentFile`: `inspectFile` con `contactsAllowed`, la scansione del testo e
+ *   `referentFileDecision`, da `decideUpload` dei dossier): un PDF con poco testo (forse una
  *   scansione) **non si rifiuta**: diventa `in_revisione` e lo controlla una persona di Lateral Space
- *   entro 7 giorni. Dati sanitari, discriminatori, codici fiscali o date di nascita: rifiutato,
- *   l'oggetto si cancella, con un messaggio calmo. (Rilascio 5.1, decisione del titolare del
- *   04/11/2026) Nomi, email o telefoni nel file non chiedono più niente a nessuno: il file è pulito,
- *   `personalWarning` resta solo come fatto del controllo (la colonna `personal_warning`), mai a
- *   schermo e mai da confermare.
+ *   entro 7 giorni. Dati sanitari, discriminatori, codici fiscali o date di nascita (e, nelle tabelle,
+ *   IBAN, documenti d'identità, sesso): rifiutato, l'oggetto si cancella, con un messaggio calmo che
+ *   dice il motivo vero. (Rilascio 5.1, decisione del titolare del 04/11/2026) Nomi, email o telefoni
+ *   nel file, nel testo come nelle colonne di un CSV o di un XLSX, non chiedono più niente a nessuno:
+ *   il file è pulito, `personalWarning` resta solo come fatto del controllo (la colonna
+ *   `personal_warning`), mai a schermo e mai da confermare.
  * - Richiesta di caricamento (`referentUploadCheck`): `checkUploadRequest` dei dossier con la zona
  *   standard (estensione, dimensione). (Rilascio 5.1) Senza la dichiarazione dei dossier: l'informativa
  *   lo dice prima, la pagina non chiede più di spuntare niente. I dossier (`/r`) la chiedono come prima.
@@ -19,9 +21,9 @@
  * Modulo puro.
  */
 import { isUcBlobPath, ucBlobPath } from "../../uc/files/filename.ts";
-import type { InspectReport, ScanFindings } from "../../uc/files/inspect.ts";
-import { DELETION_REASONS, checkUploadRequest, decideUpload, type UploadRequest } from "../../uc/files/upload.ts";
-import type { ScanResult } from "../../uc/text/scan.ts";
+import { inspectFile, type InspectReport, type ScanFindings } from "../../uc/files/inspect.ts";
+import { DELETION_REASONS, checkUploadRequest, decideUpload, textForScan, type UploadRequest } from "../../uc/files/upload.ts";
+import { scanText, type ScanResult } from "../../uc/text/scan.ts";
 import type { Result } from "../../uc/types.ts";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT } from "./labels.ts";
 
@@ -62,7 +64,7 @@ export function referentFileDecision(report: InspectReport, scan: ScanResult | n
   const decision = decideUpload(report, scan, { zone: "standard", a8Resolved: false });
   if (decision.status === "rifiutato") {
     const reason = decision.reason ?? "rifiutato";
-    return { status: "rifiutato", reason, message: REFERENT_FILE_REJECTIONS[reason] ?? decision.message, findings: decision.findings, personalWarning: false };
+    return { status: "rifiutato", reason, message: rejectionText(reason, decision.findings) ?? decision.message, findings: decision.findings, personalWarning: false };
   }
   const avvisi = decision.findings.avvisi ?? [];
   const personalWarning = avvisi.some((code) => (PERSONAL_WARNING_CODES as readonly string[]).includes(code));
@@ -81,6 +83,29 @@ const REFERENT_FILE_REJECTIONS: Readonly<Record<string, string>> = Object.freeze
   [DELETION_REASONS.dati_personali]: REFERENT_PUBLIC_TEXT.fileRejected.identificativi,
   [DELETION_REASONS.testo_discriminatorio]: REFERENT_PUBLIC_TEXT.fileRejected.discriminatorio,
 });
+
+/**
+ * Il messaggio calmo di un rifiuto. Per i dati personali dice «codici fiscali o date di nascita» solo se il
+ * controllo li ha trovati davvero (nel testo, o tra i termini delle colonne); una colonna di IBAN, di
+ * documenti d'identità o del sesso ha il suo messaggio.
+ */
+function rejectionText(reason: string, findings: ScanFindings): string | null {
+  if (reason === DELETION_REASONS.dati_personali && Array.isArray(findings.termini) && findings.termini.length > 0) {
+    if (!findings.termini.some((t) => t === "codice fiscale" || t === "data di nascita")) return REFERENT_PUBLIC_TEXT.fileRejected.altriDati;
+  }
+  return REFERENT_FILE_REJECTIONS[reason] ?? null;
+}
+
+/**
+ * (Rilascio 5.1) Il controllo di un file del referente o del team, tutto: `inspectFile` nella zona
+ * standard con `contactsAllowed` (nomi, email e telefoni nelle tabelle passano), la scansione del testo
+ * estratto con le regole dei commenti, poi `referentFileDecision`.
+ */
+export function checkReferentFile(bytes: Uint8Array, fileName: string, maxBytes: number): { report: InspectReport; outcome: ReferentFileOutcome } {
+  const report = inspectFile(bytes, fileName, { zone: "standard", a8Resolved: false, maxBytes, contactsAllowed: true });
+  const scan = report.extractedText ? scanText(textForScan(report.extractedText), { context: "commento" }) : null;
+  return { report, outcome: referentFileDecision(report, scan) };
+}
 
 /**
  * La richiesta di caricamento: nome con estensione ammessa, dimensione entro il limite. (Rilascio

@@ -86,7 +86,18 @@ export interface InspectOptions {
   forbiddenColumns?: readonly string[] | null;
   /** Dimensione massima; predefinita 4 MB nella zona personale (modalità server), 20 MB altrove. */
   maxBytes?: number;
+  /**
+   * (Rilascio 5.1, «Chiedi al referente», decisione del titolare del 04/11/2026) Nomi, email, telefoni e
+   * indirizzi nelle tabelle non fanno rifiutare il file: restano un fatto del controllo (gli avvisi
+   * `testo_nomi_persona` e `testo_contatti`), come lo stesso testo in un documento. Codici fiscali, date di
+   * nascita, IBAN, documenti d'identità e sesso fanno rifiutare come prima. I dossier non lo passano mai.
+   */
+  contactsAllowed?: boolean;
 }
+
+/** I termini personali delle tabelle che `contactsAllowed` lascia passare. */
+export const CONTACT_TERMS: ReadonlySet<string> = new Set(["nome", "cognome", "nominativo", "email", "telefono", "indirizzo"]);
+const NAME_TERMS: ReadonlySet<string> = new Set(["nome", "cognome", "nominativo"]);
 
 export interface InspectReport {
   status: InspectStatus;
@@ -215,7 +226,11 @@ export function inspectFile(bytes: Uint8Array, fileName: string, options: Inspec
       return reject(reason, reason, INSPECT_MESSAGES[reason], { ...scanned, findings: { categoria: category, colonne: columnCount(found), termini: terms(found) } });
     }
   }
-  const personal = byCategory("personale");
+  const personalAll = byCategory("personale");
+  const contacts = options.contactsAllowed ? personalAll.filter((f) => CONTACT_TERMS.has(f.term)) : [];
+  const personal = contacts.length > 0 ? personalAll.filter((f) => !CONTACT_TERMS.has(f.term)) : personalAll;
+  if (contacts.some((f) => NAME_TERMS.has(f.term))) warnings.push("testo_nomi_persona");
+  if (contacts.some((f) => !NAME_TERMS.has(f.term))) warnings.push("testo_contatti");
   if (personal.length > 0) {
     const valori: Record<string, number> = {};
     for (const f of personal) if (f.source === "valori") valori[f.term] = (valori[f.term] ?? 0) + (f.count ?? 0);

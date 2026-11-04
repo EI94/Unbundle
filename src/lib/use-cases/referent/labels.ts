@@ -475,6 +475,7 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
   fileRejected: Object.freeze({
     sanitario: "Il file ha dati sanitari, che qui non teniamo: non l'abbiamo salvato. Se ti serve, toglili e caricalo di nuovo.",
     identificativi: "Il file ha codici fiscali o date di nascita, che qui non teniamo: non l'abbiamo salvato. Se ti serve, toglili e caricalo di nuovo.",
+    altriDati: "Il file ha IBAN, documenti d'identità o il sesso delle persone, che qui non teniamo: non l'abbiamo salvato. Se ti serve, toglili e caricalo di nuovo.",
     discriminatorio: "Il file ha preferenze su genere, età, origine o religione, che qui non teniamo: non l'abbiamo salvato. Se ti serve, toglile e caricalo di nuovo.",
   }),
   autosave: Object.freeze({ saved: "Salvato", saving: "Salvataggio…", error: "Non salvato: riprova" }),

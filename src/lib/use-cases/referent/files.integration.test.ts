@@ -233,6 +233,41 @@ test("referente: dati sanitari → rifiutato, nessun oggetto, il motivo resta", 
   assert.ok(row.rejection_reason);
 });
 
+// (Rilascio 5.1) Un elenco con nomi, email e telefoni in colonna (dati inventati): come lo stesso testo in un .txt.
+const CONTACTS_ROWS = [
+  ["Fornitore", "Nome", "Cognome", "Email", "Telefono"],
+  ["Alfa Prova Srl", "Aldo", "Prova", "ordini@alfa-prova.test", "+39 000 0000001"],
+  ["Beta Esempio Spa", "Bruna", "Esempio", "conti@beta-esempio.test", "+39 000 0000002"],
+];
+const CONTACTS_CSV = bytes(`${CONTACTS_ROWS.map((r) => r.join(";")).join("\n")}\n`);
+const TAX_CODES_CSV = bytes("Fornitore;Codice fiscale\nAlfa Prova Srl;RSSMRA80A01H501U\n");
+const IBAN_CSV = bytes("Fornitore;IBAN\nAlfa Prova Srl;IT60X0542811101000000123456\n");
+
+test("referente: (rilascio 5.1) un CSV o un XLSX con colonne di nomi, email e telefoni è pulito; codici fiscali e IBAN restano rifiutati, con il motivo vero", opts, async () => {
+  const { buildXlsx } = await import("../../uc/files/fixtures.ts");
+  for (const [fileName, content] of [
+    ["fornitori.csv", CONTACTS_CSV],
+    ["fornitori.xlsx", new Uint8Array(buildXlsx([{ name: "Fornitori", rows: CONTACTS_ROWS }]))],
+  ] as const) {
+    const up = await pub.uploadReferentFileServer(link, { needId: state.needs[2], fileName, declaration: false, bytes: content }, ENV);
+    assert.ok(up.ok && up.value.status === "pulito" && up.value.usable && up.value.message === null, `${fileName}: ${JSON.stringify(up)}`);
+    if (!up.ok) continue;
+    const row = await fileRow(up.value.fileId);
+    assert.deepEqual([row.scan_status, row.personal_warning], ["pulito", true], `${fileName}: il fatto del controllo resta nella colonna`);
+    // Tolto subito: l'invio del test che segue conta i suoi file.
+    assert.ok((await pub.removeReferentFile(link, { fileId: up.value.fileId }, ENV)).ok);
+  }
+  const cf = await pub.uploadReferentFileServer(link, { needId: state.needs[2], fileName: "codici.csv", declaration: false, bytes: TAX_CODES_CSV }, ENV);
+  assert.ok(cf.ok && cf.value.status === "rifiutato", JSON.stringify(cf));
+  if (cf.ok) {
+    assert.equal(cf.value.message, REFERENT_PUBLIC_TEXT.fileRejected.identificativi);
+    assert.deepEqual([(await fileRow(cf.value.fileId)).rejection_reason, (await fileRow(cf.value.fileId)).blob_path], ["dati_personali", null]);
+  }
+  const iban = await pub.uploadReferentFileServer(link, { needId: state.needs[2], fileName: "conti.csv", declaration: false, bytes: IBAN_CSV }, ENV);
+  assert.ok(iban.ok && iban.value.status === "rifiutato", JSON.stringify(iban));
+  if (iban.ok) assert.equal(iban.value.message, REFERENT_PUBLIC_TEXT.fileRejected.altriDati, "mai «codici fiscali» per un IBAN");
+});
+
 test("referente: un PDF con poco testo va in revisione, si può inviare, lo controlla un revisore del workspace (anche del cliente)", opts, async () => {
   const { buildPdf, pdfTextContent } = await import("../../uc/files/fixtures.ts");
   const pdf = buildPdf([{ content: pdfTextContent(["Pagina quasi vuota"]) }]);
@@ -381,6 +416,15 @@ test("download: un file pulito del team ai revisori; lo stesso «non trovato» p
   const removed = await files.cleanupDeletedFiles({ workspaceId: ids.ws }, ENV);
   assert.ok(removed >= 1);
   assert.equal((await fileRow(id)).blob_path, null);
+});
+
+test("team: (rilascio 5.1) «Allega un file» con colonne di nomi, email e telefoni passa; una colonna di codici fiscali no", opts, async () => {
+  const need = state.needs[4];
+  const up = await files.uploadReviewerFileServer(as("builder"), ids.useCase, { needId: need, fileName: "fornitori.csv", declaration: true, bytes: CONTACTS_CSV }, ENV);
+  assert.ok(up.ok && up.value.status === "pulito", JSON.stringify(up));
+  if (up.ok) assert.equal((await fileRow(up.value.fileId)).personal_warning, true);
+  const cf = await files.uploadReviewerFileServer(as("builder"), ids.useCase, { needId: need, fileName: "codici.csv", declaration: true, bytes: TAX_CODES_CSV }, ENV);
+  assert.ok(cf.ok && cf.value.status === "rifiutato" && cf.value.message === REFERENT_PUBLIC_TEXT.fileRejected.identificativi, JSON.stringify(cf));
 });
 
 // Gli aiuti di prova comuni alle suite di «Chiedi al referente»: questa non li usa tutti.
