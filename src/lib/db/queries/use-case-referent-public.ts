@@ -649,7 +649,8 @@ ON CONFLICT (request_id, component_key) DO UPDATE SET position = EXCLUDED.positi
  * - Il passo 1 scrive solo la conferma e la nota: non legge mai la stima, così un cambio del team non lo
  *   respinge. La nota passa dai controlli delle risposte (dati sanitari rifiutati, il resto avvisi).
  * - Il passo 2 legge il modello di adesso: una forma che non è più la sua (le righe per beneficio senza
- *   voci, i due numeri con un modello, una cifra cambiata) non scrive niente e risponde `stima_cambiata`;
+ *   voci, una cifra cambiata) non scrive niente e risponde `stima_cambiata`; i due numeri o la stima del
+ *   tempo con un modello (una pagina di prima del deploy) rispondono `link_non_valido`, che la ricarica;
  *   altrimenti un solo batch scrive la risposta, così un cambio dell'istantanea toglie sempre quella di prima.
  */
 export async function saveReferentCheck(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<CheckResult>> {
@@ -690,9 +691,12 @@ export async function saveReferentCheck(link: ReferentLink, body: unknown, now: 
     const times = referentNumber(field(body, "timesPerMonth"), REFERENT_NUMBER_MAX.timesPerMonth);
     const minutes = referentNumber(field(body, "minutesEach"), REFERENT_NUMBER_MAX.minutesEach);
     if (!times.ok || !minutes.ok) return pfail("numero_non_valido");
-    // (Rilascio 5.1) Con un modello del valore il passo è per beneficio: una pagina di prima (la stima
-    // del tempo sulla voce «ore», o i due numeri) rilegge le righe. Senza modello non c'è una stima del team.
-    if (impactRowsOf(facts.valueModel) !== null || seen.value !== null) return pfail("stima_cambiata");
+    // (Rilascio 5.1) Con un modello del valore il passo è per beneficio. Una pagina di prima (la stima del
+    // tempo sulla voce «ore», o i due numeri: il rilascio 5 aperto prima del deploy, senza Skew Protection)
+    // con `stima_cambiata` rileggerebbe solo la vista e mostrerebbe di nuovo i due numeri, all'infinito:
+    // `link_non_valido` è l'unico codice per cui quella pagina (e questa) si ricarica intera, e arriva alle
+    // righe per beneficio. Niente di scritto, il link resta valido. Senza modello non c'è una stima del team.
+    if (impactRowsOf(facts.valueModel) !== null || seen.value !== null) return pfail("link_non_valido");
     const choice = estimate === undefined ? null : estimate;
     if (choice !== null) return pfail("dati_non_validi", "Dati non validi.");
     statements = [

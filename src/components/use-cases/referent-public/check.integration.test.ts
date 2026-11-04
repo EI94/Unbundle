@@ -251,11 +251,16 @@ test("passo 2 per beneficio: la cifra vista è quella di adesso, le scelte e i n
   failed(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: { ...SEEN["tempo-1"], minutes: 11 }, answer: "si" } }, now), "stima_cambiata");
   failed(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: SEEN["costi-1"], answer: "si" } }, now), "stima_cambiata", "un altro tipo");
   failed(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "assente", seen: SEEN["tempo-1"], answer: "si" } }, now), "stima_cambiata", "una voce che non c'è");
-  // Una pagina di prima (la stima del tempo, o i due numeri) con un modello: si rilegge.
-  failed(await pub.saveReferentCheck(link, { step: 2, teamSeen: { key: "tempo-1", volumeYear: 3000, minutes: 12 }, estimate: "si" }, now), "stima_cambiata");
-  failed(await pub.saveReferentCheck(link, { step: 2, teamSeen: null, estimate: null, timesPerMonth: 20, minutesEach: 3 }, now), "stima_cambiata");
+  // Una pagina di prima (il rilascio 5 aperto prima del deploy: la stima del tempo, o i due numeri) con un
+  // modello: `link_non_valido`, l'unico codice per cui quella pagina si ricarica intera e arriva a questa.
+  // Con `stima_cambiata` rileggeva solo la vista e mostrava di nuovo i due numeri, all'infinito.
+  failed(await pub.saveReferentCheck(link, { step: 2, teamSeen: { key: "tempo-1", volumeYear: 3000, minutes: 12 }, estimate: "si" }, now), "link_non_valido");
+  failed(await pub.saveReferentCheck(link, { step: 2, teamSeen: null, estimate: null, timesPerMonth: 20, minutesEach: 3 }, now), "link_non_valido");
   assert.deepEqual(await benefitRows(requestId), [], "niente scritto");
   assert.equal(await flagOf(requestId), false);
+  assert.deepEqual([(await checkRow(requestId)).estimate ?? null, (await checkRow(requestId)).times_per_month ?? null], [null, null], "niente scritto");
+  // Il link resta valido: la pagina ricaricata risponde per beneficio.
+  assert.equal((await pub.resolveReferentToken(token, now)).access, "ok");
   failed(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: null, answer: "si" } }, now), "dati_non_validi");
   failed(await pub.saveReferentCheck(link, benefit("tempo-1", "no"), now), "dati_non_validi", "«No» non è di una voce a ore");
   failed(await pub.saveReferentCheck(link, benefit("qualita-1", "meno"), now), "dati_non_validi");
