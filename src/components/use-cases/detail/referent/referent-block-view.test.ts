@@ -244,7 +244,11 @@ test("per beneficio: i pulsanti del team sotto ogni voce che aspetta, mai pieni;
   assert.deepEqual(keys(FATTO({ answer: "no", needsReview: true })), ["seen:ghost:Fatto:qualita-1"]);
   assert.deepEqual(keys(NUMERI({ timesPerMonth: 20, minutesEach: 5, needsReview: true, adoptable: true })), ["adopt:outline:Usa la stima di Aldo Prova:tempo-2", "keep:ghost:Non serve:tempo-2"]);
   assert.deepEqual(keys(BENEFIT()), [], "«Sì»: niente da decidere");
-  assert.deepEqual(keys(FATTO({ answer: "no", needsReview: true, changed: "tolta" })), [], "una voce tolta");
+  // Una voce tolta dalla valutazione dopo la risposta: solo «Fatto», così lo use case non resta in «Risposte da verificare».
+  assert.deepEqual(keys(FATTO({ answer: "no", needsReview: true, changed: "tolta" })), ["seen:ghost:Fatto:qualita-1"], "una voce tolta: solo «Fatto»");
+  assert.deepEqual(keys(BENEFIT({ answer: "piu", timesPerMonth: 300, needsReview: true, adoptable: true, changed: "tolta" })), ["seen:ghost:Fatto:tempo-1"], "una voce a ore tolta: niente «Usa la stima»");
+  assert.deepEqual(keys(EURO({ answer: "meno", needsReview: true, changed: "tolta" })), ["seen:ghost:Fatto:costi-1"], "una voce in euro tolta: niente «Rivedi la stima»");
+  assert.deepEqual(keys(FATTO({ answer: "no", needsReview: false, changed: "tolta", outcome: "tenuta" })), [], "già vista: niente");
   // Nel blocco: le righe di ogni voce con i loro pulsanti; in fondo niente, salvo «Fatto» della correzione sotto la nota.
   const check = CHECK({ team: null, estimate: null, confirm: "correggi", note: "Anche via PEC.", benefits: [BENEFIT({ answer: "piu", timesPerMonth: 300, needsReview: true, adoptable: true }), FATTO({ answer: "no", needsReview: true }), EURO()] });
   const m = referentBlockModel({ ...base, referent: REF({ state: "da_verificare", review: "correzione", live: false, check }), request: { ...R, status: "completata" }, withReview: true, canEditValuation: true });

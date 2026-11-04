@@ -441,6 +441,49 @@ test("per beneficio: ogni voce con la sua risposta; «Usa la stima di {Nome}» c
   assert.deepEqual([list?.states[card], list?.review?.[card]], ["fatto", null]);
 });
 
+test("per beneficio: una voce tolta dal team dopo la risposta si chiude con «Fatto», e lo use case arriva a «Il referente ha risposto»", opts, async () => {
+  const view = await import("../../../components/use-cases/detail/referent/referent-block-view.ts");
+  const states = await import("../../db/queries/use-case-referent-states.ts");
+  const viewer = { userId: ids.builder, email: `builder.${suffix}@cliente.test`, emailVerified: true, role: "function_lead", isLateralSpace: false } as never;
+  const card = await newCard(MODEL_ALL);
+  const requestId = await answered(card, { confirm: "si", note: null }, DIFFERENT);
+  // Il referente ha detto «No» sulla voce qualitativa: il team la toglie da «Benefici e costi» invece di premere «Fatto».
+  const without = (key: string) => ({ ...MODEL_ALL, components: MODEL_ALL.components.filter((c) => c.key !== key) });
+  await q(`UPDATE use_cases SET value_model = $2::jsonb, version = version + 1 WHERE id = $1::uuid`, [card, JSON.stringify(without("qualita-1"))]);
+  for (const key of ["tempo-1", "costi-1", "tempo-2"]) {
+    ok(await check.adoptReferentBenefit(ctx(), card, requestId, key, { requestVersion: await requestVersion(requestId), useCaseVersion: await versionOf(card) }, ENV), key);
+  }
+  const waiting = await panelOf(card);
+  assert.equal(waiting.referent?.state, "da_verificare");
+  const gone = waiting.referent?.check?.benefits?.find((b) => b.key === "qualita-1");
+  assert.deepEqual([gone?.changed, gone?.needsReview], ["tolta", true]);
+  // Sotto la voce tolta c'è «Fatto», per chi può decidere (anche senza il permesso di cambiare la valutazione).
+  for (const can of [true, false]) assert.deepEqual(view.benefitButtonsOf(gone as never, "Aldo Prova", can).map((b) => `${b.key}:${b.benefit}`), ["seen:qualita-1"]);
+  ok(await check.keepReferentBenefit(ctx(), card, requestId, "qualita-1", await requestVersion(requestId), ENV), "«Fatto» sulla voce tolta");
+  const after = await panelOf(card);
+  assert.deepEqual([after.referent?.state, after.referent?.review], ["fatto", null]);
+  const list = await states.listReferentStates(ids.ws, viewer, [{ id: card, phase: "approvato" }], { env: ENV });
+  assert.deepEqual([list?.states[card], list?.review?.[card]], ["fatto", null]);
+
+  // Una voce con numeri tolta (euro «È di meno»): niente «Usa la stima», solo «Fatto»; il modello non cambia.
+  const card2 = await newCard(MODEL_ALL);
+  const request2 = await answered(card2, { confirm: "si", note: null }, DIFFERENT);
+  await q(`UPDATE use_cases SET value_model = $2::jsonb, version = version + 1 WHERE id = $1::uuid`, [card2, JSON.stringify(without("costi-1"))]);
+  for (const key of ["tempo-1", "tempo-2"]) {
+    ok(await check.adoptReferentBenefit(ctx(), card2, request2, key, { requestVersion: await requestVersion(request2), useCaseVersion: await versionOf(card2) }, ENV), key);
+  }
+  ok(await check.keepReferentBenefit(ctx(), card2, request2, "qualita-1", await requestVersion(request2), ENV), "«Fatto» sulla qualitativa");
+  const euro = (await panelOf(card2)).referent?.check?.benefits?.find((b) => b.key === "costi-1");
+  assert.deepEqual(view.benefitButtonsOf(euro as never, "Aldo Prova", true).map((b) => b.key), ["seen"]);
+  assert.equal((await panelOf(card2)).referent?.state, "da_verificare");
+  const v = await versionOf(card2);
+  ok(await check.keepReferentBenefit(ctx(), card2, request2, "costi-1", await requestVersion(request2), ENV), "«Fatto» sulla voce in euro tolta");
+  assert.equal(await versionOf(card2), v, "il modello non cambia");
+  assert.deepEqual([(await panelOf(card2)).referent?.state, (await benefitOutcomes(request2))["costi-1"]], ["fatto", "tenuta"]);
+  const list2 = await states.listReferentStates(ids.ws, viewer, [{ id: card2, phase: "approvato" }], { env: ENV });
+  assert.equal(list2?.states[card2], "fatto");
+});
+
 test("per beneficio: «Tieni la nostra» su una voce, «Sì» non ha niente da tenere; la bozza resta del referente fino a «Invia»", opts, async () => {
   const card = await newCard(MODEL_ALL);
   const COMMENT = "Bozza RK-COMMENTO-4471";

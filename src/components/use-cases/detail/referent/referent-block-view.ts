@@ -133,9 +133,14 @@ export function benefitOutcomeLine(b: ReferentBlockBenefit, today: string): stri
   return b.adoptable ? T.kept : fillText(T.seenOn, { data: day(b.outcomeAt, today) });
 }
 
-/** (Rilascio 5.1) I pulsanti del team su una voce che aspetta (§9.3 per beneficio). */
+/**
+ * (Rilascio 5.1) I pulsanti del team su una voce che aspetta (§9.3 per beneficio). Una voce che il team
+ * ha tolto da «Benefici e costi» dopo la risposta ha solo «Fatto»: non c'è più niente da usare o da
+ * rivedere, ma senza un pulsante lo use case resterebbe in «Risposte da verificare».
+ */
 export function benefitButtonsOf(b: ReferentBlockBenefit, name: string, canEditValuation: boolean): BlockButton[] {
-  if (!b.needsReview || b.changed === "tolta") return [];
+  if (!b.needsReview) return [];
+  if (b.changed === "tolta") return [{ key: "seen", label: T.done, variant: "ghost", benefit: b.key }];
   const out: BlockButton[] = [];
   if (b.adoptable) {
     if (canEditValuation && b.changed === null) out.push({ key: "adopt", label: fillText(T.adopt, { Nome: name }), variant: "outline", benefit: b.key });
