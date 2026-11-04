@@ -107,7 +107,7 @@ const richiesta = (cardLinkValue: string | null): ReferentEmailInput => ({
   template: "richiesta",
   company: "TopJet",
   useCase: { code: "TJ-0004", title: "Fatture fornitori" },
-  requesterName: "Claudio Magnani",
+  requesterName: "Carlo Esempio",
   questions: 2,
   message: null,
   expiresAt: EXPIRES,
@@ -132,7 +132,7 @@ test("email: un referente revisore ha il link personale e in più la riga con il
 test("email: promemoria a un referente revisore, uno e più use case", () => {
   const entry = (kind: "primo" | "ultimo" | "manuale" | "nuove", card: string | null) => ({
     useCase: { code: "TJ-0004", title: "Fatture fornitori" },
-    requesterName: "Claudio Magnani",
+    requesterName: "Carlo Esempio",
     kind,
     openQuestions: 2,
     newQuestions: kind === "nuove" ? 1 : 0,
@@ -141,9 +141,9 @@ test("email: promemoria a un referente revisore, uno e più use case", () => {
     cardLink: card,
   });
   for (const kind of ["primo", "ultimo", "manuale", "nuove"] as const) {
-    const one = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry(kind, CARD)], replyToKnown: true, replyName: "Claudio Magnani" });
+    const one = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry(kind, CARD)], replyToKnown: true, replyName: "Carlo Esempio" });
     assert.ok(one.text.includes(TEAM_ACCESS_LINE) && one.text.includes(CARD), kind);
-    const none = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry(kind, null)], replyToKnown: true, replyName: "Claudio Magnani" });
+    const none = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry(kind, null)], replyToKnown: true, replyName: "Carlo Esempio" });
     assert.ok(!none.text.includes("/dashboard/"), kind);
   }
   const many = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry("primo", CARD), entry("ultimo", CARD)], replyToKnown: false, replyName: null });
@@ -168,7 +168,7 @@ function req(over: Partial<ReferentRequestFacts> = {}): ReferentRequestFacts {
     reminderCount: 0,
     lastEmailAt: romeLocalToUtc("2026-11-02", 10),
     message: null,
-    requesterName: "Claudio Magnani",
+    requesterName: "Carlo Esempio",
     requesterUserId: OTHER,
     openItems: 2,
     newQuestions: 0,
@@ -234,7 +234,7 @@ function item(over: Partial<PublicItemRow>): PublicItemRow {
 }
 function rows(items: PublicItemRow[], status: PublicRows["request"]["status"] = "inviata"): PublicRows {
   return {
-    request: { status, expiresAt: EXPIRES, privacyAcceptedAt: NOW, privacyNoticeVersion: "x", requesterName: "Claudio Magnani", message: null },
+    request: { status, expiresAt: EXPIRES, privacyAcceptedAt: NOW, privacyNoticeVersion: "x", requesterName: "Carlo Esempio", message: null },
     company: "TopJet",
     useCase: { code: "TJ-0004", title: "Fatture fornitori" },
     items,

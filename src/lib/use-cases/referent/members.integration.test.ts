@@ -96,7 +96,7 @@ type Extra = keyof typeof EXTRA;
 type Person = "builder" | "federico" | "corsista" | "contrib" | "ls";
 const PEOPLE: Person[] = ["builder", "federico", "corsista", "contrib", "ls"];
 const ROLE: Record<Person, string> = { builder: "function_lead", federico: "function_lead", corsista: "learner", contrib: "contributor", ls: "transformation_lead" };
-const NAME: Record<Person, string> = { builder: "Giulia Neri", federico: "Federico Barsi", corsista: "Carla Corsi", contrib: "Bruno Bianchi", ls: "Pier Lateral" };
+const NAME: Record<Person, string> = { builder: "Giulia Neri", federico: "Fabio Esempio", corsista: "Carla Corsi", contrib: "Bruno Bianchi", ls: "Pier Lateral" };
 const emails: Record<Person, string> = {
   builder: `giulia.${suffix}@topjet.test`,
   federico: `federico.${suffix}@topjet.test`,

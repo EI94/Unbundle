@@ -74,7 +74,7 @@ const emails: Record<Person, string> = {
   federico: `federico.render.${suffix}@cliente.test`,
   contributor: `contrib.render.${suffix}@cliente.test`,
 };
-const NAMES: Record<Person, string> = { builder: `Giulia Neri ${suffix}`, federico: `Federico Barsi ${suffix}`, contributor: `Collega ${suffix}` };
+const NAMES: Record<Person, string> = { builder: `Giulia Neri ${suffix}`, federico: `Fabio Esempio ${suffix}`, contributor: `Collega ${suffix}` };
 const MARIO = { id: randomUUID(), name: `Mario Rossi ${suffix}`, email: `mario.rossi.${suffix}@cliente.test` };
 const contacts = { builder: randomUUID(), federico: randomUUID() };
 const ANSWER = `Ogni lunedì, circa due ore ${suffix}.`;

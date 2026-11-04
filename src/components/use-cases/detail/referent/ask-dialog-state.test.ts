@@ -34,7 +34,7 @@ function contact(over: Partial<ReferentContactOption> & { id: string; displayNam
 }
 
 const MARIO = contact({ id: "aaaaaaaa-0000-4000-8000-000000000001", displayName: "Mario Rossi", roleLabel: "Ufficio acquisti", emailMasked: "m•••@topjet.it" });
-const FEDERICO = contact({ id: "aaaaaaaa-0000-4000-8000-000000000002", displayName: "Federico Barsi", emailMasked: "f•••@topjet.it", team: true, hasOtherRequests: true });
+const FEDERICO = contact({ id: "aaaaaaaa-0000-4000-8000-000000000002", displayName: "Fabio Esempio", emailMasked: "f•••@topjet.it", team: true, hasOtherRequests: true });
 const ME = contact({ id: "aaaaaaaa-0000-4000-8000-000000000003", displayName: "Giulia Neri", emailMasked: "g•••@topjet.it", team: true, selectable: false, reason: "sei_tu" });
 const NOMAIL = contact({ id: "aaaaaaaa-0000-4000-8000-000000000004", displayName: "Anna Verdi", roleLabel: "Logistica", selectable: false, reason: "senza_email" });
 const OPEN = contact({ id: "aaaaaaaa-0000-4000-8000-000000000005", displayName: "Luca Bianchi", emailMasked: "l•••@topjet.it", selectable: false, reason: "richiesta_aperta" });
@@ -75,7 +75,7 @@ test("il suggerimento «sei tu» sotto l'elenco, solo quando chi guarda è tra i
 });
 
 test("domande aperte su altri use case: un sì, mai un numero", () => {
-  assert.equal(askOtherRequestsHint(panel, { choice: FEDERICO.id }), "Federico Barsi ha già domande aperte su altri use case: i promemoria arriveranno in un'unica email.");
+  assert.equal(askOtherRequestsHint(panel, { choice: FEDERICO.id }), "Fabio Esempio ha già domande aperte su altri use case: i promemoria arriveranno in un'unica email.");
   assert.equal(askOtherRequestsHint(panel, { choice: MARIO.id }), null);
   assert.equal(askOtherRequestsHint(panel, { choice: NEW_CONTACT }), null);
 });

@@ -196,7 +196,7 @@ const richiesta = (over: Partial<{ accountNotice: boolean; cardLink: string | nu
     template: "richiesta",
     company: "TopJet",
     useCase: { code: "TJ-0004", title: over.title ?? UCREF.title },
-    requesterName: "Federico Barsi",
+    requesterName: "Fabio Esempio",
     questions: over.questions ?? 2,
     message: null,
     expiresAt: EXPIRES,
@@ -211,7 +211,7 @@ test("richiesta di sole domande: dice chi chiede e su quale use case; il link, i
   assert.equal(m.subject, "TopJet: alcune domande su «TJ-0004 · Fatture fornitori»");
   const lines = m.text.split("\n").map((l) => l.trim()).filter(Boolean);
   assert.equal(lines[0], "Buongiorno,");
-  assert.equal(lines[1], "Federico Barsi ti chiede alcune informazioni sullo use case «TJ-0004 · Fatture fornitori».");
+  assert.equal(lines[1], "Fabio Esempio ti chiede alcune informazioni sullo use case «TJ-0004 · Fatture fornitori».");
   assert.ok(m.text.includes("Le domande sono 2."));
   assert.ok(richiesta({ questions: 1 }).text.includes("È una domanda sola."));
   assert.ok(m.text.includes(LINK) && m.text.includes("Il link scade il 26 novembre 2026.") && m.text.includes("Lateral Space via Unbundle."));
@@ -234,7 +234,7 @@ test("richiesta a chi ha già un account (corsista, contributore): la riga, mai 
 
 const entry = (kind: ReminderEntry["kind"], link = LINK): ReminderEntry => ({
   useCase: UCREF,
-  requesterName: "Federico Barsi",
+  requesterName: "Fabio Esempio",
   kind,
   openQuestions: 1,
   newQuestions: 1,
@@ -279,7 +279,7 @@ const req = (over: Partial<ReferentRequestFacts> = {}): ReferentRequestFacts => 
   reminderCount: 0,
   lastEmailAt: romeLocalToUtc("2026-11-02", 10),
   message: null,
-  requesterName: "Federico Barsi",
+  requesterName: "Fabio Esempio",
   requesterUserId: ME,
   openItems: 2,
   newQuestions: 0,
