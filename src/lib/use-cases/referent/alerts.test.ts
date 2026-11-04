@@ -278,6 +278,9 @@ test("motore: invia nella finestra, senza replyTo, con la chiave dell'avviso", a
   assert.equal(m.outbox[0].to, "giulia.neri@topjet.it");
   assert.equal(m.outbox[0].replyTo, undefined);
   assert.match(m.keys[0], /ra:a1/);
+  // (Rilascio 5.1) In cima il marchio, dall'origine pubblica dell'app; il testo semplice senza immagini.
+  assert.ok(m.outbox[0].html.includes(`<img src="${ORIGIN}/email/unbundle-u.png" width="32" height="32" alt="Unbundle"`), m.outbox[0].html);
+  assert.ok(!m.outbox[0].text.includes("unbundle-u.png"));
   // Fuori finestra niente si prende.
   const night = store([claimed()], facts());
   const off = await runRequesterAlertDispatch(night.store, { env: ENV, now: at("2026-11-05", 20), mailer: mailer() });

@@ -29,7 +29,7 @@ import {
   type DispatchEnv,
   type UcMailer,
 } from "../../uc/notify/dispatch.ts";
-import { oneLine, render, type Block, type RenderedEmail } from "../../uc/notify/email-render.ts";
+import { emailBrand, oneLine, render, type Block, type EmailBrand, type RenderedEmail } from "../../uc/notify/email-render.ts";
 import type { CaseAlertKind } from "../../db/use-case-hub-alerts-ddl.ts";
 import { quarterLabel } from "../quarter.ts";
 import { isStaleAlert } from "../referent/alerts.ts";
@@ -116,7 +116,7 @@ function planSuppliersAlert(e: ClaimedCaseAlert, f: CaseAlertFacts, o: { origin:
   const r = f.recipient;
   if (!r || !r.canDeclare || !isPlainAddress(r.email)) return { action: "cancel", reason: "destinatario_non_valido" };
   if (!f.suppliersRowUnread) return { action: "cancel", reason: "gia_vista" };
-  return { action: "send", to: r.email.trim().toLowerCase(), rendered: renderSuppliersAlert({ company: f.company, link: settingsLink(o.origin, e.workspaceId) }), useCaseIds: [] };
+  return { action: "send", to: r.email.trim().toLowerCase(), rendered: renderSuppliersAlert({ company: f.company, link: settingsLink(o.origin, e.workspaceId) }, emailBrand(o.origin)), useCaseIds: [] };
 }
 
 /** Il piano di una riga, in quest'ordine: configurazione, funzione, autorizzazione, età, destinatario, voci. */
@@ -142,7 +142,7 @@ export function planCaseAlert(e: ClaimedCaseAlert, f: CaseAlertFacts, o: { env: 
     company: f.company,
     entries: kept.map((i) => ({ useCase: { code: i.code, title: i.title }, quarter: i.quarter, link: cardLinkTo(o.origin, e.workspaceId, i.useCaseId, "realizzazione") })),
   };
-  return { action: "send", to: r.email.trim().toLowerCase(), rendered: renderReadyAlert(input), useCaseIds: kept.map((i) => i.useCaseId) };
+  return { action: "send", to: r.email.trim().toLowerCase(), rendered: renderReadyAlert(input, emailBrand(o.origin)), useCaseIds: kept.map((i) => i.useCaseId) };
 }
 
 // ── Testo ─────────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ const READY_FOOTER = "Ricevi questa email perché sei di Lateral Space e puoi av
 const quarterText = (q: string | null) => (q ? quarterLabel(q) : "un trimestre");
 
 /** «Pronto da avviare», parola per parola: una scheda, o più schede in un'email sola. */
-export function renderReadyAlert(i: ReadyAlertInput): RenderedEmail {
+export function renderReadyAlert(i: ReadyAlertInput, brand?: EmailBrand): RenderedEmail {
   if (i.entries.length === 0) throw new Error("Avviso senza voci");
   const company = oneLine(companyLabel(i.company), 80);
   const blocks: Block[] = [{ p: "Buongiorno," }];
@@ -164,18 +164,18 @@ export function renderReadyAlert(i: ReadyAlertInput): RenderedEmail {
       { link: { href: e.link, label: "Apri il caso d'uso" } },
       { small: READY_FOOTER },
     );
-    return render(oneLine(`${company}: il caso d'uso «${uc}» è pronto da avviare`, 200), blocks);
+    return render(oneLine(`${company}: il caso d'uso «${uc}» è pronto da avviare`, 200), blocks, brand);
   }
   blocks.push({ p: `ci sono ${i.entries.length} casi d'uso di ${company} pronti da avviare: sono approvati e non manca niente dal cliente.` });
   for (const e of i.entries) {
     blocks.push({ p: `«${labelOfUseCase(e.useCase)}» · ${quarterText(e.quarter)}` }, { link: { href: e.link, label: "Apri il caso d'uso" } });
   }
   blocks.push({ small: READY_FOOTER });
-  return render(oneLine(`${company}: ${i.entries.length} casi d'uso pronti da avviare`, 200), blocks);
+  return render(oneLine(`${company}: ${i.entries.length} casi d'uso pronti da avviare`, 200), blocks, brand);
 }
 
 /** «Autorizza i fornitori», parola per parola: il nome del cliente e il link, nessun dato degli use case. */
-export function renderSuppliersAlert(i: { company: string; link: string }): RenderedEmail {
+export function renderSuppliersAlert(i: { company: string; link: string }, brand?: EmailBrand): RenderedEmail {
   const company = oneLine(companyLabel(i.company), 80);
   return render(oneLine(`${company}: serve il tuo ok sui fornitori di Lateral Space`, 200), [
     { p: "Buongiorno," },
@@ -184,7 +184,7 @@ export function renderSuppliersAlert(i: { company: string; link: string }): Rend
     },
     { link: { href: i.link, label: "Apri Impostazioni › Sub-responsabili" } },
     { small: `Ricevi questa email perché puoi dare questa autorizzazione per ${company}. Quando qualcuno l'avrà data, non ne riceverai altre.` },
-  ]);
+  ], brand);
 }
 
 // ── Motore ────────────────────────────────────────────────────────────

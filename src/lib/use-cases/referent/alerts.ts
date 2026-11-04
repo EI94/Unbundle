@@ -33,7 +33,7 @@ import {
   type DispatchEnv,
   type UcMailer,
 } from "../../uc/notify/dispatch.ts";
-import { oneLine, render, type Block, type RenderedEmail } from "../../uc/notify/email-render.ts";
+import { emailBrand, oneLine, render, type Block, type EmailBrand, type RenderedEmail } from "../../uc/notify/email-render.ts";
 import type { FollowUpReason } from "../../db/use-case-hub-referents-ddl.ts";
 import { companyLabel } from "./labels.ts";
 import { labelOfUseCase } from "./email.ts";
@@ -220,8 +220,8 @@ function subjectOf(i: RequesterAlertInput): string {
   return `${company}: nessuna risposta sul caso d'uso «${uc}»`;
 }
 
-/** L'email a chi ha chiesto, parola per parola. */
-export function renderRequesterAlert(i: RequesterAlertInput): RenderedEmail {
+/** L'email a chi ha chiesto, parola per parola. (Rilascio 5.1) Con `brand` l'HTML ha in cima il marchio. */
+export function renderRequesterAlert(i: RequesterAlertInput, brand?: EmailBrand): RenderedEmail {
   if (i.entries.length === 0) throw new Error("Avviso senza voci");
   const company = oneLine(companyLabel(i.company), 80);
   const blocks: Block[] = [{ p: "Buongiorno," }];
@@ -240,7 +240,7 @@ export function renderRequesterAlert(i: RequesterAlertInput): RenderedEmail {
   blocks.push({
     small: "Ricevi questa email perché hai chiesto tu queste informazioni al referente. Per non riceverle più, togli la spunta «Avvisami per email» nella campanella di Unbundle.",
   });
-  return render(oneLine(subjectOf(i), 200), blocks);
+  return render(oneLine(subjectOf(i), 200), blocks, brand);
 }
 
 // ── Motore ────────────────────────────────────────────────────────────
@@ -303,7 +303,7 @@ export async function runRequesterAlertDispatch(
         summary.cancelled++;
         continue;
       }
-      const rendered = renderRequesterAlert(plan.input);
+      const rendered = renderRequesterAlert(plan.input, emailBrand(config.origin));
       const wait = lastCall + interval - Date.now();
       if (lastCall > 0 && wait > 0) await pause(wait);
       let result;

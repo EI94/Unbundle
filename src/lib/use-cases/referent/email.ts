@@ -7,15 +7,15 @@
  * («TopJet: sei il referente per il caso d'uso «TJ-0004 · Fatture fornitori»»), e la richiesta dice in
  * una riga che cos'è un caso d'uso (`whatIsACaseLine`).
  *
- * Regole: testo semplice più HTML minimo con il motore dei dossier (`email-render.ts`): nessuna
- * immagine, nessun tracciamento, il pulsante del link più l'indirizzo in chiaro, il piè di pagina
+ * Regole: testo semplice più HTML minimo con il motore dei dossier (`email-render.ts`): (rilascio 5.1)
+ * in cima il marchio «U» di Unbundle e «Lateral Space via Unbundle» (`brand`), nessun tracciamento, il pulsante del link più l'indirizzo in chiaro, il piè di pagina
  * «Lateral Space via Unbundle.». Mai il testo delle risposte, i nomi dei file, il dettaglio delle
  * esigenze, punteggi, valori o nomi di altre persone: gli unici nomi sono di chi chiede e
  * dell'azienda. Il link arriva al momento dell'invio e qui si controlla soltanto che sia pulito.
  *
  * Modulo puro.
  */
-import { formatDateIt, multiLine, oneLine, render, type Block, type RenderedEmail } from "../../uc/notify/email-render.ts";
+import { formatDateIt, multiLine, oneLine, render, type Block, type EmailBrand, type RenderedEmail } from "../../uc/notify/email-render.ts";
 import type { ReferentReminderKind } from "../../db/use-case-hub-referents-ddl.ts";
 import { companyLabel } from "./labels.ts";
 import { checkCardLink } from "./links.ts";
@@ -126,7 +126,7 @@ function teamAccessBlocks(cardLink: string | null | undefined, accountNotice = f
 const questionsWord = (n: number) => (n === 1 ? "una domanda" : `${n} domande`);
 const openWord = (n: number) => (n === 1 ? "una domanda aperta" : `${n} domande aperte`);
 
-function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { template: "promemoria" }>): RenderedEmail {
+function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { template: "promemoria" }>, brand?: EmailBrand): RenderedEmail {
   const uc = labelOfUseCase(e.useCase);
   const link = checkReferentLink(e.link);
   const reply = { small: replyLine(input.replyToKnown, e.requesterName) };
@@ -138,7 +138,7 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
       { small: expiry(e.expiresAt) },
       ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
       reply,
-    ]);
+    ], brand);
   }
   const last = e.kind === "ultimo";
   const subject = subjectFor(input.company, `${last ? "ultimo promemoria" : "promemoria"} sul caso d'uso «${uc}»`);
@@ -157,7 +157,7 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
       { small: expiry(e.expiresAt) },
       ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
       reply,
-    ]);
+    ], brand);
   }
   return render(subject, [
     { p: "Buongiorno," },
@@ -169,10 +169,10 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
     { small: expiry(e.expiresAt) },
     ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
     reply,
-  ]);
+  ], brand);
 }
 
-function multiReminder(input: Extract<ReferentEmailInput, { template: "promemoria" }>): RenderedEmail {
+function multiReminder(input: Extract<ReferentEmailInput, { template: "promemoria" }>, brand?: EmailBrand): RenderedEmail {
   const n = input.entries.length;
   const blocks: Block[] = [
     { p: "Buongiorno," },
@@ -197,7 +197,7 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
         ? `I link sono solo tuoi: non inoltrarli. Per un dubbio rispondi a questa email: arriva a ${name(input.replyName)}.`
         : "I link sono solo tuoi: non inoltrarli.",
   });
-  return render(subjectFor(input.company, `promemoria su ${n} casi d'uso`), blocks);
+  return render(subjectFor(input.company, `promemoria su ${n} casi d'uso`), blocks, brand);
 }
 
 /** L'email «richiesta» (§7) prima del rendering: l'oggetto e i blocchi, nell'ordine dell'email. */
@@ -255,16 +255,16 @@ export function referentRequestParts(input: Extract<ReferentEmailInput, { templa
   return { subject: subjectFor(input.company, `alcune domande sul caso d'uso «${uc}»`), blocks };
 }
 
-/** I testi di §7. */
-export function renderReferentEmail(input: ReferentEmailInput): RenderedEmail {
+/** I testi di §7. (Rilascio 5.1) Con `brand` (`emailBrand` dell'origine pubblica) l'HTML ha in cima il marchio. */
+export function renderReferentEmail(input: ReferentEmailInput, brand?: EmailBrand): RenderedEmail {
   switch (input.template) {
     case "richiesta": {
       const parts = referentRequestParts(input);
-      return render(parts.subject, parts.blocks);
+      return render(parts.subject, parts.blocks, brand);
     }
     case "promemoria": {
       if (input.entries.length === 0) throw new Error("Promemoria senza voci");
-      return input.entries.length === 1 ? singleReminder(input.entries[0], input) : multiReminder(input);
+      return input.entries.length === 1 ? singleReminder(input.entries[0], input, brand) : multiReminder(input, brand);
     }
     case "conferma": {
       const uc = labelOfUseCase(input.useCase);
@@ -279,7 +279,7 @@ export function renderReferentEmail(input: ReferentEmailInput): RenderedEmail {
         });
       }
       blocks.push({ small: "In questa email non ci sono le tue risposte." });
-      return render(subjectFor(input.company, `grazie per le risposte sul caso d'uso «${uc}»`), blocks);
+      return render(subjectFor(input.company, `grazie per le risposte sul caso d'uso «${uc}»`), blocks, brand);
     }
   }
 }

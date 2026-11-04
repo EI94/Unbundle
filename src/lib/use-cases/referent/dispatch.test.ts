@@ -299,6 +299,8 @@ test("motore: un token per voce, con l'impronta dell'indirizzo; il link nell'ema
   assert.equal(m.outbox[0].to, "mario.rossi@topjet.it");
   assert.equal(m.outbox[0].replyTo, "giulia.neri@topjet.it");
   assert.ok(m.outbox[0].text.includes("http://localhost:3000/rispondi/ucq_"));
+  // (Rilascio 5.1) In cima il marchio, dall'origine pubblica dell'app.
+  assert.equal((m.outbox[0].html.match(/<img src="http:\/\/localhost:3000\/email\/unbundle-u\.png"/g) ?? []).length, 1);
   assert.deepEqual(s.log.sent[0].tokenIds, { [R1]: "t1", [R2]: "t2" });
   assert.match(m.keys[0], /pro:c1:2026-11-05/);
 });

@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { UC_EMAIL_LOGO_PATH, emailBrand } from "../../uc/notify/email-render.ts";
 import { checkReferentLink, labelOfUseCase, renderReferentEmail, whatIsACaseLine, type ReminderEntry } from "./email.ts";
 
 // Le email di «Chiedi al referente», parola per parola (SPEC §7). Dati inventati. (Rilascio 5.1) Fuori
@@ -190,4 +192,54 @@ test("(rilascio 5) promemoria con la conferma da inviare: oggetto, «la tua conf
   has(multi.text, "«TJ-0004 · Fatture fornitori», chiede Giulia Neri: la conferma e 2 domande aperte.");
   has(multi.text, "«TJ-0005 · Ordini», chiede Giulia Neri: la conferma.");
   clean(multi);
+});
+
+// ─── Rilascio 5.1: il marchio in cima alle email ─────────────────────
+
+test("(rilascio 5.1) il marchio: un indirizzo assoluto https del sito (http solo in locale), mai con parametri", () => {
+  assert.deepEqual(emailBrand("https://www.theunbundle.com"), { logoUrl: "https://www.theunbundle.com/email/unbundle-u.png" });
+  assert.deepEqual(emailBrand("https://www.theunbundle.com/"), { logoUrl: "https://www.theunbundle.com/email/unbundle-u.png" });
+  assert.deepEqual(emailBrand("http://127.0.0.1:53915"), { logoUrl: "http://127.0.0.1:53915/email/unbundle-u.png" });
+  for (const bad of [null, undefined, "", "http://www.theunbundle.com", "https://u:p@www.theunbundle.com", "non un indirizzo", "ftp://x.test"]) {
+    assert.deepEqual(emailBrand(bad), { logoUrl: null }, String(bad));
+  }
+  assert.equal(UC_EMAIL_LOGO_PATH, "/email/unbundle-u.png");
+});
+
+test("(rilascio 5.1) in cima all'HTML il marchio con il testo alternativo e «Lateral Space via Unbundle»; il testo semplice non cambia", () => {
+  const input = { template: "richiesta" as const, kind: "referente" as const, company: "TopJet", useCase: UC, requesterName: "Giulia Neri", questions: 2, message: null, expiresAt: EXPIRES, link: LINK, replyToKnown: true };
+  const plain = renderReferentEmail(input);
+  const branded = renderReferentEmail(input, emailBrand("https://www.theunbundle.com"));
+  assert.equal(branded.subject, plain.subject);
+  assert.equal(branded.text, plain.text, "il testo semplice è lo stesso");
+  const imgs = branded.html.match(/<img\b[^>]*>/g) ?? [];
+  assert.equal(imgs.length, 1, "un'immagine sola");
+  assert.match(imgs[0], /src="https:\/\/www\.theunbundle\.com\/email\/unbundle-u\.png"/);
+  assert.match(imgs[0], /width="32" height="32"/);
+  assert.match(imgs[0], /alt="Unbundle"/);
+  assert.doesNotMatch(imgs[0], /\?|utm_/, "nessun parametro: non traccia chi apre");
+  const body = branded.html.slice(branded.html.indexOf("<body"));
+  assert.ok(body.indexOf("<img") < body.indexOf("Buongiorno,"), "il marchio sta in cima");
+  assert.ok(body.indexOf("Lateral Space via Unbundle</td>") > body.indexOf("<img"), "accanto, il nome in testo (si legge anche senza immagini)");
+  // Senza l'indirizzo pubblico: solo il nome, nessuna immagine.
+  const textOnly = renderReferentEmail(input, { logoUrl: null });
+  assert.doesNotMatch(textOnly.html, /<img/);
+  assert.ok(textOnly.html.includes("Lateral Space via Unbundle</td>"));
+  // Ogni email dell'area lo ha, quando la passa il motore.
+  const brand = emailBrand("https://www.theunbundle.com");
+  for (const m of [
+    renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry()], replyToKnown: true, replyName: "Giulia Neri" }, brand),
+    renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry(), entry({ link: LINK2 })], replyToKnown: true, replyName: "Giulia Neri" }, brand),
+    renderReferentEmail({ template: "conferma", company: "TopJet", useCase: UC, requesterName: "Giulia Neri", submitted: 1, openQuestions: 0, expiresAt: EXPIRES }, brand),
+  ]) {
+    assert.equal((m.html.match(/<img\b/g) ?? []).length, 1, m.subject);
+  }
+});
+
+test("(rilascio 5.1) il file del marchio c'è in public/: un PNG 96×96, lo stesso che rifà lo script", () => {
+  const png = readFileSync(new URL("../../../../public/email/unbundle-u.png", import.meta.url));
+  assert.deepEqual([...png.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], "firma PNG");
+  assert.equal(png.readUInt32BE(16), 96, "larghezza");
+  assert.equal(png.readUInt32BE(20), 96, "altezza");
+  assert.ok(png.length < 10_000, "leggero");
 });

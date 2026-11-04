@@ -35,7 +35,7 @@ import {
   type DispatchEnv,
   type UcMailer,
 } from "../../uc/notify/dispatch.ts";
-import type { RenderedEmail } from "../../uc/notify/email-render.ts";
+import { emailBrand, type RenderedEmail } from "../../uc/notify/email-render.ts";
 import type { ReferentEmailTemplate, ReferentReminderKind, ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
 import { renderReferentEmail, type ReferentEmailInput, type ReminderEntry } from "./email.ts";
 import { cardLink } from "./links.ts";
@@ -500,10 +500,10 @@ async function deliverOne(
     // Le voci senza token (richiesta non più viva al momento dell'emissione) escono dall'email (`build`).
     if (input.template === "promemoria") {
       const keptIds = new Set(Object.keys(tokens));
-      rendered = renderReferentEmail(input);
+      rendered = renderReferentEmail(input, emailBrand(config.origin));
       effects = plan.after.filter((x) => keptIds.has(x.requestId));
     } else {
-      rendered = renderReferentEmail(input);
+      rendered = renderReferentEmail(input, emailBrand(config.origin));
       effects = plan.after;
     }
   } catch {

@@ -82,6 +82,8 @@ test("voci: solo gli use case ancora pronti e con la riga ancora non letta; ness
   if (p.action !== "send") return;
   assert.deepEqual(p.useCaseIds, [UC1, UC3], "senza doppioni, nell'ordine");
   assert.equal(p.to, "lead@lateralspace.ai");
+  // (Rilascio 5.1) In cima il marchio, dall'origine pubblica dell'app.
+  assert.equal((p.rendered.html.match(/<img src="http:\/\/localhost:3000\/email\/unbundle-u\.png"/g) ?? []).length, 1);
   // Un tipo che questo motore non sa scrivere si annulla.
   assert.deepEqual(plan(facts(), claimed({ kind: "altro" as never })), { action: "cancel", reason: "nessuna_voce" });
 });
@@ -133,6 +135,8 @@ test("«Autorizza i fornitori», parola per parola: il link a Impostazioni, ness
   assert.doesNotMatch((r.text + r.html + r.subject).replace(/https?:\/\/[^\s"<]+/g, ""), /\buse[\s-]*cases?\b/i, "(rilascio 5.1) fuori dalla dashboard mai «use case»");
   const p = plan(suppliers(), supplier);
   assert.ok(p.action === "send" && p.rendered.text.includes(`${ORIGIN}/dashboard/${WS}/settings#sub-responsabili`));
+  // (Rilascio 5.1) In cima il marchio, dall'origine pubblica dell'app.
+  assert.ok(p.action === "send" && p.rendered.html.includes(`<img src="${ORIGIN}/email/unbundle-u.png"`));
 });
 
 test("testo con un caso d'uso, parola per parola, con il link a «Realizzazione»", () => {
