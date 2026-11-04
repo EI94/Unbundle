@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { blockCheckOf, referentBlockOf, referentContactOf, type BlockRequestFact, type ReferentCheckRow } from "./block.ts";
+import { blockBenefitOf, blockCheckOf, referentBlockOf, referentContactOf, type BlockRequestFact, type ReferentCheckRow } from "./block.ts";
+import { impactRowsOf, type StoredBenefit } from "./impact.ts";
 import type { TeamEstimate } from "./estimate.ts";
 
 // Il blocco «Referente» dal pannello (rilascio 5, §3.1, §9.5): R* e R, lo stato, la conferma, le domande rifiutate.
@@ -23,6 +24,7 @@ const CHECK = (over: Partial<ReferentCheckRow> = {}): ReferentCheckRow => ({
   correctionDoneAt: null,
   estimateOutcome: null,
   estimateOutcomeAt: null,
+  benefits: null,
   ...over,
 });
 let seq = 0;
@@ -112,4 +114,43 @@ test("dopo «Usa la stima di …» il blocco non dice che la stima del team è c
   assert.equal(blockCheckOf(CHECK({ ...sent, estimateOutcome: null, estimateOutcomeAt: null }), 1, { ...TEAM, volumeYear: 1800, minutes: 8.5 }).teamChanged, true);
   // «Tieni la nostra» con la stima di prima: nessun cambio.
   assert.equal(blockCheckOf(CHECK({ ...sent, estimateOutcome: "tenuta" }), 1, TEAM).teamChanged, false);
+});
+
+test("(rilascio 5.1) una voce nel blocco: la risposta, se aspetta il team, se c'è qualcosa da usare, se la cifra è cambiata o la voce tolta", () => {
+  const model = (minutes: number, eurYear = 4000) => ({
+    components: [
+      { kind: "ore", key: "tempo-1", lever: "tempo", label: "Controllo delle fatture", volumeYear: 3000, minutesPerUnit: minutes },
+      { kind: "euro", key: "costi-1", lever: "costi", label: "Meno solleciti", eurYear },
+    ],
+  });
+  const ore: StoredBenefit = {
+    key: "tempo-1",
+    position: 1,
+    label: "Controllo delle fatture",
+    team: { kind: "ore", volumeYear: 3000, minutes: 12, eurYear: null },
+    answer: "piu",
+    timesPerMonth: 300,
+    minutesEach: null,
+    eurYear: null,
+    comment: "Solo a fine mese.",
+    outcome: null,
+    outcomeAt: null,
+  };
+  const b = blockBenefitOf(ore, impactRowsOf(model(12)));
+  assert.deepEqual([b.form, b.needsReview, b.adoptable, b.changed, b.comment], ["ore", true, true, null, "Solo a fine mese."]);
+  assert.equal(blockBenefitOf(ore, impactRowsOf(model(10))).changed, "cambiata");
+  assert.equal(blockBenefitOf(ore, impactRowsOf({ components: [model(12).components[1]] })).changed, "tolta");
+  assert.equal(blockBenefitOf(ore, null).changed, "tolta");
+  // Dopo «Usa la stima di …» la voce ha i numeri del referente: non è un cambio dopo la risposta.
+  const adopted = { ...ore, outcome: "adottata" as const, outcomeAt: day(3) };
+  assert.equal(blockBenefitOf(adopted, impactRowsOf({ components: [{ ...model(12).components[0], volumeYear: 3600 }] })).changed, null);
+  assert.deepEqual([blockBenefitOf(adopted, impactRowsOf(model(12))).needsReview, blockBenefitOf(adopted, impactRowsOf(model(12))).outcomeAt], [false, day(3).toISOString()]);
+  // «Sì» non aspetta niente e non ha niente da usare; «È di meno» senza numeri aspetta, ma senza numeri da usare.
+  assert.deepEqual([blockBenefitOf({ ...ore, answer: "si", timesPerMonth: null }, impactRowsOf(model(12))).needsReview, blockBenefitOf({ ...ore, answer: "si", timesPerMonth: null }, impactRowsOf(model(12))).adoptable], [false, false]);
+  assert.deepEqual([blockBenefitOf({ ...ore, answer: "meno", timesPerMonth: null }, impactRowsOf(model(12))).needsReview, blockBenefitOf({ ...ore, answer: "meno", timesPerMonth: null }, impactRowsOf(model(12))).adoptable], [true, false]);
+  // Nella conferma: le voci, nell'ordine; la stima del tempo del rilascio 5 resta vuota.
+  const check = blockCheckOf(CHECK({ submittedAt: day(2), confirm: "si", benefits: [ore] }), 1, null, impactRowsOf(model(12)));
+  assert.equal(check.benefits?.length, 1);
+  assert.equal(check.team, null);
+  assert.equal(blockCheckOf(CHECK({ submittedAt: day(2), confirm: "si" }), 1, TEAM).benefits, null, "una conferma del rilascio 5");
 });

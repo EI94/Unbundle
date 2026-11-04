@@ -12,7 +12,8 @@
 import { formatCountIt, formatLongDayIt } from "../../../lib/uc/views/format.ts";
 import type { ReferentAskView, ReferentFileView, ReferentPageResult, ReferentQuestionView, ReferentUploadResult, SubmitResult } from "../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_LIMITS } from "../../../lib/use-cases/referent/contract.ts";
-import { REFERENT_CHECK_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, companyLabel, fillText, privacyNoticeTexts } from "../../../lib/use-cases/referent/labels.ts";
+import { REFERENT_CHECK_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_IMPACT_TEXT, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, companyLabel, fillText, privacyNoticeTexts } from "../../../lib/use-cases/referent/labels.ts";
+import { benefitSentLine } from "../../../lib/use-cases/referent/impact-text.ts";
 import { referentDateLabel } from "../../../lib/use-cases/referent/view.ts";
 
 const T = REFERENT_PUBLIC_TEXT;
@@ -207,18 +208,39 @@ export function lastSentOn(view: ReferentAskView): string | null {
 }
 
 /** (Rilascio 5) La conferma e la stima inviate, in sola lettura: «Lo use case: …», «Il tempo: …», i numeri. */
-export function sentCheckLines(view: ReferentAskView): { useCase: string; note: string | null; time: string; numbers: string | null } | null {
+export function sentCheckLines(view: ReferentAskView): {
+  useCase: string;
+  note: string | null;
+  time: string | null;
+  numbers: string | null;
+  /** (Rilascio 5.1) Una riga per voce, con il commento; vuoto per la stima del tempo. */
+  benefits: { key: string; line: string; comment: string | null }[];
+} | null {
   const c = view.check;
   if (!c?.submittedAt) return null;
   const d = c.draft;
   const useCase = d.confirm === "correggi" ? T.sentUseCaseFix : T.sentUseCaseYes;
+  const note = d.confirm === "correggi" ? (d.note?.trim() || null) : null;
+  if (c.benefits) {
+    return {
+      useCase,
+      note,
+      time: null,
+      numbers: null,
+      benefits: c.benefits.map((b) => ({
+        key: b.key,
+        line: benefitSentLine(b, b.draft ?? { answer: null, timesPerMonth: null, minutesEach: null, eurYear: null }),
+        comment: b.draft?.comment ? fillText(REFERENT_IMPACT_TEXT.sentComment, { testo: b.draft.comment }) : null,
+      })),
+    };
+  }
   const time = d.estimate === "meno" ? T.sentTimeLess : d.estimate === "piu" ? T.sentTimeMore : d.estimate === "si" ? T.sentTimeYes : T.sentTimeOwn;
   const fmt = (n: number) => String(n).replace(".", ",");
   const numbers =
     d.timesPerMonth !== null || d.minutesEach !== null
       ? fillText(T.sentTimeNumbers, { n: d.timesPerMonth !== null ? fmt(d.timesPerMonth) : "—", m: d.minutesEach !== null ? fmt(d.minutesEach) : "—" })
       : null;
-  return { useCase, note: d.confirm === "correggi" ? (d.note?.trim() || null) : null, time, numbers };
+  return { useCase, note, time, numbers, benefits: [] };
 }
 
 /** Il testo di una domanda a cui ha già pensato il team: mai cosa ha scritto, mai chi. */

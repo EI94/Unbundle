@@ -106,6 +106,7 @@ import {
 import { reviewerStatus } from "@/lib/use-cases/referent/state";
 import { referentBlockOf, referentContactOf, type BlockRequestFact, type ReferentCheckRow } from "@/lib/use-cases/referent/block";
 import { teamEstimateOf } from "@/lib/use-cases/referent/estimate";
+import { impactRowsOf, storedBenefitOf } from "@/lib/use-cases/referent/impact";
 import { eligibleForReferent, latestRequest } from "@/lib/use-cases/referent/use-case-state";
 import { dossierStateForUseCase } from "@/lib/db/queries/use-case-dossiers";
 import { phaseOfUseCase } from "@/lib/use-cases/phase";
@@ -365,6 +366,8 @@ function checkRowOf(r: UcRow): ReferentCheckRow | null {
     correctionDoneAt: rowDate(r.k_correction_done_at),
     estimateOutcome: outcome === "adottata" || outcome === "tenuta" ? outcome : null,
     estimateOutcomeAt: rowDate(r.k_outcome_at),
+    // (Rilascio 5.1) Le risposte per beneficio arrivano dopo, da `benefitsSql` (solo quelle inviate).
+    benefits: sent && rowBool(r.k_benefits) ? [] : null,
   };
 }
 
@@ -429,13 +432,28 @@ function requestsSql(workspaceId: string, useCaseId: string): UcStatement {
   ${raw(sentOnly("k.confirm"))} AS k_confirm, ${raw(sentOnly("k.confirm_note"))} AS k_note, ${raw(sentOnly("k.estimate"))} AS k_estimate,
   ${raw(sentOnly("k.times_per_month"))} AS k_times, ${raw(sentOnly("k.minutes_each"))} AS k_minutes, ${raw(sentOnly("k.team_component_key"))} AS k_team_key,
   ${raw(sentOnly("k.team_volume_year"))} AS k_team_volume, ${raw(sentOnly("k.team_minutes"))} AS k_team_minutes,
-  k.correction_done_at AS k_correction_done_at, k.estimate_outcome AS k_outcome, k.estimate_outcome_at AS k_outcome_at
+  k.correction_done_at AS k_correction_done_at, k.estimate_outcome AS k_outcome, k.estimate_outcome_at AS k_outcome_at,
+  ${raw(sentOnly("k.benefits"))} AS k_benefits
 FROM use_case_referent_requests r
 LEFT JOIN uc_contacts c ON c.id = r.contact_id AND c.workspace_id = r.workspace_id
 LEFT JOIN use_case_referent_checks k ON k.request_id = r.id
 WHERE r.workspace_id = ${cast(workspaceId, "uuid")} AND r.use_case_id = ${cast(useCaseId, "uuid")}
 ORDER BY r.created_at DESC, r.id
 LIMIT ${cast(RESULT_CAP, "int")}`);
+}
+
+/**
+ * (Rilascio 5.1) Le risposte per beneficio delle conferme inviate di questo use case, nell'ordine delle
+ * righe: prima di «Invia» restano del referente (la stessa regola di `sentOnly`).
+ */
+function benefitsSql(workspaceId: string, useCaseId: string): UcStatement {
+  return toStatement(ucSql`SELECT b.request_id, b.component_key, b.position, b.kind, b.label, b.team_volume_year, b.team_minutes, b.team_eur_year, b.answer,
+  b.times_per_month, b.minutes_each, b.eur_year, b.comment, b.outcome, b.outcome_at
+FROM use_case_referent_check_benefits b
+JOIN use_case_referent_checks k ON k.request_id = b.request_id
+JOIN use_case_referent_requests r ON r.id = k.request_id
+WHERE r.workspace_id = ${cast(workspaceId, "uuid")} AND r.use_case_id = ${cast(useCaseId, "uuid")} AND b.workspace_id = r.workspace_id AND k.submitted_at IS NOT NULL
+ORDER BY b.request_id, b.position, b.component_key`);
 }
 
 function contactsSql(workspaceId: string): UcStatement {
@@ -543,7 +561,7 @@ export async function loadUseCaseReferentPanel(i: {
     if (!card) return emptyPanel(false, canAsk);
     const cardNeeds = [...i.needs.requirements, ...i.needs.steps];
     const requirementIds = i.needs.requirements.map((n) => n.id.toLowerCase());
-    const [requestRows, contactRows, liveRows, answerRows, fileRows, keyRows, expiredRows] = await executor.batch([
+    const [requestRows, contactRows, liveRows, answerRows, fileRows, keyRows, expiredRows, benefitRows] = await executor.batch([
       requestsSql(ws, uc),
       contactsSql(ws),
       liveOnUseCaseSql(ws, uc),
@@ -551,6 +569,7 @@ export async function loadUseCaseReferentPanel(i: {
       filesSql(ws, uc),
       importKeysSql(ws, uc),
       expiredReviewsSql(ws, uc),
+      benefitsSql(ws, uc),
     ]);
     const reviewExpired = new Set(expiredRows.map((r) => String(r.need_id).toLowerCase()));
     const [asks, ack, lsMembers] = await Promise.all([
@@ -560,6 +579,11 @@ export async function loadUseCaseReferentPanel(i: {
     ]);
     const lsDomains = lsDomainsOf(env);
     const requests = requestRows.map((r) => requestRowOf(r, now)).filter((r): r is RequestRow => r !== null);
+    // (Rilascio 5.1) Le risposte per beneficio inviate, sulla conferma della loro richiesta.
+    for (const row of benefitRows) {
+      const check = requests.find((r) => r.id === String(row.request_id).toLowerCase())?.check;
+      if (check?.benefits) check.benefits.push(storedBenefitOf(row));
+    }
     const hubOnly = new Map<string, boolean>();
     const contactIds = [...new Set(requests.map((r) => r.contactId))];
     if (contactIds.length) {
@@ -841,6 +865,7 @@ export async function loadUseCaseReferentPanel(i: {
         requests: facts,
         clientRequirementToVerify: i.needs.requirements.some((n) => n.status === "in_verifica" && !n.archivedAt && [null, "cliente", "insieme"].includes(n.ownerSide ?? null)),
         teamNow: teamEstimateOf(card.valueModel),
+        rowsNow: impactRowsOf(card.valueModel),
         now,
         declinedNeedIds: [...declined],
         hints,

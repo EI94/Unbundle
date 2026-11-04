@@ -91,6 +91,11 @@ WHERE a.request_id = r.id AND ${mine} AND (a.body IS NOT NULL OR a.comment IS NO
     toStatement(ucSql`UPDATE use_case_referent_checks c SET confirm_note = NULL, purged_at = coalesce(c.purged_at, now()), updated_at = now()
 FROM use_case_referent_requests r
 WHERE c.request_id = r.id AND ${mine} AND (c.confirm_note IS NOT NULL OR c.purged_at IS NULL)`),
+    // (Rilascio 5.1) Il commento di ogni risposta per beneficio è un testo della persona: si toglie; le
+    // scelte e i numeri restano (non sono personali).
+    toStatement(ucSql`UPDATE use_case_referent_check_benefits b SET comment = NULL, updated_at = now()
+FROM use_case_referent_requests r
+WHERE b.request_id = r.id AND ${mine} AND b.comment IS NOT NULL`),
     toStatement(ucSql`UPDATE use_case_need_files f SET deleted_at = coalesce(f.deleted_at, now()), deleted_reason = coalesce(f.deleted_reason, 'cancellazione'), file_name = 'file'
 FROM use_case_referent_requests r
 WHERE f.request_id = r.id AND ${mine} AND (f.deleted_at IS NULL OR f.file_name <> 'file')`),
@@ -135,6 +140,9 @@ WHERE request_id = ${req()} AND workspace_id = ${ws}`),
     // (Rilascio 5) La nota della conferma si toglie con le risposte; i numeri della stima restano.
     toStatement(ucSql`UPDATE use_case_referent_checks SET confirm_note = NULL, purged_at = coalesce(purged_at, now()), updated_at = now()
 WHERE request_id = ${req()} AND workspace_id = ${ws}`),
+    // (Rilascio 5.1) I commenti per beneficio si tolgono con le risposte; le scelte e i numeri restano.
+    toStatement(ucSql`UPDATE use_case_referent_check_benefits SET comment = NULL, updated_at = now()
+WHERE request_id = ${req()} AND workspace_id = ${ws} AND comment IS NOT NULL`),
     toStatement(ucSql`UPDATE use_case_need_files SET deleted_at = coalesce(deleted_at, now()), deleted_reason = coalesce(deleted_reason, 'conservazione'), file_name = 'file'
 WHERE request_id = ${req()} AND workspace_id = ${ws}`),
     // I link della richiesta chiusa, con l'impronta dell'email del destinatario: non resta niente.

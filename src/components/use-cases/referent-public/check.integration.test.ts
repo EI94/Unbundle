@@ -5,12 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 
-// (Rilascio 5, SPEC §6, §7.3, §7.4, §13, A4) La conferma dello use case e la stima del tempo sulla pagina
-// del referente, sul database di prova: la vista (descrizione filtrata, stima del team in ore, mai euro,
-// quota, ore liberate, punteggi), la bozza del passo 1 (mai respinta da un cambio della stima), la
-// freschezza del passo 2 (`stima_cambiata`, l'istantanea che toglie la risposta di prima, la stima tolta),
-// l'invio che vuole la conferma e la stima, la campanella e l'avviso con la conferma come una risposta,
-// la rotta `POST …/check`.
+// (Rilascio 5, SPEC §6, §7.3, §7.4, §13, A4; rilascio 5.1) La conferma dello use case e l'impatto sulla
+// pagina del referente, sul database di prova: la vista (descrizione filtrata, una riga per ogni voce di
+// «Benefici e costi» con la cifra del team di quella voce, mai quota, ore liberate, fiducia, fonte,
+// punteggi), la bozza del passo 1 (mai respinta da un cambio della stima), il passo 2 per beneficio (la
+// freschezza di ogni riga, le scelte e i numeri della sua forma, il commento, il modello tolto), l'invio
+// che vuole la conferma e ogni riga, la campanella e l'avviso con la conferma come una risposta sola, la
+// rotta `POST …/check`.
 //
 // - Con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database hub_<id> su
 //   127.0.0.1). Nessuna email vera (mailer finto). Dati sintetici, creati e cancellati qui.
@@ -70,12 +71,13 @@ function failed(result: { ok: boolean; code?: string }, code: string, label = "r
   assert.equal(result.code, code, label);
 }
 
-/** Un modello del valore di prova: 3.000 volte l'anno, 12 minuti, il 50% che si risparmia, una cifra in euro. */
+/** Un modello del valore di prova: 3.000 volte l'anno, 12 minuti, il 50% che si risparmia; una cifra in euro; una voce qualitativa. */
 const MODEL = {
   primaryLever: "tempo",
   components: [
     { kind: "ore", key: "tempo-1", lever: "tempo", label: "Controllo delle fatture", confidence: "ipotesi", volumeYear: 3000, unit: "pratiche", minutesPerUnit: 12, automatablePct: 50, basis: "FONTE-RISERVATA" },
     { kind: "euro", key: "costi-1", lever: "costi", label: "Meno solleciti", confidence: "ipotesi", eurYear: 4321 },
+    { kind: "qualitativo", key: "qualita-1", lever: "qualita", label: "Meno errori nelle registrazioni", confidence: "da_misurare", indicator: "INDICATORE-RISERVATO" },
   ],
 };
 
@@ -124,7 +126,29 @@ async function viewOf(token: string) {
 async function checkRow(requestId: string) {
   return (await q(`SELECT confirm, confirm_note, team_component_key, team_volume_year, team_minutes, estimate, times_per_month, minutes_each, submitted_at IS NOT NULL AS sent FROM use_case_referent_checks WHERE request_id = $1::uuid`, [requestId]))[0];
 }
-const teamSeen = { key: "tempo-1", volumeYear: 3000, minutes: 12 };
+/** La cifra del team che ogni riga mostra (torna come `seen`). */
+const SEEN = {
+  "tempo-1": { kind: "ore", volumeYear: 3000, minutes: 12, eurYear: null },
+  "costi-1": { kind: "euro", volumeYear: null, minutes: null, eurYear: 4321 },
+  "qualita-1": { kind: "qualitativo", volumeYear: null, minutes: null, eurYear: null },
+} as const;
+type Key = keyof typeof SEEN;
+const benefit = (key: Key, answer: string | null, extra: Record<string, unknown> = {}) => ({ step: 2, benefit: { key, seen: SEEN[key], answer, ...extra } });
+/** Ogni riga con una risposta (di solito «Sì»). */
+async function answerAll(link: Link, answers: Partial<Record<Key, string>> = {}) {
+  for (const key of Object.keys(SEEN) as Key[]) okPub(await pub.saveReferentCheck(link, benefit(key, answers[key] ?? "si"), new Date()), `riga ${key}`);
+}
+async function benefitRows(requestId: string) {
+  return q(
+    `SELECT component_key AS key, position, kind, label, team_volume_year::text AS tv, team_minutes::text AS tm, team_eur_year::text AS te, answer,
+            times_per_month::text AS t, minutes_each::text AS m, eur_year::text AS e, comment
+     FROM use_case_referent_check_benefits WHERE request_id = $1::uuid ORDER BY position`,
+    [requestId],
+  );
+}
+async function flagOf(requestId: string) {
+  return (await q(`SELECT benefits FROM use_case_referent_checks WHERE request_id = $1::uuid`, [requestId]))[0]?.benefits;
+}
 
 before(async () => {
   if (!enabled) return;
@@ -170,7 +194,8 @@ after(async () => {
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [[ids.builder, ids.analyst]]);
 });
 
-test("la vista: la descrizione senza importi, la stima del team in ore, mai euro, quota, fonte o punteggi", opts, async () => {
+
+test("la vista: la descrizione senza importi e una riga per ogni voce, con la cifra del team di quella voce e niente altro", opts, async () => {
   const card = await newCard(MODEL);
   const { token } = await referentLink(card.id, card.needs.slice(0, 2));
   const view = await viewOf(token);
@@ -178,19 +203,24 @@ test("la vista: la descrizione senza importi, la stima del team in ore, mai euro
   assert.equal(view.state, "aperta");
   assert.ok(view.check);
   assert.equal(view.check?.description, "Le fatture arrivano via PEC. Il controllo è a mano.");
-  assert.deepEqual(view.check?.team, { key: "tempo-1", volumeYear: 3000, minutes: 12, hours: 600, perMonth: 250, perYear: null, unit: "pratiche", label: null }, "una sola voce «ore»: niente nome della voce");
+  assert.deepEqual(view.check?.benefits, [
+    { key: "tempo-1", form: "ore", label: "Controllo delle fatture", team: SEEN["tempo-1"], draft: null },
+    { key: "costi-1", form: "euro", label: "Meno solleciti", team: SEEN["costi-1"], draft: null },
+    { key: "qualita-1", form: "fatto", label: "Meno errori nelle registrazioni", team: SEEN["qualita-1"], draft: null },
+  ]);
   assert.deepEqual(view.check?.draft, { confirm: null, note: null, estimate: null, timesPerMonth: null, minutesEach: null, stale: false, savedAt: null });
   const json = JSON.stringify(view);
-  for (const secret of ["4321", "4.321", "€", "automatable", "FONTE-RISERVATA", "costi-1", "Meno solleciti", "4.000", "ipotesi", "confidence"]) assert.ok(!json.includes(secret), `mai «${secret}»`);
+  // Gli euro di una voce in euro sì (decisione del 04/11/2026); mai quota, ore liberate, fonte, fiducia, indicatore, importi della descrizione.
+  for (const secret of ["automatable", "FONTE-RISERVATA", "INDICATORE-RISERVATO", "4.000", "ipotesi", "da_misurare", "confidence", "pratiche"]) assert.ok(!json.includes(secret), `mai «${secret}»`);
   assert.doesNotMatch(json, /\b350\b|\b50%/, "mai le ore liberate né la quota");
   assert.deepEqual(keyPaths(view).filter((k) => !keys.includes(k)), [], "solo le chiavi del contratto");
-  // Una richiesta al referente senza domande è «aperta» finché la conferma non parte.
+  // Senza modello del valore: niente righe, i due numeri del tempo.
   const zero = await newCard(null);
   const z = await referentLink(zero.id, []);
   const zv = await viewOf(z.token);
-  assert.equal(zv.state, "aperta");
+  assert.equal(zv.state, "aperta", "una richiesta al referente senza domande è «aperta» finché la conferma non parte");
   assert.equal(zv.questions.length, 0);
-  assert.equal(zv.check?.team, null);
+  assert.equal(zv.check?.benefits, null);
 });
 
 test("passo 1: la bozza della conferma, i controlli della nota, mai respinta da un cambio della stima", opts, async () => {
@@ -213,39 +243,96 @@ test("passo 1: la bozza della conferma, i controlli della nota, mai respinta da 
   okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note: "Arrivano anche via PEC." }, now), "dopo il cambio della stima");
 });
 
-test("passo 2: la stima vista è quella di adesso, l'istantanea toglie la risposta di prima, la stima tolta", opts, async () => {
+
+test("passo 2 per beneficio: la cifra vista è quella di adesso, le scelte e i numeri della sua forma, il commento, una riga alla volta", opts, async () => {
   const card = await newCard(MODEL);
   const { link, requestId, token } = await referentLink(card.id, []);
   const now = new Date();
-  failed(await pub.saveReferentCheck(link, { step: 2, teamSeen: { ...teamSeen, minutes: 11 }, estimate: "si" }, now), "stima_cambiata");
+  failed(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: { ...SEEN["tempo-1"], minutes: 11 }, answer: "si" } }, now), "stima_cambiata");
+  failed(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: SEEN["costi-1"], answer: "si" } }, now), "stima_cambiata", "un altro tipo");
+  failed(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "assente", seen: SEEN["tempo-1"], answer: "si" } }, now), "stima_cambiata", "una voce che non c'è");
+  // Una pagina di prima (la stima del tempo, o i due numeri) con un modello: si rilegge.
+  failed(await pub.saveReferentCheck(link, { step: 2, teamSeen: { key: "tempo-1", volumeYear: 3000, minutes: 12 }, estimate: "si" }, now), "stima_cambiata");
   failed(await pub.saveReferentCheck(link, { step: 2, teamSeen: null, estimate: null, timesPerMonth: 20, minutesEach: 3 }, now), "stima_cambiata");
-  assert.equal((await checkRow(requestId)).team_component_key, null, "niente scritto");
-  failed(await pub.saveReferentCheck(link, { step: 2, teamSeen, estimate: "meno", timesPerMonth: "abc" }, now), "numero_non_valido");
-  failed(await pub.saveReferentCheck(link, { step: 2, teamSeen, estimate: "meno", timesPerMonth: 8_333_334 }, now), "numero_non_valido");
-  okPub(await pub.saveReferentCheck(link, { step: 2, teamSeen, estimate: "meno", timesPerMonth: "200", minutesEach: "1,5" }, now), "è di meno");
-  assert.deepEqual(await checkRow(requestId), { confirm: null, confirm_note: null, team_component_key: "tempo-1", team_volume_year: "3000.00", team_minutes: "12.00", estimate: "meno", times_per_month: "200.00", minutes_each: "1.50", sent: false });
-  // «Sì» non porta numeri.
-  okPub(await pub.saveReferentCheck(link, { step: 2, teamSeen, estimate: "si", timesPerMonth: 5, minutesEach: 5 }, now), "sì");
-  assert.deepEqual([(await checkRow(requestId)).estimate, (await checkRow(requestId)).times_per_month], ["si", null]);
-  // Il team cambia la stima: la vista è «stale», la scelta vuota.
-  await q(`UPDATE use_cases SET value_model = jsonb_set(value_model, '{components,0,volumeYear}', '4000') WHERE id = $1::uuid`, [card.id]);
-  const stale = (await viewOf(token)).check!;
-  assert.equal(stale.draft.stale, true);
-  assert.equal(stale.draft.estimate, null);
-  assert.equal(stale.team?.volumeYear, 4000);
-  // Con la stima nuova si salva, e l'istantanea è quella nuova.
-  okPub(await pub.saveReferentCheck(link, { step: 2, teamSeen: { ...teamSeen, volumeYear: 4000 }, estimate: "piu" }, now), "è di più");
-  assert.deepEqual([(await checkRow(requestId)).team_volume_year, (await checkRow(requestId)).estimate, (await checkRow(requestId)).times_per_month], ["4000.00", "piu", null]);
-  assert.equal((await viewOf(token)).check?.draft.stale, false);
-  // Il team toglie la stima: il passo 2 chiede i due numeri, l'istantanea si svuota con la risposta.
+  assert.deepEqual(await benefitRows(requestId), [], "niente scritto");
+  assert.equal(await flagOf(requestId), false);
+  failed(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: null, answer: "si" } }, now), "dati_non_validi");
+  failed(await pub.saveReferentCheck(link, benefit("tempo-1", "no"), now), "dati_non_validi", "«No» non è di una voce a ore");
+  failed(await pub.saveReferentCheck(link, benefit("qualita-1", "meno"), now), "dati_non_validi");
+  failed(await pub.saveReferentCheck(link, benefit("tempo-1", "meno", { timesPerMonth: "abc" }), now), "numero_non_valido");
+  failed(await pub.saveReferentCheck(link, benefit("costi-1", "meno", { eurYear: 1_000_000_001 }), now), "numero_non_valido");
+  failed(await pub.saveReferentCheck(link, benefit("qualita-1", "no", { comment: "Il collega è in malattia per una visita medica" }), now), "testo_sanitario");
+  failed(await pub.saveReferentCheck(link, benefit("qualita-1", "no", { comment: "x".repeat(501) }), now), "commento_troppo_lungo");
+  // «È di meno» con i numeri; «Sì» non porta numeri; gli euro; «No» con un commento.
+  okPub(await pub.saveReferentCheck(link, benefit("tempo-1", "meno", { timesPerMonth: "200", minutesEach: "1,5" }), now), "è di meno");
+  okPub(await pub.saveReferentCheck(link, benefit("costi-1", "piu", { eurYear: "5.200", timesPerMonth: 9 }), now), "è di più");
+  okPub(await pub.saveReferentCheck(link, benefit("qualita-1", "no", { comment: "  Succede solo a fine mese.  " }), now), "no");
+  assert.deepEqual(await benefitRows(requestId), [
+    { key: "tempo-1", position: 1, kind: "ore", label: "Controllo delle fatture", tv: "3000.00", tm: "12.00", te: null, answer: "meno", t: "200.00", m: "1.50", e: null, comment: null },
+    { key: "costi-1", position: 2, kind: "euro", label: "Meno solleciti", tv: null, tm: null, te: "4321.00", answer: "piu", t: null, m: null, e: "5200.00", comment: null },
+    { key: "qualita-1", position: 3, kind: "qualitativo", label: "Meno errori nelle registrazioni", tv: null, tm: null, te: null, answer: "no", t: null, m: null, e: null, comment: "Succede solo a fine mese." },
+  ]);
+  assert.equal(await flagOf(requestId), true);
+  assert.equal((await checkRow(requestId)).team_component_key, null, "la stima del tempo del rilascio 5 resta vuota");
+  okPub(await pub.saveReferentCheck(link, benefit("tempo-1", "si", { timesPerMonth: 5, minutesEach: 5 }), now), "sì");
+  assert.deepEqual([(await benefitRows(requestId))[0].answer, (await benefitRows(requestId))[0].t], ["si", null]);
+  // La vista ha le bozze di ogni riga.
+  const drafts = (await viewOf(token)).check!.benefits!.map((b) => b.draft);
+  assert.deepEqual(drafts, [
+    { answer: "si", timesPerMonth: null, minutesEach: null, eurYear: null, comment: null, stale: false },
+    { answer: "piu", timesPerMonth: null, minutesEach: null, eurYear: 5200, comment: null, stale: false },
+    { answer: "no", timesPerMonth: null, minutesEach: null, eurYear: null, comment: "Succede solo a fine mese.", stale: false },
+  ]);
+  // Il team cambia i minuti della voce a ore: quella riga è «stale» e vuota, le altre restano.
+  await q(`UPDATE use_cases SET value_model = jsonb_set(value_model, '{components,0,minutesPerUnit}', '10') WHERE id = $1::uuid`, [card.id]);
+  const stale = (await viewOf(token)).check!.benefits!;
+  assert.deepEqual(stale[0].draft, { answer: null, timesPerMonth: null, minutesEach: null, eurYear: null, comment: null, stale: true });
+  assert.deepEqual(stale[0].team, { ...SEEN["tempo-1"], minutes: 10 });
+  assert.equal(stale[1].draft?.answer, "piu");
+  failed(await pub.saveReferentCheck(link, benefit("tempo-1", "si"), now), "stima_cambiata", "la riga di prima");
+  okPub(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: { ...SEEN["tempo-1"], minutes: 10 }, answer: "piu" } }, now), "con la cifra nuova");
+  assert.deepEqual([(await benefitRows(requestId))[0].tm, (await benefitRows(requestId))[0].answer], ["10.00", "piu"]);
+  assert.equal((await viewOf(token)).check!.benefits![0].draft?.stale, false);
+  // Il team toglie il modello: niente righe, i due numeri del tempo; le risposte per beneficio vanno via.
   await q(`UPDATE use_cases SET value_model = NULL WHERE id = $1::uuid`, [card.id]);
-  assert.equal((await viewOf(token)).check?.draft.stale, true);
+  assert.equal((await viewOf(token)).check?.benefits, null);
+  failed(await pub.saveReferentCheck(link, benefit("costi-1", "si"), now), "stima_cambiata");
   failed(await pub.saveReferentCheck(link, { step: 2, teamSeen: null, estimate: "si" }, now), "dati_non_validi");
-  okPub(await pub.saveReferentCheck(link, { step: 2, teamSeen: null, estimate: null, timesPerMonth: 20, minutesEach: 30 }, now), "senza stima");
+  okPub(await pub.saveReferentCheck(link, { step: 2, teamSeen: null, estimate: null, timesPerMonth: 20, minutesEach: 30 }, now), "senza modello");
   assert.deepEqual(await checkRow(requestId), { confirm: null, confirm_note: null, team_component_key: null, team_volume_year: null, team_minutes: null, estimate: null, times_per_month: "20.00", minutes_each: "30.00", sent: false });
+  assert.deepEqual(await benefitRows(requestId), []);
+  assert.equal(await flagOf(requestId), false);
 });
 
-test("l'invio vuole la conferma e la stima; poi la richiesta senza domande si completa, con la campanella e l'avviso", opts, async () => {
+test("una voce a ore senza i numeri del team: i due numeri, tutti e due per inviare; una voce in euro senza cifra: «Succede davvero?»", opts, async () => {
+  const model = {
+    v: 1,
+    primary: "tempo",
+    components: [
+      { kind: "ore", key: "tempo-2", lever: "tempo", label: "Archiviazione", confidence: "ipotesi", volumeYear: 0, minutesPerUnit: 0, automatablePct: 40 },
+      { kind: "euro", key: "costi-2", lever: "costi", label: "Meno carta", confidence: "ipotesi", eurYear: 0 },
+    ],
+  };
+  const card = await newCard(model);
+  const { link, requestId, token } = await referentLink(card.id, []);
+  const now = new Date();
+  const rows = (await viewOf(token)).check!.benefits!;
+  assert.deepEqual(rows.map((r) => [r.key, r.form]), [["tempo-2", "ore_numeri"], ["costi-2", "fatto"]]);
+  const seen = Object.fromEntries(rows.map((r) => [r.key, r.team]));
+  okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, now));
+  failed(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-2", seen: seen["tempo-2"], answer: "si" } }, now), "dati_non_validi", "nessuna scelta, solo i numeri");
+  failed(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "costi-2", seen: seen["costi-2"], answer: "meno", eurYear: 100 } }, now), "dati_non_validi");
+  okPub(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-2", seen: seen["tempo-2"], answer: null, timesPerMonth: "20" } }, now));
+  okPub(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "costi-2", seen: seen["costi-2"], answer: "non_so", eurYear: 100 } }, now));
+  failed(await pub.submitReferentAnswers(link, {}, now), "stima_mancante", "manca un numero");
+  okPub(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-2", seen: seen["tempo-2"], answer: null, timesPerMonth: "20", minutesEach: "4" } }, now));
+  okPub(await pub.submitReferentAnswers(link, {}, now), "invio");
+  assert.deepEqual((await benefitRows(requestId)).map((b) => [b.key, b.answer, b.t, b.m, b.e]), [["tempo-2", null, "20.00", "4.00", null], ["costi-2", "non_so", null, null, null]]);
+  const codes = (await q(`SELECT phase_after FROM use_case_events WHERE use_case_id = $1::uuid AND 'richiesta_referente' = ANY(fields)`, [card.id])).map((r) => String(r.phase_after));
+  assert.equal(codes.filter((c) => c === "stima_diversa").length, 1, "i due numeri del referente sono una stima da vedere");
+});
+
+test("l'invio vuole la conferma e ogni riga; poi la richiesta senza domande si completa, con la campanella e l'avviso come una risposta sola", opts, async () => {
   const card = await newCard(MODEL);
   const { link, requestId, token } = await referentLink(card.id, []);
   const now = new Date();
@@ -254,26 +341,73 @@ test("l'invio vuole la conferma e la stima; poi la richiesta senza domande si co
   failed(await pub.submitReferentAnswers(link, {}, now), "conferma_mancante", "correggi senza nota");
   okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, now));
   failed(await pub.submitReferentAnswers(link, {}, now), "stima_mancante");
-  okPub(await pub.saveReferentCheck(link, { step: 2, teamSeen, estimate: "si" }, now));
+  okPub(await pub.saveReferentCheck(link, benefit("tempo-1", "si"), now));
+  okPub(await pub.saveReferentCheck(link, benefit("costi-1", "si"), now));
+  failed(await pub.submitReferentAnswers(link, {}, now), "stima_mancante", "manca la terza riga");
+  okPub(await pub.saveReferentCheck(link, benefit("qualita-1", null, { comment: "Solo un commento" }), now));
+  failed(await pub.submitReferentAnswers(link, {}, now), "stima_mancante", "un commento non è una risposta");
+  okPub(await pub.saveReferentCheck(link, benefit("qualita-1", "si"), now));
   const done = okPub(await pub.submitReferentAnswers(link, {}, now), "invio");
-  assert.deepEqual(done, { submitted: 1, open: 0, state: "completata" });
+  assert.deepEqual(done, { submitted: 1, open: 0, state: "completata" }, "tre voci, una risposta sola");
   assert.equal((await checkRow(requestId)).sent, true);
   assert.equal((await q(`SELECT status FROM use_case_referent_requests WHERE id = $1::uuid`, [requestId]))[0].status, "completata");
   const codes = (await q(`SELECT phase_after FROM use_case_events WHERE use_case_id = $1::uuid AND 'richiesta_referente' = ANY(fields)`, [card.id])).map((r) => String(r.phase_after));
   for (const code of ["referente", "conferma", "risposte", "completata"]) assert.ok(codes.includes(code), `${code} in ${codes}`);
-  assert.ok(!codes.includes("stima_diversa"));
+  assert.ok(!codes.includes("stima_diversa"), "tutto «Sì»");
   // La conferma conta come una risposta: la campanella di ogni revisore e l'avviso a chi ha chiesto.
   const notes = await q(`SELECT recipient_user_id::text AS who, kind, answers FROM use_case_notifications WHERE use_case_id = $1::uuid ORDER BY recipient_user_id`, [card.id]);
   assert.deepEqual(notes.map((n) => [n.who, n.kind, n.answers]), [ids.builder, ids.analyst].sort().map((who) => [who, "risposte", 1]));
   const alerts = await q(`SELECT i.answers FROM use_case_requester_email_items i WHERE i.request_id = $1::uuid`, [requestId]);
   assert.deepEqual(alerts.map((a) => a.answers), [1]);
   assert.equal((await q(`SELECT 1 FROM use_case_referent_emails WHERE request_id = $1::uuid AND template = 'conferma'`, [requestId])).length, 1);
+  // Dopo l'invio la pagina mostra quello che è partito, in sola lettura.
   const view = await viewOf(token);
   assert.equal(view.state, "completata");
   assert.ok(view.check?.submittedAt);
+  assert.deepEqual(view.check?.benefits?.map((b) => [b.key, b.draft?.answer]), [["tempo-1", "si"], ["costi-1", "si"], ["qualita-1", "si"]]);
   // Un secondo invio non scrive niente.
-  const second = await pub.submitReferentAnswers((await pub.resolveReferentToken(token, now)).access === "ok" ? link : link, {}, now);
+  const second = await pub.submitReferentAnswers(link, {}, now);
   assert.equal(second.ok, false);
+});
+
+test("una voce aggiunta dal team mentre la pagina era aperta riporta al passo 2; le risposte su voci tolte non partono; «No» è una stima da vedere, una riga sola", opts, async () => {
+  const card = await newCard(MODEL);
+  const { link, requestId } = await referentLink(card.id, []);
+  const now = new Date();
+  okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, now));
+  await answerAll(link, { "costi-1": "meno", "qualita-1": "no" });
+  const added = { kind: "qualitativo", key: "rischio-1", lever: "rischio", label: "Meno sanzioni", confidence: "ipotesi" };
+  await q(`UPDATE use_cases SET value_model = jsonb_set(value_model, '{components}', (value_model->'components') || $2::jsonb) WHERE id = $1::uuid`, [card.id, JSON.stringify([added])]);
+  const refused = await pub.submitReferentAnswers(link, {}, now);
+  failed(refused, "stima_mancante");
+  if (!refused.ok) assert.deepEqual((await import("./steps-state.ts")).stepOfSubmitRefusal(refused), { step: 2, message: refused.message });
+  okPub(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "rischio-1", seen: { kind: "qualitativo", volumeYear: null, minutes: null, eurYear: null }, answer: "si" } }, now));
+  // Il team toglie la voce in euro: quella risposta non parte.
+  await q(`UPDATE use_cases SET value_model = jsonb_set(value_model, '{components}', (value_model->'components') - 1) WHERE id = $1::uuid`, [card.id]);
+  okPub(await pub.submitReferentAnswers(link, {}, now), "invio");
+  assert.deepEqual((await benefitRows(requestId)).map((b) => [b.key, b.answer]), [["tempo-1", "si"], ["qualita-1", "no"], ["rischio-1", "si"]]);
+  const codes = (await q(`SELECT phase_after FROM use_case_events WHERE use_case_id = $1::uuid AND 'richiesta_referente' = ANY(fields)`, [card.id])).map((r) => String(r.phase_after));
+  assert.equal(codes.filter((c) => c === "stima_diversa").length, 1);
+});
+
+test("il commento di una riga con un nome o un'email: la bozza si salva, «Invia» lo respinge e la pagina torna al passo 2", opts, async () => {
+  const steps = await import("./steps-state.ts");
+  const card = await newCard(MODEL);
+  const { link, requestId } = await referentLink(card.id, []);
+  const now = new Date();
+  okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, now));
+  await answerAll(link);
+  okPub(await pub.saveReferentCheck(link, benefit("costi-1", "si", { comment: "Lo sa mario.rossi@acme.test" }), now), "bozza con l'email");
+  const sent = await pub.submitReferentAnswers(link, {}, now);
+  assert.equal(sent.ok, false);
+  if (!sent.ok) {
+    assert.equal(sent.code, "risposte_da_correggere");
+    assert.deepEqual([...new Set((sent.issues ?? []).map((i) => i.field))], ["beneficio.costi-1"]);
+    assert.equal(steps.stepOfSubmitRefusal(sent)?.step, 2);
+  }
+  assert.equal((await checkRow(requestId)).sent, false, "niente è partito");
+  okPub(await pub.saveReferentCheck(link, benefit("costi-1", "si", { comment: "Lo sa l'ufficio acquisti." }), now));
+  okPub(await pub.submitReferentAnswers(link, {}, now), "invio");
 });
 
 test("«Correggi» e una stima diversa: la Storia lo dice; con domande si invia solo quando sono tutte chiuse", opts, async () => {
@@ -299,6 +433,7 @@ test("«Correggi» e una stima diversa: la Storia lo dice; con domande si invia 
   assert.deepEqual(sent, { dont_know: true, comment: "Lo sa l'ufficio acquisti" }, "«Chi potrebbe saperlo?» parte con «Non ce l'ho»");
 });
 
+
 test("la rotta POST …/check: la bozza dal link, con gli stessi controlli e i suoi codici HTTP", opts, async () => {
   const card = await newCard(MODEL);
   const { token, requestId } = await referentLink(card.id, []);
@@ -310,12 +445,15 @@ test("la rotta POST …/check: la bozza dal link, con gli stessi controlli e i s
   const yes = await post({ step: 1, confirm: "si", note: null });
   assert.equal(yes.status, 200);
   assert.ok(yes.json.ok && yes.json.data?.savedAt);
-  const changed = await post({ step: 2, teamSeen: { ...teamSeen, volumeYear: 1 }, estimate: "si" });
+  const changed = await post({ step: 2, benefit: { key: "tempo-1", seen: { ...SEEN["tempo-1"], volumeYear: 1 }, answer: "si" } });
   assert.equal(changed.status, 409);
   assert.equal(changed.json.error, "stima_cambiata");
-  const bad = await post({ step: 2, teamSeen, estimate: "meno", minutesEach: "-3" });
+  const bad = await post({ step: 2, benefit: { key: "tempo-1", seen: SEEN["tempo-1"], answer: "meno", minutesEach: "-3" } });
   assert.equal(bad.status, 422);
   assert.equal(bad.json.error, "numero_non_valido");
+  const row = await post({ step: 2, benefit: { key: "costi-1", seen: SEEN["costi-1"], answer: "meno", eurYear: "3.900" } });
+  assert.equal(row.status, 200);
+  assert.deepEqual((await benefitRows(requestId)).map((b) => [b.key, b.answer, b.e]), [["costi-1", "meno", "3900.00"]]);
   const wrong = await post({ step: 1, confirm: "si" });
   assert.equal(wrong.status, 200);
   assert.equal((await checkRow(requestId)).confirm, "si");
@@ -336,7 +474,7 @@ test("la nota di «Correggi» con un nome o un'email: la bozza si salva con l'av
     const saved = okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "correggi", note }, now), "bozza con l'avviso");
     const warning = steps.stepOneWarning({ step: 1 }, saved.warnings);
     assert.ok(warning, `l'avviso sotto «Cosa cambieresti?»: ${note}`);
-    okPub(await pub.saveReferentCheck(link, { step: 2, teamSeen, estimate: "si" }, now), "stima");
+    await answerAll(link);
     const sent = await pub.submitReferentAnswers(link, { shown: [] }, now);
     assert.equal(sent.ok, false);
     if (sent.ok) continue;

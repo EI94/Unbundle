@@ -146,6 +146,7 @@ test("dopo «Usa la stima di …»: «Stima del referente usata il …», mai «
     correctionDoneAt: null,
     estimateOutcome: "adottata" as const,
     estimateOutcomeAt: new Date("2026-11-03T11:00:00.000Z"),
+    benefits: null,
   };
   const teamNow = { key: "pratiche", volumeYear: 1800, minutes: 8.5, hours: 255, perMonth: 150, perYear: null, unit: "pratiche", label: null };
   const lines = checkLinesOf(blockCheckOf(row, 3, teamNow), "Bruna Esempio", TODAY, true).map((l) => l.text);

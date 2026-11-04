@@ -1,26 +1,30 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CONTROL_CLASS, TEXTAREA_CLASS } from "@/components/uc/referente/inputs/fields";
 import { Notice } from "@/components/uc/referente/screen";
 import { cn } from "@/lib/utils";
-import type { CheckBody, ReferentCheckView } from "@/lib/use-cases/referent/contract";
+import type { BenefitBody, CheckBody, ReferentBenefitView, ReferentCheckView } from "@/lib/use-cases/referent/contract";
 import { REFERENT_CHECK_LIMITS } from "@/lib/db/use-case-hub-referent-check-ddl";
-import { teamEstimateDetail, teamEstimateQuestion } from "@/lib/use-cases/referent/estimate";
-import { REFERENT_CHECK_TEXT } from "@/lib/use-cases/referent/labels";
-import { numberField, numberText, perMonthLabel, placeholderOf, stepLabel, type CheckStep } from "./steps-state";
+import { REFERENT_BENEFIT_LIMITS } from "@/lib/db/use-case-hub-referent-benefits-ddl";
+import { benefitAnswered, benefitChoices, benefitQuestion } from "@/lib/use-cases/referent/impact-text";
+import { REFERENT_CHECK_TEXT, REFERENT_IMPACT_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { benefitDone, numberField, numberText, placeholderOf, stepLabel, type CheckStep } from "./steps-state";
 
 /**
  * (Rilascio 5, SPEC §7.1–§7.4) I passi di una richiesta al referente: la barra dei passi, «Lo use case»
- * («È così?», la descrizione, «Sì, è così» / «Correggi» con «Cosa cambieresti?») e «Il tempo» (la stima
- * del team in ore di lavoro con «Sì» / «È di meno» / «È di più» e due numeri facoltativi, oppure le due
- * domande senza stima). Un solo pulsante pieno per passo: il passo dopo. Le scelte sono pulsanti a
- * levetta (`aria-pressed`) in un gruppo con il suo nome. I testi vengono da labels.ts.
+ * («È così?», la descrizione, «Sì, è così» / «Correggi» con «Cosa cambieresti?») e, (rilascio 5.1),
+ * «L'impatto»: una riga per ogni voce di «Benefici e costi» con un tocco («Sì» / «È di meno» / «È di più»
+ * con i numeri facoltativi, o «Sì» / «No» / «Non so», o i due numeri quando il team non li ha) e un
+ * commento facoltativo; senza modello del valore le due domande del tempo. Un solo pulsante pieno per
+ * passo: il passo dopo. Le scelte sono pulsanti a levetta (`aria-pressed`) in un gruppo con il suo nome.
+ * I testi vengono da labels.ts.
  */
 
 const T = REFERENT_CHECK_TEXT;
+const I = REFERENT_IMPACT_TEXT;
 export const stepTitleId = (step: CheckStep) => `ucq-passo-${step}-titolo`;
 const CHOICE_CLASS = "min-h-11 h-auto w-full py-2.5 text-base whitespace-normal sm:w-auto";
 const AUTOSAVE_MS = 1500;
@@ -83,6 +87,8 @@ export interface StepActions {
   tooSoon: (e: React.MouseEvent<HTMLButtonElement>) => boolean;
   /** Aggiorna subito la bozza mostrata. */
   setDraft: (patch: Partial<ReferentCheckView["draft"]>) => void;
+  /** (Rilascio 5.1) Aggiorna subito la bozza mostrata di una riga dell'impatto. */
+  setBenefit?: (key: string, draft: NonNullable<ReferentBenefitView["draft"]>) => void;
 }
 
 // ─── Passo 1 «Lo use case» ───────────────────────────────────────────
@@ -228,8 +234,12 @@ export function ConfirmStep({
   );
 }
 
-// ─── Passo 2 «Il tempo» ──────────────────────────────────────────────
+// ─── Passo 2 senza modello del valore: le due domande del tempo ─────
 
+/**
+ * (Rilascio 5) Il passo 2 quando lo use case non ha un modello del valore: «Quanto tempo vi prende questo
+ * lavoro?» con i due numeri, tutti e due necessari («Basta una stima.»).
+ */
 export function EstimateStep({
   check,
   last,
@@ -249,18 +259,14 @@ export function EstimateStep({
   errorFromServer: string | null;
 }) {
   const id = useId();
-  const team = check.team;
   const draft = check.draft;
   const [times, setTimes] = useState(numberText(draft.timesPerMonth));
   const [minutes, setMinutes] = useState(numberText(draft.minutesEach));
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timesRef = useRef<HTMLInputElement>(null);
-  const different = draft.estimate === "meno" || draft.estimate === "piu";
-  const showNumbers = !team || different;
   const shownError = error ?? errorFromServer;
   const errId = `${id}-errore`;
-  const teamSeen = team ? { key: team.key, volumeYear: team.volumeYear, minutes: team.minutes } : null;
 
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
@@ -268,184 +274,535 @@ export function EstimateStep({
 
   /** I due campi come numeri; null dove il campo non è valido. */
   const parsed = () => ({ t: numberField(times, "timesPerMonth"), m: numberField(minutes, "minutesEach") });
-  const saveNumbers = async (estimate: ReferentCheckView["draft"]["estimate"], t: string, m: string) => {
+  const saveNumbers = async (t: string, m: string) => {
     const tt = numberField(t, "timesPerMonth");
     const mm = numberField(m, "minutesEach");
     if (!tt.ok || !mm.ok) return false;
-    actions.setDraft({ estimate, timesPerMonth: tt.value, minutesEach: mm.value });
-    return actions.save({ step: 2, teamSeen, estimate, timesPerMonth: tt.value, minutesEach: mm.value });
+    actions.setDraft({ estimate: null, timesPerMonth: tt.value, minutesEach: mm.value, stale: false });
+    return actions.save({ step: 2, teamSeen: null, estimate: null, timesPerMonth: tt.value, minutesEach: mm.value });
   };
   const schedule = (t: string, m: string) => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       timer.current = null;
-      void saveNumbers(team ? draft.estimate : null, t, m);
+      void saveNumbers(t, m);
     }, AUTOSAVE_MS);
   };
 
   // Chi chiude la pagina con un numero non ancora salvato: un ultimo salvataggio che sopravvive alla chiusura.
-  const pendingRef = useRef({ times, minutes, estimate: draft.estimate });
+  const pendingRef = useRef({ times, minutes });
   useEffect(() => {
-    pendingRef.current = { times, minutes, estimate: draft.estimate };
-  }, [times, minutes, draft.estimate]);
+    pendingRef.current = { times, minutes };
+  }, [times, minutes]);
   useEffect(() => {
     const onHide = () => {
       if (!timer.current) return;
       clearTimeout(timer.current);
       timer.current = null;
-      const p = pendingRef.current;
-      const tt = numberField(p.times, "timesPerMonth");
-      const mm = numberField(p.minutes, "minutesEach");
+      const tt = numberField(pendingRef.current.times, "timesPerMonth");
+      const mm = numberField(pendingRef.current.minutes, "minutesEach");
       if (!tt.ok || !mm.ok) return;
-      const estimate = team ? p.estimate : null;
-      void actions.save({ step: 2, teamSeen: team ? { key: team.key, volumeYear: team.volumeYear, minutes: team.minutes } : null, estimate, timesPerMonth: tt.value, minutesEach: mm.value }, true);
+      void actions.save({ step: 2, teamSeen: null, estimate: null, timesPerMonth: tt.value, minutesEach: mm.value }, true);
     };
     window.addEventListener("pagehide", onHide);
     return () => window.removeEventListener("pagehide", onHide);
-  }, [actions, team]);
-
-  const pick = (estimate: "si" | "meno" | "piu", e: React.MouseEvent<HTMLButtonElement>) => {
-    // Ogni scelta, non solo «Sì»: il secondo clic di un doppio clic su «Sì, è così» (o su «Indietro» del
-    // passo 3) arriva qui sotto il dito, e non deve diventare un «È di più» che nessuno ha scelto.
-    if (actions.tooSoon(e)) return;
-    if (estimate === "si" && !last) {
-      setError(null);
-      actions.setDraft({ estimate: "si", timesPerMonth: null, minutesEach: null, stale: false });
-      void actions.save({ step: 2, teamSeen, estimate: "si", timesPerMonth: null, minutesEach: null });
-      actions.next(e);
-      return;
-    }
-    setError(null);
-    const keep = estimate === "si" ? { t: null, m: null } : (() => { const p = parsed(); return { t: p.t.ok ? p.t.value : null, m: p.m.ok ? p.m.value : null }; })();
-    actions.setDraft({ estimate, timesPerMonth: keep.t, minutesEach: keep.m, stale: false });
-    void actions.save({ step: 2, teamSeen, estimate, timesPerMonth: keep.t, minutesEach: keep.m });
-    if (estimate !== "si") requestAnimationFrame(() => timesRef.current?.focus());
-  };
+  }, [actions]);
 
   const onPrimary = async (e: React.MouseEvent<HTMLButtonElement>) => {
     if (actions.tooSoon(e)) return;
     const p = parsed();
-    if (team && draft.estimate === null) {
-      setError(T.estimate.pick);
-      return;
-    }
     if (!p.t.ok || !p.m.ok) {
       setError(T.estimate.invalid);
       timesRef.current?.focus();
       return;
     }
-    if (!team && (p.t.value === null || p.m.value === null)) {
+    if (p.t.value === null || p.m.value === null) {
       setError(T.estimate.noTeamMissing);
       timesRef.current?.focus();
       return;
     }
     setError(null);
     if (timer.current) clearTimeout(timer.current);
-    const estimate = team ? draft.estimate : null;
-    const numbers = estimate === "si" ? { t: null, m: null } : { t: p.t.value, m: p.m.value };
-    actions.setDraft({ estimate, timesPerMonth: numbers.t, minutesEach: numbers.m });
-    const ok = await actions.save({ step: 2, teamSeen, estimate, timesPerMonth: numbers.t, minutesEach: numbers.m });
+    actions.setDraft({ estimate: null, timesPerMonth: p.t.value, minutesEach: p.m.value, stale: false });
+    const ok = await actions.save({ step: 2, teamSeen: null, estimate: null, timesPerMonth: p.t.value, minutesEach: p.m.value });
     if (ok) actions.next(null);
   };
 
   const field = (which: "times" | "minutes") => {
     const isTimes = which === "times";
-    const value = isTimes ? times : minutes;
-    const label = team ? (isTimes ? perMonthLabel() : T.estimate.minutesEach) : isTimes ? T.estimate.noTeamTimes : T.estimate.noTeamMinutes;
-    const placeholder = team ? (isTimes ? placeholderOf(team.perMonth ?? (team.volumeYear / 12)) : placeholderOf(team.minutes)) : "";
     const inputId = `${id}-${which}`;
     return (
-      <div className="min-w-0 flex-1 space-y-1.5">
-        <label htmlFor={inputId} className="block text-base font-medium">
-          {label}
-        </label>
-        <input
-          ref={isTimes ? timesRef : undefined}
-          id={inputId}
-          type="text"
-          inputMode="decimal"
-          autoComplete="off"
-          value={value}
-          placeholder={placeholder}
-          aria-invalid={shownError === T.estimate.invalid ? true : undefined}
-          aria-describedby={shownError ? errId : undefined}
-          onChange={(e) => {
-            const text = e.target.value;
-            setError(null);
-            if (isTimes) setTimes(text);
-            else setMinutes(text);
-            schedule(isTimes ? text : times, isTimes ? minutes : text);
-          }}
-          onBlur={() => {
-            if (timer.current) clearTimeout(timer.current);
-            void saveNumbers(team ? draft.estimate : null, times, minutes);
-          }}
-          className={CONTROL_CLASS}
-        />
-      </div>
+      <NumberField
+        id={inputId}
+        inputRef={isTimes ? timesRef : undefined}
+        label={isTimes ? T.estimate.noTeamTimes : T.estimate.noTeamMinutes}
+        value={isTimes ? times : minutes}
+        placeholder=""
+        invalid={shownError === T.estimate.invalid}
+        describedBy={shownError ? errId : undefined}
+        onChange={(text) => {
+          setError(null);
+          if (isTimes) setTimes(text);
+          else setMinutes(text);
+          schedule(isTimes ? text : times, isTimes ? minutes : text);
+        }}
+        onBlur={() => {
+          if (timer.current) clearTimeout(timer.current);
+          void saveNumbers(times, minutes);
+        }}
+      />
     );
   };
 
-  const needsPrimary = last || !team || different;
-  const primaryLabel = last ? T.send : T.next;
   return (
     <section aria-labelledby={stepTitleId(2)} className="mt-6 space-y-4" data-slot="referent-step-2">
       {staleNotice || draft.stale ? <Notice tone="attenzione">{T.estimate.stale}</Notice> : null}
-      {team ? (
-        <>
-          {team.label ? <p className="text-sm break-words text-muted-foreground">{team.label}</p> : null}
-          <StepTitle step={2}>{teamEstimateQuestion(team)}</StepTitle>
-          <p className="text-base break-words text-muted-foreground">{teamEstimateDetail(team)}</p>
-          <div role="group" aria-label={T.estimate.group} className="flex flex-col gap-3 sm:flex-row">
-            <Choice pressed={draft.estimate === "si"} filled={!needsPrimary} onClick={(e) => pick("si", e)}>
-              {T.estimate.yes}
-            </Choice>
-            <Choice pressed={draft.estimate === "meno"} filled={false} onClick={(e) => pick("meno", e)}>
-              {T.estimate.less}
-            </Choice>
-            <Choice pressed={draft.estimate === "piu"} filled={false} onClick={(e) => pick("piu", e)}>
-              {T.estimate.more}
-            </Choice>
-          </div>
-        </>
-      ) : (
-        <>
-          <StepTitle step={2}>{T.estimate.noTeamTitle}</StepTitle>
-          <p className="text-base text-muted-foreground">{T.estimate.noTeamHint}</p>
-        </>
-      )}
-      {showNumbers ? (
-        <div className="space-y-3">
-          {team ? <p className="text-base">{T.estimate.numbersLead}</p> : null}
-          <div className="flex flex-col gap-3 min-[400px]:flex-row">
-            {field("times")}
-            {field("minutes")}
-          </div>
-        </div>
-      ) : null}
+      <StepTitle step={2}>{T.estimate.noTeamTitle}</StepTitle>
+      <p className="text-base text-muted-foreground">{T.estimate.noTeamHint}</p>
+      <div className="flex flex-col gap-3 min-[400px]:flex-row">
+        {field("times")}
+        {field("minutes")}
+      </div>
       {shownError ? (
         <p id={errId} role="alert" className="text-sm break-words text-uc-rosso">
           {shownError}
         </p>
       ) : null}
-      <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center">
+      <StepFooter last={last} sending={sending} actions={actions} onBack={onBack} onPrimary={(e) => void onPrimary(e)} />
+    </section>
+  );
+}
+
+/** Un campo numerico del passo 2: testo con la virgola, tastiera numerica sul telefono. */
+function NumberField({
+  id,
+  label,
+  value,
+  placeholder,
+  invalid,
+  describedBy,
+  onChange,
+  onBlur,
+  inputRef,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  placeholder: string;
+  invalid: boolean;
+  describedBy: string | undefined;
+  onChange: (text: string) => void;
+  onBlur: () => void;
+  inputRef?: Ref<HTMLInputElement>;
+}) {
+  return (
+    <div className="min-w-0 flex-1 space-y-1.5">
+      <label htmlFor={id} className="block text-base font-medium">
+        {label}
+      </label>
+      <input
+        ref={inputRef}
+        id={id}
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        value={value}
+        placeholder={placeholder}
+        aria-invalid={invalid ? true : undefined}
+        aria-describedby={describedBy}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        className={CONTROL_CLASS}
+      />
+    </div>
+  );
+}
+
+/** «Indietro» e il pulsante pieno del passo 2 («Avanti», o «Invia» senza domande). */
+function StepFooter({ last, sending, actions, onBack, onPrimary }: { last: boolean; sending: boolean; actions: StepActions; onBack: () => void; onPrimary: (e: React.MouseEvent<HTMLButtonElement>) => void }) {
+  return (
+    <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center">
+      <Button
+        type="button"
+        variant="ghost"
+        className="min-h-11 h-auto px-3 text-base"
+        onClick={(e) => {
+          if (!actions.tooSoon(e)) onBack();
+        }}
+      >
+        {T.back}
+      </Button>
+      <Button type="button" className="h-12 w-full text-base sm:w-auto sm:min-w-48" aria-busy={sending || undefined} onClick={onPrimary}>
+        {sending ? <Loader2 className="animate-spin" aria-hidden /> : null}
+        {last ? T.send : T.next}
+      </Button>
+    </div>
+  );
+}
+
+// ─── Passo 2 «L'impatto» (rilascio 5.1) ──────────────────────────────
+
+/** Il titolo di una riga dell'impatto: riceve il fuoco quando «Avanti» la trova senza risposta. */
+export const benefitTitleId = (key: string) => `ucq-beneficio-${key.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+
+type BenefitDraftView = NonNullable<ReferentBenefitView["draft"]>;
+interface RowState {
+  answer: BenefitDraftView["answer"];
+  times: string;
+  minutes: string;
+  euro: string;
+  comment: string;
+}
+interface RowHandle {
+  /** Salva quello che resta da salvare; `saved` falso con un numero non valido o un salvataggio fallito. */
+  flush: () => Promise<{ saved: boolean; done: boolean }>;
+}
+
+/** La risposta di una riga com'è adesso, per la bozza mostrata e per il server; null con un numero non valido. */
+function rowDraftOf(row: ReferentBenefitView, s: RowState): BenefitDraftView | null {
+  const t = numberField(s.times, "timesPerMonth");
+  const m = numberField(s.minutes, "minutesEach");
+  const e = numberField(s.euro, "eurYear");
+  if (!t.ok || !m.ok || !e.ok) return null;
+  const different = s.answer === "meno" || s.answer === "piu";
+  const comment = s.comment.trim() ? s.comment : null;
+  if (row.form === "ore_numeri") return { answer: null, timesPerMonth: t.value, minutesEach: m.value, eurYear: null, comment, stale: false };
+  if (row.form === "ore") return { answer: s.answer, timesPerMonth: different ? t.value : null, minutesEach: different ? m.value : null, eurYear: null, comment, stale: false };
+  if (row.form === "euro") return { answer: s.answer, timesPerMonth: null, minutesEach: null, eurYear: different ? e.value : null, comment, stale: false };
+  return { answer: s.answer, timesPerMonth: null, minutesEach: null, eurYear: null, comment, stale: false };
+}
+
+function bodyOf(row: ReferentBenefitView, d: BenefitDraftView): BenefitBody {
+  return { key: row.key, seen: row.team, answer: d.answer, timesPerMonth: d.timesPerMonth, minutesEach: d.minutesEach, eurYear: d.eurYear, comment: d.comment };
+}
+
+/** Una riga del passo «L'impatto»: la domanda, un tocco, i numeri facoltativi, il commento. */
+function BenefitRow({
+  row,
+  actions,
+  missing,
+  onEdit,
+  handleRef,
+}: {
+  row: ReferentBenefitView;
+  actions: StepActions;
+  missing: boolean;
+  onEdit: (key: string) => void;
+  handleRef: Ref<RowHandle>;
+}) {
+  const id = useId();
+  const titleId = benefitTitleId(row.key);
+  const errId = `${id}-errore`;
+  const fresh = row.draft && !row.draft.stale ? row.draft : null;
+  const [state, setState] = useState<RowState>(() => ({
+    answer: fresh?.answer ?? null,
+    times: numberText(fresh?.timesPerMonth ?? null),
+    minutes: numberText(fresh?.minutesEach ?? null),
+    euro: numberText(fresh?.eurYear ?? null),
+    comment: row.draft?.comment ?? "",
+  }));
+  const [commentOpen, setCommentOpen] = useState(Boolean(row.draft?.comment));
+  const [error, setError] = useState<string | null>(null);
+  const stateRef = useRef(state);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chain = useRef<Promise<boolean>>(Promise.resolve(true));
+  const lastSaved = useRef<string>(JSON.stringify(rowDraftOf(row, state)));
+  const firstNumber = useRef<HTMLInputElement>(null);
+  const commentRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  /** Un salvataggio alla volta per riga, nell'ordine; uno uguale all'ultimo non parte. */
+  const save = useCallback(
+    (d: BenefitDraftView, keepalive = false): Promise<boolean> => {
+      const run = chain.current.then(async () => {
+        const key = JSON.stringify(d);
+        if (key === lastSaved.current) return true;
+        const ok = await actions.save({ step: 2, benefit: bodyOf(row, d) }, keepalive);
+        if (ok) lastSaved.current = key;
+        return ok;
+      });
+      chain.current = run.catch(() => false);
+      return run;
+    },
+    [actions, row],
+  );
+
+  /** La bozza di adesso: mostrata subito, salvata subito (o dopo `AUTOSAVE_MS` mentre si scrive). */
+  const commit = (next: RowState, delay: "subito" | "dopo") => {
+    setState(next);
+    stateRef.current = next;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    const d = rowDraftOf(row, next);
+    if (!d) return;
+    actions.setBenefit?.(row.key, d);
+    if (delay === "subito") void save(d);
+    else
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        void save(d);
+      }, AUTOSAVE_MS);
+  };
+
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      flush: async () => {
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = null;
+        const d = rowDraftOf(row, stateRef.current);
+        if (!d) {
+          setError(I.invalid);
+          return { saved: false, done: false };
+        }
+        const saved = await save(d);
+        return { saved, done: benefitAnswered(row.form, d) };
+      },
+    }),
+    [row, save],
+  );
+
+  // Chi chiude la pagina mentre scrive: un ultimo salvataggio che sopravvive alla chiusura.
+  useEffect(() => {
+    const onHide = () => {
+      if (!timer.current) return;
+      clearTimeout(timer.current);
+      timer.current = null;
+      const d = rowDraftOf(row, stateRef.current);
+      if (d) void save(d, true);
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, [row, save]);
+
+  const pick = (answer: NonNullable<RowState["answer"]>, e: React.MouseEvent<HTMLButtonElement>) => {
+    // Il secondo clic di un doppio clic (o un clic appena cambiato il passo) non sceglie niente.
+    if (actions.tooSoon(e)) return;
+    setError(null);
+    onEdit(row.key);
+    const base = rowDraftOf(row, stateRef.current) ? stateRef.current : { ...stateRef.current, times: "", minutes: "", euro: "" };
+    commit({ ...base, answer }, "subito");
+    if ((answer === "meno" || answer === "piu") && row.form !== "fatto") requestAnimationFrame(() => firstNumber.current?.focus());
+  };
+
+  const typed = (patch: Partial<RowState>) => {
+    setError(null);
+    onEdit(row.key);
+    commit({ ...stateRef.current, ...patch }, "dopo");
+  };
+  const blurred = () => {
+    const d = rowDraftOf(row, stateRef.current);
+    if (!d) {
+      setError(I.invalid);
+      return;
+    }
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    void save(d);
+  };
+
+  const choices = benefitChoices(row.form);
+  const different = state.answer === "meno" || state.answer === "piu";
+  const showNumbers = row.form === "ore_numeri" || (row.form !== "fatto" && different);
+  const current = rowDraftOf(row, state);
+  const done = current !== null && benefitAnswered(row.form, current);
+  const missingLine = row.form === "ore_numeri" ? I.numbersMissing : I.pick;
+  const describedBy = error ? errId : undefined;
+  const numberPlaceholder = (n: number | null) => (n !== null && n > 0 ? placeholderOf(n) : "");
+
+  return (
+    <div
+      role="group"
+      aria-labelledby={titleId}
+      data-slot="referent-benefit"
+      data-benefit={row.key}
+      data-form={row.form}
+      data-done={done ? "true" : "false"}
+      className={cn("space-y-3 rounded-xl border bg-card px-4 py-3", missing && !done && "ring-2 ring-uc-giallo")}
+    >
+      <p id={titleId} tabIndex={-1} className="rounded-md text-base leading-snug font-medium break-words outline-none focus-visible:ring-3 focus-visible:ring-ring/40">
+        {benefitQuestion(row)}
+      </p>
+      {choices.length ? (
+        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+          {choices.map((c) => (
+            <Choice key={c.answer} pressed={state.answer === c.answer} filled={false} onClick={(e) => pick(c.answer, e)}>
+              {c.label}
+            </Choice>
+          ))}
+        </div>
+      ) : null}
+      {showNumbers ? (
+        <div className="space-y-2">
+          {row.form !== "ore_numeri" ? <p className="text-sm text-muted-foreground">{row.form === "euro" ? I.euroLead : I.numbersLead}</p> : null}
+          <div className="flex flex-col gap-3 min-[400px]:flex-row">
+            {row.form === "euro" ? (
+              <NumberField
+                id={`${id}-euro`}
+                inputRef={firstNumber}
+                label={I.eurYear}
+                value={state.euro}
+                placeholder={numberPlaceholder(row.team.eurYear)}
+                invalid={error === I.invalid}
+                describedBy={describedBy}
+                onChange={(text) => typed({ euro: text })}
+                onBlur={blurred}
+              />
+            ) : (
+              <>
+                <NumberField
+                  id={`${id}-volte`}
+                  inputRef={firstNumber}
+                  label={I.perMonth}
+                  value={state.times}
+                  placeholder={row.form === "ore" ? numberPlaceholder((row.team.volumeYear ?? 0) / 12) : ""}
+                  invalid={error === I.invalid}
+                  describedBy={describedBy}
+                  onChange={(text) => typed({ times: text })}
+                  onBlur={blurred}
+                />
+                <NumberField
+                  id={`${id}-minuti`}
+                  label={I.minutesEach}
+                  value={state.minutes}
+                  placeholder={row.form === "ore" ? numberPlaceholder(row.team.minutes) : ""}
+                  invalid={error === I.invalid}
+                  describedBy={describedBy}
+                  onChange={(text) => typed({ minutes: text })}
+                  onBlur={blurred}
+                />
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+      {error ? (
+        <p id={errId} role="alert" className="text-sm break-words text-uc-rosso">
+          {error}
+        </p>
+      ) : missing && !done ? (
+        <p className="text-sm break-words">{missingLine}</p>
+      ) : null}
+      {commentOpen ? (
+        <div className="space-y-1.5">
+          <label htmlFor={`${id}-commento`} className="block text-sm font-medium">
+            {I.commentLabel}
+          </label>
+          <textarea
+            ref={commentRef}
+            id={`${id}-commento`}
+            rows={2}
+            maxLength={REFERENT_BENEFIT_LIMITS.comment}
+            value={state.comment}
+            placeholder={I.commentPlaceholder}
+            onChange={(e) => typed({ comment: e.target.value })}
+            onBlur={blurred}
+            className={TEXTAREA_CLASS}
+          />
+        </div>
+      ) : (
         <Button
           type="button"
           variant="ghost"
-          className="min-h-11 h-auto px-3 text-base"
+          size="sm"
+          className="min-h-11 h-auto px-2 text-sm text-muted-foreground sm:min-h-8"
           onClick={(e) => {
-            if (!actions.tooSoon(e)) onBack();
+            if (actions.tooSoon(e)) return;
+            setCommentOpen(true);
+            requestAnimationFrame(() => commentRef.current?.focus());
           }}
         >
-          {T.back}
+          {I.addComment}
         </Button>
-        {needsPrimary ? (
-          <Button type="button" className="h-12 w-full text-base sm:w-auto sm:min-w-48" aria-busy={sending || undefined} onClick={(e) => void onPrimary(e)}>
-            {sending ? <Loader2 className="animate-spin" aria-hidden /> : null}
-            {primaryLabel}
-          </Button>
-        ) : null}
+      )}
+    </div>
+  );
+}
+
+/**
+ * (Rilascio 5.1) Il passo «L'impatto»: «Cosa cambia, secondo il team» e una riga per ogni voce di
+ * «Benefici e costi», nell'ordine del modello. «Avanti» (o «Invia» senza domande) salva prima ogni riga;
+ * con una riga senza risposta lo dice con garbo, la evidenzia e ci porta il fuoco.
+ */
+export function ImpactStep({
+  check,
+  last,
+  sending,
+  staleNotice,
+  actions,
+  onBack,
+  errorFromServer,
+}: {
+  check: ReferentCheckView;
+  last: boolean;
+  sending: boolean;
+  staleNotice: boolean;
+  actions: StepActions;
+  onBack: () => void;
+  errorFromServer: string | null;
+}) {
+  const rows = check.benefits ?? [];
+  const handles = useRef(new Map<string, RowHandle>());
+  const [missing, setMissing] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const anyStale = rows.some((row) => row.draft?.stale);
+  const onEdit = useCallback((key: string) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : m)), []);
+  const refFor = useCallback(
+    (key: string) => (handle: RowHandle | null) => {
+      if (handle) handles.current.set(key, handle);
+      else handles.current.delete(key);
+    },
+    [],
+  );
+
+  const onPrimary = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (actions.tooSoon(e) || busy) return;
+    setBusy(true);
+    const results = await Promise.all(rows.map(async (row) => [row.key, (await handles.current.get(row.key)?.flush()) ?? { saved: true, done: benefitDone(row) }] as const));
+    setBusy(false);
+    const failed = results.find(([, r]) => !r.saved);
+    if (failed) {
+      document.getElementById(benefitTitleId(failed[0]))?.focus();
+      return;
+    }
+    const open = results.filter(([, r]) => !r.done).map(([key]) => key);
+    setMissing(open);
+    if (open.length) {
+      const el = document.getElementById(benefitTitleId(open[0]));
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+      el?.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+      el?.focus({ preventScroll: true });
+      return;
+    }
+    actions.next(null);
+  };
+
+  return (
+    <section aria-labelledby={stepTitleId(2)} className="mt-6 space-y-4" data-slot="referent-step-2" data-mode="benefici">
+      {staleNotice || anyStale ? <Notice tone="attenzione">{I.stale}</Notice> : null}
+      <StepTitle step={2}>{I.title}</StepTitle>
+      <div className="space-y-3">
+        {rows.map((row) => (
+          <BenefitRow key={row.key} row={row} actions={actions} missing={missing.includes(row.key)} onEdit={onEdit} handleRef={refFor(row.key)} />
+        ))}
       </div>
+      {missing.length ? (
+        <p role="alert" className="rounded-xl bg-uc-giallo-bg px-4 py-3 text-base break-words">
+          {missing.length === 1 ? I.missingOne : fillText(I.missingMany, { n: missing.length })}
+        </p>
+      ) : null}
+      {errorFromServer ? (
+        <p role="alert" className="text-sm break-words text-uc-rosso">
+          {errorFromServer}
+        </p>
+      ) : null}
+      <StepFooter last={last} sending={sending || busy} actions={actions} onBack={onBack} onPrimary={(e) => void onPrimary(e)} />
     </section>
   );
 }

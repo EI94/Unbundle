@@ -75,8 +75,8 @@ async function newCard(model: unknown): Promise<string> {
 }
 
 let seq = 0;
-/** Il referente risponde: «Sì, è così» o «Correggi», poi la stima, poi «Invia». */
-async function answered(useCaseId: string, step1: { confirm: "si" | "correggi"; note: string | null }, step2: { estimate: "si" | "meno" | "piu" | null; timesPerMonth: number | null; minutesEach: number | null; teamSeen: { key: string; volumeYear: number; minutes: number } | null }): Promise<string> {
+/** Il referente risponde: «Sì, è così» o «Correggi», poi (rilascio 5.1) la riga di ogni voce, poi «Invia». */
+async function answered(useCaseId: string, step1: { confirm: "si" | "correggi"; note: string | null }, step2: { benefit: Record<string, unknown> }): Promise<string> {
   const sent = ok(
     await referents.sendReferentRequest(
       ctx(),
@@ -141,7 +141,7 @@ after(async () => {
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [[ids.builder, ids.contributor]]);
 });
 
-const SEEN = { key: "tempo-1", volumeYear: 3000, minutes: 12 };
+const SEEN = { kind: "ore", volumeYear: 3000, minutes: 12, eurYear: null };
 const viewer = (who: "builder" | "contributor") => ({
   userId: ids[who],
   email: who === "builder" ? `builder.${suffix}@cliente.test` : `contrib.${suffix}@cliente.test`,
@@ -161,8 +161,8 @@ test("gli stati del referente: manca, in attesa, da verificare con la stima, ha 
     await referents.sendReferentRequest(ctx(), waiting, { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Bruna Esempio", email: `bruna.${suffix}@topjet.test` }, needIds: [] }, { env: ENV, requester: { name: "Giulia Neri", emailVerified: true } }),
     "in attesa",
   );
-  await answered(toVerify, { confirm: "si", note: null }, { estimate: "meno", timesPerMonth: 200, minutesEach: null, teamSeen: SEEN });
-  await answered(done, { confirm: "si", note: null }, { estimate: "si", timesPerMonth: null, minutesEach: null, teamSeen: SEEN });
+  await answered(toVerify, { confirm: "si", note: null }, { benefit: { key: "tempo-1", seen: SEEN, answer: "meno", timesPerMonth: 200 } });
+  await answered(done, { confirm: "si", note: null }, { benefit: { key: "tempo-1", seen: SEEN, answer: "si" } });
   const items = [
     { id: missing, phase: "approvato" as const },
     { id: waiting, phase: "approvato" as const },

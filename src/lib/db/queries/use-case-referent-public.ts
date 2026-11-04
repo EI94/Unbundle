@@ -56,8 +56,21 @@ import { checkDraftText, checkSubmitText } from "@/lib/use-cases/referent/text";
 import { hashReferentToken, looksLikeReferentToken, RECIPIENT_HASH_SQL } from "@/lib/use-cases/referent/tokens";
 import { toPublicView, type PublicFileRow, type PublicItemRow } from "@/lib/use-cases/referent/view";
 import { referentDescription } from "@/lib/use-cases/referent/description";
-import { REFERENT_NUMBER_MAX, referentNumber, sameTeamEstimate, teamEstimateOf, teamSnapshotOf, type TeamSnapshot } from "@/lib/use-cases/referent/estimate";
+import { REFERENT_NUMBER_MAX, referentNumber, sameTeamEstimate, type TeamSnapshot } from "@/lib/use-cases/referent/estimate";
 import { REFERENT_CHECK_LIMITS } from "@/lib/db/use-case-hub-referent-check-ddl";
+import { REFERENT_BENEFIT_LIMITS } from "@/lib/db/use-case-hub-referent-benefits-ddl";
+import {
+  benefitAnswerOf,
+  benefitNeedsReview,
+  benefitTeamFromBody,
+  impactRowsOf,
+  sameBenefitTeam,
+  storedBenefitAnswered,
+  storedBenefitOf,
+  type ImpactRow,
+  type StoredBenefit,
+} from "@/lib/use-cases/referent/impact";
+import { benefitFormOf } from "@/lib/use-cases/referent/impact-text";
 import type { ReferentItemState, ReferentRequestStatus } from "@/lib/db/use-case-hub-referents-ddl";
 
 /**
@@ -177,6 +190,10 @@ interface CheckFact {
   minutesEach: number | null;
   updatedAt: Date;
   submittedAt: Date | null;
+  /** (Rilascio 5.1) La conferma ha le risposte per beneficio (`use_case_referent_check_benefits`). */
+  benefits: boolean;
+  /** (Rilascio 5.1) Le risposte per beneficio salvate, nell'ordine delle righe. */
+  benefitRows: StoredBenefit[];
 }
 
 interface RequestFacts {
@@ -206,7 +223,7 @@ function requestStatements(link: ReferentLink): UcStatement[] {
     toStatement(ucSql`SELECT r.status, r.expires_at, r.privacy_accepted_at, r.privacy_notice_version, r.requester_name, r.requested_by_user_id, r.message,
   u.code, u.title, w.name AS company, u.description, u.value_model,
   c.request_id IS NOT NULL AS has_check, c.confirm, c.confirm_note, c.team_component_key, c.team_volume_year, c.team_minutes,
-  c.estimate, c.times_per_month, c.minutes_each, c.updated_at AS check_updated_at, c.submitted_at AS check_submitted_at
+  c.estimate, c.times_per_month, c.minutes_each, c.updated_at AS check_updated_at, c.submitted_at AS check_submitted_at, c.benefits AS check_benefits
 FROM use_case_referent_requests r JOIN use_cases u ON u.id = r.use_case_id AND u.workspace_id = r.workspace_id JOIN workspaces w ON w.id = r.workspace_id
 LEFT JOIN use_case_referent_checks c ON c.request_id = r.id AND c.workspace_id = r.workspace_id
 WHERE r.id = ${req} AND r.workspace_id = ${ws}`),
@@ -226,6 +243,12 @@ ORDER BY a.created_at, a.id`),
 FROM use_case_need_files f
 WHERE f.request_id = ${req} AND f.workspace_id = ${ws} AND f.deleted_at IS NULL
 ORDER BY f.created_at, f.id`),
+    // (Rilascio 5.1) Le risposte per beneficio di questa richiesta.
+    toStatement(ucSql`SELECT b.component_key, b.position, b.kind, b.label, b.team_volume_year, b.team_minutes, b.team_eur_year, b.answer, b.times_per_month, b.minutes_each, b.eur_year,
+  b.comment, b.outcome, b.outcome_at
+FROM use_case_referent_check_benefits b
+WHERE b.request_id = ${req} AND b.workspace_id = ${ws}
+ORDER BY b.position, b.component_key`),
   ];
 }
 
@@ -235,7 +258,7 @@ function fileStatusOf(value: unknown): ReferentFileView["status"] {
 }
 
 async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promise<RequestFacts | null> {
-  const [[r], items, answers, files] = await executor.batch(requestStatements(link));
+  const [[r], items, answers, files, benefits] = await executor.batch(requestStatements(link));
   if (!r) return null;
   const expiresAt = rowDate(r.expires_at);
   if (!expiresAt) return null;
@@ -289,7 +312,7 @@ async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promi
     }),
     description: rowString(r.description),
     valueModel: rowJsonValue(r.value_model),
-    check: rowBool(r.has_check) ? checkFactOf(r) : null,
+    check: rowBool(r.has_check) ? checkFactOf(r, benefits) : null,
   };
 }
 
@@ -310,7 +333,7 @@ function rowJsonValue(value: unknown): unknown {
   }
 }
 
-function checkFactOf(r: UcRow): CheckFact {
+function checkFactOf(r: UcRow, benefits: readonly UcRow[]): CheckFact {
   const confirm = rowString(r.confirm);
   const estimate = rowString(r.estimate);
   const key = rowString(r.team_component_key);
@@ -325,6 +348,8 @@ function checkFactOf(r: UcRow): CheckFact {
     minutesEach: rowNumeric(r.minutes_each),
     updatedAt: rowDate(r.check_updated_at) ?? new Date(0),
     submittedAt: rowDate(r.check_submitted_at),
+    benefits: rowBool(r.check_benefits),
+    benefitRows: benefits.map(storedBenefitOf),
   };
 }
 
@@ -333,21 +358,53 @@ function estimateSaved(c: CheckFact): boolean {
   return c.estimate !== null || c.timesPerMonth !== null || c.minutesEach !== null;
 }
 
+/** (Rilascio 5.1) Una risposta salvata come la vede la sua riga; vuota (`stale`) se la cifra del team è cambiata. */
+function benefitDraftOf(stored: StoredBenefit | undefined, row: ImpactRow | null): NonNullable<ReferentCheckView["benefits"]>[number]["draft"] {
+  if (!stored) return null;
+  const stale = row !== null && !sameBenefitTeam(stored.team, row.team);
+  return {
+    answer: stale ? null : stored.answer,
+    timesPerMonth: stale ? null : stored.timesPerMonth,
+    minutesEach: stale ? null : stored.minutesEach,
+    eurYear: stale ? null : stored.eurYear,
+    comment: stored.comment,
+    stale,
+  };
+}
+
 /**
- * (Rilascio 5, §6.1) La conferma e la stima come le vede il referente: la descrizione filtrata, la stima
- * del team di adesso, la sua bozza. Una stima salvata su un'istantanea che non è più quella di adesso
- * è «stale»: la pagina la mostra vuota con «Il team ha appena cambiato la stima: controlla di nuovo.».
+ * (Rilascio 5.1) Le righe del passo «L'impatto»: prima dell'invio quelle del modello di adesso, ognuna con
+ * la sua bozza (vuota se la cifra del team è cambiata nel frattempo); dopo l'invio quelle inviate, con le
+ * risposte. null senza modello del valore (prima dell'invio) o per una conferma inviata con la stima del
+ * tempo (rilascio 5, o senza modello).
+ */
+function benefitsViewOf(c: CheckFact, model: unknown): ReferentCheckView["benefits"] {
+  if (c.submittedAt) {
+    if (!c.benefits) return null;
+    return c.benefitRows.map((b) => ({ key: b.key, form: benefitFormOf(b.team), label: b.label, team: b.team, draft: benefitDraftOf(b, null) }));
+  }
+  const rows = impactRowsOf(model);
+  if (!rows) return null;
+  const stored = new Map((c.benefits ? c.benefitRows : []).map((b) => [b.key, b]));
+  return rows.map((row) => ({ key: row.key, form: row.form, label: row.label, team: row.team, draft: benefitDraftOf(stored.get(row.key), row) }));
+}
+
+/**
+ * (Rilascio 5, §6.1) La conferma e la stima come le vede il referente: la descrizione filtrata, la sua
+ * bozza. Una stima salvata su un'istantanea che non è più quella di adesso è «stale»: la pagina la
+ * mostra vuota con «Il team ha appena cambiato la stima: controlla di nuovo.». (Rilascio 5.1) Con un
+ * modello del valore, l'impatto per beneficio (`benefits`); senza, i due numeri del tempo.
  */
 function checkViewOf(facts: RequestFacts): ReferentCheckView | null {
   const c = facts.check;
   if (!c) return null;
-  const team = teamEstimateOf(facts.valueModel);
   const saved = estimateSaved(c);
-  const stale = c.submittedAt === null && saved && !sameTeamEstimate(c.team, teamSnapshotOf(team));
-  const any = c.confirm !== null || saved;
+  // Senza voci nel modello non c'è una stima del team: un'istantanea di prima è cambiata.
+  const stale = c.submittedAt === null && saved && !sameTeamEstimate(c.team, null);
+  const any = c.confirm !== null || saved || (c.benefits && c.benefitRows.length > 0);
   return {
     description: referentDescription(facts.description).text,
-    team: team ? { key: team.key, volumeYear: team.volumeYear, minutes: team.minutes, hours: team.hours, perMonth: team.perMonth, perYear: team.perYear, unit: team.unit, label: team.label } : null,
+    benefits: benefitsViewOf(c, facts.valueModel),
     draft: {
       confirm: c.confirm,
       note: c.note,
@@ -534,13 +591,67 @@ RETURNING c.updated_at`);
 }
 
 /**
- * (Rilascio 5, §6.2) La bozza del passo «Lo use case» (`{ step: 1, confirm, note }`) o del passo «Il
- * tempo» (`{ step: 2, teamSeen, estimate, timesPerMonth, minutesEach }`).
+ * (Rilascio 5.1) La risposta su una voce di «Benefici e costi» (`{ step: 2, benefit }`): la voce c'è ancora
+ * e la sua cifra è quella che la riga mostrava (`seen`), altrimenti `stima_cambiata` e niente di scritto;
+ * la scelta e i numeri della sua forma; il commento con i controlli della nota. Poi, nello stesso batch: la
+ * conferma passa alle risposte per beneficio (`benefits`, la stima del tempo del rilascio 5 si svuota) e la
+ * riga della voce si scrive con l'istantanea di adesso, solo su una richiesta viva non ancora inviata.
+ */
+function benefitStatements(link: ReferentLink, facts: RequestFacts, raw: unknown): PublicOutcome<{ statements: UcStatement[]; warnings: Issue[] }> {
+  const b = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  if (!b || typeof b.key !== "string" || !b.key || b.key.length > REFERENT_BENEFIT_LIMITS.key) return pfail("dati_non_validi", "Dati non validi.");
+  if (b.comment !== null && b.comment !== undefined && typeof b.comment !== "string") return pfail("dati_non_validi", "Dati non validi.");
+  const seen = benefitTeamFromBody(b.seen);
+  if (!seen) return pfail("dati_non_validi", "Dati non validi.");
+  const row = impactRowsOf(facts.valueModel)?.find((r) => r.key === b.key) ?? null;
+  if (!row || !sameBenefitTeam(seen, row.team)) return pfail("stima_cambiata");
+  const answer = benefitAnswerOf(row.form, b);
+  if (!answer.ok) return answer.code === "numero_non_valido" ? pfail("numero_non_valido") : pfail("dati_non_validi", "Dati non validi.");
+  let comment: string | null = typeof b.comment === "string" ? b.comment.replace(/\r\n?/g, "\n").trim() : null;
+  if (!comment) comment = null;
+  if (comment && comment.length > REFERENT_BENEFIT_LIMITS.comment) return pfail("commento_troppo_lungo");
+  let warnings: Issue[] = [];
+  if (comment) {
+    const check = checkDraftText(comment);
+    if (!check.ok) return pfail(check.issues[0]?.code ?? "risposte_da_correggere", check.issues[0]?.message, check.issues);
+    warnings = check.warnings;
+  }
+  const v = answer.value;
+  const t = row.team;
+  const req = cast(link.requestId, "uuid");
+  const ws = cast(link.workspaceId, "uuid");
+  return {
+    ok: true,
+    value: {
+      warnings,
+      statements: [
+        checkUpdateSql(link, ucSql`benefits = true, team_component_key = NULL, team_volume_year = NULL, team_minutes = NULL, estimate = NULL, times_per_month = NULL, minutes_each = NULL`),
+        toStatement(ucSql`INSERT INTO use_case_referent_check_benefits (request_id, component_key, workspace_id, position, kind, label, team_volume_year, team_minutes, team_eur_year,
+  answer, times_per_month, minutes_each, eur_year, comment)
+SELECT c.request_id, ${cast(row.key, "text")}, c.workspace_id, ${cast(row.position, "int")}, ${cast(t.kind, "text")}, ${cast(row.label, "text")},
+  ${cast(t.volumeYear, "numeric")}, ${cast(t.minutes, "numeric")}, ${cast(t.eurYear, "numeric")},
+  ${cast(v.answer, "text")}, ${cast(v.timesPerMonth, "numeric")}, ${cast(v.minutesEach, "numeric")}, ${cast(v.eurYear, "numeric")}, ${cast(comment, "text")}
+FROM use_case_referent_checks c JOIN use_case_referent_requests r ON r.id = c.request_id
+WHERE c.request_id = ${req} AND c.workspace_id = ${ws} AND r.status = 'inviata' AND r.expires_at > now() AND c.submitted_at IS NULL
+ON CONFLICT (request_id, component_key) DO UPDATE SET position = EXCLUDED.position, kind = EXCLUDED.kind, label = EXCLUDED.label,
+  team_volume_year = EXCLUDED.team_volume_year, team_minutes = EXCLUDED.team_minutes, team_eur_year = EXCLUDED.team_eur_year,
+  answer = EXCLUDED.answer, times_per_month = EXCLUDED.times_per_month, minutes_each = EXCLUDED.minutes_each, eur_year = EXCLUDED.eur_year,
+  comment = EXCLUDED.comment, updated_at = now()`),
+      ],
+    },
+  };
+}
+
+/**
+ * (Rilascio 5, §6.2) La bozza del passo «Lo use case» (`{ step: 1, confirm, note }`) o del passo
+ * dell'impatto: (rilascio 5.1) con un modello del valore una voce alla volta (`{ step: 2, benefit }`,
+ * `benefitStatements`), senza i due numeri del tempo (`{ step: 2, teamSeen: null, estimate: null,
+ * timesPerMonth, minutesEach }`).
  * - Il passo 1 scrive solo la conferma e la nota: non legge mai la stima, così un cambio del team non lo
  *   respinge. La nota passa dai controlli delle risposte (dati sanitari rifiutati, il resto avvisi).
- * - Il passo 2 legge la stima del team di adesso: se non è quella che il referente ha visto (`teamSeen`)
- *   non scrive niente e risponde `stima_cambiata`; altrimenti un solo UPDATE scrive l'istantanea e la
- *   risposta (quello che manca diventa NULL), così un cambio dell'istantanea toglie sempre la risposta di prima.
+ * - Il passo 2 legge il modello di adesso: una forma che non è più la sua (le righe per beneficio senza
+ *   voci, i due numeri con un modello, una cifra cambiata) non scrive niente e risponde `stima_cambiata`;
+ *   altrimenti un solo batch scrive la risposta, così un cambio dell'istantanea toglie sempre quella di prima.
  */
 export async function saveReferentCheck(link: ReferentLink, body: unknown, now: Date): Promise<PublicOutcome<CheckResult>> {
   if (!link.privacyAccepted) return pfail("informativa_da_leggere");
@@ -552,7 +663,7 @@ export async function saveReferentCheck(link: ReferentLink, body: unknown, now: 
   if (!facts || facts.status !== "inviata" || !facts.check) return notAvailable();
   if (facts.check.submittedAt) return pfail("gia_inviata");
   let warnings: Issue[] = [];
-  let statement: UcStatement;
+  let statements: UcStatement[];
   if (step === 1) {
     const confirm = field(body, "confirm");
     const rawNote = field(body, "note");
@@ -567,7 +678,12 @@ export async function saveReferentCheck(link: ReferentLink, body: unknown, now: 
       if (!check.ok) return pfail(check.issues[0]?.code ?? "risposte_da_correggere", check.issues[0]?.message, check.issues);
       warnings = check.warnings;
     }
-    statement = checkUpdateSql(link, ucSql`confirm = ${cast(confirm, "text")}, confirm_note = ${cast(note, "text")}`);
+    statements = [checkUpdateSql(link, ucSql`confirm = ${cast(confirm, "text")}, confirm_note = ${cast(note, "text")}`)];
+  } else if (field(body, "benefit") !== undefined) {
+    const built = benefitStatements(link, facts, field(body, "benefit"));
+    if (!built.ok) return built;
+    statements = built.value.statements;
+    warnings = built.value.warnings;
   } else {
     const seen = teamSeenOf(field(body, "teamSeen"));
     const estimate = field(body, "estimate");
@@ -575,19 +691,23 @@ export async function saveReferentCheck(link: ReferentLink, body: unknown, now: 
     const times = referentNumber(field(body, "timesPerMonth"), REFERENT_NUMBER_MAX.timesPerMonth);
     const minutes = referentNumber(field(body, "minutesEach"), REFERENT_NUMBER_MAX.minutesEach);
     if (!times.ok || !minutes.ok) return pfail("numero_non_valido");
-    const current = teamSnapshotOf(teamEstimateOf(facts.valueModel));
-    if (!sameTeamEstimate(seen.value, current)) return pfail("stima_cambiata");
+    // (Rilascio 5.1) Con un modello del valore il passo è per beneficio: una pagina di prima (la stima
+    // del tempo sulla voce «ore», o i due numeri) rilegge le righe. Senza modello non c'è una stima del team.
+    if (impactRowsOf(facts.valueModel) !== null || seen.value !== null) return pfail("stima_cambiata");
     const choice = estimate === undefined ? null : estimate;
-    if (current === null && choice !== null) return pfail("dati_non_validi", "Dati non validi.");
-    // «Sì» (o nessuna scelta, con la stima del team) non porta numeri: quelli sono del team.
-    const numbers = current !== null && (choice === "si" || choice === null) ? { t: null, m: null } : { t: times.value, m: minutes.value };
-    statement = checkUpdateSql(
-      link,
-      ucSql`team_component_key = ${cast(current?.key ?? null, "text")}, team_volume_year = ${cast(current?.volumeYear ?? null, "numeric")}, team_minutes = ${cast(current?.minutes ?? null, "numeric")},
-  estimate = ${cast(choice, "text")}, times_per_month = ${cast(numbers.t, "numeric")}, minutes_each = ${cast(numbers.m, "numeric")}`,
-    );
+    if (choice !== null) return pfail("dati_non_validi", "Dati non validi.");
+    statements = [
+      checkUpdateSql(
+        link,
+        ucSql`benefits = false, team_component_key = NULL, team_volume_year = NULL, team_minutes = NULL,
+  estimate = NULL, times_per_month = ${cast(times.value, "numeric")}, minutes_each = ${cast(minutes.value, "numeric")}`,
+      ),
+      // Le righe per beneficio di prima (un modello che il team ha tolto) non valgono più.
+      toStatement(ucSql`DELETE FROM use_case_referent_check_benefits b USING use_case_referent_checks c
+WHERE b.request_id = c.request_id AND c.request_id = ${cast(link.requestId, "uuid")} AND c.workspace_id = ${cast(link.workspaceId, "uuid")} AND c.submitted_at IS NULL`),
+    ];
   }
-  const run = await referentBatch(executor, [statement]);
+  const run = await referentBatch(executor, statements);
   if (!run.ok) return pfail(run.error, run.message);
   const savedAt = rowDate(run.rows[0]?.[0]?.updated_at);
   if (!savedAt) return notAvailable();
@@ -676,9 +796,14 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
     ready.push({ needId, dontKnow: closure === "non_so", alreadyAttached: closure === "allegato", hasDraft: draft !== null, hasText: text !== null, documents: files.length });
   }
   // (Rilascio 5, §6.2 punto 2) La conferma e la stima, quando la richiesta è al referente: la conferma
-  // data (con «Correggi», una nota), il passo «Il tempo» completo per la sua istantanea. Mai un confronto
-  // con la stima di adesso: un cambio dopo la risposta lo vede il team sulla scheda.
+  // data (con «Correggi», una nota), il passo dell'impatto completo per la sua istantanea. Mai un confronto
+  // con la cifra di adesso: un cambio dopo la risposta lo vede il team sulla scheda.
+  // (Rilascio 5.1) Con un modello del valore: ogni voce di adesso ha la sua risposta, dello stesso tipo
+  // (una voce aggiunta dal team intanto riporta al passo); le risposte di voci tolte dal team si cancellano.
   const check = facts.check && !facts.check.submittedAt ? facts.check : null;
+  const rows = check ? impactRowsOf(facts.valueModel) : null;
+  let benefitDiffers = false;
+  let goneKeys: string[] = [];
   if (check) {
     const note = check.note?.trim() ?? "";
     if (!check.confirm || (check.confirm === "correggi" && note.length < 2)) return pfail("conferma_mancante");
@@ -686,8 +811,24 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
       const text = checkSubmitText(note, "conferma");
       if (!text.ok) issues.push(...text.issues);
     }
-    const complete = check.team ? check.estimate !== null : check.timesPerMonth !== null && check.minutesEach !== null;
-    if (!complete) return pfail("stima_mancante");
+    if (rows) {
+      if (!check.benefits) return pfail("stima_mancante");
+      const stored = new Map(check.benefitRows.map((b) => [b.key, b]));
+      for (const row of rows) {
+        const b = stored.get(row.key);
+        if (!b || b.team.kind !== row.team.kind || !storedBenefitAnswered(b)) return pfail("stima_mancante");
+        if (benefitNeedsReview(b)) benefitDiffers = true;
+        if (b.comment) {
+          const text = checkSubmitText(b.comment, `beneficio.${row.key}`);
+          if (!text.ok) issues.push(...text.issues);
+        }
+      }
+      goneKeys = check.benefitRows.map((b) => b.key).filter((key) => !rows.some((r) => r.key === key));
+    } else {
+      const complete = !check.benefits && (check.team ? check.estimate !== null : check.timesPerMonth !== null && check.minutesEach !== null);
+      if (!complete) return pfail("stima_mancante");
+      benefitDiffers = check.estimate !== "si";
+    }
   }
   if (missing.length > 0) return pfail("domande_aperte", missing.length === 1 ? MSG.domande_aperte_una : MSG.domande_aperte, missing);
   if (issues.length > 0) return pfail("risposte_da_correggere", undefined, issues);
@@ -757,6 +898,12 @@ WHERE request_id = ${req} AND workspace_id = ${ws} AND need_id = ANY(${cast(all,
   AND deleted_at IS NULL AND submitted_at IS NULL AND scan_status IN ('pulito', 'in_revisione')`),
     );
   }
+  if (check && goneKeys.length) {
+    // (Rilascio 5.1) Le risposte su voci che il team ha tolto: non vanno al team.
+    statements.push(
+      toStatement(ucSql`DELETE FROM use_case_referent_check_benefits WHERE request_id = ${req} AND workspace_id = ${ws} AND component_key = ANY(${cast(goneKeys, "text[]")})`),
+    );
+  }
   if (check) {
     // La conferma e la stima inviate, prima del completamento (che conta ancora la conferma da inviare).
     statements.push(
@@ -772,7 +919,8 @@ ${casTail("upd", 1, "conflitto")}`),
   if (unknownIds.length) statements.push(needTransitionSql({ workspaceId: link.workspaceId, needIds: unknownIds, from: ["chiesta"], to: "mancante", actor: REFERENT_ACTOR }));
   if (check) {
     statements.push(referentEventSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, code: check.confirm === "correggi" ? "correzione" : "conferma", actor: REFERENT_ACTOR }));
-    if (check.estimate !== "si") statements.push(referentEventSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, code: "stima_diversa", actor: REFERENT_ACTOR }));
+    // (Rilascio 5.1) Una sola riga per l'invio, anche con più voci diverse da quelle del team.
+    if (benefitDiffers) statements.push(referentEventSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, code: "stima_diversa", actor: REFERENT_ACTOR }));
   }
   statements.push(
     referentEventSql({ workspaceId: link.workspaceId, useCaseId: link.useCaseId, code: "risposte", actor: REFERENT_ACTOR }),

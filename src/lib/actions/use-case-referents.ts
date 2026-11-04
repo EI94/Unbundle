@@ -42,7 +42,8 @@ import {
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import type { AddToReferentRequestInput, FileReviewOutcome, ReferentActionResult, ReferentMemberOption, SendReferentRequestInput } from "@/lib/use-cases/referent/contract";
 import { REFERENT_ASSIGN_TEXT, REFERENT_BLOCK_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
-import { adoptReferentEstimate, keepTeamEstimate, markCorrectionDone } from "@/lib/db/queries/use-case-referent-check";
+import { adoptReferentBenefit, adoptReferentEstimate, keepReferentBenefit, keepTeamEstimate, markCorrectionDone } from "@/lib/db/queries/use-case-referent-check";
+import { euroText } from "@/lib/use-cases/referent/impact-text";
 import { formatCountIt } from "@/lib/uc/views/format";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import type { ServiceResult, WriteContext } from "@/lib/use-cases/service";
@@ -171,6 +172,43 @@ export async function keepTeamEstimateAction(workspaceId: string, useCaseId: str
   const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
   if (!p.ok) return p.result;
   return done(workspaceId, useCaseId, await keepTeamEstimate(p.ctx, useCaseId, requestId, requestVersion), () => ({ data: null, message: null }));
+}
+
+/** (Rilascio 5.1) «Usa la stima di {Nome}» su una voce: solo i numeri di quella voce; poi l'esito. */
+export async function adoptReferentBenefitAction(
+  workspaceId: string,
+  useCaseId: string,
+  requestId: string,
+  componentKey: string,
+  versions: { requestVersion: number; useCaseVersion: number },
+): Promise<ReferentActionResult<{ kind: "ore" | "euro"; before: number; after: number }>> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(requestId) || typeof componentKey !== "string" || !isRecord(versions) || !isVersion(versions.requestVersion) || !isVersion(versions.useCaseVersion)) {
+    return failure("non_trovato");
+  }
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  const result = await adoptReferentBenefit(p.ctx, useCaseId, requestId, componentKey, { requestVersion: versions.requestVersion, useCaseVersion: versions.useCaseVersion });
+  if (!result.ok && result.error === "stima_cambiata") {
+    refresh(workspaceId, useCaseId);
+    return failure("stima_cambiata", REFERENT_BLOCK_TEXT.adoptChanged);
+  }
+  return done(workspaceId, useCaseId, result, (v) => ({
+    data: v,
+    message:
+      v.kind === "euro"
+        ? fillText(REFERENT_BLOCK_TEXT.adoptedEuroToast, { prima: euroText(v.before), dopo: euroText(v.after) })
+        : fillText(REFERENT_BLOCK_TEXT.adoptedToast, { prima: formatCountIt(v.before), dopo: formatCountIt(v.after) }),
+  }));
+}
+
+/** (Rilascio 5.1) «Tieni la nostra», «Fatto», «Non serve» su una voce. */
+export async function keepReferentBenefitAction(workspaceId: string, useCaseId: string, requestId: string, componentKey: string, requestVersion: number): Promise<ReferentActionResult> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(requestId) || typeof componentKey !== "string" || !isVersion(requestVersion)) return failure("non_trovato");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  return done(workspaceId, useCaseId, await keepReferentBenefit(p.ctx, useCaseId, requestId, componentKey, requestVersion), () => ({ data: null, message: null }));
 }
 
 /** «Fatto» sulla correzione dello use case. */

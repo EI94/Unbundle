@@ -86,11 +86,15 @@ async function newCard(model: unknown): Promise<string> {
 let seq = 0;
 /** Il link di ogni richiesta di `answered`, per inviare dopo una bozza lasciata a metà. */
 const links = new Map<string, import("../../db/queries/use-case-referent-public.ts").ReferentLink>();
-/** Il referente risponde: «Sì, è così» o «Correggi», poi la stima, poi «Invia» (senza `send: false`). */
+/**
+ * Il referente risponde: «Sì, è così» o «Correggi», poi il passo 2 (senza modello i due numeri; con un
+ * modello una riga per voce, `benefits`), poi «Invia» (senza `send: false`). Con `step2` null il passo 2
+ * resta da fare (per `release5Answered`).
+ */
 async function answered(
   useCaseId: string,
   step1: { confirm: "si" | "correggi"; note: string | null },
-  step2: { estimate: "si" | "meno" | "piu" | null; timesPerMonth: number | string | null; minutesEach: number | string | null; teamSeen: { key: string; volumeYear: number; minutes: number } | null },
+  step2: Record<string, unknown> | Record<string, unknown>[] | null,
   o: { send?: boolean } = {},
 ): Promise<string> {
   const sent = ok(
@@ -112,10 +116,39 @@ async function answered(
   const link = await pub.resolveReferentToken(token!, new Date());
   if (link.access !== "ok") assert.fail("link");
   pok(await pub.saveReferentCheck(link.link, { step: 1, ...step1 }, new Date()) as never, "passo 1");
-  pok(await pub.saveReferentCheck(link.link, { step: 2, ...step2 }, new Date()) as never, "passo 2");
+  for (const body of step2 === null ? [] : Array.isArray(step2) ? step2.map((benefit) => ({ benefit })) : [step2]) {
+    pok(await pub.saveReferentCheck(link.link, { step: 2, ...body }, new Date()) as never, "passo 2");
+  }
   links.set(sent.requestId, link.link);
   if (o.send !== false) pok(await pub.submitReferentAnswers(link.link, {}, new Date()) as never, "invia");
   return sent.requestId;
+}
+
+/**
+ * (Rilascio 5.1) Una risposta inviata con la stima del tempo del rilascio 5 sulla voce «ore» (l'istantanea,
+ * la scelta, i numeri), che il codice nuovo non scrive più: la conferma dalla pagina, poi le colonne e
+ * l'invio come li scriveva il rilascio 5 (la Storia dell'invio compresa). Così si prova che le righe di
+ * allora si leggono e si adottano ancora.
+ */
+async function release5Answered(
+  useCaseId: string,
+  step1: { confirm: "si" | "correggi"; note: string | null },
+  step2: { estimate: "si" | "meno" | "piu"; timesPerMonth: number | null; minutesEach: number | null; teamSeen: { key: string; volumeYear: number; minutes: number } },
+): Promise<string> {
+  const requestId = await answered(useCaseId, step1, null, { send: false });
+  await q(
+    `UPDATE use_case_referent_checks SET team_component_key = $2, team_volume_year = $3, team_minutes = $4, estimate = $5, times_per_month = $6, minutes_each = $7, submitted_at = now(), updated_at = now()
+     WHERE request_id = $1::uuid`,
+    [requestId, step2.teamSeen.key, step2.teamSeen.volumeYear, step2.teamSeen.minutes, step2.estimate, step2.timesPerMonth, step2.minutesEach],
+  );
+  await q(`UPDATE use_case_referent_requests SET status = 'completata', completed_at = now(), version = version + 1 WHERE id = $1::uuid`, [requestId]);
+  const sqlMod = await import("./sql.ts");
+  const codes: import("./history.ts").ReferentHistoryCode[] = [step1.confirm === "correggi" ? "correzione" : "conferma", ...(step2.estimate !== "si" ? (["stima_diversa"] as const) : []), "risposte", "completata"];
+  for (const code of codes) {
+    const st = sqlMod.referentEventSql({ workspaceId: ids.ws, useCaseId, code, actor: { kind: "referente" } });
+    await q(st.text, st.params as unknown[]);
+  }
+  return requestId;
 }
 
 async function panelOf(useCaseId: string): Promise<Panel> {
@@ -192,9 +225,9 @@ after(async () => {
 
 const SEEN = { key: "tempo-1", volumeYear: 3000, minutes: 12 };
 
-test("«Usa la stima di {Nome}»: i rifiuti, poi solo i numeri dati nella voce, l'esito e la Storia; il secondo clic non riscrive", opts, async () => {
+test("(una risposta del rilascio 5) «Usa la stima di {Nome}»: i rifiuti, poi solo i numeri dati nella voce, l'esito e la Storia; il secondo clic non riscrive", opts, async () => {
   const card = await newCard(MODEL);
-  const requestId = await answered(card, { confirm: "si", note: null }, { estimate: "meno", timesPerMonth: 200, minutesEach: null, teamSeen: SEEN });
+  const requestId = await release5Answered(card, { confirm: "si", note: null }, { estimate: "meno", timesPerMonth: 200, minutesEach: null, teamSeen: SEEN });
   const before = await panelOf(card);
   assert.equal(before.referent?.state, "da_verificare");
   assert.equal(before.referent?.review, "stima");
@@ -234,9 +267,9 @@ test("«Usa la stima di {Nome}»: i rifiuti, poi solo i numeri dati nella voce, 
   assert.equal((await checkOf(requestId)).estimate_outcome, "adottata");
 });
 
-test("«Tieni la nostra», «Fatto» sulla stima senza numeri e sulla correzione: niente nel modello, la verifica si chiude", opts, async () => {
+test("(una risposta del rilascio 5) «Tieni la nostra», «Fatto» sulla stima senza numeri e sulla correzione: niente nel modello, la verifica si chiude", opts, async () => {
   const card = await newCard(MODEL);
-  const keep = await answered(card, { confirm: "correggi", note: "Arrivano anche via PEC." }, { estimate: "piu", timesPerMonth: null, minutesEach: null, teamSeen: SEEN });
+  const keep = await release5Answered(card, { confirm: "correggi", note: "Arrivano anche via PEC." }, { estimate: "piu", timesPerMonth: null, minutesEach: null, teamSeen: SEEN });
   const panel = await panelOf(card);
   assert.equal(panel.referent?.review, "correzione", "prima la correzione");
   refused(await check.adoptReferentEstimate(ctx(), card, keep, { requestVersion: await requestVersion(keep), useCaseVersion: await versionOf(card) }, ENV), "dati_non_validi", "senza numeri non si adotta");
@@ -253,7 +286,7 @@ test("«Tieni la nostra», «Fatto» sulla stima senza numeri e sulla correzione
   for (const code of ["correzione", "stima_diversa", "correzione_fatta", "stima_tenuta"]) assert.ok(codes.includes(`modificato:${code}`), code);
   // «Sì» non ha niente da tenere.
   const yes = await newCard(MODEL);
-  const plain = await answered(yes, { confirm: "si", note: null }, { estimate: "si", timesPerMonth: null, minutesEach: null, teamSeen: SEEN });
+  const plain = await release5Answered(yes, { confirm: "si", note: null }, { estimate: "si", timesPerMonth: null, minutesEach: null, teamSeen: SEEN });
   refused(await check.keepTeamEstimate(ctx(), yes, plain, await requestVersion(plain), ENV), "dati_non_validi");
   refused(await check.markCorrectionDone(ctx(), yes, plain, await requestVersion(plain), ENV), "dati_non_validi");
 });
@@ -277,12 +310,12 @@ test("senza una stima del team: «Non serve» chiude; «Aggiungi alla stima» ch
   assert.deepEqual([closed.referent?.state, closed.referent?.review, closed.referent?.check?.teamNow], ["fatto", null, true], "la verifica si chiude da sola (D11)");
 });
 
-test("la bozza del referente resta sua fino a «Invia»: il pannello del team non ha la nota, la scelta né i numeri", opts, async () => {
-  const card = await newCard(MODEL);
+test("la bozza del referente resta sua fino a «Invia»: il pannello del team non ha la nota né i numeri", opts, async () => {
+  const card = await newCard(null);
   const NOTE = "Bozza RK-NOTA-7781: le fatture le manda mario.rossi@acme.test";
-  const draft = await answered(card, { confirm: "correggi", note: NOTE }, { estimate: "meno", timesPerMonth: "123,5", minutesEach: "7,25", teamSeen: SEEN }, { send: false });
+  const draft = await answered(card, { confirm: "correggi", note: NOTE }, { estimate: null, timesPerMonth: "123,5", minutesEach: "7,25", teamSeen: null }, { send: false });
   const row = (await q(`SELECT confirm, confirm_note IS NOT NULL AS has_note, estimate, times_per_month::text AS t, submitted_at FROM use_case_referent_checks WHERE request_id = $1::uuid`, [draft]))[0];
-  assert.deepEqual([row.confirm, row.has_note, row.estimate, row.t, row.submitted_at], ["correggi", true, "meno", "123.50", null], "la bozza è salvata");
+  assert.deepEqual([row.confirm, row.has_note, row.estimate, row.t, row.submitted_at], ["correggi", true, null, "123.50", null], "la bozza è salvata");
   const before = await panelOf(card);
   assert.equal(before.referent?.state, "in_attesa");
   const c = before.referent?.check;
@@ -300,6 +333,154 @@ test("la bozza del referente resta sua fino a «Invia»: il pannello del team no
   pok(await pub.saveReferentCheck(links.get(draft)!, { step: 1, confirm: "correggi", note: CLEAN }, new Date()) as never, "nota corretta");
   pok(await pub.submitReferentAnswers(links.get(draft)!, {}, new Date()) as never, "invia");
   const after = (await panelOf(card)).referent?.check;
-  assert.deepEqual([after?.confirm, after?.note, after?.estimate, after?.timesPerMonth, after?.minutesEach], ["correggi", CLEAN, "meno", 123.5, 7.25]);
+  assert.deepEqual([after?.confirm, after?.note, after?.estimate, after?.timesPerMonth, after?.minutesEach], ["correggi", CLEAN, null, 123.5, 7.25]);
   assert.ok(after?.submittedAt);
+});
+
+// ─── (Rilascio 5.1) Le risposte per beneficio ────────────────────────
+
+/** Un modello valido con una voce di ogni forma: a ore, in euro, qualitativa, a ore senza i numeri del team. */
+const MODEL_ALL = {
+  v: 1,
+  primary: "tempo",
+  components: [
+    { kind: "ore", key: "tempo-1", lever: "tempo", label: "Controllo delle fatture", confidence: "ipotesi", volumeYear: 3000, unit: "pratiche", minutesPerUnit: 12, automatablePct: 50, basis: "Dal team" },
+    { kind: "euro", key: "costi-1", lever: "costi", label: "Meno solleciti", confidence: "ipotesi", eurYear: 4000 },
+    { kind: "qualitativo", key: "qualita-1", lever: "qualita", label: "Meno errori", confidence: "da_misurare" },
+    { kind: "ore", key: "tempo-2", lever: "output", label: "Archiviazione", confidence: "ipotesi", volumeYear: 0, minutesPerUnit: 0, automatablePct: 40 },
+  ],
+};
+const SEEN_ALL = {
+  "tempo-1": { kind: "ore", volumeYear: 3000, minutes: 12, eurYear: null },
+  "costi-1": { kind: "euro", volumeYear: null, minutes: null, eurYear: 4000 },
+  "qualita-1": { kind: "qualitativo", volumeYear: null, minutes: null, eurYear: null },
+  "tempo-2": { kind: "ore", volumeYear: 0, minutes: 0, eurYear: null },
+};
+const DIFFERENT = [
+  { key: "tempo-1", seen: SEEN_ALL["tempo-1"], answer: "piu", timesPerMonth: 300 },
+  { key: "costi-1", seen: SEEN_ALL["costi-1"], answer: "meno", eurYear: "3.500" },
+  { key: "qualita-1", seen: SEEN_ALL["qualita-1"], answer: "no", comment: "Solo a fine mese." },
+  { key: "tempo-2", seen: SEEN_ALL["tempo-2"], answer: null, timesPerMonth: 20, minutesEach: 5 },
+];
+async function benefitOutcomes(requestId: string) {
+  return Object.fromEntries((await q(`SELECT component_key, outcome FROM use_case_referent_check_benefits WHERE request_id = $1::uuid`, [requestId])).map((r) => [String(r.component_key), r.outcome ?? null]));
+}
+
+test("per beneficio: ogni voce con la sua risposta; «Usa la stima di {Nome}» cambia solo i numeri di quella voce, mai in silenzio", opts, async () => {
+  const card = await newCard(MODEL_ALL);
+  const requestId = await answered(card, { confirm: "si", note: null }, DIFFERENT);
+  const before = await panelOf(card);
+  assert.deepEqual([before.referent?.state, before.referent?.review], ["da_verificare", "stima"]);
+  const benefits = before.referent?.check?.benefits;
+  assert.deepEqual(
+    benefits?.map((b) => [b.key, b.form, b.answer, b.needsReview, b.adoptable, b.changed]),
+    [
+      ["tempo-1", "ore", "piu", true, true, null],
+      ["costi-1", "euro", "meno", true, true, null],
+      ["qualita-1", "fatto", "no", true, false, null],
+      ["tempo-2", "ore_numeri", null, true, true, null],
+    ],
+  );
+  assert.equal(benefits?.[2].comment, "Solo a fine mese.");
+  assert.equal(before.referent?.check?.team, null, "niente stima del tempo del rilascio 5");
+  const rv = await requestVersion(requestId);
+  const v = await versionOf(card);
+  const versions = { requestVersion: rv, useCaseVersion: v };
+  refused(await check.adoptReferentBenefit(ctx("contributor"), card, requestId, "tempo-1", versions, ENV), "permesso_mancante", "un contributore");
+  refused(await check.adoptReferentBenefit(ctx(), card, requestId, "tempo-1", { requestVersion: rv + 1, useCaseVersion: v }, ENV), "versione_superata", "la richiesta cambiata");
+  refused(await check.adoptReferentBenefit(ctx(), card, requestId, "tempo-1", { requestVersion: rv, useCaseVersion: v + 7 }, ENV), "versione_superata", "lo use case cambiato");
+  refused(await check.adoptReferentBenefit(ctx(), card, requestId, "assente", versions, ENV), "non_trovato");
+  refused(await check.adoptReferentBenefit(ctx(), card, requestId, "qualita-1", versions, ENV), "dati_non_validi", "una voce qualitativa non ha numeri");
+  // Le azioni della stima del tempo del rilascio 5 non valgono su una risposta per beneficio.
+  refused(await check.adoptReferentEstimate(ctx(), card, requestId, versions, ENV), "dati_non_validi");
+  refused(await check.keepTeamEstimate(ctx(), card, requestId, rv, ENV), "dati_non_validi");
+  // Il team cambia la voce dopo la risposta: rifiutata, niente scritto, e il blocco lo dice.
+  await q(`UPDATE use_cases SET value_model = jsonb_set(value_model, '{components,0,minutesPerUnit}', '10') WHERE id = $1::uuid`, [card]);
+  refused(await check.adoptReferentBenefit(ctx(), card, requestId, "tempo-1", { requestVersion: rv, useCaseVersion: await versionOf(card) }, ENV), "stima_cambiata");
+  assert.equal((await panelOf(card)).referent?.check?.benefits?.[0].changed, "cambiata");
+  await q(`UPDATE use_cases SET value_model = $2::jsonb WHERE id = $1::uuid`, [card, JSON.stringify(MODEL_ALL)]);
+
+  // La voce a ore: solo le volte (i minuti non li ha dati), il resto della voce e le altre voci restano.
+  const adopted = ok(await check.adoptReferentBenefit(ctx(), card, requestId, "tempo-1", { requestVersion: rv, useCaseVersion: await versionOf(card) }, ENV), "voce a ore");
+  assert.deepEqual(adopted, { kind: "ore", before: 600, after: 720 });
+  let model = await modelOf(card);
+  assert.deepEqual(model.components[0], { ...MODEL_ALL.components[0], volumeYear: 3600 });
+  assert.deepEqual(model.components.slice(1), MODEL_ALL.components.slice(1), "le altre voci non cambiano");
+  assert.deepEqual(await benefitOutcomes(requestId), { "tempo-1": "adottata", "costi-1": null, "qualita-1": null, "tempo-2": null });
+  const codes = await story(card);
+  assert.ok(codes.includes("modificato:stima_adottata"), JSON.stringify(codes));
+  assert.ok(codes.some((c) => c.startsWith("valutato:")), "la Storia di «Benefici e costi»");
+  assert.equal((await panelOf(card)).referent?.check?.benefits?.[0].changed, null, "dopo l'adozione la cifra è quella del referente, non «cambiata»");
+  // Il secondo clic con la versione letta prima: rifiutato, niente si riscrive.
+  const vAfter = await versionOf(card);
+  refused(await check.adoptReferentBenefit(ctx(), card, requestId, "tempo-1", { requestVersion: rv, useCaseVersion: vAfter }, ENV), "versione_superata");
+  assert.equal(await versionOf(card), vAfter);
+  // Un errore a metà (il modello scritto, l'esito no): un nuovo clic scrive solo l'esito.
+  await q(`UPDATE use_case_referent_check_benefits SET outcome = NULL, outcome_at = NULL WHERE request_id = $1::uuid AND component_key = 'tempo-1'`, [requestId]);
+  ok(await check.adoptReferentBenefit(ctx(), card, requestId, "tempo-1", { requestVersion: await requestVersion(requestId), useCaseVersion: vAfter }, ENV), "di nuovo");
+  assert.equal(await versionOf(card), vAfter, "il modello non si riscrive");
+
+  // La voce in euro, poi la voce a ore senza i numeri del team (tutti e due i numeri del referente).
+  const euro = ok(await check.adoptReferentBenefit(ctx(), card, requestId, "costi-1", { requestVersion: await requestVersion(requestId), useCaseVersion: await versionOf(card) }, ENV), "voce in euro");
+  assert.deepEqual(euro, { kind: "euro", before: 4000, after: 3500 });
+  ok(await check.adoptReferentBenefit(ctx(), card, requestId, "tempo-2", { requestVersion: await requestVersion(requestId), useCaseVersion: await versionOf(card) }, ENV), "i due numeri");
+  model = await modelOf(card);
+  assert.deepEqual([model.components[1].eurYear, model.components[3].volumeYear, model.components[3].minutesPerUnit, model.components[3].automatablePct], [3500, 240, 5, 40]);
+  assert.equal((await panelOf(card)).referent?.state, "da_verificare", "resta la voce qualitativa");
+  // «Fatto» sulla voce qualitativa: l'esito «tenuta», il modello non cambia; poi non resta niente da vedere.
+  const vKeep = await versionOf(card);
+  ok(await check.keepReferentBenefit(ctx(), card, requestId, "qualita-1", await requestVersion(requestId), ENV), "fatto");
+  assert.equal(await versionOf(card), vKeep);
+  assert.deepEqual(await benefitOutcomes(requestId), { "tempo-1": "adottata", "costi-1": "adottata", "qualita-1": "tenuta", "tempo-2": "adottata" });
+  const after = await panelOf(card);
+  assert.deepEqual([after.referent?.state, after.referent?.review], ["fatto", null]);
+  ok(await check.keepReferentBenefit(ctx(), card, requestId, "qualita-1", await requestVersion(requestId), ENV), "di nuovo: niente da fare");
+  // Gli stati della lista dicono lo stesso.
+  const states = await import("../../db/queries/use-case-referent-states.ts");
+  const list = await states.listReferentStates(ids.ws, { userId: ids.builder, email: `builder.${suffix}@cliente.test`, emailVerified: true, role: "function_lead", isLateralSpace: false } as never, [{ id: card, phase: "approvato" }], { env: ENV });
+  assert.deepEqual([list?.states[card], list?.review?.[card]], ["fatto", null]);
+});
+
+test("per beneficio: «Tieni la nostra» su una voce, «Sì» non ha niente da tenere; la bozza resta del referente fino a «Invia»", opts, async () => {
+  const card = await newCard(MODEL_ALL);
+  const COMMENT = "Bozza RK-COMMENTO-4471";
+  const draft = await answered(card, { confirm: "si", note: null }, [{ ...DIFFERENT[0], comment: COMMENT }, { key: "costi-1", seen: SEEN_ALL["costi-1"], answer: "si" }, DIFFERENT[2], DIFFERENT[3]], { send: false });
+  const waiting = await panelOf(card);
+  assert.equal(waiting.referent?.state, "in_attesa");
+  assert.equal(waiting.referent?.check?.benefits ?? null, null, "prima di «Invia» al team arriva solo che la richiesta c'è");
+  const json = JSON.stringify(waiting);
+  for (const token of ["RK-COMMENTO-4471", "Solo a fine mese", "3.500", "3500"]) assert.ok(!json.includes(token), token);
+  pok(await pub.submitReferentAnswers(links.get(draft)!, {}, new Date()) as never, "invia");
+  const sent = await panelOf(card);
+  assert.equal(sent.referent?.check?.benefits?.[0].comment, COMMENT);
+  refused(await check.keepReferentBenefit(ctx(), card, draft, "costi-1", await requestVersion(draft), ENV), "dati_non_validi", "«Sì» non ha niente da tenere");
+  ok(await check.keepReferentBenefit(ctx(), card, draft, "tempo-1", await requestVersion(draft), ENV), "tieni la nostra");
+  const v = await versionOf(card);
+  assert.deepEqual((await modelOf(card)).components, MODEL_ALL.components, "il modello non cambia");
+  assert.equal(await versionOf(card), v);
+  assert.equal((await benefitOutcomes(draft))["tempo-1"], "tenuta");
+  assert.ok((await story(card)).includes("modificato:stima_tenuta"));
+  assert.equal((await panelOf(card)).referent?.state, "da_verificare", "restano due voci da vedere");
+});
+
+test("per beneficio: la cancellazione dei dati e la conservazione tolgono i commenti; le scelte e i numeri restano", opts, async () => {
+  const rows = async (id: string) => (await q(`SELECT component_key, answer, times_per_month::text AS t, comment FROM use_case_referent_check_benefits WHERE request_id = $1::uuid ORDER BY position`, [id])).map((r) => [r.component_key, r.answer, r.t, r.comment]);
+  // La cancellazione dei dati di una persona.
+  const card = await newCard(MODEL_ALL);
+  const erased = await answered(card, { confirm: "si", note: null }, DIFFERENT);
+  const contactId = String((await q(`SELECT contact_id FROM use_case_referent_requests WHERE id = $1::uuid`, [erased]))[0].contact_id);
+  ok(await referents.eraseReferentData(ctx(), card, contactId, { env: ENV }), "cancellazione");
+  assert.deepEqual(await rows(erased), [
+    ["tempo-1", "piu", "300.00", null],
+    ["costi-1", "meno", null, null],
+    ["qualita-1", "no", null, null],
+    ["tempo-2", null, "20.00", null],
+  ]);
+  // La conservazione di 12 mesi su una richiesta chiusa.
+  const kept = await newCard(MODEL_ALL);
+  const old = await answered(kept, { confirm: "si", note: null }, DIFFERENT);
+  const executor = await (await import("../../db/uc-executor.ts")).getAppUcExecutor();
+  await executor.batch((await import("./erase.ts")).referentPurgeStatements({ workspaceId: ids.ws, requestId: old }));
+  assert.deepEqual((await rows(old)).map((r) => r[3]), [null, null, null, null]);
+  assert.deepEqual((await rows(old)).map((r) => r[1]), ["piu", "meno", "no", null]);
 });

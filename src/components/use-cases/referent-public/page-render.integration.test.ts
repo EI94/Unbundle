@@ -343,14 +343,14 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
   for (const passo of [undefined, "2", "3", "x"]) {
     const step1 = await html(token!, passo);
     assert.match(step1, /<ol aria-label="Passi"/);
-    for (const text of ["Lo use case", "Il tempo", "Le domande", "È così?", "Sì, è così", "Correggi"]) assert.ok(step1.includes(text), `${passo}: ${text}`);
+    for (const text of ["Lo use case", "L'impatto", "Le domande", "È così?", "Sì, è così", "Correggi"]) assert.ok(step1.includes(text), `${passo}: ${text}`);
     assert.equal((step1.match(/aria-current="step"/g) ?? []).length, 1);
     assert.deepEqual(filledButtons(step1), ["Sì, è così"], `${passo}: un solo pulsante pieno`);
     assert.ok(!step1.includes(titles[5]), "le domande vengono dopo");
   }
   // La descrizione privata della scheda (il test la chiama DESCRIZIONE-RISERVATA) è la descrizione: qui si vede.
   assert.ok((await html(token!)).includes("DESCRIZIONE-RISERVATA"), "la descrizione, senza importi né dati personali");
-  // Fatto il passo 1, il passo 2 senza stima del team: le due domande e «Avanti» pieno.
+  // Fatto il passo 1, il passo 2 senza modello del valore: le due domande e «Avanti» pieno.
   const link = await linkOf(token!);
   pok(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, new Date()), "sì");
   const step2 = await html(token!);
@@ -365,4 +365,38 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
   assert.ok(step3.includes(titles[5]) && step3.includes("Indietro"));
   assert.deepEqual(filledButtons(step3), ["Invia"]);
   for (const forbidden of ["98765", "98.765", "NOTA-RISERVATA", PROPOSER]) assert.ok(!step3.includes(forbidden));
+  // (Rilascio 5.1) Con un modello del valore il passo 2 è «L'impatto»: una riga per voce, un tocco, un solo pulsante pieno.
+  const model = {
+    v: 1,
+    primary: "tempo",
+    components: [
+      { kind: "ore", key: "tempo-1", lever: "tempo", label: "Controllo delle fatture", confidence: "ipotesi", volumeYear: 3000, minutesPerUnit: 12, automatablePct: 50, basis: "FONTE-RISERVATA" },
+      { kind: "euro", key: "costi-1", lever: "costi", label: "Meno solleciti", confidence: "ipotesi", eurYear: 4321 },
+      { kind: "qualitativo", key: "qualita-1", lever: "qualita", label: "Meno errori", confidence: "da_misurare" },
+    ],
+  };
+  await q(`UPDATE use_cases SET value_model = $2::jsonb WHERE id = $1::uuid`, [ids.useCase, JSON.stringify(model)]);
+  try {
+    const impact = await html(token!);
+    for (const text of [
+      "L'impatto",
+      "Cosa cambia, secondo il team",
+      "Controllo delle fatture: circa 250 volte al mese, 12 minuti ogni volta. Ti torna?",
+      "Meno solleciti: circa 4.321 € l'anno. Ti torna?",
+      "Meno errori. Succede davvero?",
+      "È di meno",
+      "È di più",
+      "Non so",
+      "Aggiungi un commento",
+      "Indietro",
+    ]) {
+      assert.ok(impact.includes(text), text);
+    }
+    assert.deepEqual(filledButtons(impact), ["Avanti"], "le scelte sono a levetta, il pulsante pieno è il passo dopo");
+    assert.equal((impact.match(/data-slot="referent-benefit"/g) ?? []).length, 3);
+    assert.equal((impact.match(/aria-pressed="false"/g) ?? []).length, 9, "tre scelte per riga, nessuna premuta");
+    for (const forbidden of ["FONTE-RISERVATA", "automatable", "50%", "ipotesi", "da_misurare", titles[5]]) assert.ok(!impact.includes(forbidden), forbidden);
+  } finally {
+    await q(`UPDATE use_cases SET value_model = NULL WHERE id = $1::uuid`, [ids.useCase]);
+  }
 });

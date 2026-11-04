@@ -94,17 +94,40 @@ export interface ReferentAskView {
 
 /**
  * (Rilascio 5, §6.1) Quello che il referente conferma: la descrizione senza importi, quote, punteggi o
- * dati personali, la stima del team in ore di lavoro (mai euro, quota che si risparmia, ore liberate,
- * fiducia, fonte, punteggi), e la sua bozza.
+ * dati personali, e la sua bozza. (Rilascio 5.1) L'impatto: una riga per ogni voce di «Benefici e costi»
+ * con la cifra del team di quella voce (volte e minuti, o gli euro di una voce in euro: mai quota che si
+ * risparmia, ore liberate, fiducia, fonte, punteggi, costi); senza modello del valore, i due numeri del
+ * tempo del rilascio 5 (`benefits` null).
  */
 export interface ReferentCheckView {
   /** `referentDescription()`: le frasi che il referente può vedere; null quando non ne resta nessuna. */
   description: string | null;
-  /** La stima del team di adesso (§3.3), oppure null. `key`, `volumeYear` e `minutes` tornano come `teamSeen`. */
-  team: null | { key: string; volumeYear: number; minutes: number; hours: number; perMonth: number | null; perYear: number | null; unit: string | null; label: string | null };
-  /** La bozza; la stima è vuota quando l'istantanea salvata non è più la stima di adesso (`stale`). */
+  /**
+   * (Rilascio 5.1) Le righe del passo «L'impatto», nell'ordine del modello: prima dell'invio quelle di
+   * adesso con la bozza di ognuna, dopo l'invio quelle inviate. null: niente modello del valore.
+   */
+  benefits: ReferentBenefitView[] | null;
+  /**
+   * La bozza della conferma e, senza modello del valore, della stima del tempo (i due numeri); la stima
+   * è vuota quando l'istantanea salvata non è più quella di adesso (`stale`). Dopo l'invio, quello inviato
+   * (anche la stima del tempo del rilascio 5 sulla voce «ore», per le richieste di allora).
+   */
   draft: { confirm: "si" | "correggi" | null; note: string | null; estimate: "si" | "meno" | "piu" | null; timesPerMonth: number | null; minutesEach: number | null; stale: boolean; savedAt: string | null };
   submittedAt: string | null;
+}
+
+/** (Rilascio 5.1) Una riga del passo «L'impatto»: una voce di «Benefici e costi» e la risposta del referente. */
+export interface ReferentBenefitView {
+  /** La chiave della voce: torna al server con la risposta. */
+  key: string;
+  /** «ore»: volte e minuti del team; «ore_numeri»: il team non ha i numeri; «euro»: gli euro del team; «fatto»: succede davvero? */
+  form: "ore" | "ore_numeri" | "euro" | "fatto";
+  /** Il nome della voce, o il suo tipo di ritorno («Più qualità») quando il nome non passa i controlli. */
+  label: string;
+  /** La cifra del team che la riga mostra (torna come `seen`): volte l'anno e minuti, oppure euro l'anno. */
+  team: { kind: "ore" | "euro" | "qualitativo"; volumeYear: number | null; minutes: number | null; eurYear: number | null };
+  /** La bozza della riga (dopo l'invio, la risposta inviata); vuota (`stale`) se la cifra del team è cambiata. */
+  draft: { answer: "si" | "meno" | "piu" | "no" | "non_so" | null; timesPerMonth: number | null; minutesEach: number | null; eurYear: number | null; comment: string | null; stale: boolean } | null;
 }
 
 export interface ReferentQuestionView {
@@ -179,10 +202,22 @@ export interface SubmitBody {
   /** (Rilascio 5) Le domande aperte che la pagina mostrava: una domanda nuova del team fa rileggere la pagina. */
   shown?: string[];
 }
-/** (Rilascio 5) Il passo «Lo use case» o il passo «Il tempo». */
+/** (Rilascio 5) Il passo «Lo use case» o il passo dell'impatto (rilascio 5.1: una riga per voce, o i due numeri senza modello). */
 export type CheckBody =
   | { step: 1; confirm: "si" | "correggi" | null; note: string | null }
-  | { step: 2; teamSeen: { key: string; volumeYear: number; minutes: number } | null; estimate: "si" | "meno" | "piu" | null; timesPerMonth: number | string | null; minutesEach: number | string | null };
+  | { step: 2; teamSeen: { key: string; volumeYear: number; minutes: number } | null; estimate: "si" | "meno" | "piu" | null; timesPerMonth: number | string | null; minutesEach: number | string | null }
+  | { step: 2; benefit: BenefitBody };
+
+/** (Rilascio 5.1) La risposta su una voce: la cifra del team che la riga mostrava (`seen`), la scelta, i numeri, il commento. */
+export interface BenefitBody {
+  key: string;
+  seen: ReferentBenefitView["team"];
+  answer: "si" | "meno" | "piu" | "no" | "non_so" | null;
+  timesPerMonth?: number | string | null;
+  minutesEach?: number | string | null;
+  eurYear?: number | string | null;
+  comment?: string | null;
+}
 export interface CheckResult {
   savedAt: string;
   warnings: Issue[];
@@ -395,6 +430,34 @@ export interface ReferentBlockCheck {
   referentHours: number | null;
   /** La versione della richiesta R* (per le azioni del team sulla risposta). */
   version: number;
+  /**
+   * (Rilascio 5.1) La risposta su ogni voce di «Benefici e costi», nell'ordine delle righe che il referente
+   * ha visto; null: la stima del tempo del rilascio 5 (le righe qui sopra), o niente inviato.
+   */
+  benefits?: ReferentBlockBenefit[] | null;
+}
+
+/** (Rilascio 5.1) La risposta del referente su una voce, come la legge il blocco «Referente». */
+export interface ReferentBlockBenefit {
+  key: string;
+  form: ReferentBenefitView["form"];
+  /** Il nome della voce come l'ha letto il referente. */
+  label: string;
+  /** La cifra del team che il referente ha visto (l'istantanea). */
+  team: ReferentBenefitView["team"];
+  answer: "si" | "meno" | "piu" | "no" | "non_so" | null;
+  timesPerMonth: number | null;
+  minutesEach: number | null;
+  eurYear: number | null;
+  comment: string | null;
+  outcome: "adottata" | "tenuta" | null;
+  outcomeAt: string | null;
+  /** «cambiata»: la cifra di adesso non è quella vista; «tolta»: la voce non c'è più nel modello. */
+  changed: "cambiata" | "tolta" | null;
+  /** La risposta aspetta il team (e il team non ha ancora deciso). */
+  needsReview: boolean;
+  /** «Usa la stima di {Nome}» ha dei numeri da usare su questa voce. */
+  adoptable: boolean;
 }
 
 export interface UseCaseReferentPanel {

@@ -130,6 +130,39 @@ export interface StoredBenefit extends BenefitDraft {
   outcomeAt: Date | null;
 }
 
+/** Un numero di una colonna numeric (testo dal driver locale, numero da Neon), oppure null. */
+function numeric(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : Number(String(value));
+  return Number.isFinite(n) ? n : null;
+}
+const text = (value: unknown): string | null => (typeof value === "string" && value !== "" ? value : value === null || value === undefined ? null : String(value));
+const date = (value: unknown): Date | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const d = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/** Una riga di `use_case_referent_check_benefits` letta dal database, come risposta per beneficio. */
+export function storedBenefitOf(b: Readonly<Record<string, unknown>>): StoredBenefit {
+  const kind: ReferentBenefitKind = b.kind === "euro" ? "euro" : b.kind === "ore" ? "ore" : "qualitativo";
+  const answer = text(b.answer);
+  const outcome = text(b.outcome);
+  return {
+    key: String(b.component_key),
+    position: numeric(b.position) ?? 0,
+    label: text(b.label) ?? "",
+    team: { kind, volumeYear: numeric(b.team_volume_year), minutes: numeric(b.team_minutes), eurYear: numeric(b.team_eur_year) },
+    answer: answer === "si" || answer === "meno" || answer === "piu" || answer === "no" || answer === "non_so" ? answer : null,
+    timesPerMonth: numeric(b.times_per_month),
+    minutesEach: numeric(b.minutes_each),
+    eurYear: numeric(b.eur_year),
+    comment: text(b.comment),
+    outcome: outcome === "adottata" || outcome === "tenuta" ? outcome : null,
+    outcomeAt: date(b.outcome_at),
+  };
+}
+
 /** La riga salvata chiude la voce, per la sua istantanea. */
 export function storedBenefitAnswered(b: Pick<StoredBenefit, "team" | "answer" | "timesPerMonth" | "minutesEach" | "eurYear">): boolean {
   return benefitAnswered(benefitFormOf(b.team), b);

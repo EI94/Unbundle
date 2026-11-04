@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Notice, SECONDARY_CLASS } from "@/components/uc/referente/screen";
-import type { CheckBody, ReferentAskView, ReferentCheckView, SubmitResult } from "@/lib/use-cases/referent/contract";
+import type { CheckBody, ReferentAskView, ReferentBenefitView, ReferentCheckView, SubmitResult } from "@/lib/use-cases/referent/contract";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import { acceptPrivacy, fetchAskView, saveCheck, submitAnswers } from "./api";
 import { PrivacyCard, PrivacyFooter } from "./privacy-card";
@@ -22,7 +22,7 @@ import {
   sentCheckLines,
   thanksTexts,
 } from "./public-view-render";
-import { ConfirmStep, EstimateStep, ReferentStepBar, stepTitleId, type StepActions } from "./referent-steps";
+import { ConfirmStep, EstimateStep, ImpactStep, ReferentStepBar, stepTitleId, type StepActions } from "./referent-steps";
 import { MessageCard, PublicShell } from "./state-card";
 import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepOfSubmitRefusal, stepOneWarning, stepSearch, stepStates, stepsOf, type CheckStep } from "./steps-state";
 import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
@@ -205,6 +205,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const setDraft = useCallback((patch: Partial<ReferentCheckView["draft"]>) => {
     setView((v) => (v.check ? { ...v, check: { ...v.check, draft: { ...v.check.draft, ...patch } } } : v));
   }, []);
+  /** (Rilascio 5.1) La bozza mostrata di una riga dell'impatto: la barra dei passi la conta subito. */
+  const setBenefit = useCallback((key: string, draft: NonNullable<ReferentBenefitView["draft"]>) => {
+    setView((v) =>
+      v.check?.benefits ? { ...v, check: { ...v.check, benefits: v.check.benefits.map((row) => (row.key === key ? { ...row, draft } : row)) } } : v,
+    );
+  }, []);
 
   /** Una bozza del passo 1 o 2; `stima_cambiata` rilegge la vista con la stima nuova. */
   const saveStep = useCallback(
@@ -256,13 +262,14 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     () => ({
       save: saveStep,
       setDraft,
+      setBenefit,
       tooSoon,
       next: () => {
         if (lastStep === 2) void submitRef.current();
         else goTo(3);
       },
     }),
-    [saveStep, setDraft, tooSoon, goTo, lastStep],
+    [saveStep, setDraft, setBenefit, tooSoon, goTo, lastStep],
   );
 
   async function onAccept() {
@@ -447,9 +454,20 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
               errorFromServer={stepError?.step === 1 ? stepError.message : null}
               warningFromServer={noteWarning}
             />
+          ) : check.benefits ? (
+            <ImpactStep
+              key={`2:${generation}:benefici`}
+              check={check}
+              last={lastStep === 2}
+              sending={submitBusy}
+              staleNotice={staleNotice}
+              actions={estimateActions}
+              onBack={() => goTo(1)}
+              errorFromServer={stepError?.step === 2 ? stepError.message : submitError}
+            />
           ) : (
             <EstimateStep
-              key={`2:${generation}:${check.team?.key ?? "nessuna"}`}
+              key={`2:${generation}:tempo`}
               check={check}
               last={lastStep === 2}
               sending={submitBusy}
@@ -472,10 +490,22 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
               <>
                 <p>{sentCheck.useCase}</p>
                 {sentCheck.note ? <blockquote className="rounded-xl bg-muted/50 px-4 py-3 whitespace-pre-line">{sentCheck.note}</blockquote> : null}
-                <p>
-                  {sentCheck.time}
-                  {sentCheck.numbers ? ` ${sentCheck.numbers}` : ""}
-                </p>
+                {sentCheck.time ? (
+                  <p>
+                    {sentCheck.time}
+                    {sentCheck.numbers ? ` ${sentCheck.numbers}` : ""}
+                  </p>
+                ) : null}
+                {sentCheck.benefits.length ? (
+                  <ul data-slot="referent-sent-benefits" className="space-y-1">
+                    {sentCheck.benefits.map((b) => (
+                      <li key={b.key} className="break-words">
+                        {b.line}
+                        {b.comment ? <span className="block text-muted-foreground">{b.comment}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </>
             ) : undefined
           }

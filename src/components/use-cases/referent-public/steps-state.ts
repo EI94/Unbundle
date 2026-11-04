@@ -3,8 +3,9 @@
  * sono, quando un passo è fatto, a quale si arriva (dall'indirizzo `?passo=`, da un ricaricamento, da
  * Indietro e Avanti del browser), il controllo del doppio clic.
  *
- * - Una richiesta al referente ha «Lo use case» (1), «Il tempo» (2) e, con domande, «Le domande» (3); una
- *   richiesta di sole domande non ha passi.
+ * - Una richiesta al referente ha «Lo use case» (1), «L'impatto» (2: una riga per ogni voce di «Benefici e
+ *   costi», o i due numeri del tempo senza modello) e, con domande, «Le domande» (3); una richiesta di sole
+ *   domande non ha passi.
  * - Si arriva al primo passo non fatto; un `passo` prima di quello vale, uno dopo si riporta indietro.
  * - Dopo un cambio di passo il pulsante principale ignora il secondo clic di un doppio clic e ogni clic
  *   che arriva entro 450 ms (`isRepeatActivation`, lo stesso della finestra del rilascio 4).
@@ -14,6 +15,8 @@
 import type { ReferentAskView, ReferentCheckView } from "../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_CHECK_TEXT } from "../../../lib/use-cases/referent/labels.ts";
 import { parseItalianNumber, referentNumber, REFERENT_NUMBER_MAX } from "../../../lib/use-cases/referent/estimate.ts";
+import { benefitAnswered } from "../../../lib/use-cases/referent/impact-text.ts";
+import { REFERENT_BENEFIT_LIMITS } from "../../../lib/db/use-case-hub-referent-benefits-ddl.ts";
 export { isRepeatActivation, STEP_SETTLE_MS } from "../../../lib/use-cases/referent/repeat-guard.ts";
 
 export type CheckStep = 1 | 2 | 3;
@@ -42,11 +45,24 @@ export function confirmDone(draft: ReferentCheckView["draft"]): boolean {
   return draft.confirm === "correggi" && (draft.note ?? "").trim().length >= 2;
 }
 
-/** «Il tempo» è fatto: una scelta sulla stima del team, oppure i due numeri senza stima; mai su una stima cambiata. */
-export function estimateDone(check: Pick<ReferentCheckView, "team" | "draft">): boolean {
+/** (Rilascio 5.1) Una riga del passo «L'impatto» è chiusa: una scelta della sua forma, o i due numeri; mai su una cifra cambiata. */
+export function benefitDone(row: NonNullable<ReferentCheckView["benefits"]>[number]): boolean {
+  return row.draft !== null && !row.draft.stale && benefitAnswered(row.form, row.draft);
+}
+
+/** (Rilascio 5.1) Le righe ancora da chiudere, nell'ordine del passo. */
+export function missingBenefits(check: Pick<ReferentCheckView, "benefits">): string[] {
+  return (check.benefits ?? []).filter((row) => !benefitDone(row)).map((row) => row.key);
+}
+
+/**
+ * Il passo 2 è fatto: (rilascio 5.1) ogni riga dell'impatto chiusa; senza modello del valore i due numeri
+ * del tempo, mai su una stima cambiata.
+ */
+export function estimateDone(check: Pick<ReferentCheckView, "benefits" | "draft">): boolean {
+  if (check.benefits) return check.benefits.length > 0 && missingBenefits(check).length === 0;
   const d = check.draft;
   if (d.stale) return false;
-  if (check.team) return d.estimate !== null;
   return d.timesPerMonth !== null && d.minutesEach !== null;
 }
 
@@ -78,7 +94,7 @@ export function stepSearch(step: CheckStep): string {
   return `?passo=${step}`;
 }
 
-/** Il testo del passo per i lettori di schermo: «Lo use case (fatto)», «Il tempo (adesso)». */
+/** Il testo del passo per i lettori di schermo: «Lo use case (fatto)», «L'impatto (adesso)». */
 export function stepLabel(step: CheckStep, state: "done" | "current" | "later"): { text: string; suffix: string } {
   const text = step === 1 ? T.steps.useCase : step === 2 ? T.steps.time : T.steps.questions;
   return { text, suffix: state === "done" ? T.steps.done : state === "current" ? T.steps.current : "" };
@@ -94,19 +110,14 @@ export function stepStates(view: ReferentAskView, current: CheckStep): { step: C
 // ─── Il passo «Il tempo»: i numeri ───────────────────────────────────
 
 /** Un numero scritto nel campo: vuoto (null), valido, oppure non valido. */
-export function numberField(raw: string, which: "timesPerMonth" | "minutesEach"): { ok: true; value: number | null } | { ok: false } {
-  return referentNumber(raw, REFERENT_NUMBER_MAX[which]);
+export function numberField(raw: string, which: "timesPerMonth" | "minutesEach" | "eurYear"): { ok: true; value: number | null } | { ok: false } {
+  return referentNumber(raw, which === "eurYear" ? REFERENT_BENEFIT_LIMITS.eurYearMax : REFERENT_NUMBER_MAX[which]);
 }
 
 /** Il numero salvato come lo scrive il campo: «1,5», «20». */
 export function numberText(value: number | null): string {
   if (value === null) return "";
   return String(value).replace(".", ",");
-}
-
-/** L'etichetta del primo campo con la stima del team: sempre «Volte al mese» (l'unità del modello è al singolare). */
-export function perMonthLabel(): string {
-  return T.estimate.perMonth;
 }
 
 // ─── I rifiuti che riportano a un passo ──────────────────────────────
@@ -123,6 +134,9 @@ export function stepOfSubmitRefusal(r: { code: string; message: string; issues?:
   if (r.code === "risposte_da_correggere") {
     const confirm = r.issues?.find((i) => i.field === "conferma");
     if (confirm) return { step: 1, message: confirm.message };
+    // (Rilascio 5.1) Il commento di una riga dell'impatto: si torna al passo 2.
+    const benefit = r.issues?.find((i) => i.field?.startsWith("beneficio."));
+    if (benefit) return { step: 2, message: benefit.message };
   }
   return null;
 }

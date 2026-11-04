@@ -272,7 +272,7 @@ test("(rilascio 5) dopo l'invio: «Hai risposto il …», la conferma e la stima
   assert.deepEqual(sentAnswerView(sent({ dontKnow: true, comment: "l'ufficio acquisti" }), "2026-11-04")?.comment, "Chi potrebbe saperlo: l'ufficio acquisti");
   const check = (draft: Partial<NonNullable<ReferentAskView["check"]>["draft"]>, submittedAt: string | null = "2026-11-03T10:00:00.000Z"): ReferentAskView["check"] => ({
     description: null,
-    team: null,
+    benefits: null,
     draft: { confirm: "si", note: null, estimate: "si", timesPerMonth: null, minutesEach: null, stale: false, savedAt: null, ...draft },
     submittedAt,
   });
@@ -280,12 +280,37 @@ test("(rilascio 5) dopo l'invio: «Hai risposto il …», la conferma e la stima
   assert.equal(lastSentOn(done), "2026-11-03T10:00:00.000Z");
   assert.equal(finalCardText("completed", done, "2026-11-04"), "Hai risposto il 03/11. Grazie!");
   assert.equal(finalCardText("completed"), "Hai risposto a tutte le domande. Grazie!");
-  assert.deepEqual(sentCheckLines(done), { useCase: "Lo use case: sì, è così.", note: null, time: "Il tempo: sì.", numbers: null });
+  // Una richiesta inviata con la stima del tempo del rilascio 5: si legge come allora.
+  assert.deepEqual(sentCheckLines(done), { useCase: "Lo use case: sì, è così.", note: null, time: "Il tempo: sì.", numbers: null, benefits: [] });
   assert.deepEqual(sentCheckLines(view({ check: check({ confirm: "correggi", note: "Anche via PEC", estimate: "meno", timesPerMonth: 200, minutesEach: 1.5 }) })), {
     useCase: "Lo use case: da correggere.",
     note: "Anche via PEC",
     time: "Il tempo: è di meno.",
     numbers: "200 volte al mese, 1,5 minuti ogni volta.",
+    benefits: [],
+  });
+  // (Rilascio 5.1) Inviata per beneficio: una riga per voce, con il commento.
+  const rowDraft = (d: Partial<NonNullable<NonNullable<NonNullable<ReferentAskView["check"]>["benefits"]>[number]["draft"]>>) => ({ answer: null, timesPerMonth: null, minutesEach: null, eurYear: null, comment: null, stale: false, ...d });
+  const perBenefit = view({
+    check: {
+      ...check({ estimate: null })!,
+      benefits: [
+        { key: "tempo-1", form: "ore", label: "Controllo delle fatture", team: { kind: "ore", volumeYear: 3000, minutes: 12, eurYear: null }, draft: rowDraft({ answer: "piu", timesPerMonth: 300 }) },
+        { key: "costi-1", form: "euro", label: "Meno solleciti", team: { kind: "euro", volumeYear: null, minutes: null, eurYear: 4000 }, draft: rowDraft({ answer: "si" }) },
+        { key: "qualita-1", form: "fatto", label: "Meno errori", team: { kind: "qualitativo", volumeYear: null, minutes: null, eurYear: null }, draft: rowDraft({ answer: "no", comment: "Solo a fine mese." }) },
+      ],
+    },
+  });
+  assert.deepEqual(sentCheckLines(perBenefit), {
+    useCase: "Lo use case: sì, è così.",
+    note: null,
+    time: null,
+    numbers: null,
+    benefits: [
+      { key: "tempo-1", line: "Controllo delle fatture: è di più. 300 volte al mese, 12 minuti ogni volta.", comment: null },
+      { key: "costi-1", line: "Meno solleciti: sì.", comment: null },
+      { key: "qualita-1", line: "Meno errori: no.", comment: "Commento: Solo a fine mese." },
+    ],
   });
   assert.equal(sentCheckLines(view({ check: check({ estimate: null, timesPerMonth: 20, minutesEach: 30 }) }))?.time, "Il tempo:");
   assert.equal(sentCheckLines(view({ check: check({}, null) })), null, "solo dopo l'invio");

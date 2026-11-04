@@ -8,8 +8,10 @@
  */
 import type { ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
 import type { ReferentCheckConfirm, ReferentCheckEstimate, ReferentCheckOutcome } from "../../db/use-case-hub-referent-check-ddl.ts";
-import type { ReferentBlockCheck, ReferentBlockView } from "./contract.ts";
+import type { ReferentBlockBenefit, ReferentBlockCheck, ReferentBlockView } from "./contract.ts";
 import { adoptionPatch, referentHours, sameTeamEstimate, type TeamEstimate } from "./estimate.ts";
+import { adoptedTeamOf, benefitAdoptionPatch, benefitNeedsReview, sameBenefitTeam, type ImpactRow, type StoredBenefit } from "./impact.ts";
+import { benefitFormOf } from "./impact-text.ts";
 import { referentRequestsOf, referentStateOf, type ReferentRequestFact } from "./use-case-state.ts";
 
 /** La riga di `use_case_referent_checks` come la legge il pannello. */
@@ -26,6 +28,8 @@ export interface ReferentCheckRow {
   correctionDoneAt: Date | null;
   estimateOutcome: ReferentCheckOutcome | null;
   estimateOutcomeAt: Date | null;
+  /** (Rilascio 5.1) Le risposte per beneficio inviate; null: la stima del tempo del rilascio 5 (o niente). */
+  benefits: StoredBenefit[] | null;
 }
 
 /** Una richiesta dello use case con la sua persona (solo sul server) e la sua conferma. */
@@ -52,6 +56,8 @@ export interface ReferentBlockInput {
   clientRequirementToVerify: boolean;
   /** La stima del team di adesso (`teamEstimateOf(valueModel)`). */
   teamNow: TeamEstimate | null;
+  /** (Rilascio 5.1) Le righe dell'impatto di adesso (`impactRowsOf(valueModel)`): la cifra di ogni voce. */
+  rowsNow?: readonly ImpactRow[] | null;
   now: Date;
   /** Le domande «Non ce l'ho» del referente (calcolate dal server per la sua persona). */
   declinedNeedIds: readonly string[];
@@ -79,6 +85,8 @@ function factOf(r: BlockRequestFact): ReferentRequestFact {
           estimate: r.check.estimate,
           estimateOutcome: r.check.estimateOutcome,
           teamComponentKey: r.check.teamComponentKey,
+          benefits: r.check.benefits !== null,
+          benefitReview: (r.check.benefits ?? []).some((b) => benefitNeedsReview(b)),
         }
       : null,
   };
@@ -95,8 +103,35 @@ function adoptedOf(snapshot: { key: string; volumeYear: number; minutes: number 
   return { key: snapshot.key, volumeYear: patch.volumeYear ?? snapshot.volumeYear, minutes: patch.minutesPerUnit ?? snapshot.minutes };
 }
 
+/**
+ * (Rilascio 5.1) Una risposta per beneficio per il blocco: la cifra vista, la risposta, se la cifra di adesso
+ * è cambiata (mai dopo «Usa la stima di {Nome}»: quel cambio è del team) o se la voce non c'è più.
+ */
+export function blockBenefitOf(b: StoredBenefit, rowsNow: readonly ImpactRow[] | null | undefined): ReferentBlockBenefit {
+  const now = rowsNow?.find((r) => r.key === b.key) ?? null;
+  const adoptedNow = b.outcome === "adottata" && now !== null && sameBenefitTeam(adoptedTeamOf(b), now.team);
+  const changed = now === null ? "tolta" : !sameBenefitTeam(b.team, now.team) && !adoptedNow ? "cambiata" : null;
+  const patch = benefitAdoptionPatch(b);
+  return {
+    key: b.key,
+    form: benefitFormOf(b.team),
+    label: b.label,
+    team: b.team,
+    answer: b.answer,
+    timesPerMonth: b.timesPerMonth,
+    minutesEach: b.minutesEach,
+    eurYear: b.eurYear,
+    comment: b.comment,
+    outcome: b.outcome,
+    outcomeAt: iso(b.outcomeAt),
+    changed,
+    needsReview: benefitNeedsReview(b),
+    adoptable: Object.keys(patch).length > 0,
+  };
+}
+
 /** La conferma e la stima di R* per il blocco (§9.2). */
-export function blockCheckOf(row: ReferentCheckRow, version: number, teamNow: TeamEstimate | null): ReferentBlockCheck {
+export function blockCheckOf(row: ReferentCheckRow, version: number, teamNow: TeamEstimate | null, rowsNow: readonly ImpactRow[] | null = null): ReferentBlockCheck {
   const snapshot =
     row.teamComponentKey !== null && row.teamVolumeYear !== null && row.teamMinutes !== null
       ? { key: row.teamComponentKey, volumeYear: row.teamVolumeYear, minutes: row.teamMinutes }
@@ -129,6 +164,7 @@ export function blockCheckOf(row: ReferentCheckRow, version: number, teamNow: Te
     teamNow: teamNow !== null,
     referentHours: given ? referentHours(snapshot, numbers) : null,
     version,
+    benefits: row.benefits ? row.benefits.map((b) => blockBenefitOf(b, rowsNow)) : null,
   };
 }
 
@@ -157,7 +193,7 @@ export function referentBlockOf(i: ReferentBlockInput): ReferentBlockView | null
     state: result.state,
     review: result.review,
     live,
-    check: star.check ? blockCheckOf(star.check, star.version, i.teamNow) : null,
+    check: star.check ? blockCheckOf(star.check, star.version, i.teamNow, i.rowsNow ?? null) : null,
     declinedNeedIds: [...declined],
     hints: i.hints.slice(0, 3),
     askableForReferent: i.askableNeedIds.map((id) => id.toLowerCase()).filter((id) => !declined.has(id)),

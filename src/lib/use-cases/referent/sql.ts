@@ -221,11 +221,14 @@ WHERE a.request_id = r.id AND a.workspace_id = ${ws} AND a.status = 'bozza' AND 
     toStatement(ucSql`UPDATE use_case_need_files f SET deleted_at = now(), deleted_reason = 'bozza_chiusa'
 FROM use_case_referent_requests r
 WHERE f.request_id = r.id AND f.workspace_id = ${ws} AND f.submitted_at IS NULL AND f.deleted_at IS NULL AND ${i.filter}`),
+    // (Rilascio 5.1) Le risposte per beneficio della bozza: si cancellano (prima che la conferma si svuoti).
+    toStatement(ucSql`DELETE FROM use_case_referent_check_benefits b USING use_case_referent_checks c, use_case_referent_requests r
+WHERE b.request_id = c.request_id AND c.request_id = r.id AND c.workspace_id = ${ws} AND c.submitted_at IS NULL AND ${i.filter}`),
     // (Rilascio 5) La bozza della conferma e della stima: si svuota, la riga resta (segna la richiesta al referente).
-    toStatement(ucSql`UPDATE use_case_referent_checks c SET confirm = NULL, confirm_note = NULL, estimate = NULL, times_per_month = NULL, minutes_each = NULL, updated_at = now()
+    toStatement(ucSql`UPDATE use_case_referent_checks c SET confirm = NULL, confirm_note = NULL, estimate = NULL, times_per_month = NULL, minutes_each = NULL, benefits = false, updated_at = now()
 FROM use_case_referent_requests r
 WHERE c.request_id = r.id AND c.workspace_id = ${ws} AND c.submitted_at IS NULL
-  AND (c.confirm IS NOT NULL OR c.confirm_note IS NOT NULL OR c.estimate IS NOT NULL OR c.times_per_month IS NOT NULL OR c.minutes_each IS NOT NULL) AND ${i.filter}`),
+  AND (c.confirm IS NOT NULL OR c.confirm_note IS NOT NULL OR c.estimate IS NOT NULL OR c.times_per_month IS NOT NULL OR c.minutes_each IS NOT NULL OR c.benefits) AND ${i.filter}`),
     toStatement(ucSql`UPDATE use_case_referent_requests r SET drafts_cleared_at = now()
 WHERE r.workspace_id = ${ws} AND r.drafts_cleared_at IS NULL AND ${i.filter}`),
   ];

@@ -531,13 +531,15 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
 // ─── La pagina del referente: la conferma e la stima (rilascio 5, §7) ─
 
 /**
- * (Rilascio 5) I passi di una richiesta al referente: «Lo use case» (è descritto bene?), «Il tempo» (la
- * stima del team in ore di lavoro, oppure le due domande senza stima), «Le domande». Testi corti: il
- * passo dice solo quello che serve per rispondere.
+ * (Rilascio 5) I passi di una richiesta al referente: «Lo use case» (è descritto bene?), «L'impatto»
+ * (rilascio 5.1: una riga per ogni voce di «Benefici e costi», REFERENT_IMPACT_TEXT; senza modello del
+ * valore le due domande del tempo), «Le domande». Testi corti: il passo dice solo quello che serve per
+ * rispondere.
  */
 export const REFERENT_CHECK_TEXT = Object.freeze({
   requestedBy: "{Nome} ti ha indicato come referente.",
-  steps: Object.freeze({ label: "Passi", useCase: "Lo use case", time: "Il tempo", questions: "Le domande", done: " (fatto)", current: " (adesso)" }),
+  // (Rilascio 5.1) Il passo 2 è l'impatto: ogni beneficio, non solo il tempo.
+  steps: Object.freeze({ label: "Passi", useCase: "Lo use case", time: "L'impatto", questions: "Le domande", done: " (fatto)", current: " (adesso)" }),
   confirm: Object.freeze({
     title: "È così?",
     group: "Lo use case è descritto bene?",
@@ -547,21 +549,14 @@ export const REFERENT_CHECK_TEXT = Object.freeze({
     notePlaceholder: "Per esempio: le fatture arrivano anche via PEC.",
     noteMissing: "Scrivi cosa cambieresti.",
   }),
+  // (Rilascio 5.1) Senza modello del valore: le due domande del tempo. Con un modello, REFERENT_IMPACT_TEXT.
   estimate: Object.freeze({
-    group: "La stima ti torna?",
-    yes: "Sì",
-    less: "È di meno",
-    more: "È di più",
-    numbersLead: "Se vuoi, dacci i tuoi numeri:",
-    perMonth: "Volte al mese",
-    minutesEach: "Minuti ogni volta",
     noTeamTitle: "Quanto tempo vi prende questo lavoro?",
     noTeamTimes: "Quante volte al mese?",
     noTeamMinutes: "Quanti minuti ogni volta?",
     noTeamHint: "Basta una stima.",
     noTeamMissing: "Scrivi quante volte al mese e quanti minuti ogni volta.",
     invalid: "Scrivi un numero, per esempio 20 o 1,5.",
-    pick: "Scegli una risposta.",
     stale: "Il team ha appena cambiato la stima: controlla di nuovo.",
   }),
   back: "Indietro",
@@ -711,10 +706,12 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   quarantena_scaduta: "Il controllo del file non è finito: caricalo di nuovo.",
   // (Rilascio 5) La conferma dello use case e la stima del tempo.
   conferma_mancante: "Prima conferma lo use case, o scrivi cosa cambieresti.",
-  stima_mancante: "Prima rispondi sulla stima del tempo.",
+  stima_mancante: "Prima rispondi sull'impatto: manca ancora una risposta.",
   stima_cambiata: "Il team ha appena cambiato la stima: controlla di nuovo.",
   numero_non_valido: "Scrivi un numero, per esempio 20 o 1,5.",
   nota_troppo_lunga: "Al massimo 1.000 caratteri.",
+  // (Rilascio 5.1) Il commento di una riga del passo «L'impatto».
+  commento_troppo_lungo: "Al massimo 500 caratteri.",
   // (Rilascio 5) «Invia» solo con ogni domanda chiusa.
   domande_aperte: "Mancano ancora alcune domande: le trovi evidenziate.",
   domande_aperte_una: "Manca ancora una domanda: la trovi evidenziata.",

@@ -124,3 +124,15 @@ test("la revisione: solo dopo l'invio", () => {
   assert.equal(reviewOf(check({ submittedAt: NOW, confirm: "correggi" }), true), "correzione");
   assert.equal(reviewOf(check({ submittedAt: NOW, confirm: "si", estimate: "si" }), false), null);
 });
+
+test("(rilascio 5.1) la revisione per beneficio: una voce da vedere, finché il team non decide; prima la correzione", () => {
+  const sent = { submittedAt: NOW, confirm: "si" as const, teamComponentKey: null, benefits: true };
+  assert.equal(reviewOf(check({ ...sent, benefitReview: true }), true), "stima");
+  assert.equal(reviewOf(check({ ...sent, benefitReview: false }), true), null, "tutte «Sì» o già decise");
+  assert.equal(reviewOf(check({ ...sent, benefitReview: false }), false), null, "senza la stima del tempo del rilascio 5 non si chiede una stima");
+  assert.equal(reviewOf(check({ ...sent, confirm: "correggi", benefitReview: true }), true), "correzione");
+  assert.equal(reviewOf(check({ ...sent, submittedAt: null, benefitReview: true }), true), null, "solo dopo l'invio");
+  const r = req({ status: "completata", openTask: 0, check: check({ ...sent, benefitReview: true }) });
+  assert.deepEqual(referentStateOf(input([r])), { state: "da_verificare", review: "stima" });
+  assert.deepEqual(referentStateOf(input([{ ...r, check: check({ ...sent, benefitReview: false }) }])), { state: "fatto", review: null });
+});
