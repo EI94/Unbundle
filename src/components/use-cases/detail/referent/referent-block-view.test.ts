@@ -92,7 +92,7 @@ test("nessuna risposta: «Chiedi di nuovo» visibile, non pieno", () => {
 
 test("ha risposto: la conferma, la stima del team e quella del referente; mai «Revoca il link» su una risposta", () => {
   const yes = referentBlockModel({ ...base, referent: REF({ state: "fatto", live: false, check: CHECK() }), request: { ...R, status: "completata" }, canAskMore: true });
-  assert.deepEqual(yes.checkLines.map((l) => l.text), ["Ha risposto il 3 nov.", "Lo use case: confermato.", "Il tempo: il team stimava 600 ore di lavoro l'anno.", "Aldo Prova: sì."]);
+  assert.deepEqual(yes.checkLines.map((l) => (l.kind === "button" ? l.button.label : l.text)), ["Ha risposto il 3 nov.", "Lo use case: confermato.", "Il tempo: il team stimava 600 ore di lavoro l'anno.", "Aldo Prova: sì."]);
   assert.deepEqual(yes.menu.map((i) => i.key), ["askMore", "change", "erase"]);
   const less = checkLinesOf(CHECK({ confirm: "correggi", note: "Arrivano anche via PEC.", estimate: "meno", timesPerMonth: 200, minutesEach: 10, referentHours: 400 }), "Aldo Prova", TODAY, false);
   assert.deepEqual(
@@ -154,4 +154,27 @@ test("dopo «Usa la stima di …»: «Stima del referente usata il …», mai «
   // Il team cambia ancora la stima dopo l'adozione: la riga torna.
   const later = checkLinesOf(blockCheckOf(row, 3, { ...teamNow, volumeYear: 2400 }), "Bruna Esempio", TODAY, true).map((l) => l.text);
   assert.ok(later.includes("La stima del team è cambiata dopo la risposta."), JSON.stringify(later));
+});
+
+test("«Fatto» della correzione sta subito sotto la nota; i pulsanti della stima restano nella loro riga", () => {
+  const both = CHECK({ confirm: "correggi", note: "Arrivano anche via PEC.", estimate: "meno" });
+  const m = referentBlockModel({ ...base, referent: REF({ state: "da_verificare", review: "correzione", live: false, check: both }), request: { ...R, status: "completata" }, withReview: true, canEditValuation: true });
+  const at = m.checkLines.findIndex((l) => l.kind === "quote");
+  const next = m.checkLines[at + 1];
+  assert.ok(at > 0, "la nota c'è");
+  assert.deepEqual(next?.kind === "button" ? [next.button.key, next.button.label, next.button.variant] : null, ["correctionDone", "Fatto", "ghost"]);
+  assert.deepEqual(m.buttons.map((b) => b.key), ["review", "seen"], "una sola «Fatto» nella riga della stima");
+  // Senza nota, «Fatto» sta sotto «Lo use case: da correggere.».
+  const noNote = referentBlockModel({ ...base, referent: REF({ state: "da_verificare", review: "correzione", live: false, check: CHECK({ confirm: "correggi", note: null }) }), request: { ...R, status: "completata" }, withReview: true });
+  const fix = noNote.checkLines.findIndex((l) => l.kind === "button");
+  assert.equal((noNote.checkLines[fix - 1] as { text: string }).text, "Lo use case: da correggere.");
+  assert.deepEqual(noNote.buttons, []);
+  // Dopo «Usa la stima di …» nessun «Fatto» da solo sotto la stima: resta solo quello sotto la nota.
+  const adopted = CHECK({ confirm: "correggi", note: "x", estimate: "meno", timesPerMonth: 2, referentHours: 4, outcome: "adottata", outcomeAt: "2026-11-04T09:00:00.000Z" });
+  const after = referentBlockModel({ ...base, referent: REF({ state: "da_verificare", review: "correzione", live: false, check: adopted }), request: { ...R, status: "completata" }, withReview: true, canEditValuation: true });
+  assert.deepEqual(after.buttons, []);
+  assert.deepEqual(after.checkLines.filter((l) => l.kind === "button").length, 1);
+  // Senza le azioni del team (withReview false) nessun pulsante tra le righe.
+  const plain = referentBlockModel({ ...base, referent: REF({ state: "da_verificare", review: "correzione", live: false, check: both }), request: { ...R, status: "completata" } });
+  assert.ok(!plain.checkLines.some((l) => l.kind === "button"));
 });

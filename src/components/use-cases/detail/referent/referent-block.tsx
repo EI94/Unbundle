@@ -210,7 +210,11 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
       {model.checkLines.length ? (
         <div data-slot="referent-check" className="space-y-1">
           {model.checkLines.map((line, index) =>
-            line.kind === "quote" ? (
+            line.kind === "button" ? (
+              <div key={index} className="pb-1">
+                {buttonOf(line.button)}
+              </div>
+            ) : line.kind === "quote" ? (
               <blockquote key={index} className="rounded-lg bg-muted/50 px-3 py-2 text-sm break-words whitespace-pre-line">
                 {line.text}
               </blockquote>

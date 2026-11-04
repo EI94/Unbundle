@@ -27,6 +27,8 @@ export interface BlockMenuItem {
 }
 
 export type BlockLine = { kind: "text" | "muted"; text: string } | { kind: "quote"; text: string };
+/** Una riga della conferma e della stima: anche «Fatto» della correzione, subito sotto la nota che chiude (§9.2). */
+export type CheckLine = BlockLine | { kind: "button"; button: BlockButton };
 
 export interface ReferentBlockModel {
   state: ReferentStateKey;
@@ -35,8 +37,8 @@ export interface ReferentBlockModel {
   meta: string | null;
   /** Le righe dello stato: attesa, email, risposta. */
   lines: BlockLine[];
-  /** Le righe della conferma e della stima, quando sono arrivate. */
-  checkLines: BlockLine[];
+  /** Le righe della conferma e della stima, quando sono arrivate («Fatto» della correzione sotto la nota). */
+  checkLines: CheckLine[];
   /** Al massimo tre pulsanti non pieni, nell'ordine in cui si mostrano. */
   buttons: BlockButton[];
   /** Le voci di «Altro». */
@@ -177,12 +179,24 @@ export function referentBlockModel(i: ReferentBlockInput): ReferentBlockModel {
     if (r.email.state !== "partita" && r.email.label) lines.push({ kind: "muted", text: r.email.label });
     for (const notice of r.notices) lines.push({ kind: "muted", text: notice });
   }
-  const checkLines: BlockLine[] = answered && ref.check ? checkLinesOf(ref.check, name, i.today, i.withReview === true) : waiting ? [] : [{ kind: "text", text: T.noConfirm }];
+  const checkLines: CheckLine[] = answered && ref.check ? checkLinesOf(ref.check, name, i.today, i.withReview === true) : waiting ? [] : [{ kind: "text", text: T.noConfirm }];
   if (i.canAsk && r) {
     if (r.actions.retry) buttons.push({ key: "retry", label: REFERENT_UI_TEXT.retry, variant: "outline" });
     else if (ref.state === "nessuna_risposta" && r.actions.askAgain && i.canAssign) buttons.push({ key: "askAgain", label: REFERENT_UI_TEXT.askAgain, variant: "outline" });
   }
-  if (i.canAsk && i.withReview) buttons.push(...reviewButtonsOf(ref.check, name, i.canEditValuation === true));
+  if (i.canAsk && i.withReview) {
+    const review = reviewButtonsOf(ref.check, name, i.canEditValuation === true);
+    // «Fatto» della correzione chiude la nota: sta subito sotto di lei (o sotto «Lo use case: da
+    // correggere.»), mai accanto ai pulsanti della stima, che hanno anche loro un «Fatto».
+    const fix = review.find((b) => b.key === "correctionDone");
+    if (fix) {
+      const quote = checkLines.findIndex((l) => l.kind === "quote");
+      const toCorrect = checkLines.findIndex((l) => l.kind === "text" && l.text === T.toCorrect);
+      const at = quote >= 0 ? quote + 1 : toCorrect >= 0 ? toCorrect + 1 : checkLines.length;
+      checkLines.splice(at, 0, { kind: "button", button: fix });
+    }
+    buttons.push(...review.filter((b) => b.key !== "correctionDone"));
+  }
   if (i.canAsk) {
     if (r && ref.live) menu.push({ key: "remind", label: REFERENT_UI_TEXT.remind, allowed: r.actions.remind.allowed, reason: r.actions.remind.allowed ? null : r.actions.remind.reason });
     if (!ref.live && i.canAskMore) menu.push({ key: "askMore", label: T.askMore, allowed: true, reason: null });
