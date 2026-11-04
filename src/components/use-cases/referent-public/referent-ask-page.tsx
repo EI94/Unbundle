@@ -58,6 +58,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const [view, setView] = useState(initialView);
   // (Rilascio 5) I passi di una richiesta al referente: il passo di adesso, nell'indirizzo come `?passo=`.
   const [step, setStep] = useState<CheckStep>(() => resolveStep(initialView, parseStep(initialStep)));
+  /**
+   * (Rilascio 5) Le domande, una volta aperto il passo 3, restano montate (nascoste) sui passi 1 e 2:
+   * chi torna indietro e poi avanti, con «Indietro» o con il browser, ritrova ogni scelta, il testo
+   * scritto (anche quello non ancora salvato) e i file, mai «0 di n fatte» con le bozze sul server.
+   */
+  const [questionsOpened, setQuestionsOpened] = useState(() => step === 3);
   const stepChangedAt = useRef(0);
   const [checkSave, setCheckSave] = useState<"saving" | "saved" | "error" | null>(null);
   const [stepError, setStepError] = useState<{ step: CheckStep; message: string } | null>(null);
@@ -157,6 +163,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   /** Va al passo `next`, con una voce nuova della cronologia: Indietro del browser torna al passo di prima. */
   const goTo = useCallback((next: CheckStep, mode: "push" | "replace" = "push") => {
     setStep(next);
+    if (next === 3) setQuestionsOpened(true);
     stepChangedAt.current = Date.now();
     const search = stepSearch(next);
     if (window.location.search !== search) {
@@ -186,6 +193,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       const wanted = parseStep(new URLSearchParams(window.location.search).get("passo"));
       const resolved = resolveStep(current, wanted);
       setStep(resolved);
+      if (resolved === 3) setQuestionsOpened(true);
       stepChangedAt.current = Date.now();
       if (wanted !== resolved) window.history.replaceState(null, "", stepSearch(resolved));
       pendingFocus.current = resolved === 3 ? null : stepTitleId(resolved);
@@ -415,47 +423,42 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const doneCount = sections.filter((q) => q.kind !== "aperta" || closedMap.get(q.needId.toLowerCase()) === true).length;
   const missingPositions = sections.map((q, i) => (missing.includes(q.needId.toLowerCase()) ? i + 1 : 0)).filter((n) => n > 0);
 
-  if (stepped && screen === "questions" && step !== 3) {
-    // (Rilascio 5) I passi «Lo use case» e «Il tempo».
-    const check = view.check;
-    return (
-      <PublicShell footer={footer}>
-        {intro}
-        <ReferentStepBar items={stepStates(view, step)} />
-        <p role="status" aria-live="polite" className="mt-2 min-h-5 text-sm text-muted-foreground">
-          {checkSave ? REFERENT_PUBLIC_TEXT.autosave[checkSave] : ""}
-        </p>
-        {step === 1 ? (
-          <ConfirmStep
-            key={`1:${generation}`}
-            check={check}
-            title={view.useCase.title}
-            actions={confirmActions}
-            errorFromServer={stepError?.step === 1 ? stepError.message : null}
-            warningFromServer={noteWarning}
-          />
-        ) : (
-          <EstimateStep
-            key={`2:${generation}:${check.team?.key ?? "nessuna"}`}
-            check={check}
-            last={lastStep === 2}
-            sending={submitBusy}
-            staleNotice={staleNotice}
-            actions={estimateActions}
-            onBack={() => goTo(1)}
-            errorFromServer={stepError?.step === 2 ? stepError.message : submitError}
-          />
-        )}
-      </PublicShell>
-    );
-  }
+  // (Rilascio 5) I passi «Lo use case» e «Il tempo»; le domande del passo 3 dopo, nascoste qui una volta aperte.
+  const onCheckStep = stepped && screen === "questions" && step !== 3;
+  const check = stepped ? view.check : null;
+  const questionsBlock = screen === "questions" || (readOnly && sections.length > 0);
+  const renderQuestions = questionsBlock && (!onCheckStep || questionsOpened);
 
   return (
     <PublicShell footer={footer}>
       {intro}
-      {stepped && screen === "questions" ? (
+      {stepped && screen === "questions" ? <ReferentStepBar items={stepStates(view, step)} /> : null}
+      {onCheckStep && check ? (
         <>
-          <ReferentStepBar items={stepStates(view, step)} />
+          <p role="status" aria-live="polite" className="mt-2 min-h-5 text-sm text-muted-foreground">
+            {checkSave ? REFERENT_PUBLIC_TEXT.autosave[checkSave] : ""}
+          </p>
+          {step === 1 ? (
+            <ConfirmStep
+              key={`1:${generation}`}
+              check={check}
+              title={view.useCase.title}
+              actions={confirmActions}
+              errorFromServer={stepError?.step === 1 ? stepError.message : null}
+              warningFromServer={noteWarning}
+            />
+          ) : (
+            <EstimateStep
+              key={`2:${generation}:${check.team?.key ?? "nessuna"}`}
+              check={check}
+              last={lastStep === 2}
+              sending={submitBusy}
+              staleNotice={staleNotice}
+              actions={estimateActions}
+              onBack={() => goTo(1)}
+              errorFromServer={stepError?.step === 2 ? stepError.message : submitError}
+            />
+          )}
         </>
       ) : null}
       {screen === "privacy" ? <PrivacyCard texts={privacy} busy={privacyBusy} error={privacyError} onAccept={() => void onAccept()} /> : null}
@@ -478,55 +481,59 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           }
         />
       ) : null}
-      {screen === "questions" && sections.length > 0 ? (
-        <div className="mt-6 space-y-2">
-          <h2 id={QUESTIONS_TITLE_ID} tabIndex={-1} className="text-xl font-semibold outline-none">
-            {questionsHeading(sections.length)}
-          </h2>
-          <p className="text-base break-words text-muted-foreground">{REFERENT_PUBLIC_TEXT.questionsLead}</p>
-          {newQuestions ? <Notice tone="info">{REFERENT_ERROR_MESSAGES.domande_nuove}</Notice> : null}
-        </div>
-      ) : null}
-      {screen === "questions" || (readOnly && sections.length > 0) ? (
-        <div className="mt-6 space-y-4" aria-labelledby={readOnly ? FINAL_TITLE_ID : QUESTIONS_TITLE_ID}>
-          {sections.map((section) => (
-            <QuestionCard
-              key={`${section.needId}:${section.kind}:${generation}`}
-              token={token}
-              section={section}
-              today={today}
-              clientMode={view.upload.clientMode}
-              declared={declared}
-              onDeclared={setDeclared}
-              issues={issues.get(section.needId.toLowerCase()) ?? []}
-              disabled={submitBusy}
-              registerFlush={registerFlush}
-              onStale={onStale}
-              onEdit={clearIssues}
-              missing={missing.includes(section.needId.toLowerCase())}
-              onClosure={onClosure}
-              tooSoon={stepped ? tooSoon : undefined}
+      {renderQuestions ? (
+        <div hidden={onCheckStep} data-slot="referent-questions">
+          {screen === "questions" && sections.length > 0 ? (
+            <div className="mt-6 space-y-2">
+              <h2 id={QUESTIONS_TITLE_ID} tabIndex={-1} className="text-xl font-semibold outline-none">
+                {questionsHeading(sections.length)}
+              </h2>
+              <p className="text-base break-words text-muted-foreground">{REFERENT_PUBLIC_TEXT.questionsLead}</p>
+              {newQuestions ? <Notice tone="info">{REFERENT_ERROR_MESSAGES.domande_nuove}</Notice> : null}
+            </div>
+          ) : null}
+          {questionsBlock ? (
+            <div className="mt-6 space-y-4" aria-labelledby={readOnly ? FINAL_TITLE_ID : QUESTIONS_TITLE_ID}>
+              {sections.map((section) => (
+                <QuestionCard
+                  key={`${section.needId}:${section.kind}:${generation}`}
+                  token={token}
+                  section={section}
+                  today={today}
+                  clientMode={view.upload.clientMode}
+                  declared={declared}
+                  onDeclared={setDeclared}
+                  issues={issues.get(section.needId.toLowerCase()) ?? []}
+                  disabled={submitBusy}
+                  registerFlush={registerFlush}
+                  onStale={onStale}
+                  onEdit={clearIssues}
+                  missing={missing.includes(section.needId.toLowerCase())}
+                  onClosure={onClosure}
+                  tooSoon={stepped ? tooSoon : undefined}
+                />
+              ))}
+              {screen === "questions" ? <p className="text-sm break-words text-muted-foreground">{savesItselfText(view)}</p> : null}
+            </div>
+          ) : null}
+          {screen === "questions" ? (
+            <SubmitBar
+              status={doneCountText(doneCount, sections.length)}
+              missing={missingPositions.length ? { text: missingText(missingPositions), goLabel: fillText(REFERENT_PUBLIC_TEXT.goToQuestion, { k: missingPositions[0] }), onGo: () => focusById(questionTitleId(missing[0])) } : null}
+              error={submitError}
+              busy={submitBusy}
+              onSubmit={() => void onSubmit()}
+              onBack={
+                stepped
+                  ? (e) => {
+                      // Il secondo clic di un doppio clic su «Indietro» arriva sul passo 2: lo si ignora.
+                      if (!tooSoon(e)) goTo(2);
+                    }
+                  : undefined
+              }
             />
-          ))}
-          {screen === "questions" ? <p className="text-sm break-words text-muted-foreground">{savesItselfText(view)}</p> : null}
+          ) : null}
         </div>
-      ) : null}
-      {screen === "questions" ? (
-        <SubmitBar
-          status={doneCountText(doneCount, sections.length)}
-          missing={missingPositions.length ? { text: missingText(missingPositions), goLabel: fillText(REFERENT_PUBLIC_TEXT.goToQuestion, { k: missingPositions[0] }), onGo: () => focusById(questionTitleId(missing[0])) } : null}
-          error={submitError}
-          busy={submitBusy}
-          onSubmit={() => void onSubmit()}
-          onBack={
-            stepped
-              ? (e) => {
-                  // Il secondo clic di un doppio clic su «Indietro» arriva sul passo 2: lo si ignora.
-                  if (!tooSoon(e)) goTo(2);
-                }
-              : undefined
-          }
-        />
       ) : null}
     </PublicShell>
   );
