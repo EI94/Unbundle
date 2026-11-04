@@ -738,6 +738,7 @@ export function ImpactStep({
   actions,
   onBack,
   errorFromServer,
+  missingFromServer,
 }: {
   check: ReferentCheckView;
   last: boolean;
@@ -746,10 +747,18 @@ export function ImpactStep({
   actions: StepActions;
   onBack: () => void;
   errorFromServer: string | null;
+  /** (Rilascio 5.1) Le righe senza risposta secondo «Invia» rifiutato (dopo aver riletto la vista). */
+  missingFromServer?: readonly string[];
 }) {
   const rows = check.benefits ?? [];
   const handles = useRef(new Map<string, RowHandle>());
   const [missing, setMissing] = useState<string[]>([]);
+  // Un rifiuto nuovo di «Invia» evidenzia le sue righe, come «Avanti» (lo stato si adegua alla prop nel render).
+  const [shownRefusal, setShownRefusal] = useState<readonly string[] | undefined>(undefined);
+  if (missingFromServer !== shownRefusal) {
+    setShownRefusal(missingFromServer);
+    if (missingFromServer?.length) setMissing(missingFromServer.filter((key) => rows.some((row) => row.key === key)));
+  }
   const [busy, setBusy] = useState(false);
   const anyStale = rows.some((row) => row.draft?.stale);
   const onEdit = useCallback((key: string) => setMissing((m) => (m.includes(key) ? m.filter((k) => k !== key) : m)), []);

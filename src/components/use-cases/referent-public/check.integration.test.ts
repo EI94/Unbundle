@@ -385,7 +385,17 @@ test("una voce aggiunta dal team mentre la pagina era aperta riporta al passo 2;
   await q(`UPDATE use_cases SET value_model = jsonb_set(value_model, '{components}', (value_model->'components') || $2::jsonb) WHERE id = $1::uuid`, [card.id, JSON.stringify([added])]);
   const refused = await pub.submitReferentAnswers(link, {}, now);
   failed(refused, "stima_mancante");
-  if (!refused.ok) assert.deepEqual((await import("./steps-state.ts")).stepOfSubmitRefusal(refused), { step: 2, message: refused.message });
+  // La voce che manca, per chiave: la pagina rilegge (così la riga c'è) e la evidenzia, invece di girare a vuoto.
+  if (!refused.ok) {
+    assert.deepEqual(refused.issues?.map((i) => i.field), ["beneficio.rischio-1"]);
+    assert.deepEqual((await import("./steps-state.ts")).stepOfSubmitRefusal(refused), { step: 2, message: refused.message, reload: true, missing: ["rischio-1"] });
+  }
+  // Una risposta tolta da un'altra finestra (una bozza salvata senza risposta): la stessa cosa.
+  okPub(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "costi-1", seen: SEEN["costi-1"], answer: null } }, now), "risposta tolta");
+  const twice = await pub.submitReferentAnswers(link, {}, now);
+  failed(twice, "stima_mancante");
+  if (!twice.ok) assert.deepEqual(twice.issues?.map((i) => i.field), ["beneficio.costi-1", "beneficio.rischio-1"]);
+  okPub(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "costi-1", seen: SEEN["costi-1"], answer: "meno" } }, now));
   okPub(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "rischio-1", seen: { kind: "qualitativo", volumeYear: null, minutes: null, eurYear: null }, answer: "si" } }, now));
   // Il team toglie la voce in euro: quella risposta non parte.
   await q(`UPDATE use_cases SET value_model = jsonb_set(value_model, '{components}', (value_model->'components') - 1) WHERE id = $1::uuid`, [card.id]);

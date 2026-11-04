@@ -22,9 +22,9 @@ import {
   sentCheckLines,
   thanksTexts,
 } from "./public-view-render";
-import { ConfirmStep, EstimateStep, ImpactStep, ReferentStepBar, stepTitleId, type StepActions } from "./referent-steps";
+import { ConfirmStep, EstimateStep, ImpactStep, ReferentStepBar, benefitTitleId, stepTitleId, type StepActions } from "./referent-steps";
 import { MessageCard, PublicShell } from "./state-card";
-import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepOfSubmitRefusal, stepOneWarning, stepSearch, stepStates, stepsOf, type CheckStep } from "./steps-state";
+import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepOfSubmitRefusal, stepOneWarning, stepSearch, stepStates, stepsOf, type CheckStep, type StepRefusal } from "./steps-state";
 import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
 
 /**
@@ -66,7 +66,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const [questionsOpened, setQuestionsOpened] = useState(() => step === 3);
   const stepChangedAt = useRef(0);
   const [checkSave, setCheckSave] = useState<"saving" | "saved" | "error" | null>(null);
-  const [stepError, setStepError] = useState<{ step: CheckStep; message: string } | null>(null);
+  const [stepError, setStepError] = useState<StepRefusal | null>(null);
   /** (Rilascio 5) L'avviso dell'ultima bozza della nota di «Correggi» (rilascio 5.1: un codice fiscale o una data di nascita). */
   const [noteWarning, setNoteWarning] = useState<string | null>(null);
   const [staleNotice, setStaleNotice] = useState(false);
@@ -342,8 +342,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     // passo, con il messaggio lì (mai «le trovi evidenziate» senza niente di evidenziato).
     const back = stepped ? stepOfSubmitRefusal(r) : null;
     if (back) {
+      // (Rilascio 5.1) Una voce aggiunta o cambiata dal team mentre la pagina era aperta: prima si rilegge,
+      // così la riga che manca c'è ed è evidenziata (senza, «Invia» tornava qui all'infinito).
+      if (back.reload) await reload();
       goTo(back.step);
       setStepError(back);
+      if (back.missing?.length) setFocusTarget(benefitTitleId(back.missing[0]));
       return;
     }
     // (Rilascio 5) Domande nuove del team mentre la pagina era aperta: si rilegge e lo si dice.
@@ -462,7 +466,8 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
               staleNotice={staleNotice}
               actions={estimateActions}
               onBack={() => goTo(1)}
-              errorFromServer={stepError?.step === 2 ? stepError.message : submitError}
+              errorFromServer={stepError?.step === 2 && !stepError.missing?.length ? stepError.message : submitError}
+              missingFromServer={stepError?.step === 2 ? stepError.missing : undefined}
             />
           ) : (
             <EstimateStep

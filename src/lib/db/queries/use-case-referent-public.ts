@@ -814,11 +814,16 @@ export async function submitReferentAnswers(link: ReferentLink, body: unknown, n
       if (!text.ok) issues.push(...text.issues);
     }
     if (rows) {
-      if (!check.benefits) return pfail("stima_mancante");
-      const stored = new Map(check.benefitRows.map((b) => [b.key, b]));
-      for (const row of rows) {
+      // Le voci senza una risposta del loro tipo (una voce aggiunta o cambiata dal team intanto, una risposta
+      // tolta da un'altra finestra): tutte, nei campi `beneficio.<chiave>`, così la pagina rilegge e le evidenzia.
+      const stored = new Map((check.benefits ? check.benefitRows : []).map((b) => [b.key, b]));
+      const unanswered = rows.filter((row) => {
         const b = stored.get(row.key);
-        if (!b || b.team.kind !== row.team.kind || !storedBenefitAnswered(b)) return pfail("stima_mancante");
+        return !b || b.team.kind !== row.team.kind || !storedBenefitAnswered(b);
+      });
+      if (unanswered.length) return pfail("stima_mancante", undefined, unanswered.map((row) => ({ code: "stima_mancante", message: MSG.stima_mancante, field: `beneficio.${row.key}` })));
+      for (const row of rows) {
+        const b = stored.get(row.key)!;
         if (benefitNeedsReview(b)) benefitDiffers = true;
         if (b.comment) {
           const text = checkSubmitText(b.comment, `beneficio.${row.key}`);

@@ -122,16 +122,33 @@ export function numberText(value: number | null): string {
 
 // ─── I rifiuti che riportano a un passo ──────────────────────────────
 
+/** Dove riporta un «Invia» rifiutato (`stepOfSubmitRefusal`). */
+export interface StepRefusal {
+  step: CheckStep;
+  message: string;
+  /** (Rilascio 5.1) Prima di tornare al passo si rilegge la vista: una voce aggiunta o cambiata dal team intanto. */
+  reload?: true;
+  /** (Rilascio 5.1) Le righe dell'impatto senza risposta, da evidenziare (le chiavi delle voci). */
+  missing?: string[];
+}
+
+const BENEFIT_FIELD = "beneficio.";
+
 /**
  * (Rilascio 5) Il passo a cui riporta un «Invia» rifiutato per la conferma o la stima, con il messaggio
  * da dire lì; null per tutti gli altri rifiuti (le domande hanno il loro posto). La nota di «Correggi»
  * con un dato che qui non teniamo (rilascio 5.1: dati sanitari, codici fiscali, date di nascita; nomi,
  * email e telefoni passano) torna con `risposte_da_correggere` e il campo `conferma`: nessuna domanda la
- * mostra, quindi la si mostra al passo 1, sotto «Cosa cambieresti?».
+ * mostra, quindi la si mostra al passo 1, sotto «Cosa cambieresti?». (Rilascio 5.1) `stima_mancante`
+ * chiede di rileggere prima la vista (senza, una voce aggiunta dal team intanto non c'è sulla pagina e
+ * «Invia» girerebbe a vuoto) e porta le chiavi delle righe senza risposta.
  */
-export function stepOfSubmitRefusal(r: { code: string; message: string; issues?: readonly { field?: string; message: string }[] }): { step: CheckStep; message: string } | null {
+export function stepOfSubmitRefusal(r: { code: string; message: string; issues?: readonly { field?: string; message: string }[] }): StepRefusal | null {
   if (r.code === "conferma_mancante") return { step: 1, message: r.message };
-  if (r.code === "stima_mancante") return { step: 2, message: r.message };
+  if (r.code === "stima_mancante") {
+    const missing = (r.issues ?? []).map((i) => i.field ?? "").filter((f) => f.startsWith(BENEFIT_FIELD) && f.length > BENEFIT_FIELD.length).map((f) => f.slice(BENEFIT_FIELD.length));
+    return { step: 2, message: r.message, reload: true, missing };
+  }
   if (r.code === "risposte_da_correggere") {
     const confirm = r.issues?.find((i) => i.field === "conferma");
     if (confirm) return { step: 1, message: confirm.message };

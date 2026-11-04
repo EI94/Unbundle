@@ -151,7 +151,12 @@ test("i campi dei numeri: la virgola, i limiti, le etichette e i segnaposto del 
 
 test("un «Invia» rifiutato per la conferma o la stima riporta al suo passo, con il messaggio lì", () => {
   assert.deepEqual(stepOfSubmitRefusal({ code: "conferma_mancante", message: "Manca la conferma." }), { step: 1, message: "Manca la conferma." });
-  assert.deepEqual(stepOfSubmitRefusal({ code: "stima_mancante", message: "Manca la stima." }), { step: 2, message: "Manca la stima." });
+  // La stima o l'impatto: si rilegge prima (una voce aggiunta o cambiata dal team intanto), poi si evidenziano le righe senza risposta.
+  assert.deepEqual(stepOfSubmitRefusal({ code: "stima_mancante", message: "Manca la stima." }), { step: 2, message: "Manca la stima.", reload: true, missing: [] });
+  assert.deepEqual(
+    stepOfSubmitRefusal({ code: "stima_mancante", message: "Manca.", issues: [{ field: "beneficio.rischio-1", message: "Manca." }, { field: "beneficio.tempo-1", message: "Manca." }, { field: "altro", message: "x" }] }),
+    { step: 2, message: "Manca.", reload: true, missing: ["rischio-1", "tempo-1"] },
+  );
   // La nota di «Correggi» con un dato che qui non teniamo: il campo «conferma» non è di nessuna domanda, si torna al passo 1.
   const NAME = "Non scrivere nomi di persone: indica il ruolo.";
   assert.deepEqual(stepOfSubmitRefusal({ code: "risposte_da_correggere", message: "Alcune risposte vanno corrette: le trovi evidenziate.", issues: [{ field: "conferma", message: NAME }] }), { step: 1, message: NAME });
