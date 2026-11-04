@@ -399,3 +399,32 @@ SELECT r.status, c.confirm IS NOT NULL AS confermato, c.estimate, c.submitted_at
 FROM use_case_referent_requests r JOIN use_case_referent_checks c ON c.request_id = r.id
 WHERE r.use_case_id = '<use case>' ORDER BY r.created_at DESC, r.id DESC LIMIT 5;
 ```
+
+### 10.10 «L'impatto, per ogni beneficio» (0027)
+
+Il rilascio 5.1: al passo «L'impatto» della pagina del referente c'è una riga per ogni voce di «Benefici e costi» (ore, euro, qualitative), ognuna con un tocco («Sì» / «È di meno» / «È di più» su una cifra del team, «Sì» / «No» / «Non so» su un beneficio senza cifra, i due numeri quando il team non li ha) e un commento facoltativo; sulla scheda il team vede ogni risposta accanto alla sua voce e usa con un clic i numeri di una voce («Usa la stima di {Nome}»). Gli euro di una voce «euro» il referente li vede (decisione del 04/11/2026); mai punteggi, costi, quote, ore liberate, altri use case o persone. Senza modello del valore resta la stima del tempo del rilascio 5.
+
+**Migrazione 0027 (a mano, prima del deploy)**, come la 0026 (§10.9):
+
+1. Prima del deploy, il proprietario: restore point su Neon, poi `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0027_use_case_referent_benefits.sql` (aggiunge `benefits` a `use_case_referent_checks`, crea `use_case_referent_check_benefits` e allarga, con lo stesso nome, il CHECK `use_case_referent_checks_submitted_check`; non scrive dati). L'allargamento è l'unico statement non solo additivo (DROP CONSTRAINT e ADD CONSTRAINT … NOT VALID, poi VALIDATE, con `lock_timeout` 3s): la condizione nuova è quella della 0026 con `benefits` in OR, quindi ogni riga di prima resta valida.
+2. `SELECT <USE_CASE_REFERENT_BENEFITS_PROBE_SQL>` (da `src/lib/db/use-case-hub-referent-benefits-ddl.ts`) deve dare `true`, oppure `use-case-admin doctor` deve dire `migrazione0027: true`.
+3. Mai drizzle-kit, mai `db:push`. Il self-heal (`ENSURE_VERSION` 21) trova lo schema aggiornato e non fa niente. Senza la 0027 l'app serve senza «Chiedi al referente» (il pannello non c'è) e la pagina del referente dice «Non disponibile», come senza la 0026.
+4. Il ramo non si pubblica prima della revisione (le anteprime usano il database di produzione e il self-heal applicherebbe la 0027 lì). Una sola messa in produzione, la sera, con `main` fermo per circa 24 ore dopo.
+5. Ritorno indietro, prima di premerlo: il codice del rilascio 5 non legge `use_case_referent_check_benefits`. Una conferma inviata per beneficio si mostra sulla scheda come «Il tempo: nessuna stima del team.» senza numeri, e il riquadro può chiedere «Aggiungi alla stima» / «Non serve» su quello use case; una bozza per beneficio non ancora inviata torna al passo «Il tempo» del rilascio 5 (il referente risponde di nuovo sulle ore). Il proprietario (mai un agente) legge i due numeri e decide: `SELECT count(*) FILTER (WHERE c.submitted_at IS NOT NULL) AS inviate, count(*) FILTER (WHERE c.submitted_at IS NULL) AS bozze FROM use_case_referent_checks c WHERE c.benefits;` (solo numeri). Gli oggetti della 0027 restano.
+6. Ritorno indietro, mentre il codice di prima è in produzione: la sua cancellazione dei dati, la sua conservazione di 12 mesi e la sua pulizia delle bozze non toccano le risposte per beneficio. Subito dopo ogni «Cancella i dati di questa persona» fatto sul codice di prima, il proprietario esegue la pulizia (il cron del codice nuovo esegue ogni giorno gli stessi tre statement, `REFERENT_BENEFITS_SWEEP_SQL`, dopo quelli della 0026):
+```sql
+UPDATE use_case_referent_check_benefits b SET comment = NULL, updated_at = now()
+  FROM use_case_referent_requests r WHERE b.request_id = r.id AND r.purged_at IS NOT NULL AND b.comment IS NOT NULL;
+DELETE FROM use_case_referent_check_benefits b USING use_case_referent_checks c, use_case_referent_requests r
+  WHERE b.request_id = c.request_id AND c.request_id = r.id AND c.submitted_at IS NULL AND r.status <> 'inviata';
+UPDATE use_case_referent_checks c SET benefits = false, updated_at = now()
+  FROM use_case_referent_requests r WHERE c.request_id = r.id AND c.submitted_at IS NULL AND r.status <> 'inviata' AND c.benefits;
+```
+7. Dopo il ritorno avanti, le conferme inviate con il codice di prima (`benefits` falso) si leggono come nel rilascio 5: la stima del tempo e «Usa la stima di {Nome}» sulla voce «ore».
+
+**Controllo di sola lettura** (UUID inventati):
+```sql
+SELECT b.component_key, b.kind, b.answer, b.outcome, c.submitted_at IS NOT NULL AS inviata
+FROM use_case_referent_checks c JOIN use_case_referent_check_benefits b ON b.request_id = c.request_id
+WHERE c.request_id = '<richiesta>' ORDER BY b.position;
+```

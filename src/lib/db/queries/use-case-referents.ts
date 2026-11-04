@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { REFERENT_CHECK_SWEEP_SQL } from "@/lib/db/use-case-hub-referent-check-ddl";
+import { REFERENT_BENEFITS_SWEEP_SQL } from "@/lib/db/use-case-hub-referent-benefits-ddl";
 import { loadUserContext } from "@/lib/db/queries/uc-cases";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import {
@@ -2241,6 +2242,9 @@ LIMIT 200`),
     // (Rilascio 5) La pulizia di RUNBOOK §10.9 punto 6, idempotente: sul codice nuovo non trova niente;
     // dopo un ritorno indietro toglie i commenti e le note che il codice di prima ha lasciato.
     await executor.batch(REFERENT_CHECK_SWEEP_SQL.map((text) => ({ text, params: [] })));
+    // (Rilascio 5.1) La pulizia di RUNBOOK §10.10 punto 6, dopo quella della 0026: i commenti per
+    // beneficio delle richieste cancellate e le bozze per beneficio delle richieste finite senza invio.
+    await executor.batch(REFERENT_BENEFITS_SWEEP_SQL.map((text) => ({ text, params: [] })));
   });
 
   // 9. Promemoria: un'email al giorno per persona, con tutte le sue richieste dovute.

@@ -8,6 +8,7 @@ import { USE_CASE_HISTORY_DDL, USE_CASE_HISTORY_PROBE_SQL } from "./use-case-hub
 import { USE_CASE_REFERENTS_DDL, USE_CASE_REFERENTS_PROBE_SQL } from "./use-case-hub-referents-ddl.ts";
 import { USE_CASE_ALERTS_DDL, USE_CASE_ALERTS_PROBE_SQL } from "./use-case-hub-alerts-ddl.ts";
 import { USE_CASE_REFERENT_CHECK_DDL, USE_CASE_REFERENT_CHECK_PROBE_SQL } from "./use-case-hub-referent-check-ddl.ts";
+import { USE_CASE_REFERENT_BENEFITS_DDL, USE_CASE_REFERENT_BENEFITS_PROBE_SQL } from "./use-case-hub-referent-benefits-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -27,7 +28,7 @@ import { USE_CASE_REFERENT_CHECK_DDL, USE_CASE_REFERENT_CHECK_PROBE_SQL } from "
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 20;
+const ENSURE_VERSION = 21;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -649,6 +650,12 @@ async function runOnce(): Promise<void> {
   // la 0025 non blocca il resto dell'app: senza la 0026 «Chiedi al referente» e la pagina del
   // referente rispondono come senza la 0024 (`referentStoreReady` guarda anche la sua sonda).
   await runUseCaseReferentCheckDdlSafely();
+
+  // «L'impatto, per ogni beneficio» (drizzle/0027_use_case_referent_benefits.sql) ──────────────
+  // Dopo la 0026 (la conferma a cui le risposte per beneficio appartengono, e il CHECK dell'invio che la
+  // 0027 allarga). Come la 0026 non blocca il resto dell'app: senza la 0027 «Chiedi al referente» e la
+  // pagina del referente rispondono come senza la 0024 (`referentStoreReady` guarda anche la sua sonda).
+  await runUseCaseReferentBenefitsDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -695,6 +702,20 @@ async function runUseCaseReferentCheckDdlSafely(): Promise<void> {
   } catch (err) {
     referentCheckDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0026 self-heal failed, the app keeps serving without «Referente in un tocco» (apply drizzle/0026 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0027, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let referentBenefitsDdlFailedAt: number | null = null;
+
+/** La 0027 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. */
+async function runUseCaseReferentBenefitsDdlSafely(): Promise<void> {
+  try {
+    await runUseCaseReferentBenefitsDdl();
+    referentBenefitsDdlFailedAt = null;
+  } catch (err) {
+    referentBenefitsDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0027 self-heal failed, the app keeps serving without «Referente in un tocco» (apply drizzle/0027 by hand):", err);
   }
 }
 
@@ -795,6 +816,21 @@ export async function runUseCaseReferentCheckDdl(statements: readonly string[] =
   await client.transaction([
     client.query("SELECT set_config('lock_timeout', '3s', true)"),
     client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-referent-check-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
+/**
+ * Applica il DDL della 0027 in una sola transazione, serializzata dallo stesso advisory lock del file,
+ * con `lock_timeout` di 3s come la 0026 (la colonna nuova e il CHECK dell'invio allargato prendono un
+ * lock breve su `use_case_referent_checks`). In produzione il file si applica a mano prima del rilascio:
+ * qui il self-heal trova lo schema già aggiornato e non fa niente.
+ */
+export async function runUseCaseReferentBenefitsDdl(statements: readonly string[] = USE_CASE_REFERENT_BENEFITS_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-referent-benefits-ddl'))"),
     ...statements.map((statement) => client.query(statement)),
   ]);
 }
@@ -912,6 +948,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(USE_CASE_REFERENTS_PROBE_SQL)}
         AND ${sql.raw(USE_CASE_ALERTS_PROBE_SQL)}
         AND ${sql.raw(USE_CASE_REFERENT_CHECK_PROBE_SQL)}
+        AND ${sql.raw(USE_CASE_REFERENT_BENEFITS_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -946,6 +983,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (referentCheckDdlFailedAt !== null && Date.now() - referentCheckDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       referentCheckDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runUseCaseReferentCheckDdlSafely);
+    }
+    // La 0027 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (referentBenefitsDdlFailedAt !== null && Date.now() - referentBenefitsDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      referentBenefitsDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runUseCaseReferentBenefitsDdlSafely);
     }
     return ensurePromise;
   }

@@ -18,6 +18,7 @@ import {
   USE_CASE_REFERENT_CHECK_DDL,
   USE_CASE_REFERENT_CHECK_PROBE_SQL,
 } from "./use-case-hub-referent-check-ddl.ts";
+import { REFERENT_BENEFITS_ADDED_COLUMNS } from "./use-case-hub-referent-benefits-ddl.ts";
 import { VALUE_MODEL_LIMITS } from "../use-cases/value-model.ts";
 import * as schema from "./schema.ts";
 
@@ -154,8 +155,8 @@ test("la sonda copre la tabella, ogni indice e vincolo con nome, le tre colonne 
   assert.ok(USE_CASE_REFERENT_CHECK_PROBE_SQL.includes(`conname = '${ANSWER_COMMENT_CHECK_NAME}'`));
 });
 
-test("ensure-schema: versione 20, la 0026 dopo la 0025, non fatale, con timeout e lock, e la sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 20;/);
+test("ensure-schema: versione 20 (o dopo), la 0026 dopo la 0025, non fatale, con timeout e lock, e la sonda in AND", () => {
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 20, "ENSURE_VERSION almeno 20 (la 0027 la porta a 21)");
   assert.match(ensureSchema, /import \{ USE_CASE_REFERENT_CHECK_DDL, USE_CASE_REFERENT_CHECK_PROBE_SQL \} from "\.\/use-case-hub-referent-check-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const alerts = runOnce.indexOf("await runUseCaseAlertsDdlSafely();");
@@ -181,7 +182,7 @@ test("ensure-schema: versione 20, la 0026 dopo la 0025, non fatale, con timeout 
 test("referentStoreReady e il doctor guardano la sonda della 0026", () => {
   assert.match(base, /import \{ USE_CASE_REFERENT_CHECK_PROBE_SQL \} from "@\/lib\/db\/use-case-hub-referent-check-ddl";/);
   const ready = topLevelFunction(base, "export async function referentStoreReady(): Promise<boolean> {");
-  assert.match(ready, /AND \$\{raw\(USE_CASE_REFERENT_CHECK_PROBE_SQL\)\}\) AS ok/);
+  assert.match(ready, /AND \$\{raw\(USE_CASE_REFERENT_CHECK_PROBE_SQL\)\}\s/);
   assert.match(doctor, /SELECT \$\{USE_CASE_REFERENT_CHECK_PROBE_SQL\} AS ok/);
   assert.match(doctor, /migrazione0026: m0026,/);
 });
@@ -204,7 +205,8 @@ test("la pulizia: gli stessi tre statement del RUNBOOK §10.9 punto 6, carattere
 test("schema.ts: le colonne Drizzle sono le colonne del DDL, nello stesso ordine", () => {
   assert.equal(getTableName(schema.useCaseReferentChecks), "use_case_referent_checks");
   const columns = Object.values(getTableColumns(schema.useCaseReferentChecks)).map((column) => column.name);
-  assert.deepEqual(columns, ddlColumns(table()));
+  // (0027) Dopo le colonne della 0026, quella della 0027 (`benefits`).
+  assert.deepEqual(columns, [...ddlColumns(table()), ...REFERENT_BENEFITS_ADDED_COLUMNS.use_case_referent_checks]);
   const items = Object.values(getTableColumns(schema.useCaseReferentRequestItems)).map((c) => c.name);
   assert.deepEqual(items.slice(-1), [...REFERENT_CHECK_ADDED_COLUMNS.use_case_referent_request_items]);
   const answers = Object.values(getTableColumns(schema.useCaseNeedAnswers)).map((c) => c.name);

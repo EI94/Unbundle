@@ -1031,8 +1031,41 @@ export const useCaseReferentChecks = pgTable(
     estimateOutcome: varchar("estimate_outcome", { length: 8 }).$type<"adottata" | "tenuta">(),
     estimateOutcomeAt: tz("estimate_outcome_at"),
     purgedAt: tz("purged_at"),
+    /** (0027) La conferma ha una risposta per ogni voce di «Benefici e costi» (`useCaseReferentCheckBenefits`). */
+    benefits: boolean("benefits").notNull().default(false),
   },
   (t) => [index("use_case_referent_checks_use_case_idx").on(t.useCaseId), index("use_case_referent_checks_workspace_idx").on(t.workspaceId)]
+);
+
+/**
+ * (0027) La risposta del referente su una voce di «Benefici e costi»: l'istantanea della cifra del team
+ * che ha visto (volte e minuti per «ore», euro per «euro», niente per «qualitativo»), la sua risposta,
+ * i suoi numeri facoltativi, un commento breve e l'esito del team. Nessuna colonna di persona.
+ */
+export const useCaseReferentCheckBenefits = pgTable(
+  "use_case_referent_check_benefits",
+  {
+    requestId: uuid("request_id").notNull().references(() => useCaseReferentChecks.requestId, { onDelete: "cascade" }),
+    componentKey: varchar("component_key", { length: 40 }).notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    position: smallint("position").notNull(),
+    kind: varchar("kind", { length: 12 }).$type<"ore" | "euro" | "qualitativo">().notNull(),
+    /** Il nome della voce come l'ha letto il referente. */
+    label: varchar("label", { length: 120 }).notNull(),
+    teamVolumeYear: numeric("team_volume_year", { precision: 14, scale: 2 }),
+    teamMinutes: numeric("team_minutes", { precision: 12, scale: 2 }),
+    teamEurYear: numeric("team_eur_year", { precision: 14, scale: 2 }),
+    answer: varchar("answer", { length: 8 }).$type<"si" | "meno" | "piu" | "no" | "non_so">(),
+    timesPerMonth: numeric("times_per_month", { precision: 12, scale: 2 }),
+    minutesEach: numeric("minutes_each", { precision: 10, scale: 2 }),
+    eurYear: numeric("eur_year", { precision: 14, scale: 2 }),
+    comment: varchar("comment", { length: 500 }),
+    outcome: varchar("outcome", { length: 8 }).$type<"adottata" | "tenuta">(),
+    outcomeAt: tz("outcome_at"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "use_case_referent_check_benefits_pkey", columns: [t.requestId, t.componentKey] }), index("use_case_referent_check_benefits_workspace_idx").on(t.workspaceId)]
 );
 
 export const useCaseNeedAnswers = pgTable(

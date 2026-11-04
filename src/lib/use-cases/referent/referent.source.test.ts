@@ -50,6 +50,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/queries/use-case-alerts.ts",
   // (0026) «Referente in un tocco»: il DDL della conferma, della stima e delle chiusure.
   "src/lib/db/use-case-hub-referent-check-ddl.ts",
+  // (0027) Le risposte del referente per ogni voce di «Benefici e costi».
+  "src/lib/db/use-case-hub-referent-benefits-ddl.ts",
   // Il servizio e le sue basi, la pagina pubblica, i file, l'invio delle email.
   "src/lib/db/queries/use-case-referents.ts",
   "src/lib/db/queries/use-case-referent-base.ts",
