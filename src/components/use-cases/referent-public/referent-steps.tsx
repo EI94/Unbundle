@@ -134,7 +134,9 @@ export function ConfirmStep({ check, title, actions, errorFromServer }: { check:
     void actions.save({ step: 1, confirm: "si", note: null });
     actions.next(e);
   };
-  const onFix = () => {
+  const onFix = (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Il secondo clic di un doppio clic su «Indietro» del passo 2 arriva qui: niente «Correggi» per caso.
+    if (actions.tooSoon(e)) return;
     setError(null);
     if (!fixing) {
       actions.setDraft({ confirm: "correggi", note: note || null });
@@ -282,8 +284,10 @@ export function EstimateStep({
   }, [actions, team]);
 
   const pick = (estimate: "si" | "meno" | "piu", e: React.MouseEvent<HTMLButtonElement>) => {
+    // Ogni scelta, non solo «Sì»: il secondo clic di un doppio clic su «Sì, è così» (o su «Indietro» del
+    // passo 3) arriva qui sotto il dito, e non deve diventare un «È di più» che nessuno ha scelto.
+    if (actions.tooSoon(e)) return;
     if (estimate === "si" && !last) {
-      if (actions.tooSoon(e)) return;
       setError(null);
       actions.setDraft({ estimate: "si", timesPerMonth: null, minutesEach: null, stale: false });
       void actions.save({ step: 2, teamSeen, estimate: "si", timesPerMonth: null, minutesEach: null });
@@ -404,7 +408,14 @@ export function EstimateStep({
         </p>
       ) : null}
       <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center">
-        <Button type="button" variant="ghost" className="min-h-11 h-auto px-3 text-base" onClick={onBack}>
+        <Button
+          type="button"
+          variant="ghost"
+          className="min-h-11 h-auto px-3 text-base"
+          onClick={(e) => {
+            if (!actions.tooSoon(e)) onBack();
+          }}
+        >
           {T.back}
         </Button>
         {needsPrimary ? (

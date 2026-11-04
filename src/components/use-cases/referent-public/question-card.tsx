@@ -108,6 +108,7 @@ export function OpenQuestionCard({
   onEdit,
   missing = false,
   onClosure,
+  tooSoon,
 }: {
   token: string;
   section: QuestionSection;
@@ -126,6 +127,12 @@ export function OpenQuestionCard({
   missing?: boolean;
   /** (Rilascio 5) La domanda è chiusa o no, per «{k} di {n} fatte» e «Invia». */
   onClosure?: (needId: string, closed: boolean) => void;
+  /**
+   * (Rilascio 5) Il secondo clic di un doppio clic, o un clic subito dopo il cambio di passo (il doppio
+   * clic su «Sì» del passo 2 arriva sulla prima domanda): «Non ce l'ho», «È già allegato» e «Allega un
+   * file» lo ignorano.
+   */
+  tooSoon?: (e: React.MouseEvent<HTMLButtonElement>) => boolean;
 }) {
   const id = useId();
   const needId = section.needId;
@@ -241,14 +248,18 @@ export function OpenQuestionCard({
     // Le scelte si salvano subito: niente da aspettare come per il testo.
     if (now) dispatch({ type: "blur", now: Date.now() });
   };
-  const toggleDontKnow = () => {
+  const toggleDontKnow = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (tooSoon?.(e)) return;
     if (!value.dontKnow && files.some((f) => f.status !== "rifiutato" && !f.submitted)) {
       setLocalError(REFERENT_ERROR_MESSAGES.non_so_con_file);
       return;
     }
     edit({ dontKnow: !value.dontKnow, alreadyAttached: false, text: value.dontKnow ? value.text : "" });
   };
-  const toggleAttached = () => edit({ alreadyAttached: !attached, dontKnow: false });
+  const toggleAttached = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (tooSoon?.(e)) return;
+    edit({ alreadyAttached: !attached, dontKnow: false });
+  };
 
   const counter = counterLabel(value.text.length);
   const statusKey = autosaveLabelKey(state);
@@ -293,7 +304,7 @@ export function OpenQuestionCard({
       ) : null}
 
       {!value.dontKnow && !attached ? (
-        <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} declared={declared} onDeclared={onDeclared} allowUpload disabled={blocked} />
+        <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} declared={declared} onDeclared={onDeclared} allowUpload disabled={blocked} tooSoon={tooSoon} />
       ) : files.some((f) => f.status !== "rifiutato") ? (
         <Attachments token={token} needId={needId} files={files} onFiles={setFiles} clientMode={clientMode} declared={declared} onDeclared={onDeclared} allowUpload={false} disabled={blocked} />
       ) : null}

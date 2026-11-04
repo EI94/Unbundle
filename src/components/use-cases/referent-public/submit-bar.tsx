@@ -31,7 +31,8 @@ export function SubmitBar({
   error: string | null;
   busy: boolean;
   onSubmit: () => void;
-  onBack?: () => void;
+  /** (Rilascio 5) «Indietro» al passo 2: l'evento serve al controllo del doppio clic. */
+  onBack?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <div className="mt-6 space-y-3">

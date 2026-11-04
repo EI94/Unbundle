@@ -491,6 +491,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
               onEdit={clearIssues}
               missing={missing.includes(section.needId.toLowerCase())}
               onClosure={onClosure}
+              tooSoon={stepped ? tooSoon : undefined}
             />
           ))}
           {screen === "questions" ? <p className="text-sm break-words text-muted-foreground">{savesItselfText(view)}</p> : null}
@@ -503,7 +504,14 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           error={submitError}
           busy={submitBusy}
           onSubmit={() => void onSubmit()}
-          onBack={stepped ? () => goTo(2) : undefined}
+          onBack={
+            stepped
+              ? (e) => {
+                  // Il secondo clic di un doppio clic su «Indietro» arriva sul passo 2: lo si ignora.
+                  if (!tooSoon(e)) goTo(2);
+                }
+              : undefined
+          }
         />
       ) : null}
     </PublicShell>

@@ -40,6 +40,7 @@ export function Attachments({
   onDeclared,
   allowUpload,
   disabled,
+  tooSoon,
 }: {
   token: string;
   needId: string;
@@ -52,6 +53,8 @@ export function Attachments({
   /** false con «Non ce l'ho» o «È già allegato»: si possono solo togliere i file già caricati. */
   allowUpload: boolean;
   disabled: boolean;
+  /** (Rilascio 5) Un clic subito dopo il cambio di passo: «Allega un file» lo ignora. */
+  tooSoon?: (e: React.MouseEvent<HTMLButtonElement>) => boolean;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -208,7 +211,9 @@ export function Attachments({
                   variant="outline"
                   className="min-h-11 text-base"
                   disabled={blocked}
-                  onClick={() => {
+                  onClick={(e) => {
+                    // Il secondo clic di un doppio clic su «Allega un file» arriva qui: la dichiarazione la dà solo un clic voluto.
+                    if (e.detail > 1) return;
                     onDeclared(true);
                     setAsking(false);
                     input.current?.click();
@@ -227,8 +232,8 @@ export function Attachments({
               variant="outline"
               className="min-h-11 text-base"
               aria-busy={uploading !== null || undefined}
-              onClick={() => {
-                if (blocked) return;
+              onClick={(e) => {
+                if (blocked || e.detail > 1 || tooSoon?.(e)) return;
                 if (!declared) setAsking(true);
                 else input.current?.click();
               }}
