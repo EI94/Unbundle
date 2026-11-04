@@ -308,9 +308,9 @@ const LIST_CODES = new Set([
 ]);
 const QUESTION_CODES = new Set(["troppe_domande", "domande_cambiate", "nessuna_domanda", "messaggio_troppo_lungo"]);
 const GATE_CODES = new Set(["sub_responsabili_mancanti", "email_non_configurata", "risposte_non_attive", "email_non_verificata"]);
-const CLOSE_CODES = new Set(["non_trovato", "funzione_spenta", "permesso_mancante"]);
+const CLOSE_CODES = new Set(["non_trovato", "funzione_spenta", "permesso_mancante", "referente_non_previsto"]);
 /** Dopo questi la pagina si rilegge: i dati a schermo non sono più quelli veri. */
-export const ASSIGN_REFRESH_CODES: ReadonlySet<string> = new Set(["domande_cambiate", "persona_non_disponibile", "referente_non_valido", "richiesta_chiusa", "versione_superata", "referente_gia_scelto", ...GATE_CODES]);
+export const ASSIGN_REFRESH_CODES: ReadonlySet<string> = new Set(["domande_cambiate", "persona_non_disponibile", "referente_non_valido", "richiesta_chiusa", "versione_superata", "referente_gia_scelto", "referente_non_previsto", ...GATE_CODES]);
 
 export function assignErrorPlace(code: string, fieldErrors: Readonly<Record<string, string>> | undefined): AssignErrorPlace {
   if (CLOSE_CODES.has(code)) return "close";

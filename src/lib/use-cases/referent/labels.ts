@@ -611,6 +611,8 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   // (Rilascio 5) Un altro revisore ha scelto o cambiato il referente mentre la finestra era aperta.
   referente_gia_scelto: "Nel frattempo un collega ha cambiato il referente: ricarico la scheda.",
   referente_uguale: "È già il referente: scegli un'altra persona.",
+  // (Rilascio 5) Lo use case non è più da valutare né approvato (avviato, archiviato) o è «Da diffondere».
+  referente_non_previsto: "Questo use case non ha più un referente da scegliere: ricarico la scheda.",
   promemoria_gia_inviato: "Oggi a {Nome} è già partita un'email: puoi mandare un promemoria domani.",
   non_ancora_inviata: "L'email della richiesta non è ancora partita: usa «Riprova l'invio».",
   nessuna_domanda_aperta: "Non ci sono più domande aperte in questa richiesta.",

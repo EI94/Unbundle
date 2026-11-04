@@ -456,3 +456,32 @@ test("cancellazione, conservazione, «Elimina la risposta»: note e commenti tol
   assert.deepEqual(p, { confirm_note: null, times_per_month: "2.00", purged: true });
   assert.equal((await q(`SELECT comment FROM use_case_need_answers WHERE request_id = $1::uuid`, [leg.requestId]))[0].comment, null);
 });
+
+test("nessun referente dove la scheda non ne offre uno: «Da diffondere» e archiviato rifiutati, niente richiesta né email; le sole domande come nel rilascio 4", opts, async () => {
+  const kinds = [
+    { label: "Da diffondere", kind: "best_practice", review: "scored" },
+    { label: "archiviato", kind: "use_case_ai", review: "archived" },
+  ];
+  for (const k of kinds) {
+    const id = randomUUID();
+    await q(
+      `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, code, source)
+       VALUES ($1::uuid, $2::uuid, 'Buona pratica', 'Una pratica da diffondere.', 'accepted', $3::portfolio_review_status, $4, $5, 'web_proposed')`,
+      [id, ids.ws, k.review, k.kind, `RN-${String(1000 + Math.floor(Math.random() * 8000))}`],
+    );
+    const res = await sendReferent(id, { contact: newContact(`nonprevisto.${k.review}.${randomBytes(2).toString("hex")}@topjet.test`, "Aldo Prova"), needIds: [] });
+    assert.equal(res.ok, false, `${k.label}: rifiutata`);
+    if (res.ok) continue;
+    assert.equal(res.error, "referente_non_previsto", k.label);
+    assert.equal(res.message, "Questo use case non ha più un referente da scegliere: ricarico la scheda.");
+    const [{ n }] = await q(`SELECT count(*)::int AS n FROM use_case_referent_requests WHERE use_case_id = $1::uuid`, [id]);
+    const [{ e }] = await q(`SELECT count(*)::int AS e FROM use_case_referent_emails m JOIN use_case_referent_requests r ON r.id = m.request_id WHERE r.use_case_id = $1::uuid`, [id]);
+    assert.deepEqual([n, e], [0, 0], `${k.label}: nessuna richiesta, nessuna email`);
+    // Una richiesta di sole domande non passa da questa regola (qui si ferma perché non ci sono domande).
+    const questions = await referents.sendReferentRequest(as("builder"), id, { contact: newContact(`domande.${k.review}.${randomBytes(2).toString("hex")}@topjet.test`, "Carlo Campione"), needIds: [] }, deps());
+    assert.ok(!questions.ok && questions.error !== "referente_non_previsto", `${k.label}: ${JSON.stringify(questions)}`);
+  }
+  // Su uno use case da scegliere la richiesta al referente passa come prima.
+  const card = await newCard();
+  ok(await sendReferent(card.id, { contact: newContact(`previsto.${randomBytes(2).toString("hex")}@topjet.test`, "Bruna Esempio"), needIds: [] }), "da valutare: il referente si sceglie");
+});

@@ -49,7 +49,7 @@ import { userContextFrom } from "@/lib/uc/lateral-space";
 import { canDeclareSubprocessors } from "@/lib/uc/legal/subprocessors";
 import { ucEmailConfig, type UcMailer } from "@/lib/uc/notify/dispatch";
 import { checkContactEmail } from "@/lib/uc/permissions";
-import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
+import { rowBool, rowDate, rowJson, rowNumber, rowString } from "@/lib/uc/sql/readiness";
 import { checkContactDraft, contactEmailTakenSql, contactInsertSql, contactUpdateSql, prepareContact, type ContactDraft } from "@/lib/uc/sql/request-commands";
 import { cast, raw, requireRows, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
 import { clientUploadAvailable } from "@/lib/uc/storage";
@@ -105,7 +105,11 @@ import {
 import { reviewerStatus } from "@/lib/use-cases/referent/state";
 import { referentBlockOf, referentContactOf, type BlockRequestFact, type ReferentCheckRow } from "@/lib/use-cases/referent/block";
 import { teamEstimateOf } from "@/lib/use-cases/referent/estimate";
-import { latestRequest } from "@/lib/use-cases/referent/use-case-state";
+import { eligibleForReferent, latestRequest } from "@/lib/use-cases/referent/use-case-state";
+import { dossierStateForUseCase } from "@/lib/db/queries/use-case-dossiers";
+import { phaseOfUseCase } from "@/lib/use-cases/phase";
+import { romeToday } from "@/lib/use-cases/quarter";
+import { phaseInputOf } from "@/lib/use-cases/views";
 import { checkQuestionTitle, checkRequestMessage, checkReviewerAnswer } from "@/lib/use-cases/referent/text";
 import { formatFileSize } from "@/lib/use-cases/referent/upload-transport";
 import { maskEmail, needReferentLine, referentDateLabel, requestLines, requestWordOf, type LatestAskForNeed } from "@/lib/use-cases/referent/view";
@@ -1106,6 +1110,38 @@ export const sendReferentRequest = guardedReferent(
 type SendReferentDeps = { env: Env; requester: { name: string | null; emailVerified: boolean }; now?: Date };
 
 /**
+ * (Rilascio 5, D22) Lo use case ha adesso un referente da scegliere, con la stessa regola della scheda
+ * (`eligibleForReferent` sulla fase di oggi, dossier compreso): mai su «Da diffondere», né dopo
+ * l'avvio della realizzazione o l'archiviazione. Una finestra rimasta aperta, o una chiamata fatta a
+ * mano, non manda così un'email «sei il referente» per uno use case il cui blocco non la mostrerebbe.
+ */
+async function referentEligibleNow(executor: UcExecutor, workspaceId: string, useCaseId: string, now: Date): Promise<boolean> {
+  const [[row]] = await executor.batch([
+    toStatement(ucSql`SELECT status, portfolio_review_status, reviewed_by, public_note, intake, review_by::text AS review_by, portfolio_kind, target_quarter
+FROM use_cases WHERE id = ${cast(useCaseId, "uuid")} AND workspace_id = ${cast(workspaceId, "uuid")}`),
+  ]);
+  if (!row) return false;
+  // Come la scheda (service.ts loadCard): senza la lettura del dossier la fase si calcola senza.
+  const read = await dossierStateForUseCase(workspaceId, useCaseId);
+  const portfolioKind = rowString(row.portfolio_kind);
+  const input = phaseInputOf(
+    {
+      status: rowString(row.status),
+      portfolioReviewStatus: rowString(row.portfolio_review_status),
+      reviewedBy: rowString(row.reviewed_by),
+      publicNote: rowString(row.public_note),
+      intake: rowJson(row.intake),
+      reviewBy: rowString(row.review_by),
+      portfolioKind,
+      targetQuarter: rowString(row.target_quarter),
+    } as Parameters<typeof phaseInputOf>[0],
+    read.ok ? read.dossier : null,
+    romeToday(now),
+  );
+  return eligibleForReferent({ portfolioKind, phase: phaseOfUseCase(input).phase });
+}
+
+/**
  * Un tentativo di `sendReferentRequest`. `retried`: è il secondo, dopo una corsa sul referente nuovo
  * (un'altra persona lo ha appena creato con la stessa email): al secondo giro lo si ritrova e si usa quello.
  */
@@ -1128,6 +1164,8 @@ async function sendReferentRequestOnce(
   if (!deps.requester.emailVerified) return rfail("email_non_verificata");
   const parsed = parseSendInput(input);
   if (!parsed.ok) return parsed;
+  // (Rilascio 5) Il referente c'è solo dove la scheda lo offre; le richieste di sole domande restano come nel rilascio 4.
+  if (parsed.kind === "referente" && !(await referentEligibleNow(executor, ctx.workspaceId, card.id, now))) return rfail("referente_non_previsto");
   const lsDomains = lsDomainsOf(deps.env);
   const lsMembers = await readLsMemberEmails(executor, ctx.workspaceId);
 

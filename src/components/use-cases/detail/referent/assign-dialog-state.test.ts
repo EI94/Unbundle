@@ -5,6 +5,7 @@ import { REFERENT_LIMITS } from "../../../../lib/use-cases/referent/contract.ts"
 import { findHubForbidden } from "../../../../lib/use-cases/copy-guard.ts";
 import { NEW_CONTACT } from "./ask-dialog-state.ts";
 import {
+  ASSIGN_REFRESH_CODES,
   assignContactRow,
   assignDraftErrors,
   assignEntry,
@@ -217,6 +218,9 @@ test("i controlli prima dell'invio e dove va un errore del server", () => {
   assert.equal(assignErrorPlace("domande_cambiate", undefined), "questions");
   assert.equal(assignErrorPlace("email_non_configurata", undefined), "gates");
   assert.equal(assignErrorPlace("non_trovato", undefined), "close");
+  // (Rilascio 5) Lo use case non ha più un referente da scegliere (avviato, archiviato): si chiude e la scheda si rilegge.
+  assert.equal(assignErrorPlace("referente_non_previsto", undefined), "close");
+  assert.ok(ASSIGN_REFRESH_CODES.has("referente_non_previsto"));
   assert.equal(assignErrorPlace("riprova", undefined), "footer");
 });
 
