@@ -344,16 +344,19 @@ function checkRowOf(r: UcRow): ReferentCheckRow | null {
   const confirm = rowString(r.k_confirm);
   const estimate = rowString(r.k_estimate);
   const outcome = rowString(r.k_outcome);
+  const submittedAt = rowDate(r.k_submitted_at);
+  // La bozza resta del referente fino a «Invia» (la query già non la legge): qui una seconda chiusura.
+  const sent = submittedAt !== null;
   return {
-    submittedAt: rowDate(r.k_submitted_at),
-    confirm: confirm === "si" || confirm === "correggi" ? confirm : null,
-    confirmNote: rowString(r.k_note),
-    estimate: estimate === "si" || estimate === "meno" || estimate === "piu" ? estimate : null,
-    timesPerMonth: num(r.k_times),
-    minutesEach: num(r.k_minutes),
-    teamComponentKey: rowString(r.k_team_key),
-    teamVolumeYear: num(r.k_team_volume),
-    teamMinutes: num(r.k_team_minutes),
+    submittedAt,
+    confirm: sent && (confirm === "si" || confirm === "correggi") ? confirm : null,
+    confirmNote: sent ? rowString(r.k_note) : null,
+    estimate: sent && (estimate === "si" || estimate === "meno" || estimate === "piu") ? estimate : null,
+    timesPerMonth: sent ? num(r.k_times) : null,
+    minutesEach: sent ? num(r.k_minutes) : null,
+    teamComponentKey: sent ? rowString(r.k_team_key) : null,
+    teamVolumeYear: sent ? num(r.k_team_volume) : null,
+    teamMinutes: sent ? num(r.k_team_minutes) : null,
     correctionDoneAt: rowDate(r.k_correction_done_at),
     estimateOutcome: outcome === "adottata" || outcome === "tenuta" ? outcome : null,
     estimateOutcomeAt: rowDate(r.k_outcome_at),
@@ -398,6 +401,13 @@ function requestRowOf(r: UcRow, now: Date): RequestRow | null {
   };
 }
 
+/**
+ * (Rilascio 5) Una colonna della bozza del referente (la conferma, la nota, la stima, i numeri e
+ * l'istantanea della stima del team), letta solo quando il referente ha premuto «Invia»: prima resta
+ * sua e non lascia mai il database (§6.2: il team vede solo quello che il referente invia).
+ */
+const sentOnly = (column: string) => `CASE WHEN k.submitted_at IS NOT NULL THEN ${column} END`;
+
 function requestsSql(workspaceId: string, useCaseId: string): UcStatement {
   return toStatement(ucSql`SELECT r.id, r.version, r.contact_id, r.status, r.created_at, r.sent_at, r.expires_at, r.last_email_at, r.last_reminder_at, r.reminder_count,
   r.completed_at, r.expired_at, r.revoked_at,
@@ -410,8 +420,10 @@ function requestsSql(workspaceId: string, useCaseId: string): UcStatement {
   EXISTS (SELECT 1 FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta' AND e.status = 'inviata') AS richiesta_sent,
   (SELECT count(*)::int FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta') AS richiesta_total,
   (SELECT array_agg(oi2.need_id::text ORDER BY oi2.position) FROM use_case_referent_request_items oi2 WHERE oi2.request_id = r.id AND ${openItemSql("oi2", "r")}) AS open_need_ids,
-  (k.request_id IS NOT NULL) AS has_check, k.submitted_at AS k_submitted_at, k.confirm AS k_confirm, k.confirm_note AS k_note, k.estimate AS k_estimate,
-  k.times_per_month AS k_times, k.minutes_each AS k_minutes, k.team_component_key AS k_team_key, k.team_volume_year AS k_team_volume, k.team_minutes AS k_team_minutes,
+  (k.request_id IS NOT NULL) AS has_check, k.submitted_at AS k_submitted_at,
+  ${raw(sentOnly("k.confirm"))} AS k_confirm, ${raw(sentOnly("k.confirm_note"))} AS k_note, ${raw(sentOnly("k.estimate"))} AS k_estimate,
+  ${raw(sentOnly("k.times_per_month"))} AS k_times, ${raw(sentOnly("k.minutes_each"))} AS k_minutes, ${raw(sentOnly("k.team_component_key"))} AS k_team_key,
+  ${raw(sentOnly("k.team_volume_year"))} AS k_team_volume, ${raw(sentOnly("k.team_minutes"))} AS k_team_minutes,
   k.correction_done_at AS k_correction_done_at, k.estimate_outcome AS k_outcome, k.estimate_outcome_at AS k_outcome_at
 FROM use_case_referent_requests r
 LEFT JOIN uc_contacts c ON c.id = r.contact_id AND c.workspace_id = r.workspace_id

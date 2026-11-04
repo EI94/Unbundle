@@ -84,8 +84,15 @@ async function newCard(model: unknown): Promise<string> {
 }
 
 let seq = 0;
-/** Il referente risponde: «Sì, è così» o «Correggi», poi la stima, poi «Invia». */
-async function answered(useCaseId: string, step1: { confirm: "si" | "correggi"; note: string | null }, step2: { estimate: "si" | "meno" | "piu" | null; timesPerMonth: number | null; minutesEach: number | null; teamSeen: { key: string; volumeYear: number; minutes: number } | null }): Promise<string> {
+/** Il link di ogni richiesta di `answered`, per inviare dopo una bozza lasciata a metà. */
+const links = new Map<string, import("../../db/queries/use-case-referent-public.ts").ReferentLink>();
+/** Il referente risponde: «Sì, è così» o «Correggi», poi la stima, poi «Invia» (senza `send: false`). */
+async function answered(
+  useCaseId: string,
+  step1: { confirm: "si" | "correggi"; note: string | null },
+  step2: { estimate: "si" | "meno" | "piu" | null; timesPerMonth: number | string | null; minutesEach: number | string | null; teamSeen: { key: string; volumeYear: number; minutes: number } | null },
+  o: { send?: boolean } = {},
+): Promise<string> {
   const sent = ok(
     await referents.sendReferentRequest(
       ctx(),
@@ -106,7 +113,8 @@ async function answered(useCaseId: string, step1: { confirm: "si" | "correggi"; 
   if (link.access !== "ok") assert.fail("link");
   pok(await pub.saveReferentCheck(link.link, { step: 1, ...step1 }, new Date()) as never, "passo 1");
   pok(await pub.saveReferentCheck(link.link, { step: 2, ...step2 }, new Date()) as never, "passo 2");
-  pok(await pub.submitReferentAnswers(link.link, {}, new Date()) as never, "invia");
+  links.set(sent.requestId, link.link);
+  if (o.send !== false) pok(await pub.submitReferentAnswers(link.link, {}, new Date()) as never, "invia");
   return sent.requestId;
 }
 
@@ -267,4 +275,31 @@ test("senza una stima del team: «Non serve» chiude; «Aggiungi alla stima» ch
   assert.ok(saved.ok, JSON.stringify(saved));
   const closed = await panelOf(prefill);
   assert.deepEqual([closed.referent?.state, closed.referent?.review, closed.referent?.check?.teamNow], ["fatto", null, true], "la verifica si chiude da sola (D11)");
+});
+
+test("la bozza del referente resta sua fino a «Invia»: il pannello del team non ha la nota, la scelta né i numeri", opts, async () => {
+  const card = await newCard(MODEL);
+  const NOTE = "Bozza RK-NOTA-7781: le fatture le manda mario.rossi@acme.test";
+  const draft = await answered(card, { confirm: "correggi", note: NOTE }, { estimate: "meno", timesPerMonth: "123,5", minutesEach: "7,25", teamSeen: SEEN }, { send: false });
+  const row = (await q(`SELECT confirm, confirm_note IS NOT NULL AS has_note, estimate, times_per_month::text AS t, submitted_at FROM use_case_referent_checks WHERE request_id = $1::uuid`, [draft]))[0];
+  assert.deepEqual([row.confirm, row.has_note, row.estimate, row.t, row.submitted_at], ["correggi", true, "meno", "123.50", null], "la bozza è salvata");
+  const before = await panelOf(card);
+  assert.equal(before.referent?.state, "in_attesa");
+  const c = before.referent?.check;
+  assert.ok(c, "la richiesta al referente ha la sua conferma");
+  assert.deepEqual(
+    [c!.submittedAt, c!.confirm, c!.note, c!.estimate, c!.timesPerMonth, c!.minutesEach, c!.team, c!.referentHours, c!.teamChanged],
+    [null, null, null, null, null, null, null, null, false],
+    "prima di «Invia» al team arriva solo che la richiesta c'è",
+  );
+  // Niente della bozza in tutto il pannello, che la scheda passa a un componente client.
+  const json = JSON.stringify(before);
+  for (const token of ["RK-NOTA-7781", "mario.rossi", "123.5", "7.25"]) assert.ok(!json.includes(token), token);
+  // Il referente toglie l'email dalla nota e invia: il team vede la correzione e la stima.
+  const CLEAN = "Arrivano anche via PEC.";
+  pok(await pub.saveReferentCheck(links.get(draft)!, { step: 1, confirm: "correggi", note: CLEAN }, new Date()) as never, "nota corretta");
+  pok(await pub.submitReferentAnswers(links.get(draft)!, {}, new Date()) as never, "invia");
+  const after = (await panelOf(card)).referent?.check;
+  assert.deepEqual([after?.confirm, after?.note, after?.estimate, after?.timesPerMonth, after?.minutesEach], ["correggi", CLEAN, "meno", 123.5, 7.25]);
+  assert.ok(after?.submittedAt);
 });
