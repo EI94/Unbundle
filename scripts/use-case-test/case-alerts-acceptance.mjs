@@ -27,7 +27,8 @@
 //     the window, the «Realizzazione» fold closed, still so a second later (the closing menu does not
 //     take the focus back to the bell), and no «Capitoli» bar on the page;
 //  1b. on that address (it keeps `?capitolo=realizzazione` for the whole visit) ls-lead clicks «Più
-//     avanti» in «Quando»: the page reloads its data, the card goes from G9 to G3, and the arrival
+//     avanti» in «Quando»: the page reloads its data, the card goes from G9 to G4 (release 5: the
+//     referent comes before «Quando», and «a» has no sub-processor ok), and the arrival
 //     does not run again: the focus stays on the clicked choice, the choice stays in the window where
 //     it was (no scroll jump), the «Realizzazione» fold stays closed; ls-lead opens the fold, clicks
 //     «Questo trimestre», the card is G9 again, and the focus, the window and the open fold stay as
@@ -466,7 +467,9 @@ try {
         // 1b. «Quando» on the same address: G9 → G3 with the fold closed, then G3 → G9 with the fold
         // the person opened. The arrival belongs to the click of the bell, not to the reloads after it.
         if (s.box === "G9") {
-          await whenChange(page, tag, "Più avanti", "G3", false);
+          // (Release 5, §9.6 D51) No longer ready and without a referent, the card asks for the referent
+          // before «Quando»: workspace «a» has no sub-processor ok, so the box is G4.
+          await whenChange(page, tag, "Più avanti", "G4", false);
           const fold = await whenState(page, "Più avanti");
           if (fold.foldOpen === false) {
             await clickAt(page, "details#realizzazione > summary");
