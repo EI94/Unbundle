@@ -444,6 +444,8 @@ function StepFooter({ last, sending, actions, onBack, onPrimary }: { last: boole
 
 /** Il titolo di una riga dell'impatto: riceve il fuoco quando «Avanti» la trova senza risposta. */
 export const benefitTitleId = (key: string) => `ucq-beneficio-${key.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+/** Il commento di una riga: riceve il fuoco quando «Invia» lo rifiuta (un codice fiscale, una data di nascita). */
+export const benefitCommentId = (key: string) => `${benefitTitleId(key)}-commento`;
 
 type BenefitDraftView = NonNullable<ReferentBenefitView["draft"]>;
 interface RowState {
@@ -483,12 +485,18 @@ function BenefitRow({
   missing,
   onEdit,
   handleRef,
+  commentError = null,
+  commentWarning = null,
 }: {
   row: ReferentBenefitView;
   actions: StepActions;
   missing: boolean;
   onEdit: (key: string) => void;
   handleRef: Ref<RowHandle>;
+  /** (Rilascio 5.1) «Invia» rifiutato per il commento di questa riga: il messaggio, sotto il commento. */
+  commentError?: string | null;
+  /** (Rilascio 5.1) L'avviso dell'ultima bozza di questa riga, sotto il commento. */
+  commentWarning?: string | null;
 }) {
   const id = useId();
   const titleId = benefitTitleId(row.key);
@@ -614,6 +622,9 @@ function BenefitRow({
   const done = current !== null && benefitAnswered(row.form, current);
   const missingLine = row.form === "ore_numeri" ? I.numbersMissing : I.pick;
   const describedBy = error ? errId : undefined;
+  const commentId = benefitCommentId(row.key);
+  const commentNote = commentError ?? commentWarning;
+  const commentNoteId = `${id}-commento-nota`;
   const numberPlaceholder = (n: number | null) => (n !== null && n > 0 ? placeholderOf(n) : "");
 
   return (
@@ -624,7 +635,7 @@ function BenefitRow({
       data-benefit={row.key}
       data-form={row.form}
       data-done={done ? "true" : "false"}
-      className={cn("space-y-3 rounded-xl border bg-card px-4 py-3", missing && !done && "ring-2 ring-uc-giallo")}
+      className={cn("space-y-3 rounded-xl border bg-card px-4 py-3", ((missing && !done) || commentError) && "ring-2 ring-uc-giallo")}
     >
       <p id={titleId} tabIndex={-1} className="rounded-md text-base leading-snug font-medium break-words outline-none focus-visible:ring-3 focus-visible:ring-ring/40">
         {benefitQuestion(row)}
@@ -689,22 +700,29 @@ function BenefitRow({
       ) : missing && !done ? (
         <p className="text-sm break-words">{missingLine}</p>
       ) : null}
-      {commentOpen ? (
+      {commentOpen || commentNote ? (
         <div className="space-y-1.5">
-          <label htmlFor={`${id}-commento`} className="block text-sm font-medium">
+          <label htmlFor={commentId} className="block text-sm font-medium">
             {I.commentLabel}
           </label>
           <textarea
             ref={commentRef}
-            id={`${id}-commento`}
+            id={commentId}
             rows={2}
             maxLength={REFERENT_BENEFIT_LIMITS.comment}
             value={state.comment}
             placeholder={I.commentPlaceholder}
             onChange={(e) => typed({ comment: e.target.value })}
             onBlur={blurred}
+            aria-invalid={commentError ? true : undefined}
+            aria-describedby={commentNote ? commentNoteId : undefined}
             className={TEXTAREA_CLASS}
           />
+          {commentNote ? (
+            <p id={commentNoteId} role={commentError ? "alert" : undefined} className={cn("text-sm break-words", commentError ? "text-uc-rosso" : "text-muted-foreground")}>
+              {commentNote}
+            </p>
+          ) : null}
         </div>
       ) : (
         <Button
@@ -739,6 +757,8 @@ export function ImpactStep({
   onBack,
   errorFromServer,
   missingFromServer,
+  rowError = null,
+  rowWarnings,
 }: {
   check: ReferentCheckView;
   last: boolean;
@@ -749,6 +769,10 @@ export function ImpactStep({
   errorFromServer: string | null;
   /** (Rilascio 5.1) Le righe senza risposta secondo «Invia» rifiutato (dopo aver riletto la vista). */
   missingFromServer?: readonly string[];
+  /** (Rilascio 5.1) «Invia» rifiutato per il commento di una riga. */
+  rowError?: { key: string; message: string } | null;
+  /** (Rilascio 5.1) L'avviso dell'ultima bozza di ogni riga, per chiave. */
+  rowWarnings?: Readonly<Record<string, string>>;
 }) {
   const rows = check.benefits ?? [];
   const handles = useRef(new Map<string, RowHandle>());
@@ -798,7 +822,16 @@ export function ImpactStep({
       <StepTitle step={2}>{I.title}</StepTitle>
       <div className="space-y-3">
         {rows.map((row) => (
-          <BenefitRow key={row.key} row={row} actions={actions} missing={missing.includes(row.key)} onEdit={onEdit} handleRef={refFor(row.key)} />
+          <BenefitRow
+            key={row.key}
+            row={row}
+            actions={actions}
+            missing={missing.includes(row.key)}
+            onEdit={onEdit}
+            handleRef={refFor(row.key)}
+            commentError={rowError?.key === row.key ? rowError.message : null}
+            commentWarning={rowWarnings?.[row.key] ?? null}
+          />
         ))}
       </div>
       {missing.length ? (

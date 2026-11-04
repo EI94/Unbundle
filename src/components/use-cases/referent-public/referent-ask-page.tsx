@@ -22,9 +22,9 @@ import {
   sentCheckLines,
   thanksTexts,
 } from "./public-view-render";
-import { ConfirmStep, EstimateStep, ImpactStep, ReferentStepBar, benefitTitleId, stepTitleId, type StepActions } from "./referent-steps";
+import { ConfirmStep, EstimateStep, ImpactStep, ReferentStepBar, benefitCommentId, benefitTitleId, stepTitleId, type StepActions } from "./referent-steps";
 import { MessageCard, PublicShell } from "./state-card";
-import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepOfSubmitRefusal, stepOneWarning, stepSearch, stepStates, stepsOf, type CheckStep, type StepRefusal } from "./steps-state";
+import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepOfSubmitRefusal, stepOneWarning, stepSearch, stepStates, stepTwoWarning, stepsOf, type CheckStep, type StepRefusal } from "./steps-state";
 import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
 
 /**
@@ -69,6 +69,8 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const [stepError, setStepError] = useState<StepRefusal | null>(null);
   /** (Rilascio 5) L'avviso dell'ultima bozza della nota di «Correggi» (rilascio 5.1: un codice fiscale o una data di nascita). */
   const [noteWarning, setNoteWarning] = useState<string | null>(null);
+  /** (Rilascio 5.1) L'avviso dell'ultima bozza di ogni riga dell'impatto (un codice fiscale nel commento), per chiave. */
+  const [benefitWarnings, setBenefitWarnings] = useState<Readonly<Record<string, string>>>({});
   const [staleNotice, setStaleNotice] = useState(false);
   const checkInFlight = useRef<Promise<boolean> | null>(null);
   // (Rilascio 5) Le domande chiuse (per «{k} di {n} fatte») e quelle che «Invia» ha trovato aperte.
@@ -224,6 +226,16 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           // ferma; nomi, email e telefoni passano, rilascio 5.1): lo si dice subito sotto «Cosa
           // cambieresti?», come fanno le domande; l'ultima bozza decide.
           if (body.step === 1) setNoteWarning(stepOneWarning(body, r.data.warnings));
+          // (Rilascio 5.1) Lo stesso per il commento di una riga dell'impatto, sotto quel commento.
+          const row = stepTwoWarning(body, r.data.warnings);
+          if (row)
+            setBenefitWarnings((current) => {
+              if ((current[row.key] ?? null) === row.message) return current;
+              const next = { ...current };
+              if (row.message) next[row.key] = row.message;
+              else delete next[row.key];
+              return next;
+            });
           return true;
         }
         setCheckSave("error");
@@ -348,6 +360,8 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       goTo(back.step);
       setStepError(back);
       if (back.missing?.length) setFocusTarget(benefitTitleId(back.missing[0]));
+      // (Rilascio 5.1) Il commento di una riga da correggere: il fuoco nel campo, il messaggio sotto.
+      if (back.benefit) setFocusTarget(benefitCommentId(back.benefit));
       return;
     }
     // (Rilascio 5) Domande nuove del team mentre la pagina era aperta: si rilegge e lo si dice.
@@ -466,8 +480,10 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
               staleNotice={staleNotice}
               actions={estimateActions}
               onBack={() => goTo(1)}
-              errorFromServer={stepError?.step === 2 && !stepError.missing?.length ? stepError.message : submitError}
+              errorFromServer={stepError?.step === 2 && !stepError.missing?.length && !stepError.benefit ? stepError.message : submitError}
               missingFromServer={stepError?.step === 2 ? stepError.missing : undefined}
+              rowError={stepError?.step === 2 && stepError.benefit ? { key: stepError.benefit, message: stepError.message } : null}
+              rowWarnings={benefitWarnings}
             />
           ) : (
             <EstimateStep

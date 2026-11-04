@@ -21,6 +21,7 @@ import {
   stepsOf,
   stepOfSubmitRefusal,
   stepOneWarning,
+  stepTwoWarning,
 } from "./steps-state.ts";
 
 // (Rilascio 5, §7.1, §7.7) I passi della pagina del referente: quali, quando sono fatti, dove si arriva.
@@ -165,8 +166,8 @@ test("un «Invia» rifiutato per la conferma o la stima riporta al suo passo, co
     { step: 1, message: NAME },
     "prima la nota, poi le domande",
   );
-  // (Rilascio 5.1) Il commento di una riga dell'impatto: si torna al passo 2.
-  assert.deepEqual(stepOfSubmitRefusal({ code: "risposte_da_correggere", message: "x", issues: [{ field: "beneficio.costi-1", message: "Sul commento" }] }), { step: 2, message: "Sul commento" });
+  // (Rilascio 5.1) Il commento di una riga dell'impatto: si torna al passo 2, su quella riga (la pagina la evidenzia e porta lì il fuoco).
+  assert.deepEqual(stepOfSubmitRefusal({ code: "risposte_da_correggere", message: "x", issues: [{ field: "beneficio.costi-1", message: "Sul commento" }] }), { step: 2, message: "Sul commento", benefit: "costi-1" });
   // Le domande da correggere restano dove sono: evidenziate sulla loro domanda.
   assert.equal(stepOfSubmitRefusal({ code: "risposte_da_correggere", message: "x", issues: [{ field: "aaaaaaaa-0000-4000-8000-000000000001", message: "Sulla domanda" }] }), null);
   assert.equal(stepOfSubmitRefusal({ code: "domande_aperte", message: "x", issues: [] }), null);
@@ -178,4 +179,13 @@ test("l'avviso di una bozza si dice solo per la nota del passo 1, il primo del s
   assert.equal(stepOneWarning({ step: 1 }, []), null, "una bozza pulita toglie l'avviso di prima");
   assert.equal(stepOneWarning({ step: 1 }, undefined), null);
   assert.equal(stepOneWarning({ step: 2 }, [{ message: "x" }]), null);
+});
+
+test("(rilascio 5.1) l'avviso di una bozza del passo 2 va sotto il commento della sua riga; una bozza pulita lo toglie", () => {
+  const body = (comment: string | null) => ({ step: 2 as const, benefit: { key: "costi-1", seen: EURO.team, answer: "si" as const, comment } });
+  assert.deepEqual(stepTwoWarning(body("Lo sa RSSMRA80A01H501U."), [{ message: "Non scrivere codici fiscali." }]), { key: "costi-1", message: "Non scrivere codici fiscali." });
+  assert.deepEqual(stepTwoWarning(body("Lo sa l'ufficio acquisti."), []), { key: "costi-1", message: null });
+  assert.deepEqual(stepTwoWarning(body(null), undefined), { key: "costi-1", message: null });
+  assert.equal(stepTwoWarning({ step: 1, confirm: "si", note: null }, [{ message: "x" }]), null, "il passo 1 ha il suo avviso");
+  assert.equal(stepTwoWarning({ step: 2, teamSeen: null, estimate: null, timesPerMonth: 1, minutesEach: 1 }, [{ message: "x" }]), null, "i due numeri non hanno un commento");
 });

@@ -420,13 +420,17 @@ test("(rilascio 5.1) il commento di una riga con un nome o un'email passa; con u
   const { link, requestId } = await referentLink(card.id, []);
   okPub(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, now));
   await answerAll(link);
-  okPub(await pub.saveReferentCheck(link, benefit("costi-1", "si", { comment: "Il codice è RSSMRA80A01H501U." }), now), "bozza con il codice fiscale");
+  const draftBody = benefit("costi-1", "si", { comment: "Il codice è RSSMRA80A01H501U." });
+  const draft = okPub(await pub.saveReferentCheck(link, draftBody, now), "bozza con il codice fiscale");
+  // L'avviso arriva con la bozza e va sotto il commento di quella riga, mentre si scrive.
+  assert.deepEqual(steps.stepTwoWarning(draftBody as never, draft.warnings), { key: "costi-1", message: "Non scrivere codici fiscali." });
   const sent = await pub.submitReferentAnswers(link, {}, now);
   assert.equal(sent.ok, false);
   if (!sent.ok) {
     assert.equal(sent.code, "risposte_da_correggere");
     assert.deepEqual([...new Set((sent.issues ?? []).map((i) => i.field))], ["beneficio.costi-1"]);
-    assert.equal(steps.stepOfSubmitRefusal(sent)?.step, 2);
+    // «Invia» riporta al passo 2, su quella riga: la pagina la evidenzia, scrive il messaggio sotto il commento e porta lì il fuoco.
+    assert.deepEqual(steps.stepOfSubmitRefusal(sent), { step: 2, message: "Non scrivere codici fiscali.", benefit: "costi-1" });
   }
   assert.equal((await checkRow(requestId)).sent, false, "niente è partito");
   okPub(await pub.saveReferentCheck(link, benefit("costi-1", "si", { comment: "Lo sa l'ufficio acquisti." }), now));

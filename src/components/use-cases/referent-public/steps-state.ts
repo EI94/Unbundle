@@ -12,7 +12,7 @@
  *
  * Modulo puro: import relativi `.ts`.
  */
-import type { ReferentAskView, ReferentCheckView } from "../../../lib/use-cases/referent/contract.ts";
+import type { CheckBody, ReferentAskView, ReferentCheckView } from "../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_CHECK_TEXT } from "../../../lib/use-cases/referent/labels.ts";
 import { parseItalianNumber, referentNumber, REFERENT_NUMBER_MAX } from "../../../lib/use-cases/referent/estimate.ts";
 import { benefitAnswered } from "../../../lib/use-cases/referent/impact-text.ts";
@@ -130,6 +130,8 @@ export interface StepRefusal {
   reload?: true;
   /** (Rilascio 5.1) Le righe dell'impatto senza risposta, da evidenziare (le chiavi delle voci). */
   missing?: string[];
+  /** (Rilascio 5.1) La riga il cui commento va corretto: evidenziata, il messaggio sotto il commento, il fuoco lì. */
+  benefit?: string;
 }
 
 const BENEFIT_FIELD = "beneficio.";
@@ -152,9 +154,9 @@ export function stepOfSubmitRefusal(r: { code: string; message: string; issues?:
   if (r.code === "risposte_da_correggere") {
     const confirm = r.issues?.find((i) => i.field === "conferma");
     if (confirm) return { step: 1, message: confirm.message };
-    // (Rilascio 5.1) Il commento di una riga dell'impatto: si torna al passo 2.
-    const benefit = r.issues?.find((i) => i.field?.startsWith("beneficio."));
-    if (benefit) return { step: 2, message: benefit.message };
+    // (Rilascio 5.1) Il commento di una riga dell'impatto: si torna al passo 2, su quella riga.
+    const benefit = r.issues?.find((i) => i.field?.startsWith(BENEFIT_FIELD) && i.field.length > BENEFIT_FIELD.length);
+    if (benefit?.field) return { step: 2, message: benefit.message, benefit: benefit.field.slice(BENEFIT_FIELD.length) };
   }
   return null;
 }
@@ -166,6 +168,16 @@ export function stepOfSubmitRefusal(r: { code: string; message: string; issues?:
  */
 export function stepOneWarning(body: { step: number }, warnings: readonly { message: string }[] | undefined): string | null {
   return body.step === 1 ? (warnings?.[0]?.message ?? null) : null;
+}
+
+/**
+ * (Rilascio 5.1) L'avviso di una bozza del passo 2 per una riga dell'impatto (un codice fiscale o una data
+ * di nascita nel commento): la chiave della riga e il primo avviso del server, null se la bozza è pulita
+ * (così toglie quello di prima). null per le bozze che non sono di una riga.
+ */
+export function stepTwoWarning(body: CheckBody, warnings: readonly { message: string }[] | undefined): { key: string; message: string | null } | null {
+  if (body.step !== 2 || !("benefit" in body) || !body.benefit) return null;
+  return { key: body.benefit.key, message: warnings?.[0]?.message ?? null };
 }
 
 /** Il segnaposto di un campo: il numero del team, scritto come nel campo. */
