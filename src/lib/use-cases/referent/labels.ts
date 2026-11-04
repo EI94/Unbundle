@@ -284,6 +284,56 @@ export const REFERENT_ESTIMATE_TEXT = Object.freeze({
   minutesMany: "{n} minuti",
 });
 
+// ─── L'impatto, per ogni beneficio (rilascio 5.1) ────────────────────
+
+/**
+ * (Rilascio 5.1) Il passo «L'impatto» della pagina del referente: una riga per ogni voce di «Benefici e
+ * costi», con parole semplici. Una voce a ore dice volte e minuti, una voce in euro la sua cifra, una voce
+ * qualitativa solo il suo nome; senza i numeri del team si chiedono i due numeri. `impact-text.ts` sceglie
+ * la frase e riempie i numeri. Mai quote, ore liberate, fiducia, fonti o punteggi.
+ */
+export const REFERENT_IMPACT_TEXT = Object.freeze({
+  title: "Cosa cambia, secondo il team",
+  ore: "{label}: circa {volte} al mese, {minuti} ogni volta. Ti torna?",
+  oreYear: "{label}: circa {volte} l'anno, {minuti} ogni volta. Ti torna?",
+  oreNumbers: "{label}: quante volte al mese, e quanti minuti ogni volta?",
+  euro: "{label}: circa {euro} l'anno. Ti torna?",
+  fatto: "{label}. Succede davvero?",
+  /** Il nome finisce già con «?» o «!». */
+  fattoBare: "{label} Succede davvero?",
+  euroAmount: "{n} €",
+  euroLess: "meno di 1 €",
+  yes: "Sì",
+  less: "È di meno",
+  more: "È di più",
+  no: "No",
+  dunno: "Non so",
+  numbersLead: "Se vuoi, dacci i tuoi numeri:",
+  euroLead: "Se vuoi, dacci la tua cifra:",
+  perMonth: "Volte al mese",
+  minutesEach: "Minuti ogni volta",
+  eurYear: "Euro l'anno",
+  numbersMissing: "Scrivi quante volte al mese e quanti minuti ogni volta.",
+  invalid: "Scrivi un numero, per esempio 20 o 1,5.",
+  pick: "Scegli una risposta.",
+  missingOne: "Manca ancora una risposta: la trovi evidenziata.",
+  missingMany: "Mancano ancora {n} risposte: le trovi evidenziate.",
+  addComment: "Aggiungi un commento",
+  commentLabel: "Commento (facoltativo)",
+  commentPlaceholder: "Per esempio: succede solo a fine mese.",
+  stale: "Il team ha appena cambiato la stima: controlla di nuovo.",
+  /** Dopo l'invio, in sola lettura. */
+  sentYes: "{label}: sì.",
+  sentLess: "{label}: è di meno.",
+  sentMore: "{label}: è di più.",
+  sentNo: "{label}: no.",
+  sentDunno: "{label}: non so.",
+  sentNumbers: "{label}: {n} volte al mese, {m} ogni volta.",
+  sentTimesTail: " {n} volte al mese, {m} ogni volta.",
+  sentEuroTail: " Circa {euro} l'anno.",
+  sentComment: "Commento: {testo}",
+});
+
 // ─── «Scegli il referente» e il blocco «Referente» (rilascio 5, §8, §9) ─
 
 /**
@@ -348,6 +398,17 @@ export const REFERENT_BLOCK_TEXT = Object.freeze({
   numbersTail: " Circa {ore} ({n} al mese, {m}).",
   numbersNoTeam: "{Nome}: circa {ore} ({n} al mese, {m}).",
   teamChanged: "La stima del team è cambiata dopo la risposta.",
+  // (Rilascio 5.1) La risposta per ogni voce di «Benefici e costi».
+  benefitTeamOre: "{label}: il team stimava {ore}.",
+  benefitTeamOreNone: "{label}: nessuna stima del team.",
+  benefitTeamEuro: "{label}: il team stimava {euro} l'anno.",
+  benefitTeamFatto: "{label}.",
+  saysHappens: "{Nome}: succede.",
+  saysNotHappens: "{Nome}: non succede.",
+  saysDunno: "{Nome}: non lo sa.",
+  euroTail: " Circa {euro} l'anno.",
+  benefitGone: "Questa voce non c'è più nella valutazione.",
+  adoptedEuroToast: "Stima aggiornata: {prima} → {dopo} l'anno.",
   hoursShort: "{n} ore",
   hourOne: "1 ora",
   hourLess: "meno di un'ora",
