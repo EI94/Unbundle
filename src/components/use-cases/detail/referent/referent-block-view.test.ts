@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { ReferentBlockCheck, ReferentBlockView, ReferentRequestView } from "../../../../lib/use-cases/referent/contract.ts";
 import { findHubForbidden } from "../../../../lib/use-cases/copy-guard.ts";
+import { blockCheckOf } from "../../../../lib/use-cases/referent/block.ts";
 import { checkLinesOf, outcomeLine, referentBlockModel, referentHeaderLine, reviewButtonsOf } from "./referent-block-view.ts";
 
 // Il blocco «Referente» (rilascio 5, SPEC §9.2): righe e pulsanti per stato, nessun pulsante pieno, nessun conteggio per persona.
@@ -128,4 +129,29 @@ test("le azioni del team sulla risposta (§9.2): usare, tenere, rivedere, aggiun
 test("i testi del blocco passano il controllo dell'area", () => {
   const lines = checkLinesOf(CHECK({ confirm: "correggi", note: "n", estimate: "meno", timesPerMonth: 2, referentHours: 4 }), "Aldo", TODAY, true).map((l) => l.text);
   for (const text of lines) assert.deepEqual(findHubForbidden(text, "area"), [], text);
+});
+
+test("dopo «Usa la stima di …»: «Stima del referente usata il …», mai «La stima del team è cambiata dopo la risposta.»", () => {
+  // La riga del pannello dopo l'adozione: il componente del team ha i numeri del referente (150 × 12 volte, 8,5 minuti).
+  const row = {
+    submittedAt: new Date("2026-11-03T10:00:00.000Z"),
+    confirm: "si" as const,
+    confirmNote: null,
+    estimate: "meno" as const,
+    timesPerMonth: 150,
+    minutesEach: 8.5,
+    teamComponentKey: "pratiche",
+    teamVolumeYear: 3000,
+    teamMinutes: 12,
+    correctionDoneAt: null,
+    estimateOutcome: "adottata" as const,
+    estimateOutcomeAt: new Date("2026-11-03T11:00:00.000Z"),
+  };
+  const teamNow = { key: "pratiche", volumeYear: 1800, minutes: 8.5, hours: 255, perMonth: 150, perYear: null, unit: "pratiche", label: null };
+  const lines = checkLinesOf(blockCheckOf(row, 3, teamNow), "Bruna Esempio", TODAY, true).map((l) => l.text);
+  assert.ok(!lines.includes("La stima del team è cambiata dopo la risposta."), JSON.stringify(lines));
+  assert.ok(lines.includes("Stima del referente usata il 3 nov."), JSON.stringify(lines));
+  // Il team cambia ancora la stima dopo l'adozione: la riga torna.
+  const later = checkLinesOf(blockCheckOf(row, 3, { ...teamNow, volumeYear: 2400 }), "Bruna Esempio", TODAY, true).map((l) => l.text);
+  assert.ok(later.includes("La stima del team è cambiata dopo la risposta."), JSON.stringify(later));
 });

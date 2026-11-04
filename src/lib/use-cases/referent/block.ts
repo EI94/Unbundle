@@ -9,7 +9,7 @@
 import type { ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
 import type { ReferentCheckConfirm, ReferentCheckEstimate, ReferentCheckOutcome } from "../../db/use-case-hub-referent-check-ddl.ts";
 import type { ReferentBlockCheck, ReferentBlockView } from "./contract.ts";
-import { referentHours, sameTeamEstimate, type TeamEstimate } from "./estimate.ts";
+import { adoptionPatch, referentHours, sameTeamEstimate, type TeamEstimate } from "./estimate.ts";
 import { referentRequestsOf, referentStateOf, type ReferentRequestFact } from "./use-case-state.ts";
 
 /** La riga di `use_case_referent_checks` come la legge il pannello. */
@@ -89,6 +89,12 @@ export function referentContactOf(requests: readonly BlockRequestFact[]): string
   return referentRequestsOf(requests.map(factOf)).referent;
 }
 
+/** La stima del team dopo «Usa la stima di …»: l'istantanea con i numeri del referente (adoptionPatch). */
+function adoptedOf(snapshot: { key: string; volumeYear: number; minutes: number }, numbers: { timesPerMonth: number | null; minutesEach: number | null }) {
+  const patch = adoptionPatch(numbers);
+  return { key: snapshot.key, volumeYear: patch.volumeYear ?? snapshot.volumeYear, minutes: patch.minutesPerUnit ?? snapshot.minutes };
+}
+
 /** La conferma e la stima di R* per il blocco (§9.2). */
 export function blockCheckOf(row: ReferentCheckRow, version: number, teamNow: TeamEstimate | null): ReferentBlockCheck {
   const snapshot =
@@ -97,6 +103,9 @@ export function blockCheckOf(row: ReferentCheckRow, version: number, teamNow: Te
       : null;
   const numbers = { timesPerMonth: row.timesPerMonth, minutesEach: row.minutesEach };
   const given = row.timesPerMonth !== null || row.minutesEach !== null;
+  const now = teamNow ? { key: teamNow.key, volumeYear: teamNow.volumeYear, minutes: teamNow.minutes } : null;
+  // «Usa la stima di …» scrive i numeri del referente nel componente: quel cambio è del team, non dopo la risposta.
+  const adoptedNow = row.estimateOutcome === "adottata" && snapshot !== null && sameTeamEstimate(adoptedOf(snapshot, numbers), now);
   return {
     submittedAt: iso(row.submittedAt),
     confirm: row.confirm,
@@ -116,7 +125,7 @@ export function blockCheckOf(row: ReferentCheckRow, version: number, teamNow: Te
           perMonth: snapshot.volumeYear < 12 ? null : Math.round(snapshot.volumeYear / 12),
         }
       : null,
-    teamChanged: snapshot !== null && !sameTeamEstimate(snapshot, teamNow ? { key: teamNow.key, volumeYear: teamNow.volumeYear, minutes: teamNow.minutes } : null),
+    teamChanged: snapshot !== null && !sameTeamEstimate(snapshot, now) && !adoptedNow,
     teamNow: teamNow !== null,
     referentHours: given ? referentHours(snapshot, numbers) : null,
     version,

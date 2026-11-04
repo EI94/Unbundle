@@ -97,3 +97,19 @@ test("le domande rifiutate escono da quelle per il referente; al massimo 3 «Chi
   assert.deepEqual(view.declinedNeedIds, [Q1]);
   assert.deepEqual(view.hints, ["a", "b", "c"]);
 });
+
+test("dopo «Usa la stima di …» il blocco non dice che la stima del team è cambiata dopo la risposta", () => {
+  const sent = CHECK({ submittedAt: day(2), confirm: "si", estimate: "meno", timesPerMonth: 150, minutesEach: 8.5, teamComponentKey: "pratiche", teamVolumeYear: 3000, teamMinutes: 12, estimateOutcome: "adottata", estimateOutcomeAt: day(3) });
+  // Il componente del team ha adesso i numeri del referente (adoptionPatch: 150 × 12 = 1.800 volte, 8,5 minuti).
+  assert.equal(blockCheckOf(sent, 1, { ...TEAM, volumeYear: 1800, minutes: 8.5 }).teamChanged, false);
+  // Solo le volte: i minuti restano quelli del team.
+  assert.equal(blockCheckOf(CHECK({ ...sent, minutesEach: null }), 1, { ...TEAM, volumeYear: 1800 }).teamChanged, false);
+  // Solo i minuti: le volte restano quelle del team.
+  assert.equal(blockCheckOf(CHECK({ ...sent, timesPerMonth: null }), 1, { ...TEAM, minutes: 8.5 }).teamChanged, false);
+  // Un cambio del team dopo l'adozione si dice ancora.
+  assert.equal(blockCheckOf(sent, 1, { ...TEAM, volumeYear: 2000, minutes: 8.5 }).teamChanged, true);
+  // Senza l'adozione gli stessi numeri sono un cambio dopo la risposta, come prima.
+  assert.equal(blockCheckOf(CHECK({ ...sent, estimateOutcome: null, estimateOutcomeAt: null }), 1, { ...TEAM, volumeYear: 1800, minutes: 8.5 }).teamChanged, true);
+  // «Tieni la nostra» con la stima di prima: nessun cambio.
+  assert.equal(blockCheckOf(CHECK({ ...sent, estimateOutcome: "tenuta" }), 1, TEAM).teamChanged, false);
+});
