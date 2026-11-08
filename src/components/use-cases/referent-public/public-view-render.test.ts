@@ -45,7 +45,7 @@ function question(i: number, over: Partial<ReferentQuestionView> = {}): Referent
 function view(over: Partial<ReferentAskView> = {}): ReferentAskView {
   return {
     state: "aperta",
-    privacy: { accepted: true, version: "ucq-2026-11-1", contact: "pierpaolo@lateralspace.ai" },
+    privacy: { accepted: true, version: "ucq-2026-11-2", contact: "pierpaolo@lateralspace.ai" },
     company: "TopJet",
     useCase: { code: "TJ-0004", title: "Fatture fornitori" },
     requester: { name: "Giulia Neri" },
@@ -95,7 +95,7 @@ test("intestazione: azienda, «CODICE · Titolo», chi chiede e il suo messaggio
 });
 
 test("informativa: prima di tutto finché non è letta; i segnaposto riempiti", () => {
-  assert.equal(screenOf(view({ privacy: { accepted: false, version: "ucq-2026-11-1", contact: "x@y.it" } })), "privacy");
+  assert.equal(screenOf(view({ privacy: { accepted: false, version: "ucq-2026-11-2", contact: "x@y.it" } })), "privacy");
   assert.equal(screenOf(view()), "questions");
   const p = privacyTexts(view());
   assert.equal(p.title, "Prima di iniziare");

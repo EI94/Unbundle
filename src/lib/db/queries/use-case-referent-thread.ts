@@ -15,6 +15,7 @@ import {
 } from "@/lib/db/queries/use-case-referent-base";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { readinessSyncFor } from "@/lib/db/queries/use-case-alerts";
+import { latestSuggestionSql, suggestionQueueSql } from "@/lib/db/queries/use-case-referent-ai";
 import type { Issue } from "@/lib/uc/answers/issues";
 import { romeDate } from "@/lib/uc/calendar";
 import { ucEmailConfig } from "@/lib/uc/notify/dispatch";
@@ -246,6 +247,7 @@ export function threadSuggestionsSql(workspaceId: string, useCaseId: string): Uc
 FROM use_case_referent_suggestions s
 JOIN use_case_referent_requests r ON r.id = s.request_id AND r.workspace_id = s.workspace_id
 WHERE s.workspace_id = ${cast(workspaceId, "uuid")} AND s.use_case_id = ${cast(useCaseId, "uuid")} AND s.status = 'proposta' AND ${activeRequestSql("r")}
+  AND ${raw(latestSuggestionSql("s"))}
 ORDER BY s.created_at, s.id
 LIMIT 100`);
 }
@@ -737,6 +739,9 @@ ${casTail("upd", 1, "domanda_non_disponibile")}`),
     insertReferentMessageSql(link, anchor, "risposta", text.value, String(m.id)),
   ];
   if (anchor.anchor === "domanda") statements.push(needToVerifySql(link, anchor.needId!));
+  // (Decisione 2) L'aiuto dell'AI guarda la risposta, dopo: mai qui dentro.
+  const suggest = suggestionQueueSql({ workspaceId: link.workspaceId, requestId: link.requestId, anchors: [anchor], env: process.env });
+  if (suggest) statements.push(suggest);
   statements.push(
     ...completeIfDoneStatements(link),
     ...referentNewsStatements(link, actorUserId, { answers: 1, questions: 0, code: "chiarimento_risposto", now }),
@@ -762,6 +767,8 @@ export async function addToReferentAnswer(link: ReferentLink, body: unknown, now
   const actorUserId = (await readReferentPerson(executor, link.workspaceId, link.contactId)).userId;
   const statements: UcStatement[] = [lockRequestSql(link.workspaceId, link.requestId), insertReferentMessageSql(link, anchor, "aggiunta", text.value, null)];
   if (anchor.anchor === "domanda") statements.push(needToVerifySql(link, anchor.needId!));
+  const suggest = suggestionQueueSql({ workspaceId: link.workspaceId, requestId: link.requestId, anchors: [anchor], env: process.env });
+  if (suggest) statements.push(suggest);
   statements.push(
     ...referentNewsStatements(link, actorUserId, { answers: 1, questions: 0, code: "aggiunta", now }),
     ...cardSyncStatements({ workspaceId: link.workspaceId, useCaseIds: [link.useCaseId], actorUserId, readiness: null }),
@@ -804,6 +811,7 @@ SELECT (SELECT edited_at FROM upd) AS edited_at, uc_require((SELECT count(*) FRO
     // Una domanda chiusa con «Non ce l'ho» che adesso ha una risposta.
     toStatement(ucSql`UPDATE use_case_referent_request_items SET state = 'risposta' WHERE request_id = ${req} AND need_id = ${cast(needId, "uuid")} AND state = 'non_so'`),
     needToVerifySql(link, needId),
+    ...[suggestionQueueSql({ workspaceId: link.workspaceId, requestId: link.requestId, anchors: [{ anchor: "domanda", needId, componentKey: null }], env: process.env })].filter((x): x is UcStatement => x !== null),
     ...referentNewsStatements(link, actorUserId, { answers: 1, questions: 0, code: "risposta_cambiata", now }),
     ...cardSyncStatements({ workspaceId: link.workspaceId, useCaseIds: [link.useCaseId], actorUserId, readiness: null }),
   ]);

@@ -38,6 +38,7 @@ let states: typeof import("../../db/queries/use-case-referent-states.ts");
 let needsMod: typeof import("../needs.ts");
 let eraseMod: typeof import("./erase.ts");
 let calendar: typeof import("../../uc/calendar.ts");
+let ai: typeof import("../../db/queries/use-case-referent-ai.ts");
 let q: (text: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
 
 const suffix = randomBytes(3).toString("hex");
@@ -126,7 +127,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
   assert.ok(token, "il link nell'email");
   const first = await pub.resolveReferentToken(token!, new Date());
   if (first.access !== "ok") assert.fail("link");
-  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-1" }, new Date()) as never, "informativa");
+  pok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-2" }, new Date()) as never, "informativa");
   const link = await linkOf(token!);
   pok(await pub.saveReferentCheck(link, { step: 1, confirm: "si", note: null }, new Date()) as never, "passo 1");
   pok(await pub.saveReferentCheck(link, { step: 2, benefit: { key: "tempo-1", seen: SEEN, answer: "meno", timesPerMonth: 200 } }, new Date()) as never, "passo 2");
@@ -194,6 +195,7 @@ before(async () => {
   needsMod = await import("../needs.ts");
   eraseMod = await import("./erase.ts");
   calendar = await import("../../uc/calendar.ts");
+  ai = await import("../../db/queries/use-case-referent-ai.ts");
   NOW = new Date(calendar.romeLocalToUtc(calendar.addWorkingDays(calendar.romeDate(new Date()), 1), 10).getTime() + 30 * 60_000);
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione filo', $2)`, [ids.org, `hub-filo-${ids.org}`]);
   await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet prova')`, [ids.ws, ids.org]);
@@ -444,7 +446,7 @@ test("le proposte dell'AI: solo ai revisori, «Chiedi questo» le usa con il chi
   refused(await thread.dismissReferentSuggestion(ctx("contributor"), card.id, String(s2.id), { env: ENV }), "permesso_mancante");
   ok(await thread.dismissReferentSuggestion(ctx(), card.id, String(s2.id), { env: ENV }), "lascia stare");
   refused(await thread.dismissReferentSuggestion(ctx(), card.id, String(s2.id), { env: ENV }), "suggerimento_non_trovato");
-  const rows = await q(`SELECT body, status, decided_by_user_id::text AS by FROM use_case_referent_suggestions WHERE request_id = $1::uuid ORDER BY body`, [r.requestId]);
+  const rows = await q(`SELECT body, status, decided_by_user_id::text AS by FROM use_case_referent_suggestions WHERE request_id = $1::uuid AND body IS NOT NULL ORDER BY body`, [r.requestId]);
   assert.deepEqual(rows.map((x) => `${x.body}:${x.status}:${x.by === ids.builder}`), ["Quale gestionale?:scartata:true", "Quante al mese, più o meno?:usata:true"]);
   assert.deepEqual((await panelOf(card.id)).thread?.suggestions, []);
 });
@@ -471,4 +473,74 @@ test("cancellazione dei dati e conservazione: i testi del filo si tolgono, le pr
   assert.deepEqual((await messagesOf(r2.requestId)).map((m) => `${m.body}:${m.removed_reason}`), ["null:cancellazione"]);
   const after = await panelOf(card2.id);
   assert.equal(after.thread?.messages.length, 0, "le richieste revocate non mostrano il filo");
+});
+
+test("(decisione 2) l'aiuto dell'AI: le righe nascono con la risposta; senza chiave «nessuna»; con un modello finto una domanda; un errore si riprova; spento o con un'informativa vecchia niente", opts, async () => {
+  const card = await newCard();
+  const r = await answeredReferent(card);
+  const rowsOf = async () =>
+    (await q(`SELECT anchor, need_id::text AS need, component_key AS key, status, body, model, attempts FROM use_case_referent_suggestions WHERE request_id = $1::uuid ORDER BY anchor, need_id, component_key`, [r.requestId])).map((x) => ({ ...x }));
+  // L'invio ha messo in coda le due risposte con un testo e la voce «È di meno»: niente calcolato ancora.
+  const queued = await rowsOf();
+  assert.deepEqual(queued.map((x) => `${x.anchor}:${x.status}`).sort(), ["beneficio:da_fare", "domanda:da_fare", "domanda:da_fare"]);
+  // Senza la chiave del fornitore: «nessuna», in silenzio, nessuna chiamata.
+  const calls: string[] = [];
+  const none = await ai.processReferentSuggestions({ requestId: r.requestId, env: {} });
+  assert.deepEqual(none, { proposed: 0, none: 3, failed: 0 });
+  assert.ok((await rowsOf()).every((x) => x.status === "nessuna" && x.body === null));
+  // Una risposta nuova (il referente aggiunge qualcosa): una riga nuova; il modello finto propone una domanda.
+  const link = await linkOf(r.token);
+  pok((await thread.addToReferentAnswer(link, { anchor: "domanda", needId: card.needs[0], text: "Dipende dal mese." }, new Date())) as never, "aggiunta");
+  const fake: import("../../db/queries/use-case-referent-ai.ts").FollowUpGenerator = async ({ prompt, model }) => {
+    calls.push(model);
+    assert.ok(prompt.includes("<risposta>Dipende dal mese.</risposta>"), "il testo del referente dentro il tag");
+    assert.ok(!prompt.includes("Giulia") && !prompt.includes("aldo."), "niente nomi né email nel prompt");
+    return { complete: false, question: "Quante al mese, più o meno, nei mesi pieni?" };
+  };
+  const proposed = await ai.processReferentSuggestions({ requestId: r.requestId, env: { ANTHROPIC_API_KEY: "finta" }, generate: fake });
+  assert.deepEqual(proposed, { proposed: 1, none: 0, failed: 0 });
+  assert.equal(calls.length, 1);
+  const panel = await panelOf(card.id);
+  assert.deepEqual(panel.thread?.suggestions.map((x) => x.text), ["Quante al mese, più o meno, nei mesi pieni?"]);
+  assert.equal(panel.thread?.suggestions[0].anchorKey, `d:${card.needs[0]}`);
+  const [row] = (await rowsOf()).filter((x) => x.status === "proposta");
+  assert.equal(row.model, "claude-sonnet-5-5", "il modello dell'app");
+  // Un errore del modello: «errore», poi il giro dopo (il cron) riprova; una risposta inutilizzabile è «nessuna».
+  pok((await thread.addToReferentAnswer(link, { anchor: "domanda", needId: card.needs[1], text: "Anche Excel." }, new Date())) as never, "aggiunta 2");
+  const failed = await ai.processReferentSuggestions({ requestId: r.requestId, env: { ANTHROPIC_API_KEY: "finta" }, generate: async () => { throw new Error("rete"); } });
+  assert.deepEqual(failed, { proposed: 0, none: 0, failed: 1 });
+  const errored = (await rowsOf()).find((x) => x.status === "errore");
+  assert.equal(Number(errored?.attempts), 1);
+  const retried = await ai.processReferentSuggestions({ requestId: r.requestId, env: { ANTHROPIC_API_KEY: "finta" }, generate: async () => ({ complete: false, question: "Una frase senza punto di domanda" }) });
+  assert.deepEqual(retried, { proposed: 0, none: 1, failed: 0 });
+  // Un chiarimento già in attesa sull'ancora: niente proposta.
+  ok(await thread.askReferentClarification(ctx(), card.id, { requestId: r.requestId, anchor: "generale", text: "Chi controlla?" }, { env: ENV, now: NOW }), "chiarimento");
+  const before = (await rowsOf()).length;
+  // Spento: nessuna riga nuova, nessuna chiamata.
+  process.env.USE_CASE_REFERENT_AI = "off";
+  try {
+    pok((await thread.addToReferentAnswer(link, { anchor: "domanda", needId: card.needs[0], text: "Ancora una cosa." }, new Date())) as never, "aggiunta spenta");
+    assert.equal((await rowsOf()).length, before, "spento: nessuna riga");
+    assert.deepEqual(await ai.processReferentSuggestions({ requestId: r.requestId, env: { USE_CASE_REFERENT_AI: "off", ANTHROPIC_API_KEY: "finta" }, generate: fake }), { proposed: 0, none: 0, failed: 0 });
+  } finally {
+    delete process.env.USE_CASE_REFERENT_AI;
+  }
+  // Un'informativa che non dice dell'AI: nessuna riga.
+  await q(`UPDATE use_case_referent_requests SET privacy_notice_version = 'ucq-2026-11-1' WHERE id = $1::uuid`, [r.requestId]);
+  const st = ai.suggestionQueueSql({ workspaceId: ids.ws, requestId: r.requestId, anchors: [{ anchor: "generale", needId: null, componentKey: null }], env: {} })!;
+  await q(st.text, st.params as unknown[]);
+  assert.equal((await rowsOf()).length, before, "informativa vecchia: niente");
+  assert.equal(ai.suggestionQueueSql({ workspaceId: ids.ws, requestId: r.requestId, anchors: [{ anchor: "generale", needId: null, componentKey: null }], env: { USE_CASE_REFERENT_AI: "off" } }), null);
+  // Il contributore non vede il pannello (e quindi nessuna proposta).
+  const contributorPanel = await referents.loadUseCaseReferentPanel({
+    workspaceId: ids.ws,
+    useCaseId: card.id,
+    viewer: { userId: ids.contributor, role: "contributor", isLateralSpace: false, emailVerified: true, email: `contrib.${suffix}@cliente.test` } as never,
+    session: { id: ids.contributor, name: "Persona contributor", email: `contrib.${suffix}@cliente.test`, emailVerified: true },
+    role: "contributor",
+    needs: { requirements: [], steps: [] } as never,
+    eligible: true,
+    env: ENV,
+  });
+  assert.equal(contributorPanel, null);
 });

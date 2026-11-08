@@ -171,7 +171,7 @@ test("GET: la vista con il link giusto, senza scrivere niente; un link sconosciu
     const r = await call("", token, { method: "GET" });
     assert.equal(r.status, 404, token);
     assert.equal(r.json.error, "link_non_valido");
-    const w = await call("privacy", token, { body: { version: "ucq-2026-11-1" } });
+    const w = await call("privacy", token, { body: { version: "ucq-2026-11-2" } });
     assert.equal(w.status, 404);
     assert.equal(w.json.error, "link_non_valido");
   }
@@ -179,7 +179,7 @@ test("GET: la vista con il link giusto, senza scrivere niente; un link sconosciu
 
 test("scritture: un'origine diversa o assente → 403 origine_non_ammessa, niente scritto", opts, async () => {
   for (const origin of ["https://altro.example", null, "null"]) {
-    const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-1" }, origin });
+    const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-2" }, origin });
     assert.equal(r.status, 403, String(origin));
     assert.equal(r.json.error, "origine_non_ammessa");
   }
@@ -201,7 +201,7 @@ test("su Vercel (anteprima o produzione) senza UC_SECRET le scritture rispondono
   try {
     for (const env of ["preview", "production"]) {
       process.env.VERCEL_ENV = env;
-      const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-1" } });
+      const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-2" } });
       assert.equal(r.status, 503, env);
       assert.equal(r.json.error, "non_disponibile");
     }
@@ -226,7 +226,7 @@ test("la funzione spenta o il workspace fuori dall'area: link non valido, come o
     assert.equal((await call("", state.token, { method: "GET" })).json.error, "link_non_valido");
     delete process.env.USE_CASE_REFERENTS;
     process.env.USE_CASE_HUB_WORKSPACES = randomUUID();
-    assert.equal((await call("privacy", state.token, { body: { version: "ucq-2026-11-1" } })).json.error, "link_non_valido");
+    assert.equal((await call("privacy", state.token, { body: { version: "ucq-2026-11-2" } })).json.error, "link_non_valido");
     // Spegnere i dossier non spegne questa funzione.
     process.env.USE_CASE_HUB_WORKSPACES = ids.ws;
     process.env.UC_ENABLED = "false";
@@ -244,7 +244,7 @@ test("dalle rotte: informativa, bozza bloccata dal controllo del testo, bozza, f
   const early = await call("draft", state.token, { body: { needId: n0, text: "Ogni giorno", dontKnow: false } });
   assert.equal(early.status, 409);
   assert.equal(early.json.error, "informativa_da_leggere");
-  const accepted = await call("privacy", state.token, { body: { version: "ucq-2026-11-1" } });
+  const accepted = await call("privacy", state.token, { body: { version: "ucq-2026-11-2" } });
   assert.equal(accepted.status, 200);
   assert.deepEqual(accepted.json.data, { accepted: true });
 
@@ -323,7 +323,7 @@ test("limite per link: la 31ª apertura in un minuto → 429 con Retry-After", o
   let last = 0;
   let retry: string | null = null;
   for (let i = 0; i < 31; i++) {
-    const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-1" } });
+    const r = await call("privacy", state.token, { body: { version: "ucq-2026-11-2" } });
     last = r.status;
     retry = r.headers.get("retry-after");
   }

@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/queries/use-case-referent-base";
 import { dispatchRequesterAlerts } from "@/lib/db/queries/use-case-notifications";
 import { dispatchReferentEmails } from "@/lib/db/queries/use-case-referent-dispatch";
+import { processReferentSuggestions, suggestionQueueSql } from "@/lib/db/queries/use-case-referent-ai";
 import { deleteFileObjects, referentBeginClient, referentCompleteClient, referentUploadServer } from "@/lib/db/queries/use-case-referent-files";
 import type { Issue } from "@/lib/uc/answers/issues";
 import { romeDate } from "@/lib/uc/calendar";
@@ -954,6 +955,24 @@ ON CONFLICT (dedupe_key) DO NOTHING`),
       schedule: alertSchedule(now),
       now,
     }),
+    // (Rilascio 6, decisione 2) L'aiuto dell'AI guarda le risposte con un testo, le voci con una risposta
+    // diversa o un commento e la correzione dello use case: dopo, mai qui dentro (le righe «da_fare»).
+    ...[
+      suggestionQueueSql({
+        workspaceId: link.workspaceId,
+        requestId: link.requestId,
+        anchors: [
+          ...ready.filter((t) => t.hasText).map((t) => ({ anchor: "domanda" as const, needId: t.needId, componentKey: null })),
+          ...(check && rows
+            ? check.benefitRows
+                .filter((b) => rows.some((r) => r.key === b.key) && (b.answer === "meno" || b.answer === "piu" || b.answer === "no" || b.answer === "non_so" || Boolean(b.comment?.trim())))
+                .map((b) => ({ anchor: "beneficio" as const, needId: null, componentKey: b.key }))
+            : []),
+          ...(check?.confirm === "correggi" ? [{ anchor: "generale" as const, needId: null, componentKey: null }] : []),
+        ],
+        env: process.env,
+      }),
+    ].filter((x): x is UcStatement => x !== null),
     // Le risposte del referente non chiudono mai un'esigenza («Da verificare», «Manca il dato»): niente
     // «Pronto da avviare» da controllare qui (`readiness: null`), solo «Informazioni complete».
     ...cardSyncStatements({ workspaceId: link.workspaceId, useCaseIds: [link.useCaseId], actorUserId, readiness: null }),
@@ -1081,6 +1100,8 @@ export function scheduleReferentDispatch(requestId: string): void {
     } catch (error) {
       logReferentPublicError("avviso_dopo_risposta", error);
     }
+    // (Rilascio 6, decisione 2) Le proposte dell'AI per le risposte appena arrivate: mai un errore per il referente.
+    await processReferentSuggestions({ requestId, limit: 10 });
   });
 }
 

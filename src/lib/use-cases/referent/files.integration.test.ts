@@ -178,7 +178,7 @@ test("preparazione: autorizzazione, domande, richiesta, link con l'informativa l
   // Prima dell'informativa niente file.
   const early = await pub.uploadReferentFileServer(resolved.link, { needId: state.needs[0], fileName: "a.csv", declaration: true, bytes: CLEAN }, ENV);
   assert.ok(!early.ok && early.code === "informativa_da_leggere");
-  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-1" }, new Date())).ok);
+  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-2" }, new Date())).ok);
   const again = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(again.access === "ok");
   if (again.access === "ok") link = again.link;

@@ -188,7 +188,7 @@ test("preparazione: una richiesta con una risposta inviata e una bozza", opts, a
   const resolved = await pub.resolveReferentToken(state.token, new Date());
   assert.ok(resolved.access === "ok");
   if (resolved.access !== "ok") return;
-  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-1" }, new Date())).ok);
+  assert.ok((await pub.acceptReferentPrivacy(resolved.link, { version: "ucq-2026-11-2" }, new Date())).ok);
   const link = await pub.resolveReferentToken(state.token, new Date());
   if (link.access !== "ok") return assert.fail("link");
   assert.ok((await pub.saveReferentDraft(link.link, { needId: state.needs[0], text: "Circa 20 al giorno", dontKnow: false }, new Date())).ok);

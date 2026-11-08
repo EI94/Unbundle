@@ -581,14 +581,15 @@ export const REFERENT_CHECK_TEXT = Object.freeze({
 // ─── Informativa (§5.3) ──────────────────────────────────────────────
 
 /**
- * L'informativa a due livelli della pagina pubblica, versione `ucq-2026-11-1` (rilascio 5.1: nomi,
+ * L'informativa a due livelli della pagina pubblica, versione `ucq-2026-11-2` (rilascio 6: l'aiuto dell'AI; rilascio 5.1: nomi,
  * email e telefoni non si bloccano più, «basta che lo diciamo prima nelle informative», decisione del
  * titolare del 04/11/2026). Sopra due righe calme; il testo completo, intero, a un tocco. L'accettazione
  * si registra sulla richiesta con questa versione; una versione nuova mostra di nuovo il riquadro.
  * Testo legale da confermare con il titolare (indirizzo di contatto, 12 mesi).
  */
 export const REFERENT_PRIVACY_NOTICE = Object.freeze({
-  version: "ucq-2026-11-1",
+  // (Rilascio 6) `ucq-2026-11-2`: una frase calma sull'aiuto dell'AI (decisione 2 del titolare dell'08/11/2026).
+  version: "ucq-2026-11-2",
   title: "Prima di iniziare",
   lead: "Ti chiediamo del tuo lavoro, non di te.",
   summary: Object.freeze([
@@ -600,6 +601,7 @@ export const REFERENT_PRIVACY_NOTICE = Object.freeze({
     "Lateral Space raccoglie queste informazioni per conto di {Azienda}, per valutare e preparare il caso d'uso. Le usiamo solo per questo.",
     "Ti chiediamo informazioni sul lavoro, non su di te. Se scrivi il nome di un collega o alleghi un file con nomi, email o telefoni, li usiamo solo per questo caso d'uso. Non servono dati sanitari, codici fiscali, date di nascita o preferenze su genere, età, origine o religione: se ne troviamo, ti chiediamo di toglierli.",
     "Ogni file passa da un controllo automatico prima di essere usato.",
+    "Per farti solo le domande che servono, un sistema di intelligenza artificiale può leggere le tue risposte e suggerire al team una domanda in più. Non decide niente e non scrive a nessuno: la domanda, se serve, la manda una persona del team.",
     "Salviamo le tue risposte, i file che alleghi, il tuo nome, l'email con cui ti abbiamo scritto e quando hai premuto «Iniziamo». Dell'indirizzo IP teniamo solo un'impronta cifrata, mai il numero, per due giorni.",
     "{Richiedente} e le altre persone di {Azienda} che valutano i casi d'uso vedono le tue risposte e quando sono arrivate. Non misuriamo i tuoi tempi e non facciamo classifiche tra persone.",
     "Teniamo risposte e file per 12 mesi dopo la chiusura della richiesta, poi li cancelliamo.",

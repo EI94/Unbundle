@@ -33,6 +33,7 @@ import {
   type ReferentFailure,
 } from "@/lib/db/queries/use-case-referent-base";
 import { createReferentDispatchStore, runReferentDispatchWith } from "@/lib/db/queries/use-case-referent-dispatch";
+import { processReferentSuggestions } from "@/lib/db/queries/use-case-referent-ai";
 import { cleanupPendingFiles, deleteFileObjects, collectDeletedFileRows } from "@/lib/db/queries/use-case-referent-files";
 import { dispatchRequesterAlerts, purgeOldNotifications } from "@/lib/db/queries/use-case-notifications";
 import {
@@ -2487,6 +2488,10 @@ LIMIT 200`),
     counts.caseAlertsHeld += alerts.held + alerts.notConfigured;
     counts.caseAlertsCancelled += alerts.cancelled;
     counts.failed += alerts.failed;
+  });
+  // 11f (rilascio 6). Le proposte dell'AI non ancora calcolate (dopo un errore, o un `after()` che non è partito).
+  await step("cron_ai", async () => {
+    await processReferentSuggestions({ env, limit: 20 });
   });
   await step("cron_notifiche_vecchie", async () => {
     const purged = await purgeOldNotifications(now);

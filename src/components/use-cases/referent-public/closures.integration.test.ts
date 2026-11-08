@@ -147,7 +147,7 @@ async function closedLink(questions: number, fileRequired: number[] = []) {
   assert.ok(token, "il link è nell'email");
   const first = await pub.resolveReferentToken(token, new Date());
   if (first.access !== "ok") throw new Error("link");
-  okPub(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-1" }, new Date()));
+  okPub(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-2" }, new Date()));
   const again = await pub.resolveReferentToken(token, new Date());
   if (again.access !== "ok") throw new Error("link");
   return { card, needIds, token, requestId: sent.requestId, link: again.link };

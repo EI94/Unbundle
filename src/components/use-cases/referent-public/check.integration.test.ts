@@ -108,7 +108,7 @@ async function referentLink(useCaseId: string, needIds: string[]): Promise<{ tok
   const first = await pub.resolveReferentToken(token, new Date());
   assert.ok(first.access === "ok");
   if (first.access !== "ok") throw new Error("link");
-  ok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-1" }, new Date()) as never, "informativa");
+  ok(await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-2" }, new Date()) as never, "informativa");
   const again = await pub.resolveReferentToken(token, new Date());
   if (again.access !== "ok") throw new Error("link");
   return { token, requestId: sent.requestId, link: again.link };

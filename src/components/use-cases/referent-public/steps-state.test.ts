@@ -44,7 +44,7 @@ const confirmed = (impact = true, over: Partial<ReferentCheckView> = {}): Refere
 function view(over: Partial<ReferentAskView> = {}): ReferentAskView {
   return {
     state: "aperta",
-    privacy: { accepted: true, version: "ucq-2026-11-1", contact: "privacy@example.test" },
+    privacy: { accepted: true, version: "ucq-2026-11-2", contact: "privacy@example.test" },
     company: "TopJet",
     useCase: { code: "TJ-0002", title: "Fatture fornitori" },
     requester: { name: "Giulia Neri" },

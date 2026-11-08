@@ -184,7 +184,7 @@ async function answerByLink(token: string, needId: string, text: string) {
   const first = await pub.resolveReferentToken(token, V);
   assert.equal(first.access, "ok");
   if (first.access !== "ok") return;
-  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-1" }, V)).ok);
+  assert.ok((await pub.acceptReferentPrivacy(first.link, { version: "ucq-2026-11-2" }, V)).ok);
   const resolved = await pub.resolveReferentToken(token, V);
   if (resolved.access !== "ok") assert.fail("link");
   assert.ok((await pub.saveReferentDraft(resolved.link, { needId, text, dontKnow: false }, V)).ok, "bozza");
