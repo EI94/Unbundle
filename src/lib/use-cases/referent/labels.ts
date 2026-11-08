@@ -550,6 +550,7 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
     newsOne: "Hai una novità.",
     newsMany: "Hai {n} novità.",
     sentTitle: "Già inviato",
+    sentCount: "Già inviato · {n}",
     itemOf: "{k} di {n}",
     clarification: "Chiarimento",
     newQuestion: "Nuova domanda",

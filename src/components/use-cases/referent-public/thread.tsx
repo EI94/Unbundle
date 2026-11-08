@@ -211,7 +211,14 @@ export function ThreadItem({
       ) : actions.length > 0 ? (
         <div className="-ml-2 flex flex-wrap gap-x-1">
           {actions.map((mode) => (
-            <Button key={mode} type="button" variant="ghost" className={cn(TEXT_BUTTON_CLASS, "underline-offset-4 hover:underline")} aria-label={aria(mode)} onClick={() => onComposer(mode)}>
+            <Button
+              key={mode}
+              type="button"
+              variant="ghost"
+              className={cn(TEXT_BUTTON_CLASS, "text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline")}
+              aria-label={aria(mode)}
+              onClick={() => onComposer(mode)}
+            >
               {word(mode)}
             </Button>
           ))}
@@ -306,5 +313,20 @@ export function TeamReplyCard({ entry, reply, doubt }: { entry: NewsEntry; reply
       {doubt ? <p className="text-base break-words whitespace-pre-line text-muted-foreground">{fillText(TT.youAsked, { testo: doubt.text })}</p> : null}
       <p className="text-base break-words whitespace-pre-line">{reply.text}</p>
     </NewsFrame>
+  );
+}
+
+/** (Rilascio 6) «Già inviato · n» sotto «Da completare»: chiuso, un tocco per leggerlo (B.1.5); senza rientro, così le schede restano larghe. */
+export function SentDisclosure({ summary, children }: { summary: string; children: ReactNode }) {
+  return (
+    <details data-slot="referent-sent" className="group mt-8 text-base">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-base font-medium select-none [&::-webkit-details-marker]:hidden">
+        <span className="inline-block text-muted-foreground transition-transform group-open:rotate-90" aria-hidden>
+          ▸
+        </span>
+        {summary}
+      </summary>
+      <div className="mt-2 space-y-4">{children}</div>
+    </details>
   );
 }

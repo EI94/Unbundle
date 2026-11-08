@@ -37,7 +37,7 @@ import { ConfirmStep, EstimateStep, ImpactStep, ReferentStepBar, benefitCommentI
 import { MessageCard, PublicShell } from "./state-card";
 import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepOfSubmitRefusal, stepOneWarning, stepSearch, stepStates, stepTwoWarning, stepsOf, type CheckStep, type StepRefusal } from "./steps-state";
 import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
-import { ClarificationCard, TeamReplyCard, ThreadItem, newsTitleId } from "./thread";
+import { ClarificationCard, SentDisclosure, TeamReplyCard, ThreadItem, newsTitleId } from "./thread";
 
 /**
  * La pagina del referente `/rispondi/<token>` (SPEC §4.4): pubblica, senza account, pensata per il
@@ -54,7 +54,6 @@ const THANKS_TITLE_ID = "ucq-grazie";
 const QUESTIONS_TITLE_ID = "ucq-domande";
 /** (Rilascio 6) «Da completare» e «Già inviato». */
 const NEWS_TITLE_ID = "ucq-novita";
-const SENT_TITLE_ID = "ucq-inviato";
 const TT = REFERENT_PUBLIC_TEXT.thread;
 
 function prefersReducedMotion(): boolean {
@@ -716,35 +715,33 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
               );
             })}
           </div>
-          {newsActionable ? (
-            <SubmitBar
-              status={doneCountText(newsDone, entries.length)}
-              missing={
-                newsMissingPositions.length
-                  ? {
-                      text: newsMissingText(newsMissingPositions),
-                      goLabel: fillText(TT.goTo, { k: newsMissingPositions[0] }),
-                      onGo: () => {
-                        const first = entries.find((e) => e.position === newsMissingPositions[0]);
-                        if (first) focusById(first.kind === "domanda" ? questionTitleId(first.id) : newsTitleId(first.id));
-                      },
-                    }
-                  : null
-              }
-              error={submitError}
-              busy={submitBusy}
-              onSubmit={() => void onSubmitNews()}
-            />
-          ) : null}
         </section>
-        <section aria-labelledby={SENT_TITLE_ID} className="mt-10" data-slot="referent-sent">
-          <h2 id={SENT_TITLE_ID} className="text-xl font-semibold">
-            {TT.sentTitle}
-          </h2>
-          {sentCheck ? <div className="mt-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10 sm:p-5">{sentCheckBlock(false)}</div> : null}
-          {sentSections.length ? <div className="mt-4 space-y-4">{sentSections.map((section) => questionCard(section, { primary: false }))}</div> : null}
+        {/* (Rilascio 6, B.1.5) Quello che ha già inviato: un tocco più in là, con il conteggio; «Invia» in fondo. */}
+        <SentDisclosure summary={fillText(TT.sentCount, { n: (sentCheck ? 1 : 0) + sentSections.length })}>
+          {sentCheck ? <div className="rounded-xl bg-card p-4 ring-1 ring-foreground/10 sm:p-5">{sentCheckBlock(false)}</div> : null}
+          {sentSections.map((section) => questionCard(section, { primary: false }))}
           {generalBlock(false)}
-        </section>
+        </SentDisclosure>
+        {newsActionable ? (
+          <SubmitBar
+            status={doneCountText(newsDone, entries.length)}
+            missing={
+              newsMissingPositions.length
+                ? {
+                    text: newsMissingText(newsMissingPositions),
+                    goLabel: fillText(TT.goTo, { k: newsMissingPositions[0] }),
+                    onGo: () => {
+                      const first = entries.find((e) => e.position === newsMissingPositions[0]);
+                      if (first) focusById(first.kind === "domanda" ? questionTitleId(first.id) : newsTitleId(first.id));
+                    },
+                  }
+                : null
+            }
+            error={submitError}
+            busy={submitBusy}
+            onSubmit={() => void onSubmitNews()}
+          />
+        ) : null}
       </PublicShell>
     );
   }

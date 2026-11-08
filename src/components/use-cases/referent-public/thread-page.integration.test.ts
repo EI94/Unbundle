@@ -537,3 +537,27 @@ test("dopo una riapertura i soliti due promemoria, contati da lì, che parlano d
   assert.doesNotMatch(mine[0].text, /domande aperte|0 domande/);
   assert.equal(Number((await requestOf(r.requestId)).reminder_count), 1);
 });
+
+test("una novità dopo un'email dello stesso giorno annullata (la richiesta si era completata) ha di nuovo la sua email", opts, async () => {
+  const card = await newCard();
+  const r = await answeredReferent(card);
+  ok(await thread.askReferentClarification(ctx("other"), card.id, { requestId: r.requestId, anchor: "domanda", needId: card.needs[0], text: "Più o meno quante?" }, { env: ENV, now: NOW }), "chiarimento");
+  const [clar] = await q(`SELECT id FROM use_case_referent_messages WHERE request_id = $1::uuid AND kind = 'chiarimento'`, [r.requestId]);
+  // Il referente risponde prima che l'email parta: la richiesta si completa e l'email del giorno si annulla.
+  assert.equal((await call("reply", r.token, { messageId: String(clar.id), text: "Circa 250." })).status, 200);
+  const [cancelled] = await q(`SELECT e.status FROM use_case_referent_email_items it JOIN use_case_referent_emails e ON e.id = it.email_id WHERE it.request_id = $1::uuid`, [r.requestId]);
+  assert.equal(cancelled.status, "annullata");
+  // Lo stesso giorno: un suo dubbio, la risposta del team. La risposta ha la sua email (la stessa chiave del giorno, di nuovo in coda).
+  const doubt = await call("doubt", r.token, { anchor: "generale", text: "Chi vede le risposte?" });
+  ok(await thread.answerReferentDoubt(ctx("other"), card.id, { messageId: String(doubt.json.data?.messageId), text: "Solo il team." }, { env: ENV, now: NOW }), "risposta del team");
+  const items = await q(
+    `SELECT it.kind, it.state, it.replies, e.status FROM use_case_referent_email_items it JOIN use_case_referent_emails e ON e.id = it.email_id WHERE it.request_id = $1::uuid AND it.state = 'in_coda'`,
+    [r.requestId],
+  );
+  assert.deepEqual(items.map((i) => `${i.kind}:${i.status}:${i.replies}`), ["nuove:in_coda:1"]);
+  const mails = await send(r.requestId, new Date(NOW.getTime() + 60_000));
+  assert.equal(mails.length, 1);
+  assert.match(mails[0].subject, /^TopJet prova: una risposta sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
+  assert.match(mails[0].text, /Leggi la risposta/);
+  assert.ok(!mails[0].text.includes("Solo il team"), "mai il testo");
+});

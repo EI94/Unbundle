@@ -830,7 +830,11 @@ export function queueThreadEmailItemSql(i: {
   INSERT INTO use_case_referent_emails (workspace_id, contact_id, request_id, template, dedupe_key, due_at, scheduled_at)
   SELECT ${ws}, ${contact}, NULL, 'promemoria', ${cast(i.dedupeKey, "text")}, ${at}, ${at}
   WHERE NOT EXISTS (SELECT 1 FROM pending)
-  ON CONFLICT (dedupe_key) DO NOTHING
+  -- Un'email dello stesso giorno annullata (la richiesta si era completata nel frattempo) torna in coda per la
+  -- novità di adesso: senza, la chiave del giorno la lascerebbe senza email.
+  ON CONFLICT (dedupe_key) DO UPDATE SET status = 'in_coda', cancel_reason = NULL, hold_reason = NULL, last_error_code = NULL, attempts = 0, lease_until = NULL,
+    due_at = EXCLUDED.due_at, scheduled_at = EXCLUDED.scheduled_at, updated_at = now()
+  WHERE use_case_referent_emails.status = 'annullata'
   RETURNING id
 ), target AS (
   SELECT id FROM pending UNION ALL SELECT id FROM created
