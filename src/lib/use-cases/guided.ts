@@ -737,7 +737,8 @@ function closedStep({ item, canDecide, closedOn, today }: NextStepInput): NextSt
     heading: t.closedHeading,
     title,
     line,
-    cta: hasButtons ? title : GUIDED_TEXT.cta.closed,
+    // Lo stato in parole: «Resta chiuso» solo per chi decide e non ha niente da premere; agli altri il sotto-stato («Non avviato»).
+    cta: hasButtons || !canDecide ? title : GUIDED_TEXT.cta.closed,
     icon: "chiuso",
     action: hasButtons ? { type: "decisione" } : { type: "none" },
     decisions: "full",

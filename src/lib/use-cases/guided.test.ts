@@ -521,6 +521,11 @@ test("(Rilascio 6, B.1) il pulsante del passo: un verbo di due o tre parole, «T
   assert.deepEqual([ready.cta, ready.turn, ready.why], ["Pronto da avviare", "Tocca a Lateral Space.", "Le informazioni ci sono tutte."]);
   const start = nextStepOf(input({ item: approved(), info: COMPLETE, realizationVariant: "avvia" }));
   assert.deepEqual([start.cta, start.icon, start.mine], ["Avvia la realizzazione", "avvia", true]);
+  // Chiuso: «Riapri» per chi decide; «Resta chiuso» per chi decide senza niente da premere; il sotto-stato per chi non decide.
+  const closedCard = item({ phase: "chiuso", subState: "non_avviato", phaseLabel: "Chiuso · Non avviato" });
+  assert.equal(nextStepOf(input({ item: closedCard })).cta, "Non avviato");
+  assert.equal(nextStepOf(input({ item: closedCard, canDecide: false })).cta, "Non avviato");
+  assert.equal(nextStepOf(input({ item: { ...closedCard, dossier: { status: "chiuso" } } })).cta, "Resta chiuso");
   const done = nextStepOf(input({ item: item({ phase: "realizzato", subState: "realizzato", realizedOn: "2026-10-03" }) }));
   assert.deepEqual([done.cta, done.why, done.turn], ["Nessun passo da fare", "In uso dal 3 ott.", null]);
   // Mai «Tocca a» nella spiegazione, mai un segnaposto; il verbo sta in quattro parole al massimo.
