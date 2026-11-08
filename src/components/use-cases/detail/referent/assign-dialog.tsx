@@ -20,7 +20,7 @@ import { benefitQuestion } from "@/lib/use-cases/referent/impact-text";
 import type { ImpactRow } from "@/lib/use-cases/referent/impact";
 import { REFERENT_ASSIGN_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, companyLabel, fillText } from "@/lib/use-cases/referent/labels";
 import { orgWordsOf } from "@/lib/use-cases/referent/match";
-import { referentRequestPreview, requesterNameOf } from "@/lib/use-cases/referent/preview";
+import { referentNewQuestionsPreview, referentRequestPreview, requesterNameOf } from "@/lib/use-cases/referent/preview";
 import { cn } from "@/lib/utils";
 import { Disclosure } from "../../disclosure";
 import { NEW_CONTACT, contactRowLine, memberIdOf } from "./ask-dialog-state";
@@ -47,6 +47,7 @@ import {
   carriedNeedIds,
   defaultFileRequired,
   droppedLine,
+  joinsActiveRequest,
   lockedPerson,
   referentRequestOf,
   replacesQuestions,
@@ -372,15 +373,11 @@ export function AssignDialog({
     update({ fileRequired: on ? [...draft.fileRequired.filter((x) => x !== id), id] : draft.fileRequired.filter((x) => x !== id) });
   };
 
-  const previewParts = referentRequestPreview({
-    kind,
-    company: companyName,
-    useCase: card,
-    requesterName: requesterNameOf(panel.requester.name, companyName),
-    questions: ticked.length,
-    message: draft.message.trim() || null,
-    today: new Date(),
-  });
+  // (Rilascio 6) «Chiedi al referente» verso chi ha già una richiesta attiva qui: le domande entrano lì e parte
+  // l'email «nuove», non una richiesta nuova; l'anteprima è quella.
+  const joins = kind === "domande" && locked && joinsActiveRequest(panel, referent?.contact.id ?? null, new Date());
+  const previewInput = { company: companyName, useCase: card, requesterName: requesterNameOf(panel.requester.name, companyName), questions: ticked.length, today: new Date() };
+  const previewParts = joins ? referentNewQuestionsPreview(previewInput) : referentRequestPreview({ ...previewInput, kind, message: draft.message.trim() || null });
   const sendLabel = assignSendLabel(name);
   const gate = entry.notice;
 

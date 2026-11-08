@@ -15,7 +15,7 @@
  */
 import { UC_EMAIL_SENDER_NAME } from "../../uc/notify/email-render.ts";
 import { REFERENT_LIMITS } from "./contract.ts";
-import { referentRequestParts, type ReferentRequestParts } from "./email.ts";
+import { referentNewsParts, referentRequestParts, type ReferentRequestParts } from "./email.ts";
 
 /** Il link finto dell'anteprima: passa `checkReferentLink`, non si mostra mai. */
 export const PREVIEW_LINK = `https://unbundle.invalid/rispondi/ucq_${"x".repeat(32)}`;
@@ -69,6 +69,28 @@ export function referentRequestPreview(input: ReferentRequestPreviewInput): Refe
     cardLink: null,
     accountNotice: false,
   });
+}
+
+/**
+ * (Rilascio 6) Le domande che entrano nella richiesta attiva del referente («Chiedi al referente» verso chi ha
+ * già una richiesta viva, o completata con il link ancora valido): non parte una richiesta nuova ma l'email
+ * «nuove» («{Nome} ha aggiunto 2 domande …: le trovi insieme alle altre, con lo stesso link.»), con il link
+ * rinnovato per 30 giorni da oggi. Il resto come `referentRequestPreview`.
+ */
+export function referentNewQuestionsPreview(input: Omit<ReferentRequestPreviewInput, "kind" | "message">): ReferentRequestParts {
+  return referentNewsParts(
+    {
+      useCase: input.useCase,
+      requesterName: input.requesterName,
+      kind: "nuove",
+      openQuestions: input.questions,
+      newQuestions: Math.max(1, input.questions),
+      expiresAt: new Date(input.today.getTime() + REFERENT_LIMITS.linkDays * DAY_MS),
+      link: PREVIEW_LINK,
+      cardLink: null,
+    },
+    { company: input.company ?? "", replyToKnown: true, accountNotice: false },
+  );
 }
 
 /** Un blocco dell'anteprima a schermo: il link è solo la sua etichetta, mai un indirizzo. */

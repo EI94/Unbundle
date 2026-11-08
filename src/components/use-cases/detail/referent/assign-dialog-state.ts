@@ -354,3 +354,13 @@ export function referentStepInput(
     noTeamEstimate: Boolean(referent?.check && referent.check.team === null && !referent.check.benefits),
   };
 }
+
+/**
+ * (Rilascio 6) La persona ha una richiesta attiva su questo use case («inviata» o «completata», link non
+ * scaduto): «Chiedi al referente» aggiunge lì le domande nuove (il server fa lo stesso controllo).
+ */
+export function joinsActiveRequest(panel: Pick<UseCaseReferentPanel, "requests">, contactId: string | null, now: Date): boolean {
+  if (!contactId) return false;
+  const id = contactId.toLowerCase();
+  return panel.requests.some((r) => r.contact.id.toLowerCase() === id && (r.status === "inviata" || r.status === "completata") && new Date(r.expiresAt).getTime() > now.getTime());
+}

@@ -132,40 +132,51 @@ function teamAccessBlocks(cardLink: string | null | undefined, accountNotice = f
 const questionsWord = (n: number) => (n === 1 ? "una domanda" : `${n} domande`);
 const openWord = (n: number) => (n === 1 ? "una domanda aperta" : `${n} domande aperte`);
 
-function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { template: "promemoria" }>, brand?: EmailBrand): RenderedEmail {
+/**
+ * (Rilascio 6) L'oggetto e i blocchi dell'email «nuove» di un caso d'uso solo: le domande nuove (il testo del
+ * rilascio 5.1), un chiarimento, una risposta del team o più novità («Hai 2 novità …»). Li usano l'invio e
+ * l'anteprima di «Chiedi al referente» quando le domande entrano nella richiesta attiva: l'anteprima è l'email vera.
+ */
+export function referentNewsParts(e: ReminderEntry, input: { company: string; replyToKnown: boolean; accountNotice?: boolean }): ReferentRequestParts {
   const uc = labelOfUseCase(e.useCase);
   const link = checkReferentLink(e.link);
   const reply = { small: replyLine(input.replyToKnown, e.requesterName) };
-  if (e.kind === "nuove") {
-    // (Rilascio 6) Le novità del filo: un chiarimento chiesto dal team, una risposta a un tuo dubbio.
-    const clarifications = Math.max(0, e.clarifications ?? 0);
-    const replies = Math.max(0, e.replies ?? 0);
-    const fresh = Math.max(0, e.newQuestions - clarifications - replies);
-    const thread = clarifications + replies > 0;
-    if (thread) {
-      const only = fresh === 0 && (clarifications === 0 || replies === 0) && clarifications + replies === 1;
-      const what = only
-        ? clarifications === 1
-          ? { subject: `un chiarimento sul caso d'uso «${uc}»`, line: `${name(e.requesterName)} ti chiede un chiarimento sul caso d'uso «${uc}»: lo trovi con lo stesso link.`, label: "Rispondi" }
-          : { subject: `una risposta sul caso d'uso «${uc}»`, line: `${name(e.requesterName)} ha risposto alla tua domanda sul caso d'uso «${uc}»: la trovi con lo stesso link.`, label: "Leggi la risposta" }
-        : { subject: `${e.newQuestions} novità sul caso d'uso «${uc}»`, line: `Hai ${e.newQuestions} novità sul caso d'uso «${uc}», da ${name(e.requesterName)}: le trovi con lo stesso link.`, label: "Apri le novità" };
-      return render(subjectFor(input.company, what.subject), [
-        { p: "Buongiorno," },
-        { p: what.line },
-        { link: { href: link, label: what.label } },
-        { small: expiry(e.expiresAt) },
-        ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
-        reply,
-      ], brand);
-    }
-    return render(subjectFor(input.company, `nuove domande sul caso d'uso «${uc}»`), [
+  // (Rilascio 6) Le novità del filo: un chiarimento chiesto dal team, una risposta a un tuo dubbio.
+  const clarifications = Math.max(0, e.clarifications ?? 0);
+  const replies = Math.max(0, e.replies ?? 0);
+  const fresh = Math.max(0, e.newQuestions - clarifications - replies);
+  if (clarifications + replies > 0) {
+    const only = fresh === 0 && (clarifications === 0 || replies === 0) && clarifications + replies === 1;
+    const what = only
+      ? clarifications === 1
+        ? { subject: `un chiarimento sul caso d'uso «${uc}»`, line: `${name(e.requesterName)} ti chiede un chiarimento sul caso d'uso «${uc}»: lo trovi con lo stesso link.`, label: "Rispondi" }
+        : { subject: `una risposta sul caso d'uso «${uc}»`, line: `${name(e.requesterName)} ha risposto alla tua domanda sul caso d'uso «${uc}»: la trovi con lo stesso link.`, label: "Leggi la risposta" }
+      : { subject: `${e.newQuestions} novità sul caso d'uso «${uc}»`, line: `Hai ${e.newQuestions} novità sul caso d'uso «${uc}», da ${name(e.requesterName)}: le trovi con lo stesso link.`, label: "Apri le novità" };
+    return {
+      subject: subjectFor(input.company, what.subject),
+      blocks: [{ p: "Buongiorno," }, { p: what.line }, { link: { href: link, label: what.label } }, { small: expiry(e.expiresAt) }, ...teamAccessBlocks(e.cardLink, input.accountNotice === true), reply],
+    };
+  }
+  return {
+    subject: subjectFor(input.company, `nuove domande sul caso d'uso «${uc}»`),
+    blocks: [
       { p: "Buongiorno," },
       { p: `${name(e.requesterName)} ha aggiunto ${questionsWord(e.newQuestions)} sul caso d'uso «${uc}»: le trovi insieme alle altre, con lo stesso link.` },
       { link: { href: link, label: "Apri le domande" } },
       { small: expiry(e.expiresAt) },
       ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
       reply,
-    ], brand);
+    ],
+  };
+}
+
+function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { template: "promemoria" }>, brand?: EmailBrand): RenderedEmail {
+  const uc = labelOfUseCase(e.useCase);
+  const link = checkReferentLink(e.link);
+  const reply = { small: replyLine(input.replyToKnown, e.requesterName) };
+  if (e.kind === "nuove") {
+    const parts = referentNewsParts(e, input);
+    return render(parts.subject, parts.blocks, brand);
   }
   const last = e.kind === "ultimo";
   const subject = subjectFor(input.company, `${last ? "ultimo promemoria" : "promemoria"} sul caso d'uso «${uc}»`);

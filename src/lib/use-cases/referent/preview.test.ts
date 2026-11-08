@@ -81,3 +81,23 @@ test("il nome di chi chiede: come lo salva la richiesta, oppure «Il team di …
   assert.equal(requesterNameOf(null, "y".repeat(200)).length, 120);
   assert.ok(requesterNameOf(null, "y".repeat(200)).startsWith("Il team di "));
 });
+
+test("(rilascio 6) domande che entrano nella richiesta attiva: l'anteprima è l'email «nuove», la stessa dell'invio", async () => {
+  const { referentNewQuestionsPreview } = await import("./preview.ts");
+  const { renderReferentEmail } = await import("./email.ts");
+  const today = new Date("2026-11-09T10:00:00Z");
+  const parts = referentNewQuestionsPreview({ company: "TopJet", useCase: { code: "TJ-0004", title: "Fatture fornitori" }, requesterName: "Giulia Neri", questions: 2, today });
+  assert.equal(parts.subject, "TopJet: nuove domande sul caso d'uso «TJ-0004 · Fatture fornitori»");
+  const real = renderReferentEmail({
+    template: "promemoria",
+    company: "TopJet",
+    entries: [{ useCase: { code: "TJ-0004", title: "Fatture fornitori" }, requesterName: "Giulia Neri", kind: "nuove", openQuestions: 2, newQuestions: 2, expiresAt: new Date(today.getTime() + 30 * 86_400_000), link: PREVIEW_LINK }],
+    replyToKnown: true,
+    replyName: "Giulia Neri",
+  });
+  assert.equal(real.subject, parts.subject);
+  const texts = parts.blocks.flatMap((b) => ("p" in b ? [b.p] : "small" in b ? [b.small] : []));
+  for (const t of texts) assert.ok(real.text.includes(t), t);
+  assert.ok(texts.some((t) => t.includes("Giulia Neri ha aggiunto 2 domande sul caso d'uso «TJ-0004 · Fatture fornitori»: le trovi insieme alle altre, con lo stesso link.")));
+  assert.deepEqual(previewBlocks(parts).filter((b) => b.kind === "link"), [{ kind: "link", label: "Apri le domande" }]);
+});
