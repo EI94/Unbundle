@@ -265,7 +265,7 @@ test("«Chiedi un chiarimento» su una risposta: stessa richiesta riaperta, link
   const mails = await send(r.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1);
   assert.match(mails[0].subject, /^TopJet prova: un chiarimento sul caso d'uso «FL-\d+ · Fatture fornitori»$/);
-  assert.match(mails[0].text, /Giulia Neri ti chiede un chiarimento sul caso d'uso/);
+  assert.match(mails[0].text, /Il team ti chiede un chiarimento sul caso d'uso/);
   assert.ok(!mails[0].text.includes("Mario Rossi") && !mails[0].text.includes("fine mese"), "mai il testo del messaggio nell'email");
   assert.ok((await story(card.id)).includes("chiarimento"));
   // La scheda: il chiarimento in attesa sulla risposta, il turno al referente.

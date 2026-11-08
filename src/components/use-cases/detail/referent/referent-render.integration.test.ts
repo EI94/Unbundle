@@ -665,6 +665,16 @@ test("(rilascio 6) il filo sulla scheda: «Chiedi un chiarimento» sotto ogni ri
   assert.ok(block.includes(labels.fillText(R.pending, { testo: `Quante al mese, più o meno ${suffix}?` })), "il chiarimento in attesa sotto la voce");
   assert.match(block, /data-action="thread-reply"/, "«Rispondi» sul dubbio");
   assert.ok((block.match(/data-action="thread-clarify"/g) ?? []).length >= 2, "«Chiedi un chiarimento» sulle altre voci e sulla conferma");
+  // «Chiedi un chiarimento» sullo use case sta sotto «Lo use case: confermato.», prima della prima voce: mai due
+  // uguali di fila sotto l'ultima voce. La finestra dice di che cosa si chiede.
+  const confirmedAt = block.indexOf(labels.REFERENT_BLOCK_TEXT.confirmed);
+  const generalAt = block.indexOf('data-action="thread-clarify"');
+  const firstBenefitAt = block.indexOf('data-slot="referent-benefit-answer"');
+  assert.ok(confirmedAt > 0 && confirmedAt < generalAt && generalAt < firstBenefitAt, "sotto la conferma, prima delle voci");
+  const lastBenefitAt = block.lastIndexOf('data-slot="referent-benefit-answer"');
+  assert.ok((block.slice(lastBenefitAt).match(/data-action="thread-clarify"/g) ?? []).length <= 1, "sotto l'ultima voce solo il suo");
+  const [general] = findProp(await detailElement("builder"), "referents").filter(Boolean) as Panel[];
+  assert.equal(general.referent?.check?.clarify?.quote, "Lo use case: sì, è così.");
   assert.ok(block.includes(labels.fillText(R.suggestion, { testo: `Succede ogni mese ${suffix}?` })), "il suggerimento dell'AI");
   assert.ok(block.includes(`>${R.suggestionAsk}</button>`) && block.includes(`>${R.suggestionDismiss}</button>`));
   assert.doesNotMatch(block, /bg-primary/, "nessun pulsante pieno nel blocco");

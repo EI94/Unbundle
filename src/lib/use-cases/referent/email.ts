@@ -149,9 +149,9 @@ export function referentNewsParts(e: ReminderEntry, input: { company: string; re
     const only = fresh === 0 && (clarifications === 0 || replies === 0) && clarifications + replies === 1;
     const what = only
       ? clarifications === 1
-        ? { subject: `un chiarimento sul caso d'uso «${uc}»`, line: `${name(e.requesterName)} ti chiede un chiarimento sul caso d'uso «${uc}»: lo trovi con lo stesso link.`, label: "Rispondi" }
-        : { subject: `una risposta sul caso d'uso «${uc}»`, line: `${name(e.requesterName)} ha risposto alla tua domanda sul caso d'uso «${uc}»: la trovi con lo stesso link.`, label: "Leggi la risposta" }
-      : { subject: `${e.newQuestions} novità sul caso d'uso «${uc}»`, line: `Hai ${e.newQuestions} novità sul caso d'uso «${uc}», da ${name(e.requesterName)}: le trovi con lo stesso link.`, label: "Apri le novità" };
+        ? { subject: `un chiarimento sul caso d'uso «${uc}»`, line: `Il team ti chiede un chiarimento sul caso d'uso «${uc}»: lo trovi con lo stesso link.`, label: "Rispondi" }
+        : { subject: `una risposta sul caso d'uso «${uc}»`, line: `Il team ha risposto al tuo dubbio sul caso d'uso «${uc}»: trovi la risposta con lo stesso link.`, label: "Leggi la risposta" }
+      : { subject: `${e.newQuestions} novità sul caso d'uso «${uc}»`, line: `Hai ${e.newQuestions} novità sul caso d'uso «${uc}»: le trovi con lo stesso link.`, label: "Apri le novità" };
     return {
       subject: subjectFor(input.company, what.subject),
       blocks: [{ p: "Buongiorno," }, { p: what.line }, { link: { href: link, label: what.label } }, { small: expiry(e.expiresAt) }, ...teamAccessBlocks(e.cardLink, input.accountNotice === true), reply],

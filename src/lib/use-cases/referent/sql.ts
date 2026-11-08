@@ -165,21 +165,31 @@ export const REFERENT_LINK_RENEW_DAYS = 30;
  * a cui vanno le domande nuove, i chiarimenti e le risposte del team per la stessa persona sullo stesso use case.
  */
 export function activeRequestSql(request: string): SqlFragment {
+  return raw(activeRequestText(request));
+}
+
+/** {@link activeRequestSql} come testo, per i frammenti scritti come stringa (`benefitClarifyingSql`, `threadCountsColumnsSql`). */
+function activeRequestText(request: string): string {
   if (!/^[a-z][a-z0-9_]*$/.test(request)) throw new Error("Alias non valido");
-  return raw(`(${request}.status IN ('inviata', 'completata') AND ${request}.expires_at > now() AND ${request}.purged_at IS NULL)`);
+  return `(${request}.status IN ('inviata', 'completata') AND ${request}.expires_at > now() AND ${request}.purged_at IS NULL)`;
 }
 
 /**
  * Riapre una richiesta completata e attiva (torna «inviata»): domande nuove o un chiarimento per il
  * referente. I promemoria ripartono da adesso (`reminder_count` 0, `reopened_at`), la versione sale, e una
- * riga «riaperta» va nella Storia. Una richiesta già «inviata» non cambia.
+ * riga «riaperta» va nella Storia. Una richiesta già «inviata» non cambia. Non si riapre quando la stessa
+ * persona ha già un'altra richiesta «inviata» su questo use case (l'indice `use_case_referent_requests_live_unique`
+ * ne vuole una sola): un chiarimento resta allora sulla richiesta completata e attiva, le domande nuove vanno
+ * a quella viva (`addQuestionsToRequest` lo controlla).
  */
 export function reopenRequestStatements(i: { workspaceId: string; requestId: string }): UcStatement[] {
   const ws = id(i.workspaceId, "workspace");
   const req = id(i.requestId, "richiesta");
   return [
     toStatement(ucSql`UPDATE use_case_referent_requests r SET status = 'inviata', reopened_at = now(), reminder_count = 0, version = version + 1
-WHERE r.id = ${req} AND r.workspace_id = ${ws} AND r.status = 'completata' AND ${activeRequestSql("r")}`),
+WHERE r.id = ${req} AND r.workspace_id = ${ws} AND r.status = 'completata' AND ${activeRequestSql("r")}
+  AND NOT EXISTS (SELECT 1 FROM use_case_referent_requests o WHERE o.workspace_id = r.workspace_id AND o.use_case_id = r.use_case_id
+    AND o.contact_id = r.contact_id AND o.status = 'inviata' AND o.id <> r.id)`),
     referentEventsForRequestsSql({ filter: ucSql`r.id = ${req} AND r.workspace_id = ${ws} AND r.reopened_at = now()`, code: "riaperta", actor: { kind: "sistema" } }),
   ];
 }
@@ -776,23 +786,29 @@ export function queueExpiredRequestAlertsSql(i: {
 
 // ─── (Rilascio 6) Il filo: conteggi per gli stati, email al referente ─────────────────────────────
 
-/** Un chiarimento del team aspetta il referente su questa voce (`b`: una riga di `use_case_referent_check_benefits`). */
+/**
+ * Un chiarimento del team aspetta il referente su questa voce (`b`: una riga di `use_case_referent_check_benefits`),
+ * e il referente può ancora rispondere: la sua richiesta è attiva. Dopo la scadenza la voce torna da guardare.
+ */
 export function benefitClarifyingSql(benefit: string): string {
   if (!/^[a-z][a-z0-9_]*$/.test(benefit)) throw new Error("Alias non valido");
-  return `EXISTS (SELECT 1 FROM use_case_referent_messages bm WHERE bm.request_id = ${benefit}.request_id AND bm.anchor = 'beneficio' AND bm.component_key = ${benefit}.component_key
-    AND bm.side = 'team' AND bm.kind = 'chiarimento' AND bm.handled_at IS NULL AND bm.removed_at IS NULL)`;
+  return `EXISTS (SELECT 1 FROM use_case_referent_messages bm JOIN use_case_referent_requests br ON br.id = bm.request_id
+    WHERE bm.request_id = ${benefit}.request_id AND bm.anchor = 'beneficio' AND bm.component_key = ${benefit}.component_key
+    AND bm.side = 'team' AND bm.kind = 'chiarimento' AND bm.handled_at IS NULL AND bm.removed_at IS NULL AND ${activeRequestText("br")})`;
 }
 
 /**
  * Le tre colonne del filo di una richiesta `r` per gli stati: `t_clarifications` (chiarimenti del team che
  * aspettano il referente), `t_doubts` (dubbi del referente che aspettano il team), `t_news` (risposte e
  * aggiunte del referente su una voce o su «Generale» non ancora gestite). Solo conteggi della richiesta.
+ * Un chiarimento o un dubbio aspetta qualcuno solo finché la richiesta è attiva: dopo la scadenza nessuno dei
+ * due può più rispondere, e lo stato dello use case non resta fermo lì (come `threadFactsByRequest`).
  */
 export function threadCountsColumnsSql(request: string): SqlFragment {
-  if (!/^[a-z][a-z0-9_]*$/.test(request)) throw new Error("Alias non valido");
+  const active = activeRequestText(request);
   const open = `tm.request_id = ${request}.id AND tm.handled_at IS NULL AND tm.removed_at IS NULL`;
-  return raw(`(SELECT count(*)::int FROM use_case_referent_messages tm WHERE ${open} AND tm.side = 'team' AND tm.kind = 'chiarimento') AS t_clarifications,
-  (SELECT count(*)::int FROM use_case_referent_messages tm WHERE ${open} AND tm.side = 'referente' AND tm.kind = 'dubbio') AS t_doubts,
+  return raw(`(SELECT count(*)::int FROM use_case_referent_messages tm WHERE ${open} AND tm.side = 'team' AND tm.kind = 'chiarimento' AND ${active}) AS t_clarifications,
+  (SELECT count(*)::int FROM use_case_referent_messages tm WHERE ${open} AND tm.side = 'referente' AND tm.kind = 'dubbio' AND ${active}) AS t_doubts,
   (SELECT count(*)::int FROM use_case_referent_messages tm WHERE ${open} AND tm.side = 'referente' AND tm.kind IN ('risposta', 'aggiunta') AND tm.anchor <> 'domanda') AS t_news`);
 }
 

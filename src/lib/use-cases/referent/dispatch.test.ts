@@ -448,3 +448,18 @@ test("(rilascio 6) le domande aperte delle email non contano la conferma né i c
   assert.equal(openQuestionsOf({ openItems: 1, checkPending: false, openClarifications: 1 }), 0, "riaperta solo per un chiarimento");
   assert.equal(openQuestionsOf({ openItems: 2, checkPending: false, openClarifications: 5 }), 0, "mai sotto zero");
 });
+
+test("(rilascio 6) un chiarimento su una richiesta completata e attiva parte finché aspetta; una domanda nuova lì no", () => {
+  // La stessa persona ha un'altra richiesta «inviata» sullo use case: la completata non si riapre, il chiarimento resta lì.
+  const e = email({ template: "promemoria", requestId: null, dedupeKey: `pm:${R1}:2026-11-05` });
+  const completed = (over: Partial<ReferentRequestFacts>) =>
+    request({ status: "completata", live: false, active: true, openItems: 1, openClarifications: 1, item: { kind: "nuove", alreadySent: false, clarifications: 1, replies: 0 }, ...over });
+  const sent = plan(e, facts({ requests: [completed({})] }));
+  assert.equal(sent.action, "send");
+  if (sent.action === "send") assert.deepEqual(sent.links, [{ requestId: R1, issuedFor: "promemoria" }]);
+  // Il referente ha già risposto al chiarimento: niente email che glielo chiede.
+  assert.deepEqual(plan(e, facts({ requests: [completed({ openItems: 0, openClarifications: 0 })] })), { action: "cancel", reason: "nessuna_voce" });
+  // Scaduta, oppure una voce con sole domande nuove su una richiesta non viva: come prima.
+  assert.deepEqual(plan(e, facts({ requests: [completed({ active: false })] })), { action: "cancel", reason: "nessuna_voce" });
+  assert.deepEqual(plan(e, facts({ requests: [completed({ item: { kind: "nuove", alreadySent: false, clarifications: 0, replies: 0 } })] })), { action: "cancel", reason: "nessuna_voce" });
+});

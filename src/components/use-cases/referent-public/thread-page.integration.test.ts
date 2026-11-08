@@ -326,7 +326,7 @@ test("un chiarimento del team apre la pagina su «Da completare»: solo la novit
   const alert = await q(`SELECT answers FROM use_case_requester_email_items WHERE request_id = $1::uuid`, [r.requestId]);
   assert.ok(alert.some((a) => Number(a.answers) >= 1), "l'avviso a chi ha chiesto");
   const queued = await q(`SELECT status FROM use_case_referent_suggestions WHERE request_id = $1::uuid AND need_id = $2::uuid AND status = 'da_fare'`, [r.requestId, card.needs[0]]);
-  assert.equal(queued.length, queuedBefore + 1, "l'AI guarda la risposta dopo, mai qui");
+  assert.equal(queued.length, Math.max(1, queuedBefore), "l'AI guarda la risposta dopo, mai qui: una riga in attesa per risposta");
   const done = await html(r.token);
   assert.ok(!done.includes("Da completare"), "niente più di nuovo");
   for (const text of ["Hai risposto il", "Il team ha chiesto: «Al mese o all'anno, più o meno?»", "Hai risposto: «Al mese: circa 250 nei mesi pieni.»"]) assert.ok(done.includes(text), text);
@@ -449,7 +449,7 @@ test("un'email al giorno con tutte le novità: «Hai 2 novità sul caso d'uso �
   assert.equal(mails.length, 1);
   assert.equal(mails[0].to, r.email);
   assert.match(mails[0].subject, /^TopJet prova: 2 novità sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
-  assert.match(mails[0].text, /Hai 2 novità sul caso d'uso «FP-\d+ · Fatture fornitori», da Giulia Neri: le trovi con lo stesso link\./);
+  assert.match(mails[0].text, /Hai 2 novità sul caso d'uso «FP-\d+ · Fatture fornitori»: le trovi con lo stesso link\./);
   assert.match(mails[0].text, /Apri le novità/);
   assert.match(mails[0].text, /\/rispondi\/ucq_[A-Za-z0-9_-]{32}/);
   assert.match(mails[0].html, /Lateral Space via Unbundle/);

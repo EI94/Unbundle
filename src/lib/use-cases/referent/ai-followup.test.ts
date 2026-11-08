@@ -2,18 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  REFERENT_AI_LIMITS,
   REFERENT_AI_NOTICE_LINE,
   REFERENT_AI_NOTICE_VERSIONS,
   currentNoticeMentionsAi,
   followUpPrompt,
   noticeAllowsAi,
   parseFollowUp,
+  referentAiCallSettings,
   referentAiProviderReady,
   referentAiSuggestionsOn,
   resolveReferentAiModel,
 } from "./ai-followup.ts";
 import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
-import { PORTFOLIO_RANKING_DEFAULT_MODEL } from "../../portfolio/ai-ranking-contract.ts";
+import { PORTFOLIO_RANKING_DEFAULT_MODEL, portfolioRankingCallSettings } from "../../portfolio/ai-ranking-contract.ts";
 import { findHubForbidden } from "../copy-guard.ts";
 
 // (Rilascio 6, decisione 2) L'aiuto dell'AI nel filo: l'interruttore, l'informativa, il modello, il prompt, la rilettura.
@@ -71,9 +73,39 @@ test("la rilettura: una domanda valida, su una riga, con «?», con le regole de
 
 test("il modulo del server: mai un errore per il referente, log senza testi, il modello finto nei test", () => {
   const source = readFileSync(new URL("../../db/queries/use-case-referent-ai.ts", import.meta.url), "utf8");
-  assert.match(source, /logSafeError\("use-case-referent-ai", "followup_failed", error, \{ attempt: s\.attempts \}\)/);
+  assert.match(source, /logSafeError\("use-case-referent-ai", "followup_failed", error, \{ attempt: s\.attempts, finish: finishReasonOf\(error\) \}\)/);
   assert.doesNotMatch(source, /console\.(log|error)\([^)]*(body|prompt|question)/);
   assert.match(source, /generate\?: FollowUpGenerator/, "il generatore si passa: i test usano un modello finto");
   const pub = readFileSync(new URL("../../db/queries/use-case-referent-public.ts", import.meta.url), "utf8");
   assert.match(pub, /await processReferentSuggestions\(\{ requestId, limit: 10 \}\);/, "dopo la risposta, in `after()`");
+});
+
+test("la chiamata al modello: il limite dei token dell'auto-ranking (il ragionamento conta nel limite) e un tempo massimo", () => {
+  for (const model of [PORTFOLIO_RANKING_DEFAULT_MODEL, "claude-sonnet-4-5", "claude-modello-filo"]) {
+    const settings = referentAiCallSettings(model);
+    const ranking = portfolioRankingCallSettings(model);
+    assert.equal(settings.maxOutputTokens, ranking.maxOutputTokens, "lo stesso limite dell'auto-ranking");
+    assert.ok(settings.maxOutputTokens >= 16000, "mai 2000: con il ragionamento adattivo la risposta si troncherebbe");
+    assert.deepEqual(settings.providerOptions, ranking.providerOptions);
+    assert.equal(settings.timeoutMs, REFERENT_AI_LIMITS.callTimeoutMs);
+  }
+  assert.ok(REFERENT_AI_LIMITS.callTimeoutMs > 0 && REFERENT_AI_LIMITS.callTimeoutMs <= 30_000);
+  // Il passo dell'AI e una chiamata stanno nei 120 secondi del cron.
+  assert.ok(REFERENT_AI_LIMITS.cronBudgetMs + REFERENT_AI_LIMITS.callTimeoutMs <= 90_000);
+  const source = readFileSync(new URL("../../db/queries/use-case-referent-ai.ts", import.meta.url), "utf8");
+  assert.match(source, /const settings = referentAiCallSettings\(model\);/);
+  assert.match(source, /maxOutputTokens: settings\.maxOutputTokens,/);
+  assert.match(source, /abortSignal: AbortSignal\.timeout\(settings\.timeoutMs\),/);
+  assert.doesNotMatch(source, /maxOutputTokens: \d/, "nessun limite scritto a mano");
+});
+
+test("nel cron l'AI viene per ultima, dopo le pulizie, con un tempo massimo", () => {
+  const source = readFileSync(new URL("../../db/queries/use-case-referents.ts", import.meta.url), "utf8");
+  const purge = source.indexOf('await step("cron_notifiche_vecchie"');
+  const ai = source.indexOf('await step("cron_ai"');
+  assert.ok(purge > 0 && ai > 0, "i due passi ci sono");
+  assert.ok(purge < ai, "le pulizie dei 90 giorni prima del modello: un modello lento non le salta");
+  assert.match(source.slice(ai, ai + 200), /processReferentSuggestions\(\{ env, limit: 20, budgetMs: REFERENT_AI_LIMITS\.cronBudgetMs \}\)/);
+  const route = readFileSync(new URL("../../../app/api/cron/use-case-referents/route.ts", import.meta.url), "utf8");
+  assert.match(route, /maxDuration = 120\b/);
 });

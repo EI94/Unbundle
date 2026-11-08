@@ -191,8 +191,9 @@ function linkOf(links: Readonly<Record<string, string>>, requestId: string): str
 function dropReason(r: ReferentRequestFacts, now: Date): string | null {
   const item = r.item;
   // (Rilascio 6) Una risposta del team a un dubbio del referente va anche su una richiesta completata ancora
-  // attiva: non chiede niente, porta la risposta.
-  const reply = item?.kind === "nuove" && (item.replies ?? 0) > 0 && r.active === true;
+  // attiva: non chiede niente, porta la risposta. Così anche un chiarimento rimasto su una richiesta completata
+  // perché la stessa persona ne ha un'altra «inviata» sullo stesso use case (lì non si riapre), finché aspetta.
+  const reply = item?.kind === "nuove" && r.active === true && ((item.replies ?? 0) > 0 || ((item.clarifications ?? 0) > 0 && (r.openClarifications ?? 0) > 0));
   if (!r.live && !reply) return "richiesta_non_viva";
   if (r.openItems <= 0 && !reply) return "nessuna_domanda_aperta";
   if (!item) return "richiesta_non_viva";

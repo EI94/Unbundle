@@ -247,7 +247,10 @@ LEFT JOIN use_case_referent_checks c ON c.request_id = r.id AND c.workspace_id =
 WHERE r.id = ${req} AND r.workspace_id = ${ws}`),
     toStatement(ucSql`SELECT i.need_id, i.position, i.question, i.state, i.file_required, i.follow_up, ${openItemSql("i", "r")} AS open,
   EXISTS (SELECT 1 FROM use_case_needs en WHERE en.id = i.need_id AND en.workspace_id = r.workspace_id AND en.archived_at IS NULL
-          AND en.status <> ALL(${cast([...REFERENT_EDIT_LOCKED_STATUSES], "text[]")})) AS editable,
+          AND en.status <> ALL(${cast([...REFERENT_EDIT_LOCKED_STATUSES], "text[]")})
+          -- (Decisione 3) Un'aggiunta vuol dire che era «A posto»: da lì in poi solo «Aggiungi qualcosa».
+          AND NOT EXISTS (SELECT 1 FROM use_case_referent_messages am WHERE am.request_id = i.request_id AND am.anchor = 'domanda' AND am.need_id = i.need_id
+            AND am.side = 'referente' AND am.kind = 'aggiunta')) AS editable,
   EXISTS (SELECT 1 FROM use_case_needs vn JOIN use_case_need_links vl ON vl.need_id = vn.id AND vl.use_case_id = r.use_case_id
           WHERE vn.id = i.need_id AND vn.workspace_id = r.workspace_id AND vn.archived_at IS NULL) AS visible,
   EXISTS (SELECT 1 FROM use_case_needs hn JOIN use_case_need_links hl ON hl.need_id = hn.id AND hl.use_case_id = r.use_case_id

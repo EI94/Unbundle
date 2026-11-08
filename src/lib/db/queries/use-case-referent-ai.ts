@@ -5,16 +5,17 @@ import { getAppUcExecutor, type UcExecutor } from "@/lib/db/uc-executor";
 import { isUuid, type Env } from "@/lib/db/queries/use-case-referent-base";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { logSafeError } from "@/lib/log/safe-error";
-import { portfolioRankingCallSettings } from "@/lib/portfolio/ai-ranking-contract";
 import { rowBool, rowNumber, rowString } from "@/lib/uc/sql/readiness";
 import { cast, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 import type { ReferentThreadAnchor } from "@/lib/db/use-case-hub-referent-thread-ddl";
 import {
   FOLLOW_UP_JSON_SCHEMA,
+  REFERENT_AI_LIMITS,
   REFERENT_AI_NOTICE_VERSIONS,
   followUpPrompt,
   noticeAllowsAi,
   parseFollowUp,
+  referentAiCallSettings,
   referentAiProviderReady,
   referentAiSuggestionsOn,
   resolveReferentAiModel,
@@ -35,15 +36,19 @@ import { REFERENT_THREAD_LIMITS } from "@/lib/db/use-case-hub-referent-thread-dd
 /** Chi calcola la proposta: il modello vero, o (nei test e nel harness) uno finto. Restituisce l'oggetto del modello. */
 export type FollowUpGenerator = (i: { prompt: string; model: string }) => Promise<unknown>;
 
-/** Il modello dell'app, con le impostazioni dell'auto-ranking (output strutturato, limite dei token). */
+/**
+ * Il modello dell'app, con le impostazioni dell'auto-ranking (output strutturato, il limite dei token che lascia
+ * posto al ragionamento) e un tempo massimo: una chiamata lenta non tiene fermo il cron.
+ */
 export const providerFollowUpGenerator: FollowUpGenerator = async ({ prompt, model }) => {
-  const settings = portfolioRankingCallSettings(model);
+  const settings = referentAiCallSettings(model);
   const result = await generateObject({
     model: anthropic(model),
     schema: jsonSchema<Record<string, unknown>>(FOLLOW_UP_JSON_SCHEMA as never),
     prompt,
     providerOptions: settings.providerOptions,
-    maxOutputTokens: 2000,
+    maxOutputTokens: settings.maxOutputTokens,
+    abortSignal: AbortSignal.timeout(settings.timeoutMs),
   });
   return result.object;
 };
@@ -68,6 +73,14 @@ SELECT r.id, r.workspace_id, r.use_case_id, x.anchor, x.need_id, x.component_key
 FROM use_case_referent_requests r
 CROSS JOIN unnest(${cast(anchors.map((a) => a.anchor), "text[]")}, ${cast(anchors.map((a) => (a.anchor === "domanda" ? a.needId!.toLowerCase() : null)), "uuid[]")}, ${cast(anchors.map((a) => (a.anchor === "beneficio" ? a.componentKey : null)), "text[]")}) AS x(anchor, need_id, component_key)
 WHERE r.id = ${cast(i.requestId, "uuid")} AND r.workspace_id = ${cast(i.workspaceId, "uuid")} AND r.privacy_notice_version = ANY(${cast([...REFERENT_AI_NOTICE_VERSIONS], "text[]")})
+  -- Una riga ancora da calcolare per la stessa risposta basta: quando parte legge il testo di adesso.
+  AND NOT EXISTS (SELECT 1 FROM use_case_referent_suggestions ps WHERE ps.request_id = r.id AND ps.anchor = x.anchor
+    AND ps.need_id IS NOT DISTINCT FROM x.need_id AND ps.component_key IS NOT DISTINCT FROM x.component_key
+    AND ps.status = 'da_fare' AND ps.attempts = 0 AND (ps.lease_until IS NULL OR ps.lease_until <= now()))
+  -- Al massimo REFERENT_AI_LIMITS.rowsPerAnswerPerDay righe per la stessa risposta in 24 ore.
+  AND (SELECT count(*) FROM use_case_referent_suggestions ds WHERE ds.request_id = r.id AND ds.anchor = x.anchor
+    AND ds.need_id IS NOT DISTINCT FROM x.need_id AND ds.component_key IS NOT DISTINCT FROM x.component_key
+    AND ds.created_at > now() - interval '1 day') < ${cast(REFERENT_AI_LIMITS.rowsPerAnswerPerDay, "int")}
 ON CONFLICT DO NOTHING`);
 }
 
@@ -172,6 +185,21 @@ WHERE id = ${cast(id, "uuid")} AND status IN ('da_fare', 'errore')`),
   ]);
 }
 
+/** Le righe prese e non calcolate (tempo del cron finito): di nuovo in coda, il tentativo non conta. */
+async function release(executor: UcExecutor, ids: readonly string[]): Promise<void> {
+  if (!ids.length) return;
+  await executor.batch([
+    toStatement(ucSql`UPDATE use_case_referent_suggestions SET lease_until = NULL, attempts = greatest(attempts - 1, 0), updated_at = now()
+WHERE id = ANY(${cast([...ids], "uuid[]")}) AND status IN ('da_fare', 'errore')`),
+  ]);
+}
+
+/** Perché il modello si è fermato («length»: il limite dei token), solo come parola dell'SDK, mai un testo. */
+function finishReasonOf(error: unknown): string | null {
+  const reason = error && typeof error === "object" ? (error as { finishReason?: unknown }).finishReason : null;
+  return typeof reason === "string" && /^[a-z-]{1,20}$/.test(reason) ? reason : null;
+}
+
 export interface SuggestionRunSummary {
   proposed: number;
   none: number;
@@ -181,8 +209,12 @@ export interface SuggestionRunSummary {
 /**
  * Calcola le proposte in coda (di una richiesta, o di tutte dal cron). Non lancia mai: un errore del modello
  * lascia la riga «errore» per il prossimo tentativo (al massimo tre), e il referente non se ne accorge.
+ * Con `budgetMs` (il cron) non comincia una chiamata dopo quel tempo: le righe prese e non calcolate tornano
+ * in coda senza contare il tentativo.
  */
-export async function processReferentSuggestions(o: { env?: Env; requestId?: string | null; limit?: number; generate?: FollowUpGenerator } = {}): Promise<SuggestionRunSummary> {
+export async function processReferentSuggestions(
+  o: { env?: Env; requestId?: string | null; limit?: number; generate?: FollowUpGenerator; budgetMs?: number; clock?: () => number } = {},
+): Promise<SuggestionRunSummary> {
   const env = o.env ?? process.env;
   const summary: SuggestionRunSummary = { proposed: 0, none: 0, failed: 0 };
   if (!referentAiSuggestionsOn(env)) return summary;
@@ -193,7 +225,13 @@ export async function processReferentSuggestions(o: { env?: Env; requestId?: str
     const generate = o.generate ?? (referentAiProviderReady(env) ? providerFollowUpGenerator : null);
     const model = resolveReferentAiModel(env);
     const acks = new Map<string, boolean>();
-    for (const s of claimed) {
+    const clock = o.clock ?? Date.now;
+    const started = clock();
+    for (const [index, s] of claimed.entries()) {
+      if (o.budgetMs !== undefined && clock() - started >= o.budgetMs) {
+        await release(executor, claimed.slice(index).map((x) => x.id));
+        break;
+      }
       try {
         if (!acks.has(s.workspaceId)) acks.set(s.workspaceId, (await loadSubprocessorAck(executor, s.workspaceId)) !== null);
         const { input, allowed } = await readContent(executor, s);
@@ -210,7 +248,7 @@ export async function processReferentSuggestions(o: { env?: Env; requestId?: str
         else summary.none++;
       } catch (error) {
         summary.failed++;
-        logSafeError("use-case-referent-ai", "followup_failed", error, { attempt: s.attempts });
+        logSafeError("use-case-referent-ai", "followup_failed", error, { attempt: s.attempts, finish: finishReasonOf(error) });
         await settle(executor, s.id, "errore", null, null).catch(() => undefined);
       }
     }

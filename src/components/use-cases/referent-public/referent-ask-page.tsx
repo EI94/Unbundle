@@ -106,6 +106,18 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   // (Rilascio 6) Il filo: il campo aperto (uno alla volta), l'ultimo invio riuscito, le risposte ai chiarimenti
   // di «Da completare» (restano anche se la vista si rilegge), quello che manca, le risposte del team già segnate viste.
   const [composer, setComposer] = useState<{ key: string; mode: ThreadAction } | null>(null);
+  // Il campo aperto sotto una risposta ha un testo non ancora inviato al team.
+  const composerDirty = useRef(false);
+  const onComposerDirty = useCallback((dirty: boolean) => {
+    composerDirty.current = dirty;
+  }, []);
+  /** «Invia» non perde mai quello che il referente ha scritto per il team: si ferma e porta al campo. */
+  const composerBlocks = () => {
+    if (!composer || !composerDirty.current) return false;
+    setSubmitError(TT.composerOpen);
+    document.querySelector<HTMLTextAreaElement>('[data-slot="referent-thread-composer"] textarea')?.focus();
+    return true;
+  };
   const [sentKey, setSentKey] = useState<string | null>(null);
   const [replyTexts, setReplyTexts] = useState<Readonly<Record<string, string>>>({});
   const [replyErrors, setReplyErrors] = useState<Readonly<Record<string, string>>>({});
@@ -346,6 +358,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
 
   async function onSubmit() {
     if (submitBusy) return;
+    if (composerBlocks()) return;
     setSubmitBusy(true);
     setSubmitError(null);
     setIssues(new Map());
@@ -436,6 +449,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
    */
   async function onSubmitNews() {
     if (submitBusy) return;
+    if (composerBlocks()) return;
     setSubmitBusy(true);
     setSubmitError(null);
     setIssues(new Map());
@@ -532,15 +546,18 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       onComposer={(mode) => {
         setComposer(mode ? { key, mode } : null);
         setSentKey(null);
+        if (!mode) setSubmitError((e) => (e === TT.composerOpen ? null : e));
       }}
       primary={o.primary}
       privacyGate={privacyGate}
       sent={sentKey === key}
       onSent={() => {
         setComposer(null);
+        setSubmitError((e) => (e === TT.composerOpen ? null : e));
         void reload().then(() => setSentKey(key));
       }}
       onStale={() => void reload()}
+      onDirty={onComposerDirty}
     />
   );
   const questionThread = (section: QuestionSection, primary: boolean) =>

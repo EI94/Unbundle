@@ -546,6 +546,8 @@ export const REFERENT_PUBLIC_TEXT = Object.freeze({
    * già inviato, con «Ho un dubbio», «Aggiungi qualcosa» e «Modifica». Mai chi del team ha scritto: «il team».
    */
   thread: Object.freeze({
+    /** «Invia» con un messaggio per il team ancora aperto sotto una risposta. */
+    composerOpen: "Hai un messaggio per il team ancora da inviare: invialo o annullalo.",
     newsTitle: "Da completare",
     newsOne: "Hai una novità.",
     newsMany: "Hai {n} novità.",

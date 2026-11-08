@@ -34,6 +34,7 @@ import {
 } from "@/lib/db/queries/use-case-referent-base";
 import { createReferentDispatchStore, runReferentDispatchWith } from "@/lib/db/queries/use-case-referent-dispatch";
 import { processReferentSuggestions } from "@/lib/db/queries/use-case-referent-ai";
+import { REFERENT_AI_LIMITS, referentAiSuggestionsOn } from "@/lib/use-cases/referent/ai-followup";
 import { cleanupPendingFiles, deleteFileObjects, collectDeletedFileRows } from "@/lib/db/queries/use-case-referent-files";
 import { dispatchRequesterAlerts, purgeOldNotifications } from "@/lib/db/queries/use-case-notifications";
 import {
@@ -743,9 +744,11 @@ export async function loadUseCaseReferentPanel(i: {
       }
       const addable = [...askableIds].filter((id) => !r.needIds.includes(id));
       // (Rilascio 6) Anche una richiesta completata con il link valido accetta domande nuove: torna «inviata».
-      const addOpen = live || r.active;
+      // Non quando la stessa persona ha già un'altra richiesta «inviata» qui: le domande nuove vanno lì.
+      const otherLive = requests.some((o) => o.id !== r.id && o.contactId === r.contactId && o.storedStatus === "inviata");
+      const addOpen = live || (r.active && !otherLive);
       const add = !canAsk || !addOpen
-        ? { allowed: false, reason: addOpen ? null : T.addReasons.closed }
+        ? { allowed: false, reason: addOpen || otherLive ? null : T.addReasons.closed }
         : r.needIds.length >= REFERENT_LIMITS.questionsPerRequest
           ? { allowed: false, reason: T.addReasons.full }
           : addable.length === 0
@@ -905,7 +908,7 @@ export async function loadUseCaseReferentPanel(i: {
         check: r.check,
         // (Rilascio 6) Il filo della richiesta e le voci con un chiarimento in attesa.
         thread: threadByRequest.get(r.id) ?? null,
-        clarifyingKeys: threadRows.filter((m) => m.requestId === r.id && m.anchor === "beneficio" && m.componentKey && waitsForReferent(m)).map((m) => m.componentKey!),
+        clarifyingKeys: threadRows.filter((m) => m.requestId === r.id && m.requestActive && m.anchor === "beneficio" && m.componentKey && waitsForReferent(m)).map((m) => m.componentKey!),
       }));
       const referentContact = referentContactOf(facts);
       const declined = referentContact ? await readDeclinedNeedIds(executor, ws, uc, referentContact) : new Set<string>();
@@ -931,7 +934,7 @@ export async function loadUseCaseReferentPanel(i: {
       if (referent?.check && star) {
         const target = (anchor: { anchor: "beneficio" | "generale"; componentKey: string | null }, quote: string) =>
           clarifyTargetOf(threadRows, { requestId: star.id, requestActive: star.active, contactName: star.contactName, anchor: { ...anchor, needId: null }, quote, canAct: canAsk });
-        if (referent.check.submittedAt) referent.check.clarify = target({ anchor: "generale", componentKey: null }, referent.check.note ?? (referent.check.confirm === "si" ? "Sì, è così." : ""));
+        if (referent.check.submittedAt) referent.check.clarify = target({ anchor: "generale", componentKey: null }, referent.check.note ? `Lo use case: ${referent.check.note}` : referent.check.confirm === "si" ? "Lo use case: sì, è così." : "");
         for (const b of referent.check.benefits ?? []) b.clarify = target({ anchor: "beneficio", componentKey: b.key }, b.label);
       }
     }
@@ -960,7 +963,8 @@ export async function loadUseCaseReferentPanel(i: {
       latestReferentRequestId,
       thread: {
         messages: threadMessageViewsOf(threadRows, { today, canAct: canAsk }),
-        suggestions: canAsk ? threadSuggestionViewsOf(suggestionRows) : [],
+        // Con l'aiuto dell'AI spento (`USE_CASE_REFERENT_AI=off`) niente a schermo, nemmeno le proposte già calcolate.
+        suggestions: canAsk && referentAiSuggestionsOn(env) ? threadSuggestionViewsOf(suggestionRows) : [],
       },
     };
   } catch (error) {
@@ -1756,6 +1760,9 @@ async function addQuestionsToRequest(i: {
     ...lazyExpiry(ctx, card.id, now),
     activeVersionCasSql(ctx.workspaceId, request.id, i.expectedVersion),
     ...reopenRequestStatements({ workspaceId: ctx.workspaceId, requestId: request.id }),
+    // Una richiesta completata non si riapre quando la stessa persona ne ha un'altra «inviata» qui: le domande
+    // nuove vanno a quella (la scheda offre «Aggiungi domande» solo lì), mai in una richiesta che resta completata.
+    toStatement(ucSql`SELECT uc_require(EXISTS (SELECT 1 FROM use_case_referent_requests r WHERE r.id = ${req} AND r.workspace_id = ${ws} AND r.status = 'inviata'), 'richiesta_aperta') AS ok`),
     ...renewLinkStatements({ workspaceId: ctx.workspaceId, requestId: request.id }),
   ];
   if (i.message) statements.push(toStatement(ucSql`UPDATE use_case_referent_requests SET message = ${cast(i.message, "text")} WHERE id = ${req} AND workspace_id = ${ws}`));
@@ -2494,14 +2501,15 @@ LIMIT 200`),
     counts.caseAlertsCancelled += alerts.cancelled;
     counts.failed += alerts.failed;
   });
-  // 11f (rilascio 6). Le proposte dell'AI non ancora calcolate (dopo un errore, o un `after()` che non è partito).
-  await step("cron_ai", async () => {
-    await processReferentSuggestions({ env, limit: 20 });
-  });
   await step("cron_notifiche_vecchie", async () => {
     const purged = await purgeOldNotifications(now);
     counts.notificationsPurged += purged.notifications;
     await purgeOldCaseAlerts(now);
+  });
+  // 11f (rilascio 6). Le proposte dell'AI non ancora calcolate (dopo un errore, o un `after()` che non è partito).
+  // Per ultime, dopo le pulizie: un modello lento non le salta mai.
+  await step("cron_ai", async () => {
+    await processReferentSuggestions({ env, limit: 20, budgetMs: REFERENT_AI_LIMITS.cronBudgetMs });
   });
   return counts;
 }

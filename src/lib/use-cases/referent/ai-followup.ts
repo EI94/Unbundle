@@ -17,7 +17,7 @@
  *
  * Modulo puro: import relativi `.ts`.
  */
-import { neutralizeUserTextTag, resolvePortfolioRankingModel } from "../../portfolio/ai-ranking-contract.ts";
+import { neutralizeUserTextTag, portfolioRankingCallSettings, resolvePortfolioRankingModel } from "../../portfolio/ai-ranking-contract.ts";
 import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 import { checkThreadLine } from "./text.ts";
 import { REFERENT_THREAD_RULES } from "./thread.ts";
@@ -53,6 +53,23 @@ export function noticeAllowsAi(noticeVersion: string | null | undefined): boolea
 export function resolveReferentAiModel(env: Env = {}): string {
   const value = env.USE_CASE_REFERENT_AI_MODEL?.trim();
   return value && /^[A-Za-z0-9][A-Za-z0-9._:@/-]{1,99}$/.test(value) ? value : resolvePortfolioRankingModel(env as Record<string, string | undefined>);
+}
+
+/**
+ * I limiti dell'aiuto dell'AI:
+ * - `callTimeoutMs`: una chiamata al modello che non risponde si interrompe (la riga diventa «errore» e si riprova);
+ * - `rowsPerAnswerPerDay`: le proposte da calcolare per la stessa risposta (richiesta e ancora) in 24 ore, così
+ *   le modifiche e le aggiunte ripetute non diventano altrettante chiamate;
+ * - `cronBudgetMs`: quanto può durare il passo dell'AI nel cron, che ha 120 secondi in tutto.
+ */
+export const REFERENT_AI_LIMITS = Object.freeze({ callTimeoutMs: 30_000, rowsPerAnswerPerDay: 5, cronBudgetMs: 60_000 });
+
+/**
+ * Le impostazioni della chiamata al modello: quelle dell'auto-ranking (output strutturato e un limite di token
+ * che lascia posto al ragionamento adattivo dei modelli recenti, che conta nel limite) e il tempo massimo.
+ */
+export function referentAiCallSettings(modelId: string): ReturnType<typeof portfolioRankingCallSettings> & { timeoutMs: number } {
+  return { ...portfolioRankingCallSettings(modelId), timeoutMs: REFERENT_AI_LIMITS.callTimeoutMs };
 }
 
 /** Che cosa il modello legge di una risposta: la domanda (o la voce), la risposta in parole, il commento. */

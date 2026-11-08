@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TEXTAREA_CLASS } from "@/components/uc/referente/inputs/fields";
@@ -51,11 +51,14 @@ function ThreadComposer({
   onCancel,
   onSent,
   onStale,
+  onDirty,
 }: {
   token: string;
   mode: ThreadAction;
   targetKey: string;
   initial: string;
+  /** Il campo ha un testo che il team non ha ancora ricevuto (l'«Invia» della pagina si ferma lì). */
+  onDirty?: (dirty: boolean) => void;
   /** Il pulsante d'invio è pieno solo quando la schermata non ne ha già uno. */
   primary: boolean;
   onCancel: () => void;
@@ -69,6 +72,7 @@ function ThreadComposer({
   const max = mode === "edit" ? REFERENT_LIMITS.answerMax : REFERENT_THREAD_RULES.referentTextMax;
   const label = mode === "edit" ? TT.editLabel : mode === "add" ? TT.addLabel : TT.doubtLabel;
   const placeholder = mode === "edit" ? undefined : mode === "add" ? TT.addPlaceholder : TT.doubtPlaceholder;
+  useEffect(() => () => onDirty?.(false), [onDirty]);
 
   async function send() {
     if (busy) return;
@@ -102,6 +106,7 @@ function ThreadComposer({
   return (
     <form
       noValidate
+      data-slot="referent-thread-composer"
       className="space-y-2"
       onSubmit={(e) => {
         e.preventDefault();
@@ -123,6 +128,7 @@ function ThreadComposer({
         aria-describedby={error ? `${id}-errore` : undefined}
         onChange={(e) => {
           setText(e.target.value);
+          onDirty?.(e.target.value.trim() !== initial.trim());
           if (error) setError(null);
         }}
         className={TEXTAREA_CLASS}
@@ -164,6 +170,7 @@ export function ThreadItem({
   sent,
   onSent,
   onStale,
+  onDirty,
 }: {
   token: string;
   targetKey: string;
@@ -182,6 +189,7 @@ export function ThreadItem({
   sent: boolean;
   onSent: () => void;
   onStale: (code: string) => void;
+  onDirty?: (dirty: boolean) => void;
 }) {
   if (messages.length === 0 && actions.length === 0 && !sent) return null;
   const aria = (mode: ThreadAction) => fillText(mode === "edit" ? TT.aria.editOn : mode === "add" ? TT.aria.addOn : TT.aria.doubtOn, { testo: subject });
@@ -206,6 +214,7 @@ export function ThreadItem({
             onCancel={() => onComposer(null)}
             onSent={onSent}
             onStale={onStale}
+            onDirty={onDirty}
           />
         )
       ) : actions.length > 0 ? (

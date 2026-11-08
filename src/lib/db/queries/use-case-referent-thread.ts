@@ -16,6 +16,7 @@ import {
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { readinessSyncFor } from "@/lib/db/queries/use-case-alerts";
 import { latestSuggestionSql, suggestionQueueSql } from "@/lib/db/queries/use-case-referent-ai";
+import { referentAiSuggestionsOn } from "@/lib/use-cases/referent/ai-followup";
 import type { Issue } from "@/lib/uc/answers/issues";
 import { romeDate } from "@/lib/uc/calendar";
 import { ucEmailConfig } from "@/lib/uc/notify/dispatch";
@@ -286,11 +287,15 @@ export function threadRowOf(r: UcRow): ThreadRow | null {
   };
 }
 
-/** I fatti del filo di ogni richiesta (per gli stati e il turno). */
+/**
+ * I fatti del filo di ogni richiesta (per gli stati e il turno). Un chiarimento o un dubbio su una richiesta non
+ * più attiva (scaduta, cancellata) non aspetta più nessuno: lì non si risponde più, né dal link né dalla scheda.
+ * Restano le novità del referente da segnare «Fatto». Come `threadCountsColumnsSql` per la lista.
+ */
 export function threadFactsByRequest(rows: readonly ThreadRow[]): Map<string, ThreadFacts> {
   const by = new Map<string, ThreadRow[]>();
   for (const r of rows) by.set(r.requestId, [...(by.get(r.requestId) ?? []), r]);
-  return new Map([...by].map(([id, list]) => [id, threadFactsOf(list)]));
+  return new Map([...by].map(([id, list]) => [id, threadFactsOf(list.filter((r) => r.requestActive || newsForTeam(r)))]));
 }
 
 /** «Su «Volumi mensili»», «Su «Meno errori»», «In generale». */
@@ -322,7 +327,7 @@ export function threadMessageViewsOf(rows: readonly ThreadRow[], o: { today: str
       kind: r.kind,
       header: fillText(T.header, { autore: author, data: referentDateLabel(r.createdAt, o.today) }),
       text: r.removedAt ? null : r.body,
-      waiting: waitsForReferent(r) || waitsForTeam(r) || newsForTeam(r),
+      waiting: (r.requestActive && (waitsForReferent(r) || waitsForTeam(r))) || newsForTeam(r),
       canReply: o.canAct && r.requestActive && waitsForTeam(r),
       canDone: o.canAct && newsForTeam(r),
     };
@@ -412,7 +417,8 @@ export const askReferentClarification = guardedReferent(
     if (!isUuid(useCaseId) || !isUuid(body.requestId) || !anchor) return rfail("non_trovato");
     const line = checkThreadLine(body.text, RULES.teamLineMax);
     if (!line.ok) return rfail(line.code, line.message, { text: line.message });
-    const suggestionId = body.suggestionId === undefined || body.suggestionId === null ? null : isUuid(body.suggestionId) ? String(body.suggestionId).toLowerCase() : "x";
+    // Con l'aiuto dell'AI spento una proposta non si usa più: la riga è di chi la manda.
+    const suggestionId = body.suggestionId === undefined || body.suggestionId === null || !referentAiSuggestionsOn(deps.env) ? null : isUuid(body.suggestionId) ? String(body.suggestionId).toLowerCase() : "x";
     if (suggestionId === "x") return rfail("suggerimento_non_trovato");
     const executor = await getAppUcExecutor();
     const card = await readCard(executor, ctx.workspaceId, useCaseId);
@@ -442,12 +448,18 @@ WHERE s.id = ${cast(suggestionId, "uuid")} AND s.request_id = ${cast(request.id,
       ...reopenRequestStatements({ workspaceId: ctx.workspaceId, requestId: request.id }),
       ...renewLinkStatements({ workspaceId: ctx.workspaceId, requestId: request.id }),
     ];
+    // Un chiarimento aperto per risposta, riletto dopo il lock della richiesta: due invii insieme (due revisori,
+    // due schede) non ne aprono due sulla stessa risposta.
+    statements.push(
+      toStatement(ucSql`SELECT uc_require(NOT EXISTS (SELECT 1 FROM use_case_referent_messages pm WHERE pm.request_id = ${req} AND pm.side = 'team' AND pm.kind = 'chiarimento'
+    AND pm.handled_at IS NULL AND pm.removed_at IS NULL AND ${anchorFilter("pm", anchor)}), 'chiarimento_aperto') AS ok`),
+    );
     const inserted = statements.length;
     statements.push(
       toStatement(ucSql`WITH ins AS (
   INSERT INTO use_case_referent_messages (request_id, workspace_id, use_case_id, anchor, need_id, component_key, side, kind, author_user_id, body)
   SELECT r.id, r.workspace_id, r.use_case_id, ${cast(anchor.anchor, "text")}, ${cast(anchor.needId, "uuid")}, ${cast(anchor.componentKey, "text")}, 'team', 'chiarimento', ${cast(writer.userId, "uuid")}, ${cast(line.value, "text")}
-  FROM use_case_referent_requests r WHERE r.id = ${req} AND r.workspace_id = ${ws} AND r.use_case_id = ${cast(card.id, "uuid")} AND r.status = 'inviata' AND ${activeRequestSql("r")}
+  FROM use_case_referent_requests r WHERE r.id = ${req} AND r.workspace_id = ${ws} AND r.use_case_id = ${cast(card.id, "uuid")} AND ${activeRequestSql("r")}
   RETURNING id
 )
 SELECT (SELECT id FROM ins) AS id, uc_require((SELECT count(*) FROM ins) = 1, 'filo_non_disponibile') AS ok`),
@@ -708,6 +720,8 @@ export async function postReferentDoubt(link: ReferentLink, body: unknown, now: 
   const run = await referentBatch(executor, [
     lockRequestSql(link.workspaceId, link.requestId),
     insertReferentMessageSql(link, anchor, "dubbio", text.value, null),
+    // Anche il dubbio del referente rinnova il link per 30 giorni: il team fa in tempo a rispondere.
+    ...renewLinkStatements({ workspaceId: link.workspaceId, requestId: link.requestId }),
     ...referentNewsStatements(link, actorUserId, { answers: 0, questions: 1, code: "dubbio", now }),
   ]);
   if (!run.ok) return run.error === "domanda_non_disponibile" ? notAvailable() : pfail(run.error, run.message);
@@ -802,6 +816,14 @@ export async function editReferentAnswer(link: ReferentLink, body: unknown, now:
   const actorUserId = (await readReferentPerson(executor, link.workspaceId, link.contactId)).userId;
   const req = cast(link.requestId, "uuid");
   const ws = cast(link.workspaceId, "uuid");
+  // Un'altra modifica della stessa risposta nello stesso giorno (di Roma) non è una risposta nuova per il team:
+  // niente campanella, niente avviso a chi ha chiesto, niente riga in più nella Storia.
+  const [[prev]] = await executor.batch([
+    toStatement(ucSql`SELECT a.edited_at FROM use_case_need_answers a WHERE a.request_id = ${req} AND a.workspace_id = ${ws} AND a.need_id = ${cast(needId, "uuid")}
+  AND a.source = 'referente' AND a.status = 'inviata' AND a.removed_at IS NULL`),
+  ]);
+  const prevEdited = rowDate(prev?.edited_at);
+  const again = prevEdited !== null && romeDate(prevEdited) === romeDate(now);
   const run = await referentBatch(executor, [
     lockRequestSql(link.workspaceId, link.requestId),
     toStatement(ucSql`WITH upd AS (
@@ -809,6 +831,9 @@ export async function editReferentAnswer(link: ReferentLink, body: unknown, now:
   FROM use_case_needs n
   WHERE a.request_id = ${req} AND a.workspace_id = ${ws} AND a.need_id = ${cast(needId, "uuid")} AND a.source = 'referente' AND a.status = 'inviata' AND a.removed_at IS NULL
     AND n.id = a.need_id AND n.workspace_id = a.workspace_id AND n.archived_at IS NULL AND n.status <> ALL(${cast(["validata", "non_applicabile"], "text[]")})
+    -- (Decisione 3) Un'aggiunta vuol dire che era «A posto»: da lì in poi solo «Aggiungi qualcosa».
+    AND NOT EXISTS (SELECT 1 FROM use_case_referent_messages am WHERE am.request_id = a.request_id AND am.anchor = 'domanda' AND am.need_id = a.need_id
+      AND am.side = 'referente' AND am.kind = 'aggiunta')
   RETURNING a.edited_at
 )
 SELECT (SELECT edited_at FROM upd) AS edited_at, uc_require((SELECT count(*) FROM upd) = 1, 'risposta_chiusa') AS ok`),
@@ -816,7 +841,7 @@ SELECT (SELECT edited_at FROM upd) AS edited_at, uc_require((SELECT count(*) FRO
     toStatement(ucSql`UPDATE use_case_referent_request_items SET state = 'risposta' WHERE request_id = ${req} AND need_id = ${cast(needId, "uuid")} AND state = 'non_so'`),
     needToVerifySql(link, needId),
     ...[suggestionQueueSql({ workspaceId: link.workspaceId, requestId: link.requestId, anchors: [{ anchor: "domanda", needId, componentKey: null }], env: process.env })].filter((x): x is UcStatement => x !== null),
-    ...referentNewsStatements(link, actorUserId, { answers: 1, questions: 0, code: "risposta_cambiata", now }),
+    ...(again ? [] : referentNewsStatements(link, actorUserId, { answers: 1, questions: 0, code: "risposta_cambiata", now })),
     ...cardSyncStatements({ workspaceId: link.workspaceId, useCaseIds: [link.useCaseId], actorUserId, readiness: null }),
   ]);
   if (!run.ok) return run.error === "risposta_chiusa" ? pfail("risposta_chiusa") : pfail(run.error, run.message);

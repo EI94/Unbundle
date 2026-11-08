@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import { RotateCcw, Send, UserRound } from "lucide-react";
 import { ActionMenu, type ActionMenuItem } from "@/components/uc/ui/action-menu";
 import { Button } from "@/components/ui/button";
@@ -180,6 +181,13 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
     </Button>
   );
 
+  // (Rilascio 6) «Chiedi un chiarimento» sulla conferma («In generale»): subito sotto «Lo use case: …», prima
+  // delle voci (in fondo quando non ce ne sono), mai dopo l'ultima voce dove sembrerebbe di quella.
+  const firstBenefit = model.checkLines.findIndex((l) => l.kind === "benefit");
+  const generalClarify = referent?.check?.submittedAt ? (
+    <ClarifyControl workspaceId={workspaceId} useCaseId={useCaseId} target={clarifyOf(referent.check.clarify)} suggestion={suggestionFor(suggestions, clarifyOf(referent.check.clarify))} onOpen={onOpen} />
+  ) : null;
+
   // (Rilascio 6, B.1.2) «Manca il referente» con «Indica il referente» nel riquadro «Prossimo passo»: lo
   // stato si dice una volta, lì; il blocco non lo ripete.
   if (model.state === "manca" && boxOwnsChoose) return null;
@@ -239,7 +247,21 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
       {model.checkLines.length ? (
         <div data-slot="referent-check" className="space-y-1">
           {model.checkLines.map((line, index) =>
-            line.kind === "benefit" ? (
+            // «Chiedi un chiarimento» sullo use case sta sotto la sua conferma, prima della prima voce.
+            line.kind === "benefit" && index === firstBenefit && generalClarify ? (
+              <Fragment key={`g:${line.benefit.key}`}>
+                {generalClarify}
+                <BenefitAnswer lines={line.benefit} buttonOf={buttonOf}>
+                  <ClarifyControl
+                    workspaceId={workspaceId}
+                    useCaseId={useCaseId}
+                    target={benefitClarify(line.benefit.key)}
+                    suggestion={suggestionFor(suggestions, benefitClarify(line.benefit.key))}
+                    onOpen={onOpen}
+                  />
+                </BenefitAnswer>
+              </Fragment>
+            ) : line.kind === "benefit" ? (
               <BenefitAnswer key={line.benefit.key} lines={line.benefit} buttonOf={buttonOf}>
                 <ClarifyControl
                   workspaceId={workspaceId}
@@ -265,10 +287,7 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
           )}
         </div>
       ) : null}
-      {/* (Rilascio 6) «Chiedi un chiarimento» sulla conferma, «In generale». */}
-      {referent?.check?.submittedAt ? (
-        <ClarifyControl workspaceId={workspaceId} useCaseId={useCaseId} target={clarifyOf(referent.check.clarify)} suggestion={suggestionFor(suggestions, clarifyOf(referent.check.clarify))} onOpen={onOpen} />
-      ) : null}
+      {firstBenefit < 0 ? generalClarify : null}
       {model.buttons.length ? (
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {model.buttons.map(buttonOf)}
