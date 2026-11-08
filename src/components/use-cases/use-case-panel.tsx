@@ -346,7 +346,7 @@ function ReviewerBody({
   );
 }
 
-/** «Valore 12.250 € l'anno»: una riga (B.1.6), mai insieme al costo. */
+/** «Valore 9.600 € l'anno»: una riga (B.1.6), mai insieme al costo. */
 function PanelValueLine({ value }: { value: HubItem["value"] }) {
   const text = panelValueText(value);
   const counted = Boolean(value?.perYear && value.perYear.amount > 0);

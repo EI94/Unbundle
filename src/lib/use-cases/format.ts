@@ -520,7 +520,7 @@ export const PANEL_FIGURE_TEXT = Object.freeze({
 });
 
 /**
- * (Rilascio 6, B.1.6) Il Valore nel pannello, una riga: «Valore 12.250 € l'anno», con un modello da
+ * (Rilascio 6, B.1.6) Il Valore nel pannello, una riga: «Valore 9.600 € l'anno», con un modello da
  * misurare «Valore fino a 5.840 € l'anno», «Valore qualitativo», la parola del punteggio in minuscolo
  * («Valore alto»), «Valore da stimare». La fonte e il «da misurare» li dice la scheda.
  */

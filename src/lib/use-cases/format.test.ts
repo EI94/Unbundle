@@ -339,7 +339,7 @@ test("nessun testo di format è ISO, né «da dossier»", () => {
 
 test("(rilascio 6, B.1.6) il pannello: una cifra per riga, il valore e il costo separati, senza etichette ripetute", () => {
   const value = (over: Record<string, unknown>) => ({ word: null, perYear: null, benefits: null, ...over }) as Parameters<typeof panelValueText>[0];
-  assert.equal(panelValueText(value({ perYear: { amount: 12_250, source: "team" } })), "Valore 12.250 € l'anno");
+  assert.equal(panelValueText(value({ perYear: { amount: 9_600, source: "team" } })), "Valore 9.600 € l'anno");
   assert.equal(panelValueText(value({ benefits: { state: "da_misurare", benefitEur: 0, pendingEur: 5_840, hours: 0 } })), "Valore fino a 5.840 € l'anno");
   assert.equal(panelValueText(value({ benefits: { state: "qualitativo", benefitEur: 0, pendingEur: 0, hours: 0 } })), "Valore qualitativo");
   assert.equal(panelValueText(value({ word: "alto" })), "Valore alto");
