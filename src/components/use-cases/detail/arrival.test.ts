@@ -148,6 +148,9 @@ test("le pieghe nascono aperte dall'arrivo della navigazione, non da una prop de
   assert.deepEqual(foldTags.filter((tag) => /\sopen=/.test(tag)), ['<Fold id="storia" title={t.storia} summary={summaries.storia} open={historyAll}>'], "solo «Mostra tutto», che sta nell'indirizzo");
   assert.doesNotMatch(detail, /requestsOpen=|opens\(/, "«Richieste inviate» legge l'arrivo da sé");
   const needs = readFileSync(new URL("./section-needs.tsx", import.meta.url), "utf8");
-  assert.match(needs, /const requestsOpen = useLanding\(\) === "richieste";/);
+  assert.match(needs, /const landing = useLanding\(\);\n  const requestsOpen = landing === "richieste";/);
+  // (Rilascio 6) I requisiti dietro il loro conteggio: aperti dall'arrivo a «Cosa serve», mai dal passo di adesso.
+  assert.match(needs, /const requirementsOpen = landing === id;/);
+  assert.match(needs, /defaultOpen=\{requirementsOpen\}\n\s+arrivalOpen/);
   assert.match(needs, /<Disclosure id="richieste" defaultOpen=\{requestsOpen\}/);
 });

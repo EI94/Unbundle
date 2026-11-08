@@ -23,14 +23,17 @@ function focusTargetOf(el: HTMLElement): HTMLElement | null {
 }
 
 /**
- * Porta la pagina a un'ancora della scheda: apre la piega se l'ancora è un `<details>` (nient'altro
- * si apre), la porta in cima e le dà il fuoco senza scorrere di nuovo. Non cambia l'indirizzo.
+ * Porta la pagina a un'ancora della scheda: apre la piega se l'ancora è un `<details>` e, dentro, gli
+ * elenchi segnati `data-arrival-open` (rilascio 6: i requisiti di «Cosa serve»), la porta in cima e le
+ * dà il fuoco senza scorrere di nuovo. Non cambia l'indirizzo.
  * Vero se l'ancora c'è.
  */
 export function arriveAt(id: string): boolean {
   const el = document.getElementById(id);
   if (!el) return false;
   if (el instanceof HTMLDetailsElement && !el.open) el.open = true;
+  // (Rilascio 6, B.1.5) L'elenco intero dietro un conteggio («Requisiti · 9») si apre con l'arrivo.
+  for (const inner of el.querySelectorAll<HTMLDetailsElement>("details[data-arrival-open]")) inner.open = true;
   requestAnimationFrame(() => {
     el.scrollIntoView({ block: "start" });
     focusTargetOf(el)?.focus({ preventScroll: true });

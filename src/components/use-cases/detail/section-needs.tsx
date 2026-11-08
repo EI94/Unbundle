@@ -31,7 +31,6 @@ import {
   NEED_KIND_LABEL,
   NEED_LIMITS,
   NEED_OWNER_SIDE_LABEL,
-  NEED_ROWS_SHOWN,
   NEED_TYPE_LABEL,
   compareStepsByDate,
   isNeedDone,
@@ -62,7 +61,7 @@ import {
   NEED_FORM_CHOICES,
   NEED_FORM_TEXT as TEXT,
   draftFromNeed,
-  moreRowsText,
+  requirementsSummaryText,
   stepsSummaryText,
   emptyNeedDraft,
   needCreatePayload,
@@ -120,9 +119,9 @@ type Dialog =
 /**
  * Il capitolo «Cosa serve» della scheda, solo per i revisori (spec di Pierpaolo, 25/10/2026;
  * rilascio 3, compatto): la riga dei conteggi, poi i requisiti aperti collegati a questo use case,
- * prima quelli da verificare e poi l'ordine del team (`needsActionFirst`), i primi cinque in vista
- * (`NEED_ROWS_SHOWN`, gli stessi di ogni gruppo della vista «Cosa serve») e gli altri sotto «Mostra
- * le altre N»; poi, chiusi, «Prossimi passi · N» (dalla scadenza più vicina), «Già a posto · N» e
+ * prima quelli da verificare e poi l'ordine del team (`needsActionFirst`), (rilascio 6, B.1.5) dietro
+ * il loro conteggio «Requisiti · N», chiusi, aperti quando la pagina arriva a «Cosa serve» (un link
+ * del pannello, «Verifica le risposte», `?capitolo=cosa-serve`); poi, chiusi, «Prossimi passi · N» (dalla scadenza più vicina), «Già a posto · N» e
  * «Richieste inviate · N». Ogni riga dice il gruppo dello stato («Da chiedere», «In attesa», «Da
  * verificare», «Ferma», «A posto») con tipo, chi, scadenza e il dettaglio dello stato, e ha un solo
  * menu «⋯» con «Aggiungi una risposta», «Allega un file» e «Modifica». «Aggiungi» apre il modulo
@@ -165,7 +164,10 @@ export function SectionNeeds({
   // «Richieste inviate» aperta quando la pagina arriva con `?capitolo=richieste` («Nessuna risposta»
   // della campanella e delle email a chi ha chiesto), dove si chiede di nuovo: l'arrivo della
   // navigazione (`Arrival`), non quello che lo stesso indirizzo darebbe dopo una rilettura.
-  const requestsOpen = useLanding() === "richieste";
+  const landing = useLanding();
+  const requestsOpen = landing === "richieste";
+  // (Rilascio 6, B.1.5) I requisiti aperti dietro il loro conteggio, aperti quando la pagina arriva a «Cosa serve».
+  const requirementsOpen = landing === id;
 
   /** Manda una scrittura: toast, rilettura dopo una versione superata; chiude il dialogo se va bene. */
   function send(call: () => Promise<NeedActionResult>, onFieldErrors?: (errors: Record<string, string>) => void): Promise<boolean> {
@@ -198,8 +200,6 @@ export function SectionNeeds({
   // Prima quello che chiede di agire (le risposte da verificare), poi l'ordine del team: le prime
   // tre righe sono quelle del pannello (`panelNeeds`).
   const openRequirements = requirements.filter((need) => !isNeedDone(need.type, need.status)).sort(needsActionFirst);
-  const shownRequirements = openRequirements.slice(0, NEED_ROWS_SHOWN);
-  const moreRequirements = openRequirements.slice(NEED_ROWS_SHOWN);
   // I prossimi passi dalla scadenza più vicina, quelli senza data in fondo (`compareStepsByDate`):
   // lo stesso ordine del pannello e della linea del tempo di «Cosa serve» (rilascio 4).
   const doneSteps = steps.filter((need) => isNeedDone(need.type, need.status)).sort(compareStepsByDate);
@@ -257,16 +257,16 @@ export function SectionNeeds({
       ) : null}
       <InfoSummary view={infoProgress} />
       {empty ? <p className="text-sm text-muted-foreground">{TEXT.empty}</p> : null}
-      {requirements.length ? (
-        <div data-slot="needs-requirements" className="space-y-2">
-          <h3 className="text-sm font-medium">{TEXT.requirements}</h3>
-          {shownRequirements.length ? list(shownRequirements) : null}
-          {moreRequirements.length ? (
-            <Disclosure summary={moreRowsText(moreRequirements.length)} slot="needs-more">
-              {list(moreRequirements)}
-            </Disclosure>
-          ) : null}
-        </div>
+      {openRequirements.length ? (
+        // (Rilascio 6, B.1.5) Un conteggio al posto delle voci: «Requisiti · 9»; un tocco apre l'elenco intero.
+        <Disclosure
+          slot="needs-requirements"
+          summary={<span className="font-medium text-foreground">{keepTogether(requirementsSummaryText(openRequirements.length))}</span>}
+          defaultOpen={requirementsOpen}
+          arrivalOpen
+        >
+          {list(openRequirements)}
+        </Disclosure>
       ) : null}
       {steps.length || doneRequirements.length || requests.length ? (
         <div className="space-y-1">

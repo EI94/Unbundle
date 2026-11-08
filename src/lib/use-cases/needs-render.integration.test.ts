@@ -813,7 +813,12 @@ test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a p
   assert.ok(!page.includes('href="#cosa-serve"') && page.includes('<section id="cosa-serve"'), "l'ancora è la sezione");
   assert.match(page, /<h2 id="cosa-serve-titolo" tabindex="-1"/);
   const section = needsSectionOf(page);
-  assert.ok(section.includes(">Requisiti<"));
+  // (Rilascio 6, B.1.5) I requisiti aperti dietro il loro conteggio, chiusi; aperti arrivando a «Cosa serve».
+  const requirements = section.slice(section.lastIndexOf("<details", section.indexOf('data-slot="needs-requirements"')));
+  assertClosed(requirements);
+  assert.ok(requirements.includes(`Requisiti${N}·${N}4`), "«Requisiti · 4»");
+  assert.match(requirements, /data-arrival-open=""/);
+  assert.match(needsSectionOf(await detailHtml("builder", cards.quarter.id, { capitolo: "cosa-serve" })), /<details data-slot="needs-requirements" data-arrival-open="" open=""/, "aperti con ?capitolo=cosa-serve");
   for (const key of ["access", "decide", "procedure", "other", "extract"] as const) assert.ok(section.includes(T[key]), key);
   assert.ok(!section.includes(T.kickoff), "i passi non collegati non ci sono");
   assert.ok(!section.includes(T.archived));
@@ -840,7 +845,7 @@ test("scheda: il capitolo «Cosa serve» con le esigenze collegate, le righe a p
   assert.ok(needsSectionOf(other).includes("Niente per ora."));
 });
 
-test("scheda compatta: i primi cinque aperti, prima da verificare; «Mostra le altre N», «Prossimi passi», «Già a posto», chiusi", opts, () => {
+test("scheda compatta: (rilascio 6) «Requisiti · N» chiuso con tutti gli aperti, prima da verificare; «Prossimi passi», «Già a posto», chiusi", opts, () => {
   let n = 0;
   const view = (over: Partial<import("./needs.ts").NeedView>): import("./needs.ts").NeedView => {
     n += 1;
@@ -898,13 +903,13 @@ test("scheda compatta: i primi cinque aperti, prima da verificare; «Mostra le a
       ),
     );
   const html = render([...open, done]);
-  const requirements = between(html, 'data-slot="needs-requirements"', 'data-slot="needs-more"');
+  // (Rilascio 6, B.1.5) Il conteggio al posto delle voci: tutti gli aperti dietro «Requisiti · 7», chiuso, prima quella da verificare.
+  const requirements = html.slice(html.lastIndexOf("<details", html.indexOf('data-slot="needs-requirements"')), html.indexOf('data-slot="needs-steps"'));
+  assertClosed(requirements);
+  assert.ok(requirements.includes(`Requisiti${N}·${N}${open.length}`), "«Requisiti · N»");
   const shown = [...requirements.matchAll(/data-need="([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(shown, [open[6], ...open.slice(0, 4)].map((need) => need.id), "cinque in vista, prima quella da verificare");
-  // Le altre due sotto «Mostra le altre 2», chiuse.
-  const more = detailsAround(html, `Sei ${suffix}`);
-  assertClosed(more);
-  assert.ok(more.includes(`Mostra le altre 2`) && more.includes(`Cinque ${suffix}`));
+  assert.deepEqual(shown, [open[6], ...open.slice(0, 6)].map((need) => need.id), "tutti, prima quella da verificare");
+  assert.ok(!html.includes("Mostra le altre") && !html.includes("Mostra l'altra"), "nessun «Mostra»: il tocco apre l'elenco intero");
   // I gruppi dei cinque con il dettaglio dello stato; mai le etichette del modulo.
   for (const label of [">Da verificare<", ">In attesa<", ">Da chiedere<", ">Ferma<", ">A posto<"]) assert.ok(html.includes(label), label);
   for (const note of ["manca il dato", "risposta parziale", "non si applica"]) assert.ok(html.includes(note), note);
@@ -919,13 +924,10 @@ test("scheda compatta: i primi cinque aperti, prima da verificare; «Mostra le a
   const doneBlock = detailsAround(html, `Fatta ${suffix}`);
   assertClosed(doneBlock);
   assert.ok(doneBlock.includes(`Già a posto${N}·${N}1`));
-  assert.ok(html.indexOf("Mostra le altre") < html.indexOf("Prossimi passi") && html.indexOf("Prossimi passi") < html.indexOf("Già a posto"), "l'ordine della scheda");
+  assert.ok(html.indexOf("Requisiti") < html.indexOf("Prossimi passi") && html.indexOf("Prossimi passi") < html.indexOf("Già a posto"), "l'ordine della scheda");
   assert.ok(!html.includes("Richieste inviate"));
-  // Sei aperte: «Mostra l'altra».
-  const six = render(open.slice(0, 6));
-  assert.ok(six.includes("Mostra l'altra") && !six.includes("Mostra le altre"));
-  // Cinque o meno: nessun «Mostra».
-  assert.ok(!render(open.slice(0, 5)).includes("Mostra l"));
+  // Un aperto solo: «Requisiti · 1», anche lui dietro il conteggio.
+  assert.ok(render(open.slice(0, 1)).includes(`Requisiti${N}·${N}1`));
   // (Rilascio 4) «Prossimi passi» dalla scadenza più vicina, anche contro l'ordine del team; quelli
   // senza data in fondo: lo stesso ordine del pannello e della linea del tempo di «Cosa serve».
   const dated = [

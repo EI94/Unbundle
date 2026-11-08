@@ -41,50 +41,53 @@ function Items({ items }: { items: ImpactItems }) {
   const term = (row: ImpactItems["origin"][number]) => ("key" in row.term ? VALUE_MODEL_EDITOR_TEXT[row.term.key] : row.term.text);
   const chips = [...items.qualitative.map((label) => ({ label, strong: false })), ...(items.toConfirm ? [{ label: t.toConfirm, strong: true }] : [])];
   if (!items.lines.length && !chips.length && !items.measuredBy && !items.origin.length) return null;
+  // (Rilascio 6, B.1.6) In vista la cifra, il costo e il rientro; le voci con il loro conto, i chip e da dove vengono i numeri a un tocco.
   return (
-    <div data-slot="impatto-voci-blocco" className="space-y-3">
-      {items.lines.length ? (
-        <ul data-slot="impatto-voci" className="space-y-1.5 text-sm">
-          {items.lines.map((line, index) => (
-            <li key={`${line.label}-${index}`} data-slot="impatto-voce" className="break-words">
-              <span className="font-medium">{line.label}</span>
-              <span className="text-muted-foreground">{FIGURE_SEPARATOR}</span>
-              {keepTogether(line.formula)}
-              <span className="text-muted-foreground">
-                {FIGURE_SEPARATOR}
-                {line.confidence}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {chips.length ? (
-        <ul data-slot="impatto-chip" className="flex flex-wrap gap-1.5">
-          {chips.map((chip) => (
-            <li key={chip.label} className={cn("inline-flex max-w-full items-center rounded-full border border-input px-2 py-0.5 text-xs break-words text-foreground", chip.strong && "font-medium")}>
-              {chip.label}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {items.measuredBy || items.origin.length ? (
-        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-1">
-          {items.measuredBy ? <p className="min-w-0 text-sm break-words">{items.measuredBy}</p> : null}
-          {items.origin.length ? (
-            <Disclosure summary={t.origin} slot="impatto-origine" className="min-w-0">
-              <dl className="grid gap-2 text-sm">
-                {items.origin.map((row, index) => (
-                  <div key={index} className="grid min-w-0 gap-0.5">
-                    <dt className="text-muted-foreground">{term(row)}</dt>
-                    <dd className="min-w-0 break-words whitespace-pre-line">{row.detail}</dd>
-                  </div>
-                ))}
-              </dl>
-            </Disclosure>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+    <Disclosure summary={t.howCounted} slot="impatto-come">
+      <div data-slot="impatto-voci-blocco" className="space-y-3">
+        {items.lines.length ? (
+          <ul data-slot="impatto-voci" className="space-y-1.5 text-sm">
+            {items.lines.map((line, index) => (
+              <li key={`${line.label}-${index}`} data-slot="impatto-voce" className="break-words">
+                <span className="font-medium">{line.label}</span>
+                <span className="text-muted-foreground">{FIGURE_SEPARATOR}</span>
+                {keepTogether(line.formula)}
+                <span className="text-muted-foreground">
+                  {FIGURE_SEPARATOR}
+                  {line.confidence}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {chips.length ? (
+          <ul data-slot="impatto-chip" className="flex flex-wrap gap-1.5">
+            {chips.map((chip) => (
+              <li key={chip.label} className={cn("inline-flex max-w-full items-center rounded-full border border-input px-2 py-0.5 text-xs break-words text-foreground", chip.strong && "font-medium")}>
+                {chip.label}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {items.measuredBy || items.origin.length ? (
+          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-1">
+            {items.measuredBy ? <p className="min-w-0 text-sm break-words">{items.measuredBy}</p> : null}
+            {items.origin.length ? (
+              <Disclosure summary={t.origin} slot="impatto-origine" className="min-w-0">
+                <dl className="grid gap-2 text-sm">
+                  {items.origin.map((row, index) => (
+                    <div key={index} className="grid min-w-0 gap-0.5">
+                      <dt className="text-muted-foreground">{term(row)}</dt>
+                      <dd className="min-w-0 break-words whitespace-pre-line">{row.detail}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </Disclosure>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </Disclosure>
   );
 }
 

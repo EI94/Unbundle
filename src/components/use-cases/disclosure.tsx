@@ -22,6 +22,7 @@ export function Disclosure({
   className,
   summaryClassName,
   summaryDescribedBy,
+  arrivalOpen = false,
 }: {
   summary: ReactNode;
   slot?: string;
@@ -31,9 +32,11 @@ export function Disclosure({
   className?: string;
   summaryClassName?: string;
   summaryDescribedBy?: string;
+  /** (Rilascio 6) Si apre anche quando la pagina arriva all'ancora che lo contiene (`arriveAt`): l'elenco intero dietro un conteggio. */
+  arrivalOpen?: boolean;
 }) {
   return (
-    <details id={id} data-slot={slot} className={className} open={defaultOpen || undefined}>
+    <details id={id} data-slot={slot} data-arrival-open={arrivalOpen ? "" : undefined} className={className} open={defaultOpen || undefined}>
       <summary
         aria-describedby={summaryDescribedBy}
         className={cn(
