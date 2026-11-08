@@ -909,6 +909,48 @@ export interface PanelNeeds {
   rows: NeedRow[];
   /** Le altre aperte, oltre le tre. */
   more: number;
+  /** (Rilascio 6, B.1.5) Il conteggio al posto delle voci: le aperte, i requisiti per gruppo e i passi aperti. */
+  summary: NeedsCountSummary;
+}
+
+/** (Rilascio 6, B.1.5) «Cosa serve · 9»: quante esigenze sono aperte e come stanno, mai per persona. */
+export interface NeedsCountSummary {
+  /** Le esigenze aperte: requisiti non a posto più passi non fatti. */
+  open: number;
+  /** I requisiti per gruppo di stato (anche quelli a posto, per la barra). */
+  counts: NeedAskCounts;
+  /** I passi non ancora fatti. */
+  steps: number;
+}
+
+/** (Rilascio 6) Le parti della riga sotto «Cosa serve · 9»: i gruppi dei requisiti aperti, poi i passi. */
+export function needsCountPieces(summary: NeedsCountSummary): string[] {
+  const pieces = needAskPieces({ ...summary.counts, done: 0 });
+  if (summary.steps) pieces.push(summary.steps === 1 ? "1 passo" : `${formatInteger(summary.steps)} passi`);
+  return pieces;
+}
+
+/** (Rilascio 6) La barra sottile di «Cosa serve»: un tratto per gruppo, nell'ordine dei conteggi, senza gli zeri. */
+export function needsCountBar(summary: NeedsCountSummary): Array<{ group: NeedRequestGroup | "steps"; count: number; tone: SemaforoColor }> {
+  const c = summary.counts;
+  const parts: Array<{ group: NeedRequestGroup | "steps"; count: number; tone: SemaforoColor }> = [
+    { group: "toVerify", count: c.toVerify, tone: REQUEST_GROUP_TONE.toVerify },
+    { group: "toAsk", count: c.toAsk, tone: REQUEST_GROUP_TONE.toAsk },
+    { group: "waiting", count: c.waiting, tone: REQUEST_GROUP_TONE.waiting },
+    { group: "blocked", count: c.blocked, tone: REQUEST_GROUP_TONE.blocked },
+    { group: "steps", count: summary.steps, tone: "grigio" },
+    { group: "done", count: c.done, tone: REQUEST_GROUP_TONE.done },
+  ];
+  return parts.filter((part) => part.count > 0);
+}
+
+/** (Rilascio 6) Il conteggio di «Cosa serve» di uno use case: requisiti per gruppo e passi aperti; null senza esigenze. */
+export function needsCountSummaryOf(needs: readonly NeedView[], useCaseId: string): NeedsCountSummary | null {
+  const linked = needs.filter((need) => !need.archivedAt && linkedTo(need, useCaseId));
+  if (!linked.length) return null;
+  const counts = needAskCountsOf(linked, new Set([useCaseId.toLowerCase()]));
+  const steps = linked.filter((need) => need.type !== "requisito" && !isNeedDone(need.type, need.status)).length;
+  return { open: counts.open + steps, counts, steps };
 }
 
 function linkedTo(need: Pick<NeedView, "useCaseIds">, useCaseId: string): boolean {
@@ -930,7 +972,11 @@ export function panelNeeds(needs: readonly NeedView[], item: NeedUseCaseRef, tod
   ];
   if (!open.length) return null;
   const refs = refsOf([item]);
-  return { rows: open.slice(0, PANEL_NEEDS_MAX).map((need) => needRow(need, refs, today)), more: Math.max(0, open.length - PANEL_NEEDS_MAX) };
+  return {
+    rows: open.slice(0, PANEL_NEEDS_MAX).map((need) => needRow(need, refs, today)),
+    more: Math.max(0, open.length - PANEL_NEEDS_MAX),
+    summary: needsCountSummaryOf(needs, item.id)!,
+  };
 }
 
 export interface UseCaseNeedLists {

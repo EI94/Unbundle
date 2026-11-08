@@ -118,7 +118,8 @@ test("le letture delle esigenze le chiamano solo le pagine dell'area, con canSee
 // chiedono solo a chi vede «Cosa serve»; nessun'altra pagina le chiama.
 const REFERENT_READS = /\b(listInfoProgress|loadUseCaseInfoProgress|loadUseCaseReferentPanel)\(/g;
 const REFERENT_READ_CALLERS: Readonly<Record<string, { guard: string; names: readonly string[] }>> = {
-  "src/components/use-cases/hub.tsx": { guard: "abilities.canSeeNeeds ?", names: ["listInfoProgress"] },
+  // (Rilascio 6, B.2) Il pannello aperto legge il referente come la scheda, per le sue finestre.
+  "src/components/use-cases/hub.tsx": { guard: "abilities.canSeeNeeds ?", names: ["listInfoProgress", "loadUseCaseReferentPanel"] },
   "src/app/(dashboard)/dashboard/[workspaceId]/use-cases/[useCaseId]/page.tsx": {
     guard: "abilities.canSeeNeeds && needLists ?",
     names: ["loadUseCaseReferentPanel", "loadUseCaseInfoProgress"],

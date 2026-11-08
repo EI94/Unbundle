@@ -6,6 +6,11 @@ import { dossierColumnOf } from "@/lib/db/queries/use-case-dossiers";
 import { listWorkspaceNeeds } from "@/lib/db/queries/use-case-needs";
 import { listInfoProgress } from "@/lib/db/queries/use-case-info-progress";
 import { listReferentStates } from "@/lib/db/queries/use-case-referent-states";
+import { loadUseCaseReferentPanel } from "@/lib/db/queries/use-case-referents";
+import type { UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
+import { referentDescription } from "@/lib/use-cases/referent/description";
+import { impactRowsOf } from "@/lib/use-cases/referent/impact";
+import { eligibleForReferent } from "@/lib/use-cases/referent/use-case-state";
 import { REFERENT_STATE_PARAM, type ReferentReview, type ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import { referentFilterOptions } from "@/lib/use-cases/referent/filter";
 import type { DossierColumn } from "@/lib/db/queries/uc-nav";
@@ -24,8 +29,8 @@ import { INFO_PROGRESS_PARAM, type InfoProgressState, type InfoProgressView } fr
 import { channelLabel } from "@/lib/use-cases/labels";
 import { laneBarScale, PANORAMA_SECTION_ID } from "@/lib/use-cases/lanes";
 import { keepTogether } from "@/lib/use-cases/line-breaks";
-import { nextStepOf } from "@/lib/use-cases/guided";
-import { buildNeedsBoard, clientGroupLabel, panelNeeds, type NeedView } from "@/lib/use-cases/needs";
+import { nextStepOf, type NextStep } from "@/lib/use-cases/guided";
+import { buildNeedsBoard, clientGroupLabel, needListsOfUseCase, needOwnerText, panelNeeds, type NeedView } from "@/lib/use-cases/needs";
 import { overviewFigures, overviewNextStep, overviewSteps, portfolioLine } from "@/lib/use-cases/panoramica";
 import { abilitiesForUseCase, type UseCaseAbilities } from "@/lib/use-cases/permissions";
 import { compareQuarters, quarterLabel, WHEN_LATER_LABEL } from "@/lib/use-cases/quarter";
@@ -62,7 +67,11 @@ import { HashFocusOnCommit, ListFocusTarget } from "./list-focus";
 import { LANES_TEXT, PanoramaLanes, type LanesGrouping } from "./panorama-lanes";
 import { PanoramicaTop } from "./panoramica-top";
 import { QuickCreateSheet } from "./quick-create-sheet";
-import { UseCasePanel, type PanelNextStep, type UseCasePanelData } from "./use-case-panel";
+import { UseCasePanel, type UseCasePanelData } from "./use-case-panel";
+import { askEntry } from "./detail/referent/ask-dialog-state";
+import { referentStepInput } from "./detail/referent/assign-dialog-state";
+import type { AssignContext } from "./detail/referent/assign-dialog";
+import type { AskNeedInfo } from "./detail/referent/ask-steps-state";
 import { hubHref, panelHref, withoutTransient, type HubQuery } from "./use-case-row";
 
 /**
@@ -112,6 +121,12 @@ export interface UseCaseHubData {
   panelAnswers: InfoAnswer[];
   /** Al contributore, la sua risposta a «Serve info» dello use case aperto, se è suo e non ancora deciso (D17). */
   panelOwnAnswer: InfoAnswer | null;
+  /**
+   * (Rilascio 6, B.2) Il referente dello use case aperto, per il pulsante del passo del pannello che fa il
+   * passo da lì («Indica il referente» apre «Scegli il referente»): la stessa lettura della scheda
+   * (`loadUseCaseReferentPanel`), solo per un revisore che vede «Cosa serve»; null altrimenti.
+   */
+  panelReferent: PanelReferent | null;
   /**
    * Le card dei dossier della colonna «In realizzazione» (H6a, `dossierColumnOf`): solo per un
    * revisore sulla Panoramica, senza grafico, con la parte del dossier che ha risposto; null altrimenti.
@@ -164,6 +179,15 @@ export interface UseCaseHubData {
   chart: HubChartParam | null;
 }
 
+/** (Rilascio 6) Quello che le finestre del referente del pannello ricevono, come nella scheda. */
+export interface PanelReferent {
+  panel: UseCaseReferentPanel | null;
+  needInfo: Record<string, AskNeedInfo>;
+  card: { code: string | null; title: string };
+  assign: AssignContext;
+  companyDisplayName: string | null;
+}
+
 /** Tutto quello che serve alla pagina, per chi guarda. null per chi non entra nell'area. */
 export async function loadUseCaseHub({ workspaceId, session, access, searchParams, now }: UseCaseHubInput): Promise<UseCaseHubData | null> {
   const viewer = viewerFromSession(session.user, access.role);
@@ -210,6 +234,37 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     // (Rilascio 5) Lo stato del referente degli use case che chi guarda vede: per tutti i ruoli.
     listReferentStates(workspaceId, viewer, items, { now }),
   ]);
+  // (Rilascio 6, B.2) Il referente dello use case aperto: la stessa lettura della scheda, dopo le esigenze.
+  const openedReviewer = opened && opened.projection !== "contributore" ? opened.useCase : null;
+  const openedLists = openedReviewer && needs && abilities.canSeeNeeds ? needListsOfUseCase(needs, openedReviewer.id) : null;
+  // Solo a chi vede «Cosa serve», come nella scheda; la lettura stessa risponde null agli altri.
+  const panelRead =
+    openedReviewer && openedLists && abilities.canSeeNeeds ? loadUseCaseReferentPanel({
+          workspaceId,
+          useCaseId: openedReviewer.id,
+          viewer,
+          session: { id: session.user.id, name: session.user.name ?? null, email: session.user.email, emailVerified: session.user.emailVerified === true },
+          role: access.role,
+          needs: openedLists,
+          eligible: eligibleForReferent({ portfolioKind: openedReviewer.kind === "da_diffondere" ? "best_practice" : "use_case_ai", phase: openedReviewer.phase }),
+          now,
+        }).catch((error: unknown) => {
+          console.error("[use-case-hub] panel_referent_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
+          return null;
+        })
+      : null;
+  const panelReferent: PanelReferent | null =
+    openedReviewer && openedLists
+      ? {
+          panel: await panelRead,
+          needInfo: Object.fromEntries(
+            [...openedLists.requirements, ...openedLists.steps].map((need) => [need.id.toLowerCase(), { title: need.title, owner: needOwnerText(need), ownerLabel: need.ownerLabel, kind: need.kind }]),
+          ),
+          card: { code: openedReviewer.code, title: openedReviewer.title },
+          assign: { description: referentDescription(openedReviewer.description), benefits: impactRowsOf(openedReviewer.valueModel) },
+          companyDisplayName: connectorDisplayName?.displayName ?? null,
+        }
+      : null;
   return {
     workspaceId,
     basePath: `/dashboard/${workspaceId}/use-cases`,
@@ -225,6 +280,7 @@ export async function loadUseCaseHub({ workspaceId, session, access, searchParam
     panelEstimate: opened && opened.projection !== "contributore" ? unofficialEstimateLines(opened.useCase.intake) : [],
     panelAnswers: opened && opened.projection !== "contributore" ? answersOf(opened.useCase.intake) : [],
     panelOwnAnswer: opened && opened.projection === "contributore" ? opened.answer : null,
+    panelReferent,
     dossierColumn,
     needs,
     connectorDisplayName: view === "cosa-serve" && readsNeeds ? (connectorDisplayName?.displayName ?? null) : null,
@@ -339,16 +395,20 @@ function Welcome({ joined, workspaceName, roleName }: { joined: HubParams["joine
 }
 
 /**
- * «Prossimo passo:» del pannello di un revisore (rilascio 3): la regola del riquadro della scheda
- * (`nextStepOf`), con «Raccolta informazioni» della lista (`listInfoProgress`) e senza referenti,
- * riepilogo del dossier e Storia, che il pannello non legge. Così i motivi che bloccano «Chiedi al
- * referente» (G4, G6) si leggono come G5, senza pulsante: il pannello non ne ha. Il pulsante
- * principale delle decisioni resta pieno solo quando il passo è una decisione di chi guarda; per
- * «Serve info», «Rimanda» e «Riapri» è bordato, come nella scheda.
+ * «Prossimo passo» del pannello di un revisore (rilascio 3; rilascio 6, B.2): la regola del riquadro
+ * della scheda (`nextStepOf`), con «Raccolta informazioni» della lista (`listInfoProgress`) e, per il
+ * referente, la stessa lettura della scheda (`panelReferent`), così il pulsante del pannello fa il passo
+ * da lì: «Indica il referente» apre «Scegli il referente». Senza riepilogo del dossier e Storia, che il
+ * pannello non legge.
  */
-export function panelNextStep(item: HubItem, data: Pick<UseCaseHubData, "workspaceId" | "abilities" | "list" | "teamName" | "workspaceName" | "info"> & Partial<Pick<UseCaseHubData, "referentStates" | "referentReview">>): PanelNextStep {
+export function panelNextStep(
+  item: HubItem,
+  data: Pick<UseCaseHubData, "workspaceId" | "abilities" | "list" | "teamName" | "workspaceName" | "info"> & Partial<Pick<UseCaseHubData, "referentStates" | "referentReview" | "panelReferent">>,
+): NextStep {
   const referentState = data.referentStates?.[item.id.toLowerCase()] ?? null;
-  const step = nextStepOf({
+  const feature = data.abilities.canSeeNeeds && data.panelReferent?.panel?.available ? data.panelReferent.panel : null;
+  const fromPanel = feature ? referentStepInput(feature, data.abilities.canEditNeeds) : null;
+  return nextStepOf({
     workspaceId: data.workspaceId,
     item,
     today: data.list.today,
@@ -358,17 +418,16 @@ export function panelNextStep(item: HubItem, data: Pick<UseCaseHubData, "workspa
     canOpenAnyDossier: data.abilities.canOpenAnyDossier,
     // Senza esigenze del cliente la lista non ha la scheda: «nessuna da chiedere», come nella scheda.
     info: data.abilities.canSeeNeeds ? (data.info?.[item.id.toLowerCase()] ?? null) : null,
-    referents: null,
-    askEntry: null,
-    // (Rilascio 5, D46) Lo stato del referente, senza nomi né pulsanti.
-    referent: referentState ? { state: referentState, review: data.referentReview?.[item.id.toLowerCase()] ?? null, canChoose: false, askableForReferent: null } : null,
+    referents: feature ? { available: feature.available, canAsk: feature.canAsk, gates: feature.gates, requestCount: feature.requests.length } : null,
+    askEntry: feature ? askEntry(feature) : null,
+    // (Rilascio 5, D46) Senza la lettura del referente, lo stato della lista, senza nomi né pulsanti.
+    referent: fromPanel ?? (referentState ? { state: referentState, review: data.referentReview?.[item.id.toLowerCase()] ?? null, canChoose: false, askableForReferent: null } : null),
     // Un dossier che c'è: la variante «dossier» della scheda senza riepilogo (E6).
     realizationVariant: item.phase === "in_realizzazione" && item.dossier ? "dossier" : null,
     realization: null,
     dossierRead: data.list.dossierRead,
     closedOn: null,
   });
-  return { title: step.title, line: step.line, decisionPrimary: step.action.type === "decisione" && step.mine ? "default" : "outline" };
 }
 
 /** La pagina «Use case» con l'area accesa, dai dati di `loadUseCaseHub`. */
@@ -663,6 +722,10 @@ export function UseCaseHub({ data }: { data: UseCaseHubData }) {
           dossierDown={dossierDown}
           teamName={data.teamName}
           referentState={data.referentStates?.[panelData.item.id.toLowerCase()] ?? null}
+          canEditNeeds={abilities.canEditNeeds}
+          canMarkInProgress={abilities.canMarkInProgress}
+          companyName={data.workspaceName}
+          referent={panelData.projection === "revisore" ? data.panelReferent : null}
         />
       ) : null}
       {data.quickCreate ? <QuickCreateSheet workspaceId={workspaceId} aiLabs={data.quickCreate.aiLabs} lastAiLab={data.quickCreate.lastAiLab} /> : null}

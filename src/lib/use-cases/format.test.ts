@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { COST_BANDS, resolveCostBands } from "./cost-bands.ts";
+import { findHubForbiddenIn } from "./copy-guard.ts";
 import {
+  PANEL_FIGURE_TEXT,
+  panelCostParts,
+  panelValueText,
   costBandLabel,
   costBandLongText,
   costBandSymbol,
@@ -331,4 +335,23 @@ test("nessun testo di format è ISO, né «da dossier»", () => {
     assert.doesNotMatch(text, ISO, text);
     assert.doesNotMatch(text, /\bda dossier\b/i, text);
   }
+});
+
+test("(rilascio 6, B.1.6) il pannello: una cifra per riga, il valore e il costo separati, senza etichette ripetute", () => {
+  const value = (over: Record<string, unknown>) => ({ word: null, perYear: null, benefits: null, ...over }) as Parameters<typeof panelValueText>[0];
+  assert.equal(panelValueText(value({ perYear: { amount: 12_250, source: "team" } })), "Valore 12.250 € l'anno");
+  assert.equal(panelValueText(value({ benefits: { state: "da_misurare", benefitEur: 0, pendingEur: 5_840, hours: 0 } })), "Valore fino a 5.840 € l'anno");
+  assert.equal(panelValueText(value({ benefits: { state: "qualitativo", benefitEur: 0, pendingEur: 0, hours: 0 } })), "Valore qualitativo");
+  assert.equal(panelValueText(value({ word: "alto" })), "Valore alto");
+  assert.equal(panelValueText(null), "Valore da stimare");
+  assert.deepEqual(panelCostParts({ source: "stima", amount: 420, band: 1, fromBand: false, runEurYear: 300 }), { figure: "420 € + 300 € l'anno", source: null, estimated: false });
+  assert.deepEqual(panelCostParts({ source: "stima", amount: 420, band: 1, fromBand: false, runEurYear: 0 }), { figure: "420 €", source: null, estimated: false });
+  assert.deepEqual(panelCostParts({ source: "team_importo", amount: 40_000, band: 2, fromBand: false }), { figure: "40.000 €", source: "team", estimated: false });
+  const band = panelCostParts({ source: "team_fascia", amount: null, band: 3, fromBand: true });
+  assert.equal(band.figure, lowerFirst(COST_BANDS[2].label));
+  assert.equal(band.source, "team");
+  assert.deepEqual(panelCostParts(null), { figure: "da stimare", source: null, estimated: true });
+  assert.deepEqual(findHubForbiddenIn(Object.values(PANEL_FIGURE_TEXT), "area"), []);
+  // Mai il valore nella riga del costo, né il costo in quella del valore.
+  assert.ok(!panelValueText(value({ perYear: { amount: 1, source: "team" } })).includes("Costo"));
 });

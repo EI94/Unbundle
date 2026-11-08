@@ -69,7 +69,8 @@ test("il costo del modello: mai spezzato dentro un importo; nel pannello una par
   const single = renderToStaticMarkup(createElement(cost.CostFigure, { cost: { source: "team_importo", amount: 40_000, band: 2, fromBand: false }, stack: true }));
   assert.equal(textOf(single), "€€ · 40.000 €\u00a0· team");
   assert.ok(!single.includes("data-cost-parts"));
-  assert.match(readFileSync(new URL("./use-case-panel.tsx", import.meta.url), "utf8"), /<CostFigure cost=\{item\.cost\} bands=\{bands\} withLabel stack \/>/);
+  // (Rilascio 6, B.1.6) Nel pannello una riga per il valore e una per il costo: «Costo 22.200 € + 6.000 € l'anno».
+  assert.match(readFileSync(new URL("./use-case-panel.tsx", import.meta.url), "utf8"), /<PanelCostLine cost=\{item\.cost\} bands=\{bands\} \/>/);
 });
 
 test("matrice: punti quasi nello stesso posto si aprono a sciame nella loro fascia; senza etichetta, sono nell'elenco della zona", () => {

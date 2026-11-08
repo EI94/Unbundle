@@ -201,9 +201,9 @@ async function hubHtml(person: Person, workspaceId: string, searchParams: Record
   return readable(renderToStaticMarkup(element));
 }
 
-async function detailHtml(person: Person, useCaseId: string): Promise<string> {
+async function detailHtml(person: Person, useCaseId: string, searchParams: Record<string, string> = {}, workspaceId: string = ids.ws): Promise<string> {
   signIn(person);
-  const element = await pageOfDetail({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId }), searchParams: Promise.resolve({}) });
+  const element = await pageOfDetail({ params: Promise.resolve({ workspaceId, useCaseId }), searchParams: Promise.resolve(searchParams) });
   return readable(renderToStaticMarkup(element));
 }
 
@@ -725,8 +725,10 @@ test("una richiesta con «(12 €/mese)»: a schermo non va a capo dentro, in «
   const data = findProp(tree, "data").find((value) => (value as { projection?: string })?.projection === "revisore") as { needs: import("./needs.ts").PanelNeeds | null };
   assert.ok(data.needs);
   assert.equal(data.needs.rows[0].title, title, "i dati della pagina tengono lo spazio");
+  // (Rilascio 6, B.1.5) Il pannello dice il conteggio, non le voci: il titolo sta nella scheda, intero.
   const block = readable(renderToStaticMarkup(createElementOf(panel.PanelNeedsBlock, { needs: data.needs, href: "#" })));
-  assert.ok(block.includes(shown), "il pannello");
+  assert.ok(!block.includes(shown) && block.includes(`Cosa serve${N}·${N}1`), "il pannello: il conteggio");
+  assert.ok(readable(await detailHtml("builder", card.id, {}, ids.wsOther)).includes(shown), "la scheda");
   // Salvato con lo spazio normale: lo leggono così il MCP del team e l'export.
   const [row] = await q(`SELECT title FROM use_case_needs WHERE id = $1::uuid`, [created.id]);
   assert.equal(row.title, title);
@@ -784,10 +786,13 @@ test("pannello: al massimo tre esigenze aperte, le altre nella scheda; senza esi
     assert.equal(data.needs.rows[0].status.label, "In attesa");
   }
   assert.ok(data?.needs);
+  // (Rilascio 6, B.1.5) «Cosa serve · N» con i conteggi per stato e la barra; nessuna voce; il tocco apre «Cosa serve» nella scheda.
   const html = readable(renderToStaticMarkup(createElementOf(panel.PanelNeedsBlock, { needs: data.needs, href: `/dashboard/${ids.ws}/use-cases/${cards.quarter.id}?capitolo=cosa-serve` })));
-  assert.ok(html.includes('data-slot="panel-needs"') && html.includes(">Cosa serve<"));
-  assert.equal(html.split("data-need=").length - 1, 3);
-  assert.ok(html.includes("Un'altra nella scheda") && html.includes("capitolo=cosa-serve"));
+  assert.match(html, /data-slot="panel-needs"/);
+  assert.ok(html.includes(`>Cosa serve${N}·${N}${data.needs.summary.open}<`), "il conteggio");
+  assert.equal(html.split("data-need=").length - 1, 0, "nessuna voce");
+  assert.ok(html.includes('data-slot="needs-bar"') && html.includes("capitolo=cosa-serve"));
+  assert.ok(!html.includes("nella scheda"));
 
   const none = await hubTree("builder", ids.ws, { vista: "roadmap", apri: cards.progress.id });
   const noneData = findProp(none.tree, "data").find((value) => (value as { projection?: string })?.projection === "revisore") as { needs: unknown };

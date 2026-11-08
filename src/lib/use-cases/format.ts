@@ -508,3 +508,44 @@ export function startCostParts(cost: CostParts | null | undefined, bands: readon
 export function costLongText(cost: CostParts | null | undefined, bands: readonly CostBandInfo[] = COST_BANDS): string {
   return costTextParts(cost, "lunga", bands).figure;
 }
+
+// ─── Il pannello, una cifra per riga (rilascio 6, B.1.6) ─────────────
+
+/** (Rilascio 6) Le parole del pannello: un'etichetta e la cifra, senza «:» né la stessa etichetta ripetuta. */
+export const PANEL_FIGURE_TEXT = Object.freeze({
+  value: "Valore",
+  cost: "Costo",
+  perYear: "l'anno",
+  plus: "+",
+});
+
+/**
+ * (Rilascio 6, B.1.6) Il Valore nel pannello, una riga: «Valore 12.250 € l'anno», con un modello da
+ * misurare «Valore fino a 5.840 € l'anno», «Valore qualitativo», la parola del punteggio in minuscolo
+ * («Valore alto»), «Valore da stimare». La fonte e il «da misurare» li dice la scheda.
+ */
+export function panelValueText(value: Pick<ValueParts, "word" | "perYear" | "benefits"> | null | undefined): string {
+  const t = PANEL_FIGURE_TEXT;
+  const perYear = shownPerYear(value);
+  if (perYear) return `${t.value} ${formatEuro(perYear.amount)} ${t.perYear}`;
+  const benefits = value?.benefits;
+  if (benefits?.state === "da_misurare" && benefits.pendingEur > 0) return `${t.value} ${UP_TO_WORD} ${formatEuro(benefits.pendingEur)} ${t.perYear}`;
+  return `${t.value} ${lowerFirst(valueShortText(value))}`;
+}
+
+/**
+ * (Rilascio 6, B.1.6) Il costo nel pannello, una riga, sempre separato dal Valore: con «Benefici e
+ * costi» «420 € + 300 € l'anno» (l'avvio e i ricorrenti, senza fonte come nella forma corta); un
+ * importo «40.000 €», una fascia «da 25.000 a 65.000 €», con la fonte corta a parte (D5); senza costo
+ * «da stimare». L'etichetta «Costo» la mette chi la mostra.
+ */
+export function panelCostParts(cost: CostParts | null | undefined, bands: readonly CostBandInfo[] = COST_BANDS): { figure: string; source: string | null; estimated: boolean } {
+  const t = PANEL_FIGURE_TEXT;
+  if (!cost) return { figure: NOT_ESTIMATED_LABEL, source: null, estimated: true };
+  if (cost.source === "stima" && typeof cost.amount === "number" && Number.isFinite(cost.amount)) {
+    const run = typeof cost.runEurYear === "number" && Number.isFinite(cost.runEurYear) && cost.runEurYear > 0 ? cost.runEurYear : null;
+    return { figure: run ? `${formatEuro(cost.amount)} ${t.plus} ${formatEuro(run)} ${t.perYear}` : formatEuro(cost.amount), source: null, estimated: false };
+  }
+  const figure = !cost.fromBand && typeof cost.amount === "number" && Number.isFinite(cost.amount) ? formatEuro(cost.amount) : lowerFirst(costBandLabelOf(cost, bands));
+  return { figure, source: costSourceText(cost.source, "corta"), estimated: false };
+}

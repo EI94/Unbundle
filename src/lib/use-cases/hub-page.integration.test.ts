@@ -70,6 +70,8 @@ type PanelParts = {
   toDecisionItem: typeof import("./decision-ui.ts").toDecisionItem;
   WhenControl: typeof import("../../components/use-cases/when-control.tsx").WhenControl;
   DecisionButtons: typeof import("../../components/use-cases/decision-buttons.tsx").DecisionButtons;
+  /** (Rilascio 6) La riga del passo del pannello: il pulsante, il «?», «Tocca a …», le decisioni nel «⋯». */
+  NextStepRow: typeof import("../../components/use-cases/detail/next-step-box.tsx").NextStepRow;
   createElement: (type: unknown, props: unknown) => unknown;
 };
 
@@ -80,7 +82,6 @@ let exportGet: RouteGet;
 let hub: HubModule;
 let access: Access;
 let panelParts: PanelParts;
-let panelModule: typeof import("../../components/use-cases/use-case-panel.tsx");
 let guided: typeof import("./guided.ts");
 let XLSX: typeof import("xlsx");
 let currentQuarter: () => string;
@@ -329,20 +330,21 @@ function chartHeaderOf(page: string): { href: string; text: string; title: strin
 }
 
 /**
- * Le decisioni del pannello aperto di un revisore (`?apri=`): «Quando» se è approvato, poi i
- * pulsanti, con le prop che passa `UseCasePanel`. Il pannello vive in un portale, che non arriva
- * nell'HTML: qui si rendono da soli i due componenti del suo blocco.
+ * Le decisioni del pannello aperto di un revisore (`?apri=`): «Quando» se è approvato, poi la riga del
+ * passo (rilascio 6: il pulsante del passo o la decisione principale, le altre nel «⋯»), con le prop
+ * che passa `UseCasePanel`. Il pannello vive in un portale, che non arriva nell'HTML: qui si rendono da
+ * soli i due componenti del suo blocco.
  */
 async function panelOf(person: Person, workspaceId: string, searchParams: Record<string, string>): Promise<string> {
   const { data, tree } = await hubTree(person, workspaceId, searchParams);
   const panel = findProp(tree, "data").find((value) => (value as { projection?: string })?.projection === "revisore") as
-    | { item: Parameters<PanelParts["toDecisionItem"]>[0] & { phase: string }; candidates: unknown[] }
+    | { item: Parameters<PanelParts["toDecisionItem"]>[0] & { phase: string }; candidates: unknown[]; nextStep: import("./guided.ts").NextStep }
     | undefined;
   assert.ok(panel, "il pannello di un revisore");
   assert.ok(data.abilities.canDecide, "chi guarda decide");
   const props = { workspaceId, item: panelParts.toDecisionItem(panel.item), today: data.list.today, canDecide: true };
   const when = panel.item.phase === "approvato" ? renderToStaticMarkup(panelParts.createElement(panelParts.WhenControl, { ...props, labelledBy: "quando" })) : "";
-  return when + renderToStaticMarkup(panelParts.createElement(panelParts.DecisionButtons, { ...props, candidates: panel.candidates }));
+  return when + renderToStaticMarkup(panelParts.createElement(panelParts.NextStepRow, { ...props, step: panel.nextStep, candidates: panel.candidates, canMarkInProgress: false, filled: panel.nextStep.mine, whyId: "perche" }));
 }
 
 /** Le voci dei grafici nel menu «⋯» (`HubHeader.menu.charts`): il contenuto del menu non è nell'HTML finché è chiuso. */
@@ -406,9 +408,9 @@ before(async () => {
     toDecisionItem: (await import("./decision-ui.ts")).toDecisionItem,
     WhenControl: (await import("../../components/use-cases/when-control.tsx")).WhenControl,
     DecisionButtons: (await import("../../components/use-cases/decision-buttons.tsx")).DecisionButtons,
+    NextStepRow: (await import("../../components/use-cases/detail/next-step-box.tsx")).NextStepRow,
     createElement: (type, props) => createElement(type as never, props as never),
   };
-  panelModule = await import("../../components/use-cases/use-case-panel.tsx");
   guided = await import("./guided.ts");
   XLSX = await import("xlsx");
   const quarter = await import("./quarter.ts");
@@ -1012,8 +1014,8 @@ test("«Tipo» sui grafici: le due matrici sono «Da costruire» e non lo hanno;
   assert.deepEqual(filterKinds((await hubTree("ls", ids.wsA, { vista: "panoramica" })).tree), ["filtro"], "la Panoramica");
 });
 
-test("pannello: «Prossimo passo:» sotto i chip, con chi lo fa, come nella scheda; il pulsante pieno solo quando la decisione è di chi guarda", opts, async () => {
-  type Step = import("../../components/use-cases/use-case-panel.tsx").PanelNextStep;
+test("(rilascio 6, B.2) pannello: il passo è un pulsante con l'icona e il verbo, pieno solo quando tocca a chi guarda; «Tocca a …» solo quando non tocca a lui; le altre decisioni nel «⋯»", opts, async () => {
+  type Step = import("./guided.ts").NextStep;
   const team = guided.toTeam(DEFAULT_REVIEW_TEAM_NAME);
   const panelData = async (person: Person, workspaceId: string, apri: string) => {
     const { data, tree } = await hubTree(person, workspaceId, { vista: "panoramica", apri });
@@ -1023,52 +1025,54 @@ test("pannello: «Prossimo passo:» sotto i chip, con chi lo fa, come nella sche
     assert.ok(found, apri);
     return { data, panel: found };
   };
-  const buttons = (workspaceId: string, today: string, panel: { item: Parameters<PanelParts["toDecisionItem"]>[0]; candidates?: unknown[]; nextStep?: Step | null }) =>
+  const row = (workspaceId: string, today: string, panel: { item: Parameters<PanelParts["toDecisionItem"]>[0]; candidates?: unknown[]; nextStep?: Step | null }) =>
     renderToStaticMarkup(
-      panelParts.createElement(panelParts.DecisionButtons, {
+      panelParts.createElement(panelParts.NextStepRow, {
         workspaceId,
+        step: panel.nextStep,
         item: panelParts.toDecisionItem(panel.item),
         today,
         canDecide: true,
         candidates: panel.candidates ?? [],
-        primaryVariant: panel.nextStep?.decisionPrimary ?? "default",
+        canMarkInProgress: false,
+        filled: panel.nextStep?.mine ?? false,
+        whyId: "perche",
       }),
     );
   for (const person of ["ls", "builder"] as const) {
-    // Da decidere, valutata: «Decidere se approvarlo», «Approva» pieno.
+    // Da decidere, valutata: «Approva» pieno, con l'icona; le altre decisioni nel «⋯»; niente «Tocca a».
     const scored = await panelData(person, ids.wsA, cards.toDecideScored.id);
     assert.equal(scored.panel.projection, "revisore");
-    assert.equal(scored.panel.nextStep?.title, "Decidere se approvarlo", person);
-    assert.ok(scored.panel.nextStep?.line.startsWith(team), `${person}: ${scored.panel.nextStep?.line}`);
-    assert.equal(scored.panel.nextStep?.decisionPrimary, "default");
-    assert.equal(filledButtons(buttons(ids.wsA, scored.data.list.today, scored.panel)), 1, `${person}: «Approva» pieno`);
-    // «Serve info»: tocca a chi ha proposto, «Approva» bordato.
+    assert.deepEqual([scored.panel.nextStep?.key, scored.panel.nextStep?.turn, scored.panel.nextStep?.mine], ["H5", team, true], person);
+    const scoredRow = row(ids.wsA, scored.data.list.today, scored.panel);
+    assert.equal(filledButtons(scoredRow), 1, `${person}: «Approva» pieno`);
+    assert.ok(scoredRow.includes("Approva") && !scoredRow.includes(">Rimanda<") && !scoredRow.includes(">Non avviare<"), `${person}: le altre nel «⋯»`);
+    assert.ok(!scoredRow.includes('data-slot="next-step-turn"'), `${person}: tocca a chi guarda, niente «Tocca a»`);
+    assert.match(scoredRow, /data-slot="next-step-why"[^>]*aria-label="Perché questo passo"|aria-label="Perché questo passo"[^>]*data-slot="next-step-why"/);
+    // «Serve info»: tocca a chi ha proposto, «Approva» bordato, «Tocca a chi ha proposto.» a parte.
     const asked = await panelData(person, ids.wsA, cards.serveInfo.id);
-    assert.deepEqual([asked.panel.nextStep?.title, asked.panel.nextStep?.line], ["Aspettare la risposta di chi ha proposto", "Tocca a chi ha proposto. La domanda è nella nota pubblica."]);
-    assert.equal(asked.panel.nextStep?.decisionPrimary, "outline");
-    const askedButtons = buttons(ids.wsA, asked.data.list.today, asked.panel);
-    assert.ok(askedButtons.includes("Approva"));
-    assert.equal(filledButtons(askedButtons), 0, `${person}: «Approva» bordato in «Serve info»`);
-    // Approvata per un trimestre finito, senza referente: (rilascio 5, D51) prima «Scegliere il
-    // referente», senza pulsanti nel pannello (D46).
+    assert.deepEqual([asked.panel.nextStep?.key, asked.panel.nextStep?.turn, asked.panel.nextStep?.why], ["H1", "Tocca a chi ha proposto.", "La domanda è nella nota pubblica."]);
+    const askedRow = row(ids.wsA, asked.data.list.today, asked.panel);
+    assert.ok(askedRow.includes("Approva"));
+    assert.equal(filledButtons(askedRow), 0, `${person}: «Approva» bordato in «Serve info»`);
+    assert.ok(askedRow.includes("Tocca a chi ha proposto."));
+    // Approvata per un trimestre finito, senza referente: (rilascio 5, D51) prima il referente; qui manca
+    // l'ok sui fornitori, e il pannello lo dice come la scheda, con la lettura del referente (G4).
     const overdue = await panelData(person, ids.wsA, cards.overdue.id);
-    assert.equal(overdue.panel.nextStep?.title, "Scegliere il referente");
-    assert.equal(overdue.panel.nextStep?.decisionPrimary, "outline");
+    assert.equal(overdue.panel.nextStep?.key, "G4", person);
+    assert.ok(["Autorizza i fornitori", "Manca l'ok sui fornitori"].includes(overdue.panel.nextStep?.cta ?? ""), overdue.panel.nextStep?.cta);
+    assert.equal(overdue.panel.nextStep?.icon, "fornitori");
+    assert.equal(overdue.panel.nextStep?.gate, "sub_responsabili_mancanti");
     // Chiusa: «Riapri» bordato.
     const closed = await panelData(person, ids.wsE, cards.eClosed.id);
-    assert.equal(closed.panel.nextStep?.decisionPrimary, "outline");
-    const closedButtons = buttons(ids.wsE, closed.data.list.today, closed.panel);
-    assert.ok(closedButtons.includes("Riapri"));
-    assert.equal(filledButtons(closedButtons), 0, `${person}: «Riapri» bordato`);
+    const closedRow = row(ids.wsE, closed.data.list.today, closed.panel);
+    assert.ok(closedRow.includes("Riapri"));
+    assert.equal(filledButtons(closedRow), 0, `${person}: «Riapri» bordato`);
     // Best practice approvata: «Segna come diffusa» pieno.
     const best = await panelData(person, ids.wsA, cards.bestPractice.id);
     assert.equal(best.panel.nextStep?.title, "Diffondere la best practice");
-    assert.equal(filledButtons(buttons(ids.wsA, best.data.list.today, best.panel)), 1);
+    assert.equal(filledButtons(row(ids.wsA, best.data.list.today, best.panel)), 1);
   }
-  // La riga sotto i chip: «Prossimo passo:», il passo con il punto, poi in grigio chi lo fa.
-  const { panel } = await panelData("ls", ids.wsA, cards.serveInfo.id);
-  const line = renderToStaticMarkup(panelParts.createElement(panelModule.PanelNextStepLine, { step: panel.nextStep }));
-  assert.match(line, /^<p data-slot="panel-next-step" class="text-sm break-words"><span class="font-medium">Prossimo passo:<\/span> Aspettare la risposta di chi ha proposto\.<span class="text-muted-foreground"> Tocca a chi ha proposto\. La domanda è nella nota pubblica\.<\/span><\/p>$/);
   // Il contributore: niente «Prossimo passo», niente regole del team.
   const own = await panelData("contributor", ids.wsA, cards.ownByEmail.id);
   assert.equal(own.panel.projection, "contributore");

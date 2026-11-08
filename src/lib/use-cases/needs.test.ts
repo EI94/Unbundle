@@ -42,6 +42,9 @@ import {
   needStatusView,
   needsActionFirst,
   panelNeeds,
+  needsCountBar,
+  needsCountPieces,
+  needsCountSummaryOf,
   returnsToConfirm,
   validateArchiveReason,
   validateNeedInput,
@@ -307,6 +310,15 @@ test("pannello: al massimo tre aperte, prima le più vicine; la scheda: per tipo
   ];
   assert.deepEqual(panelNeeds(datedSteps, ITEMS[1], TODAY)?.rows.map((r) => r.title), ["A novembre", "A dicembre", "Senza data, primo per il team"]);
   assert.equal(panelNeeds(needs, ITEMS[2], TODAY), null, "nessuna esigenza: nessun blocco");
+  // (Rilascio 6, B.1.5) Il conteggio al posto delle voci: aperte, gruppi dei requisiti, passi, la barra.
+  assert.deepEqual(panel?.summary, { open: 4, counts: { open: 3, toAsk: 3, waiting: 0, toVerify: 0, blocked: 0, done: 1 }, steps: 1 });
+  assert.deepEqual(needsCountPieces(panel!.summary), ["3 da chiedere", "1 passo"]);
+  assert.deepEqual(needsCountBar(panel!.summary).map((part) => [part.group, part.count, part.tone]), [["toAsk", 3, "grigio"], ["steps", 1, "grigio"], ["done", 1, "verde"]]);
+  const mixed = needsCountSummaryOf([...withAnswer, need({ title: "Ferma", status: "bloccata", useCaseIds: [A] }), need({ title: "Chiesta", status: "chiesta", useCaseIds: [A] })], A)!;
+  assert.deepEqual(needsCountPieces(mixed), ["3 da chiedere", "1 in attesa", "1 da verificare", "1 fermo", "1 passo"]);
+  assert.deepEqual(needsCountBar(mixed).map((part) => part.group), ["toVerify", "toAsk", "waiting", "blocked", "steps", "done"], "prima da verificare, a posto in fondo");
+  assert.equal(needsCountSummaryOf(needs, B)?.open, 1);
+  assert.equal(needsCountSummaryOf(needs, "00000000-0000-4000-8000-00000000ffff"), null);
 
   const lists = needListsOfUseCase(needs, A);
   assert.deepEqual(lists.requirements.map((n) => n.title).sort(), ["Domani", "Fatta", "Fra un mese", "Senza data"]);
