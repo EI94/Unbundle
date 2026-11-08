@@ -471,3 +471,33 @@ Richiesta del titolare del 05/11/2026 («basterebbe un'icona con CTA "Indica il 
 - **Le finestre**: «Scegli il referente» con un motivo che ferma l'invio ha un solo pulsante, «Chiudi».
 - **Dopo il deploy**: aprire il pannello e la scheda di uno use case approvato senza referente: il pulsante «Indica il referente» (pieno, con le email accese) apre «Scegli il referente»; il «?» mostra la spiegazione; la scheda mostra «Requisiti · N» chiuso e «Cosa serve · N» del pannello porta lì con l'elenco aperto.
 - **Ritorno indietro**: nessun dato nuovo; il codice del rilascio 5.1 legge tutto com'è.
+
+### 10.15 Rilascio 6, parte A: «Il filo con il referente» (0028)
+
+Analisi funzionale del rilascio 6 (§A, approvata il 04/11/2026; decisioni dell'08/11/2026: un filo per domanda, uno per voce di «Benefici e costi» e uno «Generale» per richiesta; i suggerimenti dell'AI accesi, solo ai revisori, mai inviati da soli; il referente modifica una risposta finché il team non la segna «A posto», poi può solo aggiungere). Non è una chat: ogni scambio resta attaccato alla domanda, alla voce o a «Generale» della sua richiesta, e il referente usa sempre lo stesso link.
+
+**Migrazione 0028 (la applica l'app, al primo avvio dopo il deploy)**, come la 0027 (§10.10):
+
+1. Prima del deploy, il proprietario: restore point su Neon. Niente psql: al primo avvio a freddo dopo il deploy il self-heal (`ensureDbSchema()`, `ENSURE_VERSION` 22) trova la sonda della 0028 falsa e applica gli stessi statement di `drizzle/0028_use_case_referent_thread.sql` (`USE_CASE_REFERENT_THREAD_DDL`), in una transazione con l'advisory lock del file e `lock_timeout` 3s: crea `use_case_referent_messages` (il filo) e `use_case_referent_suggestions` (le proposte dell'AI, solo per il team); aggiunge `reopened_at` e `renewed_at` a `use_case_referent_requests`, `follow_up` a `use_case_referent_request_items`, `edited_at` a `use_case_need_answers`, `clarifications` e `replies` a `use_case_referent_email_items`, `questions` a `use_case_requester_email_items`; allarga con lo stesso nome due CHECK (DROP CONSTRAINT e ADD CONSTRAINT … NOT VALID, poi VALIDATE, che non può fallire: la condizione nuova è quella di prima in OR, o l'elenco di prima più un nome): `use_case_requester_email_items_news_check` con `questions > 0` e `use_case_notifications_kind_check` con `domanda` (sotto l'advisory lock della 0025, che lo ha allargato per prima). Non scrive dati. Gli avvii dopo trovano la sonda vera e non fanno niente.
+2. Subito dopo il deploy: aprire una pagina dell'app (il primo avvio), poi `use-case-admin doctor` (con `USE_CASE_ADMIN_DATABASE_URL` nel comando, come in §10.8) deve dire `migrazione0028: true`, oppure `SELECT <USE_CASE_REFERENT_THREAD_PROBE_SQL>` (da `src/lib/db/use-case-hub-referent-thread-ddl.ts`) deve dare `true`. Poi la scheda di uno use case con il referente e il suo blocco «Referente» si aprono come prima.
+3. Se la sonda resta `false` (nel log «0028 self-heal failed…», per esempio il `lock_timeout` dietro una transazione lunga): l'app serve senza «Chiedi al referente» (il pannello non c'è) e la pagina del referente dice «Non disponibile», come senza la 0027; il self-heal riprova al massimo ogni 5 minuti per processo. La strada di riserva, solo allora, è il file a mano: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0028_use_case_referent_thread.sql` (idempotente, con lo stesso lock e lo stesso `lock_timeout`), poi di nuovo il doctor. Mai drizzle-kit, mai `db:push`.
+4. Il ramo non si pubblica prima della revisione (le anteprime usano il database di produzione e il self-heal applicherebbe la 0028 lì). Una sola messa in produzione con la parte B, con `main` fermo per circa 24 ore dopo.
+5. Ritorno indietro, prima di premerlo: il codice del rilascio 5.1 non legge le tabelle e le colonne nuove. Il proprietario (mai un agente) legge i numeri e decide:
+   - le righe della campanella «Il referente ha chiesto qualcosa» il codice di prima le mostrerebbe senza titolo: `DELETE FROM use_case_notifications WHERE kind = 'domanda';`;
+   - le email a chi ha chiesto con le sole domande del referente il codice di prima le scriverebbe senza novità: `SELECT count(*) FROM use_case_requester_email_items i JOIN use_case_requester_emails e ON e.id = i.email_id WHERE e.status IN ('in_coda', 'errore') AND i.questions > 0 AND i.answers = 0 AND i.unknowns = 0 AND i.documents = 0 AND i.follow_up IS NULL;` (solo un numero; se non è zero, annullarle: `UPDATE use_case_requester_emails e SET status = 'annullata', cancel_reason = 'ritorno_indietro', lease_until = NULL, updated_at = now() WHERE e.status IN ('in_coda', 'errore') AND EXISTS (SELECT 1 FROM use_case_requester_email_items i WHERE i.email_id = e.id AND i.questions > 0);`);
+   - le informazioni che un «Chiedi un chiarimento» ha riportato «In attesa» restano «In attesa» con il codice di prima, senza una domanda aperta (il referente non vede il chiarimento): `SELECT count(*) FROM use_case_referent_messages m JOIN use_case_needs n ON n.id = m.need_id WHERE m.kind = 'chiarimento' AND m.handled_at IS NULL AND m.removed_at IS NULL AND n.status = 'chiesta';` (solo un numero; il team le riporta a mano dove servono);
+   - una richiesta riaperta solo per un chiarimento il codice di prima la completa di nuovo al giro del cron (passo 4: nessuna domanda aperta); una riaperta per domande nuove resta una richiesta come le altre, con quelle domande. Gli oggetti della 0028 restano.
+6. Ritorno indietro, mentre il codice di prima è in produzione: la sua cancellazione dei dati e la sua conservazione di 12 mesi non toccano il filo né le proposte dell'AI. Subito dopo ogni «Cancella i dati di questa persona» fatto sul codice di prima, il proprietario esegue la pulizia (il cron del codice nuovo esegue ogni giorno gli stessi due statement, `REFERENT_THREAD_SWEEP_SQL`, dopo quelli della 0027):
+```sql
+UPDATE use_case_referent_messages m SET body = NULL, removed_at = now(),
+  removed_reason = CASE WHEN r.revoked_reason = 'cancellazione' THEN 'cancellazione' ELSE 'conservazione' END
+  FROM use_case_referent_requests r WHERE m.request_id = r.id AND r.purged_at IS NOT NULL AND m.removed_at IS NULL;
+DELETE FROM use_case_referent_suggestions s USING use_case_referent_requests r WHERE s.request_id = r.id AND r.purged_at IS NOT NULL;
+```
+
+**Controllo di sola lettura** (UUID inventati, nessun testo):
+```sql
+SELECT m.anchor, m.side, m.kind, m.created_at, m.handled_at IS NOT NULL AS gestito, m.removed_at IS NOT NULL AS tolto
+FROM use_case_referent_messages m WHERE m.request_id = '<richiesta>' ORDER BY m.created_at, m.id;
+SELECT status, count(*) FROM use_case_referent_suggestions WHERE workspace_id = '<ws>' GROUP BY status;
+```

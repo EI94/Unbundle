@@ -704,6 +704,7 @@ test("doctor: sola lettura, verde solo quando il workspace è pronto", opts, asy
   assert.equal(typeof red.last.migrazione0025, "boolean");
   assert.equal(typeof red.last.migrazione0026, "boolean", "(0026) la sonda della 0026, solo da leggere");
   assert.equal(typeof red.last.migrazione0027, "boolean", "(0027) la sonda della 0027, solo da leggere");
+  assert.equal(typeof red.last.migrazione0028, "boolean", "(0028) la sonda della 0028, solo da leggere");
   // Con l'interruttore di produzione («*») l'area è accesa anche per lui; l'esclusione la spegne.
   const star = runAdmin(["doctor", "--workspace", ids.wsA], { env: { USE_CASE_HUB_WORKSPACES: "*" } });
   assert.equal((star.last.workspaces as Array<Record<string, unknown>>)[0].areaAccesa, true);

@@ -52,6 +52,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/use-case-hub-referent-check-ddl.ts",
   // (0027) Le risposte del referente per ogni voce di «Benefici e costi».
   "src/lib/db/use-case-hub-referent-benefits-ddl.ts",
+  // (0028) «Il filo con il referente»: il DDL dei messaggi e delle proposte dell'AI.
+  "src/lib/db/use-case-hub-referent-thread-ddl.ts",
   // Il servizio e le sue basi, la pagina pubblica, i file, l'invio delle email.
   "src/lib/db/queries/use-case-referents.ts",
   "src/lib/db/queries/use-case-referent-base.ts",

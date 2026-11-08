@@ -76,6 +76,9 @@ const TABLE_FILES = new Set([
   // dal seme della migrazione e dai costruttori degli avvisi; nessun testo delle esigenze esce.
   "src/lib/db/use-case-hub-alerts-ddl.ts",
   "src/lib/use-cases/case-alerts/sql.ts",
+  // (0028) «Il filo con il referente»: i messaggi e le proposte dell'AI si attaccano a una domanda (l'id
+  // dell'esigenza), mai a un suo testo.
+  "src/lib/db/use-case-hub-referent-thread-ddl.ts",
 ]);
 
 const READS = /\b(listWorkspaceNeeds|getWorkspaceNeed|needUseCaseRefs)\b|queries\/use-case-needs/;

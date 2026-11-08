@@ -208,7 +208,8 @@ test("schema.ts: le colonne Drizzle sono le colonne del DDL, nello stesso ordine
   // (0027) Dopo le colonne della 0026, quella della 0027 (`benefits`).
   assert.deepEqual(columns, [...ddlColumns(table()), ...REFERENT_BENEFITS_ADDED_COLUMNS.use_case_referent_checks]);
   const items = Object.values(getTableColumns(schema.useCaseReferentRequestItems)).map((c) => c.name);
-  assert.deepEqual(items.slice(-1), [...REFERENT_CHECK_ADDED_COLUMNS.use_case_referent_request_items]);
+  // (0028) Dopo quelle della 0026 viene una colonna della 0028 su ciascuna delle due tabelle.
+  assert.deepEqual(items.slice(-2, -1), [...REFERENT_CHECK_ADDED_COLUMNS.use_case_referent_request_items]);
   const answers = Object.values(getTableColumns(schema.useCaseNeedAnswers)).map((c) => c.name);
-  assert.deepEqual(answers.slice(-2), [...REFERENT_CHECK_ADDED_COLUMNS.use_case_need_answers]);
+  assert.deepEqual(answers.slice(-3, -1), [...REFERENT_CHECK_ADDED_COLUMNS.use_case_need_answers]);
 });

@@ -48,7 +48,8 @@ import type {
   ReferentRevokeReason,
   RequesterEmailStatus,
 } from "./use-case-hub-referents-ddl.ts";
-import type { CaseAlertEmailStatus, CaseAlertKind, UseCaseNoticeKind } from "./use-case-hub-alerts-ddl.ts";
+import type { CaseAlertEmailStatus, CaseAlertKind } from "./use-case-hub-alerts-ddl.ts";
+import type { ReferentSuggestionStatus, ReferentThreadAnchor, ReferentThreadKind, ReferentThreadRemoveReason, ReferentThreadSide, UseCaseNoticeKind0028 } from "./use-case-hub-referent-thread-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
@@ -957,6 +958,10 @@ export const useCaseReferentRequests = pgTable(
     purgedAt: tz("purged_at"),
     previousRequestId: uuid("previous_request_id").references((): AnyPgColumn => useCaseReferentRequests.id, { onDelete: "set null" }),
     version: integer("version").notNull().default(1),
+    /** (0028) L'ultima volta che la richiesta è tornata «inviata» dopo «Invia»: domande nuove o un chiarimento. */
+    reopenedAt: tz("reopened_at"),
+    /** (0028) L'ultimo rinnovo del link (30 giorni da una novità per il referente). */
+    renewedAt: tz("renewed_at"),
   },
   (t) => [
     index("use_case_referent_requests_use_case_idx").on(t.useCaseId, t.createdAt.desc()),
@@ -978,6 +983,8 @@ export const useCaseReferentRequestItems = pgTable(
     answeredAt: tz("answered_at"),
     /** (0026) «Serve un file»: lo sceglie chi chiede, la domanda si chiude solo con un file (o «Non ce l'ho»). */
     fileRequired: boolean("file_required").notNull().default(false),
+    /** (0028) La domanda è arrivata dopo «Invia» del referente: sulla sua pagina sta sotto «Nuove domande». */
+    followUp: boolean("follow_up").notNull().default(false),
   },
   (t) => [
     primaryKey({ name: "use_case_referent_request_items_pkey", columns: [t.requestId, t.needId] }),
@@ -1068,6 +1075,74 @@ export const useCaseReferentCheckBenefits = pgTable(
   (t) => [primaryKey({ name: "use_case_referent_check_benefits_pkey", columns: [t.requestId, t.componentKey] }), index("use_case_referent_check_benefits_workspace_idx").on(t.workspaceId)]
 );
 
+/**
+ * (0028) Il filo di una richiesta: un messaggio per riga, attaccato a una domanda (`needId`), a una voce di
+ * «Benefici e costi» (`componentKey`) o a «Generale». Il team scrive chiarimenti e risposte ai dubbi; il
+ * referente dubbi, risposte ai chiarimenti e aggiunte. `seenAt`: l'altra parte l'ha visto; `handledAt`:
+ * l'altra parte l'ha gestito. La cancellazione e la conservazione svuotano il testo (`removedAt`).
+ */
+export const useCaseReferentMessages = pgTable(
+  "use_case_referent_messages",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    requestId: uuid("request_id").notNull().references(() => useCaseReferentRequests.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    anchor: varchar("anchor", { length: 10 }).$type<ReferentThreadAnchor>().notNull(),
+    needId: uuid("need_id").references(() => useCaseNeeds.id, { onDelete: "cascade" }),
+    componentKey: varchar("component_key", { length: 40 }),
+    side: varchar("side", { length: 10 }).$type<ReferentThreadSide>().notNull(),
+    kind: varchar("kind", { length: 12 }).$type<ReferentThreadKind>().notNull(),
+    authorUserId: uuid("author_user_id").references(() => users.id, { onDelete: "set null" }),
+    replyToId: uuid("reply_to_id").references((): AnyPgColumn => useCaseReferentMessages.id, { onDelete: "cascade" }),
+    body: varchar("body", { length: 1000 }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    seenAt: tz("seen_at"),
+    handledAt: tz("handled_at"),
+    handledByUserId: uuid("handled_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    removedAt: tz("removed_at"),
+    removedReason: varchar("removed_reason", { length: 14 }).$type<ReferentThreadRemoveReason>(),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_referent_messages_pkey", columns: [t.id] }),
+    index("use_case_referent_messages_request_idx").on(t.requestId, t.createdAt),
+    index("use_case_referent_messages_use_case_idx").on(t.useCaseId),
+    index("use_case_referent_messages_workspace_idx").on(t.workspaceId),
+  ]
+);
+
+/**
+ * (0028) Le domande che l'AI propone al team dopo una risposta del referente: solo per i revisori, mai al
+ * referente, mai inviate da sole. Una riga per risposta (`sourceAt`: la versione della risposta).
+ */
+export const useCaseReferentSuggestions = pgTable(
+  "use_case_referent_suggestions",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    requestId: uuid("request_id").notNull().references(() => useCaseReferentRequests.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    anchor: varchar("anchor", { length: 10 }).$type<ReferentThreadAnchor>().notNull(),
+    needId: uuid("need_id").references(() => useCaseNeeds.id, { onDelete: "cascade" }),
+    componentKey: varchar("component_key", { length: 40 }),
+    sourceAt: tz("source_at").notNull(),
+    status: varchar("status", { length: 10 }).$type<ReferentSuggestionStatus>().notNull().default("da_fare"),
+    body: varchar("body", { length: 300 }),
+    model: varchar("model", { length: 100 }),
+    attempts: smallint("attempts").notNull().default(0),
+    leaseUntil: tz("lease_until"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+    decidedAt: tz("decided_at"),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_referent_suggestions_pkey", columns: [t.id] }),
+    index("use_case_referent_suggestions_use_case_idx").on(t.useCaseId),
+    index("use_case_referent_suggestions_workspace_idx").on(t.workspaceId),
+  ]
+);
+
 export const useCaseNeedAnswers = pgTable(
   "use_case_need_answers",
   {
@@ -1091,6 +1166,8 @@ export const useCaseNeedAnswers = pgTable(
     comment: varchar("comment", { length: 1000 }),
     /** (0026) «È già allegato»: la risposta è in un file di un'altra domanda o già dato al team. */
     alreadyAttached: boolean("already_attached").notNull().default(false),
+    /** (0028) Il referente ha cambiato la risposta dopo «Invia» (finché il team non la segna «A posto»): «Aggiornata». */
+    editedAt: tz("edited_at"),
   },
   (t) => [index("use_case_need_answers_need_idx").on(t.needId, t.submittedAt), index("use_case_need_answers_workspace_idx").on(t.workspaceId)]
 );
@@ -1169,6 +1246,10 @@ export const useCaseReferentEmailItems = pgTable(
     dropReason: varchar("drop_reason", { length: 40 }),
     newQuestions: smallint("new_questions").notNull().default(0),
     tokenId: uuid("token_id").references(() => useCaseReferentTokens.id, { onDelete: "set null" }),
+    /** (0028) Di `new_questions`, quanti sono chiarimenti chiesti dal team. */
+    clarifications: smallint("clarifications").notNull().default(0),
+    /** (0028) Di `new_questions`, quante sono risposte del team ai dubbi del referente. */
+    replies: smallint("replies").notNull().default(0),
   },
   (t) => [primaryKey({ name: "use_case_referent_email_items_pkey", columns: [t.emailId, t.requestId] }), index("use_case_referent_email_items_request_idx").on(t.requestId, t.kind)]
 );
@@ -1209,7 +1290,7 @@ export const useCaseNotifications = pgTable(
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
     recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind>().notNull(),
+    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0028>().notNull(),
     romeDay: date("rome_day", { mode: "string" }).notNull(),
     answers: smallint("answers").notNull().default(0),
     unknowns: smallint("unknowns").notNull().default(0),
@@ -1268,6 +1349,8 @@ export const useCaseRequesterEmailItems = pgTable(
     documents: smallint("documents").notNull().default(0),
     followUp: varchar("follow_up", { length: 18 }).$type<FollowUpReason>(),
     updatedAt: tz("updated_at").defaultNow().notNull(),
+    /** (0028) Le domande del referente al team («Ho un dubbio»). */
+    questions: smallint("questions").notNull().default(0),
   },
   (t) => [primaryKey({ name: "use_case_requester_email_items_pkey", columns: [t.emailId, t.requestId] }), index("use_case_requester_email_items_request_idx").on(t.requestId)]
 );

@@ -198,8 +198,8 @@ test("la sonda copre la tabella, l'indice, ogni vincolo con nome, la colonna nuo
   assert.ok(USE_CASE_REFERENT_BENEFITS_PROBE_SQL.includes("pg_get_constraintdef(oid) LIKE '%benefits%'"));
 });
 
-test("ensure-schema: versione 21, la 0027 dopo la 0026, non fatale, con timeout e lock, e la sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 21;/);
+test("ensure-schema: versione 21 o dopo, la 0027 dopo la 0026, non fatale, con timeout e lock, e la sonda in AND", () => {
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 21, "ENSURE_VERSION almeno 21 (la 0028 la porta a 22)");
   assert.match(ensureSchema, /import \{ USE_CASE_REFERENT_BENEFITS_DDL, USE_CASE_REFERENT_BENEFITS_PROBE_SQL \} from "\.\/use-case-hub-referent-benefits-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const check = runOnce.indexOf("await runUseCaseReferentCheckDdlSafely();");
@@ -225,7 +225,8 @@ test("ensure-schema: versione 21, la 0027 dopo la 0026, non fatale, con timeout 
 test("referentStoreReady e il doctor guardano la sonda della 0027", () => {
   assert.match(base, /import \{ USE_CASE_REFERENT_BENEFITS_PROBE_SQL \} from "@\/lib\/db\/use-case-hub-referent-benefits-ddl";/);
   const ready = topLevelFunction(base, "export async function referentStoreReady(): Promise<boolean> {");
-  assert.match(ready, /AND \$\{raw\(USE_CASE_REFERENT_BENEFITS_PROBE_SQL\)\}\) AS ok/);
+  // (Rilascio 6) Dopo la sonda della 0027 viene quella della 0028.
+  assert.match(ready, /AND \$\{raw\(USE_CASE_REFERENT_BENEFITS_PROBE_SQL\)\}(\) AS ok|\s+AND \$\{raw\(USE_CASE_REFERENT_THREAD_PROBE_SQL\)\}\) AS ok)/);
   assert.match(doctor, /SELECT \$\{USE_CASE_REFERENT_BENEFITS_PROBE_SQL\} AS ok/);
   assert.match(doctor, /migrazione0027: m0027,/);
 });

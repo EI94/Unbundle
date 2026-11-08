@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { USE_CASE_REFERENT_CHECK_PROBE_SQL } from "@/lib/db/use-case-hub-referent-check-ddl";
 import { USE_CASE_REFERENT_BENEFITS_PROBE_SQL } from "@/lib/db/use-case-hub-referent-benefits-ddl";
+import { USE_CASE_REFERENT_THREAD_PROBE_SQL } from "@/lib/db/use-case-hub-referent-thread-ddl";
 import { getAppUcExecutor, runUcBatch, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import type { ReferentItemState, ReferentRequestStatus } from "@/lib/db/use-case-hub-referents-ddl";
 import { logSafeError } from "@/lib/log/safe-error";
@@ -52,9 +53,9 @@ let storeReady = false;
 /**
  * Le tabelle uc che la funzione riusa (referenti, autorizzazioni, limiti di frequenza, i dossier per
  * i controlli sui referenti) e la funzione `uc_require` ci sono, e il self-heal dell'hub ha
- * applicato la 0024, (rilascio 5) la 0026 e (rilascio 5.1) la 0027: senza la conferma, la stima e le
- * risposte per beneficio del referente la funzione risponde come senza la 0024 (pannello non
- * disponibile, pagina «Non disponibile»). Il risultato
+ * applicato la 0024, (rilascio 5) la 0026, (rilascio 5.1) la 0027 e (rilascio 6) la 0028: senza la
+ * conferma, la stima, le risposte per beneficio o il filo del referente la funzione risponde come senza
+ * la 0024 (pannello non disponibile, pagina «Non disponibile»). Il risultato
  * positivo si tiene per tutto il processo.
  */
 export async function referentStoreReady(): Promise<boolean> {
@@ -69,7 +70,8 @@ export async function referentStoreReady(): Promise<boolean> {
   AND to_regclass('public.uc_case_members') IS NOT NULL AND to_regprocedure('public.uc_require(boolean,text)') IS NOT NULL
   AND to_regclass('public.use_case_referent_requests') IS NOT NULL
   AND ${raw(USE_CASE_REFERENT_CHECK_PROBE_SQL)}
-  AND ${raw(USE_CASE_REFERENT_BENEFITS_PROBE_SQL)}) AS ok`),
+  AND ${raw(USE_CASE_REFERENT_BENEFITS_PROBE_SQL)}
+  AND ${raw(USE_CASE_REFERENT_THREAD_PROBE_SQL)}) AS ok`),
     ]);
     storeReady = rowBool(row?.ok);
     return storeReady;

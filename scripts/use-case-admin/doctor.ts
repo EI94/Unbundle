@@ -11,6 +11,7 @@
  * almeno una persona del cliente che può dare l'«ok sui sub-responsabili»: sì o no, mai quante).
  * (0026) `migrazione0026`: la sonda della 0026 («Referente in un tocco»), solo da leggere come la 0025.
  * (0027) `migrazione0027`: la sonda della 0027 (le risposte del referente per beneficio), come la 0026.
+ * (0028) `migrazione0028`: la sonda della 0028 («Il filo con il referente»), come la 0027.
  */
 import { parseLsDomains } from "../../src/lib/uc/lateral-space.ts";
 import { done, scopeQuery, stopped, type AdminCommand } from "../../src/lib/use-cases/admin/cli.ts";
@@ -22,6 +23,7 @@ import { readOriginCandidates } from "./origin.ts";
 import { USE_CASE_ALERTS_PROBE_SQL } from "../../src/lib/db/use-case-hub-alerts-ddl.ts";
 import { USE_CASE_REFERENT_CHECK_PROBE_SQL } from "../../src/lib/db/use-case-hub-referent-check-ddl.ts";
 import { USE_CASE_REFERENT_BENEFITS_PROBE_SQL } from "../../src/lib/db/use-case-hub-referent-benefits-ddl.ts";
+import { USE_CASE_REFERENT_THREAD_PROBE_SQL } from "../../src/lib/db/use-case-hub-referent-thread-ddl.ts";
 import { cast, toStatement, ucSql } from "../../src/lib/uc/sql/statement.ts";
 import { declarerRecipientsSql } from "../../src/lib/use-cases/case-alerts/sql.ts";
 import { clientNoticesEnabled } from "../../src/lib/use-cases/client-notices.ts";
@@ -101,6 +103,8 @@ export const command: AdminCommand = {
     const m0026 = (await ctx.db.read(`SELECT ${USE_CASE_REFERENT_CHECK_PROBE_SQL} AS ok`))[0]?.ok === true;
     // (0027) Solo da leggere, come la 0026.
     const m0027 = (await ctx.db.read(`SELECT ${USE_CASE_REFERENT_BENEFITS_PROBE_SQL} AS ok`))[0]?.ok === true;
+    // (0028) Solo da leggere, come la 0027.
+    const m0028 = (await ctx.db.read(`SELECT ${USE_CASE_REFERENT_THREAD_PROBE_SQL} AS ok`))[0]?.ok === true;
     const lsDomains = parseLsDomains(ctx.lsEmailDomains);
     const declarers = new Map<string, boolean>();
     for (const ws of perWorkspace) {
@@ -140,6 +144,7 @@ export const command: AdminCommand = {
       migrazione0025: m0025,
       migrazione0026: m0026,
       migrazione0027: m0027,
+      migrazione0028: m0028,
     };
     return result.green ? done(output) : stopped(output);
   },
