@@ -67,3 +67,10 @@ test("i componenti di «Chiedi al referente» non scrivono testi per le persone:
   });
   assert.deepEqual(jsxTexts, []);
 });
+
+test("(rilascio 6, B.3) «Scegli il referente» con un motivo che ferma l'invio: un pulsante solo, «Chiudi», mai «Annulla» accanto", () => {
+  const source = readFileSync(new URL("./assign-dialog.tsx", import.meta.url), "utf8");
+  const footer = source.slice(source.indexOf('data-slot="ask-footer"'), source.indexOf("</DialogContent>"));
+  assert.match(footer, /\{blocked \? null : \(\s*<Button[\s\S]{0,200}?\{A\.cancel\}/, "«Annulla» solo quando si può inviare");
+  assert.match(footer, /\{blocked \? \(\s*<Button[\s\S]{0,200}?\{A\.close\}/, "«Chiudi» quando l'invio è fermo");
+});

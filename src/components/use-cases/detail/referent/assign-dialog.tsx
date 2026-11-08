@@ -546,9 +546,12 @@ export function AssignDialog({
             </p>
           ) : null}
           <div data-slot="ask-footer" className="mt-2 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 px-4 py-3 sm:flex-row sm:justify-end sm:px-6">
-            <Button type="button" variant="outline" className={TOUCH} onClick={(event) => (event.detail > 1 ? undefined : onClose())}>
-              {A.cancel}
-            </Button>
+            {/* (Rilascio 6, B.3) Con un motivo che ferma l'invio un pulsante solo, «Chiudi»: «Annulla» direbbe lo stesso. */}
+            {blocked ? null : (
+              <Button type="button" variant="outline" className={TOUCH} onClick={(event) => (event.detail > 1 ? undefined : onClose())}>
+                {A.cancel}
+              </Button>
+            )}
             {blocked ? (
               <Button type="button" variant="outline" className={TOUCH} onClick={(event) => (event.detail > 1 ? undefined : onClose())}>
                 {A.close}
