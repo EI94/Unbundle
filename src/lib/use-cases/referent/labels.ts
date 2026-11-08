@@ -775,6 +775,7 @@ export const REFERENT_THREAD_TEXT = Object.freeze({
   replySent: "Risposta inviata a {Nome}.",
   done: "Fatto",
   cancel: "Annulla",
+  close: "Chiudi",
   hint: "Una riga. Non scrivere dati sanitari, codici fiscali o date di nascita.",
   heading: "Messaggi",
   turnReferent: "Tocca al referente",

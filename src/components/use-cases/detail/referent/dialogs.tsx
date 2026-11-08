@@ -67,6 +67,8 @@ export function ReferentDialogs({
 }) {
   if (!dialog) return null;
   const { onKeep, assign, ...context } = ask;
+  // (Rilascio 6) Il motivo che ferma l'invio di una riga al referente (le stesse porte di «Chiedi al referente»).
+  const threadBlocked = panel.gates.find((g) => g.code === "sub_responsabili_mancanti" || g.code === "email_non_configurata" || g.code === "risposte_non_attive")?.message ?? null;
   switch (dialog.kind) {
     case "assign":
       return <AssignDialog key={dialog.mode} {...context} {...assign} workspaceId={workspaceId} useCaseId={useCaseId} panel={panel} mode={dialog.mode} onClose={onClose} />;
@@ -161,11 +163,14 @@ export function ReferentDialogs({
           workspaceId={workspaceId}
           useCaseId={useCaseId}
           mode={{ kind: "clarify", target: dialog.target, prefill: dialog.prefill, suggestionId: dialog.suggestionId }}
+          blocked={threadBlocked}
           onClose={onClose}
         />
       );
     case "replyDoubt":
-      return <ThreadLineDialog workspaceId={workspaceId} useCaseId={useCaseId} mode={{ kind: "reply", messageId: dialog.messageId, name: dialog.name, quote: dialog.quote }} onClose={onClose} />;
+      return (
+        <ThreadLineDialog workspaceId={workspaceId} useCaseId={useCaseId} mode={{ kind: "reply", messageId: dialog.messageId, name: dialog.name, quote: dialog.quote }} blocked={threadBlocked} onClose={onClose} />
+      );
     case "rejectFile":
       return (
         <ConfirmDialog

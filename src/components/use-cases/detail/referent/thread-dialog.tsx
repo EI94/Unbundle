@@ -1,6 +1,8 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { answerReferentDoubtAction, askReferentClarificationAction } from "@/lib/actions/use-case-referents";
 import type { ClarifyTarget } from "@/lib/use-cases/referent/contract";
@@ -16,17 +18,22 @@ const MAX = REFERENT_THREAD_RULES.teamLineMax;
 /**
  * (Rilascio 6) Una riga per il referente, sullo stesso link: «Chiedi un chiarimento» su una sua risposta
  * (anche con il testo del suggerimento dell'AI già scritto: l'invio resta un clic), oppure «Rispondi» a un
- * suo dubbio. Un campo, «Annulla» e «Invia a {Nome}»; il server rifà ogni controllo.
+ * suo dubbio. Un campo, «Annulla» e «Invia a {Nome}»; il server rifà ogni controllo. (Rilascio 6, B.3) Con un
+ * motivo che ferma l'invio (le email spente, l'ok sui fornitori mancante, le risposte dal link non attive) la
+ * finestra si apre lo stesso, dice il motivo in cima e ha un pulsante solo, «Chiudi».
  */
 export function ThreadLineDialog({
   workspaceId,
   useCaseId,
   mode,
+  blocked = null,
   onClose,
 }: {
   workspaceId: string;
   useCaseId: string;
   mode: { kind: "clarify"; target: ClarifyTarget; prefill?: string; suggestionId?: string } | { kind: "reply"; messageId: string; name: string; quote: string };
+  /** Il motivo che ferma l'invio; null: si può inviare. */
+  blocked?: string | null;
   onClose: () => void;
 }) {
   const fieldId = useId();
@@ -56,11 +63,40 @@ export function ThreadLineDialog({
     else setError((!result.ok && result.fieldErrors?.text) || outcome.error);
   }
 
+  const title = mode.kind === "clarify" ? T.clarifyTitle : fillText(T.replyTitle, { Nome: name });
+  const body = (children: ReactNode) => (
+    <div className="grid gap-3">
+      <blockquote data-slot="thread-quote" className="rounded-lg bg-muted/50 px-3 py-2 text-sm break-words whitespace-pre-line">
+        {mode.kind === "clarify" ? mode.target.quote : mode.quote}
+      </blockquote>
+      {children}
+    </div>
+  );
+  if (blocked) {
+    return (
+      <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
+        <DialogContent showCloseButton={false} data-slot="decision-dialog" data-thread-blocked className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription role="status" data-slot="thread-blocked">
+              {blocked}
+            </DialogDescription>
+          </DialogHeader>
+          {body(mode.kind === "clarify" && mode.prefill ? <p className="text-sm break-words">{mode.prefill}</p> : null)}
+          <DialogFooter>
+            <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" onClick={onClose}>
+              {T.close}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
   return (
     <DecisionDialog
       open
       onOpenChange={(next) => (next ? undefined : onClose())}
-      title={mode.kind === "clarify" ? T.clarifyTitle : fillText(T.replyTitle, { Nome: name })}
+      title={title}
       description={mode.kind === "clarify" ? fillText(T.clarifyLead, { Nome: name }) : null}
       confirmLabel={fillText(mode.kind === "clarify" ? T.clarifySend : T.replySend, { Nome: name })}
       pending={pending}
