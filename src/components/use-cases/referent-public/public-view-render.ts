@@ -10,7 +10,15 @@
  * Modulo puro: import relativi `.ts`.
  */
 import { formatCountIt, formatLongDayIt } from "../../../lib/uc/views/format.ts";
-import type { ReferentAskView, ReferentFileView, ReferentPageResult, ReferentQuestionView, ReferentUploadResult, SubmitResult } from "../../../lib/use-cases/referent/contract.ts";
+import type {
+  ReferentAskView,
+  ReferentFileView,
+  ReferentPageResult,
+  ReferentQuestionView,
+  ReferentThreadMessageView,
+  ReferentUploadResult,
+  SubmitResult,
+} from "../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_LIMITS } from "../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_CHECK_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_IMPACT_TEXT, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, companyLabel, fillText, privacyNoticeTexts } from "../../../lib/use-cases/referent/labels.ts";
 import { benefitSentLine } from "../../../lib/use-cases/referent/impact-text.ts";
@@ -83,12 +91,18 @@ export function privacyTexts(view: ReferentAskView): { title: string; lead: stri
 /**
  * La schermata: l'informativa prima di tutto quando c'è ancora da rispondere e non è letta (o è
  * cambiata); poi le domande; altrimenti la scheda finale («completata» o «vuota») con le domande in sola
- * lettura sotto.
+ * lettura sotto. (Rilascio 6) Dopo il primo invio, con qualcosa di nuovo (un chiarimento del team, una
+ * domanda nuova, la risposta a un dubbio) la pagina apre su «Da completare» («news»); una risposta da
+ * leggere non chiede l'informativa, un chiarimento o una domanda sì.
  */
-export type ScreenKind = "privacy" | "questions" | "completed" | "empty";
+export type ScreenKind = "privacy" | "questions" | "news" | "completed" | "empty";
 
 export function screenOf(view: ReferentAskView): ScreenKind {
-  if (view.state === "aperta") return view.privacy.accepted ? "questions" : "privacy";
+  const news = newsOf(view);
+  const act = view.state === "aperta" || news.clarifications.length > 0;
+  if (act && !view.privacy.accepted) return "privacy";
+  if (view.thread.followUp && news.total > 0) return "news";
+  if (view.state === "aperta") return "questions";
   return view.state === "completata" ? "completed" : "empty";
 }
 
@@ -200,9 +214,13 @@ export function savesItselfText(view: ReferentAskView): string {
   return fillText(T.savesItself, { data: expiryLabel(view.expiresOn) });
 }
 
-/** (Rilascio 5) Il giorno dell'ultimo invio del referente (la conferma o una risposta), oppure null. */
+/** (Rilascio 5) Il giorno dell'ultimo invio del referente (la conferma, una risposta o, rilascio 6, un suo messaggio), oppure null. */
 export function lastSentOn(view: ReferentAskView): string | null {
-  const dates = [view.check?.submittedAt ?? null, ...view.questions.map((q) => q.answer?.submittedAt ?? null)].filter((d): d is string => Boolean(d));
+  const dates = [
+    view.check?.submittedAt ?? null,
+    ...view.questions.map((q) => q.answer?.editedAt ?? q.answer?.submittedAt ?? null),
+    ...view.thread.messages.filter((m) => m.side === "referente").map((m) => m.createdAt),
+  ].filter((d): d is string => Boolean(d));
   if (!dates.length) return null;
   return dates.sort().at(-1) ?? null;
 }
@@ -354,3 +372,171 @@ export function issuesByQuestion(
 
 export const FOOTER_TEXT = T.footer;
 export const BRAND_TEXT = T.brand;
+
+// ─── (Rilascio 6) Il filo con il team ────────────────────────────────
+
+const TT = T.thread;
+
+/** Dove sta un messaggio: una domanda, una voce dell'impatto, «Generale». */
+export type ThreadTarget = { anchor: "domanda"; needId: string } | { anchor: "beneficio"; componentKey: string } | { anchor: "generale" };
+
+/** La chiave di un'ancora: «d:<esigenza>», «b:<voce>», «g» (la stessa del server, `anchorKeyOf`). */
+export function threadKeyOf(a: { anchor: string; needId?: string | null; componentKey?: string | null }): string {
+  if (a.anchor === "domanda") return `d:${(a.needId ?? "").toLowerCase()}`;
+  if (a.anchor === "beneficio") return `b:${a.componentKey ?? ""}`;
+  return "g";
+}
+
+/** Il corpo dell'ancora per le API (`ThreadAnchorBody`). */
+export function threadTargetOf(key: string): ThreadTarget {
+  if (key.startsWith("d:")) return { anchor: "domanda", needId: key.slice(2) };
+  if (key.startsWith("b:")) return { anchor: "beneficio", componentKey: key.slice(2) };
+  return { anchor: "generale" };
+}
+
+/**
+ * Le ancore che la pagina mostra: le domande mostrate e le voci dell'impatto. Un messaggio su una domanda o una
+ * voce che non c'è più va con quelli «Generale», così non si perde.
+ */
+function shownKeys(view: ReferentAskView): Set<string> {
+  return new Set([
+    ...view.questions.map((q) => threadKeyOf({ anchor: "domanda", needId: q.needId })),
+    ...(view.check?.benefits ?? []).map((b) => threadKeyOf({ anchor: "beneficio", componentKey: b.key })),
+  ]);
+}
+
+/**
+ * I messaggi di un'ancora, in ordine di tempo (quelli di un'ancora che non si vede più stanno in «g»). Con
+ * `withFresh: false` senza le risposte del team non ancora viste: in «Da completare» hanno la loro scheda.
+ */
+export function messagesOf(view: ReferentAskView, key: string, o: { withFresh?: boolean } = {}): ReferentThreadMessageView[] {
+  const shown = shownKeys(view);
+  return view.thread.messages.filter((m) => {
+    if (o.withFresh === false && m.side === "team" && m.fresh) return false;
+    const k = threadKeyOf(m);
+    return key === "g" ? k === "g" || !shown.has(k) : k === key;
+  });
+}
+
+/** Una riga del filo sotto una risposta: «Il team ha chiesto: «…» · 08/11», «Hai risposto: «…» · 08/11». */
+export function threadLineOf(m: ReferentThreadMessageView, today: string): string {
+  const template =
+    m.side === "team"
+      ? m.kind === "chiarimento"
+        ? TT.lineTeamAsked
+        : TT.lineTeamAnswered
+      : m.kind === "dubbio"
+        ? TT.lineYouAsked
+        : m.kind === "aggiunta"
+          ? TT.lineYouAdded
+          : TT.lineYouAnswered;
+  return `${fillText(template, { testo: m.text })}${fillText(TT.lineDate, { data: referentDateLabel(m.createdAt, today) })}`;
+}
+
+/** «Su «Volumi mensili»», «Su «Meno errori»», «Sul caso d'uso». */
+export function anchorLabelOf(view: ReferentAskView, a: { anchor: string; needId?: string | null; componentKey?: string | null }): string {
+  const short = (text: string) => (text.length > 60 ? fillText(TT.cut, { testo: text.slice(0, 59).trimEnd() }) : text);
+  if (a.anchor === "domanda") {
+    const q = view.questions.find((x) => x.needId.toLowerCase() === (a.needId ?? "").toLowerCase());
+    if (q) return fillText(TT.onAnchor, { testo: short(q.title) });
+  }
+  if (a.anchor === "beneficio") {
+    const b = view.check?.benefits?.find((x) => x.key === a.componentKey);
+    if (b) return fillText(TT.onAnchor, { testo: short(b.label.replace(/[.!?]+$/, "")) });
+  }
+  return TT.general;
+}
+
+export interface NewsView {
+  /** I chiarimenti del team che aspettano la risposta del referente. */
+  clarifications: ReferentThreadMessageView[];
+  /** Le domande ancora aperte (dopo il primo invio: «Nuove domande»). */
+  questions: QuestionSection[];
+  /** Le risposte del team ai suoi dubbi che la pagina non ha ancora mostrato. */
+  replies: ReferentThreadMessageView[];
+  total: number;
+}
+
+/** «Da completare»: solo le cose nuove, un tocco ciascuna. */
+export function newsOf(view: ReferentAskView): NewsView {
+  const clarifications = view.thread.messages.filter((m) => m.side === "team" && m.kind === "chiarimento" && m.waiting);
+  const questions = questionSections(view).filter((q) => q.kind === "aperta");
+  const replies = view.thread.messages.filter((m) => m.side === "team" && m.kind === "risposta" && m.fresh);
+  return { clarifications, questions, replies, total: clarifications.length + questions.length + replies.length };
+}
+
+/** Una voce di «Da completare»: il suo numero, il tipo, l'ancora. */
+export interface NewsEntry {
+  /** Il messaggio (chiarimento, risposta del team) o l'esigenza (domanda). */
+  id: string;
+  kind: "chiarimento" | "domanda" | "risposta";
+  /** «Chiarimento · 1 di 3». */
+  label: string;
+  /** «Su «Volumi mensili»». */
+  anchorLabel: string;
+  /** La posizione (1…n), per «Manca ancora il punto 2.». */
+  position: number;
+}
+
+/** Le voci di «Da completare» in ordine: prima i chiarimenti, poi le domande nuove, poi le risposte da leggere. */
+export function newsEntries(view: ReferentAskView): NewsEntry[] {
+  const n = newsOf(view);
+  const out: Omit<NewsEntry, "label" | "position">[] = [
+    ...n.clarifications.map((m) => ({ id: m.id, kind: "chiarimento" as const, anchorLabel: anchorLabelOf(view, m) })),
+    ...n.questions.map((q) => ({ id: q.needId, kind: "domanda" as const, anchorLabel: "" })),
+    ...n.replies.map((m) => ({ id: m.id, kind: "risposta" as const, anchorLabel: anchorLabelOf(view, m) })),
+  ];
+  return out.map((e, i) => {
+    const what = e.kind === "chiarimento" ? TT.clarification : e.kind === "domanda" ? TT.newQuestion : TT.teamReply;
+    return { ...e, position: i + 1, label: out.length > 1 ? `${what} · ${fillText(TT.itemOf, { k: i + 1, n: out.length })}` : what };
+  });
+}
+
+/** «Hai una novità.», «Hai 3 novità.» */
+export function newsLead(total: number): string {
+  return total === 1 ? TT.newsOne : fillText(TT.newsMany, { n: total });
+}
+
+/** «Manca ancora il punto 2.», «Mancano ancora i punti 1 e 3.» */
+export function newsMissingText(positions: readonly number[]): string {
+  const list = [...positions].sort((a, b) => a - b);
+  if (list.length === 1) return fillText(TT.missingOne, { k: list[0] });
+  return fillText(TT.missingMany, { list: `${list.slice(0, -1).join(", ")} e ${list[list.length - 1]}` });
+}
+
+/** Il dubbio del referente a cui risponde una risposta del team (per «Il tuo dubbio: «…»»), oppure null. */
+export function doubtOf(view: ReferentAskView, reply: ReferentThreadMessageView): ReferentThreadMessageView | null {
+  return reply.replyTo ? (view.thread.messages.find((m) => m.id === reply.replyTo) ?? null) : null;
+}
+
+/** Che cosa si può fare su una risposta già inviata: «Modifica» finché non è «A posto», poi «Aggiungi qualcosa»; e «Ho un dubbio». */
+export type ThreadAction = "edit" | "add" | "doubt";
+
+export function threadActionsOf(view: ReferentAskView, target: { kind: "domanda"; question: ReferentQuestionView } | { kind: "beneficio" } | { kind: "generale" }): ThreadAction[] {
+  if (!view.thread.open) return [];
+  if (target.kind === "domanda") {
+    const q = target.question;
+    if (q.state === "gestita") return [];
+    if (q.state === "aperta") return ["doubt"];
+    return q.editable ? ["edit", "doubt"] : ["add", "doubt"];
+  }
+  const sent = Boolean(view.check?.submittedAt);
+  if (target.kind === "beneficio") return sent ? ["add", "doubt"] : [];
+  return sent ? ["add", "doubt"] : ["doubt"];
+}
+
+/** «Aggiornata il 08/11.» per una risposta cambiata dopo l'invio, oppure null. */
+export function updatedLine(q: ReferentQuestionView, today: string): string | null {
+  return q.answer?.editedAt ? fillText(TT.updatedOn, { data: referentDateLabel(q.answer.editedAt, today) }) : null;
+}
+
+/** Il testo che «Modifica» mette nel campo: la risposta scritta, mai «Non ce l'ho». */
+export function editableText(q: ReferentQuestionView): string {
+  if (!q.answer || q.answer.dontKnow || q.answer.alreadyAttached) return "";
+  return q.answer.text ?? "";
+}
+
+/** Le risposte del team che la pagina mostra adesso e non ha ancora segnato «viste». */
+export function freshReplyIds(view: ReferentAskView): string[] {
+  return view.thread.messages.filter((m) => m.side === "team" && m.fresh).map((m) => m.id);
+}

@@ -11,7 +11,7 @@ import { REFERENT_ERROR_MESSAGES, REFERENT_PUBLIC_TEXT } from "@/lib/use-cases/r
 import { saveDraft } from "./api";
 import { Attachments } from "./attachments";
 import { autosaveLabelKey, autosaveReducer, dueDraft, initialAutosave, needsFlush, waitFor, type AutosaveState, type DraftValue } from "./autosave";
-import { attachHelp, closeHint, commentOffered, counterLabel, handledText, questionClosed, sentAnswerView, type PublicFile, type QuestionSection } from "./public-view-render";
+import { attachHelp, closeHint, commentOffered, counterLabel, handledText, questionClosed, sentAnswerView, updatedLine, type PublicFile, type QuestionSection } from "./public-view-render";
 
 /**
  * Una domanda della pagina `/rispondi/<token>` (SPEC §4.4 punto 4, Parte 3 §P3.7; rilascio 5 §7.5):
@@ -63,13 +63,18 @@ function CardFrame({ section, children, invalid, missing, closed }: { section: Q
   );
 }
 
-export function SentQuestionCard({ section, today }: { section: QuestionSection; today: string }) {
+export function SentQuestionCard({ section, today, extra }: { section: QuestionSection; today: string; extra?: React.ReactNode }) {
   const sent = sentAnswerView(section.question, today);
+  // (Rilascio 6) «Aggiornata il 08/11.»: il referente l'ha cambiata dopo l'invio.
+  const updated = updatedLine(section.question, today);
   return (
     <CardFrame section={section} closed>
       {sent ? (
         <div className="space-y-2 text-base">
-          <p className="text-sm text-muted-foreground">{sent.sentOn}</p>
+          <p className="text-sm text-muted-foreground">
+            {sent.sentOn}
+            {updated ? ` · ${updated}` : ""}
+          </p>
           {sent.text ? <p className="break-words whitespace-pre-line">{sent.text}</p> : null}
           {sent.comment ? <p className="text-sm break-words whitespace-pre-line text-muted-foreground">{sent.comment}</p> : null}
           {sent.files.length > 0 ? (
@@ -83,6 +88,7 @@ export function SentQuestionCard({ section, today }: { section: QuestionSection;
           ) : null}
         </div>
       ) : null}
+      {extra}
     </CardFrame>
   );
 }
@@ -107,6 +113,7 @@ export function OpenQuestionCard({
   missing = false,
   onClosure,
   tooSoon,
+  extra,
 }: {
   token: string;
   section: QuestionSection;
@@ -129,6 +136,8 @@ export function OpenQuestionCard({
    * file» lo ignorano.
    */
   tooSoon?: (e: React.MouseEvent<HTMLButtonElement>) => boolean;
+  /** (Rilascio 6) Sotto la domanda: il filo con il team e «Ho un dubbio». */
+  extra?: React.ReactNode;
 }) {
   const id = useId();
   const needId = section.needId;
@@ -355,12 +364,13 @@ export function OpenQuestionCard({
         </ul>
       ) : null}
       {missing && !closed ? <p className="text-sm break-words">{closeHint(fileRequired)}</p> : null}
+      {extra}
     </CardFrame>
   );
 }
 
 export function QuestionCard(props: Parameters<typeof OpenQuestionCard>[0] & { today: string }) {
-  if (props.section.kind === "inviata") return <SentQuestionCard section={props.section} today={props.today} />;
+  if (props.section.kind === "inviata") return <SentQuestionCard section={props.section} today={props.today} extra={props.extra} />;
   if (props.section.kind === "gestita") return <HandledQuestionCard section={props.section} />;
   return <OpenQuestionCard {...props} />;
 }

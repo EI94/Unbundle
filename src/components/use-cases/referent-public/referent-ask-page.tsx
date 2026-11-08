@@ -5,15 +5,22 @@ import { Button } from "@/components/ui/button";
 import { Notice, SECONDARY_CLASS } from "@/components/uc/referente/screen";
 import type { CheckBody, ReferentAskView, ReferentBenefitView, ReferentCheckView, SubmitResult } from "@/lib/use-cases/referent/contract";
 import { REFERENT_ERROR_MESSAGES, REFERENT_PRIVACY_NOTICE, REFERENT_PUBLIC_TEXT, fillText } from "@/lib/use-cases/referent/labels";
-import { acceptPrivacy, fetchAskView, saveCheck, submitAnswers } from "./api";
+import { acceptPrivacy, fetchAskView, markSeen, postReply, saveCheck, submitAnswers } from "./api";
 import { PrivacyCard, PrivacyFooter } from "./privacy-card";
 import { QuestionCard, questionTitleId, type FlushDraft } from "./question-card";
 import {
   doneCountText,
+  doubtOf,
+  editableText,
   finalCardText,
+  freshReplyIds,
   headerTexts,
   issuesByQuestion,
+  messagesOf,
   missingText,
+  newsEntries,
+  newsLead,
+  newsMissingText,
   privacyTexts,
   questionSections,
   questionsHeading,
@@ -21,11 +28,16 @@ import {
   screenOf,
   sentCheckLines,
   thanksTexts,
+  threadActionsOf,
+  threadKeyOf,
+  type QuestionSection,
+  type ThreadAction,
 } from "./public-view-render";
 import { ConfirmStep, EstimateStep, ImpactStep, ReferentStepBar, benefitCommentId, benefitTitleId, stepTitleId, type StepActions } from "./referent-steps";
 import { MessageCard, PublicShell } from "./state-card";
 import { hasSteps, isRepeatActivation, parseStep, resolveStep, stepOfSubmitRefusal, stepOneWarning, stepSearch, stepStates, stepTwoWarning, stepsOf, type CheckStep, type StepRefusal } from "./steps-state";
 import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
+import { ClarificationCard, TeamReplyCard, ThreadItem, newsTitleId } from "./thread";
 
 /**
  * La pagina del referente `/rispondi/<token>` (SPEC §4.4): pubblica, senza account, pensata per il
@@ -40,6 +52,10 @@ import { SUBMIT_ERROR_ID, SubmitBar } from "./submit-bar";
 
 const THANKS_TITLE_ID = "ucq-grazie";
 const QUESTIONS_TITLE_ID = "ucq-domande";
+/** (Rilascio 6) «Da completare» e «Già inviato». */
+const NEWS_TITLE_ID = "ucq-novita";
+const SENT_TITLE_ID = "ucq-inviato";
+const TT = REFERENT_PUBLIC_TEXT.thread;
 
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
@@ -88,6 +104,14 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   /** Dove va il focus dopo il prossimo render (titolo della domanda, ringraziamento…). */
   const pendingFocus = useRef<string | null>(null);
   const flushers = useRef(new Map<string, FlushDraft>());
+  // (Rilascio 6) Il filo: il campo aperto (uno alla volta), l'ultimo invio riuscito, le risposte ai chiarimenti
+  // di «Da completare» (restano anche se la vista si rilegge), quello che manca, le risposte del team già segnate viste.
+  const [composer, setComposer] = useState<{ key: string; mode: ThreadAction } | null>(null);
+  const [sentKey, setSentKey] = useState<string | null>(null);
+  const [replyTexts, setReplyTexts] = useState<Readonly<Record<string, string>>>({});
+  const [replyErrors, setReplyErrors] = useState<Readonly<Record<string, string>>>({});
+  const [newsMissing, setNewsMissing] = useState<string[]>([]);
+  const seenSent = useRef(new Set<string>());
 
   const header = headerTexts(view);
   const privacy = useMemo(() => privacyTexts(view), [view]);
@@ -96,6 +120,16 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const stepped = hasSteps(view);
   const steps = stepsOf(view);
   const lastStep = steps[steps.length - 1] ?? null;
+  const entries = useMemo(() => newsEntries(view), [view]);
+
+  // (Rilascio 6) Le risposte del team che la pagina mostra: «viste», così la volta dopo stanno sotto la loro domanda.
+  useEffect(() => {
+    if (screen === "privacy") return;
+    const ids = freshReplyIds(view).filter((id) => !seenSent.current.has(id));
+    if (ids.length === 0) return;
+    for (const id of ids) seenSent.current.add(id);
+    void markSeen(token, { ids });
+  }, [view, screen, token]);
 
   useEffect(() => {
     const target = pendingFocus.current;
@@ -290,6 +324,12 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     setPrivacyBusy(false);
     if (r.ok) {
       setView((v) => ({ ...v, privacy: { ...v.privacy, accepted: true } }));
+      // (Rilascio 6) Il campo che il referente ha aperto prende il fuoco da sé; «Da completare» va al suo titolo.
+      if (composer) return;
+      if (screenOf({ ...view, privacy: { ...view.privacy, accepted: true } }) === "news") {
+        setFocusTarget(NEWS_TITLE_ID);
+        return;
+      }
       if (stepped && step !== 3) {
         goTo(step, "replace");
         return;
@@ -390,6 +430,126 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
     submitRef.current = onSubmit;
   });
 
+  /**
+   * (Rilascio 6) «Invia» di «Da completare»: prima ogni domanda nuova salva quello che manca; poi, se tutto è
+   * fatto (ogni chiarimento ha la sua risposta, ogni domanda nuova è chiusa), le risposte ai chiarimenti una per
+   * una e l'invio delle domande nuove. Altrimenti dice quali punti mancano, senza chiamare il server.
+   */
+  async function onSubmitNews() {
+    if (submitBusy) return;
+    setSubmitBusy(true);
+    setSubmitError(null);
+    setIssues(new Map());
+    setReplyErrors({});
+    const openNow = sections.filter((q) => q.kind === "aperta").map((q) => q.needId.toLowerCase());
+    const flushed = await Promise.all(openNow.map(async (needId) => [needId, (await flushers.current.get(needId)?.()) ?? true] as const));
+    const unsaved = flushed.filter(([, ok]) => !ok).map(([needId]) => needId);
+    if (unsaved.length > 0) {
+      setSubmitBusy(false);
+      setSubmitError(REFERENT_ERROR_MESSAGES.risposte_da_correggere);
+      setFocusTarget(questionTitleId(unsaved[0]));
+      return;
+    }
+    const missingNow = entries
+      .filter((e) => (e.kind === "chiarimento" && !(replyTexts[e.id] ?? "").trim()) || (e.kind === "domanda" && closedMap.get(e.id.toLowerCase()) !== true))
+      .map((e) => e.id);
+    if (missingNow.length > 0) {
+      setSubmitBusy(false);
+      setNewsMissing(missingNow);
+      const first = entries.find((e) => e.id === missingNow[0]);
+      setFocusTarget(first?.kind === "domanda" ? questionTitleId(first.id) : newsTitleId(missingNow[0]));
+      return;
+    }
+    setNewsMissing([]);
+    let replied = 0;
+    for (const e of entries.filter((x) => x.kind === "chiarimento")) {
+      const r = await postReply(token, { messageId: e.id, text: (replyTexts[e.id] ?? "").trim() });
+      if (r.ok) {
+        replied++;
+        setReplyTexts((current) => {
+          const next = { ...current };
+          delete next[e.id];
+          return next;
+        });
+        continue;
+      }
+      if (r.code === "link_non_valido") {
+        window.location.reload();
+        return;
+      }
+      // Già risposto da un'altra finestra: niente da fare qui.
+      if (r.code === "domanda_non_disponibile") continue;
+      setSubmitBusy(false);
+      setReplyErrors({ [e.id]: r.issues[0]?.message ?? r.message });
+      setFocusTarget(newsTitleId(e.id));
+      if (replied > 0) await reload();
+      return;
+    }
+    let result: SubmitResult = { submitted: replied, open: 0, state: "completata" };
+    if (openNow.length > 0) {
+      const r = await submitAnswers(token, { shown: openNow });
+      if (!r.ok) {
+        setSubmitBusy(false);
+        if (r.code === "link_non_valido") {
+          window.location.reload();
+          return;
+        }
+        if (replied > 0 || r.code === "domanda_non_disponibile" || r.code === "domande_nuove") await reload();
+        if (r.code === "domande_nuove" || r.code === "domande_aperte") {
+          const open = r.issues.map((i) => i.field?.toLowerCase()).filter((id): id is string => Boolean(id));
+          if (r.code === "domande_nuove") setNewQuestions(true);
+          setNewsMissing(open);
+          if (open[0]) setFocusTarget(questionTitleId(open[0]));
+          return;
+        }
+        const mapped = issuesByQuestion(r.issues, openNow);
+        setIssues(mapped.byNeed);
+        setSubmitError(r.message);
+        setFocusTarget(mapped.first ? questionTitleId(mapped.first) : SUBMIT_ERROR_ID);
+        return;
+      }
+      result = { ...r.data, submitted: r.data.submitted + replied };
+    }
+    await reload();
+    setSubmitBusy(false);
+    setThanks(result);
+    setFocusTarget(THANKS_TITLE_ID);
+  }
+
+  /** (Rilascio 6) L'informativa da leggere prima di scrivere al team (una versione nuova), al posto del campo. */
+  const privacyGate = view.privacy.accepted ? null : <PrivacyCard texts={privacy} busy={privacyBusy} error={privacyError} onAccept={() => void onAccept()} />;
+
+  /** (Rilascio 6) Il filo di un'ancora, con «Modifica», «Aggiungi qualcosa» e «Ho un dubbio». */
+  const threadItem = (key: string, subject: string, actions: ThreadAction[], o: { primary: boolean; editText?: string }) => (
+    <ThreadItem
+      token={token}
+      targetKey={key}
+      subject={subject}
+      messages={messagesOf(view, key, { withFresh: screen !== "news" })}
+      actions={actions}
+      today={today}
+      editText={o.editText}
+      composer={composer?.key === key ? composer.mode : null}
+      onComposer={(mode) => {
+        setComposer(mode ? { key, mode } : null);
+        setSentKey(null);
+      }}
+      primary={o.primary}
+      privacyGate={privacyGate}
+      sent={sentKey === key}
+      onSent={() => {
+        setComposer(null);
+        void reload().then(() => setSentKey(key));
+      }}
+      onStale={() => void reload()}
+    />
+  );
+  const questionThread = (section: QuestionSection, primary: boolean) =>
+    threadItem(threadKeyOf({ anchor: "domanda", needId: section.needId }), section.title, threadActionsOf(view, { kind: "domanda", question: section.question }), {
+      primary,
+      editText: editableText(section.question),
+    });
+
   const footer = <PrivacyFooter texts={privacy} />;
   const intro = (
     <header className="mt-4 space-y-2">
@@ -443,7 +603,8 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   }
 
   const readOnly = screen === "completed" || screen === "empty";
-  const sentCheck = readOnly ? sentCheckLines(view) : null;
+  const newsScreen = screen === "news";
+  const sentCheck = readOnly || newsScreen ? sentCheckLines(view) : null;
   const doneCount = sections.filter((q) => q.kind !== "aperta" || closedMap.get(q.needId.toLowerCase()) === true).length;
   const missingPositions = sections.map((q, i) => (missing.includes(q.needId.toLowerCase()) ? i + 1 : 0)).filter((n) => n > 0);
 
@@ -452,6 +613,141 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
   const check = stepped ? view.check : null;
   const questionsBlock = screen === "questions" || (readOnly && sections.length > 0);
   const renderQuestions = questionsBlock && (!onCheckStep || questionsOpened);
+
+  // (Rilascio 6) La conferma e l'impatto già inviati, ognuno con il suo filo («Aggiungi qualcosa», «Ho un dubbio»).
+  const benefitLabel = (key: string) => view.check?.benefits?.find((b) => b.key === key)?.label ?? view.useCase.title;
+  const sentCheckBlock = (primary: boolean) =>
+    sentCheck ? (
+      <div className="space-y-3 text-base leading-7 break-words" data-slot="referent-sent-check">
+        <div className="space-y-2">
+          <p>{sentCheck.useCase}</p>
+          {sentCheck.note ? <blockquote className="rounded-xl bg-muted/50 px-4 py-3 whitespace-pre-line">{sentCheck.note}</blockquote> : null}
+          {threadItem("g", view.useCase.title, threadActionsOf(view, { kind: "generale" }), { primary })}
+        </div>
+        {sentCheck.time ? (
+          <p>
+            {sentCheck.time}
+            {sentCheck.numbers ? ` ${sentCheck.numbers}` : ""}
+          </p>
+        ) : null}
+        {sentCheck.benefits.length ? (
+          <ul data-slot="referent-sent-benefits" className="space-y-3">
+            {sentCheck.benefits.map((b) => (
+              <li key={b.key} className="space-y-1 break-words">
+                <p>{b.line}</p>
+                {b.comment ? <p className="text-muted-foreground">{b.comment}</p> : null}
+                {threadItem(threadKeyOf({ anchor: "beneficio", componentKey: b.key }), benefitLabel(b.key), threadActionsOf(view, { kind: "beneficio" }), { primary })}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    ) : null;
+  /** (Rilascio 6) «Hai un dubbio sul caso d'uso?» quando non c'è la conferma inviata a cui attaccarlo. */
+  const generalBlock = (primary: boolean) => {
+    if (sentCheck) return null;
+    const actions = threadActionsOf(view, { kind: "generale" });
+    if (actions.length === 0 && messagesOf(view, "g").length === 0) return null;
+    return (
+      <div className="mt-6 space-y-1" data-slot="referent-general">
+        {actions.length ? <p className="text-base break-words text-muted-foreground">{TT.generalDoubt}</p> : null}
+        {threadItem("g", view.useCase.title, actions, { primary })}
+      </div>
+    );
+  };
+
+  // (Rilascio 6) «Da completare»: le cose fatte, quelle che «Invia» ha trovato da fare.
+  const newsDone = entries.filter((e) => e.kind === "risposta" || (e.kind === "chiarimento" && (replyTexts[e.id] ?? "").trim().length > 0) || (e.kind === "domanda" && closedMap.get(e.id.toLowerCase()) === true)).length;
+  const newsActionable = entries.some((e) => e.kind !== "risposta");
+  const newsMissingPositions = entries.filter((e) => newsMissing.includes(e.id) || newsMissing.includes(e.id.toLowerCase())).map((e) => e.position);
+  const questionCard = (section: QuestionSection, o: { primary: boolean; label?: string; missing?: boolean }) => (
+    <QuestionCard
+      key={`${section.needId}:${section.kind}:${generation}`}
+      token={token}
+      section={o.label ? { ...section, label: o.label } : section}
+      today={today}
+      clientMode={view.upload.clientMode}
+      issues={issues.get(section.needId.toLowerCase()) ?? []}
+      disabled={submitBusy}
+      registerFlush={registerFlush}
+      onStale={onStale}
+      onEdit={clearIssues}
+      missing={o.missing ?? missing.includes(section.needId.toLowerCase())}
+      onClosure={onClosure}
+      tooSoon={stepped ? tooSoon : undefined}
+      extra={questionThread(section, o.primary)}
+    />
+  );
+
+  if (newsScreen) {
+    const sentSections = sections.filter((q) => q.kind !== "aperta");
+    return (
+      <PublicShell footer={footer}>
+        {intro}
+        <section aria-labelledby={NEWS_TITLE_ID} className="mt-6" data-slot="referent-news">
+          <h2 id={NEWS_TITLE_ID} tabIndex={-1} className="text-xl font-semibold outline-none">
+            {TT.newsTitle}
+          </h2>
+          <p className="mt-1 text-base break-words text-muted-foreground">{newsLead(entries.length)}</p>
+          {newQuestions ? <Notice tone="info">{REFERENT_ERROR_MESSAGES.domande_nuove}</Notice> : null}
+          <div className="mt-4 space-y-4">
+            {entries.map((entry) => {
+              if (entry.kind === "domanda") {
+                const section = sections.find((q) => q.needId === entry.id);
+                return section ? questionCard(section, { primary: false, label: entry.label, missing: newsMissing.includes(entry.id.toLowerCase()) }) : null;
+              }
+              const message = view.thread.messages.find((m) => m.id === entry.id);
+              if (!message) return null;
+              if (entry.kind === "risposta") return <TeamReplyCard key={entry.id} entry={entry} reply={message} doubt={doubtOf(view, message)} />;
+              return (
+                <ClarificationCard
+                  key={entry.id}
+                  entry={entry}
+                  message={message}
+                  value={replyTexts[entry.id] ?? ""}
+                  onChange={(value) => {
+                    setReplyTexts((current) => ({ ...current, [entry.id]: value }));
+                    if (replyErrors[entry.id]) setReplyErrors((current) => ({ ...current, [entry.id]: "" }));
+                  }}
+                  missing={newsMissing.includes(entry.id)}
+                  error={replyErrors[entry.id] || null}
+                  disabled={submitBusy}
+                />
+              );
+            })}
+          </div>
+          {newsActionable ? (
+            <SubmitBar
+              status={doneCountText(newsDone, entries.length)}
+              missing={
+                newsMissingPositions.length
+                  ? {
+                      text: newsMissingText(newsMissingPositions),
+                      goLabel: fillText(TT.goTo, { k: newsMissingPositions[0] }),
+                      onGo: () => {
+                        const first = entries.find((e) => e.position === newsMissingPositions[0]);
+                        if (first) focusById(first.kind === "domanda" ? questionTitleId(first.id) : newsTitleId(first.id));
+                      },
+                    }
+                  : null
+              }
+              error={submitError}
+              busy={submitBusy}
+              onSubmit={() => void onSubmitNews()}
+            />
+          ) : null}
+        </section>
+        <section aria-labelledby={SENT_TITLE_ID} className="mt-10" data-slot="referent-sent">
+          <h2 id={SENT_TITLE_ID} className="text-xl font-semibold">
+            {TT.sentTitle}
+          </h2>
+          {sentCheck ? <div className="mt-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10 sm:p-5">{sentCheckBlock(false)}</div> : null}
+          {sentSections.length ? <div className="mt-4 space-y-4">{sentSections.map((section) => questionCard(section, { primary: false }))}</div> : null}
+          {generalBlock(false)}
+        </section>
+      </PublicShell>
+    );
+  }
 
   return (
     <PublicShell footer={footer}>
@@ -501,35 +797,9 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
       ) : null}
       {screen === "privacy" ? <PrivacyCard texts={privacy} busy={privacyBusy} error={privacyError} onAccept={() => void onAccept()} /> : null}
       {readOnly ? (
-        <MessageCard
-          as="h2"
-          titleId={FINAL_TITLE_ID}
-          title={finalCardText(screen, view, today)}
-          text={
-            sentCheck ? (
-              <>
-                <p>{sentCheck.useCase}</p>
-                {sentCheck.note ? <blockquote className="rounded-xl bg-muted/50 px-4 py-3 whitespace-pre-line">{sentCheck.note}</blockquote> : null}
-                {sentCheck.time ? (
-                  <p>
-                    {sentCheck.time}
-                    {sentCheck.numbers ? ` ${sentCheck.numbers}` : ""}
-                  </p>
-                ) : null}
-                {sentCheck.benefits.length ? (
-                  <ul data-slot="referent-sent-benefits" className="space-y-1">
-                    {sentCheck.benefits.map((b) => (
-                      <li key={b.key} className="break-words">
-                        {b.line}
-                        {b.comment ? <span className="block text-muted-foreground">{b.comment}</span> : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </>
-            ) : undefined
-          }
-        />
+        <MessageCard as="h2" titleId={FINAL_TITLE_ID} title={finalCardText(screen, view, today)}>
+          {sentCheck ? <div className="mt-3">{sentCheckBlock(true)}</div> : null}
+        </MessageCard>
       ) : null}
       {renderQuestions ? (
         <div hidden={onCheckStep} data-slot="referent-questions">
@@ -544,26 +814,11 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           ) : null}
           {questionsBlock ? (
             <div className="mt-6 space-y-4" aria-labelledby={readOnly ? FINAL_TITLE_ID : QUESTIONS_TITLE_ID}>
-              {sections.map((section) => (
-                <QuestionCard
-                  key={`${section.needId}:${section.kind}:${generation}`}
-                  token={token}
-                  section={section}
-                  today={today}
-                  clientMode={view.upload.clientMode}
-                  issues={issues.get(section.needId.toLowerCase()) ?? []}
-                  disabled={submitBusy}
-                  registerFlush={registerFlush}
-                  onStale={onStale}
-                  onEdit={clearIssues}
-                  missing={missing.includes(section.needId.toLowerCase())}
-                  onClosure={onClosure}
-                  tooSoon={stepped ? tooSoon : undefined}
-                />
-              ))}
+              {sections.map((section) => questionCard(section, { primary: readOnly }))}
               {screen === "questions" ? <p className="text-sm break-words text-muted-foreground">{savesItselfText(view)}</p> : null}
             </div>
           ) : null}
+          {screen === "questions" ? generalBlock(false) : null}
           {screen === "questions" ? (
             <SubmitBar
               status={doneCountText(doneCount, sections.length)}
@@ -583,6 +838,7 @@ export function ReferentAskPage({ token, initialView, today, initialStep = null 
           ) : null}
         </div>
       ) : null}
+      {readOnly ? generalBlock(true) : null}
     </PublicShell>
   );
 }

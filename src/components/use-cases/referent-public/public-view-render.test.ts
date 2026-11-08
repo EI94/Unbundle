@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ReferentAskView, ReferentFileView, ReferentQuestionView } from "../../../lib/use-cases/referent/contract.ts";
+import type { ReferentAskView, ReferentFileView, ReferentQuestionView, ReferentThreadMessageView } from "../../../lib/use-cases/referent/contract.ts";
 import { REFERENT_PUBLIC_TEXT } from "../../../lib/use-cases/referent/labels.ts";
 import {
   attachHelp,
@@ -32,6 +32,20 @@ import {
   savesItselfText,
   sentCheckLines,
   usableFile,
+  anchorLabelOf,
+  doubtOf,
+  editableText,
+  freshReplyIds,
+  messagesOf,
+  newsEntries,
+  newsLead,
+  newsMissingText,
+  newsOf,
+  threadActionsOf,
+  threadKeyOf,
+  threadLineOf,
+  threadTargetOf,
+  updatedLine,
 } from "./public-view-render.ts";
 
 // Dalla vista della richiesta a quello che la pagina `/rispondi/<token>` mostra (SPEC §4.4, §P3.7).
@@ -322,4 +336,112 @@ test("(rilascio 5) dopo l'invio: «Hai risposto il …», la conferma e la stima
   });
   assert.equal(sentCheckLines(view({ check: check({ estimate: null, timesPerMonth: 20, minutesEach: 30 }) }))?.time, "Il tempo:");
   assert.equal(sentCheckLines(view({ check: check({}, null) })), null, "solo dopo l'invio");
+});
+
+// ─── (Rilascio 6) Il filo con il team ────────────────────────────────
+
+const msg = (over: Partial<ReferentThreadMessageView> & Pick<ReferentThreadMessageView, "id" | "side" | "kind">): ReferentThreadMessageView => ({
+  anchor: "domanda",
+  needId: N[0],
+  componentKey: null,
+  text: "Testo",
+  createdAt: "2026-11-09T10:00:00.000Z",
+  replyTo: null,
+  waiting: false,
+  fresh: false,
+  ...over,
+});
+const sentQuestion = (i: number, over: Partial<ReferentQuestionView> = {}) =>
+  question(i, { state: "inviata", answer: { text: `Risposta ${i}`, dontKnow: false, alreadyAttached: false, comment: null, submittedAt: "2026-11-03T10:00:00.000Z", editedAt: null }, editable: true, ...over });
+const followUpView = (messages: ReferentThreadMessageView[], over: Partial<ReferentAskView> = {}) =>
+  view({ state: "completata", questions: [sentQuestion(0), sentQuestion(1)], thread: { followUp: true, open: true, messages }, ...over });
+
+test("(rilascio 6) la schermata: «Da completare» dopo il primo invio con una novità; l'informativa solo per scrivere", () => {
+  const clar = msg({ id: "c1", side: "team", kind: "chiarimento", waiting: true, text: "Al mese o all'anno?" });
+  assert.equal(screenOf(followUpView([])), "completed", "niente di nuovo: la sola lettura");
+  assert.equal(screenOf(followUpView([clar])), "news");
+  assert.equal(screenOf(followUpView([{ ...clar, waiting: false }])), "completed", "un chiarimento già risposto");
+  // Una risposta del team da leggere non chiede l'informativa; un chiarimento sì.
+  const reply = msg({ id: "r1", side: "team", kind: "risposta", fresh: true, replyTo: "d1" });
+  const old = { privacy: { accepted: false, version: "ucq-2026-11-2", contact: "x@example.test" } };
+  assert.equal(screenOf(followUpView([reply], old)), "news");
+  assert.equal(screenOf(followUpView([clar], old)), "privacy");
+  // Domande nuove: «Da completare»; prima del primo invio le domande come nel rilascio 5.1.
+  const newQ = followUpView([], { state: "aperta", questions: [sentQuestion(0), question(1, { followUp: true })] });
+  assert.equal(screenOf(newQ), "news");
+  assert.equal(screenOf(view({ thread: { followUp: false, open: true, messages: [reply] } })), "questions");
+});
+
+test("(rilascio 6) «Da completare»: prima i chiarimenti, poi le domande nuove, poi le risposte del team; i numeri e quello che manca", () => {
+  const clar = msg({ id: "c1", side: "team", kind: "chiarimento", waiting: true });
+  const reply = msg({ id: "r1", side: "team", kind: "risposta", fresh: true, anchor: "generale", needId: null, replyTo: "d1" });
+  const doubt = msg({ id: "d1", side: "referente", kind: "dubbio", anchor: "generale", needId: null, text: "Chi le vede?" });
+  const v = followUpView([doubt, clar, reply], { state: "aperta", questions: [sentQuestion(0), question(1, { followUp: true })] });
+  const n = newsOf(v);
+  assert.deepEqual([n.clarifications.length, n.questions.length, n.replies.length, n.total], [1, 1, 1, 3]);
+  assert.deepEqual(
+    newsEntries(v).map((e) => [e.kind, e.label, e.anchorLabel, e.position]),
+    [
+      ["chiarimento", "Chiarimento · 1 di 3", "Su «Domanda 0»", 1],
+      ["domanda", "Nuova domanda · 2 di 3", "", 2],
+      ["risposta", "Risposta del team · 3 di 3", "Sul caso d'uso", 3],
+    ],
+  );
+  assert.equal(newsEntries(followUpView([clar]))[0].label, "Chiarimento", "una sola: senza numeri");
+  assert.equal(newsLead(1), "Hai una novità.");
+  assert.equal(newsLead(3), "Hai 3 novità.");
+  assert.equal(newsMissingText([2]), "Manca ancora il punto 2.");
+  assert.equal(newsMissingText([3, 1]), "Mancano ancora i punti 1 e 3.");
+  assert.equal(doubtOf(v, reply)?.text, "Chi le vede?");
+  assert.deepEqual(freshReplyIds(v), ["r1"]);
+});
+
+test("(rilascio 6) le righe del filo sotto una risposta, mai chi del team ha scritto; i messaggi di un'ancora sparita in «Generale»", () => {
+  const today = "2026-11-09";
+  const lines = [
+    msg({ id: "1", side: "team", kind: "chiarimento", text: "Quante?" }),
+    msg({ id: "2", side: "referente", kind: "risposta", text: "Circa 200." }),
+    msg({ id: "3", side: "referente", kind: "dubbio", text: "Anche i resi?" }),
+    msg({ id: "4", side: "team", kind: "risposta", text: "Sì." }),
+    msg({ id: "5", side: "referente", kind: "aggiunta", text: "Anche la PEC." }),
+  ].map((m) => threadLineOf(m, today));
+  assert.deepEqual(lines, [
+    "Il team ha chiesto: «Quante?» · 09/11",
+    "Hai risposto: «Circa 200.» · 09/11",
+    "Hai chiesto: «Anche i resi?» · 09/11",
+    "Il team ha risposto: «Sì.» · 09/11",
+    "Hai aggiunto: «Anche la PEC.» · 09/11",
+  ]);
+  const gone = msg({ id: "g1", side: "referente", kind: "aggiunta", needId: "99999999-9999-4999-8999-999999999999" });
+  const v = followUpView([msg({ id: "a", side: "referente", kind: "aggiunta" }), gone]);
+  assert.deepEqual(messagesOf(v, threadKeyOf({ anchor: "domanda", needId: N[0] })).map((m) => m.id), ["a"]);
+  assert.deepEqual(messagesOf(v, "g").map((m) => m.id), ["g1"], "un'ancora che non c'è più: con «Generale»");
+  const fresh = msg({ id: "f", side: "team", kind: "risposta", fresh: true });
+  assert.deepEqual(messagesOf(followUpView([fresh]), `d:${N[0]}`, { withFresh: false }), [], "in «Da completare» la risposta nuova ha la sua scheda");
+  assert.equal(anchorLabelOf(v, { anchor: "domanda", needId: N[1] }), "Su «Domanda 1»");
+  assert.equal(anchorLabelOf(v, { anchor: "generale" }), "Sul caso d'uso");
+  assert.equal(anchorLabelOf(view({ questions: [question(0, { title: "x".repeat(80) })] }), { anchor: "domanda", needId: N[0] }), `Su «${"x".repeat(59)}…»`);
+  assert.deepEqual(threadTargetOf(threadKeyOf({ anchor: "beneficio", componentKey: "tempo-1" })), { anchor: "beneficio", componentKey: "tempo-1" });
+  assert.deepEqual(threadTargetOf("g"), { anchor: "generale" });
+  for (const line of lines) assert.doesNotMatch(line, /use case|\(team\)/);
+});
+
+test("(rilascio 6) che cosa si fa su una risposta inviata: «Modifica» fino ad «A posto», poi «Aggiungi qualcosa»; «Ho un dubbio» ovunque", () => {
+  const v = followUpView([]);
+  assert.deepEqual(threadActionsOf(v, { kind: "domanda", question: sentQuestion(0) }), ["edit", "doubt"]);
+  assert.deepEqual(threadActionsOf(v, { kind: "domanda", question: sentQuestion(0, { editable: false }) }), ["add", "doubt"]);
+  assert.deepEqual(threadActionsOf(v, { kind: "domanda", question: question(0) }), ["doubt"], "una domanda aperta");
+  assert.deepEqual(threadActionsOf(v, { kind: "domanda", question: question(0, { state: "gestita" }) }), [], "una domanda a cui ha pensato il team");
+  assert.deepEqual(threadActionsOf(v, { kind: "generale" }), ["doubt"], "senza conferma inviata: solo «Ho un dubbio»");
+  assert.deepEqual(threadActionsOf(v, { kind: "beneficio" }), [], "nessuna voce inviata");
+  const sentCheck = followUpView([], { kind: "referente", check: { description: null, benefits: [], draft: { confirm: "si", note: null, estimate: null, timesPerMonth: null, minutesEach: null, stale: false, savedAt: null }, submittedAt: "2026-11-03T10:00:00.000Z" } });
+  assert.deepEqual(threadActionsOf(sentCheck, { kind: "beneficio" }), ["add", "doubt"]);
+  assert.deepEqual(threadActionsOf(sentCheck, { kind: "generale" }), ["add", "doubt"]);
+  assert.deepEqual(threadActionsOf(followUpView([], { thread: { followUp: true, open: false, messages: [] } }), { kind: "domanda", question: sentQuestion(0) }), [], "un link chiuso: niente");
+  assert.equal(editableText(sentQuestion(0)), "Risposta 0");
+  assert.equal(editableText(sentQuestion(0, { answer: { text: null, dontKnow: true, alreadyAttached: false, comment: null, submittedAt: "2026-11-03T10:00:00.000Z" } })), "", "mai «Non ce l'ho» nel campo");
+  assert.equal(updatedLine(sentQuestion(0, { answer: { text: "x", dontKnow: false, alreadyAttached: false, comment: null, submittedAt: "2026-11-03T10:00:00.000Z", editedAt: "2026-11-08T10:00:00.000Z" } }), "2026-11-09"), "Aggiornata il 08/11.");
+  assert.equal(updatedLine(sentQuestion(0), "2026-11-09"), null);
+  // «Hai risposto il …»: anche dopo una risposta nel filo.
+  assert.equal(lastSentOn(followUpView([msg({ id: "x", side: "referente", kind: "aggiunta", createdAt: "2026-11-09T10:00:00.000Z" })])), "2026-11-09T10:00:00.000Z");
 });

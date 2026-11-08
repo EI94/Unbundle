@@ -1,5 +1,20 @@
 import { parseApiResponse, type ApiResult } from "@/lib/uc/views/referente-form";
-import { referentApiBase, REFERENT_API, type CheckBody, type CheckResult, type DraftBody, type DraftResult, type ReferentAskView, type SubmitBody, type SubmitResult } from "@/lib/use-cases/referent/contract";
+import {
+  referentApiBase,
+  REFERENT_API,
+  type CheckBody,
+  type CheckResult,
+  type DraftBody,
+  type DraftResult,
+  type ReferentAskView,
+  type SubmitBody,
+  type SubmitResult,
+  type ThreadEditBody,
+  type ThreadReplyBody,
+  type ThreadSeenBody,
+  type ThreadTextBody,
+  type ThreadWriteResult,
+} from "@/lib/use-cases/referent/contract";
 
 /**
  * Chiamate della pagina `/rispondi/<token>` alle sue API (SPEC §4.2): sempre JSON, niente cache,
@@ -64,4 +79,29 @@ export function submitAnswers(token: string, body: SubmitBody = {}): Promise<Api
 
 export function removeFile(token: string, fileId: string): Promise<ApiResult<{ removed: true }>> {
   return call(token, REFERENT_API.fileRemove, { method: "POST", body: { fileId } });
+}
+
+/** (Rilascio 6) «Ho un dubbio»: una domanda al team su una domanda, una voce o in generale. */
+export function postDoubt(token: string, body: ThreadTextBody): Promise<ApiResult<ThreadWriteResult>> {
+  return call(token, REFERENT_API.doubt, { method: "POST", body });
+}
+
+/** (Rilascio 6) La risposta a un chiarimento del team. */
+export function postReply(token: string, body: ThreadReplyBody): Promise<ApiResult<ThreadWriteResult>> {
+  return call(token, REFERENT_API.reply, { method: "POST", body });
+}
+
+/** (Rilascio 6) «Aggiungi qualcosa» a una risposta già inviata. */
+export function postAddition(token: string, body: ThreadTextBody): Promise<ApiResult<ThreadWriteResult>> {
+  return call(token, REFERENT_API.add, { method: "POST", body });
+}
+
+/** (Rilascio 6) La modifica di una risposta già inviata, finché il team non la segna «A posto». */
+export function postEdit(token: string, body: ThreadEditBody): Promise<ApiResult<{ editedAt: string }>> {
+  return call(token, REFERENT_API.edit, { method: "POST", body });
+}
+
+/** (Rilascio 6) Le risposte del team che la pagina ha mostrato. */
+export function markSeen(token: string, body: ThreadSeenBody): Promise<ApiResult<{ seen: number }>> {
+  return call(token, REFERENT_API.seen, { method: "POST", body });
 }
