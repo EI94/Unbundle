@@ -218,8 +218,8 @@ test("per beneficio: ogni voce con la cifra che il referente ha visto e la sua r
   assert.deepEqual(lineOf(BENEFIT({ answer: "meno" }))[1], "Aldo Prova: è di meno.");
   assert.deepEqual(lineOf(EURO({ answer: "meno", eurYear: 3500 })), ["Meno solleciti: il team stimava 4.000 € l'anno.", "Aldo Prova: è di meno. Circa 3.500 € l'anno."]);
   assert.deepEqual(lineOf(EURO()), ["Meno solleciti: il team stimava 4.000 € l'anno.", "Aldo Prova: sì."]);
-  assert.deepEqual(lineOf(FATTO({ answer: "no", comment: "Solo a fine mese." })), ["Meno errori.", "Aldo Prova: non succede.", "«Solo a fine mese.»"]);
-  assert.deepEqual(lineOf(FATTO())[1], "Aldo Prova: succede.");
+  assert.deepEqual(lineOf(FATTO({ answer: "no", comment: "Solo a fine mese." })), ["Meno errori.", "Aldo Prova: no.", "«Solo a fine mese.»"]);
+  assert.deepEqual(lineOf(FATTO())[1], "Aldo Prova: sì.");
   assert.deepEqual(lineOf(FATTO({ answer: "non_so" }))[1], "Aldo Prova: non lo sa.");
   // (Decisione del titolare del 04/11/2026) «Non so» su una cifra del team, anche al posto dei due numeri: «non lo sa.», nessun numero.
   assert.deepEqual(lineOf(BENEFIT({ answer: "non_so" })), ["Controllo delle fatture: il team stimava 600 ore di lavoro l'anno.", "Aldo Prova: non lo sa."]);

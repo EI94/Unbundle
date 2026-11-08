@@ -605,7 +605,8 @@ test("(rilascio 5.1) la risposta per beneficio sulla scheda: ogni voce con la ri
     "è di più. Circa 720 ore (300 al mese, 12 minuti).",
     "Meno solleciti: il team stimava 4.000 € l'anno.",
     "Meno errori.",
-    "non succede.",
+    // (Rilascio 6, B.5) «{Nome}: no.», non più «non succede».
+    `${MARIO.name}: no.`,
     "Solo a fine mese.",
   ]) {
     assert.ok(block.includes(text), text);
@@ -617,6 +618,7 @@ test("(rilascio 5.1) la risposta per beneficio sulla scheda: ogni voce con la ri
   assert.ok(block.includes(`${labels.fillText(B.adopt, { Nome: MARIO.name })}</button>`));
   assert.doesNotMatch(block, /bg-primary/, "nessun pulsante pieno nel blocco");
   assert.ok(!block.includes("Il tempo:"), "niente righe della stima del tempo del rilascio 5");
+  assert.ok(!block.includes("succede"), "«sì» / «no», mai «succede»");
   const contributor = await detailHtml("contributor");
   for (const text of ["Controllo delle fatture: il team stimava", "Solo a fine mese.", "referent-benefit-answer", "4.000 €"]) assert.ok(!contributor.includes(text), text);
 });

@@ -411,8 +411,9 @@ export const REFERENT_BLOCK_TEXT = Object.freeze({
   benefitTeamOreNone: "{label}: nessuna stima del team.",
   benefitTeamEuro: "{label}: il team stimava {euro} l'anno.",
   benefitTeamFatto: "{label}.",
-  saysHappens: "{Nome}: succede.",
-  saysNotHappens: "{Nome}: non succede.",
+  // (Rilascio 6, B.5) Sulle righe senza cifra la risposta a «Ti torna?»: «sì», «no», «non lo sa».
+  saysHappens: "{Nome}: sì.",
+  saysNotHappens: "{Nome}: no.",
   saysDunno: "{Nome}: non lo sa.",
   euroTail: " Circa {euro} l'anno.",
   benefitGone: "Questa voce non c'è più nella valutazione.",
