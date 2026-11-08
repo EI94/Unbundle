@@ -12,6 +12,8 @@ import { AskSteps, type AskStepsContext } from "./ask-steps";
 import type { AskSession } from "./ask-steps-state";
 import { ConfirmDialog, CorrectEmailDialog, EraseContactDialog } from "./contact-dialogs";
 import { FileDialog } from "./file-dialog";
+import { ThreadLineDialog } from "./thread-dialog";
+import type { ClarifyTarget } from "@/lib/use-cases/referent/contract";
 
 const T = REFERENT_UI_TEXT;
 
@@ -31,7 +33,11 @@ export type ReferentDialog =
   | { kind: "file"; need: { id: string; title: string } }
   | { kind: "removeAnswer"; answerId: string }
   | { kind: "deleteFile"; fileId: string }
-  | { kind: "rejectFile"; fileId: string };
+  | { kind: "rejectFile"; fileId: string }
+  /** (Rilascio 6) «Chiedi un chiarimento» su una risposta del referente; `prefill` dal suggerimento dell'AI («Chiedi questo»). */
+  | { kind: "clarify"; target: ClarifyTarget; prefill?: string; suggestionId?: string }
+  /** (Rilascio 6) «Rispondi» a un dubbio del referente. */
+  | { kind: "replyDoubt"; messageId: string; name: string; quote: string };
 
 /** «Chiedi al referente» in tre passi: quello che la finestra riceve dalla pagina, e dove lascia la bozza. */
 export interface ReferentAskContext extends AskStepsContext {
@@ -149,6 +155,17 @@ export function ReferentDialogs({
           onClose={onClose}
         />
       );
+    case "clarify":
+      return (
+        <ThreadLineDialog
+          workspaceId={workspaceId}
+          useCaseId={useCaseId}
+          mode={{ kind: "clarify", target: dialog.target, prefill: dialog.prefill, suggestionId: dialog.suggestionId }}
+          onClose={onClose}
+        />
+      );
+    case "replyDoubt":
+      return <ThreadLineDialog workspaceId={workspaceId} useCaseId={useCaseId} mode={{ kind: "reply", messageId: dialog.messageId, name: dialog.name, quote: dialog.quote }} onClose={onClose} />;
     case "rejectFile":
       return (
         <ConfirmDialog

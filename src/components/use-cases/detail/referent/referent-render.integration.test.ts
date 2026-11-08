@@ -631,3 +631,52 @@ test("(rilascio 5.1) la risposta per beneficio sulla scheda: ogni voce con la ri
   const contributor = await detailHtml("contributor");
   for (const text of ["Controllo delle fatture: il team stimava", "Solo a fine mese.", "referent-benefit-answer", "4.000 €"]) assert.ok(!contributor.includes(text), text);
 });
+
+test("(rilascio 6) il filo sulla scheda: «Chiedi un chiarimento» sotto ogni risposta, il chiarimento in attesa, «Messaggi» con «Rispondi», «Tocca a noi», il suggerimento dell'AI; mai pieno; il contributore niente", opts, async () => {
+  const thread = await import("../../../../lib/db/queries/use-case-referent-thread.ts");
+  const calendar = await import("../../../../lib/uc/calendar.ts");
+  const R = labels.REFERENT_THREAD_TEXT;
+  const now = new Date(calendar.romeLocalToUtc(calendar.addWorkingDays(calendar.romeDate(new Date()), 1), 10).getTime());
+  const [panel] = findProp(await detailElement("builder"), "referents").filter(Boolean) as Panel[];
+  const requestId = panel.referent!.referentRequestId;
+  const tempo = panel.referent!.check!.benefits!.find((b) => b.key === "tempo-1")!;
+  assert.equal(tempo.clarify?.pending, null, "si può chiedere un chiarimento sulla voce");
+  ok(await thread.askReferentClarification(as("builder"), ids.card, { requestId, anchor: "beneficio", componentKey: "tempo-1", text: `Quante al mese, più o meno ${suffix}?` }, { env: ENV, now }), "chiarimento");
+  // Il referente ha un dubbio, dal suo link.
+  const [token] = (await q(`SELECT 1 FROM use_case_referent_tokens WHERE request_id = $1::uuid LIMIT 1`, [requestId])).map(() => "x");
+  assert.ok(token);
+  const link = { tokenId: randomUUID(), requestId, workspaceId: ids.ws, useCaseId: ids.card, contactId: panel.referent!.contact.id, status: "inviata" as const, privacyAccepted: true, expiresAt: new Date(Date.now() + 86_400_000) };
+  const doubt = await thread.postReferentDoubt(link, { anchor: "generale", text: `Posso allegare un esempio ${suffix}?` }, new Date());
+  assert.ok(doubt.ok, JSON.stringify(doubt));
+  // Una proposta dell'AI su un'altra voce.
+  await q(
+    `INSERT INTO use_case_referent_suggestions (request_id, workspace_id, use_case_id, anchor, component_key, source_at, status, body) VALUES ($1::uuid, $2::uuid, $3::uuid, 'beneficio', 'qualita-1', now(), 'proposta', $4)`,
+    [requestId, ids.ws, ids.card, `Succede ogni mese ${suffix}?`],
+  );
+
+  const page = await detailHtml("builder");
+  const start = page.indexOf('data-slot="referent-block"');
+  const block = page.slice(start, page.indexOf("</section>", start));
+  assert.ok(block.includes(`${"Il referente ha chiesto qualcosa"}`), "lo stato");
+  assert.ok(block.includes(`· ${R.turnTeam}`), "«Tocca a noi»");
+  assert.ok(block.includes(`>${R.heading}<`), "«Messaggi»");
+  assert.ok(block.includes(`Posso allegare un esempio ${suffix}?`), "il dubbio");
+  assert.ok(block.includes(`Quante al mese, più o meno ${suffix}?`), "il chiarimento nel filo");
+  assert.ok(block.includes(labels.fillText(R.pending, { testo: `Quante al mese, più o meno ${suffix}?` })), "il chiarimento in attesa sotto la voce");
+  assert.match(block, /data-action="thread-reply"/, "«Rispondi» sul dubbio");
+  assert.ok((block.match(/data-action="thread-clarify"/g) ?? []).length >= 2, "«Chiedi un chiarimento» sulle altre voci e sulla conferma");
+  assert.ok(block.includes(labels.fillText(R.suggestion, { testo: `Succede ogni mese ${suffix}?` })), "il suggerimento dell'AI");
+  assert.ok(block.includes(`>${R.suggestionAsk}</button>`) && block.includes(`>${R.suggestionDismiss}</button>`));
+  assert.doesNotMatch(block, /bg-primary/, "nessun pulsante pieno nel blocco");
+  assert.ok(!block.includes("caso d'uso"), "sulla scheda «use case»");
+  // Lo use case è da valutare: «Prossimo passo» resta la decisione («Rispondi al referente» vale da approvato, guided.test.ts).
+  assert.match(page, /data-slot="next-step" data-key="H7"/);
+  // Sotto le domande risposte «Non ce l'ho»: «Chiedi un chiarimento».
+  const needs = page.slice(page.indexOf('data-slot="needs-requirements"'));
+  assert.match(needs, /data-action="thread-clarify"/);
+  // Il contributore: niente del filo, nessuna proposta.
+  const contributor = await detailHtml("contributor");
+  for (const text of [R.heading, R.clarify, R.reply, R.turnTeam, `Posso allegare un esempio ${suffix}?`, `Succede ogni mese ${suffix}?`, `Quante al mese, più o meno ${suffix}?`, "thread-"]) {
+    assert.ok(!contributor.includes(text), `contributore: ${text}`);
+  }
+});

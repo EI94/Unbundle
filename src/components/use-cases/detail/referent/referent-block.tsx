@@ -14,7 +14,7 @@ import {
 } from "@/lib/actions/use-case-referents";
 import { formatDayInYear } from "@/lib/use-cases/format";
 import type { UseCaseReferentPanel } from "@/lib/use-cases/referent/contract";
-import { REFERENT_BLOCK_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { REFERENT_BLOCK_TEXT, REFERENT_THREAD_TEXT, fillText } from "@/lib/use-cases/referent/labels";
 import { arriveAt } from "../arrival";
 import { VALUATION_PREFILL_EVENT, type ValuationPrefill } from "../value-model-draft";
 import { REFERENT_STATE_TEXT, REFERENT_STATE_TONE } from "@/lib/use-cases/referent/use-case-state";
@@ -24,6 +24,8 @@ import { assignEntry, assignModeOf, referentRequestOf } from "./assign-dialog-st
 import type { ReferentDialog } from "./dialogs";
 import { referentBlockModel, type BenefitLines, type BlockButton, type BlockMenuKey } from "./referent-block-view";
 import { useReferentRunner } from "./referent-actions";
+import { ClarifyControl, ThreadList } from "./thread-parts";
+import { referentRequestIds, suggestionFor, threadLinesOf, turnTextOf } from "./thread-view";
 
 const T = REFERENT_BLOCK_TEXT;
 const ACTION = "min-h-11 sm:min-h-8";
@@ -73,6 +75,12 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
   });
   const tone = SEMAFORO_TONE[REFERENT_STATE_TONE[model.state]];
   const contact = referent ? { id: referent.contact.id, name: referent.contact.name } : null;
+  // (Rilascio 6) Il filo con il referente, in ordine di tempo, e di chi è il turno; i chiarimenti solo a chi modifica.
+  const threadLines = referent ? threadLinesOf(panel.thread?.messages, { requestIds: referentRequestIds(panel), showAnchor: true }) : [];
+  const turn = threadLines.length ? turnTextOf(referent?.turn) : null;
+  const suggestions = canAsk ? panel.thread?.suggestions : [];
+  const clarifyOf = (target: NonNullable<NonNullable<typeof referent>["check"]>["clarify"]) => (canAsk ? (target ?? null) : null);
+  const benefitClarify = (key: string) => clarifyOf(referent?.check?.benefits?.find((b) => b.key === key)?.clarify);
 
   const act = (key: BlockButton["key"], benefit?: string) => {
     if (key === "choose") onOpen({ kind: "assign", mode: "scegli" });
@@ -206,6 +214,7 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
           <p data-slot="referent-block-state" className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
             <UserRound aria-hidden className={cn("size-3.5 shrink-0", tone.text)} />
             <span className="break-words">{REFERENT_STATE_TEXT[model.state]}</span>
+            {turn ? <span data-slot="referent-block-turn" className="break-words">{` · ${turn}`}</span> : null}
           </p>
         </div>
         {more.length ? <ActionMenu items={more} trigger="altro" label={T.more} className="shrink-0" /> : null}
@@ -231,7 +240,15 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
         <div data-slot="referent-check" className="space-y-1">
           {model.checkLines.map((line, index) =>
             line.kind === "benefit" ? (
-              <BenefitAnswer key={line.benefit.key} lines={line.benefit} buttonOf={buttonOf} />
+              <BenefitAnswer key={line.benefit.key} lines={line.benefit} buttonOf={buttonOf}>
+                <ClarifyControl
+                  workspaceId={workspaceId}
+                  useCaseId={useCaseId}
+                  target={benefitClarify(line.benefit.key)}
+                  suggestion={suggestionFor(suggestions, benefitClarify(line.benefit.key))}
+                  onOpen={onOpen}
+                />
+              </BenefitAnswer>
             ) : line.kind === "button" ? (
               <div key={index} className="pb-1">
                 {buttonOf(line.button)}
@@ -248,17 +265,30 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
           )}
         </div>
       ) : null}
+      {/* (Rilascio 6) «Chiedi un chiarimento» sulla conferma, «In generale». */}
+      {referent?.check?.submittedAt ? (
+        <ClarifyControl workspaceId={workspaceId} useCaseId={useCaseId} target={clarifyOf(referent.check.clarify)} suggestion={suggestionFor(suggestions, clarifyOf(referent.check.clarify))} onOpen={onOpen} />
+      ) : null}
       {model.buttons.length ? (
         <div className="flex flex-wrap items-center gap-2 pt-1">
           {model.buttons.map(buttonOf)}
         </div>
       ) : null}
+      <ThreadList
+        workspaceId={workspaceId}
+        useCaseId={useCaseId}
+        lines={canAsk ? threadLines : threadLines.map((l) => ({ ...l, reply: false, done: false }))}
+        replyName={referent?.contact.name ?? ""}
+        onOpen={onOpen}
+        heading={REFERENT_THREAD_TEXT.heading}
+        turn={null}
+      />
     </section>
   );
 }
 
 /** (Rilascio 5.1) Una voce di «Benefici e costi» con la risposta del referente e i pulsanti del team su quella voce. */
-function BenefitAnswer({ lines, buttonOf }: { lines: BenefitLines; buttonOf: (button: BlockButton) => React.ReactNode }) {
+function BenefitAnswer({ lines, buttonOf, children }: { lines: BenefitLines; buttonOf: (button: BlockButton) => React.ReactNode; children?: React.ReactNode }) {
   return (
     <div data-slot="referent-benefit-answer" data-benefit={lines.key} className="space-y-0.5 border-t pt-2 first:border-t-0">
       <p className="text-sm font-medium break-words">{lines.head}</p>
@@ -270,6 +300,7 @@ function BenefitAnswer({ lines, buttonOf }: { lines: BenefitLines; buttonOf: (bu
         </p>
       ))}
       {lines.buttons.length ? <div className="flex flex-wrap items-center gap-2 pt-1">{lines.buttons.map(buttonOf)}</div> : null}
+      {children}
     </div>
   );
 }

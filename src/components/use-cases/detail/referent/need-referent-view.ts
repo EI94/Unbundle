@@ -5,8 +5,8 @@
  *
  * I numeri contano le voci di questa esigenza, mai le persone (art. 15.4).
  */
-import type { NeedAnswerView, NeedFileView, NeedReferentView } from "../../../../lib/use-cases/referent/contract.ts";
-import { REFERENT_UI_TEXT, fillText } from "../../../../lib/use-cases/referent/labels.ts";
+import type { ClarifyTarget, NeedAnswerView, NeedFileView, NeedReferentView } from "../../../../lib/use-cases/referent/contract.ts";
+import { REFERENT_THREAD_TEXT, REFERENT_UI_TEXT, fillText } from "../../../../lib/use-cases/referent/labels.ts";
 
 const T = REFERENT_UI_TEXT;
 
@@ -20,6 +20,10 @@ export interface NeedAnswerRow {
   /** (Rilascio 5) «Chi potrebbe saperlo: «…»» con «Non ce l'ho», altrimenti «Commento: «…»»; null senza. */
   comment: string | null;
   canRemove: boolean;
+  /** (Rilascio 6) «Chiedi un chiarimento» (o il chiarimento in attesa) su una risposta del referente, solo a chi modifica. */
+  clarify: ClarifyTarget | null;
+  /** (Rilascio 6) «Aggiornata il 08/11.»: il referente l'ha cambiata dopo «Invia». */
+  editedLabel: string | null;
 }
 
 export interface NeedFileRow {
@@ -59,6 +63,8 @@ function answerRow(answer: NeedAnswerView, canEdit: boolean): NeedAnswerRow {
     dontKnow: answer.text === null && (answer.dontKnow || answer.alreadyAttached === true),
     comment: answer.comment ? fillText(answer.dontKnow ? T.whoMightKnow : T.commentLine, { testo: answer.comment }) : null,
     canRemove: canEdit && answer.canRemove,
+    clarify: canEdit && answer.source === "referente" ? (answer.clarify ?? null) : null,
+    editedLabel: answer.editedLabel ?? null,
   };
 }
 
@@ -82,8 +88,9 @@ function fileRow(file: NeedFileView, opts: { canEdit: boolean; canReviewFiles: b
  * Le righe di un'esigenza. I file «Da controllare» solo a chi li controlla (i revisori che modificano
  * «Cosa serve», `canReviewFiles`): il server non li manda agli altri, e qui non si mostrano comunque.
  */
-export function needReferentRows(view: NeedReferentView | null | undefined, opts: { canEdit: boolean; canReviewFiles: boolean }): NeedReferentRows {
+export function needReferentRows(view: NeedReferentView | null | undefined, opts: { canEdit: boolean; canReviewFiles: boolean; messages?: number }): NeedReferentRows {
   if (!view) return EMPTY_NEED_REFERENT_ROWS;
+  const messages = Math.max(0, opts.messages ?? 0);
   // Una risposta senza testo e senza «Non lo so» (la domanda risposta solo con un file) non è una voce: c'è il file.
   const answers = view.answers.filter((answer) => answer.dontKnow || answer.alreadyAttached === true || Boolean(answer.text?.trim()) || Boolean(answer.comment?.trim())).map((answer) => answerRow(answer, opts.canEdit));
   const files = view.files.filter((file) => file.status !== "in_revisione" || opts.canReviewFiles).map((file) => fileRow(file, opts));
@@ -93,7 +100,8 @@ export function needReferentRows(view: NeedReferentView | null | undefined, opts
     line: view.line,
     notice: view.reviewExpired ? T.fileReviewExpired : null,
     silentTag: view.silent && !saysSilent ? T.silentTag : null,
-    summary: count > 0 ? fillText(T.entriesSummary, { n: count }) : null,
+    // (Rilascio 6) Senza risposte né file, il filo della domanda (un dubbio del referente): «Messaggi · n».
+    summary: count > 0 ? fillText(T.entriesSummary, { n: count }) : messages > 0 ? `${REFERENT_THREAD_TEXT.heading} · ${messages}` : null,
     answers,
     files,
   };

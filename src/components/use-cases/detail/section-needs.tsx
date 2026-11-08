@@ -218,6 +218,7 @@ export function SectionNeeds({
           ? {
               workspaceId,
               views: feature.needs,
+              thread: feature.thread,
               answerable: canEdit && feature.canAsk ? answerable : new Set<string>(),
               canReviewFiles: feature.canReviewFiles,
               onOpen: setReferentDialog,
@@ -376,6 +377,8 @@ export function SectionNeeds({
 interface NeedListReferent {
   workspaceId: string;
   views: Readonly<Record<string, NeedReferentView>>;
+  /** (Rilascio 6) Il filo con i referenti e le proposte dell'AI (solo a chi modifica). */
+  thread?: UseCaseReferentPanel["thread"];
   /** Le esigenze che accettano una risposta o un file del team (id in minuscolo); vuoto per chi non modifica. */
   answerable: ReadonlySet<string>;
   canReviewFiles: boolean;
@@ -464,6 +467,8 @@ function NeedList({
                   canEdit={canEdit}
                   canReviewFiles={referent.canReviewFiles}
                   onOpen={referent.onOpen}
+                  thread={referent.thread?.messages}
+                  suggestions={canEdit ? referent.thread?.suggestions : []}
                 />
               ) : null}
             </div>

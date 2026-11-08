@@ -3,12 +3,14 @@
 import { Download, Trash2 } from "lucide-react";
 import { StatusDot } from "@/components/uc/ui/status-dot";
 import { Button } from "@/components/ui/button";
-import type { NeedReferentView } from "@/lib/use-cases/referent/contract";
+import type { NeedReferentView, ThreadMessageView, ThreadSuggestionView } from "@/lib/use-cases/referent/contract";
 import { REFERENT_UI_TEXT } from "@/lib/use-cases/referent/labels";
 import { Disclosure } from "../../disclosure";
 import type { ReferentDialog } from "./dialogs";
 import { FileReview } from "./file-review";
 import { needReferentRows } from "./need-referent-view";
+import { ClarifyControl, ThreadList } from "./thread-parts";
+import { suggestionFor, threadLinesOf } from "./thread-view";
 
 /**
  * Sotto un'esigenza di «Cosa serve» (SPEC §5.2, §P2.10.7): la riga della richiesta («Chiesta a
@@ -23,6 +25,8 @@ export function NeedReferentBlock({
   canEdit,
   canReviewFiles,
   onOpen,
+  thread,
+  suggestions,
 }: {
   workspaceId: string;
   useCaseId: string;
@@ -30,8 +34,13 @@ export function NeedReferentBlock({
   canEdit: boolean;
   canReviewFiles: boolean;
   onOpen: (dialog: ReferentDialog) => void;
+  /** (Rilascio 6) Il filo con i referenti (tutto lo use case): qui solo i messaggi di questa domanda. */
+  thread?: readonly ThreadMessageView[];
+  /** (Rilascio 6) Le proposte dell'AI, solo a chi modifica «Cosa serve». */
+  suggestions?: readonly ThreadSuggestionView[];
 }) {
-  const rows = needReferentRows(view, { canEdit, canReviewFiles });
+  const lines = view ? threadLinesOf(thread, { needId: view.needId, showAnchor: false }) : [];
+  const rows = needReferentRows(view, { canEdit, canReviewFiles, messages: lines.length });
   if (!rows.line && !rows.silentTag && !rows.summary && !rows.notice) return null;
   return (
     <div data-slot="need-referent" className="space-y-1">
@@ -58,6 +67,12 @@ export function NeedReferentBlock({
                     {answer.comment}
                   </p>
                 ) : null}
+                {answer.editedLabel ? (
+                  <p data-slot="need-answer-edited" className="text-xs text-muted-foreground">
+                    {answer.editedLabel}
+                  </p>
+                ) : null}
+                <ClarifyControl workspaceId={workspaceId} useCaseId={useCaseId} target={answer.clarify} suggestion={suggestionFor(suggestions, answer.clarify)} onOpen={onOpen} />
                 {answer.canRemove ? (
                   <Button type="button" variant="ghost" size="sm" className="-ml-2 min-h-11 text-muted-foreground sm:min-h-7"
                     aria-label={`${REFERENT_UI_TEXT.removeAnswer}: ${answer.header}`}
@@ -104,6 +119,11 @@ export function NeedReferentBlock({
               </li>
             ))}
           </ul>
+          {lines.length ? (
+            <div className="pt-2 pl-3">
+              <ThreadList workspaceId={workspaceId} useCaseId={useCaseId} lines={lines} replyName={view?.answers.find((a) => a.source === "referente")?.authorLabel ?? ""} onOpen={onOpen} />
+            </div>
+          ) : null}
         </Disclosure>
       ) : null}
     </div>
