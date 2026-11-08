@@ -16,7 +16,8 @@ before(async () => {
 });
 
 test("ogni stato: la sua parola, il tono dell'icona, data-state; nessuno stato, niente", () => {
-  const tones = { manca: "text-uc-grigio", in_attesa: "text-uc-blu", nessuna_risposta: "text-uc-rosso", da_verificare: "text-uc-giallo", fatto: "text-uc-verde" } as const;
+  // (Rilascio 6) «Chiarimento in attesa» aspetta il referente (blu), «Il referente ha chiesto qualcosa» il team (giallo).
+  const tones = { manca: "text-uc-grigio", in_attesa: "text-uc-blu", nessuna_risposta: "text-uc-rosso", da_verificare: "text-uc-giallo", chiarimento: "text-uc-blu", ha_chiesto: "text-uc-giallo", fatto: "text-uc-verde" } as const;
   for (const state of REFERENT_STATES) {
     const html = renderToStaticMarkup(createElement(chip.ReferentChip, { state }));
     assert.match(html, new RegExp(`data-slot="referent-chip" data-state="${state}"`));
@@ -27,7 +28,15 @@ test("ogni stato: la sua parola, il tono dell'icona, data-state; nessuno stato, 
     assert.deepEqual(findHubForbidden(REFERENT_STATE_TEXT[state], "area"), []);
   }
   assert.equal(renderToStaticMarkup(createElement(chip.ReferentChip, { state: null })), "");
-  assert.deepEqual(Object.values(REFERENT_STATE_TEXT), ["Manca il referente", "In attesa del referente", "Nessuna risposta", "Risposte da verificare", "Il referente ha risposto"]);
+  assert.deepEqual(Object.values(REFERENT_STATE_TEXT), [
+    "Manca il referente",
+    "In attesa del referente",
+    "Nessuna risposta",
+    "Risposte da verificare",
+    "Chiarimento in attesa",
+    "Il referente ha chiesto qualcosa",
+    "Il referente ha risposto",
+  ]);
 });
 
 test("il modulo dei chip si usa anche sul server (niente «use client») e solo con i token del tema", () => {

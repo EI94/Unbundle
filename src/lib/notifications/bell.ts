@@ -18,7 +18,7 @@
 import type { UcBellItem } from "../uc/notify/bell.ts";
 import { formatRelativeIt } from "../uc/views/format.ts";
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind } from "../db/use-case-hub-alerts-ddl.ts";
+import type { UseCaseNoticeKind0028 as UseCaseNoticeKind } from "../db/use-case-hub-referent-thread-ddl.ts";
 import { hubSignalHref } from "../use-cases/digest.ts";
 import { noticeContextOf, noticeTextOf } from "../use-cases/notices.ts";
 import { cosaServeHref, realizzazioneHref, richiesteHref, subprocessorsSettingsHref } from "../use-cases/referent/contract.ts";

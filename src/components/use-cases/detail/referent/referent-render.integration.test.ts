@@ -419,10 +419,12 @@ test("con l'autorizzazione e le email accese: la richiesta, le righe sotto le es
   assert.ok((await pub.saveReferentDraft(link.link, { needId: n0, text: ANSWER, dontKnow: false }, now)).ok);
   const submitted = await pub.submitReferentAnswers(link.link, {}, now);
   assert.ok(submitted.ok, JSON.stringify(submitted));
+  // (Rilascio 6) La domanda nuova alla stessa persona entra nella sua richiesta, che torna viva («In attesa»).
   const live = ok(
     await referents.sendReferentRequest(as("builder"), ids.card, { contact: { kind: "esistente", contactId: MARIO.id }, needIds: [n1] }, { env: ENV, requester: { name: NAMES.builder, emailVerified: true } }),
     "seconda richiesta",
   );
+  assert.equal(live.requestId, flow.requestId, "la stessa richiesta");
   await dispatch.dispatchReferentEmails({ requestId: live.requestId, env: ENV, mailer: fakeMailer(), sendIntervalMs: 0 });
   // Il team risponde e allega un file su un'altra esigenza, dalla scheda.
   ok(await referents.addReviewerAnswer(as("builder"), ids.card, n2, { text: TEAM_ANSWER }, ENV), "risposta del team");
@@ -462,9 +464,10 @@ test("con l'autorizzazione e le email accese: la richiesta, le righe sotto le es
     sectionNeeds.needRowActions({ need: { id: n2, title: "x" }, canEdit: true, answerable, onOpen: () => {}, onEdit: () => {} }).map((item) => item.label);
   assert.deepEqual(rowActions(true), [T.rowAddAnswer, T.rowAttachFile, "Modifica"]);
   assert.deepEqual(rowActions(false), ["Modifica"]);
-  // Le richieste stanno chiuse sotto «Richieste inviate · 2» (la risposta e la seconda, viva), con l'ancora di «Vedi le richieste».
+  // Le richieste stanno chiuse sotto «Richieste inviate · 1» (rilascio 6: la risposta e la domanda nuova nella
+  // stessa richiesta, viva), con l'ancora di «Vedi le richieste».
   assert.match(page, /<details id="richieste" data-slot="needs-requests" class="scroll-mt-20">/);
-  assert.match(page, /Richieste inviate\u00a0·\u00a02/);
+  assert.match(page, /Richieste inviate\u00a0·\u00a01/);
   assert.ok(!page.includes("In corso"), "nessun «In corso»");
 
   // Il contributore: niente richieste, niente referenti, niente risposte, niente file.

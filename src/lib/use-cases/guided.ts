@@ -139,6 +139,12 @@ export const GUIDED_TEXT = Object.freeze({
     verifyNoTeam: "Il referente ha dato una stima del tempo.",
     // (Rilascio 5.1) «Non so» su una cifra del team: la stima resta da guardare.
     verifyUnknown: "Il referente non sa rispondere su una stima.",
+    // (Rilascio 6) «Il filo con il referente».
+    verifyReply: "Il referente ha risposto a un chiarimento.",
+    replyTitle: "Rispondere al referente",
+    replyLine: "Il referente ha chiesto qualcosa.",
+    waitClarification: "Aspettare il chiarimento",
+    waitClarificationLine: "Il team ha chiesto un chiarimento al referente.",
     referentSilent: "Il referente non ha risposto.",
     chooseTitle: "Scegliere il referente",
     chooseLine: "Il referente conferma lo use case e l'impatto, poi risponde alle domande.",
@@ -188,6 +194,9 @@ export const GUIDED_TEXT = Object.freeze({
     ask: "Chiedi le informazioni",
     other: "Chiedi a un'altra persona",
     waitReferent: "In attesa del referente",
+    // (Rilascio 6) «Il filo con il referente».
+    reply: "Rispondi al referente",
+    waitClarification: "Chiarimento in attesa",
     waitAnswers: "In attesa delle risposte",
     blocked: "Informazioni ferme",
     start: "Avvia la realizzazione",
@@ -556,7 +565,9 @@ export type NextStepIcon =
   | "dossier"
   | "decidi"
   | "fatto"
-  | "chiuso";
+  | "chiuso"
+  /** (Rilascio 6) Rispondere al referente. */
+  | "rispondi";
 
 export interface NextStep {
   key: NextStepKey;
@@ -617,7 +628,7 @@ export interface NextStepInput {
    */
   referent?: {
     state: ReferentStateKey;
-    review: "correzione" | "stima" | "non_sa" | null;
+    review: "correzione" | "stima" | "non_sa" | "risposta" | null;
     canChoose: boolean;
     askableForReferent: number | null;
     /** La stima da verificare è del referente senza una stima del team. */
@@ -848,7 +859,30 @@ function approvedStep(input: NextStepInput): NextStep {
   const opensReferent = (mode: "scegli" | "chiedi" | "altra"): NextStepAction => (referents?.available && ref?.canOpen ? { type: "referente", mode, label: referentCta(mode).cta } : { type: "none" });
 
   const reviewLine =
-    ref?.review === "correzione" ? t.verifyCorrection : ref?.review === "stima" ? (ref.noTeamEstimate ? t.verifyNoTeam : t.verifyEstimate) : ref?.review === "non_sa" ? t.verifyUnknown : null;
+    ref?.review === "correzione"
+      ? t.verifyCorrection
+      : ref?.review === "stima"
+        ? ref.noTeamEstimate
+          ? t.verifyNoTeam
+          : t.verifyEstimate
+        : ref?.review === "non_sa"
+          ? t.verifyUnknown
+          : ref?.review === "risposta"
+            ? t.verifyReply
+            : null;
+  // (Rilascio 6) Il referente ha chiesto qualcosa: prima di tutto, una persona aspetta il team.
+  if (ref?.state === "ha_chiesto") {
+    return step("G1", {
+      title: t.replyTitle,
+      line: sentence(team, t.replyLine, reviewLine),
+      cta: c.reply,
+      icon: "rispondi",
+      turn: team,
+      why: sentence(t.replyLine, reviewLine),
+      action: { type: "vai", id: ANCHOR.referente, label: c.reply },
+      mine: true,
+    });
+  }
   if ((info && counts && counts.toVerify > 0) || reviewLine) {
     const countLine = info && counts && counts.toVerify > 0 ? `${info.receivedNote ? `${info.count} (${info.receivedNote})` : info.count}.` : null;
     return step("G1", {
@@ -934,6 +968,10 @@ function approvedStep(input: NextStepInput): NextStep {
     }
     if (variant === "segna") return step("G9", { ...parts, cta: c.start, action: { type: "segna_in_realizzazione" }, mine: true });
     return step("G9", { ...parts, cta: c.ready });
+  }
+  // (Rilascio 6) Il team ha chiesto un chiarimento: tocca al referente, nessun pulsante.
+  if (ref?.state === "chiarimento") {
+    return step("G7", { title: t.waitClarification, line: sentence(t.referentTurn, t.waitClarificationLine), cta: c.waitClarification, icon: "attesa", turn: t.referentTurn, why: t.waitClarificationLine });
   }
   if (ref?.state === "in_attesa") {
     const tail = waitingTail(counts, today);

@@ -193,16 +193,13 @@ test("preparazione: una richiesta con una risposta inviata e una bozza", opts, a
   if (link.access !== "ok") return assert.fail("link");
   assert.ok((await pub.saveReferentDraft(link.link, { needId: state.needs[0], text: "Circa 20 al giorno", dontKnow: false }, new Date())).ok);
   assert.ok((await pub.submitReferentAnswers(link.link, { needIds: [state.needs[0]] }, new Date())).ok);
+  // (Rilascio 6) La domanda nuova alla stessa persona entra nella sua richiesta (riaperta), con lo stesso link.
   const second = ok(await referents.sendReferentRequest(as("builder"), ids.useCase, { contact: { kind: "esistente", contactId: state.contactId }, needIds: state.needs.slice(1, 2) }, { env: ENV, requester: requester("builder") }));
+  assert.equal(second.requestId, state.requestId, "la stessa richiesta");
   state.secondRequestId = second.requestId;
-  const mailer2 = fakeMailer();
-  await dispatch.dispatchReferentEmails({ requestId: second.requestId, env: ENV, mailer: mailer2, sendIntervalMs: 0 });
-  const token2 = tokenOf(mailer2.outbox[0]) ?? "";
-  const r2 = await pub.resolveReferentToken(token2, new Date());
-  if (r2.access !== "ok") return assert.fail("link 2");
-  assert.ok((await pub.acceptReferentPrivacy(r2.link, { version: "ucq-2026-11-1" }, new Date())).ok);
-  const l2 = await pub.resolveReferentToken(token2, new Date());
+  const l2 = await pub.resolveReferentToken(state.token, new Date());
   if (l2.access !== "ok") return assert.fail("link 2");
+  assert.equal(l2.link.status, "inviata", "riaperta");
   assert.ok((await pub.saveReferentDraft(l2.link, { needId: state.needs[1], text: "Bozza", dontKnow: false }, new Date())).ok);
 });
 

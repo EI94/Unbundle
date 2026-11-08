@@ -249,3 +249,27 @@ test("(rilascio 5.1) il file del marchio c'è in public/: un PNG 96×96, lo stes
   assert.equal(png.readUInt32BE(20), 96, "altezza");
   assert.ok(png.length < 10_000, "leggero");
 });
+
+test("(rilascio 6) le novità del filo nell'email al referente: un chiarimento, una risposta del team, più novità; mai il testo dei messaggi", () => {
+  const clarification = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry({ kind: "nuove", newQuestions: 1, clarifications: 1, openQuestions: 1 })], replyToKnown: true, replyName: "Giulia Neri" });
+  clean(clarification);
+  assert.equal(clarification.subject, "TopJet: un chiarimento sul caso d'uso «TJ-0004 · Fatture fornitori»");
+  has(clarification.text, "Giulia Neri ti chiede un chiarimento sul caso d'uso «TJ-0004 · Fatture fornitori»: lo trovi con lo stesso link.");
+  has(clarification.text, "Rispondi");
+  const reply = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry({ kind: "nuove", newQuestions: 1, replies: 1, openQuestions: 0 })], replyToKnown: false, replyName: null });
+  clean(reply);
+  assert.equal(reply.subject, "TopJet: una risposta sul caso d'uso «TJ-0004 · Fatture fornitori»");
+  has(reply.text, "Giulia Neri ha risposto alla tua domanda sul caso d'uso «TJ-0004 · Fatture fornitori»: la trovi con lo stesso link.");
+  has(reply.text, "Leggi la risposta");
+  const mixed = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry({ kind: "nuove", newQuestions: 3, clarifications: 1, replies: 1 })], replyToKnown: true, replyName: "Giulia Neri" });
+  clean(mixed);
+  assert.equal(mixed.subject, "TopJet: novità sul caso d'uso «TJ-0004 · Fatture fornitori»");
+  has(mixed.text, "Hai 3 novità sul caso d'uso «TJ-0004 · Fatture fornitori», da Giulia Neri: le trovi con lo stesso link.");
+  // Le domande nuove senza novità del filo: il testo del rilascio 5.1.
+  const plain = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry({ kind: "nuove", newQuestions: 2, clarifications: 0, replies: 0 })], replyToKnown: true, replyName: "Giulia Neri" });
+  assert.match(plain.subject, /nuove domande sul caso d'uso/);
+  // Più casi d'uso: la voce dice «con novità per te».
+  const two = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry(), entry({ kind: "nuove", newQuestions: 1, clarifications: 1, link: LINK2 })], replyToKnown: true, replyName: "Giulia Neri" });
+  clean(two);
+  has(two.text, ", con novità per te.");
+});

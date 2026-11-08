@@ -2,7 +2,7 @@ import "server-only";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { afterResponse } from "@/lib/db/queries/use-case-referent-base";
 import { NOTIFICATION_RETENTION_DAYS, type FollowUpReason } from "@/lib/db/use-case-hub-referents-ddl";
-import type { UseCaseNoticeKind } from "@/lib/db/use-case-hub-alerts-ddl";
+import type { UseCaseNoticeKind0028 as UseCaseNoticeKind } from "@/lib/db/use-case-hub-referent-thread-ddl";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { RETRY_DELAY_MINUTES, type DispatchEnv, type UcMailer } from "@/lib/uc/notify/dispatch";
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
@@ -227,7 +227,7 @@ RETURNING e.id, e.workspace_id, e.recipient_user_id, e.send_on::text AS send_on,
   u.id AS user_id
 FROM workspaces w LEFT JOIN users u ON u.id = ${cast(e.recipientUserId, "uuid")}
 WHERE w.id = ${ws}`),
-        toStatement(ucSql`SELECT i.request_id, i.use_case_id, i.answers, i.unknowns, i.documents, i.follow_up, r.created_at, r.purged_at IS NOT NULL AS purged, c.code, c.title,
+        toStatement(ucSql`SELECT i.request_id, i.use_case_id, i.answers, i.unknowns, i.documents, i.questions, i.follow_up, r.created_at, r.purged_at IS NOT NULL AS purged, c.code, c.title,
   (${openItemsCountSql("r")} > 0 AND CASE
     WHEN i.follow_up = 'ultimo_promemoria' THEN r.status = 'inviata' AND r.expires_at > now()
     WHEN i.follow_up = 'scaduta' THEN (r.status = 'scaduta' OR (r.status = 'inviata' AND r.expires_at <= now()))
@@ -261,6 +261,7 @@ ORDER BY r.created_at, i.request_id`),
               answers: rowNumber(r.answers) ?? 0,
               unknowns: rowNumber(r.unknowns) ?? 0,
               documents: rowNumber(r.documents) ?? 0,
+              questions: rowNumber(r.questions) ?? 0,
               followUp: (rowString(r.follow_up) as FollowUpReason | null) ?? null,
               requestPurged: rowBool(r.purged),
               stillWaiting: rowBool(r.still_waiting),

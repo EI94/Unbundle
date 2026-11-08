@@ -326,3 +326,20 @@ test("motore: un fallimento si segna, il limite di Resend ferma il giro", async 
   assert.equal(sum.failed, 1);
   assert.deepEqual(s.log.failed, ["a1:rate_limit_exceeded"]);
 });
+
+test("(rilascio 6) il referente ha chiesto qualcosa: l'oggetto, la frase, «Rispondi dalla scheda»; mai il testo né il nome", () => {
+  const single = renderRequesterAlert({ company: "TopJet", entries: [entry({ questions: 1 })] });
+  assert.equal(single.subject, "TopJet: il referente ha una domanda sul caso d'uso «TJ-0004 · Fatture fornitori»");
+  has(single.text, "ci sono novità sul caso d'uso «TJ-0004 · Fatture fornitori» di TopJet: il referente ha una domanda per il team.");
+  has(single.text, "Rispondi dalla scheda, in «Cosa serve».");
+  assert.ok(!single.text.includes(REFERENT.name));
+  const both = renderRequesterAlert({ company: "TopJet", entries: [entry({ questions: 2, answers: 1 })] });
+  has(both.text, "il referente ha 2 domande per il team ed è arrivata 1 risposta.");
+  // Il piano: una voce con le sole domande parte, e porta a «Cosa serve».
+  const p = plan(facts({ items: [item({ answers: 0, unknowns: 0, documents: 0, questions: 1, followUp: null })] }));
+  assert.equal(p.action, "send");
+  if (p.action === "send") {
+    assert.equal(p.input.entries[0].questions, 1);
+    assert.match(p.input.entries[0].link, /capitolo=cosa-serve/);
+  }
+});

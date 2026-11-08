@@ -41,7 +41,8 @@ import {
 } from "@/lib/db/queries/use-case-referents";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
 import type { AddToReferentRequestInput, FileReviewOutcome, ReferentActionResult, ReferentMemberOption, SendReferentRequestInput } from "@/lib/use-cases/referent/contract";
-import { REFERENT_ASSIGN_TEXT, REFERENT_BLOCK_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { REFERENT_ASSIGN_TEXT, REFERENT_BLOCK_TEXT, REFERENT_ERROR_MESSAGES, REFERENT_THREAD_TEXT, REFERENT_UI_TEXT, fillText } from "@/lib/use-cases/referent/labels";
+import { answerReferentDoubt, askReferentClarification, dismissReferentSuggestion, markReferentMessageDone } from "@/lib/db/queries/use-case-referent-thread";
 import { adoptReferentBenefit, adoptReferentEstimate, keepReferentBenefit, keepTeamEstimate, markCorrectionDone } from "@/lib/db/queries/use-case-referent-check";
 import { euroText } from "@/lib/use-cases/referent/impact-text";
 import { formatCountIt } from "@/lib/uc/views/format";
@@ -374,4 +375,50 @@ export async function reviewNeedFileAction(workspaceId: string, useCaseId: strin
   const result = await reviewNeedFile(p.ctx, useCaseId, fileId, outcome, process.env);
   if (result.ok && result.value.status === "rifiutato") afterFiles(workspaceId);
   return done(workspaceId, useCaseId, result, (v) => ({ data: null, message: v.status === "pulito" ? T.fileAccepted : T.fileRejected }));
+}
+
+// ─── (Rilascio 6) «Il filo con il referente» ─────────────────────────
+
+/** «Chiedi un chiarimento» su una risposta del referente: una riga, alla stessa persona, sullo stesso link. */
+export async function askReferentClarificationAction(
+  workspaceId: string,
+  useCaseId: string,
+  input: { requestId: string; anchor: "domanda" | "beneficio" | "generale"; needId?: string | null; componentKey?: string | null; text: string; suggestionId?: string | null },
+): Promise<ReferentActionResult<{ messageId: string }>> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isRecord(input)) return failure("non_trovato");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  const result = await askReferentClarification(p.ctx, useCaseId, input, { env: process.env });
+  if (result.ok) scheduleReferentDispatch(result.value.requestId);
+  return done(workspaceId, useCaseId, result, (v) => ({ data: { messageId: v.messageId }, message: fillText(REFERENT_THREAD_TEXT.clarifySent, { Nome: v.contactName }) }));
+}
+
+/** «Rispondi» a un dubbio del referente: una riga, sullo stesso link. */
+export async function answerReferentDoubtAction(workspaceId: string, useCaseId: string, input: { messageId: string; text: string }): Promise<ReferentActionResult<{ messageId: string }>> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isRecord(input)) return failure("non_trovato");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  const result = await answerReferentDoubt(p.ctx, useCaseId, input, { env: process.env });
+  if (result.ok) scheduleReferentDispatch(result.value.requestId);
+  return done(workspaceId, useCaseId, result, (v) => ({ data: { messageId: v.messageId }, message: fillText(REFERENT_THREAD_TEXT.replySent, { Nome: v.contactName }) }));
+}
+
+/** «Fatto» su una risposta o un'aggiunta del referente a una voce o a «Generale». */
+export async function markReferentMessageDoneAction(workspaceId: string, useCaseId: string, messageId: string): Promise<ReferentActionResult> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(messageId)) return failure("non_trovato");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  return done(workspaceId, useCaseId, await markReferentMessageDone(p.ctx, useCaseId, messageId, { env: process.env }), () => ({ data: null, message: null }));
+}
+
+/** «Lascia stare» su una proposta dell'AI. */
+export async function dismissReferentSuggestionAction(workspaceId: string, useCaseId: string, suggestionId: string): Promise<ReferentActionResult> {
+  if (!isUuid(workspaceId) || !isUuid(useCaseId) || !isUuid(suggestionId)) return failure("non_trovato");
+  const session = await requireSession();
+  const p = page(workspaceId, session, await getCollaboratorAccess(session.user.id, workspaceId));
+  if (!p.ok) return p.result;
+  return done(workspaceId, useCaseId, await dismissReferentSuggestion(p.ctx, useCaseId, suggestionId, { env: process.env }), () => ({ data: null, message: null }));
 }

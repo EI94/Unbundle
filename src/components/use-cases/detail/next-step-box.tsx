@@ -13,6 +13,7 @@ import {
   FolderOpen,
   Hourglass,
   ListChecks,
+  MessageCircleReply,
   Rocket,
   Send,
   ShieldCheck,
@@ -83,6 +84,7 @@ const STEP_ICON: Readonly<Record<NextStepIcon, LucideIcon>> = Object.freeze({
   decidi: Check,
   fatto: CheckCheck,
   chiuso: Archive,
+  rispondi: MessageCircleReply,
 });
 
 /** L'icona del passo: decorativa, la parola sta sempre accanto (B.1.1). */

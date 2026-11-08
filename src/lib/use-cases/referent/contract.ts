@@ -343,6 +343,59 @@ export interface NeedAnswerView {
   /** (Rilascio 5) Il commento del referente («Chi potrebbe saperlo?» con «Non ce l'ho»). */
   comment?: string | null;
   canRemove: boolean;
+  /** (Rilascio 6) «Chiedi un chiarimento» su una risposta del referente; null per il team o con la richiesta chiusa. */
+  clarify?: ClarifyTarget | null;
+  /** (Rilascio 6) Il referente ha cambiato la risposta dopo «Invia»: «Aggiornata il 08/11.». */
+  editedLabel?: string | null;
+}
+
+/**
+ * (Rilascio 6) Dove va «Chiedi un chiarimento»: la richiesta della risposta (attiva: stesso referente, stesso
+ * link) e l'ancora; `pending` è il testo del chiarimento già in attesa lì (allora il pulsante non c'è).
+ */
+export interface ClarifyTarget {
+  requestId: string;
+  anchor: "domanda" | "beneficio" | "generale";
+  needId: string | null;
+  componentKey: string | null;
+  /** Il nome del referente, per «Invia a {Nome}». */
+  contactName: string;
+  /** La risposta in poche parole, citata nella finestra. */
+  quote: string;
+  pending: string | null;
+}
+
+/** (Rilascio 6) Un messaggio del filo per la scheda: solo per chi vede «Cosa serve», mai per i contributori. */
+export interface ThreadMessageView {
+  id: string;
+  requestId: string;
+  anchor: "domanda" | "beneficio" | "generale";
+  needId: string | null;
+  componentKey: string | null;
+  /** «d:<esigenza>», «b:<voce>», «g» (`anchorKeyOf`). */
+  anchorKey: string;
+  /** «Su «Volumi mensili»», «In generale». */
+  anchorLabel: string;
+  side: "team" | "referente";
+  kind: "chiarimento" | "dubbio" | "risposta" | "aggiunta";
+  /** «Aldo Prova · 08/11», «Bruna Esempio (team) · 08/11». */
+  header: string;
+  /** Il testo; null quando la cancellazione o la conservazione l'hanno tolto («Testo cancellato.»). */
+  text: string | null;
+  /** Aspetta l'altra parte (un chiarimento senza risposta, un dubbio senza risposta, una novità da guardare). */
+  waiting: boolean;
+  /** «Rispondi»: un dubbio del referente che aspetta il team, sulla richiesta attiva. */
+  canReply: boolean;
+  /** «Fatto»: una risposta o un'aggiunta del referente su una voce o su «Generale» da guardare. */
+  canDone: boolean;
+}
+
+/** (Rilascio 6) Una domanda che l'AI propone al team su una risposta: mai inviata da sola, mai al referente. */
+export interface ThreadSuggestionView {
+  id: string;
+  requestId: string;
+  anchorKey: string;
+  text: string;
 }
 
 export interface NeedFileView {
@@ -386,9 +439,11 @@ export interface ReferentBlockView {
   requestId: string | null;
   /** R*: l'ultima richiesta al referente. */
   referentRequestId: string;
-  state: "in_attesa" | "nessuna_risposta" | "da_verificare" | "fatto";
-  /** Che cosa aspetta il team dalla risposta: una correzione, una stima, niente. */
-  review: "correzione" | "stima" | "non_sa" | null;
+  state: "in_attesa" | "nessuna_risposta" | "da_verificare" | "chiarimento" | "ha_chiesto" | "fatto";
+  /** Che cosa aspetta il team dalla risposta: una correzione, una stima, (rilascio 6) una risposta nel filo, niente. */
+  review: "correzione" | "stima" | "non_sa" | "risposta" | null;
+  /** (Rilascio 6) Di chi è il turno nel filo con il referente: «Tocca a noi», «Tocca al referente»; null senza filo. */
+  turn?: "team" | "referente" | null;
   /** R è viva («inviata» e non scaduta). */
   live: boolean;
   /** La conferma e la stima di R* (null: non è mai arrivata, solo dopo un ritorno alla versione di prima). */
@@ -427,6 +482,8 @@ export interface ReferentBlockCheck {
    * ha visto; null: la stima del tempo del rilascio 5 (le righe qui sopra), o niente inviato.
    */
   benefits?: ReferentBlockBenefit[] | null;
+  /** (Rilascio 6) «Chiedi un chiarimento» sulla conferma («In generale»). */
+  clarify?: ClarifyTarget | null;
 }
 
 /** (Rilascio 5.1) La risposta del referente su una voce, come la legge il blocco «Referente». */
@@ -450,6 +507,8 @@ export interface ReferentBlockBenefit {
   needsReview: boolean;
   /** «Usa la stima di {Nome}» ha dei numeri da usare su questa voce. */
   adoptable: boolean;
+  /** (Rilascio 6) «Chiedi un chiarimento» su questa voce (con il chiarimento in attesa, se c'è). */
+  clarify?: ClarifyTarget | null;
 }
 
 export interface UseCaseReferentPanel {
@@ -497,6 +556,11 @@ export interface UseCaseReferentPanel {
    * rimanda al server, che rifiuta l'invio se nel frattempo un collega ha scelto un altro referente.
    */
   latestReferentRequestId?: string | null;
+  /**
+   * (Rilascio 6) Il filo con i referenti di questo use case: i messaggi di ogni richiesta non revocata, in
+   * ordine di tempo, e le proposte dell'AI ancora da decidere (solo a chi modifica «Cosa serve»).
+   */
+  thread?: { messages: ThreadMessageView[]; suggestions: ThreadSuggestionView[] };
 }
 
 export type PreparedQuestionKey = "frequenza" | "tempo" | "persone" | "sistemi" | "esempio" | "costi";

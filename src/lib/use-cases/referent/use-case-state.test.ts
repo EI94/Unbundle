@@ -43,16 +43,27 @@ const input = (requests: ReferentRequestFact[], o: Partial<ReferentStateInput> =
 const stateOf = (requests: ReferentRequestFact[], o: Partial<ReferentStateInput> = {}) => referentStateOf(input(requests, o))?.state ?? null;
 
 test("le parole, i valori dell'indirizzo, i toni e l'ordine del menu", () => {
-  assert.deepEqual([...REFERENT_STATES], ["manca", "in_attesa", "nessuna_risposta", "da_verificare", "fatto"]);
+  // (Rilascio 6) Dopo le risposte, il chiarimento chiesto dal team e la domanda del referente.
+  assert.deepEqual([...REFERENT_STATES], ["manca", "in_attesa", "nessuna_risposta", "da_verificare", "chiarimento", "ha_chiesto", "fatto"]);
   assert.deepEqual(REFERENT_STATE_TEXT, {
     manca: "Manca il referente",
     in_attesa: "In attesa del referente",
     nessuna_risposta: "Nessuna risposta",
     da_verificare: "Risposte da verificare",
+    chiarimento: "Chiarimento in attesa",
+    ha_chiesto: "Il referente ha chiesto qualcosa",
     fatto: "Il referente ha risposto",
   });
-  assert.deepEqual(REFERENT_STATE_PARAM, { manca: "manca", in_attesa: "in-attesa", nessuna_risposta: "nessuna-risposta", da_verificare: "da-verificare", fatto: "ha-risposto" });
-  assert.deepEqual(REFERENT_STATE_TONE, { manca: "grigio", in_attesa: "blu", nessuna_risposta: "rosso", da_verificare: "giallo", fatto: "verde" });
+  assert.deepEqual(REFERENT_STATE_PARAM, {
+    manca: "manca",
+    in_attesa: "in-attesa",
+    nessuna_risposta: "nessuna-risposta",
+    da_verificare: "da-verificare",
+    chiarimento: "chiarimento",
+    ha_chiesto: "ha-chiesto",
+    fatto: "ha-risposto",
+  });
+  assert.deepEqual(REFERENT_STATE_TONE, { manca: "grigio", in_attesa: "blu", nessuna_risposta: "rosso", da_verificare: "giallo", chiarimento: "blu", ha_chiesto: "giallo", fatto: "verde" });
   for (const key of REFERENT_STATES) assert.equal(referentStateFromParam(REFERENT_STATE_PARAM[key]), key);
   for (const bad of ["Aldo Prova", "aldo@cliente.test", "", null, undefined, "in_attesa"]) assert.equal(referentStateFromParam(bad), null, String(bad));
 });
@@ -141,4 +152,31 @@ test("(rilascio 5.1) la revisione per beneficio: una voce da vedere, finché il 
   assert.equal(reviewOf(check({ ...sent, confirm: "correggi", benefitUnknown: true }), true), "correzione");
   assert.equal(reviewOf(check({ ...sent, submittedAt: null, benefitUnknown: true }), true), null);
   assert.deepEqual(referentStateOf(input([{ ...r, check: check({ ...sent, benefitUnknown: true }) }])), { state: "da_verificare", review: "non_sa" });
+});
+
+// ─── (Rilascio 6) «Il filo con il referente» ─────────────────────────
+
+test("(rilascio 6) «Il referente ha chiesto qualcosa» viene prima di tutto; «Chiarimento in attesa» prima di «In attesa del referente»", () => {
+  const sent = check({ submittedAt: day(-2), confirm: "si", estimate: "si" });
+  const thread = (t: Partial<{ clarifications: number; doubts: number; news: number }>) => ({ clarifications: 0, doubts: 0, news: 0, ...t });
+  // Un dubbio del referente: tocca al team, anche con una correzione da verificare e una domanda aperta.
+  assert.equal(stateOf([req({ status: "inviata", openTask: 2, check: check({ submittedAt: day(-2), confirm: "correggi" }), thread: thread({ doubts: 1 }) })]), "ha_chiesto");
+  assert.equal(referentStateOf(input([req({ status: "completata", openTask: 0, check: check({ submittedAt: day(-2), confirm: "correggi" }), thread: thread({ doubts: 1 }) })]))?.review, "correzione", "che cosa aspetta il team resta");
+  // Un chiarimento del team: tocca al referente, finché la richiesta è viva.
+  assert.equal(stateOf([req({ status: "inviata", openTask: 1, check: sent, thread: thread({ clarifications: 1 }) })]), "chiarimento");
+  // Qualcosa da verificare viene prima: tocca al team.
+  assert.equal(stateOf([req({ status: "inviata", openTask: 1, check: sent, thread: thread({ clarifications: 1 }) })], { clientRequirementToVerify: true }), "da_verificare");
+  // Scaduta con un chiarimento senza risposta, o dopo l'ultimo promemoria: «Nessuna risposta».
+  assert.equal(stateOf([req({ status: "inviata", expiresAt: day(-1), openTask: 1, check: sent, thread: thread({ clarifications: 1 }) })]), "nessuna_risposta");
+  assert.equal(stateOf([req({ status: "inviata", reminderCount: 2, openTask: 1, check: sent, thread: thread({ clarifications: 1 }) })]), "nessuna_risposta");
+  // Una risposta del referente nel filo su una voce o su «Generale»: da verificare, «risposta».
+  const news = referentStateOf(input([req({ status: "completata", openTask: 0, check: sent, thread: thread({ news: 1 }) })]));
+  assert.deepEqual(news, { state: "da_verificare", review: "risposta" });
+  // Il filo di un'altra persona non conta per il referente; una richiesta revocata della stessa persona nemmeno.
+  const other = req({ contactId: B, status: "completata", openTask: 0, check: null, thread: thread({ doubts: 1 }) });
+  const revoked = req({ status: "revocata", openTask: 0, check: null, thread: thread({ doubts: 1 }) });
+  assert.equal(stateOf([req({ status: "completata", openTask: 0, check: sent }), other, revoked]), "fatto");
+  // Senza filo (rilascio 5.1): gli stati di prima.
+  assert.equal(stateOf([req({ status: "inviata", openTask: 1, check: sent })]), "in_attesa");
+  assert.equal(stateOf([req({ status: "completata", openTask: 0, check: sent })]), "fatto");
 });

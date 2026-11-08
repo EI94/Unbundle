@@ -8,9 +8,10 @@
  *   (mai un ritorno a una persona di prima).
  * - **R**: l'ultima richiesta non revocata (di qualunque tipo) al contatto del referente su questo use
  *   case: dice attesa, promemoria, «Nessuna risposta». R\* dice la conferma e la stima.
- * - Cinque stati, il primo che vale: «Manca il referente», «Risposte da verificare», «Nessuna
- *   risposta», «In attesa del referente», «Il referente ha risposto». Uno use case che non è «Da
- *   costruire» in valutazione o approvato non ha stato.
+ * - Sette stati, il primo che vale: «Manca il referente», (rilascio 6) «Il referente ha chiesto
+ *   qualcosa», «Risposte da verificare», «Nessuna risposta», (rilascio 6) «Chiarimento in attesa», «In
+ *   attesa del referente», «Il referente ha risposto». Uno use case che non è «Da costruire» in
+ *   valutazione o approvato non ha stato.
  *
  * La scelta delle richieste è in TypeScript (le letture a lista non hanno ORDER BY, né per data né per
  * persona: art. 15.4); il contatto non esce mai dal server. La fase non si scrive mai: resta una
@@ -20,9 +21,13 @@ import type { ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.
 import type { ReferentCheckConfirm, ReferentCheckEstimate, ReferentCheckOutcome } from "../../db/use-case-hub-referent-check-ddl.ts";
 import type { SemaforoColor } from "../../uc/vocab.ts";
 import type { Phase } from "../types.ts";
+import { NO_THREAD, addThreadFacts, type ThreadFacts } from "./thread.ts";
 
-/** Gli stati, nell'ordine della vita di una richiesta (l'ordine del menu del filtro). */
-export const REFERENT_STATES = ["manca", "in_attesa", "nessuna_risposta", "da_verificare", "fatto"] as const;
+/**
+ * Gli stati, nell'ordine della vita di una richiesta (l'ordine del menu del filtro). (Rilascio 6) Dopo le
+ * risposte, il chiarimento chiesto dal team e la domanda del referente.
+ */
+export const REFERENT_STATES = ["manca", "in_attesa", "nessuna_risposta", "da_verificare", "chiarimento", "ha_chiesto", "fatto"] as const;
 export type ReferentStateKey = (typeof REFERENT_STATES)[number];
 
 /** La parola di ogni stato: sulla scheda, nelle righe, nel filtro, nell'intestazione. */
@@ -31,6 +36,8 @@ export const REFERENT_STATE_TEXT: Readonly<Record<ReferentStateKey, string>> = O
   in_attesa: "In attesa del referente",
   nessuna_risposta: "Nessuna risposta",
   da_verificare: "Risposte da verificare",
+  chiarimento: "Chiarimento in attesa",
+  ha_chiesto: "Il referente ha chiesto qualcosa",
   fatto: "Il referente ha risposto",
 });
 
@@ -40,6 +47,8 @@ export const REFERENT_STATE_PARAM: Readonly<Record<ReferentStateKey, string>> = 
   in_attesa: "in-attesa",
   nessuna_risposta: "nessuna-risposta",
   da_verificare: "da-verificare",
+  chiarimento: "chiarimento",
+  ha_chiesto: "ha-chiesto",
   fatto: "ha-risposto",
 });
 
@@ -49,6 +58,8 @@ export const REFERENT_STATE_TONE: Readonly<Record<ReferentStateKey, SemaforoColo
   in_attesa: "blu",
   nessuna_risposta: "rosso",
   da_verificare: "giallo",
+  chiarimento: "blu",
+  ha_chiesto: "giallo",
   fatto: "verde",
 });
 
@@ -95,6 +106,8 @@ export interface ReferentRequestFact {
   openTask: number;
   /** Presente solo per le richieste al referente. */
   check: ReferentCheckFact | null;
+  /** (Rilascio 6) Il filo della richiesta: chiarimenti, dubbi, novità che aspettano qualcuno. Assente: nessun filo. */
+  thread?: ThreadFacts | null;
 }
 
 /** La più recente per data di creazione, poi per id: mai per persona. */
@@ -117,9 +130,10 @@ export function referentRequestsOf<T extends ReferentRequestFact>(requests: read
 
 /**
  * Che cosa aspetta il team dalla risposta del referente: una correzione, una stima diversa, (rilascio 5.1)
- * una stima che il referente non sa («Non so» su una cifra), niente.
+ * una stima che il referente non sa («Non so» su una cifra), (rilascio 6) una sua risposta o aggiunta nel
+ * filo su una voce o su «Generale», niente.
  */
-export type ReferentReview = "correzione" | "stima" | "non_sa" | null;
+export type ReferentReview = "correzione" | "stima" | "non_sa" | "risposta" | null;
 
 /**
  * `needsReview` (§3.2): la conferma è inviata e il referente chiede di correggere lo use case (finché il
@@ -155,17 +169,36 @@ export interface ReferentStateResult {
   review: ReferentReview;
 }
 
+/**
+ * (Rilascio 6) Il filo del referente: le richieste non revocate della sua persona su questo use case, sommate
+ * (di solito una sola, quella attiva). Senza fili: niente.
+ */
+export function referentThreadOf(requests: readonly ReferentRequestFact[], contact: string | null): ThreadFacts {
+  if (!contact) return NO_THREAD;
+  let out: ThreadFacts = NO_THREAD;
+  for (const r of requests) {
+    if (r.contactId.toLowerCase() !== contact || r.status === "revocata") continue;
+    out = addThreadFacts(out, r.thread);
+  }
+  return out;
+}
+
 /** Lo stato del referente di uno use case (§3.4); null quando lo use case non ha un referente da scegliere. */
 export function referentStateOf(i: ReferentStateInput): ReferentStateResult | null {
   if (!i.eligible) return null;
-  const { latestReferent, current } = referentRequestsOf(i.requests);
+  const { latestReferent, referent, current } = referentRequestsOf(i.requests);
   if (!latestReferent || latestReferent.status === "revocata" || !current) return { state: "manca", review: null };
-  const review = reviewOf(latestReferent.check, i.hasTeamEstimateNow);
+  const thread = referentThreadOf(i.requests, referent);
+  const review = reviewOf(latestReferent.check, i.hasTeamEstimateNow) ?? (thread.news > 0 ? "risposta" : null);
+  // (Rilascio 6) Il referente ha chiesto qualcosa al team: prima di tutto, tocca a noi rispondere.
+  if (thread.doubts > 0) return { state: "ha_chiesto", review };
   if (i.clientRequirementToVerify || review) return { state: "da_verificare", review };
   const now = i.now.getTime();
   const live = current.status === "inviata" && current.expiresAt.getTime() > now;
   const expired = current.status === "scaduta" || (current.status === "inviata" && current.expiresAt.getTime() <= now);
   if (expired || (live && current.reminderCount >= 2 && current.openTask > 0)) return { state: "nessuna_risposta", review: null };
+  // (Rilascio 6) Il team ha chiesto un chiarimento e il referente non ha ancora risposto.
+  if (live && thread.clarifications > 0) return { state: "chiarimento", review: null };
   if (live && current.openTask > 0) return { state: "in_attesa", review: null };
   return { state: "fatto", review: null };
 }

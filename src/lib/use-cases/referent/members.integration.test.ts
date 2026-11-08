@@ -522,12 +522,12 @@ test("un contributore scelto dall'elenco: referente collegato, email con «Hai g
   const again = await ask(cards.contrib2, { kind: "membro", userId: ids.contrib });
   assert.equal(await requestContact(again.requestId), row.id);
   assert.equal((await contactRow(emails.contrib)).length, 1);
-  // Sulla stessa scheda vale la regola di sempre: una richiesta aperta per persona.
-  refused(
+  // Sulla stessa scheda una richiesta per persona: (rilascio 6) le domande nuove entrano nella sua richiesta attiva.
+  const joined = ok(
     await referents.sendReferentRequest(as("builder"), cards.contrib, { contact: { kind: "membro", userId: ids.contrib }, needIds: (await needsOf(cards.contrib)).slice(1, 2) }, { env: ENV, requester: requester("builder") }),
-    "richiesta_aperta",
-    "richiesta già aperta",
+    "domande nuove alla stessa persona",
   );
+  assert.equal(joined.requestId, sent.requestId, "la stessa richiesta");
 });
 
 test("un revisore scelto dall'elenco: la riga del team con il link alla scheda", opts, async () => {
@@ -578,9 +578,12 @@ test("l'email di un referente che c'è già: si usa quello, con il suo nome; uno
   assert.equal(sent.mail.to, MARIO);
   assert.ok(!sent.mail.text.includes(ACCOUNT_LINE) && !sent.mail.text.includes(TEAM_LINE), "senza account: nessuna delle due righe");
   noDashboard(sent.mail, "Mario");
-  // Di nuovo sulla stessa scheda: la regola di sempre.
-  const twice = await referents.sendReferentRequest(as("builder"), cards.mario, { contact: { kind: "nuovo", displayName: "Mario", email: MARIO }, needIds: (await needsOf(cards.mario)).slice(1, 2) }, { env: ENV, requester: requester("builder") });
-  refused(twice, "richiesta_aperta", "una richiesta aperta per persona");
+  // Di nuovo sulla stessa scheda: una richiesta per persona; (rilascio 6) le domande nuove entrano nella sua.
+  const twice = ok(
+    await referents.sendReferentRequest(as("builder"), cards.mario, { contact: { kind: "nuovo", displayName: "Mario", email: MARIO }, needIds: (await needsOf(cards.mario)).slice(1, 2) }, { env: ENV, requester: requester("builder") }),
+    "domande nuove a Mario",
+  );
+  assert.equal(twice.requestId, sent.requestId, "una richiesta per persona");
   const inactive = await referents.sendReferentRequest(as("builder"), cards.mario, { contact: { kind: "nuovo", displayName: "Elena", email: ELENA }, needIds: (await needsOf(cards.mario)).slice(1, 2) }, { env: ENV, requester: requester("builder") });
   refused(inactive, "referente_disattivato", "disattivato");
   if (inactive.ok) return;

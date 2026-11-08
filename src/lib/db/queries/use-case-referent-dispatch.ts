@@ -72,6 +72,7 @@ function requestFactsSql(i: { emailId: string; template: ReferentEmailTemplate; 
   // (Rilascio 5) Una richiesta al referente (la riga della conferma c'è) e la sua conferma ancora da inviare.
   const common = ucSql`${raw(`r.id, r.use_case_id, r.status, r.expires_at, r.sent_at, r.reminder_count, r.last_email_at, r.message, r.requester_name, r.requested_by_user_id, r.created_at,
   (r.status = 'inviata' AND r.revoked_at IS NULL AND r.expires_at > now()) AS live, u.code, u.title,
+  (r.status IN ('inviata', 'completata') AND r.revoked_at IS NULL AND r.expires_at > now() AND r.purged_at IS NULL) AS active,
   EXISTS (SELECT 1 FROM use_case_referent_checks k WHERE k.request_id = r.id) AS referent_request,`)}
   ${checkPendingCountSql("r")} AS check_pending`;
   // Già partita ma senza link valido per l'indirizzo di adesso («Correggi l'email»).
@@ -83,7 +84,7 @@ function requestFactsSql(i: { emailId: string; template: ReferentEmailTemplate; 
 FROM use_case_referent_requests r JOIN use_cases u ON u.id = r.use_case_id AND u.workspace_id = r.workspace_id
 WHERE r.id = ${cast(i.requestId, "uuid")} AND r.workspace_id = ${ws}`);
   }
-  return toStatement(ucSql`SELECT ${common}, ${changed}, ${openItemsCountSql("r")} AS open_items, it.new_questions, it.kind AS item_kind,
+  return toStatement(ucSql`SELECT ${common}, ${changed}, ${openItemsCountSql("r")} AS open_items, it.new_questions, it.kind AS item_kind, it.clarifications, it.replies,
   EXISTS (SELECT 1 FROM use_case_referent_email_items o WHERE o.request_id = r.id AND o.kind = it.kind AND o.state = 'inviata' AND o.email_id <> it.email_id) AS already_sent,
   0 AS answered_today
 FROM use_case_referent_email_items it
@@ -114,7 +115,8 @@ function requestFactsOf(r: UcRow): ReferentRequestFacts | null {
     openItems: rowNumber(r.open_items) ?? 0,
     newQuestions: rowNumber(r.new_questions) ?? 0,
     answeredToday: rowNumber(r.answered_today) ?? 0,
-    item: kind ? { kind, alreadySent: rowBool(r.already_sent) } : null,
+    item: kind ? { kind, alreadySent: rowBool(r.already_sent), clarifications: rowNumber(r.clarifications) ?? 0, replies: rowNumber(r.replies) ?? 0 } : null,
+    active: rowBool(r.active),
     addressChanged: rowBool(r.address_changed),
     referentRequest: rowBool(r.referent_request),
     checkPending: (rowNumber(r.check_pending) ?? 0) > 0,
@@ -259,7 +261,8 @@ WHERE u.id = ANY(${cast(requesterIds, "uuid[]")}) AND u.email_verified IS NOT NU
         toStatement(ucSql`INSERT INTO use_case_referent_tokens (request_id, workspace_id, token_hash, recipient_hash, issued_for, expires_at)
 SELECT r.id, r.workspace_id, ${cast(issued.hash, "text")}, ${cast(i.recipientHash, "text")}, ${cast(i.issuedFor, "text")}, r.expires_at
 FROM use_case_referent_requests r
-WHERE r.id = ${cast(i.requestId, "uuid")} AND r.workspace_id = ${cast(i.workspaceId, "uuid")} AND r.status = 'inviata' AND r.revoked_at IS NULL AND r.expires_at > now()
+WHERE r.id = ${cast(i.requestId, "uuid")} AND r.workspace_id = ${cast(i.workspaceId, "uuid")} AND r.status IN ('inviata', 'completata') AND r.revoked_at IS NULL AND r.expires_at > now()
+  AND r.purged_at IS NULL
 RETURNING id`),
       ]);
       const tokenId = rowString(rows[0]?.id);

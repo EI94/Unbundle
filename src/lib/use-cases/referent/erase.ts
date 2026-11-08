@@ -49,7 +49,8 @@ function contactRequests(workspaceId: string, contactId: string): SqlFragment {
  *    da chiedere);
  * 2. ogni suo link cancellato (con l'impronta dell'email), ogni email in coda per lui annullata;
  * 3. risposte (anche bozze) senza testo né commento, file segnati cancellati con il nome tolto,
- *    messaggi delle richieste e note della conferma tolti (`purged_at`);
+ *    messaggi delle richieste e note della conferma tolti (`purged_at`); (rilascio 6) i testi del filo
+ *    tolti e le proposte dell'AI cancellate;
  * 4. con `anonymizeContact` (il referente è solo degli use case e non è già anonimizzato: lo legge
  *    chi chiama prima del batch): le guardie dei dossier e l'anonimizzazione della riga `uc_contacts`;
  *    un dossier che nel frattempo lo usa fa fallire il batch con `referente_in_dossier`;
@@ -99,6 +100,13 @@ WHERE b.request_id = r.id AND ${mine} AND b.comment IS NOT NULL`),
     toStatement(ucSql`UPDATE use_case_need_files f SET deleted_at = coalesce(f.deleted_at, now()), deleted_reason = coalesce(f.deleted_reason, 'cancellazione'), file_name = 'file'
 FROM use_case_referent_requests r
 WHERE f.request_id = r.id AND ${mine} AND (f.deleted_at IS NULL OR f.file_name <> 'file')`),
+    // (Rilascio 6) Il filo: i testi dei messaggi (della persona e del team a lei) si tolgono, le righe restano
+    // (date e tipi, nessun testo); le proposte dell'AI si cancellano.
+    toStatement(ucSql`UPDATE use_case_referent_messages m SET body = NULL, removed_at = now(), removed_reason = 'cancellazione'
+FROM use_case_referent_requests r
+WHERE m.request_id = r.id AND ${mine} AND m.removed_at IS NULL`),
+    toStatement(ucSql`DELETE FROM use_case_referent_suggestions s USING use_case_referent_requests r
+WHERE s.request_id = r.id AND ${mine}`),
     toStatement(ucSql`UPDATE use_case_referent_requests r SET message = NULL, purged_at = coalesce(r.purged_at, now())
 WHERE ${mine} AND r.status <> 'inviata' AND (r.purged_at IS NULL OR r.message IS NOT NULL)`),
   ];
@@ -145,6 +153,10 @@ WHERE request_id = ${req()} AND workspace_id = ${ws}`),
 WHERE request_id = ${req()} AND workspace_id = ${ws} AND comment IS NOT NULL`),
     toStatement(ucSql`UPDATE use_case_need_files SET deleted_at = coalesce(deleted_at, now()), deleted_reason = coalesce(deleted_reason, 'conservazione'), file_name = 'file'
 WHERE request_id = ${req()} AND workspace_id = ${ws}`),
+    // (Rilascio 6) I testi del filo si tolgono con le risposte; le proposte dell'AI si cancellano.
+    toStatement(ucSql`UPDATE use_case_referent_messages SET body = NULL, removed_at = now(), removed_reason = 'conservazione'
+WHERE request_id = ${req()} AND workspace_id = ${ws} AND removed_at IS NULL`),
+    toStatement(ucSql`DELETE FROM use_case_referent_suggestions WHERE request_id = ${req()} AND workspace_id = ${ws}`),
     // I link della richiesta chiusa, con l'impronta dell'email del destinatario: non resta niente.
     toStatement(ucSql`DELETE FROM use_case_referent_tokens WHERE request_id = ${req()} AND workspace_id = ${ws}
   AND EXISTS (SELECT 1 FROM use_case_referent_requests r WHERE r.id = ${req()} AND r.workspace_id = ${ws} AND r.status <> 'inviata')`),

@@ -8,7 +8,7 @@ import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
 import { cast, raw, toStatement, ucSql } from "@/lib/uc/sql/statement";
 import { abilitiesForUseCase, type UseCaseViewer } from "@/lib/use-cases/permissions";
 import { referentAskEnabled } from "@/lib/use-cases/referent/availability";
-import { openItemsCountSql } from "@/lib/use-cases/referent/sql";
+import { benefitClarifyingSql, openItemsCountSql, threadCountsColumnsSql } from "@/lib/use-cases/referent/sql";
 import { BENEFITS_FLAG_SQL, BENEFIT_DIFFERS_SQL, BENEFIT_UNKNOWN_SQL } from "@/lib/use-cases/referent/impact";
 import { eligibleForReferent, referentStateOf, type ReferentRequestFact, type ReferentReview, type ReferentStateKey } from "@/lib/use-cases/referent/use-case-state";
 import type { Phase } from "@/lib/use-cases/types";
@@ -61,8 +61,12 @@ export async function listReferentStates(
   ${openItemsCountSql("r")} AS open_task,
   (c.request_id IS NOT NULL) AS has_check, c.submitted_at, c.confirm, c.correction_done_at, c.estimate, c.estimate_outcome, c.team_component_key,
   coalesce(${raw(BENEFITS_FLAG_SQL("c"))}, false) AS benefits,
-  EXISTS (SELECT 1 FROM use_case_referent_check_benefits b WHERE b.request_id = c.request_id AND c.submitted_at IS NOT NULL AND ${raw(BENEFITS_FLAG_SQL("c"))} AND ${raw(BENEFIT_DIFFERS_SQL("b"))}) AS benefit_review,
-  EXISTS (SELECT 1 FROM use_case_referent_check_benefits b WHERE b.request_id = c.request_id AND c.submitted_at IS NOT NULL AND ${raw(BENEFITS_FLAG_SQL("c"))} AND ${raw(BENEFIT_UNKNOWN_SQL("b"))}) AS benefit_unknown
+  EXISTS (SELECT 1 FROM use_case_referent_check_benefits b WHERE b.request_id = c.request_id AND c.submitted_at IS NOT NULL AND ${raw(BENEFITS_FLAG_SQL("c"))} AND ${raw(BENEFIT_DIFFERS_SQL("b"))}
+    AND NOT ${raw(benefitClarifyingSql("b"))}) AS benefit_review,
+  EXISTS (SELECT 1 FROM use_case_referent_check_benefits b WHERE b.request_id = c.request_id AND c.submitted_at IS NOT NULL AND ${raw(BENEFITS_FLAG_SQL("c"))} AND ${raw(BENEFIT_UNKNOWN_SQL("b"))}
+    AND NOT ${raw(benefitClarifyingSql("b"))}) AS benefit_unknown,
+  EXISTS (SELECT 1 FROM use_case_referent_messages tx WHERE tx.request_id = r.id) AS has_thread,
+  ${threadCountsColumnsSql("r")}
 FROM use_case_referent_requests r LEFT JOIN use_case_referent_checks c ON c.request_id = r.id
 WHERE r.workspace_id = ${ws} AND (r.status <> 'revocata' OR c.request_id IS NOT NULL)`),
       toStatement(ucSql`SELECT DISTINCT l.use_case_id
@@ -102,6 +106,10 @@ FROM use_cases u WHERE u.workspace_id = ${ws}`),
               benefitReview: rowBool(r.benefit_review),
               benefitUnknown: rowBool(r.benefit_unknown),
             }
+          : null,
+        // (Rilascio 6) Il filo: solo conteggi della richiesta, mai il testo.
+        thread: rowBool(r.has_thread)
+          ? { clarifications: rowNumber(r.t_clarifications) ?? 0, doubts: rowNumber(r.t_doubts) ?? 0, news: rowNumber(r.t_news) ?? 0 }
           : null,
       });
       byCard.set(card, list);

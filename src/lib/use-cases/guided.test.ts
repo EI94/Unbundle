@@ -861,3 +861,21 @@ test("rilascio 5: con referent null ogni passo resta quello del rilascio 4", () 
     assert.deepEqual(a, b);
   }
 });
+
+// ─── Rilascio 6: «Il filo con il referente» nel riquadro ─────────────
+
+test("rilascio 6: «Il referente ha chiesto qualcosa» → «Rispondi al referente» prima di tutto; «Chiarimento in attesa» senza pulsante", () => {
+  const info = progress({ received: 2, total: 10, toAsk: 3, toVerify: 2 });
+  const asked = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "ha_chiesto", review: "correzione" }) }));
+  assert.deepEqual(brief(asked), { key: "G1", title: "Rispondere al referente", line: `${T} Il referente ha chiesto qualcosa. Il referente chiede di correggere lo use case.`, action: "vai", mine: true, decisions: "compact" });
+  assert.deepEqual(asked.action, { type: "vai", id: "referente", label: "Rispondi al referente" });
+  assert.deepEqual([asked.cta, asked.icon, asked.turn], ["Rispondi al referente", "rispondi", T]);
+  // Il chiarimento chiesto dal team: tocca al referente, le parole dello stato e l'icona dell'attesa.
+  const waiting = nextStepOf(input({ item: approved(), info: progress({ received: 2, total: 10, toAsk: 0, waiting: 1 }), referents: panel([]), askEntry: entry([]), referent: referent({ state: "chiarimento" }) }));
+  assert.deepEqual(brief(waiting), { key: "G7", title: "Aspettare il chiarimento", line: "Tocca al referente. Il team ha chiesto un chiarimento al referente.", action: "none", mine: false, decisions: "compact" });
+  assert.deepEqual([waiting.cta, waiting.icon, waiting.turn, waiting.why], ["Chiarimento in attesa", "attesa", "Tocca al referente.", "Il team ha chiesto un chiarimento al referente."]);
+  // La risposta del referente nel filo su una voce: «Verifica le risposte».
+  const reply = nextStepOf(input({ item: approved(), info: progress({ received: 2, total: 10, toAsk: 0, waiting: 0 }), referents: panel([]), askEntry: entry([]), referent: referent({ state: "da_verificare", review: "risposta" }) }));
+  assert.deepEqual([reply.key, reply.line, reply.cta], ["G1", `${T} Il referente ha risposto a un chiarimento.`, "Verifica le risposte"]);
+  assert.deepEqual(findHubForbiddenIn([asked.title, asked.line, asked.cta, waiting.title, waiting.line, waiting.cta, reply.line], "area"), []);
+});

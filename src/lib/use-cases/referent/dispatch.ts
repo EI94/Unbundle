@@ -78,8 +78,13 @@ export interface ReferentRequestFacts {
   newQuestions: number;
   /** Solo conferma: le domande risposte oggi (Roma), per «la tua risposta» / «le tue risposte». */
   answeredToday?: number;
-  /** Solo promemoria: il tipo della voce, e se una voce «inviata» dello stesso tipo c'è già per la richiesta. */
-  item: { kind: ReferentReminderKind; alreadySent: boolean } | null;
+  /**
+   * Solo promemoria: il tipo della voce, e se una voce «inviata» dello stesso tipo c'è già per la richiesta.
+   * (Rilascio 6) In una voce «nuove», quanti chiarimenti e risposte del team porta.
+   */
+  item: { kind: ReferentReminderKind; alreadySent: boolean; clarifications?: number; replies?: number } | null;
+  /** (Rilascio 6) La richiesta è attiva: «inviata» o «completata», non revocata, non scaduta, dati non cancellati. */
+  active?: boolean;
   /**
    * Già partita, ma senza un link valido per l'indirizzo di adesso («Correggi l'email»): le email di
    * oggi sono andate al vecchio indirizzo, quindi «un'email al giorno» non le conta.
@@ -182,9 +187,12 @@ function linkOf(links: Readonly<Record<string, string>>, requestId: string): str
 
 /** Perché una voce di promemoria non parte più, oppure null se parte. */
 function dropReason(r: ReferentRequestFacts, now: Date): string | null {
-  if (!r.live) return "richiesta_non_viva";
-  if (r.openItems <= 0) return "nessuna_domanda_aperta";
   const item = r.item;
+  // (Rilascio 6) Una risposta del team a un dubbio del referente va anche su una richiesta completata ancora
+  // attiva: non chiede niente, porta la risposta.
+  const reply = item?.kind === "nuove" && (item.replies ?? 0) > 0 && r.active === true;
+  if (!r.live && !reply) return "richiesta_non_viva";
+  if (r.openItems <= 0 && !reply) return "nessuna_domanda_aperta";
   if (!item) return "richiesta_non_viva";
   if (item.kind === "primo" && (r.reminderCount !== 0 || item.alreadySent)) return "promemoria_gia_fatto";
   if (item.kind === "ultimo" && (r.reminderCount !== 1 || item.alreadySent)) return "promemoria_gia_fatto";
@@ -335,6 +343,8 @@ export function planReferentDelivery(
             link: linkOf(links, x.id),
             cardLink: cardLinkOf(e, f, x, o.origin),
             checkPending: x.checkPending === true,
+            clarifications: x.item?.clarifications ?? 0,
+            replies: x.item?.replies ?? 0,
           }),
         ),
     }),

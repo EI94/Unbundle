@@ -37,6 +37,10 @@ export interface ReminderEntry {
    * conferma, e `openQuestions` conta solo le domande (può essere zero).
    */
   checkPending?: boolean;
+  /** (Rilascio 6) Di `newQuestions` («nuove»), quanti sono chiarimenti chiesti dal team. */
+  clarifications?: number;
+  /** (Rilascio 6) Di `newQuestions` («nuove»), quante sono risposte del team ai dubbi del referente. */
+  replies?: number;
 }
 
 export type ReferentEmailInput =
@@ -131,6 +135,27 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
   const link = checkReferentLink(e.link);
   const reply = { small: replyLine(input.replyToKnown, e.requesterName) };
   if (e.kind === "nuove") {
+    // (Rilascio 6) Le novità del filo: un chiarimento chiesto dal team, una risposta a un tuo dubbio.
+    const clarifications = Math.max(0, e.clarifications ?? 0);
+    const replies = Math.max(0, e.replies ?? 0);
+    const fresh = Math.max(0, e.newQuestions - clarifications - replies);
+    const thread = clarifications + replies > 0;
+    if (thread) {
+      const only = fresh === 0 && (clarifications === 0 || replies === 0) && clarifications + replies === 1;
+      const what = only
+        ? clarifications === 1
+          ? { subject: `un chiarimento sul caso d'uso «${uc}»`, line: `${name(e.requesterName)} ti chiede un chiarimento sul caso d'uso «${uc}»: lo trovi con lo stesso link.`, label: "Rispondi" }
+          : { subject: `una risposta sul caso d'uso «${uc}»`, line: `${name(e.requesterName)} ha risposto alla tua domanda sul caso d'uso «${uc}»: la trovi con lo stesso link.`, label: "Leggi la risposta" }
+        : { subject: `novità sul caso d'uso «${uc}»`, line: `Hai ${e.newQuestions} novità sul caso d'uso «${uc}», da ${name(e.requesterName)}: le trovi con lo stesso link.`, label: "Apri le novità" };
+      return render(subjectFor(input.company, what.subject), [
+        { p: "Buongiorno," },
+        { p: what.line },
+        { link: { href: link, label: what.label } },
+        { small: expiry(e.expiresAt) },
+        ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
+        reply,
+      ], brand);
+    }
     return render(subjectFor(input.company, `nuove domande sul caso d'uso «${uc}»`), [
       { p: "Buongiorno," },
       { p: `${name(e.requesterName)} ha aggiunto ${questionsWord(e.newQuestions)} sul caso d'uso «${uc}»: le trovi insieme alle altre, con lo stesso link.` },
@@ -186,7 +211,7 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
     // come nel promemoria di un caso d'uso solo (rilascio 5.1: mai «Apri le domande» senza domande).
     const what = e.checkPending ? `la tua conferma${e.openQuestions > 0 ? ` e ${openWord(e.openQuestions)}` : ""}` : openWord(e.openQuestions);
     blocks.push(
-      { p: `«${uc}», chiede ${name(e.requesterName)}: ${what}${e.kind === "nuove" ? ", con domande nuove" : ""}.` },
+      { p: `«${uc}», chiede ${name(e.requesterName)}: ${what}${e.kind === "nuove" ? ((e.clarifications ?? 0) + (e.replies ?? 0) > 0 ? ", con novità per te" : ", con domande nuove") : ""}.` },
       { small: `${expiry(e.expiresAt)}${e.kind === "ultimo" ? " È l'ultimo promemoria per questo caso d'uso." : ""}` },
       { link: { href: checkReferentLink(e.link), label: e.checkPending ? "Riprendi" : "Apri le domande" } },
     );

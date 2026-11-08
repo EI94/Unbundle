@@ -734,6 +734,17 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   domanda_aperta: "Per chiudere: rispondi, allega un file o scegli «Non ce l'ho».",
   domanda_aperta_file: "Per chiudere: allega il file o scegli «Non ce l'ho».",
   domande_nuove: "Ci sono domande nuove: le trovi qui sotto.",
+  // (Rilascio 6) «Il filo con il referente».
+  testo_vuoto: "Scrivi la domanda.",
+  riga_troppo_lunga: "Al massimo 300 caratteri.",
+  chiarimento_aperto: "Su questa risposta c'è già un chiarimento in attesa.",
+  filo_non_disponibile: "Questa risposta non accetta più chiarimenti: chiedi di nuovo al referente.",
+  messaggio_non_trovato: "Messaggio non trovato: ricarico la scheda.",
+  messaggio_gestito: "Qualcuno del team ha già risposto: ricarico la scheda.",
+  filo_pieno: "Su questa richiesta ci sono già molti messaggi: chiedi di nuovo al referente.",
+  suggerimento_non_trovato: "Questo suggerimento non c'è più: ricarico la scheda.",
+  // Pagina pubblica: «caso d'uso».
+  risposta_chiusa: "Il team ha già segnato questa informazione «A posto»: puoi aggiungere qualcosa.",
 });
 
 /** Il messaggio di un codice, con i segnaposto riempiti; un codice sconosciuto dà «Non riusciamo a salvare. Riprova.». */
@@ -741,3 +752,46 @@ export function referentErrorMessage(code: string, values: Readonly<Record<strin
   const template = REFERENT_ERROR_MESSAGES[code] ?? REFERENT_ERROR_MESSAGES.riprova;
   return fillText(template, { ...values, ...(values.Azienda !== undefined ? { Azienda: companyLabel(String(values.Azienda)) } : {}) });
 }
+
+/**
+ * (Rilascio 6) «Il filo con il referente» sulla scheda (dashboard: «use case»): «Chiedi un chiarimento» su
+ * ogni risposta del referente, «Rispondi» a un suo dubbio, «Fatto» su una sua risposta, il turno, il
+ * suggerimento dell'AI. Poche parole: una riga per messaggio, il resto un tocco più in là.
+ */
+export const REFERENT_THREAD_TEXT = Object.freeze({
+  clarify: "Chiedi un chiarimento",
+  clarifyTitle: "Chiedi un chiarimento",
+  clarifyLead: "{Nome} lo riceve con lo stesso link.",
+  clarifyLabel: "Che cosa vuoi sapere?",
+  clarifyPlaceholder: "Per esempio: quanto, più o meno?",
+  clarifySend: "Invia a {Nome}",
+  clarifySent: "Chiarimento chiesto a {Nome}.",
+  reply: "Rispondi",
+  replyTitle: "Rispondi a {Nome}",
+  replyLabel: "La tua risposta",
+  replySend: "Invia a {Nome}",
+  replySent: "Risposta inviata a {Nome}.",
+  done: "Fatto",
+  cancel: "Annulla",
+  hint: "Una riga. Non scrivere dati sanitari, codici fiscali o date di nascita.",
+  heading: "Messaggi",
+  turnReferent: "Tocca al referente",
+  turnTeam: "Tocca a noi",
+  header: "{autore} · {data}",
+  onQuestion: "Su «{testo}»",
+  onBenefit: "Su «{testo}»",
+  general: "In generale",
+  removed: "Testo cancellato.",
+  pending: "Chiarimento in attesa: «{testo}»",
+  answered: "{Nome} ha risposto: «{testo}»",
+  updated: "Aggiornata il {data}.",
+  suggestion: "Forse chiedere: «{testo}»",
+  suggestionAsk: "Chiedi questo",
+  suggestionDismiss: "Lascia stare",
+  kind: Object.freeze({
+    chiarimento: "chiede un chiarimento",
+    dubbio: "ha un dubbio",
+    risposta: "risponde",
+    aggiunta: "aggiunge",
+  }),
+});

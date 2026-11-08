@@ -98,3 +98,29 @@ export function checkReviewerAnswer(text: string): { ok: true; value: string } |
   const blocked = firstTeamBlocking(clean);
   return blocked ? { ok: false, ...blocked } : { ok: true, value: clean };
 }
+
+/**
+ * (Rilascio 6) Una riga del team nel filo con il referente («Chiedi un chiarimento», la risposta a un suo
+ * dubbio): obbligatoria, da 2 a `max` caratteri, su una riga (gli a capo diventano spazi); nomi, email e
+ * telefoni passano, il resto come per il messaggio al referente.
+ */
+export function checkThreadLine(text: unknown, max: number): { ok: true; value: string } | { ok: false; code: string; message: string } {
+  const clean = typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "";
+  if (clean.length < 2) return { ok: false, code: "testo_vuoto", message: REFERENT_ERROR_MESSAGES.testo_vuoto };
+  if (clean.length > max) return { ok: false, code: "riga_troppo_lunga", message: REFERENT_ERROR_MESSAGES.riga_troppo_lunga };
+  const blocked = firstTeamBlocking(clean);
+  return blocked ? { ok: false, ...blocked } : { ok: true, value: clean };
+}
+
+/**
+ * (Rilascio 6) Un testo del referente nel filo («Ho un dubbio», la risposta a un chiarimento, «Aggiungi
+ * qualcosa», una risposta cambiata): obbligatorio, al massimo `max` caratteri; come all'invio, dati
+ * sanitari, discriminatori, codici fiscali e date di nascita si rifiutano, nomi, email e telefoni passano.
+ */
+export function checkReferentThreadText(text: unknown, max: number, field = "testo"): { ok: true; value: string } | { ok: false; issues: Issue[] } {
+  const clean = typeof text === "string" ? text.replace(/\r\n?/g, "\n").trim() : "";
+  if (clean.length < 1) return { ok: false, issues: [issue("risposta_vuota", REFERENT_ERROR_MESSAGES.risposta_vuota, field)] };
+  if (clean.length > max) return { ok: false, issues: [issue("nota_troppo_lunga", REFERENT_ERROR_MESSAGES.nota_troppo_lunga, field)] };
+  const checked = checkSubmitText(clean, field);
+  return checked.ok ? { ok: true, value: clean } : checked;
+}

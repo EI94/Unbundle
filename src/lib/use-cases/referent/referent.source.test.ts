@@ -54,6 +54,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/use-case-hub-referent-benefits-ddl.ts",
   // (0028) «Il filo con il referente»: il DDL dei messaggi e delle proposte dell'AI.
   "src/lib/db/use-case-hub-referent-thread-ddl.ts",
+  // (Rilascio 6) Il filo: le letture per la scheda, le scritture del team e del referente.
+  "src/lib/db/queries/use-case-referent-thread.ts",
   // Il servizio e le sue basi, la pagina pubblica, i file, l'invio delle email.
   "src/lib/db/queries/use-case-referents.ts",
   "src/lib/db/queries/use-case-referent-base.ts",

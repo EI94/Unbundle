@@ -256,6 +256,16 @@ RETURNING b.request_id`,
 
 const isKey = (key: unknown): key is string => typeof key === "string" && key.length > 0 && key.length <= 40;
 
+/**
+ * (Rilascio 6) Una decisione del team su una voce («Usa la stima di {Nome}», «Tieni la nostra», «Fatto»)
+ * gestisce anche le risposte e le aggiunte del referente su quella voce nel filo: il team le ha guardate.
+ */
+function benefitRepliesHandledSql(requestId: string, key: string, userId: string): UcStatement {
+  return toStatement(ucSql`UPDATE use_case_referent_messages SET handled_at = now(), handled_by_user_id = ${cast(userId, "uuid")}
+WHERE request_id = ${cast(requestId, "uuid")} AND anchor = 'beneficio' AND component_key = ${cast(key, "text")} AND side = 'referente'
+  AND kind IN ('risposta', 'aggiunta') AND handled_at IS NULL`);
+}
+
 /** La cifra di una voce come la scrive il toast: ore di lavoro l'anno, oppure euro l'anno. */
 function figureOf(team: StoredBenefit["team"]): number {
   return team.kind === "euro" ? Math.round(team.eurYear ?? 0) : Math.round(((team.volumeYear ?? 0) * (team.minutes ?? 0)) / 60);
@@ -317,6 +327,7 @@ export const adoptReferentBenefit = guardedReferent(
     const run = await referentBatch(executor, [
       requestVersionSql(ctx.workspaceId, requestId, versions.requestVersion),
       benefitOutcomeSql(requestId, key, "adottata"),
+      benefitRepliesHandledSql(requestId, key, w.userId),
       referentEventSql({ workspaceId: ctx.workspaceId, useCaseId, code: "stima_adottata", actor: persona(w.userId) }),
     ]);
     if (!run.ok) return run;
@@ -339,6 +350,7 @@ export const keepReferentBenefit = guardedReferent(
     const run = await referentBatch(executor, [
       requestVersionSql(ctx.workspaceId, requestId, version),
       benefitOutcomeSql(requestId, key, "tenuta"),
+      benefitRepliesHandledSql(requestId, key, w.userId),
       referentEventSql({ workspaceId: ctx.workspaceId, useCaseId, code: "stima_tenuta", actor: persona(w.userId) }),
     ]);
     if (!run.ok) return run;

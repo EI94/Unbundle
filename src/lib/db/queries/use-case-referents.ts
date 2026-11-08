@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { REFERENT_CHECK_SWEEP_SQL } from "@/lib/db/use-case-hub-referent-check-ddl";
 import { REFERENT_BENEFITS_SWEEP_SQL } from "@/lib/db/use-case-hub-referent-benefits-ddl";
+import { REFERENT_THREAD_SWEEP_SQL } from "@/lib/db/use-case-hub-referent-thread-ddl";
 import { loadUserContext } from "@/lib/db/queries/uc-cases";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import {
@@ -72,7 +73,7 @@ import {
   type UseCaseReferentPanel,
 } from "@/lib/use-cases/referent/contract";
 import { contactHubOnlyReadSql, contactHubOnlySql, contactUseCasesSql, referentEraseStatements, referentPurgeStatements } from "@/lib/use-cases/referent/erase";
-import { REFERENT_ERROR_MESSAGES, REFERENT_UI_TEXT, companyLabel, fillText } from "@/lib/use-cases/referent/labels";
+import { REFERENT_ERROR_MESSAGES, REFERENT_THREAD_TEXT, REFERENT_UI_TEXT, companyLabel, fillText } from "@/lib/use-cases/referent/labels";
 import { gapsOf, missingPreparedQuestions, preparedNeedInput } from "@/lib/use-cases/referent/prepare";
 import { askableNeeds, answerableNeeds } from "@/lib/use-cases/referent/questions";
 import { manualReminderCheck, referentReminderDue, retentionDue, sameRomeDay, isStaleEmail, type ReminderState } from "@/lib/use-cases/referent/schedule";
@@ -87,6 +88,11 @@ import {
   openItemSql,
   openItemsCountSql,
   validLinkSql,
+  activeRequestSql,
+  queueThreadEmailItemSql,
+  renewLinkStatements,
+  reopenRequestStatements,
+  REFERENT_LINK_RENEW_DAYS,
   referentEventSql,
   revokeStatements,
   uuidOf,
@@ -113,6 +119,17 @@ import { phaseOfUseCase } from "@/lib/use-cases/phase";
 import { romeToday } from "@/lib/use-cases/quarter";
 import { phaseInputOf } from "@/lib/use-cases/views";
 import { checkQuestionTitle, checkRequestMessage, checkReviewerAnswer } from "@/lib/use-cases/referent/text";
+import {
+  clarifyTargetOf,
+  threadFactsByRequest,
+  threadMessageViewsOf,
+  threadMessagesSql,
+  threadRowOf,
+  threadSuggestionViewsOf,
+  threadSuggestionsSql,
+  type ThreadRow,
+} from "@/lib/db/queries/use-case-referent-thread";
+import { threadEmailAt, waitsForReferent } from "@/lib/use-cases/referent/thread";
 import { formatFileSize } from "@/lib/use-cases/referent/upload-transport";
 import { maskEmail, needReferentLine, referentDateLabel, requestLines, requestWordOf, type LatestAskForNeed } from "@/lib/use-cases/referent/view";
 import type { UseCaseNeedLists } from "@/lib/use-cases/needs";
@@ -334,6 +351,8 @@ interface RequestRow {
   openNeedIds: string[];
   /** (Rilascio 5) La conferma e la stima, solo per una richiesta al referente. */
   check: ReferentCheckRow | null;
+  /** (Rilascio 6) Attiva: «inviata» o «completata», link non scaduto, dati non cancellati (il filo si scrive qui). */
+  active: boolean;
 }
 
 const uuidList = (value: unknown): string[] =>
@@ -406,6 +425,7 @@ function requestRowOf(r: UcRow, now: Date): RequestRow | null {
     richiesta: { pending: rowBool(r.richiesta_pending), sent: rowBool(r.richiesta_sent), total: rowNumber(r.richiesta_total) ?? 0 },
     openNeedIds: uuidList(r.open_need_ids),
     check: checkRowOf(r),
+    active: rowBool(r.active),
   };
 }
 
@@ -422,7 +442,7 @@ function requestsSql(workspaceId: string, useCaseId: string): UcStatement {
   c.display_name AS contact_name, c.role_label, c.email AS contact_email, (c.is_active AND c.anonymized_at IS NULL) AS contact_active,
   ${openItemsCountSql("r")} AS open_items,
   (SELECT array_agg(it.need_id::text ORDER BY it.position) FROM use_case_referent_request_items it WHERE it.request_id = r.id) AS need_ids,
-  ${validLinkSql("r")} AS has_valid_token,
+  ${validLinkSql("r")} AS has_valid_token, ${activeRequestSql("r")} AS active,
   EXISTS (SELECT 1 FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta'
     AND (e.status = 'in_coda' OR (e.status = 'errore' AND e.attempts < 3))) AS richiesta_pending,
   EXISTS (SELECT 1 FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta' AND e.status = 'inviata') AS richiesta_sent,
@@ -470,7 +490,7 @@ WHERE r.workspace_id = ${cast(workspaceId, "uuid")} AND r.use_case_id = ${cast(u
 }
 
 function answersSql(workspaceId: string, useCaseId: string): UcStatement {
-  return toStatement(ucSql`SELECT a.id, a.need_id, a.source, a.body, a.dont_know, a.submitted_at, a.request_id, a.comment, a.already_attached,
+  return toStatement(ucSql`SELECT a.id, a.need_id, a.source, a.body, a.dont_know, a.submitted_at, a.request_id, a.comment, a.already_attached, a.edited_at,
   coalesce(c.display_name, '') AS contact_name, coalesce(nullif(btrim(u.name), ''), '') AS author_name
 FROM use_case_need_answers a
 LEFT JOIN use_case_referent_requests r ON r.id = a.request_id
@@ -561,7 +581,7 @@ export async function loadUseCaseReferentPanel(i: {
     if (!card) return emptyPanel(false, canAsk);
     const cardNeeds = [...i.needs.requirements, ...i.needs.steps];
     const requirementIds = i.needs.requirements.map((n) => n.id.toLowerCase());
-    const [requestRows, contactRows, liveRows, answerRows, fileRows, keyRows, expiredRows, benefitRows] = await executor.batch([
+    const [requestRows, contactRows, liveRows, answerRows, fileRows, keyRows, expiredRows, benefitRows, threadMessageRows, suggestionRows] = await executor.batch([
       requestsSql(ws, uc),
       contactsSql(ws),
       liveOnUseCaseSql(ws, uc),
@@ -570,7 +590,12 @@ export async function loadUseCaseReferentPanel(i: {
       importKeysSql(ws, uc),
       expiredReviewsSql(ws, uc),
       benefitsSql(ws, uc),
+      // (Rilascio 6) Il filo con i referenti e le proposte dell'AI.
+      threadMessagesSql(ws, uc),
+      threadSuggestionsSql(ws, uc),
     ]);
+    const threadRows: ThreadRow[] = threadMessageRows.map(threadRowOf).filter((r): r is ThreadRow => r !== null);
+    const threadByRequest = threadFactsByRequest(threadRows);
     const reviewExpired = new Set(expiredRows.map((r) => String(r.need_id).toLowerCase()));
     const [asks, ack, lsMembers] = await Promise.all([
       readAsksForNeeds(executor, ws, requirementIds),
@@ -712,8 +737,10 @@ export async function loadUseCaseReferentPanel(i: {
         }
       }
       const addable = [...askableIds].filter((id) => !r.needIds.includes(id));
-      const add = !canAsk || !live
-        ? { allowed: false, reason: live ? null : T.addReasons.closed }
+      // (Rilascio 6) Anche una richiesta completata con il link valido accetta domande nuove: torna «inviata».
+      const addOpen = live || r.active;
+      const add = !canAsk || !addOpen
+        ? { allowed: false, reason: addOpen ? null : T.addReasons.closed }
         : r.needIds.length >= REFERENT_LIMITS.questionsPerRequest
           ? { allowed: false, reason: T.addReasons.full }
           : addable.length === 0
@@ -800,6 +827,24 @@ export async function loadUseCaseReferentPanel(i: {
             alreadyAttached: rowBool(a.already_attached) && !rowBool(a.dont_know),
             comment: rowString(a.comment)?.trim() || null,
             canRemove: canAsk,
+            // (Rilascio 6) «Chiedi un chiarimento» sulla risposta del referente, sulla sua richiesta attiva.
+            clarify:
+              source === "referente" && rowString(a.request_id)
+                ? (() => {
+                    const request = requests.find((r) => r.id === String(a.request_id).toLowerCase());
+                    return request
+                      ? clarifyTargetOf(threadRows, {
+                          requestId: request.id,
+                          requestActive: request.active,
+                          contactName: request.contactName,
+                          anchor: { anchor: "domanda", needId: id, componentKey: null },
+                          quote: rowBool(a.dont_know) ? T.dontKnowAnswer : (rowString(a.body) ?? rowString(a.comment) ?? ""),
+                          canAct: canAsk,
+                        })
+                      : null;
+                  })()
+                : null,
+            editedLabel: rowDate(a.edited_at) ? fillText(REFERENT_THREAD_TEXT.updated, { data: referentDateLabel(rowDate(a.edited_at)!, today) }) : null,
           };
         });
       const files: NeedFileView[] = fileRows
@@ -852,6 +897,9 @@ export async function loadUseCaseReferentPanel(i: {
         reminderCount: r.reminderCount,
         openTask: r.openItems,
         check: r.check,
+        // (Rilascio 6) Il filo della richiesta e le voci con un chiarimento in attesa.
+        thread: threadByRequest.get(r.id) ?? null,
+        clarifyingKeys: threadRows.filter((m) => m.requestId === r.id && m.anchor === "beneficio" && m.componentKey && waitsForReferent(m)).map((m) => m.componentKey!),
       }));
       const referentContact = referentContactOf(facts);
       const declined = referentContact ? await readDeclinedNeedIds(executor, ws, uc, referentContact) : new Set<string>();
@@ -872,6 +920,14 @@ export async function loadUseCaseReferentPanel(i: {
         hints,
         askableNeedIds: askable.map((n) => n.id.toLowerCase()),
       });
+      // (Rilascio 6) «Chiedi un chiarimento» sulla conferma e su ogni voce della risposta di R*.
+      const star = referent ? requests.find((r) => r.id === referent!.referentRequestId) : null;
+      if (referent?.check && star) {
+        const target = (anchor: { anchor: "beneficio" | "generale"; componentKey: string | null }, quote: string) =>
+          clarifyTargetOf(threadRows, { requestId: star.id, requestActive: star.active, contactName: star.contactName, anchor: { ...anchor, needId: null }, quote, canAct: canAsk });
+        if (referent.check.submittedAt) referent.check.clarify = target({ anchor: "generale", componentKey: null }, referent.check.note ?? (referent.check.confirm === "si" ? "Sì, è così." : ""));
+        for (const b of referent.check.benefits ?? []) b.clarify = target({ anchor: "beneficio", componentKey: b.key }, b.label);
+      }
     }
 
     const existingKeys = new Set(keyRows.map((r) => String(r.import_key)));
@@ -896,6 +952,10 @@ export async function loadUseCaseReferentPanel(i: {
       eligible: i.eligible === true,
       referent,
       latestReferentRequestId,
+      thread: {
+        messages: threadMessageViewsOf(threadRows, { today, canAct: canAsk }),
+        suggestions: canAsk ? threadSuggestionViewsOf(suggestionRows) : [],
+      },
     };
   } catch (error) {
     logReferentError("pannello", error, { workspaceId: ws });
@@ -1321,6 +1381,31 @@ WHERE r.id = ${cast(parsed.previousRequestId, "uuid")} AND r.workspace_id = ${ca
     } else if (status !== "scaduta") return rfail("richiesta_chiusa");
   }
 
+  // (Rilascio 6) Domande a una persona che ha già una richiesta attiva su questo use case (viva, o completata
+  // con il link ancora valido): entrano lì, sotto «Nuove domande», invece di una richiesta nuova.
+  if (!referentKind && !parsed.previousRequestId && !newContact) {
+    const activeId = await readActiveRequestId(executor, ctx.workspaceId, card.id, contactId);
+    const active = activeId ? await readRequest(executor, ctx.workspaceId, card.id, activeId, now) : null;
+    if (active?.active) {
+      const message = checkRequestMessage(parsed.message);
+      if (!message.ok) return rfail(message.code, message.message, { message: message.message });
+      const joined = await addQuestionsToRequest({
+        ctx,
+        executor,
+        card,
+        request: active,
+        expectedVersion: active.version,
+        needIds: parsed.needIds,
+        fileRequired: parsed.fileRequired,
+        message: message.value,
+        writerId: writer.userId,
+        deps: { env: deps.env, now },
+      });
+      if (!joined.ok) return joined;
+      return ok({ requestId: joined.value.requestId, contactName: active.contactName || contactName });
+    }
+  }
+
   // 7. Nessun'altra richiesta viva per questa persona su questo use case (un referente che c'era già).
   // (Rilascio 5, D48, D49) Una richiesta al referente revoca, nello stesso batch, le richieste vive di
   // sole domande della persona scelta e, con «Cambia referente», ogni richiesta viva del referente di
@@ -1469,8 +1554,10 @@ VALUES (${ws}, ${cast(contactId, "uuid")}, ${cast(requestId, "uuid")}, 'richiest
 function itemsInsertSql(workspaceId: string, useCaseId: string, requestId: string, needIds: readonly string[], offset: number, fileRequired: readonly string[] = []): UcStatement {
   const ws = cast(workspaceId, "uuid");
   return toStatement(ucSql`WITH ins AS (
-  INSERT INTO use_case_referent_request_items (request_id, need_id, workspace_id, position, question, file_required)
-  SELECT ${cast(requestId, "uuid")}, n.id, n.workspace_id, (${cast(offset, "int")} + x.ord)::smallint, n.title, n.id = ANY(${cast([...fileRequired], "uuid[]")})
+  INSERT INTO use_case_referent_request_items (request_id, need_id, workspace_id, position, question, file_required, follow_up)
+  SELECT ${cast(requestId, "uuid")}, n.id, n.workspace_id, (${cast(offset, "int")} + x.ord)::smallint, n.title, n.id = ANY(${cast([...fileRequired], "uuid[]")}),
+    -- (Rilascio 6) Dopo il primo «Invia» del referente le domande stanno sotto «Nuove domande».
+    coalesce((SELECT rr.completed_at IS NOT NULL FROM use_case_referent_requests rr WHERE rr.id = ${cast(requestId, "uuid")}), false)
   FROM unnest(${cast([...needIds], "uuid[]")}) WITH ORDINALITY AS x(id, ord)
   JOIN use_case_needs n ON n.id = x.id
   JOIN use_case_need_links l ON l.need_id = n.id AND l.use_case_id = ${cast(useCaseId, "uuid")}
@@ -1515,13 +1602,15 @@ interface LiveRequest {
   richiestaSent: boolean;
   richiestaTotal: number;
   hasValidToken: boolean;
+  /** (Rilascio 6) Attiva: «inviata» o «completata», link non scaduto, dati non cancellati. */
+  active: boolean;
 }
 
 async function readRequest(executor: UcExecutor, workspaceId: string, useCaseId: string, requestId: string, now: Date): Promise<LiveRequest | null> {
   if (!isUuid(requestId)) return null;
   const [[r]] = await executor.batch([
     toStatement(ucSql`SELECT r.id, r.version, r.contact_id, r.status, r.sent_at, r.expires_at, r.revoked_at, r.reminder_count, r.last_email_at,
-  coalesce(c.display_name, '') AS contact_name, ${openItemsCountSql("r")} AS open_items, ${validLinkSql("r")} AS has_valid_token,
+  coalesce(c.display_name, '') AS contact_name, ${openItemsCountSql("r")} AS open_items, ${validLinkSql("r")} AS has_valid_token, ${activeRequestSql("r")} AS active,
   (SELECT array_agg(it.need_id::text ORDER BY it.position) FROM use_case_referent_request_items it WHERE it.request_id = r.id) AS need_ids,
   EXISTS (SELECT 1 FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta' AND (e.status = 'in_coda' OR (e.status = 'errore' AND e.attempts < 3))) AS richiesta_pending,
   EXISTS (SELECT 1 FROM use_case_referent_emails e WHERE e.request_id = r.id AND e.template = 'richiesta' AND e.status = 'inviata') AS richiesta_sent,
@@ -1556,6 +1645,7 @@ WHERE r.id = ${cast(requestId, "uuid")} AND r.workspace_id = ${cast(workspaceId,
     richiestaSent: rowBool(r.richiesta_sent),
     richiestaTotal: rowNumber(r.richiesta_total) ?? 0,
     hasValidToken: rowBool(r.has_valid_token),
+    active: rowBool(r.active),
   };
 }
 
@@ -1586,6 +1676,108 @@ function reminderStateOf(r: LiveRequest): ReminderState {
 
 // ─── «Aggiungi domande» (§3.4) ───────────────────────────────────────
 
+/** (Rilascio 6) La versione letta di una richiesta attiva («inviata» o «completata», non scaduta, non cancellata). */
+function activeVersionCasSql(workspaceId: string, requestId: string, version: number): UcStatement {
+  return toStatement(
+    requireRows(
+      ucSql`UPDATE use_case_referent_requests r SET version = version + 1
+WHERE r.id = ${cast(requestId, "uuid")} AND r.workspace_id = ${cast(workspaceId, "uuid")} AND r.version = ${cast(version, "int")} AND ${activeRequestSql("r")}
+RETURNING id`,
+      1,
+      "versione_superata",
+    ),
+  );
+}
+
+/**
+ * Le domande nuove nella richiesta attiva di una persona su questo use case: «Aggiungi domande» e (rilascio 6)
+ * «Chiedi al referente» o «Scegli il referente» verso chi ha già una richiesta attiva qui. Una richiesta
+ * «completata» torna «inviata» (sulla pagina del referente le domande stanno sotto «Nuove domande»), il link
+ * si rinnova per 30 giorni, un messaggio nuovo prende il posto di quello di prima, e l'email «nuove» parte
+ * con la regola di sempre: in orario d'ufficio, un'email al giorno per persona.
+ */
+async function addQuestionsToRequest(i: {
+  ctx: WriteContext;
+  executor: UcExecutor;
+  card: { id: string };
+  request: LiveRequest;
+  expectedVersion: number;
+  needIds: readonly string[];
+  fileRequired: readonly string[];
+  message: string | null;
+  writerId: string;
+  deps: { env: Env; now?: Date };
+}): Promise<ServiceResult<{ added: number; emailQueued: boolean; contactName: string; requestId: string }> | ReferentFailure> {
+  const { ctx, executor, card, request } = i;
+  const now = i.deps.now ?? new Date();
+  if (!request.active) return rfail("richiesta_chiusa");
+  if (request.version !== i.expectedVersion) return rfail("versione_superata");
+  const unique = [...new Set(i.needIds.map((x) => x.toLowerCase()))];
+  if (unique.length === 0) return rfail("nessuna_domanda", undefined, { needIds: REFERENT_ERROR_MESSAGES.nessuna_domanda });
+  if (unique.length !== i.needIds.length || unique.some((id) => request.needIds.includes(id))) return rfail("domande_cambiate");
+  const fileRequired = [...new Set(i.fileRequired.map((x) => x.toLowerCase()))];
+  if (!fileRequired.every((id) => unique.includes(id))) return rfail("domande_cambiate");
+  if (request.needIds.length + unique.length > MAX_QUESTIONS) return rfail("troppe_domande", undefined, { needIds: REFERENT_ERROR_MESSAGES.troppe_domande });
+  const needs = await readCardNeeds(executor, ctx.workspaceId, card.id);
+  const asks = await readAsksForNeeds(executor, ctx.workspaceId, needs.map((n) => n.id));
+  const silent = silentOf(needs, asks, now);
+  const askable = new Map(askableNeeds(needs, card.id, { silentNeedIds: silent }).map((n) => [n.id.toLowerCase(), n]));
+  if (!unique.every((id) => askable.has(id))) return rfail("domande_cambiate");
+  // (Rilascio 5, §3.7) Alla richiesta del referente non si aggiunge una domanda a cui ha risposto «Non ce l'ho».
+  const latestReferent = await readLatestReferentRequest(executor, ctx.workspaceId, card.id);
+  if (latestReferent && !latestReferent.revoked && latestReferent.contactId === request.contactId) {
+    const declined = await readDeclinedNeedIds(executor, ctx.workspaceId, card.id, request.contactId);
+    if (unique.some((id) => declined.has(id))) return rfail("domande_cambiate");
+  }
+  for (const id of unique) {
+    const title = askable.get(id)!.title;
+    const check = checkQuestionTitle(title);
+    if (!check.ok) return rfail(check.code, `Nella domanda «${title.slice(0, 60)}»: ${check.message}`, { needIds: check.message });
+  }
+  const silentIds = unique.filter((id) => silent.has(id));
+  // L'email della novità, sulla richiesta com'è dopo questo batch: «inviata», con il link rinnovato.
+  const remindedOn = await readRemindedOn(executor, ctx.workspaceId, [request.contactId]);
+  const renewed = new Date(Math.max(request.expiresAt.getTime(), now.getTime() + REFERENT_LINK_RENEW_DAYS * 86_400_000));
+  const emailAt = threadEmailAt(
+    { status: "inviata", revokedAt: request.revokedAt, expiresAt: renewed, sentAt: request.sentAt, lastEmailAt: request.lastEmailAt, addressChanged: request.sentAt !== null && !request.hasValidToken },
+    now,
+    remindedOn.get(request.contactId) ?? new Set(),
+  );
+  const actor = persona(i.writerId);
+  const ws = cast(ctx.workspaceId, "uuid");
+  const req = cast(request.id, "uuid");
+  const statements: UcStatement[] = [
+    ...lazyExpiry(ctx, card.id, now),
+    activeVersionCasSql(ctx.workspaceId, request.id, i.expectedVersion),
+    ...reopenRequestStatements({ workspaceId: ctx.workspaceId, requestId: request.id }),
+    ...renewLinkStatements({ workspaceId: ctx.workspaceId, requestId: request.id }),
+  ];
+  if (i.message) statements.push(toStatement(ucSql`UPDATE use_case_referent_requests SET message = ${cast(i.message, "text")} WHERE id = ${req} AND workspace_id = ${ws}`));
+  if (silentIds.length) statements.push(silentGuardSql(ctx.workspaceId, silentIds));
+  statements.push(
+    itemsInsertSql(ctx.workspaceId, card.id, request.id, unique, request.needIds.length, fileRequired),
+    needTransitionSql({ workspaceId: ctx.workspaceId, needIds: unique, from: ["da_chiedere", "mancante", "parziale"], silentIds, to: "chiesta", actor, expect: { count: unique.length, code: "domande_cambiate" } }),
+    referentEventSql({ workspaceId: ctx.workspaceId, useCaseId: card.id, code: "domande_aggiunte", actor }),
+    ...cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: i.writerId, readiness: await readinessSyncFor(ctx.workspaceId, i.deps.env, now) }),
+  );
+  if (emailAt) {
+    statements.push(
+      queueThreadEmailItemSql({
+        workspaceId: ctx.workspaceId,
+        contactId: request.contactId,
+        requestId: request.id,
+        newQuestions: unique.length,
+        // Dopo «Correggi l'email» la chiave cambia a ogni versione: un promemoria partito oggi al vecchio indirizzo non la blocca.
+        dedupeKey: request.sentAt && !request.hasValidToken ? `pm:${request.id}:${romeDate(emailAt)}:v${i.expectedVersion}` : `pm:${request.id}:${romeDate(emailAt)}`,
+        at: emailAt,
+      }),
+    );
+  }
+  const run = await referentBatch(executor, statements);
+  if (!run.ok) return run;
+  return ok({ added: unique.length, emailQueued: emailAt !== null && emailAt.getTime() <= now.getTime(), contactName: request.contactName, requestId: request.id });
+}
+
 export const addToReferentRequest = guardedReferent(
   "aggiungi_domande",
   async function addToReferentRequest(
@@ -1606,70 +1798,38 @@ export const addToReferentRequest = guardedReferent(
     const gate = await deliveryGates(executor, ctx.workspaceId, card.company, deps.env);
     if (gate) return gateRefused(executor, ctx, writer.userId, card.id, gate, deps.env);
     const request = await readRequest(executor, ctx.workspaceId, card.id, requestId, now);
-    if (!request || request.status !== "inviata") return rfail("richiesta_chiusa");
+    // (Rilascio 6) Anche una richiesta completata il cui link è ancora valido: torna «inviata».
+    if (!request || !request.active) return rfail("richiesta_chiusa");
     if (request.version !== expectedVersion) return rfail("versione_superata");
     const body = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
     const raw = body.needIds;
     const ids = Array.isArray(raw) && raw.every(isUuid) ? (raw as string[]).map((x) => x.toLowerCase()) : null;
     if (!ids || ids.length === 0) return rfail("nessuna_domanda", undefined, { needIds: REFERENT_ERROR_MESSAGES.nessuna_domanda });
-    const unique = [...new Set(ids)];
-    if (unique.length !== ids.length || unique.some((id) => request.needIds.includes(id))) return rfail("domande_cambiate");
     // (Rilascio 5) «Serve un file» sulle domande nuove: un sottoinsieme di quelle aggiunte.
     const rawFiles = body.fileRequired === undefined || body.fileRequired === null ? [] : body.fileRequired;
     if (!Array.isArray(rawFiles) || !rawFiles.every(isUuid)) return rfail("domande_cambiate");
-    const fileRequired = [...new Set((rawFiles as string[]).map((x) => x.toLowerCase()))];
-    if (!fileRequired.every((id) => unique.includes(id))) return rfail("domande_cambiate");
-    if (request.needIds.length + unique.length > MAX_QUESTIONS) return rfail("troppe_domande", undefined, { needIds: REFERENT_ERROR_MESSAGES.troppe_domande });
-    const needs = await readCardNeeds(executor, ctx.workspaceId, card.id);
-    const asks = await readAsksForNeeds(executor, ctx.workspaceId, needs.map((n) => n.id));
-    const silent = silentOf(needs, asks, now);
-    const askable = new Map(askableNeeds(needs, card.id, { silentNeedIds: silent }).map((n) => [n.id.toLowerCase(), n]));
-    if (!unique.every((id) => askable.has(id))) return rfail("domande_cambiate");
-    // (Rilascio 5, §3.7) Alla richiesta del referente non si aggiunge una domanda a cui ha risposto «Non ce l'ho».
-    const latestReferent = await readLatestReferentRequest(executor, ctx.workspaceId, card.id);
-    if (latestReferent && !latestReferent.revoked && latestReferent.contactId === request.contactId) {
-      const declined = await readDeclinedNeedIds(executor, ctx.workspaceId, card.id, request.contactId);
-      if (unique.some((id) => declined.has(id))) return rfail("domande_cambiate");
-    }
-    for (const id of unique) {
-      const title = askable.get(id)!.title;
-      const check = checkQuestionTitle(title);
-      if (!check.ok) return rfail(check.code, `Nella domanda «${title.slice(0, 60)}»: ${check.message}`, { needIds: check.message });
-    }
-    const silentIds = unique.filter((id) => silent.has(id));
-    const remindedOn = await readRemindedOn(executor, ctx.workspaceId, [request.contactId]);
-    const check = manualReminderCheck(reminderStateOf(request), now, { remindedOn: remindedOn.get(request.contactId) ?? new Set() });
-    const actor = persona(writer.userId);
-    const statements: UcStatement[] = [
-      ...lazyExpiry(ctx, card.id, now),
-      versionCasSql(ctx.workspaceId, request.id, expectedVersion),
-    ];
-    if (silentIds.length) statements.push(silentGuardSql(ctx.workspaceId, silentIds));
-    statements.push(
-      itemsInsertSql(ctx.workspaceId, card.id, request.id, unique, request.needIds.length, fileRequired),
-      needTransitionSql({ workspaceId: ctx.workspaceId, needIds: unique, from: ["da_chiedere", "mancante", "parziale"], silentIds, to: "chiesta", actor, expect: { count: unique.length, code: "domande_cambiate" } }),
-      referentEventSql({ workspaceId: ctx.workspaceId, useCaseId: card.id, code: "domande_aggiunte", actor }),
-      ...cardSyncStatements({ workspaceId: ctx.workspaceId, useCaseIds: [card.id], actorUserId: writer.userId, readiness: await readinessSyncFor(ctx.workspaceId, deps.env, now) }),
-    );
-    if (check.ok) {
-      statements.push(
-        queueReminderItemSql({
-          workspaceId: ctx.workspaceId,
-          contactId: request.contactId,
-          requestId: request.id,
-          kind: "nuove",
-          newQuestions: unique.length,
-          // Dopo «Correggi l'email» la chiave cambia a ogni versione: un promemoria partito oggi al vecchio indirizzo non la blocca.
-        dedupeKey: request.sentAt && !request.hasValidToken ? `pm:${request.id}:${romeDate(check.scheduledAt)}:v${expectedVersion}` : `pm:${request.id}:${romeDate(check.scheduledAt)}`,
-          at: check.scheduledAt,
-        }),
-      );
-    }
-    const run = await referentBatch(executor, statements);
-    if (!run.ok) return run;
-    return ok({ added: unique.length, emailQueued: check.ok && check.scheduledAt.getTime() <= now.getTime(), contactName: request.contactName });
+    const result = await addQuestionsToRequest({ ctx, executor, card, request, expectedVersion, needIds: ids, fileRequired: rawFiles as string[], message: null, writerId: writer.userId, deps: { ...deps, now } });
+    if (!result.ok) return result;
+    return ok({ added: result.value.added, emailQueued: result.value.emailQueued, contactName: result.value.contactName });
   },
 );
+
+/** (Rilascio 6) La richiesta attiva più recente di una persona su questo use case, oppure null. */
+async function readActiveRequestId(executor: UcExecutor, workspaceId: string, useCaseId: string, contactId: string): Promise<string | null> {
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT r.id, r.status, r.created_at FROM use_case_referent_requests r
+WHERE r.workspace_id = ${cast(workspaceId, "uuid")} AND r.use_case_id = ${cast(useCaseId, "uuid")} AND r.contact_id = ${cast(contactId, "uuid")} AND ${activeRequestSql("r")}`),
+  ]);
+  // Una richiesta viva vince; poi la più recente (per data, poi id: in TypeScript, mai un ORDER BY per persona).
+  let best: UcRow | null = null;
+  const rank = (r: UcRow) => (rowString(r.status) === "inviata" ? 1 : 0);
+  for (const r of rows) {
+    const at = rowDate(r.created_at)?.getTime() ?? 0;
+    const bestAt = best ? (rowDate(best.created_at)?.getTime() ?? 0) : -1;
+    if (!best || rank(r) > rank(best) || (rank(r) === rank(best) && (at > bestAt || (at === bestAt && String(r.id) > String(best.id))))) best = r;
+  }
+  return best ? String(best.id).toLowerCase() : null;
+}
 
 // ─── «Manda un promemoria» (§3.6) ────────────────────────────────────
 
@@ -2247,9 +2407,13 @@ RETURNING id`,
   // 8. Conservazione: 12 mesi dopo la fine, senza esigenze ancora da verificare.
   await step("cron_conservazione", async () => {
     const [rows] = await executor.batch([
-      toStatement(ucSql`SELECT r.id, r.workspace_id, coalesce(r.completed_at, r.expired_at, r.revoked_at) AS ended_at
+      // (Rilascio 6) La fine di una richiesta è anche il suo ultimo messaggio nel filo, se viene dopo.
+      toStatement(ucSql`SELECT r.id, r.workspace_id,
+  greatest(coalesce(r.completed_at, r.expired_at, r.revoked_at), (SELECT max(m.created_at) FROM use_case_referent_messages m WHERE m.request_id = r.id)) AS ended_at
 FROM use_case_referent_requests r
 WHERE r.status <> 'inviata' AND r.purged_at IS NULL AND coalesce(r.completed_at, r.expired_at, r.revoked_at) < now() - interval '360 days'
+  AND NOT EXISTS (SELECT 1 FROM use_case_referent_messages lm WHERE lm.request_id = r.id AND lm.created_at >= now() - interval '360 days')
+  AND (r.status <> 'completata' OR r.expires_at <= now())
   AND NOT EXISTS (SELECT 1 FROM use_case_referent_request_items i JOIN use_case_needs n ON n.id = i.need_id
                   WHERE i.request_id = r.id AND i.state <> 'aperta' AND n.status = 'in_verifica')
 LIMIT 200`),
@@ -2271,6 +2435,9 @@ LIMIT 200`),
     // (Rilascio 5.1) La pulizia di RUNBOOK §10.10 punto 6, dopo quella della 0026: i commenti per
     // beneficio delle richieste cancellate e le bozze per beneficio delle richieste finite senza invio.
     await executor.batch(REFERENT_BENEFITS_SWEEP_SQL.map((text) => ({ text, params: [] })));
+    // (Rilascio 6) La pulizia di RUNBOOK §10.15, dopo quella della 0027: i testi del filo e le proposte dell'AI
+    // delle richieste che il codice di prima ha cancellato.
+    await executor.batch(REFERENT_THREAD_SWEEP_SQL.map((text) => ({ text, params: [] })));
   });
 
   // 9. Promemoria: un'email al giorno per persona, con tutte le sue richieste dovute.

@@ -12,7 +12,8 @@ import type { ReferentBlockBenefit, ReferentBlockCheck, ReferentBlockView } from
 import { adoptionPatch, referentHours, sameTeamEstimate, type TeamEstimate } from "./estimate.ts";
 import { adoptedTeamOf, benefitAdoptionPatch, benefitDiffers, benefitNeedsReview, benefitUnknown, sameBenefitTeam, type ImpactRow, type StoredBenefit } from "./impact.ts";
 import { benefitFormOf } from "./impact-text.ts";
-import { referentRequestsOf, referentStateOf, type ReferentRequestFact } from "./use-case-state.ts";
+import { referentRequestsOf, referentStateOf, referentThreadOf, type ReferentRequestFact } from "./use-case-state.ts";
+import { threadTurn, type ThreadFacts } from "./thread.ts";
 
 /** La riga di `use_case_referent_checks` come la legge il pannello. */
 export interface ReferentCheckRow {
@@ -48,6 +49,10 @@ export interface BlockRequestFact {
   reminderCount: number;
   openTask: number;
   check: ReferentCheckRow | null;
+  /** (Rilascio 6) Il filo della richiesta (chiarimenti, dubbi, novità che aspettano qualcuno); null o assente: nessun messaggio. */
+  thread?: ThreadFacts | null;
+  /** (Rilascio 6) Le voci di «Benefici e costi» con un chiarimento del team in attesa: non aspettano il team. */
+  clarifyingKeys?: readonly string[];
 }
 
 export interface ReferentBlockInput {
@@ -69,6 +74,8 @@ export interface ReferentBlockInput {
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
 function factOf(r: BlockRequestFact): ReferentRequestFact {
+  const clarifying = new Set(r.clarifyingKeys ?? []);
+  const waiting = (b: StoredBenefit) => !clarifying.has(b.key);
   return {
     id: r.id,
     contactId: r.contactId,
@@ -86,10 +93,12 @@ function factOf(r: BlockRequestFact): ReferentRequestFact {
           estimateOutcome: r.check.estimateOutcome,
           teamComponentKey: r.check.teamComponentKey,
           benefits: r.check.benefits !== null,
-          benefitReview: (r.check.benefits ?? []).some((b) => benefitDiffers(b)),
-          benefitUnknown: (r.check.benefits ?? []).some((b) => benefitUnknown(b)),
+          // (Rilascio 6) Una voce con un chiarimento del team in attesa aspetta il referente, non il team.
+          benefitReview: (r.check.benefits ?? []).some((b) => waiting(b) && benefitDiffers(b)),
+          benefitUnknown: (r.check.benefits ?? []).some((b) => waiting(b) && benefitUnknown(b)),
         }
       : null,
+    thread: r.thread ?? null,
   };
 }
 
@@ -108,7 +117,7 @@ function adoptedOf(snapshot: { key: string; volumeYear: number; minutes: number 
  * (Rilascio 5.1) Una risposta per beneficio per il blocco: la cifra vista, la risposta, se la cifra di adesso
  * è cambiata (mai dopo «Usa la stima di {Nome}»: quel cambio è del team) o se la voce non c'è più.
  */
-export function blockBenefitOf(b: StoredBenefit, rowsNow: readonly ImpactRow[] | null | undefined): ReferentBlockBenefit {
+export function blockBenefitOf(b: StoredBenefit, rowsNow: readonly ImpactRow[] | null | undefined, clarifying = false): ReferentBlockBenefit {
   const now = rowsNow?.find((r) => r.key === b.key) ?? null;
   const adoptedNow = b.outcome === "adottata" && now !== null && sameBenefitTeam(adoptedTeamOf(b), now.team);
   const changed = now === null ? "tolta" : !sameBenefitTeam(b.team, now.team) && !adoptedNow ? "cambiata" : null;
@@ -126,13 +135,14 @@ export function blockBenefitOf(b: StoredBenefit, rowsNow: readonly ImpactRow[] |
     outcome: b.outcome,
     outcomeAt: iso(b.outcomeAt),
     changed,
-    needsReview: benefitNeedsReview(b),
+    // (Rilascio 6) Con un chiarimento in attesa la voce aspetta il referente.
+    needsReview: !clarifying && benefitNeedsReview(b),
     adoptable: Object.keys(patch).length > 0,
   };
 }
 
 /** La conferma e la stima di R* per il blocco (§9.2). */
-export function blockCheckOf(row: ReferentCheckRow, version: number, teamNow: TeamEstimate | null, rowsNow: readonly ImpactRow[] | null = null): ReferentBlockCheck {
+export function blockCheckOf(row: ReferentCheckRow, version: number, teamNow: TeamEstimate | null, rowsNow: readonly ImpactRow[] | null = null, clarifyingKeys: readonly string[] = []): ReferentBlockCheck {
   const snapshot =
     row.teamComponentKey !== null && row.teamVolumeYear !== null && row.teamMinutes !== null
       ? { key: row.teamComponentKey, volumeYear: row.teamVolumeYear, minutes: row.teamMinutes }
@@ -165,7 +175,7 @@ export function blockCheckOf(row: ReferentCheckRow, version: number, teamNow: Te
     teamNow: teamNow !== null,
     referentHours: given ? referentHours(snapshot, numbers) : null,
     version,
-    benefits: row.benefits ? row.benefits.map((b) => blockBenefitOf(b, rowsNow)) : null,
+    benefits: row.benefits ? row.benefits.map((b) => blockBenefitOf(b, rowsNow, clarifyingKeys.includes(b.key))) : null,
   };
 }
 
@@ -187,14 +197,18 @@ export function referentBlockOf(i: ReferentBlockInput): ReferentBlockView | null
   const r = i.requests.find((x) => x.id === current.id)!;
   const live = r.status === "inviata" && r.expiresAt.getTime() > i.now.getTime();
   const declined = new Set(i.declinedNeedIds.map((id) => id.toLowerCase()));
+  // (Rilascio 6) Di chi è il turno nel filo della persona: solo quando un filo c'è.
+  const thread = referentThreadOf(facts, star.contactId.toLowerCase());
+  const hasThread = i.requests.some((x) => x.contactId.toLowerCase() === star.contactId.toLowerCase() && x.status !== "revocata" && x.thread != null);
   return {
     contact: { id: star.contactId, name: star.contactName, roleLabel: star.roleLabel, emailMasked: star.emailMasked, team: star.team },
     requestId: r.id,
     referentRequestId: star.id,
     state: result.state,
     review: result.review,
+    turn: hasThread ? threadTurn({ facts: thread, openQuestions: live ? r.openTask : 0, teamToVerify: result.state === "da_verificare" || result.state === "ha_chiesto" }) : null,
     live,
-    check: star.check ? blockCheckOf(star.check, star.version, i.teamNow, i.rowsNow ?? null) : null,
+    check: star.check ? blockCheckOf(star.check, star.version, i.teamNow, i.rowsNow ?? null, star.clarifyingKeys ?? []) : null,
     declinedNeedIds: [...declined],
     hints: i.hints.slice(0, 3),
     askableForReferent: i.askableNeedIds.map((id) => id.toLowerCase()).filter((id) => !declined.has(id)),

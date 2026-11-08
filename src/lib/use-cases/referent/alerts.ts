@@ -76,6 +76,8 @@ export interface AlertItemFacts {
   answers: number;
   unknowns: number;
   documents: number;
+  /** (Rilascio 6) Le domande del referente al team («Ho un dubbio»); assente: nessuna. */
+  questions?: number;
   followUp: FollowUpReason | null;
   requestPurged: boolean;
   /**
@@ -114,6 +116,8 @@ export interface AlertEntry {
   answers: number;
   unknowns: number;
   documents: number;
+  /** (Rilascio 6) Le domande del referente al team; assente: nessuna. */
+  questions?: number;
   followUp: FollowUpReason | null;
   link: string;
 }
@@ -137,8 +141,8 @@ export { cardLink };
  * «Richieste inviate», dove si chiede di nuovo; con risposte, documenti o «Non ce l'ho» da guardare a
  * «Cosa serve».
  */
-function entryLink(origin: string, workspaceId: string, useCaseId: string, e: Pick<AlertEntry, "answers" | "unknowns" | "documents" | "followUp">): string {
-  const followUpOnly = e.followUp !== null && e.answers === 0 && e.unknowns === 0 && e.documents === 0;
+function entryLink(origin: string, workspaceId: string, useCaseId: string, e: Pick<AlertEntry, "answers" | "unknowns" | "documents" | "questions" | "followUp">): string {
+  const followUpOnly = e.followUp !== null && e.answers === 0 && e.unknowns === 0 && e.documents === 0 && (e.questions ?? 0) === 0;
   return cardLinkTo(origin, workspaceId, useCaseId, followUpOnly ? "richieste" : "cosa-serve");
 }
 
@@ -157,7 +161,7 @@ export function planRequesterAlert(e: ClaimedAlert, f: AlertFacts, o: { env: Dis
   const kept = f.items
     .filter((i) => !i.requestPurged)
     .map((i) => (i.followUp !== null && i.stillWaiting === false ? { ...i, followUp: null } : i))
-    .filter((i) => i.answers > 0 || i.unknowns > 0 || i.documents > 0 || i.followUp !== null)
+    .filter((i) => i.answers > 0 || i.unknowns > 0 || i.documents > 0 || (i.questions ?? 0) > 0 || i.followUp !== null)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.requestId < b.requestId ? -1 : 1));
   if (kept.length === 0) return { action: "cancel", reason: "nessuna_voce" };
   const byUseCase = new Map<string, AlertEntry>();
@@ -170,6 +174,7 @@ export function planRequesterAlert(e: ClaimedAlert, f: AlertFacts, o: { env: Dis
         answers: item.answers,
         unknowns: item.unknowns,
         documents: item.documents,
+        ...((item.questions ?? 0) > 0 ? { questions: item.questions } : {}),
         followUp: item.followUp,
         // Il capitolo si decide sulla voce unita, qui sotto.
         link: "",
@@ -179,6 +184,7 @@ export function planRequesterAlert(e: ClaimedAlert, f: AlertFacts, o: { env: Dis
     current.answers += item.answers;
     current.unknowns += item.unknowns;
     current.documents += item.documents;
+    if ((item.questions ?? 0) > 0) current.questions = (current.questions ?? 0) + (item.questions ?? 0);
     current.followUp = current.followUp === "scaduta" || item.followUp === "scaduta" ? "scaduta" : (current.followUp ?? item.followUp);
   }
   return {
@@ -201,6 +207,9 @@ function joinFacts(parts: readonly string[]): string {
 
 function factsOf(e: AlertEntry): string[] {
   const out: string[] = [];
+  // (Rilascio 6) Prima di tutto: il referente ha chiesto qualcosa al team.
+  const q = e.questions ?? 0;
+  if (q > 0) out.push(q === 1 ? "il referente ha una domanda per il team" : `il referente ha ${q} domande per il team`);
   if (e.answers > 0) out.push(e.answers === 1 ? "è arrivata 1 risposta" : `sono arrivate ${e.answers} risposte`);
   if (e.unknowns > 0) out.push(e.unknowns === 1 ? "il referente non ha l'informazione per 1 domanda" : `il referente non ha l'informazione per ${e.unknowns} domande`);
   if (e.documents > 0) out.push(e.documents === 1 ? "c'è 1 documento nuovo" : `ci sono ${e.documents} documenti nuovi`);
@@ -232,6 +241,7 @@ function subjectOf(i: RequesterAlertInput): string {
   if (i.entries.length !== 1) return `${company}: novità su ${i.entries.length} casi d'uso`;
   const e = i.entries[0];
   const uc = labelOfUseCase(e.useCase);
+  if ((e.questions ?? 0) > 0) return `${company}: il referente ha una domanda sul caso d'uso «${uc}»`;
   if (e.answers > 0) return `${company}: risposte arrivate sul caso d'uso «${uc}»`;
   if (e.documents > 0) return `${company}: nuovi documenti sul caso d'uso «${uc}»`;
   // Con il link scaduto l'oggetto non dice «non sa rispondere»: restano domande senza risposta.
@@ -251,7 +261,8 @@ export function renderRequesterAlert(i: RequesterAlertInput, brand?: EmailBrand)
   for (const e of i.entries) {
     const label = `«${labelOfUseCase(e.useCase)}»`;
     blocks.push({ p: entryLine(single ? `ci sono novità sul caso d'uso ${label} di ${company}` : label, e, single) });
-    if (e.answers > 0 || e.documents > 0) blocks.push({ small: "Da verificare in «Cosa serve»." });
+    if ((e.questions ?? 0) > 0) blocks.push({ small: "Rispondi dalla scheda, in «Cosa serve»." });
+    else if (e.answers > 0 || e.documents > 0) blocks.push({ small: "Da verificare in «Cosa serve»." });
     if (e.unknowns > 0 && !e.followUp) blocks.push({ small: "Per i «Non ce l'ho» puoi chiedere a un'altra persona." });
     if (e.followUp) blocks.push({ small: "Puoi chiedere di nuovo o chiedere a un'altra persona." });
     blocks.push({ link: { href: e.link, label: "Apri «Cosa serve»" } });

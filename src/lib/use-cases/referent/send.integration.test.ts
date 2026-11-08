@@ -202,11 +202,14 @@ test("invio: referente nuovo, richiesta, domande, esigenze «chiesta», Storia e
   const events = await q(`SELECT phase_after FROM use_case_events WHERE use_case_id = $1::uuid AND 'richiesta_referente' = ANY(fields)`, [ids.useCase]);
   assert.deepEqual(events.map((e) => e.phase_after), ["inviata"]);
   assert.equal(await useCaseSnapshot(), before, "la scheda non si tocca");
-  // Una seconda richiesta viva per la stessa persona sulla stessa scheda: no.
+  // (Rilascio 6) Una seconda richiesta alla stessa persona sulla stessa scheda non nasce: le domande nuove
+  // entrano nella sua richiesta attiva (thread.integration.test.ts). Qui una domanda che quella richiesta ha
+  // già: rifiutata, niente scritto.
   refused(
-    await referents.sendReferentRequest(as("builder"), ids.useCase, { contact: { kind: "esistente", contactId: state.contactId }, needIds: state.needs.slice(3, 4) }, { env: ENV, requester: requester("builder") }),
-    "richiesta_aperta",
+    await referents.sendReferentRequest(as("builder"), ids.useCase, { contact: { kind: "esistente", contactId: state.contactId }, needIds: state.needs.slice(0, 1) }, { env: ENV, requester: requester("builder") }),
+    "domande_cambiate",
   );
+  assert.equal((await q(`SELECT count(*)::int AS n FROM use_case_referent_requests WHERE use_case_id = $1::uuid`, [ids.useCase]))[0].n, 1, "una sola richiesta");
 });
 
 test("email: il link con un token nuovo, la risposta a chi ha chiesto, nessun token in chiaro nel database", opts, async () => {

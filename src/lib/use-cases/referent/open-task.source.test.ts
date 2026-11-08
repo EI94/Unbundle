@@ -44,6 +44,7 @@ const OPEN_TASK_CALLS: Record<string, string> = {
   "src/lib/db/queries/use-case-referent-dispatch.ts": "le email: i promemoria partono anche senza domande; le parole usano openQuestionsOf (meno la conferma)",
   "src/lib/db/queries/use-case-referent-public.ts": "l'invio delle risposte completa la richiesta solo con niente di aperto, e lo stato dopo l'invio",
   "src/lib/db/queries/use-case-referent-states.ts": "(rilascio 5) lo stato del referente sulle card: «In attesa» e «Nessuna risposta» finché qualcosa è aperto, anche la sola conferma",
+  "src/lib/db/queries/use-case-referent-thread.ts": "(rilascio 6) la risposta del referente all'ultimo chiarimento completa la richiesta solo con niente di aperto",
 };
 
 /** Le domande aperte una per una (`openItemSql` o `state = 'aperta'` in linea): per domanda, mai la conferma. */
@@ -66,9 +67,13 @@ test("openItemSql e «state = 'aperta'» in linea: ogni file ha la sua decisione
   assert.deepEqual(using, Object.keys(OPEN_ITEM_CALLS).sort());
 });
 
-test("openItemsCountSql conta la conferma da inviare; openQuestionsCountSql solo le domande", () => {
+test("openItemsCountSql conta la conferma da inviare e (rilascio 6) i chiarimenti in attesa; openQuestionsCountSql solo le domande", () => {
   const sql = read("src/lib/use-cases/referent/sql.ts");
-  assert.match(sql, /export function openItemsCountSql\(request: string\): SqlFragment \{\s+return ucSql`\(\$\{openQuestionsCountSql\(request\)\} \+ \$\{checkPendingCountSql\(request\)\}\)`;/);
+  assert.match(
+    sql,
+    /export function openItemsCountSql\(request: string\): SqlFragment \{\s+return ucSql`\(\$\{openQuestionsCountSql\(request\)\} \+ \$\{checkPendingCountSql\(request\)\} \+ \$\{openClarificationsCountSql\(request\)\}\)`;/,
+  );
+  assert.match(sql, /use_case_referent_messages om WHERE om\.request_id = \$\{request\}\.id AND om\.side = 'team' AND om\.kind = 'chiarimento'\s+AND om\.handled_at IS NULL AND om\.removed_at IS NULL/);
   assert.match(sql, /use_case_referent_checks oc WHERE oc\.request_id = \$\{request\}\.id AND oc\.submitted_at IS NULL/);
   // La scadenza: «Nessuna risposta» anche per una richiesta al referente senza domande.
   assert.match(sql, /OR EXISTS \(SELECT 1 FROM use_case_referent_checks c WHERE c\.request_id = r\.id AND c\.submitted_at IS NULL\)\)`;/);

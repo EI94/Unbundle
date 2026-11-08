@@ -311,8 +311,8 @@ test("«Cambia referente»: le richieste vive del referente di prima revocate, l
   assert.ok(codes.includes("referente_cambiato") && !codes.includes("inviata"), JSON.stringify(codes));
   assert.equal(await latestReferentId(card.id), changed.requestId);
 
-  // Un referente che ha già risposto e ha una richiesta di sole domande viva (il «seguito»): si revoca
-  // quella, le sue domande aperte passano; la richiesta già risposta resta com'è.
+  // Un referente che ha già risposto e ha domande nuove (il «seguito»): (rilascio 6) entrano nella sua
+  // richiesta, che torna viva; «Cambia referente» la revoca, le sue domande aperte passano alla nuova.
   const other = await newCard();
   const answered = ok(await sendReferent(other.id, { contact: await contactOf(CARLO), needIds: [other.needs[0]] }), "referente");
   await q(`UPDATE use_case_referent_request_items SET state = 'risposta', answered_at = now() WHERE request_id = $1::uuid`, [answered.requestId]);
@@ -320,8 +320,9 @@ test("«Cambia referente»: le richieste vive del referente di prima revocate, l
   await q(`UPDATE use_case_referent_checks SET confirm = 'si', times_per_month = 3, minutes_each = 4, submitted_at = now() WHERE request_id = $1::uuid`, [answered.requestId]);
   await q(`UPDATE use_case_referent_requests SET status = 'completata', completed_at = now() WHERE id = $1::uuid`, [answered.requestId]);
   const follow = ok(await referents.sendReferentRequest(as("builder"), other.id, { contact: await contactOf(CARLO), needIds: other.needs.slice(1, 4) }, deps()), "seguito");
+  assert.equal(follow.requestId, answered.requestId, "(rilascio 6) la stessa richiesta");
+  assert.equal((await requestOf(answered.requestId)).status, "inviata", "riaperta con le domande nuove");
   const swapped = ok(await sendReferent(other.id, { contact: await contactOf(BRUNA), needIds: other.needs.slice(1, 4), replaceReferent: true }), "cambia dopo il seguito");
-  assert.equal((await requestOf(answered.requestId)).status, "completata");
   assert.deepEqual([(await requestOf(follow.requestId)).status, (await requestOf(follow.requestId)).revoked_reason], ["revocata", "revisore"]);
   assert.deepEqual((await itemsOf(swapped.requestId)).map((i) => i.need_id), other.needs.slice(1, 4));
   for (const id of other.needs.slice(1, 4)) assert.equal(await statusOf(id), "chiesta");

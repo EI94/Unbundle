@@ -134,14 +134,70 @@ export function checkPendingCountSql(request: string): SqlFragment {
 }
 
 /**
+ * (Rilascio 6, 0028) Quanti chiarimenti del team aspettano il referente sulla richiesta `r`: messaggi
+ * «chiarimento» non ancora gestiti (la risposta del referente li gestisce) e non tolti.
+ */
+export function openClarificationsCountSql(request: string): SqlFragment {
+  if (!/^[a-z][a-z0-9_]*$/.test(request)) throw new Error("Alias non valido");
+  return raw(`(SELECT count(*)::int FROM use_case_referent_messages om WHERE om.request_id = ${request}.id AND om.side = 'team' AND om.kind = 'chiarimento'
+    AND om.handled_at IS NULL AND om.removed_at IS NULL)`);
+}
+
+/**
  * Quante cose aperte ha la richiesta `r` per il referente (sottoquery per scheda, mai per persona): le
  * domande aperte più 1 finché la conferma di una richiesta al referente non è inviata (rilascio 5, §5.2,
- * D42). Così il team, il cron e le risposte del team non completano una richiesta il cui referente deve
- * ancora confermare lo use case, e promemoria, «Chiedi di nuovo» e «Nessuna risposta» valgono anche
- * con zero domande. Le parole delle email usano `openQuestionsCountSql`.
+ * D42), più (rilascio 6) i chiarimenti del team che aspettano la sua risposta. Così il team, il cron e le
+ * risposte del team non completano una richiesta il cui referente deve ancora confermare lo use case o
+ * rispondere a un chiarimento, e promemoria, «Chiedi di nuovo» e «Nessuna risposta» valgono anche con
+ * zero domande. Le parole delle email usano `openQuestionsCountSql`.
  */
 export function openItemsCountSql(request: string): SqlFragment {
-  return ucSql`(${openQuestionsCountSql(request)} + ${checkPendingCountSql(request)})`;
+  return ucSql`(${openQuestionsCountSql(request)} + ${checkPendingCountSql(request)} + ${openClarificationsCountSql(request)})`;
+}
+
+// ─── (Rilascio 6) Il filo con il referente: la richiesta attiva, la riapertura, il rinnovo del link ───
+
+/** I giorni del link dopo ogni novità per il referente (domande nuove, un chiarimento, una risposta del team). */
+export const REFERENT_LINK_RENEW_DAYS = 30;
+
+/**
+ * La richiesta `r` è attiva: «inviata» o «completata», il link non scaduto, i dati non cancellati. È quella
+ * a cui vanno le domande nuove, i chiarimenti e le risposte del team per la stessa persona sullo stesso use case.
+ */
+export function activeRequestSql(request: string): SqlFragment {
+  if (!/^[a-z][a-z0-9_]*$/.test(request)) throw new Error("Alias non valido");
+  return raw(`(${request}.status IN ('inviata', 'completata') AND ${request}.expires_at > now() AND ${request}.purged_at IS NULL)`);
+}
+
+/**
+ * Riapre una richiesta completata e attiva (torna «inviata»): domande nuove o un chiarimento per il
+ * referente. I promemoria ripartono da adesso (`reminder_count` 0, `reopened_at`), la versione sale, e una
+ * riga «riaperta» va nella Storia. Una richiesta già «inviata» non cambia.
+ */
+export function reopenRequestStatements(i: { workspaceId: string; requestId: string }): UcStatement[] {
+  const ws = id(i.workspaceId, "workspace");
+  const req = id(i.requestId, "richiesta");
+  return [
+    toStatement(ucSql`UPDATE use_case_referent_requests r SET status = 'inviata', reopened_at = now(), reminder_count = 0, version = version + 1
+WHERE r.id = ${req} AND r.workspace_id = ${ws} AND r.status = 'completata' AND ${activeRequestSql("r")}`),
+    referentEventsForRequestsSql({ filter: ucSql`r.id = ${req} AND r.workspace_id = ${ws} AND r.reopened_at = now()`, code: "riaperta", actor: { kind: "sistema" } }),
+  ];
+}
+
+/**
+ * Rinnova il link di una richiesta attiva: scade {@link REFERENT_LINK_RENEW_DAYS} giorni dopo adesso (mai
+ * prima di quando scadeva), con lo stesso rinnovo per ogni suo token ancora valido.
+ */
+export function renewLinkStatements(i: { workspaceId: string; requestId: string }): UcStatement[] {
+  const ws = id(i.workspaceId, "workspace");
+  const req = id(i.requestId, "richiesta");
+  return [
+    toStatement(ucSql`UPDATE use_case_referent_requests r SET expires_at = greatest(r.expires_at, now() + make_interval(days => ${cast(REFERENT_LINK_RENEW_DAYS, "int")})), renewed_at = now()
+WHERE r.id = ${req} AND r.workspace_id = ${ws} AND ${activeRequestSql("r")}`),
+    toStatement(ucSql`UPDATE use_case_referent_tokens t SET expires_at = r.expires_at
+FROM use_case_referent_requests r
+WHERE t.request_id = r.id AND r.id = ${req} AND r.workspace_id = ${ws} AND t.revoked_at IS NULL AND t.expires_at > now() AND t.expires_at < r.expires_at`),
+  ];
 }
 
 /**
@@ -436,7 +492,8 @@ const bounded = (n: number | undefined) => Math.max(0, Math.min(999, Math.floor(
 export function notifyReviewersSql(n: {
   workspaceId: string;
   useCaseId: string;
-  kind: Exclude<UseCaseNotificationKind, "complete">;
+  /** (Rilascio 6) Anche «domanda»: il referente ha chiesto qualcosa al team (riga senza conteggi). */
+  kind: Exclude<UseCaseNotificationKind, "complete"> | "domanda";
   answers?: number;
   unknowns?: number;
   documents?: number;
@@ -595,6 +652,8 @@ function queueAlertSql(i: {
   answers: number;
   unknowns: number;
   documents: number;
+  /** (Rilascio 6) Le domande del referente al team; con zero lo statement è quello del rilascio 5.1. */
+  questions?: number;
   followUp: FollowUpReason | null;
   actorUserId: string | null;
   alsoExceptUserId?: string | null;
@@ -607,6 +666,13 @@ function queueAlertSql(i: {
   const also = i.alsoExceptUserId ? ucSql`
     AND r.requested_by_user_id <> ${id(i.alsoExceptUserId, "persona")}` : raw("");
   const today = cast(i.schedule.today, "date");
+  // (Rilascio 6) Le domande del referente (colonna della 0028): solo quando ce ne sono, così ogni altro
+  // avviso resta lo statement del rilascio 5.1.
+  const asked = bounded(i.questions);
+  const questions =
+    asked > 0
+      ? { column: raw(", questions"), value: ucSql`, ${cast(asked, "int")}`, update: raw("\n  questions = least(999, use_case_requester_email_items.questions + EXCLUDED.questions),") }
+      : { column: raw(""), value: raw(""), update: raw("") };
   // (D-B21, D-B24) Mai un avviso a chi ha chiesto sulla richiesta di cui è anche il referente (il
   // contatto collegato più tardi al suo account): la persona del referente si legge adesso.
   return toStatement(ucSql`WITH req AS (
@@ -642,15 +708,15 @@ function queueAlertSql(i: {
     updated_at = now()
   RETURNING id, workspace_id, recipient_user_id, status
 )
-INSERT INTO use_case_requester_email_items (email_id, request_id, workspace_id, use_case_id, answers, unknowns, documents, follow_up)
-SELECT em.id, req.id, req.workspace_id, req.use_case_id, ${cast(bounded(i.answers), "int")}, ${cast(bounded(i.unknowns), "int")}, ${cast(bounded(i.documents), "int")}, ${cast(i.followUp, "text")}
+INSERT INTO use_case_requester_email_items (email_id, request_id, workspace_id, use_case_id, answers, unknowns, documents, follow_up${questions.column})
+SELECT em.id, req.id, req.workspace_id, req.use_case_id, ${cast(bounded(i.answers), "int")}, ${cast(bounded(i.unknowns), "int")}, ${cast(bounded(i.documents), "int")}, ${cast(i.followUp, "text")}${questions.value}
 FROM req JOIN em ON em.workspace_id = req.workspace_id AND em.recipient_user_id = req.uid
 WHERE em.status IN ('in_coda', 'errore')
 ON CONFLICT (email_id, request_id) DO UPDATE SET
   answers = least(999, use_case_requester_email_items.answers + EXCLUDED.answers),
   unknowns = least(999, use_case_requester_email_items.unknowns + EXCLUDED.unknowns),
   documents = least(999, use_case_requester_email_items.documents + EXCLUDED.documents),
-  follow_up = CASE WHEN EXCLUDED.follow_up = 'scaduta' OR use_case_requester_email_items.follow_up IS NULL THEN EXCLUDED.follow_up ELSE use_case_requester_email_items.follow_up END,
+  follow_up = CASE WHEN EXCLUDED.follow_up = 'scaduta' OR use_case_requester_email_items.follow_up IS NULL THEN EXCLUDED.follow_up ELSE use_case_requester_email_items.follow_up END,${questions.update}
   updated_at = now()`);
 }
 
@@ -665,6 +731,8 @@ export function queueRequesterAlertSql(i: {
   answers: number;
   unknowns: number;
   documents: number;
+  /** (Rilascio 6) Le domande del referente al team («Ho un dubbio»). */
+  questions?: number;
   followUp: FollowUpReason | null;
   actorUserId: string | null;
   /** (Parte 3) Chi ha dato il documento accettato da un'altra persona: non riceve l'avviso del suo documento. */
@@ -704,4 +772,79 @@ export function queueExpiredRequestAlertsSql(i: {
     schedule: i.schedule,
     now: i.now,
   });
+}
+
+// ─── (Rilascio 6) Il filo: conteggi per gli stati, email al referente ─────────────────────────────
+
+/** Un chiarimento del team aspetta il referente su questa voce (`b`: una riga di `use_case_referent_check_benefits`). */
+export function benefitClarifyingSql(benefit: string): string {
+  if (!/^[a-z][a-z0-9_]*$/.test(benefit)) throw new Error("Alias non valido");
+  return `EXISTS (SELECT 1 FROM use_case_referent_messages bm WHERE bm.request_id = ${benefit}.request_id AND bm.anchor = 'beneficio' AND bm.component_key = ${benefit}.component_key
+    AND bm.side = 'team' AND bm.kind = 'chiarimento' AND bm.handled_at IS NULL AND bm.removed_at IS NULL)`;
+}
+
+/**
+ * Le tre colonne del filo di una richiesta `r` per gli stati: `t_clarifications` (chiarimenti del team che
+ * aspettano il referente), `t_doubts` (dubbi del referente che aspettano il team), `t_news` (risposte e
+ * aggiunte del referente su una voce o su «Generale» non ancora gestite). Solo conteggi della richiesta.
+ */
+export function threadCountsColumnsSql(request: string): SqlFragment {
+  if (!/^[a-z][a-z0-9_]*$/.test(request)) throw new Error("Alias non valido");
+  const open = `tm.request_id = ${request}.id AND tm.handled_at IS NULL AND tm.removed_at IS NULL`;
+  return raw(`(SELECT count(*)::int FROM use_case_referent_messages tm WHERE ${open} AND tm.side = 'team' AND tm.kind = 'chiarimento') AS t_clarifications,
+  (SELECT count(*)::int FROM use_case_referent_messages tm WHERE ${open} AND tm.side = 'referente' AND tm.kind = 'dubbio') AS t_doubts,
+  (SELECT count(*)::int FROM use_case_referent_messages tm WHERE ${open} AND tm.side = 'referente' AND tm.kind IN ('risposta', 'aggiunta') AND tm.anchor <> 'domanda') AS t_news`);
+}
+
+/**
+ * Una novità del team per il referente nell'email «nuove» (un'email al giorno per persona): si aggiunge al
+ * promemoria ancora in coda della persona, altrimenti nasce una riga con la chiave del giorno. Porta il
+ * numero delle domande nuove, dei chiarimenti e delle risposte del team (`new_questions` è il totale,
+ * come lo legge il rilascio 5.1). Un promemoria automatico della stessa richiesta resta com'è.
+ */
+export function queueThreadEmailItemSql(i: {
+  workspaceId: string;
+  contactId: string;
+  requestId: string;
+  newQuestions?: number;
+  clarifications?: number;
+  replies?: number;
+  dedupeKey: string;
+  at: Date;
+}): UcStatement {
+  const ws = id(i.workspaceId, "workspace");
+  const contact = id(i.contactId, "referente");
+  const at = cast(i.at.toISOString(), "timestamptz");
+  const n = (v: number | undefined) => Math.max(0, Math.min(20, Math.floor(typeof v === "number" && Number.isFinite(v) ? v : 0)));
+  const clarifications = n(i.clarifications);
+  const replies = n(i.replies);
+  const total = Math.max(1, Math.min(20, n(i.newQuestions) + clarifications + replies));
+  if (!/^[a-z0-9:_-]{1,120}$/.test(i.dedupeKey)) throw new Error("Chiave non valida");
+  return toStatement(ucSql`WITH pending AS (
+  SELECT e.id FROM use_case_referent_emails e
+  WHERE e.workspace_id = ${ws} AND e.contact_id = ${contact} AND e.template = 'promemoria'
+    AND (e.status = 'in_coda' OR (e.status = 'errore' AND e.attempts < 3)) AND (e.lease_until IS NULL OR e.lease_until <= now())
+  ORDER BY e.created_at, e.id
+  LIMIT 1
+), created AS (
+  INSERT INTO use_case_referent_emails (workspace_id, contact_id, request_id, template, dedupe_key, due_at, scheduled_at)
+  SELECT ${ws}, ${contact}, NULL, 'promemoria', ${cast(i.dedupeKey, "text")}, ${at}, ${at}
+  WHERE NOT EXISTS (SELECT 1 FROM pending)
+  ON CONFLICT (dedupe_key) DO NOTHING
+  RETURNING id
+), target AS (
+  SELECT id FROM pending UNION ALL SELECT id FROM created
+)
+INSERT INTO use_case_referent_email_items (email_id, request_id, workspace_id, kind, new_questions, clarifications, replies)
+SELECT t.id, ${id(i.requestId, "richiesta")}, ${ws}, 'nuove', ${cast(total, "int")}, ${cast(clarifications, "int")}, ${cast(replies, "int")} FROM target t
+ON CONFLICT (email_id, request_id) DO UPDATE SET
+  new_questions = CASE WHEN use_case_referent_email_items.kind = 'nuove' AND use_case_referent_email_items.state <> 'tolta'
+    THEN least(20, use_case_referent_email_items.new_questions + EXCLUDED.new_questions) ELSE EXCLUDED.new_questions END,
+  clarifications = CASE WHEN use_case_referent_email_items.kind = 'nuove' AND use_case_referent_email_items.state <> 'tolta'
+    THEN least(20, use_case_referent_email_items.clarifications + EXCLUDED.clarifications) ELSE EXCLUDED.clarifications END,
+  replies = CASE WHEN use_case_referent_email_items.kind = 'nuove' AND use_case_referent_email_items.state <> 'tolta'
+    THEN least(20, use_case_referent_email_items.replies + EXCLUDED.replies) ELSE EXCLUDED.replies END,
+  kind = 'nuove', state = 'in_coda', drop_reason = NULL
+WHERE use_case_referent_email_items.kind IN ('manuale', 'nuove') OR use_case_referent_email_items.state = 'tolta'
+RETURNING request_id`);
 }

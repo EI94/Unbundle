@@ -39,6 +39,14 @@ export const REFERENT_HISTORY_CODES = [
   "stima_diversa",
   "stima_adottata",
   "stima_tenuta",
+  // (Rilascio 6) «Il filo con il referente».
+  "riaperta",
+  "chiarimento",
+  "chiarimento_risposto",
+  "dubbio",
+  "dubbio_risposto",
+  "aggiunta",
+  "risposta_cambiata",
 ] as const;
 export type ReferentHistoryCode = (typeof REFERENT_HISTORY_CODES)[number];
 
@@ -72,6 +80,13 @@ export const REFERENT_HISTORY_TEXT: Readonly<Record<ReferentHistoryCode, string>
   stima_diversa: "stima del tempo diversa",
   stima_adottata: "stima del referente usata",
   stima_tenuta: "stima del team tenuta",
+  riaperta: "richiesta riaperta",
+  chiarimento: "chiarimento chiesto al referente",
+  chiarimento_risposto: "il referente ha risposto al chiarimento",
+  dubbio: "il referente ha chiesto qualcosa",
+  dubbio_risposto: "risposta del team al referente",
+  aggiunta: "il referente ha aggiunto qualcosa",
+  risposta_cambiata: "il referente ha cambiato una risposta",
 });
 
 /** (Parte 2) Chi ha agito, per le righe automatiche di «Cosa serve» e di questa funzione. */
