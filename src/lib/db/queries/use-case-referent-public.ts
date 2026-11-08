@@ -34,6 +34,7 @@ import {
   type ReferentClientTicket,
   type ReferentFileView,
   type ReferentPageResult,
+  type ReferentThreadMessageView,
   type ReferentUploadResult,
   type SubmitResult,
 } from "@/lib/use-cases/referent/contract";
@@ -51,8 +52,11 @@ import {
   referentEventsForRequestsSql,
   casTail,
   lockRequestSql,
+  activeRequestSql,
 } from "@/lib/use-cases/referent/sql";
 import { HANDLED_NEED_STATUSES, privacyAccepted } from "@/lib/use-cases/referent/state";
+import { REFERENT_EDIT_LOCKED_STATUSES, waitsForReferent, type ThreadMessageFact } from "@/lib/use-cases/referent/thread";
+import { threadRowOf } from "@/lib/db/queries/use-case-referent-thread";
 import { checkDraftText, checkSubmitText } from "@/lib/use-cases/referent/text";
 import { hashReferentToken, looksLikeReferentToken, RECIPIENT_HASH_SQL } from "@/lib/use-cases/referent/tokens";
 import { toPublicView, type PublicFileRow, type PublicItemRow } from "@/lib/use-cases/referent/view";
@@ -85,6 +89,8 @@ import type { ReferentItemState, ReferentRequestStatus } from "@/lib/db/use-case
 export { referentStoreReady } from "@/lib/db/queries/use-case-referent-base";
 export { referentAskEnabled, referentPublicWritesAvailable } from "@/lib/use-cases/referent/availability";
 export type { ReferentLink } from "@/lib/db/queries/use-case-referent-base";
+// (Rilascio 6) Il filo dal link: le rotte pubbliche importano solo questo modulo.
+export { addToReferentAnswer, editReferentAnswer, postReferentDoubt, replyToReferentClarification } from "@/lib/db/queries/use-case-referent-thread";
 
 const REFERENT_ACTOR = { kind: "referente" } as const;
 
@@ -162,6 +168,10 @@ interface ItemFact {
   handled: boolean;
   /** (Rilascio 5) «Serve un file». */
   fileRequired: boolean;
+  /** (Rilascio 6) Aggiunta dopo il primo invio («Nuove domande»). */
+  followUp: boolean;
+  /** (Rilascio 6, decisione 3) L'informazione non è «A posto» né «Non si applica» né archiviata. */
+  editable: boolean;
 }
 
 interface AnswerFact {
@@ -174,6 +184,8 @@ interface AnswerFact {
   comment: string | null;
   updatedAt: Date;
   submittedAt: Date | null;
+  /** (Rilascio 6) Cambiata dopo l'invio. */
+  editedAt: Date | null;
 }
 
 interface FileFact extends PublicFileRow {
@@ -216,6 +228,10 @@ interface RequestFacts {
   description: string | null;
   valueModel: unknown;
   check: CheckFact | null;
+  /** (Rilascio 6) La richiesta è attiva («inviata» o «completata», link valido, dati non cancellati). */
+  active: boolean;
+  /** (Rilascio 6) I messaggi del filo, in ordine di tempo, senza quelli tolti. */
+  messages: ThreadMessageFact[];
 }
 
 function requestStatements(link: ReferentLink): UcStatement[] {
@@ -223,13 +239,15 @@ function requestStatements(link: ReferentLink): UcStatement[] {
   const ws = cast(link.workspaceId, "uuid");
   return [
     toStatement(ucSql`SELECT r.status, r.expires_at, r.privacy_accepted_at, r.privacy_notice_version, r.requester_name, r.requested_by_user_id, r.message,
-  u.code, u.title, w.name AS company, u.description, u.value_model,
+  u.code, u.title, w.name AS company, u.description, u.value_model, ${activeRequestSql("r")} AS active,
   c.request_id IS NOT NULL AS has_check, c.confirm, c.confirm_note, c.team_component_key, c.team_volume_year, c.team_minutes,
   c.estimate, c.times_per_month, c.minutes_each, c.updated_at AS check_updated_at, c.submitted_at AS check_submitted_at, ${raw(BENEFITS_FLAG_SQL("c"))} AS check_benefits
 FROM use_case_referent_requests r JOIN use_cases u ON u.id = r.use_case_id AND u.workspace_id = r.workspace_id JOIN workspaces w ON w.id = r.workspace_id
 LEFT JOIN use_case_referent_checks c ON c.request_id = r.id AND c.workspace_id = r.workspace_id
 WHERE r.id = ${req} AND r.workspace_id = ${ws}`),
-    toStatement(ucSql`SELECT i.need_id, i.position, i.question, i.state, i.file_required, ${openItemSql("i", "r")} AS open,
+    toStatement(ucSql`SELECT i.need_id, i.position, i.question, i.state, i.file_required, i.follow_up, ${openItemSql("i", "r")} AS open,
+  EXISTS (SELECT 1 FROM use_case_needs en WHERE en.id = i.need_id AND en.workspace_id = r.workspace_id AND en.archived_at IS NULL
+          AND en.status <> ALL(${cast([...REFERENT_EDIT_LOCKED_STATUSES], "text[]")})) AS editable,
   EXISTS (SELECT 1 FROM use_case_needs vn JOIN use_case_need_links vl ON vl.need_id = vn.id AND vl.use_case_id = r.use_case_id
           WHERE vn.id = i.need_id AND vn.workspace_id = r.workspace_id AND vn.archived_at IS NULL) AS visible,
   EXISTS (SELECT 1 FROM use_case_needs hn JOIN use_case_need_links hl ON hl.need_id = hn.id AND hl.use_case_id = r.use_case_id
@@ -237,7 +255,7 @@ WHERE r.id = ${req} AND r.workspace_id = ${ws}`),
 FROM use_case_referent_request_items i JOIN use_case_referent_requests r ON r.id = i.request_id
 WHERE i.request_id = ${req} AND r.workspace_id = ${ws}
 ORDER BY i.position`),
-    toStatement(ucSql`SELECT a.need_id, a.status, a.body, a.dont_know, a.already_attached, a.comment, a.updated_at, a.submitted_at
+    toStatement(ucSql`SELECT a.need_id, a.status, a.body, a.dont_know, a.already_attached, a.comment, a.updated_at, a.submitted_at, a.edited_at
 FROM use_case_need_answers a
 WHERE a.request_id = ${req} AND a.workspace_id = ${ws} AND a.removed_at IS NULL
 ORDER BY a.created_at, a.id`),
@@ -251,6 +269,12 @@ ORDER BY f.created_at, f.id`),
 FROM use_case_referent_check_benefits b
 WHERE b.request_id = ${req} AND b.workspace_id = ${ws}
 ORDER BY b.position, b.component_key`),
+    // (Rilascio 6) Il filo di questa richiesta: mai chi del team ha scritto, mai le proposte dell'AI (un'altra tabella).
+    toStatement(ucSql`SELECT m.id, m.request_id, m.anchor, m.need_id, m.component_key, m.side, m.kind, m.reply_to_id, m.body, m.created_at, m.seen_at, m.handled_at, m.removed_at
+FROM use_case_referent_messages m
+WHERE m.request_id = ${req} AND m.workspace_id = ${ws} AND m.removed_at IS NULL AND m.body IS NOT NULL
+ORDER BY m.created_at, m.id
+LIMIT 400`),
   ];
 }
 
@@ -260,7 +284,7 @@ function fileStatusOf(value: unknown): ReferentFileView["status"] {
 }
 
 async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promise<RequestFacts | null> {
-  const [[r], items, answers, files, benefits] = await executor.batch(requestStatements(link));
+  const [[r], items, answers, files, benefits, messages] = await executor.batch(requestStatements(link));
   if (!r) return null;
   const expiresAt = rowDate(r.expires_at);
   if (!expiresAt) return null;
@@ -284,6 +308,8 @@ async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promi
       visible: rowBool(i.visible),
       handled: rowBool(i.handled),
       fileRequired: rowBool(i.file_required),
+      followUp: rowBool(i.follow_up),
+      editable: rowBool(i.editable),
     })),
     answers: answers.map((a: UcRow) => ({
       needId: String(a.need_id).toLowerCase(),
@@ -294,6 +320,7 @@ async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promi
       comment: rowString(a.comment),
       updatedAt: rowDate(a.updated_at) ?? new Date(0),
       submittedAt: rowDate(a.submitted_at),
+      editedAt: rowDate(a.edited_at),
     })),
     files: files.map((f: UcRow) => {
       const scanStatus = fileStatusOf(f.scan_status);
@@ -313,6 +340,8 @@ async function readRequestFacts(executor: UcExecutor, link: ReferentLink): Promi
     description: rowString(r.description),
     valueModel: rowJsonValue(r.value_model),
     check: rowBool(r.has_check) ? checkFactOf(r, benefits) : null,
+    active: rowBool(r.active),
+    messages: messages.map(threadRowOf).filter((m): m is NonNullable<ReturnType<typeof threadRowOf>> => m !== null),
   };
 }
 
@@ -441,8 +470,12 @@ export async function loadReferentAskView(link: ReferentLink, o: { env: Env; now
       fileRequired: i.fileRequired,
       draft: draft ? { body: draft.body, dontKnow: draft.dontKnow, alreadyAttached: draft.alreadyAttached, comment: draft.comment, updatedAt: draft.updatedAt } : null,
       answer:
-        answer && answer.submittedAt ? { body: answer.body, dontKnow: answer.dontKnow, alreadyAttached: answer.alreadyAttached, comment: answer.comment, submittedAt: answer.submittedAt } : null,
+        answer && answer.submittedAt
+          ? { body: answer.body, dontKnow: answer.dontKnow, alreadyAttached: answer.alreadyAttached, comment: answer.comment, submittedAt: answer.submittedAt, editedAt: answer.editedAt }
+          : null,
       files: facts.files.filter((f) => f.needId === i.needId && liveFile(f, o.now)),
+      followUp: i.followUp,
+      editable: i.editable,
     };
   });
   return toPublicView({
@@ -461,7 +494,47 @@ export async function loadReferentAskView(link: ReferentLink, o: { env: Env; now
     clientMode: clientUploadAvailable(o.env),
     check: checkViewOf(facts),
     now: o.now,
+    thread: { open: facts.active && facts.expiresAt.getTime() > o.now.getTime(), messages: facts.messages.map(referentMessageView) },
   });
+}
+
+/**
+ * (Rilascio 6) Un messaggio del filo per la pagina del referente: il testo, l'ancora, chi aspetta chi. Mai
+ * chi del team l'ha scritto, mai quando è stato visto o gestito (solo «aspetta» e «nuova»).
+ */
+function referentMessageView(m: ThreadMessageFact): ReferentThreadMessageView {
+  return {
+    id: m.id,
+    anchor: m.anchor,
+    needId: m.needId,
+    componentKey: m.componentKey,
+    side: m.side,
+    kind: m.kind,
+    text: m.body ?? "",
+    createdAt: m.createdAt.toISOString(),
+    replyTo: m.replyToId,
+    waiting: waitsForReferent(m),
+    fresh: m.side === "team" && m.kind === "risposta" && m.seenAt === null,
+  };
+}
+
+/**
+ * (Rilascio 6) La pagina ha mostrato queste risposte del team ai dubbi del referente: «viste», così la volta dopo
+ * non stanno più in «Da completare» ma sotto la loro domanda. Solo messaggi del team di questa richiesta; nessuna
+ * riga nella Storia, nessun avviso. Gli id che non sono suoi non fanno niente.
+ */
+export async function markReferentMessagesSeen(link: ReferentLink, body: unknown): Promise<PublicOutcome<{ seen: number }>> {
+  const raw = field(body, "ids");
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 50 || !raw.every(isUuid)) return pfail("dati_non_validi", "Dati non validi.");
+  const ids = [...new Set((raw as string[]).map((x) => x.toLowerCase()))];
+  const executor = await getAppUcExecutor();
+  const [rows] = await executor.batch([
+    toStatement(ucSql`UPDATE use_case_referent_messages SET seen_at = now()
+WHERE id = ANY(${cast(ids, "uuid[]")}) AND request_id = ${cast(link.requestId, "uuid")} AND workspace_id = ${cast(link.workspaceId, "uuid")}
+  AND side = 'team' AND seen_at IS NULL AND removed_at IS NULL
+RETURNING id`),
+  ]);
+  return { ok: true, value: { seen: rows.length } };
 }
 
 // ─── Comandi ─────────────────────────────────────────────────────────

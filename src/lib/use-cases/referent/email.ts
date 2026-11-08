@@ -41,6 +41,8 @@ export interface ReminderEntry {
   clarifications?: number;
   /** (Rilascio 6) Di `newQuestions` («nuove»), quante sono risposte del team ai dubbi del referente. */
   replies?: number;
+  /** (Rilascio 6) I chiarimenti del team che aspettano ancora la sua risposta (per i promemoria): mai tra le domande. */
+  openClarifications?: number;
 }
 
 export type ReferentEmailInput =
@@ -146,7 +148,7 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
         ? clarifications === 1
           ? { subject: `un chiarimento sul caso d'uso «${uc}»`, line: `${name(e.requesterName)} ti chiede un chiarimento sul caso d'uso «${uc}»: lo trovi con lo stesso link.`, label: "Rispondi" }
           : { subject: `una risposta sul caso d'uso «${uc}»`, line: `${name(e.requesterName)} ha risposto alla tua domanda sul caso d'uso «${uc}»: la trovi con lo stesso link.`, label: "Leggi la risposta" }
-        : { subject: `novità sul caso d'uso «${uc}»`, line: `Hai ${e.newQuestions} novità sul caso d'uso «${uc}», da ${name(e.requesterName)}: le trovi con lo stesso link.`, label: "Apri le novità" };
+        : { subject: `${e.newQuestions} novità sul caso d'uso «${uc}»`, line: `Hai ${e.newQuestions} novità sul caso d'uso «${uc}», da ${name(e.requesterName)}: le trovi con lo stesso link.`, label: "Apri le novità" };
       return render(subjectFor(input.company, what.subject), [
         { p: "Buongiorno," },
         { p: what.line },
@@ -170,6 +172,25 @@ function singleReminder(e: ReminderEntry, input: Extract<ReferentEmailInput, { t
   const closing = last
     ? { p: "È l'ultimo promemoria che ti mandiamo. Se non hai le informazioni, scegli «Non ce l'ho»: anche questa è una risposta utile." }
     : { p: "Quello che hai già scritto è salvato: riparti da dove eri rimasto." };
+  const clarifications = Math.max(0, e.openClarifications ?? 0);
+  if (clarifications > 0 && !e.checkPending) {
+    // (Rilascio 6) Un chiarimento del team aspetta ancora la sua risposta: il promemoria parla di quello.
+    const q = e.openQuestions;
+    const clar = clarifications === 1 ? "un chiarimento" : `${clarifications} chiarimenti`;
+    const what =
+      q > 0
+        ? `le tue risposte sul caso d'uso «${uc}»: ${q === 1 ? "c'è ancora una domanda aperta" : `ci sono ancora ${q} domande aperte`}, e ${clar}`
+        : `la tua risposta a ${clar} sul caso d'uso «${uc}»`;
+    return render(subject, [
+      { p: "Buongiorno," },
+      { p: `ti ricordiamo che ${name(e.requesterName)} aspetta ${what}.` },
+      closing,
+      { link: { href: link, label: "Riprendi" } },
+      { small: expiry(e.expiresAt) },
+      ...teamAccessBlocks(e.cardLink, input.accountNotice === true),
+      reply,
+    ], brand);
+  }
   if (e.checkPending) {
     // (Rilascio 5) La conferma del referente non è ancora arrivata: il promemoria parla di quella.
     const q = e.openQuestions;
@@ -209,11 +230,19 @@ function multiReminder(input: Extract<ReferentEmailInput, { template: "promemori
     const uc = labelOfUseCase(e.useCase);
     // (Rilascio 5) Con la conferma ancora da inviare: «la tua conferma e {n} domande aperte», e «Riprendi»
     // come nel promemoria di un caso d'uso solo (rilascio 5.1: mai «Apri le domande» senza domande).
-    const what = e.checkPending ? `la tua conferma${e.openQuestions > 0 ? ` e ${openWord(e.openQuestions)}` : ""}` : openWord(e.openQuestions);
+    // (Rilascio 6) I chiarimenti ancora da rispondere e le novità del filo: mai «0 domande aperte».
+    const clar = Math.max(0, e.openClarifications ?? 0);
+    const parts = [
+      ...(e.checkPending ? ["la tua conferma"] : []),
+      ...(e.openQuestions > 0 || (!e.checkPending && clar === 0 && e.kind !== "nuove") ? [openWord(e.openQuestions)] : []),
+      ...(clar > 0 ? [clar === 1 ? "un chiarimento" : `${clar} chiarimenti`] : []),
+    ];
+    const thread = (e.clarifications ?? 0) + (e.replies ?? 0) > 0;
+    const tail = e.kind === "nuove" ? (thread ? ", con novità per te" : ", con domande nuove") : "";
     blocks.push(
-      { p: `«${uc}», chiede ${name(e.requesterName)}: ${what}${e.kind === "nuove" ? ((e.clarifications ?? 0) + (e.replies ?? 0) > 0 ? ", con novità per te" : ", con domande nuove") : ""}.` },
+      { p: parts.length || !thread ? `«${uc}», chiede ${name(e.requesterName)}: ${parts.length ? parts.join(" e ") : openWord(e.openQuestions)}${tail}.` : `«${uc}», da ${name(e.requesterName)}: novità per te.` },
       { small: `${expiry(e.expiresAt)}${e.kind === "ultimo" ? " È l'ultimo promemoria per questo caso d'uso." : ""}` },
-      { link: { href: checkReferentLink(e.link), label: e.checkPending ? "Riprendi" : "Apri le domande" } },
+      { link: { href: checkReferentLink(e.link), label: e.checkPending || (e.openQuestions <= 0 && (clar > 0 || thread)) ? "Riprendi" : "Apri le domande" } },
     );
     if (e.cardLink) blocks.push({ link: { href: checkCardLink(e.cardLink), label: TEAM_ACCESS_LINK_LABEL } });
   }

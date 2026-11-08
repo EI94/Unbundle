@@ -20,7 +20,7 @@ import {
   type ReferentDispatchSummary,
   type ReferentRequestFacts,
 } from "@/lib/use-cases/referent/dispatch";
-import { checkPendingCountSql, lockRequestsSql, notifyReviewersSql, openItemsCountSql, queueRequesterAlertSql, referentEventsForRequestsSql, validLinkSql } from "@/lib/use-cases/referent/sql";
+import { checkPendingCountSql, lockRequestsSql, notifyReviewersSql, openClarificationsCountSql, openItemsCountSql, queueRequesterAlertSql, referentEventsForRequestsSql, validLinkSql } from "@/lib/use-cases/referent/sql";
 import { newReferentToken } from "@/lib/use-cases/referent/tokens";
 import { PORTFOLIO_REVIEWER_ROLES } from "@/lib/workspace-permissions";
 
@@ -74,7 +74,7 @@ function requestFactsSql(i: { emailId: string; template: ReferentEmailTemplate; 
   (r.status = 'inviata' AND r.revoked_at IS NULL AND r.expires_at > now()) AS live, u.code, u.title,
   (r.status IN ('inviata', 'completata') AND r.revoked_at IS NULL AND r.expires_at > now() AND r.purged_at IS NULL) AS active,
   EXISTS (SELECT 1 FROM use_case_referent_checks k WHERE k.request_id = r.id) AS referent_request,`)}
-  ${checkPendingCountSql("r")} AS check_pending`;
+  ${checkPendingCountSql("r")} AS check_pending, ${openClarificationsCountSql("r")} AS open_clarifications`;
   // Già partita ma senza link valido per l'indirizzo di adesso («Correggi l'email»).
   const changed = ucSql`(r.sent_at IS NOT NULL AND NOT ${validLinkSql("r")}) AS address_changed`;
   if (i.template !== "promemoria") {
@@ -85,7 +85,10 @@ FROM use_case_referent_requests r JOIN use_cases u ON u.id = r.use_case_id AND u
 WHERE r.id = ${cast(i.requestId, "uuid")} AND r.workspace_id = ${ws}`);
   }
   return toStatement(ucSql`SELECT ${common}, ${changed}, ${openItemsCountSql("r")} AS open_items, it.new_questions, it.kind AS item_kind, it.clarifications, it.replies,
-  EXISTS (SELECT 1 FROM use_case_referent_email_items o WHERE o.request_id = r.id AND o.kind = it.kind AND o.state = 'inviata' AND o.email_id <> it.email_id) AS already_sent,
+  EXISTS (SELECT 1 FROM use_case_referent_email_items o JOIN use_case_referent_emails oe ON oe.id = o.email_id
+          WHERE o.request_id = r.id AND o.kind = it.kind AND o.state = 'inviata' AND o.email_id <> it.email_id
+            -- (Rilascio 6) Dopo una riapertura contano solo i promemoria partiti da lì.
+            AND (r.reopened_at IS NULL OR oe.sent_at >= r.reopened_at)) AS already_sent,
   0 AS answered_today
 FROM use_case_referent_email_items it
 JOIN use_case_referent_requests r ON r.id = it.request_id AND r.workspace_id = it.workspace_id
@@ -120,6 +123,7 @@ function requestFactsOf(r: UcRow): ReferentRequestFacts | null {
     addressChanged: rowBool(r.address_changed),
     referentRequest: rowBool(r.referent_request),
     checkPending: (rowNumber(r.check_pending) ?? 0) > 0,
+    openClarifications: rowNumber(r.open_clarifications) ?? 0,
   };
 }
 

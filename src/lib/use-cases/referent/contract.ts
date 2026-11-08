@@ -25,6 +25,16 @@ export const REFERENT_API = {
   fileConfirm: "file-confirm",
   /** (Rilascio 5) La conferma dello use case e la stima del tempo. */
   check: "check",
+  /** (Rilascio 6) «Ho un dubbio»: una domanda del referente al team. */
+  doubt: "doubt",
+  /** (Rilascio 6) La risposta del referente a un chiarimento del team. */
+  reply: "reply",
+  /** (Rilascio 6) «Aggiungi qualcosa» a una risposta già inviata. */
+  add: "add",
+  /** (Rilascio 6) La modifica di una risposta già inviata, finché il team non la segna «A posto». */
+  edit: "edit",
+  /** (Rilascio 6) La pagina ha mostrato le risposte del team: «viste». */
+  seen: "seen",
 } as const;
 export const reviewerFilesBase = (workspaceId: string, useCaseId: string) => `/dashboard/${workspaceId}/use-cases/${useCaseId}/allegati`;
 export const reviewerFileHref = (workspaceId: string, useCaseId: string, fileId: string) => `${reviewerFilesBase(workspaceId, useCaseId)}/${fileId}`;
@@ -90,6 +100,43 @@ export interface ReferentAskView {
   kind: "referente" | "domande";
   /** (Rilascio 5) La conferma dello use case e la stima del tempo: solo per le richieste al referente. */
   check: ReferentCheckView | null;
+  /**
+   * (Rilascio 6) «Il filo con il team»: i messaggi di questa richiesta (i suoi e quelli del team, mai chi del
+   * team li ha scritti, mai le proposte dell'AI), se il referente ha già inviato qualcosa e se può scrivere.
+   */
+  thread: ReferentThreadView;
+}
+
+/** (Rilascio 6) Il filo della richiesta come lo vede il referente. */
+export interface ReferentThreadView {
+  /**
+   * Il referente ha già inviato qualcosa (una risposta o la conferma): da qui la pagina apre su «Da completare»
+   * quando c'è qualcosa di nuovo, e sotto mostra quello che ha già inviato.
+   */
+  followUp: boolean;
+  /** La richiesta è attiva (link valido, non revocata): «Ho un dubbio», «Aggiungi qualcosa», «Modifica» si possono usare. */
+  open: boolean;
+  /** In ordine di tempo; solo i testi ancora presenti. */
+  messages: ReferentThreadMessageView[];
+}
+
+/** (Rilascio 6) Un messaggio del filo sulla pagina del referente. */
+export interface ReferentThreadMessageView {
+  id: string;
+  anchor: "domanda" | "beneficio" | "generale";
+  needId: string | null;
+  componentKey: string | null;
+  side: "team" | "referente";
+  kind: "chiarimento" | "dubbio" | "risposta" | "aggiunta";
+  text: string;
+  /** ISO. */
+  createdAt: string;
+  /** Il messaggio a cui risponde (un dubbio, un chiarimento), oppure null. */
+  replyTo: string | null;
+  /** Un chiarimento del team che aspetta la sua risposta. */
+  waiting: boolean;
+  /** Una risposta del team che la pagina non ha ancora mostrato («Da completare»). */
+  fresh: boolean;
 }
 
 /**
@@ -146,9 +193,16 @@ export interface ReferentQuestionView {
   fileRequired: boolean;
   /** Solo mentre è «aperta». (Rilascio 5) `dontKnow` è «Non ce l'ho»; `alreadyAttached` «È già allegato»; `comment` il commento o «Chi potrebbe saperlo?». */
   draft: { text: string; dontKnow: boolean; alreadyAttached: boolean; comment: string | null; savedAt: string } | null;
-  /** Quando è «inviata». */
-  answer: { text: string | null; dontKnow: boolean; alreadyAttached: boolean; comment: string | null; submittedAt: string } | null;
+  /** Quando è «inviata». (Rilascio 6) `editedAt`: il referente l'ha cambiata dopo l'invio. */
+  answer: { text: string | null; dontKnow: boolean; alreadyAttached: boolean; comment: string | null; submittedAt: string; editedAt?: string | null } | null;
   files: ReferentFileView[];
+  /** (Rilascio 6) Una domanda arrivata dopo il primo invio («Nuove domande»). */
+  followUp?: boolean;
+  /**
+   * (Rilascio 6, decisione 3 del titolare) La risposta inviata si può ancora cambiare: il team non ha segnato
+   * l'informazione «A posto» (o «Non si applica»). Dopo resta «Aggiungi qualcosa».
+   */
+  editable?: boolean;
 }
 
 export interface ReferentFileView {
@@ -215,6 +269,27 @@ export interface BenefitBody {
 export interface CheckResult {
   savedAt: string;
   warnings: Issue[];
+}
+/** (Rilascio 6) Dove sta un messaggio del referente: una domanda, una voce dell'impatto, «Generale». */
+export type ThreadAnchorBody = { anchor: "domanda"; needId: string } | { anchor: "beneficio"; componentKey: string } | { anchor: "generale" };
+/** (Rilascio 6) «Ho un dubbio» e «Aggiungi qualcosa». */
+export type ThreadTextBody = ThreadAnchorBody & { text: string };
+/** (Rilascio 6) La risposta a un chiarimento del team. */
+export interface ThreadReplyBody {
+  messageId: string;
+  text: string;
+}
+/** (Rilascio 6) La modifica di una risposta già inviata. */
+export interface ThreadEditBody {
+  needId: string;
+  text: string;
+}
+/** (Rilascio 6) Le risposte del team che la pagina ha mostrato. */
+export interface ThreadSeenBody {
+  ids: string[];
+}
+export interface ThreadWriteResult {
+  messageId: string;
 }
 export interface UploadTokenBody {
   needId: string;

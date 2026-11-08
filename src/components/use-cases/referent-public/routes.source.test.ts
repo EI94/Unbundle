@@ -34,6 +34,13 @@ const ROUTES: Record<string, RouteSpec> = {
   "file-confirm/route.ts": { method: "POST", write: true, rate: "bozza", command: "confirmReferentFile" },
   // (Rilascio 5) La conferma dello use case e la stima del tempo.
   "check/route.ts": { method: "POST", write: true, rate: "bozza", command: "saveReferentCheck" },
+  // (Rilascio 6) Il filo con il team: «Ho un dubbio», la risposta a un chiarimento, «Aggiungi qualcosa», la
+  // modifica, «viste». Le scritture del filo contano come invii; «viste» come una bozza.
+  "doubt/route.ts": { method: "POST", write: true, rate: "invio", command: "postReferentDoubt" },
+  "reply/route.ts": { method: "POST", write: true, rate: "invio", command: "replyToReferentClarification" },
+  "add/route.ts": { method: "POST", write: true, rate: "invio", command: "addToReferentAnswer" },
+  "edit/route.ts": { method: "POST", write: true, rate: "invio", command: "editReferentAnswer" },
+  "seen/route.ts": { method: "POST", write: true, rate: "bozza", command: "markReferentMessagesSeen" },
 };
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -114,9 +121,13 @@ for (const [file, spec] of Object.entries(ROUTES)) {
 }
 
 test("submit: dopo un invio riuscito le email partono dopo la risposta, mai dentro la chiamata", () => {
-  const text = readFileSync(join(root, API, "submit/route.ts"), "utf8");
-  assert.match(text, /if \(outcome\.ok\) scheduleReferentDispatch\(link\.requestId\)/);
-  assert.doesNotMatch(text, /dispatchReferentEmails|await scheduleReferentDispatch/);
+  // (Rilascio 6) Lo stesso per le scritture del filo: la campanella, l'avviso a chi ha chiesto e l'AI dopo.
+  for (const file of ["submit/route.ts", "doubt/route.ts", "reply/route.ts", "add/route.ts", "edit/route.ts"]) {
+    const text = readFileSync(join(root, API, file), "utf8");
+    assert.match(text, /if \(outcome\.ok\) scheduleReferentDispatch\(link\.requestId\)/, file);
+    assert.doesNotMatch(text, /dispatchReferentEmails|await scheduleReferentDispatch/, file);
+  }
+  assert.doesNotMatch(readFileSync(join(root, API, "seen/route.ts"), "utf8"), /scheduleReferentDispatch/, "«viste» non manda niente");
 });
 
 const HANDLER = `${API}/handler.ts`;

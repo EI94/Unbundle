@@ -74,7 +74,7 @@ test("vista pubblica: solo le chiavi del contratto, nessun dato seminato", () =>
   // (Rilascio 5.1) Un file con nomi, email o telefoni non chiede più conferma: la vista non ne parla.
   assert.deepEqual(Object.keys(view.questions[1].files[0]).sort(), ["id", "message", "name", "sizeBytes", "status", "submitted"]);
   assert.equal(view.questions[0].state, "inviata");
-  assert.deepEqual(view.questions[0].answer, { text: "Excel", dontKnow: false, alreadyAttached: false, comment: null, submittedAt: at("2026-11-03").toISOString() });
+  assert.deepEqual(view.questions[0].answer, { text: "Excel", dontKnow: false, alreadyAttached: false, comment: null, submittedAt: at("2026-11-03").toISOString(), editedAt: null });
   assert.equal(view.state, "aperta");
   assert.equal(view.expiresOn, "2026-11-26");
   assert.deepEqual(view.privacy, { accepted: true, version: REFERENT_PRIVACY_NOTICE.version, contact: "privacy@example.test" });

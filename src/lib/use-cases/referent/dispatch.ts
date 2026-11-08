@@ -99,11 +99,13 @@ export interface ReferentRequestFacts {
   referentRequest?: boolean;
   /** (Rilascio 5) La conferma non è ancora inviata: conta 1 in `openItems`, mai tra le domande delle email. */
   checkPending?: boolean;
+  /** (Rilascio 6) I chiarimenti del team che aspettano il referente: contano in `openItems`, mai tra le domande delle email. */
+  openClarifications?: number;
 }
 
-/** (Rilascio 5) Le domande aperte di una richiesta, senza la conferma ancora da inviare. */
-export function openQuestionsOf(r: Pick<ReferentRequestFacts, "openItems" | "checkPending">): number {
-  return Math.max(0, r.openItems - (r.checkPending ? 1 : 0));
+/** (Rilascio 5) Le domande aperte di una richiesta, senza la conferma ancora da inviare e (rilascio 6) senza i chiarimenti. */
+export function openQuestionsOf(r: Pick<ReferentRequestFacts, "openItems" | "checkPending" | "openClarifications">): number {
+  return Math.max(0, r.openItems - (r.checkPending ? 1 : 0) - Math.max(0, r.openClarifications ?? 0));
 }
 
 export interface ReferentDeliveryFacts {
@@ -345,6 +347,7 @@ export function planReferentDelivery(
             checkPending: x.checkPending === true,
             clarifications: x.item?.clarifications ?? 0,
             replies: x.item?.replies ?? 0,
+            openClarifications: Math.max(0, x.openClarifications ?? 0),
           }),
         ),
     }),

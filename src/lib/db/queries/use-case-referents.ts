@@ -340,6 +340,8 @@ interface RequestRow {
   expiresAt: Date;
   lastEmailAt: Date | null;
   lastReminderAt: Date | null;
+  /** (Rilascio 6) L'ultima riapertura (domande nuove o un chiarimento dopo «Invia»): i promemoria ripartono da lì. */
+  reopenedAt: Date | null;
   reminderCount: number;
   completedAt: Date | null;
   expiredAt: Date | null;
@@ -416,6 +418,7 @@ function requestRowOf(r: UcRow, now: Date): RequestRow | null {
     expiresAt,
     lastEmailAt: rowDate(r.last_email_at),
     lastReminderAt: rowDate(r.last_reminder_at),
+    reopenedAt: rowDate(r.reopened_at),
     reminderCount: rowNumber(r.reminder_count) ?? 0,
     completedAt: rowDate(r.completed_at),
     expiredAt: rowDate(r.expired_at),
@@ -439,7 +442,7 @@ const sentOnly = (column: string) => `CASE WHEN k.submitted_at IS NOT NULL THEN 
 
 function requestsSql(workspaceId: string, useCaseId: string): UcStatement {
   return toStatement(ucSql`SELECT r.id, r.version, r.contact_id, r.status, r.created_at, r.sent_at, r.expires_at, r.last_email_at, r.last_reminder_at, r.reminder_count,
-  r.completed_at, r.expired_at, r.revoked_at,
+  r.completed_at, r.expired_at, r.revoked_at, r.reopened_at,
   c.display_name AS contact_name, c.role_label, c.email AS contact_email, (c.is_active AND c.anonymized_at IS NULL) AS contact_active,
   ${openItemsCountSql("r")} AS open_items,
   (SELECT array_agg(it.need_id::text ORDER BY it.position) FROM use_case_referent_request_items it WHERE it.request_id = r.id) AS need_ids,
@@ -715,6 +718,7 @@ export async function loadUseCaseReferentPanel(i: {
         lastEmailAt: r.lastEmailAt,
         openItems: r.openItems,
         addressChanged: r.sentAt !== null && !r.hasValidToken,
+        remindFrom: r.reopenedAt,
       };
       const name = r.contactName;
       let remind: { allowed: boolean; reason: string | null } = { allowed: false, reason: null };
@@ -770,6 +774,7 @@ export async function loadUseCaseReferentPanel(i: {
             expiredAt: r.expiredAt,
             revokedAt: r.revokedAt,
             openItems: r.openItems,
+            remindFrom: r.reopenedAt,
           },
           today,
           now,
@@ -2517,12 +2522,15 @@ function drafts(workspaceId: string, filter: SqlFragment): UcStatement[] {
  */
 async function queueDueReminders(executor: UcExecutor, env: Env, now: Date, counts: ReferentCronCounts): Promise<number> {
   const [rows] = await executor.batch([
-    toStatement(ucSql`SELECT r.id, r.workspace_id, r.use_case_id, r.contact_id, r.status, r.sent_at, r.expires_at, r.revoked_at, r.reminder_count, r.last_email_at,
+    toStatement(ucSql`SELECT r.id, r.workspace_id, r.use_case_id, r.contact_id, r.status, r.sent_at, r.expires_at, r.revoked_at, r.reminder_count, r.last_email_at, r.reopened_at,
   ${openItemsCountSql("r")} AS open_items,
+  -- (Rilascio 6) Dopo una riapertura contano solo i promemoria partiti da lì: tornano i soliti due.
   EXISTS (SELECT 1 FROM use_case_referent_email_items it JOIN use_case_referent_emails e ON e.id = it.email_id
-          WHERE it.request_id = r.id AND it.kind = 'primo' AND (it.state = 'inviata' OR (it.state = 'in_coda' AND (e.status = 'in_coda' OR (e.status = 'errore' AND e.attempts < 3))))) AS primo_taken,
+          WHERE it.request_id = r.id AND it.kind = 'primo' AND ((it.state = 'inviata' AND (r.reopened_at IS NULL OR e.sent_at >= r.reopened_at))
+            OR (it.state = 'in_coda' AND (e.status = 'in_coda' OR (e.status = 'errore' AND e.attempts < 3))))) AS primo_taken,
   EXISTS (SELECT 1 FROM use_case_referent_email_items it JOIN use_case_referent_emails e ON e.id = it.email_id
-          WHERE it.request_id = r.id AND it.kind = 'ultimo' AND (it.state = 'inviata' OR (it.state = 'in_coda' AND (e.status = 'in_coda' OR (e.status = 'errore' AND e.attempts < 3))))) AS ultimo_taken
+          WHERE it.request_id = r.id AND it.kind = 'ultimo' AND ((it.state = 'inviata' AND (r.reopened_at IS NULL OR e.sent_at >= r.reopened_at))
+            OR (it.state = 'in_coda' AND (e.status = 'in_coda' OR (e.status = 'errore' AND e.attempts < 3))))) AS ultimo_taken
 FROM use_case_referent_requests r
 WHERE r.status = 'inviata' AND r.sent_at IS NOT NULL AND r.revoked_at IS NULL AND r.expires_at > now()
 ORDER BY r.created_at, r.id
@@ -2545,6 +2553,7 @@ LIMIT 500`),
       reminderCount: rowNumber(r.reminder_count) ?? 0,
       lastEmailAt: rowDate(r.last_email_at),
       openItems: rowNumber(r.open_items) ?? 0,
+      remindFrom: rowDate(r.reopened_at),
     };
     const kind = referentReminderDue(state, now);
     if (!kind) continue;

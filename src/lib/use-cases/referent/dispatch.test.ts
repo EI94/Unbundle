@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { romeLocalToUtc } from "../../uc/calendar.ts";
 import { RATE_LIMIT_CODE, type MailResult, type OutgoingEmail, type UcMailer } from "../../uc/notify/dispatch.ts";
 import {
+  openQuestionsOf,
   planReferentDelivery,
   runReferentDispatch,
   type ClaimedReferentEmail,
@@ -439,4 +440,11 @@ test("(rilascio 5) piano: la richiesta al referente parte anche senza domande; l
     const input = reminder.build({ [R1]: LINK });
     assert.ok(input.template === "promemoria" && input.entries[0].checkPending === true && input.entries[0].openQuestions === 0, JSON.stringify(input));
   }
+});
+
+test("(rilascio 6) le domande aperte delle email non contano la conferma né i chiarimenti del team", () => {
+  assert.equal(openQuestionsOf({ openItems: 3, checkPending: false, openClarifications: 0 }), 3);
+  assert.equal(openQuestionsOf({ openItems: 3, checkPending: true, openClarifications: 0 }), 2);
+  assert.equal(openQuestionsOf({ openItems: 1, checkPending: false, openClarifications: 1 }), 0, "riaperta solo per un chiarimento");
+  assert.equal(openQuestionsOf({ openItems: 2, checkPending: false, openClarifications: 5 }), 0, "mai sotto zero");
 });

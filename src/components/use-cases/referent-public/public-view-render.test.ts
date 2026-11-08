@@ -55,6 +55,7 @@ function view(over: Partial<ReferentAskView> = {}): ReferentAskView {
     upload: { clientMode: true },
     kind: "domande",
     check: null,
+    thread: { followUp: false, open: true, messages: [] },
     ...over,
   };
 }

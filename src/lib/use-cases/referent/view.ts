@@ -17,7 +17,7 @@
  */
 import { parseCivilDate, romeDate } from "../../uc/calendar.ts";
 import type { ReferentItemState, ReferentRequestStatus } from "../../db/use-case-hub-referents-ddl.ts";
-import type { ReferentAskView, ReferentCheckView, ReferentFileView, ReferentQuestionView } from "./contract.ts";
+import type { ReferentAskView, ReferentCheckView, ReferentFileView, ReferentQuestionView, ReferentThreadView } from "./contract.ts";
 import { REFERENT_PRIVACY_NOTICE, REFERENT_REQUEST_WORD, REFERENT_UI_TEXT, fillText } from "./labels.ts";
 import { nextReminderOn } from "./schedule.ts";
 import { privacyAccepted, reviewerStatus } from "./state.ts";
@@ -75,6 +75,8 @@ export interface RequestRowForView {
   expiredAt: Date | null;
   revokedAt: Date | null;
   openItems: number;
+  /** (Rilascio 6) L'ultima riapertura: il prossimo promemoria conta da lì. */
+  remindFrom?: Date | null;
 }
 
 /** «Inviata il 27/10 · scade il 26/11», i promemoria, il prossimo promemoria, la fine. */
@@ -86,7 +88,10 @@ export function requestLines(r: RequestRowForView, today: string, now: Date): st
   if (r.lastReminderAt) out.push(fillText(r.reminderCount >= 2 ? t.lastReminder : t.reminded, { data: d(r.lastReminderAt) }));
   const status = reviewerStatus(r, now);
   if (status === "inviata") {
-    const next = nextReminderOn({ status: r.status, sentAt: r.sentAt, expiresAt: r.expiresAt, revokedAt: r.revokedAt, reminderCount: r.reminderCount, lastEmailAt: r.lastEmailAt, openItems: r.openItems }, now);
+    const next = nextReminderOn(
+      { status: r.status, sentAt: r.sentAt, expiresAt: r.expiresAt, revokedAt: r.revokedAt, reminderCount: r.reminderCount, lastEmailAt: r.lastEmailAt, openItems: r.openItems, remindFrom: r.remindFrom ?? null },
+      now,
+    );
     if (next) out.push(fillText(t.nextReminder, { data: d(next) }));
   } else if (status === "completata" && r.completedAt) {
     out.push(fillText(t.completed, { data: d(r.completedAt) }));
@@ -162,8 +167,12 @@ export interface PublicItemRow {
   /** (Rilascio 5) «Serve un file». */
   fileRequired?: boolean;
   draft: { body: string | null; dontKnow: boolean; alreadyAttached?: boolean; comment?: string | null; updatedAt: Date } | null;
-  answer: { body: string | null; dontKnow: boolean; alreadyAttached?: boolean; comment?: string | null; submittedAt: Date } | null;
+  answer: { body: string | null; dontKnow: boolean; alreadyAttached?: boolean; comment?: string | null; submittedAt: Date; editedAt?: Date | null } | null;
   files: PublicFileRow[];
+  /** (Rilascio 6) Aggiunta dopo il primo invio («Nuove domande»). */
+  followUp?: boolean;
+  /** (Rilascio 6) L'informazione non è «A posto» né «Non si applica»: la risposta inviata si può cambiare. */
+  editable?: boolean;
 }
 
 export interface PublicFileRow {
@@ -193,6 +202,8 @@ export interface PublicRows {
   check?: ReferentCheckView | null;
   /** (Rilascio 5) Adesso, per sapere se la conferma si può ancora inviare (di default l'orologio). */
   now?: Date;
+  /** (Rilascio 6) Il filo con il team, già nella forma della pagina (senza: nessun messaggio, niente da scrivere). */
+  thread?: Omit<ReferentThreadView, "followUp"> | null;
 }
 
 /** (Rilascio 5.1) Un file della pagina: mai un avviso su nomi, email o telefoni, niente da confermare. */
@@ -205,7 +216,8 @@ const isHandled = (i: PublicItemRow) => !i.open && i.state === "aperta" && i.vis
 
 function questionView(i: PublicItemRow): ReferentQuestionView {
   const fileRequired = i.fileRequired === true;
-  if (isHandled(i)) return { needId: i.needId, position: i.position, title: i.question, state: "gestita", fileRequired, draft: null, answer: null, files: [] };
+  const followUp = i.followUp === true;
+  if (isHandled(i)) return { needId: i.needId, position: i.position, title: i.question, state: "gestita", fileRequired, draft: null, answer: null, files: [], followUp, editable: false };
   const sent = !i.open;
   // (Rilascio 5) Le chiusure lette come sono salvate: «Non ce l'ho» vince, poi «È già allegato», poi il testo.
   const closureOf = (dontKnow: boolean, attached: boolean | undefined) => ({ dontKnow, alreadyAttached: !dontKnow && attached === true });
@@ -221,9 +233,18 @@ function questionView(i: PublicItemRow): ReferentQuestionView {
         : null,
     answer:
       sent && i.answer
-        ? { text: i.answer.body, ...closureOf(i.answer.dontKnow, i.answer.alreadyAttached), comment: i.answer.comment ?? null, submittedAt: i.answer.submittedAt.toISOString() }
+        ? {
+            text: i.answer.body,
+            ...closureOf(i.answer.dontKnow, i.answer.alreadyAttached),
+            comment: i.answer.comment ?? null,
+            submittedAt: i.answer.submittedAt.toISOString(),
+            editedAt: i.answer.editedAt ? i.answer.editedAt.toISOString() : null,
+          }
         : null,
     files: i.files.filter((f) => (sent ? f.submitted : true) && f.scanStatus !== "rifiutato").map(fileView),
+    followUp,
+    // (Rilascio 6, decisione 3) Solo una risposta inviata, del referente, su un'informazione non ancora «A posto».
+    editable: sent && i.answer !== null && i.editable === true,
   };
 }
 
@@ -258,6 +279,8 @@ export function toPublicView(rows: PublicRows): ReferentAskView {
     upload: { clientMode: rows.clientMode },
     kind: check ? "referente" : "domande",
     check,
+    // (Rilascio 6) Dopo il primo invio la pagina apre su «Da completare» quando c'è qualcosa di nuovo.
+    thread: { followUp: answered > 0, open: rows.thread?.open === true, messages: rows.thread?.messages ?? [] },
   };
 }
 
@@ -301,6 +324,10 @@ export const PUBLIC_VIEW_KEYS: readonly string[] = Object.freeze([
   "questions[].files[].status",
   "questions[].files[].message",
   "questions[].files[].submitted",
+  // (Rilascio 6) «Nuove domande», la risposta cambiata, la modifica finché il team non la segna «A posto».
+  "questions[].followUp",
+  "questions[].editable",
+  "questions[].answer.editedAt",
   "upload",
   "upload.clientMode",
   // (Rilascio 5) La richiesta al referente: la conferma e la stima, mai euro, quote o punteggi.
@@ -333,6 +360,22 @@ export const PUBLIC_VIEW_KEYS: readonly string[] = Object.freeze([
   "check.draft.stale",
   "check.draft.savedAt",
   "check.submittedAt",
+  // (Rilascio 6) Il filo con il team: mai chi del team ha scritto, mai le proposte dell'AI.
+  "thread",
+  "thread.followUp",
+  "thread.open",
+  "thread.messages",
+  "thread.messages[].id",
+  "thread.messages[].anchor",
+  "thread.messages[].needId",
+  "thread.messages[].componentKey",
+  "thread.messages[].side",
+  "thread.messages[].kind",
+  "thread.messages[].text",
+  "thread.messages[].createdAt",
+  "thread.messages[].replyTo",
+  "thread.messages[].waiting",
+  "thread.messages[].fresh",
 ]);
 
 /** Ogni chiave del pannello dei revisori (`UseCaseReferentPanel` e le viste dentro). `{}` = chiave di un dizionario. */

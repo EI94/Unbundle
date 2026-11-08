@@ -134,3 +134,18 @@ test("retentionDue: 12 mesi di calendario, a Roma, anche a fine mese", () => {
   assert.equal(retentionDue(at("2028-02-29", 12), at("2029-02-27", 12)), false);
   assert.equal(retentionDue(at("2028-02-29", 12), at("2029-02-28", 12)), true);
 });
+
+test("(rilascio 6) dopo una riapertura tornano i soliti due promemoria, contati dalla riapertura", () => {
+  // Inviata il 2/11, completata, riaperta da un chiarimento lunedì 16/11 alle 10 (l'email della novità parte lì).
+  const reopened = at("2026-11-16", 10);
+  const s = state({ reminderCount: 0, lastEmailAt: reopened, remindFrom: reopened, expiresAt: referentExpiresAt(reopened) });
+  assert.equal(referentReminderDue(s, at("2026-11-18", 10)), null, "due giorni dopo la riapertura: ancora no");
+  assert.equal(referentReminderDue(s, at("2026-11-19", 10)), "primo", "il terzo giorno lavorativo dalla riapertura");
+  const after = { ...s, reminderCount: 1, lastEmailAt: at("2026-11-19", 10) };
+  assert.equal(referentReminderDue(after, at("2026-11-24", 10)), null, "il sesto");
+  assert.equal(referentReminderDue(after, at("2026-11-25", 10)), "ultimo", "il settimo giorno lavorativo dalla riapertura");
+  assert.equal(nextReminderOn(s, at("2026-11-16", 12)), "2026-11-19");
+  // Una riapertura prima dell'invio (non succede) non sposta niente; senza riapertura conta l'invio.
+  assert.equal(referentReminderDue(state({ remindFrom: at("2026-10-30", 10) }), at("2026-11-05", 10)), "primo");
+  assert.equal(referentReminderDue(state({ remindFrom: null }), at("2026-11-05", 10)), "primo");
+});

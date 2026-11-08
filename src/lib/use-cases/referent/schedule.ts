@@ -60,6 +60,17 @@ export interface ReminderState {
    * può partire anche oggi (è l'unico modo di dare il link al nuovo indirizzo).
    */
   addressChanged?: boolean;
+  /**
+   * (Rilascio 6) Da quando contano i giorni dei promemoria: l'invio, oppure l'ultima riapertura della richiesta
+   * (domande nuove o un chiarimento dopo «Invia»), così dopo una novità tornano i soliti due promemoria.
+   */
+  remindFrom?: Date | null;
+}
+
+/** Da quando contano i giorni dei promemoria: la riapertura, se è dopo l'invio. */
+function remindBase(r: ReminderState): Date | null {
+  if (!r.sentAt) return null;
+  return r.remindFrom && r.remindFrom.getTime() > r.sentAt.getTime() ? r.remindFrom : r.sentAt;
 }
 
 /** Due istanti nello stesso giorno di Roma (`a` null: no). */
@@ -76,7 +87,7 @@ export function referentReminderDue(r: ReminderState, now: Date): "primo" | "ult
   if (!live(r, now) || !r.sentAt || r.openItems <= 0) return null;
   if (!inRomeSendWindow(now)) return null;
   if (r.lastEmailAt && (sameRomeDay(r.lastEmailAt, now) || workingDaysBetween(r.lastEmailAt, now) < MIN_WORKING_DAYS_SINCE_LAST_EMAIL)) return null;
-  const days = workingDaysBetween(r.sentAt, now);
+  const days = workingDaysBetween(remindBase(r)!, now);
   if (r.reminderCount === 0 && days >= REFERENT_REMINDER_DAYS.primo) return "primo";
   if (r.reminderCount === 1 && days >= REFERENT_REMINDER_DAYS.ultimo) return "ultimo";
   return null;
@@ -86,7 +97,7 @@ export function referentReminderDue(r: ReminderState, now: Date): "primo" | "ult
 export function nextReminderOn(r: ReminderState, now: Date): string | null {
   if (!live(r, now) || !r.sentAt || r.openItems <= 0 || r.reminderCount >= 2) return null;
   const threshold = r.reminderCount === 0 ? REFERENT_REMINDER_DAYS.primo : REFERENT_REMINDER_DAYS.ultimo;
-  let day = addWorkingDays(r.sentAt, threshold);
+  let day = addWorkingDays(remindBase(r)!, threshold);
   if (r.lastEmailAt) {
     const afterLast = addWorkingDays(r.lastEmailAt, MIN_WORKING_DAYS_SINCE_LAST_EMAIL);
     if (afterLast > day) day = afterLast;
