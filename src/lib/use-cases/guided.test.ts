@@ -364,11 +364,14 @@ test("G1-G3: verificare, sollecitare, poi il trimestre (più avanti o scaduto)",
   assert.deepEqual(noRequests.action, { type: "vai", id: "cosa-serve", label: "Vedi le richieste" }, "senza richieste: «Cosa serve»");
 
   const later = nextStepOf(input({ item: approved({ subState: "piu_avanti", targetQuarter: null, phaseLabel: "Approvato · Più avanti" }), info: progress({}) }));
-  assert.deepEqual(brief(later), { key: "G3", title: "Approvato per più avanti", line: `${T} Le informazioni si chiedono quando si sceglie il trimestre.`, action: "none", mine: false, decisions: "compact" });
-  assert.deepEqual(later.link, { id: "quando", label: "Vai a «Quando»" });
+  // (Rilascio 6) «Scegli il trimestre» porta a «Quando»: bordato per «Più avanti», pieno a trimestre finito per chi decide.
+  assert.deepEqual(brief(later), { key: "G3", title: "Approvato per più avanti", line: `${T} Le informazioni si chiedono quando si sceglie il trimestre.`, action: "vai", mine: false, decisions: "compact" });
+  assert.deepEqual(later.action, { type: "vai", id: "quando", label: "Scegli il trimestre" });
+  assert.deepEqual([later.cta, later.icon, later.turn, later.why, later.link], ["Scegli il trimestre", "trimestre", null, "Approvato per più avanti. Le informazioni si chiedono quando si sceglie il trimestre.", null]);
   const expired = nextStepOf(input({ item: approved({ targetQuarter: "2026-Q2" }) }));
-  assert.deepEqual(brief(expired), { key: "G3", title: "Scegliere un nuovo trimestre", line: `${T} Il T2 2026 è finito: il trimestre si sceglie in «Quando».`, action: "none", mine: false, decisions: "compact" });
-  assert.deepEqual(expired.link, { id: "quando", label: "Vai a «Quando»" });
+  assert.deepEqual(brief(expired), { key: "G3", title: "Scegliere un nuovo trimestre", line: `${T} Il T2 2026 è finito: il trimestre si sceglie in «Quando».`, action: "vai", mine: true, decisions: "compact" });
+  assert.deepEqual([expired.cta, expired.turn, expired.why], ["Scegli il trimestre", T, "Il T2 2026 è finito: il trimestre si sceglie in «Quando»."]);
+  assert.equal(nextStepOf(input({ item: approved({ targetQuarter: "2026-Q2" }), canDecide: false })).mine, false, "chi non decide: bordato");
 });
 
 test("G4-G6: autorizzare i fornitori, chiedere al referente, oppure il motivo; l'ordine dei controlli", () => {
@@ -445,31 +448,88 @@ test("G7-G9: aspettare, sbloccare, avviare", () => {
 test("H1-H7: da valutare, «Approva» pieno tranne in «Serve info» e «Rimandata»", () => {
   const decide = (over: Partial<GuidedItem>) => nextStepOf(input({ item: item(over) }));
   const h2 = decide({ subState: "serve_info", answered: true });
-  assert.deepEqual(brief(h2), { key: "H2", title: "Leggere la risposta e decidere", line: `${T} Chi ha proposto ha risposto.`, action: "decisione", mine: true, decisions: "full" });
+  // (Rilascio 6, B.1.7) «Approva» in vista, le altre decisioni nel menu «⋯».
+  assert.deepEqual(brief(h2), { key: "H2", title: "Leggere la risposta e decidere", line: `${T} Chi ha proposto ha risposto.`, action: "decisione", mine: true, decisions: "compact" });
   assert.deepEqual(h2.link, { id: "nota-pubblica", label: "Leggi la risposta" });
   assert.equal(decide({ subState: "valutata", answered: true }).key, "H2", "una risposta vale in ogni sotto-stato");
   const h1 = decide({ subState: "serve_info" });
-  assert.deepEqual(brief(h1), { key: "H1", title: "Aspettare la risposta di chi ha proposto", line: "Tocca a chi ha proposto. La domanda è nella nota pubblica.", action: "decisione", mine: false, decisions: "full" });
+  assert.deepEqual(brief(h1), { key: "H1", title: "Aspettare la risposta di chi ha proposto", line: "Tocca a chi ha proposto. La domanda è nella nota pubblica.", action: "decisione", mine: false, decisions: "compact" });
+  assert.deepEqual([h1.cta, h1.turn, h1.why], ["In attesa di chi ha proposto", "Tocca a chi ha proposto.", "La domanda è nella nota pubblica."]);
   assert.deepEqual(h1.link, { id: "nota-pubblica", label: "Vedi la nota pubblica" });
   assert.equal(h1.primaryOutline, true);
   const h3 = decide({ subState: "rimandata", reviewBy: "2027-01-14" });
-  assert.deepEqual(brief(h3), { key: "H3", title: "Riprendere la decisione il 14 gen 2027", line: `${T} La decisione è rimandata.`, action: "decisione", mine: false, decisions: "full" });
+  assert.deepEqual(brief(h3), { key: "H3", title: "Riprendere la decisione il 14 gen 2027", line: `${T} La decisione è rimandata.`, action: "decisione", mine: false, decisions: "compact" });
+  assert.deepEqual([h3.cta, h3.turn, h3.why], ["Rimandata al 14 gen 2027", null, "Riprendere la decisione il 14 gen 2027. La decisione è rimandata."]);
   assert.equal(h3.primaryOutline, true);
-  assert.deepEqual(brief(decide({ subState: "da_rivedere" })), { key: "H4", title: "Riprendere la decisione", line: `${T} La data per riprenderla è passata.`, action: "decisione", mine: true, decisions: "full" });
-  assert.deepEqual(brief(decide({ subState: "valutata" })), { key: "H5", title: "Decidere se approvarlo", line: `${T} In attesa da 6 giorni.`, action: "decisione", mine: true, decisions: "full" });
+  assert.deepEqual(brief(decide({ subState: "da_rivedere" })), { key: "H4", title: "Riprendere la decisione", line: `${T} La data per riprenderla è passata.`, action: "decisione", mine: true, decisions: "compact" });
+  assert.deepEqual(brief(decide({ subState: "valutata" })), { key: "H5", title: "Decidere se approvarlo", line: `${T} In attesa da 6 giorni.`, action: "decisione", mine: true, decisions: "compact" });
   assert.deepEqual(brief(decide({ subState: "possibile_doppione", possibleDuplicateOf: "XX-0007" })), {
     key: "H6",
     title: "Controllare se è un doppione e decidere",
     line: `${T} Potrebbe essere un doppione di XX-0007.`,
     action: "decisione",
     mine: true,
-    decisions: "full",
+    decisions: "compact",
   });
   assert.equal(decide({ subState: "possibile_doppione" }).line, `${T} In attesa da 6 giorni.`, "senza codice: la riga della decisione");
   const h7 = decide({});
-  assert.deepEqual(brief(h7), { key: "H7", title: "Valutare e decidere", line: `${T} In attesa da 6 giorni.`, action: "decisione", mine: true, decisions: "full" });
+  assert.deepEqual(brief(h7), { key: "H7", title: "Valutare e decidere", line: `${T} In attesa da 6 giorni.`, action: "decisione", mine: true, decisions: "compact" });
+  assert.deepEqual([h7.turn, h7.why, h7.icon], [T, "In attesa da 6 giorni.", "decidi"]);
   assert.equal(h7.primaryOutline, false);
   assert.equal(h7.heading, "Prossimo passo");
+});
+
+test("(Rilascio 6, B.1) il pulsante del passo: un verbo di due o tre parole, «Tocca a …» a parte, la spiegazione nel «?»", () => {
+  const info = progress({ received: 0, total: 10, toAsk: 7 });
+  const referent = (state: "manca" | "in_attesa" | "nessuna_risposta" | "da_verificare" | "fatto", over: Partial<NonNullable<NextStepInput["referent"]>> = {}) => ({ state, review: null, canChoose: true, askableForReferent: null, canOpen: true, ...over });
+  // «Indica il referente»: apre «Scegli il referente»; la spiegazione è la riga senza «Tocca a».
+  const choose = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent("manca") }));
+  assert.deepEqual([choose.key, choose.cta, choose.icon, choose.turn, choose.why, choose.mine], ["G5", "Indica il referente", "referente", T, "Il referente conferma lo use case e l'impatto, poi risponde alle domande.", true]);
+  assert.deepEqual(choose.action, { type: "referente", mode: "scegli", label: "Scegli il referente" });
+  // Le email spente fermano solo l'invio: il pulsante c'è, bordato, e la finestra dice il motivo.
+  const gated = nextStepOf(input({ item: approved(), info, referents: panel([gate.email]), askEntry: entry([gate.email]), referent: referent("manca", { canChoose: false }) }));
+  assert.deepEqual([gated.key, gated.cta, gated.action.type, gated.mine, gated.turn, gated.gate], ["G6", "Indica il referente", "referente", false, null, "email_non_configurata"]);
+  const closed = nextStepOf(input({ item: approved(), info, referents: panel([gate.verified]), askEntry: entry([gate.verified]), referent: referent("manca", { canChoose: false, canOpen: false }) }));
+  assert.deepEqual([closed.key, closed.action.type, closed.turn], ["G6", "none", T], "una finestra che non si apre: nessun pulsante, lo stato e «Tocca a»");
+  // Il referente che ha risposto: «Chiedi al referente»; senza domande per lui, «Chiedi a un'altra persona».
+  const ask = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent("fatto", { askableForReferent: 3 }) }));
+  assert.deepEqual([ask.cta, ask.icon, ask.why], ["Chiedi al referente", "chiedi", "7 delle 10 informazioni sono ancora da chiedere."]);
+  const other = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent("fatto", { askableForReferent: 0 }) }));
+  assert.deepEqual([other.cta, other.action.type === "referente" && other.action.mode], ["Chiedi a un'altra persona", "altra"]);
+  const noReferent = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]) }));
+  assert.deepEqual([noReferent.cta, noReferent.action.type], ["Chiedi le informazioni", "chiedi"]);
+  // «Sollecita il referente» apre «Chiedi di nuovo»; con risposte mancanti alle domande va alle richieste.
+  const silent = nextStepOf(input({ item: approved(), info: progress({ toAsk: 0, waiting: 0 }), referents: panel([], 1), askEntry: entry([]), referent: referent("nessuna_risposta") }));
+  assert.deepEqual([silent.key, silent.cta, silent.icon, silent.why], ["G2", "Sollecita il referente", "sollecita", "Il referente non ha risposto."]);
+  assert.deepEqual(silent.action, { type: "referente", mode: "di_nuovo", label: "Sollecita il referente" });
+  assert.equal(nextStepOf(input({ item: approved(), info: progress({ toAsk: 0, waiting: 0 }), referents: panel([], 1), askEntry: entry([]), referent: referent("nessuna_risposta", { canOpen: false }) })).action.type, "vai");
+  const unanswered = nextStepOf(input({ item: approved(), info: progress({ state: "senza_risposta", unanswered: 2 }), referents: panel([], 2), askEntry: entry([]) }));
+  assert.deepEqual([unanswered.cta, unanswered.why], ["Sollecita le risposte", "2 informazioni senza risposta."]);
+  // «Verifica le risposte»; «Autorizza i fornitori» per chi può, altrimenti lo stato e a chi tocca.
+  const verify = nextStepOf(input({ item: approved(), info: progress({ state: "da_verificare", received: 3, toVerify: 1, toAsk: 7 }) }));
+  assert.deepEqual([verify.cta, verify.icon, verify.why], ["Verifica le risposte", "verifica", "3 di 10 informazioni ricevute (1 da verificare)."]);
+  const authorize = nextStepOf(input({ item: approved(), info, referents: panel([gate.subprocessors(true)]), askEntry: entry([gate.subprocessors(true)]), referent: referent("manca") }));
+  assert.deepEqual([authorize.key, authorize.cta, authorize.turn, authorize.mine], ["G4", "Autorizza i fornitori", null, true]);
+  const waitOk = nextStepOf(input({ item: approved(), info, referents: panel([gate.subprocessors(false)]), askEntry: entry([gate.subprocessors(false)]), referent: referent("manca") }));
+  assert.deepEqual([waitOk.cta, waitOk.turn, waitOk.action.type], ["Manca l'ok sui fornitori", "Tocca a TopJet.", "none"]);
+  // Senza pulsante, le parole dello stato e a chi tocca: il referente, i referenti, Lateral Space.
+  const wait = nextStepOf(input({ item: approved(), info: progress({ state: "in_attesa", toAsk: 0, waiting: 1, since: "2026-10-27" }), referent: referent("in_attesa") }));
+  assert.deepEqual([wait.key, wait.cta, wait.icon, wait.turn, wait.why, wait.action.type], ["G7", "In attesa del referente", "attesa", "Tocca al referente.", "In attesa dal 27 ott.", "none"]);
+  const answers = nextStepOf(input({ item: approved(), info: progress({ state: "in_attesa", toAsk: 0, waiting: 1 }) }));
+  assert.deepEqual([answers.cta, answers.turn, answers.why], ["In attesa delle risposte", "Tocca ai referenti.", ""]);
+  const ready = nextStepOf(input({ item: approved(), info: COMPLETE, realizationVariant: "lo_avvia_ls" }));
+  assert.deepEqual([ready.cta, ready.turn, ready.why], ["Pronto da avviare", "Tocca a Lateral Space.", "Le informazioni ci sono tutte."]);
+  const start = nextStepOf(input({ item: approved(), info: COMPLETE, realizationVariant: "avvia" }));
+  assert.deepEqual([start.cta, start.icon, start.mine], ["Avvia la realizzazione", "avvia", true]);
+  const done = nextStepOf(input({ item: item({ phase: "realizzato", subState: "realizzato", realizedOn: "2026-10-03" }) }));
+  assert.deepEqual([done.cta, done.why, done.turn], ["Nessun passo da fare", "In uso dal 3 ott.", null]);
+  // Mai «Tocca a» nella spiegazione, mai un segnaposto; il verbo sta in quattro parole al massimo.
+  const samples = [choose, gated, closed, ask, other, noReferent, silent, unanswered, verify, authorize, waitOk, wait, answers, ready, start, done];
+  for (const next of samples) {
+    assert.ok(!/Tocca a/.test(next.why), `${next.key}: ${next.why}`);
+    assert.ok(!next.cta.includes("{") && !next.why.includes("{"), next.key);
+    assert.ok(next.cta.split(/\s+/).length <= 4, `${next.key}: ${next.cta}`);
+  }
 });
 
 test("«Prossimo passo»: un passo mio solo dove la pagina vuole un pulsante pieno", () => {

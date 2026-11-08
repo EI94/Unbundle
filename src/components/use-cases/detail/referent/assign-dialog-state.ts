@@ -322,3 +322,35 @@ export function assignErrorPlace(code: string, fieldErrors: Readonly<Record<stri
   if (QUESTION_CODES.has(code) || fields.includes("needIds")) return "questions";
   return "footer";
 }
+
+/**
+ * (Rilascio 6) Quello che «Prossimo passo» legge del referente, uguale nella scheda e nel pannello
+ * (`nextStepOf`, campo `referent`): lo stato, che cosa aspetta il team, se chi guarda lo sceglie adesso
+ * (niente blocca l'invio), se la finestra del referente si apre comunque (un motivo che ferma solo
+ * l'invio la lascia aprire: lo dice lei), quante domande da chiedere non ha già rifiutato. null quando
+ * lo use case non ha un referente da scegliere o chi guarda non modifica le esigenze.
+ */
+export function referentStepInput(
+  panel: UseCaseReferentPanel | null,
+  canEditNeeds: boolean,
+): {
+  state: NonNullable<UseCaseReferentPanel["referent"]>["state"] | "manca";
+  review: NonNullable<UseCaseReferentPanel["referent"]>["review"] | null;
+  canChoose: boolean;
+  canOpen: boolean;
+  askableForReferent: number | null;
+  noTeamEstimate: boolean;
+} | null {
+  if (!panel?.available || !panel.eligible || !canEditNeeds) return null;
+  const entry = assignEntry(panel);
+  const referent = panel.referent ?? null;
+  return {
+    state: referent?.state ?? "manca",
+    review: referent?.review ?? null,
+    canChoose: entry.canOpen && entry.sendGates.length === 0,
+    canOpen: entry.canOpen,
+    askableForReferent: referent ? referent.askableForReferent.length : null,
+    // (Rilascio 5.1) Le risposte per beneficio non sono «una stima del tempo senza quella del team».
+    noTeamEstimate: Boolean(referent?.check && referent.check.team === null && !referent.check.benefits),
+  };
+}

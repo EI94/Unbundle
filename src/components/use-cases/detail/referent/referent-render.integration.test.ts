@@ -291,9 +291,12 @@ function boxAndNeeds(html: string): { box: string; needs: string } {
   return { box, needs: html.slice(start, html.indexOf("</section>", html.indexOf('id="richieste"') > start ? html.indexOf('id="richieste"') : start)) };
 }
 
-test("(rilascio 5) approvata senza referente: il riquadro dice il motivo (G4, G6) o ha «Scegli il referente» pieno (G5); il blocco lo ha, non pieno, solo per chi può arrivare in fondo", opts, async () => {
+test("(rilascio 5, rilascio 6) approvata senza referente: il riquadro dice il motivo (G4, G6) o ha «Indica il referente» pieno (G5), che apre «Scegli il referente»; il blocco lo ha, non pieno, solo quando il riquadro non lo ha", opts, async () => {
   const T = labels.REFERENT_UI_TEXT;
   const CHOOSE = labels.REFERENT_BLOCK_TEXT.choose;
+  const { GUIDED_TEXT } = await import("../../../../lib/use-cases/guided.ts");
+  // (Rilascio 6, B.1) Il pulsante del passo: l'icona e il verbo.
+  const INDICA = GUIDED_TEXT.cta.choose;
   const card = randomUUID();
   const quarter = await import("../../../../lib/use-cases/quarter.ts");
   await q(
@@ -306,14 +309,15 @@ test("(rilascio 5) approvata senza referente: il riquadro dice il motivo (G4, G6
   const element = await pageOfDetail({ params: Promise.resolve({ workspaceId: ids.ws, useCaseId: card }), searchParams: Promise.resolve({}) });
   const html = readable(renderToStaticMarkup(element));
   const askCount = (part: string) => (part.match(new RegExp(`>${CHOOSE}</button>`, "g")) ?? []).length;
-  // Senza l'autorizzazione dei fornitori (la persona di funzione la può dare): G4, con «Apri Impostazioni»
-  // pieno nel riquadro; il blocco ha «Scegli il referente» non pieno, che apre la finestra (l'ok è lì).
+  const boxCount = (part: string) => (part.match(new RegExp(`</svg>${INDICA}</button>`, "g")) ?? []).length;
+  // Senza l'autorizzazione dei fornitori (la persona di funzione la può dare): G4, con «Autorizza i fornitori»
+  // pieno nel riquadro e il motivo nel «?»; il blocco ha «Scegli il referente» non pieno, che apre la finestra (l'ok è lì).
   const g4 = boxAndNeeds(html);
   assert.match(g4.box, /data-key="G4"/);
   assert.match(g4.box, /data-gate="sub_responsabili_mancanti"/);
-  assert.match(g4.box, /role="status"/);
-  assert.deepEqual(filledIn(html), [T.gates.subprocessorsLink], "il solo pulsante pieno della pagina");
-  assert.equal(askCount(g4.box), 0, "riquadro: nessun «Scegli il referente»");
+  assert.match(g4.box, /aria-label="Perché questo passo"/);
+  assert.deepEqual(filledIn(html), [GUIDED_TEXT.cta.authorize], "il solo pulsante pieno della pagina");
+  assert.equal(boxCount(g4.box), 0, "riquadro: nessun «Indica il referente»");
   assert.equal(askCount(g4.needs), 1, "blocco: «Scegli il referente» per chi può dare l'ok");
   assert.ok(!html.includes(`>${T.ask}</button>`), "niente «Chiedi al referente» del rilascio 4");
   assert.ok(!html.includes('data-slot="referent-gates"'), "il motivo non si ripete sotto la riga");
@@ -336,37 +340,39 @@ test("(rilascio 5) approvata senza referente: il riquadro dice il motivo (G4, G6
   const render = (gates: unknown[], over: Partial<Panel> = {}) =>
     readable(renderToStaticMarkup(createElementOf(view.type, { ...view.props, referents: { ...panel, available: true, gates, ...over } })));
   const SUB = panel.gates.find((g) => g.code === "sub_responsabili_mancanti")!;
-  // L'ok lo dà un'altra persona (Lateral Space, un analista del cliente): G4 dice chi, la riga non ha il pulsante.
+  // L'ok lo dà un'altra persona (Lateral Space, un analista del cliente): G4 dice lo stato e a chi tocca, nessun pulsante.
   const other = render([{ ...SUB, canDeclare: false, message: T.gates.subprocessorsOther.replaceAll("{Azienda}", `TopJet prova ${suffix}`) }]);
   assert.match(boxAndNeeds(other).box, /data-key="G4"/);
-  assert.equal(askCount(other), 0, "chi non può dare l'ok non entra nei passi");
+  assert.ok(boxAndNeeds(other).box.includes(`>${GUIDED_TEXT.cta.authorizeWaiting}</p>`), "lo stato in parole");
+  assert.equal(askCount(other) + boxCount(other), 0, "chi non può dare l'ok non entra nei passi");
   assert.deepEqual(filledIn(other), []);
-  // Nessun motivo: G5 «Scegliere il referente», un solo «Scegli il referente», pieno, nel riquadro; il blocco non lo ripete.
+  // Nessun motivo: G5, un solo «Indica il referente», pieno, nel riquadro; il blocco non lo ripete (né «Manca il referente»).
   const open = render([]);
   const g5 = boxAndNeeds(open);
   assert.match(g5.box, /data-key="G5"/);
-  assert.ok(g5.box.includes("Scegliere il referente"));
-  assert.deepEqual(filledIn(open), [CHOOSE], "un solo pulsante pieno: «Scegli il referente»");
-  assert.deepEqual(filledIn(g5.box), [CHOOSE], "nel riquadro");
-  assert.equal(askCount(open), 1, "una volta sola nella pagina");
-  // Solo un motivo di sistema: G6 lo dice da solo, senza pulsanti; il blocco ha «Scegli il referente» non pieno.
+  assert.match(g5.box, /data-action="next-step-referent"/);
+  assert.deepEqual(filledIn(open), [INDICA], "un solo pulsante pieno: «Indica il referente»");
+  assert.deepEqual(filledIn(g5.box), [INDICA], "nel riquadro");
+  assert.equal(boxCount(open) + askCount(open), 1, "una volta sola nella pagina");
+  assert.ok(!open.includes('data-slot="referent-block" data-state="manca"'), "lo stato si dice una volta");
+  // Solo un motivo di sistema: G6 lo dice sotto il pulsante, che resta, bordato, e apre la finestra (che lo dice).
   const system = render([{ code: "email_non_configurata", message: T.gates.emailNotConfigured }]);
   const g6 = boxAndNeeds(system);
   assert.match(g6.box, /data-key="G6"/);
   assert.match(g6.box, /data-gate="email_non_configurata"/);
   assert.ok(g6.box.includes(`>${T.gates.emailNotConfigured}</p>`), "la riga è il motivo, senza «Tocca a»");
   assert.deepEqual(filledIn(system), []);
-  assert.equal(askCount(g6.box), 0);
-  assert.equal(askCount(g6.needs), 1, "il blocco apre la finestra, che lo dice");
-  assert.doesNotMatch(new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*?${CHOOSE}</button>`).exec(system)?.[0] ?? "", /disabled=""/);
+  assert.equal(boxCount(g6.box), 1, "il riquadro apre la finestra");
+  assert.equal(askCount(g6.needs), 0, "il blocco non lo ripete");
+  assert.doesNotMatch(new RegExp(`<button[^>]*>(?:(?!</button>)[\\s\\S])*?${INDICA}</button>`).exec(system)?.[0] ?? "", /disabled=""/);
   // L'email di chi guarda non verificata: G6 lo dice, nessun pulsante.
   const unverified = render([{ code: "email_non_verificata", message: T.gates.emailNotVerified }]);
   assert.match(boxAndNeeds(unverified).box, /data-key="G6"/);
-  assert.equal(askCount(unverified), 0);
+  assert.equal(askCount(unverified) + boxCount(unverified), 0);
   // Niente da chiedere e niente da preparare: il referente conferma e stima lo stesso (D5), G5 pieno.
   const nothing = render([{ code: "nessuna_domanda", message: T.gates.noQuestions }], { askableNeedIds: [], preparable: [] });
-  assert.equal(askCount(nothing), 1);
-  assert.deepEqual(filledIn(nothing), [CHOOSE]);
+  assert.equal(boxCount(nothing), 1);
+  assert.deepEqual(filledIn(nothing), [INDICA]);
   for (const page of [html, other, open, system, unverified, nothing]) {
     assert.ok(!page.includes('data-slot="referent-gates"') && !page.includes(`${T.prepare}</button>`), "niente motivi né «Prepara le domande» fuori dalla finestra");
   }
@@ -528,8 +534,8 @@ test("(rilascio 5) il referente scelto: il blocco «Referente» con la richiesta
   assert.ok(page.includes(`>${B.heading}<`));
   assert.ok(page.includes(NAMES.federico));
   assert.match(page, /In attesa del referente · inviata il \d{1,2} [a-z]{3} · scade il \d{1,2} [a-z]{3}/);
-  // La riga sotto il titolo, un link al blocco.
-  assert.match(page, new RegExp(`data-slot="referent-line"[^>]*><a[^>]*href="#referente"[^>]*>Referente: ${NAMES.federico} · Risposte da verificare</a>`));
+  // (Rilascio 6, B.1.2) Lo stato si dice una volta, nel blocco: niente riga sotto il titolo.
+  assert.ok(!page.includes('data-slot="referent-line"'));
   // «Chiedi a un'altra persona» solo con un referente; mai «Chiedi al referente» del rilascio 4 su questo use case.
   assert.ok(page.includes(`${A.other}</button>`));
   assert.ok(!page.includes(`>${T.ask}</button>`));

@@ -172,6 +172,9 @@ export function ReferentBlock({ workspaceId, useCaseId, panel, canEdit, boxOwnsC
     </Button>
   );
 
+  // (Rilascio 6, B.1.2) «Manca il referente» con «Indica il referente» nel riquadro «Prossimo passo»: lo
+  // stato si dice una volta, lì; il blocco non lo ripete.
+  if (model.state === "manca" && boxOwnsChoose) return null;
   // «Manca il referente»: una riga sola, il titolo, la frase e (quando chi guarda può) «Scegli il referente».
   if (model.state === "manca") {
     return (

@@ -330,7 +330,8 @@ test("piega «Realizzazione» e riquadro: «Avvia» pieno nel riquadro quando è
   assert.ok(lead.fold.includes("La realizzazione non è ancora partita.") && !lead.fold.includes("Avvia la realizzazione"), "la piega non lo ripete");
   const builder = await schedaOf("builder", ready);
   assert.match(builder.box, /data-key="G9"/);
-  assert.ok(builder.box.includes("Tocca a Lateral Space. Da Prova H6 non serve nessuna informazione."));
+  // (Rilascio 6, B.1) Lo stato in parole, «Tocca a Lateral Space.» a parte, il motivo nel «?».
+  assert.ok(builder.box.includes("Pronto da avviare") && builder.box.includes("Tocca a Lateral Space.") && builder.box.includes("Da Prova H6 non serve nessuna informazione."));
   assert.deepEqual(filledIn(builder.html), [], "il revisore del cliente non avvia");
   assert.ok(!builder.html.includes("casi-duso/nuovo"));
 

@@ -153,7 +153,8 @@ test("la scheda guidata: un contenitore, due colonne da 58rem della scheda, il p
   assert.match(detail, /data-projection="contributore" className=\{cn\("mx-auto w-full max-w-3xl min-w-0 space-y-6", className\)\}/);
   const path = read("src/components/use-cases/detail/use-case-path.tsx");
   assert.ok(path.includes('"grid-cols-3 @min-[40rem]/scheda:grid-cols-6"') && path.includes('"grid-cols-2 @min-[40rem]/scheda:grid-cols-4"'));
-  assert.ok(read("src/components/use-cases/detail/next-step-box.tsx").includes("@2xl/scheda:flex-row"));
+  // (Rilascio 6, B.1) Il passo è una riga sola, che va a capo tra i controlli, mai dentro un pulsante.
+  assert.ok(read("src/components/use-cases/detail/next-step-box.tsx").includes('data-slot="next-step-actions" className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"'));
   // «Impatto»: la cifra grande accanto alle altre da 28rem della scheda; «Come cambia il lavoro»: i tre passi in riga da 40rem.
   assert.ok(read("src/components/use-cases/detail/impact-block.tsx").includes('"grid gap-x-8 gap-y-2 @md/scheda:grid-cols-[auto_minmax(0,1fr)] @md/scheda:items-end"'));
   assert.ok(read("src/components/use-cases/detail/work-flow.tsx").includes("@min-[40rem]/scheda:grid-cols-[minmax(0,1fr)_1.25rem_minmax(0,1fr)_1.25rem_minmax(0,1fr)]"));

@@ -742,13 +742,18 @@ function renderBox(item: Item, canDecide = true): string {
   return renderToStaticMarkup(createElement(box.NextStepBox, { workspaceId: ids.ws, step, item, today, canDecide, canMarkInProgress: false }));
 }
 
+/** (Rilascio 6) Il «?» accanto al pulsante del passo. */
+const WHY = "Perché questo passo";
+
 test("riquadro «Prossimo passo»: i pulsanti di §6.4 per fase, pieno solo il passo di chi guarda, mai pulsanti spenti", opts, () => {
   const cases: Array<[string, Partial<Item>, string | null, string[]]> = [
-    ["da valutare", {}, "Approva", ["Rimanda", "Serve info", "Non avviare", "Altre decisioni"]],
+    // (Rilascio 6, B.1.7) «Approva» in vista, «Rimanda», «Serve info» e «Non avviare» nel menu «⋯».
+    ["da valutare", {}, "Approva", ["Altre decisioni"]],
     // «Serve info» e «Rimandata»: la decisione non è il passo di chi guarda, «Approva» resta outline.
-    ["serve info", { subState: "serve_info", phaseLabel: "Da valutare · Serve info" }, null, ["Approva", "Rimanda", "Serve info", "Non avviare", "Altre decisioni"]],
-    ["rimandata", { subState: "rimandata", phaseLabel: "Da valutare · Rimandata", reviewBy: "2099-01-14" }, null, ["Approva", "Rimanda", "Serve info", "Non avviare", "Altre decisioni"]],
-    ["approvato da costruire", { phase: "approvato", subState: "piu_avanti", phaseLabel: "Approvato · Più avanti" }, null, ["Altre decisioni"]],
+    ["serve info", { subState: "serve_info", phaseLabel: "Da valutare · Serve info" }, null, ["Approva", "Altre decisioni"]],
+    ["rimandata", { subState: "rimandata", phaseLabel: "Da valutare · Rimandata", reviewBy: "2099-01-14" }, null, ["Approva", "Altre decisioni"]],
+    // (Rilascio 6) «Più avanti»: «Scegli il trimestre» bordato porta a «Quando».
+    ["approvato da costruire", { phase: "approvato", subState: "piu_avanti", phaseLabel: "Approvato · Più avanti" }, null, ["Scegli il trimestre", "Altre decisioni"]],
     ["approvato da diffondere", { phase: "approvato", subState: "piu_avanti", phaseLabel: "Approvato · Più avanti", kind: "da_diffondere" }, "Segna come diffusa", ["Altre decisioni"]],
     ["in realizzazione senza dossier", { phase: "in_realizzazione", subState: "senza_dossier", phaseLabel: "In realizzazione · Senza dossier" }, "Segna come realizzato", ["Altre decisioni"]],
     ["in realizzazione, dossier chiuso", { phase: "in_realizzazione", subState: "dossier", phaseLabel: "In realizzazione · Chiuso", dossier: { status: "chiuso" } }, null, ["Altre decisioni"]],
@@ -770,7 +775,8 @@ test("riquadro «Prossimo passo»: i pulsanti di §6.4 per fase, pieno solo il p
   ];
   for (const [label, over, primary, others] of cases) {
     const html = renderBox(decisionItem(over));
-    const shown = buttonsIn(html);
+    // (Rilascio 6) Il «?» della spiegazione non è un'azione: si conta a parte.
+    const shown = buttonsIn(html).filter((b) => b.label !== WHY);
     const filled = shown.filter((b) => b.filled);
     assert.ok(filled.length <= 1, `${label}: ${filled.length} pulsanti pieni`);
     assert.deepEqual(filled.map((b) => b.label), primary ? [primary] : [], `${label}: pulsante pieno`);
@@ -828,8 +834,10 @@ test("riquadro e lato: la riga del passo, «Quando» solo da approvato, la nota 
   const { findHubForbidden } = await import("./copy-guard.ts");
   const now = new Date();
   const toDecide = readableText(renderBox(decisionItem({ waitingSince: ui.addDays(quarter.romeToday(now), -6) })));
-  assert.ok(toDecide.includes("Prossimo passo") && toDecide.includes("Valutare e decidere"));
-  assert.ok(toDecide.includes(`Tocca ad ${DEFAULT_REVIEW_TEAM_NAME}. In attesa da 6 giorni.`));
+  // (Rilascio 6, B.1) Il titolo «Prossimo passo» per i lettori di schermo, «Approva» con la spiegazione nel «?»; «Tocca a» no: tocca a chi guarda.
+  assert.ok(toDecide.includes("Prossimo passo") && toDecide.includes("Approva"));
+  assert.ok(toDecide.includes("In attesa da 6 giorni."));
+  assert.ok(!toDecide.includes(`Tocca ad ${DEFAULT_REVIEW_TEAM_NAME}.`) && !toDecide.includes("Valutare e decidere"));
   assert.ok(!toDecide.includes("Da decidere ·"));
   assert.deepEqual(findHubForbidden(toDecide, "area"), []);
 
@@ -885,7 +893,7 @@ test("capitolo «Decisione» per il contributore: la nota pubblica delle proprie
   assert.equal(renderToStaticMarkup(createElement(section.ContributorDecisionSection, { workspaceId: ids.ws, teamName: DEFAULT_REVIEW_TEAM_NAME, useCase: { ...base, own: false } })), "", "proposta altrui");
   assert.equal(renderToStaticMarkup(createElement(section.ContributorDecisionSection, { workspaceId: ids.ws, teamName: DEFAULT_REVIEW_TEAM_NAME, useCase: { ...closed, own: true, code: "XX-0012", publicNote: null } })), "");
   // Senza `canDecide` (chi non decide) nessun pulsante, nessun campo da scrivere.
-  assert.deepEqual(buttonsIn(renderBox(decisionItem({ publicNote: "Nota" }), false)), []);
+  assert.deepEqual(buttonsIn(renderBox(decisionItem({ publicNote: "Nota" }), false)).filter((b) => b.label !== WHY), []);
   const readOnly = renderToStaticMarkup(createElement(noteField.PublicNoteField, { workspaceId: ids.ws, item: decisionItem({ publicNote: "Nota" }), canEdit: false }));
   assert.ok(!readOnly.includes("<textarea") && readOnly.includes("Nota"));
   void today;

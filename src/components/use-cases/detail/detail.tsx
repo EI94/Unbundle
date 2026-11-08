@@ -30,8 +30,7 @@ import { NextStepBox, PagePrimaryProvider } from "./next-step-box";
 import { PublicNoteField } from "./public-note-field";
 import type { RedactOption } from "./redact-dialog";
 import { askEntry } from "./referent/ask-dialog-state";
-import { assignEntry, requestsShown } from "./referent/assign-dialog-state";
-import { referentHeaderLine } from "./referent/referent-block-view";
+import { referentStepInput, requestsShown } from "./referent/assign-dialog-state";
 import { referentDescription } from "@/lib/use-cases/referent/description";
 import { impactRowsOf } from "@/lib/use-cases/referent/impact";
 import { ReferentDialogHost } from "./referent/dialog-host";
@@ -313,18 +312,7 @@ export function UseCaseDetailView({
   const feature = abilities.canSeeNeeds && referents?.available ? referents : null;
   const entry = feature ? askEntry(feature) : null;
   // (Rilascio 5, §9.6) Il referente dello use case per il riquadro: solo per uno use case che ne ha uno da scegliere.
-  const assignE = feature ? assignEntry(feature) : null;
-  const referentInput =
-    feature?.eligible && abilities.canEditNeeds
-      ? {
-          state: feature.referent?.state ?? ("manca" as const),
-          review: feature.referent?.review ?? null,
-          canChoose: Boolean(assignE?.canOpen && assignE.sendGates.length === 0),
-          askableForReferent: feature.referent ? feature.referent.askableForReferent.length : null,
-          // (Rilascio 5.1) Le risposte per beneficio non sono «una stima del tempo senza quella del team».
-          noTeamEstimate: Boolean(feature.referent?.check && feature.referent.check.team === null && !feature.referent.check.benefits),
-        }
-      : null;
+  const referentInput = feature ? referentStepInput(feature, abilities.canEditNeeds) : null;
   const step = nextStepOf({
     workspaceId,
     item: detail,
@@ -394,7 +382,8 @@ export function UseCaseDetailView({
           canSetHidden: abilities.canSetHiddenFromSearch,
           canRedact: abilities.canRedact,
           redactOptions: abilities.canRedact ? redactOptions(detail) : [],
-          referentLine: feature?.eligible ? referentHeaderLine(feature.referent) : null,
+          // (Rilascio 6, B.1.2) Lo stato del referente si dice una volta, nel suo blocco: niente riga sotto il titolo.
+          referentLine: null,
         }}
       />
       <Arrival initial={arrival} chapter={chapter ?? null} ids={targets} startInBox={startInBox}>

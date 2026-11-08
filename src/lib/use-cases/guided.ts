@@ -49,6 +49,9 @@ import type { Zone } from "./labels.ts";
 export const GUIDED_TEXT = Object.freeze({
   toTeam: "Tocca a {nome}.",
   toTeamVowel: "Tocca ad {nome}.",
+  /** (Rilascio 6) «Serve info»: chi fa il passo, e il «?». */
+  proposerTurn: "Tocca a chi ha proposto.",
+  proposerWhy: "La domanda è nella nota pubblica.",
   lateralSpace: "Lateral Space",
   path: Object.freeze({
     ariaLabel: "Percorso dello use case",
@@ -168,6 +171,37 @@ export const GUIDED_TEXT = Object.freeze({
     maybeDuplicate: "Potrebbe essere un doppione di {codice}.",
     evaluate: "Valutare e decidere",
   }),
+  /**
+   * (Rilascio 6, B.1) Il pulsante del passo: un verbo di due o tre parole che fa il passo da dove si
+   * è; senza pulsante, le parole dello stato. La spiegazione sta nel «?» accanto.
+   */
+  cta: Object.freeze({
+    why: "Perché questo passo",
+    verify: "Verifica le risposte",
+    chase: "Sollecita le risposte",
+    chaseReferent: "Sollecita il referente",
+    quarter: "Scegli il trimestre",
+    authorize: "Autorizza i fornitori",
+    authorizeWaiting: "Manca l'ok sui fornitori",
+    choose: "Indica il referente",
+    askReferent: "Chiedi al referente",
+    ask: "Chiedi le informazioni",
+    other: "Chiedi a un'altra persona",
+    waitReferent: "In attesa del referente",
+    waitAnswers: "In attesa delle risposte",
+    blocked: "Informazioni ferme",
+    start: "Avvia la realizzazione",
+    ready: "Pronto da avviare",
+    unavailable: "Riepilogo non disponibile",
+    dossier: "Apri il dossier",
+    inProgress: "Realizzazione in corso",
+    dossierClosed: "Dossier chiuso",
+    nothing: "Nessun passo da fare",
+    waitProposer: "In attesa di chi ha proposto",
+    postponedUntil: "Rimandata al {giorno}",
+    postponed: "Rimandata",
+    closed: "Resta chiuso",
+  }),
   impact: Object.freeze({
     title: "Impatto",
     hoursOne: "ora all'anno",
@@ -187,6 +221,8 @@ export const GUIDED_TEXT = Object.freeze({
     toConfirm: "Ipotesi da confermare",
     measuredBy: "Si misura con: {indicatore}",
     origin: "Da dove vengono i numeri",
+    /** (Rilascio 6, B.1.6) Le voci di «Benefici e costi» con il loro conto, dietro un tocco: una cifra per riga in vista. */
+    howCounted: "Come si calcola",
     originBasis: "{voce} · Da dove viene la stima",
     easeValue: "{facilita} su 5",
     params: "Ipotesi di calcolo",
@@ -491,8 +527,9 @@ export type NextStepAction =
   /**
    * (Rilascio 5) Il referente: «Scegli il referente» (la finestra di una schermata), «Chiedi al
    * referente» (domande al referente) o «Chiedi a un'altra persona» (la finestra in tre passi).
+   * (Rilascio 6) «Chiedi di nuovo» al referente che non ha risposto (`di_nuovo`).
    */
-  | { type: "referente"; mode: "scegli" | "chiedi" | "altra"; label: string }
+  | { type: "referente"; mode: "scegli" | "chiedi" | "altra" | "di_nuovo"; label: string }
   /** «Apri Impostazioni» (autorizzazione dei fornitori). */
   | { type: "impostazioni"; href: string; label: string }
   /** Un'ancora della pagina («Vedi le risposte» → #cosa-serve). */
@@ -504,6 +541,22 @@ export type NextStepAction =
   /** «Apri il dossier». */
   | { type: "dossier"; href: string; label: string; variant: "default" | "outline" }
   | { type: "none" };
+
+/** (Rilascio 6, B.1) L'icona accanto al verbo del passo: mai da sola, c'è sempre anche la parola. */
+export type NextStepIcon =
+  | "referente"
+  | "chiedi"
+  | "verifica"
+  | "sollecita"
+  | "trimestre"
+  | "fornitori"
+  | "attesa"
+  | "ferme"
+  | "avvia"
+  | "dossier"
+  | "decidi"
+  | "fatto"
+  | "chiuso";
 
 export interface NextStep {
   key: NextStepKey;
@@ -526,6 +579,16 @@ export interface NextStep {
   decisions: "full" | "compact" | "none";
   /** Il pulsante principale delle decisioni si mostra `outline` (il passo non è di chi guarda). */
   primaryOutline: boolean;
+  /**
+   * (Rilascio 6, B.1) Il verbo del pulsante, due o tre parole («Indica il referente»); senza un pulsante
+   * per chi guarda, le parole dello stato («In attesa del referente»), con l'icona.
+   */
+  cta: string;
+  icon: NextStepIcon;
+  /** (Rilascio 6, B.1.3) «Tocca al referente.»: chi fa il passo, a schermo solo quando non è chi guarda; null quando non tocca a nessuno. */
+  turn: string | null;
+  /** (Rilascio 6, B.1) La spiegazione del «?» accanto al pulsante (il titolo e la riga di prima, senza «Tocca a …»); vuota senza niente da dire. */
+  why: string;
 }
 
 export interface NextStepInput {
@@ -559,6 +622,12 @@ export interface NextStepInput {
     askableForReferent: number | null;
     /** La stima da verificare è del referente senza una stima del team. */
     noTeamEstimate?: boolean;
+    /**
+     * (Rilascio 6) La finestra del referente si apre per chi guarda anche con un motivo che blocca solo
+     * l'invio (`assignEntry(...).canOpen`: le email spente, l'ok sui fornitori che può dare lui): il
+     * pulsante del passo c'è, bordato, e la finestra dice il motivo.
+     */
+    canOpen?: boolean;
   } | null;
   /** `realizationVariant(...)`; null quando non si conosce (pannello). */
   realizationVariant: GuidedRealizationVariant | null;
@@ -572,6 +641,13 @@ export interface NextStepInput {
 interface StepParts {
   title: string;
   line?: string;
+  /** (Rilascio 6) Il verbo del pulsante o le parole dello stato; senza, l'etichetta dell'azione o il titolo. */
+  cta?: string;
+  icon?: NextStepIcon;
+  /** (Rilascio 6) «Tocca a …» (`toTeam`, «Tocca al referente.»); null: non tocca a nessuno. */
+  turn?: string | null;
+  /** (Rilascio 6) La spiegazione del «?»; senza, la riga. */
+  why?: string;
   gate?: ReferentGate["code"] | null;
   link?: { id: string; label: string } | null;
   action?: NextStepAction;
@@ -582,6 +658,8 @@ interface StepParts {
 
 function step(key: NextStepKey, parts: StepParts): NextStep {
   const mine = parts.mine ?? false;
+  const action = parts.action ?? { type: "none" };
+  const label = "label" in action ? action.label : null;
   return {
     key,
     heading: parts.heading ?? GUIDED_TEXT.box.heading,
@@ -589,10 +667,14 @@ function step(key: NextStepKey, parts: StepParts): NextStep {
     line: parts.line ?? "",
     gate: parts.gate ?? null,
     link: parts.link ?? null,
-    action: parts.action ?? { type: "none" },
+    action,
     mine,
     decisions: parts.decisions ?? "compact",
     primaryOutline: !mine,
+    cta: parts.cta ?? label ?? parts.title,
+    icon: parts.icon ?? "decidi",
+    turn: parts.turn ?? null,
+    why: parts.why ?? parts.line ?? "",
   };
 }
 
@@ -630,6 +712,9 @@ export function nextStepOf(input: NextStepInput): NextStep {
         ? step("F1", {
             title: GUIDED_TEXT.box.spread,
             line: sentence(toTeam(input.teamName), GUIDED_TEXT.box.spreadLine),
+            turn: toTeam(input.teamName),
+            why: GUIDED_TEXT.box.spreadLine,
+            icon: "fatto",
             action: { type: "decisione" },
             mine: true,
           })
@@ -647,10 +732,13 @@ function closedStep({ item, canDecide, closedOn, today }: NextStepInput): NextSt
   const decided = item.subState === "non_avviato" && closedOn ? formatDayInYear(closedOn, instantOfDay(today)) : null;
   const destination = reopenDestination({ subState: item.subState, status: item.status ?? null });
   const reopen = !canDecide ? null : !hasButtons ? t.staysClosed : destination === "da_decidere" ? t.reopenToDecide : destination === "fase_di_prima" ? t.reopenBefore : t.reopen;
+  const line = sentence(decided ? fill(t.closedDecidedOn, { giorno: decided }) : null, reopen);
   return step("C", {
     heading: t.closedHeading,
     title,
-    line: sentence(decided ? fill(t.closedDecidedOn, { giorno: decided }) : null, reopen),
+    line,
+    cta: hasButtons ? title : GUIDED_TEXT.cta.closed,
+    icon: "chiuso",
     action: hasButtons ? { type: "decisione" } : { type: "none" },
     decisions: "full",
   });
@@ -659,8 +747,9 @@ function closedStep({ item, canDecide, closedOn, today }: NextStepInput): NextSt
 function realizedStep({ item, today }: NextStepInput): NextStep {
   const t = GUIDED_TEXT.box;
   const on = day(item.realizedOn, today);
-  if (item.kind === "da_diffondere") return step("D2", { title: t.nothingToDo, line: on ? fill(t.diffusedOn, { giorno: on }) : "" });
-  return step("D1", { title: t.nothingToDo, line: on ? fill(t.inUseSince, { giorno: on }) : "" });
+  const parts = { title: t.nothingToDo, cta: GUIDED_TEXT.cta.nothing, icon: "fatto" as const };
+  if (item.kind === "da_diffondere") return step("D2", { ...parts, line: on ? fill(t.diffusedOn, { giorno: on }) : "" });
+  return step("D1", { ...parts, line: on ? fill(t.inUseSince, { giorno: on }) : "" });
 }
 
 /** «Dossier in preparazione · 3 di 10 indispensabili a posto»: lo stato e, se c'è, l'avanzamento. */
@@ -674,35 +763,49 @@ function dossierLine(statusLabel: string, progress: { ok: number; required: numb
 
 function inRealizationStep({ workspaceId, item, teamName, canOpenAnyDossier, realizationVariant: variant, realization, dossierRead }: NextStepInput): NextStep {
   const t = GUIDED_TEXT.box;
+  const c = GUIDED_TEXT.cta;
   const team = toTeam(teamName);
-  if (dossierRead === "errore" || variant === "non_disponibile") return step("E7", { title: t.carryOn, line: t.unavailable, action: { type: "decisione" } });
+  if (dossierRead === "errore" || variant === "non_disponibile") return step("E7", { title: t.carryOn, line: t.unavailable, cta: c.unavailable, icon: "dossier", action: { type: "decisione" } });
   const situation = dossierSituation(item.dossier);
-  if (situation === "in_uso") return step("E1", { title: t.markRealized, line: sentence(team, t.dossierInUse), action: { type: "decisione" }, mine: true });
-  if (situation === "nessuno") return step("E2", { title: t.markWhenInUse, line: team, action: { type: "decisione" }, mine: true });
-  if (situation === "chiuso") return step("E3", { title: t.decideWhat, line: sentence(team, t.dossierClosed), action: { type: "decisione" } });
+  if (situation === "in_uso") return step("E1", { title: t.markRealized, line: sentence(team, t.dossierInUse), turn: team, why: t.dossierInUse, icon: "fatto", action: { type: "decisione" }, mine: true });
+  if (situation === "nessuno") return step("E2", { title: t.markWhenInUse, line: team, turn: team, why: t.markWhenInUse, icon: "fatto", action: { type: "decisione" }, mine: true });
+  if (situation === "chiuso") return step("E3", { title: t.decideWhat, line: sentence(team, t.dossierClosed), cta: c.dossierClosed, turn: team, why: sentence(`${t.decideWhat}.`, t.dossierClosed), icon: "dossier", action: { type: "decisione" } });
   const dossier = realization?.state === "avviata" ? realization.dossier : null;
   if (variant === "riepilogo" && dossier?.myStep) {
+    const progress = dossierLine(dossier.statusLabel, dossier.progress);
     return step("E4", {
       title: dossier.myStep.label,
-      line: sentence(t.yourTurn, dossierLine(dossier.statusLabel, dossier.progress)),
+      line: sentence(t.yourTurn, progress),
+      turn: t.yourTurn,
+      why: sentence(`${dossier.myStep.label.replace(/[.\s]+$/u, "")}.`, progress),
+      icon: "dossier",
       action: { type: "dossier", href: dossier.myStep.href, label: t.openDossier, variant: "default" },
       mine: true,
       decisions: "none",
     });
   }
   if (variant === "riepilogo" && dossier?.href) {
+    const progress = dossierLine(dossier.statusLabel, dossier.progress, dossier.nextMilestone);
     return step("E5", {
       title: t.carryOn,
-      line: sentence(t.members, dossierLine(dossier.statusLabel, dossier.progress, dossier.nextMilestone)),
+      line: sentence(t.members, progress),
+      turn: t.members,
+      why: progress,
+      icon: "dossier",
       action: { type: "dossier", href: dossier.href, label: t.openDossier, variant: "outline" },
       decisions: "none",
     });
   }
   const status = item.dossier!.status;
   const canOpen = variant === "dossier" && canOpenAnyDossier && Boolean(item.dossier?.caseId);
+  const why = sentence(dossierLine(CASE_STATUS_LABEL[status], null), canOpen ? null : REALIZATION_TEXT.membersOnly);
   return step("E6", {
     title: t.carryOn,
-    line: sentence(t.members, dossierLine(CASE_STATUS_LABEL[status], null), canOpen ? null : REALIZATION_TEXT.membersOnly),
+    line: sentence(t.members, why),
+    cta: canOpen ? t.openDossier : c.inProgress,
+    turn: t.members,
+    why,
+    icon: "dossier",
     action: canOpen
       ? { type: "dossier", href: `/dashboard/${workspaceId}/casi-duso/${item.dossier!.caseId}`, label: t.openDossier, variant: "outline" }
       : { type: "none" },
@@ -721,15 +824,27 @@ function toAskSentence(toAsk: number, total: number): string {
 /** I motivi che nessuno nel workspace può togliere: la riga li dice da soli, senza «Tocca a». */
 const SYSTEM_GATES: ReadonlyArray<ReferentGate["code"]> = ["email_non_configurata", "risposte_non_attive"];
 
+/** (Rilascio 6) Il verbo del pulsante del referente, per modo. */
+function referentCta(mode: "scegli" | "chiedi" | "altra" | "di_nuovo"): { cta: string; icon: NextStepIcon } {
+  const c = GUIDED_TEXT.cta;
+  if (mode === "scegli") return { cta: c.choose, icon: "referente" };
+  if (mode === "altra") return { cta: c.other, icon: "chiedi" };
+  if (mode === "di_nuovo") return { cta: c.chaseReferent, icon: "sollecita" };
+  return { cta: c.askReferent, icon: "chiedi" };
+}
+
 function approvedStep(input: NextStepInput): NextStep {
   const { workspaceId, item, today, info, referents, askEntry, realizationVariant: variant, realization } = input;
   const t = GUIDED_TEXT.box;
+  const c = GUIDED_TEXT.cta;
   const team = toTeam(input.teamName);
   const company = companyLabel(input.companyName);
   const counts = info?.counts ?? null;
   // (Rilascio 5) Il referente: solo per uno use case che ne ha uno da scegliere (null: il rilascio 4).
   const ref = input.referent ?? null;
   const hasReferent = ref !== null && ref.state !== "manca";
+  // (Rilascio 6) La finestra del referente si apre anche con un motivo che ferma solo l'invio: il pulsante resta, bordato.
+  const opensReferent = (mode: "scegli" | "chiedi" | "altra"): NextStepAction => (referents?.available && ref?.canOpen ? { type: "referente", mode, label: referentCta(mode).cta } : { type: "none" });
 
   const reviewLine =
     ref?.review === "correzione" ? t.verifyCorrection : ref?.review === "stima" ? (ref.noTeamEstimate ? t.verifyNoTeam : t.verifyEstimate) : ref?.review === "non_sa" ? t.verifyUnknown : null;
@@ -738,6 +853,10 @@ function approvedStep(input: NextStepInput): NextStep {
     return step("G1", {
       title: t.verify,
       line: sentence(team, reviewLine, countLine),
+      cta: c.verify,
+      icon: "verifica",
+      turn: team,
+      why: sentence(reviewLine, countLine),
       action: { type: "vai", id: reviewLine ? ANCHOR.referente : ANCHOR.cosaServe, label: t.seeAnswers },
       mine: true,
     });
@@ -745,10 +864,18 @@ function approvedStep(input: NextStepInput): NextStep {
   if ((counts && counts.unanswered > 0) || ref?.state === "nessuna_risposta") {
     const toRequests = Boolean(referents?.available && referents.requestCount > 0);
     const unanswered = counts && counts.unanswered > 0 ? (counts.unanswered === 1 ? t.unansweredOne : fill(t.unansweredMany, { n: formatInteger(counts.unanswered) })) : t.referentSilent;
+    // (Rilascio 6) Il referente non ha risposto: «Sollecita il referente» apre «Chiedi di nuovo», se la finestra si apre.
+    const again = ref?.state === "nessuna_risposta" && !(counts && counts.unanswered > 0) && referents?.available && ref.canOpen;
     return step("G2", {
       title: t.chase,
       line: sentence(team, unanswered),
-      action: { type: "vai", id: ref?.state === "nessuna_risposta" ? ANCHOR.referente : toRequests ? ANCHOR.richieste : ANCHOR.cosaServe, label: t.seeRequests },
+      cta: ref?.state === "nessuna_risposta" ? c.chaseReferent : c.chase,
+      icon: "sollecita",
+      turn: team,
+      why: unanswered,
+      action: again
+        ? { type: "referente", mode: "di_nuovo", label: c.chaseReferent }
+        : { type: "vai", id: ref?.state === "nessuna_risposta" ? ANCHOR.referente : toRequests ? ANCHOR.richieste : ANCHOR.cosaServe, label: t.seeRequests },
       mine: true,
     });
   }
@@ -759,41 +886,58 @@ function approvedStep(input: NextStepInput): NextStep {
         title: t.authorize,
         line: gate.message,
         gate: gate.code,
+        cta: gate.canDeclare ? c.authorize : c.authorizeWaiting,
+        icon: "fornitori",
+        turn: gate.canDeclare ? null : toTeam(company),
+        why: gate.message,
         action: gate.canDeclare ? { type: "impostazioni", href: gate.settingsHref, label: gate.linkLabel } : { type: "none" },
         mine: gate.canDeclare,
       });
     }
     const toAsk = counts?.toAsk ?? 0;
     const line = toAsk > 0 ? t.chooseLine : t.chooseLineNoQuestions;
-    if (ref.canChoose && !gate) return step("G5", { title: t.chooseTitle, line: sentence(team, line), action: { type: "referente", mode: "scegli", label: t.chooseButton }, mine: true });
-    if (!gate) return step("G6", { title: t.chooseTitle, line: sentence(team, line) });
-    return step("G6", { title: t.chooseTitle, line: SYSTEM_GATES.includes(gate.code) ? gate.message : sentence(team, gate.message), gate: gate.code });
+    const choose = { cta: c.choose, icon: "referente" as const };
+    if (ref.canChoose && !gate) return step("G5", { title: t.chooseTitle, line: sentence(team, line), ...choose, turn: team, why: line, action: { type: "referente", mode: "scegli", label: t.chooseButton }, mine: true });
+    if (!gate) return step("G6", { title: t.chooseTitle, line: sentence(team, line), ...choose, turn: team, why: line, action: opensReferent("scegli") });
+    const system = SYSTEM_GATES.includes(gate.code);
+    return step("G6", { title: t.chooseTitle, line: system ? gate.message : sentence(team, gate.message), gate: gate.code, ...choose, turn: system ? null : team, why: line, action: opensReferent("scegli") });
   }
   if (!approvedDone(item, today)) {
     const later = item.subState === "piu_avanti" || !item.targetQuarter;
+    const why = later ? t.laterLine : fill(t.expiredLine, { trimestre: quarterLabel(item.targetQuarter!) });
     return step("G3", {
       title: later ? t.laterTitle : t.expiredTitle,
-      line: sentence(team, later ? t.laterLine : fill(t.expiredLine, { trimestre: quarterLabel(item.targetQuarter!) })),
-      link: { id: ANCHOR.quando, label: t.goToWhen },
+      line: sentence(team, why),
+      cta: c.quarter,
+      icon: "trimestre",
+      turn: later ? null : team,
+      why: later ? sentence(`${t.laterTitle}.`, why) : why,
+      // (Rilascio 6) «Scegli il trimestre» porta a «Quando»; pieno solo quando il trimestre è finito.
+      action: { type: "vai", id: ANCHOR.quando, label: c.quarter },
+      mine: !later && input.canDecide,
     });
   }
   if (isReadyToStart(item, info, today)) {
     const why = info === null ? fill(t.noneNeeded, { azienda: company }) : t.allIn;
     const lsTurn = toTeam(GUIDED_TEXT.lateralSpace);
-    if (variant === "non_disponibile") return step("G9", { title: t.start, line: t.unavailable });
+    if (variant === "non_disponibile") return step("G9", { title: t.start, line: t.unavailable, cta: c.unavailable, icon: "avvia", why: t.unavailable });
+    const parts = { title: t.start, line: sentence(lsTurn, why), turn: lsTurn, why, icon: "avvia" as const };
     if (variant === "avvia") {
       const startHref = realization?.state === "da_avviare" ? realization.startHref : null;
       return step("G9", {
-        title: t.start,
-        line: sentence(lsTurn, why),
+        ...parts,
+        cta: c.start,
         action: { type: "avvia", href: startHref ?? `/dashboard/${workspaceId}/casi-duso/nuovo?useCaseId=${item.id}`, label: t.startButton },
         mine: true,
       });
     }
-    if (variant === "segna") return step("G9", { title: t.start, line: sentence(lsTurn, why), action: { type: "segna_in_realizzazione" }, mine: true });
-    return step("G9", { title: t.start, line: sentence(lsTurn, why) });
+    if (variant === "segna") return step("G9", { ...parts, cta: c.start, action: { type: "segna_in_realizzazione" }, mine: true });
+    return step("G9", { ...parts, cta: c.ready });
   }
-  if (ref?.state === "in_attesa") return step("G7", { title: t.wait, line: sentence(t.referentTurn, waitingTail(counts, today)) });
+  if (ref?.state === "in_attesa") {
+    const tail = waitingTail(counts, today);
+    return step("G7", { title: t.wait, line: sentence(t.referentTurn, tail), cta: c.waitReferent, icon: "attesa", turn: t.referentTurn, why: tail ?? "" });
+  }
   const askTitle = fill(t.askTitle, { azienda: company });
   if (counts && info && counts.toAsk > 0) {
     const firstGate = referents?.available ? (referents.gates[0] ?? null) : null;
@@ -802,6 +946,10 @@ function approvedStep(input: NextStepInput): NextStep {
         title: t.authorize,
         line: firstGate.message,
         gate: firstGate.code,
+        cta: firstGate.canDeclare ? c.authorize : c.authorizeWaiting,
+        icon: "fornitori",
+        turn: firstGate.canDeclare ? null : toTeam(company),
+        why: firstGate.message,
         action: firstGate.canDeclare ? { type: "impostazioni", href: firstGate.settingsHref, label: firstGate.linkLabel } : { type: "none" },
         mine: firstGate.canDeclare,
       });
@@ -809,26 +957,32 @@ function approvedStep(input: NextStepInput): NextStep {
     const asks = toAskSentence(counts.toAsk, info.total);
     if (referents?.available && referents.canAsk && askEntry?.canOpen) {
       if (hasReferent && ref.askableForReferent !== null) {
-        if (ref.askableForReferent > 0) return step("G5", { title: askTitle, line: sentence(team, asks), action: { type: "referente", mode: "chiedi", label: t.ask }, mine: true });
-        return step("G5", { title: t.otherTitle, line: sentence(team, t.otherLine), action: { type: "referente", mode: "altra", label: t.otherButton }, mine: true });
+        if (ref.askableForReferent > 0) return step("G5", { title: askTitle, line: sentence(team, asks), ...referentCta("chiedi"), turn: team, why: asks, action: { type: "referente", mode: "chiedi", label: t.ask }, mine: true });
+        return step("G5", { title: t.otherTitle, line: sentence(team, t.otherLine), ...referentCta("altra"), turn: team, why: t.otherLine, action: { type: "referente", mode: "altra", label: t.otherButton }, mine: true });
       }
-      return step("G5", { title: askTitle, line: sentence(team, asks), action: { type: "chiedi", label: t.ask }, mine: true });
+      return step("G5", { title: askTitle, line: sentence(team, asks), cta: c.ask, icon: "chiedi", turn: team, why: asks, action: { type: "chiedi", label: t.ask }, mine: true });
     }
     const gate = referents?.available ? (askEntry?.gates[0] ?? referents.gates[0] ?? null) : null;
     // (Rilascio 5) Il referente non ha queste informazioni: il titolo dice a chi chiedere, la riga il motivo che blocca.
-    const gateTitle = hasReferent && ref.askableForReferent === 0 ? t.otherTitle : askTitle;
-    if (!gate) return step("G6", { title: gateTitle, line: sentence(team, asks) });
-    return step("G6", { title: gateTitle, line: SYSTEM_GATES.includes(gate.code) ? gate.message : sentence(team, gate.message), gate: gate.code });
+    const other = hasReferent && ref.askableForReferent === 0;
+    const gateTitle = other ? t.otherTitle : askTitle;
+    // (Rilascio 6) Con un referente, la sua finestra si apre anche quando un motivo ferma solo l'invio.
+    const mode = other ? "altra" : "chiedi";
+    const gated = { ...(hasReferent && ref.askableForReferent !== null ? referentCta(mode) : { cta: c.ask, icon: "chiedi" as const }), why: other ? t.otherLine : asks, action: hasReferent && ref.askableForReferent !== null ? opensReferent(mode) : ({ type: "none" } as const) };
+    if (!gate) return step("G6", { title: gateTitle, line: sentence(team, asks), turn: team, ...gated });
+    const system = SYSTEM_GATES.includes(gate.code);
+    return step("G6", { title: gateTitle, line: system ? gate.message : sentence(team, gate.message), gate: gate.code, turn: system ? null : team, ...gated });
   }
-  if (counts && counts.waiting > 0) return step("G7", { title: t.wait, line: sentence(t.referents, waitingTail(counts, today)) });
+  if (counts && counts.waiting > 0) {
+    const tail = waitingTail(counts, today);
+    return step("G7", { title: t.wait, line: sentence(t.referents, tail), cta: c.waitAnswers, icon: "attesa", turn: t.referents, why: tail ?? "" });
+  }
   if (counts && counts.blockedCount > 0) {
-    return step("G8", {
-      title: t.unblock,
-      line: sentence(team, counts.blockedCount === 1 ? t.blockedOne : fill(t.blockedMany, { n: formatInteger(counts.blockedCount) })),
-    });
+    const why = counts.blockedCount === 1 ? t.blockedOne : fill(t.blockedMany, { n: formatInteger(counts.blockedCount) });
+    return step("G8", { title: t.unblock, line: sentence(team, why), cta: c.blocked, icon: "ferme", turn: team, why });
   }
   // Non succede: una raccolta non completa ha sempre qualcosa da chiedere, da aspettare o fermo.
-  return step("G7", { title: t.wait, line: t.referents });
+  return step("G7", { title: t.wait, line: t.referents, cta: c.waitAnswers, icon: "attesa", turn: t.referents, why: "" });
 }
 
 /** «In attesa dal 3 nov, promemoria inviato.» (o solo «Promemoria inviato.»), oppure null. */
@@ -841,30 +995,32 @@ function waitingTail(counts: GuidedInfo["counts"] | null, today: string): string
 
 function toDecideStep({ item, today, teamName }: NextStepInput): NextStep {
   const t = GUIDED_TEXT.box;
+  const c = GUIDED_TEXT.cta;
   const team = toTeam(teamName);
   const note = decisionNote({ phase: item.phase, subState: item.subState, waitingSince: item.waitingSince }, today);
   const noteSentence = note ? `${note}.` : null;
-  const decide = { action: { type: "decisione" } as const, decisions: "full" as const };
+  // (Rilascio 6, B.1.7) «Approva» in vista, le altre decisioni nel menu «⋯».
+  const decide = { action: { type: "decisione" } as const, decisions: "compact" as const, icon: "decidi" as const };
   if (item.answered) {
-    return step("H2", { ...decide, title: t.readAnswer, line: sentence(team, t.answered), link: { id: ANCHOR.notaPubblica, label: t.readAnswerLink }, mine: true });
+    return step("H2", { ...decide, title: t.readAnswer, line: sentence(team, t.answered), turn: team, why: t.answered, link: { id: ANCHOR.notaPubblica, label: t.readAnswerLink }, mine: true });
   }
   switch (item.subState) {
     case "serve_info":
-      return step("H1", { ...decide, title: t.waitProposer, line: t.proposerTurn, link: { id: ANCHOR.notaPubblica, label: t.seePublicNote } });
+      return step("H1", { ...decide, title: t.waitProposer, line: t.proposerTurn, cta: c.waitProposer, icon: "attesa", turn: GUIDED_TEXT.proposerTurn, why: GUIDED_TEXT.proposerWhy, link: { id: ANCHOR.notaPubblica, label: t.seePublicNote } });
     case "rimandata": {
       const on = day(item.reviewBy, today);
-      return step("H3", { ...decide, title: on ? fill(t.resumeOn, { giorno: on }) : t.resume, line: sentence(team, t.postponed) });
+      return step("H3", { ...decide, title: on ? fill(t.resumeOn, { giorno: on }) : t.resume, line: sentence(team, t.postponed), cta: on ? fill(c.postponedUntil, { giorno: on }) : c.postponed, icon: "attesa", why: sentence(`${on ? fill(t.resumeOn, { giorno: on }) : t.resume}.`, t.postponed) });
     }
     case "da_rivedere":
-      return step("H4", { ...decide, title: t.resume, line: sentence(team, t.resumeDue), mine: true });
+      return step("H4", { ...decide, title: t.resume, line: sentence(team, t.resumeDue), turn: team, why: t.resumeDue, mine: true });
     case "valutata":
-      return step("H5", { ...decide, title: t.decideApprove, line: sentence(team, noteSentence), mine: true });
+      return step("H5", { ...decide, title: t.decideApprove, line: sentence(team, noteSentence), turn: team, why: noteSentence ?? "", mine: true });
     case "possibile_doppione": {
       const of = item.possibleDuplicateOf?.trim() ? fill(t.maybeDuplicate, { codice: item.possibleDuplicateOf.trim() }) : noteSentence;
-      return step("H6", { ...decide, title: t.checkDuplicate, line: sentence(team, of), mine: true });
+      return step("H6", { ...decide, title: t.checkDuplicate, line: sentence(team, of), turn: team, why: of ?? "", mine: true });
     }
     default:
-      return step("H7", { ...decide, title: t.evaluate, line: sentence(team, noteSentence), mine: true });
+      return step("H7", { ...decide, title: t.evaluate, line: sentence(team, noteSentence), turn: team, why: noteSentence ?? "", mine: true });
   }
 }
 

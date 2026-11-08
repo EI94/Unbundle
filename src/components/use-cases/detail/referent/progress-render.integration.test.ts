@@ -286,8 +286,9 @@ test("la scheda: niente chip nella testata; il passo «Informazioni» del percor
   await q(`UPDATE use_cases SET status = 'proposed', portfolio_review_status = 'in_review', target_quarter = NULL WHERE id = $1::uuid`, [cards.verify]);
   assert.match(verifyApproved, /data-slot="next-step" data-key="G1"/);
   const verifyBox = verifyApproved.slice(verifyApproved.indexOf('data-slot="next-step"'), verifyApproved.indexOf('data-slot="scheda-grid"'));
-  const seeAnswers = /<a\b([^>]*)>Vedi le risposte<\/a>/.exec(verifyBox);
-  assert.ok(seeAnswers && /\shref="#cosa-serve"/.test(seeAnswers[1]) && /\sclass="[^"]*\bbg-primary\b/.test(seeAnswers[1]), "G1: «Vedi le risposte» pieno, verso #cosa-serve");
+  // (Rilascio 6, B.1) Il passo è un pulsante con l'icona e il verbo: «Verifica le risposte».
+  const seeAnswers = /<a\b([^>]*)><svg\b[\s\S]*?<\/svg>Verifica le risposte<\/a>/.exec(verifyBox);
+  assert.ok(seeAnswers && /\shref="#cosa-serve"/.test(seeAnswers[1]) && /\sclass="[^"]*\bbg-primary\b/.test(seeAnswers[1]), "G1: «Verifica le risposte» pieno, verso #cosa-serve");
   assert.match(verifyApproved, /id="cosa-serve"/, "l'ancora c'è");
   const silent = await detailHtml("builder", cards.silent);
   const silentTotal = (await needsOf(cards.silent)).length;
@@ -295,10 +296,10 @@ test("la scheda: niente chip nella testata; il passo «Informazioni» del percor
   assert.match(infoStepOf(silent), /data-state="adesso"/);
   assert.ok(textOf(infoStepOf(silent)).endsWith(`0 di ${silentTotal}`), textOf(infoStepOf(silent)));
   assert.match(silent, /data-slot="next-step" data-key="G2"/);
-  // Con una richiesta inviata «Vedi le richieste» è il pulsante pieno del riquadro e porta a «Richieste inviate».
+  // Con una richiesta inviata «Sollecita le risposte» è il pulsante pieno del riquadro e porta a «Richieste inviate».
   const silentBox = silent.slice(silent.indexOf('data-slot="next-step"'), silent.indexOf('data-slot="scheda-grid"'));
-  const seeRequests = /<a\b([^>]*)>Vedi le richieste<\/a>/.exec(silentBox);
-  assert.ok(seeRequests && /\shref="#richieste"/.test(seeRequests[1]) && /\sclass="[^"]*\bbg-primary\b/.test(seeRequests[1]), "G2: «Vedi le richieste» pieno, verso #richieste");
+  const seeRequests = /<a\b([^>]*)><svg\b[\s\S]*?<\/svg>Sollecita le risposte<\/a>/.exec(silentBox);
+  assert.ok(seeRequests && /\shref="#richieste"/.test(seeRequests[1]) && /\sclass="[^"]*\bbg-primary\b/.test(seeRequests[1]), "G2: «Sollecita le risposte» pieno, verso #richieste");
   assert.match(silent, /<details id="richieste"/, "l'ancora c'è");
   assert.ok(!silent.includes("Informazioni: senza risposta"));
   assert.equal(textOf(summaryOf(silent)), `0${N}di ${silentTotal}${N}informazioni ricevute${N}· 2${N}senza${N}risposta${N}· ${silentTotal - 2}${N}da${N}chiedere`);

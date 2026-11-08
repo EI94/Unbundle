@@ -739,7 +739,8 @@ test("revisori: «Oscura testo» per Lateral Space e chi gestisce il workspace, 
   // «Archivia» sta nel menu «⋯ Altre decisioni» del riquadro, per le fasi di `decisionLayout`.
   const [step] = findProp(element, "step") as Array<{ key: string; decisions: string }>;
   const [boxItem] = findProp(element, "item").filter((value) => (value as { phaseLabel?: string })?.phaseLabel) as Array<Parameters<typeof import("./decision-ui.ts").decisionLayout>[0]>;
-  assert.deepEqual([step.key, step.decisions], ["H7", "full"]);
+  // (Rilascio 6, B.1.7) «Approva» in vista, le altre decisioni nel «⋯».
+  assert.deepEqual([step.key, step.decisions], ["H7", "compact"]);
   const { decisionLayout } = await import("./decision-ui.ts");
   assert.ok(decisionLayout(boxItem, { canDecide: true }).menu.includes("archivia"));
   assert.ok(html.includes('aria-label="Altre decisioni"'), "il menu delle decisioni nel riquadro");

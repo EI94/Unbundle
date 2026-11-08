@@ -159,6 +159,10 @@ export interface DecisionButtonsProps {
   primaryVariant?: "default" | "outline";
   /** Le decisioni `outline` in testa al menu «⋯» invece che in riga (riquadro «Prossimo passo»). */
   outlineInMenu?: boolean;
+  /** (Rilascio 6, B.1) L'icona accanto alla parola del pulsante principale, nel passo della scheda e del pannello. */
+  primaryIcon?: ReactNode;
+  /** (Rilascio 6) L'id della spiegazione del passo, letta dai lettori di schermo con il pulsante principale. */
+  primaryDescribedBy?: string;
   className?: string;
 }
 
@@ -170,7 +174,7 @@ export interface DecisionButtonsProps {
  * `version` letta con la pagina (o lasciata dall'ultima scrittura). Chi non decide non vede
  * niente: mai pulsanti spenti.
  */
-export function DecisionButtons({ workspaceId, item, today, canDecide, candidates, primaryVariant = "default", outlineInMenu = false, className }: DecisionButtonsProps) {
+export function DecisionButtons({ workspaceId, item, today, canDecide, candidates, primaryVariant = "default", outlineInMenu = false, primaryIcon = null, primaryDescribedBy, className }: DecisionButtonsProps) {
   const [open, setOpen] = useState<DecisionKey | null>(null);
   const [notePrefill, setNotePrefill] = useState<string | null>(null);
   /** Dopo una risposta a «Serve info» (D17): la nota pubblica da aggiornare nel dialogo; null se il dialogo non la propone. */
@@ -216,7 +220,8 @@ export function DecisionButtons({ workspaceId, item, today, canDecide, candidate
   return (
     <div data-slot="decision-buttons" className={cn("flex flex-wrap items-center gap-2", className)}>
       {primary ? (
-        <Button type="button" variant={primaryVariant} className="min-h-11 sm:min-h-8" onClick={() => openDialog(primary)}>
+        <Button type="button" variant={primaryVariant} className="min-h-11 sm:min-h-8" aria-describedby={primaryDescribedBy} onClick={() => openDialog(primary)}>
+          {primaryIcon}
           {DECISION_LABEL[primary]}
         </Button>
       ) : null}
@@ -278,6 +283,9 @@ export interface MarkInProgressButtonProps {
   dossiersEnabled: boolean;
   /** `outline` (come oggi), oppure pieno nel riquadro «Prossimo passo» quando il passo è di chi guarda. */
   variant?: "default" | "outline";
+  /** (Rilascio 6) L'icona del passo e l'id della sua spiegazione, nel riquadro «Prossimo passo». */
+  icon?: ReactNode;
+  describedBy?: string;
   className?: string;
 }
 
@@ -287,7 +295,7 @@ export interface MarkInProgressButtonProps {
  * costruire» senza dossier, con la sezione Casi d'uso spenta per il workspace. Altrimenti non
  * c'è. Chiede conferma; il servizio rifà ogni controllo.
  */
-export function MarkInProgressButton({ workspaceId, item, canMarkInProgress, dossiersEnabled, variant = "outline", className }: MarkInProgressButtonProps) {
+export function MarkInProgressButton({ workspaceId, item, canMarkInProgress, dossiersEnabled, variant = "outline", icon = null, describedBy, className }: MarkInProgressButtonProps) {
   const [open, setOpen] = useState(false);
   const { run, pending } = useDecisionRunner();
   if (!showMarkInProgress(item, { canMarkInProgress, dossiersEnabled })) return null;
@@ -300,7 +308,8 @@ export function MarkInProgressButton({ workspaceId, item, canMarkInProgress, dos
 
   return (
     <>
-      <Button type="button" variant={variant} className={cn("min-h-11 sm:min-h-8", className)} onClick={() => setOpen(true)}>
+      <Button type="button" variant={variant} className={cn("min-h-11 sm:min-h-8", className)} aria-describedby={describedBy} onClick={() => setOpen(true)}>
+        {icon}
         {DECISION_LABEL.segna_in_realizzazione}
       </Button>
       {open ? (
