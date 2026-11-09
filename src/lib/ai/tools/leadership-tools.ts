@@ -10,8 +10,25 @@ import {
 import { eq } from "drizzle-orm";
 import { companyValueThesisSchema, systemBoundarySchema } from "../schemas";
 
-export function getLeadershipTools(workspaceId: string, organizationId: string) {
+export function getLeadershipTools(workspaceId: string, organizationId: string, opts: { canSaveCompanyFacts?: boolean } = {}) {
   return {
+    saveCompanyFacts: tool({
+      description:
+        "Salva quante persone lavorano nell'azienda e, se l'utente lo dice, il ricavo dell'ultimo anno in euro. Usare appena l'utente dà questi numeri (di solito nella fase 1). Servono alla pagina «Programma» per il valore per dipendente. Mai stimarli o inventarli.",
+      inputSchema: z.object({
+        employees: z.number().int().min(1).max(10_000_000).optional().describe("Numero di dipendenti, se l'utente l'ha detto"),
+        revenueEur: z.number().min(1).max(1_000_000_000_000).optional().describe("Ricavo dell'ultimo anno in euro (12 milioni = 12000000), se l'utente l'ha detto"),
+      }),
+      execute: async ({ employees, revenueEur }) => {
+        if (!opts.canSaveCompanyFacts) return { success: false, message: "Non salvati: li scrive chi gestisce il workspace, nella pagina «Programma»." };
+        const { saveCompanyFactsFromDiscovery } = await import("@/lib/db/queries/use-case-program");
+        const saved = await saveCompanyFactsFromDiscovery(workspaceId, { employees, revenueEur });
+        return saved
+          ? { success: true, message: "Dati dell'azienda salvati." }
+          : { success: false, message: "Non salvati: si potranno scrivere nella pagina «Programma»." };
+      },
+    }),
+
     saveCompanyValueThesis: tool({
       description:
         "Salva la Company Value Thesis dell'organizzazione. Usare quando hai raccolto abbastanza informazioni per formulare dove l'azienda crea valore e quali nodi sono strategici.",

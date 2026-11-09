@@ -54,6 +54,9 @@ const TABLE_FILES = new Set([
   "src/lib/db/use-case-hub-referent-benefits-ddl.ts",
   // (0028) «Il filo con il referente»: il DDL dei messaggi e delle proposte dell'AI.
   "src/lib/db/use-case-hub-referent-thread-ddl.ts",
+  // (0029, rilascio 7) «Programma»: il CHECK della campanella allargato con «da_rivedere» e la riga che il cron scrive.
+  "src/lib/db/use-case-hub-program-ddl.ts",
+  "src/lib/db/queries/use-case-program.ts",
   // (Rilascio 6) Il filo: le letture per la scheda, le scritture del team e del referente.
   "src/lib/db/queries/use-case-referent-thread.ts",
   // (Rilascio 6) L'aiuto dell'AI: la coda delle proposte e il loro calcolo.

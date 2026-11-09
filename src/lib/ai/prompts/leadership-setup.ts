@@ -17,6 +17,9 @@ Domande-guida:
 - "Raccontami l'azienda in 2 minuti: cosa fate, per chi, e come generate margine."
 - "Qual è il vostro vantaggio competitivo oggi? Cosa vi rende difficili da sostituire?"
 - "Quante persone siete? Come siete organizzati?"
+- "Qual è stato il ricavo dell'ultimo anno, più o meno?" (facoltativo: se non vuole dirlo, va bene)
+
+**Azione**: appena hai il numero di persone (e il ricavo, se lo dice) → chiama \`saveCompanyFacts\`. Mai stimarli tu.
 
 **Quando passare alla fase 2**: hai chiaro il business model e la value proposition.
 

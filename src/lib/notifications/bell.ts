@@ -18,7 +18,7 @@
 import type { UcBellItem } from "../uc/notify/bell.ts";
 import { formatRelativeIt } from "../uc/views/format.ts";
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0028 as UseCaseNoticeKind } from "../db/use-case-hub-referent-thread-ddl.ts";
+import type { UseCaseNoticeKind0029 as UseCaseNoticeKind } from "../db/use-case-hub-program-ddl.ts";
 import { hubSignalHref } from "../use-cases/digest.ts";
 import { noticeContextOf, noticeTextOf } from "../use-cases/notices.ts";
 import { cosaServeHref, realizzazioneHref, richiesteHref, subprocessorsSettingsHref } from "../use-cases/referent/contract.ts";
@@ -240,6 +240,7 @@ export function noticeHref(workspaceId: string, n: Pick<BellUseCaseInput, "kind"
   if (n.kind === "pronto") return realizzazioneHref(workspaceId, n.useCaseId);
   if (n.kind === "fornitori") return subprocessorsSettingsHref(workspaceId);
   if (n.kind === "senza_risposta") return richiesteHref(workspaceId, n.useCaseId);
+  if (n.kind === "da_rivedere") return `/dashboard/${encodeURIComponent(workspaceId)}/programma?apri=rivedere`;
   return cosaServeHref(workspaceId, n.useCaseId);
 }
 

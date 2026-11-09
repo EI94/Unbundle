@@ -529,3 +529,31 @@ SELECT status, count(*) FROM use_case_referent_suggestions WHERE workspace_id = 
 ```
 
 **Dopo il deploy** (con la parte del referente): su uno use case con un referente che ha risposto, «Chiedi un chiarimento» sotto una risposta manda una riga; la richiesta torna «inviata», lo use case dice «Chiarimento in attesa» e la riga sotto la risposta «Chiarimento in attesa: «…»»; nel filtro «Referente» ci sono le due parole nuove quando servono. Il link del referente apre su «Da completare» con quel chiarimento e un solo pulsante pieno, «Invia»; dopo la risposta la scheda dice di nuovo «Da verificare». Il cron (`GET /api/cron/use-case-referents`) risponde con i conteggi di sempre.
+
+### 10.16 Rilascio 7: «Programma» (0029)
+
+Progetto: `docs/programma/RILASCIO-7-PROGETTO.md` (decisioni del titolare del 09/11/2026). Una pagina nuova, `/dashboard/<ws>/programma`, con la voce «Programma» sotto «Overview»: solo per i revisori (sponsor, responsabile della trasformazione, responsabili di funzione, analisti) e solo con l'area «Use case» accesa. Agli altri risponde «non trovata».
+
+**Che cosa mostra** (a colpo d'occhio, ogni riquadro, riga e «›» apre un pannello):
+
+- **Risultati**: «Valore stimato all'anno» (approvati, in realizzazione, realizzati: le cifre delle card), «Valore già in uso» (i realizzati; senza: «ancora nessuno» e il primo mese previsto), «Valore per dipendente» (in uso ÷ dipendenti) e «Indice AI-native» su 100, con il delta dall'ultimo SAL.
+- **Valore e costo, cumulati**: due linee, mai un netto; fino a oggi piene, dopo tratteggiate; il pareggio. Nel pannello gli scenari (il valore di chi non è ancora in uso al 70 % o al 130 %), i costi e il mese per mese.
+- **Iniziative**: «In uso», «In realizzazione», «Da avviare» (per trimestre, mai «ondata») con valore all'anno, costo di avvio e mantenimento all'anno su colonne separate; «Supporto Lateral Space» e «Formazione» su righe loro. «Use case in uso da rivedere» quando uno rende meno di 2 € per euro di mantenimento.
+- **Persone** (formate, ore, livelli AI solo aggregati: mai un gruppo sotto 5 risposte, nemmeno per sottrazione, quindi a coppie 0–1, 2–3, 4–5 se serve, altrimenti niente; prontezza per area sopra 5), **Obiettivi** (risultati chiave con base e aggiornamenti, KPI dal catalogo o con una formula), **Per il SAL** (cosa è cambiato, prossimi passi, decisioni per la leadership; «Chiudi il SAL», «Esporta il SAL» in PDF).
+
+**Dipendenti e ricavo**: li salva la chat di Discovery (strumento `saveCompanyFacts`, solo numeri che la persona dice o conferma); senza, il riquadro «Valore per dipendente» li chiede lì, un campo alla volta (prima i dipendenti, poi il ricavo facoltativo). Li scrivono Lateral Space e chi gestisce il workspace.
+
+**I costi di Lateral Space** (decisione 7): il canone di supporto al mese (con il suo periodo) entra nella linea dei costi; ogni mese si divide tra gli use case in realizzazione o in uso quel mese, in proporzione al valore all'anno (la parte di ognuno è nei pannelli delle iniziative). Lo sviluppo di uno use case, quando c'è, si accende caso per caso: la percentuale del workspace sul valore all'anno, o un importo fisso; prende il posto del costo di avvio della card (le ore interne della stima e il mantenimento restano). Canone, percentuale, sviluppo dei singoli casi, la parte di canone di ogni use case e i pesi dell'indice li vede e li cambia solo Lateral Space; il cliente vede solo gli euro (il canone intero, lo sviluppo nel costo di avvio). Nessuna «quota» o «fee» in pagina (test).
+
+**Notifiche e stati da soli**: il cron dei giorni feriali (passo 11e, prima dell'AI, al massimo 15 s) scrive la fotografia del mese di ogni workspace con l'area accesa (sostituita ogni giorno: resta quella di fine mese) e una riga «Da rivedere» nella campanella dei revisori di Lateral Space per ogni use case in uso che rende poco, una volta sola per persona e use case (la pulizia dei 90 giorni lascia queste righe: sono il segno che l'avviso è già partito). «Chiudi il SAL» fotografa i numeri del giorno, senza campanella (la campanella vuole uno use case per riga). La chat di Discovery salva dipendenti e ricavo solo per chi li potrebbe scrivere nella pagina.
+
+**Migrazione 0029 (la applica l'app, al primo avvio dopo il deploy)**, come la 0028 (§10.15):
+
+1. Prima del deploy, il proprietario: restore point su Neon. Al primo avvio a freddo il self-heal (`ensureDbSchema()`, `ENSURE_VERSION` 23) trova la sonda della 0029 falsa e applica gli stessi statement di `drizzle/0029_program.sql` (`PROGRAM_DDL`), in una transazione con l'advisory lock del file e `lock_timeout` 3s: crea `program_settings`, `program_case_costs`, `program_snapshots`, `program_kpis`, `program_kpi_values` e `strategic_goal_checkins`; allarga con lo stesso nome `use_case_notifications_kind_check` con `da_rivedere` (sotto il lock della 0025). Non scrive dati e non cambia tabelle che c'erano (`strategic_goals` resta com'è).
+2. Subito dopo il deploy: aprire una pagina, poi `use-case-admin doctor` deve dire `migrazione0029: true` (oppure `SELECT <PROGRAM_PROBE_SQL>` dà `true`). Poi `/programma` si apre con i quattro riquadri.
+3. Se la sonda resta `false` (nel log «0029 self-heal failed…»): l'app serve come prima e «Programma» dice che si sta preparando; il self-heal riprova al massimo ogni 5 minuti. Solo allora, a mano: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0029_program.sql`. Mai drizzle-kit, mai `db:push`.
+4. Il ramo non si pubblica prima della revisione (le anteprime usano il database di produzione).
+5. Ritorno indietro al rilascio 6: il codice di prima non legge le tabelle nuove; le righe «Da rivedere» della campanella le mostrerebbe senza testo. Il proprietario, prima di premere il ritorno: `DELETE FROM use_case_notifications WHERE kind = 'da_rivedere';`. Gli oggetti della 0029 restano.
+
+**Dopo il deploy**: aprire «Programma» su un workspace con l'area accesa; i quattro riquadri, il grafico e le iniziative tornano con le cifre della Panoramica; «Valore per dipendente» chiede i dipendenti dove mancano; il PDF del SAL si scarica. Il cron risponde con `programSnapshots` e `programReviewNotices` tra i conteggi.
+

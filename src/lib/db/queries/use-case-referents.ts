@@ -2237,6 +2237,9 @@ export interface ReferentCronCounts {
   caseAlertsSent: number;
   caseAlertsHeld: number;
   caseAlertsCancelled: number;
+  /** (0029, rilascio 7) Fotografie del mese di «Programma» scritte, e righe «Da rivedere» nella campanella. */
+  programSnapshots: number;
+  programReviewNotices: number;
 }
 
 async function eachBatch(executor: UcExecutor, groups: readonly (readonly UcStatement[])[], counts: ReferentCronCounts, op: string): Promise<number> {
@@ -2307,6 +2310,8 @@ export async function runReferentCron(o: { env: Env; now?: Date; mailer?: UcMail
     caseAlertsSent: 0,
     caseAlertsHeld: 0,
     caseAlertsCancelled: 0,
+    programSnapshots: 0,
+    programReviewNotices: 0,
   };
   const executor = await getAppUcExecutor();
   const store = createReferentDispatchStore(executor, { env, now });
@@ -2505,6 +2510,15 @@ LIMIT 200`),
     const purged = await purgeOldNotifications(now);
     counts.notificationsPurged += purged.notifications;
     await purgeOldCaseAlerts(now);
+  });
+  // 11e (rilascio 7). «Programma»: la fotografia del mese di ogni workspace e «Da rivedere» a Lateral Space,
+  // con un tetto di tempo suo; prima dell'AI, che ha il suo.
+  await step("cron_programma", async () => {
+    const { runProgramCron, PROGRAM_CRON_BUDGET_MS } = await import("@/lib/db/queries/use-case-program");
+    const program = await runProgramCron({ env, now, budgetMs: PROGRAM_CRON_BUDGET_MS });
+    counts.programSnapshots += program.snapshots;
+    counts.programReviewNotices += program.reviewNotices;
+    counts.errors += program.errors;
   });
   // 11f (rilascio 6). Le proposte dell'AI non ancora calcolate (dopo un errore, o un `after()` che non è partito).
   // Per ultime, dopo le pulizie: un modello lento non le salta mai.

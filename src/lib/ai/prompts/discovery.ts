@@ -50,6 +50,9 @@ Domande-guida (non farle tutte — adattati a quello che emerge):
 - "Quali sono i processi più strategici — quelli che vi rendono unici?"
 - "Dove si concentra la maggior parte del tempo e dell'energia del team?"
 - "C'è già uso di AI, anche informale?"
+- "Quante persone siete, e qual è stato il ricavo dell'ultimo anno, più o meno?" (il ricavo è facoltativo; se la ricerca li ha trovati, proponili e chiedi solo di confermarli)
+
+Appena l'utente dà o conferma il numero di persone (e il ricavo, se lo dice): chiama \`saveCompanyFacts\`. Mai salvare un numero che l'utente non ha detto o confermato.
 
 Quando hai abbastanza contesto sul valore:
 1. Chiama \`saveCompanyValueThesis\` con i dati raccolti

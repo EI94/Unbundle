@@ -49,6 +49,7 @@ import {
   GraduationCap,
   ListChecks,
   type LucideIcon,
+  TrendingUp,
 } from "lucide-react";
 
 interface NavItem {
@@ -82,6 +83,11 @@ interface AppSidebarProps {
    * la voce «Casi d'uso» resta, vedi `casesAvailable`). Spenta: la barra di oggi.
    */
   useCaseHub?: boolean;
+  /**
+   * Voce «Programma» (rilascio 7): area «Use case» accesa e chi guarda è un revisore (decisione 4). Subito
+   * sotto «Overview»: è il riepilogo della trasformazione.
+   */
+  programAvailable?: boolean;
   workspaceId?: string;
   workspaceName?: string;
   user: {
@@ -96,6 +102,7 @@ export function AppSidebar({
   casesAvailable = false,
   learnerOnly = false,
   useCaseHub = false,
+  programAvailable = false,
   workspaceId,
   workspaceName,
   user,
@@ -128,6 +135,7 @@ export function AppSidebar({
     : workspaceId
     ? [
         { title: "Overview", href: basePath, icon: LayoutDashboard },
+        ...(programAvailable && useCaseHub ? [{ title: "Programma", href: `${basePath}/programma`, icon: TrendingUp }] : []),
         { title: "AI Readiness", href: `${basePath}/ai-readiness`, icon: ClipboardCheck, match: own },
         ...(learningAvailable ? [{ title: "Formazione", href: `${basePath}/learning`, icon: GraduationCap, match: own }] : []),
         ...(useCaseHub

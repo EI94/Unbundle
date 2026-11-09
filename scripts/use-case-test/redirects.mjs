@@ -267,10 +267,13 @@ function sidebarOf(html) {
     active: /\sdata-active(?:="[^"]*")?(?=[\s>])/.test(attributes) && !/\sdata-active="false"/.test(attributes),
   }));
 }
-const HUB_BAR = ["Overview", "AI Readiness", "Formazione", "Use case", "Discovery", "Contesto", "Strategia", "Activity mapping", "Value map", "Report", "Blueprints", "Simulazione", "Intelligence", "Impostazioni"];
+const HUB_BAR = ["Overview", "Programma", "AI Readiness", "Formazione", "Use case", "Discovery", "Contesto", "Strategia", "Activity mapping", "Value map", "Report", "Blueprints", "Simulazione", "Intelligence", "Impostazioni"];
 const TODAY_BAR = ["Overview", "AI Readiness", "Formazione", "Raccolta & ranking", "Discovery", "Contesto", "Strategia", "Activity mapping", "Value map", "Use cases", "Casi d'uso", "Piano", "Report", "Blueprints", "Simulazione", "Intelligence", "Impostazioni"];
-/** Formazione and «Casi d'uso» depend on sections the harness may have off: the rest is fixed, in order. */
-const OPTIONAL = new Set(["Formazione", "Casi d'uso"]);
+/**
+ * Formazione and «Casi d'uso» depend on sections the harness may have off; «Programma» (release 7) only
+ * shows to reviewers with the area on: the rest is fixed, in order.
+ */
+const OPTIONAL = new Set(["Formazione", "Casi d'uso", "Programma"]);
 const sameBar = (titles, expected) => {
   const kept = expected.filter((t) => !OPTIONAL.has(t) || titles.includes(t));
   return titles.length === kept.length && titles.every((t, i) => t === kept[i]);

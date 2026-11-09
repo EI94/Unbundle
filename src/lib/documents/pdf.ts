@@ -22,7 +22,8 @@ export function esc(text: string) {
   return text
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
-    .replace(/–|—/g, "-")
+    .replace(/–|—|−/g, "-")
+    .replace(/→/g, "->")
     .replace(/…/g, "...")
     .replace(/€/g, "\x80")
     .replace(/•/g, "\x95")

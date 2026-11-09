@@ -8,7 +8,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0028 as UseCaseNoticeKind } from "../db/use-case-hub-referent-thread-ddl.ts";
+import type { UseCaseNoticeKind0029 as UseCaseNoticeKind } from "../db/use-case-hub-program-ddl.ts";
 
 export const USE_CASE_NOTICE_TEXT = Object.freeze({
   titles: Object.freeze({
@@ -20,6 +20,8 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
     fornitori: "Autorizza i fornitori",
     // (Rilascio 6) Una domanda del referente al team («Ho un dubbio»).
     domanda: "Il referente ha chiesto qualcosa",
+    // (Rilascio 7) Uno use case in uso che rende poco più di quanto costa tenerlo acceso («Programma»).
+    da_rivedere: "Da rivedere",
   } satisfies Record<UseCaseNoticeKind, string>),
   answers: Object.freeze({ one: "1 risposta", many: "{n} risposte" }),
   documents: Object.freeze({ one: "1 documento", many: "{n} documenti" }),
@@ -37,6 +39,7 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   ready: "Non manca niente dal cliente: si può avviare la realizzazione.",
   suppliers: "Serve il tuo ok sui sub-responsabili, in Impostazioni, per chiedere le informazioni di questo use case.",
   question: "Rispondi dalla scheda, in «Cosa serve».",
+  review: "In uso, rende meno di 2 € per ogni euro che costa tenerlo acceso. Guardalo in «Programma».",
   contextSeparator: " · ",
 });
 
@@ -58,6 +61,7 @@ export function noticeTextOf(n: {
   if (n.kind === "pronto") return { title, description: t.ready };
   if (n.kind === "fornitori") return { title, description: t.suppliers };
   if (n.kind === "domanda") return { title, description: t.question };
+  if (n.kind === "da_rivedere") return { title, description: t.review };
   if (n.kind === "senza_risposta") return { title, description: t.followUp[n.followUp ?? "scaduta"] };
   const answers = safe(n.answers);
   const documents = safe(n.documents);

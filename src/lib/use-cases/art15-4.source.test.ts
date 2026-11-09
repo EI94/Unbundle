@@ -55,11 +55,16 @@ const SCAN_DIRS = [
   "src/app/api/rispondi",
   "src/app/api/cron/use-case-referents",
   "src/app/api/workspaces/[workspaceId]/bell",
+  // «Programma» (rilascio 7): conteggi aggregati, mai una persona.
+  "src/lib/programma",
+  "src/components/programma",
+  "src/app/(dashboard)/dashboard/[workspaceId]/programma",
+  "src/app/api/workspaces/[workspaceId]/programma",
 ];
 const SCAN_FILES: Array<{ dir: string; name: RegExp }> = [
   { dir: "src/lib/db/queries", name: /^(use-case-|team-mcp-|bell-state)[^/]*\.ts$/ },
   { dir: "scripts", name: /^use-case-admin[^/]*\.(ts|mjs|js)$/ },
-  { dir: "src/lib/actions", name: /^(use-case-referents|notifications)\.ts$/ },
+  { dir: "src/lib/actions", name: /^(use-case-referents|use-case-program|notifications)\.ts$/ },
   { dir: "src/lib/notifications", name: /^bell[^/]*\.ts$/ },
 ];
 

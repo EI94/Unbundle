@@ -182,8 +182,8 @@ test("la sonda copre le tabelle, gli indici, ogni vincolo con nome, ogni colonna
   assert.ok(USE_CASE_REFERENT_THREAD_PROBE_SQL.includes("position('''domanda''' IN pg_get_constraintdef(c.oid)) > 0"));
 });
 
-test("ensure-schema: versione 22, la 0028 dopo la 0027, non fatale, con timeout e lock, e la sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 22;/);
+test("ensure-schema: versione 22 o più, la 0028 dopo la 0027, non fatale, con timeout e lock, e la sonda in AND", () => {
+  assert.ok(Number(/const ENSURE_VERSION = (\d+);/.exec(ensureSchema)?.[1]) >= 22, "ENSURE_VERSION almeno 22");
   assert.match(ensureSchema, /import \{ USE_CASE_REFERENT_THREAD_DDL, USE_CASE_REFERENT_THREAD_PROBE_SQL \} from "\.\/use-case-hub-referent-thread-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const benefits = runOnce.indexOf("await runUseCaseReferentBenefitsDdlSafely();");

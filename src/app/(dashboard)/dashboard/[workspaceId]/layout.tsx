@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import { learnerRedirect } from "@/lib/learning/learner-scope";
 import { WorkspaceTopbar } from "@/components/portfolio/workspace-topbar";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
+import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { legacyRouteRedirect, stubLogEntry } from "@/lib/use-cases/legacy-routes";
 
 export default async function WorkspaceLayout({
@@ -89,6 +90,7 @@ export default async function WorkspaceLayout({
         learningAvailable={learningAvailable}
         casesAvailable={casesAvailable}
         useCaseHub={useCaseHub}
+        programAvailable={useCaseHub && !learnerOnly && canReviewWorkspacePortfolio(access.role)}
         workspaceId={workspace.id}
         workspaceName={workspace.name}
         user={{

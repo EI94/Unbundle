@@ -2,7 +2,7 @@ import "server-only";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { afterResponse } from "@/lib/db/queries/use-case-referent-base";
 import { NOTIFICATION_RETENTION_DAYS, type FollowUpReason } from "@/lib/db/use-case-hub-referents-ddl";
-import type { UseCaseNoticeKind0028 as UseCaseNoticeKind } from "@/lib/db/use-case-hub-referent-thread-ddl";
+import type { UseCaseNoticeKind0029 as UseCaseNoticeKind } from "@/lib/db/use-case-hub-program-ddl";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { RETRY_DELAY_MINUTES, type DispatchEnv, type UcMailer } from "@/lib/uc/notify/dispatch";
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
@@ -337,7 +337,9 @@ export async function purgeOldNotifications(now: Date): Promise<{ notifications:
   if (!(await tablePresent(executor))) return { notifications: 0, emails: 0 };
   const limit = cast(new Date(now.getTime() - NOTIFICATION_RETENTION_DAYS * 86_400_000).toISOString(), "timestamptz");
   const [notifications, emails] = await executor.batch([
-    toStatement(ucSql`DELETE FROM use_case_notifications WHERE last_event_at < ${limit} RETURNING id`),
+    // (Rilascio 7) «Da rivedere» resta: è il segno che quella persona è già stata avvisata per quello use case
+    // (una volta sola); la campanella mostra comunque solo gli ultimi 60 giorni.
+    toStatement(ucSql`DELETE FROM use_case_notifications WHERE last_event_at < ${limit} AND kind <> 'da_rivedere' RETURNING id`),
     toStatement(ucSql`DELETE FROM use_case_requester_emails WHERE created_at < ${limit} AND status IN ('inviata', 'annullata', 'errore') RETURNING id`),
   ]);
   return { notifications: notifications.length, emails: emails.length };

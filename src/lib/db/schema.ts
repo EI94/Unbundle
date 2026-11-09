@@ -18,6 +18,8 @@ import {
   numeric,
   smallint,
   unique,
+  bigint,
+  doublePrecision,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type { Approval, Fallback, PartialNa, Waiver } from "../uc/types.ts";
@@ -49,7 +51,18 @@ import type {
   RequesterEmailStatus,
 } from "./use-case-hub-referents-ddl.ts";
 import type { CaseAlertEmailStatus, CaseAlertKind } from "./use-case-hub-alerts-ddl.ts";
-import type { ReferentSuggestionStatus, ReferentThreadAnchor, ReferentThreadKind, ReferentThreadRemoveReason, ReferentThreadSide, UseCaseNoticeKind0028 } from "./use-case-hub-referent-thread-ddl.ts";
+import type { ReferentSuggestionStatus, ReferentThreadAnchor, ReferentThreadKind, ReferentThreadRemoveReason, ReferentThreadSide } from "./use-case-hub-referent-thread-ddl.ts";
+import type {
+  GoalCheckinKind,
+  ProgramCaseCostMode,
+  ProgramFactSource,
+  ProgramKpiDirection,
+  ProgramKpiKind,
+  ProgramKpiSource,
+  ProgramKpiValueSource,
+  ProgramSnapshotKind,
+  UseCaseNoticeKind0029,
+} from "./use-case-hub-program-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
@@ -1143,6 +1156,121 @@ export const useCaseReferentSuggestions = pgTable(
   ]
 );
 
+// ─── Rilascio 7 «Programma» (drizzle/0029) ──────────────────────────
+// CHECK e indici parziali stanno solo nella migrazione e in use-case-hub-program-ddl.ts (self-heal): mai
+// drizzle-kit su queste tabelle.
+
+/** (0029) Una riga per workspace: dipendenti e ricavo, costi di Lateral Space, pesi dell'indice, SAL. */
+export const programSettings = pgTable(
+  "program_settings",
+  {
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    employees: integer("employees"),
+    employeesSource: varchar("employees_source", { length: 10 }).$type<ProgramFactSource>(),
+    revenueEur: bigint("revenue_eur", { mode: "number" }),
+    revenueSource: varchar("revenue_source", { length: 10 }).$type<ProgramFactSource>(),
+    supportMonthEur: numeric("support_month_eur", { precision: 12, scale: 2 }),
+    supportFrom: varchar("support_from", { length: 7 }),
+    supportTo: varchar("support_to", { length: 7 }),
+    devPct: numeric("dev_pct", { precision: 5, scale: 2 }),
+    indexWeights: jsonb("index_weights").$type<Record<string, number>>(),
+    leadershipAsks: jsonb("leadership_asks").$type<Array<{ id: string; text: string }>>().notNull().default([]),
+    lastSalOn: date("last_sal_on"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [primaryKey({ name: "program_settings_pkey", columns: [t.workspaceId] })]
+);
+
+/** (0029) Lo sviluppo di Lateral Space di uno use case: a percentuale del valore all'anno o a importo fisso. */
+export const programCaseCosts = pgTable(
+  "program_case_costs",
+  {
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    mode: varchar("mode", { length: 12 }).$type<ProgramCaseCostMode>().notNull(),
+    amountEur: numeric("amount_eur", { precision: 12, scale: 2 }),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [primaryKey({ name: "program_case_costs_pkey", columns: [t.useCaseId] }), index("program_case_costs_workspace_idx").on(t.workspaceId)]
+);
+
+/** (0029) Le fotografie dei numeri aggregati: una al mese (`AAAA-MM`), una per SAL (`AAAA-MM-GG`). Mai persone. */
+export const programSnapshots = pgTable(
+  "program_snapshots",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 4 }).$type<ProgramSnapshotKind>().notNull(),
+    period: varchar("period", { length: 10 }).notNull(),
+    metrics: jsonb("metrics").$type<Record<string, unknown>>().notNull(),
+    takenAt: tz("taken_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "program_snapshots_pkey", columns: [t.id] }), uniqueIndex("program_snapshots_period_unique").on(t.workspaceId, t.kind, t.period)]
+);
+
+/** (0029) I KPI attivati del workspace: dal catalogo (calcolati), a mano, o con una formula. */
+export const programKpis = pgTable(
+  "program_kpis",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    key: varchar("key", { length: 40 }).notNull(),
+    label: varchar("label", { length: 120 }).notNull(),
+    unit: varchar("unit", { length: 16 }).notNull().default(""),
+    kind: varchar("kind", { length: 10 }).$type<ProgramKpiKind>().notNull(),
+    source: varchar("source", { length: 10 }).$type<ProgramKpiSource>().notNull(),
+    formula: varchar("formula", { length: 300 }),
+    baseValue: doublePrecision("base_value"),
+    targetValue: doublePrecision("target_value"),
+    direction: varchar("direction", { length: 3 }).$type<ProgramKpiDirection>().notNull().default("su"),
+    keyResultId: uuid("key_result_id").references(() => strategicGoals.id, { onDelete: "set null" }),
+    position: smallint("position").notNull().default(0),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [primaryKey({ name: "program_kpis_pkey", columns: [t.id] }), uniqueIndex("program_kpis_key_unique").on(t.workspaceId, t.key)]
+);
+
+/** (0029) I valori di un KPI scritti a mano o dal Brain, uno per mese. */
+export const programKpiValues = pgTable(
+  "program_kpi_values",
+  {
+    kpiId: uuid("kpi_id").notNull().references(() => programKpis.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    period: varchar("period", { length: 7 }).notNull(),
+    value: doublePrecision("value").notNull(),
+    source: varchar("source", { length: 7 }).$type<ProgramKpiValueSource>().notNull().default("manuale"),
+    recordedAt: tz("recorded_at").defaultNow().notNull(),
+    recordedByUserId: uuid("recorded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [primaryKey({ name: "program_kpi_values_pkey", columns: [t.kpiId, t.period] }), index("program_kpi_values_workspace_idx").on(t.workspaceId)]
+);
+
+/** (0029) La base e gli aggiornamenti di un risultato chiave della Strategia. */
+export const strategicGoalCheckins = pgTable(
+  "strategic_goal_checkins",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    goalId: uuid("goal_id").notNull().references(() => strategicGoals.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 13 }).$type<GoalCheckinKind>().notNull(),
+    value: doublePrecision("value").notNull(),
+    recordedOn: date("recorded_on").notNull(),
+    note: varchar("note", { length: 300 }),
+    recordedAt: tz("recorded_at").defaultNow().notNull(),
+    recordedByUserId: uuid("recorded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    primaryKey({ name: "strategic_goal_checkins_pkey", columns: [t.id] }),
+    index("strategic_goal_checkins_goal_idx").on(t.goalId, t.recordedOn),
+    index("strategic_goal_checkins_workspace_idx").on(t.workspaceId),
+  ]
+);
+
 export const useCaseNeedAnswers = pgTable(
   "use_case_need_answers",
   {
@@ -1290,7 +1418,7 @@ export const useCaseNotifications = pgTable(
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
     recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0028>().notNull(),
+    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0029>().notNull(),
     romeDay: date("rome_day", { mode: "string" }).notNull(),
     answers: smallint("answers").notNull().default(0),
     unknowns: smallint("unknowns").notNull().default(0),

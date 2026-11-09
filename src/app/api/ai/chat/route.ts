@@ -53,6 +53,13 @@ export async function POST(req: Request) {
     return new Response("Workspace not found", { status: 404 });
   }
   const { workspace } = access;
+  // «Programma» (rilascio 7): dipendenti e ricavo dalla chat li scrive solo chi li scriverebbe nella pagina.
+  const { canEditProgram } = await import("@/lib/db/queries/use-case-program");
+  const { viewerFromSession } = await import("@/lib/db/queries/use-case-hub");
+  const canSaveCompanyFacts = canEditProgram({
+    role: access.role,
+    isLateralSpace: viewerFromSession({ id: session.user.id, email: session.user.email, emailVerified: session.user.emailVerified === true }, access.role).isLateralSpace,
+  });
 
   const messages = rawMessages.map((m) => ({
     role: m.role as "user" | "assistant",
@@ -133,7 +140,7 @@ export async function POST(req: Request) {
     case "leadership_setup":
       systemPrompt = DISCOVERY_SYSTEM_PROMPT + contextBlock;
       tools = {
-        ...getLeadershipTools(workspaceId, workspace.organizationId),
+        ...getLeadershipTools(workspaceId, workspace.organizationId, { canSaveCompanyFacts }),
         ...getWebSearchTool(),
       };
       break;
@@ -198,7 +205,7 @@ export async function POST(req: Request) {
     default:
       systemPrompt = DISCOVERY_SYSTEM_PROMPT + contextBlock;
       tools = {
-        ...getLeadershipTools(workspaceId, workspace.organizationId),
+        ...getLeadershipTools(workspaceId, workspace.organizationId, { canSaveCompanyFacts }),
         ...getWebSearchTool(),
       };
   }
