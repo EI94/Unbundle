@@ -50,16 +50,19 @@ test("the «⋯» menu shows only what serves, per role", () => {
     "Attività",
     "Esporta…",
     "Sviluppo con Claude",
+    "Progetto dell'agente",
     "Impostazioni del caso",
   ]);
-  assert.deepEqual(menu("ls_lead"), ["Privacy", "Attività", "Impostazioni del caso"], "no signatures, no via, nothing to export");
-  assert.deepEqual(menu("ls_analista", { pendingSignatures: 3, pastVia: true, exportable: true }), ["Privacy", "Esporta…", "Sviluppo con Claude"]);
-  assert.deepEqual(menu("ls_sviluppatore", { pastVia: true, exportable: true }), ["Esporta…", "Sviluppo con Claude"]);
-  assert.deepEqual(menu("ls_sviluppatore"), [], "before the via the developer has nothing in the menu");
-  assert.deepEqual(menu("owner_cliente", { pendingSignatures: 1, pastVia: true, exportable: true }), ["Da firmare (1)", "Privacy", "Attività", "Scarica in Excel"]);
+  assert.deepEqual(menu("ls_lead"), ["Privacy", "Attività", "Progetto dell'agente", "Impostazioni del caso"], "no signatures, no via, nothing to export");
+  assert.deepEqual(menu("ls_analista", { pendingSignatures: 3, pastVia: true, exportable: true }), ["Privacy", "Esporta…", "Sviluppo con Claude", "Progetto dell'agente"]);
+  assert.deepEqual(menu("ls_sviluppatore", { pastVia: true, exportable: true }), ["Esporta…", "Sviluppo con Claude", "Progetto dell'agente"]);
+  assert.deepEqual(menu("ls_sviluppatore"), ["Progetto dell'agente"], "before the via the developer has only the agent's project (release 8.0a)");
+  assert.deepEqual(menu("owner_cliente", { pendingSignatures: 1, pastVia: true, exportable: true }), ["Da firmare (1)", "Privacy", "Attività", "Scarica in Excel", "Progetto dell'agente"]);
   assert.deepEqual(menu("approvatore_privacy", { pendingSignatures: 1 }), ["Da firmare (1)", "Attività"]);
   assert.deepEqual(menu("approvatore_privacy"), ["Attività"]);
-  for (const role of ["ai_board", "osservatore"] as const) assert.deepEqual(menu(role, { pendingSignatures: 4, pastVia: true }), [], role);
+  for (const role of ["ai_board", "osservatore"] as const) assert.deepEqual(menu(role, { pendingSignatures: 4, pastVia: true }), ["Progetto dell'agente"], role);
+  assert.equal(caseMenuFor(["ai_board"], { pendingSignatures: 0, pastVia: false, exportable: false })[0]?.segment, "progetto");
+  assert.equal(canOpenShellPage("progetto", ["approvatore_privacy"]), false, "the privacy approver does not need the agent's project");
   const claude = caseMenuFor(["ls_lead"], { pendingSignatures: 0, pastVia: true, exportable: false }).find((m) => m.key === "claude");
   assert.equal(claude?.segment, "via#sviluppo-con-claude");
   const exp = caseMenuFor(["ls_lead"], { pendingSignatures: 0, pastVia: false, exportable: true }).find((m) => m.key === "esporta");

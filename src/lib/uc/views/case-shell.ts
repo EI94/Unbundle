@@ -21,7 +21,7 @@ import { LS_CASE_ROLES, type CaseRole, type CaseStatus, type SemaforoColor } fro
 import { CASE_STATUS_TONE as STATUS_TONE } from "./labels.ts";
 import { canOpenPage } from "./page-access.ts";
 
-export type UcShellPage = "panoramica" | "via" | "descrizione" | "persone" | "privacy" | "registro" | "firme" | "impostazioni";
+export type UcShellPage = "panoramica" | "via" | "descrizione" | "persone" | "privacy" | "registro" | "firme" | "impostazioni" | "progetto";
 
 const unique = (roles: readonly CaseRole[]): readonly CaseRole[] => [...new Set(roles)];
 const SYNTHESIS_AND_DEV = unique([...CASE_ACTION_ROLES.vedere_sintesi, "ls_sviluppatore"]);
@@ -36,6 +36,8 @@ export const UC_SHELL_PAGE_ROLES: Readonly<Record<UcShellPage, readonly CaseRole
   registro: unique([...CASE_ACTION_ROLES.registro, ...CASE_ACTION_ROLES.registro_filtrato]),
   firme: unique([...CASE_ACTION_ROLES.firma_ls, ...CASE_ACTION_ROLES.firma_cliente, ...CASE_ACTION_ROLES.firmare_a8]),
   impostazioni: CASE_ACTION_ROLES.gestire_membri,
+  // (Rilascio 8.0a) Il progetto dell'agente: lo legge il team del caso; l'AI Board ci dà l'ok agli strumenti nuovi.
+  progetto: ["ls_lead", "ls_analista", "ls_sviluppatore", "owner_cliente", "ai_board", "osservatore"],
 };
 
 export function canOpenShellPage(page: UcShellPage, roles: readonly CaseRole[]): boolean {
@@ -115,7 +117,7 @@ export function solutionSegmentsFor(roles: readonly CaseRole[]): { key: Solution
 
 // ── Menu «⋯» ──────────────────────────────────────────────────────────
 
-export type CaseMenuKey = "firme" | "privacy" | "attivita" | "esporta" | "claude" | "impostazioni";
+export type CaseMenuKey = "firme" | "privacy" | "attivita" | "esporta" | "claude" | "progetto" | "impostazioni";
 
 export interface CaseMenuItem {
   key: CaseMenuKey;
@@ -147,6 +149,7 @@ export function caseMenuFor(roles: readonly CaseRole[], i: CaseMenuInput): CaseM
   if (canOpenShellPage("registro", roles)) out.push({ key: "attivita", label: "Attività", segment: "attivita" });
   if (i.exportable) out.push({ key: "esporta", label: isLs(roles) ? "Esporta…" : "Scarica in Excel", segment: null });
   if (i.pastVia && isLs(roles)) out.push({ key: "claude", label: "Sviluppo con Claude", segment: "via#sviluppo-con-claude" });
+  if (canOpenShellPage("progetto", roles)) out.push({ key: "progetto", label: "Progetto dell'agente", segment: "progetto" });
   if (canOpenShellPage("impostazioni", roles)) out.push({ key: "impostazioni", label: "Impostazioni del caso", segment: "impostazioni" });
   return out;
 }

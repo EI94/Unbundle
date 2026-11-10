@@ -44,8 +44,8 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   suppliers: "Serve il tuo ok sui sub-responsabili, in Impostazioni, per chiedere le informazioni di questo use case.",
   question: "Rispondi dalla scheda, in «Cosa serve».",
   review: "In uso, rende meno di 2 € per ogni euro che costa tenerlo acceso. Guardalo in «Programma».",
-  projectToApprove: "L'impostazione è pronta: guarda il progetto e approvalo in «Impostazione».",
-  newToolToApprove: "Il progetto usa uno strumento nuovo per voi: serve l'ok dell'AI Board, in «Impostazione».",
+  projectToApprove: "L'impostazione è pronta: guarda il progetto e approvalo in «Progetto dell'agente», nel dossier.",
+  newToolToApprove: "Il progetto usa uno strumento nuovo per voi: serve l'ok dell'AI Board, in «Progetto dell'agente», nel dossier.",
   newPackage: "C'è una nuova versione del pacchetto: «unbundle start» la porta nel repository.",
   contextSeparator: " · ",
 });

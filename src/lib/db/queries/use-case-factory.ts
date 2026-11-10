@@ -32,6 +32,7 @@ import { fail, ok, type Result } from "@/lib/uc/types";
 import type { CaseRole } from "@/lib/uc/vocab";
 import { packageContent, packageFiles, packageHash, type PackageSource } from "@/lib/use-cases/factory/package";
 import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canReadFactory, canWriteFactory, FACTORY_RECIPIENTS } from "@/lib/use-cases/factory/permissions";
+import { isNeedDone, needStatusView, type NeedStatus, type NeedType } from "@/lib/use-cases/needs";
 import { romeToday } from "@/lib/use-cases/quarter";
 
 // ─── Chi agisce ──────────────────────────────────────────────────────
@@ -46,10 +47,6 @@ export interface FactoryTarget {
 }
 
 const DENIED = "Non hai i permessi per questa azione nell'impostazione del caso.";
-
-function rolesOf(actor: FactoryActor): readonly CaseRole[] {
-  return actor.kind === "persona" ? actor.roles : [];
-}
 
 function userOf(actor: FactoryActor): string | null {
   return actor.kind === "persona" ? actor.userId : null;
@@ -72,7 +69,7 @@ export async function factoryStoreReady(executor: UcExecutor): Promise<boolean> 
 }
 
 /** Lo use case di un dossier del workspace, o null. */
-export async function useCaseOfCase(executor: UcExecutor, workspaceId: string, caseId: string): Promise<{ useCaseId: string; code: string | null; title: string } | null> {
+export async function findUseCaseOfCase(executor: UcExecutor, workspaceId: string, caseId: string): Promise<{ useCaseId: string; code: string | null; title: string } | null> {
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT u.id, u.code, u.title FROM uc_cases c JOIN use_cases u ON u.id = c.portfolio_use_case_id AND u.workspace_id = c.workspace_id
 WHERE c.id = ${cast(caseId, "uuid")} AND c.workspace_id = ${cast(workspaceId, "uuid")}`),
@@ -266,6 +263,44 @@ RETURNING version`),
   ]);
   if (!rows[0][0]) return fail("non_trovato", "Use case non trovato.");
   return ok({ version, created: true });
+}
+
+/** Quello che il pacchetto prende dalla scheda: lo legge chi chiama, con i permessi di chi guarda. */
+export type PackageCard = Omit<PackageSource, "answers" | "openNeeds" | "namesToHide">;
+
+/**
+ * Il resto del pacchetto, dal database: le risposte inviate del referente (la domanda è il titolo dell'esigenza),
+ * le esigenze ancora aperte di «Cosa serve», e i nomi da coprire (persone del workspace e della sua
+ * organizzazione, contatti, chi ha chiesto le informazioni al referente).
+ */
+export async function packageSourceFor(executor: UcExecutor, target: FactoryTarget, card: PackageCard): Promise<PackageSource> {
+  const ws = cast(target.workspaceId, "uuid");
+  const uc = cast(target.useCaseId, "uuid");
+  const [answers, needs, names] = await executor.batch([
+    toStatement(ucSql`SELECT n.title, a.body, a.submitted_at, n.type, n.status
+FROM use_case_need_answers a JOIN use_case_needs n ON n.id = a.need_id AND n.workspace_id = a.workspace_id
+WHERE a.workspace_id = ${ws} AND a.use_case_id = ${uc} AND a.status = 'inviata' AND a.removed_at IS NULL AND a.body IS NOT NULL AND NOT a.dont_know
+ORDER BY a.submitted_at NULLS LAST, a.id LIMIT 30`),
+    toStatement(ucSql`SELECT n.title, n.type, n.status FROM use_case_needs n JOIN use_case_need_links l ON l.need_id = n.id
+WHERE l.use_case_id = ${uc} AND n.workspace_id = ${ws} AND n.archived_at IS NULL
+ORDER BY n.type, n.sort_order, n.created_at, n.id LIMIT 80`),
+    toStatement(ucSql`SELECT DISTINCT x.name FROM (
+  SELECT u.name FROM users u JOIN workspace_memberships wm ON wm.user_id = u.id WHERE wm.workspace_id = ${ws}
+  UNION SELECT u.name FROM users u JOIN memberships m ON m.user_id = u.id JOIN workspaces w ON w.organization_id = m.organization_id WHERE w.id = ${ws}
+  UNION SELECT c.display_name FROM uc_contacts c WHERE c.workspace_id = ${ws}
+  UNION SELECT r.requester_name FROM use_case_referent_requests r WHERE r.workspace_id = ${ws} AND r.use_case_id = ${uc}
+) x WHERE x.name IS NOT NULL`),
+  ]);
+  const label = (type: unknown, status: unknown) => needStatusView(String(type) as NeedType, String(status) as NeedStatus).label.toLowerCase();
+  return {
+    ...card,
+    answers: answers.map((r) => ({ question: String(r.title), answer: String(r.body), on: r.submitted_at ? new Date(String(r.submitted_at)).toISOString().slice(0, 10) : null, status: label(r.type, r.status) })),
+    openNeeds: needs
+      .filter((r) => !isNeedDone(String(r.type) as NeedType, String(r.status) as NeedStatus))
+      .slice(0, 40)
+      .map((r) => ({ title: String(r.title), status: label(r.type, r.status) })),
+    namesToHide: names.map((r) => String(r.name)),
+  };
 }
 
 // ─── Il progetto ─────────────────────────────────────────────────────

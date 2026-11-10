@@ -113,9 +113,9 @@ after(async () => {
 
 test("la sonda è vera; lo use case si trova dal dossier; chi non è nel team non legge", opts, async () => {
   assert.equal(await factory.factoryStoreReady(exec), true);
-  const found = await factory.useCaseOfCase(exec, ids.ws, ids.dossier);
+  const found = await factory.findUseCaseOfCase(exec, ids.ws, ids.dossier);
   assert.equal(found?.useCaseId, ids.useCase);
-  assert.equal(await factory.useCaseOfCase(exec, randomUUID(), ids.dossier), null);
+  assert.equal(await factory.findUseCaseOfCase(exec, randomUUID(), ids.dossier), null);
   const empty = await factory.readFactory(exec, target(), lead());
   assert.ok(empty.ok);
   assert.deepEqual([empty.value.packages.length, empty.value.open, empty.value.approved, empty.value.decisions.length], [0, null, null, 0]);
