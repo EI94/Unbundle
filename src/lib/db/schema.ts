@@ -1325,7 +1325,7 @@ export const useCaseProjects = pgTable(
     catalogVersion: varchar("catalog_version", { length: 10 }),
     packageVersion: integer("package_version"),
     submittedAt: tz("submitted_at"),
-    submittedByUserId: uuid("submitted_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
     approvedAt: tz("approved_at"),
     approvedByUserId: uuid("approved_by_user_id").references(() => users.id, { onDelete: "set null" }),
     aiBoardOkAt: tz("ai_board_ok_at"),

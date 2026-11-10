@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS use_case_projects (
   catalog_version varchar(10),
   package_version integer CONSTRAINT use_case_projects_package_check CHECK (package_version IS NULL OR package_version BETWEEN 1 AND 9999),
   submitted_at timestamptz,
-  submitted_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  requested_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   approved_at timestamptz,
   approved_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   ai_board_ok_at timestamptz,

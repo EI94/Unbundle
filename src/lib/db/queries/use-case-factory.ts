@@ -441,7 +441,7 @@ export async function submitProject(executor: UcExecutor, actor: FactoryActor, t
   if (missing.length) return fail("argomenti_mancanti", `Mancano ${missing.length === 1 ? "un argomento" : `${missing.length} argomenti`}: ${missing.map((t) => TOPIC_LABELS[t]).join(", ")}.`);
   const tools = Number(open.tools ?? 0);
   const statements = [
-    toStatement(ucSql`UPDATE use_case_projects SET status = 'da_approvare', submitted_at = now(), submitted_by_user_id = ${cast(userOf(actor), "uuid")}, updated_at = now()
+    toStatement(ucSql`UPDATE use_case_projects SET status = 'da_approvare', submitted_at = now(), requested_by_user_id = ${cast(userOf(actor), "uuid")}, updated_at = now()
 WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'in_corso' AND version = ${cast(Number(open.version), "int")}
 RETURNING version`),
     noticeSql(target, "progetto_appr", actor, now),
@@ -456,7 +456,7 @@ RETURNING version`),
 export async function reopenProject(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget): Promise<Result<{ version: number }>> {
   if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
   const [rows] = await executor.batch([
-    toStatement(ucSql`UPDATE use_case_projects SET status = 'in_corso', submitted_at = NULL, submitted_by_user_id = NULL, ai_board_ok_at = NULL, ai_board_ok_by_user_id = NULL,
+    toStatement(ucSql`UPDATE use_case_projects SET status = 'in_corso', submitted_at = NULL, requested_by_user_id = NULL, ai_board_ok_at = NULL, ai_board_ok_by_user_id = NULL,
   ai_board_note = NULL, updated_at = now(), updated_by_user_id = ${cast(userOf(actor), "uuid")}
 WHERE workspace_id = ${cast(target.workspaceId, "uuid")} AND use_case_id = ${cast(target.useCaseId, "uuid")} AND status = 'da_approvare'
 RETURNING version`),
