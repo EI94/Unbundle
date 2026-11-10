@@ -55,7 +55,8 @@ export const command: AdminCommand = {
     const useCaseId = String(useCase.id);
     const existing = factoryImportReads(ctx.scope.workspaceId, code).existing(useCaseId);
     const [counts] = await ctx.db.read(existing.text, existing.params);
-    const plan = factoryImportPlan({ workspaceId: ctx.scope.workspaceId, useCaseId, project, decisions, files });
+    const names = (await ctx.db.read(reads.names.text, reads.names.params)).map((row) => String(row.name));
+    const plan = factoryImportPlan({ workspaceId: ctx.scope.workspaceId, useCaseId, project, decisions, files, namesToHide: names });
     const report = { useCase: code, ...plan.report };
     if (Number(counts?.projects ?? 0) > 0 || Number(counts?.packages ?? 0) > 0 || Number(counts?.decisions ?? 0) > 0) {
       return done({ status: "NOTHING_TO_DO", message: "Lo use case ha già progetto, pacchetto o decisioni in Unbundle: l'import non scrive.", ...report });

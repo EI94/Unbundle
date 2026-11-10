@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ADMIN_COMMANDS, AdminStop, parseAdminOptions } from "./cli.ts";
-import { factoryImportPlan, packageFromFiles, parseDecisions, parseProjectMarkdown } from "./factory-import.ts";
+import { factoryImportPlan, italianNumber, packageFromFiles, parseDecisions, parseProjectMarkdown } from "./factory-import.ts";
 import { packageFilesHash } from "../factory/package.ts";
 
 const ROWS = [
@@ -104,15 +104,37 @@ test("il pacchetto: i tre file o niente", () => {
 
 test("il piano: progetto v1 approvato, k1 importato con la sua impronta, le decisioni; ogni scrittura controlla che lo use case sia vuoto", () => {
   const plan = factoryImportPlan({ workspaceId: "3f2a9c1e-0000-4000-8000-0000000000a1", useCaseId: "3f2a9c1e-0000-4000-8000-0000000000b2", project: parseProjectMarkdown(project()), decisions: parseDecisions(DECISIONS), files: FILES });
-  assert.equal(plan.statements.length, 2 + 3);
-  assert.match(plan.statements[0].text, /INSERT INTO use_case_projects[\s\S]*'approvato'[\s\S]*NOT EXISTS \(SELECT 1 FROM use_case_projects/);
-  assert.equal(plan.statements[0].params[9], "2026-11-09T11:00:00Z");
-  assert.equal(plan.statements[0].params[10], "2026-11-10T11:00:00Z");
-  assert.match(plan.statements[1].text, /'importato'/);
-  assert.equal(plan.statements[1].params[2], packageFilesHash(FILES));
-  for (const s of plan.statements.slice(2)) assert.match(s.text, /'importata', 1,/);
+  assert.equal(plan.statements.length, 3 + 3);
+  assert.match(plan.statements[0].text, /^SELECT uc_require\(NOT EXISTS \(SELECT 1 FROM use_case_projects[\s\S]*use_case_packages[\s\S]*use_case_decisions[\s\S]*'gia_impostato'\)/, "tutto o niente");
+  assert.match(plan.statements[1].text, /INSERT INTO use_case_projects[\s\S]*'approvato'[\s\S]*NOT EXISTS \(SELECT 1 FROM use_case_projects/);
+  assert.equal(plan.statements[1].params[9], "2026-11-09T11:00:00Z");
+  assert.equal(plan.statements[1].params[10], "2026-11-10T11:00:00Z");
+  assert.match(plan.statements[2].text, /'importato'/);
+  assert.equal(plan.statements[2].params[2], packageFilesHash(FILES));
+  for (const s of plan.statements.slice(3)) assert.match(s.text, /'importata', 1,/);
   assert.deepEqual(plan.report.progetto.strumentiNuovi, ["Neon", "Langfuse"]);
   assert.equal(plan.report.argomenti, 10);
   assert.equal(plan.report.decisioni, 3);
   assert.ok(!JSON.stringify(plan.report).includes("@"), "nessuna email nel rapporto");
+});
+
+test("i numeri all'italiana, gli strumenti solo se l'AI Board ha approvato, i nomi coperti anche nell'import", () => {
+  assert.equal(italianNumber("1.200"), 1200);
+  assert.equal(italianNumber("90"), 90);
+  assert.equal(italianNumber("1,5"), 1.5);
+  assert.equal(italianNumber("12.500,50"), 12500.5);
+  const noBoard = parseProjectMarkdown(project().replace("ai_board: approvato (Neon, Langfuse) dal responsabile del caso", "ai_board: non serve (nessuno strumento)"));
+  assert.deepEqual(noBoard.newTools, []);
+  const named = DECISIONS.replace("smista le richieste · è il valore", "lo ha deciso Mario Rossi · è il valore");
+  const plan = factoryImportPlan({
+    workspaceId: "3f2a9c1e-0000-4000-8000-0000000000a1",
+    useCaseId: "3f2a9c1e-0000-4000-8000-0000000000b2",
+    project: parseProjectMarkdown(project()),
+    decisions: parseDecisions(named),
+    files: { ...FILES, "BRIEF.md": "# PX-0001 · scritto da Mario Rossi (mario@esempio.test)\n" },
+    namesToHide: ["Mario Rossi"],
+  });
+  const all = JSON.stringify(plan.statements.map((s) => s.params));
+  assert.ok(!all.includes("Mario") && !all.includes("Rossi") && !all.includes("mario@"), "nessun nome né e-mail");
+  assert.ok(all.includes("lo ha deciso una persona"));
 });

@@ -224,7 +224,7 @@ export function showsReadOnlyBadge(i: { lsConfigured: boolean; workspaceAdmin: b
  * primario della testata non c'è mai (DESIGN §8.1 c, un solo pulsante pieno).
  * Impostazioni: «Aggiungi» di «Accesso al caso».
  */
-export const PAGES_WITHOUT_PRIMARY: readonly string[] = ["impostazioni"];
+export const PAGES_WITHOUT_PRIMARY: readonly string[] = ["impostazioni", "progetto"];
 
 /**
  * Il pulsante primario si nasconde sulla pagina in cui porta (DESIGN §2.2),

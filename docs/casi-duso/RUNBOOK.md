@@ -557,3 +557,30 @@ Progetto: `docs/programma/RILASCIO-7-PROGETTO.md` (decisioni del titolare del 09
 
 **Dopo il deploy**: aprire «Programma» su un workspace con l'area accesa; i quattro riquadri, il grafico e le iniziative tornano con le cifre della Panoramica; «Valore per dipendente» chiede i dipendenti dove mancano; il PDF del SAL si scarica. Il cron risponde con `programSnapshots` e `programReviewNotices` tra i conteggi.
 
+
+### 10.17 Rilascio 8.0a: «Agent Factory», progetto, decisioni e pacchetto (0030)
+
+Piano: `docs/rilascio-8/RILASCIO-8.0-PIANO.md` (scelte del titolare del 10/11/2026). Nel dossier, dal menu «⋯», la pagina nuova **«Progetto dell'agente»** (`/dashboard/<ws>/casi-duso/<caso>/progetto`): l'impostazione del caso nell'Agent Factory. La leggono il team del caso e l'AI Board (`ls_lead`, `ls_analista`, `ls_sviluppatore`, `owner_cliente`, `ai_board`, `osservatore`); agli altri risponde «non trovata».
+
+**Che cosa fa:**
+
+- **Le scelte**: i 10 argomenti dell'impostazione con la scelta, il perché e l'alternativa scartata. Ogni scelta è anche una decisione del caso. Si cambiano solo con il progetto «in corso».
+- **Strumenti nuovi e stima**: gli strumenti nuovi per il cliente, l'ok dell'AI Board, le ore di costruzione e il costo di esercizio al mese.
+- **Decisioni**: quelle dell'impostazione, del team e dell'import, dalla più recente. Non si cambiano: se serve se ne aggiunge un'altra.
+- **Pacchetto**: k1, k2, … generati dalla scheda («Aggiorna il pacchetto»: una versione nuova solo se il contenuto cambia), con i tre file da leggere. E-mail, telefoni e i nomi che Unbundle conosce diventano «una persona» e «[numero]».
+- **Un'azione principale**, secondo lo stato: «Imposta il caso», «Manda in approvazione», «Approva il progetto» (solo il responsabile del caso, e con strumenti nuovi solo dopo l'ok dell'AI Board), «Rivedi il progetto» (secondaria). L'ok dell'AI Board lo registra chi ha il ruolo `ai_board`, oppure il responsabile con una nota obbligatoria su chi l'ha dato e quando.
+- **Lo stato del dossier**: «Approva il progetto» porta il caso da «pronto per lo sviluppo» a «in sviluppo» (`transitionCase`); negli altri stati registra l'approvazione e lo stato resta com'è.
+
+**Notifiche**: nella campanella «Progetto da approvare» (al responsabile), «Strumento nuovo da approvare» (all'AI Board e al responsabile), «Il pacchetto è cambiato» (a chi costruisce), mai a chi ha agito. E-mail interne di Lateral Space dalla coda dei dossier (`progetto_da_approvare`, `strumento_da_approvare`, `pacchetto_aggiornato`), al massimo una al giorno per persona, caso e tipo, solo a utenti di Lateral Space verificati, con il link al progetto. L'e-mail all'AI Board del cliente arriva con la 8.0c, dopo l'ok ai sub-responsabili.
+
+**Migrazione 0030 (la applica l'app, al primo avvio dopo il deploy)**, come la 0029 (§10.16):
+
+1. Prima del deploy, il proprietario: restore point su Neon. Al primo avvio a freddo il self-heal (`ensureDbSchema()`, `ENSURE_VERSION` 24) trova la sonda della 0030 falsa e applica gli stessi statement di `drizzle/0030_agent_factory.sql` (`FACTORY_DDL`), in una transazione con l'advisory lock del file e `lock_timeout` 3s: crea `use_case_packages`, `use_case_projects` e `use_case_decisions` (sullo use case, non sul dossier: il DDL uc della 0018 non cambia e non serve riapplicarlo); allarga con lo stesso nome `use_case_notifications_kind_check` con `progetto_appr`, `strumento_nuovo` e `pacchetto_nuovo` (sotto il lock della 0025). Non scrive dati e non cambia tabelle che c'erano.
+2. Subito dopo il deploy: aprire una pagina, poi `use-case-admin doctor` deve dire `migrazione0030: true` (oppure `SELECT <FACTORY_PROBE_SQL>` dà `true`). Poi «Progetto dell'agente» si apre dal menu «⋯» di un dossier.
+3. Se la sonda resta `false` (nel log «0030 self-heal failed…»): l'app serve come prima e la pagina dice che non è ancora disponibile; il self-heal riprova al massimo ogni 5 minuti. Solo allora, a mano: `psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle/0030_agent_factory.sql`. Mai drizzle-kit, mai `db:push`.
+4. Il ramo non si pubblica prima della revisione (le anteprime usano il database di produzione).
+5. Ritorno indietro al rilascio 7: il codice di prima non legge le tabelle nuove; le tre righe nuove della campanella le mostrerebbe senza testo, e le e-mail in coda con i tre modelli nuovi le annullerebbe («modello_non_previsto»). Il proprietario, prima di premere il ritorno: `DELETE FROM use_case_notifications WHERE kind IN ('progetto_appr', 'strumento_nuovo', 'pacchetto_nuovo');`. Gli oggetti della 0030 restano.
+
+**L'import di TJ-0049** (dopo il deploy, solo con l'ok del titolare): `use-case-admin factory-import --workspace <TopJet> --use-case TJ-0049 --from <topjet-rosa>/casi/tj-0049` porta il progetto approvato il 09/11/2026 come versione 1 (con l'ok dell'AI Board a Neon e Langfuse del 10/11), le decisioni di `decisioni.md` e il pacchetto fatto a mano come k1 («importato»). Prima a secco; poi `--apply --confirm-authorized --confirm-database <host>/<db> --environment production --production-approved`, una transazione. Rilanciato non scrive niente.
+
+**Dopo il deploy**: dal menu «⋯» di un dossier di prova aprire «Progetto dell'agente»; «Imposta il caso», una scelta, «Genera il pacchetto» (i file senza nomi), «Manda in approvazione», l'ok dell'AI Board, «Approva il progetto». Come persona fuori dal team: 404.

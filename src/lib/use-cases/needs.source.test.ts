@@ -80,6 +80,9 @@ const TABLE_FILES = new Set([
   // dell'esigenza), mai a un suo testo.
   "src/lib/db/use-case-hub-referent-thread-ddl.ts",
   "src/lib/db/queries/use-case-referent-thread.ts",
+  // (Rilascio 8.0a) Il pacchetto dell'Agent Factory: risposte ed esigenze aperte solo se chi lo genera ha
+  // `canSeeNeeds` (lo decide l'azione con `abilitiesForUseCase`), come la scheda.
+  "src/lib/db/queries/use-case-factory.ts",
 ]);
 
 const READS = /\b(listWorkspaceNeeds|getWorkspaceNeed|needUseCaseRefs)\b|queries\/use-case-needs/;

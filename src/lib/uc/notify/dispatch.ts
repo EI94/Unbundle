@@ -481,8 +481,9 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       // Email interne: mai al cliente (la 8.0c le apre all'AI Board con l'ok ai sub-responsabili).
       if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
       const version = typeof n.payload.version === "number" && n.payload.version > 0 ? n.payload.version : null;
+      const tools = typeof n.payload.count === "number" && n.payload.count > 0 ? n.payload.count : 0;
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/casi-duso/${c.id.toLowerCase()}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, version, link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, version, tools, link }), after: null };
     }
     case "segnalazione_owner": {
       const r = f.request;

@@ -69,7 +69,7 @@ export type EmailInput =
   | (CaseRef & { template: "delega"; audience: "delegante"; questions: number })
   | (CaseRef & { template: "richiesta_approvazione"; designation: "owner" | "privacy"; pending: number; expiresAt: Date; link: string })
   | { template: "riepilogo_settimanale"; audience: "owner" | "ls"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[] }
-  | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato"; version: number | null; link: string });
+  | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato"; version: number | null; link: string; tools?: number });
 
 // ── Aiuti ─────────────────────────────────────────────────────────────
 
@@ -279,6 +279,9 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: "Buongiorno," },
         { p: `l'impostazione del caso d'uso «${oneLine(input.caseTitle, 120)}» è pronta: il progetto dell'agente${v} aspetta la tua approvazione.` },
         { p: "Nella pagina trovi le dieci scelte con il loro perché, gli strumenti nuovi, la stima e il pacchetto." },
+        ...(input.tools && input.tools > 0
+          ? [{ p: `Usa ${input.tools === 1 ? "uno strumento nuovo" : `${input.tools} strumenti nuovi`} per il cliente: prima dell'approvazione serve anche l'ok dell'AI Board.` }]
+          : []),
         { link: { href: link, label: "Apri il progetto" } },
         { small: "Email interna di Lateral Space." },
       ]);

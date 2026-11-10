@@ -157,7 +157,7 @@ test("the primary hides on the page it leads to and stays only on Panoramica anc
 
 test("the primary never shows on Impostazioni, panels included: one filled button there", () => {
   const base = "/dashboard/w1/casi-duso/c1";
-  assert.deepEqual(PAGES_WITHOUT_PRIMARY, ["impostazioni"]);
+  assert.deepEqual(PAGES_WITHOUT_PRIMARY, ["impostazioni", "progetto"], "(8.0a) il progetto dell'agente ha la sua azione principale");
   assert.equal(stepHiddenOn({ href: `${base}/persone?invia=1`, caseBase: base }, `${base}/impostazioni`), true);
   assert.equal(stepHiddenOn({ href: `${base}/persone?nuovo=1`, caseBase: base }, `${base}/impostazioni/`), true);
   assert.equal(stepHiddenOn({ href: base, caseBase: base, panel: true }, `${base}/impostazioni`), true, "«Avvia lo sviluppo» opens its dialog from the other pages");

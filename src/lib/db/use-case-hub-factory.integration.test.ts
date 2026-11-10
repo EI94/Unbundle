@@ -140,7 +140,8 @@ test("i CHECK del pacchetto: versione, impronta, i tre file come testo, la fonte
   await rejects(insert, [...p, 1, HASH, JSON.stringify({ "PACCHETTO.md": "x".repeat(200_001), "BRIEF.md": "y", VERSIONE: "z" }), "generato"], "use_case_packages_size_check");
   await q(insert, [...p, 1, HASH, FILES, "importato"]);
   await rejects(insert, [...p, 1, "b".repeat(64), FILES, "generato"], "use_case_packages_version_unique");
-  await rejects(insert, [...p, 2, HASH, FILES, "generato"], "use_case_packages_hash_unique");
+  await q(insert, [...p, 2, "b".repeat(64), FILES, "generato"]);
+  await q(insert, [...p, 3, HASH, FILES, "generato"]); // la scheda torna com'era: k3 come k1, e va bene
   await q(insert, [ids.second, ids.ws, 1, HASH, FILES, "generato"]);
 });
 
@@ -178,11 +179,17 @@ test("le decisioni: argomento dell'impostazione, testo non vuoto, fonte, un auto
   await rejects(insert, [...p, null, "  ", "x", "team", ids.user, null], "use_case_decisions_topic_check");
   await rejects(insert, [...p, null, "Strumenti nuovi", " ", "team", ids.user, null], "use_case_decisions_choice_check");
   await rejects(insert, [...p, null, "Strumenti nuovi", "Neon", "chat", ids.user, null], "use_case_decisions_source_check");
-  await rejects(insert, [...p, null, "Strumenti nuovi", "Neon", "team", null, null], "use_case_decisions_author_check");
   await q(insert, [...p, "dati", "Dati", "Neon in UE", "importata", null, "responsabile del caso"]);
   await q(insert, [...p, null, "Strumenti nuovi", "Neon e Langfuse approvati", "team", ids.user, null]);
   const rows = await q(`SELECT topic, author_role FROM use_case_decisions WHERE use_case_id = $1 ORDER BY decided_on, created_at`, [ids.useCase]);
   assert.equal(rows.length, 2);
+  // Una persona autrice si può cancellare: la decisione resta, senza autore.
+  const author = randomUUID();
+  await q(`INSERT INTO users (id, email, name) VALUES ($1, $2, 'Autore di prova 0030')`, [author, `autore-0030-${suffix}@example.test`]);
+  await q(insert, [...p, null, "Prova", "Decisione di una persona che poi esce", "team", author, null]);
+  await q(`DELETE FROM users WHERE id = $1`, [author]);
+  const [kept] = await q(`SELECT count(*)::int AS n FROM use_case_decisions WHERE use_case_id = $1 AND choice = 'Decisione di una persona che poi esce' AND author_user_id IS NULL`, [ids.useCase]);
+  assert.equal(kept.n, 1);
 });
 
 test("i tipi nuovi della campanella si scrivono; le righe si cancellano con lo use case e con il workspace", opts, async () => {

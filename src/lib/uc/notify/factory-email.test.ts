@@ -58,6 +58,15 @@ test("a una persona di Lateral Space parte, con il link al progetto del dossier 
   if (k.action === "send") assert.match(renderEmail(k.build("") as Parameters<typeof renderEmail>[0]).subject, /pacchetto k3$/);
 });
 
+test("«progetto da approvare» dice degli strumenti nuovi, così il responsabile riceve una email sola", () => {
+  const plan = planDelivery({ ...claimed("progetto_da_approvare"), payload: { version: 1, count: 2 } }, facts(), OPTS);
+  assert.ok(plan.action === "send");
+  if (plan.action !== "send") return;
+  assert.match(renderEmail(plan.build("") as Parameters<typeof renderEmail>[0]).text, /Usa 2 strumenti nuovi per il cliente: prima dell'approvazione serve anche l'ok dell'AI Board\./);
+  const none = planDelivery({ ...claimed("progetto_da_approvare"), payload: { version: 1, count: 0 } }, facts(), OPTS);
+  if (none.action === "send") assert.doesNotMatch(renderEmail(none.build("") as Parameters<typeof renderEmail>[0]).text, /strumenti nuovi per il cliente/);
+});
+
 test("mai al cliente: un utente che non è di Lateral Space o un contatto si annullano; a caso chiuso pure", () => {
   for (const t of TEMPLATES) {
     const client = planDelivery(claimed(t), facts({ recipient: { kind: "user", id: USER, email: "persona@cliente.test", reachable: true, digestOptOut: false, lateralSpace: false } }), OPTS);

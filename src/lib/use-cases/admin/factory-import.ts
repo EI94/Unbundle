@@ -23,7 +23,7 @@ import {
   type ProjectTopics,
   type SetupTopic,
 } from "../../db/use-case-hub-factory-ddl.ts";
-import { packageFilesHash } from "../factory/package.ts";
+import { givenNames, nameTokens, packageFilesHash, redact } from "../factory/package.ts";
 import { AdminStop, type AdminOptionSpec } from "./cli.ts";
 
 export const FACTORY_IMPORT_OPTIONS: AdminOptionSpec = { values: ["use-case", "from"] };
@@ -72,6 +72,12 @@ function frontmatter(text: string): Record<string, string> {
   return out;
 }
 
+/** «1.200» è milleduecento, «1,5» uno e mezzo. Un numero che non si legge è null. */
+export function italianNumber(text: string): number | null {
+  const n = Number(text.replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
 const LABEL_TO_TOPIC = new Map<string, SetupTopic>(SETUP_TOPICS.map((t) => [SETUP_TOPIC_LABELS[t].toLowerCase(), t]));
 
 /** Il progetto approvato da `PROGETTO.md`: l'intestazione, la tabella dei 10 argomenti, stima e strumenti nuovi. */
@@ -94,11 +100,13 @@ export function parseProjectMarkdown(text: string): ParsedProject {
   if (missing.length) throw new AdminStop("progetto", `Mancano argomenti nella tabella: ${missing.map((t) => SETUP_TOPIC_LABELS[t]).join(", ")}.`);
   const fwText = (topics.framework?.scelta ?? "").toLowerCase();
   const framework = FACTORY_FRAMEWORKS.find((f) => fwText.startsWith(f.replace("_", " ")) || fwText.startsWith(f)) ?? null;
-  const hours = /\*\*Costruzione:\*\*\s*circa\s*([\d.]+)\s*ore/i.exec(text);
-  const cost = /\*\*Esercizio al mese:\*\*\s*circa\s*([\d.]+)\s*€/i.exec(text);
+  const hours = /\*\*Costruzione:\*\*\s*circa\s*([\d.,]+)\s*ore/i.exec(text);
+  const cost = /\*\*Esercizio al mese:\*\*\s*circa\s*([\d.,]+)\s*€/i.exec(text);
   // Gli strumenti nuovi: i nomi tra parentesi in `ai_board` («approvato (Neon, Langfuse) …»), con il perché dalla
   // sezione «Strumenti nuovi per il cliente» («Neon Postgres in UE (database del caso)»).
-  const names = /\(([^)]+)\)/.exec(fm.ai_board ?? "")?.[1].split(",").map((n) => n.trim()).filter(Boolean) ?? [];
+  // Solo con «ai_board: approvato (…)»: «non serve (…)» o altro non porta strumenti nuovi.
+  const approvedTools = /^approvato\b/i.test(fm.ai_board ?? "");
+  const names = approvedTools ? (/\(([^)]+)\)/.exec(fm.ai_board ?? "")?.[1].split(",").map((n) => n.trim()).filter(Boolean) ?? []) : [];
   const section = /## Strumenti nuovi per il cliente\n([\s\S]*?)(\n## |$)/.exec(text)?.[1] ?? "";
   const newTools = names.slice(0, FACTORY_LIMITS.newToolsMax).map((nome) => {
     const why = new RegExp(`${nome.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^()]*\\(([^)]+)\\)`).exec(section)?.[1] ?? null;
@@ -115,8 +123,8 @@ export function parseProjectMarkdown(text: string): ParsedProject {
     topics,
     framework,
     newTools,
-    estimateHours: hours ? Number(hours[1]) : null,
-    monthlyCostEur: cost ? Number(cost[1]) : null,
+    estimateHours: hours ? italianNumber(hours[1]) : null,
+    monthlyCostEur: cost ? italianNumber(cost[1]) : null,
   };
 }
 
@@ -163,6 +171,15 @@ export interface FactoryImportStatement {
 export function factoryImportReads(workspaceId: string, code: string) {
   return {
     useCase: { text: `SELECT id, title FROM use_cases WHERE workspace_id = $1::uuid AND code = $2`, params: [workspaceId, code] },
+    names: {
+      text: `SELECT DISTINCT x.name FROM (
+  SELECT u.name FROM users u JOIN workspace_memberships wm ON wm.user_id = u.id WHERE wm.workspace_id = $1::uuid
+  UNION SELECT u.name FROM users u JOIN memberships m ON m.user_id = u.id JOIN workspaces w ON w.organization_id = m.organization_id WHERE w.id = $1::uuid
+  UNION SELECT c.display_name FROM uc_contacts c WHERE c.workspace_id = $1::uuid
+  UNION SELECT ci.display_name FROM connector_identities ci WHERE ci.workspace_id = $1::uuid
+) x WHERE x.name IS NOT NULL`,
+      params: [workspaceId],
+    },
     existing: (useCaseId: string) => ({
       text: `SELECT (SELECT count(*) FROM use_case_projects WHERE use_case_id = $1::uuid)::int AS projects, (SELECT count(*) FROM use_case_packages WHERE use_case_id = $1::uuid)::int AS packages, (SELECT count(*) FROM use_case_decisions WHERE use_case_id = $1::uuid)::int AS decisions`,
       params: [useCaseId],
@@ -175,11 +192,37 @@ export function factoryImportReads(workspaceId: string, code: string) {
  * Roma, e l'ok dell'AI Board se ci sono strumenti nuovi), le decisioni. Una transazione; ogni INSERT controlla che
  * lo use case sia ancora senza progetto e senza pacchetto.
  */
-export function factoryImportPlan(i: { workspaceId: string; useCaseId: string; project: ParsedProject; decisions: readonly ParsedDecision[]; files: Record<PackageFile, string> }) {
-  const p = i.project;
+export function factoryImportPlan(i: {
+  workspaceId: string;
+  useCaseId: string;
+  project: ParsedProject;
+  decisions: readonly ParsedDecision[];
+  files: Record<PackageFile, string>;
+  /** I nomi che Unbundle conosce nel workspace: si coprono anche nei testi importati, come nel pacchetto generato. */
+  namesToHide?: readonly string[];
+}) {
+  const tokens = nameTokens(i.namesToHide ?? []);
+  const given = givenNames(i.namesToHide ?? []);
+  const cover = (text: string | null) => (text === null ? null : redact(text, tokens, given));
+  const p: ParsedProject = {
+    ...i.project,
+    topics: Object.fromEntries(
+      Object.entries(i.project.topics).map(([k, v]) => [k, v ? { scelta: cover(v.scelta)!, perche: cover(v.perche), alternativa: cover(v.alternativa) } : v]),
+    ) as ProjectTopics,
+    newTools: i.project.newTools.map((t) => ({ nome: t.nome, perche: cover(t.perche) })),
+    aiBoardNote: cover(i.project.aiBoardNote),
+  };
+  const decisions = i.decisions.map((d) => ({ ...d, topic: cover(d.topic)!, choice: cover(d.choice)!, reason: cover(d.reason), rejected: cover(d.rejected), authorRole: cover(d.authorRole)! }));
+  const files = Object.fromEntries(PACKAGE_FILES.map((name) => [name, cover(i.files[name])!])) as Record<PackageFile, string>;
   const noon = (day: string) => `${day}T11:00:00Z`;
   const empty = `NOT EXISTS (SELECT 1 FROM use_case_projects WHERE use_case_id = $1::uuid) AND NOT EXISTS (SELECT 1 FROM use_case_packages WHERE use_case_id = $1::uuid)`;
   const statements: FactoryImportStatement[] = [
+    // Tutto o niente: se nel frattempo lo use case ha avuto un progetto, un pacchetto o una decisione, la transazione
+    // si annulla qui (`uc_require`, la funzione dei dossier) e non scrive niente.
+    {
+      text: `SELECT uc_require(NOT EXISTS (SELECT 1 FROM use_case_projects WHERE use_case_id = $1::uuid) AND NOT EXISTS (SELECT 1 FROM use_case_packages WHERE use_case_id = $1::uuid) AND NOT EXISTS (SELECT 1 FROM use_case_decisions WHERE use_case_id = $1::uuid), 'gia_impostato') AS ok`,
+      params: [i.useCaseId],
+    },
     {
       text: `INSERT INTO use_case_projects (use_case_id, workspace_id, version, status, topics, framework, new_tools, estimate_hours, monthly_cost_eur, standard_version, catalog_version, package_version, submitted_at, approved_at, ai_board_ok_at, ai_board_note, created_at, updated_at)
 SELECT $1::uuid, $2::uuid, 1, 'approvato', $3::jsonb, $4, $5::jsonb, $6::numeric, $7::numeric, $8, $9, 1, $10::timestamptz, $10::timestamptz, $11::timestamptz, $12, $10::timestamptz, now()
@@ -203,9 +246,9 @@ WHERE EXISTS (SELECT 1 FROM use_cases WHERE id = $1::uuid AND workspace_id = $2:
       text: `INSERT INTO use_case_packages (use_case_id, workspace_id, version, content_hash, files, source)
 SELECT $1::uuid, $2::uuid, 1, $3, $4::jsonb, 'importato'
 WHERE NOT EXISTS (SELECT 1 FROM use_case_packages WHERE use_case_id = $1::uuid)`,
-      params: [i.useCaseId, i.workspaceId, packageFilesHash(i.files), JSON.stringify(i.files)],
+      params: [i.useCaseId, i.workspaceId, packageFilesHash(files), JSON.stringify(files)],
     },
-    ...i.decisions.map((d) => ({
+    ...decisions.map((d) => ({
       text: `INSERT INTO use_case_decisions (use_case_id, workspace_id, decided_on, topic_key, topic, choice, reason, rejected, source, project_version, author_role)
 VALUES ($1::uuid, $2::uuid, $3::date, $4, $5, $6, $7, $8, 'importata', 1, $9)`,
       params: [i.useCaseId, i.workspaceId, d.decidedOn, d.topicKey, d.topic, d.choice, d.reason, d.rejected, d.authorRole],
@@ -214,8 +257,8 @@ VALUES ($1::uuid, $2::uuid, $3::date, $4, $5, $6, $7, $8, 'importata', 1, $9)`,
   const report = {
     progetto: { versione: 1, stato: "approvato", approvatoIl: p.approvedOn, framework: p.framework, strumentiNuovi: p.newTools.map((t) => t.nome), okAiBoardIl: p.aiBoardOn, ore: p.estimateHours, euroAlMese: p.monthlyCostEur },
     argomenti: SETUP_TOPICS.filter((t) => p.topics[t]).length,
-    decisioni: i.decisions.length,
-    pacchetto: { versione: 1, fonte: "importato", byte: Buffer.byteLength(JSON.stringify(i.files), "utf8") },
+    decisioni: decisions.length,
+    pacchetto: { versione: 1, fonte: "importato", byte: Buffer.byteLength(JSON.stringify(files), "utf8") },
   };
   return { statements, report };
 }

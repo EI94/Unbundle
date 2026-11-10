@@ -7,12 +7,15 @@
  * da sé in `runFactoryDdl`):
  * 1. controllo che la 0029 ci sia (il rilascio 7);
  * 2. `use_case_packages`: le versioni del pacchetto di uno use case (k1, k2, …), con i file, l'impronta del
- *    contenuto e da dove vengono (generato da Unbundle o importato, come il k1 di TJ-0049 fatto a mano);
+ *    contenuto e da dove vengono (generato da Unbundle o importato, come il k1 di TJ-0049 fatto a mano). L'impronta
+ *    non è unica: una scheda che torna com'era prima fa una versione nuova, uguale a una vecchia;
  * 3. `use_case_projects`: le versioni del progetto dell'impostazione (i 10 argomenti con scelta, perché e
  *    alternativa scartata; il framework; gli strumenti nuovi; la stima), con lo stato e le due approvazioni:
- *    il responsabile del caso e, se ci sono strumenti nuovi, l'AI Board;
+ *    il responsabile del caso e, se ci sono strumenti nuovi, l'AI Board. `revision` cresce a ogni modifica:
+ *    si approva solo la revisione che si è vista;
  * 4. `use_case_decisions`: le decisioni del caso, dall'impostazione o del team, una riga per decisione e mai
- *    cambiata (si aggiunge, non si riscrive);
+ *    cambiata (si aggiunge, non si riscrive). L'autore è una persona o un ruolo a parole; se la persona viene
+ *    cancellata resta la decisione, senza autore;
  * 5. il CHECK dei tipi della campanella allargato con `progetto_appr`, `strumento_nuovo` e `pacchetto_nuovo`,
  *    sotto l'advisory lock della 0025, come la 0028 e la 0029.
  *
@@ -154,7 +157,7 @@ END $$;`,
   CONSTRAINT use_case_packages_size_check CHECK (octet_length(files::text) <= ${L.packageBytesMax})
 );`,
   `CREATE UNIQUE INDEX IF NOT EXISTS use_case_packages_version_unique ON use_case_packages (use_case_id, version);`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS use_case_packages_hash_unique ON use_case_packages (use_case_id, content_hash);`,
+  `CREATE INDEX IF NOT EXISTS use_case_packages_hash_idx ON use_case_packages (use_case_id, content_hash);`,
   `CREATE INDEX IF NOT EXISTS use_case_packages_workspace_idx ON use_case_packages (workspace_id);`,
   `CREATE TABLE IF NOT EXISTS use_case_projects (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -162,6 +165,7 @@ END $$;`,
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   version integer NOT NULL CONSTRAINT use_case_projects_version_check CHECK (version BETWEEN 1 AND ${L.projectVersionMax}),
   status varchar(12) NOT NULL DEFAULT 'in_corso' CONSTRAINT use_case_projects_status_check CHECK (status IN (${quoted(PROJECT_STATUSES)})),
+  revision integer NOT NULL DEFAULT 1 CONSTRAINT use_case_projects_revision_check CHECK (revision >= 1),
   topics jsonb NOT NULL DEFAULT '{}'::jsonb CONSTRAINT use_case_projects_topics_check CHECK (jsonb_typeof(topics) = 'object'),
   framework varchar(10) CONSTRAINT use_case_projects_framework_check CHECK (framework IS NULL OR framework IN (${quoted(FACTORY_FRAMEWORKS)})),
   new_tools jsonb NOT NULL DEFAULT '[]'::jsonb CONSTRAINT use_case_projects_new_tools_check CHECK (jsonb_typeof(new_tools) = 'array' AND jsonb_array_length(new_tools) <= ${L.newToolsMax}),
@@ -204,8 +208,7 @@ END $$;`,
   author_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   author_role varchar(${L.authorRole}),
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT use_case_decisions_pkey PRIMARY KEY (id),
-  CONSTRAINT use_case_decisions_author_check CHECK (author_user_id IS NOT NULL OR author_role IS NOT NULL)
+  CONSTRAINT use_case_decisions_pkey PRIMARY KEY (id)
 );`,
   `CREATE INDEX IF NOT EXISTS use_case_decisions_case_idx ON use_case_decisions (use_case_id, decided_on, created_at);`,
   `CREATE INDEX IF NOT EXISTS use_case_decisions_workspace_idx ON use_case_decisions (workspace_id);`,
@@ -233,7 +236,7 @@ export const FACTORY_TABLES = ["use_case_packages", "use_case_projects", "use_ca
 /** Gli indici della 0030, per nome (oltre alle chiavi primarie). */
 export const FACTORY_INDEXES = [
   "use_case_packages_version_unique",
-  "use_case_packages_hash_unique",
+  "use_case_packages_hash_idx",
   "use_case_packages_workspace_idx",
   "use_case_projects_version_unique",
   "use_case_projects_open_unique",
@@ -253,6 +256,7 @@ export const FACTORY_NAMED_CONSTRAINTS = [
   "use_case_packages_size_check",
   "use_case_projects_version_check",
   "use_case_projects_status_check",
+  "use_case_projects_revision_check",
   "use_case_projects_topics_check",
   "use_case_projects_framework_check",
   "use_case_projects_new_tools_check",
@@ -269,7 +273,6 @@ export const FACTORY_NAMED_CONSTRAINTS = [
   "use_case_decisions_source_check",
   "use_case_decisions_project_check",
   "use_case_decisions_pkey",
-  "use_case_decisions_author_check",
 ] as const;
 
 /**

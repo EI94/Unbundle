@@ -140,6 +140,10 @@ test("(0025) «Pronto da avviare» porta a «Realizzazione», «Autorizza i forn
     `/dashboard/${WS}/use-cases/${UC}?capitolo=richieste`,
   ]);
   assert.equal(noticeHref(WS, { kind: "senza_risposta", useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}?capitolo=richieste`);
+  // (8.0a) L'Agent Factory: il progetto dell'agente del dossier, dall'indirizzo breve dello use case.
+  for (const kind of ["progetto_appr", "strumento_nuovo", "pacchetto_nuovo"] as const) {
+    assert.equal(noticeHref(WS, { kind, useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}/progetto`, kind);
+  }
 });
 
 test("dal client: riferimenti, corpi e istanti si controllano", () => {

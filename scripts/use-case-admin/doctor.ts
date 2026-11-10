@@ -13,6 +13,7 @@
  * (0027) `migrazione0027`: la sonda della 0027 (le risposte del referente per beneficio), come la 0026.
  * (0028) `migrazione0028`: la sonda della 0028 («Il filo con il referente»), come la 0027.
  * (0029) `migrazione0029`: la sonda della 0029 («Programma»), come la 0028.
+ * (0030) `migrazione0030`: la sonda della 0030 («Agent Factory»: progetto, decisioni, pacchetto), come la 0029.
  */
 import { parseLsDomains } from "../../src/lib/uc/lateral-space.ts";
 import { done, scopeQuery, stopped, type AdminCommand } from "../../src/lib/use-cases/admin/cli.ts";
@@ -26,6 +27,7 @@ import { USE_CASE_REFERENT_CHECK_PROBE_SQL } from "../../src/lib/db/use-case-hub
 import { USE_CASE_REFERENT_BENEFITS_PROBE_SQL } from "../../src/lib/db/use-case-hub-referent-benefits-ddl.ts";
 import { USE_CASE_REFERENT_THREAD_PROBE_SQL } from "../../src/lib/db/use-case-hub-referent-thread-ddl.ts";
 import { PROGRAM_PROBE_SQL } from "../../src/lib/db/use-case-hub-program-ddl.ts";
+import { FACTORY_PROBE_SQL } from "../../src/lib/db/use-case-hub-factory-ddl.ts";
 import { cast, toStatement, ucSql } from "../../src/lib/uc/sql/statement.ts";
 import { declarerRecipientsSql } from "../../src/lib/use-cases/case-alerts/sql.ts";
 import { clientNoticesEnabled } from "../../src/lib/use-cases/client-notices.ts";
@@ -109,6 +111,7 @@ export const command: AdminCommand = {
     const m0028 = (await ctx.db.read(`SELECT ${USE_CASE_REFERENT_THREAD_PROBE_SQL} AS ok`))[0]?.ok === true;
     // (0029) Solo da leggere, come la 0028.
     const m0029 = (await ctx.db.read(`SELECT ${PROGRAM_PROBE_SQL} AS ok`))[0]?.ok === true;
+    const m0030 = (await ctx.db.read(`SELECT ${FACTORY_PROBE_SQL} AS ok`))[0]?.ok === true;
     const lsDomains = parseLsDomains(ctx.lsEmailDomains);
     const declarers = new Map<string, boolean>();
     for (const ws of perWorkspace) {
@@ -150,6 +153,7 @@ export const command: AdminCommand = {
       migrazione0027: m0027,
       migrazione0028: m0028,
       migrazione0029: m0029,
+      migrazione0030: m0030,
     };
     return result.green ? done(output) : stopped(output);
   },

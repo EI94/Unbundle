@@ -33,6 +33,7 @@ import { actorRoles, loadCaseCore, transitionCase } from "@/lib/db/queries/uc-ca
 import type { Result } from "@/lib/uc/types";
 import type { CaseRole } from "@/lib/uc/vocab";
 import { KIND_LABEL } from "@/lib/use-cases/labels";
+import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { computedOutput } from "@/lib/use-cases/mcp/output";
 import { quarterLabel } from "@/lib/use-cases/quarter";
 import type { WorkspaceAccess } from "@/lib/workspace-access";
@@ -50,16 +51,20 @@ interface Opened {
 }
 
 async function onFactory<T>(
+  guard: { session: Session; access: WorkspaceAccess },
   workspaceId: string,
   caseId: string,
   allow: readonly CaseRole[],
   run: (opened: Opened) => Promise<Result<T>>,
   message?: (value: T) => string | undefined,
 ): Promise<UcActionResult<T>> {
-  const { session, access } = await requireWorkspaceAccess(workspaceId);
+  const { session, access } = guard;
   const opened = await openUcCase({ session, access, workspaceId, caseId, allow, write: true });
   if (!opened.ok) return opened.result;
   const o = opened.value;
+  // Come le altre scritture dei dossier: a caso chiuso niente, in pausa niente (si riprende da Impostazioni).
+  if (o.caseAccess.status === "chiuso") return ucFailure("caso_chiuso", "Il caso è chiuso: il progetto si legge soltanto.");
+  if (o.caseAccess.status === "sospeso") return ucFailure("caso_sospeso", "Il caso è in pausa: riprendilo da Impostazioni del caso per cambiare il progetto.");
   if (!(await factoryStoreReady(o.executor))) return NOT_READY;
   const useCase = await findUseCaseOfCase(o.executor, workspaceId, o.ctx.caseId);
   if (!useCase) return ucFailure("non_trovato", "Il dossier non è collegato a uno use case.");
@@ -70,13 +75,14 @@ async function onFactory<T>(
 }
 
 /** Quello che il pacchetto prende dalla scheda, letto con i permessi di chi lo genera. */
-async function packageCard(session: Session, access: WorkspaceAccess, target: FactoryTarget): Promise<PackageCard | null> {
+async function packageCard(session: Session, access: WorkspaceAccess, target: FactoryTarget): Promise<{ card: PackageCard; canSeeNeeds: boolean } | null> {
   const viewer = viewerFromSession({ id: session.user.id, email: session.user.email ?? null, emailVerified: session.user.emailVerified === true }, access.role);
+  const canSeeNeeds = abilitiesForUseCase(viewer).canSeeNeeds;
   const detail = await getUseCaseDetail(target.workspaceId, target.useCaseId, viewer);
   if (!detail || detail.projection === "contributore") return null;
   const u = detail.useCase;
   const computed = u.valueModel ? computedOutput(u.valueModel, { params: detail.valueParams, value: u.value, cost: u.cost, costBands: detail.costBands }) : null;
-  return {
+  const card: PackageCard = {
     code: u.code ?? "SENZA-CODICE",
     title: u.title,
     kindLabel: KIND_LABEL[u.kind].label.toLowerCase(),
@@ -88,18 +94,20 @@ async function packageCard(session: Session, access: WorkspaceAccess, target: Fa
       : [],
     costText: computed?.costText ?? null,
   };
+  return { card, canSeeNeeds };
 }
 
 /** «Aggiorna il pacchetto»: una versione nuova solo se la scheda è cambiata. */
 export async function generatePackageAction(workspaceId: string, caseId: string): Promise<UcActionResult<{ version: number; created: boolean }>> {
   return onFactory(
+    await requireWorkspaceAccess(workspaceId),
     workspaceId,
     caseId,
     LS_WRITERS,
     async ({ o, actor, target, session, access }) => {
-      const card = await packageCard(session, access, target);
-      if (!card) return { ok: false, code: "permesso_negato", message: "Per generare il pacchetto serve poter leggere la scheda dello use case." };
-      return savePackageVersion(o.executor, actor, target, { generated: await packageSourceFor(o.executor, target, card) });
+      const read = await packageCard(session, access, target);
+      if (!read) return { ok: false, code: "permesso_negato", message: "Per generare il pacchetto serve poter leggere la scheda dello use case." };
+      return savePackageVersion(o.executor, actor, target, { generated: await packageSourceFor(o.executor, target, read.card, { canSeeNeeds: read.canSeeNeeds }) });
     },
     (v) => (v.created ? `Pacchetto k${v.version} pronto.` : `Il pacchetto non è cambiato: resta k${v.version}.`),
   );
@@ -107,13 +115,15 @@ export async function generatePackageAction(workspaceId: string, caseId: string)
 
 /** «Imposta il caso» o «Rivedi il progetto»: una versione nuova, con le scelte dell'ultima. */
 export async function startProjectAction(workspaceId: string, caseId: string): Promise<UcActionResult<{ version: number; created: boolean }>> {
-  return onFactory(workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) => startProject(o.executor, actor, target));
+  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) => startProject(o.executor, actor, target), (v) =>
+    v.created ? `Progetto v${v.version} aperto: le scelte partono da quelle di prima.` : `Il progetto v${v.version} è già aperto.`,
+  );
 }
 
 /** La scelta di un argomento (scelta, perché, alternativa scartata). */
 export async function saveProjectTopicAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactory(workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) =>
+  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) =>
     saveProjectTopic(o.executor, actor, target, { topic: i.topic, scelta: i.scelta, perche: i.perche, alternativa: i.alternativa }),
   () => "Scelta salvata.");
 }
@@ -121,51 +131,61 @@ export async function saveProjectTopicAction(workspaceId: string, caseId: string
 /** Framework, strumenti nuovi, stima. */
 export async function saveProjectDetailsAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactory(workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) =>
+  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) =>
     saveProjectDetails(o.executor, actor, target, { framework: i.framework, newTools: i.newTools, estimateHours: i.estimateHours, monthlyCostEur: i.monthlyCostEur }),
   () => "Salvato.");
 }
 
 /** «Manda in approvazione». */
-export async function submitProjectAction(workspaceId: string, caseId: string): Promise<UcActionResult<{ version: number; newTools: number }>> {
-  return onFactory(workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) => submitProject(o.executor, actor, target), (v) =>
+export async function submitProjectAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number; newTools: number }>> {
+  const i = (input ?? {}) as Record<string, unknown>;
+  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) => submitProject(o.executor, actor, target, { revision: i.revision }), (v) =>
     v.newTools > 0 ? "Progetto da approvare. Serve anche l'ok dell'AI Board agli strumenti nuovi." : "Progetto da approvare.",
   );
 }
 
 /** «Riapri per cambiarlo» (da approvare → in corso). */
-export async function reopenProjectAction(workspaceId: string, caseId: string): Promise<UcActionResult<{ version: number }>> {
-  return onFactory(workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) => reopenProject(o.executor, actor, target), () => "Il progetto è di nuovo in corso.");
+export async function reopenProjectAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number }>> {
+  const i = (input ?? {}) as Record<string, unknown>;
+  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) => reopenProject(o.executor, actor, target, { revision: i.revision }), () => "Il progetto è di nuovo in corso.");
 }
 
 /** L'ok dell'AI Board agli strumenti nuovi: da `ai_board`, o dal responsabile con la nota. */
 export async function recordAiBoardOkAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactory(workspaceId, caseId, ["ai_board", "ls_lead"], ({ o, actor, target }) => recordAiBoardOk(o.executor, actor, target, { note: i.note }), () => "Ok dell'AI Board registrato.");
+  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ["ai_board", "ls_lead"], ({ o, actor, target }) => recordAiBoardOk(o.executor, actor, target, { note: i.note, revision: i.revision }), () => "Ok dell'AI Board registrato.");
 }
 
 /** «Approva il progetto»; se il caso è «pronto per lo sviluppo» passa a «in sviluppo». */
-export async function approveProjectAction(workspaceId: string, caseId: string): Promise<UcActionResult<{ version: number; moved: boolean }>> {
+export async function approveProjectAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number; moved: boolean | null }>> {
+  const i = (input ?? {}) as Record<string, unknown>;
   return onFactory(
+    await requireWorkspaceAccess(workspaceId),
     workspaceId,
     caseId,
     ["ls_lead"],
-    async ({ o, actor, target }) => {
-      const approved = await approveProject(o.executor, actor, target);
+    async ({ o, actor, target }): Promise<Result<{ version: number; moved: boolean | null }>> => {
+      const approved = await approveProject(o.executor, actor, target, { revision: i.revision });
       if (!approved.ok) return approved;
       const core = await loadCaseCore(o.executor, workspaceId, o.ctx.caseId);
-      if (core?.status !== "pronto_sviluppo") return { ok: true, value: { version: approved.value.version, moved: false } };
+      // moved: null = lo stato non doveva cambiare; false = doveva, ma il passaggio non è riuscito.
+      if (core?.status !== "pronto_sviluppo") return { ok: true, value: { version: approved.value.version, moved: null } };
       const moved = await transitionCase(o.executor, o.ctx, { to: "in_sviluppo" });
       return { ok: true, value: { version: approved.value.version, moved: moved.ok } };
     },
-    (v) => (v.moved ? `Progetto v${v.version} approvato: il caso passa a «In sviluppo».` : `Progetto v${v.version} approvato.`),
+    (v) =>
+      v.moved === true
+        ? `Progetto v${v.version} approvato: il caso passa a «In sviluppo».`
+        : v.moved === false
+          ? `Progetto v${v.version} approvato, ma il caso non è passato a «In sviluppo»: cambialo da Impostazioni del caso.`
+          : `Progetto v${v.version} approvato.`,
   );
 }
 
 /** Una decisione del team. */
 export async function addDecisionAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ id: string }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactory(workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) =>
+  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) =>
     addTeamDecision(o.executor, actor, target, { topic: i.topic, choice: i.choice, reason: i.reason, rejected: i.rejected, topicKey: i.topicKey }),
   () => "Decisione registrata.");
 }

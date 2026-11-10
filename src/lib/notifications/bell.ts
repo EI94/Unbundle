@@ -241,6 +241,10 @@ export function noticeHref(workspaceId: string, n: Pick<BellUseCaseInput, "kind"
   if (n.kind === "fornitori") return subprocessorsSettingsHref(workspaceId);
   if (n.kind === "senza_risposta") return richiesteHref(workspaceId, n.useCaseId);
   if (n.kind === "da_rivedere") return `/dashboard/${encodeURIComponent(workspaceId)}/programma?apri=rivedere`;
+  // (8.0a) L'Agent Factory: il progetto dell'agente nel dossier, dall'indirizzo breve dello use case.
+  if (n.kind === "progetto_appr" || n.kind === "strumento_nuovo" || n.kind === "pacchetto_nuovo") {
+    return `/dashboard/${encodeURIComponent(workspaceId)}/use-cases/${encodeURIComponent(n.useCaseId)}/progetto`;
+  }
   return cosaServeHref(workspaceId, n.useCaseId);
 }
 

@@ -67,6 +67,13 @@ const source = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** La revisione che la pagina mostrerebbe adesso. */
+async function rev(): Promise<number> {
+  const read = await factory.readFactory(exec, target(), lead());
+  assert.ok(read.ok && read.value.open, "c'è una versione aperta");
+  return read.ok && read.value.open ? read.value.open.revision : 0;
+}
+
 async function notices(kind: string): Promise<string[]> {
   const rows = await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = $2 ORDER BY 1`, [ids.useCase, kind]);
   return rows.map((r) => String(r.recipient_user_id));
@@ -142,8 +149,10 @@ test("il pacchetto: k1, lo stesso contenuto non crea versioni, un contenuto nuov
   assert.ok(!recipients.includes(ids.board) && !recipients.includes(ids.watcher), "non l'AI Board né l'osservatore");
   const mails = await q(`SELECT recipient_user_id, template_key, payload->>'version' AS v FROM uc_notifications WHERE case_id = $1 AND channel = 'email' ORDER BY 1`, [ids.dossier]);
   assert.deepEqual(mails.map((m) => [m.recipient_user_id, m.template_key]).sort(), [[ids.analyst, "pacchetto_aggiornato"], [ids.lead, "pacchetto_aggiornato"]].sort(), "email solo a Lateral Space, mai a chi agisce, una al giorno");
-  const imported = await factory.savePackageVersion(exec, script(), target(), { imported: { "PACCHETTO.md": "# k3 a mano", "BRIEF.md": "brief", VERSIONE: "k3" } });
-  assert.deepEqual(imported, { ok: true, value: { version: 3, created: true } });
+  const back = await factory.savePackageVersion(exec, lead(), target(), { generated: source() });
+  assert.deepEqual(back, { ok: true, value: { version: 3, created: true } }, "la scheda torna com'era: k3, uguale a k1, è l'ultima");
+  const imported = await factory.savePackageVersion(exec, script(), target(), { imported: { "PACCHETTO.md": "# k4 a mano", "BRIEF.md": "brief", VERSIONE: "k4" } });
+  assert.deepEqual(imported, { ok: true, value: { version: 4, created: true } });
 });
 
 test("il progetto: i 10 argomenti diventano decisioni; senza tutti non si manda; da approvare non si cambia", opts, async () => {
@@ -158,12 +167,16 @@ test("il progetto: i 10 argomenti diventano decisioni; senza tutti non si manda;
     const saved = await factory.saveProjectTopic(exec, analyst(), target(), { topic, scelta: topic === "framework" ? "codice" : `Scelta per ${topic}`, perche: "Il consiglio della skill", alternativa: "Un'altra strada" });
     assert.ok(saved.ok, topic);
   }
-  const early = await factory.submitProject(exec, analyst(), target());
+  const early = await factory.submitProject(exec, analyst(), target(), { revision: await rev() });
   assert.equal(early.ok, false);
   assert.match(early.ok ? "" : early.message, /Evals e autonomia/);
   await factory.saveProjectTopic(exec, analyst(), target(), { topic: "evals_autonomia", scelta: "Regole al 100 %" });
   assert.ok((await factory.saveProjectDetails(exec, analyst(), target(), { newTools: [{ nome: "Neon", perche: "database del caso" }], estimateHours: 90, monthlyCostEur: 60 })).ok);
-  const submitted = await factory.submitProject(exec, analyst(), target());
+  const stale = await rev();
+  await factory.saveProjectDetails(exec, analyst(), target(), { estimateHours: 91 });
+  const old = await factory.submitProject(exec, analyst(), target(), { revision: stale });
+  assert.equal(old.ok ? "" : old.code, "conflitto", "una revisione vecchia non si manda");
+  const submitted = await factory.submitProject(exec, analyst(), target(), { revision: await rev() });
   assert.deepEqual(submitted, { ok: true, value: { version: 1, newTools: 1 } });
   assert.equal((await factory.saveProjectTopic(exec, analyst(), target(), { topic: "dati", scelta: "Altro" })).ok, false, "da approvare non si cambia");
   const read = await factory.readFactory(exec, target(), watcher());
@@ -174,20 +187,24 @@ test("il progetto: i 10 argomenti diventano decisioni; senza tutti non si manda;
   assert.equal(read.value.decisions.filter((d) => d.source === "impostazione").length, 10);
   assert.deepEqual(await notices("progetto_appr"), [ids.lead]);
   const toApprove = await q(`SELECT recipient_user_id, template_key FROM uc_notifications WHERE case_id = $1 AND channel = 'email' AND template_key IN ('progetto_da_approvare', 'strumento_da_approvare') ORDER BY 2`, [ids.dossier]);
-  assert.deepEqual(toApprove.map((m) => [m.recipient_user_id, m.template_key]), [[ids.lead, "progetto_da_approvare"], [ids.lead, "strumento_da_approvare"]], "email al responsabile, non all'AI Board del cliente (8.0c)");
-  const tools = await notices("strumento_nuovo");
-  assert.ok(tools.includes(ids.board) && tools.includes(ids.lead));
+  assert.deepEqual(toApprove.map((m) => [m.recipient_user_id, m.template_key]), [[ids.lead, "progetto_da_approvare"]], "una sola email al responsabile, con gli strumenti nuovi dentro; all'AI Board del cliente dalla 8.0c");
+  assert.deepEqual(await notices("strumento_nuovo"), [ids.board], "solo all'AI Board: il responsabile lo sa da «Progetto da approvare»");
+  const [mail] = await q(`SELECT payload->>'count' AS tools FROM uc_notifications WHERE case_id = $1 AND template_key = 'progetto_da_approvare'`, [ids.dossier]);
+  assert.equal(mail?.tools, "1", "l'email del progetto dice degli strumenti nuovi");
 });
 
 test("l'AI Board: senza il suo ok non si approva; il responsabile lo registra solo con la nota; l'analista non approva", opts, async () => {
-  const blocked = await factory.approveProject(exec, lead(), target());
+  const blocked = await factory.approveProject(exec, lead(), target(), { revision: await rev() });
   assert.equal(blocked.ok ? "" : blocked.code, "manca_ai_board");
-  assert.equal((await factory.recordAiBoardOk(exec, analyst(), target(), { note: "Ok dato a voce" })).ok, false);
-  const noNote = await factory.recordAiBoardOk(exec, lead(), target(), {});
+  assert.equal((await factory.recordAiBoardOk(exec, analyst(), target(), { note: "Ok dato a voce", revision: await rev() })).ok, false);
+  const noNote = await factory.recordAiBoardOk(exec, lead(), target(), { revision: await rev() });
   assert.equal(noNote.ok ? "" : noNote.code, "nota_mancante");
-  assert.ok((await factory.recordAiBoardOk(exec, lead(), target(), { note: "Ok dell'AI Board di TopJet del 10/11/2026, per e-mail al responsabile" })).ok);
-  assert.equal((await factory.approveProject(exec, analyst(), target())).ok, false);
-  assert.deepEqual(await factory.approveProject(exec, lead(), target()), { ok: true, value: { version: 1 } });
+  const seen = await rev();
+  assert.ok((await factory.recordAiBoardOk(exec, lead(), target(), { note: "Ok dell'AI Board di TopJet del 10/11/2026, per e-mail al responsabile", revision: seen })).ok);
+  assert.equal((await factory.approveProject(exec, analyst(), target(), { revision: await rev() })).ok, false);
+  const unseen = await factory.approveProject(exec, lead(), target(), { revision: seen });
+  assert.equal(unseen.ok ? "" : unseen.code, "conflitto", "si approva solo la revisione vista: l'ok dell'AI Board l'ha cambiata");
+  assert.deepEqual(await factory.approveProject(exec, lead(), target(), { revision: await rev() }), { ok: true, value: { version: 1 } });
   const read = await factory.readFactory(exec, target(), board());
   assert.ok(read.ok);
   assert.equal(read.value.open, null);
@@ -201,11 +218,21 @@ test("una revisione: la versione 2 parte dalle scelte della 1; approvata, la 1 d
   assert.ok(read.ok);
   assert.equal(read.value.open?.topics.dati?.scelta, "Scelta per dati", "copiate dalla 1");
   await factory.saveProjectTopic(exec, analyst(), target(), { topic: "osservabilita", scelta: "Langfuse in UE" });
-  assert.ok((await factory.submitProject(exec, analyst(), target())).ok);
-  assert.ok((await factory.recordAiBoardOk(exec, board(), target(), {})).ok, "l'AI Board senza nota");
-  assert.ok((await factory.approveProject(exec, lead(), target())).ok);
+  assert.ok((await factory.submitProject(exec, analyst(), target(), { revision: await rev() })).ok);
+  assert.equal((await factory.submitProject(exec, analyst(), target(), { revision: await rev() })).ok, false, "due volte no");
+  assert.ok((await factory.recordAiBoardOk(exec, board(), target(), { revision: await rev() })).ok, "l'AI Board senza nota");
+  assert.ok((await factory.approveProject(exec, lead(), target(), { revision: await rev() })).ok);
   const rows = await q(`SELECT version, status FROM use_case_projects WHERE use_case_id = $1 ORDER BY version`, [ids.useCase]);
   assert.deepEqual(rows.map((r) => [r.version, r.status]), [[1, "superato"], [2, "approvato"]]);
+});
+
+test("il resto del pacchetto: risposte ed esigenze solo per chi vede «Cosa serve»; i nomi del workspace sempre", opts, async () => {
+  const card = { code: "TJ-PROVA", title: "Prova", kindLabel: null, origin: null, targetQuarter: null, texts: { oggi: null, comeCambia: null, persone: null, limiti: null, dati: null }, benefits: [], costText: null };
+  const hidden = await factory.packageSourceFor(exec, target(), card, { canSeeNeeds: false });
+  assert.deepEqual([hidden.answers.length, hidden.openNeeds.length, hidden.needsHidden], [0, 0, true]);
+  const seen = await factory.packageSourceFor(exec, target(), card, { canSeeNeeds: true });
+  assert.equal(seen.needsHidden, false);
+  assert.ok(Array.isArray(seen.answers) && Array.isArray(seen.openNeeds));
 });
 
 test("le decisioni del team e dell'import; i testi con dati da non scrivere si fermano", opts, async () => {
@@ -223,5 +250,6 @@ test("le decisioni del team e dell'import; i testi con dati da non scrivere si f
   assert.equal(byChoice.get("Accesso FL3XX già disponibile")?.source, "importata");
   assert.equal(byChoice.get("Accesso FL3XX già disponibile")?.authorRole, "responsabile del caso");
   assert.equal(byChoice.get("Accesso FL3XX già disponibile")?.decidedOn, "2026-11-10");
+  for (const d of read.value.decisions) assert.match(d.decidedOn, /^\d{4}-\d{2}-\d{2}$/, "le date come testo AAAA-MM-GG");
   assert.ok((byChoice.get("Data nel futuro")?.decidedOn ?? "9") < "2999");
 });

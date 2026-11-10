@@ -48,6 +48,8 @@ export interface PackageSource {
   openNeeds: ReadonlyArray<{ title: string; status: string }>;
   /** I nomi che Unbundle conosce e che non devono uscire: persone del workspace, referenti. */
   namesToHide: readonly string[];
+  /** Vero se chi genera il pacchetto non vede «Cosa serve»: risposte ed esigenze restano fuori, e il pacchetto lo dice. */
+  needsHidden?: boolean;
 }
 
 export interface PackageVersionInfo {
@@ -69,10 +71,19 @@ const PERSONA = "una persona";
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 /**
- * Un numero di telefono: almeno 9 cifre separate solo da spazi o trattini, con il «+» davanti se c'è. I punti no:
- * «1.200.000 €» è un importo, non un numero da coprire.
+ * Un candidato numero di telefono: cifre con spazi, trattini, barre, punti o parentesi in mezzo, il «+» o una
+ * parentesi davanti. È un telefono se ha almeno 9 cifre e non è un importo con i punti delle migliaia
+ * («1.200.000 €»): `isPhone`.
  */
-const PHONE = /(?<![\w.,])\+?\d(?:[ -]?\d){8,}(?![\w,]|[.]\d)/g;
+const PHONE_CANDIDATE = /(?<![\d,])(?:\+|\()?\d[\d ().\/-]{7,}\d(?![\d]|[.,]\d)/g;
+
+function isPhone(candidate: string): boolean {
+  const digits = candidate.replace(/\D/g, "");
+  if (digits.length < 9 || digits.length > 15) return false;
+  // Gruppi da tre cifre separati solo da punti: un importo, non un telefono.
+  if (/^\d{1,3}(\.\d{3})+$/.test(candidate)) return false;
+  return true;
+}
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -80,7 +91,7 @@ function escapeRegExp(text: string): string {
 
 /**
  * I nomi da coprire, dal più lungo: prima il nome intero («Mario Rossi»), poi le sue parti di almeno 3 lettere
- * («Mario», «Rossi»). Con la maiuscola come sono scritti: «ROSA» nel titolo di una famiglia resta.
+ * («Mario», «Rossi»), qualunque sia la maiuscola con cui sono salvati.
  */
 export function nameTokens(names: readonly string[]): string[] {
   const out = new Set<string>();
@@ -88,25 +99,41 @@ export function nameTokens(names: readonly string[]): string[] {
     const name = raw.replace(/\s+/g, " ").trim();
     if (name.length < 3 || name.includes("@")) continue;
     out.add(name);
-    for (const part of name.split(" ")) if (part.length >= 3 && /^\p{Lu}/u.test(part)) out.add(part);
+    for (const part of name.split(" ")) if (part.length >= 3 && /\p{L}/u.test(part)) out.add(part);
   }
   return [...out].sort((a, b) => b.length - a.length);
 }
 
-/** Copre e-mail, telefoni e nomi conosciuti. Pulisce gli spazi. */
-export function redact(text: string, tokens: readonly string[]): string {
-  let out = text.replace(EMAIL, PERSONA).replace(PHONE, "[numero]");
-  for (const token of tokens) {
-    out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(token)}(?![\\p{L}\\p{N}])`, "gu"), PERSONA);
+/** I nomi di battesimo (la prima parte di ogni nome): solo per loro una parola tutta maiuscola resta. */
+export function givenNames(names: readonly string[]): Set<string> {
+  const out = new Set<string>();
+  for (const raw of names) {
+    const first = raw.replace(/\s+/g, " ").trim().split(" ")[0] ?? "";
+    if (first.length >= 3 && !first.includes("@")) out.add(first.toLowerCase());
   }
   return out;
 }
 
-function clean(text: string | null | undefined, max: number, tokens: readonly string[]): string | null {
+/**
+ * Copre e-mail, telefoni e nomi conosciuti. I nomi si cercano senza badare a maiuscole e minuscole («mario
+ * rossi», «ROSSI»), tranne un nome di battesimo scritto tutto maiuscolo: «ROSA» nel titolo di una famiglia di
+ * agenti resta anche se una persona si chiama Rosa.
+ */
+export function redact(text: string, tokens: readonly string[], given: ReadonlySet<string> = new Set()): string {
+  let out = text.replace(EMAIL, PERSONA).replace(PHONE_CANDIDATE, (m) => (isPhone(m) ? "[numero]" : m));
+  for (const token of tokens) {
+    out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(token)}(?![\\p{L}\\p{N}])`, "giu"), (m) =>
+      given.has(m.toLowerCase()) && m === m.toUpperCase() && m !== m.toLowerCase() ? m : PERSONA,
+    );
+  }
+  return out;
+}
+
+function clean(text: string | null | undefined, max: number, tokens: readonly string[], given: ReadonlySet<string> = new Set()): string | null {
   if (!text) return null;
   const flat = text.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
   if (!flat) return null;
-  const covered = redact(flat, tokens);
+  const covered = redact(flat, tokens, given);
   return covered.length > max ? `${covered.slice(0, max - 1).trimEnd()}…` : covered;
 }
 
@@ -124,7 +151,8 @@ function dayLabel(day: string | null): string | null {
 export function packageContent(source: PackageSource): { body: string; brief: string } {
   const L = PACKAGE_LIMITS;
   const t = nameTokens(source.namesToHide);
-  const title = clean(source.title, 200, t) ?? source.code;
+  const g = givenNames(source.namesToHide);
+  const title = clean(source.title, 200, t, g) ?? source.code;
   const line = (label: string, text: string | null) => (text ? `- **${label}:** ${oneLine(text)}` : null);
   const kind = [source.kindLabel, source.origin ? `origine «${source.origin}»` : null, source.targetQuarter ? `approvato per il **${source.targetQuarter}**` : null]
     .filter(Boolean)
@@ -134,11 +162,11 @@ export function packageContent(source: PackageSource): { body: string; brief: st
     "## La scheda",
     `- **Titolo:** ${oneLine(title)}`,
     kind ? `- **Tipo:** ${kind}` : null,
-    line("Oggi", clean(source.texts.oggi, L.textChars, t)),
-    line("Come cambia (dalla scheda)", clean(source.texts.comeCambia, L.textChars, t)),
-    line("Persone nel ciclo (dalla scheda)", clean(source.texts.persone, L.textChars, t)),
-    line("Limiti (dalla scheda)", clean(source.texts.limiti, L.textChars, t)),
-    line("Dati (dalla scheda)", clean(source.texts.dati, L.textChars, t)),
+    line("Oggi", clean(source.texts.oggi, L.textChars, t, g)),
+    line("Come cambia (dalla scheda)", clean(source.texts.comeCambia, L.textChars, t, g)),
+    line("Persone nel ciclo (dalla scheda)", clean(source.texts.persone, L.textChars, t, g)),
+    line("Limiti (dalla scheda)", clean(source.texts.limiti, L.textChars, t, g)),
+    line("Dati (dalla scheda)", clean(source.texts.dati, L.textChars, t, g)),
   ].filter((x): x is string => x !== null);
 
   const benefits = source.benefits.slice(0, L.maxBenefits);
@@ -146,7 +174,7 @@ export function packageContent(source: PackageSource): { body: string; brief: st
   if (benefits.length) {
     valore.push("| Voce | Leva | € all'anno |", "|---|---|---|");
     for (const b of benefits) {
-      const label = oneLine(clean(b.label, 200, t) ?? "Voce").replace(/\|/g, "/");
+      const label = oneLine(clean(b.label, 200, t, g) ?? "Voce").replace(/\|/g, "/");
       valore.push(`| ${label} | ${b.lever.replace(/\|/g, "/")} | ${b.eurYear === null ? "da misurare" : EUR.format(Math.round(b.eurYear))} |`);
     }
   } else {
@@ -154,27 +182,32 @@ export function packageContent(source: PackageSource): { body: string; brief: st
   }
   valore.push("", source.costText ? `Costi: ${oneLine(source.costText)}.` : "Costi di avvio e ricorrenti: non ancora stimati nella scheda (li dà l'impostazione).");
 
-  const answers = source.answers.slice(0, L.maxAnswers);
-  const risposte = answers.length
+  const hidden = source.needsHidden === true;
+  const answers = hidden ? [] : source.answers.slice(0, L.maxAnswers);
+  const risposte = hidden
+    ? ["## Le risposte del referente", "Le porta nel pacchetto chi vede «Cosa serve» sulla scheda: chiedi a chi valuta lo use case di aggiornarlo."]
+    : answers.length
     ? [
         "## Le risposte del referente",
         ...answers.map((a, i) => {
-          const q = oneLine(clean(a.question, 200, t) ?? "Domanda");
+          const q = oneLine(clean(a.question, 200, t, g) ?? "Domanda");
           const when = dayLabel(a.on);
-          return `${i + 1}. **${q}** (${[when, a.status].filter(Boolean).join(", ")}) ${oneLine(clean(a.answer, L.answerChars, t) ?? "")}`.trimEnd();
+          return `${i + 1}. **${q}** (${[when, a.status].filter(Boolean).join(", ")}) ${oneLine(clean(a.answer, L.answerChars, t, g) ?? "")}`.trimEnd();
         }),
       ]
     : ["## Le risposte del referente", "Nessuna risposta ancora."];
 
-  const needs = source.openNeeds.slice(0, L.maxNeeds);
-  const serve = needs.length
-    ? ["## Cosa serve ancora (dalla scheda)", ...needs.map((n) => `- ${oneLine(clean(n.title, 300, t) ?? "Esigenza")} (${n.status})`)]
+  const needs = hidden ? [] : source.openNeeds.slice(0, L.maxNeeds);
+  const serve = hidden
+    ? ["## Cosa serve ancora (dalla scheda)", "Lo porta nel pacchetto chi vede «Cosa serve» sulla scheda."]
+    : needs.length
+    ? ["## Cosa serve ancora (dalla scheda)", ...needs.map((n) => `- ${oneLine(clean(n.title, 300, t, g) ?? "Esigenza")} (${n.status})`)]
     : ["## Cosa serve ancora (dalla scheda)", "Niente: «Cosa serve» è completo."];
 
   const body = [scheda.join("\n"), valore.join("\n"), risposte.join("\n"), serve.join("\n")].join("\n\n");
 
-  const summary = clean(source.texts.comeCambia ?? source.texts.oggi, L.briefChars, t);
-  const limits = clean(source.texts.limiti, 400, t);
+  const summary = clean(source.texts.comeCambia ?? source.texts.oggi, L.briefChars, t, g);
+  const limits = clean(source.texts.limiti, 400, t, g);
   const brief = [`# ${source.code} · ${oneLine(title)}`, "", [summary ? oneLine(summary) : null, limits ? `Limiti: ${oneLine(limits)}` : null].filter(Boolean).join(" ")]
     .join("\n")
     .trimEnd();

@@ -31,29 +31,31 @@ export function ProjectPrimaryAction({
   workspaceId,
   caseId,
   action,
-}: Ids & { action: "imposta" | "manda" | "approva" | "rivedi" | null }) {
+  revision,
+}: Ids & { action: "imposta" | "manda" | "approva" | "rivedi" | null; revision: number | null }) {
   const { pending, run } = useUcAction();
   if (!action) return null;
   const label = { imposta: "Imposta il caso", manda: "Manda in approvazione", approva: "Approva il progetto", rivedi: "Rivedi il progetto" }[action];
   const calls: Record<"imposta" | "manda" | "approva" | "rivedi", () => Promise<UcActionResult<unknown>>> = {
     imposta: () => startProjectAction(workspaceId, caseId),
     rivedi: () => startProjectAction(workspaceId, caseId),
-    manda: () => submitProjectAction(workspaceId, caseId),
-    approva: () => approveProjectAction(workspaceId, caseId),
+    manda: () => submitProjectAction(workspaceId, caseId, { revision }),
+    approva: () => approveProjectAction(workspaceId, caseId, { revision }),
   };
   const call = calls[action];
+  // «Rivedi il progetto» non è urgente: secondario, accanto all'azione principale del dossier.
   return (
-    <Button className={BUTTON} disabled={pending} onClick={() => run(call)}>
+    <Button variant={action === "rivedi" ? "outline" : "default"} className={BUTTON} disabled={pending} onClick={() => run(call)}>
       {label}
     </Button>
   );
 }
 
 /** «Riapri per cambiarlo»: il progetto da approvare torna in corso (e l'ok dell'AI Board si chiede di nuovo). */
-export function ReopenProject({ workspaceId, caseId }: Ids) {
+export function ReopenProject({ workspaceId, caseId, revision }: Ids & { revision: number }) {
   const { pending, run } = useUcAction();
   return (
-    <Button variant="outline" className={BUTTON} disabled={pending} onClick={() => run(() => reopenProjectAction(workspaceId, caseId))}>
+    <Button variant="outline" className={BUTTON} disabled={pending} onClick={() => run(() => reopenProjectAction(workspaceId, caseId, { revision }))}>
       Riapri per cambiarlo
     </Button>
   );
@@ -183,7 +185,7 @@ export function DetailsEditor({
 }
 
 /** L'ok dell'AI Board: chi ha il ruolo lo registra e basta; il responsabile scrive chi l'ha dato e quando. */
-export function AiBoardOk({ workspaceId, caseId, noteRequired }: Ids & { noteRequired: boolean }) {
+export function AiBoardOk({ workspaceId, caseId, noteRequired, revision }: Ids & { noteRequired: boolean; revision: number }) {
   const { pending, run } = useUcAction();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
@@ -204,7 +206,7 @@ export function AiBoardOk({ workspaceId, caseId, noteRequired }: Ids & { noteReq
             className="grid gap-4"
             onSubmit={(e) => {
               e.preventDefault();
-              run(() => recordAiBoardOkAction(workspaceId, caseId, { note: note.trim() || null }), { onSuccess: () => setOpen(false) });
+              run(() => recordAiBoardOkAction(workspaceId, caseId, { note: note.trim() || null, revision }), { onSuccess: () => setOpen(false) });
             }}
           >
             <div className="space-y-1.5">

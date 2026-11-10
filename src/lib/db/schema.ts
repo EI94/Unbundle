@@ -1302,7 +1302,7 @@ export const useCasePackages = pgTable(
   (t) => [
     primaryKey({ name: "use_case_packages_pkey", columns: [t.id] }),
     uniqueIndex("use_case_packages_version_unique").on(t.useCaseId, t.version),
-    uniqueIndex("use_case_packages_hash_unique").on(t.useCaseId, t.contentHash),
+    index("use_case_packages_hash_idx").on(t.useCaseId, t.contentHash),
     index("use_case_packages_workspace_idx").on(t.workspaceId),
   ]
 );
@@ -1316,6 +1316,7 @@ export const useCaseProjects = pgTable(
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     version: integer("version").notNull(),
     status: varchar("status", { length: 12 }).$type<ProjectStatus>().notNull().default("in_corso"),
+    revision: integer("revision").notNull().default(1),
     topics: jsonb("topics").$type<ProjectTopics>().notNull().default({}),
     framework: varchar("framework", { length: 10 }).$type<FactoryFramework>(),
     newTools: jsonb("new_tools").$type<ProjectNewTool[]>().notNull().default([]),

@@ -136,7 +136,11 @@ test("le regole del progetto stanno anche nel database: una versione aperta e un
   assert.match(projects, /CONSTRAINT use_case_projects_approved_check CHECK \(status <> 'approvato' OR approved_at IS NOT NULL\)/);
   assert.ok(FACTORY_DDL.includes("CREATE UNIQUE INDEX IF NOT EXISTS use_case_projects_open_unique ON use_case_projects (use_case_id) WHERE status IN ('in_corso', 'da_approvare');"));
   assert.ok(FACTORY_DDL.includes("CREATE UNIQUE INDEX IF NOT EXISTS use_case_projects_approved_unique ON use_case_projects (use_case_id) WHERE status = 'approvato';"));
-  assert.match(tableOf("use_case_decisions"), /CONSTRAINT use_case_decisions_author_check CHECK \(author_user_id IS NOT NULL OR author_role IS NOT NULL\)/);
+  // L'autore può restare vuoto: se la persona viene cancellata, la decisione resta (ON DELETE SET NULL, nessun CHECK).
+  assert.doesNotMatch(tableOf("use_case_decisions"), /author_check/);
+  assert.match(projects, /revision integer NOT NULL DEFAULT 1 CONSTRAINT use_case_projects_revision_check CHECK \(revision >= 1\)/);
+  // L'impronta del pacchetto non è unica: una scheda che torna com'era fa una versione nuova.
+  assert.ok(FACTORY_DDL.includes("CREATE INDEX IF NOT EXISTS use_case_packages_hash_idx ON use_case_packages (use_case_id, content_hash);"));
 });
 
 test("ogni tabella si cancella con il suo workspace e con il suo use case", () => {

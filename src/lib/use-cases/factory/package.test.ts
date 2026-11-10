@@ -2,7 +2,7 @@
 // stesso contenuto, e un brief che sta nel contesto dei coding agent.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { nameTokens, packageContent, packageFiles, packageHash, redact, type PackageSource } from "./package.ts";
+import { givenNames, nameTokens, packageContent, packageFiles, packageHash, redact, type PackageSource } from "./package.ts";
 import { PACKAGE_FILES } from "../../db/use-case-hub-factory-ddl.ts";
 
 const source = (over: Partial<PackageSource> = {}): PackageSource => ({
@@ -73,10 +73,29 @@ test("niente nomi, e-mail né telefoni: diventano «una persona» e «[numero]»
   assert.match(all, /Decide una persona, il responsabile\./);
 });
 
-test("i nomi da coprire: interi e per parti, dalla maiuscola, mai le e-mail e mai i pezzi troppo corti", () => {
-  assert.deepEqual(nameTokens(["Mario Rossi", "Al Bo", "x@y.it", "Rosa"]), ["Mario Rossi", "Mario", "Rossi", "Al Bo", "Rosa"]);
-  assert.equal(redact("ROSA · famiglia di Rosa", nameTokens(["Rosa"])), "ROSA · famiglia di una persona");
-  assert.equal(redact("Marione e Mario", nameTokens(["Mario"])), "Marione e una persona");
+test("i nomi da coprire: interi e per parti, qualunque maiuscola; un nome di battesimo tutto maiuscolo resta; mai le e-mail né i pezzi corti", () => {
+  assert.deepEqual(nameTokens(["Mario Rossi", "Al Bo", "x@y.it", "Rosa", "giulia bianchi"]), ["giulia bianchi", "Mario Rossi", "bianchi", "giulia", "Mario", "Rossi", "Al Bo", "Rosa"]);
+  const names = ["Rosa", "Mario Rossi", "giulia bianchi"];
+  const t = nameTokens(names);
+  const g = givenNames(names);
+  assert.equal(redact("ROSA · famiglia di Rosa", t, g), "ROSA · famiglia di una persona");
+  assert.equal(redact("mario rossi e ROSSI; Giulia e BIANCHI", t, g), "una persona e una persona; una persona e una persona");
+  assert.equal(redact("Marione e Mario", t, g), "Marione e una persona");
+  assert.equal(redact("ROSA senza i nomi di battesimo", t), "una persona senza i nomi di battesimo", "senza l'elenco dei nomi di battesimo, nessuna eccezione");
+});
+
+test("i telefoni: con virgole, barre, parentesi, trattini, il prefisso; mai gli importi né le date", () => {
+  const cases: Array<[string, string]> = [
+    ["Chiama 333 1234567, poi", "Chiama [numero], poi"],
+    ["+39 333-123-4567, ufficio", "[numero], ufficio"],
+    ["333/1234567", "[numero]"],
+    ["(02) 1234 5678", "[numero]"],
+    ["tel.3331234567", "tel.[numero]"],
+    ["valore 1.200.000 €", "valore 1.200.000 €"],
+    ["il 2026-11-09 alle 9", "il 2026-11-09 alle 9"],
+    ["10 ore, 25 €", "10 ore, 25 €"],
+  ];
+  for (const [input, expected] of cases) assert.equal(redact(input, []), expected, input);
 });
 
 test("senza benefici, costi, risposte o esigenze il pacchetto lo dice; i testi lunghi si tagliano; il brief resta corto", () => {
@@ -94,4 +113,12 @@ test("senza benefici, costi, risposte o esigenze il pacchetto lo dice; i testi l
 test("una barra verticale in una voce non rompe la tabella", () => {
   const files = packageFiles(source({ benefits: [{ label: "Prezzo | IVA", lever: "ricavi", eurYear: 10, confidence: null }] }), { version: 1, day: "2026-11-11" });
   assert.match(files["PACCHETTO.md"], /\| Prezzo \/ IVA \| ricavi \| 10 \|/);
+});
+
+test("chi non vede «Cosa serve» genera un pacchetto senza risposte né esigenze, e il pacchetto lo dice", () => {
+  const files = packageFiles(source({ needsHidden: true }), { version: 1, day: "2026-11-11" });
+  assert.ok(!files["PACCHETTO.md"].includes("Dal profilo prezzi"), "nessuna risposta del referente");
+  assert.ok(!files["PACCHETTO.md"].includes("Accesso di prova ad Avinode"), "nessuna esigenza");
+  assert.match(files["PACCHETTO.md"], /Le porta nel pacchetto chi vede «Cosa serve» sulla scheda/);
+  assert.notEqual(packageHash(packageContent(source({ needsHidden: true }))), packageHash(packageContent(source())), "è un contenuto diverso");
 });

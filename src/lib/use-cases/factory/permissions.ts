@@ -44,8 +44,8 @@ export function aiBoardOkRule(roles: readonly CaseRole[]): { allowed: boolean; n
 export const FACTORY_RECIPIENTS = Object.freeze({
   /** «Progetto da approvare». */
   progetto_appr: ["ls_lead"] as readonly CaseRole[],
-  /** «Strumento nuovo da approvare»: l'AI Board del cliente; senza, il responsabile (che registra l'ok con la nota). */
-  strumento_nuovo: ["ai_board", "ls_lead"] as readonly CaseRole[],
+  /** «Strumento nuovo da approvare»: l'AI Board del cliente. Il responsabile lo sa da «Progetto da approvare». */
+  strumento_nuovo: ["ai_board"] as readonly CaseRole[],
   /** «Il pacchetto è cambiato»: chi costruisce. */
   pacchetto_nuovo: ["ls_lead", "ls_analista", "ls_sviluppatore"] as readonly CaseRole[],
 });

@@ -91,6 +91,8 @@ export interface ProjectView {
   id: string;
   version: number;
   status: ProjectStatus;
+  /** Cresce a ogni modifica: le azioni la rimandano, così si approva solo quello che si è visto. */
+  revision: number;
   topics: ProjectTopics;
   framework: FactoryFramework | null;
   newTools: ProjectNewTool[];
@@ -144,6 +146,7 @@ function projectFrom(row: UcRow): ProjectView {
     id: String(row.id),
     version: Number(row.version),
     status: String(row.status) as ProjectStatus,
+    revision: Number(row.revision ?? 1),
     topics: (row.topics ?? {}) as ProjectTopics,
     framework: (text(row.framework) as FactoryFramework | null) ?? null,
     newTools: Array.isArray(row.new_tools) ? (row.new_tools as ProjectNewTool[]) : [],
@@ -161,7 +164,7 @@ function projectFrom(row: UcRow): ProjectView {
 }
 
 const PROJECT_COLUMNS = raw(
-  "id, version, status, topics, framework, new_tools, estimate_hours, monthly_cost_eur, standard_version, catalog_version, package_version, submitted_at, approved_at, ai_board_ok_at, ai_board_note, updated_at",
+  "id, version, status, revision, topics, framework, new_tools, estimate_hours, monthly_cost_eur, standard_version, catalog_version, package_version, submitted_at, approved_at, ai_board_ok_at, ai_board_note, updated_at",
 );
 
 /** Tutto quello che la scheda «Impostazione» e `unbundle context` mostrano di uno use case. */
@@ -173,7 +176,7 @@ export async function readFactory(executor: UcExecutor, target: FactoryTarget, a
     toStatement(ucSql`SELECT version, source, created_at, content_hash FROM use_case_packages WHERE workspace_id = ${ws} AND use_case_id = ${uc} ORDER BY version DESC LIMIT 50`),
     toStatement(ucSql`SELECT version, files, created_at, source FROM use_case_packages WHERE workspace_id = ${ws} AND use_case_id = ${uc} ORDER BY version DESC LIMIT 1`),
     toStatement(ucSql`SELECT ${PROJECT_COLUMNS} FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status IN ('in_corso', 'da_approvare', 'approvato') ORDER BY version DESC`),
-    toStatement(ucSql`SELECT id, decided_on, topic_key, topic, choice, reason, rejected, source, project_version, author_role, created_at
+    toStatement(ucSql`SELECT id, decided_on::text AS decided_on, topic_key, topic, choice, reason, rejected, source, project_version, author_role, created_at
 FROM use_case_decisions WHERE workspace_id = ${ws} AND use_case_id = ${uc} ORDER BY decided_on DESC, created_at DESC LIMIT 200`),
   ]);
   const views = projects.map(projectFrom);
@@ -203,21 +206,30 @@ FROM use_case_decisions WHERE workspace_id = ${ws} AND use_case_id = ${uc} ORDER
 
 type FactoryNoticeKind = keyof typeof FACTORY_RECIPIENTS;
 
-/** Una riga nella campanella per ogni persona del team con uno dei ruoli del tipo, mai a chi ha agito. */
-function noticeSql(target: FactoryTarget, kind: FactoryNoticeKind, actor: FactoryActor, now: Date): UcStatement {
+type Fragment = ReturnType<typeof ucSql>;
+const ALWAYS = raw("true");
+
+/**
+ * Una riga nella campanella per ogni persona del team con uno dei ruoli del tipo, mai a chi ha agito. `when` è la
+ * condizione nella stessa transazione (per esempio: l'invio in approvazione è avvenuto adesso).
+ */
+function noticeSql(target: FactoryTarget, kind: FactoryNoticeKind, actor: FactoryActor, now: Date, when: Fragment = ALWAYS): UcStatement {
   return toStatement(ucSql`INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day)
 SELECT DISTINCT c.workspace_id, c.portfolio_use_case_id, m.user_id, ${cast(kind, "text")}, ${cast(romeToday(now), "date")}
 FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id
 WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_case_id = ${cast(target.useCaseId, "uuid")}
   AND m.role = ANY (${cast([...FACTORY_RECIPIENTS[kind]], "text[]")})
   AND m.user_id IS DISTINCT FROM ${cast(userOf(actor), "uuid")}
+  AND ${when}
 ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET last_event_at = now(), read_at = NULL`);
 }
 
-/** L'email della coda dei dossier per ogni tipo: interna di Lateral Space (all'AI Board del cliente dalla 8.0c). */
-const FACTORY_EMAIL: Readonly<Record<FactoryNoticeKind, { template: string; roles: readonly CaseRole[] }>> = Object.freeze({
+/**
+ * L'email della coda dei dossier: interna di Lateral Space. «Progetto da approvare» dice anche quanti strumenti
+ * nuovi ci sono (una sola email al responsabile); «Strumento nuovo» è per l'AI Board del cliente e arriva con la 8.0c.
+ */
+const FACTORY_EMAIL: Readonly<Partial<Record<FactoryNoticeKind, { template: string; roles: readonly CaseRole[] }>>> = Object.freeze({
   progetto_appr: { template: "progetto_da_approvare", roles: ["ls_lead"] },
-  strumento_nuovo: { template: "strumento_da_approvare", roles: ["ls_lead"] },
   pacchetto_nuovo: { template: "pacchetto_aggiornato", roles: ["ls_lead", "ls_analista", "ls_sviluppatore"] },
 });
 
@@ -226,19 +238,31 @@ const FACTORY_EMAIL: Readonly<Record<FactoryNoticeKind, { template: string; role
  * tipo, mai a chi ha agito; al massimo una al giorno per persona, caso e tipo (la chiave di deduplica). La manda il
  * motore dei dossier dopo il comando (`finishUcCommand`) o il cron, che controlla anche che sia di Lateral Space.
  */
-function emailSql(target: FactoryTarget, kind: FactoryNoticeKind, actor: FactoryActor, now: Date, version: number): UcStatement {
-  const e = FACTORY_EMAIL[kind];
+function emailSql(target: FactoryTarget, kind: "progetto_appr" | "pacchetto_nuovo", actor: FactoryActor, now: Date, version: number, when: Fragment = ALWAYS, count = 0): UcStatement {
+  const e = FACTORY_EMAIL[kind]!;
   return toStatement(ucSql`INSERT INTO uc_notifications (workspace_id, case_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
-SELECT DISTINCT ON (m.user_id) c.workspace_id, c.id, m.user_id, 'email', ${cast(e.template, "text")}, ${jsonb({ version })}, 'in_coda',
+SELECT DISTINCT ON (m.user_id) c.workspace_id, c.id, m.user_id, 'email', ${cast(e.template, "text")}, ${jsonb({ version, count })}, 'in_coda',
        ${cast(e.template, "text")} || ':' || c.id::text || ':' || m.user_id::text || ':' || ${cast(romeToday(now), "text")}, now()
 FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id
 WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_case_id = ${cast(target.useCaseId, "uuid")}
   AND m.role = ANY (${cast([...e.roles], "text[]")})
   AND m.user_id IS DISTINCT FROM ${cast(userOf(actor), "uuid")}
+  AND ${when}
 ON CONFLICT (dedupe_key) DO NOTHING`);
 }
 
 // ─── Il pacchetto ────────────────────────────────────────────────────
+
+/** Un batch; due clic insieme che urtano un indice unico diventano «conflitto», non un errore della pagina. */
+async function batchOrConflict(executor: UcExecutor, statements: readonly UcStatement[]): Promise<Result<UcRow[][]>> {
+  try {
+    return ok(await executor.batch(statements));
+  } catch (error) {
+    const code = (error as { code?: unknown } | null)?.code;
+    if (code === "23505") return fail("conflitto", "Qualcun altro l'ha appena fatto: ricarica la pagina.");
+    throw error;
+  }
+}
 
 /** L'impronta di un pacchetto importato: la stessa di `packageFilesHash`. */
 export const importedPackageHash = packageFilesHash;
@@ -273,18 +297,20 @@ export async function savePackageVersion(
     hash = importedPackageHash(files);
     source = "importato";
   }
-  const [same] = await executor.batch([toStatement(ucSql`SELECT version FROM use_case_packages WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND content_hash = ${cast(hash, "text")}`)]);
-  if (same[0]) return ok({ version: Number(same[0].version), created: false });
+  // Solo l'ultima versione conta: una scheda che torna com'era prima fa una versione nuova, uguale a una vecchia.
+  if (last[0] && String(last[0].content_hash) === hash) return ok({ version: lastVersion, created: false });
   if (Buffer.byteLength(JSON.stringify(files), "utf8") > FACTORY_LIMITS.packageBytesMax) return fail("pacchetto_troppo_grande", "Il pacchetto supera i 200 KB: accorcia i testi della scheda.");
-  const rows = await executor.batch([
+  const inserted = ucSql`EXISTS (SELECT 1 FROM use_case_packages WHERE use_case_id = ${uc} AND version = ${cast(version, "int")} AND created_at = now())`;
+  const rows = await batchOrConflict(executor, [
     toStatement(ucSql`INSERT INTO use_case_packages (use_case_id, workspace_id, version, content_hash, files, source, created_by_user_id)
 SELECT ${uc}, ${ws}, ${cast(version, "int")}, ${cast(hash, "text")}, ${jsonb(files)}, ${cast(source, "text")}, ${cast(userOf(actor), "uuid")}
 WHERE EXISTS (SELECT 1 FROM use_cases WHERE id = ${uc} AND workspace_id = ${ws})
 RETURNING version`),
-    noticeSql(target, "pacchetto_nuovo", actor, now),
-    emailSql(target, "pacchetto_nuovo", actor, now, version),
+    noticeSql(target, "pacchetto_nuovo", actor, now, inserted),
+    emailSql(target, "pacchetto_nuovo", actor, now, version, inserted),
   ]);
-  if (!rows[0][0]) return fail("non_trovato", "Use case non trovato.");
+  if (!rows.ok) return rows;
+  if (!rows.value[0][0]) return fail("non_trovato", "Use case non trovato.");
   return ok({ version, created: true });
 }
 
@@ -294,26 +320,31 @@ export type PackageCard = Omit<PackageSource, "answers" | "openNeeds" | "namesTo
 /**
  * Il resto del pacchetto, dal database: le risposte inviate del referente (la domanda è il titolo dell'esigenza),
  * le esigenze ancora aperte di «Cosa serve», e i nomi da coprire (persone del workspace e della sua
- * organizzazione, contatti, chi ha chiesto le informazioni al referente).
+ * organizzazione, contatti, chi ha chiesto le informazioni al referente, chi ha proposto da Slack o dal connettore).
+ *
+ * Risposte ed esigenze solo con `canSeeNeeds` di chi genera il pacchetto (chi vede «Cosa serve» sulla scheda,
+ * `abilitiesForUseCase`): senza, il pacchetto dice che le porta chi le può leggere, come la scheda.
  */
-export async function packageSourceFor(executor: UcExecutor, target: FactoryTarget, card: PackageCard): Promise<PackageSource> {
+export async function packageSourceFor(executor: UcExecutor, target: FactoryTarget, card: PackageCard, opts: { canSeeNeeds: boolean }): Promise<PackageSource> {
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
-  const [answers, needs, names] = await executor.batch([
-    toStatement(ucSql`SELECT n.title, a.body, a.submitted_at, n.type, n.status
+  // Senza «Cosa serve» le due letture non si fanno: al loro posto due righe vuote, così l'ordine resta.
+  const nothing = toStatement(ucSql`SELECT NULL AS none WHERE false`);
+  const answersSql = toStatement(ucSql`SELECT n.title, a.body, a.submitted_at, n.type, n.status
 FROM use_case_need_answers a JOIN use_case_needs n ON n.id = a.need_id AND n.workspace_id = a.workspace_id
 WHERE a.workspace_id = ${ws} AND a.use_case_id = ${uc} AND a.status = 'inviata' AND a.removed_at IS NULL AND a.body IS NOT NULL AND NOT a.dont_know
-ORDER BY a.submitted_at NULLS LAST, a.id LIMIT 30`),
-    toStatement(ucSql`SELECT n.title, n.type, n.status FROM use_case_needs n JOIN use_case_need_links l ON l.need_id = n.id
+ORDER BY a.submitted_at NULLS LAST, a.id LIMIT 30`);
+  const needsSql = toStatement(ucSql`SELECT n.title, n.type, n.status FROM use_case_needs n JOIN use_case_need_links l ON l.need_id = n.id
 WHERE l.use_case_id = ${uc} AND n.workspace_id = ${ws} AND n.archived_at IS NULL
-ORDER BY n.type, n.sort_order, n.created_at, n.id LIMIT 80`),
-    toStatement(ucSql`SELECT DISTINCT x.name FROM (
+ORDER BY n.type, n.sort_order, n.created_at, n.id LIMIT 80`);
+  const namesSql = toStatement(ucSql`SELECT DISTINCT x.name FROM (
   SELECT u.name FROM users u JOIN workspace_memberships wm ON wm.user_id = u.id WHERE wm.workspace_id = ${ws}
   UNION SELECT u.name FROM users u JOIN memberships m ON m.user_id = u.id JOIN workspaces w ON w.organization_id = m.organization_id WHERE w.id = ${ws}
   UNION SELECT c.display_name FROM uc_contacts c WHERE c.workspace_id = ${ws}
   UNION SELECT r.requester_name FROM use_case_referent_requests r WHERE r.workspace_id = ${ws} AND r.use_case_id = ${uc}
-) x WHERE x.name IS NOT NULL`),
-  ]);
+  UNION SELECT ci.display_name FROM connector_identities ci WHERE ci.workspace_id = ${ws}
+) x WHERE x.name IS NOT NULL`);
+  const [answers, needs, names] = await executor.batch(opts.canSeeNeeds ? [answersSql, needsSql, namesSql] : [nothing, nothing, namesSql]);
   const label = (type: unknown, status: unknown) => needStatusView(String(type) as NeedType, String(status) as NeedStatus).label.toLowerCase();
   return {
     ...card,
@@ -323,6 +354,7 @@ ORDER BY n.type, n.sort_order, n.created_at, n.id LIMIT 80`),
       .slice(0, 40)
       .map((r) => ({ title: String(r.title), status: label(r.type, r.status) })),
     namesToHide: names.map((r) => String(r.name)),
+    needsHidden: !opts.canSeeNeeds,
   };
 }
 
@@ -337,7 +369,7 @@ export async function startProject(executor: UcExecutor, actor: FactoryActor, ta
   const uc = cast(target.useCaseId, "uuid");
   const [open] = await executor.batch([toStatement(ucSql`SELECT version FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND ${OPEN}`)]);
   if (open[0]) return ok({ version: Number(open[0].version), created: false });
-  const [rows] = await executor.batch([
+  const done = await batchOrConflict(executor, [
     toStatement(ucSql`INSERT INTO use_case_projects (use_case_id, workspace_id, version, topics, framework, new_tools, estimate_hours, monthly_cost_eur, standard_version, catalog_version, updated_by_user_id)
 SELECT u.id, u.workspace_id, coalesce(p.version, 0) + 1, coalesce(p.topics, '{}'::jsonb), p.framework, coalesce(p.new_tools, '[]'::jsonb), p.estimate_hours, p.monthly_cost_eur,
        p.standard_version, p.catalog_version, ${cast(userOf(actor), "uuid")}
@@ -346,6 +378,8 @@ LEFT JOIN LATERAL (SELECT * FROM use_case_projects x WHERE x.use_case_id = u.id 
 WHERE u.id = ${uc} AND u.workspace_id = ${ws}
 RETURNING version`),
   ]);
+  if (!done.ok) return done;
+  const rows = done.value[0];
   if (!rows[0]) return fail("non_trovato", "Use case non trovato.");
   return ok({ version: Number(rows[0].version), created: true });
 }
@@ -397,7 +431,7 @@ export async function saveProjectTopic(
   const [updated, inserted] = await executor.batch([
     toStatement(ucSql`UPDATE use_case_projects SET topics = jsonb_set(topics, ${cast([topic], "text[]")}, ${jsonb(choice)}, true),
   framework = CASE WHEN ${cast(framework, "text")} IS NULL THEN framework ELSE ${cast(framework, "text")} END,
-  updated_at = now(), updated_by_user_id = ${cast(userOf(actor), "uuid")}
+  revision = revision + 1, updated_at = now(), updated_by_user_id = ${cast(userOf(actor), "uuid")}
 WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'in_corso'
 RETURNING version`),
     toStatement(ucSql`INSERT INTO use_case_decisions (use_case_id, workspace_id, decided_on, topic_key, topic, choice, reason, rejected, source, project_version, author_user_id, author_role)
@@ -468,7 +502,7 @@ export async function saveProjectDetails(
   if (!sets.length) return fail("dati_non_validi", "Niente da salvare.");
   const assignments = sets.reduce((acc, part, i) => (i === 0 ? part : ucSql`${acc}, ${part}`));
   const [rows] = await executor.batch([
-    toStatement(ucSql`UPDATE use_case_projects SET ${assignments}, updated_at = now(), updated_by_user_id = ${cast(userOf(actor), "uuid")}
+    toStatement(ucSql`UPDATE use_case_projects SET ${assignments}, revision = revision + 1, updated_at = now(), updated_by_user_id = ${cast(userOf(actor), "uuid")}
 WHERE workspace_id = ${cast(target.workspaceId, "uuid")} AND use_case_id = ${cast(target.useCaseId, "uuid")} AND status = 'in_corso'
 RETURNING version`),
   ]);
@@ -476,86 +510,120 @@ RETURNING version`),
   return ok({ version: Number(rows[0].version) });
 }
 
-/** Il progetto in corso va «da approvare»: notifica il responsabile e, con strumenti nuovi, l'AI Board. */
-export async function submitProject(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, now = new Date()): Promise<Result<{ version: number; newTools: number }>> {
+/** La revisione che la pagina ha mostrato: si scrive solo su quella, mai su una cambiata nel frattempo. */
+function revisionOf(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 ? value : null;
+}
+
+const CHANGED = "Il progetto è cambiato nel frattempo: ricarica la pagina e guardalo di nuovo.";
+
+/**
+ * Il progetto in corso va «da approvare»: notifica il responsabile (con il numero di strumenti nuovi) e, con
+ * strumenti nuovi, l'AI Board. Le notifiche partono solo se l'invio è avvenuto in questa transazione.
+ */
+export async function submitProject(
+  executor: UcExecutor,
+  actor: FactoryActor,
+  target: FactoryTarget,
+  input: { revision?: unknown } = {},
+  now = new Date(),
+): Promise<Result<{ version: number; newTools: number }>> {
   if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
+  const revision = revisionOf(input.revision);
+  if (revision === null) return fail("dati_non_validi", CHANGED);
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
-  const [check] = await executor.batch([toStatement(ucSql`SELECT version, topics, jsonb_array_length(new_tools) AS tools FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'in_corso'`)]);
+  const [check] = await executor.batch([
+    toStatement(ucSql`SELECT version, revision, topics, jsonb_array_length(new_tools) AS tools FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'in_corso'`),
+  ]);
   const open = check[0];
   if (!open) return fail("progetto_non_aperto", "Non c'è un progetto in corso da mandare in approvazione.");
+  if (Number(open.revision) !== revision) return fail("conflitto", CHANGED);
   const missing = SETUP_TOPICS.filter((t) => !(open.topics as ProjectTopics)?.[t]?.scelta);
   if (missing.length) return fail("argomenti_mancanti", `Mancano ${missing.length === 1 ? "un argomento" : `${missing.length} argomenti`}: ${missing.map((t) => TOPIC_LABELS[t]).join(", ")}.`);
   const tools = Number(open.tools ?? 0);
+  const version = Number(open.version);
+  // L'UPDATE scrive submitted_at = now(): le notifiche guardano la stessa ora della transazione.
+  const sent = ucSql`EXISTS (SELECT 1 FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${cast(version, "int")} AND submitted_at = now())`;
   const statements = [
-    toStatement(ucSql`UPDATE use_case_projects SET status = 'da_approvare', submitted_at = now(), requested_by_user_id = ${cast(userOf(actor), "uuid")}, updated_at = now()
-WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'in_corso' AND version = ${cast(Number(open.version), "int")}
+    toStatement(ucSql`UPDATE use_case_projects SET status = 'da_approvare', submitted_at = now(), requested_by_user_id = ${cast(userOf(actor), "uuid")}, revision = revision + 1, updated_at = now()
+WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'in_corso' AND version = ${cast(version, "int")} AND revision = ${cast(revision, "int")}
 RETURNING version`),
-    noticeSql(target, "progetto_appr", actor, now),
-    emailSql(target, "progetto_appr", actor, now, Number(open.version)),
+    noticeSql(target, "progetto_appr", actor, now, sent),
+    emailSql(target, "progetto_appr", actor, now, version, sent, tools),
   ];
-  if (tools > 0) statements.push(noticeSql(target, "strumento_nuovo", actor, now), emailSql(target, "strumento_nuovo", actor, now, Number(open.version)));
+  if (tools > 0) statements.push(noticeSql(target, "strumento_nuovo", actor, now, sent));
   const [rows] = await executor.batch(statements);
-  if (!rows[0]) return fail("conflitto", "Il progetto è cambiato nel frattempo: ricarica la pagina.");
-  return ok({ version: Number(rows[0].version), newTools: tools });
+  if (!rows[0]) return fail("conflitto", CHANGED);
+  return ok({ version, newTools: tools });
 }
 
-/** Riporta in corso un progetto da approvare (per cambiarlo prima dell'approvazione). */
-export async function reopenProject(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget): Promise<Result<{ version: number }>> {
+/** Riporta in corso un progetto da approvare (per cambiarlo prima dell'approvazione); l'ok dell'AI Board si chiede di nuovo. */
+export async function reopenProject(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: { revision?: unknown } = {}): Promise<Result<{ version: number }>> {
   if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
+  const revision = revisionOf(input.revision);
+  if (revision === null) return fail("dati_non_validi", CHANGED);
   const [rows] = await executor.batch([
     toStatement(ucSql`UPDATE use_case_projects SET status = 'in_corso', submitted_at = NULL, requested_by_user_id = NULL, ai_board_ok_at = NULL, ai_board_ok_by_user_id = NULL,
-  ai_board_note = NULL, updated_at = now(), updated_by_user_id = ${cast(userOf(actor), "uuid")}
-WHERE workspace_id = ${cast(target.workspaceId, "uuid")} AND use_case_id = ${cast(target.useCaseId, "uuid")} AND status = 'da_approvare'
+  ai_board_note = NULL, revision = revision + 1, updated_at = now(), updated_by_user_id = ${cast(userOf(actor), "uuid")}
+WHERE workspace_id = ${cast(target.workspaceId, "uuid")} AND use_case_id = ${cast(target.useCaseId, "uuid")} AND status = 'da_approvare' AND revision = ${cast(revision, "int")}
 RETURNING version`),
   ]);
-  if (!rows[0]) return fail("progetto_non_aperto", "Non c'è un progetto da approvare.");
+  if (!rows[0]) return fail("conflitto", CHANGED);
   return ok({ version: Number(rows[0].version) });
 }
 
-/** L'ok dell'AI Board agli strumenti nuovi della versione da approvare (scelta 2 del piano). */
-export async function recordAiBoardOk(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: { note?: unknown }): Promise<Result<{ version: number }>> {
+/** L'ok dell'AI Board agli strumenti nuovi della revisione da approvare che si è vista (scelta 2 del piano). */
+export async function recordAiBoardOk(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: { note?: unknown; revision?: unknown }): Promise<Result<{ version: number }>> {
   const rule = actor.kind === "script" ? { allowed: true, noteRequired: true } : aiBoardOkRule(actor.roles);
   if (!rule.allowed) return fail("permesso_negato", "L'ok agli strumenti nuovi lo dà l'AI Board del cliente, o il responsabile del caso per suo conto.");
+  const revision = revisionOf(input.revision);
+  if (revision === null) return fail("dati_non_validi", CHANGED);
   const note = teamText(input.note, FACTORY_LIMITS.aiBoardNote, "La nota");
   if (!note.ok) return note;
   if (rule.noteRequired && (!note.value || note.value.length < AI_BOARD_NOTE_MIN)) {
     return fail("nota_mancante", "Scrivi chi dell'AI Board ha dato l'ok e quando: la registri per suo conto.");
   }
   const [rows] = await executor.batch([
-    toStatement(ucSql`UPDATE use_case_projects SET ai_board_ok_at = now(), ai_board_ok_by_user_id = ${cast(userOf(actor), "uuid")}, ai_board_note = ${cast(note.value, "text")}, updated_at = now()
+    toStatement(ucSql`UPDATE use_case_projects SET ai_board_ok_at = now(), ai_board_ok_by_user_id = ${cast(userOf(actor), "uuid")}, ai_board_note = ${cast(note.value, "text")}, revision = revision + 1, updated_at = now()
 WHERE workspace_id = ${cast(target.workspaceId, "uuid")} AND use_case_id = ${cast(target.useCaseId, "uuid")} AND status = 'da_approvare' AND jsonb_array_length(new_tools) > 0
+  AND revision = ${cast(revision, "int")}
 RETURNING version`),
   ]);
-  if (!rows[0]) return fail("progetto_non_aperto", "Non c'è un progetto da approvare con strumenti nuovi.");
+  if (!rows[0]) return fail("conflitto", CHANGED);
   return ok({ version: Number(rows[0].version) });
 }
 
 /**
- * Approva la versione da approvare: la versione approvata prima diventa «superata», nella stessa transazione.
- * Con strumenti nuovi serve l'ok dell'AI Board (lo controlla anche il database). Lo stato del dossier lo cambia
- * chi chiama (`transitionCase`), solo se il caso è «pronto per lo sviluppo».
+ * Approva la revisione da approvare che il responsabile ha visto: la versione approvata prima diventa
+ * «superata», nella stessa transazione. Con strumenti nuovi serve l'ok dell'AI Board (lo controlla anche il
+ * database). Lo stato del dossier lo cambia chi chiama (`transitionCase`), solo se il caso è «pronto per lo
+ * sviluppo».
  */
-export async function approveProject(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, at?: Date): Promise<Result<{ version: number }>> {
+export async function approveProject(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: { revision?: unknown } = {}, at?: Date): Promise<Result<{ version: number }>> {
   if (actor.kind === "persona" && !canApproveProject(actor.roles)) return fail("permesso_negato", "Il progetto lo approva il responsabile del caso.");
+  const revision = revisionOf(input.revision);
+  if (revision === null) return fail("dati_non_validi", CHANGED);
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
   const [check] = await executor.batch([
-    toStatement(ucSql`SELECT version, jsonb_array_length(new_tools) AS tools, ai_board_ok_at FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare'`),
+    toStatement(ucSql`SELECT version, revision, jsonb_array_length(new_tools) AS tools, ai_board_ok_at FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare'`),
   ]);
   const open = check[0];
   if (!open) return fail("progetto_non_aperto", "Non c'è un progetto da approvare.");
+  if (Number(open.revision) !== revision) return fail("conflitto", CHANGED);
   if (Number(open.tools) > 0 && !open.ai_board_ok_at) return fail("manca_ai_board", "Il progetto usa strumenti nuovi: prima serve l'ok dell'AI Board.");
   const version = cast(Number(open.version), "int");
+  const rev = cast(revision, "int");
   const when = cast((at ?? new Date()).toISOString(), "timestamptz");
-  const target0 = ucSql`EXISTS (SELECT 1 FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${version})`;
+  const target0 = ucSql`EXISTS (SELECT 1 FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${version} AND revision = ${rev})`;
   const [, rows] = await executor.batch([
-    toStatement(ucSql`UPDATE use_case_projects SET status = 'superato', updated_at = now() WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'approvato' AND ${target0} RETURNING version`),
-    toStatement(ucSql`UPDATE use_case_projects SET status = 'approvato', approved_at = ${when}, approved_by_user_id = ${cast(userOf(actor), "uuid")}, updated_at = now()
-WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${version}
+    toStatement(ucSql`UPDATE use_case_projects SET status = 'superato', revision = revision + 1, updated_at = now() WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'approvato' AND ${target0} RETURNING version`),
+    toStatement(ucSql`UPDATE use_case_projects SET status = 'approvato', approved_at = ${when}, approved_by_user_id = ${cast(userOf(actor), "uuid")}, revision = revision + 1, updated_at = now()
+WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${version} AND revision = ${rev}
 RETURNING version`),
   ]);
-  if (!rows[0]) return fail("conflitto", "Il progetto è cambiato nel frattempo: ricarica la pagina.");
+  if (!rows[0]) return fail("conflitto", CHANGED);
   return ok({ version: Number(rows[0].version) });
 }
 

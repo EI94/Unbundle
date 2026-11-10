@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS use_case_packages (
 
 CREATE UNIQUE INDEX IF NOT EXISTS use_case_packages_version_unique ON use_case_packages (use_case_id, version);
 
-CREATE UNIQUE INDEX IF NOT EXISTS use_case_packages_hash_unique ON use_case_packages (use_case_id, content_hash);
+CREATE INDEX IF NOT EXISTS use_case_packages_hash_idx ON use_case_packages (use_case_id, content_hash);
 
 CREATE INDEX IF NOT EXISTS use_case_packages_workspace_idx ON use_case_packages (workspace_id);
 
@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS use_case_projects (
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   version integer NOT NULL CONSTRAINT use_case_projects_version_check CHECK (version BETWEEN 1 AND 999),
   status varchar(12) NOT NULL DEFAULT 'in_corso' CONSTRAINT use_case_projects_status_check CHECK (status IN ('in_corso', 'da_approvare', 'approvato', 'superato')),
+  revision integer NOT NULL DEFAULT 1 CONSTRAINT use_case_projects_revision_check CHECK (revision >= 1),
   topics jsonb NOT NULL DEFAULT '{}'::jsonb CONSTRAINT use_case_projects_topics_check CHECK (jsonb_typeof(topics) = 'object'),
   framework varchar(10) CONSTRAINT use_case_projects_framework_check CHECK (framework IS NULL OR framework IN ('codice', 'langgraph', 'agent_sdk', 'cowork', 'n8n', 'altro')),
   new_tools jsonb NOT NULL DEFAULT '[]'::jsonb CONSTRAINT use_case_projects_new_tools_check CHECK (jsonb_typeof(new_tools) = 'array' AND jsonb_array_length(new_tools) <= 20),
@@ -101,8 +102,7 @@ CREATE TABLE IF NOT EXISTS use_case_decisions (
   author_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   author_role varchar(60),
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT use_case_decisions_pkey PRIMARY KEY (id),
-  CONSTRAINT use_case_decisions_author_check CHECK (author_user_id IS NOT NULL OR author_role IS NOT NULL)
+  CONSTRAINT use_case_decisions_pkey PRIMARY KEY (id)
 );
 
 CREATE INDEX IF NOT EXISTS use_case_decisions_case_idx ON use_case_decisions (use_case_id, decided_on, created_at);

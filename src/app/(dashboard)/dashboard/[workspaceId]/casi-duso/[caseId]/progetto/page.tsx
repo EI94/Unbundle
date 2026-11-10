@@ -6,7 +6,9 @@ import { canWrite, openShellPage } from "@/components/uc/shell/case-data";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { factoryStoreReady, readFactory, topicLabel, findUseCaseOfCase, type ProjectView } from "@/lib/db/queries/use-case-factory";
 import { SETUP_TOPICS } from "@/lib/db/use-case-hub-factory-ddl";
+import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { aiBoardOkRule, canApproveProject, canWriteFactory } from "@/lib/use-cases/factory/permissions";
+import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAction, ReopenProject, TopicEditor } from "./project-forms";
 
 /**
@@ -57,6 +59,10 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   const view = read.value;
 
   const writable = canWrite(caseAccess);
+  // I file del pacchetto portano cifre e risposte del referente: come la scheda, solo a chi vede cifre e «Cosa
+  // serve» (chi valuta) o al team di Lateral Space che scrive il progetto. Gli altri vedono versione e giorno.
+  const hub = abilitiesForUseCase(viewerFromSession({ id: session.user.id, email: session.user.email ?? null, emailVerified: session.user.emailVerified === true }, access.role));
+  const filesVisible = canWriteFactory(roles) || (hub.projection !== null && hub.projection !== "contributore" && hub.canSeeNeeds);
   const writer = writable && canWriteFactory(roles);
   const approver = writable && canApproveProject(roles);
   const board = writable ? aiBoardOkRule(roles) : { allowed: false, noteRequired: false };
@@ -94,8 +100,8 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
           {needsBoard ? <p className="mt-1 text-sm">Prima dell&apos;approvazione serve l&apos;ok dell&apos;AI Board agli strumenti nuovi.</p> : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          {open?.status === "da_approvare" && writer ? <ReopenProject workspaceId={workspaceId} caseId={caseId} /> : null}
-          <ProjectPrimaryAction workspaceId={workspaceId} caseId={caseId} action={primary} />
+          {open?.status === "da_approvare" && writer ? <ReopenProject workspaceId={workspaceId} caseId={caseId} revision={open.revision} /> : null}
+          <ProjectPrimaryAction workspaceId={workspaceId} caseId={caseId} action={primary} revision={open?.revision ?? null} />
         </div>
       </header>
 
@@ -151,7 +157,11 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
               )}
               {project.newTools.length ? (
                 <p className={project.aiBoardOkAt ? "" : "text-muted-foreground"}>
-                  {project.aiBoardOkAt ? `Ok dell'AI Board il ${day(project.aiBoardOkAt)}${project.aiBoardNote ? `: ${project.aiBoardNote}` : "."}` : "Manca l'ok dell'AI Board."}
+                  {project.aiBoardOkAt
+                    ? `Ok dell'AI Board il ${day(project.aiBoardOkAt)}${project.aiBoardNote ? `: ${project.aiBoardNote}` : "."}`
+                    : project.status === "in_corso"
+                      ? "Dopo l'invio in approvazione serve l'ok dell'AI Board."
+                      : "Manca l'ok dell'AI Board."}
                 </p>
               ) : null}
               <p>
@@ -160,7 +170,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
               </p>
               <div className="flex flex-wrap gap-2">
                 {editable ? <DetailsEditor workspaceId={workspaceId} caseId={caseId} tools={project.newTools} hours={project.estimateHours} cost={project.monthlyCostEur} /> : null}
-                {needsBoard && board.allowed ? <AiBoardOk workspaceId={workspaceId} caseId={caseId} noteRequired={board.noteRequired} /> : null}
+                {needsBoard && board.allowed ? <AiBoardOk workspaceId={workspaceId} caseId={caseId} noteRequired={board.noteRequired} revision={open!.revision} /> : null}
               </div>
             </div>
           </SettingsSection>
@@ -194,15 +204,19 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
                   <span className="font-medium">k{view.latestPackage.version}</span>
                   <span className="text-muted-foreground"> · {view.latestPackage.source === "importato" ? "preparato a mano" : "generato"} il {day(view.latestPackage.createdAt)}</span>
                 </p>
-                <details className="rounded-md border p-3">
-                  <summary className="cursor-pointer text-sm">Leggi i file</summary>
-                  {(["BRIEF.md", "PACCHETTO.md", "VERSIONE"] as const).map((name) => (
-                    <div key={name} className="mt-3">
-                      <p className="text-xs font-medium text-muted-foreground">{name}</p>
-                      <pre className="mt-1 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-xs">{view.latestPackage!.files[name]}</pre>
-                    </div>
-                  ))}
-                </details>
+                {filesVisible ? (
+                  <details className="rounded-md border p-3">
+                    <summary className="cursor-pointer text-sm">Leggi i file</summary>
+                    {(["BRIEF.md", "PACCHETTO.md", "VERSIONE"] as const).map((name) => (
+                      <div key={name} className="mt-3">
+                        <p className="text-xs font-medium text-muted-foreground">{name}</p>
+                        <pre className="mt-1 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 text-xs">{view.latestPackage!.files[name]}</pre>
+                      </div>
+                    ))}
+                  </details>
+                ) : (
+                  <p className="text-muted-foreground">I file li leggono chi valuta lo use case e il team di Lateral Space.</p>
+                )}
               </>
             ) : (
               <p className="text-muted-foreground">Nessun pacchetto ancora.</p>
