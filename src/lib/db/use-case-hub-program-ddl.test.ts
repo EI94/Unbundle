@@ -155,7 +155,7 @@ test("la sonda copre ogni tabella, ogni indice, ogni vincolo con nome e «da_riv
 });
 
 test("ensure-schema: versione 23, la 0029 dopo la 0028, non fatale, con timeout e lock, e la sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 23;/);
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 23, "ENSURE_VERSION almeno 23 (la 0030 la porta a 24)");
   assert.match(ensureSchema, /import \{ PROGRAM_DDL, PROGRAM_PROBE_SQL \} from "\.\/use-case-hub-program-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const thread = runOnce.indexOf("await runUseCaseReferentThreadDdlSafely();");

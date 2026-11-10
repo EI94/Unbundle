@@ -56,6 +56,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/use-case-hub-referent-thread-ddl.ts",
   // (0029, rilascio 7) «Programma»: il CHECK della campanella allargato con «da_rivedere» e la riga che il cron scrive.
   "src/lib/db/use-case-hub-program-ddl.ts",
+  // (0030, rilascio 8.0a) «Agent Factory»: il CHECK della campanella allargato con i tre tipi nuovi.
+  "src/lib/db/use-case-hub-factory-ddl.ts",
   "src/lib/db/queries/use-case-program.ts",
   // (Rilascio 6) Il filo: le letture per la scheda, le scritture del team e del referente.
   "src/lib/db/queries/use-case-referent-thread.ts",

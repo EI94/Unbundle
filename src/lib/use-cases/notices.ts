@@ -8,7 +8,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0029 as UseCaseNoticeKind } from "../db/use-case-hub-program-ddl.ts";
+import type { UseCaseNoticeKind0030 as UseCaseNoticeKind } from "../db/use-case-hub-factory-ddl.ts";
 
 export const USE_CASE_NOTICE_TEXT = Object.freeze({
   titles: Object.freeze({
@@ -22,6 +22,10 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
     domanda: "Il referente ha chiesto qualcosa",
     // (Rilascio 7) Uno use case in uso che rende poco più di quanto costa tenerlo acceso («Programma»).
     da_rivedere: "Da rivedere",
+    // (Rilascio 8.0a) L'Agent Factory: il progetto da approvare, uno strumento nuovo, il pacchetto cambiato.
+    progetto_appr: "Progetto da approvare",
+    strumento_nuovo: "Strumento nuovo da approvare",
+    pacchetto_nuovo: "Il pacchetto è cambiato",
   } satisfies Record<UseCaseNoticeKind, string>),
   answers: Object.freeze({ one: "1 risposta", many: "{n} risposte" }),
   documents: Object.freeze({ one: "1 documento", many: "{n} documenti" }),
@@ -40,6 +44,9 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   suppliers: "Serve il tuo ok sui sub-responsabili, in Impostazioni, per chiedere le informazioni di questo use case.",
   question: "Rispondi dalla scheda, in «Cosa serve».",
   review: "In uso, rende meno di 2 € per ogni euro che costa tenerlo acceso. Guardalo in «Programma».",
+  projectToApprove: "L'impostazione è pronta: guarda il progetto e approvalo in «Impostazione».",
+  newToolToApprove: "Il progetto usa uno strumento nuovo per voi: serve l'ok dell'AI Board, in «Impostazione».",
+  newPackage: "C'è una nuova versione del pacchetto: «unbundle start» la porta nel repository.",
   contextSeparator: " · ",
 });
 
@@ -62,6 +69,9 @@ export function noticeTextOf(n: {
   if (n.kind === "fornitori") return { title, description: t.suppliers };
   if (n.kind === "domanda") return { title, description: t.question };
   if (n.kind === "da_rivedere") return { title, description: t.review };
+  if (n.kind === "progetto_appr") return { title, description: t.projectToApprove };
+  if (n.kind === "strumento_nuovo") return { title, description: t.newToolToApprove };
+  if (n.kind === "pacchetto_nuovo") return { title, description: t.newPackage };
   if (n.kind === "senza_risposta") return { title, description: t.followUp[n.followUp ?? "scaduta"] };
   const answers = safe(n.answers);
   const documents = safe(n.documents);

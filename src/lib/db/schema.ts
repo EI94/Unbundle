@@ -61,8 +61,18 @@ import type {
   ProgramKpiSource,
   ProgramKpiValueSource,
   ProgramSnapshotKind,
-  UseCaseNoticeKind0029,
 } from "./use-case-hub-program-ddl.ts";
+import type {
+  DecisionSource,
+  UseCaseNoticeKind0030,
+  FactoryFramework,
+  PackageFile,
+  PackageSource,
+  ProjectNewTool,
+  ProjectStatus,
+  ProjectTopics,
+  SetupTopic,
+} from "./use-case-hub-factory-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
@@ -1271,6 +1281,93 @@ export const strategicGoalCheckins = pgTable(
   ]
 );
 
+// ─── Rilascio 8.0a «Agent Factory» (drizzle/0030) ───────────────────
+// CHECK e indici parziali stanno solo nella migrazione e in use-case-hub-factory-ddl.ts (self-heal): mai
+// drizzle-kit su queste tabelle.
+
+/** (0030) Una versione del pacchetto di uno use case (k1, k2, …): i tre file, l'impronta, da dove viene. */
+export const useCasePackages = pgTable(
+  "use_case_packages",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    files: jsonb("files").$type<Record<PackageFile, string>>().notNull(),
+    source: varchar("source", { length: 10 }).$type<PackageSource>().notNull(),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_packages_pkey", columns: [t.id] }),
+    uniqueIndex("use_case_packages_version_unique").on(t.useCaseId, t.version),
+    uniqueIndex("use_case_packages_hash_unique").on(t.useCaseId, t.contentHash),
+    index("use_case_packages_workspace_idx").on(t.workspaceId),
+  ]
+);
+
+/** (0030) Una versione del progetto dell'impostazione: i 10 argomenti, il framework, gli strumenti nuovi, le approvazioni. */
+export const useCaseProjects = pgTable(
+  "use_case_projects",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    status: varchar("status", { length: 12 }).$type<ProjectStatus>().notNull().default("in_corso"),
+    topics: jsonb("topics").$type<ProjectTopics>().notNull().default({}),
+    framework: varchar("framework", { length: 10 }).$type<FactoryFramework>(),
+    newTools: jsonb("new_tools").$type<ProjectNewTool[]>().notNull().default([]),
+    estimateHours: numeric("estimate_hours", { precision: 8, scale: 1 }),
+    monthlyCostEur: numeric("monthly_cost_eur", { precision: 12, scale: 2 }),
+    standardVersion: varchar("standard_version", { length: 10 }),
+    catalogVersion: varchar("catalog_version", { length: 10 }),
+    packageVersion: integer("package_version"),
+    submittedAt: tz("submitted_at"),
+    submittedByUserId: uuid("submitted_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    approvedAt: tz("approved_at"),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    aiBoardOkAt: tz("ai_board_ok_at"),
+    aiBoardOkByUserId: uuid("ai_board_ok_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    aiBoardNote: varchar("ai_board_note", { length: 300 }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_projects_pkey", columns: [t.id] }),
+    uniqueIndex("use_case_projects_version_unique").on(t.useCaseId, t.version),
+    index("use_case_projects_workspace_idx").on(t.workspaceId),
+  ]
+);
+
+/** (0030) Una decisione del caso, dall'impostazione o del team. Si aggiunge, non si riscrive. */
+export const useCaseDecisions = pgTable(
+  "use_case_decisions",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    decidedOn: date("decided_on").notNull(),
+    topicKey: varchar("topic_key", { length: 16 }).$type<SetupTopic>(),
+    topic: varchar("topic", { length: 80 }).notNull(),
+    choice: varchar("choice", { length: 500 }).notNull(),
+    reason: varchar("reason", { length: 1000 }),
+    rejected: varchar("rejected", { length: 500 }),
+    source: varchar("source", { length: 12 }).$type<DecisionSource>().notNull(),
+    projectVersion: integer("project_version"),
+    authorUserId: uuid("author_user_id").references(() => users.id, { onDelete: "set null" }),
+    authorRole: varchar("author_role", { length: 60 }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_decisions_pkey", columns: [t.id] }),
+    index("use_case_decisions_case_idx").on(t.useCaseId, t.decidedOn, t.createdAt),
+    index("use_case_decisions_workspace_idx").on(t.workspaceId),
+  ]
+);
+
 export const useCaseNeedAnswers = pgTable(
   "use_case_need_answers",
   {
@@ -1418,7 +1515,7 @@ export const useCaseNotifications = pgTable(
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
     recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0029>().notNull(),
+    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0030>().notNull(),
     romeDay: date("rome_day", { mode: "string" }).notNull(),
     answers: smallint("answers").notNull().default(0),
     unknowns: smallint("unknowns").notNull().default(0),
