@@ -186,6 +186,11 @@ export function packageHash(content: { body: string; brief: string }): string {
   return createHash("sha256").update(`${content.body}\n\u0000\n${content.brief}`, "utf8").digest("hex");
 }
 
+/** L'impronta di un pacchetto importato (fatto a mano): PACCHETTO.md e BRIEF.md, senza VERSIONE (numero e giorno). */
+export function packageFilesHash(files: Record<PackageFile, string>): string {
+  return createHash("sha256").update(`${files["PACCHETTO.md"]}\n\u0000\n${files["BRIEF.md"]}`, "utf8").digest("hex");
+}
+
 /** I tre file di una versione. */
 export function packageFiles(source: PackageSource, info: PackageVersionInfo, content = packageContent(source)): Record<PackageFile, string> {
   const k = `k${info.version}`;

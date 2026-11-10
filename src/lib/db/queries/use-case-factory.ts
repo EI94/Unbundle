@@ -11,13 +11,13 @@ import "server-only";
  * - Le notifiche vanno nella campanella dello use case (`use_case_notifications`), una riga per persona, use case,
  *   tipo e giorno, come le altre; mai a chi ha fatto l'azione.
  */
-import { createHash } from "node:crypto";
 import type { UcExecutor, UcRow } from "@/lib/db/uc-executor";
 import {
   FACTORY_FRAMEWORKS,
   FACTORY_LIMITS,
   FACTORY_PROBE_SQL,
   SETUP_TOPICS,
+  SETUP_TOPIC_LABELS,
   type FactoryFramework,
   type PackageFile,
   type PackageSource as PackageOrigin,
@@ -30,7 +30,7 @@ import { checkLsText } from "@/lib/db/queries/uc-cases";
 import { cast, jsonb, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import type { CaseRole } from "@/lib/uc/vocab";
-import { packageContent, packageFiles, packageHash, type PackageSource } from "@/lib/use-cases/factory/package";
+import { packageContent, packageFiles, packageFilesHash, packageHash, type PackageSource } from "@/lib/use-cases/factory/package";
 import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canReadFactory, canWriteFactory, FACTORY_RECIPIENTS } from "@/lib/use-cases/factory/permissions";
 import { isNeedDone, needStatusView, type NeedStatus, type NeedType } from "@/lib/use-cases/needs";
 import { romeToday } from "@/lib/use-cases/quarter";
@@ -240,10 +240,8 @@ ON CONFLICT (dedupe_key) DO NOTHING`);
 
 // ─── Il pacchetto ────────────────────────────────────────────────────
 
-/** L'impronta di un pacchetto importato: PACCHETTO.md e BRIEF.md, senza VERSIONE (che porta numero e giorno). */
-export function importedPackageHash(files: Record<PackageFile, string>): string {
-  return createHash("sha256").update(`${files["PACCHETTO.md"]}\n\u0000\n${files["BRIEF.md"]}`, "utf8").digest("hex");
-}
+/** L'impronta di un pacchetto importato: la stessa di `packageFilesHash`. */
+export const importedPackageHash = packageFilesHash;
 
 /**
  * Salva una versione del pacchetto se il contenuto è cambiato. Con lo stesso contenuto dell'ultima versione non
@@ -364,18 +362,7 @@ function teamText(value: unknown, max: number, label: string): Result<string | n
   return ok(t);
 }
 
-const TOPIC_LABELS: Readonly<Record<SetupTopic, string>> = Object.freeze({
-  funzionalita: "Funzionalità",
-  journey: "User journey",
-  dati: "Dati",
-  framework: "Framework agentico",
-  backend: "Backend",
-  frontend: "Frontend",
-  integrazioni: "Integrazioni",
-  modelli: "Modelli",
-  osservabilita: "Osservabilità",
-  evals_autonomia: "Evals e autonomia",
-});
+const TOPIC_LABELS = SETUP_TOPIC_LABELS;
 
 export function topicLabel(topic: SetupTopic): string {
   return TOPIC_LABELS[topic];

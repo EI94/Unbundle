@@ -31,6 +31,8 @@ export const ADMIN_COMMANDS = [
   "scoring-v2",
   "doctor",
   "erase-referent",
+  // (Rilascio 8.0a) L'impostazione fatta a mano nella settimana zero, dal repository della famiglia.
+  "factory-import",
 ] as const;
 export type AdminCommandName = (typeof ADMIN_COMMANDS)[number];
 

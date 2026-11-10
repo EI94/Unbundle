@@ -47,6 +47,20 @@ export const SETUP_TOPICS = [
 ] as const;
 export type SetupTopic = (typeof SETUP_TOPICS)[number];
 
+/** I nomi dei 10 argomenti, come nella skill «imposta» e in `PROGETTO.md`. */
+export const SETUP_TOPIC_LABELS: Readonly<Record<SetupTopic, string>> = Object.freeze({
+  funzionalita: "Funzionalità",
+  journey: "User journey",
+  dati: "Dati",
+  framework: "Framework agentico",
+  backend: "Backend",
+  frontend: "Frontend",
+  integrazioni: "Integrazioni",
+  modelli: "Modelli",
+  osservabilita: "Osservabilità",
+  evals_autonomia: "Evals e autonomia",
+});
+
 /** I framework del catalogo v1 (repository modello, `catalogo/catalogo.yaml`). */
 export const FACTORY_FRAMEWORKS = ["codice", "langgraph", "agent_sdk", "cowork", "n8n", "altro"] as const;
 export type FactoryFramework = (typeof FACTORY_FRAMEWORKS)[number];
