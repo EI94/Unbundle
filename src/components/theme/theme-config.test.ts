@@ -49,11 +49,12 @@ test("lo script del tema gira nell'HTML del server, prima che la pagina si diseg
   assert.ok(provider.includes('scriptProps={{ type: typeof window === "undefined" ? "text/javascript" : "text/plain" }}'), "nel client lo script è text/plain");
 });
 
-test("i toast: chiari solo sulle pagine del dashboard col tema chiaro, altrimenti come prima", () => {
+test("i toast: sul dashboard il tema della pagina, chiaro o scuro; altrove come il sistema", () => {
   assert.equal(toasterTheme("light", "/dashboard"), "light");
   assert.equal(toasterTheme("light", "/dashboard/ws-1/use-cases"), "light");
-  assert.equal(toasterTheme("dark", "/dashboard/ws-1"), "system");
-  assert.equal(toasterTheme(undefined, "/dashboard/ws-1"), "system");
+  assert.equal(toasterTheme("dark", "/dashboard/ws-1"), "dark", "scuri sul dashboard scuro, anche con il sistema chiaro");
+  assert.equal(toasterTheme(undefined, "/dashboard/ws-1"), "dark", "prima che il tema sia letto vale «Scuro», il predefinito");
+  assert.equal(toasterTheme("dark", "/r/token"), "system");
   assert.equal(toasterTheme("light", "/r/token"), "system");
   assert.equal(toasterTheme("light", "/rispondi/token"), "system");
   assert.equal(toasterTheme("light", "/a/token"), "system");
@@ -61,6 +62,7 @@ test("i toast: chiari solo sulle pagine del dashboard col tema chiaro, altriment
   assert.equal(toasterTheme("light", null), "system");
   const sonner = readRepo("src/components/ui/sonner.tsx");
   assert.ok(sonner.includes("theme={toasterTheme(resolvedTheme, pathname)}"));
+  assert.ok(sonner.includes('containerAriaLabel="Avvisi"'), "la regione dei toast in italiano");
 });
 
 /** I file .tsx sotto una cartella, anche nelle sottocartelle. */

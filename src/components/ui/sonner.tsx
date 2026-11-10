@@ -7,7 +7,8 @@ import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon
 import { toasterTheme } from "@/components/theme/theme-config"
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  // Chiaro solo sulle pagine del dashboard con il tema «Chiaro»; altrove "system", come prima.
+  // Sul dashboard il tema della pagina (chiaro o scuro); altrove "system", come prima. La regione dei
+  // toast si chiama «Avvisi», per non confondersi con la campanella («Notifiche»).
   const { resolvedTheme } = useTheme()
   const pathname = usePathname()
 
@@ -15,6 +16,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={toasterTheme(resolvedTheme, pathname)}
       className="toaster group"
+      containerAriaLabel="Avvisi"
       icons={{
         success: (
           <CircleCheckIcon className="size-4" />

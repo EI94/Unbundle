@@ -15,7 +15,7 @@ import type { ProgramView } from "./view.ts";
 
 const T = PROGRAM_TEXT;
 
-/** «sal-topjet-2026-11-09.pdf». */
+/** Per esempio «sal-esempio-spa-2026-11-09.pdf». */
 export function salFileName(view: Pick<ProgramView, "companyName" | "today">): string {
   const slug =
     view.companyName

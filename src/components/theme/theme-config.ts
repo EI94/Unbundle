@@ -50,11 +50,11 @@ export const THEME_OPTIONS: ReadonlyArray<{ value: ThemeChoice; label: string }>
 export const THEME_MENU_LABEL = "Tema";
 
 /**
- * Il tema dei toast: chiaro solo sulle pagine del dashboard con il tema chiaro; altrove (e con
- * «Scuro») "system", come prima del tema chiaro, così il tema scuro non cambia.
+ * Il tema dei toast: sulle pagine del dashboard quello della pagina, chiaro con «Chiaro» e scuro con
+ * «Scuro» (anche prima che il tema sia letto, perché «Scuro» è il predefinito); prima seguiva il
+ * sistema, e con il sistema chiaro i toast erano chiari sul dashboard scuro. Altrove "system".
  */
-export function toasterTheme(resolvedTheme: string | undefined, pathname: string | null | undefined): "light" | "system" {
-  if (resolvedTheme !== "light") return "system";
-  if (!pathname) return "system";
-  return pathname === "/dashboard" || pathname.startsWith("/dashboard/") ? "light" : "system";
+export function toasterTheme(resolvedTheme: string | undefined, pathname: string | null | undefined): "light" | "dark" | "system" {
+  if (!pathname || (pathname !== "/dashboard" && !pathname.startsWith("/dashboard/"))) return "system";
+  return resolvedTheme === "light" ? "light" : "dark";
 }
