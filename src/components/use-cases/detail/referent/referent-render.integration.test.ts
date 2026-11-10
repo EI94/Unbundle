@@ -65,18 +65,18 @@ let labels: typeof import("../../../../lib/use-cases/referent/labels.ts");
 let createElementOf: (type: unknown, props: Record<string, unknown>) => unknown;
 
 const suffix = randomBytes(3).toString("hex");
-const ids = { org: randomUUID(), ws: randomUUID(), builder: randomUUID(), federico: randomUUID(), contributor: randomUUID(), card: randomUUID() };
-type Person = "builder" | "federico" | "contributor";
-const PEOPLE: Person[] = ["builder", "federico", "contributor"];
-const ROLE: Record<Person, string> = { builder: "function_lead", federico: "function_lead", contributor: "contributor" };
+const ids = { org: randomUUID(), ws: randomUUID(), builder: randomUUID(), fabio: randomUUID(), contributor: randomUUID(), card: randomUUID() };
+type Person = "builder" | "fabio" | "contributor";
+const PEOPLE: Person[] = ["builder", "fabio", "contributor"];
+const ROLE: Record<Person, string> = { builder: "function_lead", fabio: "function_lead", contributor: "contributor" };
 const emails: Record<Person, string> = {
   builder: `giulia.render.${suffix}@cliente.test`,
-  federico: `federico.render.${suffix}@cliente.test`,
+  fabio: `fabio.render.${suffix}@cliente.test`,
   contributor: `contrib.render.${suffix}@cliente.test`,
 };
-const NAMES: Record<Person, string> = { builder: `Giulia Neri ${suffix}`, federico: `Fabio Esempio ${suffix}`, contributor: `Collega ${suffix}` };
+const NAMES: Record<Person, string> = { builder: `Giulia Neri ${suffix}`, fabio: `Fabio Esempio ${suffix}`, contributor: `Collega ${suffix}` };
 const MARIO = { id: randomUUID(), name: `Mario Rossi ${suffix}`, email: `mario.rossi.${suffix}@cliente.test` };
-const contacts = { builder: randomUUID(), federico: randomUUID() };
+const contacts = { builder: randomUUID(), fabio: randomUUID() };
 const ANSWER = `Ogni lunedì, circa due ore ${suffix}.`;
 const TEAM_ANSWER = `Lo usiamo con il gestionale ${suffix}.`;
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-scheda-"));
@@ -202,7 +202,7 @@ before(async () => {
   labels = await import("../../../../lib/use-cases/referent/labels.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione scheda referenti', $2)`, [ids.org, `hub-scheda-ref-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, $3)`, [ids.ws, ids.org, `TopJet prova ${suffix}`]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, $3)`, [ids.ws, ids.org, `Rondine prova ${suffix}`]);
   for (const person of PEOPLE) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], NAMES[person]]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, ids[person], ROLE[person]]);
@@ -266,7 +266,7 @@ test("(rilascio 5) un revisore che può arrivare in fondo ha «Scegli il referen
   // Il pannello porta i motivi per la finestra: l'ok sui fornitori (lo può dare chi guarda) e le email.
   const [panel] = findProp(await detailElement("builder"), "referents").filter(Boolean) as Panel[];
   assert.deepEqual(panel.gates.map((g) => g.code), ["sub_responsabili_mancanti", "email_non_configurata"]);
-  assert.ok(panel.gates[0].message.includes(`TopJet prova ${suffix} deve autorizzare i fornitori che usiamo`), "fornitori da autorizzare");
+  assert.ok(panel.gates[0].message.includes(`Rondine prova ${suffix} deve autorizzare i fornitori che usiamo`), "fornitori da autorizzare");
   assert.ok(!Object.hasOwn(panel, "members"), "le persone del workspace non stanno nel pannello della scheda");
   assert.ok(!page.includes(T.requestsHeading), "nessuna richiesta ancora");
   assert.ok(!page.includes("In corso"));
@@ -341,7 +341,7 @@ test("(rilascio 5, rilascio 6) approvata senza referente: il riquadro dice il mo
     readable(renderToStaticMarkup(createElementOf(view.type, { ...view.props, referents: { ...panel, available: true, gates, ...over } })));
   const SUB = panel.gates.find((g) => g.code === "sub_responsabili_mancanti")!;
   // L'ok lo dà un'altra persona (Lateral Space, un analista del cliente): G4 dice lo stato e a chi tocca, nessun pulsante.
-  const other = render([{ ...SUB, canDeclare: false, message: T.gates.subprocessorsOther.replaceAll("{Azienda}", `TopJet prova ${suffix}`) }]);
+  const other = render([{ ...SUB, canDeclare: false, message: T.gates.subprocessorsOther.replaceAll("{Azienda}", `Rondine prova ${suffix}`) }]);
   assert.match(boxAndNeeds(other).box, /data-key="G4"/);
   assert.ok(boxAndNeeds(other).box.includes(`>${GUIDED_TEXT.cta.authorizeWaiting}</p>`), "lo stato in parole");
   assert.equal(askCount(other) + boxCount(other), 0, "chi non può dare l'ok non entra nei passi");
@@ -389,9 +389,9 @@ test("con l'autorizzazione e le email accese: la richiesta, le righe sotto le es
     ids.ws,
     MARIO.name,
     MARIO.email,
-    contacts.federico,
-    NAMES.federico,
-    emails.federico,
+    contacts.fabio,
+    NAMES.fabio,
+    emails.fabio,
     contacts.builder,
     NAMES.builder,
     emails.builder,
@@ -482,7 +482,7 @@ test("«A chi»: il proprio contatto «(sei tu)» e non si sceglie, un collega r
   assert.ok(panel?.available);
   const A = labels.REFERENT_UI_TEXT.askDialog;
   const own = panel.contacts.find((c) => c.id === contacts.builder);
-  const colleague = panel.contacts.find((c) => c.id === contacts.federico);
+  const colleague = panel.contacts.find((c) => c.id === contacts.fabio);
   const mario = panel.contacts.find((c) => c.id === MARIO.id);
   assert.ok(own && colleague && mario);
   assert.ok(askState.contactRowLine(own).endsWith(A.suffix.sei_tu), askState.contactRowLine(own));
@@ -492,10 +492,10 @@ test("«A chi»: il proprio contatto «(sei tu)» e non si sceglie, un collega r
   assert.ok(!askState.contactRowLine(mario).includes(A.teamTag));
   assert.ok(askState.contactRowLine(mario).endsWith(A.suffix.richiesta_aperta), "Mario ha già una richiesta su questa scheda");
   assert.equal(askState.askSelfHint(panel), A.selfHint);
-  // Federico vede il contrario: Giulia «Fa parte del team», lui «(sei tu)».
-  const [forFederico] = findProp(await detailElement("federico"), "referents").filter(Boolean) as Panel[];
+  // Fabio vede il contrario: Giulia «Fa parte del team», lui «(sei tu)».
+  const [forFederico] = findProp(await detailElement("fabio"), "referents").filter(Boolean) as Panel[];
   assert.ok(askState.contactRowLine(forFederico.contacts.find((c) => c.id === contacts.builder)!).includes(A.teamTag));
-  assert.ok(askState.contactRowLine(forFederico.contacts.find((c) => c.id === contacts.federico)!).endsWith(A.suffix.sei_tu));
+  assert.ok(askState.contactRowLine(forFederico.contacts.find((c) => c.id === contacts.fabio)!).endsWith(A.suffix.sei_tu));
   // Mai un numero, un corso o un altro ruolo nelle righe; le persone del workspace non stanno nel pannello.
   for (const option of [...panel.contacts, ...forFederico.contacts]) assert.doesNotMatch(askState.contactRowLine(option), /\d|corso|formazione|learner|contributor/i, option.displayName);
   assert.ok(!Object.hasOwn(panel, "members") && !Object.hasOwn(forFederico, "members"));
@@ -515,7 +515,7 @@ test("(rilascio 5) il referente scelto: il blocco «Referente» con la richiesta
   // referente, una domanda con «Serve un file», la richiesta al referente vista (nessuna).
   const assign = await import("./assign-dialog-state.ts");
   const payload = assign.assignPayload(
-    { choice: contacts.federico, name: "", email: "", role: "", needIds: free.slice(0, 1), fileRequired: free.slice(0, 1), message: "" },
+    { choice: contacts.fabio, name: "", email: "", role: "", needIds: free.slice(0, 1), fileRequired: free.slice(0, 1), message: "" },
     { mode: "scegli", questions: free, panel: before, previous: null },
   );
   assert.deepEqual([payload.kind, payload.expectedReferentRequestId, payload.fileRequired], ["referente", null, free.slice(0, 1)]);
@@ -526,7 +526,7 @@ test("(rilascio 5) il referente scelto: il blocco «Referente» con la richiesta
   await dispatch.dispatchReferentEmails({ requestId: sent.requestId, env: ENV, mailer: fakeMailer(), sendIntervalMs: 0 });
   const element = await detailElement("builder");
   const [panel] = findProp(element, "referents").filter(Boolean) as Panel[];
-  assert.equal(panel.referent?.contact.id, contacts.federico);
+  assert.equal(panel.referent?.contact.id, contacts.fabio);
   // Le risposte di Mario e del team sono ancora da verificare (§3.4: vince «Risposte da verificare»).
   assert.equal(panel.referent?.state, "da_verificare");
   assert.equal(panel.referent?.live, true);
@@ -535,7 +535,7 @@ test("(rilascio 5) il referente scelto: il blocco «Referente» con la richiesta
   const page = readable(renderToStaticMarkup(element));
   assert.match(page, /data-slot="referent-block" data-state="da_verificare"/);
   assert.ok(page.includes(`>${B.heading}<`));
-  assert.ok(page.includes(NAMES.federico));
+  assert.ok(page.includes(NAMES.fabio));
   assert.match(page, /In attesa del referente · inviata il \d{1,2} [a-z]{3} · scade il \d{1,2} [a-z]{3}/);
   // (Rilascio 6, B.1.2) Lo stato si dice una volta, nel blocco: niente riga sotto il titolo.
   assert.ok(!page.includes('data-slot="referent-line"'));
@@ -549,18 +549,18 @@ test("(rilascio 5) il referente scelto: il blocco «Referente» con la richiesta
   // «Richieste inviate»: le richieste a Mario sì, quella al referente no (D34).
   const requests = page.slice(page.indexOf('data-slot="referent-requests"'));
   assert.ok(requests.includes(MARIO.name));
-  assert.ok(!requests.slice(0, requests.indexOf("</details>")).includes(NAMES.federico), "la richiesta al referente sta nel suo blocco");
+  assert.ok(!requests.slice(0, requests.indexOf("</details>")).includes(NAMES.fabio), "la richiesta al referente sta nel suo blocco");
   // Il contributore: niente nome, niente blocco.
   const contributor = await detailHtml("contributor");
-  for (const text of [NAMES.federico, 'data-slot="referent-block"', 'data-slot="referent-line"', A.other]) assert.ok(!contributor.includes(text), text);
+  for (const text of [NAMES.fabio, 'data-slot="referent-block"', 'data-slot="referent-line"', A.other]) assert.ok(!contributor.includes(text), text);
 
   // «Cambia referente» con il contenuto della finestra: Mario, che ha già delle domande aperte (D49),
-  // diventa il referente; la richiesta di Federico è revocata e le domande aperte passano a Mario.
+  // diventa il referente; la richiesta di Fabio è revocata e le domande aperte passano a Mario.
   const row = assign.assignContactRow(panel.contacts.find((c) => c.id === MARIO.id)!, panel);
   assert.deepEqual(row, { selectable: true, suffix: A.hasQuestions });
   const draft = { choice: MARIO.id, name: "", email: "", role: "", needIds: [] as string[], fileRequired: [] as string[], message: "" };
   const carried = assign.carriedNeedIds(panel, "cambia", draft);
-  assert.ok(carried.length > 0, "le domande aperte di Mario e di Federico");
+  assert.ok(carried.length > 0, "le domande aperte di Mario e di Fabio");
   const questions = assign.assignQuestionIds(panel, "cambia", carried, Object.keys(panel.needs));
   const change = assign.assignPayload({ ...draft, needIds: carried }, { mode: "cambia", questions, panel, previous: null });
   assert.deepEqual([change.kind, change.replaceReferent, change.expectedReferentRequestId], ["referente", true, sent.requestId]);

@@ -147,7 +147,7 @@ before(async () => {
   quarter = String((await q(`SELECT ${ddl.ROME_QUARTER_NOW_SQL} AS q`))[0].q);
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione pronti', $2)`, [ids.org, `hub-pronti-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet pronti')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine pronti')`, [ids.ws, ids.org]);
   for (const person of Object.keys(PEOPLE) as Person[]) {
     const p = PEOPLE[person];
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, CASE WHEN $4 THEN now() END)`, [ids[person], p.email, `Persona ${person}`, p.verified]);

@@ -60,8 +60,8 @@ function view(over: Partial<ReferentAskView> = {}): ReferentAskView {
   return {
     state: "aperta",
     privacy: { accepted: true, version: "ucq-2026-11-2", contact: "pierpaolo@lateralspace.ai" },
-    company: "TopJet",
-    useCase: { code: "TJ-0004", title: "Fatture fornitori" },
+    company: "Rondine",
+    useCase: { code: "RD-0004", title: "Fatture fornitori" },
     requester: { name: "Giulia Neri" },
     message: "Ci serve per la stima di fine mese.",
     expiresOn: "2026-11-26",
@@ -98,8 +98,8 @@ test("le schede dei link che non si possono usare", () => {
 test("intestazione: azienda, «CODICE · Titolo», chi chiede e il suo messaggio", () => {
   const h = headerTexts(view());
   assert.deepEqual(h, {
-    company: "TopJet",
-    title: "TJ-0004 · Fatture fornitori",
+    company: "Rondine",
+    title: "RD-0004 · Fatture fornitori",
     requestedBy: "Giulia Neri ti chiede alcune informazioni.",
     message: { title: "Il messaggio di Giulia Neri", text: "Ci serve per la stima di fine mese." },
   });
@@ -118,13 +118,13 @@ test("informativa: prima di tutto finché non è letta; i segnaposto riempiti", 
   // (Rilascio 5.1) Corta e calma: una riga e due punti, nessuna parola che spaventa; il resto a un tocco.
   assert.equal(p.lead, "Ti chiediamo del tuo lavoro, non di te.");
   assert.equal(p.summary.length, 2);
-  assert.ok(p.summary[0].includes("di TopJet"));
+  assert.ok(p.summary[0].includes("di Rondine"));
   assert.ok(p.summary[1].endsWith("fino al 26 novembre 2026."));
   assert.ok([p.lead, ...p.summary].every((t) => !/blocc|dati personali|sanitar|nomi|email|telefon/i.test(t)), "niente allarmi sopra");
   assert.equal(p.fullTextLabel, "Leggi l'informativa completa");
   // L'informativa completa resta intera: chi, cosa, chi vede, controllo dei file, quanto, diritti, Garante.
-  assert.ok(p.paragraphs.some((t) => t.startsWith("Lateral Space raccoglie queste informazioni per conto di TopJet")));
-  assert.ok(p.paragraphs.some((t) => t.startsWith("Giulia Neri e le altre persone di TopJet")));
+  assert.ok(p.paragraphs.some((t) => t.startsWith("Lateral Space raccoglie queste informazioni per conto di Rondine")));
+  assert.ok(p.paragraphs.some((t) => t.startsWith("Giulia Neri e le altre persone di Rondine")));
   assert.ok(p.paragraphs.some((t) => t.includes("controllo automatico")));
   assert.ok(p.paragraphs.some((t) => t.includes("12 mesi")));
   assert.ok(p.paragraphs.some((t) => t.includes("Garante per la protezione dei dati personali")));
@@ -240,9 +240,9 @@ test("i problemi dell'invio vanno sulle loro domande, la prima da mostrare è ne
 });
 
 test("la pagina usa solo i campi del contratto: un campo in più nella vista non arriva a schermo", () => {
-  const leaky = { ...view(), proposedBy: "proponente@topjet.it", reviewNotes: "NOTA-RISERVATA", valueEurYear: 98765 } as ReferentAskView;
+  const leaky = { ...view(), proposedBy: "proponente@rondine.it", reviewNotes: "NOTA-RISERVATA", valueEurYear: 98765 } as ReferentAskView;
   const shown = JSON.stringify([headerTexts(leaky), privacyTexts(leaky), questionSections(leaky).map((s) => [s.label, s.title]), submitHint(leaky)]);
-  for (const secret of ["proponente@topjet.it", "NOTA-RISERVATA", "98765"]) assert.ok(!shown.includes(secret), secret);
+  for (const secret of ["proponente@rondine.it", "NOTA-RISERVATA", "98765"]) assert.ok(!shown.includes(secret), secret);
 });
 
 // ─── Rilascio 5: le chiusure (§3.6, §7.5, §7.6) ──────────────────────

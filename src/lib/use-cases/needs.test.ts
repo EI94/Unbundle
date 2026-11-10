@@ -626,7 +626,7 @@ test("i testi dei conteggi: «86 aperti · 60 da chiedere · …», senza gli ze
 test("gli agenti di un'esigenza: dal titolo dei suoi use case, uno per agente; nessuno senza prefisso", () => {
   assert.deepEqual(
     needAgents([
-      { title: "LIBRA L1 · Lettura delle fatture estere" },
+      { title: "LIBRA L1 · Lettura dei documenti esteri" },
       { title: "ORSA O1 · Solleciti ai clienti" },
       { title: "LIBRA L3 · Riconciliazione dei pagamenti" },
       { title: "Smistamento delle richieste" },
@@ -634,7 +634,7 @@ test("gli agenti di un'esigenza: dal titolo dei suoi use case, uno per agente; n
     ["LIBRA", "ORSA"],
   );
   assert.deepEqual(needAgents([{ title: "TAIGETE T3 · Note spese" }, { title: "ALCIONE A1 · Budget" }]), ["ALCIONE", "TAIGETE"], "in ordine alfabetico");
-  assert.deepEqual(needAgents([{ title: "Strategia per volo" }]), []);
+  assert.deepEqual(needAgents([{ title: "Margine per commessa" }]), []);
   assert.deepEqual(needAgents([]), []);
 });
 

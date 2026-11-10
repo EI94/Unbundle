@@ -32,7 +32,7 @@ function email(over: Partial<ClaimedReferentEmail> = {}): ClaimedReferentEmail {
 function request(over: Partial<ReferentRequestFacts> = {}): ReferentRequestFacts {
   return {
     id: R1,
-    useCase: { code: "TJ-0004", title: "Fatture fornitori" },
+    useCase: { code: "RD-0004", title: "Fatture fornitori" },
     status: "inviata",
     live: true,
     expiresAt: new Date(NOW.getTime() + 20 * 86_400_000),
@@ -51,11 +51,11 @@ function request(over: Partial<ReferentRequestFacts> = {}): ReferentRequestFacts
 
 function facts(over: Partial<ReferentDeliveryFacts> = {}): ReferentDeliveryFacts {
   return {
-    company: "TopJet",
+    company: "Rondine",
     featureOn: true,
     subprocessorsAuthorized: true,
-    recipient: { email: " Mario.Rossi@TopJet.it ", active: true, anonymized: false, linkedUserIsLateralSpace: false },
-    replyTo: "Giulia.Neri@TopJet.it",
+    recipient: { email: " Mario.Rossi@Rondine.it ", active: true, anonymized: false, linkedUserIsLateralSpace: false },
+    replyTo: "Giulia.Neri@Rondine.it",
     requests: [request()],
     contactRemindedToday: false,
     ...over,
@@ -73,19 +73,19 @@ test("piano: senza autorizzazione ai fornitori ogni email aspetta; funzione spen
 
 test("piano: destinatario non raggiungibile o di Lateral Space → annullata", () => {
   assert.deepEqual(plan(email(), facts({ recipient: null })), { action: "cancel", reason: "destinatario_non_raggiungibile" });
-  assert.deepEqual(plan(email(), facts({ recipient: { email: "x@topjet.it", active: false, anonymized: false, linkedUserIsLateralSpace: false } })), { action: "cancel", reason: "destinatario_non_raggiungibile" });
-  assert.deepEqual(plan(email(), facts({ recipient: { email: "x@topjet.it", active: true, anonymized: true, linkedUserIsLateralSpace: false } })), { action: "cancel", reason: "destinatario_non_raggiungibile" });
-  assert.deepEqual(plan(email(), facts({ recipient: { email: "Mario <x@topjet.it>", active: true, anonymized: false, linkedUserIsLateralSpace: false } })), { action: "cancel", reason: "destinatario_non_raggiungibile" });
+  assert.deepEqual(plan(email(), facts({ recipient: { email: "x@rondine.it", active: false, anonymized: false, linkedUserIsLateralSpace: false } })), { action: "cancel", reason: "destinatario_non_raggiungibile" });
+  assert.deepEqual(plan(email(), facts({ recipient: { email: "x@rondine.it", active: true, anonymized: true, linkedUserIsLateralSpace: false } })), { action: "cancel", reason: "destinatario_non_raggiungibile" });
+  assert.deepEqual(plan(email(), facts({ recipient: { email: "Mario <x@rondine.it>", active: true, anonymized: false, linkedUserIsLateralSpace: false } })), { action: "cancel", reason: "destinatario_non_raggiungibile" });
   assert.deepEqual(plan(email(), facts({ recipient: { email: "x@lateralspace.example", active: true, anonymized: false, linkedUserIsLateralSpace: false } })), { action: "cancel", reason: "destinatario_lateral_space" });
-  assert.deepEqual(plan(email(), facts({ recipient: { email: "x@topjet.it", active: true, anonymized: false, linkedUserIsLateralSpace: true } })), { action: "cancel", reason: "destinatario_lateral_space" });
+  assert.deepEqual(plan(email(), facts({ recipient: { email: "x@rondine.it", active: true, anonymized: false, linkedUserIsLateralSpace: true } })), { action: "cancel", reason: "destinatario_lateral_space" });
 });
 
 test("piano: richiesta viva con domande aperte; indirizzi in minuscolo; replyTo solo se c'è", () => {
   const p = plan(email(), facts());
   assert.equal(p.action, "send");
   if (p.action !== "send") return;
-  assert.equal(p.to, "mario.rossi@topjet.it");
-  assert.equal(p.replyTo, "giulia.neri@topjet.it");
+  assert.equal(p.to, "mario.rossi@rondine.it");
+  assert.equal(p.replyTo, "giulia.neri@rondine.it");
   assert.deepEqual(p.links, [{ requestId: R1, issuedFor: "richiesta" }]);
   assert.deepEqual(p.after, [{ requestId: R1, reminder: null, first: true, manual: false }]);
   const input = p.build({ [R1]: "http://localhost:3000/rispondi/ucq_" + "A".repeat(32) });
@@ -125,7 +125,7 @@ test("piano: promemoria — voci tolte una per una, una persona al giorno, reply
     { requestId: R2, reminder: null, first: false, manual: true },
   ]);
   const same = plan(e, facts({ requests: [kept1, request({ id: R2, item: { kind: "ultimo", alreadySent: false }, reminderCount: 1 })] }));
-  assert.ok(same.action === "send" && same.replyTo === "giulia.neri@topjet.it");
+  assert.ok(same.action === "send" && same.replyTo === "giulia.neri@rondine.it");
   if (same.action === "send") {
     const input = same.build({ [R1]: "http://localhost:3000/rispondi/ucq_" + "A".repeat(32), [R2]: "http://localhost:3000/rispondi/ucq_" + "B".repeat(32) });
     assert.ok(input.template === "promemoria" && input.replyName === "Giulia Neri");
@@ -167,7 +167,7 @@ test("piano: reply-to — chi ha chiesto finché è revisore, altrimenti UC_EMAI
     planReferentDelivery(e, f, { lsDomains: LS, now: NOW, fallbackReplyTo });
   // Chi ha chiesto è ancora revisore con l'email verificata: resta lui, anche con il ripiego configurato.
   const own = withFallback(email(), facts(), LS_REPLY);
-  assert.ok(own.action === "send" && own.replyTo === "giulia.neri@topjet.it");
+  assert.ok(own.action === "send" && own.replyTo === "giulia.neri@rondine.it");
   // Non più revisore (o email non verificata): chi legge i fatti dà null → il ripiego, e il testo non promette che arriva a lui.
   const fallback = withFallback(email(), facts({ replyTo: null }), LS_REPLY);
   assert.ok(fallback.action === "send");
@@ -182,7 +182,7 @@ test("piano: reply-to — chi ha chiesto finché è revisore, altrimenti UC_EMAI
     assert.ok(p.action === "send" && p.replyTo === null, JSON.stringify(bad));
   }
   // Un indirizzo di chi ha chiesto non semplice non passa: il ripiego.
-  const dirty = withFallback(email(), facts({ replyTo: "Giulia <giulia@topjet.it>" }), LS_REPLY);
+  const dirty = withFallback(email(), facts({ replyTo: "Giulia <giulia@rondine.it>" }), LS_REPLY);
   assert.ok(dirty.action === "send" && dirty.replyTo === LS_REPLY);
   // La conferma come la richiesta.
   const conf = withFallback(email({ template: "conferma" }), facts({ replyTo: null, requests: [request({ status: "completata", live: false })] }), LS_REPLY);
@@ -293,12 +293,12 @@ test("motore: un token per voce, con l'impronta dell'indirizzo; il link nell'ema
   assert.deepEqual(sum, { sent: 1, failed: 0, held: 0, cancelled: 0, notConfigured: 0 });
   assert.deepEqual(s.log.issued.map((x) => x.requestId), [R1, R2]);
   for (const x of s.log.issued) {
-    assert.equal(x.recipientHash, recipientHash("mario.rossi@topjet.it"));
+    assert.equal(x.recipientHash, recipientHash("mario.rossi@rondine.it"));
     assert.equal(x.issuedFor, "promemoria");
   }
   assert.equal(m.outbox.length, 1);
-  assert.equal(m.outbox[0].to, "mario.rossi@topjet.it");
-  assert.equal(m.outbox[0].replyTo, "giulia.neri@topjet.it");
+  assert.equal(m.outbox[0].to, "mario.rossi@rondine.it");
+  assert.equal(m.outbox[0].replyTo, "giulia.neri@rondine.it");
   assert.ok(m.outbox[0].text.includes("http://localhost:3000/rispondi/ucq_"));
   // (Rilascio 5.1) In cima il marchio, dall'origine pubblica dell'app.
   assert.equal((m.outbox[0].html.match(/<img src="http:\/\/localhost:3000\/email\/unbundle-u\.png"/g) ?? []).length, 1);
@@ -314,7 +314,7 @@ test("motore: reply-to dalla configurazione solo quando manca chi ha chiesto; se
     return m.outbox[0];
   };
   const withEnv = { ...ENV, UC_EMAIL_REPLY_TO: "Risposte@LateralSpace.example" };
-  assert.equal((await send(withEnv, "Giulia.Neri@TopJet.it")).replyTo, "giulia.neri@topjet.it", "chi ha chiesto vince");
+  assert.equal((await send(withEnv, "Giulia.Neri@Rondine.it")).replyTo, "giulia.neri@rondine.it", "chi ha chiesto vince");
   assert.equal((await send(withEnv, null)).replyTo, "risposte@lateralspace.example", "il ripiego configurato");
   assert.equal("replyTo" in (await send(ENV, null)), false, "senza configurazione: nessun reply-to");
   assert.equal("replyTo" in (await send({ ...ENV, UC_EMAIL_REPLY_TO: "x@y.test\nBcc: z@w.test" }, null)), false, "un valore sporco non passa");
@@ -364,11 +364,11 @@ test("piano: il reply-to di un promemoria è di chi ha chiesto le voci che parto
   // R1 (Giulia, più vecchia) non ha più domande aperte e si toglie; parte solo R2 (Luca).
   const dropped = request({ id: R1, openItems: 0, item: { kind: "primo", alreadySent: false } });
   const kept = request({ id: R2, item: { kind: "manuale", alreadySent: false }, requesterUserId: USER_B, requesterName: "Luca Verdi" });
-  const p = plan(e, facts({ replyTo: "giulia.neri@topjet.it", replyToByRequester: { [USER_A]: "giulia.neri@topjet.it", [USER_B]: "luca.verdi@topjet.it" }, requests: [dropped, kept] }));
+  const p = plan(e, facts({ replyTo: "giulia.neri@rondine.it", replyToByRequester: { [USER_A]: "giulia.neri@rondine.it", [USER_B]: "luca.verdi@rondine.it" }, requests: [dropped, kept] }));
   assert.equal(p.action, "send");
   if (p.action !== "send") return;
   assert.deepEqual(p.drop, [{ requestId: R1, reason: "nessuna_domanda_aperta" }]);
-  assert.equal(p.replyTo, "luca.verdi@topjet.it", "l'intestazione segue chi ha chiesto R2");
+  assert.equal(p.replyTo, "luca.verdi@rondine.it", "l'intestazione segue chi ha chiesto R2");
   const input = p.build({ [R2]: "http://localhost:3000/rispondi/ucq_" + "B".repeat(32) });
   assert.ok(input.template === "promemoria");
   if (input.template === "promemoria") {
@@ -376,7 +376,7 @@ test("piano: il reply-to di un promemoria è di chi ha chiesto le voci che parto
     assert.equal(input.replyToKnown, true);
   }
   // Luca non è più revisore (nessuna email nella mappa): mai l'indirizzo di Giulia, solo il ripiego.
-  const lost = planReferentDelivery(e, facts({ replyTo: "giulia.neri@topjet.it", replyToByRequester: { [USER_A]: "giulia.neri@topjet.it" }, requests: [dropped, kept] }), {
+  const lost = planReferentDelivery(e, facts({ replyTo: "giulia.neri@rondine.it", replyToByRequester: { [USER_A]: "giulia.neri@rondine.it" }, requests: [dropped, kept] }), {
     lsDomains: LS,
     now: NOW,
     fallbackReplyTo: "team@lateralspace.example",
@@ -387,16 +387,16 @@ test("piano: il reply-to di un promemoria è di chi ha chiesto le voci che parto
     assert.ok(built.template === "promemoria" && built.replyName === null && built.replyToKnown === false);
   }
   // Senza la mappa (fatti vecchi): `replyTo` vale solo per la persona della prima voce.
-  const legacy = plan(e, facts({ replyTo: "giulia.neri@topjet.it", requests: [dropped, kept] }));
+  const legacy = plan(e, facts({ replyTo: "giulia.neri@rondine.it", requests: [dropped, kept] }));
   assert.ok(legacy.action === "send" && legacy.replyTo === null);
 });
 
 test("piano: richiesta e conferma prendono il reply-to di chi ha chiesto quella richiesta", () => {
-  const byUser = { [USER_A]: "giulia.neri@topjet.it", [USER_B]: "luca.verdi@topjet.it" };
+  const byUser = { [USER_A]: "giulia.neri@rondine.it", [USER_B]: "luca.verdi@rondine.it" };
   const r = plan(email(), facts({ replyTo: null, replyToByRequester: byUser, requests: [request({ requesterUserId: USER_B, requesterName: "Luca Verdi" })] }));
-  assert.ok(r.action === "send" && r.replyTo === "luca.verdi@topjet.it");
+  assert.ok(r.action === "send" && r.replyTo === "luca.verdi@rondine.it");
   const c = plan(email({ template: "conferma" }), facts({ replyToByRequester: byUser, requests: [request({ requesterUserId: USER_A })] }));
-  assert.ok(c.action === "send" && c.replyTo === "giulia.neri@topjet.it");
+  assert.ok(c.action === "send" && c.replyTo === "giulia.neri@rondine.it");
 });
 
 test("piano: senza le risposte dal link (UC_SECRET mancante) richieste e promemoria aspettano, la conferma parte", () => {

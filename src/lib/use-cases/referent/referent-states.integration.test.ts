@@ -81,7 +81,7 @@ async function answered(useCaseId: string, step1: { confirm: "si" | "correggi"; 
     await referents.sendReferentRequest(
       ctx(),
       useCaseId,
-      { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Aldo Prova", email: `aldo.${seq++}.${suffix}@topjet.test` }, needIds: [] },
+      { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Aldo Prova", email: `aldo.${seq++}.${suffix}@rondine.test` }, needIds: [] },
       { env: ENV, requester: { name: "Giulia Neri", emailVerified: true } },
     ),
     "invio",
@@ -116,7 +116,7 @@ before(async () => {
   pub = await import("../../db/queries/use-case-referent-public.ts");
   dispatch = await import("../../db/queries/use-case-referent-dispatch.ts");
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione stati', $2)`, [ids.org, `hub-stati-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet prova')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine prova')`, [ids.ws, ids.org]);
   for (const [id, role, email] of [[ids.builder, "function_lead", `builder.${suffix}@cliente.test`], [ids.contributor, "contributor", `contrib.${suffix}@cliente.test`]] as const) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [id, email, `Persona ${role}`]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, id, role]);
@@ -158,7 +158,7 @@ test("gli stati del referente: manca, in attesa, da verificare con la stima, ha 
   const best = await newCard(MODEL);
   await q(`UPDATE use_cases SET portfolio_kind = 'best_practice' WHERE id = $1::uuid`, [best]);
   ok(
-    await referents.sendReferentRequest(ctx(), waiting, { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Bruna Esempio", email: `bruna.${suffix}@topjet.test` }, needIds: [] }, { env: ENV, requester: { name: "Giulia Neri", emailVerified: true } }),
+    await referents.sendReferentRequest(ctx(), waiting, { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Bruna Esempio", email: `bruna.${suffix}@rondine.test` }, needIds: [] }, { env: ENV, requester: { name: "Giulia Neri", emailVerified: true } }),
     "in attesa",
   );
   await answered(toVerify, { confirm: "si", note: null }, { benefit: { key: "tempo-1", seen: SEEN, answer: "meno", timesPerMonth: 200 } });

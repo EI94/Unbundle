@@ -118,7 +118,7 @@ test("non legge mai il lato dell'esigenza: lo stesso «Chi» dà la stessa propo
   }
 });
 
-// Una scheda fatta come la L1 di TopJet (prova) (§2, solo la forma: 7 domande, 6 «Chi» diversi, 5 con
+// Una scheda fatta come la L1 di Rondine (prova) (§2, solo la forma: 7 domande, 6 «Chi» diversi, 5 con
 // la parola dell'azienda, uno generico, una parola d'ufficio in 4) e le tre risposte di A3.
 const L1: MatchQuestion[] = [
   q("q1", "Belmonte"),

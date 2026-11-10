@@ -49,7 +49,7 @@ const emails = {
 };
 type Person = keyof typeof emails;
 const ROLE: Record<Person, string> = { builder: "function_lead", analyst: "analyst", contributor: "contributor", ls: "transformation_lead" };
-const REFERENT_EMAIL = `mario.rossi.${suffix}@topjet.test`;
+const REFERENT_EMAIL = `mario.rossi.${suffix}@rondine.test`;
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-"));
 
 const ENV = {
@@ -110,7 +110,7 @@ before(async () => {
   dispatch = await import("../../db/queries/use-case-referent-dispatch.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione referenti', $2)`, [ids.org, `hub-referenti-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'TopJet prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'Rondine prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
     for (const ws of [ids.ws, ids.other]) await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ws, ids[person], ROLE[person]]);
@@ -220,7 +220,7 @@ test("email: il link con un token nuovo, la risposta a chi ha chiesto, nessun to
   assert.equal(m.to, REFERENT_EMAIL);
   assert.equal(m.replyTo, emails.builder);
   // (Rilascio 5, §8.4) Una richiesta di sole domande: «alcune domande su …».
-  assert.ok(m.subject.startsWith("TopJet prova: alcune domande sul caso d'uso «"), m.subject);
+  assert.ok(m.subject.startsWith("Rondine prova: alcune domande sul caso d'uso «"), m.subject);
   assert.ok(m.text.includes("Persona builder ti chiede alcune informazioni sul caso d'uso «"), m.text);
   state.token = tokenOf(m) ?? "";
   assert.match(state.token, /^ucq_/);
@@ -254,7 +254,7 @@ test("pagina pubblica: il link, l'informativa, le bozze e i loro controlli", opt
   assert.equal(page.access, "ok");
   if (page.access === "ok") {
     assert.equal(page.view.questions.length, 3);
-    assert.equal(page.view.company, "TopJet prova");
+    assert.equal(page.view.company, "Rondine prova");
     assert.equal(page.view.message, "Grazie in anticipo.");
     assert.equal(page.view.state, "aperta");
     assert.ok(!JSON.stringify(page.view).includes("Serve per stimare"), "mai il dettaglio dell'esigenza");

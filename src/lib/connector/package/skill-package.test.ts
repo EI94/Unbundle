@@ -433,7 +433,7 @@ test("nessun valore del cliente nella skill, nel plugin modello, nei file del pa
     "docs/connettore/VERIFICA.md",
     "docs/connettore/OAUTH-FASE2.md",
   ];
-  // Il prefisso dei codici si cerca solo nei file distribuiti: nel README «TJ» è il prefisso di
+  // Il prefisso dei codici si cerca solo nei file distribuiti: nel README «RD» è il prefisso di
   // prova del workspace sintetico (prompt, criterio 5), come negli altri test del connettore.
   const shipped = new Set([SKILL_SOURCE_PATH, ...distributed.filter((p) => p.startsWith(PLUGIN_TEMPLATE_DIR)), EXAMPLE_CONFIG_PATH, EXAMPLE_PROFILE_PATH]);
   // Il messaggio dice solo il file e le righe, mai il termine.

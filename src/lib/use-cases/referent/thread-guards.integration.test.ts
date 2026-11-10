@@ -123,7 +123,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
     await referents.sendReferentRequest(
       ctx(),
       card.id,
-      { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Aldo Prova", email: `aldo.${seq++}.${suffix}@topjet.test` }, needIds: card.needs.slice(0, 2) },
+      { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Aldo Prova", email: `aldo.${seq++}.${suffix}@rondine.test` }, needIds: card.needs.slice(0, 2) },
       { env: ENV, requester: { name: "Giulia Neri", emailVerified: true } },
     ),
     "invio",
@@ -200,7 +200,7 @@ before(async () => {
   ai = await import("../../db/queries/use-case-referent-ai.ts");
   NOW = new Date(calendar.romeLocalToUtc(calendar.addWorkingDays(calendar.romeDate(new Date()), 1), 10).getTime() + 30 * 60_000);
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione filo verifica', $2)`, [ids.org, `hub-filo-v-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet prova')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine prova')`, [ids.ws, ids.org]);
   for (const [id, role, email] of [[ids.builder, "function_lead", `builder.${suffix}@cliente.test`], [ids.contributor, "contributor", `contrib.${suffix}@cliente.test`], [ids.builder2, "function_lead", `builder2.${suffix}@cliente.test`]] as const) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [id, email, id === ids.builder2 ? "Bruna Esempio" : role === "function_lead" ? "Giulia Neri" : "Persona contributor"]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, id, role]);
@@ -295,7 +295,7 @@ test("«Chiedi un chiarimento» su una richiesta completata mentre la stessa per
   const card = await newCard();
   // R1: domande alla persona, che risponde (completata, link valido).
   const r1 = ok(
-    await referents.sendReferentRequest(ctx(), card.id, { kind: "domande", contact: { kind: "nuovo", displayName: "Carla Esempio", email: `carla.${seq++}.${suffix}@topjet.test` }, needIds: [card.needs[0]], message: "Una domanda." }, { env: ENV, requester: { name: "Giulia Neri", emailVerified: true } }),
+    await referents.sendReferentRequest(ctx(), card.id, { kind: "domande", contact: { kind: "nuovo", displayName: "Carla Esempio", email: `carla.${seq++}.${suffix}@rondine.test` }, needIds: [card.needs[0]], message: "Una domanda." }, { env: ENV, requester: { name: "Giulia Neri", emailVerified: true } }),
     "R1",
   );
   const token = /\/rispondi\/(ucq_[A-Za-z0-9_-]{32})/.exec((await send(r1.requestId))[0]?.text ?? "")?.[1];
@@ -332,7 +332,7 @@ test("«Chiedi un chiarimento» su una richiesta completata mentre la stessa per
   assert.equal(view.thread.messages.filter((m) => m.waiting).length, 1, "il chiarimento aspetta il referente sulla pagina di R1");
   const mails = await send(r1.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1, "l'email del chiarimento parte");
-  assert.match(mails[0].subject, /^TopJet prova: un chiarimento sul caso d'uso «FL-\d+ · Fatture fornitori»$/);
+  assert.match(mails[0].subject, /^Rondine prova: un chiarimento sul caso d'uso «FL-\d+ · Fatture fornitori»$/);
   assert.match(mails[0].text, /Il team ti chiede un chiarimento/);
   assert.ok(mails[0].text.includes(`/rispondi/`));
   pok((await thread.replyToReferentClarification(await linkOf(token!), { messageId: c.messageId, text: "Circa 220." }, new Date())) as never, "la risposta");

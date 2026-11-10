@@ -251,10 +251,10 @@ test("prossimo passo: i requisiti degli approvati di questo trimestre prima dell
 });
 
 test("prossimo passo e «Cosa serve» del trimestre, dove porta il pulsante: gli stessi requisiti, contati allo stesso modo", () => {
-  // La forma di TopJet il 29/10/2026, in piccolo: requisiti di più use case del trimestre, uno già
+  // La forma di Rondine il 29/10/2026, in piccolo: requisiti di più use case del trimestre, uno già
   // partito, uno del trimestre dopo, uno scaduto; ogni gruppo di stato, archiviate e passi.
-  const a = hub({ title: "LIBRA L1 · Lettura delle fatture estere" });
-  const b = hub({ title: "SIRIO S3 · File F24 delle tasse passeggeri" });
+  const a = hub({ title: "LIBRA L1 · Lettura dei documenti esteri" });
+  const b = hub({ title: "SIRIO S3 · File F24 delle imposte locali" });
   const c = hub({ title: "AUTO X2 · Bonifici massivi" });
   const started = hub({ phase: "in_realizzazione", subState: "senza_dossier", targetQuarter: "2026-Q4" });
   const next = hub({ targetQuarter: "2027-Q1" });

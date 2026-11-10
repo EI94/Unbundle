@@ -34,7 +34,7 @@
 //
 // The token is generated here, stored only as its SHA-256 hash, handed to the smoke in its
 // environment and never printed or written anywhere. Synthetic data only; the code prefix
-// TJ is a synthetic test prefix.
+// RD is a synthetic test prefix.
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -104,7 +104,7 @@ async function setup(profile) {
   await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, $3)`, [ids.ws, ids.org, `Workspace smoke ${suffix}`]);
   await q(
     `INSERT INTO workspace_connector_configs (workspace_id, slug, enabled, code_prefix, identity_mode, auth_mode, workspace_display_name, guide, guide_version, profile, instructions_template)
-     VALUES ($1, $2, true, 'TJ', 'dichiarata', 'header', $3, $4::jsonb, $5, $6::jsonb, $7)`,
+     VALUES ($1, $2, true, 'RD', 'dichiarata', 'header', $3, $4::jsonb, $5, $6::jsonb, $7)`,
     [ids.ws, slug, WORKSPACE_NAME, JSON.stringify(EXAMPLE_GUIDE), GUIDE_VERSION, JSON.stringify(storedConnectorProfile(profile.profile)), profile.instructionsTemplate]
   );
   const [row] = await q(
@@ -129,7 +129,7 @@ async function verifyRows() {
        FROM use_cases WHERE workspace_id = $1 ORDER BY code LIMIT 1`,
     [ids.ws]
   );
-  checkRow(first?.code === "TJ-0001", "primo codice del workspace", String(first?.code));
+  checkRow(first?.code === "RD-0001", "primo codice del workspace", String(first?.code));
   checkRow(first?.source === "claude_connector" && first?.contract_version === "2", "fonte e contratto", `source ${first?.source}, intake.contractVersion ${first?.contract_version}`);
   checkRow(
     [first?.impact_time, first?.impact_economic, first?.impact_flag, first?.custom_scores].every((v) => v === null),

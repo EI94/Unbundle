@@ -34,16 +34,16 @@ function strings(value: unknown, out: string[] = []): string[] {
 const TECH = /\b(token|MCP|workflow)\b/i;
 const LINK = `https://app.example.test/rispondi/ucq_${"A".repeat(32)}`;
 const EXPIRES = new Date("2026-11-26T10:00:00Z");
-const UC = { code: "TJ-0004", title: "Fatture fornitori" };
+const UC = { code: "RD-0004", title: "Fatture fornitori" };
 /** Gli indirizzi delle email (`…/use-cases/…`) non sono testo da leggere. */
 const withoutUrls = (t: string) => t.replace(/https?:\/\/[^\s"<]+/g, "");
 
 const emails = [
-  renderReferentEmail({ template: "richiesta", company: "TopJet", useCase: UC, requesterName: "Giulia Neri", questions: 2, message: "Grazie", expiresAt: EXPIRES, link: LINK, replyToKnown: true }),
-  renderReferentEmail({ template: "richiesta", kind: "referente", company: "TopJet", useCase: UC, requesterName: "Giulia Neri", questions: 2, message: null, expiresAt: EXPIRES, link: LINK, replyToKnown: true }),
+  renderReferentEmail({ template: "richiesta", company: "Rondine", useCase: UC, requesterName: "Giulia Neri", questions: 2, message: "Grazie", expiresAt: EXPIRES, link: LINK, replyToKnown: true }),
+  renderReferentEmail({ template: "richiesta", kind: "referente", company: "Rondine", useCase: UC, requesterName: "Giulia Neri", questions: 2, message: null, expiresAt: EXPIRES, link: LINK, replyToKnown: true }),
   renderReferentEmail({
     template: "promemoria",
-    company: "TopJet",
+    company: "Rondine",
     entries: [
       { useCase: UC, requesterName: "Giulia Neri", kind: "ultimo", openQuestions: 2, newQuestions: 0, expiresAt: EXPIRES, link: LINK },
       { useCase: UC, requesterName: "Giulia Neri", kind: "nuove", openQuestions: 1, newQuestions: 1, expiresAt: EXPIRES, link: LINK },
@@ -51,14 +51,14 @@ const emails = [
     replyToKnown: true,
     replyName: "Giulia Neri",
   }),
-  renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [{ useCase: UC, requesterName: "Giulia Neri", kind: "primo", openQuestions: 1, newQuestions: 0, expiresAt: EXPIRES, link: LINK, checkPending: true }], replyToKnown: true, replyName: "Giulia Neri" }),
-  renderReferentEmail({ template: "conferma", company: "TopJet", useCase: UC, requesterName: "Giulia Neri", submitted: 2, openQuestions: 1, expiresAt: EXPIRES }),
+  renderReferentEmail({ template: "promemoria", company: "Rondine", entries: [{ useCase: UC, requesterName: "Giulia Neri", kind: "primo", openQuestions: 1, newQuestions: 0, expiresAt: EXPIRES, link: LINK, checkPending: true }], replyToKnown: true, replyName: "Giulia Neri" }),
+  renderReferentEmail({ template: "conferma", company: "Rondine", useCase: UC, requesterName: "Giulia Neri", submitted: 2, openQuestions: 1, expiresAt: EXPIRES }),
   renderRequesterAlert({
-    company: "TopJet",
+    company: "Rondine",
     entries: [{ useCase: UC, answers: 2, unknowns: 1, documents: 1, followUp: "scaduta", link: "https://app.example.test/dashboard/x/use-cases/y?capitolo=cosa-serve" }],
   }),
-  renderReadyAlert({ company: "TopJet", entries: [{ useCase: UC, quarter: "2027-Q1", link: "https://app.example.test/dashboard/x/use-cases/y?capitolo=realizzazione" }] }),
-  renderSuppliersAlert({ company: "TopJet", link: "https://app.example.test/dashboard/x/settings#sub-responsabili" }),
+  renderReadyAlert({ company: "Rondine", entries: [{ useCase: UC, quarter: "2027-Q1", link: "https://app.example.test/dashboard/x/use-cases/y?capitolo=realizzazione" }] }),
+  renderSuppliersAlert({ company: "Rondine", link: "https://app.example.test/dashboard/x/settings#sub-responsabili" }),
 ];
 const emailTexts = emails.flatMap((m) => [m.subject, withoutUrls(m.text), withoutUrls(m.html)]);
 
@@ -93,7 +93,7 @@ const OUTSIDE = [
   ...strings(REFERENT_IMPACT_TEXT),
   ...publicErrors,
   ...strings(REFERENT_PRIVACY_NOTICE),
-  ...strings(privacyNoticeTexts({ company: "TopJet", expires: "26 novembre 2026", requester: "Giulia Neri", contact: "privacy@example.test" })),
+  ...strings(privacyNoticeTexts({ company: "Rondine", expires: "26 novembre 2026", requester: "Giulia Neri", contact: "privacy@example.test" })),
   ...emailTexts,
 ];
 
@@ -114,7 +114,7 @@ test("(rilascio 5.1) pagina pubblica ed email: «caso d'uso», mai «use case» 
   // E «caso d'uso» c'è davvero: nei passi, nell'informativa, in ogni oggetto.
   assert.equal(REFERENT_CHECK_TEXT.steps.useCase, "Il caso d'uso");
   assert.equal(REFERENT_CHECK_TEXT.confirm.group, "Il caso d'uso è descritto bene?");
-  for (const m of emails) assert.match(m.subject, /^TopJet: /, m.subject);
+  for (const m of emails) assert.match(m.subject, /^Rondine: /, m.subject);
   for (const m of emails.slice(0, 7)) assert.match(m.subject, /cas[oi] d'uso/, m.subject);
 });
 

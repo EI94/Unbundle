@@ -159,7 +159,7 @@ before(async () => {
   dispatch = await import("../../../lib/db/queries/use-case-referent-dispatch.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione pagina', $2)`, [ids.org, `hub-pagina-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet prova')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine prova')`, [ids.ws, ids.org]);
   await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, 'Giulia Neri', now())`, [ids.builder, `builder.pagina.${suffix}@cliente.test`]);
   await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'function_lead')`, [ids.ws, ids.builder]);
   await q(
@@ -194,7 +194,7 @@ after(async () => {
 
 /** Quello che la pagina non mostra mai, in nessuno stato. */
 function assertNothingPrivate(page: string, extra: string[] = []) {
-  for (const secret of ["NOTA-RISERVATA", "DESCRIZIONE-RISERVATA", "98765", "98.765", PROPOSER, "Serve per stimare", "@topjet.test", ...extra]) {
+  for (const secret of ["NOTA-RISERVATA", "DESCRIZIONE-RISERVATA", "98765", "98.765", PROPOSER, "Serve per stimare", "@rondine.test", ...extra]) {
     assert.ok(!page.includes(secret), `la pagina non mostra «${secret}»`);
   }
   assert.doesNotMatch(page, /href="[^"]*\/(dashboard|login)\b/, "nessun link alla dashboard o all'accesso");
@@ -204,11 +204,11 @@ function assertNothingPrivate(page: string, extra: string[] = []) {
 const state = { token: "", requestId: "" };
 
 test("prima l'informativa: nessuna domanda, bozza o caricamento prima di «Iniziamo»", opts, async () => {
-  const link = await sendLink(`mario.rossi.${suffix}@topjet.test`, needs.slice(0, 2), "Ci serve per la stima di fine mese.");
+  const link = await sendLink(`mario.rossi.${suffix}@rondine.test`, needs.slice(0, 2), "Ci serve per la stima di fine mese.");
   Object.assign(state, link);
   const first = await html(link.token);
   for (const text of [
-    "TopJet prova",
+    "Rondine prova",
     `${CODE} · Fatture fornitori`,
     "Giulia Neri ti chiede alcune informazioni.",
     "Il messaggio di Giulia Neri",
@@ -274,7 +274,7 @@ test("(Parte 3) una domanda a cui ha già pensato il team: «Non serve più», m
 });
 
 test("una risposta inviata si legge, in sola lettura, con «Inviata il …»; poi «Hai risposto il … Grazie!»", opts, async () => {
-  const link = await sendLink(`anna.bianchi.${suffix}@topjet.test`, needs.slice(2, 3));
+  const link = await sendLink(`anna.bianchi.${suffix}@rondine.test`, needs.slice(2, 3));
   const l = await linkOf(link.token);
   pok(await pub.acceptReferentPrivacy(l, { version: "ucq-2026-11-2" }, new Date()), "informativa");
   const l2 = await linkOf(link.token);
@@ -296,14 +296,14 @@ test("le schede dei link che non si possono usare, senza dati della richiesta", 
   assert.ok(unknown.includes("Questo link non è più valido. Chiedi a chi te l'ha mandato un link nuovo."));
   assert.ok((await html("non-un-link")).includes("Link non valido"));
 
-  const toRevoke = await sendLink(`luca.verdi.${suffix}@topjet.test`, needs.slice(3, 4));
+  const toRevoke = await sendLink(`luca.verdi.${suffix}@rondine.test`, needs.slice(3, 4));
   const [r] = await q(`SELECT version FROM use_case_referent_requests WHERE id = $1::uuid`, [toRevoke.requestId]);
   ok(await referents.revokeReferentRequest(as(), ids.useCase, toRevoke.requestId, Number(r.version)), "revoca");
   const revoked = await html(toRevoke.token);
   assert.ok(revoked.includes("Link revocato"));
   assert.ok(!revoked.includes("Fatture fornitori") && !revoked.includes("Giulia Neri"), "niente della richiesta");
 
-  const toExpire = await sendLink(`sara.neri.${suffix}@topjet.test`, needs.slice(4, 5));
+  const toExpire = await sendLink(`sara.neri.${suffix}@rondine.test`, needs.slice(4, 5));
   await q(`UPDATE use_case_referent_tokens SET expires_at = now() - interval '1 minute' WHERE request_id = $1::uuid`, [toExpire.requestId]);
   const expired = await html(toExpire.token);
   assert.ok(expired.includes("Link scaduto"));
@@ -326,7 +326,7 @@ test("(rilascio 5) la richiesta al referente: «ti ha indicato come referente»,
     await referents.sendReferentRequest(
       as(),
       ids.useCase,
-      { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Aldo Prova", email: `aldo.prova.${suffix}@topjet.test` }, needIds: needs.slice(5, 6) },
+      { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Aldo Prova", email: `aldo.prova.${suffix}@rondine.test` }, needIds: needs.slice(5, 6) },
       { env: ENV, requester: { name: "Giulia Neri", emailVerified: true } },
     ),
     "invio al referente",

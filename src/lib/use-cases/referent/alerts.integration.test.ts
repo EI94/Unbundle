@@ -50,7 +50,7 @@ const emails = {
 };
 type Person = keyof typeof emails;
 const ROLE: Record<Person, string> = { builder: "function_lead", analyst: "analyst", contributor: "contributor", ls: "transformation_lead" };
-const REFERENT_EMAIL = `mario.rossi.${suffix}@topjet.test`;
+const REFERENT_EMAIL = `mario.rossi.${suffix}@rondine.test`;
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-"));
 
 const ENV = {
@@ -111,7 +111,7 @@ before(async () => {
   dispatch = await import("../../db/queries/use-case-referent-dispatch.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione referenti', $2)`, [ids.org, `hub-referenti-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'TopJet prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'Rondine prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
     for (const ws of [ids.ws, ids.other]) await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ws, ids[person], ROLE[person]]);
@@ -225,7 +225,7 @@ test("risposte, poi documenti, poi il seguito sulla stessa richiesta lo stesso g
   const { s, mailer } = await sendAt(new Date(at.getTime() + 240_000));
   assert.equal(s.sent, 1, JSON.stringify(s));
   assert.equal(mailer.outbox[0].to, emails.builder);
-  assert.match(mailer.outbox[0].subject, /^TopJet prova: novità su 2 casi d'uso$/);
+  assert.match(mailer.outbox[0].subject, /^Rondine prova: novità su 2 casi d'uso$/);
   assert.ok(!mailer.outbox[0].text.includes("Mario Rossi") && !mailer.outbox[0].text.includes(REFERENT_EMAIL));
   assert.match(mailer.outbox[0].text, /\?capitolo=cosa-serve/);
 });

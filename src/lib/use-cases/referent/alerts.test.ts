@@ -24,7 +24,7 @@ const ORIGIN = "http://localhost:3000";
 const WS = "3f2a9c1e-0000-4000-8000-0000000000a1";
 const UC1 = "3f2a9c1e-0000-4000-8000-0000000000b1";
 const UC2 = "3f2a9c1e-0000-4000-8000-0000000000b2";
-const REFERENT = { name: "Mario Rossi", email: "mario.rossi@topjet.it", answer: "Circa venti fatture al giorno", file: "fatture-ottobre.xlsx" };
+const REFERENT = { name: "Mario Rossi", email: "mario.rossi@rondine.it", answer: "Circa venti fatture al giorno", file: "fatture-ottobre.xlsx" };
 
 test("alertSchedule: oggi nella finestra, altrimenti le 9 del prossimo giorno lavorativo", () => {
   const tue = alertSchedule(at("2026-11-03", 10));
@@ -64,7 +64,7 @@ const claimed = (over: Partial<ClaimedAlert> = {}): ClaimedAlert => ({
 const item = (over: Partial<AlertItemFacts> = {}): AlertItemFacts => ({
   requestId: "r1",
   useCaseId: UC1,
-  code: "TJ-0004",
+  code: "RD-0004",
   title: "Fatture fornitori",
   createdAt: at("2026-11-02", 10),
   answers: 2,
@@ -75,10 +75,10 @@ const item = (over: Partial<AlertItemFacts> = {}): AlertItemFacts => ({
   ...over,
 });
 const facts = (over: Partial<AlertFacts> = {}): AlertFacts => ({
-  company: "TopJet",
+  company: "Rondine",
   featureOn: true,
   subprocessorsAuthorized: true,
-  recipient: { email: "giulia.neri@topjet.it", verified: true, reviewer: true, alertsOn: true },
+  recipient: { email: "giulia.neri@rondine.it", verified: true, reviewer: true, alertsOn: true },
   items: [item()],
   ...over,
 });
@@ -92,9 +92,9 @@ test("piano: nell'ordine di §P2.7.3", () => {
   // La staleness guarda due_at, mai scheduled_at (che i tentativi spostano).
   assert.deepEqual(plan(facts(), claimed({ dueAt: at("2026-10-30", 10), scheduledAt: at("2026-11-05", 10) })), { action: "cancel", reason: "troppo_vecchia" });
   assert.deepEqual(plan(facts({ recipient: null })), { action: "cancel", reason: "destinatario_non_valido" });
-  assert.deepEqual(plan(facts({ recipient: { email: "g@topjet.it", verified: false, reviewer: true, alertsOn: true } })), { action: "cancel", reason: "destinatario_non_valido" });
-  assert.deepEqual(plan(facts({ recipient: { email: "g@topjet.it", verified: true, reviewer: false, alertsOn: true } })), { action: "cancel", reason: "destinatario_non_valido" });
-  assert.deepEqual(plan(facts({ recipient: { email: "g@topjet.it", verified: true, reviewer: true, alertsOn: false } })), { action: "cancel", reason: "avvisi_spenti" });
+  assert.deepEqual(plan(facts({ recipient: { email: "g@rondine.it", verified: false, reviewer: true, alertsOn: true } })), { action: "cancel", reason: "destinatario_non_valido" });
+  assert.deepEqual(plan(facts({ recipient: { email: "g@rondine.it", verified: true, reviewer: false, alertsOn: true } })), { action: "cancel", reason: "destinatario_non_valido" });
+  assert.deepEqual(plan(facts({ recipient: { email: "g@rondine.it", verified: true, reviewer: true, alertsOn: false } })), { action: "cancel", reason: "avvisi_spenti" });
   assert.deepEqual(plan(facts({ items: [item({ requestPurged: true })] })), { action: "cancel", reason: "nessuna_voce" });
   const ok = plan(facts({ items: [item({ requestId: "r2", createdAt: at("2026-11-03", 10), documents: 1, answers: 0, followUp: "ultimo_promemoria" }), item(), item({ requestId: "r3", requestPurged: true })] }));
   assert.equal(ok.action, "send");
@@ -155,7 +155,7 @@ test("piano: un seguito non più vero si toglie all'invio (risposta arrivata, ch
 });
 
 const entry = (over: Partial<RequesterAlertInput["entries"][number]> = {}) => ({
-  useCase: { code: "TJ-0004", title: "Fatture fornitori" },
+  useCase: { code: "RD-0004", title: "Fatture fornitori" },
   answers: 0,
   unknowns: 0,
   documents: 0,
@@ -172,18 +172,18 @@ function safe(m: { subject: string; text: string; html: string }) {
     // (Rilascio 5.1) Fuori dalla dashboard «caso d'uso»: mai «use case» nel testo (gli indirizzi a parte).
     assert.doesNotMatch(part.replace(/https?:\/\/[^\s"<]+/g, ""), /\buse[\s-]*cases?\b|\btoken\b|\bMCP\b|\bworkflow\b|utm_/i);
   }
-  assert.match(m.subject, /^TopJet: .*cas[oi] d'uso/);
+  assert.match(m.subject, /^Rondine: .*cas[oi] d'uso/);
   has(m.text, FOOTER);
   has(m.text, "Lateral Space via Unbundle.");
 }
 
 test("testo: una scheda con risposte", () => {
-  const m = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 1 })] });
-  assert.equal(m.subject, "TopJet: risposte arrivate sul caso d'uso «TJ-0004 · Fatture fornitori»");
+  const m = renderRequesterAlert({ company: "Rondine", entries: [entry({ answers: 1 })] });
+  assert.equal(m.subject, "Rondine: risposte arrivate sul caso d'uso «RD-0004 · Fatture fornitori»");
   has(m.text, "Buongiorno,");
   // Con un caso d'uso solo, il titolo una volta: l'oggetto lo dice già, il testo non lo ripete.
-  has(m.text, "ci sono novità sul caso d'uso «TJ-0004 · Fatture fornitori» di TopJet: è arrivata 1 risposta.");
-  assert.equal(m.text.split("TJ-0004 · Fatture fornitori").length - 1, 1, "il titolo una volta sola nel testo");
+  has(m.text, "ci sono novità sul caso d'uso «RD-0004 · Fatture fornitori» di Rondine: è arrivata 1 risposta.");
+  assert.equal(m.text.split("RD-0004 · Fatture fornitori").length - 1, 1, "il titolo una volta sola nel testo");
   has(m.text, "Da verificare in «Cosa serve».");
   has(m.text, "Apri «Cosa serve»");
   has(m.text, `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=cosa-serve`);
@@ -191,49 +191,49 @@ test("testo: una scheda con risposte", () => {
 });
 
 test("testo: solo documenti, solo «Non lo so», risposte e «Non lo so», solo il seguito", () => {
-  const docs = renderRequesterAlert({ company: "TopJet", entries: [entry({ documents: 5 })] });
-  assert.equal(docs.subject, "TopJet: nuovi documenti sul caso d'uso «TJ-0004 · Fatture fornitori»");
-  has(docs.text, "ci sono novità sul caso d'uso «TJ-0004 · Fatture fornitori» di TopJet: ci sono 5 documenti nuovi.");
-  const unknown = renderRequesterAlert({ company: "TopJet", entries: [entry({ unknowns: 1 })] });
-  assert.equal(unknown.subject, "TopJet: il referente non sa rispondere sul caso d'uso «TJ-0004 · Fatture fornitori»");
+  const docs = renderRequesterAlert({ company: "Rondine", entries: [entry({ documents: 5 })] });
+  assert.equal(docs.subject, "Rondine: nuovi documenti sul caso d'uso «RD-0004 · Fatture fornitori»");
+  has(docs.text, "ci sono novità sul caso d'uso «RD-0004 · Fatture fornitori» di Rondine: ci sono 5 documenti nuovi.");
+  const unknown = renderRequesterAlert({ company: "Rondine", entries: [entry({ unknowns: 1 })] });
+  assert.equal(unknown.subject, "Rondine: il referente non sa rispondere sul caso d'uso «RD-0004 · Fatture fornitori»");
   has(unknown.text, "il referente non ha l'informazione per 1 domanda.");
   has(unknown.text, "Per i «Non ce l'ho» puoi chiedere a un'altra persona.");
   assert.ok(!unknown.text.includes("Da verificare"));
-  const mixed = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 3, unknowns: 2 })] });
-  has(mixed.text, "di TopJet: sono arrivate 3 risposte e il referente non ha l'informazione per 2 domande.");
-  const last = renderRequesterAlert({ company: "TopJet", entries: [entry({ followUp: "ultimo_promemoria" })] });
-  assert.equal(last.subject, "TopJet: nessuna risposta sul caso d'uso «TJ-0004 · Fatture fornitori»");
-  has(last.text, "ci sono novità sul caso d'uso «TJ-0004 · Fatture fornitori» di TopJet. È partito l'ultimo promemoria e restano domande senza risposta.");
+  const mixed = renderRequesterAlert({ company: "Rondine", entries: [entry({ answers: 3, unknowns: 2 })] });
+  has(mixed.text, "di Rondine: sono arrivate 3 risposte e il referente non ha l'informazione per 2 domande.");
+  const last = renderRequesterAlert({ company: "Rondine", entries: [entry({ followUp: "ultimo_promemoria" })] });
+  assert.equal(last.subject, "Rondine: nessuna risposta sul caso d'uso «RD-0004 · Fatture fornitori»");
+  has(last.text, "ci sono novità sul caso d'uso «RD-0004 · Fatture fornitori» di Rondine. È partito l'ultimo promemoria e restano domande senza risposta.");
   has(last.text, "Puoi chiedere di nuovo o chiedere a un'altra persona.");
   // Il seguito è una frase a sé: mai «… per 1 domanda e il link è scaduto e restano …»; con il link scaduto l'oggetto dice «nessuna risposta».
-  const expired = renderRequesterAlert({ company: "TopJet", entries: [entry({ followUp: "scaduta", unknowns: 1 })] });
-  assert.equal(expired.subject, "TopJet: nessuna risposta sul caso d'uso «TJ-0004 · Fatture fornitori»");
-  has(expired.text, "di TopJet: il referente non ha l'informazione per 1 domanda. Il link è scaduto e restano domande senza risposta.");
+  const expired = renderRequesterAlert({ company: "Rondine", entries: [entry({ followUp: "scaduta", unknowns: 1 })] });
+  assert.equal(expired.subject, "Rondine: nessuna risposta sul caso d'uso «RD-0004 · Fatture fornitori»");
+  has(expired.text, "di Rondine: il referente non ha l'informazione per 1 domanda. Il link è scaduto e restano domande senza risposta.");
   assert.ok(!/ e il link è scaduto/.test(expired.text));
   assert.ok(!expired.text.includes("Per i «Non ce l'ho»"), "con il seguito, solo la sua riga");
-  const all = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 2, documents: 1, followUp: "ultimo_promemoria" })] });
-  has(all.text, "di TopJet: sono arrivate 2 risposte e c'è 1 documento nuovo. È partito l'ultimo promemoria e restano domande senza risposta.");
+  const all = renderRequesterAlert({ company: "Rondine", entries: [entry({ answers: 2, documents: 1, followUp: "ultimo_promemoria" })] });
+  has(all.text, "di Rondine: sono arrivate 2 risposte e c'è 1 documento nuovo. È partito l'ultimo promemoria e restano domande senza risposta.");
   for (const m of [docs, unknown, mixed, last, expired, all]) {
     safe(m);
-    assert.equal(m.text.split("TJ-0004 · Fatture fornitori").length - 1, 1, `il titolo una volta sola: ${m.subject}`);
+    assert.equal(m.text.split("RD-0004 · Fatture fornitori").length - 1, 1, `il titolo una volta sola: ${m.subject}`);
     assert.ok(!/ e [^.]* e restano/.test(m.text), `mai due «e» di fila: ${m.subject}`);
   }
 });
 
 test("testo: più schede", () => {
-  const m = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 1 }), entry({ useCase: { code: null, title: "Ordini clienti" }, documents: 2, link: cardLink(ORIGIN, WS, UC2) })] });
-  assert.equal(m.subject, "TopJet: novità su 2 casi d'uso");
-  has(m.text, "ci sono novità su 2 casi d'uso di TopJet.");
-  has(m.text, "«TJ-0004 · Fatture fornitori»: è arrivata 1 risposta.");
+  const m = renderRequesterAlert({ company: "Rondine", entries: [entry({ answers: 1 }), entry({ useCase: { code: null, title: "Ordini clienti" }, documents: 2, link: cardLink(ORIGIN, WS, UC2) })] });
+  assert.equal(m.subject, "Rondine: novità su 2 casi d'uso");
+  has(m.text, "ci sono novità su 2 casi d'uso di Rondine.");
+  has(m.text, "«RD-0004 · Fatture fornitori»: è arrivata 1 risposta.");
   has(m.text, "«Ordini clienti»: ci sono 2 documenti nuovi.");
   has(m.text, `${ORIGIN}/dashboard/${WS}/use-cases/${UC2}?capitolo=cosa-serve`);
   safe(m);
   // Con più casi d'uso, una riga per ognuno; il seguito resta una frase a sé.
-  const follow = renderRequesterAlert({ company: "TopJet", entries: [entry({ answers: 2, followUp: "ultimo_promemoria" }), entry({ useCase: { code: null, title: "Ordini clienti" }, followUp: "scaduta", link: cardLink(ORIGIN, WS, UC2) })] });
-  has(follow.text, "«TJ-0004 · Fatture fornitori»: sono arrivate 2 risposte. È partito l'ultimo promemoria e restano domande senza risposta.");
+  const follow = renderRequesterAlert({ company: "Rondine", entries: [entry({ answers: 2, followUp: "ultimo_promemoria" }), entry({ useCase: { code: null, title: "Ordini clienti" }, followUp: "scaduta", link: cardLink(ORIGIN, WS, UC2) })] });
+  has(follow.text, "«RD-0004 · Fatture fornitori»: sono arrivate 2 risposte. È partito l'ultimo promemoria e restano domande senza risposta.");
   has(follow.text, "«Ordini clienti»: il link è scaduto e restano domande senza risposta.");
   safe(follow);
-  assert.throws(() => renderRequesterAlert({ company: "TopJet", entries: [] }));
+  assert.throws(() => renderRequesterAlert({ company: "Rondine", entries: [] }));
 });
 
 function store(claims: ClaimedAlert[], f: AlertFacts): { store: RequesterAlertStore; log: Record<string, unknown[]> } {
@@ -289,7 +289,7 @@ test("motore: invia nella finestra, senza replyTo, con la chiave dell'avviso", a
   const m = mailer();
   const sum = await runRequesterAlertDispatch(s.store, { env: ENV, now: NOW, mailer: m, sendIntervalMs: 0 });
   assert.equal(sum.sent, 1);
-  assert.equal(m.outbox[0].to, "giulia.neri@topjet.it");
+  assert.equal(m.outbox[0].to, "giulia.neri@rondine.it");
   assert.equal(m.outbox[0].replyTo, undefined);
   assert.match(m.keys[0], /ra:a1/);
   // (Rilascio 5.1) In cima il marchio, dall'origine pubblica dell'app; il testo semplice senza immagini.
@@ -328,12 +328,12 @@ test("motore: un fallimento si segna, il limite di Resend ferma il giro", async 
 });
 
 test("(rilascio 6) il referente ha chiesto qualcosa: l'oggetto, la frase, «Rispondi dalla scheda»; mai il testo né il nome", () => {
-  const single = renderRequesterAlert({ company: "TopJet", entries: [entry({ questions: 1 })] });
-  assert.equal(single.subject, "TopJet: il referente ha una domanda sul caso d'uso «TJ-0004 · Fatture fornitori»");
-  has(single.text, "ci sono novità sul caso d'uso «TJ-0004 · Fatture fornitori» di TopJet: il referente ha una domanda per il team.");
+  const single = renderRequesterAlert({ company: "Rondine", entries: [entry({ questions: 1 })] });
+  assert.equal(single.subject, "Rondine: il referente ha una domanda sul caso d'uso «RD-0004 · Fatture fornitori»");
+  has(single.text, "ci sono novità sul caso d'uso «RD-0004 · Fatture fornitori» di Rondine: il referente ha una domanda per il team.");
   has(single.text, "Rispondi dalla scheda, in «Cosa serve».");
   assert.ok(!single.text.includes(REFERENT.name));
-  const both = renderRequesterAlert({ company: "TopJet", entries: [entry({ questions: 2, answers: 1 })] });
+  const both = renderRequesterAlert({ company: "Rondine", entries: [entry({ questions: 2, answers: 1 })] });
   has(both.text, "il referente ha 2 domande per il team ed è arrivata 1 risposta.");
   // Il piano: una voce con le sole domande parte, e porta a «Cosa serve».
   const p = plan(facts({ items: [item({ answers: 0, unknowns: 0, documents: 0, questions: 1, followUp: null })] }));

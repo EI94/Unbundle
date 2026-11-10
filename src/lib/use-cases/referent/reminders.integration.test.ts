@@ -51,7 +51,7 @@ const emails = {
 };
 type Person = keyof typeof emails;
 const ROLE: Record<Person, string> = { builder: "function_lead", analyst: "analyst", contributor: "contributor", ls: "transformation_lead" };
-const REFERENT_EMAIL = `mario.rossi.${suffix}@topjet.test`;
+const REFERENT_EMAIL = `mario.rossi.${suffix}@rondine.test`;
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-"));
 
 const ENV = {
@@ -112,7 +112,7 @@ before(async () => {
   dispatch = await import("../../db/queries/use-case-referent-dispatch.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione referenti', $2)`, [ids.org, `hub-referenti-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'TopJet prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'Rondine prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
     for (const ws of [ids.ws, ids.other]) await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ws, ids[person], ROLE[person]]);
@@ -211,7 +211,7 @@ async function newCard(): Promise<string> {
 }
 
 const promemoria = (outbox: Mail[], to = REFERENT_EMAIL) => outbox.filter((m) => m.to === to);
-const OTHER_REFERENT = `anna.neri.${suffix}@topjet.test`;
+const OTHER_REFERENT = `anna.neri.${suffix}@rondine.test`;
 
 test("preparazione", opts, async () => {
   await q(
@@ -285,7 +285,7 @@ test("tre richieste alla stessa persona dovute lo stesso giorno: un'unica email 
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const mails = promemoria(mailer.outbox, OTHER_REFERENT);
   assert.equal(mails.length, 1, JSON.stringify(counts));
-  assert.match(mails[0].subject, /^TopJet prova: promemoria su 3 casi d'uso$/);
+  assert.match(mails[0].subject, /^Rondine prova: promemoria su 3 casi d'uso$/);
   assert.equal((mails[0].text.match(/\/rispondi\/ucq_/g) ?? []).length >= 3, true);
   const tokens = await q(`SELECT DISTINCT request_id FROM use_case_referent_tokens WHERE request_id = ANY($1::uuid[]) AND issued_for = 'promemoria'`, [requests]);
   assert.equal(tokens.length, 3);
@@ -364,7 +364,7 @@ test("senza l'autorizzazione ai fornitori il cron non mette niente in coda e il 
     ok(await referents.prepareReferentQuestions(as("builder", ws), card));
     const [need] = await needIds(card);
     await q(`UPDATE use_case_needs SET status = 'chiesta' WHERE id = $1::uuid`, [need]);
-    await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $2::uuid, 'Paolo Neri', $3)`, [contact, ws, `paolo.neri.${suffix}@topjet.test`]);
+    await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $2::uuid, 'Paolo Neri', $3)`, [contact, ws, `paolo.neri.${suffix}@rondine.test`]);
     const sent = workingDaysBefore(V, 3);
     await q(
       `INSERT INTO use_case_referent_requests (id, workspace_id, use_case_id, contact_id, requested_by_user_id, requester_name, created_at, sent_at, last_email_at, expires_at)

@@ -224,9 +224,9 @@ function followUpSentence(e: AlertEntry): string | null {
 }
 
 /**
- * La riga di una voce: `lead` («ci sono novità sul caso d'uso «…» di TopJet» con una voce sola, ««Ordini»»
+ * La riga di una voce: `lead` («ci sono novità sul caso d'uso «…» di Rondine» con una voce sola, ««Ordini»»
  * con più voci), i fatti («: sono arrivate 2 risposte e c'è 1 documento nuovo.») e il seguito. Con solo il
- * seguito: «… di TopJet. Il link è scaduto …» (una voce), ««Ordini»: il link è scaduto …» (più voci).
+ * seguito: «… di Rondine. Il link è scaduto …» (una voce), ««Ordini»: il link è scaduto …» (più voci).
  */
 function entryLine(lead: string, e: AlertEntry, single: boolean): string {
   const facts = factsOf(e);

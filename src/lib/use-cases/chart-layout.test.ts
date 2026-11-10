@@ -72,10 +72,10 @@ test("sciame: senza posto il punto resta dove copre meno, e lo dice", () => {
   assert.deepEqual([placed[1].x, placed[1].y], [10, 10]);
 });
 
-test("sciame: TopJet, quindici punti nella colonna «€» con Valore tra 1,6 e 2,1, su 304 px non si toccano", () => {
+test("sciame: Rondine, quindici punti nella colonna «€» con Valore tra 1,6 e 2,1, su 304 px non si toccano", () => {
   const W = 304;
   const unit = W / 5;
-  // Le y della prova di TopJet (29/10/2026), in percentuale dall'alto; il costo all'inizio della fascia 1.
+  // Le y della prova di Rondine (29/10/2026), in percentuale dall'alto; il costo all'inizio della fascia 1.
   const tops = [81.9, 82.6, 83.9, 84.6, 85.0, 85.0, 85.0, 85.5, 85.6, 86.1, 86.1, 88.0, 88.3, 88.7, 88.8, 89.7];
   const placed = swarm(
     tops.map((top) => ({ x: 0.01 * W, y: (top / 100) * W, r: 5, lo: 6, hi: 0.2 * W - 6, dy: 0.2 * unit, yLo: 0.4 * W + 6, yHi: W - 6 })),
@@ -85,7 +85,7 @@ test("sciame: TopJet, quindici punti nella colonna «€» con Valore tra 1,6 e 
   noOverlap(
     placed.map((spot) => ({ ...spot, r: 5 })),
     1,
-    "TopJet",
+    "Rondine",
   );
   for (const [index, spot] of placed.entries()) assert.ok(Math.abs(spot.y - (tops[index] / 100) * W) <= 0.2 * unit + 1e-9, "al massimo 0,2 punti di Valore");
 });

@@ -62,8 +62,8 @@ export interface NeedsBoardViewProps {
  * muoversi, con accanto la linea del tempo dei prossimi passi.
  * - In cima la riga dei conteggi («96 aperti · 66 da chiedere · …»), sempre il primo `<p>` della
  *   vista; con il filtro «Trimestre» comincia dal trimestre («T4 2026 · 67 aperti · …»).
- * - I gruppi, per organizzazione e mai per persona: il cliente (il nome del connettore, «TopJet e
- *   Aliserio», con le cose da fare «Insieme»), «Fornitori», «Lateral Space», «Da assegnare»; solo
+ * - I gruppi, per organizzazione e mai per persona: il cliente (il nome del connettore, «Rondine e
+ *   Ferralba», con le cose da fare «Insieme»), «Fornitori», «Lateral Space», «Da assegnare»; solo
  *   quelli con righe, senza numeri nel titolo. In ogni gruppo prima quelli da verificare, poi l'ordine
  *   del team (`needsActionFirst`, come la scheda e il pannello); le prime cinque righe in vista
  *   (`NEED_ROWS_SHOWN`), le altre sotto «Mostra le altre N», chiuse. Una riga: il titolo, lo stato nei
@@ -193,7 +193,7 @@ const titleIdOf = (id: string) => `cosa-serve-titolo-${id}`;
 
 /**
  * «Per» di una riga: senza use case collegati il testo libero (o «—»); con uno solo il suo link,
- * «TJ-0012 · Smistamento»; con più di uno «Per N use case», chiuso, che si apre sui link. Ogni link
+ * «RD-0012 · Smistamento»; con più di uno «Per N use case», chiuso, che si apre sui link. Ogni link
  * apre il pannello.
  */
 function NeedFor({ row, hrefOf }: { row: NeedRow; hrefOf: (id: string) => string }) {
@@ -215,7 +215,7 @@ function AgentTags({ agents, palette }: { agents: readonly string[]; palette: Ag
 
 /**
  * Gli agenti da mostrare in «Per»: solo se l'esigenza serve più di uno use case. Con uno solo il
- * suo link dice già l'agente («TJ-0002 · LIBRA L1 · Lettura delle fatture estere»): il tag lo
+ * suo link dice già l'agente («RD-0002 · LIBRA L1 · Lettura dei documenti esteri»): il tag lo
  * ripeterebbe, anche ai lettori di schermo.
  */
 function shownAgents(row: NeedRow): string[] {
@@ -248,7 +248,7 @@ function RowList({ rows, hrefOf, palette }: { rows: readonly NeedRow[]; hrefOf: 
  * stato» («manca il dato», «risposta parziale», «non si applica»). Ogni «·» resta con la parte prima:
  * la riga va a capo dopo il «·», mai prima. Poi «Per»: con più di uno use case gli agenti serviti
  * («LIBRA», «ORSA») e «Per N use case» su una riga loro, chiuso, che aperto va a capo da solo; il link
- * a un solo use case («TJ-0008 · ATLAS A1 · …», che dice già l'agente) su una riga sua: è lungo, ha
+ * a un solo use case («RD-0008 · ATLAS A1 · …», che dice già l'agente) su una riga sua: è lungo, ha
  * già i suoi « · », e in mezzo alla riga grigia non si capirebbe dove inizia. Un `<div>`, non un
  * `<p>`: un `<details>` non è testo e dentro un `<p>` il parser spezzerebbe il DOM.
  */

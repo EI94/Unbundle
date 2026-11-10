@@ -71,8 +71,8 @@ test("le persone si contano una volta sola, anche fra piattaforma e presenze man
 });
 
 test("il dominio aziendale si legge dall'email; le caselle personali non fanno società", () => {
-  assert.equal(companyDomain("Mario.Rossi@TopJet.aero "), "topjet.aero");
-  assert.equal(companyDomain("anna@aliserio.it"), "aliserio.it");
+  assert.equal(companyDomain("Mario.Rossi@Rondine.aero "), "rondine.aero");
+  assert.equal(companyDomain("anna@ferralba.it"), "ferralba.it");
   assert.equal(companyDomain("qualcuno@gmail.com"), null);
   assert.equal(companyDomain(null), null);
   assert.equal(companyDomain("non-una-email"), null);
@@ -81,13 +81,13 @@ test("il dominio aziendale si legge dall'email; le caselle personali non fanno s
 
 test("le società del corso si contano per persone, dalla più numerosa", () => {
   assert.deepEqual(companyDomains([
-    { userId: "u1", email: "a@aliserio.it", name: "A" },
-    { userId: "u1", email: "a@aliserio.it", name: "A" },
-    { userId: "u2", email: "b@topjet.aero", name: "B" },
-    { userId: "u3", email: "c@topjet.aero", name: "C" },
+    { userId: "u1", email: "a@ferralba.it", name: "A" },
+    { userId: "u1", email: "a@ferralba.it", name: "A" },
+    { userId: "u2", email: "b@rondine.aero", name: "B" },
+    { userId: "u3", email: "c@rondine.aero", name: "C" },
     { userId: null, email: "d@gmail.com", name: "D" },
     { userId: null, email: null, name: "E" },
-  ]), [{ domain: "topjet.aero", people: 2 }, { domain: "aliserio.it", people: 1 }]);
+  ]), [{ domain: "rondine.aero", people: 2 }, { domain: "ferralba.it", people: 1 }]);
 });
 
 test("chi si è solo iscritto non risulta partecipante: la partecipazione va documentata", () => {

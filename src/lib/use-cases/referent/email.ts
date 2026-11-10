@@ -4,7 +4,7 @@
  *
  * (Rilascio 5.1, decisione del titolare del 04/11/2026) Fuori dalla dashboard si dice «caso d'uso»,
  * mai «use case»: ogni oggetto comincia con il nome dell'azienda e nomina il caso d'uso
- * («TopJet: sei il referente per il caso d'uso «TJ-0004 · Fatture fornitori»»), e la richiesta dice in
+ * («Rondine: sei il referente per il caso d'uso «RD-0004 · Fatture fornitori»»), e la richiesta dice in
  * una riga che cos'è un caso d'uso (`whatIsACaseLine`).
  *
  * Regole: testo semplice più HTML minimo con il motore dei dossier (`email-render.ts`): (rilascio 5.1)
@@ -88,7 +88,7 @@ export function checkReferentLink(link: string): string {
   return url.toString();
 }
 
-/** «TJ-0004 · Fatture fornitori», o il titolo, al massimo 120 caratteri. */
+/** «RD-0004 · Fatture fornitori», o il titolo, al massimo 120 caratteri. */
 export function labelOfUseCase(uc: UcRef): string {
   const title = uc.title ?? "";
   const code = uc.code?.trim();

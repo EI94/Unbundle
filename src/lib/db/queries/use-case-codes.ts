@@ -20,7 +20,7 @@ async function assignOnce(workspaceId: string, useCaseId: string): Promise<strin
 }
 
 /**
- * Assegna il prossimo codice del workspace (es. TJ-0012) a una segnalazione appena
+ * Assegna il prossimo codice del workspace (es. RD-0012) a una segnalazione appena
  * creata. Un solo statement (vedi ASSIGN_USE_CASE_CODE_SQL). Restituisce il codice,
  * oppure null se la segnalazione ha già un codice, è di un altro workspace o il contatore
  * è al massimo.

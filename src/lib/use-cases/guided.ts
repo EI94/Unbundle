@@ -609,7 +609,7 @@ export interface NextStepInput {
   today: string;
   /** Il nome del team che valuta (`reviewTeamName`). */
   teamName: string;
-  /** Il nome del workspace (`access.workspace.name`): «Chiedere le informazioni a TopJet». */
+  /** Il nome del workspace (`access.workspace.name`): «Chiedere le informazioni a Rondine». */
   companyName: string | null;
   canDecide: boolean;
   /** Chi gestisce il workspace apre ogni dossier. */

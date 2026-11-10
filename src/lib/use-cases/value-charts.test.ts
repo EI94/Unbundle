@@ -187,10 +187,10 @@ test("colori dei gruppi: dal più grande, tre colori, il grigio dice chi c'è de
 
 test("colori con gli agenti nei titoli: ogni bolla e ogni segmento nel tono dell'agente del suo titolo, mai del gruppo", () => {
   const agents = agentPalette([
-    { title: "LIBRA L1 · Lettura delle fatture estere" },
+    { title: "LIBRA L1 · Lettura dei documenti esteri" },
     { title: "ORSA O1 · Solleciti ai clienti" },
     { title: "AUTO A1 · Riepilogo settimanale" },
-    { title: "Strategia per volo" },
+    { title: "Margine per commessa" },
   ]);
   const items = ["LIBRA", "LIBRA", "Automazioni", "Automazioni", "Automazioni", "orsa", null].map((group) => ({ valueModel: group ? { ...SMALL, group } : SMALL }));
   const palette = groupPalette(items, PARAMS, agents);
@@ -203,7 +203,7 @@ test("colori con gli agenti nei titoli: ogni bolla e ogni segmento nel tono dell
   assert.equal(markSlot(palette, { title: "Controllo dei preventivi del catering", group: "orsa" }), 0);
   assert.equal(markSlot(palette, { title: "IVA · Calcolo dell'imposta", group: null }), 0, "un agente senza tono (solo proposte): grigio");
   // Lo stesso colore del punto della «Matrice Valore × Costo» e del tag.
-  for (const title of ["LIBRA L2 · Pagamenti", "ORSA O1 · Solleciti ai clienti", "Strategia per volo", "IVA · Calcolo dell'imposta"]) {
+  for (const title of ["LIBRA L2 · Pagamenti", "ORSA O1 · Solleciti ai clienti", "Margine per commessa", "IVA · Calcolo dell'imposta"]) {
     assert.equal(markSlot(palette, { title, group: "LIBRA" }), agentPointSlot(agents, title), title);
   }
   // Il gruppo non si scrive: il colore è dell'agente, che il titolo dice già.
@@ -226,7 +226,7 @@ test("colori con gli agenti nei titoli: ogni bolla e ogni segmento nel tono dell
   assert.equal(markSlot(none, { title: "LIBRA L1 · Fatture", group: null }), tone("LIBRA"));
   assert.deepEqual(markLegend(none, [{ title: "LIBRA L1 · Fatture", group: null }]), [{ slot: tone("LIBRA"), label: "LIBRA" }]);
   // Senza agenti nei titoli i colori dei gruppi di sempre: il prefisso non conta.
-  const plain = groupPalette(items, PARAMS, agentPalette([{ title: "Strategia per volo" }]));
+  const plain = groupPalette(items, PARAMS, agentPalette([{ title: "Margine per commessa" }]));
   assert.equal(plain.agents, null);
   assert.deepEqual(plain.slots, { Automazioni: 1, LIBRA: 2, orsa: 3 });
   assert.equal(markSlot(plain, { title: "ORSA O1 · Solleciti ai clienti", group: "LIBRA" }), 2);
@@ -234,29 +234,29 @@ test("colori con gli agenti nei titoli: ogni bolla e ogni segmento nel tono dell
   assert.deepEqual(markLegend(plain, marks), groupLegend(plain, marks.map((mark) => mark.group)));
 });
 
-test("colori con gli agenti nei titoli: TopJet, le bolle e la curva come la matrice e le card", () => {
-  // La forma di TopJet (29/10/2026): i gruppi hanno il nome dell'agente, «Automazioni» i sette AUTO;
-  // «TJ-0051» è una copia approvata di un ORSA senza il prefisso, nel gruppo «ORSA».
+test("colori con gli agenti nei titoli: Rondine, le bolle e la curva come la matrice e le card", () => {
+  // La forma di Rondine (29/10/2026): i gruppi hanno il nome dell'agente, «Automazioni» i sette AUTO;
+  // «RD-0051» è una copia approvata di un ORSA senza il prefisso, nel gruppo «ORSA».
   const titles = [
     "ALCIONE A1 · Presenze del personale di terra",
     "AUTO X1 · Estratti conto in Echo",
     "DENEB D1 · Richieste di riposo e ferie",
-    "LIBRA L1 · Lettura delle fatture estere",
+    "LIBRA L1 · Lettura dei documenti esteri",
     "MAIA M3 · Canale unico per le note spese",
-    "MEROPE R3 · Checklist di ingresso e uscita",
-    "ORSA O1 · Voli pieni, vuoti ed empty leg",
-    "SIRIO S3 · File F24 delle tasse passeggeri",
+    "MEROPE R3 · Controlli di apertura e chiusura",
+    "ORSA O1 · Viaggi pieni, vuoti e di ritorno",
+    "SIRIO S3 · File F24 delle imposte locali",
     "SPICA P3 · Calendario dei pagamenti",
     "TAIGETE T3 · Pratiche ENAC",
   ];
   const agents = agentPalette(titles.map((title) => ({ title })));
   const card = (title: string, group: string | null, o: Partial<HubSourceRow> = {}) => item({ title, valueModel: { ...FIX_A, group: group ?? undefined }, ...o });
   const auto = [1, 2, 3, 4, 5, 6, 7].map((n) => card(`AUTO X${n} · Automazione ${n}`, "Automazioni"));
-  const orsa = card("ORSA O1 · Voli pieni, vuoti ed empty leg", "ORSA");
+  const orsa = card("ORSA O1 · Viaggi pieni, vuoti e di ritorno", "ORSA");
   const copy = card("Controllo dei preventivi dei fornitori di catering", "ORSA");
   // Due agenti nello stesso gruppo: ognuno il suo tono (prima il gruppo era grigio).
-  const libra = card("LIBRA L1 · Lettura delle fatture estere", "Operazioni", { status: "in_progress" });
-  const sirio = card("SIRIO S3 · File F24 delle tasse passeggeri", "Operazioni");
+  const libra = card("LIBRA L1 · Lettura dei documenti esteri", "Operazioni", { status: "in_progress" });
+  const sirio = card("SIRIO S3 · File F24 delle imposte locali", "Operazioni");
   // Un gruppo con il nome di un agente non dà l'agente: «maia» non fa MAIA una bozza senza prefisso.
   const draft = card("Bozza di registrazione", "maia");
   // Un agente senza gruppo ha il suo tono (prima il grigio di «Senza gruppo»).
@@ -286,7 +286,7 @@ test("colori con gli agenti nei titoli: TopJet, le bolle e la curva come la matr
     ["ALCIONE", "AUTO", "ORSA", "SIRIO", "Altri use case"],
   );
   // Senza agenti nei titoli i gruppi tengono i loro tre colori, e la proposta resta del suo gruppo.
-  const plain = groupPalette(all, PARAMS, agentPalette([{ title: "Strategia per volo" }]));
+  const plain = groupPalette(all, PARAMS, agentPalette([{ title: "Margine per commessa" }]));
   assert.deepEqual(plain.slots, { Automazioni: 1, Operazioni: 2, ORSA: 3 });
   const plainBubbles = buildBenefitBubbles(all, PARAMS, TODAY, plain).bubbles;
   assert.deepEqual(
@@ -300,11 +300,11 @@ test("colori con gli agenti nei titoli: TopJet, le bolle e la curva come la matr
 });
 
 test("un nome solo per il grigio: «Altri use case» nelle tre legende, nessun «Gruppo …» sulle bolle e sui segmenti", () => {
-  // La forma di TopJet con «TJ-0051» (29/10/2026): una copia senza il prefisso nel gruppo «Varie».
-  const titles = ["AUTO X1 · Estratti conto in Echo", "LIBRA L1 · Lettura delle fatture estere", "SIRIO S1 · Cassa"];
+  // La forma di Rondine con «RD-0051» (29/10/2026): una copia senza il prefisso nel gruppo «Varie».
+  const titles = ["AUTO X1 · Estratti conto in Echo", "LIBRA L1 · Lettura dei documenti esteri", "SIRIO S1 · Cassa"];
   const agents = agentPalette(titles.map((title) => ({ title })));
   const auto = item({ title: "AUTO X1 · Estratti conto in Echo", valueModel: { ...FIX_A, group: "Automazioni" } });
-  const libra = item({ title: "LIBRA L1 · Lettura delle fatture estere", valueModel: { ...FIX_A, group: "LIBRA" } });
+  const libra = item({ title: "LIBRA L1 · Lettura dei documenti esteri", valueModel: { ...FIX_A, group: "LIBRA" } });
   const copy = item({ title: "Controllo dei preventivi dei fornitori di catering", valueModel: { ...FIX_A, group: "Varie" } });
   // SIRIO senza gruppo: SIRIO, come nella matrice (prima il grigio di «Senza gruppo»).
   const sirio = item({ title: "SIRIO S1 · Cassa", valueModel: { ...FIX_A, group: undefined } });
@@ -326,7 +326,7 @@ test("un nome solo per il grigio: «Altri use case» nelle tre legende, nessun �
   assert.equal(bubbles.find((bubble) => bubble.id === sirio.id)?.slot, agentPointSlot(agents, sirio.title));
   assert.ok([...bubbles, ...tempo.segments, ...tempo.qualitative].every((mark) => mark.groupLabel === null));
   // Senza agenti nei titoli i gruppi hanno i loro nomi, come sempre.
-  const plain = groupPalette([...all, item({ valueModel: SMALL })], PARAMS, agentPalette([{ title: "Strategia per volo" }]));
+  const plain = groupPalette([...all, item({ valueModel: SMALL })], PARAMS, agentPalette([{ title: "Margine per commessa" }]));
   assert.deepEqual([groupLabelOf(plain, "Varie"), groupLabelOf(plain, null)], ["Gruppo Varie", "Senza gruppo"]);
   assert.deepEqual(
     groupLegend(plain, ["Automazioni", "LIBRA", "Varie", null, "Vendite"]).map((entry) => entry.label),
@@ -337,11 +337,11 @@ test("un nome solo per il grigio: «Altri use case» nelle tre legende, nessun �
 test("matrice Valore × Costo con gli agenti nei titoli: il punto nel tono dell'agente, grigio senza; la legenda per agente", () => {
   const agents = agentPalette([{ title: "LIBRA L1 · Fatture" }, { title: "AUTO X1 · Bonifici" }, { title: "ORSA O1 · Voli" }]);
   assert.equal(agentPointSlot(agents, "LIBRA L2 · Pagamenti"), `agente-${agentToneOf(agents, "LIBRA")}`);
-  assert.equal(agentPointSlot(agents, "Strategia per volo"), 0, "senza agente: grigio");
+  assert.equal(agentPointSlot(agents, "Margine per commessa"), 0, "senza agente: grigio");
   assert.equal(agentPointSlot(agents, "IVA · Calcolo dell'imposta"), 0, "un agente senza tono (solo proposte): grigio");
-  assert.equal(agentPointSlot(agentPalette([{ title: "Strategia per volo" }]), "LIBRA L1 · Fatture"), null, "senza agenti nel workspace: l'origine");
+  assert.equal(agentPointSlot(agentPalette([{ title: "Margine per commessa" }]), "LIBRA L1 · Fatture"), null, "senza agenti nel workspace: l'origine");
   assert.equal(agentPointSlot(null, "LIBRA L1 · Fatture"), null);
-  assert.deepEqual(agentPointLegend(agents, ["ORSA O1 · Voli", "LIBRA L1 · Fatture", "LIBRA L2 · Pagamenti", "Strategia per volo"]), [
+  assert.deepEqual(agentPointLegend(agents, ["ORSA O1 · Voli", "LIBRA L1 · Fatture", "LIBRA L2 · Pagamenti", "Margine per commessa"]), [
     { slot: `agente-${agentToneOf(agents, "LIBRA")}`, label: "LIBRA" },
     { slot: `agente-${agentToneOf(agents, "ORSA")}`, label: "ORSA" },
     { slot: 0, label: "Altri use case" },
@@ -352,7 +352,7 @@ test("matrice Valore × Costo con gli agenti nei titoli: il punto nel tono dell'
 
 test("un agente senza tono (solo proposte) ha il suo nome in legenda, in grigio: «Altri use case» sono gli stessi di `agente=altri`", () => {
   const model = { ...SMALL, ease: 4 };
-  const libra = item({ title: "LIBRA L1 · Lettura delle fatture estere", valueModel: model });
+  const libra = item({ title: "LIBRA L1 · Lettura dei documenti esteri", valueModel: model });
   const iva = item({ title: "IVA I1 · Calcolo dell'imposta sui biglietti", valueModel: model, ...TO_DECIDE });
   const plain = item({ title: "Controllo dei preventivi del catering", valueModel: model });
   const all = [libra, iva, plain];
@@ -378,7 +378,7 @@ test("un agente senza tono (solo proposte) ha il suo nome in legenda, in grigio:
 });
 
 test("le sezioni sotto le bolle sono la legenda: ogni segno nella voce dell'agente del suo titolo, o del colore del suo gruppo", () => {
-  const agents = agentPalette([{ title: "LIBRA L1 · Lettura delle fatture estere" }, { title: "ORSA O1 · Solleciti ai clienti" }]);
+  const agents = agentPalette([{ title: "LIBRA L1 · Lettura dei documenti esteri" }, { title: "ORSA O1 · Solleciti ai clienti" }]);
   const palette = groupPalette([{ valueModel: { ...SMALL, group: "ORSA" } }], PARAMS, agents);
   const marks = [
     { title: "ORSA O1 · Solleciti ai clienti", group: "Automazioni" },
@@ -557,7 +557,7 @@ test("Roadmap: FIX_A + FIX_B, ore 177,9, J-curve sommata, pareggio «apr 27», e
   assert.equal(value.breakevenText, "apr 27");
   assert.deepEqual(value.goLives, [{ index: 2, month: "2027-01", label: "gen 27", names: [a.code, b.code] }]);
   // Un titolo con l'agente: sulla curva il tag delle card della Panoramica, non il codice.
-  const libra = item({ valueModel: FIX_A, title: "LIBRA L1 · Lettura delle fatture estere" });
+  const libra = item({ valueModel: FIX_A, title: "LIBRA L1 · Lettura dei documenti esteri" });
   assert.deepEqual(buildRoadmapValue([libra, b], PARAMS)?.goLives.map((mark) => mark.names), [["LIBRA L1", b.code]]);
   assert.deepEqual(
     { index: value.low?.index, label: value.low?.label },

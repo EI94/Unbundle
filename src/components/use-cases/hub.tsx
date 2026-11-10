@@ -140,7 +140,7 @@ export interface UseCaseHubData {
    */
   needs: NeedView[] | null;
   /**
-   * (Rilascio 4) Il nome che il connettore dà al workspace («TopJet e Aliserio»), il titolo del gruppo
+   * (Rilascio 4) Il nome che il connettore dà al workspace («Rondine e Ferralba»), il titolo del gruppo
    * del cliente in «Cosa serve» (`connectorDisplayNameOf`): letto solo per un revisore in quella vista;
    * null altrimenti, senza nome o se la lettura non riesce.
    */

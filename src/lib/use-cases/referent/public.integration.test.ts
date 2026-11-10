@@ -48,7 +48,7 @@ const emails = {
 };
 type Person = keyof typeof emails;
 const ROLE: Record<Person, string> = { builder: "function_lead", analyst: "analyst", contributor: "contributor", ls: "transformation_lead" };
-const REFERENT_EMAIL = `mario.rossi.${suffix}@topjet.test`;
+const REFERENT_EMAIL = `mario.rossi.${suffix}@rondine.test`;
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-"));
 
 const ENV = {
@@ -109,7 +109,7 @@ before(async () => {
   dispatch = await import("../../db/queries/use-case-referent-dispatch.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione referenti', $2)`, [ids.org, `hub-referenti-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'TopJet prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'Rondine prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
     for (const ws of [ids.ws, ids.other]) await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ws, ids[person], ROLE[person]]);
@@ -165,18 +165,18 @@ test("preparazione: la scheda ha proponente, note e valori che la pagina non dev
 });
 
 test("il link: valido; dopo un cambio d'indirizzo, un'anonimizzazione o con il referente non attivo è «non valido»", opts, async () => {
-  const a = await freshLink(`uno.${suffix}@topjet.test`, state.needs.slice(0, 1));
+  const a = await freshLink(`uno.${suffix}@rondine.test`, state.needs.slice(0, 1));
   assert.equal(await access(a.token), "ok");
-  await q(`UPDATE uc_contacts SET email = $2 WHERE id = $1::uuid`, [a.contactId, `uno.nuovo.${suffix}@topjet.test`]);
+  await q(`UPDATE uc_contacts SET email = $2 WHERE id = $1::uuid`, [a.contactId, `uno.nuovo.${suffix}@rondine.test`]);
   assert.equal(await access(a.token), "non_valido", "l'indirizzo è cambiato");
-  await q(`UPDATE uc_contacts SET email = $2 WHERE id = $1::uuid`, [a.contactId, `uno.${suffix}@topjet.test`]);
+  await q(`UPDATE uc_contacts SET email = $2 WHERE id = $1::uuid`, [a.contactId, `uno.${suffix}@rondine.test`]);
   assert.equal(await access(a.token), "ok");
   await q(`UPDATE uc_contacts SET is_active = false WHERE id = $1::uuid`, [a.contactId]);
   assert.equal(await access(a.token), "non_valido", "non più attivo");
   await q(`UPDATE uc_contacts SET is_active = true WHERE id = $1::uuid`, [a.contactId]);
   ok(await referents.revokeReferentRequest(as("builder"), ids.useCase, a.requestId, Number((await q(`SELECT version FROM use_case_referent_requests WHERE id = $1::uuid`, [a.requestId]))[0].version)));
   assert.equal(await access(a.token), "revocato");
-  const b = await freshLink(`due.${suffix}@topjet.test`, state.needs.slice(1, 2));
+  const b = await freshLink(`due.${suffix}@rondine.test`, state.needs.slice(1, 2));
   await q(`UPDATE use_case_referent_tokens SET expires_at = now() - interval '1 minute' WHERE request_id = $1::uuid`, [b.requestId]);
   assert.equal(await access(b.token), "scaduto");
   await q(`UPDATE uc_contacts SET anonymized_at = now(), email = NULL, display_name = 'Persona cancellata' WHERE id = $1::uuid`, [b.contactId]).catch(async () => {
@@ -188,7 +188,7 @@ test("il link: valido; dopo un cambio d'indirizzo, un'anonimizzazione o con il r
 });
 
 test("la pagina: l'area spenta per il workspace è «non valido»; la funzione spenta è «non disponibile»", opts, async () => {
-  const c = await freshLink(`tre.${suffix}@topjet.test`, state.needs.slice(2, 3));
+  const c = await freshLink(`tre.${suffix}@rondine.test`, state.needs.slice(2, 3));
   state.token = c.token;
   state.requestId = c.requestId;
   const page = await pub.loadReferentAskPage(c.token, { env: ENV, now: new Date() });

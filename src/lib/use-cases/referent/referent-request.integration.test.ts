@@ -50,9 +50,9 @@ const emails = {
 };
 type Person = keyof typeof emails;
 const ROLE: Record<Person, string> = { builder: "function_lead", analyst: "analyst", ls: "transformation_lead" };
-const ALDO = `aldo.prova.${suffix}@topjet.test`;
-const BRUNA = `bruna.esempio.${suffix}@topjet.test`;
-const CARLO = `carlo.campione.${suffix}@topjet.test`;
+const ALDO = `aldo.prova.${suffix}@rondine.test`;
+const BRUNA = `bruna.esempio.${suffix}@rondine.test`;
+const CARLO = `carlo.campione.${suffix}@rondine.test`;
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-r5-"));
 
 const ENV = {
@@ -194,7 +194,7 @@ before(async () => {
   referents = await import("../../db/queries/use-case-referents.ts");
   dispatch = await import("../../db/queries/use-case-referent-dispatch.ts");
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione r5', $2)`, [ids.org, `hub-r5-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet prova')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine prova')`, [ids.ws, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, ids[person], ROLE[person]]);
@@ -235,7 +235,7 @@ test("richiesta al referente senza domande: la riga della conferma, la Storia, l
   assert.deepEqual(open, { questions: 0, pending: 1 });
   const m = await mailOf(sent.requestId);
   assert.equal(m.to, ALDO);
-  assert.match(m.subject, /^TopJet prova: sei il referente per il caso d'uso «RC-\d+ · Fatture fornitori»$/);
+  assert.match(m.subject, /^Rondine prova: sei il referente per il caso d'uso «RC-\d+ · Fatture fornitori»$/);
   assert.ok(m.text.includes("Persona builder ti ha indicato come referente per il caso d'uso «"), m.text);
   assert.ok(m.text.includes("Ti chiediamo due cose: confermare che è descritto bene e aiutarci a stimarne l'impatto."), m.text);
   assert.ok(m.text.includes("Bastano pochi minuti, anche dal telefono. Se un'informazione non ce l'hai, scegli «Non ce l'ho»."), m.text);
@@ -289,7 +289,7 @@ test("un referente alla volta: la richiesta vista dalla finestra, due invii insi
   refused(await referents.sendReferentRequest(as("builder"), fresh.id, input, deps()), "referente_gia_scelto");
   // Un doppio clic con un referente nuovo, mai visto: una persona sola, una richiesta sola.
   const third = await newCard();
-  const newbie = `dora.nuova.${suffix}@topjet.test`;
+  const newbie = `dora.nuova.${suffix}@rondine.test`;
   const nInput = { kind: "referente", expectedReferentRequestId: null, contact: newContact(newbie, "Dora Nuova"), needIds: [] };
   const [n1, n2] = await Promise.all([referents.sendReferentRequest(as("builder"), third.id, nInput, deps()), referents.sendReferentRequest(as("builder"), third.id, nInput, deps())]);
   assert.equal(ok(n1, "n1").requestId, ok(n2, "n2").requestId);
@@ -374,7 +374,7 @@ test("la conferma da inviare tiene aperta la richiesta: promemoria al terzo e al
   assert.equal(c1.errors, 0, JSON.stringify(c1));
   const p1 = m1.outbox.filter((m) => m.to === BRUNA);
   assert.equal(p1.length, 1, JSON.stringify(c1));
-  assert.match(p1[0].subject, /^TopJet prova: promemoria sul caso d'uso «RC-\d+ · Fatture fornitori»$/);
+  assert.match(p1[0].subject, /^Rondine prova: promemoria sul caso d'uso «RC-\d+ · Fatture fornitori»$/);
   assert.ok(p1[0].text.includes("ti ricordiamo che Persona builder aspetta la tua conferma sul caso d'uso «"), p1[0].text);
   assert.ok(/aspetta la tua conferma sul caso d'uso «[^»]+»\./.test(p1[0].text), "senza domande, niente «e le risposte»");
   assert.ok(p1[0].text.includes("Riprendi"));
@@ -384,7 +384,7 @@ test("la conferma da inviare tiene aperta la richiesta: promemoria al terzo e al
   await referents.runReferentCron({ env: ENV, now: V, mailer: m2 });
   const p2 = m2.outbox.filter((m) => m.to === BRUNA);
   assert.equal(p2.length, 1);
-  assert.match(p2[0].subject, /^TopJet prova: ultimo promemoria sul caso d'uso «/);
+  assert.match(p2[0].subject, /^Rondine prova: ultimo promemoria sul caso d'uso «/);
   assert.equal(Number((await requestOf(sent.requestId)).reminder_count), 2);
   assert.ok((await q(`SELECT 1 FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'senza_risposta'`, [card.id])).length >= 1);
   // Una risposta del team non la completa.
@@ -470,7 +470,7 @@ test("nessun referente dove la scheda non ne offre uno: «Da diffondere» e arch
        VALUES ($1::uuid, $2::uuid, 'Buona pratica', 'Una pratica da diffondere.', 'accepted', $3::portfolio_review_status, $4, $5, 'web_proposed')`,
       [id, ids.ws, k.review, k.kind, `RN-${String(1000 + Math.floor(Math.random() * 8000))}`],
     );
-    const res = await sendReferent(id, { contact: newContact(`nonprevisto.${k.review}.${randomBytes(2).toString("hex")}@topjet.test`, "Aldo Prova"), needIds: [] });
+    const res = await sendReferent(id, { contact: newContact(`nonprevisto.${k.review}.${randomBytes(2).toString("hex")}@rondine.test`, "Aldo Prova"), needIds: [] });
     assert.equal(res.ok, false, `${k.label}: rifiutata`);
     if (res.ok) continue;
     assert.equal(res.error, "referente_non_previsto", k.label);
@@ -479,10 +479,10 @@ test("nessun referente dove la scheda non ne offre uno: «Da diffondere» e arch
     const [{ e }] = await q(`SELECT count(*)::int AS e FROM use_case_referent_emails m JOIN use_case_referent_requests r ON r.id = m.request_id WHERE r.use_case_id = $1::uuid`, [id]);
     assert.deepEqual([n, e], [0, 0], `${k.label}: nessuna richiesta, nessuna email`);
     // Una richiesta di sole domande non passa da questa regola (qui si ferma perché non ci sono domande).
-    const questions = await referents.sendReferentRequest(as("builder"), id, { contact: newContact(`domande.${k.review}.${randomBytes(2).toString("hex")}@topjet.test`, "Carlo Campione"), needIds: [] }, deps());
+    const questions = await referents.sendReferentRequest(as("builder"), id, { contact: newContact(`domande.${k.review}.${randomBytes(2).toString("hex")}@rondine.test`, "Carlo Campione"), needIds: [] }, deps());
     assert.ok(!questions.ok && questions.error !== "referente_non_previsto", `${k.label}: ${JSON.stringify(questions)}`);
   }
   // Su uno use case da scegliere la richiesta al referente passa come prima.
   const card = await newCard();
-  ok(await sendReferent(card.id, { contact: newContact(`previsto.${randomBytes(2).toString("hex")}@topjet.test`, "Bruna Esempio"), needIds: [] }), "da valutare: il referente si sceglie");
+  ok(await sendReferent(card.id, { contact: newContact(`previsto.${randomBytes(2).toString("hex")}@rondine.test`, "Bruna Esempio"), needIds: [] }), "da valutare: il referente si sceglie");
 });

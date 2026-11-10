@@ -9,7 +9,7 @@ const NEED = "3f2a9c1e-0000-4000-8000-0000000000e1";
 test("bozza: si rifiutano solo dati sanitari e discriminatori; nomi, email e telefoni non danno avvisi (rilascio 5.1)", () => {
   const health = checkDraftText("Lo fa Paola, che è in malattia per una visita medica.");
   assert.equal(health.ok, false);
-  for (const text of ["Le fatture le controlla Mario Rossi ogni lunedì.", "Scrivete a mario.rossi@topjet.it", "Chiamate il +39 333 1234567"]) {
+  for (const text of ["Le fatture le controlla Mario Rossi ogni lunedì.", "Scrivete a mario.rossi@rondine.it", "Chiamate il +39 333 1234567"]) {
     assert.deepEqual(checkDraftText(text), { ok: true, warnings: [] }, text);
   }
   const taxCode = checkDraftText("Il codice è RSSMRA80A01H501U.");
@@ -20,7 +20,7 @@ test("bozza: si rifiutano solo dati sanitari e discriminatori; nomi, email e tel
 });
 
 test("invio: nomi, email e telefoni passano; salute e codici fiscali bloccano, con il campo della domanda", () => {
-  for (const text of ["Le controlla Mario Rossi.", "Scrivete a mario.rossi@topjet.it", "Chiamate il +39 333 1234567", "Circa 20 fatture al giorno."]) {
+  for (const text of ["Le controlla Mario Rossi.", "Scrivete a mario.rossi@rondine.it", "Chiamate il +39 333 1234567", "Circa 20 fatture al giorno."]) {
     assert.deepEqual(checkSubmitText(text, NEED), { ok: true }, text);
   }
   for (const text of ["Ha una diagnosi di diabete", "Il codice è RSSMRA80A01H501U."]) {
@@ -70,7 +70,7 @@ test("messaggio del revisore: vuoto è null, al massimo 1.000 caratteri; nomi, e
 });
 
 test("titolo di una domanda: niente contatti né nomi", () => {
-  const out = checkQuestionTitle("Scrivi a mario.rossi@topjet.it quante fatture arrivano");
+  const out = checkQuestionTitle("Scrivi a mario.rossi@rondine.it quante fatture arrivano");
   assert.equal(out.ok, false);
   if (!out.ok) assert.equal(out.code, "testo_contatto");
   assert.deepEqual(checkQuestionTitle("Quante fatture arrivano ogni mese?"), { ok: true });

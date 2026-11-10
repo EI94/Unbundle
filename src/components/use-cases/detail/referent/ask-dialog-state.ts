@@ -170,7 +170,7 @@ export function askDialogEntry(panel: Pick<UseCaseReferentPanel, "available" | "
 const SEPARATOR = " · ";
 
 /**
- * La riga grigia di un referente in «A chi»: «Ufficio acquisti · m•••@topjet.it», con « · Fa parte del
+ * La riga grigia di un referente in «A chi»: «Ufficio acquisti · m•••@rondine.it», con « · Fa parte del
  * team» per un collega revisore e il motivo quando non si può scegliere («(senza email)»…).
  */
 export function contactRowLine(option: ReferentContactOption): string {

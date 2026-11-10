@@ -102,7 +102,7 @@ before(async () => {
   pub = await import("../../../lib/db/queries/use-case-referent-public.ts");
   dispatch = await import("../../../lib/db/queries/use-case-referent-dispatch.ts");
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione chiusure', $2)`, [ids.org, `hub-chiusure-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet prova')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine prova')`, [ids.ws, ids.org]);
   for (const [id, role] of [[ids.builder, "function_lead"], [ids.analyst, "analyst"]] as const) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [id, `${role}.chiusure.${suffix}@cliente.test`, `Persona ${role}`]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, id, role]);
@@ -131,7 +131,7 @@ after(async () => {
 async function closedLink(questions: number, fileRequired: number[] = []) {
   const card = await newCard(null);
   const needIds = card.needs.slice(0, questions);
-  const email = `referente.${contactSeq++}.${suffix}@topjet.test`;
+  const email = `referente.${contactSeq++}.${suffix}@rondine.test`;
   const sent = ok(
     await referents.sendReferentRequest(
       as(),

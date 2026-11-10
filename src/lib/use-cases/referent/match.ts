@@ -8,7 +8,7 @@
  * - Le parole che non dicono chi è una persona non contano mai: articoli e preposizioni, i lati
  *   («cliente», «fornitore», «Lateral Space», «insieme»), gli uffici generici («ufficio», «area»,
  *   «responsabile»…) e le parole dell'azienda (il nome del workspace e quello del connettore,
- *   `orgWordsOf`: «TopJet», «Aliserio»). Un «Chi» fatto solo di queste è **generico**: va bene per
+ *   `orgWordsOf`: «Rondine», «Ferralba»). Un «Chi» fatto solo di queste è **generico**: va bene per
  *   chiunque e si propone sempre (anche le domande preparate, che un «Chi» non l'hanno).
  * - Una domanda è **della persona** quando il suo «Chi» nomina il suo nome, il suo cognome (almeno 4
  *   lettere) o una parola del suo ruolo (almeno 3 lettere; solo referenti e persone nuove hanno un ruolo).

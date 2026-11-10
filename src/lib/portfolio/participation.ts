@@ -22,9 +22,9 @@
  *    non c'è. «entrambe» vuol dire tutte e due le società: si mostra come «Entrambe le
  *    società» da 3 proposte in su, non entra mai in «Altre società» e, sotto 3, la riga non
  *    c'è. La riga non c'è neanche con 1 o 2 proposte senza società: sarebbero il totale
- *    delle aree meno la riga (per TopJet, le proposte del modulo e di Slack, senza area).
- *    Il nome si scrive come nel nome del workspace della guida («TopJet e Aliserio» →
- *    «TopJet»), altrimenti dall'id;
+ *    delle aree meno la riga (per Rondine, le proposte del modulo e di Slack, senza area).
+ *    Il nome si scrive come nel nome del workspace della guida («Rondine e Ferralba» →
+ *    «Rondine»), altrimenti dall'id;
  *  - ordine: dalla più alta, a parità per nome; «Altre aree» e «Area non indicata» in coda,
  *    come «Altre società» ed «Entrambe le società».
  *
@@ -106,7 +106,7 @@ function fold(text: string): string {
 
 /**
  * La guida dà alle società solo un id: la grafia viene dal nome del workspace, quando lo
- * contiene come parole intere («topjet» in «TopJet e Aliserio» → «TopJet»; «gruppo_nord»
+ * contiene come parole intere («rondine» in «Rondine e Ferralba» → «Rondine»; «gruppo_nord»
  * in «Gruppo Nord Est» → «Gruppo Nord»), altrimenti dall'id («alfa_beta» → «Alfa beta»).
  */
 function companyLabel(id: string, nameWords: readonly string[]): string {

@@ -137,7 +137,7 @@ async function linkOf(token: string): Promise<Link> {
 let seq = 0;
 /** Il referente riceve il link, legge l'informativa, conferma, risponde sulla voce e alle prime due domande, invia. */
 async function answeredReferent(card: { id: string; needs: string[] }): Promise<{ requestId: string; token: string; email: string }> {
-  const email = `aldo.${seq++}.${suffix}@topjet.test`;
+  const email = `aldo.${seq++}.${suffix}@rondine.test`;
   const sent = ok(
     await referents.sendReferentRequest(
       ctx(),
@@ -244,7 +244,7 @@ before(async () => {
   }
   NOW = new Date(calendar.romeLocalToUtc(calendar.addWorkingDays(calendar.romeDate(new Date()), 1), 10).getTime() + 30 * 60_000);
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione filo pagina', $2)`, [ids.org, `hub-filo-pagina-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet prova')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine prova')`, [ids.ws, ids.org]);
   for (const [id, name, email] of [[ids.builder, "Giulia Neri", `builder.filo.${suffix}@cliente.test`], [ids.other, OTHER_NAME, `altro.filo.${suffix}@cliente.test`]] as const) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [id, email, name]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'function_lead')`, [ids.ws, id]);
@@ -448,7 +448,7 @@ test("un'email al giorno con tutte le novità: «Hai 2 novità sul caso d'uso �
   const mails = await send(r.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1);
   assert.equal(mails[0].to, r.email);
-  assert.match(mails[0].subject, /^TopJet prova: 2 novità sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
+  assert.match(mails[0].subject, /^Rondine prova: 2 novità sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
   assert.match(mails[0].text, /Hai 2 novità sul caso d'uso «FP-\d+ · Fatture fornitori»: le trovi con lo stesso link\./);
   assert.match(mails[0].text, /Apri le novità/);
   assert.match(mails[0].text, /\/rispondi\/ucq_[A-Za-z0-9_-]{32}/);
@@ -474,7 +474,7 @@ test("un'email al giorno con tutte le novità: «Hai 2 novità sul caso d'uso �
   await q(`UPDATE use_case_referent_emails SET sent_at = now() - interval '2 days' WHERE contact_id = (SELECT contact_id FROM use_case_referent_requests WHERE id = $1::uuid) AND status = 'inviata'`, [r.requestId]);
   const nextDay = await send(r.requestId, new Date(tomorrow.getTime() + 3_600_000));
   assert.equal(nextDay.length, 1);
-  assert.match(nextDay[0].subject, /^TopJet prova: un chiarimento sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
+  assert.match(nextDay[0].subject, /^Rondine prova: un chiarimento sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
   const renewed = await requestOf(r.requestId);
   assert.ok(new Date(String(renewed.expires_at)).getTime() >= Date.now() + 29 * 86_400_000, "ogni novità rinnova il link per 30 giorni");
 });
@@ -532,7 +532,7 @@ test("dopo una riapertura i soliti due promemoria, contati da lì, che parlano d
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const mine = mailer.outbox.filter((x) => x.to === r.email);
   assert.equal(mine.length, 1, JSON.stringify(counts));
-  assert.match(mine[0].subject, /^TopJet prova: promemoria sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
+  assert.match(mine[0].subject, /^Rondine prova: promemoria sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
   assert.match(mine[0].text, /ti ricordiamo che Giulia Neri aspetta la tua risposta a un chiarimento sul caso d'uso «FP-\d+ · Fatture fornitori»\./);
   assert.doesNotMatch(mine[0].text, /domande aperte|0 domande/);
   assert.equal(Number((await requestOf(r.requestId)).reminder_count), 1);
@@ -557,7 +557,7 @@ test("una novità dopo un'email dello stesso giorno annullata (la richiesta si e
   assert.deepEqual(items.map((i) => `${i.kind}:${i.status}:${i.replies}`), ["nuove:in_coda:1"]);
   const mails = await send(r.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1);
-  assert.match(mails[0].subject, /^TopJet prova: una risposta sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
+  assert.match(mails[0].subject, /^Rondine prova: una risposta sul caso d'uso «FP-\d+ · Fatture fornitori»$/);
   assert.match(mails[0].text, /Leggi la risposta/);
   assert.ok(!mails[0].text.includes("Solo il team"), "mai il testo");
 });

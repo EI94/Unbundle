@@ -44,9 +44,9 @@ test("(0025) «Pronto da avviare» e «Autorizza i fornitori»: titolo e una fra
 });
 
 test("contesto: codice e titolo, o il titolo; al massimo 120 caratteri", () => {
-  assert.equal(noticeContextOf("TJ-0004", "Fatture  fornitori"), "TJ-0004 · Fatture fornitori");
+  assert.equal(noticeContextOf("RD-0004", "Fatture  fornitori"), "RD-0004 · Fatture fornitori");
   assert.equal(noticeContextOf(null, "Fatture fornitori"), "Fatture fornitori");
-  const long = noticeContextOf("TJ-0004", "x".repeat(300));
+  const long = noticeContextOf("RD-0004", "x".repeat(300));
   assert.equal(long.length, 120);
   assert.ok(long.endsWith("…"));
   assert.equal(USE_CASE_NOTICE_TEXT.contextSeparator, " · ");

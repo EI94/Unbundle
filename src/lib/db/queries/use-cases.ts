@@ -26,7 +26,7 @@ import {
 /**
  * Punto comune di creazione degli use case (web, Slack, REST/MCP stdio, AI
  * Readiness, connettore). Dopo l'inserimento assegna il codice del workspace
- * (es. TJ-0012) se il connettore è configurato; se l'assegnazione fallisce la
+ * (es. RD-0012) se il connettore è configurato; se l'assegnazione fallisce la
  * segnalazione resta salvata senza codice.
  */
 export async function createUseCase(data: NewUseCase) {

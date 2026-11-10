@@ -3,7 +3,7 @@
  *
  * Formato del contratto: prefisso del workspace (2-4 lettere maiuscole),
  * trattino, numero a 4 cifre con zeri davanti; oltre 9999 il numero resta
- * intero (TJ-12345), fino a 99999. Il contatore è
+ * intero (RD-12345), fino a 99999. Il contatore è
  * `workspace_connector_configs.next_code_seq`: il primo codice è PREFISSO-0001.
  * Modulo puro (SQL e formato): lo usano l'app, gli script e i test con Node.
  */

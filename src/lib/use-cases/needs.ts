@@ -529,8 +529,8 @@ export function needGroupOf(side: NeedOwnerSide | null): NeedGroupKey {
 }
 
 /**
- * Il nome del cliente sopra il suo gruppo: il nome che il connettore dà al workspace («TopJet e
- * Aliserio»), altrimenti il nome del workspace come lo dicono i testi del referente (`companyLabel`).
+ * Il nome del cliente sopra il suo gruppo: il nome che il connettore dà al workspace («Rondine e
+ * Ferralba»), altrimenti il nome del workspace come lo dicono i testi del referente (`companyLabel`).
  */
 export function clientGroupLabel(displayName: string | null | undefined, workspaceName: string | null | undefined): string {
   const clean = typeof displayName === "string" ? displayName.replace(/\s+/g, " ").trim() : "";

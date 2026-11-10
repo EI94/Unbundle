@@ -72,7 +72,7 @@ export interface AskStepsContext {
   card: { code: string | null; title: string };
   /** Il nome del workspace (`access.workspace.name`). */
   companyName: string | null;
-  /** Il nome del cliente del connettore («TopJet e Aliserio»), per le parole dell'azienda; null senza. */
+  /** Il nome del cliente del connettore («Rondine e Ferralba»), per le parole dell'azienda; null senza. */
   companyDisplayName: string | null;
   /** «Chiedi al referente» chiuso senza inviare: la bozza, ripresa riaprendo (per la vita della pagina). */
   saved: AskSession | null;

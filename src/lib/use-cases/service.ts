@@ -920,7 +920,7 @@ async function guideAreas(workspaceId: string): Promise<string[] | null> {
 }
 
 /**
- * Il nome che il connettore dà al workspace («TopJet e Aliserio»): il titolo del gruppo del cliente
+ * Il nome che il connettore dà al workspace («Rondine e Ferralba»): il titolo del gruppo del cliente
  * nella vista «Cosa serve» (rilascio 4, `clientGroupLabel`). null senza nome o se la lettura non
  * riesce: allora il gruppo prende il nome del workspace.
  */
@@ -939,7 +939,7 @@ export async function connectorDisplayNameOf(workspaceId: string): Promise<strin
 }
 
 /**
- * (Rilascio 5, §11.2) Dalla stessa riga del connettore: il nome del cliente («TopJet e Aliserio») e le
+ * (Rilascio 5, §11.2) Dalla stessa riga del connettore: il nome del cliente («Rondine e Ferralba») e le
  * aree della guida (`guide -> 'areas'`), per i titoli del filtro «Area». Una lettura sola; null
  * senza configurazione o se la lettura non riesce (allora i titoli sono gli id resi leggibili).
  */

@@ -126,8 +126,8 @@ before(async () => {
   for (const [id, name] of [[ids.wsA, "A"], [ids.wsB, "B"], [ids.wsC, "C"], [ids.wsD, "D"]]) {
     await app.q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, $3)`, [id, ids.org, `Workspace ${name} ${suffix}`]);
   }
-  // A: connettore con prefisso TJ dal primo numero; C: contatore vicino a 9999; B: nessun connettore.
-  await app.q(`INSERT INTO workspace_connector_configs (workspace_id, slug, code_prefix) VALUES ($1, $2, 'TJ')`, [ids.wsA, `prova-a-${suffix}`]);
+  // A: connettore con prefisso RD dal primo numero; C: contatore vicino a 9999; B: nessun connettore.
+  await app.q(`INSERT INTO workspace_connector_configs (workspace_id, slug, code_prefix) VALUES ($1, $2, 'RD')`, [ids.wsA, `prova-a-${suffix}`]);
   await app.q(`INSERT INTO workspace_connector_configs (workspace_id, slug, code_prefix, next_code_seq) VALUES ($1, $2, 'XY', 9998)`, [ids.wsC, `prova-c-${suffix}`]);
   const a = await app.createToken({ workspaceId: ids.wsA, label: "Token di prova A", createdByUserId: ids.user });
   const b = await app.createToken({ workspaceId: ids.wsB, label: "Token di prova B", createdByUserId: ids.user });
@@ -277,10 +277,10 @@ test("codici: ogni nuova segnalazione di un workspace con connettore riceve il c
   // Dalla REST (e quindi dal server MCP stdio).
   const viaRest = await submit(payload(`codice-rest-${suffix}`));
   const restCode = (await one(`SELECT code FROM use_cases WHERE id = $1`, [(viaRest.json.useCase as { id: string }).id])).code;
-  assert.equal(restCode, `TJ-${String(Number(before.next_code_seq) + 1).padStart(4, "0")}`);
+  assert.equal(restCode, `RD-${String(Number(before.next_code_seq) + 1).padStart(4, "0")}`);
   // Dal punto comune usato da web, Slack e AI Readiness.
   const viaWeb = await app.createUseCase({ workspaceId: ids.wsA, title: `Proposta web ${suffix}`, source: "web_proposed", status: "proposed" });
-  assert.equal(viaWeb.code, `TJ-${String(Number(before.next_code_seq) + 2).padStart(4, "0")}`);
+  assert.equal(viaWeb.code, `RD-${String(Number(before.next_code_seq) + 2).padStart(4, "0")}`);
   // 10 creazioni contemporanee: 10 codici diversi e consecutivi.
   const parallel = await Promise.all(
     Array.from({ length: 10 }, (_, i) => app.createUseCase({ workspaceId: ids.wsA, title: `Parallela ${i} ${suffix}`, source: "slack", status: "proposed" })),
@@ -370,7 +370,7 @@ test("ranking dopo la risposta: se fallisce la segnalazione resta Ricevuta; stat
   assert.equal(row.reviewed_by, null);
   assert.equal(row.custom_scores, null);
   assert.equal(row.source, "claude_mcp");
-  assert.match(String(row.code), /^TJ-\d{4}$/);
+  assert.match(String(row.code), /^RD-\d{4}$/);
   assert.ok(row.status_changed_at, "nuova segnalazione con data di stato");
   // Log: nessun token, nessun testo della segnalazione, nessuna email.
   const text = logs.join("\n");

@@ -6,7 +6,7 @@
  *  1. validazione del payload (zod v1 di external-submission.ts, sostituibile);
  *  2. presa in carico idempotente per (workspace, principal_key, idempotencyKey);
  *  3. creazione dello use case con l'id prenotato sulla presa in carico, in modo
- *     idempotente; il codice del workspace (es. TJ-0012) si assegna prima di
+ *     idempotente; il codice del workspace (es. RD-0012) si assegna prima di
  *     rispondere;
  *  4. chiusura recintata della presa in carico (solo il tentativo che la possiede);
  *  5. auto-ranking AI e notifiche affidati allo scheduler (`after()` nelle rotte),

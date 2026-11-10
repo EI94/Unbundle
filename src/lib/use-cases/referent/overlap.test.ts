@@ -59,7 +59,7 @@ test("persona: le righe del database", () => {
 
 test("persona: la SQL legge solo account, appartenenze e contatti; niente corsi, niente ordinamenti o conteggi per persona", () => {
   const people = contactPeopleSql(WS, [R1, R2]);
-  const byEmail = emailPersonSql(WS, "Federico@TopJet.it");
+  const byEmail = emailPersonSql(WS, "Fabio@Rondine.it");
   for (const s of [people, byEmail]) {
     assert.doesNotMatch(s.text, /learning_/i, "nessun dato dei corsi");
     assert.doesNotMatch(s.text, /\bORDER\s+BY\b|\bGROUP\s+BY\b|count\(/i);
@@ -67,7 +67,7 @@ test("persona: la SQL legge solo account, appartenenze e contatti; niente corsi,
     assert.match(s.text, /FROM memberships pm[\s\S]*workspace_memberships pwm/, "prima l'organizzazione, poi il workspace");
   }
   assert.match(people.text, /c\.user_id IS NOT NULL AND pu\.id = c\.user_id/, "il collegamento vince sull'email");
-  assert.ok(byEmail.params.includes("Federico@TopJet.it"));
+  assert.ok(byEmail.params.includes("Fabio@Rondine.it"));
   assert.throws(() => contactPeopleSql("x", [R1]));
   assert.throws(() => contactPeopleSql(WS, ["x"]));
 });
@@ -105,8 +105,8 @@ test("link alla scheda: solo la forma di cardLink", () => {
 const EXPIRES = new Date("2026-11-26T10:00:00Z");
 const richiesta = (cardLinkValue: string | null): ReferentEmailInput => ({
   template: "richiesta",
-  company: "TopJet",
-  useCase: { code: "TJ-0004", title: "Fatture fornitori" },
+  company: "Rondine",
+  useCase: { code: "RD-0004", title: "Fatture fornitori" },
   requesterName: "Carlo Esempio",
   questions: 2,
   message: null,
@@ -131,7 +131,7 @@ test("email: un referente revisore ha il link personale e in più la riga con il
 
 test("email: promemoria a un referente revisore, uno e più use case", () => {
   const entry = (kind: "primo" | "ultimo" | "manuale" | "nuove", card: string | null) => ({
-    useCase: { code: "TJ-0004", title: "Fatture fornitori" },
+    useCase: { code: "RD-0004", title: "Fatture fornitori" },
     requesterName: "Carlo Esempio",
     kind,
     openQuestions: 2,
@@ -141,12 +141,12 @@ test("email: promemoria a un referente revisore, uno e più use case", () => {
     cardLink: card,
   });
   for (const kind of ["primo", "ultimo", "manuale", "nuove"] as const) {
-    const one = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry(kind, CARD)], replyToKnown: true, replyName: "Carlo Esempio" });
+    const one = renderReferentEmail({ template: "promemoria", company: "Rondine", entries: [entry(kind, CARD)], replyToKnown: true, replyName: "Carlo Esempio" });
     assert.ok(one.text.includes(TEAM_ACCESS_LINE) && one.text.includes(CARD), kind);
-    const none = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry(kind, null)], replyToKnown: true, replyName: "Carlo Esempio" });
+    const none = renderReferentEmail({ template: "promemoria", company: "Rondine", entries: [entry(kind, null)], replyToKnown: true, replyName: "Carlo Esempio" });
     assert.ok(!none.text.includes("/dashboard/"), kind);
   }
-  const many = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry("primo", CARD), entry("ultimo", CARD)], replyToKnown: false, replyName: null });
+  const many = renderReferentEmail({ template: "promemoria", company: "Rondine", entries: [entry("primo", CARD), entry("ultimo", CARD)], replyToKnown: false, replyName: null });
   assert.ok(many.text.includes(TEAM_ACCESS_LINE_MANY));
   assert.equal(many.text.split(CARD).length - 1 >= 2, true, "un link alla scheda per voce");
 });
@@ -160,7 +160,7 @@ function req(over: Partial<ReferentRequestFacts> = {}): ReferentRequestFacts {
   return {
     id: R1,
     useCaseId: UC,
-    useCase: { code: "TJ-0004", title: "Fatture fornitori" },
+    useCase: { code: "RD-0004", title: "Fatture fornitori" },
     status: "inviata",
     live: true,
     expiresAt: new Date(NOW.getTime() + 20 * 86_400_000),
@@ -178,11 +178,11 @@ function req(over: Partial<ReferentRequestFacts> = {}): ReferentRequestFacts {
 }
 function facts(teamAccess: boolean | undefined, requests = [req()]): ReferentDeliveryFacts {
   return {
-    company: "TopJet",
+    company: "Rondine",
     featureOn: true,
     subprocessorsAuthorized: true,
-    recipient: { email: "federico@topjet.test", active: true, anonymized: false, linkedUserIsLateralSpace: false, teamAccess },
-    replyTo: "claudio@topjet.test",
+    recipient: { email: "fabio@rondine.test", active: true, anonymized: false, linkedUserIsLateralSpace: false, teamAccess },
+    replyTo: "carlo@rondine.test",
     requests,
     contactRemindedToday: false,
   };
@@ -235,8 +235,8 @@ function item(over: Partial<PublicItemRow>): PublicItemRow {
 function rows(items: PublicItemRow[], status: PublicRows["request"]["status"] = "inviata"): PublicRows {
   return {
     request: { status, expiresAt: EXPIRES, privacyAcceptedAt: NOW, privacyNoticeVersion: "x", requesterName: "Carlo Esempio", message: null },
-    company: "TopJet",
-    useCase: { code: "TJ-0004", title: "Fatture fornitori" },
+    company: "Rondine",
+    useCase: { code: "RD-0004", title: "Fatture fornitori" },
     items,
     privacyContact: "privacy@example.test",
     clientMode: false,

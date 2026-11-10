@@ -8,7 +8,7 @@ import { enableTsxImports } from "./detail/referent/tsx-test-loader.ts";
 // «Cosa serve» come una lista sola (rilascio 4, spec §13): la vista resa sul server da un elenco
 // sintetico, senza database. Ogni requisito una volta sotto chi deve muoversi (per organizzazione,
 // mai per persona), cinque righe in vista per gruppo, «Già a posto» chiuso, la linea del tempo dei
-// prossimi passi accanto, i primi cinque in vista. Le prove nella pagina vera, con i dati di TopJet
+// prossimi passi accanto, i primi cinque in vista. Le prove nella pagina vera, con i dati di Rondine
 // (prova), sono quelle del banco di prova (probe-r4b) e di needs-render.integration.test.ts.
 
 let board: typeof import("./needs-board.tsx");

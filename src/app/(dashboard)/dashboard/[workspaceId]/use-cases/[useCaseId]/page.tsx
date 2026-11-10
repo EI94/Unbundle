@@ -67,7 +67,7 @@ async function duplicateCandidatesOf(workspaceId: string) {
  * I titoli della guida del connettore del workspace, letta una volta (§6.2): le aree (l'elenco
  * da cui si sceglie l'area, se c'è; altrimenti l'area resta un testo libero), gli strumenti e gli
  * agenti del catalogo, per mostrare i titoli e mai le chiavi. Si salva sempre l'id. (Rilascio 4)
- * Dalla stessa riga anche il nome del cliente del connettore («TopJet e Aliserio»), per le parole
+ * Dalla stessa riga anche il nome del cliente del connettore («Rondine e Ferralba»), per le parole
  * dell'azienda di «Chiedi al referente»; null senza.
  */
 async function guideLabelsOf(workspaceId: string): Promise<{ labels: GuideLabels; displayName: string | null }> {

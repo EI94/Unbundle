@@ -104,9 +104,9 @@ test("righe: segnale, dossier, use case", () => {
   assert.equal(dossierEntry(item, false).context, "Casi d'uso");
   assert.equal(dossierEntry({ ...item, context: "XX-0012 · Smistamento" }, false).context, "XX-0012 · Smistamento");
   assert.equal(dossierEntry(item, true).unread, true);
-  const n = noticeEntry(WS, { id: ID(3), useCaseId: UC, code: "TJ-0004", title: "Fatture fornitori", kind: "risposte", answers: 2, unknowns: 0, documents: 0, followUp: null, lastEventAt: new Date("2026-10-27T11:00:00.456Z"), readAt: null }, NOW);
+  const n = noticeEntry(WS, { id: ID(3), useCaseId: UC, code: "RD-0004", title: "Fatture fornitori", kind: "risposte", answers: 2, unknowns: 0, documents: 0, followUp: null, lastEventAt: new Date("2026-10-27T11:00:00.456Z"), readAt: null }, NOW);
   assert.deepEqual(n.ref, { source: "use_case", id: ID(3), at: "2026-10-27T11:00:00.456Z" });
-  assert.equal(n.context, "TJ-0004 · Fatture fornitori");
+  assert.equal(n.context, "RD-0004 · Fatture fornitori");
   assert.equal(n.title, "Risposte arrivate");
   assert.equal(n.description, "2 risposte da verificare in «Cosa serve».");
   assert.equal(n.href, `/dashboard/${WS}/use-cases/${UC}?capitolo=cosa-serve`);
@@ -115,17 +115,17 @@ test("righe: segnale, dossier, use case", () => {
 
 test("(0025) «Pronto da avviare» porta a «Realizzazione», «Autorizza i fornitori» a Impostazioni, «Nessuna risposta» (senza_risposta) a «Richieste inviate»; risposte, documenti e informazioni complete a «Cosa serve»", () => {
   const row = (kind: Parameters<typeof noticeEntry>[1]["kind"]) =>
-    noticeEntry(WS, { id: ID(4), useCaseId: UC, code: "TJ-0004", title: "Fatture fornitori", kind, answers: 0, unknowns: 0, documents: 0, followUp: kind === "senza_risposta" ? "scaduta" : null, lastEventAt: new Date("2026-10-27T11:00:00.456Z"), readAt: null }, NOW);
+    noticeEntry(WS, { id: ID(4), useCaseId: UC, code: "RD-0004", title: "Fatture fornitori", kind, answers: 0, unknowns: 0, documents: 0, followUp: kind === "senza_risposta" ? "scaduta" : null, lastEventAt: new Date("2026-10-27T11:00:00.456Z"), readAt: null }, NOW);
   const ready = row("pronto");
   assert.deepEqual([ready.context, ready.title, ready.description, ready.href], [
-    "TJ-0004 · Fatture fornitori",
+    "RD-0004 · Fatture fornitori",
     "Pronto da avviare",
     "Non manca niente dal cliente: si può avviare la realizzazione.",
     `/dashboard/${WS}/use-cases/${UC}?capitolo=realizzazione`,
   ]);
   const suppliers = row("fornitori");
   assert.deepEqual([suppliers.context, suppliers.title, suppliers.description, suppliers.href], [
-    "TJ-0004 · Fatture fornitori",
+    "RD-0004 · Fatture fornitori",
     "Autorizza i fornitori",
     "Serve il tuo ok sui sub-responsabili, in Impostazioni, per chiedere le informazioni di questo use case.",
     `/dashboard/${WS}/settings#sub-responsabili`,

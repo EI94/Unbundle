@@ -7,8 +7,8 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { isWorkingDay, romeDate, romeLocalToUtc, workingDaysBetween } from "../../uc/calendar.ts";
 
 // Ruoli che si sovrappongono (SPEC Parte 3, §P3.9) sul database di prova, una persona per caso:
-// - corsista e referente (ruolo learner), contributore e referente, revisore e referente (Federico,
-//   function_lead), chi chiede a se stesso, revisore iscritto anche a un corso (Claudio), e un
+// - corsista e referente (ruolo learner), contributore e referente, revisore e referente (Fabio,
+//   function_lead), chi chiede a se stesso, revisore iscritto anche a un corso (Carlo), e un
 //   referente senza account (Mario);
 // - che cosa vede ciascuno nel pannello della scheda e in «Raccolta informazioni», nella pagina
 //   pubblica, nella campanella e nelle email; che una risposta del team dalla scheda ferma i promemoria
@@ -54,25 +54,25 @@ const ids = {
   org: randomUUID(),
   ws: randomUUID(),
   builder: randomUUID(),
-  claudio: randomUUID(),
-  federico: randomUUID(),
+  carlo: randomUUID(),
+  fabio: randomUUID(),
   corsista: randomUUID(),
   contrib: randomUUID(),
   program: randomUUID(),
 };
-type Person = "builder" | "claudio" | "federico" | "corsista" | "contrib";
-const PEOPLE: Person[] = ["builder", "claudio", "federico", "corsista", "contrib"];
-const ROLE: Record<Person, string> = { builder: "function_lead", claudio: "function_lead", federico: "function_lead", corsista: "learner", contrib: "contributor" };
+type Person = "builder" | "carlo" | "fabio" | "corsista" | "contrib";
+const PEOPLE: Person[] = ["builder", "carlo", "fabio", "corsista", "contrib"];
+const ROLE: Record<Person, string> = { builder: "function_lead", carlo: "function_lead", fabio: "function_lead", corsista: "learner", contrib: "contributor" };
 const emails: Record<Person, string> = {
-  builder: `giulia.builder.${suffix}@topjet.test`,
-  claudio: `claudio.${suffix}@topjet.test`,
-  federico: `federico.${suffix}@topjet.test`,
-  corsista: `corsista.${suffix}@topjet.test`,
-  contrib: `contrib.${suffix}@topjet.test`,
+  builder: `giulia.builder.${suffix}@rondine.test`,
+  carlo: `carlo.${suffix}@rondine.test`,
+  fabio: `fabio.${suffix}@rondine.test`,
+  corsista: `corsista.${suffix}@rondine.test`,
+  contrib: `contrib.${suffix}@rondine.test`,
 };
-const MARIO = `mario.rossi.${suffix}@topjet.test`;
+const MARIO = `mario.rossi.${suffix}@rondine.test`;
 const COURSE_TITLE = `Corso AI generativa ${suffix}`;
-const contacts = { builder: randomUUID(), claudio: randomUUID(), federico: randomUUID(), corsista: randomUUID(), contrib: randomUUID(), mario: randomUUID() };
+const contacts = { builder: randomUUID(), carlo: randomUUID(), fabio: randomUUID(), corsista: randomUUID(), contrib: randomUUID(), mario: randomUUID() };
 const cards = {
   fed: randomUUID(),
   learner: randomUUID(),
@@ -87,7 +87,7 @@ const cards = {
   late2: randomUUID(),
 };
 const LATE = { link: randomUUID(), email: randomUUID() };
-const LATE_EMAILS = { link: `ritardo.${suffix}@topjet.test`, email: `ritardo.due.${suffix}@topjet.test` };
+const LATE_EMAILS = { link: `ritardo.${suffix}@rondine.test`, email: `ritardo.due.${suffix}@rondine.test` };
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-ruoli-"));
 
 const ENV = {
@@ -220,7 +220,7 @@ before(async () => {
   bell = await import("../../notifications/bell-data.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione ruoli', $2)`, [ids.org, `hub-ruoli-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet ruoli')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine ruoli')`, [ids.ws, ids.org]);
   for (const person of PEOPLE) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, ids[person], ROLE[person]]);
@@ -250,24 +250,24 @@ after(async () => {
   await q(`DELETE FROM users WHERE id = ANY($1::uuid[])`, [PEOPLE.map((p) => ids[p])]);
 });
 
-test("preparazione: autorizzazione, schede con le domande, referenti, il corso di Claudio", opts, async () => {
+test("preparazione: autorizzazione, schede con le domande, referenti, il corso di Carlo", opts, async () => {
   await q(
     `INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role) VALUES ($1::uuid, '2026-10', 'Autorizzazione di prova', $2::uuid, 'function_lead')`,
     [ids.ws, ids.builder],
   );
   for (const card of Object.values(cards)) ok(await referents.prepareReferentQuestions(as("builder"), card), "Prepara");
-  // I referenti: lo stesso elenco dei dossier. Claudio collegato al suo account, gli altri solo per email.
+  // I referenti: lo stesso elenco dei dossier. Carlo collegato al suo account, gli altri solo per email.
   for (const person of PEOPLE) {
     await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email, user_id) VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid)`, [
       contacts[person],
       ids.ws,
       `Persona ${person}`,
       emails[person],
-      person === "claudio" ? ids.claudio : null,
+      person === "carlo" ? ids.carlo : null,
     ]);
   }
   await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $2::uuid, 'Mario Rossi', $3)`, [contacts.mario, ids.ws, MARIO]);
-  // Claudio è revisore e partecipa anche al corso.
+  // Carlo è revisore e partecipa anche al corso.
   await q(
     `INSERT INTO learning_programs (id, workspace_id, family_key, title, content_version, pack_hash, private_pack, visibility_policy, retention_days, published_by)
      VALUES ($1::uuid, $2::uuid, 'ai-generativa', $3, 'v1', $4, '{}'::jsonb, 'solo-partecipante', 365, $5::uuid)`,
@@ -277,7 +277,7 @@ test("preparazione: autorizzazione, schede con le domande, referenti, il corso d
     `INSERT INTO learning_sessions (workspace_id, program_id, module_id, cohort_id, starts_at, ends_at) VALUES ($1::uuid, $2::uuid, 'm1', 'c1', now(), now() + interval '2 hours')`,
     [ids.ws, ids.program],
   );
-  for (const person of ["claudio", "corsista"] as const) {
+  for (const person of ["carlo", "corsista"] as const) {
     await q(`INSERT INTO learning_enrollments (workspace_id, program_id, user_id, module_id, cohort_id) VALUES ($1::uuid, $2::uuid, $3::uuid, 'm1', 'c1')`, [ids.ws, ids.program, ids[person]]);
   }
 });
@@ -291,18 +291,18 @@ test("scheda: vede solo chi ha il ruolo da revisore; il referente non dà access
   const forBuilder = await panelFor("builder", cards.fed);
   assert.ok(forBuilder?.available);
   const option = (panel: typeof forBuilder, contactId: string) => panel!.contacts.find((c) => c.id === contactId)!;
-  assert.deepEqual([option(forBuilder, contacts.federico).team, option(forBuilder, contacts.federico).selectable], [true, true], "un revisore si può scegliere, «Fa parte del team»");
-  assert.equal(option(forBuilder, contacts.claudio).team, true, "collegato al suo account");
+  assert.deepEqual([option(forBuilder, contacts.fabio).team, option(forBuilder, contacts.fabio).selectable], [true, true], "un revisore si può scegliere, «Fa parte del team»");
+  assert.equal(option(forBuilder, contacts.carlo).team, true, "collegato al suo account");
   for (const c of [contacts.corsista, contacts.contrib, contacts.mario]) assert.deepEqual([option(forBuilder, c).team, option(forBuilder, c).selectable], [false, true]);
   assert.deepEqual([option(forBuilder, contacts.builder).reason, option(forBuilder, contacts.builder).selectable], ["sei_tu", false], "chi guarda non chiede a se stesso");
-  // Claudio, revisore iscritto al corso: vede tutto quello che vede un revisore, e niente del corso.
-  const forClaudio = await panelFor("claudio", cards.fed);
+  // Carlo, revisore iscritto al corso: vede tutto quello che vede un revisore, e niente del corso.
+  const forClaudio = await panelFor("carlo", cards.fed);
   assert.ok(forClaudio?.available);
   assert.deepEqual([option(forClaudio, contacts.builder).reason, option(forClaudio, contacts.builder).team], [null, true]);
-  assert.equal(option(forClaudio, contacts.claudio).reason, "sei_tu");
-  const json = JSON.stringify([forClaudio, forBuilder, await progress.listInfoProgress(ids.ws, viewer("claudio"))]);
+  assert.equal(option(forClaudio, contacts.carlo).reason, "sei_tu");
+  const json = JSON.stringify([forClaudio, forBuilder, await progress.listInfoProgress(ids.ws, viewer("carlo"))]);
   for (const word of [COURSE_TITLE, "learning", "Formazione", ids.program]) assert.ok(!json.includes(word), word);
-  assert.ok(await progress.listInfoProgress(ids.ws, viewer("claudio")));
+  assert.ok(await progress.listInfoProgress(ids.ws, viewer("carlo")));
 });
 
 test("chiedere a se stesso: niente email, risponde dalla scheda; chiedere a un altro revisore si può", opts, async () => {
@@ -311,10 +311,10 @@ test("chiedere a se stesso: niente email, risponde dalla scheda; chiedere a un a
   assert.equal(own.ok, false);
   if (!own.ok) assert.equal(own.error, "referente_sei_tu");
   const fresh = await referents.sendReferentRequest(
-    as("claudio"),
+    as("carlo"),
     cards.self,
-    { contact: { kind: "nuovo", displayName: "Claudio di nuovo", email: ` ${emails.claudio.toUpperCase()} ` }, needIds: [n0] },
-    { env: ENV, requester: requester("claudio") },
+    { contact: { kind: "nuovo", displayName: "Carlo di nuovo", email: ` ${emails.carlo.toUpperCase()} ` }, needIds: [n0] },
+    { env: ENV, requester: requester("carlo") },
   );
   assert.equal(fresh.ok, false);
   if (!fresh.ok) {
@@ -329,9 +329,9 @@ test("chiedere a se stesso: niente email, risponde dalla scheda; chiedere a un a
 const flow = { fed: { requestId: "", token: "" }, learner: { requestId: "", token: "" }, contrib: { requestId: "", token: "" }, self: { requestId: "", token: "" }, mario: { requestId: "", token: "" } };
 
 test("email al referente: il link alla scheda solo a un revisore con l'email verificata, ricontrollato a ogni invio", opts, async () => {
-  const fed = await ask("builder", cards.fed, contacts.federico, (await needsOf(cards.fed)).slice(0, 2));
+  const fed = await ask("builder", cards.fed, contacts.fabio, (await needsOf(cards.fed)).slice(0, 2));
   flow.fed = { requestId: fed.requestId, token: fed.token };
-  assert.equal(fed.mail.to, emails.federico);
+  assert.equal(fed.mail.to, emails.fabio);
   assert.ok(fed.mail.text.includes(`/rispondi/${fed.token}`), "il link personale resta");
   assert.ok(fed.mail.text.includes(TEAM_LINE));
   assert.ok(fed.mail.text.includes(cardUrl(cards.fed)));
@@ -342,33 +342,33 @@ test("email al referente: il link alla scheda solo a un revisore con l'email ver
     assert.ok(!sent.mail.text.includes(TEAM_LINE), key);
     assert.ok(!sent.mail.html.includes("/dashboard/"), key);
   }
-  const mario = await ask("claudio", cards.mario, contacts.mario, (await needsOf(cards.mario)).slice(0, 2));
+  const mario = await ask("carlo", cards.mario, contacts.mario, (await needsOf(cards.mario)).slice(0, 2));
   flow.mario = { requestId: mario.requestId, token: mario.token };
   assert.ok(!mario.mail.text.includes("/dashboard/"), "senza account: nessun link alla dashboard");
-  // Claudio chiede a Giulia (un'altra revisore): si può, e la sua email ha il link alla scheda.
-  const self = await ask("claudio", cards.self, contacts.builder, (await needsOf(cards.self)).slice(0, 1));
+  // Carlo chiede a Giulia (un'altra revisore): si può, e la sua email ha il link alla scheda.
+  const self = await ask("carlo", cards.self, contacts.builder, (await needsOf(cards.self)).slice(0, 1));
   flow.self = { requestId: self.requestId, token: self.token };
   assert.ok(self.mail.text.includes(cardUrl(cards.self)));
-  // Federico non è più revisore: la prossima email non ha più la riga, il selettore non dice più «Fa parte del team».
-  await setRole("federico", "contributor");
+  // Fabio non è più revisore: la prossima email non ha più la riga, il selettore non dice più «Fa parte del team».
+  await setRole("fabio", "contributor");
   try {
-    const later = await ask("builder", cards.recheck, contacts.federico, (await needsOf(cards.recheck)).slice(0, 1));
+    const later = await ask("builder", cards.recheck, contacts.fabio, (await needsOf(cards.recheck)).slice(0, 1));
     assert.ok(!later.mail.text.includes("/dashboard/"));
     assert.ok(!later.mail.text.includes(TEAM_LINE));
     const panel = await panelFor("builder", cards.recheck);
-    assert.equal(panel!.contacts.find((c) => c.id === contacts.federico)!.team, false);
+    assert.equal(panel!.contacts.find((c) => c.id === contacts.fabio)!.team, false);
   } finally {
-    await setRole("federico", "function_lead");
+    await setRole("fabio", "function_lead");
   }
   // Un'email non verificata non porta il link nemmeno a un revisore.
-  await q(`UPDATE users SET email_verified = NULL WHERE id = $1::uuid`, [ids.federico]);
+  await q(`UPDATE users SET email_verified = NULL WHERE id = $1::uuid`, [ids.fabio]);
   try {
     const { getAppUcExecutor } = await import("../../db/uc-executor.ts");
     const base = await import("../../db/queries/use-case-referent-base.ts");
-    const person = await base.readReferentPerson(await getAppUcExecutor(), ids.ws, contacts.federico);
+    const person = await base.readReferentPerson(await getAppUcExecutor(), ids.ws, contacts.fabio);
     assert.deepEqual(person, { userId: null, reviewer: false, teamAccess: false, member: false, accountNotice: false }, "senza email verificata il contatto non porta all'account");
   } finally {
-    await q(`UPDATE users SET email_verified = now() WHERE id = $1::uuid`, [ids.federico]);
+    await q(`UPDATE users SET email_verified = now() WHERE id = $1::uuid`, [ids.fabio]);
   }
 });
 
@@ -385,17 +385,17 @@ test("la pagina pubblica è la stessa per tutti: nessuna sessione, nessun rimand
 test("risposte dal link: chi risponde non riceve la notifica di quello che ha fatto; corsisti e contributori mai", opts, async () => {
   const [fed0] = await needsOf(cards.fed);
   await answerByLink(flow.fed.token, fed0, "Circa venti volte al giorno.");
-  assert.deepEqual((await bellRows(cards.fed)).map((r) => r.who), sorted("builder", "claudio"), "Federico ha risposto: non riceve la sua notifica");
+  assert.deepEqual((await bellRows(cards.fed)).map((r) => r.who), sorted("builder", "carlo"), "Fabio ha risposto: non riceve la sua notifica");
   const [l0] = await needsOf(cards.learner);
   await answerByLink(flow.learner.token, l0, "Una volta alla settimana.");
-  assert.deepEqual((await bellRows(cards.learner)).map((r) => r.who), sorted("builder", "claudio", "federico"));
+  assert.deepEqual((await bellRows(cards.learner)).map((r) => r.who), sorted("builder", "carlo", "fabio"));
   const [c0] = await needsOf(cards.contrib);
   await answerByLink(flow.contrib.token, c0, "Due ore ogni volta.");
-  assert.deepEqual((await bellRows(cards.contrib)).map((r) => r.who), sorted("builder", "claudio", "federico"));
-  // Giulia, revisora e referente di Claudio, risponde dal link: Claudio e Federico sì, lei no.
+  assert.deepEqual((await bellRows(cards.contrib)).map((r) => r.who), sorted("builder", "carlo", "fabio"));
+  // Giulia, revisora e referente di Carlo, risponde dal link: Carlo e Fabio sì, lei no.
   const [s0] = await needsOf(cards.self);
   await answerByLink(flow.self.token, s0, "Lo facciamo in tre.");
-  assert.deepEqual((await bellRows(cards.self)).map((r) => r.who), sorted("claudio", "federico"));
+  assert.deepEqual((await bellRows(cards.self)).map((r) => r.who), sorted("carlo", "fabio"));
   // Nessuna riga della campanella né email a chi chiede per corsisti e contributori, in nessun caso.
   const never = [ids.corsista, ids.contrib];
   assert.equal((await q(`SELECT 1 FROM use_case_notifications WHERE recipient_user_id = ANY($1::uuid[])`, [never])).length, 0);
@@ -403,46 +403,46 @@ test("risposte dal link: chi risponde non riceve la notifica di quello che ha fa
   // La campanella: con il ruolo di adesso.
   const payload = (person: Person, role = ROLE[person]) => bell.loadBellPayload({ workspaceId: ids.ws, userId: ids[person], role, useCaseHub: true, env: ENV });
   for (const person of ["corsista", "contrib"] as const) assert.equal((await payload(person)).entries.filter((e) => e.source === "use_case").length, 0, person);
-  const fedBell = (await payload("federico")).entries.filter((e) => e.source === "use_case").map((e) => e.href ?? "");
+  const fedBell = (await payload("fabio")).entries.filter((e) => e.source === "use_case").map((e) => e.href ?? "");
   assert.ok(fedBell.some((h) => h.includes(cards.learner)) && fedBell.some((h) => h.includes(cards.contrib)));
   assert.ok(!fedBell.some((h) => h.includes(cards.fed)), "la sua risposta non gli torna nella campanella");
-  const claudioBell = (await payload("claudio")).entries.filter((e) => e.source === "use_case");
+  const claudioBell = (await payload("carlo")).entries.filter((e) => e.source === "use_case");
   assert.ok(claudioBell.length >= 4, "il revisore iscritto al corso riceve tutto come gli altri revisori");
   assert.ok(!JSON.stringify(claudioBell).includes(COURSE_TITLE));
 });
 
 test("email a chi ha chiesto: solo a chi è ancora revisore, mai a chi ha risposto", opts, async () => {
-  // Giulia ha chiesto a Federico: le arriva l'avviso, senza il nome o l'email di Federico.
+  // Giulia ha chiesto a Fabio: le arriva l'avviso, senza il nome o l'email di Fabio.
   const mailer = fakeMailer();
   await notifications.dispatchRequesterAlerts({ recipientUserId: ids.builder, env: ENV, now: V, mailer, sendIntervalMs: 0 });
   const toBuilder = mailer.outbox.filter((m) => m.to === emails.builder);
   assert.equal(toBuilder.length, 1);
   assert.ok(toBuilder[0].text.includes(cardUrl(cards.fed)));
-  for (const leak of [emails.federico, "Persona federico", "Circa venti volte"]) assert.ok(!toBuilder[0].text.includes(leak), leak);
-  // Giulia ha risposto a Claudio dal link: l'avviso è per Claudio, non per lei (nessun avviso del suo gesto).
+  for (const leak of [emails.fabio, "Persona fabio", "Circa venti volte"]) assert.ok(!toBuilder[0].text.includes(leak), leak);
+  // Giulia ha risposto a Carlo dal link: l'avviso è per Carlo, non per lei (nessun avviso del suo gesto).
   const self = await q(`SELECT e.recipient_user_id::text AS who FROM use_case_requester_email_items i JOIN use_case_requester_emails e ON e.id = i.email_id WHERE i.request_id = $1::uuid`, [flow.self.requestId]);
-  assert.deepEqual(self.map((r) => r.who), [ids.claudio]);
-  // Claudio non è più revisore (resta solo nel corso): l'avviso non parte.
-  await setRole("claudio", "learner");
+  assert.deepEqual(self.map((r) => r.who), [ids.carlo]);
+  // Carlo non è più revisore (resta solo nel corso): l'avviso non parte.
+  await setRole("carlo", "learner");
   try {
     const m2 = fakeMailer();
-    const summary = await notifications.dispatchRequesterAlerts({ recipientUserId: ids.claudio, env: ENV, now: V, mailer: m2, sendIntervalMs: 0 });
+    const summary = await notifications.dispatchRequesterAlerts({ recipientUserId: ids.carlo, env: ENV, now: V, mailer: m2, sendIntervalMs: 0 });
     assert.equal(m2.outbox.length, 0, JSON.stringify(summary));
-    const [row] = await q(`SELECT status, cancel_reason FROM use_case_requester_emails WHERE recipient_user_id = $1::uuid AND workspace_id = $2::uuid`, [ids.claudio, ids.ws]);
+    const [row] = await q(`SELECT status, cancel_reason FROM use_case_requester_emails WHERE recipient_user_id = $1::uuid AND workspace_id = $2::uuid`, [ids.carlo, ids.ws]);
     assert.deepEqual([row?.status, row?.cancel_reason], ["annullata", "destinatario_non_valido"]);
-    const asLearner = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.claudio, role: "learner", useCaseHub: true, env: ENV });
+    const asLearner = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.carlo, role: "learner", useCaseHub: true, env: ENV });
     assert.equal(asLearner.entries.filter((e) => e.source === "use_case").length, 0, "come corsista non vede le righe degli use case");
-    assert.equal(await panelFor("claudio", cards.mario, "learner"), null);
+    assert.equal(await panelFor("carlo", cards.mario, "learner"), null);
   } finally {
-    await setRole("claudio", "function_lead");
+    await setRole("carlo", "function_lead");
   }
 });
 
 test("le due strade si incontrano: una risposta dalla scheda ferma il promemoria di quella domanda e chiude la richiesta", opts, async () => {
   const [m0, m1] = await needsOf(cards.mario);
   assert.deepEqual([await statusOf(m0), await statusOf(m1)], ["chiesta", "chiesta"]);
-  // Federico (revisore) risponde dalla scheda alla prima domanda.
-  ok(await referents.addReviewerAnswer(as("federico"), cards.mario, m0, { text: "Trenta al mese, lo sappiamo noi." }), "risposta del team");
+  // Fabio (revisore) risponde dalla scheda alla prima domanda.
+  ok(await referents.addReviewerAnswer(as("fabio"), cards.mario, m0, { text: "Trenta al mese, lo sappiamo noi." }), "risposta del team");
   assert.equal(await statusOf(m0), "in_verifica");
   let [req] = await q(`SELECT status FROM use_case_referent_requests WHERE id = $1::uuid`, [flow.mario.requestId]);
   assert.equal(req.status, "inviata", "resta una domanda");
@@ -516,8 +516,8 @@ async function alertRecipients(requestId: string) {
 }
 
 test("D-B21: dopo l'ultimo promemoria «Nessuna risposta» non arriva al revisore referente; gli altri revisori e chi ha chiesto sì", opts, async () => {
-  // Giulia chiede a Federico (revisore): dopo 7 giorni lavorativi parte l'ultimo promemoria.
-  const sent = await ask("builder", cards.silent, contacts.federico, (await needsOf(cards.silent)).slice(0, 2));
+  // Giulia chiede a Fabio (revisore): dopo 7 giorni lavorativi parte l'ultimo promemoria.
+  const sent = await ask("builder", cards.silent, contacts.fabio, (await needsOf(cards.silent)).slice(0, 2));
   await q(
     `UPDATE use_case_referent_requests SET created_at = $2::timestamptz - interval '1 minute', sent_at = $2::timestamptz, last_email_at = $3::timestamptz, reminder_count = 1,
        expires_at = $2::timestamptz + interval '30 days' WHERE id = $1::uuid`,
@@ -526,36 +526,36 @@ test("D-B21: dopo l'ultimo promemoria «Nessuna risposta» non arriva al revisor
   const mailer = fakeMailer();
   const counts = await referents.runReferentCron({ env: ENV, now: V, mailer });
   assert.equal(counts.errors, 0, JSON.stringify(counts));
-  const last = mailer.outbox.filter((m) => m.to === emails.federico);
+  const last = mailer.outbox.filter((m) => m.to === emails.fabio);
   assert.equal(last.length, 1, "l'ultimo promemoria parte comunque");
   assert.match(last[0].subject, /^[^:]+: ultimo promemoria/);
   const [req] = await q(`SELECT reminder_count FROM use_case_referent_requests WHERE id = $1::uuid`, [sent.requestId]);
   assert.equal(Number(req.reminder_count), 2);
-  // La campanella: Giulia (chi ha chiesto) e Claudio sì; Federico, che non ha risposto, no.
+  // La campanella: Giulia (chi ha chiesto) e Carlo sì; Fabio, che non ha risposto, no.
   const rows = await silentRows(cards.silent);
-  assert.deepEqual(rows.map((r) => r.who), sorted("builder", "claudio"));
+  assert.deepEqual(rows.map((r) => r.who), sorted("builder", "carlo"));
   assert.ok(rows.every((r) => r.follow_up === "ultimo_promemoria"));
-  // L'avviso per email va solo a chi ha chiesto, mai a Federico.
+  // L'avviso per email va solo a chi ha chiesto, mai a Fabio.
   assert.deepEqual(await alertRecipients(sent.requestId), [{ who: ids.builder, followUp: "ultimo_promemoria" }]);
-  const toFederico = await q(`SELECT 1 FROM use_case_requester_emails WHERE recipient_user_id = $1::uuid AND workspace_id = $2::uuid`, [ids.federico, ids.ws]);
-  assert.equal(toFederico.length, 0, "nessuna email a chi ha chiesto per Federico");
-  // Nella campanella di Federico la riga non c'è; in quella di Claudio sì.
-  const fedBell = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.federico, role: "function_lead", useCaseHub: true, env: ENV });
+  const toFederico = await q(`SELECT 1 FROM use_case_requester_emails WHERE recipient_user_id = $1::uuid AND workspace_id = $2::uuid`, [ids.fabio, ids.ws]);
+  assert.equal(toFederico.length, 0, "nessuna email a chi ha chiesto per Fabio");
+  // Nella campanella di Fabio la riga non c'è; in quella di Carlo sì.
+  const fedBell = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.fabio, role: "function_lead", useCaseHub: true, env: ENV });
   assert.ok(!fedBell.entries.some((e) => e.source === "use_case" && (e.href ?? "").includes(cards.silent)));
-  const claudioBell = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.claudio, role: "function_lead", useCaseHub: true, env: ENV });
+  const claudioBell = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.carlo, role: "function_lead", useCaseHub: true, env: ENV });
   assert.ok(claudioBell.entries.some((e) => e.source === "use_case" && (e.href ?? "").includes(cards.silent)));
 });
 
 test("D-B21: alla scadenza «Nessuna risposta» non arriva al revisore referente (collegato al suo account); gli altri revisori e chi ha chiesto sì", opts, async () => {
-  // Giulia chiede a Claudio (contatto collegato al suo account): il link scade senza risposta.
-  const sent = await ask("builder", cards.expired, contacts.claudio, (await needsOf(cards.expired)).slice(0, 2));
+  // Giulia chiede a Carlo (contatto collegato al suo account): il link scade senza risposta.
+  const sent = await ask("builder", cards.expired, contacts.carlo, (await needsOf(cards.expired)).slice(0, 2));
   await q(`UPDATE use_case_referent_requests SET created_at = now() - interval '31 days', sent_at = now() - interval '31 days', last_email_at = now() - interval '31 days', expires_at = now() - interval '1 minute' WHERE id = $1::uuid`, [sent.requestId]);
   const counts = await referents.runReferentCron({ env: ENV, now: V, mailer: fakeMailer() });
   assert.equal(counts.errors, 0, JSON.stringify(counts));
   const [req] = await q(`SELECT status FROM use_case_referent_requests WHERE id = $1::uuid`, [sent.requestId]);
   assert.equal(req.status, "scaduta");
   const rows = await silentRows(cards.expired);
-  assert.deepEqual(rows.map((r) => r.who), sorted("builder", "federico"), "Claudio non riceve la riga della sua richiesta");
+  assert.deepEqual(rows.map((r) => r.who), sorted("builder", "fabio"), "Carlo non riceve la riga della sua richiesta");
   assert.ok(rows.every((r) => r.follow_up === "scaduta"));
   assert.deepEqual(await alertRecipients(sent.requestId), [{ who: ids.builder, followUp: "scaduta" }]);
 });
@@ -595,6 +595,6 @@ test("D-B24: un contatto collegato più tardi a chi ha chiesto non riceve mai l'
   await q(`UPDATE use_case_referent_requests SET created_at = now() - interval '31 days', sent_at = now() - interval '31 days', last_email_at = now() - interval '31 days', expires_at = now() - interval '1 minute' WHERE id = $1::uuid`, [first.requestId]);
   const counts = await referents.runReferentCron({ env: ENV, now: V, mailer: fakeMailer() });
   assert.equal(counts.errors, 0, JSON.stringify(counts));
-  assert.deepEqual((await silentRows(cards.late)).map((r) => r.who), sorted("claudio", "federico"));
+  assert.deepEqual((await silentRows(cards.late)).map((r) => r.who), sorted("carlo", "fabio"));
   assert.deepEqual(await alertRecipients(first.requestId), []);
 });

@@ -88,7 +88,7 @@ function input(over: Partial<NextStepInput> = {}): NextStepInput {
     item: item(),
     today: TODAY,
     teamName: TEAM,
-    companyName: "TopJet",
+    companyName: "Rondine",
     canDecide: true,
     canOpenAnyDossier: false,
     info: null,
@@ -334,7 +334,7 @@ test("F1: best practice approvata, «Segna come diffusa» pieno", () => {
 const gate = {
   subprocessors: (canDeclare: boolean): ReferentGate => ({
     code: "sub_responsabili_mancanti",
-    message: canDeclare ? "TopJet deve autorizzare i fornitori: puoi farlo tu." : "TopJet deve autorizzare i fornitori.",
+    message: canDeclare ? "Rondine deve autorizzare i fornitori: puoi farlo tu." : "Rondine deve autorizzare i fornitori.",
     canDeclare,
     settingsHref: `/dashboard/${WS}/settings#sub-responsabili`,
     linkLabel: "Apri Impostazioni",
@@ -377,17 +377,17 @@ test("G1-G3: verificare, sollecitare, poi il trimestre (più avanti o scaduto)",
 test("G4-G6: autorizzare i fornitori, chiedere al referente, oppure il motivo; l'ordine dei controlli", () => {
   const info = progress({ received: 0, total: 10, toAsk: 7, waiting: 1, blockedCount: 2 });
   const g4 = nextStepOf(input({ item: approved(), info, referents: panel([gate.subprocessors(true), gate.email]), askEntry: entry([gate.subprocessors(true), gate.email]) }));
-  assert.deepEqual(brief(g4), { key: "G4", title: "Autorizzare i fornitori", line: "TopJet deve autorizzare i fornitori: puoi farlo tu.", action: "impostazioni", mine: true, decisions: "compact" });
+  assert.deepEqual(brief(g4), { key: "G4", title: "Autorizzare i fornitori", line: "Rondine deve autorizzare i fornitori: puoi farlo tu.", action: "impostazioni", mine: true, decisions: "compact" });
   assert.equal(g4.gate, "sub_responsabili_mancanti");
   assert.deepEqual(g4.action, { type: "impostazioni", href: `/dashboard/${WS}/settings#sub-responsabili`, label: "Apri Impostazioni" });
   // Lateral Space non autorizza: nessun pulsante.
   const ls = nextStepOf(input({ item: approved(), info, referents: panel([gate.subprocessors(false)]), askEntry: entry([gate.subprocessors(false)]) }));
-  assert.deepEqual([ls.key, ls.action.type, ls.mine, ls.line], ["G4", "none", false, "TopJet deve autorizzare i fornitori."]);
+  assert.deepEqual([ls.key, ls.action.type, ls.mine, ls.line], ["G4", "none", false, "Rondine deve autorizzare i fornitori."]);
   // Il primo controllo conta: con l'email prima, è G6.
   assert.equal(nextStepOf(input({ item: approved(), info, referents: panel([gate.email, gate.subprocessors(true)]), askEntry: entry([gate.email, gate.subprocessors(true)]) })).key, "G6");
 
   const g5 = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]) }));
-  assert.deepEqual(brief(g5), { key: "G5", title: "Chiedere le informazioni a TopJet", line: `${T} 7 delle 10 informazioni sono ancora da chiedere.`, action: "chiedi", mine: true, decisions: "compact" });
+  assert.deepEqual(brief(g5), { key: "G5", title: "Chiedere le informazioni a Rondine", line: `${T} 7 delle 10 informazioni sono ancora da chiedere.`, action: "chiedi", mine: true, decisions: "compact" });
   assert.equal(g5.gate, null);
   assert.equal(nextStepOf(input({ item: approved(), info: progress({ toAsk: 1 }), referents: panel([]), askEntry: entry([]) })).line, `${T} 1 delle 10 informazioni è ancora da chiedere.`);
   assert.equal(nextStepOf(input({ item: approved(), info: progress({ total: 1, toAsk: 1 }), referents: panel([]), askEntry: entry([]) })).line, `${T} L'informazione è ancora da chiedere.`);
@@ -395,7 +395,7 @@ test("G4-G6: autorizzare i fornitori, chiedere al referente, oppure il motivo; l
   // G6: i motivi che nessuno nel workspace toglie, da soli; gli altri con «Tocca a»; la funzione spenta con la frase di G5.
   for (const system of [gate.email, gate.writes]) {
     const g6 = nextStepOf(input({ item: approved(), info, referents: panel([system]), askEntry: entry([system]) }));
-    assert.deepEqual(brief(g6), { key: "G6", title: "Chiedere le informazioni a TopJet", line: system.message, action: "none", mine: false, decisions: "compact" });
+    assert.deepEqual(brief(g6), { key: "G6", title: "Chiedere le informazioni a Rondine", line: system.message, action: "none", mine: false, decisions: "compact" });
     assert.equal(g6.gate, system.code);
   }
   const verified = nextStepOf(input({ item: approved(), info, referents: panel([gate.verified]), askEntry: entry([gate.verified]) }));
@@ -433,7 +433,7 @@ test("G7-G9: aspettare, sbloccare, avviare", () => {
   assert.deepEqual(brief(start), { key: "G9", title: "Avviare la realizzazione", line: "Tocca a Lateral Space. Le informazioni ci sono tutte.", action: "avvia", mine: true, decisions: "compact" });
   assert.deepEqual(start.action, { type: "avvia", href: `/dashboard/${WS}/casi-duso/nuovo?useCaseId=${UC}`, label: "Avvia la realizzazione" });
   const fromHref = nextStepOf(input({ item: approved(), info: null, realizationVariant: "avvia", realization: { state: "da_avviare", canStart: true, startHref: "/inizio" } }));
-  assert.deepEqual([fromHref.line, fromHref.action.type === "avvia" && fromHref.action.href], ["Tocca a Lateral Space. Da TopJet non serve nessuna informazione.", "/inizio"]);
+  assert.deepEqual([fromHref.line, fromHref.action.type === "avvia" && fromHref.action.href], ["Tocca a Lateral Space. Da Rondine non serve nessuna informazione.", "/inizio"]);
   const mark = nextStepOf(input({ item: approved(), info: null, realizationVariant: "segna" }));
   assert.deepEqual([mark.key, mark.action.type, mark.mine], ["G9", "segna_in_realizzazione", true]);
   for (const variant of ["lo_avvia_ls", "fase"] as const) {
@@ -511,7 +511,7 @@ test("(Rilascio 6, B.1) il pulsante del passo: un verbo di due o tre parole, «T
   const authorize = nextStepOf(input({ item: approved(), info, referents: panel([gate.subprocessors(true)]), askEntry: entry([gate.subprocessors(true)]), referent: referent("manca") }));
   assert.deepEqual([authorize.key, authorize.cta, authorize.turn, authorize.mine], ["G4", "Autorizza i fornitori", null, true]);
   const waitOk = nextStepOf(input({ item: approved(), info, referents: panel([gate.subprocessors(false)]), askEntry: entry([gate.subprocessors(false)]), referent: referent("manca") }));
-  assert.deepEqual([waitOk.cta, waitOk.turn, waitOk.action.type], ["Manca l'ok sui fornitori", "Tocca a TopJet.", "none"]);
+  assert.deepEqual([waitOk.cta, waitOk.turn, waitOk.action.type], ["Manca l'ok sui fornitori", "Tocca a Rondine.", "none"]);
   // Senza pulsante, le parole dello stato e a chi tocca: il referente, i referenti, Lateral Space.
   const wait = nextStepOf(input({ item: approved(), info: progress({ state: "in_attesa", toAsk: 0, waiting: 1, since: "2026-10-27" }), referent: referent("in_attesa") }));
   assert.deepEqual([wait.key, wait.cta, wait.icon, wait.turn, wait.why, wait.action.type], ["G7", "In attesa del referente", "attesa", "Tocca al referente.", "In attesa dal 27 ott.", "none"]);
@@ -805,7 +805,7 @@ test("rilascio 5: senza referente, «Scegliere il referente» prima di «Quando�
   const g5 = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent() }));
   assert.deepEqual(brief(g5), { key: "G5", title: "Scegliere il referente", line: `${T} Il referente conferma lo use case e l'impatto, poi risponde alle domande.`, action: "referente", mine: true, decisions: "compact" });
   assert.deepEqual(g5.action, { type: "referente", mode: "scegli", label: "Scegli il referente" });
-  // Senza un trimestre (il G3 di oggi su 15 card di TopJet): prima il referente.
+  // Senza un trimestre (il G3 di oggi su 15 card di Rondine): prima il referente.
   const later = nextStepOf(input({ item: approved({ subState: "piu_avanti", targetQuarter: null }), info, referents: panel([]), askEntry: entry([]), referent: referent() }));
   assert.equal(later.key, "G5");
   assert.equal(later.title, "Scegliere il referente");
@@ -842,7 +842,7 @@ test("rilascio 5: con il referente, G1 per la sua risposta, G2 senza risposta, G
   assert.deepEqual(brief(waiting), { key: "G7", title: "Aspettare le risposte", line: "Tocca al referente.", action: "none", mine: false, decisions: "compact" });
   const more = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "fatto", askableForReferent: 3 }) }));
   assert.deepEqual(more.action, { type: "referente", mode: "chiedi", label: "Chiedi al referente" });
-  assert.equal(more.title, "Chiedere le informazioni a TopJet");
+  assert.equal(more.title, "Chiedere le informazioni a Rondine");
   const other = nextStepOf(input({ item: approved(), info, referents: panel([]), askEntry: entry([]), referent: referent({ state: "fatto", askableForReferent: 0 }) }));
   assert.deepEqual(brief(other), { key: "G5", title: "Chiedere a un'altra persona", line: `${T} Il referente non ha queste informazioni: chiedi a un'altra persona.`, action: "referente", mine: true, decisions: "compact" });
   assert.deepEqual(other.action, { type: "referente", mode: "altra", label: "Chiedi a un'altra persona" });

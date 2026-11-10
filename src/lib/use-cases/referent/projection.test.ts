@@ -20,7 +20,7 @@ import {
 const at = (d: string, h = 10) => romeLocalToUtc(d, h);
 const NOW = at("2026-11-04", 12);
 const TODAY = "2026-11-04";
-const SECRETS = ["DETTAGLIO-RISERVATO", "Responsabile interno", "proponente@topjet.it", "punteggio-87", "valore-12000"];
+const SECRETS = ["DETTAGLIO-RISERVATO", "Responsabile interno", "proponente@rondine.it", "punteggio-87", "valore-12000"];
 
 function rows(over: Partial<PublicRows["request"]> = {}): PublicRows {
   // Righe come le leggerebbe il database, con colonne in più che la vista non deve usare.
@@ -35,8 +35,8 @@ function rows(over: Partial<PublicRows["request"]> = {}): PublicRows {
       message: "Grazie!",
       ...over,
     },
-    company: "TopJet",
-    useCase: { code: "TJ-0004", title: "Fatture fornitori", ...({ proposedBy: SECRETS[2], intake: { secret: SECRETS[4] } } as object) } as PublicRows["useCase"],
+    company: "Rondine",
+    useCase: { code: "RD-0004", title: "Fatture fornitori", ...({ proposedBy: SECRETS[2], intake: { secret: SECRETS[4] } } as object) } as PublicRows["useCase"],
     items: [
       {
         needId: "n1",
@@ -122,7 +122,7 @@ test("le righe di una richiesta non dipendono dalla lettura dell'informativa, e 
     ({
       contactName: "Mario Rossi",
       useCaseId: "uc1",
-      useCaseCode: "TJ-0004",
+      useCaseCode: "RD-0004",
       status: "inviata",
       createdAt: at("2026-10-27"),
       sentAt: at("2026-10-27"),
@@ -138,7 +138,7 @@ test("le righe di una richiesta non dipendono dalla lettura dell'informativa, e 
   assert.equal(needReferentLine(ask(true), TODAY, "uc1"), needReferentLine(ask(false), TODAY, "uc1"));
   const line = needReferentLine(ask(true), TODAY, "uc1") ?? "";
   assert.ok(line.includes("Mario Rossi") && line.includes("27/10"), line);
-  assert.ok((needReferentLine(ask(true), TODAY, "uc2") ?? "").includes("TJ-0004"));
+  assert.ok((needReferentLine(ask(true), TODAY, "uc2") ?? "").includes("RD-0004"));
   assert.equal(needReferentLine(null, TODAY, "uc1"), null);
 });
 
@@ -146,7 +146,7 @@ test("pannello: l'unica email intera è quella di chi guarda; le altre sono masc
   const emailKeys = PANEL_VIEW_KEYS.filter((k) => /email/i.test(k));
   // (Rilascio 4) Le persone del workspace non stanno più nel pannello: le legge la finestra quando si apre.
   assert.deepEqual(emailKeys, ["contacts[].emailMasked", "requests[].contact.emailMasked", "requests[].email", "requests[].email.state", "requests[].email.label", "requests[].actions.correctEmail", "requester.email", "referent.contact.emailMasked"]);
-  assert.equal(maskEmail(" Mario.Rossi@TopJet.it "), "m•••@topjet.it");
+  assert.equal(maskEmail(" Mario.Rossi@Rondine.it "), "m•••@rondine.it");
   assert.equal(maskEmail(null), null);
   assert.equal(maskEmail("senza-chiocciola"), null);
   assert.ok(!PANEL_VIEW_KEYS.some((k) => /privacy|answered_?at|delay|ritardo|count/i.test(k)));

@@ -53,7 +53,7 @@ export interface MatrixPoint {
   href: string;
 }
 
-/** Uno use case senza un punto nella matrice, in un elenco sotto di lei: «TJ-0012 · Titolo», che apre il pannello. */
+/** Uno use case senza un punto nella matrice, in un elenco sotto di lei: «RD-0012 · Titolo», che apre il pannello. */
 export interface MatrixOffItem {
   id: string;
   code: string | null;
@@ -133,7 +133,7 @@ type PlacedPoint = MatrixPoint & { left: number; top: number; zoneKey: Zone };
  * Lo sciame dei punti (`swarm`, sul riquadro più piccolo): un punto resta nella sua fascia di costo
  * e alla sua altezza, e si sposta di lato quanto basta per non toccare gli altri; se la fascia è
  * piena a quell'altezza sale o scende di 0,2 punti di Valore al massimo, mai oltre la linea del
- * «Valore alto» né fuori da 1-5. Su TopJet quindici use case nella colonna «€» con Valore tra 1,6
+ * «Valore alto» né fuori da 1-5. Su Rondine quindici use case nella colonna «€» con Valore tra 1,6
  * e 2,1 erano un solo grumo di pallini; ora ognuno si vede e si clicca. Prima i punti più vicini al
  * bordo della loro metà (sotto la linea dal Valore più basso, sopra dal più alto), che hanno meno
  * spazio per spostarsi; a pari Valore l'ordine della lista. Nessun ordine per persona.
@@ -360,7 +360,7 @@ export function ValueCostMatrix({ points, highValue, lowCostX, bands = COST_BAND
   );
 }
 
-/** Un elenco chiuso sotto la matrice: un link per use case, «TJ-0012 · Titolo», che apre il pannello e resta nella pagina. */
+/** Un elenco chiuso sotto la matrice: un link per use case, «RD-0012 · Titolo», che apre il pannello e resta nella pagina. */
 function MatrixOffList({ items }: { items: readonly MatrixOffItem[] }) {
   return (
     <ul className="space-y-0.5">

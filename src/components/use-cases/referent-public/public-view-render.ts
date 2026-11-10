@@ -58,7 +58,7 @@ export function expiryLabel(expiresOn: string): string {
 export interface HeaderTexts {
   /** Il nome dell'azienda (workspace), in piccolo. */
   company: string;
-  /** «TJ-0004 · Fatture fornitori», o solo il titolo. */
+  /** «RD-0004 · Fatture fornitori», o solo il titolo. */
   title: string;
   /** «Giulia Neri ti chiede alcune informazioni.» */
   requestedBy: string;

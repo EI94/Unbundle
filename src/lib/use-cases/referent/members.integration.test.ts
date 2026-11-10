@@ -60,7 +60,7 @@ const ids = {
   otherOrg: randomUUID(),
   otherWs: randomUUID(),
   builder: randomUUID(),
-  federico: randomUUID(),
+  fabio: randomUUID(),
   corsista: randomUUID(),
   contrib: randomUUID(),
   ls: randomUUID(),
@@ -82,35 +82,35 @@ const ids = {
 };
 /** (Rilascio 4) Le persone in più: chi guarda (sponsor, analista) e i partecipanti ai corsi, di qui e d'altrove. */
 const EXTRA = {
-  sponsor: { name: "Ornella Sponsor", email: `ornella.${suffix}@topjet.test` },
-  analyst: { name: "Teo Analisi", email: `teo.${suffix}@topjet.test` },
-  lia: { name: "Lia Esempio", email: `lia.${suffix}@topjet.test` },
-  sara: { name: "Sara Prova", email: `sara.${suffix}@topjet.test` },
-  sister: { name: "Nina Sorella", email: `nina.${suffix}@topjet.test` },
+  sponsor: { name: "Ornella Sponsor", email: `ornella.${suffix}@rondine.test` },
+  analyst: { name: "Teo Analisi", email: `teo.${suffix}@rondine.test` },
+  lia: { name: "Lia Esempio", email: `lia.${suffix}@rondine.test` },
+  sara: { name: "Sara Prova", email: `sara.${suffix}@rondine.test` },
+  sister: { name: "Nina Sorella", email: `nina.${suffix}@rondine.test` },
   far: { name: "Ivo Lontano", email: `ivo.${suffix}@altra.test` },
-  orgLearner: { name: "Olga Gruppo", email: `olga.${suffix}@topjet.test` },
-  unverified: { name: "Ugo Attesa", email: `ugo.${suffix}@topjet.test` },
+  orgLearner: { name: "Olga Gruppo", email: `olga.${suffix}@rondine.test` },
+  unverified: { name: "Ugo Attesa", email: `ugo.${suffix}@rondine.test` },
   lsLearner: { name: "Lino Laterale", email: `lino.${suffix}@ls.test` },
 } as const;
 type Extra = keyof typeof EXTRA;
-type Person = "builder" | "federico" | "corsista" | "contrib" | "ls";
-const PEOPLE: Person[] = ["builder", "federico", "corsista", "contrib", "ls"];
-const ROLE: Record<Person, string> = { builder: "function_lead", federico: "function_lead", corsista: "learner", contrib: "contributor", ls: "transformation_lead" };
-const NAME: Record<Person, string> = { builder: "Giulia Neri", federico: "Fabio Esempio", corsista: "Carla Corsi", contrib: "Bruno Bianchi", ls: "Pier Lateral" };
+type Person = "builder" | "fabio" | "corsista" | "contrib" | "ls";
+const PEOPLE: Person[] = ["builder", "fabio", "corsista", "contrib", "ls"];
+const ROLE: Record<Person, string> = { builder: "function_lead", fabio: "function_lead", corsista: "learner", contrib: "contributor", ls: "transformation_lead" };
+const NAME: Record<Person, string> = { builder: "Giulia Neri", fabio: "Fabio Esempio", corsista: "Carla Corsi", contrib: "Bruno Bianchi", ls: "Pier Lateral" };
 const emails: Record<Person, string> = {
-  builder: `giulia.${suffix}@topjet.test`,
-  federico: `federico.${suffix}@topjet.test`,
-  corsista: `carla.${suffix}@topjet.test`,
-  contrib: `bruno.${suffix}@topjet.test`,
+  builder: `giulia.${suffix}@rondine.test`,
+  fabio: `fabio.${suffix}@rondine.test`,
+  corsista: `carla.${suffix}@rondine.test`,
+  contrib: `bruno.${suffix}@rondine.test`,
   ls: `pier.${suffix}@ls.test`,
 };
 const OUTSIDER = `esterno.${suffix}@altra.test`;
-const MARIO = `mario.rossi.${suffix}@topjet.test`;
-const ELENA = `elena.${suffix}@topjet.test`;
-const TARDI = `luca.tardi.${suffix}@topjet.test`;
-const LUCA_DOSSIER = `luca.dossier.${suffix}@topjet.test`;
-const DARIO = `dario.${suffix}@topjet.test`;
-const NUOVA = `nuova.persona.${suffix}@topjet.test`;
+const MARIO = `mario.rossi.${suffix}@rondine.test`;
+const ELENA = `elena.${suffix}@rondine.test`;
+const TARDI = `luca.tardi.${suffix}@rondine.test`;
+const LUCA_DOSSIER = `luca.dossier.${suffix}@rondine.test`;
+const DARIO = `dario.${suffix}@rondine.test`;
+const NUOVA = `nuova.persona.${suffix}@rondine.test`;
 const COURSE_TITLE = `Corso AI generativa ${suffix}`;
 const contacts = { mario: randomUUID(), elena: randomUUID() };
 const cards = {
@@ -254,7 +254,7 @@ before(async () => {
   bell = await import("../../notifications/bell-data.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione iscritti', $2)`, [ids.org, `hub-iscritti-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet iscritti')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine iscritti')`, [ids.ws, ids.org]);
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Altra organizzazione', $2)`, [ids.otherOrg, `hub-altra-${ids.otherOrg}`]);
   await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Altra azienda')`, [ids.otherWs, ids.otherOrg]);
   for (const person of PEOPLE) {
@@ -267,7 +267,7 @@ before(async () => {
   // (Rilascio 4) Un altro workspace della stessa organizzazione, e i partecipanti ai corsi: di questo
   // workspace (verificati, uno senza email verificata, uno di Lateral Space), di quell'altro, di
   // un'altra organizzazione, e uno con il solo ruolo «learner» dell'organizzazione.
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet sorella')`, [ids.sisterWs, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine sorella')`, [ids.sisterWs, ids.org]);
   for (const key of Object.keys(EXTRA) as Extra[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, ${key === "unverified" ? "NULL" : "now()"})`, [ids[key], EXTRA[key].email, EXTRA[key].name]);
   }
@@ -343,14 +343,14 @@ test("selettore: le persone del workspace nell'elenco della finestra, senza ruol
     [
       [ids.contrib, NAME.contrib, false],
       [ids.corsista, NAME.corsista, false],
-      [ids.federico, NAME.federico, true],
+      [ids.fabio, NAME.fabio, true],
       [ids.lia, EXTRA.lia.name, false],
       [ids.sponsor, EXTRA.sponsor.name, true],
       [ids.sara, EXTRA.sara.name, false],
       [ids.analyst, EXTRA.analyst.name, true],
     ],
   );
-  for (const m of list.members) assert.match(m.emailMasked ?? "", /^[a-z]•••@topjet\.test$/, "email coperta");
+  for (const m of list.members) assert.match(m.emailMasked ?? "", /^[a-z]•••@rondine\.test$/, "email coperta");
   assert.ok(panel!.contacts.some((c) => c.id === contacts.mario), "i referenti restano");
   assert.ok(!panel!.contacts.some((c) => c.id === contacts.elena), "un referente disattivato non si propone");
   for (const [label, value] of [
@@ -358,7 +358,7 @@ test("selettore: le persone del workspace nell'elenco della finestra, senza ruol
     ["elenco", list],
   ] as const) {
     const json = JSON.stringify(value);
-    for (const word of [COURSE_TITLE, ids.program, emails.corsista, ids.ls, emails.ls, emails.contrib, emails.federico, "learning", "Formazione", "learner", "contributor"]) {
+    for (const word of [COURSE_TITLE, ids.program, emails.corsista, ids.ls, emails.ls, emails.contrib, emails.fabio, "learning", "Formazione", "learner", "contributor"]) {
       assert.ok(!json.includes(word), `${label}: ${word}`);
     }
   }
@@ -366,7 +366,7 @@ test("selettore: le persone del workspace nell'elenco della finestra, senza ruol
   const { PANEL_VIEW_KEYS, keyPaths } = await import("./view.ts");
   assert.deepEqual(keyPaths(panel, { dictionaries: ["needs"] }).filter((k) => !PANEL_VIEW_KEYS.includes(k)), []);
   // Un altro revisore vede Giulia; un contributore e una corsista non vedono il pannello.
-  assert.ok(ok(await referents.listReferentPickerPeople(as("federico"), cards.contrib, ENV), "elenco di Federico").members.some((m) => m.userId === ids.builder));
+  assert.ok(ok(await referents.listReferentPickerPeople(as("fabio"), cards.contrib, ENV), "elenco di Fabio").members.some((m) => m.userId === ids.builder));
   assert.equal(await panelFor("contrib", cards.contrib), null);
   assert.equal(await panelFor("corsista", cards.contrib), null);
 });
@@ -397,7 +397,7 @@ test("scelte forzate: chi chiede, Lateral Space, la corsista dall'elenco, un alt
     if (!result.ok) assert.equal(result.message, REFERENT_ERROR_MESSAGES.persona_non_disponibile, label);
   }
   // Un contributore non chiede (non è revisore), nemmeno scegliendo dall'elenco.
-  const byContrib = await referents.sendReferentRequest(as("contrib"), cards.forged, { contact: { kind: "membro", userId: ids.federico }, needIds: [n0] }, { env: ENV, requester: requester("contrib") });
+  const byContrib = await referents.sendReferentRequest(as("contrib"), cards.forged, { contact: { kind: "membro", userId: ids.fabio }, needIds: [n0] }, { env: ENV, requester: requester("contrib") });
   assert.equal(byContrib.ok, false);
   assert.equal((await q(`SELECT 1 FROM use_case_referent_requests WHERE use_case_id = $1::uuid`, [cards.forged])).length, 0, "nessuna richiesta");
   assert.equal((await q(`SELECT 1 FROM uc_contacts WHERE workspace_id = $1::uuid AND user_id IS NOT NULL`, [ids.ws])).length, 0, "nessun referente nuovo");
@@ -435,10 +435,10 @@ test("(rilascio 4) l'elenco della finestra: i partecipanti ai corsi di questo wo
     assert.deepEqual(names, [...names].sort((a, b) => new Intl.Collator("it", { sensitivity: "base" }).compare(a, b)), label);
     for (const m of result.members) {
       assert.deepEqual(Object.keys(m).sort(), ["displayName", "emailMasked", "team", "userId"], label);
-      assert.match(m.emailMasked ?? "", /^[a-z]•••@topjet\.test$/, `${label}: email coperta`);
+      assert.match(m.emailMasked ?? "", /^[a-z]•••@rondine\.test$/, `${label}: email coperta`);
     }
     assert.equal(result.members.find((m) => m.userId === ids.lia)?.team, false);
-    assert.equal(result.members.find((m) => m.userId === ids.federico)?.team, true);
+    assert.equal(result.members.find((m) => m.userId === ids.fabio)?.team, true);
     const json = JSON.stringify(result);
     for (const word of [...COURSE_WORDS, COURSE_TITLE, ids.program, EXTRA.lia.email, EXTRA.sara.email, emails.corsista]) assert.ok(!json.toLowerCase().includes(word.toLowerCase()), `${label}: ${word}`);
   }
@@ -458,7 +458,7 @@ test("(rilascio 4) l'indirizzo intero della persona scelta: per un partecipante 
   const reveal = (userId: string, ctx: Ctx = as("builder")) => referents.revealReferentMemberEmail(ctx, cards.lia, userId, ENV);
   assert.deepEqual(ok(await reveal(ids.lia), "partecipante"), { email: EXTRA.lia.email });
   assert.deepEqual(ok(await reveal(ids.lia, asViewer(ids.analyst, "analyst")), "dall'analista"), { email: EXTRA.lia.email });
-  assert.deepEqual(ok(await reveal(ids.federico), "un revisore"), { email: emails.federico });
+  assert.deepEqual(ok(await reveal(ids.fabio), "un revisore"), { email: emails.fabio });
   for (const userId of [ids.sister, ids.far, ids.orgLearner, ids.unverified, ids.outsider, randomUUID()]) refused(await reveal(userId), "persona_non_disponibile", userId);
   refused(await reveal(ids.lsLearner), "referente_lateral_space", "partecipante di Lateral Space");
   refused(await reveal(ids.ls), "referente_lateral_space", "Lateral Space");
@@ -508,7 +508,7 @@ test("un contributore scelto dall'elenco: referente collegato, email con «Hai g
   assert.deepEqual([row?.display_name, row?.user_id], [NAME.contrib, ids.contrib], "il referente nasce collegato al suo account");
   assert.equal(sent.mail.to, emails.contrib);
   // (Rilascio 5, §8.4) Una richiesta di sole domande: «alcune domande su …».
-  assert.equal(sent.mail.subject, `TopJet iscritti: alcune domande sul caso d'uso «${(await q(`SELECT code FROM use_cases WHERE id = $1::uuid`, [cards.contrib]))[0].code} · Scheda contrib»`);
+  assert.equal(sent.mail.subject, `Rondine iscritti: alcune domande sul caso d'uso «${(await q(`SELECT code FROM use_cases WHERE id = $1::uuid`, [cards.contrib]))[0].code} · Scheda contrib»`);
   assert.ok(sent.mail.text.includes(`${NAME.builder} ti chiede alcune informazioni sul caso d'uso «`));
   assert.ok(sent.mail.text.includes(ACCOUNT_LINE));
   assert.ok(!sent.mail.text.includes(TEAM_LINE));
@@ -531,16 +531,16 @@ test("un contributore scelto dall'elenco: referente collegato, email con «Hai g
 });
 
 test("un revisore scelto dall'elenco: la riga del team con il link alla scheda", opts, async () => {
-  const sent = await ask(cards.fed, { kind: "membro", userId: ids.federico });
-  const [row] = await contactRow(emails.federico);
-  assert.equal(row?.user_id, ids.federico);
+  const sent = await ask(cards.fed, { kind: "membro", userId: ids.fabio });
+  const [row] = await contactRow(emails.fabio);
+  assert.equal(row?.user_id, ids.fabio);
   assert.ok(sent.mail.text.includes(TEAM_LINE));
   assert.ok(sent.mail.text.includes(cardUrl(cards.fed)));
   assert.ok(!sent.mail.text.includes(ACCOUNT_LINE));
   const panel = await panelFor("builder", cards.contrib2);
   assert.equal(panel!.contacts.find((c) => c.id === row.id)?.team, true, "«Fa parte del team»");
   const listed = ok(await referents.listReferentPickerPeople(as("builder"), cards.contrib2, ENV), "elenco").members.map((m) => m.userId);
-  assert.ok(!listed.includes(ids.federico) && !listed.includes(ids.contrib), "chi è ormai referente non è fra le persone");
+  assert.ok(!listed.includes(ids.fabio) && !listed.includes(ids.contrib), "chi è ormai referente non è fra le persone");
   for (const userId of [ids.sponsor, ids.analyst]) assert.ok(listed.includes(userId), "gli altri membri restano");
 });
 
@@ -560,7 +560,7 @@ test("una corsista scritta in «+ Nuovo referente»: collegata al suo account, l
   assert.ok((await pub.saveReferentDraft(resolved.link, { needId: sent.needIds[0], text: "Una volta alla settimana.", dontKnow: false }, V)).ok);
   assert.ok((await pub.submitReferentAnswers(resolved.link, {}, V)).ok);
   const rows = await q(`SELECT recipient_user_id::text AS who FROM use_case_notifications WHERE use_case_id = $1::uuid AND kind = 'risposte' ORDER BY recipient_user_id`, [cards.learner]);
-  assert.deepEqual(rows.map((r) => r.who), [ids.builder, ids.federico, ids.ls, ids.sponsor, ids.analyst].sort(), "solo i revisori (anche Lateral Space), mai lei");
+  assert.deepEqual(rows.map((r) => r.who), [ids.builder, ids.fabio, ids.ls, ids.sponsor, ids.analyst].sort(), "solo i revisori (anche Lateral Space), mai lei");
   assert.equal((await q(`SELECT 1 FROM use_case_notifications WHERE recipient_user_id = ANY($1::uuid[])`, [[ids.corsista, ids.contrib]])).length, 0);
   assert.equal((await q(`SELECT 1 FROM use_case_requester_emails WHERE recipient_user_id = ANY($1::uuid[])`, [[ids.corsista, ids.contrib]])).length, 0);
   const forLearner = await bell.loadBellPayload({ workspaceId: ids.ws, userId: ids.corsista, role: "learner", useCaseHub: true, env: ENV });
@@ -628,7 +628,7 @@ test("chi si iscrive dopo la richiesta: il promemoria ha la riga, riletta all'in
 test("«Correggi l'email» di un referente dell'hub: il collegamento all'account segue l'indirizzo nuovo", opts, async () => {
   const [row] = await contactRow(emails.contrib);
   assert.equal(row.user_id, ids.contrib);
-  const fresh = `bruno.nuovo.${suffix}@topjet.test`;
+  const fresh = `bruno.nuovo.${suffix}@rondine.test`;
   ok(await referents.correctReferentEmail(as("builder"), cards.contrib, String(row.id), { email: fresh }, { env: ENV }), "correggi");
   const [moved] = await contactRow(fresh);
   assert.equal(moved?.user_id, null, "nessun account con il nuovo indirizzo: il collegamento si toglie");
@@ -643,21 +643,21 @@ test("(revisione) l'email di un referente collegato cambia in un dossier: il col
   const { requestReferentUserSql } = await import("./people.ts");
   const { cast, toStatement, ucSql } = await import("../../uc/sql/statement.ts");
   const executor = await getAppUcExecutor();
-  // Il referente di Federico, nato dall'hub collegato al suo account.
-  const [row] = await contactRow(emails.federico);
-  assert.equal(row?.user_id, ids.federico);
+  // Il referente di Fabio, nato dall'hub collegato al suo account.
+  const [row] = await contactRow(emails.fabio);
+  assert.equal(row?.user_id, ids.fabio);
   const contactId = String(row.id);
   // Lateral Space cambia l'email del contatto in un dossier: le stesse SQL del comando dei dossier
   // (`updateContact` in uc-requests.ts; che le metta nel batch lo prova requests.integration.test.ts).
   await executor.batch([
-    contactUpdateSql({ workspaceId: ids.ws, contactId, patch: { email: LUCA_DOSSIER }, expect: { email: emails.federico, isActive: true } }),
+    contactUpdateSql({ workspaceId: ids.ws, contactId, patch: { email: LUCA_DOSSIER }, expect: { email: emails.fabio, isActive: true } }),
     contactStaleLinkClearSql({ workspaceId: ids.ws, contactId }),
   ]);
   const [moved] = await contactRow(LUCA_DOSSIER);
-  assert.deepEqual([moved?.id, moved?.user_id], [contactId, null], "il collegamento all'account di Federico si toglie");
+  assert.deepEqual([moved?.id, moved?.user_id], [contactId, null], "il collegamento all'account di Fabio si toglie");
 
-  // Per Federico il contatto (adesso Luca) non è «(sei tu)», non è «del team», e lui torna fra le persone.
-  const forFederico = await panelFor("federico", cards.dossier1);
+  // Per Fabio il contatto (adesso Luca) non è «(sei tu)», non è «del team», e lui torna fra le persone.
+  const forFederico = await panelFor("fabio", cards.dossier1);
   const option = forFederico!.contacts.find((c) => c.id === contactId);
   assert.ok(option, "il referente c'è");
   assert.equal(option!.reason, null, "non è «sei tu»");
@@ -665,13 +665,13 @@ test("(revisione) l'email di un referente collegato cambia in un dossier: il col
   assert.equal(option!.team, false, "Luca non ha un account");
   const forBuilder = await panelFor("builder", cards.dossier1);
   assert.equal(forBuilder!.contacts.find((c) => c.id === contactId)?.team, false);
-  assert.ok(ok(await referents.listReferentPickerPeople(as("builder"), cards.dossier1, ENV), "elenco").members.some((m) => m.userId === ids.federico), "Federico torna fra le persone del workspace");
+  assert.ok(ok(await referents.listReferentPickerPeople(as("builder"), cards.dossier1, ENV), "elenco").members.some((m) => m.userId === ids.fabio), "Fabio torna fra le persone del workspace");
 
-  // Federico chiede a Luca: non è una richiesta a se stesso, l'email parte a Luca senza righe dell'account.
+  // Fabio chiede a Luca: non è una richiesta a se stesso, l'email parte a Luca senza righe dell'account.
   const [n0] = await needsOf(cards.dossier1);
   const sent = ok(
-    await referents.sendReferentRequest(as("federico"), cards.dossier1, { contact: { kind: "esistente", contactId }, needIds: [n0] }, { env: ENV, requester: requester("federico") }),
-    "Federico chiede a Luca",
+    await referents.sendReferentRequest(as("fabio"), cards.dossier1, { contact: { kind: "esistente", contactId }, needIds: [n0] }, { env: ENV, requester: requester("fabio") }),
+    "Fabio chiede a Luca",
   );
   const mailer = fakeMailer();
   await dispatch.dispatchReferentEmails({ requestId: sent.requestId, env: ENV, mailer, sendIntervalMs: 0 });
@@ -679,19 +679,19 @@ test("(revisione) l'email di un referente collegato cambia in un dossier: il col
   assert.ok(!mailer.outbox[0].text.includes(TEAM_LINE) && !mailer.outbox[0].text.includes(ACCOUNT_LINE));
   const [email] = await q(`SELECT status, cancel_reason FROM use_case_referent_emails WHERE request_id = $1::uuid`, [sent.requestId]);
   assert.deepEqual([email?.status, email?.cancel_reason ?? null], ["inviata", null], "mai annullata come «sei tu»");
-  // La persona del referente di questa richiesta (campanella, avvisi): nessuna, non Federico.
+  // La persona del referente di questa richiesta (campanella, avvisi): nessuna, non Fabio.
   const [[who]] = await executor.batch([
     toStatement(ucSql`SELECT ${requestReferentUserSql("r")}::text AS who FROM use_case_referent_requests r WHERE r.id = ${cast(sent.requestId, "uuid")}`),
   ]);
-  assert.equal(who?.who ?? null, null, "la risposta di Luca non è di Federico");
+  assert.equal(who?.who ?? null, null, "la risposta di Luca non è di Fabio");
 
-  // Giulia sceglie Federico dall'elenco: un referente nuovo con la sua email, mai quello di Luca.
-  const forFed = await ask(cards.dossier2, { kind: "membro", userId: ids.federico });
+  // Giulia sceglie Fabio dall'elenco: un referente nuovo con la sua email, mai quello di Luca.
+  const forFed = await ask(cards.dossier2, { kind: "membro", userId: ids.fabio });
   assert.notEqual(await requestContact(forFed.requestId), contactId, "non il referente di Luca");
-  assert.equal(forFed.mail.to, emails.federico);
-  assert.ok(forFed.mail.text.includes(TEAM_LINE), "Federico è del team");
-  const [fresh] = await contactRow(emails.federico);
-  assert.equal(fresh?.user_id, ids.federico, "il referente nuovo è collegato a Federico");
+  assert.equal(forFed.mail.to, emails.fabio);
+  assert.ok(forFed.mail.text.includes(TEAM_LINE), "Fabio è del team");
+  const [fresh] = await contactRow(emails.fabio);
+  assert.equal(fresh?.user_id, ids.fabio, "il referente nuovo è collegato a Fabio");
 });
 
 test("(revisione) due revisori aggiungono insieme la stessa persona: un referente solo, nessun errore", opts, async () => {
@@ -700,10 +700,10 @@ test("(revisione) due revisori aggiungono insieme la stessa persona: un referent
   await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'contributor')`, [ids.ws, ids.dario]);
   const sendAs = async (person: Person, card: string, contact: ContactInput) =>
     referents.sendReferentRequest(as(person), card, { contact, needIds: (await needsOf(card)).slice(0, 1) }, { env: ENV, requester: requester(person) });
-  // Scelta dall'elenco «Persone del workspace», nello stesso momento, da Giulia e da Federico.
-  const [a, b] = await Promise.all([sendAs("builder", cards.race1, { kind: "membro", userId: ids.dario }), sendAs("federico", cards.race2, { kind: "membro", userId: ids.dario })]);
+  // Scelta dall'elenco «Persone del workspace», nello stesso momento, da Giulia e da Fabio.
+  const [a, b] = await Promise.all([sendAs("builder", cards.race1, { kind: "membro", userId: ids.dario }), sendAs("fabio", cards.race2, { kind: "membro", userId: ids.dario })]);
   const first = ok(a, "Giulia");
-  const second = ok(b, "Federico");
+  const second = ok(b, "Fabio");
   const rows = await contactRow(DARIO);
   assert.equal(rows.length, 1, "un referente solo");
   assert.equal(rows[0].user_id, ids.dario);
@@ -711,10 +711,10 @@ test("(revisione) due revisori aggiungono insieme la stessa persona: un referent
   // La stessa email scritta in «+ Nuovo referente», nello stesso momento.
   const [c, d] = await Promise.all([
     sendAs("builder", cards.race3, { kind: "nuovo", displayName: "Nuova Persona", email: NUOVA }),
-    sendAs("federico", cards.race4, { kind: "nuovo", displayName: "Nuova P.", email: NUOVA.toUpperCase() }),
+    sendAs("fabio", cards.race4, { kind: "nuovo", displayName: "Nuova P.", email: NUOVA.toUpperCase() }),
   ]);
   const third = ok(c, "Giulia, email");
-  const fourth = ok(d, "Federico, email");
+  const fourth = ok(d, "Fabio, email");
   const typed = await contactRow(NUOVA);
   assert.equal(typed.length, 1, "un referente solo");
   assert.deepEqual([await requestContact(third.requestId), await requestContact(fourth.requestId)], [String(typed[0].id), String(typed[0].id)]);

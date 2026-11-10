@@ -50,7 +50,7 @@ const emails = {
 };
 type Person = keyof typeof emails;
 const ROLE: Record<Person, string> = { builder: "function_lead", analyst: "analyst", contributor: "contributor", ls: "transformation_lead" };
-const REFERENT_EMAIL = `mario.rossi.${suffix}@topjet.test`;
+const REFERENT_EMAIL = `mario.rossi.${suffix}@rondine.test`;
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-"));
 
 const ENV = {
@@ -112,7 +112,7 @@ before(async () => {
   notifications = await import("../../db/queries/use-case-notifications.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione referenti', $2)`, [ids.org, `hub-referenti-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'TopJet prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'Rondine prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
     for (const ws of [ids.ws, ids.other]) await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ws, ids[person], ROLE[person]]);
@@ -252,7 +252,7 @@ test("«Informazioni complete» con due scritture insieme sulle ultime due esige
   );
   ok(await referents.prepareReferentQuestions(as("builder"), card));
   const needs = await needIds(card);
-  ok(await referents.sendReferentRequest(as("builder"), card, { contact: { kind: "nuovo", displayName: "Anna Neri", email: `anna.${suffix}@topjet.test` }, needIds: needs.slice(0, 1) }, { env: ENV, requester: requester("builder") }));
+  ok(await referents.sendReferentRequest(as("builder"), card, { contact: { kind: "nuovo", displayName: "Anna Neri", email: `anna.${suffix}@rondine.test` }, needIds: needs.slice(0, 1) }, { env: ENV, requester: requester("builder") }));
   for (const id of needs.slice(2)) {
     const [n] = await q(`SELECT version FROM use_case_needs WHERE id = $1::uuid`, [id]);
     ok(await needsService.updateNeed(as("analyst"), id, Number(n.version), { status: "validata" }));
@@ -281,7 +281,7 @@ test("un lato «Lateral Space» non blocca la completezza", opts, async () => {
   );
   ok(await referents.prepareReferentQuestions(as("builder"), card));
   const needs = await needIds(card);
-  ok(await referents.sendReferentRequest(as("builder"), card, { contact: { kind: "nuovo", displayName: "Paolo Gialli", email: `paolo.${suffix}@topjet.test` }, needIds: needs.slice(0, 1) }, { env: ENV, requester: requester("builder") }));
+  ok(await referents.sendReferentRequest(as("builder"), card, { contact: { kind: "nuovo", displayName: "Paolo Gialli", email: `paolo.${suffix}@rondine.test` }, needIds: needs.slice(0, 1) }, { env: ENV, requester: requester("builder") }));
   const [n0] = await q(`SELECT version FROM use_case_needs WHERE id = $1::uuid`, [needs[0]]);
   ok(await needsService.updateNeed(as("analyst"), needs[0], Number(n0.version), { ownerSide: "lateral_space" }));
   for (const id of needs.slice(1)) {

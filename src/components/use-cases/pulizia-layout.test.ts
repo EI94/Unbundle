@@ -78,10 +78,10 @@ test("matrice: punti quasi nello stesso posto si aprono a sciame nella loro fasc
   const costOf = (amount: number) => ({ source: "team_importo", amount, band: 1, fromBand: false }) as const;
   const point = (id: string, code: string, x: number) => ({ id, code, title: code, origin: "transformation", approved: true, x, y: 2.5, value, cost: costOf(1000), href: `/h?apri=${id}` }) as const;
   // 1,1 e 1,17 sulla scala del costo: 12 % e 13,4 %, 4 px su 304 (il telefono più stretto).
-  const points = [point("aaaaaaaa-0000-4000-8000-000000000001", "TJ-0001", 1.1), point("aaaaaaaa-0000-4000-8000-000000000004", "TJ-0004", 1.17), point("aaaaaaaa-0000-4000-8000-000000000007", "TJ-0007", 3)];
+  const points = [point("aaaaaaaa-0000-4000-8000-000000000001", "RD-0001", 1.1), point("aaaaaaaa-0000-4000-8000-000000000004", "RD-0004", 1.17), point("aaaaaaaa-0000-4000-8000-000000000007", "RD-0007", 3)];
   const html = renderToStaticMarkup(createElement(matrix.ValueCostMatrix, { points, highValue: 3.5, lowCostX: 1.5, toEstimate: [] }));
   const labels = (markup: string) => [...markup.matchAll(/data-slot="matrix-label"[^>]*><text[^>]*>([^<]*)</g)].map((match) => match[1]);
-  assert.deepEqual(labels(html), ["TJ-0007"], "solo il punto isolato ha il codice accanto");
+  assert.deepEqual(labels(html), ["RD-0007"], "solo il punto isolato ha il codice accanto");
   const at = (id: string) => {
     const match = new RegExp(`left:([\\d.]+)%;top:([\\d.]+)%"[^>]*><a[^>]*data-point="${id}"`).exec(html);
     return { left: Number(match?.[1]), top: Number(match?.[2]) };
@@ -92,7 +92,7 @@ test("matrice: punti quasi nello stesso posto si aprono a sciame nella loro fasc
   assert.ok(second.left >= 12 + (11 / 304) * 100 - 0.01 && second.left <= 20, JSON.stringify(second));
   assert.ok(Math.abs(second.top - 60) < 0.01 && Math.abs(at(points[0].id).top - 60) < 0.01, "il Valore resta");
   // Quindici punti a Valore 1 nella stessa fascia: salgono di poco per far posto, mai sotto l'1 (90 %).
-  const floor = Array.from({ length: 15 }, (_, i) => ({ ...point(`bbbbbbbb-0000-4000-8000-0000000000${String(i).padStart(2, "0")}`, `TJ-01${String(i).padStart(2, "0")}`, 0.6), y: 1 }));
+  const floor = Array.from({ length: 15 }, (_, i) => ({ ...point(`bbbbbbbb-0000-4000-8000-0000000000${String(i).padStart(2, "0")}`, `RD-01${String(i).padStart(2, "0")}`, 0.6), y: 1 }));
   const crowded = renderToStaticMarkup(createElement(matrix.ValueCostMatrix, { points: floor, highValue: 3.5, lowCostX: 1.5, toEstimate: [] }));
   const tops = [...crowded.matchAll(/left:[\d.]+%;top:([\d.]+)%"[^>]*><a[^>]*data-point=/g)].map((match) => Number(match[1]));
   assert.equal(tops.length, 15);
@@ -100,12 +100,12 @@ test("matrice: punti quasi nello stesso posto si aprono a sciame nella loro fasc
   // I due punti vicini si leggono nell'elenco della loro zona, chiuso sotto la legenda.
   const zone = /<details data-slot="matrix-zone"[\s\S]*?<\/details>/.exec(html)?.[0] ?? "";
   assert.ok(zone.includes('>Se avanza tempo</span>\u00a0· <span class="whitespace-nowrap tabular-nums">2\u00a0use\u00a0case</span>'), zone);
-  for (const code of ["TJ-0001", "TJ-0004"]) assert.ok(zone.includes(`>${code}</span> ${code}`), code);
+  for (const code of ["RD-0001", "RD-0004"]) assert.ok(zone.includes(`>${code}</span> ${code}`), code);
   // L'asse del Valore dice che è un punteggio: gli altri schermi scrivono gli euro.
   assert.ok(html.includes(">Valore (punteggio 1–5)<"));
   // Un titolo con l'agente: nell'elenco il tag delle card della Panoramica, non il codice.
-  const tagged = [{ ...points[0], title: "LIBRA L1 · Lettura delle fatture estere" }, points[1], points[2]];
+  const tagged = [{ ...points[0], title: "LIBRA L1 · Lettura dei documenti esteri" }, points[1], points[2]];
   const withAgent = renderToStaticMarkup(createElement(matrix.ValueCostMatrix, { points: tagged, highValue: 3.5, lowCostX: 1.5, toEstimate: [] }));
-  assert.deepEqual(labels(withAgent), ["TJ-0007"]);
-  assert.ok(withAgent.includes('>LIBRA L1</span> <span class="sr-only">· </span>Lettura delle fatture estere'));
+  assert.deepEqual(labels(withAgent), ["RD-0007"]);
+  assert.ok(withAgent.includes('>LIBRA L1</span> <span class="sr-only">· </span>Lettura dei documenti esteri'));
 });

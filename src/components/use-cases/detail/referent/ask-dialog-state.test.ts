@@ -33,17 +33,17 @@ function contact(over: Partial<ReferentContactOption> & { id: string; displayNam
   return { roleLabel: null, emailMasked: null, selectable: true, reason: null, team: false, hasOtherRequests: false, ...over };
 }
 
-const MARIO = contact({ id: "aaaaaaaa-0000-4000-8000-000000000001", displayName: "Mario Rossi", roleLabel: "Ufficio acquisti", emailMasked: "m•••@topjet.it" });
-const FEDERICO = contact({ id: "aaaaaaaa-0000-4000-8000-000000000002", displayName: "Fabio Esempio", emailMasked: "f•••@topjet.it", team: true, hasOtherRequests: true });
-const ME = contact({ id: "aaaaaaaa-0000-4000-8000-000000000003", displayName: "Giulia Neri", emailMasked: "g•••@topjet.it", team: true, selectable: false, reason: "sei_tu" });
+const MARIO = contact({ id: "aaaaaaaa-0000-4000-8000-000000000001", displayName: "Mario Rossi", roleLabel: "Ufficio acquisti", emailMasked: "m•••@rondine.it" });
+const FABIO = contact({ id: "aaaaaaaa-0000-4000-8000-000000000002", displayName: "Fabio Esempio", emailMasked: "f•••@rondine.it", team: true, hasOtherRequests: true });
+const ME = contact({ id: "aaaaaaaa-0000-4000-8000-000000000003", displayName: "Giulia Neri", emailMasked: "g•••@rondine.it", team: true, selectable: false, reason: "sei_tu" });
 const NOMAIL = contact({ id: "aaaaaaaa-0000-4000-8000-000000000004", displayName: "Anna Verdi", roleLabel: "Logistica", selectable: false, reason: "senza_email" });
-const OPEN = contact({ id: "aaaaaaaa-0000-4000-8000-000000000005", displayName: "Luca Bianchi", emailMasked: "l•••@topjet.it", selectable: false, reason: "richiesta_aperta" });
+const OPEN = contact({ id: "aaaaaaaa-0000-4000-8000-000000000005", displayName: "Luca Bianchi", emailMasked: "l•••@rondine.it", selectable: false, reason: "richiesta_aperta" });
 
 const panel: Pick<UseCaseReferentPanel, "contacts" | "askableNeedIds" | "limits" | "requester"> = {
-  contacts: [MARIO, FEDERICO, ME, NOMAIL, OPEN],
+  contacts: [MARIO, FABIO, ME, NOMAIL, OPEN],
   askableNeedIds: [N1, N2, N3],
   limits: REFERENT_LIMITS,
-  requester: { name: "Giulia Neri", email: "giulia@topjet.it" },
+  requester: { name: "Giulia Neri", email: "giulia@rondine.it" },
 };
 
 test("bozza di partenza: nessuno scelto e nessuna spunta (le spunte arrivano con la persona, in «Cosa chiedi»)", () => {
@@ -54,28 +54,28 @@ test("bozza di partenza: nessuno scelto e nessuna spunta (le spunte arrivano con
 });
 
 test("le righe di «A chi»: ruolo · email coperta, «Fa parte del team», i motivi; mai un numero, mai i corsi", () => {
-  assert.equal(contactRowLine(MARIO), "Ufficio acquisti · m•••@topjet.it");
-  assert.equal(contactRowLine(FEDERICO), `f•••@topjet.it · ${T.teamTag}`);
+  assert.equal(contactRowLine(MARIO), "Ufficio acquisti · m•••@rondine.it");
+  assert.equal(contactRowLine(FABIO), `f•••@rondine.it · ${T.teamTag}`);
   assert.equal(contactRowLine(NOMAIL), `Logistica ${T.suffix.senza_email}`);
-  assert.equal(contactRowLine(OPEN), `l•••@topjet.it ${T.suffix.richiesta_aperta}`);
+  assert.equal(contactRowLine(OPEN), `l•••@rondine.it ${T.suffix.richiesta_aperta}`);
   assert.equal(contactRowLine(contact({ id: "x", displayName: "Solo nome" })), "");
   assert.equal(contactRowLine(contact({ id: "x", displayName: "Solo nome", selectable: false, reason: "lateral_space" })), T.suffix.lateral_space);
   // Chi guarda: «(sei tu)», non si sceglie; il motivo basta, senza «Fa parte del team».
-  assert.equal(contactRowLine(ME), `g•••@topjet.it ${T.suffix.sei_tu}`);
-  const sara: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-000000000001", displayName: "Sara Conti", emailMasked: "s•••@topjet.it", team: false };
-  assert.equal(memberRowLine(sara), "s•••@topjet.it");
-  assert.equal(memberRowLine({ ...sara, team: true }), `s•••@topjet.it · ${T.teamTag}`);
+  assert.equal(contactRowLine(ME), `g•••@rondine.it ${T.suffix.sei_tu}`);
+  const sara: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-000000000001", displayName: "Sara Conti", emailMasked: "s•••@rondine.it", team: false };
+  assert.equal(memberRowLine(sara), "s•••@rondine.it");
+  assert.equal(memberRowLine({ ...sara, team: true }), `s•••@rondine.it · ${T.teamTag}`);
   assert.equal(memberRowLine({ ...sara, emailMasked: null }), "");
-  for (const line of [MARIO, FEDERICO, ME, NOMAIL, OPEN].map(contactRowLine)) assert.doesNotMatch(line, /\d|corso|formazione|partecipant|learner/i, line);
+  for (const line of [MARIO, FABIO, ME, NOMAIL, OPEN].map(contactRowLine)) assert.doesNotMatch(line, /\d|corso|formazione|partecipant|learner/i, line);
 });
 
 test("il suggerimento «sei tu» sotto l'elenco, solo quando chi guarda è tra i referenti", () => {
   assert.equal(askSelfHint(panel), T.selfHint);
-  assert.equal(askSelfHint({ contacts: [MARIO, FEDERICO] }), null);
+  assert.equal(askSelfHint({ contacts: [MARIO, FABIO] }), null);
 });
 
 test("domande aperte su altri use case: un sì, mai un numero", () => {
-  assert.equal(askOtherRequestsHint(panel, { choice: FEDERICO.id }), "Fabio Esempio ha già domande aperte su altri use case: i promemoria arriveranno in un'unica email.");
+  assert.equal(askOtherRequestsHint(panel, { choice: FABIO.id }), "Fabio Esempio ha già domande aperte su altri use case: i promemoria arriveranno in un'unica email.");
   assert.equal(askOtherRequestsHint(panel, { choice: MARIO.id }), null);
   assert.equal(askOtherRequestsHint(panel, { choice: NEW_CONTACT }), null);
 });
@@ -99,9 +99,9 @@ test("controlli prima dell'invio: referente, nome, email, domande, messaggio", (
 test("il contenuto dell'action: referente esistente o nuovo, domande nell'ordine della scheda, testi puliti", () => {
   const draft = { ...initialAskDraft(panel), choice: MARIO.id, needIds: [N3, N1], message: "  Ci serve per la stima.  " };
   assert.deepEqual(askPayload(draft, panel), { contact: { kind: "esistente", contactId: MARIO.id }, needIds: [N1, N3], message: "Ci serve per la stima." });
-  const fresh = { ...initialAskDraft(panel), choice: NEW_CONTACT, name: " Paola Neri ", email: " paola@topjet.it ", role: "  ", message: "   ", needIds: [N1, N2, N3] };
+  const fresh = { ...initialAskDraft(panel), choice: NEW_CONTACT, name: " Paola Neri ", email: " paola@rondine.it ", role: "  ", message: "   ", needIds: [N1, N2, N3] };
   assert.deepEqual(askPayload(fresh, panel), {
-    contact: { kind: "nuovo", displayName: "Paola Neri", email: "paola@topjet.it", roleLabel: null },
+    contact: { kind: "nuovo", displayName: "Paola Neri", email: "paola@rondine.it", roleLabel: null },
     needIds: [N1, N2, N3],
     message: null,
   });
@@ -134,7 +134,7 @@ test("errori del server: i campi nella finestra, gli altri nell'area degli error
     askErrorView({ ok: false, code: "email_mancante", message: REFERENT_ERROR_MESSAGES.email_mancante_esistente, fieldErrors: { email: REFERENT_ERROR_MESSAGES.email_mancante_esistente } }, { choice: NOMAIL.id }),
     { formError: REFERENT_ERROR_MESSAGES.email_mancante_esistente, fieldErrors: {} },
   );
-  assert.deepEqual(askErrorView({ ok: false, code: "sub_responsabili_mancanti", message: "Prima TopJet deve autorizzare…" }, { choice: MARIO.id }), { formError: "Prima TopJet deve autorizzare…", fieldErrors: {} });
+  assert.deepEqual(askErrorView({ ok: false, code: "sub_responsabili_mancanti", message: "Prima Rondine deve autorizzare…" }, { choice: MARIO.id }), { formError: "Prima Rondine deve autorizzare…", fieldErrors: {} });
   assert.deepEqual(
     askErrorView({ ok: false, code: "messaggio_troppo_lungo", message: "m", fieldErrors: { message: REFERENT_ERROR_MESSAGES.messaggio_troppo_lungo } }, { choice: MARIO.id }),
     { formError: null, fieldErrors: { message: REFERENT_ERROR_MESSAGES.messaggio_troppo_lungo } },
@@ -143,8 +143,8 @@ test("errori del server: i campi nella finestra, gli altri nell'area degli error
 
 // ── Referente già iscritto (27/10): le persone del workspace con un account ──
 
-const SARA: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-000000000001", displayName: "Sara Conti", emailMasked: "s•••@topjet.it", team: false };
-const PAOLO: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-000000000002", displayName: "Paolo Galli", emailMasked: "p•••@topjet.it", team: true };
+const SARA: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-000000000001", displayName: "Sara Conti", emailMasked: "s•••@rondine.it", team: false };
+const PAOLO: ReferentMemberOption = { userId: "cccccccc-0000-4000-8000-000000000002", displayName: "Paolo Galli", emailMasked: "p•••@rondine.it", team: true };
 const withMembers = { ...panel, members: [PAOLO, SARA] };
 
 test("persone del workspace: il contenuto dell'action è { kind: «membro», userId }; il server ricontrolla tutto", () => {

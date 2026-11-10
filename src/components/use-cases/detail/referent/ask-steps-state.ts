@@ -190,7 +190,7 @@ export function sendLabel(person: Pick<AskPerson, "displayName">): string {
   return fillText(T.send, { Nome: person.displayName });
 }
 
-/** «Chiedi di nuovo»: «A Mario Rossi · m•••@topjet.it» sopra «Cosa chiedi», con l'indirizzo intero quando è arrivato. */
+/** «Chiedi di nuovo»: «A Mario Rossi · m•••@rondine.it» sopra «Cosa chiedi», con l'indirizzo intero quando è arrivato. */
 export function againLineOf(name: string, email: string | null): string {
   return email ? fillText(T.againTo, { Nome: name, email }) : `${T.to} ${name}`;
 }

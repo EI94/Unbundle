@@ -66,9 +66,9 @@ test("errore di rete: «Non salvato: riprova», si riprova alla prossima modific
 });
 
 test("blocco del testo: errore del campo, niente salvato, finché il testo non cambia", () => {
-  let s = autosaveReducer(initialAutosave(v("")), { type: "edit", value: v("Chiedere a mario.rossi@topjet.it"), now: 0 });
+  let s = autosaveReducer(initialAutosave(v("")), { type: "edit", value: v("Chiedere a mario.rossi@rondine.it"), now: 0 });
   s = autosaveReducer(s, { type: "start", value: s.value });
-  s = autosaveReducer(s, { type: "blocked", value: v("Chiedere a mario.rossi@topjet.it"), issues: [{ code: "testo_contatti", message: "Togli email e telefoni." }] });
+  s = autosaveReducer(s, { type: "blocked", value: v("Chiedere a mario.rossi@rondine.it"), issues: [{ code: "testo_contatti", message: "Togli email e telefoni." }] });
   assert.equal(s.status, "blocked");
   assert.deepEqual(s.fieldError.map((i) => i.code), ["testo_contatti"]);
   assert.equal(label(s), null, "si mostra l'errore del campo, non lo stato");

@@ -10,7 +10,7 @@ const LINK = `https://app.example.test/rispondi/ucq_${"A".repeat(32)}`;
 const CARD = "https://app.example.test/dashboard/5e1a0000-0000-4000-8000-0000000000a1/use-cases/5e1a0000-0000-4000-8000-0000000000b1?capitolo=cosa-serve";
 const TODAY = new Date("2026-11-02T09:30:00Z");
 const EXPIRES = new Date(TODAY.getTime() + REFERENT_LIMITS.linkDays * 86_400_000);
-const UC = { code: "AJ-0002", title: "Lettura delle fatture estere" };
+const UC = { code: "AJ-0002", title: "Lettura dei documenti esteri" };
 type Richiesta = Parameters<typeof referentRequestParts>[0];
 const base: Richiesta = { template: "richiesta", company: "Alfa Jet (prova)", useCase: UC, requesterName: "Aldo Prova", questions: 1, message: null, expiresAt: EXPIRES, link: LINK, replyToKnown: true };
 
@@ -39,12 +39,12 @@ test("l'anteprima: oggetto e blocchi uguali all'email vera con il link finto e l
     assert.deepEqual(preview, real, `${questions} domande, messaggio ${message ?? "no"}`);
   }
   const one = referentRequestPreview({ company: "Alfa Jet (prova)", useCase: UC, requesterName: "Aldo Prova", questions: 1, message: null, today: TODAY });
-  assert.equal(one.subject, "Alfa Jet (prova): alcune domande sul caso d'uso «AJ-0002 · Lettura delle fatture estere»");
+  assert.equal(one.subject, "Alfa Jet (prova): alcune domande sul caso d'uso «AJ-0002 · Lettura dei documenti esteri»");
   // (Rilascio 5) La richiesta al referente: la stessa email dell'invio, con la conferma e la stima.
   const referent = referentRequestPreview({ kind: "referente", company: "Alfa Jet (prova)", useCase: UC, requesterName: "Aldo Prova", questions: 5, message: null, today: TODAY });
   assert.deepEqual(referent, referentRequestParts({ ...base, kind: "referente", questions: 5, message: null, link: PREVIEW_LINK }));
   // (Rilascio 5.1) L'anteprima nella dashboard mostra l'email com'è: «caso d'uso», come la legge il referente.
-  assert.equal(referent.subject, "Alfa Jet (prova): sei il referente per il caso d'uso «AJ-0002 · Lettura delle fatture estere»");
+  assert.equal(referent.subject, "Alfa Jet (prova): sei il referente per il caso d'uso «AJ-0002 · Lettura dei documenti esteri»");
   assert.ok(one.blocks.some((b) => "small" in b && b.small === "Il link scade il 2 dicembre 2026."), "la scadenza: oggi più 30 giorni");
   assert.ok(one.blocks.some((b) => "p" in b && b.p === "È una domanda sola."));
   assert.ok(one.blocks.some((b) => "small" in b && b.small.endsWith("arriva a Aldo Prova.")), "la risposta all'email arriva a chi chiede");
@@ -86,18 +86,18 @@ test("(rilascio 6) domande che entrano nella richiesta attiva: l'anteprima è l'
   const { referentNewQuestionsPreview } = await import("./preview.ts");
   const { renderReferentEmail } = await import("./email.ts");
   const today = new Date("2026-11-09T10:00:00Z");
-  const parts = referentNewQuestionsPreview({ company: "TopJet", useCase: { code: "TJ-0004", title: "Fatture fornitori" }, requesterName: "Giulia Neri", questions: 2, today });
-  assert.equal(parts.subject, "TopJet: nuove domande sul caso d'uso «TJ-0004 · Fatture fornitori»");
+  const parts = referentNewQuestionsPreview({ company: "Rondine", useCase: { code: "RD-0004", title: "Fatture fornitori" }, requesterName: "Giulia Neri", questions: 2, today });
+  assert.equal(parts.subject, "Rondine: nuove domande sul caso d'uso «RD-0004 · Fatture fornitori»");
   const real = renderReferentEmail({
     template: "promemoria",
-    company: "TopJet",
-    entries: [{ useCase: { code: "TJ-0004", title: "Fatture fornitori" }, requesterName: "Giulia Neri", kind: "nuove", openQuestions: 2, newQuestions: 2, expiresAt: new Date(today.getTime() + 30 * 86_400_000), link: PREVIEW_LINK }],
+    company: "Rondine",
+    entries: [{ useCase: { code: "RD-0004", title: "Fatture fornitori" }, requesterName: "Giulia Neri", kind: "nuove", openQuestions: 2, newQuestions: 2, expiresAt: new Date(today.getTime() + 30 * 86_400_000), link: PREVIEW_LINK }],
     replyToKnown: true,
     replyName: "Giulia Neri",
   });
   assert.equal(real.subject, parts.subject);
   const texts = parts.blocks.flatMap((b) => ("p" in b ? [b.p] : "small" in b ? [b.small] : []));
   for (const t of texts) assert.ok(real.text.includes(t), t);
-  assert.ok(texts.some((t) => t.includes("Giulia Neri ha aggiunto 2 domande sul caso d'uso «TJ-0004 · Fatture fornitori»: le trovi insieme alle altre, con lo stesso link.")));
+  assert.ok(texts.some((t) => t.includes("Giulia Neri ha aggiunto 2 domande sul caso d'uso «RD-0004 · Fatture fornitori»: le trovi insieme alle altre, con lo stesso link.")));
   assert.deepEqual(previewBlocks(parts).filter((b) => b.kind === "link"), [{ kind: "link", label: "Apri le domande" }]);
 });

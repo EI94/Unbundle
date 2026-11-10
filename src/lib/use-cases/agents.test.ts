@@ -19,18 +19,18 @@ import {
 } from "./agents.ts";
 
 // Gli agenti dal titolo (rilascio «Panoramica»): il prefisso «LIBRA L1 · …», il filtro «Agente» e
-// i toni. Le forme dei titoli sono quelle di TopJet (lette il 29/10/2026: 45 approvati con il
+// i toni. Le forme dei titoli sono quelle di Rondine (lette il 29/10/2026: 45 approvati con il
 // prefisso, uno approvato e quattro proposte senza); gli altri titoli sono inventati.
 
 const titles = (...list: string[]) => list.map((title) => ({ title }));
 
 test("titleAgent: agente, codice, testo del tag, prefisso e resto del titolo", () => {
-  assert.deepEqual(titleAgent("LIBRA L1 · Lettura delle fatture estere e bozza di registrazione"), {
+  assert.deepEqual(titleAgent("LIBRA L1 · Lettura dei documenti esteri e bozza di registrazione"), {
     agent: "LIBRA",
     code: "L1",
     label: "LIBRA L1",
     prefix: "LIBRA L1 · ",
-    rest: "Lettura delle fatture estere e bozza di registrazione",
+    rest: "Lettura dei documenti esteri e bozza di registrazione",
   });
   assert.deepEqual(titleAgent("  TAIGETE T12 · Turni  "), { agent: "TAIGETE", code: "T12", label: "TAIGETE T12", prefix: "TAIGETE T12 · ", rest: "Turni" }, "senza spazi ai lati");
   assert.deepEqual(titleAgent("LIBRA · Senza codice"), { agent: "LIBRA", code: null, label: "LIBRA", prefix: "LIBRA · ", rest: "Senza codice" });
@@ -48,31 +48,31 @@ test("titleAgent: agente, codice, testo del tag, prefisso e resto del titolo", (
     ["ÈLIOS E1 · Accento", "ÈLIOS", "E1"],
     ["MEROPE M1.2 · Un decimale", "MEROPE", "M1.2"],
     ["DENEB D10 · Due cifre", "DENEB", "D10"],
-    ["SPICA P2 · Incassi abbinati e stato «paid» in FL3XX", "SPICA", "P2"],
+    ["SPICA P2 · Incassi abbinati e stato «paid» nel gestionale", "SPICA", "P2"],
   ] as const) {
     const found = titleAgent(title);
     assert.deepEqual([found?.agent, found?.code], [agent, code], title);
   }
 });
 
-test("titleAgent: le forme di TopJet; senza il prefisso nessun agente", () => {
+test("titleAgent: le forme di Rondine; senza il prefisso nessun agente", () => {
   for (const [title, label] of [
-    ["ALCIONE A1 · Presenze del personale di terra senza ricopiature", "ALCIONE A1"],
-    ["AUTO X2 · Bonifici massivi e riconciliazione bancaria in Echo", "AUTO X2"],
-    ["TAIGETE T3 · Pratiche ENAC: lista dei documenti e stato", "TAIGETE T3"],
-    ["SPICA P3 · Calendario dei pagamenti e fabbisogno per banca", "SPICA P3"],
-    ["SIRIO S4 · Prevalenza internazionale (art. 8-bis)", "SIRIO S4"],
-    ["MAIA M3 · Canale unico per le note spese (modulo di Echo o app collegata)", "MAIA M3"],
+    ["ALCIONE A1 · Presenze del personale di sede senza ricopiature", "ALCIONE A1"],
+    ["AUTO X2 · Pagamenti in blocco e riconciliazione con la banca", "AUTO X2"],
+    ["TAIGETE T3 · Pratiche dell'ente: lista dei documenti e stato", "TAIGETE T3"],
+    ["SPICA P3 · Scadenzario dei pagamenti e cassa per ogni conto", "SPICA P3"],
+    ["SIRIO S4 · Regime IVA particolare (art. 17-ter)", "SIRIO S4"],
+    ["MAIA M3 · Canale unico per i rimborsi (modulo del gestionale o app collegata)", "MAIA M3"],
   ] as const) {
     assert.equal(titleAgent(title)?.label, label, title);
   }
   // L'approvato senza prefisso e le quattro proposte: «Altri use case».
   for (const title of [
-    "Strategia per volo",
-    "Ricerca settimanale di nuovi clienti e invio della presentazione",
-    "Verifica documenti passeggeri e inserimento voli in FL3XX",
-    "Risposta automatica alle richieste di quotazione in Avinode",
-    "Ricerca automatica delle ricevute per le note spese delle carte aziendali",
+    "Margine per commessa",
+    "Ricerca mensile di nuovi contatti e invio della presentazione",
+    "Verifica documenti dei clienti e inserimento ordini nel gestionale",
+    "Risposta automatica alle richieste di preventivo dal portale",
+    "Ricerca automatica degli scontrini per i rimborsi delle carte aziendali",
   ]) {
     assert.equal(titleAgent(title), null, title);
     assert.equal(agentParamOf(title), NO_AGENT_PARAM, title);
@@ -81,7 +81,7 @@ test("titleAgent: le forme di TopJet; senza il prefisso nessun agente", () => {
 
 test("titleAgent: null fuori dalla grammatica", () => {
   for (const title of [
-    "Strategia per volo",
+    "Margine per commessa",
     "SAP FI · Accesso in lettura",
     "HR · Due lettere",
     "AI · Due lettere",
@@ -91,7 +91,7 @@ test("titleAgent: null fuori dalla grammatica", () => {
     "LIBRA L1 ·",
     "LIBRA L1 ·Senza spazio",
     "TAIGETE T2·Turni",
-    "TJ-0001 · Codice",
+    "RD-0001 · Codice",
     "R2D2 X1 · Cifre",
     "ORSA L1 L2 · Due codici",
     "LIBRA",
@@ -109,7 +109,7 @@ test("titleAgent: null fuori dalla grammatica", () => {
 
 test("titleAgent: prefisso e resto ricompongono il titolo", () => {
   for (const title of [
-    "LIBRA L1 · Lettura delle fatture estere",
+    "LIBRA L1 · Lettura dei documenti esteri",
     "  TAIGETE T12 · Turni  ",
     "LIBRA · Senza codice",
     "LIBRA L1 · Spazi",
@@ -132,7 +132,7 @@ test("parseAgentParam: «altri» o il nome di un agente, con le maiuscole", () =
 });
 
 test("agentParamOf e agentLabel: il nome dell'agente, o «altri» e «Altri use case»", () => {
-  assert.equal(agentParamOf("LIBRA L1 · Lettura delle fatture estere"), "LIBRA");
+  assert.equal(agentParamOf("LIBRA L1 · Lettura dei documenti esteri"), "LIBRA");
   assert.equal(agentParamOf("Smistamento delle richieste"), "altri");
   assert.equal(agentLabel("LIBRA"), "LIBRA");
   assert.equal(agentLabel(NO_AGENT_PARAM), "Altri use case");
@@ -151,20 +151,20 @@ test("agentPalette: in ordine alfabetico su tutte le schede, dieci toni, poi da 
   assert.deepEqual(eleven.map((agent) => wrapped.tones[agent]), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1], "dall'undicesimo agente si ricomincia");
 });
 
-test("agentPalette: i dieci agenti di TopJet hanno dieci colori, i cinque dell'amministrazione tutti diversi", () => {
+test("agentPalette: i dieci agenti di Rondine hanno dieci colori, i cinque dell'amministrazione tutti diversi", () => {
   const palette = agentPalette(
     titles(
-      "LIBRA L1 · Lettura delle fatture estere e bozza di registrazione",
-      "SIRIO S3 · File F24 delle tasse passeggeri",
-      "SPICA P3 · Calendario dei pagamenti e fabbisogno per banca",
-      "ORSA O1 · Voli pieni, vuoti ed empty leg",
-      "MAIA M3 · Canale unico per le note spese (modulo di Echo o app collegata)",
-      "AUTO X2 · Bonifici massivi e riconciliazione bancaria in Echo",
-      "ALCIONE A1 · Presenze del personale di terra senza ricopiature",
-      "DENEB D1 · Richieste di riposo e ferie in un modulo, al posto delle email",
-      "MEROPE R3 · Checklist di ingresso e uscita",
-      "TAIGETE T3 · Pratiche ENAC: lista dei documenti e stato",
-      "Strategia per volo",
+      "LIBRA L1 · Lettura dei documenti esteri e bozza di registrazione",
+      "SIRIO S3 · File F24 delle imposte locali",
+      "SPICA P3 · Scadenzario dei pagamenti e cassa per ogni conto",
+      "ORSA O1 · Viaggi pieni, vuoti e di ritorno",
+      "MAIA M3 · Canale unico per i rimborsi (modulo del gestionale o app collegata)",
+      "AUTO X2 · Pagamenti in blocco e riconciliazione con la banca",
+      "ALCIONE A1 · Presenze del personale di sede senza ricopiature",
+      "DENEB D1 · Richieste di permessi e ferie in un modulo, al posto delle email",
+      "MEROPE R3 · Controlli di apertura e chiusura",
+      "TAIGETE T3 · Pratiche dell'ente: lista dei documenti e stato",
+      "Margine per commessa",
     ),
   );
   assert.deepEqual(palette.tones, { ALCIONE: 1, AUTO: 2, DENEB: 3, LIBRA: 4, MAIA: 5, MEROPE: 6, ORSA: 7, SIRIO: 8, SPICA: 9, TAIGETE: 10 });
@@ -180,24 +180,24 @@ test("agentPalette: i dieci agenti di TopJet hanno dieci colori, i cinque dell'a
 
 test("workspaceAgentPalette: solo gli use case della Panoramica; una proposta «IVA · …» non sposta nessun colore", () => {
   const approved = (title: string, phase = "approvato") => ({ title, phase });
-  const topjet = [
-    approved("LIBRA L1 · Lettura delle fatture estere e bozza di registrazione"),
-    approved("SIRIO S3 · File F24 delle tasse passeggeri"),
-    approved("SPICA P3 · Calendario dei pagamenti e fabbisogno per banca"),
-    approved("ORSA O1 · Voli pieni, vuoti ed empty leg", "in_realizzazione"),
+  const rondine = [
+    approved("LIBRA L1 · Lettura dei documenti esteri e bozza di registrazione"),
+    approved("SIRIO S3 · File F24 delle imposte locali"),
+    approved("SPICA P3 · Scadenzario dei pagamenti e cassa per ogni conto"),
+    approved("ORSA O1 · Viaggi pieni, vuoti e di ritorno", "in_realizzazione"),
     approved("MAIA M3 · Canale unico per le note spese"),
-    approved("AUTO X2 · Bonifici massivi e riconciliazione bancaria in Echo"),
-    approved("ALCIONE A1 · Presenze del personale di terra senza ricopiature"),
-    approved("DENEB D1 · Richieste di riposo e ferie in un modulo, al posto delle email"),
-    approved("MEROPE R3 · Checklist di ingresso e uscita", "realizzato"),
-    approved("TAIGETE T3 · Pratiche ENAC: lista dei documenti e stato"),
-    approved("Strategia per volo"),
+    approved("AUTO X2 · Pagamenti in blocco e riconciliazione con la banca"),
+    approved("ALCIONE A1 · Presenze del personale di sede senza ricopiature"),
+    approved("DENEB D1 · Richieste di permessi e ferie in un modulo, al posto delle email"),
+    approved("MEROPE R3 · Controlli di apertura e chiusura", "realizzato"),
+    approved("TAIGETE T3 · Pratiche dell'ente: lista dei documenti e stato"),
+    approved("Margine per commessa"),
   ];
   const tones = { ALCIONE: 1, AUTO: 2, DENEB: 3, LIBRA: 4, MAIA: 5, MEROPE: 6, ORSA: 7, SIRIO: 8, SPICA: 9, TAIGETE: 10 };
-  assert.deepEqual(workspaceAgentPalette(topjet).tones, tones);
+  assert.deepEqual(workspaceAgentPalette(rondine).tones, tones);
   // Una proposta e due schede chiuse con una sigla in testa: nessun tono, nessun colore spostato.
   const withProposal = [
-    ...topjet,
+    ...rondine,
     approved("IVA · Calcolo dell'imposta sui biglietti", "da_valutare"),
     approved("CFO · Report mensile", "chiuso"),
     approved("BETA B1 · Prova archiviata", "chiuso"),
@@ -207,7 +207,7 @@ test("workspaceAgentPalette: solo gli use case della Panoramica; una proposta «
   assert.equal(agentToneOf(palette, "IVA"), null, "l'agente di sole proposte ha il tag neutro");
   assert.notEqual(agentToneOf(palette, "TAIGETE"), agentToneOf(palette, "ALCIONE"));
   // Il contributore: gli stessi toni dei revisori, solo per gli agenti dei titoli che vede.
-  const seen = [{ title: "TAIGETE T3 · Pratiche ENAC: lista dei documenti e stato" }, { title: "LIBRA L2 · Pagamenti" }, { title: "IVA · Calcolo dell'imposta sui biglietti" }, { title: "Strategia per volo" }];
+  const seen = [{ title: "TAIGETE T3 · Pratiche dell'ente: lista dei documenti e stato" }, { title: "LIBRA L2 · Pagamenti" }, { title: "IVA · Calcolo dell'imposta sui biglietti" }, { title: "Margine per commessa" }];
   const contributor = paletteForTitles(palette, seen);
   assert.deepEqual(contributor.tones, { LIBRA: 4, TAIGETE: 10 });
   for (const agent of ["LIBRA", "TAIGETE"]) assert.equal(agentToneOf(contributor, agent), agentToneOf(palette, agent), agent);
@@ -226,11 +226,11 @@ test("agentFilterOptions: agenti in ordine alfabetico, «Altri use case» in fon
     { value: "LIBRA", label: "LIBRA" },
     { value: "SIRIO", label: "SIRIO" },
   ]);
-  const withOthers = agentFilterOptions([...items, ...titles("Strategia per volo")], null);
+  const withOthers = agentFilterOptions([...items, ...titles("Margine per commessa")], null);
   assert.deepEqual(withOthers.at(-1), { value: "altri", label: "Altri use case" }, "solo con un titolo senza prefisso");
   assert.equal(withOthers.length, 4);
   // Senza nessun prefisso il campo non c'è.
-  assert.deepEqual(agentFilterOptions(titles("Strategia per volo", "Smistamento delle richieste"), null), []);
+  assert.deepEqual(agentFilterOptions(titles("Margine per commessa", "Smistamento delle richieste"), null), []);
   assert.deepEqual(agentFilterOptions([], null), []);
   // Un valore dell'indirizzo che nessuna scheda ha resta scelto, al suo posto.
   assert.deepEqual(
@@ -238,15 +238,15 @@ test("agentFilterOptions: agenti in ordine alfabetico, «Altri use case» in fon
     ["AUTO", "LIBRA", "MAIA", "SIRIO"],
   );
   assert.deepEqual(agentFilterOptions(items, "altri").at(-1), { value: "altri", label: "Altri use case" });
-  assert.deepEqual(agentFilterOptions(titles("Strategia per volo"), "LIBRA"), [
+  assert.deepEqual(agentFilterOptions(titles("Margine per commessa"), "LIBRA"), [
     { value: "LIBRA", label: "LIBRA" },
     { value: "altri", label: "Altri use case" },
   ]);
 });
 
 test("l'etichetta corta dei punti dei grafici: il tag dell'agente, altrimenti il codice", () => {
-  assert.equal(shortRefOf({ code: "TJ-0001", title: "LIBRA L1 · Lettura delle fatture estere" }), "LIBRA L1");
-  assert.equal(shortRefOf({ code: "TJ-0002", title: "ORSA · Solleciti" }), "ORSA");
-  assert.equal(shortRefOf({ code: "TJ-0003", title: "Strategia per volo" }), "TJ-0003");
-  assert.equal(shortRefOf({ code: null, title: "Strategia per volo" }), null);
+  assert.equal(shortRefOf({ code: "RD-0001", title: "LIBRA L1 · Lettura dei documenti esteri" }), "LIBRA L1");
+  assert.equal(shortRefOf({ code: "RD-0002", title: "ORSA · Solleciti" }), "ORSA");
+  assert.equal(shortRefOf({ code: "RD-0003", title: "Margine per commessa" }), "RD-0003");
+  assert.equal(shortRefOf({ code: null, title: "Margine per commessa" }), null);
 });

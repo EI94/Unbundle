@@ -45,7 +45,7 @@ const PROPOSER_VALUES = [PROPOSER_NAME, PROPOSER_EMAIL, FORM_EMAIL, SLACK_USER, 
 
 const GUIDE = {
   guideVersion: "1.0",
-  workspace: { nome: "TopJet e Aliserio", società: ["topjet", "aliserio", "entrambe"], esgEnabled: false },
+  workspace: { nome: "Rondine e Ferralba", società: ["rondine", "ferralba", "entrambe"], esgEnabled: false },
   areas: [
     { id: "operazioni", label: "Operazioni" },
     { id: "vendite", label: "Vendite" },
@@ -142,7 +142,7 @@ before(async () => {
     await app.q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, $3)`, [id, ids.org, `Workspace ${name} ${suffix}`]);
   }
   // A e C: connettore con la guida (aree e società); C non ha proposte. B: nessuna guida.
-  for (const [id, prefix] of [[ids.wsA, "TJ"], [ids.wsC, "TC"]]) {
+  for (const [id, prefix] of [[ids.wsA, "RD"], [ids.wsC, "TC"]]) {
     await app.q(
       `INSERT INTO workspace_connector_configs (workspace_id, slug, code_prefix, guide, guide_version) VALUES ($1, $2, $3, $4::jsonb, '1.0')`,
       [id, `aree-${prefix.toLowerCase()}-${suffix}`, prefix, JSON.stringify(GUIDE)]
@@ -152,33 +152,33 @@ before(async () => {
   const A = ids.wsA;
   // Contano: connettore, REST, modulo, Slack, idea da un corso; anche una scartata.
   for (const kind of ["best_practice", "best_practice", "use_case_ai", "use_case_ai"] as const) {
-    await proposal(A, { via: "connector", kind, area: "operazioni", company: "topjet" });
+    await proposal(A, { via: "connector", kind, area: "operazioni", company: "rondine" });
   }
-  await proposal(A, { via: "rest", area: "operazioni", company: "topjet" });
-  await proposal(A, { via: "connector", area: "operazioni", company: "topjet", status: "rejected" });
+  await proposal(A, { via: "rest", area: "operazioni", company: "rondine" });
+  await proposal(A, { via: "connector", area: "operazioni", company: "rondine", status: "rejected" });
   for (const kind of ["best_practice", "use_case_ai", "use_case_ai"] as const) {
-    await proposal(A, { via: "connector", kind, area: "vendite", company: "aliserio" });
+    await proposal(A, { via: "connector", kind, area: "vendite", company: "ferralba" });
   }
-  await proposal(A, { via: "connector", area: "persone", company: "aliserio" });
-  await proposal(A, { via: "connector", area: "persone", company: "aliserio" });
+  await proposal(A, { via: "connector", area: "persone", company: "ferralba" });
+  await proposal(A, { via: "connector", area: "persone", company: "ferralba" });
   await proposal(A, { via: "connector", kind: "best_practice", area: "legale", company: "entrambe" });
   await proposal(A, { via: "connector", area: "operazioni", company: "entrambe" });
   await proposal(A, { via: "connector", area: "operazioni", company: "entrambe" });
-  await proposal(A, { via: "rest", area: "logistica", company: "topjet" }); // area fuori dalla guida
+  await proposal(A, { via: "rest", area: "logistica", company: "rondine" }); // area fuori dalla guida
   await proposal(A, { via: "web_proposed", kind: "best_practice" });
   await proposal(A, { via: "slack_proposed" });
   await proposal(A, { via: "learning", status: "draft" });
   // Non contano: archiviate (anche un doppione), nascoste ai colleghi, generate dall'AI,
   // importate dalla diagnostica, fuori dalla raccolta.
-  await proposal(A, { via: "connector", area: "operazioni", company: "topjet", review: "archived", intake: { archiveReason: "superato" } });
-  await proposal(A, { via: "connector", area: "operazioni", company: "topjet", review: "archived", intake: { archiveReason: "duplicato", duplicateOfCode: "TJ-0001" } });
-  await proposal(A, { via: "connector", area: "vendite", company: "aliserio", intake: { hiddenFromSearch: "true" } });
+  await proposal(A, { via: "connector", area: "operazioni", company: "rondine", review: "archived", intake: { archiveReason: "superato" } });
+  await proposal(A, { via: "connector", area: "operazioni", company: "rondine", review: "archived", intake: { archiveReason: "duplicato", duplicateOfCode: "RD-0001" } });
+  await proposal(A, { via: "connector", area: "vendite", company: "ferralba", intake: { hiddenFromSearch: "true" } });
   await proposal(A, { via: "generated" });
   await proposal(A, { via: "ai_readiness_assessment" });
   await proposal(A, { via: "generated", kind: null });
 
   // B: stesse aree, nessuna guida; le sue proposte non entrano in A.
-  for (let i = 0; i < 3; i++) await proposal(ids.wsB, { via: "connector", area: "operazioni", company: "topjet" });
+  for (let i = 0; i < 3; i++) await proposal(ids.wsB, { via: "connector", area: "operazioni", company: "rondine" });
 });
 
 after(async () => {
@@ -198,8 +198,8 @@ test("conta per area le proposte dei colleghi, con soglia, ordine ed esclusioni"
     // La riga somma ogni proposta con una società (7 + 5 + 3 = 15 = 18 − 3 senza area):
     // per differenza non si ricava nulla. La grafia viene dal nome del workspace.
     companies: [
-      { label: "TopJet", count: 7 },
-      { label: "Aliserio", count: 5 },
+      { label: "Rondine", count: 7 },
+      { label: "Ferralba", count: 5 },
       { label: "Entrambe le società", count: 3 },
     ],
   } satisfies Participation);

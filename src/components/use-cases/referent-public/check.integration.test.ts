@@ -96,7 +96,7 @@ async function newCard(model: unknown): Promise<{ id: string; needs: string[] }>
 let contactSeq = 0;
 /** Una richiesta al referente con il suo link (dal mailer finto) e l'informativa letta. */
 async function referentLink(useCaseId: string, needIds: string[]): Promise<{ token: string; requestId: string; link: Link }> {
-  const email = `referente.${contactSeq++}.${suffix}@topjet.test`;
+  const email = `referente.${contactSeq++}.${suffix}@rondine.test`;
   const sent = ok(
     await referents.sendReferentRequest(as(), useCaseId, { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Aldo Prova", email }, needIds }, { env: ENV, requester: { name: "Giulia Neri", emailVerified: true } }),
     "invio",
@@ -169,7 +169,7 @@ before(async () => {
   keys = view.PUBLIC_VIEW_KEYS;
   keyPaths = (value) => view.keyPaths(value);
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione conferma', $2)`, [ids.org, `hub-conferma-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet prova')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine prova')`, [ids.ws, ids.org]);
   for (const [id, role] of [[ids.builder, "function_lead"], [ids.analyst, "analyst"]] as const) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [id, `${role}.conferma.${suffix}@cliente.test`, `Persona ${role}`]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, id, role]);

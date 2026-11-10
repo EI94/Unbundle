@@ -39,7 +39,7 @@ export function referentDateLabel(at: Date | string, today: string): string {
   return today.slice(0, 4) === String(year) ? base : `${base}/${year}`;
 }
 
-/** «m•••@topjet.it»: la prima lettera, poi •••, poi @dominio; null senza email. */
+/** «m•••@rondine.it»: la prima lettera, poi •••, poi @dominio; null senza email. */
 export function maskEmail(email: string | null): string | null {
   if (!email) return null;
   const clean = email.trim().toLowerCase();
@@ -125,7 +125,7 @@ export interface LatestAskForNeed {
 /**
  * La riga di un'esigenza: «Chiesta a Mario Rossi il 27/10 · Promemoria inviato il 30/10»,
  * «… · Risposta ricevuta il 2/11», «Link scaduto il 26/11 senza risposta», «Link revocato il …»,
- * «Email non ancora partita»; « (per TJ-0004)» quando la richiesta era per un'altra scheda.
+ * «Email non ancora partita»; « (per RD-0004)» quando la richiesta era per un'altra scheda.
  */
 export function needReferentLine(latest: LatestAskForNeed | null, today: string, currentUseCaseId: string): string | null {
   if (!latest) return null;

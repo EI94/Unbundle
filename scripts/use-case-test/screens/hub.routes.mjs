@@ -19,7 +19,7 @@
 //
 // A fuller portfolio in «a»: set HUB_PANORAMICA_SEED=1 when, on top of seed-hub.mjs, workspace «a» also
 // has approved titles with an agent prefix («LIBRA L1 · …») next to titles without one, approved or
-// in-progress cards with «Benefici e costi» and open requirements (a portfolio shaped like TopJet's).
+// in-progress cards with «Benefici e costi» and open requirements (a portfolio shaped like Rondine's).
 // seed-hub.mjs writes none of them: without the flag «Per agente» and «Curva del valore» are not
 // offered, their addresses open the lanes, and «Cosa serve» is empty.
 

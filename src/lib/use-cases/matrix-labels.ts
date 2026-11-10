@@ -22,7 +22,7 @@
  *
  * Con `wideFromPx` c'è un secondo livello: un punto senza un posto libero a ogni larghezza (o non
  * isolato sul riquadro più piccolo) può avere l'etichetta da `wideFromPx` in su, se lì è isolato e
- * libero (`wide`); chi disegna la nasconde sotto quella larghezza. Su TopJet la colonna «€» al
+ * libero (`wide`); chi disegna la nasconde sotto quella larghezza. Su Rondine la colonna «€» al
  * telefono è larga 61 px e «LIBRA L1» non ci sta senza passare la linea del costo basso; da 440
  * px sì.
  *
@@ -259,7 +259,7 @@ export function zoneLabelRect(zone: ZoneLabelInput, spot: ZoneLabelSpot, geometr
 
 /**
  * Dove scrivere il nome di ogni zona: nell'angolo esterno, oppure accanto alla linea del «Valore
- * alto» se l'angolo esterno copre più punti (somma sulle larghezze `widths`). TopJet: quindici use
+ * alto» se l'angolo esterno copre più punti (somma sulle larghezze `widths`). Rondine: quindici use
  * case in basso a sinistra, nella colonna «€» con Valore 1-2, e «Se avanza tempo» sotto la linea.
  */
 export function placeZoneLabels(

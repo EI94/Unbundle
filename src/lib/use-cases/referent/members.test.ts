@@ -36,7 +36,7 @@ const ORIGIN = "https://app.example.test";
 const LINK = `${ORIGIN}/rispondi/ucq_${"A".repeat(32)}`;
 const LINK2 = `${ORIGIN}/rispondi/ucq_${"B".repeat(32)}`;
 const EXPIRES = new Date("2026-11-26T10:00:00Z");
-const UCREF = { code: "TJ-0004", title: "Fatture fornitori" };
+const UCREF = { code: "RD-0004", title: "Fatture fornitori" };
 
 // ── Chi ha già un account ────────────────────────────────────────────
 
@@ -76,26 +76,26 @@ test("la SQL delle persone: account verificati del workspace, niente partecipant
 });
 
 test("le righe delle persone: id e email puliti, mai un partecipante ai corsi", () => {
-  assert.deepEqual(memberFactsOf({ user_id: ANNA.toUpperCase(), name: "  Anna   Verdi ", email: " Anna@TopJet.test ", role: "contributor" }), { userId: ANNA, name: "Anna Verdi", email: "anna@topjet.test", role: "contributor" });
-  assert.equal(memberFactsOf({ user_id: ANNA, name: "Anna", email: "anna@topjet.test", role: "learner" }), null);
-  assert.equal(memberFactsOf({ user_id: "x", name: "Anna", email: "anna@topjet.test", role: "contributor" }), null);
+  assert.deepEqual(memberFactsOf({ user_id: ANNA.toUpperCase(), name: "  Anna   Verdi ", email: " Anna@Rondine.test ", role: "contributor" }), { userId: ANNA, name: "Anna Verdi", email: "anna@rondine.test", role: "contributor" });
+  assert.equal(memberFactsOf({ user_id: ANNA, name: "Anna", email: "anna@rondine.test", role: "learner" }), null);
+  assert.equal(memberFactsOf({ user_id: "x", name: "Anna", email: "anna@rondine.test", role: "contributor" }), null);
   assert.equal(memberFactsOf({ user_id: ANNA, name: "Anna", email: "senza-chiocciola", role: "contributor" }), null);
   assert.equal(memberFactsOf(undefined), null);
-  assert.equal(memberDisplayName({ name: "Anna Verdi", email: "anna@topjet.test" }), "Anna Verdi");
-  assert.equal(memberDisplayName({ name: null, email: "anna.verdi@topjet.test" }), "anna.verdi", "senza nome: la parte prima della chiocciola");
-  assert.equal(memberDisplayName({ name: "A", email: "x@topjet.test" }), "x@topjet.test");
+  assert.equal(memberDisplayName({ name: "Anna Verdi", email: "anna@rondine.test" }), "Anna Verdi");
+  assert.equal(memberDisplayName({ name: null, email: "anna.verdi@rondine.test" }), "anna.verdi", "senza nome: la parte prima della chiocciola");
+  assert.equal(memberDisplayName({ name: "A", email: "x@rondine.test" }), "x@rondine.test");
 });
 
 const member = (userId: string, name: string, email: string, role = "contributor"): WorkspaceMemberFacts => ({ userId, name, email, role });
 
 test("selettore: una voce per persona, mai chi guarda, mai Lateral Space, in ordine alfabetico, solo «Fa parte del team» in più", () => {
   const members = [
-    member(CARLA, "carla Neri", "carla@topjet.test", "function_lead"),
-    member(ME, "Giulia Neri", "giulia@topjet.test", "function_lead"),
-    member(BRUNO, "Bruno Bianchi", "bruno@topjet.test"),
-    member(ANNA, "Anna Verdi", "anna@topjet.test", "analyst"),
+    member(CARLA, "carla Neri", "carla@rondine.test", "function_lead"),
+    member(ME, "Giulia Neri", "giulia@rondine.test", "function_lead"),
+    member(BRUNO, "Bruno Bianchi", "bruno@rondine.test"),
+    member(ANNA, "Anna Verdi", "anna@rondine.test", "analyst"),
     member(LS, "Pier Lateral", "pier@ls.test", "transformation_lead"),
-    member(BRUNO, "Bruno Bianchi", "bruno@topjet.test"),
+    member(BRUNO, "Bruno Bianchi", "bruno@rondine.test"),
   ];
   const isLs = (m: WorkspaceMemberFacts) => m.email.endsWith("@ls.test");
   const none = { contactEmails: new Set<string>(), contactUserIds: new Set<string>() };
@@ -111,7 +111,7 @@ test("selettore: una voce per persona, mai chi guarda, mai Lateral Space, in ord
   // Chi è già un referente (per email o per account) non ha una seconda voce: si sceglie il referente.
   const deduped = pickerMembersOf(members, {
     viewerUserId: ME,
-    dedupe: { contactEmails: new Set(["anna@topjet.test"]), contactUserIds: new Set([CARLA]) },
+    dedupe: { contactEmails: new Set(["anna@rondine.test"]), contactUserIds: new Set([CARLA]) },
     isLateralSpace: isLs,
   });
   assert.deepEqual(deduped.map((m) => m.userId), [BRUNO]);
@@ -154,17 +154,17 @@ test("la SQL con i partecipanti ai corsi: solo una riga «learner» di questo wo
 });
 
 test("le righe con i partecipanti ai corsi: il ruolo «learner» entra solo con l'opzione; chi guarda resta fuori", () => {
-  const row = { user_id: ANNA, name: "Anna Verdi", email: "anna@topjet.test", role: "learner" };
+  const row = { user_id: ANNA, name: "Anna Verdi", email: "anna@rondine.test", role: "learner" };
   assert.equal(memberFactsOf(row), null);
   assert.equal(memberFactsOf(row, { learners: false }), null);
-  assert.deepEqual(memberFactsOf(row, { learners: true }), { userId: ANNA, name: "Anna Verdi", email: "anna@topjet.test", role: "learner" });
+  assert.deepEqual(memberFactsOf(row, { learners: true }), { userId: ANNA, name: "Anna Verdi", email: "anna@rondine.test", role: "learner" });
   assert.equal(memberFactsOf({ ...row, role: "" }, { learners: true }), null, "senza ruolo mai");
   assert.equal(memberFactsOf({ ...row, role: null }, { learners: true }), null);
   for (const role of ["learner", "contributor", "function_lead"]) assert.equal(isPickableMemberRole(role), true, role);
   for (const role of [null, undefined, ""]) assert.equal(isPickableMemberRole(role), false, String(role));
   // Chi guarda non diventa mai «chi vede le persone» perché partecipa a un corso.
   assert.equal(canSeeWorkspacePeople("learner"), false);
-  const members = [member(ANNA, "Anna Verdi", "anna@topjet.test", "learner"), member(BRUNO, "Bruno Bianchi", "bruno@topjet.test", "function_lead"), member(CARLA, "Carla Neri", "carla@ls.test", "learner")];
+  const members = [member(ANNA, "Anna Verdi", "anna@rondine.test", "learner"), member(BRUNO, "Bruno Bianchi", "bruno@rondine.test", "function_lead"), member(CARLA, "Carla Neri", "carla@ls.test", "learner")];
   const none = { contactEmails: new Set<string>(), contactUserIds: new Set<string>() };
   const isLs = (m: WorkspaceMemberFacts) => m.email.endsWith("@ls.test");
   assert.deepEqual(pickerMembersOf(members, { viewerUserId: ME, dedupe: none, isLateralSpace: isLs }).map((m) => m.userId), [BRUNO], "senza l'opzione come prima");
@@ -173,7 +173,7 @@ test("le righe con i partecipanti ai corsi: il ruolo «learner» entra solo con 
   for (const m of withLearners) assert.deepEqual(Object.keys(m).sort(), ["displayName", "email", "team", "userId"], "niente che distingua un partecipante");
   // Un partecipante già referente (per email o per account) non ha una seconda voce; chi guarda mai.
   assert.deepEqual(pickerMembersOf(members, { viewerUserId: ANNA, dedupe: none, isLateralSpace: isLs, learners: true }).map((m) => m.userId), [BRUNO]);
-  assert.deepEqual(pickerMembersOf(members, { viewerUserId: ME, dedupe: { contactEmails: new Set(["anna@topjet.test"]), contactUserIds: new Set() }, isLateralSpace: isLs, learners: true }).map((m) => m.userId), [BRUNO]);
+  assert.deepEqual(pickerMembersOf(members, { viewerUserId: ME, dedupe: { contactEmails: new Set(["anna@rondine.test"]), contactUserIds: new Set() }, isLateralSpace: isLs, learners: true }).map((m) => m.userId), [BRUNO]);
 });
 
 // ── Il collegamento all'account ──────────────────────────────────────
@@ -194,8 +194,8 @@ test("collegamento: solo un contatto nuovo senza account, solo con la stessa ema
 const richiesta = (over: Partial<{ accountNotice: boolean; cardLink: string | null; questions: number; title: string }> = {}) =>
   renderReferentEmail({
     template: "richiesta",
-    company: "TopJet",
-    useCase: { code: "TJ-0004", title: over.title ?? UCREF.title },
+    company: "Rondine",
+    useCase: { code: "RD-0004", title: over.title ?? UCREF.title },
     requesterName: "Fabio Esempio",
     questions: over.questions ?? 2,
     message: null,
@@ -208,10 +208,10 @@ const richiesta = (over: Partial<{ accountNotice: boolean; cardLink: string | nu
 
 test("richiesta di sole domande: dice chi chiede e su quale caso d'uso; il link, i 30 giorni e il piè di pagina restano", () => {
   const m = richiesta();
-  assert.equal(m.subject, "TopJet: alcune domande sul caso d'uso «TJ-0004 · Fatture fornitori»");
+  assert.equal(m.subject, "Rondine: alcune domande sul caso d'uso «RD-0004 · Fatture fornitori»");
   const lines = m.text.split("\n").map((l) => l.trim()).filter(Boolean);
   assert.equal(lines[0], "Buongiorno,");
-  assert.equal(lines[1], "Fabio Esempio ti chiede alcune informazioni sul caso d'uso «TJ-0004 · Fatture fornitori».");
+  assert.equal(lines[1], "Fabio Esempio ti chiede alcune informazioni sul caso d'uso «RD-0004 · Fatture fornitori».");
   assert.ok(m.text.includes("Le domande sono 2."));
   assert.ok(richiesta({ questions: 1 }).text.includes("È una domanda sola."));
   assert.ok(m.text.includes(LINK) && m.text.includes("Il link scade il 26 novembre 2026.") && m.text.includes("Lateral Space via Unbundle."));
@@ -245,13 +245,13 @@ const entry = (kind: ReminderEntry["kind"], link = LINK): ReminderEntry => ({
 
 test("promemoria: la stessa riga per chi ha già un account, con una o più voci; mai un link alla dashboard", () => {
   for (const kind of ["primo", "ultimo", "manuale", "nuove"] as const) {
-    const one = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry(kind)], replyToKnown: false, replyName: null, accountNotice: true });
+    const one = renderReferentEmail({ template: "promemoria", company: "Rondine", entries: [entry(kind)], replyToKnown: false, replyName: null, accountNotice: true });
     assert.ok(one.text.includes(ACCOUNT_NOTICE_LINE), kind);
     assert.ok(!one.text.includes("/dashboard/"), kind);
-    const plain = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry(kind)], replyToKnown: false, replyName: null });
+    const plain = renderReferentEmail({ template: "promemoria", company: "Rondine", entries: [entry(kind)], replyToKnown: false, replyName: null });
     assert.ok(!plain.text.includes(ACCOUNT_NOTICE_LINE), kind);
   }
-  const many = renderReferentEmail({ template: "promemoria", company: "TopJet", entries: [entry("primo"), entry("ultimo", LINK2)], replyToKnown: false, replyName: null, accountNotice: true });
+  const many = renderReferentEmail({ template: "promemoria", company: "Rondine", entries: [entry("primo"), entry("ultimo", LINK2)], replyToKnown: false, replyName: null, accountNotice: true });
   assert.ok(many.text.includes(ACCOUNT_NOTICE_LINE_MANY));
   assert.ok(!many.text.includes("/dashboard/"));
 });
@@ -288,11 +288,11 @@ const req = (over: Partial<ReferentRequestFacts> = {}): ReferentRequestFacts => 
   ...over,
 });
 const facts = (recipient: { accountNotice?: boolean; teamAccess?: boolean }, requests = [req()]): ReferentDeliveryFacts => ({
-  company: "TopJet",
+  company: "Rondine",
   featureOn: true,
   subprocessorsAuthorized: true,
-  recipient: { email: "anna@topjet.test", active: true, anonymized: false, linkedUserIsLateralSpace: false, ...recipient },
-  replyTo: "federico@topjet.test",
+  recipient: { email: "anna@rondine.test", active: true, anonymized: false, linkedUserIsLateralSpace: false, ...recipient },
+  replyTo: "fabio@rondine.test",
   requests,
   contactRemindedToday: false,
 });

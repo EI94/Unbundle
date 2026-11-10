@@ -3,7 +3,7 @@
  * «Agente» di «Altri filtri» e i gruppi «Per agente».
  *
  * - **Dal titolo.** L'agente si legge dal titolo (decisione di Pierpaolo, nessun campo nuovo):
- *   «LIBRA L1 · Lettura delle fatture estere» → agente «LIBRA», codice «L1». Non si salva
+ *   «LIBRA L1 · Lettura dei documenti esteri» → agente «LIBRA», codice «L1». Non si salva
  *   niente; un titolo senza il prefisso non ha agente («Altri use case»). L'agente è un nome in
  *   testa al titolo, mai una persona (art. 15.4).
  * - **Colori.** Dieci toni (`--uc-agente-1…10` di globals.css), dati in ordine alfabetico agli
@@ -51,7 +51,7 @@ export function titleAgent(title: string): TitleAgent | null {
 
 /**
  * L'etichetta corta di uno use case accanto a un punto dei grafici del menu «⋯»: il tag dell'agente
- * («LIBRA L1»), lo stesso delle card della Panoramica, altrimenti il codice («TJ-0012»); null senza.
+ * («LIBRA L1»), lo stesso delle card della Panoramica, altrimenti il codice («RD-0012»); null senza.
  */
 export function shortRefOf(item: { code: string | null; title: string }): string | null {
   return titleAgent(item.title)?.label ?? item.code;
@@ -131,7 +131,7 @@ export interface AgentPalette {
  * I toni degli agenti delle schede date (la pagina dà quelle della Panoramica di tutto il workspace,
  * `workspaceAgentPalette`): gli agenti in ordine alfabetico, l'i-esimo con il tono (i mod 10) + 1. In ordine alfabetico e non con un hash
  * del nome: FNV-1a modulo 10 darebbe lo stesso colore a SIRIO, MAIA e MEROPE, e a DENEB e LIBRA.
- * Così i dieci agenti di TopJet hanno dieci colori: ALCIONE 1, AUTO 2, DENEB 3, LIBRA 4, MAIA 5,
+ * Così i dieci agenti di Rondine hanno dieci colori: ALCIONE 1, AUTO 2, DENEB 3, LIBRA 4, MAIA 5,
  * MEROPE 6, ORSA 7, SIRIO 8, SPICA 9, TAIGETE 10. Dall'undicesimo agente i toni ricominciano.
  */
 export function agentPalette(items: readonly { title: string }[]): AgentPalette {
@@ -156,7 +156,7 @@ export const AGENT_PALETTE_PHASES: readonly string[] = Object.freeze(["approvato
  * La tavolozza del workspace: `agentPalette` sugli use case di tutto il workspace nelle fasi della
  * Panoramica (`AGENT_PALETTE_PHASES`), letti sul server per chiunque guardi, senza filtri. Così una
  * proposta, una scheda chiusa o nascosta non sposta i colori («IVA · Calcolo…», una sigla in testa,
- * darebbe a sette agenti di TopJet un altro colore), e un contributore vede gli stessi colori di un
+ * darebbe a sette agenti di Rondine un altro colore), e un contributore vede gli stessi colori di un
  * revisore. Un agente che ha solo proposte non ha un tono: il suo tag è neutro.
  */
 export function workspaceAgentPalette(items: readonly { title: string; phase: string }[]): AgentPalette {

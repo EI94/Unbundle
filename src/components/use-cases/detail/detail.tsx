@@ -215,11 +215,11 @@ export interface UseCaseDetailViewProps {
   infoProgress?: InfoProgressView | null;
   /** Il nome del team che valuta, da solo (§14.2): «Tocca a …» e i testi del contributore. */
   teamName: string;
-  /** Il nome del workspace (`access.workspace.name`): «Chiedere le informazioni a TopJet». */
+  /** Il nome del workspace (`access.workspace.name`): «Chiedere le informazioni a Rondine». */
   companyName?: string | null;
   /**
    * (Rilascio 4) Il nome del cliente del connettore (`workspace_connector_configs.workspace_display_name`,
-   * «TopJet e Aliserio»): con il nome del workspace, le parole dell'azienda che la proposta delle
+   * «Rondine e Ferralba»): con il nome del workspace, le parole dell'azienda che la proposta delle
    * domande di «Chiedi al referente» non scambia mai per una persona. null senza.
    */
   companyDisplayName?: string | null;

@@ -100,7 +100,7 @@ const ids = {
   wsZ: randomUUID(),
   /** Area accesa, titoli con il prefisso dell'agente («LIBRA L1 · …») e uno senza (rilascio «Panoramica»). */
   wsP: randomUUID(),
-  /** Area accesa, gli approvati tutti AI Transformation nascosti alla ricerca e una proposta del contributore (come TopJet). */
+  /** Area accesa, gli approvati tutti AI Transformation nascosti alla ricerca e una proposta del contributore (come Rondine). */
   wsH: randomUUID(),
   ls: randomUUID(),
   builder: randomUUID(),
@@ -518,7 +518,7 @@ before(async () => {
   cards.bestPractice = await seed({ title: `Best practice ${suffix}`, kind: "best_practice", status: "accepted", review: "scored" });
   cards.dBest = await seed({ workspaceId: ids.wsD, title: `Best practice di D ${suffix}`, kind: "best_practice", status: "accepted", review: "scored" });
   cards.eClosed = await seed({ workspaceId: ids.wsE, title: `Chiusa di E ${suffix}`, status: "rejected", review: "scored" });
-  // Workspace H: un approvato AI Transformation nato nascosto alla ricerca (§8.6), come i 45 di TopJet,
+  // Workspace H: un approvato AI Transformation nato nascosto alla ricerca (§8.6), come i 45 di Rondine,
   // e la sola proposta del contributore.
   cards.hHidden = await seed({
     workspaceId: ids.wsH,
@@ -538,7 +538,7 @@ before(async () => {
   // in realizzazione con gli euro, SIRIO solo in realizzazione e senza cifra.
   const wsP = ids.wsP;
   const accepted = { workspaceId: wsP, status: "accepted", review: "scored" };
-  agentCards.libraL1 = await seed({ ...accepted, title: `LIBRA L1 · Lettura delle fatture estere ${suffix}`, targetQuarter: thisQuarter, valueEurYear: 12_250, costEurOnce: 700 });
+  agentCards.libraL1 = await seed({ ...accepted, title: `LIBRA L1 · Lettura dei documenti esteri ${suffix}`, targetQuarter: thisQuarter, valueEurYear: 12_250, costEurOnce: 700 });
   agentCards.libraL2 = await seed({
     ...accepted,
     title: `LIBRA L2 · Riconciliazione dei pagamenti ${suffix}`,
@@ -1190,7 +1190,7 @@ test("Panoramica: tag degli agenti, corsie e barre", opts, async () => {
   // Le barre sulla scala del più grande degli approvati (12.250 €): 5.000 € e 3.000 €.
   assert.deepEqual([widthOf(l1), widthOf(l2), widthOf(orsa)], ["100.0%", "40.8%", "24.5%"]);
   // Il titolo senza il prefisso, che resta per i lettori di schermo; il tag è nascosto a loro.
-  assert.ok(l1.includes(`<span class="sr-only">LIBRA L1 · </span>Lettura delle fatture estere ${suffix}`), l1);
+  assert.ok(l1.includes(`<span class="sr-only">LIBRA L1 · </span>Lettura dei documenti esteri ${suffix}`), l1);
   assert.match(l1, /data-slot="agent-tag" data-tone="[^"]+" aria-hidden="true"/);
   // Un filtro non cambia né la scala né i colori.
   for (const filter of [{ origine: "adoption" }, { agente: "LIBRA" }] as Array<Record<string, string>>) {

@@ -8,9 +8,9 @@ import { Disclosure } from "./disclosure";
 const TARGET = "min-h-11 sm:min-h-6";
 
 /**
- * Uno use case di un'esigenza: «TJ-0012 · Smistamento», il titolo solo senza codice. Sottolineato come
+ * Uno use case di un'esigenza: «RD-0012 · Smistamento», il titolo solo senza codice. Sottolineato come
  * gli altri link dell'area: nel tema scuro --primary è chiaro come il testo e sta dentro righe grigie
- * («Ufficio IT · 30/11 · TJ-0012 · …»), dove il solo colore non basta a dire dove inizia il link.
+ * («Ufficio IT · 30/11 · RD-0012 · …»), dove il solo colore non basta a dire dove inizia il link.
  */
 export function NeedUseCaseLink({ useCase, href, scroll = true }: { useCase: NeedUseCaseRef; href: string; scroll?: boolean }) {
   return (

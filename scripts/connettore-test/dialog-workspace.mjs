@@ -9,7 +9,7 @@
 //   node --no-warnings scripts/connettore-test/dialog-workspace.mjs resume
 //   node --no-warnings scripts/connettore-test/dialog-workspace.mjs remove    # revokes the token, deletes the data
 //
-// create: a synthetic organization and workspace with the connector on, code prefix TJ (the test
+// create: a synthetic organization and workspace with the connector on, code prefix RD (the test
 // prefix of the prompt, criterion 5), the example guide (docs/connettore/guida-esempio.json),
 // the synthetic profile and instructions template of the tests, and one connector token. The
 // token is never printed: it goes only to $UC_TEST_ROOT/conn-dialog/token (mode 0600), to be
@@ -79,7 +79,7 @@ async function create() {
   await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, $3)`, [ids.ws, ids.org, `Workspace del dialogo ${suffix}`]);
   await q(
     `INSERT INTO workspace_connector_configs (workspace_id, slug, enabled, code_prefix, identity_mode, auth_mode, workspace_display_name, guide, guide_version, profile, instructions_template)
-     VALUES ($1, $2, true, 'TJ', 'dichiarata', 'header', 'Alfa e Beta', $3::jsonb, $4, $5::jsonb, $6)`,
+     VALUES ($1, $2, true, 'RD', 'dichiarata', 'header', 'Alfa e Beta', $3::jsonb, $4, $5::jsonb, $6)`,
     [ids.ws, slug, JSON.stringify(EXAMPLE_GUIDE), String(EXAMPLE_GUIDE.guideVersion), JSON.stringify(EXAMPLE_CONNECTOR_PROFILE_INPUT), EXAMPLE_INSTRUCTIONS_TEMPLATE]
   );
   // Un giorno basta per il dialogo; «remove» lo revoca comunque.
@@ -94,7 +94,7 @@ async function create() {
   chmodSync(tokenPath, 0o600);
   writeFileSync(statePath, JSON.stringify({ ...ids, slug, tokenId: row.id, database: db, port }, null, 2));
   const url = `http://${CONNECTOR_APP_HOST}:${CONNECTOR_APP_PORT}/api/mcp/connettore/${slug}`;
-  console.log(`Workspace del dialogo creato (database ${db}): slug ${slug}, prefisso TJ, connettore acceso, token valido 1 giorno.`);
+  console.log(`Workspace del dialogo creato (database ${db}): slug ${slug}, prefisso RD, connettore acceso, token valido 1 giorno.`);
   console.log(`Indirizzo: ${url}`);
   console.log(`Token (mai stampato): ${tokenPath}`);
   console.log(`Nella shell di Claude Code:\n  export UB_CONNECTOR_TEST_TOKEN="$(cat ${tokenPath})"`);

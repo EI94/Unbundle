@@ -49,7 +49,7 @@ const emails = {
 };
 type Person = keyof typeof emails;
 const ROLE: Record<Person, string> = { builder: "function_lead", analyst: "analyst", contributor: "contributor", ls: "transformation_lead" };
-const REFERENT_EMAIL = `mario.rossi.${suffix}@topjet.test`;
+const REFERENT_EMAIL = `mario.rossi.${suffix}@rondine.test`;
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-"));
 
 const ENV = {
@@ -110,7 +110,7 @@ before(async () => {
   dispatch = await import("../../db/queries/use-case-referent-dispatch.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione referenti', $2)`, [ids.org, `hub-referenti-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'TopJet prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'Rondine prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
     for (const ws of [ids.ws, ids.other]) await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ws, ids[person], ROLE[person]]);
@@ -190,11 +190,11 @@ test("pannello: porte nell'ordine (prima l'autorizzazione, poi l'email); null pe
   const { REFERENT_UI_TEXT, fillText } = await import("./labels.ts");
   const client = before!.gates[0] as { canDeclare?: boolean; message: string };
   assert.equal(client.canDeclare, true);
-  assert.equal(client.message, fillText(REFERENT_UI_TEXT.gates.subprocessorsCanDeclare, { Azienda: "TopJet prova" }));
+  assert.equal(client.message, fillText(REFERENT_UI_TEXT.gates.subprocessorsCanDeclare, { Azienda: "Rondine prova" }));
   const lsGate = (await panelFor("ls"))!.gates[0] as { code: string; canDeclare?: boolean; message: string; settingsHref?: string };
   assert.equal(lsGate.code, "sub_responsabili_mancanti");
   assert.equal(lsGate.canDeclare, true, "Lateral Space può registrare l'ok");
-  assert.equal(lsGate.message, fillText(REFERENT_UI_TEXT.gates.subprocessorsLsCanDeclare, { Azienda: "TopJet prova" }));
+  assert.equal(lsGate.message, fillText(REFERENT_UI_TEXT.gates.subprocessorsLsCanDeclare, { Azienda: "Rondine prova" }));
   assert.equal(lsGate.settingsHref, `/dashboard/${ids.ws}/settings#sub-responsabili`);
   const analystGate = (await panelFor("analyst"))?.gates[0] as { canDeclare?: boolean; message: string } | undefined;
   if (analystGate) {
@@ -226,7 +226,7 @@ test("referenti: in ordine di creazione, email mascherate; quella intera solo a 
   state.token = sent.token;
   const panel = (await panelFor("builder"))!;
   assert.equal(panel.contacts.length, 1);
-  assert.equal(panel.contacts[0].emailMasked, `m•••@topjet.test`);
+  assert.equal(panel.contacts[0].emailMasked, `m•••@rondine.test`);
   assert.equal(panel.contacts[0].reason, "richiesta_aperta");
   const shown = ok(await referents.revealReferentContactEmail(as("builder"), ids.useCase, state.contactId), "email intera");
   assert.equal(shown.email, REFERENT_EMAIL);
@@ -297,7 +297,7 @@ test("«Correggi l'email» di un referente solo dell'hub: il vecchio link non va
   // Mai l'indirizzo di chi ha chiesto (il builder): né da lui, né da un altro revisore.
   refused(await referents.correctReferentEmail(as("builder"), ids.useCase, state.contactId, { email: emails.builder }, { env: ENV }), "referente_sei_tu");
   refused(await referents.correctReferentEmail(as("analyst"), ids.useCase, state.contactId, { email: emails.builder.toUpperCase() }, { env: ENV }), "email_di_chi_chiede");
-  const corrected = `m.rossi.${suffix}@topjet.test`;
+  const corrected = `m.rossi.${suffix}@rondine.test`;
   ok(await referents.correctReferentEmail(as("builder"), ids.useCase, state.contactId, { email: corrected }, { env: ENV }), "correzione");
   assert.equal((await q(`SELECT 1 FROM use_case_referent_tokens WHERE request_id = $1::uuid AND revoked_at IS NULL`, [state.requestId])).length, 0);
   const [r] = await q(`SELECT status FROM use_case_referent_requests WHERE id = $1::uuid`, [state.requestId]);
@@ -348,7 +348,7 @@ test("«Cancella i dati di questa persona»: risposte e file svuotati, link revo
   assert.equal(answers.length, 0);
   // I link si cancellano, con l'impronta dell'email: nessuna riga riporta all'indirizzo di prima.
   assert.equal((await q(`SELECT 1 FROM use_case_referent_tokens t JOIN use_case_referent_requests r ON r.id = t.request_id WHERE r.contact_id = $1::uuid`, [state.contactId])).length, 0);
-  for (const address of [REFERENT_EMAIL, `m.rossi.${suffix}@topjet.test`]) {
+  for (const address of [REFERENT_EMAIL, `m.rossi.${suffix}@rondine.test`]) {
     const hash = await q(`SELECT 1 FROM use_case_referent_tokens WHERE recipient_hash = encode(sha256(convert_to($1, 'UTF8')), 'hex')`, [address]);
     assert.equal(hash.length, 0, "nessuna impronta dell'email");
   }
@@ -368,8 +368,8 @@ test("la Storia della funzione solo a chi vede «Cosa serve»", opts, async () =
 });
 
 test("scadenza pigra in un batch di un revisore: la causa il tempo, chi agisce riceve la notifica e l'avviso", opts, async () => {
-  const first = await send([state.needs[0]], `luigi.verdi.${suffix}@topjet.test`, "Luigi Verdi");
-  const second = await send([state.needs[1]], `anna.neri.${suffix}@topjet.test`, "Anna Neri");
+  const first = await send([state.needs[0]], `luigi.verdi.${suffix}@rondine.test`, "Luigi Verdi");
+  const second = await send([state.needs[1]], `anna.neri.${suffix}@rondine.test`, "Anna Neri");
   await q(`UPDATE use_case_referent_requests SET created_at = now() - interval '31 days', sent_at = now() - interval '31 days', expires_at = now() - interval '1 minute' WHERE id = $1::uuid`, [first.requestId]);
   // Il builder (che ha chiesto la prima) revoca la seconda: la prima scade nello stesso batch.
   ok(await referents.revokeReferentRequest(as("builder"), ids.useCase, second.requestId, await versionOf(second.requestId)), "revoca");
@@ -385,7 +385,7 @@ test("scadenza pigra in un batch di un revisore: la causa il tempo, chi agisce r
 });
 
 test("un referente che è anche in un dossier: l'email intera resta coperta per i ruoli del cliente, e la purge del dossier non lo anonimizza", opts, async () => {
-  const dossierEmail = `dossier.${suffix}@topjet.test`;
+  const dossierEmail = `dossier.${suffix}@rondine.test`;
   const contactId = randomUUID();
   const templateId = randomUUID();
   const caseId = randomUUID();

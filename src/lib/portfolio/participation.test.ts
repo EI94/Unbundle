@@ -16,7 +16,7 @@ import {
 
 const GUIDE = {
   guideVersion: "1.0",
-  workspace: { nome: "TopJet e Aliserio", società: ["topjet", "aliserio", "entrambe"], esgEnabled: false },
+  workspace: { nome: "Rondine e Ferralba", società: ["rondine", "ferralba", "entrambe"], esgEnabled: false },
   areas: [
     { id: "operazioni", label: "Operazioni" },
     { id: "vendite", label: "Vendite" },
@@ -113,7 +113,7 @@ test("«Area non indicata» sotto 3 va in «Altre aree»", () => {
 });
 
 test("senza aree nella guida la scheda non c'è", () => {
-  const input = { areas: [area("operazioni", 5), area(null, 3)], companies: [company("topjet", 5)] };
+  const input = { areas: [area("operazioni", 5), area(null, 3)], companies: [company("rondine", 5)] };
   for (const guide of [null, undefined, {}, { areas: [] }, { areas: [{ id: "operazioni" }] }, { workspace: GUIDE.workspace }]) {
     assert.equal(summarizeParticipation({ ...input, guide }), null);
   }
@@ -122,7 +122,7 @@ test("senza aree nella guida la scheda non c'è", () => {
 
 test("nessuna proposta: nessuna riga (la scheda mostra «Ancora nessuna proposta dai colleghi.»)", () => {
   assert.deepEqual(summarize({ areas: [], companies: [], guide: GUIDE }), { rows: [], companies: [] });
-  assert.deepEqual(summarize({ areas: [area("operazioni", 0)], companies: [company("topjet", 0)], guide: GUIDE }), {
+  assert.deepEqual(summarize({ areas: [area("operazioni", 0)], companies: [company("rondine", 0)], guide: GUIDE }), {
     rows: [],
     companies: [],
   });
@@ -169,35 +169,35 @@ test("conteggi dal database come testo, negativi o non numerici non rompono la s
 test("società: «Per società» dalla più alta, con la grafia del nome del workspace", () => {
   const result = summarize({
     areas: [area("operazioni", 17)],
-    companies: [company("aliserio", 5), company("topjet", 12)],
+    companies: [company("ferralba", 5), company("rondine", 12)],
     guide: GUIDE,
   });
   assert.deepEqual(result.companies, [
-    { label: "TopJet", count: 12 },
-    { label: "Aliserio", count: 5 },
+    { label: "Rondine", count: 12 },
+    { label: "Ferralba", count: 5 },
   ]);
 });
 
 test("società piccole in «Altre società» quando sono almeno due", () => {
-  const guide = { ...GUIDE, workspace: { ...GUIDE.workspace, società: ["topjet", "aliserio", "alfa", "beta"] } };
+  const guide = { ...GUIDE, workspace: { ...GUIDE.workspace, società: ["rondine", "ferralba", "alfa", "beta"] } };
   const merged = summarize({
     areas: [],
-    companies: [company("topjet", 12), company("aliserio", 5), company("alfa", 2), company("beta", 1)],
+    companies: [company("rondine", 12), company("ferralba", 5), company("alfa", 2), company("beta", 1)],
     guide,
   });
   assert.deepEqual(merged.companies, [
-    { label: "TopJet", count: 12 },
-    { label: "Aliserio", count: 5 },
+    { label: "Rondine", count: 12 },
+    { label: "Ferralba", count: 5 },
     { label: OTHER_COMPANIES_LABEL, count: 3 },
   ]);
   // Una società fuori dalla guida è un gruppo a parte, mai con il suo id.
   const unknown = summarize({
     areas: [],
-    companies: [company("topjet", 4), company("vecchia_societa", 6), company("aliserio", 1)],
+    companies: [company("rondine", 4), company("vecchia_societa", 6), company("ferralba", 1)],
     guide: GUIDE,
   });
   assert.deepEqual(unknown.companies, [
-    { label: "TopJet", count: 4 },
+    { label: "Rondine", count: 4 },
     { label: OTHER_COMPANIES_LABEL, count: 7 },
   ]);
   assert.ok(!JSON.stringify(unknown).includes("vecchia"));
@@ -220,34 +220,34 @@ test("una società sola sotto soglia si unisce alla più piccola mostrata; se ne
 test("caso della revisione: «entrambe» con 1 proposta non si ricava per differenza", () => {
   const result = summarize({
     areas: [area("operazioni", 8), area("vendite", 5), area(null, 3)],
-    companies: [company("topjet", 8), company("aliserio", 4), company("entrambe", 1), company(null, 3)],
+    companies: [company("rondine", 8), company("ferralba", 4), company("entrambe", 1), company(null, 3)],
     guide: GUIDE,
   });
   assert.deepEqual(result.companies, []);
 });
 
 test("«entrambe» è «Entrambe le società», in coda, e non entra mai in «Altre società»", () => {
-  const shown = summarize({ areas: [], companies: [company("topjet", 9), company("aliserio", 3), company("entrambe", 4)], guide: GUIDE });
+  const shown = summarize({ areas: [], companies: [company("rondine", 9), company("ferralba", 3), company("entrambe", 4)], guide: GUIDE });
   assert.deepEqual(shown.companies, [
-    { label: "TopJet", count: 9 },
-    { label: "Aliserio", count: 3 },
+    { label: "Rondine", count: 9 },
+    { label: "Ferralba", count: 3 },
     { label: JOINT_COMPANY_LABEL, count: 4 },
   ]);
-  const guide = { ...GUIDE, workspace: { ...GUIDE.workspace, società: ["topjet", "aliserio", "alfa", "beta", "entrambe"] } };
+  const guide = { ...GUIDE, workspace: { ...GUIDE.workspace, società: ["rondine", "ferralba", "alfa", "beta", "entrambe"] } };
   const withOthers = summarize({
     areas: [],
-    companies: [company("topjet", 9), company("aliserio", 5), company("alfa", 1), company("beta", 1), company("entrambe", 3)],
+    companies: [company("rondine", 9), company("ferralba", 5), company("alfa", 1), company("beta", 1), company("entrambe", 3)],
     guide,
   });
   assert.deepEqual(withOthers.companies, [
-    { label: "TopJet", count: 9 },
-    { label: "Aliserio", count: 5 },
+    { label: "Rondine", count: 9 },
+    { label: "Ferralba", count: 5 },
     { label: OTHER_COMPANIES_LABEL, count: 2 },
     { label: JOINT_COMPANY_LABEL, count: 3 },
   ]);
   for (const n of [1, 2]) {
     assert.deepEqual(
-      summarize({ areas: [], companies: [company("topjet", 9), company("aliserio", 5), company("alfa", 1), company("beta", 1), company("entrambe", n)], guide }).companies,
+      summarize({ areas: [], companies: [company("rondine", 9), company("ferralba", 5), company("alfa", 1), company("beta", 1), company("entrambe", n)], guide }).companies,
       []
     );
   }
@@ -255,21 +255,21 @@ test("«entrambe» è «Entrambe le società», in coda, e non entra mai in «Al
 
 test("1 o 2 proposte senza società: niente riga, sarebbero il totale meno la riga", () => {
   for (const n of [1, 2]) {
-    const result = summarize({ areas: [], companies: [company("topjet", 9), company("aliserio", 5), company(null, n)], guide: GUIDE });
+    const result = summarize({ areas: [], companies: [company("rondine", 9), company("ferralba", 5), company(null, n)], guide: GUIDE });
     assert.deepEqual(result.companies, []);
   }
-  const three = summarize({ areas: [], companies: [company("topjet", 9), company("aliserio", 5), company(null, 3)], guide: GUIDE });
+  const three = summarize({ areas: [], companies: [company("rondine", 9), company("ferralba", 5), company(null, 3)], guide: GUIDE });
   assert.equal(three.companies.length, 2);
 });
 
 test("società: nessuna riga se nessuna supera la soglia o se la guida non ha società", () => {
-  assert.deepEqual(summarize({ areas: [], companies: [company("topjet", 2), company("aliserio", 2)], guide: GUIDE }).companies, []);
+  assert.deepEqual(summarize({ areas: [], companies: [company("rondine", 2), company("ferralba", 2)], guide: GUIDE }).companies, []);
   const noCompanies = { areas: GUIDE.areas };
-  assert.deepEqual(summarize({ areas: [], companies: [company("topjet", 9)], guide: noCompanies }).companies, []);
+  assert.deepEqual(summarize({ areas: [], companies: [company("rondine", 9)], guide: noCompanies }).companies, []);
 });
 
 test("nessun numero nascosto si ricava per differenza fra aree e società", () => {
-  // Come per TopJet: chi passa dal connettore indica area e società, gli altri canali nessuna
+  // Come per Rondine: chi passa dal connettore indica area e società, gli altri canali nessuna
   // delle due. Per ogni combinazione la riga, se c'è, somma tutte le proposte con una società:
   // il totale delle aree meno la riga meno «Area non indicata» fa sempre 0.
   const guide = {
@@ -312,17 +312,17 @@ test("nessun numero nascosto si ricava per differenza fra aree e società", () =
 test("etichette della guida lette in modo tollerante", () => {
   const labels = participationGuideLabels({
     areas: [{ id: "a", label: " Acquisti  e   gare " }, { id: "b" }, "c", { id: "a", label: "Doppione" }, null],
-    workspace: { nome: "TopJet, Gruppo Nord e Sud-Est Città", società: ["topjet", "gruppo_nord", "est", "citta", "alfa_beta", 3, "", "topjet"] },
+    workspace: { nome: "Rondine, Gruppo Nord e Sud-Est Città", società: ["rondine", "gruppo_nord", "est", "citta", "alfa_beta", 3, "", "rondine"] },
   });
   assert.deepEqual([...labels.areas], [["a", "Acquisti e gare"]]);
   assert.deepEqual([...labels.companies], [
-    ["topjet", "TopJet"],
+    ["rondine", "Rondine"],
     ["gruppo_nord", "Gruppo Nord"],
     ["est", "Est"],
     ["citta", "Città"],
     ["alfa_beta", "Alfa beta"],
   ]);
-  assert.deepEqual([...participationGuideLabels({ workspace: { società: ["topjet"] } }).companies], [["topjet", "Topjet"]]);
+  assert.deepEqual([...participationGuideLabels({ workspace: { società: ["rondine"] } }).companies], [["rondine", "Rondine"]]);
   for (const guide of [null, undefined, "testo", [], { areas: "no", workspace: [] }]) {
     const empty = participationGuideLabels(guide);
     assert.equal(empty.areas.size + empty.companies.size, 0);
@@ -332,7 +332,7 @@ test("etichette della guida lette in modo tollerante", () => {
 test("l'uscita ha solo etichette e numeri: nessun campo di chi propone", () => {
   const result = summarize({
     areas: [area("operazioni", 6, 2), area("vendite", 1), area(null, 3)],
-    companies: [company("topjet", 6), company("aliserio", 4)],
+    companies: [company("rondine", 6), company("ferralba", 4)],
     guide: GUIDE,
   });
   for (const row of result.rows) assert.deepEqual(Object.keys(row).sort(), ["bestPractices", "count", "label"]);

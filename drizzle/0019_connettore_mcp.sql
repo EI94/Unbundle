@@ -2,7 +2,7 @@
 --
 -- Le persone di un'organizzazione propongono casi d'uso AI e best practice
 -- dialogando con Claude; il connettore li salva nel portafoglio del workspace
--- con un codice leggibile (es. TJ-0012). Questa migrazione aggiunge:
+-- con un codice leggibile (es. RD-0012). Questa migrazione aggiunge:
 --   - le identità di fase 2 (OAuth), vuote in fase 1;
 --   - la configurazione del connettore per workspace (interruttore, prefisso e
 --     contatore dei codici, guida, domini e origini ammessi, limiti) e i
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS connector_rate_limits (
   CONSTRAINT connector_rate_limits_pkey PRIMARY KEY (bucket, window_start)
 );
 
--- 3. use_cases. code: prefisso, trattino, numero (TJ-0012; oltre 9999 il numero
+-- 3. use_cases. code: prefisso, trattino, numero (RD-0012; oltre 9999 il numero
 --    resta intero), unico per workspace. intake: campi raccolti da Claude.
 --    public_note: visibile tramite Claude a chi conosce il codice (max 1.000
 --    caratteri); review_notes resta interna. status_changed_at: ultimo cambio di

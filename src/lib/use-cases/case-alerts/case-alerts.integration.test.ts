@@ -124,7 +124,7 @@ before(async () => {
   const ddl = await import("../../db/use-case-hub-alerts-ddl.ts");
   quarter = String((await q(`SELECT ${ddl.ROME_QUARTER_NOW_SQL} AS q`))[0].q);
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione coda', $2)`, [ids.org, `hub-coda-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine')`, [ids.ws, ids.org]);
   for (const person of Object.keys(PEOPLE) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], PEOPLE[person].email, `Persona ${person}`]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, ids[person], PEOPLE[person].role]);
@@ -184,8 +184,8 @@ test("con l'ok: parte, dal mittente delle notifiche con il reply-to; senza gli u
   const lead = byTo.get(PEOPLE.lsLead.email);
   const analyst = byTo.get(PEOPLE.lsAnalyst.email);
   assert.ok(lead && analyst);
-  assert.equal(lead.mail.subject, "TopJet: 2 casi d'uso pronti da avviare");
-  assert.match(analyst.mail.subject, /^TopJet: il caso d'uso «CO-\d+ · Ordini clienti» è pronto da avviare$/);
+  assert.equal(lead.mail.subject, "Rondine: 2 casi d'uso pronti da avviare");
+  assert.match(analyst.mail.subject, /^Rondine: il caso d'uso «CO-\d+ · Ordini clienti» è pronto da avviare$/);
   for (const m of [lead, analyst]) {
     assert.equal(m.mail.from, SEND_ENV.UC_EMAIL_FROM);
     assert.equal(m.mail.replyTo, "persona@example.test");

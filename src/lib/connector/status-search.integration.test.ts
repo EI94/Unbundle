@@ -149,7 +149,7 @@ before(async () => {
   const guide = JSON.stringify(EXAMPLE_GUIDE);
   await q(
     `INSERT INTO workspace_connector_configs (workspace_id, slug, enabled, code_prefix, workspace_display_name, guide, guide_version, profile, instructions_template)
-     VALUES ($1, $2, true, 'TJ', 'Alfa e Beta', $3::jsonb, '2026-10.1', $6::jsonb, $7), ($4, $5, true, 'TB', 'Gamma', $3::jsonb, '2026-10.1', $6::jsonb, $7)`,
+     VALUES ($1, $2, true, 'RD', 'Alfa e Beta', $3::jsonb, '2026-10.1', $6::jsonb, $7), ($4, $5, true, 'TB', 'Gamma', $3::jsonb, '2026-10.1', $6::jsonb, $7)`,
     [ids.wsA, slugs.a, guide, ids.wsB, slugs.b, JSON.stringify(EXAMPLE_CONNECTOR_PROFILE_INPUT), EXAMPLE_INSTRUCTIONS_TEMPLATE]
   );
   for (const [name, workspaceId] of [["a", ids.wsA], ["b", ids.wsB]] as const) {
@@ -314,12 +314,12 @@ test("stato per codice: gli stati del contratto letti dal database, con il giorn
     await q(
       `INSERT INTO use_cases (workspace_id, code, title, description, status, portfolio_review_status, portfolio_kind, review_notes, proposed_by)
        VALUES ($1, $2, $3, 'Registro di prova per la tabella degli stati.', $4::use_case_status, $5::portfolio_review_status, 'use_case_ai', $6, $7)`,
-      [ids.wsA, `TJ-${row.n}`, `Registro delle prove ${row.n} ${suffix}`, row.status, row.review, INTERNAL_NOTE, SUBMITTER.name]
+      [ids.wsA, `RD-${row.n}`, `Registro delle prove ${row.n} ${suffix}`, row.status, row.review, INTERNAL_NOTE, SUBMITTER.name]
     );
     if (row.set) {
       await q(`UPDATE use_cases SET ${row.set} WHERE workspace_id = $1 AND code = $2 AND $3::text IS NOT NULL AND $4::uuid IS NOT NULL`, [
         ids.wsA,
-        `TJ-${row.n}`,
+        `RD-${row.n}`,
         codes.accents,
         ids.lead,
       ]);
@@ -328,7 +328,7 @@ test("stato per codice: gli stati del contratto letti dal database, con il giorn
   const today = await romeToday();
   const client = await connect(slugs.a, tokens.a.token);
   for (const row of STATE_ROWS) {
-    const content = await status(client, `TJ-${row.n}`);
+    const content = await status(client, `RD-${row.n}`);
     assert.deepEqual(Object.keys(content), STATUS_KEYS, row.n);
     assert.equal(content.statusCode, row.code, row.n);
     assert.equal(content.statusLabel, row.label(codes.accents), row.n);
@@ -340,21 +340,21 @@ test("stato per codice: gli stati del contratto letti dal database, con il giorn
     for (const forbidden of [INTERNAL_NOTE, SUBMITTER.name, ids.lead, "reviewedBy", "score"]) assert.equal(text.includes(forbidden), false, `${row.n}: ${forbidden}`);
   }
   // statusChangedAt viene da status_changed_at, come giorno in ora italiana.
-  await q(`UPDATE use_cases SET status_changed_at = '2026-03-29 22:30:00+00' WHERE workspace_id = $1 AND code = 'TJ-0101'`, [ids.wsA]);
-  assert.equal((await status(client, "TJ-0101")).statusChangedAt, "2026-03-30", "00:30 CEST del 30 marzo");
-  await q(`UPDATE use_cases SET status_changed_at = '2026-10-25 22:30:00+00' WHERE workspace_id = $1 AND code = 'TJ-0101'`, [ids.wsA]);
-  assert.equal((await status(client, "TJ-0101")).statusChangedAt, "2026-10-25", "23:30 CET del 25 ottobre");
+  await q(`UPDATE use_cases SET status_changed_at = '2026-03-29 22:30:00+00' WHERE workspace_id = $1 AND code = 'RD-0101'`, [ids.wsA]);
+  assert.equal((await status(client, "RD-0101")).statusChangedAt, "2026-03-30", "00:30 CEST del 30 marzo");
+  await q(`UPDATE use_cases SET status_changed_at = '2026-10-25 22:30:00+00' WHERE workspace_id = $1 AND code = 'RD-0101'`, [ids.wsA]);
+  assert.equal((await status(client, "RD-0101")).statusChangedAt, "2026-10-25", "23:30 CET del 25 ottobre");
   // Un cambio di stato vero (il trigger) riporta il giorno a oggi.
-  await q(`UPDATE use_cases SET portfolio_review_status = 'in_review' WHERE workspace_id = $1 AND code = 'TJ-0101'`, [ids.wsA]);
-  const moved = await status(client, "TJ-0101");
+  await q(`UPDATE use_cases SET portfolio_review_status = 'in_review' WHERE workspace_id = $1 AND code = 'RD-0101'`, [ids.wsA]);
+  const moved = await status(client, "RD-0101");
   assert.equal(moved.statusCode, "IN_VALUTAZIONE");
   assert.equal(moved.statusChangedAt, today);
-  await q(`UPDATE use_cases SET portfolio_review_status = 'needs_inputs' WHERE workspace_id = $1 AND code = 'TJ-0101'`, [ids.wsA]);
+  await q(`UPDATE use_cases SET portfolio_review_status = 'needs_inputs' WHERE workspace_id = $1 AND code = 'RD-0101'`, [ids.wsA]);
   // Nascosta dalla ricerca: forma ridotta, con titolo, area e nota pubblica null.
-  await q(`UPDATE use_cases SET intake = coalesce(intake, '{}'::jsonb) || '{"hiddenFromSearch": true, "area": "amministrazione"}'::jsonb WHERE workspace_id = $1 AND code = 'TJ-0104'`, [ids.wsA]);
-  const hidden = await status(client, "TJ-0104");
+  await q(`UPDATE use_cases SET intake = coalesce(intake, '{}'::jsonb) || '{"hiddenFromSearch": true, "area": "amministrazione"}'::jsonb WHERE workspace_id = $1 AND code = 'RD-0104'`, [ids.wsA]);
+  const hidden = await status(client, "RD-0104");
   assert.deepEqual(hidden, {
-    code: "TJ-0104",
+    code: "RD-0104",
     title: null,
     kind: null,
     area: null,
@@ -382,9 +382,9 @@ test("ricerca: escluse nascoste, archiviate non doppioni e senza codice; il dopp
   const found = all.results.map((r) => String(r.code));
   // 11 righe della tabella: fuori la nascosta (0104) e l'archiviata non doppione (0111); dentro il doppione (0110).
   assert.equal(found.length, 9, found.join(","));
-  for (const code of ["TJ-0104", "TJ-0111"]) assert.equal(found.includes(code), false, code);
+  for (const code of ["RD-0104", "RD-0111"]) assert.equal(found.includes(code), false, code);
   assert.ok(all.results.every((r) => typeof r.code === "string" && r.code !== ""), "nessuna senza codice");
-  const duplicate = all.results.find((r) => r.code === "TJ-0110");
+  const duplicate = all.results.find((r) => r.code === "RD-0110");
   assert.equal(duplicate?.statusCode, "DOPPIONE");
   assert.equal(duplicate?.statusLabel, `Unita a ${codes.accents}`);
   assert.equal((await search(client, "registro prove")).results.length, 5, "5 di default");
@@ -393,7 +393,7 @@ test("ricerca: escluse nascoste, archiviate non doppioni e senza codice; il dopp
   // Un altro workspace non vede nulla di A.
   const other = await connect(slugs.b, tokens.b.token);
   assert.deepEqual((await search(other, "registro prove", { limit: 10 })).results, []);
-  assert.equal((await call(other, "get_contribution_status", { code: "TJ-0106" })).content.error, "not_found");
+  assert.equal((await call(other, "get_contribution_status", { code: "RD-0106" })).content.error, "not_found");
   await other.close();
   await client.close();
 });

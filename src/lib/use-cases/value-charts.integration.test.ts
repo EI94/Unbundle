@@ -379,14 +379,14 @@ before(async () => {
     valueEurYear: 12_250,
   });
   sumCards.orsaO1 = await seed({ workspaceId: ids.wsS, title: `ORSA O1 · Fatture ${suffix}`, status: "in_progress", valueModel: FIX_B });
-  // Workspace T: i toni in ordine alfabetico; «Archivio delle ricevute» (come «TJ-0051» della prova
-  // di TopJet) non ha il prefisso, nel gruppo «Varie».
+  // Workspace T: i toni in ordine alfabetico; «Archivio delle ricevute» (come «RD-0051» della prova
+  // di Rondine) non ha il prefisso, nel gruppo «Varie».
   const scored = { customScores: { impact: { efficiency: 4, profitability: 4 } }, costEurOnce: 20_000, valueEurYear: 30_000 };
   agentCards.libra = await seed({ workspaceId: ids.wsT, title: `LIBRA L1 · Fatture ${suffix}`, targetQuarter: thisQuarter, valueModel: { ...FIX_A, group: "LIBRA" }, ...scored });
   agentCards.auto = await seed({ workspaceId: ids.wsT, title: `AUTO X1 · Estratti conto ${suffix}`, targetQuarter: thisQuarter, valueModel: { ...FIX_A, group: "Automazioni" }, ...scored });
   agentCards.varie = await seed({ workspaceId: ids.wsT, title: `Archivio delle ricevute ${suffix}`, targetQuarter: thisQuarter, valueModel: { ...FIX_A, group: "Varie" }, ...scored });
   // Workspace O: i toni in ordine alfabetico, DENEB 1, LIBRA 2, ORSA 3, SIRIO 4. La copia di ORSA
-  // senza il prefisso (come «TJ-0051» della prova di TopJet) ha il gruppo «ORSA» ma nessun agente.
+  // senza il prefisso (come «RD-0051» della prova di Rondine) ha il gruppo «ORSA» ma nessun agente.
   titleCards.orsa = await seed({ workspaceId: ids.wsO, title: `ORSA O1 · Voli ${suffix}`, targetQuarter: thisQuarter, valueModel: { ...FIX_A, group: "ORSA" }, ...scored });
   titleCards.copy = await seed({ workspaceId: ids.wsO, title: `Preventivi del catering ${suffix}`, targetQuarter: thisQuarter, valueModel: { ...FIX_A, group: "ORSA" }, ...scored });
   titleCards.libra = await seed({ workspaceId: ids.wsO, title: `LIBRA L1 · Fatture ${suffix}`, status: "in_progress", valueModel: { ...FIX_B, group: "Operazioni" } });
@@ -450,7 +450,7 @@ test("(rilascio 5) «Grafici»: «Matrice Valore × Costo», «Matrice Facilità
   assert.ok(!page.includes(`data-bubble="${cards.b.id}"`), "in realizzazione: non è da mettere in ordine");
   assert.ok(!page.includes(`data-bubble="${cards.plain.id}"`), "senza modello: non è tra le bolle");
   assert.ok(page.includes('data-slot="benefit-bubbles-list"'), "sotto il grafico, e al suo posto al telefono, l'elenco per gruppo");
-  // Nell'elenco il codice non va a capo («TJ-» / «0010») e ogni parte della riga resta intera.
+  // Nell'elenco il codice non va a capo («RD-» / «0010») e ogni parte della riga resta intera.
   const phoneList = page.slice(page.indexOf('data-slot="benefit-bubbles-list"'));
   assert.ok(phoneList.includes(`<span class="font-mono text-xs whitespace-nowrap text-muted-foreground">${cards.a.code}</span>`), "il codice intero");
   assert.equal(count(phoneList, 'data-slot="bubbles-section"'), 2, "una sezione chiusa per gruppo: Servizio clienti e Senza gruppo");

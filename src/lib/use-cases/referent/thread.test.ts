@@ -112,7 +112,7 @@ test("l'email di una novità del team: in orario d'ufficio, al massimo una al gi
 
 test("i testi del filo: una riga del team (nomi sì, dati sanitari no), un testo del referente", () => {
   assert.equal(REFERENT_THREAD_RULES.teamLineMax, 300);
-  assert.deepEqual(checkThreadLine("  Lo controlla Mario Rossi,\nmario@topjet.test?  ", 300), { ok: true, value: "Lo controlla Mario Rossi, mario@topjet.test?" }, "una riga");
+  assert.deepEqual(checkThreadLine("  Lo controlla Mario Rossi,\nmario@rondine.test?  ", 300), { ok: true, value: "Lo controlla Mario Rossi, mario@rondine.test?" }, "una riga");
   assert.equal((checkThreadLine("x", 300) as { code: string }).code, "testo_vuoto");
   assert.equal((checkThreadLine("y".repeat(301), 300) as { code: string }).code, "riga_troppo_lunga");
   assert.equal((checkThreadLine("Ha una diagnosi di diabete?", 300) as { code: string }).code, "testo_sanitario");

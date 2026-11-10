@@ -39,9 +39,9 @@ const claimed = (over: Partial<ClaimedCaseAlert> = {}): ClaimedCaseAlert => ({
   attempts: 0,
   ...over,
 });
-const item = (over: Partial<ReadyItemFacts> = {}): ReadyItemFacts => ({ useCaseId: UC1, code: "TJ-0004", title: "Fatture fornitori", quarter: "2027-Q1", stillReady: true, unread: true, ...over });
+const item = (over: Partial<ReadyItemFacts> = {}): ReadyItemFacts => ({ useCaseId: UC1, code: "RD-0004", title: "Fatture fornitori", quarter: "2027-Q1", stillReady: true, unread: true, ...over });
 const facts = (over: Partial<CaseAlertFacts> = {}): CaseAlertFacts => ({
-  company: "TopJet",
+  company: "Rondine",
   readyNoticesOn: true,
   referentsOn: true,
   clientNoticesOn: true,
@@ -77,7 +77,7 @@ test("voci: solo gli use case ancora pronti e con la riga ancora non letta; ness
   assert.deepEqual(plan(facts({ items: [item({ stillReady: false })] })), { action: "cancel", reason: "nessuna_voce" });
   assert.deepEqual(plan(facts({ items: [item({ unread: false })] })), { action: "cancel", reason: "nessuna_voce" });
   assert.deepEqual(plan(facts({ items: [] })), { action: "cancel", reason: "nessuna_voce" });
-  const p = plan(facts({ items: [item(), item({ useCaseId: UC2, stillReady: false }), item({ useCaseId: UC3, code: "TJ-0009", title: "Ordini" }), item()] }));
+  const p = plan(facts({ items: [item(), item({ useCaseId: UC2, stillReady: false }), item({ useCaseId: UC3, code: "RD-0009", title: "Ordini" }), item()] }));
   assert.equal(p.action, "send");
   if (p.action !== "send") return;
   assert.deepEqual(p.useCaseIds, [UC1, UC3], "senza doppioni, nell'ordine");
@@ -91,7 +91,7 @@ test("voci: solo gli use case ancora pronti e con la riga ancora non letta; ness
 const suppliers = (over: Partial<CaseAlertFacts> = {}) =>
   facts({
     subprocessorsAuthorized: false,
-    recipient: { email: "responsabile@topjet.example", verified: true, lateralSpace: false, reviewer: true, canDeclare: true },
+    recipient: { email: "responsabile@rondine.example", verified: true, lateralSpace: false, reviewer: true, canDeclare: true },
     items: [],
     suppliersRowUnread: true,
     ...over,
@@ -104,34 +104,34 @@ test("«Autorizza i fornitori»: configurazione, funzione, interruttore del clie
   assert.deepEqual(plan(suppliers({ clientNoticesOn: false }), supplier), { action: "cancel", reason: "avvisi_cliente_spenti" });
   assert.deepEqual(plan(suppliers({ subprocessorsAuthorized: true }), supplier), { action: "cancel", reason: "autorizzazione_data" });
   assert.deepEqual(plan(suppliers(), claimed({ kind: "fornitori", dueAt: at("2026-10-28", 9) })), { action: "cancel", reason: "troppo_vecchia" });
-  for (const recipient of [null, { email: "lead@lateralspace.ai", verified: true, lateralSpace: true, reviewer: true, canDeclare: false }, { email: "Nome <r@topjet.example>", verified: true, lateralSpace: false, reviewer: true, canDeclare: true }]) {
+  for (const recipient of [null, { email: "lead@lateralspace.ai", verified: true, lateralSpace: true, reviewer: true, canDeclare: false }, { email: "Nome <r@rondine.example>", verified: true, lateralSpace: false, reviewer: true, canDeclare: true }]) {
     assert.deepEqual(plan(suppliers({ recipient }), supplier), { action: "cancel", reason: "destinatario_non_valido" }, JSON.stringify(recipient));
   }
   assert.deepEqual(plan(suppliers({ suppliersRowUnread: false }), supplier), { action: "cancel", reason: "gia_vista" });
   const p = plan(suppliers(), supplier);
   assert.equal(p.action, "send");
   if (p.action !== "send") return;
-  assert.equal(p.to, "responsabile@topjet.example");
+  assert.equal(p.to, "responsabile@rondine.example");
   assert.deepEqual(p.useCaseIds, []);
   // Senza l'ok non resta in attesa: è proprio l'email che chiede l'ok.
   assert.equal(plan(suppliers({ readyNoticesOn: false }), supplier).action, "send");
 });
 
 test("«Autorizza i fornitori», parola per parola: il link a Impostazioni, nessun dato dei casi d'uso", () => {
-  const r = renderSuppliersAlert({ company: "TopJet", link: `${ORIGIN}/dashboard/${WS}/settings#sub-responsabili` });
-  assert.equal(r.subject, "TopJet: serve il tuo ok sui fornitori di Lateral Space");
+  const r = renderSuppliersAlert({ company: "Rondine", link: `${ORIGIN}/dashboard/${WS}/settings#sub-responsabili` });
+  assert.equal(r.subject, "Rondine: serve il tuo ok sui fornitori di Lateral Space");
   assert.ok(
     r.text.startsWith(
       [
         "Buongiorno,",
-        "per raccogliere le informazioni sui casi d'uso di TopJet, Lateral Space usa alcuni fornitori, per esempio quello delle email. Prima serve l'ok di una persona di TopJet con il tuo ruolo.",
+        "per raccogliere le informazioni sui casi d'uso di Rondine, Lateral Space usa alcuni fornitori, per esempio quello delle email. Prima serve l'ok di una persona di Rondine con il tuo ruolo.",
         `Apri Impostazioni › Sub-responsabili: ${ORIGIN}/dashboard/${WS}/settings#sub-responsabili`,
-        "Ricevi questa email perché puoi dare questa autorizzazione per TopJet. Quando qualcuno l'avrà data, non ne riceverai altre.",
+        "Ricevi questa email perché puoi dare questa autorizzazione per Rondine. Quando qualcuno l'avrà data, non ne riceverai altre.",
       ].join("\n\n"),
     ),
     r.text,
   );
-  assert.doesNotMatch(r.text + r.html + r.subject, /TJ-\d/i);
+  assert.doesNotMatch(r.text + r.html + r.subject, /RD-\d/i);
   assert.doesNotMatch((r.text + r.html + r.subject).replace(/https?:\/\/[^\s"<]+/g, ""), /\buse[\s-]*cases?\b/i, "(rilascio 5.1) fuori dalla dashboard mai «use case»");
   const p = plan(suppliers(), supplier);
   assert.ok(p.action === "send" && p.rendered.text.includes(`${ORIGIN}/dashboard/${WS}/settings#sub-responsabili`));
@@ -140,13 +140,13 @@ test("«Autorizza i fornitori», parola per parola: il link a Impostazioni, ness
 });
 
 test("testo con un caso d'uso, parola per parola, con il link a «Realizzazione»", () => {
-  const r = renderReadyAlert({ company: "TopJet", entries: [{ useCase: { code: "TJ-0004", title: "Fatture fornitori" }, quarter: "2027-Q1", link: `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=realizzazione` }] });
-  assert.equal(r.subject, "TopJet: il caso d'uso «TJ-0004 · Fatture fornitori» è pronto da avviare");
+  const r = renderReadyAlert({ company: "Rondine", entries: [{ useCase: { code: "RD-0004", title: "Fatture fornitori" }, quarter: "2027-Q1", link: `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=realizzazione` }] });
+  assert.equal(r.subject, "Rondine: il caso d'uso «RD-0004 · Fatture fornitori» è pronto da avviare");
   assert.ok(
     r.text.startsWith(
       [
         "Buongiorno,",
-        "il caso d'uso «TJ-0004 · Fatture fornitori» di TopJet è pronto da avviare: è approvato per T1 2027 e non manca niente dal cliente.",
+        "il caso d'uso «RD-0004 · Fatture fornitori» di Rondine è pronto da avviare: è approvato per T1 2027 e non manca niente dal cliente.",
         `Apri il caso d'uso: ${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=realizzazione`,
         "Ricevi questa email perché sei di Lateral Space e puoi avviare la realizzazione.",
       ].join("\n\n"),
@@ -158,20 +158,20 @@ test("testo con un caso d'uso, parola per parola, con il link a «Realizzazione�
 
 test("testo con più casi d'uso: uno per riga, ognuno con il suo link", () => {
   const r = renderReadyAlert({
-    company: "TopJet",
+    company: "Rondine",
     entries: [
-      { useCase: { code: "TJ-0004", title: "Fatture fornitori" }, quarter: "2027-Q1", link: `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=realizzazione` },
-      { useCase: { code: "TJ-0009", title: "Ordini" }, quarter: "2026-Q4", link: `${ORIGIN}/dashboard/${WS}/use-cases/${UC2}?capitolo=realizzazione` },
+      { useCase: { code: "RD-0004", title: "Fatture fornitori" }, quarter: "2027-Q1", link: `${ORIGIN}/dashboard/${WS}/use-cases/${UC1}?capitolo=realizzazione` },
+      { useCase: { code: "RD-0009", title: "Ordini" }, quarter: "2026-Q4", link: `${ORIGIN}/dashboard/${WS}/use-cases/${UC2}?capitolo=realizzazione` },
       { useCase: { code: null, title: "Senza codice" }, quarter: "2026-Q4", link: `${ORIGIN}/dashboard/${WS}/use-cases/${UC3}?capitolo=realizzazione` },
     ],
   });
-  assert.equal(r.subject, "TopJet: 3 casi d'uso pronti da avviare");
-  for (const line of ["ci sono 3 casi d'uso di TopJet pronti da avviare: sono approvati e non manca niente dal cliente.", "«TJ-0004 · Fatture fornitori» · T1 2027", "«TJ-0009 · Ordini» · T4 2026", "«Senza codice» · T4 2026"]) {
+  assert.equal(r.subject, "Rondine: 3 casi d'uso pronti da avviare");
+  for (const line of ["ci sono 3 casi d'uso di Rondine pronti da avviare: sono approvati e non manca niente dal cliente.", "«RD-0004 · Fatture fornitori» · T1 2027", "«RD-0009 · Ordini» · T4 2026", "«Senza codice» · T4 2026"]) {
     assert.ok(r.text.includes(line), line);
   }
   assert.equal(r.text.match(/Apri il caso d'uso: /g)?.length, 3);
   assert.doesNotMatch((r.text + r.html + r.subject).replace(/https?:\/\/[^\s"<]+/g, ""), /\buse[\s-]*cases?\b/i, "(rilascio 5.1) fuori dalla dashboard mai «use case»");
-  assert.throws(() => renderReadyAlert({ company: "TopJet", entries: [] }));
+  assert.throws(() => renderReadyAlert({ company: "Rondine", entries: [] }));
 });
 
 function fakeStore(rows: ClaimedCaseAlert[], f: CaseAlertFacts) {

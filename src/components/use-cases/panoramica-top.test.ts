@@ -180,7 +180,7 @@ test("«Prossimo passo»: una frase e il solo pulsante pieno della testa", () =>
 test("le frasi di «Prossimo passo», al singolare e al plurale", () => {
   const q = "2026-Q4" as const;
   const cases: Array<[OverviewNextStep, string]> = [
-    // TopJet il 29/10/2026: la riga di «Cosa serve» del trimestre dice «40 da chiedere · 17 in attesa · 2 da verificare · 8 fermi».
+    // Rondine il 29/10/2026: la riga di «Cosa serve» del trimestre dice «40 da chiedere · 17 in attesa · 2 da verificare · 8 fermi».
     [{ kind: "requisiti", quarter: q, toAsk: 40, toVerify: 2, blocked: 8 }, "Per partire con il T4 2026: 40 requisiti da chiedere, 2 da verificare e 8 fermi."],
     [{ kind: "requisiti", quarter: q, toAsk: 1, toVerify: 1, blocked: 1 }, "Per partire con il T4 2026: 1 requisito da chiedere, 1 da verificare e 1 fermo."],
     [{ kind: "requisiti", quarter: q, toAsk: 60, toVerify: 0, blocked: 10 }, "Per partire con il T4 2026: 60 requisiti da chiedere e 10 fermi."],

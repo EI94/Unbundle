@@ -410,7 +410,7 @@ test("filtri dei revisori: origine, tipo, canale, area, AI Lab, trimestre, da st
 
 test("filtro «Agente»: il prefisso del titolo, «altri» senza; i contributori restano come sono", () => {
   const lead = viewer("function_lead");
-  const l1 = item({ title: "LIBRA L1 · Lettura delle fatture estere" });
+  const l1 = item({ title: "LIBRA L1 · Lettura dei documenti esteri" });
   const l2 = item({ title: "LIBRA L2 · Riconciliazione dei pagamenti" });
   const auto = item({ title: "AUTO H1 · Cedolini consegnati" });
   const plain = item({ title: "Smistamento delle richieste" });

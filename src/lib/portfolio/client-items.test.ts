@@ -27,7 +27,7 @@ const REVIEWER_USER_ID = "5b0c2a52-6a7e-4a43-9a51-0d1d6a1f0002";
 const WORKSPACE_ID = "5b0c2a52-6a7e-4a43-9a51-0d1d6a1f0003";
 const REVIEW_NOTES = "Nota interna di chi valuta: verificare i volumi prima della wave";
 const PUBLIC_NOTE = "Nota pubblica sintetica per chi conosce il codice";
-const CODE = "TJ-0042";
+const CODE = "RD-0042";
 
 const IDENTITY_STRINGS = [
   PROPOSER_NAME,

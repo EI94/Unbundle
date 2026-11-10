@@ -107,13 +107,13 @@ const textOf = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&#x27;/g,
 const N = "\u00a0";
 
 test("la card del revisore: il titolo intero prima di tag e cifre, il tag nascosto ai lettori di schermo, l'avvio con la fonte", () => {
-  const libra = hub({ title: "LIBRA L1 · Lettura delle fatture estere", value: counted(12_250), cost: TEAM_30K });
+  const libra = hub({ title: "LIBRA L1 · Lettura dei documenti esteri", value: counted(12_250), cost: TEAM_30K });
   const stima = hub({ title: "LIBRA L2 · Riconciliazione", value: pending(5_840), cost: STIMA_700 });
   const html = render([libra, stima], { barScale: 31_500 });
   const card = cardOf(html, libra.id);
   assert.match(card, /^data-id="[^"]+" data-lane="questo_trimestre" data-agent="LIBRA" class="min-w-0"/);
   const link = card.slice(card.indexOf("<a "));
-  const title = link.indexOf('<span class="sr-only">LIBRA L1 · </span>Lettura delle fatture estere');
+  const title = link.indexOf('<span class="sr-only">LIBRA L1 · </span>Lettura dei documenti esteri');
   assert.ok(title > 0, link);
   assert.ok(title < link.indexOf('data-figure="valore"') && title < link.indexOf('data-figure="costo"'), "il titolo prima del Valore e del costo");
   assert.match(link, /<span data-slot="agent-tag" data-tone="\d+" aria-hidden="true"/);

@@ -71,7 +71,7 @@ function row(o: Partial<HubSourceRow> = {}): HubSourceRow {
   seq += 1;
   return {
     id: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
-    code: `TJ-${String(seq).padStart(4, "0")}`,
+    code: `RD-${String(seq).padStart(4, "0")}`,
     title: `Use case di prova ${seq}`,
     description: "Problema di prova.",
     origin: "adoption",
@@ -156,7 +156,7 @@ function bubbleSectionsOf(html: string): Array<{ label: string; summary: string;
 }
 
 test("matrice: sotto la legenda due elenchi chiusi; l'indirizzo apre il suo", () => {
-  const one = { id: "11111111-0000-4000-8000-000000000001", code: "TJ-0003", title: "Bozza di registrazione", href: "/h?apri=11111111-0000-4000-8000-000000000001" };
+  const one = { id: "11111111-0000-4000-8000-000000000001", code: "RD-0003", title: "Bozza di registrazione", href: "/h?apri=11111111-0000-4000-8000-000000000001" };
   const off = { id: "22222222-0000-4000-8000-000000000002", code: null, title: "Meno errori nelle fatture", href: "/h?apri=22222222-0000-4000-8000-000000000002" };
   const html = renderToStaticMarkup(
     createElement(matrix.ValueCostMatrix, {
@@ -175,7 +175,7 @@ test("matrice: sotto la legenda due elenchi chiusi; l'indirizzo apre il suo", ()
   assert.match(estimate, /<summary[^>]*>[\s\S]*1\u00a0da stimare<\/summary>/);
   const link = /<a [^>]*href="\/h\?apri=11111111-0000-4000-8000-000000000001"[^>]*>([\s\S]*?)<\/a>/.exec(estimate);
   assert.ok(link, "il link al pannello");
-  assert.ok(link[1].includes("TJ-0003") && link[1].includes("Bozza di registrazione"), link[1]);
+  assert.ok(link[1].includes("RD-0003") && link[1].includes("Bozza di registrazione"), link[1]);
   assert.match(detailsTag(html, "off-matrix"), /^<details data-slot="off-matrix" open=""/);
   const offList = detailsOf(html, "off-matrix");
   assert.ok(offList.includes("1\u00a0senza beneficio contato") && offList.includes(">Meno errori nelle fatture<"), "senza codice, il titolo solo");
@@ -226,9 +226,9 @@ test("«Matrice Valore × Costo» dal menu «⋯»: «‹ Torna alla Panoramica�
 });
 
 test("«Matrice Valore × Costo» con gli agenti nei titoli: i punti nel tono dell'agente, grigi senza, la legenda per agente", () => {
-  const libra = item({ title: "LIBRA L1 · Lettura delle fatture estere", origin: "transformation", customScores: HIGH, costEurOnce: 18_000 });
+  const libra = item({ title: "LIBRA L1 · Lettura dei documenti esteri", origin: "transformation", customScores: HIGH, costEurOnce: 18_000 });
   const deneb = item({ title: "DENEB D1 · Richieste di riposo e ferie", origin: "transformation", customScores: HIGH, costEurOnce: 4_000, ...TO_DECIDE });
-  const plain = item({ title: "Strategia per volo", origin: "transformation", customScores: HIGH, costEurOnce: 40_000 });
+  const plain = item({ title: "Margine per commessa", origin: "transformation", customScores: HIGH, costEurOnce: 40_000 });
   const proposal = item({ title: "IVA · Calcolo dell'imposta sui biglietti", customScores: HIGH, costEurOnce: 9_000, ...TO_DECIDE });
   const items = [libra, deneb, plain, proposal];
   // I toni del workspace: solo gli agenti della Panoramica (IVA ha solo una proposta).
@@ -269,17 +269,17 @@ test("«Matrice Valore × Costo» con gli agenti nei titoli: i punti nel tono de
   }
   assert.ok(zones[1].includes(">Da pianificare<") && zones[1].includes(`>${plain.code}</span> ${plain.title}`), zones[1]);
   // Senza agenti nei titoli: l'origine, come sempre.
-  const byOrigin = view({ items, agents: agentPalette([{ title: "Strategia per volo" }]) });
+  const byOrigin = view({ items, agents: agentPalette([{ title: "Margine per commessa" }]) });
   assert.ok(byOrigin.includes("bg-indigo-500") && byOrigin.includes("border-teal-500") && !byOrigin.includes("uc-agente"));
   assert.ok(byOrigin.includes(">AI Transformation<") && !byOrigin.includes("Altri use case"));
   assert.equal(view({ items }), byOrigin, "senza tavolozza come senza agenti");
 });
 
 test("con gli agenti nei titoli il grigio ha un nome solo: «Altri use case» nelle tre legende, nessun «Gruppo …» sui segni", () => {
-  // TopJet con «TJ-0051» (29/10/2026): una copia senza il prefisso nel gruppo «Varie».
+  // Rondine con «RD-0051» (29/10/2026): una copia senza il prefisso nel gruppo «Varie».
   const model = (group: string) => ({ ...COUNTED, group });
   const auto = item({ title: "AUTO X1 · Estratti conto in Echo", valueModel: model("Automazioni"), customScores: HIGH, costEurOnce: 4_000 });
-  const libra = item({ title: "LIBRA L1 · Lettura delle fatture estere", valueModel: model("LIBRA"), customScores: HIGH, costEurOnce: 18_000 });
+  const libra = item({ title: "LIBRA L1 · Lettura dei documenti esteri", valueModel: model("LIBRA"), customScores: HIGH, costEurOnce: 18_000 });
   const copy = item({ title: "Controllo dei preventivi dei fornitori di catering", valueModel: model("Varie"), customScores: HIGH, costEurOnce: 9_000 });
   const items = [auto, libra, copy];
   const agents = agentPalette([{ title: auto.title }, { title: libra.title }]);
@@ -317,17 +317,17 @@ test("con gli agenti nei titoli il grigio ha un nome solo: «Altri use case» ne
     for (const text of ["Altri gruppi", "Gruppo ", "Senza gruppo"]) assert.ok(!html.includes(text), text);
   }
   // Senza agenti nei titoli: i nomi dei gruppi, come sempre.
-  const plain = agentPalette([{ title: "Strategia per volo" }]);
+  const plain = agentPalette([{ title: "Margine per commessa" }]);
   const byGroup = view({ chart: "benefici", items, planItems: items, agents: plain, query: { vista: "panoramica", mostra: "benefici" } });
   assert.ok(byGroup.includes("· Gruppo Varie") && !byGroup.includes("Altri use case"));
 });
 
 test("«Matrice Facilità × Beneficio» e «Curva del valore» con gli agenti nei titoli: ogni segno nel tono dell'agente del suo titolo, come la matrice", () => {
-  // TopJet (29/10/2026): una copia approvata di un ORSA senza il prefisso, nel gruppo «ORSA».
+  // Rondine (29/10/2026): una copia approvata di un ORSA senza il prefisso, nel gruppo «ORSA».
   const model = (group?: string) => ({ ...COUNTED, group });
-  const orsa = item({ title: "ORSA O1 · Voli pieni, vuoti ed empty leg", valueModel: model("ORSA"), customScores: HIGH, costEurOnce: 18_000 });
+  const orsa = item({ title: "ORSA O1 · Viaggi pieni, vuoti e di ritorno", valueModel: model("ORSA"), customScores: HIGH, costEurOnce: 18_000 });
   const copy = item({ title: "Controllo dei preventivi dei fornitori di catering", valueModel: model("ORSA"), customScores: HIGH, costEurOnce: 18_000 });
-  const libra = item({ title: "LIBRA L1 · Lettura delle fatture estere", valueModel: model("Operazioni"), customScores: HIGH, costEurOnce: 4_000 });
+  const libra = item({ title: "LIBRA L1 · Lettura dei documenti esteri", valueModel: model("Operazioni"), customScores: HIGH, costEurOnce: 4_000 });
   const proposal = item({ title: "IVA · Calcolo dell'imposta sui biglietti", valueModel: model(), customScores: HIGH, costEurOnce: 9_000, ...TO_DECIDE });
   const items = [orsa, copy, libra, proposal];
   const agents = agentPalette([{ title: orsa.title }, { title: libra.title }, { title: "SIRIO S1 · Cassa" }]);
@@ -371,7 +371,7 @@ test("«Matrice Facilità × Beneficio» e «Curva del valore» con gli agenti n
   assert.ok(sections[0].summary.includes(`bg-uc-agente-${tone("LIBRA")}`) && sections[2].summary.includes("bg-uc-serie-altro") && sections[3].summary.includes("bg-uc-serie-altro"));
   assert.deepEqual(legendOf(curve, "<figcaption").slice(0, 3), ["LIBRA", "ORSA", "Altri use case"]);
   // Senza agenti nei titoli: i colori e i nomi dei gruppi, come sempre.
-  const plain = agentPalette([{ title: "Strategia per volo" }]);
+  const plain = agentPalette([{ title: "Margine per commessa" }]);
   const byGroup = view({ chart: "benefici", items, planItems: items, agents: plain, query: { vista: "panoramica", mostra: "benefici" } });
   assert.ok(byGroup.includes("Gruppo ORSA") && byGroup.includes("bg-uc-serie-1") && !byGroup.includes("uc-agente"));
   assert.equal(view({ chart: "benefici", items, planItems: items, query: { vista: "panoramica", mostra: "benefici" } }), byGroup, "senza tavolozza come senza agenti");
@@ -410,7 +410,7 @@ test("«Curva del valore»: J-curve, «Valore per tipo di ritorno» e «Ipotesi 
 test("«Curva del valore» in una pagina stretta: un tipo di ritorno per sezione chiusa con la somma delle cifre arrotondate, un mese di entrata in uso per sezione", () => {
   // Sette use case da 4.042,5 € all'anno: ognuno scrive 4.043 €, la sezione 7 × 4.043 = 28.301 €
   // (non 28.298 € dal totale senza arrotondare), come la riga delle barre.
-  const items = Array.from({ length: 7 }, (_, i) => item({ title: i === 0 ? "LIBRA L1 · Lettura delle fatture estere" : `Smistamento ${i}`, valueModel: COUNTED }));
+  const items = Array.from({ length: 7 }, (_, i) => item({ title: i === 0 ? "LIBRA L1 · Lettura dei documenti esteri" : `Smistamento ${i}`, valueModel: COUNTED }));
   const html = view({ chart: "curva", items, planItems: items, query: { vista: "panoramica", mostra: "curva" }, clearHref: `${BASE}?vista=panoramica&mostra=curva` });
   const N = " ";
   // La sola sezione, «Risparmio di tempo»: dalla sua apertura alla fine dell'elenco.
@@ -424,7 +424,7 @@ test("«Curva del valore» in una pagina stretta: un tipo di ritorno per sezione
   const [first, rest] = lever[2].split('<details data-slot="lever-more"');
   assert.equal([...first.matchAll(/data-slot="chart-use-case"/g)].length, 5);
   assert.ok(rest.includes(">Mostra gli altri 2<") && [...rest.matchAll(/data-slot="chart-use-case"/g)].length === 2, rest);
-  assert.ok(first.includes(`>LIBRA L1</span> <span class="sr-only">· </span>Lettura delle fatture estere`), "il tag dell'agente, come nelle card");
+  assert.ok(first.includes(`>LIBRA L1</span> <span class="sr-only">· </span>Lettura dei documenti esteri`), "il tag dell'agente, come nelle card");
   assert.ok(first.includes(`tabular-nums">4.043${N}€</span>`), "la cifra di ogni use case, intera");
   // Le tappe della curva e i mesi di entrata in uso, chiusi: «Entra in uso · gen 27 · 7 use case».
   const month = /<details data-slot="jcurve-go-live"[^>]*><summary[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/.exec(html);

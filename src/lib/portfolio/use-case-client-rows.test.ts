@@ -104,7 +104,7 @@ function stuffedRow(overrides: Partial<UseCase> = {}): UseCase {
     requirements: ["Accesso ERP"],
     dataDependencies: ["ordini"],
     relatedActivityIds: ["5b0c2a52-6a7e-4a43-9a51-0d1d6a1f00bb"],
-    code: "TJ-0042",
+    code: "RD-0042",
     intake: {
       contractVersion: 2,
       area: "amministrazione",
@@ -206,7 +206,7 @@ test("the REST row is every column but proposer, reviewer and intake", () => {
   assertNoPlanted({ useCase: api }, "GET detail / PATCH");
   // Reviewer-only content of the row stays (the routes answer only to reviewers).
   const json = JSON.stringify(api);
-  assert.ok(json.includes(REVIEW_NOTES) && json.includes(PUBLIC_NOTE) && json.includes("TJ-0042"));
+  assert.ok(json.includes(REVIEW_NOTES) && json.includes(PUBLIC_NOTE) && json.includes("RD-0042"));
 });
 
 test("the value model reaches reviewers through the one schema: a broken or extended model goes out as null", () => {

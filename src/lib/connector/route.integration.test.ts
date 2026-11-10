@@ -142,12 +142,12 @@ before(async () => {
   for (const [id, name] of [[ids.wsA, "A"], [ids.wsB, "B"], [ids.wsC, "C"]]) {
     await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, $3)`, [id, ids.org, `Workspace K5 ${name} ${suffix}`]);
   }
-  // A: acceso, prefisso TJ (sintetico), guida d'esempio. B: acceso, per l'isolamento. C: sospeso.
+  // A: acceso, prefisso RD (sintetico), guida d'esempio. B: acceso, per l'isolamento. C: sospeso.
   // Tutti con il profilo sintetico e il modello delle istruzioni nella riga.
   const guide = JSON.stringify(EXAMPLE_GUIDE);
   await q(
     `INSERT INTO workspace_connector_configs (workspace_id, slug, enabled, code_prefix, workspace_display_name, guide, guide_version, profile, instructions_template)
-     VALUES ($1, $2, true, 'TJ', 'Alfa e Beta', $3::jsonb, '2026-10.1', $4::jsonb, $5)`,
+     VALUES ($1, $2, true, 'RD', 'Alfa e Beta', $3::jsonb, '2026-10.1', $4::jsonb, $5)`,
     [ids.wsA, slugs.a, guide, PROFILE, EXAMPLE_INSTRUCTIONS_TEMPLATE]
   );
   await q(
@@ -206,13 +206,13 @@ test("handshake e tools/list non consumano il limite; un tools/call consuma una 
   await client.close();
 });
 
-test("invio valido: TJ-0001, RICEVUTA, link null; riga con fonte, intake v2 e punteggi non toccati", opts, async () => {
+test("invio valido: RD-0001, RICEVUTA, link null; riga con fonte, intake v2 e punteggi non toccati", opts, async () => {
   const client = await connect(slugs.a, tokens.connA.token);
   const out = await call(client, "submit_contribution", { ...submission({ flags: { personalData: false, safetyRelated: false, outsideFoundation: true } }) });
   assert.equal(out.isError, false);
   assert.equal(out.content.ok, true);
   assert.equal(out.content.duplicate, false);
-  assert.equal(out.content.code, "TJ-0001");
+  assert.equal(out.content.code, "RD-0001");
   assert.equal(out.content.statusCode, "RICEVUTA");
   assert.equal(out.content.statusLabel, "Ricevuta");
   assert.equal(out.content.link, null);
@@ -222,7 +222,7 @@ test("invio valido: TJ-0001, RICEVUTA, link null; riga con fonte, intake v2 e pu
   const row = await one(
     `SELECT source, status::text AS status, portfolio_review_status::text AS review, intake, proposed_by, review_notes,
             impact_time, impact_economic, impact_flag, custom_scores, submitted_at IS NOT NULL AS submitted
-       FROM use_cases WHERE workspace_id = $1 AND code = 'TJ-0001'`,
+       FROM use_cases WHERE workspace_id = $1 AND code = 'RD-0001'`,
     [ids.wsA]
   );
   assert.equal(row.source, "claude_connector");
@@ -255,7 +255,7 @@ test("stessa chiave e stesso contenuto: duplicate true, nessuna riga nuova, anch
     const again = await call(client, "submit_contribution", { ...submission({ flags: { personalData: false, safetyRelated: false, outsideFoundation: true } }) });
     assert.equal(again.isError, false);
     assert.equal(again.content.duplicate, true);
-    assert.equal(again.content.code, "TJ-0001");
+    assert.equal(again.content.code, "RD-0001");
     // Una chiave nuova a secchio pieno: rate_limited con retryAfterSeconds.
     const limited = await call(client, "submit_contribution", { ...submission({ idempotencyKey: `k5-${suffix}-0002` }) });
     assert.equal(limited.isError, true);
@@ -307,7 +307,7 @@ test("ricerca: trova la segnalazione con 3 parole chiave, anche accentate; mai a
   const found = await call(client, "find_similar_contributions", { query: "riconciliazione fatture già" });
   assert.equal(found.isError, false);
   const results = found.content.results as Structured[];
-  const hit = results.find((r) => r.code === "TJ-0001");
+  const hit = results.find((r) => r.code === "RD-0001");
   assert.ok(hit, JSON.stringify(results));
   assert.deepEqual(Object.keys(hit).sort(), ["area", "code", "kind", "month", "statusCode", "statusLabel", "title"]);
   assert.match(String(hit.month), /^\d{4}-\d{2}$/);
@@ -324,26 +324,26 @@ test("ricerca: trova la segnalazione con 3 parole chiave, anche accentate; mai a
 
 test("stato per codice; nascosta → ridotta e fuori dalla ricerca; archiviata non doppione fuori dalla ricerca", opts, async () => {
   const client = await connect(slugs.a, tokens.connA.token);
-  const status = await call(client, "get_contribution_status", { code: "TJ-0001" });
+  const status = await call(client, "get_contribution_status", { code: "RD-0001" });
   assert.equal(status.isError, false);
-  assert.equal(status.content.code, "TJ-0001");
+  assert.equal(status.content.code, "RD-0001");
   assert.equal(status.content.title, TITLE);
   assert.match(String(status.content.statusChangedAt), /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(status.content.linkedCaseCode, null);
   assert.doesNotMatch(JSON.stringify(status.content), new RegExp(`${SUBMITTER.email}|${SUBMITTER.name}|Foundation`));
 
-  await q(`UPDATE use_cases SET intake = intake || '{"hiddenFromSearch": true}'::jsonb, public_note = 'Nota pubblica' WHERE workspace_id = $1 AND code = 'TJ-0001'`, [ids.wsA]);
-  const hidden = await call(client, "get_contribution_status", { code: "TJ-0001" });
+  await q(`UPDATE use_cases SET intake = intake || '{"hiddenFromSearch": true}'::jsonb, public_note = 'Nota pubblica' WHERE workspace_id = $1 AND code = 'RD-0001'`, [ids.wsA]);
+  const hidden = await call(client, "get_contribution_status", { code: "RD-0001" });
   assert.equal(hidden.content.title, null);
   assert.equal(hidden.content.publicNote, null);
   assert.equal(hidden.content.area, null);
   const search = await call(client, "find_similar_contributions", { query: "riconciliazione fatture già" });
-  assert.equal((search.content.results as Structured[]).some((r) => r.code === "TJ-0001"), false);
-  await q(`UPDATE use_cases SET intake = intake - 'hiddenFromSearch', portfolio_review_status = 'archived' WHERE workspace_id = $1 AND code = 'TJ-0001'`, [ids.wsA]);
+  assert.equal((search.content.results as Structured[]).some((r) => r.code === "RD-0001"), false);
+  await q(`UPDATE use_cases SET intake = intake - 'hiddenFromSearch', portfolio_review_status = 'archived' WHERE workspace_id = $1 AND code = 'RD-0001'`, [ids.wsA]);
   const archived = await call(client, "find_similar_contributions", { query: "riconciliazione fatture già" });
-  assert.equal((archived.content.results as Structured[]).some((r) => r.code === "TJ-0001"), false);
-  assert.equal((await call(client, "get_contribution_status", { code: "TJ-0001" })).content.statusCode, "ARCHIVIATA");
-  await q(`UPDATE use_cases SET portfolio_review_status = 'needs_inputs', public_note = NULL WHERE workspace_id = $1 AND code = 'TJ-0001'`, [ids.wsA]);
+  assert.equal((archived.content.results as Structured[]).some((r) => r.code === "RD-0001"), false);
+  assert.equal((await call(client, "get_contribution_status", { code: "RD-0001" })).content.statusCode, "ARCHIVIATA");
+  await q(`UPDATE use_cases SET portfolio_review_status = 'needs_inputs', public_note = NULL WHERE workspace_id = $1 AND code = 'RD-0001'`, [ids.wsA]);
   const missing = await call(client, "get_contribution_status", {});
   assert.equal(missing.content.error, "identity_required");
   await client.close();
@@ -351,12 +351,12 @@ test("stato per codice; nascosta → ridotta e fuori dalla ricerca; archiviata n
 
 test("isolamento: un altro workspace non vede codici, ricerca né collegamenti di A", opts, async () => {
   const client = await connect(slugs.b, tokens.connB.token);
-  const status = await call(client, "get_contribution_status", { code: "TJ-0001" });
+  const status = await call(client, "get_contribution_status", { code: "RD-0001" });
   assert.equal(status.content.error, "not_found");
   const search = await call(client, "find_similar_contributions", { query: "riconciliazione fatture già" });
   assert.deepEqual(search.content.results, []);
   const related = await call(client, "submit_contribution", {
-    ...submission({ idempotencyKey: `k5-${suffix}-b001`, relatedCode: "TJ-0001", relationType: "integra" }),
+    ...submission({ idempotencyKey: `k5-${suffix}-b001`, relatedCode: "RD-0001", relationType: "integra" }),
   });
   assert.equal(related.content.error, "unknown_related_code");
   await client.close();
@@ -436,7 +436,7 @@ test("REST: una segnalazione creata dalla rotta REST riceve il codice e si trova
   );
   assert.equal(response.status, 201);
   const row = await one(`SELECT code FROM use_cases WHERE workspace_id = $1 AND title = $2`, [ids.wsA, restTitle]);
-  assert.match(String(row.code), /^TJ-\d{4}$/);
+  assert.match(String(row.code), /^RD-\d{4}$/);
   const client = await connect(slugs.a, tokens.connA.token);
   const found = await call(client, "find_similar_contributions", { query: "preventivi firmati archivio" });
   assert.ok((found.content.results as Structured[]).some((r) => r.code === row.code));
@@ -477,7 +477,7 @@ test("Slack: una segnalazione creata come fa lo Slack intake riceve il codice e 
     submittedAt: now,
   };
   const created = await createUseCase(buildUseCaseDataFromSlackDraft({ draft, actingSlackUserId: draft.slackUserId, expectedWorkspaceId: ids.wsA, esgEnabled: false }));
-  assert.match(String(created.code), /^TJ-\d{4}$/);
+  assert.match(String(created.code), /^RD-\d{4}$/);
   const row = await one(`SELECT source, code FROM use_cases WHERE id = $1`, [created.id]);
   assert.equal(row.source, SLACK_INTAKE_SOURCE);
   assert.equal(row.code, created.code);

@@ -117,7 +117,7 @@ async function answeredReferent(card: { id: string; needs: string[] }): Promise<
     await referents.sendReferentRequest(
       ctx(),
       card.id,
-      { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Aldo Prova", email: `aldo.${seq++}.${suffix}@topjet.test` }, needIds: card.needs.slice(0, 2) },
+      { kind: "referente", expectedReferentRequestId: null, contact: { kind: "nuovo", displayName: "Aldo Prova", email: `aldo.${seq++}.${suffix}@rondine.test` }, needIds: card.needs.slice(0, 2) },
       { env: ENV, requester: { name: "Giulia Neri", emailVerified: true } },
     ),
     "invio",
@@ -198,7 +198,7 @@ before(async () => {
   ai = await import("../../db/queries/use-case-referent-ai.ts");
   NOW = new Date(calendar.romeLocalToUtc(calendar.addWorkingDays(calendar.romeDate(new Date()), 1), 10).getTime() + 30 * 60_000);
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione filo', $2)`, [ids.org, `hub-filo-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet prova')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine prova')`, [ids.ws, ids.org]);
   for (const [id, role, email] of [[ids.builder, "function_lead", `builder.${suffix}@cliente.test`], [ids.contributor, "contributor", `contrib.${suffix}@cliente.test`]] as const) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [id, email, role === "function_lead" ? "Giulia Neri" : "Persona contributor"]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, id, role]);
@@ -243,7 +243,7 @@ test("«Chiedi un chiarimento» su una risposta: stessa richiesta riaperta, link
   refused(await thread.askReferentClarification(ctx(), card.id, { ...input, text: "y".repeat(301) }, { env: ENV, now: NOW }), "riga_troppo_lunga");
   refused(await thread.askReferentClarification(ctx(), card.id, { ...input, text: "Ha una diagnosi di diabete, il codice è RSSMRA80A01H501U?" }, { env: ENV, now: NOW }), "testo_sanitario", "dati sanitari rifiutati");
   refused(await thread.askReferentClarification(ctx(), card.id, { ...input, needId: card.needs[2] }, { env: ENV, now: NOW }), "filo_non_disponibile", "una domanda senza risposta");
-  const asked = ok(await thread.askReferentClarification(ctx(), card.id, { ...input, text: "Lo controlla Mario Rossi (mario@topjet.test)?" }, { env: ENV, now: NOW }), "chiarimento");
+  const asked = ok(await thread.askReferentClarification(ctx(), card.id, { ...input, text: "Lo controlla Mario Rossi (mario@rondine.test)?" }, { env: ENV, now: NOW }), "chiarimento");
   refused(await thread.askReferentClarification(ctx(), card.id, input, { env: ENV, now: NOW }), "chiarimento_aperto", "un secondo chiarimento sulla stessa risposta");
 
   const reopened = await requestOf(r.requestId);
@@ -264,7 +264,7 @@ test("«Chiedi un chiarimento» su una risposta: stessa richiesta riaperta, link
   assert.deepEqual([item.kind, item.new_questions, item.clarifications, item.replies], ["nuove", 1, 1, 0]);
   const mails = await send(r.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1);
-  assert.match(mails[0].subject, /^TopJet prova: un chiarimento sul caso d'uso «FL-\d+ · Fatture fornitori»$/);
+  assert.match(mails[0].subject, /^Rondine prova: un chiarimento sul caso d'uso «FL-\d+ · Fatture fornitori»$/);
   assert.match(mails[0].text, /Il team ti chiede un chiarimento sul caso d'uso/);
   assert.ok(!mails[0].text.includes("Mario Rossi") && !mails[0].text.includes("fine mese"), "mai il testo del messaggio nell'email");
   assert.ok((await story(card.id)).includes("chiarimento"));
@@ -355,7 +355,7 @@ test("«Ho un dubbio» e «Rispondi»: «Il referente ha chiesto qualcosa», la 
   assert.ok(answered.messageId);
   const mails = await send(r.requestId, new Date(NOW.getTime() + 60_000));
   assert.equal(mails.length, 1, "l'email della risposta parte anche con la richiesta completata");
-  assert.match(mails[0].subject, /^TopJet prova: una risposta sul caso d'uso «FL-\d+ · Fatture fornitori»$/);
+  assert.match(mails[0].subject, /^Rondine prova: una risposta sul caso d'uso «FL-\d+ · Fatture fornitori»$/);
   assert.ok(!mails[0].text.includes("estere"), "mai il testo nell'email");
 });
 

@@ -641,7 +641,7 @@ test("stato di un invio: ritrovato dopo la revisione esce con lo stato attuale",
 });
 
 test("nextSteps: senza codice nessun codice inventato, il rinvio al referente", () => {
-  assert.equal(nextSteps("TJ-10000"), "Lateral Space la valuta e ti aggiorna. Per sapere a che punto è chiedi lo stato di TJ-10000.");
+  assert.equal(nextSteps("RD-10000"), "Lateral Space la valuta e ti aggiorna. Per sapere a che punto è chiedi lo stato di RD-10000.");
   const noCode = nextSteps(null);
   assert.match(noCode, /^Lateral Space la valuta e ti aggiorna\. /);
   assert.doesNotMatch(noCode, /[A-Z]{2,4}-\d{4}/);

@@ -22,7 +22,7 @@
  *   titolo dice già l'agente. Niente «Gruppo …», «Senza gruppo» o «Altri gruppi».
  * - **Bolle** (`buildBenefitBubbles`): le schede della vista con un modello e la facilità; x la
  *   facilità da 1 a 5, y il beneficio contato all'anno, raggio `4 + 9·√(avvio / avvio massimo)`
- *   in pixel (da 8 a 26 px di diametro: con TopJet 46 bolle stanno nelle cinque colonne della
+ *   in pixel (da 8 a 26 px di diametro: con Rondine 46 bolle stanno nelle cinque colonne della
  *   facilità senza coprirsi); il bordo dice quando (questo trimestre, prossimo, più avanti) e il riempimento
  *   chiaro «da decidere».
  * - **Curva del valore** (`buildRoadmapValue`): le schede approvate o in realizzazione con un modello;

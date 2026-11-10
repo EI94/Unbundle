@@ -117,7 +117,7 @@ before(async () => {
   }
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione rotte', $2)`, [ids.org, `hub-rotte-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet prova')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine prova')`, [ids.ws, ids.org]);
   await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, 'Giulia Neri', now())`, [ids.builder, BUILDER_EMAIL]);
   await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'function_lead')`, [ids.ws, ids.builder]);
   await q(
@@ -133,7 +133,7 @@ before(async () => {
   const needs = await q(`SELECT n.id::text AS id FROM use_case_needs n JOIN use_case_need_links l ON l.need_id = n.id WHERE l.use_case_id = $1::uuid ORDER BY n.sort_order, n.id`, [ids.useCase]);
   state.needs = needs.map((r) => String(r.id));
   assert.ok(state.needs.length >= 4);
-  const link = await sendLink(`mario.rossi.${suffix}@topjet.test`, state.needs.slice(0, 2));
+  const link = await sendLink(`mario.rossi.${suffix}@rondine.test`, state.needs.slice(0, 2));
   state.token = link.token;
   state.requestId = link.requestId;
   const [t] = await q(`SELECT id::text AS id FROM use_case_referent_tokens WHERE request_id = $1::uuid`, [link.requestId]);
@@ -254,7 +254,7 @@ test("dalle rotte: informativa, bozza bloccata dal controllo del testo, bozza, f
   assert.match(String(blocked.json.error), /^testo_/);
   assert.equal((await q(`SELECT count(*)::int AS n FROM use_case_need_answers WHERE request_id = $1::uuid`, [state.requestId]))[0].n, 0);
   // (Rilascio 5.1) Email e telefoni nella bozza: salvata senza avvisi.
-  const named = await call("draft", state.token, { body: { needId: n0, text: `Chiedete a mario.rossi.${suffix}@topjet.test o al +39 333 1234567`, dontKnow: false } });
+  const named = await call("draft", state.token, { body: { needId: n0, text: `Chiedete a mario.rossi.${suffix}@rondine.test o al +39 333 1234567`, dontKnow: false } });
   assert.equal(named.status, 200);
   assert.deepEqual(named.json.data?.warnings, [], "nessun avviso per un'email o un telefono");
   // Un codice fiscale: salvata con un avviso, poi l'invio la rifiuta sulla sua domanda.

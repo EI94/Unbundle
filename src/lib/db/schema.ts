@@ -722,7 +722,7 @@ export const useCases = pgTable("use_cases", {
   dataDependencies: jsonb("data_dependencies").$type<string[]>(),
   relatedActivityIds: jsonb("related_activity_ids").$type<string[]>(),
   /**
-   * Connettore MCP (drizzle/0019): codice leggibile per workspace (es. TJ-0012),
+   * Connettore MCP (drizzle/0019): codice leggibile per workspace (es. RD-0012),
    * assegnato da `assignUseCaseCode` a ogni nuovo use case (la riga di
    * `workspace_connector_configs`, se manca, nasce lì, con il connettore spento).
    * Indice unico parziale (workspace_id, code) e CHECK sul formato nella migrazione.

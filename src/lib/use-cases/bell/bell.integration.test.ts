@@ -255,7 +255,7 @@ test("chi riceve cosa: un revisore che perde il ruolo non vede più le sue righe
   const shown = await payload("builder");
   assert.deepEqual(shown.emailAlerts, { shown: false, on: true });
   const contact = randomUUID();
-  await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $2::uuid, 'Mario Rossi', $3)`, [contact, ids.ws, `mario.${suffix}@topjet.test`]);
+  await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $2::uuid, 'Mario Rossi', $3)`, [contact, ids.ws, `mario.${suffix}@rondine.test`]);
   await q(
     `INSERT INTO use_case_referent_requests (workspace_id, use_case_id, contact_id, requested_by_user_id, requester_name, expires_at) VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'Persona builder', now() + interval '30 days')`,
     [ids.ws, ids.useCase, contact, ids.builder],

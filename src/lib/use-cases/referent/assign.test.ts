@@ -4,7 +4,7 @@ import { ASSIGN_DEFAULT_TICKS, defaultAssignTicks } from "./assign.ts";
 import { orgWordsOf, type MatchQuestion } from "./match.ts";
 
 // Rilascio 5 (§3.8): le domande spuntate di una richiesta al referente. Dati sintetici con la forma di
-// TJ-0002 (7 domande da chiedere) e delle due schede con 14.
+// RD-0002 (7 domande da chiedere) e delle due schede con 14.
 
 const ORG = orgWordsOf(["Alfa Jet (prova)", "Alfa Jet e Belmonte"]);
 const q = (id: string, ownerLabel: string | null = null): MatchQuestion => ({ id, ownerLabel });
@@ -12,7 +12,7 @@ const ids = (n: number, prefix = "n") => Array.from({ length: n }, (_, i) => `${
 const askableOf = (list: string[], owners: Record<string, string> = {}) => list.map((id) => q(id, owners[id] ?? null));
 const aldo = { displayName: "Aldo Prova", roleLabel: "Contabilità" };
 
-test("scegli: 5 di 7 su TJ-0002, nell'ordine della scheda per chi il «Chi» non nomina", () => {
+test("scegli: 5 di 7 su RD-0002, nell'ordine della scheda per chi il «Chi» non nomina", () => {
   assert.equal(ASSIGN_DEFAULT_TICKS, 5);
   const ticks = defaultAssignTicks({ mode: "scegli", askable: askableOf(ids(7)), person: aldo, orgWords: ORG });
   assert.deepEqual(ticks, ["n1", "n2", "n3", "n4", "n5"]);

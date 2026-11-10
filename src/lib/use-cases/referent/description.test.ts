@@ -51,7 +51,7 @@ test("le frasi che restano si riuniscono; vuota → null; si contano quelle tolt
   assert.deepEqual(referentDescription("Una frase sola senza punto"), { text: "Una frase sola senza punto", dropped: 0 });
 });
 
-test("un campione con la forma di TopJet: 17 descrizioni su 50 perdono 1 o 2 frasi, una resta vuota", () => {
+test("un campione con la forma di Rondine: 17 descrizioni su 50 perdono 1 o 2 frasi, una resta vuota", () => {
   const plain = ["Le richieste arrivano per email.", "Il team le smista a mano.", "Serve un controllo prima dell'invio."];
   const money = ["Si risparmiano 4.000 € l'anno.", "Il ROI stimato è alto."];
   const descriptions: string[] = [];

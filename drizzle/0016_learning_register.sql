@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS learning_register_settings (
   trainers text CHECK (trainers IS NULL OR length(trainers) <= 2000),
   -- Un corso può servire più società dello stesso gruppo: ognuna, riconosciuta
   -- dal dominio email dei partecipanti, ha la propria ragione sociale e il
-  -- proprio registro. {"topjet.aero": "TopJet S.r.l."}
+  -- proprio registro. {"rondine.aero": "Rondine S.r.l."}
   company_names jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(company_names) = 'object'),
   other_initiatives text CHECK (other_initiatives IS NULL OR length(other_initiatives) <= 4000),
   updated_by uuid REFERENCES users(id),

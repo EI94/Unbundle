@@ -107,7 +107,7 @@ interface BubbleLayout {
  * Dove sta ogni bolla. Con un beneficio contato: alla sua altezza, e di lato nella colonna della
  * sua facilità quanto basta per non toccare le altre (`swarm`). Senza: nella striscia «non
  * contato» sotto lo zero, ognuna nella colonna della sua facilità, il più in alto possibile
- * (`packStrip`). Su TopJet 28 bolle su 46 erano una sopra l'altra sullo zero, a facilità 2, 3 e 4.
+ * (`packStrip`). Su Rondine 28 bolle su 46 erano una sopra l'altra sullo zero, a facilità 2, 3 e 4.
  */
 function layoutBubbles(bubbles: readonly BenefitBubble[], max: number): BubbleLayout {
   const W = PLOT.minPx;

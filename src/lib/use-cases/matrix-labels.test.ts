@@ -160,7 +160,7 @@ test("il nome di una zona va a capo prima della linea del costo basso", () => {
   assert.ok(Math.abs(right.x + right.w - (576 - 8)) < 0.01);
 });
 
-test("i nomi delle zone lasciano l'angolo esterno quando è pieno di punti (TopJet: «Se avanza tempo»)", () => {
+test("i nomi delle zone lasciano l'angolo esterno quando è pieno di punti (Rondine: «Se avanza tempo»)", () => {
   // Quindici punti in basso a sinistra, Valore tra 1,6 e 2,1: l'angolo di «Se avanza tempo».
   const points = Array.from({ length: 15 }, (_, i) => ({ left: 3 + (i % 5) * 3.6, top: 82 + Math.floor(i / 5) * 3.5, radiusPx: 5 }));
   const spots = placeZoneLabels(ZONE_INPUTS, points, GEOMETRY, [304, 440, 576]);
@@ -170,7 +170,7 @@ test("i nomi delle zone lasciano l'angolo esterno quando è pieno di punti (TopJ
 });
 
 test("con `wideFromPx`: l'etichetta che al telefono passerebbe la linea si scrive solo da 440 px in su", () => {
-  // TopJet: «LIBRA L1» nella colonna «€» (fino al 20 %), al 2 %: 61 px al telefono, troppo pochi.
+  // Rondine: «LIBRA L1» nella colonna «€» (fino al 20 %), al 2 %: 61 px al telefono, troppo pochi.
   const point = { id: "l1", left: 2, top: 65.5, text: "LIBRA L1" };
   const line = (box: { w: number; h: number }) => [{ x: 0.2 * box.w - 2, y: 0, w: 4, h: box.h }];
   assert.equal(placeMatrixLabels([point], { boxPx: 304, maxBoxPx: 576, obstacles: line }).size, 0, "senza il secondo livello: niente");

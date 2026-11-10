@@ -329,7 +329,7 @@ export interface ReferentContactOption {
   id: string;
   displayName: string;
   roleLabel: string | null;
-  /** «m•••@topjet.it»: la prima lettera, poi •••, poi @dominio. L'indirizzo intero non arriva mai al pannello. */
+  /** «m•••@rondine.it»: la prima lettera, poi •••, poi @dominio. L'indirizzo intero non arriva mai al pannello. */
   emailMasked: string | null;
   selectable: boolean;
   /** (Parte 3) «sei_tu»: il contatto è chi guarda (account collegato o email verificata): risponde dalla scheda. */
@@ -363,7 +363,7 @@ export interface ReferentContactOption {
 export interface ReferentMemberOption {
   userId: string;
   displayName: string;
-  /** «m•••@topjet.it», come per i referenti. */
+  /** «m•••@rondine.it», come per i referenti. */
   emailMasked: string | null;
   team: boolean;
 }

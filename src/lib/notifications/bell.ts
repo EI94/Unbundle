@@ -37,7 +37,7 @@ export interface BellEntry {
   key: string;
   source: BellSource;
   ref: BellReadRef;
-  /** Prima riga, per esempio «TJ-0004 · Fatture fornitori». */
+  /** Prima riga, per esempio «RD-0004 · Fatture fornitori». */
   context: string | null;
   title: string;
   description: string | null;

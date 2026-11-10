@@ -68,7 +68,7 @@ before(async () => {
   await ensure.ensureDbSchema();
   data = await import("../../notifications/bell-data.ts");
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione righe', $2)`, [ids.org, `hub-righe-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet righe')`, [ids.ws, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine righe')`, [ids.ws, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
     // Iscritti da un mese: il numero rosso conta le righe dopo l'inizio dell'iscrizione.

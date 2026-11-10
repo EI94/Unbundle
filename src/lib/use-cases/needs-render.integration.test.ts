@@ -664,8 +664,8 @@ test("Cosa serve: la linea del tempo, «Prima di oggi» in testa, i primi cinque
     dueOn,
   });
   const ref = (code: string, title: string) => ({ id: randomUUID(), code, title });
-  const agentsRefs = [ref("TJ-0001", "LIBRA L1 · Lettura delle fatture estere"), ref("TJ-0002", "ORSA O1 · Solleciti ai clienti"), ref("TJ-0003", "LIBRA L3 · Riconciliazione")];
-  const plainRef = ref("TJ-0004", "Smistamento delle richieste");
+  const agentsRefs = [ref("RD-0001", "LIBRA L1 · Lettura dei documenti esteri"), ref("RD-0002", "ORSA O1 · Solleciti ai clienti"), ref("RD-0003", "LIBRA L3 · Riconciliazione")];
+  const plainRef = ref("RD-0004", "Smistamento delle richieste");
   const section = (key: string, label: string, items: unknown[]) => ({ key, label, items });
   const sections = [
     section("prima", "Prima di oggi", [step("Scaduto", agentsRefs, "2026-10-20"), step("Un solo agente", [agentsRefs[1]], "2026-10-28")]),
@@ -711,7 +711,7 @@ test("Cosa serve: la linea del tempo, «Prima di oggi» in testa, i primi cinque
   const single = between(aside, `Un solo agente ${suffix}`, "</li>");
   assert.ok(!single.includes('data-slot="need-agents"') && !single.includes('data-slot="agent-tag"'), single);
   assert.equal(readable(single.replace(/<[^>]+>/g, "")).split("ORSA").length - 1, 1, "«ORSA» una volta");
-  assert.ok(single.includes("TJ-0002") && single.includes("ORSA O1 · Solleciti ai clienti"));
+  assert.ok(single.includes("RD-0002") && single.includes("ORSA O1 · Solleciti ai clienti"));
 });
 
 test("una richiesta con «(12 €/mese)»: a schermo non va a capo dentro, in «Cosa serve» e nel pannello; il dato salvato resta com'è", opts, async () => {

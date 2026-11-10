@@ -41,7 +41,7 @@ function fakeUseCase(data: Partial<UseCase> = {}): UseCase {
     title: HOSTILE_TITLE,
     status: "proposed",
     portfolioReviewStatus: "needs_inputs",
-    code: "TJ-0001",
+    code: "RD-0001",
     createdAt: new Date("2026-10-13T08:00:00Z"),
     ...data,
   } as UseCase;
@@ -118,7 +118,7 @@ test("invio nuovo: crea, chiude la presa in carico e rimanda ranking e notifiche
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.duplicate, false);
-  assert.equal(result.useCase.code, "TJ-0001");
+  assert.equal(result.useCase.code, "RD-0001");
   assert.equal(result.useCase.id, RESERVED_ID, "la segnalazione usa l'id prenotato sulla presa in carico");
   assert.deepEqual(h.calls.claim, [
     {

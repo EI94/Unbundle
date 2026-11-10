@@ -51,7 +51,7 @@ const emails = {
 };
 type Person = keyof typeof emails;
 const ROLE: Record<Person, string> = { builder: "function_lead", analyst: "analyst", contributor: "contributor", ls: "transformation_lead" };
-const REFERENT_EMAIL = `mario.rossi.${suffix}@topjet.test`;
+const REFERENT_EMAIL = `mario.rossi.${suffix}@rondine.test`;
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-"));
 
 const ENV = {
@@ -112,7 +112,7 @@ before(async () => {
   dispatch = await import("../../db/queries/use-case-referent-dispatch.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione referenti', $2)`, [ids.org, `hub-referenti-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'TopJet prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'Rondine prova'), ($2::uuid, $3::uuid, 'Altro workspace')`, [ids.ws, ids.other, ids.org]);
   for (const person of Object.keys(emails) as Person[]) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
     for (const ws of [ids.ws, ids.other]) await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ws, ids[person], ROLE[person]]);
@@ -186,7 +186,7 @@ test("preparazione: la sessione della prova e i componenti", opts, async () => {
 
 test("la scheda c'è per un workspace dell'area senza i dossier, e l'autorizzazione si registra", opts, async () => {
   const { SubprocessorsCard } = await import("../../../components/workspace/subprocessors-card.tsx");
-  const card = await SubprocessorsCard({ workspaceId: ids.ws, workspaceName: "TopJet prova", userId: ids.builder, workspaceRole: "function_lead" });
+  const card = await SubprocessorsCard({ workspaceId: ids.ws, workspaceName: "Rondine prova", userId: ids.builder, workspaceRole: "function_lead" });
   assert.ok(card, "la scheda si mostra");
   const off = await SubprocessorsCard({ workspaceId: randomUUID(), workspaceName: "Fuori dall'area", userId: ids.builder, workspaceRole: "function_lead" });
   assert.equal(off, null, "fuori dall'area niente");

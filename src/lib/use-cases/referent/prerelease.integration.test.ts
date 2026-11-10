@@ -50,20 +50,20 @@ let files: Files;
 let q: (text: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
 
 const suffix = randomBytes(3).toString("hex");
-const ids = { org: randomUUID(), ws: randomUUID(), ws2: randomUUID(), federico: randomUUID(), claudio: randomUUID(), anna: randomUUID(), solo: randomUUID() };
-type Person = "federico" | "claudio" | "anna" | "solo";
-const PEOPLE: Person[] = ["federico", "claudio", "anna", "solo"];
-const ROLE: Record<Person, string> = { federico: "function_lead", claudio: "function_lead", anna: "analyst", solo: "exec_sponsor" };
-const HOME: Record<Person, string> = { federico: ids.ws, claudio: ids.ws, anna: ids.ws, solo: ids.ws2 };
+const ids = { org: randomUUID(), ws: randomUUID(), ws2: randomUUID(), fabio: randomUUID(), carlo: randomUUID(), anna: randomUUID(), solo: randomUUID() };
+type Person = "fabio" | "carlo" | "anna" | "solo";
+const PEOPLE: Person[] = ["fabio", "carlo", "anna", "solo"];
+const ROLE: Record<Person, string> = { fabio: "function_lead", carlo: "function_lead", anna: "analyst", solo: "exec_sponsor" };
+const HOME: Record<Person, string> = { fabio: ids.ws, carlo: ids.ws, anna: ids.ws, solo: ids.ws2 };
 const emails: Record<Person, string> = {
-  federico: `federico.${suffix}@topjet.test`,
-  claudio: `claudio.${suffix}@topjet.test`,
-  anna: `anna.${suffix}@topjet.test`,
+  fabio: `fabio.${suffix}@rondine.test`,
+  carlo: `carlo.${suffix}@rondine.test`,
+  anna: `anna.${suffix}@rondine.test`,
   solo: `solo.${suffix}@cliente.test`,
 };
-const MARIO = `mario.rossi.${suffix}@topjet.test`;
-const DOSSIER = `paola.bianchi.${suffix}@topjet.test`;
-const contacts = { claudio: randomUUID(), mario: randomUUID(), dossier: randomUUID() };
+const MARIO = `mario.rossi.${suffix}@rondine.test`;
+const DOSSIER = `paola.bianchi.${suffix}@rondine.test`;
+const contacts = { carlo: randomUUID(), mario: randomUUID(), dossier: randomUUID() };
 const cards = { self: randomUUID(), team: randomUUID(), replyA: randomUUID(), replyB: randomUUID(), gate: randomUUID(), review: randomUUID(), locks: randomUUID(), solo: randomUUID() };
 const storageDir = mkdtempSync(join(tmpdir(), "referenti-rilascio-"));
 
@@ -186,7 +186,7 @@ before(async () => {
   files = await import("../../db/queries/use-case-referent-files.ts");
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1::uuid, 'Organizzazione rilascio', $2)`, [ids.org, `hub-rilascio-${ids.org}`]);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'TopJet rilascio'), ($2::uuid, $3::uuid, 'Cliente con un revisore')`, [ids.ws, ids.ws2, ids.org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $3::uuid, 'Rondine rilascio'), ($2::uuid, $3::uuid, 'Cliente con un revisore')`, [ids.ws, ids.ws2, ids.org]);
   for (const person of PEOPLE) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1::uuid, $2, $3, now())`, [ids[person], emails[person], `Persona ${person}`]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [HOME[person], ids[person], ROLE[person]]);
@@ -199,7 +199,7 @@ before(async () => {
     );
   }
   for (const [ws, by] of [
-    [ids.ws, ids.federico],
+    [ids.ws, ids.fabio],
     [ids.ws2, ids.solo],
   ]) {
     await q(
@@ -207,11 +207,11 @@ before(async () => {
       [ws, by],
     );
   }
-  // Claudio come referente: solo l'email, uguale alla sua email verificata (Parte 3). Mario senza account.
-  await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $2::uuid, 'Claudio', $3), ($4::uuid, $2::uuid, 'Mario Rossi', $5)`, [
-    contacts.claudio,
+  // Carlo come referente: solo l'email, uguale alla sua email verificata (Parte 3). Mario senza account.
+  await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $2::uuid, 'Carlo', $3), ($4::uuid, $2::uuid, 'Mario Rossi', $5)`, [
+    contacts.carlo,
     ids.ws,
-    emails.claudio,
+    emails.carlo,
     contacts.mario,
     MARIO,
   ]);
@@ -233,13 +233,13 @@ after(async () => {
 });
 
 test("preparazione: le domande standard su ogni scheda", opts, async () => {
-  for (const [name, card] of Object.entries(cards)) ok(await referents.prepareReferentQuestions(as(name === "solo" ? "solo" : "federico"), card), `Prepara ${name}`);
+  for (const [name, card] of Object.entries(cards)) ok(await referents.prepareReferentQuestions(as(name === "solo" ? "solo" : "fabio"), card), `Prepara ${name}`);
   for (const card of Object.values(cards)) assert.ok((await needsOf(card)).length >= 4);
 });
 
 test("un revisore che è anche il referente non accetta né apre per il controllo il PDF scansionato che ha mandato dal link; un altro revisore sì", opts, async () => {
   const needs = await needsOf(cards.self);
-  const asked = await ask("federico", cards.self, contacts.claudio, needs.slice(0, 1));
+  const asked = await ask("fabio", cards.self, contacts.carlo, needs.slice(0, 1));
   const link = await openLink(asked.token);
   const up = await pub.uploadReferentFileServer(link, { needId: needs[0], fileName: "fattura-scansionata.pdf", declaration: true, bytes: await scanPdf() }, ENV);
   assert.ok(up.ok && up.value.status === "in_revisione", JSON.stringify(up));
@@ -248,31 +248,31 @@ test("un revisore che è anche il referente non accetta né apre per il controll
   assert.ok(done.ok, JSON.stringify(done));
   assert.equal((await fileRow(up.value.fileId)).uploaded_by_user_id, null, "un file del link non ha chi l'ha caricato");
 
-  // Claudio vede il file nella scheda, ma non «Accetta il file» e niente link per aprirlo.
-  const own = (await panelFor("claudio", cards.self)).needs[needs[0]]?.files.find((f) => f.id === up.value.fileId);
+  // Carlo vede il file nella scheda, ma non «Accetta il file» e niente link per aprirlo.
+  const own = (await panelFor("carlo", cards.self)).needs[needs[0]]?.files.find((f) => f.id === up.value.fileId);
   assert.ok(own, "il file c'è");
   assert.equal(own!.status, "in_revisione");
   assert.equal(own!.canReview, false, "non lo controlla chi l'ha mandato");
   assert.equal(own!.href, null);
-  const download = await files.openReviewerFileDownload({ workspaceId: ids.ws, useCaseId: cards.self, fileId: up.value.fileId, viewer: viewer("claudio"), userId: ids.claudio }, ENV);
+  const download = await files.openReviewerFileDownload({ workspaceId: ids.ws, useCaseId: cards.self, fileId: up.value.fileId, viewer: viewer("carlo"), userId: ids.carlo }, ENV);
   assert.ok(!download.ok && download.code === "file_non_trovato");
-  refused(await files.reviewNeedFile(as("claudio"), cards.self, up.value.fileId, "accetta", ENV), "revisore_uguale");
-  refused(await files.reviewNeedFile(as("claudio"), cards.self, up.value.fileId, "rifiuta", ENV), "revisore_uguale");
+  refused(await files.reviewNeedFile(as("carlo"), cards.self, up.value.fileId, "accetta", ENV), "revisore_uguale");
+  refused(await files.reviewNeedFile(as("carlo"), cards.self, up.value.fileId, "rifiuta", ENV), "revisore_uguale");
   assert.equal((await fileRow(up.value.fileId)).scan_status, "in_revisione");
 
-  // Federico, che ha chiesto, lo vede da controllare e lo accetta.
-  const other = (await panelFor("federico", cards.self)).needs[needs[0]]?.files.find((f) => f.id === up.value.fileId);
+  // Fabio, che ha chiesto, lo vede da controllare e lo accetta.
+  const other = (await panelFor("fabio", cards.self)).needs[needs[0]]?.files.find((f) => f.id === up.value.fileId);
   assert.ok(other?.canReview && other.href, JSON.stringify(other));
-  const opened = await files.openReviewerFileDownload({ workspaceId: ids.ws, useCaseId: cards.self, fileId: up.value.fileId, viewer: viewer("federico"), userId: ids.federico }, ENV);
+  const opened = await files.openReviewerFileDownload({ workspaceId: ids.ws, useCaseId: cards.self, fileId: up.value.fileId, viewer: viewer("fabio"), userId: ids.fabio }, ENV);
   assert.ok(opened.ok, JSON.stringify(opened));
   if (opened.ok) await opened.value.body.cancel();
-  ok(await files.reviewNeedFile(as("federico"), cards.self, up.value.fileId, "accetta", ENV), "accetta");
+  ok(await files.reviewNeedFile(as("fabio"), cards.self, up.value.fileId, "accetta", ENV), "accetta");
   assert.equal((await fileRow(up.value.fileId)).scan_status, "pulito");
 });
 
 test("un PDF del team da controllare non chiude la domanda del referente; un rifiuto non lascia niente da disfare; l'accettazione sì", opts, async () => {
   const needs = await needsOf(cards.team);
-  const asked = await ask("federico", cards.team, contacts.mario, [needs[0]]);
+  const asked = await ask("fabio", cards.team, contacts.mario, [needs[0]]);
   assert.equal(await statusOf(needs[0]), "chiesta");
   const openItems = async () =>
     Number(
@@ -285,7 +285,7 @@ test("un PDF del team da controllare non chiude la domanda del referente; un rif
       )[0].n,
     );
 
-  const first = await files.uploadReviewerFileServer(as("claudio"), cards.team, { needId: needs[0], fileName: "scansione.pdf", declaration: true, bytes: await scanPdf() }, ENV);
+  const first = await files.uploadReviewerFileServer(as("carlo"), cards.team, { needId: needs[0], fileName: "scansione.pdf", declaration: true, bytes: await scanPdf() }, ENV);
   assert.ok(first.ok && first.value.status === "in_revisione", JSON.stringify(first));
   if (!first.ok) return;
   assert.equal(await statusOf(needs[0]), "chiesta", "non conta finché nessuno lo accetta");
@@ -295,18 +295,18 @@ test("un PDF del team da controllare non chiude la domanda del referente; un rif
   const page = await pub.resolveReferentToken(asked.token, V);
   assert.equal(page.access, "ok", "il link di Mario funziona ancora");
 
-  // Federico lo rifiuta: niente da disfare, la domanda resta di Mario.
-  ok(await files.reviewNeedFile(as("federico"), cards.team, first.value.fileId, "rifiuta", ENV), "rifiuta");
+  // Fabio lo rifiuta: niente da disfare, la domanda resta di Mario.
+  ok(await files.reviewNeedFile(as("fabio"), cards.team, first.value.fileId, "rifiuta", ENV), "rifiuta");
   assert.equal((await fileRow(first.value.fileId)).scan_status, "rifiutato");
   assert.equal(await statusOf(needs[0]), "chiesta");
   assert.equal(await requestStatus(asked.requestId), "inviata");
   assert.equal(await openItems(), 1);
 
-  // Un altro PDF, accettato da Federico: adesso conta, la richiesta di Mario è fatta.
-  const second = await files.uploadReviewerFileServer(as("claudio"), cards.team, { needId: needs[0], fileName: "scansione-2.pdf", declaration: true, bytes: await scanPdf() }, ENV);
+  // Un altro PDF, accettato da Fabio: adesso conta, la richiesta di Mario è fatta.
+  const second = await files.uploadReviewerFileServer(as("carlo"), cards.team, { needId: needs[0], fileName: "scansione-2.pdf", declaration: true, bytes: await scanPdf() }, ENV);
   assert.ok(second.ok && second.value.status === "in_revisione", JSON.stringify(second));
   if (!second.ok) return;
-  ok(await files.reviewNeedFile(as("federico"), cards.team, second.value.fileId, "accetta", ENV), "accetta");
+  ok(await files.reviewNeedFile(as("fabio"), cards.team, second.value.fileId, "accetta", ENV), "accetta");
   assert.equal(await statusOf(needs[0]), "in_verifica");
   assert.equal(await requestStatus(asked.requestId), "completata");
   assert.equal(await openItems(), 0);
@@ -339,8 +339,8 @@ test("con un solo revisore nel workspace un PDF scansionato dalla scheda si rifi
 test("il reply-to di un promemoria segue chi ha chiesto le voci che partono, anche quando la prima si toglie", opts, async () => {
   const needsA = await needsOf(cards.replyA);
   const needsB = await needsOf(cards.replyB);
-  const r1 = await ask("federico", cards.replyA, contacts.mario, [needsA[0]]);
-  const r2 = await ask("claudio", cards.replyB, contacts.mario, [needsB[0]]);
+  const r1 = await ask("fabio", cards.replyA, contacts.mario, [needsA[0]]);
+  const r2 = await ask("carlo", cards.replyB, contacts.mario, [needsB[0]]);
   // Le email delle richieste sono di due giorni fa: oggi a Mario non è ancora partito niente.
   const twoDaysAgo = new Date(V.getTime() - 2 * 86_400_000).toISOString();
   await q(`UPDATE use_case_referent_requests SET created_at = $2::timestamptz - interval '1 minute' * (CASE WHEN id = $3::uuid THEN 2 ELSE 1 END), sent_at = $2::timestamptz, last_email_at = $2::timestamptz WHERE id = ANY($1::uuid[])`, [
@@ -359,7 +359,7 @@ test("il reply-to di un promemoria segue chi ha chiesto le voci che partono, anc
   for (const r of [r1.requestId, r2.requestId]) {
     await q(`INSERT INTO use_case_referent_email_items (email_id, request_id, workspace_id, kind) VALUES ($1::uuid, $2::uuid, $3::uuid, 'manuale')`, [emailId, r, ids.ws]);
   }
-  // Federico mette «A posto» l'unica domanda di R1 dal menu dello stato: R1 non ha più domande aperte.
+  // Fabio mette «A posto» l'unica domanda di R1 dal menu dello stato: R1 non ha più domande aperte.
   await q(`UPDATE use_case_needs SET status = 'validata' WHERE id = $1::uuid`, [needsA[0]]);
 
   const mailer = fakeMailer();
@@ -367,9 +367,9 @@ test("il reply-to di un promemoria segue chi ha chiesto le voci che partono, anc
   assert.equal(mailer.outbox.length, 1, "il promemoria parte");
   const mail = mailer.outbox[0];
   assert.equal(mail.to, MARIO);
-  assert.equal(mail.replyTo, emails.claudio, "le risposte arrivano a chi ha chiesto R2");
-  assert.ok(mail.text.includes("arriva a Persona claudio"), "il testo nomina la stessa persona dell'intestazione");
-  assert.ok(!mail.text.includes("Persona federico"));
+  assert.equal(mail.replyTo, emails.carlo, "le risposte arrivano a chi ha chiesto R2");
+  assert.ok(mail.text.includes("arriva a Persona carlo"), "il testo nomina la stessa persona dell'intestazione");
+  assert.ok(!mail.text.includes("Persona fabio"));
   const items = await q(`SELECT request_id::text AS r, state, drop_reason FROM use_case_referent_email_items WHERE email_id = $1::uuid ORDER BY request_id`, [emailId]);
   const byRequest = Object.fromEntries(items.map((i) => [String(i.r), [i.state, i.drop_reason]]));
   assert.deepEqual(byRequest[r1.requestId], ["tolta", "nessuna_domanda_aperta"]);
@@ -379,16 +379,16 @@ test("il reply-to di un promemoria segue chi ha chiesto le voci che partono, anc
 test("senza le risposte dal link (UC_SECRET mancante su Vercel) niente richieste né promemoria: la scheda lo dice e le email aspettano", opts, async () => {
   const needs = await needsOf(cards.gate);
   const PROD = { ...ENV, VERCEL_ENV: "production", UC_SECRET: "" };
-  const panel = await panelFor("federico", cards.gate, PROD);
+  const panel = await panelFor("fabio", cards.gate, PROD);
   const { REFERENT_UI_TEXT } = await import("./labels.ts");
   assert.ok(panel.gates.some((g) => g.code === "risposte_non_attive" && g.message === REFERENT_UI_TEXT.gates.publicWritesOff), JSON.stringify(panel.gates));
   refused(
-    await referents.sendReferentRequest(as("federico"), cards.gate, { contact: { kind: "esistente", contactId: contacts.mario }, needIds: [needs[0]] }, { env: PROD, requester: requester("federico") }),
+    await referents.sendReferentRequest(as("fabio"), cards.gate, { contact: { kind: "esistente", contactId: contacts.mario }, needIds: [needs[0]] }, { env: PROD, requester: requester("fabio") }),
     "risposte_non_attive",
   );
   assert.equal(await statusOf(needs[0]), "da_chiedere");
   // Una richiesta fatta prima (UC_SECRET c'era): l'email aspetta finché le risposte non tornano.
-  const sent = ok(await referents.sendReferentRequest(as("federico"), cards.gate, { contact: { kind: "esistente", contactId: contacts.mario }, needIds: [needs[0]] }, { env: ENV, requester: requester("federico") }));
+  const sent = ok(await referents.sendReferentRequest(as("fabio"), cards.gate, { contact: { kind: "esistente", contactId: contacts.mario }, needIds: [needs[0]] }, { env: ENV, requester: requester("fabio") }));
   const held = fakeMailer();
   await dispatch.dispatchReferentEmails({ requestId: sent.requestId, env: PROD, mailer: held, sendIntervalMs: 0 });
   assert.equal(held.outbox.length, 0, "nessun link da cui non si può rispondere");
@@ -401,18 +401,18 @@ test("senza le risposte dal link (UC_SECRET mancante su Vercel) niente richieste
 
 test("un contatto creato in «Persone» di un dossier non è «solo degli use case»: l'email resta coperta e non si corregge né si anonimizza dall'hub", opts, async () => {
   await q(`INSERT INTO uc_contacts (id, workspace_id, display_name, email) VALUES ($1::uuid, $2::uuid, 'Paola Bianchi', $3)`, [contacts.dossier, ids.ws, DOSSIER]);
-  const hub = ok(await referents.revealReferentContactEmail(as("federico"), cards.self, contacts.dossier, ENV), "prima, senza dossier");
+  const hub = ok(await referents.revealReferentContactEmail(as("fabio"), cards.self, contacts.dossier, ENV), "prima, senza dossier");
   assert.equal(hub.email, DOSSIER, "senza nessuna traccia dei dossier è dell'hub");
   // La riga «referente.creato» del dossier, prima di ogni richiesta, incarico o firma.
   await q(
     `INSERT INTO uc_events (workspace_id, case_id, actor_type, actor_user_id, event_type, target_type, target_id, payload)
      VALUES ($1::uuid, $2::uuid, 'utente', $3::uuid, 'referente.creato', 'referente', $4::uuid, '{"fields":["display_name","email"]}'::jsonb)`,
-    [ids.ws, randomUUID(), ids.federico, contacts.dossier],
+    [ids.ws, randomUUID(), ids.fabio, contacts.dossier],
   );
-  const covered = ok(await referents.revealReferentContactEmail(as("federico"), cards.self, contacts.dossier, ENV), "dopo");
+  const covered = ok(await referents.revealReferentContactEmail(as("fabio"), cards.self, contacts.dossier, ENV), "dopo");
   assert.equal(covered.email, null, "come in «Persone» del dossier: niente email ai ruoli del cliente");
-  refused(await referents.correctReferentEmail(as("federico"), cards.self, contacts.dossier, { email: `altra.${suffix}@topjet.test` }, { env: ENV }), "referente_in_dossier");
-  const erased = ok(await referents.eraseReferentData(as("federico"), cards.self, contacts.dossier, { env: ENV }), "cancella");
+  refused(await referents.correctReferentEmail(as("fabio"), cards.self, contacts.dossier, { email: `altra.${suffix}@rondine.test` }, { env: ENV }), "referente_in_dossier");
+  const erased = ok(await referents.eraseReferentData(as("fabio"), cards.self, contacts.dossier, { env: ENV }), "cancella");
   assert.equal(erased.contactAnonymized, false, "la riga resta alla procedura dei dossier");
   const [contact] = await q(`SELECT email, anonymized_at FROM uc_contacts WHERE id = $1::uuid`, [contacts.dossier]);
   assert.deepEqual([contact.email, contact.anonymized_at], [DOSSIER, null]);
@@ -421,16 +421,16 @@ test("un contatto creato in «Persone» di un dossier non è «solo degli use ca
 test("«File non controllato in tempo» solo per file che il team ha visto, finché l'esigenza è aperta; i 7 giorni contano dall'invio", opts, async () => {
   const needs = await needsOf(cards.review);
   // (Rilascio 5, D17) L'invio è tutto o niente: la bozza mai inviata sta in una richiesta, il file inviato in un'altra.
-  const asked = await ask("federico", cards.review, contacts.mario, needs.slice(0, 1));
+  const asked = await ask("fabio", cards.review, contacts.mario, needs.slice(0, 1));
   const link = await openLink(asked.token);
-  const askedLate = await ask("federico", cards.review, contacts.claudio, needs.slice(1, 2));
+  const askedLate = await ask("fabio", cards.review, contacts.carlo, needs.slice(1, 2));
   const linkLate = await openLink(askedLate.token);
   const draft = await pub.uploadReferentFileServer(link, { needId: needs[0], fileName: "bozza.pdf", declaration: true, bytes: await scanPdf() }, ENV);
   const late = await pub.uploadReferentFileServer(linkLate, { needId: needs[1], fileName: "inviato-tardi.pdf", declaration: true, bytes: await scanPdf() }, ENV);
   assert.ok(draft.ok && draft.value.status === "in_revisione" && late.ok && late.value.status === "in_revisione");
   if (!draft.ok || !late.ok) return;
   assert.ok((await pub.submitReferentAnswers(linkLate, {}, V)).ok, "invio del secondo");
-  const team = await files.uploadReviewerFileServer(as("claudio"), cards.review, { needId: needs[2], fileName: "team.pdf", declaration: true, bytes: await scanPdf() }, ENV);
+  const team = await files.uploadReviewerFileServer(as("carlo"), cards.review, { needId: needs[2], fileName: "team.pdf", declaration: true, bytes: await scanPdf() }, ENV);
   assert.ok(team.ok && team.value.status === "in_revisione");
   if (!team.ok) return;
   // Tutti caricati 8 giorni fa; il secondo inviato adesso.
@@ -447,21 +447,21 @@ test("«File non controllato in tempo» solo per file che il team ha visto, finc
   assert.equal((await fileRow(late.value.fileId)).rejection_reason, "revisione_scaduta");
   assert.equal((await fileRow(draft.value.fileId)).scan_status, "in_revisione");
 
-  let panel = await panelFor("federico", cards.review);
+  let panel = await panelFor("fabio", cards.review);
   assert.equal(panel.needs[needs[0]]?.reviewExpired, false, "una bozza mai inviata non dà l'avviso");
   assert.equal(panel.needs[needs[1]]?.reviewExpired, true);
   assert.equal(panel.needs[needs[2]]?.reviewExpired, true);
   // Un'esigenza chiusa non lo dice più.
   await q(`UPDATE use_case_needs SET status = 'validata' WHERE id = $1::uuid`, [needs[2]]);
   await q(`UPDATE use_case_needs SET archived_at = now(), archive_reason = 'Non serve più' WHERE id = $1::uuid`, [needs[1]]);
-  panel = await panelFor("federico", cards.review);
+  panel = await panelFor("fabio", cards.review);
   assert.notEqual(panel.needs[needs[1]]?.reviewExpired, true);
   assert.notEqual(panel.needs[needs[2]]?.reviewExpired, true);
 });
 
 test("markSent blocca prima le richieste (in ordine di id), poi l'email e le voci; la scadenza blocca le richieste vive della scheda in ordine", opts, async () => {
   const needs = await needsOf(cards.locks);
-  const a = await ask("federico", cards.locks, contacts.mario, [needs[0]]);
+  const a = await ask("fabio", cards.locks, contacts.mario, [needs[0]]);
   const { getAppUcExecutor } = await import("../../db/uc-executor.ts");
   const real = await getAppUcExecutor();
   const recorded: { text: string }[][] = [];

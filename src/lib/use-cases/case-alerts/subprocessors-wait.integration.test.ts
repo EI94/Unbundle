@@ -80,7 +80,7 @@ function ok<T>(result: { ok: true; value: T } | { ok: false; error: string; mess
 async function workspace(o: { notices: boolean }): Promise<string> {
   const ws = randomUUID();
   workspaces.push(ws);
-  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'TopJet')`, [ws, org]);
+  await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1::uuid, $2::uuid, 'Rondine')`, [ws, org]);
   for (const person of Object.keys(PEOPLE) as Person[]) {
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ws, userIds[person], PEOPLE[person].role]);
   }
@@ -224,7 +224,7 @@ test("«Prepara le domande» e «Chiedi al referente» bloccato dall'ok; aprire 
   const refused = await referents.sendReferentRequest(
     as(ws2, "ls"),
     id2,
-    { contact: { kind: "nuovo", displayName: "Mario Rossi", email: `mario.${suffix}@topjet.test` }, needIds: [String(n.id)] },
+    { contact: { kind: "nuovo", displayName: "Mario Rossi", email: `mario.${suffix}@rondine.test` }, needIds: [String(n.id)] },
     { env: { ...process.env, ...SEND_ENV }, requester: { name: "Persona ls", emailVerified: true } },
   );
   assert.equal(refused.ok, false);
@@ -245,7 +245,7 @@ test("«Prepara le domande» e «Chiedi al referente» rifiutato di un revisore 
   const refused = await referents.sendReferentRequest(
     as(ws2, "transformation"),
     id2,
-    { contact: { kind: "nuovo", displayName: "Mario Rossi", email: `mario.cliente.${suffix}@topjet.test` }, needIds: [String(n.id)] },
+    { contact: { kind: "nuovo", displayName: "Mario Rossi", email: `mario.cliente.${suffix}@rondine.test` }, needIds: [String(n.id)] },
     { env: { ...process.env, ...SEND_ENV }, requester: { name: "Persona transformation", emailVerified: true } },
   );
   assert.equal(refused.ok, false);
@@ -301,7 +301,7 @@ test("l'email a chi può dare l'ok: il link a Impostazioni, nessun dato dello us
   const mine = outbox.filter((m) => m.text.includes(`/dashboard/${ws}/`));
   assert.deepEqual(mine.map((m) => m.to).sort(), DECLARERS.map((p) => PEOPLE[p].email).sort());
   for (const m of mine) {
-    assert.equal(m.subject, "TopJet: serve il tuo ok sui fornitori di Lateral Space");
+    assert.equal(m.subject, "Rondine: serve il tuo ok sui fornitori di Lateral Space");
     assert.ok(m.text.includes(`Apri Impostazioni › Sub-responsabili: http://localhost:3000/dashboard/${ws}/settings#sub-responsabili`));
     assert.doesNotMatch(m.text, /FO-\d+|Fatture fornitori|caso d'uso/);
     assert.equal(m.from, SEND_ENV.UC_EMAIL_FROM);

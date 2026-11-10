@@ -98,7 +98,7 @@ export function noticeTextOf(n: {
 
 const CONTEXT_MAX = 120;
 
-/** «TJ-0004 · Fatture fornitori», o il solo titolo; al massimo 120 caratteri, con «…». */
+/** «RD-0004 · Fatture fornitori», o il solo titolo; al massimo 120 caratteri, con «…». */
 export function noticeContextOf(code: string | null, title: string): string {
   const cleanTitle = (title ?? "").replace(/\s+/g, " ").trim();
   const cleanCode = (code ?? "").replace(/\s+/g, " ").trim();

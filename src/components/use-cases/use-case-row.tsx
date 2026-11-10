@@ -208,7 +208,7 @@ function ReviewerRow({
       <Link href={href} scroll={false} className={REVIEWER_ROW_LINK}>
         {/*
           Prima riga: codice, titolo e, nel riquadro stretto, i giorni di attesa. In una riga sola almeno
-          14rem. Nel riquadro stretto il titolo va su due righe: con i prefissi di TopJet («LIBRA L1 · …»)
+          14rem. Nel riquadro stretto il titolo va su due righe: con i prefissi di Rondine («LIBRA L1 · …»)
           una riga sola tagliava proprio la parte che dice che cosa fa.
         */}
         <span className="flex min-w-0 items-baseline gap-3 @min-[58rem]/hub:min-w-56 @min-[58rem]/hub:flex-1">

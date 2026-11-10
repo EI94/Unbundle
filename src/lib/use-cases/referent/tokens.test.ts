@@ -32,10 +32,10 @@ test("token: la forma si controlla prima di ogni lettura", () => {
 });
 
 test("recipientHash: spazi intorno e maiuscole non contano", () => {
-  const base = createHash("sha256").update("mario.rossi@topjet.it", "utf8").digest("hex");
-  assert.equal(recipientHash("mario.rossi@topjet.it"), base);
-  assert.equal(recipientHash("  Mario.Rossi@TopJet.IT \n"), base);
-  assert.notEqual(recipientHash("mario.rossi2@topjet.it"), base);
+  const base = createHash("sha256").update("mario.rossi@rondine.it", "utf8").digest("hex");
+  assert.equal(recipientHash("mario.rossi@rondine.it"), base);
+  assert.equal(recipientHash("  Mario.Rossi@Rondine.IT \n"), base);
+  assert.notEqual(recipientHash("mario.rossi2@rondine.it"), base);
 });
 
 test("RECIPIENT_HASH_SQL: la stessa impronta in SQL, solo su colonne fidate", () => {
