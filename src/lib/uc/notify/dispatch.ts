@@ -69,6 +69,10 @@ export const EMAIL_TEMPLATES = [
   "chiarimento",
   "delega",
   "richiesta_approvazione",
+  // (Rilascio 8.0a) Agent Factory: solo a persone di Lateral Space del team del caso, con il link al progetto.
+  "progetto_da_approvare",
+  "strumento_da_approvare",
+  "pacchetto_aggiornato",
 ] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATES)[number];
 
@@ -470,6 +474,15 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
         build: (link) => ({ ...base, template: "richiesta_approvazione", designation, pending, expiresAt: r.expiresAt as Date, link: needLink(link) }),
         after: null,
       };
+    }
+    case "progetto_da_approvare":
+    case "strumento_da_approvare":
+    case "pacchetto_aggiornato": {
+      // Email interne: mai al cliente (la 8.0c le apre all'AI Board con l'ok ai sub-responsabili).
+      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      const version = typeof n.payload.version === "number" && n.payload.version > 0 ? n.payload.version : null;
+      const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/casi-duso/${c.id.toLowerCase()}/progetto`;
+      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, version, link }), after: null };
     }
     case "segnalazione_owner": {
       const r = f.request;

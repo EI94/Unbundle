@@ -68,13 +68,14 @@ export type EmailInput =
     })
   | (CaseRef & { template: "delega"; audience: "delegante"; questions: number })
   | (CaseRef & { template: "richiesta_approvazione"; designation: "owner" | "privacy"; pending: number; expiresAt: Date; link: string })
-  | { template: "riepilogo_settimanale"; audience: "owner" | "ls"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[] };
+  | { template: "riepilogo_settimanale"; audience: "owner" | "ls"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[] }
+  | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato"; version: number | null; link: string });
 
 // ── Aiuti ─────────────────────────────────────────────────────────────
 
 const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/;
 const REQUEST_PATH = /^\/r\/ucr_[A-Za-z0-9_-]{32}$/;
-const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/casi-duso(\/[0-9a-f-]{36})?$/;
+const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?$/;
 
 /**
  * Il link è pulito? https (http solo in locale), nessuna credenziale, nessun
@@ -270,6 +271,38 @@ export function renderEmail(input: EmailInput): RenderedEmail {
       }
       blocks.push({ small: owner ? "Per non ricevere più questo riepilogo, scrivi a Lateral Space." : "Riepilogo interno di Lateral Space." });
       return render(subject, blocks);
+    }
+    case "progetto_da_approvare": {
+      const link = checkEmailLink(input.link, "dashboard");
+      const v = input.version ? ` (versione ${input.version})` : "";
+      return render(subjectOf(`${caseLabel(input)}: progetto dell'agente da approvare`), [
+        { p: "Buongiorno," },
+        { p: `l'impostazione del caso d'uso «${oneLine(input.caseTitle, 120)}» è pronta: il progetto dell'agente${v} aspetta la tua approvazione.` },
+        { p: "Nella pagina trovi le dieci scelte con il loro perché, gli strumenti nuovi, la stima e il pacchetto." },
+        { link: { href: link, label: "Apri il progetto" } },
+        { small: "Email interna di Lateral Space." },
+      ]);
+    }
+    case "strumento_da_approvare": {
+      const link = checkEmailLink(input.link, "dashboard");
+      return render(subjectOf(`${caseLabel(input)}: strumento nuovo da far approvare`), [
+        { p: "Buongiorno," },
+        { p: `il progetto dell'agente del caso d'uso «${oneLine(input.caseTitle, 120)}» usa uno strumento nuovo per il cliente: prima dell'approvazione serve l'ok dell'AI Board.` },
+        { p: "Se l'ok è già arrivato, registralo nella pagina con chi l'ha dato e quando." },
+        { link: { href: link, label: "Apri il progetto" } },
+        { small: "Email interna di Lateral Space." },
+      ]);
+    }
+    case "pacchetto_aggiornato": {
+      const link = checkEmailLink(input.link, "dashboard");
+      const k = input.version ? `k${input.version}` : "una versione nuova";
+      return render(subjectOf(`${caseLabel(input)}: pacchetto ${input.version ? `k${input.version}` : "aggiornato"}`), [
+        { p: "Buongiorno," },
+        { p: `c'è ${k} del pacchetto del caso d'uso «${oneLine(input.caseTitle, 120)}»: la scheda è cambiata.` },
+        { p: "Nel repository del caso lo porta «unbundle start». Fino ad allora il coding agent legge il pacchetto di prima." },
+        { link: { href: link, label: "Leggi il pacchetto" } },
+        { small: "Email interna di Lateral Space." },
+      ]);
     }
   }
 }

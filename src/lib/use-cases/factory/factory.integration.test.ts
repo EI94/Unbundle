@@ -140,6 +140,8 @@ test("il pacchetto: k1, lo stesso contenuto non crea versioni, un contenuto nuov
   const recipients = await notices("pacchetto_nuovo");
   assert.ok(recipients.includes(ids.lead) && recipients.includes(ids.analyst), "chi costruisce");
   assert.ok(!recipients.includes(ids.board) && !recipients.includes(ids.watcher), "non l'AI Board né l'osservatore");
+  const mails = await q(`SELECT recipient_user_id, template_key, payload->>'version' AS v FROM uc_notifications WHERE case_id = $1 AND channel = 'email' ORDER BY 1`, [ids.dossier]);
+  assert.deepEqual(mails.map((m) => [m.recipient_user_id, m.template_key]).sort(), [[ids.analyst, "pacchetto_aggiornato"], [ids.lead, "pacchetto_aggiornato"]].sort(), "email solo a Lateral Space, mai a chi agisce, una al giorno");
   const imported = await factory.savePackageVersion(exec, script(), target(), { imported: { "PACCHETTO.md": "# k3 a mano", "BRIEF.md": "brief", VERSIONE: "k3" } });
   assert.deepEqual(imported, { ok: true, value: { version: 3, created: true } });
 });
@@ -171,6 +173,8 @@ test("il progetto: i 10 argomenti diventano decisioni; senza tutti non si manda;
   assert.equal(read.value.open?.topics.evals_autonomia?.scelta, "Regole al 100 %");
   assert.equal(read.value.decisions.filter((d) => d.source === "impostazione").length, 10);
   assert.deepEqual(await notices("progetto_appr"), [ids.lead]);
+  const toApprove = await q(`SELECT recipient_user_id, template_key FROM uc_notifications WHERE case_id = $1 AND channel = 'email' AND template_key IN ('progetto_da_approvare', 'strumento_da_approvare') ORDER BY 2`, [ids.dossier]);
+  assert.deepEqual(toApprove.map((m) => [m.recipient_user_id, m.template_key]), [[ids.lead, "progetto_da_approvare"], [ids.lead, "strumento_da_approvare"]], "email al responsabile, non all'AI Board del cliente (8.0c)");
   const tools = await notices("strumento_nuovo");
   assert.ok(tools.includes(ids.board) && tools.includes(ids.lead));
 });

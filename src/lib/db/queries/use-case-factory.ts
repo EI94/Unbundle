@@ -214,6 +214,30 @@ WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_c
 ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET last_event_at = now(), read_at = NULL`);
 }
 
+/** L'email della coda dei dossier per ogni tipo: interna di Lateral Space (all'AI Board del cliente dalla 8.0c). */
+const FACTORY_EMAIL: Readonly<Record<FactoryNoticeKind, { template: string; roles: readonly CaseRole[] }>> = Object.freeze({
+  progetto_appr: { template: "progetto_da_approvare", roles: ["ls_lead"] },
+  strumento_nuovo: { template: "strumento_da_approvare", roles: ["ls_lead"] },
+  pacchetto_nuovo: { template: "pacchetto_aggiornato", roles: ["ls_lead", "ls_analista", "ls_sviluppatore"] },
+});
+
+/**
+ * Un'email in coda (`uc_notifications`, canale email) per ogni persona di Lateral Space del team con il ruolo del
+ * tipo, mai a chi ha agito; al massimo una al giorno per persona, caso e tipo (la chiave di deduplica). La manda il
+ * motore dei dossier dopo il comando (`finishUcCommand`) o il cron, che controlla anche che sia di Lateral Space.
+ */
+function emailSql(target: FactoryTarget, kind: FactoryNoticeKind, actor: FactoryActor, now: Date, version: number): UcStatement {
+  const e = FACTORY_EMAIL[kind];
+  return toStatement(ucSql`INSERT INTO uc_notifications (workspace_id, case_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
+SELECT DISTINCT ON (m.user_id) c.workspace_id, c.id, m.user_id, 'email', ${cast(e.template, "text")}, ${jsonb({ version })}, 'in_coda',
+       ${cast(e.template, "text")} || ':' || c.id::text || ':' || m.user_id::text || ':' || ${cast(romeToday(now), "text")}, now()
+FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id
+WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_case_id = ${cast(target.useCaseId, "uuid")}
+  AND m.role = ANY (${cast([...e.roles], "text[]")})
+  AND m.user_id IS DISTINCT FROM ${cast(userOf(actor), "uuid")}
+ON CONFLICT (dedupe_key) DO NOTHING`);
+}
+
 // ─── Il pacchetto ────────────────────────────────────────────────────
 
 /** L'impronta di un pacchetto importato: PACCHETTO.md e BRIEF.md, senza VERSIONE (che porta numero e giorno). */
@@ -260,6 +284,7 @@ SELECT ${uc}, ${ws}, ${cast(version, "int")}, ${cast(hash, "text")}, ${jsonb(fil
 WHERE EXISTS (SELECT 1 FROM use_cases WHERE id = ${uc} AND workspace_id = ${ws})
 RETURNING version`),
     noticeSql(target, "pacchetto_nuovo", actor, now),
+    emailSql(target, "pacchetto_nuovo", actor, now, version),
   ]);
   if (!rows[0][0]) return fail("non_trovato", "Use case non trovato.");
   return ok({ version, created: true });
@@ -480,8 +505,9 @@ export async function submitProject(executor: UcExecutor, actor: FactoryActor, t
 WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'in_corso' AND version = ${cast(Number(open.version), "int")}
 RETURNING version`),
     noticeSql(target, "progetto_appr", actor, now),
+    emailSql(target, "progetto_appr", actor, now, Number(open.version)),
   ];
-  if (tools > 0) statements.push(noticeSql(target, "strumento_nuovo", actor, now));
+  if (tools > 0) statements.push(noticeSql(target, "strumento_nuovo", actor, now), emailSql(target, "strumento_nuovo", actor, now, Number(open.version)));
   const [rows] = await executor.batch(statements);
   if (!rows[0]) return fail("conflitto", "Il progetto è cambiato nel frattempo: ricarica la pagina.");
   return ok({ version: Number(rows[0].version), newTools: tools });
