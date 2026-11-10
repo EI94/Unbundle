@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { UcBellItem } from "../uc/notify/bell.ts";
+import { FACTORY_NOTICE_KINDS } from "../db/use-case-hub-factory-ddl.ts";
 import {
   BELL_MAX_ENTRIES,
   BELL_TEXT,
@@ -8,6 +9,7 @@ import {
   bellBadgeText,
   dossierEntry,
   emptyBellPayload,
+  FACTORY_BELL_KINDS,
   isNewEntry,
   laterIso,
   mergeBell,
@@ -141,7 +143,8 @@ test("(0025) «Pronto da avviare» porta a «Realizzazione», «Autorizza i forn
   ]);
   assert.equal(noticeHref(WS, { kind: "senza_risposta", useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}?capitolo=richieste`);
   // (8.0a) L'Agent Factory: il progetto dell'agente del dossier, dall'indirizzo breve dello use case.
-  for (const kind of ["progetto_appr", "strumento_nuovo", "pacchetto_nuovo"] as const) {
+  assert.deepEqual([...FACTORY_BELL_KINDS], [...FACTORY_NOTICE_KINDS], "gli stessi tipi della 0030");
+  for (const kind of FACTORY_NOTICE_KINDS) {
     assert.equal(noticeHref(WS, { kind, useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}/progetto`, kind);
   }
 });

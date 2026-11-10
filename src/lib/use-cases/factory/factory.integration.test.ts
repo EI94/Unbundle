@@ -53,7 +53,7 @@ const script = () => ({ kind: "script" as const, authorRole: "responsabile del c
 const TOPICS = ["funzionalita", "journey", "dati", "framework", "backend", "frontend", "integrazioni", "modelli", "osservabilita", "evals_autonomia"];
 
 const source = (over: Record<string, unknown> = {}) => ({
-  code: `TJ-${suffix.toUpperCase()}`,
+  code: `PX-${suffix.toUpperCase()}`,
   title: "Quotazioni automatiche di prova",
   kindLabel: "use case AI",
   origin: "adoption",
@@ -142,7 +142,7 @@ test("il pacchetto: k1, lo stesso contenuto non crea versioni, un contenuto nuov
   assert.ok(read.ok);
   assert.deepEqual(read.value.packages.map((p) => p.version), [2, 1]);
   assert.equal(read.value.latestPackage?.version, 2);
-  assert.match(read.value.latestPackage!.files.VERSIONE, /^k2 · TJ-/);
+  assert.match(read.value.latestPackage!.files.VERSIONE, /^k2 · PX-/);
   assert.ok(!JSON.stringify(read.value.latestPackage!.files).includes("Persona Prova"), "il nome noto è coperto");
   const recipients = await notices("pacchetto_nuovo");
   assert.ok(recipients.includes(ids.lead) && recipients.includes(ids.analyst), "chi costruisce");
@@ -200,7 +200,7 @@ test("l'AI Board: senza il suo ok non si approva; il responsabile lo registra so
   const noNote = await factory.recordAiBoardOk(exec, lead(), target(), { revision: await rev() });
   assert.equal(noNote.ok ? "" : noNote.code, "nota_mancante");
   const seen = await rev();
-  assert.ok((await factory.recordAiBoardOk(exec, lead(), target(), { note: "Ok dell'AI Board di TopJet del 10/11/2026, per e-mail al responsabile", revision: seen })).ok);
+  assert.ok((await factory.recordAiBoardOk(exec, lead(), target(), { note: "Ok dell'AI Board del cliente del 10/11/2026, per e-mail al responsabile", revision: seen })).ok);
   assert.equal((await factory.approveProject(exec, analyst(), target(), { revision: await rev() })).ok, false);
   const unseen = await factory.approveProject(exec, lead(), target(), { revision: seen });
   assert.equal(unseen.ok ? "" : unseen.code, "conflitto", "si approva solo la revisione vista: l'ok dell'AI Board l'ha cambiata");
@@ -209,7 +209,7 @@ test("l'AI Board: senza il suo ok non si approva; il responsabile lo registra so
   assert.ok(read.ok);
   assert.equal(read.value.open, null);
   assert.equal(read.value.approved?.version, 1);
-  assert.match(read.value.approved?.aiBoardNote ?? "", /AI Board di TopJet/);
+  assert.match(read.value.approved?.aiBoardNote ?? "", /AI Board del cliente/);
 });
 
 test("una revisione: la versione 2 parte dalle scelte della 1; approvata, la 1 diventa «superata»; l'AI Board registra da sé senza nota", opts, async () => {
@@ -227,7 +227,7 @@ test("una revisione: la versione 2 parte dalle scelte della 1; approvata, la 1 d
 });
 
 test("il resto del pacchetto: risposte ed esigenze solo per chi vede «Cosa serve»; i nomi del workspace sempre", opts, async () => {
-  const card = { code: "TJ-PROVA", title: "Prova", kindLabel: null, origin: null, targetQuarter: null, texts: { oggi: null, comeCambia: null, persone: null, limiti: null, dati: null }, benefits: [], costText: null };
+  const card = { code: "PX-PROVA", title: "Prova", kindLabel: null, origin: null, targetQuarter: null, texts: { oggi: null, comeCambia: null, persone: null, limiti: null, dati: null }, benefits: [], costText: null };
   const hidden = await factory.packageSourceFor(exec, target(), card, { canSeeNeeds: false });
   assert.deepEqual([hidden.answers.length, hidden.openNeeds.length, hidden.needsHidden], [0, 0, true]);
   const seen = await factory.packageSourceFor(exec, target(), card, { canSeeNeeds: true });
@@ -238,7 +238,7 @@ test("il resto del pacchetto: risposte ed esigenze solo per chi vede «Cosa serv
 test("le decisioni del team e dell'import; i testi con dati da non scrivere si fermano", opts, async () => {
   const team = await factory.addTeamDecision(exec, analyst(), target(), { topic: "Strumenti nuovi", choice: "Neon e Langfuse approvati", reason: "Ok del responsabile" });
   assert.ok(team.ok);
-  const imported = await factory.addTeamDecision(exec, script(), target(), { topic: "Integrazioni", choice: "Accesso FL3XX già disponibile", decidedOn: "2026-11-10" });
+  const imported = await factory.addTeamDecision(exec, script(), target(), { topic: "Integrazioni", choice: "Accesso al gestionale già disponibile", decidedOn: "2026-11-10" });
   assert.ok(imported.ok);
   const future = await factory.addTeamDecision(exec, analyst(), target(), { topic: "Prova", choice: "Data nel futuro", decidedOn: "2999-01-01" });
   assert.ok(future.ok, "la data futura diventa oggi");
@@ -247,9 +247,68 @@ test("le decisioni del team e dell'import; i testi con dati da non scrivere si f
   assert.ok(read.ok);
   const byChoice = new Map(read.value.decisions.map((d) => [d.choice, d]));
   assert.equal(byChoice.get("Neon e Langfuse approvati")?.source, "team");
-  assert.equal(byChoice.get("Accesso FL3XX già disponibile")?.source, "importata");
-  assert.equal(byChoice.get("Accesso FL3XX già disponibile")?.authorRole, "responsabile del caso");
-  assert.equal(byChoice.get("Accesso FL3XX già disponibile")?.decidedOn, "2026-11-10");
+  assert.equal(byChoice.get("Accesso al gestionale già disponibile")?.source, "importata");
+  assert.equal(byChoice.get("Accesso al gestionale già disponibile")?.authorRole, "responsabile del caso");
+  assert.equal(byChoice.get("Accesso al gestionale già disponibile")?.decidedOn, "2026-11-10");
   for (const d of read.value.decisions) assert.match(d.decidedOn, /^\d{4}-\d{2}-\d{2}$/, "le date come testo AAAA-MM-GG");
   assert.ok((byChoice.get("Data nel futuro")?.decidedOn ?? "9") < "2999");
+});
+
+test("la modifica chiesta dall'AI Board, la riapertura (solo il responsabile, l'ok decade e l'AI Board lo sa), «Progetto approvato»", opts, async () => {
+  assert.deepEqual(await factory.startProject(exec, analyst(), target()), { ok: true, value: { version: 3, created: true } });
+  assert.ok((await factory.saveProjectDetails(exec, analyst(), target(), { newTools: [{ nome: "Langfuse", perche: "tracce in UE" }] })).ok);
+  assert.ok((await factory.submitProject(exec, analyst(), target(), { revision: await rev() })).ok);
+  // Chiedere una modifica: solo l'AI Board, con una nota vera.
+  assert.equal((await factory.requestProjectChange(exec, lead(), target(), { note: "Serve un'altra regione", revision: await rev() })).ok, false, "il responsabile riapre, non chiede");
+  assert.equal((await factory.requestProjectChange(exec, analyst(), target(), { note: "Serve un'altra regione", revision: await rev() })).ok, false);
+  const short = await factory.requestProjectChange(exec, board(), target(), { note: "no", revision: await rev() });
+  assert.equal(short.ok ? "" : short.code, "nota_mancante");
+  assert.deepEqual(await factory.requestProjectChange(exec, board(), target(), { note: "Le tracce restano solo in UE, con 30 giorni", revision: await rev() }), { ok: true, value: { version: 3 } });
+  assert.deepEqual(await notices("modifica_chiesta"), [ids.lead, ids.analyst].sort(), "a chi costruisce, non all'AI Board che l'ha chiesta");
+  const asked = await q(`SELECT recipient_user_id FROM uc_notifications WHERE case_id = $1 AND template_key = 'modifica_richiesta'`, [ids.dossier]);
+  assert.deepEqual(asked.map((m) => m.recipient_user_id), [ids.lead], "l'email al responsabile, che riapre");
+  let read = await factory.readFactory(exec, target(), board());
+  assert.ok(read.ok);
+  assert.match(read.value.open?.changeRequest ?? "", /solo in UE/);
+  assert.equal((await factory.approveProject(exec, lead(), target(), { revision: await rev() })).ok, false, "senza ok non si approva");
+  // Riaprire: solo il responsabile. Senza un ok da far decadere, l'AI Board non riceve niente; la richiesta resta.
+  assert.equal((await factory.reopenProject(exec, analyst(), target(), { revision: await rev() })).ok, false, "l'analista non riapre");
+  assert.deepEqual(await factory.reopenProject(exec, lead(), target(), { revision: await rev() }), { ok: true, value: { version: 3, boardOkDropped: false } });
+  assert.deepEqual(await notices("ok_decaduto"), []);
+  read = await factory.readFactory(exec, target(), lead());
+  assert.ok(read.ok);
+  assert.equal(read.value.open?.status, "in_corso");
+  assert.match(read.value.open?.changeRequest ?? "", /solo in UE/, "resta finché il progetto non torna da approvare");
+  // Di nuovo da approvare: la richiesta si chiude. L'ok, poi una riapertura: l'ok decade e l'AI Board lo sa.
+  assert.ok((await factory.submitProject(exec, analyst(), target(), { revision: await rev() })).ok);
+  read = await factory.readFactory(exec, target(), lead());
+  assert.ok(read.ok);
+  assert.equal(read.value.open?.changeRequest, null);
+  assert.ok((await factory.recordAiBoardOk(exec, board(), target(), { revision: await rev() })).ok);
+  assert.deepEqual(await factory.reopenProject(exec, lead(), target(), { revision: await rev() }), { ok: true, value: { version: 3, boardOkDropped: true } });
+  assert.deepEqual(await notices("ok_decaduto"), [ids.board]);
+  read = await factory.readFactory(exec, target(), lead());
+  assert.ok(read.ok);
+  assert.equal(read.value.open?.aiBoardOkAt, null);
+  // Approvato: «Progetto approvato» a chi costruisce e all'AI Board; non a chi approva, non all'osservatore.
+  await q(`DELETE FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'progetto_ok'`, [ids.useCase]);
+  assert.ok((await factory.submitProject(exec, analyst(), target(), { revision: await rev() })).ok);
+  assert.ok((await factory.recordAiBoardOk(exec, board(), target(), { revision: await rev() })).ok);
+  assert.deepEqual(await factory.approveProject(exec, lead(), target(), { revision: await rev() }), { ok: true, value: { version: 3 } });
+  assert.deepEqual(await notices("progetto_ok"), [ids.analyst, ids.board].sort());
+});
+
+test("le decisioni sostituite: una scelta rifatta resta nello storico con il giorno, e conta solo l'ultima", opts, async () => {
+  const read = await factory.readFactory(exec, target(), lead());
+  assert.ok(read.ok);
+  const observability = read.value.decisions.filter((d) => d.topicKey === "osservabilita");
+  assert.equal(observability.length, 2, "la scelta della versione 1 e quella della versione 2");
+  assert.deepEqual(
+    observability.map((d) => [d.choice, d.supersededOn === null]),
+    [
+      ["Langfuse in UE", true],
+      ["Scelta per osservabilita", false],
+    ],
+  );
+  assert.equal(read.value.decisions.filter((d) => d.source === "impostazione" && d.supersededOn === null).length, 10, "una per argomento");
 });

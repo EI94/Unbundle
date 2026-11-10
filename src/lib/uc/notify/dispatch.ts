@@ -73,6 +73,7 @@ export const EMAIL_TEMPLATES = [
   "progetto_da_approvare",
   "strumento_da_approvare",
   "pacchetto_aggiornato",
+  "modifica_richiesta",
 ] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATES)[number];
 
@@ -477,7 +478,8 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
     }
     case "progetto_da_approvare":
     case "strumento_da_approvare":
-    case "pacchetto_aggiornato": {
+    case "pacchetto_aggiornato":
+    case "modifica_richiesta": {
       // Email interne: mai al cliente (la 8.0c le apre all'AI Board con l'ok ai sub-responsabili).
       if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
       const version = typeof n.payload.version === "number" && n.payload.version > 0 ? n.payload.version : null;

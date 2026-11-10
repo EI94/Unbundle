@@ -3,14 +3,14 @@
 --
 -- Questa migrazione aggiunge:
 --   - use_case_packages: le versioni del pacchetto (k1, k2, …) con PACCHETTO.md, BRIEF.md e VERSIONE, l'impronta
---     del contenuto e da dove vengono (generato da Unbundle o importato, come il k1 di TJ-0049 fatto a mano);
+--     del contenuto e da dove vengono (generato da Unbundle o importato, come un k1 fatto a mano nella settimana zero);
 --   - use_case_projects: le versioni del progetto (i 10 argomenti con scelta, perché e alternativa scartata, il
 --     framework, gli strumenti nuovi, la stima), una sola aperta e una sola approvata per use case, con l'ok del
---     responsabile e, se ci sono strumenti nuovi, dell'AI Board;
+--     responsabile e, se ci sono strumenti nuovi, dell'AI Board, o la modifica che l'AI Board chiede al suo posto;
 --   - use_case_decisions: le decisioni del caso, dall'impostazione o del team, che si aggiungono e non si riscrivono;
 --   - il CHECK dei tipi della campanella (use_case_notifications_kind_check) allargato con «progetto_appr»,
---     «strumento_nuovo» e «pacchetto_nuovo», con lo stesso nome (NOT VALID poi VALIDATE, che non può fallire), sotto
---     l'advisory lock della 0025.
+--     «strumento_nuovo», «pacchetto_nuovo», «progetto_ok», «modifica_chiesta» e «ok_decaduto», con lo stesso nome
+--     (NOT VALID poi VALIDATE, che non può fallire), sotto l'advisory lock della 0025.
 -- Le tabelle stanno sullo use case, non sul dossier: il DDL uc (0018) non cambia.
 -- Nessun dato scritto, nessuna colonna cambiata, nessuna tabella tolta, nessun CHECK più stretto: il codice del
 -- rilascio 7 ignora le tabelle nuove e non scrive mai i valori nuovi.
@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS use_case_projects (
   ai_board_ok_at timestamptz,
   ai_board_ok_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   ai_board_note varchar(300),
+  change_request varchar(300),
+  change_requested_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
@@ -113,7 +115,7 @@ SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-alerts-ddl'));
 
 DO $$
 DECLARE
-  wanted text[] := ARRAY['risposte', 'documenti', 'senza_risposta', 'complete', 'pronto', 'fornitori', 'domanda', 'da_rivedere', 'progetto_appr', 'strumento_nuovo', 'pacchetto_nuovo']::text[];
+  wanted text[] := ARRAY['risposte', 'documenti', 'senza_risposta', 'complete', 'pronto', 'fornitori', 'domanda', 'da_rivedere', 'progetto_appr', 'strumento_nuovo', 'pacchetto_nuovo', 'progetto_ok', 'modifica_chiesta', 'ok_decaduto']::text[];
   current_def text;
   current_valid boolean;
   allowed text[];

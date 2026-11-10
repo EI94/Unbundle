@@ -38,9 +38,9 @@ export const command: AdminCommand = {
   async run(ctx) {
     if (ctx.scope.kind !== "workspace") throw new AdminStop("opzioni", "Serve --workspace <uuid>: l'import vale per uno use case di un workspace.");
     const code = ctx.value("use-case");
-    if (!code || !/^[A-Z0-9][A-Z0-9-]{1,39}$/.test(code)) throw new AdminStop("opzioni", "Serve --use-case <codice> (per esempio TJ-0049).");
+    if (!code || !/^[A-Z0-9][A-Z0-9-]{1,39}$/.test(code)) throw new AdminStop("opzioni", "Serve --use-case <codice> (per esempio PX-0001).");
     const from = ctx.value("from");
-    if (!from) throw new AdminStop("opzioni", "Serve --from <cartella del caso> (per esempio ../topjet-rosa/casi/tj-0049).");
+    if (!from) throw new AdminStop("opzioni", "Serve --from <cartella del caso> (per esempio ../repository-del-caso/casi/px-0001).");
     const projectText = readText(join(from, "progetto", "PROGETTO.md"));
     if (projectText === null) throw new AdminStop("file", "Manca progetto/PROGETTO.md nella cartella del caso.");
     const project = parseProjectMarkdown(projectText);

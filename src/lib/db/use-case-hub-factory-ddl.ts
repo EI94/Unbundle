@@ -7,16 +7,17 @@
  * da sé in `runFactoryDdl`):
  * 1. controllo che la 0029 ci sia (il rilascio 7);
  * 2. `use_case_packages`: le versioni del pacchetto di uno use case (k1, k2, …), con i file, l'impronta del
- *    contenuto e da dove vengono (generato da Unbundle o importato, come il k1 di TJ-0049 fatto a mano). L'impronta
+ *    contenuto e da dove vengono (generato da Unbundle o importato, come un k1 fatto a mano nella settimana zero). L'impronta
  *    non è unica: una scheda che torna com'era prima fa una versione nuova, uguale a una vecchia;
  * 3. `use_case_projects`: le versioni del progetto dell'impostazione (i 10 argomenti con scelta, perché e
  *    alternativa scartata; il framework; gli strumenti nuovi; la stima), con lo stato e le due approvazioni:
  *    il responsabile del caso e, se ci sono strumenti nuovi, l'AI Board. `revision` cresce a ogni modifica:
- *    si approva solo la revisione che si è vista;
+ *    si approva solo la revisione che si è vista. L'AI Board può chiedere una modifica invece dell'ok
+ *    (`change_request`): resta finché il progetto non torna da approvare;
  * 4. `use_case_decisions`: le decisioni del caso, dall'impostazione o del team, una riga per decisione e mai
  *    cambiata (si aggiunge, non si riscrive). L'autore è una persona o un ruolo a parole; se la persona viene
  *    cancellata resta la decisione, senza autore;
- * 5. il CHECK dei tipi della campanella allargato con `progetto_appr`, `strumento_nuovo` e `pacchetto_nuovo`,
+ * 5. il CHECK dei tipi della campanella allargato con i sei tipi dell'Agent Factory ({@link FACTORY_NOTICE_KINDS}),
  *    sotto l'advisory lock della 0025, come la 0028 e la 0029.
  *
  * Le tabelle stanno sullo use case (`use_cases`), non sul dossier (`uc_cases`): così il self-heal della parte
@@ -72,7 +73,7 @@ export type FactoryFramework = (typeof FACTORY_FRAMEWORKS)[number];
 export const PROJECT_STATUSES = ["in_corso", "da_approvare", "approvato", "superato"] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
-/** Da dove viene un pacchetto: generato da Unbundle o importato (il k1 di TJ-0049, fatto a mano). */
+/** Da dove viene un pacchetto: generato da Unbundle o importato (un k1 fatto a mano nella settimana zero). */
 export const PACKAGE_SOURCES = ["generato", "importato"] as const;
 export type PackageSource = (typeof PACKAGE_SOURCES)[number];
 
@@ -98,8 +99,14 @@ export interface ProjectNewTool {
   perche: string | null;
 }
 
-/** I tipi della campanella dopo la 0030: quelli della 0029 più i tre dell'Agent Factory (al massimo 16 caratteri). */
-export const USE_CASE_NOTIFICATION_KINDS_0030 = [...USE_CASE_NOTIFICATION_KINDS_0029, "progetto_appr", "strumento_nuovo", "pacchetto_nuovo"] as const;
+/**
+ * I tipi della campanella dell'Agent Factory (al massimo 16 caratteri): progetto da approvare, strumento nuovo per
+ * l'AI Board, pacchetto cambiato, progetto approvato, modifica chiesta dall'AI Board, ok dell'AI Board da rifare.
+ */
+export const FACTORY_NOTICE_KINDS = ["progetto_appr", "strumento_nuovo", "pacchetto_nuovo", "progetto_ok", "modifica_chiesta", "ok_decaduto"] as const;
+
+/** I tipi della campanella dopo la 0030: quelli della 0029 più quelli dell'Agent Factory. */
+export const USE_CASE_NOTIFICATION_KINDS_0030 = [...USE_CASE_NOTIFICATION_KINDS_0029, ...FACTORY_NOTICE_KINDS] as const;
 export type UseCaseNoticeKind0030 = (typeof USE_CASE_NOTIFICATION_KINDS_0030)[number];
 
 /** I limiti delle colonne (li controlla anche l'app, prima di scrivere). */
@@ -181,6 +188,8 @@ END $$;`,
   ai_board_ok_at timestamptz,
   ai_board_ok_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   ai_board_note varchar(${L.aiBoardNote}),
+  change_request varchar(${L.aiBoardNote}),
+  change_requested_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
@@ -221,11 +230,11 @@ END $$;`,
 // ─── Pulizia (RUNBOOK, ritorno al rilascio 7) ────────────────────────
 
 /**
- * Dopo un ritorno indietro al rilascio 7: il codice di prima non conosce i tre tipi nuovi e li scriverebbe
+ * Dopo un ritorno indietro al rilascio 7: il codice di prima non conosce i tipi nuovi e li scriverebbe
  * senza testo nella campanella. Idempotente; sul codice nuovo non serve.
  */
 export const FACTORY_ROLLBACK_SWEEP_SQL: readonly string[] = Object.freeze([
-  `DELETE FROM use_case_notifications WHERE kind IN ('progetto_appr', 'strumento_nuovo', 'pacchetto_nuovo');`,
+  `DELETE FROM use_case_notifications WHERE kind IN (${quoted(FACTORY_NOTICE_KINDS)});`,
 ]);
 
 // ─── Sonda ───────────────────────────────────────────────────────────
@@ -277,8 +286,8 @@ export const FACTORY_NAMED_CONSTRAINTS = [
 
 /**
  * Espressione booleana per la sonda di `ensureDbSchema()`, di `factoryStoreReady` e del doctor: vera solo se
- * tutto il DDL della 0030 è presente (le tre tabelle, i loro indici e vincoli con nome, i tre tipi nuovi della
- * campanella).
+ * tutto il DDL della 0030 è presente (le tre tabelle, i loro indici e vincoli con nome, i tipi nuovi della
+ * campanella: basta l'ultimo, che arriva con tutti gli altri).
  */
 export const FACTORY_PROBE_SQL = `(
   ${FACTORY_TABLES.map((name) => `to_regclass('public.${name}') IS NOT NULL`).join("\n  AND ")}
@@ -291,6 +300,6 @@ export const FACTORY_PROBE_SQL = `(
   AND EXISTS (
     SELECT 1 FROM pg_constraint c
     WHERE c.conrelid = to_regclass('public.use_case_notifications') AND c.conname = '${NOTIFICATION_KINDS_CHECK_NAME}'
-      AND position('''pacchetto_nuovo''' IN pg_get_constraintdef(c.oid)) > 0
+      AND position('''${FACTORY_NOTICE_KINDS[FACTORY_NOTICE_KINDS.length - 1]}''' IN pg_get_constraintdef(c.oid)) > 0
   )
 )`;

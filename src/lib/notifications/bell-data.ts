@@ -11,6 +11,7 @@ import {
   BELL_USE_CASE_DAYS,
   BELL_USE_CASE_LIMIT,
   dossierEntry,
+  FACTORY_BELL_KINDS,
   mergeBell,
   noticeEntry,
   signalEntry,
@@ -68,8 +69,10 @@ export async function loadBellPayload(i: {
     source<BellEntry[]>(
       "use_case",
       async () => {
-        if (!i.useCaseHub || !reviewer || !userId) return [];
-        const rows = await listUseCaseBellRows({ userId, workspaceId: i.workspaceId, limit: BELL_USE_CASE_LIMIT, days: BELL_USE_CASE_DAYS, now });
+        if (!i.useCaseHub || !userId) return [];
+        // (8.0a) Chi non rivede il portafoglio vede solo le righe dell'Agent Factory: arrivano per il ruolo nel team
+        // del caso (il responsabile del cliente, l'AI Board, uno sviluppatore), non per il ruolo nel workspace.
+        const rows = await listUseCaseBellRows({ userId, workspaceId: i.workspaceId, limit: BELL_USE_CASE_LIMIT, days: BELL_USE_CASE_DAYS, now, kinds: reviewer ? undefined : FACTORY_BELL_KINDS });
         return rows.map((n) => noticeEntry(i.workspaceId, n, now));
       },
       [],

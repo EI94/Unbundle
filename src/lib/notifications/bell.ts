@@ -230,11 +230,18 @@ export function dossierEntry(item: UcBellItem, useCaseHub: boolean): BellEntry {
 }
 
 /**
+ * I tipi dell'Agent Factory (`FACTORY_NOTICE_KINDS` della 0030; il test controlla che siano gli stessi): portano al
+ * progetto dell'agente e li vede anche chi non rivede il portafoglio, perché arrivano per il ruolo nel caso.
+ */
+export const FACTORY_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze(["progetto_appr", "strumento_nuovo", "pacchetto_nuovo", "progetto_ok", "modifica_chiesta", "ok_decaduto"]);
+const FACTORY_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set(FACTORY_BELL_KINDS);
+
+/**
  * Dove porta una notifica di use case: «Pronto da avviare» alla scheda a `?capitolo=realizzazione`
  * (sulla scheda pronta il riquadro «Prossimo passo», dove si avvia; vedi `arrivalTarget`);
  * «Autorizza i fornitori» a Impostazioni › Sub-responsabili; «Nessuna risposta» a «Richieste
  * inviate», dove si chiede di nuovo; le altre (risposte, documenti, informazioni complete) a «Cosa
- * serve».
+ * serve»; quelle dell'Agent Factory al progetto dell'agente del dossier.
  */
 export function noticeHref(workspaceId: string, n: Pick<BellUseCaseInput, "kind" | "useCaseId">): string {
   if (n.kind === "pronto") return realizzazioneHref(workspaceId, n.useCaseId);
@@ -242,7 +249,7 @@ export function noticeHref(workspaceId: string, n: Pick<BellUseCaseInput, "kind"
   if (n.kind === "senza_risposta") return richiesteHref(workspaceId, n.useCaseId);
   if (n.kind === "da_rivedere") return `/dashboard/${encodeURIComponent(workspaceId)}/programma?apri=rivedere`;
   // (8.0a) L'Agent Factory: il progetto dell'agente nel dossier, dall'indirizzo breve dello use case.
-  if (n.kind === "progetto_appr" || n.kind === "strumento_nuovo" || n.kind === "pacchetto_nuovo") {
+  if (FACTORY_KINDS.has(n.kind)) {
     return `/dashboard/${encodeURIComponent(workspaceId)}/use-cases/${encodeURIComponent(n.useCaseId)}/progetto`;
   }
   return cosaServeHref(workspaceId, n.useCaseId);

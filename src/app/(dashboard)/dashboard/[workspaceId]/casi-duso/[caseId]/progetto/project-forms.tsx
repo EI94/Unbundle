@@ -13,18 +13,37 @@ import {
   generatePackageAction,
   recordAiBoardOkAction,
   reopenProjectAction,
+  requestProjectChangeAction,
   saveProjectDetailsAction,
   saveProjectTopicAction,
   startProjectAction,
   submitProjectAction,
 } from "@/lib/actions/use-case-factory";
 import type { UcActionResult } from "@/lib/actions/uc-action-context";
+import { italianAmount } from "@/lib/use-cases/factory/italian-amount";
 
 const FIELD = "h-11 text-base sm:h-9 sm:text-sm";
 const AREA = "text-base sm:text-sm";
 const BUTTON = "min-h-11 sm:min-h-9";
+const ERROR = "text-xs text-destructive";
 
 type Ids = { workspaceId: string; caseId: string };
+
+/**
+ * Dopo un'azione che toglie il pulsante da cui si era partiti, il fuoco torna al titolo della pagina. La pagina si
+ * aggiorna dopo la risposta: si riprova per un secondo, e solo se il fuoco è rimasto a nessuno (mai lo si toglie a
+ * un campo o a un pulsante dove chi usa la pagina è già andato).
+ */
+function focusTitle() {
+  let tries = 0;
+  const tick = () => {
+    const title = document.getElementById("progetto-titolo");
+    const lost = document.activeElement === null || document.activeElement === document.body;
+    if (title && lost) title.focus();
+    if (++tries < 10) window.setTimeout(tick, 100);
+  };
+  window.setTimeout(tick, 50);
+}
 
 /** L'azione principale della pagina, una sola, secondo lo stato del progetto e chi guarda. */
 export function ProjectPrimaryAction({
@@ -32,10 +51,11 @@ export function ProjectPrimaryAction({
   caseId,
   action,
   revision,
-}: Ids & { action: "imposta" | "manda" | "approva" | "rivedi" | null; revision: number | null }) {
+  blocked = false,
+}: Ids & { action: "imposta" | "manda" | "approva" | "rivedi" | null; revision: number | null; blocked?: boolean }) {
   const { pending, run } = useUcAction();
   if (!action) return null;
-  const label = { imposta: "Imposta il caso", manda: "Manda in approvazione", approva: "Approva il progetto", rivedi: "Rivedi il progetto" }[action];
+  const label = { imposta: "Imposta lo use case", manda: "Manda in approvazione", approva: "Approva il progetto", rivedi: "Rivedi il progetto" }[action];
   const calls: Record<"imposta" | "manda" | "approva" | "rivedi", () => Promise<UcActionResult<unknown>>> = {
     imposta: () => startProjectAction(workspaceId, caseId),
     rivedi: () => startProjectAction(workspaceId, caseId),
@@ -43,21 +63,59 @@ export function ProjectPrimaryAction({
     approva: () => approveProjectAction(workspaceId, caseId, { revision }),
   };
   const call = calls[action];
-  // «Rivedi il progetto» non è urgente: secondario, accanto all'azione principale del dossier.
+  // «Rivedi il progetto» non è urgente: secondario, accanto all'azione principale del dossier. «Manda in
+  // approvazione» aspetta le 10 scelte: la pagina dice quali mancano.
   return (
-    <Button variant={action === "rivedi" ? "outline" : "default"} className={BUTTON} disabled={pending} onClick={() => run(call)}>
+    <Button variant={action === "rivedi" ? "outline" : "default"} className={BUTTON} disabled={pending || (action === "manda" && blocked)} onClick={() => run(call, { onSuccess: focusTitle })}>
       {label}
     </Button>
   );
 }
 
-/** «Riapri per cambiarlo»: il progetto da approvare torna in corso (e l'ok dell'AI Board si chiede di nuovo). */
-export function ReopenProject({ workspaceId, caseId, revision }: Ids & { revision: number }) {
+/**
+ * «Riapri per cambiarlo»: il progetto da approvare torna in corso. Solo il responsabile, con la conferma: l'ok
+ * dell'AI Board, se c'era, decade.
+ */
+export function ReopenProject({ workspaceId, caseId, revision, boardOkOn, primary }: Ids & { revision: number; boardOkOn: string | null; primary: boolean }) {
   const { pending, run } = useUcAction();
+  const [open, setOpen] = useState(false);
   return (
-    <Button variant="outline" className={BUTTON} disabled={pending} onClick={() => run(() => reopenProjectAction(workspaceId, caseId, { revision }))}>
-      Riapri per cambiarlo
-    </Button>
+    <>
+      <Button variant={primary ? "default" : "outline"} className={BUTTON} onClick={() => setOpen(true)}>
+        Riapri per cambiarlo
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Riaprire il progetto?</DialogTitle>
+            <DialogDescription>
+              {boardOkOn
+                ? `Riaprendo, l'ok dell'AI Board del ${boardOkOn} decade e andrà chiesto di nuovo: l'AI Board lo saprà dalla campanella.`
+                : "Il progetto torna in corso: si può cambiare e poi rimandare in approvazione."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" className={BUTTON} onClick={() => setOpen(false)}>
+              Annulla
+            </Button>
+            <Button
+              className={BUTTON}
+              disabled={pending}
+              onClick={() =>
+                run(() => reopenProjectAction(workspaceId, caseId, { revision }), {
+                  onSuccess: () => {
+                    setOpen(false);
+                    focusTitle();
+                  },
+                })
+              }
+            >
+              Riapri
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -83,7 +141,9 @@ export function TopicEditor({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{label}</DialogTitle>
-            <DialogDescription>Diventa anche una decisione del caso, con il giorno e chi l&apos;ha presa.</DialogDescription>
+            <DialogDescription>
+              Diventa anche una decisione del caso, con il giorno{current ? "; quella di prima resta nello storico come sostituita" : ""}.
+            </DialogDescription>
           </DialogHeader>
           <form
             className="grid gap-4"
@@ -118,19 +178,27 @@ export function TopicEditor({
   );
 }
 
-/** Strumenti nuovi (uno per riga, «Nome: perché») e stima. */
+function amountError(value: number | null, max: number): string | null {
+  if (value === null) return null;
+  if (!Number.isFinite(value)) return "Scrivi un numero, per esempio 40 o 12,5.";
+  if (value > max) return `Al massimo ${new Intl.NumberFormat("it-IT").format(max)}.`;
+  return null;
+}
+
+/** Strumenti nuovi (uno per riga, «Nome: perché») e stima, con gli errori accanto ai campi. */
 export function DetailsEditor({
   workspaceId,
   caseId,
   tools,
   hours,
   cost,
-}: Ids & { tools: { nome: string; perche: string | null }[]; hours: number | null; cost: number | null }) {
+  limits,
+}: Ids & { tools: { nome: string; perche: string | null }[]; hours: number | null; cost: number | null; limits: { hours: number; cost: number; tools: number } }) {
   const { pending, run } = useUcAction();
   const [open, setOpen] = useState(false);
   const [toolsText, setToolsText] = useState(tools.map((t) => (t.perche ? `${t.nome}: ${t.perche}` : t.nome)).join("\n"));
-  const [hoursText, setHoursText] = useState(hours === null ? "" : String(hours));
-  const [costText, setCostText] = useState(cost === null ? "" : String(cost));
+  const [hoursText, setHoursText] = useState(hours === null ? "" : String(hours).replace(".", ","));
+  const [costText, setCostText] = useState(cost === null ? "" : String(cost).replace(".", ","));
   const parsedTools = toolsText
     .split("\n")
     .map((line) => line.trim())
@@ -139,7 +207,12 @@ export function DetailsEditor({
       const at = line.indexOf(":");
       return at > 0 ? { nome: line.slice(0, at).trim(), perche: line.slice(at + 1).trim() || null } : { nome: line, perche: null };
     });
-  const num = (text: string) => (text.trim() === "" ? null : Number(text.replace(",", ".")));
+  const hoursValue = italianAmount(hoursText);
+  const costValue = italianAmount(costText);
+  const hoursError = amountError(hoursValue, limits.hours);
+  const costError = amountError(costValue, limits.cost);
+  const toolsError = parsedTools.length > limits.tools ? `Al massimo ${limits.tools} strumenti nuovi.` : parsedTools.some((t) => t.nome.length > 80) ? "Il nome di uno strumento è troppo lungo: al massimo 80 caratteri prima dei due punti." : null;
+  const invalid = Boolean(hoursError || costError || toolsError);
   return (
     <>
       <Button variant="outline" className={BUTTON} onClick={() => setOpen(true)}>
@@ -153,27 +226,69 @@ export function DetailsEditor({
           </DialogHeader>
           <form
             className="grid gap-4"
+            noValidate
             onSubmit={(e) => {
               e.preventDefault();
-              run(() => saveProjectDetailsAction(workspaceId, caseId, { newTools: parsedTools, estimateHours: num(hoursText), monthlyCostEur: num(costText) }), { onSuccess: () => setOpen(false) });
+              if (invalid) return;
+              run(() => saveProjectDetailsAction(workspaceId, caseId, { newTools: parsedTools, estimateHours: hoursValue, monthlyCostEur: costValue }), { onSuccess: () => setOpen(false) });
             }}
           >
             <div className="space-y-1.5">
               <Label htmlFor="strumenti-nuovi">Strumenti nuovi, uno per riga</Label>
-              <Textarea id="strumenti-nuovi" value={toolsText} rows={3} placeholder="Neon: il database del caso, in UE" onChange={(e) => setToolsText(e.target.value)} className={AREA} />
+              <Textarea
+                id="strumenti-nuovi"
+                value={toolsText}
+                rows={3}
+                placeholder="Neon: il database del caso, in UE"
+                aria-invalid={toolsError ? true : undefined}
+                aria-describedby={toolsError ? "strumenti-nuovi-errore" : undefined}
+                onChange={(e) => setToolsText(e.target.value)}
+                className={AREA}
+              />
+              {toolsError ? (
+                <p id="strumenti-nuovi-errore" className={ERROR}>
+                  {toolsError}
+                </p>
+              ) : null}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="stima-ore">Costruzione, in ore</Label>
-                <Input id="stima-ore" inputMode="decimal" value={hoursText} onChange={(e) => setHoursText(e.target.value)} className={FIELD} />
+                <Input
+                  id="stima-ore"
+                  inputMode="decimal"
+                  value={hoursText}
+                  aria-invalid={hoursError ? true : undefined}
+                  aria-describedby={hoursError ? "stima-ore-errore" : undefined}
+                  onChange={(e) => setHoursText(e.target.value)}
+                  className={FIELD}
+                />
+                {hoursError ? (
+                  <p id="stima-ore-errore" className={ERROR}>
+                    {hoursError}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="stima-costo">Esercizio, € al mese</Label>
-                <Input id="stima-costo" inputMode="decimal" value={costText} onChange={(e) => setCostText(e.target.value)} className={FIELD} />
+                <Input
+                  id="stima-costo"
+                  inputMode="decimal"
+                  value={costText}
+                  aria-invalid={costError ? true : undefined}
+                  aria-describedby={costError ? "stima-costo-errore" : undefined}
+                  onChange={(e) => setCostText(e.target.value)}
+                  className={FIELD}
+                />
+                {costError ? (
+                  <p id="stima-costo-errore" className={ERROR}>
+                    {costError}
+                  </p>
+                ) : null}
               </div>
             </div>
             <DialogFooter>
-              <Button type="submit" className={BUTTON} disabled={pending}>
+              <Button type="submit" className={BUTTON} disabled={pending || invalid}>
                 Salva
               </Button>
             </DialogFooter>
@@ -184,38 +299,89 @@ export function DetailsEditor({
   );
 }
 
-/** L'ok dell'AI Board: chi ha il ruolo lo registra e basta; il responsabile scrive chi l'ha dato e quando. */
-export function AiBoardOk({ workspaceId, caseId, noteRequired, revision }: Ids & { noteRequired: boolean; revision: number }) {
+/**
+ * L'ok dell'AI Board agli strumenti nuovi, che il dialogo elenca. Chi ha il ruolo `ai_board` dà l'ok (la nota è
+ * facoltativa) o chiede una modifica (con la nota); il responsabile registra l'ok per suo conto, scrivendo chi
+ * l'ha dato e quando.
+ */
+export function AiBoardOk({
+  workspaceId,
+  caseId,
+  noteRequired,
+  canAskChange,
+  revision,
+  tools,
+  noteMin,
+  noteMax,
+}: Ids & { noteRequired: boolean; canAskChange: boolean; revision: number; tools: { nome: string; perche: string | null }[]; noteMin: number; noteMax: number }) {
   const { pending, run } = useUcAction();
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
+  const short = note.trim().length < noteMin;
+  const done = () => {
+    setOpen(false);
+    setNote("");
+    focusTitle();
+  };
+  const trigger = noteRequired ? "Registra l'ok dell'AI Board" : "Dai l'ok agli strumenti nuovi";
   return (
     <>
-      <Button variant="outline" className={BUTTON} onClick={() => setOpen(true)}>
-        Registra l&apos;ok dell&apos;AI Board
+      <Button className={BUTTON} onClick={() => setOpen(true)}>
+        {trigger}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Ok dell&apos;AI Board agli strumenti nuovi</DialogTitle>
+            <DialogTitle>{tools.length === 1 ? "Lo strumento nuovo per il cliente" : `I ${tools.length} strumenti nuovi per il cliente`}</DialogTitle>
             <DialogDescription>
-              {noteRequired ? "Lo registri per conto dell'AI Board: scrivi chi l'ha dato e quando." : "Con il tuo ok il responsabile del caso può approvare il progetto."}
+              {noteRequired
+                ? "Lo registri per conto dell'AI Board: scrivi chi l'ha dato e quando."
+                : canAskChange
+                  ? "Con il tuo ok il responsabile del caso può approvare il progetto. Se qualcosa non va, chiedi una modifica."
+                  : "Con il tuo ok il responsabile del caso può approvare il progetto."}
             </DialogDescription>
           </DialogHeader>
+          <ul className="space-y-1 rounded-md border p-3 text-sm">
+            {tools.map((tool) => (
+              <li key={tool.nome}>
+                <span className="font-medium">{tool.nome}</span>
+                {tool.perche ? <span className="text-muted-foreground"> · {tool.perche}</span> : null}
+              </li>
+            ))}
+          </ul>
           <form
             className="grid gap-4"
             onSubmit={(e) => {
               e.preventDefault();
-              run(() => recordAiBoardOkAction(workspaceId, caseId, { note: note.trim() || null, revision }), { onSuccess: () => setOpen(false) });
+              if (noteRequired && short) return;
+              run(() => recordAiBoardOkAction(workspaceId, caseId, { note: note.trim() || null, revision }), { onSuccess: done });
             }}
           >
             <div className="space-y-1.5">
-              <Label htmlFor="nota-ai-board">{noteRequired ? "Chi l'ha dato e quando" : "Nota (se serve)"}</Label>
-              <Textarea id="nota-ai-board" value={note} maxLength={300} rows={2} onChange={(e) => setNote(e.target.value)} className={AREA} />
+              <Label htmlFor="nota-ai-board">{noteRequired ? "Chi l'ha dato e quando" : canAskChange ? "Nota" : "Nota (se serve)"}</Label>
+              <Textarea id="nota-ai-board" value={note} maxLength={noteMax} rows={3} aria-describedby="nota-ai-board-aiuto" onChange={(e) => setNote(e.target.value)} className={AREA} />
+              <p id="nota-ai-board-aiuto" className="text-xs text-muted-foreground">
+                {noteRequired
+                  ? `Almeno ${noteMin} caratteri: per esempio il ruolo di chi l'ha dato e il giorno.`
+                  : canAskChange
+                    ? `Facoltativa per l'ok. Per chiedere una modifica scrivi che cosa cambiare, in almeno ${noteMin} caratteri.`
+                    : "Facoltativa."}
+              </p>
             </div>
-            <DialogFooter>
-              <Button type="submit" className={BUTTON} disabled={pending || (noteRequired && note.trim().length < 10)}>
-                Registra l&apos;ok
+            <DialogFooter className="gap-2">
+              {canAskChange ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={BUTTON}
+                  disabled={pending || short}
+                  onClick={() => run(() => requestProjectChangeAction(workspaceId, caseId, { note: note.trim(), revision }), { onSuccess: done })}
+                >
+                  Chiedi una modifica
+                </Button>
+              ) : null}
+              <Button type="submit" className={BUTTON} disabled={pending || (noteRequired && short)}>
+                {noteRequired ? "Registra l'ok" : "Dai l'ok"}
               </Button>
             </DialogFooter>
           </form>
@@ -241,7 +407,7 @@ export function DecisionForm({ workspaceId, caseId }: Ids) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Una decisione del team</DialogTitle>
-            <DialogDescription>Entra nel brief di ogni coding agent del caso. Non si cambia: se serve, se ne aggiunge un&apos;altra.</DialogDescription>
+            <DialogDescription>Vale per ogni coding agent del caso. Non si cambia: se serve, se ne aggiunge un&apos;altra.</DialogDescription>
           </DialogHeader>
           <form
             className="grid gap-4"

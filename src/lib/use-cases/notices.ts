@@ -22,10 +22,14 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
     domanda: "Il referente ha chiesto qualcosa",
     // (Rilascio 7) Uno use case in uso che rende poco più di quanto costa tenerlo acceso («Programma»).
     da_rivedere: "Da rivedere",
-    // (Rilascio 8.0a) L'Agent Factory: il progetto da approvare, uno strumento nuovo, il pacchetto cambiato.
+    // (Rilascio 8.0a) L'Agent Factory: il progetto da approvare, l'ok dell'AI Board agli strumenti nuovi, il
+    // pacchetto cambiato, il progetto approvato, la modifica chiesta dall'AI Board, l'ok da rifare.
     progetto_appr: "Progetto da approvare",
-    strumento_nuovo: "Strumento nuovo da approvare",
+    strumento_nuovo: "Serve l'ok dell'AI Board",
     pacchetto_nuovo: "Il pacchetto è cambiato",
+    progetto_ok: "Progetto approvato",
+    modifica_chiesta: "L'AI Board chiede una modifica",
+    ok_decaduto: "L'ok dell'AI Board è da rifare",
   } satisfies Record<UseCaseNoticeKind, string>),
   answers: Object.freeze({ one: "1 risposta", many: "{n} risposte" }),
   documents: Object.freeze({ one: "1 documento", many: "{n} documenti" }),
@@ -45,8 +49,11 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   question: "Rispondi dalla scheda, in «Cosa serve».",
   review: "In uso, rende meno di 2 € per ogni euro che costa tenerlo acceso. Guardalo in «Programma».",
   projectToApprove: "L'impostazione è pronta: guarda il progetto e approvalo in «Progetto dell'agente», nel dossier.",
-  newToolToApprove: "Il progetto usa uno strumento nuovo per voi: serve l'ok dell'AI Board, in «Progetto dell'agente», nel dossier.",
+  newToolToApprove: "Il progetto usa strumenti nuovi: guardali e dai l'ok, o chiedi una modifica, in «Progetto dell'agente», nel dossier.",
   newPackage: "C'è una nuova versione del pacchetto: «unbundle start» la porta nel repository.",
+  projectApproved: "Le scelte approvate sono in «Progetto dell'agente», nel dossier: da qui si costruisce.",
+  changeRequested: "Che cosa cambiare è in «Progetto dell'agente», nel dossier: il responsabile riapre il progetto.",
+  boardOkDropped: "Il progetto è cambiato: quando torna da approvare serve di nuovo il tuo ok, in «Progetto dell'agente».",
   contextSeparator: " · ",
 });
 
@@ -72,6 +79,9 @@ export function noticeTextOf(n: {
   if (n.kind === "progetto_appr") return { title, description: t.projectToApprove };
   if (n.kind === "strumento_nuovo") return { title, description: t.newToolToApprove };
   if (n.kind === "pacchetto_nuovo") return { title, description: t.newPackage };
+  if (n.kind === "progetto_ok") return { title, description: t.projectApproved };
+  if (n.kind === "modifica_chiesta") return { title, description: t.changeRequested };
+  if (n.kind === "ok_decaduto") return { title, description: t.boardOkDropped };
   if (n.kind === "senza_risposta") return { title, description: t.followUp[n.followUp ?? "scaduta"] };
   const answers = safe(n.answers);
   const documents = safe(n.documents);

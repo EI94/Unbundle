@@ -19,6 +19,7 @@ import {
   packageSourceFor,
   recordAiBoardOk,
   reopenProject,
+  requestProjectChange,
   saveProjectDetails,
   savePackageVersion,
   saveProjectTopic,
@@ -109,14 +110,14 @@ export async function generatePackageAction(workspaceId: string, caseId: string)
       if (!read) return { ok: false, code: "permesso_negato", message: "Per generare il pacchetto serve poter leggere la scheda dello use case." };
       return savePackageVersion(o.executor, actor, target, { generated: await packageSourceFor(o.executor, target, read.card, { canSeeNeeds: read.canSeeNeeds }) });
     },
-    (v) => (v.created ? `Pacchetto k${v.version} pronto.` : `Il pacchetto non è cambiato: resta k${v.version}.`),
+    (v) => (v.created ? `Pacchetto pronto: versione ${v.version}.` : `Il pacchetto non è cambiato: resta la versione ${v.version}.`),
   );
 }
 
 /** «Imposta il caso» o «Rivedi il progetto»: una versione nuova, con le scelte dell'ultima. */
 export async function startProjectAction(workspaceId: string, caseId: string): Promise<UcActionResult<{ version: number; created: boolean }>> {
   return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) => startProject(o.executor, actor, target), (v) =>
-    v.created ? `Progetto v${v.version} aperto: le scelte partono da quelle di prima.` : `Il progetto v${v.version} è già aperto.`,
+    v.created ? (v.version === 1 ? "Versione 1 aperta: scegli i 10 argomenti." : `Versione ${v.version} aperta: le scelte partono da quelle di prima.`) : `La versione ${v.version} è già aperta.`,
   );
 }
 
@@ -144,10 +145,20 @@ export async function submitProjectAction(workspaceId: string, caseId: string, i
   );
 }
 
-/** «Riapri per cambiarlo» (da approvare → in corso). */
-export async function reopenProjectAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number }>> {
+/** «Riapri per cambiarlo» (da approvare → in corso): solo il responsabile; l'ok dell'AI Board decade. */
+export async function reopenProjectAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number; boardOkDropped: boolean }>> {
   const i = (input ?? {}) as Record<string, unknown>;
-  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, LS_WRITERS, ({ o, actor, target }) => reopenProject(o.executor, actor, target, { revision: i.revision }), () => "Il progetto è di nuovo in corso.");
+  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ["ls_lead"], ({ o, actor, target }) => reopenProject(o.executor, actor, target, { revision: i.revision }), (v) =>
+    v.boardOkDropped ? "Il progetto è di nuovo in corso. L'AI Board sa che il suo ok va dato di nuovo." : "Il progetto è di nuovo in corso.",
+  );
+}
+
+/** «Chiedi una modifica»: l'AI Board, invece dell'ok agli strumenti nuovi, con una nota. */
+export async function requestProjectChangeAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ version: number }>> {
+  const i = (input ?? {}) as Record<string, unknown>;
+  return onFactory(await requireWorkspaceAccess(workspaceId), workspaceId, caseId, ["ai_board"], ({ o, actor, target }) => requestProjectChange(o.executor, actor, target, { note: i.note, revision: i.revision }), () =>
+    "Richiesta inviata al team di Lateral Space.",
+  );
 }
 
 /** L'ok dell'AI Board agli strumenti nuovi: da `ai_board`, o dal responsabile con la nota. */
@@ -175,10 +186,10 @@ export async function approveProjectAction(workspaceId: string, caseId: string, 
     },
     (v) =>
       v.moved === true
-        ? `Progetto v${v.version} approvato: il caso passa a «In sviluppo».`
+        ? `Versione ${v.version} approvata: il caso passa a «In sviluppo».`
         : v.moved === false
-          ? `Progetto v${v.version} approvato, ma il caso non è passato a «In sviluppo»: cambialo da Impostazioni del caso.`
-          : `Progetto v${v.version} approvato.`,
+          ? `Versione ${v.version} approvata, ma il caso non è passato a «In sviluppo»: cambialo da Impostazioni del caso.`
+          : `Versione ${v.version} approvata.`,
   );
 }
 

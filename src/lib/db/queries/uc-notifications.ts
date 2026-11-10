@@ -31,10 +31,12 @@ export const UC_NOTIFICATION_TEMPLATES = [
   "gate_approvato",
   "ls_lead_da_indicare",
   "owner_da_indicare",
-  // (Rilascio 8.0a) Agent Factory, solo a Lateral Space: progetto e strumenti nuovi da approvare, pacchetto cambiato.
+  // (Rilascio 8.0a) Agent Factory, solo a Lateral Space: progetto e strumenti nuovi da approvare, pacchetto cambiato,
+  // modifica chiesta dall'AI Board.
   "progetto_da_approvare",
   "strumento_da_approvare",
   "pacchetto_aggiornato",
+  "modifica_richiesta",
   // Dopo l'MVP.
   "esiti_verifica",
   "scadenza_vicina",

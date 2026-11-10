@@ -116,8 +116,8 @@ export function givenNames(names: readonly string[]): Set<string> {
 
 /**
  * Copre e-mail, telefoni e nomi conosciuti. I nomi si cercano senza badare a maiuscole e minuscole («mario
- * rossi», «ROSSI»), tranne un nome di battesimo scritto tutto maiuscolo: «ROSA» nel titolo di una famiglia di
- * agenti resta anche se una persona si chiama Rosa.
+ * rossi», «ROSSI»), tranne un nome di battesimo scritto tutto maiuscolo: «LUNA» nel titolo di una famiglia di
+ * agenti resta anche se una persona si chiama Luna.
  */
 export function redact(text: string, tokens: readonly string[], given: ReadonlySet<string> = new Set()): string {
   let out = text.replace(EMAIL, PERSONA).replace(PHONE_CANDIDATE, (m) => (isPhone(m) ? "[numero]" : m));
@@ -202,7 +202,7 @@ export function packageContent(source: PackageSource): { body: string; brief: st
     ? ["## Cosa serve ancora (dalla scheda)", "Lo porta nel pacchetto chi vede «Cosa serve» sulla scheda."]
     : needs.length
     ? ["## Cosa serve ancora (dalla scheda)", ...needs.map((n) => `- ${oneLine(clean(n.title, 300, t, g) ?? "Esigenza")} (${n.status})`)]
-    : ["## Cosa serve ancora (dalla scheda)", "Niente: «Cosa serve» è completo."];
+    : ["## Cosa serve ancora (dalla scheda)", "Nessuna esigenza aperta in «Cosa serve» della scheda."];
 
   const body = [scheda.join("\n"), valore.join("\n"), risposte.join("\n"), serve.join("\n")].join("\n\n");
 

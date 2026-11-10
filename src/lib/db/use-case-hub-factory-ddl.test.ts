@@ -109,13 +109,13 @@ test("solo aggiunte: niente dati scritti, niente colonne cambiate; il solo DROP 
 });
 
 test("i tipi della campanella: quelli della 0029, nello stesso ordine, più i tre dell'Agent Factory, tutti entro 16 caratteri", () => {
-  assert.deepEqual(USE_CASE_NOTIFICATION_KINDS_0030, [...USE_CASE_NOTIFICATION_KINDS_0029, "progetto_appr", "strumento_nuovo", "pacchetto_nuovo"]);
+  assert.deepEqual(USE_CASE_NOTIFICATION_KINDS_0030, [...USE_CASE_NOTIFICATION_KINDS_0029, "progetto_appr", "strumento_nuovo", "pacchetto_nuovo", "progetto_ok", "modifica_chiesta", "ok_decaduto"]);
   const widen = FACTORY_DDL[FACTORY_DDL.length - 1];
   for (const kind of USE_CASE_NOTIFICATION_KINDS_0030) {
     assert.ok(widen.includes(`'${kind}'`), kind);
     assert.ok(kind.length <= 16, `${kind} entra in kind varchar(16)`);
   }
-  assert.deepEqual(FACTORY_ROLLBACK_SWEEP_SQL, ["DELETE FROM use_case_notifications WHERE kind IN ('progetto_appr', 'strumento_nuovo', 'pacchetto_nuovo');"]);
+  assert.deepEqual(FACTORY_ROLLBACK_SWEEP_SQL, ["DELETE FROM use_case_notifications WHERE kind IN ('progetto_appr', 'strumento_nuovo', 'pacchetto_nuovo', 'progetto_ok', 'modifica_chiesta', 'ok_decaduto');"]);
 });
 
 test("i CHECK sono gli elenchi del vocabolario", () => {
@@ -160,7 +160,7 @@ test("la sonda copre ogni tabella, ogni indice, ogni vincolo con nome e i tipi n
   const named = [...all.matchAll(/CONSTRAINT ([a-z_]+) (CHECK|PRIMARY KEY)/g)].map((m) => m[1]).filter((n) => n.startsWith("use_case_packages") || n.startsWith("use_case_projects") || n.startsWith("use_case_decisions"));
   assert.deepEqual([...named].sort(), [...FACTORY_NAMED_CONSTRAINTS].sort());
   assert.ok(FACTORY_PROBE_SQL.includes(`) = ${FACTORY_NAMED_CONSTRAINTS.length}`));
-  assert.ok(FACTORY_PROBE_SQL.includes("position('''pacchetto_nuovo''' IN pg_get_constraintdef(c.oid)) > 0"));
+  assert.ok(FACTORY_PROBE_SQL.includes("position('''ok_decaduto''' IN pg_get_constraintdef(c.oid)) > 0"), "l'ultimo tipo, che arriva con tutti gli altri");
 });
 
 test("ensure-schema: versione 24, la 0030 dopo la 0029, non fatale, con timeout e lock, e la sonda in AND", () => {

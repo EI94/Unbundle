@@ -31,7 +31,17 @@ import { cast, jsonb, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc
 import { fail, ok, type Result } from "@/lib/uc/types";
 import type { CaseRole } from "@/lib/uc/vocab";
 import { packageContent, packageFiles, packageFilesHash, packageHash, type PackageSource } from "@/lib/use-cases/factory/package";
-import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canReadFactory, canWriteFactory, FACTORY_RECIPIENTS } from "@/lib/use-cases/factory/permissions";
+import { withSupersession } from "@/lib/use-cases/factory/decisions";
+import {
+  aiBoardOkRule,
+  AI_BOARD_NOTE_MIN,
+  canApproveProject,
+  canReadFactory,
+  canReopenProject,
+  canRequestProjectChange,
+  canWriteFactory,
+  FACTORY_RECIPIENTS,
+} from "@/lib/use-cases/factory/permissions";
 import { isNeedDone, needStatusView, type NeedStatus, type NeedType } from "@/lib/use-cases/needs";
 import { romeToday } from "@/lib/use-cases/quarter";
 
@@ -105,6 +115,9 @@ export interface ProjectView {
   approvedAt: string | null;
   aiBoardOkAt: string | null;
   aiBoardNote: string | null;
+  /** La modifica che l'AI Board ha chiesto invece dell'ok; resta finché il progetto non torna da approvare. */
+  changeRequest: string | null;
+  changeRequestedAt: string | null;
   updatedAt: string;
 }
 
@@ -121,6 +134,8 @@ export interface DecisionView {
   /** Il ruolo a parole («responsabile del caso») quando la decisione viene da un import; null per una persona. */
   authorRole: string | null;
   createdAt: string;
+  /** Il giorno della decisione successiva sullo stesso argomento, che la sostituisce; null se vale ancora. */
+  supersededOn: string | null;
 }
 
 export interface FactoryView {
@@ -159,12 +174,14 @@ function projectFrom(row: UcRow): ProjectView {
     approvedAt: iso(row.approved_at),
     aiBoardOkAt: iso(row.ai_board_ok_at),
     aiBoardNote: text(row.ai_board_note),
+    changeRequest: text(row.change_request),
+    changeRequestedAt: iso(row.change_requested_at),
     updatedAt: iso(row.updated_at) ?? "",
   };
 }
 
 const PROJECT_COLUMNS = raw(
-  "id, version, status, revision, topics, framework, new_tools, estimate_hours, monthly_cost_eur, standard_version, catalog_version, package_version, submitted_at, approved_at, ai_board_ok_at, ai_board_note, updated_at",
+  "id, version, status, revision, topics, framework, new_tools, estimate_hours, monthly_cost_eur, standard_version, catalog_version, package_version, submitted_at, approved_at, ai_board_ok_at, ai_board_note, change_request, change_requested_at, updated_at",
 );
 
 /** Tutto quello che la scheda «Impostazione» e `unbundle context` mostrano di uno use case. */
@@ -186,19 +203,21 @@ FROM use_case_decisions WHERE workspace_id = ${ws} AND use_case_id = ${uc} ORDER
     latestPackage: last ? { version: Number(last.version), files: last.files as Record<PackageFile, string>, createdAt: iso(last.created_at) ?? "", source: String(last.source) as PackageOrigin } : null,
     open: views.find((p) => p.status === "in_corso" || p.status === "da_approvare") ?? null,
     approved: views.find((p) => p.status === "approvato") ?? null,
-    decisions: decisions.map((r) => ({
-      id: String(r.id),
-      decidedOn: String(r.decided_on).slice(0, 10),
-      topicKey: (text(r.topic_key) as SetupTopic | null) ?? null,
-      topic: String(r.topic),
-      choice: String(r.choice),
-      reason: text(r.reason),
-      rejected: text(r.rejected),
-      source: String(r.source) as DecisionView["source"],
-      projectVersion: num(r.project_version),
-      authorRole: text(r.author_role),
-      createdAt: iso(r.created_at) ?? "",
-    })),
+    decisions: withSupersession(
+      decisions.map((r) => ({
+        id: String(r.id),
+        decidedOn: String(r.decided_on).slice(0, 10),
+        topicKey: (text(r.topic_key) as SetupTopic | null) ?? null,
+        topic: String(r.topic),
+        choice: String(r.choice),
+        reason: text(r.reason),
+        rejected: text(r.rejected),
+        source: String(r.source) as DecisionView["source"],
+        projectVersion: num(r.project_version),
+        authorRole: text(r.author_role),
+        createdAt: iso(r.created_at) ?? "",
+      })),
+    ),
   });
 }
 
@@ -226,11 +245,14 @@ ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET last_
 
 /**
  * L'email della coda dei dossier: interna di Lateral Space. «Progetto da approvare» dice anche quanti strumenti
- * nuovi ci sono (una sola email al responsabile); «Strumento nuovo» è per l'AI Board del cliente e arriva con la 8.0c.
+ * nuovi ci sono (una sola email al responsabile); «Modifica chiesta» va al responsabile, che riapre il progetto;
+ * «Strumento nuovo» è per l'AI Board del cliente e arriva con la 8.0c.
  */
-const FACTORY_EMAIL: Readonly<Partial<Record<FactoryNoticeKind, { template: string; roles: readonly CaseRole[] }>>> = Object.freeze({
+type FactoryEmailKind = "progetto_appr" | "pacchetto_nuovo" | "modifica_chiesta";
+const FACTORY_EMAIL: Readonly<Record<FactoryEmailKind, { template: string; roles: readonly CaseRole[] }>> = Object.freeze({
   progetto_appr: { template: "progetto_da_approvare", roles: ["ls_lead"] },
   pacchetto_nuovo: { template: "pacchetto_aggiornato", roles: ["ls_lead", "ls_analista", "ls_sviluppatore"] },
+  modifica_chiesta: { template: "modifica_richiesta", roles: ["ls_lead"] },
 });
 
 /**
@@ -238,8 +260,8 @@ const FACTORY_EMAIL: Readonly<Partial<Record<FactoryNoticeKind, { template: stri
  * tipo, mai a chi ha agito; al massimo una al giorno per persona, caso e tipo (la chiave di deduplica). La manda il
  * motore dei dossier dopo il comando (`finishUcCommand`) o il cron, che controlla anche che sia di Lateral Space.
  */
-function emailSql(target: FactoryTarget, kind: "progetto_appr" | "pacchetto_nuovo", actor: FactoryActor, now: Date, version: number, when: Fragment = ALWAYS, count = 0): UcStatement {
-  const e = FACTORY_EMAIL[kind]!;
+function emailSql(target: FactoryTarget, kind: FactoryEmailKind, actor: FactoryActor, now: Date, version: number, when: Fragment = ALWAYS, count = 0): UcStatement {
+  const e = FACTORY_EMAIL[kind];
   return toStatement(ucSql`INSERT INTO uc_notifications (workspace_id, case_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
 SELECT DISTINCT ON (m.user_id) c.workspace_id, c.id, m.user_id, 'email', ${cast(e.template, "text")}, ${jsonb({ version, count })}, 'in_coda',
        ${cast(e.template, "text")} || ':' || c.id::text || ':' || m.user_id::text || ':' || ${cast(romeToday(now), "text")}, now()
@@ -540,13 +562,14 @@ export async function submitProject(
   if (!open) return fail("progetto_non_aperto", "Non c'è un progetto in corso da mandare in approvazione.");
   if (Number(open.revision) !== revision) return fail("conflitto", CHANGED);
   const missing = SETUP_TOPICS.filter((t) => !(open.topics as ProjectTopics)?.[t]?.scelta);
-  if (missing.length) return fail("argomenti_mancanti", `Mancano ${missing.length === 1 ? "un argomento" : `${missing.length} argomenti`}: ${missing.map((t) => TOPIC_LABELS[t]).join(", ")}.`);
+  if (missing.length) return fail("argomenti_mancanti", `${missing.length === 1 ? "Manca un argomento" : `Mancano ${missing.length} argomenti`}: ${missing.map((t) => TOPIC_LABELS[t]).join(", ")}.`);
   const tools = Number(open.tools ?? 0);
   const version = Number(open.version);
   // L'UPDATE scrive submitted_at = now(): le notifiche guardano la stessa ora della transazione.
   const sent = ucSql`EXISTS (SELECT 1 FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${cast(version, "int")} AND submitted_at = now())`;
   const statements = [
-    toStatement(ucSql`UPDATE use_case_projects SET status = 'da_approvare', submitted_at = now(), requested_by_user_id = ${cast(userOf(actor), "uuid")}, revision = revision + 1, updated_at = now()
+    toStatement(ucSql`UPDATE use_case_projects SET status = 'da_approvare', submitted_at = now(), requested_by_user_id = ${cast(userOf(actor), "uuid")},
+  change_request = NULL, change_requested_at = NULL, revision = revision + 1, updated_at = now()
 WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'in_corso' AND version = ${cast(version, "int")} AND revision = ${cast(revision, "int")}
 RETURNING version`),
     noticeSql(target, "progetto_appr", actor, now, sent),
@@ -558,19 +581,41 @@ RETURNING version`),
   return ok({ version, newTools: tools });
 }
 
-/** Riporta in corso un progetto da approvare (per cambiarlo prima dell'approvazione); l'ok dell'AI Board si chiede di nuovo. */
-export async function reopenProject(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: { revision?: unknown } = {}): Promise<Result<{ version: number }>> {
-  if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
+/**
+ * Riporta in corso un progetto da approvare, per cambiarlo prima dell'approvazione. Lo fa solo il responsabile
+ * (`canReopenProject`): l'ok dell'AI Board decade e, se c'era, l'AI Board lo sa dalla campanella («ok da rifare»).
+ * La modifica chiesta dall'AI Board resta, finché il progetto non torna da approvare.
+ */
+export async function reopenProject(
+  executor: UcExecutor,
+  actor: FactoryActor,
+  target: FactoryTarget,
+  input: { revision?: unknown } = {},
+  now = new Date(),
+): Promise<Result<{ version: number; boardOkDropped: boolean }>> {
+  if (actor.kind === "persona" && !canReopenProject(actor.roles)) return fail("permesso_negato", "Il progetto da approvare lo riapre il responsabile del caso.");
   const revision = revisionOf(input.revision);
   if (revision === null) return fail("dati_non_validi", CHANGED);
-  const [rows] = await executor.batch([
+  const ws = cast(target.workspaceId, "uuid");
+  const uc = cast(target.useCaseId, "uuid");
+  const [check] = await executor.batch([toStatement(ucSql`SELECT version, revision, ai_board_ok_at FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare'`)]);
+  const open = check[0];
+  if (!open) return fail("progetto_non_aperto", "Non c'è un progetto da approvare da riaprire.");
+  if (Number(open.revision) !== revision) return fail("conflitto", CHANGED);
+  const boardOkDropped = open.ai_board_ok_at !== null && open.ai_board_ok_at !== undefined;
+  const version = cast(Number(open.version), "int");
+  // L'UPDATE scrive updated_at = now(): la notifica parte solo se la riapertura è avvenuta in questa transazione.
+  const reopened = ucSql`EXISTS (SELECT 1 FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'in_corso' AND version = ${version} AND updated_at = now())`;
+  const statements = [
     toStatement(ucSql`UPDATE use_case_projects SET status = 'in_corso', submitted_at = NULL, requested_by_user_id = NULL, ai_board_ok_at = NULL, ai_board_ok_by_user_id = NULL,
   ai_board_note = NULL, revision = revision + 1, updated_at = now(), updated_by_user_id = ${cast(userOf(actor), "uuid")}
-WHERE workspace_id = ${cast(target.workspaceId, "uuid")} AND use_case_id = ${cast(target.useCaseId, "uuid")} AND status = 'da_approvare' AND revision = ${cast(revision, "int")}
+WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${version} AND revision = ${cast(revision, "int")}
 RETURNING version`),
-  ]);
+  ];
+  if (boardOkDropped) statements.push(noticeSql(target, "ok_decaduto", actor, now, reopened));
+  const [rows] = await executor.batch(statements);
   if (!rows[0]) return fail("conflitto", CHANGED);
-  return ok({ version: Number(rows[0].version) });
+  return ok({ version: Number(rows[0].version), boardOkDropped });
 }
 
 /** L'ok dell'AI Board agli strumenti nuovi della revisione da approvare che si è vista (scelta 2 del piano). */
@@ -585,7 +630,8 @@ export async function recordAiBoardOk(executor: UcExecutor, actor: FactoryActor,
     return fail("nota_mancante", "Scrivi chi dell'AI Board ha dato l'ok e quando: la registri per suo conto.");
   }
   const [rows] = await executor.batch([
-    toStatement(ucSql`UPDATE use_case_projects SET ai_board_ok_at = now(), ai_board_ok_by_user_id = ${cast(userOf(actor), "uuid")}, ai_board_note = ${cast(note.value, "text")}, revision = revision + 1, updated_at = now()
+    toStatement(ucSql`UPDATE use_case_projects SET ai_board_ok_at = now(), ai_board_ok_by_user_id = ${cast(userOf(actor), "uuid")}, ai_board_note = ${cast(note.value, "text")},
+  change_request = NULL, change_requested_at = NULL, revision = revision + 1, updated_at = now()
 WHERE workspace_id = ${cast(target.workspaceId, "uuid")} AND use_case_id = ${cast(target.useCaseId, "uuid")} AND status = 'da_approvare' AND jsonb_array_length(new_tools) > 0
   AND revision = ${cast(revision, "int")}
 RETURNING version`),
@@ -595,12 +641,48 @@ RETURNING version`),
 }
 
 /**
+ * Invece dell'ok, l'AI Board chiede una modifica agli strumenti nuovi, con una nota (scelta 2 del piano). Il
+ * progetto resta da approvare e senza ok: il responsabile lo riapre e il team lo cambia. Notifica chi costruisce
+ * (campanella) e il responsabile (email). Una richiesta nuova prende il posto di quella di prima.
+ */
+export async function requestProjectChange(
+  executor: UcExecutor,
+  actor: FactoryActor,
+  target: FactoryTarget,
+  input: { note?: unknown; revision?: unknown },
+  now = new Date(),
+): Promise<Result<{ version: number }>> {
+  if (actor.kind !== "persona" || !canRequestProjectChange(actor.roles)) return fail("permesso_negato", "La modifica agli strumenti nuovi la chiede l'AI Board del cliente.");
+  const revision = revisionOf(input.revision);
+  if (revision === null) return fail("dati_non_validi", CHANGED);
+  const note = teamText(input.note, FACTORY_LIMITS.aiBoardNote, "La modifica");
+  if (!note.ok) return note;
+  if (!note.value || note.value.length < AI_BOARD_NOTE_MIN) return fail("nota_mancante", "Scrivi che cosa va cambiato, in almeno 10 caratteri.");
+  const ws = cast(target.workspaceId, "uuid");
+  const uc = cast(target.useCaseId, "uuid");
+  const [check] = await executor.batch([toStatement(ucSql`SELECT version FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare'`)]);
+  if (!check[0]) return fail("progetto_non_aperto", "Non c'è un progetto da approvare.");
+  const version = Number(check[0].version);
+  const asked = ucSql`EXISTS (SELECT 1 FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${cast(version, "int")} AND change_requested_at = now())`;
+  const [rows] = await executor.batch([
+    toStatement(ucSql`UPDATE use_case_projects SET change_request = ${cast(note.value, "text")}, change_requested_at = now(), revision = revision + 1, updated_at = now()
+WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${cast(version, "int")} AND jsonb_array_length(new_tools) > 0
+  AND ai_board_ok_at IS NULL AND revision = ${cast(revision, "int")}
+RETURNING version`),
+    noticeSql(target, "modifica_chiesta", actor, now, asked),
+    emailSql(target, "modifica_chiesta", actor, now, version, asked),
+  ]);
+  if (!rows[0]) return fail("conflitto", CHANGED);
+  return ok({ version });
+}
+
+/**
  * Approva la revisione da approvare che il responsabile ha visto: la versione approvata prima diventa
  * «superata», nella stessa transazione. Con strumenti nuovi serve l'ok dell'AI Board (lo controlla anche il
  * database). Lo stato del dossier lo cambia chi chiama (`transitionCase`), solo se il caso è «pronto per lo
  * sviluppo».
  */
-export async function approveProject(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: { revision?: unknown } = {}, at?: Date): Promise<Result<{ version: number }>> {
+export async function approveProject(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: { revision?: unknown } = {}, at?: Date, now = new Date()): Promise<Result<{ version: number }>> {
   if (actor.kind === "persona" && !canApproveProject(actor.roles)) return fail("permesso_negato", "Il progetto lo approva il responsabile del caso.");
   const revision = revisionOf(input.revision);
   if (revision === null) return fail("dati_non_validi", CHANGED);
@@ -617,11 +699,14 @@ export async function approveProject(executor: UcExecutor, actor: FactoryActor, 
   const rev = cast(revision, "int");
   const when = cast((at ?? new Date()).toISOString(), "timestamptz");
   const target0 = ucSql`EXISTS (SELECT 1 FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${version} AND revision = ${rev})`;
+  // L'UPDATE scrive updated_at = now(): «Progetto approvato» parte solo se l'approvazione è di questa transazione.
+  const approvedNow = ucSql`EXISTS (SELECT 1 FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'approvato' AND version = ${version} AND updated_at = now())`;
   const [, rows] = await executor.batch([
     toStatement(ucSql`UPDATE use_case_projects SET status = 'superato', revision = revision + 1, updated_at = now() WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'approvato' AND ${target0} RETURNING version`),
     toStatement(ucSql`UPDATE use_case_projects SET status = 'approvato', approved_at = ${when}, approved_by_user_id = ${cast(userOf(actor), "uuid")}, revision = revision + 1, updated_at = now()
 WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${version} AND revision = ${rev}
 RETURNING version`),
+    noticeSql(target, "progetto_ok", actor, now, approvedNow),
   ]);
   if (!rows[0]) return fail("conflitto", CHANGED);
   return ok({ version: Number(rows[0].version) });

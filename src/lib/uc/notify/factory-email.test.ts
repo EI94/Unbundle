@@ -1,6 +1,6 @@
-// Le email dell'Agent Factory (rilascio 8.0a): progetto da approvare, strumento nuovo, pacchetto aggiornato. Solo
-// a persone di Lateral Space del team, con il link alla pagina «Progetto dell'agente» del dossier; mai a un
-// contatto o a un utente del cliente; mai a caso chiuso; testi senza nomi né valori.
+// Le email dell'Agent Factory (rilascio 8.0a): progetto da approvare, strumento nuovo, pacchetto aggiornato, modifica
+// chiesta dall'AI Board. Solo a persone di Lateral Space del team, con il link alla pagina «Progetto dell'agente»
+// del dossier; mai a un contatto o a un utente del cliente; mai a caso chiuso; testi senza nomi né valori.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EMAIL_TEMPLATES, planDelivery, type ClaimedNotification, type DeliveryFacts } from "./dispatch.ts";
@@ -11,7 +11,7 @@ const WS = "11111111-1111-4111-8111-111111111111";
 const CASE = "22222222-2222-4222-8222-222222222222";
 const USER = "77777777-7777-4777-8777-777777777777";
 const OPTS = { origin: "https://app.unbundle.test", lsDomains: ["ls.test"], now: new Date("2026-11-11T09:30:00Z") };
-const TEMPLATES = ["progetto_da_approvare", "strumento_da_approvare", "pacchetto_aggiornato"] as const;
+const TEMPLATES = ["progetto_da_approvare", "strumento_da_approvare", "pacchetto_aggiornato", "modifica_richiesta"] as const;
 
 const claimed = (templateKey: string, version: number | null = 2): ClaimedNotification => ({
   id: "88888888-8888-4888-8888-888888888888",
@@ -65,6 +65,16 @@ test("«progetto da approvare» dice degli strumenti nuovi, così il responsabil
   assert.match(renderEmail(plan.build("") as Parameters<typeof renderEmail>[0]).text, /Usa 2 strumenti nuovi per il cliente: prima dell'approvazione serve anche l'ok dell'AI Board\./);
   const none = planDelivery({ ...claimed("progetto_da_approvare"), payload: { version: 1, count: 0 } }, facts(), OPTS);
   if (none.action === "send") assert.doesNotMatch(renderEmail(none.build("") as Parameters<typeof renderEmail>[0]).text, /strumenti nuovi per il cliente/);
+});
+
+test("«l'AI Board chiede una modifica» dice di riaprire il progetto, senza la nota (che sta nella pagina)", () => {
+  const plan = planDelivery({ ...claimed("modifica_richiesta", 2), payload: { version: 2, count: 0 } }, facts(), OPTS);
+  assert.ok(plan.action === "send");
+  if (plan.action !== "send") return;
+  const email = renderEmail(plan.build("") as Parameters<typeof renderEmail>[0]);
+  assert.match(email.subject, /: l'AI Board chiede una modifica$/);
+  assert.match(email.text, /\(versione 2\)/);
+  assert.match(email.text, /Riapri il progetto, cambialo con il team e rimandalo in approvazione\./);
 });
 
 test("mai al cliente: un utente che non è di Lateral Space o un contatto si annullano; a caso chiuso pure", () => {

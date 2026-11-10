@@ -1332,6 +1332,8 @@ export const useCaseProjects = pgTable(
     aiBoardOkAt: tz("ai_board_ok_at"),
     aiBoardOkByUserId: uuid("ai_board_ok_by_user_id").references(() => users.id, { onDelete: "set null" }),
     aiBoardNote: varchar("ai_board_note", { length: 300 }),
+    changeRequest: varchar("change_request", { length: 300 }),
+    changeRequestedAt: tz("change_requested_at"),
     createdAt: tz("created_at").defaultNow().notNull(),
     updatedAt: tz("updated_at").defaultNow().notNull(),
     updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),

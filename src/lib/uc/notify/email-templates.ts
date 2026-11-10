@@ -69,7 +69,7 @@ export type EmailInput =
   | (CaseRef & { template: "delega"; audience: "delegante"; questions: number })
   | (CaseRef & { template: "richiesta_approvazione"; designation: "owner" | "privacy"; pending: number; expiresAt: Date; link: string })
   | { template: "riepilogo_settimanale"; audience: "owner" | "ls"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[] }
-  | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato"; version: number | null; link: string; tools?: number });
+  | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato" | "modifica_richiesta"; version: number | null; link: string; tools?: number });
 
 // ── Aiuti ─────────────────────────────────────────────────────────────
 
@@ -304,6 +304,17 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: `c'è ${k} del pacchetto del caso d'uso «${oneLine(input.caseTitle, 120)}»: la scheda è cambiata.` },
         { p: "Nel repository del caso lo porta «unbundle start». Fino ad allora il coding agent legge il pacchetto di prima." },
         { link: { href: link, label: "Leggi il pacchetto" } },
+        { small: "Email interna di Lateral Space." },
+      ]);
+    }
+    case "modifica_richiesta": {
+      const link = checkEmailLink(input.link, "dashboard");
+      const v = input.version ? ` (versione ${input.version})` : "";
+      return render(subjectOf(`${caseLabel(input)}: l'AI Board chiede una modifica`), [
+        { p: "Buongiorno," },
+        { p: `l'AI Board del cliente non ha dato l'ok agli strumenti nuovi del progetto dell'agente${v} del caso d'uso «${oneLine(input.caseTitle, 120)}»: chiede una modifica.` },
+        { p: "Nella pagina trovi che cosa va cambiato. Riapri il progetto, cambialo con il team e rimandalo in approvazione." },
+        { link: { href: link, label: "Apri il progetto" } },
         { small: "Email interna di Lateral Space." },
       ]);
     }

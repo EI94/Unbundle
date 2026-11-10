@@ -85,14 +85,17 @@ async function bellTables(executor: UcExecutor): Promise<{ notifications: boolea
  * (0025) Una riga si toglie da sola quando non vale più, senza scrivere niente: «Pronto da avviare»
  * appena lo use case non è più pronto (un'informazione riaperta, «Più avanti», un trimestre passato,
  * un dossier avviato), «Autorizza i fornitori» appena qualcuno ha dato l'ok.
+ * (8.0a) Con `kinds`, solo quei tipi: chi non rivede il portafoglio vede solo le righe dell'Agent Factory, che
+ * arrivano per il ruolo nel team del caso.
  */
-export async function listUseCaseBellRows(i: { userId: string; workspaceId: string; limit: number; days: number; now: Date }): Promise<BellUseCaseInput[]> {
+export async function listUseCaseBellRows(i: { userId: string; workspaceId: string; limit: number; days: number; now: Date; kinds?: readonly string[] }): Promise<BellUseCaseInput[]> {
   if (!isUuid(i.userId) || !isUuid(i.workspaceId)) return [];
   const executor = await getAppUcExecutor();
   const tables = await bellTables(executor);
   if (!tables.notifications) return [];
   const ready = ucSql`
-  AND (n.kind <> 'pronto' OR ${readyNowSql("u", { dossiers: tables.dossiers })})`;
+  AND (n.kind <> 'pronto' OR ${readyNowSql("u", { dossiers: tables.dossiers })})${i.kinds ? ucSql`
+  AND n.kind = ANY (${cast([...i.kinds], "text[]")})` : raw("")}`;
   const suppliers = tables.acks ? ucSql`
   AND (n.kind <> 'fornitori' OR NOT ${subprocessorsAckSql(raw("n.workspace_id"))})` : raw("");
   const [rows] = await executor.batch([
