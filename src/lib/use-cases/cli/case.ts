@@ -84,14 +84,32 @@ LIMIT 1`),
   };
 }
 
-/** La risposta d'errore se nel caso non si può scrivere; null se si può. */
-export function requireCliWrite(c: CliCase): Response | null {
-  if (c.access.status === "chiuso") return cliError(409, "caso_chiuso", "Il caso è chiuso: il progetto si legge soltanto.");
-  if (c.access.status === "sospeso") return cliError(409, "caso_sospeso", "Il caso è in pausa: si riprende da Impostazioni del caso.");
+/** Un errore di una scrittura della CLI o dell'MCP del caso: lo stato HTTP, il codice, il messaggio in italiano. */
+export interface CliFailure {
+  status: number;
+  code: string;
+  message: string;
+  retryAfterSeconds?: number;
+}
+
+/** Perché nel caso non si può scrivere; null se si può. */
+export function cliWriteDenial(c: CliCase): CliFailure | null {
+  if (c.access.status === "chiuso") return { status: 409, code: "caso_chiuso", message: "Il caso è chiuso: il progetto si legge soltanto." };
+  if (c.access.status === "sospeso") return { status: 409, code: "caso_sospeso", message: "Il caso è in pausa: si riprende da Impostazioni del caso." };
   if (c.access.readOnly || !canWriteFactory(c.access.roles)) {
-    return cliError(403, "permesso_negato", "Nel team del caso non hai un ruolo che scrive: serve responsabile, analista o sviluppatore di Lateral Space.");
+    return { status: 403, code: "permesso_negato", message: "Nel team del caso non hai un ruolo che scrive: serve responsabile, analista o sviluppatore di Lateral Space." };
   }
   return null;
+}
+
+/** La risposta d'errore se nel caso non si può scrivere; null se si può. */
+export function requireCliWrite(c: CliCase): Response | null {
+  const denial = cliWriteDenial(c);
+  return denial ? failureResponse(denial) : null;
+}
+
+function failureResponse(f: CliFailure): Response {
+  return cliError(f.status, f.code, f.message, f.retryAfterSeconds === undefined ? {} : { "Retry-After": String(f.retryAfterSeconds) });
 }
 
 const STATUS_OF: Readonly<Record<string, number>> = {
@@ -105,7 +123,7 @@ const STATUS_OF: Readonly<Record<string, number>> = {
 };
 
 /** Una chiave di idempotenza valida: quella che la CLI genera (un UUID) o una del chiamante, 8-128 caratteri. */
-const IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{8,128}$/;
+export const CLI_IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{8,128}$/;
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -120,10 +138,58 @@ export function cliRequestHash(tool: string, body: unknown): string {
   return createHash("sha256").update(JSON.stringify(canonical({ tool, body }))).digest("hex");
 }
 
+/** L'esito di una scrittura con la chiave: il risultato (anche quello di una ripetizione) o l'errore. */
+export type CliWriteOutcome<T> = { ok: true; value: T; repeated: boolean } | ({ ok: false } & CliFailure);
+
+const CONFLICT: CliFailure = { status: 409, code: "idempotenza", message: "La stessa chiave con una richiesta diversa: usa una chiave nuova." };
+const inProgress = (retryAfterSeconds: number): CliFailure => ({ status: 409, code: "in_corso", message: "La stessa richiesta è ancora in corso: riprova tra poco.", retryAfterSeconds });
+
 /**
- * Una scrittura della CLI con la chiave di idempotenza. `execute` scrive in una transazione sola e restituisce solo
- * id, codici e versioni (finiscono nel registro).
+ * Una scrittura con la chiave di idempotenza, per la CLI (la chiave arriva nell'intestazione) e per l'MCP del caso
+ * (arriva negli argomenti). `execute` scrive in una transazione sola e restituisce solo id, codici e versioni
+ * (finiscono nel registro). La stessa richiesta ripetuta restituisce il risultato della prima.
  */
+export async function executeCliWrite<T extends Record<string, unknown>>(
+  opened: OpenedCli,
+  idempotencyKey: string,
+  tool: string,
+  body: unknown,
+  execute: () => Promise<Result<T>>,
+): Promise<CliWriteOutcome<T>> {
+  if (!CLI_IDEMPOTENCY_KEY.test(idempotencyKey)) return { ok: false, status: 400, code: "idempotenza", message: "Serve una chiave di idempotenza di 8-128 caratteri (lettere, cifre, - e _)." };
+  const key: TeamRequestKey = { workspaceId: opened.principal.workspaceId, principalKey: `cli:${opened.principal.tokenId}`, idempotencyKey };
+  const requestHash = cliRequestHash(tool, body);
+  const existing = await readTeamMcpRequest(key);
+  if (existing) {
+    const decision = decideExistingTeamRequest(existing, requestHash);
+    if (decision.kind === "duplicate") return { ok: true, value: (existing.result ?? {}) as T, repeated: true };
+    if (decision.kind === "conflict") return { ok: false, ...CONFLICT };
+    if (decision.kind === "in_progress") return { ok: false, ...inProgress(decision.retryAfterSeconds) };
+  }
+  const claim = await claimTeamMcpRequest({ ...key, tool, requestHash, reservedIds: null });
+  if (claim.status === "duplicate") return { ok: true, value: (claim.result ?? {}) as T, repeated: true };
+  if (claim.status === "conflict") return { ok: false, ...CONFLICT };
+  if (claim.status === "in_progress") return { ok: false, ...inProgress(claim.retryAfterSeconds) };
+  let result: Result<T>;
+  try {
+    result = await execute();
+  } catch (error) {
+    logSafeError("cli", "scrittura", error, { tool });
+    await failTeamMcpRequest(key, claim.attempt).catch(() => false);
+    return { ok: false, status: 500, code: "errore", message: "Qualcosa non ha funzionato: riprova con la stessa chiave." };
+  }
+  if (!result.ok) {
+    await releaseTeamMcpRequest(key, claim.attempt).catch(() => false);
+    return { ok: false, status: STATUS_OF[result.code] ?? 400, code: result.code, message: result.message };
+  }
+  await completeTeamMcpRequest(key, claim.attempt, result.value).catch((error) => {
+    logSafeError("cli", "chiusura incerta", error, { tool });
+    return false;
+  });
+  return { ok: true, value: result.value, repeated: false };
+}
+
+/** Una scrittura della CLI: la chiave di idempotenza è nell'intestazione `Idempotency-Key`. */
 export async function runCliWrite<T extends Record<string, unknown>>(
   request: Request,
   opened: OpenedCli,
@@ -132,35 +198,8 @@ export async function runCliWrite<T extends Record<string, unknown>>(
   execute: () => Promise<Result<T>>,
 ): Promise<Response> {
   const idempotencyKey = request.headers.get("idempotency-key")?.trim() ?? "";
-  if (!IDEMPOTENCY_KEY.test(idempotencyKey)) return cliError(400, "idempotenza", "Manca l'intestazione Idempotency-Key (8-128 caratteri): la CLI la mette da sola.");
-  const key: TeamRequestKey = { workspaceId: opened.principal.workspaceId, principalKey: `cli:${opened.principal.tokenId}`, idempotencyKey };
-  const requestHash = cliRequestHash(tool, body);
-  const existing = await readTeamMcpRequest(key);
-  if (existing) {
-    const decision = decideExistingTeamRequest(existing, requestHash);
-    if (decision.kind === "duplicate") return cliJson({ ...(existing.result ?? {}), ripetuta: true });
-    if (decision.kind === "conflict") return cliError(409, "idempotenza", "La stessa chiave con una richiesta diversa: usa una chiave nuova.");
-    if (decision.kind === "in_progress") return cliError(409, "in_corso", "La stessa richiesta è ancora in corso: riprova tra poco.", { "Retry-After": String(decision.retryAfterSeconds) });
-  }
-  const claim = await claimTeamMcpRequest({ ...key, tool, requestHash, reservedIds: null });
-  if (claim.status === "duplicate") return cliJson({ ...(claim.result ?? {}), ripetuta: true });
-  if (claim.status === "conflict") return cliError(409, "idempotenza", "La stessa chiave con una richiesta diversa: usa una chiave nuova.");
-  if (claim.status === "in_progress") return cliError(409, "in_corso", "La stessa richiesta è ancora in corso: riprova tra poco.", { "Retry-After": String(claim.retryAfterSeconds) });
-  let result: Result<T>;
-  try {
-    result = await execute();
-  } catch (error) {
-    logSafeError("cli", "scrittura", error, { tool });
-    await failTeamMcpRequest(key, claim.attempt).catch(() => false);
-    return cliError(500, "errore", "Qualcosa non ha funzionato: riprova con la stessa chiave.");
-  }
-  if (!result.ok) {
-    await releaseTeamMcpRequest(key, claim.attempt).catch(() => false);
-    return cliError(STATUS_OF[result.code] ?? 400, result.code, result.message);
-  }
-  await completeTeamMcpRequest(key, claim.attempt, result.value).catch((error) => {
-    logSafeError("cli", "chiusura incerta", error, { tool });
-    return false;
-  });
-  return cliJson(result.value);
+  if (!CLI_IDEMPOTENCY_KEY.test(idempotencyKey)) return cliError(400, "idempotenza", "Manca l'intestazione Idempotency-Key (8-128 caratteri): la CLI la mette da sola.");
+  const outcome = await executeCliWrite(opened, idempotencyKey, tool, body, execute);
+  if (!outcome.ok) return failureResponse(outcome);
+  return cliJson(outcome.repeated ? { ...outcome.value, ripetuta: true } : outcome.value);
 }

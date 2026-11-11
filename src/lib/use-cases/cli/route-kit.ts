@@ -103,11 +103,23 @@ export interface OpenedCli {
   executor: UcExecutor;
 }
 
+/** Consuma il limite orario del token: letture o scritture. Il secondo valore dice tra quanti secondi riprovare. */
+export async function consumeCliTokenLimit(tokenId: string, write: boolean): Promise<{ ok: true } | { ok: false; retryAfterSeconds: number }> {
+  const decision = await consumeRateLimits(appRateLimitExecutor, [
+    { bucket: rateLimitBucket("cli", write ? "w" : "r", tokenId), window: "hour", limit: write ? CLI_ROUTE_LIMITS.writesPerHour : CLI_ROUTE_LIMITS.readsPerHour },
+  ]);
+  return decision.ok ? { ok: true } : { ok: false, retryAfterSeconds: decision.retryAfterSeconds };
+}
+
 /**
  * Apre una richiesta della CLI con il token: lo schema, il token, l'accesso al workspace riletto adesso, il
- * limite del token. Il resto (ruoli nel caso, regole dell'Agent Factory) lo fa la rotta.
+ * limite del token. Il resto (ruoli nel caso, regole dell'Agent Factory) lo fa la rotta. L'MCP del caso passa
+ * `limit: false` e consuma il limite per ogni strumento chiamato, come il MCP del team.
  */
-export async function openCli(request: Request, input: { method: "GET" | "POST"; write: boolean }): Promise<{ ok: true; value: OpenedCli } | { ok: false; response: Response }> {
+export async function openCli(
+  request: Request,
+  input: { method: "GET" | "POST"; write: boolean; limit?: boolean },
+): Promise<{ ok: true; value: OpenedCli } | { ok: false; response: Response }> {
   const screened = await screenCliRequest(request, input.method);
   if (screened) return { ok: false, response: screened };
   await ensureDbSchema();
@@ -117,13 +129,9 @@ export async function openCli(request: Request, input: { method: "GET" | "POST";
   if (!principal) return { ok: false, response: cliError(401, "token", "Token mancante, scaduto o revocato: fai «unbundle login».") };
   const access = await getCollaboratorAccess(principal.userId, principal.workspaceId);
   if (!access) return { ok: false, response: cliError(403, "workspace", "Non hai più accesso a questo workspace.") };
-  const limited = await consumeCliLimits([
-    {
-      bucket: rateLimitBucket("cli", input.write ? "w" : "r", principal.tokenId),
-      window: "hour",
-      limit: input.write ? CLI_ROUTE_LIMITS.writesPerHour : CLI_ROUTE_LIMITS.readsPerHour,
-    },
-  ]);
-  if (limited) return { ok: false, response: limited };
+  if (input.limit !== false) {
+    const limited = await consumeCliTokenLimit(principal.tokenId, input.write);
+    if (!limited.ok) return { ok: false, response: cliError(429, "troppe_richieste", "Troppe richieste: riprova tra poco.", { "Retry-After": String(limited.retryAfterSeconds) }) };
+  }
   return { ok: true, value: { principal, access, executor } };
 }

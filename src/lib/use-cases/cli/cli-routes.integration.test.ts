@@ -1,6 +1,6 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import * as nodeModule from "node:module";
 /** `module.registerHooks` di Node 24 (i tipi di @types/node del progetto non lo hanno ancora). */
 type ResolveResult = { url: string; shortCircuit?: boolean };
@@ -113,7 +113,7 @@ before(async () => {
   exec = (await import("../../db/uc-executor.ts")).ucExecutorForUrl(url!);
   auth = await import("../../db/queries/use-case-cli-auth.ts");
   factory = await import("../../db/queries/use-case-factory.ts");
-  for (const name of ["login", "login/token", "whoami", "logout", "context", "setup", "pacchetto", "decisioni", "domande", "repository", "sessioni", "token-caso"]) {
+  for (const name of ["login", "login/token", "whoami", "logout", "context", "setup", "pacchetto", "decisioni", "domande", "repository", "sessioni", "token-caso", "mcp"]) {
     routes[name] = await import(`../../../app/api/cli/${name}/route.ts`);
   }
 
@@ -301,4 +301,115 @@ test("le proposte nella scheda: «Aggiungi a Cosa serve» crea un requisito da c
   const after = await reads.listAgentProposals(exec, { workspaceId: ids.ws, useCaseId: ids.useCase });
   assert.ok(!after.some((p) => p.id === first.json.id || p.id === second.json.id), "decise: non sono più da decidere");
   delete (globalThis as { __cliSession?: unknown }).__cliSession;
+});
+
+// ─── L'MCP del caso ──────────────────────────────────────────────────
+
+let rpcSeq = 0;
+async function mcp(token: string | null, message: unknown, init: { headers?: Record<string, string>; method?: string; target?: string } = {}): Promise<{ status: number; json: Row }> {
+  const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json, text/event-stream", ...(init.headers ?? {}) };
+  if (token) headers.authorization = `Bearer ${token}`;
+  const method = init.method ?? "POST";
+  const handler = (routes.mcp as Record<string, Handler>)[method];
+  const response = await handler(new Request(init.target ?? "http://127.0.0.1:53110/api/cli/mcp", { method, headers, body: method === "POST" ? JSON.stringify(message) : undefined }));
+  const text = await response.text();
+  return { status: response.status, json: text ? (JSON.parse(text) as Row) : {} };
+}
+const rpc = (method: string, params: Row = {}) => ({ jsonrpc: "2.0", id: ++rpcSeq, method, params });
+async function tool(token: string, name: string, args: Row): Promise<{ isError: boolean; data: Row; text: string }> {
+  const r = await mcp(token, rpc("tools/call", { name, arguments: args }));
+  assert.equal(r.status, 200, `${name}: HTTP ${r.status}`);
+  const result = r.json.result as { isError?: boolean; structuredContent: Row; content: Array<{ text: string }> };
+  return { isError: result.isError === true, data: result.structuredContent, text: result.content[0].text };
+}
+
+test("l'MCP del caso: solo il token di un caso; contesto e decisioni; scritture con il sì e la chiave; la sessione una volta; chi esce dal team non entra", opts, async () => {
+  const scoped = String((await post("token-caso", tokens.lead!, { caso: "PX-0042" })).json.token);
+  const init = rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "prova", version: "1.0.0" } });
+
+  // Ingresso: il token di tutti i casi no, il browser no, il token nell'indirizzo no, solo POST.
+  assert.equal((await mcp(tokens.analyst!, init)).status, 403, "serve il token di un caso solo");
+  assert.equal((await mcp(null, init)).status, 401);
+  assert.equal((await mcp(scoped, init, { headers: { origin: "https://esempio.test" } })).status, 403);
+  assert.equal((await mcp(null, init, { method: "GET" })).status, 405);
+  const started = await mcp(scoped, init);
+  assert.equal(started.status, 200);
+  const server = started.json.result as Row;
+  assert.equal((server.serverInfo as Row).name, "unbundle-caso");
+  assert.match(String(server.instructions), /il caso PX-0042/);
+  const listed = await mcp(scoped, rpc("tools/list"));
+  assert.deepEqual(((listed.json.result as Row).tools as Row[]).map((t) => t.name), ["get_case_context", "list_decisions", "record_decision", "propose_question", "report_session"]);
+
+  // Letture: il brief e le decisioni, mai un nome né un'e-mail.
+  const brief = await tool(scoped, "get_case_context", {});
+  assert.equal(brief.isError, false);
+  assert.match(brief.text, /^PX-0042 · Smistamento di prova/);
+  assert.equal(brief.data.caso, "PX-0042");
+  const layer = await tool(scoped, "get_case_context", { layer: "progetto" });
+  assert.match(layer.text, /PX-0042/);
+  assert.equal((await tool(scoped, "get_case_context", { layer: "tutto" })).data.error, "invalid_payload");
+
+  // La decisione: senza il sì no; con il sì e la chiave una volta sola; la stessa chiave per un'altra cosa no.
+  const choice = { topic: "Lingua delle risposte", choice: "Le risposte in inglese", reason: "Gli ospiti sono esteri", idempotencyKey: `mcp-${suffix}-d1` };
+  assert.equal((await tool(scoped, "record_decision", choice)).data.error, "conferma_mancante");
+  const logged: string[] = [];
+  const realInfo = console.info;
+  console.info = (...parts: unknown[]) => void logged.push(parts.map(String).join(" "));
+  let saved: Awaited<ReturnType<typeof tool>>;
+  try {
+    saved = await tool(scoped, "record_decision", { ...choice, confirmedByUser: true });
+  } finally {
+    console.info = realInfo;
+  }
+  assert.equal(saved.isError, false, saved.text);
+  assert.deepEqual([saved.data.registrata, saved.data.ripetuta], [true, false]);
+  const again = await tool(scoped, "record_decision", { ...choice, confirmedByUser: true });
+  assert.deepEqual([again.data.id, again.data.ripetuta], [saved.data.id, true], "la stessa richiesta risponde come la prima");
+  assert.equal((await tool(scoped, "record_decision", { ...choice, choice: "In italiano", confirmedByUser: true })).data.error, "idempotenza");
+  const [decided] = await q(`SELECT source, author_user_id, choice FROM use_case_decisions WHERE id = $1`, [saved.data.id]);
+  assert.deepEqual([decided.source, decided.author_user_id, decided.choice], ["team", ids.lead, "Le risposte in inglese"]);
+  const line = logged.find((l) => l.includes('"case-mcp"') && l.includes("record_decision"));
+  assert.ok(line, "una riga di log per la chiamata");
+  assert.ok(!logged.some((l) => l.includes(scoped) || l.includes("inglese") || l.includes("@")), "mai token, testi o e-mail nel log");
+  const decisions = await tool(scoped, "list_decisions", {});
+  assert.match(decisions.text, /Lingua delle risposte · Le risposte in inglese/);
+  assert.ok(![...Object.values(NAME), ...Object.values(EMAIL)].some((n) => decisions.text.includes(n) || brief.text.includes(n)));
+
+  // La domanda proposta: dal canale mcp, da decidere in Unbundle.
+  const asked = await tool(scoped, "propose_question", { question: "Le quotazioni del weekend partono lunedì?", reason: "Per il calendario degli invii", idempotencyKey: `mcp-${suffix}-q1` });
+  assert.equal(asked.isError, false, asked.text);
+  const [question] = await q(`SELECT channel, status, author_user_id FROM use_case_agent_questions WHERE id = $1`, [asked.data.id]);
+  assert.deepEqual([question.channel, question.status, question.author_user_id], ["mcp", "proposta", ids.lead]);
+
+  // La sintesi della sessione: solo l'impronta dell'id, una volta sola.
+  const session = { sessionId: `sessione-${suffix}-mcp`, harness: "codex", durationSeconds: 900, outcome: "commit", endedAt: new Date().toISOString(), outputTokens: 4000 };
+  assert.deepEqual((await tool(scoped, "report_session", session)).data, { registrata: true, ripetuta: false });
+  assert.deepEqual((await tool(scoped, "report_session", session)).data, { registrata: false, ripetuta: true });
+  const sessions = await q(`SELECT session_key, output_tokens::int AS out FROM use_case_build_sessions WHERE use_case_id = $1 AND harness = 'codex'`, [ids.useCase]);
+  assert.deepEqual(sessions.map((r) => [r.session_key, r.out]), [[createHash("sha256").update(session.sessionId).digest("hex"), 4000]]);
+  assert.equal((await tool(scoped, "report_session", { ...session, pr: "https://example.test/pull/1" })).data.error, "invalid_payload");
+
+  // Il responsabile del cliente con un token del caso (non lo crea la rotta, qui a mano): legge, non scrive.
+  const ownerPrincipal = await auth.authenticateCli(exec, `Bearer ${tokens.owner}`);
+  assert.ok(ownerPrincipal);
+  const ownerCase = await auth.createCaseCliToken(exec, ownerPrincipal, { useCaseId: ids.useCase, label: `MCP di prova ${suffix}` });
+  assert.ok(ownerCase.ok);
+  if (ownerCase.ok) {
+    assert.equal((await tool(ownerCase.value.token, "get_case_context", {})).isError, false);
+    assert.equal((await tool(ownerCase.value.token, "propose_question", { question: "Va bene così?", idempotencyKey: `mcp-${suffix}-o1` })).data.error, "permesso_negato");
+  }
+
+  // Un token nell'indirizzo si blocca; chi esce dal team del caso non entra più, anche con il token.
+  const leaked = String((await post("token-caso", tokens.lead!, { caso: "PX-0042" })).json.token);
+  assert.equal((await mcp(leaked, init, { target: `http://127.0.0.1:53110/api/cli/mcp?token=${leaked}` })).status, 400);
+  assert.equal((await mcp(leaked, init)).status, 401, "esposto: non vale più");
+  const analystScoped = String((await post("token-caso", tokens.analyst!, { caso: "PX-0042" })).json.token);
+  await q(`DELETE FROM uc_case_members WHERE case_id = $1 AND user_id = ANY($2::uuid[])`, [ids.dossier, [ids.lead, ids.analyst]]);
+  try {
+    assert.equal((await mcp(analystScoped, init)).status, 404, "fuori dal team: il caso non c'è più");
+    assert.equal((await tool(scoped, "get_case_context", {})).isError, false, "chi gestisce il workspace resta osservatore del dossier");
+    assert.equal((await tool(scoped, "propose_question", { question: "Si può?", idempotencyKey: `mcp-${suffix}-l2` })).data.error, "permesso_negato", "osservatore: non scrive");
+  } finally {
+    await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'ls_lead'), ($1, $3, 'ls_analista')`, [ids.dossier, ids.lead, ids.analyst]);
+  }
 });

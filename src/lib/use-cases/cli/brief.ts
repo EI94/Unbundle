@@ -18,6 +18,10 @@ import { givenNames, nameTokens, redact } from "../factory/package.ts";
 
 /** Quanto può essere lungo il brief: 300 token, a circa 4 caratteri l'uno. */
 export const BRIEF_MAX_CHARS = 1200;
+
+/** Gli strati del contesto oltre al brief: `unbundle context --<strato>` e `get_case_context` con `layer`. */
+export const CONTEXT_LAYERS = ["progetto", "decisioni", "pacchetto", "domande"] as const;
+export type ContextLayer = (typeof CONTEXT_LAYERS)[number];
 export const BRIEF_MAX_TOKENS = 300;
 /** Le decisioni nel brief: le ultime valide. */
 export const BRIEF_DECISIONS = 5;
