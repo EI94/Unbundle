@@ -163,8 +163,9 @@ test("la sonda copre ogni tabella, ogni indice, ogni vincolo con nome e i tipi n
   assert.ok(FACTORY_PROBE_SQL.includes("position('''ok_decaduto''' IN pg_get_constraintdef(c.oid)) > 0"), "l'ultimo tipo, che arriva con tutti gli altri");
 });
 
-test("ensure-schema: versione 24, la 0030 dopo la 0029, non fatale, con timeout e lock, e la sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 24;/);
+test("ensure-schema: versione 24 o dopo, la 0030 dopo la 0029, non fatale, con timeout e lock, e la sonda in AND", () => {
+  const version = Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]);
+  assert.ok(version >= 24, "la 0030 arriva con la versione 24; i rilasci dopo la fanno solo crescere");
   assert.match(ensureSchema, /import \{ FACTORY_DDL, FACTORY_PROBE_SQL \} from "\.\/use-case-hub-factory-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const program = runOnce.indexOf("await runProgramDdlSafely();");

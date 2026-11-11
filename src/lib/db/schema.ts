@@ -73,6 +73,7 @@ import type {
   ProjectTopics,
   SetupTopic,
 } from "./use-case-hub-factory-ddl.ts";
+import type { AgentQuestionChannel, AgentQuestionStatus, BuildHarness, BuildOutcome, CliLoginStatus } from "./use-case-hub-cli-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
@@ -1368,6 +1369,101 @@ export const useCaseDecisions = pgTable(
     primaryKey({ name: "use_case_decisions_pkey", columns: [t.id] }),
     index("use_case_decisions_case_idx").on(t.useCaseId, t.decidedOn, t.createdAt),
     index("use_case_decisions_workspace_idx").on(t.workspaceId),
+  ]
+);
+
+// ─── La CLI e l'MCP (drizzle/0031, rilascio 8.0b) ───────────────────
+// CHECK e indici parziali stanno solo nella migrazione e in use-case-hub-cli-ddl.ts (self-heal): mai
+// drizzle-kit push.
+
+/** Un login dal browser della CLI: della CLI resta solo l'impronta del codice; 10 minuti, uso unico. */
+export const useCaseCliLogins = pgTable(
+  "use_case_cli_logins",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    deviceCodeHash: char("device_code_hash", { length: 64 }).notNull(),
+    userCode: varchar("user_code", { length: 9 }).notNull(),
+    status: varchar("status", { length: 12 }).$type<CliLoginStatus>().notNull().default("in_attesa"),
+    clientLabel: varchar("client_label", { length: 80 }).notNull(),
+    workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    tokenId: uuid("token_id").references(() => workspaceIntegrationTokens.id, { onDelete: "set null" }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    expiresAt: tz("expires_at").notNull(),
+    decidedAt: tz("decided_at"),
+    deliveredAt: tz("delivered_at"),
+  },
+  (t) => [primaryKey({ name: "use_case_cli_logins_pkey", columns: [t.id] }), index("use_case_cli_logins_created_idx").on(t.createdAt)]
+);
+
+/** Il repository e la cartella di uno use case. */
+export const useCaseRepos = pgTable(
+  "use_case_repos",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    repo: varchar("repo", { length: 140 }).notNull(),
+    folder: varchar("folder", { length: 120 }).notNull(),
+    profile: varchar("profile", { length: 10 }).$type<FactoryFramework>(),
+    vercelProject: varchar("vercel_project", { length: 100 }),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "use_case_repos_pkey", columns: [t.id] }), index("use_case_repos_workspace_idx").on(t.workspaceId)]
+);
+
+/** Una domanda per il referente proposta da un coding agent: non parte mai da sola. */
+export const useCaseAgentQuestions = pgTable(
+  "use_case_agent_questions",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    question: varchar("question", { length: 500 }).notNull(),
+    reason: varchar("reason", { length: 300 }),
+    status: varchar("status", { length: 10 }).$type<AgentQuestionStatus>().notNull().default("proposta"),
+    channel: varchar("channel", { length: 4 }).$type<AgentQuestionChannel>().notNull(),
+    authorUserId: uuid("author_user_id").references(() => users.id, { onDelete: "set null" }),
+    needId: uuid("need_id").references(() => useCaseNeeds.id, { onDelete: "set null" }),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    decidedAt: tz("decided_at"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_agent_questions_pkey", columns: [t.id] }),
+    index("use_case_agent_questions_case_idx").on(t.useCaseId, t.status, t.createdAt),
+    index("use_case_agent_questions_workspace_idx").on(t.workspaceId),
+  ]
+);
+
+/** La sintesi di una sessione di un coding agent: numeri, mai testo; nessuna colonna sulla persona. */
+export const useCaseBuildSessions = pgTable(
+  "use_case_build_sessions",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    sessionKey: char("session_key", { length: 64 }).notNull(),
+    taskRef: varchar("task_ref", { length: 12 }),
+    harness: varchar("harness", { length: 12 }).$type<BuildHarness>().notNull(),
+    model: varchar("model", { length: 80 }),
+    inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+    cacheTokens: bigint("cache_tokens", { mode: "number" }).notNull().default(0),
+    costUsd: numeric("cost_usd", { precision: 12, scale: 4 }),
+    durationSeconds: integer("duration_seconds").notNull(),
+    outcome: varchar("outcome", { length: 16 }).$type<BuildOutcome>().notNull(),
+    prUrl: varchar("pr_url", { length: 300 }),
+    branch: varchar("branch", { length: 120 }),
+    endedAt: tz("ended_at").notNull(),
+    createdAt: tz("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_build_sessions_pkey", columns: [t.id] }),
+    index("use_case_build_sessions_case_idx").on(t.useCaseId, t.endedAt),
+    index("use_case_build_sessions_workspace_idx").on(t.workspaceId),
   ]
 );
 

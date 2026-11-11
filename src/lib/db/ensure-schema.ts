@@ -12,6 +12,7 @@ import { USE_CASE_REFERENT_BENEFITS_DDL, USE_CASE_REFERENT_BENEFITS_PROBE_SQL } 
 import { USE_CASE_REFERENT_THREAD_DDL, USE_CASE_REFERENT_THREAD_PROBE_SQL } from "./use-case-hub-referent-thread-ddl.ts";
 import { PROGRAM_DDL, PROGRAM_PROBE_SQL } from "./use-case-hub-program-ddl.ts";
 import { FACTORY_DDL, FACTORY_PROBE_SQL } from "./use-case-hub-factory-ddl.ts";
+import { CLI_DDL, CLI_PROBE_SQL } from "./use-case-hub-cli-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -31,7 +32,7 @@ import { FACTORY_DDL, FACTORY_PROBE_SQL } from "./use-case-hub-factory-ddl.ts";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 24;
+const ENSURE_VERSION = 25;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -676,6 +677,11 @@ async function runOnce(): Promise<void> {
   // Dopo la 0029 (allarga ancora il CHECK dei tipi della campanella, sotto il lock della 0025). Non blocca il
   // resto dell'app: senza la 0030 la scheda «Impostazione» dice che non è ancora disponibile (`factoryStoreReady`).
   await runFactoryDdlSafely();
+
+  // «La CLI e l'MCP»: login, repository, domande dei coding agent, sintesi delle sessioni (drizzle/0031_cli.sql) ─────
+  // Dopo la 0030 (allarga ancora il CHECK dei tipi della campanella, sotto il lock della 0025). Non blocca il resto
+  // dell'app: senza la 0031 le API della CLI rispondono «non ancora disponibile» (`cliStoreReady`).
+  await runCliDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -769,6 +775,20 @@ async function runProgramDdlSafely(): Promise<void> {
 
 /** Dopo un errore della 0030, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
 let factoryDdlFailedAt: number | null = null;
+
+/** Dopo un errore della 0031, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let cliDdlFailedAt: number | null = null;
+
+/** La 0031 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. */
+async function runCliDdlSafely(): Promise<void> {
+  try {
+    await runCliDdl();
+    cliDdlFailedAt = null;
+  } catch (err) {
+    cliDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0031 self-heal failed, the app keeps serving without the CLI (apply drizzle/0031 by hand):", err);
+  }
+}
 
 /** La 0030 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. */
 async function runFactoryDdlSafely(): Promise<void> {
@@ -943,6 +963,21 @@ export async function runFactoryDdl(statements: readonly string[] = FACTORY_DDL)
   ]);
 }
 
+/**
+ * Applica il DDL della 0031 in una sola transazione, serializzata dallo stesso advisory lock del file, con
+ * `lock_timeout` di 3s come la 0030 (le tabelle sono nuove; il blocco dei tipi della campanella prende anche il
+ * lock della 0025). In produzione la applica questo self-heal, al primo avvio dopo il deploy; il file a mano resta
+ * la strada di riserva.
+ */
+export async function runCliDdl(statements: readonly string[] = CLI_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-cli-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1060,6 +1095,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(USE_CASE_REFERENT_THREAD_PROBE_SQL)}
         AND ${sql.raw(PROGRAM_PROBE_SQL)}
         AND ${sql.raw(FACTORY_PROBE_SQL)}
+        AND ${sql.raw(CLI_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1114,6 +1150,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (factoryDdlFailedAt !== null && Date.now() - factoryDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       factoryDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runFactoryDdlSafely);
+    }
+    // La 0031 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (cliDdlFailedAt !== null && Date.now() - cliDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      cliDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runCliDdlSafely);
     }
     return ensurePromise;
   }
