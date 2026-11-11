@@ -58,6 +58,10 @@ test("una sessione sbagliata ha il suo messaggio: chiave, compito, harness, toke
     [{ ramo: "ramo con spazi" }, /ramo/],
     [{ finitaIl: "ieri" }, /finitaIl/],
     [{ finitaIl: "2026-11-12T12:00:00.000Z" }, /futuro/],
+    [{ finitaIl: "0000-01-01T00:00:00Z" }, /un anno fa/],
+    [{ finitaIl: "-001000-01-01T00:00:00Z" }, /finitaIl/],
+    [{ finitaIl: "1" }, /finitaIl/],
+    [{ finitaIl: "2026-11-11" }, /finitaIl/],
     [{ costoUsd: -2 }, /costoUsd/],
   ];
   for (const [over, message] of cases) {

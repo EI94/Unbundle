@@ -58,6 +58,14 @@ WHERE id = ${cast(input.questionId, "uuid")} AND workspace_id = ${cast(input.wor
   ]);
 }
 
+/** Vero se l'esigenza con questo id c'è (nata anche se la risposta si è persa). */
+export async function agentNeedExists(executor: UcExecutor, input: { workspaceId: string; needId: string }): Promise<boolean> {
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT 1 AS ok FROM use_case_needs WHERE id = ${cast(input.needId, "uuid")} AND workspace_id = ${cast(input.workspaceId, "uuid")}`),
+  ]);
+  return rows.length > 0;
+}
+
 /** Se l'esigenza non è nata, la proposta torna da decidere. */
 export async function releaseAgentQuestion(executor: UcExecutor, input: { workspaceId: string; questionId: string }): Promise<void> {
   await executor.batch([

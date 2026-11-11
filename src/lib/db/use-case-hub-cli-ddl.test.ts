@@ -136,8 +136,8 @@ test("le regole stanno anche nel database: un codice vivo è unico, il login con
   assert.doesNotMatch(sessions, /user_id|author|actor|proposed|submitted/, "nessuna colonna sulla persona");
   assert.match(sessions, /CONSTRAINT use_case_build_sessions_unique UNIQUE \(use_case_id, session_key\)/);
   assert.ok(sessions.includes("pr_url IS NULL OR pr_url ~ '^https://github\\.com/"), "la PR solo su GitHub");
-  // Niente colonne sul proponente (art. 15.4): chi ha proposto una domanda è il suo autore, come per le decisioni.
-  assert.doesNotMatch(tableOf("use_case_agent_questions"), /proposed_by|submitted_by/);
+  // Niente colonne sul proponente (art. 15.4): di una domanda proposta resta solo chi l'ha decisa, mai chi l'ha proposta.
+  assert.doesNotMatch(tableOf("use_case_agent_questions"), /proposed_by|submitted_by|author|actor/);
 });
 
 test("ogni tabella con un caso si cancella con il suo workspace e con il suo use case", () => {

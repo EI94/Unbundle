@@ -86,6 +86,9 @@ const TABLE_FILES = new Set([
   // (Rilascio 8.0b) Una domanda proposta da un coding agent, aggiunta a «Cosa serve», ricorda l'esigenza che ha
   // creato (solo l'id, chiave esterna della 0031).
   "src/lib/db/use-case-hub-cli-ddl.ts",
+  // (Rilascio 8.0b) «Aggiungi a Cosa serve» di una proposta: se l'esigenza con l'id riservato c'è già (una ripresa
+  // dopo una risposta persa). Solo l'id, mai un testo.
+  "src/lib/db/queries/use-case-agent-questions.ts",
 ]);
 
 const READS = /\b(listWorkspaceNeeds|getWorkspaceNeed|needUseCaseRefs)\b|queries\/use-case-needs/;

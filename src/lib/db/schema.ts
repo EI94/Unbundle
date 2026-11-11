@@ -1424,7 +1424,6 @@ export const useCaseAgentQuestions = pgTable(
     reason: varchar("reason", { length: 300 }),
     status: varchar("status", { length: 10 }).$type<AgentQuestionStatus>().notNull().default("proposta"),
     channel: varchar("channel", { length: 4 }).$type<AgentQuestionChannel>().notNull(),
-    authorUserId: uuid("author_user_id").references(() => users.id, { onDelete: "set null" }),
     needId: uuid("need_id").references(() => useCaseNeeds.id, { onDelete: "set null" }),
     decidedByUserId: uuid("decided_by_user_id").references(() => users.id, { onDelete: "set null" }),
     decidedAt: tz("decided_at"),

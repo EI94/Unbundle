@@ -225,8 +225,9 @@ test("decisioni, domande proposte, repository, sessioni: scrive il team; la camp
   for (const person of Object.values(NAME)) assert.ok(!brief.includes(person) && !brief.includes(person.split(" ")[0]), person);
   const asked = await post("domande", tokens.analyst!, { caso: "PX-0042", domanda: "Chi approva le eccezioni di prezzo?", perche: "Serve per la regola 4" });
   assert.equal(asked.status, 200);
-  const [question] = await q(`SELECT status, channel, author_user_id FROM use_case_agent_questions WHERE id = $1`, [asked.json.id]);
-  assert.deepEqual([question.status, question.channel, question.author_user_id], ["proposta", "cli", ids.analyst]);
+  const [question] = await q(`SELECT * FROM use_case_agent_questions WHERE id = $1`, [asked.json.id]);
+  assert.deepEqual([question.status, question.channel], ["proposta", "cli"]);
+  assert.ok(!Object.keys(question).some((k) => /author|actor|proposed|submitted/.test(k)), "mai chi l'ha proposta (art. 15.4)");
   const notice = await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'domanda_agente'`, [ids.useCase]);
   assert.deepEqual(notice.map((r) => r.recipient_user_id), [ids.lead], "al responsabile, non a chi l'ha proposta");
   assert.match(String((await call("context?caso=PX-0042&strato=domande", { token: tokens.analyst })).json.testo), /Chi approva le eccezioni di prezzo\?/);
@@ -248,6 +249,13 @@ test("il responsabile del cliente legge e non scrive; chi non è nel team non ve
   tokens.owner = await tokenFor("owner");
   tokens.outsider = await tokenFor("outsider");
   assert.equal((await call("context?caso=PX-0042", { token: tokens.owner })).status, 200);
+  // Come nella scheda: chi non vede «Cosa serve» non vede nemmeno le proposte dei coding agent.
+  const domande = String((await call("context?caso=PX-0042&strato=domande", { token: tokens.owner })).json.testo);
+  assert.match(domande, /Proposte dei coding agent: le vede chi valuta lo use case\./);
+  assert.ok(!domande.includes("Chi approva le eccezioni di prezzo?"));
+  assert.doesNotMatch(String((await call("context?caso=PX-0042", { token: tokens.owner })).json.testo), /proposte? da un coding agent/);
+  assert.equal((await call("setup?caso=PX-0042", { token: tokens.owner })).status, 403, "la guida dell'impostazione è del team che scrive");
+  assert.equal((await call("context?caso=PX-0043", { token: tokens.owner })).status, 404, "un codice senza dossier non si rivela a chi non vede tutti i codici");
   const denied = await post("decisioni", tokens.owner, { caso: "PX-0042", argomento: "Prova", decisione: "Non dovrebbe passare" });
   assert.equal(denied.status, 403);
   assert.equal((await call("pacchetto?caso=PX-0042", { token: tokens.owner })).status, 403);
@@ -267,10 +275,22 @@ test("il token di un caso solo: lo crea un token di tutti i casi; apre solo quel
   assert.equal((await call("whoami", { token: scoped })).json.caso, "PX-0042");
   assert.equal((await call("context?caso=PX-0043", { token: scoped })).status, 404, "un altro caso no");
   assert.equal((await post("token-caso", scoped, { caso: "PX-0042" })).status, 403, "non si moltiplica");
+  assert.equal((await post("repository", scoped, { caso: "PX-0042", repository: "Prova/altro-repo", cartella: "casi/px-0042" })).json.errore && (await post("repository", scoped, { caso: "PX-0042", repository: "Prova/altro-repo", cartella: "casi/px-0042" })).status, 403, "il repository no");
+  assert.deepEqual((await call("setup?caso=PX-0042", { token: scoped })).json.famiglia, [], "le scelte degli altri casi no");
   assert.equal((await post("token-caso", tokens.owner!, { caso: "PX-0042" })).status, 403, "solo il team di Lateral Space");
   assert.deepEqual((await post("logout", scoped, {})).json, { revocato: true });
   assert.equal((await call("whoami", { token: scoped })).status, 401);
   assert.equal((await call("whoami", { token: tokens.lead })).status, 200, "il token di tutti i casi resta");
+  // Chi è uscito dal workspace revoca lo stesso il suo token: se rientra, il vecchio token non torna a valere.
+  const leaving = await tokenFor("outsider");
+  await q(`DELETE FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.outsider]);
+  try {
+    assert.equal((await call("whoami", { token: leaving })).status, 403);
+    assert.deepEqual((await post("logout", leaving, {})).json, { revocato: true });
+  } finally {
+    await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'contributor'::member_role)`, [ids.ws, ids.outsider]);
+  }
+  assert.equal((await call("whoami", { token: leaving })).status, 401);
 });
 
 const sessionOf = (person: Person) => ({ user: { id: ids[person], email: EMAIL[person], emailVerified: true, name: NAME[person], image: null } });
@@ -378,8 +398,8 @@ test("l'MCP del caso: solo il token di un caso; contesto e decisioni; scritture 
   // La domanda proposta: dal canale mcp, da decidere in Unbundle.
   const asked = await tool(scoped, "propose_question", { question: "Le quotazioni del weekend partono lunedì?", reason: "Per il calendario degli invii", idempotencyKey: `mcp-${suffix}-q1` });
   assert.equal(asked.isError, false, asked.text);
-  const [question] = await q(`SELECT channel, status, author_user_id FROM use_case_agent_questions WHERE id = $1`, [asked.data.id]);
-  assert.deepEqual([question.channel, question.status, question.author_user_id], ["mcp", "proposta", ids.lead]);
+  const [question] = await q(`SELECT channel, status FROM use_case_agent_questions WHERE id = $1`, [asked.data.id]);
+  assert.deepEqual([question.channel, question.status], ["mcp", "proposta"]);
 
   // La sintesi della sessione: solo l'impronta dell'id, una volta sola.
   const session = { sessionId: `sessione-${suffix}-mcp`, harness: "codex", durationSeconds: 900, outcome: "commit", endedAt: new Date().toISOString(), outputTokens: 4000 };
@@ -411,5 +431,37 @@ test("l'MCP del caso: solo il token di un caso; contesto e decisioni; scritture 
     assert.equal((await tool(scoped, "propose_question", { question: "Si può?", idempotencyKey: `mcp-${suffix}-l2` })).data.error, "permesso_negato", "osservatore: non scrive");
   } finally {
     await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'ls_lead'), ($1, $3, 'ls_analista')`, [ids.dossier, ids.lead, ids.analyst]);
+  }
+});
+
+test("riprese e tetti: la stessa decisione o domanda con l'id riservato si scrive una volta; le proposte aperte non passano 30 nemmeno insieme; senza «Cosa serve» niente proposte", opts, async () => {
+  const target = { workspaceId: ids.ws, useCaseId: ids.useCase };
+  const actor = { kind: "persona" as const, userId: ids.analyst, roles: ["ls_analista" as const] };
+  const id = randomUUID();
+  const d1 = await factory.addTeamDecision(exec, actor, target, { topic: "Ripresa", choice: "Una volta sola", id });
+  const d2 = await factory.addTeamDecision(exec, actor, target, { topic: "Ripresa", choice: "Una volta sola", id });
+  assert.deepEqual([d1.ok && d1.value.id, d2.ok && d2.value.id], [id, id]);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM use_case_decisions WHERE topic = 'Ripresa' AND use_case_id = $1`, [ids.useCase]))[0].n, 1);
+  const qid = randomUUID();
+  const before = (await q(`SELECT count(*)::int AS n FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'domanda_agente'`, [ids.useCase]))[0].n;
+  const q1 = await factory.proposeAgentQuestion(exec, actor, target, { question: "Domanda della ripresa?", channel: "cli", id: qid });
+  const q2 = await factory.proposeAgentQuestion(exec, actor, target, { question: "Domanda della ripresa?", channel: "cli", id: qid });
+  assert.deepEqual([q1.ok && q1.value.id, q2.ok && q2.value.id], [qid, qid]);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM use_case_agent_questions WHERE id = $1`, [qid]))[0].n, 1);
+  const afterNotices = (await q(`SELECT count(*)::int AS n FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'domanda_agente'`, [ids.useCase]))[0].n;
+  assert.ok(Number(afterNotices) - Number(before) <= 1, "la campanella una volta sola");
+  // Quaranta proposte insieme: ne restano aperte al massimo 30.
+  const results = await Promise.all(Array.from({ length: 40 }, (_, i) => factory.proposeAgentQuestion(exec, actor, target, { question: `Proposta insieme numero ${i + 1}?`, channel: "mcp" })));
+  const open = (await q(`SELECT count(*)::int AS n FROM use_case_agent_questions WHERE use_case_id = $1 AND status = 'proposta'`, [ids.useCase]))[0].n;
+  assert.equal(open, 30);
+  assert.ok(results.some((r) => !r.ok && r.code === "troppe_proposte"));
+  // Dove «Cosa serve» non c'è, la CLI non accetta proposte.
+  const saved = process.env.USE_CASE_HUB_WORKSPACES;
+  process.env.USE_CASE_HUB_WORKSPACES = randomUUID();
+  try {
+    const off = await post("domande", tokens.analyst!, { caso: "PX-0042", domanda: "Fuori dall'area?" });
+    assert.deepEqual([off.status, (off.json.errore as Row).codice], [409, "proposte_non_disponibili"]);
+  } finally {
+    process.env.USE_CASE_HUB_WORKSPACES = saved;
   }
 });

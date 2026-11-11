@@ -734,12 +734,14 @@ RETURNING version`),
 
 // ─── Le decisioni del team ───────────────────────────────────────────
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** Una decisione del team (`unbundle decide`, o dalla scheda). Si aggiunge, non si riscrive. */
 export async function addTeamDecision(
   executor: UcExecutor,
   actor: FactoryActor,
   target: FactoryTarget,
-  input: { topic: unknown; choice: unknown; reason?: unknown; rejected?: unknown; topicKey?: unknown; decidedOn?: unknown },
+  input: { topic: unknown; choice: unknown; reason?: unknown; rejected?: unknown; topicKey?: unknown; decidedOn?: unknown; id?: string | null },
   now = new Date(),
 ): Promise<Result<{ id: string }>> {
   if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
@@ -757,18 +759,24 @@ export async function addTeamDecision(
   const topicKey = input.topicKey === undefined || input.topicKey === null ? null : SETUP_TOPICS.find((t) => t === input.topicKey);
   if (topicKey === undefined) return fail("dati_non_validi", "Argomento dell'impostazione non valido.");
   const day = typeof input.decidedOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.decidedOn) && input.decidedOn <= romeToday(now) ? input.decidedOn : romeToday(now);
+  const id = input.id ?? null;
+  if (id !== null && !UUID_RE.test(id)) return fail("dati_non_validi", "Id non valido.");
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
-  const [rows] = await executor.batch([
-    toStatement(ucSql`INSERT INTO use_case_decisions (use_case_id, workspace_id, decided_on, topic_key, topic, choice, reason, rejected, source, project_version, author_user_id, author_role)
-SELECT u.id, u.workspace_id, ${cast(day, "date")}, ${cast(topicKey, "text")}, ${cast(topic.value, "text")}, ${cast(choice.value, "text")}, ${cast(reason.value, "text")},
+  // Con l'id riservato (CLI e MCP del caso), una ripresa dopo un esito incerto ritrova la decisione già scritta.
+  const [rows, existing] = await executor.batch([
+    toStatement(ucSql`INSERT INTO use_case_decisions (id, use_case_id, workspace_id, decided_on, topic_key, topic, choice, reason, rejected, source, project_version, author_user_id, author_role)
+SELECT coalesce(${cast(id, "uuid")}, gen_random_uuid()), u.id, u.workspace_id, ${cast(day, "date")}, ${cast(topicKey, "text")}, ${cast(topic.value, "text")}, ${cast(choice.value, "text")}, ${cast(reason.value, "text")},
        ${cast(rejected.value, "text")}, ${cast(actor.kind === "script" ? "importata" : "team", "text")},
        (SELECT max(version) FROM use_case_projects p WHERE p.use_case_id = u.id), ${cast(userOf(actor), "uuid")}, ${cast(actor.kind === "script" ? actor.authorRole : null, "text")}
 FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws}
+ON CONFLICT (id) DO NOTHING
 RETURNING id`),
+    toStatement(ucSql`SELECT id FROM use_case_decisions WHERE id = ${cast(id, "uuid")} AND use_case_id = ${uc} AND workspace_id = ${ws}`),
   ]);
-  if (!rows[0]) return fail("non_trovato", "Use case non trovato.");
-  return ok({ id: String(rows[0].id) });
+  if (rows[0]) return ok({ id: String(rows[0].id) });
+  if (existing[0]) return ok({ id: String(existing[0].id) });
+  return fail("non_trovato", "Use case non trovato.");
 }
 
 // ─── La CLI e l'MCP del caso (rilascio 8.0b) ─────────────────────────
@@ -785,7 +793,7 @@ export async function proposeAgentQuestion(
   executor: UcExecutor,
   actor: FactoryActor,
   target: FactoryTarget,
-  input: { question: unknown; reason?: unknown; channel: AgentQuestionChannel },
+  input: { question: unknown; reason?: unknown; channel: AgentQuestionChannel; id?: string | null },
   now = new Date(),
 ): Promise<Result<{ id: string }>> {
   if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
@@ -795,23 +803,34 @@ export async function proposeAgentQuestion(
   const reason = teamText(input.reason, CLI_LIMITS.questionReason, "Il perché");
   if (!reason.ok) return reason;
   if (!AGENT_QUESTION_CHANNELS.includes(input.channel)) return fail("dati_non_validi", "Canale non valido.");
+  const id = input.id ?? null;
+  if (id !== null && !UUID_RE.test(id)) return fail("dati_non_validi", "Id non valido.");
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
-  const [open] = await executor.batch([toStatement(ucSql`SELECT count(*)::int AS n FROM use_case_agent_questions WHERE use_case_id = ${uc} AND workspace_id = ${ws} AND status = 'proposta'`)]);
-  if (Number(open[0]?.n ?? 0) >= AGENT_QUESTIONS_OPEN_MAX) {
-    return fail("troppe_proposte", `Ci sono già ${AGENT_QUESTIONS_OPEN_MAX} domande proposte da decidere: aspetta che il team le guardi.`);
-  }
+  const max = cast(AGENT_QUESTIONS_OPEN_MAX, "int");
+  // Una sola transazione, in fila per use case (il lock): il tetto delle proposte aperte vale anche con richieste
+  // insieme. Con l'id riservato alla presa in carico, una ripresa ritrova la domanda scritta invece di rifarla; la
+  // campanella e l'e-mail partono solo per una riga nata adesso.
   const inserted = ucSql`EXISTS (SELECT 1 FROM use_case_agent_questions WHERE use_case_id = ${uc} AND created_at = now())`;
-  const [rows] = await executor.batch([
-    toStatement(ucSql`INSERT INTO use_case_agent_questions (use_case_id, workspace_id, question, reason, channel, author_user_id)
-SELECT u.id, u.workspace_id, ${cast(question.value, "text")}, ${cast(reason.value, "text")}, ${cast(input.channel, "text")}, ${cast(userOf(actor), "uuid")}
+  const [, open, rows, existing] = await executor.batch([
+    toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:agent-questions:' || ${cast(target.useCaseId, "text")}))`),
+    toStatement(ucSql`SELECT count(*)::int AS n FROM use_case_agent_questions WHERE use_case_id = ${uc} AND workspace_id = ${ws} AND status = 'proposta'`),
+    toStatement(ucSql`INSERT INTO use_case_agent_questions (id, use_case_id, workspace_id, question, reason, channel)
+SELECT coalesce(${cast(id, "uuid")}, gen_random_uuid()), u.id, u.workspace_id, ${cast(question.value, "text")}, ${cast(reason.value, "text")}, ${cast(input.channel, "text")}
 FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws}
+  AND (SELECT count(*) FROM use_case_agent_questions q WHERE q.use_case_id = u.id AND q.status = 'proposta') < ${max}
+ON CONFLICT (id) DO NOTHING
 RETURNING id`),
+    toStatement(ucSql`SELECT id FROM use_case_agent_questions WHERE id = ${cast(id, "uuid")} AND use_case_id = ${uc} AND workspace_id = ${ws}`),
     noticeSql(target, "domanda_agente", actor, now, inserted),
     emailSql(target, "domanda_agente", actor, now, 0, inserted),
   ]);
-  if (!rows[0]) return fail("non_trovato", "Use case non trovato.");
-  return ok({ id: String(rows[0].id) });
+  if (rows[0]) return ok({ id: String(rows[0].id) });
+  if (existing[0]) return ok({ id: String(existing[0].id) });
+  if (Number(open[0]?.n ?? 0) >= AGENT_QUESTIONS_OPEN_MAX) {
+    return fail("troppe_proposte", `Ci sono già ${AGENT_QUESTIONS_OPEN_MAX} domande proposte da decidere: aspetta che il team le guardi.`);
+  }
+  return fail("non_trovato", "Use case non trovato.");
 }
 
 /** `unbundle repo create`: registra (o aggiorna) il repository e la cartella dello use case. */
@@ -856,7 +875,8 @@ RETURNING id`),
 export interface CliCaseExtras {
   /** Le esigenze di «Cosa serve» ancora aperte, con lo stato; null se chi chiede non le vede. */
   openNeeds: { title: string; status: string }[] | null;
-  proposals: { id: string; question: string; reason: string | null; createdAt: string }[];
+  /** Le domande proposte dai coding agent da decidere; null se chi chiede non vede «Cosa serve» (come nella scheda). */
+  proposals: { id: string; question: string; reason: string | null; createdAt: string }[] | null;
   repos: { repo: string; folder: string; profile: string | null; vercelProject: string | null }[];
 }
 
@@ -869,8 +889,10 @@ export async function cliCaseExtras(executor: UcExecutor, target: FactoryTarget,
       ? toStatement(ucSql`SELECT n.title, n.type, n.status FROM use_case_needs n JOIN use_case_need_links l ON l.need_id = n.id
 WHERE l.use_case_id = ${uc} AND n.workspace_id = ${ws} AND n.archived_at IS NULL ORDER BY n.type, n.sort_order, n.created_at, n.id LIMIT 80`)
       : toStatement(ucSql`SELECT NULL AS none WHERE false`),
-    toStatement(ucSql`SELECT id, question, reason, created_at FROM use_case_agent_questions WHERE use_case_id = ${uc} AND workspace_id = ${ws} AND status = 'proposta'
-ORDER BY created_at DESC LIMIT ${cast(AGENT_QUESTIONS_OPEN_MAX, "int")}`),
+    opts.canSeeNeeds
+      ? toStatement(ucSql`SELECT id, question, reason, created_at FROM use_case_agent_questions WHERE use_case_id = ${uc} AND workspace_id = ${ws} AND status = 'proposta'
+ORDER BY created_at DESC LIMIT ${cast(AGENT_QUESTIONS_OPEN_MAX, "int")}`)
+      : toStatement(ucSql`SELECT NULL AS none WHERE false`),
     toStatement(ucSql`SELECT repo, folder, profile, vercel_project FROM use_case_repos WHERE use_case_id = ${uc} AND workspace_id = ${ws} ORDER BY created_at`),
   ]);
   const label = (type: unknown, status: unknown) => needStatusView(String(type) as NeedType, String(status) as NeedStatus).label.toLowerCase();
@@ -878,22 +900,25 @@ ORDER BY created_at DESC LIMIT ${cast(AGENT_QUESTIONS_OPEN_MAX, "int")}`),
     openNeeds: opts.canSeeNeeds
       ? needs.filter((r) => !isNeedDone(String(r.type) as NeedType, String(r.status) as NeedStatus)).map((r) => ({ title: String(r.title), status: label(r.type, r.status) }))
       : null,
-    proposals: proposals.map((r) => ({ id: String(r.id), question: String(r.question), reason: text(r.reason), createdAt: iso(r.created_at) ?? "" })),
+    proposals: opts.canSeeNeeds ? proposals.map((r) => ({ id: String(r.id), question: String(r.question), reason: text(r.reason), createdAt: iso(r.created_at) ?? "" })) : null,
     repos: repos.map((r) => ({ repo: String(r.repo), folder: String(r.folder), profile: text(r.profile), vercelProject: text(r.vercel_project) })),
   };
 }
 
 /**
  * Le scelte approvate degli altri casi della stessa famiglia (stesso repository), per l'impostazione guidata: solo
- * il codice e la scelta di ogni argomento, mai il perché. Senza repository registrato, nessuna.
+ * il codice e la scelta di ogni argomento, mai il perché. Solo dei casi dove anche questa persona è nel team: il
+ * progetto di un caso lo legge il suo team. Senza repository registrato, nessuna.
  */
-export async function familyChoices(executor: UcExecutor, target: FactoryTarget): Promise<{ code: string; topics: ProjectTopics }[]> {
+export async function familyChoices(executor: UcExecutor, target: FactoryTarget, userId: string): Promise<{ code: string; topics: ProjectTopics }[]> {
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT DISTINCT ON (u.id) u.code, p.topics FROM use_case_repos r
 JOIN use_case_repos r2 ON r2.repo = r.repo AND r2.workspace_id = r.workspace_id AND r2.use_case_id <> r.use_case_id
 JOIN use_cases u ON u.id = r2.use_case_id AND u.workspace_id = r2.workspace_id
 JOIN use_case_projects p ON p.use_case_id = u.id AND p.status = 'approvato'
 WHERE r.use_case_id = ${cast(target.useCaseId, "uuid")} AND r.workspace_id = ${cast(target.workspaceId, "uuid")}
+  AND EXISTS (SELECT 1 FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id
+    WHERE c.portfolio_use_case_id = u.id AND c.workspace_id = u.workspace_id AND m.user_id = ${cast(userId, "uuid")})
 ORDER BY u.id LIMIT 20`),
   ]);
   return rows.map((r) => ({ code: String(r.code ?? ""), topics: (r.topics ?? {}) as ProjectTopics }));

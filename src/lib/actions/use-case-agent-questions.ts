@@ -6,11 +6,12 @@
  * nel servizio). «Aggiungi» crea un requisito «da chiedere» del cliente, collegato allo use case, con lo stesso
  * servizio della pagina (`createNeed`, canale `pagina`): al referente lo manda poi una persona, come sempre.
  */
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
 import { cliStoreReady } from "@/lib/db/queries/use-case-cli-auth";
-import { claimAgentQuestion, linkAgentQuestionNeed, needFromProposal, releaseAgentQuestion } from "@/lib/db/queries/use-case-agent-questions";
+import { agentNeedExists, claimAgentQuestion, linkAgentQuestionNeed, needFromProposal, releaseAgentQuestion } from "@/lib/db/queries/use-case-agent-questions";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { createNeed } from "@/lib/use-cases/needs-service";
@@ -52,18 +53,21 @@ export async function addAgentQuestionAction(workspaceId: string, useCaseId: str
     refresh(workspaceId, useCaseId);
     return GONE;
   }
-  let created: Awaited<ReturnType<typeof createNeed>>;
+  // L'id dell'esigenza si decide qui: se l'esigenza nasce ma la risposta si perde, la si ritrova invece di rifarla.
+  const needId = randomUUID();
+  let created: Awaited<ReturnType<typeof createNeed>> | null = null;
+  let thrown: unknown = null;
   try {
-    created = await createNeed(ctx, needFromProposal(claimed), { useCaseIds: [useCaseId] });
+    created = await createNeed(ctx, needFromProposal(claimed), { useCaseIds: [useCaseId], id: needId });
   } catch (error) {
-    await releaseAgentQuestion(executor, { workspaceId, questionId });
-    throw error;
+    thrown = error;
   }
-  if (!created.ok) {
+  if (!created?.ok && !(await agentNeedExists(executor, { workspaceId, needId }))) {
     await releaseAgentQuestion(executor, { workspaceId, questionId });
-    return { ok: false, message: created.message ?? "Non è stato possibile aggiungerla: riprova." };
+    if (thrown) throw thrown;
+    return { ok: false, message: (created && !created.ok ? created.message : null) ?? "Non è stato possibile aggiungerla: riprova." };
   }
-  await linkAgentQuestionNeed(executor, { workspaceId, questionId, needId: created.value.id });
+  await linkAgentQuestionNeed(executor, { workspaceId, questionId, needId });
   refresh(workspaceId, useCaseId);
   return { ok: true, message: "Aggiunta a «Cosa serve»: la chiedi al referente quando vuoi." };
 }

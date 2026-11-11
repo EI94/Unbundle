@@ -222,7 +222,8 @@ export const SETUP_GUIDE: Readonly<Record<SetupTopic, string>> = Object.freeze({
 export function composeQuestionsLayer(input: {
   code: string;
   openNeeds: { title: string; status: string }[] | null;
-  proposals: { question: string; reason: string | null; createdAt: string }[];
+  /** null: chi chiede non vede «Cosa serve», e nemmeno le proposte (come nella scheda). */
+  proposals: { question: string; reason: string | null; createdAt: string }[] | null;
   namesToHide: readonly string[];
 }): string {
   const hide = hider(input.namesToHide);
@@ -232,6 +233,10 @@ export function composeQuestionsLayer(input: {
   else {
     lines.push(`«Cosa serve», aperte (${input.openNeeds.length}):`);
     for (const n of input.openNeeds) lines.push(`- ${oneLine(n.title)} (${n.status})`);
+  }
+  if (input.proposals === null) {
+    lines.push("Proposte dei coding agent: le vede chi valuta lo use case.");
+    return hide(lines.join("\n"));
   }
   if (!input.proposals.length) lines.push("Proposte dei coding agent: nessuna da decidere.");
   else {

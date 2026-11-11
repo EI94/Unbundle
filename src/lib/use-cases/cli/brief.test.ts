@@ -2,7 +2,7 @@
 // mai un nome, mostra solo le decisioni che valgono e il prossimo passo giusto per ogni stato del progetto.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BRIEF_MAX_CHARS, BRIEF_MAX_TOKENS, composeBrief, composeDecisionsLayer, composeProjectLayer, estimateTokens, nextStep, SETUP_GUIDE, type BriefInput, type BriefProject } from "./brief.ts";
+import { BRIEF_MAX_CHARS, BRIEF_MAX_TOKENS, composeBrief, composeDecisionsLayer, composeProjectLayer, composeQuestionsLayer, estimateTokens, nextStep, SETUP_GUIDE, type BriefInput, type BriefProject } from "./brief.ts";
 import { SETUP_TOPICS } from "../../db/use-case-hub-factory-ddl.ts";
 
 const topics = (n: number) => Object.fromEntries(SETUP_TOPICS.slice(0, n).map((t) => [t, { scelta: `Scelta per ${t}`, perche: "Il motivo", alternativa: null }]));
@@ -114,4 +114,13 @@ test("lo strato progetto: i 10 argomenti nell'ordine, «Da scegliere» dove manc
   assert.match(text, /Costruzione: circa 90 ore\. Esercizio: circa 60 € al mese\./);
   assert.equal(composeProjectLayer(input({ approved: null })), "PX-0001: il progetto non è ancora impostato.");
   for (const topic of SETUP_TOPICS) assert.ok(SETUP_GUIDE[topic].endsWith("."), topic);
+});
+
+test("lo strato domande: le proposte a chi vede «Cosa serve», senza nomi; per gli altri solo che ci sono altrove", () => {
+  const proposals = [{ question: "Le richieste di Olga vanno prima?", reason: null, createdAt: "2026-11-11T10:00:00.000Z" }];
+  const seen = composeQuestionsLayer({ code: "PX-0042", openNeeds: [], proposals, namesToHide: ["Olga Cliente"] });
+  assert.match(seen, /Proposte dei coding agent da decidere \(1\):\n- 11\/11\/2026 · Le richieste di una persona vanno prima\?/);
+  assert.match(seen, /unbundle ask PX-0042/);
+  const hidden = composeQuestionsLayer({ code: "PX-0042", openNeeds: null, proposals: null, namesToHide: [] });
+  assert.equal(hidden, "PX-0042 · domande\n«Cosa serve»: le esigenze le vede chi valuta lo use case.\nProposte dei coding agent: le vede chi valuta lo use case.");
 });

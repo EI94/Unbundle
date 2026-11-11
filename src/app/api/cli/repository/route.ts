@@ -14,6 +14,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!opened.ok) return opened.response;
   const body = await readCliBody(request);
   if (!body.ok) return body.response;
+  if (opened.value.principal.caseUseCaseId !== null) {
+    return cliError(403, "token_caso", "Il repository si registra con «unbundle repo create», dal login della persona, non con il token di un caso solo.");
+  }
   const resolved = await resolveCliCase(opened.value, body.body.caso);
   if (!resolved.ok) return resolved.response;
   const c = resolved.value;

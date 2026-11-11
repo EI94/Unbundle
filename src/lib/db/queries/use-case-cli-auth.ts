@@ -60,6 +60,9 @@ export async function startCliLogin(
     const userCode = newUserCode();
     try {
       await executor.batch([
+        // La pulizia: un codice scaduto lascia libero il suo codice da leggere; dopo una settimana la riga sparisce.
+        toStatement(ucSql`UPDATE use_case_cli_logins SET status = 'scaduto' WHERE status IN ('in_attesa', 'confermato') AND expires_at <= now()`),
+        toStatement(ucSql`DELETE FROM use_case_cli_logins WHERE expires_at < now() - make_interval(days => 7)`),
         toStatement(ucSql`INSERT INTO use_case_cli_logins (device_code_hash, user_code, client_label, expires_at)
 VALUES (${cast(hashSecret(deviceCode), "text")}, ${cast(userCode, "text")}, ${cast(label, "text")}, now() + make_interval(mins => ${cast(CLI_LIMITS.loginMinutes, "int")}))`),
       ]);

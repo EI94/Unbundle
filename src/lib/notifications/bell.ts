@@ -238,10 +238,10 @@ const FACTORY_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set(FACTORY_BELL_KINDS
 
 /**
  * (8.0b) I tipi che arrivano per il ruolo nel team del caso, non per il ruolo nel workspace: quelli dell'Agent
- * Factory più `domanda_agente`. Li vede anche chi non rivede il portafoglio. `domanda_agente` porta a «Cosa serve»,
- * dove si decide.
+ * Factory. Li vede anche chi non rivede il portafoglio. `domanda_agente` no: porta a «Cosa serve», che vede e decide
+ * solo chi rivede il portafoglio, come la sezione delle proposte.
  */
-export const CASE_TEAM_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze([...FACTORY_BELL_KINDS, "domanda_agente"]);
+export const CASE_TEAM_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze([...FACTORY_BELL_KINDS]);
 
 /**
  * Dove porta una notifica di use case: «Pronto da avviare» alla scheda a `?capitolo=realizzazione`

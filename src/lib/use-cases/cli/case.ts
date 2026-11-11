@@ -12,7 +12,7 @@ import "server-only";
  *   la stessa chiave con un corpo diverso è un conflitto. Un errore certo libera la chiave; uno incerto la lascia
  *   da riprendere.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   claimTeamMcpRequest,
   completeTeamMcpRequest,
@@ -30,6 +30,7 @@ import type { Result } from "@/lib/uc/types";
 import { canReadFactory, canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { decideExistingTeamRequest } from "@/lib/use-cases/mcp/idempotency";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
+import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { cliError, cliJson, type OpenedCli } from "./route-kit";
 
 export interface CliCase {
@@ -61,7 +62,13 @@ LIMIT 1`),
   ]);
   const row = rows[0];
   if (!row || (principal.caseUseCaseId !== null && principal.caseUseCaseId !== String(row.id))) return { ok: false, response: cliError(404, "non_trovato", NOT_FOUND) };
-  if (!row.case_id) return { ok: false, response: cliError(409, "senza_dossier", "Lo use case non ha ancora un dossier: si avvia dalla sua pagina in Unbundle.") };
+  const viewer = viewerFromSession({ id: principal.userId, email: row.email ? String(row.email) : null, emailVerified: row.email_verified === true }, access.role);
+  const abilities = abilitiesForUseCase(viewer);
+  if (!row.case_id) {
+    // Che il codice esista lo dice solo a chi vede tutti i codici nella pagina: per gli altri è «non trovato».
+    if (!abilities.canSeeAllCodes) return { ok: false, response: cliError(404, "non_trovato", NOT_FOUND) };
+    return { ok: false, response: cliError(409, "senza_dossier", "Lo use case non ha ancora un dossier: si avvia dalla sua pagina in Unbundle.") };
+  }
   let caseAccess: CaseAccess | null;
   try {
     caseAccess = await resolveCaseAccess({ workspaceId: principal.workspaceId, caseId: String(row.case_id), userId: principal.userId, workspaceRole: access.role });
@@ -70,7 +77,6 @@ LIMIT 1`),
     throw error;
   }
   if (!caseAccess || !canReadFactory(caseAccess.roles)) return { ok: false, response: cliError(404, "non_trovato", NOT_FOUND) };
-  const viewer = viewerFromSession({ id: principal.userId, email: row.email ? String(row.email) : null, emailVerified: row.email_verified === true }, access.role);
   return {
     ok: true,
     value: {
@@ -79,7 +85,7 @@ LIMIT 1`),
       access: caseAccess,
       actor: { kind: "persona", userId: principal.userId, roles: caseAccess.roles },
       target: { workspaceId: principal.workspaceId, useCaseId: String(row.id) },
-      canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds,
+      canSeeNeeds: abilities.canSeeNeeds,
     },
   };
 }
@@ -98,6 +104,17 @@ export function cliWriteDenial(c: CliCase): CliFailure | null {
   if (c.access.status === "sospeso") return { status: 409, code: "caso_sospeso", message: "Il caso è in pausa: si riprende da Impostazioni del caso." };
   if (c.access.readOnly || !canWriteFactory(c.access.roles)) {
     return { status: 403, code: "permesso_negato", message: "Nel team del caso non hai un ruolo che scrive: serve responsabile, analista o sviluppatore di Lateral Space." };
+  }
+  return null;
+}
+
+/**
+ * Perché non si può proporre una domanda; null se si può. Le proposte si decidono in «Cosa serve»: dove la sezione
+ * non c'è (workspace fuori dall'area), nessuno le vedrebbe.
+ */
+export function proposalsDenial(c: CliCase): CliFailure | null {
+  if (!isUseCaseHubWorkspace(c.target.workspaceId)) {
+    return { status: 409, code: "proposte_non_disponibili", message: "In questo workspace «Cosa serve» non c'è ancora: la domanda chiedila al team." };
   }
   return null;
 }
@@ -154,7 +171,8 @@ export async function executeCliWrite<T extends Record<string, unknown>>(
   idempotencyKey: string,
   tool: string,
   body: unknown,
-  execute: () => Promise<Result<T>>,
+  execute: (reservedId: string | null) => Promise<Result<T>>,
+  opts: { reserveId?: boolean } = {},
 ): Promise<CliWriteOutcome<T>> {
   if (!CLI_IDEMPOTENCY_KEY.test(idempotencyKey)) return { ok: false, status: 400, code: "idempotenza", message: "Serve una chiave di idempotenza di 8-128 caratteri (lettere, cifre, - e _)." };
   const key: TeamRequestKey = { workspaceId: opened.principal.workspaceId, principalKey: `cli:${opened.principal.tokenId}`, idempotencyKey };
@@ -166,13 +184,14 @@ export async function executeCliWrite<T extends Record<string, unknown>>(
     if (decision.kind === "conflict") return { ok: false, ...CONFLICT };
     if (decision.kind === "in_progress") return { ok: false, ...inProgress(decision.retryAfterSeconds) };
   }
-  const claim = await claimTeamMcpRequest({ ...key, tool, requestHash, reservedIds: null });
+  // Con `reserveId` l'id della riga nasce qui e resta nel registro: una ripresa dopo un esito incerto lo ritrova.
+  const claim = await claimTeamMcpRequest({ ...key, tool, requestHash, reservedIds: opts.reserveId ? [randomUUID()] : null });
   if (claim.status === "duplicate") return { ok: true, value: (claim.result ?? {}) as T, repeated: true };
   if (claim.status === "conflict") return { ok: false, ...CONFLICT };
   if (claim.status === "in_progress") return { ok: false, ...inProgress(claim.retryAfterSeconds) };
   let result: Result<T>;
   try {
-    result = await execute();
+    result = await execute(claim.reservedIds?.[0] ?? null);
   } catch (error) {
     logSafeError("cli", "scrittura", error, { tool });
     await failTeamMcpRequest(key, claim.attempt).catch(() => false);
@@ -195,11 +214,12 @@ export async function runCliWrite<T extends Record<string, unknown>>(
   opened: OpenedCli,
   tool: string,
   body: unknown,
-  execute: () => Promise<Result<T>>,
+  execute: (reservedId: string | null) => Promise<Result<T>>,
+  opts: { reserveId?: boolean } = {},
 ): Promise<Response> {
   const idempotencyKey = request.headers.get("idempotency-key")?.trim() ?? "";
   if (!CLI_IDEMPOTENCY_KEY.test(idempotencyKey)) return cliError(400, "idempotenza", "Manca l'intestazione Idempotency-Key (8-128 caratteri): la CLI la mette da sola.");
-  const outcome = await executeCliWrite(opened, idempotencyKey, tool, body, execute);
+  const outcome = await executeCliWrite(opened, idempotencyKey, tool, body, execute, opts);
   if (!outcome.ok) return failureResponse(outcome);
   return cliJson(outcome.repeated ? { ...outcome.value, ripetuta: true } : outcome.value);
 }

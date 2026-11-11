@@ -39,7 +39,7 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
     latestPackage: view.latestPackage ? { version: view.latestPackage.version, createdAt: view.latestPackage.createdAt, source: view.latestPackage.source } : null,
     decisions: view.decisions,
     openNeeds: extras.openNeeds === null ? null : extras.openNeeds.length,
-    proposedQuestions: extras.proposals.length,
+    proposedQuestions: extras.proposals?.length ?? 0,
     repos: extras.repos,
     namesToHide: names,
     since: input.since ? input.since.toISOString() : null,

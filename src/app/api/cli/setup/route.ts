@@ -3,14 +3,16 @@ import { familyChoices, namesToHide, readFactory, saveProjectDetails, saveProjec
 import { givenNames, nameTokens, redact } from "@/lib/use-cases/factory/package";
 import { SETUP_GUIDE } from "@/lib/use-cases/cli/brief";
 import { requireCliWrite, resolveCliCase, runCliWrite } from "@/lib/use-cases/cli/case";
+import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { cliError, cliJson, openCli, readCliBody } from "@/lib/use-cases/cli/route-kit";
 
 /**
  * `unbundle setup <ID>` (rilascio 8.0b, standard §3): l'impostazione guidata. La guida sta in Unbundle, la skill
  * «imposta» la conduce.
  *
- * - GET: la guida dei 10 argomenti con le scelte di adesso, il catalogo dei framework, le scelte approvate degli
- *   altri casi della famiglia, la revisione del progetto aperto.
+ * - GET (il team che scrive l'Agent Factory): la guida dei 10 argomenti con le scelte di adesso, il catalogo dei
+ *   framework, le scelte approvate degli altri casi della famiglia dove la persona è nel team (mai con il token di
+ *   un caso solo), la revisione del progetto aperto. Ogni testo passa dai nomi da nascondere.
  * - POST `azione`: `apri` (una versione nuova, con le scelte dell'ultima), `scelta` (un argomento: diventa anche
  *   una decisione), `dettagli` (framework, strumenti nuovi, stima), `invia` (in approvazione, con la revisione
  *   vista). Le stesse regole della pagina «Progetto dell'agente».
@@ -23,10 +25,14 @@ export async function GET(request: Request): Promise<Response> {
   const resolved = await resolveCliCase(opened.value, new URL(request.url).searchParams.get("caso"));
   if (!resolved.ok) return resolved.response;
   const c = resolved.value;
-  const { executor } = opened.value;
+  if (!canWriteFactory(c.access.roles)) return cliError(403, "permesso_negato", "La guida dell'impostazione è per il team di Lateral Space del caso.");
+  const { executor, principal } = opened.value;
   const read = await readFactory(executor, c.target, c.actor);
   if (!read.ok) return cliError(404, "non_trovato", read.message);
-  const [family, names] = await Promise.all([familyChoices(executor, c.target), namesToHide(executor, c.target)]);
+  const [family, names] = await Promise.all([
+    principal.caseUseCaseId === null ? familyChoices(executor, c.target, principal.userId) : Promise.resolve([]),
+    namesToHide(executor, c.target),
+  ]);
   const tokens = nameTokens(names);
   const given = givenNames(names);
   const hide = (text: string) => redact(text, tokens, given);
@@ -34,13 +40,13 @@ export async function GET(request: Request): Promise<Response> {
   return cliJson({
     caso: c.useCase.code,
     progetto: project
-      ? { versione: project.version, stato: project.status, revisione: project.revision, framework: project.framework, strumentiNuovi: project.newTools, ore: project.estimateHours, euroAlMese: project.monthlyCostEur }
+      ? { versione: project.version, stato: project.status, revisione: project.revision, framework: project.framework, strumentiNuovi: project.newTools.map((t) => ({ nome: hide(t.nome), perche: t.perche ? hide(t.perche) : null })), ore: project.estimateHours, euroAlMese: project.monthlyCostEur }
       : null,
     argomenti: SETUP_TOPICS.map((t) => ({
       chiave: t,
       nome: SETUP_TOPIC_LABELS[t],
       guida: SETUP_GUIDE[t],
-      scelta: project?.topics[t] ? { scelta: hide(project.topics[t]!.scelta), perche: project.topics[t]!.perche ? hide(project.topics[t]!.perche!) : null, alternativa: project.topics[t]!.alternativa } : null,
+      scelta: project?.topics[t] ? { scelta: hide(project.topics[t]!.scelta), perche: project.topics[t]!.perche ? hide(project.topics[t]!.perche!) : null, alternativa: project.topics[t]!.alternativa ? hide(project.topics[t]!.alternativa!) : null } : null,
     })),
     framework: FACTORY_FRAMEWORKS,
     famiglia: family.map((f) => ({ caso: f.code, scelte: Object.fromEntries(SETUP_TOPICS.filter((t) => f.topics[t]).map((t) => [t, hide(f.topics[t]!.scelta)])) })),

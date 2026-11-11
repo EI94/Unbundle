@@ -67,9 +67,10 @@ export function parseBuildSession(body: Record<string, unknown>, now = new Date(
   const branch = body.ramo ?? null;
   if (branch !== null && (typeof branch !== "string" || branch.length > L.branch || !/^[A-Za-z0-9._/-]+$/.test(branch))) return bad("ramo: il nome di un ramo git, al massimo 120 caratteri.");
   const ended = body.finitaIl;
-  const endedAt = typeof ended === "string" ? new Date(ended) : null;
-  if (!endedAt || Number.isNaN(endedAt.getTime())) return bad("finitaIl: una data e un'ora ISO.");
+  const endedAt = typeof ended === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/.test(ended) ? new Date(ended) : null;
+  if (!endedAt || Number.isNaN(endedAt.getTime())) return bad("finitaIl: una data e un'ora ISO, per esempio 2026-11-11T10:00:00Z.");
   if (endedAt.getTime() > now.getTime() + 5 * 60_000) return bad("finitaIl: non può essere nel futuro.");
+  if (endedAt.getTime() < now.getTime() - 366 * 24 * 3600_000) return bad("finitaIl: al massimo un anno fa.");
   return {
     ok: true,
     value: {

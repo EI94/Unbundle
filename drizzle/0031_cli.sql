@@ -77,7 +77,6 @@ CREATE TABLE IF NOT EXISTS use_case_agent_questions (
   reason varchar(300),
   status varchar(10) NOT NULL DEFAULT 'proposta' CONSTRAINT use_case_agent_questions_status_check CHECK (status IN ('proposta', 'aggiunta', 'scartata')),
   channel varchar(4) NOT NULL CONSTRAINT use_case_agent_questions_channel_check CHECK (channel IN ('cli', 'mcp')),
-  author_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   need_id uuid REFERENCES use_case_needs(id) ON DELETE SET NULL,
   decided_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   decided_at timestamptz,

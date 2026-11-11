@@ -17,7 +17,7 @@ import { readJsonBodyLimited, withHygieneHeaders } from "@/lib/connector/http-hy
 import { serveStatelessMcp } from "@/lib/connector/mcp-server";
 import { addTeamDecision, proposeAgentQuestion, recordBuildSession } from "@/lib/db/queries/use-case-factory";
 import { logSafeError } from "@/lib/log/safe-error";
-import { cliWriteDenial, executeCliWrite, resolveCliCase, type CliCase, type CliWriteOutcome } from "./case";
+import { cliWriteDenial, executeCliWrite, proposalsDenial, resolveCliCase, type CliCase, type CliWriteOutcome } from "./case";
 import { loadCliContext } from "./context";
 import { parseBuildSession } from "./inputs";
 import {
@@ -76,10 +76,17 @@ async function callTool(name: CaseMcpToolName, args: unknown, opened: OpenedCli,
     const parsed = parseCaseMcpArgs("record_decision", args);
     if (!parsed.ok) return done(parsed.result);
     const a = parsed.value;
-    const outcome = await executeCliWrite(opened, a.idempotencyKey, "record_decision", caseMcpWriteBody(a), async () => {
-      const r = await addTeamDecision(executor, c.actor, c.target, { topic: a.topic, choice: a.choice, reason: a.reason, rejected: a.rejected, topicKey: a.setupTopic ?? null });
-      return r.ok ? { ok: true as const, value: { id: r.value.id } } : r;
-    });
+    const outcome = await executeCliWrite(
+      opened,
+      a.idempotencyKey,
+      "record_decision",
+      caseMcpWriteBody(a),
+      async (id) => {
+        const r = await addTeamDecision(executor, c.actor, c.target, { topic: a.topic, choice: a.choice, reason: a.reason, rejected: a.rejected, topicKey: a.setupTopic ?? null, id });
+        return r.ok ? { ok: true as const, value: { id: r.value.id } } : r;
+      },
+      { reserveId: true },
+    );
     return done(writeResult(outcome, { registrata: true }));
   }
 
@@ -87,10 +94,19 @@ async function callTool(name: CaseMcpToolName, args: unknown, opened: OpenedCli,
     const parsed = parseCaseMcpArgs("propose_question", args);
     if (!parsed.ok) return done(parsed.result);
     const a = parsed.value;
-    const outcome = await executeCliWrite(opened, a.idempotencyKey, "propose_question", caseMcpWriteBody(a), async () => {
-      const r = await proposeAgentQuestion(executor, c.actor, c.target, { question: a.question, reason: a.reason, channel: "mcp" });
-      return r.ok ? { ok: true as const, value: { id: r.value.id } } : r;
-    });
+    const off = proposalsDenial(c);
+    if (off) return done(caseMcpErrorResult(off.code, off.message));
+    const outcome = await executeCliWrite(
+      opened,
+      a.idempotencyKey,
+      "propose_question",
+      caseMcpWriteBody(a),
+      async (id) => {
+        const r = await proposeAgentQuestion(executor, c.actor, c.target, { question: a.question, reason: a.reason, channel: "mcp", id });
+        return r.ok ? { ok: true as const, value: { id: r.value.id } } : r;
+      },
+      { reserveId: true },
+    );
     return done(writeResult(outcome, { proposta: true, nota: "Non parte da sola: la decide il team in Unbundle." }));
   }
 
