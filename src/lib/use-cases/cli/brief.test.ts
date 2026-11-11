@@ -59,6 +59,7 @@ test("il brief: codice, stato, prossimo passo, pacchetto, strumenti, decisioni, 
   assert.match(text, /Domande: 2 aperte in «Cosa serve», 1 proposta da un coding agent\./);
   assert.match(text, /Repository: Prova\/repo-di-prova \(casi\/px-0001\)\./);
   assert.ok(estimateTokens(text) <= BRIEF_MAX_TOKENS);
+  assert.match(composeBrief(input({ openNeeds: 1, proposedQuestions: 0 })), /Domande: 1 aperta in «Cosa serve»\./);
 });
 
 test("anche con cento decisioni lunghe e un titolo lunghissimo il brief resta entro 1.200 caratteri", () => {

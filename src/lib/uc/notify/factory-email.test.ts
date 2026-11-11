@@ -96,3 +96,24 @@ test("il link della dashboard accetta solo la pagina del caso o il suo progetto"
     assert.throws(() => checkEmailLink(bad, "dashboard"), bad);
   }
 });
+
+test("«un coding agent propone una domanda»: al responsabile di Lateral Space, con il link alle proposte dello use case; mai al cliente", () => {
+  const UC = "33333333-3333-4333-8333-333333333333";
+  assert.ok((UC_NOTIFICATION_TEMPLATES as readonly string[]).includes("domanda_proposta"));
+  assert.ok((EMAIL_TEMPLATES as readonly string[]).includes("domanda_proposta"));
+  const plan = planDelivery({ ...claimed("domanda_proposta", null), payload: { version: 0, count: 0, useCase: UC } }, facts(), OPTS);
+  assert.ok(plan.action === "send");
+  if (plan.action !== "send") return;
+  const email = renderEmail(plan.build("") as Parameters<typeof renderEmail>[0]);
+  assert.match(email.subject, /^Cliente prova · Quotazioni di prova: un coding agent propone una domanda$/);
+  assert.match(email.text, new RegExp(`https://app\\.unbundle\\.test/dashboard/${WS}/use-cases/${UC}/proposte`));
+  assert.match(email.text, /Non parte da sola/);
+  assert.doesNotMatch(email.text, /use case/i);
+  const noUseCase = planDelivery({ ...claimed("domanda_proposta", null), payload: {} }, facts(), OPTS);
+  assert.equal(noUseCase.action === "cancel" ? noUseCase.reason : noUseCase.action, "use_case_assente");
+  const client = planDelivery({ ...claimed("domanda_proposta", null), payload: { useCase: UC } }, facts({ recipient: { kind: "user", id: USER, email: "persona@cliente.test", reachable: true, digestOptOut: false, lateralSpace: false } }), OPTS);
+  assert.equal(client.action === "cancel" ? client.reason : client.action, "destinatario_non_lateral_space");
+  const base = `https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}`;
+  assert.equal(checkEmailLink(`${base}/proposte`, "dashboard"), `${base}/proposte`);
+  for (const bad of [base, `${base}/progetto`, `${base}/proposte?x=1`, `${base}/altro`]) assert.throws(() => checkEmailLink(bad, "dashboard"), bad);
+});

@@ -74,6 +74,7 @@ export const EMAIL_TEMPLATES = [
   "strumento_da_approvare",
   "pacchetto_aggiornato",
   "modifica_richiesta",
+  "domanda_proposta",
 ] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATES)[number];
 
@@ -486,6 +487,14 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       const tools = typeof n.payload.count === "number" && n.payload.count > 0 ? n.payload.count : 0;
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/casi-duso/${c.id.toLowerCase()}/progetto`;
       return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, version, tools, link }), after: null };
+    }
+    case "domanda_proposta": {
+      // Email interna: una domanda proposta da un coding agent, al responsabile del caso, che la decide in «Cosa serve».
+      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
+      if (!useCase) return cancel("use_case_assente");
+      const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/proposte`;
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "domanda_proposta", version: null, link }), after: null };
     }
     case "segnalazione_owner": {
       const r = f.request;

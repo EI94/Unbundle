@@ -69,13 +69,13 @@ export type EmailInput =
   | (CaseRef & { template: "delega"; audience: "delegante"; questions: number })
   | (CaseRef & { template: "richiesta_approvazione"; designation: "owner" | "privacy"; pending: number; expiresAt: Date; link: string })
   | { template: "riepilogo_settimanale"; audience: "owner" | "ls"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[] }
-  | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato" | "modifica_richiesta"; version: number | null; link: string; tools?: number });
+  | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato" | "modifica_richiesta" | "domanda_proposta"; version: number | null; link: string; tools?: number });
 
 // ── Aiuti ─────────────────────────────────────────────────────────────
 
 const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/;
 const REQUEST_PATH = /^\/r\/ucr_[A-Za-z0-9_-]{32}$/;
-const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?$/;
+const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/proposte)$/;
 
 /**
  * Il link è pulito? https (http solo in locale), nessuna credenziale, nessun
@@ -304,6 +304,16 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: `c'è ${k} del pacchetto del caso d'uso «${oneLine(input.caseTitle, 120)}»: la scheda è cambiata.` },
         { p: "Nel repository del caso lo porta «unbundle start». Fino ad allora il coding agent legge il pacchetto di prima." },
         { link: { href: link, label: "Leggi il pacchetto" } },
+        { small: "Email interna di Lateral Space." },
+      ]);
+    }
+    case "domanda_proposta": {
+      const link = checkEmailLink(input.link, "dashboard");
+      return render(subjectOf(`${caseLabel(input)}: un coding agent propone una domanda`), [
+        { p: "Buongiorno," },
+        { p: `mentre costruisce l'agente del caso d'uso «${oneLine(input.caseTitle, 120)}», un coding agent ha proposto una domanda per il referente.` },
+        { p: "Non parte da sola: in «Cosa serve» la aggiungi alle domande da fare, oppure la lasci stare." },
+        { link: { href: link, label: "Guarda le proposte" } },
         { small: "Email interna di Lateral Space." },
       ]);
     }

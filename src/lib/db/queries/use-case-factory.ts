@@ -250,11 +250,13 @@ ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET last_
  * nuovi ci sono (una sola email al responsabile); «Modifica chiesta» va al responsabile, che riapre il progetto;
  * «Strumento nuovo» è per l'AI Board del cliente e arriva con la 8.0c.
  */
-type FactoryEmailKind = "progetto_appr" | "pacchetto_nuovo" | "modifica_chiesta";
+type FactoryEmailKind = "progetto_appr" | "pacchetto_nuovo" | "modifica_chiesta" | "domanda_agente";
 const FACTORY_EMAIL: Readonly<Record<FactoryEmailKind, { template: string; roles: readonly CaseRole[] }>> = Object.freeze({
   progetto_appr: { template: "progetto_da_approvare", roles: ["ls_lead"] },
   pacchetto_nuovo: { template: "pacchetto_aggiornato", roles: ["ls_lead", "ls_analista", "ls_sviluppatore"] },
   modifica_chiesta: { template: "modifica_richiesta", roles: ["ls_lead"] },
+  // (8.0b) Una domanda proposta da un coding agent: al responsabile, che la decide (al massimo una e-mail al giorno).
+  domanda_agente: { template: "domanda_proposta", roles: ["ls_lead"] },
 });
 
 /**
@@ -265,7 +267,7 @@ const FACTORY_EMAIL: Readonly<Record<FactoryEmailKind, { template: string; roles
 function emailSql(target: FactoryTarget, kind: FactoryEmailKind, actor: FactoryActor, now: Date, version: number, when: Fragment = ALWAYS, count = 0): UcStatement {
   const e = FACTORY_EMAIL[kind];
   return toStatement(ucSql`INSERT INTO uc_notifications (workspace_id, case_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
-SELECT DISTINCT ON (m.user_id) c.workspace_id, c.id, m.user_id, 'email', ${cast(e.template, "text")}, ${jsonb({ version, count })}, 'in_coda',
+SELECT DISTINCT ON (m.user_id) c.workspace_id, c.id, m.user_id, 'email', ${cast(e.template, "text")}, ${jsonb({ version, count, useCase: target.useCaseId })}, 'in_coda',
        ${cast(e.template, "text")} || ':' || c.id::text || ':' || m.user_id::text || ':' || ${cast(romeToday(now), "text")}, now()
 FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id
 WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_case_id = ${cast(target.useCaseId, "uuid")}
@@ -806,6 +808,7 @@ SELECT u.id, u.workspace_id, ${cast(question.value, "text")}, ${cast(reason.valu
 FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws}
 RETURNING id`),
     noticeSql(target, "domanda_agente", actor, now, inserted),
+    emailSql(target, "domanda_agente", actor, now, 0, inserted),
   ]);
   if (!rows[0]) return fail("non_trovato", "Use case non trovato.");
   return ok({ id: String(rows[0].id) });

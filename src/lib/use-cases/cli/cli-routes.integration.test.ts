@@ -90,6 +90,8 @@ before(async () => {
   const stubs: Record<string, string> = {
     "next/cache": stub("export function revalidatePath() {}\nexport function revalidateTag() {}\nexport function unstable_cache(fn) { return fn; }\nexport function unstable_noStore() {}"),
     "next/server": stub("export function after(task) { (globalThis.__cliAfter ??= []).push(task); }"),
+    // La sessione della prova per le action della scheda («Proposte dei coding agent»).
+    "@/lib/auth": stub("export async function auth() { return globalThis.__cliSession ?? null; }"),
   };
   registerHooks({
     resolve(specifier, context, nextResolve) {
@@ -269,4 +271,34 @@ test("il token di un caso solo: lo crea un token di tutti i casi; apre solo quel
   assert.deepEqual((await post("logout", scoped, {})).json, { revocato: true });
   assert.equal((await call("whoami", { token: scoped })).status, 401);
   assert.equal((await call("whoami", { token: tokens.lead })).status, 200, "il token di tutti i casi resta");
+});
+
+const sessionOf = (person: Person) => ({ user: { id: ids[person], email: EMAIL[person], emailVerified: true, name: NAME[person], image: null } });
+
+test("le proposte nella scheda: «Aggiungi a Cosa serve» crea un requisito da chiedere, una volta sola; «Lascia stare»; e-mail una al giorno", opts, async () => {
+  const actions = await import("../../actions/use-case-agent-questions.ts");
+  const reads = await import("../../db/queries/use-case-agent-questions.ts");
+  const first = await post("domande", tokens.analyst!, { caso: "PX-0042", domanda: "Chi firma le quotazioni oltre i 50.000 €?" });
+  const second = await post("domande", tokens.analyst!, { caso: "PX-0042", domanda: "Le richieste del sabato vanno lette subito?" });
+  assert.deepEqual([first.status, second.status], [200, 200]);
+  const emails = await q(`SELECT recipient_user_id FROM uc_notifications WHERE case_id = $1 AND template_key = 'domanda_proposta'`, [ids.dossier]);
+  assert.deepEqual(emails.map((r) => r.recipient_user_id), [ids.lead], "al responsabile, una al giorno anche con più proposte");
+  const listed = await reads.listAgentProposals(exec, { workspaceId: ids.ws, useCaseId: ids.useCase });
+  assert.ok(listed.some((p) => p.id === first.json.id) && listed.some((p) => p.id === second.json.id));
+  (globalThis as { __cliSession?: unknown }).__cliSession = sessionOf("owner");
+  assert.equal((await actions.addAgentQuestionAction(ids.ws, ids.useCase, String(first.json.id))).ok, false, "il responsabile del cliente non decide");
+  (globalThis as { __cliSession?: unknown }).__cliSession = sessionOf("analyst");
+  const added = await actions.addAgentQuestionAction(ids.ws, ids.useCase, String(first.json.id));
+  assert.ok(added.ok, added.ok ? "" : added.message);
+  const [row] = await q(`SELECT q.status, q.need_id, n.title, n.type, n.status AS need_status, n.owner_side,
+      EXISTS (SELECT 1 FROM use_case_need_links l WHERE l.need_id = n.id AND l.use_case_id = $2) AS linked
+    FROM use_case_agent_questions q JOIN use_case_needs n ON n.id = q.need_id WHERE q.id = $1`, [first.json.id, ids.useCase]);
+  assert.deepEqual([row.status, row.title, row.type, row.need_status, row.owner_side, row.linked], ["aggiunta", "Chi firma le quotazioni oltre i 50.000 €?", "requisito", "da_chiedere", "cliente", true]);
+  assert.equal((await actions.addAgentQuestionAction(ids.ws, ids.useCase, String(first.json.id))).ok, false, "una volta sola");
+  const [needs] = [await q(`SELECT count(*)::int AS n FROM use_case_needs WHERE title = 'Chi firma le quotazioni oltre i 50.000 €?'`)];
+  assert.equal(needs[0].n, 1);
+  assert.ok((await actions.dismissAgentQuestionAction(ids.ws, ids.useCase, String(second.json.id))).ok);
+  const after = await reads.listAgentProposals(exec, { workspaceId: ids.ws, useCaseId: ids.useCase });
+  assert.ok(!after.some((p) => p.id === first.json.id || p.id === second.json.id), "decise: non sono più da decidere");
+  delete (globalThis as { __cliSession?: unknown }).__cliSession;
 });

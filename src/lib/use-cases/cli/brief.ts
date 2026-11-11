@@ -132,7 +132,7 @@ export function composeBrief(input: BriefInput): string {
     for (const d of decisions) lines.push(cut(`- ${shortDay(d.decidedOn)} · ${oneLine(d.topic)} · ${oneLine(d.choice)}`, 120));
   }
   const questions = [
-    input.openNeeds === null ? null : `${input.openNeeds} aperte in «Cosa serve»`,
+    input.openNeeds === null ? null : `${input.openNeeds} ${input.openNeeds === 1 ? "aperta" : "aperte"} in «Cosa serve»`,
     input.proposedQuestions ? `${input.proposedQuestions} ${input.proposedQuestions === 1 ? "proposta" : "proposte"} da un coding agent` : null,
   ].filter(Boolean);
   if (questions.length) lines.push(`Domande: ${questions.join(", ")}.`);

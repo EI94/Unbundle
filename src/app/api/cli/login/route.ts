@@ -11,6 +11,20 @@ import { CLI_ROUTE_LIMITS, cliError, cliJson, clientKey, consumeCliLimits, readC
  */
 export const runtime = "nodejs";
 
+/** L'indirizzo pubblico dell'app per il link di conferma (`NEXT_PUBLIC_APP_URL`, https o locale), altrimenti quello della richiesta. */
+function publicOrigin(request: Request): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      if (url.protocol === "https:" || /^(localhost|127\.0\.0\.1)$/.test(url.hostname)) return url.origin;
+    } catch {
+      // Un valore non valido non cambia niente: si usa l'indirizzo della richiesta.
+    }
+  }
+  return new URL(request.url).origin;
+}
+
 export async function POST(request: Request): Promise<Response> {
   const screened = await screenCliRequest(request, "POST");
   if (screened) return screened;
@@ -22,7 +36,7 @@ export async function POST(request: Request): Promise<Response> {
   const executor = await getAppUcExecutor();
   if (!(await cliStoreReady(executor))) return cliError(503, "non_disponibile", "La CLI non è ancora disponibile: riprova tra qualche minuto.");
   const started = await startCliLogin(executor, { clientLabel: read.body.etichetta });
-  const origin = new URL(request.url).origin;
+  const origin = publicOrigin(request);
   return cliJson({
     codiceDispositivo: started.deviceCode,
     codice: started.userCode,

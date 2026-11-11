@@ -37,6 +37,8 @@ export const UC_NOTIFICATION_TEMPLATES = [
   "strumento_da_approvare",
   "pacchetto_aggiornato",
   "modifica_richiesta",
+  // (Rilascio 8.0b) Una domanda per il referente proposta da un coding agent, al responsabile del caso.
+  "domanda_proposta",
   // Dopo l'MVP.
   "esiti_verifica",
   "scadenza_vicina",

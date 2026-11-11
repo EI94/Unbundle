@@ -1,4 +1,8 @@
 import { and, asc, eq, isNotNull } from "drizzle-orm";
+import { ensureDbSchema } from "@/lib/db/ensure-schema";
+import { cliStoreReady } from "@/lib/db/queries/use-case-cli-auth";
+import { listAgentProposals, type AgentProposalView } from "@/lib/db/queries/use-case-agent-questions";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { notFound } from "next/navigation";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
@@ -138,7 +142,7 @@ export default async function UseCaseDetailPage({
   const needLists = workspaceNeeds ? needListsOfUseCase(workspaceNeeds, result.useCase.id) : null;
   // «Cosa serve», «Chiedi al referente» e «Raccolta informazioni»: solo a chi vede le esigenze
   // (`canSeeNeeds`); le letture stesse rispondono null a tutti gli altri.
-  const [needRefs, referents, infoProgress] = await Promise.all([
+  const [needRefs, referents, infoProgress, agentProposals] = await Promise.all([
     needLists
       ? needUseCaseRefs(
           workspaceId,
@@ -160,6 +164,8 @@ export default async function UseCaseDetailPage({
     abilities.canSeeNeeds && needLists
       ? loadUseCaseInfoProgress({ workspaceId, useCaseId: result.useCase.id, viewer, needs: needLists })
       : null,
+    // (Rilascio 8.0b) Le domande proposte dai coding agent, sopra «Cosa serve»: a chi vede le esigenze.
+    abilities.canSeeNeeds ? loadAgentProposals(workspaceId, result.useCase.id) : [],
   ]);
 
   // (Rilascio 5, §9.1) Al contributore la sola parola dello stato del referente, dopo la pillola della fase.
@@ -181,6 +187,7 @@ export default async function UseCaseDetailPage({
         historyAllHref={`/dashboard/${workspaceId}/use-cases/${result.useCase.id}?storia=tutta#storia`}
         realization={realization}
         needs={needLists ? { lists: needLists, refs: needRefs } : null}
+        agentProposals={agentProposals}
         referents={referents}
         infoProgress={infoProgress}
         teamName={reviewTeamName(access.workspace)}
@@ -547,4 +554,17 @@ async function legacyUseCaseDetail(workspaceId: string, useCaseId: string) {
       )}
     </div>
   );
+}
+
+/** Le proposte dei coding agent da decidere; vuote senza la 0031 o se la lettura non riesce (la scheda resta). */
+async function loadAgentProposals(workspaceId: string, useCaseId: string): Promise<AgentProposalView[]> {
+  try {
+    await ensureDbSchema();
+    const executor = await getAppUcExecutor();
+    if (!(await cliStoreReady(executor))) return [];
+    return await listAgentProposals(executor, { workspaceId, useCaseId });
+  } catch (error) {
+    console.error("[use-case-detail] agent_proposals_failed", { error: { name: error instanceof Error ? error.name : "Error" } });
+    return [];
+  }
 }

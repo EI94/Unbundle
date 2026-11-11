@@ -37,6 +37,8 @@ import { ReferentDialogHost } from "./referent/dialog-host";
 import { ContributorDecisionSection } from "./section-decision";
 import { SectionHistory } from "./section-history";
 import { SectionNeeds } from "./section-needs";
+import { AgentProposals } from "./agent-proposals";
+import type { AgentProposalView } from "@/lib/db/queries/use-case-agent-questions";
 import { SectionRealization, realizationVariant } from "./section-realization";
 import { SectionValuation, aiSuggestionShown, valuationKpiGroups } from "./section-valuation";
 import { DetailsFields, detailsFieldRows, hasFieldText } from "./section-what";
@@ -203,6 +205,8 @@ export interface UseCaseDetailViewProps {
    * quelle del workspace da collegare e codice e titolo degli use case che nominano.
    */
   needs?: { lists: UseCaseNeedLists; refs: Record<string, NeedUseCaseRef> } | null;
+  /** (Rilascio 8.0b) Le domande proposte dai coding agent da decidere, a chi vede «Cosa serve». */
+  agentProposals?: AgentProposalView[];
   /**
    * «Chiedi al referente» (`loadUseCaseReferentPanel`): solo ai revisori che vedono «Cosa serve»; ai
    * contributori mai. Va al capitolo «Cosa serve».
@@ -261,6 +265,7 @@ export function UseCaseDetailView({
   historyAll = false,
   realization = null,
   needs = null,
+  agentProposals = [],
   referents = null,
   infoProgress = null,
   teamName,
@@ -416,6 +421,9 @@ export function UseCaseDetailView({
                 <div data-slot="scheda-main" className="min-w-0 space-y-10 @min-[58rem]/scheda:col-start-1 @min-[58rem]/scheda:row-start-1">
                   <ImpactBlock view={impact} value={detail.value} cost={detail.cost} costBands={result.costBands} risks={detail.risks} />
                   <WorkFlow workspaceId={workspaceId} detail={detail} canEdit={abilities.canEditWhat} tone={agentTone} />
+                  {abilities.canSeeNeeds && agentProposals?.length ? (
+                    <AgentProposals workspaceId={workspaceId} useCaseId={detail.id} proposals={agentProposals} canDecide={abilities.canEditNeeds} />
+                  ) : null}
                   {abilities.canSeeNeeds && needs ? (
                     <SectionNeeds
                       workspaceId={workspaceId}
