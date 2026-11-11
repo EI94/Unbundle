@@ -159,6 +159,12 @@ test("il login vero: codice, conferma, token una volta; difese su indirizzo e br
   const got = await call("login/token", { method: "POST", body: { codiceDispositivo: started.json.codiceDispositivo } });
   assert.equal(got.json.stato, "consegnato");
   tokens.lead = String(got.json.token);
+  // L'e-mail «CLI collegata» parte dopo la risposta; qui senza Resend resta in coda con il motivo.
+  const queued = (globalThis as { __cliAfter?: (() => Promise<void>)[] }).__cliAfter ?? [];
+  assert.equal(queued.length, 1, "l'invio dopo la risposta");
+  await queued.pop()!();
+  const [mail] = await q(`SELECT status, hold_reason, case_id FROM uc_notifications WHERE template_key = 'cli_collegata' AND recipient_user_id = $1`, [ids.lead]);
+  assert.deepEqual(mail, { status: "in_coda", hold_reason: "email_non_configurata", case_id: null });
   assert.equal((await call("login/token", { method: "POST", body: { codiceDispositivo: started.json.codiceDispositivo } })).json.stato, "gia_consegnato");
   const me = await call("whoami", { token: tokens.lead });
   assert.deepEqual([me.status, (me.json.persona as Row).nome, me.json.ruolo, me.json.caso], [200, NAME.lead, "transformation_lead", null]);

@@ -75,6 +75,8 @@ export const EMAIL_TEMPLATES = [
   "pacchetto_aggiornato",
   "modifica_richiesta",
   "domanda_proposta",
+  // (8.0b) Una CLI di Unbundle collegata all'account: alla persona stessa, di Lateral Space o del cliente.
+  "cli_collegata",
 ] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATES)[number];
 
@@ -309,6 +311,8 @@ export interface DeliveryFacts {
   approvals?: { pending: number; signer: Result<void> };
   /** Riepilogo settimanale: casi del destinatario. */
   weekly?: { cases: readonly (WeeklyCaseSummary & { caseId: string })[] };
+  /** CLI collegata: il token del login, della persona destinataria (anche se poi revocato). */
+  cliToken?: { createdAt: Date; expiresAt: Date | null } | null;
 }
 
 export type AfterSent = { kind: "promemoria"; reminder: 1 | 2; nextReminderAt: Date | null } | { kind: "segnalazione" } | null;
@@ -371,6 +375,7 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
   const to = recipient.email.trim().toLowerCase();
 
   if (tpl === "riepilogo_settimanale") return planWeekly(n, f, recipient, to, o);
+  if (tpl === "cli_collegata") return planCliConnected(n, f, recipient, to, o);
 
   const c = f.case;
   if (!c) return cancel("caso_assente");
@@ -549,6 +554,31 @@ function planWeekly(
   return { action: "send", to, link: null, build: () => ({ template: "riepilogo_settimanale", audience: "ls", clientName: f.clientName, week, cases: internal }), after: null };
 }
 
+/**
+ * «CLI collegata»: solo alla persona che possiede il token, a qualunque dominio (anche del cliente), senza caso. Parte
+ * anche se il token è già revocato: chi lo ha preso potrebbe averlo chiuso dopo aver creato token di un caso solo, e
+ * la persona deve saperlo. Nessuna etichetta della CLI nell'e-mail: la sceglie chi avvia il login.
+ */
+function planCliConnected(
+  n: ClaimedNotification,
+  f: DeliveryFacts,
+  recipient: NonNullable<DeliveryFacts["recipient"]>,
+  to: string,
+  o: { origin: string },
+): DeliveryPlan {
+  if (recipient.kind !== "user") return cancel("destinatario_non_utente");
+  const token = f.cliToken;
+  if (!token) return cancel("collegamento_assente");
+  const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/settings`;
+  return {
+    action: "send",
+    to,
+    link: null,
+    build: () => ({ template: "cli_collegata", clientName: f.clientName, connectedAt: token.createdAt, expiresAt: token.expiresAt, link }),
+    after: null,
+  };
+}
+
 function summaryCore(c: WeeklyCaseSummary): WeeklyCaseSummary {
   return { code: c.code, title: c.title, total: c.total, counts: c.counts, greenPct: c.greenPct, g1: c.g1, nextMilestone: c.nextMilestone ?? null };
 }
@@ -557,10 +587,12 @@ function summaryCore(c: WeeklyCaseSummary): WeeklyCaseSummary {
 
 export type IssuedLinkResult = { ok: true; token: string; tokenId: string } | { ok: false; code: string };
 
-/** Parte della coda su cui lavora un giro: tutta, un workspace o un caso. */
+/** Parte della coda su cui lavora un giro: tutta, un workspace, un caso o una riga sola. */
 export interface DispatchScope {
   caseId: string | null;
   workspaceId: string | null;
+  /** Una riga sola (l'e-mail «CLI collegata» subito dopo il login). */
+  notificationId?: string | null;
 }
 
 /** Accesso al database del motore (vedi `queries/uc-notifications-dispatch.ts`). */
@@ -598,6 +630,8 @@ export interface DispatchOptions {
   caseId?: string | null;
   /** Solo la coda di un workspace (cron per un workspace, test sul harness). */
   workspaceId?: string | null;
+  /** Solo una riga della coda. */
+  notificationId?: string | null;
   limit?: number;
   /** Trasporto: di default Resend con la chiave dell'ambiente. */
   mailer?: UcMailer;
@@ -626,7 +660,7 @@ const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  */
 export async function runDispatch(store: DispatchStore, o: DispatchOptions): Promise<DispatchSummary> {
   const now = o.now ?? new Date();
-  const scope: DispatchScope = { caseId: o.caseId ?? null, workspaceId: o.workspaceId ?? null };
+  const scope: DispatchScope = { caseId: o.caseId ?? null, workspaceId: o.workspaceId ?? null, ...(o.notificationId ? { notificationId: o.notificationId } : {}) };
   const summary: DispatchSummary = { bell: 0, sent: 0, failed: 0, held: 0, cancelled: 0, notConfigured: 0 };
   summary.bell = await store.markInAppDelivered(scope);
   const configured = ucEmailConfig(o.env);

@@ -8,7 +8,9 @@ import "server-only";
  *    nega («Non l'ho chiesto io»). Solo un codice vivo e in attesa.
  * 3. `deliverCliLogin`: la CLI chiede il token con il suo codice. Se la persona ha confermato, in una sola
  *    transazione il login diventa «consegnato» e nasce il token (l'UPDATE con la condizione sullo stato fa sì che
- *    due richieste insieme non ne creino due). Il token si vede solo qui, una volta.
+ *    due richieste insieme non ne creino due). Il token si vede solo qui, una volta. Nella stessa transazione va in
+ *    coda l'e-mail «CLI collegata» alla persona (`cli_collegata`, una per token): se il link di conferma glielo ha
+ *    mandato qualcun altro, lo sa subito e revoca da Impostazioni.
  * 4. `authenticateCli`: ogni chiamata della CLI. Solo token della CLI, non revocati, non esposti, non scaduti, con
  *    una persona; l'accesso al workspace e i ruoli nel caso li rilegge chi chiama, a ogni richiesta.
  *
@@ -123,12 +125,17 @@ RETURNING id`),
 }
 
 export type CliDelivery =
-  | { status: "consegnato"; token: string; workspaceId: string; expiresAt: string }
+  | { status: "consegnato"; token: string; workspaceId: string; expiresAt: string; noticeId: string | null }
   | { status: "in_attesa" | "negato" | "scaduto" | "sconosciuto" | "gia_consegnato" };
+
+/** L'e-mail alla persona quando nasce un token del login della CLI (`uc_notifications`, canale email). */
+export const CLI_CONNECTED_TEMPLATE = "cli_collegata";
 
 /**
  * 3. La CLI ritira il token. Prima i login scaduti diventano «scaduti»; poi, se la persona ha confermato, il login
- * diventa «consegnato» e il token nasce nella stessa istruzione; infine si legge lo stato.
+ * diventa «consegnato» e il token nasce nella stessa istruzione, con l'e-mail «CLI collegata» in coda (la chiave di
+ * deduplica è il token: una sola e-mail); infine si legge lo stato. `noticeId` è la riga dell'e-mail, da inviare
+ * subito dopo la risposta.
  */
 export async function deliverCliLogin(executor: UcExecutor, deviceCode: unknown): Promise<CliDelivery> {
   if (!isDeviceCode(deviceCode)) return { status: "sconosciuto" };
@@ -141,18 +148,35 @@ export async function deliverCliLogin(executor: UcExecutor, deviceCode: unknown)
   UPDATE use_case_cli_logins SET status = 'consegnato', delivered_at = now()
   WHERE device_code_hash = ${hash} AND status = 'confermato' AND expires_at > now()
   RETURNING workspace_id, user_id, client_label
+), created AS (
+  INSERT INTO workspace_integration_tokens (workspace_id, label, provider, token_hash, token_prefix, scopes, created_by_user_id, owner_user_id, expires_at)
+  SELECT done.workspace_id, done.client_label, ${cast(CLI_TOKEN_PROVIDER, "text")}, ${tokenHash}, ${cast(tokenPrefixOf(token), "text")}, ${jsonb(cliScopes())},
+         done.user_id, done.user_id, now() + make_interval(days => ${cast(CLI_TOKEN_DAYS, "int")})
+  FROM done
+  RETURNING id, workspace_id, owner_user_id, expires_at
+), notice AS (
+  INSERT INTO uc_notifications (workspace_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
+  SELECT created.workspace_id, created.owner_user_id, 'email', ${cast(CLI_CONNECTED_TEMPLATE, "text")}, jsonb_build_object('tokenId', created.id::text), 'in_coda',
+         ${cast(CLI_CONNECTED_TEMPLATE, "text")} || ':' || created.id::text, now()
+  FROM created
+  ON CONFLICT (dedupe_key) DO NOTHING
+  RETURNING id
 )
-INSERT INTO workspace_integration_tokens (workspace_id, label, provider, token_hash, token_prefix, scopes, created_by_user_id, owner_user_id, expires_at)
-SELECT done.workspace_id, done.client_label, ${cast(CLI_TOKEN_PROVIDER, "text")}, ${tokenHash}, ${cast(tokenPrefixOf(token), "text")}, ${jsonb(cliScopes())},
-       done.user_id, done.user_id, now() + make_interval(days => ${cast(CLI_TOKEN_DAYS, "int")})
-FROM done
-RETURNING workspace_id, expires_at`),
+SELECT created.workspace_id, created.expires_at, (SELECT notice.id FROM notice) AS notice_id FROM created`),
     toStatement(ucSql`UPDATE use_case_cli_logins SET token_id = (SELECT id FROM workspace_integration_tokens WHERE token_hash = ${tokenHash})
 WHERE device_code_hash = ${hash} AND status = 'consegnato' AND token_id IS NULL AND EXISTS (SELECT 1 FROM workspace_integration_tokens WHERE token_hash = ${tokenHash})`),
     toStatement(ucSql`SELECT status FROM use_case_cli_logins WHERE device_code_hash = ${hash}`),
   ]);
   const row = delivered[0];
-  if (row) return { status: "consegnato", token, workspaceId: String(row.workspace_id), expiresAt: new Date(String(row.expires_at)).toISOString() };
+  if (row) {
+    return {
+      status: "consegnato",
+      token,
+      workspaceId: String(row.workspace_id),
+      expiresAt: new Date(String(row.expires_at)).toISOString(),
+      noticeId: row.notice_id === null || row.notice_id === undefined ? null : String(row.notice_id),
+    };
+  }
   const status = current[0] ? String(current[0].status) : null;
   if (status === "consegnato") return { status: "gia_consegnato" };
   if (status === "in_attesa" || status === "negato" || status === "scaduto") return { status };

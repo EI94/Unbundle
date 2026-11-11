@@ -69,13 +69,15 @@ export type EmailInput =
   | (CaseRef & { template: "delega"; audience: "delegante"; questions: number })
   | (CaseRef & { template: "richiesta_approvazione"; designation: "owner" | "privacy"; pending: number; expiresAt: Date; link: string })
   | { template: "riepilogo_settimanale"; audience: "owner" | "ls"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[] }
-  | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato" | "modifica_richiesta" | "domanda_proposta"; version: number | null; link: string; tools?: number });
+  | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato" | "modifica_richiesta" | "domanda_proposta"; version: number | null; link: string; tools?: number })
+  // (8.0b) Alla persona: una CLI di Unbundle è collegata al suo account nel workspace. Il link porta a Impostazioni.
+  | { template: "cli_collegata"; clientName: string; connectedAt: Date; expiresAt: Date | null; link: string };
 
 // ── Aiuti ─────────────────────────────────────────────────────────────
 
 const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/;
 const REQUEST_PATH = /^\/r\/ucr_[A-Za-z0-9_-]{32}$/;
-const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/proposte)$/;
+const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/proposte|settings)$/;
 
 /**
  * Il link è pulito? https (http solo in locale), nessuna credenziale, nessun
@@ -104,6 +106,15 @@ export function checkEmailLink(link: string, kind: "referente" | "dashboard"): s
 export function clarificationLink(link: string, itemId: string | null | undefined): string {
   const clean = checkEmailLink(link, "referente");
   return itemId && UUID.test(itemId) ? `${clean}#/chiarimento/${itemId.toLowerCase()}` : clean;
+}
+
+const TIME_IT = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
+const DAY_IT = new Intl.DateTimeFormat("it-IT", { day: "numeric", timeZone: "Europe/Rome" });
+
+/** «il 12 novembre», ma «l'11 novembre» (e così l'1 e l'8); `al` dà «al 12» e «all'11». */
+function onDate(d: Date, article: "il" | "al"): string {
+  const elided = ["1", "8", "11"].includes(DAY_IT.format(d));
+  return `${elided ? (article === "il" ? "l'" : "all'") : `${article} `}${formatDateIt(d)}`;
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -315,6 +326,20 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: "Non parte da sola: in «Cosa serve» la aggiungi alle domande da fare, oppure la lasci stare." },
         { link: { href: link, label: "Guarda le proposte" } },
         { small: "Email interna di Lateral Space." },
+      ]);
+    }
+    case "cli_collegata": {
+      // Niente etichetta della CLI: la sceglie chi avvia il login, e potrebbe contenere un indirizzo o un invito.
+      const link = checkEmailLink(input.link, "dashboard");
+      const workspace = oneLine(input.clientName, 80);
+      const until = input.expiresAt ? ` Il collegamento vale fino ${onDate(input.expiresAt, "al")}.` : "";
+      return render(subjectOf(`${workspace}: la CLI di Unbundle è collegata al tuo account`), [
+        { p: "Buongiorno," },
+        { p: `${onDate(input.connectedAt, "il")} alle ${TIME_IT.format(input.connectedAt)} la CLI di Unbundle è stata collegata al tuo account, nel workspace «${workspace}».${until}` },
+        { p: "Se l'hai collegata tu, non serve fare niente." },
+        { p: "Se non la riconosci, revocala in Impostazioni › CLI di Unbundle: lì trovi tutti i collegamenti della CLI al tuo account in questo workspace." },
+        { link: { href: link, label: "Apri Impostazioni" } },
+        { small: "Email automatica di Unbundle: arriva a ogni nuovo collegamento della CLI." },
       ]);
     }
     case "modifica_richiesta": {

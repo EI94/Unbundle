@@ -39,6 +39,8 @@ export const UC_NOTIFICATION_TEMPLATES = [
   "modifica_richiesta",
   // (Rilascio 8.0b) Una domanda per il referente proposta da un coding agent, al responsabile del caso.
   "domanda_proposta",
+  // (Rilascio 8.0b) Una CLI di Unbundle collegata all'account, alla persona stessa (senza caso).
+  "cli_collegata",
   // Dopo l'MVP.
   "esiti_verifica",
   "scadenza_vicina",

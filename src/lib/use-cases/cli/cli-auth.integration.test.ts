@@ -141,3 +141,67 @@ test("Impostazioni: ognuno vede e revoca solo i suoi; il token di un caso solo l
   assert.equal(await cli.revokeOwnCliToken(exec, { userId: ids.person, workspaceId: ids.ws, tokenId: scoped.tokenId }), true);
   assert.equal(await cli.authenticateCli(exec, `Bearer ${caseToken.ok ? caseToken.value.token : ""}`), null);
 });
+
+test("l'e-mail «CLI collegata»: una per token, alla persona, senza caso; parte da sola anche a token revocato", opts, async () => {
+  const dispatch = await import("../../db/queries/uc-notifications-dispatch.ts");
+  const sent: { to: string; subject: string; text: string; html: string }[] = [];
+  const mailer = { send: async (email: { to: string; subject: string; text: string; html: string }) => (sent.push(email), { ok: true as const }) };
+  const env = { UC_ENABLED: "true", RESEND_API_KEY: "re_prova", UC_EMAIL_FROM: "Unbundle <notifiche@example.test>", NEXT_PUBLIC_APP_URL: "https://app.example.test", UC_LS_EMAIL_DOMAINS: "ls.test" };
+
+  const s = await cli.startCliLogin(exec, { clientLabel: `${LABEL} visita www.esempio.test` });
+  await cli.decideCliLogin(exec, { userCode: s.userCode, userId: ids.person, workspaceId: ids.ws, confirm: true });
+  const d = await cli.deliverCliLogin(exec, s.deviceCode);
+  assert.equal(d.status, "consegnato");
+  const delivered = d as Extract<typeof d, { status: "consegnato" }>;
+  assert.ok(delivered.noticeId, "la riga dell'e-mail");
+  const principal = (await cli.authenticateCli(exec, `Bearer ${delivered.token}`))!;
+  const [row] = await q(`SELECT workspace_id, case_id, recipient_user_id, recipient_contact_id, channel, template_key, payload, status, dedupe_key FROM uc_notifications WHERE id = $1`, [delivered.noticeId]);
+  assert.deepEqual(
+    { ...row, payload: row.payload },
+    {
+      workspace_id: ids.ws,
+      case_id: null,
+      recipient_user_id: ids.person,
+      recipient_contact_id: null,
+      channel: "email",
+      template_key: "cli_collegata",
+      payload: { tokenId: principal.tokenId },
+      status: "in_coda",
+      dedupe_key: `cli_collegata:${principal.tokenId}`,
+    },
+  );
+  assert.ok(!JSON.stringify(row).includes(delivered.token), "mai il token nella coda");
+  assert.deepEqual(await cli.deliverCliLogin(exec, s.deviceCode), { status: "gia_consegnato" });
+  const [{ n }] = await q(`SELECT count(*)::int AS n FROM uc_notifications WHERE template_key = 'cli_collegata' AND payload ->> 'tokenId' = $1`, [principal.tokenId]);
+  assert.equal(n, 1, "una sola e-mail per token");
+
+  // Il giro di una riga sola: alla persona, con workspace e link a Impostazioni, mai l'etichetta scelta dalla CLI.
+  const summary = await dispatch.dispatchDue({ notificationId: delivered.noticeId, executor: exec, env, mailer });
+  assert.equal(summary.sent, 1);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, `prova-cli-persona-${suffix}@example.test`);
+  assert.equal(sent[0].subject, "Workspace di prova CLI: la CLI di Unbundle è collegata al tuo account");
+  assert.ok(sent[0].text.includes(`https://app.example.test/dashboard/${ids.ws}/settings`));
+  assert.ok(!sent[0].text.includes("esempio.test") && !sent[0].text.includes(LABEL), "niente etichetta");
+  const [after1] = await q(`SELECT status, sent_at IS NOT NULL AS sent FROM uc_notifications WHERE id = $1`, [delivered.noticeId]);
+  assert.deepEqual(after1, { status: "inviata", sent: true });
+  assert.equal((await dispatch.dispatchDue({ notificationId: delivered.noticeId, executor: exec, env, mailer })).sent, 0, "una volta sola");
+
+  // Revocato prima dell'invio: parte lo stesso (chi l'ha preso può averlo chiuso dopo aver creato token di un caso).
+  const s2 = await cli.startCliLogin(exec, { clientLabel: `${LABEL} revocato` });
+  await cli.decideCliLogin(exec, { userCode: s2.userCode, userId: ids.person, workspaceId: ids.ws, confirm: true });
+  const d2 = (await cli.deliverCliLogin(exec, s2.deviceCode)) as Extract<typeof d, { status: "consegnato" }>;
+  const p2 = (await cli.authenticateCli(exec, `Bearer ${d2.token}`))!;
+  assert.equal(await cli.revokeCliTokenById(exec, p2), true);
+  assert.equal((await dispatch.dispatchDue({ notificationId: d2.noticeId, executor: exec, env, mailer })).sent, 1);
+  assert.equal(sent.length, 2);
+
+  // Senza Resend configurato resta in coda con il motivo, e la prende il cron.
+  const s3 = await cli.startCliLogin(exec, { clientLabel: `${LABEL} senza resend` });
+  await cli.decideCliLogin(exec, { userCode: s3.userCode, userId: ids.person, workspaceId: ids.ws, confirm: true });
+  const d3 = (await cli.deliverCliLogin(exec, s3.deviceCode)) as Extract<typeof d, { status: "consegnato" }>;
+  await dispatch.dispatchDue({ notificationId: d3.noticeId, executor: exec, env: { UC_ENABLED: "true" }, mailer });
+  const [held] = await q(`SELECT status, hold_reason FROM uc_notifications WHERE id = $1`, [d3.noticeId]);
+  assert.deepEqual(held, { status: "in_coda", hold_reason: "email_non_configurata" });
+  assert.equal(sent.length, 2);
+});

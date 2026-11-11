@@ -77,6 +77,10 @@ function queueScope(scope: Partial<DispatchScope>): SqlFragment {
     if (!isUuid(scope.workspaceId)) throw new Error("Workspace non valido");
     parts.push(ucSql` AND n.workspace_id = ${cast(scope.workspaceId, "uuid")}`);
   }
+  if (scope.notificationId) {
+    if (!isUuid(scope.notificationId)) throw new Error("Notifica non valida");
+    parts.push(ucSql` AND n.id = ${cast(scope.notificationId, "uuid")}`);
+  }
   return parts.length ? join(parts, "") : raw("");
 }
 
@@ -443,6 +447,7 @@ export async function loadDeliveryFacts(executor: UcExecutor, n: ClaimedNotifica
 
   if (!facts.case) {
     if (n.templateKey === "riepilogo_settimanale") facts.weekly = { cases: await weeklyCases(executor, n, o.now) };
+    if (n.templateKey === "cli_collegata") facts.cliToken = await cliTokenFacts(executor, n);
     return facts;
   }
   const c = facts.case;
@@ -504,6 +509,21 @@ export async function loadDeliveryFacts(executor: UcExecutor, n: ClaimedNotifica
   return facts;
 }
 
+/**
+ * «CLI collegata»: il token del login, solo se è della CLI, del workspace della riga e della persona destinataria.
+ * Anche revocato (vedi `planCliConnected`). Il provider è quello di `use-cases/cli/codes.ts`.
+ */
+async function cliTokenFacts(executor: UcExecutor, n: ClaimedNotification): Promise<DeliveryFacts["cliToken"]> {
+  const tokenId = typeof n.payload.tokenId === "string" && isUuid(n.payload.tokenId) ? n.payload.tokenId : null;
+  if (!tokenId || !n.recipientUserId || !isUuid(n.recipientUserId)) return null;
+  const [[row]] = await executor.batch([
+    toStatement(ucSql`SELECT created_at, expires_at FROM workspace_integration_tokens
+WHERE id = ${cast(tokenId, "uuid")} AND workspace_id = ${cast(n.workspaceId, "uuid")} AND owner_user_id = ${cast(n.recipientUserId, "uuid")} AND provider = 'unbundle_cli'`),
+  ]);
+  const createdAt = rowDate(row?.created_at);
+  return createdAt ? { createdAt, expiresAt: rowDate(row?.expires_at) } : null;
+}
+
 // ── Motore sull'esecutore ─────────────────────────────────────────────
 
 /** `DispatchStore` sul database. */
@@ -543,6 +563,7 @@ export interface DispatchQueueOptions {
   now?: Date;
   caseId?: string | null;
   workspaceId?: string | null;
+  notificationId?: string | null;
   limit?: number;
   mailer?: UcMailer;
   sendIntervalMs?: number;
@@ -558,6 +579,7 @@ export async function dispatchQueue(executor: UcExecutor, o: DispatchQueueOption
     now,
     caseId: o.caseId ?? null,
     workspaceId: o.workspaceId ?? null,
+    notificationId: o.notificationId ?? null,
     limit: o.limit,
     mailer: o.mailer,
     sendIntervalMs: o.sendIntervalMs,
@@ -569,17 +591,19 @@ const EMPTY_SUMMARY: DispatchSummary = { bell: 0, sent: 0, failed: 0, held: 0, c
 /**
  * Invia la coda arrivata a scadenza (dopo un comando, in `after()`, e nei cron).
  * Con la sezione spenta non fa nulla. Dopo un comando (`caseId`) il giro è più
- * corto: le righe in più partono col cron.
+ * corto: le righe in più partono col cron. Con `notificationId` solo quella riga
+ * (l'e-mail «CLI collegata» dopo il login).
  */
 export async function dispatchDue(
-  options: { caseId?: string | null; limit?: number; executor?: UcExecutor; env?: DispatchEnv; now?: Date; mailer?: UcMailer } = {},
+  options: { caseId?: string | null; notificationId?: string | null; limit?: number; executor?: UcExecutor; env?: DispatchEnv; now?: Date; mailer?: UcMailer } = {},
 ): Promise<DispatchSummary> {
   const env: DispatchEnv = options.env ?? process.env;
   if (env.UC_ENABLED !== "true") return { ...EMPTY_SUMMARY };
   if (options.caseId && !isUuid(options.caseId)) return { ...EMPTY_SUMMARY };
+  if (options.notificationId && !isUuid(options.notificationId)) return { ...EMPTY_SUMMARY };
   const executor = options.executor ?? (await getAppUcExecutor());
-  const limit = options.limit ?? (options.caseId ? DISPATCH_AFTER_COMMAND_LIMIT : undefined);
-  return dispatchQueue(executor, { env, now: options.now, caseId: options.caseId ?? null, limit, mailer: options.mailer });
+  const limit = options.limit ?? (options.notificationId ? 1 : options.caseId ? DISPATCH_AFTER_COMMAND_LIMIT : undefined);
+  return dispatchQueue(executor, { env, now: options.now, caseId: options.caseId ?? null, notificationId: options.notificationId ?? null, limit, mailer: options.mailer });
 }
 
 // ── Campanella ────────────────────────────────────────────────────────
