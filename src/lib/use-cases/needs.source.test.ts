@@ -83,6 +83,9 @@ const TABLE_FILES = new Set([
   // (Rilascio 8.0a) Il pacchetto dell'Agent Factory: risposte ed esigenze aperte solo se chi lo genera ha
   // `canSeeNeeds` (lo decide l'azione con `abilitiesForUseCase`), come la scheda.
   "src/lib/db/queries/use-case-factory.ts",
+  // (Rilascio 8.0b) Una domanda proposta da un coding agent, aggiunta a «Cosa serve», ricorda l'esigenza che ha
+  // creato (solo l'id, chiave esterna della 0031).
+  "src/lib/db/use-case-hub-cli-ddl.ts",
 ]);
 
 const READS = /\b(listWorkspaceNeeds|getWorkspaceNeed|needUseCaseRefs)\b|queries\/use-case-needs/;

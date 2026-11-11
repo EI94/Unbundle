@@ -50,7 +50,7 @@ export const DEFAULT_TOKEN_PARAM_NAMES: readonly string[] = Object.freeze([
  * personali del MCP del team. Un valore con uno di questi prefissi, ovunque
  * nell'indirizzo, è un token esposto.
  */
-export const DEFAULT_TOKEN_PREFIXES: readonly string[] = Object.freeze(["ub_mcp_", "ub_team_"]);
+export const DEFAULT_TOKEN_PREFIXES: readonly string[] = Object.freeze(["ub_mcp_", "ub_team_", "ub_cli_"]);
 
 export const HYGIENE_ERROR_STATUS = Object.freeze({
   not_found: 404,

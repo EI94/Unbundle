@@ -22,6 +22,12 @@ import { ClaudeMcpCard } from "@/components/workspace/claude-mcp-card";
 import { ConnectorCard } from "@/components/workspace/connector-card";
 import { TeamMcpCard } from "@/components/workspace/team-mcp-card";
 import { loadTeamMcpCard } from "@/lib/db/queries/team-mcp-tokens";
+import { loadCliCard } from "@/lib/db/queries/use-case-cli-auth";
+import { getAppUcExecutor } from "@/lib/db/uc-executor";
+import { ensureDbSchema } from "@/lib/db/ensure-schema";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
+import { isLateralSpaceEmail } from "@/lib/uc/lateral-space";
+import { CliCard } from "@/components/workspace/cli-card";
 import { SubprocessorsCard } from "@/components/workspace/subprocessors-card";
 import { MessageSquare, MessageCircle, CheckCircle, Leaf, Lock, AlertTriangle } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
@@ -83,13 +89,23 @@ export default async function SettingsPage({
   if (!workspace) notFound();
 
   const search = await searchParams;
-  const [slackInstallation, collaborators, invitations, integrationTokens, teamMcpCard] = await Promise.all([
+  const [slackInstallation, collaborators, invitations, integrationTokens, teamMcpCard, cliCard] = await Promise.all([
     getSlackInstallationByWorkspace(workspaceId),
     getWorkspaceCollaborators(workspaceId),
     getWorkspaceInvitationsForWorkspace(workspaceId),
     // Card v1 «Claude per Unbundle»: solo `provider = 'claude_mcp'` (D11, DESIGN §9.7).
     getWorkspaceIntegrationTokens(workspaceId, { providers: [CLAUDE_MCP_PROVIDER] }),
     loadTeamMcpCard({ workspaceId, user: session.user, role: access.role }),
+    ensureDbSchema()
+      .then(() => getAppUcExecutor())
+      .then((executor) =>
+        loadCliCard(executor, {
+          userId: session.user.id,
+          workspaceId,
+          lateralSpace: isLateralSpaceEmail({ email: session.user.email ?? null, emailVerified: session.user.emailVerified === true }, ucLsDomains()),
+        }),
+      )
+      .catch(() => null),
   ]);
   const isSlackInstalled = !!slackInstallation;
   const canDelete =
@@ -317,6 +333,7 @@ export default async function SettingsPage({
           )}
 
           {teamMcpCard && <TeamMcpCard workspaceId={workspaceId} data={teamMcpCard} />}
+          {cliCard && <CliCard workspaceId={workspaceId} tokens={cliCard.tokens} />}
 
           <ClaudeMcpCard
             workspaceId={workspaceId}
