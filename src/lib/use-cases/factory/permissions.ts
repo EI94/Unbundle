@@ -64,4 +64,6 @@ export const FACTORY_RECIPIENTS = Object.freeze({
   modifica_chiesta: ["ls_lead", "ls_analista", "ls_sviluppatore"] as readonly CaseRole[],
   /** «L'ok dell'AI Board è da rifare»: l'AI Board, quando il responsabile riapre un progetto che aveva il suo ok. */
   ok_decaduto: ["ai_board"] as readonly CaseRole[],
+  /** (8.0b) «Un coding agent propone una domanda»: chi prepara le domande per il referente nel team di Lateral Space. */
+  domanda_agente: ["ls_lead", "ls_analista"] as readonly CaseRole[],
 });

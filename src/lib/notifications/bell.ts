@@ -18,7 +18,7 @@
 import type { UcBellItem } from "../uc/notify/bell.ts";
 import { formatRelativeIt } from "../uc/views/format.ts";
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0030 as UseCaseNoticeKind } from "../db/use-case-hub-factory-ddl.ts";
+import type { UseCaseNoticeKind0031 as UseCaseNoticeKind } from "../db/use-case-hub-cli-ddl.ts";
 import { hubSignalHref } from "../use-cases/digest.ts";
 import { noticeContextOf, noticeTextOf } from "../use-cases/notices.ts";
 import { cosaServeHref, realizzazioneHref, richiesteHref, subprocessorsSettingsHref } from "../use-cases/referent/contract.ts";
@@ -235,6 +235,13 @@ export function dossierEntry(item: UcBellItem, useCaseHub: boolean): BellEntry {
  */
 export const FACTORY_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze(["progetto_appr", "strumento_nuovo", "pacchetto_nuovo", "progetto_ok", "modifica_chiesta", "ok_decaduto"]);
 const FACTORY_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set(FACTORY_BELL_KINDS);
+
+/**
+ * (8.0b) I tipi che arrivano per il ruolo nel team del caso, non per il ruolo nel workspace: quelli dell'Agent
+ * Factory più `domanda_agente`. Li vede anche chi non rivede il portafoglio. `domanda_agente` porta a «Cosa serve»,
+ * dove si decide.
+ */
+export const CASE_TEAM_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze([...FACTORY_BELL_KINDS, "domanda_agente"]);
 
 /**
  * Dove porta una notifica di use case: «Pronto da avviare» alla scheda a `?capitolo=realizzazione`

@@ -27,6 +27,8 @@ import {
   type SetupTopic,
 } from "@/lib/db/use-case-hub-factory-ddl";
 import { checkLsText } from "@/lib/db/queries/uc-cases";
+import { AGENT_QUESTION_CHANNELS, CLI_LIMITS, type AgentQuestionChannel } from "@/lib/db/use-case-hub-cli-ddl";
+import type { BuildSessionInput, CaseRepoInput } from "@/lib/use-cases/cli/inputs";
 import { cast, jsonb, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import type { CaseRole } from "@/lib/uc/vocab";
@@ -336,6 +338,29 @@ RETURNING version`),
   return ok({ version, created: true });
 }
 
+/**
+ * I nomi da coprire nei testi che escono verso i coding agent (pacchetto, contesto della CLI): persone del workspace
+ * e della sua organizzazione, contatti, chi ha chiesto le informazioni al referente, chi ha proposto da Slack o dal
+ * connettore.
+ */
+function namesToHideSql(target: FactoryTarget): UcStatement {
+  const ws = cast(target.workspaceId, "uuid");
+  const uc = cast(target.useCaseId, "uuid");
+  return toStatement(ucSql`SELECT DISTINCT x.name FROM (
+  SELECT u.name FROM users u JOIN workspace_memberships wm ON wm.user_id = u.id WHERE wm.workspace_id = ${ws}
+  UNION SELECT u.name FROM users u JOIN memberships m ON m.user_id = u.id JOIN workspaces w ON w.organization_id = m.organization_id WHERE w.id = ${ws}
+  UNION SELECT c.display_name FROM uc_contacts c WHERE c.workspace_id = ${ws}
+  UNION SELECT r.requester_name FROM use_case_referent_requests r WHERE r.workspace_id = ${ws} AND r.use_case_id = ${uc}
+  UNION SELECT ci.display_name FROM connector_identities ci WHERE ci.workspace_id = ${ws}
+) x WHERE x.name IS NOT NULL`);
+}
+
+/** I nomi da coprire per uno use case (vedi `namesToHideSql`). */
+export async function namesToHide(executor: UcExecutor, target: FactoryTarget): Promise<string[]> {
+  const [rows] = await executor.batch([namesToHideSql(target)]);
+  return rows.map((r) => String(r.name));
+}
+
 /** Quello che il pacchetto prende dalla scheda: lo legge chi chiama, con i permessi di chi guarda. */
 export type PackageCard = Omit<PackageSource, "answers" | "openNeeds" | "namesToHide">;
 
@@ -359,14 +384,7 @@ ORDER BY a.submitted_at NULLS LAST, a.id LIMIT 30`);
   const needsSql = toStatement(ucSql`SELECT n.title, n.type, n.status FROM use_case_needs n JOIN use_case_need_links l ON l.need_id = n.id
 WHERE l.use_case_id = ${uc} AND n.workspace_id = ${ws} AND n.archived_at IS NULL
 ORDER BY n.type, n.sort_order, n.created_at, n.id LIMIT 80`);
-  const namesSql = toStatement(ucSql`SELECT DISTINCT x.name FROM (
-  SELECT u.name FROM users u JOIN workspace_memberships wm ON wm.user_id = u.id WHERE wm.workspace_id = ${ws}
-  UNION SELECT u.name FROM users u JOIN memberships m ON m.user_id = u.id JOIN workspaces w ON w.organization_id = m.organization_id WHERE w.id = ${ws}
-  UNION SELECT c.display_name FROM uc_contacts c WHERE c.workspace_id = ${ws}
-  UNION SELECT r.requester_name FROM use_case_referent_requests r WHERE r.workspace_id = ${ws} AND r.use_case_id = ${uc}
-  UNION SELECT ci.display_name FROM connector_identities ci WHERE ci.workspace_id = ${ws}
-) x WHERE x.name IS NOT NULL`);
-  const [answers, needs, names] = await executor.batch(opts.canSeeNeeds ? [answersSql, needsSql, namesSql] : [nothing, nothing, namesSql]);
+  const [answers, needs, names] = await executor.batch(opts.canSeeNeeds ? [answersSql, needsSql, namesToHideSql(target)] : [nothing, nothing, namesToHideSql(target)]);
   const label = (type: unknown, status: unknown) => needStatusView(String(type) as NeedType, String(status) as NeedStatus).label.toLowerCase();
   return {
     ...card,
@@ -749,4 +767,131 @@ RETURNING id`),
   ]);
   if (!rows[0]) return fail("non_trovato", "Use case non trovato.");
   return ok({ id: String(rows[0].id) });
+}
+
+// ─── La CLI e l'MCP del caso (rilascio 8.0b) ─────────────────────────
+
+/** Le domande proposte ancora da decidere che uno use case può avere insieme. */
+export const AGENT_QUESTIONS_OPEN_MAX = 30;
+
+/**
+ * Una domanda per il referente proposta da un coding agent (`unbundle ask`, `propose_question`). Non parte mai:
+ * la vede in «Cosa serve» chi prepara le domande, che la aggiunge o la lascia stare. Notifica, nella stessa
+ * transazione, il responsabile e gli analisti del caso (mai chi l'ha proposta).
+ */
+export async function proposeAgentQuestion(
+  executor: UcExecutor,
+  actor: FactoryActor,
+  target: FactoryTarget,
+  input: { question: unknown; reason?: unknown; channel: AgentQuestionChannel },
+  now = new Date(),
+): Promise<Result<{ id: string }>> {
+  if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
+  const question = teamText(input.question, CLI_LIMITS.question, "La domanda");
+  if (!question.ok) return question;
+  if (!question.value) return fail("dati_non_validi", "Scrivi la domanda.");
+  const reason = teamText(input.reason, CLI_LIMITS.questionReason, "Il perché");
+  if (!reason.ok) return reason;
+  if (!AGENT_QUESTION_CHANNELS.includes(input.channel)) return fail("dati_non_validi", "Canale non valido.");
+  const ws = cast(target.workspaceId, "uuid");
+  const uc = cast(target.useCaseId, "uuid");
+  const [open] = await executor.batch([toStatement(ucSql`SELECT count(*)::int AS n FROM use_case_agent_questions WHERE use_case_id = ${uc} AND workspace_id = ${ws} AND status = 'proposta'`)]);
+  if (Number(open[0]?.n ?? 0) >= AGENT_QUESTIONS_OPEN_MAX) {
+    return fail("troppe_proposte", `Ci sono già ${AGENT_QUESTIONS_OPEN_MAX} domande proposte da decidere: aspetta che il team le guardi.`);
+  }
+  const inserted = ucSql`EXISTS (SELECT 1 FROM use_case_agent_questions WHERE use_case_id = ${uc} AND created_at = now())`;
+  const [rows] = await executor.batch([
+    toStatement(ucSql`INSERT INTO use_case_agent_questions (use_case_id, workspace_id, question, reason, channel, author_user_id)
+SELECT u.id, u.workspace_id, ${cast(question.value, "text")}, ${cast(reason.value, "text")}, ${cast(input.channel, "text")}, ${cast(userOf(actor), "uuid")}
+FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws}
+RETURNING id`),
+    noticeSql(target, "domanda_agente", actor, now, inserted),
+  ]);
+  if (!rows[0]) return fail("non_trovato", "Use case non trovato.");
+  return ok({ id: String(rows[0].id) });
+}
+
+/** `unbundle repo create`: registra (o aggiorna) il repository e la cartella dello use case. */
+export async function registerCaseRepo(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: CaseRepoInput): Promise<Result<{ id: string; created: boolean }>> {
+  if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
+  const ws = cast(target.workspaceId, "uuid");
+  const uc = cast(target.useCaseId, "uuid");
+  const [rows] = await executor.batch([
+    toStatement(ucSql`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder, profile, vercel_project, created_by_user_id)
+SELECT u.id, u.workspace_id, ${cast(input.repo, "text")}, ${cast(input.folder, "text")}, ${cast(input.profile, "text")}, ${cast(input.vercelProject, "text")}, ${cast(userOf(actor), "uuid")}
+FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws}
+ON CONFLICT (use_case_id, repo, folder) DO UPDATE SET profile = coalesce(EXCLUDED.profile, use_case_repos.profile),
+  vercel_project = coalesce(EXCLUDED.vercel_project, use_case_repos.vercel_project), updated_at = now()
+RETURNING id, (xmax = 0) AS created`),
+  ]);
+  if (!rows[0]) return fail("non_trovato", "Use case non trovato.");
+  return ok({ id: String(rows[0].id), created: rows[0].created === true });
+}
+
+/**
+ * La sintesi di una sessione di un coding agent (`unbundle session end`, `report_session`). Una volta sola per
+ * sessione: la stessa chiave non scrive di nuovo. I permessi li controlla chi chiama.
+ */
+export async function recordBuildSession(executor: UcExecutor, target: FactoryTarget, input: BuildSessionInput): Promise<Result<{ created: boolean }>> {
+  const ws = cast(target.workspaceId, "uuid");
+  const uc = cast(target.useCaseId, "uuid");
+  const [rows, exists] = await executor.batch([
+    toStatement(ucSql`INSERT INTO use_case_build_sessions (use_case_id, workspace_id, session_key, task_ref, harness, model, input_tokens, output_tokens, cache_tokens,
+  cost_usd, duration_seconds, outcome, pr_url, branch, ended_at)
+SELECT u.id, u.workspace_id, ${cast(input.sessionKey, "text")}, ${cast(input.taskRef, "text")}, ${cast(input.harness, "text")}, ${cast(input.model, "text")},
+  ${cast(input.inputTokens, "bigint")}, ${cast(input.outputTokens, "bigint")}, ${cast(input.cacheTokens, "bigint")}, ${cast(input.costUsd, "numeric")},
+  ${cast(input.durationSeconds, "int")}, ${cast(input.outcome, "text")}, ${cast(input.prUrl, "text")}, ${cast(input.branch, "text")}, ${cast(input.endedAt, "timestamptz")}
+FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws}
+ON CONFLICT (use_case_id, session_key) DO NOTHING
+RETURNING id`),
+    toStatement(ucSql`SELECT 1 AS ok FROM use_cases WHERE id = ${uc} AND workspace_id = ${ws}`),
+  ]);
+  if (!exists[0]) return fail("non_trovato", "Use case non trovato.");
+  return ok({ created: Boolean(rows[0]) });
+}
+
+export interface CliCaseExtras {
+  /** Le esigenze di «Cosa serve» ancora aperte, con lo stato; null se chi chiede non le vede. */
+  openNeeds: { title: string; status: string }[] | null;
+  proposals: { id: string; question: string; reason: string | null; createdAt: string }[];
+  repos: { repo: string; folder: string; profile: string | null; vercelProject: string | null }[];
+}
+
+/** Quello che il contesto della CLI aggiunge al progetto: esigenze aperte, domande proposte, repository. */
+export async function cliCaseExtras(executor: UcExecutor, target: FactoryTarget, opts: { canSeeNeeds: boolean }): Promise<CliCaseExtras> {
+  const ws = cast(target.workspaceId, "uuid");
+  const uc = cast(target.useCaseId, "uuid");
+  const [needs, proposals, repos] = await executor.batch([
+    opts.canSeeNeeds
+      ? toStatement(ucSql`SELECT n.title, n.type, n.status FROM use_case_needs n JOIN use_case_need_links l ON l.need_id = n.id
+WHERE l.use_case_id = ${uc} AND n.workspace_id = ${ws} AND n.archived_at IS NULL ORDER BY n.type, n.sort_order, n.created_at, n.id LIMIT 80`)
+      : toStatement(ucSql`SELECT NULL AS none WHERE false`),
+    toStatement(ucSql`SELECT id, question, reason, created_at FROM use_case_agent_questions WHERE use_case_id = ${uc} AND workspace_id = ${ws} AND status = 'proposta'
+ORDER BY created_at DESC LIMIT ${cast(AGENT_QUESTIONS_OPEN_MAX, "int")}`),
+    toStatement(ucSql`SELECT repo, folder, profile, vercel_project FROM use_case_repos WHERE use_case_id = ${uc} AND workspace_id = ${ws} ORDER BY created_at`),
+  ]);
+  const label = (type: unknown, status: unknown) => needStatusView(String(type) as NeedType, String(status) as NeedStatus).label.toLowerCase();
+  return {
+    openNeeds: opts.canSeeNeeds
+      ? needs.filter((r) => !isNeedDone(String(r.type) as NeedType, String(r.status) as NeedStatus)).map((r) => ({ title: String(r.title), status: label(r.type, r.status) }))
+      : null,
+    proposals: proposals.map((r) => ({ id: String(r.id), question: String(r.question), reason: text(r.reason), createdAt: iso(r.created_at) ?? "" })),
+    repos: repos.map((r) => ({ repo: String(r.repo), folder: String(r.folder), profile: text(r.profile), vercelProject: text(r.vercel_project) })),
+  };
+}
+
+/**
+ * Le scelte approvate degli altri casi della stessa famiglia (stesso repository), per l'impostazione guidata: solo
+ * il codice e la scelta di ogni argomento, mai il perché. Senza repository registrato, nessuna.
+ */
+export async function familyChoices(executor: UcExecutor, target: FactoryTarget): Promise<{ code: string; topics: ProjectTopics }[]> {
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT DISTINCT ON (u.id) u.code, p.topics FROM use_case_repos r
+JOIN use_case_repos r2 ON r2.repo = r.repo AND r2.workspace_id = r.workspace_id AND r2.use_case_id <> r.use_case_id
+JOIN use_cases u ON u.id = r2.use_case_id AND u.workspace_id = r2.workspace_id
+JOIN use_case_projects p ON p.use_case_id = u.id AND p.status = 'approvato'
+WHERE r.use_case_id = ${cast(target.useCaseId, "uuid")} AND r.workspace_id = ${cast(target.workspaceId, "uuid")}
+ORDER BY u.id LIMIT 20`),
+  ]);
+  return rows.map((r) => ({ code: String(r.code ?? ""), topics: (r.topics ?? {}) as ProjectTopics }));
 }

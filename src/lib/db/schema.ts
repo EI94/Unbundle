@@ -64,7 +64,6 @@ import type {
 } from "./use-case-hub-program-ddl.ts";
 import type {
   DecisionSource,
-  UseCaseNoticeKind0030,
   FactoryFramework,
   PackageFile,
   PackageSource,
@@ -73,7 +72,7 @@ import type {
   ProjectTopics,
   SetupTopic,
 } from "./use-case-hub-factory-ddl.ts";
-import type { AgentQuestionChannel, AgentQuestionStatus, BuildHarness, BuildOutcome, CliLoginStatus } from "./use-case-hub-cli-ddl.ts";
+import type { AgentQuestionChannel, AgentQuestionStatus, BuildHarness, BuildOutcome, CliLoginStatus, UseCaseNoticeKind0031 } from "./use-case-hub-cli-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
@@ -1614,7 +1613,7 @@ export const useCaseNotifications = pgTable(
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
     recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0030>().notNull(),
+    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0031>().notNull(),
     romeDay: date("rome_day", { mode: "string" }).notNull(),
     answers: smallint("answers").notNull().default(0),
     unknowns: smallint("unknowns").notNull().default(0),

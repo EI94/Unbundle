@@ -8,7 +8,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0030 as UseCaseNoticeKind } from "../db/use-case-hub-factory-ddl.ts";
+import type { UseCaseNoticeKind0031 as UseCaseNoticeKind } from "../db/use-case-hub-cli-ddl.ts";
 
 export const USE_CASE_NOTICE_TEXT = Object.freeze({
   titles: Object.freeze({
@@ -30,6 +30,8 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
     progetto_ok: "Progetto approvato",
     modifica_chiesta: "L'AI Board chiede una modifica",
     ok_decaduto: "L'ok dell'AI Board è da rifare",
+    // (Rilascio 8.0b) Un coding agent propone una domanda per il referente: la decide una persona.
+    domanda_agente: "Un coding agent propone una domanda",
   } satisfies Record<UseCaseNoticeKind, string>),
   answers: Object.freeze({ one: "1 risposta", many: "{n} risposte" }),
   documents: Object.freeze({ one: "1 documento", many: "{n} documenti" }),
@@ -54,6 +56,7 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   projectApproved: "Le scelte approvate sono in «Progetto dell'agente», nel dossier: da qui si costruisce.",
   changeRequested: "Che cosa cambiare è in «Progetto dell'agente», nel dossier: il responsabile riapre il progetto.",
   boardOkDropped: "Il progetto è cambiato: quando torna da approvare serve di nuovo il tuo ok, in «Progetto dell'agente».",
+  agentQuestion: "Guardala in «Cosa serve»: la aggiungi alle domande per il referente, oppure la lasci stare. Da sola non parte.",
   contextSeparator: " · ",
 });
 
@@ -82,6 +85,7 @@ export function noticeTextOf(n: {
   if (n.kind === "progetto_ok") return { title, description: t.projectApproved };
   if (n.kind === "modifica_chiesta") return { title, description: t.changeRequested };
   if (n.kind === "ok_decaduto") return { title, description: t.boardOkDropped };
+  if (n.kind === "domanda_agente") return { title, description: t.agentQuestion };
   if (n.kind === "senza_risposta") return { title, description: t.followUp[n.followUp ?? "scaduta"] };
   const answers = safe(n.answers);
   const documents = safe(n.documents);

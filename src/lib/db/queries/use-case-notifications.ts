@@ -2,7 +2,7 @@ import "server-only";
 import { getAppUcExecutor, type UcExecutor, type UcRow } from "@/lib/db/uc-executor";
 import { afterResponse } from "@/lib/db/queries/use-case-referent-base";
 import { NOTIFICATION_RETENTION_DAYS, type FollowUpReason } from "@/lib/db/use-case-hub-referents-ddl";
-import type { UseCaseNoticeKind0030 as UseCaseNoticeKind } from "@/lib/db/use-case-hub-factory-ddl";
+import type { UseCaseNoticeKind0031 as UseCaseNoticeKind } from "@/lib/db/use-case-hub-cli-ddl";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
 import { RETRY_DELAY_MINUTES, type DispatchEnv, type UcMailer } from "@/lib/uc/notify/dispatch";
 import { rowBool, rowDate, rowNumber, rowString } from "@/lib/uc/sql/readiness";
