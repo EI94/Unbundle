@@ -541,8 +541,14 @@ test("prendere e passare i compiti (8.1a): dopo l'approvazione; uno alla volta; 
   const prima = await act(tokens.analyst!, "prendi", { compito: "T-3" });
   assert.deepEqual([prima.status, (prima.json.errore as Row).codice], [409, "progetto_non_approvato"]);
   const [project] = await q(`SELECT revision FROM use_case_projects WHERE use_case_id = $1 AND status = 'da_approvare'`, [ids.useCase]);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compiti_pronti'`, [ids.useCase]))[0].n, 0, "prima dell'approvazione, niente");
   const approved = await factory.approveProject(exec, { kind: "persona", userId: ids.lead, roles: ["ls_lead"] }, { workspaceId: ids.ws, useCaseId: ids.useCase }, { revision: project.revision });
   assert.ok(approved.ok);
+  // Con l'approvazione i compiti si prendono: lo sa chi costruisce, non chi ha approvato.
+  const ready = await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compiti_pronti'`, [ids.useCase]);
+  assert.deepEqual(ready.map((r) => r.recipient_user_id), [ids.analyst]);
+  const [readyMail] = await q(`SELECT recipient_user_id FROM uc_notifications WHERE case_id = $1 AND template_key = 'compiti_pronti'`, [ids.dossier]);
+  assert.equal(readyMail.recipient_user_id, ids.analyst);
 
   const preso = await act(tokens.analyst!, "prendi", { compito: "t-3", ramo: "px-0042/t-3-casi" });
   assert.deepEqual([preso.status, preso.json.ref, preso.json.ramo, preso.json.giaTuo], [200, "T-3", "px-0042/t-3-casi", false]);
@@ -608,4 +614,30 @@ test("prendere e passare i compiti (8.1a): dopo l'approvazione; uno alla volta; 
   // Mai una lettura per persona: chi ha cosa si vede solo compito per compito.
   const after2 = (await call("compiti?caso=PX-0042", { token: tokens.lead! })).json.compiti as Row[];
   assert.deepEqual(after2.map((t) => [t.ref, t.stato, t.tuo]), [["T-1", "fatto", false], ["T-2", "da_fare", false], ["T-3", "in_corso", true], ["T-4", "fatto", true]]);
+});
+
+test("il compito fermo (8.1a): dopo 2 giorni lavorativi lo chiede a chi lo ha, dopo 4 lo dice al responsabile; una volta per segnale; mai riassegnato", opts, async () => {
+  const sweep = (await import("../../db/queries/use-case-tasks-notices.ts")).runTaskStaleSweep;
+  await q(
+    `UPDATE use_case_tasks SET holder_user_id = $2, status = 'in_corso', taken_at = '2026-11-02T09:00:00Z', last_activity_at = '2026-11-06T16:00:00Z', stale_asked_at = NULL, stale_escalated_at = NULL
+     WHERE use_case_id = $1 AND ref = 'T-3'`,
+    [ids.useCase, ids.analyst],
+  );
+  await q(`DELETE FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compito_fermo'`, [ids.useCase]);
+  const scope = { workspaceIds: [ids.ws] };
+  assert.deepEqual(await sweep(exec, { now: new Date("2026-11-09T09:00:00Z"), ...scope }), { asked: 0, escalated: 0, errors: 0 }, "1 giorno lavorativo");
+  assert.deepEqual(await sweep(exec, { now: new Date("2026-11-10T09:00:00Z"), ...scope }), { asked: 1, escalated: 0, errors: 0 }, "2 giorni: si chiede");
+  assert.deepEqual(await sweep(exec, { now: new Date("2026-11-11T09:00:00Z"), ...scope }), { asked: 0, escalated: 0, errors: 0 }, "già chiesto");
+  assert.deepEqual(await sweep(exec, { now: new Date("2026-11-12T09:00:00Z"), ...scope }), { asked: 0, escalated: 1, errors: 0 }, "4 giorni: al responsabile");
+  assert.deepEqual(await sweep(exec, { now: new Date("2026-11-13T09:00:00Z"), ...scope }), { asked: 0, escalated: 0, errors: 0 }, "già detto");
+  const bells = await q(`SELECT recipient_user_id, rome_day::text AS day FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compito_fermo' ORDER BY rome_day`, [ids.useCase]);
+  assert.deepEqual(bells, [{ recipient_user_id: ids.analyst, day: "2026-11-10" }, { recipient_user_id: ids.lead, day: "2026-11-12" }]);
+  const mails = await q(`SELECT recipient_user_id, payload FROM uc_notifications WHERE case_id = $1 AND template_key = 'compito_fermo' ORDER BY created_at`, [ids.dossier]);
+  assert.deepEqual(mails.map((m) => [m.recipient_user_id, (m.payload as Row).ref]), [[ids.analyst, "T-3"], [ids.lead, "T-3"]]);
+  const [t3] = await q(`SELECT holder_user_id, status FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-3'`, [ids.useCase]);
+  assert.deepEqual(t3, { holder_user_id: ids.analyst, status: "in_corso" }, "mai riassegnato");
+  // Un segnale nuovo riparte da capo.
+  await q(`UPDATE use_case_tasks SET last_activity_at = '2026-11-12T15:00:00Z' WHERE use_case_id = $1 AND ref = 'T-3'`, [ids.useCase]);
+  assert.deepEqual(await sweep(exec, { now: new Date("2026-11-13T09:00:00Z"), ...scope }), { asked: 0, escalated: 0, errors: 0 });
+  assert.deepEqual(await sweep(exec, { now: new Date("2026-11-17T09:00:00Z"), ...scope }), { asked: 1, escalated: 0, errors: 0 });
 });

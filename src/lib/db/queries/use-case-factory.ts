@@ -46,6 +46,7 @@ import {
 } from "@/lib/use-cases/factory/permissions";
 import { isNeedDone, needStatusView, type NeedStatus, type NeedType } from "@/lib/use-cases/needs";
 import { romeToday } from "@/lib/use-cases/quarter";
+import { BUILDER_ROLES, hasOpenTasksSql, NOBODY, notifyTask, tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
 
 // ─── Chi agisce ──────────────────────────────────────────────────────
 
@@ -721,12 +722,16 @@ export async function approveProject(executor: UcExecutor, actor: FactoryActor, 
   const target0 = ucSql`EXISTS (SELECT 1 FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${version} AND revision = ${rev})`;
   // L'UPDATE scrive updated_at = now(): «Progetto approvato» parte solo se l'approvazione è di questa transazione.
   const approvedNow = ucSql`EXISTS (SELECT 1 FROM use_case_projects WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'approvato' AND version = ${version} AND updated_at = now())`;
+  // (8.1a) Con l'approvazione i compiti diventano da prendere: «ci sono compiti da prendere» a chi costruisce, se ce
+  // ne sono (e solo dove la 0032 c'è: senza, l'approvazione va come prima).
+  const tasksReady = await tasksTablesReady(executor);
   const [, rows] = await executor.batch([
     toStatement(ucSql`UPDATE use_case_projects SET status = 'superato', revision = revision + 1, updated_at = now() WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'approvato' AND ${target0} RETURNING version`),
     toStatement(ucSql`UPDATE use_case_projects SET status = 'approvato', approved_at = ${when}, approved_by_user_id = ${cast(userOf(actor), "uuid")}, revision = revision + 1, updated_at = now()
 WHERE workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'da_approvare' AND version = ${version} AND revision = ${rev}
 RETURNING version`),
     noticeSql(target, "progetto_ok", actor, now, approvedNow),
+    ...(tasksReady ? notifyTask(target, "compiti_pronti", { roles: BUILDER_ROLES }, userOf(actor) ?? NOBODY, now, null, ucSql`${approvedNow} AND ${hasOpenTasksSql(target)}`) : []),
   ]);
   if (!rows[0]) return fail("conflitto", CHANGED);
   return ok({ version: Number(rows[0].version) });

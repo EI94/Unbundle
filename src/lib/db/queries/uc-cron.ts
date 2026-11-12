@@ -59,6 +59,7 @@ import { expireRetainedFiles, type RetentionSummary } from "./uc-retention.ts";
 import { applyItemTransitions } from "./uc-items.ts";
 import { CASE_OWNER_SQL, dispatchQueue } from "./uc-notifications-dispatch.ts";
 import { enqueueForLsMembersSql, enqueueSql } from "./uc-notifications.ts";
+import { runTaskStaleSweep, type TaskStaleSummary } from "./use-case-tasks-notices.ts";
 
 const WAITING_SQL = raw("'inviata', 'aperta', 'in_corso'");
 const OPEN_ITEM_STATES_SQL = raw("'da_fare', 'bozza'");
@@ -629,6 +630,8 @@ export interface RemindersCronSummary {
   /** Lavoro lasciato al giro dopo per mancanza di tempo. */
   deferred: boolean;
   dispatch: DispatchSummary | null;
+  /** (8.1a) I compiti fermi: a chi chiesto, a quanti responsabili detto. Null fuori dalla finestra. */
+  tasks: TaskStaleSummary | null;
 }
 
 export async function runRemindersCron(executor: UcExecutor, o: UcCronOptions): Promise<RemindersCronSummary> {
@@ -651,6 +654,7 @@ export async function runRemindersCron(executor: UcExecutor, o: UcCronOptions): 
     errors: 0,
     deferred: false,
     dispatch: null,
+    tasks: null,
   };
   const touched = new Map<string, string>();
 
@@ -801,6 +805,17 @@ export async function runRemindersCron(executor: UcExecutor, o: UcCronOptions): 
     } catch (error) {
       s.errors++;
       logFailure("uc-reminders", "prontezza", errorCode(error));
+    }
+  }
+
+  // 4b. (8.1a) I compiti fermi: nella finestra d'invio, prima dell'invio, così le e-mail partono in questo giro.
+  if (s.inWindow && timeLeft()) {
+    try {
+      s.tasks = await runTaskStaleSweep(executor, { now, workspaceIds: ws === null || ws === undefined || ws === "" ? null : typeof ws === "string" ? [ws] : ws });
+      s.errors += s.tasks.errors;
+    } catch (error) {
+      s.errors++;
+      logFailure("uc-reminders", "compiti fermi", errorCode(error));
     }
   }
 

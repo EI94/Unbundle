@@ -10,14 +10,14 @@ import "server-only";
  * Chi ha un compito si vede sul compito; nessuna lettura qui raggruppa, conta o ordina per persona (art. 15.4).
  */
 import type { UcExecutor } from "@/lib/db/uc-executor";
-import { TASKS_PROBE_SQL, TASK_STATUSES, type TaskNoticeKind, type TaskStatus } from "@/lib/db/use-case-hub-tasks-ddl";
+import { TASKS_PROBE_SQL, TASK_STATUSES, type TaskStatus } from "@/lib/db/use-case-hub-tasks-ddl";
 import { checkLsText } from "@/lib/db/queries/uc-cases";
 import type { FactoryTarget } from "@/lib/db/queries/use-case-factory";
 import { cast, jsonb, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import type { CaseRole } from "@/lib/uc/vocab";
 import { overlappingTasks, planTaskImport, type TaskDraft, type TaskImportPlan, type TaskRow } from "@/lib/use-cases/factory/tasks";
-import { romeToday } from "@/lib/use-cases/quarter";
+import { BUILDER_ROLES, hasOpenTasksSql, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
 
 /** Vero se la 0032 è applicata (la stessa sonda di `ensureDbSchema`). */
 export async function tasksStoreReady(executor: UcExecutor): Promise<boolean> {
@@ -88,7 +88,8 @@ export interface TaskImportResult extends TaskImportPlan {
 export async function importTasks(
   executor: UcExecutor,
   target: FactoryTarget,
-  input: { drafts: readonly TaskDraft[]; doneRefs?: readonly string[]; dryRun?: boolean },
+  input: { drafts: readonly TaskDraft[]; doneRefs?: readonly string[]; dryRun?: boolean; actorId?: string | null },
+  now: Date = new Date(),
 ): Promise<Result<TaskImportResult>> {
   if (input.drafts.length === 0) return fail("dati_non_validi", "Nessun compito da importare: controlla compiti.md.");
   if (input.drafts.length > 200) return fail("dati_non_validi", "Troppi compiti in un caso solo (al massimo 200).");
@@ -119,6 +120,11 @@ ON CONFLICT (use_case_id, ref) DO NOTHING`);
     return toStatement(ucSql`UPDATE use_case_tasks SET ${assignments}, updated_at = now()
 WHERE id = ${cast(op.id, "uuid")} AND workspace_id = ${ws} AND use_case_id = ${uc}`);
   });
+  // Compiti nuovi da prendere su un progetto già approvato: lo sa chi costruisce (mai chi importa).
+  if (plan.ops.some((o) => o.kind === "nuovo" && o.status === "da_fare")) {
+    const approved = ucSql`EXISTS (SELECT 1 FROM use_case_projects p WHERE p.workspace_id = ${ws} AND p.use_case_id = ${uc} AND p.status = 'approvato')`;
+    statements.push(...notify(target, "compiti_pronti", { roles: BUILDER_ROLES }, input.actorId ?? NOBODY, now, null, ucSql`${approved} AND ${hasOpenTasksSql(target)}`));
+  }
   await executor.batch(statements);
   return ok({ ...plan, dryRun: false });
 }
@@ -131,48 +137,8 @@ export interface TaskActor {
   roles: readonly CaseRole[];
 }
 
-const BUILDER_ROLES: readonly CaseRole[] = ["ls_lead", "ls_analista", "ls_sviluppatore"];
 const isLead = (a: TaskActor) => a.roles.includes("ls_lead");
-
-type Recipient = { userId: string } | { roles: readonly CaseRole[] };
-
-/** Una riga nella campanella, a una persona o ai ruoli del caso; mai a chi agisce. Una al giorno per tipo. */
-function taskNoticeSql(target: FactoryTarget, kind: TaskNoticeKind, to: Recipient, actorId: string, now: Date): UcStatement {
-  const ws = cast(target.workspaceId, "uuid");
-  const uc = cast(target.useCaseId, "uuid");
-  const day = cast(romeToday(now), "date");
-  const conflict = raw("ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET last_event_at = now(), read_at = NULL");
-  if ("userId" in to) {
-    return toStatement(ucSql`INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day)
-SELECT ${ws}, ${uc}, ${cast(to.userId, "uuid")}, ${cast(kind, "text")}, ${day} WHERE ${cast(to.userId, "uuid")} IS DISTINCT FROM ${cast(actorId, "uuid")}
-${conflict}`);
-  }
-  return toStatement(ucSql`INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day)
-SELECT DISTINCT c.workspace_id, c.portfolio_use_case_id, m.user_id, ${cast(kind, "text")}, ${day}
-FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id
-WHERE c.workspace_id = ${ws} AND c.portfolio_use_case_id = ${uc} AND m.role = ANY (${cast([...to.roles], "text[]")}) AND m.user_id IS DISTINCT FROM ${cast(actorId, "uuid")}
-${conflict}`);
-}
-
-/**
- * L'e-mail interna della coda dei dossier (`uc_notifications`), a una persona o ai ruoli del caso; mai a chi agisce.
- * Una al giorno per persona, caso e tipo. La manda il giro dopo la risposta, o il cron.
- */
-function taskEmailSql(target: FactoryTarget, kind: TaskNoticeKind, to: Recipient, actorId: string, now: Date, ref: string | null): UcStatement {
-  const ws = cast(target.workspaceId, "uuid");
-  const uc = cast(target.useCaseId, "uuid");
-  const tpl = cast(kind, "text");
-  const day = cast(romeToday(now), "text");
-  const payload = jsonb(ref ? { useCase: target.useCaseId, ref } : { useCase: target.useCaseId });
-  const recipients = "userId" in to ? ucSql`(SELECT ${cast(to.userId, "uuid")} AS user_id)` : ucSql`(SELECT m.user_id FROM uc_case_members m WHERE m.case_id = c.id AND m.role = ANY (${cast([...to.roles], "text[]")}))`;
-  return toStatement(ucSql`INSERT INTO uc_notifications (workspace_id, case_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
-SELECT DISTINCT ON (r.user_id) c.workspace_id, c.id, r.user_id, 'email', ${tpl}, ${payload}, 'in_coda', ${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day}, now()
-FROM uc_cases c CROSS JOIN LATERAL ${recipients} r
-WHERE c.workspace_id = ${ws} AND c.portfolio_use_case_id = ${uc} AND r.user_id IS DISTINCT FROM ${cast(actorId, "uuid")}
-ON CONFLICT (dedupe_key) DO NOTHING`);
-}
-
-const notify = (target: FactoryTarget, kind: TaskNoticeKind, to: Recipient, actorId: string, now: Date, ref: string | null) => [taskNoticeSql(target, kind, to, actorId, now), taskEmailSql(target, kind, to, actorId, now, ref)];
+const notify = notifyTask;
 
 async function projectApproved(executor: UcExecutor, target: FactoryTarget): Promise<boolean> {
   const [rows] = await executor.batch([

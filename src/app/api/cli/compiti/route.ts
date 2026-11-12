@@ -103,7 +103,7 @@ export async function POST(request: Request): Promise<Response> {
     return r.ok ? cliJson(summary(r.value)) : cliError(r.code === "dati_non_validi" || r.code.startsWith("testo_") ? 400 : 409, r.code, r.message);
   }
   return runCliWrite(request, opened.value, "compiti_importa", { caso: c.useCase.code, testo: b.testo, cartella: b.cartella, doneRefs }, async () => {
-    const r = await importTasks(opened.value.executor, c.target, { drafts, doneRefs });
+    const r = await importTasks(opened.value.executor, c.target, { drafts, doneRefs, actorId: c.actor.kind === "persona" ? c.actor.userId : null });
     return r.ok ? { ok: true, value: summary(r.value) } : r;
   });
 }
