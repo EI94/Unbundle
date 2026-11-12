@@ -102,6 +102,14 @@ FROM use_case_cli_logins WHERE user_code = ${cast(userCode, "text")} ORDER BY cr
   };
 }
 
+/** I workspace dove la persona è nel team di almeno un caso: quelli che «Collega questa CLI» propone. */
+export async function cliCaseWorkspaceIds(executor: UcExecutor, userId: string): Promise<Set<string>> {
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT DISTINCT c.workspace_id FROM uc_case_members m JOIN uc_cases c ON c.id = m.case_id WHERE m.user_id = ${cast(userId, "uuid")}`),
+  ]);
+  return new Set(rows.map((r) => String(r.workspace_id).toLowerCase()));
+}
+
 /**
  * 2. La decisione della persona, con l'accesso fatto. `workspaceId` lo controlla chi chiama
  * (`requireWorkspaceAccess`): qui si scrive solo su un login vivo e in attesa.

@@ -8,15 +8,17 @@ import { CliLoginConfirm } from "@/components/cli/cli-login-confirm";
 import { auth } from "@/lib/auth";
 import { loginPathForMissingSession, SESSION_COOKIE_NAME } from "@/lib/auth/session-signal";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
-import { cliStoreReady, findCliLogin } from "@/lib/db/queries/use-case-cli-auth";
+import { cliCaseWorkspaceIds, cliStoreReady, findCliLogin } from "@/lib/db/queries/use-case-cli-auth";
 import { getWorkspaceGroupsForUser } from "@/lib/db/queries/workspaces";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { normalizeUserCode } from "@/lib/use-cases/cli/codes";
+import { cliWorkspaceChoices } from "@/lib/use-cases/cli/workspace-choices";
 
 /**
  * «Collega questa CLI» (rilascio 8.0b, RILASCIO-8.0b-COSTRUZIONE.md §3): la persona, con l'accesso fatto, conferma
  * il codice che vede nel terminale e sceglie il workspace. Il token lo ritira la CLI, mai questa pagina. Il testo
- * dice di confermare solo un codice che si è chiesto: è la difesa contro chi manda un link con un suo codice.
+ * dice di confermare solo un codice che si è chiesto: è la difesa contro chi manda un link con un suo codice. I
+ * workspace proposti sono solo quelli dove la persona è nel team di un caso (`cliWorkspaceChoices`).
  */
 export const metadata: Metadata = {
   title: "Collega la CLI",
@@ -84,9 +86,12 @@ export default async function CliConnectPage({ searchParams }: { searchParams: P
     );
   }
 
-  const groups = await getWorkspaceGroupsForUser(session.user.id);
-  const workspaces = groups.flatMap((g) =>
-    g.workspaces.filter((w) => w.accessRole !== "learner").map((w) => ({ id: w.workspace.id, name: w.workspace.name, organization: g.organization.name })),
+  const [groups, caseWorkspaces] = await Promise.all([getWorkspaceGroupsForUser(session.user.id), cliCaseWorkspaceIds(executor, session.user.id)]);
+  const workspaces = cliWorkspaceChoices(
+    groups.flatMap((g) =>
+      g.workspaces.map((w) => ({ id: w.workspace.id, name: w.workspace.name, organization: g.organization.name, createdAt: w.workspace.createdAt, accessRole: w.accessRole })),
+    ),
+    caseWorkspaces,
   );
   return (
     <Shell>
@@ -96,11 +101,7 @@ export default async function CliConnectPage({ searchParams }: { searchParams: P
       <p className="text-sm text-muted-foreground">
         Da: <span className="text-foreground">{login.clientLabel}</span>. La CLI potrà fare per 90 giorni quello che puoi fare tu nei casi dove sei nel team; si revoca da Impostazioni › CLI di Unbundle o con «unbundle logout».
       </p>
-      {workspaces.length ? (
-        <CliLoginConfirm userCode={login.userCode} workspaces={workspaces} />
-      ) : (
-        <p className="text-sm text-muted-foreground">Non hai un workspace dove collegarla.</p>
-      )}
+      <CliLoginConfirm userCode={login.userCode} workspaces={workspaces} />
     </Shell>
   );
 }

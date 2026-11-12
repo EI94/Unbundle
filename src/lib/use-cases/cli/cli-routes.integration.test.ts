@@ -177,6 +177,9 @@ test("il login vero: codice, conferma, token una volta; difese su indirizzo e br
   assert.equal(inUrl.status, 400);
   assert.equal((await call("whoami", { token: leaked })).status, 401, "esposto: non vale più");
   assert.equal((await call("whoami")).status, 401);
+  // «Collega questa CLI» propone solo i workspace dove la persona è nel team di un caso.
+  assert.ok((await auth.cliCaseWorkspaceIds(exec, ids.lead)).has(ids.ws));
+  assert.equal((await auth.cliCaseWorkspaceIds(exec, ids.outsider)).size, 0);
 });
 
 test("contesto: il brief prima dell'impostazione, poi il giro guidato fino all'invio, con le ripetizioni", opts, async () => {
