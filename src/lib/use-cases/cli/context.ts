@@ -5,6 +5,8 @@ import "server-only";
  * `pacchetto`, `domande`). Il testo è pronto da leggere, senza nomi né e-mail; `dati` serve agli script.
  */
 import { cliCaseExtras, namesToHide, readFactory } from "@/lib/db/queries/use-case-factory";
+import { listTasks, tasksStoreReady } from "@/lib/db/queries/use-case-tasks";
+import { tasksBriefLine } from "@/lib/use-cases/factory/tasks";
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import { composeBrief, composeDecisionsLayer, composePackageLayer, composeProjectLayer, composeQuestionsLayer, nextStep, type ContextLayer } from "./brief";
 import type { CliCase } from "./case";
@@ -20,6 +22,8 @@ export interface CliContext {
     pacchetto: { versione: number } | null;
     prossimoPasso: string;
     repository: unknown;
+    /** (8.1a) I compiti, senza nomi: solo se è tuo. */
+    compiti: { ref: string; stato: string; tuo: boolean }[];
     ruoli: readonly string[];
   };
 }
@@ -28,7 +32,12 @@ export interface CliContext {
 export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { layer: ContextLayer | null; since: Date | null }): Promise<CliContext | null> {
   const read = await readFactory(executor, c.target, c.actor);
   if (!read.ok) return null;
-  const [extras, names] = await Promise.all([cliCaseExtras(executor, c.target, { canSeeNeeds: c.canSeeNeeds }), namesToHide(executor, c.target)]);
+  const [extras, names, tasks] = await Promise.all([
+    cliCaseExtras(executor, c.target, { canSeeNeeds: c.canSeeNeeds }),
+    namesToHide(executor, c.target),
+    tasksStoreReady(executor).then((ready) => (ready ? listTasks(executor, c.target) : [])),
+  ]);
+  const viewerId = c.actor.kind === "persona" ? c.actor.userId : "";
   const view = read.value;
   const base = {
     code: c.useCase.code,
@@ -41,6 +50,7 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
     openNeeds: extras.openNeeds === null ? null : extras.openNeeds.length,
     proposedQuestions: extras.proposals?.length ?? 0,
     repos: extras.repos,
+    tasksLine: tasksBriefLine(tasks, viewerId),
     namesToHide: names,
     since: input.since ? input.since.toISOString() : null,
   };
@@ -64,6 +74,7 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
       pacchetto: view.latestPackage ? { versione: view.latestPackage.version } : null,
       prossimoPasso: nextStep(base),
       repository: extras.repos,
+      compiti: tasks.map((t) => ({ ref: t.ref, stato: t.status, tuo: t.holderUserId !== null && t.holderUserId === viewerId })),
       ruoli: c.access.roles,
     },
   };

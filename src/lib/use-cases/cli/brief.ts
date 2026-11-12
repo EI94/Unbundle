@@ -68,6 +68,8 @@ export interface BriefInput {
   openNeeds: number | null;
   proposedQuestions: number;
   repos: { repo: string; folder: string }[];
+  /** (8.1a) La riga dei compiti (`tasksBriefLine`): «T-2 tuo, in corso · …», senza nomi; null senza compiti. */
+  tasksLine?: string | null;
   namesToHide: readonly string[];
   /** Le novità da questa data (ISO), se chiesta. */
   since?: string | null;
@@ -124,6 +126,7 @@ export function composeBrief(input: BriefInput): string {
   }
   lines.push(`Prossimo passo: ${nextStep(input)}`);
   if (input.latestPackage) lines.push(`Pacchetto: k${input.latestPackage.version} del ${day(input.latestPackage.createdAt)} («unbundle start» lo porta nel repository).`);
+  if (input.tasksLine) lines.push(cut(input.tasksLine, 200));
   if (project?.newTools.length) {
     lines.push(cut(`Strumenti nuovi: ${project.newTools.map((t) => t.nome).join(", ")}${project.aiBoardOkAt ? ` (ok AI Board ${day(project.aiBoardOkAt)})` : " (manca l'ok dell'AI Board)"}.`, 160));
   }

@@ -113,7 +113,7 @@ before(async () => {
   exec = (await import("../../db/uc-executor.ts")).ucExecutorForUrl(url!);
   auth = await import("../../db/queries/use-case-cli-auth.ts");
   factory = await import("../../db/queries/use-case-factory.ts");
-  for (const name of ["login", "login/token", "whoami", "logout", "context", "setup", "pacchetto", "decisioni", "domande", "repository", "sessioni", "token-caso", "mcp"]) {
+  for (const name of ["login", "login/token", "whoami", "logout", "context", "setup", "pacchetto", "decisioni", "domande", "repository", "sessioni", "token-caso", "mcp", "compiti"]) {
     routes[name] = await import(`../../../app/api/cli/${name}/route.ts`);
   }
 
@@ -473,4 +473,59 @@ test("riprese e tetti: la stessa decisione o domanda con l'id riservato si scriv
   } finally {
     process.env.USE_CASE_HUB_WORKSPACES = saved;
   }
+});
+
+test("i compiti (8.1a): importa a secco, poi davvero, una volta sola; «fatto» dai rami uniti; la lista con la persona; il brief senza nomi", opts, async () => {
+  const file = [
+    "# PX-0042 · Compiti",
+    "",
+    "- [ ] T-1 Ingresso e richiesta normalizzata · 8 h · aree: casi/px-0042/src/ingresso.ts, src/api.ts · prove: evals/avversari",
+    "- [ ] T-2 Equipaggio dal gestionale · 16 h · aree: componenti/gestionale/, src/equipaggio.ts · prove: evals/regole",
+    "- [ ] T-3 Casi d'oro dallo storico · 10 h · aree: evals/casi/",
+  ].join("\n");
+  assert.deepEqual((await call("compiti?caso=PX-0042", { token: tokens.lead! })).json.compiti, [], "prima, nessun compito");
+  const body = { caso: "PX-0042", azione: "importa", testo: file, cartella: "casi/px-0042", ramiUniti: ["px-0042/t-1-ingresso", "px-0042/impostazione", "px-0099/t-2-altro"] };
+  const secco = await post("compiti", tokens.lead!, { ...body, aSecco: true }, null);
+  assert.equal(secco.status, 200);
+  assert.deepEqual(secco.json.nuovi, [{ ref: "T-1", stato: "fatto" }, { ref: "T-2", stato: "da_fare" }, { ref: "T-3", stato: "da_fare" }]);
+  assert.deepEqual((await call("compiti?caso=PX-0042", { token: tokens.lead! })).json.compiti, [], "a secco non scrive");
+
+  const k = key();
+  const fatto = await post("compiti", tokens.lead!, body, k);
+  assert.equal(fatto.status, 200, JSON.stringify(fatto.json));
+  assert.equal((fatto.json.nuovi as unknown[]).length, 3);
+  const again = await post("compiti", tokens.lead!, body, k);
+  assert.equal(again.json.ripetuta, true, "la stessa richiesta risponde come la prima");
+  const rifatto = await post("compiti", tokens.lead!, body);
+  assert.deepEqual([rifatto.json.nuovi, rifatto.json.uguali], [[], ["T-1", "T-2", "T-3"]], "rifatta non cambia niente");
+
+  await q(`UPDATE use_case_tasks SET status = 'in_corso', holder_user_id = $2, taken_at = now() WHERE use_case_id = $1 AND ref = 'T-2'`, [ids.useCase, ids.analyst]);
+  const list = (await call("compiti?caso=PX-0042", { token: tokens.lead! })).json.compiti as Row[];
+  assert.deepEqual(
+    list.map((t) => [t.ref, t.stato, t.persona, t.tuo]),
+    [
+      ["T-1", "fatto", null, false],
+      ["T-2", "in_corso", NAME.analyst, false],
+      ["T-3", "da_fare", null, false],
+    ],
+  );
+  assert.deepEqual(list[1].aree, ["componenti/gestionale/", "casi/px-0042/src/equipaggio.ts"]);
+  const mine = (await call("compiti?caso=PX-0042", { token: tokens.analyst! })).json.compiti as Row[];
+  assert.equal(mine[1].tuo, true);
+
+  // Il brief dice di chi è un compito solo a chi lo ha; agli altri «di colleghi», mai il nome.
+  const briefLead = String((await call("context?caso=PX-0042", { token: tokens.lead! })).json.testo);
+  assert.match(briefLead, /Compiti: T-2 di colleghi · 1 da prendere \(T-3\) · 1 su 3 fatti\./);
+  assert.ok(!briefLead.includes(NAME.analyst));
+  assert.match(String((await call("context?caso=PX-0042", { token: tokens.analyst! })).json.testo), /Compiti: T-2 tuo, in corso/);
+
+  // Il responsabile del cliente legge i compiti ma non li importa; chi non è nel team non li vede.
+  assert.equal((await call("compiti?caso=PX-0042", { token: tokens.owner! })).status, 200);
+  assert.equal((await post("compiti", tokens.owner!, body)).status, 403);
+  assert.equal((await call("compiti?caso=PX-0042", { token: tokens.outsider! })).status, 404);
+  // Un titolo con il nome di una persona si ferma prima di scrivere.
+  const sporco = await post("compiti", tokens.lead!, { ...body, testo: `${file}\n- [ ] T-4 Scrivere a Mario Rossi · 1 h` });
+  assert.equal(sporco.status, 400);
+  assert.match(String((sporco.json.errore as Row).codice), /^testo_/);
+  assert.equal(((await call("compiti?caso=PX-0042", { token: tokens.lead! })).json.compiti as Row[]).length, 3);
 });
