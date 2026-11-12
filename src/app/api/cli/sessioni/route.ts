@@ -1,4 +1,5 @@
 import { recordBuildSession } from "@/lib/db/queries/use-case-factory";
+import { tasksStoreReady, touchTask } from "@/lib/db/queries/use-case-tasks";
 import { parseBuildSession } from "@/lib/use-cases/cli/inputs";
 import { requireCliWrite, resolveCliCase } from "@/lib/use-cases/cli/case";
 import { cliError, cliJson, openCli, readCliBody } from "@/lib/use-cases/cli/route-kit";
@@ -6,7 +7,8 @@ import { cliError, cliJson, openCli, readCliBody } from "@/lib/use-cases/cli/rou
 /**
  * `unbundle session end` (rilascio 8.0b, ISPIRAZIONE-WARP §4.1): la sintesi di una sessione di un coding agent.
  * Solo numeri e riferimenti, mai il testo della conversazione né la persona. È idempotente da sé: la chiave della
- * sessione (l'impronta del suo id) scrive una volta sola, quindi niente Idempotency-Key.
+ * sessione (l'impronta del suo id) scrive una volta sola, quindi niente Idempotency-Key. (8.1a) Una sessione con il
+ * compito è un segnale di vita per quel compito, se è di chi la manda.
  */
 export const runtime = "nodejs";
 
@@ -24,5 +26,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!parsed.ok) return cliError(400, "dati_non_validi", parsed.message);
   const recorded = await recordBuildSession(opened.value.executor, c.target, parsed.value);
   if (!recorded.ok) return cliError(404, recorded.code, recorded.message);
+  if (parsed.value.taskRef && c.actor.kind === "persona" && (await tasksStoreReady(opened.value.executor))) {
+    await touchTask(opened.value.executor, c.target, { userId: c.actor.userId, ref: parsed.value.taskRef });
+  }
   return cliJson({ registrata: recorded.value.created, ripetuta: !recorded.value.created });
 }

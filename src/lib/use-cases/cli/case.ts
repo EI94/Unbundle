@@ -137,6 +137,11 @@ const STATUS_OF: Readonly<Record<string, number>> = {
   argomenti_mancanti: 409,
   manca_ai_board: 409,
   troppe_proposte: 429,
+  // (8.1a) I compiti.
+  progetto_non_approvato: 409,
+  gia_preso: 409,
+  aree_sovrapposte: 409,
+  libero: 409,
 };
 
 /** Una chiave di idempotenza valida: quella che la CLI genera (un UUID) o una del chiamante, 8-128 caratteri. */

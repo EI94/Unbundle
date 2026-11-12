@@ -115,5 +115,6 @@ test("«un coding agent propone una domanda»: al responsabile di Lateral Space,
   assert.equal(client.action === "cancel" ? client.reason : client.action, "destinatario_non_lateral_space");
   const base = `https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}`;
   assert.equal(checkEmailLink(`${base}/proposte`, "dashboard"), `${base}/proposte`);
-  for (const bad of [base, `${base}/progetto`, `${base}/proposte?x=1`, `${base}/altro`]) assert.throws(() => checkEmailLink(bad, "dashboard"), bad);
+  // (8.1a) `${base}/progetto` è ammesso: ci portano le e-mail dei compiti (task-email.test.ts).
+  for (const bad of [base, `${base}/proposte?x=1`, `${base}/altro`]) assert.throws(() => checkEmailLink(bad, "dashboard"), bad);
 });

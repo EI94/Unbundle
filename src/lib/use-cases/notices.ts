@@ -8,7 +8,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0031 as UseCaseNoticeKind } from "../db/use-case-hub-cli-ddl.ts";
+import type { UseCaseNoticeKind0032 as UseCaseNoticeKind } from "../db/use-case-hub-tasks-ddl.ts";
 
 export const USE_CASE_NOTICE_TEXT = Object.freeze({
   titles: Object.freeze({
@@ -32,6 +32,11 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
     ok_decaduto: "L'ok dell'AI Board è da rifare",
     // (Rilascio 8.0b) Un coding agent propone una domanda per il referente: la decide una persona.
     domanda_agente: "Un coding agent propone una domanda",
+    // (Rilascio 8.1a) I compiti: un collega chiede il tuo, te ne hanno passato uno, uno è fermo, ce ne sono da prendere.
+    compito_chiesto: "Un collega chiede il tuo compito",
+    compito_passato: "Ti hanno passato un compito",
+    compito_fermo: "Un compito è fermo",
+    compiti_pronti: "Ci sono compiti da prendere",
   } satisfies Record<UseCaseNoticeKind, string>),
   answers: Object.freeze({ one: "1 risposta", many: "{n} risposte" }),
   documents: Object.freeze({ one: "1 documento", many: "{n} documenti" }),
@@ -57,6 +62,10 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   changeRequested: "Che cosa cambiare è in «Progetto dell'agente», nel dossier: il responsabile riapre il progetto.",
   boardOkDropped: "Il progetto è cambiato: quando torna da approvare serve di nuovo il tuo ok, in «Progetto dell'agente».",
   agentQuestion: "Guardala in «Cosa serve»: la aggiungi alle domande per il referente, oppure la lasci stare. Da sola non parte.",
+  taskRequested: "Passaglielo con «unbundle passa», o diglielo tu: finché non lo passi, resta tuo.",
+  taskPassed: "La nota di passaggio è in «unbundle compiti»: fatto, da fare, dubbi, come riprendere.",
+  taskStale: "Da due giorni lavorativi non ci sono segnali: riprendilo, oppure lascialo con una nota. Nessuno lo riassegna da solo.",
+  tasksReady: "Il progetto è approvato: «unbundle compiti» li elenca, «unbundle take» ne prende uno.",
   contextSeparator: " · ",
 });
 
@@ -86,6 +95,10 @@ export function noticeTextOf(n: {
   if (n.kind === "modifica_chiesta") return { title, description: t.changeRequested };
   if (n.kind === "ok_decaduto") return { title, description: t.boardOkDropped };
   if (n.kind === "domanda_agente") return { title, description: t.agentQuestion };
+  if (n.kind === "compito_chiesto") return { title, description: t.taskRequested };
+  if (n.kind === "compito_passato") return { title, description: t.taskPassed };
+  if (n.kind === "compito_fermo") return { title, description: t.taskStale };
+  if (n.kind === "compiti_pronti") return { title, description: t.tasksReady };
   if (n.kind === "senza_risposta") return { title, description: t.followUp[n.followUp ?? "scaduta"] };
   const answers = safe(n.answers);
   const documents = safe(n.documents);

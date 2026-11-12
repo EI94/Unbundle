@@ -41,6 +41,11 @@ export const UC_NOTIFICATION_TEMPLATES = [
   "domanda_proposta",
   // (Rilascio 8.0b) Una CLI di Unbundle collegata all'account, alla persona stessa (senza caso).
   "cli_collegata",
+  // (Rilascio 8.1a) I compiti: chiesto, passato, fermo, da prendere. Interne, a chi costruisce il caso.
+  "compito_chiesto",
+  "compito_passato",
+  "compito_fermo",
+  "compiti_pronti",
   // Dopo l'MVP.
   "esiti_verifica",
   "scadenza_vicina",

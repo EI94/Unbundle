@@ -18,7 +18,8 @@
 import type { UcBellItem } from "../uc/notify/bell.ts";
 import { formatRelativeIt } from "../uc/views/format.ts";
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0031 as UseCaseNoticeKind } from "../db/use-case-hub-cli-ddl.ts";
+import type { UseCaseNoticeKind0032 as UseCaseNoticeKind } from "../db/use-case-hub-tasks-ddl.ts";
+import { TASK_NOTICE_KINDS } from "../db/use-case-hub-tasks-ddl.ts";
 import { hubSignalHref } from "../use-cases/digest.ts";
 import { noticeContextOf, noticeTextOf } from "../use-cases/notices.ts";
 import { cosaServeHref, realizzazioneHref, richiesteHref, subprocessorsSettingsHref } from "../use-cases/referent/contract.ts";
@@ -241,7 +242,10 @@ const FACTORY_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set(FACTORY_BELL_KINDS
  * Factory. Li vede anche chi non rivede il portafoglio. `domanda_agente` no: porta a «Cosa serve», che vede e decide
  * solo chi rivede il portafoglio, come la sezione delle proposte.
  */
-export const CASE_TEAM_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze([...FACTORY_BELL_KINDS]);
+export const CASE_TEAM_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze([...FACTORY_BELL_KINDS, ...TASK_NOTICE_KINDS]);
+
+/** (8.1a) I tipi dei compiti: portano ai compiti del progetto dell'agente. */
+const TASK_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set(TASK_NOTICE_KINDS);
 
 /**
  * Dove porta una notifica di use case: «Pronto da avviare» alla scheda a `?capitolo=realizzazione`
@@ -258,6 +262,9 @@ export function noticeHref(workspaceId: string, n: Pick<BellUseCaseInput, "kind"
   // (8.0a) L'Agent Factory: il progetto dell'agente nel dossier, dall'indirizzo breve dello use case.
   if (FACTORY_KINDS.has(n.kind)) {
     return `/dashboard/${encodeURIComponent(workspaceId)}/use-cases/${encodeURIComponent(n.useCaseId)}/progetto`;
+  }
+  if (TASK_KINDS.has(n.kind)) {
+    return `/dashboard/${encodeURIComponent(workspaceId)}/use-cases/${encodeURIComponent(n.useCaseId)}/progetto#compiti`;
   }
   return cosaServeHref(workspaceId, n.useCaseId);
 }

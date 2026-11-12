@@ -71,13 +71,15 @@ export type EmailInput =
   | { template: "riepilogo_settimanale"; audience: "owner" | "ls"; clientName: string | null; week: string; cases: readonly WeeklyCaseSummary[] }
   | (CaseRef & { template: "progetto_da_approvare" | "strumento_da_approvare" | "pacchetto_aggiornato" | "modifica_richiesta" | "domanda_proposta"; version: number | null; link: string; tools?: number })
   // (8.0b) Alla persona: una CLI di Unbundle è collegata al suo account nel workspace. Il link porta a Impostazioni.
-  | { template: "cli_collegata"; clientName: string; connectedAt: Date; expiresAt: Date | null; link: string };
+  | { template: "cli_collegata"; clientName: string; connectedAt: Date; expiresAt: Date | null; link: string }
+  // (8.1a) I compiti, a chi costruisce: il link porta al progetto dell'agente dello use case.
+  | (CaseRef & { template: "compito_chiesto" | "compito_passato" | "compito_fermo" | "compiti_pronti"; ref: string | null; link: string });
 
 // ── Aiuti ─────────────────────────────────────────────────────────────
 
 const LOCAL_HOSTS = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+\.localhost)$/;
 const REQUEST_PATH = /^\/r\/ucr_[A-Za-z0-9_-]{32}$/;
-const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/proposte|settings)$/;
+const DASHBOARD_PATH = /^\/dashboard\/[0-9a-f-]{36}\/(casi-duso(\/[0-9a-f-]{36}(\/progetto)?)?|use-cases\/[0-9a-f-]{36}\/(proposte|progetto)|settings)$/;
 
 /**
  * Il link è pulito? https (http solo in locale), nessuna credenziale, nessun
@@ -325,6 +327,39 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: `mentre costruisce l'agente del caso d'uso «${oneLine(input.caseTitle, 120)}», un coding agent ha proposto una domanda per il referente.` },
         { p: "Non parte da sola: in «Cosa serve» la aggiungi alle domande da fare, oppure la lasci stare." },
         { link: { href: link, label: "Guarda le proposte" } },
+        { small: "Email interna di Lateral Space." },
+      ]);
+    }
+    case "compito_chiesto":
+    case "compito_passato":
+    case "compito_fermo":
+    case "compiti_pronti": {
+      const link = checkEmailLink(input.link, "dashboard");
+      const caso = `del caso d'uso «${oneLine(input.caseTitle, 120)}»`;
+      const ref = input.ref ?? "";
+      const text: Record<typeof input.template, { subject: string; lines: string[] }> = {
+        compito_chiesto: {
+          subject: `un collega chiede il compito ${ref}`,
+          lines: [`un collega del team vorrebbe prendere il compito ${ref} ${caso}, che oggi hai tu.`, "Se va bene, passaglielo con «unbundle passa», con la nota di passaggio. Finché non lo passi, resta tuo."],
+        },
+        compito_passato: {
+          subject: `ti hanno passato il compito ${ref}`,
+          lines: [`il compito ${ref} ${caso} adesso è tuo.`, "La nota di passaggio (fatto, da fare, dubbi, come riprendere) la vedi con «unbundle compiti»."],
+        },
+        compito_fermo: {
+          subject: `il compito ${ref} è fermo`,
+          lines: [`da almeno due giorni lavorativi il compito ${ref} ${caso} non ha segnali.`, "Se ci stai lavorando, basta riprenderlo. Se no, lascialo con una nota, così un collega può prenderlo. Nessuno lo riassegna da solo."],
+        },
+        compiti_pronti: {
+          subject: "ci sono compiti da prendere",
+          lines: [`il progetto ${caso} è approvato e ci sono compiti da prendere.`, "«unbundle compiti» li elenca; «unbundle take» ne prende uno e prepara il ramo."],
+        },
+      };
+      const t = text[input.template];
+      return render(subjectOf(`${caseLabel(input)}: ${t.subject}`), [
+        { p: "Buongiorno," },
+        ...t.lines.map((p) => ({ p })),
+        { link: { href: link, label: "Apri il progetto" } },
         { small: "Email interna di Lateral Space." },
       ]);
     }

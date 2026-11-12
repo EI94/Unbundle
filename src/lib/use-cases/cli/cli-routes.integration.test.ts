@@ -529,3 +529,77 @@ test("i compiti (8.1a): importa a secco, poi davvero, una volta sola; «fatto» 
   assert.match(String((sporco.json.errore as Row).codice), /^testo_/);
   assert.equal(((await call("compiti?caso=PX-0042", { token: tokens.lead! })).json.compiti as Row[]).length, 3);
 });
+
+test("prendere e passare i compiti (8.1a): dopo l'approvazione; uno alla volta; le aree; chiedi, passa, lascia con la nota; le notifiche a chi tocca", opts, async () => {
+  const act = (token: string, azione: string, extra: Record<string, unknown>) => post("compiti", token, { caso: "PX-0042", azione, ...extra });
+  const prima = await act(tokens.analyst!, "prendi", { compito: "T-3" });
+  assert.deepEqual([prima.status, (prima.json.errore as Row).codice], [409, "progetto_non_approvato"]);
+  const [project] = await q(`SELECT revision FROM use_case_projects WHERE use_case_id = $1 AND status = 'da_approvare'`, [ids.useCase]);
+  const approved = await factory.approveProject(exec, { kind: "persona", userId: ids.lead, roles: ["ls_lead"] }, { workspaceId: ids.ws, useCaseId: ids.useCase }, { revision: project.revision });
+  assert.ok(approved.ok);
+
+  const preso = await act(tokens.analyst!, "prendi", { compito: "t-3", ramo: "px-0042/t-3-casi" });
+  assert.deepEqual([preso.status, preso.json.ref, preso.json.ramo, preso.json.giaTuo], [200, "T-3", "px-0042/t-3-casi", false]);
+  assert.equal((await act(tokens.analyst!, "prendi", { compito: "T-3" })).json.giaTuo, true, "già tuo: niente di nuovo");
+  const doppio = await act(tokens.lead!, "prendi", { compito: "T-3" });
+  assert.equal(doppio.status, 409);
+  assert.match(String((doppio.json.errore as Row).messaggio), new RegExp(`l'ha già preso ${NAME.analyst}`));
+  assert.equal((await act(tokens.owner!, "prendi", { compito: "T-1" })).status, 403, "il cliente non prende compiti");
+
+  // Le aree: T-4 tocca il gestionale di T-2 (in corso): ci si ferma, salvo --comunque.
+  const nuovo = await act(tokens.lead!, "nuovo", { titolo: "Cliente del gestionale", aree: ["componenti/gestionale/cliente.ts"], ore: 4 });
+  assert.deepEqual([nuovo.status, nuovo.json.ref], [200, "T-4"]);
+  const sovrapposto = await act(tokens.lead!, "prendi", { compito: "T-4" });
+  assert.deepEqual([sovrapposto.status, (sovrapposto.json.errore as Row).codice], [409, "aree_sovrapposte"]);
+  assert.match(String((sovrapposto.json.errore as Row).messaggio), /T-2 \(componenti\/gestionale\/cliente\.ts\)/);
+  const comunque = await act(tokens.lead!, "prendi", { compito: "T-4", comunque: true });
+  assert.deepEqual([comunque.status, (comunque.json.sovrapposizioni as Row[]).map((o) => o.ref)], [200, ["T-2"]]);
+
+  // Chiedi: la nota di richiesta con chi chiede, la campanella e l'e-mail a chi ha il compito.
+  const chiesto = await act(tokens.lead!, "chiedi", { compito: "T-3" });
+  assert.deepEqual([chiesto.status, chiesto.json.a], [200, NAME.analyst]);
+  assert.equal((await act(tokens.lead!, "chiedi", { compito: "T-1" })).status, 409, "un compito fatto non si chiede");
+  const bellAsk = await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compito_chiesto'`, [ids.useCase]);
+  assert.deepEqual(bellAsk.map((r) => r.recipient_user_id), [ids.analyst]);
+  const [mailAsk] = await q(`SELECT recipient_user_id, payload FROM uc_notifications WHERE case_id = $1 AND template_key = 'compito_chiesto'`, [ids.dossier]);
+  assert.deepEqual([mailAsk.recipient_user_id, (mailAsk.payload as Row).ref], [ids.analyst, "T-3"]);
+
+  // Passa: solo a chi costruisce nel team, con la nota; la campanella a chi lo riceve.
+  assert.equal((await act(tokens.analyst!, "passa", { compito: "T-3", a: EMAIL.lead })).status, 400, "senza nota");
+  assert.equal((await act(tokens.analyst!, "passa", { compito: "T-3", a: EMAIL.owner, nota: "Fatto metà." })).status, 404, "il cliente non costruisce");
+  const passato = await act(tokens.analyst!, "passa", { compito: "T-3", a: EMAIL.lead.toUpperCase(), nota: "Fatto: i primi 5 casi. Da fare: gli altri 15. Dubbi: nessuno. Riprendi dal ramo." });
+  assert.deepEqual([passato.status, passato.json.a], [200, NAME.lead]);
+  const [t3] = await q(`SELECT holder_user_id, status, branch FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-3'`, [ids.useCase]);
+  assert.deepEqual(t3, { holder_user_id: ids.lead, status: "in_corso", branch: "px-0042/t-3-casi" });
+  const bellPass = await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compito_passato'`, [ids.useCase]);
+  assert.deepEqual(bellPass.map((r) => r.recipient_user_id), [ids.lead]);
+  assert.equal((await act(tokens.analyst!, "passa", { compito: "T-3", a: EMAIL.analyst, nota: "Indietro" })).status, 403, "non è più suo");
+
+  // Le note del compito: il passaggio e la richiesta, con chi l'ha chiesto.
+  const withNotes = await call("compiti?caso=PX-0042&compito=T-3", { token: tokens.lead! });
+  assert.deepEqual(
+    (withNotes.json.note as Row[]).map((n) => [n.tipo, n.chiede]),
+    [
+      ["passaggio", null],
+      ["richiesta", NAME.lead],
+    ],
+  );
+
+  // Lascia: con la nota; il compito torna da prendere.
+  assert.equal((await act(tokens.analyst!, "lascia", { compito: "T-2" })).status, 400, "senza nota");
+  const lasciato = await act(tokens.analyst!, "lascia", { compito: "T-2", nota: "Fatto: il componente. Da fare: le prove. Dubbi: i turni notturni." });
+  assert.equal(lasciato.status, 200);
+  const [t2] = await q(`SELECT holder_user_id, status FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-2'`, [ids.useCase]);
+  assert.deepEqual(t2, { holder_user_id: null, status: "da_fare" });
+
+  // Segna, e la sintesi di una sessione con il compito come segnale di vita.
+  assert.deepEqual((await act(tokens.lead!, "segna", { compito: "T-4", stato: "fatto" })).json, { ref: "T-4", stato: "fatto" });
+  await q(`UPDATE use_case_tasks SET last_activity_at = now() - interval '5 days' WHERE use_case_id = $1 AND ref = 'T-3'`, [ids.useCase]);
+  const session = { caso: "PX-0042", chiaveSessione: "d".repeat(64), compito: "T-3", harness: "claude_code", tokenIngresso: 10, tokenUscita: 5, durataSecondi: 60, esito: "commit", finitaIl: new Date().toISOString() };
+  assert.equal((await post("sessioni", tokens.lead!, session, null)).status, 200);
+  const [fresh] = await q(`SELECT last_activity_at > now() - interval '1 minute' AS fresh FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-3'`, [ids.useCase]);
+  assert.equal(fresh.fresh, true);
+  // Mai una lettura per persona: chi ha cosa si vede solo compito per compito.
+  const after2 = (await call("compiti?caso=PX-0042", { token: tokens.lead! })).json.compiti as Row[];
+  assert.deepEqual(after2.map((t) => [t.ref, t.stato, t.tuo]), [["T-1", "fatto", false], ["T-2", "da_fare", false], ["T-3", "in_corso", true], ["T-4", "fatto", true]]);
+});

@@ -77,6 +77,11 @@ export const EMAIL_TEMPLATES = [
   "domanda_proposta",
   // (8.0b) Una CLI di Unbundle collegata all'account: alla persona stessa, di Lateral Space o del cliente.
   "cli_collegata",
+  // (8.1a) I compiti: interne, a chi costruisce il caso, con il link ai compiti del progetto dell'agente.
+  "compito_chiesto",
+  "compito_passato",
+  "compito_fermo",
+  "compiti_pronti",
 ] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATES)[number];
 
@@ -492,6 +497,20 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       const tools = typeof n.payload.count === "number" && n.payload.count > 0 ? n.payload.count : 0;
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/casi-duso/${c.id.toLowerCase()}/progetto`;
       return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, version, tools, link }), after: null };
+    }
+    case "compito_chiesto":
+    case "compito_passato":
+    case "compito_fermo":
+    case "compiti_pronti": {
+      // Email interne, come quelle dell'Agent Factory: mai a un contatto né a un utente del cliente (dalla 8.0c sì,
+      // all'IT del cliente nel team). Il compito (T-n) viene dalla coda, controllato.
+      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
+      if (!useCase) return cancel("use_case_assente");
+      const ref = typeof n.payload.ref === "string" && /^T-[1-9][0-9]{0,3}$/.test(n.payload.ref) ? n.payload.ref : null;
+      if (tpl !== "compiti_pronti" && !ref) return cancel("compito_assente");
+      const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
+      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, ref, link }), after: null };
     }
     case "domanda_proposta": {
       // Email interna: una domanda proposta da un coding agent, al responsabile del caso, che la decide in «Cosa serve».

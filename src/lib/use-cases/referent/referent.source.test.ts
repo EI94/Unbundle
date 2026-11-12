@@ -63,6 +63,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/use-case-hub-cli-ddl.ts",
   // (0032, rilascio 8.1a) «Lavoro in parallelo»: il CHECK della campanella allargato con i tipi dei compiti.
   "src/lib/db/use-case-hub-tasks-ddl.ts",
+  // (Rilascio 8.1a) I compiti: le loro notifiche in campanella (chiesto, passato, fermo, da prendere).
+  "src/lib/db/queries/use-case-tasks.ts",
   "src/lib/db/queries/use-case-program.ts",
   // (Rilascio 6) Il filo: le letture per la scheda, le scritture del team e del referente.
   "src/lib/db/queries/use-case-referent-thread.ts",
