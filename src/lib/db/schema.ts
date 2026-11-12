@@ -72,7 +72,8 @@ import type {
   ProjectTopics,
   SetupTopic,
 } from "./use-case-hub-factory-ddl.ts";
-import type { AgentQuestionChannel, AgentQuestionStatus, BuildHarness, BuildOutcome, CliLoginStatus, UseCaseNoticeKind0031 } from "./use-case-hub-cli-ddl.ts";
+import type { AgentQuestionChannel, AgentQuestionStatus, BuildHarness, BuildOutcome, CliLoginStatus } from "./use-case-hub-cli-ddl.ts";
+import type { FactoryRepoKind, TaskNoteKind, TaskSource, TaskStatus, UseCaseNoticeKind0032 } from "./use-case-hub-tasks-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
@@ -1465,6 +1466,79 @@ export const useCaseBuildSessions = pgTable(
   ]
 );
 
+// ─── Lavoro in parallelo (drizzle/0032, rilascio 8.1a) ───────────────
+// CHECK e indici parziali stanno solo nella migrazione e in use-case-hub-tasks-ddl.ts (self-heal): mai
+// drizzle-kit push.
+
+/** Un compito di uno use case (T-n), nato dal progetto. Chi lo ha si vede sul compito, mai contato per persona. */
+export const useCaseTasks = pgTable(
+  "use_case_tasks",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    ref: varchar("ref", { length: 12 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    areas: jsonb("areas").$type<string[]>().notNull().default([]),
+    estimateHours: numeric("estimate_hours", { precision: 6, scale: 1 }),
+    evidence: varchar("evidence", { length: 300 }),
+    status: varchar("status", { length: 12 }).$type<TaskStatus>().notNull().default("da_fare"),
+    holderUserId: uuid("holder_user_id").references(() => users.id, { onDelete: "set null" }),
+    takenAt: tz("taken_at"),
+    lastActivityAt: tz("last_activity_at"),
+    staleAskedAt: tz("stale_asked_at"),
+    staleEscalatedAt: tz("stale_escalated_at"),
+    branch: varchar("branch", { length: 120 }),
+    prUrl: varchar("pr_url", { length: 300 }),
+    source: varchar("source", { length: 10 }).$type<TaskSource>().notNull(),
+    projectVersion: integer("project_version"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_tasks_pkey", columns: [t.id] }),
+    index("use_case_tasks_case_idx").on(t.useCaseId, t.status),
+    index("use_case_tasks_workspace_idx").on(t.workspaceId),
+  ]
+);
+
+/** Una nota di un compito: il passaggio, o la richiesta di prenderlo (solo qui si tiene chi la fa). */
+export const useCaseTaskNotes = pgTable(
+  "use_case_task_notes",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    taskId: uuid("task_id").notNull().references(() => useCaseTasks.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 10 }).$type<TaskNoteKind>().notNull(),
+    body: varchar("body", { length: 2000 }).notNull(),
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_task_notes_pkey", columns: [t.id] }),
+    index("use_case_task_notes_task_idx").on(t.taskId, t.createdAt),
+    index("use_case_task_notes_workspace_idx").on(t.workspaceId),
+  ]
+);
+
+/** Un repository della fabbrica di un workspace (di famiglia o comune), con la versione del modello e del comune. */
+export const useCaseFactoryRepos = pgTable(
+  "use_case_factory_repos",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    repo: varchar("repo", { length: 140 }).notNull(),
+    kind: varchar("kind", { length: 10 }).$type<FactoryRepoKind>().notNull().default("famiglia"),
+    templateVersion: varchar("template_version", { length: 20 }),
+    commonVersion: varchar("common_version", { length: 20 }),
+    reportedAt: tz("reported_at"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "use_case_factory_repos_pkey", columns: [t.id] })]
+);
+
 export const useCaseNeedAnswers = pgTable(
   "use_case_need_answers",
   {
@@ -1612,7 +1686,7 @@ export const useCaseNotifications = pgTable(
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
     recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0031>().notNull(),
+    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0032>().notNull(),
     romeDay: date("rome_day", { mode: "string" }).notNull(),
     answers: smallint("answers").notNull().default(0),
     unknowns: smallint("unknowns").notNull().default(0),

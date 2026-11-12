@@ -163,7 +163,7 @@ test("la sonda copre ogni tabella, ogni indice, ogni vincolo con nome e il tipo 
 });
 
 test("ensure-schema: versione 25, la 0031 dopo la 0030, non fatale, con timeout e lock, e la sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 25;/);
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 25, "ENSURE_VERSION almeno 25 (la 0032 la porta a 26)");
   assert.match(ensureSchema, /import \{ CLI_DDL, CLI_PROBE_SQL \} from "\.\/use-case-hub-cli-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const factory = runOnce.indexOf("await runFactoryDdlSafely();");

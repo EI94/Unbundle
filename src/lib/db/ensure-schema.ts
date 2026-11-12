@@ -13,6 +13,7 @@ import { USE_CASE_REFERENT_THREAD_DDL, USE_CASE_REFERENT_THREAD_PROBE_SQL } from
 import { PROGRAM_DDL, PROGRAM_PROBE_SQL } from "./use-case-hub-program-ddl.ts";
 import { FACTORY_DDL, FACTORY_PROBE_SQL } from "./use-case-hub-factory-ddl.ts";
 import { CLI_DDL, CLI_PROBE_SQL } from "./use-case-hub-cli-ddl.ts";
+import { TASKS_DDL, TASKS_PROBE_SQL } from "./use-case-hub-tasks-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -32,7 +33,7 @@ import { CLI_DDL, CLI_PROBE_SQL } from "./use-case-hub-cli-ddl.ts";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 25;
+const ENSURE_VERSION = 26;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -682,6 +683,12 @@ async function runOnce(): Promise<void> {
   // Dopo la 0030 (allarga ancora il CHECK dei tipi della campanella, sotto il lock della 0025). Non blocca il resto
   // dell'app: senza la 0031 le API della CLI rispondono «non ancora disponibile» (`cliStoreReady`).
   await runCliDdlSafely();
+
+  // «Lavoro in parallelo»: compiti, note di passaggio, repository della fabbrica (drizzle/0032_compiti.sql) ─────
+  // Dopo la 0031 (allarga ancora il CHECK dei tipi della campanella, sotto il lock della 0025). Non blocca il resto
+  // dell'app: senza la 0032 i compiti e la pagina «Agent Factory» dicono che non sono ancora disponibili
+  // (`tasksStoreReady`).
+  await runTasksDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -787,6 +794,20 @@ async function runCliDdlSafely(): Promise<void> {
   } catch (err) {
     cliDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0031 self-heal failed, the app keeps serving without the CLI (apply drizzle/0031 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0032, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let tasksDdlFailedAt: number | null = null;
+
+/** La 0032 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. */
+async function runTasksDdlSafely(): Promise<void> {
+  try {
+    await runTasksDdl();
+    tasksDdlFailedAt = null;
+  } catch (err) {
+    tasksDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0032 self-heal failed, the app keeps serving without tasks (apply drizzle/0032 by hand):", err);
   }
 }
 
@@ -978,6 +999,21 @@ export async function runCliDdl(statements: readonly string[] = CLI_DDL): Promis
   ]);
 }
 
+/**
+ * Applica il DDL della 0032 in una sola transazione, serializzata dallo stesso advisory lock del file, con
+ * `lock_timeout` di 3s come la 0031 (le tabelle sono nuove; il blocco dei tipi della campanella prende anche il
+ * lock della 0025). In produzione la applica questo self-heal, al primo avvio dopo il deploy; il file a mano resta
+ * la strada di riserva.
+ */
+export async function runTasksDdl(statements: readonly string[] = TASKS_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-tasks-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1096,6 +1132,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(PROGRAM_PROBE_SQL)}
         AND ${sql.raw(FACTORY_PROBE_SQL)}
         AND ${sql.raw(CLI_PROBE_SQL)}
+        AND ${sql.raw(TASKS_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1155,6 +1192,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (cliDdlFailedAt !== null && Date.now() - cliDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       cliDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runCliDdlSafely);
+    }
+    // La 0032 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (tasksDdlFailedAt !== null && Date.now() - tasksDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      tasksDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runTasksDdlSafely);
     }
     return ensurePromise;
   }

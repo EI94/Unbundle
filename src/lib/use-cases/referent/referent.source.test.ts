@@ -61,6 +61,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/queries/use-case-factory.ts",
   // (0031, rilascio 8.0b) «La CLI e l'MCP»: il CHECK della campanella allargato con `domanda_agente`.
   "src/lib/db/use-case-hub-cli-ddl.ts",
+  // (0032, rilascio 8.1a) «Lavoro in parallelo»: il CHECK della campanella allargato con i tipi dei compiti.
+  "src/lib/db/use-case-hub-tasks-ddl.ts",
   "src/lib/db/queries/use-case-program.ts",
   // (Rilascio 6) Il filo: le letture per la scheda, le scritture del team e del referente.
   "src/lib/db/queries/use-case-referent-thread.ts",
