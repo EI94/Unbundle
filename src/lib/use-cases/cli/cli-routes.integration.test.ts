@@ -512,6 +512,12 @@ test("i compiti (8.1a): importa a secco, poi davvero, una volta sola; «fatto» 
   assert.deepEqual(list[1].aree, ["componenti/gestionale/", "casi/px-0042/src/equipaggio.ts"]);
   const mine = (await call("compiti?caso=PX-0042", { token: tokens.analyst! })).json.compiti as Row[];
   assert.equal(mine[1].tuo, true);
+  // Lo specchio per compiti.md: senza nomi, con lo stato.
+  const specchio = String((await call("compiti?caso=PX-0042", { token: tokens.analyst! })).json.specchio);
+  assert.match(specchio, /^# PX-0042 · Compiti\n/);
+  assert.match(specchio, /- \[x\] T-1 Ingresso e richiesta normalizzata · 8 h · aree: src\/ingresso\.ts, src\/api\.ts · prove: evals\/avversari\n/);
+  assert.match(specchio, /- \[ \] T-2 Equipaggio dal gestionale · 16 h · aree: componenti\/gestionale\/, src\/equipaggio\.ts · prove: evals\/regole · in corso\n/);
+  assert.ok(!specchio.includes(NAME.analyst));
 
   // Il brief dice di chi è un compito solo a chi lo ha; agli altri «di colleghi», mai il nome.
   const briefLead = String((await call("context?caso=PX-0042", { token: tokens.lead! })).json.testo);

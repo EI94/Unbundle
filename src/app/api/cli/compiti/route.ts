@@ -17,12 +17,13 @@ import {
 import { ucLogError } from "@/lib/uc/log";
 import { requireCliWrite, resolveCliCase, runCliWrite } from "@/lib/use-cases/cli/case";
 import { cliError, cliJson, openCli, readCliBody } from "@/lib/use-cases/cli/route-kit";
-import { normalizeArea, parseTasksMarkdown, TASK_REF_RE, taskRefFromBranch } from "@/lib/use-cases/factory/tasks";
+import { normalizeArea, parseTasksMarkdown, renderTasksMarkdown, TASK_REF_RE, taskRefFromBranch } from "@/lib/use-cases/factory/tasks";
 
 /**
  * I compiti di un caso (rilascio 8.1a, RILASCIO-8.1-COSTRUZIONE.md §2).
  * - `GET ?caso=<ID>`: `unbundle compiti <ID>`, con stato, persona e aree. Lo legge chi è nel team del caso.
  * - `GET ?caso=<ID>&compito=T-n`: in più le note di quel compito (passaggi e richieste).
+ * - La risposta porta anche `specchio`: il testo di `compiti.md` che `unbundle start` scrive nel repository.
  * - `POST {caso, azione: "importa", testo, cartella, ramiUniti?, aSecco?}`: `unbundle compiti importa <ID>`.
  *   - Porta in Unbundle i compiti di `compiti.md`, che si legge qui (`parseTasksMarkdown`), e «fatto» dai rami
  *     delle PR unite.
@@ -51,6 +52,7 @@ export async function GET(request: Request): Promise<Response> {
   return cliJson({
     caso: c.useCase.code,
     ...(notes ? { note: notes.map((n) => ({ tipo: n.kind, testo: n.body, quando: n.createdAt, chiede: n.requestedBy })) } : {}),
+    specchio: tasks.length ? renderTasksMarkdown(c.useCase.code, `casi/${c.useCase.code.toLowerCase()}`, tasks) : null,
     compiti: tasks.map((t) => ({
       ref: t.ref,
       titolo: t.title,
