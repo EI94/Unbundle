@@ -135,7 +135,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
               title={f.repo ? f.repo.split("/")[1] : "Da avviare"}
               description={
                 f.repo
-                  ? `${f.repo}${f.templateVersion ? ` · modello ${f.templateVersion}${compareVersions(f.templateVersion, AGENT_FACTORY_TEMPLATE_VERSION) < 0 ? " (indietro)" : ""}` : ""}`
+                  ? `${f.repo}${f.templateVersion ? ` · modello ${f.templateVersion}${compareVersions(f.templateVersion, AGENT_FACTORY_TEMPLATE_VERSION) < 0 ? " (indietro)" : ""}` : ""}${f.commonVersion ? ` · comune ${f.commonVersion}` : ""}`
                   : "Ancora senza repository: «unbundle repo create <ID>» crea quello della famiglia, o aggiunge la cartella del caso."
               }
             >

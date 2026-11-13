@@ -651,7 +651,7 @@ test("la pagina «Agent Factory» (8.1a): chi la vede; la versione del modello d
   assert.equal((await versione({ repository: "Prova/repo-di-prova", versioneModello: "1.2" })).status, 400);
   assert.equal((await versione({ repository: "Prova/altro-repo", versioneModello: "1.2.0" })).status, 404, "solo un repository registrato");
   assert.equal((await post("repository", tokens.owner!, { caso: "PX-0042", azione: "versione", repository: "Prova/repo-di-prova", versioneModello: "1.2.0" }, null)).status, 403);
-  assert.equal((await versione({ repository: "prova/REPO-di-prova", versioneModello: "1.2.0" })).status, 200);
+  assert.equal((await versione({ repository: "prova/REPO-di-prova", versioneModello: "1.2.0", versioneComune: "0.1.0" })).status, 200);
 
   const view = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.analyst, seeAll: false, canSeeNeeds: true });
   const px = view.cases.find((c) => c.code === "PX-0042")!;
@@ -659,7 +659,7 @@ test("la pagina «Agent Factory» (8.1a): chi la vede; la versione del modello d
   assert.equal(px.repo, "Prova/repo-di-prova");
   assert.ok(px.tasks.total >= 4 && px.tasks.done >= 1);
   assert.ok(px.sessions.count >= 2, "le sessioni del caso, mai per persona");
-  assert.deepEqual(view.families.map((f) => [f.repo, f.templateVersion]), [["Prova/repo-di-prova", "1.2.0"]]);
+  assert.deepEqual(view.families.map((f) => [f.repo, f.templateVersion, f.commonVersion]), [["Prova/repo-di-prova", "1.2.0", "0.1.0"]]);
   assert.deepEqual(view.queue.map((q) => q.repo), ["Prova/repo-di-prova"], "indietro con il modello");
   const kinds = view.todos.map((t) => t.kind).sort();
   assert.ok(kinds.includes("fermo") && kinds.includes("chiesto"), JSON.stringify(view.todos));

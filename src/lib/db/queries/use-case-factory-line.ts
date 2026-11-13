@@ -55,7 +55,7 @@ export interface FactoryTodo {
 
 export interface FactoryOverview {
   cases: FactoryCaseRow[];
-  families: { repo: string | null; templateVersion: string | null; cases: FactoryCaseRow[] }[];
+  families: { repo: string | null; templateVersion: string | null; commonVersion: string | null; cases: FactoryCaseRow[] }[];
   todos: FactoryTodo[];
   queue: { repo: string; text: string }[];
   tasksReady: boolean;
@@ -113,14 +113,17 @@ ORDER BY coalesce(u.code, c.code)`),
 
   const [repoRows] = await executor.batch([
     tasksReady
-      ? toStatement(ucSql`SELECT repo, template_version FROM use_case_factory_repos WHERE workspace_id = ${ws} AND kind = 'famiglia'`)
-      : toStatement(ucSql`SELECT NULL::text AS repo, NULL::text AS template_version WHERE false`),
+      ? toStatement(ucSql`SELECT repo, template_version, common_version FROM use_case_factory_repos WHERE workspace_id = ${ws} AND kind = 'famiglia'`)
+      : toStatement(ucSql`SELECT NULL::text AS repo, NULL::text AS template_version, NULL::text AS common_version WHERE false`),
   ]);
-  const versions = new Map(repoRows.map((r) => [String(r.repo).toLowerCase(), r.template_version ? String(r.template_version) : null]));
+  const versions = new Map(repoRows.map((r) => [String(r.repo).toLowerCase(), { template: r.template_version ? String(r.template_version) : null, common: r.common_version ? String(r.common_version) : null }]));
   const byRepo = new Map<string | null, FactoryCaseRow[]>();
   for (const c of cases) byRepo.set(c.repo, [...(byRepo.get(c.repo) ?? []), c]);
   const families = [...byRepo.entries()]
-    .map(([repo, list]) => ({ repo, templateVersion: repo ? (versions.get(repo.toLowerCase()) ?? null) : null, cases: list }))
+    .map(([repo, list]) => {
+      const v = repo ? versions.get(repo.toLowerCase()) : undefined;
+      return { repo, templateVersion: v?.template ?? null, commonVersion: v?.common ?? null, cases: list };
+    })
     .sort((a, b) => (a.repo === null ? 1 : b.repo === null ? -1 : a.repo.localeCompare(b.repo)));
   const queue = factoryQueue(families.filter((f) => f.repo !== null).map((f) => ({ repo: f.repo as string, templateVersion: f.templateVersion })));
 
