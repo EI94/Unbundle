@@ -83,6 +83,18 @@ export default async function WorkspaceLayout({
     ? await (await import("@/lib/db/queries/uc-nav")).ucCasesNavVisible({ userId: session.user.id, workspaceId, role: access.role })
     : false;
 
+  // (8.1a) «Agent Factory»: chi costruisce in un caso del workspace, o il manager di Lateral Space. Una lettura sola.
+  let factoryAvailable = false;
+  if (useCaseHub && ucOn && !learnerOnly) {
+    const [{ factoryNavVisible }, { viewerFromSession }, { getAppUcExecutor }] = await Promise.all([
+      import("@/lib/db/queries/use-case-factory-line"),
+      import("@/lib/db/queries/use-case-hub"),
+      import("@/lib/db/uc-executor"),
+    ]);
+    const lsManager = viewerFromSession(session.user, access.role).isLateralSpace && canReviewWorkspacePortfolio(access.role);
+    factoryAvailable = await factoryNavVisible(await getAppUcExecutor(), { workspaceId, userId: session.user.id, lsManager });
+  }
+
   return (
     <SidebarProvider>
       <AppSidebar
@@ -91,6 +103,7 @@ export default async function WorkspaceLayout({
         casesAvailable={casesAvailable}
         useCaseHub={useCaseHub}
         programAvailable={useCaseHub && !learnerOnly && canReviewWorkspacePortfolio(access.role)}
+        factoryAvailable={factoryAvailable}
         workspaceId={workspace.id}
         workspaceName={workspace.name}
         user={{

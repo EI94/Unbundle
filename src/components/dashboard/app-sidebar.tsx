@@ -34,6 +34,7 @@ import {
   Map,
   Target,
   Lightbulb,
+  Factory,
   FileText,
   Settings,
   LayoutGrid,
@@ -88,6 +89,8 @@ interface AppSidebarProps {
    * sotto «Overview»: è il riepilogo della trasformazione.
    */
   programAvailable?: boolean;
+  /** (8.1a) «Agent Factory»: per chi costruisce in un caso del workspace, o lo guida da manager di Lateral Space. */
+  factoryAvailable?: boolean;
   workspaceId?: string;
   workspaceName?: string;
   user: {
@@ -103,6 +106,7 @@ export function AppSidebar({
   learnerOnly = false,
   useCaseHub = false,
   programAvailable = false,
+  factoryAvailable = false,
   workspaceId,
   workspaceName,
   user,
@@ -142,6 +146,7 @@ export function AppSidebar({
           ? [
               { title: "Use case", href: `${basePath}/use-cases`, icon: Lightbulb, match: casesAvailable ? USE_CASE_NAV_MATCH_WITHOUT_DOSSIERS : USE_CASE_NAV_MATCH },
               ...(casesAvailable ? [{ title: "Casi d'uso", href: `${basePath}/casi-duso`, icon: ListChecks }] : []),
+              ...(factoryAvailable ? [{ title: "Agent Factory", href: `${basePath}/agent-factory`, icon: Factory }] : []),
             ]
           : [{ title: "Raccolta & ranking", href: `${basePath}/portfolio`, icon: Inbox, match: EXACT }]),
         { title: "Discovery", href: `${basePath}/setup/leadership`, icon: Compass, match: own },

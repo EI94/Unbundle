@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
-import { ClipboardList, Gavel, Package, Wrench } from "lucide-react";
+import { ClipboardList, Gavel, ListTodo, Package, Wrench } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { canWrite, openShellPage } from "@/components/uc/shell/case-data";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { factoryStoreReady, readFactory, topicLabel, findUseCaseOfCase, type DecisionView, type ProjectView } from "@/lib/db/queries/use-case-factory";
 import { FACTORY_LIMITS, SETUP_TOPICS } from "@/lib/db/use-case-hub-factory-ddl";
+import { listTasks, tasksStoreReady, type TaskView } from "@/lib/db/queries/use-case-tasks";
 import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canRequestProjectChange, canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAction, ReopenProject, TopicEditor } from "./project-forms";
 
@@ -22,6 +23,8 @@ import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAc
  * - Strumenti nuovi e stima, con l'ok o la modifica chiesta dall'AI Board.
  * - Le decisioni che valgono, oltre alle scelte; lo storico completo, con quelle sostituite, su richiesta.
  * - Il pacchetto, solo per il team di Lateral Space: la versione di oggi, i suoi tre file, «Aggiorna il pacchetto».
+ * - (8.1a) I compiti (`#compiti`): stato e chi li ha, le aree e le prove a richiesta. Si prendono e si passano dal
+ *   coding agent, con la CLI; qui si leggono.
  *
  * Il dialogo dell'impostazione si fa anche dal coding agent (skill `/agent-factory:imposta`): qui si rilegge, si
  * corregge e si approva.
@@ -46,6 +49,46 @@ function ChoiceText({ choice }: { choice: ProjectView["topics"][keyof ProjectVie
       {choice.perche ? <p className="mt-0.5 text-xs text-muted-foreground">Perché: {choice.perche}</p> : null}
       {choice.alternativa ? <p className="mt-0.5 text-xs text-muted-foreground">Scartata: {choice.alternativa}</p> : null}
     </>
+  );
+}
+
+const TASK_STATUS: Record<TaskView["status"], string> = {
+  da_fare: "Da fare",
+  in_corso: "In corso",
+  in_revisione: "In revisione",
+  fatto: "Fatto",
+  annullato: "Annullato",
+};
+
+function TaskLine({ t }: { t: TaskView }) {
+  const who = (t.status === "in_corso" || t.status === "in_revisione") && t.holderName ? ` · ${t.holderName}` : "";
+  return (
+    <li>
+      <details className="group py-2.5">
+        <summary className="flex min-h-11 cursor-pointer items-start justify-between gap-3 sm:min-h-0">
+          <span className={`min-w-0 text-sm ${t.status === "annullato" ? "text-muted-foreground line-through" : ""}`}>
+            <span className="font-medium tabular-nums">{t.ref}</span> · {t.title}
+          </span>
+          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${t.status === "fatto" ? "border-uc-verde bg-uc-verde-bg" : t.status === "da_fare" ? "text-muted-foreground" : ""}`}>
+            {TASK_STATUS[t.status]}
+            {who}
+          </span>
+        </summary>
+        <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+          {t.areas.length ? <p className="break-words">Aree: {t.areas.join(", ")}</p> : null}
+          {t.estimateHours !== null ? <p>Stima: {String(t.estimateHours).replace(".", ",")} ore</p> : null}
+          {t.evidence ? <p>Prove: {t.evidence}</p> : null}
+          {t.branch ? <p className="break-words">Ramo: {t.branch}</p> : null}
+          {t.prUrl ? (
+            <p>
+              <a href={t.prUrl} className="underline" target="_blank" rel="noreferrer">
+                La pull request
+              </a>
+            </p>
+          ) : null}
+        </div>
+      </details>
+    </li>
   );
 }
 
@@ -140,6 +183,14 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   const reopen = pending ? <ReopenProject workspaceId={workspaceId} caseId={caseId} revision={pending.revision} boardOkOn={pending.aiBoardOkAt ? day(pending.aiBoardOkAt) : null} primary={primary === "riapri"} /> : null;
 
   const teamDecisions = view.decisions.filter((d) => d.source !== "impostazione" && d.supersededOn === null);
+  const tasksReady = await tasksStoreReady(executor);
+  const tasks = tasksReady ? await listTasks(executor, target) : [];
+  const caseCode = useCase.code ?? "<ID>";
+  const tally = {
+    open: tasks.filter((t) => t.status === "da_fare").length,
+    busy: tasks.filter((t) => t.status === "in_corso" || t.status === "in_revisione").length,
+    done: tasks.filter((t) => t.status === "fatto").length,
+  };
   const replaced = view.decisions.filter((d) => d.supersededOn !== null).length;
 
   return (
@@ -261,6 +312,27 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
                 </div>
               ) : null}
             </div>
+          </SettingsSection>
+        ) : null}
+
+        {tasksReady && (tasks.length > 0 || view.approved) ? (
+          <SettingsSection
+            id="compiti"
+            icon={ListTodo}
+            title="Compiti"
+            description={
+              tasks.length
+                ? `${tally.open} da prendere · ${tally.busy} in corso · ${tally.done} fatti. Si prendono dal coding agent: «unbundle take ${caseCode} T-n».`
+                : `Nessun compito ancora: nascono dal progetto, con «unbundle compiti importa ${caseCode}».`
+            }
+          >
+            {tasks.length ? (
+              <ul className="divide-y">
+                {tasks.map((t) => (
+                  <TaskLine key={t.id} t={t} />
+                ))}
+              </ul>
+            ) : null}
           </SettingsSection>
         ) : null}
 

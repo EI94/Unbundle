@@ -641,3 +641,33 @@ test("il compito fermo (8.1a): dopo 2 giorni lavorativi lo chiede a chi lo ha, d
   assert.deepEqual(await sweep(exec, { now: new Date("2026-11-13T09:00:00Z"), ...scope }), { asked: 0, escalated: 0, errors: 0 });
   assert.deepEqual(await sweep(exec, { now: new Date("2026-11-17T09:00:00Z"), ...scope }), { asked: 1, escalated: 0, errors: 0 });
 });
+
+test("la pagina «Agent Factory» (8.1a): chi la vede; la versione del modello dal repository; stazione, famiglie, «Da fare per te» e coda", opts, async () => {
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  const nav = (userId: string, lsManager = false) => line.factoryNavVisible(exec, { workspaceId: ids.ws, userId, lsManager });
+  assert.deepEqual([await nav(ids.lead), await nav(ids.analyst), await nav(ids.owner), await nav(ids.outsider), await nav(ids.outsider, true)], [true, true, false, false, true]);
+
+  const versione = (body: Record<string, unknown>) => post("repository", tokens.analyst!, { caso: "PX-0042", azione: "versione", ...body }, null);
+  assert.equal((await versione({ repository: "Prova/repo-di-prova", versioneModello: "1.2" })).status, 400);
+  assert.equal((await versione({ repository: "Prova/altro-repo", versioneModello: "1.2.0" })).status, 404, "solo un repository registrato");
+  assert.equal((await post("repository", tokens.owner!, { caso: "PX-0042", azione: "versione", repository: "Prova/repo-di-prova", versioneModello: "1.2.0" }, null)).status, 403);
+  assert.equal((await versione({ repository: "prova/REPO-di-prova", versioneModello: "1.2.0" })).status, 200);
+
+  const view = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.analyst, seeAll: false, canSeeNeeds: true });
+  const px = view.cases.find((c) => c.code === "PX-0042")!;
+  assert.equal(px.station, "costruzione");
+  assert.equal(px.repo, "Prova/repo-di-prova");
+  assert.ok(px.tasks.total >= 4 && px.tasks.done >= 1);
+  assert.ok(px.sessions.count >= 2, "le sessioni del caso, mai per persona");
+  assert.deepEqual(view.families.map((f) => [f.repo, f.templateVersion]), [["Prova/repo-di-prova", "1.2.0"]]);
+  assert.deepEqual(view.queue.map((q) => q.repo), ["Prova/repo-di-prova"], "indietro con il modello");
+  const kinds = view.todos.map((t) => t.kind).sort();
+  assert.ok(kinds.includes("fermo") && kinds.includes("chiesto"), JSON.stringify(view.todos));
+  assert.ok(view.todos.every((t) => !t.text.includes(NAME.lead) && !t.text.includes(NAME.analyst)), "«Da fare per te» senza nomi");
+  // Il responsabile vede da approvare solo quello che approva lui; chi non vede «Cosa serve» non vede le domande.
+  const leadView = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.lead, seeAll: false, canSeeNeeds: false });
+  assert.ok(!leadView.todos.some((t) => t.kind === "domande"));
+  const outsider = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.outsider, seeAll: false, canSeeNeeds: false });
+  assert.equal(outsider.cases.length, 0, "fuori dal team, nessun caso");
+  assert.ok((await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.outsider, seeAll: true, canSeeNeeds: false })).cases.length >= 1, "il manager li vede tutti");
+});
