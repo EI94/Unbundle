@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight, Factory, Inbox, Wrench } from "lucide-react";
@@ -26,6 +27,7 @@ import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
  * di Lateral Space, con tutti. Agli altri: 404.
  */
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Agent Factory" };
 
 const STATION_TONE: Record<Station, string> = {
   dossier: "border-border text-muted-foreground",

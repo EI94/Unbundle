@@ -322,7 +322,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
             title="Compiti"
             description={
               tasks.length
-                ? `${tally.open} da prendere · ${tally.busy} in corso · ${tally.done} fatti. Si prendono dal coding agent: «unbundle take ${caseCode} T-n».`
+                ? `${tally.open} da prendere · ${tally.busy} in corso · ${tally.done} ${tally.done === 1 ? "fatto" : "fatti"}. Si prendono dal coding agent: «unbundle take ${caseCode} T-n».`
                 : `Nessun compito ancora: nascono dal progetto, con «unbundle compiti importa ${caseCode}».`
             }
           >
