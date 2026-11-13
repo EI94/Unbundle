@@ -59,24 +59,44 @@ ${conflict}`);
  * L'e-mail interna della coda dei dossier (`uc_notifications`), a una persona o ai ruoli del caso; mai a `actorId`.
  * Una al giorno per persona, caso e tipo. La manda il giro dopo la risposta, o il cron.
  */
-export function taskEmailSql(target: TaskNoticeTarget, kind: TaskNoticeKind, to: TaskRecipient, actorId: string, now: Date, ref: string | null, when: SqlFragment = ALWAYS): UcStatement {
+export function taskEmailSql(
+  target: TaskNoticeTarget,
+  kind: TaskNoticeKind,
+  to: TaskRecipient,
+  actorId: string,
+  now: Date,
+  ref: string | null,
+  when: SqlFragment = ALWAYS,
+  extra: { responsabile?: boolean } = {},
+): UcStatement {
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
   const tpl = cast(kind, "text");
   const day = cast(romeToday(now), "text");
-  const payload = jsonb(ref ? { useCase: target.useCaseId, ref } : { useCase: target.useCaseId });
+  const payload = jsonb({ useCase: target.useCaseId, ...(ref ? { ref } : {}), ...(extra.responsabile ? { responsabile: true } : {}) });
+  // Il compito nella chiave: due compiti lo stesso giorno sono due e-mail.
+  const key = ref ? ucSql`${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day} || ':' || ${cast(ref, "text")}` : ucSql`${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day}`;
   const recipients =
     "userId" in to ? ucSql`(SELECT ${cast(to.userId, "uuid")} AS user_id)` : ucSql`(SELECT m.user_id FROM uc_case_members m WHERE m.case_id = c.id AND m.role = ANY (${cast([...to.roles], "text[]")}))`;
   return toStatement(ucSql`INSERT INTO uc_notifications (workspace_id, case_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
-SELECT DISTINCT ON (r.user_id) c.workspace_id, c.id, r.user_id, 'email', ${tpl}, ${payload}, 'in_coda', ${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day}, now()
+SELECT DISTINCT ON (r.user_id) c.workspace_id, c.id, r.user_id, 'email', ${tpl}, ${payload}, 'in_coda', ${key}, now()
 FROM uc_cases c CROSS JOIN LATERAL ${recipients} r
 WHERE c.workspace_id = ${ws} AND c.portfolio_use_case_id = ${uc} AND r.user_id IS DISTINCT FROM ${cast(actorId, "uuid")} AND ${when}
 ON CONFLICT (dedupe_key) DO NOTHING`);
 }
 
 /** Campanella ed e-mail insieme. */
-export function notifyTask(target: TaskNoticeTarget, kind: TaskNoticeKind, to: TaskRecipient, actorId: string, now: Date, ref: string | null, when: SqlFragment = ALWAYS): UcStatement[] {
-  return [taskNoticeSql(target, kind, to, actorId, now, when), taskEmailSql(target, kind, to, actorId, now, ref, when)];
+export function notifyTask(
+  target: TaskNoticeTarget,
+  kind: TaskNoticeKind,
+  to: TaskRecipient,
+  actorId: string,
+  now: Date,
+  ref: string | null,
+  when: SqlFragment = ALWAYS,
+  extra: { responsabile?: boolean } = {},
+): UcStatement[] {
+  return [taskNoticeSql(target, kind, to, actorId, now, when), taskEmailSql(target, kind, to, actorId, now, ref, when, extra)];
 }
 
 /** Vero se lo use case ha compiti da prendere (la condizione di «ci sono compiti da prendere»). */
@@ -111,7 +131,8 @@ export async function runTaskStaleSweep(executor: UcExecutor, o: { now: Date; wo
   if (!(await tasksTablesReady(executor))) return summary;
   const scope = o.workspaceIds === null ? raw("") : ucSql` AND t.workspace_id = ANY (${cast([...o.workspaceIds], "uuid[]")})`;
   const [rows] = await executor.batch([
-    toStatement(ucSql`SELECT t.id, t.workspace_id, t.use_case_id, t.ref, t.status, t.holder_user_id, t.taken_at, t.last_activity_at, t.stale_asked_at, t.stale_escalated_at
+    toStatement(ucSql`SELECT t.id, t.workspace_id, t.use_case_id, t.ref, t.status, t.holder_user_id, t.taken_at, t.last_activity_at, t.stale_asked_at, t.stale_escalated_at,
+  t.last_activity_at::text AS last_activity_exact
 FROM use_case_tasks t
 JOIN uc_cases c ON c.portfolio_use_case_id = t.use_case_id AND c.workspace_id = t.workspace_id AND c.status NOT IN ('chiuso', 'sospeso')
 WHERE t.status = 'in_corso' AND t.holder_user_id IS NOT NULL${scope}
@@ -132,17 +153,21 @@ LIMIT ${cast(o.limit ?? 2000, "int")}`),
     const target = { workspaceId: String(r.workspace_id), useCaseId: String(r.use_case_id) };
     const ref = String(r.ref);
     const column = step === "chiedi" ? raw("stale_asked_at") : raw("stale_escalated_at");
-    // Lo stesso segnale di quando si è letto: se nel frattempo è cambiato, niente.
+    // Lo stesso segnale di quando si è letto, al microsecondo (il testo di Postgres, non un Date di JS che tiene i
+    // millesimi): se nel frattempo è cambiato, niente.
+    const exact = r.last_activity_exact === null || r.last_activity_exact === undefined ? null : String(r.last_activity_exact);
     const still = ucSql`EXISTS (SELECT 1 FROM use_case_tasks x WHERE x.id = ${cast(String(r.id), "uuid")} AND x.status = 'in_corso'
-  AND x.holder_user_id = ${cast(task.holderUserId, "uuid")} AND x.last_activity_at IS NOT DISTINCT FROM ${cast(task.lastActivityAt, "timestamptz")})`;
+  AND x.holder_user_id = ${cast(task.holderUserId, "uuid")} AND x.last_activity_at IS NOT DISTINCT FROM ${cast(exact, "timestamptz")})`;
     const to: TaskRecipient = step === "chiedi" ? { userId: task.holderUserId } : { roles: ["ls_lead"] };
     // Al responsabile, mai a chi ha il compito (se il compito è suo, lo sa già dalla domanda).
     const exclude = step === "chiedi" ? NOBODY : task.holderUserId;
     try {
-      await executor.batch([
-        ...notifyTask(target, "compito_fermo", to, exclude, o.now, ref, still),
-        toStatement(ucSql`UPDATE use_case_tasks SET ${column} = ${cast(o.now.toISOString(), "timestamptz")} WHERE id = ${cast(String(r.id), "uuid")} AND ${still}`),
+      const results = await executor.batch([
+        ...notifyTask(target, "compito_fermo", to, exclude, o.now, ref, still, { responsabile: step === "responsabile" }),
+        toStatement(ucSql`UPDATE use_case_tasks SET ${column} = ${cast(o.now.toISOString(), "timestamptz")} WHERE id = ${cast(String(r.id), "uuid")} AND ${still} RETURNING id`),
       ]);
+      // Conta solo se il compito era ancora quello letto (l'UPDATE ha scritto).
+      if (results[results.length - 1].length === 0) continue;
       if (step === "chiedi") summary.asked++;
       else summary.escalated++;
     } catch {

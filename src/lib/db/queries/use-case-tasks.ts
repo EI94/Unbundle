@@ -3,7 +3,7 @@ import "server-only";
  * I compiti di uno use case nel database (rilascio 8.1a, docs/rilascio-8/RILASCIO-8.1-COSTRUZIONE.md §2).
  *
  * - `listTasks`: i compiti con chi li ha (il nome si legge solo qui, per la pagina e per `unbundle compiti`; il
- *   brief usa «tuo» o «di un collega»).
+ *   brief usa «tuo» o «di altri»). I risultati delle azioni, che il registro dell'idempotenza conserva, non hanno nomi.
  * - `importTasks`: i compiti di `compiti.md`, più «fatto» dalle PR unite, con `planTaskImport`. A secco dice soltanto
  *   cosa farebbe; altrimenti scrive tutto in una transazione. Testi del team: passano `checkLsText`.
  *
@@ -18,6 +18,11 @@ import { fail, ok, type Result } from "@/lib/uc/types";
 import type { CaseRole } from "@/lib/uc/vocab";
 import { overlappingTasks, planTaskImport, type TaskDraft, type TaskImportPlan, type TaskRow } from "@/lib/use-cases/factory/tasks";
 import { BUILDER_ROLES, hasOpenTasksSql, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
+import { isEmailVerifiedValue, isLateralSpaceEmail } from "@/lib/uc/lateral-space";
+
+/** Un compito alla volta per use case: l'import, `compito nuovo` (stesso lock, stessa chiave). */
+const tasksLock = (target: FactoryTarget) => toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-tasks:' || ${cast(target.useCaseId, "text")}))`);
 
 /** Vero se la 0032 è applicata (la stessa sonda di `ensureDbSchema`). */
 export async function tasksStoreReady(executor: UcExecutor): Promise<boolean> {
@@ -100,7 +105,8 @@ export async function importTasks(
   if (input.dryRun || plan.ops.length === 0) return ok({ ...plan, dryRun: Boolean(input.dryRun) });
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
-  const statements: UcStatement[] = plan.ops.map((op) => {
+  const statements: UcStatement[] = [tasksLock(target)];
+  statements.push(...plan.ops.map((op) => {
     if (op.kind === "nuovo") {
       const d = op.draft;
       return toStatement(ucSql`INSERT INTO use_case_tasks (use_case_id, workspace_id, ref, title, areas, estimate_hours, evidence, status, source, project_version)
@@ -119,7 +125,7 @@ ON CONFLICT (use_case_id, ref) DO NOTHING`);
     const assignments = sets.reduce((acc, s, i) => (i === 0 ? s : ucSql`${acc}, ${s}`));
     return toStatement(ucSql`UPDATE use_case_tasks SET ${assignments}, updated_at = now()
 WHERE id = ${cast(op.id, "uuid")} AND workspace_id = ${ws} AND use_case_id = ${uc}`);
-  });
+  }));
   // Compiti nuovi da prendere su un progetto già approvato: lo sa chi costruisce (mai chi importa).
   if (plan.ops.some((o) => o.kind === "nuovo" && o.status === "da_fare")) {
     const approved = ucSql`EXISTS (SELECT 1 FROM use_case_projects p WHERE p.workspace_id = ${ws} AND p.use_case_id = ${uc} AND p.status = 'approvato')`;
@@ -148,7 +154,7 @@ async function projectApproved(executor: UcExecutor, target: FactoryTarget): Pro
 }
 
 const notFound = (ref: string) => fail("non_trovato", `${ref} non c'è tra i compiti del caso: «unbundle compiti» li elenca.`) as Result<never>;
-const who = (t: TaskView) => t.holderName ?? "un collega";
+const who = (t: TaskView) => t.holderName ?? "qualcuno del team";
 
 export interface TakeResult extends Record<string, unknown> {
   ref: string;
@@ -170,6 +176,8 @@ export async function takeTask(executor: UcExecutor, target: FactoryTarget, acto
   if (task.status === "fatto" || task.status === "annullato") return fail("conflitto", `${task.ref} è ${task.status === "fatto" ? "già fatto" : "annullato"}.`);
   const overlaps = overlappingTasks(task, tasks.filter((t) => t.holderUserId !== actor.userId));
   if ((task.status === "in_corso" || task.status === "in_revisione") && task.holderUserId === actor.userId) {
+    // Riprenderlo è un segnale di vita: è quello che chiede il promemoria del compito fermo.
+    await touchTask(executor, target, { userId: actor.userId, ref: task.ref });
     return ok({ ref: task.ref, titolo: task.title, ramo: task.branch, giaTuo: true, sovrapposizioni: overlaps });
   }
   if (task.holderUserId !== null) return fail("gia_preso", `${task.ref} l'ha già preso ${who(task)}: chiediglielo con «unbundle chiedi».`);
@@ -178,12 +186,14 @@ export async function takeTask(executor: UcExecutor, target: FactoryTarget, acto
     return fail("aree_sovrapposte", `${task.ref} tocca le aree di compiti in corso: ${list}. Accordatevi, poi rilancia con --comunque.`);
   }
   const [rows] = await executor.batch([
-    toStatement(ucSql`UPDATE use_case_tasks SET status = 'in_corso', holder_user_id = ${cast(actor.userId, "uuid")}, taken_at = now(), last_activity_at = now(),
-  stale_asked_at = NULL, stale_escalated_at = NULL, branch = coalesce(${cast(input.branch, "text")}, branch), updated_at = now()
-WHERE id = ${cast(task.id, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")} AND (status = 'da_fare' OR (status = 'in_corso' AND holder_user_id IS NULL))
+    // Un compito rimasto senza persona (l'utente non c'è più) si riprende dov'era: in corso o in revisione.
+    toStatement(ucSql`UPDATE use_case_tasks SET status = CASE WHEN status = 'in_revisione' THEN status ELSE 'in_corso' END, holder_user_id = ${cast(actor.userId, "uuid")},
+  taken_at = now(), last_activity_at = now(), stale_asked_at = NULL, stale_escalated_at = NULL, branch = coalesce(${cast(input.branch, "text")}, branch), updated_at = now()
+WHERE id = ${cast(task.id, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")}
+  AND (status = 'da_fare' OR (status IN ('in_corso', 'in_revisione') AND holder_user_id IS NULL))
 RETURNING ref, branch`),
   ]);
-  if (!rows[0]) return fail("gia_preso", `${task.ref} l'ha appena preso un collega: «unbundle compiti» per vedere chi.`);
+  if (!rows[0]) return fail("gia_preso", `${task.ref} l'ha appena preso qualcun altro: «unbundle compiti» per vedere chi.`);
   return ok({ ref: task.ref, titolo: task.title, ramo: rows[0].branch ? String(rows[0].branch) : null, giaTuo: false, sovrapposizioni: overlaps });
 }
 
@@ -218,14 +228,17 @@ RETURNING task_id`),
   return ok({ ref: task.ref });
 }
 
-/** `passa`: il compito a una persona del team che costruisce, con la nota. Lo passa chi lo ha, o il responsabile. */
+/**
+ * `passa`: il compito a una persona del team che costruisce (di Lateral Space, con l'e-mail verificata), con la nota.
+ * Lo passa chi lo ha, o il responsabile. La notifica parte solo se il passaggio è avvenuto.
+ */
 export async function passTask(
   executor: UcExecutor,
   target: FactoryTarget,
   actor: TaskActor,
   input: { ref: string; toEmail: unknown; note: unknown },
   now: Date = new Date(),
-): Promise<Result<{ ref: string; a: string }>> {
+): Promise<Result<{ ref: string }>> {
   const note = noteText(input.note);
   if (!note.ok) return note;
   const email = typeof input.toEmail === "string" ? input.toEmail.trim().toLowerCase() : "";
@@ -235,15 +248,17 @@ export async function passTask(
   if (task.status !== "in_corso") return fail("conflitto", `${task.ref} non è in corso: si passa solo un compito in corso. Per uno da fare: «unbundle take».`);
   if (task.holderUserId !== actor.userId && !isLead(actor)) return fail("permesso_negato", `${task.ref} è di ${who(task)}: lo passa chi lo ha, o il responsabile del caso.`);
   const [people] = await executor.batch([
-    toStatement(ucSql`SELECT DISTINCT u.id, coalesce(nullif(btrim(u.name), ''), split_part(u.email, '@', 1)) AS name
+    toStatement(ucSql`SELECT DISTINCT u.id, u.email, u.email_verified
 FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id JOIN users u ON u.id = m.user_id
 WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_case_id = ${cast(target.useCaseId, "uuid")}
   AND m.role = ANY (${cast([...BUILDER_ROLES], "text[]")}) AND lower(u.email) = ${cast(email, "text")}`),
   ]);
-  const to = people[0];
-  if (!to) return fail("non_trovato", "Questa persona non è nel team del caso con un ruolo che costruisce: la aggiunge il responsabile, nel dossier.");
+  const to = people.find((p) => isLateralSpaceEmail({ email: String(p.email), emailVerified: isEmailVerifiedValue(p.email_verified) }, ucLsDomains()));
+  if (!to) return fail("non_trovato", "Questa persona non è nel team del caso con un ruolo che costruisce, o non è di Lateral Space: la aggiunge il responsabile, nel dossier.");
   const toId = String(to.id);
-  if (toId === task.holderUserId) return fail("conflitto", `${task.ref} è già suo.`);
+  if (toId === task.holderUserId) return fail("conflitto", `${task.ref} ce l'ha già questa persona.`);
+  // Nella stessa transazione: il compito è passato adesso (`now()` è l'ora della transazione).
+  const passed = ucSql`EXISTS (SELECT 1 FROM use_case_tasks x WHERE x.id = ${cast(task.id, "uuid")} AND x.holder_user_id = ${cast(toId, "uuid")} AND x.taken_at = now())`;
   const [rows] = await executor.batch([
     toStatement(ucSql`WITH done AS (
   UPDATE use_case_tasks SET holder_user_id = ${cast(toId, "uuid")}, taken_at = now(), last_activity_at = now(), stale_asked_at = NULL, stale_escalated_at = NULL, updated_at = now()
@@ -254,14 +269,14 @@ WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_c
 INSERT INTO use_case_task_notes (task_id, use_case_id, workspace_id, kind, body)
 SELECT done.id, ${cast(target.useCaseId, "uuid")}, ${cast(target.workspaceId, "uuid")}, 'passaggio', ${cast(note.value, "text")} FROM done
 RETURNING task_id`),
-    ...notify(target, "compito_passato", { userId: toId }, actor.userId, now, task.ref),
+    ...notify(target, "compito_passato", { userId: toId }, actor.userId, now, task.ref, passed),
   ]);
   if (!rows[0]) return fail("conflitto", `${task.ref} è appena cambiato: «unbundle compiti» per vederlo com'è.`);
-  return ok({ ref: task.ref, a: String(to.name) });
+  return ok({ ref: task.ref });
 }
 
 /** `chiedi`: chiede un compito a chi lo ha, con una nota facoltativa. Chi lo ha lo sa (campanella ed e-mail). */
-export async function requestTask(executor: UcExecutor, target: FactoryTarget, actor: TaskActor, input: { ref: string; note: unknown }, now: Date = new Date()): Promise<Result<{ ref: string; a: string }>> {
+export async function requestTask(executor: UcExecutor, target: FactoryTarget, actor: TaskActor, input: { ref: string; note: unknown }, now: Date = new Date()): Promise<Result<{ ref: string }>> {
   const asked = typeof input.note === "string" && input.note.trim() ? input.note : "Vorrei prendere questo compito: passamelo con «unbundle passa», o dimmi quando.";
   const note = noteText(asked);
   if (!note.ok) return note;
@@ -275,7 +290,7 @@ export async function requestTask(executor: UcExecutor, target: FactoryTarget, a
 VALUES (${cast(task.id, "uuid")}, ${cast(target.useCaseId, "uuid")}, ${cast(target.workspaceId, "uuid")}, 'richiesta', ${cast(note.value, "text")}, ${cast(actor.userId, "uuid")})`),
     ...notify(target, "compito_chiesto", { userId: task.holderUserId }, actor.userId, now, task.ref),
   ]);
-  return ok({ ref: task.ref, a: who(task) });
+  return ok({ ref: task.ref });
 }
 
 /** `compito nuovo`: un compito in più, con il riferimento dopo l'ultimo (sotto un lock per caso: due insieme non collidono). */
@@ -290,7 +305,7 @@ export async function addTask(
   if (!guard.ok) return guard;
   const uc = cast(target.useCaseId, "uuid");
   const [, rows] = await executor.batch([
-    toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-tasks:' || ${cast(target.useCaseId, "text")}))`),
+    tasksLock(target),
     toStatement(ucSql`INSERT INTO use_case_tasks (use_case_id, workspace_id, ref, title, areas, estimate_hours, evidence, status, source, project_version)
 SELECT ${uc}, ${cast(target.workspaceId, "uuid")}, 'T-' || (coalesce((SELECT max(substring(ref from 3)::int) FROM use_case_tasks WHERE use_case_id = ${uc}), 0) + 1),
   ${cast(d.title.trim().slice(0, 200), "text")}, ${jsonb(d.areas)}, ${cast(d.estimateHours, "numeric")}, ${cast(d.evidence, "text")}, 'da_fare', ${cast(input.source, "text")}, ${projectVersionSql(target)}
@@ -299,18 +314,27 @@ RETURNING ref`),
   return ok({ ref: String(rows[0].ref) });
 }
 
-/** `compito segna`: fatto, annullato, o di nuovo da fare (riaperto, senza persona). Lo fa chi scrive nel caso. */
-export async function setTaskStatus(executor: UcExecutor, target: FactoryTarget, input: { ref: string; status: unknown }): Promise<Result<{ ref: string; stato: TaskStatus }>> {
+/**
+ * `compito segna`: fatto, annullato, o di nuovo da fare (riaperto, senza persona). Lo fa chi scrive nel caso; un
+ * compito che ha qualcun altro lo segna solo il responsabile del caso, come per `lascia`.
+ */
+export async function setTaskStatus(executor: UcExecutor, target: FactoryTarget, actor: TaskActor, input: { ref: string; status: unknown }): Promise<Result<{ ref: string; stato: TaskStatus }>> {
   const status = input.status;
   if (status !== "fatto" && status !== "annullato" && status !== "da_fare") return fail("dati_non_validi", "Lo stato è fatto, annullato o da_fare.");
   const task = (await listTasks(executor, target)).find((t) => t.ref === input.ref);
   if (!task) return notFound(input.ref);
   if (task.status === status) return ok({ ref: task.ref, stato: status });
+  if (task.holderUserId !== null && task.holderUserId !== actor.userId && !isLead(actor)) {
+    return fail("permesso_negato", `${task.ref} è di ${who(task)}: lo segna chi lo ha, o il responsabile del caso. Per chiederlo: «unbundle chiedi».`);
+  }
   const reset = status === "da_fare" ? raw(", holder_user_id = NULL, taken_at = NULL, stale_asked_at = NULL, stale_escalated_at = NULL") : raw("");
-  await executor.batch([
+  const [rows] = await executor.batch([
     toStatement(ucSql`UPDATE use_case_tasks SET status = ${cast(status, "text")}${reset}, updated_at = now()
-WHERE id = ${cast(task.id, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")}`),
+WHERE id = ${cast(task.id, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")} AND status = ${cast(task.status, "text")}
+  AND holder_user_id IS NOT DISTINCT FROM ${cast(task.holderUserId, "uuid")}
+RETURNING id`),
   ]);
+  if (!rows[0]) return fail("conflitto", `${task.ref} è appena cambiato: «unbundle compiti» per vederlo com'è.`);
   return ok({ ref: task.ref, stato: status });
 }
 

@@ -73,7 +73,8 @@ export type EmailInput =
   // (8.0b) Alla persona: una CLI di Unbundle è collegata al suo account nel workspace. Il link porta a Impostazioni.
   | { template: "cli_collegata"; clientName: string; connectedAt: Date; expiresAt: Date | null; link: string }
   // (8.1a) I compiti, a chi costruisce: il link porta al progetto dell'agente dello use case.
-  | (CaseRef & { template: "compito_chiesto" | "compito_passato" | "compito_fermo" | "compiti_pronti"; ref: string | null; link: string });
+  // `responsabile`: il compito fermo detto al responsabile del caso, non a chi lo ha.
+  | (CaseRef & { template: "compito_chiesto" | "compito_passato" | "compito_fermo" | "compiti_pronti"; ref: string | null; link: string; responsabile?: boolean });
 
 // ── Aiuti ─────────────────────────────────────────────────────────────
 
@@ -339,17 +340,28 @@ export function renderEmail(input: EmailInput): RenderedEmail {
       const ref = input.ref ?? "";
       const text: Record<typeof input.template, { subject: string; lines: string[] }> = {
         compito_chiesto: {
-          subject: `un collega chiede il compito ${ref}`,
-          lines: [`un collega del team vorrebbe prendere il compito ${ref} ${caso}, che oggi hai tu.`, "Se va bene, passaglielo con «unbundle passa», con la nota di passaggio. Finché non lo passi, resta tuo."],
+          subject: `qualcuno del team chiede il compito ${ref}`,
+          lines: [`qualcuno del team vorrebbe prendere il compito ${ref} ${caso}, che oggi hai tu.`, "Se va bene, passaglielo con «unbundle passa», con la nota di passaggio. Finché non lo passi, resta tuo."],
         },
         compito_passato: {
           subject: `ti hanno passato il compito ${ref}`,
           lines: [`il compito ${ref} ${caso} adesso è tuo.`, "La nota di passaggio (fatto, da fare, dubbi, come riprendere) la vedi con «unbundle compiti»."],
         },
-        compito_fermo: {
-          subject: `il compito ${ref} è fermo`,
-          lines: [`da almeno due giorni lavorativi il compito ${ref} ${caso} non ha segnali.`, "Se ci stai lavorando, basta riprenderlo. Se no, lascialo con una nota, così un collega può prenderlo. Nessuno lo riassegna da solo."],
-        },
+        compito_fermo: input.responsabile
+          ? {
+              subject: `il compito ${ref} è fermo da giorni`,
+              lines: [
+                `da almeno quattro giorni lavorativi il compito ${ref} ${caso} non ha segnali; chi lo ha ha già ricevuto un promemoria.`,
+                "Parlane con chi lo ha («unbundle compiti» dice di chi è). Se serve, lascialo tu con una nota («unbundle lascia») o passalo («unbundle passa»). Nessuno lo riassegna da solo.",
+              ],
+            }
+          : {
+              subject: `il compito ${ref} è fermo`,
+              lines: [
+                `da almeno due giorni lavorativi il compito ${ref} ${caso} non ha segnali.`,
+                "Se ci stai lavorando, riprendilo con «unbundle take»: basta questo. Se no, lascialo con una nota, così qualcun altro del team può prenderlo. Nessuno lo riassegna da solo.",
+              ],
+            },
         compiti_pronti: {
           subject: "ci sono compiti da prendere",
           lines: [`il progetto ${caso} è approvato e ci sono compiti da prendere.`, "«unbundle compiti» li elenca; «unbundle take» ne prende uno e prepara il ramo."],

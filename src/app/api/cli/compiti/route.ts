@@ -64,6 +64,9 @@ export async function GET(request: Request): Promise<Response> {
       prove: t.evidence,
       ramo: t.branch,
       pr: t.prUrl,
+      // Quando è cambiato l'ultima volta: la CLI lo mette nella richiesta, così la chiave di idempotenza cambia con il
+      // compito (un «take» dopo un «lascia» non riceve la risposta di prima).
+      aggiornato: t.updatedAt,
     })),
   });
 }
@@ -151,7 +154,7 @@ async function taskAction(request: Request, opened: Opened, c: Resolved, b: Reco
       return r;
     });
   }
-  if (action === "segna") return runCliWrite(request, opened, "compiti_segna", body, () => setTaskStatus(ex, c.target, { ref, status: b.stato }));
+  if (action === "segna") return runCliWrite(request, opened, "compiti_segna", body, () => setTaskStatus(ex, c.target, actor, { ref, status: b.stato }));
   // «nuovo»
   const folder = typeof b.cartella === "string" && FOLDER.test(b.cartella) ? b.cartella : `casi/${c.useCase.code.toLowerCase()}`;
   const title = typeof b.titolo === "string" ? b.titolo.replace(/\s+/g, " ").trim() : "";

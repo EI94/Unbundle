@@ -15,7 +15,7 @@ const UC = "33333333-3333-4333-8333-333333333333";
 const USER = "77777777-7777-4777-8777-777777777777";
 const OPTS = { origin: "https://app.unbundle.test", lsDomains: ["ls.test"], now: new Date("2026-11-13T09:30:00Z") };
 
-const claimed = (templateKey: string, payload: Record<string, string> = { useCase: UC, ref: "T-3" }): ClaimedNotification => ({
+const claimed = (templateKey: string, payload: Record<string, string | boolean> = { useCase: UC, ref: "T-3" }): ClaimedNotification => ({
   id: "88888888-8888-4888-8888-888888888888",
   workspaceId: WS,
   caseId: CASE,
@@ -67,4 +67,23 @@ test("il link al progetto dello use case è ammesso, solo pulito", () => {
   assert.ok(checkEmailLink(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`, "dashboard"));
   assert.throws(() => checkEmailLink(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto#compiti`, "dashboard"));
   assert.throws(() => checkEmailLink(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/altro`, "dashboard"));
+});
+
+test("il compito fermo: a chi lo ha, riprenderlo con «unbundle take»; al responsabile, un testo suo; nessun genere", () => {
+  const holder = planDelivery(claimed("compito_fermo"), facts(), OPTS);
+  const lead = planDelivery(claimed("compito_fermo", { useCase: UC, ref: "T-3", responsabile: true }), facts(), OPTS);
+  assert.ok(holder.action === "send" && lead.action === "send");
+  const toHolder = renderEmail(holder.build(null));
+  const toLead = renderEmail(lead.build(null));
+  assert.match(toHolder.text, /due giorni lavorativi/);
+  assert.match(toHolder.text, /riprendilo con «unbundle take»/);
+  assert.match(toLead.text, /quattro giorni lavorativi/);
+  assert.match(toLead.text, /Parlane con chi lo ha/);
+  assert.doesNotMatch(toLead.text, /Se ci stai lavorando/);
+  // Il segnale «responsabile» vale solo per il compito fermo.
+  const asked = planDelivery(claimed("compito_chiesto", { useCase: UC, ref: "T-3", responsabile: true }), facts(), OPTS);
+  assert.ok(asked.action === "send");
+  const askedMail = renderEmail(asked.build(null));
+  assert.match(askedMail.subject, /qualcuno del team chiede il compito T-3/);
+  for (const m of [toHolder, toLead, askedMail]) assert.doesNotMatch(m.text, /\bcolleg[ahi]\b/i);
 });

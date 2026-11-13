@@ -32,8 +32,8 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
     ok_decaduto: "L'ok dell'AI Board è da rifare",
     // (Rilascio 8.0b) Un coding agent propone una domanda per il referente: la decide una persona.
     domanda_agente: "Un coding agent propone una domanda",
-    // (Rilascio 8.1a) I compiti: un collega chiede il tuo, te ne hanno passato uno, uno è fermo, ce ne sono da prendere.
-    compito_chiesto: "Un collega chiede il tuo compito",
+    // (Rilascio 8.1a) I compiti: qualcuno chiede il tuo, te ne hanno passato uno, uno è fermo, ce ne sono da prendere.
+    compito_chiesto: "Qualcuno del team chiede il tuo compito",
     compito_passato: "Ti hanno passato un compito",
     compito_fermo: "Un compito è fermo",
     compiti_pronti: "Ci sono compiti da prendere",
@@ -64,7 +64,8 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   agentQuestion: "Guardala in «Cosa serve»: la aggiungi alle domande per il referente, oppure la lasci stare. Da sola non parte.",
   taskRequested: "Passaglielo con «unbundle passa», o diglielo tu: finché non lo passi, resta tuo.",
   taskPassed: "La nota di passaggio è in «unbundle compiti»: fatto, da fare, dubbi, come riprendere.",
-  taskStale: "Da due giorni lavorativi non ci sono segnali: riprendilo, oppure lascialo con una nota. Nessuno lo riassegna da solo.",
+  // La stessa riga a chi ha il compito e al responsabile del caso: generica.
+  taskStale: "Da giorni lavorativi non ci sono segnali: chi lo ha lo riprende con «unbundle take», o lo lascia con una nota. Nessuno lo riassegna da solo.",
   tasksReady: "Il progetto è approvato: «unbundle compiti» li elenca, «unbundle take» ne prende uno.",
   contextSeparator: " · ",
 });

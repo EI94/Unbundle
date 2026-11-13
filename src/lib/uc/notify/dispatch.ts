@@ -510,7 +510,8 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       const ref = typeof n.payload.ref === "string" && /^T-[1-9][0-9]{0,3}$/.test(n.payload.ref) ? n.payload.ref : null;
       if (tpl !== "compiti_pronti" && !ref) return cancel("compito_assente");
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, ref, link }), after: null };
+      const responsabile = tpl === "compito_fermo" && n.payload.responsabile === true;
+      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, ref, link, responsabile }), after: null };
     }
     case "domanda_proposta": {
       // Email interna: una domanda proposta da un coding agent, al responsabile del caso, che la decide in «Cosa serve».

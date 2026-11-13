@@ -162,7 +162,7 @@ test("il compito fermo: si chiede dopo 2 giorni lavorativi, al responsabile dopo
   assert.equal(staleStep({ ...base, holderUserId: null }, new Date("2026-11-20T09:00:00Z")), "niente", "senza persona non si chiede a nessuno");
 });
 
-test("la riga del brief: i tuoi, quelli dei colleghi, quanti da prendere, quanti fatti; mai un nome", () => {
+test("la riga del brief: i tuoi, quelli di altri, quanti da prendere, quanti fatti; mai un nome", () => {
   const tasks = [
     row({ ref: "T-1", status: "fatto" }),
     row({ ref: "T-2", status: "in_corso", holderUserId: "me" }),
@@ -172,6 +172,6 @@ test("la riga del brief: i tuoi, quelli dei colleghi, quanti da prendere, quanti
     row({ ref: "T-6" }),
     row({ ref: "T-7", status: "annullato" }),
   ];
-  assert.equal(tasksBriefLine(tasks, "me"), "Compiti: T-2 tuo, in corso · T-4 tuo, in revisione · T-3 di colleghi · 2 da prendere (T-5, T-6) · 1 su 6 fatti.");
+  assert.equal(tasksBriefLine(tasks, "me"), "Compiti: T-2 tuo, in corso · T-4 tuo, in revisione · T-3 di altri · 2 da prendere (T-5, T-6) · 1 su 6 fatti.");
   assert.equal(tasksBriefLine([], "me"), null);
 });

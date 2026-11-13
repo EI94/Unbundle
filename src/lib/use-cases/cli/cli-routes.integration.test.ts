@@ -519,9 +519,9 @@ test("i compiti (8.1a): importa a secco, poi davvero, una volta sola; «fatto» 
   assert.match(specchio, /- \[ \] T-2 Equipaggio dal gestionale · 16 h · aree: componenti\/gestionale\/, src\/equipaggio\.ts · prove: evals\/regole · in corso\n/);
   assert.ok(!specchio.includes(NAME.analyst));
 
-  // Il brief dice di chi è un compito solo a chi lo ha; agli altri «di colleghi», mai il nome.
+  // Il brief dice di chi è un compito solo a chi lo ha; agli altri «di altri», mai il nome.
   const briefLead = String((await call("context?caso=PX-0042", { token: tokens.lead! })).json.testo);
-  assert.match(briefLead, /Compiti: T-2 di colleghi · 1 da prendere \(T-3\) · 1 su 3 fatti\./);
+  assert.match(briefLead, /Compiti: T-2 di altri · 1 da prendere \(T-3\) · 1 su 3 fatti\./);
   assert.ok(!briefLead.includes(NAME.analyst));
   assert.match(String((await call("context?caso=PX-0042", { token: tokens.analyst! })).json.testo), /Compiti: T-2 tuo, in corso/);
 
@@ -552,7 +552,11 @@ test("prendere e passare i compiti (8.1a): dopo l'approvazione; uno alla volta; 
 
   const preso = await act(tokens.analyst!, "prendi", { compito: "t-3", ramo: "px-0042/t-3-casi" });
   assert.deepEqual([preso.status, preso.json.ref, preso.json.ramo, preso.json.giaTuo], [200, "T-3", "px-0042/t-3-casi", false]);
+  // Riprenderlo (già tuo) è un segnale di vita: è quello che chiede il promemoria del compito fermo.
+  await q(`UPDATE use_case_tasks SET last_activity_at = now() - interval '5 days' WHERE use_case_id = $1 AND ref = 'T-3'`, [ids.useCase]);
   assert.equal((await act(tokens.analyst!, "prendi", { compito: "T-3" })).json.giaTuo, true, "già tuo: niente di nuovo");
+  const [retaken] = await q(`SELECT last_activity_at > now() - interval '1 minute' AS fresh FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-3'`, [ids.useCase]);
+  assert.equal(retaken.fresh, true);
   const doppio = await act(tokens.lead!, "prendi", { compito: "T-3" });
   assert.equal(doppio.status, 409);
   assert.match(String((doppio.json.errore as Row).messaggio), new RegExp(`l'ha già preso ${NAME.analyst}`));
@@ -566,10 +570,14 @@ test("prendere e passare i compiti (8.1a): dopo l'approvazione; uno alla volta; 
   assert.match(String((sovrapposto.json.errore as Row).messaggio), /T-2 \(componenti\/gestionale\/cliente\.ts\)/);
   const comunque = await act(tokens.lead!, "prendi", { compito: "T-4", comunque: true });
   assert.deepEqual([comunque.status, (comunque.json.sovrapposizioni as Row[]).map((o) => o.ref)], [200, ["T-2"]]);
+  // Segna: un compito che ha qualcun altro lo segna solo il responsabile del caso.
+  const segnaAltrui = await act(tokens.analyst!, "segna", { compito: "T-4", stato: "annullato" });
+  assert.deepEqual([segnaAltrui.status, (segnaAltrui.json.errore as Row).codice], [403, "permesso_negato"]);
 
   // Chiedi: la nota di richiesta con chi chiede, la campanella e l'e-mail a chi ha il compito.
   const chiesto = await act(tokens.lead!, "chiedi", { compito: "T-3" });
-  assert.deepEqual([chiesto.status, chiesto.json.a], [200, NAME.analyst]);
+  // Nessun nome nella risposta: il registro dell'idempotenza la conserva.
+  assert.deepEqual([chiesto.status, chiesto.json.ref, JSON.stringify(chiesto.json).includes(NAME.analyst)], [200, "T-3", false]);
   assert.equal((await act(tokens.lead!, "chiedi", { compito: "T-1" })).status, 409, "un compito fatto non si chiede");
   const bellAsk = await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compito_chiesto'`, [ids.useCase]);
   assert.deepEqual(bellAsk.map((r) => r.recipient_user_id), [ids.analyst]);
@@ -580,7 +588,7 @@ test("prendere e passare i compiti (8.1a): dopo l'approvazione; uno alla volta; 
   assert.equal((await act(tokens.analyst!, "passa", { compito: "T-3", a: EMAIL.lead })).status, 400, "senza nota");
   assert.equal((await act(tokens.analyst!, "passa", { compito: "T-3", a: EMAIL.owner, nota: "Fatto metà." })).status, 404, "il cliente non costruisce");
   const passato = await act(tokens.analyst!, "passa", { compito: "T-3", a: EMAIL.lead.toUpperCase(), nota: "Fatto: i primi 5 casi. Da fare: gli altri 15. Dubbi: nessuno. Riprendi dal ramo." });
-  assert.deepEqual([passato.status, passato.json.a], [200, NAME.lead]);
+  assert.deepEqual([passato.status, passato.json.ref, JSON.stringify(passato.json).includes(NAME.lead)], [200, "T-3", false]);
   const [t3] = await q(`SELECT holder_user_id, status, branch FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-3'`, [ids.useCase]);
   assert.deepEqual(t3, { holder_user_id: ids.lead, status: "in_corso", branch: "px-0042/t-3-casi" });
   const bellPass = await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compito_passato'`, [ids.useCase]);
@@ -614,12 +622,19 @@ test("prendere e passare i compiti (8.1a): dopo l'approvazione; uno alla volta; 
   // Mai una lettura per persona: chi ha cosa si vede solo compito per compito.
   const after2 = (await call("compiti?caso=PX-0042", { token: tokens.lead! })).json.compiti as Row[];
   assert.deepEqual(after2.map((t) => [t.ref, t.stato, t.tuo]), [["T-1", "fatto", false], ["T-2", "da_fare", false], ["T-3", "in_corso", true], ["T-4", "fatto", true]]);
+  // Un compito in revisione rimasto senza persona si riprende dov'era.
+  await q(`UPDATE use_case_tasks SET status = 'in_revisione', holder_user_id = NULL WHERE use_case_id = $1 AND ref = 'T-2'`, [ids.useCase]);
+  const orfano = await act(tokens.analyst!, "prendi", { compito: "T-2" });
+  assert.deepEqual([orfano.status, orfano.json.giaTuo], [200, false]);
+  const [t2r] = await q(`SELECT holder_user_id, status FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-2'`, [ids.useCase]);
+  assert.deepEqual(t2r, { holder_user_id: ids.analyst, status: "in_revisione" });
+  await q(`UPDATE use_case_tasks SET status = 'da_fare', holder_user_id = NULL, taken_at = NULL WHERE use_case_id = $1 AND ref = 'T-2'`, [ids.useCase]);
 });
 
 test("il compito fermo (8.1a): dopo 2 giorni lavorativi lo chiede a chi lo ha, dopo 4 lo dice al responsabile; una volta per segnale; mai riassegnato", opts, async () => {
   const sweep = (await import("../../db/queries/use-case-tasks-notices.ts")).runTaskStaleSweep;
   await q(
-    `UPDATE use_case_tasks SET holder_user_id = $2, status = 'in_corso', taken_at = '2026-11-02T09:00:00Z', last_activity_at = '2026-11-06T16:00:00Z', stale_asked_at = NULL, stale_escalated_at = NULL
+    `UPDATE use_case_tasks SET holder_user_id = $2, status = 'in_corso', taken_at = '2026-11-02T09:00:00Z', last_activity_at = '2026-11-06T16:00:00.123456Z', stale_asked_at = NULL, stale_escalated_at = NULL
      WHERE use_case_id = $1 AND ref = 'T-3'`,
     [ids.useCase, ids.analyst],
   );
@@ -633,11 +648,12 @@ test("il compito fermo (8.1a): dopo 2 giorni lavorativi lo chiede a chi lo ha, d
   const bells = await q(`SELECT recipient_user_id, rome_day::text AS day FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compito_fermo' ORDER BY rome_day`, [ids.useCase]);
   assert.deepEqual(bells, [{ recipient_user_id: ids.analyst, day: "2026-11-10" }, { recipient_user_id: ids.lead, day: "2026-11-12" }]);
   const mails = await q(`SELECT recipient_user_id, payload FROM uc_notifications WHERE case_id = $1 AND template_key = 'compito_fermo' ORDER BY created_at`, [ids.dossier]);
-  assert.deepEqual(mails.map((m) => [m.recipient_user_id, (m.payload as Row).ref]), [[ids.analyst, "T-3"], [ids.lead, "T-3"]]);
+  // Al responsabile, il suo testo: la riga lo dice.
+  assert.deepEqual(mails.map((m) => [m.recipient_user_id, (m.payload as Row).ref, (m.payload as Row).responsabile ?? false]), [[ids.analyst, "T-3", false], [ids.lead, "T-3", true]]);
   const [t3] = await q(`SELECT holder_user_id, status FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-3'`, [ids.useCase]);
   assert.deepEqual(t3, { holder_user_id: ids.analyst, status: "in_corso" }, "mai riassegnato");
   // Un segnale nuovo riparte da capo.
-  await q(`UPDATE use_case_tasks SET last_activity_at = '2026-11-12T15:00:00Z' WHERE use_case_id = $1 AND ref = 'T-3'`, [ids.useCase]);
+  await q(`UPDATE use_case_tasks SET last_activity_at = '2026-11-12T15:00:00.654321Z' WHERE use_case_id = $1 AND ref = 'T-3'`, [ids.useCase]);
   assert.deepEqual(await sweep(exec, { now: new Date("2026-11-13T09:00:00Z"), ...scope }), { asked: 0, escalated: 0, errors: 0 });
   assert.deepEqual(await sweep(exec, { now: new Date("2026-11-17T09:00:00Z"), ...scope }), { asked: 1, escalated: 0, errors: 0 });
 });
@@ -650,6 +666,8 @@ test("la pagina «Agent Factory» (8.1a): chi la vede; la versione del modello d
   const versione = (body: Record<string, unknown>) => post("repository", tokens.analyst!, { caso: "PX-0042", azione: "versione", ...body }, null);
   assert.equal((await versione({ repository: "Prova/repo-di-prova", versioneModello: "1.2" })).status, 400);
   assert.equal((await versione({ repository: "Prova/altro-repo", versioneModello: "1.2.0" })).status, 404, "solo un repository registrato");
+  await q(`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder, profile) VALUES ($1, $2, 'Prova/repo-di-un-altro-caso', 'casi/px-0043', 'codice')`, [ids.bare, ids.ws]);
+  assert.equal((await versione({ repository: "Prova/repo-di-un-altro-caso", versioneModello: "1.2.0" })).status, 404, "solo il repository del caso del token");
   assert.equal((await post("repository", tokens.owner!, { caso: "PX-0042", azione: "versione", repository: "Prova/repo-di-prova", versioneModello: "1.2.0" }, null)).status, 403);
   assert.equal((await versione({ repository: "prova/REPO-di-prova", versioneModello: "1.2.0", versioneComune: "0.1.0" })).status, 200);
 

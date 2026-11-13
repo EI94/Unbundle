@@ -6,6 +6,8 @@ import { PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { factoryNavVisible, loadFactoryOverview, type FactoryCaseRow, type FactoryTodo } from "@/lib/db/queries/use-case-factory-line";
+import { factoryStoreReady } from "@/lib/db/queries/use-case-factory";
+import { cliStoreReady } from "@/lib/db/queries/use-case-cli-auth";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { AGENT_FACTORY_TEMPLATE_VERSION, compareVersions, STATION_LABEL, STATIONS, type Station } from "@/lib/use-cases/factory/line";
@@ -84,6 +86,16 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
   const lsManager = viewer.isLateralSpace && canReviewWorkspacePortfolio(access.role);
   const executor = await getAppUcExecutor();
   if (!(await factoryNavVisible(executor, { workspaceId, userId: session.user.id, lsManager }))) notFound();
+  // La pagina legge le tabelle della 0030 e della 0031: finché non ci sono (il primo avvio dopo un rilascio), lo dice.
+  const [factoryReady, cliReady] = await Promise.all([factoryStoreReady(executor), cliStoreReady(executor)]);
+  if (!factoryReady || !cliReady) {
+    return (
+      <PageContainer>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Agent Factory</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Non ancora disponibile: riprova tra qualche minuto.</p>
+      </PageContainer>
+    );
+  }
   const view = await loadFactoryOverview(executor, { workspaceId, userId: session.user.id, seeAll: lsManager, canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds });
   const counts = STATIONS.map((station) => ({ station, n: view.cases.filter((c) => c.station === station).length }));
 

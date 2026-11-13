@@ -29,7 +29,7 @@ export async function POST(request: Request): Promise<Response> {
   if (denied) return denied;
   if (body.body.azione === "versione") {
     const repo = typeof body.body.repository === "string" ? body.body.repository : "";
-    const r = await reportRepoVersion(opened.value.executor, { workspaceId: c.target.workspaceId, repo, templateVersion: body.body.versioneModello, commonVersion: body.body.versioneComune });
+    const r = await reportRepoVersion(opened.value.executor, { workspaceId: c.target.workspaceId, useCaseId: c.target.useCaseId, repo, templateVersion: body.body.versioneModello, commonVersion: body.body.versioneComune });
     return r.ok ? cliJson({ repository: r.value.repo, versioneModello: body.body.versioneModello }) : cliError(r.code === "non_trovato" ? 404 : r.code === "non_disponibile" ? 503 : 400, r.code, r.message);
   }
   const parsed = parseCaseRepo(body.body);

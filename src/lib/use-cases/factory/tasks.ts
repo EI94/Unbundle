@@ -235,7 +235,7 @@ export function staleStep(task: Pick<TaskRow, "status" | "holderUserId" | "taken
 
 // ─── Il brief ────────────────────────────────────────────────────────
 
-/** La riga dei compiti nel brief: senza nomi, «tuo» o «di un collega». */
+/** La riga dei compiti nel brief: senza nomi, «tuo» o «di altri». */
 export function tasksBriefLine(tasks: readonly Pick<TaskRow, "ref" | "status" | "holderUserId">[], viewerId: string): string | null {
   if (!tasks.length) return null;
   const sorted = [...tasks].sort(byRef);
@@ -245,7 +245,7 @@ export function tasksBriefLine(tasks: readonly Pick<TaskRow, "ref" | "status" | 
   const done = sorted.filter((t) => t.status === "fatto").length;
   const parts: string[] = [];
   for (const t of mine.slice(0, 3)) parts.push(`${t.ref} tuo, ${t.status === "in_revisione" ? "in revisione" : "in corso"}`);
-  if (others.length) parts.push(`${others.map((t) => t.ref).slice(0, 4).join(", ")} di colleghi`);
+  if (others.length) parts.push(`${others.map((t) => t.ref).slice(0, 4).join(", ")} di altri`);
   if (free.length) parts.push(`${free.length === 1 ? "1 da prendere" : `${free.length} da prendere`} (${free.slice(0, 3).map((t) => t.ref).join(", ")}${free.length > 3 ? "…" : ""})`);
   parts.push(`${done} su ${sorted.filter((t) => t.status !== "annullato").length} fatti`);
   return `Compiti: ${parts.join(" · ")}.`;

@@ -5,8 +5,8 @@ import "server-only";
  *
  * - **Chi la vede (8.1a):** chi costruisce, cioè ha un ruolo di Lateral Space nel team di almeno un caso, e vede i
  *   suoi casi. I manager del workspace di Lateral Space vedono tutti i casi, in lettura. Il cliente arriva con la 8.0c.
- * - **«Da fare per te»:** le domande dei coding agent da decidere (a chi vede «Cosa serve»), i compiti che un collega
- *   ti chiede, i tuoi compiti fermi, i progetti che approvi tu. Sono i tuoi, mai una classifica.
+ * - **«Da fare per te»:** le domande dei coding agent da decidere (a chi vede «Cosa serve»), i compiti che qualcuno del
+ *   team ti chiede, i tuoi compiti fermi, i progetti che approvi tu. Sono i tuoi, mai una classifica.
  * - **Sessioni dei coding agent:** quante, token e costo per caso; mai per persona.
  */
 import type { UcExecutor } from "@/lib/db/uc-executor";
@@ -134,7 +134,7 @@ ORDER BY coalesce(u.code, c.code)`),
     tasksReady
       ? toStatement(ucSql`SELECT t.use_case_id, t.ref, t.status, (t.stale_asked_at IS NOT NULL AND t.stale_asked_at >= coalesce(t.last_activity_at, t.taken_at)) AS stale,
   (SELECT count(*) FROM use_case_task_notes n WHERE n.task_id = t.id AND n.kind = 'richiesta' AND n.created_at >= coalesce(t.taken_at, t.created_at)) AS requests
-FROM use_case_tasks t WHERE t.workspace_id = ${ws} AND t.holder_user_id = ${me} AND t.status IN ('in_corso', 'in_revisione') ORDER BY t.ref`)
+FROM use_case_tasks t WHERE t.workspace_id = ${ws} AND t.holder_user_id = ${me} AND t.status IN ('in_corso', 'in_revisione') ORDER BY t.use_case_id, substring(t.ref from 3)::int`)
       : toStatement(ucSql`SELECT NULL::uuid AS use_case_id WHERE false`),
     toStatement(ucSql`SELECT p.use_case_id FROM use_case_projects p
 JOIN uc_cases c ON c.portfolio_use_case_id = p.use_case_id AND c.workspace_id = p.workspace_id
@@ -147,8 +147,8 @@ WHERE p.workspace_id = ${ws} AND p.status = 'da_approvare'`),
   for (const r of mineRows) {
     const c = byCase.get(String(r.use_case_id));
     if (!c) continue;
-    if (num(r.requests) > 0) todos.push({ kind: "chiesto", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: `Un collega chiede ${r.ref}, che hai tu: passaglielo o rispondigli.` });
-    if (r.stale === true) todos.push({ kind: "fermo", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: `${r.ref} è fermo da giorni: riprendilo o lascialo con una nota.` });
+    if (num(r.requests) > 0) todos.push({ kind: "chiesto", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: `Qualcuno del team chiede ${r.ref}, che hai tu: passaglielo o rispondigli.` });
+    if (r.stale === true) todos.push({ kind: "fermo", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: `${r.ref} è fermo da giorni: riprendilo con «unbundle take» o lascialo con una nota.` });
   }
   for (const r of approveRows) {
     const c = byCase.get(String(r.use_case_id));
@@ -166,9 +166,12 @@ const SEMVER = /^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$/;
 
 /**
  * La versione del modello (e del comune) di un repository della fabbrica, come la dice `unbundle start`. Il
- * repository dev'essere già registrato per uno use case del workspace.
+ * repository dev'essere registrato per lo use case del token: un caso dice la versione solo del suo repository.
  */
-export async function reportRepoVersion(executor: UcExecutor, input: { workspaceId: string; repo: string; templateVersion: unknown; commonVersion?: unknown }): Promise<Result<{ repo: string }>> {
+export async function reportRepoVersion(
+  executor: UcExecutor,
+  input: { workspaceId: string; useCaseId: string; repo: string; templateVersion: unknown; commonVersion?: unknown },
+): Promise<Result<{ repo: string }>> {
   const template = typeof input.templateVersion === "string" && SEMVER.test(input.templateVersion) ? input.templateVersion : null;
   const common = typeof input.commonVersion === "string" && SEMVER.test(input.commonVersion) ? input.commonVersion : null;
   if (!template) return fail("dati_non_validi", "versioneModello: come 1.3.0.");
@@ -177,12 +180,12 @@ export async function reportRepoVersion(executor: UcExecutor, input: { workspace
   const [rows] = await executor.batch([
     toStatement(ucSql`INSERT INTO use_case_factory_repos (workspace_id, repo, kind, template_version, common_version, reported_at)
 SELECT ${ws}, r.repo, 'famiglia', ${cast(template, "text")}, ${cast(common, "text")}, now()
-FROM use_case_repos r WHERE r.workspace_id = ${ws} AND lower(r.repo) = lower(${cast(input.repo, "text")})
+FROM use_case_repos r WHERE r.workspace_id = ${ws} AND r.use_case_id = ${cast(input.useCaseId, "uuid")} AND lower(r.repo) = lower(${cast(input.repo, "text")})
 LIMIT 1
 ON CONFLICT (workspace_id, repo) DO UPDATE SET template_version = EXCLUDED.template_version, common_version = coalesce(EXCLUDED.common_version, use_case_factory_repos.common_version),
   reported_at = now(), updated_at = now()
 RETURNING repo`),
   ]);
-  if (!rows[0]) return fail("non_trovato", "Il repository non è registrato in questo workspace: «unbundle repo create».");
+  if (!rows[0]) return fail("non_trovato", "Il repository non è registrato per questo caso: «unbundle repo create».");
   return ok({ repo: String(rows[0].repo) });
 }
