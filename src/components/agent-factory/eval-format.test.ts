@@ -283,9 +283,10 @@ test("le righe del banco: i segni dall'analisi, dal più bravo, un modello una v
   assert.deepEqual(
     rows.map((r) => [r.label, r.marks]),
     [
-      // Il più bravo può non avere il costo: lo dice la tabella, il grafico lo elenca sotto.
-      ["modello", ["più bravo"]],
-      ["Claude Opus 5.5", []],
+      // Il più bravo si sceglie tra i modelli con il costo noto (§3): chi non ha il costo, anche se rende di più, non ha
+      // segni; la tabella dice la sua qualità e il grafico lo elenca sotto.
+      ["modello", []],
+      ["Claude Opus 5.5", ["più bravo"]],
       ["Claude Sonnet 5.5", ["oggi"]],
       ["Claude Haiku 5.5", ["più efficiente", "più economico"]],
     ],
