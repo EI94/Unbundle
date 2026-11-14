@@ -17,8 +17,12 @@
 import type { CaseStatus } from "../../uc/vocab.ts";
 import { EVALS_MAIN, formatQuality, modelLabel, type BenchVerdict } from "./benchmark.ts";
 
-/** La versione del repository modello di oggi: si aggiorna qui quando ne esce una (`CHANGELOG.md` del modello). */
-export const AGENT_FACTORY_TEMPLATE_VERSION = "1.3.0";
+/**
+ * La versione del repository modello di oggi: si aggiorna qui quando ne esce una (`CHANGELOG.md` del modello). La 1.4.0
+ * porta `unbundle eval` e `unbundle banco`: il numero cambia nello stesso rilascio in cui il modello 1.4.0 arriva sul suo
+ * main, mai prima (la coda manderebbe ad aggiornare a una versione che «unbundle aggiorna» non porta ancora).
+ */
+export const AGENT_FACTORY_TEMPLATE_VERSION = "1.4.0";
 
 export const STATIONS = ["dossier", "impostazione", "approvato", "costruzione", "collaudo", "esercizio"] as const;
 export type Station = (typeof STATIONS)[number];
