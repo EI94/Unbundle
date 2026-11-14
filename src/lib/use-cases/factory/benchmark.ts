@@ -5,6 +5,9 @@
  *   soglie e hanno il costo noto: il più bravo (qualità più alta), il più economico (costo per 1.000 esecuzioni più
  *   basso), il più efficiente (il più economico a non più di 2 punti dal più bravo), la frontiera (nessun altro li batte
  *   insieme su qualità e costo). Poi la raccomandazione: resta, cambia, nessuno rispetta le soglie, costi non noti.
+ *   Con l'attuale nelle soglie e con il costo, «cambia» solo verso un modello che non è peggio di lui oltre 2 punti: il
+ *   più economico con la sua qualità, se costa almeno il 10 % in meno; altrimenti il più bravo che non costa di più.
+ *   Un modello più bravo e più caro nel banco non cambia il consiglio sugli altri.
  * - **Le evals:** l'esito delle evals con i modelli di oggi; l'avviso quando sono sotto soglia o scendono di 5 punti
  *   rispetto alle precedenti dello stesso ramo e degli stessi modelli (veri o finti).
  *
@@ -92,7 +95,7 @@ const NAMES: Record<string, string> = {
 /** Il nome da mostrare: «Claude Haiku 5.5» per `anthropic/claude-haiku-5-5`, altrimenti l'id senza il fornitore. */
 export function modelLabel(id: string): string {
   const bare = id.includes("/") ? id.slice(id.lastIndexOf("/") + 1) : id;
-  return NAMES[bare] ?? bare;
+  return Object.hasOwn(NAMES, bare) ? NAMES[bare] : bare;
 }
 
 const PCT = new Intl.NumberFormat("it-IT", { style: "percent", maximumFractionDigits: 1 });
@@ -171,23 +174,46 @@ export function analyzeBench(results: readonly BenchResult[], o: { role: string;
       },
     };
   }
-  if (efficient.model === current.model) {
-    return { ...base, verdict: { kind: "resta", model: current.model, text: `Resta ${modelLabel(current.model)} per ${role}: è già il più conveniente che rispetta le soglie (${describe(current)}).` } };
-  }
-  const saving = 1 - (efficient.costPer1000Usd as number) / (current.costPer1000Usd as number);
-  if (efficient.quality >= current.quality - tolerance - 1e-9 && saving >= minSaving - 1e-9) {
+  // L'attuale rispetta le soglie e ha il costo: il confronto è con lui, mai sotto la sua qualità oltre la tolleranza.
+  // Così un modello più bravo e più caro nel banco non toglie il consiglio di risparmiare a parità di qualità.
+  const now = current.costPer1000Usd as number;
+  const savingOf = (r: BenchResult) => (now > 0 ? 1 - (r.costPer1000Usd as number) / now : 0);
+  // 1. La stessa qualità di oggi (entro la tolleranza) per almeno il 10% in meno: il più economico di questi.
+  const sameQuality = [...pricedPassing].filter((r) => r.quality >= current.quality - tolerance - 1e-9).sort(byCostThenQuality)[0] ?? current;
+  if (sameQuality.model !== current.model && savingOf(sameQuality) >= minSaving - 1e-9) {
+    const saving = savingOf(sameQuality);
     return {
       ...base,
       verdict: {
         kind: "cambia",
-        model: efficient.model,
+        model: sameQuality.model,
         from: current.model,
         saving,
-        text: `Conviene ${modelLabel(efficient.model)} per ${role}: ${describe(efficient)}, contro ${describe(current)} di ${modelLabel(current.model)} (${PCT.format(-saving)} di costo).`,
+        text: `Conviene ${modelLabel(sameQuality.model)} per ${role}: ${describe(sameQuality)}, contro ${describe(current)} di ${modelLabel(current.model)} (${PCT.format(-saving)} di costo).`,
       },
     };
   }
-  return { ...base, verdict: { kind: "resta", model: current.model, text: `Resta ${modelLabel(current.model)} per ${role}: nessun altro modello costa almeno il 10% in meno con la stessa qualità (${describe(current)}).` } };
+  // 2. Più bravo di oggi, oltre la tolleranza, e non costa di più: il più bravo di questi.
+  const better = [...pricedPassing].filter((r) => r.model !== current.model && r.quality > current.quality + tolerance + 1e-9 && (r.costPer1000Usd as number) <= now).sort(byQualityThenCost)[0];
+  if (better) {
+    return {
+      ...base,
+      verdict: {
+        kind: "cambia",
+        model: better.model,
+        from: current.model,
+        saving: savingOf(better),
+        text: `Conviene ${modelLabel(better.model)} per ${role}: più bravo e non costa di più, ${describe(better)} contro ${describe(current)} di ${modelLabel(current.model)}.`,
+      },
+    };
+  }
+  if (efficient.model === current.model) {
+    return { ...base, verdict: { kind: "resta", model: current.model, text: `Resta ${modelLabel(current.model)} per ${role}: è già il più conveniente che rispetta le soglie (${describe(current)}).` } };
+  }
+  return {
+    ...base,
+    verdict: { kind: "resta", model: current.model, text: `Resta ${modelLabel(current.model)} per ${role}: nessun altro modello costa almeno il 10% in meno con la stessa qualità, né è più bravo allo stesso costo (${describe(current)}).` },
+  };
 }
 
 /** Un punto delle evals con i modelli di oggi. */
