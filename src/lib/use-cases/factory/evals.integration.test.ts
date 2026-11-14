@@ -532,6 +532,9 @@ test("la panoramica: main prima, l'andamento dalla più vecchia sullo stesso ram
   assert.ok(page.evals.trend.every((t, i, all) => i === 0 || t.at >= all[i - 1].at), "dalla più vecchia");
   assert.equal(page.evals.latest?.results[0].passed, 95);
   assert.equal(page.evals.trend.at(-1)?.at, page.evals.latest?.createdAt, "l'andamento finisce con le ultime");
+  // Gli istanti con i millesimi del database, non arrotondati al secondo.
+  const [exact] = await q(`SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at FROM use_case_eval_runs WHERE id = $1`, [page.evals.latest?.id]);
+  assert.equal(page.evals.latest?.createdAt, exact.at);
   assert.deepEqual(page.benches.map((b) => [b.role, b.analysis.verdict.kind]), [["lettura", "finti"], ["riassunto", "cambia"], ["scrittura", "resta"], ["verifica", "nessuno"]]);
   // Un ramo più recente non prende il posto di main.
   const branch = (await import("./benchmark-input.ts")).parseEvalRun(evalsBody(70, { ramo: "ev-0001/t-9" }));

@@ -29,6 +29,7 @@ import type { FactoryTarget } from "@/lib/db/queries/use-case-factory";
 import { EVALS_PROBE_SQL } from "@/lib/db/use-case-hub-evals-ddl";
 import { BUILDER_ROLES, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
 import { cast, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
+import { rowDate } from "@/lib/uc/sql/readiness";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import {
   analyzeBench,
@@ -88,7 +89,12 @@ const numberOrNull = (v: unknown): number | null => {
 };
 const count = (v: unknown) => Math.max(0, Math.trunc(numberOrNull(v) ?? 0));
 const text = (v: unknown) => (v === null || v === undefined ? null : String(v));
-const isoOf = (v: unknown) => new Date(String(v)).toISOString();
+/** Un istante del database in ISO, con i millesimi: il driver dà un `Date` (mai passare dal testo, che li perde). */
+function isoOf(v: unknown): string {
+  const d = rowDate(v);
+  if (!d) throw new Error("use-case-evals: istante non valido");
+  return d.toISOString();
+}
 const objectOf = (v: unknown): Record<string, unknown> => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
 function modelsOf(v: unknown): Record<string, string> {
