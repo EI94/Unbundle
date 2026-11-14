@@ -167,14 +167,15 @@ test("il banco di un ruolo: grafico con i punti, la frontiera, la legenda e i mo
   // Un pulsante per ogni modello con il costo, con tutto nel nome; nessuno per chi non ha il costo.
   assert.equal(count(html, /data-point="/), 3);
   assert.equal(count(html, /<button[^>]*aria-label="[^"]+"/), 3);
-  assert.match(html, /aria-label="Claude Sonnet 5\.5, oggi: qualità 96%, 27 di 28 prove, 1,80.USD per 1\.000 esecuzioni, tempo p95 4,1 s\."/);
+  assert.match(html, /aria-label="Claude Sonnet 5\.5, oggi: qualità 96%, 27 di 28 prove, 1,80.USD per 1\.000 esecuzioni \(stimato\), tempo p95 4,1 s\."/);
   assert.match(html, /data-slot="bench-current"/, "il modello di oggi ha il cerchio");
   assert.match(html, /data-slot="bench-frontier"/);
   assert.ok(count(html, /data-slot="bench-label"/) >= 1, "le etichette accanto ai punti");
-  assert.ok(text.includes("Costo per 1.000 esecuzioni (USD) · scala logaritmica"));
+  // Il costo è una stima: lo dice l'asse (e la tabella, sotto).
+  assert.ok(text.includes("Costo stimato per 1.000 esecuzioni (USD) · scala logaritmica"));
   for (const legend of [EVAL_TEXT.legendPassing, EVAL_TEXT.legendCurrent, EVAL_TEXT.legendFrontier]) assert.ok(text.includes(legend), legend);
   assert.ok(text.includes("Costo non noto: modello (80%, sotto soglia)."));
-  assert.ok(text.includes("Qualità e costo per 1.000 esecuzioni di 4 modelli per il ruolo «lettura»."), "la frase per i lettori di schermo");
+  assert.ok(text.includes("Qualità e costo stimato per 1.000 esecuzioni di 4 modelli per il ruolo «lettura»."), "la frase per i lettori di schermo");
 });
 
 test("la tabella del banco: dal più bravo, «oggi», soglie, costo, tempo p95 e segni", () => {
@@ -185,6 +186,7 @@ test("la tabella del banco: dal più bravo, «oggi», soglie, costo, tempo p95 e
   assert.deepEqual(order, [OPUS, SONNET, HAIKU, "altro/modello"]);
   const text = textOf(html);
   for (const header of [EVAL_TEXT.columnModel, EVAL_TEXT.columnQuality, EVAL_TEXT.columnThresholds, EVAL_TEXT.columnCost, EVAL_TEXT.columnP95, EVAL_TEXT.columnMarks]) assert.ok(text.includes(header), header);
+  assert.ok(text.includes("Costo stimato per 1.000"), "il costo è una stima");
   assert.match(text, /Claude Sonnet 5\.5 oggi/);
   // Nella scheda stretta i segni sotto il nome, uno per riga; in quella larga nella loro colonna.
   assert.match(text, /Claude Haiku 5\.5 più efficiente più economico 95%/);

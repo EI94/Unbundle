@@ -3,7 +3,9 @@
  * §4.2): i testi brevi, le scale del grafico qualità contro costo, dove scrivere le etichette dei punti senza che si
  * coprano, e la lettura prudente di quello che arriva dal database.
  *
- * - **Costo per 1.000 esecuzioni (x):** scala logaritmica quando il più caro costa almeno 10 volte il più economico
+ * - **Costo stimato per 1.000 esecuzioni (x):** una stima (il listino del modello, senza la cache; il gateway può
+ *   differire, BANCO-DI-PROVA.md §1.2), e la pagina lo dice sull'asse, nella tabella e nei punti. Scala logaritmica
+ *   quando il più caro costa almeno 10 volte il più economico
  *   (e tutti costano più di zero), altrimenti lineare da zero, così una differenza del 10 % resta del 10 %. Tacche
  *   tonde: 1, 2, 2,5, 5 per potenza di dieci sulla lineare; 1, 2, 5 per decade sulla logaritmica, poi 1 e 3, poi solo
  *   le decadi, se non stanno. Etichette brevi all'italiana («0,05», «2,5», «1.000»); l'unità è nel titolo dell'asse.
@@ -70,7 +72,7 @@ export const EVAL_TEXT = Object.freeze({
   models: "Modelli",
   trendFrom: "dalla più vecchia",
   axisQuality: "Qualità",
-  axisCost: "Costo per 1.000 esecuzioni (USD)",
+  axisCost: "Costo stimato per 1.000 esecuzioni (USD)",
   axisLog: "scala logaritmica",
   legendPassing: "rispetta le soglie",
   legendFailing: "sotto soglia",
@@ -79,7 +81,7 @@ export const EVAL_TEXT = Object.freeze({
   columnModel: "Modello",
   columnQuality: "Qualità",
   columnThresholds: "Soglie",
-  columnCost: "Costo per 1.000",
+  columnCost: "Costo stimato per 1.000",
   columnP95: "Tempo p95",
   columnMarks: "Segni",
   notMeasured: "non misurato",
@@ -394,11 +396,16 @@ export function marksText(marks: readonly BenchMark[]): string {
   return marks.join(" · ");
 }
 
-/** Il riquadro di un punto: «96,4% · 27 di 28 prove · 0,42 USD per 1.000 esecuzioni · tempo p95 4,1 s». */
+/** «0,42 USD per 1.000 esecuzioni (stimato)»: il costo del banco è sempre una stima. */
+export function costPer1000Text(cost: number): string {
+  return `${formatCost(cost)} per 1.000 esecuzioni (stimato)`;
+}
+
+/** Il riquadro di un punto: «96,4% · 27 di 28 prove · 0,42 USD per 1.000 esecuzioni (stimato) · tempo p95 4,1 s». */
 export function pointDetails(row: BenchRow): string[] {
   return [
     `${formatQuality(row.quality)}${row.passed !== null && row.total !== null ? ` · ${testsText(row.passed, row.total)}` : ""}`,
-    row.cost !== null ? `${formatCost(row.cost)} per 1.000 esecuzioni` : EVAL_TEXT.unknownCost,
+    row.cost !== null ? costPer1000Text(row.cost) : EVAL_TEXT.unknownCost,
     `tempo p95 ${row.latencyP95Ms !== null ? formatLatency(row.latencyP95Ms) : EVAL_TEXT.notMeasured}`,
     ...(row.thresholdsMet ? [] : [EVAL_TEXT.thresholdsMissed]),
   ];
@@ -410,7 +417,7 @@ export function pointLabel(row: BenchRow): string {
   const parts = [
     `qualità ${formatQuality(row.quality)}`,
     row.passed !== null && row.total !== null ? testsText(row.passed, row.total) : null,
-    row.cost !== null ? `${formatCost(row.cost)} per 1.000 esecuzioni` : EVAL_TEXT.unknownCost,
+    row.cost !== null ? costPer1000Text(row.cost) : EVAL_TEXT.unknownCost,
     `tempo p95 ${row.latencyP95Ms !== null ? formatLatency(row.latencyP95Ms) : EVAL_TEXT.notMeasured}`,
     row.thresholdsMet ? null : EVAL_TEXT.thresholdsMissed,
   ];
@@ -422,7 +429,7 @@ const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1
 /** La frase per i lettori di schermo: chi ha i segni, chi è sotto soglia, chi non ha il costo. La tabella ha il resto. */
 export function benchSummary(role: string, rows: readonly BenchRow[]): string {
   const brief = (r: BenchRow) => `${r.label} (${formatQuality(r.quality)}${r.cost !== null ? `, ${formatCost(r.cost)}` : ""})`;
-  const parts = [`Qualità e costo per 1.000 esecuzioni di ${rows.length === 1 ? "un modello" : `${rows.length} modelli`} per il ruolo «${role}».`];
+  const parts = [`Qualità e costo stimato per 1.000 esecuzioni di ${rows.length === 1 ? "un modello" : `${rows.length} modelli`} per il ruolo «${role}».`];
   for (const r of rows) if (r.marks.length) parts.push(`${capitalize(r.marks.join(" e "))}: ${brief(r)}.`);
   const failing = rows.filter((r) => !r.thresholdsMet);
   if (failing.length) parts.push(`${capitalize(EVAL_TEXT.thresholdsMissed)}: ${failing.map((r) => r.label).join(", ")}.`);

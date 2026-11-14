@@ -43,8 +43,8 @@ interface Plotted {
 }
 
 /**
- * Il grafico del banco di un ruolo (BANCO-DI-PROVA.md §4.2): qualità in verticale, costo per 1.000 esecuzioni in
- * orizzontale, un punto per modello con il suo nome accanto. Il modello di oggi ha il cerchio e «oggi»; la frontiera
+ * Il grafico del banco di un ruolo (BANCO-DI-PROVA.md §4.2): qualità in verticale, costo stimato per 1.000 esecuzioni
+ * in orizzontale, un punto per modello con il suo nome accanto. Il modello di oggi ha il cerchio e «oggi»; la frontiera
  * (nessun altro la batte su qualità e costo insieme) è una linea sottile tra i suoi punti; i modelli sotto soglia sono
  * vuoti e grigi. Il più bravo, il più efficiente e il più economico lo dicono le etichette, il riquadro e la tabella.
  *

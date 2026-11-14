@@ -17,6 +17,7 @@ import {
   benchSummary,
   changeHint,
   changeHintParts,
+  costPer1000Text,
   costScale,
   dayText,
   evalSectionDescription,
@@ -304,16 +305,20 @@ test("il riquadro e il nome accessibile di un punto, e la frase del grafico", ()
   const analysis = analyzeBench(results, { role: "lettura", fakeModels: false });
   const rows = benchRows(results, analysis);
   const sonnet = rows.find((r) => r.model === SONNET)!;
-  assert.deepEqual(pointDetails(sonnet).map(plain), ["96% · 27 di 28 prove", "1,80 USD per 1.000 esecuzioni", "tempo p95 4,1 s"]);
-  assert.equal(plain(pointLabel(sonnet)), "Claude Sonnet 5.5, oggi e più bravo: qualità 96%, 27 di 28 prove, 1,80 USD per 1.000 esecuzioni, tempo p95 4,1 s.");
-  assert.equal(plain(pointLabel(rows.find((r) => r.model === OPUS)!)), "Claude Opus 5.5: qualità 80%, 22 di 28 prove, 3,60 USD per 1.000 esecuzioni, tempo p95 non misurato, sotto soglia.");
+  // Il costo è una stima (listino, senza cache): lo dicono il riquadro, il nome del punto e la frase del grafico.
+  assert.deepEqual(pointDetails(sonnet).map(plain), ["96% · 27 di 28 prove", "1,80 USD per 1.000 esecuzioni (stimato)", "tempo p95 4,1 s"]);
+  assert.equal(plain(pointLabel(sonnet)), "Claude Sonnet 5.5, oggi e più bravo: qualità 96%, 27 di 28 prove, 1,80 USD per 1.000 esecuzioni (stimato), tempo p95 4,1 s.");
+  assert.equal(plain(pointLabel(rows.find((r) => r.model === OPUS)!)), "Claude Opus 5.5: qualità 80%, 22 di 28 prove, 3,60 USD per 1.000 esecuzioni (stimato), tempo p95 non misurato, sotto soglia.");
   const opus = rows.find((r) => r.model === OPUS)!;
   assert.deepEqual(pointDetails(opus).slice(2), ["tempo p95 non misurato", "sotto soglia"]);
   const summary = plain(benchSummary("lettura", rows));
   assert.equal(
     summary,
-    "Qualità e costo per 1.000 esecuzioni di 3 modelli per il ruolo «lettura». Oggi e più bravo: Claude Sonnet 5.5 (96%, 1,80 USD). Più efficiente e più economico: Claude Haiku 5.5 (95%, 0,12 USD). Sotto soglia: Claude Opus 5.5.",
+    "Qualità e costo stimato per 1.000 esecuzioni di 3 modelli per il ruolo «lettura». Oggi e più bravo: Claude Sonnet 5.5 (96%, 1,80 USD). Più efficiente e più economico: Claude Haiku 5.5 (95%, 0,12 USD). Sotto soglia: Claude Opus 5.5.",
   );
+  assert.equal(EVAL_TEXT.axisCost, "Costo stimato per 1.000 esecuzioni (USD)");
+  assert.equal(EVAL_TEXT.columnCost, "Costo stimato per 1.000");
+  assert.equal(plain(costPer1000Text(0.0035)), "0,0035 USD per 1.000 esecuzioni (stimato)");
   const unknown = benchRows([result(HAIKU, 0.95, null, { current: true })], analyzeBench([result(HAIKU, 0.95, null, { current: true })], { role: "lettura", fakeModels: false }));
   assert.match(benchSummary("lettura", unknown), /di un modello per il ruolo «lettura».*Costo non noto: Claude Haiku 5\.5\.$/);
 });
