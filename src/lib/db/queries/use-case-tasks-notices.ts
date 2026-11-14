@@ -17,6 +17,7 @@
 import { TASKS_PROBE_SQL, type TaskStatus } from "../use-case-hub-tasks-ddl.ts";
 import type { GithubNoticeKind } from "../use-case-hub-github-ddl.ts";
 import type { ProposalNoticeKind } from "../use-case-hub-proposals-ddl.ts";
+import type { EvalNoticeKind } from "../use-case-hub-evals-ddl.ts";
 import type { TaskNoticeKind as TaskOnlyNoticeKind } from "../use-case-hub-tasks-ddl.ts";
 import { createHash } from "node:crypto";
 import { cast, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
@@ -36,14 +37,27 @@ export interface TaskNoticeTarget {
 
 export type TaskRecipient = { userId: string } | { roles: readonly CaseRole[] };
 
-/** I tipi che passano da qui: quelli dei compiti (0032), la PR da rivedere (0033), la proposta di compito (0034). */
-export type TaskNoticeKind = TaskOnlyNoticeKind | GithubNoticeKind | ProposalNoticeKind;
+/**
+ * I tipi che passano da qui: quelli dei compiti (0032), la PR da rivedere (0033), la proposta di compito (0034), il
+ * consiglio del banco di prova e le evals scese (0036).
+ */
+export type TaskNoticeKind = TaskOnlyNoticeKind | GithubNoticeKind | ProposalNoticeKind | EvalNoticeKind;
 
-/** Che cosa aggiunge una notifica: al responsabile (il compito fermo), o la PR (numero e repository). */
+/**
+ * Che cosa aggiunge una notifica: al responsabile (il compito fermo), o la PR (numero e repository), o (0036) il ruolo e
+ * il modello che il banco consiglia (con il nome da mostrare), l'avviso delle evals con la qualità già scritta
+ * («80%») e il calo (0..1). I testi li scrive il modulo del banco: l'e-mail li controlla e li mostra. Mai una persona.
+ */
 export interface TaskNoticeExtra {
   responsabile?: boolean;
   pr?: number;
   repo?: string;
+  role?: string;
+  model?: string;
+  label?: string;
+  alert?: "sotto_soglia" | "in_calo";
+  qualityText?: string;
+  drop?: number;
 }
 
 /** Nessuno: per le notifiche del cron, che non escludono una persona. */
@@ -97,6 +111,12 @@ export function taskEmailSql(
     ...(extra.responsabile ? { responsabile: true } : {}),
     ...(extra.pr ? { pr: extra.pr } : {}),
     ...(extra.repo ? { repo: extra.repo } : {}),
+    ...(extra.role ? { role: extra.role } : {}),
+    ...(extra.model ? { model: extra.model } : {}),
+    ...(extra.label ? { label: extra.label } : {}),
+    ...(extra.alert ? { alert: extra.alert } : {}),
+    ...(extra.qualityText ? { qualityText: extra.qualityText } : {}),
+    ...(extra.drop !== undefined && Number.isFinite(extra.drop) ? { drop: extra.drop } : {}),
   });
   // Il compito (e la PR) nella chiave: due compiti, o due PR, lo stesso giorno sono due e-mail. La PR come impronta
   // corta: un nome di repository lungo non supera la colonna (varchar 200).

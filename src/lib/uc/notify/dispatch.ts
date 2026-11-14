@@ -86,8 +86,22 @@ export const EMAIL_TEMPLATES = [
   "pr_da_rivedere",
   // (8.1b) Ci sono proposte di compito da decidere: interna, a chi costruisce, con il link ai compiti del progetto.
   "compito_proposto",
+  // (8.2a) Il banco di prova consiglia un altro modello; le evals di main sono scese: interne, a chi costruisce, con il
+  // link al progetto dell'agente.
+  "banco_consiglio",
+  "evals_in_calo",
 ] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATES)[number];
+
+/**
+ * (8.2a) Le regole dei campi del banco e delle evals che arrivano dalla coda: le stesse del modulo del banco
+ * (`use-cases/factory/benchmark.ts`, che qui non si importa; un test controlla che restino uguali). Il nome del modello
+ * e la qualità arrivano già scritti («Claude Haiku 5.5», «80%»).
+ */
+export const NOTICE_ROLE_RE = /^[a-z][a-z0-9_-]{0,39}$/;
+export const NOTICE_MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,79}$/;
+export const NOTICE_MODEL_LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9 ._:/@-]{0,79}$/;
+export const NOTICE_QUALITY_TEXT_RE = /^(?:100|[1-9]?[0-9])(?:,[0-9])?[\s\u00a0\u202f]?%$/;
 
 export const HOLD_EMAIL_NOT_CONFIGURED = "email_non_configurata";
 export const HOLD_CASE_SUSPENDED = "caso_sospeso";
@@ -509,6 +523,33 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       if (!useCase) return cancel("use_case_assente");
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
       return { action: "send", to, link: null, build: () => ({ ...base, template: "compito_proposto", link }), after: null };
+    }
+    case "banco_consiglio": {
+      // Email interna: una al giorno per caso. Il ruolo e il modello consigliato vengono dalla coda, controllati con le
+      // regole del banco; mai una persona, mai i numeri del cliente.
+      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
+      if (!useCase) return cancel("use_case_assente");
+      const role = typeof n.payload.role === "string" && NOTICE_ROLE_RE.test(n.payload.role) ? n.payload.role : null;
+      const model = typeof n.payload.model === "string" && NOTICE_MODEL_RE.test(n.payload.model) ? n.payload.model : null;
+      if (!role || !model) return cancel("consiglio_assente");
+      // Il nome da mostrare; senza, l'id del modello.
+      const label = typeof n.payload.label === "string" && NOTICE_MODEL_LABEL_RE.test(n.payload.label) ? n.payload.label : model;
+      const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "banco_consiglio", role, model: label, link }), after: null };
+    }
+    case "evals_in_calo": {
+      // Email interna: una al giorno per caso. Sotto soglia, o giù rispetto alle precedenti (con il calo): dalla coda,
+      // controllati.
+      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
+      if (!useCase) return cancel("use_case_assente");
+      const alert = n.payload.alert === "sotto_soglia" || n.payload.alert === "in_calo" ? n.payload.alert : null;
+      const quality = typeof n.payload.qualityText === "string" && NOTICE_QUALITY_TEXT_RE.test(n.payload.qualityText) ? n.payload.qualityText : null;
+      const drop = typeof n.payload.drop === "number" && Number.isFinite(n.payload.drop) && n.payload.drop > 0 && n.payload.drop <= 1 ? n.payload.drop : null;
+      if (!alert || quality === null || (alert === "in_calo" && drop === null)) return cancel("avviso_assente");
+      const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "evals_in_calo", alert, quality, drop: alert === "in_calo" ? drop : null, link }), after: null };
     }
     case "compito_chiesto":
     case "compito_passato":

@@ -78,7 +78,13 @@ export type EmailInput =
   // (8.1b) Una pull request di un caso è pronta da rivedere: al team che costruisce, tranne chi ha il compito.
   | (CaseRef & { template: "pr_da_rivedere"; ref: string | null; repo: string; pr: number; link: string })
   // (8.1b) Ci sono proposte di compito da decidere (da GitHub): al team che costruisce.
-  | (CaseRef & { template: "compito_proposto"; link: string });
+  | (CaseRef & { template: "compito_proposto"; link: string })
+  // (8.2a) Il banco di prova consiglia un altro modello per un ruolo: al team che costruisce, tranne chi l'ha lanciato.
+  // `model`: il nome da mostrare («Claude Haiku 5.5»).
+  | (CaseRef & { template: "banco_consiglio"; role: string; model: string; link: string })
+  // (8.2a) Le evals di main sono sotto soglia o giù di almeno 5 punti (`drop`, 0..1): al team che costruisce, tranne chi
+  // le ha mandate. `quality`: già scritta («80%»).
+  | (CaseRef & { template: "evals_in_calo"; alert: "sotto_soglia" | "in_calo"; quality: string; drop: number | null; link: string });
 
 // ── Aiuti ─────────────────────────────────────────────────────────────
 
@@ -116,6 +122,8 @@ export function clarificationLink(link: string, itemId: string | null | undefine
 }
 
 const TIME_IT = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Rome" });
+/** I punti di qualità di un calo delle evals: «6,4». */
+const POINTS_IT = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 1 });
 const DAY_IT = new Intl.DateTimeFormat("it-IT", { day: "numeric", timeZone: "Europe/Rome" });
 
 /** «il 12 novembre», ma «l'11 novembre» (e così l'1 e l'8); `al` dà «al 12» e «all'11». */
@@ -396,6 +404,33 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: "Buongiorno," },
         { p: `per il caso d'uso «${oneLine(input.caseTitle, 120)}» è arrivata da GitHub una proposta di compito.` },
         { p: "Da sola non diventa un compito: nei compiti del progetto la accetti (nasce il compito, da prendere) o la scarti." },
+        { link: { href: link, label: "Apri il progetto" } },
+        { small: "Email interna di Lateral Space." },
+      ]);
+    }
+    case "banco_consiglio": {
+      const link = checkEmailLink(input.link, "dashboard");
+      return render(subjectOf(`${caseLabel(input)}: il banco di prova consiglia un altro modello`), [
+        { p: "Buongiorno," },
+        { p: `per il ruolo «${oneLine(input.role, 40)}» dell'agente del caso d'uso «${oneLine(input.caseTitle, 120)}», il banco di prova consiglia ${oneLine(input.model, 80)}.` },
+        { p: "Nel progetto, in «Evals e banco di prova», trovi il confronto (qualità, costo per 1.000 esecuzioni, tempi) e il comando per la pull request di una riga. Il modello lo cambia una persona del team, con la PR." },
+        { link: { href: link, label: "Apri il progetto" } },
+        { small: "Email interna di Lateral Space." },
+      ]);
+    }
+    case "evals_in_calo": {
+      const link = checkEmailLink(input.link, "dashboard");
+      const caso = `del caso d'uso «${oneLine(input.caseTitle, 120)}»`;
+      const down = input.alert === "in_calo" && input.drop !== null;
+      const points = down ? `${POINTS_IT.format((input.drop as number) * 100)} punti` : "";
+      return render(subjectOf(`${caseLabel(input)}: ${down ? "le evals di main sono scese" : "le evals di main sono sotto soglia"}`), [
+        { p: "Buongiorno," },
+        {
+          p: down
+            ? `le evals di main ${caso} sono scese di ${points} rispetto alle precedenti: ora sono al ${oneLine(input.quality, 8)}.`
+            : `le evals di main ${caso} sono sotto soglia: ${oneLine(input.quality, 8)}.`,
+        },
+        { p: "Prima di cambiare altro, guarda quali prove non passano: il dettaglio è nel progetto, in «Evals e banco di prova»." },
         { link: { href: link, label: "Apri il progetto" } },
         { small: "Email interna di Lateral Space." },
       ]);

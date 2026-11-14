@@ -50,6 +50,9 @@ export const UC_NOTIFICATION_TEMPLATES = [
   "pr_da_rivedere",
   // (8.1b) Una proposta di compito da GitHub, da decidere.
   "compito_proposto",
+  // (8.2a) Il banco di prova consiglia un altro modello per un ruolo; le evals di main sono scese.
+  "banco_consiglio",
+  "evals_in_calo",
   // Dopo l'MVP.
   "esiti_verifica",
   "scadenza_vicina",
