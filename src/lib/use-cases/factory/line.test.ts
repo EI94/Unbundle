@@ -2,7 +2,8 @@
 // passo; i conteggi; la coda della fabbrica con i repository indietro con il modello.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compareVersions, factoryQueue, lineCounts, nextStepOf, stationOf, type LineCase } from "./line.ts";
+import { benchFacts, compareVersions, evalsFact, evalsTodoText, factoryQueue, lineCounts, nextStepOf, stationOf, type LineCase } from "./line.ts";
+import { analyzeBench, type BenchResult } from "./benchmark.ts";
 
 const none = { total: 0, open: 0, inProgress: 0, inReview: 0, done: 0, cancelled: 0 };
 const c = (over: Partial<LineCase>): LineCase => ({ dossierStatus: "pronto_sviluppo", projectStatus: null, tasks: none, ...over });
@@ -48,4 +49,23 @@ test("la coda della fabbrica: i repository indietro con il modello, o senza vers
   );
   assert.deepEqual(queue.map((q) => q.repo), ["Voltaen/rondine-merope", "Voltaen/rondine-rosa"]);
   assert.match(queue[1].text, /Ha il modello 1\.2\.0, c'è il 1\.3\.0: «unbundle aggiorna»/);
+});
+
+test("(8.2a) le evals e il banco nella riga del caso: «evals 96%», «sotto soglia», «il banco consiglia …»", () => {
+  assert.equal(evalsFact(null), null);
+  assert.equal(evalsFact({ quality: 0.96, thresholdsMet: true, fakeModels: false }), "evals 96%");
+  assert.equal(evalsFact({ quality: 0.8, thresholdsMet: false, fakeModels: false }), "evals 80%, sotto soglia");
+  assert.equal(evalsFact({ quality: 27 / 28, thresholdsMet: true, fakeModels: true }), "evals 96,4%, modelli finti");
+  const r = (model: string, quality: number, cost: number, current = false): BenchResult => ({
+    model, current, quality, passed: Math.round(quality * 28), total: 28, thresholdsMet: true, groups: {}, costPer1000Usd: cost,
+    latencyP50Ms: null, latencyP95Ms: null, tokensInAvg: null, tokensOutAvg: null, errors: 0,
+  });
+  const change = analyzeBench([r("anthropic/claude-sonnet-5-5", 0.96, 1.8, true), r("anthropic/claude-haiku-5-5", 0.95, 0.12)], { role: "lettura", fakeModels: false }).verdict;
+  const stay = analyzeBench([r("anthropic/claude-haiku-5-5", 0.95, 0.12, true)], { role: "scrittura", fakeModels: false }).verdict;
+  assert.deepEqual(benchFacts([{ role: "lettura", verdict: change }, { role: "scrittura", verdict: stay }]), ["il banco consiglia Claude Haiku 5.5 per «lettura»"]);
+  assert.deepEqual(benchFacts([]), []);
+  assert.equal(evalsTodoText(0.8), "Le evals di main sono sotto soglia (80%): guarda quali prove non passano.");
+  for (const text of [evalsFact({ quality: 0.8, thresholdsMet: false, fakeModels: false }), evalsTodoText(0.8), ...benchFacts([{ role: "lettura", verdict: change }])]) {
+    assert.doesNotMatch(String(text), /caso d'uso/, "nella dashboard si dice «use case»");
+  }
 });

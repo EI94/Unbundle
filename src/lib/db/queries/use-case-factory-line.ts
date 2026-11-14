@@ -12,6 +12,9 @@ import "server-only";
  *   all'unione (la mediana), solo da {@link MIN_MERGED_FOR_MEDIAN} PR unite in su: con meno sarebbe il tempo di una
  *   persona. Mai per persona. In «Da fare per te» le PR pronte dei tuoi casi, tranne quelle dei
  *   tuoi compiti.
+ * - **(8.2a) Evals e banco di prova:** per ogni caso le evals (quelle di `main`, se ci sono) e il consiglio dell'ultimo
+ *   banco di ogni ruolo, letti per tutti i casi insieme (`loadEvalFacts`). In «Da fare per te», a chi costruisce il caso,
+ *   il consiglio del banco e le evals di `main` sotto soglia (con i modelli veri, mai in costruzione).
  */
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import { tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
@@ -22,6 +25,8 @@ import { CASE_STATUSES, type CaseStatus } from "@/lib/uc/vocab";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import { factoryQueue, nextStepOf, stationOf, type LineCase, type Station } from "@/lib/use-cases/factory/line";
 import { pullRequestUrl } from "@/lib/use-cases/factory/github";
+import { EVALS_MAIN_BRANCH, loadEvalFacts, type CaseEvalFacts } from "@/lib/db/queries/use-case-evals";
+import { evalsTodoText } from "@/lib/use-cases/factory/line";
 
 const LS_CASE_ROLES_SQL = raw("('ls_lead', 'ls_analista', 'ls_sviluppatore')");
 
@@ -56,10 +61,14 @@ export interface FactoryCaseRow {
   prs: { open: number; merged: number; medianDays: number | null; costPerPrUsd: number | null; tokensPerPr: number | null };
   repo: string | null;
   mine: boolean;
+  /** (8.2a) Le evals del caso (quelle di `main`, se ci sono; altrimenti le ultime), o null se non ce ne sono. */
+  evals: CaseEvalFacts["evals"];
+  /** (8.2a) La lettura dell'ultimo banco di ogni ruolo, in ordine di ruolo. */
+  benches: CaseEvalFacts["benches"];
 }
 
 export interface FactoryTodo {
-  kind: "domande" | "chiesto" | "fermo" | "approva" | "rivedi" | "proposte";
+  kind: "domande" | "chiesto" | "fermo" | "approva" | "rivedi" | "proposte" | "banco" | "evals";
   useCaseId: string;
   caseId: string;
   code: string;
@@ -115,6 +124,7 @@ export async function loadFactoryOverview(executor: UcExecutor, input: { workspa
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT u.id AS use_case_id, c.id AS case_id, coalesce(u.code, c.code) AS code, u.title, c.status AS dossier_status,
   EXISTS (SELECT 1 FROM uc_case_members m WHERE m.case_id = c.id AND m.user_id = ${me}) AS mine,
+  EXISTS (SELECT 1 FROM uc_case_members m WHERE m.case_id = c.id AND m.user_id = ${me} AND m.role IN ${LS_CASE_ROLES_SQL}) AS builder,
   (SELECT CASE WHEN bool_or(p.status = 'approvato') THEN 'approvato' WHEN bool_or(p.status = 'da_approvare') THEN 'da_approvare' WHEN bool_or(p.status = 'in_corso') THEN 'in_corso' END
      FROM use_case_projects p WHERE p.use_case_id = u.id AND p.workspace_id = u.workspace_id) AS project_status,
   ${taskCounts} AS tasks,
@@ -156,8 +166,19 @@ ORDER BY coalesce(u.code, c.code)`),
       },
       repo: r.repo ? String(r.repo) : null,
       mine: r.mine === true,
+      evals: null,
+      benches: [],
     };
   });
+  // (8.2a) Le evals e il banco di tutti i casi, in due letture.
+  const builderOf = new Set(rows.filter((r) => r.builder === true).map((r) => String(r.use_case_id)));
+  const evalFacts = await loadEvalFacts(executor, input.workspaceId, cases.map((c) => c.useCaseId));
+  for (const c of cases) {
+    const facts = evalFacts.get(c.useCaseId);
+    if (!facts) continue;
+    c.evals = facts.evals;
+    c.benches = facts.benches;
+  }
 
   const [repoRows] = await executor.batch([
     tasksReady
@@ -230,6 +251,18 @@ ORDER BY p.use_case_id, p.number`)
     const number = num(r.number);
     const text = r.ref ? `La PR #${number} di ${r.ref} aspetta una revisione.` : `La PR #${number} in ${repo} aspetta una revisione.`;
     todos.push({ kind: "rivedi", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text, href: pullRequestUrl(repo, number) });
+  }
+  // (8.2a) A chi costruisce il caso: il consiglio del banco, per ruolo; le evals di main sotto soglia (modelli veri, mai
+  // in costruzione), come la campanella.
+  for (const c of cases) {
+    if (!builderOf.has(c.useCaseId)) continue;
+    for (const b of c.benches) {
+      if (b.verdict.kind === "cambia") todos.push({ kind: "banco", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: b.verdict.text });
+    }
+    const e = c.evals;
+    if (e && !e.thresholdsMet && !e.inConstruction && !e.fakeModels && e.branch === EVALS_MAIN_BRANCH) {
+      todos.push({ kind: "evals", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: evalsTodoText(e.quality) });
+    }
   }
   return { cases, families, todos, queue, tasksReady };
 }

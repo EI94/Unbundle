@@ -18,7 +18,7 @@ const { registerHooks } = nodeModule as unknown as {
 // - il banco «cambia» avvisa il team che costruisce tranne chi l'ha lanciato, una volta al giorno; «resta» e i modelli
 //   finti no; le evals di main sotto soglia o giù di 5 punti avvisano, in costruzione, finte o su un altro ramo no;
 // - la panoramica per la CLI e per la pagina (l'andamento dalla più vecchia, lo stesso ramo, main prima), la pagina
-//   le evals insieme una alla volta, la ripresa con lo stesso id;
+//   «Agent Factory» (i fatti e «Da fare per te»), le evals insieme una alla volta, la ripresa con lo stesso id;
 // - mai un nome o un indirizzo in una risposta, mai una colonna sulla persona.
 //
 // - Con scripts/use-case-test/run-db-tests.mjs (HUB_TEST_ISOLATED=true, database hub_<id> su 127.0.0.1).
@@ -549,6 +549,39 @@ test("la panoramica: main prima, l'andamento dalla più vecchia sullo stesso ram
   // Un caso senza niente: tutto vuoto.
   const empty = await overview(tokens.lead!, "EV-0003");
   assert.deepEqual(empty.json, { caso: "EV-0003", evals: { ultime: null, andamento: [] }, banchi: [] });
+});
+
+test("la pagina «Agent Factory»: le evals e il consiglio del banco per caso; in «Da fare per te» solo a chi costruisce", opts, async () => {
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  const { benchFacts, evalsFact } = await import("./line.ts");
+  // Le ultime evals di main sotto soglia.
+  const below = (await import("./benchmark-input.ts")).parseEvalRun(evalsBody(84));
+  assert.ok(below.ok && (await evals.recordEvalRun(exec, { workspaceId: ids.ws, useCaseId: ids.useCase }, below.value, { actorUserId: ids.lead })).ok);
+  const view = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.analyst, seeAll: false, canSeeNeeds: true });
+  const ev = view.cases.find((c) => c.useCaseId === ids.useCase)!;
+  assert.deepEqual([ev.evals?.quality, ev.evals?.thresholdsMet, ev.evals?.branch, ev.evals?.fakeModels], [0.84, false, "main", false]);
+  assert.equal(evalsFact(ev.evals), "evals 84%, sotto soglia");
+  assert.deepEqual(ev.benches.map((b) => [b.role, b.verdict.kind]), [["lettura", "finti"], ["riassunto", "cambia"], ["scrittura", "resta"], ["verifica", "nessuno"]]);
+  assert.deepEqual(benchFacts(ev.benches), ["il banco consiglia Claude Haiku 5.5 per «riassunto»"]);
+  const mine = view.todos.filter((t) => t.useCaseId === ids.useCase && (t.kind === "banco" || t.kind === "evals"));
+  assert.deepEqual(mine.map((t) => t.kind), ["banco", "evals"]);
+  assert.match(mine[0].text, /^Conviene Claude Haiku 5\.5 per «riassunto»/);
+  assert.equal(mine[1].text, "Le evals di main sono sotto soglia (84%): guarda quali prove non passano.");
+  assert.ok(view.todos.every((t) => PEOPLE.every((p) => !t.text.includes(NAME[p]))), "«Da fare per te» senza nomi");
+  // L'altro caso: evals solo su un ramo, sotto soglia: si dicono, ma non sono «Da fare».
+  const other = view.cases.find((c) => c.useCaseId === ids.other)!;
+  assert.equal(evalsFact(other.evals), "evals 75%, sotto soglia");
+  assert.ok(!view.todos.some((t) => t.useCaseId === ids.other && t.kind === "evals"), "non di main");
+  // Il cliente è nel team ma non costruisce: vede i casi, non i «Da fare» del banco.
+  const client = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.owner, seeAll: false, canSeeNeeds: false });
+  assert.ok(client.cases.some((c) => c.useCaseId === ids.useCase));
+  assert.ok(!client.todos.some((t) => t.kind === "banco" || t.kind === "evals"));
+  // In costruzione: niente «Da fare» per le evals.
+  const building = (await import("./benchmark-input.ts")).parseEvalRun(evalsBody(84, { inCostruzione: true }));
+  assert.ok(building.ok && (await evals.recordEvalRun(exec, { workspaceId: ids.ws, useCaseId: ids.useCase }, building.value, { actorUserId: ids.lead })).ok);
+  const later = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.analyst, seeAll: false, canSeeNeeds: true });
+  assert.ok(!later.todos.some((t) => t.useCaseId === ids.useCase && t.kind === "evals"));
+  assert.ok(later.todos.some((t) => t.useCaseId === ids.useCase && t.kind === "banco"));
 });
 
 test("le evals insieme dello stesso caso: una alla volta, ogni avviso rispetto alla precedente vera", opts, async () => {

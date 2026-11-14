@@ -8,10 +8,13 @@
  * - La coda della fabbrica, al posto dei turni, è il lavoro sulla fabbrica stessa: per ora i repository rimasti
  *   indietro con il modello. La prende chi ci lavora.
  * - Mai una cifra per persona: i compiti si contano per caso.
+ * - (8.2a) Le evals e il banco di prova del caso in un frammento breve: «evals 96%», «evals 80%, sotto soglia»,
+ *   «il banco consiglia Claude Haiku 5.5 per «lettura»».
  *
  * Modulo puro.
  */
 import type { CaseStatus } from "../../uc/vocab.ts";
+import { formatQuality, modelLabel, type BenchVerdict } from "./benchmark.ts";
 
 /** La versione del repository modello di oggi: si aggiorna qui quando ne esce una (`CHANGELOG.md` del modello). */
 export const AGENT_FACTORY_TEMPLATE_VERSION = "1.3.0";
@@ -94,4 +97,27 @@ export function factoryQueue(repos: readonly FactoryRepoState[], latest: string 
         : `Non so ancora che versione del modello abbia: la dice il prossimo «unbundle start», oppure «unbundle aggiorna».`,
     }))
     .sort((a, b) => a.repo.localeCompare(b.repo));
+}
+
+/** (8.2a) Le evals di un caso come le dice la riga della pagina. */
+export interface LineEvals {
+  quality: number;
+  thresholdsMet: boolean;
+  fakeModels: boolean;
+}
+
+/** (8.2a) Le evals in un frammento: «evals 96%», «evals 80%, sotto soglia»; con i modelli finti lo dice. */
+export function evalsFact(e: LineEvals | null): string | null {
+  if (!e) return null;
+  return `evals ${formatQuality(e.quality)}${e.thresholdsMet ? "" : ", sotto soglia"}${e.fakeModels ? ", modelli finti" : ""}`;
+}
+
+/** (8.2a) Il consiglio del banco, un ruolo alla volta: «il banco consiglia Claude Haiku 5.5 per «lettura»». */
+export function benchFacts(benches: readonly { role: string; verdict: BenchVerdict }[]): string[] {
+  return benches.flatMap((b) => (b.verdict.kind === "cambia" ? [`il banco consiglia ${modelLabel(b.verdict.model)} per «${b.role}»`] : []));
+}
+
+/** (8.2a) «Da fare per te»: le evals sotto soglia, con la qualità. */
+export function evalsTodoText(quality: number): string {
+  return `Le evals di main sono sotto soglia (${formatQuality(quality)}): guarda quali prove non passano.`;
 }
