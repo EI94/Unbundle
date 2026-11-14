@@ -79,11 +79,11 @@ test("un banco valido: i campi in inglese, la qualità ricalcolata, le prove dal
 });
 
 test("le evals valide: un risultato «attuale», senza ruolo; i facoltativi possono mancare", () => {
-  const r = parseEvalRun(evals({ ramo: undefined, commit: null, versioneModello: undefined, modelli: undefined, risultati: [result({ qualita: undefined, gruppi: undefined, costoPer1000Usd: null, latenzaP50Ms: undefined, latenzaP95Ms: null, tokenIngressoMedi: null, tokenUscitaMedi: undefined, errori: undefined })] }));
+  const r = parseEvalRun(evals({ ramo: undefined, commit: null, versioneModello: undefined, modelli: { lettura: HAIKU }, risultati: [result({ qualita: undefined, gruppi: undefined, costoPer1000Usd: null, latenzaP50Ms: undefined, latenzaP95Ms: null, tokenIngressoMedi: null, tokenUscitaMedi: undefined, errori: undefined })] }));
   assert.ok(r.ok);
   if (!r.ok) return;
   assert.deepEqual([r.value.kind, r.value.role, r.value.branch, r.value.commit, r.value.templateVersion], ["evals", null, null, null, null]);
-  assert.deepEqual(r.value.models, {});
+  assert.deepEqual(r.value.models, { lettura: HAIKU });
   const [x] = r.value.results;
   assert.deepEqual([x.groups, x.costPer1000Usd, x.latencyP50Ms, x.latencyP95Ms, x.tokensInAvg, x.tokensOutAvg, x.errors], [{}, null, null, null, null, null, 0]);
 });
@@ -136,8 +136,10 @@ test("i modelli di oggi: un ruolo per chiave, un id valido, al massimo 20; il ba
   // Un ruolo con il nome di una proprietà degli oggetti non la trova per caso.
   assert.match(message(banco({ ruolo: "constructor", modelli: { lettura: SONNET } })), /^modelli\.constructor: il modello di oggi del ruolo del banco/);
   assert.ok(parseEvalRun(banco({ ruolo: "constructor", modelli: { constructor: SONNET } })).ok);
-  // Le evals no: i modelli possono anche mancare.
-  assert.ok(parseEvalRun(evals({ modelli: undefined })).ok);
+  // Le evals li dicono tutti, come la CLI: senza, un banco già seguito non si riconoscerebbe più.
+  const none = /^modelli: per le evals, ogni ruolo di agent\.yaml con il suo modello di oggi \(almeno uno\)\.$/;
+  for (const modelli of [undefined, null, {}]) assert.match(message(evals({ modelli })), none, JSON.stringify(modelli));
+  assert.ok(parseEvalRun(evals({ modelli: { scrittura: HAIKU } })).ok);
 });
 
 test("il banco: da 1 a 12 modelli distinti, esattamente un «attuale»; le evals: un solo risultato, «attuale»", () => {

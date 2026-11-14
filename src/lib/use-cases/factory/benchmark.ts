@@ -10,7 +10,8 @@
  *   bravo di lui oltre 2 punti che non costa di più. Un modello più bravo e più caro nel banco non toglie il consiglio.
  *   Il più bravo si sceglie tra i modelli con il costo noto, come gli altri due segni.
  * - **Le evals:** l'esito delle evals con i modelli di oggi; l'avviso quando sono sotto soglia o scendono di 5 punti
- *   rispetto alle precedenti dello stesso ramo e degli stessi modelli (veri o finti).
+ *   rispetto alle precedenti dello stesso ramo e dello stesso livello, con gli stessi modelli (veri con veri, finti con
+ *   finti). Lo stato del caso lo fanno le evals vere e complete di `main` (le altre solo finché quelle non ci sono).
  *
  * Per caso e per ruolo, mai per persona. La stessa regola sta nella CLI del modello (`unbundle banco`).
  * Modulo puro: niente database, niente rete.
@@ -142,8 +143,9 @@ function frontierOf(rows: readonly BenchResult[]): BenchResult[] {
 }
 
 /**
- * La lettura di un banco e la raccomandazione per il ruolo. `fakeModels`: il banco è girato con i modelli finti, che
- * misurano il codice e non il modello: nessuna raccomandazione.
+ * La lettura di un banco e la raccomandazione per il ruolo, con la regola del modulo (qui sopra) ancorata al modello di
+ * oggi. `fakeModels`: il banco è girato con i modelli finti, che misurano il codice e non il modello: nessuna
+ * raccomandazione. La stessa funzione sta nella CLI del modello (`strumenti/lib/banco.mjs`): si cambiano insieme.
  */
 export function analyzeBench(results: readonly BenchResult[], o: { role: string; fakeModels: boolean; tolerance?: number; minSaving?: number }): BenchAnalysis {
   const tolerance = o.tolerance ?? BENCH_TOLERANCE;
@@ -278,6 +280,8 @@ export function benchSuperseded(
   evals: { at: string | Date; branch: string | null; fakeModels: boolean; models: Readonly<Record<string, string>> } | null,
 ): boolean {
   if (!evals || evals.fakeModels || evals.branch !== EVALS_MAIN || !bench.role) return false;
+  // Evals senza i modelli di oggi (mandate a mano, prima che si chiedessero): non dicono che il ruolo non c'è più.
+  if (Object.keys(evals.models).length === 0) return false;
   const evalsAt = new Date(evals.at).getTime();
   const benchAt = new Date(bench.at).getTime();
   if (!Number.isFinite(evalsAt) || !Number.isFinite(benchAt) || evalsAt <= benchAt) return false;
@@ -302,11 +306,12 @@ export interface EvalRunView {
   results: BenchResult[];
 }
 
-/** Quello che la pagina mostra di un caso: le evals di oggi con l'andamento, e l'ultimo banco per ogni ruolo. */
+/** Quello che la pagina mostra di un caso: le evals che fanno lo stato del caso con l'andamento, e l'ultimo banco per ogni ruolo. */
 export interface EvalOverview {
   evals: {
+    /** Le evals che fanno lo stato del caso: `main` prima, poi i modelli veri, poi il livello completo, poi le più recenti. */
     latest: EvalRunView | null;
-    /** Le ultime evals dello stesso ramo dell'ultima, dalla più vecchia. */
+    /** Le ultime evals della stessa serie di `latest` (stesso ramo, modelli veri o finti, livello), dalla più vecchia. */
     trend: { at: string; quality: number; thresholdsMet: boolean; fakeModels: boolean }[];
   };
   benches: { role: string; run: EvalRunView; analysis: BenchAnalysis }[];

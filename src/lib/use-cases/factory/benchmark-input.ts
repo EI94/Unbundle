@@ -222,6 +222,9 @@ export function parseEvalRun(body: Record<string, unknown>): InputResult<EvalRun
   if (current.length !== 1) {
     return bad(kind === "banco" ? "risultati: esattamente un modello «attuale», quello di oggi del ruolo." : "risultati: il risultato delle evals è quello dei modelli di oggi, «attuale»: true.");
   }
+  // Le evals dicono i modelli di oggi di agent.yaml, come la CLI li manda sempre: senza, un banco già seguito non si
+  // riconosce più (benchSuperseded), e il consiglio sparirebbe o resterebbe a caso.
+  if (kind === "evals" && Object.keys(models.value).length === 0) return bad("modelli: per le evals, ogni ruolo di agent.yaml con il suo modello di oggi (almeno uno).");
   if (role !== null) {
     // Il banco dice sempre il modello di oggi del suo ruolo (la CLI lo prende da agent.yaml): senza, un ruolo inventato.
     const today = Object.hasOwn(models.value, role) ? models.value[role] : null;

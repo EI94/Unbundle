@@ -142,6 +142,7 @@ test("un banco superato: evals vere di main più nuove, con un altro modello per
   assert.equal(benchSuperseded(bench, evals({ at: bench.at })), false, "nello stesso istante: non dopo");
   assert.equal(benchSuperseded(bench, evals({ fakeModels: true })), false, "le evals finte non dicono il modello vero");
   assert.equal(benchSuperseded(bench, evals({ branch: "tj-0049/t-3" })), false, "solo main");
+  assert.equal(benchSuperseded(bench, evals({ models: {} })), false, "evals senza i modelli: non dicono che il ruolo non c'è più");
   assert.equal(benchSuperseded(bench, null), false);
   assert.equal(benchSuperseded({ ...bench, role: null }, evals()), false);
   assert.equal(benchSuperseded(bench, evals({ models: Object.assign(Object.create(null), { constructor: HAIKU }) })), true, "un ruolo «constructor» non viene dal prototipo");
