@@ -167,14 +167,18 @@ test("il banco di un ruolo: grafico con i punti, la frontiera, la legenda e i mo
   // Un pulsante per ogni modello con il costo, con tutto nel nome; nessuno per chi non ha il costo.
   assert.equal(count(html, /data-point="/), 3);
   assert.equal(count(html, /<button[^>]*aria-label="[^"]+"/), 3);
-  assert.match(html, /aria-label="Claude Sonnet 5\.5, oggi: qualità 96%, 27 di 28 prove, 1,80.USD per 1\.000 esecuzioni, tempo p95 4,1 s\."/);
+  assert.match(html, /aria-label="Claude Sonnet 5\.5, oggi, sulla frontiera: qualità 96%, 27 di 28 prove, 1,80.USD per 1\.000 esecuzioni \(stimato\), tempo p95 4,1 s\."/);
+  // La frontiera, che il grafico disegna, è anche nelle parole: nel nome dei punti e nella frase.
+  assert.equal(count(html, /, sulla frontiera: /), 3);
+  assert.ok(text.includes("Frontiera: Claude Haiku 5.5, Claude Sonnet 5.5, Claude Opus 5.5."));
   assert.match(html, /data-slot="bench-current"/, "il modello di oggi ha il cerchio");
   assert.match(html, /data-slot="bench-frontier"/);
   assert.ok(count(html, /data-slot="bench-label"/) >= 1, "le etichette accanto ai punti");
-  assert.ok(text.includes("Costo per 1.000 esecuzioni (USD) · scala logaritmica"));
+  // Il costo è una stima: lo dice l'asse (e la tabella, sotto).
+  assert.ok(text.includes("Costo stimato per 1.000 esecuzioni (USD) · scala logaritmica"));
   for (const legend of [EVAL_TEXT.legendPassing, EVAL_TEXT.legendCurrent, EVAL_TEXT.legendFrontier]) assert.ok(text.includes(legend), legend);
   assert.ok(text.includes("Costo non noto: modello (80%, sotto soglia)."));
-  assert.ok(text.includes("Qualità e costo per 1.000 esecuzioni di 4 modelli per il ruolo «lettura»."), "la frase per i lettori di schermo");
+  assert.ok(text.includes("Qualità e costo stimato per 1.000 esecuzioni di 4 modelli per il ruolo «lettura»."), "la frase per i lettori di schermo");
 });
 
 test("la tabella del banco: dal più bravo, «oggi», soglie, costo, tempo p95 e segni", () => {
@@ -185,6 +189,7 @@ test("la tabella del banco: dal più bravo, «oggi», soglie, costo, tempo p95 e
   assert.deepEqual(order, [OPUS, SONNET, HAIKU, "altro/modello"]);
   const text = textOf(html);
   for (const header of [EVAL_TEXT.columnModel, EVAL_TEXT.columnQuality, EVAL_TEXT.columnThresholds, EVAL_TEXT.columnCost, EVAL_TEXT.columnP95, EVAL_TEXT.columnMarks]) assert.ok(text.includes(header), header);
+  assert.ok(text.includes("Costo stimato per 1.000"), "il costo è una stima");
   assert.match(text, /Claude Sonnet 5\.5 oggi/);
   // Nella scheda stretta i segni sotto il nome, uno per riga; in quella larga nella loro colonna.
   assert.match(text, /Claude Haiku 5\.5 più efficiente più economico 95%/);
@@ -203,7 +208,10 @@ test("«cambia»: la raccomandazione in evidenza con la riga di agent.yaml, e il
   const text = textOf(html);
   assert.match(text, /Conviene Claude Haiku 5\.5 per «lettura»/);
   assert.ok(text.includes("Per cambiarlo: in agent.yaml , modelli.lettura.modello: anthropic/claude-haiku-5-5 , poi la pull request."));
-  assert.ok(text.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --invia"));
+  // Per rifarlo, gli stessi modelli: senza --modelli la CLI proverebbe tutti gli approvati (un altro banco, più caro).
+  assert.ok(text.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-haiku-5-5,anthropic/claude-opus-5-5,altro/modello --invia"));
+  const solo = textOf(render({ ...FULL, benches: [benchOf("lettura", [result(SONNET, 0.96, 1.8, { current: true })], { level: "veloce" })] }));
+  assert.ok(solo.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --livello veloce --invia"), "solo il modello di oggi: niente --modelli");
   // «resta»: testo semplice, senza la riga da cambiare.
   const stay = render({ ...FULL, benches: [benchOf("lettura", [result(HAIKU, 0.95, 0.12, { current: true }), result(SONNET, 0.96, 1.8)])] });
   assert.match(stay, /data-verdict="resta" class="flex items-start gap-2 text-sm"/);
@@ -211,6 +219,56 @@ test("«cambia»: la raccomandazione in evidenza con la riga di agent.yaml, e il
   // «nessuno»: attenzione.
   const none = render({ ...FULL, benches: [benchOf("lettura", [result(HAIKU, 0.5, 0.12, { current: true, thresholdsMet: false })])] });
   assert.match(none, /data-verdict="nessuno" class="[^"]*border-uc-giallo/);
+});
+
+test("un banco superato dalle evals di main: una riga neutra al posto del consiglio, niente «oggi», la storia resta", () => {
+  // Il banco del 10/11 consigliava Haiku al posto di Sonnet; le evals di main del 14/11 dicono cosa usa ora il ruolo.
+  const lettura = benchOf("lettura", LETTURA, { createdAt: "2026-11-10T10:00:00.000Z" });
+  assert.equal(lettura.analysis.verdict.kind, "cambia");
+  const withEvals = (over: Partial<EvalRunView>): EvalOverview => ({ evals: { latest: run(over), trend: [] }, benches: [lettura] });
+  const card = (html: string) => html.slice(html.indexOf('data-slot="bench-card"'));
+
+  // Il consiglio è stato seguito: il ruolo usa Haiku.
+  const switched = card(render(withEvals({ models: { lettura: HAIKU, scrittura: SONNET } })));
+  const text = textOf(switched);
+  assert.match(switched, /data-slot="bench-superseded"/);
+  assert.ok(text.includes("Dopo questo banco il ruolo «lettura» usa Claude Haiku 5.5: rifallo per un consiglio aggiornato."));
+  assert.doesNotMatch(switched, /data-slot="bench-verdict"/, "nessun riquadro del consiglio");
+  assert.doesNotMatch(switched, /data-slot="bench-change-hint"/, "nessuna riga di agent.yaml");
+  assert.ok(!text.includes("Conviene"));
+  assert.doesNotMatch(switched, /data-slot="bench-current"/, "nessun cerchio sul modello di allora");
+  assert.doesNotMatch(text, /\boggi\b/i, "nessun «oggi»: né nella tabella, né nel grafico, né nella legenda o nelle frasi");
+  // Grafico e tabella restano: sono la storia del banco, con i loro segni.
+  assert.match(switched, /data-slot="bench-plot"/);
+  assert.equal(count(switched, /<tr data-model="/), 4);
+  assert.match(text, /Claude Haiku 5\.5 più efficiente più economico 95%/);
+  // Per rifarlo, gli stessi modelli con quello di allora (Sonnet); Haiku, ora «attuale», lo mette la CLI.
+  assert.ok(text.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-sonnet-5-5,anthropic/claude-opus-5-5,altro/modello --invia"));
+
+  // Il ruolo non c'è più in agent.yaml: la riga lo dice, e nessun comando per rifarlo (la CLI non lo farebbe).
+  const removed = card(render(withEvals({ models: { scrittura: SONNET } })));
+  assert.ok(textOf(removed).includes("Dopo questo banco il ruolo «lettura» non c'è più in agent.yaml: resta il confronto di allora."));
+  assert.doesNotMatch(removed, /data-slot="bench-verdict"/);
+  assert.ok(!textOf(removed).includes("Per rifarlo"));
+  assert.ok(textOf(removed).includes("Ancora nessun banco per il ruolo «scrittura»"), "il ruolo di oggi senza banco ha il suo comando");
+
+  // Il banco vale ancora: lo stesso modello, evals più vecchie del banco, evals con i modelli finti, evals di un altro ramo.
+  const stillValid: Partial<EvalRunView>[] = [
+    { models: { lettura: SONNET, scrittura: SONNET } },
+    { createdAt: "2026-11-09T10:00:00.000Z", models: { lettura: HAIKU } },
+    { fakeModels: true, models: { lettura: HAIKU } },
+    { branch: "tj-0049/t-3", models: { lettura: HAIKU } },
+  ];
+  for (const over of stillValid) {
+    const html = card(render(withEvals(over)));
+    const why = JSON.stringify(over);
+    assert.match(html, /data-slot="bench-verdict" data-verdict="cambia"/, why);
+    assert.match(html, /data-slot="bench-change-hint"/, why);
+    assert.match(html, /data-slot="bench-current"/, why);
+    assert.doesNotMatch(html, /data-slot="bench-superseded"/, why);
+    assert.match(textOf(html), /Claude Sonnet 5\.5 oggi/, why);
+    assert.ok(textOf(html).includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-haiku-5-5,anthropic/claude-opus-5-5,altro/modello --invia"), why);
+  }
 });
 
 test("modelli finti: il segno, nessuna raccomandazione di modello, nessuna riga da cambiare", () => {

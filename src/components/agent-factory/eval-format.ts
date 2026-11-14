@@ -3,10 +3,12 @@
  * §4.2): i testi brevi, le scale del grafico qualità contro costo, dove scrivere le etichette dei punti senza che si
  * coprano, e la lettura prudente di quello che arriva dal database.
  *
- * - **Costo per 1.000 esecuzioni (x):** scala logaritmica quando il più caro costa almeno 10 volte il più economico
- *   (e tutti costano più di zero), altrimenti lineare da zero, così una differenza del 10 % resta del 10 %. Tacche
- *   tonde: 1, 2, 2,5, 5 per potenza di dieci sulla lineare; 1, 2, 5 per decade sulla logaritmica, poi 1 e 3, poi solo
- *   le decadi, se non stanno. Etichette brevi all'italiana («0,05», «2,5», «1.000»); l'unità è nel titolo dell'asse.
+ * - **Costo stimato per 1.000 esecuzioni (x):** una stima (il listino del modello, senza la cache; il gateway può
+ *   differire, BANCO-DI-PROVA.md §1.2), e la pagina lo dice sull'asse, nella tabella e nei punti. Scala logaritmica
+ *   quando il più caro costa almeno 10 volte il più economico (e tutti costano più di zero), altrimenti lineare da
+ *   zero, così una differenza del 10 % resta del 10 %. Tacche tonde: 1, 2, 2,5, 5 per potenza di dieci sulla lineare;
+ *   1, 2, 5 per decade sulla logaritmica, poi 1 e 3, poi solo le decadi, se non stanno. Etichette brevi all'italiana
+ *   («0,05», «2,5», «1.000»); l'unità è nel titolo dell'asse.
  * - **Qualità (y):** da 5 punti sotto il modello peggiore (mai sotto zero), arrotondato in giù alla tacca, fino al
  *   100 %.
  * - **Etichette dei punti** (`placePointLabels`): il nome del modello accanto al suo punto, e sotto i segni (oggi, il
@@ -15,19 +17,25 @@
  *   un'altra etichetta. Se nessuna forma sta, il punto resta senza etichetta: il riquadro al passaggio del mouse (o
  *   con il fuoco) e la tabella sotto il grafico lo dicono comunque. Chi viene prima sceglie prima: il modello di oggi,
  *   poi quelli con i segni, poi per qualità.
+ * - **Il banco superato** (`benchSupersededBy`): quando le evals di `main` arrivate dopo il banco usano un altro modello
+ *   per il ruolo, o non lo hanno più, il banco resta come storia (grafico e tabella, senza «oggi») e una riga neutra
+ *   prende il posto della raccomandazione, che non vale più.
  * - Le regole del banco (il più bravo, il più economico, il più efficiente, la frontiera, la raccomandazione,
- *   l'avviso delle evals) restano in `lib/use-cases/factory/benchmark.ts`: qui solo come si leggono e si mostrano.
+ *   l'avviso delle evals, il banco superato) restano in `lib/use-cases/factory/benchmark.ts`: qui solo come si leggono
+ *   e si mostrano.
  *
  * Per caso e per ruolo, mai per persona: niente qui sa chi ha lanciato il banco o le evals (art. 15.4).
  * Modulo puro: solo import relativi `.ts`, lo usano il server e il browser con gli stessi testi.
  */
 import {
   analyzeBench,
+  benchSuperseded,
   EVALS_DROP,
   evalsAlert,
   formatCost,
   formatQuality,
   LEVEL_RE,
+  MODEL_ID_RE,
   modelLabel,
   ROLE_RE,
   type BenchAnalysis,
@@ -70,7 +78,7 @@ export const EVAL_TEXT = Object.freeze({
   models: "Modelli",
   trendFrom: "dalla più vecchia",
   axisQuality: "Qualità",
-  axisCost: "Costo per 1.000 esecuzioni (USD)",
+  axisCost: "Costo stimato per 1.000 esecuzioni (USD)",
   axisLog: "scala logaritmica",
   legendPassing: "rispetta le soglie",
   legendFailing: "sotto soglia",
@@ -79,7 +87,7 @@ export const EVAL_TEXT = Object.freeze({
   columnModel: "Modello",
   columnQuality: "Qualità",
   columnThresholds: "Soglie",
-  columnCost: "Costo per 1.000",
+  columnCost: "Costo stimato per 1.000",
   columnP95: "Tempo p95",
   columnMarks: "Segni",
   notMeasured: "non misurato",
@@ -139,9 +147,31 @@ export function evalsCommand(caseCode: string, level?: string | null): string {
   return `npm run unbundle -- eval ${codeOf(caseCode)}${levelFlag(level)} --invia`;
 }
 
-/** «npm run unbundle -- banco TJ-0049 --ruolo lettura --invia»; senza un ruolo valido, «<ruolo>». */
-export function benchCommand(caseCode: string, role: string | null, level?: string | null): string {
-  return `npm run unbundle -- banco ${codeOf(caseCode)} --ruolo ${role && ROLE_RE.test(role) ? role : "<ruolo>"}${levelFlag(level)} --invia`;
+/** `--modelli a,b`; un id fuori dalla regola dei modelli non finisce in un comando da copiare: «<modelli>». */
+const modelsFlag = (models?: readonly string[] | null) => {
+  const list = [...new Set(models ?? [])];
+  if (!list.length) return "";
+  return ` --modelli ${list.every((m) => MODEL_ID_RE.test(m)) ? list.join(",") : "<modelli>"}`;
+};
+
+/**
+ * «npm run unbundle -- banco TJ-0049 --ruolo lettura --invia»; senza un ruolo valido, «<ruolo>». Con `models` (i
+ * modelli oltre a quello di oggi, che la CLI aggiunge da sé) anche `--modelli`, come nel comando della CLI.
+ */
+export function benchCommand(caseCode: string, role: string | null, level?: string | null, models?: readonly string[] | null): string {
+  return `npm run unbundle -- banco ${codeOf(caseCode)} --ruolo ${role && ROLE_RE.test(role) ? role : "<ruolo>"}${modelsFlag(models)}${levelFlag(level)} --invia`;
+}
+
+/**
+ * I modelli da ripetere con `--modelli` per rifare un banco con gli stessi modelli: tutti i suoi, tranne quello che il
+ * ruolo usa oggi (la CLI lo mette da sé, «attuale»). Senza `--modelli` il banco rifatto proverebbe tutti i modelli
+ * approvati: un altro banco, più lungo e più caro. `now`: il modello del ruolo oggi quando è cambiato dopo il banco;
+ * altrimenti quello «attuale» del banco.
+ */
+export function benchRerunModels(results: readonly BenchResult[], now?: string | null): string[] {
+  const today = (now ?? results.find((r) => r.current)?.model ?? "").toLowerCase();
+  const seen = new Set<string>([today]);
+  return results.map((r) => r.model).filter((model) => !seen.has(model.toLowerCase()) && Boolean(seen.add(model.toLowerCase())));
 }
 
 /** Dove si cambia il modello di un ruolo: la riga di `agent.yaml`. */
@@ -329,11 +359,13 @@ export interface BenchRow {
   passed: number | null;
   total: number | null;
   thresholdsMet: boolean;
+  /** Il modello di oggi del ruolo, «attuale» nel banco; mai in un banco superato. */
   current: boolean;
-  /** Per 1.000 esecuzioni, in USD; null: costo non noto. */
+  /** Per 1.000 esecuzioni, in USD (una stima); null: costo non noto. */
   cost: number | null;
   latencyP95Ms: number | null;
   marks: BenchMark[];
+  /** Sulla frontiera disegnata: almeno due modelli con il costo ci stanno (con uno solo non c'è la linea). */
   frontier: boolean;
 }
 
@@ -352,16 +384,21 @@ export function modelNames(models: readonly string[]): Map<string, { label: stri
 
 /**
  * I modelli di un banco con i loro segni, dal più bravo: qualità, poi costo (i costi non noti in fondo), poi il nome.
- * Un modello ripetuto conta una volta (la prima).
+ * Un modello ripetuto conta una volta (la prima). La frontiera solo quando ci stanno almeno due modelli: è una linea.
+ * `superseded`: dopo il banco il ruolo usa un altro modello, o non c'è più (`benchSupersededBy`): le righe restano
+ * come storia, ma nessun modello è più «oggi».
  */
-export function benchRows(results: readonly BenchResult[], analysis: BenchAnalysis): BenchRow[] {
+export function benchRows(results: readonly BenchResult[], analysis: BenchAnalysis, o: { superseded?: boolean } = {}): BenchRow[] {
   const seen = new Set<string>();
   const unique = results.filter((r) => !seen.has(r.model) && seen.add(r.model));
   const names = modelNames(unique.map((r) => r.model));
-  const frontier = new Set(analysis.frontier);
+  const frontierSet = new Set(analysis.frontier);
+  const onFrontier = (r: BenchResult) => frontierSet.has(r.model) && r.costPer1000Usd !== null;
+  const frontierDrawn = unique.filter(onFrontier).length >= 2;
   const rows = unique.map((r): BenchRow => {
+    const today = r.current && !o.superseded;
     const marks: BenchMark[] = [];
-    if (r.current) marks.push("oggi");
+    if (today) marks.push("oggi");
     if (analysis.best === r.model) marks.push("più bravo");
     if (analysis.efficient === r.model) marks.push("più efficiente");
     if (analysis.cheapest === r.model) marks.push("più economico");
@@ -374,11 +411,11 @@ export function benchRows(results: readonly BenchResult[], analysis: BenchAnalys
       passed: r.total > 0 ? r.passed : null,
       total: r.total > 0 ? r.total : null,
       thresholdsMet: r.thresholdsMet,
-      current: r.current,
+      current: today,
       cost: r.costPer1000Usd,
       latencyP95Ms: r.latencyP95Ms,
       marks,
-      frontier: frontier.has(r.model) && r.costPer1000Usd !== null,
+      frontier: frontierDrawn && onFrontier(r),
     };
   });
   return rows.sort((a, b) => b.quality - a.quality || (a.cost ?? Infinity) - (b.cost ?? Infinity) || a.label.localeCompare(b.label, "it"));
@@ -394,23 +431,31 @@ export function marksText(marks: readonly BenchMark[]): string {
   return marks.join(" · ");
 }
 
-/** Il riquadro di un punto: «96,4% · 27 di 28 prove · 0,42 USD per 1.000 esecuzioni · tempo p95 4,1 s». */
+/** «0,42 USD per 1.000 esecuzioni (stimato)»: il costo del banco è sempre una stima. */
+export function costPer1000Text(cost: number): string {
+  return `${formatCost(cost)} per 1.000 esecuzioni (stimato)`;
+}
+
+/** Il riquadro di un punto: «96,4% · 27 di 28 prove · 0,42 USD per 1.000 esecuzioni (stimato) · tempo p95 4,1 s». */
 export function pointDetails(row: BenchRow): string[] {
   return [
     `${formatQuality(row.quality)}${row.passed !== null && row.total !== null ? ` · ${testsText(row.passed, row.total)}` : ""}`,
-    row.cost !== null ? `${formatCost(row.cost)} per 1.000 esecuzioni` : EVAL_TEXT.unknownCost,
+    row.cost !== null ? costPer1000Text(row.cost) : EVAL_TEXT.unknownCost,
     `tempo p95 ${row.latencyP95Ms !== null ? formatLatency(row.latencyP95Ms) : EVAL_TEXT.notMeasured}`,
     ...(row.thresholdsMet ? [] : [EVAL_TEXT.thresholdsMissed]),
   ];
 }
 
-/** Il nome accessibile di un punto, in una frase: «Claude Sonnet 5.5, oggi e più bravo: qualità 96%, 27 di 28 prove, …». */
+/**
+ * Il nome accessibile di un punto, in una frase: «Claude Sonnet 5.5, oggi e più bravo, sulla frontiera: qualità 96%,
+ * 27 di 28 prove, …». La frontiera è solo una linea nel grafico: qui la dicono le parole.
+ */
 export function pointLabel(row: BenchRow): string {
-  const marks = row.marks.length ? `, ${row.marks.join(" e ")}` : "";
+  const marks = `${row.marks.length ? `, ${row.marks.join(" e ")}` : ""}${row.frontier ? ", sulla frontiera" : ""}`;
   const parts = [
     `qualità ${formatQuality(row.quality)}`,
     row.passed !== null && row.total !== null ? testsText(row.passed, row.total) : null,
-    row.cost !== null ? `${formatCost(row.cost)} per 1.000 esecuzioni` : EVAL_TEXT.unknownCost,
+    row.cost !== null ? costPer1000Text(row.cost) : EVAL_TEXT.unknownCost,
     `tempo p95 ${row.latencyP95Ms !== null ? formatLatency(row.latencyP95Ms) : EVAL_TEXT.notMeasured}`,
     row.thresholdsMet ? null : EVAL_TEXT.thresholdsMissed,
   ];
@@ -419,16 +464,53 @@ export function pointLabel(row: BenchRow): string {
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-/** La frase per i lettori di schermo: chi ha i segni, chi è sotto soglia, chi non ha il costo. La tabella ha il resto. */
+/** I modelli sulla frontiera, dal più economico (come la linea, da sinistra); nessuno se non sono almeno due. */
+export function frontierRows(rows: readonly BenchRow[]): BenchRow[] {
+  const on = rows
+    .filter((r) => r.frontier && r.cost !== null)
+    .sort((a, b) => (a.cost as number) - (b.cost as number) || b.quality - a.quality || a.label.localeCompare(b.label, "it"));
+  return on.length >= 2 ? on : [];
+}
+
+/**
+ * La frase per i lettori di schermo: chi ha i segni, chi è sulla frontiera, chi è sotto soglia, chi non ha il costo.
+ * La tabella ha il resto.
+ */
 export function benchSummary(role: string, rows: readonly BenchRow[]): string {
   const brief = (r: BenchRow) => `${r.label} (${formatQuality(r.quality)}${r.cost !== null ? `, ${formatCost(r.cost)}` : ""})`;
-  const parts = [`Qualità e costo per 1.000 esecuzioni di ${rows.length === 1 ? "un modello" : `${rows.length} modelli`} per il ruolo «${role}».`];
+  const parts = [`Qualità e costo stimato per 1.000 esecuzioni di ${rows.length === 1 ? "un modello" : `${rows.length} modelli`} per il ruolo «${role}».`];
   for (const r of rows) if (r.marks.length) parts.push(`${capitalize(r.marks.join(" e "))}: ${brief(r)}.`);
+  const frontier = frontierRows(rows);
+  if (frontier.length) parts.push(`Frontiera: ${frontier.map((r) => r.label).join(", ")}.`);
   const failing = rows.filter((r) => !r.thresholdsMet);
   if (failing.length) parts.push(`${capitalize(EVAL_TEXT.thresholdsMissed)}: ${failing.map((r) => r.label).join(", ")}.`);
   const unknown = rows.filter((r) => r.cost === null);
   if (unknown.length) parts.push(`${capitalize(EVAL_TEXT.unknownCost)}: ${unknown.map((r) => r.label).join(", ")}.`);
   return parts.join(" ");
+}
+
+/**
+ * Il banco superato: dopo di lui sono arrivate le evals vere di `main` (quelle della pagina, `latest`) e lì il ruolo usa
+ * un altro modello (il consiglio è stato seguito) o non c'è più. È la regola dell'Agent Factory e di «Da fare per te»
+ * (`benchSuperseded`). `now`: il modello del ruolo in quelle evals, null se il ruolo non c'è più. Null se il banco vale
+ * ancora: evals più vecchie del banco, di un altro ramo, con i modelli finti, o con lo stesso modello.
+ */
+export function benchSupersededBy(bench: Pick<EvalOverview["benches"][number], "role" | "run">, latest: EvalRunView | null): { now: string | null } | null {
+  if (!latest) return null;
+  const currentModel = bench.run.results.find((r) => r.current)?.model ?? null;
+  const evals = { at: latest.createdAt, branch: latest.branch, fakeModels: latest.fakeModels, models: latest.models };
+  if (!benchSuperseded({ role: bench.role, at: bench.run.createdAt, currentModel }, evals)) return null;
+  return { now: Object.hasOwn(latest.models, bench.role) ? latest.models[bench.role] : null };
+}
+
+/**
+ * La riga di un banco superato, al posto della raccomandazione: «Dopo questo banco il ruolo «lettura» usa Claude Haiku
+ * 5.5: rifallo per un consiglio aggiornato.»; senza il ruolo in `agent.yaml` non si rifà, resta il confronto.
+ */
+export function benchSupersededText(role: string, now: string | null): string {
+  return now
+    ? `Dopo questo banco il ruolo «${role}» usa ${modelLabel(now)}: rifallo per un consiglio aggiornato.`
+    : `Dopo questo banco il ruolo «${role}» non c'è più in agent.yaml: resta il confronto di allora.`;
 }
 
 /** I ruoli delle evals di oggi che non hanno ancora un banco. */

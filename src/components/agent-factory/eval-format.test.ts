@@ -13,10 +13,14 @@ import {
   benchLabels,
   benchMetaLine,
   benchMissingText,
+  benchRerunModels,
   benchRows,
   benchSummary,
+  benchSupersededBy,
+  benchSupersededText,
   changeHint,
   changeHintParts,
+  costPer1000Text,
   costScale,
   dayText,
   evalSectionDescription,
@@ -26,6 +30,7 @@ import {
   evalsStatusLine,
   formatLatency,
   formatPoints,
+  frontierRows,
   groupsLine,
   hasMeasures,
   labelPriority,
@@ -109,6 +114,33 @@ test("i comandi per rifare evals e banco, come li scrive la CLI del modello", ()
   assert.equal(evalsCommand("TJ 0049; rm -rf /"), "npm run unbundle -- eval <ID> --invia");
   assert.equal(benchCommand("<ID>", "Lettura!"), "npm run unbundle -- banco <ID> --ruolo <ruolo> --invia");
   assert.equal(evalsCommand("TJ-0049", "VELOCE; x"), "npm run unbundle -- eval TJ-0049 --invia");
+});
+
+test("rifare un banco: gli stessi modelli con --modelli, nell'ordine della CLI, mai un id fuori regola", () => {
+  // Come lo scrive la CLI: --ruolo, --modelli, --livello, --invia.
+  assert.equal(benchCommand("TJ-0049", "lettura", "pull_request", [HAIKU]), "npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-haiku-5-5 --invia");
+  assert.equal(
+    benchCommand("TJ-0049", "lettura", "veloce", [HAIKU, OPUS, HAIKU]),
+    "npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-haiku-5-5,anthropic/claude-opus-5-5 --livello veloce --invia",
+  );
+  // Senza altri modelli niente --modelli (né vuoto: la CLI lo rifiuta).
+  assert.equal(benchCommand("TJ-0049", "lettura", null, []), "npm run unbundle -- banco TJ-0049 --ruolo lettura --invia");
+  assert.equal(benchCommand("TJ-0049", "lettura", null, null), "npm run unbundle -- banco TJ-0049 --ruolo lettura --invia");
+  // Un id fuori dalla regola dei modelli (spazi, punto e virgola, $…): il segnaposto, mai il testo.
+  for (const odd of ["anthropic/claude haiku", "x;rm -rf ~", "$(curl evil)", "-rf", ""]) {
+    assert.equal(benchCommand("TJ-0049", "lettura", null, [HAIKU, odd]), "npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli <modelli> --invia", odd);
+  }
+  // I modelli del banco tranne quello di oggi, che la CLI aggiunge da sé.
+  const results = [result(SONNET, 0.96, 1.8, { current: true }), result(HAIKU, 0.95, 0.12), result(OPUS, 0.97, 3.6)];
+  assert.deepEqual(benchRerunModels(results), [HAIKU, OPUS]);
+  assert.deepEqual(benchRerunModels([result(SONNET, 0.96, 1.8, { current: true })]), [], "solo il modello di oggi: niente da aggiungere");
+  // Il ruolo è passato a Haiku dopo il banco: si rifà con Sonnet (quello di allora) e Opus, Haiku lo mette la CLI.
+  assert.deepEqual(benchRerunModels(results, HAIKU), [SONNET, OPUS]);
+  assert.deepEqual(benchRerunModels(results, "ANTHROPIC/CLAUDE-HAIKU-5-5"), [SONNET, OPUS], "lo stesso id, maiuscole o no");
+  // Passato a un modello che il banco non aveva: tutti quelli del banco.
+  assert.deepEqual(benchRerunModels(results, "anthropic/claude-fable-5-2"), [SONNET, HAIKU, OPUS]);
+  // Un modello ripetuto una volta sola.
+  assert.deepEqual(benchRerunModels([...results, result(HAIKU, 0.5, 0.12)]), [HAIKU, OPUS]);
 });
 
 test("la riga di agent.yaml per cambiare modello, e le note fisse", () => {
@@ -283,9 +315,10 @@ test("le righe del banco: i segni dall'analisi, dal più bravo, un modello una v
   assert.deepEqual(
     rows.map((r) => [r.label, r.marks]),
     [
-      // Il più bravo può non avere il costo: lo dice la tabella, il grafico lo elenca sotto.
-      ["modello", ["più bravo"]],
-      ["Claude Opus 5.5", []],
+      // Il più bravo si sceglie tra i modelli con il costo noto (§3): chi non ha il costo, anche se rende di più, non ha
+      // segni; la tabella dice la sua qualità e il grafico lo elenca sotto.
+      ["modello", []],
+      ["Claude Opus 5.5", ["più bravo"]],
       ["Claude Sonnet 5.5", ["oggi"]],
       ["Claude Haiku 5.5", ["più efficiente", "più economico"]],
     ],
@@ -303,18 +336,48 @@ test("il riquadro e il nome accessibile di un punto, e la frase del grafico", ()
   const analysis = analyzeBench(results, { role: "lettura", fakeModels: false });
   const rows = benchRows(results, analysis);
   const sonnet = rows.find((r) => r.model === SONNET)!;
-  assert.deepEqual(pointDetails(sonnet).map(plain), ["96% · 27 di 28 prove", "1,80 USD per 1.000 esecuzioni", "tempo p95 4,1 s"]);
-  assert.equal(plain(pointLabel(sonnet)), "Claude Sonnet 5.5, oggi e più bravo: qualità 96%, 27 di 28 prove, 1,80 USD per 1.000 esecuzioni, tempo p95 4,1 s.");
-  assert.equal(plain(pointLabel(rows.find((r) => r.model === OPUS)!)), "Claude Opus 5.5: qualità 80%, 22 di 28 prove, 3,60 USD per 1.000 esecuzioni, tempo p95 non misurato, sotto soglia.");
+  // Il costo è una stima (listino, senza cache): lo dicono il riquadro, il nome del punto e la frase del grafico.
+  assert.deepEqual(pointDetails(sonnet).map(plain), ["96% · 27 di 28 prove", "1,80 USD per 1.000 esecuzioni (stimato)", "tempo p95 4,1 s"]);
+  assert.equal(plain(pointLabel(sonnet)), "Claude Sonnet 5.5, oggi e più bravo, sulla frontiera: qualità 96%, 27 di 28 prove, 1,80 USD per 1.000 esecuzioni (stimato), tempo p95 4,1 s.");
+  assert.equal(plain(pointLabel(rows.find((r) => r.model === OPUS)!)), "Claude Opus 5.5: qualità 80%, 22 di 28 prove, 3,60 USD per 1.000 esecuzioni (stimato), tempo p95 non misurato, sotto soglia.");
   const opus = rows.find((r) => r.model === OPUS)!;
   assert.deepEqual(pointDetails(opus).slice(2), ["tempo p95 non misurato", "sotto soglia"]);
   const summary = plain(benchSummary("lettura", rows));
   assert.equal(
     summary,
-    "Qualità e costo per 1.000 esecuzioni di 3 modelli per il ruolo «lettura». Oggi e più bravo: Claude Sonnet 5.5 (96%, 1,80 USD). Più efficiente e più economico: Claude Haiku 5.5 (95%, 0,12 USD). Sotto soglia: Claude Opus 5.5.",
+    "Qualità e costo stimato per 1.000 esecuzioni di 3 modelli per il ruolo «lettura». Oggi e più bravo: Claude Sonnet 5.5 (96%, 1,80 USD). Più efficiente e più economico: Claude Haiku 5.5 (95%, 0,12 USD). Frontiera: Claude Haiku 5.5, Claude Sonnet 5.5. Sotto soglia: Claude Opus 5.5.",
   );
+  assert.equal(EVAL_TEXT.axisCost, "Costo stimato per 1.000 esecuzioni (USD)");
+  assert.equal(EVAL_TEXT.columnCost, "Costo stimato per 1.000");
+  assert.equal(plain(costPer1000Text(0.0035)), "0,0035 USD per 1.000 esecuzioni (stimato)");
   const unknown = benchRows([result(HAIKU, 0.95, null, { current: true })], analyzeBench([result(HAIKU, 0.95, null, { current: true })], { role: "lettura", fakeModels: false }));
   assert.match(benchSummary("lettura", unknown), /di un modello per il ruolo «lettura».*Costo non noto: Claude Haiku 5\.5\.$/);
+});
+
+test("la frontiera a parole: nel nome dei suoi punti e nella frase del grafico, solo quando è una linea", () => {
+  // Haiku e Opus sulla frontiera; Sonnet, oggi, no: Haiku rende di più e costa meno.
+  const results = [result(OPUS, 1, 5), result(SONNET, 26 / 28, 1, { current: true }), result(HAIKU, 27 / 28, 0.3)];
+  const rows = benchRows(results, analyzeBench(results, { role: "lettura", fakeModels: false }));
+  const label = (model: string) => plain(pointLabel(rows.find((r) => r.model === model)!));
+  assert.equal(label(HAIKU), "Claude Haiku 5.5, più economico, sulla frontiera: qualità 96,4%, 27 di 28 prove, 0,30 USD per 1.000 esecuzioni (stimato), tempo p95 2 s.");
+  assert.match(label(OPUS), /^Claude Opus 5\.5, più bravo e più efficiente, sulla frontiera: qualità 100%/);
+  assert.match(label(SONNET), /^Claude Sonnet 5\.5, oggi: qualità/);
+  assert.deepEqual(
+    frontierRows(rows).map((r) => r.label),
+    ["Claude Haiku 5.5", "Claude Opus 5.5"],
+    "dal più economico, come la linea da sinistra",
+  );
+  assert.ok(plain(benchSummary("lettura", rows)).endsWith("Oggi: Claude Sonnet 5.5 (92,9%, 1,00 USD). Frontiera: Claude Haiku 5.5, Claude Opus 5.5."));
+  // Un modello solo sulla frontiera (batte tutti gli altri): niente linea, e niente parole.
+  const alone = [result(HAIKU, 0.97, 0.12, { current: true }), result(SONNET, 0.96, 1.8)];
+  const aloneRows = benchRows(alone, analyzeBench(alone, { role: "lettura", fakeModels: false }));
+  assert.deepEqual(
+    aloneRows.map((r) => r.frontier),
+    [false, false],
+  );
+  assert.deepEqual(frontierRows(aloneRows), []);
+  assert.ok(!aloneRows.map(pointLabel).join(" ").includes("frontiera"));
+  assert.ok(!benchSummary("lettura", aloneRows).includes("Frontiera"));
 });
 
 test("il tono della raccomandazione e i ruoli ancora senza banco", () => {
@@ -329,6 +392,54 @@ test("il tono della raccomandazione e i ruoli ancora senza banco", () => {
     benches: [{ role: "lettura", run: bench(results), analysis: analyzeBench(results, { role: "lettura", fakeModels: false }) }],
   };
   assert.deepEqual(rolesWithoutBench(overview), ["scrittura"]);
+});
+
+test("il banco superato: dopo di lui le evals di main usano un altro modello per il ruolo, o non lo hanno più", () => {
+  const results = [result(SONNET, 0.96, 1.8, { current: true }), result(HAIKU, 0.95, 0.12), result(OPUS, 0.97, 3.6)];
+  const theBench = { role: "lettura", run: bench(results, { createdAt: "2026-11-10T10:00:00.000Z" }) };
+  // Le evals di main del 14/11, con i modelli veri.
+  const after = (over: Partial<EvalRunView>) => run({ createdAt: "2026-11-14T10:00:00.000Z", ...over });
+  // Il modello è cambiato (il consiglio è stato seguito): superato, con il modello di ora.
+  assert.deepEqual(benchSupersededBy(theBench, after({ models: { lettura: HAIKU, scrittura: SONNET } })), { now: HAIKU });
+  // Il ruolo non c'è più in agent.yaml: superato, senza modello.
+  assert.deepEqual(benchSupersededBy(theBench, after({ models: { scrittura: SONNET } })), { now: null });
+  // Vale ancora: lo stesso modello (maiuscole o no), evals più vecchie o dello stesso istante, modelli finti, un altro
+  // ramo o nessuno, nessuna evals.
+  for (const latest of [
+    after({ models: { lettura: SONNET } }),
+    after({ models: { lettura: SONNET.toUpperCase() } }),
+    after({ createdAt: "2026-11-09T10:00:00.000Z", models: { lettura: HAIKU } }),
+    after({ createdAt: "2026-11-10T10:00:00.000Z", models: { lettura: HAIKU } }),
+    after({ fakeModels: true, models: { lettura: HAIKU } }),
+    after({ branch: "tj-0049/t-3", models: { lettura: HAIKU } }),
+    after({ branch: null, models: { lettura: HAIKU } }),
+    null,
+  ]) {
+    assert.equal(benchSupersededBy(theBench, latest), null, JSON.stringify(latest && { at: latest.createdAt, branch: latest.branch, fake: latest.fakeModels, models: latest.models }));
+  }
+  // Un ruolo che si chiama come una chiave di Object non è un modello.
+  assert.deepEqual(benchSupersededBy({ role: "constructor", run: bench(results, { role: "constructor", createdAt: "2026-11-10T10:00:00.000Z" }) }, after({ models: { lettura: HAIKU } })), { now: null });
+  // La riga al posto della raccomandazione.
+  assert.equal(benchSupersededText("lettura", HAIKU), "Dopo questo banco il ruolo «lettura» usa Claude Haiku 5.5: rifallo per un consiglio aggiornato.");
+  assert.equal(benchSupersededText("lettura", null), "Dopo questo banco il ruolo «lettura» non c'è più in agent.yaml: resta il confronto di allora.");
+  // Le righe restano come storia, con i loro segni, ma nessun modello è più «oggi».
+  const analysis = analyzeBench(results, { role: "lettura", fakeModels: false });
+  const rows = benchRows(results, analysis, { superseded: true });
+  assert.deepEqual(
+    rows.map((r) => [r.label, r.current, r.marks]),
+    [
+      ["Claude Opus 5.5", false, ["più bravo"]],
+      ["Claude Sonnet 5.5", false, []],
+      ["Claude Haiku 5.5", false, ["più efficiente", "più economico"]],
+    ],
+  );
+  assert.ok(!rows.map(pointLabel).join(" ").includes("oggi"));
+  assert.ok(!benchSummary("lettura", rows).includes("Oggi"));
+  assert.deepEqual(
+    benchRows(results, analysis).map((r) => r.current),
+    [false, true, false],
+    "senza `superseded`, l'attuale è «oggi»",
+  );
 });
 
 // ─── Le scale ────────────────────────────────────────────────────────
@@ -690,6 +801,8 @@ test("nella dashboard «use case», mai «caso d'uso», e nessuna parola vietata
     changeHint("lettura", HAIKU),
     evalsAlertText({ kind: "in_calo", drop: 0.06 }) ?? "",
     evalsAlertText({ kind: "sotto_soglia", drop: 0.06 }) ?? "",
+    benchSupersededText("lettura", HAIKU),
+    benchSupersededText("lettura", null),
   ];
   assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
   // E nessun riferimento a chi ha lanciato il banco (art. 15.4).
