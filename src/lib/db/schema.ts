@@ -74,7 +74,8 @@ import type {
 } from "./use-case-hub-factory-ddl.ts";
 import type { AgentQuestionChannel, AgentQuestionStatus, BuildHarness, BuildOutcome, CliLoginStatus } from "./use-case-hub-cli-ddl.ts";
 import type { FactoryRepoKind, TaskNoteKind, TaskSource, TaskStatus } from "./use-case-hub-tasks-ddl.ts";
-import type { GithubDeliveryOutcome, PullRequestState, UseCaseNoticeKind0033 } from "./use-case-hub-github-ddl.ts";
+import type { GithubDeliveryOutcome, PullRequestState } from "./use-case-hub-github-ddl.ts";
+import type { ProposalSource, ProposalStatus, UseCaseNoticeKind0034 } from "./use-case-hub-proposals-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
@@ -1577,6 +1578,28 @@ export const useCasePullRequests = pgTable(
   (t) => [primaryKey({ name: "use_case_pull_requests_pkey", columns: [t.id] })]
 );
 
+/** (0034, rilascio 8.1b) Le proposte di compito. Nessuna colonna su chi propone o decide (art. 15.4). */
+export const useCaseTaskProposals = pgTable(
+  "use_case_task_proposals",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    source: varchar("source", { length: 10 }).$type<ProposalSource>().notNull(),
+    externalKey: varchar("external_key", { length: 200 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    area: varchar("area", { length: 160 }),
+    link: varchar("link", { length: 300 }),
+    existingTaskId: uuid("existing_task_id").references(() => useCaseTasks.id, { onDelete: "set null" }),
+    status: varchar("status", { length: 10 }).$type<ProposalStatus>().notNull().default("proposta"),
+    taskId: uuid("task_id").references(() => useCaseTasks.id, { onDelete: "set null" }),
+    decidedAt: tz("decided_at"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "use_case_task_proposals_pkey", columns: [t.id] })]
+);
+
 export const useCaseNeedAnswers = pgTable(
   "use_case_need_answers",
   {
@@ -1724,7 +1747,7 @@ export const useCaseNotifications = pgTable(
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
     recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0033>().notNull(),
+    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0034>().notNull(),
     romeDay: date("rome_day", { mode: "string" }).notNull(),
     answers: smallint("answers").notNull().default(0),
     unknowns: smallint("unknowns").notNull().default(0),

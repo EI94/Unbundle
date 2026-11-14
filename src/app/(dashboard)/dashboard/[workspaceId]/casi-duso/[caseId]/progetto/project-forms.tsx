@@ -10,6 +10,7 @@ import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import {
   addDecisionAction,
   approveProjectAction,
+  decideTaskProposalAction,
   generatePackageAction,
   recordAiBoardOkAction,
   reopenProjectAction,
@@ -448,6 +449,21 @@ export function DecisionForm({ workspaceId, caseId }: Ids) {
 }
 
 /** «Aggiorna il pacchetto»: una versione nuova solo se la scheda è cambiata. */
+/** (8.1b) «Accetta come compito» o «Scarta» una proposta (da GitHub). */
+export function ProposalButtons({ workspaceId, caseId, proposalId }: Ids & { proposalId: string }) {
+  const { pending, run } = useUcAction();
+  return (
+    <div className="flex shrink-0 flex-wrap gap-2">
+      <Button size="sm" className={BUTTON} disabled={pending} onClick={() => run(() => decideTaskProposalAction(workspaceId, caseId, proposalId, "accetta"))}>
+        Accetta come compito
+      </Button>
+      <Button size="sm" variant="outline" className={BUTTON} disabled={pending} onClick={() => run(() => decideTaskProposalAction(workspaceId, caseId, proposalId, "scarta"))}>
+        Scarta
+      </Button>
+    </div>
+  );
+}
+
 export function PackageButton({ workspaceId, caseId, first }: Ids & { first: boolean }) {
   const { pending, run } = useUcAction();
   return (

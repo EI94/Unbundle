@@ -16,6 +16,7 @@ import "server-only";
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import { tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
 import { githubStoreReady } from "@/lib/db/queries/use-case-github";
+import { openProposalsCountSql, proposalsStoreReady } from "@/lib/db/queries/use-case-task-proposals";
 import { cast, raw, toStatement, ucSql } from "@/lib/uc/sql/statement";
 import { CASE_STATUSES, type CaseStatus } from "@/lib/uc/vocab";
 import { fail, ok, type Result } from "@/lib/uc/types";
@@ -47,14 +48,18 @@ export interface FactoryCaseRow {
   nextStep: string;
   tasks: LineCase["tasks"];
   sessions: { count: number; tokens: number; costUsd: number; lastAt: string | null };
-  /** (8.1b) Le PR del caso: aperte, unite, e i giorni di solito dalla presa del compito all'unione. */
-  prs: { open: number; merged: number; medianDays: number | null };
+  /**
+   * (8.1b) Le PR del caso: aperte, unite, i giorni di solito dalla presa del compito all'unione, e in media costo e
+   * token delle sessioni dei coding agent per PR unita (le sessioni con quella PR o con il suo compito). Tempo e spesa
+   * solo da {@link MIN_MERGED_FOR_MEDIAN} PR unite in su.
+   */
+  prs: { open: number; merged: number; medianDays: number | null; costPerPrUsd: number | null; tokensPerPr: number | null };
   repo: string | null;
   mine: boolean;
 }
 
 export interface FactoryTodo {
-  kind: "domande" | "chiesto" | "fermo" | "approva" | "rivedi";
+  kind: "domande" | "chiesto" | "fermo" | "approva" | "rivedi" | "proposte";
   useCaseId: string;
   caseId: string;
   code: string;
@@ -86,6 +91,7 @@ export async function loadFactoryOverview(executor: UcExecutor, input: { workspa
   const me = cast(input.userId, "uuid");
   const tasksReady = await tasksTablesReady(executor);
   const githubReady = tasksReady && (await githubStoreReady(executor));
+  const proposalsReady = githubReady && (await proposalsStoreReady(executor));
   const prStats = githubReady
     ? ucSql`(SELECT jsonb_build_object('open', count(*) FILTER (WHERE p.state = 'aperta'), 'merged', count(*) FILTER (WHERE p.state = 'unita'),
       'medianHours', percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (p.merged_at - t.taken_at)) / 3600)
@@ -98,6 +104,13 @@ export async function loadFactoryOverview(executor: UcExecutor, input: { workspa
       'inReview', count(*) FILTER (WHERE t.status = 'in_revisione'), 'done', count(*) FILTER (WHERE t.status = 'fatto'), 'cancelled', count(*) FILTER (WHERE t.status = 'annullato'))
     FROM use_case_tasks t WHERE t.use_case_id = u.id AND t.workspace_id = u.workspace_id)`
     : raw("NULL::jsonb");
+  // (8.1b) La spesa delle sessioni legate a una PR unita del caso: per la sua PR, o per il compito della PR.
+  const prSpend = githubReady
+    ? ucSql`(SELECT jsonb_build_object('cost', coalesce(sum(s.cost_usd), 0), 'tokens', coalesce(sum(s.input_tokens + s.output_tokens), 0))
+    FROM use_case_build_sessions s WHERE s.use_case_id = u.id AND s.workspace_id = u.workspace_id AND (
+      EXISTS (SELECT 1 FROM use_case_pull_requests m WHERE m.use_case_id = u.id AND m.state = 'unita' AND lower(s.pr_url) = lower('https://github.com/' || m.repo || '/pull/' || m.number))
+      OR EXISTS (SELECT 1 FROM use_case_pull_requests m JOIN use_case_tasks mt ON mt.id = m.task_id WHERE m.use_case_id = u.id AND m.state = 'unita' AND s.task_ref = mt.ref)))`
+    : raw("NULL::jsonb");
   const visible = input.seeAll ? raw("true") : ucSql`EXISTS (SELECT 1 FROM uc_case_members m WHERE m.case_id = c.id AND m.user_id = ${me})`;
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT u.id AS use_case_id, c.id AS case_id, coalesce(u.code, c.code) AS code, u.title, c.status AS dossier_status,
@@ -108,6 +121,7 @@ export async function loadFactoryOverview(executor: UcExecutor, input: { workspa
   (SELECT jsonb_build_object('count', count(*), 'tokens', coalesce(sum(s.input_tokens + s.output_tokens), 0), 'cost', coalesce(sum(s.cost_usd), 0), 'last', max(s.ended_at))
      FROM use_case_build_sessions s WHERE s.use_case_id = u.id AND s.workspace_id = u.workspace_id) AS sessions,
   ${prStats} AS prs,
+  ${prSpend} AS pr_spend,
   (SELECT r.repo FROM use_case_repos r WHERE r.use_case_id = u.id AND r.workspace_id = u.workspace_id ORDER BY r.created_at LIMIT 1) AS repo
 FROM uc_cases c JOIN use_cases u ON u.id = c.portfolio_use_case_id AND u.workspace_id = c.workspace_id
 WHERE c.workspace_id = ${ws} AND c.setup_completed_at IS NOT NULL AND c.status <> 'chiuso' AND ${visible}
@@ -119,6 +133,9 @@ ORDER BY coalesce(u.code, c.code)`),
     const s = (r.sessions ?? {}) as Record<string, unknown>;
     const p = (r.prs ?? {}) as Record<string, unknown>;
     const medianHours = p.medianHours === null || p.medianHours === undefined || num(p.timed) < MIN_MERGED_FOR_MEDIAN ? null : Number(p.medianHours);
+    const spend = (r.pr_spend ?? {}) as Record<string, unknown>;
+    const merged = num(p.merged);
+    const enough = merged >= MIN_MERGED_FOR_MEDIAN;
     const projectStatus = r.project_status === "approvato" || r.project_status === "da_approvare" || r.project_status === "in_corso" ? r.project_status : null;
     const line: LineCase = { dossierStatus: statusOf(r.dossier_status), projectStatus, tasks };
     return {
@@ -130,7 +147,13 @@ ORDER BY coalesce(u.code, c.code)`),
       nextStep: nextStepOf(line),
       tasks,
       sessions: { count: num(s.count), tokens: num(s.tokens), costUsd: num(s.cost), lastAt: s.last ? new Date(String(s.last)).toISOString() : null },
-      prs: { open: num(p.open), merged: num(p.merged), medianDays: medianHours !== null && Number.isFinite(medianHours) ? Math.round((medianHours / 24) * 10) / 10 : null },
+      prs: {
+        open: num(p.open),
+        merged,
+        medianDays: medianHours !== null && Number.isFinite(medianHours) ? Math.round((medianHours / 24) * 10) / 10 : null,
+        costPerPrUsd: enough && num(spend.cost) > 0 ? Math.round((num(spend.cost) / merged) * 100) / 100 : null,
+        tokensPerPr: enough && num(spend.tokens) > 0 ? Math.round(num(spend.tokens) / merged) : null,
+      },
       repo: r.repo ? String(r.repo) : null,
       mine: r.mine === true,
     };
@@ -155,7 +178,7 @@ ORDER BY coalesce(u.code, c.code)`),
   // «Da fare per te»: solo le cose della persona.
   const todos: FactoryTodo[] = [];
   const byCase = new Map(cases.map((c) => [c.useCaseId, c]));
-  const [mineRows, approveRows, questionRows, reviewRows] = await executor.batch([
+  const [mineRows, approveRows, questionRows, reviewRows, proposalRows] = await executor.batch([
     tasksReady
       ? toStatement(ucSql`SELECT t.use_case_id, t.ref, t.status, (t.stale_asked_at IS NOT NULL AND t.stale_asked_at >= coalesce(t.last_activity_at, t.taken_at)) AS stale,
   (SELECT count(*) FROM use_case_task_notes n WHERE n.task_id = t.id AND n.kind = 'richiesta' AND n.created_at >= coalesce(t.taken_at, t.created_at)) AS requests
@@ -177,6 +200,8 @@ JOIN uc_case_members m ON m.case_id = c.id AND m.user_id = ${me} AND m.role IN $
 WHERE p.workspace_id = ${ws} AND p.state = 'aperta' AND NOT p.draft AND t.holder_user_id IS DISTINCT FROM ${me}
 ORDER BY p.use_case_id, p.number`)
       : toStatement(ucSql`SELECT NULL::uuid AS use_case_id WHERE false`),
+    // (8.1b) Le proposte di compito da decidere, nei casi dove costruisci.
+    proposalsReady ? openProposalsCountSql(input.workspaceId, input.userId) : toStatement(ucSql`SELECT NULL::uuid AS use_case_id, 0 AS n WHERE false`),
   ]);
   for (const r of mineRows) {
     const c = byCase.get(String(r.use_case_id));
@@ -192,6 +217,11 @@ ORDER BY p.use_case_id, p.number`)
     const c = byCase.get(String(r.use_case_id));
     const n = num(r.n);
     if (c && n > 0) todos.push({ kind: "domande", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: n === 1 ? "Un coding agent propone una domanda: decidila in «Cosa serve»." : `${n} domande proposte dai coding agent da decidere in «Cosa serve».` });
+  }
+  for (const r of proposalRows) {
+    const c = byCase.get(String(r.use_case_id));
+    const n = num(r.n);
+    if (c && n > 0) todos.push({ kind: "proposte", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: n === 1 ? "Una proposta di compito da decidere." : `${n} proposte di compito da decidere.` });
   }
   for (const r of reviewRows) {
     const c = byCase.get(String(r.use_case_id));

@@ -149,7 +149,7 @@ test("la sonda copre ogni tabella, ogni indice, ogni vincolo con nome e il tipo 
 });
 
 test("ensure-schema: versione 27, la 0033 dopo la 0032, non fatale, con timeout e lock, e la sonda in AND", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 27;/);
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 27, "ENSURE_VERSION almeno 27 (la 0034 la porta a 28)");
   assert.match(ensureSchema, /import \{ GITHUB_DDL, GITHUB_PROBE_SQL \} from "\.\/use-case-hub-github-ddl\.ts";/);
   const runOnce = topLevelFunction(ensureSchema, "async function runOnce(): Promise<void> {");
   const tasks = runOnce.indexOf("await runTasksDdlSafely();");

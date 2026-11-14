@@ -96,7 +96,7 @@ test("un push: solo un ramo, mai uno cancellato o un tag", () => {
   assert.equal(parseGithubEvent("push", { ...base, ref: "refs/tags/v1" }).kind, "altro");
   assert.equal(parseGithubEvent("push", { ...base, ref: "refs/heads/tj-0049/t-3", deleted: true }).kind, "altro");
   assert.deepEqual(parseGithubEvent("ping", {}), { kind: "ping" });
-  assert.deepEqual(parseGithubEvent("issues", base), { kind: "altro", repo: "Voltaen/topjet-rosa", reason: "evento_non_usato" });
+  assert.deepEqual(parseGithubEvent("release", base), { kind: "altro", repo: "Voltaen/topjet-rosa", reason: "evento_non_usato" });
 });
 
 test("l'indirizzo della PR si fa da repository e numero", () => {
@@ -116,4 +116,30 @@ test("(revisione) l'ora di GitHub, l'unione solo nel ramo principale, il corpo c
   assert.equal(githubPayloadText("application/json", "{\"a\":1}"), "{\"a\":1}");
   assert.equal(githubPayloadText("application/x-www-form-urlencoded", new URLSearchParams({ payload: "{\"a\":1}" }).toString()), "{\"a\":1}");
   assert.equal(githubPayloadText("application/x-www-form-urlencoded", "altro=1"), null);
+});
+
+test("(proposte) un'issue aperta e un commento «/compito» diventano proposte; mai il corpo, mai i bot", () => {
+  const repo = { full_name: "Voltaen/topjet-rosa", default_branch: "main" };
+  const issue = { number: 21, title: "  TJ-0049: mappare  gli aeroporti  ", labels: [{ name: "px-0101" }], body: "Testo lungo con dati del cliente", user: { login: "qualcuno" } };
+  const opened = parseGithubEvent("issues", { action: "opened", repository: repo, issue, sender: { type: "User", login: "qualcuno" } });
+  assert.deepEqual(opened, { kind: "proposta", repo: "Voltaen/topjet-rosa", number: 21, commentId: null, title: "TJ-0049: mappare gli aeroporti", caseCodes: ["TJ-0049", "PX-0101"], onPullRequest: false });
+  assert.doesNotMatch(JSON.stringify(opened), /Testo lungo|qualcuno/);
+  assert.equal(parseGithubEvent("issues", { action: "edited", repository: repo, issue }).kind, "altro");
+  assert.deepEqual(parseGithubEvent("issues", { action: "opened", repository: repo, issue, sender: { type: "Bot" } }), { kind: "altro", repo: "Voltaen/topjet-rosa", reason: "bot" });
+  const comment = (body: string, extra: Record<string, unknown> = {}) =>
+    parseGithubEvent("issue_comment", { action: "created", repository: repo, issue: { ...issue, ...extra }, comment: { id: 555, body }, sender: { type: "User" } });
+  assert.deepEqual(comment("Bene.\n/compito Aggiungere i test dei ritardi\nGrazie"), {
+    kind: "proposta",
+    repo: "Voltaen/topjet-rosa",
+    number: 21,
+    commentId: 555,
+    title: "Aggiungere i test dei ritardi",
+    caseCodes: ["TJ-0049", "PX-0101"],
+    onPullRequest: false,
+  });
+  const bare = comment("/compito");
+  assert.ok(bare.kind === "proposta" && bare.title === "TJ-0049: mappare gli aeroporti", "senza testo: il titolo dell'issue");
+  const onPr = comment("/compito rivedere i nomi", { pull_request: { url: "x" } });
+  assert.ok(onPr.kind === "proposta" && onPr.onPullRequest);
+  assert.deepEqual(comment("niente comandi qui, nemmeno /compito a metà riga"), { kind: "altro", repo: "Voltaen/topjet-rosa", reason: "commento_senza_compito" });
 });

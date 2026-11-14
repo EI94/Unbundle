@@ -84,6 +84,8 @@ export const EMAIL_TEMPLATES = [
   "compiti_pronti",
   // (8.1b) Una PR di un caso pronta da rivedere: interna, a chi costruisce, con il link ai compiti del progetto.
   "pr_da_rivedere",
+  // (8.1b) Ci sono proposte di compito da decidere: interna, a chi costruisce, con il link ai compiti del progetto.
+  "compito_proposto",
 ] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATES)[number];
 
@@ -499,6 +501,14 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       const tools = typeof n.payload.count === "number" && n.payload.count > 0 ? n.payload.count : 0;
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/casi-duso/${c.id.toLowerCase()}/progetto`;
       return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, version, tools, link }), after: null };
+    }
+    case "compito_proposto": {
+      // Email interna: una al giorno per caso, senza il testo della proposta (lo legge chi decide, nel progetto).
+      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
+      if (!useCase) return cancel("use_case_assente");
+      const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "compito_proposto", link }), after: null };
     }
     case "compito_chiesto":
     case "compito_passato":

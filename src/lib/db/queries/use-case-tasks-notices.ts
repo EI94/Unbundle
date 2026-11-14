@@ -16,6 +16,7 @@
  */
 import { TASKS_PROBE_SQL, type TaskStatus } from "../use-case-hub-tasks-ddl.ts";
 import type { GithubNoticeKind } from "../use-case-hub-github-ddl.ts";
+import type { ProposalNoticeKind } from "../use-case-hub-proposals-ddl.ts";
 import type { TaskNoticeKind as TaskOnlyNoticeKind } from "../use-case-hub-tasks-ddl.ts";
 import { createHash } from "node:crypto";
 import { cast, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
@@ -35,8 +36,8 @@ export interface TaskNoticeTarget {
 
 export type TaskRecipient = { userId: string } | { roles: readonly CaseRole[] };
 
-/** I tipi che passano da qui: quelli dei compiti (0032) e la PR da rivedere (0033). */
-export type TaskNoticeKind = TaskOnlyNoticeKind | GithubNoticeKind;
+/** I tipi che passano da qui: quelli dei compiti (0032), la PR da rivedere (0033), la proposta di compito (0034). */
+export type TaskNoticeKind = TaskOnlyNoticeKind | GithubNoticeKind | ProposalNoticeKind;
 
 /** Che cosa aggiunge una notifica: al responsabile (il compito fermo), o la PR (numero e repository). */
 export interface TaskNoticeExtra {

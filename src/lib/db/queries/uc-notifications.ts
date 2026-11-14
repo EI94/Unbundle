@@ -48,6 +48,8 @@ export const UC_NOTIFICATION_TEMPLATES = [
   "compiti_pronti",
   // (8.1b) Una PR di un caso pronta da rivedere.
   "pr_da_rivedere",
+  // (8.1b) Una proposta di compito da GitHub, da decidere.
+  "compito_proposto",
   // Dopo l'MVP.
   "esiti_verifica",
   "scadenza_vicina",

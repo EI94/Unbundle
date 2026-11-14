@@ -385,6 +385,120 @@ test("la pagina: la PR pronta a chi non ha il compito, i numeri delle PR per cas
   assert.ok(!JSON.stringify(forLead).includes("Prova lead") && !JSON.stringify(forLead).includes("Prova dev"), "nessun nome");
 });
 
+const issuePayload = (over: { number: number; title: string; labels?: string[]; action?: string; repo?: string }) => ({
+  action: over.action ?? "opened",
+  repository: { full_name: over.repo ?? REPO, default_branch: "main" },
+  sender: { type: "User", login: `persona-${suffix}` },
+  issue: { number: over.number, title: over.title, labels: (over.labels ?? []).map((name) => ({ name })), body: "Corpo con dati che non si leggono", user: { login: `persona-${suffix}` } },
+});
+const proposals = async () => q(`SELECT id, source, external_key, title, link, status, task_id FROM use_case_task_proposals WHERE use_case_id = $1 ORDER BY created_at, external_key`, [ids.useCase]);
+
+test("(proposte) un'issue e un «/compito» diventano proposte del caso, una volta sola, con l'avviso al team", opts, async () => {
+  const id = `issue-${suffix}`;
+  const r = await send("issues", issuePayload({ number: 41, title: "Gestire i voli dirottati" }), { id });
+  assert.deepEqual([r.status, r.json.esito], [200, "applicato"]);
+  assert.equal((await send("issues", issuePayload({ number: 41, title: "Gestire i voli dirottati" }), { id })).json.esito, "ripetuto");
+  await send("issues", issuePayload({ number: 41, title: "Gestire i voli dirottati" }));
+  const c = await send("issue_comment", { action: "created", repository: { full_name: REPO }, sender: { type: "User" }, issue: { number: 3, title: "PR di T-3", pull_request: { url: "x" } }, comment: { id: 9001, body: "Ok.\n/compito Coprire i fusi orari" } });
+  assert.equal(c.json.esito, "applicato");
+  const list = await proposals();
+  assert.deepEqual(
+    list.map((p) => [p.source, p.title, p.link, p.status]),
+    [
+      ["github", "Gestire i voli dirottati", `https://github.com/${REPO}/issues/41`, "proposta"],
+      ["github", "Coprire i fusi orari", `https://github.com/${REPO}/issues/3#issuecomment-9001`, "proposta"],
+    ],
+    "una per origine, anche con un id di consegna nuovo",
+  );
+  assert.ok(!JSON.stringify(list).includes("Corpo con dati") && !JSON.stringify(list).includes(`persona-${suffix}`), "mai il corpo, mai chi scrive");
+  const bell = await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compito_proposto' ORDER BY recipient_user_id`, [ids.useCase]);
+  assert.deepEqual(bell.map((b) => b.recipient_user_id), [ids.lead, ids.dev].sort(), "al team che costruisce, non al cliente");
+  assert.equal(Number((await q(`SELECT count(*) AS n FROM uc_notifications WHERE case_id = $1 AND template_key = 'compito_proposto'`, [ids.dossier]))[0].n), 2, "un'e-mail al giorno per persona");
+  const page = await (await import("../../db/queries/use-case-factory-line.ts")).loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.dev, seeAll: false, canSeeNeeds: false });
+  assert.deepEqual(page.todos.filter((x) => x.kind === "proposte").map((x) => x.text), ["2 proposte di compito da decidere."]);
+});
+
+test("(proposte) il caso: dal codice nel titolo o nelle etichette; se non è chiaro, niente; un testo personale, niente", opts, async () => {
+  await q(`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder) VALUES ($1, $2, $3, 'casi/px-0043')`, [ids.other, ids.ws, REPO]);
+  try {
+    const unclear = await send("issues", issuePayload({ number: 42, title: "Una cosa da fare" }));
+    assert.deepEqual([unclear.json.esito, unclear.json.motivo], ["ignorato", "caso_non_chiaro"]);
+    const labelled = await send("issues", issuePayload({ number: 43, title: "Un'altra cosa", labels: ["px-0043"] }));
+    assert.equal(labelled.json.esito, "applicato");
+    assert.equal((await q(`SELECT count(*) AS n FROM use_case_task_proposals WHERE use_case_id = $1`, [ids.other]))[0].n, "1");
+  } finally {
+    await q(`DELETE FROM use_case_repos WHERE use_case_id = $1`, [ids.other]);
+  }
+  const uc = await import("../../db/queries/uc-cases.ts");
+  const personal = "Richiamare RSSMRA80A01H501U per il rimborso";
+  if (!uc.checkLsText({ titolo: personal }).ok) {
+    const r = await send("issues", issuePayload({ number: 44, title: personal }));
+    assert.deepEqual([r.json.esito, r.json.motivo], ["ignorato", "testo_non_ammesso"]);
+  }
+});
+
+test("(proposte) accettata nasce il compito da prendere; scartata si chiude; una proposta si decide una volta sola", opts, async () => {
+  const props = await import("../../db/queries/use-case-task-proposals.ts");
+  const target = { workspaceId: ids.ws, useCaseId: ids.useCase };
+  const [first, second] = await proposals();
+  const accepted = await props.decideProposal(exec, target, { id: first.id, decision: "accetta", actorId: ids.lead });
+  assert.deepEqual(accepted, { ok: true, value: { ref: "T-5" } });
+  const [made] = await q(`SELECT ref, title, status, source, holder_user_id FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-5'`, [ids.useCase]);
+  assert.deepEqual(made, { ref: "T-5", title: "Gestire i voli dirottati", status: "da_fare", source: "github", holder_user_id: null });
+  const [row] = await q(`SELECT status, task_id IS NOT NULL AS linked, decided_at IS NOT NULL AS decided FROM use_case_task_proposals WHERE id = $1`, [first.id]);
+  assert.deepEqual(row, { status: "accettata", linked: true, decided: true });
+  const ready = await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compiti_pronti'`, [ids.useCase]);
+  assert.deepEqual(ready.map((x) => x.recipient_user_id), [ids.dev], "il team, tranne chi ha accettato");
+  const again = await props.decideProposal(exec, target, { id: first.id, decision: "scarta", actorId: ids.dev });
+  assert.equal(again.ok, false);
+  assert.deepEqual(await props.decideProposal(exec, target, { id: second.id, decision: "scarta", actorId: ids.dev }), { ok: true, value: { ref: null } });
+  assert.equal((await q(`SELECT status FROM use_case_task_proposals WHERE id = $1`, [second.id]))[0].status, "scartata");
+  assert.deepEqual(await props.listOpenProposals(exec, target), []);
+  const wrongCase = await props.decideProposal(exec, { workspaceId: ids.ws, useCaseId: ids.other }, { id: first.id, decision: "accetta", actorId: ids.lead });
+  assert.equal(wrongCase.ok, false, "una proposta di un altro caso non si tocca");
+});
+
+test("(revisione) un compito in revisione si passa e si lascia; la PR aperta resta e lo stato pure", opts, async () => {
+  const tasks = await import("../../db/queries/use-case-tasks.ts");
+  const target = { workspaceId: ids.ws, useCaseId: ids.useCase };
+  const lead = { userId: ids.lead, roles: ["ls_lead" as const] };
+  const dev = { userId: ids.dev, roles: ["ls_sviluppatore" as const] };
+  assert.deepEqual([(await task("T-3")).status, (await task("T-3")).holder_user_id], ["in_revisione", ids.lead], "la PR #3 è pronta");
+  const passed = await tasks.passTask(exec, target, lead, { ref: "T-3", toEmail: `dev-${suffix}@ls.test`, note: "Fatto: tutto. Da fare: rispondere alla revisione." });
+  assert.equal(passed.ok, true);
+  assert.deepEqual([(await task("T-3")).status, (await task("T-3")).holder_user_id], ["in_revisione", ids.dev]);
+  const left = await tasks.releaseTask(exec, target, dev, { ref: "T-3", note: "Fatto: le correzioni. Da fare: l'ultima approvazione." });
+  assert.equal(left.ok, true);
+  assert.deepEqual([(await task("T-3")).status, (await task("T-3")).holder_user_id], ["in_revisione", null], "resta in revisione, senza persona");
+  // Chi lo prende dopo lo riprende in revisione (la presa di un compito senza persona è nella suite delle rotte della CLI).
+});
+
+test("(spesa) costo e token per PR unita, per caso, solo da 3 PR unite in su", opts, async () => {
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  const read = async () => (await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.lead, seeAll: false, canSeeNeeds: false })).cases.find((c) => c.useCaseId === ids.useCase)!.prs;
+  const session = (key: string, task: string | null, pr: string | null, cost: number, tokens: number) =>
+    q(
+      `INSERT INTO use_case_build_sessions (use_case_id, workspace_id, session_key, task_ref, harness, input_tokens, output_tokens, cost_usd, duration_seconds, outcome, pr_url, ended_at)
+       VALUES ($1, $2, $3, $4, 'claude_code', $5, 0, $6, 600, 'pr', $7, now())`,
+      [ids.useCase, ids.ws, key, task, tokens, cost, pr],
+    );
+  const hex = (n: number) => `${suffix}${String(n).padStart(4, "0")}`.padEnd(64, "a");
+  await session(hex(1), "T-1", null, 2, 1000);
+  await session(hex(2), null, `https://github.com/${REPO.toLowerCase()}/pull/61`, 1, 500);
+  await session(hex(3), "T-2", null, 50, 99999);
+  assert.deepEqual([(await read()).costPerPrUsd, (await read()).tokensPerPr], [null, null], "con una PR unita non si dice");
+  for (const n of [61, 62]) {
+    await q(
+      `INSERT INTO use_case_pull_requests (use_case_id, workspace_id, repo, number, branch, state, opened_at, merged_at, closed_at) VALUES ($1, $2, $3, $4, $5, 'unita', now(), now(), now())`,
+      [ids.useCase, ids.ws, REPO, n, `px-0042/extra-${n}`],
+    );
+  }
+  const prs = await read();
+  assert.equal(prs.merged, 3);
+  assert.equal(prs.costPerPrUsd, 1, "(2 + 1) / 3: la sessione di T-2, senza PR unita, non conta");
+  assert.equal(prs.tokensPerPr, 500);
+});
+
 test("il cron toglie gli eventi ricevuti da più di 30 giorni", opts, async () => {
   const prune = await import("../../db/queries/use-case-github-prune.ts");
   await q(`INSERT INTO use_case_github_deliveries (delivery_id, event, repo, outcome, received_at) VALUES ($1, 'push', $2, 'ignorato', now() - interval '31 days')`, [`vecchio-${suffix}`, REPO]);

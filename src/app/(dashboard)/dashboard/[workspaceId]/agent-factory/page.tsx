@@ -53,7 +53,11 @@ function prLine(p: FactoryCaseRow["prs"]): string | null {
   if (!p.open && !p.merged) return null;
   const parts = [p.open ? `${count(p.open)} PR ${p.open === 1 ? "aperta" : "aperte"}` : null, p.merged ? `${count(p.merged)} ${p.merged === 1 ? "unita" : "unite"}` : null].filter(Boolean);
   const days = p.medianDays === null ? null : p.medianDays < 1 ? "di solito in meno di un giorno dalla presa all'unione" : `di solito ${new Intl.NumberFormat("it-IT", { maximumFractionDigits: 1 }).format(p.medianDays)} giorni dalla presa all'unione`;
-  return [parts.join(" e "), days].filter(Boolean).join(", ");
+  const spend =
+    p.costPerPrUsd !== null || p.tokensPerPr !== null
+      ? `in media ${[p.costPerPrUsd !== null ? new Intl.NumberFormat("it-IT", { style: "currency", currency: "USD" }).format(p.costPerPrUsd) : null, p.tokensPerPr !== null ? `${count(p.tokensPerPr)} token` : null].filter(Boolean).join(" e ")} per PR unita`
+      : null;
+  return [parts.join(" e "), days, spend].filter(Boolean).join(", ");
 }
 
 function todoHref(workspaceId: string, t: FactoryTodo): string {

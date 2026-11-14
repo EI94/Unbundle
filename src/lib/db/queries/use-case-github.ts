@@ -14,6 +14,9 @@ import "server-only";
  *   (GitHub può consegnare gli eventi fuori ordine).
  *   - Quando una PR diventa pronta, campanella ed e-mail a chi costruisce il caso, tranne chi ha il compito.
  * - **Un push** sul ramo di un compito in corso o in revisione è un segnale di vita (come `unbundle take`).
+ * - **Una proposta** (un'issue aperta, o un commento `/compito`): il caso è quello della PR commentata, o quello il cui
+ *   codice è nel titolo o nelle etichette, o l'unico del repository. Il titolo passa il controllo dei testi del team.
+ *   Diventa una proposta da decidere (`use-case-task-proposals.ts`), mai un compito da sola.
  * - **Una volta sola:** l'id della consegna sta in `use_case_github_deliveries`, nella stessa transazione degli
  *   effetti; se c'è già, l'evento non conta di nuovo («ripetuto»).
  *
@@ -21,11 +24,13 @@ import "server-only";
  */
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import { GITHUB_PROBE_SQL, type GithubDeliveryOutcome } from "@/lib/db/use-case-hub-github-ddl";
+import { checkLsText } from "@/lib/db/queries/uc-cases";
+import { proposalsStoreReady, proposalStatements } from "@/lib/db/queries/use-case-task-proposals";
 import { TASKS_PROBE_SQL } from "@/lib/db/use-case-hub-tasks-ddl";
 import { tasksLock } from "@/lib/db/queries/use-case-tasks";
 import { BUILDER_ROLES, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
 import { cast, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
-import { caseCodeFromBranch, GITHUB_DELIVERY_RE, pullRequestUrl, taskRefOfBranch, type GithubEvent } from "@/lib/use-cases/factory/github";
+import { caseCodeFromBranch, GITHUB_DELIVERY_RE, proposalUrl, pullRequestUrl, taskRefOfBranch, type GithubEvent } from "@/lib/use-cases/factory/github";
 
 /** Vero se la 0032 e la 0033 sono applicate. */
 export async function githubStoreReady(executor: UcExecutor): Promise<boolean> {
@@ -56,8 +61,8 @@ interface TaskNow {
   holderUserId: string | null;
 }
 
-/** I casi del repository con il codice del ramo: di solito uno. */
-async function targetsFor(executor: UcExecutor, repo: string, caseCode: string): Promise<Target[]> {
+/** I casi registrati per il repository, uno per use case. */
+async function targetsOfRepo(executor: UcExecutor, repo: string): Promise<Target[]> {
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT DISTINCT r.workspace_id, r.use_case_id, c.id AS case_id, coalesce(u.code, c.code) AS code
 FROM use_case_repos r
@@ -68,13 +73,50 @@ WHERE lower(r.repo) = lower(${cast(repo, "text")})`),
   const seen = new Set<string>();
   const out: Target[] = [];
   for (const r of rows) {
-    const code = String(r.code ?? "");
     const key = `${r.workspace_id}:${r.use_case_id}`;
-    if (code.toLowerCase() !== caseCode || seen.has(key)) continue;
+    if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ workspaceId: String(r.workspace_id), useCaseId: String(r.use_case_id), caseId: r.case_id ? String(r.case_id) : null, code });
+    out.push({ workspaceId: String(r.workspace_id), useCaseId: String(r.use_case_id), caseId: r.case_id ? String(r.case_id) : null, code: String(r.code ?? "") });
   }
   return out;
+}
+
+/** I casi del repository con il codice del ramo: di solito uno. */
+async function targetsFor(executor: UcExecutor, repo: string, caseCode: string): Promise<Target[]> {
+  return (await targetsOfRepo(executor, repo)).filter((t) => t.code.toLowerCase() === caseCode);
+}
+
+/** Il caso di una proposta: quello della PR commentata, o quello con il codice nel testo, o l'unico del repository. */
+async function proposalTarget(executor: UcExecutor, e: Extract<GithubEvent, { kind: "proposta" }>): Promise<Target | "nessuno" | "non_chiaro"> {
+  const targets = await targetsOfRepo(executor, e.repo);
+  if (targets.length === 0) return "nessuno";
+  if (e.onPullRequest) {
+    const [rows] = await executor.batch([
+      toStatement(ucSql`SELECT DISTINCT use_case_id FROM use_case_pull_requests WHERE repo = ${cast(e.repo, "text")} AND number = ${cast(e.number, "int")}`),
+    ]);
+    const ofPr = targets.filter((t) => rows.some((r) => String(r.use_case_id) === t.useCaseId));
+    if (ofPr.length === 1) return ofPr[0];
+  }
+  const named = targets.filter((t) => t.code && e.caseCodes.includes(t.code.toUpperCase()));
+  if (named.length === 1) return named[0];
+  if (named.length === 0 && targets.length === 1) return targets[0];
+  return "non_chiaro";
+}
+
+/** Una proposta di compito da un'issue o da un commento `/compito`. */
+async function applyProposal(executor: UcExecutor, deliveryId: string, event: string, e: Extract<GithubEvent, { kind: "proposta" }>): Promise<GithubApplyResult> {
+  if (!(await proposalsStoreReady(executor))) return { esito: "non_disponibile" };
+  const target = await proposalTarget(executor, e);
+  if (target === "nessuno") return ignore(executor, deliveryId, event, e.repo, "repository_non_registrato");
+  if (target === "non_chiaro") return ignore(executor, deliveryId, event, e.repo, "caso_non_chiaro");
+  if (!checkLsText({ titolo: e.title }).ok) return ignore(executor, deliveryId, event, e.repo, "testo_non_ammesso");
+  const externalKey = `gh:${e.repo.toLowerCase()}#${e.number}${e.commentId ? `:c${e.commentId}` : ""}`;
+  const results = await executor.batch([
+    deliveryInsert(deliveryId, event, e.repo, "applicato"),
+    ...proposalStatements(target, { source: "github", externalKey, title: e.title, link: proposalUrl(e.repo, e.number, e.commentId) }, freshSql(deliveryId)),
+  ]);
+  if (results[0].length === 0) return { esito: "ripetuto" };
+  return { esito: "applicato", casi: [{ workspaceId: target.workspaceId, useCaseId: target.useCaseId, caseId: target.caseId, compito: null, stato: "proposta" }] };
 }
 
 async function taskFor(executor: UcExecutor, t: Target, ref: string | null): Promise<TaskNow | null> {
@@ -199,6 +241,7 @@ export async function applyGithubEvent(executor: UcExecutor, input: { deliveryId
   const e = input.parsed;
   if (e.kind === "ping") return ignore(executor, input.deliveryId, input.event, null, "ping");
   if (e.kind === "altro") return ignore(executor, input.deliveryId, input.event, e.repo, e.reason);
+  if (e.kind === "proposta") return applyProposal(executor, input.deliveryId, input.event, e);
   const code = caseCodeFromBranch(e.branch);
   if (!code) return ignore(executor, input.deliveryId, input.event, e.repo, "ramo_senza_caso");
   const targets = await targetsFor(executor, e.repo, code);

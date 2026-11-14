@@ -7,8 +7,9 @@ import { requireWorkspacePage } from "@/lib/auth/require-workspace";
 import { factoryStoreReady, readFactory, topicLabel, findUseCaseOfCase, type DecisionView, type ProjectView } from "@/lib/db/queries/use-case-factory";
 import { FACTORY_LIMITS, SETUP_TOPICS } from "@/lib/db/use-case-hub-factory-ddl";
 import { listTasks, tasksStoreReady, type TaskView } from "@/lib/db/queries/use-case-tasks";
+import { listOpenProposals, proposalsStoreReady, type ProposalView } from "@/lib/db/queries/use-case-task-proposals";
 import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canRequestProjectChange, canWriteFactory } from "@/lib/use-cases/factory/permissions";
-import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAction, ReopenProject, TopicEditor } from "./project-forms";
+import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAction, ProposalButtons, ReopenProject, TopicEditor } from "./project-forms";
 
 /**
  * Il progetto dell'agente (rilascio 8.0a, docs/rilascio-8/RILASCIO-8.0-PIANO.md §2): l'impostazione dello use case
@@ -25,6 +26,8 @@ import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAc
  * - Il pacchetto, solo per il team di Lateral Space: la versione di oggi, i suoi tre file, «Aggiorna il pacchetto».
  * - (8.1a) I compiti (`#compiti`): stato e chi li ha, le aree e le prove a richiesta. Si prendono e si passano dal
  *   coding agent, con la CLI; qui si leggono.
+ * - (8.1b) Le proposte di compito da GitHub (un'issue, un commento `/compito`), solo per il team di Lateral Space: chi
+ *   costruisce le accetta (nasce il compito) o le scarta.
  *
  * Il dialogo dell'impostazione si fa anche dal coding agent (skill `/agent-factory:imposta`): qui si rilegge, si
  * corregge e si approva.
@@ -88,6 +91,28 @@ function TaskLine({ t }: { t: TaskView }) {
           ) : null}
         </div>
       </details>
+    </li>
+  );
+}
+
+function ProposalLine({ p, ids }: { p: ProposalView; ids: { workspaceId: string; caseId: string } | null }) {
+  return (
+    <li className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0 text-sm">
+        <p className="break-words">{p.title}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {p.link ? (
+            <a href={p.link} className="underline" target="_blank" rel="noreferrer">
+              Da {p.source === "github" ? "GitHub" : "Slack"}
+            </a>
+          ) : (
+            `Da ${p.source === "github" ? "GitHub" : "Slack"}`
+          )}{" "}
+          · il {day(p.createdAt)}
+          {p.existingRef ? ` · forse c'è già: ${p.existingRef}` : ""}
+        </p>
+      </div>
+      {ids ? <ProposalButtons workspaceId={ids.workspaceId} caseId={ids.caseId} proposalId={p.id} /> : null}
     </li>
   );
 }
@@ -185,6 +210,8 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   const teamDecisions = view.decisions.filter((d) => d.source !== "impostazione" && d.supersededOn === null);
   const tasksReady = await tasksStoreReady(executor);
   const tasks = tasksReady ? await listTasks(executor, target) : [];
+  // Le proposte sono testi del team: le vede solo il team di Lateral Space; le decide chi scrive nel caso.
+  const proposals = tasksReady && lsTeam && (await proposalsStoreReady(executor)) ? await listOpenProposals(executor, target) : [];
   const caseCode = useCase.code ?? "<ID>";
   const tally = {
     open: tasks.filter((t) => t.status === "da_fare").length,
@@ -315,7 +342,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
           </SettingsSection>
         ) : null}
 
-        {tasksReady && (tasks.length > 0 || view.approved) ? (
+        {tasksReady && (tasks.length > 0 || view.approved || proposals.length > 0) ? (
           <SettingsSection
             id="compiti"
             icon={ListTodo}
@@ -326,6 +353,18 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
                 : `Nessun compito ancora: nascono dal progetto, con «unbundle compiti importa ${caseCode}».`
             }
           >
+            {proposals.length ? (
+              <div className="mb-3 rounded-md border px-3">
+                <p className="pt-2.5 text-sm font-medium">
+                  {proposals.length === 1 ? "Una proposta da decidere" : `${proposals.length} proposte da decidere`}
+                </p>
+                <ul className="divide-y">
+                  {proposals.map((p) => (
+                    <ProposalLine key={p.id} p={p} ids={writer ? { workspaceId, caseId } : null} />
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {tasks.length ? (
               <ul className="divide-y">
                 {tasks.map((t) => (

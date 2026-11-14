@@ -31,6 +31,7 @@ import {
   type PackageCard,
 } from "@/lib/db/queries/use-case-factory";
 import { actorRoles, loadCaseCore, transitionCase } from "@/lib/db/queries/uc-cases";
+import { decideProposal } from "@/lib/db/queries/use-case-task-proposals";
 import type { Result } from "@/lib/uc/types";
 import type { CaseRole } from "@/lib/uc/vocab";
 import { KIND_LABEL } from "@/lib/use-cases/labels";
@@ -111,6 +112,18 @@ export async function generatePackageAction(workspaceId: string, caseId: string)
       return savePackageVersion(o.executor, actor, target, { generated: await packageSourceFor(o.executor, target, read.card, { canSeeNeeds: read.canSeeNeeds }) });
     },
     (v) => (v.created ? `Pacchetto pronto: versione ${v.version}.` : `Il pacchetto non è cambiato: resta la versione ${v.version}.`),
+  );
+}
+
+/** (8.1b) Una proposta di compito: «Accetta come compito» (nasce T-n, da prendere) o «Scarta». Solo il team che costruisce. */
+export async function decideTaskProposalAction(workspaceId: string, caseId: string, proposalId: string, decision: "accetta" | "scarta"): Promise<UcActionResult<{ ref: string | null }>> {
+  return onFactory(
+    await requireWorkspaceAccess(workspaceId),
+    workspaceId,
+    caseId,
+    LS_WRITERS,
+    ({ o, session, target }) => decideProposal(o.executor, target, { id: proposalId, decision, actorId: session.user.id }),
+    (v) => (v.ref ? `È nato il compito ${v.ref}: da prendere.` : "Proposta scartata."),
   );
 }
 

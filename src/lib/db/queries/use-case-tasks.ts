@@ -77,7 +77,7 @@ ORDER BY substring(t.ref from 3)::int`),
 }
 
 /** La versione del progetto a cui legare i compiti: l'approvata, altrimenti l'ultima. */
-const projectVersionSql = (target: FactoryTarget) =>
+export const projectVersionSql = (target: FactoryTarget) =>
   ucSql`(SELECT p.version FROM use_case_projects p WHERE p.use_case_id = ${cast(target.useCaseId, "uuid")} AND p.workspace_id = ${cast(target.workspaceId, "uuid")}
   ORDER BY (p.status = 'approvato') DESC, p.version DESC LIMIT 1)`;
 
@@ -205,18 +205,22 @@ const noteText = (note: unknown): Result<string> => {
   return guard.ok ? ok(text) : guard;
 };
 
-/** `lascia`: il compito torna da prendere, con la nota di passaggio. Lo lascia chi lo ha, o il responsabile del caso. */
+/**
+ * `lascia`: il compito torna da prendere, con la nota di passaggio. Lo lascia chi lo ha, o il responsabile del caso.
+ * (8.1b) Anche «in revisione» (la PR aperta resta): resta in revisione senza persona, e chi lo prende lo riprende da lì.
+ */
 export async function releaseTask(executor: UcExecutor, target: FactoryTarget, actor: TaskActor, input: { ref: string; note: unknown }): Promise<Result<{ ref: string }>> {
   const note = noteText(input.note);
   if (!note.ok) return note;
   const task = (await listTasks(executor, target)).find((t) => t.ref === input.ref);
   if (!task) return notFound(input.ref);
-  if (task.status !== "in_corso") return fail("conflitto", `${task.ref} non è in corso: si lascia solo un compito in corso.`);
+  if (task.status !== "in_corso" && task.status !== "in_revisione") return fail("conflitto", `${task.ref} non è in corso né in revisione: si lascia solo un compito che qualcuno ha.`);
   if (task.holderUserId !== actor.userId && !isLead(actor)) return fail("permesso_negato", `${task.ref} è di ${who(task)}: lo lascia chi lo ha, o il responsabile del caso.`);
   const [rows] = await executor.batch([
     toStatement(ucSql`WITH done AS (
-  UPDATE use_case_tasks SET status = 'da_fare', holder_user_id = NULL, taken_at = NULL, stale_asked_at = NULL, stale_escalated_at = NULL, updated_at = now()
-  WHERE id = ${cast(task.id, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")} AND status = 'in_corso'
+  UPDATE use_case_tasks SET status = CASE WHEN status = 'in_revisione' THEN 'in_revisione' ELSE 'da_fare' END, holder_user_id = NULL, taken_at = NULL,
+    stale_asked_at = NULL, stale_escalated_at = NULL, updated_at = now()
+  WHERE id = ${cast(task.id, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")} AND status = ${cast(task.status, "text")}
     AND holder_user_id IS NOT DISTINCT FROM ${cast(task.holderUserId, "uuid")}
   RETURNING id
 )
@@ -230,7 +234,8 @@ RETURNING task_id`),
 
 /**
  * `passa`: il compito a una persona del team che costruisce (di Lateral Space, con l'e-mail verificata), con la nota.
- * Lo passa chi lo ha, o il responsabile. La notifica parte solo se il passaggio è avvenuto.
+ * Lo passa chi lo ha, o il responsabile. La notifica parte solo se il passaggio è avvenuto. (8.1b) Anche «in
+ * revisione»: lo stato resta, cambia chi lo ha.
  */
 export async function passTask(
   executor: UcExecutor,
@@ -245,7 +250,7 @@ export async function passTask(
   if (!/^[^\s@]{1,64}@[^\s@]{1,255}$/.test(email)) return fail("dati_non_validi", "Indica a chi passarlo con la sua e-mail: --a nome@dominio.");
   const task = (await listTasks(executor, target)).find((t) => t.ref === input.ref);
   if (!task) return notFound(input.ref);
-  if (task.status !== "in_corso") return fail("conflitto", `${task.ref} non è in corso: si passa solo un compito in corso. Per uno da fare: «unbundle take».`);
+  if (task.status !== "in_corso" && task.status !== "in_revisione") return fail("conflitto", `${task.ref} non è in corso né in revisione: si passa solo un compito che qualcuno ha. Per uno da fare: «unbundle take».`);
   if (task.holderUserId !== actor.userId && !isLead(actor)) return fail("permesso_negato", `${task.ref} è di ${who(task)}: lo passa chi lo ha, o il responsabile del caso.`);
   const [people] = await executor.batch([
     toStatement(ucSql`SELECT DISTINCT u.id, u.email, u.email_verified
@@ -262,7 +267,7 @@ WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_c
   const [rows] = await executor.batch([
     toStatement(ucSql`WITH done AS (
   UPDATE use_case_tasks SET holder_user_id = ${cast(toId, "uuid")}, taken_at = now(), last_activity_at = now(), stale_asked_at = NULL, stale_escalated_at = NULL, updated_at = now()
-  WHERE id = ${cast(task.id, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")} AND status = 'in_corso'
+  WHERE id = ${cast(task.id, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")} AND status = ${cast(task.status, "text")}
     AND holder_user_id IS NOT DISTINCT FROM ${cast(task.holderUserId, "uuid")}
   RETURNING id
 )

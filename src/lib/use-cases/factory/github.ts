@@ -7,6 +7,9 @@
  *   stato, bozza, date. Un push: repository e ramo. Mai chi l'ha fatto: si legge per caso, mai per persona (art. 15.4).
  *   Le PR da un fork non contano (il ramo potrebbe fingere un compito).
  * - `caseCodeFromBranch`: il caso dal ramo `<id>/…`, come `daRamo` della CLI del modello.
+ * - (Proposte) Un'issue aperta, o un commento che comincia con `/compito`, diventa una proposta di compito: il titolo
+ *   (dell'issue, o il resto della riga di `/compito`), le etichette e i codici dei casi nel testo per capire di quale
+ *   caso è. Mai il corpo dell'issue, mai chi l'ha scritta. Le issue e i commenti dei bot non contano.
  *
  * Modulo puro: niente database, niente rete.
  */
@@ -71,6 +74,18 @@ export type GithubEvent =
       ready: boolean;
     }
   | { kind: "push"; repo: string; branch: string }
+  | {
+      kind: "proposta";
+      repo: string;
+      /** Il numero dell'issue (o della PR, per un commento su una PR). */
+      number: number;
+      /** Il commento `/compito`, se la proposta viene da lì. */
+      commentId: number | null;
+      title: string;
+      /** I codici dei casi nel titolo e nelle etichette (`TJ-0049`), in maiuscolo. */
+      caseCodes: string[];
+      onPullRequest: boolean;
+    }
   | { kind: "altro"; repo: string | null; reason: string };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -136,7 +151,54 @@ export function parseGithubEvent(event: string, payload: unknown): GithubEvent {
     if (!okBranch(branch)) return { kind: "altro", repo, reason: "push_non_valido" };
     return { kind: "push", repo, branch };
   }
+  if (event === "issues" || event === "issue_comment") return parseProposal(event, payload, repo);
   return { kind: "altro", repo, reason: "evento_non_usato" };
+}
+
+const TITLE_MAX = 200;
+const CASE_CODE_G = /\b([A-Za-z]{2,6}-\d{3,5})\b/g;
+
+/** I codici dei casi in un testo, in maiuscolo, senza doppioni. */
+export function caseCodesIn(...texts: string[]): string[] {
+  const out = new Set<string>();
+  for (const text of texts) for (const m of text.matchAll(CASE_CODE_G)) out.add(m[1].toUpperCase());
+  return [...out];
+}
+
+/** Il titolo della proposta da `/compito …`: il resto della prima riga che comincia con `/compito`. */
+export function compitoCommand(body: string): { title: string } | null {
+  const m = /^[ \t]*\/compito\b[ \t]*(.*)$/m.exec(body);
+  return m ? { title: m[1].trim() } : null;
+}
+
+function parseProposal(event: string, payload: Record<string, unknown>, repo: string | null): GithubEvent {
+  if (!repo) return { kind: "altro", repo, reason: "proposta_non_valida" };
+  const action = str(payload.action);
+  const issue = isRecord(payload.issue) ? payload.issue : null;
+  const sender = isRecord(payload.sender) ? payload.sender : null;
+  if (sender?.type === "Bot") return { kind: "altro", repo, reason: "bot" };
+  const number = issue && typeof issue.number === "number" && Number.isInteger(issue.number) && issue.number >= 1 && issue.number <= 999_999_999 ? issue.number : null;
+  const issueTitle = issue ? (str(issue.title) ?? "").trim() : "";
+  if (number === null) return { kind: "altro", repo, reason: "proposta_non_valida" };
+  const labels = issue && Array.isArray(issue.labels) ? issue.labels.map((l) => (isRecord(l) ? (str(l.name) ?? "") : "")).filter(Boolean) : [];
+  const onPullRequest = Boolean(issue && isRecord(issue.pull_request));
+  let title = issueTitle;
+  let commentId: number | null = null;
+  if (event === "issues") {
+    if (action !== "opened") return { kind: "altro", repo, reason: "azione_non_usata" };
+    if (onPullRequest) return { kind: "altro", repo, reason: "azione_non_usata" };
+  } else {
+    if (action !== "created") return { kind: "altro", repo, reason: "azione_non_usata" };
+    const comment = isRecord(payload.comment) ? payload.comment : null;
+    const command = compitoCommand(comment ? (str(comment.body) ?? "") : "");
+    if (!comment || !command) return { kind: "altro", repo, reason: "commento_senza_compito" };
+    commentId = typeof comment.id === "number" && Number.isInteger(comment.id) && comment.id > 0 ? comment.id : null;
+    if (commentId === null) return { kind: "altro", repo, reason: "proposta_non_valida" };
+    if (command.title) title = command.title;
+  }
+  title = title.replace(/\s+/g, " ").trim().slice(0, TITLE_MAX);
+  if (!title) return { kind: "altro", repo, reason: "proposta_senza_titolo" };
+  return { kind: "proposta", repo, number, commentId, title, caseCodes: caseCodesIn(title, issueTitle, ...labels), onPullRequest };
 }
 
 /**
@@ -146,6 +208,11 @@ export function parseGithubEvent(event: string, payload: unknown): GithubEvent {
 export function githubPayloadText(contentType: string | null, body: string): string | null {
   if ((contentType ?? "").toLowerCase().startsWith("application/x-www-form-urlencoded")) return new URLSearchParams(body).get("payload");
   return body;
+}
+
+/** L'indirizzo dell'issue o del commento, fatto da repository, numero e id (mai quello del corpo). */
+export function proposalUrl(repo: string, number: number, commentId: number | null): string {
+  return `https://github.com/${repo}/issues/${number}${commentId ? `#issuecomment-${commentId}` : ""}`;
 }
 
 /** L'indirizzo della PR, fatto da repository e numero (mai quello del corpo). */

@@ -111,3 +111,20 @@ test("(8.1b) la PR da rivedere: nella coda, nel motore e nella campanella del te
   assert.deepEqual(planDelivery(claimed(kind, { useCase: UC, repo: "non valido", pr: 12 } as unknown as Record<string, string | boolean>), facts(), OPTS), { action: "cancel", reason: "pr_assente" });
   assert.deepEqual(planDelivery(claimed(kind, { useCase: UC, repo: "Prova/rondine-alcione" }), facts(), OPTS), { action: "cancel", reason: "pr_assente" });
 });
+
+test("(8.1b) la proposta di compito: nella coda, nel motore e nella campanella del team; solo a Lateral Space, senza il testo", () => {
+  const kind = "compito_proposto";
+  assert.ok((UC_NOTIFICATION_TEMPLATES as readonly string[]).includes(kind));
+  assert.ok((EMAIL_TEMPLATES as readonly string[]).includes(kind));
+  assert.ok(CASE_TEAM_BELL_KINDS.includes(kind));
+  assert.equal(noticeHref(WS, { kind, useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}/progetto#compiti`);
+  assert.equal(noticeTextOf({ kind, answers: 0, unknowns: 0, documents: 0, followUp: null }).title, "Una proposta di compito");
+  const plan = planDelivery(claimed(kind, { useCase: UC }), facts(), OPTS);
+  assert.equal(plan.action, "send");
+  if (plan.action !== "send") return;
+  const email = renderEmail(plan.build(null));
+  assert.match(email.subject, /: una proposta di compito$/);
+  assert.match(email.text, /la accetti \(nasce il compito, da prendere\) o la scarti/);
+  assert.deepEqual(planDelivery(claimed(kind, { useCase: UC }), facts(false), OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
+  assert.deepEqual(planDelivery(claimed(kind, {}), facts(), OPTS), { action: "cancel", reason: "use_case_assente" });
+});

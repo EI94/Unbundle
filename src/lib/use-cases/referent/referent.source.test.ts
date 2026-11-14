@@ -65,6 +65,8 @@ const TABLE_FILES = new Set([
   "src/lib/db/use-case-hub-tasks-ddl.ts",
   // (0033, rilascio 8.1b) «GitHub»: il CHECK della campanella allargato con `pr_da_rivedere`.
   "src/lib/db/use-case-hub-github-ddl.ts",
+  // (0034, rilascio 8.1b) «Proposte di compito»: il CHECK della campanella allargato con `compito_proposto`.
+  "src/lib/db/use-case-hub-proposals-ddl.ts",
   // (Rilascio 8.1a) I compiti: le loro notifiche in campanella (chiesto, passato, fermo, da prendere) e il giro dei fermi.
   "src/lib/db/queries/use-case-tasks-notices.ts",
   "src/lib/db/queries/use-case-program.ts",

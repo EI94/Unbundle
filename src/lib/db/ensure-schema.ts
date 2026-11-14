@@ -15,6 +15,7 @@ import { FACTORY_DDL, FACTORY_PROBE_SQL } from "./use-case-hub-factory-ddl.ts";
 import { CLI_DDL, CLI_PROBE_SQL } from "./use-case-hub-cli-ddl.ts";
 import { TASKS_DDL, TASKS_PROBE_SQL } from "./use-case-hub-tasks-ddl.ts";
 import { GITHUB_DDL, GITHUB_PROBE_SQL } from "./use-case-hub-github-ddl.ts";
+import { PROPOSALS_DDL, PROPOSALS_PROBE_SQL } from "./use-case-hub-proposals-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -34,7 +35,7 @@ import { GITHUB_DDL, GITHUB_PROBE_SQL } from "./use-case-hub-github-ddl.ts";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 27;
+const ENSURE_VERSION = 28;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -695,6 +696,11 @@ async function runOnce(): Promise<void> {
   // Dopo la 0032 (allarga ancora il CHECK dei tipi della campanella, sotto il lock della 0025). Non blocca il resto
   // dell'app: senza la 0033 il webhook di GitHub risponde «non ancora disponibile» (`githubStoreReady`).
   await runGithubDdlSafely();
+
+  // «Proposte di compito»: da GitHub (e più avanti da Slack), decise dal team (drizzle/0034_proposte.sql) ─────
+  // Dopo la 0033 (allarga ancora il CHECK dei tipi della campanella, sotto il lock della 0025). Non blocca il resto
+  // dell'app: senza la 0034 le proposte non si registrano e la pagina non le mostra (`proposalsStoreReady`).
+  await runProposalsDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -828,6 +834,20 @@ async function runGithubDdlSafely(): Promise<void> {
   } catch (err) {
     githubDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0033 self-heal failed, the app keeps serving without GitHub events (apply drizzle/0033 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0034, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let proposalsDdlFailedAt: number | null = null;
+
+/** La 0034 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. */
+async function runProposalsDdlSafely(): Promise<void> {
+  try {
+    await runProposalsDdl();
+    proposalsDdlFailedAt = null;
+  } catch (err) {
+    proposalsDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0034 self-heal failed, the app keeps serving without task proposals (apply drizzle/0034 by hand):", err);
   }
 }
 
@@ -1049,6 +1069,20 @@ export async function runGithubDdl(statements: readonly string[] = GITHUB_DDL): 
   ]);
 }
 
+/**
+ * Applica il DDL della 0034 in una sola transazione, serializzata dallo stesso advisory lock del file, con
+ * `lock_timeout` di 3s come la 0033. In produzione la applica questo self-heal, al primo avvio dopo il deploy; il
+ * file a mano resta la strada di riserva.
+ */
+export async function runProposalsDdl(statements: readonly string[] = PROPOSALS_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-proposals-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1169,6 +1203,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(CLI_PROBE_SQL)}
         AND ${sql.raw(TASKS_PROBE_SQL)}
         AND ${sql.raw(GITHUB_PROBE_SQL)}
+        AND ${sql.raw(PROPOSALS_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1238,6 +1273,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (githubDdlFailedAt !== null && Date.now() - githubDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       githubDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runGithubDdlSafely);
+    }
+    // La 0034 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (proposalsDdlFailedAt !== null && Date.now() - proposalsDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      proposalsDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runProposalsDdlSafely);
     }
     return ensurePromise;
   }
