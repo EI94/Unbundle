@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
-import { ClipboardList, Gavel, ListTodo, Package, Wrench } from "lucide-react";
+import { ClipboardList, FlaskConical, Gavel, ListTodo, Package, Wrench } from "lucide-react";
+import { EVAL_TEXT, evalSectionDescription } from "@/components/agent-factory/eval-format";
+import { readEvalOverview } from "@/components/agent-factory/eval-load";
+import { EvalSection } from "@/components/agent-factory/eval-section";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { canWrite, openShellPage } from "@/components/uc/shell/case-data";
@@ -29,6 +32,9 @@ import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAc
  *   coding agent, con la CLI; qui si leggono.
  * - (8.1b) Le proposte di compito da GitHub (un'issue, un commento `/compito`), solo per il team di Lateral Space: chi
  *   costruisce le accetta (nasce il compito) o le scarta.
+ * - (8.2a) Evals e banco di prova (`#banco`), per tutti quelli che vedono la pagina: le ultime evals con l'andamento,
+ *   l'ultimo banco per ruolo con il grafico qualità contro costo e la raccomandazione, o i comandi per cominciare.
+ *   Si lanciano dalla CLI; qui si leggono. Una lettura che fallisce non fa cadere la pagina.
  *
  * Il dialogo dell'impostazione si fa anche dal coding agent (skill `/agent-factory:imposta`): qui si rilegge, si
  * corregge e si approva.
@@ -210,7 +216,8 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
 
   const teamDecisions = view.decisions.filter((d) => d.source !== "impostazione" && d.supersededOn === null);
   const tasksReady = await tasksStoreReady(executor);
-  const tasks = tasksReady ? await listTasks(executor, target) : [];
+  // Le evals e i banchi insieme ai compiti; `readEvalOverview` non rifiuta mai (un errore va nel log e nella sezione).
+  const [tasks, evals] = await Promise.all([tasksReady ? listTasks(executor, target) : Promise.resolve<TaskView[]>([]), readEvalOverview(executor, target)]);
   // Le proposte sono testi del team: le vede solo chi costruisce (i ruoli di Lateral Space nel caso), e le decide chi
   // tra loro può scrivere nel caso. Non `canWriteFactory`, che dalla 8.0c comprende anche lo sviluppatore del cliente.
   const builder = roles.some((r) => (BUILDER_ROLES as readonly string[]).includes(r));
@@ -377,6 +384,10 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
             ) : null}
           </SettingsSection>
         ) : null}
+
+        <SettingsSection id="banco" icon={FlaskConical} title={EVAL_TEXT.title} description={evalSectionDescription(evals.overview, evals.unavailable)}>
+          <EvalSection overview={evals.overview} caseCode={caseCode} unavailable={evals.unavailable} />
+        </SettingsSection>
 
         <SettingsSection id="decisioni" icon={Gavel} title="Decisioni" description="Valgono per ogni coding agent del caso. Quelle delle scelte sono qui sopra, in «Le scelte».">
           <div className="space-y-3">
