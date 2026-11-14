@@ -279,10 +279,23 @@ export function evalsAlertText(alert: EvalsAlert): string | null {
   return `Sotto soglia: le evals di oggi non rispettano le soglie.${drop}`;
 }
 
-/** «Ultime 5: da 93,1% a 96,4%» accanto alla linea; null con meno di due punti. */
+/**
+ * «Ultime 5: da 93,1% a 96,4%» accanto alla linea, con il massimo e il minimo quando stanno in mezzo («Ultime 4: da
+ * 89,5% a 89,5% · massimo 100%»), così due estremi uguali non nascondono la salita e la discesa; null con meno di due
+ * punti.
+ */
 export function trendCaption(points: readonly TrendPoint[]): string | null {
   if (points.length < 2) return null;
-  return `Ultime ${points.length}: da ${formatQuality(points[0].quality)} a ${formatQuality(points[points.length - 1].quality)}`;
+  const first = points[0].quality;
+  const last = points[points.length - 1].quality;
+  const qualities = points.map((p) => p.quality);
+  const max = Math.max(...qualities);
+  const min = Math.min(...qualities);
+  const extra = [
+    max > Math.max(first, last) + 1e-9 ? `massimo ${formatQuality(max)}` : null,
+    min < Math.min(first, last) - 1e-9 ? `minimo ${formatQuality(min)}` : null,
+  ].filter(Boolean);
+  return `Ultime ${points.length}: da ${formatQuality(first)} a ${formatQuality(last)}${extra.length ? ` · ${extra.join(" · ")}` : ""}`;
 }
 
 /** Per i lettori di schermo: tutti i valori dell'andamento, dal più vecchio. */
