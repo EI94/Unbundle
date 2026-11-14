@@ -123,13 +123,21 @@ test("modelli finti e caso in costruzione: si dicono sempre (per il banco «inCo
   assert.match(message(banco({ inCostruzione: "sì" })), /^inCostruzione:/);
 });
 
-test("i modelli di oggi: un ruolo per chiave, un id valido, al massimo 20; quello del ruolo è l'«attuale» del banco", () => {
+test("i modelli di oggi: un ruolo per chiave, un id valido, al massimo 20; il banco ha sempre quello del suo ruolo, l'«attuale»", () => {
   assert.match(message(banco({ modelli: [HAIKU] })), /^modelli: un oggetto/);
   assert.match(message(banco({ modelli: { Lettura: HAIKU } })), /^modelli: ogni chiave è un ruolo/);
   assert.match(message(banco({ modelli: { lettura: "modello con spazi" } })), /^modelli\.lettura:/);
   const many = Object.fromEntries(Array.from({ length: EVAL_LIMITS.modelsMax + 1 }, (_, i) => [`ruolo${i}`, HAIKU]));
   assert.match(message(banco({ modelli: many })), /^modelli: al massimo 20 ruoli\.$/);
   assert.match(message(banco({ modelli: { lettura: OPUS } })), /^modelli\.lettura: il modello di oggi del ruolo è quello «attuale» del banco \(anthropic\/claude-sonnet-5-5\)\.$/);
+  // Senza il modello di oggi del ruolo il banco non si scrive: la CLI lo manda sempre da agent.yaml.
+  const missing = /^modelli\.lettura: il modello di oggi del ruolo del banco, da agent\.yaml \(anthropic\/claude-sonnet-5-5\)\.$/;
+  for (const modelli of [undefined, null, {}, { scrittura: HAIKU }]) assert.match(message(banco({ modelli })), missing, JSON.stringify(modelli));
+  // Un ruolo con il nome di una proprietà degli oggetti non la trova per caso.
+  assert.match(message(banco({ ruolo: "constructor", modelli: { lettura: SONNET } })), /^modelli\.constructor: il modello di oggi del ruolo del banco/);
+  assert.ok(parseEvalRun(banco({ ruolo: "constructor", modelli: { constructor: SONNET } })).ok);
+  // Le evals no: i modelli possono anche mancare.
+  assert.ok(parseEvalRun(evals({ modelli: undefined })).ok);
 });
 
 test("il banco: da 1 a 12 modelli distinti, esattamente un «attuale»; le evals: un solo risultato, «attuale»", () => {
@@ -137,7 +145,7 @@ test("il banco: da 1 a 12 modelli distinti, esattamente un «attuale»; le evals
   assert.match(message(banco({ risultati: "tutti" })), /^risultati:/);
   const thirteen = Array.from({ length: 13 }, (_, i) => result({ modello: `fornitore/modello-${i}`, attuale: i === 0 }));
   assert.match(message(banco({ risultati: thirteen, modelli: undefined })), /^risultati: da 1 a 12/);
-  const twelve = parseEvalRun(banco({ risultati: thirteen.slice(0, 12), modelli: undefined }));
+  const twelve = parseEvalRun(banco({ risultati: thirteen.slice(0, 12), modelli: { lettura: "fornitore/modello-0" } }));
   assert.ok(twelve.ok && twelve.value.results.length === 12);
   assert.match(message(banco({ risultati: [result({ modello: SONNET }), result({ modello: "Anthropic/Claude-Sonnet-5-5", attuale: false })] })), /^risultati: ogni modello una volta sola/);
   assert.match(message(banco({ risultati: [result({ modello: SONNET, attuale: false }), result({ modello: HAIKU, attuale: false })], modelli: undefined })), /^risultati: esattamente un modello «attuale»/);

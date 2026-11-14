@@ -2,13 +2,13 @@
 // progetto dell'agente; senza compito valido non partono; i testi senza nomi.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EMAIL_TEMPLATES, NOTICE_MODEL_LABEL_RE, NOTICE_MODEL_RE, NOTICE_QUALITY_TEXT_RE, NOTICE_ROLE_RE, planDelivery, type ClaimedNotification, type DeliveryFacts } from "./dispatch.ts";
+import { EMAIL_TEMPLATES, NOTICE_MODEL_NAMES, NOTICE_MODEL_RE, NOTICE_QUALITY_TEXT_RE, NOTICE_ROLE_RE, planDelivery, type ClaimedNotification, type DeliveryFacts } from "./dispatch.ts";
 import { checkEmailLink, renderEmail } from "./email-templates.ts";
 import { UC_NOTIFICATION_TEMPLATES } from "../../db/queries/uc-notifications.ts";
 import { TASK_NOTICE_KINDS } from "../../db/use-case-hub-tasks-ddl.ts";
 import { CASE_TEAM_BELL_KINDS, noticeHref } from "../../notifications/bell.ts";
 import { noticeTextOf } from "../../use-cases/notices.ts";
-import { formatQuality, MODEL_ID_RE, modelLabel, ROLE_RE } from "../../use-cases/factory/benchmark.ts";
+import { CATALOGUE_MODEL_NAMES, catalogueModelName, formatQuality, isCatalogueModelName, MODEL_ID_RE, modelLabel, ROLE_RE } from "../../use-cases/factory/benchmark.ts";
 
 const WS = "11111111-1111-4111-8111-111111111111";
 const CASE = "22222222-2222-4222-8222-222222222222";
@@ -154,15 +154,41 @@ test("(8.2a) il consiglio del banco: nella coda, nel motore e nella campanella d
   assert.ok(!email.text.includes("#banco"), "il link dell'e-mail non ha frammenti");
   assert.match(email.text, /Email interna di Lateral Space\./);
   assert.deepEqual(planDelivery(claimed(kind, payload), facts(false), OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
-  // Senza il nome da mostrare (o con un nome strano), l'id del modello.
-  for (const label of [undefined, "<b>Haiku</b>"]) {
+  // Senza il nome del catalogo (o con un altro testo), mai l'id del modello: «un altro modello», e il confronto nel progetto.
+  const generic = "il banco di prova consiglia un altro modello: il confronto è nel progetto.";
+  for (const label of [undefined, "<b>Haiku</b>", "anthropic/claude-haiku-5-5", "Claude Haiku 6", "claude haiku 5.5"]) {
     const bare = planDelivery(claimed(kind, { useCase: UC, role: "lettura", model: "anthropic/claude-haiku-5-5", ...(label ? { label } : {}) }), facts(), OPTS);
-    assert.ok(bare.action === "send" && renderEmail(bare.build(null)).text.includes("il banco di prova consiglia anthropic/claude-haiku-5-5."), String(label));
+    assert.ok(bare.action === "send", String(label));
+    if (bare.action !== "send") continue;
+    const mail = renderEmail(bare.build(null));
+    assert.ok(mail.text.includes(generic), String(label));
+    assert.ok(!mail.text.includes("anthropic/claude-haiku-5-5") && !mail.text.includes("Haiku"), String(label));
   }
   assert.deepEqual(planDelivery(claimed(kind, { role: "lettura", model: "anthropic/claude-haiku-5-5" }), facts(), OPTS), { action: "cancel", reason: "use_case_assente" });
   const badAdvice: Record<string, string>[] = [{ useCase: UC, model: "anthropic/claude-haiku-5-5" }, { useCase: UC, role: "Lettura!", model: "anthropic/claude-haiku-5-5" }, { useCase: UC, role: "lettura", model: "modello con spazi" }];
   for (const bad of badAdvice) {
     assert.deepEqual(planDelivery(claimed(kind, bad), facts(), OPTS), { action: "cancel", reason: "consiglio_assente" }, JSON.stringify(bad));
+  }
+});
+
+test("(8.2a) il consiglio del banco verso un modello scelto da chi manda: nell'e-mail mai l'id, né un indirizzo, un dominio o una e-mail", () => {
+  const kind = "banco_consiglio";
+  const generic = "il banco di prova consiglia un altro modello: il confronto è nel progetto.";
+  for (const model of ["anthropic/claude-haiku-6.ai", "https://evil.example/", "it-helpdesk@evil.example"]) {
+    // Un id che le regole del banco accettano: lo sceglie chi lancia il banco con la CLI.
+    assert.match(model, MODEL_ID_RE);
+    assert.equal(catalogueModelName(model), null, "fuori dal catalogo: niente nome per l'e-mail");
+    // Il nome da mostrare nella pagina (modelLabel) e l'id stesso: nessuno dei due arriva nell'e-mail.
+    for (const label of [undefined, modelLabel(model), model]) {
+      const plan = planDelivery(claimed(kind, { useCase: UC, role: "lettura", model, ...(label === undefined ? {} : { label }) }), facts(), OPTS);
+      assert.equal(plan.action, "send", `${model} ${label}`);
+      if (plan.action !== "send") continue;
+      const email = renderEmail(plan.build(null));
+      assert.ok(email.text.includes(generic), `${model} ${label}`);
+      for (const part of [model, "evil", "claude-haiku-6", "helpdesk", "https://evil"]) {
+        assert.ok(!email.text.includes(part) && !email.html.includes(part) && !email.subject.includes(part), `${model}: «${part}» nell'e-mail`);
+      }
+    }
   }
 });
 
@@ -172,14 +198,20 @@ test("(8.2a) le evals scese: sotto soglia o giù di 5 punti, con la qualità; ne
   assert.ok((EMAIL_TEMPLATES as readonly string[]).includes(kind));
   assert.ok(CASE_TEAM_BELL_KINDS.includes(kind));
   assert.equal(noticeHref(WS, { kind, useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}/progetto#banco`);
-  assert.equal(noticeTextOf({ kind, answers: 0, unknowns: 0, documents: 0, followUp: null }).title, "Le evals sono scese");
+  // Il titolo vale per tutti e due gli avvisi: sotto soglia, o in calo.
+  const bellText = noticeTextOf({ kind, answers: 0, unknowns: 0, documents: 0, followUp: null });
+  assert.equal(bellText.title, "Le evals di main sono sotto soglia o in calo");
+  assert.match(bellText.description, /Guarda quali gruppi non passano in «Evals e banco di prova», nel progetto\.$/);
   const below = planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "sotto_soglia", qualityText: formatQuality(0.8) })), facts(), OPTS);
   assert.equal(below.action, "send");
   if (below.action !== "send") return;
   const belowEmail = renderEmail(below.build(null));
   assert.equal(belowEmail.subject, "Cliente prova · Smistamento di prova: le evals di main sono sotto soglia");
   assert.match(belowEmail.text, /le evals di main del caso d'uso «Smistamento di prova» sono sotto soglia: 80%\./);
-  assert.match(belowEmail.text, /guarda quali prove non passano/);
+  // La pagina ha i gruppi e l'andamento; le singole prove sono nel repository.
+  assert.match(belowEmail.text, /guarda quali gruppi non passano: nel progetto, in «Evals e banco di prova», ci sono i gruppi e l'andamento; prova per prova con «npm run eval -- --caso <id>» nel repository\./);
+  assert.ok(belowEmail.html.includes("npm run eval -- --caso &lt;id&gt;"), "nell'HTML il segnaposto è testo");
+  assert.doesNotMatch(belowEmail.text, /quali prove non passano/);
   assert.ok(belowEmail.text.includes(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`));
   const down = planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "in_calo", qualityText: formatQuality(0.91), drop: 0.064 })), facts(), OPTS);
   assert.equal(down.action, "send");
@@ -187,6 +219,23 @@ test("(8.2a) le evals scese: sotto soglia o giù di 5 punti, con la qualità; ne
   const downEmail = renderEmail(down.build(null));
   assert.equal(downEmail.subject, "Cliente prova · Smistamento di prova: le evals di main sono scese");
   assert.match(downEmail.text, /sono scese di 6,4 punti rispetto alle precedenti: ora sono al 91%\./);
+  // La preposizione come si legge: «all'80%» (ottanta), «all'8%», «all'11%», «all'1%», «allo 0%»; «al 91%», «al 18%».
+  const atQuality: [number, string][] = [
+    [0.8, "all'80%"],
+    [0.889, "all'88,9%"],
+    [0.08, "all'8%"],
+    [0.11, "all'11%"],
+    [0.01, "all'1%"],
+    [0, "allo 0%"],
+    [0.91, "al 91%"],
+    [0.18, "al 18%"],
+    [1, "al 100%"],
+  ];
+  for (const [q, expected] of atQuality) {
+    const plan = planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "in_calo", qualityText: formatQuality(q), drop: 0.064 })), facts(), OPTS);
+    assert.ok(plan.action === "send", String(q));
+    if (plan.action === "send") assert.ok(renderEmail(plan.build(null)).text.includes(`ora sono ${expected}.`), `${q} → ${expected}`);
+  }
   assert.deepEqual(planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "sotto_soglia", qualityText: "80%" })), facts(false), OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
   const badAlerts: Record<string, string | number | boolean>[] = [
     { useCase: UC, alert: "giù", qualityText: "80%" },
@@ -207,5 +256,11 @@ test("(8.2a) le regole della coda sono quelle del modulo del banco, che il motor
   assert.equal(NOTICE_ROLE_RE.source, ROLE_RE.source);
   assert.equal(NOTICE_MODEL_RE.source, MODEL_ID_RE.source);
   for (const q of [0, 0.004, 0.05, 0.5, 0.8, 0.9643, 27 / 28, 0.999, 1]) assert.match(formatQuality(q), NOTICE_QUALITY_TEXT_RE, String(q));
-  for (const id of ["anthropic/claude-haiku-5-5", "claude-opus-5-5", "openai/gpt-x", "fornitore/modello:v1@2"]) assert.match(modelLabel(id), NOTICE_MODEL_LABEL_RE, id);
+  // I nomi del catalogo sono quelli del modulo del banco, nello stesso ordine; fuori dal catalogo nessun nome.
+  assert.deepEqual([...NOTICE_MODEL_NAMES], [...CATALOGUE_MODEL_NAMES]);
+  for (const name of CATALOGUE_MODEL_NAMES) assert.ok(isCatalogueModelName(name) && NOTICE_MODEL_NAMES.has(name), name);
+  assert.equal(catalogueModelName("anthropic/claude-haiku-5-5"), "Claude Haiku 5.5");
+  assert.equal(catalogueModelName("claude-opus-5-5"), "Claude Opus 5.5");
+  for (const id of ["openai/gpt-x", "fornitore/modello:v1@2", "anthropic/constructor", "toString", "anthropic/"]) assert.equal(catalogueModelName(id), null, id);
+  for (const name of ["Claude Haiku 6", "claude-haiku-5-5", "", "constructor"]) assert.equal(isCatalogueModelName(name), false, name);
 });

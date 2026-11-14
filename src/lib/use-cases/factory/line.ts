@@ -9,15 +9,20 @@
  *   indietro con il modello. La prende chi ci lavora.
  * - Mai una cifra per persona: i compiti si contano per caso.
  * - (8.2a) Le evals e il banco di prova del caso in un frammento breve: «evals 96%», «evals 80%, sotto soglia»,
- *   «il banco consiglia Claude Haiku 5.5 per «lettura»».
+ *   «evals 62% su tj-0049/t-3, sotto soglia» (il ramo, quando non è main), «il banco consiglia Claude Haiku 5.5 per
+ *   «lettura»».
  *
  * Modulo puro.
  */
 import type { CaseStatus } from "../../uc/vocab.ts";
-import { formatQuality, modelLabel, type BenchVerdict } from "./benchmark.ts";
+import { EVALS_MAIN, formatQuality, modelLabel, type BenchVerdict } from "./benchmark.ts";
 
-/** La versione del repository modello di oggi: si aggiorna qui quando ne esce una (`CHANGELOG.md` del modello). */
-export const AGENT_FACTORY_TEMPLATE_VERSION = "1.3.0";
+/**
+ * La versione del repository modello di oggi: si aggiorna qui quando ne esce una (`CHANGELOG.md` del modello). La 1.4.0
+ * porta `unbundle eval` e `unbundle banco`: il numero cambia nello stesso rilascio in cui il modello 1.4.0 arriva sul suo
+ * main, mai prima (la coda manderebbe ad aggiornare a una versione che «unbundle aggiorna» non porta ancora).
+ */
+export const AGENT_FACTORY_TEMPLATE_VERSION = "1.4.0";
 
 export const STATIONS = ["dossier", "impostazione", "approvato", "costruzione", "collaudo", "esercizio"] as const;
 export type Station = (typeof STATIONS)[number];
@@ -104,20 +109,29 @@ export interface LineEvals {
   quality: number;
   thresholdsMet: boolean;
   fakeModels: boolean;
+  /** Il ramo delle evals: un caso senza evals di main mostra quelle di un altro ramo, e la riga lo dice. */
+  branch: string | null;
 }
 
-/** (8.2a) Le evals in un frammento: «evals 96%», «evals 80%, sotto soglia»; con i modelli finti lo dice. */
+/**
+ * (8.2a) Le evals in un frammento: «evals 96%», «evals 80%, sotto soglia»; il ramo quando non è main («evals 62% su
+ * tj-0049/t-3, sotto soglia», «senza ramo» se non si sa); con i modelli finti lo dice.
+ */
 export function evalsFact(e: LineEvals | null): string | null {
   if (!e) return null;
-  return `evals ${formatQuality(e.quality)}${e.thresholdsMet ? "" : ", sotto soglia"}${e.fakeModels ? ", modelli finti" : ""}`;
+  const branch = e.branch === EVALS_MAIN ? "" : e.branch ? ` su ${e.branch}` : " senza ramo";
+  return `evals ${formatQuality(e.quality)}${branch}${e.thresholdsMet ? "" : ", sotto soglia"}${e.fakeModels ? ", modelli finti" : ""}`;
 }
 
-/** (8.2a) Il consiglio del banco, un ruolo alla volta: «il banco consiglia Claude Haiku 5.5 per «lettura»». */
-export function benchFacts(benches: readonly { role: string; verdict: BenchVerdict }[]): string[] {
-  return benches.flatMap((b) => (b.verdict.kind === "cambia" ? [`il banco consiglia ${modelLabel(b.verdict.model)} per «${b.role}»`] : []));
+/**
+ * (8.2a) Il consiglio del banco, un ruolo alla volta: «il banco consiglia Claude Haiku 5.5 per «lettura»». Mai quello di
+ * un banco superato (`superseded`: il consiglio è stato seguito, o il ruolo non c'è più).
+ */
+export function benchFacts(benches: readonly { role: string; verdict: BenchVerdict; superseded?: boolean }[]): string[] {
+  return benches.flatMap((b) => (b.verdict.kind === "cambia" && !b.superseded ? [`il banco consiglia ${modelLabel(b.verdict.model)} per «${b.role}»`] : []));
 }
 
-/** (8.2a) «Da fare per te»: le evals sotto soglia, con la qualità. */
+/** (8.2a) «Da fare per te»: le evals sotto soglia, con la qualità. La pagina ha i gruppi (non le singole prove). */
 export function evalsTodoText(quality: number): string {
-  return `Le evals di main sono sotto soglia (${formatQuality(quality)}): guarda quali prove non passano.`;
+  return `Le evals di main sono sotto soglia (${formatQuality(quality)}): guarda quali gruppi non passano.`;
 }

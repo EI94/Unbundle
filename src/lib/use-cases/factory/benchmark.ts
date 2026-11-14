@@ -5,6 +5,10 @@
  *   soglie e hanno il costo noto: il più bravo (qualità più alta), il più economico (costo per 1.000 esecuzioni più
  *   basso), il più efficiente (il più economico a non più di 2 punti dal più bravo), la frontiera (nessun altro li batte
  *   insieme su qualità e costo). Poi la raccomandazione: resta, cambia, nessuno rispetta le soglie, costi non noti.
+ *   Con l'attuale nelle soglie e con il costo, «cambia» solo verso un modello che non è peggio di lui oltre 2 punti e
+ *   costa almeno il 10 % in meno (il più efficiente se lo è, altrimenti il più economico di questi); oppure verso il più
+ *   bravo di lui oltre 2 punti che non costa di più. Un modello più bravo e più caro nel banco non toglie il consiglio.
+ *   Il più bravo si sceglie tra i modelli con il costo noto, come gli altri due segni.
  * - **Le evals:** l'esito delle evals con i modelli di oggi; l'avviso quando sono sotto soglia o scendono di 5 punti
  *   rispetto alle precedenti dello stesso ramo e degli stessi modelli (veri o finti).
  *
@@ -92,7 +96,25 @@ const NAMES: Record<string, string> = {
 /** Il nome da mostrare: «Claude Haiku 5.5» per `anthropic/claude-haiku-5-5`, altrimenti l'id senza il fornitore. */
 export function modelLabel(id: string): string {
   const bare = id.includes("/") ? id.slice(id.lastIndexOf("/") + 1) : id;
-  return NAMES[bare] ?? bare;
+  return Object.hasOwn(NAMES, bare) ? NAMES[bare] : bare;
+}
+
+/** I nomi dei modelli del catalogo, nel suo ordine: il motore delle e-mail ha i suoi, e un test li tiene uguali. */
+export const CATALOGUE_MODEL_NAMES: readonly string[] = Object.freeze(Object.values(NAMES));
+
+/**
+ * Il nome del catalogo di un modello («Claude Haiku 5.5» per `anthropic/claude-haiku-5-5`), o null se il modello non è
+ * nel catalogo. Nei testi che escono da Unbundle (le e-mail) il modello si dice solo così: mai con un id scelto da chi
+ * manda il banco, che potrebbe essere un indirizzo, un dominio o una e-mail.
+ */
+export function catalogueModelName(id: string): string | null {
+  const bare = id.includes("/") ? id.slice(id.lastIndexOf("/") + 1) : id;
+  return Object.hasOwn(NAMES, bare) ? NAMES[bare] : null;
+}
+
+/** Vero se `name` è il nome di un modello del catalogo («Claude Haiku 5.5»). */
+export function isCatalogueModelName(name: string): boolean {
+  return CATALOGUE_MODEL_NAMES.includes(name);
 }
 
 const PCT = new Intl.NumberFormat("it-IT", { style: "percent", maximumFractionDigits: 1 });
@@ -130,9 +152,10 @@ export function analyzeBench(results: readonly BenchResult[], o: { role: string;
   const current = results.find((r) => r.current) ?? null;
   const passing = results.filter((r) => r.thresholdsMet);
   const pricedPassing = passing.filter(priced);
-  const best = [...passing].sort(byQualityThenCost)[0] ?? null;
   const cheapest = [...pricedPassing].sort(byCostThenQuality)[0] ?? null;
   const bestPriced = [...pricedPassing].sort(byQualityThenCost)[0] ?? null;
+  // Il più bravo tra quelli con il costo noto (§3); senza nessun costo noto, il più bravo per sola qualità.
+  const best = bestPriced ?? [...passing].sort(byQualityThenCost)[0] ?? null;
   const efficient = bestPriced ? ([...pricedPassing].filter((r) => r.quality >= bestPriced.quality - tolerance - 1e-9).sort(byCostThenQuality)[0] ?? null) : null;
   const frontier = frontierOf(pricedPassing).map((r) => r.model);
   const base = { best: best?.model ?? null, cheapest: cheapest?.model ?? null, efficient: efficient?.model ?? null, frontier };
@@ -171,23 +194,48 @@ export function analyzeBench(results: readonly BenchResult[], o: { role: string;
       },
     };
   }
-  if (efficient.model === current.model) {
-    return { ...base, verdict: { kind: "resta", model: current.model, text: `Resta ${modelLabel(current.model)} per ${role}: è già il più conveniente che rispetta le soglie (${describe(current)}).` } };
-  }
-  const saving = 1 - (efficient.costPer1000Usd as number) / (current.costPer1000Usd as number);
-  if (efficient.quality >= current.quality - tolerance - 1e-9 && saving >= minSaving - 1e-9) {
+  // L'attuale rispetta le soglie e ha il costo: il confronto è con lui, mai sotto la sua qualità oltre la tolleranza.
+  // Così un modello più bravo e più caro nel banco non toglie il consiglio di risparmiare a parità di qualità.
+  const now = current.costPer1000Usd as number;
+  const savingOf = (r: BenchResult) => (now > 0 ? 1 - (r.costPer1000Usd as number) / now : 0);
+  // 1. Almeno la qualità di oggi (entro la tolleranza) per almeno il 10% in meno: il più efficiente se lo è, così il
+  //    consiglio resta vicino al più bravo; altrimenti il più economico di questi.
+  const asGoodAsToday = (r: BenchResult) => r.quality >= current.quality - tolerance - 1e-9;
+  const target = [efficient, ...[...pricedPassing].sort(byCostThenQuality)].find((r) => r.model !== current.model && asGoodAsToday(r) && savingOf(r) >= minSaving - 1e-9);
+  if (target) {
+    const saving = savingOf(target);
     return {
       ...base,
       verdict: {
         kind: "cambia",
-        model: efficient.model,
+        model: target.model,
         from: current.model,
         saving,
-        text: `Conviene ${modelLabel(efficient.model)} per ${role}: ${describe(efficient)}, contro ${describe(current)} di ${modelLabel(current.model)} (${PCT.format(-saving)} di costo).`,
+        text: `Conviene ${modelLabel(target.model)} per ${role}: ${describe(target)}, contro ${describe(current)} di ${modelLabel(current.model)} (${PCT.format(-saving)} di costo).`,
       },
     };
   }
-  return { ...base, verdict: { kind: "resta", model: current.model, text: `Resta ${modelLabel(current.model)} per ${role}: nessun altro modello costa almeno il 10% in meno con la stessa qualità (${describe(current)}).` } };
+  // 2. Più bravo di oggi, oltre la tolleranza, e non costa di più: il più bravo di questi.
+  const better = [...pricedPassing].filter((r) => r.model !== current.model && r.quality > current.quality + tolerance + 1e-9 && (r.costPer1000Usd as number) <= now).sort(byQualityThenCost)[0];
+  if (better) {
+    return {
+      ...base,
+      verdict: {
+        kind: "cambia",
+        model: better.model,
+        from: current.model,
+        saving: savingOf(better),
+        text: `Conviene ${modelLabel(better.model)} per ${role}: più bravo e non costa di più, ${describe(better)} contro ${describe(current)} di ${modelLabel(current.model)}.`,
+      },
+    };
+  }
+  if (efficient.model === current.model) {
+    return { ...base, verdict: { kind: "resta", model: current.model, text: `Resta ${modelLabel(current.model)} per ${role}: è già il più conveniente che rispetta le soglie (${describe(current)}).` } };
+  }
+  return {
+    ...base,
+    verdict: { kind: "resta", model: current.model, text: `Resta ${modelLabel(current.model)} per ${role}: nessun altro modello costa almeno il 10% in meno con la stessa qualità, né è più bravo allo stesso costo (${describe(current)}).` },
+  };
 }
 
 /** Un punto delle evals con i modelli di oggi. */
@@ -197,20 +245,44 @@ export interface EvalPoint {
   fakeModels: boolean;
   inConstruction: boolean;
   branch: string | null;
+  /** Il livello delle evals («pull_request», «veloce»…): si confrontano solo evals dello stesso livello. */
+  level?: string | null;
 }
 
 export type EvalsAlert = { kind: "sotto_soglia"; drop: number | null } | { kind: "in_calo"; drop: number } | null;
 
 /**
  * L'avviso delle evals: sotto soglia (mai per un caso in costruzione, versione 0.x), oppure giù di almeno 5 punti
- * rispetto alle precedenti dello stesso ramo con gli stessi modelli (veri con veri, finti con finti).
+ * rispetto alle precedenti dello stesso ramo e dello stesso livello, con gli stessi modelli (veri con veri, finti con
+ * finti).
  */
 export function evalsAlert(previous: EvalPoint | null, current: EvalPoint): EvalsAlert {
-  const comparable = previous && previous.fakeModels === current.fakeModels && previous.branch === current.branch ? previous : null;
+  const comparable =
+    previous && previous.fakeModels === current.fakeModels && previous.branch === current.branch && (previous.level ?? null) === (current.level ?? null) ? previous : null;
   const drop = comparable ? comparable.quality - current.quality : null;
   if (!current.thresholdsMet && !current.inConstruction) return { kind: "sotto_soglia", drop };
   if (drop !== null && drop >= EVALS_DROP - 1e-9) return { kind: "in_calo", drop };
   return null;
+}
+
+/** Il ramo delle evals che contano per il caso (gli avvisi, il consiglio superato). */
+export const EVALS_MAIN = "main";
+
+/**
+ * Un banco superato: dopo di lui sono arrivate evals vere di `main` e lì il ruolo usa un altro modello, o non c'è più.
+ * Il consiglio era stato seguito (o il ruolo è cambiato): non si mostra più come «da fare», e la pagina chiede di
+ * rifare il banco. `bench.currentModel`: il modello «attuale» del banco; `evals`: le evals che fanno lo stato del caso.
+ */
+export function benchSuperseded(
+  bench: { role: string | null; at: string | Date; currentModel: string | null },
+  evals: { at: string | Date; branch: string | null; fakeModels: boolean; models: Readonly<Record<string, string>> } | null,
+): boolean {
+  if (!evals || evals.fakeModels || evals.branch !== EVALS_MAIN || !bench.role) return false;
+  const evalsAt = new Date(evals.at).getTime();
+  const benchAt = new Date(bench.at).getTime();
+  if (!Number.isFinite(evalsAt) || !Number.isFinite(benchAt) || evalsAt <= benchAt) return false;
+  const now = Object.hasOwn(evals.models, bench.role) ? evals.models[bench.role] : null;
+  return !now || !bench.currentModel || now.toLowerCase() !== bench.currentModel.toLowerCase();
 }
 
 /** Un banco o delle evals come li mostra la pagina. */

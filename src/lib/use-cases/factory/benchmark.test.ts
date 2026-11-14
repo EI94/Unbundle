@@ -2,7 +2,7 @@
 // raccomandazione; l'avviso delle evals. Docs: docs/rilascio-8/BANCO-DI-PROVA.md §3.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeBench, evalsAlert, formatCost, formatQuality, modelLabel, type BenchResult } from "./benchmark.ts";
+import { analyzeBench, benchSuperseded, evalsAlert, formatCost, formatQuality, modelLabel, type BenchResult } from "./benchmark.ts";
 
 const r = (model: string, quality: number, cost: number | null, over: Partial<BenchResult> = {}): BenchResult => ({
   model,
@@ -54,6 +54,97 @@ test("resta: l'attuale è già il più efficiente, o il risparmio è sotto il 10
   const worse = analyzeBench([r(SONNET, 0.96, 1.8, { current: true }), r(HAIKU, 0.9, 0.12)], { role: "lettura", fakeModels: false });
   assert.equal(worse.verdict.kind, "resta", "6 punti sotto non è alla pari");
   assert.equal(worse.efficient, SONNET);
+});
+
+test("un modello più bravo e più caro nel banco non toglie il consiglio di risparmiare a parità di qualità", () => {
+  // Il caso visto con la CLI vera: oggi Sonnet, Haiku con la stessa qualità costa il 93% in meno, Opus è più bravo e
+  // costa il doppio. Il più efficiente (vicino al più bravo) è Opus, ma il confronto per cambiare è con oggi.
+  const S = r(SONNET, 18 / 19, 1.8, { current: true });
+  const H = r(HAIKU, 18 / 19, 0.12);
+  const O = r(OPUS, 1, 3.6);
+  const withOpus = analyzeBench([S, H, O], { role: "scrittura", fakeModels: false });
+  assert.deepEqual([withOpus.best, withOpus.efficient, withOpus.cheapest], [OPUS, OPUS, HAIKU]);
+  assert.ok(withOpus.verdict.kind === "cambia" && withOpus.verdict.model === HAIKU && withOpus.verdict.from === SONNET);
+  assert.match(withOpus.verdict.text, /^Conviene Claude Haiku 5\.5 per «scrittura»: 94,7%, 0,12\s?USD per 1\.000 esecuzioni, contro 94,7%, 1,80\s?USD per 1\.000 esecuzioni di Claude Sonnet 5\.5 \(-93,3% di costo\)\.$/);
+  // Lo stesso consiglio con o senza Opus nel banco.
+  const without = analyzeBench([S, H], { role: "scrittura", fakeModels: false });
+  assert.ok(without.verdict.kind === "cambia" && without.verdict.model === HAIKU);
+  // Mai sotto la qualità di oggi oltre la tolleranza, anche se costa molto meno.
+  const lower = analyzeBench([S, r(HAIKU, 17 / 19, 0.12), O], { role: "scrittura", fakeModels: false });
+  assert.equal(lower.verdict.kind, "resta");
+  assert.match(lower.verdict.text, /^Resta Claude Sonnet 5\.5 per «scrittura»: nessun altro modello costa almeno il 10% in meno con la stessa qualità, né è più bravo allo stesso costo \(94,7%, 1,80\s?USD per 1\.000 esecuzioni\)\.$/);
+});
+
+test("più bravo di oggi oltre la tolleranza e non costa di più: conviene, anche con un risparmio sotto il 10%", () => {
+  const a = analyzeBench([r(SONNET, 0.9, 1.8, { current: true }), r(OPUS, 0.97, 1.7), r(HAIKU, 0.8, 0.12)], { role: "lettura", fakeModels: false });
+  assert.ok(a.verdict.kind === "cambia" && a.verdict.model === OPUS && a.verdict.from === SONNET);
+  assert.ok(a.verdict.kind === "cambia" && Math.abs((a.verdict.saving ?? 0) - (1 - 1.7 / 1.8)) < 1e-9);
+  assert.match(a.verdict.text, /^Conviene Claude Opus 5\.5 per «lettura»: più bravo e non costa di più, 97%, 1,70\s?USD per 1\.000 esecuzioni contro 90%, 1,80\s?USD per 1\.000 esecuzioni di Claude Sonnet 5\.5\.$/);
+  // Più bravo ma più caro: resta (pagare di più è una scelta del team, non un consiglio automatico).
+  const pricier = analyzeBench([r(SONNET, 0.9, 1.8, { current: true }), r(OPUS, 0.97, 3.6)], { role: "lettura", fakeModels: false });
+  assert.equal(pricier.verdict.kind, "resta");
+  // Alla pari entro la tolleranza e allo stesso costo: niente da guadagnare, resta.
+  const tie = analyzeBench([r(SONNET, 0.9, 1.8, { current: true }), r(OPUS, 0.91, 1.8)], { role: "lettura", fakeModels: false });
+  assert.equal(tie.verdict.kind, "resta");
+});
+
+test("un modello di oggi che non costa niente: nessun risparmio possibile, mai una divisione per zero", () => {
+  const free = analyzeBench([r("locale/modello", 0.95, 0, { current: true }), r(HAIKU, 0.95, 0.12)], { role: "lettura", fakeModels: false });
+  assert.equal(free.verdict.kind, "resta");
+  assert.ok(!/NaN|Infinity/.test(free.verdict.text));
+  const freeBetter = analyzeBench([r("locale/modello", 0.9, 0, { current: true }), r("locale/altro", 0.97, 0)], { role: "lettura", fakeModels: false });
+  assert.ok(freeBetter.verdict.kind === "cambia" && freeBetter.verdict.model === "locale/altro" && freeBetter.verdict.saving === 0);
+});
+
+test("un id che coincide con un nome di Object.prototype resta un id", () => {
+  assert.equal(modelLabel("x/constructor"), "constructor");
+  assert.equal(modelLabel("toString"), "toString");
+});
+
+test("tra quelli buoni come oggi e più economici almeno del 10%: il più efficiente se lo è, poi il più economico", () => {
+  // Il più efficiente (vicino al più bravo) è anche più bravo di oggi e costa il 44% in meno: è lui il consiglio, non il
+  // più economico (che resta alla qualità di oggi). Senza di lui, il più economico.
+  const B = r("anthropic/claude-fable-5-2", 1, 5);
+  const E = r(OPUS, 0.985, 1.0);
+  const C = r(HAIKU, 0.94, 0.3);
+  const today = r(SONNET, 0.95, 1.8, { current: true });
+  const a = analyzeBench([today, B, E, C], { role: "lettura", fakeModels: false });
+  assert.deepEqual([a.best, a.efficient, a.cheapest], ["anthropic/claude-fable-5-2", OPUS, HAIKU]);
+  assert.ok(a.verdict.kind === "cambia" && a.verdict.model === OPUS, JSON.stringify(a.verdict));
+  const b = analyzeBench([today, B, C], { role: "lettura", fakeModels: false });
+  assert.ok(b.verdict.kind === "cambia" && b.verdict.model === HAIKU, JSON.stringify(b.verdict));
+});
+
+test("il più bravo si sceglie tra i modelli con il costo noto, come gli altri segni", () => {
+  const a = analyzeBench([r("x/a", 0.9, 1.0, { current: true }), r("x/b", 0.99, null), r("x/c", 0.89, 0.5)], { role: "lettura", fakeModels: false });
+  assert.deepEqual([a.best, a.efficient, a.cheapest], ["x/a", "x/c", "x/c"]);
+  assert.ok(a.verdict.kind === "cambia" && a.verdict.model === "x/c");
+  // Nessun costo noto: il più bravo per sola qualità, e il consiglio senza costi.
+  const u = analyzeBench([r("x/a", 0.9, null, { current: true }), r("x/b", 0.99, null)], { role: "lettura", fakeModels: false });
+  assert.equal(u.best, "x/b");
+  assert.equal(u.verdict.kind, "senza_costi");
+});
+
+test("le evals si confrontano solo con quelle dello stesso livello", () => {
+  const p = (quality: number, level: string | null | undefined) => ({ quality, thresholdsMet: true, fakeModels: false, inConstruction: false, branch: "main", level });
+  assert.equal(evalsAlert(p(1, "veloce"), p(0.9, "pull_request")), null, "veloce → pull_request: non è un calo");
+  assert.deepEqual(evalsAlert(p(1, "pull_request"), p(0.9, "pull_request")), { kind: "in_calo", drop: 1 - 0.9 });
+  assert.deepEqual(evalsAlert(p(1, undefined), p(0.9, undefined)), { kind: "in_calo", drop: 1 - 0.9 }, "senza livello da tutte e due le parti: come prima");
+});
+
+test("un banco superato: evals vere di main più nuove, con un altro modello per il ruolo (o senza il ruolo)", () => {
+  const bench = { role: "lettura", at: "2026-11-14T10:00:00.000Z", currentModel: SONNET };
+  const evals = (over: Record<string, unknown> = {}) => ({ at: "2026-11-14T11:00:00.000Z", branch: "main", fakeModels: false, models: { lettura: HAIKU } as Record<string, string>, ...over });
+  assert.equal(benchSuperseded(bench, evals()), true, "il consiglio è stato seguito");
+  assert.equal(benchSuperseded(bench, evals({ models: { scrittura: HAIKU } })), true, "il ruolo non c'è più");
+  assert.equal(benchSuperseded(bench, evals({ models: { lettura: SONNET.toUpperCase() } })), false, "stesso modello: il consiglio vale ancora");
+  assert.equal(benchSuperseded(bench, evals({ at: "2026-11-14T09:00:00.000Z" })), false, "evals più vecchie del banco");
+  assert.equal(benchSuperseded(bench, evals({ at: bench.at })), false, "nello stesso istante: non dopo");
+  assert.equal(benchSuperseded(bench, evals({ fakeModels: true })), false, "le evals finte non dicono il modello vero");
+  assert.equal(benchSuperseded(bench, evals({ branch: "tj-0049/t-3" })), false, "solo main");
+  assert.equal(benchSuperseded(bench, null), false);
+  assert.equal(benchSuperseded({ ...bench, role: null }, evals()), false);
+  assert.equal(benchSuperseded(bench, evals({ models: Object.assign(Object.create(null), { constructor: HAIKU }) })), true, "un ruolo «constructor» non viene dal prototipo");
 });
 
 test("l'attuale sotto soglia: conviene il più efficiente che le rispetta", () => {

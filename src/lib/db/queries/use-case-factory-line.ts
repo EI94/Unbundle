@@ -12,9 +12,10 @@ import "server-only";
  *   all'unione (la mediana), solo da {@link MIN_MERGED_FOR_MEDIAN} PR unite in su: con meno sarebbe il tempo di una
  *   persona. Mai per persona. In «Da fare per te» le PR pronte dei tuoi casi, tranne quelle dei
  *   tuoi compiti.
- * - **(8.2a) Evals e banco di prova:** per ogni caso le evals (quelle di `main`, se ci sono) e il consiglio dell'ultimo
- *   banco di ogni ruolo, letti per tutti i casi insieme (`loadEvalFacts`). In «Da fare per te», a chi costruisce il caso,
- *   il consiglio del banco e le evals di `main` sotto soglia (con i modelli veri, mai in costruzione).
+ * - **(8.2a) Evals e banco di prova:** per ogni caso le evals che fanno il suo stato (`main` prima, poi i modelli veri,
+ *   poi il livello completo) e il consiglio dell'ultimo banco di ogni ruolo, letti per tutti i casi insieme
+ *   (`loadEvalFacts`). In «Da fare per te», a chi costruisce il caso, il consiglio del banco e le evals di `main` sotto
+ *   soglia (con i modelli veri, mai in costruzione).
  */
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import { tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
@@ -61,9 +62,9 @@ export interface FactoryCaseRow {
   prs: { open: number; merged: number; medianDays: number | null; costPerPrUsd: number | null; tokensPerPr: number | null };
   repo: string | null;
   mine: boolean;
-  /** (8.2a) Le evals del caso (quelle di `main`, se ci sono; altrimenti le ultime), o null se non ce ne sono. */
+  /** (8.2a) Le evals che fanno lo stato del caso (`main` prima, poi i modelli veri, poi il livello completo), o null. */
   evals: CaseEvalFacts["evals"];
-  /** (8.2a) La lettura dell'ultimo banco di ogni ruolo, in ordine di ruolo. */
+  /** (8.2a) La lettura dell'ultimo banco di ogni ruolo, in ordine di ruolo, e se è superato. */
   benches: CaseEvalFacts["benches"];
 }
 
@@ -252,12 +253,12 @@ ORDER BY p.use_case_id, p.number`)
     const text = r.ref ? `La PR #${number} di ${r.ref} aspetta una revisione.` : `La PR #${number} in ${repo} aspetta una revisione.`;
     todos.push({ kind: "rivedi", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text, href: pullRequestUrl(repo, number) });
   }
-  // (8.2a) A chi costruisce il caso: il consiglio del banco, per ruolo; le evals di main sotto soglia (modelli veri, mai
-  // in costruzione), come la campanella.
+  // (8.2a) A chi costruisce il caso: il consiglio del banco, per ruolo, tranne quello di un banco superato (seguito, o il
+  // ruolo non c'è più); le evals di main sotto soglia (modelli veri, mai in costruzione), come la campanella.
   for (const c of cases) {
     if (!builderOf.has(c.useCaseId)) continue;
     for (const b of c.benches) {
-      if (b.verdict.kind === "cambia") todos.push({ kind: "banco", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: b.verdict.text });
+      if (b.verdict.kind === "cambia" && !b.superseded) todos.push({ kind: "banco", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: b.verdict.text });
     }
     const e = c.evals;
     if (e && !e.thresholdsMet && !e.inConstruction && !e.fakeModels && e.branch === EVALS_MAIN_BRANCH) {

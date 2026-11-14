@@ -240,6 +240,11 @@ test("l'avviso delle evals: in calo di 5 punti, sotto soglia, mai in costruzione
 test("la piccola linea dell'andamento, con le parole per chi non la vede", () => {
   const points = [point(10, 0.931), point(11, 0.95), point(12, 0.9643)].map(({ at, quality, thresholdsMet }) => ({ at, quality, thresholdsMet }));
   assert.equal(trendCaption(points), "Ultime 3: da 93,1% a 96,4%");
+  // Due estremi uguali non nascondono la salita e la discesa in mezzo.
+  const upDown = [0.8947, 0.9474, 1, 0.8947].map((quality) => ({ at: points[0].at, quality, thresholdsMet: true }));
+  assert.equal(trendCaption(upDown), "Ultime 4: da 89,5% a 89,5% · massimo 100%");
+  const dip = [0.95, 0.8, 0.96].map((quality) => ({ at: points[0].at, quality, thresholdsMet: true }));
+  assert.equal(trendCaption(dip), "Ultime 3: da 95% a 96% · minimo 80%");
   assert.equal(trendSentence(points, "main"), "Andamento delle ultime 3 evals sul ramo main, dalla più vecchia: 93,1%, 95%, 96,4%.");
   assert.equal(trendSentence(points, null), "Andamento delle ultime 3 evals, dalla più vecchia: 93,1%, 95%, 96,4%.");
   const line = sparkline(points);

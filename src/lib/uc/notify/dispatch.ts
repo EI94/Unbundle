@@ -100,8 +100,27 @@ export type EmailTemplateKey = (typeof EMAIL_TEMPLATES)[number];
  */
 export const NOTICE_ROLE_RE = /^[a-z][a-z0-9_-]{0,39}$/;
 export const NOTICE_MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,79}$/;
-export const NOTICE_MODEL_LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9 ._:/@-]{0,79}$/;
 export const NOTICE_QUALITY_TEXT_RE = /^(?:100|[1-9]?[0-9])(?:,[0-9])?[\s\u00a0\u202f]?%$/;
+/**
+ * (8.2a) I nomi dei modelli del catalogo (`CATALOGUE_MODEL_NAMES` del modulo del banco, nello stesso ordine; un test
+ * controlla che restino uguali). Nell'e-mail del banco il modello si scrive solo con uno di questi: mai con un testo
+ * arrivato con la richiesta, che chi manda il banco sceglie (potrebbe essere un indirizzo, un dominio, una e-mail).
+ */
+export const NOTICE_MODEL_NAMES: ReadonlySet<string> = new Set([
+  "Claude Fable 5.2",
+  "Claude Fable 5.1",
+  "Claude Fable 5",
+  "Claude Opus 5.5",
+  "Claude Opus 5",
+  "Claude Opus 4.8",
+  "Claude Opus 4.7",
+  "Claude Opus 4.6",
+  "Claude Sonnet 5.5",
+  "Claude Sonnet 5",
+  "Claude Sonnet 4.6",
+  "Claude Haiku 5.5",
+  "Claude Haiku 4.5",
+]);
 
 export const HOLD_EMAIL_NOT_CONFIGURED = "email_non_configurata";
 export const HOLD_CASE_SUSPENDED = "caso_sospeso";
@@ -526,17 +545,17 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
     }
     case "banco_consiglio": {
       // Email interna: una al giorno per caso. Il ruolo e il modello consigliato vengono dalla coda, controllati con le
-      // regole del banco; mai una persona, mai i numeri del cliente.
+      // regole del banco; mai una persona, mai i numeri del cliente. Il modello si scrive solo con il nome del catalogo.
       if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
       const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
       if (!useCase) return cancel("use_case_assente");
       const role = typeof n.payload.role === "string" && NOTICE_ROLE_RE.test(n.payload.role) ? n.payload.role : null;
       const model = typeof n.payload.model === "string" && NOTICE_MODEL_RE.test(n.payload.model) ? n.payload.model : null;
       if (!role || !model) return cancel("consiglio_assente");
-      // Il nome da mostrare; senza, l'id del modello.
-      const label = typeof n.payload.label === "string" && NOTICE_MODEL_LABEL_RE.test(n.payload.label) ? n.payload.label : model;
+      // Il nome del catalogo; altrimenti l'e-mail dice «un altro modello» e rimanda al confronto nel progetto. Mai l'id.
+      const name = typeof n.payload.label === "string" && NOTICE_MODEL_NAMES.has(n.payload.label) ? n.payload.label : null;
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: "banco_consiglio", role, model: label, link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "banco_consiglio", role, model: name, link }), after: null };
     }
     case "evals_in_calo": {
       // Email interna: una al giorno per caso. Sotto soglia, o giù rispetto alle precedenti (con il calo): dalla coda,

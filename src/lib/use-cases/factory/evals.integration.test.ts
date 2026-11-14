@@ -55,9 +55,11 @@ const ids = {
   useCase: randomUUID(),
   other: randomUUID(),
   third: randomUUID(),
+  fourth: randomUUID(),
   dossier: randomUUID(),
   dossierOther: randomUUID(),
   dossierThird: randomUUID(),
+  dossierFourth: randomUUID(),
   lead: randomUUID(),
   analyst: randomUUID(),
   dev: randomUUID(),
@@ -142,6 +144,9 @@ const banco = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** I modelli di oggi per ruolo, come in agent.yaml: la CLI li manda con le evals (dicono se un banco è stato seguito). */
+const TODAY = { lettura: SONNET, riassunto: SONNET, scrittura: HAIKU, verifica: SONNET };
+
 /** Le evals con i modelli di oggi: `superati` su 100; la soglia è 85. */
 const evalsBody = (passed: number, over: Record<string, unknown> = {}) => ({
   caso: CODE,
@@ -152,7 +157,7 @@ const evalsBody = (passed: number, over: Record<string, unknown> = {}) => ({
   versioneModello: "1.4.0",
   modelliFinti: false,
   inCostruzione: false,
-  modelli: { lettura: HAIKU },
+  modelli: TODAY,
   risultati: [result({ superati: passed, totali: 100, soglieRispettate: passed >= 85, costoPer1000Usd: 0.12 })],
   ...over,
 });
@@ -162,8 +167,8 @@ const bell = async (kind: string, useCaseId = ids.useCase) =>
 const mails = async (template: string, caseId = ids.dossier) =>
   q(`SELECT recipient_user_id, payload, status, hold_reason FROM uc_notifications WHERE case_id = $1 AND template_key = $2 ORDER BY recipient_user_id`, [caseId, template]);
 const clearNotices = async (kind: string) => {
-  await q(`DELETE FROM use_case_notifications WHERE use_case_id = ANY($1::uuid[]) AND kind = $2`, [[ids.useCase, ids.other, ids.third], kind]);
-  await q(`DELETE FROM uc_notifications WHERE case_id = ANY($1::uuid[]) AND template_key = $2`, [[ids.dossier, ids.dossierOther, ids.dossierThird], kind]);
+  await q(`DELETE FROM use_case_notifications WHERE use_case_id = ANY($1::uuid[]) AND kind = $2`, [[ids.useCase, ids.other, ids.third, ids.fourth], kind]);
+  await q(`DELETE FROM uc_notifications WHERE case_id = ANY($1::uuid[]) AND template_key = $2`, [[ids.dossier, ids.dossierOther, ids.dossierThird, ids.dossierFourth], kind]);
 };
 const sorted = (...people: Person[]) => people.map((p) => ids[p]).sort();
 const afterQueue = () => ((globalThis as { __evalsAfter?: (() => Promise<void>)[] }).__evalsAfter ??= []);
@@ -222,12 +227,11 @@ before(async () => {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1, $2, $3, now())`, [ids[person], EMAIL[person], NAME[person]]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, ids[person], role[person]]);
   }
-  await q(`INSERT INTO use_cases (id, workspace_id, title, code) VALUES ($1, $4, 'Smistamento di prova', 'EV-0001'), ($2, $4, 'Lettura dei contratti', 'EV-0002'), ($3, $4, 'Risposte ai fornitori', 'EV-0003')`, [
-    ids.useCase,
-    ids.other,
-    ids.third,
-    ids.ws,
-  ]);
+  await q(
+    `INSERT INTO use_cases (id, workspace_id, title, code) VALUES ($1, $4, 'Smistamento di prova', 'EV-0001'), ($2, $4, 'Lettura dei contratti', 'EV-0002'),
+       ($3, $4, 'Risposte ai fornitori', 'EV-0003'), ($5, $4, 'Note spese', 'EV-0004')`,
+    [ids.useCase, ids.other, ids.third, ids.ws, ids.fourth],
+  );
   await q(
     `INSERT INTO uc_templates (id, key, version, name, archetype, definition, definition_hash, restricted_to_workspace_id)
      VALUES ($1::uuid, $2, '1.0.0', 'Template di prova evals', 'prova', '{"confidential": false}'::jsonb, $3, $4::uuid)`,
@@ -237,6 +241,7 @@ before(async () => {
     [ids.dossier, ids.useCase, "1"],
     [ids.dossierOther, ids.other, "2"],
     [ids.dossierThird, ids.third, "3"],
+    [ids.dossierFourth, ids.fourth, "4"],
   ] as const) {
     await q(
       `INSERT INTO uc_cases (id, workspace_id, organization_id, portfolio_use_case_id, template_id, template_version, code, title, status, setup_completed_at)
@@ -368,6 +373,7 @@ test("i corpi sbagliati: 400 con il messaggio; la chiave resta libera per la ric
     [banco({ risultati: [result({ superati: 29 })] }), /superate non possono essere più delle totali/],
     [evalsBody(95, { risultati: [result(), result({ modello: SONNET, attuale: false })] }), /un solo risultato/],
     [banco({ commit: "XYZ" }), /^commit:/],
+    [banco({ modelli: { scrittura: HAIKU } }), /^modelli\.lettura: il modello di oggi del ruolo del banco, da agent\.yaml/],
   ];
   for (const [body, message] of cases) {
     const r = await post(tokens.lead!, body, k);
@@ -453,7 +459,7 @@ test("il banco «resta» e il banco con i modelli finti: nessun avviso; con i fi
   assert.equal(fake.status, 200);
   assert.equal(fake.json.raccomandazione, null, "modelli finti: nessuna raccomandazione");
   assert.equal(fake.json.avviso, null);
-  const nobody = await post(tokens.lead!, banco({ ruolo: "verifica", modelli: {}, risultati: [result({ modello: SONNET, soglieRispettate: false }), result({ modello: HAIKU, attuale: false, soglieRispettate: false })] }));
+  const nobody = await post(tokens.lead!, banco({ ruolo: "verifica", modelli: { verifica: SONNET }, risultati: [result({ modello: SONNET, soglieRispettate: false }), result({ modello: HAIKU, attuale: false, soglieRispettate: false })] }));
   assert.equal((nobody.json.raccomandazione as Row).tipo, "nessuno");
   assert.ok(!("modello" in (nobody.json.raccomandazione as Row)));
   assert.deepEqual(await bell("banco_consiglio"), [], "resta, finti e nessuno: nessun avviso");
@@ -496,7 +502,7 @@ test("le evals: sotto soglia su main avvisano il team; in costruzione, con i mod
   assert.equal(await send(80, {}, tokens.dev!), "sotto_soglia");
 });
 
-test("la panoramica: main prima, l'andamento dalla più vecchia sullo stesso ramo (ultime 12), il banco per ruolo; senza main, l'ultimo ramo", opts, async () => {
+test("la panoramica: main prima, l'andamento dalla più vecchia della stessa serie (ultime 12), il banco per ruolo; senza main, l'ultimo ramo", opts, async () => {
   const cli = await overview(tokens.owner!);
   assert.equal(cli.status, 200);
   assert.equal(cli.json.caso, CODE);
@@ -505,8 +511,9 @@ test("la panoramica: main prima, l'andamento dalla più vecchia sullo stesso ram
   assert.deepEqual([latest.tipo, latest.ramo, latest.ruolo, latest.modelliFinti, latest.inCostruzione, latest.prove], ["evals", "main", null, false, false, 100]);
   assert.equal((latest.risultati as Row[])[0].superati, 80, "le ultime di main");
   const trend = ev.andamento as Row[];
-  assert.deepEqual(trend.map((t) => Math.round(Number(t.qualita) * 100)), [80, 50, 80, 97, 91, 89, 80], "tutte quelle di main, dalla più vecchia, finte comprese");
-  assert.deepEqual(trend.map((t) => t.modelliFinti), [false, true, false, false, false, false, false]);
+  // Quelle di main con i modelli veri, dalla più vecchia: le finte (50) sono un'altra serie.
+  assert.deepEqual(trend.map((t) => Math.round(Number(t.qualita) * 100)), [80, 80, 97, 91, 89, 80], "le vere di main, dalla più vecchia, senza le finte");
+  assert.ok(trend.every((t) => t.modelliFinti === false));
   const banchi = cli.json.banchi as Row[];
   assert.deepEqual(banchi.map((b) => b.ruolo), ["lettura", "riassunto", "scrittura", "verifica"], "l'ultimo banco di ogni ruolo, in ordine");
   const lettura = banchi[0];
@@ -517,9 +524,9 @@ test("la panoramica: main prima, l'andamento dalla più vecchia sullo stesso ram
   assert.deepEqual(Object.keys((scrittura.risultati as Row[])[0]), ["modello", "attuale", "qualita", "superati", "totali", "soglieRispettate", "gruppi", "costoPer1000Usd", "latenzaP50Ms", "latenzaP95Ms", "tokenIngressoMedi", "tokenUscitaMedi", "errori"]);
   assert.equal((scrittura.risultati as Row[])[0].attuale, true, "l'attuale per primo");
 
-  // La stessa cosa per la pagina; con 13 evals di main l'andamento tiene le ultime 12, l'ultima compresa.
+  // La stessa cosa per la pagina; con 13 evals vere di main l'andamento tiene le ultime 12, l'ultima compresa.
   const target = { workspaceId: ids.ws, useCaseId: ids.useCase };
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     const parsed = (await import("./benchmark-input.ts")).parseEvalRun(evalsBody(90 + i));
     assert.ok(parsed.ok);
     if (parsed.ok) assert.ok((await evals.recordEvalRun(exec, target, parsed.value, { actorUserId: ids.lead })).ok);
@@ -528,9 +535,9 @@ test("la panoramica: main prima, l'andamento dalla più vecchia sullo stesso ram
   assert.ok(page);
   if (!page) return;
   assert.equal(page.evals.trend.length, evals.EVALS_TREND_MAX);
-  assert.deepEqual(page.evals.trend.map((t) => Math.round(t.quality * 100)), [50, 80, 97, 91, 89, 80, 90, 91, 92, 93, 94, 95]);
+  assert.deepEqual(page.evals.trend.map((t) => Math.round(t.quality * 100)), [80, 97, 91, 89, 80, 90, 91, 92, 93, 94, 95, 96]);
   assert.ok(page.evals.trend.every((t, i, all) => i === 0 || t.at >= all[i - 1].at), "dalla più vecchia");
-  assert.equal(page.evals.latest?.results[0].passed, 95);
+  assert.equal(page.evals.latest?.results[0].passed, 96);
   assert.equal(page.evals.trend.at(-1)?.at, page.evals.latest?.createdAt, "l'andamento finisce con le ultime");
   // Gli istanti con i millesimi del database, non arrotondati al secondo.
   const [exact] = await q(`SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at FROM use_case_eval_runs WHERE id = $1`, [page.evals.latest?.id]);
@@ -564,16 +571,16 @@ test("la pagina «Agent Factory»: le evals e il consiglio del banco per caso; i
   const ev = view.cases.find((c) => c.useCaseId === ids.useCase)!;
   assert.deepEqual([ev.evals?.quality, ev.evals?.thresholdsMet, ev.evals?.branch, ev.evals?.fakeModels], [0.84, false, "main", false]);
   assert.equal(evalsFact(ev.evals), "evals 84%, sotto soglia");
-  assert.deepEqual(ev.benches.map((b) => [b.role, b.verdict.kind]), [["lettura", "finti"], ["riassunto", "cambia"], ["scrittura", "resta"], ["verifica", "nessuno"]]);
+  assert.deepEqual(ev.benches.map((b) => [b.role, b.verdict.kind, b.superseded]), [["lettura", "finti", false], ["riassunto", "cambia", false], ["scrittura", "resta", false], ["verifica", "nessuno", false]]);
   assert.deepEqual(benchFacts(ev.benches), ["il banco consiglia Claude Haiku 5.5 per «riassunto»"]);
   const mine = view.todos.filter((t) => t.useCaseId === ids.useCase && (t.kind === "banco" || t.kind === "evals"));
   assert.deepEqual(mine.map((t) => t.kind), ["banco", "evals"]);
   assert.match(mine[0].text, /^Conviene Claude Haiku 5\.5 per «riassunto»/);
-  assert.equal(mine[1].text, "Le evals di main sono sotto soglia (84%): guarda quali prove non passano.");
+  assert.equal(mine[1].text, "Le evals di main sono sotto soglia (84%): guarda quali gruppi non passano.");
   assert.ok(view.todos.every((t) => PEOPLE.every((p) => !t.text.includes(NAME[p]))), "«Da fare per te» senza nomi");
-  // L'altro caso: evals solo su un ramo, sotto soglia: si dicono, ma non sono «Da fare».
+  // L'altro caso: evals solo su un ramo, sotto soglia: si dicono con il ramo, ma non sono «Da fare».
   const other = view.cases.find((c) => c.useCaseId === ids.other)!;
-  assert.equal(evalsFact(other.evals), "evals 75%, sotto soglia");
+  assert.equal(evalsFact(other.evals), "evals 75% su ev-0002/t-1, sotto soglia");
   assert.ok(!view.todos.some((t) => t.useCaseId === ids.other && t.kind === "evals"), "non di main");
   // Il cliente è nel team ma non costruisce: vede i casi, non i «Da fare» del banco.
   const client = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.owner, seeAll: false, canSeeNeeds: false });
@@ -607,7 +614,7 @@ test("le evals insieme dello stesso caso: una alla volta, ogni avviso rispetto a
   rows.forEach((row, i) => {
     const r = recorded.find((x) => x.ok && x.value.id === row.id);
     assert.ok(r && r.ok);
-    const point = (passed: number) => ({ quality: passed / 100, thresholdsMet: passed >= 85, fakeModels: false, inConstruction: false, branch: "main" });
+    const point = (passed: number) => ({ quality: passed / 100, thresholdsMet: passed >= 85, fakeModels: false, inConstruction: false, branch: "main", level: "pull_request" });
     const expected = evalsAlert(i === 0 ? null : point(Number(rows[i - 1].passed)), point(Number(row.passed)));
     if (r && r.ok) assert.deepEqual(r.value.alert, expected, `esecuzione ${i}`);
   });
@@ -634,7 +641,7 @@ test("una ripresa con lo stesso id risponde come la prima volta e non avvisa di 
   const elsewhere = await evals.recordEvalRun(exec, { workspaceId: ids.ws, useCaseId: ids.other }, parsed.value, { id, actorUserId: ids.lead });
   assert.deepEqual(elsewhere.ok ? null : elsewhere.code, "conflitto");
   // Un banco ripreso: la stessa lettura.
-  const bench = parseEvalRun(banco({ ruolo: "ripresa", modelli: {} }));
+  const bench = parseEvalRun(banco({ ruolo: "ripresa", modelli: { ripresa: SONNET } }));
   assert.ok(bench.ok);
   if (!bench.ok) return;
   const benchId = randomUUID();
@@ -650,4 +657,230 @@ test("una ripresa con lo stesso id risponde come la prima volta e non avvisa di 
   assert.deepEqual(await evals.recordEvalRun(missing, target, parsed.value, { actorUserId: ids.lead }).then((r) => (r.ok ? null : r.code)), "non_disponibile");
   assert.equal((await evals.loadEvalFacts(missing, ids.ws, [ids.useCase])).size, 0);
   assert.equal(await evals.evalsStoreReady({ batch: async () => Promise.reject(new Error("rete")) } as unknown as typeof exec), false);
+});
+
+/** Le evals di EV-0004: `passed` su `total`, la soglia è 85%. */
+const fourthEvals = (passed: number, total: number, over: Record<string, unknown> = {}) => ({
+  ...evalsBody(passed, over),
+  caso: "EV-0004",
+  risultati: [result({ superati: passed, totali: total, soglieRispettate: passed / total >= 0.85 })],
+});
+
+test("le evals si confrontano solo con quelle dello stesso livello: da «veloce» a «pull_request» non è un calo, e l'andamento non le mescola", opts, async () => {
+  await clearNotices("evals_in_calo");
+  const target = { workspaceId: ids.ws, useCaseId: ids.fourth };
+  const { parseEvalRun } = await import("./benchmark-input.ts");
+  // «veloce»: le regole, gli avversari e i primi 20 casi d'oro, tutte passate.
+  const fast = await post(tokens.analyst!, fourthEvals(35, 35, { livello: "veloce" }));
+  assert.deepEqual([fast.status, fast.json.avviso], [200, null]);
+  // Poi tutte le prove: 7 punti sotto le veloci, ma non sono le stesse prove. Nessun calo, nessun avviso al team.
+  const full = parseEvalRun(fourthEvals(107, 115));
+  assert.ok(full.ok);
+  if (!full.ok) return;
+  const id = randomUUID();
+  const first = await evals.recordEvalRun(exec, target, full.value, { id, actorUserId: ids.analyst });
+  assert.ok(first.ok);
+  if (!first.ok) return;
+  assert.deepEqual([first.value.alert, first.value.notified], [null, false]);
+  // La ripresa con lo stesso id confronta allo stesso modo.
+  const again = await evals.recordEvalRun(exec, target, full.value, { id, actorUserId: ids.analyst });
+  assert.ok(again.ok && again.value.alert === null);
+  assert.deepEqual(await bell("evals_in_calo", ids.fourth), []);
+  let page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual([page?.evals.latest?.level, page?.evals.trend.map((t) => Math.round(t.quality * 1000))], ["pull_request", [930]], "un punto: le veloci non sono nell'andamento");
+  // Lo stesso livello sì: sotto soglia, 8,4 punti sotto le precedenti complete; il team lo sa.
+  const below = await post(tokens.analyst!, fourthEvals(55, 65));
+  assert.deepEqual([below.status, below.json.avviso], [200, "sotto_soglia"]);
+  assert.deepEqual(await bell("evals_in_calo", ids.fourth), sorted("dev", "lead"));
+  const [mail] = await mails("evals_in_calo", ids.dossierFourth);
+  assert.deepEqual(mail.payload, { useCase: ids.fourth, alert: "sotto_soglia", qualityText: "84,6%" });
+  page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual(page?.evals.trend.map((t) => Math.round(t.quality * 1000)), [930, 846]);
+  // Di nuovo veloci, tutte passate: rispetto alle veloci di prima niente; nell'andamento delle complete non entrano.
+  const fastAgain = await post(tokens.analyst!, fourthEvals(35, 35, { livello: "veloce" }));
+  assert.deepEqual([fastAgain.status, fastAgain.json.avviso], [200, null]);
+});
+
+test("lo stato delle evals del caso: le vere e complete di main, anche se dopo arrivano evals «veloce» o con i modelli finti", opts, async () => {
+  // EV-0004 (dal test di prima): le complete di main, vere, sotto soglia (55 su 65); poi le veloci, tutte passate.
+  const target = { workspaceId: ids.ws, useCaseId: ids.fourth };
+  const fake = await post(tokens.analyst!, fourthEvals(65, 65, { modelliFinti: true }));
+  assert.deepEqual([fake.status, fake.json.avviso], [200, null]);
+  // La pagina: le complete vere, con il loro andamento; né le veloci né le finte, che sono più recenti.
+  const page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual([page?.evals.latest?.level, page?.evals.latest?.fakeModels, page?.evals.latest?.results[0].passed], ["pull_request", false, 55]);
+  assert.deepEqual(page?.evals.trend.map((t) => [Math.round(t.quality * 1000), t.fakeModels]), [[930, false], [846, false]]);
+  assert.equal(page?.evals.trend.at(-1)?.at, page?.evals.latest?.createdAt, "l'ultimo punto è lo stato");
+  // La CLI legge la stessa cosa.
+  const cli = await overview(tokens.lead!, "EV-0004");
+  const latest = (cli.json.evals as Row).ultime as Row;
+  assert.deepEqual([latest.livello, latest.modelliFinti, (latest.risultati as Row[])[0].superati], ["pull_request", false, 55]);
+  assert.equal(((cli.json.evals as Row).andamento as Row[]).length, 2);
+  // L'Agent Factory e «Da fare per te»: sotto soglia resta da fare.
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  const view = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.analyst, seeAll: false, canSeeNeeds: true });
+  const row = view.cases.find((c) => c.useCaseId === ids.fourth)!;
+  assert.deepEqual([row.evals?.quality, row.evals?.thresholdsMet, row.evals?.fakeModels, row.evals?.branch], [55 / 65, false, false, "main"]);
+  assert.deepEqual(view.todos.filter((t) => t.useCaseId === ids.fourth).map((t) => t.kind), ["evals"]);
+  // Senza evals vere di main, le finte di main vengono prima di quelle vere di un ramo (main prima di tutto).
+  const onlyFake = { workspaceId: ids.ws, useCaseId: ids.third };
+  const { parseEvalRun } = await import("./benchmark-input.ts");
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'evals'`, [ids.third]);
+  for (const body of [fourthEvals(60, 100, { ramo: "ev-0003/t-1" }), fourthEvals(99, 100, { modelliFinti: true })]) {
+    const parsed = parseEvalRun({ ...body, caso: "EV-0003" });
+    assert.ok(parsed.ok && (await evals.recordEvalRun(exec, onlyFake, parsed.value, { actorUserId: ids.lead })).ok);
+  }
+  const third = await evals.loadEvalOverview(exec, onlyFake);
+  assert.deepEqual([third?.evals.latest?.branch, third?.evals.latest?.fakeModels, third?.evals.trend.length], ["main", true, 1]);
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'evals'`, [ids.third]);
+});
+
+test("un banco superato non consiglia più: evals vere di main con il nuovo modello, o senza il ruolo; con lo stesso modello resta da fare", opts, async () => {
+  // EV-0002: finora solo evals su dei rami, nessun banco.
+  const target = { workspaceId: ids.ws, useCaseId: ids.other };
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  const { benchFacts } = await import("./line.ts");
+  const { benchSuperseded } = await import("./benchmark.ts");
+  const evalsOf = (modelli: Record<string, string>, over: Record<string, unknown> = {}) => ({ ...evalsBody(95, { modelli, ...over }), caso: "EV-0002" });
+  const state = async () => {
+    const view = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.analyst, seeAll: false, canSeeNeeds: true });
+    const row = view.cases.find((c) => c.useCaseId === ids.other)!;
+    return { row, todos: view.todos.filter((t) => t.useCaseId === ids.other && t.kind === "banco").map((t) => t.text), facts: benchFacts(row.benches) };
+  };
+  const advice = "il banco consiglia Claude Haiku 5.5 per «lettura»";
+  // Il banco «lettura» consiglia Haiku al posto di Sonnet.
+  const bench = await post(tokens.lead!, { ...banco(), caso: "EV-0002" });
+  assert.equal((bench.json.raccomandazione as Row).tipo, "cambia");
+  let now = await state();
+  assert.deepEqual([now.facts, now.todos.length, now.row.benches[0].superseded], [[advice], 1, false], "le evals del caso sono di un ramo: il consiglio resta");
+  assert.deepEqual([now.row.benches[0].currentModel, now.row.benches[0].at.length > 0], [SONNET, true]);
+  // Evals vere di main con lo stesso modello per «lettura»: il consiglio resta da fare.
+  assert.equal((await post(tokens.lead!, evalsOf({ lettura: SONNET, scrittura: HAIKU }))).status, 200);
+  now = await state();
+  assert.deepEqual([now.facts, now.todos.length, now.row.benches[0].superseded], [[advice], 1, false], "stesso modello");
+  // Con il nuovo modello, ma finte o su un altro ramo: non fanno lo stato del caso, il consiglio resta.
+  assert.equal((await post(tokens.lead!, evalsOf({ lettura: HAIKU }, { modelliFinti: true }))).status, 200);
+  assert.equal((await post(tokens.lead!, evalsOf({ lettura: HAIKU }, { ramo: "ev-0002/t-3-haiku" }))).status, 200);
+  now = await state();
+  assert.deepEqual([now.facts, now.todos.length], [[advice], 1], "finte o di un ramo");
+  // Evals vere di main con Haiku per «lettura»: il consiglio è stato seguito. Niente «Da fare», niente fatto.
+  assert.equal((await post(tokens.lead!, evalsOf({ lettura: HAIKU, scrittura: HAIKU }))).status, 200);
+  now = await state();
+  assert.deepEqual([now.facts, now.todos, now.row.benches[0].superseded, now.row.benches[0].verdict.kind], [[], [], true, "cambia"]);
+  assert.deepEqual(now.row.evals?.models, { lettura: HAIKU, scrittura: HAIKU });
+  // La pagina ha quello che serve per dirlo: le evals che fanno lo stato e il banco, con i loro istanti e modelli.
+  const page = await evals.loadEvalOverview(exec, target);
+  const latest = page?.evals.latest ?? null;
+  const pageBench = page?.benches.find((b) => b.role === "lettura");
+  assert.ok(latest && pageBench);
+  if (!latest || !pageBench) return;
+  const superseded = (models: Record<string, string>) =>
+    benchSuperseded(
+      { role: pageBench.role, at: pageBench.run.createdAt, currentModel: pageBench.run.results.find((r) => r.current)?.model ?? null },
+      { at: latest.createdAt, branch: latest.branch, fakeModels: latest.fakeModels, models },
+    );
+  assert.equal(superseded(latest.models), true);
+  // Il ruolo tolto da agent.yaml: lo stesso, il consiglio non è più da fare.
+  assert.equal((await post(tokens.lead!, evalsOf({ scrittura: HAIKU }))).status, 200);
+  now = await state();
+  assert.deepEqual([now.facts, now.todos, now.row.benches[0].superseded], [[], [], true]);
+  // Un banco nuovo, dopo le evals: il suo consiglio torna da fare.
+  assert.equal((await post(tokens.lead!, { ...banco(), caso: "EV-0002" })).status, 200);
+  now = await state();
+  assert.deepEqual([now.facts, now.todos.length, now.row.benches[0].superseded], [[advice], 1, false]);
+});
+
+test("il consiglio verso un modello fuori dal catalogo: in coda senza nome, e l'e-mail non scrive mai l'id", opts, async () => {
+  await clearNotices("banco_consiglio");
+  const { planDelivery } = await import("../../uc/notify/dispatch.ts");
+  const { renderEmail } = await import("../../uc/notify/email-templates.ts");
+  const evil = "https://evil.example/";
+  // Il banco di EV-0003: un «modello» scelto da chi manda, che costa il 94% in meno con la stessa qualità.
+  const r = await post(tokens.lead!, { ...banco({ risultati: [result({ modello: SONNET, costoPer1000Usd: 1.8 }), result({ modello: evil, attuale: false, costoPer1000Usd: 0.1 })] }), caso: "EV-0003" });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual([(r.json.raccomandazione as Row).tipo, (r.json.raccomandazione as Row).modello], ["cambia", evil]);
+  const queued = await mails("banco_consiglio", ids.dossierThird);
+  assert.deepEqual(queued.map((m) => String(m.recipient_user_id)), sorted("analyst", "dev"));
+  assert.deepEqual(queued[0].payload, { useCase: ids.third, role: "lettura", model: evil }, "nessun nome da scrivere");
+  // L'e-mail dalla riga vera della coda.
+  const plan = planDelivery(
+    {
+      id: randomUUID(),
+      workspaceId: ids.ws,
+      caseId: ids.dossierThird,
+      requestId: null,
+      recipientContactId: null,
+      recipientUserId: ids.analyst,
+      templateKey: "banco_consiglio",
+      payload: queued[0].payload as Record<string, string | boolean>,
+      attempts: 0,
+      dedupeKey: `banco_consiglio:${ids.dossierThird}:${ids.analyst}`,
+    },
+    {
+      clientName: "Cliente prova",
+      case: { id: ids.dossierThird, code: "EV-0003", title: "Risposte ai fornitori", status: "pronto_sviluppo", ownerContactId: null, designated: { owner: null, privacy: null } },
+      recipient: { kind: "user", id: ids.analyst, email: EMAIL.analyst, reachable: true, digestOptOut: false, lateralSpace: true },
+      request: null,
+    },
+    { origin: "https://app.unbundle.test", lsDomains: ["ls.test"], now: new Date() },
+  );
+  assert.equal(plan.action, "send");
+  if (plan.action !== "send") return;
+  const email = renderEmail(plan.build(null));
+  assert.match(email.text, /il banco di prova consiglia un altro modello: il confronto è nel progetto\./);
+  assert.ok(!email.text.includes("evil") && !email.html.includes("evil") && !email.subject.includes("evil"));
+  await clearNotices("banco_consiglio");
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'banco'`, [ids.third]);
+});
+
+test("i ruoli del banco hanno un tetto: un ruolo nuovo oltre il ventesimo è un conflitto, uno che c'è si rifà; le letture tengono i 20 più recenti", opts, async () => {
+  // EV-0003, senza banchi: 19 ruoli scritti a mano, dal più vecchio.
+  const target = { workspaceId: ids.ws, useCaseId: ids.third };
+  const { parseEvalRun } = await import("./benchmark-input.ts");
+  assert.equal(evals.BENCH_ROLES_MAX, 20);
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1`, [ids.third]);
+  const insertBench = async (role: string, minutesAgo: number) => {
+    const [run] = await q(
+      `INSERT INTO use_case_eval_runs (use_case_id, workspace_id, kind, role, level, branch, models, cases_total, created_at)
+       VALUES ($1, $2, 'banco', $3, 'pull_request', 'main', $4::jsonb, 28, now() - make_interval(mins => $5)) RETURNING id`,
+      [ids.third, ids.ws, role, JSON.stringify({ [role]: SONNET }), minutesAgo],
+    );
+    await q(
+      `INSERT INTO use_case_eval_results (run_id, use_case_id, workspace_id, model, current, quality, passed, total, thresholds_met, groups, cost_per_1000_usd)
+       VALUES ($1, $2, $3, $4, true, $5, 27, 28, true, $6::jsonb, 1.8)`,
+      [run.id, ids.third, ids.ws, SONNET, 27 / 28, JSON.stringify({ regole: { passati: 9, totali: 9, soglia: 1, ok: true } })],
+    );
+  };
+  const role = (i: number) => `r${String(i).padStart(2, "0")}`;
+  for (let i = 1; i <= 19; i++) await insertBench(role(i), 100 - i);
+  const benchOf = (ruolo: string) => ({ ...banco({ ruolo, modelli: { [ruolo]: SONNET }, risultati: [result({ modello: SONNET, costoPer1000Usd: 1.8 })] }), caso: "EV-0003" });
+  // Il ventesimo ruolo entra; il ventunesimo no, con il messaggio; uno che c'è già si rifà.
+  assert.equal((await post(tokens.dev!, benchOf(role(20)))).status, 200);
+  const full = await post(tokens.dev!, benchOf(role(21)));
+  assert.deepEqual([full.status, (full.json.errore as Row).codice], [409, "conflitto"]);
+  assert.equal((full.json.errore as Row).messaggio, evals.BENCH_ROLES_FULL_MESSAGE);
+  assert.match(evals.BENCH_ROLES_FULL_MESSAGE, /^Questo caso ha già il banco di 20 ruoli, il massimo: si rifà il banco di un ruolo che c'è già/);
+  assert.equal((await post(tokens.dev!, benchOf(role(5)))).status, 200, "un ruolo che c'è già");
+  const roles = async () => (await q(`SELECT count(DISTINCT role)::int AS n FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'banco'`, [ids.third]))[0].n;
+  assert.equal(await roles(), 20);
+  // Due ruoli nuovi insieme con un posto solo: uno entra, l'altro è un conflitto.
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND role = $2`, [ids.third, role(20)]);
+  const inputs = ["nuovo-a", "nuovo-b"].map((r) => {
+    const parsed = parseEvalRun(benchOf(r));
+    assert.ok(parsed.ok);
+    return parsed.ok ? parsed.value : (undefined as never);
+  });
+  const both = await Promise.all(inputs.map((input) => evals.recordEvalRun(exec, target, input, { actorUserId: ids.dev })));
+  assert.deepEqual(both.map((r) => (r.ok ? "ok" : r.code)).sort(), ["conflitto", "ok"]);
+  assert.equal(await roles(), 20);
+  // Righe di prima del tetto (scritte a mano): 22 ruoli. Le letture tengono i 20 più recenti, senza i più vecchi.
+  await insertBench("vecchio-a", 500);
+  await insertBench("vecchio-b", 400);
+  assert.equal(await roles(), 22);
+  const facts = (await evals.loadEvalFacts(exec, ids.ws, [ids.third])).get(ids.third);
+  assert.equal(facts?.benches.length, 20);
+  assert.ok(facts?.benches.every((b) => !b.role.startsWith("vecchio-")));
+  const page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual(page?.benches.map((b) => b.role).sort(), facts?.benches.map((b) => b.role).sort(), "la pagina e l'Agent Factory, gli stessi ruoli");
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1`, [ids.third]);
 });
