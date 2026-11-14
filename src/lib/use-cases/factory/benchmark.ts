@@ -99,6 +99,24 @@ export function modelLabel(id: string): string {
   return Object.hasOwn(NAMES, bare) ? NAMES[bare] : bare;
 }
 
+/** I nomi dei modelli del catalogo, nel suo ordine: il motore delle e-mail ha i suoi, e un test li tiene uguali. */
+export const CATALOGUE_MODEL_NAMES: readonly string[] = Object.freeze(Object.values(NAMES));
+
+/**
+ * Il nome del catalogo di un modello («Claude Haiku 5.5» per `anthropic/claude-haiku-5-5`), o null se il modello non è
+ * nel catalogo. Nei testi che escono da Unbundle (le e-mail) il modello si dice solo così: mai con un id scelto da chi
+ * manda il banco, che potrebbe essere un indirizzo, un dominio o una e-mail.
+ */
+export function catalogueModelName(id: string): string | null {
+  const bare = id.includes("/") ? id.slice(id.lastIndexOf("/") + 1) : id;
+  return Object.hasOwn(NAMES, bare) ? NAMES[bare] : null;
+}
+
+/** Vero se `name` è il nome di un modello del catalogo («Claude Haiku 5.5»). */
+export function isCatalogueModelName(name: string): boolean {
+  return CATALOGUE_MODEL_NAMES.includes(name);
+}
+
 const PCT = new Intl.NumberFormat("it-IT", { style: "percent", maximumFractionDigits: 1 });
 const USD = new Intl.NumberFormat("it-IT", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 4 });
 

@@ -37,10 +37,10 @@ import { fail, ok, type Result } from "@/lib/uc/types";
 import {
   analyzeBench,
   benchSuperseded,
+  catalogueModelName,
   EVALS_MAIN,
   evalsAlert,
   formatQuality,
-  modelLabel,
   type BenchAnalysis,
   type BenchResult,
   type BenchVerdict,
@@ -189,6 +189,12 @@ export interface EvalRunRecorded {
   notified: boolean;
 }
 
+/** Il nome del catalogo del modello consigliato, per l'e-mail; niente per un modello fuori dal catalogo. */
+function catalogueLabel(model: string): { label?: string } {
+  const name = catalogueModelName(model);
+  return name ? { label: name } : {};
+}
+
 /** Vero se l'esecuzione con questo id è nata in questa transazione (la sua `created_at` è il `now()` della transazione). */
 const insertedNow = (id: string) => ucSql`EXISTS (SELECT 1 FROM use_case_eval_runs n WHERE n.id = ${cast(id, "uuid")} AND n.created_at = now())`;
 
@@ -318,10 +324,11 @@ export async function recordEvalRun(
     const [existing, useCase] = await executor.batch(precheckSql(target, id));
     if (existing[0]) return replayRun(executor, target, id);
     if (!useCase[0]) return fail("non_trovato", "Use case non trovato.");
-    // Il consiglio arriva solo con «cambia», che con i modelli finti non c'è mai.
+    // Il consiglio arriva solo con «cambia», che con i modelli finti non c'è mai. L'e-mail dice il modello solo con il
+    // nome del catalogo: un id fuori dal catalogo l'ha scelto chi manda, e non va mai in un'e-mail.
     const notices =
       verdict.kind === "cambia" && !input.fakeModels
-        ? notifyTask(target, "banco_consiglio", { roles: BUILDER_ROLES }, actor, now, null, insertedNow(id), { role: input.role as string, model: verdict.model, label: modelLabel(verdict.model) })
+        ? notifyTask(target, "banco_consiglio", { roles: BUILDER_ROLES }, actor, now, null, insertedNow(id), { role: input.role as string, model: verdict.model, ...catalogueLabel(verdict.model) })
         : [];
     const [inserted] = await executor.batch([insertRunSql(target, id, input, raw("true")), insertResultsSql(id, input.results), ...notices]);
     if (!inserted[0]) return replayRun(executor, target, id);

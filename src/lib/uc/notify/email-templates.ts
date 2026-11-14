@@ -80,8 +80,8 @@ export type EmailInput =
   // (8.1b) Ci sono proposte di compito da decidere (da GitHub): al team che costruisce.
   | (CaseRef & { template: "compito_proposto"; link: string })
   // (8.2a) Il banco di prova consiglia un altro modello per un ruolo: al team che costruisce, tranne chi l'ha lanciato.
-  // `model`: il nome da mostrare («Claude Haiku 5.5»).
-  | (CaseRef & { template: "banco_consiglio"; role: string; model: string; link: string })
+  // `model`: il nome del catalogo («Claude Haiku 5.5»); null per un modello fuori dal catalogo, che non si scrive mai.
+  | (CaseRef & { template: "banco_consiglio"; role: string; model: string | null; link: string })
   // (8.2a) Le evals di main sono sotto soglia o giù di almeno 5 punti (`drop`, 0..1): al team che costruisce, tranne chi
   // le ha mandate. `quality`: già scritta («80%»).
   | (CaseRef & { template: "evals_in_calo"; alert: "sotto_soglia" | "in_calo"; quality: string; drop: number | null; link: string });
@@ -410,9 +410,10 @@ export function renderEmail(input: EmailInput): RenderedEmail {
     }
     case "banco_consiglio": {
       const link = checkEmailLink(input.link, "dashboard");
+      const advice = input.model ? `consiglia ${oneLine(input.model, 80)}.` : "consiglia un altro modello: il confronto è nel progetto.";
       return render(subjectOf(`${caseLabel(input)}: il banco di prova consiglia un altro modello`), [
         { p: "Buongiorno," },
-        { p: `per il ruolo «${oneLine(input.role, 40)}» dell'agente del caso d'uso «${oneLine(input.caseTitle, 120)}», il banco di prova consiglia ${oneLine(input.model, 80)}.` },
+        { p: `per il ruolo «${oneLine(input.role, 40)}» dell'agente del caso d'uso «${oneLine(input.caseTitle, 120)}», il banco di prova ${advice}` },
         { p: "Nel progetto, in «Evals e banco di prova», trovi il confronto (qualità, costo per 1.000 esecuzioni, tempi) e il comando per la pull request di una riga. Il modello lo cambia una persona del team, con la PR." },
         { link: { href: link, label: "Apri il progetto" } },
         { small: "Email interna di Lateral Space." },

@@ -788,3 +788,46 @@ test("un banco superato non consiglia più: evals vere di main con il nuovo mode
   now = await state();
   assert.deepEqual([now.facts, now.todos.length, now.row.benches[0].superseded], [[advice], 1, false]);
 });
+
+test("il consiglio verso un modello fuori dal catalogo: in coda senza nome, e l'e-mail non scrive mai l'id", opts, async () => {
+  await clearNotices("banco_consiglio");
+  const { planDelivery } = await import("../../uc/notify/dispatch.ts");
+  const { renderEmail } = await import("../../uc/notify/email-templates.ts");
+  const evil = "https://evil.example/";
+  // Il banco di EV-0003: un «modello» scelto da chi manda, che costa il 94% in meno con la stessa qualità.
+  const r = await post(tokens.lead!, { ...banco({ risultati: [result({ modello: SONNET, costoPer1000Usd: 1.8 }), result({ modello: evil, attuale: false, costoPer1000Usd: 0.1 })] }), caso: "EV-0003" });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual([(r.json.raccomandazione as Row).tipo, (r.json.raccomandazione as Row).modello], ["cambia", evil]);
+  const queued = await mails("banco_consiglio", ids.dossierThird);
+  assert.deepEqual(queued.map((m) => String(m.recipient_user_id)), sorted("analyst", "dev"));
+  assert.deepEqual(queued[0].payload, { useCase: ids.third, role: "lettura", model: evil }, "nessun nome da scrivere");
+  // L'e-mail dalla riga vera della coda.
+  const plan = planDelivery(
+    {
+      id: randomUUID(),
+      workspaceId: ids.ws,
+      caseId: ids.dossierThird,
+      requestId: null,
+      recipientContactId: null,
+      recipientUserId: ids.analyst,
+      templateKey: "banco_consiglio",
+      payload: queued[0].payload as Record<string, string | boolean>,
+      attempts: 0,
+      dedupeKey: `banco_consiglio:${ids.dossierThird}:${ids.analyst}`,
+    },
+    {
+      clientName: "Cliente prova",
+      case: { id: ids.dossierThird, code: "EV-0003", title: "Risposte ai fornitori", status: "pronto_sviluppo", ownerContactId: null, designated: { owner: null, privacy: null } },
+      recipient: { kind: "user", id: ids.analyst, email: EMAIL.analyst, reachable: true, digestOptOut: false, lateralSpace: true },
+      request: null,
+    },
+    { origin: "https://app.unbundle.test", lsDomains: ["ls.test"], now: new Date() },
+  );
+  assert.equal(plan.action, "send");
+  if (plan.action !== "send") return;
+  const email = renderEmail(plan.build(null));
+  assert.match(email.text, /il banco di prova consiglia un altro modello: il confronto è nel progetto\./);
+  assert.ok(!email.text.includes("evil") && !email.html.includes("evil") && !email.subject.includes("evil"));
+  await clearNotices("banco_consiglio");
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'banco'`, [ids.third]);
+});

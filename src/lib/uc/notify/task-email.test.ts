@@ -2,13 +2,13 @@
 // progetto dell'agente; senza compito valido non partono; i testi senza nomi.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EMAIL_TEMPLATES, NOTICE_MODEL_LABEL_RE, NOTICE_MODEL_RE, NOTICE_QUALITY_TEXT_RE, NOTICE_ROLE_RE, planDelivery, type ClaimedNotification, type DeliveryFacts } from "./dispatch.ts";
+import { EMAIL_TEMPLATES, NOTICE_MODEL_NAMES, NOTICE_MODEL_RE, NOTICE_QUALITY_TEXT_RE, NOTICE_ROLE_RE, planDelivery, type ClaimedNotification, type DeliveryFacts } from "./dispatch.ts";
 import { checkEmailLink, renderEmail } from "./email-templates.ts";
 import { UC_NOTIFICATION_TEMPLATES } from "../../db/queries/uc-notifications.ts";
 import { TASK_NOTICE_KINDS } from "../../db/use-case-hub-tasks-ddl.ts";
 import { CASE_TEAM_BELL_KINDS, noticeHref } from "../../notifications/bell.ts";
 import { noticeTextOf } from "../../use-cases/notices.ts";
-import { formatQuality, MODEL_ID_RE, modelLabel, ROLE_RE } from "../../use-cases/factory/benchmark.ts";
+import { CATALOGUE_MODEL_NAMES, catalogueModelName, formatQuality, isCatalogueModelName, MODEL_ID_RE, modelLabel, ROLE_RE } from "../../use-cases/factory/benchmark.ts";
 
 const WS = "11111111-1111-4111-8111-111111111111";
 const CASE = "22222222-2222-4222-8222-222222222222";
@@ -154,15 +154,41 @@ test("(8.2a) il consiglio del banco: nella coda, nel motore e nella campanella d
   assert.ok(!email.text.includes("#banco"), "il link dell'e-mail non ha frammenti");
   assert.match(email.text, /Email interna di Lateral Space\./);
   assert.deepEqual(planDelivery(claimed(kind, payload), facts(false), OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
-  // Senza il nome da mostrare (o con un nome strano), l'id del modello.
-  for (const label of [undefined, "<b>Haiku</b>"]) {
+  // Senza il nome del catalogo (o con un altro testo), mai l'id del modello: «un altro modello», e il confronto nel progetto.
+  const generic = "il banco di prova consiglia un altro modello: il confronto è nel progetto.";
+  for (const label of [undefined, "<b>Haiku</b>", "anthropic/claude-haiku-5-5", "Claude Haiku 6", "claude haiku 5.5"]) {
     const bare = planDelivery(claimed(kind, { useCase: UC, role: "lettura", model: "anthropic/claude-haiku-5-5", ...(label ? { label } : {}) }), facts(), OPTS);
-    assert.ok(bare.action === "send" && renderEmail(bare.build(null)).text.includes("il banco di prova consiglia anthropic/claude-haiku-5-5."), String(label));
+    assert.ok(bare.action === "send", String(label));
+    if (bare.action !== "send") continue;
+    const mail = renderEmail(bare.build(null));
+    assert.ok(mail.text.includes(generic), String(label));
+    assert.ok(!mail.text.includes("anthropic/claude-haiku-5-5") && !mail.text.includes("Haiku"), String(label));
   }
   assert.deepEqual(planDelivery(claimed(kind, { role: "lettura", model: "anthropic/claude-haiku-5-5" }), facts(), OPTS), { action: "cancel", reason: "use_case_assente" });
   const badAdvice: Record<string, string>[] = [{ useCase: UC, model: "anthropic/claude-haiku-5-5" }, { useCase: UC, role: "Lettura!", model: "anthropic/claude-haiku-5-5" }, { useCase: UC, role: "lettura", model: "modello con spazi" }];
   for (const bad of badAdvice) {
     assert.deepEqual(planDelivery(claimed(kind, bad), facts(), OPTS), { action: "cancel", reason: "consiglio_assente" }, JSON.stringify(bad));
+  }
+});
+
+test("(8.2a) il consiglio del banco verso un modello scelto da chi manda: nell'e-mail mai l'id, né un indirizzo, un dominio o una e-mail", () => {
+  const kind = "banco_consiglio";
+  const generic = "il banco di prova consiglia un altro modello: il confronto è nel progetto.";
+  for (const model of ["anthropic/claude-haiku-6.ai", "https://evil.example/", "it-helpdesk@evil.example"]) {
+    // Un id che le regole del banco accettano: lo sceglie chi lancia il banco con la CLI.
+    assert.match(model, MODEL_ID_RE);
+    assert.equal(catalogueModelName(model), null, "fuori dal catalogo: niente nome per l'e-mail");
+    // Il nome da mostrare nella pagina (modelLabel) e l'id stesso: nessuno dei due arriva nell'e-mail.
+    for (const label of [undefined, modelLabel(model), model]) {
+      const plan = planDelivery(claimed(kind, { useCase: UC, role: "lettura", model, ...(label === undefined ? {} : { label }) }), facts(), OPTS);
+      assert.equal(plan.action, "send", `${model} ${label}`);
+      if (plan.action !== "send") continue;
+      const email = renderEmail(plan.build(null));
+      assert.ok(email.text.includes(generic), `${model} ${label}`);
+      for (const part of [model, "evil", "claude-haiku-6", "helpdesk", "https://evil"]) {
+        assert.ok(!email.text.includes(part) && !email.html.includes(part) && !email.subject.includes(part), `${model}: «${part}» nell'e-mail`);
+      }
+    }
   }
 });
 
@@ -207,5 +233,11 @@ test("(8.2a) le regole della coda sono quelle del modulo del banco, che il motor
   assert.equal(NOTICE_ROLE_RE.source, ROLE_RE.source);
   assert.equal(NOTICE_MODEL_RE.source, MODEL_ID_RE.source);
   for (const q of [0, 0.004, 0.05, 0.5, 0.8, 0.9643, 27 / 28, 0.999, 1]) assert.match(formatQuality(q), NOTICE_QUALITY_TEXT_RE, String(q));
-  for (const id of ["anthropic/claude-haiku-5-5", "claude-opus-5-5", "openai/gpt-x", "fornitore/modello:v1@2"]) assert.match(modelLabel(id), NOTICE_MODEL_LABEL_RE, id);
+  // I nomi del catalogo sono quelli del modulo del banco, nello stesso ordine; fuori dal catalogo nessun nome.
+  assert.deepEqual([...NOTICE_MODEL_NAMES], [...CATALOGUE_MODEL_NAMES]);
+  for (const name of CATALOGUE_MODEL_NAMES) assert.ok(isCatalogueModelName(name) && NOTICE_MODEL_NAMES.has(name), name);
+  assert.equal(catalogueModelName("anthropic/claude-haiku-5-5"), "Claude Haiku 5.5");
+  assert.equal(catalogueModelName("claude-opus-5-5"), "Claude Opus 5.5");
+  for (const id of ["openai/gpt-x", "fornitore/modello:v1@2", "anthropic/constructor", "toString", "anthropic/"]) assert.equal(catalogueModelName(id), null, id);
+  for (const name of ["Claude Haiku 6", "claude-haiku-5-5", "", "constructor"]) assert.equal(isCatalogueModelName(name), false, name);
 });
