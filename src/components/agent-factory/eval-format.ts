@@ -5,10 +5,10 @@
  *
  * - **Costo stimato per 1.000 esecuzioni (x):** una stima (il listino del modello, senza la cache; il gateway può
  *   differire, BANCO-DI-PROVA.md §1.2), e la pagina lo dice sull'asse, nella tabella e nei punti. Scala logaritmica
- *   quando il più caro costa almeno 10 volte il più economico
- *   (e tutti costano più di zero), altrimenti lineare da zero, così una differenza del 10 % resta del 10 %. Tacche
- *   tonde: 1, 2, 2,5, 5 per potenza di dieci sulla lineare; 1, 2, 5 per decade sulla logaritmica, poi 1 e 3, poi solo
- *   le decadi, se non stanno. Etichette brevi all'italiana («0,05», «2,5», «1.000»); l'unità è nel titolo dell'asse.
+ *   quando il più caro costa almeno 10 volte il più economico (e tutti costano più di zero), altrimenti lineare da
+ *   zero, così una differenza del 10 % resta del 10 %. Tacche tonde: 1, 2, 2,5, 5 per potenza di dieci sulla lineare;
+ *   1, 2, 5 per decade sulla logaritmica, poi 1 e 3, poi solo le decadi, se non stanno. Etichette brevi all'italiana
+ *   («0,05», «2,5», «1.000»); l'unità è nel titolo dell'asse.
  * - **Qualità (y):** da 5 punti sotto il modello peggiore (mai sotto zero), arrotondato in giù alla tacca, fino al
  *   100 %.
  * - **Etichette dei punti** (`placePointLabels`): il nome del modello accanto al suo punto, e sotto i segni (oggi, il
@@ -17,14 +17,19 @@
  *   un'altra etichetta. Se nessuna forma sta, il punto resta senza etichetta: il riquadro al passaggio del mouse (o
  *   con il fuoco) e la tabella sotto il grafico lo dicono comunque. Chi viene prima sceglie prima: il modello di oggi,
  *   poi quelli con i segni, poi per qualità.
+ * - **Il banco superato** (`benchSupersededBy`): quando le evals di `main` arrivate dopo il banco usano un altro modello
+ *   per il ruolo, o non lo hanno più, il banco resta come storia (grafico e tabella, senza «oggi») e una riga neutra
+ *   prende il posto della raccomandazione, che non vale più.
  * - Le regole del banco (il più bravo, il più economico, il più efficiente, la frontiera, la raccomandazione,
- *   l'avviso delle evals) restano in `lib/use-cases/factory/benchmark.ts`: qui solo come si leggono e si mostrano.
+ *   l'avviso delle evals, il banco superato) restano in `lib/use-cases/factory/benchmark.ts`: qui solo come si leggono
+ *   e si mostrano.
  *
  * Per caso e per ruolo, mai per persona: niente qui sa chi ha lanciato il banco o le evals (art. 15.4).
  * Modulo puro: solo import relativi `.ts`, lo usano il server e il browser con gli stessi testi.
  */
 import {
   analyzeBench,
+  benchSuperseded,
   EVALS_DROP,
   evalsAlert,
   formatCost,
@@ -354,8 +359,9 @@ export interface BenchRow {
   passed: number | null;
   total: number | null;
   thresholdsMet: boolean;
+  /** Il modello di oggi del ruolo, «attuale» nel banco; mai in un banco superato. */
   current: boolean;
-  /** Per 1.000 esecuzioni, in USD; null: costo non noto. */
+  /** Per 1.000 esecuzioni, in USD (una stima); null: costo non noto. */
   cost: number | null;
   latencyP95Ms: number | null;
   marks: BenchMark[];
@@ -379,8 +385,10 @@ export function modelNames(models: readonly string[]): Map<string, { label: stri
 /**
  * I modelli di un banco con i loro segni, dal più bravo: qualità, poi costo (i costi non noti in fondo), poi il nome.
  * Un modello ripetuto conta una volta (la prima). La frontiera solo quando ci stanno almeno due modelli: è una linea.
+ * `superseded`: dopo il banco il ruolo usa un altro modello, o non c'è più (`benchSupersededBy`): le righe restano
+ * come storia, ma nessun modello è più «oggi».
  */
-export function benchRows(results: readonly BenchResult[], analysis: BenchAnalysis): BenchRow[] {
+export function benchRows(results: readonly BenchResult[], analysis: BenchAnalysis, o: { superseded?: boolean } = {}): BenchRow[] {
   const seen = new Set<string>();
   const unique = results.filter((r) => !seen.has(r.model) && seen.add(r.model));
   const names = modelNames(unique.map((r) => r.model));
@@ -388,8 +396,9 @@ export function benchRows(results: readonly BenchResult[], analysis: BenchAnalys
   const onFrontier = (r: BenchResult) => frontierSet.has(r.model) && r.costPer1000Usd !== null;
   const frontierDrawn = unique.filter(onFrontier).length >= 2;
   const rows = unique.map((r): BenchRow => {
+    const today = r.current && !o.superseded;
     const marks: BenchMark[] = [];
-    if (r.current) marks.push("oggi");
+    if (today) marks.push("oggi");
     if (analysis.best === r.model) marks.push("più bravo");
     if (analysis.efficient === r.model) marks.push("più efficiente");
     if (analysis.cheapest === r.model) marks.push("più economico");
@@ -402,7 +411,7 @@ export function benchRows(results: readonly BenchResult[], analysis: BenchAnalys
       passed: r.total > 0 ? r.passed : null,
       total: r.total > 0 ? r.total : null,
       thresholdsMet: r.thresholdsMet,
-      current: r.current,
+      current: today,
       cost: r.costPer1000Usd,
       latencyP95Ms: r.latencyP95Ms,
       marks,
@@ -478,6 +487,30 @@ export function benchSummary(role: string, rows: readonly BenchRow[]): string {
   const unknown = rows.filter((r) => r.cost === null);
   if (unknown.length) parts.push(`${capitalize(EVAL_TEXT.unknownCost)}: ${unknown.map((r) => r.label).join(", ")}.`);
   return parts.join(" ");
+}
+
+/**
+ * Il banco superato: dopo di lui sono arrivate le evals vere di `main` (quelle della pagina, `latest`) e lì il ruolo usa
+ * un altro modello (il consiglio è stato seguito) o non c'è più. È la regola dell'Agent Factory e di «Da fare per te»
+ * (`benchSuperseded`). `now`: il modello del ruolo in quelle evals, null se il ruolo non c'è più. Null se il banco vale
+ * ancora: evals più vecchie del banco, di un altro ramo, con i modelli finti, o con lo stesso modello.
+ */
+export function benchSupersededBy(bench: Pick<EvalOverview["benches"][number], "role" | "run">, latest: EvalRunView | null): { now: string | null } | null {
+  if (!latest) return null;
+  const currentModel = bench.run.results.find((r) => r.current)?.model ?? null;
+  const evals = { at: latest.createdAt, branch: latest.branch, fakeModels: latest.fakeModels, models: latest.models };
+  if (!benchSuperseded({ role: bench.role, at: bench.run.createdAt, currentModel }, evals)) return null;
+  return { now: Object.hasOwn(latest.models, bench.role) ? latest.models[bench.role] : null };
+}
+
+/**
+ * La riga di un banco superato, al posto della raccomandazione: «Dopo questo banco il ruolo «lettura» usa Claude Haiku
+ * 5.5: rifallo per un consiglio aggiornato.»; senza il ruolo in `agent.yaml` non si rifà, resta il confronto.
+ */
+export function benchSupersededText(role: string, now: string | null): string {
+  return now
+    ? `Dopo questo banco il ruolo «${role}» usa ${modelLabel(now)}: rifallo per un consiglio aggiornato.`
+    : `Dopo questo banco il ruolo «${role}» non c'è più in agent.yaml: resta il confronto di allora.`;
 }
 
 /** I ruoli delle evals di oggi che non hanno ancora un banco. */

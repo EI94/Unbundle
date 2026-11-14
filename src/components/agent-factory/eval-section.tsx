@@ -1,5 +1,5 @@
 import { Lightbulb, TriangleAlert } from "lucide-react";
-import { formatCost, formatQuality, type BenchVerdict, type EvalOverview } from "@/lib/use-cases/factory/benchmark";
+import { formatCost, formatQuality, type BenchVerdict, type EvalOverview, type EvalRunView } from "@/lib/use-cases/factory/benchmark";
 import { cn } from "@/lib/utils";
 import { BenchChart } from "./bench-chart";
 import {
@@ -10,6 +10,8 @@ import {
   benchMissingText,
   benchRerunModels,
   benchRows,
+  benchSupersededBy,
+  benchSupersededText,
   changeHintParts,
   evalsAlertText,
   evalsCommand,
@@ -43,7 +45,8 @@ import {
  *   quando sono sotto soglia o in calo, e il comando per rifarle;
  * - per ogni ruolo l'ultimo banco: il grafico qualità contro costo, la tabella (modello · qualità · soglie · costo
  *   stimato per 1.000 · tempo p95 · segni), la raccomandazione (in evidenza quando conviene cambiare, con la riga di
- *   `agent.yaml`) e il comando per rifarlo con gli stessi modelli;
+ *   `agent.yaml`) e il comando per rifarlo con gli stessi modelli; un banco superato dalle evals di `main` (il ruolo
+ *   usa un altro modello, o non c'è più) resta come storia, con una riga neutra al posto della raccomandazione;
  * - senza misure, i due comandi e a cosa servono.
  *
  * Solo presentazione: legge quello che la pagina le passa (`readEvalOverview`). Per caso e per ruolo, mai per persona.
@@ -65,7 +68,7 @@ export function EvalSection({ overview, caseCode, unavailable = false }: { overv
           {overview.benches.length ? (
             <>
               {overview.benches.map((bench) => (
-                <BenchCard key={bench.role} bench={bench} caseCode={caseCode} />
+                <BenchCard key={bench.role} bench={bench} latest={overview.evals.latest} caseCode={caseCode} />
               ))}
               {missing.map((role) => (
                 <Command key={role} label={benchMissingText(role)} command={benchCommand(caseCode, role)} />
@@ -187,9 +190,15 @@ function headingId(role: string): string {
   return `banco-ruolo-${role.replace(/[^a-z0-9_-]/gi, "-")}`;
 }
 
-function BenchCard({ bench, caseCode }: { bench: EvalOverview["benches"][number]; caseCode: string }) {
+/**
+ * L'ultimo banco di un ruolo. Superato (dopo di lui le evals di `main` usano un altro modello per il ruolo, o non lo
+ * hanno più): grafico e tabella restano come storia, senza «oggi», e una riga neutra prende il posto della
+ * raccomandazione e della riga di `agent.yaml`; il comando per rifarlo solo se il ruolo c'è ancora.
+ */
+function BenchCard({ bench, latest, caseCode }: { bench: EvalOverview["benches"][number]; latest: EvalRunView | null; caseCode: string }) {
   const { role, run, analysis } = bench;
-  const rows = benchRows(run.results, analysis);
+  const superseded = benchSupersededBy(bench, latest);
+  const rows = benchRows(run.results, analysis, { superseded: superseded !== null });
   const id = headingId(role);
   return (
     <section aria-labelledby={id} data-slot="bench-card" data-role={role} className="min-w-0 space-y-3 border-t pt-4 sm:rounded-lg sm:border sm:p-4">
@@ -202,8 +211,14 @@ function BenchCard({ bench, caseCode }: { bench: EvalOverview["benches"][number]
       {run.fakeModels ? <FakeBadge /> : null}
       <BenchChart role={role} rows={rows} />
       <BenchTable role={role} rows={rows} />
-      <Verdict role={role} verdict={analysis.verdict} />
-      <Command label={EVAL_TEXT.benchRerun} command={benchCommand(caseCode, role, run.level, benchRerunModels(run.results))} />
+      {superseded ? (
+        <p data-slot="bench-superseded" className="text-sm break-words">
+          {benchSupersededText(role, superseded.now)}
+        </p>
+      ) : (
+        <Verdict role={role} verdict={analysis.verdict} />
+      )}
+      {superseded?.now === null ? null : <Command label={EVAL_TEXT.benchRerun} command={benchCommand(caseCode, role, run.level, benchRerunModels(run.results, superseded?.now))} />}
     </section>
   );
 }

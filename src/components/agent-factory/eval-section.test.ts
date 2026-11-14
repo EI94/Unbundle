@@ -221,6 +221,56 @@ test("«cambia»: la raccomandazione in evidenza con la riga di agent.yaml, e il
   assert.match(none, /data-verdict="nessuno" class="[^"]*border-uc-giallo/);
 });
 
+test("un banco superato dalle evals di main: una riga neutra al posto del consiglio, niente «oggi», la storia resta", () => {
+  // Il banco del 10/11 consigliava Haiku al posto di Sonnet; le evals di main del 14/11 dicono cosa usa ora il ruolo.
+  const lettura = benchOf("lettura", LETTURA, { createdAt: "2026-11-10T10:00:00.000Z" });
+  assert.equal(lettura.analysis.verdict.kind, "cambia");
+  const withEvals = (over: Partial<EvalRunView>): EvalOverview => ({ evals: { latest: run(over), trend: [] }, benches: [lettura] });
+  const card = (html: string) => html.slice(html.indexOf('data-slot="bench-card"'));
+
+  // Il consiglio è stato seguito: il ruolo usa Haiku.
+  const switched = card(render(withEvals({ models: { lettura: HAIKU, scrittura: SONNET } })));
+  const text = textOf(switched);
+  assert.match(switched, /data-slot="bench-superseded"/);
+  assert.ok(text.includes("Dopo questo banco il ruolo «lettura» usa Claude Haiku 5.5: rifallo per un consiglio aggiornato."));
+  assert.doesNotMatch(switched, /data-slot="bench-verdict"/, "nessun riquadro del consiglio");
+  assert.doesNotMatch(switched, /data-slot="bench-change-hint"/, "nessuna riga di agent.yaml");
+  assert.ok(!text.includes("Conviene"));
+  assert.doesNotMatch(switched, /data-slot="bench-current"/, "nessun cerchio sul modello di allora");
+  assert.doesNotMatch(text, /\boggi\b/i, "nessun «oggi»: né nella tabella, né nel grafico, né nella legenda o nelle frasi");
+  // Grafico e tabella restano: sono la storia del banco, con i loro segni.
+  assert.match(switched, /data-slot="bench-plot"/);
+  assert.equal(count(switched, /<tr data-model="/), 4);
+  assert.match(text, /Claude Haiku 5\.5 più efficiente più economico 95%/);
+  // Per rifarlo, gli stessi modelli con quello di allora (Sonnet); Haiku, ora «attuale», lo mette la CLI.
+  assert.ok(text.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-sonnet-5-5,anthropic/claude-opus-5-5,altro/modello --invia"));
+
+  // Il ruolo non c'è più in agent.yaml: la riga lo dice, e nessun comando per rifarlo (la CLI non lo farebbe).
+  const removed = card(render(withEvals({ models: { scrittura: SONNET } })));
+  assert.ok(textOf(removed).includes("Dopo questo banco il ruolo «lettura» non c'è più in agent.yaml: resta il confronto di allora."));
+  assert.doesNotMatch(removed, /data-slot="bench-verdict"/);
+  assert.ok(!textOf(removed).includes("Per rifarlo"));
+  assert.ok(textOf(removed).includes("Ancora nessun banco per il ruolo «scrittura»"), "il ruolo di oggi senza banco ha il suo comando");
+
+  // Il banco vale ancora: lo stesso modello, evals più vecchie del banco, evals con i modelli finti, evals di un altro ramo.
+  const stillValid: Partial<EvalRunView>[] = [
+    { models: { lettura: SONNET, scrittura: SONNET } },
+    { createdAt: "2026-11-09T10:00:00.000Z", models: { lettura: HAIKU } },
+    { fakeModels: true, models: { lettura: HAIKU } },
+    { branch: "tj-0049/t-3", models: { lettura: HAIKU } },
+  ];
+  for (const over of stillValid) {
+    const html = card(render(withEvals(over)));
+    const why = JSON.stringify(over);
+    assert.match(html, /data-slot="bench-verdict" data-verdict="cambia"/, why);
+    assert.match(html, /data-slot="bench-change-hint"/, why);
+    assert.match(html, /data-slot="bench-current"/, why);
+    assert.doesNotMatch(html, /data-slot="bench-superseded"/, why);
+    assert.match(textOf(html), /Claude Sonnet 5\.5 oggi/, why);
+    assert.ok(textOf(html).includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-haiku-5-5,anthropic/claude-opus-5-5,altro/modello --invia"), why);
+  }
+});
+
 test("modelli finti: il segno, nessuna raccomandazione di modello, nessuna riga da cambiare", () => {
   const fake = benchOf("lettura", [result(HAIKU, 1, 0.12, { current: true }), result(SONNET, 1, 1.8)], { fakeModels: true });
   const html = render({ evals: { latest: run({ fakeModels: true }), trend: [] }, benches: [fake] });

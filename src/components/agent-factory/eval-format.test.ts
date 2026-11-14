@@ -16,6 +16,8 @@ import {
   benchRerunModels,
   benchRows,
   benchSummary,
+  benchSupersededBy,
+  benchSupersededText,
   changeHint,
   changeHintParts,
   costPer1000Text,
@@ -392,6 +394,54 @@ test("il tono della raccomandazione e i ruoli ancora senza banco", () => {
   assert.deepEqual(rolesWithoutBench(overview), ["scrittura"]);
 });
 
+test("il banco superato: dopo di lui le evals di main usano un altro modello per il ruolo, o non lo hanno più", () => {
+  const results = [result(SONNET, 0.96, 1.8, { current: true }), result(HAIKU, 0.95, 0.12), result(OPUS, 0.97, 3.6)];
+  const theBench = { role: "lettura", run: bench(results, { createdAt: "2026-11-10T10:00:00.000Z" }) };
+  // Le evals di main del 14/11, con i modelli veri.
+  const after = (over: Partial<EvalRunView>) => run({ createdAt: "2026-11-14T10:00:00.000Z", ...over });
+  // Il modello è cambiato (il consiglio è stato seguito): superato, con il modello di ora.
+  assert.deepEqual(benchSupersededBy(theBench, after({ models: { lettura: HAIKU, scrittura: SONNET } })), { now: HAIKU });
+  // Il ruolo non c'è più in agent.yaml: superato, senza modello.
+  assert.deepEqual(benchSupersededBy(theBench, after({ models: { scrittura: SONNET } })), { now: null });
+  // Vale ancora: lo stesso modello (maiuscole o no), evals più vecchie o dello stesso istante, modelli finti, un altro
+  // ramo o nessuno, nessuna evals.
+  for (const latest of [
+    after({ models: { lettura: SONNET } }),
+    after({ models: { lettura: SONNET.toUpperCase() } }),
+    after({ createdAt: "2026-11-09T10:00:00.000Z", models: { lettura: HAIKU } }),
+    after({ createdAt: "2026-11-10T10:00:00.000Z", models: { lettura: HAIKU } }),
+    after({ fakeModels: true, models: { lettura: HAIKU } }),
+    after({ branch: "tj-0049/t-3", models: { lettura: HAIKU } }),
+    after({ branch: null, models: { lettura: HAIKU } }),
+    null,
+  ]) {
+    assert.equal(benchSupersededBy(theBench, latest), null, JSON.stringify(latest && { at: latest.createdAt, branch: latest.branch, fake: latest.fakeModels, models: latest.models }));
+  }
+  // Un ruolo che si chiama come una chiave di Object non è un modello.
+  assert.deepEqual(benchSupersededBy({ role: "constructor", run: bench(results, { role: "constructor", createdAt: "2026-11-10T10:00:00.000Z" }) }, after({ models: { lettura: HAIKU } })), { now: null });
+  // La riga al posto della raccomandazione.
+  assert.equal(benchSupersededText("lettura", HAIKU), "Dopo questo banco il ruolo «lettura» usa Claude Haiku 5.5: rifallo per un consiglio aggiornato.");
+  assert.equal(benchSupersededText("lettura", null), "Dopo questo banco il ruolo «lettura» non c'è più in agent.yaml: resta il confronto di allora.");
+  // Le righe restano come storia, con i loro segni, ma nessun modello è più «oggi».
+  const analysis = analyzeBench(results, { role: "lettura", fakeModels: false });
+  const rows = benchRows(results, analysis, { superseded: true });
+  assert.deepEqual(
+    rows.map((r) => [r.label, r.current, r.marks]),
+    [
+      ["Claude Opus 5.5", false, ["più bravo"]],
+      ["Claude Sonnet 5.5", false, []],
+      ["Claude Haiku 5.5", false, ["più efficiente", "più economico"]],
+    ],
+  );
+  assert.ok(!rows.map(pointLabel).join(" ").includes("oggi"));
+  assert.ok(!benchSummary("lettura", rows).includes("Oggi"));
+  assert.deepEqual(
+    benchRows(results, analysis).map((r) => r.current),
+    [false, true, false],
+    "senza `superseded`, l'attuale è «oggi»",
+  );
+});
+
 // ─── Le scale ────────────────────────────────────────────────────────
 
 const ticks = (s: { ticks: { label: string }[] }) => s.ticks.map((t) => t.label);
@@ -751,6 +801,8 @@ test("nella dashboard «use case», mai «caso d'uso», e nessuna parola vietata
     changeHint("lettura", HAIKU),
     evalsAlertText({ kind: "in_calo", drop: 0.06 }) ?? "",
     evalsAlertText({ kind: "sotto_soglia", drop: 0.06 }) ?? "",
+    benchSupersededText("lettura", HAIKU),
+    benchSupersededText("lettura", null),
   ];
   assert.deepEqual(findHubForbiddenIn(texts, "area"), []);
   // E nessun riferimento a chi ha lanciato il banco (art. 15.4).
