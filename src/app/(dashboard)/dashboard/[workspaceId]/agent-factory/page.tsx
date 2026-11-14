@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, ExternalLink, Factory, Inbox, Wrench } from "lucide-react";
+import { ChevronRight, ExternalLink, Factory, Inbox, Users, Wrench } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
@@ -14,6 +14,9 @@ import { AGENT_FACTORY_TEMPLATE_VERSION, compareVersions, STATION_LABEL, STATION
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
+import { listWorkspaceTeam, workspaceTeamReady } from "@/lib/db/queries/use-case-workspace-team";
+import { ROLE_LABEL } from "@/lib/uc/views/labels";
+import { AddWorkspaceTeamMember, RemoveWorkspaceTeamMember } from "./team-forms";
 
 /**
  * «Agent Factory» (rilascio 8.1a, docs/rilascio-8/RILASCIO-8.1-COSTRUZIONE.md §2): i casi di un cliente
@@ -24,6 +27,8 @@ import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
  * - Le famiglie (i repository): ogni caso con la stazione, il prossimo passo, i compiti e le sessioni dei coding
  *   agent. Mai una cifra per persona.
  * - La coda della fabbrica, al posto dei turni: chi ci lavora la prende.
+ * - (8.1b) Il team di Lateral Space del cliente, solo per il manager: chi è qui entra in tutti i casi del workspace,
+ *   anche in quelli che si apriranno; per un caso solo resta il team del dossier.
  *
  * La vede chi costruisce (ruolo di Lateral Space nel team di un caso), con i suoi casi, e il manager del workspace
  * di Lateral Space, con tutti. Agli altri: 404.
@@ -111,6 +116,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
     );
   }
   const view = await loadFactoryOverview(executor, { workspaceId, userId: session.user.id, seeAll: lsManager, canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds });
+  const team = lsManager && (await workspaceTeamReady(executor)) ? await listWorkspaceTeam(executor, workspaceId) : null;
   const counts = STATIONS.map((station) => ({ station, n: view.cases.filter((c) => c.station === station).length }));
 
   return (
@@ -184,6 +190,35 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
             </SettingsSection>
           ))
         )}
+
+        {team ? (
+          <SettingsSection
+            id="team"
+            icon={Users}
+            title="Team di Lateral Space"
+            description="Chi è qui entra nel team di tutti i casi del cliente, anche di quelli che si apriranno. Per un caso solo: dal team del dossier."
+          >
+            {team.length ? (
+              <ul className="divide-y">
+                {team.map((m) => (
+                  <li key={m.userId} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm">
+                    <span className="min-w-0">
+                      <span className="font-medium">{m.name}</span>
+                      <span className="block break-all text-xs text-muted-foreground sm:inline sm:break-normal">
+                        <span className="hidden sm:inline"> · </span>
+                        {m.email} · {ROLE_LABEL[m.role]}
+                      </span>
+                    </span>
+                    <RemoveWorkspaceTeamMember workspaceId={workspaceId} userId={m.userId} name={m.name} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">Ancora nessuno: chi aggiungi qui entra in tutti i casi.</p>
+            )}
+            <AddWorkspaceTeamMember workspaceId={workspaceId} />
+          </SettingsSection>
+        ) : null}
 
         {view.queue.length ? (
           <SettingsSection id="coda" icon={Wrench} title="La coda della fabbrica" description="Il lavoro sulla fabbrica stessa. Chi ci lavora la prende: niente turni.">

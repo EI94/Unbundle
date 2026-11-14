@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
-import { getUcUserContext } from "@/lib/db/queries/uc-access";
+import { getUcUserContext, ucLsDomains } from "@/lib/db/queries/uc-access";
+import { applyWorkspaceTeamToCase } from "@/lib/db/queries/use-case-workspace-team";
 import { startRealization } from "@/lib/db/queries/uc-realization";
 import { realizationPrefillOf } from "@/lib/db/queries/use-case-dossiers";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
@@ -55,6 +56,12 @@ export async function startRealizationAction(workspaceId: string, input: unknown
   }
   if (!result.ok) return ucFailure(result.code, result.message);
   const { caseId, code, useCaseId } = result.value;
+  // (8.1b) Il team di Lateral Space del cliente entra nel dossier nuovo; se non riesce il dossier resta, e il log lo dice.
+  try {
+    await applyWorkspaceTeamToCase(executor, { workspaceId, caseId, actorUserId: session.user.id, lsDomains: ucLsDomains() });
+  } catch (error) {
+    ucLogError({ area: "uc", op: "team_workspace_nuovo_dossier", workspaceId }, error);
+  }
   if (isUseCaseHubWorkspace(workspaceId)) {
     const story = await recordRealizationStarted(
       {

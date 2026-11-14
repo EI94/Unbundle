@@ -76,6 +76,7 @@ import type { AgentQuestionChannel, AgentQuestionStatus, BuildHarness, BuildOutc
 import type { FactoryRepoKind, TaskNoteKind, TaskSource, TaskStatus } from "./use-case-hub-tasks-ddl.ts";
 import type { GithubDeliveryOutcome, PullRequestState } from "./use-case-hub-github-ddl.ts";
 import type { ProposalSource, ProposalStatus, UseCaseNoticeKind0034 } from "./use-case-hub-proposals-ddl.ts";
+import type { WorkspaceTeamRole } from "./use-case-hub-team-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
@@ -1576,6 +1577,20 @@ export const useCasePullRequests = pgTable(
     updatedAt: tz("updated_at").defaultNow().notNull(),
   },
   (t) => [primaryKey({ name: "use_case_pull_requests_pkey", columns: [t.id] })]
+);
+
+/** (0035, rilascio 8.1b) Il team di Lateral Space di un workspace: entra in tutti i suoi casi. */
+export const useCaseWorkspaceTeam = pgTable(
+  "use_case_workspace_team",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    role: varchar("role", { length: 16 }).$type<WorkspaceTeamRole>().notNull(),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "use_case_workspace_team_pkey", columns: [t.id] })]
 );
 
 /** (0034, rilascio 8.1b) Le proposte di compito. Nessuna colonna su chi propone o decide (art. 15.4). */

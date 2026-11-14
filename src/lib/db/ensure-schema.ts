@@ -16,6 +16,7 @@ import { CLI_DDL, CLI_PROBE_SQL } from "./use-case-hub-cli-ddl.ts";
 import { TASKS_DDL, TASKS_PROBE_SQL } from "./use-case-hub-tasks-ddl.ts";
 import { GITHUB_DDL, GITHUB_PROBE_SQL } from "./use-case-hub-github-ddl.ts";
 import { PROPOSALS_DDL, PROPOSALS_PROBE_SQL } from "./use-case-hub-proposals-ddl.ts";
+import { WORKSPACE_TEAM_DDL, WORKSPACE_TEAM_PROBE_SQL } from "./use-case-hub-team-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -35,7 +36,7 @@ import { PROPOSALS_DDL, PROPOSALS_PROBE_SQL } from "./use-case-hub-proposals-ddl
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 28;
+const ENSURE_VERSION = 29;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -701,6 +702,10 @@ async function runOnce(): Promise<void> {
   // Dopo la 0033 (allarga ancora il CHECK dei tipi della campanella, sotto il lock della 0025). Non blocca il resto
   // dell'app: senza la 0034 le proposte non si registrano e la pagina non le mostra (`proposalsStoreReady`).
   await runProposalsDdlSafely();
+
+  // «Il team di Lateral Space per cliente»: chi costruisce in tutti i casi di un workspace (drizzle/0035_team_workspace.sql)
+  // Non blocca il resto dell'app: senza la 0035 la sezione della pagina «Agent Factory» non si mostra.
+  await runWorkspaceTeamDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -848,6 +853,20 @@ async function runProposalsDdlSafely(): Promise<void> {
   } catch (err) {
     proposalsDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0034 self-heal failed, the app keeps serving without task proposals (apply drizzle/0034 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0035, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let workspaceTeamDdlFailedAt: number | null = null;
+
+/** La 0035 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. */
+async function runWorkspaceTeamDdlSafely(): Promise<void> {
+  try {
+    await runWorkspaceTeamDdl();
+    workspaceTeamDdlFailedAt = null;
+  } catch (err) {
+    workspaceTeamDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0035 self-heal failed, the app keeps serving without the workspace team (apply drizzle/0035 by hand):", err);
   }
 }
 
@@ -1083,6 +1102,16 @@ export async function runProposalsDdl(statements: readonly string[] = PROPOSALS_
   ]);
 }
 
+/** Applica il DDL della 0035 in una sola transazione, con lo stesso advisory lock del file e `lock_timeout` di 3s. */
+export async function runWorkspaceTeamDdl(statements: readonly string[] = WORKSPACE_TEAM_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-workspace-team-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1204,6 +1233,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(TASKS_PROBE_SQL)}
         AND ${sql.raw(GITHUB_PROBE_SQL)}
         AND ${sql.raw(PROPOSALS_PROBE_SQL)}
+        AND ${sql.raw(WORKSPACE_TEAM_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1278,6 +1308,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (proposalsDdlFailedAt !== null && Date.now() - proposalsDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       proposalsDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runProposalsDdlSafely);
+    }
+    // La 0035 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (workspaceTeamDdlFailedAt !== null && Date.now() - workspaceTeamDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      workspaceTeamDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runWorkspaceTeamDdlSafely);
     }
     return ensurePromise;
   }
