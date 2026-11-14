@@ -132,6 +132,16 @@ function onDate(d: Date, article: "il" | "al"): string {
   return `${elided ? (article === "il" ? "l'" : "all'") : `${article} `}${formatDateIt(d)}`;
 }
 
+/**
+ * Una percentuale con la preposizione, come si legge: «al 91%», ma «all'80%», «all'88,9%», «all'8%», «all'11%»,
+ * «all'1%» (ottanta, otto, undici, uno) e «allo 0%».
+ */
+function atPercent(quality: string): string {
+  const whole = /^\d+/.exec(quality)?.[0] ?? "";
+  if (whole === "0") return `allo ${quality}`;
+  return `${whole === "1" || whole === "11" || whole.startsWith("8") ? "all'" : "al "}${quality}`;
+}
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -428,7 +438,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: "Buongiorno," },
         {
           p: down
-            ? `le evals di main ${caso} sono scese di ${points} rispetto alle precedenti: ora sono al ${oneLine(input.quality, 8)}.`
+            ? `le evals di main ${caso} sono scese di ${points} rispetto alle precedenti: ora sono ${atPercent(oneLine(input.quality, 8))}.`
             : `le evals di main ${caso} sono sotto soglia: ${oneLine(input.quality, 8)}.`,
         },
         { p: "Prima di cambiare altro, guarda quali prove non passano: il dettaglio è nel progetto, in «Evals e banco di prova»." },

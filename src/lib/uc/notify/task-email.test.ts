@@ -213,6 +213,23 @@ test("(8.2a) le evals scese: sotto soglia o giù di 5 punti, con la qualità; ne
   const downEmail = renderEmail(down.build(null));
   assert.equal(downEmail.subject, "Cliente prova · Smistamento di prova: le evals di main sono scese");
   assert.match(downEmail.text, /sono scese di 6,4 punti rispetto alle precedenti: ora sono al 91%\./);
+  // La preposizione come si legge: «all'80%» (ottanta), «all'8%», «all'11%», «all'1%», «allo 0%»; «al 91%», «al 18%».
+  const atQuality: [number, string][] = [
+    [0.8, "all'80%"],
+    [0.889, "all'88,9%"],
+    [0.08, "all'8%"],
+    [0.11, "all'11%"],
+    [0.01, "all'1%"],
+    [0, "allo 0%"],
+    [0.91, "al 91%"],
+    [0.18, "al 18%"],
+    [1, "al 100%"],
+  ];
+  for (const [q, expected] of atQuality) {
+    const plan = planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "in_calo", qualityText: formatQuality(q), drop: 0.064 })), facts(), OPTS);
+    assert.ok(plan.action === "send", String(q));
+    if (plan.action === "send") assert.ok(renderEmail(plan.build(null)).text.includes(`ora sono ${expected}.`), `${q} → ${expected}`);
+  }
   assert.deepEqual(planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "sotto_soglia", qualityText: "80%" })), facts(false), OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
   const badAlerts: Record<string, string | number | boolean>[] = [
     { useCase: UC, alert: "giù", qualityText: "80%" },
