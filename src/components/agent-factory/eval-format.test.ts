@@ -130,17 +130,13 @@ test("rifare un banco: gli stessi modelli con --modelli, nell'ordine della CLI, 
   for (const odd of ["anthropic/claude haiku", "x;rm -rf ~", "$(curl evil)", "-rf", ""]) {
     assert.equal(benchCommand("TJ-0049", "lettura", null, [HAIKU, odd]), "npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli <modelli> --invia", odd);
   }
-  // I modelli del banco tranne quello di oggi, che la CLI aggiunge da sé.
+  // Tutti i modelli del banco, l'«attuale» compreso: la CLI mette per primo il modello di oggi da agent.yaml e non lo
+  // ripete, così il confronto resta lo stesso anche se il ruolo è già passato a un altro modello del banco.
   const results = [result(SONNET, 0.96, 1.8, { current: true }), result(HAIKU, 0.95, 0.12), result(OPUS, 0.97, 3.6)];
-  assert.deepEqual(benchRerunModels(results), [HAIKU, OPUS]);
-  assert.deepEqual(benchRerunModels([result(SONNET, 0.96, 1.8, { current: true })]), [], "solo il modello di oggi: niente da aggiungere");
-  // Il ruolo è passato a Haiku dopo il banco: si rifà con Sonnet (quello di allora) e Opus, Haiku lo mette la CLI.
-  assert.deepEqual(benchRerunModels(results, HAIKU), [SONNET, OPUS]);
-  assert.deepEqual(benchRerunModels(results, "ANTHROPIC/CLAUDE-HAIKU-5-5"), [SONNET, OPUS], "lo stesso id, maiuscole o no");
-  // Passato a un modello che il banco non aveva: tutti quelli del banco.
-  assert.deepEqual(benchRerunModels(results, "anthropic/claude-fable-5-2"), [SONNET, HAIKU, OPUS]);
-  // Un modello ripetuto una volta sola.
-  assert.deepEqual(benchRerunModels([...results, result(HAIKU, 0.5, 0.12)]), [HAIKU, OPUS]);
+  assert.deepEqual(benchRerunModels(results), [SONNET, HAIKU, OPUS]);
+  assert.deepEqual(benchRerunModels([result(SONNET, 0.96, 1.8, { current: true })]), [SONNET], "solo il modello di oggi: lo stesso banco di un modello");
+  // Un modello ripetuto una volta sola, maiuscole o no.
+  assert.deepEqual(benchRerunModels([...results, result(HAIKU, 0.5, 0.12), result("ANTHROPIC/CLAUDE-OPUS-5-5", 0.5, 3.6)]), [SONNET, HAIKU, OPUS]);
 });
 
 test("la riga di agent.yaml per cambiare modello, e le note fisse", () => {
@@ -653,6 +649,12 @@ test("le forme di un'etichetta e chi sceglie prima", () => {
     ["Claude Sonnet 5.5", "Claude Haiku 5.5", "Claude Opus 5.5", "b", "a"],
     "oggi, poi chi ha più segni, poi chi rispetta le soglie",
   );
+  // Un banco superato: nessun «oggi», ma il modello di allora sceglie ancora per primo (il confronto parte da lui), così
+  // nel riquadro stretto non perde il nome.
+  const old = benchRows(results, analyzeBench(results, { role: "lettura", fakeModels: false }), { superseded: true });
+  assert.ok(old.every((r) => !r.current && !r.marks.includes("oggi")));
+  assert.equal([...old].sort(labelPriority)[0].label, "Claude Sonnet 5.5");
+  assert.deepEqual(old.map((r) => r.benchCurrent), rows.map((r) => r.current));
 });
 
 test("le etichette del banco non mescolano nomi interi e corti", () => {

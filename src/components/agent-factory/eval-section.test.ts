@@ -68,6 +68,8 @@ function benchOf(role: string, results: BenchResult[], over: Partial<EvalRunView
 }
 
 const LETTURA = [result(SONNET, 0.96, 1.8, { current: true, latencyP95Ms: 4100 }), result(HAIKU, 0.95, 0.12), result(OPUS, 0.97, 3.6), result("altro/modello", 0.8, null, { thresholdsMet: false, latencyP95Ms: null })];
+/** I modelli del banco di «lettura» nel comando per rifarlo, l'«attuale» compreso. */
+const ALL_LETTURA = LETTURA.map((r) => r.model).join(",");
 
 const FULL: EvalOverview = {
   evals: {
@@ -209,9 +211,9 @@ test("«cambia»: la raccomandazione in evidenza con la riga di agent.yaml, e il
   assert.match(text, /Conviene Claude Haiku 5\.5 per «lettura»/);
   assert.ok(text.includes("Per cambiarlo: in agent.yaml , modelli.lettura.modello: anthropic/claude-haiku-5-5 , poi la pull request."));
   // Per rifarlo, gli stessi modelli: senza --modelli la CLI proverebbe tutti gli approvati (un altro banco, più caro).
-  assert.ok(text.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-haiku-5-5,anthropic/claude-opus-5-5,altro/modello --invia"));
+  assert.ok(text.includes(`Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli ${ALL_LETTURA} --invia`));
   const solo = textOf(render({ ...FULL, benches: [benchOf("lettura", [result(SONNET, 0.96, 1.8, { current: true })], { level: "veloce" })] }));
-  assert.ok(solo.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --livello veloce --invia"), "solo il modello di oggi: niente --modelli");
+  assert.ok(solo.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-sonnet-5-5 --livello veloce --invia"), "solo il modello di oggi: lo stesso banco di un modello");
   // «resta»: testo semplice, senza la riga da cambiare.
   const stay = render({ ...FULL, benches: [benchOf("lettura", [result(HAIKU, 0.95, 0.12, { current: true }), result(SONNET, 0.96, 1.8)])] });
   assert.match(stay, /data-verdict="resta" class="flex items-start gap-2 text-sm"/);
@@ -242,8 +244,8 @@ test("un banco superato dalle evals di main: una riga neutra al posto del consig
   assert.match(switched, /data-slot="bench-plot"/);
   assert.equal(count(switched, /<tr data-model="/), 4);
   assert.match(text, /Claude Haiku 5\.5 più efficiente più economico 95%/);
-  // Per rifarlo, gli stessi modelli con quello di allora (Sonnet); Haiku, ora «attuale», lo mette la CLI.
-  assert.ok(text.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-sonnet-5-5,anthropic/claude-opus-5-5,altro/modello --invia"));
+  // Per rifarlo, gli stessi modelli, quello di allora (Sonnet) compreso; Haiku, ora «attuale», la CLI lo mette primo.
+  assert.ok(text.includes(`Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli ${ALL_LETTURA} --invia`));
 
   // Il ruolo non c'è più in agent.yaml: la riga lo dice, e nessun comando per rifarlo (la CLI non lo farebbe).
   const removed = card(render(withEvals({ models: { scrittura: SONNET } })));
@@ -267,7 +269,7 @@ test("un banco superato dalle evals di main: una riga neutra al posto del consig
     assert.match(html, /data-slot="bench-current"/, why);
     assert.doesNotMatch(html, /data-slot="bench-superseded"/, why);
     assert.match(textOf(html), /Claude Sonnet 5\.5 oggi/, why);
-    assert.ok(textOf(html).includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-haiku-5-5,anthropic/claude-opus-5-5,altro/modello --invia"), why);
+    assert.ok(textOf(html).includes(`Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli ${ALL_LETTURA} --invia`), why);
   }
 });
 

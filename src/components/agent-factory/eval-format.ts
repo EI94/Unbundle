@@ -57,7 +57,7 @@ export const EVAL_TEXT = Object.freeze({
   description: "Quanto rende l'agente con i modelli di oggi, e quale modello conviene per ogni ruolo.",
   descriptionEmpty: "Ancora nessuna misura: si lanciano dal repository del caso, con la CLI.",
   unavailable: "Adesso le misure non si leggono: riprova tra qualche minuto.",
-  evalsHeading: "Ultime evals",
+  evalsHeading: "Stato delle evals",
   evalsNone: "Le evals con i modelli di oggi non sono ancora arrivate.",
   evalsRerun: "Per rifarle:",
   benchRerun: "Per rifarlo:",
@@ -156,21 +156,20 @@ const modelsFlag = (models?: readonly string[] | null) => {
 
 /**
  * «npm run unbundle -- banco TJ-0049 --ruolo lettura --invia»; senza un ruolo valido, «<ruolo>». Con `models` (i
- * modelli oltre a quello di oggi, che la CLI aggiunge da sé) anche `--modelli`, come nel comando della CLI.
+ * modelli del banco, {@link benchRerunModels}) anche `--modelli`, come nel comando della CLI.
  */
 export function benchCommand(caseCode: string, role: string | null, level?: string | null, models?: readonly string[] | null): string {
   return `npm run unbundle -- banco ${codeOf(caseCode)} --ruolo ${role && ROLE_RE.test(role) ? role : "<ruolo>"}${modelsFlag(models)}${levelFlag(level)} --invia`;
 }
 
 /**
- * I modelli da ripetere con `--modelli` per rifare un banco con gli stessi modelli: tutti i suoi, tranne quello che il
- * ruolo usa oggi (la CLI lo mette da sé, «attuale»). Senza `--modelli` il banco rifatto proverebbe tutti i modelli
- * approvati: un altro banco, più lungo e più caro. `now`: il modello del ruolo oggi quando è cambiato dopo il banco;
- * altrimenti quello «attuale» del banco.
+ * I modelli da ripetere con `--modelli` per rifare un banco con gli stessi modelli: tutti i suoi, quello «attuale»
+ * compreso, una volta sola. La CLI mette per primo il modello di oggi del ruolo, da agent.yaml del ramo dove si lancia,
+ * e non lo ripete: così il confronto resta lo stesso anche se nel frattempo il ruolo ha cambiato modello. Senza
+ * `--modelli` il banco rifatto proverebbe tutti i modelli approvati: un altro banco, più lungo e più caro.
  */
-export function benchRerunModels(results: readonly BenchResult[], now?: string | null): string[] {
-  const today = (now ?? results.find((r) => r.current)?.model ?? "").toLowerCase();
-  const seen = new Set<string>([today]);
+export function benchRerunModels(results: readonly BenchResult[]): string[] {
+  const seen = new Set<string>();
   return results.map((r) => r.model).filter((model) => !seen.has(model.toLowerCase()) && Boolean(seen.add(model.toLowerCase())));
 }
 
@@ -361,6 +360,8 @@ export interface BenchRow {
   thresholdsMet: boolean;
   /** Il modello di oggi del ruolo, «attuale» nel banco; mai in un banco superato. */
   current: boolean;
+  /** «Attuale» nel banco, anche se superato: sceglie per primo il posto dell'etichetta (il confronto parte da lui). */
+  benchCurrent: boolean;
   /** Per 1.000 esecuzioni, in USD (una stima); null: costo non noto. */
   cost: number | null;
   latencyP95Ms: number | null;
@@ -412,6 +413,7 @@ export function benchRows(results: readonly BenchResult[], analysis: BenchAnalys
       total: r.total > 0 ? r.total : null,
       thresholdsMet: r.thresholdsMet,
       current: today,
+      benchCurrent: r.current,
       cost: r.costPer1000Usd,
       latencyP95Ms: r.latencyP95Ms,
       marks,
@@ -823,10 +825,13 @@ export function labelVariants(row: Pick<BenchRow, "label" | "short" | "marks">, 
   return forms.filter((lines, i) => forms.findIndex((other) => other.join("\n") === lines.join("\n")) === i);
 }
 
-/** Chi sceglie prima il posto dell'etichetta: il modello di oggi, chi ha più segni, chi rispetta le soglie, poi per qualità e costo. */
+/**
+ * Chi sceglie prima il posto dell'etichetta: il modello «attuale» del banco (anche superato), chi ha più segni, chi
+ * rispetta le soglie, poi per qualità e costo.
+ */
 export function labelPriority(a: BenchRow, b: BenchRow): number {
   return (
-    Number(b.current) - Number(a.current) ||
+    Number(b.benchCurrent) - Number(a.benchCurrent) ||
     b.marks.length - a.marks.length ||
     Number(b.thresholdsMet) - Number(a.thresholdsMet) ||
     b.quality - a.quality ||

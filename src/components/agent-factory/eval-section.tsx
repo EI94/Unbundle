@@ -218,7 +218,7 @@ function BenchCard({ bench, latest, caseCode }: { bench: EvalOverview["benches"]
       ) : (
         <Verdict role={role} verdict={analysis.verdict} />
       )}
-      {superseded?.now === null ? null : <Command label={EVAL_TEXT.benchRerun} command={benchCommand(caseCode, role, run.level, benchRerunModels(run.results, superseded?.now))} />}
+      {superseded?.now === null ? null : <Command label={EVAL_TEXT.benchRerun} command={benchCommand(caseCode, role, run.level, benchRerunModels(run.results))} />}
     </section>
   );
 }
