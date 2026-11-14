@@ -5,13 +5,14 @@ import "server-only";
  * - **Scrivere (`recordEvalRun`):** l'esecuzione e i suoi risultati in una transazione sola, con l'id riservato dalla
  *   CLI: una ripresa dopo un esito incerto ritrova quella scritta e risponde come la prima volta, senza avvisare di nuovo.
  *   - Il banco: la lettura di `analyzeBench`, la stessa regola della CLI. Se consiglia di cambiare modello, il team che
- *     costruisce lo sa (campanella ed e-mail, `banco_consiglio`), tranne chi lo ha lanciato. Mai con i modelli finti:
- *     la lettura dice «finti», mai «cambia».
- *   - Le evals: l'avviso di `evalsAlert` rispetto alle precedenti dello stesso ramo e dello stesso livello, con lo stesso
- *     tipo di modelli (veri con veri, finti con finti). Le evals di un caso si scrivono una alla volta (un lock per use case) e la
- *     scrittura controlla che le precedenti siano ancora quelle confrontate: se nel frattempo ne è arrivata un'altra,
- *     si rifà il confronto. Il team lo sa (`evals_in_calo`) solo per le evals di `main`, con i modelli veri, di un caso
- *     non in costruzione; chi le manda vede l'avviso nella risposta, su ogni ramo.
+ *     costruisce lo sa (campanella ed e-mail, `banco_consiglio`, con il modello detto solo con il nome del catalogo),
+ *     tranne chi lo ha lanciato. Mai con i modelli finti: la lettura dice «finti», mai «cambia». Un ruolo nuovo solo
+ *     finché il caso ha meno di {@link BENCH_ROLES_MAX} ruoli con un banco.
+ *   - Le evals: l'avviso di `evalsAlert` rispetto alle precedenti dello stesso ramo e dello stesso livello, con lo
+ *     stesso tipo di modelli (veri con veri, finti con finti). Le esecuzioni di un caso si scrivono una alla volta (un
+ *     lock per use case) e la scrittura delle evals controlla che le precedenti siano ancora quelle confrontate: se nel
+ *     frattempo ne è arrivata un'altra, si rifà il confronto. Il team lo sa (`evals_in_calo`) solo per le evals di
+ *     `main`, con i modelli veri, di un caso non in costruzione; chi le manda vede l'avviso nella risposta, su ogni ramo.
  *   - Una notifica al giorno per caso e per persona, campanella ed e-mail, come le altre del team (`notifyTask`).
  * - **Leggere (`loadEvalOverview`):** le evals che fanno lo stato del caso (`main` prima, poi i modelli veri, poi il
  *   livello completo, poi le più recenti) con l'andamento delle ultime 12 della stessa serie (ramo, modelli veri o
@@ -470,9 +471,8 @@ export interface CaseEvalFacts {
   } | null;
   /**
    * La lettura dell'ultimo banco di ogni ruolo (al massimo {@link BENCH_ROLES_MAX}, i più recenti), in ordine di ruolo:
-   * quando è nato, il suo modello «attuale» e se è
-   * superato (`benchSuperseded`: dopo di lui le evals vere di `main` usano un altro modello per il ruolo, o il ruolo non
-   * c'è più). Il consiglio di un banco superato non è più da fare.
+   * quando è nato, il suo modello «attuale» e se è superato (`benchSuperseded`: dopo di lui le evals vere di `main`
+   * usano un altro modello per il ruolo, o il ruolo non c'è più). Il consiglio di un banco superato non è più da fare.
    */
   benches: { role: string; verdict: BenchVerdict; at: string; currentModel: string | null; superseded: boolean }[];
 }
@@ -487,8 +487,8 @@ export async function loadEvalFacts(executor: UcExecutor, workspaceId: string, u
   const ws = cast(workspaceId, "uuid");
   const ids = cast([...new Set(useCaseIds)], "uuid[]");
   const [evalsRows, benchRows] = await executor.batch([
-    toStatement(ucSql`SELECT DISTINCT ON (r.use_case_id) r.use_case_id, r.branch, r.level, r.models, r.fake_models, r.in_construction, r.created_at, x.passed, x.total,
-  x.thresholds_met
+    toStatement(ucSql`SELECT DISTINCT ON (r.use_case_id) r.use_case_id, r.branch, r.level, r.models, r.fake_models, r.in_construction, r.created_at,
+  x.passed, x.total, x.thresholds_met
 FROM use_case_eval_runs r JOIN use_case_eval_results x ON x.run_id = r.id AND x.current
 WHERE r.workspace_id = ${ws} AND r.use_case_id = ANY (${ids}) AND r.kind = 'evals'
 ORDER BY r.use_case_id, ${statusOrderSql("r")}`),
