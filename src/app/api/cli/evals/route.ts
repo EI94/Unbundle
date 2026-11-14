@@ -16,8 +16,8 @@ import { evalOverviewForCli, parseEvalRun, recommendationOf } from "@/lib/use-ca
  *   raccomandazione del banco (mai con i modelli finti), l'avviso delle evals, la sezione del progetto. Se è partito un
  *   avviso al team, le e-mail partono subito dopo la risposta. Il banco dice sempre il modello di oggi del suo ruolo
  *   (`modelli[ruolo]`); il banco di un ruolo nuovo quando il caso ne ha già 20 è un conflitto (409).
- * - `GET ?caso=<ID>`: l'ultimo banco di ogni ruolo, le ultime evals e l'andamento, per la CLI. Lo legge chi è nel team
- *   del caso.
+ * - `GET ?caso=<ID>`: l'ultimo banco di ogni ruolo, le evals che fanno lo stato del caso e il loro andamento, per la
+ *   CLI. Lo legge chi è nel team del caso.
  *
  * Mai una persona nelle risposte: né chi ha lanciato il banco, né chi ha mandato le evals.
  */

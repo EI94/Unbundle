@@ -302,8 +302,9 @@ export function runForCli(run: EvalRunView) {
 }
 
 /**
- * La panoramica per la CLI (`GET /api/cli/evals?caso=<ID>`): le ultime evals con l'andamento (dalla più vecchia) e
- * l'ultimo banco di ogni ruolo, con i tre segni, la frontiera e la raccomandazione.
+ * La panoramica per la CLI (`GET /api/cli/evals?caso=<ID>`): le evals che fanno lo stato del caso (`main` prima, poi i
+ * modelli veri, poi il livello completo) con il loro andamento (stesso ramo, stessi modelli veri o finti, stesso livello,
+ * dalla più vecchia) e l'ultimo banco di ogni ruolo, con i tre segni, la frontiera e la raccomandazione.
  */
 export function evalOverviewForCli(code: string, o: EvalOverview) {
   return {
