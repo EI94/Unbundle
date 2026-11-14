@@ -82,6 +82,8 @@ export const EMAIL_TEMPLATES = [
   "compito_passato",
   "compito_fermo",
   "compiti_pronti",
+  // (8.1b) Una PR di un caso pronta da rivedere: interna, a chi costruisce, con il link ai compiti del progetto.
+  "pr_da_rivedere",
 ] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATES)[number];
 
@@ -512,6 +514,18 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
       const responsabile = tpl === "compito_fermo" && n.payload.responsabile === true;
       return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, ref, link, responsabile }), after: null };
+    }
+    case "pr_da_rivedere": {
+      // Email interna, come quelle dei compiti. Repository e numero vengono dalla coda, controllati.
+      if (recipient.kind !== "user" || !recipient.lateralSpace) return cancel("destinatario_non_lateral_space");
+      const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
+      if (!useCase) return cancel("use_case_assente");
+      const repo = typeof n.payload.repo === "string" && /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/.test(n.payload.repo) ? n.payload.repo : null;
+      const pr = typeof n.payload.pr === "number" && Number.isInteger(n.payload.pr) && n.payload.pr >= 1 && n.payload.pr <= 999_999_999 ? n.payload.pr : null;
+      if (!repo || !pr) return cancel("pr_assente");
+      const ref = typeof n.payload.ref === "string" && /^T-[1-9][0-9]{0,3}$/.test(n.payload.ref) ? n.payload.ref : null;
+      const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "pr_da_rivedere", ref, repo, pr, link }), after: null };
     }
     case "domanda_proposta": {
       // Email interna: una domanda proposta da un coding agent, al responsabile del caso, che la decide in «Cosa serve».

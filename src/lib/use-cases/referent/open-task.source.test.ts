@@ -53,6 +53,9 @@ const OPEN_ITEM_CALLS: Record<string, string> = {
   "src/lib/db/queries/use-case-referents.ts": "la guardia delle «Senza risposta» e le domande portate da una richiesta revocata",
   "src/lib/db/queries/use-case-referent-files.ts": "il caricamento di un file su una domanda aperta",
   "src/lib/db/queries/use-case-referent-public.ts": "la vista, la bozza e l'invio di una domanda",
+  // (8.1b) Qui `state = 'aperta'` è lo stato di una pull request (use_case_pull_requests), non di una domanda.
+  "src/lib/db/queries/use-case-github.ts": "(8.1b) le pull request aperte di un compito: in revisione finché ce n'è una pronta",
+  "src/lib/db/queries/use-case-factory-line.ts": "(8.1b) le pull request aperte di un caso, per la pagina «Agent Factory»",
 };
 
 test("openItemsCountSql: ogni file che lo usa ha la sua decisione (conta la conferma)", () => {

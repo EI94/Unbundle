@@ -87,3 +87,27 @@ test("il compito fermo: a chi lo ha, riprenderlo con «unbundle take»; al respo
   assert.match(askedMail.subject, /qualcuno del team chiede il compito T-3/);
   for (const m of [toHolder, toLead, askedMail]) assert.doesNotMatch(m.text, /\bcolleg[ahi]\b/i);
 });
+
+test("(8.1b) la PR da rivedere: nella coda, nel motore e nella campanella del team; solo a Lateral Space, con repository e numero", () => {
+  const kind = "pr_da_rivedere";
+  assert.ok((UC_NOTIFICATION_TEMPLATES as readonly string[]).includes(kind));
+  assert.ok((EMAIL_TEMPLATES as readonly string[]).includes(kind));
+  assert.ok(CASE_TEAM_BELL_KINDS.includes(kind));
+  assert.equal(noticeHref(WS, { kind, useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}/progetto#compiti`);
+  const t = noticeTextOf({ kind, answers: 0, unknowns: 0, documents: 0, followUp: null });
+  assert.equal(t.title, "Una pull request da rivedere");
+  const payload = { useCase: UC, ref: "T-3", repo: "Prova/rondine-alcione", pr: 12 } as unknown as Record<string, string | boolean>;
+  const plan = planDelivery(claimed(kind, payload), facts(), OPTS);
+  assert.equal(plan.action, "send");
+  if (plan.action !== "send") return;
+  const email = renderEmail(plan.build(null));
+  assert.match(email.subject, /^Cliente prova · Smistamento di prova: una pull request da rivedere$/);
+  assert.match(email.text, /la pull request #12 in Prova\/rondine-alcione del compito T-3/);
+  assert.ok(email.text.includes(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`));
+  assert.doesNotMatch(email.text, /\b(collega|lui|lei)\b/i);
+  const noTask = planDelivery(claimed(kind, { useCase: UC, repo: "Prova/rondine-alcione", pr: 7 } as unknown as Record<string, string | boolean>), facts(), OPTS);
+  assert.ok(noTask.action === "send" && /di un ramo del caso/.test(renderEmail(noTask.build(null)).text));
+  assert.deepEqual(planDelivery(claimed(kind, payload), facts(false), OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
+  assert.deepEqual(planDelivery(claimed(kind, { useCase: UC, repo: "non valido", pr: 12 } as unknown as Record<string, string | boolean>), facts(), OPTS), { action: "cancel", reason: "pr_assente" });
+  assert.deepEqual(planDelivery(claimed(kind, { useCase: UC, repo: "Prova/rondine-alcione" }), facts(), OPTS), { action: "cancel", reason: "pr_assente" });
+});

@@ -46,6 +46,8 @@ export const UC_NOTIFICATION_TEMPLATES = [
   "compito_passato",
   "compito_fermo",
   "compiti_pronti",
+  // (8.1b) Una PR di un caso pronta da rivedere.
+  "pr_da_rivedere",
   // Dopo l'MVP.
   "esiti_verifica",
   "scadenza_vicina",

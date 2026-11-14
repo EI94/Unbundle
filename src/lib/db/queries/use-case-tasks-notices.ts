@@ -14,7 +14,9 @@
  *
  * Modulo senza import dell'app (`@/…`, `server-only`): lo usano le query dei compiti e il cron dei dossier.
  */
-import { TASKS_PROBE_SQL, type TaskNoticeKind, type TaskStatus } from "../use-case-hub-tasks-ddl.ts";
+import { TASKS_PROBE_SQL, type TaskStatus } from "../use-case-hub-tasks-ddl.ts";
+import type { GithubNoticeKind } from "../use-case-hub-github-ddl.ts";
+import type { TaskNoticeKind as TaskOnlyNoticeKind } from "../use-case-hub-tasks-ddl.ts";
 import { cast, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
 import type { CaseRole } from "../../uc/vocab.ts";
 import { romeToday } from "../../use-cases/quarter.ts";
@@ -31,6 +33,16 @@ export interface TaskNoticeTarget {
 }
 
 export type TaskRecipient = { userId: string } | { roles: readonly CaseRole[] };
+
+/** I tipi che passano da qui: quelli dei compiti (0032) e la PR da rivedere (0033). */
+export type TaskNoticeKind = TaskOnlyNoticeKind | GithubNoticeKind;
+
+/** Che cosa aggiunge una notifica: al responsabile (il compito fermo), o la PR (numero e repository). */
+export interface TaskNoticeExtra {
+  responsabile?: boolean;
+  pr?: number;
+  repo?: string;
+}
 
 /** Nessuno: per le notifiche del cron, che non escludono una persona. */
 export const NOBODY = "00000000-0000-0000-0000-000000000000";
@@ -67,15 +79,22 @@ export function taskEmailSql(
   now: Date,
   ref: string | null,
   when: SqlFragment = ALWAYS,
-  extra: { responsabile?: boolean } = {},
+  extra: TaskNoticeExtra = {},
 ): UcStatement {
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
   const tpl = cast(kind, "text");
   const day = cast(romeToday(now), "text");
-  const payload = jsonb({ useCase: target.useCaseId, ...(ref ? { ref } : {}), ...(extra.responsabile ? { responsabile: true } : {}) });
-  // Il compito nella chiave: due compiti lo stesso giorno sono due e-mail.
-  const key = ref ? ucSql`${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day} || ':' || ${cast(ref, "text")}` : ucSql`${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day}`;
+  const payload = jsonb({
+    useCase: target.useCaseId,
+    ...(ref ? { ref } : {}),
+    ...(extra.responsabile ? { responsabile: true } : {}),
+    ...(extra.pr ? { pr: extra.pr } : {}),
+    ...(extra.repo ? { repo: extra.repo } : {}),
+  });
+  // Il compito (e la PR) nella chiave: due compiti, o due PR, lo stesso giorno sono due e-mail.
+  const which = [ref, extra.pr ? `${extra.repo ?? ""}#${extra.pr}` : null].filter(Boolean).join(":") || null;
+  const key = which ? ucSql`${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day} || ':' || ${cast(which, "text")}` : ucSql`${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day}`;
   const recipients =
     "userId" in to ? ucSql`(SELECT ${cast(to.userId, "uuid")} AS user_id)` : ucSql`(SELECT m.user_id FROM uc_case_members m WHERE m.case_id = c.id AND m.role = ANY (${cast([...to.roles], "text[]")}))`;
   return toStatement(ucSql`INSERT INTO uc_notifications (workspace_id, case_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
@@ -94,7 +113,7 @@ export function notifyTask(
   now: Date,
   ref: string | null,
   when: SqlFragment = ALWAYS,
-  extra: { responsabile?: boolean } = {},
+  extra: TaskNoticeExtra = {},
 ): UcStatement[] {
   return [taskNoticeSql(target, kind, to, actorId, now, when), taskEmailSql(target, kind, to, actorId, now, ref, when, extra)];
 }

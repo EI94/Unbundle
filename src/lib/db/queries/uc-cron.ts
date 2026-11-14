@@ -60,6 +60,7 @@ import { applyItemTransitions } from "./uc-items.ts";
 import { CASE_OWNER_SQL, dispatchQueue } from "./uc-notifications-dispatch.ts";
 import { enqueueForLsMembersSql, enqueueSql } from "./uc-notifications.ts";
 import { runTaskStaleSweep, type TaskStaleSummary } from "./use-case-tasks-notices.ts";
+import { pruneGithubDeliveries } from "./use-case-github-prune.ts";
 
 const WAITING_SQL = raw("'inviata', 'aperta', 'in_corso'");
 const OPEN_ITEM_STATES_SQL = raw("'da_fare', 'bozza'");
@@ -816,6 +817,16 @@ export async function runRemindersCron(executor: UcExecutor, o: UcCronOptions): 
     } catch (error) {
       s.errors++;
       logFailure("uc-reminders", "compiti fermi", errorCode(error));
+    }
+  }
+
+  // 4c. (8.1b) Gli eventi di GitHub ricevuti da più di 30 giorni: una volta al giorno, nella finestra d'invio.
+  if (s.inWindow && timeLeft()) {
+    try {
+      await pruneGithubDeliveries(executor);
+    } catch (error) {
+      s.errors++;
+      logFailure("uc-reminders", "eventi github", errorCode(error));
     }
   }
 

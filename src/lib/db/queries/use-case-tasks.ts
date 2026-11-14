@@ -22,7 +22,7 @@ import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { isEmailVerifiedValue, isLateralSpaceEmail } from "@/lib/uc/lateral-space";
 
 /** Un compito alla volta per use case: l'import, `compito nuovo` (stesso lock, stessa chiave). */
-const tasksLock = (target: FactoryTarget) => toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-tasks:' || ${cast(target.useCaseId, "text")}))`);
+export const tasksLock = (target: FactoryTarget) => toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-tasks:' || ${cast(target.useCaseId, "text")}))`);
 
 /** Vero se la 0032 è applicata (la stessa sonda di `ensureDbSchema`). */
 export async function tasksStoreReady(executor: UcExecutor): Promise<boolean> {

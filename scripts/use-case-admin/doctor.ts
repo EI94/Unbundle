@@ -16,6 +16,7 @@
  * (0030) `migrazione0030`: la sonda della 0030 («Agent Factory»: progetto, decisioni, pacchetto), come la 0029.
  * (0031) `migrazione0031`: la sonda della 0031 («La CLI e l'MCP»), come la 0030.
  * (0032) `migrazione0032`: la sonda della 0032 («Lavoro in parallelo»: compiti e repository della fabbrica), come la 0031.
+ * (0033) `migrazione0033`: la sonda della 0033 («GitHub»: eventi ricevuti e pull request dei casi), come la 0032.
  */
 import { parseLsDomains } from "../../src/lib/uc/lateral-space.ts";
 import { done, scopeQuery, stopped, type AdminCommand } from "../../src/lib/use-cases/admin/cli.ts";
@@ -32,6 +33,7 @@ import { PROGRAM_PROBE_SQL } from "../../src/lib/db/use-case-hub-program-ddl.ts"
 import { FACTORY_PROBE_SQL } from "../../src/lib/db/use-case-hub-factory-ddl.ts";
 import { CLI_PROBE_SQL } from "../../src/lib/db/use-case-hub-cli-ddl.ts";
 import { TASKS_PROBE_SQL } from "../../src/lib/db/use-case-hub-tasks-ddl.ts";
+import { GITHUB_PROBE_SQL } from "../../src/lib/db/use-case-hub-github-ddl.ts";
 import { cast, toStatement, ucSql } from "../../src/lib/uc/sql/statement.ts";
 import { declarerRecipientsSql } from "../../src/lib/use-cases/case-alerts/sql.ts";
 import { clientNoticesEnabled } from "../../src/lib/use-cases/client-notices.ts";
@@ -118,6 +120,7 @@ export const command: AdminCommand = {
     const m0030 = (await ctx.db.read(`SELECT ${FACTORY_PROBE_SQL} AS ok`))[0]?.ok === true;
     const m0031 = (await ctx.db.read(`SELECT ${CLI_PROBE_SQL} AS ok`))[0]?.ok === true;
     const m0032 = (await ctx.db.read(`SELECT ${TASKS_PROBE_SQL} AS ok`))[0]?.ok === true;
+    const m0033 = (await ctx.db.read(`SELECT ${GITHUB_PROBE_SQL} AS ok`))[0]?.ok === true;
     const lsDomains = parseLsDomains(ctx.lsEmailDomains);
     const declarers = new Map<string, boolean>();
     for (const ws of perWorkspace) {
@@ -162,6 +165,7 @@ export const command: AdminCommand = {
       migrazione0030: m0030,
       migrazione0031: m0031,
       migrazione0032: m0032,
+      migrazione0033: m0033,
     };
     return result.green ? done(output) : stopped(output);
   },

@@ -8,7 +8,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0032 as UseCaseNoticeKind } from "../db/use-case-hub-tasks-ddl.ts";
+import type { UseCaseNoticeKind0033 as UseCaseNoticeKind } from "../db/use-case-hub-github-ddl.ts";
 
 export const USE_CASE_NOTICE_TEXT = Object.freeze({
   titles: Object.freeze({
@@ -37,6 +37,8 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
     compito_passato: "Ti hanno passato un compito",
     compito_fermo: "Un compito è fermo",
     compiti_pronti: "Ci sono compiti da prendere",
+    // (Rilascio 8.1b) Una pull request di un caso è pronta da rivedere.
+    pr_da_rivedere: "Una pull request da rivedere",
   } satisfies Record<UseCaseNoticeKind, string>),
   answers: Object.freeze({ one: "1 risposta", many: "{n} risposte" }),
   documents: Object.freeze({ one: "1 documento", many: "{n} documenti" }),
@@ -67,6 +69,7 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   // La stessa riga a chi ha il compito e al responsabile del caso: generica.
   taskStale: "Da giorni lavorativi non ci sono segnali: chi lo ha lo riprende con «unbundle take», o lo lascia con una nota. Nessuno lo riassegna da solo.",
   tasksReady: "Il progetto è approvato: «unbundle compiti» li elenca, «unbundle take» ne prende uno.",
+  prToReview: "La trovi su GitHub: la rivede qualcuno del team che non l'ha scritta. Quando si unisce, il compito è fatto.",
   contextSeparator: " · ",
 });
 
@@ -100,6 +103,7 @@ export function noticeTextOf(n: {
   if (n.kind === "compito_passato") return { title, description: t.taskPassed };
   if (n.kind === "compito_fermo") return { title, description: t.taskStale };
   if (n.kind === "compiti_pronti") return { title, description: t.tasksReady };
+  if (n.kind === "pr_da_rivedere") return { title, description: t.prToReview };
   if (n.kind === "senza_risposta") return { title, description: t.followUp[n.followUp ?? "scaduta"] };
   const answers = safe(n.answers);
   const documents = safe(n.documents);

@@ -8,13 +8,18 @@ import "server-only";
  * - **«Da fare per te»:** le domande dei coding agent da decidere (a chi vede «Cosa serve»), i compiti che qualcuno del
  *   team ti chiede, i tuoi compiti fermi, i progetti che approvi tu. Sono i tuoi, mai una classifica.
  * - **Sessioni dei coding agent:** quante, token e costo per caso; mai per persona.
+ * - **(8.1b) Pull request:** quante aperte e unite per caso, e quanto passa di solito dalla presa del compito
+ *   all'unione (la mediana); mai per persona. In «Da fare per te» le PR pronte dei tuoi casi, tranne quelle dei
+ *   tuoi compiti.
  */
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import { tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
+import { githubStoreReady } from "@/lib/db/queries/use-case-github";
 import { cast, raw, toStatement, ucSql } from "@/lib/uc/sql/statement";
 import { CASE_STATUSES, type CaseStatus } from "@/lib/uc/vocab";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import { factoryQueue, nextStepOf, stationOf, type LineCase, type Station } from "@/lib/use-cases/factory/line";
+import { pullRequestUrl } from "@/lib/use-cases/factory/github";
 
 const LS_CASE_ROLES_SQL = raw("('ls_lead', 'ls_analista', 'ls_sviluppatore')");
 
@@ -41,16 +46,20 @@ export interface FactoryCaseRow {
   nextStep: string;
   tasks: LineCase["tasks"];
   sessions: { count: number; tokens: number; costUsd: number; lastAt: string | null };
+  /** (8.1b) Le PR del caso: aperte, unite, e i giorni di solito dalla presa del compito all'unione. */
+  prs: { open: number; merged: number; medianDays: number | null };
   repo: string | null;
   mine: boolean;
 }
 
 export interface FactoryTodo {
-  kind: "domande" | "chiesto" | "fermo" | "approva";
+  kind: "domande" | "chiesto" | "fermo" | "approva" | "rivedi";
   useCaseId: string;
   caseId: string;
   code: string;
   text: string;
+  /** (8.1b) Un indirizzo fuori da Unbundle: la PR su GitHub. */
+  href?: string;
 }
 
 export interface FactoryOverview {
@@ -72,6 +81,13 @@ export async function loadFactoryOverview(executor: UcExecutor, input: { workspa
   const ws = cast(input.workspaceId, "uuid");
   const me = cast(input.userId, "uuid");
   const tasksReady = await tasksTablesReady(executor);
+  const githubReady = tasksReady && (await githubStoreReady(executor));
+  const prStats = githubReady
+    ? ucSql`(SELECT jsonb_build_object('open', count(*) FILTER (WHERE p.state = 'aperta'), 'merged', count(*) FILTER (WHERE p.state = 'unita'),
+      'medianHours', percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (p.merged_at - t.taken_at)) / 3600)
+        FILTER (WHERE p.state = 'unita' AND t.taken_at IS NOT NULL AND p.merged_at > t.taken_at))
+    FROM use_case_pull_requests p LEFT JOIN use_case_tasks t ON t.id = p.task_id WHERE p.use_case_id = u.id AND p.workspace_id = u.workspace_id)`
+    : raw("NULL::jsonb");
   const taskCounts = tasksReady
     ? ucSql`(SELECT jsonb_build_object('total', count(*), 'open', count(*) FILTER (WHERE t.status = 'da_fare'), 'inProgress', count(*) FILTER (WHERE t.status = 'in_corso'),
       'inReview', count(*) FILTER (WHERE t.status = 'in_revisione'), 'done', count(*) FILTER (WHERE t.status = 'fatto'), 'cancelled', count(*) FILTER (WHERE t.status = 'annullato'))
@@ -86,6 +102,7 @@ export async function loadFactoryOverview(executor: UcExecutor, input: { workspa
   ${taskCounts} AS tasks,
   (SELECT jsonb_build_object('count', count(*), 'tokens', coalesce(sum(s.input_tokens + s.output_tokens), 0), 'cost', coalesce(sum(s.cost_usd), 0), 'last', max(s.ended_at))
      FROM use_case_build_sessions s WHERE s.use_case_id = u.id AND s.workspace_id = u.workspace_id) AS sessions,
+  ${prStats} AS prs,
   (SELECT r.repo FROM use_case_repos r WHERE r.use_case_id = u.id AND r.workspace_id = u.workspace_id ORDER BY r.created_at LIMIT 1) AS repo
 FROM uc_cases c JOIN use_cases u ON u.id = c.portfolio_use_case_id AND u.workspace_id = c.workspace_id
 WHERE c.workspace_id = ${ws} AND c.setup_completed_at IS NOT NULL AND c.status <> 'chiuso' AND ${visible}
@@ -95,6 +112,8 @@ ORDER BY coalesce(u.code, c.code)`),
     const t = (r.tasks ?? {}) as Record<string, unknown>;
     const tasks = { total: num(t.total), open: num(t.open), inProgress: num(t.inProgress), inReview: num(t.inReview), done: num(t.done), cancelled: num(t.cancelled) };
     const s = (r.sessions ?? {}) as Record<string, unknown>;
+    const p = (r.prs ?? {}) as Record<string, unknown>;
+    const medianHours = p.medianHours === null || p.medianHours === undefined ? null : Number(p.medianHours);
     const projectStatus = r.project_status === "approvato" || r.project_status === "da_approvare" || r.project_status === "in_corso" ? r.project_status : null;
     const line: LineCase = { dossierStatus: statusOf(r.dossier_status), projectStatus, tasks };
     return {
@@ -106,6 +125,7 @@ ORDER BY coalesce(u.code, c.code)`),
       nextStep: nextStepOf(line),
       tasks,
       sessions: { count: num(s.count), tokens: num(s.tokens), costUsd: num(s.cost), lastAt: s.last ? new Date(String(s.last)).toISOString() : null },
+      prs: { open: num(p.open), merged: num(p.merged), medianDays: medianHours !== null && Number.isFinite(medianHours) ? Math.round((medianHours / 24) * 10) / 10 : null },
       repo: r.repo ? String(r.repo) : null,
       mine: r.mine === true,
     };
@@ -130,7 +150,7 @@ ORDER BY coalesce(u.code, c.code)`),
   // «Da fare per te»: solo le cose della persona.
   const todos: FactoryTodo[] = [];
   const byCase = new Map(cases.map((c) => [c.useCaseId, c]));
-  const [mineRows, approveRows, questionRows] = await executor.batch([
+  const [mineRows, approveRows, questionRows, reviewRows] = await executor.batch([
     tasksReady
       ? toStatement(ucSql`SELECT t.use_case_id, t.ref, t.status, (t.stale_asked_at IS NOT NULL AND t.stale_asked_at >= coalesce(t.last_activity_at, t.taken_at)) AS stale,
   (SELECT count(*) FROM use_case_task_notes n WHERE n.task_id = t.id AND n.kind = 'richiesta' AND n.created_at >= coalesce(t.taken_at, t.created_at)) AS requests
@@ -143,6 +163,15 @@ WHERE p.workspace_id = ${ws} AND p.status = 'da_approvare'`),
     input.canSeeNeeds
       ? toStatement(ucSql`SELECT q.use_case_id, count(*) AS n FROM use_case_agent_questions q WHERE q.workspace_id = ${ws} AND q.status = 'proposta' GROUP BY q.use_case_id`)
       : toStatement(ucSql`SELECT NULL::uuid AS use_case_id, 0 AS n WHERE false`),
+    // (8.1b) Le PR pronte dei casi dove costruisci, tranne quelle dei tuoi compiti.
+    githubReady
+      ? toStatement(ucSql`SELECT DISTINCT p.use_case_id, p.repo, p.number, t.ref FROM use_case_pull_requests p
+LEFT JOIN use_case_tasks t ON t.id = p.task_id
+JOIN uc_cases c ON c.portfolio_use_case_id = p.use_case_id AND c.workspace_id = p.workspace_id
+JOIN uc_case_members m ON m.case_id = c.id AND m.user_id = ${me} AND m.role IN ${LS_CASE_ROLES_SQL}
+WHERE p.workspace_id = ${ws} AND p.state = 'aperta' AND NOT p.draft AND t.holder_user_id IS DISTINCT FROM ${me}
+ORDER BY p.use_case_id, p.number`)
+      : toStatement(ucSql`SELECT NULL::uuid AS use_case_id WHERE false`),
   ]);
   for (const r of mineRows) {
     const c = byCase.get(String(r.use_case_id));
@@ -158,6 +187,14 @@ WHERE p.workspace_id = ${ws} AND p.status = 'da_approvare'`),
     const c = byCase.get(String(r.use_case_id));
     const n = num(r.n);
     if (c && n > 0) todos.push({ kind: "domande", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: n === 1 ? "Un coding agent propone una domanda: decidila in «Cosa serve»." : `${n} domande proposte dai coding agent da decidere in «Cosa serve».` });
+  }
+  for (const r of reviewRows) {
+    const c = byCase.get(String(r.use_case_id));
+    if (!c) continue;
+    const repo = String(r.repo);
+    const number = num(r.number);
+    const text = r.ref ? `La PR #${number} di ${r.ref} aspetta una revisione.` : `La PR #${number} in ${repo} aspetta una revisione.`;
+    todos.push({ kind: "rivedi", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text, href: pullRequestUrl(repo, number) });
   }
   return { cases, families, todos, queue, tasksReady };
 }

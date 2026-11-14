@@ -74,7 +74,9 @@ export type EmailInput =
   | { template: "cli_collegata"; clientName: string; connectedAt: Date; expiresAt: Date | null; link: string }
   // (8.1a) I compiti, a chi costruisce: il link porta al progetto dell'agente dello use case.
   // `responsabile`: il compito fermo detto al responsabile del caso, non a chi lo ha.
-  | (CaseRef & { template: "compito_chiesto" | "compito_passato" | "compito_fermo" | "compiti_pronti"; ref: string | null; link: string; responsabile?: boolean });
+  | (CaseRef & { template: "compito_chiesto" | "compito_passato" | "compito_fermo" | "compiti_pronti"; ref: string | null; link: string; responsabile?: boolean })
+  // (8.1b) Una pull request di un caso è pronta da rivedere: al team che costruisce, tranne chi ha il compito.
+  | (CaseRef & { template: "pr_da_rivedere"; ref: string | null; repo: string; pr: number; link: string });
 
 // ── Aiuti ─────────────────────────────────────────────────────────────
 
@@ -371,6 +373,17 @@ export function renderEmail(input: EmailInput): RenderedEmail {
       return render(subjectOf(`${caseLabel(input)}: ${t.subject}`), [
         { p: "Buongiorno," },
         ...t.lines.map((p) => ({ p })),
+        { link: { href: link, label: "Apri il progetto" } },
+        { small: "Email interna di Lateral Space." },
+      ]);
+    }
+    case "pr_da_rivedere": {
+      const link = checkEmailLink(input.link, "dashboard");
+      const what = input.ref ? `del compito ${input.ref}` : "di un ramo del caso";
+      return render(subjectOf(`${caseLabel(input)}: una pull request da rivedere`), [
+        { p: "Buongiorno," },
+        { p: `la pull request #${input.pr} in ${oneLine(input.repo, 140)} ${what}, nel caso d'uso «${oneLine(input.caseTitle, 120)}», è pronta da rivedere.` },
+        { p: "La trovi su GitHub; la rivede qualcuno del team che non l'ha scritta. Quando si unisce, il compito è fatto da solo." },
         { link: { href: link, label: "Apri il progetto" } },
         { small: "Email interna di Lateral Space." },
       ]);

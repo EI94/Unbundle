@@ -73,7 +73,8 @@ import type {
   SetupTopic,
 } from "./use-case-hub-factory-ddl.ts";
 import type { AgentQuestionChannel, AgentQuestionStatus, BuildHarness, BuildOutcome, CliLoginStatus } from "./use-case-hub-cli-ddl.ts";
-import type { FactoryRepoKind, TaskNoteKind, TaskSource, TaskStatus, UseCaseNoticeKind0032 } from "./use-case-hub-tasks-ddl.ts";
+import type { FactoryRepoKind, TaskNoteKind, TaskSource, TaskStatus } from "./use-case-hub-tasks-ddl.ts";
+import type { GithubDeliveryOutcome, PullRequestState, UseCaseNoticeKind0033 } from "./use-case-hub-github-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
@@ -1539,6 +1540,41 @@ export const useCaseFactoryRepos = pgTable(
   (t) => [primaryKey({ name: "use_case_factory_repos_pkey", columns: [t.id] })]
 );
 
+/** (0033, rilascio 8.1b) Gli eventi di GitHub già ricevuti: evento, repository, esito; mai il contenuto. */
+export const useCaseGithubDeliveries = pgTable(
+  "use_case_github_deliveries",
+  {
+    deliveryId: varchar("delivery_id", { length: 64 }).notNull(),
+    event: varchar("event", { length: 40 }).notNull(),
+    repo: varchar("repo", { length: 140 }),
+    outcome: varchar("outcome", { length: 10 }).$type<GithubDeliveryOutcome>().notNull(),
+    receivedAt: tz("received_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "use_case_github_deliveries_pkey", columns: [t.deliveryId] })]
+);
+
+/** (0033, rilascio 8.1b) Le pull request di un caso. Nessuna colonna su chi la apre (art. 15.4). */
+export const useCasePullRequests = pgTable(
+  "use_case_pull_requests",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").references(() => useCaseTasks.id, { onDelete: "set null" }),
+    repo: varchar("repo", { length: 140 }).notNull(),
+    number: integer("number").notNull(),
+    branch: varchar("branch", { length: 120 }).notNull(),
+    state: varchar("state", { length: 8 }).$type<PullRequestState>().notNull().default("aperta"),
+    draft: boolean("draft").notNull().default(false),
+    openedAt: tz("opened_at").notNull(),
+    mergedAt: tz("merged_at"),
+    closedAt: tz("closed_at"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "use_case_pull_requests_pkey", columns: [t.id] })]
+);
+
 export const useCaseNeedAnswers = pgTable(
   "use_case_need_answers",
   {
@@ -1686,7 +1722,7 @@ export const useCaseNotifications = pgTable(
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
     recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0032>().notNull(),
+    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0033>().notNull(),
     romeDay: date("rome_day", { mode: "string" }).notNull(),
     answers: smallint("answers").notNull().default(0),
     unknowns: smallint("unknowns").notNull().default(0),

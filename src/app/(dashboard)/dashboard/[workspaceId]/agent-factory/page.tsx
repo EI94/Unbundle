@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, Factory, Inbox, Wrench } from "lucide-react";
+import { ChevronRight, ExternalLink, Factory, Inbox, Wrench } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
 import { requireWorkspacePage } from "@/lib/auth/require-workspace";
@@ -48,7 +48,16 @@ function since(iso: string | null): string | null {
   return days <= 0 ? "oggi" : days === 1 ? "ieri" : `${days} giorni fa`;
 }
 
+/** (8.1b) Le PR del caso in una riga: aperte, unite, e di solito quanto dalla presa all'unione. */
+function prLine(p: FactoryCaseRow["prs"]): string | null {
+  if (!p.open && !p.merged) return null;
+  const parts = [p.open ? `${count(p.open)} PR ${p.open === 1 ? "aperta" : "aperte"}` : null, p.merged ? `${count(p.merged)} ${p.merged === 1 ? "unita" : "unite"}` : null].filter(Boolean);
+  const days = p.medianDays === null ? null : p.medianDays < 1 ? "di solito in meno di un giorno dalla presa all'unione" : `di solito ${new Intl.NumberFormat("it-IT", { maximumFractionDigits: 1 }).format(p.medianDays)} giorni dalla presa all'unione`;
+  return [parts.join(" e "), days].filter(Boolean).join(", ");
+}
+
 function todoHref(workspaceId: string, t: FactoryTodo): string {
+  if (t.href) return t.href;
   if (t.kind === "domande") return `/dashboard/${workspaceId}/use-cases/${t.useCaseId}/proposte`;
   return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto${t.kind === "approva" ? "" : "#compiti"}`;
 }
@@ -58,6 +67,7 @@ function CaseRow({ workspaceId, c }: { workspaceId: string; c: FactoryCaseRow })
   const facts = [
     live > 0 ? `${c.tasks.done}/${live} compiti fatti${c.tasks.inProgress + c.tasks.inReview ? ` · ${c.tasks.inProgress + c.tasks.inReview} in corso` : ""}` : null,
     c.sessions.count ? `${count(c.sessions.count)} ${c.sessions.count === 1 ? "sessione" : "sessioni"} dei coding agent, l'ultima ${since(c.sessions.lastAt)}` : null,
+    prLine(c.prs),
   ].filter(Boolean);
   return (
     <li>
@@ -116,12 +126,21 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
           <ul className="mt-2 divide-y">
             {view.todos.map((t, i) => (
               <li key={`${t.kind}-${t.useCaseId}-${i}`}>
-                <Link href={todoHref(workspaceId, t)} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm hover:underline">
-                  <span>
-                    <span className="font-medium tabular-nums">{t.code}</span> · {t.text}
-                  </span>
-                  <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-                </Link>
+                {t.href ? (
+                  <a href={t.href} target="_blank" rel="noreferrer" className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm hover:underline">
+                    <span>
+                      <span className="font-medium tabular-nums">{t.code}</span> · {t.text}
+                    </span>
+                    <ExternalLink aria-label="Su GitHub" className="size-4 shrink-0 text-muted-foreground" />
+                  </a>
+                ) : (
+                  <Link href={todoHref(workspaceId, t)} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm hover:underline">
+                    <span>
+                      <span className="font-medium tabular-nums">{t.code}</span> · {t.text}
+                    </span>
+                    <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+                  </Link>
+                )}
               </li>
             ))}
           </ul>
