@@ -7,14 +7,15 @@ import "server-only";
  *   - Il banco: la lettura di `analyzeBench`, la stessa regola della CLI. Se consiglia di cambiare modello, il team che
  *     costruisce lo sa (campanella ed e-mail, `banco_consiglio`), tranne chi lo ha lanciato. Mai con i modelli finti:
  *     la lettura dice «finti», mai «cambia».
- *   - Le evals: l'avviso di `evalsAlert` rispetto alle precedenti dello stesso ramo, con lo stesso tipo di modelli
- *     (veri con veri, finti con finti). Le evals di un caso si scrivono una alla volta (un lock per use case) e la
+ *   - Le evals: l'avviso di `evalsAlert` rispetto alle precedenti dello stesso ramo e dello stesso livello, con lo stesso
+ *     tipo di modelli (veri con veri, finti con finti). Le evals di un caso si scrivono una alla volta (un lock per use case) e la
  *     scrittura controlla che le precedenti siano ancora quelle confrontate: se nel frattempo ne è arrivata un'altra,
  *     si rifà il confronto. Il team lo sa (`evals_in_calo`) solo per le evals di `main`, con i modelli veri, di un caso
  *     non in costruzione; chi le manda vede l'avviso nella risposta, su ogni ramo.
  *   - Una notifica al giorno per caso e per persona, campanella ed e-mail, come le altre del team (`notifyTask`).
  * - **Leggere (`loadEvalOverview`):** le ultime evals (quelle di `main`, se ci sono; altrimenti le ultime) con
- *   l'andamento delle ultime 12 dello stesso ramo, dalla più vecchia; l'ultimo banco di ogni ruolo con la sua lettura.
+ *   l'andamento delle ultime 12 dello stesso ramo e dello stesso livello, dalla più vecchia; l'ultimo banco di ogni
+ *   ruolo con la sua lettura.
  *   Null se la 0036 non c'è ancora. Le ultime evals sono l'ultimo punto dell'andamento, letti insieme: non possono
  *   dire due cose diverse.
  * - **La pagina «Agent Factory» (`loadEvalFacts`):** per i casi dati, in due letture sole: le evals del caso e la lettura
@@ -165,9 +166,9 @@ function runsOf(rows: readonly UcRow[]): EvalRunView[] {
 
 const benchAnalysis = (run: EvalRunView): BenchAnalysis => analyzeBench(run.results, { role: run.role ?? "", fakeModels: run.fakeModels });
 
-/** Il punto delle evals di un'esecuzione, dal suo risultato «attuale». */
-function pointOf(run: { fakeModels: boolean; inConstruction: boolean; branch: string | null }, result: Pick<BenchResult, "quality" | "thresholdsMet">): EvalPoint {
-  return { quality: result.quality, thresholdsMet: result.thresholdsMet, fakeModels: run.fakeModels, inConstruction: run.inConstruction, branch: run.branch };
+/** Il punto delle evals di un'esecuzione, dal suo risultato «attuale», con il livello: si confronta solo con lo stesso. */
+function pointOf(run: { fakeModels: boolean; inConstruction: boolean; branch: string | null; level: string }, result: Pick<BenchResult, "quality" | "thresholdsMet">): EvalPoint {
+  return { quality: result.quality, thresholdsMet: result.thresholdsMet, fakeModels: run.fakeModels, inConstruction: run.inConstruction, branch: run.branch, level: run.level };
 }
 
 // ─── Scrivere ────────────────────────────────────────────────────────
@@ -236,22 +237,24 @@ function precheckSql(target: FactoryTarget, id: string): UcStatement[] {
 }
 
 /**
- * Le ultime evals prima di quelle che si scrivono: stesso caso, stesso ramo, stesso tipo di modelli. `before`: l'id di
- * un'esecuzione già scritta (si guarda prima di lei); senza, l'ultima che c'è, tranne `exclude`.
+ * Le ultime evals prima di quelle che si scrivono: stesso caso, stesso ramo, stesso livello, stesso tipo di modelli. Le
+ * evals «veloce» fanno un pezzo delle prove (le regole, gli avversari, i primi 20 casi d'oro): con quelle complete non
+ * si confrontano mai. `before`: l'id di un'esecuzione già scritta (si guarda prima di lei); senza, l'ultima che c'è,
+ * tranne `exclude`.
  */
-function previousEvalsSql(target: FactoryTarget, run: { branch: string | null; fakeModels: boolean }, o: { before?: string; exclude?: string }): SqlFragment {
+function previousEvalsSql(target: FactoryTarget, run: { branch: string | null; fakeModels: boolean; level: string }, o: { before?: string; exclude?: string }): SqlFragment {
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
   const order = o.before ? ucSql` AND (p.created_at, p.id) < (SELECT me.created_at, me.id FROM use_case_eval_runs me WHERE me.id = ${cast(o.before, "uuid")})` : raw("");
   const exclude = o.exclude ? ucSql` AND p.id <> ${cast(o.exclude, "uuid")}` : raw("");
   return ucSql`(SELECT p.id FROM use_case_eval_runs p
   WHERE p.workspace_id = ${ws} AND p.use_case_id = ${uc} AND p.kind = 'evals' AND p.branch IS NOT DISTINCT FROM ${cast(run.branch, "text")}
-    AND p.fake_models = ${cast(run.fakeModels, "boolean")}${order}${exclude}
+    AND p.fake_models = ${cast(run.fakeModels, "boolean")} AND p.level = ${cast(run.level, "text")}${order}${exclude}
   ORDER BY p.created_at DESC, p.id DESC LIMIT 1)`;
 }
 
 function readPreviousSql(previous: SqlFragment): UcStatement {
-  return toStatement(ucSql`SELECT r.id, r.branch, r.fake_models, r.in_construction, x.passed, x.total, x.thresholds_met
+  return toStatement(ucSql`SELECT r.id, r.branch, r.level, r.fake_models, r.in_construction, x.passed, x.total, x.thresholds_met
 FROM use_case_eval_runs r JOIN use_case_eval_results x ON x.run_id = r.id AND x.current
 WHERE r.id = ${previous}`);
 }
@@ -259,7 +262,8 @@ WHERE r.id = ${previous}`);
 const previousPoint = (row: UcRow | undefined): { id: string; point: EvalPoint } | null => {
   if (!row) return null;
   const result = resultOf(row);
-  return { id: String(row.id), point: pointOf({ fakeModels: row.fake_models === true, inConstruction: row.in_construction === true, branch: text(row.branch) }, result) };
+  const run = { fakeModels: row.fake_models === true, inConstruction: row.in_construction === true, branch: text(row.branch), level: String(row.level) };
+  return { id: String(row.id), point: pointOf(run, result) };
 };
 
 /** Le evals scritte da una ripresa: la stessa risposta della prima volta, letta dal database. */
@@ -350,8 +354,9 @@ export async function recordEvalRun(
 
 /**
  * Quello che la sezione «Evals e banco di prova» mostra di un caso: le ultime evals (quelle di `main`, se ci sono;
- * altrimenti le ultime) con l'andamento delle ultime {@link EVALS_TREND_MAX} dello stesso ramo, dalla più vecchia
- * (l'ultima compresa); l'ultimo banco di ogni ruolo, in ordine di ruolo, con la sua lettura. Null se la 0036 non c'è.
+ * altrimenti le ultime) con l'andamento delle ultime {@link EVALS_TREND_MAX} dello stesso ramo e dello stesso livello,
+ * dalla più vecchia (l'ultima compresa); l'ultimo banco di ogni ruolo, in ordine di ruolo, con la sua lettura. Null se
+ * la 0036 non c'è.
  */
 export async function loadEvalOverview(executor: UcExecutor, target: FactoryTarget): Promise<EvalOverview | null> {
   if (!(await evalsStoreReady(executor))) return null;
@@ -363,7 +368,7 @@ export async function loadEvalOverview(executor: UcExecutor, target: FactoryTarg
   const [trendRows, benchRows] = await executor.batch([
     toStatement(ucSql`SELECT ${RUN_COLUMNS}, ${RESULT_COLUMNS} FROM (
   SELECT q.id FROM use_case_eval_runs q JOIN use_case_eval_runs me ON me.id = ${latest}
-  WHERE q.workspace_id = ${ws} AND q.use_case_id = ${uc} AND q.kind = 'evals' AND q.branch IS NOT DISTINCT FROM me.branch
+  WHERE q.workspace_id = ${ws} AND q.use_case_id = ${uc} AND q.kind = 'evals' AND q.branch IS NOT DISTINCT FROM me.branch AND q.level = me.level
   ORDER BY q.created_at DESC, q.id DESC
   LIMIT ${cast(EVALS_TREND_MAX, "int")}) t
 JOIN use_case_eval_runs r ON r.id = t.id

@@ -55,9 +55,11 @@ const ids = {
   useCase: randomUUID(),
   other: randomUUID(),
   third: randomUUID(),
+  fourth: randomUUID(),
   dossier: randomUUID(),
   dossierOther: randomUUID(),
   dossierThird: randomUUID(),
+  dossierFourth: randomUUID(),
   lead: randomUUID(),
   analyst: randomUUID(),
   dev: randomUUID(),
@@ -162,8 +164,8 @@ const bell = async (kind: string, useCaseId = ids.useCase) =>
 const mails = async (template: string, caseId = ids.dossier) =>
   q(`SELECT recipient_user_id, payload, status, hold_reason FROM uc_notifications WHERE case_id = $1 AND template_key = $2 ORDER BY recipient_user_id`, [caseId, template]);
 const clearNotices = async (kind: string) => {
-  await q(`DELETE FROM use_case_notifications WHERE use_case_id = ANY($1::uuid[]) AND kind = $2`, [[ids.useCase, ids.other, ids.third], kind]);
-  await q(`DELETE FROM uc_notifications WHERE case_id = ANY($1::uuid[]) AND template_key = $2`, [[ids.dossier, ids.dossierOther, ids.dossierThird], kind]);
+  await q(`DELETE FROM use_case_notifications WHERE use_case_id = ANY($1::uuid[]) AND kind = $2`, [[ids.useCase, ids.other, ids.third, ids.fourth], kind]);
+  await q(`DELETE FROM uc_notifications WHERE case_id = ANY($1::uuid[]) AND template_key = $2`, [[ids.dossier, ids.dossierOther, ids.dossierThird, ids.dossierFourth], kind]);
 };
 const sorted = (...people: Person[]) => people.map((p) => ids[p]).sort();
 const afterQueue = () => ((globalThis as { __evalsAfter?: (() => Promise<void>)[] }).__evalsAfter ??= []);
@@ -222,12 +224,11 @@ before(async () => {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1, $2, $3, now())`, [ids[person], EMAIL[person], NAME[person]]);
     await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.ws, ids[person], role[person]]);
   }
-  await q(`INSERT INTO use_cases (id, workspace_id, title, code) VALUES ($1, $4, 'Smistamento di prova', 'EV-0001'), ($2, $4, 'Lettura dei contratti', 'EV-0002'), ($3, $4, 'Risposte ai fornitori', 'EV-0003')`, [
-    ids.useCase,
-    ids.other,
-    ids.third,
-    ids.ws,
-  ]);
+  await q(
+    `INSERT INTO use_cases (id, workspace_id, title, code) VALUES ($1, $4, 'Smistamento di prova', 'EV-0001'), ($2, $4, 'Lettura dei contratti', 'EV-0002'),
+       ($3, $4, 'Risposte ai fornitori', 'EV-0003'), ($5, $4, 'Note spese', 'EV-0004')`,
+    [ids.useCase, ids.other, ids.third, ids.ws, ids.fourth],
+  );
   await q(
     `INSERT INTO uc_templates (id, key, version, name, archetype, definition, definition_hash, restricted_to_workspace_id)
      VALUES ($1::uuid, $2, '1.0.0', 'Template di prova evals', 'prova', '{"confidential": false}'::jsonb, $3, $4::uuid)`,
@@ -237,6 +238,7 @@ before(async () => {
     [ids.dossier, ids.useCase, "1"],
     [ids.dossierOther, ids.other, "2"],
     [ids.dossierThird, ids.third, "3"],
+    [ids.dossierFourth, ids.fourth, "4"],
   ] as const) {
     await q(
       `INSERT INTO uc_cases (id, workspace_id, organization_id, portfolio_use_case_id, template_id, template_version, code, title, status, setup_completed_at)
@@ -607,7 +609,7 @@ test("le evals insieme dello stesso caso: una alla volta, ogni avviso rispetto a
   rows.forEach((row, i) => {
     const r = recorded.find((x) => x.ok && x.value.id === row.id);
     assert.ok(r && r.ok);
-    const point = (passed: number) => ({ quality: passed / 100, thresholdsMet: passed >= 85, fakeModels: false, inConstruction: false, branch: "main" });
+    const point = (passed: number) => ({ quality: passed / 100, thresholdsMet: passed >= 85, fakeModels: false, inConstruction: false, branch: "main", level: "pull_request" });
     const expected = evalsAlert(i === 0 ? null : point(Number(rows[i - 1].passed)), point(Number(row.passed)));
     if (r && r.ok) assert.deepEqual(r.value.alert, expected, `esecuzione ${i}`);
   });
@@ -650,4 +652,46 @@ test("una ripresa con lo stesso id risponde come la prima volta e non avvisa di 
   assert.deepEqual(await evals.recordEvalRun(missing, target, parsed.value, { actorUserId: ids.lead }).then((r) => (r.ok ? null : r.code)), "non_disponibile");
   assert.equal((await evals.loadEvalFacts(missing, ids.ws, [ids.useCase])).size, 0);
   assert.equal(await evals.evalsStoreReady({ batch: async () => Promise.reject(new Error("rete")) } as unknown as typeof exec), false);
+});
+
+/** Le evals di EV-0004: `passed` su `total`, la soglia è 85%. */
+const fourthEvals = (passed: number, total: number, over: Record<string, unknown> = {}) => ({
+  ...evalsBody(passed, over),
+  caso: "EV-0004",
+  risultati: [result({ superati: passed, totali: total, soglieRispettate: passed / total >= 0.85 })],
+});
+
+test("le evals si confrontano solo con quelle dello stesso livello: da «veloce» a «pull_request» non è un calo, e l'andamento non le mescola", opts, async () => {
+  await clearNotices("evals_in_calo");
+  const target = { workspaceId: ids.ws, useCaseId: ids.fourth };
+  const { parseEvalRun } = await import("./benchmark-input.ts");
+  // «veloce»: le regole, gli avversari e i primi 20 casi d'oro, tutte passate.
+  const fast = await post(tokens.analyst!, fourthEvals(35, 35, { livello: "veloce" }));
+  assert.deepEqual([fast.status, fast.json.avviso], [200, null]);
+  // Poi tutte le prove: 7 punti sotto le veloci, ma non sono le stesse prove. Nessun calo, nessun avviso al team.
+  const full = parseEvalRun(fourthEvals(107, 115));
+  assert.ok(full.ok);
+  if (!full.ok) return;
+  const id = randomUUID();
+  const first = await evals.recordEvalRun(exec, target, full.value, { id, actorUserId: ids.analyst });
+  assert.ok(first.ok);
+  if (!first.ok) return;
+  assert.deepEqual([first.value.alert, first.value.notified], [null, false]);
+  // La ripresa con lo stesso id confronta allo stesso modo.
+  const again = await evals.recordEvalRun(exec, target, full.value, { id, actorUserId: ids.analyst });
+  assert.ok(again.ok && again.value.alert === null);
+  assert.deepEqual(await bell("evals_in_calo", ids.fourth), []);
+  let page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual([page?.evals.latest?.level, page?.evals.trend.map((t) => Math.round(t.quality * 1000))], ["pull_request", [930]], "un punto: le veloci non sono nell'andamento");
+  // Lo stesso livello sì: sotto soglia, 8,4 punti sotto le precedenti complete; il team lo sa.
+  const below = await post(tokens.analyst!, fourthEvals(55, 65));
+  assert.deepEqual([below.status, below.json.avviso], [200, "sotto_soglia"]);
+  assert.deepEqual(await bell("evals_in_calo", ids.fourth), sorted("dev", "lead"));
+  const [mail] = await mails("evals_in_calo", ids.dossierFourth);
+  assert.deepEqual(mail.payload, { useCase: ids.fourth, alert: "sotto_soglia", qualityText: "84,6%" });
+  page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual(page?.evals.trend.map((t) => Math.round(t.quality * 1000)), [930, 846]);
+  // Di nuovo veloci, tutte passate: rispetto alle veloci di prima niente; nell'andamento delle complete non entrano.
+  const fastAgain = await post(tokens.analyst!, fourthEvals(35, 35, { livello: "veloce" }));
+  assert.deepEqual([fastAgain.status, fastAgain.json.avviso], [200, null]);
 });
