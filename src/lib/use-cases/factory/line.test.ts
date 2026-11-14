@@ -67,7 +67,7 @@ test("(8.2a) le evals e il banco nella riga del caso: «evals 96%», «sotto sog
   // Un banco superato (il consiglio seguito, o il ruolo non c'è più) non consiglia più niente.
   assert.deepEqual(benchFacts([{ role: "lettura", verdict: change, superseded: true }, { role: "scrittura", verdict: stay, superseded: false }]), []);
   assert.deepEqual(benchFacts([{ role: "lettura", verdict: change, superseded: false }]), ["il banco consiglia Claude Haiku 5.5 per «lettura»"]);
-  assert.equal(evalsTodoText(0.8), "Le evals di main sono sotto soglia (80%): guarda quali prove non passano.");
+  assert.equal(evalsTodoText(0.8), "Le evals di main sono sotto soglia (80%): guarda quali gruppi non passano.");
   for (const text of [evalsFact({ quality: 0.8, thresholdsMet: false, fakeModels: false }), evalsTodoText(0.8), ...benchFacts([{ role: "lettura", verdict: change }])]) {
     assert.doesNotMatch(String(text), /caso d'uso/, "nella dashboard si dice «use case»");
   }

@@ -198,14 +198,20 @@ test("(8.2a) le evals scese: sotto soglia o giù di 5 punti, con la qualità; ne
   assert.ok((EMAIL_TEMPLATES as readonly string[]).includes(kind));
   assert.ok(CASE_TEAM_BELL_KINDS.includes(kind));
   assert.equal(noticeHref(WS, { kind, useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}/progetto#banco`);
-  assert.equal(noticeTextOf({ kind, answers: 0, unknowns: 0, documents: 0, followUp: null }).title, "Le evals sono scese");
+  // Il titolo vale per tutti e due gli avvisi: sotto soglia, o in calo.
+  const bellText = noticeTextOf({ kind, answers: 0, unknowns: 0, documents: 0, followUp: null });
+  assert.equal(bellText.title, "Le evals di main sono sotto soglia o in calo");
+  assert.match(bellText.description, /Guarda quali gruppi non passano in «Evals e banco di prova», nel progetto\.$/);
   const below = planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "sotto_soglia", qualityText: formatQuality(0.8) })), facts(), OPTS);
   assert.equal(below.action, "send");
   if (below.action !== "send") return;
   const belowEmail = renderEmail(below.build(null));
   assert.equal(belowEmail.subject, "Cliente prova · Smistamento di prova: le evals di main sono sotto soglia");
   assert.match(belowEmail.text, /le evals di main del caso d'uso «Smistamento di prova» sono sotto soglia: 80%\./);
-  assert.match(belowEmail.text, /guarda quali prove non passano/);
+  // La pagina ha i gruppi e l'andamento; le singole prove sono nel repository.
+  assert.match(belowEmail.text, /guarda quali gruppi non passano: nel progetto, in «Evals e banco di prova», ci sono i gruppi e l'andamento; prova per prova con «npm run eval -- --caso <id>» nel repository\./);
+  assert.ok(belowEmail.html.includes("npm run eval -- --caso &lt;id&gt;"), "nell'HTML il segnaposto è testo");
+  assert.doesNotMatch(belowEmail.text, /quali prove non passano/);
   assert.ok(belowEmail.text.includes(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`));
   const down = planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "in_calo", qualityText: formatQuality(0.91), drop: 0.064 })), facts(), OPTS);
   assert.equal(down.action, "send");

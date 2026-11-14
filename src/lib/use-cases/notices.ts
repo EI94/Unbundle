@@ -41,9 +41,10 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
     pr_da_rivedere: "Una pull request da rivedere",
     // (Rilascio 8.1b) Da GitHub è arrivata una proposta di compito: la decide qualcuno del team.
     compito_proposto: "Una proposta di compito",
-    // (Rilascio 8.2a) Il banco di prova consiglia un altro modello per un ruolo; le evals di main sono scese.
+    // (Rilascio 8.2a) Il banco di prova consiglia un altro modello per un ruolo; le evals di main sono sotto soglia, o
+    // giù di 5 punti: il titolo vale per tutti e due gli avvisi.
     banco_consiglio: "Il banco di prova consiglia un altro modello",
-    evals_in_calo: "Le evals sono scese",
+    evals_in_calo: "Le evals di main sono sotto soglia o in calo",
   } satisfies Record<UseCaseNoticeKind, string>),
   answers: Object.freeze({ one: "1 risposta", many: "{n} risposte" }),
   documents: Object.freeze({ one: "1 documento", many: "{n} documenti" }),
@@ -77,7 +78,7 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   prToReview: "La trovi su GitHub: la rivede qualcuno del team che non l'ha scritta. Quando si unisce, il compito è fatto.",
   taskProposed: "Accettala come compito o scartala, nei compiti del progetto. Da sola non diventa un compito.",
   benchAdvice: "Per un ruolo dell'agente c'è un modello che conviene di più. Il confronto e la PR di una riga sono in «Evals e banco di prova», nel progetto.",
-  evalsDown: "Le evals di main sono sotto soglia, o giù di almeno 5 punti rispetto alle precedenti. Guarda quali prove non passano in «Evals e banco di prova», nel progetto.",
+  evalsDown: "Le evals di main sono sotto soglia, o giù di almeno 5 punti rispetto alle precedenti. Guarda quali gruppi non passano in «Evals e banco di prova», nel progetto.",
   contextSeparator: " · ",
 });
 

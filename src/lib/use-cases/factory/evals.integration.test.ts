@@ -576,7 +576,7 @@ test("la pagina «Agent Factory»: le evals e il consiglio del banco per caso; i
   const mine = view.todos.filter((t) => t.useCaseId === ids.useCase && (t.kind === "banco" || t.kind === "evals"));
   assert.deepEqual(mine.map((t) => t.kind), ["banco", "evals"]);
   assert.match(mine[0].text, /^Conviene Claude Haiku 5\.5 per «riassunto»/);
-  assert.equal(mine[1].text, "Le evals di main sono sotto soglia (84%): guarda quali prove non passano.");
+  assert.equal(mine[1].text, "Le evals di main sono sotto soglia (84%): guarda quali gruppi non passano.");
   assert.ok(view.todos.every((t) => PEOPLE.every((p) => !t.text.includes(NAME[p]))), "«Da fare per te» senza nomi");
   // L'altro caso: evals solo su un ramo, sotto soglia: si dicono, ma non sono «Da fare».
   const other = view.cases.find((c) => c.useCaseId === ids.other)!;

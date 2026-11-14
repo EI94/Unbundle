@@ -120,7 +120,7 @@ export function benchFacts(benches: readonly { role: string; verdict: BenchVerdi
   return benches.flatMap((b) => (b.verdict.kind === "cambia" && !b.superseded ? [`il banco consiglia ${modelLabel(b.verdict.model)} per «${b.role}»`] : []));
 }
 
-/** (8.2a) «Da fare per te»: le evals sotto soglia, con la qualità. */
+/** (8.2a) «Da fare per te»: le evals sotto soglia, con la qualità. La pagina ha i gruppi (non le singole prove). */
 export function evalsTodoText(quality: number): string {
-  return `Le evals di main sono sotto soglia (${formatQuality(quality)}): guarda quali prove non passano.`;
+  return `Le evals di main sono sotto soglia (${formatQuality(quality)}): guarda quali gruppi non passano.`;
 }
