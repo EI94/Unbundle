@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { caseCodeFromBranch, githubEventName, parseGithubEvent, pullRequestUrl, taskRefOfBranch, verifyGithubSignature } from "./github.ts";
+import { caseCodeFromBranch, githubEventName, githubPayloadText, parseGithubEvent, pullRequestUrl, taskRefOfBranch, verifyGithubSignature } from "./github.ts";
 
 const SECRET = "segreto-di-prova";
 const sign = (body: string, secret = SECRET) => `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
@@ -101,4 +101,19 @@ test("un push: solo un ramo, mai uno cancellato o un tag", () => {
 
 test("l'indirizzo della PR si fa da repository e numero", () => {
   assert.equal(pullRequestUrl("Voltaen/topjet-rosa", 12), "https://github.com/Voltaen/topjet-rosa/pull/12");
+});
+
+test("(revisione) l'ora di GitHub, l'unione solo nel ramo principale, il corpo come modulo", () => {
+  const base = { action: "closed", repository: { full_name: "Voltaen/topjet-rosa", default_branch: "main" } };
+  const prOf = (baseRef: string) => ({
+    ...base,
+    pull_request: { number: 5, state: "closed", draft: false, merged_at: "2026-11-14T10:00:00Z", closed_at: "2026-11-14T10:00:00Z", created_at: "2026-11-14T09:00:00Z", updated_at: "2026-11-14T10:00:01Z", head: { ref: "tj-0049/t-3", repo: { full_name: "Voltaen/topjet-rosa" } }, base: { ref: baseRef } },
+  });
+  const intoMain = parseGithubEvent("pull_request", prOf("main"));
+  assert.ok(intoMain.kind === "pr" && intoMain.state === "unita" && intoMain.updatedAt === "2026-11-14T10:00:01.000Z");
+  const stacked = parseGithubEvent("pull_request", prOf("tj-0049/t-2"));
+  assert.ok(stacked.kind === "pr" && stacked.state === "chiusa" && stacked.mergedAt === null, "unita in un altro ramo: non porta il lavoro in main");
+  assert.equal(githubPayloadText("application/json", "{\"a\":1}"), "{\"a\":1}");
+  assert.equal(githubPayloadText("application/x-www-form-urlencoded", new URLSearchParams({ payload: "{\"a\":1}" }).toString()), "{\"a\":1}");
+  assert.equal(githubPayloadText("application/x-www-form-urlencoded", "altro=1"), null);
 });

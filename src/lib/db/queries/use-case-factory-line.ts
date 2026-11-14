@@ -9,7 +9,8 @@ import "server-only";
  *   team ti chiede, i tuoi compiti fermi, i progetti che approvi tu. Sono i tuoi, mai una classifica.
  * - **Sessioni dei coding agent:** quante, token e costo per caso; mai per persona.
  * - **(8.1b) Pull request:** quante aperte e unite per caso, e quanto passa di solito dalla presa del compito
- *   all'unione (la mediana); mai per persona. In «Da fare per te» le PR pronte dei tuoi casi, tranne quelle dei
+ *   all'unione (la mediana), solo da {@link MIN_MERGED_FOR_MEDIAN} PR unite in su: con meno sarebbe il tempo di una
+ *   persona. Mai per persona. In «Da fare per te» le PR pronte dei tuoi casi, tranne quelle dei
  *   tuoi compiti.
  */
 import type { UcExecutor } from "@/lib/db/uc-executor";
@@ -70,6 +71,9 @@ export interface FactoryOverview {
   tasksReady: boolean;
 }
 
+/** Sotto questo numero di PR unite (con il compito preso) la mediana non si dice: sarebbe il tempo di una persona. */
+export const MIN_MERGED_FOR_MEDIAN = 3;
+
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 const statusOf = (v: unknown): CaseStatus => ((CASE_STATUSES as readonly string[]).includes(String(v)) ? (String(v) as CaseStatus) : "bozza");
 
@@ -85,7 +89,8 @@ export async function loadFactoryOverview(executor: UcExecutor, input: { workspa
   const prStats = githubReady
     ? ucSql`(SELECT jsonb_build_object('open', count(*) FILTER (WHERE p.state = 'aperta'), 'merged', count(*) FILTER (WHERE p.state = 'unita'),
       'medianHours', percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (p.merged_at - t.taken_at)) / 3600)
-        FILTER (WHERE p.state = 'unita' AND t.taken_at IS NOT NULL AND p.merged_at > t.taken_at))
+        FILTER (WHERE p.state = 'unita' AND t.taken_at IS NOT NULL AND p.merged_at > t.taken_at),
+      'timed', count(*) FILTER (WHERE p.state = 'unita' AND t.taken_at IS NOT NULL AND p.merged_at > t.taken_at))
     FROM use_case_pull_requests p LEFT JOIN use_case_tasks t ON t.id = p.task_id WHERE p.use_case_id = u.id AND p.workspace_id = u.workspace_id)`
     : raw("NULL::jsonb");
   const taskCounts = tasksReady
@@ -113,7 +118,7 @@ ORDER BY coalesce(u.code, c.code)`),
     const tasks = { total: num(t.total), open: num(t.open), inProgress: num(t.inProgress), inReview: num(t.inReview), done: num(t.done), cancelled: num(t.cancelled) };
     const s = (r.sessions ?? {}) as Record<string, unknown>;
     const p = (r.prs ?? {}) as Record<string, unknown>;
-    const medianHours = p.medianHours === null || p.medianHours === undefined ? null : Number(p.medianHours);
+    const medianHours = p.medianHours === null || p.medianHours === undefined || num(p.timed) < MIN_MERGED_FOR_MEDIAN ? null : Number(p.medianHours);
     const projectStatus = r.project_status === "approvato" || r.project_status === "da_approvare" || r.project_status === "in_corso" ? r.project_status : null;
     const line: LineCase = { dossierStatus: statusOf(r.dossier_status), projectStatus, tasks };
     return {

@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS use_case_pull_requests (
   opened_at timestamptz NOT NULL,
   merged_at timestamptz,
   closed_at timestamptz,
+  gh_updated_at timestamptz,
+  changed_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT use_case_pull_requests_pkey PRIMARY KEY (id),

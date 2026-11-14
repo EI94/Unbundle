@@ -1569,6 +1569,8 @@ export const useCasePullRequests = pgTable(
     openedAt: tz("opened_at").notNull(),
     mergedAt: tz("merged_at"),
     closedAt: tz("closed_at"),
+    ghUpdatedAt: tz("gh_updated_at"),
+    changedAt: tz("changed_at").defaultNow().notNull(),
     createdAt: tz("created_at").defaultNow().notNull(),
     updatedAt: tz("updated_at").defaultNow().notNull(),
   },

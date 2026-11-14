@@ -4,7 +4,7 @@ import { dispatchDue } from "@/lib/db/queries/uc-notifications-dispatch";
 import { applyGithubEvent } from "@/lib/db/queries/use-case-github";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { ucLogError } from "@/lib/uc/log";
-import { GITHUB_BODY_MAX_BYTES, GITHUB_DELIVERY_RE, githubEventName, parseGithubEvent, verifyGithubSignature } from "@/lib/use-cases/factory/github";
+import { GITHUB_BODY_MAX_BYTES, GITHUB_DELIVERY_RE, githubEventName, githubPayloadText, parseGithubEvent, verifyGithubSignature } from "@/lib/use-cases/factory/github";
 
 /**
  * Il webhook di GitHub (rilascio 8.1b, docs/rilascio-8/RILASCIO-8.1-COSTRUZIONE.md §2, 8.1b): pull request e push dei
@@ -14,6 +14,7 @@ import { GITHUB_BODY_MAX_BYTES, GITHUB_DELIVERY_RE, githubEventName, parseGithub
  * - **Firmato:** senza `X-Hub-Signature-256` giusta per il corpo, 401, e non si legge niente.
  * - **Una volta sola:** `X-GitHub-Delivery` si registra con gli effetti; un evento rimandato risponde «ripetuto».
  * - Mai il contenuto nei log: solo l'esito.
+ * - Il tipo di contenuto giusto è `application/json`; il modulo predefinito di GitHub (`payload=…`) va bene lo stesso.
  *
  * Va bene sia il webhook dell'organizzazione sia, più avanti, quello di un'app GitHub: stesso formato, stessa firma.
  */
@@ -38,7 +39,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!event || !GITHUB_DELIVERY_RE.test(deliveryId)) return json(400, { ok: false, errore: "intestazioni" });
   let payload: unknown;
   try {
-    payload = JSON.parse(new TextDecoder().decode(body));
+    const text = githubPayloadText(request.headers.get("content-type"), new TextDecoder().decode(body));
+    if (text === null) return json(400, { ok: false, errore: "json" });
+    payload = JSON.parse(text);
   } catch {
     return json(400, { ok: false, errore: "json" });
   }

@@ -60,12 +60,16 @@ const ids = {
 const t: Record<string, string> = {};
 const delivery = () => `${randomUUID()}`;
 
-function prPayload(over: { number: number; branch: string; state?: "open" | "closed"; draft?: boolean; merged?: boolean; action?: string; repo?: string; headRepo?: string }) {
+let clock = Date.now();
+/** L'ora di GitHub di ogni evento: sempre avanti, salvo quando la prova la sceglie (eventi fuori ordine). */
+const tick = () => new Date((clock += 1000)).toISOString();
+
+function prPayload(over: { number: number; branch: string; state?: "open" | "closed"; draft?: boolean; merged?: boolean; action?: string; repo?: string; headRepo?: string; base?: string; updatedAt?: string }) {
   const repo = over.repo ?? REPO;
   const closed = over.state === "closed";
   return {
     action: over.action ?? "opened",
-    repository: { full_name: repo },
+    repository: { full_name: repo, default_branch: "main" },
     sender: { login: `persona-${suffix}` },
     pull_request: {
       number: over.number,
@@ -74,16 +78,18 @@ function prPayload(over: { number: number; branch: string; state?: "open" | "clo
       merged_at: closed && over.merged ? new Date().toISOString() : null,
       closed_at: closed ? new Date().toISOString() : null,
       created_at: new Date(Date.now() - 3_600_000).toISOString(),
+      updated_at: over.updatedAt ?? tick(),
       user: { login: `persona-${suffix}` },
       head: { ref: over.branch, repo: { full_name: over.headRepo ?? repo } },
+      base: { ref: over.base ?? "main" },
     },
   };
 }
 
-async function send(event: string, payload: unknown, o: { id?: string; secret?: string; signature?: string | null } = {}): Promise<{ status: number; json: Row }> {
-  const body = JSON.stringify(payload);
+async function send(event: string, payload: unknown, o: { id?: string; secret?: string; signature?: string | null; form?: boolean } = {}): Promise<{ status: number; json: Row }> {
+  const body = o.form ? new URLSearchParams({ payload: JSON.stringify(payload) }).toString() : JSON.stringify(payload);
   const signature = o.signature === undefined ? `sha256=${createHmac("sha256", o.secret ?? SECRET).update(body).digest("hex")}` : o.signature;
-  const headers: Record<string, string> = { "content-type": "application/json", "x-github-event": event, "x-github-delivery": o.id ?? delivery() };
+  const headers: Record<string, string> = { "content-type": o.form ? "application/x-www-form-urlencoded" : "application/json", "x-github-event": event, "x-github-delivery": o.id ?? delivery() };
   if (signature !== null) headers["x-hub-signature-256"] = signature;
   const response = await POST(new Request("http://127.0.0.1:53110/api/github/webhook", { method: "POST", headers, body }));
   return { status: response.status, json: (await response.json()) as Row };
@@ -255,7 +261,7 @@ test("una PR pronta: il compito in revisione, la PR salvata senza persone, l'avv
   assert.equal(mail.length, 1);
   assert.equal(mail[0].recipient_user_id, ids.lead);
   assert.deepEqual(mail[0].payload, { useCase: ids.useCase, ref: "T-1", pr: 1, repo: REPO });
-  assert.match(String(mail[0].dedupe_key), new RegExp(`:T-1:${REPO.replace("/", "\\/")}#1$`));
+  assert.match(String(mail[0].dedupe_key), /:T-1:pr-[0-9a-f]{16}$/);
   const queued = (globalThis as { __ghAfter?: (() => Promise<void>)[] }).__ghAfter ?? [];
   assert.ok(queued.length >= 1, "l'invio dopo la risposta");
   while (queued.length) await queued.pop()!();
@@ -283,6 +289,39 @@ test("chiusa senza unire torna in corso; riaperta torna in revisione; unita è f
   // Fuori ordine: un «synchronize» in ritardo non riapre niente.
   await send("pull_request", prPayload({ number: 1, branch: "px-0042/t-1-ingresso", action: "synchronize" }));
   assert.deepEqual([(await pr(1)).state, (await task("T-1")).status], ["unita", "fatto"]);
+});
+
+test("(revisione) un'etichetta su una PR già unita non rimette «fatto» un compito riaperto; un evento vecchio non cambia niente", opts, async () => {
+  // T-1 è fatto dalla PR #1 unita; qualcuno lo riapre («unbundle compito segna»).
+  await q(`UPDATE use_case_tasks SET status = 'in_corso' WHERE id = $1`, [t["T-1"]]);
+  await send("pull_request", prPayload({ number: 1, branch: "px-0042/t-1-ingresso", state: "closed", merged: true, action: "labeled" }));
+  assert.equal((await task("T-1")).status, "in_corso", "l'etichetta non lo rimette fatto");
+  await send("pull_request", prPayload({ number: 1, branch: "px-0042/t-1-ingresso", state: "closed", merged: true, action: "closed" }), { id: `rimandato-${suffix}` });
+  assert.equal((await task("T-1")).status, "in_corso", "nemmeno l'evento di chiusura rimandato con un id nuovo");
+  // Fuori ordine: «ready_for_review» arriva prima di «opened» in bozza.
+  const later = tick();
+  const earlier = new Date(Date.parse(later) - 5000).toISOString();
+  await send("pull_request", prPayload({ number: 5, branch: "px-0042/t-3-risposta", action: "ready_for_review", updatedAt: later }));
+  await send("pull_request", prPayload({ number: 5, branch: "px-0042/t-3-risposta", draft: true, action: "opened", updatedAt: earlier }));
+  assert.deepEqual([(await pr(5)).draft, (await task("T-3")).status], [false, "in_revisione"], "l'evento vecchio non la rimette in bozza");
+  // «reopened» prima di «closed»: resta aperta.
+  await send("pull_request", prPayload({ number: 5, branch: "px-0042/t-3-risposta", action: "reopened", updatedAt: tick() }));
+  await send("pull_request", prPayload({ number: 5, branch: "px-0042/t-3-risposta", state: "closed", action: "closed", updatedAt: earlier }));
+  assert.equal((await pr(5)).state, "aperta");
+  // Unita in un altro ramo (una pila di PR): non è fatto.
+  await send("pull_request", prPayload({ number: 5, branch: "px-0042/t-3-risposta", state: "closed", merged: true, action: "closed", base: "px-0042/t-2-normalizza" }));
+  assert.deepEqual([(await pr(5)).state, (await task("T-3")).status], ["chiusa", "in_corso"]);
+});
+
+test("(revisione) un repository con il nome lungo avvisa lo stesso; il corpo come modulo di GitHub va bene", opts, async () => {
+  const long = `Prova/${"r".repeat(90)}-${suffix}`;
+  await q(`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder) VALUES ($1, $2, $3, 'casi/px-0042')`, [ids.useCase, ids.ws, long]);
+  const r = await send("pull_request", prPayload({ number: 77, branch: "px-0042/t-3-risposta", repo: long }), { form: true });
+  assert.deepEqual([r.status, r.json.esito], [200, "applicato"]);
+  const [mail] = await q(`SELECT dedupe_key FROM uc_notifications WHERE case_id = $1 AND template_key = 'pr_da_rivedere' AND payload->>'pr' = '77'`, [ids.dossier]);
+  assert.ok(mail && String(mail.dedupe_key).length <= 200);
+  await send("pull_request", prPayload({ number: 77, branch: "px-0042/t-3-risposta", repo: long, state: "closed", action: "closed" }));
+  await q(`DELETE FROM use_case_github_deliveries WHERE repo = $1`, [long]);
 });
 
 test("una bozza non è pronta; un compito senza persona va in revisione e, chiusa la PR, torna da fare; annullato non cambia", opts, async () => {
@@ -342,7 +381,7 @@ test("la pagina: la PR pronta a chi non ha il compito, i numeri delle PR per cas
   assert.ok(row);
   assert.equal(row.prs.open, 2, "la #3 e la bozza #2");
   assert.equal(row.prs.merged, 1);
-  assert.ok(row.prs.medianDays !== null && row.prs.medianDays > 0, "dalla presa all'unione");
+  assert.equal(row.prs.medianDays, null, "con una sola PR unita il tempo non si dice: sarebbe quello di una persona");
   assert.ok(!JSON.stringify(forLead).includes("Prova lead") && !JSON.stringify(forLead).includes("Prova dev"), "nessun nome");
 });
 

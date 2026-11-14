@@ -17,6 +17,7 @@
 import { TASKS_PROBE_SQL, type TaskStatus } from "../use-case-hub-tasks-ddl.ts";
 import type { GithubNoticeKind } from "../use-case-hub-github-ddl.ts";
 import type { TaskNoticeKind as TaskOnlyNoticeKind } from "../use-case-hub-tasks-ddl.ts";
+import { createHash } from "node:crypto";
 import { cast, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
 import type { CaseRole } from "../../uc/vocab.ts";
 import { romeToday } from "../../use-cases/quarter.ts";
@@ -49,21 +50,25 @@ export const NOBODY = "00000000-0000-0000-0000-000000000000";
 
 const ALWAYS = raw("true");
 
+/** Chi agisce (e non riceve): un id, o (8.1b) un'espressione letta nella stessa transazione. */
+export type TaskActor = string | SqlFragment;
+const actorSql = (actor: TaskActor): SqlFragment => (typeof actor === "string" ? cast(actor, "uuid") : actor);
+
 /** Una riga nella campanella, a una persona o ai ruoli del caso; mai a `actorId`. Una al giorno per tipo. */
-export function taskNoticeSql(target: TaskNoticeTarget, kind: TaskNoticeKind, to: TaskRecipient, actorId: string, now: Date, when: SqlFragment = ALWAYS): UcStatement {
+export function taskNoticeSql(target: TaskNoticeTarget, kind: TaskNoticeKind, to: TaskRecipient, actorId: TaskActor, now: Date, when: SqlFragment = ALWAYS): UcStatement {
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
   const day = cast(romeToday(now), "date");
   const conflict = raw("ON CONFLICT (recipient_user_id, use_case_id, kind, rome_day) DO UPDATE SET last_event_at = now(), read_at = NULL");
   if ("userId" in to) {
     return toStatement(ucSql`INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day)
-SELECT ${ws}, ${uc}, ${cast(to.userId, "uuid")}, ${cast(kind, "text")}, ${day} WHERE ${cast(to.userId, "uuid")} IS DISTINCT FROM ${cast(actorId, "uuid")} AND ${when}
+SELECT ${ws}, ${uc}, ${cast(to.userId, "uuid")}, ${cast(kind, "text")}, ${day} WHERE ${cast(to.userId, "uuid")} IS DISTINCT FROM ${actorSql(actorId)} AND ${when}
 ${conflict}`);
   }
   return toStatement(ucSql`INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day)
 SELECT DISTINCT c.workspace_id, c.portfolio_use_case_id, m.user_id, ${cast(kind, "text")}, ${day}
 FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id
-WHERE c.workspace_id = ${ws} AND c.portfolio_use_case_id = ${uc} AND m.role = ANY (${cast([...to.roles], "text[]")}) AND m.user_id IS DISTINCT FROM ${cast(actorId, "uuid")} AND ${when}
+WHERE c.workspace_id = ${ws} AND c.portfolio_use_case_id = ${uc} AND m.role = ANY (${cast([...to.roles], "text[]")}) AND m.user_id IS DISTINCT FROM ${actorSql(actorId)} AND ${when}
 ${conflict}`);
 }
 
@@ -75,7 +80,7 @@ export function taskEmailSql(
   target: TaskNoticeTarget,
   kind: TaskNoticeKind,
   to: TaskRecipient,
-  actorId: string,
+  actorId: TaskActor,
   now: Date,
   ref: string | null,
   when: SqlFragment = ALWAYS,
@@ -92,15 +97,17 @@ export function taskEmailSql(
     ...(extra.pr ? { pr: extra.pr } : {}),
     ...(extra.repo ? { repo: extra.repo } : {}),
   });
-  // Il compito (e la PR) nella chiave: due compiti, o due PR, lo stesso giorno sono due e-mail.
-  const which = [ref, extra.pr ? `${extra.repo ?? ""}#${extra.pr}` : null].filter(Boolean).join(":") || null;
+  // Il compito (e la PR) nella chiave: due compiti, o due PR, lo stesso giorno sono due e-mail. La PR come impronta
+  // corta: un nome di repository lungo non supera la colonna (varchar 200).
+  const prKey = extra.pr ? `pr-${createHash("sha256").update(`${extra.repo ?? ""}#${extra.pr}`).digest("hex").slice(0, 16)}` : null;
+  const which = [ref, prKey].filter(Boolean).join(":") || null;
   const key = which ? ucSql`${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day} || ':' || ${cast(which, "text")}` : ucSql`${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day}`;
   const recipients =
     "userId" in to ? ucSql`(SELECT ${cast(to.userId, "uuid")} AS user_id)` : ucSql`(SELECT m.user_id FROM uc_case_members m WHERE m.case_id = c.id AND m.role = ANY (${cast([...to.roles], "text[]")}))`;
   return toStatement(ucSql`INSERT INTO uc_notifications (workspace_id, case_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
 SELECT DISTINCT ON (r.user_id) c.workspace_id, c.id, r.user_id, 'email', ${tpl}, ${payload}, 'in_coda', ${key}, now()
 FROM uc_cases c CROSS JOIN LATERAL ${recipients} r
-WHERE c.workspace_id = ${ws} AND c.portfolio_use_case_id = ${uc} AND r.user_id IS DISTINCT FROM ${cast(actorId, "uuid")} AND ${when}
+WHERE c.workspace_id = ${ws} AND c.portfolio_use_case_id = ${uc} AND r.user_id IS DISTINCT FROM ${actorSql(actorId)} AND ${when}
 ON CONFLICT (dedupe_key) DO NOTHING`);
 }
 
@@ -109,7 +116,7 @@ export function notifyTask(
   target: TaskNoticeTarget,
   kind: TaskNoticeKind,
   to: TaskRecipient,
-  actorId: string,
+  actorId: TaskActor,
   now: Date,
   ref: string | null,
   when: SqlFragment = ALWAYS,

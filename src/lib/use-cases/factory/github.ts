@@ -14,8 +14,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { PullRequestState } from "../../db/use-case-hub-github-ddl.ts";
 import { taskRefFromBranch } from "./tasks.ts";
 
-/** Il corpo più grande che si legge (le PR e i push della fabbrica stanno molto sotto). */
-export const GITHUB_BODY_MAX_BYTES = 5 * 1024 * 1024;
+/** Il corpo più grande che si legge (sotto il limite di Vercel; le PR e i push della fabbrica stanno molto sotto). */
+export const GITHUB_BODY_MAX_BYTES = 4 * 1024 * 1024;
 
 export const GITHUB_DELIVERY_RE = /^[A-Za-z0-9-]{1,64}$/;
 const REPO_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
@@ -62,6 +62,8 @@ export type GithubEvent =
       openedAt: string | null;
       mergedAt: string | null;
       closedAt: string | null;
+      /** L'ora di GitHub di questo stato della PR: un evento più vecchio di quello già applicato non cambia niente. */
+      updatedAt: string | null;
       /** L'azione di GitHub: `opened`, `closed`, … */
       action: string;
       reopened: boolean;
@@ -103,7 +105,11 @@ export function parseGithubEvent(event: string, payload: unknown): GithubEvent {
     if (headRepo !== repo) return { kind: "altro", repo, reason: "fork" };
     const mergedAt = isoOrNull(pr.merged_at);
     const open = pr.state === "open";
-    const state: PullRequestState = open ? "aperta" : mergedAt ? "unita" : "chiusa";
+    // Unita conta solo nel ramo principale: una PR unita in un altro ramo (una pila di PR) non porta il lavoro in main.
+    const base = isRecord(pr.base) ? str(pr.base.ref) : null;
+    const defaultBranch = isRecord(payload.repository) ? str(payload.repository.default_branch) : null;
+    const intoDefault = defaultBranch === null || base === defaultBranch;
+    const state: PullRequestState = open ? "aperta" : mergedAt && intoDefault ? "unita" : "chiusa";
     return {
       kind: "pr",
       repo,
@@ -114,6 +120,7 @@ export function parseGithubEvent(event: string, payload: unknown): GithubEvent {
       openedAt: isoOrNull(pr.created_at),
       mergedAt: state === "unita" ? mergedAt : null,
       closedAt: open ? null : isoOrNull(pr.closed_at),
+      updatedAt: isoOrNull(pr.updated_at),
       action,
       reopened: action === "reopened",
       signal: SIGNAL_ACTIONS.has(action),
@@ -130,6 +137,15 @@ export function parseGithubEvent(event: string, payload: unknown): GithubEvent {
     return { kind: "push", repo, branch };
   }
   return { kind: "altro", repo, reason: "evento_non_usato" };
+}
+
+/**
+ * Il JSON dell'evento dal corpo: `application/json`, o il modulo di GitHub (`payload=…`) se il webhook è rimasto con il
+ * tipo di contenuto predefinito. La firma vale sul corpo così com'è, in entrambi i casi.
+ */
+export function githubPayloadText(contentType: string | null, body: string): string | null {
+  if ((contentType ?? "").toLowerCase().startsWith("application/x-www-form-urlencoded")) return new URLSearchParams(body).get("payload");
+  return body;
 }
 
 /** L'indirizzo della PR, fatto da repository e numero (mai quello del corpo). */

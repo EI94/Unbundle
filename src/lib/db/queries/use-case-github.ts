@@ -109,24 +109,34 @@ function prStatements(t: Target, task: TaskNow | null, e: Extract<GithubEvent, {
   const repo = cast(e.repo, "text");
   const number = cast(e.number, "int");
   const incoming = cast(e.state, "text");
-  // Lo stato che resta: unita resta unita; chiusa si riapre solo con «reopened».
+  // Un evento più vecchio di quello già applicato (GitHub consegna fuori ordine, o qualcuno rimanda un corpo vecchio)
+  // non cambia stato né bozza.
+  const stale = ucSql`(EXCLUDED.gh_updated_at IS NOT NULL AND p.gh_updated_at IS NOT NULL AND EXCLUDED.gh_updated_at < p.gh_updated_at)`;
+  // Lo stato che resta: unita resta unita; un evento vecchio non cambia niente; chiusa si riapre solo con «reopened».
   const nextState = ucSql`CASE WHEN p.state = 'unita' THEN 'unita'
+    WHEN ${stale} THEN p.state
     WHEN p.state = 'chiusa' AND ${incoming} = 'aperta' AND NOT ${cast(e.reopened, "boolean")} THEN 'chiusa'
     ELSE ${incoming} END`;
+  const nextDraft = ucSql`CASE WHEN ${stale} OR p.state = 'unita' THEN p.draft ELSE EXCLUDED.draft END`;
   const merged = cast(e.mergedAt, "timestamptz");
   const closed = cast(e.closedAt, "timestamptz");
   const taskId = task ? cast(task.id, "uuid") : raw("NULL::uuid");
   const out: UcStatement[] = [
-    toStatement(ucSql`INSERT INTO use_case_pull_requests AS p (use_case_id, workspace_id, task_id, repo, number, branch, state, draft, opened_at, merged_at, closed_at)
+    toStatement(ucSql`INSERT INTO use_case_pull_requests AS p (use_case_id, workspace_id, task_id, repo, number, branch, state, draft, opened_at, merged_at, closed_at, gh_updated_at, changed_at)
 SELECT ${uc}, ${ws}, ${taskId}, ${repo}, ${number}, ${cast(e.branch, "text")}, ${incoming}, ${cast(e.draft, "boolean")},
-  coalesce(${cast(e.openedAt, "timestamptz")}, now()), CASE WHEN ${incoming} = 'unita' THEN coalesce(${merged}, now()) END, ${closed}
+  coalesce(${cast(e.openedAt, "timestamptz")}, now()), CASE WHEN ${incoming} = 'unita' THEN coalesce(${merged}, now()) END, ${closed},
+  ${cast(e.updatedAt, "timestamptz")}, now()
 WHERE ${fresh}
 ON CONFLICT (workspace_id, repo, number) DO UPDATE SET
-  task_id = coalesce(EXCLUDED.task_id, p.task_id),
+  task_id = coalesce(p.task_id, EXCLUDED.task_id),
   state = ${nextState},
-  draft = EXCLUDED.draft,
+  draft = ${nextDraft},
   merged_at = CASE WHEN (${nextState}) = 'unita' THEN coalesce(p.merged_at, EXCLUDED.merged_at, now()) END,
-  closed_at = CASE WHEN (${nextState}) = 'aperta' THEN NULL ELSE coalesce(EXCLUDED.closed_at, p.closed_at) END,
+  closed_at = CASE WHEN (${nextState}) = 'aperta' THEN NULL WHEN ${stale} THEN p.closed_at ELSE coalesce(EXCLUDED.closed_at, p.closed_at) END,
+  gh_updated_at = greatest(p.gh_updated_at, EXCLUDED.gh_updated_at),
+  -- Solo quando stato o bozza cambiano davvero, o il compito si lega adesso, il compito si muove (changed_at = now()).
+  changed_at = CASE WHEN (${nextState}) IS DISTINCT FROM p.state OR (${nextDraft}) IS DISTINCT FROM p.draft
+    OR (p.task_id IS NULL AND EXCLUDED.task_id IS NOT NULL) THEN now() ELSE p.changed_at END,
   updated_at = now()
 WHERE p.use_case_id = EXCLUDED.use_case_id`),
   ];
@@ -134,17 +144,21 @@ WHERE p.use_case_id = EXCLUDED.use_case_id`),
     const url = cast(pullRequestUrl(e.repo, e.number), "text");
     // Una PR pronta (aperta, non in bozza) del compito, dopo l'aggiornamento qui sopra.
     const readyPr = ucSql`EXISTS (SELECT 1 FROM use_case_pull_requests o WHERE o.task_id = t.id AND o.state = 'aperta' AND NOT o.draft)`;
+    // Lo stato del compito cambia solo se questo evento ha cambiato la PR: un'etichetta, una modifica del testo o un
+    // evento vecchio su una PR già unita non rimettono «fatto» un compito riaperto.
+    const changed = raw("p.changed_at = now()");
     out.push(
       toStatement(ucSql`UPDATE use_case_tasks t SET
   status = CASE
+    WHEN NOT ${changed} THEN t.status
     WHEN p.state = 'unita' THEN 'fatto'
     WHEN ${readyPr} THEN 'in_revisione'
     WHEN t.status = 'in_revisione' THEN CASE WHEN t.holder_user_id IS NULL THEN 'da_fare' ELSE 'in_corso' END
     ELSE t.status END,
-  pr_url = CASE WHEN p.state = 'unita' OR (p.state = 'aperta' AND NOT p.draft) THEN ${url} ELSE t.pr_url END,
+  pr_url = CASE WHEN ${changed} AND (p.state = 'unita' OR (p.state = 'aperta' AND NOT p.draft)) THEN ${url} ELSE t.pr_url END,
   branch = coalesce(t.branch, p.branch),
-  last_activity_at = CASE WHEN ${cast(e.signal, "boolean")} OR p.state = 'unita' THEN now() ELSE t.last_activity_at END,
-  updated_at = now()
+  last_activity_at = CASE WHEN ${cast(e.signal, "boolean")} OR (${changed} AND p.state = 'unita') THEN now() ELSE t.last_activity_at END,
+  updated_at = CASE WHEN ${changed} THEN now() ELSE t.updated_at END
 FROM use_case_pull_requests p
 WHERE p.workspace_id = ${ws} AND p.repo = ${repo} AND p.number = ${number} AND p.use_case_id = ${uc}
   AND t.id = ${cast(task.id, "uuid")} AND t.status IN ('da_fare', 'in_corso', 'in_revisione') AND ${fresh}
@@ -152,11 +166,13 @@ RETURNING t.status`),
     );
   }
   if (e.ready) {
-    // Al team che costruisce, tranne chi ha il compito; solo se la PR è davvero pronta adesso.
+    // Al team che costruisce, tranne chi ha il compito adesso (letto nella stessa transazione); solo se questo evento ha
+    // reso la PR pronta.
     const stillReady = ucSql`(${fresh} AND EXISTS (SELECT 1 FROM use_case_pull_requests p WHERE p.workspace_id = ${ws} AND p.repo = ${repo} AND p.number = ${number}
-  AND p.use_case_id = ${uc} AND p.state = 'aperta' AND NOT p.draft))`;
+  AND p.use_case_id = ${uc} AND p.state = 'aperta' AND NOT p.draft AND p.changed_at = now()))`;
+    const holder = task ? ucSql`(SELECT x.holder_user_id FROM use_case_tasks x WHERE x.id = ${cast(task.id, "uuid")})` : NOBODY;
     out.push(
-      ...notifyTask({ workspaceId: t.workspaceId, useCaseId: t.useCaseId }, "pr_da_rivedere", { roles: BUILDER_ROLES }, task?.holderUserId ?? NOBODY, new Date(), task?.ref ?? null, stillReady, {
+      ...notifyTask({ workspaceId: t.workspaceId, useCaseId: t.useCaseId }, "pr_da_rivedere", { roles: BUILDER_ROLES }, holder, new Date(), task?.ref ?? null, stillReady, {
         pr: e.number,
         repo: e.repo,
       }),

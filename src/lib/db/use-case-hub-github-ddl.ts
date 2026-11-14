@@ -8,7 +8,9 @@
  *    (GitHub lo rimanda, o qualcuno lo rimanda a mano) non conta due volte. Solo l'evento, il repository e l'esito,
  *    mai il contenuto; si tengono 30 giorni (il cron dei dossier li toglie);
  * 3. `use_case_pull_requests`: le pull request dei repository della fabbrica che appartengono a un caso (il ramo
- *    `<id>/…`), con il compito quando il ramo è `<id>/t-<n>`. Stato, bozza, quando si apre, si unisce o si chiude.
+ *    `<id>/…`), con il compito quando il ramo è `<id>/t-<n>`. Stato, bozza, quando si apre, si unisce o si chiude;
+ *    `gh_updated_at` è l'ora di GitHub dell'ultimo evento applicato (un evento più vecchio non cambia niente),
+ *    `changed_at` quando stato o bozza sono cambiati davvero (solo allora si muove il compito).
  *    **Nessuna colonna sulla persona** che la apre: si legge per caso, mai per persona (art. 15.4);
  * 4. il CHECK dei tipi della campanella allargato con `pr_da_rivedere`, sotto l'advisory lock della 0025.
  *
@@ -93,6 +95,8 @@ END $$;`,
   opened_at timestamptz NOT NULL,
   merged_at timestamptz,
   closed_at timestamptz,
+  gh_updated_at timestamptz,
+  changed_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT use_case_pull_requests_pkey PRIMARY KEY (id),
