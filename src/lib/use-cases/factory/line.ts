@@ -9,12 +9,13 @@
  *   indietro con il modello. La prende chi ci lavora.
  * - Mai una cifra per persona: i compiti si contano per caso.
  * - (8.2a) Le evals e il banco di prova del caso in un frammento breve: «evals 96%», «evals 80%, sotto soglia»,
- *   «il banco consiglia Claude Haiku 5.5 per «lettura»».
+ *   «evals 62% su tj-0049/t-3, sotto soglia» (il ramo, quando non è main), «il banco consiglia Claude Haiku 5.5 per
+ *   «lettura»».
  *
  * Modulo puro.
  */
 import type { CaseStatus } from "../../uc/vocab.ts";
-import { formatQuality, modelLabel, type BenchVerdict } from "./benchmark.ts";
+import { EVALS_MAIN, formatQuality, modelLabel, type BenchVerdict } from "./benchmark.ts";
 
 /** La versione del repository modello di oggi: si aggiorna qui quando ne esce una (`CHANGELOG.md` del modello). */
 export const AGENT_FACTORY_TEMPLATE_VERSION = "1.3.0";
@@ -104,12 +105,18 @@ export interface LineEvals {
   quality: number;
   thresholdsMet: boolean;
   fakeModels: boolean;
+  /** Il ramo delle evals: un caso senza evals di main mostra quelle di un altro ramo, e la riga lo dice. */
+  branch: string | null;
 }
 
-/** (8.2a) Le evals in un frammento: «evals 96%», «evals 80%, sotto soglia»; con i modelli finti lo dice. */
+/**
+ * (8.2a) Le evals in un frammento: «evals 96%», «evals 80%, sotto soglia»; il ramo quando non è main («evals 62% su
+ * tj-0049/t-3, sotto soglia», «senza ramo» se non si sa); con i modelli finti lo dice.
+ */
 export function evalsFact(e: LineEvals | null): string | null {
   if (!e) return null;
-  return `evals ${formatQuality(e.quality)}${e.thresholdsMet ? "" : ", sotto soglia"}${e.fakeModels ? ", modelli finti" : ""}`;
+  const branch = e.branch === EVALS_MAIN ? "" : e.branch ? ` su ${e.branch}` : " senza ramo";
+  return `evals ${formatQuality(e.quality)}${branch}${e.thresholdsMet ? "" : ", sotto soglia"}${e.fakeModels ? ", modelli finti" : ""}`;
 }
 
 /**

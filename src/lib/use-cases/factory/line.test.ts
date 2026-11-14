@@ -53,9 +53,13 @@ test("la coda della fabbrica: i repository indietro con il modello, o senza vers
 
 test("(8.2a) le evals e il banco nella riga del caso: «evals 96%», «sotto soglia», «il banco consiglia …»", () => {
   assert.equal(evalsFact(null), null);
-  assert.equal(evalsFact({ quality: 0.96, thresholdsMet: true, fakeModels: false }), "evals 96%");
-  assert.equal(evalsFact({ quality: 0.8, thresholdsMet: false, fakeModels: false }), "evals 80%, sotto soglia");
-  assert.equal(evalsFact({ quality: 27 / 28, thresholdsMet: true, fakeModels: true }), "evals 96,4%, modelli finti");
+  assert.equal(evalsFact({ quality: 0.96, thresholdsMet: true, fakeModels: false, branch: "main" }), "evals 96%");
+  assert.equal(evalsFact({ quality: 0.8, thresholdsMet: false, fakeModels: false, branch: "main" }), "evals 80%, sotto soglia");
+  assert.equal(evalsFact({ quality: 27 / 28, thresholdsMet: true, fakeModels: true, branch: "main" }), "evals 96,4%, modelli finti");
+  // Il ramo quando non è main: le evals di un ramo non si leggono come quelle del caso.
+  assert.equal(evalsFact({ quality: 0.62, thresholdsMet: false, fakeModels: false, branch: "tj-0049/t-3" }), "evals 62% su tj-0049/t-3, sotto soglia");
+  assert.equal(evalsFact({ quality: 0.9, thresholdsMet: true, fakeModels: true, branch: "tj-0049/t-3" }), "evals 90% su tj-0049/t-3, modelli finti");
+  assert.equal(evalsFact({ quality: 0.9, thresholdsMet: true, fakeModels: false, branch: null }), "evals 90% senza ramo");
   const r = (model: string, quality: number, cost: number, current = false): BenchResult => ({
     model, current, quality, passed: Math.round(quality * 28), total: 28, thresholdsMet: true, groups: {}, costPer1000Usd: cost,
     latencyP50Ms: null, latencyP95Ms: null, tokensInAvg: null, tokensOutAvg: null, errors: 0,
@@ -68,7 +72,7 @@ test("(8.2a) le evals e il banco nella riga del caso: «evals 96%», «sotto sog
   assert.deepEqual(benchFacts([{ role: "lettura", verdict: change, superseded: true }, { role: "scrittura", verdict: stay, superseded: false }]), []);
   assert.deepEqual(benchFacts([{ role: "lettura", verdict: change, superseded: false }]), ["il banco consiglia Claude Haiku 5.5 per «lettura»"]);
   assert.equal(evalsTodoText(0.8), "Le evals di main sono sotto soglia (80%): guarda quali gruppi non passano.");
-  for (const text of [evalsFact({ quality: 0.8, thresholdsMet: false, fakeModels: false }), evalsTodoText(0.8), ...benchFacts([{ role: "lettura", verdict: change }])]) {
+  for (const text of [evalsFact({ quality: 0.8, thresholdsMet: false, fakeModels: false, branch: null }), evalsTodoText(0.8), ...benchFacts([{ role: "lettura", verdict: change }])]) {
     assert.doesNotMatch(String(text), /caso d'uso/, "nella dashboard si dice «use case»");
   }
 });
