@@ -13,6 +13,7 @@ import {
   benchLabels,
   benchMetaLine,
   benchMissingText,
+  benchRerunModels,
   benchRows,
   benchSummary,
   changeHint,
@@ -111,6 +112,33 @@ test("i comandi per rifare evals e banco, come li scrive la CLI del modello", ()
   assert.equal(evalsCommand("TJ 0049; rm -rf /"), "npm run unbundle -- eval <ID> --invia");
   assert.equal(benchCommand("<ID>", "Lettura!"), "npm run unbundle -- banco <ID> --ruolo <ruolo> --invia");
   assert.equal(evalsCommand("TJ-0049", "VELOCE; x"), "npm run unbundle -- eval TJ-0049 --invia");
+});
+
+test("rifare un banco: gli stessi modelli con --modelli, nell'ordine della CLI, mai un id fuori regola", () => {
+  // Come lo scrive la CLI: --ruolo, --modelli, --livello, --invia.
+  assert.equal(benchCommand("TJ-0049", "lettura", "pull_request", [HAIKU]), "npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-haiku-5-5 --invia");
+  assert.equal(
+    benchCommand("TJ-0049", "lettura", "veloce", [HAIKU, OPUS, HAIKU]),
+    "npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-haiku-5-5,anthropic/claude-opus-5-5 --livello veloce --invia",
+  );
+  // Senza altri modelli niente --modelli (né vuoto: la CLI lo rifiuta).
+  assert.equal(benchCommand("TJ-0049", "lettura", null, []), "npm run unbundle -- banco TJ-0049 --ruolo lettura --invia");
+  assert.equal(benchCommand("TJ-0049", "lettura", null, null), "npm run unbundle -- banco TJ-0049 --ruolo lettura --invia");
+  // Un id fuori dalla regola dei modelli (spazi, punto e virgola, $…): il segnaposto, mai il testo.
+  for (const odd of ["anthropic/claude haiku", "x;rm -rf ~", "$(curl evil)", "-rf", ""]) {
+    assert.equal(benchCommand("TJ-0049", "lettura", null, [HAIKU, odd]), "npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli <modelli> --invia", odd);
+  }
+  // I modelli del banco tranne quello di oggi, che la CLI aggiunge da sé.
+  const results = [result(SONNET, 0.96, 1.8, { current: true }), result(HAIKU, 0.95, 0.12), result(OPUS, 0.97, 3.6)];
+  assert.deepEqual(benchRerunModels(results), [HAIKU, OPUS]);
+  assert.deepEqual(benchRerunModels([result(SONNET, 0.96, 1.8, { current: true })]), [], "solo il modello di oggi: niente da aggiungere");
+  // Il ruolo è passato a Haiku dopo il banco: si rifà con Sonnet (quello di allora) e Opus, Haiku lo mette la CLI.
+  assert.deepEqual(benchRerunModels(results, HAIKU), [SONNET, OPUS]);
+  assert.deepEqual(benchRerunModels(results, "ANTHROPIC/CLAUDE-HAIKU-5-5"), [SONNET, OPUS], "lo stesso id, maiuscole o no");
+  // Passato a un modello che il banco non aveva: tutti quelli del banco.
+  assert.deepEqual(benchRerunModels(results, "anthropic/claude-fable-5-2"), [SONNET, HAIKU, OPUS]);
+  // Un modello ripetuto una volta sola.
+  assert.deepEqual(benchRerunModels([...results, result(HAIKU, 0.5, 0.12)]), [HAIKU, OPUS]);
 });
 
 test("la riga di agent.yaml per cambiare modello, e le note fisse", () => {

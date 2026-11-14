@@ -208,7 +208,10 @@ test("«cambia»: la raccomandazione in evidenza con la riga di agent.yaml, e il
   const text = textOf(html);
   assert.match(text, /Conviene Claude Haiku 5\.5 per «lettura»/);
   assert.ok(text.includes("Per cambiarlo: in agent.yaml , modelli.lettura.modello: anthropic/claude-haiku-5-5 , poi la pull request."));
-  assert.ok(text.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --invia"));
+  // Per rifarlo, gli stessi modelli: senza --modelli la CLI proverebbe tutti gli approvati (un altro banco, più caro).
+  assert.ok(text.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --modelli anthropic/claude-haiku-5-5,anthropic/claude-opus-5-5,altro/modello --invia"));
+  const solo = textOf(render({ ...FULL, benches: [benchOf("lettura", [result(SONNET, 0.96, 1.8, { current: true })], { level: "veloce" })] }));
+  assert.ok(solo.includes("Per rifarlo: npm run unbundle -- banco TJ-0049 --ruolo lettura --livello veloce --invia"), "solo il modello di oggi: niente --modelli");
   // «resta»: testo semplice, senza la riga da cambiare.
   const stay = render({ ...FULL, benches: [benchOf("lettura", [result(HAIKU, 0.95, 0.12, { current: true }), result(SONNET, 0.96, 1.8)])] });
   assert.match(stay, /data-verdict="resta" class="flex items-start gap-2 text-sm"/);

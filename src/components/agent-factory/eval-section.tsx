@@ -8,6 +8,7 @@ import {
   benchHeading,
   benchMetaLine,
   benchMissingText,
+  benchRerunModels,
   benchRows,
   changeHintParts,
   evalsAlertText,
@@ -40,9 +41,9 @@ import {
  * - le ultime evals con i modelli di oggi: qualità, soglie, prove, data, ramo, livello, i modelli per ruolo, i
  *   segni dei modelli finti e del caso in costruzione, l'andamento (al massimo 12) in una piccola linea, l'avviso
  *   quando sono sotto soglia o in calo, e il comando per rifarle;
- * - per ogni ruolo l'ultimo banco: il grafico qualità contro costo, la tabella (modello · qualità · soglie · costo per
- *   1.000 · tempo p95 · segni), la raccomandazione (in evidenza quando conviene cambiare, con la riga di
- *   `agent.yaml`) e il comando per rifarlo;
+ * - per ogni ruolo l'ultimo banco: il grafico qualità contro costo, la tabella (modello · qualità · soglie · costo
+ *   stimato per 1.000 · tempo p95 · segni), la raccomandazione (in evidenza quando conviene cambiare, con la riga di
+ *   `agent.yaml`) e il comando per rifarlo con gli stessi modelli;
  * - senza misure, i due comandi e a cosa servono.
  *
  * Solo presentazione: legge quello che la pagina le passa (`readEvalOverview`). Per caso e per ruolo, mai per persona.
@@ -202,7 +203,7 @@ function BenchCard({ bench, caseCode }: { bench: EvalOverview["benches"][number]
       <BenchChart role={role} rows={rows} />
       <BenchTable role={role} rows={rows} />
       <Verdict role={role} verdict={analysis.verdict} />
-      <Command label={EVAL_TEXT.benchRerun} command={benchCommand(caseCode, role, run.level)} />
+      <Command label={EVAL_TEXT.benchRerun} command={benchCommand(caseCode, role, run.level, benchRerunModels(run.results))} />
     </section>
   );
 }

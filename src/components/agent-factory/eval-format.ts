@@ -30,6 +30,7 @@ import {
   formatCost,
   formatQuality,
   LEVEL_RE,
+  MODEL_ID_RE,
   modelLabel,
   ROLE_RE,
   type BenchAnalysis,
@@ -141,9 +142,31 @@ export function evalsCommand(caseCode: string, level?: string | null): string {
   return `npm run unbundle -- eval ${codeOf(caseCode)}${levelFlag(level)} --invia`;
 }
 
-/** «npm run unbundle -- banco TJ-0049 --ruolo lettura --invia»; senza un ruolo valido, «<ruolo>». */
-export function benchCommand(caseCode: string, role: string | null, level?: string | null): string {
-  return `npm run unbundle -- banco ${codeOf(caseCode)} --ruolo ${role && ROLE_RE.test(role) ? role : "<ruolo>"}${levelFlag(level)} --invia`;
+/** `--modelli a,b`; un id fuori dalla regola dei modelli non finisce in un comando da copiare: «<modelli>». */
+const modelsFlag = (models?: readonly string[] | null) => {
+  const list = [...new Set(models ?? [])];
+  if (!list.length) return "";
+  return ` --modelli ${list.every((m) => MODEL_ID_RE.test(m)) ? list.join(",") : "<modelli>"}`;
+};
+
+/**
+ * «npm run unbundle -- banco TJ-0049 --ruolo lettura --invia»; senza un ruolo valido, «<ruolo>». Con `models` (i
+ * modelli oltre a quello di oggi, che la CLI aggiunge da sé) anche `--modelli`, come nel comando della CLI.
+ */
+export function benchCommand(caseCode: string, role: string | null, level?: string | null, models?: readonly string[] | null): string {
+  return `npm run unbundle -- banco ${codeOf(caseCode)} --ruolo ${role && ROLE_RE.test(role) ? role : "<ruolo>"}${modelsFlag(models)}${levelFlag(level)} --invia`;
+}
+
+/**
+ * I modelli da ripetere con `--modelli` per rifare un banco con gli stessi modelli: tutti i suoi, tranne quello che il
+ * ruolo usa oggi (la CLI lo mette da sé, «attuale»). Senza `--modelli` il banco rifatto proverebbe tutti i modelli
+ * approvati: un altro banco, più lungo e più caro. `now`: il modello del ruolo oggi quando è cambiato dopo il banco;
+ * altrimenti quello «attuale» del banco.
+ */
+export function benchRerunModels(results: readonly BenchResult[], now?: string | null): string[] {
+  const today = (now ?? results.find((r) => r.current)?.model ?? "").toLowerCase();
+  const seen = new Set<string>([today]);
+  return results.map((r) => r.model).filter((model) => !seen.has(model.toLowerCase()) && Boolean(seen.add(model.toLowerCase())));
 }
 
 /** Dove si cambia il modello di un ruolo: la riga di `agent.yaml`. */
