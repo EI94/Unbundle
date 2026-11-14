@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
@@ -56,20 +57,44 @@ export function AddWorkspaceTeamMember({ workspaceId }: { workspaceId: string })
   );
 }
 
-/** (8.1b) Toglie una persona dal team del cliente e dai casi aperti dove ha quel ruolo. */
-export function RemoveWorkspaceTeamMember({ workspaceId, userId, name }: { workspaceId: string; userId: string; name: string }) {
+/**
+ * (8.1b) Toglie una persona dal team del cliente: esce dai casi aperti dal ruolo del team (gli altri ruoli, dati caso
+ * per caso, restano) e non entra nei casi nuovi. Prima chiede conferma: tocca tutti i casi insieme.
+ */
+export function RemoveWorkspaceTeamMember({ workspaceId, userId, name, roleLabel }: { workspaceId: string; userId: string; name: string; roleLabel: string }) {
   const { pending, run } = useUcAction();
+  const [open, setOpen] = useState(false);
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      className="min-h-11 shrink-0 sm:min-h-8"
-      disabled={pending}
-      aria-label={`Togli ${name} dal team del cliente`}
-      onClick={() => run(() => removeWorkspaceTeamMemberAction(workspaceId, userId))}
-    >
-      Togli
-    </Button>
+    <>
+      <Button type="button" variant="outline" size="sm" className="min-h-11 shrink-0 sm:min-h-8" disabled={pending} aria-label={`Togli ${name} dal team del cliente`} onClick={() => setOpen(true)}>
+        Togli
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Togliere {name} dal team del cliente?</DialogTitle>
+            <DialogDescription>
+              Esce da tutti i casi aperti dove è {roleLabel.toLowerCase()} e non entra in quelli nuovi. I ruoli dati caso per caso restano; l&apos;unico responsabile di un caso non si toglie.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => setOpen(false)}>
+              Annulla
+            </Button>
+            <Button
+              type="button"
+              className="min-h-11 sm:min-h-9"
+              disabled={pending}
+              onClick={() => {
+                setOpen(false);
+                run(() => removeWorkspaceTeamMemberAction(workspaceId, userId));
+              }}
+            >
+              Togli dal team
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

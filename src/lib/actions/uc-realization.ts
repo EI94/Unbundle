@@ -58,7 +58,8 @@ export async function startRealizationAction(workspaceId: string, input: unknown
   const { caseId, code, useCaseId } = result.value;
   // (8.1b) Il team di Lateral Space del cliente entra nel dossier nuovo; se non riesce il dossier resta, e il log lo dice.
   try {
-    await applyWorkspaceTeamToCase(executor, { workspaceId, caseId, actorUserId: session.user.id, lsDomains: ucLsDomains() });
+    const team = await applyWorkspaceTeamToCase(executor, { workspaceId, caseId, actorUserId: session.user.id, lsDomains: ucLsDomains() });
+    if (team.skipped.length) ucLogError({ area: "uc", op: "team_workspace_nuovo_dossier_saltati", workspaceId }, new Error(`uc:${team.skipped.map((s) => s.reason).join(",")}`));
   } catch (error) {
     ucLogError({ area: "uc", op: "team_workspace_nuovo_dossier", workspaceId }, error);
   }

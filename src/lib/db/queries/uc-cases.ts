@@ -794,6 +794,8 @@ export async function removeCaseMember(executor: UcExecutor, ctx: UcCommandConte
   const statements: UcStatement[] = [caseOpenSql(ctx.workspaceId, ctx.caseId)];
   if (role === "ls_lead") {
     statements.push(
+      // Due rimozioni insieme degli ultimi due responsabili: la riga del caso le mette in fila, così la seconda vede la prima.
+      toStatement(ucSql`SELECT 1 AS ok FROM uc_cases WHERE id = ${c} FOR UPDATE`),
       toStatement(ucSql`SELECT uc_require((SELECT count(*) FROM uc_case_members WHERE case_id = ${c} AND role = 'ls_lead' AND user_id <> ${u}) >= 1, 'ultimo_ls_lead') AS ok`),
     );
   }

@@ -209,7 +209,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
                         {m.email} · {ROLE_LABEL[m.role]}
                       </span>
                     </span>
-                    <RemoveWorkspaceTeamMember workspaceId={workspaceId} userId={m.userId} name={m.name} />
+                    <RemoveWorkspaceTeamMember workspaceId={workspaceId} userId={m.userId} name={m.name} roleLabel={ROLE_LABEL[m.role]} />
                   </li>
                 ))}
               </ul>

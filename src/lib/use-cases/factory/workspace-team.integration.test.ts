@@ -97,16 +97,17 @@ test("aggiungere a tutti i casi: i dossier aperti dove chi agisce è responsabil
   assert.equal(added.ok, true);
   if (!added.ok) return;
   assert.deepEqual(added.value.done.sort(), [`TA-${suffix.toUpperCase()}`, `TB-${suffix.toUpperCase()}`].sort());
-  assert.deepEqual(added.value.skipped.map((s) => s.code), [`TC-${suffix.toUpperCase()}`], "lì non è responsabile");
+  assert.deepEqual(added.value.skipped, [{ code: `TC-${suffix.toUpperCase()}`, reason: "attore_non_ammesso" }], "lì non è responsabile");
   assert.deepEqual(await rolesOf(cases.TA, ids.leo), ["ls_sviluppatore"]);
   assert.deepEqual(await rolesOf(cases.TC, ids.leo), []);
   assert.deepEqual(await rolesOf(cases.TZ, ids.leo), [], "un dossier chiuso non cambia");
   const [by] = await q(`SELECT added_by_user_id FROM uc_case_members WHERE case_id = $1 AND user_id = $2`, [cases.TA, ids.leo]);
   assert.equal(by.added_by_user_id, ids.owner);
   assert.deepEqual((await team.listWorkspaceTeam(exec, ids.ws)).map((m) => [m.userId, m.role]), [[ids.leo, "ls_sviluppatore"]]);
-  const again = await team.addWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, email: email("leo"), role: "ls_analista", lsDomains: LS });
-  assert.ok(again.ok && again.value.done.length === 0 && again.value.unchanged.length === 2, "dove ha già un ruolo di Lateral Space non si aggiunge di nuovo");
-  assert.equal((await team.listWorkspaceTeam(exec, ids.ws))[0].role, "ls_analista", "il ruolo per i casi nuovi cambia");
+  const again = await team.addWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, email: email("leo"), role: "ls_sviluppatore", lsDomains: LS });
+  assert.ok(again.ok && again.value.done.length === 0 && again.value.unchanged.length === 2, "la stessa aggiunta di nuovo non cambia niente");
+  const other = await team.addWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, email: email("leo"), role: "ls_analista", lsDomains: LS });
+  assert.deepEqual([other.ok, !other.ok && other.code], [false, "ruolo_diverso"], "un ruolo diverso: si toglie e si riaggiunge");
 });
 
 test("solo persone di Lateral Space, collaboratrici del workspace, con un ruolo di chi costruisce", opts, async () => {
@@ -118,30 +119,36 @@ test("solo persone di Lateral Space, collaboratrici del workspace, con un ruolo 
   assert.deepEqual([role.ok, !role.ok && role.code], [false, "dati_non_validi"]);
 });
 
-test("l'unico responsabile di un caso non si toglie: il caso si salta e si dice", opts, async () => {
-  // TS: Leo è l'unico responsabile, e chi agisce non è nel caso: si salta, e si dice.
-  const solo = await dossier("TS", ids.leo);
-  await team.addWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, email: email("leo"), role: "ls_analista", lsDomains: LS });
-  const removed = await team.removeWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, userId: ids.leo, lsDomains: LS });
-  assert.ok(removed.ok && removed.value.skipped.some((s) => s.code === `TS-${suffix.toUpperCase()}`));
-  assert.deepEqual(await rolesOf(solo, ids.leo), ["ls_lead"]);
-  await q(`UPDATE uc_cases SET status = 'chiuso' WHERE id = $1`, [solo]);
-  // Di nuovo nel team, per la prova dopo.
-  await team.addWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, email: email("leo"), role: "ls_analista", lsDomains: LS });
-});
-
-test("un dossier nuovo prende il team del cliente; togliere toglie dai dossier aperti", opts, async () => {
-  const fresh = await dossier("TD", ids.owner);
-  const applied = await team.applyWorkspaceTeamToCase(exec, { workspaceId: ids.ws, caseId: fresh, actorUserId: ids.owner, lsDomains: LS });
-  assert.deepEqual(applied.done, [ids.leo]);
-  assert.deepEqual(await rolesOf(fresh, ids.leo), ["ls_analista"], "con il ruolo di adesso");
+test("togliere: solo il ruolo del team, nei casi dove chi agisce è responsabile; i ruoli dati caso per caso restano", opts, async () => {
+  // In TB ha anche un ruolo dato caso per caso; in TC (responsabile un altro) l'ha aggiunto chi lì è responsabile.
+  await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'ls_lead')`, [cases.TB, ids.leo]);
+  await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'ls_sviluppatore')`, [cases.TC, ids.leo]);
   const removed = await team.removeWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, userId: ids.leo, lsDomains: LS });
   assert.equal(removed.ok, true);
   if (!removed.ok) return;
-  assert.deepEqual(removed.value.done.sort(), [`TA-${suffix.toUpperCase()}`, `TB-${suffix.toUpperCase()}`, `TD-${suffix.toUpperCase()}`].sort(), "esce da tutti i dossier aperti");
-  assert.deepEqual(await rolesOf(fresh, ids.leo), []);
-  assert.deepEqual(await rolesOf(cases.TA, ids.leo), [], "da ogni ruolo di Lateral Space, anche quello dato prima");
-  assert.deepEqual(await team.listWorkspaceTeam(exec, ids.ws), []);
+  assert.deepEqual(removed.value.done.sort(), [`TA-${suffix.toUpperCase()}`, `TB-${suffix.toUpperCase()}`].sort());
+  assert.deepEqual(removed.value.skipped, [{ code: `TC-${suffix.toUpperCase()}`, reason: "attore_non_ammesso" }]);
+  assert.deepEqual(await rolesOf(cases.TA, ids.leo), []);
+  assert.deepEqual(await rolesOf(cases.TB, ids.leo), ["ls_lead"], "il ruolo dato caso per caso resta");
+  assert.deepEqual(await rolesOf(cases.TC, ids.leo), ["ls_sviluppatore"], "dove non sei responsabile non cambia: si dice");
+  assert.deepEqual(await team.listWorkspaceTeam(exec, ids.ws), [], "e non entra più nei casi nuovi");
   const none = await team.removeWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, userId: ids.leo, lsDomains: LS });
   assert.deepEqual([none.ok, !none.ok && none.code], [false, "non_trovato"]);
+  await q(`DELETE FROM uc_case_members WHERE user_id = $1 AND case_id = ANY($2::uuid[])`, [ids.leo, [cases.TB, cases.TC]]);
+});
+
+test("un dossier nuovo prende il team del cliente; chi lascia il workspace esce dal team e non rientra da solo", opts, async () => {
+  await team.addWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, email: email("leo"), role: "ls_analista", lsDomains: LS });
+  const fresh = await dossier("TD", ids.owner);
+  const applied = await team.applyWorkspaceTeamToCase(exec, { workspaceId: ids.ws, caseId: fresh, actorUserId: ids.owner, lsDomains: LS });
+  assert.deepEqual(applied.done, [ids.leo]);
+  assert.deepEqual(await rolesOf(fresh, ids.leo), ["ls_analista"]);
+  // Leo lascia il workspace: dalla lista sparisce subito; la rimozione dal workspace toglie anche la riga.
+  await q(`DELETE FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.leo]);
+  assert.deepEqual(await team.listWorkspaceTeam(exec, ids.ws), [], "chi non è più collaboratore non compare");
+  const next = await dossier("TE", ids.owner);
+  assert.deepEqual((await team.applyWorkspaceTeamToCase(exec, { workspaceId: ids.ws, caseId: next, actorUserId: ids.owner, lsDomains: LS })).done, []);
+  await team.forgetWorkspaceTeamMember(exec, { workspaceId: ids.ws, userId: ids.leo });
+  await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'analyst'::member_role)`, [ids.ws, ids.leo]);
+  assert.deepEqual(await team.listWorkspaceTeam(exec, ids.ws), [], "tornato nel workspace, non rientra da solo nel team");
 });

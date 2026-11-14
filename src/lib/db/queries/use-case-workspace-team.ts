@@ -4,9 +4,12 @@
  * - **Aggiungere** una persona (per e-mail, con un ruolo: responsabile, analista, sviluppatore): la si ricorda per il
  *   workspace e la si aggiunge al team di ogni dossier aperto, con gli stessi comandi del dossier (`addCaseMember`:
  *   collaboratore del workspace, ruoli `ls_*` solo a Lateral Space, l'evento «membro aggiunto»). Dove ha già un ruolo
- *   di Lateral Space non si aggiunge di nuovo.
- * - **Togliere**: non entra più nei casi nuovi, ed esce dai dossier aperti, da ogni ruolo di Lateral Space che ha
- *   (`removeCaseMember`: mai l'ultimo responsabile di un caso).
+ *   di Lateral Space non si aggiunge di nuovo. Già nel team con un altro ruolo: si toglie e si riaggiunge (così il ruolo
+ *   nei casi e quello della lista restano uguali).
+ * - **Togliere**: esce dai dossier aperti dal ruolo del team (gli altri ruoli, dati caso per caso, restano;
+ *   `removeCaseMember`: mai l'ultimo responsabile di un caso), poi non entra più nei casi nuovi. Se si ferma a metà,
+ *   la riga resta e si può ripetere.
+ * - Chi non è più collaboratore del workspace non compare nel team e non entra nei casi nuovi.
  * - **Un dossier nuovo** («Avvia la realizzazione»): chi è nel team del workspace entra nel suo team
  *   (`applyWorkspaceTeamToCase`).
  *
@@ -17,7 +20,7 @@
  */
 import { WORKSPACE_TEAM_PROBE_SQL, WORKSPACE_TEAM_ROLES, type WorkspaceTeamRole } from "../use-case-hub-team-ddl.ts";
 import { addCaseMember, loadCaseRoles, loadUserContext, removeCaseMember, type UcCommandContext } from "./uc-cases.ts";
-import { cast, raw, toStatement, ucSql } from "../../uc/sql/statement.ts";
+import { cast, raw, toStatement, ucSql, type SqlFragment } from "../../uc/sql/statement.ts";
 import { fail, ok, type Result } from "../../uc/types.ts";
 import type { CaseRole } from "../../uc/vocab.ts";
 import type { UcExecutor } from "../uc-executor.ts";
@@ -45,18 +48,23 @@ export interface WorkspaceTeamMember {
 export async function listWorkspaceTeam(executor: UcExecutor, workspaceId: string): Promise<WorkspaceTeamMember[]> {
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT t.user_id, t.role, u.email, coalesce(nullif(btrim(u.name), ''), split_part(u.email, '@', 1)) AS name
-FROM use_case_workspace_team t JOIN users u ON u.id = t.user_id
-WHERE t.workspace_id = ${cast(workspaceId, "uuid")}
+FROM use_case_workspace_team t JOIN users u ON u.id = t.user_id JOIN workspaces w ON w.id = t.workspace_id
+WHERE t.workspace_id = ${cast(workspaceId, "uuid")} AND ${collaboratorOf(raw("t.user_id"))}
 ORDER BY lower(coalesce(nullif(btrim(u.name), ''), u.email))`),
   ]);
   return rows.map((r) => ({ userId: String(r.user_id), name: String(r.name), email: String(r.email), role: String(r.role) as WorkspaceTeamRole }));
 }
 
-/** I dossier aperti del workspace (non chiusi), con il codice. */
+/** Collaboratore del workspace `w` (non solo partecipante ai corsi), come per i membri dei casi. */
+const collaboratorOf = (user: SqlFragment) => ucSql`(
+  EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = w.organization_id AND m.user_id = ${user} AND m.role::text <> 'learner')
+  OR EXISTS (SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id = w.id AND wm.user_id = ${user} AND wm.role::text <> 'learner'))`;
+
+/** I dossier aperti del workspace (non chiusi, creati per intero), con il codice. */
 async function openCases(executor: UcExecutor, workspaceId: string): Promise<{ id: string; code: string }[]> {
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT c.id, coalesce(u.code, c.code) AS code FROM uc_cases c LEFT JOIN use_cases u ON u.id = c.portfolio_use_case_id
-WHERE c.workspace_id = ${cast(workspaceId, "uuid")} AND c.status <> 'chiuso' ORDER BY coalesce(u.code, c.code)`),
+WHERE c.workspace_id = ${cast(workspaceId, "uuid")} AND c.status <> 'chiuso' AND c.setup_completed_at IS NOT NULL ORDER BY coalesce(u.code, c.code)`),
   ]);
   return rows.map((r) => ({ id: String(r.id), code: String(r.code) }));
 }
@@ -92,20 +100,26 @@ export async function addWorkspaceTeamMember(
   if (typeof i.role !== "string" || !ROLE_RE.has(i.role)) return fail("dati_non_validi", "Scegli il ruolo: responsabile, analista o sviluppatore.");
   const role = i.role as WorkspaceTeamRole;
   if (!(await workspaceTeamReady(executor))) return fail("non_disponibile", "Non ancora disponibile: riprova tra qualche minuto.");
+  // Prima l'e-mail scritta così, poi quella verificata (due account possono differire solo per le maiuscole).
   const [people] = await executor.batch([
     toStatement(ucSql`SELECT u.id FROM users u JOIN workspaces w ON w.id = ${cast(i.workspaceId, "uuid")}
-WHERE lower(u.email) = ${cast(email, "text")} AND (
-  EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = w.organization_id AND m.user_id = u.id AND m.role::text <> 'learner')
-  OR EXISTS (SELECT 1 FROM workspace_memberships wm WHERE wm.workspace_id = w.id AND wm.user_id = u.id AND wm.role::text <> 'learner'))
+WHERE lower(u.email) = ${cast(email, "text")} AND ${collaboratorOf(raw("u.id"))}
+ORDER BY (u.email = ${cast(email, "text")}) DESC, (u.email_verified IS NOT NULL) DESC, u.id
 LIMIT 1`),
   ]);
   if (!people[0]) return fail("non_collaboratore", "Questa persona non è un collaboratore del workspace: invitala prima nel workspace, poi aggiungila qui.");
   const userId = String(people[0].id);
   const person = await loadUserContext(executor, userId, i.lsDomains);
   if (!person?.isLateralSpace) return fail("non_lateral_space", "Nel team di Lateral Space entrano solo persone di Lateral Space, con l'e-mail verificata.");
+  const [current] = await executor.batch([
+    toStatement(ucSql`SELECT role FROM use_case_workspace_team WHERE workspace_id = ${cast(i.workspaceId, "uuid")} AND user_id = ${cast(userId, "uuid")}`),
+  ]);
+  if (current[0] && String(current[0].role) !== role) {
+    return fail("ruolo_diverso", "È già nel team con un altro ruolo: per cambiarlo, toglila e aggiungila di nuovo con il ruolo nuovo.");
+  }
   await executor.batch([
     toStatement(ucSql`INSERT INTO use_case_workspace_team (workspace_id, user_id, role) VALUES (${cast(i.workspaceId, "uuid")}, ${cast(userId, "uuid")}, ${cast(role, "text")})
-ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role, updated_at = now()`),
+ON CONFLICT (workspace_id, user_id) DO NOTHING`),
   ]);
   const out: TeamApplyResult = { done: [], unchanged: [], skipped: [] };
   for (const c of await openCases(executor, i.workspaceId)) {
@@ -141,33 +155,37 @@ export async function removeWorkspaceTeamMember(
   if (typeof i.userId !== "string" || !/^[0-9a-f-]{36}$/i.test(i.userId)) return fail("dati_non_validi", "Persona non valida.");
   const userId = i.userId;
   if (!(await workspaceTeamReady(executor))) return fail("non_disponibile", "Non ancora disponibile: riprova tra qualche minuto.");
-  const [rows] = await executor.batch([
-    toStatement(ucSql`DELETE FROM use_case_workspace_team WHERE workspace_id = ${cast(i.workspaceId, "uuid")} AND user_id = ${cast(userId, "uuid")} RETURNING role`),
-  ]);
+  const ws = cast(i.workspaceId, "uuid");
+  const [rows] = await executor.batch([toStatement(ucSql`SELECT role FROM use_case_workspace_team WHERE workspace_id = ${ws} AND user_id = ${cast(userId, "uuid")}`)]);
   if (!rows[0]) return fail("non_trovato", "Questa persona non è nel team del workspace.");
+  const role = String(rows[0].role) as WorkspaceTeamRole;
   const target = await loadUserContext(executor, userId, i.lsDomains);
   const out: TeamApplyResult = { done: [], unchanged: [], skipped: [] };
+  // Prima i casi, poi la riga: se qualcosa si ferma a metà, la persona resta nella lista e «Togli» si può ripetere.
   for (const c of await openCases(executor, i.workspaceId)) {
-    const held = target ? (await loadCaseRoles(executor, c.id, target, i.lsDomains)).stored.filter((r) => LS_ROLES.includes(r)) : [];
-    if (!held.length) {
+    const has = target ? (await loadCaseRoles(executor, c.id, target, i.lsDomains)).stored.includes(role) : false;
+    if (!has) {
       out.unchanged.push(c.code);
       continue;
     }
-    // Prima i ruoli che non sono di responsabile: se l'ultimo responsabile non si può togliere, il resto è già fatto.
-    const ordered = [...held].sort((a, b) => Number(a === "ls_lead") - Number(b === "ls_lead"));
-    let failed: string | null = null;
-    for (const role of ordered) {
-      const ctx = await contextFor(executor, { workspaceId: i.workspaceId, caseId: c.id, actorUserId: i.actorUserId, lsDomains: i.lsDomains });
-      const removed = ctx ? await removeCaseMember(executor, ctx, { userId, role }) : fail("utente_non_trovato", "");
-      if (!removed.ok) {
-        failed = removed.code;
-        break;
-      }
-    }
-    if (failed) out.skipped.push({ code: c.code, reason: failed });
-    else out.done.push(c.code);
+    const ctx = await contextFor(executor, { workspaceId: i.workspaceId, caseId: c.id, actorUserId: i.actorUserId, lsDomains: i.lsDomains });
+    const removed = ctx ? await removeCaseMember(executor, ctx, { userId, role }) : fail("utente_non_trovato", "");
+    if (removed.ok) out.done.push(c.code);
+    else out.skipped.push({ code: c.code, reason: removed.code });
   }
+  await executor.batch([toStatement(ucSql`DELETE FROM use_case_workspace_team WHERE workspace_id = ${ws} AND user_id = ${cast(userId, "uuid")}`)]);
   return ok(out);
+}
+
+/**
+ * Toglie chi lascia il workspace dal suo team di Lateral Space: se torna, non rientra da solo nei casi nuovi. I ruoli
+ * nei casi li toglie già la rimozione dal workspace (`removeUserFromWorkspaceCases`).
+ */
+export async function forgetWorkspaceTeamMember(executor: UcExecutor, i: { workspaceId: string; userId: string }): Promise<void> {
+  if (!(await workspaceTeamReady(executor))) return;
+  await executor.batch([
+    toStatement(ucSql`DELETE FROM use_case_workspace_team WHERE workspace_id = ${cast(i.workspaceId, "uuid")} AND user_id = ${cast(i.userId, "uuid")}`),
+  ]);
 }
 
 /** Un dossier nuovo: chi è nel team del workspace entra nel suo team (lo aggiunge chi l'ha aperto, che ne è responsabile). */

@@ -22,6 +22,7 @@ import {
   type WorkspaceCollaboratorRole,
 } from "@/lib/db/queries/workspace-collaboration";
 import { removeUserFromWorkspaceCases, ucMemberTablesPresent } from "@/lib/db/queries/uc-cases";
+import { forgetWorkspaceTeamMember } from "@/lib/db/queries/use-case-workspace-team";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { revokeTeamMcpTokensOfOwner } from "@/lib/db/queries/team-mcp-tokens";
 import { logSafeError } from "@/lib/log/safe-error";
@@ -405,6 +406,8 @@ async function removeFromUseCaseSection(params: { workspaceId: string; userId: s
     const executor = await getAppUcExecutor();
     if (!(await ucMemberTablesPresent(executor))) return "";
     const result = await removeUserFromWorkspaceCases(executor, params);
+    // (8.1b) Fuori anche dal team di Lateral Space del cliente: se torna, non rientra da solo nei casi nuovi.
+    await forgetWorkspaceTeamMember(executor, { workspaceId: params.workspaceId, userId: params.userId });
     return result.casesWithoutLead.map((c) => ` Caso ${c.code}: ls_lead da indicare.`).join("");
   } catch (error) {
     console.error("[uc] rimozione dai casi d'uso non riuscita", error instanceof Error ? error.message : "errore");
