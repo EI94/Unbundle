@@ -617,7 +617,7 @@ test("i numeri strani si leggono senza rompere la pagina", () => {
     groups: { regole: { passati: 9, totali: 9, soglia: 1, ok: true }, rotto: { passati: 3, totali: 2, ok: true }, strano: "x" },
     costPer1000Usd: -2,
     latencyP50Ms: Number.POSITIVE_INFINITY,
-    latencyP95Ms: "4100",
+    latencyP95Ms: "4,1 s",
     tokensInAvg: null,
     tokensOutAvg: 12.5,
     errors: -1,
@@ -639,6 +639,36 @@ test("i numeri strani si leggono senza rompere la pagina", () => {
   const wrongKind = normalizeEvalOverview({ evals: { latest: { ...run(), kind: "banco" }, trend: [] }, benches: [] });
   assert.equal(wrongKind?.overview.evals.latest, null);
   assert.equal(wrongKind?.dropped, 1);
+});
+
+test("dal database: i numeric come testo e le date come Date si leggono, nessun altro testo", () => {
+  const raw = {
+    evals: {
+      latest: {
+        ...run(),
+        createdAt: new Date("2026-11-14T10:00:00Z"),
+        results: [{ ...result(HAIKU, 0.9643, 0.42, { current: true }), quality: "0.9643", costPer1000Usd: "0.42", passed: "27", total: "28", latencyP95Ms: "4100" }],
+      },
+      trend: [
+        { at: new Date("2026-11-13T10:00:00Z"), quality: "0.95", thresholdsMet: true, fakeModels: false },
+        { at: "ieri", quality: 0.9, thresholdsMet: true, fakeModels: false },
+      ],
+    },
+    benches: [],
+  };
+  const read = normalizeEvalOverview(raw);
+  assert.ok(read);
+  const latest = read.overview.evals.latest!;
+  assert.deepEqual([latest.results[0].quality, latest.results[0].costPer1000Usd, latest.results[0].passed, latest.results[0].total, latest.results[0].latencyP95Ms], [0.9643, 0.42, 27, 28, 4100]);
+  assert.equal(latest.createdAt, "2026-11-14T10:00:00.000Z");
+  assert.deepEqual(
+    read.overview.evals.trend.map((p) => [p.at, p.quality]),
+    [["2026-11-13T10:00:00.000Z", 0.95]],
+  );
+  assert.equal(read.dropped, 1, "«ieri» non è una data");
+  const text = normalizeEvalOverview({ evals: { latest: { ...run(), results: [{ ...result(HAIKU, 0.9, null, { current: true }), costPer1000Usd: "0,42 USD", total: "28 prove" }] }, trend: [] }, benches: [] });
+  assert.equal(text?.overview.evals.latest?.results[0].costPer1000Usd, null, "«0,42 USD» non è un numero");
+  assert.equal(text?.overview.evals.latest?.results[0].total, 0);
 });
 
 // ─── I testi della dashboard ─────────────────────────────────────────

@@ -779,7 +779,18 @@ export function nearestPoint(points: readonly { id: string; x: number; y: number
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
-const finite = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+/** Il testo di un numero, come lo dà Postgres per una colonna `numeric` («0.42»): nient'altro. */
+const NUMERIC_TEXT = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
+const finite = (v: unknown): number | null => {
+  const n = typeof v === "number" ? v : typeof v === "string" && NUMERIC_TEXT.test(v.trim()) ? Number(v) : Number.NaN;
+  return Number.isFinite(n) ? n : null;
+};
+/** Un istante come testo: una stringa, o un `Date` del driver (in ISO). `strict`: solo se si legge come data. */
+const instant = (v: unknown, strict = false): string | null => {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.toISOString();
+  const text = str(v);
+  return text && (!strict || !Number.isNaN(new Date(text).getTime())) ? text : null;
+};
 const nonNegative = (v: unknown): number | null => {
   const n = finite(v);
   return n !== null && n >= 0 ? n : null;
@@ -832,7 +843,7 @@ function readRun(raw: unknown, kind: EvalRunKind): { run: EvalRunView; dropped: 
   if (!isObject(raw) || raw.kind !== kind) return null;
   const id = str(raw.id);
   const level = str(raw.level);
-  const createdAt = str(raw.createdAt);
+  const createdAt = instant(raw.createdAt);
   if (!id || !level || !createdAt || !Array.isArray(raw.results)) return null;
   const results = raw.results.map(readResult).filter((r): r is BenchResult => r !== null);
   if (!results.length) return null;
@@ -874,7 +885,8 @@ function readAnalysis(raw: unknown): BenchAnalysis | null {
 /**
  * Quello che arriva dalla lettura, controllato prima di mostrarlo: le righe che non si leggono si tolgono (e si
  * contano, perché chi chiama lo scriva nel log), una lettura del banco che manca si rifà con la regola comune.
- * null se non è una panoramica.
+ * Dal database si accettano anche i numeri come testo di una colonna `numeric` («0.42») e le date come `Date`;
+ * nessun altro testo diventa un numero. null se non è una panoramica.
  */
 export function normalizeEvalOverview(raw: unknown): { overview: EvalOverview; dropped: number } | null {
   if (!isObject(raw) || !isObject(raw.evals)) return null;
@@ -889,8 +901,10 @@ export function normalizeEvalOverview(raw: unknown): { overview: EvalOverview; d
   }
   const rawTrend = Array.isArray(raw.evals.trend) ? raw.evals.trend : [];
   const trend = rawTrend.flatMap((p) => {
-    if (!isObject(p) || !str(p.at) || finite(p.quality) === null || typeof p.thresholdsMet !== "boolean") return [];
-    return [{ at: p.at as string, quality: clamp01(p.quality as number), thresholdsMet: p.thresholdsMet, fakeModels: p.fakeModels === true }];
+    const at = isObject(p) ? instant(p.at, true) : null;
+    const quality = isObject(p) ? finite(p.quality) : null;
+    if (!isObject(p) || at === null || quality === null || typeof p.thresholdsMet !== "boolean") return [];
+    return [{ at, quality: clamp01(quality), thresholdsMet: p.thresholdsMet, fakeModels: p.fakeModels === true }];
   });
   dropped += rawTrend.length - trend.length;
   const rawBenches = Array.isArray(raw.benches) ? raw.benches : [];
