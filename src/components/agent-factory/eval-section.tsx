@@ -40,7 +40,8 @@ import {
  * «Evals e banco di prova» nel progetto dell'agente (rilascio 8.2a, docs/rilascio-8/BANCO-DI-PROVA.md §4.2), per tutti
  * quelli che vedono la pagina:
  *
- * - le ultime evals con i modelli di oggi: qualità, soglie, prove, data, ramo, livello, i modelli per ruolo, i
+ * - «Stato delle evals»: le evals che fanno lo stato del caso (`main` prima, poi i modelli veri, poi il livello
+ *   completo: non sempre le più recenti): qualità, soglie, prove, data, ramo, livello, i modelli per ruolo, i
  *   segni dei modelli finti e del caso in costruzione, l'andamento (al massimo 12) in una piccola linea, l'avviso
  *   quando sono sotto soglia o in calo, e il comando per rifarle;
  * - per ogni ruolo l'ultimo banco: il grafico qualità contro costo, la tabella (modello · qualità · soglie · costo

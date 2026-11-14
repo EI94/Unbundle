@@ -495,7 +495,7 @@ export function benchSummary(role: string, rows: readonly BenchRow[]): string {
  * Il banco superato: dopo di lui sono arrivate le evals vere di `main` (quelle della pagina, `latest`) e lì il ruolo usa
  * un altro modello (il consiglio è stato seguito) o non c'è più. È la regola dell'Agent Factory e di «Da fare per te»
  * (`benchSuperseded`). `now`: il modello del ruolo in quelle evals, null se il ruolo non c'è più. Null se il banco vale
- * ancora: evals più vecchie del banco, di un altro ramo, con i modelli finti, o con lo stesso modello.
+ * ancora: evals più vecchie del banco, di un altro ramo, con i modelli finti, senza `modelli`, o con lo stesso modello.
  */
 export function benchSupersededBy(bench: Pick<EvalOverview["benches"][number], "role" | "run">, latest: EvalRunView | null): { now: string | null } | null {
   if (!latest) return null;

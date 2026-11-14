@@ -752,11 +752,24 @@ test("al team solo le evals che fanno lo stato: una «veloce» sotto soglia non 
   assert.equal((mail.payload as Row).qualityText, "83,1%");
   const page = await evals.loadEvalOverview(exec, { workspaceId: ids.ws, useCaseId: ids.fourth });
   assert.deepEqual([page?.evals.latest?.level, page?.evals.latest?.results[0].passed], ["pull_request", 54], "l'avviso e la pagina dicono le stesse evals");
-  // EV-0003 non ha evals complete di main: le veloci fanno lo stato del caso, e il team lo sa.
-  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'evals'`, [ids.third]);
-  const onlyFast = await post(tokens.analyst!, { ...evalsBody(0, { livello: "veloce", risultati: [result({ superati: 28, totali: 35, soglieRispettate: false })] }), caso: "EV-0003" });
-  assert.deepEqual([onlyFast.status, onlyFast.json.avviso], [200, "sotto_soglia"]);
-  assert.deepEqual(await bell("evals_in_calo", ids.third), sorted("dev", "lead"));
+  // EV-0003 senza evals complete, vere e di main (nessuna; solo finte di main; solo vere di un ramo): le veloci di main
+  // fanno lo stato del caso, e il team lo sa. Ogni condizione della regola ha il suo caso.
+  const third = { workspaceId: ids.ws, useCaseId: ids.third };
+  const before: [string, Record<string, unknown> | null][] = [
+    ["nessuna", null],
+    ["finte di main", { modelliFinti: true }],
+    ["vere di un ramo", { ramo: "ev-0003/t-1" }],
+  ];
+  for (const [why, full] of before) {
+    await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'evals'`, [ids.third]);
+    await clearNotices("evals_in_calo");
+    if (full) assert.equal((await post(tokens.analyst!, { ...evalsBody(95, full), caso: "EV-0003" })).status, 200, why);
+    const onlyFast = await post(tokens.analyst!, { ...evalsBody(0, { livello: "veloce", risultati: [result({ superati: 28, totali: 35, soglieRispettate: false })] }), caso: "EV-0003" });
+    assert.deepEqual([onlyFast.status, onlyFast.json.avviso], [200, "sotto_soglia"], why);
+    assert.deepEqual(await bell("evals_in_calo", ids.third), sorted("dev", "lead"), why);
+    const status = (await evals.loadEvalOverview(exec, third))?.evals.latest;
+    assert.deepEqual([status?.level, status?.fakeModels, status?.branch], ["veloce", false, "main"], `${why}: le veloci fanno lo stato`);
+  }
   await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'evals'`, [ids.third]);
   await clearNotices("evals_in_calo");
 });

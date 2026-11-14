@@ -7,8 +7,9 @@
  *   - La qualità si ricalcola qui (superate / totali). Quella che manda la CLI, se c'è, deve dire lo stesso (mezzo
  *     punto di tolleranza per l'arrotondamento).
  *   - Il banco ha il ruolo e da 1 a 12 modelli distinti, uno solo «attuale», che è il modello di oggi del ruolo in
- *     «modelli» (obbligatorio: la CLI lo prende da agent.yaml). Le evals hanno un solo risultato, «attuale», e nessun
- *     ruolo.
+ *     «modelli» (obbligatorio: la CLI lo prende da agent.yaml). Le evals hanno un solo risultato, «attuale», nessun
+ *     ruolo e «modelli» con almeno un ruolo (obbligatorio: la CLI li prende da agent.yaml; dicono se un banco è stato
+ *     seguito).
  *   - «modelliFinti» si dice sempre; «inCostruzione» sempre per le evals. Mancare non vale «no»: un banco finto preso
  *     per vero consiglierebbe un modello, evals in costruzione prese per finite avviserebbero il team.
  *   - Tempi e token medi si arrotondano all'intero, il costo a 6 decimali: quello che si salva è quello che si rilegge,

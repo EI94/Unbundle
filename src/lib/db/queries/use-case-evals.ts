@@ -194,7 +194,11 @@ export interface EvalRunRecorded {
   analysis: BenchAnalysis | null;
   /** L'avviso delle evals; null per il banco, o se le evals vanno bene. */
   alert: EvalsAlert;
-  /** Se in questa scrittura è partito un avviso al team (campanella ed e-mail in coda). */
+  /**
+   * Se questa scrittura ha mandato le istruzioni dell'avviso al team: la route poi fa partire il giro delle e-mail.
+   * Le righe possono non nascere (una al giorno, nessuno a cui dirlo, evals che non fanno lo stato del caso): il giro
+   * allora non trova niente da mandare.
+   */
   notified: boolean;
 }
 
@@ -210,7 +214,8 @@ const insertedNow = (id: string) => ucSql`EXISTS (SELECT 1 FROM use_case_eval_ru
 /**
  * Tra quelle di cui il team è avvisato, vero se le evals che si scrivono fanno lo stato del caso ({@link statusOrderSql}):
  * le complete sempre, le «veloce» solo finché il caso non ha evals complete di `main` con i modelli veri. Così l'avviso
- * dice lo stesso numero della pagina, e una «veloce» non prende il posto del giorno all'avviso delle complete.
+ * dice lo stesso numero della pagina, e una volta che le complete ci sono una «veloce» non prende il posto del giorno
+ * al loro avviso (prima, quando è lei a fare lo stato, avvisa: una e-mail al giorno per caso, come sempre).
  */
 function makesStatusSql(target: FactoryTarget, id: string, input: Pick<EvalRunInput, "level">): SqlFragment {
   if (input.level === EVALS_FULL_LEVEL) return insertedNow(id);
