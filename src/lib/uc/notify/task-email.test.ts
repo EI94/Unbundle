@@ -2,12 +2,13 @@
 // progetto dell'agente; senza compito valido non partono; i testi senza nomi.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EMAIL_TEMPLATES, planDelivery, type ClaimedNotification, type DeliveryFacts } from "./dispatch.ts";
+import { EMAIL_TEMPLATES, NOTICE_MODEL_LABEL_RE, NOTICE_MODEL_RE, NOTICE_QUALITY_TEXT_RE, NOTICE_ROLE_RE, planDelivery, type ClaimedNotification, type DeliveryFacts } from "./dispatch.ts";
 import { checkEmailLink, renderEmail } from "./email-templates.ts";
 import { UC_NOTIFICATION_TEMPLATES } from "../../db/queries/uc-notifications.ts";
 import { TASK_NOTICE_KINDS } from "../../db/use-case-hub-tasks-ddl.ts";
 import { CASE_TEAM_BELL_KINDS, noticeHref } from "../../notifications/bell.ts";
 import { noticeTextOf } from "../../use-cases/notices.ts";
+import { formatQuality, MODEL_ID_RE, modelLabel, ROLE_RE } from "../../use-cases/factory/benchmark.ts";
 
 const WS = "11111111-1111-4111-8111-111111111111";
 const CASE = "22222222-2222-4222-8222-222222222222";
@@ -127,4 +128,84 @@ test("(8.1b) la proposta di compito: nella coda, nel motore e nella campanella d
   assert.match(email.text, /la accetti \(nasce il compito, da prendere\) o la scarti/);
   assert.deepEqual(planDelivery(claimed(kind, { useCase: UC }), facts(false), OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
   assert.deepEqual(planDelivery(claimed(kind, {}), facts(), OPTS), { action: "cancel", reason: "use_case_assente" });
+});
+
+// (8.2a) Il banco di prova e le evals: interne, solo a Lateral Space, con il link al progetto; il ruolo e il modello
+// consigliato, o l'avviso delle evals, dalla coda e controllati. Mai una persona.
+const evalPayload = (payload: Record<string, string | number | boolean>) => payload as unknown as Record<string, string | boolean>;
+
+test("(8.2a) il consiglio del banco: nella coda, nel motore e nella campanella del team; il ruolo e il modello, il link al progetto", () => {
+  const kind = "banco_consiglio";
+  assert.ok((UC_NOTIFICATION_TEMPLATES as readonly string[]).includes(kind));
+  assert.ok((EMAIL_TEMPLATES as readonly string[]).includes(kind));
+  assert.ok(CASE_TEAM_BELL_KINDS.includes(kind));
+  assert.equal(noticeHref(WS, { kind, useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}/progetto#banco`);
+  const text = noticeTextOf({ kind, answers: 0, unknowns: 0, documents: 0, followUp: null });
+  assert.equal(text.title, "Il banco di prova consiglia un altro modello");
+  assert.match(text.description, /«Evals e banco di prova», nel progetto\.$/);
+  const payload = { useCase: UC, role: "lettura", model: "anthropic/claude-haiku-5-5", label: modelLabel("anthropic/claude-haiku-5-5") };
+  const plan = planDelivery(claimed(kind, payload), facts(), OPTS);
+  assert.equal(plan.action, "send");
+  if (plan.action !== "send") return;
+  const email = renderEmail(plan.build(null));
+  assert.equal(email.subject, "Cliente prova · Smistamento di prova: il banco di prova consiglia un altro modello");
+  assert.match(email.text, /per il ruolo «lettura» dell'agente del caso d'uso «Smistamento di prova», il banco di prova consiglia Claude Haiku 5\.5\./);
+  assert.ok(email.text.includes(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`));
+  assert.ok(!email.text.includes("#banco"), "il link dell'e-mail non ha frammenti");
+  assert.match(email.text, /Email interna di Lateral Space\./);
+  assert.deepEqual(planDelivery(claimed(kind, payload), facts(false), OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
+  // Senza il nome da mostrare (o con un nome strano), l'id del modello.
+  for (const label of [undefined, "<b>Haiku</b>"]) {
+    const bare = planDelivery(claimed(kind, { useCase: UC, role: "lettura", model: "anthropic/claude-haiku-5-5", ...(label ? { label } : {}) }), facts(), OPTS);
+    assert.ok(bare.action === "send" && renderEmail(bare.build(null)).text.includes("il banco di prova consiglia anthropic/claude-haiku-5-5."), String(label));
+  }
+  assert.deepEqual(planDelivery(claimed(kind, { role: "lettura", model: "anthropic/claude-haiku-5-5" }), facts(), OPTS), { action: "cancel", reason: "use_case_assente" });
+  const badAdvice: Record<string, string>[] = [{ useCase: UC, model: "anthropic/claude-haiku-5-5" }, { useCase: UC, role: "Lettura!", model: "anthropic/claude-haiku-5-5" }, { useCase: UC, role: "lettura", model: "modello con spazi" }];
+  for (const bad of badAdvice) {
+    assert.deepEqual(planDelivery(claimed(kind, bad), facts(), OPTS), { action: "cancel", reason: "consiglio_assente" }, JSON.stringify(bad));
+  }
+});
+
+test("(8.2a) le evals scese: sotto soglia o giù di 5 punti, con la qualità; nella campanella del team; il link al progetto", () => {
+  const kind = "evals_in_calo";
+  assert.ok((UC_NOTIFICATION_TEMPLATES as readonly string[]).includes(kind));
+  assert.ok((EMAIL_TEMPLATES as readonly string[]).includes(kind));
+  assert.ok(CASE_TEAM_BELL_KINDS.includes(kind));
+  assert.equal(noticeHref(WS, { kind, useCaseId: UC }), `/dashboard/${WS}/use-cases/${UC}/progetto#banco`);
+  assert.equal(noticeTextOf({ kind, answers: 0, unknowns: 0, documents: 0, followUp: null }).title, "Le evals sono scese");
+  const below = planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "sotto_soglia", qualityText: formatQuality(0.8) })), facts(), OPTS);
+  assert.equal(below.action, "send");
+  if (below.action !== "send") return;
+  const belowEmail = renderEmail(below.build(null));
+  assert.equal(belowEmail.subject, "Cliente prova · Smistamento di prova: le evals di main sono sotto soglia");
+  assert.match(belowEmail.text, /le evals di main del caso d'uso «Smistamento di prova» sono sotto soglia: 80%\./);
+  assert.match(belowEmail.text, /guarda quali prove non passano/);
+  assert.ok(belowEmail.text.includes(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`));
+  const down = planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "in_calo", qualityText: formatQuality(0.91), drop: 0.064 })), facts(), OPTS);
+  assert.equal(down.action, "send");
+  if (down.action !== "send") return;
+  const downEmail = renderEmail(down.build(null));
+  assert.equal(downEmail.subject, "Cliente prova · Smistamento di prova: le evals di main sono scese");
+  assert.match(downEmail.text, /sono scese di 6,4 punti rispetto alle precedenti: ora sono al 91%\./);
+  assert.deepEqual(planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "sotto_soglia", qualityText: "80%" })), facts(false), OPTS), { action: "cancel", reason: "destinatario_non_lateral_space" });
+  const badAlerts: Record<string, string | number | boolean>[] = [
+    { useCase: UC, alert: "giù", qualityText: "80%" },
+    { useCase: UC, alert: "sotto_soglia" },
+    { useCase: UC, alert: "sotto_soglia", qualityText: "150%" },
+    { useCase: UC, alert: "sotto_soglia", qualityText: "80% <a href=x>" },
+    { useCase: UC, alert: "sotto_soglia", qualityText: 0.8 },
+    { useCase: UC, alert: "in_calo", qualityText: "90%" },
+    { useCase: UC, alert: "in_calo", qualityText: "90%", drop: 0 },
+    { useCase: UC, alert: "in_calo", qualityText: "90%", drop: "6 punti" },
+  ];
+  for (const bad of badAlerts) {
+    assert.deepEqual(planDelivery(claimed(kind, evalPayload(bad)), facts(), OPTS), { action: "cancel", reason: "avviso_assente" }, JSON.stringify(bad));
+  }
+});
+
+test("(8.2a) le regole della coda sono quelle del modulo del banco, che il motore delle e-mail non importa", () => {
+  assert.equal(NOTICE_ROLE_RE.source, ROLE_RE.source);
+  assert.equal(NOTICE_MODEL_RE.source, MODEL_ID_RE.source);
+  for (const q of [0, 0.004, 0.05, 0.5, 0.8, 0.9643, 27 / 28, 0.999, 1]) assert.match(formatQuality(q), NOTICE_QUALITY_TEXT_RE, String(q));
+  for (const id of ["anthropic/claude-haiku-5-5", "claude-opus-5-5", "openai/gpt-x", "fornitore/modello:v1@2"]) assert.match(modelLabel(id), NOTICE_MODEL_LABEL_RE, id);
 });

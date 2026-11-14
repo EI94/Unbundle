@@ -18,10 +18,11 @@
 import type { UcBellItem } from "../uc/notify/bell.ts";
 import { formatRelativeIt } from "../uc/views/format.ts";
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0034 as UseCaseNoticeKind } from "../db/use-case-hub-proposals-ddl.ts";
+import type { UseCaseNoticeKind0036 as UseCaseNoticeKind } from "../db/use-case-hub-evals-ddl.ts";
 import { TASK_NOTICE_KINDS } from "../db/use-case-hub-tasks-ddl.ts";
 import { GITHUB_NOTICE_KINDS } from "../db/use-case-hub-github-ddl.ts";
 import { PROPOSAL_NOTICE_KINDS } from "../db/use-case-hub-proposals-ddl.ts";
+import { EVAL_NOTICE_KINDS } from "../db/use-case-hub-evals-ddl.ts";
 import { hubSignalHref } from "../use-cases/digest.ts";
 import { noticeContextOf, noticeTextOf } from "../use-cases/notices.ts";
 import { cosaServeHref, realizzazioneHref, richiesteHref, subprocessorsSettingsHref } from "../use-cases/referent/contract.ts";
@@ -244,10 +245,13 @@ const FACTORY_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set(FACTORY_BELL_KINDS
  * Factory. Li vede anche chi non rivede il portafoglio. `domanda_agente` no: porta a «Cosa serve», che vede e decide
  * solo chi rivede il portafoglio, come la sezione delle proposte.
  */
-export const CASE_TEAM_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze([...FACTORY_BELL_KINDS, ...TASK_NOTICE_KINDS, ...GITHUB_NOTICE_KINDS, ...PROPOSAL_NOTICE_KINDS]);
+export const CASE_TEAM_BELL_KINDS: readonly UseCaseNoticeKind[] = Object.freeze([...FACTORY_BELL_KINDS, ...TASK_NOTICE_KINDS, ...GITHUB_NOTICE_KINDS, ...PROPOSAL_NOTICE_KINDS, ...EVAL_NOTICE_KINDS]);
 
 /** (8.1a) I tipi dei compiti, e (8.1b) la PR da rivedere: portano ai compiti del progetto dell'agente. */
 const TASK_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set([...TASK_NOTICE_KINDS, ...GITHUB_NOTICE_KINDS, ...PROPOSAL_NOTICE_KINDS]);
+
+/** (8.2a) Il banco di prova e le evals: portano alla sezione «Evals e banco di prova» del progetto dell'agente. */
+const EVAL_KINDS: ReadonlySet<UseCaseNoticeKind> = new Set(EVAL_NOTICE_KINDS);
 
 /**
  * Dove porta una notifica di use case: «Pronto da avviare» alla scheda a `?capitolo=realizzazione`
@@ -267,6 +271,9 @@ export function noticeHref(workspaceId: string, n: Pick<BellUseCaseInput, "kind"
   }
   if (TASK_KINDS.has(n.kind)) {
     return `/dashboard/${encodeURIComponent(workspaceId)}/use-cases/${encodeURIComponent(n.useCaseId)}/progetto#compiti`;
+  }
+  if (EVAL_KINDS.has(n.kind)) {
+    return `/dashboard/${encodeURIComponent(workspaceId)}/use-cases/${encodeURIComponent(n.useCaseId)}/progetto#banco`;
   }
   return cosaServeHref(workspaceId, n.useCaseId);
 }

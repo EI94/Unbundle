@@ -10,7 +10,7 @@ import { factoryStoreReady } from "@/lib/db/queries/use-case-factory";
 import { cliStoreReady } from "@/lib/db/queries/use-case-cli-auth";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
-import { AGENT_FACTORY_TEMPLATE_VERSION, compareVersions, STATION_LABEL, STATIONS, type Station } from "@/lib/use-cases/factory/line";
+import { AGENT_FACTORY_TEMPLATE_VERSION, benchFacts, compareVersions, evalsFact, STATION_LABEL, STATIONS, type Station } from "@/lib/use-cases/factory/line";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
@@ -29,6 +29,8 @@ import { AddWorkspaceTeamMember, RemoveWorkspaceTeamMember } from "./team-forms"
  * - La coda della fabbrica, al posto dei turni: chi ci lavora la prende.
  * - (8.1b) Il team di Lateral Space del cliente, solo per il manager: chi è qui entra in tutti i casi del workspace,
  *   anche in quelli che si apriranno; per un caso solo resta il team del dossier.
+ * - (8.2a) Per ogni caso le evals («evals 96%», «sotto soglia») e il consiglio del banco di prova; in «Da fare per te»,
+ *   a chi costruisce il caso, il consiglio del banco e le evals sotto soglia, con il link a «Evals e banco di prova».
  *
  * La vede chi costruisce (ruolo di Lateral Space nel team di un caso), con i suoi casi, e il manager del workspace
  * di Lateral Space, con tutti. Agli altri: 404.
@@ -68,6 +70,7 @@ function prLine(p: FactoryCaseRow["prs"]): string | null {
 function todoHref(workspaceId: string, t: FactoryTodo): string {
   if (t.href) return t.href;
   if (t.kind === "domande") return `/dashboard/${workspaceId}/use-cases/${t.useCaseId}/proposte`;
+  if (t.kind === "banco" || t.kind === "evals") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto#banco`;
   return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto${t.kind === "approva" ? "" : "#compiti"}`;
 }
 
@@ -77,6 +80,8 @@ function CaseRow({ workspaceId, c }: { workspaceId: string; c: FactoryCaseRow })
     live > 0 ? `${c.tasks.done}/${live} compiti fatti${c.tasks.inProgress + c.tasks.inReview ? ` · ${c.tasks.inProgress + c.tasks.inReview} in corso` : ""}` : null,
     c.sessions.count ? `${count(c.sessions.count)} ${c.sessions.count === 1 ? "sessione" : "sessioni"} dei coding agent, l'ultima ${since(c.sessions.lastAt)}` : null,
     prLine(c.prs),
+    evalsFact(c.evals),
+    ...benchFacts(c.benches),
   ].filter(Boolean);
   return (
     <li>

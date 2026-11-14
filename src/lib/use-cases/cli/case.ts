@@ -142,6 +142,8 @@ const STATUS_OF: Readonly<Record<string, number>> = {
   gia_preso: 409,
   aree_sovrapposte: 409,
   libero: 409,
+  // (8.2a) Il banco e le evals: la 0036 non c'è ancora.
+  non_disponibile: 503,
 };
 
 /** Una chiave di idempotenza valida: quella che la CLI genera (un UUID) o una del chiamante, 8-128 caratteri. */
