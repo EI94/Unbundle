@@ -59,8 +59,13 @@ export const EVALS_MAIN_BRANCH = EVALS_MAIN;
 export const EVALS_FULL_LEVEL = "pull_request";
 /** Quante evals nell'andamento. */
 export const EVALS_TREND_MAX = 12;
-/** Quanti ruoli, al massimo, con il loro ultimo banco (i più recenti). */
+/**
+ * Quanti ruoli, al massimo, con il loro banco in un caso: un ruolo nuovo oltre questi non si scrive, e le letture tengono
+ * i più recenti. Un agente ha pochi ruoli (quelli di agent.yaml): il tetto ferma i ruoli inventati.
+ */
 export const BENCH_ROLES_MAX = 20;
+/** La risposta a un banco di un ruolo nuovo quando il caso ha già il banco di {@link BENCH_ROLES_MAX} ruoli. */
+export const BENCH_ROLES_FULL_MESSAGE = `Questo caso ha già il banco di ${BENCH_ROLES_MAX} ruoli, il massimo: si rifà il banco di un ruolo che c'è già, non di uno nuovo (i ruoli sono quelli di agent.yaml).`;
 /**
  * Quante volte si rifà il confronto delle evals quando ne arrivano altre dello stesso caso insieme: ogni tentativo andato
  * a vuoto vuol dire che un'altra è stata scritta, quindi bastano tanti tentativi quante evals insieme.
@@ -88,6 +93,8 @@ const RUN_COLUMNS = raw(
 const RESULT_COLUMNS = raw(
   "x.model, x.current, x.passed, x.total, x.thresholds_met, x.groups, x.cost_per_1000_usd, x.latency_p50_ms, x.latency_p95_ms, x.tokens_in_avg, x.tokens_out_avg, x.errors",
 );
+/** Le colonne di un risultato che servono alla lettura del banco (`analyzeBench`): niente gruppi, tempi né token. */
+const VERDICT_RESULT_COLUMNS = raw("x.model, x.current, x.passed, x.total, x.thresholds_met, x.cost_per_1000_usd");
 
 const numberOrNull = (v: unknown): number | null => {
   if (v === null || v === undefined) return null;
@@ -240,6 +247,25 @@ CROSS JOIN jsonb_to_recordset(${jsonb(rows)}) AS x(model text, current boolean, 
 WHERE r.id = ${cast(id, "uuid")} AND r.created_at = now()`);
 }
 
+/** In fila per use case: le esecuzioni di un caso si scrivono una alla volta (il confronto delle evals, i ruoli del banco). */
+function caseWriteLockSql(target: FactoryTarget): UcStatement {
+  return toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:evals:' || ${cast(target.useCaseId, "text")}))`);
+}
+
+/** I banchi del caso: quanti ruoli diversi, e se `role` è già tra questi. */
+function benchRolesSql(target: FactoryTarget, role: string): UcStatement {
+  return toStatement(ucSql`SELECT count(DISTINCT b.role)::int AS roles, coalesce(bool_or(b.role = ${cast(role, "text")}), false) AS known
+FROM use_case_eval_runs b WHERE b.workspace_id = ${cast(target.workspaceId, "uuid")} AND b.use_case_id = ${cast(target.useCaseId, "uuid")} AND b.kind = 'banco'`);
+}
+
+/** Vero se nel caso c'è posto per il banco di `role`: il ruolo ha già un banco, o i ruoli sono meno di {@link BENCH_ROLES_MAX}. */
+function benchRoomSql(target: FactoryTarget, role: string): SqlFragment {
+  const ws = cast(target.workspaceId, "uuid");
+  const uc = cast(target.useCaseId, "uuid");
+  return ucSql`(EXISTS (SELECT 1 FROM use_case_eval_runs b WHERE b.workspace_id = ${ws} AND b.use_case_id = ${uc} AND b.kind = 'banco' AND b.role = ${cast(role, "text")})
+  OR (SELECT count(DISTINCT b.role) FROM use_case_eval_runs b WHERE b.workspace_id = ${ws} AND b.use_case_id = ${uc} AND b.kind = 'banco') < ${cast(BENCH_ROLES_MAX, "int")})`;
+}
+
 /** L'esecuzione con l'id (di qualunque caso: un id riservato è unico) e se lo use case c'è nel workspace. */
 function precheckSql(target: FactoryTarget, id: string): UcStatement[] {
   return [
@@ -319,20 +345,30 @@ export async function recordEvalRun(
   const now = o.now ?? new Date();
 
   if (input.kind === "banco") {
-    const analysis = analyzeBench(input.results, { role: input.role as string, fakeModels: input.fakeModels });
+    const role = input.role as string;
+    const analysis = analyzeBench(input.results, { role, fakeModels: input.fakeModels });
     const verdict = analysis.verdict;
-    const [existing, useCase] = await executor.batch(precheckSql(target, id));
+    const [existing, useCase, roles] = await executor.batch([...precheckSql(target, id), benchRolesSql(target, role)]);
     if (existing[0]) return replayRun(executor, target, id);
     if (!useCase[0]) return fail("non_trovato", "Use case non trovato.");
+    // Un ruolo nuovo solo finché il caso ha meno di BENCH_ROLES_MAX ruoli con un banco; uno che c'è già si rifà sempre.
+    if (roles[0]?.known !== true && count(roles[0]?.roles) >= BENCH_ROLES_MAX) return fail("conflitto", BENCH_ROLES_FULL_MESSAGE);
     // Il consiglio arriva solo con «cambia», che con i modelli finti non c'è mai. L'e-mail dice il modello solo con il
     // nome del catalogo: un id fuori dal catalogo l'ha scelto chi manda, e non va mai in un'e-mail.
     const notices =
       verdict.kind === "cambia" && !input.fakeModels
-        ? notifyTask(target, "banco_consiglio", { roles: BUILDER_ROLES }, actor, now, null, insertedNow(id), { role: input.role as string, model: verdict.model, ...catalogueLabel(verdict.model) })
+        ? notifyTask(target, "banco_consiglio", { roles: BUILDER_ROLES }, actor, now, null, insertedNow(id), { role, model: verdict.model, ...catalogueLabel(verdict.model) })
         : [];
-    const [inserted] = await executor.batch([insertRunSql(target, id, input, raw("true")), insertResultsSql(id, input.results), ...notices]);
-    if (!inserted[0]) return replayRun(executor, target, id);
-    return ok({ id, analysis, alert: null, notified: notices.length > 0 });
+    // In fila per caso, e il posto per il ruolo si conta dentro la scrittura: due banchi di ruoli nuovi insieme non
+    // superano il tetto.
+    const written = await executor.batch([caseWriteLockSql(target), insertRunSql(target, id, input, benchRoomSql(target, role)), insertResultsSql(id, input.results), ...notices]);
+    if (written[1][0]) return ok({ id, analysis, alert: null, notified: notices.length > 0 });
+    // Non scritto: la stessa esecuzione arrivata insieme (si risponde come lei), lo use case che non c'è più, o i ruoli
+    // del caso riempiti nel frattempo.
+    const [again, still] = await executor.batch(precheckSql(target, id));
+    if (again[0]) return replayRun(executor, target, id);
+    if (!still[0]) return fail("non_trovato", "Use case non trovato.");
+    return fail("conflitto", BENCH_ROLES_FULL_MESSAGE);
   }
 
   const point = pointOf(input, current[0]);
@@ -353,7 +389,7 @@ export async function recordEvalRun(
     // In fila per use case; si scrive solo se le ultime evals confrontate sono ancora le ultime.
     const still = ucSql`${previousEvalsSql(target, input, { exclude: id })} IS NOT DISTINCT FROM ${cast(previous?.id ?? null, "uuid")}`;
     const results = await executor.batch([
-      toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:evals:' || ${cast(target.useCaseId, "text")}))`),
+      caseWriteLockSql(target),
       insertRunSql(target, id, input, still),
       insertResultsSql(id, input.results),
       ...notices,
@@ -433,7 +469,8 @@ export interface CaseEvalFacts {
     at: string;
   } | null;
   /**
-   * La lettura dell'ultimo banco di ogni ruolo, in ordine di ruolo: quando è nato, il suo modello «attuale» e se è
+   * La lettura dell'ultimo banco di ogni ruolo (al massimo {@link BENCH_ROLES_MAX}, i più recenti), in ordine di ruolo:
+   * quando è nato, il suo modello «attuale» e se è
    * superato (`benchSuperseded`: dopo di lui le evals vere di `main` usano un altro modello per il ruolo, o il ruolo non
    * c'è più). Il consiglio di un banco superato non è più da fare.
    */
@@ -455,11 +492,16 @@ export async function loadEvalFacts(executor: UcExecutor, workspaceId: string, u
 FROM use_case_eval_runs r JOIN use_case_eval_results x ON x.run_id = r.id AND x.current
 WHERE r.workspace_id = ${ws} AND r.use_case_id = ANY (${ids}) AND r.kind = 'evals'
 ORDER BY r.use_case_id, ${statusOrderSql("r")}`),
+    // L'ultimo banco di ogni ruolo, al massimo BENCH_ROLES_MAX ruoli per caso (i più recenti, come la pagina), con le
+    // sole colonne della lettura.
     toStatement(ucSql`WITH latest AS (
-  SELECT DISTINCT ON (q.use_case_id, q.role) q.id FROM use_case_eval_runs q
+  SELECT DISTINCT ON (q.use_case_id, q.role) q.id, q.use_case_id, q.created_at FROM use_case_eval_runs q
   WHERE q.workspace_id = ${ws} AND q.use_case_id = ANY (${ids}) AND q.kind = 'banco'
-  ORDER BY q.use_case_id, q.role, q.created_at DESC, q.id DESC)
-SELECT r.use_case_id, ${RUN_COLUMNS}, ${RESULT_COLUMNS} FROM latest l JOIN use_case_eval_runs r ON r.id = l.id JOIN use_case_eval_results x ON x.run_id = r.id
+  ORDER BY q.use_case_id, q.role, q.created_at DESC, q.id DESC),
+ranked AS (
+  SELECT l.id, row_number() OVER (PARTITION BY l.use_case_id ORDER BY l.created_at DESC, l.id DESC) AS n FROM latest l)
+SELECT r.use_case_id, ${RUN_COLUMNS}, ${VERDICT_RESULT_COLUMNS} FROM ranked k JOIN use_case_eval_runs r ON r.id = k.id JOIN use_case_eval_results x ON x.run_id = r.id
+WHERE k.n <= ${cast(BENCH_ROLES_MAX, "int")}
 ORDER BY r.use_case_id, r.role, x.current DESC, x.model`),
   ]);
   const entry = (useCaseId: string) => {

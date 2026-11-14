@@ -6,8 +6,9 @@
  * - **Il controllo (`parseEvalRun`):** ogni campo con un messaggio chiaro, da mostrare così com'è.
  *   - La qualità si ricalcola qui (superate / totali). Quella che manda la CLI, se c'è, deve dire lo stesso (mezzo
  *     punto di tolleranza per l'arrotondamento).
- *   - Il banco ha il ruolo e da 1 a 12 modelli distinti, uno solo «attuale». Le evals hanno un solo risultato,
- *     «attuale», e nessun ruolo.
+ *   - Il banco ha il ruolo e da 1 a 12 modelli distinti, uno solo «attuale», che è il modello di oggi del ruolo in
+ *     «modelli» (obbligatorio: la CLI lo prende da agent.yaml). Le evals hanno un solo risultato, «attuale», e nessun
+ *     ruolo.
  *   - «modelliFinti» si dice sempre; «inCostruzione» sempre per le evals. Mancare non vale «no»: un banco finto preso
  *     per vero consiglierebbe un modello, evals in costruzione prese per finite avviserebbero il team.
  *   - Tempi e token medi si arrotondano all'intero, il costo a 6 decimali: quello che si salva è quello che si rilegge,
@@ -221,8 +222,11 @@ export function parseEvalRun(body: Record<string, unknown>): InputResult<EvalRun
   if (current.length !== 1) {
     return bad(kind === "banco" ? "risultati: esattamente un modello «attuale», quello di oggi del ruolo." : "risultati: il risultato delle evals è quello dei modelli di oggi, «attuale»: true.");
   }
-  if (role !== null && models.value[role] !== undefined && models.value[role] !== current[0].model) {
-    return bad(`modelli.${role}: il modello di oggi del ruolo è quello «attuale» del banco (${current[0].model}).`);
+  if (role !== null) {
+    // Il banco dice sempre il modello di oggi del suo ruolo (la CLI lo prende da agent.yaml): senza, un ruolo inventato.
+    const today = Object.hasOwn(models.value, role) ? models.value[role] : null;
+    if (today === null) return bad(`modelli.${role}: il modello di oggi del ruolo del banco, da agent.yaml (${current[0].model}).`);
+    if (today !== current[0].model) return bad(`modelli.${role}: il modello di oggi del ruolo è quello «attuale» del banco (${current[0].model}).`);
   }
   return {
     ok: true,

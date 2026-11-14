@@ -373,6 +373,7 @@ test("i corpi sbagliati: 400 con il messaggio; la chiave resta libera per la ric
     [banco({ risultati: [result({ superati: 29 })] }), /superate non possono essere più delle totali/],
     [evalsBody(95, { risultati: [result(), result({ modello: SONNET, attuale: false })] }), /un solo risultato/],
     [banco({ commit: "XYZ" }), /^commit:/],
+    [banco({ modelli: { scrittura: HAIKU } }), /^modelli\.lettura: il modello di oggi del ruolo del banco, da agent\.yaml/],
   ];
   for (const [body, message] of cases) {
     const r = await post(tokens.lead!, body, k);
@@ -458,7 +459,7 @@ test("il banco «resta» e il banco con i modelli finti: nessun avviso; con i fi
   assert.equal(fake.status, 200);
   assert.equal(fake.json.raccomandazione, null, "modelli finti: nessuna raccomandazione");
   assert.equal(fake.json.avviso, null);
-  const nobody = await post(tokens.lead!, banco({ ruolo: "verifica", modelli: {}, risultati: [result({ modello: SONNET, soglieRispettate: false }), result({ modello: HAIKU, attuale: false, soglieRispettate: false })] }));
+  const nobody = await post(tokens.lead!, banco({ ruolo: "verifica", modelli: { verifica: SONNET }, risultati: [result({ modello: SONNET, soglieRispettate: false }), result({ modello: HAIKU, attuale: false, soglieRispettate: false })] }));
   assert.equal((nobody.json.raccomandazione as Row).tipo, "nessuno");
   assert.ok(!("modello" in (nobody.json.raccomandazione as Row)));
   assert.deepEqual(await bell("banco_consiglio"), [], "resta, finti e nessuno: nessun avviso");
@@ -640,7 +641,7 @@ test("una ripresa con lo stesso id risponde come la prima volta e non avvisa di 
   const elsewhere = await evals.recordEvalRun(exec, { workspaceId: ids.ws, useCaseId: ids.other }, parsed.value, { id, actorUserId: ids.lead });
   assert.deepEqual(elsewhere.ok ? null : elsewhere.code, "conflitto");
   // Un banco ripreso: la stessa lettura.
-  const bench = parseEvalRun(banco({ ruolo: "ripresa", modelli: {} }));
+  const bench = parseEvalRun(banco({ ruolo: "ripresa", modelli: { ripresa: SONNET } }));
   assert.ok(bench.ok);
   if (!bench.ok) return;
   const benchId = randomUUID();
@@ -830,4 +831,56 @@ test("il consiglio verso un modello fuori dal catalogo: in coda senza nome, e l'
   assert.ok(!email.text.includes("evil") && !email.html.includes("evil") && !email.subject.includes("evil"));
   await clearNotices("banco_consiglio");
   await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'banco'`, [ids.third]);
+});
+
+test("i ruoli del banco hanno un tetto: un ruolo nuovo oltre il ventesimo è un conflitto, uno che c'è si rifà; le letture tengono i 20 più recenti", opts, async () => {
+  // EV-0003, senza banchi: 19 ruoli scritti a mano, dal più vecchio.
+  const target = { workspaceId: ids.ws, useCaseId: ids.third };
+  const { parseEvalRun } = await import("./benchmark-input.ts");
+  assert.equal(evals.BENCH_ROLES_MAX, 20);
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1`, [ids.third]);
+  const insertBench = async (role: string, minutesAgo: number) => {
+    const [run] = await q(
+      `INSERT INTO use_case_eval_runs (use_case_id, workspace_id, kind, role, level, branch, models, cases_total, created_at)
+       VALUES ($1, $2, 'banco', $3, 'pull_request', 'main', $4::jsonb, 28, now() - make_interval(mins => $5)) RETURNING id`,
+      [ids.third, ids.ws, role, JSON.stringify({ [role]: SONNET }), minutesAgo],
+    );
+    await q(
+      `INSERT INTO use_case_eval_results (run_id, use_case_id, workspace_id, model, current, quality, passed, total, thresholds_met, groups, cost_per_1000_usd)
+       VALUES ($1, $2, $3, $4, true, $5, 27, 28, true, $6::jsonb, 1.8)`,
+      [run.id, ids.third, ids.ws, SONNET, 27 / 28, JSON.stringify({ regole: { passati: 9, totali: 9, soglia: 1, ok: true } })],
+    );
+  };
+  const role = (i: number) => `r${String(i).padStart(2, "0")}`;
+  for (let i = 1; i <= 19; i++) await insertBench(role(i), 100 - i);
+  const benchOf = (ruolo: string) => ({ ...banco({ ruolo, modelli: { [ruolo]: SONNET }, risultati: [result({ modello: SONNET, costoPer1000Usd: 1.8 })] }), caso: "EV-0003" });
+  // Il ventesimo ruolo entra; il ventunesimo no, con il messaggio; uno che c'è già si rifà.
+  assert.equal((await post(tokens.dev!, benchOf(role(20)))).status, 200);
+  const full = await post(tokens.dev!, benchOf(role(21)));
+  assert.deepEqual([full.status, (full.json.errore as Row).codice], [409, "conflitto"]);
+  assert.equal((full.json.errore as Row).messaggio, evals.BENCH_ROLES_FULL_MESSAGE);
+  assert.match(evals.BENCH_ROLES_FULL_MESSAGE, /^Questo caso ha già il banco di 20 ruoli, il massimo: si rifà il banco di un ruolo che c'è già/);
+  assert.equal((await post(tokens.dev!, benchOf(role(5)))).status, 200, "un ruolo che c'è già");
+  const roles = async () => (await q(`SELECT count(DISTINCT role)::int AS n FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'banco'`, [ids.third]))[0].n;
+  assert.equal(await roles(), 20);
+  // Due ruoli nuovi insieme con un posto solo: uno entra, l'altro è un conflitto.
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND role = $2`, [ids.third, role(20)]);
+  const inputs = ["nuovo-a", "nuovo-b"].map((r) => {
+    const parsed = parseEvalRun(benchOf(r));
+    assert.ok(parsed.ok);
+    return parsed.ok ? parsed.value : (undefined as never);
+  });
+  const both = await Promise.all(inputs.map((input) => evals.recordEvalRun(exec, target, input, { actorUserId: ids.dev })));
+  assert.deepEqual(both.map((r) => (r.ok ? "ok" : r.code)).sort(), ["conflitto", "ok"]);
+  assert.equal(await roles(), 20);
+  // Righe di prima del tetto (scritte a mano): 22 ruoli. Le letture tengono i 20 più recenti, senza i più vecchi.
+  await insertBench("vecchio-a", 500);
+  await insertBench("vecchio-b", 400);
+  assert.equal(await roles(), 22);
+  const facts = (await evals.loadEvalFacts(exec, ids.ws, [ids.third])).get(ids.third);
+  assert.equal(facts?.benches.length, 20);
+  assert.ok(facts?.benches.every((b) => !b.role.startsWith("vecchio-")));
+  const page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual(page?.benches.map((b) => b.role).sort(), facts?.benches.map((b) => b.role).sort(), "la pagina e l'Agent Factory, gli stessi ruoli");
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1`, [ids.third]);
 });
