@@ -205,6 +205,20 @@ test("lo schema della 0033 c'è; il file due volte e il self-heal due volte non 
   await rejects(`INSERT INTO use_case_github_deliveries (delivery_id, event, outcome) VALUES ($1, 'push', 'boh')`, [`x-${suffix}`], "use_case_github_deliveries_outcome_check");
 });
 
+test("su un database senza la 0033 il self-heal la crea (in una transazione annullata)", opts, async () => {
+  const marker = `prova-0033-annullata-${suffix}`;
+  const text = [
+    `DROP TABLE use_case_pull_requests, use_case_github_deliveries;`,
+    `DELETE FROM use_case_notifications WHERE kind IN (${ddl.GITHUB_NOTICE_KINDS.map((k) => `'${k}'`).join(", ")});`,
+    `DO $$ BEGIN IF ${ddl.GITHUB_PROBE_SQL} THEN RAISE EXCEPTION 'sonda ancora vera'; END IF; END $$;`,
+    ...ddl.GITHUB_DDL,
+    `DO $$ BEGIN IF NOT ${ddl.GITHUB_PROBE_SQL} THEN RAISE EXCEPTION 'sonda ancora falsa'; END IF; END $$;`,
+    `DO $$ BEGIN RAISE EXCEPTION '${marker}'; END $$;`,
+  ].join("\n");
+  await assert.rejects(q(text), (error: unknown) => String((error as { message?: unknown })?.message ?? error).includes(marker));
+  assert.equal((await q(`SELECT ${ddl.GITHUB_PROBE_SQL} AS ok`))[0].ok, true, "annullata: tutto come prima");
+});
+
 test("spento senza segreto; firma sbagliata e intestazioni strane si fermano prima di leggere", opts, async () => {
   const payload = prPayload({ number: 1, branch: "px-0042/t-1-ingresso" });
   delete process.env.GITHUB_WEBHOOK_SECRET;
