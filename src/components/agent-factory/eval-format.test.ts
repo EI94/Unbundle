@@ -27,6 +27,7 @@ import {
   evalsStatusLine,
   formatLatency,
   formatPoints,
+  frontierRows,
   groupsLine,
   hasMeasures,
   labelPriority,
@@ -307,20 +308,46 @@ test("il riquadro e il nome accessibile di un punto, e la frase del grafico", ()
   const sonnet = rows.find((r) => r.model === SONNET)!;
   // Il costo è una stima (listino, senza cache): lo dicono il riquadro, il nome del punto e la frase del grafico.
   assert.deepEqual(pointDetails(sonnet).map(plain), ["96% · 27 di 28 prove", "1,80 USD per 1.000 esecuzioni (stimato)", "tempo p95 4,1 s"]);
-  assert.equal(plain(pointLabel(sonnet)), "Claude Sonnet 5.5, oggi e più bravo: qualità 96%, 27 di 28 prove, 1,80 USD per 1.000 esecuzioni (stimato), tempo p95 4,1 s.");
+  assert.equal(plain(pointLabel(sonnet)), "Claude Sonnet 5.5, oggi e più bravo, sulla frontiera: qualità 96%, 27 di 28 prove, 1,80 USD per 1.000 esecuzioni (stimato), tempo p95 4,1 s.");
   assert.equal(plain(pointLabel(rows.find((r) => r.model === OPUS)!)), "Claude Opus 5.5: qualità 80%, 22 di 28 prove, 3,60 USD per 1.000 esecuzioni (stimato), tempo p95 non misurato, sotto soglia.");
   const opus = rows.find((r) => r.model === OPUS)!;
   assert.deepEqual(pointDetails(opus).slice(2), ["tempo p95 non misurato", "sotto soglia"]);
   const summary = plain(benchSummary("lettura", rows));
   assert.equal(
     summary,
-    "Qualità e costo stimato per 1.000 esecuzioni di 3 modelli per il ruolo «lettura». Oggi e più bravo: Claude Sonnet 5.5 (96%, 1,80 USD). Più efficiente e più economico: Claude Haiku 5.5 (95%, 0,12 USD). Sotto soglia: Claude Opus 5.5.",
+    "Qualità e costo stimato per 1.000 esecuzioni di 3 modelli per il ruolo «lettura». Oggi e più bravo: Claude Sonnet 5.5 (96%, 1,80 USD). Più efficiente e più economico: Claude Haiku 5.5 (95%, 0,12 USD). Frontiera: Claude Haiku 5.5, Claude Sonnet 5.5. Sotto soglia: Claude Opus 5.5.",
   );
   assert.equal(EVAL_TEXT.axisCost, "Costo stimato per 1.000 esecuzioni (USD)");
   assert.equal(EVAL_TEXT.columnCost, "Costo stimato per 1.000");
   assert.equal(plain(costPer1000Text(0.0035)), "0,0035 USD per 1.000 esecuzioni (stimato)");
   const unknown = benchRows([result(HAIKU, 0.95, null, { current: true })], analyzeBench([result(HAIKU, 0.95, null, { current: true })], { role: "lettura", fakeModels: false }));
   assert.match(benchSummary("lettura", unknown), /di un modello per il ruolo «lettura».*Costo non noto: Claude Haiku 5\.5\.$/);
+});
+
+test("la frontiera a parole: nel nome dei suoi punti e nella frase del grafico, solo quando è una linea", () => {
+  // Haiku e Opus sulla frontiera; Sonnet, oggi, no: Haiku rende di più e costa meno.
+  const results = [result(OPUS, 1, 5), result(SONNET, 26 / 28, 1, { current: true }), result(HAIKU, 27 / 28, 0.3)];
+  const rows = benchRows(results, analyzeBench(results, { role: "lettura", fakeModels: false }));
+  const label = (model: string) => plain(pointLabel(rows.find((r) => r.model === model)!));
+  assert.equal(label(HAIKU), "Claude Haiku 5.5, più economico, sulla frontiera: qualità 96,4%, 27 di 28 prove, 0,30 USD per 1.000 esecuzioni (stimato), tempo p95 2 s.");
+  assert.match(label(OPUS), /^Claude Opus 5\.5, più bravo e più efficiente, sulla frontiera: qualità 100%/);
+  assert.match(label(SONNET), /^Claude Sonnet 5\.5, oggi: qualità/);
+  assert.deepEqual(
+    frontierRows(rows).map((r) => r.label),
+    ["Claude Haiku 5.5", "Claude Opus 5.5"],
+    "dal più economico, come la linea da sinistra",
+  );
+  assert.ok(plain(benchSummary("lettura", rows)).endsWith("Oggi: Claude Sonnet 5.5 (92,9%, 1,00 USD). Frontiera: Claude Haiku 5.5, Claude Opus 5.5."));
+  // Un modello solo sulla frontiera (batte tutti gli altri): niente linea, e niente parole.
+  const alone = [result(HAIKU, 0.97, 0.12, { current: true }), result(SONNET, 0.96, 1.8)];
+  const aloneRows = benchRows(alone, analyzeBench(alone, { role: "lettura", fakeModels: false }));
+  assert.deepEqual(
+    aloneRows.map((r) => r.frontier),
+    [false, false],
+  );
+  assert.deepEqual(frontierRows(aloneRows), []);
+  assert.ok(!aloneRows.map(pointLabel).join(" ").includes("frontiera"));
+  assert.ok(!benchSummary("lettura", aloneRows).includes("Frontiera"));
 });
 
 test("il tono della raccomandazione e i ruoli ancora senza banco", () => {

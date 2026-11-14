@@ -50,8 +50,9 @@ interface Plotted {
  *
  * Un colore solo (`uc-serie-1`) e il grigio di «Altro», validati insieme sulla card nei due temi; il resto sono i
  * token del testo. Il riquadro con i numeri compare al passaggio del mouse (il punto più vicino), al tocco e con il
- * fuoco della tastiera (ogni punto è un pulsante con tutto nel nome); Esc lo chiude. Per i lettori di schermo una frase
- * con i segni; la tabella sotto ha ogni numero. I modelli senza costo non hanno un punto: sono elencati sotto.
+ * fuoco della tastiera (ogni punto è un pulsante con tutto nel nome, la frontiera compresa); Esc lo chiude. Per i
+ * lettori di schermo una frase con i segni e i modelli della frontiera; la tabella sotto ha ogni numero. I modelli senza
+ * costo non hanno un punto: sono elencati sotto.
  * Niente librerie di grafici; nessun dato su chi ha lanciato il banco.
  */
 export function BenchChart({ role, rows }: { role: string; rows: readonly BenchRow[] }) {

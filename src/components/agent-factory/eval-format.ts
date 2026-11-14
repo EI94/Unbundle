@@ -336,6 +336,7 @@ export interface BenchRow {
   cost: number | null;
   latencyP95Ms: number | null;
   marks: BenchMark[];
+  /** Sulla frontiera disegnata: almeno due modelli con il costo ci stanno (con uno solo non c'è la linea). */
   frontier: boolean;
 }
 
@@ -354,13 +355,15 @@ export function modelNames(models: readonly string[]): Map<string, { label: stri
 
 /**
  * I modelli di un banco con i loro segni, dal più bravo: qualità, poi costo (i costi non noti in fondo), poi il nome.
- * Un modello ripetuto conta una volta (la prima).
+ * Un modello ripetuto conta una volta (la prima). La frontiera solo quando ci stanno almeno due modelli: è una linea.
  */
 export function benchRows(results: readonly BenchResult[], analysis: BenchAnalysis): BenchRow[] {
   const seen = new Set<string>();
   const unique = results.filter((r) => !seen.has(r.model) && seen.add(r.model));
   const names = modelNames(unique.map((r) => r.model));
-  const frontier = new Set(analysis.frontier);
+  const frontierSet = new Set(analysis.frontier);
+  const onFrontier = (r: BenchResult) => frontierSet.has(r.model) && r.costPer1000Usd !== null;
+  const frontierDrawn = unique.filter(onFrontier).length >= 2;
   const rows = unique.map((r): BenchRow => {
     const marks: BenchMark[] = [];
     if (r.current) marks.push("oggi");
@@ -380,7 +383,7 @@ export function benchRows(results: readonly BenchResult[], analysis: BenchAnalys
       cost: r.costPer1000Usd,
       latencyP95Ms: r.latencyP95Ms,
       marks,
-      frontier: frontier.has(r.model) && r.costPer1000Usd !== null,
+      frontier: frontierDrawn && onFrontier(r),
     };
   });
   return rows.sort((a, b) => b.quality - a.quality || (a.cost ?? Infinity) - (b.cost ?? Infinity) || a.label.localeCompare(b.label, "it"));
@@ -411,9 +414,12 @@ export function pointDetails(row: BenchRow): string[] {
   ];
 }
 
-/** Il nome accessibile di un punto, in una frase: «Claude Sonnet 5.5, oggi e più bravo: qualità 96%, 27 di 28 prove, …». */
+/**
+ * Il nome accessibile di un punto, in una frase: «Claude Sonnet 5.5, oggi e più bravo, sulla frontiera: qualità 96%,
+ * 27 di 28 prove, …». La frontiera è solo una linea nel grafico: qui la dicono le parole.
+ */
 export function pointLabel(row: BenchRow): string {
-  const marks = row.marks.length ? `, ${row.marks.join(" e ")}` : "";
+  const marks = `${row.marks.length ? `, ${row.marks.join(" e ")}` : ""}${row.frontier ? ", sulla frontiera" : ""}`;
   const parts = [
     `qualità ${formatQuality(row.quality)}`,
     row.passed !== null && row.total !== null ? testsText(row.passed, row.total) : null,
@@ -426,11 +432,24 @@ export function pointLabel(row: BenchRow): string {
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-/** La frase per i lettori di schermo: chi ha i segni, chi è sotto soglia, chi non ha il costo. La tabella ha il resto. */
+/** I modelli sulla frontiera, dal più economico (come la linea, da sinistra); nessuno se non sono almeno due. */
+export function frontierRows(rows: readonly BenchRow[]): BenchRow[] {
+  const on = rows
+    .filter((r) => r.frontier && r.cost !== null)
+    .sort((a, b) => (a.cost as number) - (b.cost as number) || b.quality - a.quality || a.label.localeCompare(b.label, "it"));
+  return on.length >= 2 ? on : [];
+}
+
+/**
+ * La frase per i lettori di schermo: chi ha i segni, chi è sulla frontiera, chi è sotto soglia, chi non ha il costo.
+ * La tabella ha il resto.
+ */
 export function benchSummary(role: string, rows: readonly BenchRow[]): string {
   const brief = (r: BenchRow) => `${r.label} (${formatQuality(r.quality)}${r.cost !== null ? `, ${formatCost(r.cost)}` : ""})`;
   const parts = [`Qualità e costo stimato per 1.000 esecuzioni di ${rows.length === 1 ? "un modello" : `${rows.length} modelli`} per il ruolo «${role}».`];
   for (const r of rows) if (r.marks.length) parts.push(`${capitalize(r.marks.join(" e "))}: ${brief(r)}.`);
+  const frontier = frontierRows(rows);
+  if (frontier.length) parts.push(`Frontiera: ${frontier.map((r) => r.label).join(", ")}.`);
   const failing = rows.filter((r) => !r.thresholdsMet);
   if (failing.length) parts.push(`${capitalize(EVAL_TEXT.thresholdsMissed)}: ${failing.map((r) => r.label).join(", ")}.`);
   const unknown = rows.filter((r) => r.cost === null);

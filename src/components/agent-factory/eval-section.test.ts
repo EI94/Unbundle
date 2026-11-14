@@ -167,7 +167,10 @@ test("il banco di un ruolo: grafico con i punti, la frontiera, la legenda e i mo
   // Un pulsante per ogni modello con il costo, con tutto nel nome; nessuno per chi non ha il costo.
   assert.equal(count(html, /data-point="/), 3);
   assert.equal(count(html, /<button[^>]*aria-label="[^"]+"/), 3);
-  assert.match(html, /aria-label="Claude Sonnet 5\.5, oggi: qualità 96%, 27 di 28 prove, 1,80.USD per 1\.000 esecuzioni \(stimato\), tempo p95 4,1 s\."/);
+  assert.match(html, /aria-label="Claude Sonnet 5\.5, oggi, sulla frontiera: qualità 96%, 27 di 28 prove, 1,80.USD per 1\.000 esecuzioni \(stimato\), tempo p95 4,1 s\."/);
+  // La frontiera, che il grafico disegna, è anche nelle parole: nel nome dei punti e nella frase.
+  assert.equal(count(html, /, sulla frontiera: /), 3);
+  assert.ok(text.includes("Frontiera: Claude Haiku 5.5, Claude Sonnet 5.5, Claude Opus 5.5."));
   assert.match(html, /data-slot="bench-current"/, "il modello di oggi ha il cerchio");
   assert.match(html, /data-slot="bench-frontier"/);
   assert.ok(count(html, /data-slot="bench-label"/) >= 1, "le etichette accanto ai punti");
