@@ -8,7 +8,7 @@
  * Modulo puro: import relativi `.ts`.
  */
 import type { FollowUpReason } from "../db/use-case-hub-referents-ddl.ts";
-import type { UseCaseNoticeKind0034 as UseCaseNoticeKind } from "../db/use-case-hub-proposals-ddl.ts";
+import type { UseCaseNoticeKind0036 as UseCaseNoticeKind } from "../db/use-case-hub-evals-ddl.ts";
 
 export const USE_CASE_NOTICE_TEXT = Object.freeze({
   titles: Object.freeze({
@@ -41,6 +41,9 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
     pr_da_rivedere: "Una pull request da rivedere",
     // (Rilascio 8.1b) Da GitHub è arrivata una proposta di compito: la decide qualcuno del team.
     compito_proposto: "Una proposta di compito",
+    // (Rilascio 8.2a) Il banco di prova consiglia un altro modello per un ruolo; le evals di main sono scese.
+    banco_consiglio: "Il banco di prova consiglia un altro modello",
+    evals_in_calo: "Le evals sono scese",
   } satisfies Record<UseCaseNoticeKind, string>),
   answers: Object.freeze({ one: "1 risposta", many: "{n} risposte" }),
   documents: Object.freeze({ one: "1 documento", many: "{n} documenti" }),
@@ -73,6 +76,8 @@ export const USE_CASE_NOTICE_TEXT = Object.freeze({
   tasksReady: "Il progetto è approvato: «unbundle compiti» li elenca, «unbundle take» ne prende uno.",
   prToReview: "La trovi su GitHub: la rivede qualcuno del team che non l'ha scritta. Quando si unisce, il compito è fatto.",
   taskProposed: "Accettala come compito o scartala, nei compiti del progetto. Da sola non diventa un compito.",
+  benchAdvice: "Per un ruolo dell'agente c'è un modello che conviene di più. Il confronto e la PR di una riga sono in «Evals e banco di prova», nel progetto.",
+  evalsDown: "Le evals di main sono sotto soglia, o giù di almeno 5 punti rispetto alle precedenti. Guarda quali prove non passano in «Evals e banco di prova», nel progetto.",
   contextSeparator: " · ",
 });
 
@@ -108,6 +113,8 @@ export function noticeTextOf(n: {
   if (n.kind === "compiti_pronti") return { title, description: t.tasksReady };
   if (n.kind === "pr_da_rivedere") return { title, description: t.prToReview };
   if (n.kind === "compito_proposto") return { title, description: t.taskProposed };
+  if (n.kind === "banco_consiglio") return { title, description: t.benchAdvice };
+  if (n.kind === "evals_in_calo") return { title, description: t.evalsDown };
   if (n.kind === "senza_risposta") return { title, description: t.followUp[n.followUp ?? "scaduta"] };
   const answers = safe(n.answers);
   const documents = safe(n.documents);

@@ -75,7 +75,9 @@ import type {
 import type { AgentQuestionChannel, AgentQuestionStatus, BuildHarness, BuildOutcome, CliLoginStatus } from "./use-case-hub-cli-ddl.ts";
 import type { FactoryRepoKind, TaskNoteKind, TaskSource, TaskStatus } from "./use-case-hub-tasks-ddl.ts";
 import type { GithubDeliveryOutcome, PullRequestState } from "./use-case-hub-github-ddl.ts";
-import type { ProposalSource, ProposalStatus, UseCaseNoticeKind0034 } from "./use-case-hub-proposals-ddl.ts";
+import type { ProposalSource, ProposalStatus } from "./use-case-hub-proposals-ddl.ts";
+import type { UseCaseNoticeKind0036 } from "./use-case-hub-evals-ddl.ts";
+import type { EvalGroup, EvalRunKind } from "../use-cases/factory/benchmark.ts";
 import type { WorkspaceTeamRole } from "./use-case-hub-team-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
@@ -1615,6 +1617,67 @@ export const useCaseTaskProposals = pgTable(
   (t) => [primaryKey({ name: "use_case_task_proposals_pkey", columns: [t.id] })]
 );
 
+// ─── Banco di prova ed evals (drizzle/0036, rilascio 8.2a) ───────────
+// CHECK e chiavi esterne composte stanno solo nella migrazione e in use-case-hub-evals-ddl.ts (self-heal): mai
+// drizzle-kit push.
+
+/** (0036) Un banco di prova (con il ruolo) o le evals con i modelli di oggi. Nessuna colonna sulla persona (art. 15.4). */
+export const useCaseEvalRuns = pgTable(
+  "use_case_eval_runs",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 6 }).$type<EvalRunKind>().notNull(),
+    role: varchar("role", { length: 40 }),
+    level: varchar("level", { length: 20 }).notNull(),
+    branch: varchar("branch", { length: 120 }),
+    commitSha: varchar("commit_sha", { length: 40 }),
+    templateVersion: varchar("template_version", { length: 20 }),
+    models: jsonb("models").$type<Record<string, string>>().notNull().default({}),
+    fakeModels: boolean("fake_models").notNull().default(false),
+    inConstruction: boolean("in_construction").notNull().default(false),
+    casesTotal: integer("cases_total").notNull(),
+    createdAt: tz("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_eval_runs_pkey", columns: [t.id] }),
+    index("use_case_eval_runs_case_idx").on(t.useCaseId, t.kind, t.createdAt),
+    index("use_case_eval_runs_workspace_idx").on(t.workspaceId, t.kind, t.createdAt),
+  ]
+);
+
+/** (0036) L'esito di un modello in un banco, o dei modelli di oggi nelle evals. Un modello una volta per esecuzione. */
+export const useCaseEvalResults = pgTable(
+  "use_case_eval_results",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    runId: uuid("run_id").notNull(),
+    useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    model: varchar("model", { length: 80 }).notNull(),
+    current: boolean("current").notNull().default(false),
+    quality: doublePrecision("quality").notNull(),
+    passed: integer("passed").notNull(),
+    total: integer("total").notNull(),
+    thresholdsMet: boolean("thresholds_met").notNull(),
+    groups: jsonb("groups").$type<Record<string, EvalGroup>>().notNull().default({}),
+    costPer1000Usd: numeric("cost_per_1000_usd", { precision: 14, scale: 6 }),
+    latencyP50Ms: integer("latency_p50_ms"),
+    latencyP95Ms: integer("latency_p95_ms"),
+    tokensInAvg: integer("tokens_in_avg"),
+    tokensOutAvg: integer("tokens_out_avg"),
+    errors: integer("errors").notNull().default(0),
+    createdAt: tz("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "use_case_eval_results_pkey", columns: [t.id] }),
+    unique("use_case_eval_results_unique").on(t.runId, t.model),
+    index("use_case_eval_results_case_idx").on(t.useCaseId),
+    index("use_case_eval_results_workspace_idx").on(t.workspaceId),
+  ]
+);
+
 export const useCaseNeedAnswers = pgTable(
   "use_case_need_answers",
   {
@@ -1762,7 +1825,7 @@ export const useCaseNotifications = pgTable(
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     useCaseId: uuid("use_case_id").notNull().references(() => useCases.id, { onDelete: "cascade" }),
     recipientUserId: uuid("recipient_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0034>().notNull(),
+    kind: varchar("kind", { length: 16 }).$type<UseCaseNoticeKind0036>().notNull(),
     romeDay: date("rome_day", { mode: "string" }).notNull(),
     answers: smallint("answers").notNull().default(0),
     unknowns: smallint("unknowns").notNull().default(0),

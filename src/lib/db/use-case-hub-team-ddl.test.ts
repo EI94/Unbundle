@@ -35,7 +35,7 @@ test("una riga per persona e workspace, con un ruolo di chi costruisce; si cance
 });
 
 test("ensure-schema: versione 29, la 0035 dopo la 0034, non fatale, sonda in AND; colonne Drizzle uguali", () => {
-  assert.match(ensureSchema, /const ENSURE_VERSION = 29;/);
+  assert.ok(Number(ensureSchema.match(/const ENSURE_VERSION = (\d+);/)?.[1]) >= 29, "ENSURE_VERSION almeno 29 (la 0036 la porta a 30)");
   const runOnce = ensureSchema.slice(ensureSchema.indexOf("async function runOnce(): Promise<void> {"));
   assert.ok(runOnce.indexOf("await runProposalsDdlSafely();") < runOnce.indexOf("await runWorkspaceTeamDdlSafely();"));
   assert.match(ensureSchema, /AND \$\{sql\.raw\(PROPOSALS_PROBE_SQL\)\}\s+AND \$\{sql\.raw\(WORKSPACE_TEAM_PROBE_SQL\)\}/);
