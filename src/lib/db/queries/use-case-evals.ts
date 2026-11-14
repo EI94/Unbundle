@@ -13,13 +13,13 @@ import "server-only";
  *     si rifà il confronto. Il team lo sa (`evals_in_calo`) solo per le evals di `main`, con i modelli veri, di un caso
  *     non in costruzione; chi le manda vede l'avviso nella risposta, su ogni ramo.
  *   - Una notifica al giorno per caso e per persona, campanella ed e-mail, come le altre del team (`notifyTask`).
- * - **Leggere (`loadEvalOverview`):** le ultime evals (quelle di `main`, se ci sono; altrimenti le ultime) con
- *   l'andamento delle ultime 12 dello stesso ramo e dello stesso livello, dalla più vecchia; l'ultimo banco di ogni
- *   ruolo con la sua lettura.
+ * - **Leggere (`loadEvalOverview`):** le evals che fanno lo stato del caso (`main` prima, poi i modelli veri, poi il
+ *   livello completo, poi le più recenti) con l'andamento delle ultime 12 della stessa serie (ramo, modelli veri o
+ *   finti, livello), dalla più vecchia; l'ultimo banco di ogni ruolo con la sua lettura.
  *   Null se la 0036 non c'è ancora. Le ultime evals sono l'ultimo punto dell'andamento, letti insieme: non possono
  *   dire due cose diverse.
- * - **La pagina «Agent Factory» (`loadEvalFacts`):** per i casi dati, in due letture sole: le evals del caso e la lettura
- *   dell'ultimo banco di ogni ruolo.
+ * - **La pagina «Agent Factory» (`loadEvalFacts`):** per i casi dati, in due letture sole: le evals che fanno lo stato
+ *   del caso (lo stesso ordine) e la lettura dell'ultimo banco di ogni ruolo.
  *
  * Mai chi lancia il banco o manda le evals, né nelle tabelle né nelle letture (art. 15.4): la persona serve solo a non
  * avvisare chi ha agito, dentro la stessa istruzione, e non si scrive.
@@ -29,11 +29,12 @@ import type { UcExecutor, UcRow } from "@/lib/db/uc-executor";
 import type { FactoryTarget } from "@/lib/db/queries/use-case-factory";
 import { EVALS_PROBE_SQL } from "@/lib/db/use-case-hub-evals-ddl";
 import { BUILDER_ROLES, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
-import { cast, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
+import { cast, jsonb, raw, ref, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
 import { rowDate } from "@/lib/uc/sql/readiness";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import {
   analyzeBench,
+  EVALS_MAIN,
   evalsAlert,
   formatQuality,
   modelLabel,
@@ -50,7 +51,9 @@ import {
 import type { EvalRunInput } from "@/lib/use-cases/factory/benchmark-input";
 
 /** Il ramo delle evals che contano per il team: la pagina, l'andamento, gli avvisi, «Da fare per te». */
-export const EVALS_MAIN_BRANCH = "main";
+export const EVALS_MAIN_BRANCH = EVALS_MAIN;
+/** Il livello completo delle evals, con tutte le prove: «veloce» ne fa solo un pezzo. */
+export const EVALS_FULL_LEVEL = "pull_request";
 /** Quante evals nell'andamento. */
 export const EVALS_TREND_MAX = 12;
 /** Quanti ruoli, al massimo, con il loro ultimo banco (i più recenti). */
@@ -353,22 +356,35 @@ export async function recordEvalRun(
 // ─── Leggere ─────────────────────────────────────────────────────────
 
 /**
- * Quello che la sezione «Evals e banco di prova» mostra di un caso: le ultime evals (quelle di `main`, se ci sono;
- * altrimenti le ultime) con l'andamento delle ultime {@link EVALS_TREND_MAX} dello stesso ramo e dello stesso livello,
- * dalla più vecchia (l'ultima compresa); l'ultimo banco di ogni ruolo, in ordine di ruolo, con la sua lettura. Null se
- * la 0036 non c'è.
+ * L'ordine delle evals che fanno lo stato del caso (la pagina, la CLI, l'Agent Factory, «Da fare per te»): quelle di
+ * `main` prima, poi quelle con i modelli veri, poi quelle del livello completo, poi le più recenti. Così né le evals con
+ * i modelli finti né quelle «veloce» prendono il posto delle evals vere e complete di `main`.
+ */
+function statusOrderSql(alias: "l" | "r"): SqlFragment {
+  const a = ref(alias);
+  return ucSql`(${a}.branch IS NOT DISTINCT FROM ${cast(EVALS_MAIN_BRANCH, "text")}) DESC, ${a}.fake_models ASC, (${a}.level = ${cast(EVALS_FULL_LEVEL, "text")}) DESC, ${a}.created_at DESC, ${a}.id DESC`;
+}
+
+/**
+ * Quello che la sezione «Evals e banco di prova» mostra di un caso: le evals che fanno lo stato del caso
+ * ({@link statusOrderSql}) con l'andamento delle ultime {@link EVALS_TREND_MAX} della stessa serie (stesso ramo, stessi
+ * modelli veri o finti, stesso livello), dalla più vecchia (l'ultima compresa); l'ultimo banco di ogni ruolo, in ordine
+ * di ruolo, con la sua lettura. Null se la 0036 non c'è.
  */
 export async function loadEvalOverview(executor: UcExecutor, target: FactoryTarget): Promise<EvalOverview | null> {
   if (!(await evalsStoreReady(executor))) return null;
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
   const latest = ucSql`(SELECT l.id FROM use_case_eval_runs l WHERE l.workspace_id = ${ws} AND l.use_case_id = ${uc} AND l.kind = 'evals'
-  ORDER BY (l.branch IS NOT DISTINCT FROM ${cast(EVALS_MAIN_BRANCH, "text")}) DESC, l.created_at DESC, l.id DESC LIMIT 1)`;
+  ORDER BY ${statusOrderSql("l")} LIMIT 1)`;
   // Le evals hanno un solo risultato, quello «attuale»: l'andamento porta tutta l'esecuzione, e l'ultima è la sua fine.
+  // L'andamento è quello delle evals che fanno lo stato: lo stesso ramo, gli stessi modelli (veri o finti), lo stesso
+  // livello. Sono le più recenti di quella serie, quindi l'ultimo punto.
   const [trendRows, benchRows] = await executor.batch([
     toStatement(ucSql`SELECT ${RUN_COLUMNS}, ${RESULT_COLUMNS} FROM (
   SELECT q.id FROM use_case_eval_runs q JOIN use_case_eval_runs me ON me.id = ${latest}
-  WHERE q.workspace_id = ${ws} AND q.use_case_id = ${uc} AND q.kind = 'evals' AND q.branch IS NOT DISTINCT FROM me.branch AND q.level = me.level
+  WHERE q.workspace_id = ${ws} AND q.use_case_id = ${uc} AND q.kind = 'evals' AND q.branch IS NOT DISTINCT FROM me.branch
+    AND q.fake_models = me.fake_models AND q.level = me.level
   ORDER BY q.created_at DESC, q.id DESC
   LIMIT ${cast(EVALS_TREND_MAX, "int")}) t
 JOIN use_case_eval_runs r ON r.id = t.id
@@ -392,7 +408,7 @@ ORDER BY r.role, x.current DESC, x.model`),
 
 /** Le evals e il banco di un caso, come li dice la pagina «Agent Factory». */
 export interface CaseEvalFacts {
-  /** Le evals del caso: quelle di `main`, se ci sono; altrimenti le ultime. */
+  /** Le evals che fanno lo stato del caso: `main` prima, poi i modelli veri, poi il livello completo, poi le più recenti. */
   evals: { quality: number; thresholdsMet: boolean; fakeModels: boolean; inConstruction: boolean; branch: string | null; at: string } | null;
   /** La lettura dell'ultimo banco di ogni ruolo, in ordine di ruolo. */
   benches: { role: string; verdict: BenchVerdict }[];
@@ -411,7 +427,7 @@ export async function loadEvalFacts(executor: UcExecutor, workspaceId: string, u
     toStatement(ucSql`SELECT DISTINCT ON (r.use_case_id) r.use_case_id, r.branch, r.fake_models, r.in_construction, r.created_at, x.passed, x.total, x.thresholds_met
 FROM use_case_eval_runs r JOIN use_case_eval_results x ON x.run_id = r.id AND x.current
 WHERE r.workspace_id = ${ws} AND r.use_case_id = ANY (${ids}) AND r.kind = 'evals'
-ORDER BY r.use_case_id, (r.branch IS NOT DISTINCT FROM ${cast(EVALS_MAIN_BRANCH, "text")}) DESC, r.created_at DESC, r.id DESC`),
+ORDER BY r.use_case_id, ${statusOrderSql("r")}`),
     toStatement(ucSql`WITH latest AS (
   SELECT DISTINCT ON (q.use_case_id, q.role) q.id FROM use_case_eval_runs q
   WHERE q.workspace_id = ${ws} AND q.use_case_id = ANY (${ids}) AND q.kind = 'banco'

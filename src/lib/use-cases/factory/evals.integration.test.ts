@@ -498,7 +498,7 @@ test("le evals: sotto soglia su main avvisano il team; in costruzione, con i mod
   assert.equal(await send(80, {}, tokens.dev!), "sotto_soglia");
 });
 
-test("la panoramica: main prima, l'andamento dalla più vecchia sullo stesso ramo (ultime 12), il banco per ruolo; senza main, l'ultimo ramo", opts, async () => {
+test("la panoramica: main prima, l'andamento dalla più vecchia della stessa serie (ultime 12), il banco per ruolo; senza main, l'ultimo ramo", opts, async () => {
   const cli = await overview(tokens.owner!);
   assert.equal(cli.status, 200);
   assert.equal(cli.json.caso, CODE);
@@ -507,8 +507,9 @@ test("la panoramica: main prima, l'andamento dalla più vecchia sullo stesso ram
   assert.deepEqual([latest.tipo, latest.ramo, latest.ruolo, latest.modelliFinti, latest.inCostruzione, latest.prove], ["evals", "main", null, false, false, 100]);
   assert.equal((latest.risultati as Row[])[0].superati, 80, "le ultime di main");
   const trend = ev.andamento as Row[];
-  assert.deepEqual(trend.map((t) => Math.round(Number(t.qualita) * 100)), [80, 50, 80, 97, 91, 89, 80], "tutte quelle di main, dalla più vecchia, finte comprese");
-  assert.deepEqual(trend.map((t) => t.modelliFinti), [false, true, false, false, false, false, false]);
+  // Quelle di main con i modelli veri, dalla più vecchia: le finte (50) sono un'altra serie.
+  assert.deepEqual(trend.map((t) => Math.round(Number(t.qualita) * 100)), [80, 80, 97, 91, 89, 80], "le vere di main, dalla più vecchia, senza le finte");
+  assert.ok(trend.every((t) => t.modelliFinti === false));
   const banchi = cli.json.banchi as Row[];
   assert.deepEqual(banchi.map((b) => b.ruolo), ["lettura", "riassunto", "scrittura", "verifica"], "l'ultimo banco di ogni ruolo, in ordine");
   const lettura = banchi[0];
@@ -519,9 +520,9 @@ test("la panoramica: main prima, l'andamento dalla più vecchia sullo stesso ram
   assert.deepEqual(Object.keys((scrittura.risultati as Row[])[0]), ["modello", "attuale", "qualita", "superati", "totali", "soglieRispettate", "gruppi", "costoPer1000Usd", "latenzaP50Ms", "latenzaP95Ms", "tokenIngressoMedi", "tokenUscitaMedi", "errori"]);
   assert.equal((scrittura.risultati as Row[])[0].attuale, true, "l'attuale per primo");
 
-  // La stessa cosa per la pagina; con 13 evals di main l'andamento tiene le ultime 12, l'ultima compresa.
+  // La stessa cosa per la pagina; con 13 evals vere di main l'andamento tiene le ultime 12, l'ultima compresa.
   const target = { workspaceId: ids.ws, useCaseId: ids.useCase };
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     const parsed = (await import("./benchmark-input.ts")).parseEvalRun(evalsBody(90 + i));
     assert.ok(parsed.ok);
     if (parsed.ok) assert.ok((await evals.recordEvalRun(exec, target, parsed.value, { actorUserId: ids.lead })).ok);
@@ -530,9 +531,9 @@ test("la panoramica: main prima, l'andamento dalla più vecchia sullo stesso ram
   assert.ok(page);
   if (!page) return;
   assert.equal(page.evals.trend.length, evals.EVALS_TREND_MAX);
-  assert.deepEqual(page.evals.trend.map((t) => Math.round(t.quality * 100)), [50, 80, 97, 91, 89, 80, 90, 91, 92, 93, 94, 95]);
+  assert.deepEqual(page.evals.trend.map((t) => Math.round(t.quality * 100)), [80, 97, 91, 89, 80, 90, 91, 92, 93, 94, 95, 96]);
   assert.ok(page.evals.trend.every((t, i, all) => i === 0 || t.at >= all[i - 1].at), "dalla più vecchia");
-  assert.equal(page.evals.latest?.results[0].passed, 95);
+  assert.equal(page.evals.latest?.results[0].passed, 96);
   assert.equal(page.evals.trend.at(-1)?.at, page.evals.latest?.createdAt, "l'andamento finisce con le ultime");
   // Gli istanti con i millesimi del database, non arrotondati al secondo.
   const [exact] = await q(`SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS at FROM use_case_eval_runs WHERE id = $1`, [page.evals.latest?.id]);
@@ -694,4 +695,38 @@ test("le evals si confrontano solo con quelle dello stesso livello: da «veloce�
   // Di nuovo veloci, tutte passate: rispetto alle veloci di prima niente; nell'andamento delle complete non entrano.
   const fastAgain = await post(tokens.analyst!, fourthEvals(35, 35, { livello: "veloce" }));
   assert.deepEqual([fastAgain.status, fastAgain.json.avviso], [200, null]);
+});
+
+test("lo stato delle evals del caso: le vere e complete di main, anche se dopo arrivano evals «veloce» o con i modelli finti", opts, async () => {
+  // EV-0004 (dal test di prima): le complete di main, vere, sotto soglia (55 su 65); poi le veloci, tutte passate.
+  const target = { workspaceId: ids.ws, useCaseId: ids.fourth };
+  const fake = await post(tokens.analyst!, fourthEvals(65, 65, { modelliFinti: true }));
+  assert.deepEqual([fake.status, fake.json.avviso], [200, null]);
+  // La pagina: le complete vere, con il loro andamento; né le veloci né le finte, che sono più recenti.
+  const page = await evals.loadEvalOverview(exec, target);
+  assert.deepEqual([page?.evals.latest?.level, page?.evals.latest?.fakeModels, page?.evals.latest?.results[0].passed], ["pull_request", false, 55]);
+  assert.deepEqual(page?.evals.trend.map((t) => [Math.round(t.quality * 1000), t.fakeModels]), [[930, false], [846, false]]);
+  assert.equal(page?.evals.trend.at(-1)?.at, page?.evals.latest?.createdAt, "l'ultimo punto è lo stato");
+  // La CLI legge la stessa cosa.
+  const cli = await overview(tokens.lead!, "EV-0004");
+  const latest = (cli.json.evals as Row).ultime as Row;
+  assert.deepEqual([latest.livello, latest.modelliFinti, (latest.risultati as Row[])[0].superati], ["pull_request", false, 55]);
+  assert.equal(((cli.json.evals as Row).andamento as Row[]).length, 2);
+  // L'Agent Factory e «Da fare per te»: sotto soglia resta da fare.
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  const view = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.analyst, seeAll: false, canSeeNeeds: true });
+  const row = view.cases.find((c) => c.useCaseId === ids.fourth)!;
+  assert.deepEqual([row.evals?.quality, row.evals?.thresholdsMet, row.evals?.fakeModels, row.evals?.branch], [55 / 65, false, false, "main"]);
+  assert.deepEqual(view.todos.filter((t) => t.useCaseId === ids.fourth).map((t) => t.kind), ["evals"]);
+  // Senza evals vere di main, le finte di main vengono prima di quelle vere di un ramo (main prima di tutto).
+  const onlyFake = { workspaceId: ids.ws, useCaseId: ids.third };
+  const { parseEvalRun } = await import("./benchmark-input.ts");
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'evals'`, [ids.third]);
+  for (const body of [fourthEvals(60, 100, { ramo: "ev-0003/t-1" }), fourthEvals(99, 100, { modelliFinti: true })]) {
+    const parsed = parseEvalRun({ ...body, caso: "EV-0003" });
+    assert.ok(parsed.ok && (await evals.recordEvalRun(exec, onlyFake, parsed.value, { actorUserId: ids.lead })).ok);
+  }
+  const third = await evals.loadEvalOverview(exec, onlyFake);
+  assert.deepEqual([third?.evals.latest?.branch, third?.evals.latest?.fakeModels, third?.evals.trend.length], ["main", true, 1]);
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'evals'`, [ids.third]);
 });

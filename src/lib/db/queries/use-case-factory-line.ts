@@ -12,9 +12,10 @@ import "server-only";
  *   all'unione (la mediana), solo da {@link MIN_MERGED_FOR_MEDIAN} PR unite in su: con meno sarebbe il tempo di una
  *   persona. Mai per persona. In «Da fare per te» le PR pronte dei tuoi casi, tranne quelle dei
  *   tuoi compiti.
- * - **(8.2a) Evals e banco di prova:** per ogni caso le evals (quelle di `main`, se ci sono) e il consiglio dell'ultimo
- *   banco di ogni ruolo, letti per tutti i casi insieme (`loadEvalFacts`). In «Da fare per te», a chi costruisce il caso,
- *   il consiglio del banco e le evals di `main` sotto soglia (con i modelli veri, mai in costruzione).
+ * - **(8.2a) Evals e banco di prova:** per ogni caso le evals che fanno il suo stato (`main` prima, poi i modelli veri,
+ *   poi il livello completo) e il consiglio dell'ultimo banco di ogni ruolo, letti per tutti i casi insieme
+ *   (`loadEvalFacts`). In «Da fare per te», a chi costruisce il caso, il consiglio del banco e le evals di `main` sotto
+ *   soglia (con i modelli veri, mai in costruzione).
  */
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import { tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
@@ -61,7 +62,7 @@ export interface FactoryCaseRow {
   prs: { open: number; merged: number; medianDays: number | null; costPerPrUsd: number | null; tokensPerPr: number | null };
   repo: string | null;
   mine: boolean;
-  /** (8.2a) Le evals del caso (quelle di `main`, se ci sono; altrimenti le ultime), o null se non ce ne sono. */
+  /** (8.2a) Le evals che fanno lo stato del caso (`main` prima, poi i modelli veri, poi il livello completo), o null. */
   evals: CaseEvalFacts["evals"];
   /** (8.2a) La lettura dell'ultimo banco di ogni ruolo, in ordine di ruolo. */
   benches: CaseEvalFacts["benches"];
