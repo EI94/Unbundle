@@ -374,6 +374,7 @@ test("i corpi sbagliati: 400 con il messaggio; la chiave resta libera per la ric
     [evalsBody(95, { risultati: [result(), result({ modello: SONNET, attuale: false })] }), /un solo risultato/],
     [banco({ commit: "XYZ" }), /^commit:/],
     [banco({ modelli: { scrittura: HAIKU } }), /^modelli\.lettura: il modello di oggi del ruolo del banco, da agent\.yaml/],
+    [evalsBody(95, { modelli: undefined }), /^modelli: per le evals, ogni ruolo di agent\.yaml con il suo modello di oggi/],
   ];
   for (const [body, message] of cases) {
     const r = await post(tokens.lead!, body, k);
@@ -735,6 +736,31 @@ test("lo stato delle evals del caso: le vere e complete di main, anche se dopo a
   await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'evals'`, [ids.third]);
 });
 
+test("al team solo le evals che fanno lo stato: una «veloce» sotto soglia non avvisa se ci sono le complete di main; senza, sì", opts, async () => {
+  await clearNotices("evals_in_calo");
+  // EV-0004 ha le complete di main, vere (l'ultima 55 su 65). Le veloci sotto soglia: chi le manda lo vede nella risposta,
+  // il team no: la pagina mostra le complete, e il posto del giorno resta all'avviso delle complete.
+  const fast = await post(tokens.analyst!, fourthEvals(28, 35, { livello: "veloce" }));
+  assert.deepEqual([fast.status, fast.json.avviso], [200, "sotto_soglia"]);
+  assert.deepEqual(await bell("evals_in_calo", ids.fourth), []);
+  assert.deepEqual(await mails("evals_in_calo", ids.dossierFourth), []);
+  // Le complete dello stesso giorno, sotto soglia: l'avviso parte, con il numero della pagina.
+  const full = await post(tokens.analyst!, fourthEvals(54, 65));
+  assert.deepEqual([full.status, full.json.avviso], [200, "sotto_soglia"]);
+  assert.deepEqual(await bell("evals_in_calo", ids.fourth), sorted("dev", "lead"));
+  const [mail] = await mails("evals_in_calo", ids.dossierFourth);
+  assert.equal((mail.payload as Row).qualityText, "83,1%");
+  const page = await evals.loadEvalOverview(exec, { workspaceId: ids.ws, useCaseId: ids.fourth });
+  assert.deepEqual([page?.evals.latest?.level, page?.evals.latest?.results[0].passed], ["pull_request", 54], "l'avviso e la pagina dicono le stesse evals");
+  // EV-0003 non ha evals complete di main: le veloci fanno lo stato del caso, e il team lo sa.
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'evals'`, [ids.third]);
+  const onlyFast = await post(tokens.analyst!, { ...evalsBody(0, { livello: "veloce", risultati: [result({ superati: 28, totali: 35, soglieRispettate: false })] }), caso: "EV-0003" });
+  assert.deepEqual([onlyFast.status, onlyFast.json.avviso], [200, "sotto_soglia"]);
+  assert.deepEqual(await bell("evals_in_calo", ids.third), sorted("dev", "lead"));
+  await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'evals'`, [ids.third]);
+  await clearNotices("evals_in_calo");
+});
+
 test("un banco superato non consiglia più: evals vere di main con il nuovo modello, o senza il ruolo; con lo stesso modello resta da fare", opts, async () => {
   // EV-0002: finora solo evals su dei rami, nessun banco.
   const target = { workspaceId: ids.ws, useCaseId: ids.other };
@@ -768,6 +794,10 @@ test("un banco superato non consiglia più: evals vere di main con il nuovo mode
   now = await state();
   assert.deepEqual([now.facts, now.todos, now.row.benches[0].superseded, now.row.benches[0].verdict.kind], [[], [], true, "cambia"]);
   assert.deepEqual(now.row.evals?.models, { lettura: HAIKU, scrittura: HAIKU });
+  // Poi evals finte di main (la CLI senza la chiave del gateway): non fanno lo stato, il banco resta superato.
+  assert.equal((await post(tokens.lead!, evalsOf({ lettura: HAIKU, scrittura: HAIKU }, { modelliFinti: true }))).status, 200);
+  now = await state();
+  assert.deepEqual([now.facts, now.todos, now.row.benches[0].superseded, now.row.evals?.fakeModels], [[], [], true, false]);
   // La pagina ha quello che serve per dirlo: le evals che fanno lo stato e il banco, con i loro istanti e modelli.
   const page = await evals.loadEvalOverview(exec, target);
   const latest = page?.evals.latest ?? null;

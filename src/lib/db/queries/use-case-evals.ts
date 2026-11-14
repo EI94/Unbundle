@@ -12,7 +12,8 @@ import "server-only";
  *     stesso tipo di modelli (veri con veri, finti con finti). Le esecuzioni di un caso si scrivono una alla volta (un
  *     lock per use case) e la scrittura delle evals controlla che le precedenti siano ancora quelle confrontate: se nel
  *     frattempo ne è arrivata un'altra, si rifà il confronto. Il team lo sa (`evals_in_calo`) solo per le evals di
- *     `main`, con i modelli veri, di un caso non in costruzione; chi le manda vede l'avviso nella risposta, su ogni ramo.
+ *     `main`, con i modelli veri, di un caso non in costruzione, che fanno lo stato del caso (le «veloce» solo finché non
+ *     ce ne sono di complete); chi le manda vede l'avviso nella risposta, su ogni ramo e livello.
  *   - Una notifica al giorno per caso e per persona, campanella ed e-mail, come le altre del team (`notifyTask`).
  * - **Leggere (`loadEvalOverview`):** le evals che fanno lo stato del caso (`main` prima, poi i modelli veri, poi il
  *   livello completo, poi le più recenti) con l'andamento delle ultime 12 della stessa serie (ramo, modelli veri o
@@ -206,6 +207,18 @@ function catalogueLabel(model: string): { label?: string } {
 /** Vero se l'esecuzione con questo id è nata in questa transazione (la sua `created_at` è il `now()` della transazione). */
 const insertedNow = (id: string) => ucSql`EXISTS (SELECT 1 FROM use_case_eval_runs n WHERE n.id = ${cast(id, "uuid")} AND n.created_at = now())`;
 
+/**
+ * Tra quelle di cui il team è avvisato, vero se le evals che si scrivono fanno lo stato del caso ({@link statusOrderSql}):
+ * le complete sempre, le «veloce» solo finché il caso non ha evals complete di `main` con i modelli veri. Così l'avviso
+ * dice lo stesso numero della pagina, e una «veloce» non prende il posto del giorno all'avviso delle complete.
+ */
+function makesStatusSql(target: FactoryTarget, id: string, input: Pick<EvalRunInput, "level">): SqlFragment {
+  if (input.level === EVALS_FULL_LEVEL) return insertedNow(id);
+  return ucSql`${insertedNow(id)} AND NOT EXISTS (SELECT 1 FROM use_case_eval_runs s
+  WHERE s.workspace_id = ${cast(target.workspaceId, "uuid")} AND s.use_case_id = ${cast(target.useCaseId, "uuid")} AND s.kind = 'evals'
+    AND s.branch = ${cast(EVALS_MAIN_BRANCH, "text")} AND NOT s.fake_models AND s.level = ${cast(EVALS_FULL_LEVEL, "text")})`;
+}
+
 /** Il team lo sa solo per le evals di `main`, con i modelli veri, di un caso non in costruzione. */
 export function evalsNoticeApplies(input: Pick<EvalRunInput, "fakeModels" | "inConstruction" | "branch">): boolean {
   return !input.fakeModels && !input.inConstruction && input.branch === EVALS_MAIN_BRANCH;
@@ -381,7 +394,7 @@ export async function recordEvalRun(
     const alert = evalsAlert(previous?.point ?? null, point);
     const notices =
       alert !== null && evalsNoticeApplies(input)
-        ? notifyTask(target, "evals_in_calo", { roles: BUILDER_ROLES }, actor, now, null, insertedNow(id), {
+        ? notifyTask(target, "evals_in_calo", { roles: BUILDER_ROLES }, actor, now, null, makesStatusSql(target, id, input), {
             alert: alert.kind,
             qualityText: formatQuality(point.quality),
             ...(alert.kind === "in_calo" ? { drop: alert.drop } : {}),
