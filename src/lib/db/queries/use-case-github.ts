@@ -25,6 +25,7 @@ import "server-only";
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import { GITHUB_PROBE_SQL, type GithubDeliveryOutcome } from "@/lib/db/use-case-hub-github-ddl";
 import { checkLsText } from "@/lib/db/queries/uc-cases";
+import { scanPayload } from "@/lib/uc/text/scan";
 import { proposalsStoreReady, proposalStatements } from "@/lib/db/queries/use-case-task-proposals";
 import { TASKS_PROBE_SQL } from "@/lib/db/use-case-hub-tasks-ddl";
 import { tasksLock } from "@/lib/db/queries/use-case-tasks";
@@ -53,6 +54,8 @@ interface Target {
   useCaseId: string;
   caseId: string | null;
   code: string;
+  /** Lo stato del dossier (null senza dossier). */
+  dossierStatus: string | null;
 }
 
 interface TaskNow {
@@ -64,7 +67,7 @@ interface TaskNow {
 /** I casi registrati per il repository, uno per use case. */
 async function targetsOfRepo(executor: UcExecutor, repo: string): Promise<Target[]> {
   const [rows] = await executor.batch([
-    toStatement(ucSql`SELECT DISTINCT r.workspace_id, r.use_case_id, c.id AS case_id, coalesce(u.code, c.code) AS code
+    toStatement(ucSql`SELECT DISTINCT r.workspace_id, r.use_case_id, c.id AS case_id, c.status AS dossier_status, coalesce(u.code, c.code) AS code
 FROM use_case_repos r
 JOIN use_cases u ON u.id = r.use_case_id AND u.workspace_id = r.workspace_id
 LEFT JOIN uc_cases c ON c.portfolio_use_case_id = u.id AND c.workspace_id = u.workspace_id
@@ -76,7 +79,13 @@ WHERE lower(r.repo) = lower(${cast(repo, "text")})`),
     const key = `${r.workspace_id}:${r.use_case_id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ workspaceId: String(r.workspace_id), useCaseId: String(r.use_case_id), caseId: r.case_id ? String(r.case_id) : null, code: String(r.code ?? "") });
+    out.push({
+      workspaceId: String(r.workspace_id),
+      useCaseId: String(r.use_case_id),
+      caseId: r.case_id ? String(r.case_id) : null,
+      code: String(r.code ?? ""),
+      dossierStatus: r.dossier_status ? String(r.dossier_status) : null,
+    });
   }
   return out;
 }
@@ -86,10 +95,17 @@ async function targetsFor(executor: UcExecutor, repo: string, caseCode: string):
   return (await targetsOfRepo(executor, repo)).filter((t) => t.code.toLowerCase() === caseCode);
 }
 
-/** Il caso di una proposta: quello della PR commentata, o quello con il codice nel testo, o l'unico del repository. */
+/**
+ * Il caso di una proposta, tra quelli del repository con un dossier aperto: quello della PR commentata, o quello con
+ * il codice nel titolo o nelle etichette, o l'unico. Un codice che non è di nessuno di questi casi, o casi di workspace
+ * diversi senza un codice che decida: non è chiaro, e non si propone niente.
+ */
 async function proposalTarget(executor: UcExecutor, e: Extract<GithubEvent, { kind: "proposta" }>): Promise<Target | "nessuno" | "non_chiaro"> {
-  const targets = await targetsOfRepo(executor, e.repo);
+  const targets = (await targetsOfRepo(executor, e.repo)).filter((t) => t.caseId !== null && t.dossierStatus !== "chiuso");
   if (targets.length === 0) return "nessuno";
+  // Lo stesso repository registrato in workspace diversi: solo la PR commentata decide (un titolo non sposta mai una
+  // proposta nel workspace di un altro cliente).
+  const spansWorkspaces = new Set(targets.map((t) => t.workspaceId)).size > 1;
   if (e.onPullRequest) {
     const [rows] = await executor.batch([
       toStatement(ucSql`SELECT DISTINCT use_case_id FROM use_case_pull_requests WHERE repo = ${cast(e.repo, "text")} AND number = ${cast(e.number, "int")}`),
@@ -97,10 +113,22 @@ async function proposalTarget(executor: UcExecutor, e: Extract<GithubEvent, { ki
     const ofPr = targets.filter((t) => rows.some((r) => String(r.use_case_id) === t.useCaseId));
     if (ofPr.length === 1) return ofPr[0];
   }
+  if (spansWorkspaces) return "non_chiaro";
   const named = targets.filter((t) => t.code && e.caseCodes.includes(t.code.toUpperCase()));
   if (named.length === 1) return named[0];
-  if (named.length === 0 && targets.length === 1) return targets[0];
+  if (named.length === 0 && e.caseCodes.length === 0 && targets.length === 1) return targets[0];
   return "non_chiaro";
+}
+
+/**
+ * Il titolo di una proposta arriva da GitHub, scritto da chiunque abbia accesso al repository, e nessuno lo rilegge
+ * prima di salvarlo: oltre al controllo dei testi del team, niente contatti (e-mail, telefono) e niente `@persona`.
+ */
+export function proposalTitleAllowed(title: string): boolean {
+  if (!checkLsText({ titolo: title }).ok) return false;
+  const scan = scanPayload({ titolo: title }, { context: "testo_ls" });
+  if (scan.truncated || scan.warnings.some((w) => w.category === "contatto")) return false;
+  return !/(^|[\s(\[])@[A-Za-z0-9][A-Za-z0-9-]{0,38}\b/.test(title);
 }
 
 /** Una proposta di compito da un'issue o da un commento `/compito`. */
@@ -109,7 +137,7 @@ async function applyProposal(executor: UcExecutor, deliveryId: string, event: st
   const target = await proposalTarget(executor, e);
   if (target === "nessuno") return ignore(executor, deliveryId, event, e.repo, "repository_non_registrato");
   if (target === "non_chiaro") return ignore(executor, deliveryId, event, e.repo, "caso_non_chiaro");
-  if (!checkLsText({ titolo: e.title }).ok) return ignore(executor, deliveryId, event, e.repo, "testo_non_ammesso");
+  if (!proposalTitleAllowed(e.title)) return ignore(executor, deliveryId, event, e.repo, "testo_non_ammesso");
   const externalKey = `gh:${e.repo.toLowerCase()}#${e.number}${e.commentId ? `:c${e.commentId}` : ""}`;
   const results = await executor.batch([
     deliveryInsert(deliveryId, event, e.repo, "applicato"),

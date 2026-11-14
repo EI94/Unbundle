@@ -116,10 +116,11 @@ ON CONFLICT (use_case_id, ref) DO NOTHING`);
     }
     const c = op.changes;
     const sets = [
-      c.title !== undefined ? ucSql`title = ${cast(c.title, "text")}` : null,
-      c.areas !== undefined ? ucSql`areas = ${jsonb(c.areas)}` : null,
-      c.estimateHours !== undefined ? ucSql`estimate_hours = ${cast(c.estimateHours, "numeric")}` : null,
-      c.evidence !== undefined ? ucSql`evidence = ${cast(c.evidence, "text")}` : null,
+      // Un compito nato fuori dal progetto (CLI, pagina, GitHub, Slack) non lo riscrive compiti.md: stesso T-n, altro compito.
+      c.title !== undefined ? ucSql`title = CASE WHEN source = 'progetto' THEN ${cast(c.title, "text")} ELSE title END` : null,
+      c.areas !== undefined ? ucSql`areas = CASE WHEN source = 'progetto' THEN ${jsonb(c.areas)} ELSE areas END` : null,
+      c.estimateHours !== undefined ? ucSql`estimate_hours = CASE WHEN source = 'progetto' THEN ${cast(c.estimateHours, "numeric")} ELSE estimate_hours END` : null,
+      c.evidence !== undefined ? ucSql`evidence = CASE WHEN source = 'progetto' THEN ${cast(c.evidence, "text")} ELSE evidence END` : null,
       op.status === "fatto" ? ucSql`status = CASE WHEN status IN ('fatto', 'annullato') THEN status ELSE 'fatto' END` : null,
     ].filter((s): s is NonNullable<typeof s> => s !== null);
     const assignments = sets.reduce((acc, s, i) => (i === 0 ? s : ucSql`${acc}, ${s}`));
@@ -146,7 +147,7 @@ export interface TaskActor {
 const isLead = (a: TaskActor) => a.roles.includes("ls_lead");
 const notify = notifyTask;
 
-async function projectApproved(executor: UcExecutor, target: FactoryTarget): Promise<boolean> {
+export async function projectApproved(executor: UcExecutor, target: FactoryTarget): Promise<boolean> {
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT 1 AS ok FROM use_case_projects WHERE use_case_id = ${cast(target.useCaseId, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")} AND status = 'approvato' LIMIT 1`),
   ]);
@@ -188,7 +189,8 @@ export async function takeTask(executor: UcExecutor, target: FactoryTarget, acto
   const [rows] = await executor.batch([
     // Un compito rimasto senza persona (l'utente non c'è più) si riprende dov'era: in corso o in revisione.
     toStatement(ucSql`UPDATE use_case_tasks SET status = CASE WHEN status = 'in_revisione' THEN status ELSE 'in_corso' END, holder_user_id = ${cast(actor.userId, "uuid")},
-  taken_at = now(), last_activity_at = now(), stale_asked_at = NULL, stale_escalated_at = NULL, branch = coalesce(${cast(input.branch, "text")}, branch), updated_at = now()
+  taken_at = CASE WHEN status = 'in_revisione' THEN coalesce(taken_at, now()) ELSE now() END, last_activity_at = now(), stale_asked_at = NULL, stale_escalated_at = NULL,
+  branch = coalesce(${cast(input.branch, "text")}, branch), updated_at = now()
 WHERE id = ${cast(task.id, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")}
   AND (status = 'da_fare' OR (status IN ('in_corso', 'in_revisione') AND holder_user_id IS NULL))
 RETURNING ref, branch`),
@@ -218,8 +220,8 @@ export async function releaseTask(executor: UcExecutor, target: FactoryTarget, a
   if (task.holderUserId !== actor.userId && !isLead(actor)) return fail("permesso_negato", `${task.ref} è di ${who(task)}: lo lascia chi lo ha, o il responsabile del caso.`);
   const [rows] = await executor.batch([
     toStatement(ucSql`WITH done AS (
-  UPDATE use_case_tasks SET status = CASE WHEN status = 'in_revisione' THEN 'in_revisione' ELSE 'da_fare' END, holder_user_id = NULL, taken_at = NULL,
-    stale_asked_at = NULL, stale_escalated_at = NULL, updated_at = now()
+  UPDATE use_case_tasks SET status = CASE WHEN status = 'in_revisione' THEN 'in_revisione' ELSE 'da_fare' END, holder_user_id = NULL,
+    taken_at = CASE WHEN status = 'in_revisione' THEN taken_at END, stale_asked_at = NULL, stale_escalated_at = NULL, updated_at = now()
   WHERE id = ${cast(task.id, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")} AND status = ${cast(task.status, "text")}
     AND holder_user_id IS NOT DISTINCT FROM ${cast(task.holderUserId, "uuid")}
   RETURNING id
@@ -263,10 +265,11 @@ WHERE c.workspace_id = ${cast(target.workspaceId, "uuid")} AND c.portfolio_use_c
   const toId = String(to.id);
   if (toId === task.holderUserId) return fail("conflitto", `${task.ref} ce l'ha già questa persona.`);
   // Nella stessa transazione: il compito è passato adesso (`now()` è l'ora della transazione).
-  const passed = ucSql`EXISTS (SELECT 1 FROM use_case_tasks x WHERE x.id = ${cast(task.id, "uuid")} AND x.holder_user_id = ${cast(toId, "uuid")} AND x.taken_at = now())`;
+  const passed = ucSql`EXISTS (SELECT 1 FROM use_case_tasks x WHERE x.id = ${cast(task.id, "uuid")} AND x.holder_user_id = ${cast(toId, "uuid")} AND x.updated_at = now())`;
   const [rows] = await executor.batch([
     toStatement(ucSql`WITH done AS (
-  UPDATE use_case_tasks SET holder_user_id = ${cast(toId, "uuid")}, taken_at = now(), last_activity_at = now(), stale_asked_at = NULL, stale_escalated_at = NULL, updated_at = now()
+  UPDATE use_case_tasks SET holder_user_id = ${cast(toId, "uuid")}, taken_at = CASE WHEN status = 'in_revisione' THEN coalesce(taken_at, now()) ELSE now() END,
+    last_activity_at = now(), stale_asked_at = NULL, stale_escalated_at = NULL, updated_at = now()
   WHERE id = ${cast(task.id, "uuid")} AND workspace_id = ${cast(target.workspaceId, "uuid")} AND status = ${cast(task.status, "text")}
     AND holder_user_id IS NOT DISTINCT FROM ${cast(task.holderUserId, "uuid")}
   RETURNING id
@@ -287,7 +290,7 @@ export async function requestTask(executor: UcExecutor, target: FactoryTarget, a
   if (!note.ok) return note;
   const task = (await listTasks(executor, target)).find((t) => t.ref === input.ref);
   if (!task) return notFound(input.ref);
-  if (task.status === "da_fare" || (task.status === "in_corso" && task.holderUserId === null)) return fail("libero", `${task.ref} è libero: prendilo con «unbundle take».`);
+  if (task.status === "da_fare" || ((task.status === "in_corso" || task.status === "in_revisione") && task.holderUserId === null)) return fail("libero", `${task.ref} è libero: prendilo con «unbundle take».`);
   if (task.status === "fatto" || task.status === "annullato" || !task.holderUserId) return fail("conflitto", `${task.ref} non è in corso.`);
   if (task.holderUserId === actor.userId) return fail("conflitto", `${task.ref} è già tuo.`);
   await executor.batch([

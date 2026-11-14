@@ -8,6 +8,7 @@ import { factoryStoreReady, readFactory, topicLabel, findUseCaseOfCase, type Dec
 import { FACTORY_LIMITS, SETUP_TOPICS } from "@/lib/db/use-case-hub-factory-ddl";
 import { listTasks, tasksStoreReady, type TaskView } from "@/lib/db/queries/use-case-tasks";
 import { listOpenProposals, proposalsStoreReady, type ProposalView } from "@/lib/db/queries/use-case-task-proposals";
+import { BUILDER_ROLES } from "@/lib/db/queries/use-case-tasks-notices";
 import { aiBoardOkRule, AI_BOARD_NOTE_MIN, canApproveProject, canRequestProjectChange, canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { AiBoardOk, DecisionForm, DetailsEditor, PackageButton, ProjectPrimaryAction, ProposalButtons, ReopenProject, TopicEditor } from "./project-forms";
 
@@ -210,8 +211,10 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   const teamDecisions = view.decisions.filter((d) => d.source !== "impostazione" && d.supersededOn === null);
   const tasksReady = await tasksStoreReady(executor);
   const tasks = tasksReady ? await listTasks(executor, target) : [];
-  // Le proposte sono testi del team: le vede solo il team di Lateral Space; le decide chi scrive nel caso.
-  const proposals = tasksReady && lsTeam && (await proposalsStoreReady(executor)) ? await listOpenProposals(executor, target) : [];
+  // Le proposte sono testi del team: le vede solo chi costruisce (i ruoli di Lateral Space nel caso), e le decide chi
+  // tra loro può scrivere nel caso. Non `canWriteFactory`, che dalla 8.0c comprende anche lo sviluppatore del cliente.
+  const builder = roles.some((r) => (BUILDER_ROLES as readonly string[]).includes(r));
+  const proposals = tasksReady && builder && (await proposalsStoreReady(executor)) ? await listOpenProposals(executor, target) : [];
   const caseCode = useCase.code ?? "<ID>";
   const tally = {
     open: tasks.filter((t) => t.status === "da_fare").length,
@@ -360,7 +363,7 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
                 </p>
                 <ul className="divide-y">
                   {proposals.map((p) => (
-                    <ProposalLine key={p.id} p={p} ids={writer ? { workspaceId, caseId } : null} />
+                    <ProposalLine key={p.id} p={p} ids={writable && builder ? { workspaceId, caseId } : null} />
                   ))}
                 </ul>
               </div>

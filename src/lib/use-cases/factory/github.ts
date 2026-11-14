@@ -165,10 +165,24 @@ export function caseCodesIn(...texts: string[]): string[] {
   return [...out];
 }
 
-/** Il titolo della proposta da `/compito …`: il resto della prima riga che comincia con `/compito`. */
+/** Il titolo della proposta da `/compito …`: solo se la prima riga non vuota del commento comincia con `/compito`. */
 export function compitoCommand(body: string): { title: string } | null {
-  const m = /^[ \t]*\/compito\b[ \t]*(.*)$/m.exec(body);
+  const first = body.split("\n").find((line) => line.trim() !== "") ?? "";
+  const m = /^[ \t]*\/compito\b[ \t]*(.*)$/.exec(first);
   return m ? { title: m[1].trim() } : null;
+}
+
+/** Chi può proporre: chi ha accesso al repository (proprietario, membro, collaboratore; in un repository privato anche
+ * chi ci ha già contribuito). Solo un controllo: non si salva mai chi è. */
+const PROPOSERS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+function mayPropose(association: unknown, privateRepo: boolean): boolean {
+  return typeof association === "string" && (PROPOSERS.has(association) || (privateRepo && association === "CONTRIBUTOR"));
+}
+
+/** Taglia a `max` caratteri senza spezzare un'emoji (le coppie UTF-16). */
+export function cutText(text: string, max: number): string {
+  const chars = Array.from(text);
+  return chars.length <= max ? text : chars.slice(0, max).join("");
 }
 
 function parseProposal(event: string, payload: Record<string, unknown>, repo: string | null): GithubEvent {
@@ -184,19 +198,22 @@ function parseProposal(event: string, payload: Record<string, unknown>, repo: st
   const onPullRequest = Boolean(issue && isRecord(issue.pull_request));
   let title = issueTitle;
   let commentId: number | null = null;
+  const privateRepo = isRecord(payload.repository) && payload.repository.private === true;
   if (event === "issues") {
     if (action !== "opened") return { kind: "altro", repo, reason: "azione_non_usata" };
     if (onPullRequest) return { kind: "altro", repo, reason: "azione_non_usata" };
+    if (!mayPropose(issue?.author_association, privateRepo)) return { kind: "altro", repo, reason: "autore_senza_accesso" };
   } else {
     if (action !== "created") return { kind: "altro", repo, reason: "azione_non_usata" };
     const comment = isRecord(payload.comment) ? payload.comment : null;
     const command = compitoCommand(comment ? (str(comment.body) ?? "") : "");
     if (!comment || !command) return { kind: "altro", repo, reason: "commento_senza_compito" };
+    if (!mayPropose(comment.author_association, privateRepo)) return { kind: "altro", repo, reason: "autore_senza_accesso" };
     commentId = typeof comment.id === "number" && Number.isInteger(comment.id) && comment.id > 0 ? comment.id : null;
     if (commentId === null) return { kind: "altro", repo, reason: "proposta_non_valida" };
     if (command.title) title = command.title;
   }
-  title = title.replace(/\s+/g, " ").trim().slice(0, TITLE_MAX);
+  title = cutText(title.replace(/\s+/g, " ").trim(), TITLE_MAX);
   if (!title) return { kind: "altro", repo, reason: "proposta_senza_titolo" };
   return { kind: "proposta", repo, number, commentId, title, caseCodes: caseCodesIn(title, issueTitle, ...labels), onPullRequest };
 }

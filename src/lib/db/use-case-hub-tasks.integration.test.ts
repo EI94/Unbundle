@@ -110,8 +110,8 @@ test("lo schema della 0032 c'è; il file due volte, il self-heal due volte, la 0
 test("su un database senza la 0032 il self-heal la crea (in una transazione annullata)", opts, async () => {
   const marker = `prova-0032-annullata-${suffix}`;
   const text = [
-    // (0033) Le pull request dipendono dai compiti: vanno via anche loro, nella stessa transazione annullata.
-    `DROP TABLE IF EXISTS use_case_pull_requests;`,
+    // (0033, 0034) Le pull request e le proposte dipendono dai compiti: vanno via anche loro, nella stessa transazione annullata.
+    `DROP TABLE IF EXISTS use_case_task_proposals, use_case_pull_requests;`,
     `DROP TABLE use_case_task_notes, use_case_tasks, use_case_factory_repos;`,
     `DELETE FROM use_case_notifications WHERE kind IN (${ddl.TASK_NOTICE_KINDS.map((k) => `'${k}'`).join(", ")});`,
     `DO $$ BEGIN IF ${ddl.TASKS_PROBE_SQL} THEN RAISE EXCEPTION 'sonda ancora vera'; END IF; END $$;`,

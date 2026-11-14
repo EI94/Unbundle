@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { caseCodeFromBranch, githubEventName, githubPayloadText, parseGithubEvent, pullRequestUrl, taskRefOfBranch, verifyGithubSignature } from "./github.ts";
+import { caseCodeFromBranch, cutText, githubEventName, githubPayloadText, parseGithubEvent, pullRequestUrl, taskRefOfBranch, verifyGithubSignature } from "./github.ts";
 
 const SECRET = "segreto-di-prova";
 const sign = (body: string, secret = SECRET) => `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
@@ -120,15 +120,15 @@ test("(revisione) l'ora di GitHub, l'unione solo nel ramo principale, il corpo c
 
 test("(proposte) un'issue aperta e un commento «/compito» diventano proposte; mai il corpo, mai i bot", () => {
   const repo = { full_name: "Voltaen/topjet-rosa", default_branch: "main" };
-  const issue = { number: 21, title: "  TJ-0049: mappare  gli aeroporti  ", labels: [{ name: "px-0101" }], body: "Testo lungo con dati del cliente", user: { login: "qualcuno" } };
+  const issue = { number: 21, title: "  TJ-0049: mappare  gli aeroporti  ", labels: [{ name: "px-0101" }], body: "Testo lungo con dati del cliente", user: { login: "qualcuno" }, author_association: "MEMBER" };
   const opened = parseGithubEvent("issues", { action: "opened", repository: repo, issue, sender: { type: "User", login: "qualcuno" } });
   assert.deepEqual(opened, { kind: "proposta", repo: "Voltaen/topjet-rosa", number: 21, commentId: null, title: "TJ-0049: mappare gli aeroporti", caseCodes: ["TJ-0049", "PX-0101"], onPullRequest: false });
   assert.doesNotMatch(JSON.stringify(opened), /Testo lungo|qualcuno/);
   assert.equal(parseGithubEvent("issues", { action: "edited", repository: repo, issue }).kind, "altro");
   assert.deepEqual(parseGithubEvent("issues", { action: "opened", repository: repo, issue, sender: { type: "Bot" } }), { kind: "altro", repo: "Voltaen/topjet-rosa", reason: "bot" });
   const comment = (body: string, extra: Record<string, unknown> = {}) =>
-    parseGithubEvent("issue_comment", { action: "created", repository: repo, issue: { ...issue, ...extra }, comment: { id: 555, body }, sender: { type: "User" } });
-  assert.deepEqual(comment("Bene.\n/compito Aggiungere i test dei ritardi\nGrazie"), {
+    parseGithubEvent("issue_comment", { action: "created", repository: repo, issue: { ...issue, ...extra }, comment: { id: 555, body, author_association: "COLLABORATOR" }, sender: { type: "User" } });
+  assert.deepEqual(comment("\n/compito Aggiungere i test dei ritardi\nGrazie"), {
     kind: "proposta",
     repo: "Voltaen/topjet-rosa",
     number: 21,
@@ -142,4 +142,16 @@ test("(proposte) un'issue aperta e un commento «/compito» diventano proposte; 
   const onPr = comment("/compito rivedere i nomi", { pull_request: { url: "x" } });
   assert.ok(onPr.kind === "proposta" && onPr.onPullRequest);
   assert.deepEqual(comment("niente comandi qui, nemmeno /compito a metà riga"), { kind: "altro", repo: "Voltaen/topjet-rosa", reason: "commento_senza_compito" });
+  assert.equal(comment("Per proporre un compito scrivi:\n/compito <titolo>").kind, "altro", "solo la prima riga");
+});
+
+test("(proposte) propone solo chi ha accesso al repository; il titolo si taglia senza spezzare un'emoji", () => {
+  const repoOf = (priv: boolean) => ({ full_name: "Voltaen/topjet-rosa", private: priv });
+  const issueBy = (association: string, priv = false) =>
+    parseGithubEvent("issues", { action: "opened", repository: repoOf(priv), issue: { number: 7, title: "Un compito", labels: [], author_association: association }, sender: { type: "User" } });
+  for (const a of ["OWNER", "MEMBER", "COLLABORATOR"]) assert.equal(issueBy(a).kind, "proposta", a);
+  for (const a of ["NONE", "FIRST_TIME_CONTRIBUTOR", "CONTRIBUTOR"]) assert.deepEqual(issueBy(a), { kind: "altro", repo: "Voltaen/topjet-rosa", reason: "autore_senza_accesso" }, a);
+  assert.equal(issueBy("CONTRIBUTOR", true).kind, "proposta", "in un repository privato chi ha contribuito ha avuto accesso");
+  assert.equal(cutText(`${"a".repeat(199)}😀😀`, 200), `${"a".repeat(199)}😀`);
+  assert.equal(cutText("breve", 200), "breve");
 });

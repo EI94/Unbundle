@@ -389,7 +389,7 @@ const issuePayload = (over: { number: number; title: string; labels?: string[]; 
   action: over.action ?? "opened",
   repository: { full_name: over.repo ?? REPO, default_branch: "main" },
   sender: { type: "User", login: `persona-${suffix}` },
-  issue: { number: over.number, title: over.title, labels: (over.labels ?? []).map((name) => ({ name })), body: "Corpo con dati che non si leggono", user: { login: `persona-${suffix}` } },
+  issue: { number: over.number, title: over.title, labels: (over.labels ?? []).map((name) => ({ name })), body: "Corpo con dati che non si leggono", user: { login: `persona-${suffix}` }, author_association: "MEMBER" },
 });
 const proposals = async () => q(`SELECT id, source, external_key, title, link, status, task_id FROM use_case_task_proposals WHERE use_case_id = $1 ORDER BY created_at, external_key`, [ids.useCase]);
 
@@ -399,7 +399,7 @@ test("(proposte) un'issue e un «/compito» diventano proposte del caso, una vol
   assert.deepEqual([r.status, r.json.esito], [200, "applicato"]);
   assert.equal((await send("issues", issuePayload({ number: 41, title: "Gestire i voli dirottati" }), { id })).json.esito, "ripetuto");
   await send("issues", issuePayload({ number: 41, title: "Gestire i voli dirottati" }));
-  const c = await send("issue_comment", { action: "created", repository: { full_name: REPO }, sender: { type: "User" }, issue: { number: 3, title: "PR di T-3", pull_request: { url: "x" } }, comment: { id: 9001, body: "Ok.\n/compito Coprire i fusi orari" } });
+  const c = await send("issue_comment", { action: "created", repository: { full_name: REPO }, sender: { type: "User" }, issue: { number: 3, title: "PR di T-3", pull_request: { url: "x" } }, comment: { id: 9001, body: "/compito Coprire i fusi orari\nGrazie", author_association: "COLLABORATOR" } });
   assert.equal(c.json.esito, "applicato");
   const list = await proposals();
   assert.deepEqual(
@@ -420,6 +420,13 @@ test("(proposte) un'issue e un «/compito» diventano proposte del caso, una vol
 
 test("(proposte) il caso: dal codice nel titolo o nelle etichette; se non è chiaro, niente; un testo personale, niente", opts, async () => {
   await q(`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder) VALUES ($1, $2, $3, 'casi/px-0043')`, [ids.other, ids.ws, REPO]);
+  // Il secondo caso ha il suo dossier: senza dossier (o chiuso) non riceve proposte.
+  const otherDossier = randomUUID();
+  await q(
+    `INSERT INTO uc_cases (id, workspace_id, organization_id, portfolio_use_case_id, template_id, template_version, code, title, status, setup_completed_at)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, '1.0.0', $6, 'Secondo dossier di prova', 'pronto_sviluppo', now())`,
+    [otherDossier, ids.ws, ids.org, ids.other, ids.template, `GH2-${suffix.toUpperCase()}`],
+  );
   try {
     const unclear = await send("issues", issuePayload({ number: 42, title: "Una cosa da fare" }));
     assert.deepEqual([unclear.json.esito, unclear.json.motivo], ["ignorato", "caso_non_chiaro"]);
@@ -428,19 +435,29 @@ test("(proposte) il caso: dal codice nel titolo o nelle etichette; se non è chi
     assert.equal((await q(`SELECT count(*) AS n FROM use_case_task_proposals WHERE use_case_id = $1`, [ids.other]))[0].n, "1");
   } finally {
     await q(`DELETE FROM use_case_repos WHERE use_case_id = $1`, [ids.other]);
+    await q(`DELETE FROM uc_cases WHERE id = $1`, [otherDossier]);
   }
-  const uc = await import("../../db/queries/uc-cases.ts");
-  const personal = "Richiamare RSSMRA80A01H501U per il rimborso";
-  if (!uc.checkLsText({ titolo: personal }).ok) {
-    const r = await send("issues", issuePayload({ number: 44, title: personal }));
-    assert.deepEqual([r.json.esito, r.json.motivo], ["ignorato", "testo_non_ammesso"]);
+  for (const [n, title] of [
+    [44, "Richiamare RSSMRA80A01H501U per il rimborso"],
+    [45, "Scrivere a mario.rossi@cliente.test per il rimborso"],
+    [46, "Chiedere a @mrossi i turni"],
+  ] as const) {
+    const r = await send("issues", issuePayload({ number: n, title }));
+    assert.deepEqual([r.json.esito, r.json.motivo], ["ignorato", "testo_non_ammesso"], title);
   }
+  const other = await send("issues", issuePayload({ number: 47, title: "QX-0999: un caso che qui non c'è" }));
+  assert.deepEqual([other.json.esito, other.json.motivo], ["ignorato", "caso_non_chiaro"], "un codice che non è del repository non va all'unico caso");
+  const stranger = await send("issues", { ...issuePayload({ number: 48, title: "Da chi non ha accesso" }), issue: { number: 48, title: "Da chi non ha accesso", labels: [], author_association: "NONE" } });
+  assert.deepEqual([stranger.json.esito, stranger.json.motivo], ["ignorato", "autore_senza_accesso"]);
 });
 
 test("(proposte) accettata nasce il compito da prendere; scartata si chiude; una proposta si decide una volta sola", opts, async () => {
   const props = await import("../../db/queries/use-case-task-proposals.ts");
   const target = { workspaceId: ids.ws, useCaseId: ids.useCase };
   const [first, second] = await proposals();
+  const early = await props.decideProposal(exec, target, { id: first.id, decision: "accetta", actorId: ids.lead });
+  assert.deepEqual([early.ok, !early.ok && early.code], [false, "progetto_non_approvato"], "prima dell'approvazione non nasce un compito");
+  await q(`INSERT INTO use_case_projects (use_case_id, workspace_id, version, status, approved_at) VALUES ($1, $2, 1, 'approvato', now())`, [ids.useCase, ids.ws]);
   const accepted = await props.decideProposal(exec, target, { id: first.id, decision: "accetta", actorId: ids.lead });
   assert.deepEqual(accepted, { ok: true, value: { ref: "T-5" } });
   const [made] = await q(`SELECT ref, title, status, source, holder_user_id FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-5'`, [ids.useCase]);

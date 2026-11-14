@@ -14,10 +14,14 @@ import "server-only";
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import type { FactoryTarget } from "@/lib/db/queries/use-case-factory";
 import { PROPOSALS_PROBE_SQL, PROPOSAL_LIMITS, type ProposalSource, type ProposalStatus } from "@/lib/db/use-case-hub-proposals-ddl";
-import { projectVersionSql, tasksLock } from "@/lib/db/queries/use-case-tasks";
+import { projectApproved, projectVersionSql, tasksLock } from "@/lib/db/queries/use-case-tasks";
 import { BUILDER_ROLES, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
 import { cast, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
 import { fail, ok, type Result } from "@/lib/uc/types";
+import { cutText } from "@/lib/use-cases/factory/github";
+
+/** Le proposte aperte di un caso, al massimo: oltre, le nuove non si registrano (un repository pubblico non intasa). */
+export const OPEN_PROPOSALS_MAX = 50;
 
 /** Vero se la 0034 è applicata. */
 export async function proposalsStoreReady(executor: UcExecutor): Promise<boolean> {
@@ -76,9 +80,10 @@ export function proposalStatements(
   const created = ucSql`EXISTS (SELECT 1 FROM use_case_task_proposals x WHERE x.use_case_id = ${uc} AND x.external_key = ${key} AND x.created_at = now())`;
   return [
     toStatement(ucSql`INSERT INTO use_case_task_proposals (use_case_id, workspace_id, source, external_key, title, area, link)
-SELECT ${uc}, ${ws}, ${cast(input.source, "text")}, ${key}, ${cast(input.title.trim().slice(0, PROPOSAL_LIMITS.title), "text")},
-  ${cast(input.area ? input.area.slice(0, PROPOSAL_LIMITS.area) : null, "text")}, ${cast(input.link, "text")}
+SELECT ${uc}, ${ws}, ${cast(input.source, "text")}, ${key}, ${cast(cutText(input.title.trim(), PROPOSAL_LIMITS.title), "text")},
+  ${cast(input.area ? cutText(input.area, PROPOSAL_LIMITS.area) : null, "text")}, ${cast(input.link, "text")}
 WHERE ${when}
+  AND (SELECT count(*) FROM use_case_task_proposals o WHERE o.use_case_id = ${uc} AND o.status = 'proposta') < ${cast(OPEN_PROPOSALS_MAX, "int")}
 ON CONFLICT (use_case_id, external_key) DO NOTHING`),
     ...notifyTask(target, "compito_proposto", { roles: BUILDER_ROLES }, NOBODY, new Date(), null, created),
   ];
@@ -104,6 +109,9 @@ export async function decideProposal(
     toStatement(ucSql`UPDATE use_case_task_proposals SET status = ${cast(status, "text")}, decided_at = now(), updated_at = now()
 WHERE id = ${pid} AND workspace_id = ${ws} AND use_case_id = ${uc} AND status = 'proposta'
 RETURNING id`);
+  if (input.decision === "accetta" && !(await projectApproved(executor, target))) {
+    return fail("progetto_non_approvato", "Il progetto non è ancora approvato: le proposte diventano compiti dopo l'approvazione. Intanto si possono scartare.");
+  }
   if (input.decision === "scarta") {
     const [rows] = await executor.batch([decide("scartata")]);
     return rows[0] ? ok({ ref: null }) : fail("conflitto", "Questa proposta è già stata decisa.");
