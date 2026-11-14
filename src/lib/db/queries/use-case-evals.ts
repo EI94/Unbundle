@@ -19,7 +19,9 @@ import "server-only";
  *   Null se la 0036 non c'è ancora. Le ultime evals sono l'ultimo punto dell'andamento, letti insieme: non possono
  *   dire due cose diverse.
  * - **La pagina «Agent Factory» (`loadEvalFacts`):** per i casi dati, in due letture sole: le evals che fanno lo stato
- *   del caso (lo stesso ordine) e la lettura dell'ultimo banco di ogni ruolo.
+ *   del caso (lo stesso ordine) e la lettura dell'ultimo banco di ogni ruolo, con il segno del banco superato (dopo di
+ *   lui le evals vere di `main` usano un altro modello per il ruolo, o il ruolo non c'è più: il consiglio non è più da
+ *   fare).
  *
  * Mai chi lancia il banco o manda le evals, né nelle tabelle né nelle letture (art. 15.4): la persona serve solo a non
  * avvisare chi ha agito, dentro la stessa istruzione, e non si scrive.
@@ -34,6 +36,7 @@ import { rowDate } from "@/lib/uc/sql/readiness";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import {
   analyzeBench,
+  benchSuperseded,
   EVALS_MAIN,
   evalsAlert,
   formatQuality,
@@ -408,10 +411,26 @@ ORDER BY r.role, x.current DESC, x.model`),
 
 /** Le evals e il banco di un caso, come li dice la pagina «Agent Factory». */
 export interface CaseEvalFacts {
-  /** Le evals che fanno lo stato del caso: `main` prima, poi i modelli veri, poi il livello completo, poi le più recenti. */
-  evals: { quality: number; thresholdsMet: boolean; fakeModels: boolean; inConstruction: boolean; branch: string | null; at: string } | null;
-  /** La lettura dell'ultimo banco di ogni ruolo, in ordine di ruolo. */
-  benches: { role: string; verdict: BenchVerdict }[];
+  /**
+   * Le evals che fanno lo stato del caso: `main` prima, poi i modelli veri, poi il livello completo, poi le più recenti.
+   * Con il livello e i modelli di oggi per ruolo (dicono se un banco è superato).
+   */
+  evals: {
+    quality: number;
+    thresholdsMet: boolean;
+    fakeModels: boolean;
+    inConstruction: boolean;
+    branch: string | null;
+    level: string;
+    models: Record<string, string>;
+    at: string;
+  } | null;
+  /**
+   * La lettura dell'ultimo banco di ogni ruolo, in ordine di ruolo: quando è nato, il suo modello «attuale» e se è
+   * superato (`benchSuperseded`: dopo di lui le evals vere di `main` usano un altro modello per il ruolo, o il ruolo non
+   * c'è più). Il consiglio di un banco superato non è più da fare.
+   */
+  benches: { role: string; verdict: BenchVerdict; at: string; currentModel: string | null; superseded: boolean }[];
 }
 
 /**
@@ -424,7 +443,8 @@ export async function loadEvalFacts(executor: UcExecutor, workspaceId: string, u
   const ws = cast(workspaceId, "uuid");
   const ids = cast([...new Set(useCaseIds)], "uuid[]");
   const [evalsRows, benchRows] = await executor.batch([
-    toStatement(ucSql`SELECT DISTINCT ON (r.use_case_id) r.use_case_id, r.branch, r.fake_models, r.in_construction, r.created_at, x.passed, x.total, x.thresholds_met
+    toStatement(ucSql`SELECT DISTINCT ON (r.use_case_id) r.use_case_id, r.branch, r.level, r.models, r.fake_models, r.in_construction, r.created_at, x.passed, x.total,
+  x.thresholds_met
 FROM use_case_eval_runs r JOIN use_case_eval_results x ON x.run_id = r.id AND x.current
 WHERE r.workspace_id = ${ws} AND r.use_case_id = ANY (${ids}) AND r.kind = 'evals'
 ORDER BY r.use_case_id, ${statusOrderSql("r")}`),
@@ -448,13 +468,22 @@ ORDER BY r.use_case_id, r.role, x.current DESC, x.model`),
       fakeModels: row.fake_models === true,
       inConstruction: row.in_construction === true,
       branch: text(row.branch),
+      level: String(row.level),
+      models: modelsOf(row.models),
       at: isoOf(row.created_at),
     };
   }
   const caseOfRun = new Map(benchRows.map((row) => [String(row.id), String(row.use_case_id)]));
   for (const run of runsOf(benchRows)) {
     const useCaseId = caseOfRun.get(run.id);
-    if (useCaseId && run.role) entry(useCaseId).benches.push({ role: run.role, verdict: benchAnalysis(run).verdict });
+    if (!useCaseId || !run.role) continue;
+    const currentModel = run.results.find((r) => r.current)?.model ?? null;
+    entry(useCaseId).benches.push({ role: run.role, verdict: benchAnalysis(run).verdict, at: run.createdAt, currentModel, superseded: false });
+  }
+  // Un banco superato: le evals che fanno lo stato del caso sono arrivate dopo, vere, di main, con un altro modello per il
+  // ruolo (o senza il ruolo).
+  for (const facts of out.values()) {
+    for (const bench of facts.benches) bench.superseded = benchSuperseded(bench, facts.evals);
   }
   return out;
 }

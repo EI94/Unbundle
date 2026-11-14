@@ -112,9 +112,12 @@ export function evalsFact(e: LineEvals | null): string | null {
   return `evals ${formatQuality(e.quality)}${e.thresholdsMet ? "" : ", sotto soglia"}${e.fakeModels ? ", modelli finti" : ""}`;
 }
 
-/** (8.2a) Il consiglio del banco, un ruolo alla volta: «il banco consiglia Claude Haiku 5.5 per «lettura»». */
-export function benchFacts(benches: readonly { role: string; verdict: BenchVerdict }[]): string[] {
-  return benches.flatMap((b) => (b.verdict.kind === "cambia" ? [`il banco consiglia ${modelLabel(b.verdict.model)} per «${b.role}»`] : []));
+/**
+ * (8.2a) Il consiglio del banco, un ruolo alla volta: «il banco consiglia Claude Haiku 5.5 per «lettura»». Mai quello di
+ * un banco superato (`superseded`: il consiglio è stato seguito, o il ruolo non c'è più).
+ */
+export function benchFacts(benches: readonly { role: string; verdict: BenchVerdict; superseded?: boolean }[]): string[] {
+  return benches.flatMap((b) => (b.verdict.kind === "cambia" && !b.superseded ? [`il banco consiglia ${modelLabel(b.verdict.model)} per «${b.role}»`] : []));
 }
 
 /** (8.2a) «Da fare per te»: le evals sotto soglia, con la qualità. */

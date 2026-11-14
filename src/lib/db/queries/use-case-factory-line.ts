@@ -64,7 +64,7 @@ export interface FactoryCaseRow {
   mine: boolean;
   /** (8.2a) Le evals che fanno lo stato del caso (`main` prima, poi i modelli veri, poi il livello completo), o null. */
   evals: CaseEvalFacts["evals"];
-  /** (8.2a) La lettura dell'ultimo banco di ogni ruolo, in ordine di ruolo. */
+  /** (8.2a) La lettura dell'ultimo banco di ogni ruolo, in ordine di ruolo, e se è superato. */
   benches: CaseEvalFacts["benches"];
 }
 
@@ -253,12 +253,12 @@ ORDER BY p.use_case_id, p.number`)
     const text = r.ref ? `La PR #${number} di ${r.ref} aspetta una revisione.` : `La PR #${number} in ${repo} aspetta una revisione.`;
     todos.push({ kind: "rivedi", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text, href: pullRequestUrl(repo, number) });
   }
-  // (8.2a) A chi costruisce il caso: il consiglio del banco, per ruolo; le evals di main sotto soglia (modelli veri, mai
-  // in costruzione), come la campanella.
+  // (8.2a) A chi costruisce il caso: il consiglio del banco, per ruolo, tranne quello di un banco superato (seguito, o il
+  // ruolo non c'è più); le evals di main sotto soglia (modelli veri, mai in costruzione), come la campanella.
   for (const c of cases) {
     if (!builderOf.has(c.useCaseId)) continue;
     for (const b of c.benches) {
-      if (b.verdict.kind === "cambia") todos.push({ kind: "banco", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: b.verdict.text });
+      if (b.verdict.kind === "cambia" && !b.superseded) todos.push({ kind: "banco", useCaseId: c.useCaseId, caseId: c.caseId, code: c.code, text: b.verdict.text });
     }
     const e = c.evals;
     if (e && !e.thresholdsMet && !e.inConstruction && !e.fakeModels && e.branch === EVALS_MAIN_BRANCH) {

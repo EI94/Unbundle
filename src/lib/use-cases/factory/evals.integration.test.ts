@@ -144,6 +144,9 @@ const banco = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** I modelli di oggi per ruolo, come in agent.yaml: la CLI li manda con le evals (dicono se un banco è stato seguito). */
+const TODAY = { lettura: SONNET, riassunto: SONNET, scrittura: HAIKU, verifica: SONNET };
+
 /** Le evals con i modelli di oggi: `superati` su 100; la soglia è 85. */
 const evalsBody = (passed: number, over: Record<string, unknown> = {}) => ({
   caso: CODE,
@@ -154,7 +157,7 @@ const evalsBody = (passed: number, over: Record<string, unknown> = {}) => ({
   versioneModello: "1.4.0",
   modelliFinti: false,
   inCostruzione: false,
-  modelli: { lettura: HAIKU },
+  modelli: TODAY,
   risultati: [result({ superati: passed, totali: 100, soglieRispettate: passed >= 85, costoPer1000Usd: 0.12 })],
   ...over,
 });
@@ -567,7 +570,7 @@ test("la pagina «Agent Factory»: le evals e il consiglio del banco per caso; i
   const ev = view.cases.find((c) => c.useCaseId === ids.useCase)!;
   assert.deepEqual([ev.evals?.quality, ev.evals?.thresholdsMet, ev.evals?.branch, ev.evals?.fakeModels], [0.84, false, "main", false]);
   assert.equal(evalsFact(ev.evals), "evals 84%, sotto soglia");
-  assert.deepEqual(ev.benches.map((b) => [b.role, b.verdict.kind]), [["lettura", "finti"], ["riassunto", "cambia"], ["scrittura", "resta"], ["verifica", "nessuno"]]);
+  assert.deepEqual(ev.benches.map((b) => [b.role, b.verdict.kind, b.superseded]), [["lettura", "finti", false], ["riassunto", "cambia", false], ["scrittura", "resta", false], ["verifica", "nessuno", false]]);
   assert.deepEqual(benchFacts(ev.benches), ["il banco consiglia Claude Haiku 5.5 per «riassunto»"]);
   const mine = view.todos.filter((t) => t.useCaseId === ids.useCase && (t.kind === "banco" || t.kind === "evals"));
   assert.deepEqual(mine.map((t) => t.kind), ["banco", "evals"]);
@@ -729,4 +732,59 @@ test("lo stato delle evals del caso: le vere e complete di main, anche se dopo a
   const third = await evals.loadEvalOverview(exec, onlyFake);
   assert.deepEqual([third?.evals.latest?.branch, third?.evals.latest?.fakeModels, third?.evals.trend.length], ["main", true, 1]);
   await q(`DELETE FROM use_case_eval_runs WHERE use_case_id = $1 AND kind = 'evals'`, [ids.third]);
+});
+
+test("un banco superato non consiglia più: evals vere di main con il nuovo modello, o senza il ruolo; con lo stesso modello resta da fare", opts, async () => {
+  // EV-0002: finora solo evals su dei rami, nessun banco.
+  const target = { workspaceId: ids.ws, useCaseId: ids.other };
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  const { benchFacts } = await import("./line.ts");
+  const { benchSuperseded } = await import("./benchmark.ts");
+  const evalsOf = (modelli: Record<string, string>, over: Record<string, unknown> = {}) => ({ ...evalsBody(95, { modelli, ...over }), caso: "EV-0002" });
+  const state = async () => {
+    const view = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids.analyst, seeAll: false, canSeeNeeds: true });
+    const row = view.cases.find((c) => c.useCaseId === ids.other)!;
+    return { row, todos: view.todos.filter((t) => t.useCaseId === ids.other && t.kind === "banco").map((t) => t.text), facts: benchFacts(row.benches) };
+  };
+  const advice = "il banco consiglia Claude Haiku 5.5 per «lettura»";
+  // Il banco «lettura» consiglia Haiku al posto di Sonnet.
+  const bench = await post(tokens.lead!, { ...banco(), caso: "EV-0002" });
+  assert.equal((bench.json.raccomandazione as Row).tipo, "cambia");
+  let now = await state();
+  assert.deepEqual([now.facts, now.todos.length, now.row.benches[0].superseded], [[advice], 1, false], "le evals del caso sono di un ramo: il consiglio resta");
+  assert.deepEqual([now.row.benches[0].currentModel, now.row.benches[0].at.length > 0], [SONNET, true]);
+  // Evals vere di main con lo stesso modello per «lettura»: il consiglio resta da fare.
+  assert.equal((await post(tokens.lead!, evalsOf({ lettura: SONNET, scrittura: HAIKU }))).status, 200);
+  now = await state();
+  assert.deepEqual([now.facts, now.todos.length, now.row.benches[0].superseded], [[advice], 1, false], "stesso modello");
+  // Con il nuovo modello, ma finte o su un altro ramo: non fanno lo stato del caso, il consiglio resta.
+  assert.equal((await post(tokens.lead!, evalsOf({ lettura: HAIKU }, { modelliFinti: true }))).status, 200);
+  assert.equal((await post(tokens.lead!, evalsOf({ lettura: HAIKU }, { ramo: "ev-0002/t-3-haiku" }))).status, 200);
+  now = await state();
+  assert.deepEqual([now.facts, now.todos.length], [[advice], 1], "finte o di un ramo");
+  // Evals vere di main con Haiku per «lettura»: il consiglio è stato seguito. Niente «Da fare», niente fatto.
+  assert.equal((await post(tokens.lead!, evalsOf({ lettura: HAIKU, scrittura: HAIKU }))).status, 200);
+  now = await state();
+  assert.deepEqual([now.facts, now.todos, now.row.benches[0].superseded, now.row.benches[0].verdict.kind], [[], [], true, "cambia"]);
+  assert.deepEqual(now.row.evals?.models, { lettura: HAIKU, scrittura: HAIKU });
+  // La pagina ha quello che serve per dirlo: le evals che fanno lo stato e il banco, con i loro istanti e modelli.
+  const page = await evals.loadEvalOverview(exec, target);
+  const latest = page?.evals.latest ?? null;
+  const pageBench = page?.benches.find((b) => b.role === "lettura");
+  assert.ok(latest && pageBench);
+  if (!latest || !pageBench) return;
+  const superseded = (models: Record<string, string>) =>
+    benchSuperseded(
+      { role: pageBench.role, at: pageBench.run.createdAt, currentModel: pageBench.run.results.find((r) => r.current)?.model ?? null },
+      { at: latest.createdAt, branch: latest.branch, fakeModels: latest.fakeModels, models },
+    );
+  assert.equal(superseded(latest.models), true);
+  // Il ruolo tolto da agent.yaml: lo stesso, il consiglio non è più da fare.
+  assert.equal((await post(tokens.lead!, evalsOf({ scrittura: HAIKU }))).status, 200);
+  now = await state();
+  assert.deepEqual([now.facts, now.todos, now.row.benches[0].superseded], [[], [], true]);
+  // Un banco nuovo, dopo le evals: il suo consiglio torna da fare.
+  assert.equal((await post(tokens.lead!, { ...banco(), caso: "EV-0002" })).status, 200);
+  now = await state();
+  assert.deepEqual([now.facts, now.todos.length, now.row.benches[0].superseded], [[advice], 1, false]);
 });
