@@ -442,7 +442,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
             : `le evals di main ${caso} sono sotto soglia: ${oneLine(input.quality, 8)}.`,
         },
         {
-          p: "Prima di cambiare altro, guarda quali gruppi non passano: nel progetto, in «Evals e banco di prova», ci sono i gruppi e l'andamento; prova per prova con «npm run eval -- --caso <id>» nel repository.",
+          p: "Prima di cambiare altro, guarda quali gruppi non passano: nel progetto, in «Evals e banco di prova», ci sono i gruppi e l'andamento; prova per prova con «npm run eval» nel repository del caso.",
         },
         { link: { href: link, label: "Apri il progetto" } },
         { small: "Email interna di Lateral Space." },

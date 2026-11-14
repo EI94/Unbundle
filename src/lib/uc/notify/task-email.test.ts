@@ -209,8 +209,8 @@ test("(8.2a) le evals scese: sotto soglia o giù di 5 punti, con la qualità; ne
   assert.equal(belowEmail.subject, "Cliente prova · Smistamento di prova: le evals di main sono sotto soglia");
   assert.match(belowEmail.text, /le evals di main del caso d'uso «Smistamento di prova» sono sotto soglia: 80%\./);
   // La pagina ha i gruppi e l'andamento; le singole prove sono nel repository.
-  assert.match(belowEmail.text, /guarda quali gruppi non passano: nel progetto, in «Evals e banco di prova», ci sono i gruppi e l'andamento; prova per prova con «npm run eval -- --caso <id>» nel repository\./);
-  assert.ok(belowEmail.html.includes("npm run eval -- --caso &lt;id&gt;"), "nell'HTML il segnaposto è testo");
+  assert.match(belowEmail.text, /guarda quali gruppi non passano: nel progetto, in «Evals e banco di prova», ci sono i gruppi e l'andamento; prova per prova con «npm run eval» nel repository del caso\./);
+  assert.ok(!/<id>|&lt;id&gt;/.test(belowEmail.text + belowEmail.html), "un comando vero, senza segnaposto");
   assert.doesNotMatch(belowEmail.text, /quali prove non passano/);
   assert.ok(belowEmail.text.includes(`https://app.unbundle.test/dashboard/${WS}/use-cases/${UC}/progetto`));
   const down = planDelivery(claimed(kind, evalPayload({ useCase: UC, alert: "in_calo", qualityText: formatQuality(0.91), drop: 0.064 })), facts(), OPTS);
