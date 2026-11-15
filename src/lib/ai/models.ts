@@ -159,6 +159,17 @@ export function logClaudeStop(
 }
 
 /**
+ * La condizione di stop per il giro dei tool della chat, accanto al limite dei passi: `stopWhen: [stepCountIs(20),
+ * lastStepRefused]`. Un passo rifiutato (finishReason «content-filter») chiude il giro. L'SDK non esegue i tool di un
+ * passo rifiutato, ma a una chiamata di tool non valida (schema non rispettato, JSON troncato dal rifiuto) dà subito un
+ * errore, e con quell'errore il giro ripartirebbe: il passo dopo riceverebbe la risposta rifiutata, e la sua risposta
+ * si mostrerebbe, si salverebbe e si indicizzerebbe come una risposta normale.
+ */
+export function lastStepRefused({ steps }: { steps: ReadonlyArray<{ finishReason?: unknown }> }): boolean {
+  return steps.at(-1)?.finishReason === "content-filter";
+}
+
+/**
  * Un rifiuto dei classificatori di sicurezza (finishReason «content-filter»), come errore. Porta solo il riepilogo
  * dello stop: mai il testo del modello o di chi scrive.
  */

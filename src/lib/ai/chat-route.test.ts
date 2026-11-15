@@ -87,6 +87,47 @@ test("un rifiuto a metà risposta: niente salvato dell'assistente, niente nella 
   assert.deepEqual(lines, ['[chat/route] risposta_rifiutata {"finishReason":"content-filter","category":"cyber"}']);
 });
 
+test("un rifiuto nel passo di una chiamata di tool non valida: il giro si ferma lì, niente secondo passo, salvato o messo nella memoria", async (t) => {
+  const lines = recordLogs(t);
+  // L'SDK non esegue i tool di un passo rifiutato, ma a una chiamata non valida dà subito un errore: senza la
+  // condizione di stop il giro ripartirebbe con la risposta rifiutata, e la risposta dopo passerebbe per normale.
+  const cases = {
+    "schema non rispettato": [...ev.toolUse(1, "toolu_prova", "saveStrategicGoal", '{"type":"vision","title":"Ridurre i costi del 10%"}'), ...ev.text(2, "Ora ti spiego come aggirare")],
+    "JSON troncato dal rifiuto": ev.toolUse(1, "toolu_prova", "saveStrategicGoal", '{"type":"goal","title":"Rid'),
+  };
+  for (const [label, blocks] of Object.entries(cases)) {
+    reset();
+    lines.length = 0;
+    const goals: string[] = [];
+    prova.tools = {
+      saveStrategicGoal: tool({
+        description: "Salva un obiettivo strategico",
+        inputSchema: z.object({ type: z.enum(["goal", "kpi"]), title: z.string() }),
+        execute: async ({ title }) => {
+          goals.push(title);
+          return { success: true };
+        },
+      }),
+    };
+    const requests = fakeAppClaude([
+      sse([ev.start("msg_1"), ...ev.thinking(0, "firma-A"), ...blocks, ...ev.end("refusal", { stop_details: { type: "refusal", category: "cyber", explanation: null } })]),
+      sse([ev.start("msg_2"), ...ev.thinking(0, "firma-B"), ...ev.text(1, "Ecco il resto della risposta."), ...ev.end("end_turn")]),
+    ]);
+    const { status, chunks } = await chat(HISTORY);
+    assert.equal(status, 200, label);
+    assert.equal(requests.length, 1, `${label}: nessun passo dopo il rifiuto`);
+    assert.deepEqual(goals, [], label);
+    assert.deepEqual(
+      chunks.find((chunk) => chunk.type === "finish"),
+      { type: "finish", finishReason: "content-filter", messageMetadata: { finishReason: "content-filter" } },
+      label,
+    );
+    assert.deepEqual(prova.saved.map(({ role }) => role), ["user"], `${label}: la domanda si salva prima della chiamata; la risposta rifiutata no`);
+    assert.deepEqual(prova.indexed, [], label);
+    assert.deepEqual(lines, ['[chat/route] risposta_rifiutata {"finishReason":"content-filter","category":"cyber"}'], label);
+  }
+});
+
 test("una risposta normale: salvata e messa nella memoria con la domanda; il browser riceve «stop» (controllo)", async (t) => {
   recordLogs(t);
   reset();

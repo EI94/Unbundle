@@ -9,7 +9,7 @@ import { DISCOVERY_SYSTEM_PROMPT } from "@/lib/ai/prompts/discovery";
 import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mapping";
 import { withAgentReliability } from "@/lib/ai/agent-reliability";
 import { chatHistory } from "@/lib/ai/chat-history";
-import { CLAUDE_MODEL, claudeCallSettings, logClaudeStop } from "@/lib/ai/models";
+import { CLAUDE_MODEL, claudeCallSettings, lastStepRefused, logClaudeStop } from "@/lib/ai/models";
 import {
   saveMessage,
   getActiveConversation,
@@ -250,7 +250,8 @@ export async function POST(req: Request) {
     tools: tools as Parameters<typeof streamText>[0]["tools"],
     // Default SDK = stepCountIs(1): dopo un tool call lo stream si chiude SENZA secondo round
     // → UI bloccata su "Elaboro...". Serve un budget di step per testo post-tool.
-    stopWhen: stepCountIs(20),
+    // Un passo rifiutato chiude il giro (src/lib/ai/models.ts): il turno resta un rifiuto, anche con un tool non valido.
+    stopWhen: [stepCountIs(20), lastStepRefused],
     onError: ({ error }) => {
       console.error("[chat/route] streamText error:", error);
     },

@@ -11,6 +11,7 @@ import {
   ClaudeRefusalError,
   claudeCallSettings,
   claudeStopSummary,
+  lastStepRefused,
   logClaudeStop,
   throwIfRefused,
   WEB_SEARCH_TIMEOUT_MS,
@@ -360,6 +361,13 @@ test("streamText: un rifiuto a metà risposta arriva in onFinish come «content-
   await result.consumeStream();
   assert.equal(finished?.finishReason, "content-filter", "la chat non salva il testo parziale");
   assert.deepEqual(claudeStopSummary(finished ?? {}), { finishReason: "content-filter", category: "cyber" });
+});
+
+test("lastStepRefused: vero solo quando l'ultimo passo del giro è un rifiuto", () => {
+  assert.equal(lastStepRefused({ steps: [] }), false);
+  assert.equal(lastStepRefused({ steps: [{ finishReason: "tool-calls" }, { finishReason: "content-filter" }] }), true);
+  assert.equal(lastStepRefused({ steps: [{ finishReason: "content-filter" }, { finishReason: "stop" }] }), false);
+  assert.equal(lastStepRefused({ steps: [{ finishReason: "tool-calls" }] }), false);
 });
 
 /** Le chiamate al modello dell'app e i loro compiti (src/lib/ai/models.ts). */
