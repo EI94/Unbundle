@@ -79,7 +79,6 @@ export async function preGenerateActivitiesFromDocuments(
 
   const { object } = throwIfRefused("actions/pre-generate-activities", await generateObject({
     model: anthropic(CLAUDE_MODEL),
-    ...claudeCallSettings("preGenerateActivities"),
     schema: preGeneratedActivitySchema,
     prompt: `Sei un esperto di process mining e analisi organizzativa. Analizza questi documenti relativi a una funzione aziendale e identifica le attività lavorative principali.
 
@@ -103,6 +102,7 @@ Identifica le attività lavorative ricorrenti e strutturali descritte nei docume
 - Sii specifico: "Analisi mensile dei KPI di vendita" non "Analisi dati"
 - Massimo 15 attività
 - Se i documenti sono vaghi o non contengono informazioni su processi/attività, restituisci un array vuoto`,
+    ...claudeCallSettings("preGenerateActivities"),
   }));
 
   return {

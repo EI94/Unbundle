@@ -51,7 +51,6 @@ export async function generateSimulation(data: {
 }): Promise<SimulationResult> {
   const { object } = throwIfRefused("ai/generate-simulation", await generateObject({
     model: anthropic(CLAUDE_MODEL),
-    ...claudeCallSettings("simulation"),
     schema: simulationSchema,
     prompt: `Sei un consulente di trasformazione AI. Genera scenari "what if" per l'organizzazione.
 
@@ -82,6 +81,7 @@ Per ogni scenario calcola:
 Genera anche un sommario AI OS con raccomandazioni per knowledge base, agent orchestration, data pipelines, monitoring e governance.
 
 Scrivi in italiano. Sii specifico e concreto con numeri realistici.`,
+    ...claudeCallSettings("simulation"),
   }));
 
   return object;

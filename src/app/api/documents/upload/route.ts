@@ -63,7 +63,6 @@ export async function POST(req: Request) {
       const base64 = Buffer.from(arrayBuffer).toString("base64");
       const extraction = await generateText({
         model: anthropic(CLAUDE_MODEL),
-        ...claudeCallSettings("pdfText"),
         messages: [
           {
             role: "user",
@@ -80,6 +79,7 @@ export async function POST(req: Request) {
             ],
           },
         ],
+        ...claudeCallSettings("pdfText"),
       });
       // Un rifiuto dei classificatori del modello non è il testo del documento: niente testo
       // parziale salvato o indicizzato, e chi carica lo sa. Lo stesso per una risposta senza
@@ -112,7 +112,6 @@ export async function POST(req: Request) {
     if (extractedText && extractedText.length > 100) {
       const summaryResult = await generateText({
         model: anthropic(CLAUDE_MODEL),
-        ...claudeCallSettings("documentSummary"),
         system:
           "Sei un analista organizzativo. Riassumi il documento in massimo 5 bullet point in italiano, " +
           "focalizzandoti su: struttura organizzativa, strategia, processi, metriche, obiettivi. " +
@@ -123,6 +122,7 @@ export async function POST(req: Request) {
             content: `Riassumi questo documento:\n\n${extractedText.slice(0, 15000)}`,
           },
         ],
+        ...claudeCallSettings("documentSummary"),
       });
       // Un rifiuto lascia il documento senza sintesi, come un testo breve: mai una sintesi parziale.
       if (summaryResult.finishReason === "content-filter") {

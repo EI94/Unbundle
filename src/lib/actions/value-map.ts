@@ -46,7 +46,6 @@ export async function generateValueMapAction(workspaceId: string) {
 
   const { object: positions } = throwIfRefused("actions/value-map", await generateObject({
     model: anthropic(CLAUDE_MODEL),
-    ...claudeCallSettings("valueMap"),
     system: `Sei un esperto di Wardley Mapping. Posiziona ogni attività su una mappa Wardley con due assi:
 - **X (Maturità/Evolution)**: 0 = Genesis/Sperimentale, 0.25 = Custom, 0.5 = Product, 0.75 = Commodity, 1 = Utility
 - **Y (Valore Strategico)**: 0 = Basso valore, pura esecuzione, 1 = Altissimo valore strategico, differenziante
@@ -72,6 +71,7 @@ Value Thesis dell'azienda (usala per capire cosa è davvero strategico): ${JSON.
         })
       ),
     }),
+    ...claudeCallSettings("valueMap"),
   }));
 
   await db

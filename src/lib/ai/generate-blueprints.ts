@@ -42,7 +42,6 @@ export async function generateAgentBlueprints(
 
   const { object } = throwIfRefused("ai/generate-blueprints", await generateObject({
     model: anthropic(CLAUDE_MODEL),
-    ...claudeCallSettings("blueprints"),
     schema: blueprintSchema,
     prompt: `Sei un AI architect esperto. Per ogni use case, genera un blueprint dettagliato dell'agente AI necessario per implementarlo.
 
@@ -74,6 +73,7 @@ Per ogni blueprint specifica:
 9. Rischi e mitigazioni
 
 Scrivi in italiano.`,
+    ...claudeCallSettings("blueprints"),
   }));
 
   return object.blueprints;

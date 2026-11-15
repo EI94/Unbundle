@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { installAppModules, message, recordLogs, THINKING, fakeAppClaude } from "./claude-test-kit.ts";
+import { installAppModules, message, recordLogs, refusal, THINKING, fakeAppClaude } from "./claude-test-kit.ts";
 
 // (Migrazione a Claude Sonnet 5.5) La rotta vera del caricamento dei documenti (/api/documents/upload) con un PDF:
 // che cosa salva (blob, riga, memoria della chat) secondo come risponde il modello. Sessione, database, blob e
@@ -58,4 +58,38 @@ test("una risposta finita ma vuota (solo spazi): 422, niente salvato", async (t)
   assert.equal(response.status, 422);
   assert.deepEqual(await response.json(), UNREADABLE);
   assert.deepEqual({ blobs: prova.blobs, inserted: prova.inserted.length, indexed: prova.indexed }, { blobs: 0, inserted: 0, indexed: 0 });
+});
+
+test("un PDF rifiutato dai classificatori (anche con del testo parziale): 422, niente salvato, nel log solo motivo e categoria", async (t) => {
+  const lines = recordLogs(t);
+  reset();
+  const requests = fakeAppClaude([refusal([{ type: "text", text: "Organigramma riservato: direzione, ammini" }], "general_harms")]);
+  const response = await upload();
+  assert.equal(response.status, 422);
+  assert.deepEqual(await response.json(), UNREADABLE);
+  assert.equal(requests.length, 1);
+  assert.deepEqual({ blobs: prova.blobs, inserted: prova.inserted.length, indexed: prova.indexed }, { blobs: 0, inserted: 0, indexed: 0 });
+  assert.deepEqual(lines, ['[documents/upload] pdf_rifiutato {"finishReason":"content-filter","category":"general_harms"}']);
+});
+
+test("un PDF troncato al limite dei token ma con del testo: 200, si tiene l'inizio, con sintesi e memoria; nel log «troncato»", async (t) => {
+  const lines = recordLogs(t);
+  reset();
+  const text = "Organigramma: direzione generale, amministrazione, vendite. ".repeat(4);
+  const requests = fakeAppClaude([
+    message([THINKING, { type: "text", text }], "max_tokens"),
+    message([THINKING, { type: "text", text: "- Tre funzioni principali." }]),
+  ]);
+  const response = await upload();
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as { id: string; summary: string; extractedText: string };
+  assert.deepEqual(
+    { id: body.id, summary: body.summary, extractedText: body.extractedText },
+    { id: "doc-prova", summary: "- Tre funzioni principali.", extractedText: text },
+  );
+  assert.equal(requests.length, 2, "testo e sintesi");
+  assert.equal(prova.blobs, 1);
+  assert.deepEqual(prova.inserted.map((row) => [row.fileName, row.extractedText, row.summary]), [["organigramma.pdf", text, "- Tre funzioni principali."]]);
+  assert.equal(prova.indexed, 1);
+  assert.deepEqual(lines, ['[documents/upload] pdf_troncato {"finishReason":"length","category":null}']);
 });

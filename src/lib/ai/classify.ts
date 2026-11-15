@@ -25,7 +25,6 @@ export async function classifyActivity(
 ): Promise<ClassificationResult> {
   const { object } = throwIfRefused("ai/classify", await generateObject({
     model: anthropic(CLAUDE_MODEL),
-    ...claudeCallSettings("classifyActivity"),
     schema: classificationSchema,
     prompt: `Analizza questa attività lavorativa e classificala in uno dei 3 stream del framework Unbundle.
 
@@ -73,6 +72,7 @@ Opportunità nuove che emergono dai pattern cross-organizzativi. Revenue stream,
 - Ha potenziale di revenue o di trasformazione del modello di business
 
 Classifica con rigore. Se l'attività è palesemente operativa e ripetitiva → AUTOMATE. Se è il cuore del valore → DIFFERENTIATE. Se nasconde un'opportunità di innovazione → INNOVATE. In caso di dubbio, scegli AUTOMATE (è il default per il lavoro che "c'è ma non dovrebbe esserci così").`,
+    ...claudeCallSettings("classifyActivity"),
   }));
 
   const { motivazione, ...classification } = object;

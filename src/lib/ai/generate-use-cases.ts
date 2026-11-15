@@ -91,7 +91,6 @@ export async function generateUseCases(
 
   const { object } = throwIfRefused("ai/generate-use-cases", await generateObject({
     model: anthropic(CLAUDE_MODEL),
-    ...claudeCallSettings("useCases"),
     schema,
     prompt: `Sei un esperto di AI transformation. Analizza le attività classificate e il contesto strategico per generare use case AI concreti e azionabili.
 
@@ -121,6 +120,7 @@ ${includeEsg ? "8" : "7"}. Ogni use case deve avere un timeline realistico
 ${includeEsg ? "9" : "8"}. Non generare più di 12 use case totali
 
 Genera gli use case in italiano.`,
+    ...claudeCallSettings("useCases"),
   }));
 
   return object.useCases;

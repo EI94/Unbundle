@@ -35,7 +35,6 @@ export async function generateReport(data: {
 }): Promise<ReportContent> {
   const { object } = throwIfRefused("ai/generate-report", await generateObject({
     model: anthropic(CLAUDE_MODEL),
-    ...claudeCallSettings("report"),
     schema: reportSchema,
     prompt: `Genera un report esecutivo completo per la trasformazione AI di questa organizzazione. Scrivi in italiano, professionale e orientato all'azione.
 
@@ -75,6 +74,7 @@ ${data.goals.map((g) => `- [${g.type}] "${g.title}" → ${g.direction ?? "N/A"}`
 7. **Governance Blockers**: impedimenti da risolvere
 8. **Sequencing Recommendation**: priorità e ordine di esecuzione
 9. **KPI Baseline**: metriche chiave con valori attuali e target`,
+    ...claudeCallSettings("report"),
   }));
 
   return object;

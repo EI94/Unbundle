@@ -22,7 +22,6 @@ export function getWebSearchTool() {
         try {
           const result = await generateText({
             model: anthropic(CLAUDE_MODEL),
-            ...claudeCallSettings("webSearch"),
             // Dentro i 120 secondi della chat: oltre, si prosegue senza ricerca (il catch qui sotto).
             abortSignal: AbortSignal.timeout(WEB_SEARCH_TIMEOUT_MS),
             tools: {
@@ -32,6 +31,7 @@ export function getWebSearchTool() {
             },
             stopWhen: stepCountIs(5),
             prompt: `Cerca su internet: "${query}". Motivo: ${reason}. Riporta un riassunto conciso dei risultati trovati (max 5-6 frasi). Includi fatti specifici, numeri e nomi quando disponibili.`,
+            ...claudeCallSettings("webSearch"),
           });
 
           // Un rifiuto dei classificatori del modello non è un risultato: si prosegue senza, come

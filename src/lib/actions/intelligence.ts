@@ -129,7 +129,6 @@ export async function generateCompetitiveAnalysis(
 
   const { object } = throwIfRefused("actions/intelligence", await generateObject({
     model: anthropic(CLAUDE_MODEL),
-    ...claudeCallSettings("competitiveAnalysis"),
     schema: competitiveAnalysisSchema,
     prompt: `Sei un analista di competitive intelligence specializzato in trasformazione AI delle organizzazioni.
 
@@ -167,6 +166,7 @@ Genera:
 4. Un sommario esecutivo in 3-4 frasi
 
 Scrivi tutto in italiano. Sii specifico e concreto, non generico.`,
+    ...claudeCallSettings("competitiveAnalysis"),
   }));
 
   revalidatePath(`/dashboard/${workspaceId}/intelligence`);

@@ -398,12 +398,40 @@ const CONFIGURABLE_CALLS: Readonly<Record<string, { settings: string; uses: stri
 };
 
 const ROOT = new URL("../../../", import.meta.url);
+
+/**
+ * Dopo lo spread delle impostazioni di un compito (`...claudeCallSettings("…")`, `...portfolioRankingCallSettings(…)`)
+ * viene solo la chiusura dell'oggetto, al più con virgola, spazi e commenti: una chiave scritta dopo (un
+ * `maxOutputTokens`, un `providerOptions`) sostituirebbe in silenzio le impostazioni della riga.
+ */
+function settingsSpreadIsLast(source: string, afterSpread: number): boolean {
+  return /^,?(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*\}/.test(source.slice(afterSpread));
+}
+
+const SETTINGS_SPREAD = /\.\.\.(?:claudeCallSettings\("[A-Za-z]+"\)|portfolioRankingCallSettings\([A-Za-z]+\))/g;
+
+test("il controllo dello spread: rifiuta una chiave dopo le impostazioni, accetta virgola, spazi e commenti", () => {
+  const last = (source: string) => [...source.matchAll(SETTINGS_SPREAD)].every((m) => settingsSpreadIsLast(source, m.index + m[0].length));
+  assert.equal(last(`generateObject({ model, schema, ...claudeCallSettings("report") })`), true);
+  assert.equal(last(`generateObject({\n  model,\n  ...claudeCallSettings("report"),\n  // per ultime\n})`), true);
+  assert.equal(last(`generateObject({ model, ...claudeCallSettings("report"), /* nota */ })`), true);
+  assert.equal(last(`generateObject({ model, ...claudeCallSettings("report"), maxOutputTokens: 1000 })`), false);
+  assert.equal(last(`generateObject({\n  ...claudeCallSettings("report"),\n  // dopo\n  providerOptions: {},\n})`), false);
+  assert.equal(last(`generateObject({ ...portfolioRankingCallSettings(modelId), prompt })`), false);
+});
 // Composto, così questo file non contiene l'id che cerca.
 const RETIRED_MODEL = ["claude", "sonnet", "4", "20250514"].join("-");
 /** Dove l'id ritirato può restare: la storia nei commenti e le prove della scelta dell'output strutturato. */
 const RETIRED_MODEL_ALLOWED = new Set(["src/lib/ai/models.ts", "src/lib/portfolio/ai-ranking-contract.ts", "src/lib/portfolio/ai-ranking-safety.test.ts"]);
 
-test("ogni chiamata usa il modello e le impostazioni del suo compito; nessun id scritto a mano, nessun modello ritirato", () => {
+/** I sorgenti .ts, .tsx e .mts sotto src/, test compresi. */
+function sourceFiles(): string[] {
+  return (readdirSync(new URL("src/", ROOT), { recursive: true }) as string[])
+    .map((file) => `src/${file.split("\\").join("/")}`)
+    .filter((file) => /\.(ts|tsx|mts)$/.test(file));
+}
+
+test("ogni chiamata usa il modello e le impostazioni del suo compito, per ultime; nessun id scritto a mano, nessun modello ritirato", () => {
   const tasks = new Set<ClaudeTask>();
   for (const [path, expected] of Object.entries(CALL_SITES)) {
     const source = readFileSync(new URL(path, ROOT), "utf8");
@@ -413,6 +441,18 @@ test("ogni chiamata usa il modello e le impostazioni del suo compito; nessun id 
       tasks.add(task);
     }
   }
+  // Nessuna chiamata dell'app scrive una chiave dopo le impostazioni del suo compito.
+  const spreads: string[] = [];
+  // models.ts definisce claudeCallSettings e ne mostra l'uso in un commento.
+  for (const file of sourceFiles().filter((file) => !file.endsWith(".test.ts") && file !== "src/lib/ai/models.ts")) {
+    const source = readFileSync(new URL(file, ROOT), "utf8");
+    for (const match of source.matchAll(SETTINGS_SPREAD)) {
+      assert.ok(settingsSpreadIsLast(source, match.index + match[0].length), `${file}: una chiave dopo ${match[0]}`);
+      spreads.push(`${file} ${match[0]}`);
+    }
+  }
+  // Le quindici chiamate con CLAUDE_MODEL, più l'auto-ranking del portfolio.
+  assert.equal(spreads.length, 16, spreads.join("\n"));
   for (const [task, { settings, uses, call }] of Object.entries(CONFIGURABLE_CALLS)) {
     assert.ok(readFileSync(new URL(settings, ROOT), "utf8").includes(uses), `${settings}: impostazioni di «${task}»`);
     assert.match(readFileSync(new URL(call, ROOT), "utf8"), /(\.\.\.portfolioRankingCallSettings\(modelId\)|referentAiCallSettings\(model\))/, call);
@@ -420,9 +460,7 @@ test("ogni chiamata usa il modello e le impostazioni del suo compito; nessun id 
   }
   assert.deepEqual([...tasks].sort(), Object.keys(CLAUDE_TASKS).sort(), "ogni compito ha la sua chiamata");
 
-  const files = (readdirSync(new URL("src/", ROOT), { recursive: true }) as string[])
-    .map((file) => `src/${file.split("\\").join("/")}`)
-    .filter((file) => /\.(ts|tsx|mts)$/.test(file));
+  const files = sourceFiles();
   assert.ok(files.length > 100, "i sorgenti ci sono");
   for (const file of files) {
     const source = readFileSync(new URL(file, ROOT), "utf8");

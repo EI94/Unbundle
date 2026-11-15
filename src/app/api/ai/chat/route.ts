@@ -245,8 +245,6 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: anthropic(CLAUDE_MODEL),
-    // Sforzo medio, 16000 token per passo, senza ripiego lato server, con le note tra i tool (src/lib/ai/models.ts).
-    ...claudeCallSettings("chat"),
     system: withAgentReliability(systemPrompt),
     messages,
     tools: tools as Parameters<typeof streamText>[0]["tools"],
@@ -287,6 +285,9 @@ export async function POST(req: Request) {
         ).catch(() => {});
       }
     },
+    // Sforzo medio, 16000 token per passo, senza ripiego lato server, con le note tra i tool (src/lib/ai/models.ts).
+    // Per ultime: niente scritto qui le sostituisce.
+    ...claudeCallSettings("chat"),
   });
 
   // Il perché della fine arriva al browser (src/components/agent/chat-view.ts): una risposta rifiutata

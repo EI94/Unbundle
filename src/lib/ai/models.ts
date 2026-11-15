@@ -101,8 +101,9 @@ export const CLAUDE_TASKS = {
 export type ClaudeTask = keyof typeof CLAUDE_TASKS;
 
 /**
- * Le impostazioni della chiamata (oltre a modello, prompt e schema), da stendere nelle opzioni di
- * generateObject, generateText o streamText: `model: anthropic(CLAUDE_MODEL), ...claudeCallSettings("report")`.
+ * Le impostazioni della chiamata (oltre a modello, prompt e schema), da stendere per ultime nelle opzioni di
+ * generateObject, generateText o streamText, così niente scritto nella chiamata le sostituisce:
+ * `generateObject({ model: anthropic(CLAUDE_MODEL), schema, prompt, ...claudeCallSettings("report") })`.
  * Il ragionamento è sempre adattivo: `thinking` resta assente, o porta solo `display: "updates"` (`progressUpdates`).
  */
 export function claudeCallSettings(task: ClaudeTask) {

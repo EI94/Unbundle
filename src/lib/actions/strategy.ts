@@ -88,7 +88,6 @@ export async function suggestOKRsAction(
 
   const { object } = throwIfRefused("actions/strategy", await generateObject({
     model: anthropic(CLAUDE_MODEL),
-    ...claudeCallSettings("okrSuggestions"),
     system: `Sei un esperto di strategia organizzativa. Data la Value Thesis di un'azienda, suggerisci un framework OKR (Objectives and Key Results) completo per guidare una trasformazione AI-driven.
 
 Genera:
@@ -123,6 +122,7 @@ Scrivi tutto in italiano. Sii concreto e specifico per questo business.`,
         })
       ),
     }),
+    ...claudeCallSettings("okrSuggestions"),
   }));
 
   return object.okrs;

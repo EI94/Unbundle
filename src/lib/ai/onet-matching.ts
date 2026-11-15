@@ -35,7 +35,6 @@ export async function matchActivitiesToOnet(activities: Activity[]) {
 
   const { object } = throwIfRefused("ai/onet-matching", await generateObject({
     model: anthropic(CLAUDE_MODEL),
-    ...claudeCallSettings("onetMatch"),
     schema: onetMatchSchema,
     prompt: `Sei un esperto di O*NET e di AI exposure research. Per ogni attività lavorativa, identifica:
 1. Il codice O*NET SOC più vicino e il titolo occupazionale
@@ -54,6 +53,7 @@ ${activitySummaries.join("\n")}
 - Le occupazioni più esposte (coding, writing, analysis) arrivano a 0.30-0.40 di observed exposure
 
 Per ogni attività, fornisci un match O*NET e una stima informata.`,
+    ...claudeCallSettings("onetMatch"),
   }));
 
   // La motivazione torna in `reasoning`, come sempre.

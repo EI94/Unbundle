@@ -66,7 +66,6 @@ export async function GET(req: Request) {
 
       const { object } = throwIfRefused("cron/weekly-pulse", await generateObject({
         model: anthropic(CLAUDE_MODEL),
-        ...claudeCallSettings("weeklySignals"),
         schema: signalsSchema,
         prompt: `Analizza lo stato attuale del workspace "${workspace.name}" e genera segnali settimanali.
 
@@ -84,6 +83,7 @@ Genera 2-5 segnali rilevanti per il team di trasformazione. Segnali possibili:
 - progress_update: aggiornamento sullo stato di avanzamento
 
 Scrivi in italiano.`,
+        ...claudeCallSettings("weeklySignals"),
       }));
 
       for (const signal of object.signals) {
