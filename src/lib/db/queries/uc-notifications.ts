@@ -53,6 +53,9 @@ export const UC_NOTIFICATION_TEMPLATES = [
   // (8.2a) Il banco di prova consiglia un altro modello per un ruolo; le evals di main sono scese.
   "banco_consiglio",
   "evals_in_calo",
+  // (8.0c) Chi entra tra chi costruisce i casi di un cliente da fuori Lateral Space, e chi ne esce (senza caso).
+  "team_aggiunto",
+  "team_tolto",
   // Dopo l'MVP.
   "esiti_verifica",
   "scadenza_vicina",

@@ -19,6 +19,7 @@
 import { formatDateIt, type WeeklyCaseSummary } from "../../uc/notify/email-templates.ts";
 import { toBellItems, type UcBellItem, type UcBellRow } from "../../uc/notify/bell.ts";
 import {
+  BUILDER_EMAIL_TEMPLATES,
   DISPATCH_AFTER_COMMAND_LIMIT,
   DISPATCH_LEASE_MINUTES,
   MAX_EMAIL_ATTEMPTS,
@@ -54,6 +55,8 @@ import { isUuid, loadCaseCore, loadCaseReadiness, loadSignatureContext, loadUser
 import { eventInsertFromSql } from "./uc-events.ts";
 import { loadApprovals } from "./uc-public.ts";
 import { issueRequestToken, revokeIssuedToken } from "./uc-requests.ts";
+import { isExternalBuilderOfCase, readExternalGrant } from "./use-case-builders.ts";
+import { loadSubprocessorAck } from "./uc-subprocessors.ts";
 
 export type { UcBellItem } from "../../uc/notify/bell.ts";
 export type { DispatchSummary } from "../../uc/notify/dispatch.ts";
@@ -443,6 +446,19 @@ export async function loadDeliveryFacts(executor: UcExecutor, n: ClaimedNotifica
       roleLabel: roleKey ? (modules.roleLabels.get(roleKey) ?? null) : null,
     };
     facts.request = request;
+  }
+
+  // (8.0c) Chi non è di Lateral Space, sulle e-mail di chi costruisce e del team: costruisce il caso adesso, l'ok ai
+  // sub-responsabili del workspace, la concessione. Tre letture solo per queste righe.
+  const isBuilderMail = (BUILDER_EMAIL_TEMPLATES as readonly string[]).includes(n.templateKey) || n.templateKey === "team_aggiunto" || n.templateKey === "team_tolto";
+  if (isBuilderMail && facts.recipient?.kind === "user" && !facts.recipient.lateralSpace) {
+    const userId = facts.recipient.id;
+    const [buildsCase, ack, grant] = await Promise.all([
+      facts.case ? isExternalBuilderOfCase(executor, { caseId: facts.case.id, userId, lsDomains: o.lsDomains }) : Promise.resolve(false),
+      loadSubprocessorAck(executor, n.workspaceId),
+      readExternalGrant(executor, n.workspaceId, userId),
+    ]);
+    facts.builder = { buildsCase, workspaceAck: ack !== null, grant: grant !== null };
   }
 
   if (!facts.case) {

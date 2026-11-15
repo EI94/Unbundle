@@ -32,7 +32,7 @@ const SUFFIX = suffix.toUpperCase();
  * - e: esterno, Analista; e2: esterno, Responsabile della trasformazione, AI Board in D2;
  * - unverified, lsperson, contributor, learner, stranger: le aggiunte rifiutate (D10).
  */
-const people = ["lead", "other", "e", "e2", "unverified", "lsperson", "contributor", "learner", "stranger"] as const;
+const people = ["lead", "other", "e", "e2", "unverified", "lsperson", "contributor", "learner", "stranger", "fresh"] as const;
 type Person = (typeof people)[number];
 const ids = {
   org: randomUUID(),
@@ -50,6 +50,7 @@ const EMAIL: Record<Person, string> = {
   contributor: `contributore-${suffix}@gmail.test`,
   learner: `corsista-${suffix}@gmail.test`,
   stranger: `estraneo-${suffix}@gmail.test`,
+  fresh: `nuova-${suffix}@gmail.test`,
 };
 const ROLE: Record<Person, string | null> = {
   lead: "transformation_lead",
@@ -61,6 +62,7 @@ const ROLE: Record<Person, string | null> = {
   contributor: "contributor",
   learner: "learner",
   stranger: null,
+  fresh: "analyst",
 };
 /** Use case U1..U5 (U5 senza dossier); dossier D1, D2, D4 (chiuso) del responsabile, D3 dell'altro. */
 const uc = { u1: randomUUID(), u2: randomUUID(), u3: randomUUID(), u4: randomUUID(), u5: randomUUID() };
@@ -290,4 +292,58 @@ test("l'uscita dal workspace: concessioni cancellate, compiti liberati, token re
   assert.equal(removed.value.released, 1);
   const [t9] = await q(`SELECT status, holder_user_id FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-9'`, [uc.u1]);
   assert.deepEqual([t9.status, t9.holder_user_id], ["da_fare", null]);
+});
+
+test("le e-mail: «Costruisci i casi d'uso di…» aspetta l'ok ai sub-responsabili; le e-mail di chi costruisce partono solo con l'ok; «Non costruisci più…»", opts, async () => {
+  const dispatch = await import("../../db/queries/uc-notifications-dispatch.ts");
+  const notices = await import("../../db/queries/use-case-tasks-notices.ts");
+  const outbox: { to: string; subject: string; text: string }[] = [];
+  const mailer = { async send(m: { to: string; subject: string; text: string }) { outbox.push(m); return { ok: true as const }; } };
+  const env = { UC_ENABLED: "true", RESEND_API_KEY: "re_test_finto", UC_EMAIL_FROM: "Lateral Space via Unbundle <test@example.test>", NEXT_PUBLIC_APP_URL: "http://localhost:3000", UC_LS_EMAIL_DOMAINS: "ls.test" };
+  const send = (scope: { notificationId?: string; caseId?: string }) => dispatch.dispatchQueue(exec, { env, mailer, sendIntervalMs: 0, ...scope });
+  const row = async (id: string) => (await q(`SELECT status, hold_reason, error FROM uc_notifications WHERE id = $1`, [id]))[0];
+
+  const added = await add("fresh", "tutti");
+  assert.ok(added.ok && added.value.noticeId, "l'e-mail di benvenuto in coda");
+  if (!added.ok || !added.value.noticeId) return;
+  const welcome = added.value.noticeId;
+  // Un «Dove» che cambia non la rimanda.
+  const again = await add("fresh", "tutti");
+  assert.ok(again.ok && again.value.noticeId === null);
+  // Senza l'ok ai sub-responsabili: il benvenuto aspetta, le e-mail di chi costruisce si annullano (resta la campanella).
+  await exec.batch(notices.notifyTask({ workspaceId: ids.ws, useCaseId: uc.u1 }, "compiti_pronti", { builders: await builders.loadBuilderScope(exec, LS) }, notices.NOBODY, new Date(), null));
+  await send({ notificationId: welcome });
+  assert.deepEqual(await row(welcome), { status: "in_coda", hold_reason: "sub_responsabili_mancanti", error: null });
+  await send({ caseId: dossier.d1 });
+  const [ready] = await q(`SELECT status, error FROM uc_notifications WHERE case_id = $1 AND template_key = 'compiti_pronti' AND recipient_user_id = $2`, [dossier.d1, ids.fresh]);
+  assert.deepEqual(ready, { status: "annullata", error: "sub_responsabili_mancanti" });
+  assert.ok(outbox.some((m) => m.to === EMAIL.lead), "a Lateral Space come prima");
+  assert.ok(!outbox.some((m) => m.to === EMAIL.fresh));
+  const [bell] = await q(`SELECT count(*)::int AS n FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compiti_pronti' AND recipient_user_id = $2`, [uc.u1, ids.fresh]);
+  assert.equal(bell.n, 1, "la campanella resta");
+  // L'ok del cliente: il benvenuto parte, e le e-mail nuove di chi costruisce pure.
+  await q(`INSERT INTO uc_subprocessor_acks (workspace_id, list_version, statement_text, declared_by_user_id, declared_by_role) VALUES ($1::uuid, '2026-10', 'Autorizzazione di prova', $2::uuid, 'transformation_lead')`, [ids.ws, ids.e2]);
+  await send({ notificationId: welcome });
+  assert.equal((await row(welcome)).status, "inviata");
+  const mail = outbox.find((m) => m.to === EMAIL.fresh);
+  assert.ok(mail);
+  assert.equal(mail!.subject, "Costruisci i casi d'uso di Cliente di prova chi costruisce con l'Agent Factory");
+  assert.match(mail!.text, /tutti, anche quelli che si apriranno/);
+  await exec.batch(notices.notifyTask({ workspaceId: ids.ws, useCaseId: uc.u1 }, "compito_passato", { userId: ids.fresh }, ids.lead, new Date(), "T-1"));
+  await send({ caseId: dossier.d1 });
+  assert.ok(outbox.some((m) => m.to === EMAIL.fresh && /ti hanno passato il compito T-1/.test(m.subject)), "con l'ok, le e-mail di chi costruisce partono");
+  // «Togli»: «Non costruisci più…», con l'ok.
+  const removed = await team.removeExternalBuilder(exec, { workspaceId: ids.ws, actorUserId: ids.lead, userId: ids.fresh, lsDomains: LS });
+  assert.ok(removed.ok && removed.value.noticeId);
+  if (!removed.ok || !removed.value.noticeId) return;
+  await send({ notificationId: removed.value.noticeId });
+  assert.equal((await row(removed.value.noticeId)).status, "inviata");
+  assert.ok(outbox.some((m) => m.to === EMAIL.fresh && m.subject === "Non costruisci più i casi d'uso di Cliente di prova chi costruisce"));
+  // Un benvenuto in coda di chi nel frattempo è stato tolto non parte.
+  const back = await add("fresh", [uc.u1]);
+  assert.ok(back.ok && back.value.noticeId);
+  if (!back.ok || !back.value.noticeId) return;
+  await team.removeExternalBuilder(exec, { workspaceId: ids.ws, actorUserId: ids.lead, userId: ids.fresh, lsDomains: LS });
+  await send({ notificationId: back.value.noticeId });
+  assert.deepEqual(await row(back.value.noticeId), { status: "annullata", hold_reason: null, error: "concessione_tolta" });
 });

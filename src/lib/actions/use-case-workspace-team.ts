@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { dispatchDue } from "@/lib/db/queries/uc-notifications-dispatch";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
@@ -38,6 +40,21 @@ async function guard(
 }
 
 /**
+ * L'e-mail di chi entra o esce, subito dopo la risposta (come «CLI collegata»): senza l'ok ai sub-responsabili del cliente
+ * resta in coda (o si annulla) e la riprende il cron.
+ */
+function sendAfter(workspaceId: string, noticeId: string | null): void {
+  if (!noticeId) return;
+  after(async () => {
+    try {
+      await dispatchDue({ notificationId: noticeId });
+    } catch (error) {
+      ucLogError({ area: "uc", op: "chi_costruisce_email", workspaceId }, error);
+    }
+  });
+}
+
+/**
  * «Aggiungi» a chi costruisce: la persona dall'elenco dei collaboratori, il ruolo, e per chi viene da fuori il «Dove»
  * (`"tutti"` o gli use case scelti). Una persona già presente da fuori: cambia il «Dove».
  */
@@ -53,6 +70,7 @@ export async function addBuilderAction(workspaceId: string, input: unknown): Pro
       const result = await addExternalBuilder(executor, { workspaceId, actorUserId: g.actorUserId, userId: i.userId, where: i.where, lsDomains });
       if (!result.ok) return fromResult(result);
       revalidatePath(`/dashboard/${workspaceId}/agent-factory`);
+      sendAfter(workspaceId, result.value.noticeId);
       return fromResult({ ok: true, value: { userId: result.value.userId } }, undefined, externalAddedText(result.value));
     }
     const result = await addWorkspaceTeamMember(executor, { workspaceId, actorUserId: g.actorUserId, userId: i.userId, role: i.role, lsDomains });
@@ -82,6 +100,7 @@ export async function removeBuilderAction(workspaceId: string, userId: string): 
       const result = await removeExternalBuilder(executor, { workspaceId, actorUserId: g.actorUserId, userId, lsDomains });
       if (!result.ok) return fromResult(result);
       revalidatePath(`/dashboard/${workspaceId}/agent-factory`);
+      sendAfter(workspaceId, result.value.noticeId);
       return fromResult({ ok: true, value: { cases: result.value.left.length } }, undefined, externalRemovedText(result.value));
     }
     const result = await removeWorkspaceTeamMember(executor, { workspaceId, actorUserId: g.actorUserId, userId, lsDomains });

@@ -50,7 +50,7 @@ import {
   type BuilderWhere,
 } from "./use-case-builders.ts";
 import { notifyTask, tasksTablesReady } from "./use-case-tasks-notices.ts";
-import { cast, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
+import { cast, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
 import { fail, ok, type Result } from "../../uc/types.ts";
 import { CLIENT_CASE_ROLES, type CaseRole } from "../../uc/vocab.ts";
 import { userContextFrom } from "../../uc/lateral-space.ts";
@@ -353,6 +353,20 @@ export interface ExternalApplyResult {
   repos: string[];
   /** I compiti tornati da prendere (nei casi tolti dal «Dove»). */
   released: number;
+  /** L'e-mail «Costruisci i casi d'uso di…» in coda (solo per chi entra adesso, non per un «Dove» che cambia). */
+  noticeId: string | null;
+}
+
+/**
+ * (8.0c) L'e-mail alla persona che entra tra chi costruisce o ne esce, in coda (`uc_notifications`, senza caso): una per
+ * aggiunta o per uscita. La manda il motore dei dossier solo con l'ok ai sub-responsabili del cliente (`dispatch.ts`).
+ */
+function teamNoticeStatement(i: { workspaceId: string; userId: string; template: "team_aggiunto" | "team_tolto"; payload: Record<string, unknown> }): UcStatement {
+  const template = cast(i.template, "text");
+  return toStatement(ucSql`INSERT INTO uc_notifications (workspace_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
+VALUES (${cast(i.workspaceId, "uuid")}, ${cast(i.userId, "uuid")}, 'email', ${template}, ${jsonb(i.payload)}, 'in_coda',
+  ${template} || ':' || ${cast(i.workspaceId, "text")} || ':' || ${cast(i.userId, "text")} || ':' || gen_random_uuid()::text, now())
+RETURNING id`);
 }
 
 /**
@@ -377,11 +391,30 @@ export async function addExternalBuilder(
     where = { all: false, useCaseIds: ids };
   }
   const before = await grantedOpenCases(executor, i.workspaceId, userId);
-  await executor.batch(writeGrantStatements({ workspaceId: i.workspaceId, userId, where, actorUserId: i.actorUserId }));
+  const isNew = (await readExternalGrant(executor, i.workspaceId, userId)) === null;
+  const written = await executor.batch([
+    ...writeGrantStatements({ workspaceId: i.workspaceId, userId, where, actorUserId: i.actorUserId }),
+    // L'e-mail di benvenuto, solo a chi entra adesso: un «Dove» che cambia non la rimanda.
+    ...(isNew
+      ? [teamNoticeStatement({ workspaceId: i.workspaceId, userId, template: "team_aggiunto", payload: { tutti: where.all, casi: where.all ? null : where.useCaseIds.length, queuedAt: new Date().toISOString() } })]
+      : []),
+  ]);
+  const noticeId = isNew ? (written[written.length - 1]?.[0]?.id ? String(written[written.length - 1][0].id) : null) : null;
   const after = await grantedOpenCases(executor, i.workspaceId, userId);
   // Dai casi tolti dal «Dove» esce, e i suoi compiti lì tornano da prendere.
   const released = await releaseTasksOfFormerBuilder(executor, { workspaceId: i.workspaceId, userId, lsDomains: i.lsDomains });
-  const out: ExternalApplyResult = { userId, where, entered: [], already: [], left: [], skipped: [], openCases: after.length, repos: await reposOf(executor, i.workspaceId, where), released: released.released };
+  const out: ExternalApplyResult = {
+    userId,
+    where,
+    entered: [],
+    already: [],
+    left: [],
+    skipped: [],
+    openCases: after.length,
+    repos: await reposOf(executor, i.workspaceId, where),
+    released: released.released,
+    noticeId,
+  };
   const target = await loadUserContext(executor, userId, i.lsDomains);
   for (const c of after) {
     const applied = target ? await observeCase(executor, { workspaceId: i.workspaceId, caseId: c.id, actorUserId: i.actorUserId, userId, lsDomains: i.lsDomains }) : "utente_non_trovato";
@@ -435,6 +468,8 @@ export interface ExternalRemoveResult {
   released: number;
   /** I token della CLI e dell'MCP del caso revocati nel workspace. */
   revokedTokens: number;
+  /** L'e-mail «Non costruisci più…» in coda. */
+  noticeId: string | null;
 }
 
 /** La revoca dei token della CLI della persona nel workspace (quelli di tutti i casi e quelli di un caso solo). */
@@ -462,12 +497,15 @@ export async function removeExternalBuilder(
   const revoke = revokeCliTokensStatement(i.workspaceId, userId);
   const first = [...deleteGrantsStatements(i.workspaceId, userId), revoke];
   const released = await releaseTasksOfFormerBuilder(executor, { workspaceId: i.workspaceId, userId, lsDomains: i.lsDomains, first });
-  const out: ExternalRemoveResult = { left: [], skipped: [], repos, released: released.released, revokedTokens: released.firstRows[first.length - 1]?.length ?? 0 };
+  const out: ExternalRemoveResult = { left: [], skipped: [], repos, released: released.released, revokedTokens: released.firstRows[first.length - 1]?.length ?? 0, noticeId: null };
   for (const c of cases) {
     const left = await leaveCase(executor, { workspaceId: i.workspaceId, caseId: c.id, actorUserId: i.actorUserId, userId, lsDomains: i.lsDomains });
     if (left === "tolto") out.left.push(c.code);
     else if (left !== "non_c_era") out.skipped.push({ code: c.code, reason: left });
   }
+  // L'e-mail «Non costruisci più…», dopo i poteri e i casi: se non parte, la persona comunque non costruisce più.
+  const [notice] = await executor.batch([teamNoticeStatement({ workspaceId: i.workspaceId, userId, template: "team_tolto", payload: { queuedAt: new Date().toISOString() } })]);
+  out.noticeId = notice[0]?.id ? String(notice[0].id) : null;
   return ok(out);
 }
 
