@@ -40,6 +40,31 @@ test("«Aggiungi»: i casi saltati con il motivo, e quelli da cui esce cambiando
   assert.match(narrowed, /^Costruisce in 1 caso\. È uscita da 2 casi: i compiti che aveva lì tornano da prendere\./);
 });
 
+test("«Aggiungi» con ogni caso aperto saltato: non dice «nessun caso aperto», dice che per ora non costruisce e perché", () => {
+  const skipped = [
+    { code: "ES-0001", reason: "attore_non_ammesso" },
+    { code: "XX-0012", reason: "ruolo_cliente" },
+  ];
+  assert.equal(
+    externalAddedText({ where: ALL, entered: [], already: [], left: [], skipped, repos: ["Voltaen/prova-esterni"], released: 0 }),
+    "Per ora non costruisce in nessun caso aperto: entrerà in quelli nuovi. Su GitHub dagli la scrittura su Voltaen/prova-esterni. Saltati: ES-0001 (lì non sei responsabile), XX-0012 (lì firma o approva per il cliente).",
+  );
+  assert.match(
+    externalAddedText({ where: { all: false, useCaseIds: ["a"] }, entered: [], already: [], left: [], skipped: skipped.slice(0, 1), repos: [], released: 0 }),
+    /^Per ora non costruisce in nessuno dei casi scelti\. .* Saltati: ES-0001 \(lì non sei responsabile\)\.$/,
+  );
+  // Senza casi aperti (niente di saltato): come prima.
+  assert.match(externalAddedText({ where: { all: false, useCaseIds: ["a"] }, entered: [], already: [], left: [], skipped: [], repos: [], released: 0 }), /^Nessuno dei casi scelti è aperto ancora: entrerà in ognuno appena lo avvii\./);
+});
+
+test("«Togli» di chi non è in nessun dossier: la conferma e il messaggio dopo non dicono «0 casi»", () => {
+  assert.deepEqual(externalRemoveConfirm({ name: "Prova Esterno", openCases: 0, repos: [] }), {
+    title: "Togliere Prova Esterno da chi costruisce?",
+    text: "Da subito non scrive più nei casi del cliente e non entra in quelli nuovi.",
+  });
+  assert.equal(externalRemovedText({ left: [], skipped: [], repos: [] }), "Non costruisce più. Ricorda la sua chiave dell'AI Gateway.");
+});
+
 test("«Togli»: la conferma con i casi e i repository, e il messaggio dopo", () => {
   assert.deepEqual(externalRemoveConfirm({ name: "Alessio Laurito", openCases: 22, repos: ["Voltaen/nardi-esploso"] }), {
     title: "Togliere Alessio Laurito da chi costruisce?",

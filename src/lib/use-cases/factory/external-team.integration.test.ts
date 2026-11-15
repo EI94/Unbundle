@@ -373,6 +373,29 @@ test("«Togli» legge i casi dopo il lock della persona: esce anche dal dossier 
   }
 });
 
+test("«Aggiungi» di chi non è responsabile di nessun dossier: ogni caso saltato, il messaggio lo dice; la riga e «Togli» contano le righe vere", opts, async () => {
+  const { externalAddedText, externalRemoveConfirm } = await import("./builders-text.ts");
+  // Lateral Space, ma responsabile di nessun dossier: ogni caso aperto si salta.
+  const added = await team.addExternalBuilder(exec, { workspaceId: ids.ws, actorUserId: ids.lsperson, userId: ids.racer, where: "tutti", lsDomains: LS });
+  assert.ok(added.ok, added.ok ? "" : added.message);
+  if (!added.ok) return;
+  assert.deepEqual([added.value.entered, added.value.already, added.value.openCases], [[], [], 0]);
+  assert.ok(added.value.skipped.length >= 3 && added.value.skipped.every((s) => s.reason === "attore_non_ammesso"), JSON.stringify(added.value.skipped));
+  assert.match(externalAddedText(added.value), /^Per ora non costruisce in nessun caso aperto: entrerà in quelli nuovi\. .* Saltati: /);
+  const rowOf = async () => (await team.listBuilders(exec, ids.ws, LS)).find((r) => r.userId === ids.racer);
+  const row = await rowOf();
+  assert.deepEqual([row?.where, row?.openCases], [{ all: true }, 0], "«tutti i casi» come «Dove», in nessun dossier");
+  assert.equal(externalRemoveConfirm({ name: "Prova racer", openCases: row!.openCases, repos: row!.repos }).text.includes("Esce da"), false);
+  // Il responsabile lo mette nei suoi dossier: la riga conta quelli.
+  const byLead = await add("racer", "tutti");
+  assert.ok(byLead.ok && byLead.value.entered.length > 0, byLead.ok ? JSON.stringify(byLead.value) : byLead.message);
+  if (!byLead.ok) return;
+  assert.equal(byLead.value.openCases, byLead.value.entered.length + byLead.value.already.length);
+  assert.equal((await rowOf())?.openCases, byLead.value.entered.length + byLead.value.already.length);
+  const removed = await team.removeExternalBuilder(exec, { workspaceId: ids.ws, actorUserId: ids.lead, userId: ids.racer, lsDomains: LS });
+  assert.ok(removed.ok && removed.value.left.length === byLead.value.openCases, "«Togli» esce da quelli");
+});
+
 test("l'uscita dal workspace: concessioni cancellate, compiti liberati, token revocati; «Togli» di Lateral Space libera i compiti", opts, async () => {
   await heldTask(uc.u5, "e2", "T-1");
   await q(

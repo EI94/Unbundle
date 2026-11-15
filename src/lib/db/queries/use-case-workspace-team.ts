@@ -329,6 +329,20 @@ async function grantedOpenCases(executor: UcExecutor, workspaceId: string, userI
   return rows.map((r) => ({ id: String(r.id), code: String(r.code), useCaseId: r.use_case_id ? String(r.use_case_id) : null }));
 }
 
+/**
+ * I dossier aperti coperti dalle concessioni dove la persona ha davvero la riga `osservatore`: quelli dove costruisce, o
+ * da cui «Togli» la fa uscire. Una concessione «tutti» con ogni caso saltato ne conta zero.
+ */
+async function observedOpenCases(executor: UcExecutor, workspaceId: string, userId: string): Promise<number> {
+  const cases = await grantedOpenCases(executor, workspaceId, userId);
+  if (!cases.length) return 0;
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT count(DISTINCT case_id)::int AS n FROM uc_case_members
+WHERE user_id = ${cast(userId, "uuid")} AND role = 'osservatore' AND case_id = ANY (${cast(cases.map((c) => c.id), "uuid[]")})`),
+  ]);
+  return Number(rows[0]?.n ?? 0);
+}
+
 /** I repository registrati per i casi del «Dove» (per dirle a chi aggiunge e a chi toglie: su GitHub si fa a mano). */
 async function reposOf(executor: UcExecutor, workspaceId: string, where: BuilderWhere): Promise<string[]> {
   const scope = where.all ? raw("true") : ucSql`r.use_case_id = ANY (${cast(where.useCaseIds, "uuid[]")})`;
@@ -349,7 +363,7 @@ export interface ExternalApplyResult {
   left: string[];
   /** I casi saltati: codice e motivo (`ruolo_cliente`, `attore_non_ammesso`, …). */
   skipped: { code: string; reason: string }[];
-  /** I dossier aperti che costruisce adesso. */
+  /** I dossier aperti dove adesso ha la riga `osservatore` (entrata adesso o c'era già). */
   openCases: number;
   /** I repository dei suoi casi, a cui darle la scrittura su GitHub. */
   repos: string[];
@@ -412,7 +426,7 @@ export async function addExternalBuilder(
     already: [],
     left: [],
     skipped: [],
-    openCases: after.length,
+    openCases: 0,
     repos: await reposOf(executor, i.workspaceId, where),
     released: released.released,
     noticeId,
@@ -424,6 +438,7 @@ export async function addExternalBuilder(
     else if (applied === "gia_dentro") out.already.push(c.code);
     else out.skipped.push({ code: c.code, reason: applied });
   }
+  out.openCases = out.entered.length + out.already.length;
   const kept = new Set(after.map((c) => c.id));
   for (const c of before.filter((c) => !kept.has(c.id))) {
     const left = await leaveCase(executor, { workspaceId: i.workspaceId, caseId: c.id, actorUserId: i.actorUserId, userId, lsDomains: i.lsDomains });
@@ -645,7 +660,7 @@ export interface BuilderRow {
   cli: boolean;
   /** Da fuori: perché oggi non costruisce (`ruolo_workspace`, `email_non_verificata`, …); null se costruisce. */
   blocked: ExternalRefusal | null;
-  /** I dossier aperti dove costruisce (da fuori: quelli coperti dalla concessione; di Lateral Space: dove ha il ruolo). */
+  /** I dossier aperti dove costruisce (da fuori: quelli coperti dalla concessione dove ha la riga; di Lateral Space: dove ha il ruolo). */
   openCases: number;
   /** I repository dei suoi casi (da fuori), da togliere a mano su GitHub. */
   repos: string[];
@@ -688,7 +703,7 @@ WHERE c.workspace_id = ${ws} AND c.status <> 'chiuso' AND c.setup_completed_at I
       whereCodes: where.all ? [] : where.useCaseIds.map((id) => codes.get(id) ?? "senza codice").sort(),
       cli: withCli.has(userId),
       blocked: externalRefusal(p),
-      openCases: (await grantedOpenCases(executor, workspaceId, userId)).length,
+      openCases: await observedOpenCases(executor, workspaceId, userId),
       repos: await reposOf(executor, workspaceId, where),
     });
   }

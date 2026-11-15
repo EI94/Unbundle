@@ -51,33 +51,45 @@ export function reposText(repos: readonly string[]): string {
   return repos.length > 5 ? `${shown} e altri ${repos.length - 5}` : shown;
 }
 
-/** Il messaggio dopo «Aggiungi» di chi costruisce da fuori. */
+/**
+ * Il messaggio dopo «Aggiungi» di chi costruisce da fuori. «Nessun caso aperto ancora» solo quando non ci sono casi
+ * aperti da prendere: se ci sono e sono stati tutti saltati, lo dice e dice perché.
+ */
 export function externalAddedText(r: ExternalAddedFacts): string {
   const building = r.entered.length + r.already.length;
   const where =
-    building === 0
-      ? r.where.all
-        ? "Nessun caso aperto ancora: entrerà in ognuno appena lo avvii."
-        : "Nessuno dei casi scelti è aperto ancora: entrerà in ognuno appena lo avvii."
-      : `Costruisce in ${casesText(building)}${r.where.all ? " ed entrerà in quelli nuovi" : ""}.`;
+    building > 0
+      ? `Costruisce in ${casesText(building)}${r.where.all ? " ed entrerà in quelli nuovi" : ""}.`
+      : r.skipped.length > 0
+        ? r.where.all
+          ? "Per ora non costruisce in nessun caso aperto: entrerà in quelli nuovi."
+          : "Per ora non costruisce in nessuno dei casi scelti."
+        : r.where.all
+          ? "Nessun caso aperto ancora: entrerà in ognuno appena lo avvii."
+          : "Nessuno dei casi scelti è aperto ancora: entrerà in ognuno appena lo avvii.";
   const left = r.left.length ? ` È uscita da ${casesText(r.left.length)}${r.released ? ": i compiti che aveva lì tornano da prendere" : ""}.` : "";
   const github = r.repos.length ? ` Su GitHub dagli la scrittura su ${reposText(r.repos)}.` : " I repository dei casi non ci sono ancora: quando li crei, dagli la scrittura.";
   return `${where}${left}${github}${skippedText(r.skipped)}`;
 }
 
-/** Il messaggio dopo «Togli» di chi costruisce da fuori. */
+/** Il messaggio dopo «Togli» di chi costruisce da fuori. I casi da cui esce solo se ce ne sono. */
 export function externalRemovedText(r: ExternalRemovedFacts): string {
   const github = r.repos.length ? `GitHub (${reposText(r.repos)}) e la sua chiave dell'AI Gateway` : "la sua chiave dell'AI Gateway";
   const stays = r.skipped.length ? ` In ${r.skipped.slice(0, 5).map((s) => s.code).join(", ")} resta nel dossier da osservatore, senza poteri: lì non sei responsabile.` : "";
-  return `Non costruisce più: è uscita da ${casesText(r.left.length)}. Ricorda ${github}.${stays}`;
+  const left = r.left.length ? `: è uscita da ${casesText(r.left.length)}` : "";
+  return `Non costruisce più${left}. Ricorda ${github}.${stays}`;
 }
 
-/** La conferma di «Togli» per chi costruisce da fuori: titolo e testo. */
+/**
+ * La conferma di «Togli» per chi costruisce da fuori: titolo e testo. `openCases`: i dossier aperti dove ha davvero la
+ * riga `osservatore` (quelli da cui esce), non quelli che la concessione copre.
+ */
 export function externalRemoveConfirm(i: { name: string; openCases: number; repos: readonly string[] }): { title: string; text: string } {
   const github = i.repos.length ? ` Su GitHub togli anche il suo accesso a ${reposText(i.repos)}.` : "";
+  const cases = i.openCases > 0 ? ` Esce da ${casesText(i.openCases)} e i compiti che ha in corso tornano da prendere.` : "";
   return {
     title: `Togliere ${i.name} da chi costruisce?`,
-    text: `Da subito non scrive più nei casi del cliente e non entra in quelli nuovi. Esce da ${casesText(i.openCases)} e i compiti che ha in corso tornano da prendere.${github}`,
+    text: `Da subito non scrive più nei casi del cliente e non entra in quelli nuovi.${cases}${github}`,
   };
 }
 
