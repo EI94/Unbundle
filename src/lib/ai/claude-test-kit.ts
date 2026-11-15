@@ -7,7 +7,7 @@
  * - `installAppModules(stubs)`: per caricare i moduli veri dell'app (rotte, azioni, tool) sotto Node. Gli alias `@/…`
  *   e `server-only` come in scripts/use-case-test/test-hooks.mjs; i moduli di `stubs` (sorgente JavaScript per
  *   specificatore) al posto di quelli veri; `@ai-sdk/anthropic` resta il pacchetto vero, ma il suo `anthropic` usa la
- *   fetch finta di `useAppClaude`. Una volta per processo (ogni file di test gira nel suo).
+ *   fetch finta di `fakeAppClaude`. Una volta per processo (ogni file di test gira nel suo).
  */
 import * as nodeModule from "node:module";
 import type { TestContext } from "node:test";
@@ -159,7 +159,7 @@ export const anthropic = createAnthropic({ apiKey: "test", baseURL: ${JSON.strin
 }
 
 /** Le risposte del Claude finto per i moduli dell'app caricati con `installAppModules`; le richieste registrate. */
-export function useAppClaude(replies: Reply[]): Captured[] {
+export function fakeAppClaude(replies: Reply[]): Captured[] {
   const { fetch, requests } = recordingFetch(replies);
   kit.__claudeTestKit = { fetch };
   return requests;

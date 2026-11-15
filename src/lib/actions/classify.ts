@@ -7,7 +7,7 @@ import { getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import { db } from "@/lib/db";
 import { organizations } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { classifyActivitiesBatch } from "@/lib/ai/classify";
+import { classifyActivitiesBatch, skippedClassificationsText } from "@/lib/ai/classify";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 
@@ -34,9 +34,10 @@ export async function runClassificationAction(workspaceId: string) {
 
   const unclassified = allActivities.filter((a) => !a.classification);
   if (unclassified.length === 0) {
-    return { classified: 0, total: allActivities.length };
+    return { classified: 0, skipped: 0, skippedText: "", total: allActivities.length };
   }
 
+  // Le classificazioni riuscite si scrivono; quelle rifiutate o fallite restano da fare (si riprovano con un altro clic).
   const results = await classifyActivitiesBatch(unclassified, {
     companyValueThesis: org?.companyValueThesis,
     goals,
@@ -52,8 +53,11 @@ export async function runClassificationAction(workspaceId: string) {
 
   revalidatePath(`/dashboard/${workspaceId}`);
 
+  const skipped = unclassified.length - results.size;
   return {
     classified: results.size,
+    skipped,
+    skippedText: skippedClassificationsText(skipped),
     total: allActivities.length,
   };
 }

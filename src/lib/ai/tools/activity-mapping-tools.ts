@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { getActivitiesByDepartment } from "@/lib/db/queries/activities";
 import { getWorkspaceById, getStrategicGoalsByWorkspace } from "@/lib/db/queries/workspaces";
 import { organizations } from "@/lib/db/schema";
-import { classifyActivitiesBatch } from "@/lib/ai/classify";
+import { classifyActivitiesBatch, skippedClassificationsText } from "@/lib/ai/classify";
 import { matchActivitiesToOnet } from "@/lib/ai/onet-matching";
 import { updateActivityClassification, updateActivity } from "@/lib/db/queries/activities";
 
@@ -132,6 +132,7 @@ export function getActivityMappingTools(
 
             const goals = await getStrategicGoalsByWorkspace(workspaceId);
 
+            // Le classificazioni riuscite si scrivono; quelle rifiutate o fallite restano da fare.
             const results = await classifyActivitiesBatch(unclassified, {
               companyValueThesis: org?.companyValueThesis,
               goals,
@@ -149,7 +150,15 @@ export function getActivityMappingTools(
             for (const [, result] of results) {
               counts[result.classification]++;
             }
-            classificationSummary = `Classificazione completata: ${counts.automate} Automate, ${counts.differentiate} Differentiate, ${counts.innovate} Innovate.`;
+            classificationSummary =
+              results.size === 0
+                ? "Classificazione non riuscita — verrà riprovata manualmente."
+                : [
+                    `Classificazione completata: ${counts.automate} Automate, ${counts.differentiate} Differentiate, ${counts.innovate} Innovate.`,
+                    skippedClassificationsText(unclassified.length - results.size),
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
           } catch {
             classificationSummary =
               "Classificazione non riuscita — verrà riprovata manualmente.";

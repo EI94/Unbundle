@@ -1,6 +1,7 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
+import { CLAUDE_MODEL, ClaudeRefusalError, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
+import { logSafeError } from "@/lib/log/safe-error";
 import { z } from "zod";
 import type { Activity, StrategicGoal } from "@/lib/db/schema";
 
@@ -75,6 +76,10 @@ Classifica con rigore. Se l'attività è palesemente operativa e ripetitiva → 
   return object;
 }
 
+/**
+ * Le classificazioni riuscite, per id dell'attività. Un rifiuto o un errore del modello su un'attività non fa perdere
+ * le altre: quell'attività resta senza classificazione (chi chiama conta quante ne mancano) e si riprova dopo.
+ */
 export async function classifyActivitiesBatch(
   activities: Activity[],
   strategicContext: {
@@ -87,13 +92,24 @@ export async function classifyActivitiesBatch(
   const batchSize = 3;
   for (let i = 0; i < activities.length; i += batchSize) {
     const batch = activities.slice(i, i + batchSize);
-    const classifications = await Promise.all(
+    const outcomes = await Promise.allSettled(
       batch.map((activity) => classifyActivity(activity, strategicContext))
     );
-    batch.forEach((activity, idx) => {
-      results.set(activity.id, classifications[idx]);
+    outcomes.forEach((outcome, idx) => {
+      if (outcome.status === "fulfilled") {
+        results.set(batch[idx].id, outcome.value);
+      } else if (!(outcome.reason instanceof ClaudeRefusalError)) {
+        // Un rifiuto è già nel log con il solo riepilogo dello stop (throwIfRefused); un altro errore, per nome e codice.
+        logSafeError("ai/classify", "classificazione_non_riuscita", outcome.reason);
+      }
     });
   }
 
   return results;
+}
+
+/** Quante attività sono rimaste senza classificazione, in parole («» se nessuna). */
+export function skippedClassificationsText(skipped: number): string {
+  if (skipped <= 0) return "";
+  return skipped === 1 ? "1 attività è rimasta da classificare." : `${skipped} attività sono rimaste da classificare.`;
 }

@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 export function ClassifyButton({ workspaceId }: { workspaceId: string }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   const handleClassify = async () => {
@@ -17,11 +19,20 @@ export function ClassifyButton({ workspaceId }: { workspaceId: string }) {
         body: JSON.stringify({ workspaceId }),
       });
       const data = await res.json();
-      if (data.classified > 0) {
+      // Le attività che il modello non ha classificato (un rifiuto o un errore) restano da fare: si dice quante.
+      // refresh() e non reload(): l'avviso resta a schermo.
+      if (data.skipped > 0) {
+        if (data.classified > 0) {
+          toast.warning(`${data.classified} attività classificate su ${data.total} totali. ${data.skippedText} Riprova più tardi.`);
+          router.refresh();
+        } else {
+          toast.error(`${data.skippedText} Riprova più tardi.`);
+        }
+      } else if (data.classified > 0) {
         toast.success(
           `${data.classified} attivita' classificate su ${data.total} totali`
         );
-        window.location.reload();
+        router.refresh();
       } else {
         toast.info("Tutte le attivita' sono gia' classificate");
       }

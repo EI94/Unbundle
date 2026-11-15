@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { installAppModules, message, recordLogs, refusal, THINKING, useAppClaude } from "./claude-test-kit.ts";
+import { installAppModules, message, recordLogs, refusal, THINKING, fakeAppClaude } from "./claude-test-kit.ts";
 import { ClaudeRefusalError } from "./models.ts";
 
 // (Migrazione a Claude Sonnet 5.5) Un rifiuto con il JSON completo, nell'azione vera della value map: l'oggetto
@@ -34,7 +34,7 @@ test("value map: un rifiuto con i nodi completi non cancella né scrive nulla; n
   const lines = recordLogs(t);
   prova.writes = [];
   prova.activities = [ACTIVITY];
-  const requests = useAppClaude([refusal([THINKING, { type: "text", text: JSON.stringify(NODES) }], "general_harms")]);
+  const requests = fakeAppClaude([refusal([THINKING, { type: "text", text: JSON.stringify(NODES) }], "general_harms")]);
   await assert.rejects(generateValueMapAction("ws-prova"), (error: unknown) => error instanceof ClaudeRefusalError);
   assert.equal(requests.length, 1);
   assert.deepEqual(prova.writes, [], "nessun delete, nessun insert");
@@ -45,7 +45,7 @@ test("value map: la stessa risposta completa, senza rifiuto, cancella e riscrive
   recordLogs(t);
   prova.writes = [];
   prova.activities = [ACTIVITY];
-  useAppClaude([message([THINKING, { type: "text", text: JSON.stringify(NODES) }])]);
+  fakeAppClaude([message([THINKING, { type: "text", text: JSON.stringify(NODES) }])]);
   assert.deepEqual(await generateValueMapAction("ws-prova"), { positioned: 1 });
   assert.deepEqual(prova.writes, ["delete", "insert"]);
 });
