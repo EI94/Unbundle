@@ -258,10 +258,12 @@ export async function POST(req: Request) {
     },
     onFinish: async ({ text, finishReason, providerMetadata }) => {
       // Un rifiuto dei classificatori del modello non è una risposta: l'eventuale testo parziale
-      // non si salva e non entra nella memoria della chat.
-      const refused = finishReason === "content-filter";
-      if (refused) logClaudeStop("chat/route", "risposta_rifiutata", { finishReason, providerMetadata });
-      if (text && !refused) {
+      // non si salva, e il turno (domanda compresa) non entra nella memoria della chat.
+      if (finishReason === "content-filter") {
+        logClaudeStop("chat/route", "risposta_rifiutata", { finishReason, providerMetadata });
+        return;
+      }
+      if (text) {
         await saveMessage({
           conversationId: conversation.id,
           role: "assistant",
@@ -287,5 +289,9 @@ export async function POST(req: Request) {
     },
   });
 
-  return result.toUIMessageStreamResponse();
+  // Il perché della fine arriva al browser (src/components/agent/chat-view.ts): una risposta rifiutata
+  // si mostra come avviso e non torna al modello nel turno dopo.
+  return result.toUIMessageStreamResponse({
+    messageMetadata: ({ part }) => (part.type === "finish" ? { finishReason: part.finishReason } : undefined),
+  });
 }

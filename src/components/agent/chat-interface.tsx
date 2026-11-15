@@ -1,8 +1,9 @@
 "use client";
 
-import { useChat, type UIMessage } from "@ai-sdk/react";
+import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
+import { CHAT_REFUSAL_NOTICE, chatRequestMessages, isRefusedReply, messageText, type ChatUIMessage } from "./chat-view";
 import {
   Send,
   CheckCircle2,
@@ -145,7 +146,7 @@ export function ChatInterface({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const welcomeMessages: UIMessage[] = [];
+  const welcomeMessages: ChatUIMessage[] = [];
   if (initialMessages.length === 0 && welcomeMessage) {
     welcomeMessages.push({
       id: "welcome",
@@ -154,7 +155,7 @@ export function ChatInterface({
     });
   }
 
-  const seedMessages: UIMessage[] =
+  const seedMessages: ChatUIMessage[] =
     initialMessages.length > 0
       ? initialMessages.map((m) => ({
           id: m.id,
@@ -165,22 +166,13 @@ export function ChatInterface({
 
   const transport = useMemo(
     () =>
-      new DefaultChatTransport({
+      new DefaultChatTransport<ChatUIMessage>({
         api: "/api/ai/chat",
         body: { workspaceId, conversationType, departmentId },
         prepareSendMessagesRequest: ({ messages, body }) => ({
           body: {
-            messages: messages.map((m) => ({
-              role: m.role,
-              content:
-                m.parts
-                  ?.filter(
-                    (p): p is { type: "text"; text: string } =>
-                      p.type === "text"
-                  )
-                  .map((p) => p.text)
-                  .join("") ?? "",
-            })),
+            // Solo il testo di ogni turno, senza le risposte rifiutate dal modello (chat-view.ts).
+            messages: chatRequestMessages(messages),
             workspaceId:
               (body as Record<string, unknown>)?.workspaceId ?? workspaceId,
             conversationType:
@@ -252,14 +244,6 @@ export function ChatInterface({
     [handleSubmit]
   );
 
-  const getMessageText = (message: UIMessage): string =>
-    message.parts
-      ?.filter(
-        (p): p is { type: "text"; text: string } => p.type === "text"
-      )
-      .map((p) => p.text)
-      .join("") ?? "";
-
   const renderMarkdown = (text: string) => {
     const lines = text.split("\n");
     return lines.map((line, li) => {
@@ -303,7 +287,8 @@ export function ChatInterface({
       <div className="flex-1 overflow-y-auto px-6 py-6" ref={scrollRef}>
         <div className="mx-auto max-w-2xl space-y-6">
           {messages.map((message) => {
-            const text = getMessageText(message);
+            const text = messageText(message);
+            const refused = isRefusedReply(message);
             const toolParts =
               message.parts?.filter((p) => p.type?.startsWith?.("tool-")) ??
               [];
@@ -323,10 +308,14 @@ export function ChatInterface({
                 key={message.id}
                 className="text-sm leading-relaxed text-muted-foreground"
               >
-                {text && (
-                  <div className="whitespace-pre-wrap">
-                    {renderMarkdown(text)}
-                  </div>
+                {refused ? (
+                  <p className="text-xs">{CHAT_REFUSAL_NOTICE}</p>
+                ) : (
+                  text && (
+                    <div className="whitespace-pre-wrap">
+                      {renderMarkdown(text)}
+                    </div>
+                  )
                 )}
                 {toolParts.length > 0 && (() => {
                   const HIDDEN_TOOLS = new Set(["webSearch"]);
