@@ -4,8 +4,9 @@
  * I messaggi di zod, del database (Neon/Postgres: `detail`, valori dei vincoli)
  * e dell'SDK AI possono contenere pezzi del payload: testi delle segnalazioni,
  * nomi, email. Qui si tiene solo ciò che serve a capire il guasto: nome
- * dell'errore, codice (es. SQLSTATE 23505), nome del vincolo e, per zod, i
- * percorsi dei campi. Mai `message`, `detail`, `cause`, corpo o header.
+ * dell'errore, codice (es. SQLSTATE 23505), nome del vincolo, per zod i
+ * percorsi dei campi e, per una chiamata HTTP, lo stato della risposta. Mai
+ * `message`, `detail`, `cause`, corpo o header.
  * Modulo puro: lo usano anche i test con Node.
  */
 
@@ -14,7 +15,16 @@ export type SafeErrorSummary = {
   code?: string;
   constraint?: string;
   fields?: string[];
+  /**
+   * Lo stato HTTP di una chiamata non riuscita (`statusCode` di AI_APICallError: 404 di un modello ritirato, 429,
+   * 529…), o dell'ultimo tentativo di un AI_RetryError (`lastError`). Solo un numero finito.
+   */
+  statusCode?: number;
 };
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
 
 const TOKEN = /^[A-Za-z0-9_.:-]{1,60}$/;
 
@@ -40,6 +50,11 @@ export function summarizeError(error: unknown): SafeErrorSummary {
       .filter((path) => path && TOKEN.test(path));
     if (fields.length) summary.fields = [...new Set(fields)].slice(0, 20);
   }
+  const lastError = record.lastError;
+  const statusCode =
+    finiteNumber(record.statusCode) ??
+    (lastError && typeof lastError === "object" ? finiteNumber((lastError as Record<string, unknown>).statusCode) : undefined);
+  if (statusCode !== undefined) summary.statusCode = statusCode;
   return summary;
 }
 

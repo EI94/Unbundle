@@ -572,11 +572,13 @@ test("con il modello che fallisce, i segnali use_case_digest arrivano lo stesso"
   model.mode = "fail";
   const response = await route.GET(cronRequest(CRON_SECRET));
   // Il ciclo AI è partito (wsOn è in `mapping`): un errore del modello su un workspace non ferma gli altri
-  // né la risposta, e ogni workspace in `mapping` ci prova una volta.
-  assert.equal(response.status, 200);
-  const body = (await response.json()) as { processed: number; failed: number };
+  // né la risposta, e ogni workspace in `mapping` ci prova una volta. Con tutti falliti la risposta è 500, con
+  // lo stesso corpo, così il giro risulta fallito nei log del cron.
+  assert.equal(response.status, 500);
+  const body = (await response.json()) as { processed: number; failed: number; useCaseHub: { workspaces: number } };
   assert.ok(body.processed >= 2, "il ciclo AI visita i workspace in mapping");
   assert.equal(body.failed, body.processed);
+  assert.equal(body.useCaseHub.workspaces, 2, "il passo dell'hub è nel corpo anche così");
   assert.equal(model.calls, body.processed);
   const rows = await signalRows();
   assert.ok(

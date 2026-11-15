@@ -100,5 +100,8 @@ Scrivi in italiano.`,
     }
   }
 
-  return NextResponse.json({ processed: activeWorkspaces.length, failed, useCaseHub });
+  // Nessun workspace riuscito (per esempio il modello che risponde 404 a tutti, come quando è stato ritirato): 500 con
+  // lo stesso corpo, così il giro risulta fallito nei log del cron. Se ne fallisce solo una parte, 200 con quanti.
+  const allFailed = activeWorkspaces.length > 0 && failed === activeWorkspaces.length;
+  return NextResponse.json({ processed: activeWorkspaces.length, failed, useCaseHub }, { status: allFailed ? 500 : 200 });
 }

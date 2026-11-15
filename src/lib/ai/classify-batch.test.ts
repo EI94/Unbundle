@@ -81,7 +81,7 @@ test("classifyActivitiesBatch: tiene le classificazioni riuscite; rifiuto ed err
   assert.equal(results.get("a-1")?.reasoning, "Ripetitiva, con input chiari.");
   assert.deepEqual(lines, [
     '[ai/classify] risposta_rifiutata {"finishReason":"content-filter","category":"general_harms"}',
-    '[ai/classify] classificazione_non_riuscita {"error":{"name":"AI_APICallError"}}',
+    '[ai/classify] classificazione_non_riuscita {"error":{"name":"AI_APICallError","statusCode":400}}',
   ]);
   for (const line of lines) assert.doesNotMatch(line, /contratti|Riconciliazione|Ripetitiva|prova\)/);
 });

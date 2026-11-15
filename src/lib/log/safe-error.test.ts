@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { z } from "zod";
+import { APICallError, RetryError } from "ai";
 import { logSafeError, summarizeError } from "./safe-error.ts";
 
 const SECRET_TEXT = "Persona Inventata persona.inventata@example.test ub_mcp_tokenfinto";
@@ -33,6 +34,26 @@ test("valori strani: nessuna eccezione, nessun contenuto", () => {
   assert.deepEqual(summarizeError(null), { name: "object" });
   assert.deepEqual(summarizeError(SECRET_TEXT), { name: "string" });
   assert.deepEqual(summarizeError({ name: SECRET_TEXT, code: SECRET_TEXT }), { name: "Error" });
+});
+
+test("lo stato HTTP di una chiamata: solo un numero finito, anche dall'ultimo tentativo di un AI_RetryError", () => {
+  const apiError = new APICallError({
+    message: `Not found: ${SECRET_TEXT}`,
+    url: "https://api.anthropic.com/v1/messages",
+    requestBodyValues: { prompt: SECRET_TEXT },
+    statusCode: 404,
+    responseBody: SECRET_TEXT,
+  });
+  assert.deepEqual(summarizeError(apiError), { name: "AI_APICallError", statusCode: 404 });
+  const overloaded = new APICallError({ message: "Overloaded", url: "https://api.anthropic.com/v1/messages", requestBodyValues: {}, statusCode: 529 });
+  assert.deepEqual(summarizeError(new RetryError({ message: `Failed after 3 attempts: ${SECRET_TEXT}`, reason: "maxRetriesExceeded", errors: [overloaded, overloaded, overloaded] })), {
+    name: "AI_RetryError",
+    statusCode: 529,
+  });
+  for (const statusCode of ["404", Number.NaN, Number.POSITIVE_INFINITY, null]) {
+    assert.deepEqual(summarizeError({ name: "HttpError", statusCode }), { name: "HttpError" }, String(statusCode));
+  }
+  assert.equal(JSON.stringify(summarizeError(apiError)).includes("Inventata"), false);
 });
 
 test("logSafeError scrive una riga senza il payload", () => {
