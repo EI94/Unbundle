@@ -168,8 +168,8 @@ test("D10: le aggiunte rifiutate: e-mail non verificata, Lateral Space come este
     ["unverified", "email_non_verificata", "Prima deve confermare la sua e-mail in Unbundle."],
     ["lsperson", "di_lateral_space", "È una persona di Lateral Space: scegli Sviluppatore, Analista o Responsabile."],
     ["contributor", "ruolo_workspace", "Per costruire serve almeno il ruolo di Analista nel workspace: cambialo da Impostazioni › Persone."],
-    ["learner", "non_collaboratore", "Questa persona non è un collaboratore del workspace: invitala prima nel workspace, da Impostazioni › Persone, come Analista."],
-    ["stranger", "non_collaboratore", "Questa persona non è un collaboratore del workspace: invitala prima nel workspace, da Impostazioni › Persone, come Analista."],
+    ["learner", "non_collaboratore", "Questa persona non fa parte del workspace: invitala prima, da Impostazioni › Persone, come Analista."],
+    ["stranger", "non_collaboratore", "Questa persona non fa parte del workspace: invitala prima, da Impostazioni › Persone, come Analista."],
   ];
   for (const [person, code, message] of expected) {
     const r = await add(person, "tutti");

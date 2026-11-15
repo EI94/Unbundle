@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { builderStateText, builderWhereText, externalAddedText, externalRemoveConfirm, externalRemovedText } from "./builders-text.ts";
+import {
+  builderStateText,
+  builderWhereText,
+  EXTERNAL_ROLE_HINT,
+  externalAddedText,
+  externalRemoveConfirm,
+  externalRemovedText,
+  lsAddedText,
+  lsRemovedText,
+  SKIP_REASON,
+} from "./builders-text.ts";
 
 // I testi di «Chi costruisce» (rilascio 8.0c, RILASCIO-8.0c-ESTERNI.md §11).
 
@@ -37,7 +47,7 @@ test("«Aggiungi»: i casi saltati con il motivo, e quelli da cui esce cambiando
   });
   assert.match(text, / Saltati: NM-0009 \(lì firma o approva per il cliente\), NM-0010 \(lì non sei responsabile\)\.$/);
   const narrowed = externalAddedText({ where: { all: false, useCaseIds: ["a"] }, entered: [], already: ["NM-0001"], left: ["NM-0002", "NM-0003"], skipped: [], repos: [], released: 2 });
-  assert.match(narrowed, /^Costruisce in 1 caso\. È uscita da 2 casi: i compiti che aveva lì tornano da prendere\./);
+  assert.match(narrowed, /^Costruisce in 1 caso\. Esce da 2 casi: i compiti che aveva lì tornano da prendere\./);
 });
 
 test("«Aggiungi» con ogni caso aperto saltato: non dice «nessun caso aperto», dice che per ora non costruisce e perché", () => {
@@ -72,7 +82,7 @@ test("«Togli»: la conferma con i casi e i repository, e il messaggio dopo", ()
   });
   assert.equal(
     externalRemovedText({ left: codes(22), skipped: [], repos: ["Voltaen/nardi-esploso"] }),
-    "Non costruisce più: è uscita da 22 casi. Ricorda GitHub (Voltaen/nardi-esploso) e la sua chiave dell'AI Gateway.",
+    "Non costruisce più: esce da 22 casi. Ricorda GitHub (Voltaen/nardi-esploso) e la sua chiave dell'AI Gateway.",
   );
   assert.match(externalRemovedText({ left: [], skipped: [{ code: "NM-0010", reason: "attore_non_ammesso" }], repos: [] }), /In NM-0010 resta nel dossier da osservatore, senza poteri: lì non sei responsabile\.$/);
 });
@@ -84,4 +94,32 @@ test("la riga: «CLI collegata», «CLI da collegare», o perché da fuori oggi 
   assert.equal(builderStateText({ cli: false, blocked: "email_non_verificata" }), "non costruisce: serve l'e-mail verificata");
   assert.equal(builderWhereText(ALL, []), "tutti i casi");
   assert.equal(builderWhereText({ all: false, useCaseIds: ["a", "b", "c", "d"] }, codes(4)), "NM-0001, NM-0002, NM-0003 e altri 1");
+});
+
+test("Lateral Space: «Aggiungi» e «Togli» dicono dove entra ed esce, senza dire il genere della persona", () => {
+  assert.equal(
+    lsAddedText({ done: codes(3), unchanged: codes(1, 4), skipped: [{ code: "NM-0010", reason: "attore_non_ammesso" }] }),
+    "Nel team del cliente: entrerà anche nei casi nuovi. Entra in 3 casi, c'era già in 1 caso. Saltati: NM-0010 (lì non sei responsabile). Si cambia dal team del dossier.",
+  );
+  assert.equal(lsRemovedText({ done: codes(2), skipped: [], released: 1 }), "Fuori dal team del cliente: esce da 2 casi e non entra nei casi nuovi. I compiti che aveva lì tornano da prendere (1).");
+});
+
+test("i testi di «Chi costruisce» non dicono il genere della persona: niente «uscita», «aggiunta», «tolta», «uno sviluppatore», «un collaboratore»", () => {
+  const ALL_SKIPS = Object.keys(SKIP_REASON).map((reason, i) => ({ code: `NM-00${10 + i}`, reason }));
+  const texts = [
+    EXTERNAL_ROLE_HINT,
+    ...Object.values(SKIP_REASON),
+    externalAddedText({ where: ALL, entered: codes(2), already: [], left: codes(2, 5), skipped: ALL_SKIPS, repos: ["Voltaen/nardi-esploso"], released: 1 }),
+    externalAddedText({ where: ALL, entered: [], already: [], left: [], skipped: ALL_SKIPS, repos: [], released: 0 }),
+    externalRemovedText({ left: codes(3), skipped: ALL_SKIPS, repos: ["Voltaen/nardi-esploso"] }),
+    externalRemoveConfirm({ name: "Prova Esterno", openCases: 3, repos: ["Voltaen/nardi-esploso"] }).text,
+    lsAddedText({ done: codes(1), unchanged: codes(1), skipped: ALL_SKIPS }),
+    lsRemovedText({ done: codes(1), skipped: ALL_SKIPS, released: 2 }),
+    ...["ruolo_workspace", "email_non_verificata", "di_lateral_space", null].flatMap((blocked) => [builderStateText({ cli: true, blocked }), builderStateText({ cli: false, blocked })]),
+  ];
+  for (const text of texts) {
+    // «CLI collegata» e «e-mail verificata» dicono la CLI e l'e-mail, non la persona.
+    assert.doesNotMatch(text, /\b(uscit|aggiunt|tolt|entrat|invitat)[ao]\b/i, text);
+    assert.doesNotMatch(text, /\b(uno sviluppatore|un collaboratore|collaboratore del|osservatrice)\b/i, text);
+  }
 });

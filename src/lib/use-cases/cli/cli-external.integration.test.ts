@@ -786,7 +786,7 @@ test("D9: dopo «Togli» lo stesso token non scrive più, i token sono revocati,
   assert.ok(held, "E ha un compito in corso (T-2, D12)");
   const removed = await as("lead", () => team.removeBuilderAction(ids.wsA, ids.e));
   assert.equal(removed.ok, true, removed.ok ? "" : removed.message);
-  assert.match(removed.ok ? (removed.message ?? "") : "", /^Non costruisce più: è uscita da 3 casi\. Ricorda GitHub \(Prova\/nardi-esploso-[0-9a-f]+\) e la sua chiave dell'AI Gateway\.$/);
+  assert.match(removed.ok ? (removed.message ?? "") : "", /^Non costruisce più: esce da 3 casi\. Ricorda GitHub \(Prova\/nardi-esploso-[0-9a-f]+\) e la sua chiave dell'AI Gateway\.$/);
   // Lo stesso token: revocato nella stessa transazione delle concessioni, ogni chiamata si ferma.
   for (const token of [tokens.e!, caseToken]) {
     const r = await post("decisioni", token, { caso: "NM-0001", argomento: "Prova", decisione: "Non dovrebbe passare" });

@@ -7,11 +7,11 @@ import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { readExternalGrant } from "@/lib/db/queries/use-case-builders";
-import { addExternalBuilder, addWorkspaceTeamMember, removeExternalBuilder, removeWorkspaceTeamMember, type TeamApplyResult } from "@/lib/db/queries/use-case-workspace-team";
+import { addExternalBuilder, addWorkspaceTeamMember, removeExternalBuilder, removeWorkspaceTeamMember } from "@/lib/db/queries/use-case-workspace-team";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { ucLogError } from "@/lib/uc/log";
 import { EXTERNAL_BUILDER_ROLE } from "@/lib/use-cases/factory/builders";
-import { casesText as cases, externalAddedText, externalRemovedText, skippedText } from "@/lib/use-cases/factory/builders-text";
+import { externalAddedText, externalRemovedText, lsAddedText, lsRemovedText } from "@/lib/use-cases/factory/builders-text";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { fromResult, ucFailure, ucSectionAvailable, type UcActionResult } from "./uc-action-context";
@@ -76,12 +76,10 @@ export async function addBuilderAction(workspaceId: string, input: unknown): Pro
     const result = await addWorkspaceTeamMember(executor, { workspaceId, actorUserId: g.actorUserId, userId: i.userId, role: i.role, lsDomains });
     if (!result.ok) return fromResult(result);
     revalidatePath(`/dashboard/${workspaceId}/agent-factory`);
-    const r: TeamApplyResult = result.value;
-    const msg = `Nel team del cliente: entrerà anche nei casi nuovi. Aggiunta in ${cases(r.done.length)}${r.unchanged.length ? `, c'era già in ${cases(r.unchanged.length)}` : ""}.${skippedText(r.skipped, " Si cambia dal team del dossier.")}`;
-    return fromResult({ ok: true, value: { userId: result.value.userId } }, undefined, msg);
+    return fromResult({ ok: true, value: { userId: result.value.userId } }, undefined, lsAddedText(result.value));
   } catch (error) {
     ucLogError({ area: "uc", op: "chi_costruisce_aggiungi", workspaceId }, error);
-    return ucFailure("non_riuscito", "Non sono riuscito ad aggiungerla. Riprova tra poco.");
+    return ucFailure("non_riuscito", "Non è stato possibile aggiungere la persona: riprova tra poco.");
   }
 }
 
@@ -106,11 +104,9 @@ export async function removeBuilderAction(workspaceId: string, userId: string): 
     const result = await removeWorkspaceTeamMember(executor, { workspaceId, actorUserId: g.actorUserId, userId, lsDomains });
     if (!result.ok) return fromResult(result);
     revalidatePath(`/dashboard/${workspaceId}/agent-factory`);
-    const r = result.value;
-    const tasks = r.released ? ` I compiti che aveva lì tornano da prendere (${r.released}).` : "";
-    return fromResult({ ok: true, value: { cases: r.done.length } }, undefined, `Tolta dal team del cliente: esce da ${cases(r.done.length)} e non entra nei casi nuovi.${tasks}${skippedText(r.skipped, " Si cambia dal team del dossier.")}`);
+    return fromResult({ ok: true, value: { cases: result.value.done.length } }, undefined, lsRemovedText(result.value));
   } catch (error) {
     ucLogError({ area: "uc", op: "chi_costruisce_togli", workspaceId }, error);
-    return ucFailure("non_riuscito", "Non sono riuscito a toglierla. Riprova tra poco.");
+    return ucFailure("non_riuscito", "Non è stato possibile togliere la persona: riprova tra poco.");
   }
 }

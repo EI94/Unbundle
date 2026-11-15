@@ -1,6 +1,7 @@
 /**
  * I testi di «Chi costruisce» (rilascio 8.0c, docs/rilascio-8/RILASCIO-8.0c-ESTERNI.md §11): i messaggi dopo «Aggiungi» e
- * «Togli», la riga di ogni persona e la conferma di «Togli». Nella dashboard «casi»; mai un nome nei messaggi.
+ * «Togli», la riga di ogni persona e la conferma di «Togli». Nella dashboard «casi»; mai un nome nei messaggi, e niente
+ * aggettivi o participi che dicono il genere della persona («esce da», non «è uscita da»).
  *
  * Modulo puro: import di soli tipi.
  */
@@ -31,7 +32,7 @@ export const SKIP_REASON: Readonly<Record<string, string>> = {
   attore_non_ammesso: "lì non sei responsabile",
   ultimo_ls_lead: "è l'unico responsabile",
   caso_chiuso: "il caso è chiuso",
-  non_collaboratore: "non è collaboratore del workspace",
+  non_collaboratore: "non fa parte del workspace",
   conflitto_ruoli: "ha già un ruolo del cliente",
   ruolo_cliente: "lì firma o approva per il cliente",
   concessione_tolta: "non costruisce più",
@@ -51,6 +52,22 @@ export function reposText(repos: readonly string[]): string {
   return repos.length > 5 ? `${shown} e altri ${repos.length - 5}` : shown;
 }
 
+/** Sotto «Ruolo», per chi viene da fuori: che cosa fa «Sviluppatore esterno» e che cosa no. */
+export const EXTERNAL_ROLE_HINT =
+  "Costruisce come il team di Lateral Space: imposta il progetto, prende i compiti, apre le pull request, manda evals e banco. Non approva il progetto, non firma per il cliente e nel dossier legge come il cliente.";
+
+/** Il messaggio dopo «Aggiungi» di una persona di Lateral Space: il team del cliente, in tutti i casi aperti. */
+export function lsAddedText(r: { done: readonly string[]; unchanged: readonly string[]; skipped: readonly { code: string; reason: string }[] }): string {
+  const already = r.unchanged.length ? `, c'era già in ${casesText(r.unchanged.length)}` : "";
+  return `Nel team del cliente: entrerà anche nei casi nuovi. Entra in ${casesText(r.done.length)}${already}.${skippedText(r.skipped, " Si cambia dal team del dossier.")}`;
+}
+
+/** Il messaggio dopo «Togli» di una persona di Lateral Space. */
+export function lsRemovedText(r: { done: readonly string[]; skipped: readonly { code: string; reason: string }[]; released: number }): string {
+  const tasks = r.released ? ` I compiti che aveva lì tornano da prendere (${r.released}).` : "";
+  return `Fuori dal team del cliente: esce da ${casesText(r.done.length)} e non entra nei casi nuovi.${tasks}${skippedText(r.skipped, " Si cambia dal team del dossier.")}`;
+}
+
 /**
  * Il messaggio dopo «Aggiungi» di chi costruisce da fuori. «Nessun caso aperto ancora» solo quando non ci sono casi
  * aperti da prendere: se ci sono e sono stati tutti saltati, lo dice e dice perché.
@@ -67,7 +84,7 @@ export function externalAddedText(r: ExternalAddedFacts): string {
         : r.where.all
           ? "Nessun caso aperto ancora: entrerà in ognuno appena lo avvii."
           : "Nessuno dei casi scelti è aperto ancora: entrerà in ognuno appena lo avvii.";
-  const left = r.left.length ? ` È uscita da ${casesText(r.left.length)}${r.released ? ": i compiti che aveva lì tornano da prendere" : ""}.` : "";
+  const left = r.left.length ? ` Esce da ${casesText(r.left.length)}${r.released ? ": i compiti che aveva lì tornano da prendere" : ""}.` : "";
   const github = r.repos.length ? ` Su GitHub dagli la scrittura su ${reposText(r.repos)}.` : " I repository dei casi non ci sono ancora: quando li crei, dagli la scrittura.";
   return `${where}${left}${github}${skippedText(r.skipped)}`;
 }
@@ -76,7 +93,7 @@ export function externalAddedText(r: ExternalAddedFacts): string {
 export function externalRemovedText(r: ExternalRemovedFacts): string {
   const github = r.repos.length ? `GitHub (${reposText(r.repos)}) e la sua chiave dell'AI Gateway` : "la sua chiave dell'AI Gateway";
   const stays = r.skipped.length ? ` In ${r.skipped.slice(0, 5).map((s) => s.code).join(", ")} resta nel dossier da osservatore, senza poteri: lì non sei responsabile.` : "";
-  const left = r.left.length ? `: è uscita da ${casesText(r.left.length)}` : "";
+  const left = r.left.length ? `: esce da ${casesText(r.left.length)}` : "";
   return `Non costruisce più${left}. Ricorda ${github}.${stays}`;
 }
 

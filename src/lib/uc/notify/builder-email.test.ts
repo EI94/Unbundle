@@ -103,7 +103,7 @@ test("U4: «Costruisci i casi d'uso di…» aspetta l'ok al massimo 14 giorni e 
   if (sent.action !== "send") return;
   const email = renderEmail(sent.build(null));
   assert.equal(email.subject, "Costruisci i casi d'uso di Nardi di prova con l'Agent Factory");
-  assert.match(email.text, /Lateral Space ti ha aggiunto a chi costruisce i casi d'uso di Nardi di prova: tutti, anche quelli che si apriranno\. Un caso d'uso è un lavoro che un agente AI fa insieme alle persone\./);
+  assert.match(email.text, /Da oggi costruisci con Lateral Space i casi d'uso di Nardi di prova: tutti, anche quelli che si apriranno\. Un caso d'uso è un lavoro che un agente AI fa insieme alle persone\./);
   assert.match(email.text, /Per cominciare: apri l'Agent Factory, collega Claude Code con «unbundle login» e prendi un compito\./);
   assert.match(email.text, /Il progetto di ogni caso lo approva il suo responsabile; l'accesso ai repository su GitHub te lo dà Lateral Space\./);
   assert.ok(email.text.includes(`Apri l'Agent Factory: https://app.unbundle.test/dashboard/${WS}/agent-factory`));

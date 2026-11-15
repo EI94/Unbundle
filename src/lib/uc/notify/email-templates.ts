@@ -483,7 +483,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
       const which = input.cases === null ? "tutti, anche quelli che si apriranno" : input.cases === 1 ? "1 caso d'uso" : `${input.cases} casi d'uso`;
       return render(subjectOf(`Costruisci i casi d'uso di ${client} con l'Agent Factory`), [
         { p: "Buongiorno," },
-        { p: `Lateral Space ti ha aggiunto a chi costruisce i casi d'uso di ${client}: ${which}. Un caso d'uso è un lavoro che un agente AI fa insieme alle persone.` },
+        { p: `Da oggi costruisci con Lateral Space i casi d'uso di ${client}: ${which}. Un caso d'uso è un lavoro che un agente AI fa insieme alle persone.` },
         { p: "Per cominciare: apri l'Agent Factory, collega Claude Code con «unbundle login» e prendi un compito." },
         { p: "Il progetto di ogni caso lo approva il suo responsabile; l'accesso ai repository su GitHub te lo dà Lateral Space." },
         { link: { href: link, label: "Apri l'Agent Factory" } },

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { ChoiceSelect } from "@/components/uc/people/choice-select";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import { addBuilderAction, removeBuilderAction } from "@/lib/actions/use-case-workspace-team";
+import { EXTERNAL_ROLE_HINT } from "@/lib/use-cases/factory/builders-text";
 
 const LS_ROLES = [
   { value: "ls_sviluppatore", label: "Sviluppatore" },
@@ -91,10 +92,7 @@ export function AddBuilder({ workspaceId, candidates, choices }: { workspaceId: 
 
       {external ? (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            Costruisce come uno sviluppatore di Lateral Space: imposta il progetto, prende i compiti, apre le pull request, manda evals e banco. Non approva il progetto, non firma per il
-            cliente e nel dossier legge come il cliente.
-          </p>
+          <p className="text-xs text-muted-foreground">{EXTERNAL_ROLE_HINT}</p>
           <fieldset className="space-y-1.5">
             <legend className="text-xs font-medium">Dove</legend>
             <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-8">

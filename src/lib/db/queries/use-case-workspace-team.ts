@@ -304,7 +304,7 @@ function externalRefusal(p: PersonFacts | undefined): ExternalRefusal | null {
 }
 
 const EXTERNAL_REFUSAL_MESSAGE: Readonly<Record<ExternalRefusal, string>> = {
-  non_collaboratore: "Questa persona non è un collaboratore del workspace: invitala prima nel workspace, da Impostazioni › Persone, come Analista.",
+  non_collaboratore: "Questa persona non fa parte del workspace: invitala prima, da Impostazioni › Persone, come Analista.",
   email_non_verificata: "Prima deve confermare la sua e-mail in Unbundle.",
   di_lateral_space: "È una persona di Lateral Space: scegli Sviluppatore, Analista o Responsabile.",
   ruolo_workspace: "Per costruire serve almeno il ruolo di Analista nel workspace: cambialo da Impostazioni › Persone.",
@@ -359,7 +359,7 @@ export interface ExternalApplyResult {
   entered: string[];
   /** I casi dove c'era già. */
   already: string[];
-  /** I casi da cui è uscita (il «Dove» è cambiato). */
+  /** I casi da cui esce (il «Dove» è cambiato). */
   left: string[];
   /** I casi saltati: codice e motivo (`ruolo_cliente`, `attore_non_ammesso`, …). */
   skipped: { code: string; reason: string }[];
@@ -478,9 +478,9 @@ async function leaveCase(executor: UcExecutor, i: { workspaceId: string; caseId:
 }
 
 export interface ExternalRemoveResult {
-  /** I casi da cui è uscita. */
+  /** I casi da cui esce. */
   left: string[];
-  /** I casi dove resta osservatrice, senza poteri: chi agisce lì non è responsabile. */
+  /** I casi dove la sua riga `osservatore` resta, senza poteri: chi agisce lì non è responsabile. */
   skipped: { code: string; reason: string }[];
   /** I repository dei suoi casi: su GitHub l'accesso si toglie a mano. */
   repos: string[];
