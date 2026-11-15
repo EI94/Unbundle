@@ -262,3 +262,14 @@ export async function externalGrantWorkspaceIds(executor: UcExecutor, userId: st
   const [rows] = await executor.batch([toStatement(ucSql`SELECT DISTINCT workspace_id FROM use_case_external_builders WHERE user_id = ${cast(userId, "uuid")}`)]);
   return new Set(rows.map((r) => String(r.workspace_id).toLowerCase()));
 }
+
+/** Chi ha una concessione che copre il caso (per «Osservatore · costruisce» nel team del dossier). Vuoto senza la 0037. */
+export async function caseGrantUserIds(executor: UcExecutor, caseId: string): Promise<string[]> {
+  if (!UUID_RE.test(caseId) || !(await externalBuildersReady(executor))) return [];
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT DISTINCT g.user_id FROM uc_cases c JOIN use_case_external_builders g ON g.workspace_id = c.workspace_id
+  AND (g.use_case_id IS NULL OR g.use_case_id = c.portfolio_use_case_id)
+WHERE c.id = ${cast(caseId, "uuid")}`),
+  ]);
+  return rows.map((r) => String(r.user_id).toLowerCase());
+}

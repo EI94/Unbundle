@@ -267,3 +267,11 @@ test("D1: la voce nella barra, «Da fare per te», la campanella, l'e-mail in co
   // Senza domini configurati, nemmeno la voce.
   assert.equal(await line.factoryNavVisible(exec, { workspaceId: ids.ws, userId: ids.e, lsManager: false, lsDomains: [] }), false);
 });
+
+test("il team del dossier sa chi ha una concessione che copre il caso («Osservatore · costruisce»)", opts, async () => {
+  const covered = await builders.caseGrantUserIds(exec, ids.caseA);
+  for (const person of ["e", "c", "learner", "unverified", "lsdomain", "norow", "client", "orgcontrib"] as const) assert.ok(covered.includes(ids[person]), person);
+  assert.ok(!covered.includes(ids.e2), "la concessione di E2 è per il caso B");
+  assert.ok((await builders.caseGrantUserIds(exec, ids.caseB)).includes(ids.e2));
+  assert.deepEqual(await builders.caseGrantUserIds({ batch: async () => [[{ ready: false }]] } as unknown as typeof exec, ids.caseA), [], "senza la 0037");
+});

@@ -7,7 +7,16 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import { addMemberAction, removeMemberAction } from "@/lib/actions/uc-cases";
-import { CASE_ROLE_HINT, CASE_ROLE_LABEL, PERSONAL_ZONE_MEMBER_LABEL, rolesAssignableTo, sideLabel, type MemberView } from "@/lib/uc/views/people";
+import {
+  CASE_ROLE_HINT,
+  CASE_ROLE_LABEL,
+  MEMBER_BUILDS_LABEL,
+  MEMBER_BUILDS_REMOVE_TEXT,
+  PERSONAL_ZONE_MEMBER_LABEL,
+  rolesAssignableTo,
+  sideLabel,
+  type MemberView,
+} from "@/lib/uc/views/people";
 import type { CaseRole } from "@/lib/uc/vocab";
 import { ChoiceSelect } from "./choice-select";
 
@@ -22,7 +31,9 @@ export interface MemberCandidateOption {
  * account, i loro ruoli nel dossier e il lato (Lateral Space o cliente, dal
  * dominio dell'email verificata). Il responsabile Lateral Space aggiunge e
  * toglie ruoli; i ruoli di Lateral Space vanno solo a Lateral Space, quelli del
- * cliente solo al cliente.
+ * cliente solo al cliente. (8.0c) Chi costruisce il caso da fuori Lateral Space
+ * (una concessione di «Chi costruisce» che lo copre) è «Osservatore · costruisce»:
+ * la riga serve, ma da sola non dà poteri; toglierla lo ferma in questo caso.
  */
 export function MembersPanel({
   workspaceId,
@@ -30,12 +41,15 @@ export function MembersPanel({
   members,
   candidates,
   canManage,
+  builderIds = [],
 }: {
   workspaceId: string;
   caseId: string;
   members: readonly MemberView[];
   candidates: readonly MemberCandidateOption[];
   canManage: boolean;
+  /** (8.0c) Chi ha una concessione di «Chi costruisce» che copre il caso. */
+  builderIds?: readonly string[];
 }) {
   const { pending, run } = useUcAction();
   const [userId, setUserId] = useState("");
@@ -45,6 +59,8 @@ export function MembersPanel({
   const held = useMemo(() => new Set(members.find((m) => m.userId === userId)?.roles ?? []), [members, userId]);
   const roleOptions = candidate ? rolesAssignableTo(candidate.isLateralSpace).filter((r) => !held.has(r)) : [];
   const sorted = [...candidates].sort((a, b) => a.name.localeCompare(b.name, "it"));
+  const builds = (member: MemberView, role: CaseRole) => role === "osservatore" && builderIds.includes(member.userId.toLowerCase());
+  const roleText = (member: MemberView, role: CaseRole) => (builds(member, role) ? MEMBER_BUILDS_LABEL : CASE_ROLE_LABEL[role]);
 
   return (
     <div className="space-y-4">
@@ -62,7 +78,7 @@ export function MembersPanel({
               <ul className="mt-2 flex flex-wrap gap-1.5" aria-label={`Ruoli di ${m.name}`}>
                 {m.roles.map((r) => (
                   <li key={r} title={CASE_ROLE_HINT[r]} className="inline-flex min-h-7 items-center gap-1 rounded-full pr-1 pl-2.5 text-xs ring-1 ring-foreground/15">
-                    {CASE_ROLE_LABEL[r]}
+                    {roleText(m, r)}
                     {canManage ? (
                       <button
                         type="button"
@@ -140,7 +156,9 @@ export function MembersPanel({
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Togliere il ruolo «{CASE_ROLE_LABEL[removing.role]}» a {removing.member.name}?</DialogTitle>
-              <DialogDescription>Smette subito di vedere ciò che quel ruolo gli permetteva. Gli altri ruoli restano.</DialogDescription>
+              <DialogDescription>
+                {builds(removing.member, removing.role) ? MEMBER_BUILDS_REMOVE_TEXT : "Smette subito di vedere ciò che quel ruolo gli permetteva. Gli altri ruoli restano."}
+              </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" className="h-11 sm:h-8" onClick={() => setRemoving(null)}>

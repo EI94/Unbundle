@@ -38,6 +38,12 @@ export const CASE_ROLE_HINT: Readonly<Record<CaseRole, string>> = {
   osservatore: "Legge Panoramica, Soluzione e Valore.",
 };
 
+/** (8.0c) La riga «Osservatore» di chi costruisce il caso da fuori Lateral Space (una concessione di «Chi costruisce»). */
+export const MEMBER_BUILDS_LABEL = "Osservatore · costruisce";
+
+/** (8.0c) La conferma quando si toglie quella riga: da lì la persona non costruisce più questo caso. */
+export const MEMBER_BUILDS_REMOVE_TEXT = "Non costruirà più questo caso. Per tutti i casi: Agent Factory › Chi costruisce.";
+
 /** Ruoli che si possono dare a una persona: Lateral Space o cliente, mai mescolati (D36). */
 export function rolesAssignableTo(isLateralSpace: boolean): CaseRole[] {
   return isLateralSpace ? [...LS_CASE_ROLES, "osservatore"] : [...CLIENT_CASE_ROLES, "osservatore"];
