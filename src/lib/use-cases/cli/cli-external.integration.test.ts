@@ -374,6 +374,29 @@ test("D2: il workspace B non esiste per E: le rotte con il token di A rispondono
   await assert.rejects(as("e", () => factoryActions.startProjectAction(ids.wsB, ids.caseB1)), /Workspace non trovato/);
 });
 
+test("D2: la concessione «tutti» di B nel workspace B non lo fa costruire nel workspace A, anche da Analista e osservatore in A", opts, async () => {
+  const builders = await import("../../db/queries/use-case-builders.ts");
+  const { toStatement, ucSql, cast } = await import("../../uc/sql/statement.ts");
+  await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'analyst'::member_role)`, [ids.wsA, ids.b]);
+  await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'osservatore')`, [ids.caseA3, ids.b]);
+  try {
+    const facts = { caseId: ids.caseA3, userId: ids.b, lsDomains: ["ls.test"] };
+    assert.equal(await builders.isExternalBuilderOfCase(exec, facts), false, "il predicato");
+    assert.deepEqual(await builders.externalBuilderGate(exec, facts), { builds: false, blocked: null }, "la porta");
+    const scope = await builders.loadBuilderScope(exec, ["ls.test"]);
+    const [listed] = await exec.batch([toStatement(ucSql`SELECT r.user_id FROM uc_cases c CROSS JOIN LATERAL ${builders.builderMembersSql(scope)} r WHERE c.id = ${cast(ids.caseA3, "uuid")}`)]);
+    assert.ok(!listed.some((r) => r.user_id === ids.b), "gli elenchi");
+    const tokenA = await tokenFor("b", ids.wsA);
+    const ctx = await call("context?caso=NM-0003", { token: tokenA });
+    assert.deepEqual([ctx.status, (ctx.json.dati as Row).ruoli, (ctx.json.dati as Row).scrive], [200, ["osservatore"], false]);
+    const write = await post("decisioni", tokenA, { caso: "NM-0003", argomento: "Prova", decisione: "Non dovrebbe passare" });
+    assert.deepEqual([write.status, codeOf(write)], [403, "permesso_negato"]);
+  } finally {
+    await q(`DELETE FROM uc_case_members WHERE case_id = $1 AND user_id = $2`, [ids.caseA3, ids.b]);
+    await q(`DELETE FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2`, [ids.wsA, ids.b]);
+  }
+});
+
 test("D3: fuori dal «Dove» E (Analista) non trova il caso (404); E2 (gestisce il workspace) legge ma non scrive (403); nel suo caso costruisce", opts, async () => {
   for (const code of ["NM-0001", "NM-0003"]) {
     assert.deepEqual(await call(`context?caso=${code}`, { token: tokens.e3 }).then((r) => [r.status, codeOf(r)]), [404, "non_trovato"], code);
