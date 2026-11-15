@@ -1,6 +1,8 @@
 import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+import type { Client as PgClient } from "pg";
 
 // «Chi costruisce» con chi viene da fuori Lateral Space (rilascio 8.0c, RILASCIO-8.0c-ESTERNI.md §4 e §9) sul database
 // del pacchetto: le aggiunte rifiutate (D10); «Aggiungi» con il «Dove» (i dossier aperti dove chi agisce è responsabile,
@@ -30,9 +32,10 @@ const SUFFIX = suffix.toUpperCase();
 /**
  * - lead: Lateral Space, manager del workspace, responsabile di D1, D2, D4; other: Lateral Space, responsabile di D3;
  * - e: esterno, Analista; e2: esterno, Responsabile della trasformazione, AI Board in D2;
- * - unverified, lsperson, contributor, learner, stranger: le aggiunte rifiutate (D10).
+ * - unverified, lsperson, contributor, learner, stranger: le aggiunte rifiutate (D10);
+ * - racer: esterno, Analista, per le corse tra «Avvia la realizzazione» e «Togli».
  */
-const people = ["lead", "other", "e", "e2", "unverified", "lsperson", "contributor", "learner", "stranger", "fresh"] as const;
+const people = ["lead", "other", "e", "e2", "unverified", "lsperson", "contributor", "learner", "stranger", "fresh", "racer"] as const;
 type Person = (typeof people)[number];
 const ids = {
   org: randomUUID(),
@@ -51,6 +54,7 @@ const EMAIL: Record<Person, string> = {
   learner: `corsista-${suffix}@gmail.test`,
   stranger: `estraneo-${suffix}@gmail.test`,
   fresh: `nuova-${suffix}@gmail.test`,
+  racer: `corsa-${suffix}@gmail.test`,
 };
 const ROLE: Record<Person, string | null> = {
   lead: "transformation_lead",
@@ -63,6 +67,7 @@ const ROLE: Record<Person, string | null> = {
   learner: "learner",
   stranger: null,
   fresh: "analyst",
+  racer: "analyst",
 };
 /** Use case U1..U5 (U5 senza dossier); dossier D1, D2, D4 (chiuso) del responsabile, D3 dell'altro. */
 const uc = { u1: randomUUID(), u2: randomUUID(), u3: randomUUID(), u4: randomUUID(), u5: randomUUID() };
@@ -92,6 +97,29 @@ async function heldTask(useCaseId: string, person: Person, ref: string, status: 
     status,
     ids[person],
   ]);
+}
+
+/** Una connessione sua al database di prova, per tenere il lock di una persona come lo terrebbe un'altra richiesta. */
+async function lockHolder(): Promise<PgClient> {
+  const pg = createRequire(import.meta.url)("pg") as { Client: new (config: { connectionString: string }) => PgClient };
+  const client = new pg.Client({ connectionString: url! });
+  await client.connect();
+  return client;
+}
+
+/** La chiave del lock di una persona in «Chi costruisce» (`grantLockSql` di use-case-builders.ts). */
+const PERSON_LOCK = `hashtext('unbundle:external-builders:' || $1 || ':' || $2)`;
+
+/** Vero quando una transazione di questo database aspetta un advisory lock (al massimo 3 secondi). */
+async function someoneWaits(client: PgClient): Promise<boolean> {
+  for (let i = 0; i < 150; i++) {
+    const { rows } = await client.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`,
+    );
+    if (rows[0].n > 0) return true;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return false;
 }
 
 before(async () => {
@@ -293,6 +321,56 @@ test("D9: «Togli»: prima i poteri (concessioni, token, compiti), poi esce dai 
   assert.ok(partial.ok && partial.value.skipped.some((s) => s.code === CODE.u3 && s.reason === "attore_non_ammesso"));
   assert.equal(await builders.isExternalBuilderOfCase(exec, { caseId: dossier.d3, userId: ids.e, lsDomains: LS }), false, "senza concessione non costruisce");
   await q(`DELETE FROM uc_case_members WHERE case_id = $1 AND user_id = $2`, [dossier.d3, ids.e]);
+});
+
+test("«Avvia la realizzazione» che ha letto le concessioni prima di «Togli»: la riga osservatore aspetta il lock della persona ed entra solo se la concessione c'è ancora", opts, async () => {
+  const added = await add("racer", "tutti");
+  assert.ok(added.ok, added.ok ? "" : added.message);
+  const useCaseId = randomUUID();
+  const caseId = randomUUID();
+  await q(`INSERT INTO use_cases (id, workspace_id, title, code) VALUES ($1, $2, 'Caso della corsa', 'NX-0007')`, [useCaseId, ids.ws]);
+  await openDossier(caseId, useCaseId, "lead");
+  const holder = await lockHolder();
+  try {
+    // Un'altra richiesta tiene il lock della persona (come la transazione di «Togli»).
+    await holder.query(`SELECT pg_advisory_lock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
+    const applying = team.applyExternalBuildersToCase(exec, { workspaceId: ids.ws, caseId, actorUserId: ids.lead, lsDomains: LS });
+    assert.equal(await someoneWaits(holder), true, "la riga aspetta il lock della persona");
+    // «Togli» toglie la concessione e lascia il lock: la riga non entra.
+    await holder.query(`DELETE FROM use_case_external_builders WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.racer]);
+    await holder.query(`SELECT pg_advisory_unlock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
+    const applied = await applying;
+    assert.deepEqual(applied.skipped, [{ code: ids.racer, reason: "concessione_tolta" }]);
+    assert.deepEqual(await rolesOf(caseId, "racer"), [], "chi è stato tolto non rientra dal dossier nuovo");
+  } finally {
+    await holder.end();
+  }
+});
+
+test("«Togli» legge i casi dopo il lock della persona: esce anche dal dossier dove la riga è entrata un attimo prima", opts, async () => {
+  const added = await add("racer", "tutti");
+  assert.ok(added.ok, added.ok ? "" : added.message);
+  const useCaseId = randomUUID();
+  const caseId = randomUUID();
+  await q(`INSERT INTO use_cases (id, workspace_id, title, code) VALUES ($1, $2, 'Caso della corsa due', 'NX-0008')`, [useCaseId, ids.ws]);
+  const holder = await lockHolder();
+  try {
+    await holder.query(`SELECT pg_advisory_lock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
+    const removing = team.removeExternalBuilder(exec, { workspaceId: ids.ws, actorUserId: ids.lead, userId: ids.racer, lsDomains: LS });
+    assert.equal(await someoneWaits(holder), true, "«Togli» aspetta il lock della persona");
+    // Intanto «Avvia la realizzazione» apre un dossier e la persona ci entra, prima che «Togli» prenda il lock.
+    await openDossier(caseId, useCaseId, "lead");
+    await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'osservatore')`, [caseId, ids.racer]);
+    await holder.query(`SELECT pg_advisory_unlock(${PERSON_LOCK})`, [ids.ws, ids.racer]);
+    const removed = await removing;
+    assert.ok(removed.ok, removed.ok ? "" : removed.message);
+    if (!removed.ok) return;
+    assert.ok(removed.value.left.includes("NX-0008"), JSON.stringify(removed.value));
+    assert.deepEqual(await rolesOf(caseId, "racer"), [], "esce anche dal dossier nuovo");
+    assert.deepEqual(await grantsOf("racer"), []);
+  } finally {
+    await holder.end();
+  }
 });
 
 test("l'uscita dal workspace: concessioni cancellate, compiti liberati, token revocati; «Togli» di Lateral Space libera i compiti", opts, async () => {

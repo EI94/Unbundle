@@ -41,10 +41,12 @@ import {
   externalBuilderSql,
   externalBuildersReady,
   grantedOpenCasesSql,
+  grantGuardStatements,
   listExternalGrants,
   loadBuilderScope,
   lsStoredBuilderSql,
   readExternalGrant,
+  removeGrantsStatements,
   workspaceUseCaseIds,
   writeGrantStatements,
   type BuilderWhere,
@@ -431,7 +433,10 @@ export async function addExternalBuilder(
   return ok(out);
 }
 
-/** La riga `osservatore` nel caso, con i comandi del dossier; mai dove la persona ha un ruolo del cliente. */
+/**
+ * La riga `osservatore` nel caso, con i comandi del dossier; mai dove la persona ha un ruolo del cliente. La riga entra in
+ * fila con «Togli» (lo stesso lock della persona) e solo se una concessione copre ancora il caso (`concessione_tolta`).
+ */
 async function observeCase(
   executor: UcExecutor,
   i: { workspaceId: string; caseId: string; actorUserId: string; userId: string; lsDomains: readonly string[] },
@@ -443,7 +448,7 @@ async function observeCase(
   if (roles.stored.includes("osservatore")) return "gia_dentro";
   const ctx = await contextFor(executor, i);
   if (!ctx) return "utente_non_trovato";
-  const added = await addCaseMember(executor, ctx, { userId: i.userId, role: "osservatore" });
+  const added = await addCaseMember(executor, ctx, { userId: i.userId, role: "osservatore" }, { guard: grantGuardStatements(i.workspaceId, i.userId, i.caseId) });
   if (added.ok) return "aggiunto";
   return added.code === "gia_membro" ? "gia_dentro" : added.code;
 }
@@ -492,11 +497,14 @@ export async function removeExternalBuilder(
   if (!(await externalBuildersReady(executor))) return fail("non_disponibile", "Non ancora disponibile: riprova tra qualche minuto.");
   const grant = await readExternalGrant(executor, i.workspaceId, userId);
   if (!grant) return fail("non_trovato", "Questa persona non è tra chi costruisce.");
-  const cases = await grantedOpenCases(executor, i.workspaceId, userId);
   const repos = await reposOf(executor, i.workspaceId, grant);
   const revoke = revokeCliTokensStatement(i.workspaceId, userId);
-  const first = [...deleteGrantsStatements(i.workspaceId, userId), revoke];
+  // I casi si leggono dopo il lock della persona, nella transazione che toglie le concessioni: c'è anche il dossier dove
+  // la riga `osservatore` è entrata un attimo prima, e dopo non ne entra più nessuna (`observeCase`).
+  const removal = removeGrantsStatements(i.workspaceId, userId);
+  const first = [...removal.statements, revoke];
   const released = await releaseTasksOfFormerBuilder(executor, { workspaceId: i.workspaceId, userId, lsDomains: i.lsDomains, first });
+  const cases = (released.firstRows[removal.casesAt] ?? []).map((r) => ({ id: String(r.id), code: String(r.code) }));
   const out: ExternalRemoveResult = { left: [], skipped: [], repos, released: released.released, revokedTokens: released.firstRows[first.length - 1]?.length ?? 0, noticeId: null };
   for (const c of cases) {
     const left = await leaveCase(executor, { workspaceId: i.workspaceId, caseId: c.id, actorUserId: i.actorUserId, userId, lsDomains: i.lsDomains });

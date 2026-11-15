@@ -734,8 +734,16 @@ function collaboratorSql(workspaceId: string, userId: string): UcStatement {
  * ruolo del cliente a chi costruisce il caso da fuori (una concessione che lo
  * copre: solo con la 0037): `conflitto_ruoli`. Chi lì ha già un ruolo del
  * cliente («Aggiungi» ha saltato il caso) resta del cliente e ne può avere altri.
+ * `opts.guard`: istruzioni nella stessa transazione, prima della riga (8.0c: il
+ * lock della persona e la concessione di chi costruisce da fuori); se una si
+ * ferma, niente riga e niente evento.
  */
-export async function addCaseMember(executor: UcExecutor, ctx: UcCommandContext, input: unknown): Promise<Result<{ userId: string; role: CaseRole }>> {
+export async function addCaseMember(
+  executor: UcExecutor,
+  ctx: UcCommandContext,
+  input: unknown,
+  opts: { guard?: readonly UcStatement[] } = {},
+): Promise<Result<{ userId: string; role: CaseRole }>> {
   if (!can(actorRoles(ctx), "gestire_membri")) return fail("attore_non_ammesso", "Solo il Responsabile del caso gestisce i membri.");
   const parsed = MemberSchema.safeParse(input);
   if (!parsed.success) return fail("dati_non_validi", "Scegli la persona e il ruolo.");
@@ -756,6 +764,7 @@ export async function addCaseMember(executor: UcExecutor, ctx: UcCommandContext,
     executor,
     [
       caseOpenSql(ctx.workspaceId, ctx.caseId),
+      ...(opts.guard ?? []),
       toStatement(
         requireRows(
           ucSql`INSERT INTO uc_case_members (case_id, user_id, role, added_by_user_id)

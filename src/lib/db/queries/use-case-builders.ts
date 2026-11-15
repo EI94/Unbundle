@@ -19,7 +19,7 @@
  * notifiche dei compiti e il cron. I domini di Lateral Space li passa chi chiama.
  */
 import { EXTERNAL_BUILDERS_PROBE_SQL } from "../use-case-hub-builders-ddl.ts";
-import { cast, raw, ref, toStatement, ucSql, type SqlFragment } from "../../uc/sql/statement.ts";
+import { cast, raw, ref, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
 import { EXTERNAL_BUILDER_ROLE, FACTORY_BUILDER_ROLES, type FactoryRole } from "../../use-cases/factory/builders.ts";
 import { CLIENT_CASE_ROLES } from "../../uc/vocab.ts";
 import { PORTFOLIO_REVIEWER_ROLES } from "../../workspace-permissions.ts";
@@ -168,9 +168,14 @@ export async function readExternalGrant(executor: UcExecutor, workspaceId: strin
   return (await listExternalGrants(executor, workspaceId)).get(userId.toLowerCase()) ?? null;
 }
 
-/** In fila per persona e workspace: due «Aggiungi» insieme non mescolano due «Dove». */
+/**
+ * In fila per persona e workspace: due «Aggiungi» insieme non mescolano due «Dove», e la riga `osservatore` di un dossier
+ * nuovo non entra mentre «Togli» toglie le concessioni (`grantGuardStatements`).
+ */
 function grantLockSql(workspaceId: string, userId: string) {
-  return toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:external-builders:' || ${cast(workspaceId, "text")} || ':' || ${cast(userId, "text")}))`);
+  return toStatement(
+    ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:external-builders:' || ${cast(workspaceId.toLowerCase(), "text")} || ':' || ${cast(userId.toLowerCase(), "text")}))`,
+  );
 }
 
 /**
@@ -198,11 +203,34 @@ ON CONFLICT DO NOTHING`),
   ];
 }
 
+const deleteGrantsSql = (workspaceId: string, userId: string) =>
+  toStatement(ucSql`DELETE FROM use_case_external_builders WHERE workspace_id = ${cast(workspaceId, "uuid")} AND user_id = ${cast(userId, "uuid")}`);
+
 /** Toglie tutte le concessioni della persona nel workspace (in fila con le altre scritture della persona). */
 export function deleteGrantsStatements(workspaceId: string, userId: string) {
+  return [grantLockSql(workspaceId, userId), deleteGrantsSql(workspaceId, userId)];
+}
+
+/**
+ * «Togli», in fila con le altre scritture della persona: i dossier aperti che le concessioni coprono, letti dopo il lock
+ * (così c'è anche quello dove una riga `osservatore` è entrata un attimo prima), poi le concessioni tolte. Le righe del
+ * primo risultato hanno `id`, `code`, `use_case_id`.
+ */
+export function removeGrantsStatements(workspaceId: string, userId: string): { statements: UcStatement[]; casesAt: number } {
+  return { statements: [grantLockSql(workspaceId, userId), grantedOpenCasesSql(workspaceId, userId), deleteGrantsSql(workspaceId, userId)], casesAt: 1 };
+}
+
+/**
+ * Prima della riga `osservatore` di chi costruisce da fuori, nella stessa transazione: in fila con «Togli» (lo stesso
+ * lock della persona) e solo se una concessione copre ancora il caso, altrimenti niente riga (`concessione_tolta`).
+ * Così un «Avvia la realizzazione» che ha letto le concessioni prima di «Togli» non rimette dentro chi è stato tolto.
+ */
+export function grantGuardStatements(workspaceId: string, userId: string, caseId: string): UcStatement[] {
   return [
     grantLockSql(workspaceId, userId),
-    toStatement(ucSql`DELETE FROM use_case_external_builders WHERE workspace_id = ${cast(workspaceId, "uuid")} AND user_id = ${cast(userId, "uuid")}`),
+    toStatement(
+      ucSql`SELECT uc_require(EXISTS (SELECT 1 FROM uc_cases c WHERE c.id = ${cast(caseId, "uuid")} AND ${grantCoversCaseSql(cast(userId, "uuid"))}), 'concessione_tolta') AS ok`,
+    ),
   ];
 }
 

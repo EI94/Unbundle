@@ -34,6 +34,7 @@ export const SKIP_REASON: Readonly<Record<string, string>> = {
   non_collaboratore: "non è collaboratore del workspace",
   conflitto_ruoli: "ha già un ruolo del cliente",
   ruolo_cliente: "lì firma o approva per il cliente",
+  concessione_tolta: "non costruisce più",
 };
 
 /** I casi saltati, ognuno con il suo motivo (al massimo 5 per nome). */
