@@ -62,8 +62,8 @@ export const CLAUDE_TASKS = {
   classifyActivity: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
   /**
    * Il match O*NET delle attività di un reparto. L'uscita cresce con le attività; 16000 token bastano per un reparto.
-   * Il limite dei token non limita il tempo: dalla chat il match ha un abortSignal fino alla scadenza della richiesta
-   * (chatDeadline, qui sotto), e oltre si interrompe e il tool risponde «Match O*NET non riuscito».
+   * Il limite dei token non limita il tempo: dalla chat il match ha un abortSignal fino alla scadenza dei tool della
+   * richiesta (chatToolsDeadline, qui sotto), e oltre si interrompe e il tool risponde «Match O*NET non riuscito».
    */
   onetMatch: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
   /** La value map: una posizione per ogni attività classificata. */
@@ -125,31 +125,45 @@ export function claudeCallSettings(task: ClaudeTask) {
 export const MOTIVAZIONE_DESCRIPTION = "Breve motivazione per l'utente, una o due frasi.";
 
 /**
- * Il tempo massimo della ricerca web della chat, che non va comunque oltre la scadenza della richiesta (chatDeadline):
- * oltre si interrompe e il tool risponde come quando la ricerca non è disponibile, invece di far scadere tutto il turno.
+ * Il tempo massimo della ricerca web della chat, che non va comunque oltre la scadenza dei tool della richiesta
+ * (chatToolsDeadline): oltre si interrompe e il tool risponde come quando la ricerca non è disponibile, invece di far
+ * scadere tutto il turno.
  */
 export const WEB_SEARCH_TIMEOUT_MS = 45_000;
 
 /**
- * Il tempo che una richiesta della chat lascia al passo del modello in corso alla scadenza. La rotta ha `maxDuration`
- * 120 secondi (src/app/api/ai/chat/route.ts): oltre, la funzione si interrompe a metà e la risposta non si salva. Una
- * scadenza unica per richiesta, chatDeadline, vale quindi per tutto il turno: i tool che chiamano il modello (la ricerca
- * web; in «Completo mapping» la classificazione e il match O*NET) interrompono lì le loro chiamate, tengono quello che è
- * riuscito e rispondono come quando non riescono; e da lì nessun nuovo passo del modello comincia (stopAtDeadline). Il
- * passo in corso ha questa riserva per finire, e il turno si chiude con quello che c'è: un tool arrivato alla scadenza
- * chiude il turno con il suo risultato, senza un'altra risposta del modello.
+ * Il tempo che una richiesta della chat lascia al passo del modello in corso alla scadenza del giro. La rotta ha
+ * `maxDuration` 120 secondi (src/app/api/ai/chat/route.ts): oltre, la funzione si interrompe a metà e la risposta non si
+ * salva. Una richiesta ha quindi due scadenze, contate dal suo inizio:
+ * - quella del giro dei passi (chatDeadline: 95 secondi), da cui nessun nuovo passo del modello comincia
+ *   (stopAtDeadline); il passo in corso ha questa riserva per finire;
+ * - quella dei tool che chiamano il modello (chatToolsDeadline: CHAT_TOOLS_LEAD_MS prima, 75 secondi), cioè la ricerca
+ *   web e, in «Completo mapping», la classificazione e il match O*NET: lì le loro chiamate si interrompono, il tool tiene
+ *   quello che è riuscito e risponde come quando non riesce, e il modello ha ancora un passo per rispondere.
  */
 export const CHAT_ANSWER_RESERVE_MS = 25_000;
+
+/**
+ * Di quanto la scadenza dei tool della chat (chatToolsDeadline) viene prima di quella del giro (chatDeadline): il tempo
+ * in cui, dopo un tool fermato dalla sua scadenza, comincia ancora il passo del modello che risponde. Più del minimo di
+ * una chiamata (MIN_MODEL_CALL_MS): anche una chiamata partita alla scadenza dei tool finisce prima di quella del giro.
+ */
+export const CHAT_TOOLS_LEAD_MS = 20_000;
 
 /** Il tempo minimo di una chiamata al modello dentro la chat, anche con la scadenza vicina o passata. */
 export const MIN_MODEL_CALL_MS = 5_000;
 
-/**
- * La scadenza di una richiesta della chat, per i tool e per il giro dei passi: l'inizio della richiesta più maxDuration,
- * meno la riserva.
- */
+/** La scadenza del giro dei passi di una richiesta della chat: l'inizio della richiesta più maxDuration, meno la riserva. */
 export function chatDeadline(startedAt: number, maxDurationSeconds: number): number {
   return startedAt + maxDurationSeconds * 1000 - CHAT_ANSWER_RESERVE_MS;
+}
+
+/**
+ * La scadenza delle chiamate al modello dentro i tool di una richiesta della chat: quella del giro (chatDeadline) meno
+ * CHAT_TOOLS_LEAD_MS.
+ */
+export function chatToolsDeadline(startedAt: number, maxDurationSeconds: number): number {
+  return chatDeadline(startedAt, maxDurationSeconds) - CHAT_TOOLS_LEAD_MS;
 }
 
 /**
@@ -225,13 +239,13 @@ export function lastStepRefused({ steps }: { steps: ReadonlyArray<{ finishReason
 }
 
 /**
- * La condizione di stop per la scadenza della chat (chatDeadline), accanto al limite dei passi e a lastStepRefused:
- * `stopWhen: [stepCountIs(20), lastStepRefused, stopAtDeadline("chat/route", deadline)]`. L'SDK la controlla dopo ogni
- * passo che chiama tool, quando i tool hanno finito: dalla scadenza in poi il giro si ferma lì e nessun nuovo passo del
- * modello comincia, così il turno resta dentro maxDuration. Lo stream non si interrompe: il turno finisce con il passo
- * dei tool (finishReason «tool-calls»), che si salva e si indicizza come ogni risposta; un passo rifiutato resta un
- * rifiuto. Quando ferma il giro, una riga di log con il solo numero dei passi: `[scope] tempo_scaduto {"passi":N}`.
- * `now`: l'orologio (nei test, uno finto).
+ * La condizione di stop per la scadenza del giro della chat (chatDeadline), accanto al limite dei passi e a
+ * lastStepRefused: `stopWhen: [stepCountIs(20), lastStepRefused, stopAtDeadline("chat/route", loopDeadline)]`. L'SDK la
+ * controlla dopo ogni passo che chiama tool, quando i tool hanno finito: dalla scadenza in poi il giro si ferma lì e
+ * nessun nuovo passo del modello comincia, così il turno resta dentro maxDuration. Lo stream non si interrompe: il turno
+ * finisce con il passo dei tool (finishReason «tool-calls»), che si salva e si indicizza come ogni risposta; un passo
+ * rifiutato resta un rifiuto. Quando ferma il giro, una riga di log con il solo numero dei passi: `[scope] tempo_scaduto
+ * {"passi":N}`. `now`: l'orologio (nei test, uno finto).
  */
 export function stopAtDeadline(scope: string, deadline: number, now: () => number = () => Date.now()) {
   return ({ steps }: { steps: ReadonlyArray<unknown> }): boolean => {

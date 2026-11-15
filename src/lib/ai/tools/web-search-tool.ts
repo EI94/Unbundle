@@ -13,8 +13,8 @@ import {
 import { logSafeError } from "@/lib/log/safe-error";
 
 /**
- * Il tool della ricerca web della chat, costruito per ogni richiesta. `deadline` è la scadenza della richiesta
- * (chatDeadline in src/lib/ai/models.ts): la ricerca dura al più WEB_SEARCH_TIMEOUT_MS, e mai oltre la scadenza.
+ * Il tool della ricerca web della chat, costruito per ogni richiesta. `deadline` è la scadenza dei tool della richiesta
+ * (chatToolsDeadline in src/lib/ai/models.ts): la ricerca dura al più WEB_SEARCH_TIMEOUT_MS, e mai oltre la scadenza.
  */
 export function getWebSearchTool({ deadline }: { deadline: number }) {
   return {
@@ -32,7 +32,7 @@ export function getWebSearchTool({ deadline }: { deadline: number }) {
           .describe("Perché stai cercando questa informazione"),
       }),
       execute: async ({ query, reason }) => {
-        // Il più breve tra 45 secondi e il tempo che resta alla chat: oltre, si prosegue senza ricerca (il catch qui sotto).
+        // Il più breve tra 45 secondi e il tempo che resta ai tool della chat: oltre, si prosegue senza ricerca (il catch qui sotto).
         const timeoutMs = timeUntil(deadline, WEB_SEARCH_TIMEOUT_MS);
         const abortSignal = AbortSignal.timeout(timeoutMs);
         try {

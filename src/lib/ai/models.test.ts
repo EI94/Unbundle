@@ -11,8 +11,10 @@ import {
   ClaudeRefusalError,
   claudeCallSettings,
   CHAT_ANSWER_RESERVE_MS,
+  CHAT_TOOLS_LEAD_MS,
   MIN_MODEL_CALL_MS,
   chatDeadline,
+  chatToolsDeadline,
   claudeStopSummary,
   lastStepRefused,
   logClaudeStop,
@@ -459,11 +461,14 @@ test("stopAtDeadline (orologio finto): dalla scadenza della chat nessun nuovo pa
   assert.deepEqual(lines, ['[chat/route] tempo_scaduto {"passi":3}', '[chat/route] tempo_scaduto {"passi":1}']);
 });
 
-test("la scadenza della chat: inizio più maxDuration meno la riserva per la risposta; ogni chiamata il tempo che resta", () => {
+test("le scadenze della chat: il giro a inizio più maxDuration meno la riserva, i tool 20 secondi prima; ogni chiamata il tempo che resta", () => {
   assert.equal(CHAT_ANSWER_RESERVE_MS, 25_000);
+  assert.equal(CHAT_TOOLS_LEAD_MS, 20_000);
   const start = 1_000_000;
+  assert.equal(chatToolsDeadline(start, 120), start + 75_000, "i tool: 20 secondi prima del giro");
+  assert.ok(MIN_MODEL_CALL_MS < CHAT_TOOLS_LEAD_MS, "una chiamata partita alla scadenza dei tool finisce prima di quella del giro");
   const deadline = chatDeadline(start, 120);
-  assert.equal(deadline, start + 95_000);
+  assert.equal(deadline, start + 95_000, "il giro");
   // Il tempo che resta, al più il tetto (la ricerca web: 45 secondi), almeno qualche secondo.
   assert.equal(timeUntil(deadline, Number.POSITIVE_INFINITY, start), 95_000);
   assert.equal(timeUntil(deadline, WEB_SEARCH_TIMEOUT_MS, start), 45_000);

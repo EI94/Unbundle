@@ -13,8 +13,9 @@ import { logSafeError } from "@/lib/log/safe-error";
 import { updateActivityClassification, updateActivity } from "@/lib/db/queries/activities";
 
 /**
- * I tool dell'activity mapping, costruiti per ogni richiesta della chat. `deadline` è la scadenza della richiesta
- * (chatDeadline in src/lib/ai/models.ts): la classificazione e il match O*NET di «Completo mapping» si fermano lì.
+ * I tool dell'activity mapping, costruiti per ogni richiesta della chat. `deadline` è la scadenza dei tool della
+ * richiesta (chatToolsDeadline in src/lib/ai/models.ts): la classificazione e il match O*NET di «Completo mapping» si
+ * fermano lì.
  */
 export function getActivityMappingTools(
   workspaceId: string,
