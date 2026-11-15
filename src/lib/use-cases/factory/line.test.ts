@@ -2,7 +2,7 @@
 // passo; i conteggi; la coda della fabbrica con i repository indietro con il modello.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { benchFacts, compareVersions, evalsFact, evalsTodoText, factoryQueue, lineCounts, nextStepOf, stationOf, type LineCase } from "./line.ts";
+import { AGENT_FACTORY_TEMPLATE_VERSION, benchFacts, compareVersions, evalsFact, evalsTodoText, factoryQueue, lineCounts, nextStepOf, stationOf, type LineCase } from "./line.ts";
 import { analyzeBench, type BenchResult } from "./benchmark.ts";
 
 const none = { total: 0, open: 0, inProgress: 0, inReview: 0, done: 0, cancelled: 0 };
@@ -49,6 +49,15 @@ test("la coda della fabbrica: i repository indietro con il modello, o senza vers
   );
   assert.deepEqual(queue.map((q) => q.repo), ["Voltaen/rondine-merope", "Voltaen/rondine-rosa"]);
   assert.match(queue[1].text, /Ha il modello 1\.2\.0, c'è il 1\.3\.0: «unbundle aggiorna»/);
+});
+
+test("(8.0c) il modello di oggi è la 1.5.0 (decide da `scrive`): i repository con la 1.4.x vanno in coda per «unbundle aggiorna»", () => {
+  assert.equal(AGENT_FACTORY_TEMPLATE_VERSION, "1.5.0");
+  const queue = factoryQueue([
+    { repo: "Voltaen/topjet-rosa", templateVersion: "1.4.1" },
+    { repo: "Voltaen/nardi-esploso", templateVersion: "1.5.0" },
+  ]);
+  assert.deepEqual(queue, [{ repo: "Voltaen/topjet-rosa", text: "Ha il modello 1.4.1, c'è il 1.5.0: «unbundle aggiorna» apre la pull request." }]);
 });
 
 test("(8.2a) le evals e il banco nella riga del caso: «evals 96%», «sotto soglia», «il banco consiglia …»", () => {

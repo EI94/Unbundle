@@ -21,8 +21,10 @@ import { EVALS_MAIN, formatQuality, modelLabel, type BenchVerdict } from "./benc
  * La versione del repository modello di oggi: si aggiorna qui quando ne esce una (`CHANGELOG.md` del modello). La 1.4.0
  * porta `unbundle eval` e `unbundle banco`: il numero cambia nello stesso rilascio in cui il modello 1.4.0 arriva sul suo
  * main, mai prima (la coda manderebbe ad aggiornare a una versione che «unbundle aggiorna» non porta ancora).
+ * (8.0c) La 1.5.0: la CLI decide se si scrive dal campo `scrive` di `unbundle context` (con chi costruisce da fuori, non
+ * più solo l'elenco dei ruoli di Lateral Space). Il modello 1.5.0 si unisce prima del rilascio 8.0c.
  */
-export const AGENT_FACTORY_TEMPLATE_VERSION = "1.4.0";
+export const AGENT_FACTORY_TEMPLATE_VERSION = "1.5.0";
 
 export const STATIONS = ["dossier", "impostazione", "approvato", "costruzione", "collaudo", "esercizio"] as const;
 export type Station = (typeof STATIONS)[number];
