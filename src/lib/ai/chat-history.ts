@@ -39,25 +39,37 @@ export function chatHistory(rawMessages: Array<Record<string, unknown>>): ChatHi
 }
 
 /**
- * Quante domande chiudono la storia di chatHistory: dopo un turno interrotto (la domanda salvata, nessuna risposta) sono
- * più d'una, e il modello le riceve unite, come un turno solo.
+ * Il testo delle domande che chiudono la storia di chatHistory, dalla più recente: dopo un turno interrotto (la domanda
+ * salvata, nessuna risposta) sono più d'una, e il modello le riceve unite, come un turno solo.
  */
-export function closingQuestions(history: readonly ChatHistoryMessage[]): number {
-  let count = 0;
-  while (count < history.length && history[history.length - 1 - count].role === "user") count += 1;
-  return count;
+export function closingQuestions(history: readonly ChatHistoryMessage[]): string[] {
+  const questions: string[] = [];
+  for (let at = history.length - 1; at >= 0 && history[at].role === "user"; at -= 1) questions.push(history[at].content);
+  return questions;
 }
 
 /**
- * Le domande da togliere dai messaggi salvati quando il modello rifiuta le `count` domande che chiudono la storia
- * (closingQuestions): quella appena salvata, `questionId`, e quelle salvate subito prima, finché non c'è una risposta.
- * Il browser le toglie tutte dalla sua storia (chatRequestMessages in src/components/agent/chat-view.ts); ricaricando la
- * pagina, una rimasta tornerebbe al modello unita alla domanda dopo. `saved`: i messaggi della conversazione, in ordine.
+ * Le domande da togliere dai messaggi salvati quando il modello rifiuta le domande che chiudono la storia (`closing`, da
+ * closingQuestions, dalla più recente): quella appena salvata, `questionId`, e le altre tra quelle salvate prima di lei,
+ * fino alla prima risposta. Il browser le toglie tutte dalla sua storia (chatRequestMessages in
+ * src/components/agent/chat-view.ts); ricaricando la pagina, una rimasta tornerebbe al modello unita alla domanda dopo.
+ *
+ * Non per posizione soltanto: la conversazione è di tutto il workspace e i messaggi non hanno autore, quindi tra due
+ * domande unite può esserci quella di un'altra persona, salvata nel frattempo. Andando all'indietro, una domanda si
+ * toglie solo se il suo testo è quello della prossima domanda da trovare; le altre si saltano. `saved`: i messaggi della
+ * conversazione, in ordine.
  */
-export function refusedQuestionIds(saved: ReadonlyArray<{ id: string; role: string }>, questionId: string, count: number): string[] {
+export function refusedQuestionIds(
+  saved: ReadonlyArray<{ id: string; role: string; content: string }>,
+  questionId: string,
+  closing: readonly string[],
+): string[] {
   const ids = [questionId];
-  for (let at = saved.findIndex((m) => m.id === questionId) - 1; at >= 0 && ids.length < count && saved[at].role === "user"; at -= 1) {
+  let next = 1;
+  for (let at = saved.findIndex((m) => m.id === questionId) - 1; at >= 0 && next < closing.length && saved[at].role === "user"; at -= 1) {
+    if (saved[at].content !== closing[next]) continue;
     ids.push(saved[at].id);
+    next += 1;
   }
   return ids;
 }

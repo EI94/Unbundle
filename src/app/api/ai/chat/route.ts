@@ -270,14 +270,15 @@ export async function POST(req: Request) {
       // non si salva, e il turno (domanda compresa) non entra nella memoria della chat. La domanda
       // esce anche dai messaggi salvati, come dalla storia del browser (chat-view.ts): ricaricando la
       // pagina non tornerebbe al modello unita alla domanda dopo. Con lei escono le domande dei turni
-      // interrotti subito prima, che il modello ha ricevuto unite a lei (chat-history.ts).
+      // interrotti subito prima, che il modello ha ricevuto unite a lei: riconosciute dal testo, perché
+      // tra loro può esserci la domanda di un'altra persona del workspace (chat-history.ts).
       if (finishReason === "content-filter") {
         logClaudeStop("chat/route", "risposta_rifiutata", { finishReason, providerMetadata });
         if (savedQuestion) {
           const question = savedQuestion;
-          const merged = closingQuestions(messages);
+          const closing = closingQuestions(messages);
           try {
-            const refused = merged > 1 ? refusedQuestionIds(await getMessages(conversation.id), question.id, merged) : [question.id];
+            const refused = closing.length > 1 ? refusedQuestionIds(await getMessages(conversation.id), question.id, closing) : [question.id];
             for (const id of refused) await deleteMessage(conversation.id, id);
           } catch (error) {
             logSafeError("chat/route", "domanda_rifiutata_non_tolta", error);

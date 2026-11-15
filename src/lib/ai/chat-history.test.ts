@@ -115,23 +115,63 @@ test("le parti di ragionamento dei turni passati si tolgono intere, mai modifica
 test("le domande che chiudono la storia: il modello le riceve unite; se le rifiuta, si tolgono dai messaggi salvati", () => {
   const user = (content: string) => ({ role: "user" as const, content });
   const assistant = (content: string) => ({ role: "assistant" as const, content });
-  assert.equal(closingQuestions([user("Ciao."), assistant("Di che cosa ti occupi?"), user("Preparo le fatture.")]), 1);
-  // Dopo un turno interrotto (la sua domanda salvata, nessuna risposta): due domande unite.
-  assert.equal(closingQuestions(chatHistory([user("Ciao."), assistant("Di che cosa?"), user("Prima parte."), { role: "assistant", parts: [] }, user("Seconda parte.")])), 2);
-  assert.equal(closingQuestions([]), 0);
+  assert.deepEqual(closingQuestions([user("Ciao."), assistant("Di che cosa ti occupi?"), user("Preparo le fatture.")]), ["Preparo le fatture."]);
+  // Dopo un turno interrotto (la sua domanda salvata, nessuna risposta): due domande unite, dalla più recente.
+  assert.deepEqual(
+    closingQuestions(chatHistory([user("Ciao."), assistant("Di che cosa?"), user("Prima parte."), { role: "assistant", parts: [] }, user("Seconda parte.")])),
+    ["Seconda parte.", "Prima parte."],
+  );
+  assert.deepEqual(closingQuestions([]), []);
 
   // I messaggi salvati, in ordine: la domanda del turno interrotto e quella appena salvata.
   const saved = [
-    { id: "m1", role: "user" },
-    { id: "m2", role: "assistant" },
-    { id: "m3", role: "user" },
-    { id: "m4", role: "user" },
+    { id: "m1", role: "user", content: "Ciao." },
+    { id: "m2", role: "assistant", content: "Di che cosa?" },
+    { id: "m3", role: "user", content: "Prima parte." },
+    { id: "m4", role: "user", content: "Seconda parte." },
   ];
-  assert.deepEqual(refusedQuestionIds(saved, "m4", 2), ["m4", "m3"]);
-  assert.deepEqual(refusedQuestionIds(saved, "m4", 1), ["m4"], "una domanda sola: solo quella appena salvata");
+  const closing = ["Seconda parte.", "Prima parte."];
+  assert.deepEqual(refusedQuestionIds(saved, "m4", closing), ["m4", "m3"]);
+  assert.deepEqual(refusedQuestionIds(saved, "m4", closing.slice(0, 1)), ["m4"], "una domanda sola: solo quella appena salvata");
   // Mai oltre una risposta, né oltre le domande che il modello ha ricevuto.
-  assert.deepEqual(refusedQuestionIds(saved, "m4", 5), ["m4", "m3"]);
-  assert.deepEqual(refusedQuestionIds([{ id: "m0", role: "user" }, ...saved], "m4", 2), ["m4", "m3"]);
+  assert.deepEqual(refusedQuestionIds(saved, "m4", [...closing, "Ciao."]), ["m4", "m3"]);
+  assert.deepEqual(refusedQuestionIds([{ id: "m0", role: "user", content: "Prima parte." }, ...saved], "m4", closing), ["m4", "m3"]);
   // La domanda appena salvata si toglie anche se non è tra i messaggi letti.
-  assert.deepEqual(refusedQuestionIds(saved.slice(0, 3), "m4", 2), ["m4"]);
+  assert.deepEqual(refusedQuestionIds(saved.slice(0, 3), "m4", closing), ["m4"]);
+});
+
+test("le domande rifiutate si riconoscono dal testo: quella di un'altra persona, salvata in mezzo, resta", () => {
+  // La conversazione è di tutto il workspace e i messaggi non hanno autore: mentre il turno di chi chiede è interrotto,
+  // un'altra persona salva la sua domanda.
+  const saved = [
+    { id: "m1", role: "user", content: "Prima parte." },
+    { id: "m2", role: "user", content: "Domanda di un'altra persona." },
+    { id: "m3", role: "user", content: "Seconda parte." },
+  ];
+  assert.deepEqual(refusedQuestionIds(saved, "m3", ["Seconda parte.", "Prima parte."]), ["m3", "m1"]);
+  // Più domande unite: ognuna al suo turno, saltando quelle che non sono tra loro.
+  const three = [
+    { id: "m1", role: "user", content: "Uno." },
+    { id: "m2", role: "user", content: "Altra persona." },
+    { id: "m3", role: "user", content: "Due." },
+    { id: "m4", role: "user", content: "Altra persona, di nuovo." },
+    { id: "m5", role: "user", content: "Tre." },
+  ];
+  assert.deepEqual(refusedQuestionIds(three, "m5", ["Tre.", "Due.", "Uno."]), ["m5", "m3", "m1"]);
+  // Una riga per domanda ricevuta, la più vicina: due righe con lo stesso testo non escono tutte e due.
+  const same = [
+    { id: "m1", role: "user", content: "Sì." },
+    { id: "m2", role: "user", content: "Sì." },
+    { id: "m3", role: "user", content: "Tre." },
+  ];
+  assert.deepEqual(refusedQuestionIds(same, "m3", ["Tre.", "Sì."]), ["m3", "m2"]);
+  // Mai oltre una risposta, anche se più indietro c'è una domanda con lo stesso testo.
+  const answered = [
+    { id: "m1", role: "user", content: "Prima parte." },
+    { id: "m2", role: "assistant", content: "Risposta all'altra persona." },
+    { id: "m3", role: "user", content: "Seconda parte." },
+  ];
+  assert.deepEqual(refusedQuestionIds(answered, "m3", ["Seconda parte.", "Prima parte."]), ["m3"]);
+  // Una domanda che non è tra quelle ricevute dal modello non si toglie mai.
+  assert.deepEqual(refusedQuestionIds(saved, "m3", ["Seconda parte.", "Testo diverso."]), ["m3"]);
 });

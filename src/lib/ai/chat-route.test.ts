@@ -171,6 +171,47 @@ test("un rifiuto dopo un turno interrotto: si tolgono dai messaggi salvati le du
   assert.deepEqual(lines, ['[chat/route] risposta_rifiutata {"finishReason":"content-filter","category":"general_harms"}']);
 });
 
+test("un rifiuto dopo un turno interrotto, con la domanda di un'altra persona salvata in mezzo: quella resta, si tolgono le due unite", async (t) => {
+  const lines = recordLogs(t);
+  reset();
+  // La conversazione attiva è di tutto il workspace e i messaggi non hanno autore. Dopo il turno interrotto di chi
+  // chiede, un'altra persona ha salvato la sua domanda; la sua risposta non è ancora arrivata.
+  prova.saved = [
+    { conversationId: "conv-prova", role: "user", content: "Preparo le fatture dei clienti ogni mese." },
+    { conversationId: "conv-prova", role: "assistant", content: "Per quanti clienti?" },
+    { conversationId: "conv-prova", role: "user", content: "Siamo Rossi SpA, prima parte." },
+    { conversationId: "conv-prova", role: "user", content: "Domanda di un'altra persona del workspace." },
+  ];
+  const requests = fakeAppClaude([REFUSAL()]);
+  const { status } = await chat([
+    ...HISTORY,
+    { role: "assistant", content: "Per quanti clienti?" },
+    { role: "user", content: "Siamo Rossi SpA, prima parte." },
+    { role: "assistant", content: "" },
+    { role: "user", content: "Seconda parte." },
+  ]);
+  assert.equal(status, 200);
+  // Il browser di chi chiede non ha la domanda dell'altra persona: il modello ha ricevuto unite solo le sue due.
+  assert.deepEqual((requests[0].body.messages as Array<{ content: unknown }>).at(-1)?.content, [
+    { type: "text", text: "Siamo Rossi SpA, prima parte." },
+    { type: "text", text: "Seconda parte." },
+  ]);
+  assert.deepEqual(prova.deleted, [
+    ["conv-prova", "msg-5"],
+    ["conv-prova", "msg-3"],
+  ]);
+  // Che cosa mostra la pagina ricaricata: la domanda dell'altra persona resta, nessuna delle due rifiutate.
+  const kept = prova.saved
+    .map((message, i) => [`msg-${i + 1}`, message.content])
+    .filter(([id]) => !prova.deleted.some(([, gone]) => gone === id));
+  assert.deepEqual(kept, [
+    ["msg-1", "Preparo le fatture dei clienti ogni mese."],
+    ["msg-2", "Per quanti clienti?"],
+    ["msg-4", "Domanda di un'altra persona del workspace."],
+  ]);
+  assert.deepEqual(lines, ['[chat/route] risposta_rifiutata {"finishReason":"content-filter","category":"general_harms"}']);
+});
+
 test("un rifiuto dopo una risposta interrotta con del testo: le domande sono arrivate separate, si toglie solo l'ultima", async (t) => {
   recordLogs(t);
   reset();
