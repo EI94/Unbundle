@@ -18,6 +18,7 @@ import { GITHUB_DDL, GITHUB_PROBE_SQL } from "./use-case-hub-github-ddl.ts";
 import { PROPOSALS_DDL, PROPOSALS_PROBE_SQL } from "./use-case-hub-proposals-ddl.ts";
 import { WORKSPACE_TEAM_DDL, WORKSPACE_TEAM_PROBE_SQL } from "./use-case-hub-team-ddl.ts";
 import { EVALS_DDL, EVALS_PROBE_SQL } from "./use-case-hub-evals-ddl.ts";
+import { EXTERNAL_BUILDERS_DDL, EXTERNAL_BUILDERS_PROBE_SQL } from "./use-case-hub-builders-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -37,7 +38,7 @@ import { EVALS_DDL, EVALS_PROBE_SQL } from "./use-case-hub-evals-ddl.ts";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 30;
+const ENSURE_VERSION = 31;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -712,6 +713,11 @@ async function runOnce(): Promise<void> {
   // Dopo la 0035 (e allarga ancora il CHECK dei tipi della campanella, sotto il lock della 0025). Non blocca il resto
   // dell'app: senza la 0036 la CLI risponde «non ancora disponibile» e le pagine non mostrano le evals (`evalsStoreReady`).
   await runEvalsDdlSafely();
+
+  // «Esterni al 100%»: le concessioni di «Chi costruisce» a chi viene da fuori Lateral Space (drizzle/0037_costruttori_esterni.sql)
+  // Dopo la 0036. Non blocca il resto dell'app: senza la 0037 nessuno è sviluppatore esterno (il predicato vale false) e
+  // «Chi costruisce» resta il team di Lateral Space (`externalBuildersReady`).
+  await runExternalBuildersDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -887,6 +893,20 @@ async function runEvalsDdlSafely(): Promise<void> {
   } catch (err) {
     evalsDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0036 self-heal failed, the app keeps serving without the benchmark and the evals (apply drizzle/0036 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0037, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let externalBuildersDdlFailedAt: number | null = null;
+
+/** La 0037 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. */
+async function runExternalBuildersDdlSafely(): Promise<void> {
+  try {
+    await runExternalBuildersDdl();
+    externalBuildersDdlFailedAt = null;
+  } catch (err) {
+    externalBuildersDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0037 self-heal failed, the app keeps serving without external builders (apply drizzle/0037 by hand):", err);
   }
 }
 
@@ -1146,6 +1166,20 @@ export async function runEvalsDdl(statements: readonly string[] = EVALS_DDL): Pr
   ]);
 }
 
+/**
+ * Applica il DDL della 0037 in una sola transazione, con lo stesso advisory lock del file e `lock_timeout` di 3s, come la
+ * 0035. In produzione la applica questo self-heal, al primo avvio dopo il deploy; il file a mano resta la strada di
+ * riserva.
+ */
+export async function runExternalBuildersDdl(statements: readonly string[] = EXTERNAL_BUILDERS_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-external-builders-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1269,6 +1303,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(PROPOSALS_PROBE_SQL)}
         AND ${sql.raw(WORKSPACE_TEAM_PROBE_SQL)}
         AND ${sql.raw(EVALS_PROBE_SQL)}
+        AND ${sql.raw(EXTERNAL_BUILDERS_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1353,6 +1388,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (evalsDdlFailedAt !== null && Date.now() - evalsDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       evalsDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runEvalsDdlSafely);
+    }
+    // La 0037 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (externalBuildersDdlFailedAt !== null && Date.now() - externalBuildersDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      externalBuildersDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runExternalBuildersDdlSafely);
     }
     return ensurePromise;
   }
