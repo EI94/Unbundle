@@ -168,8 +168,9 @@ export function toolChip(part: PartLike): Extract<ChatProgress, { kind: "tool" }
  * Che cosa la chat mostra di una risposta dell'assistente. Una risposta rifiutata (isRefusedReply) mostra l'avviso al
  * posto del suo testo parziale e, sotto, solo i tool che hanno finito con un risultato nei passi prima del rifiuto,
  * così si vede che cosa è stato fatto davvero: niente note, né tool in corso o falliti (quelli del passo rifiutato non
- * partono, e resterebbero in corso per sempre). Le altre risposte mostrano il loro testo e, sotto, le note di
- * avanzamento e i tool, nell'ordine.
+ * partono, e resterebbero in corso per sempre). Le altre risposte mostrano il loro testo e, sotto, i tool, nell'ordine.
+ * Le note di avanzamento indicano che la risposta sta arrivando: si vedono, ognuna prima del tool che introduce, solo
+ * finché la risposta non ha testo; poi restano i tool, come dopo il ricaricamento (si salva solo il testo finale).
  */
 export function assistantView(message: MessageLike, hiddenTools: ReadonlySet<string>): AssistantView {
   const items = progressItems(message.parts ?? [], hiddenTools);
@@ -177,6 +178,8 @@ export function assistantView(message: MessageLike, hiddenTools: ReadonlySet<str
     const completed = items.flatMap((item) => (item.kind === "tool" && item.part.state === "output-available" ? [toolChip(item.part)] : []));
     return { kind: "refused", notice: CHAT_REFUSAL_NOTICE, progress: completed };
   }
-  const progress = items.map((item) => (item.kind === "note" ? item : toolChip(item.part)));
-  return { kind: "answer", text: messageText(message), progress };
+  const text = messageText(message);
+  const answered = text.trim().length > 0;
+  const progress = items.flatMap<ChatProgress>((item) => (item.kind === "tool" ? [toolChip(item.part)] : answered ? [] : [item]));
+  return { kind: "answer", text, progress };
 }

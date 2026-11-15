@@ -184,6 +184,39 @@ test("una risposta rifiutata: l'avviso e solo i tool finiti nei passi prima; nie
   });
 });
 
+test("quando arriva il testo della risposta le note se ne vanno; i tool restano, nell'ordine", () => {
+  const parts: ChatUIMessage["parts"] = [
+    { type: "step-start" },
+    { type: "reasoning", text: "Salvo l'attività «Fatture mensili»." },
+    { type: "tool-saveActivity", toolCallId: "t1", state: "output-available", input: {}, output: {} },
+    { type: "step-start" },
+    { type: "reasoning", text: "Ora collego la dipendenza." },
+    { type: "tool-linkActivityDependency", toolCallId: "t2", state: "output-available", input: {}, output: {} },
+    { type: "step-start" },
+  ];
+  const reply = (parts: ChatUIMessage["parts"], metadata?: ChatUIMessage["metadata"]): ChatUIMessage => ({ id: "a", role: "assistant", metadata, parts });
+  // Prima del testo: le note, ognuna prima del suo tool.
+  assert.deepEqual(assistantView(reply(parts), HIDDEN_TOOLS).progress, [
+    { kind: "note", text: "Salvo l'attività «Fatture mensili»." },
+    { kind: "tool", label: "Attività salvata", done: true },
+    { kind: "note", text: "Ora collego la dipendenza." },
+    { kind: "tool", label: "Dipendenza collegata", done: true },
+  ]);
+  // Uno spazio non è ancora una risposta.
+  assert.equal(assistantView(reply([...parts, { type: "text", text: "\n " }]), HIDDEN_TOOLS).progress.length, 4);
+  // Con il testo: restano i tool. Lo stesso a risposta finita.
+  for (const metadata of [undefined, { finishReason: "stop" }]) {
+    assert.deepEqual(assistantView(reply([...parts, { type: "text", text: "Fatto. Altro?" }], metadata), HIDDEN_TOOLS), {
+      kind: "answer",
+      text: "Fatto. Altro?",
+      progress: [
+        { kind: "tool", label: "Attività salvata", done: true },
+        { kind: "tool", label: "Dipendenza collegata", done: true },
+      ],
+    });
+  }
+});
+
 test("l'etichetta di un tool: «fatto» con il risultato, «in corso» prima; senza etichetta, il nome o «Elaboro...»", () => {
   assert.deepEqual(toolChip({ type: "tool-saveActivity", state: "output-available" }), { kind: "tool", label: "Attività salvata", done: true });
   // Un tool fallito ha finito: non gira più (in AI SDK 6 lo stato è `output-error`).

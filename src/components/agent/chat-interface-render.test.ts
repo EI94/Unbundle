@@ -64,7 +64,7 @@ test("una risposta rifiutata: l'avviso al posto del testo parziale, e solo i too
   assert.doesNotMatch(list, /animate-pulse/, "nessun tool che gira per sempre");
 });
 
-test("una risposta: il testo con il grassetto, poi i tool con le loro etichette", () => {
+test("una risposta: il testo con il grassetto, poi i tool con le loro etichette; le note non più", () => {
   const { list, text } = render([
     question,
     {
@@ -73,6 +73,7 @@ test("una risposta: il testo con il grassetto, poi i tool con le loro etichette"
       metadata: { finishReason: "stop" },
       parts: [
         { type: "step-start" },
+        { type: "reasoning", text: "Salvo l'attività «Fatture mensili».", state: "done" },
         { type: "tool-saveActivity", toolCallId: "t1", state: "output-available", input: {}, output: {} },
         { type: "step-start" },
         { type: "text", text: "Fatto. **Quante ore** a settimana?", state: "done" },
