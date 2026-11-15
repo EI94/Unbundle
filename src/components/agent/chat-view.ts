@@ -1,15 +1,16 @@
 import type { UIMessage } from "ai";
 
 /**
- * Che cosa la chat (chat-interface.tsx) mostra di un messaggio e che cosa rimanda alla rotta. Modulo puro: lo
- * importano anche i test con Node.
+ * Che cosa la chat (chat-interface.tsx) mostra di un messaggio e che cosa rimanda alla rotta. Le decisioni stanno
+ * qui; il componente le traduce in markup e basta. Modulo puro: lo importano anche i test con Node.
  */
 
 /** I metadati che la rotta della chat mette sulla risposta: perché il modello si è fermato. */
 export type ChatMessageMetadata = { finishReason?: string };
 export type ChatUIMessage = UIMessage<ChatMessageMetadata>;
 
-type MessageLike = { role: string; metadata?: unknown; parts?: ReadonlyArray<{ type: string; text?: string }> };
+type PartLike = { type: string; text?: string; toolName?: unknown; state?: unknown };
+type MessageLike = { role: string; metadata?: unknown; parts?: ReadonlyArray<PartLike> };
 
 /** Al posto di una risposta che il modello ha rifiutato. */
 export const CHAT_REFUSAL_NOTICE = "Non posso rispondere a questa richiesta. Prova a riformularla.";
@@ -48,6 +49,23 @@ export function chatRequestMessages(messages: readonly MessageLike[]): Array<{ r
   return kept.map((message) => ({ role: message.role, content: messageText(message) }));
 }
 
+/**
+ * Il corpo della richiesta alla rotta della chat (prepareSendMessagesRequest in chat-interface.tsx): i turni di
+ * chatRequestMessages e il contesto della chat, dal corpo della richiesta o, se manca, da quello del componente.
+ */
+export function chatTransportBody(
+  messages: readonly MessageLike[],
+  body: Record<string, unknown> | undefined,
+  context: { workspaceId: string; conversationType: string; departmentId?: string },
+) {
+  return {
+    messages: chatRequestMessages(messages),
+    workspaceId: body?.workspaceId ?? context.workspaceId,
+    conversationType: body?.conversationType ?? context.conversationType,
+    departmentId: body?.departmentId ?? context.departmentId,
+  };
+}
+
 /** Il nome del tool di una parte `tool-…` del messaggio. */
 export function toolNameOf(part: { type: string; toolName?: unknown }): string {
   if (typeof part.toolName === "string" && part.toolName.length > 0) return part.toolName;
@@ -80,4 +98,75 @@ export function progressItems<P extends { type: string; text?: string; toolName?
     }
   }
   return items;
+}
+
+/** Le etichette dei tool della chat, mentre lavorano e quando hanno finito; un tool senza etichetta mostra il nome. */
+export const TOOL_LABELS: Readonly<Record<string, { active: string; done: string }>> = {
+  confirmContributionKind: {
+    active: "Imposto tipologia contributo",
+    done: "Tipologia impostata",
+  },
+  classifyContributionIntent: {
+    active: "Classifico intent",
+    done: "Intent classificato",
+  },
+  saveCompanyValueThesis: {
+    active: "Salvo la value thesis",
+    done: "Value thesis salvata",
+  },
+  saveSystemBoundary: {
+    active: "Definisco il perimetro",
+    done: "Perimetro definito",
+  },
+  saveUnitTerminology: {
+    active: "Salvo la terminologia",
+    done: "Terminologia salvata",
+  },
+  createDepartment: { active: "Creo l'unità", done: "Unità creata" },
+  saveStrategicGoal: {
+    active: "Salvo l'obiettivo",
+    done: "Obiettivo salvato",
+  },
+  saveActivity: { active: "Salvo l'attività", done: "Attività salvata" },
+  updateActivityClassification: {
+    active: "Classifico",
+    done: "Classificazione aggiornata",
+  },
+  linkActivityDependency: {
+    active: "Collego dipendenza",
+    done: "Dipendenza collegata",
+  },
+  markDepartmentMapped: {
+    active: "Completo mapping",
+    done: "Mapping completato",
+  },
+};
+
+/** I tool che non si mostrano come etichetta (le loro note di avanzamento sì). */
+export const HIDDEN_TOOLS: ReadonlySet<string> = new Set(["webSearch"]);
+
+/** Una riga di avanzamento come si mostra: una nota, o un tool con la sua etichetta, finito o in corso. */
+export type ChatProgress = { kind: "note"; text: string } | { kind: "tool"; label: string; done: boolean };
+
+/** Che cosa la chat mostra di una risposta: l'avviso di un rifiuto, o il testo; sotto, le righe di avanzamento. */
+export type AssistantView =
+  | { kind: "refused"; notice: string; progress: ChatProgress[] }
+  | { kind: "answer"; text: string; progress: ChatProgress[] };
+
+/** Il tool di una risposta come si mostra: finito (con il risultato o un errore) o in corso, con la sua etichetta. */
+export function toolChip(part: PartLike): Extract<ChatProgress, { kind: "tool" }> {
+  const name = toolNameOf(part);
+  const done = part.state === "output-available" || part.state === "error";
+  const labels = TOOL_LABELS[name];
+  return { kind: "tool", label: done ? (labels?.done ?? name) : (labels?.active ?? "Elaboro..."), done };
+}
+
+/**
+ * Che cosa la chat mostra di una risposta dell'assistente. Una risposta rifiutata (isRefusedReply) mostra l'avviso al
+ * posto del suo testo parziale; le altre il loro testo. Sotto, le note di avanzamento e i tool, nell'ordine.
+ */
+export function assistantView(message: MessageLike, hiddenTools: ReadonlySet<string>): AssistantView {
+  const progress = progressItems(message.parts ?? [], hiddenTools).map((item) => (item.kind === "note" ? item : toolChip(item.part)));
+  if (isRefusedReply(message)) return { kind: "refused", notice: CHAT_REFUSAL_NOTICE, progress };
+  return { kind: "answer", text: messageText(message), progress };
 }

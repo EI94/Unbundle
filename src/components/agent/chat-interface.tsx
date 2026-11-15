@@ -4,12 +4,11 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import {
-  CHAT_REFUSAL_NOTICE,
-  chatRequestMessages,
-  isRefusedReply,
+  HIDDEN_TOOLS,
+  assistantView,
+  chatTransportBody,
   messageText,
-  progressItems,
-  toolNameOf,
+  type ChatProgress,
   type ChatUIMessage,
 } from "./chat-view";
 import {
@@ -33,49 +32,28 @@ interface ChatInterfaceProps {
   }>;
 }
 
-const TOOL_LABELS: Record<string, { active: string; done: string }> = {
-  confirmContributionKind: {
-    active: "Imposto tipologia contributo",
-    done: "Tipologia impostata",
-  },
-  classifyContributionIntent: {
-    active: "Classifico intent",
-    done: "Intent classificato",
-  },
-  saveCompanyValueThesis: {
-    active: "Salvo la value thesis",
-    done: "Value thesis salvata",
-  },
-  saveSystemBoundary: {
-    active: "Definisco il perimetro",
-    done: "Perimetro definito",
-  },
-  saveUnitTerminology: {
-    active: "Salvo la terminologia",
-    done: "Terminologia salvata",
-  },
-  createDepartment: { active: "Creo l'unità", done: "Unità creata" },
-  saveStrategicGoal: {
-    active: "Salvo l'obiettivo",
-    done: "Obiettivo salvato",
-  },
-  saveActivity: { active: "Salvo l'attività", done: "Attività salvata" },
-  updateActivityClassification: {
-    active: "Classifico",
-    done: "Classificazione aggiornata",
-  },
-  linkActivityDependency: {
-    active: "Collego dipendenza",
-    done: "Dipendenza collegata",
-  },
-  markDepartmentMapped: {
-    active: "Completo mapping",
-    done: "Mapping completato",
-  },
-};
-
-/** I tool che non si mostrano come etichetta (le loro note di avanzamento sì). */
-const HIDDEN_TOOLS = new Set(["webSearch"]);
+/** Una riga di avanzamento sotto una risposta: una nota, o un tool con la sua etichetta (chat-view.ts). */
+function ProgressRow({ item }: { item: ChatProgress }) {
+  if (item.kind === "note") {
+    return <p className="basis-full text-xs">{item.text}</p>;
+  }
+  return (
+    <div
+      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all ${
+        item.done
+          ? "border-border/30 text-muted-foreground/50 light:text-muted-foreground"
+          : "border-foreground/10 text-foreground animate-pulse"
+      }`}
+    >
+      {item.done ? (
+        <CheckCircle2 className="h-3 w-3 text-green-500/70" />
+      ) : (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      )}
+      <span>{item.label}</span>
+    </div>
+  );
+}
 
 function WaitingStatus() {
   const [seconds, setSeconds] = useState(0);
@@ -172,18 +150,9 @@ export function ChatInterface({
       new DefaultChatTransport<ChatUIMessage>({
         api: "/api/ai/chat",
         body: { workspaceId, conversationType, departmentId },
+        // Solo il testo di ogni turno, senza le risposte rifiutate e le loro domande (chat-view.ts).
         prepareSendMessagesRequest: ({ messages, body }) => ({
-          body: {
-            // Solo il testo di ogni turno, senza le risposte rifiutate dal modello (chat-view.ts).
-            messages: chatRequestMessages(messages),
-            workspaceId:
-              (body as Record<string, unknown>)?.workspaceId ?? workspaceId,
-            conversationType:
-              (body as Record<string, unknown>)?.conversationType ??
-              conversationType,
-            departmentId:
-              (body as Record<string, unknown>)?.departmentId ?? departmentId,
-          },
+          body: chatTransportBody(messages, body, { workspaceId, conversationType, departmentId }),
         }),
       }),
     [workspaceId, conversationType, departmentId]
@@ -290,73 +259,38 @@ export function ChatInterface({
       <div className="flex-1 overflow-y-auto px-6 py-6" ref={scrollRef}>
         <div className="mx-auto max-w-2xl space-y-6">
           {messages.map((message) => {
-            const text = messageText(message);
-            const refused = isRefusedReply(message);
-            // Le note di avanzamento del modello e i suoi tool, nell'ordine: ogni nota prima del tool che introduce.
-            const progress = progressItems(message.parts, HIDDEN_TOOLS);
-
             if (message.role === "user") {
               return (
                 <div key={message.id} className="flex justify-end">
                   <div className="max-w-[80%] rounded-2xl bg-accent px-4 py-3 text-sm">
-                    {text}
+                    {messageText(message)}
                   </div>
                 </div>
               );
             }
 
+            // Che cosa mostrare della risposta lo decide chat-view.ts: l'avviso di un rifiuto o il testo, poi le
+            // righe di avanzamento.
+            const view = assistantView(message, HIDDEN_TOOLS);
             return (
               <div
                 key={message.id}
                 className="text-sm leading-relaxed text-muted-foreground"
               >
-                {refused ? (
-                  <p className="text-xs">{CHAT_REFUSAL_NOTICE}</p>
+                {view.kind === "refused" ? (
+                  <p className="text-xs">{view.notice}</p>
                 ) : (
-                  text && (
+                  view.text && (
                     <div className="whitespace-pre-wrap">
-                      {renderMarkdown(text)}
+                      {renderMarkdown(view.text)}
                     </div>
                   )
                 )}
-                {progress.length > 0 && (
+                {view.progress.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {progress.map((item, i) => {
-                      if (item.kind === "note") {
-                        return (
-                          <p key={i} className="basis-full text-xs">
-                            {item.text}
-                          </p>
-                        );
-                      }
-                      const p = item.part as Record<string, unknown>;
-                      const name = toolNameOf(item.part);
-                      const state = p.state as string | undefined;
-                      const isDone = state === "output-available" || state === "error";
-                      const labels = TOOL_LABELS[name];
-
-                      return (
-                        <div
-                          key={i}
-                          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all ${
-                            isDone
-                              ? "border-border/30 text-muted-foreground/50 light:text-muted-foreground"
-                              : "border-foreground/10 text-foreground animate-pulse"
-                          }`}
-                        >
-                          {isDone ? (
-                            <CheckCircle2 className="h-3 w-3 text-green-500/70" />
-                          ) : (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          )}
-                          <span>
-                            {isDone
-                              ? labels?.done ?? name
-                              : labels?.active ?? "Elaboro..."}
-                          </span>
-                        </div>
-                      );
-                    })}
+                    {view.progress.map((item, i) => (
+                      <ProgressRow key={i} item={item} />
+                    ))}
                   </div>
                 )}
               </div>

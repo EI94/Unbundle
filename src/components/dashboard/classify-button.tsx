@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { CLASSIFY_BUTTON_LABEL, CLASSIFY_FAILED, classifyOutcome } from "./classify-outcome";
 
 export function ClassifyButton({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
@@ -12,35 +13,22 @@ export function ClassifyButton({ workspaceId }: { workspaceId: string }) {
 
   const handleClassify = async () => {
     setLoading(true);
+    // L'avviso e l'aggiornamento della pagina li decide classify-outcome.ts.
+    let outcome = CLASSIFY_FAILED;
     try {
       const res = await fetch("/api/ai/classify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspaceId }),
       });
-      const data = await res.json();
-      // Le attività che il modello non ha classificato (un rifiuto o un errore) restano da fare: si dice quante.
-      // refresh() e non reload(): l'avviso resta a schermo.
-      if (data.skipped > 0) {
-        if (data.classified > 0) {
-          toast.warning(`${data.classified} attività classificate su ${data.total} totali. ${data.skippedText} Riprova più tardi.`);
-          router.refresh();
-        } else {
-          toast.error(`${data.skippedText} Riprova più tardi.`);
-        }
-      } else if (data.classified > 0) {
-        toast.success(
-          `${data.classified} attivita' classificate su ${data.total} totali`
-        );
-        router.refresh();
-      } else {
-        toast.info("Tutte le attivita' sono gia' classificate");
-      }
+      outcome = classifyOutcome(res.ok ? await res.json() : null);
     } catch {
-      toast.error("Errore durante la classificazione");
+      // Rete o risposta illeggibile: CLASSIFY_FAILED.
     } finally {
       setLoading(false);
     }
+    toast[outcome.level](outcome.text);
+    if (outcome.refresh) router.refresh();
   };
 
   return (
@@ -50,7 +38,7 @@ export function ClassifyButton({ workspaceId }: { workspaceId: string }) {
       ) : (
         <Sparkles className="mr-2 h-4 w-4" />
       )}
-      {loading ? "Classificazione in corso..." : "Classifica attivita'"}
+      {loading ? CLASSIFY_BUTTON_LABEL.busy : CLASSIFY_BUTTON_LABEL.idle}
     </Button>
   );
 }
