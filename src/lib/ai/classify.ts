@@ -1,18 +1,20 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, ClaudeRefusalError, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
+import { CLAUDE_MODEL, ClaudeRefusalError, MOTIVAZIONE_DESCRIPTION, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { logSafeError } from "@/lib/log/safe-error";
 import { z } from "zod";
 import type { Activity, StrategicGoal } from "@/lib/db/schema";
 
+/** Lo schema che il modello riempie: la motivazione ha un nome neutro (MOTIVAZIONE_DESCRIPTION in models.ts). */
 const classificationSchema = z.object({
   classification: z.enum(["automate", "differentiate", "innovate"]),
   confidenceScore: z.number().min(0).max(1),
-  reasoning: z.string(),
+  motivazione: z.string().describe(MOTIVAZIONE_DESCRIPTION),
   aiPotential: z.string(),
 });
 
-export type ClassificationResult = z.infer<typeof classificationSchema>;
+/** La classificazione per l'app: la motivazione torna in `reasoning`, come sempre. */
+export type ClassificationResult = Omit<z.infer<typeof classificationSchema>, "motivazione"> & { reasoning: string };
 
 export async function classifyActivity(
   activity: Activity,
@@ -73,7 +75,8 @@ Opportunità nuove che emergono dai pattern cross-organizzativi. Revenue stream,
 Classifica con rigore. Se l'attività è palesemente operativa e ripetitiva → AUTOMATE. Se è il cuore del valore → DIFFERENTIATE. Se nasconde un'opportunità di innovazione → INNOVATE. In caso di dubbio, scegli AUTOMATE (è il default per il lavoro che "c'è ma non dovrebbe esserci così").`,
   }));
 
-  return object;
+  const { motivazione, ...classification } = object;
+  return { ...classification, reasoning: motivazione };
 }
 
 /**

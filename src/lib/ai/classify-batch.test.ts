@@ -46,7 +46,7 @@ const ACTIVITIES = [
   { id: "a-3", title: "Riconciliazione banche", classification: null, onetTaskId: "43-3031.00" },
   { id: "a-4", title: "Previsioni di vendita", classification: null, onetTaskId: "13-2051.00" },
 ];
-const ANSWER = { classification: "automate", confidenceScore: 0.8, motivazione: "Ripetitiva, con input chiari.", reasoning: "Ripetitiva, con input chiari.", aiPotential: "Alto" };
+const ANSWER = { classification: "automate", confidenceScore: 0.8, motivazione: "Ripetitiva, con input chiari.", aiPotential: "Alto" };
 
 /** Risponde secondo l'attività nel prompt: così l'ordine delle chiamate in parallelo non conta. */
 const byActivity: Reply = (init) => {
@@ -78,6 +78,7 @@ test("classifyActivitiesBatch: tiene le classificazioni riuscite; rifiuto ed err
   assert.equal(requests.length, 4, "una chiamata per attività, nessun nuovo tentativo dopo un 400");
   assert.deepEqual([...results.keys()].sort(), ["a-1", "a-4"]);
   assert.equal(results.get("a-1")?.classification, "automate");
+  assert.equal(results.get("a-1")?.reasoning, "Ripetitiva, con input chiari.");
   assert.deepEqual(lines, [
     '[ai/classify] risposta_rifiutata {"finishReason":"content-filter","category":"general_harms"}',
     '[ai/classify] classificazione_non_riuscita {"error":{"name":"AI_APICallError"}}',

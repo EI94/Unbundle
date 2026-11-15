@@ -4,13 +4,14 @@ import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { getDepartmentById } from "@/lib/db/queries/workspaces";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
+import { CLAUDE_MODEL, MOTIVAZIONE_DESCRIPTION, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { activities, uploadedDocuments } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
+/** Lo schema che il modello riempie: la motivazione ha un nome neutro (MOTIVAZIONE_DESCRIPTION in models.ts). */
 const preGeneratedActivitySchema = z.object({
   activities: z.array(
     z.object({
@@ -24,14 +25,16 @@ const preGeneratedActivitySchema = z.object({
       inputDescription: z.string().optional(),
       outputDescription: z.string().optional(),
       toolsUsed: z.array(z.string()).optional(),
-      reasoning: z.string(),
+      motivazione: z.string().describe(MOTIVAZIONE_DESCRIPTION),
     })
   ),
 });
 
-export type PreGeneratedActivity = z.infer<
-  typeof preGeneratedActivitySchema
->["activities"][0];
+/** Un'attività proposta, per l'app: la motivazione torna in `reasoning`, come sempre. */
+export type PreGeneratedActivity = Omit<
+  z.infer<typeof preGeneratedActivitySchema>["activities"][0],
+  "motivazione"
+> & { reasoning: string };
 
 
 /** Il reparto deve essere di questo workspace: l'id arriva dal client. */
@@ -92,7 +95,7 @@ Identifica le attività lavorative ricorrenti e strutturali descritte nei docume
 5. **Work type**: enrichment (portare dentro dati), detection (confrontare/classificare), interpretation (dati→decisioni), delivery (consegnare risultato)
 6. **Input/Output**: cosa riceve e cosa produce
 7. **Tools**: strumenti/software menzionati
-8. **Reasoning**: perché hai identificato questa attività dai documenti
+8. **Motivazione**: in una o due frasi, perché questa attività emerge dai documenti
 
 ## REGOLE
 - Identifica SOLO attività che emergono chiaramente dai documenti
@@ -102,7 +105,9 @@ Identifica le attività lavorative ricorrenti e strutturali descritte nei docume
 - Se i documenti sono vaghi o non contengono informazioni su processi/attività, restituisci un array vuoto`,
   }));
 
-  return object;
+  return {
+    activities: object.activities.map(({ motivazione, ...activity }): PreGeneratedActivity => ({ ...activity, reasoning: motivazione })),
+  };
 }
 
 export async function confirmPreGeneratedActivities(

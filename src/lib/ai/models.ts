@@ -102,6 +102,14 @@ export function claudeCallSettings(task: ClaudeTask) {
 }
 
 /**
+ * La descrizione del campo `motivazione` negli schemi che il modello riempie. Un campo che chiede al modello il suo
+ * ragionamento (`reasoning`) invita i rifiuti `reasoning_extraction` di Claude Sonnet 5.5 (guida di migrazione,
+ * «Safeguards and fallback»): il modello vede un nome neutro e scrive una breve spiegazione per chi legge; il codice
+ * la rimette nel campo `reasoning` di sempre, così tipi, colonne e interfaccia non cambiano.
+ */
+export const MOTIVAZIONE_DESCRIPTION = "Breve motivazione per l'utente, una o due frasi.";
+
+/**
  * La ricerca web gira dentro i 120 secondi della chat: oltre questo tempo si interrompe e il tool
  * risponde come quando la ricerca non è disponibile, invece di far scadere tutto il turno.
  */

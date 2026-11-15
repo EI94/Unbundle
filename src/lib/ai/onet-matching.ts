@@ -1,9 +1,10 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
+import { CLAUDE_MODEL, MOTIVAZIONE_DESCRIPTION, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import type { Activity } from "@/lib/db/schema";
 
+/** Lo schema che il modello riempie: la motivazione ha un nome neutro (MOTIVAZIONE_DESCRIPTION in models.ts). */
 const onetMatchSchema = z.object({
   matches: z.array(
     z.object({
@@ -21,7 +22,7 @@ const onetMatchSchema = z.object({
       augmentationVsAutomation: z
         .enum(["mostly_automation", "mostly_augmentation", "mixed"])
         .describe("Se l'AI interviene come automazione o augmentation"),
-      reasoning: z.string(),
+      motivazione: z.string().describe(MOTIVAZIONE_DESCRIPTION),
     })
   ),
 });
@@ -55,5 +56,6 @@ ${activitySummaries.join("\n")}
 Per ogni attività, fornisci un match O*NET e una stima informata.`,
   }));
 
-  return object.matches;
+  // La motivazione torna in `reasoning`, come sempre.
+  return object.matches.map(({ motivazione, ...match }) => ({ ...match, reasoning: motivazione }));
 }
