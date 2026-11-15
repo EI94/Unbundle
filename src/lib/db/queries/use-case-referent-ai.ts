@@ -4,6 +4,7 @@ import { generateObject, jsonSchema } from "ai";
 import { getAppUcExecutor, type UcExecutor } from "@/lib/db/uc-executor";
 import { isUuid, type Env } from "@/lib/db/queries/use-case-referent-base";
 import { loadSubprocessorAck } from "@/lib/db/queries/uc-subprocessors";
+import { throwIfRefused } from "@/lib/ai/models";
 import { logSafeError } from "@/lib/log/safe-error";
 import { rowBool, rowNumber, rowString } from "@/lib/uc/sql/readiness";
 import { cast, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
@@ -42,14 +43,15 @@ export type FollowUpGenerator = (i: { prompt: string; model: string }) => Promis
  */
 export const providerFollowUpGenerator: FollowUpGenerator = async ({ prompt, model }) => {
   const settings = referentAiCallSettings(model);
-  const result = await generateObject({
+  // Un rifiuto con il JSON completo non diventa una proposta: è un errore, e la riga resta «errore».
+  const result = throwIfRefused("use-case-referent-ai", await generateObject({
     model: anthropic(model),
     schema: jsonSchema<Record<string, unknown>>(FOLLOW_UP_JSON_SCHEMA as never),
     prompt,
     providerOptions: settings.providerOptions,
     maxOutputTokens: settings.maxOutputTokens,
     abortSignal: AbortSignal.timeout(settings.timeoutMs),
-  });
+  }));
   return result.object;
 };
 

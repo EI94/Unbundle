@@ -1,98 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateObject, generateText, stepCountIs, streamText, tool } from "ai";
 import { z } from "zod";
+import { ev, fakeClaude, message, recordLogs, refusal, sse, THINKING, type Captured } from "./claude-test-kit.ts";
 import {
   CLAUDE_MODEL,
   CLAUDE_TASKS,
+  ClaudeRefusalError,
   claudeCallSettings,
   claudeStopSummary,
   logClaudeStop,
+  throwIfRefused,
   WEB_SEARCH_TIMEOUT_MS,
   type ClaudeTask,
 } from "./models.ts";
 
-// (Migrazione a Claude Sonnet 5.5) Le richieste vere di @ai-sdk/anthropic, senza rete: `createAnthropic`
-// riceve una fetch finta che registra indirizzo, intestazione beta e corpo, e risponde come l'API di
-// Claude (JSON, o eventi SSE per lo streaming). Nessuna chiave vera, nessuna chiamata all'API.
-
-type Body = Record<string, unknown>;
-type Captured = { url: URL; betas: string[]; body: Body };
-
-function fakeClaude(replies: Array<() => Response>) {
-  const requests: Captured[] = [];
-  const provider = createAnthropic({
-    apiKey: "chiave-finta-di-prova",
-    fetch: async (url, init) => {
-      const beta = new Headers(init?.headers).get("anthropic-beta") ?? "";
-      requests.push({
-        url: new URL(String(url)),
-        betas: beta.split(",").map((b) => b.trim()).filter(Boolean),
-        body: JSON.parse(String(init?.body)) as Body,
-      });
-      const reply = replies.shift();
-      if (!reply) throw new Error("nessuna risposta finta rimasta");
-      return reply();
-    },
-  });
-  return { provider, requests };
-}
-
-/** Una risposta dell'API (non in streaming). */
-function message(content: unknown[], stop_reason = "end_turn", extra: Body = {}) {
-  return () =>
-    Response.json({
-      id: "msg_prova",
-      type: "message",
-      role: "assistant",
-      model: CLAUDE_MODEL,
-      content,
-      stop_reason,
-      stop_sequence: null,
-      usage: { input_tokens: 10, output_tokens: 10 },
-      ...extra,
-    });
-}
-
-/** Una risposta dell'API in streaming: gli eventi SSE. */
-function sse(events: Body[]) {
-  return () =>
-    new Response(events.map((e) => `event: ${String(e.type)}\ndata: ${JSON.stringify(e)}\n\n`).join(""), {
-      headers: { "content-type": "text/event-stream" },
-    });
-}
-
-const ev = {
-  start: (id: string): Body => ({
-    type: "message_start",
-    message: { id, type: "message", role: "assistant", model: CLAUDE_MODEL, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } },
-  }),
-  // Un blocco di ragionamento come lo manda il modello per default: testo vuoto, firma presente.
-  thinking: (index: number, signature: string): Body[] => [
-    { type: "content_block_start", index, content_block: { type: "thinking", thinking: "" } },
-    { type: "content_block_delta", index, delta: { type: "signature_delta", signature } },
-    { type: "content_block_stop", index },
-  ],
-  text: (index: number, text: string): Body[] => [
-    { type: "content_block_start", index, content_block: { type: "text", text: "" } },
-    { type: "content_block_delta", index, delta: { type: "text_delta", text } },
-    { type: "content_block_stop", index },
-  ],
-  toolUse: (index: number, id: string, name: string, json: string): Body[] => [
-    { type: "content_block_start", index, content_block: { type: "tool_use", id, name, input: {} } },
-    { type: "content_block_delta", index, delta: { type: "input_json_delta", partial_json: json } },
-    { type: "content_block_stop", index },
-  ],
-  end: (stop_reason: string, extra: Body = {}): Body[] => [
-    { type: "message_delta", delta: { stop_reason, stop_sequence: null, ...extra }, usage: { output_tokens: 20 } },
-    { type: "message_stop" },
-  ],
-};
-
-/** Un blocco di ragionamento in una risposta non in streaming (testo vuoto per default, firmato). */
-const THINKING = { type: "thinking", thinking: "", signature: "firma-di-prova" };
+// (Migrazione a Claude Sonnet 5.5) Le richieste vere di @ai-sdk/anthropic, senza rete: il provider finto di
+// claude-test-kit.ts (`createAnthropic({ apiKey: "test", fetch })`) registra indirizzo, intestazione beta e corpo, e
+// risponde come l'API di Claude (JSON, o eventi SSE per lo streaming). Nessuna chiave vera, nessuna chiamata all'API.
 
 /** Che cosa ogni richiesta a Claude Sonnet 5.5 deve avere, e che cosa non deve mai avere (un 400). */
 function assertSonnet55Request(request: Captured, task: ClaudeTask) {
@@ -165,7 +91,7 @@ test("generateObject: JSON in output_config.format, niente tool forzato; l'ogget
   assert.equal(schema.safeParse({ useCases: [{ ...answer.useCases[0], impactEconomic: 7 }] }).success, false);
 });
 
-test("generateObject: un rifiuto non diventa un oggetto (errore con finishReason «content-filter»)", async () => {
+test("generateObject: un rifiuto senza testo non diventa un oggetto (errore con finishReason «content-filter»)", async () => {
   const { provider } = fakeClaude([
     message([], "refusal", { stop_details: { type: "refusal", category: "general_harms", explanation: null } }),
   ]);
@@ -173,6 +99,35 @@ test("generateObject: un rifiuto non diventa un oggetto (errore con finishReason
     generateObject({ model: provider(CLAUDE_MODEL), ...claudeCallSettings("report"), schema: z.object({ executiveSummary: z.string() }), prompt: "Genera il report." }),
     (error: { finishReason?: string }) => error.finishReason === "content-filter",
   );
+});
+
+test("generateObject: un rifiuto con il JSON completo torna come oggetto; throwIfRefused lo ferma, nel log solo motivo e categoria", async (t) => {
+  const lines = recordLogs(t);
+  const answer = { executiveSummary: "Sintesi riservata del cliente." };
+  const { provider } = fakeClaude([refusal([THINKING, { type: "text", text: JSON.stringify(answer) }], "general_harms")]);
+  const result = await generateObject({
+    model: provider(CLAUDE_MODEL),
+    schema: z.object({ executiveSummary: z.string() }),
+    prompt: "Genera il report.",
+    ...claudeCallSettings("report"),
+  });
+  assert.equal(result.finishReason, "content-filter");
+  assert.deepEqual(result.object, answer, "l'SDK lo restituisce: senza il controllo si userebbe");
+  assert.throws(
+    () => throwIfRefused("ai/generate-report", result),
+    (error: unknown) =>
+      error instanceof ClaudeRefusalError &&
+      error.finishReason === "content-filter" &&
+      error.category === "general_harms" &&
+      error.message === "Claude ha rifiutato la richiesta (ai/generate-report).",
+  );
+  assert.deepEqual(lines, ['[ai/generate-report] risposta_rifiutata {"finishReason":"content-filter","category":"general_harms"}']);
+
+  // Una risposta completa passa com'è, senza log.
+  const { provider: ok } = fakeClaude([message([THINKING, { type: "text", text: JSON.stringify(answer) }])]);
+  const done = await generateObject({ model: ok(CLAUDE_MODEL), schema: z.object({ executiveSummary: z.string() }), prompt: "Genera il report.", ...claudeCallSettings("report") });
+  assert.equal(throwIfRefused("ai/generate-report", done), done);
+  assert.equal(lines.length, 1);
 });
 
 test("generateText (testo di un PDF): blocco documento, sforzo basso, 32000 token; il testo resta senza il ragionamento", async () => {
@@ -376,4 +331,21 @@ test("ogni chiamata usa il modello e le impostazioni del suo compito; nessun id 
     }
     if (source.includes(RETIRED_MODEL)) assert.ok(RETIRED_MODEL_ALLOWED.has(file), `${file}: ${RETIRED_MODEL} è ritirato`);
   }
+});
+
+test("ogni generateObject dell'app passa subito da throwIfRefused, prima di usare o scrivere l'oggetto", () => {
+  const files = (readdirSync(new URL("src/", ROOT), { recursive: true }) as string[])
+    .map((file) => `src/${file.split("\\").join("/")}`)
+    // models.ts definisce throwIfRefused e ne mostra l'uso in un commento.
+    .filter((file) => /\.(ts|tsx)$/.test(file) && !file.endsWith(".test.ts") && file !== "src/lib/ai/models.ts");
+  const sites: string[] = [];
+  for (const file of files) {
+    const source = readFileSync(new URL(file, ROOT), "utf8");
+    const calls = source.match(/\bgenerateObject\(/g)?.length ?? 0;
+    const guarded = [...source.matchAll(/throwIfRefused\("([a-z0-9/-]+)", await generateObject\(/g)];
+    assert.equal(guarded.length, calls, `${file}: ${calls} generateObject, ${guarded.length} dentro throwIfRefused("scope", await generateObject(...))`);
+    sites.push(...guarded.map((match) => `${file} ${match[1]}`));
+  }
+  // Le undici chiamate con CLAUDE_MODEL, più l'auto-ranking del portfolio e la proposta del filo con il referente.
+  assert.equal(sites.length, 13, sites.join("\n"));
 });

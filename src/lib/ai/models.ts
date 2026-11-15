@@ -125,3 +125,29 @@ export function logClaudeStop(
 ) {
   log.warn(`[${scope}] ${event}`, JSON.stringify(claudeStopSummary(result)));
 }
+
+/**
+ * Un rifiuto dei classificatori di sicurezza (finishReason «content-filter»), come errore. Porta solo il riepilogo
+ * dello stop: mai il testo del modello o di chi scrive.
+ */
+export class ClaudeRefusalError extends Error {
+  readonly finishReason = "content-filter";
+  readonly category: string | null;
+
+  constructor(scope: string, category: string | null) {
+    super(`Claude ha rifiutato la richiesta (${scope}).`);
+    this.name = "ClaudeRefusalError";
+    this.category = category;
+  }
+}
+
+/**
+ * Subito dopo ogni generateObject, prima di scrivere qualcosa: `const { object } = throwIfRefused("scope", await generateObject(...))`.
+ * generateObject restituisce l'oggetto anche da un rifiuto, se il suo JSON è completo: qui il rifiuto va nel log
+ * (solo motivo e categoria) e diventa un ClaudeRefusalError, che ogni chiamata gestisce come gli altri errori del modello.
+ */
+export function throwIfRefused<T extends { finishReason?: unknown; providerMetadata?: unknown }>(scope: string, result: T): T {
+  if (result.finishReason !== "content-filter") return result;
+  logClaudeStop(scope, "risposta_rifiutata", result);
+  throw new ClaudeRefusalError(scope, claudeStopSummary(result).category);
+}

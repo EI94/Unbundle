@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
+import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
@@ -44,7 +44,7 @@ export async function generateValueMapAction(workspaceId: string) {
     timeSpentHoursWeek: a.timeSpentHoursWeek,
   }));
 
-  const { object: positions } = await generateObject({
+  const { object: positions } = throwIfRefused("actions/value-map", await generateObject({
     model: anthropic(CLAUDE_MODEL),
     ...claudeCallSettings("valueMap"),
     system: `Sei un esperto di Wardley Mapping. Posiziona ogni attività su una mappa Wardley con due assi:
@@ -72,7 +72,7 @@ Value Thesis dell'azienda (usala per capire cosa è davvero strategico): ${JSON.
         })
       ),
     }),
-  });
+  }));
 
   await db
     .delete(valueMapNodes)

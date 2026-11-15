@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
+import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import type { UseCase, Activity, Department } from "@/lib/db/schema";
 
@@ -49,7 +49,7 @@ export async function generateSimulation(data: {
   departments: Department[];
   companyValueThesis: unknown;
 }): Promise<SimulationResult> {
-  const { object } = await generateObject({
+  const { object } = throwIfRefused("ai/generate-simulation", await generateObject({
     model: anthropic(CLAUDE_MODEL),
     ...claudeCallSettings("simulation"),
     schema: simulationSchema,
@@ -82,7 +82,7 @@ Per ogni scenario calcola:
 Genera anche un sommario AI OS con raccomandazioni per knowledge base, agent orchestration, data pipelines, monitoring e governance.
 
 Scrivi in italiano. Sii specifico e concreto con numeri realistici.`,
-  });
+  }));
 
   return object;
 }

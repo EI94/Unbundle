@@ -4,7 +4,7 @@ import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { getDepartmentById } from "@/lib/db/queries/workspaces";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
+import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { activities, uploadedDocuments } from "@/lib/db/schema";
@@ -74,7 +74,7 @@ export async function preGenerateActivitiesFromDocuments(
     )
     .join("\n\n---\n\n");
 
-  const { object } = await generateObject({
+  const { object } = throwIfRefused("actions/pre-generate-activities", await generateObject({
     model: anthropic(CLAUDE_MODEL),
     ...claudeCallSettings("preGenerateActivities"),
     schema: preGeneratedActivitySchema,
@@ -100,7 +100,7 @@ Identifica le attività lavorative ricorrenti e strutturali descritte nei docume
 - Sii specifico: "Analisi mensile dei KPI di vendita" non "Analisi dati"
 - Massimo 15 attività
 - Se i documenti sono vaghi o non contengono informazioni su processi/attività, restituisci un array vuoto`,
-  });
+  }));
 
   return object;
 }

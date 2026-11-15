@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
+import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import type { Activity, UseCase, StrategicGoal, Department } from "@/lib/db/schema";
 
@@ -33,7 +33,7 @@ export async function generateReport(data: {
   useCases: UseCase[];
   goals: StrategicGoal[];
 }): Promise<ReportContent> {
-  const { object } = await generateObject({
+  const { object } = throwIfRefused("ai/generate-report", await generateObject({
     model: anthropic(CLAUDE_MODEL),
     ...claudeCallSettings("report"),
     schema: reportSchema,
@@ -75,7 +75,7 @@ ${data.goals.map((g) => `- [${g.type}] "${g.title}" → ${g.direction ?? "N/A"}`
 7. **Governance Blockers**: impedimenti da risolvere
 8. **Sequencing Recommendation**: priorità e ordine di esecuzione
 9. **KPI Baseline**: metriche chiave con valori attuali e target`,
-  });
+  }));
 
   return object;
 }

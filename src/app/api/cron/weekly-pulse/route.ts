@@ -4,7 +4,7 @@ import { workspaces, weeklySignals, activities } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
+import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import { runUseCaseDigestStep } from "@/lib/db/queries/use-case-digest";
 import { checkCronAuthorization } from "@/lib/uc/notify/cron-auth";
@@ -60,7 +60,7 @@ export async function GET(req: Request) {
         a.createdAt > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     );
 
-    const { object } = await generateObject({
+    const { object } = throwIfRefused("cron/weekly-pulse", await generateObject({
       model: anthropic(CLAUDE_MODEL),
       ...claudeCallSettings("weeklySignals"),
       schema: signalsSchema,
@@ -80,7 +80,7 @@ Genera 2-5 segnali rilevanti per il team di trasformazione. Segnali possibili:
 - progress_update: aggiornamento sullo stato di avanzamento
 
 Scrivi in italiano.`,
-    });
+    }));
 
     for (const signal of object.signals) {
       await db.insert(weeklySignals).values({

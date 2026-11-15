@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
+import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import type { Activity } from "@/lib/db/schema";
 
@@ -32,7 +32,7 @@ export async function matchActivitiesToOnet(activities: Activity[]) {
       `[${a.id}] "${a.title}": ${a.description ?? ""} (workType: ${a.workType ?? "N/A"}, classification: ${a.classification ?? "N/A"})`
   );
 
-  const { object } = await generateObject({
+  const { object } = throwIfRefused("ai/onet-matching", await generateObject({
     model: anthropic(CLAUDE_MODEL),
     ...claudeCallSettings("onetMatch"),
     schema: onetMatchSchema,
@@ -53,7 +53,7 @@ ${activitySummaries.join("\n")}
 - Le occupazioni più esposte (coding, writing, analysis) arrivano a 0.30-0.40 di observed exposure
 
 Per ogni attività, fornisci un match O*NET e una stima informata.`,
-  });
+  }));
 
   return object.matches;
 }

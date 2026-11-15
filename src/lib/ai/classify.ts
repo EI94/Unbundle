@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
+import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import type { Activity, StrategicGoal } from "@/lib/db/schema";
 
@@ -20,7 +20,7 @@ export async function classifyActivity(
     goals: StrategicGoal[];
   }
 ): Promise<ClassificationResult> {
-  const { object } = await generateObject({
+  const { object } = throwIfRefused("ai/classify", await generateObject({
     model: anthropic(CLAUDE_MODEL),
     ...claudeCallSettings("classifyActivity"),
     schema: classificationSchema,
@@ -70,7 +70,7 @@ Opportunità nuove che emergono dai pattern cross-organizzativi. Revenue stream,
 - Ha potenziale di revenue o di trasformazione del modello di business
 
 Classifica con rigore. Se l'attività è palesemente operativa e ripetitiva → AUTOMATE. Se è il cuore del valore → DIFFERENTIATE. Se nasconde un'opportunità di innovazione → INNOVATE. In caso di dubbio, scegli AUTOMATE (è il default per il lavoro che "c'è ma non dovrebbe esserci così").`,
-  });
+  }));
 
   return object;
 }

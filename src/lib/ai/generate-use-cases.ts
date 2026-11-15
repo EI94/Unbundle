@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
+import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import type { Activity, StrategicGoal } from "@/lib/db/schema";
 
@@ -89,7 +89,7 @@ export async function generateUseCases(
 6.`
     : `5.`;
 
-  const { object } = await generateObject({
+  const { object } = throwIfRefused("ai/generate-use-cases", await generateObject({
     model: anthropic(CLAUDE_MODEL),
     ...claudeCallSettings("useCases"),
     schema,
@@ -121,7 +121,7 @@ ${includeEsg ? "8" : "7"}. Ogni use case deve avere un timeline realistico
 ${includeEsg ? "9" : "8"}. Non generare più di 12 use case totali
 
 Genera gli use case in italiano.`,
-  });
+  }));
 
   return object.useCases;
 }

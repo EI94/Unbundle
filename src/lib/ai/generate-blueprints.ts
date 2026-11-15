@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
+import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import type { UseCase, Activity } from "@/lib/db/schema";
 
@@ -40,7 +40,7 @@ export async function generateAgentBlueprints(
 
   if (automatableUseCases.length === 0) return [];
 
-  const { object } = await generateObject({
+  const { object } = throwIfRefused("ai/generate-blueprints", await generateObject({
     model: anthropic(CLAUDE_MODEL),
     ...claudeCallSettings("blueprints"),
     schema: blueprintSchema,
@@ -74,7 +74,7 @@ Per ogni blueprint specifica:
 9. Rischi e mitigazioni
 
 Scrivi in italiano.`,
-  });
+  }));
 
   return object.blueprints;
 }

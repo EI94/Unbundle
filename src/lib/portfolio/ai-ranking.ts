@@ -20,6 +20,7 @@ import {
   type PortfolioScoreSuggestion,
 } from "@/lib/portfolio/ai-ranking-contract";
 import { logSafeError } from "@/lib/log/safe-error";
+import { throwIfRefused } from "@/lib/ai/models";
 import { recordAiSuggestion, type WriteContext } from "@/lib/use-cases/service";
 import type { ScoringVersion } from "@/lib/use-cases/valuation";
 
@@ -56,12 +57,13 @@ export async function generatePortfolioScoresWithAi(params: {
   // usa solo costrutti ammessi dagli output strutturati; la risposta si rivalida
   // con lo schema zod completo (punteggi interi 1-5, rationale non vuota).
   const modelId = resolvePortfolioRankingModel();
-  const result = await generateObject({
+  // Un rifiuto con il JSON completo non diventa punteggi: è un errore, che chi chiama gestisce già.
+  const result = throwIfRefused("portfolio/ai-ranking", await generateObject({
     model: anthropic(modelId),
     schema: jsonSchema<Record<string, unknown>>(request.jsonSchema),
     prompt: request.prompt,
     ...portfolioRankingCallSettings(modelId),
-  });
+  }));
 
   const object = request.schema.parse(result.object) as {
     impact: Record<string, number | null>;

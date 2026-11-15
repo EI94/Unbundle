@@ -9,7 +9,7 @@ import { markSignalsReadForUser } from "@/lib/db/queries/signals";
 import { logSafeError } from "@/lib/log/safe-error";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
+import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
 import { z } from "zod";
 import { refresh, revalidatePath } from "next/cache";
 
@@ -127,7 +127,7 @@ export async function generateCompetitiveAnalysis(
     (uc) => uc.category === "strategic_bet"
   );
 
-  const { object } = await generateObject({
+  const { object } = throwIfRefused("actions/intelligence", await generateObject({
     model: anthropic(CLAUDE_MODEL),
     ...claudeCallSettings("competitiveAnalysis"),
     schema: competitiveAnalysisSchema,
@@ -167,7 +167,7 @@ Genera:
 4. Un sommario esecutivo in 3-4 frasi
 
 Scrivi tutto in italiano. Sii specifico e concreto, non generico.`,
-  });
+  }));
 
   revalidatePath(`/dashboard/${workspaceId}/intelligence`);
   return object;
