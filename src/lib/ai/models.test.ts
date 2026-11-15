@@ -197,6 +197,32 @@ test("generateObject: un rifiuto prima di scrivere o a metà JSON è un errore d
   assert.equal(lines.length, 4);
 });
 
+test("throwIfRefused con un contesto: nella riga del rifiuto l'id, prima di motivo e categoria, che non sostituisce", async (t) => {
+  const lines = recordLogs(t);
+  const report = (reply: Reply) => {
+    const { provider } = fakeClaude([reply]);
+    return generateObject({ model: provider(CLAUDE_MODEL), schema: z.object({ executiveSummary: z.string() }), prompt: "Genera il report.", ...claudeCallSettings("report") });
+  };
+  // Le due forme del rifiuto: il JSON completo (un risultato) e il rifiuto prima di scrivere (un errore dell'SDK).
+  const complete = refusal([THINKING, { type: "text", text: JSON.stringify({ executiveSummary: "Sintesi riservata." }) }], "general_harms");
+  for (const reply of [complete, refusal([], "bio")]) {
+    await assert.rejects(throwIfRefused("cron/weekly-pulse", report(reply), { workspaceId: "ws-1" }), ClaudeRefusalError);
+  }
+  await assert.rejects(
+    throwIfRefused("cron/weekly-pulse", report(refusal([], "cyber")), { workspaceId: "ws-2", finishReason: "stop", category: "altro" }),
+    (error: unknown) => error instanceof ClaudeRefusalError && error.category === "cyber",
+  );
+  assert.deepEqual(lines, [
+    '[cron/weekly-pulse] risposta_rifiutata {"workspaceId":"ws-1","finishReason":"content-filter","category":"general_harms"}',
+    '[cron/weekly-pulse] risposta_rifiutata {"workspaceId":"ws-1","finishReason":"content-filter","category":"bio"}',
+    '[cron/weekly-pulse] risposta_rifiutata {"workspaceId":"ws-2","finishReason":"content-filter","category":"cyber"}',
+  ]);
+  // Una risposta completa passa com'è, senza log, anche con un contesto.
+  const done = await report(message([THINKING, { type: "text", text: JSON.stringify({ executiveSummary: "Sintesi." }) }]));
+  assert.equal(await throwIfRefused("cron/weekly-pulse", Promise.resolve(done), { workspaceId: "ws-3" }), done);
+  assert.equal(lines.length, 3);
+});
+
 test("generateText (testo di un PDF): blocco documento, sforzo basso, 32000 token; il testo resta senza il ragionamento", async () => {
   const { provider, requests } = fakeClaude([message([THINKING, { type: "text", text: "Testo estratto dal PDF." }])]);
   const result = await generateText({
@@ -242,8 +268,11 @@ test("generateText: un rifiuto arriva come finishReason «content-filter»; nel 
   assert.equal(result.text, partial, "il testo parziale c'è: per questo non si usa");
   assert.deepEqual(claudeStopSummary(result), { finishReason: "content-filter", category: "general_harms" });
   const lines: string[] = [];
-  logClaudeStop("prova", "sintesi_rifiutata", result, { warn: (...args: unknown[]) => lines.push(args.join(" ")) });
+  logClaudeStop("prova", "sintesi_rifiutata", result, {}, { warn: (...args: unknown[]) => lines.push(args.join(" ")) });
   assert.deepEqual(lines, ['[prova] sintesi_rifiutata {"finishReason":"content-filter","category":"general_harms"}']);
+  // Con un contesto (solo id), i suoi campi prima del riepilogo.
+  logClaudeStop("prova", "sintesi_rifiutata", result, { workspaceId: "ws-prova" }, { warn: (...args: unknown[]) => lines.push(args.join(" ")) });
+  assert.equal(lines[1], '[prova] sintesi_rifiutata {"workspaceId":"ws-prova","finishReason":"content-filter","category":"general_harms"}');
   // Una categoria che non è un token breve non finisce nei log; senza dettagli resta null.
   assert.equal(claudeStopSummary({ finishReason: "content-filter", providerMetadata: { anthropic: { stopDetails: { category: "testo con spazi" } } } }).category, null);
   assert.deepEqual(claudeStopSummary({ finishReason: "stop" }), { finishReason: "stop", category: null });

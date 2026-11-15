@@ -148,7 +148,7 @@ test("la riga non si scrive: il blob appena salvato si cancella, 500, nel log ni
   assert.deepEqual(lines, ['[documents/upload] upload_non_riuscito {"error":{"name":"NeonDbError","code":"23505"}}']);
 });
 
-test("la riga non si scrive e nemmeno la cancellazione riesce: 500, due righe di log senza testo", async (t) => {
+test("la riga non si scrive e nemmeno la cancellazione riesce: 500, due righe di log senza testo; quella del blob con l'id del workspace", async (t) => {
   const lines = recordLogs(t);
   reset();
   prova.insertError = dbError();
@@ -157,8 +157,9 @@ test("la riga non si scrive e nemmeno la cancellazione riesce: 500, due righe di
   const response = await upload();
   assert.equal(response.status, 500);
   assert.deepEqual(lines, [
-    '[documents/upload] blob_non_cancellato {"error":{"name":"BlobError"}}',
+    // Il blob orfano si cerca dall'id del workspace: nel log mai il nome del file, il percorso o l'indirizzo del blob.
+    '[documents/upload] blob_non_cancellato {"workspaceId":"ws-prova","error":{"name":"BlobError"}}',
     '[documents/upload] upload_non_riuscito {"error":{"name":"NeonDbError","code":"23505"}}',
   ]);
-  for (const line of lines) assert.doesNotMatch(line, /Organigramma|riservato/);
+  for (const line of lines) assert.doesNotMatch(line, /organigramma|riservato|documento\.pdf|blob\.example|documents\/ws-prova/i);
 });

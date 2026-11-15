@@ -193,14 +193,24 @@ export function claudeStopSummary(result: { finishReason?: unknown; providerMeta
   };
 }
 
-/** Una riga di log quando la risposta non è completa (un rifiuto, il limite dei token): `[scope] event {...}`. */
+/**
+ * I campi in più di una riga di log, per sapere di che cosa si parla: solo id e numeri (l'id del workspace), mai testi
+ * del modello o di chi scrive, nomi di file o percorsi.
+ */
+export type ClaudeLogContext = Readonly<Record<string, string | number | boolean | null>>;
+
+/**
+ * Una riga di log quando la risposta non è completa (un rifiuto, il limite dei token): `[scope] event {...}`, con i campi
+ * di `context` prima del riepilogo dello stop (come logSafeError in src/lib/log/safe-error.ts).
+ */
 export function logClaudeStop(
   scope: string,
   event: string,
   result: { finishReason?: unknown; providerMetadata?: unknown },
+  context: ClaudeLogContext = {},
   log: Pick<Console, "warn"> = console,
 ) {
-  log.warn(`[${scope}] ${event}`, JSON.stringify(claudeStopSummary(result)));
+  log.warn(`[${scope}] ${event}`, JSON.stringify({ ...context, ...claudeStopSummary(result) }));
 }
 
 /**
@@ -253,19 +263,21 @@ type ClaudeStop = { finishReason?: unknown; providerMetadata?: unknown };
  * `const { object } = await throwIfRefused("scope", generateObject(...))`. Un rifiuto arriva in due forme. Con il JSON
  * completo generateObject restituisce l'oggetto, con finishReason «content-filter». Senza (il rifiuto prima di scrivere,
  * la forma più comune, o a metà oggetto) lancia NoObjectGeneratedError, con lo stesso finishReason. Tutte e due vanno nel
- * log (solo motivo e categoria) e diventano un ClaudeRefusalError, che ogni chiamata gestisce come gli altri errori del
- * modello; gli altri errori passano come sono.
+ * log (motivo e categoria, mai testi) e diventano un ClaudeRefusalError, che ogni chiamata gestisce come gli altri errori del
+ * modello; gli altri errori passano come sono. `context` va nella riga di log del rifiuto: dove la chiamata gira per
+ * più workspace (il cron weekly-pulse), l'id di quello rifiutato: `throwIfRefused("scope", generateObject(...), {
+ * workspaceId })`.
  */
-export async function throwIfRefused<T extends ClaudeStop>(scope: string, call: PromiseLike<T>): Promise<T> {
+export async function throwIfRefused<T extends ClaudeStop>(scope: string, call: PromiseLike<T>, context: ClaudeLogContext = {}): Promise<T> {
   let result: T;
   try {
     result = await call;
   } catch (error) {
     const refused = refusalInError(error);
-    if (refused) refuse(scope, refused);
+    if (refused) refuse(scope, refused, context);
     throw error;
   }
-  if (result.finishReason === "content-filter") refuse(scope, result);
+  if (result.finishReason === "content-filter") refuse(scope, result, context);
   return result;
 }
 
@@ -280,8 +292,8 @@ function refusalInError(error: unknown): ClaudeStop | null {
   return { finishReason: failed.finishReason, providerMetadata: { anthropic: { stopDetails: { category: body?.stop_details?.category } } } };
 }
 
-/** Il rifiuto nel log, con il solo riepilogo dello stop, e poi come ClaudeRefusalError. */
-function refuse(scope: string, stop: ClaudeStop): never {
-  logClaudeStop(scope, "risposta_rifiutata", stop);
+/** Il rifiuto nel log, con il solo riepilogo dello stop e il contesto, e poi come ClaudeRefusalError. */
+function refuse(scope: string, stop: ClaudeStop, context: ClaudeLogContext): never {
+  logClaudeStop(scope, "risposta_rifiutata", stop, context);
   throw new ClaudeRefusalError(scope, claudeStopSummary(stop).category);
 }

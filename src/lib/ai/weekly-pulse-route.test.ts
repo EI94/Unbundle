@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { installAppModules, message, recordLogs, refusal, THINKING, fakeAppClaude, type Reply } from "./claude-test-kit.ts";
 
 // (Migrazione a Claude Sonnet 5.5) Il cron weekly-pulse, la rotta vera: un rifiuto o un errore del modello su un
-// workspace non ferma gli altri, e nel log non va niente del workspace o dei segnali. Database finto; il modello è
-// il Claude finto di claude-test-kit.ts, che risponde secondo il nome del workspace nel prompt.
+// workspace non ferma gli altri, e nel log del workspace va solo l'id, niente del nome o dei segnali. Database finto; il
+// modello è il Claude finto di claude-test-kit.ts, che risponde secondo il nome del workspace nel prompt.
 
 type Prova = { workspaces: Array<Record<string, unknown>>; inserted: Array<Record<string, unknown>> };
 const prova: Prova = { workspaces: [], inserted: [] };
@@ -54,13 +54,13 @@ test("un rifiuto e un errore non fermano il ciclo: il terzo workspace riceve i s
   assert.equal(requests.length, 3, "un tentativo per workspace");
   assert.deepEqual(prova.inserted, [{ workspaceId: "ws-ok", ...SIGNALS.signals[0] }], "solo i segnali del workspace riuscito");
   assert.deepEqual(lines, [
-    '[cron/weekly-pulse] risposta_rifiutata {"finishReason":"content-filter","category":"general_harms"}',
+    '[cron/weekly-pulse] risposta_rifiutata {"workspaceId":"ws-rifiutato","finishReason":"content-filter","category":"general_harms"}',
     '[cron/weekly-pulse] segnali_non_generati {"workspaceId":"ws-errore","error":{"name":"AI_APICallError","statusCode":400}}',
   ]);
   for (const line of lines) assert.doesNotMatch(line, /Cliente|riservato|Mappatura|prova\)/);
 });
 
-test("un rifiuto prima di scrivere o a metà JSON (generateObject lancia): nel log come rifiuto, con la categoria", async (t) => {
+test("un rifiuto prima di scrivere o a metà JSON (generateObject lancia): nel log come rifiuto, con la categoria e l'id del workspace", async (t) => {
   const lines = recordLogs(t);
   prova.workspaces = [
     { id: "ws-1", name: "Cliente Uno", status: "mapping" },
@@ -78,9 +78,10 @@ test("un rifiuto prima di scrivere o a metà JSON (generateObject lancia): nel l
   assert.deepEqual(await response.json(), { processed: 3, failed: 2, useCaseHub: { workspaces: 0, signals: 0, failed: 0 } });
   assert.deepEqual(prova.inserted, [{ workspaceId: "ws-3", ...SIGNALS.signals[0] }]);
   assert.deepEqual(lines, [
-    '[cron/weekly-pulse] risposta_rifiutata {"finishReason":"content-filter","category":"bio"}',
-    '[cron/weekly-pulse] risposta_rifiutata {"finishReason":"content-filter","category":"cyber"}',
+    '[cron/weekly-pulse] risposta_rifiutata {"workspaceId":"ws-1","finishReason":"content-filter","category":"bio"}',
+    '[cron/weekly-pulse] risposta_rifiutata {"workspaceId":"ws-2","finishReason":"content-filter","category":"cyber"}',
   ]);
+  for (const line of lines) assert.doesNotMatch(line, /Cliente|Rischio|riserv/);
 });
 
 test("ogni workspace fallisce (il modello risponde 404, come da ritirato): 500 con lo stesso corpo, e nel log lo stato", async (t) => {

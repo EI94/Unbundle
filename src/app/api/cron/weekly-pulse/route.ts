@@ -48,8 +48,8 @@ export async function GET(req: Request) {
       )
     );
 
-  // Un rifiuto o un errore del modello su un workspace non ferma gli altri. Nel log un rifiuto ha solo il
-  // riepilogo dello stop (throwIfRefused); un altro errore, nome e codice.
+  // Un rifiuto o un errore del modello su un workspace non ferma gli altri. Nel log, con l'id del workspace, un
+  // rifiuto ha solo il riepilogo dello stop (throwIfRefused); un altro errore, nome e codice.
   let failed = 0;
   for (const workspace of activeWorkspaces) {
     try {
@@ -84,7 +84,7 @@ Genera 2-5 segnali rilevanti per il team di trasformazione. Segnali possibili:
 
 Scrivi in italiano.`,
         ...claudeCallSettings("weeklySignals"),
-      }));
+      }), { workspaceId: workspace.id });
 
       for (const signal of object.signals) {
         await db.insert(weeklySignals).values({

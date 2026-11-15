@@ -151,9 +151,10 @@ export async function POST(req: Request) {
         })
         .returning();
     } catch (error) {
-      // Senza la riga il blob resterebbe orfano: si cancella. Se non si riesce, nel log solo nome, codice e stato.
+      // Senza la riga il blob resterebbe orfano: si cancella. Se non si riesce, nel log l'id del workspace, dove
+      // cercare il blob, e nome, codice e stato dell'errore: mai il nome del file, il percorso o l'indirizzo del blob.
       await del(blob.url).catch((deleteError: unknown) =>
-        logSafeError("documents/upload", "blob_non_cancellato", deleteError),
+        logSafeError("documents/upload", "blob_non_cancellato", deleteError, { workspaceId }),
       );
       throw error;
     }
