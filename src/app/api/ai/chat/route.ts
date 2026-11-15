@@ -10,8 +10,10 @@ import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mappin
 import { withAgentReliability } from "@/lib/ai/agent-reliability";
 import { chatHistory } from "@/lib/ai/chat-history";
 import { CLAUDE_MODEL, claudeCallSettings, lastStepRefused, logClaudeStop } from "@/lib/ai/models";
+import { logSafeError } from "@/lib/log/safe-error";
 import {
   saveMessage,
+  deleteMessage,
   getActiveConversation,
   createConversation,
 } from "@/lib/db/queries/conversations";
@@ -234,9 +236,12 @@ export async function POST(req: Request) {
     });
   }
 
+  // La domanda si salva prima della chiamata, così resta anche se il turno si interrompe; se il modello la
+  // rifiuta, si toglie (onFinish qui sotto).
   const lastUserMessage = messages[messages.length - 1];
+  let savedQuestion: { id: string } | undefined;
   if (lastUserMessage?.role === "user" && lastUserMessage.content) {
-    await saveMessage({
+    savedQuestion = await saveMessage({
       conversationId: conversation.id,
       role: "user",
       content: lastUserMessage.content,
@@ -257,9 +262,16 @@ export async function POST(req: Request) {
     },
     onFinish: async ({ text, finishReason, providerMetadata }) => {
       // Un rifiuto dei classificatori del modello non è una risposta: l'eventuale testo parziale
-      // non si salva, e il turno (domanda compresa) non entra nella memoria della chat.
+      // non si salva, e il turno (domanda compresa) non entra nella memoria della chat. La domanda
+      // esce anche dai messaggi salvati, come dalla storia del browser (chat-view.ts): ricaricando la
+      // pagina non tornerebbe al modello unita alla domanda dopo.
       if (finishReason === "content-filter") {
         logClaudeStop("chat/route", "risposta_rifiutata", { finishReason, providerMetadata });
+        if (savedQuestion) {
+          await deleteMessage(conversation.id, savedQuestion.id).catch((error: unknown) =>
+            logSafeError("chat/route", "domanda_rifiutata_non_tolta", error),
+          );
+        }
         return;
       }
       if (text) {

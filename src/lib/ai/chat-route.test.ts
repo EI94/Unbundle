@@ -9,8 +9,16 @@ import { ev, installAppModules, recordLogs, sse, fakeAppClaude } from "./claude-
 // modello è il Claude finto di claude-test-kit.ts, senza rete.
 
 type Saved = { conversationId: string; role: string; content: string };
-type Prova = { saved: Saved[]; indexed: Array<[string, string]>; tools: Record<string, unknown> };
-const prova: Prova = { saved: [], indexed: [], tools: {} };
+type Prova = {
+  saved: Saved[];
+  /** I messaggi tolti, come [conversazione, messaggio]: gli id sono «msg-1», «msg-2»… nell'ordine dei salvataggi. */
+  deleted: Array<[string, string]>;
+  /** Se c'è, la cancellazione fallisce con questo messaggio. */
+  deleteError?: string;
+  indexed: Array<[string, string]>;
+  tools: Record<string, unknown>;
+};
+const prova: Prova = { saved: [], deleted: [], indexed: [], tools: {} };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -25,7 +33,14 @@ await installAppModules({
   "@/lib/db/queries/conversations": `
     export async function getActiveConversation() { return { id: "conv-prova" }; }
     export async function createConversation() { return { id: "conv-prova" }; }
-    export async function saveMessage(message) { globalThis.__prova.saved.push(message); }`,
+    export async function saveMessage(message) {
+      globalThis.__prova.saved.push(message);
+      return { id: "msg-" + globalThis.__prova.saved.length, ...message };
+    }
+    export async function deleteMessage(conversationId, messageId) {
+      if (globalThis.__prova.deleteError) throw new Error(globalThis.__prova.deleteError);
+      globalThis.__prova.deleted.push([conversationId, messageId]);
+    }`,
   "@/lib/ai/rag/retriever": `
     export async function retrieveRelevantContext() { return []; }
     export function indexConversationMessage(conversationId, workspaceId, content, role) { globalThis.__prova.indexed.push([role, content]); return Promise.resolve(); }`,
@@ -62,6 +77,8 @@ async function chat(messages: unknown[], conversationType = "leadership_setup") 
 
 function reset() {
   prova.saved = [];
+  prova.deleted = [];
+  delete prova.deleteError;
   prova.indexed = [];
   prova.tools = {};
 }
@@ -81,10 +98,27 @@ test("un rifiuto a metà risposta: niente salvato dell'assistente, niente nella 
   assert.equal(status, 200);
   const finish = chunks.find((chunk) => chunk.type === "finish");
   assert.deepEqual(finish, { type: "finish", finishReason: "content-filter", messageMetadata: { finishReason: "content-filter" } });
-  // La domanda dell'utente si salva prima della chiamata, come sempre; la risposta rifiutata no.
+  // La domanda dell'utente si salva prima della chiamata, come sempre; la risposta rifiutata no, e la domanda si toglie
+  // (ricaricando la pagina tornerebbe al modello unita alla domanda dopo).
   assert.deepEqual(prova.saved, [{ conversationId: "conv-prova", role: "user", content: "Preparo le fatture dei clienti ogni mese." }]);
+  assert.deepEqual(prova.deleted, [["conv-prova", "msg-1"]]);
   assert.deepEqual(prova.indexed, [], "il turno rifiutato non entra nella memoria della chat");
   assert.deepEqual(lines, ['[chat/route] risposta_rifiutata {"finishReason":"content-filter","category":"cyber"}']);
+});
+
+test("la domanda rifiutata non si riesce a togliere: il turno finisce lo stesso, nel log niente del testo", async (t) => {
+  const lines = recordLogs(t);
+  reset();
+  prova.deleteError = "connessione persa durante: Preparo le fatture dei clienti ogni mese.";
+  fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Ecco come"), ...ev.end("refusal", { stop_details: { type: "refusal", category: "general_harms", explanation: null } })])]);
+  const { status, chunks } = await chat(HISTORY);
+  assert.equal(status, 200);
+  assert.equal(chunks.find((chunk) => chunk.type === "finish")?.finishReason, "content-filter");
+  assert.deepEqual(prova.deleted, []);
+  assert.deepEqual(lines, [
+    '[chat/route] risposta_rifiutata {"finishReason":"content-filter","category":"general_harms"}',
+    '[chat/route] domanda_rifiutata_non_tolta {"error":{"name":"Error"}}',
+  ]);
 });
 
 test("un rifiuto nel passo di una chiamata di tool non valida: il giro si ferma lì, niente secondo passo, salvato o messo nella memoria", async (t) => {
@@ -123,6 +157,7 @@ test("un rifiuto nel passo di una chiamata di tool non valida: il giro si ferma 
       label,
     );
     assert.deepEqual(prova.saved.map(({ role }) => role), ["user"], `${label}: la domanda si salva prima della chiamata; la risposta rifiutata no`);
+    assert.deepEqual(prova.deleted, [["conv-prova", "msg-1"]], `${label}: la domanda rifiutata si toglie`);
     assert.deepEqual(prova.indexed, [], label);
     assert.deepEqual(lines, ['[chat/route] risposta_rifiutata {"finishReason":"content-filter","category":"cyber"}'], label);
   }
@@ -146,6 +181,7 @@ test("una risposta normale: salvata e messa nella memoria con la domanda; il bro
     ["assistant", "Ogni quanto le prepari?"],
     ["user", "Preparo le fatture dei clienti ogni mese."],
   ]);
+  assert.deepEqual(prova.deleted, [], "la domanda di una risposta normale resta");
 });
 
 /** Un tool che salva, come quelli della chat (qui solo in memoria). */

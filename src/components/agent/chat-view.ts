@@ -30,9 +30,22 @@ export function messageText(message: MessageLike): string {
     .join("");
 }
 
-/** Che cosa il browser rimanda alla rotta: un turno di testo per messaggio, senza le risposte rifiutate. */
+/**
+ * Che cosa il browser rimanda alla rotta: un turno di testo per messaggio, senza le risposte rifiutate e senza le
+ * domande che le hanno avute (i turni dell'utente subito prima). Altrimenti la domanda rifiutata tornerebbe al modello
+ * unita alla domanda dopo, a ogni turno. A schermo restano tutte e due, fino al ricaricamento della pagina; la rotta
+ * toglie la domanda rifiutata anche dai messaggi salvati.
+ */
 export function chatRequestMessages(messages: readonly MessageLike[]): Array<{ role: string; content: string }> {
-  return messages.filter((message) => !isRefusedReply(message)).map((message) => ({ role: message.role, content: messageText(message) }));
+  const kept: MessageLike[] = [];
+  for (const message of messages) {
+    if (!isRefusedReply(message)) {
+      kept.push(message);
+      continue;
+    }
+    while (kept.length > 0 && kept[kept.length - 1].role === "user") kept.pop();
+  }
+  return kept.map((message) => ({ role: message.role, content: messageText(message) }));
 }
 
 /** Il nome del tool di una parte `tool-…` del messaggio. */

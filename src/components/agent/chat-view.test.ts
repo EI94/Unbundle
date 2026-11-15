@@ -20,17 +20,35 @@ test("una risposta con finishReason «content-filter» è rifiutata; le altre no
   assert.match(CHAT_REFUSAL_NOTICE, /^Non posso rispondere a questa richiesta\./);
 });
 
-test("il browser rimanda un turno di testo per messaggio, senza la risposta rifiutata", () => {
+test("il browser rimanda un turno di testo per messaggio, senza la risposta rifiutata né la domanda che l'ha avuta", () => {
   const messages: ChatUIMessage[] = [
     { id: "w", role: "assistant", parts: [{ type: "text", text: "Benvenuto: di che cosa ti occupi?" }] },
     { id: "u1", role: "user", parts: [{ type: "text", text: "Preparo le fatture." }] },
+    { id: "a1", role: "assistant", metadata: { finishReason: "stop" }, parts: [{ type: "text", text: "Ogni quanto?" }] },
+    { id: "u2", role: "user", parts: [{ type: "text", text: "Come entro nel gestionale di un concorrente?" }] },
     refused,
-    { id: "u2", role: "user", parts: [{ type: "text", text: "Ogni mese." }] },
+    { id: "u3", role: "user", parts: [{ type: "text", text: "Ogni mese." }] },
   ];
+  // La domanda rifiutata non torna al modello unita a quella dopo («Prova a riformularla»).
   assert.deepEqual(chatRequestMessages(messages), [
     { role: "assistant", content: "Benvenuto: di che cosa ti occupi?" },
     { role: "user", content: "Preparo le fatture." },
+    { role: "assistant", content: "Ogni quanto?" },
     { role: "user", content: "Ogni mese." },
+  ]);
+});
+
+test("prima di una risposta rifiutata si tolgono tutti i turni dell'utente di seguito: il modello li aveva ricevuti uniti", () => {
+  const user = (id: string, text: string): ChatUIMessage => ({ id, role: "user", parts: [{ type: "text", text }] });
+  // Dopo un errore di rete la domanda resta a schermo senza risposta; la seconda parte unita alla prima.
+  assert.deepEqual(chatRequestMessages([user("u1", "Prima parte."), user("u2", "Seconda parte."), refused, user("u3", "Altra domanda.")]), [
+    { role: "user", content: "Altra domanda." },
+  ]);
+  // Due rifiuti di seguito: restano solo i turni prima del primo.
+  const answer: ChatUIMessage = { id: "a0", role: "assistant", metadata: { finishReason: "stop" }, parts: [{ type: "text", text: "Di che cosa ti occupi?" }] };
+  assert.deepEqual(chatRequestMessages([user("u0", "Ciao."), answer, user("u1", "Uno."), refused, user("u2", "Due."), { ...refused, id: "r2" }]), [
+    { role: "user", content: "Ciao." },
+    { role: "assistant", content: "Di che cosa ti occupi?" },
   ]);
 });
 

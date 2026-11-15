@@ -91,6 +91,16 @@ export async function saveMessage(data: {
   return msg;
 }
 
+/**
+ * Toglie un messaggio, solo se è della conversazione data: per la chat, la domanda che il modello ha rifiutato
+ * (src/app/api/ai/chat/route.ts).
+ */
+export async function deleteMessage(conversationId: string, messageId: string) {
+  await db
+    .delete(messages)
+    .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)));
+}
+
 export async function updateConversationStatus(
   id: string,
   status: "active" | "paused" | "completed"
