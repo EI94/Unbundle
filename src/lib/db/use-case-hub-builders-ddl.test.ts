@@ -16,6 +16,8 @@ import * as schema from "./schema.ts";
 
 const migration = readFileSync(new URL("../../../drizzle/0037_costruttori_esterni.sql", import.meta.url), "utf8");
 const ensureSchema = readFileSync(new URL("./ensure-schema.ts", import.meta.url), "utf8");
+const doctor = readFileSync(new URL("../../../scripts/use-case-admin/doctor.ts", import.meta.url), "utf8");
+const runbook = readFileSync(new URL("../../../docs/casi-duso/RUNBOOK.md", import.meta.url), "utf8");
 const normalize = (sql: string) =>
   sql
     .split("\n")
@@ -115,4 +117,21 @@ test("ensure-schema: versione 31, la 0037 dopo la 0036, non fatale, con timeout 
 test("le colonne Drizzle sono quelle del DDL, nello stesso ordine", () => {
   assert.equal(getTableName(schema.useCaseExternalBuilders), "use_case_external_builders");
   assert.deepEqual(Object.values(getTableColumns(schema.useCaseExternalBuilders)).map((c) => c.name), ddlColumns(table));
+});
+
+test("il doctor guarda la sonda della 0037", () => {
+  assert.match(doctor, /import \{ EXTERNAL_BUILDERS_PROBE_SQL \} from "\.\.\/\.\.\/src\/lib\/db\/use-case-hub-builders-ddl\.ts";/);
+  assert.match(doctor, /SELECT \$\{EXTERNAL_BUILDERS_PROBE_SQL\} AS ok/);
+  assert.match(doctor, /migrazione0037: m0037,/);
+});
+
+test("RUNBOOK §10.18: la 0037 la applica il self-heal al primo avvio, il file a mano è la riserva, il doctor dopo il deploy, il ritorno indietro senza database", () => {
+  assert.ok(runbook.includes("### 10.18 Rilascio 8.0c"), "manca §10.18");
+  const section = runbook.slice(runbook.indexOf("### 10.18 Rilascio 8.0c"));
+  assert.match(section, /`ENSURE_VERSION` 31/);
+  assert.match(section, /psql --no-psqlrc --single-transaction --set=ON_ERROR_STOP=1 -f drizzle\/0037_costruttori_esterni\.sql/);
+  assert.match(section, /`migrazione0037: true`/);
+  assert.match(section, /Mai drizzle-kit, mai `db:push`/);
+  assert.match(section, /Ritorno indietro: un passo su Vercel \(Promote del deploy di prima\), niente sul database/);
+  assert.match(section, /Il DDL uc della 0018 e la sua impronta non cambiano/);
 });
