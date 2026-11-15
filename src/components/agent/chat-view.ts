@@ -179,25 +179,25 @@ export function toolChip(part: PartLike): Extract<ChatProgress, { kind: "tool" }
 }
 
 /**
- * Che cosa la chat mostra di una risposta dell'assistente. Una risposta rifiutata (isRefusedReply) mostra l'avviso al
- * posto del suo testo parziale e, sotto, solo i tool che hanno finito con un risultato nei passi prima del rifiuto,
- * così si vede che cosa è stato fatto davvero: niente note, né tool in corso (quelli del passo rifiutato non partono,
- * e resterebbero in corso per sempre). Le altre risposte mostrano il loro testo e, sotto, i tool, nell'ordine.
- * Le note di avanzamento indicano che la risposta sta arrivando: si vedono, ognuna prima del tool che introduce, solo
- * finché la risposta non ha testo; poi restano i tool, come dopo il ricaricamento (si salva solo il testo finale).
- * Un tool fallito non si mostra mai (toolChip).
+ * Che cosa la chat mostra di una risposta dell'assistente. `arriving`: la risposta sta ancora arrivando (l'ultima, mentre
+ * la chat aspetta lo stream). Una risposta rifiutata (isRefusedReply) mostra l'avviso al posto del suo testo parziale;
+ * le altre il loro testo. Sotto, mentre la risposta arriva, i tool nell'ordine, in corso o finiti, e le note di
+ * avanzamento, che indicano proprio questo: si vedono, ognuna prima del tool che introduce, solo finché la risposta non ha
+ * testo. Una risposta che non arriva più (finita, rifiutata, o interrotta da un errore o dallo stop) mostra solo i tool
+ * che hanno finito con un risultato, così si vede che cosa è stato fatto davvero: un tool in corso non finirà più (quelli
+ * del passo rifiutato non partono nemmeno), e le note non indicano più niente; come dopo il ricaricamento, dove resta solo
+ * il testo finale salvato. Un tool fallito non si mostra mai (toolChip).
  */
-export function assistantView(message: MessageLike, hiddenTools: ReadonlySet<string>): AssistantView {
+export function assistantView(message: MessageLike, hiddenTools: ReadonlySet<string>, { arriving }: { arriving: boolean }): AssistantView {
   const items = progressItems(message.parts ?? [], hiddenTools);
   const chips = (part: PartLike) => {
     const chip = toolChip(part);
     return chip ? [chip] : [];
   };
-  if (isRefusedReply(message)) {
-    const completed = items.flatMap((item) => (item.kind === "tool" && toolOutcome(item.part) === "done" ? chips(item.part) : []));
-    return { kind: "refused", notice: CHAT_REFUSAL_NOTICE, progress: completed };
-  }
+  const completed = items.flatMap((item) => (item.kind === "tool" && toolOutcome(item.part) === "done" ? chips(item.part) : []));
+  if (isRefusedReply(message)) return { kind: "refused", notice: CHAT_REFUSAL_NOTICE, progress: completed };
   const text = messageText(message);
+  if (!arriving) return { kind: "answer", text, progress: completed };
   const answered = text.trim().length > 0;
   const progress = items.flatMap<ChatProgress>((item) => (item.kind === "tool" ? chips(item.part) : answered ? [] : [item]));
   return { kind: "answer", text, progress };

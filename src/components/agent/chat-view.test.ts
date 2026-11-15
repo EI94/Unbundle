@@ -122,17 +122,17 @@ test("il corpo della richiesta alla rotta: i turni di chatRequestMessages e il c
 });
 
 test("una risposta rifiutata si mostra con l'avviso, mai con il suo testo parziale; le altre con il loro testo", () => {
-  const view = assistantView(refused, HIDDEN_TOOLS);
+  const view = assistantView(refused, HIDDEN_TOOLS, { arriving: false });
   assert.equal(view.kind, "refused");
   assert.equal(view.kind === "refused" && view.notice, CHAT_REFUSAL_NOTICE);
   assert.doesNotMatch(JSON.stringify(view), /Ecco come si fa/);
-  assert.deepEqual(assistantView({ ...refused, metadata: { finishReason: "stop" } }, HIDDEN_TOOLS), {
+  assert.deepEqual(assistantView({ ...refused, metadata: { finishReason: "stop" } }, HIDDEN_TOOLS, { arriving: false }), {
     kind: "answer",
     text: "Ecco come si fa: per prima cosa",
     progress: [],
   });
   // I messaggi ricaricati non hanno metadati: sono risposte salvate, quindi finite.
-  assert.equal(assistantView({ ...refused, metadata: undefined }, HIDDEN_TOOLS).kind, "answer");
+  assert.equal(assistantView({ ...refused, metadata: undefined }, HIDDEN_TOOLS, { arriving: false }).kind, "answer");
 });
 
 test("una risposta ancora senza testo: note e tool nell'ordine, con le etichette; i tool nascosti no", () => {
@@ -148,7 +148,7 @@ test("una risposta ancora senza testo: note e tool nell'ordine, con le etichette
       { type: "tool-saveActivity", toolCallId: "t1", state: "input-available", input: {} },
     ],
   };
-  assert.deepEqual(assistantView(arriving, HIDDEN_TOOLS), {
+  assert.deepEqual(assistantView(arriving, HIDDEN_TOOLS, { arriving: true }), {
     kind: "answer",
     text: "",
     progress: [
@@ -178,7 +178,7 @@ test("una risposta rifiutata: l'avviso e solo i tool finiti nei passi prima; nie
       { type: "text", text: "Ecco come si fa: per prima", state: "done" },
     ],
   };
-  assert.deepEqual(assistantView(refusedAfterTools, HIDDEN_TOOLS), {
+  assert.deepEqual(assistantView(refusedAfterTools, HIDDEN_TOOLS, { arriving: false }), {
     kind: "refused",
     notice: CHAT_REFUSAL_NOTICE,
     progress: [{ kind: "tool", label: "Obiettivo salvato", done: true }],
@@ -197,17 +197,17 @@ test("quando arriva il testo della risposta le note se ne vanno; i tool restano,
   ];
   const reply = (parts: ChatUIMessage["parts"], metadata?: ChatUIMessage["metadata"]): ChatUIMessage => ({ id: "a", role: "assistant", metadata, parts });
   // Prima del testo: le note, ognuna prima del suo tool.
-  assert.deepEqual(assistantView(reply(parts), HIDDEN_TOOLS).progress, [
+  assert.deepEqual(assistantView(reply(parts), HIDDEN_TOOLS, { arriving: true }).progress, [
     { kind: "note", text: "Salvo l'attività «Fatture mensili»." },
     { kind: "tool", label: "Attività salvata", done: true },
     { kind: "note", text: "Ora collego la dipendenza." },
     { kind: "tool", label: "Dipendenza collegata", done: true },
   ]);
   // Uno spazio non è ancora una risposta.
-  assert.equal(assistantView(reply([...parts, { type: "text", text: "\n " }]), HIDDEN_TOOLS).progress.length, 4);
+  assert.equal(assistantView(reply([...parts, { type: "text", text: "\n " }]), HIDDEN_TOOLS, { arriving: true }).progress.length, 4);
   // Con il testo: restano i tool. Lo stesso a risposta finita.
-  for (const metadata of [undefined, { finishReason: "stop" }]) {
-    assert.deepEqual(assistantView(reply([...parts, { type: "text", text: "Fatto. Altro?" }], metadata), HIDDEN_TOOLS), {
+  for (const [metadata, arriving] of [[undefined, true], [{ finishReason: "stop" }, false]] as const) {
+    assert.deepEqual(assistantView(reply([...parts, { type: "text", text: "Fatto. Altro?" }], metadata), HIDDEN_TOOLS, { arriving }), {
       kind: "answer",
       text: "Fatto. Altro?",
       progress: [
@@ -216,6 +216,38 @@ test("quando arriva il testo della risposta le note se ne vanno; i tool restano,
       ],
     });
   }
+});
+
+test("una risposta che non arriva più (interrotta da un errore o dallo stop, o finita senza testo): solo i tool finiti", () => {
+  const interrupted: ChatUIMessage = {
+    id: "a",
+    role: "assistant",
+    parts: [
+      { type: "step-start" },
+      { type: "reasoning", text: "Preparo le fatture." },
+      { type: "tool-saveActivity", toolCallId: "t1", state: "output-available", input: {}, output: { success: true } },
+      { type: "step-start" },
+      { type: "reasoning", text: "Salvo l'attività «Fatture mensili»." },
+      { type: "tool-saveActivity", toolCallId: "t2", state: "input-available", input: {} },
+    ],
+  };
+  // Mentre arriva: le note e il tool in corso.
+  assert.deepEqual(assistantView(interrupted, HIDDEN_TOOLS, { arriving: true }).progress, [
+    { kind: "note", text: "Preparo le fatture." },
+    { kind: "tool", label: "Attività salvata", done: true },
+    { kind: "note", text: "Salvo l'attività «Fatture mensili»." },
+    { kind: "tool", label: "Salvo l'attività", done: false },
+  ]);
+  // Interrotta: il tool in corso non finirà più e le note non indicano più niente; resta quello che è stato fatto.
+  assert.deepEqual(assistantView(interrupted, HIDDEN_TOOLS, { arriving: false }), {
+    kind: "answer",
+    text: "",
+    progress: [{ kind: "tool", label: "Attività salvata", done: true }],
+  });
+  // Finita al limite dei passi, senza testo: lo stesso.
+  assert.deepEqual(assistantView({ ...interrupted, metadata: { finishReason: "tool-calls" }, parts: interrupted.parts.slice(0, 3) }, HIDDEN_TOOLS, { arriving: false }).progress, [
+    { kind: "tool", label: "Attività salvata", done: true },
+  ]);
 });
 
 test("un tool fallito non si mostra come fatto: né con un errore, né con un risultato che dice `success: false`", () => {
@@ -235,13 +267,13 @@ test("un tool fallito non si mostra come fatto: né con un errore, né con un ri
       { type: "text", text: "Non sono riuscito a salvare l'obiettivo, riprovo più tardi." },
     ],
   };
-  assert.deepEqual(assistantView(reply, HIDDEN_TOOLS), {
+  assert.deepEqual(assistantView(reply, HIDDEN_TOOLS, { arriving: false }), {
     kind: "answer",
     text: "Non sono riuscito a salvare l'obiettivo, riprovo più tardi.",
     progress: [{ kind: "tool", label: "Attività salvata", done: true }],
   });
   // Lo stesso mentre la risposta arriva: il tool fallito non resta in corso.
-  assert.deepEqual(assistantView({ ...reply, metadata: undefined, parts: reply.parts.slice(0, 5) }, HIDDEN_TOOLS).progress, [
+  assert.deepEqual(assistantView({ ...reply, metadata: undefined, parts: reply.parts.slice(0, 5) }, HIDDEN_TOOLS, { arriving: true }).progress, [
     { kind: "tool", label: "Attività salvata", done: true },
   ]);
   assert.equal(toolOutcome({ type: "tool-saveCompanyFacts", state: "output-available", output: { success: false } }), "failed");

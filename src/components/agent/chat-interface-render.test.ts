@@ -11,7 +11,7 @@ import { CHAT_REFUSAL_NOTICE, type ChatUIMessage } from "./chat-view.ts";
 // qui (@ai-sdk/react finto): che cosa mostra di una risposta e che cosa manda alla rotta. Le decisioni stanno in
 // chat-view.ts, con i loro test; qui si controlla che il componente le usi.
 
-type ChatState = { messages: ChatUIMessage[]; status: string; transport?: ChatTransport<ChatUIMessage> };
+type ChatState = { messages: ChatUIMessage[]; status: string; error?: Error; transport?: ChatTransport<ChatUIMessage> };
 const state: ChatState = { messages: [], status: "ready" };
 (globalThis as { __chatRender?: ChatState }).__chatRender = state;
 
@@ -19,7 +19,7 @@ await installAppModules({
   "@ai-sdk/react": `export function useChat(options) {
     const state = globalThis.__chatRender;
     state.transport = options.transport;
-    return { messages: state.messages, status: state.status, error: undefined, sendMessage() {} };
+    return { messages: state.messages, status: state.status, error: state.error, sendMessage() {} };
   }`,
 });
 await enableTsxImports();
@@ -28,9 +28,10 @@ const { ChatInterface } = await import("./chat-interface.tsx");
 const PROPS = { workspaceId: "ws-prova", conversationType: "activity_mapping", departmentId: "reparto-prova" };
 
 /** La lista dei messaggi resa: il suo markup e il testo visibile, un pezzo per elemento. */
-function render(messages: ChatUIMessage[], status = "ready") {
+function render(messages: ChatUIMessage[], status = "ready", error?: Error) {
   state.messages = messages;
   state.status = status;
+  state.error = error;
   const html = renderToStaticMarkup(createElement(ChatInterface, PROPS));
   const list = html.slice(html.indexOf('<div class="mx-auto max-w-2xl space-y-6">'), html.indexOf('<div class="border-t border-border px-6 py-4">'));
   const text = list
@@ -122,6 +123,35 @@ test("una risposta in arrivo, ancora senza testo: le note e i tool in corso, e l
   );
   assert.deepEqual(text, ["Preparo le fatture.", "Salvo l'attività «Fatture mensili».", "Salvo l'attività", "Sto ragionando..."]);
   assert.match(list, /animate-pulse"><svg[^]*?<span>Salvo l&#x27;attività<\/span>/, "il tool in corso pulsa");
+});
+
+test("una risposta interrotta (rete persa, funzione fermata): accanto all'errore niente che gira, né note; resta il tool finito", () => {
+  const interrupted: ChatUIMessage = {
+    id: "a5",
+    role: "assistant",
+    parts: [
+      { type: "step-start" },
+      { type: "tool-saveStrategicGoal", toolCallId: "t0", state: "output-available", input: {}, output: { success: true } },
+      { type: "step-start" },
+      { type: "reasoning", text: "Salvo l'attività «Fatture mensili».", state: "done" },
+      { type: "tool-saveActivity", toolCallId: "t1", state: "input-available", input: {} },
+    ],
+  };
+  const { list, text } = render([question, interrupted], "error", new Error("network error"));
+  assert.deepEqual(text, ["Preparo le fatture.", "Obiettivo salvato", "Errore", "Errore imprevisto. Riprova."]);
+  assert.doesNotMatch(list, /animate-pulse|animate-spin/, "nessun tool che gira per sempre");
+  // Mentre arriva la risposta dopo, la stessa risposta interrotta resta ferma: sta arrivando solo l'ultima.
+  const next = render([question, interrupted, { id: "u2", role: "user", parts: [{ type: "text", text: "Riprova." }] }, { ...interrupted, id: "a6" }], "streaming");
+  assert.deepEqual(next.text, [
+    "Preparo le fatture.",
+    "Obiettivo salvato",
+    "Riprova.",
+    "Obiettivo salvato",
+    "Salvo l'attività «Fatture mensili».",
+    "Salvo l'attività",
+    "Sto ragionando...",
+  ]);
+  assert.equal(next.list.match(/animate-pulse/g)?.length, 1, "gira solo il tool della risposta che arriva");
 });
 
 test("la richiesta alla rotta: il corpo di chatTransportBody, senza la risposta rifiutata e la sua domanda", async (t) => {

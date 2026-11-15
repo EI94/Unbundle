@@ -258,7 +258,7 @@ export function ChatInterface({
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto px-6 py-6" ref={scrollRef}>
         <div className="mx-auto max-w-2xl space-y-6">
-          {messages.map((message) => {
+          {messages.map((message, index) => {
             if (message.role === "user") {
               return (
                 <div key={message.id} className="flex justify-end">
@@ -270,8 +270,10 @@ export function ChatInterface({
             }
 
             // Che cosa mostrare della risposta lo decide chat-view.ts: l'avviso di un rifiuto o il testo, poi le
-            // righe di avanzamento.
-            const view = assistantView(message, HIDDEN_TOOLS);
+            // righe di avanzamento. Sta arrivando solo l'ultima risposta, mentre la chat aspetta lo stream.
+            const view = assistantView(message, HIDDEN_TOOLS, {
+              arriving: isLoading && index === messages.length - 1,
+            });
             return (
               <div
                 key={message.id}
