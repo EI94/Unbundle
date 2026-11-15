@@ -191,8 +191,8 @@ export async function commandContextFor(
 }
 
 /**
- * Email dei membri Lateral Space del caso, (8.0c) di chi costruisce il caso da fuori (una concessione che lo copre: solo
- * con la 0037) e contatti designati: il contesto delle firme.
+ * Email dei membri Lateral Space del caso, (8.0c) di chi costruisce il caso da fuori (una concessione che lo copre e lì
+ * nessun ruolo del cliente: solo con la 0037) e contatti designati: il contesto delle firme.
  */
 export async function loadSignatureContext(executor: UcExecutor, core: CaseCore, lsDomains: readonly string[]): Promise<SignatureContext> {
   const [rows] = await executor.batch([
@@ -732,7 +732,8 @@ function collaboratorSql(workspaceId: string, userId: string): UcStatement {
  * Ruoli `ls_*` solo a persone di Lateral Space, ruoli del cliente solo alle
  * altre, mai insieme sulla stessa persona (`assertMemberRoles`). (8.0c) Mai un
  * ruolo del cliente a chi costruisce il caso da fuori (una concessione che lo
- * copre: solo con la 0037): `conflitto_ruoli`.
+ * copre: solo con la 0037): `conflitto_ruoli`. Chi lì ha già un ruolo del
+ * cliente («Aggiungi» ha saltato il caso) resta del cliente e ne può avere altri.
  */
 export async function addCaseMember(executor: UcExecutor, ctx: UcCommandContext, input: unknown): Promise<Result<{ userId: string; role: CaseRole }>> {
   if (!can(actorRoles(ctx), "gestire_membri")) return fail("attore_non_ammesso", "Solo il Responsabile del caso gestisce i membri.");

@@ -21,6 +21,7 @@
 import { EXTERNAL_BUILDERS_PROBE_SQL } from "../use-case-hub-builders-ddl.ts";
 import { cast, raw, ref, toStatement, ucSql, type SqlFragment } from "../../uc/sql/statement.ts";
 import { EXTERNAL_BUILDER_ROLE, FACTORY_BUILDER_ROLES, type FactoryRole } from "../../use-cases/factory/builders.ts";
+import { CLIENT_CASE_ROLES } from "../../uc/vocab.ts";
 import { PORTFOLIO_REVIEWER_ROLES } from "../../workspace-permissions.ts";
 import type { UcExecutor } from "../uc-executor.ts";
 
@@ -221,25 +222,41 @@ function grantCoversCaseSql(user: SqlFragment, caseAlias = "c"): SqlFragment {
 }
 
 /**
- * Costruisce il caso, per la concessione (anche prima della riga `osservatore`): lì non ha ruoli del cliente
- * (`addCaseMember`, `conflitto_ruoli`). Falso senza la 0037.
+ * Vero se la persona `user` ha nel caso `c` un ruolo del cliente: lì firma o approva per il cliente e non costruisce.
+ * «Aggiungi» salta quel caso (`ruolo_cliente`), e la concessione lì non toglie niente al cliente.
  */
+function clientRoleInCaseSql(user: SqlFragment, caseAlias = "c"): SqlFragment {
+  return ucSql`EXISTS (SELECT 1 FROM uc_case_members xb_k WHERE xb_k.case_id = ${ref(caseAlias)}.id AND xb_k.user_id = ${user}
+    AND xb_k.role = ANY (${cast([...CLIENT_CASE_ROLES], "text[]")}))`;
+}
+
+/**
+ * Costruisce il caso per la concessione (anche prima della riga `osservatore`): una concessione che lo copre, e lì nessun
+ * ruolo del cliente, come lo salta «Aggiungi». Una persona così non ha ruoli del cliente nel caso (`addCaseMember`,
+ * `conflitto_ruoli`); chi lì ha già un ruolo del cliente resta del cliente. Falso senza la 0037.
+ */
+function grantBuildsCaseSql(user: SqlFragment, caseAlias = "c"): SqlFragment {
+  return ucSql`(${grantCoversCaseSql(user, caseAlias)} AND NOT ${clientRoleInCaseSql(user, caseAlias)})`;
+}
+
+/** Costruisce il caso per la concessione (`grantBuildsCaseSql`): niente ruoli del cliente lì. Falso senza la 0037. */
 export async function hasGrantForCase(executor: UcExecutor, i: { caseId: string; userId: string }): Promise<boolean> {
   if (!UUID_RE.test(i.caseId) || !UUID_RE.test(i.userId) || !(await externalBuildersReady(executor))) return false;
-  const [rows] = await executor.batch([toStatement(ucSql`SELECT ${grantCoversCaseSql(cast(i.userId, "uuid"))} AS ok FROM uc_cases c WHERE c.id = ${cast(i.caseId, "uuid")}`)]);
+  const [rows] = await executor.batch([toStatement(ucSql`SELECT ${grantBuildsCaseSql(cast(i.userId, "uuid"))} AS ok FROM uc_cases c WHERE c.id = ${cast(i.caseId, "uuid")}`)]);
   return rows[0]?.ok === true;
 }
 
 /**
- * Le e-mail (in minuscolo) di chi ha una concessione che copre il caso: non firma per il cliente lì
- * (`firmatario_costruttore`) e non fa il referente (`referente_costruttore`). Vuoto senza la 0037.
+ * Le e-mail (in minuscolo) di chi costruisce il caso per la concessione (`grantBuildsCaseSql`): non firma per il cliente
+ * lì (`firmatario_costruttore`) e non fa il referente (`referente_costruttore`). Chi nel caso ha un ruolo del cliente
+ * (il caso che «Aggiungi» ha saltato) firma come prima. Vuoto senza la 0037.
  */
 export async function caseBuilderEmails(executor: UcExecutor, caseId: string): Promise<string[]> {
   if (!UUID_RE.test(caseId) || !(await externalBuildersReady(executor))) return [];
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT DISTINCT lower(u.email) AS email FROM uc_cases c JOIN use_case_external_builders g ON ${grantCoversSql(ref("c"), ref("g"))}
 JOIN users u ON u.id = g.user_id
-WHERE c.id = ${cast(caseId, "uuid")} AND u.email IS NOT NULL`),
+WHERE c.id = ${cast(caseId, "uuid")} AND u.email IS NOT NULL AND NOT ${clientRoleInCaseSql(raw("u.id"))}`),
   ]);
   return rows.map((r) => String(r.email));
 }
@@ -268,12 +285,15 @@ export async function externalGrantWorkspaceIds(executor: UcExecutor, userId: st
   return new Set(rows.map((r) => String(r.workspace_id).toLowerCase()));
 }
 
-/** Chi ha una concessione che copre il caso (per «Osservatore · costruisce» nel team del dossier). Vuoto senza la 0037. */
+/**
+ * Chi costruisce il caso per la concessione (`grantBuildsCaseSql`), per il team del dossier: «Osservatore · costruisce» e
+ * niente ruoli del cliente da offrire. Vuoto senza la 0037.
+ */
 export async function caseGrantUserIds(executor: UcExecutor, caseId: string): Promise<string[]> {
   if (!UUID_RE.test(caseId) || !(await externalBuildersReady(executor))) return [];
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT DISTINCT g.user_id FROM uc_cases c JOIN use_case_external_builders g ON ${grantCoversSql(ref("c"), ref("g"))}
-WHERE c.id = ${cast(caseId, "uuid")}`),
+WHERE c.id = ${cast(caseId, "uuid")} AND NOT ${clientRoleInCaseSql(raw("g.user_id"))}`),
   ]);
   return rows.map((r) => String(r.user_id).toLowerCase());
 }

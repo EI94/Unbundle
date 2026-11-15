@@ -582,6 +582,41 @@ test("D7: a chi costruisce il caso niente ruoli del cliente, niente referente, n
   assert.equal(fromLink.ok ? "ok" : fromLink.code, "firmatario_costruttore");
 });
 
+test("D7: nel caso che «Aggiungi» salta perché lì la persona firma o approva per il cliente, resta del cliente: firma dal link e può avere un altro ruolo del cliente", opts, async () => {
+  const team = await import("../../db/queries/use-case-workspace-team.ts");
+  const builders = await import("../../db/queries/use-case-builders.ts");
+  const ucCases = await import("../../db/queries/uc-cases.ts");
+  const perms = await import("../../uc/permissions.ts");
+  const ucActions = await import("../../actions/uc-cases.ts");
+  // P, Analista del cliente: responsabile del cliente in A3, poi «Sviluppatore esterno» in tutti i casi.
+  await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'owner_cliente')`, [ids.caseA3, ids.p]);
+  try {
+    const added = await team.addExternalBuilder(exec, { workspaceId: ids.wsA, actorUserId: ids.lead, userId: ids.p, where: "tutti", lsDomains: ["ls.test"] });
+    assert.ok(added.ok, added.ok ? "" : added.message);
+    if (!added.ok) return;
+    assert.deepEqual(added.value.skipped, [{ code: "NM-0003", reason: "ruolo_cliente" }]);
+    const signer = async (caseId: string) => {
+      const core = await ucCases.loadCaseCore(exec, ids.wsA, caseId);
+      const sig = await ucCases.loadSignatureContext(exec, core!, ["ls.test"]);
+      const checked = perms.checkSignerEmail(EMAIL.p.toUpperCase(), ["ls.test"], sig.lsMemberEmails, sig.builderEmails);
+      return checked.ok ? "ok" : checked.code;
+    };
+    assert.equal(await signer(ids.caseA3), "ok", "in A3 firma per il cliente, anche dal link");
+    assert.equal(await signer(ids.caseA2), "firmatario_costruttore", "in A2 costruisce: lì non firma");
+    assert.ok(!(await builders.caseGrantUserIds(exec, ids.caseA3)).includes(ids.p), "in A3 il team non lo dice «costruisce»");
+    assert.ok((await builders.caseGrantUserIds(exec, ids.caseA2)).includes(ids.p));
+    const privacy = await as("lead", () => ucActions.addMemberAction(ids.wsA, ids.caseA3, { userId: ids.p, role: "approvatore_privacy" }));
+    assert.equal(privacy.ok, true, privacy.ok ? "" : privacy.message);
+    const board = await as("lead", () => ucActions.addMemberAction(ids.wsA, ids.caseA2, { userId: ids.p, role: "ai_board" }));
+    assert.deepEqual([board.ok, !board.ok && board.code], [false, "conflitto_ruoli"], "dove costruisce, niente ruoli del cliente");
+  } finally {
+    await team.removeExternalBuilder(exec, { workspaceId: ids.wsA, actorUserId: ids.lead, userId: ids.p, lsDomains: ["ls.test"] });
+    await q(`DELETE FROM uc_case_members WHERE case_id = $1 AND user_id = $2 AND role IN ('owner_cliente', 'approvatore_privacy')`, [ids.caseA3, ids.p]);
+    // Come nel resto della prova: P osservatore in A1, senza concessione.
+    await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'osservatore') ON CONFLICT DO NOTHING`, [ids.caseA1, ids.p]);
+  }
+});
+
 test("D15: il repository di un altro cliente si rifiuta; nello stesso cliente un repository di famiglia vale per più casi", opts, async () => {
   const repo = `Prova/nardi-esploso-${suffix}`;
   const leadInB = await tokenFor("lead", ids.wsB);
