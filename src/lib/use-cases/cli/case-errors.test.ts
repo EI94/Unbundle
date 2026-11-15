@@ -18,7 +18,7 @@ test("la sezione spenta per il workspace e il caso che non vedi restano «non tr
   }
 });
 
-test("(8.0c) a chi è scesa a Contributore il no dice che il ruolo si cambia da Impostazioni › Persone; agli altri il testo della porta", () => {
+test("(8.0c) a chi scende a Contributore il no dice che il ruolo si cambia da Impostazioni › Persone; agli altri il testo della porta", () => {
   assert.equal(CLI_NEEDS_REVIEWER_ROLE, "Per costruire serve almeno il ruolo di Analista nel workspace: lo cambia chi gestisce il workspace, da Impostazioni › Persone.");
   assert.equal(notBuilderMessage("ruolo_workspace", "testo della porta"), CLI_NEEDS_REVIEWER_ROLE);
   for (const blocked of [null, "non_disponibile"]) assert.equal(notBuilderMessage(blocked, "testo della porta"), "testo della porta");

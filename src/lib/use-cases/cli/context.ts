@@ -35,7 +35,7 @@ export interface CliContext {
     scrive: boolean;
     /**
      * (8.0c) Con `scrive` falso, il perché, lo stesso testo del 403 di una scrittura: la CLI del modello 1.5.0 lo dice prima
-     * di toccare GitHub (per chi è scesa a Contributore: il ruolo si cambia da Impostazioni › Persone). Senza, null.
+     * di toccare GitHub (a chi scende a Contributore: il ruolo si cambia da Impostazioni › Persone). Senza, null.
      */
     perche: string | null;
   };
