@@ -17,6 +17,7 @@ import {
   lastStepRefused,
   logClaudeStop,
   logClaudeTimeout,
+  stopAtDeadline,
   stoppedByDeadline,
   throwIfRefused,
   timeUntil,
@@ -411,6 +412,22 @@ test("lastStepRefused: vero solo quando l'ultimo passo del giro è un rifiuto", 
   assert.equal(lastStepRefused({ steps: [{ finishReason: "tool-calls" }, { finishReason: "content-filter" }] }), true);
   assert.equal(lastStepRefused({ steps: [{ finishReason: "content-filter" }, { finishReason: "stop" }] }), false);
   assert.equal(lastStepRefused({ steps: [{ finishReason: "tool-calls" }] }), false);
+});
+
+test("stopAtDeadline (orologio finto): dalla scadenza della chat nessun nuovo passo; nel log solo il numero dei passi", (t) => {
+  const lines = recordLogs(t);
+  const start = 1_000_000;
+  let now = start;
+  const stop = stopAtDeadline("chat/route", chatDeadline(start, 120), () => now);
+  assert.equal(stop({ steps: [{}] }), false);
+  now = start + 94_999;
+  assert.equal(stop({ steps: [{}, {}] }), false, "un millisecondo prima della scadenza");
+  assert.deepEqual(lines, []);
+  now = start + 95_000;
+  assert.equal(stop({ steps: [{}, {}, {}] }), true, "alla scadenza");
+  now = start + 300_000;
+  assert.equal(stop({ steps: [{}] }), true, "dopo");
+  assert.deepEqual(lines, ['[chat/route] tempo_scaduto {"passi":3}', '[chat/route] tempo_scaduto {"passi":1}']);
 });
 
 test("la scadenza della chat: inizio più maxDuration meno la riserva per la risposta; ogni chiamata il tempo che resta", () => {

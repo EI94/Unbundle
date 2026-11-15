@@ -9,7 +9,7 @@ import { DISCOVERY_SYSTEM_PROMPT } from "@/lib/ai/prompts/discovery";
 import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mapping";
 import { withAgentReliability } from "@/lib/ai/agent-reliability";
 import { chatHistory, closingQuestions, refusedQuestionIds } from "@/lib/ai/chat-history";
-import { CLAUDE_MODEL, chatDeadline, claudeCallSettings, lastStepRefused, logClaudeStop } from "@/lib/ai/models";
+import { CLAUDE_MODEL, chatDeadline, claudeCallSettings, lastStepRefused, logClaudeStop, stopAtDeadline } from "@/lib/ai/models";
 import { logSafeError } from "@/lib/log/safe-error";
 import {
   saveMessage,
@@ -27,8 +27,9 @@ import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
-  // Una scadenza per tutta la richiesta: i tool che chiamano il modello (ricerca web, classificazione e match O*NET)
-  // si fermano lì, e resta il tempo per la risposta finale dentro maxDuration (src/lib/ai/models.ts).
+  // Una scadenza per tutta la richiesta (src/lib/ai/models.ts): i tool che chiamano il modello (ricerca web,
+  // classificazione e match O*NET) si fermano lì, e da lì nessun nuovo passo del modello comincia (stopWhen qui
+  // sotto): il passo in corso ha il resto di maxDuration per finire.
   const deadline = chatDeadline(Date.now(), maxDuration);
   const session = await auth();
   if (!session?.user?.id) {
@@ -261,7 +262,8 @@ export async function POST(req: Request) {
     // Default SDK = stepCountIs(1): dopo un tool call lo stream si chiude SENZA secondo round
     // → UI bloccata su "Elaboro...". Serve un budget di step per testo post-tool.
     // Un passo rifiutato chiude il giro (src/lib/ai/models.ts): il turno resta un rifiuto, anche con un tool non valido.
-    stopWhen: [stepCountIs(20), lastStepRefused],
+    // Dopo la scadenza nessun nuovo passo comincia: il turno si chiude dentro maxDuration, senza interrompere lo stream.
+    stopWhen: [stepCountIs(20), lastStepRefused, stopAtDeadline("chat/route", deadline)],
     onError: ({ error }) => {
       console.error("[chat/route] streamText error:", error);
     },

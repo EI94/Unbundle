@@ -432,6 +432,106 @@ test("la storia del browser passa da chatHistory: niente benvenuto in testa, nie
   assert.deepEqual(prova.saved[0], { conversationId: "conv-prova", role: "user", content: "Ogni mese, per 40 clienti." });
 });
 
+test("dopo la scadenza nessun nuovo passo del modello (orologio finto): il turno si chiude con il passo dei tool, salvato e indicizzato", async (t) => {
+  // L'orologio della rotta è fermo finché il tool non lo porta alla scadenza (l'inizio più 120 secondi, meno i 25 della
+  // riserva), come una ricerca o un match O*NET fermati lì, o al millisecondo prima (controllo).
+  const start = 1_800_000_000_000;
+  let now = start;
+  t.mock.method(Date, "now", () => now);
+  const lines = recordLogs(t);
+  for (const [label, afterTool, steps] of [
+    ["un millisecondo prima della scadenza", 94_999, 2],
+    ["alla scadenza", 95_000, 1],
+  ] as const) {
+    reset();
+    lines.length = 0;
+    now = start;
+    const goals: string[] = [];
+    prova.tools = {
+      saveStrategicGoal: tool({
+        description: "Salva un obiettivo strategico",
+        inputSchema: z.object({ title: z.string() }),
+        execute: async ({ title }) => {
+          goals.push(title);
+          now = start + afterTool;
+          return { success: true };
+        },
+      }),
+    };
+    const requests = fakeAppClaude([
+      sse([
+        ev.start("msg_1"),
+        ...ev.thinking(0, "firma-A"),
+        ...ev.text(1, "Salvo l'obiettivo."),
+        ...ev.toolUse(2, "toolu_prova", "saveStrategicGoal", '{"title":"Ridurre i tempi di fatturazione"}'),
+        ...ev.end("tool_use"),
+      ]),
+      sse([ev.start("msg_2"), ...ev.thinking(0, "firma-B"), ...ev.text(1, "Fatto. Qual è il prossimo obiettivo?"), ...ev.end("end_turn")]),
+    ]);
+    const { status, chunks } = await chat(HISTORY);
+    assert.equal(status, 200, label);
+    assert.equal(requests.length, steps, `${label}: passi del modello`);
+    assert.deepEqual(goals, ["Ridurre i tempi di fatturazione"], `${label}: il tool del passo in corso finisce`);
+    // Lo stream non si interrompe: il browser riceve il tool finito e la fine del turno.
+    assert.ok(chunks.some((chunk) => chunk.type === "tool-output-available"), label);
+    const reply = steps === 2 ? "Fatto. Qual è il prossimo obiettivo?" : "Salvo l'obiettivo.";
+    const finishReason = steps === 2 ? "stop" : "tool-calls";
+    assert.deepEqual(chunks.find((chunk) => chunk.type === "finish"), { type: "finish", finishReason, messageMetadata: { finishReason } }, label);
+    // Si salva e si indicizza come sempre: la domanda e il testo dell'ultimo passo; niente si toglie.
+    assert.deepEqual(
+      prova.saved.map(({ role, content }) => [role, content]),
+      [
+        ["user", "Preparo le fatture dei clienti ogni mese."],
+        ["assistant", reply],
+      ],
+      label,
+    );
+    assert.deepEqual(
+      prova.indexed,
+      [
+        ["assistant", reply],
+        ["user", "Preparo le fatture dei clienti ogni mese."],
+      ],
+      label,
+    );
+    assert.deepEqual(prova.deleted, [], label);
+    assert.deepEqual(lines, steps === 2 ? [] : ['[chat/route] tempo_scaduto {"passi":1}'], label);
+  }
+});
+
+test("un passo rifiutato alla scadenza (orologio finto) resta un rifiuto: niente salvato o indicizzato, la domanda si toglie", async (t) => {
+  const start = 1_800_000_000_000;
+  let now = start;
+  t.mock.method(Date, "now", () => now);
+  const lines = recordLogs(t);
+  reset();
+  prova.tools = savingTool([]);
+  const refusedStep = sse([
+    ev.start("msg_1"),
+    ...ev.toolUse(0, "toolu_prova", "saveStrategicGoal", '{"title":"Rid'),
+    ...ev.end("refusal", { stop_details: { type: "refusal", category: "cyber", explanation: null } }),
+  ]);
+  const requests = fakeAppClaude([
+    // Il passo arriva quando la scadenza è passata.
+    (init) => {
+      now = start + 95_000;
+      return refusedStep(init);
+    },
+    sse([ev.start("msg_2"), ...ev.text(0, "Ecco il resto della risposta."), ...ev.end("end_turn")]),
+  ]);
+  const { status, chunks } = await chat(HISTORY);
+  assert.equal(status, 200);
+  assert.equal(requests.length, 1);
+  assert.deepEqual(chunks.find((chunk) => chunk.type === "finish"), { type: "finish", finishReason: "content-filter", messageMetadata: { finishReason: "content-filter" } });
+  assert.deepEqual(prova.saved.map(({ role }) => role), ["user"]);
+  assert.deepEqual(prova.deleted, [["conv-prova", "msg-1"]]);
+  assert.deepEqual(prova.indexed, []);
+  assert.deepEqual(lines, [
+    '[chat/route] tempo_scaduto {"passi":1}',
+    '[chat/route] risposta_rifiutata {"finishReason":"content-filter","category":"cyber"}',
+  ]);
+});
+
 test("una scadenza per richiesta, ai tool che chiamano il modello: l'inizio più 120 secondi, meno 25 per la risposta finale", async (t) => {
   recordLogs(t);
   for (const [conversationType, departmentId, built] of [
