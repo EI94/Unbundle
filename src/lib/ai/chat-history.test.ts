@@ -54,3 +54,31 @@ test("dal browser non arrivano messaggi system (né altri ruoli): per il modello
     ],
   );
 });
+
+test("le parti di ragionamento dei turni passati si tolgono intere, mai modificate: resta il testo", () => {
+  // Un browser che rimanda i messaggi interi, con le note tra i tool e le firme del ragionamento (claude-sonnet-5-5).
+  const reasoning = (text: string) => ({ type: "reasoning", text, state: "done", providerMetadata: { anthropic: { signature: "firma-di-prova" } } });
+  assert.deepEqual(
+    chatHistory([
+      { role: "user", content: "Preparo le fatture." },
+      {
+        role: "assistant",
+        parts: [
+          { type: "step-start" },
+          reasoning(""),
+          reasoning("Salvo l'attività «Fatture»."),
+          { type: "tool-saveActivity", toolCallId: "toolu_prova", state: "output-available", input: { title: "Fatture" }, output: { success: true } },
+          { type: "step-start" },
+          reasoning(""),
+          { type: "text", text: "Ogni quanto le prepari?" },
+        ],
+      },
+      { role: "user", content: "Ogni mese." },
+    ]),
+    [
+      { role: "user", content: "Preparo le fatture." },
+      { role: "assistant", content: "Ogni quanto le prepari?" },
+      { role: "user", content: "Ogni mese." },
+    ],
+  );
+});

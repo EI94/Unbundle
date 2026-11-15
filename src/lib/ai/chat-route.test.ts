@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { tool } from "ai";
+import { z } from "zod";
 import { ev, installAppModules, recordLogs, sse, fakeAppClaude } from "./claude-test-kit.ts";
 
 // (Migrazione a Claude Sonnet 5.5) La rotta vera della chat (/api/ai/chat): che cosa salva, che cosa mette nella
@@ -102,5 +104,98 @@ test("una risposta normale: salvata e messa nella memoria con la domanda; il bro
   assert.deepEqual(prova.indexed, [
     ["assistant", "Ogni quanto le prepari?"],
     ["user", "Preparo le fatture dei clienti ogni mese."],
+  ]);
+});
+
+/** Un tool che salva, come quelli della chat (qui solo in memoria). */
+function savingTool(saved: string[]) {
+  return {
+    saveStrategicGoal: tool({
+      description: "Salva un obiettivo strategico",
+      inputSchema: z.object({ title: z.string() }),
+      execute: async ({ title }) => {
+        saved.push(title);
+        return { success: true };
+      },
+    }),
+  };
+}
+
+test("le note tra i tool: la chat le chiede (display «updates»), il browser le riceve prima del tool, la storia del giro resta uguale", async (t) => {
+  recordLogs(t);
+  reset();
+  const goals: string[] = [];
+  prova.tools = savingTool(goals);
+  const NOTE = "Salvo l'obiettivo «Ridurre i tempi di fatturazione».";
+  const requests = fakeAppClaude([
+    sse([
+      ev.start("msg_1"),
+      ...ev.thinking(0, "firma-ragionamento"),
+      ...ev.thinking(1, "firma-nota", NOTE),
+      ...ev.toolUse(2, "toolu_prova", "saveStrategicGoal", '{"title":"Ridurre i tempi di fatturazione"}'),
+      ...ev.end("tool_use"),
+    ]),
+    sse([ev.start("msg_2"), ...ev.thinking(0, "firma-B"), ...ev.text(1, "Fatto. Qual è il prossimo obiettivo?"), ...ev.end("end_turn")]),
+  ]);
+  const { status, chunks } = await chat(HISTORY);
+  assert.equal(status, 200);
+  assert.deepEqual(goals, ["Ridurre i tempi di fatturazione"]);
+
+  assert.equal(requests.length, 2);
+  for (const request of requests) {
+    assert.deepEqual(request.body.thinking, { type: "adaptive", display: "updates" });
+    assert.ok(request.betas.includes("thinking-display-updates-2026-08-18"));
+  }
+  // Ragionamento conservato: tra i due passi system, tool e messaggi restano gli stessi, e il turno dell'assistente
+  // torna con i suoi blocchi di ragionamento com'erano (testo e firma).
+  const [first, second] = requests.map((request) => request.body);
+  assert.deepEqual(second.system, first.system);
+  assert.deepEqual(second.tools, first.tools);
+  const before = first.messages as unknown[];
+  const after = second.messages as Array<{ content: Array<Record<string, unknown>> }>;
+  assert.deepEqual(after.slice(0, before.length), before);
+  assert.deepEqual(
+    after[before.length].content.map((block) => [block.type, block.thinking ?? block.name, block.signature ?? null]),
+    [
+      ["thinking", "", "firma-ragionamento"],
+      ["thinking", NOTE, "firma-nota"],
+      ["tool_use", "saveStrategicGoal", null],
+    ],
+  );
+
+  // Il browser riceve la nota come ragionamento, prima del tool che introduce.
+  const noteAt = chunks.findIndex((chunk) => chunk.type === "reasoning-delta" && chunk.delta === NOTE);
+  const toolAt = chunks.findIndex((chunk) => chunk.type === "tool-input-start");
+  assert.ok(noteAt >= 0 && toolAt > noteAt, `nota ${noteAt}, tool ${toolAt}`);
+  // La chat salva il solo testo: la nota non entra nei messaggi salvati né nella memoria.
+  assert.deepEqual(prova.saved.at(-1), { conversationId: "conv-prova", role: "assistant", content: "Fatto. Qual è il prossimo obiettivo?" });
+  assert.ok(prova.indexed.every(([, content]) => !content.includes("Salvo l'obiettivo")));
+});
+
+test("un browser che rimanda i messaggi interi, con le note e le firme: al modello arriva solo il testo dei turni passati", async (t) => {
+  recordLogs(t);
+  reset();
+  const requests = fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Bene."), ...ev.end("end_turn")])]);
+  const reasoning = (text: string) => ({ type: "reasoning", text, state: "done", providerMetadata: { anthropic: { signature: "firma-di-un-altro-giro" } } });
+  const { status } = await chat([
+    { role: "user", parts: [{ type: "text", text: "Riduciamo i tempi di fatturazione." }] },
+    {
+      role: "assistant",
+      parts: [
+        { type: "step-start" },
+        reasoning(""),
+        reasoning("Salvo l'obiettivo."),
+        { type: "tool-saveStrategicGoal", toolCallId: "toolu_vecchio", state: "output-available", input: { title: "Tempi" }, output: { success: true } },
+        { type: "step-start" },
+        { type: "text", text: "Salvato. Altro?" },
+      ],
+    },
+    { role: "user", parts: [{ type: "text", text: "No, basta così." }] },
+  ]);
+  assert.equal(status, 200);
+  assert.deepEqual(requests[0].body.messages, [
+    { role: "user", content: [{ type: "text", text: "Riduciamo i tempi di fatturazione." }] },
+    { role: "assistant", content: [{ type: "text", text: "Salvato. Altro?" }] },
+    { role: "user", content: [{ type: "text", text: "No, basta così." }] },
   ]);
 });

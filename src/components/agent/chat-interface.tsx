@@ -3,7 +3,15 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
-import { CHAT_REFUSAL_NOTICE, chatRequestMessages, isRefusedReply, messageText, type ChatUIMessage } from "./chat-view";
+import {
+  CHAT_REFUSAL_NOTICE,
+  chatRequestMessages,
+  isRefusedReply,
+  messageText,
+  progressItems,
+  toolNameOf,
+  type ChatUIMessage,
+} from "./chat-view";
 import {
   Send,
   CheckCircle2,
@@ -66,13 +74,8 @@ const TOOL_LABELS: Record<string, { active: string; done: string }> = {
   },
 };
 
-function toolNameFromPart(part: Record<string, unknown>): string {
-  const n = part.toolName;
-  if (typeof n === "string" && n.length > 0) return n;
-  const t = part.type;
-  if (typeof t === "string" && t.startsWith("tool-")) return t.slice(5);
-  return "tool";
-}
+/** I tool che non si mostrano come etichetta (le loro note di avanzamento sì). */
+const HIDDEN_TOOLS = new Set(["webSearch"]);
 
 function WaitingStatus() {
   const [seconds, setSeconds] = useState(0);
@@ -289,9 +292,8 @@ export function ChatInterface({
           {messages.map((message) => {
             const text = messageText(message);
             const refused = isRefusedReply(message);
-            const toolParts =
-              message.parts?.filter((p) => p.type?.startsWith?.("tool-")) ??
-              [];
+            // Le note di avanzamento del modello e i suoi tool, nell'ordine: ogni nota prima del tool che introduce.
+            const progress = progressItems(message.parts, HIDDEN_TOOLS);
 
             if (message.role === "user") {
               return (
@@ -317,48 +319,46 @@ export function ChatInterface({
                     </div>
                   )
                 )}
-                {toolParts.length > 0 && (() => {
-                  const HIDDEN_TOOLS = new Set(["webSearch"]);
-                  const visibleTools = toolParts.filter((part) => {
-                    const p = part as Record<string, unknown>;
-                    const name = toolNameFromPart(p);
-                    return !HIDDEN_TOOLS.has(name);
-                  });
-                  if (visibleTools.length === 0) return null;
-                  return (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {visibleTools.map((part, i) => {
-                        const p = part as Record<string, unknown>;
-                        const name = toolNameFromPart(p);
-                        const state = p.state as string | undefined;
-                        const isDone = state === "output-available" || state === "error";
-                        const labels = TOOL_LABELS[name];
-
+                {progress.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {progress.map((item, i) => {
+                      if (item.kind === "note") {
                         return (
-                          <div
-                            key={i}
-                            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all ${
-                              isDone
-                                ? "border-border/30 text-muted-foreground/50 light:text-muted-foreground"
-                                : "border-foreground/10 text-foreground animate-pulse"
-                            }`}
-                          >
-                            {isDone ? (
-                              <CheckCircle2 className="h-3 w-3 text-green-500/70" />
-                            ) : (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            )}
-                            <span>
-                              {isDone
-                                ? labels?.done ?? name
-                                : labels?.active ?? "Elaboro..."}
-                            </span>
-                          </div>
+                          <p key={i} className="basis-full text-xs">
+                            {item.text}
+                          </p>
                         );
-                      })}
-                    </div>
-                  );
-                })()}
+                      }
+                      const p = item.part as Record<string, unknown>;
+                      const name = toolNameOf(item.part);
+                      const state = p.state as string | undefined;
+                      const isDone = state === "output-available" || state === "error";
+                      const labels = TOOL_LABELS[name];
+
+                      return (
+                        <div
+                          key={i}
+                          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-all ${
+                            isDone
+                              ? "border-border/30 text-muted-foreground/50 light:text-muted-foreground"
+                              : "border-foreground/10 text-foreground animate-pulse"
+                          }`}
+                        >
+                          {isDone ? (
+                            <CheckCircle2 className="h-3 w-3 text-green-500/70" />
+                          ) : (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          )}
+                          <span>
+                            {isDone
+                              ? labels?.done ?? name
+                              : labels?.active ?? "Elaboro..."}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}

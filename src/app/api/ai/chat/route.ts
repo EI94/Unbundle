@@ -245,7 +245,7 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: anthropic(CLAUDE_MODEL),
-    // Sforzo medio, 16000 token per passo, senza ripiego lato server (src/lib/ai/models.ts).
+    // Sforzo medio, 16000 token per passo, senza ripiego lato server, con le note tra i tool (src/lib/ai/models.ts).
     ...claudeCallSettings("chat"),
     system: withAgentReliability(systemPrompt),
     messages,

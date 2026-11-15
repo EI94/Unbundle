@@ -34,3 +34,37 @@ export function messageText(message: MessageLike): string {
 export function chatRequestMessages(messages: readonly MessageLike[]): Array<{ role: string; content: string }> {
   return messages.filter((message) => !isRefusedReply(message)).map((message) => ({ role: message.role, content: messageText(message) }));
 }
+
+/** Il nome del tool di una parte `tool-…` del messaggio. */
+export function toolNameOf(part: { type: string; toolName?: unknown }): string {
+  if (typeof part.toolName === "string" && part.toolName.length > 0) return part.toolName;
+  return part.type.startsWith("tool-") ? part.type.slice(5) : "tool";
+}
+
+/** Il testo che l'API mette (in inglese) al posto di una nota interrotta dal limite dei token: non è un avanzamento. */
+const INTERRUPTED_UPDATE = "This part of the response was interrupted before it finished.";
+
+/** Una nota di avanzamento o un tool visibile, nell'ordine della risposta. */
+export type ProgressItem<P> = { kind: "note"; text: string } | { kind: "tool"; part: P };
+
+/**
+ * Le note di avanzamento e i tool visibili di una risposta, nell'ordine in cui sono arrivati. Con Claude Sonnet 5.5
+ * (e `display: "updates"`, src/lib/ai/models.ts) la nota che il modello scrive tra un tool e l'altro arriva come
+ * parte di ragionamento, subito prima del tool che introduce: qui resta prima di quel tool. Le parti di ragionamento
+ * vuote (il ragionamento vero, nascosto) non contano; i tool di `hiddenTools` non si mostrano, le loro note sì.
+ */
+export function progressItems<P extends { type: string; text?: string; toolName?: unknown }>(
+  parts: readonly P[],
+  hiddenTools: ReadonlySet<string>,
+): ProgressItem<P>[] {
+  const items: ProgressItem<P>[] = [];
+  for (const part of parts) {
+    if (part.type === "reasoning") {
+      const text = part.text?.trim() ?? "";
+      if (text && text !== INTERRUPTED_UPDATE) items.push({ kind: "note", text });
+    } else if (part.type.startsWith("tool-") && !hiddenTools.has(toolNameOf(part))) {
+      items.push({ kind: "tool", part });
+    }
+  }
+  return items;
+}

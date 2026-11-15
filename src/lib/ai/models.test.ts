@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { generateObject, generateText, stepCountIs, streamText, tool } from "ai";
+import { generateObject, generateText, readUIMessageStream, stepCountIs, streamText, tool, type UIMessage } from "ai";
 import { z } from "zod";
 import { ev, fakeClaude, message, recordLogs, refusal, sse, THINKING, type Captured } from "./claude-test-kit.ts";
+import { progressItems, toolNameOf } from "../../components/agent/chat-view.ts";
 import {
   CLAUDE_MODEL,
   CLAUDE_TASKS,
@@ -22,14 +23,22 @@ import {
 
 /** Che cosa ogni richiesta a Claude Sonnet 5.5 deve avere, e che cosa non deve mai avere (un 400). */
 function assertSonnet55Request(request: Captured, task: ClaudeTask) {
-  const settings = CLAUDE_TASKS[task];
+  const settings: { effort: string; maxOutputTokens: number; fallbacks: boolean; progressUpdates?: boolean } = CLAUDE_TASKS[task];
   const { body } = request;
   assert.equal(request.url.pathname, "/v1/messages");
   assert.equal(body.model, "claude-sonnet-5-5");
   assert.equal(body.max_tokens, settings.maxOutputTokens, "il limite del compito, mai i 128000 dell'SDK");
   assert.equal((body.output_config as { effort?: string } | undefined)?.effort, settings.effort);
   for (const key of ["temperature", "top_p", "top_k"]) assert.equal(key in body, false, `${key} non si manda`);
-  assert.equal("thinking" in body, false, "ragionamento adattivo: `thinking` assente, mai `disabled`");
+  // Ragionamento adattivo: `thinking` assente, o adattivo con le sole note tra i tool (la chat); mai `disabled`,
+  // mai un budget.
+  if (settings.progressUpdates) {
+    assert.deepEqual(body.thinking, { type: "adaptive", display: "updates" });
+    assert.ok(request.betas.includes("thinking-display-updates-2026-08-18"), "la beta delle note tra i tool");
+  } else {
+    assert.equal("thinking" in body, false, `thinking: ${JSON.stringify(body.thinking)}`);
+    assert.equal(request.betas.includes("thinking-display-updates-2026-08-18"), false);
+  }
   const toolChoice = body.tool_choice as { type?: string } | undefined;
   assert.ok(toolChoice === undefined || toolChoice.type === "auto", `tool_choice forzato: ${JSON.stringify(toolChoice)}`);
   const messages = body.messages as Array<{ role: string }>;
@@ -41,19 +50,30 @@ function assertSonnet55Request(request: Captured, task: ClaudeTask) {
 test("un solo modello, claude-sonnet-5-5; ogni chiamata ha sforzo, limite dei token e ripiego espliciti", () => {
   assert.equal(CLAUDE_MODEL, "claude-sonnet-5-5");
   for (const task of Object.keys(CLAUDE_TASKS) as ClaudeTask[]) {
-    const { effort, maxOutputTokens, fallbacks } = CLAUDE_TASKS[task];
+    const { effort, maxOutputTokens, fallbacks, progressUpdates }: { effort: string; maxOutputTokens: number; fallbacks: boolean; progressUpdates?: boolean } =
+      CLAUDE_TASKS[task];
     assert.ok(effort === "low" || effort === "medium", `${task}: sforzo ${effort}`);
     // Il ragionamento adattivo conta nel limite: mai sotto 16000; oltre 32000 nei 300 secondi non finirebbe.
     assert.ok(maxOutputTokens >= 16_000 && maxOutputTokens <= 32_000, `${task}: ${maxOutputTokens}`);
     const settings = claudeCallSettings(task);
     assert.equal(settings.maxOutputTokens, maxOutputTokens);
-    // Solo sforzo e ripiego: niente `thinking`, niente modalità dell'output strutturato (la sceglie l'SDK).
+    // Sforzo, ripiego e note tra i tool: niente modalità dell'output strutturato (la sceglie l'SDK), mai
+    // `thinking` diverso da adattivo.
     assert.deepEqual(settings.providerOptions, {
-      anthropic: fallbacks ? { effort, fallbacks: "default" } : { effort },
+      anthropic: {
+        effort,
+        ...(fallbacks ? { fallbacks: "default" } : {}),
+        ...(progressUpdates ? { thinking: { type: "adaptive", display: "updates" } } : {}),
+      },
     });
   }
   assert.equal(CLAUDE_TASKS.chat.effort, "medium", "la chat chiama più tool che salvano in un turno");
   assert.equal(CLAUDE_TASKS.chat.fallbacks, false, "la chat a più passi: niente ripiego lato server");
+  assert.deepEqual(
+    (Object.keys(CLAUDE_TASKS) as ClaudeTask[]).filter((task) => "progressUpdates" in CLAUDE_TASKS[task]),
+    ["chat"],
+    "le note tra i tool solo dove un'interfaccia le mostra",
+  );
   assert.ok(WEB_SEARCH_TIMEOUT_MS >= 15_000 && WEB_SEARCH_TIMEOUT_MS <= 60_000, "la ricerca sta dentro i 120 secondi della chat");
 });
 
@@ -264,6 +284,64 @@ test("streamText con un tool (chat): sforzo medio, 16000 token per passo, niente
   assert.equal(replay.content[0].signature, "firma-A");
   assert.equal(toolResult.role, "user");
   assert.equal(toolResult.content[0].type, "tool_result");
+});
+
+test("streamText (chat) con le note tra i tool: arrivano con il loro testo prima del tool, tornano uguali al passo dopo, non si salvano", async () => {
+  const NOTE = "Salvo l'attività «Fatture mensili», poi ti chiedo le ore.";
+  const { provider, requests } = fakeClaude([
+    sse([
+      ev.start("msg_1"),
+      ...ev.thinking(0, "firma-ragionamento"),
+      ...ev.thinking(1, "firma-nota", NOTE),
+      ...ev.toolUse(2, "toolu_prova", "saveActivity", '{"title":"Fatture mensili"}'),
+      ...ev.end("tool_use"),
+    ]),
+    sse([ev.start("msg_2"), ...ev.thinking(0, "firma-B"), ...ev.text(1, "Quante ore a settimana?"), ...ev.end("end_turn")]),
+  ]);
+  let saved: string | undefined;
+  const result = streamText({
+    model: provider(CLAUDE_MODEL),
+    system: "Prompt di sistema della chat.",
+    messages: [{ role: "user", content: "Preparo le fatture ogni mese." }],
+    tools: {
+      saveActivity: tool({ description: "Salva un'attività", inputSchema: z.object({ title: z.string() }), execute: async () => ({ success: true }) }),
+    },
+    stopWhen: stepCountIs(20),
+    onFinish: ({ text }) => {
+      saved = text;
+    },
+    ...claudeCallSettings("chat"),
+  });
+  let ui: UIMessage | undefined;
+  for await (const message of readUIMessageStream({ stream: result.toUIMessageStream() })) ui = message;
+
+  assert.equal(requests.length, 2);
+  for (const request of requests) assertSonnet55Request(request, "chat");
+  // Dentro il giro dei tool la storia si allunga e basta: stesso system, stessi tool, stessi messaggi, poi il turno
+  // dell'assistente com'era (i due blocchi di ragionamento, testo e firma uguali, e il tool) e il risultato del tool.
+  const [first, second] = requests.map((request) => request.body);
+  assert.deepEqual(second.system, first.system);
+  assert.deepEqual(second.tools, first.tools);
+  const before = first.messages as unknown[];
+  const after = second.messages as Array<{ role: string; content: Array<Record<string, unknown>> }>;
+  assert.deepEqual(after.slice(0, before.length), before);
+  const replay = after[before.length];
+  assert.deepEqual(
+    replay.content.map((block) => [block.type, block.thinking ?? block.name, block.signature ?? null]),
+    [
+      ["thinking", "", "firma-ragionamento"],
+      ["thinking", NOTE, "firma-nota"],
+      ["tool_use", "saveActivity", null],
+    ],
+  );
+  assert.equal(after[before.length + 1].content[0].type, "tool_result");
+
+  assert.equal(saved, "Quante ore a settimana?", "la chat salva solo il testo: la nota resta fuori");
+  // Nel browser la nota arriva come parte di ragionamento, prima del tool che introduce (chat-view.ts).
+  assert.deepEqual(
+    progressItems(ui?.parts ?? [], new Set()).map((item) => (item.kind === "note" ? item.text : `tool:${toolNameOf(item.part)}`)),
+    [NOTE, "tool:saveActivity"],
+  );
 });
 
 test("streamText: un rifiuto a metà risposta arriva in onFinish come «content-filter», con la categoria", async () => {

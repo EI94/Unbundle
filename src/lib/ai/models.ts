@@ -37,12 +37,19 @@ type ClaudeTaskSettings = {
    * risposta potrebbe ricevere un 400.
    */
   readonly fallbacks: boolean;
+  /**
+   * `thinking: { type: "adaptive", display: "updates" }` (l'SDK aggiunge la beta `thinking-display-updates-2026-08-18`):
+   * su questo modello le note tra un tool e l'altro più lunghe di una frase arrivano come blocchi di ragionamento,
+   * vuoti per default; così arrivano con il loro testo, e la chat le mostra come righe di avanzamento. Il
+   * ragionamento vero resta nascosto. Solo dove un'interfaccia le mostra: la chat.
+   */
+  readonly progressUpdates?: boolean;
 };
 
 /** Le impostazioni di ogni chiamata al modello, per nome. */
 export const CLAUDE_TASKS = {
   /** Chat di discovery e activity mapping (streamText, tool che salvano, fino a 20 passi). */
-  chat: { effort: "medium", maxOutputTokens: 16_000, fallbacks: false },
+  chat: { effort: "medium", maxOutputTokens: 16_000, fallbacks: false, progressUpdates: true },
   /** La ricerca web dentro la chat (generateText con il tool di ricerca dell'API). */
   webSearch: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
   /** Il testo di un PDF caricato. */
@@ -82,14 +89,16 @@ export type ClaudeTask = keyof typeof CLAUDE_TASKS;
 /**
  * Le impostazioni della chiamata (oltre a modello, prompt e schema), da stendere nelle opzioni di
  * generateObject, generateText o streamText: `model: anthropic(CLAUDE_MODEL), ...claudeCallSettings("report")`.
- * `thinking` resta assente, quindi adattivo.
+ * Il ragionamento è sempre adattivo: `thinking` resta assente, o porta solo `display: "updates"` (`progressUpdates`).
  */
 export function claudeCallSettings(task: ClaudeTask) {
-  const { effort, maxOutputTokens, fallbacks } = CLAUDE_TASKS[task];
-  const anthropic = fallbacks
-    ? ({ effort, fallbacks: "default" } satisfies AnthropicProviderOptions)
-    : ({ effort } satisfies AnthropicProviderOptions);
-  return { maxOutputTokens, providerOptions: { anthropic } };
+  const settings: ClaudeTaskSettings = CLAUDE_TASKS[task];
+  const anthropic = {
+    effort: settings.effort,
+    ...(settings.fallbacks ? { fallbacks: "default" as const } : {}),
+    ...(settings.progressUpdates ? { thinking: { type: "adaptive" as const, display: "updates" as const } } : {}),
+  } satisfies AnthropicProviderOptions;
+  return { maxOutputTokens: settings.maxOutputTokens, providerOptions: { anthropic } };
 }
 
 /**
