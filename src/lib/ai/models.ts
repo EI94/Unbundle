@@ -53,7 +53,11 @@ export const CLAUDE_TASKS = {
   weeklySignals: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
   /** La classificazione di un'attività nei tre stream. */
   classifyActivity: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
-  /** Il match O*NET delle attività di un reparto. */
+  /**
+   * Il match O*NET delle attività di un reparto. L'uscita cresce con le attività, ma dalla chat gira
+   * dentro i suoi 120 secondi, dove più di 16000 token non finirebbero: oltre, un errore che la chat
+   * gestisce («Match O*NET non riuscito») invece della funzione interrotta.
+   */
   onetMatch: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
   /** La value map: una posizione per ogni attività classificata. */
   valueMap: { effort: "low", maxOutputTokens: 32_000, fallbacks: true },
