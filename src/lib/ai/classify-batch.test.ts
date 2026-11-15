@@ -205,7 +205,12 @@ test("«Completo mapping» con la scadenza lontana: la classificazione e il matc
   assert.equal(requested.length, 2);
   for (const ms of requested) assert.ok(ms > 59_000 && ms <= 60_000, `chiesti ${ms} ms`);
   assert.deepEqual(prova.matched, ["a-1"]);
-  assert.match(result.message, /Classificazione completata: 1 Automate.*Match O\*NET completato su 1 attività\./);
+  // La stima dell'AI exposure va da 0 a 1: 0,3 è il 30%, non lo «0%» di prima.
+  assert.equal(
+    result.message,
+    "Dipartimento segnato come mappato. Una attività. Classificazione completata: 1 Automate, 0 Differentiate, 0 Innovate. " +
+      "Match O*NET completato su 1 attività. AI Exposure media: 30%.",
+  );
 });
 
 test("«Completo mapping»: il tempo delle chiamate si conta quando il tool parte, non quando la rotta lo costruisce", async (t) => {

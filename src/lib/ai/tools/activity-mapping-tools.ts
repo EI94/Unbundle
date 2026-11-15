@@ -185,11 +185,13 @@ export function getActivityMappingTools(
                 aiExposureScore: match.aiExposureEstimate,
               });
             }
+            // La stima va da 0 a 1 (onet-matching.ts): nel messaggio in percentuale, come nella dashboard del reparto.
             const avgExposure =
               matches.length > 0
                 ? (
-                    matches.reduce((s, m) => s + m.aiExposureEstimate, 0) /
-                    matches.length
+                    (matches.reduce((s, m) => s + m.aiExposureEstimate, 0) /
+                      matches.length) *
+                    100
                   ).toFixed(0)
                 : "0";
             onetSummary = `Match O*NET completato su ${matches.length} attività. AI Exposure media: ${avgExposure}%.`;
