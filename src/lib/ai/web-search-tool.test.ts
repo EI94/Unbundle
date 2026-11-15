@@ -76,6 +76,23 @@ test("con la scadenza della chat più vicina di 45 secondi, la ricerca ha solo i
   assert.equal(requested[1], MIN_MODEL_CALL_MS, "a scadenza passata, il minimo");
 });
 
+test("il tempo della ricerca si conta quando parte, non quando la rotta costruisce il tool", async (t) => {
+  recordLogs(t);
+  const requested = shortTimeouts(t);
+  fakeAppClaude([hang, hang]);
+  const start = Date.now();
+  // La rotta costruisce il tool all'inizio della richiesta, con la scadenza tra 60 secondi...
+  const { execute } = getWebSearchTool({ deadline: start + 60_000 }).webSearch;
+  const options = { toolCallId: "toolu_prova", messages: [] };
+  // ...e il modello lo chiama dopo 30 secondi: restano 30 secondi, meno dei 45 della ricerca.
+  const now = t.mock.method(Date, "now", () => start + 30_000);
+  assert.deepEqual(await execute!({ query: "Acme", reason: "contesto del cliente" }, options), UNAVAILABLE);
+  // Dopo 50 secondi la seconda ricerca dello stesso turno: ne restano 10.
+  now.mock.mockImplementation(() => start + 50_000);
+  assert.deepEqual(await execute!({ query: "Acme", reason: "contesto del cliente" }, options), UNAVAILABLE);
+  assert.deepEqual(requested, [30_000, 10_000]);
+});
+
 test("un errore dell'API: «non disponibile»; nel log nome e stato, mai la ricerca", async (t) => {
   const lines = recordLogs(t);
   fakeAppClaude([() => Response.json({ type: "error", error: { type: "invalid_request_error", message: "Richiesta non valida: Acme Bulloni SpA" } }, { status: 400 })]);

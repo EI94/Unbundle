@@ -208,6 +208,31 @@ test("«Completo mapping» con la scadenza lontana: la classificazione e il matc
   assert.match(result.message, /Classificazione completata: 1 Automate.*Match O\*NET completato su 1 attività\./);
 });
 
+test("«Completo mapping»: il tempo delle chiamate si conta quando il tool parte, non quando la rotta lo costruisce", async (t) => {
+  recordLogs(t);
+  reset();
+  prova.activities = [{ ...ACTIVITIES[0], onetTaskId: null }];
+  const requested: number[] = [];
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, "timeout", (ms: number) => {
+    requested.push(ms);
+    return timeout(ms);
+  });
+  const match = { activityId: "a-1", suggestedOnetCode: "43-3031.00", occupationTitle: "Contabile", relevantTasks: [], aiExposureEstimate: 0.3, augmentationVsAutomation: "mixed", motivazione: "Ripetitiva." };
+  fakeAppClaude([
+    message([THINKING, { type: "text", text: JSON.stringify(ANSWER) }]),
+    message([THINKING, { type: "text", text: JSON.stringify({ matches: [match] }) }]),
+  ]);
+  const start = Date.now();
+  // La rotta costruisce i tool all'inizio della richiesta, con la scadenza tra 60 secondi; il modello chiama
+  // «Completo mapping» dopo 40: la classificazione e il match O*NET hanno i 20 che restano.
+  const { execute } = getActivityMappingTools("ws-prova", "reparto-prova", { deadline: start + 60_000 }).markDepartmentMapped;
+  t.mock.method(Date, "now", () => start + 40_000);
+  await execute!({ summary: "Una attività." }, { toolCallId: "toolu_prova", messages: [] });
+  assert.deepEqual(requested, [20_000, 20_000]);
+  assert.deepEqual(prova.matched, ["a-1"]);
+});
+
 test("le parole delle attività rimaste", () => {
   assert.equal(skippedClassificationsText(0), "");
   assert.equal(skippedClassificationsText(1), "1 attività è rimasta da classificare.");
