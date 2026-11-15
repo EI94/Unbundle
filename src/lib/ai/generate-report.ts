@@ -1,5 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
 import { z } from "zod";
 import type { Activity, UseCase, StrategicGoal, Department } from "@/lib/db/schema";
 
@@ -33,7 +34,8 @@ export async function generateReport(data: {
   goals: StrategicGoal[];
 }): Promise<ReportContent> {
   const { object } = await generateObject({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CLAUDE_MODEL),
+    ...claudeCallSettings("report"),
     schema: reportSchema,
     prompt: `Genera un report esecutivo completo per la trasformazione AI di questa organizzazione. Scrivi in italiano, professionale e orientato all'azione.
 

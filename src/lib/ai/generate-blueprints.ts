@@ -1,5 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
 import { z } from "zod";
 import type { UseCase, Activity } from "@/lib/db/schema";
 
@@ -40,7 +41,8 @@ export async function generateAgentBlueprints(
   if (automatableUseCases.length === 0) return [];
 
   const { object } = await generateObject({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CLAUDE_MODEL),
+    ...claudeCallSettings("blueprints"),
     schema: blueprintSchema,
     prompt: `Sei un AI architect esperto. Per ogni use case, genera un blueprint dettagliato dell'agente AI necessario per implementarlo.
 

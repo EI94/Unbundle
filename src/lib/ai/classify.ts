@@ -1,5 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
 import { z } from "zod";
 import type { Activity, StrategicGoal } from "@/lib/db/schema";
 
@@ -20,7 +21,8 @@ export async function classifyActivity(
   }
 ): Promise<ClassificationResult> {
   const { object } = await generateObject({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CLAUDE_MODEL),
+    ...claudeCallSettings("classifyActivity"),
     schema: classificationSchema,
     prompt: `Analizza questa attività lavorativa e classificala in uno dei 3 stream del framework Unbundle.
 

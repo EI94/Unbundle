@@ -4,6 +4,7 @@ import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { getDepartmentById } from "@/lib/db/queries/workspaces";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { activities, uploadedDocuments } from "@/lib/db/schema";
@@ -74,7 +75,8 @@ export async function preGenerateActivitiesFromDocuments(
     .join("\n\n---\n\n");
 
   const { object } = await generateObject({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CLAUDE_MODEL),
+    ...claudeCallSettings("preGenerateActivities"),
     schema: preGeneratedActivitySchema,
     prompt: `Sei un esperto di process mining e analisi organizzativa. Analizza questi documenti relativi a una funzione aziendale e identifica le attività lavorative principali.
 

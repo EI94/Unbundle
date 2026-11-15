@@ -1,5 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
 import { z } from "zod";
 import type { Activity, StrategicGoal } from "@/lib/db/schema";
 
@@ -89,7 +90,8 @@ export async function generateUseCases(
     : `5.`;
 
   const { object } = await generateObject({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CLAUDE_MODEL),
+    ...claudeCallSettings("useCases"),
     schema,
     prompt: `Sei un esperto di AI transformation. Analizza le attività classificate e il contesto strategico per generare use case AI concreti e azionabili.
 

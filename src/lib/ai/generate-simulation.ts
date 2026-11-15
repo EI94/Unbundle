@@ -1,5 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
 import { z } from "zod";
 import type { UseCase, Activity, Department } from "@/lib/db/schema";
 
@@ -49,7 +50,8 @@ export async function generateSimulation(data: {
   companyValueThesis: unknown;
 }): Promise<SimulationResult> {
   const { object } = await generateObject({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CLAUDE_MODEL),
+    ...claudeCallSettings("simulation"),
     schema: simulationSchema,
     prompt: `Sei un consulente di trasformazione AI. Genera scenari "what if" per l'organizzazione.
 

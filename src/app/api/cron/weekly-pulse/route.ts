@@ -4,6 +4,7 @@ import { workspaces, weeklySignals, activities } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
 import { z } from "zod";
 import { runUseCaseDigestStep } from "@/lib/db/queries/use-case-digest";
 import { checkCronAuthorization } from "@/lib/uc/notify/cron-auth";
@@ -60,7 +61,8 @@ export async function GET(req: Request) {
     );
 
     const { object } = await generateObject({
-      model: anthropic("claude-sonnet-4-20250514"),
+      model: anthropic(CLAUDE_MODEL),
+      ...claudeCallSettings("weeklySignals"),
       schema: signalsSchema,
       prompt: `Analizza lo stato attuale del workspace "${workspace.name}" e genera segnali settimanali.
 

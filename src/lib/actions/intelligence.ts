@@ -9,6 +9,7 @@ import { markSignalsReadForUser } from "@/lib/db/queries/signals";
 import { logSafeError } from "@/lib/log/safe-error";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
 import { z } from "zod";
 import { refresh, revalidatePath } from "next/cache";
 
@@ -127,7 +128,8 @@ export async function generateCompetitiveAnalysis(
   );
 
   const { object } = await generateObject({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CLAUDE_MODEL),
+    ...claudeCallSettings("competitiveAnalysis"),
     schema: competitiveAnalysisSchema,
     prompt: `Sei un analista di competitive intelligence specializzato in trasformazione AI delle organizzazioni.
 

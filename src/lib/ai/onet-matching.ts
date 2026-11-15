@@ -1,5 +1,6 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
 import { z } from "zod";
 import type { Activity } from "@/lib/db/schema";
 
@@ -32,7 +33,8 @@ export async function matchActivitiesToOnet(activities: Activity[]) {
   );
 
   const { object } = await generateObject({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CLAUDE_MODEL),
+    ...claudeCallSettings("onetMatch"),
     schema: onetMatchSchema,
     prompt: `Sei un esperto di O*NET e di AI exposure research. Per ogni attività lavorativa, identifica:
 1. Il codice O*NET SOC più vicino e il titolo occupazionale

@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { getActivitiesByWorkspace } from "@/lib/db/queries/activities";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
 import { z } from "zod";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
@@ -44,7 +45,8 @@ export async function generateValueMapAction(workspaceId: string) {
   }));
 
   const { object: positions } = await generateObject({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CLAUDE_MODEL),
+    ...claudeCallSettings("valueMap"),
     system: `Sei un esperto di Wardley Mapping. Posiziona ogni attività su una mappa Wardley con due assi:
 - **X (Maturità/Evolution)**: 0 = Genesis/Sperimentale, 0.25 = Custom, 0.5 = Product, 0.75 = Commodity, 1 = Utility
 - **Y (Valore Strategico)**: 0 = Basso valore, pura esecuzione, 1 = Altissimo valore strategico, differenziante

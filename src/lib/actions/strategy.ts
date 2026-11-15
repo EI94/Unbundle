@@ -7,6 +7,7 @@ import { organizations, strategicGoals } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings } from "@/lib/ai/models";
 import { z } from "zod";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
@@ -86,7 +87,8 @@ export async function suggestOKRsAction(
   }
 
   const { object } = await generateObject({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CLAUDE_MODEL),
+    ...claudeCallSettings("okrSuggestions"),
     system: `Sei un esperto di strategia organizzativa. Data la Value Thesis di un'azienda, suggerisci un framework OKR (Objectives and Key Results) completo per guidare una trasformazione AI-driven.
 
 Genera:
