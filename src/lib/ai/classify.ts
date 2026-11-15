@@ -92,7 +92,7 @@ Classifica con rigore. Se l'attività è palesemente operativa e ripetitiva → 
 /**
  * Le classificazioni riuscite, per id dell'attività. Un rifiuto o un errore del modello su un'attività non fa perdere
  * le altre: quell'attività resta senza classificazione (chi chiama conta quante ne mancano) e si riprova dopo.
- * Con `abortSignal` (la scadenza della chat, src/lib/ai/models.ts) le chiamate in corso si interrompono e le attività
+ * Con `abortSignal` (la scadenza dei tool della chat, src/lib/ai/models.ts) le chiamate in corso si interrompono e le attività
  * non ancora iniziate restano da classificare, senza chiamate: il tempo scaduto va nel log una volta, con i conteggi.
  */
 export async function classifyActivitiesBatch(

@@ -9,7 +9,15 @@ import { DISCOVERY_SYSTEM_PROMPT } from "@/lib/ai/prompts/discovery";
 import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mapping";
 import { withAgentReliability } from "@/lib/ai/agent-reliability";
 import { chatHistory, closingQuestions, refusedQuestionIds } from "@/lib/ai/chat-history";
-import { CLAUDE_MODEL, chatDeadline, claudeCallSettings, lastStepRefused, logClaudeStop, stopAtDeadline } from "@/lib/ai/models";
+import {
+  CLAUDE_MODEL,
+  chatDeadline,
+  chatToolsDeadline,
+  claudeCallSettings,
+  lastStepRefused,
+  logClaudeStop,
+  stopAtDeadline,
+} from "@/lib/ai/models";
 import { logSafeError } from "@/lib/log/safe-error";
 import {
   saveMessage,
@@ -27,10 +35,13 @@ import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
-  // Una scadenza per tutta la richiesta (src/lib/ai/models.ts): i tool che chiamano il modello (ricerca web,
-  // classificazione e match O*NET) si fermano lì, e da lì nessun nuovo passo del modello comincia (stopWhen qui
-  // sotto): il passo in corso ha il resto di maxDuration per finire.
-  const deadline = chatDeadline(Date.now(), maxDuration);
+  // Due scadenze per la richiesta, dal suo inizio (src/lib/ai/models.ts). I tool che chiamano il modello (ricerca web,
+  // classificazione e match O*NET) si fermano alla loro, 20 secondi prima di quella del giro: dopo un tool fermato lì il
+  // modello ha ancora un passo per rispondere. Dalla scadenza del giro nessun nuovo passo comincia (stopWhen qui sotto),
+  // e il passo in corso ha il resto di maxDuration per finire.
+  const startedAt = Date.now();
+  const loopDeadline = chatDeadline(startedAt, maxDuration);
+  const toolsDeadline = chatToolsDeadline(startedAt, maxDuration);
   const session = await auth();
   if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
@@ -142,7 +153,7 @@ export async function POST(req: Request) {
       systemPrompt = DISCOVERY_SYSTEM_PROMPT + contextBlock;
       tools = {
         ...getLeadershipTools(workspaceId, workspace.organizationId, { canSaveCompanyFacts }),
-        ...getWebSearchTool({ deadline }),
+        ...getWebSearchTool({ deadline: toolsDeadline }),
       };
       break;
     case "activity_mapping": {
@@ -198,8 +209,8 @@ export async function POST(req: Request) {
 
       systemPrompt = ACTIVITY_MAPPING_SYSTEM_PROMPT + mappingContext;
       tools = {
-        ...getActivityMappingTools(workspaceId, departmentId!, { deadline }),
-        ...getWebSearchTool({ deadline }),
+        ...getActivityMappingTools(workspaceId, departmentId!, { deadline: toolsDeadline }),
+        ...getWebSearchTool({ deadline: toolsDeadline }),
       };
       break;
     }
@@ -207,7 +218,7 @@ export async function POST(req: Request) {
       systemPrompt = DISCOVERY_SYSTEM_PROMPT + contextBlock;
       tools = {
         ...getLeadershipTools(workspaceId, workspace.organizationId, { canSaveCompanyFacts }),
-        ...getWebSearchTool({ deadline }),
+        ...getWebSearchTool({ deadline: toolsDeadline }),
       };
   }
 
@@ -262,8 +273,8 @@ export async function POST(req: Request) {
     // Default SDK = stepCountIs(1): dopo un tool call lo stream si chiude SENZA secondo round
     // → UI bloccata su "Elaboro...". Serve un budget di step per testo post-tool.
     // Un passo rifiutato chiude il giro (src/lib/ai/models.ts): il turno resta un rifiuto, anche con un tool non valido.
-    // Dopo la scadenza nessun nuovo passo comincia: il turno si chiude dentro maxDuration, senza interrompere lo stream.
-    stopWhen: [stepCountIs(20), lastStepRefused, stopAtDeadline("chat/route", deadline)],
+    // Dalla scadenza del giro nessun nuovo passo comincia: il turno si chiude dentro maxDuration, senza interrompere lo stream.
+    stopWhen: [stepCountIs(20), lastStepRefused, stopAtDeadline("chat/route", loopDeadline)],
     onError: ({ error }) => {
       console.error("[chat/route] streamText error:", error);
     },

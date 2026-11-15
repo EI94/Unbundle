@@ -1,8 +1,8 @@
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { tool } from "ai";
 import { z } from "zod";
-import { ev, installAppModules, recordLogs, sse, fakeAppClaude } from "./claude-test-kit.ts";
+import { ev, hang, installAppModules, recordLogs, sse, fakeAppClaude } from "./claude-test-kit.ts";
 
 // (Migrazione a Claude Sonnet 5.5) La rotta vera della chat (/api/ai/chat): che cosa salva, che cosa mette nella
 // memoria della chat (RAG) e che cosa manda al browser. Sessione, database, memoria e tool dei reparti finti; il
@@ -21,6 +21,8 @@ type Prova = {
   tools: Record<string, unknown>;
   /** Con che cosa la rotta costruisce i tool della richiesta: [tool, ...argomenti]. */
   toolArgs: unknown[][];
+  /** Se vero, la ricerca web è il tool vero (src/lib/ai/tools/web-search-tool.ts), con il Claude finto. */
+  realWebSearch?: boolean;
 };
 const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
@@ -37,9 +39,10 @@ await installAppModules({
     globalThis.__prova.toolArgs.push(["activity-mapping", ...args]);
     return globalThis.__prova.tools;
   }`,
-  "@/lib/ai/tools/web-search-tool": `export function getWebSearchTool(...args) {
+  "@/lib/ai/tools/web-search-tool": `import { getWebSearchTool as realWebSearchTool } from ${JSON.stringify(new URL("./tools/web-search-tool.ts", import.meta.url).href)};
+  export function getWebSearchTool(...args) {
     globalThis.__prova.toolArgs.push(["web-search", ...args]);
-    return {};
+    return globalThis.__prova.realWebSearch ? realWebSearchTool(...args) : {};
   }`,
   "@/lib/db/queries/conversations": `
     export async function getActiveConversation() { return { id: "conv-prova" }; }
@@ -100,6 +103,7 @@ function reset() {
   prova.indexed = [];
   prova.tools = {};
   prova.toolArgs = [];
+  delete prova.realWebSearch;
 }
 
 const HISTORY = [
@@ -532,7 +536,7 @@ test("un passo rifiutato alla scadenza (orologio finto) resta un rifiuto: niente
   ]);
 });
 
-test("una scadenza per richiesta, ai tool che chiamano il modello: l'inizio più 120 secondi, meno 25 per la risposta finale", async (t) => {
+test("una scadenza per richiesta, ai tool che chiamano il modello: l'inizio più 120 secondi, meno 25 di riserva e 20 per un altro passo", async (t) => {
   recordLogs(t);
   for (const [conversationType, departmentId, built] of [
     ["activity_mapping", "reparto-prova", ["activity-mapping", "web-search"]],
@@ -547,9 +551,84 @@ test("una scadenza per richiesta, ai tool che chiamano il modello: l'inizio più
     assert.deepEqual(prova.toolArgs.map(([name]) => name), built, conversationType);
     const deadlines = prova.toolArgs.map((args) => (args.at(-1) as { deadline: number }).deadline);
     for (const deadline of deadlines) {
-      assert.ok(deadline >= before + 95_000 && deadline <= after + 95_000, `${conversationType}: scadenza ${deadline - before} ms dopo l'inizio`);
+      // 75 secondi: 20 prima della scadenza del giro (95), così dopo un tool fermato il modello risponde ancora.
+      assert.ok(deadline >= before + 75_000 && deadline <= after + 75_000, `${conversationType}: scadenza ${deadline - before} ms dopo l'inizio`);
     }
     assert.equal(new Set(deadlines).size, 1, "la stessa scadenza per tutti i tool della richiesta");
     if (conversationType === "activity_mapping") assert.deepEqual(prova.toolArgs[0].slice(1, 3), ["ws-prova", "reparto-prova"]);
+  }
+});
+
+/**
+ * I tempi massimi delle chiamate dei tool sull'orologio finto: AbortSignal.timeout registra il tempo chiesto, scade dopo
+ * 30 ms veri e, scadendo, porta l'orologio al momento in cui sarebbe scaduto davvero.
+ */
+function timeoutsOnClock(t: TestContext, clock: { now: number }): number[] {
+  const requested: number[] = [];
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, "timeout", (ms: number) => {
+    requested.push(ms);
+    const firesAt = clock.now + ms;
+    const signal = timeout(30);
+    signal.addEventListener("abort", () => (clock.now = firesAt), { once: true });
+    return signal;
+  });
+  return requested;
+}
+
+test("la ricerca vera fermata alla scadenza dei tool (orologio finto): il modello ha ancora un passo e risponde; oltre la scadenza del giro no", async (t) => {
+  const start = 1_800_000_000_000;
+  const clock = { now: start };
+  t.mock.method(Date, "now", () => clock.now);
+  const requested = timeoutsOnClock(t, clock);
+  const lines = recordLogs(t);
+  const ANSWER = "La ricerca non è disponibile ora: in che settore opera l'azienda?";
+  for (const [label, searchAt, timeoutMs, steps] of [
+    // Mancano 25 secondi ai 75 dei tool, meno dei 45 della ricerca: si ferma lì, e restano 20 secondi al giro.
+    ["la ricerca parte a 50 secondi", 50_000, 25_000, 2],
+    // Oltre i 75 dei tool la ricerca ha il minimo, 5 secondi: finisce a 99, oltre i 95 del giro, che si ferma.
+    ["la ricerca parte a 94 secondi", 94_000, 5_000, 1],
+  ] as const) {
+    reset();
+    lines.length = 0;
+    requested.length = 0;
+    clock.now = start;
+    prova.realWebSearch = true;
+    const firstStep = sse([
+      ev.start("msg_1"),
+      ...ev.thinking(0, "firma-A"),
+      ...ev.toolUse(1, "toolu_ricerca", "webSearch", '{"query":"Fatture mensili: tempi medi di settore","reason":"contesto"}'),
+      ...ev.end("tool_use"),
+    ]);
+    const requests = fakeAppClaude([
+      // Il primo passo finisce dopo `searchAt` dall'inizio della richiesta, e chiede una ricerca.
+      (init) => {
+        clock.now = start + searchAt;
+        return firstStep(init);
+      },
+      // La ricerca non risponde: si ferma al suo tempo massimo.
+      hang,
+      sse([ev.start("msg_2"), ...ev.thinking(0, "firma-B"), ...ev.text(1, ANSWER), ...ev.end("end_turn")]),
+    ]);
+    const { status, chunks } = await chat(HISTORY);
+    assert.equal(status, 200, label);
+    assert.deepEqual(requested, [timeoutMs], `${label}: il tempo massimo della ricerca`);
+    assert.ok(requests[1].signal?.aborted, `${label}: la ricerca è stata interrotta`);
+    assert.equal(requests.length, 1 + steps, `${label}: il passo del modello, la ricerca${steps === 2 ? " e il passo che risponde" : ""}`);
+    const reply = steps === 2 ? ANSWER : null;
+    if (reply) {
+      // Il passo che risponde riceve il risultato della ricerca fermata.
+      assert.match(JSON.stringify((requests[2].body.messages as unknown[]).at(-1)), /Ricerca non disponibile al momento/, label);
+    }
+    const finishReason = steps === 2 ? "stop" : "tool-calls";
+    assert.deepEqual(chunks.find((chunk) => chunk.type === "finish"), { type: "finish", finishReason, messageMetadata: { finishReason } }, label);
+    const question = "Preparo le fatture dei clienti ogni mese.";
+    assert.deepEqual(prova.saved.map(({ role, content }) => [role, content]), [["user", question], ...(reply ? [["assistant", reply]] : [])], label);
+    assert.deepEqual(prova.indexed, [...(reply ? [["assistant", reply]] : []), ["user", question]], label);
+    assert.deepEqual(
+      lines,
+      [`[web-search-tool] tempo_scaduto {"timeoutMs":${timeoutMs}}`, ...(reply ? [] : ['[chat/route] tempo_scaduto {"passi":1}'])],
+      label,
+    );
   }
 });
