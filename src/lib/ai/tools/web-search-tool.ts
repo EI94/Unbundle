@@ -1,6 +1,7 @@
 import { tool, generateText, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
+import { CLAUDE_MODEL, claudeCallSettings, logClaudeStop, WEB_SEARCH_TIMEOUT_MS } from "@/lib/ai/models";
 
 export function getWebSearchTool() {
   return {
@@ -19,8 +20,11 @@ export function getWebSearchTool() {
       }),
       execute: async ({ query, reason }) => {
         try {
-          const { text } = await generateText({
-            model: anthropic("claude-sonnet-4-20250514"),
+          const result = await generateText({
+            model: anthropic(CLAUDE_MODEL),
+            ...claudeCallSettings("webSearch"),
+            // Dentro i 120 secondi della chat: oltre, si prosegue senza ricerca (il catch qui sotto).
+            abortSignal: AbortSignal.timeout(WEB_SEARCH_TIMEOUT_MS),
             tools: {
               web_search: anthropic.tools.webSearch_20250305({
                 maxUses: 3,
@@ -30,10 +34,21 @@ export function getWebSearchTool() {
             prompt: `Cerca su internet: "${query}". Motivo: ${reason}. Riporta un riassunto conciso dei risultati trovati (max 5-6 frasi). Includi fatti specifici, numeri e nomi quando disponibili.`,
           });
 
+          // Un rifiuto dei classificatori del modello non è un risultato: si prosegue senza, come
+          // quando la ricerca non è disponibile, e mai con un riassunto parziale.
+          if (result.finishReason === "content-filter") {
+            logClaudeStop("web-search-tool", "ricerca_rifiutata", result);
+            return {
+              success: false,
+              reason,
+              summary: "Ricerca non disponibile al momento. Prosegui senza.",
+            };
+          }
+
           return {
             success: true,
             reason,
-            summary: text || "Nessun risultato rilevante trovato.",
+            summary: result.text || "Nessun risultato rilevante trovato.",
           };
         } catch (error) {
           console.error("[web-search-tool] Error:", error);
