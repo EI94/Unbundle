@@ -723,3 +723,26 @@ test("(revisione) due revisori aggiungono insieme la stessa persona: un referent
   assert.ok(!ok(await referents.listReferentPickerPeople(as("builder"), cards.dossier2, ENV), "elenco").members.some((m) => m.userId === ids.dario));
   assert.equal(panel!.contacts.filter((x) => x.id === String(rows[0].id)).length, 1);
 });
+
+test("D7 (8.0c): chi costruisce i casi del cliente da fuori non è nell'elenco «A chi» e non si sceglie come referente", opts, async () => {
+  // Teo (Analista del workspace) costruisce i casi del cliente da fuori: una concessione per tutti i casi.
+  await q(`INSERT INTO use_case_external_builders (workspace_id, user_id) VALUES ($1::uuid, $2::uuid)`, [ids.ws, ids.analyst]);
+  try {
+    const listed = ok(await referents.listReferentPickerPeople(as("builder"), cards.contrib, ENV), "elenco").members.map((m) => m.userId);
+    assert.ok(!listed.includes(ids.analyst), "fuori da «A chi»");
+    assert.ok(listed.includes(ids.sponsor), "gli altri restano");
+    const [n0] = await needsOf(cards.forged);
+    const chosen = await referents.sendReferentRequest(as("builder"), cards.forged, { contact: { kind: "membro", userId: ids.analyst }, needIds: [n0] }, { env: ENV, requester: requester("builder") });
+    refused(chosen, "referente_costruttore", "dall'elenco");
+    assert.equal(
+      (chosen as { message?: string }).message,
+      "Chi costruisce i casi di questo cliente non fa il referente: le risposte le dà un'altra persona.",
+    );
+    const typed = await referents.sendReferentRequest(as("builder"), cards.forged, { contact: { kind: "nuovo", displayName: "Teo", email: EXTRA.analyst.email.toUpperCase() }, needIds: [n0] }, { env: ENV, requester: requester("builder") });
+    refused(typed, "referente_costruttore", "scritto a mano, anche in maiuscolo");
+    refused(await referents.revealReferentMemberEmail(as("builder"), cards.contrib, ids.analyst, ENV), "referente_costruttore", "indirizzo");
+  } finally {
+    await q(`DELETE FROM use_case_external_builders WHERE workspace_id = $1::uuid AND user_id = $2::uuid`, [ids.ws, ids.analyst]);
+  }
+  assert.ok(ok(await referents.listReferentPickerPeople(as("builder"), cards.contrib, ENV), "elenco").members.some((m) => m.userId === ids.analyst), "senza concessione torna");
+});

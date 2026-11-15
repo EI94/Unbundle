@@ -86,6 +86,10 @@ export function isClientUser(user: Pick<UserContext, "isLateralSpace" | "emailVe
  * persone del cliente con email verificata (`isClientUser`), `osservatore` per
  * entrambi. Si ricalcola a ogni comando e a ogni firma: un dominio tolto
  * dall'elenco annulla subito i ruoli `ls_*`.
+ *
+ * (8.0c) Un ruolo né di Lateral Space né del cliente vale solo se è
+ * `osservatore`: un ruolo nuovo che questa funzione non conosce non vale, finché
+ * non trova il suo posto (si chiude, non si apre).
  */
 export function caseRoleAllowedFor(
   user: Pick<UserContext, "isLateralSpace" | "emailVerified" | "emailDomain">,
@@ -94,5 +98,5 @@ export function caseRoleAllowedFor(
 ): boolean {
   if ((LS_CASE_ROLES as readonly string[]).includes(role)) return user.isLateralSpace;
   if ((CLIENT_CASE_ROLES as readonly string[]).includes(role)) return isClientUser(user, lsDomains);
-  return true;
+  return role === "osservatore";
 }

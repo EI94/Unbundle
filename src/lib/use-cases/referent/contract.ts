@@ -333,7 +333,7 @@ export interface ReferentContactOption {
   emailMasked: string | null;
   selectable: boolean;
   /** (Parte 3) «sei_tu»: il contatto è chi guarda (account collegato o email verificata): risponde dalla scheda. */
-  reason: "senza_email" | "lateral_space" | "richiesta_aperta" | "sei_tu" | "referente" | null;
+  reason: "senza_email" | "lateral_space" | "costruttore" | "richiesta_aperta" | "sei_tu" | "referente" | null;
   /**
    * (Parte 3) Il contatto è adesso un revisore di questo workspace: il selettore aggiunge «Fa parte del
    * team». Falso per tutti gli altri ruoli e per chi non ha un account; nessuna altra informazione su

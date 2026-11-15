@@ -150,7 +150,15 @@ export const REFERENT_UI_TEXT = Object.freeze({
     whoLabel: "A chi chiedi?",
     whoLead: "Scegli chi conosce i dati: ti proponiamo solo le domande che lo riguardano.",
     whoMissing: "Scegli un referente",
-    suffix: Object.freeze({ senza_email: "(senza email)", lateral_space: "(di Lateral Space)", richiesta_aperta: "(richiesta già aperta)", sei_tu: "(sei tu)", referente: "(è il referente)" }),
+    suffix: Object.freeze({
+      senza_email: "(senza email)",
+      lateral_space: "(di Lateral Space)",
+      // (8.0c) Chi costruisce i casi del cliente da fuori Lateral Space non fa il referente.
+      costruttore: "(costruisce i casi)",
+      richiesta_aperta: "(richiesta già aperta)",
+      sei_tu: "(sei tu)",
+      referente: "(è il referente)",
+    }),
     // (Parte 3) Il contatto è un revisore del workspace: in coda alla riga, « · Fa parte del team».
     teamTag: "Fa parte del team",
     // (Parte 3) Sotto l'elenco, quando chi guarda è tra i contatti (riga «(sei tu)», non si sceglie).
@@ -726,6 +734,8 @@ export const REFERENT_ERROR_MESSAGES: Readonly<Record<string, string>> = Object.
   email_mancante_esistente: "Questo referente non ha un'email: scegli un'altra persona o aggiungine una nuova.",
   email_non_valida: "Controlla l'indirizzo email del referente.",
   referente_lateral_space: "Il referente è una persona del cliente: non può essere di Lateral Space.",
+  // (8.0c) Chi costruisce i casi del cliente da fuori Lateral Space non risponde come referente.
+  referente_costruttore: "Chi costruisce i casi di questo cliente non fa il referente: le risposte le dà un'altra persona.",
   email_in_uso: "C'è già un referente con questa email: sceglilo dall'elenco.",
   referente_in_dossier: "Questo referente è anche in un dossier: l'email si corregge in «Persone» del dossier.",
   dati_non_validi: "Scrivi il nome del referente.",

@@ -205,6 +205,7 @@ const STEP_ONE_CODES = new Set([
   "referente_non_valido",
   "referente_disattivato",
   "referente_lateral_space",
+  "referente_costruttore",
   "referente_sei_tu",
   "referente_in_dossier",
   "persona_non_disponibile",

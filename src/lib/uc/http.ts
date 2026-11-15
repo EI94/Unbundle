@@ -89,7 +89,9 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   firmatario_non_ammesso: 403,
   firmatario_non_designato: 403,
   firmatario_lateral_space: 403,
+  firmatario_costruttore: 403,
   referente_lateral_space: 422,
+  referente_costruttore: 422,
   approvazione_non_trovata: 404,
 };
 

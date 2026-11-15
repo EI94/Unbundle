@@ -865,19 +865,29 @@ RETURNING id`),
   return fail("non_trovato", "Use case non trovato.");
 }
 
-/** `unbundle repo create`: registra (o aggiorna) il repository e la cartella dello use case. */
+/**
+ * `unbundle repo create`: registra (o aggiorna) il repository e la cartella dello use case. (8.0c) Mai un repository già
+ * registrato per un altro cliente (`repo_di_altro_cliente`): il webhook di GitHub cerca i casi per repository in tutti i
+ * workspace, e gli eventi di un cliente arriverebbero ai casi di un altro. In fila per repository (l'advisory lock), così
+ * due clienti insieme non lo registrano tutti e due.
+ */
 export async function registerCaseRepo(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: CaseRepoInput): Promise<Result<{ id: string; created: boolean }>> {
   if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
-  const [rows] = await executor.batch([
+  const repo = cast(input.repo, "text");
+  const elsewhere = ucSql`EXISTS (SELECT 1 FROM use_case_repos o WHERE lower(o.repo) = lower(${repo}) AND o.workspace_id <> ${ws})`;
+  const [, taken, rows] = await executor.batch([
+    toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-repo:' || lower(${repo})))`),
+    toStatement(ucSql`SELECT ${elsewhere} AS taken`),
     toStatement(ucSql`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder, profile, vercel_project, created_by_user_id)
-SELECT u.id, u.workspace_id, ${cast(input.repo, "text")}, ${cast(input.folder, "text")}, ${cast(input.profile, "text")}, ${cast(input.vercelProject, "text")}, ${cast(userOf(actor), "uuid")}
-FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws}
+SELECT u.id, u.workspace_id, ${repo}, ${cast(input.folder, "text")}, ${cast(input.profile, "text")}, ${cast(input.vercelProject, "text")}, ${cast(userOf(actor), "uuid")}
+FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws} AND NOT ${elsewhere}
 ON CONFLICT (use_case_id, repo, folder) DO UPDATE SET profile = coalesce(EXCLUDED.profile, use_case_repos.profile),
   vercel_project = coalesce(EXCLUDED.vercel_project, use_case_repos.vercel_project), updated_at = now()
 RETURNING id, (xmax = 0) AS created`),
   ]);
+  if (taken[0]?.taken === true) return fail("repo_di_altro_cliente", "Questo repository è già registrato per un altro cliente: ogni cliente ha i suoi.");
   if (!rows[0]) return fail("non_trovato", "Use case non trovato.");
   return ok({ id: String(rows[0].id), created: rows[0].created === true });
 }

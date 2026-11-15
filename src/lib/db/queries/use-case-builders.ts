@@ -255,3 +255,10 @@ export function grantedOpenCasesSql(workspaceId: string, userId: string) {
 WHERE c.workspace_id = ${cast(workspaceId, "uuid")} AND c.status <> 'chiuso' AND c.setup_completed_at IS NOT NULL AND ${grantCoversCaseSql(cast(userId, "uuid"))}
 ORDER BY coalesce(u.code, c.code)`);
 }
+
+/** I workspace dove la persona ha una concessione (per «Collega questa CLI»). Vuoto senza la 0037. */
+export async function externalGrantWorkspaceIds(executor: UcExecutor, userId: string): Promise<Set<string>> {
+  if (!UUID_RE.test(userId) || !(await externalBuildersReady(executor))) return new Set();
+  const [rows] = await executor.batch([toStatement(ucSql`SELECT DISTINCT workspace_id FROM use_case_external_builders WHERE user_id = ${cast(userId, "uuid")}`)]);
+  return new Set(rows.map((r) => String(r.workspace_id).toLowerCase()));
+}

@@ -53,6 +53,7 @@ import { userContextFrom } from "@/lib/uc/lateral-space";
 import { subprocessorDeclarerOf } from "@/lib/uc/legal/subprocessors";
 import { ucEmailConfig, type UcMailer } from "@/lib/uc/notify/dispatch";
 import { checkContactEmail } from "@/lib/uc/permissions";
+import { workspaceBuilderEmails } from "@/lib/db/queries/use-case-builders";
 import { rowBool, rowDate, rowJson, rowNumber, rowString } from "@/lib/uc/sql/readiness";
 import { checkContactDraft, contactEmailTakenSql, contactInsertSql, contactUpdateSql, prepareContact, type ContactDraft } from "@/lib/uc/sql/request-commands";
 import { cast, raw, requireRows, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
@@ -171,10 +172,15 @@ function persona(userId: string): ReferentActor {
   return { kind: "persona", userId };
 }
 
-/** (Referente già iscritto) Una persona del workspace è di Lateral Space? Le regole dei referenti (`checkContactEmail`). */
-function memberIsLateralSpace(m: Pick<WorkspaceMemberFacts, "userId" | "email">, lsDomains: readonly string[], lsMembers: readonly string[]): boolean {
+/**
+ * (Referente già iscritto) Una persona del workspace non può fare il referente? Le regole dei referenti
+ * (`checkContactEmail`): di Lateral Space (`referente_lateral_space`) o, 8.0c, chi costruisce i casi del cliente da fuori
+ * (`referente_costruttore`). null se può.
+ */
+function memberRefusal(m: Pick<WorkspaceMemberFacts, "userId" | "email">, lsDomains: readonly string[], lsMembers: readonly string[], builders: readonly string[]): string | null {
   const user = userContextFrom({ id: m.userId, email: m.email, emailVerified: true }, lsDomains);
-  return !checkContactEmail({ email: m.email, user, lsDomains, lsMemberEmails: lsMembers }).ok;
+  const check = checkContactEmail({ email: m.email, user, lsDomains, lsMemberEmails: lsMembers, builderEmails: builders });
+  return check.ok ? null : check.code;
 }
 
 /**
@@ -190,6 +196,8 @@ function pickerOptionsOf(i: {
   viewerUserId: string;
   lsDomains: readonly string[];
   lsMembers: readonly string[];
+  /** (8.0c) Le email di chi costruisce i casi del cliente da fuori: fuori da «A chi». */
+  builders: readonly string[];
   learners: boolean;
 }): ReferentMemberOption[] {
   const contactUserIds = new Set<string>();
@@ -199,7 +207,7 @@ function pickerOptionsOf(i: {
   return pickerMembersOf(i.all, {
     viewerUserId: i.viewerUserId,
     dedupe: { contactEmails, contactUserIds },
-    isLateralSpace: (m) => memberIsLateralSpace(m, i.lsDomains, i.lsMembers),
+    isLateralSpace: (m) => memberRefusal(m, i.lsDomains, i.lsMembers, i.builders) !== null,
     learners: i.learners,
   }).map((m) => ({ userId: m.userId, displayName: m.displayName, emailMasked: maskEmail(m.email), team: m.team }));
 }
@@ -602,10 +610,11 @@ export async function loadUseCaseReferentPanel(i: {
     const threadRows: ThreadRow[] = threadMessageRows.map(threadRowOf).filter((r): r is ThreadRow => r !== null);
     const threadByRequest = threadFactsByRequest(threadRows);
     const reviewExpired = new Set(expiredRows.map((r) => String(r.need_id).toLowerCase()));
-    const [asks, ack, lsMembers] = await Promise.all([
+    const [asks, ack, lsMembers, builders] = await Promise.all([
       readAsksForNeeds(executor, ws, requirementIds),
       loadSubprocessorAck(executor, ws),
       readLsMemberEmails(executor, ws),
+      workspaceBuilderEmails(executor, ws),
     ]);
     const lsDomains = lsDomainsOf(env);
     const requests = requestRows.map((r) => requestRowOf(r, now)).filter((r): r is RequestRow => r !== null);
@@ -669,11 +678,13 @@ export async function loadUseCaseReferentPanel(i: {
       const email = rowString(r.email);
       const userId = rowString(r.user_id);
       const person = people.get(id) ?? NO_PERSON;
-      const ls = !checkContactEmail({ email, user: userId ? (userCtx.get(userId) ?? null) : null, lsDomains, lsMemberEmails: lsMembers }).ok;
+      const outside = checkContactEmail({ email, user: userId ? (userCtx.get(userId) ?? null) : null, lsDomains, lsMemberEmails: lsMembers, builderEmails: builders });
       const reason: ReferentContactOption["reason"] = !email
         ? "senza_email"
-        : ls
-          ? "lateral_space"
+        : !outside.ok
+          ? outside.code === "referente_costruttore"
+            ? "costruttore"
+            : "lateral_space"
           : isSelfRequest(person, i.session.id)
             ? "sei_tu"
             : liveHere.has(id)
@@ -1264,7 +1275,7 @@ async function sendReferentRequestOnce(
   // (Rilascio 5) Il referente c'è solo dove la scheda lo offre; le richieste di sole domande restano come nel rilascio 4.
   if (parsed.kind === "referente" && !(await referentEligibleNow(executor, ctx.workspaceId, card.id, now))) return rfail("referente_non_previsto");
   const lsDomains = lsDomainsOf(deps.env);
-  const lsMembers = await readLsMemberEmails(executor, ctx.workspaceId);
+  const [lsMembers, builders] = await Promise.all([readLsMemberEmails(executor, ctx.workspaceId), workspaceBuilderEmails(executor, ctx.workspaceId)]);
 
   // 6. Il referente.
   let contactId = "";
@@ -1280,7 +1291,7 @@ async function sendReferentRequestOnce(
     if (!contact || !contact.isActive || contact.anonymized) return rfail("referente_non_valido", undefined, field("referente_non_valido"));
     if (!contact.email) return rfail("email_mancante", REFERENT_ERROR_MESSAGES.email_mancante_esistente);
     const user = contact.userId ? await loadUserContext(executor, contact.userId, lsDomains) : null;
-    const check = checkContactEmail({ email: contact.email, user, lsDomains, lsMemberEmails: lsMembers });
+    const check = checkContactEmail({ email: contact.email, user, lsDomains, lsMemberEmails: lsMembers, builderEmails: builders });
     if (!check.ok) return rfail(check.code, undefined, field(check.code));
     // 6b (Parte 3). Chi chiede a se stesso: niente email, risponde dalla scheda.
     if (isSelfRequest(await readReferentPerson(executor, ctx.workspaceId, contact.id), writer.userId)) return rfail("referente_sei_tu", undefined, field("referente_sei_tu"));
@@ -1298,7 +1309,7 @@ async function sendReferentRequestOnce(
       return rfail(draft.code, field === "displayName" ? REFERENT_ERROR_MESSAGES.dati_non_validi : REFERENT_ERROR_MESSAGES.email_non_valida, { [field]: field === "displayName" ? REFERENT_ERROR_MESSAGES.dati_non_validi : REFERENT_ERROR_MESSAGES.email_non_valida });
     }
     if (draft.value.email === null) return rfail("email_mancante", undefined, { email: REFERENT_ERROR_MESSAGES.email_mancante });
-    const check = checkContactDraft(draft.value, { lsDomains, lsMemberEmails: lsMembers, user: null });
+    const check = checkContactDraft(draft.value, { lsDomains, lsMemberEmails: lsMembers, builderEmails: builders, user: null });
     if (!check.ok) return rfail(check.code, undefined, { email: REFERENT_ERROR_MESSAGES[check.code] ?? check.message });
     // 6b (Parte 3). La propria email come referente nuovo: niente email, risponde dalla scheda.
     const typedPerson = await readEmailPerson(executor, ctx.workspaceId, draft.value.email);
@@ -1337,7 +1348,8 @@ async function sendReferentRequestOnce(
     // verificata, un id inventato): non è mai stata un referente, quindi un testo suo.
     const [member] = await readWorkspaceMembers(executor, ctx.workspaceId, parsed.contact.userId, { learners: true });
     if (!member) return rfail("persona_non_disponibile");
-    if (memberIsLateralSpace(member, lsDomains, lsMembers)) return rfail("referente_lateral_space");
+    const refusal = memberRefusal(member, lsDomains, lsMembers, builders);
+    if (refusal) return rfail(refusal);
     if (member.userId === writer.userId.toLowerCase()) return rfail("referente_sei_tu");
     const known = await readPersonContacts(executor, ctx.workspaceId, { email: member.email, userId: member.userId });
     const active = known.find((c) => c.isActive);
@@ -2005,13 +2017,14 @@ export const listReferentPickerPeople = guardedReferent(
     const [self] = await readWorkspaceMembers(executor, ws, writer.userId);
     if (!self || !canSeeWorkspacePeople(self.role)) return ok({ members: [] });
     const [contactRows] = await executor.batch([contactsSql(ws)]);
-    const [people, known, lsMembers, all] = await Promise.all([
+    const [people, known, lsMembers, all, builders] = await Promise.all([
       readReferentPeople(executor, ws, contactRows.map((r) => String(r.id))),
       readPersonContacts(executor, ws),
       readLsMemberEmails(executor, ws),
       readWorkspaceMembers(executor, ws, null, { learners: true }),
+      workspaceBuilderEmails(executor, ws),
     ]);
-    return ok({ members: pickerOptionsOf({ all, known, people, viewerUserId: writer.userId, lsDomains: lsDomainsOf(env), lsMembers, learners: true }) });
+    return ok({ members: pickerOptionsOf({ all, known, people, viewerUserId: writer.userId, lsDomains: lsDomainsOf(env), lsMembers, builders, learners: true }) });
   },
 );
 
@@ -2034,7 +2047,8 @@ export const revealReferentMemberEmail = guardedReferent(
     if (!self || !canSeeWorkspacePeople(self.role)) return rfail("permesso_mancante");
     const [member] = await readWorkspaceMembers(executor, ctx.workspaceId, userId, { learners: true });
     if (!member) return rfail("persona_non_disponibile");
-    if (memberIsLateralSpace(member, lsDomainsOf(env), await readLsMemberEmails(executor, ctx.workspaceId))) return rfail("referente_lateral_space");
+    const refusal = memberRefusal(member, lsDomainsOf(env), await readLsMemberEmails(executor, ctx.workspaceId), await workspaceBuilderEmails(executor, ctx.workspaceId));
+    if (refusal) return rfail(refusal);
     if (member.userId === writer.userId.toLowerCase()) return rfail("referente_sei_tu");
     return ok({ email: member.email });
   },
@@ -2057,7 +2071,13 @@ export const correctReferentEmail = guardedReferent(
     if (draft.value.email === null) return rfail("email_mancante", undefined, { email: REFERENT_ERROR_MESSAGES.email_mancante });
     const lsDomains = lsDomainsOf(deps.env);
     const user = contact.userId ? await loadUserContext(executor, contact.userId, lsDomains) : null;
-    const check = checkContactEmail({ email: draft.value.email, user, lsDomains, lsMemberEmails: await readLsMemberEmails(executor, ctx.workspaceId) });
+    const check = checkContactEmail({
+      email: draft.value.email,
+      user,
+      lsDomains,
+      lsMemberEmails: await readLsMemberEmails(executor, ctx.workspaceId),
+      builderEmails: await workspaceBuilderEmails(executor, ctx.workspaceId),
+    });
     if (!check.ok) return rfail(check.code, undefined, { email: REFERENT_ERROR_MESSAGES[check.code] ?? check.message });
     const [[taken]] = await executor.batch([contactEmailTakenSql({ workspaceId: ctx.workspaceId, email: draft.value.email, excludeContactId: contact.id })]);
     if (rowBool(taken?.taken)) return rfail("email_in_uso", undefined, { email: REFERENT_ERROR_MESSAGES.email_in_uso });

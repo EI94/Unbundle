@@ -546,6 +546,78 @@ test("D12: senza la 0037 gli elenchi non hanno esterni", opts, async () => {
   assert.deepEqual(rows.map((r) => r.recipient_user_id), [ids.lead], "solo Lateral Space");
 });
 
+// ─── Le protezioni ───────────────────────────────────────────────────
+
+test("D7: a chi costruisce il caso niente ruoli del cliente, niente referente, niente firma (designato o dal link)", opts, async () => {
+  const ucActions = await import("../../actions/uc-cases.ts");
+  const board = await as("lead", () => ucActions.addMemberAction(ids.wsA, ids.caseA1, { userId: ids.e, role: "ai_board" }));
+  assert.deepEqual([board.ok, !board.ok && board.code, !board.ok && board.message], [false, "conflitto_ruoli", "Costruisce questo caso: non può avere anche un ruolo del cliente."]);
+  // P (osservatore senza concessione) l'AI Board la può avere: la regola guarda la concessione.
+  const pBoard = await as("lead", () => ucActions.addMemberAction(ids.wsA, ids.caseA1, { userId: ids.p, role: "ai_board" }));
+  assert.equal(pBoard.ok, true, pBoard.ok ? "" : pBoard.message);
+  await q(`DELETE FROM uc_case_members WHERE case_id = $1 AND user_id = $2 AND role = 'ai_board'`, [ids.caseA1, ids.p]);
+  // Il referente del dossier con l'e-mail di chi costruisce.
+  const { commandContextFor, loadCaseCore, loadSignatureContext } = await import("../../db/queries/uc-cases.ts");
+  const requests = await import("../../db/queries/uc-requests.ts");
+  const ctx = await commandContextFor(exec, { workspaceId: ids.wsA, caseId: ids.caseA1, userId: ids.lead, lsDomains: ["ls.test"] });
+  assert.ok(ctx.ok);
+  if (!ctx.ok) return;
+  const contact = await requests.createContact(exec, ctx.value, { displayName: "Referente di prova", email: EMAIL.e.toUpperCase() });
+  assert.deepEqual([contact.ok, !contact.ok && contact.code], [false, "referente_costruttore"]);
+  // Il firmatario: designato o dal link, mai chi costruisce il caso.
+  const core = await loadCaseCore(exec, ids.wsA, ids.caseA1);
+  const sig = await loadSignatureContext(exec, core!, ["ls.test"]);
+  assert.ok(sig.builderEmails?.includes(EMAIL.e), "chi ha una concessione che copre il caso");
+  assert.ok(!sig.builderEmails?.includes(EMAIL.e2), "E2 costruisce solo A2");
+  const { checkSignerDesignation, signatureRole } = await import("../../uc/permissions.ts");
+  const designated = checkSignerDesignation({
+    actor: { user: ctx.value.user!, roles: ["ls_lead"] },
+    designation: "owner",
+    contact: { id: randomUUID(), email: EMAIL.e, isActive: true, anonymized: false },
+    evidenceFileId: randomUUID(),
+    ctx: sig,
+  });
+  assert.equal(designated.ok ? "ok" : designated.code, "firmatario_costruttore");
+  const fromLink = signatureRole({ kind: "link", contactId: "c-owner", designation: "owner", email: EMAIL.e }, "gate", { ...sig, designated: { owner: "c-owner", privacy: null } });
+  assert.equal(fromLink.ok ? "ok" : fromLink.code, "firmatario_costruttore");
+});
+
+test("D15: il repository di un altro cliente si rifiuta; nello stesso cliente un repository di famiglia vale per più casi", opts, async () => {
+  const repo = `Prova/nardi-esploso-${suffix}`;
+  const leadInB = await tokenFor("lead", ids.wsB);
+  for (const name of [repo, repo.toUpperCase()]) {
+    const r = await post("repository", leadInB, { caso: "TB-0001", repository: name, cartella: "casi/tb-0001" });
+    assert.deepEqual([r.status, codeOf(r)], [409, "repo_di_altro_cliente"], name);
+    assert.equal((r.json.errore as Row).messaggio, "Questo repository è già registrato per un altro cliente: ogni cliente ha i suoi.");
+  }
+  const [count] = await q(`SELECT count(*)::int AS n FROM use_case_repos WHERE workspace_id = $1`, [ids.wsB]);
+  assert.equal(count.n, 0);
+  const family = await post("repository", tokens.lead!, { caso: "NM-0003", repository: repo, cartella: "casi/nm-0003" });
+  assert.equal(family.status, 200, "lo stesso cliente, un altro caso della famiglia");
+});
+
+test("D2: «Collega questa CLI» propone solo dove si costruisce o si è nel team di un caso, e il server lo ricontrolla", opts, async () => {
+  const cliAuth = await import("../../db/queries/use-case-cli-auth.ts");
+  const login = await import("../../actions/cli-login.ts");
+  assert.deepEqual([...(await cliAuth.cliCaseWorkspaceIds(exec, ids.e))], [ids.wsA.toLowerCase()], "E: solo A");
+  assert.deepEqual([...(await cliAuth.cliCaseWorkspaceIds(exec, ids.b))], [ids.wsB.toLowerCase()], "B: solo B");
+  assert.equal((await cliAuth.cliCaseWorkspaceIds(exec, ids.m)).size, 0, "chi gestisce A senza casi: nessuno");
+  // M conferma su A: rifiutato; con una concessione (anche senza dossier) sì.
+  const started = await cliAuth.startCliLogin(exec, { clientLabel: `CLI di prova login ${suffix}` });
+  const refused = await as("m", () => login.confirmCliLoginAction(started.userCode, ids.wsA));
+  assert.deepEqual(refused, { ok: false, message: "In questo workspace non costruisci nessun caso: qui la CLI non serve." });
+  await q(`INSERT INTO use_case_external_builders (workspace_id, user_id, use_case_id) VALUES ($1, $2, $3)`, [ids.wsA, ids.m, ids.ucA3]);
+  const card = await cliAuth.loadCliCard(exec, { userId: ids.m, workspaceId: ids.wsA, lateralSpace: false });
+  assert.deepEqual(card, { tokens: [] }, "la scheda «CLI di Unbundle» anche a chi costruisce");
+  assert.equal((await as("m", () => login.confirmCliLoginAction(started.userCode, ids.wsA))).ok, true);
+  await q(`DELETE FROM use_case_external_builders WHERE workspace_id = $1 AND user_id = $2`, [ids.wsA, ids.m]);
+  assert.equal(await cliAuth.loadCliCard(exec, { userId: ids.p, workspaceId: ids.wsB, lateralSpace: false }), null);
+  // E su B: non è nel workspace. B su A: nemmeno.
+  const other = await cliAuth.startCliLogin(exec, { clientLabel: `CLI di prova login ${suffix}` });
+  await assert.rejects(as("e", () => login.confirmCliLoginAction(other.userCode, ids.wsB)), /Workspace non trovato/);
+  await assert.rejects(as("b", () => login.confirmCliLoginAction(other.userCode, ids.wsA)), /Workspace non trovato/);
+});
+
 // ─── Togliere ────────────────────────────────────────────────────────
 
 test("D9: la discesa a Contributore ferma le scritture subito, senza revoca; tornato Analista ricomincia", opts, async () => {

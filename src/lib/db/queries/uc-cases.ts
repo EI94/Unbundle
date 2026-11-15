@@ -73,6 +73,7 @@ import { zoneApprovalHash } from "../../uc/views/approvals.ts";
 import { fail, ok, type Actor, type Approval, type Json, type Result, type UserContext } from "../../uc/types.ts";
 import {
   CASE_ROLES,
+  CLIENT_CASE_ROLES,
   GATE_POLICY_SCOPES,
   LEVERS,
   LS_CASE_ROLES,
@@ -86,6 +87,7 @@ import {
   type Phase,
 } from "../../uc/vocab.ts";
 import { eventActorFrom, eventInsertFromSql, eventInsertSql, eventPayload, type EventActor } from "./uc-events.ts";
+import { caseBuilderEmails, hasGrantForCase } from "./use-case-builders.ts";
 import { enqueueForLsMembersSql } from "./uc-notifications.ts";
 import { bellPrefix } from "../../uc/notify/dedupe.ts";
 import { createCaseFromTemplate, type TemplateRef } from "./uc-templates.ts";
@@ -188,13 +190,16 @@ export async function commandContextFor(
   return ok({ workspaceId: i.workspaceId, caseId: i.caseId, actor: { type: "utente", userId: user.userId, roles: roles.effective }, user, lsDomains: i.lsDomains, now: i.now });
 }
 
-/** Email dei membri Lateral Space del caso e contatti designati: il contesto delle firme. */
+/**
+ * Email dei membri Lateral Space del caso, (8.0c) di chi costruisce il caso da fuori (una concessione che lo copre: solo
+ * con la 0037) e contatti designati: il contesto delle firme.
+ */
 export async function loadSignatureContext(executor: UcExecutor, core: CaseCore, lsDomains: readonly string[]): Promise<SignatureContext> {
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT DISTINCT u.email FROM uc_case_members m JOIN users u ON u.id = m.user_id
 WHERE m.case_id = ${cast(core.id, "uuid")} AND m.role IN (${raw(LS_ROLES_SQL)}) AND u.email IS NOT NULL`),
   ]);
-  return { lsDomains, lsMemberEmails: rows.map((r) => String(r.email)), designated: { ...core.designated } };
+  return { lsDomains, lsMemberEmails: rows.map((r) => String(r.email)), builderEmails: await caseBuilderEmails(executor, core.id), designated: { ...core.designated } };
 }
 
 /** Riga del caso (completo, del workspace). */
@@ -725,7 +730,9 @@ function collaboratorSql(workspaceId: string, userId: string): UcStatement {
 /**
  * Aggiunge un ruolo di caso a un collaboratore del workspace (solo ls_lead).
  * Ruoli `ls_*` solo a persone di Lateral Space, ruoli del cliente solo alle
- * altre, mai insieme sulla stessa persona (`assertMemberRoles`).
+ * altre, mai insieme sulla stessa persona (`assertMemberRoles`). (8.0c) Mai un
+ * ruolo del cliente a chi costruisce il caso da fuori (una concessione che lo
+ * copre: solo con la 0037): `conflitto_ruoli`.
  */
 export async function addCaseMember(executor: UcExecutor, ctx: UcCommandContext, input: unknown): Promise<Result<{ userId: string; role: CaseRole }>> {
   if (!can(actorRoles(ctx), "gestire_membri")) return fail("attore_non_ammesso", "Solo il Responsabile del caso gestisce i membri.");
@@ -740,6 +747,9 @@ export async function addCaseMember(executor: UcExecutor, ctx: UcCommandContext,
   if (roles.stored.includes(role)) return fail("gia_membro", CASE_MESSAGES.gia_membro);
   const allowed = assertMemberRoles(target, [...roles.stored, role], ctx.lsDomains);
   if (!allowed.ok) return allowed;
+  if ((CLIENT_CASE_ROLES as readonly string[]).includes(role) && (await hasGrantForCase(executor, { caseId: ctx.caseId, userId }))) {
+    return fail("conflitto_ruoli", "Costruisce questo caso: non può avere anche un ruolo del cliente.");
+  }
   const c = cast(ctx.caseId, "uuid");
   const run = await runCommand(
     executor,

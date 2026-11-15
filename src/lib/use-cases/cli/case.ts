@@ -162,6 +162,8 @@ const STATUS_OF: Readonly<Record<string, number>> = {
   libero: 409,
   // (8.2a) Il banco e le evals: la 0036 non c'è ancora.
   non_disponibile: 503,
+  // (8.0c) Un repository già registrato per un altro cliente.
+  repo_di_altro_cliente: 409,
 };
 
 /** Una chiave di idempotenza valida: quella che la CLI genera (un UUID) o una del chiamante, 8-128 caratteri. */

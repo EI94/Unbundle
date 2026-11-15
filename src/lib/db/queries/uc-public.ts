@@ -1087,7 +1087,7 @@ export async function delegateItems(executor: UcExecutor, link: ResolvedLink, in
   if (existing && !rowBool(existing.is_active)) return publicFail("collega_non_attivo", "Questo collega non riceve più richieste: scrivi a Lateral Space.");
   const existingUserId = rowString(existing?.user_id);
   const existingUser = existingUserId ? await loadUserContext(executor, existingUserId, opts.lsDomains) : null;
-  const allowed = checkContactEmail({ email, user: existingUser, lsDomains: opts.lsDomains, lsMemberEmails: sig.lsMemberEmails });
+  const allowed = checkContactEmail({ email, user: existingUser, lsDomains: opts.lsDomains, lsMemberEmails: sig.lsMemberEmails, builderEmails: sig.builderEmails });
   if (!allowed.ok) return publicFail("delega_a_lateral_space", "Non si può girare una domanda a Lateral Space: chiedi a un collega della tua azienda.");
   const rules = checkDelegation({
     parentDepth: link.delegationDepth,
@@ -1309,7 +1309,7 @@ export async function decideApproval(executor: UcExecutor, link: ResolvedLink, i
     const core = await loadCaseCore(executor, link.workspaceId, link.caseId);
     if (!core) return publicFail("link_non_valido", INVALID_LINK_MESSAGE);
     const sig = await loadSignatureContext(executor, core, opts.lsDomains);
-    const email = checkSignerEmail(link.contactEmail, opts.lsDomains, sig.lsMemberEmails);
+    const email = checkSignerEmail(link.contactEmail, opts.lsDomains, sig.lsMemberEmails, sig.builderEmails);
     if (!email.ok || core.designated.owner !== link.contactId) return publicFail("firmatario_non_designato", "Il firmatario non è più quello designato dal cliente.");
     if (target.kind === "na") {
       const r = await rejectNa(executor, ctx, { itemId: target.targetId, reason, expectedTextHash: d.text_hash });

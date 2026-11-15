@@ -18,6 +18,7 @@ import "server-only";
  * è la stessa colonna, e Impostazioni li mostra solo alla persona che li possiede.
  */
 import type { UcExecutor } from "@/lib/db/uc-executor";
+import { externalGrantWorkspaceIds } from "@/lib/db/queries/use-case-builders";
 import { CLI_LIMITS, CLI_PROBE_SQL } from "@/lib/db/use-case-hub-cli-ddl";
 import { cast, jsonb, raw, toStatement, ucSql } from "@/lib/uc/sql/statement";
 import { fail, ok, type Result } from "@/lib/uc/types";
@@ -102,12 +103,18 @@ FROM use_case_cli_logins WHERE user_code = ${cast(userCode, "text")} ORDER BY cr
   };
 }
 
-/** I workspace dove la persona è nel team di almeno un caso: quelli che «Collega questa CLI» propone. */
+/**
+ * I workspace dove la persona è nel team di almeno un caso, o (8.0c) dove costruisce da fuori con una concessione,
+ * anche prima del primo dossier: quelli che «Collega questa CLI» propone, e gli unici dove la conferma vale
+ * (`confirmCliLoginAction`).
+ */
 export async function cliCaseWorkspaceIds(executor: UcExecutor, userId: string): Promise<Set<string>> {
   const [rows] = await executor.batch([
     toStatement(ucSql`SELECT DISTINCT c.workspace_id FROM uc_case_members m JOIN uc_cases c ON c.id = m.case_id WHERE m.user_id = ${cast(userId, "uuid")}`),
   ]);
-  return new Set(rows.map((r) => String(r.workspace_id).toLowerCase()));
+  const out = new Set(rows.map((r) => String(r.workspace_id).toLowerCase()));
+  for (const id of await externalGrantWorkspaceIds(executor, userId)) out.add(id);
+  return out;
 }
 
 /**
@@ -268,7 +275,8 @@ ORDER BY t.created_at DESC LIMIT 50`),
 
 /**
  * La scheda «CLI di Unbundle» di Impostazioni: i collegamenti della persona nel workspace; null se la scheda non
- * va mostrata (la 0031 non c'è ancora, oppure la persona non è di Lateral Space e non ha collegamenti).
+ * va mostrata (la 0031 non c'è ancora, oppure la persona non è di Lateral Space, non costruisce da fuori nel workspace,
+ * 8.0c, e non ha collegamenti).
  */
 export async function loadCliCard(
   executor: UcExecutor,
@@ -276,7 +284,8 @@ export async function loadCliCard(
 ): Promise<{ tokens: CliTokenView[] } | null> {
   if (!(await cliStoreReady(executor))) return null;
   const tokens = await listOwnCliTokens(executor, input);
-  return tokens.length || input.lateralSpace ? { tokens } : null;
+  if (tokens.length || input.lateralSpace) return { tokens };
+  return (await externalGrantWorkspaceIds(executor, input.userId)).has(input.workspaceId.toLowerCase()) ? { tokens } : null;
 }
 
 /** «Revoca» da Impostazioni: solo un token della persona, nel workspace. */

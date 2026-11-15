@@ -497,7 +497,7 @@ export async function loadDeliveryFacts(executor: UcExecutor, n: ClaimedNotifica
         const signature = core ? await loadSignatureContext(executor, core, o.lsDomains) : null;
         facts.approvals = {
           pending,
-          signer: signature ? checkSignerEmail(recipient.email, o.lsDomains, signature.lsMemberEmails) : { ok: false, code: "caso_assente", message: "" },
+          signer: signature ? checkSignerEmail(recipient.email, o.lsDomains, signature.lsMemberEmails, signature.builderEmails) : { ok: false, code: "caso_assente", message: "" },
         };
       }
       break;

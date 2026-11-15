@@ -8,19 +8,25 @@
 import { auth } from "@/lib/auth";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { ensureDbSchema } from "@/lib/db/ensure-schema";
-import { cliStoreReady, decideCliLogin } from "@/lib/db/queries/use-case-cli-auth";
+import { cliCaseWorkspaceIds, cliStoreReady, decideCliLogin } from "@/lib/db/queries/use-case-cli-auth";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 
 export type CliLoginDecision = { ok: true; message: string } | { ok: false; message: string };
 
 const NOT_READY: CliLoginDecision = { ok: false, message: "Il collegamento della CLI non è ancora disponibile: riprova tra qualche minuto." };
+const NO_CASE_HERE: CliLoginDecision = { ok: false, message: "In questo workspace non costruisci nessun caso: qui la CLI non serve." };
 
-/** «Collega questa CLI» al workspace scelto. */
+/**
+ * «Collega questa CLI» al workspace scelto. (8.0c) Solo dove la persona costruisce o è nel team di un caso: la pagina
+ * propone solo quelli (`cliWorkspaceChoices`), e il server lo ricontrolla qui, perché l'azione si chiama anche da fuori
+ * dalla pagina.
+ */
 export async function confirmCliLoginAction(userCode: string, workspaceId: string): Promise<CliLoginDecision> {
   const { session } = await requireWorkspaceAccess(workspaceId);
   await ensureDbSchema();
   const executor = await getAppUcExecutor();
   if (!(await cliStoreReady(executor))) return NOT_READY;
+  if (!(await cliCaseWorkspaceIds(executor, session.user.id)).has(workspaceId.toLowerCase())) return NO_CASE_HERE;
   const decided = await decideCliLogin(executor, { userCode, userId: session.user.id, workspaceId, confirm: true });
   if (!decided.ok) return { ok: false, message: decided.message };
   return { ok: true, message: "Fatto: la CLI è collegata. Torna al terminale." };
