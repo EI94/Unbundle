@@ -6,8 +6,17 @@ import { installAppModules, message, recordLogs, refusal, THINKING, fakeAppClaud
 // che cosa salva (blob, riga, memoria della chat) secondo come risponde il modello. Sessione, database, blob e
 // memoria finti; il modello è il Claude finto di claude-test-kit.ts, senza rete.
 
-type Prova = { blobs: number; inserted: Array<Record<string, unknown>>; indexed: number };
-const prova: Prova = { blobs: 0, inserted: [], indexed: 0 };
+type Prova = {
+  blobs: number;
+  /** Gli indirizzi dei blob cancellati. */
+  deletedBlobs: string[];
+  inserted: Array<Record<string, unknown>>;
+  indexed: number;
+  /** Se ci sono, l'inserimento della riga e la cancellazione del blob falliscono con questi errori. */
+  insertError?: Error;
+  deleteError?: Error;
+};
+const prova: Prova = { blobs: 0, deletedBlobs: [], inserted: [], indexed: 0 };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -15,9 +24,18 @@ await installAppModules({
   "@/lib/workspace-access": `export async function getCollaboratorAccess() { return { role: "transformation_lead", workspace: { id: "ws-prova" } }; }`,
   "@/lib/db/schema": `export const uploadedDocuments = {};`,
   "@/lib/db": `export const db = {
-    insert: () => ({ values: (row) => ({ returning: async () => { globalThis.__prova.inserted.push(row); return [{ id: "doc-prova", fileName: row.fileName, summary: row.summary }]; } }) }),
+    insert: () => ({ values: (row) => ({ returning: async () => {
+      if (globalThis.__prova.insertError) throw globalThis.__prova.insertError;
+      globalThis.__prova.inserted.push(row);
+      return [{ id: "doc-prova", fileName: row.fileName, summary: row.summary }];
+    } }) }),
   };`,
-  "@vercel/blob": `export async function put() { globalThis.__prova.blobs += 1; return { url: "https://blob.example.test/documento.pdf" }; }`,
+  "@vercel/blob": `
+    export async function put() { globalThis.__prova.blobs += 1; return { url: "https://blob.example.test/documento.pdf" }; }
+    export async function del(url) {
+      if (globalThis.__prova.deleteError) throw globalThis.__prova.deleteError;
+      globalThis.__prova.deletedBlobs.push(url);
+    }`,
   "@/lib/ai/rag/chunker": `export async function indexDocument() { globalThis.__prova.indexed += 1; }`,
 });
 const { POST } = await import("../../app/api/documents/upload/route.ts");
@@ -32,8 +50,11 @@ function upload() {
 
 function reset() {
   prova.blobs = 0;
+  prova.deletedBlobs = [];
   prova.inserted = [];
   prova.indexed = 0;
+  delete prova.insertError;
+  delete prova.deleteError;
 }
 
 const UNREADABLE = { error: "Non riesco a leggere il testo di questo PDF." };
@@ -91,5 +112,53 @@ test("un PDF troncato al limite dei token ma con del testo: 200, si tiene l'iniz
   assert.equal(prova.blobs, 1);
   assert.deepEqual(prova.inserted.map((row) => [row.fileName, row.extractedText, row.summary]), [["organigramma.pdf", text, "- Tre funzioni principali."]]);
   assert.equal(prova.indexed, 1);
+  assert.deepEqual(prova.deletedBlobs, []);
   assert.deepEqual(lines, ['[documents/upload] pdf_troncato {"finishReason":"length","category":null}']);
+});
+
+const TEXT = "Organigramma riservato: direzione generale, amministrazione, vendite. ".repeat(4);
+/** Un errore del database con il testo del documento nel messaggio, come quelli di Neon. */
+const dbError = () => Object.assign(new Error(`duplicate key value: ${TEXT}`), { name: "NeonDbError", code: "23505" });
+
+test("la sintesi non riesce: 500, nessun blob salvato (il file si salva subito prima della riga), nel log niente del testo", async (t) => {
+  const lines = recordLogs(t);
+  reset();
+  const requests = fakeAppClaude([
+    message([THINKING, { type: "text", text: TEXT }]),
+    () => Response.json({ type: "error", error: { type: "invalid_request_error", message: `Richiesta non valida: ${TEXT}` } }, { status: 400 }),
+  ]);
+  const response = await upload();
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: "Errore durante l'upload" });
+  assert.equal(requests.length, 2);
+  assert.deepEqual({ blobs: prova.blobs, inserted: prova.inserted.length, indexed: prova.indexed }, { blobs: 0, inserted: 0, indexed: 0 });
+  assert.deepEqual(lines, ['[documents/upload] upload_non_riuscito {"error":{"name":"AI_APICallError","statusCode":400}}']);
+});
+
+test("la riga non si scrive: il blob appena salvato si cancella, 500, nel log niente del testo", async (t) => {
+  const lines = recordLogs(t);
+  reset();
+  prova.insertError = dbError();
+  fakeAppClaude([message([THINKING, { type: "text", text: TEXT }]), message([THINKING, { type: "text", text: "- Tre funzioni." }])]);
+  const response = await upload();
+  assert.equal(response.status, 500);
+  assert.equal(prova.blobs, 1);
+  assert.deepEqual(prova.deletedBlobs, ["https://blob.example.test/documento.pdf"], "nessun blob privato senza il suo documento");
+  assert.equal(prova.indexed, 0);
+  assert.deepEqual(lines, ['[documents/upload] upload_non_riuscito {"error":{"name":"NeonDbError","code":"23505"}}']);
+});
+
+test("la riga non si scrive e nemmeno la cancellazione riesce: 500, due righe di log senza testo", async (t) => {
+  const lines = recordLogs(t);
+  reset();
+  prova.insertError = dbError();
+  prova.deleteError = Object.assign(new Error(`Blob non trovato: ${TEXT}`), { name: "BlobError" });
+  fakeAppClaude([message([THINKING, { type: "text", text: TEXT }]), message([THINKING, { type: "text", text: "- Tre funzioni." }])]);
+  const response = await upload();
+  assert.equal(response.status, 500);
+  assert.deepEqual(lines, [
+    '[documents/upload] blob_non_cancellato {"error":{"name":"BlobError"}}',
+    '[documents/upload] upload_non_riuscito {"error":{"name":"NeonDbError","code":"23505"}}',
+  ]);
+  for (const line of lines) assert.doesNotMatch(line, /Organigramma|riservato/);
 });

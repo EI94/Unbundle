@@ -2,11 +2,12 @@ import { auth } from "@/lib/auth";
 import { getCollaboratorAccess } from "@/lib/workspace-access";
 import { db } from "@/lib/db";
 import { uploadedDocuments } from "@/lib/db/schema";
-import { put } from "@vercel/blob";
+import { del, put } from "@vercel/blob";
 import { generateText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { CLAUDE_MODEL, claudeCallSettings, logClaudeStop } from "@/lib/ai/models";
 import { indexDocument } from "@/lib/ai/rag/chunker";
+import { logSafeError } from "@/lib/log/safe-error";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -96,18 +97,6 @@ export async function POST(req: Request) {
       extractedText = `[Documento ${file.type} — testo non estratto automaticamente]`;
     }
 
-    // Il file si salva solo dopo il testo: un PDF che non si legge (422) non lascia un blob senza
-    // documento, che nessuna cancellazione troverebbe.
-    // I documenti caricati sono materiale interno dei clienti. `access: "public"`
-    // li metteva su un URL raggiungibile senza autenticazione e — poiche'
-    // addRandomSuffix vale false per default — con un percorso indovinabile a
-    // partire da workspaceId e nome del file. Niente nel prodotto serve il
-    // blobUrl a un browser: viene usato solo per la cancellazione.
-    const blob = await put(`documents/${workspaceId}/${file.name}`, file, {
-      access: "private",
-      addRandomSuffix: true,
-    });
-
     let summary = "";
     if (extractedText && extractedText.length > 100) {
       const summaryResult = await generateText({
@@ -132,20 +121,43 @@ export async function POST(req: Request) {
       }
     }
 
-    const [doc] = await db
-      .insert(uploadedDocuments)
-      .values({
-        workspaceId,
-        userId: session.user.id,
-        departmentId: departmentId ?? undefined,
-        fileName: file.name,
-        fileType: file.type,
-        fileSize: file.size,
-        blobUrl: blob.url,
-        extractedText: extractedText.slice(0, 100000),
-        summary,
-      })
-      .returning();
+    // Il file si salva solo dopo il testo e la sintesi, subito prima della riga: un PDF che non si legge
+    // (422) o una sintesi che non riesce non lasciano un blob senza documento, che nessuna cancellazione
+    // troverebbe; se la riga non si scrive, il blob si cancella.
+    // I documenti caricati sono materiale interno dei clienti. `access: "public"`
+    // li metteva su un URL raggiungibile senza autenticazione e — poiche'
+    // addRandomSuffix vale false per default — con un percorso indovinabile a
+    // partire da workspaceId e nome del file. Niente nel prodotto serve il
+    // blobUrl a un browser: viene usato solo per la cancellazione.
+    const blob = await put(`documents/${workspaceId}/${file.name}`, file, {
+      access: "private",
+      addRandomSuffix: true,
+    });
+
+    let inserted: Array<typeof uploadedDocuments.$inferSelect>;
+    try {
+      inserted = await db
+        .insert(uploadedDocuments)
+        .values({
+          workspaceId,
+          userId: session.user.id,
+          departmentId: departmentId ?? undefined,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          blobUrl: blob.url,
+          extractedText: extractedText.slice(0, 100000),
+          summary,
+        })
+        .returning();
+    } catch (error) {
+      // Senza la riga il blob resterebbe orfano: si cancella. Se non si riesce, nel log solo nome, codice e stato.
+      await del(blob.url).catch((deleteError: unknown) =>
+        logSafeError("documents/upload", "blob_non_cancellato", deleteError),
+      );
+      throw error;
+    }
+    const [doc] = inserted;
 
     if (extractedText && extractedText.length > 100) {
       indexDocument(doc.id, workspaceId, extractedText).catch((err) =>
@@ -160,7 +172,8 @@ export async function POST(req: Request) {
       extractedText: extractedText.slice(0, 100000),
     });
   } catch (err) {
-    console.error("Upload error:", err);
+    // Nome, codice e stato HTTP: mai messaggio o corpo, che possono portare il testo del documento.
+    logSafeError("documents/upload", "upload_non_riuscito", err);
     return Response.json({ error: "Errore durante l'upload" }, { status: 500 });
   }
 }
