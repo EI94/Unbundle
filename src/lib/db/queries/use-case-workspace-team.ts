@@ -522,7 +522,9 @@ export async function applyExternalBuildersToCase(
   const [caseRows] = await executor.batch([toStatement(ucSql`SELECT portfolio_use_case_id FROM uc_cases WHERE id = ${cast(i.caseId, "uuid")} AND workspace_id = ${cast(i.workspaceId, "uuid")}`)]);
   const useCaseId = caseRows[0]?.portfolio_use_case_id ? String(caseRows[0].portfolio_use_case_id) : null;
   const grants = await listExternalGrants(executor, i.workspaceId);
-  const covered = [...grants.entries()].filter(([, where]) => where.all || (useCaseId !== null && where.useCaseIds.includes(useCaseId))).map(([userId]) => userId);
+  // Un dossier senza use case non è un caso della fabbrica: nemmeno «tutti» lo copre.
+  if (useCaseId === null) return out;
+  const covered = [...grants.entries()].filter(([, where]) => where.all || where.useCaseIds.includes(useCaseId)).map(([userId]) => userId);
   const facts = await personFacts(executor, i.workspaceId, covered, i.lsDomains);
   for (const userId of covered) {
     if (externalRefusal(facts.get(userId))) {

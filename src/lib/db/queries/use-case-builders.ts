@@ -7,7 +7,7 @@
  *   Lo usano le porte (le scritture: `isExternalBuilderOfCase`) e gli elenchi (campanella, e-mail, barra, «Da fare per
  *   te», «passa», proposte: `builderMembersSql`, `caseRecipientsSql`). Così una persona non vede mai la voce, i «Da
  *   fare» o la campanella per poi ricevere 403, e nessuno le passa un compito che non può fare.
- *   - Una concessione per il caso (o per tutti i casi del workspace);
+ *   - Una concessione per il caso (o per tutti i casi del workspace: mai un dossier senza use case);
  *   - nel caso solo la riga `osservatore` (la riga serve, ma non basta; con un altro ruolo non costruisce);
  *   - e-mail verificata, fuori dai domini di Lateral Space, con i domini configurati (`isClientUser`);
  *   - un ruolo da revisore, prima nell'organizzazione poi nel workspace (`getWorkspaceAccessForUser`,
@@ -56,6 +56,16 @@ export const NO_EXTERNAL_BUILDERS: BuilderScope = Object.freeze({ lsDomains: [],
 
 const REVIEWER_ROLES_SQL = raw(PORTFOLIO_REVIEWER_ROLES.map((r) => `'${r}'`).join(", "));
 
+/**
+ * La concessione `g` (una riga di `use_case_external_builders`) copre il caso `c` (una riga di `uc_cases`): lo stesso
+ * workspace, e lo use case del caso oppure «tutti i casi». Solo un dossier di uno use case: la fabbrica lavora per use
+ * case, e un dossier senza use case non entra mai, nemmeno con «tutti».
+ */
+function grantCoversSql(c: SqlFragment, g: SqlFragment): SqlFragment {
+  return ucSql`${g}.workspace_id = ${c}.workspace_id AND ${c}.portfolio_use_case_id IS NOT NULL
+      AND (${g}.use_case_id IS NULL OR ${g}.use_case_id = ${c}.portfolio_use_case_id)`;
+}
+
 /** Il ruolo nel workspace di `u`, come `getWorkspaceAccessForUser`: prima l'organizzazione, poi il workspace. */
 function workspaceRoleSql(workspace: SqlFragment, user: SqlFragment): SqlFragment {
   return ucSql`coalesce(
@@ -75,9 +85,7 @@ export function externalBuilderSql(scope: BuilderScope, aliases: { c?: string; u
   const c = ref(caseAlias);
   const u = ref(userAlias);
   const domains = cast([...scope.lsDomains], "text[]");
-  return ucSql`(EXISTS (SELECT 1 FROM use_case_external_builders xb_g
-    WHERE xb_g.workspace_id = ${c}.workspace_id AND xb_g.user_id = ${u}.id
-      AND (xb_g.use_case_id IS NULL OR xb_g.use_case_id = ${c}.portfolio_use_case_id))
+  return ucSql`(EXISTS (SELECT 1 FROM use_case_external_builders xb_g WHERE ${grantCoversSql(c, ref("xb_g"))} AND xb_g.user_id = ${u}.id)
   AND EXISTS (SELECT 1 FROM uc_case_members xb_m WHERE xb_m.case_id = ${c}.id AND xb_m.user_id = ${u}.id AND xb_m.role = 'osservatore')
   AND NOT EXISTS (SELECT 1 FROM uc_case_members xb_m WHERE xb_m.case_id = ${c}.id AND xb_m.user_id = ${u}.id AND xb_m.role <> 'osservatore')
   AND ${u}.email_verified IS NOT NULL
@@ -209,9 +217,7 @@ export async function workspaceUseCaseIds(executor: UcExecutor, workspaceId: str
 
 /** Vero se la persona `user` ha una concessione che copre il caso `c` (per caso o per tutti i casi del workspace). */
 function grantCoversCaseSql(user: SqlFragment, caseAlias = "c"): SqlFragment {
-  const c = ref(caseAlias);
-  return ucSql`EXISTS (SELECT 1 FROM use_case_external_builders xb_c WHERE xb_c.workspace_id = ${c}.workspace_id AND xb_c.user_id = ${user}
-    AND (xb_c.use_case_id IS NULL OR xb_c.use_case_id = ${c}.portfolio_use_case_id))`;
+  return ucSql`EXISTS (SELECT 1 FROM use_case_external_builders xb_c WHERE ${grantCoversSql(ref(caseAlias), ref("xb_c"))} AND xb_c.user_id = ${user})`;
 }
 
 /**
@@ -231,8 +237,7 @@ export async function hasGrantForCase(executor: UcExecutor, i: { caseId: string;
 export async function caseBuilderEmails(executor: UcExecutor, caseId: string): Promise<string[]> {
   if (!UUID_RE.test(caseId) || !(await externalBuildersReady(executor))) return [];
   const [rows] = await executor.batch([
-    toStatement(ucSql`SELECT DISTINCT lower(u.email) AS email FROM uc_cases c JOIN use_case_external_builders g ON g.workspace_id = c.workspace_id
-  AND (g.use_case_id IS NULL OR g.use_case_id = c.portfolio_use_case_id)
+    toStatement(ucSql`SELECT DISTINCT lower(u.email) AS email FROM uc_cases c JOIN use_case_external_builders g ON ${grantCoversSql(ref("c"), ref("g"))}
 JOIN users u ON u.id = g.user_id
 WHERE c.id = ${cast(caseId, "uuid")} AND u.email IS NOT NULL`),
   ]);
@@ -267,8 +272,7 @@ export async function externalGrantWorkspaceIds(executor: UcExecutor, userId: st
 export async function caseGrantUserIds(executor: UcExecutor, caseId: string): Promise<string[]> {
   if (!UUID_RE.test(caseId) || !(await externalBuildersReady(executor))) return [];
   const [rows] = await executor.batch([
-    toStatement(ucSql`SELECT DISTINCT g.user_id FROM uc_cases c JOIN use_case_external_builders g ON g.workspace_id = c.workspace_id
-  AND (g.use_case_id IS NULL OR g.use_case_id = c.portfolio_use_case_id)
+    toStatement(ucSql`SELECT DISTINCT g.user_id FROM uc_cases c JOIN use_case_external_builders g ON ${grantCoversSql(ref("c"), ref("g"))}
 WHERE c.id = ${cast(caseId, "uuid")}`),
   ]);
   return rows.map((r) => String(r.user_id).toLowerCase());

@@ -172,6 +172,35 @@ test("«Aggiungi» in tutti i casi: entra nei dossier aperti dove chi agisce è 
   assert.equal(await builders.isExternalBuilderOfCase(exec, { caseId: dossier.d1, userId: ids.e, lsDomains: LS }), true);
 });
 
+test("«tutti» copre solo i dossier di uno use case: uno senza use case resta fuori, anche con la riga data a mano", opts, async () => {
+  const orphan = randomUUID();
+  const code = `XO-${SUFFIX}`;
+  await q(
+    `INSERT INTO uc_cases (id, workspace_id, organization_id, portfolio_use_case_id, template_id, template_version, code, title, status, setup_completed_at)
+     VALUES ($1::uuid, $2::uuid, $3::uuid, NULL, $4::uuid, '1.0.0', $5, 'Dossier di prova senza use case', 'pronto_sviluppo', now())`,
+    [orphan, ids.ws, ids.org, ids.template, code],
+  );
+  await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'ls_lead')`, [orphan, ids.lead]);
+  try {
+    assert.deepEqual(await grantsOf("e"), [null], "E costruisce in tutti i casi");
+    const applied = await team.applyExternalBuildersToCase(exec, { workspaceId: ids.ws, caseId: orphan, actorUserId: ids.lead, lsDomains: LS });
+    assert.deepEqual(applied, { done: [], unchanged: [], skipped: [] }, "«Avvia la realizzazione» non ce la mette");
+    assert.deepEqual(await rolesOf(orphan, "e"), []);
+    const again = await add("e", "tutti");
+    assert.ok(again.ok, again.ok ? "" : again.message);
+    if (!again.ok) return;
+    assert.ok(![...again.value.entered, ...again.value.already, ...again.value.skipped.map((s) => s.code)].includes(code), "«Aggiungi» non lo conta");
+    // Con la riga data a mano: legge da osservatore, non costruisce, e lì non è tra chi costruisce.
+    await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'osservatore')`, [orphan, ids.e]);
+    assert.equal(await builders.isExternalBuilderOfCase(exec, { caseId: orphan, userId: ids.e, lsDomains: LS }), false);
+    assert.deepEqual(await builders.caseGrantUserIds(exec, orphan), []);
+    assert.deepEqual(await builders.caseBuilderEmails(exec, orphan), []);
+    assert.equal(await builders.hasGrantForCase(exec, { caseId: orphan, userId: ids.e }), false);
+  } finally {
+    await q(`DELETE FROM uc_case_members WHERE case_id = $1 AND user_id = $2`, [orphan, ids.e]);
+  }
+});
+
 test("«Solo in alcuni casi»: mai dove la persona firma o approva per il cliente; un caso senza dossier entra quando si apre", opts, async () => {
   const r = await add("e2", [uc.u2, uc.u5]);
   assert.ok(r.ok, r.ok ? "" : r.message);
