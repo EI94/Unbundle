@@ -65,11 +65,12 @@ export function resolveReferentAiModel(env: Env = {}): string {
 export const REFERENT_AI_LIMITS = Object.freeze({ callTimeoutMs: 30_000, rowsPerAnswerPerDay: 5, cronBudgetMs: 60_000 });
 
 /**
- * Le impostazioni della chiamata al modello: quelle dell'auto-ranking (output strutturato e un limite di token
- * che lascia posto al ragionamento adattivo dei modelli recenti, che conta nel limite) e il tempo massimo.
+ * Le impostazioni della chiamata al modello: come l'auto-ranking (output strutturato e un limite di token che lascia
+ * posto al ragionamento adattivo dei modelli recenti, che conta nel limite), con lo sforzo della sua riga in
+ * src/lib/ai/models.ts («referentFollowUp»), e il tempo massimo.
  */
 export function referentAiCallSettings(modelId: string): ReturnType<typeof portfolioRankingCallSettings> & { timeoutMs: number } {
-  return { ...portfolioRankingCallSettings(modelId), timeoutMs: REFERENT_AI_LIMITS.callTimeoutMs };
+  return { ...portfolioRankingCallSettings(modelId, "referentFollowUp"), timeoutMs: REFERENT_AI_LIMITS.callTimeoutMs };
 }
 
 /** Che cosa il modello legge di una risposta: la domanda (o la voce), la risposta in parole, il commento. */

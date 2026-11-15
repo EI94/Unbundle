@@ -3,6 +3,7 @@ import type { JSONSchema7 } from "ai";
 import type { UseCase } from "@/lib/db/schema";
 import type { ScoringKpi, ScoringModelConfig } from "@/lib/db/queries/scoring-model";
 import { AGENT_RELIABILITY_SYSTEM_PROMPT } from "../ai/agent-reliability.ts";
+import { claudeCallSettings } from "../ai/models.ts";
 
 export type PortfolioCustomScores = {
   impact: Record<string, number>;
@@ -42,13 +43,20 @@ export function rankingStructuredOutputMode(modelId: string): "auto" | "outputFo
   return /^claude-(3|(opus|sonnet|haiku)-4)(-|$)/.test(modelId) ? "auto" : "outputFormat";
 }
 
-/** Impostazioni della chiamata generateObject del ranking (oltre a modello, schema e prompt). */
-export function portfolioRankingCallSettings(modelId: string) {
+/**
+ * Impostazioni della chiamata generateObject del ranking (oltre a modello, schema e prompt), e con
+ * `task` della proposta del filo con il referente: quelle della riga del compito in src/lib/ai/models.ts.
+ * Il limite dei token vale per tutti (con il ragionamento adattivo dei modelli recenti il ragionamento
+ * conta nel limite). Lo sforzo esplicito solo sui modelli recenti: un 3.x o 4.x messo in
+ * PORTFOLIO_RANKING_MODEL resta come prima (Sonnet 4.5 e Haiku 4.5 rispondono 400 allo sforzo).
+ */
+export function portfolioRankingCallSettings(modelId: string, task: "portfolioRanking" | "referentFollowUp" = "portfolioRanking") {
+  const structuredOutputMode = rankingStructuredOutputMode(modelId);
+  const { maxOutputTokens, providerOptions } = claudeCallSettings(task);
   return {
-    // Con il ragionamento adattivo dei modelli recenti il ragionamento conta nel limite.
-    maxOutputTokens: 16000,
+    maxOutputTokens,
     providerOptions: {
-      anthropic: { structuredOutputMode: rankingStructuredOutputMode(modelId) },
+      anthropic: structuredOutputMode === "auto" ? { structuredOutputMode } : { ...providerOptions.anthropic, structuredOutputMode },
     },
   };
 }

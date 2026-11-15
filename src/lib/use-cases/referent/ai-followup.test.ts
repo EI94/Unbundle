@@ -16,6 +16,7 @@ import {
 } from "./ai-followup.ts";
 import { REFERENT_PRIVACY_NOTICE } from "./labels.ts";
 import { PORTFOLIO_RANKING_DEFAULT_MODEL, portfolioRankingCallSettings } from "../../portfolio/ai-ranking-contract.ts";
+import { CLAUDE_TASKS } from "../../ai/models.ts";
 import { findHubForbidden } from "../copy-guard.ts";
 
 // (Rilascio 6, decisione 2) L'aiuto dell'AI nel filo: l'interruttore, l'informativa, il modello, il prompt, la rilettura.
@@ -80,15 +81,22 @@ test("il modulo del server: mai un errore per il referente, log senza testi, il 
   assert.match(pub, /await processReferentSuggestions\(\{ requestId, limit: 10 \}\);/, "dopo la risposta, in `after()`");
 });
 
-test("la chiamata al modello: il limite dei token dell'auto-ranking (il ragionamento conta nel limite) e un tempo massimo", () => {
+test("la chiamata al modello: il limite dei token dell'auto-ranking (il ragionamento conta nel limite), lo sforzo della sua riga e un tempo massimo", () => {
   for (const model of [PORTFOLIO_RANKING_DEFAULT_MODEL, "claude-sonnet-4-5", "claude-modello-filo"]) {
     const settings = referentAiCallSettings(model);
     const ranking = portfolioRankingCallSettings(model);
     assert.equal(settings.maxOutputTokens, ranking.maxOutputTokens, "lo stesso limite dell'auto-ranking");
     assert.ok(settings.maxOutputTokens >= 16000, "mai 2000: con il ragionamento adattivo la risposta si troncherebbe");
-    assert.deepEqual(settings.providerOptions, ranking.providerOptions);
+    assert.equal(settings.providerOptions.anthropic.structuredOutputMode, ranking.providerOptions.anthropic.structuredOutputMode);
     assert.equal(settings.timeoutMs, REFERENT_AI_LIMITS.callTimeoutMs);
   }
+  // Sforzo esplicito sui modelli recenti (`low`: decidere e scrivere una riga, dentro i 30 secondi), mai il
+  // predefinito `high`; su un 4.x, nessuno sforzo (Sonnet 4.5 lo rifiuta).
+  assert.deepEqual(referentAiCallSettings(PORTFOLIO_RANKING_DEFAULT_MODEL).providerOptions, {
+    anthropic: { effort: CLAUDE_TASKS.referentFollowUp.effort, structuredOutputMode: "outputFormat" },
+  });
+  assert.equal(CLAUDE_TASKS.referentFollowUp.effort, "low");
+  assert.deepEqual(referentAiCallSettings("claude-sonnet-4-5").providerOptions, { anthropic: { structuredOutputMode: "auto" } });
   assert.ok(REFERENT_AI_LIMITS.callTimeoutMs > 0 && REFERENT_AI_LIMITS.callTimeoutMs <= 30_000);
   // Il passo dell'AI e una chiamata stanno nei 120 secondi del cron.
   assert.ok(REFERENT_AI_LIMITS.cronBudgetMs + REFERENT_AI_LIMITS.callTimeoutMs <= 90_000);

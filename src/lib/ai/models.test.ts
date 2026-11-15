@@ -380,6 +380,23 @@ const CALL_SITES: Readonly<Record<string, readonly ClaudeTask[]>> = {
   "src/lib/actions/strategy.ts": ["okrSuggestions"],
 };
 
+/**
+ * Le chiamate con un modello che si cambia da una variabile d'ambiente: le impostazioni della loro riga arrivano
+ * dalla funzione del modulo (che dà lo sforzo solo ai modelli recenti), e la chiamata usa quella funzione.
+ */
+const CONFIGURABLE_CALLS: Readonly<Record<string, { settings: string; uses: string; call: string }>> = {
+  portfolioRanking: {
+    settings: "src/lib/portfolio/ai-ranking-contract.ts",
+    uses: 'claudeCallSettings(task)',
+    call: "src/lib/portfolio/ai-ranking.ts",
+  },
+  referentFollowUp: {
+    settings: "src/lib/use-cases/referent/ai-followup.ts",
+    uses: 'portfolioRankingCallSettings(modelId, "referentFollowUp")',
+    call: "src/lib/db/queries/use-case-referent-ai.ts",
+  },
+};
+
 const ROOT = new URL("../../../", import.meta.url);
 // Composto, così questo file non contiene l'id che cerca.
 const RETIRED_MODEL = ["claude", "sonnet", "4", "20250514"].join("-");
@@ -395,6 +412,11 @@ test("ogni chiamata usa il modello e le impostazioni del suo compito; nessun id 
       assert.ok(source.includes(`...claudeCallSettings("${task}")`), `${path}: impostazioni di «${task}»`);
       tasks.add(task);
     }
+  }
+  for (const [task, { settings, uses, call }] of Object.entries(CONFIGURABLE_CALLS)) {
+    assert.ok(readFileSync(new URL(settings, ROOT), "utf8").includes(uses), `${settings}: impostazioni di «${task}»`);
+    assert.match(readFileSync(new URL(call, ROOT), "utf8"), /(\.\.\.portfolioRankingCallSettings\(modelId\)|referentAiCallSettings\(model\))/, call);
+    tasks.add(task as ClaudeTask);
   }
   assert.deepEqual([...tasks].sort(), Object.keys(CLAUDE_TASKS).sort(), "ogni compito ha la sua chiamata");
 

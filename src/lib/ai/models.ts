@@ -82,6 +82,20 @@ export const CLAUDE_TASKS = {
   competitiveAnalysis: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
   /** Gli OKR suggeriti dalla value thesis. */
   okrSuggestions: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
+  /**
+   * L'auto-ranking del portfolio: punteggi interi 1-5 con le rubriche del workspace e una rationale, in un passo.
+   * `low`, il punto di partenza della guida per classificare: è un suggerimento (decide il revisore), come i
+   * punteggi degli use case e la classificazione qui sopra. Il modello si cambia con PORTFOLIO_RANKING_MODEL: le
+   * impostazioni le legge portfolioRankingCallSettings (src/lib/portfolio/ai-ranking-contract.ts), senza ripiego.
+   */
+  portfolioRanking: { effort: "low", maxOutputTokens: 16_000, fallbacks: false },
+  /**
+   * La domanda in più per il referente (il filo): basta la risposta? Se no, una domanda di una riga. `low`:
+   * classificare e scrivere una riga, dentro i 30 secondi della chiamata (REFERENT_AI_LIMITS), dove `high`, il
+   * predefinito, ragiona prima di ogni risposta. Modello di USE_CASE_REFERENT_AI_MODEL o dell'auto-ranking:
+   * impostazioni lette da referentAiCallSettings (src/lib/use-cases/referent/ai-followup.ts), senza ripiego.
+   */
+  referentFollowUp: { effort: "low", maxOutputTokens: 16_000, fallbacks: false },
 } as const satisfies Record<string, ClaudeTaskSettings>;
 
 export type ClaudeTask = keyof typeof CLAUDE_TASKS;

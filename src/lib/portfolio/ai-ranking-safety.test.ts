@@ -97,6 +97,17 @@ test("output strutturato nativo per i modelli recenti, scelta dell'SDK per 3.x e
   }
 });
 
+test("lo sforzo del ranking: esplicito sui modelli recenti, assente sui 3.x e 4.x (Sonnet 4.5 e Haiku 4.5 lo rifiutano)", () => {
+  assert.deepEqual(portfolioRankingCallSettings("claude-sonnet-5-5"), {
+    maxOutputTokens: 16000,
+    providerOptions: { anthropic: { effort: "low", structuredOutputMode: "outputFormat" } },
+  });
+  assert.deepEqual(portfolioRankingCallSettings("claude-opus-5-5").providerOptions.anthropic, { effort: "low", structuredOutputMode: "outputFormat" });
+  for (const id of ["claude-sonnet-4-5", "claude-haiku-4-5", "claude-sonnet-4-6"]) {
+    assert.deepEqual(portfolioRankingCallSettings(id), { maxOutputTokens: 16000, providerOptions: { anthropic: { structuredOutputMode: "auto" } } }, id);
+  }
+});
+
 test("schema JSON per il modello: solo costrutti ammessi, punteggi 1-5 come enum, tutti i KPI obbligatori", () => {
   const schema = buildPortfolioScoreJsonSchema(config, true);
   const text = JSON.stringify(schema);
@@ -158,6 +169,11 @@ test("la richiesta al modello usa output_config.format, nessun tool forzato, e l
   const format = (body.output_config as { format?: { type: string; schema: unknown } })?.format;
   assert.equal(format?.type, "json_schema");
   assert.equal(JSON.stringify(format?.schema).includes("minimum"), false);
+  // Sforzo esplicito (`low`, la riga «portfolioRanking» di src/lib/ai/models.ts), non il predefinito `high`;
+  // ragionamento adattivo, nessun ripiego lato server (il modello si cambia da PORTFOLIO_RANKING_MODEL).
+  assert.equal((body.output_config as { effort?: string }).effort, "low");
+  assert.equal("thinking" in body, false);
+  assert.equal(body.fallbacks, undefined);
   assert.match(JSON.stringify(body.messages), /<segnalazione>/);
   // La rivalidazione con zod accetta la risposta valida e rifiuta un punteggio fuori scala.
   assert.deepEqual(request.schema.parse(result.object), answer);
