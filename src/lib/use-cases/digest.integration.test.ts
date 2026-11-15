@@ -567,11 +567,17 @@ test("con CRON_SECRET assente o vuoto: «Bearer undefined» riceve 401 e nessun 
   assert.equal(model.calls, 0);
 });
 
-test("con il modello che fallisce, i segnali use_case_digest arrivano lo stesso", opts, async () => {
+test("con il modello che fallisce, i segnali use_case_digest arrivano lo stesso", opts, async (t) => {
+  t.mock.method(console, "error", () => {});
   model.mode = "fail";
-  await assert.rejects(route.GET(cronRequest(CRON_SECRET)), { message: MODEL_ERROR });
-  // Il ciclo AI è partito (wsOn è in `mapping`) e si è fermato al primo errore, come oggi.
-  assert.equal(model.calls, 1);
+  const response = await route.GET(cronRequest(CRON_SECRET));
+  // Il ciclo AI è partito (wsOn è in `mapping`): un errore del modello su un workspace non ferma gli altri
+  // né la risposta, e ogni workspace in `mapping` ci prova una volta.
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as { processed: number; failed: number };
+  assert.ok(body.processed >= 2, "il ciclo AI visita i workspace in mapping");
+  assert.equal(body.failed, body.processed);
+  assert.equal(model.calls, body.processed);
   const rows = await signalRows();
   assert.ok(
     rows.some((row) => row.workspaceId === ids.wsOn && row.signalType === "use_case_digest"),
@@ -584,8 +590,9 @@ test("con il modello che risponde: 200, il riepilogo del passo nella risposta, u
   model.mode = "ok";
   const first = await route.GET(cronRequest(CRON_SECRET));
   assert.equal(first.status, 200);
-  const body = (await first.json()) as { processed: number; useCaseHub: { workspaces: number; signals: number; failed: number } };
+  const body = (await first.json()) as { processed: number; failed: number; useCaseHub: { workspaces: number; signals: number; failed: number } };
   assert.ok(body.processed >= 2, "il ciclo AI visita i workspace in mapping");
+  assert.equal(body.failed, 0);
   assert.equal(body.useCaseHub.workspaces, 2);
   assert.equal(body.useCaseHub.failed, 0);
   assert.ok(body.useCaseHub.signals >= 1);

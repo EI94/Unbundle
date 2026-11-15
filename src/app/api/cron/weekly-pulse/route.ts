@@ -4,7 +4,8 @@ import { workspaces, weeklySignals, activities } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
+import { CLAUDE_MODEL, ClaudeRefusalError, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
+import { logSafeError } from "@/lib/log/safe-error";
 import { z } from "zod";
 import { runUseCaseDigestStep } from "@/lib/db/queries/use-case-digest";
 import { checkCronAuthorization } from "@/lib/uc/notify/cron-auth";
@@ -34,9 +35,8 @@ export async function GET(req: Request) {
   }
 
   // Passo dell'hub (docs/use-case/DESIGN.md §14.3): riepilogo «Use case» dei workspace con
-  // l'area accesa, senza AI. Gira prima del ciclo AI qui sotto, che non ha try/catch: così
-  // un errore del modello non fa perdere il riepilogo. Ha il suo try/catch per workspace e
-  // non lancia mai.
+  // l'area accesa, senza AI. Gira prima del ciclo AI qui sotto. Ha il suo try/catch per
+  // workspace e non lancia mai.
   const useCaseHub = await runUseCaseDigestStep();
 
   const activeWorkspaces = await db
@@ -48,23 +48,27 @@ export async function GET(req: Request) {
       )
     );
 
+  // Un rifiuto o un errore del modello su un workspace non ferma gli altri. Nel log un rifiuto ha solo il
+  // riepilogo dello stop (throwIfRefused); un altro errore, nome e codice.
+  let failed = 0;
   for (const workspace of activeWorkspaces) {
-    const allActivities = await db
-      .select()
-      .from(activities)
-      .where(eq(activities.workspaceId, workspace.id));
+    try {
+      const allActivities = await db
+        .select()
+        .from(activities)
+        .where(eq(activities.workspaceId, workspace.id));
 
-    const unclassified = allActivities.filter((a) => !a.classification);
-    const recentlyAdded = allActivities.filter(
-      (a) =>
-        a.createdAt > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    );
+      const unclassified = allActivities.filter((a) => !a.classification);
+      const recentlyAdded = allActivities.filter(
+        (a) =>
+          a.createdAt > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      );
 
-    const { object } = throwIfRefused("cron/weekly-pulse", await generateObject({
-      model: anthropic(CLAUDE_MODEL),
-      ...claudeCallSettings("weeklySignals"),
-      schema: signalsSchema,
-      prompt: `Analizza lo stato attuale del workspace "${workspace.name}" e genera segnali settimanali.
+      const { object } = throwIfRefused("cron/weekly-pulse", await generateObject({
+        model: anthropic(CLAUDE_MODEL),
+        ...claudeCallSettings("weeklySignals"),
+        schema: signalsSchema,
+        prompt: `Analizza lo stato attuale del workspace "${workspace.name}" e genera segnali settimanali.
 
 Stato:
 - Attività totali: ${allActivities.length}
@@ -80,17 +84,21 @@ Genera 2-5 segnali rilevanti per il team di trasformazione. Segnali possibili:
 - progress_update: aggiornamento sullo stato di avanzamento
 
 Scrivi in italiano.`,
-    }));
+      }));
 
-    for (const signal of object.signals) {
-      await db.insert(weeklySignals).values({
-        workspaceId: workspace.id,
-        signalType: signal.signalType,
-        title: signal.title,
-        description: signal.description,
-      });
+      for (const signal of object.signals) {
+        await db.insert(weeklySignals).values({
+          workspaceId: workspace.id,
+          signalType: signal.signalType,
+          title: signal.title,
+          description: signal.description,
+        });
+      }
+    } catch (error) {
+      failed += 1;
+      if (!(error instanceof ClaudeRefusalError)) logSafeError("cron/weekly-pulse", "segnali_non_generati", error, { workspaceId: workspace.id });
     }
   }
 
-  return NextResponse.json({ processed: activeWorkspaces.length, useCaseHub });
+  return NextResponse.json({ processed: activeWorkspaces.length, failed, useCaseHub });
 }
