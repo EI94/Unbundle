@@ -127,7 +127,7 @@ export async function generateCompetitiveAnalysis(
     (uc) => uc.category === "strategic_bet"
   );
 
-  const { object } = throwIfRefused("actions/intelligence", await generateObject({
+  const { object } = await throwIfRefused("actions/intelligence", generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema: competitiveAnalysisSchema,
     prompt: `Sei un analista di competitive intelligence specializzato in trasformazione AI delle organizzazioni.

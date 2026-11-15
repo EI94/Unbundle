@@ -86,7 +86,7 @@ export async function suggestOKRsAction(
     );
   }
 
-  const { object } = throwIfRefused("actions/strategy", await generateObject({
+  const { object } = await throwIfRefused("actions/strategy", generateObject({
     model: anthropic(CLAUDE_MODEL),
     system: `Sei un esperto di strategia organizzativa. Data la Value Thesis di un'azienda, suggerisci un framework OKR (Objectives and Key Results) completo per guidare una trasformazione AI-driven.
 

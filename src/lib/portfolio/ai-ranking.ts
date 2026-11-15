@@ -58,7 +58,7 @@ export async function generatePortfolioScoresWithAi(params: {
   // con lo schema zod completo (punteggi interi 1-5, rationale non vuota).
   const modelId = resolvePortfolioRankingModel();
   // Un rifiuto con il JSON completo non diventa punteggi: è un errore, che chi chiama gestisce già.
-  const result = throwIfRefused("portfolio/ai-ranking", await generateObject({
+  const result = await throwIfRefused("portfolio/ai-ranking", generateObject({
     model: anthropic(modelId),
     schema: jsonSchema<Record<string, unknown>>(request.jsonSchema),
     prompt: request.prompt,

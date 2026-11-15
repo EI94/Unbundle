@@ -32,7 +32,7 @@ export async function classifyActivity(
   },
   abortSignal?: AbortSignal
 ): Promise<ClassificationResult> {
-  const { object } = throwIfRefused("ai/classify", await generateObject({
+  const { object } = await throwIfRefused("ai/classify", generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema: classificationSchema,
     abortSignal,

@@ -49,7 +49,7 @@ export async function generateSimulation(data: {
   departments: Department[];
   companyValueThesis: unknown;
 }): Promise<SimulationResult> {
-  const { object } = throwIfRefused("ai/generate-simulation", await generateObject({
+  const { object } = await throwIfRefused("ai/generate-simulation", generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema: simulationSchema,
     prompt: `Sei un consulente di trasformazione AI. Genera scenari "what if" per l'organizzazione.

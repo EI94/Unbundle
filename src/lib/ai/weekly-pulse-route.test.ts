@@ -60,6 +60,29 @@ test("un rifiuto e un errore non fermano il ciclo: il terzo workspace riceve i s
   for (const line of lines) assert.doesNotMatch(line, /Cliente|riservato|Mappatura|prova\)/);
 });
 
+test("un rifiuto prima di scrivere o a metà JSON (generateObject lancia): nel log come rifiuto, con la categoria", async (t) => {
+  const lines = recordLogs(t);
+  prova.workspaces = [
+    { id: "ws-1", name: "Cliente Uno", status: "mapping" },
+    { id: "ws-2", name: "Cliente Due", status: "mapping" },
+    { id: "ws-3", name: "Cliente Tre", status: "mapping" },
+  ];
+  prova.inserted = [];
+  fakeAppClaude([
+    refusal([], "bio"),
+    refusal([THINKING, { type: "text", text: '{"signals":[{"signalType":"risk_alert","title":"Rischio riserv' }], "cyber"),
+    message([THINKING, { type: "text", text: JSON.stringify(SIGNALS) }]),
+  ]);
+  const response = await GET(cron());
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { processed: 3, failed: 2, useCaseHub: { workspaces: 0, signals: 0, failed: 0 } });
+  assert.deepEqual(prova.inserted, [{ workspaceId: "ws-3", ...SIGNALS.signals[0] }]);
+  assert.deepEqual(lines, [
+    '[cron/weekly-pulse] risposta_rifiutata {"finishReason":"content-filter","category":"bio"}',
+    '[cron/weekly-pulse] risposta_rifiutata {"finishReason":"content-filter","category":"cyber"}',
+  ]);
+});
+
 test("ogni workspace fallisce (il modello risponde 404, come da ritirato): 500 con lo stesso corpo, e nel log lo stato", async (t) => {
   const lines = recordLogs(t);
   prova.workspaces = [

@@ -44,7 +44,7 @@ export async function generateValueMapAction(workspaceId: string) {
     timeSpentHoursWeek: a.timeSpentHoursWeek,
   }));
 
-  const { object: positions } = throwIfRefused("actions/value-map", await generateObject({
+  const { object: positions } = await throwIfRefused("actions/value-map", generateObject({
     model: anthropic(CLAUDE_MODEL),
     system: `Sei un esperto di Wardley Mapping. Posiziona ogni attività su una mappa Wardley con due assi:
 - **X (Maturità/Evolution)**: 0 = Genesis/Sperimentale, 0.25 = Custom, 0.5 = Product, 0.75 = Commodity, 1 = Utility

@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { generateObject, generateText, readUIMessageStream, stepCountIs, streamText, tool, type UIMessage } from "ai";
+import { generateObject, generateText, NoObjectGeneratedError, readUIMessageStream, stepCountIs, streamText, tool, type UIMessage } from "ai";
 import { z } from "zod";
-import { ev, fakeClaude, message, recordLogs, refusal, sse, THINKING, type Captured } from "./claude-test-kit.ts";
+import { ev, fakeClaude, message, recordLogs, refusal, sse, THINKING, type Captured, type Reply } from "./claude-test-kit.ts";
 import { progressItems, toolNameOf } from "../../components/agent/chat-view.ts";
 import {
   CLAUDE_MODEL,
@@ -141,8 +141,8 @@ test("generateObject: un rifiuto con il JSON completo torna come oggetto; throwI
   });
   assert.equal(result.finishReason, "content-filter");
   assert.deepEqual(result.object, answer, "l'SDK lo restituisce: senza il controllo si userebbe");
-  assert.throws(
-    () => throwIfRefused("ai/generate-report", result),
+  await assert.rejects(
+    throwIfRefused("ai/generate-report", Promise.resolve(result)),
     (error: unknown) =>
       error instanceof ClaudeRefusalError &&
       error.finishReason === "content-filter" &&
@@ -154,8 +154,46 @@ test("generateObject: un rifiuto con il JSON completo torna come oggetto; throwI
   // Una risposta completa passa com'è, senza log.
   const { provider: ok } = fakeClaude([message([THINKING, { type: "text", text: JSON.stringify(answer) }])]);
   const done = await generateObject({ model: ok(CLAUDE_MODEL), schema: z.object({ executiveSummary: z.string() }), prompt: "Genera il report.", ...claudeCallSettings("report") });
-  assert.equal(throwIfRefused("ai/generate-report", done), done);
+  assert.equal(await throwIfRefused("ai/generate-report", Promise.resolve(done)), done);
   assert.equal(lines.length, 1);
+});
+
+test("generateObject: un rifiuto prima di scrivere o a metà JSON è un errore dell'SDK; throwIfRefused lo riconosce, con la categoria", async (t) => {
+  const lines = recordLogs(t);
+  const report = (reply: Reply) => {
+    const { provider } = fakeClaude([reply]);
+    return generateObject({ model: provider(CLAUDE_MODEL), schema: z.object({ executiveSummary: z.string() }), prompt: "Genera il report.", ...claudeCallSettings("report") });
+  };
+  const partial = [THINKING, { type: "text", text: '{"executiveSummary":"Sintesi riservata del cl' }];
+  // Senza un JSON completo l'SDK lancia prima che si possa guardare il risultato: il rifiuto è nell'errore.
+  await assert.rejects(report(refusal([], "bio")), (error: unknown) => NoObjectGeneratedError.isInstance(error) && error.finishReason === "content-filter");
+  for (const [content, category] of [[[], "bio"], [partial, "cyber"]] as const) {
+    await assert.rejects(
+      throwIfRefused("ai/generate-report", report(refusal([...content], category))),
+      (error: unknown) => error instanceof ClaudeRefusalError && error.category === category,
+      category,
+    );
+  }
+  // Senza `stop_details`, o con una categoria che non è un token breve: la categoria è null.
+  for (const extra of [{ stop_details: null }, { stop_details: { type: "refusal", category: "testo con spazi", explanation: null } }]) {
+    await assert.rejects(throwIfRefused("ai/generate-report", report(message([], "refusal", extra))), (error: unknown) => error instanceof ClaudeRefusalError && error.category === null);
+  }
+  assert.deepEqual(lines, [
+    '[ai/generate-report] risposta_rifiutata {"finishReason":"content-filter","category":"bio"}',
+    '[ai/generate-report] risposta_rifiutata {"finishReason":"content-filter","category":"cyber"}',
+    '[ai/generate-report] risposta_rifiutata {"finishReason":"content-filter","category":null}',
+    '[ai/generate-report] risposta_rifiutata {"finishReason":"content-filter","category":null}',
+  ]);
+  for (const line of lines) assert.doesNotMatch(line, /Sintesi|riservata|spazi/);
+
+  // Gli altri errori passano come sono, senza log: il JSON troncato dal limite dei token, un errore dell'API.
+  await assert.rejects(
+    throwIfRefused("ai/generate-report", report(message(partial, "max_tokens"))),
+    (error: unknown) => NoObjectGeneratedError.isInstance(error) && error.finishReason === "length",
+  );
+  const notFound: Reply = () => Response.json({ type: "error", error: { type: "not_found_error", message: "model" } }, { status: 404 });
+  await assert.rejects(throwIfRefused("ai/generate-report", report(notFound)), (error: unknown) => (error as { statusCode?: number }).statusCode === 404);
+  assert.equal(lines.length, 4);
 });
 
 test("generateText (testo di un PDF): blocco documento, sforzo basso, 32000 token; il testo resta senza il ragionamento", async () => {
@@ -520,8 +558,9 @@ test("ogni generateObject dell'app passa subito da throwIfRefused, prima di usar
   for (const file of files) {
     const source = readFileSync(new URL(file, ROOT), "utf8");
     const calls = source.match(/\bgenerateObject\(/g)?.length ?? 0;
-    const guarded = [...source.matchAll(/throwIfRefused\("([a-z0-9/-]+)", await generateObject\(/g)];
-    assert.equal(guarded.length, calls, `${file}: ${calls} generateObject, ${guarded.length} dentro throwIfRefused("scope", await generateObject(...))`);
+    // La chiamata, non il suo risultato: un rifiuto senza JSON completo è un errore di generateObject.
+    const guarded = [...source.matchAll(/await throwIfRefused\("([a-z0-9/-]+)", generateObject\(/g)];
+    assert.equal(guarded.length, calls, `${file}: ${calls} generateObject, ${guarded.length} dentro await throwIfRefused("scope", generateObject(...))`);
     sites.push(...guarded.map((match) => `${file} ${match[1]}`));
   }
   // Le undici chiamate con CLAUDE_MODEL, più l'auto-ranking del portfolio e la proposta del filo con il referente.

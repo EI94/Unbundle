@@ -40,7 +40,7 @@ export async function generateAgentBlueprints(
 
   if (automatableUseCases.length === 0) return [];
 
-  const { object } = throwIfRefused("ai/generate-blueprints", await generateObject({
+  const { object } = await throwIfRefused("ai/generate-blueprints", generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema: blueprintSchema,
     prompt: `Sei un AI architect esperto. Per ogni use case, genera un blueprint dettagliato dell'agente AI necessario per implementarlo.

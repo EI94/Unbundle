@@ -89,7 +89,7 @@ export async function generateUseCases(
 6.`
     : `5.`;
 
-  const { object } = throwIfRefused("ai/generate-use-cases", await generateObject({
+  const { object } = await throwIfRefused("ai/generate-use-cases", generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema,
     prompt: `Sei un esperto di AI transformation. Analizza le attività classificate e il contesto strategico per generare use case AI concreti e azionabili.

@@ -64,7 +64,7 @@ export async function GET(req: Request) {
           a.createdAt > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
       );
 
-      const { object } = throwIfRefused("cron/weekly-pulse", await generateObject({
+      const { object } = await throwIfRefused("cron/weekly-pulse", generateObject({
         model: anthropic(CLAUDE_MODEL),
         schema: signalsSchema,
         prompt: `Analizza lo stato attuale del workspace "${workspace.name}" e genera segnali settimanali.

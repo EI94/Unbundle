@@ -34,7 +34,7 @@ export async function matchActivitiesToOnet(activities: Activity[], { abortSigna
       `[${a.id}] "${a.title}": ${a.description ?? ""} (workType: ${a.workType ?? "N/A"}, classification: ${a.classification ?? "N/A"})`
   );
 
-  const { object } = throwIfRefused("ai/onet-matching", await generateObject({
+  const { object } = await throwIfRefused("ai/onet-matching", generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema: onetMatchSchema,
     abortSignal,

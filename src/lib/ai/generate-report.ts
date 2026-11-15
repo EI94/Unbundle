@@ -33,7 +33,7 @@ export async function generateReport(data: {
   useCases: UseCase[];
   goals: StrategicGoal[];
 }): Promise<ReportContent> {
-  const { object } = throwIfRefused("ai/generate-report", await generateObject({
+  const { object } = await throwIfRefused("ai/generate-report", generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema: reportSchema,
     prompt: `Genera un report esecutivo completo per la trasformazione AI di questa organizzazione. Scrivi in italiano, professionale e orientato all'azione.

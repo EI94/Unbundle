@@ -373,7 +373,7 @@ test("weekly-pulse: il passo dell'hub gira prima del ciclo AI, senza rotte o pia
   assert.ok(route.includes('checkCronAuthorization(req.headers.get("authorization"), process.env.CRON_SECRET) !== "ok"'));
   assert.ok(!route.includes("Bearer ${process.env.CRON_SECRET}"), "niente confronto che fa passare «Bearer undefined»");
   assert.ok(step < route.indexOf('eq(workspaces.status, "mapping")'), "prima della lettura dei workspace del ciclo AI");
-  assert.ok(step < route.indexOf("await generateObject("), "prima della chiamata al modello");
+  assert.ok(step < route.indexOf("generateObject({"), "prima della chiamata al modello");
   // vercel.json: una sola pianificazione di weekly-pulse, il lunedì, e nessuna rotta del riepilogo.
   const crons = (JSON.parse(source("vercel.json")) as { crons: Array<{ path: string; schedule: string }> }).crons;
   assert.deepEqual(

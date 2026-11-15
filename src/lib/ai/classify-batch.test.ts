@@ -125,6 +125,26 @@ test("il tool della chat, se nessuna classificazione riesce: il messaggio di pri
   assert.match(result.message, /Classificazione non riuscita — verrà riprovata manualmente\.$/);
 });
 
+test("«Completo mapping» con rifiuti prima di scrivere o a metà JSON: nel log come rifiuti, con la categoria; niente scritto", async (t) => {
+  const lines = recordLogs(t);
+  reset();
+  prova.activities = [{ ...ACTIVITIES[0], onetTaskId: null }];
+  // La classificazione è rifiutata senza testo, il match O*NET a metà del suo JSON: generateObject lancia tutte e due.
+  fakeAppClaude([refusal([], "bio"), refusal([THINKING, { type: "text", text: '{"matches":[{"activityId":"a-1","suggestedOn' }], "cyber")]);
+  const result = await markDepartmentMapped("Una attività.");
+  assert.deepEqual(prova.classified, []);
+  assert.deepEqual(prova.matched, []);
+  assert.equal(
+    result.message,
+    "Dipartimento segnato come mappato. Una attività. Classificazione non riuscita — verrà riprovata manualmente. " +
+      "Match O*NET non riuscito — verrà riprovato manualmente.",
+  );
+  assert.deepEqual(lines, [
+    '[ai/classify] risposta_rifiutata {"finishReason":"content-filter","category":"bio"}',
+    '[ai/onet-matching] risposta_rifiutata {"finishReason":"content-filter","category":"cyber"}',
+  ]);
+});
+
 test("«Completo mapping» con il modello che non risponde: alla scadenza della chat restano le classificazioni riuscite, i testi di sempre, il tempo scaduto nel log", async (t) => {
   const lines = recordLogs(t);
   reset();

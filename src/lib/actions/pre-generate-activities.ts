@@ -77,7 +77,7 @@ export async function preGenerateActivitiesFromDocuments(
     )
     .join("\n\n---\n\n");
 
-  const { object } = throwIfRefused("actions/pre-generate-activities", await generateObject({
+  const { object } = await throwIfRefused("actions/pre-generate-activities", generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema: preGeneratedActivitySchema,
     prompt: `Sei un esperto di process mining e analisi organizzativa. Analizza questi documenti relativi a una funzione aziendale e identifica le attività lavorative principali.

@@ -224,13 +224,42 @@ export class ClaudeRefusalError extends Error {
   }
 }
 
+type ClaudeStop = { finishReason?: unknown; providerMetadata?: unknown };
+
 /**
- * Subito dopo ogni generateObject, prima di scrivere qualcosa: `const { object } = throwIfRefused("scope", await generateObject(...))`.
- * generateObject restituisce l'oggetto anche da un rifiuto, se il suo JSON è completo: qui il rifiuto va nel log
- * (solo motivo e categoria) e diventa un ClaudeRefusalError, che ogni chiamata gestisce come gli altri errori del modello.
+ * Ogni generateObject passa da qui, prima di usare o scrivere l'oggetto:
+ * `const { object } = await throwIfRefused("scope", generateObject(...))`. Un rifiuto arriva in due forme. Con il JSON
+ * completo generateObject restituisce l'oggetto, con finishReason «content-filter». Senza (il rifiuto prima di scrivere,
+ * la forma più comune, o a metà oggetto) lancia NoObjectGeneratedError, con lo stesso finishReason. Tutte e due vanno nel
+ * log (solo motivo e categoria) e diventano un ClaudeRefusalError, che ogni chiamata gestisce come gli altri errori del
+ * modello; gli altri errori passano come sono.
  */
-export function throwIfRefused<T extends { finishReason?: unknown; providerMetadata?: unknown }>(scope: string, result: T): T {
-  if (result.finishReason !== "content-filter") return result;
-  logClaudeStop(scope, "risposta_rifiutata", result);
-  throw new ClaudeRefusalError(scope, claudeStopSummary(result).category);
+export async function throwIfRefused<T extends ClaudeStop>(scope: string, call: PromiseLike<T>): Promise<T> {
+  let result: T;
+  try {
+    result = await call;
+  } catch (error) {
+    const refused = refusalInError(error);
+    if (refused) refuse(scope, refused);
+    throw error;
+  }
+  if (result.finishReason === "content-filter") refuse(scope, result);
+  return result;
+}
+
+/**
+ * Il rifiuto dentro un NoObjectGeneratedError di generateObject, o null. L'errore non ha i metadati del provider: la
+ * categoria sta in `stop_details` del corpo della risposta dell'API, che porta con sé.
+ */
+function refusalInError(error: unknown): ClaudeStop | null {
+  const failed = error as { name?: unknown; finishReason?: unknown; response?: { body?: unknown } } | null | undefined;
+  if (failed?.name !== "AI_NoObjectGeneratedError" || failed.finishReason !== "content-filter") return null;
+  const body = failed.response?.body as { stop_details?: { category?: unknown } | null } | null | undefined;
+  return { finishReason: failed.finishReason, providerMetadata: { anthropic: { stopDetails: { category: body?.stop_details?.category } } } };
+}
+
+/** Il rifiuto nel log, con il solo riepilogo dello stop, e poi come ClaudeRefusalError. */
+function refuse(scope: string, stop: ClaudeStop): never {
+  logClaudeStop(scope, "risposta_rifiutata", stop);
+  throw new ClaudeRefusalError(scope, claudeStopSummary(stop).category);
 }

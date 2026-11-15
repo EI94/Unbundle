@@ -44,7 +44,7 @@ export type FollowUpGenerator = (i: { prompt: string; model: string }) => Promis
 export const providerFollowUpGenerator: FollowUpGenerator = async ({ prompt, model }) => {
   const settings = referentAiCallSettings(model);
   // Un rifiuto con il JSON completo non diventa una proposta: è un errore, e la riga resta «errore».
-  const result = throwIfRefused("use-case-referent-ai", await generateObject({
+  const result = await throwIfRefused("use-case-referent-ai", generateObject({
     model: anthropic(model),
     schema: jsonSchema<Record<string, unknown>>(FOLLOW_UP_JSON_SCHEMA as never),
     prompt,
