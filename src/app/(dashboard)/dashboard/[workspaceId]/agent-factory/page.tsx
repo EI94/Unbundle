@@ -19,6 +19,7 @@ import { listBuilders, listWhereChoices, type BuilderRow } from "@/lib/db/querie
 import { loadMemberCandidates } from "@/lib/db/queries/uc-shell";
 import { ROLE_LABEL } from "@/lib/uc/views/labels";
 import { builderStateText, builderWhereText, externalRemoveConfirm } from "@/lib/use-cases/factory/builders-text";
+import { BuilderFacts } from "@/components/agent-factory/builder-facts";
 import { AddBuilder, RemoveBuilder } from "./team-forms";
 
 /**
@@ -111,7 +112,7 @@ function CaseRow({ workspaceId, c }: { workspaceId: string; c: FactoryCaseRow })
 /** Una persona di «Chi costruisce»: nome, da fuori o no, ruolo, dove, la CLI (o perché da fuori oggi non costruisce). */
 function BuilderLine({ workspaceId, m }: { workspaceId: string; m: BuilderRow }) {
   const role = m.external ? "Sviluppatore" : ROLE_LABEL[m.role as keyof typeof ROLE_LABEL];
-  const facts = [m.external ? "esterno" : m.email, role, builderWhereText(m.where, m.whereCodes), builderStateText(m)];
+  const facts = [...(m.external ? ["esterno"] : []), role, builderWhereText(m.where, m.whereCodes), builderStateText(m)];
   const confirm = m.external
     ? externalRemoveConfirm({ name: m.name, openCases: m.openCases, repos: m.repos })
     : {
@@ -121,11 +122,8 @@ function BuilderLine({ workspaceId, m }: { workspaceId: string; m: BuilderRow })
   return (
     <li className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm">
       <span className="min-w-0">
-        <span className="font-medium">{m.name}</span>
-        <span className="block break-all text-xs text-muted-foreground sm:inline sm:break-normal">
-          <span className="hidden sm:inline"> · </span>
-          {facts.join(" · ")}
-        </span>
+        <span className="font-medium break-words">{m.name}</span>
+        <BuilderFacts email={m.external ? null : m.email} facts={facts} />
       </span>
       <RemoveBuilder workspaceId={workspaceId} userId={m.userId} name={m.name} title={confirm.title} text={confirm.text} />
     </li>
