@@ -73,11 +73,12 @@ export function sse(events: Body[]): Reply {
     });
 }
 
-/** Una richiesta che non risponde finché non viene interrotta (per i tempi massimi). */
+/** Una richiesta che non risponde finché non viene interrotta (per i tempi massimi); già interrotta, fallisce subito, come la fetch vera. */
 export const hang: Reply = (init) =>
   new Promise((_, reject) => {
     const signal = init?.signal;
     if (!signal) return reject(new Error("richiesta senza abortSignal: resterebbe appesa"));
+    if (signal.aborted) return reject(signal.reason);
     signal.addEventListener("abort", () => reject(signal.reason), { once: true });
   });
 

@@ -10,10 +10,16 @@ import {
   CLAUDE_TASKS,
   ClaudeRefusalError,
   claudeCallSettings,
+  CHAT_ANSWER_RESERVE_MS,
+  MIN_MODEL_CALL_MS,
+  chatDeadline,
   claudeStopSummary,
   lastStepRefused,
   logClaudeStop,
+  logClaudeTimeout,
+  stoppedByDeadline,
   throwIfRefused,
+  timeUntil,
   WEB_SEARCH_TIMEOUT_MS,
   type ClaudeTask,
 } from "./models.ts";
@@ -367,6 +373,33 @@ test("lastStepRefused: vero solo quando l'ultimo passo del giro è un rifiuto", 
   assert.equal(lastStepRefused({ steps: [{ finishReason: "tool-calls" }, { finishReason: "content-filter" }] }), true);
   assert.equal(lastStepRefused({ steps: [{ finishReason: "content-filter" }, { finishReason: "stop" }] }), false);
   assert.equal(lastStepRefused({ steps: [{ finishReason: "tool-calls" }] }), false);
+});
+
+test("la scadenza della chat: inizio più maxDuration meno la riserva per la risposta; ogni chiamata il tempo che resta", () => {
+  assert.equal(CHAT_ANSWER_RESERVE_MS, 25_000);
+  const start = 1_000_000;
+  const deadline = chatDeadline(start, 120);
+  assert.equal(deadline, start + 95_000);
+  // Il tempo che resta, al più il tetto (la ricerca web: 45 secondi), almeno qualche secondo.
+  assert.equal(timeUntil(deadline, Number.POSITIVE_INFINITY, start), 95_000);
+  assert.equal(timeUntil(deadline, WEB_SEARCH_TIMEOUT_MS, start), 45_000);
+  assert.equal(timeUntil(deadline, WEB_SEARCH_TIMEOUT_MS, start + 80_000), 15_000);
+  assert.equal(timeUntil(deadline, Number.POSITIVE_INFINITY, start + 93_000), MIN_MODEL_CALL_MS);
+  assert.equal(timeUntil(deadline, Number.POSITIVE_INFINITY, start + 200_000), MIN_MODEL_CALL_MS, "a scadenza passata, il minimo");
+  assert.ok(MIN_MODEL_CALL_MS >= 2_000 && MIN_MODEL_CALL_MS <= 10_000);
+  assert.ok(MIN_MODEL_CALL_MS < CHAT_ANSWER_RESERVE_MS, "il minimo sta dentro la riserva");
+});
+
+test("stoppedByDeadline: solo l'interruzione del segnale scaduto, non un errore del modello", () => {
+  const expired = AbortSignal.abort(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
+  assert.equal(stoppedByDeadline(expired.reason, expired), true);
+  assert.equal(stoppedByDeadline(Object.assign(new Error("interrotta"), { name: "AbortError" }), expired), true);
+  assert.equal(stoppedByDeadline(new Error("Bad request"), expired), false);
+  assert.equal(stoppedByDeadline(expired.reason, new AbortController().signal), false, "segnale non scaduto");
+  assert.equal(stoppedByDeadline(expired.reason, undefined), false);
+  const lines: string[] = [];
+  logClaudeTimeout("prova", { classificate: 2, rimaste: 1 }, { warn: (...args: unknown[]) => lines.push(args.join(" ")) });
+  assert.deepEqual(lines, ['[prova] tempo_scaduto {"classificate":2,"rimaste":1}']);
 });
 
 /** Le chiamate al modello dell'app e i loro compiti (src/lib/ai/models.ts). */

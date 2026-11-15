@@ -61,9 +61,9 @@ export const CLAUDE_TASKS = {
   /** La classificazione di un'attività nei tre stream. */
   classifyActivity: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
   /**
-   * Il match O*NET delle attività di un reparto. L'uscita cresce con le attività, ma dalla chat gira
-   * dentro i suoi 120 secondi, dove più di 16000 token non finirebbero: oltre, un errore che la chat
-   * gestisce («Match O*NET non riuscito») invece della funzione interrotta.
+   * Il match O*NET delle attività di un reparto. L'uscita cresce con le attività; 16000 token bastano per un reparto.
+   * Il limite dei token non limita il tempo: dalla chat il match ha un abortSignal fino alla scadenza della richiesta
+   * (chatDeadline, qui sotto), e oltre si interrompe e la chat risponde «Match O*NET non riuscito».
    */
   onetMatch: { effort: "low", maxOutputTokens: 16_000, fallbacks: true },
   /** La value map: una posizione per ogni attività classificata. */
@@ -125,10 +125,50 @@ export function claudeCallSettings(task: ClaudeTask) {
 export const MOTIVAZIONE_DESCRIPTION = "Breve motivazione per l'utente, una o due frasi.";
 
 /**
- * La ricerca web gira dentro i 120 secondi della chat: oltre questo tempo si interrompe e il tool
- * risponde come quando la ricerca non è disponibile, invece di far scadere tutto il turno.
+ * Il tempo massimo della ricerca web della chat, che non va comunque oltre la scadenza della richiesta (chatDeadline):
+ * oltre si interrompe e il tool risponde come quando la ricerca non è disponibile, invece di far scadere tutto il turno.
  */
 export const WEB_SEARCH_TIMEOUT_MS = 45_000;
+
+/**
+ * Il tempo che una richiesta della chat lascia alla risposta finale. La rotta ha `maxDuration` 120 secondi
+ * (src/app/api/ai/chat/route.ts): oltre, la funzione si interrompe a metà. I tool che chiamano il modello (la ricerca
+ * web; in «Completo mapping» la classificazione e il match O*NET) hanno quindi una scadenza unica per richiesta,
+ * chatDeadline: alla scadenza le loro chiamate si interrompono, il tool tiene quello che è riuscito e risponde come
+ * quando non riesce, e il modello ha ancora il tempo di rispondere.
+ */
+export const CHAT_ANSWER_RESERVE_MS = 25_000;
+
+/** Il tempo minimo di una chiamata al modello dentro la chat, anche con la scadenza vicina o passata. */
+export const MIN_MODEL_CALL_MS = 5_000;
+
+/** La scadenza dei tool di una richiesta della chat: l'inizio della richiesta più maxDuration, meno la riserva. */
+export function chatDeadline(startedAt: number, maxDurationSeconds: number): number {
+  return startedAt + maxDurationSeconds * 1000 - CHAT_ANSWER_RESERVE_MS;
+}
+
+/**
+ * Il tempo da dare a una chiamata al modello (per `AbortSignal.timeout`): quello che resta fino alla scadenza, al più
+ * `cap`, almeno MIN_MODEL_CALL_MS.
+ */
+export function timeUntil(deadline: number, cap = Number.POSITIVE_INFINITY, now = Date.now()): number {
+  return Math.max(MIN_MODEL_CALL_MS, Math.min(cap, deadline - now));
+}
+
+/**
+ * Vero se `error` è l'interruzione dovuta a `signal` (la scadenza), non un errore del modello o della rete. L'SDK
+ * rilancia l'errore dell'interruzione così com'è (un TimeoutError per AbortSignal.timeout).
+ */
+export function stoppedByDeadline(error: unknown, signal: AbortSignal | undefined): boolean {
+  if (!signal?.aborted) return false;
+  const name = (error as { name?: unknown } | null | undefined)?.name;
+  return error === signal.reason || name === "TimeoutError" || name === "AbortError";
+}
+
+/** Una riga di log quando le chiamate al modello si fermano alla scadenza: `[scope] tempo_scaduto {...}`, solo numeri. */
+export function logClaudeTimeout(scope: string, counts: Record<string, number> = {}, log: Pick<Console, "warn"> = console) {
+  log.warn(`[${scope}] tempo_scaduto`, JSON.stringify(counts));
+}
 
 const LOG_TOKEN = /^[A-Za-z0-9_.:-]{1,40}$/;
 

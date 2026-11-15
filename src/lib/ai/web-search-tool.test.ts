@@ -1,21 +1,36 @@
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { hang, installAppModules, message, recordLogs, refusal, THINKING, fakeAppClaude } from "./claude-test-kit.ts";
-import { WEB_SEARCH_TIMEOUT_MS } from "./models.ts";
+import { MIN_MODEL_CALL_MS, WEB_SEARCH_TIMEOUT_MS } from "./models.ts";
 
 // (Migrazione a Claude Sonnet 5.5) Il tool vero della ricerca web della chat: un rifiuto e una ricerca più lenta
-// del tempo massimo finiscono come «ricerca non disponibile», mai con un riassunto parziale né con il turno della
-// chat scaduto. Il modello è il Claude finto di claude-test-kit.ts, senza rete.
+// del tempo massimo (45 secondi, o meno se la scadenza della chat è più vicina) finiscono come «ricerca non
+// disponibile», mai con un riassunto parziale né con il turno della chat scaduto. Il modello è il Claude finto di
+// claude-test-kit.ts, senza rete.
 
 await installAppModules({});
 const { getWebSearchTool } = await import("./tools/web-search-tool.ts");
 
 type SearchResult = { success: boolean; reason: string; summary: string };
 
-/** Il tool chiamato come lo chiama streamText. */
-async function search(query: string): Promise<SearchResult> {
-  const { execute } = getWebSearchTool().webSearch;
+/** Una scadenza della chat lontana: la ricerca ha i suoi 45 secondi. */
+const FAR = () => Date.now() + 10 * 60_000;
+
+/** Il tool, costruito con la scadenza della richiesta come nella rotta, chiamato come lo chiama streamText. */
+async function search(query: string, deadline = FAR()): Promise<SearchResult> {
+  const { execute } = getWebSearchTool({ deadline }).webSearch;
   return (await execute!({ query, reason: "contesto del cliente" }, { toolCallId: "toolu_prova", messages: [] })) as SearchResult;
+}
+
+/** AbortSignal.timeout registra il tempo chiesto e scade dopo 30 ms, così il test non aspetta. */
+function shortTimeouts(t: TestContext): number[] {
+  const requested: number[] = [];
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, "timeout", (ms: number) => {
+    requested.push(ms);
+    return timeout(30);
+  });
+  return requested;
 }
 
 const UNAVAILABLE = { success: false, reason: "contesto del cliente", summary: "Ricerca non disponibile al momento. Prosegui senza." };
@@ -38,13 +53,8 @@ test("ricerca rifiutata, anche con un riassunto parziale: «non disponibile», n
 });
 
 test("ricerca più lenta del tempo massimo (45 secondi, qui accorciati): si interrompe e risponde «non disponibile»", async (t) => {
-  recordLogs(t);
-  const requested: number[] = [];
-  const timeout = AbortSignal.timeout.bind(AbortSignal);
-  t.mock.method(AbortSignal, "timeout", (ms: number) => {
-    requested.push(ms);
-    return timeout(30);
-  });
+  const lines = recordLogs(t);
+  const requested = shortTimeouts(t);
   const requests = fakeAppClaude([hang]);
   const started = Date.now();
   assert.deepEqual(await search("Acme"), UNAVAILABLE);
@@ -53,4 +63,22 @@ test("ricerca più lenta del tempo massimo (45 secondi, qui accorciati): si inte
   assert.equal(requests.length, 1, "nessun nuovo tentativo dopo l'interruzione");
   assert.ok(requests[0].signal?.aborted, "la richiesta è stata interrotta");
   assert.ok(Date.now() - started < 5_000);
+  assert.deepEqual(lines, ['[web-search-tool] tempo_scaduto {"timeoutMs":45000}'], "nel log il tempo scaduto, niente della ricerca");
+});
+
+test("con la scadenza della chat più vicina di 45 secondi, la ricerca ha solo il tempo che resta (almeno qualche secondo)", async (t) => {
+  recordLogs(t);
+  const requested = shortTimeouts(t);
+  fakeAppClaude([hang, hang]);
+  assert.deepEqual(await search("Acme", Date.now() + 20_000), UNAVAILABLE);
+  assert.ok(requested[0] > 19_000 && requested[0] <= 20_000, `chiesti ${requested[0]} ms`);
+  assert.deepEqual(await search("Acme", Date.now() - 1_000), UNAVAILABLE);
+  assert.equal(requested[1], MIN_MODEL_CALL_MS, "a scadenza passata, il minimo");
+});
+
+test("un errore dell'API: «non disponibile»; nel log nome e stato, mai la ricerca", async (t) => {
+  const lines = recordLogs(t);
+  fakeAppClaude([() => Response.json({ type: "error", error: { type: "invalid_request_error", message: "Richiesta non valida: Acme Bulloni SpA" } }, { status: 400 })]);
+  assert.deepEqual(await search("Acme Bulloni SpA"), UNAVAILABLE);
+  assert.deepEqual(lines, ['[web-search-tool] ricerca_non_riuscita {"error":{"name":"AI_APICallError","statusCode":400}}']);
 });

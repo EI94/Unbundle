@@ -27,7 +27,8 @@ const onetMatchSchema = z.object({
   ),
 });
 
-export async function matchActivitiesToOnet(activities: Activity[]) {
+/** Con `abortSignal` (dalla chat, la scadenza della richiesta: src/lib/ai/models.ts) la chiamata si interrompe in tempo. */
+export async function matchActivitiesToOnet(activities: Activity[], { abortSignal }: { abortSignal?: AbortSignal } = {}) {
   const activitySummaries = activities.map(
     (a) =>
       `[${a.id}] "${a.title}": ${a.description ?? ""} (workType: ${a.workType ?? "N/A"}, classification: ${a.classification ?? "N/A"})`
@@ -36,6 +37,7 @@ export async function matchActivitiesToOnet(activities: Activity[]) {
   const { object } = throwIfRefused("ai/onet-matching", await generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema: onetMatchSchema,
+    abortSignal,
     prompt: `Sei un esperto di O*NET e di AI exposure research. Per ogni attività lavorativa, identifica:
 1. Il codice O*NET SOC più vicino e il titolo occupazionale
 2. I task statements O*NET più rilevanti

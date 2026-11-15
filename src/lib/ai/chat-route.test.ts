@@ -17,8 +17,10 @@ type Prova = {
   deleteError?: string;
   indexed: Array<[string, string]>;
   tools: Record<string, unknown>;
+  /** Con che cosa la rotta costruisce i tool della richiesta: [tool, ...argomenti]. */
+  toolArgs: unknown[][];
 };
-const prova: Prova = { saved: [], deleted: [], indexed: [], tools: {} };
+const prova: Prova = { saved: [], deleted: [], indexed: [], tools: {}, toolArgs: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -29,7 +31,14 @@ await installAppModules({
   "@/lib/db/queries/use-case-program": `export function canEditProgram() { return false; }`,
   "@/lib/db/queries/use-case-hub": `export function viewerFromSession() { return { isLateralSpace: false }; }`,
   "@/lib/ai/tools/leadership-tools": `export function getLeadershipTools() { return globalThis.__prova.tools; }`,
-  "@/lib/ai/tools/activity-mapping-tools": `export function getActivityMappingTools() { return globalThis.__prova.tools; }`,
+  "@/lib/ai/tools/activity-mapping-tools": `export function getActivityMappingTools(...args) {
+    globalThis.__prova.toolArgs.push(["activity-mapping", ...args]);
+    return globalThis.__prova.tools;
+  }`,
+  "@/lib/ai/tools/web-search-tool": `export function getWebSearchTool(...args) {
+    globalThis.__prova.toolArgs.push(["web-search", ...args]);
+    return {};
+  }`,
   "@/lib/db/queries/conversations": `
     export async function getActiveConversation() { return { id: "conv-prova" }; }
     export async function createConversation() { return { id: "conv-prova" }; }
@@ -55,12 +64,12 @@ const { POST } = await import("../../app/api/ai/chat/route.ts");
 type Chunk = { type: string; [key: string]: unknown };
 
 /** POST alla rotta come lo fa il browser; legge tutta la risposta (onFinish è già girato quando lo stream finisce). */
-async function chat(messages: unknown[], conversationType = "leadership_setup") {
+async function chat(messages: unknown[], conversationType = "leadership_setup", departmentId?: string) {
   const response = await POST(
     new Request("http://localhost/api/ai/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ workspaceId: "ws-prova", conversationType, messages }),
+      body: JSON.stringify({ workspaceId: "ws-prova", conversationType, departmentId, messages }),
     }),
   );
   const raw = await response.text();
@@ -81,6 +90,7 @@ function reset() {
   delete prova.deleteError;
   prova.indexed = [];
   prova.tools = {};
+  prova.toolArgs = [];
 }
 
 const HISTORY = [
@@ -329,4 +339,26 @@ test("la storia del browser passa da chatHistory: niente benvenuto in testa, nie
   assert.doesNotMatch(JSON.stringify(request.body), /Ignora le istruzioni precedenti/);
   // Si salva e si indicizza l'ultimo turno dell'utente, quello vero.
   assert.deepEqual(prova.saved[0], { conversationId: "conv-prova", role: "user", content: "Ogni mese, per 40 clienti." });
+});
+
+test("una scadenza per richiesta, ai tool che chiamano il modello: l'inizio più 120 secondi, meno 25 per la risposta finale", async (t) => {
+  recordLogs(t);
+  for (const [conversationType, departmentId, built] of [
+    ["activity_mapping", "reparto-prova", ["activity-mapping", "web-search"]],
+    ["leadership_setup", undefined, ["web-search"]],
+  ] as const) {
+    reset();
+    fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Bene."), ...ev.end("end_turn")])]);
+    const before = Date.now();
+    const { status } = await chat(HISTORY, conversationType, departmentId);
+    const after = Date.now();
+    assert.equal(status, 200);
+    assert.deepEqual(prova.toolArgs.map(([name]) => name), built, conversationType);
+    const deadlines = prova.toolArgs.map((args) => (args.at(-1) as { deadline: number }).deadline);
+    for (const deadline of deadlines) {
+      assert.ok(deadline >= before + 95_000 && deadline <= after + 95_000, `${conversationType}: scadenza ${deadline - before} ms dopo l'inizio`);
+    }
+    assert.equal(new Set(deadlines).size, 1, "la stessa scadenza per tutti i tool della richiesta");
+    if (conversationType === "activity_mapping") assert.deepEqual(prova.toolArgs[0].slice(1, 3), ["ws-prova", "reparto-prova"]);
+  }
 });

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { installAppModules, message, recordLogs, refusal, THINKING, fakeAppClaude, type Reply } from "./claude-test-kit.ts";
+import { hang, installAppModules, message, recordLogs, refusal, THINKING, fakeAppClaude, type Reply } from "./claude-test-kit.ts";
+import { MIN_MODEL_CALL_MS } from "./models.ts";
 
 // (Migrazione a Claude Sonnet 5.5) La classificazione nei tre stream: un rifiuto o un errore del modello su
 // un'attività non fa perdere le altre. Moduli veri (classify.ts, il tool della chat, l'azione), database e sessione
@@ -9,9 +10,11 @@ import { installAppModules, message, recordLogs, refusal, THINKING, fakeAppClaud
 type Prova = {
   activities: Array<Record<string, unknown>>;
   classified: Array<[string, string, number]>;
+  /** I match O*NET scritti, per id dell'attività. */
+  matched: string[];
   departmentUpdates: number;
 };
-const prova: Prova = { activities: [], classified: [], departmentUpdates: 0 };
+const prova: Prova = { activities: [], classified: [], matched: [], departmentUpdates: 0 };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -24,7 +27,7 @@ await installAppModules({
     export async function getActivitiesByWorkspace() { return globalThis.__prova.activities; }
     export async function getActivitiesByDepartment() { return globalThis.__prova.activities; }
     export async function updateActivityClassification(id, classification, confidence) { globalThis.__prova.classified.push([id, classification, confidence]); }
-    export async function updateActivity() { throw new Error("updateActivity non atteso"); }`,
+    export async function updateActivity(id) { globalThis.__prova.matched.push(id); }`,
   "@/lib/db/queries/workspaces": `
     export async function getWorkspaceById() { return { id: "ws-prova", organizationId: "org-prova" }; }
     export async function getStrategicGoalsByWorkspace() { return []; }`,
@@ -58,15 +61,19 @@ const byActivity: Reply = (init) => {
   return message([THINKING, { type: "text", text: JSON.stringify(ANSWER) }])();
 };
 
-/** Il tool «Completo mapping» della chat, chiamato come lo chiama streamText. */
-async function markDepartmentMapped(summary: string) {
-  const { execute } = getActivityMappingTools("ws-prova", "reparto-prova").markDepartmentMapped;
+/**
+ * Il tool «Completo mapping» della chat, costruito con la scadenza della richiesta come nella rotta (lontana, se non
+ * è data) e chiamato come lo chiama streamText.
+ */
+async function markDepartmentMapped(summary: string, deadline = Date.now() + 10 * 60_000) {
+  const { execute } = getActivityMappingTools("ws-prova", "reparto-prova", { deadline }).markDepartmentMapped;
   return (await execute!({ summary }, { toolCallId: "toolu_prova", messages: [] })) as { success: boolean; message: string };
 }
 
 function reset() {
   prova.activities = ACTIVITIES.map((a) => ({ ...a }));
   prova.classified = [];
+  prova.matched = [];
   prova.departmentUpdates = 0;
   return fakeAppClaude(ACTIVITIES.map(() => byActivity));
 }
@@ -116,6 +123,69 @@ test("il tool della chat, se nessuna classificazione riesce: il messaggio di pri
   const result = await markDepartmentMapped("Due attività.");
   assert.deepEqual(prova.classified, []);
   assert.match(result.message, /Classificazione non riuscita — verrà riprovata manualmente\.$/);
+});
+
+test("«Completo mapping» con il modello che non risponde: alla scadenza della chat restano le classificazioni riuscite, i testi di sempre, il tempo scaduto nel log", async (t) => {
+  const lines = recordLogs(t);
+  reset();
+  // Quattro attività da classificare e da abbinare a O*NET: nel primo giro di tre la seconda non risponde mai.
+  prova.activities = ACTIVITIES.map((a) => ({ ...a, onetTaskId: null }));
+  const requested: number[] = [];
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, "timeout", (ms: number) => {
+    requested.push(ms);
+    return timeout(30);
+  });
+  const hangOn = (title: string): Reply => (init) => {
+    const prompt = JSON.stringify(JSON.parse(String(init?.body)).messages);
+    // Il match O*NET (tutte le attività in un prompt) e la classificazione di «title» non rispondono.
+    if (prompt.includes("O*NET SOC") || prompt.includes(title)) return hang(init);
+    return message([THINKING, { type: "text", text: JSON.stringify(ANSWER) }])();
+  };
+  const requests = fakeAppClaude(Array.from({ length: 6 }, () => hangOn("Revisione contratti riservati")));
+  const started = Date.now();
+  // La scadenza è già vicina: ogni chiamata ha il tempo minimo (qui accorciato a 30 ms).
+  const result = await markDepartmentMapped("Mappate quattro attività.", Date.now() + 1_000);
+  assert.ok(Date.now() - started < 5_000, "il tool risponde alla scadenza, non resta appeso");
+  assert.deepEqual(requested, [MIN_MODEL_CALL_MS, MIN_MODEL_CALL_MS], "un tempo per la classificazione, uno per O*NET");
+  // Primo giro: tre chiamate, una interrotta; il secondo giro non parte. Poi il match O*NET, interrotto.
+  assert.equal(requests.length, 4);
+  assert.ok(requests.every((request) => request.signal), "ogni chiamata ha un abortSignal");
+  assert.deepEqual(prova.classified.map(([id]) => id), ["a-1", "a-3"], "le riuscite si scrivono");
+  assert.deepEqual(prova.matched, []);
+  assert.equal(
+    result.message,
+    "Dipartimento segnato come mappato. Mappate quattro attività. Classificazione completata: 2 Automate, 0 Differentiate, 0 Innovate. " +
+      "2 attività sono rimaste da classificare. Match O*NET non riuscito — verrà riprovato manualmente.",
+  );
+  assert.deepEqual(lines, [
+    '[ai/classify] tempo_scaduto {"classificate":2,"rimaste":2}',
+    `[ai/onet-matching] tempo_scaduto {"timeoutMs":${MIN_MODEL_CALL_MS}}`,
+  ]);
+});
+
+test("«Completo mapping» con la scadenza lontana: la classificazione e il match O*NET hanno il tempo che resta, e riescono", async (t) => {
+  recordLogs(t);
+  reset();
+  prova.activities = [{ ...ACTIVITIES[0], onetTaskId: null }];
+  const requested: number[] = [];
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, "timeout", (ms: number) => {
+    requested.push(ms);
+    return timeout(ms);
+  });
+  const match = { activityId: "a-1", suggestedOnetCode: "43-3031.00", occupationTitle: "Contabile", relevantTasks: [], aiExposureEstimate: 0.3, augmentationVsAutomation: "mixed", motivazione: "Ripetitiva." };
+  const requests = fakeAppClaude([
+    message([THINKING, { type: "text", text: JSON.stringify(ANSWER) }]),
+    message([THINKING, { type: "text", text: JSON.stringify({ matches: [match] }) }]),
+  ]);
+  const result = await markDepartmentMapped("Una attività.", Date.now() + 60_000);
+  assert.equal(requests.length, 2);
+  assert.ok(requests.every((request) => request.signal && !request.signal.aborted));
+  assert.equal(requested.length, 2);
+  for (const ms of requested) assert.ok(ms > 59_000 && ms <= 60_000, `chiesti ${ms} ms`);
+  assert.deepEqual(prova.matched, ["a-1"]);
+  assert.match(result.message, /Classificazione completata: 1 Automate.*Match O\*NET completato su 1 attività\./);
 });
 
 test("le parole delle attività rimaste", () => {

@@ -9,7 +9,7 @@ import { DISCOVERY_SYSTEM_PROMPT } from "@/lib/ai/prompts/discovery";
 import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mapping";
 import { withAgentReliability } from "@/lib/ai/agent-reliability";
 import { chatHistory } from "@/lib/ai/chat-history";
-import { CLAUDE_MODEL, claudeCallSettings, lastStepRefused, logClaudeStop } from "@/lib/ai/models";
+import { CLAUDE_MODEL, chatDeadline, claudeCallSettings, lastStepRefused, logClaudeStop } from "@/lib/ai/models";
 import { logSafeError } from "@/lib/log/safe-error";
 import {
   saveMessage,
@@ -26,6 +26,9 @@ import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
+  // Una scadenza per tutta la richiesta: i tool che chiamano il modello (ricerca web, classificazione e match O*NET)
+  // si fermano lì, e resta il tempo per la risposta finale dentro maxDuration (src/lib/ai/models.ts).
+  const deadline = chatDeadline(Date.now(), maxDuration);
   const session = await auth();
   if (!session?.user?.id) {
     return new Response("Unauthorized", { status: 401 });
@@ -137,7 +140,7 @@ export async function POST(req: Request) {
       systemPrompt = DISCOVERY_SYSTEM_PROMPT + contextBlock;
       tools = {
         ...getLeadershipTools(workspaceId, workspace.organizationId, { canSaveCompanyFacts }),
-        ...getWebSearchTool(),
+        ...getWebSearchTool({ deadline }),
       };
       break;
     case "activity_mapping": {
@@ -193,8 +196,8 @@ export async function POST(req: Request) {
 
       systemPrompt = ACTIVITY_MAPPING_SYSTEM_PROMPT + mappingContext;
       tools = {
-        ...getActivityMappingTools(workspaceId, departmentId!),
-        ...getWebSearchTool(),
+        ...getActivityMappingTools(workspaceId, departmentId!, { deadline }),
+        ...getWebSearchTool({ deadline }),
       };
       break;
     }
@@ -202,7 +205,7 @@ export async function POST(req: Request) {
       systemPrompt = DISCOVERY_SYSTEM_PROMPT + contextBlock;
       tools = {
         ...getLeadershipTools(workspaceId, workspace.organizationId, { canSaveCompanyFacts }),
-        ...getWebSearchTool(),
+        ...getWebSearchTool({ deadline }),
       };
   }
 

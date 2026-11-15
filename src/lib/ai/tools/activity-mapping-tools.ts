@@ -8,11 +8,18 @@ import { getWorkspaceById, getStrategicGoalsByWorkspace } from "@/lib/db/queries
 import { organizations } from "@/lib/db/schema";
 import { classifyActivitiesBatch, skippedClassificationsText } from "@/lib/ai/classify";
 import { matchActivitiesToOnet } from "@/lib/ai/onet-matching";
+import { ClaudeRefusalError, logClaudeTimeout, stoppedByDeadline, timeUntil } from "@/lib/ai/models";
+import { logSafeError } from "@/lib/log/safe-error";
 import { updateActivityClassification, updateActivity } from "@/lib/db/queries/activities";
 
+/**
+ * I tool dell'activity mapping, costruiti per ogni richiesta della chat. `deadline` è la scadenza della richiesta
+ * (chatDeadline in src/lib/ai/models.ts): la classificazione e il match O*NET di «Completo mapping» si fermano lì.
+ */
 export function getActivityMappingTools(
   workspaceId: string,
-  departmentId: string
+  departmentId: string,
+  { deadline }: { deadline: number }
 ) {
   return {
     saveActivity: tool({
@@ -132,11 +139,12 @@ export function getActivityMappingTools(
 
             const goals = await getStrategicGoalsByWorkspace(workspaceId);
 
-            // Le classificazioni riuscite si scrivono; quelle rifiutate o fallite restano da fare.
-            const results = await classifyActivitiesBatch(unclassified, {
-              companyValueThesis: org?.companyValueThesis,
-              goals,
-            });
+            // Le classificazioni riuscite si scrivono; quelle rifiutate, fallite o fermate dalla scadenza restano da fare.
+            const results = await classifyActivitiesBatch(
+              unclassified,
+              { companyValueThesis: org?.companyValueThesis, goals },
+              { abortSignal: AbortSignal.timeout(timeUntil(deadline)) },
+            );
 
             for (const [activityId, result] of results) {
               await updateActivityClassification(
@@ -167,8 +175,10 @@ export function getActivityMappingTools(
 
         const unmatched = deptActivities.filter((a) => !a.onetTaskId);
         if (unmatched.length > 0) {
+          const timeoutMs = timeUntil(deadline);
+          const abortSignal = AbortSignal.timeout(timeoutMs);
           try {
-            const matches = await matchActivitiesToOnet(unmatched);
+            const matches = await matchActivitiesToOnet(unmatched, { abortSignal });
             for (const match of matches) {
               await updateActivity(match.activityId, {
                 onetTaskId: match.suggestedOnetCode,
@@ -183,7 +193,10 @@ export function getActivityMappingTools(
                   ).toFixed(0)
                 : "0";
             onetSummary = `Match O*NET completato su ${matches.length} attività. AI Exposure media: ${avgExposure}%.`;
-          } catch {
+          } catch (error) {
+            // Un rifiuto è già nel log (throwIfRefused); la scadenza e gli altri errori senza testi.
+            if (stoppedByDeadline(error, abortSignal)) logClaudeTimeout("ai/onet-matching", { timeoutMs });
+            else if (!(error instanceof ClaudeRefusalError)) logSafeError("ai/onet-matching", "match_non_riuscito", error);
             onetSummary =
               "Match O*NET non riuscito — verrà riprovato manualmente.";
           }

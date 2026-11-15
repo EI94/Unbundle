@@ -1,6 +1,14 @@
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { CLAUDE_MODEL, ClaudeRefusalError, MOTIVAZIONE_DESCRIPTION, claudeCallSettings, throwIfRefused } from "@/lib/ai/models";
+import {
+  CLAUDE_MODEL,
+  ClaudeRefusalError,
+  MOTIVAZIONE_DESCRIPTION,
+  claudeCallSettings,
+  logClaudeTimeout,
+  stoppedByDeadline,
+  throwIfRefused,
+} from "@/lib/ai/models";
 import { logSafeError } from "@/lib/log/safe-error";
 import { z } from "zod";
 import type { Activity, StrategicGoal } from "@/lib/db/schema";
@@ -21,11 +29,13 @@ export async function classifyActivity(
   strategicContext: {
     companyValueThesis: unknown;
     goals: StrategicGoal[];
-  }
+  },
+  abortSignal?: AbortSignal
 ): Promise<ClassificationResult> {
   const { object } = throwIfRefused("ai/classify", await generateObject({
     model: anthropic(CLAUDE_MODEL),
     schema: classificationSchema,
+    abortSignal,
     prompt: `Analizza questa attività lavorativa e classificala in uno dei 3 stream del framework Unbundle.
 
 ## Attività
@@ -82,32 +92,38 @@ Classifica con rigore. Se l'attività è palesemente operativa e ripetitiva → 
 /**
  * Le classificazioni riuscite, per id dell'attività. Un rifiuto o un errore del modello su un'attività non fa perdere
  * le altre: quell'attività resta senza classificazione (chi chiama conta quante ne mancano) e si riprova dopo.
+ * Con `abortSignal` (la scadenza della chat, src/lib/ai/models.ts) le chiamate in corso si interrompono e le attività
+ * non ancora iniziate restano da classificare, senza chiamate: il tempo scaduto va nel log una volta, con i conteggi.
  */
 export async function classifyActivitiesBatch(
   activities: Activity[],
   strategicContext: {
     companyValueThesis: unknown;
     goals: StrategicGoal[];
-  }
+  },
+  { abortSignal }: { abortSignal?: AbortSignal } = {}
 ): Promise<Map<string, ClassificationResult>> {
   const results = new Map<string, ClassificationResult>();
 
   const batchSize = 3;
-  for (let i = 0; i < activities.length; i += batchSize) {
+  for (let i = 0; i < activities.length && !abortSignal?.aborted; i += batchSize) {
     const batch = activities.slice(i, i + batchSize);
     const outcomes = await Promise.allSettled(
-      batch.map((activity) => classifyActivity(activity, strategicContext))
+      batch.map((activity) => classifyActivity(activity, strategicContext, abortSignal))
     );
     outcomes.forEach((outcome, idx) => {
       if (outcome.status === "fulfilled") {
         results.set(batch[idx].id, outcome.value);
-      } else if (!(outcome.reason instanceof ClaudeRefusalError)) {
+      } else if (!(outcome.reason instanceof ClaudeRefusalError) && !stoppedByDeadline(outcome.reason, abortSignal)) {
         // Un rifiuto è già nel log con il solo riepilogo dello stop (throwIfRefused); un altro errore, per nome e codice.
         logSafeError("ai/classify", "classificazione_non_riuscita", outcome.reason);
       }
     });
   }
 
+  if (abortSignal?.aborted) {
+    logClaudeTimeout("ai/classify", { classificate: results.size, rimaste: activities.length - results.size });
+  }
   return results;
 }
 

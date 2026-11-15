@@ -1,9 +1,22 @@
 import { tool, generateText, stepCountIs } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import { CLAUDE_MODEL, claudeCallSettings, logClaudeStop, WEB_SEARCH_TIMEOUT_MS } from "@/lib/ai/models";
+import {
+  CLAUDE_MODEL,
+  claudeCallSettings,
+  logClaudeStop,
+  logClaudeTimeout,
+  stoppedByDeadline,
+  timeUntil,
+  WEB_SEARCH_TIMEOUT_MS,
+} from "@/lib/ai/models";
+import { logSafeError } from "@/lib/log/safe-error";
 
-export function getWebSearchTool() {
+/**
+ * Il tool della ricerca web della chat, costruito per ogni richiesta. `deadline` è la scadenza della richiesta
+ * (chatDeadline in src/lib/ai/models.ts): la ricerca dura al più WEB_SEARCH_TIMEOUT_MS, e mai oltre la scadenza.
+ */
+export function getWebSearchTool({ deadline }: { deadline: number }) {
   return {
     webSearch: tool({
       description:
@@ -19,11 +32,13 @@ export function getWebSearchTool() {
           .describe("Perché stai cercando questa informazione"),
       }),
       execute: async ({ query, reason }) => {
+        // Il più breve tra 45 secondi e il tempo che resta alla chat: oltre, si prosegue senza ricerca (il catch qui sotto).
+        const timeoutMs = timeUntil(deadline, WEB_SEARCH_TIMEOUT_MS);
+        const abortSignal = AbortSignal.timeout(timeoutMs);
         try {
           const result = await generateText({
             model: anthropic(CLAUDE_MODEL),
-            // Dentro i 120 secondi della chat: oltre, si prosegue senza ricerca (il catch qui sotto).
-            abortSignal: AbortSignal.timeout(WEB_SEARCH_TIMEOUT_MS),
+            abortSignal,
             tools: {
               web_search: anthropic.tools.webSearch_20250305({
                 maxUses: 3,
@@ -51,7 +66,9 @@ export function getWebSearchTool() {
             summary: result.text || "Nessun risultato rilevante trovato.",
           };
         } catch (error) {
-          console.error("[web-search-tool] Error:", error);
+          // Nel log il tempo scaduto, o nome, codice e stato dell'errore: mai la ricerca, che porta parole dell'utente.
+          if (stoppedByDeadline(error, abortSignal)) logClaudeTimeout("web-search-tool", { timeoutMs });
+          else logSafeError("web-search-tool", "ricerca_non_riuscita", error);
           return {
             success: false,
             reason,
