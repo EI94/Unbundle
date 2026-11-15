@@ -54,16 +54,6 @@ export async function POST(req: Request) {
   }
 
   try {
-    // I documenti caricati sono materiale interno dei clienti. `access: "public"`
-    // li metteva su un URL raggiungibile senza autenticazione e — poiche'
-    // addRandomSuffix vale false per default — con un percorso indovinabile a
-    // partire da workspaceId e nome del file. Niente nel prodotto serve il
-    // blobUrl a un browser: viene usato solo per la cancellazione.
-    const blob = await put(`documents/${workspaceId}/${file.name}`, file, {
-      access: "private",
-      addRandomSuffix: true,
-    });
-
     let extractedText = "";
 
     if (file.type === "text/plain" || file.type === "text/csv" || file.type === "text/markdown") {
@@ -92,9 +82,11 @@ export async function POST(req: Request) {
         ],
       });
       // Un rifiuto dei classificatori del modello non è il testo del documento: niente testo
-      // parziale salvato o indicizzato, e chi carica lo sa.
-      if (extraction.finishReason === "content-filter") {
-        logClaudeStop("documents/upload", "pdf_rifiutato", extraction);
+      // parziale salvato o indicizzato, e chi carica lo sa. Lo stesso per una risposta senza
+      // testo (per esempio il limite dei token finito nel ragionamento): mai un documento vuoto.
+      const refused = extraction.finishReason === "content-filter";
+      if (refused || !extraction.text.trim()) {
+        logClaudeStop("documents/upload", refused ? "pdf_rifiutato" : "pdf_senza_testo", extraction);
         return Response.json({ error: "Non riesco a leggere il testo di questo PDF." }, { status: 422 });
       }
       // Oltre il limite dei token resta l'inizio del documento, come prima con il limite dell'SDK.
@@ -103,6 +95,18 @@ export async function POST(req: Request) {
     } else {
       extractedText = `[Documento ${file.type} — testo non estratto automaticamente]`;
     }
+
+    // Il file si salva solo dopo il testo: un PDF che non si legge (422) non lascia un blob senza
+    // documento, che nessuna cancellazione troverebbe.
+    // I documenti caricati sono materiale interno dei clienti. `access: "public"`
+    // li metteva su un URL raggiungibile senza autenticazione e — poiche'
+    // addRandomSuffix vale false per default — con un percorso indovinabile a
+    // partire da workspaceId e nome del file. Niente nel prodotto serve il
+    // blobUrl a un browser: viene usato solo per la cancellazione.
+    const blob = await put(`documents/${workspaceId}/${file.name}`, file, {
+      access: "private",
+      addRandomSuffix: true,
+    });
 
     let summary = "";
     if (extractedText && extractedText.length > 100) {
