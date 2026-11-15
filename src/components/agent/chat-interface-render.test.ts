@@ -42,17 +42,26 @@ function render(messages: ChatUIMessage[], status = "ready") {
 
 const question: ChatUIMessage = { id: "u1", role: "user", parts: [{ type: "text", text: "Preparo le fatture." }] };
 
-test("una risposta rifiutata: l'avviso al posto del testo parziale", () => {
-  const { text } = render([
+test("una risposta rifiutata: l'avviso al posto del testo parziale, e solo i tool finiti prima del rifiuto", () => {
+  const { list, text } = render([
     question,
     {
       id: "a1",
       role: "assistant",
       metadata: { finishReason: "content-filter" },
-      parts: [{ type: "step-start" }, { type: "text", text: "Ecco come si fa: per prima", state: "done" }],
+      parts: [
+        { type: "step-start" },
+        { type: "reasoning", text: "Salvo l'obiettivo «Ridurre i tempi».", state: "done" },
+        { type: "tool-saveStrategicGoal", toolCallId: "t1", state: "output-available", input: {}, output: {} },
+        { type: "step-start" },
+        { type: "reasoning", text: "Preparo i passaggi.", state: "done" },
+        { type: "tool-saveActivity", toolCallId: "t2", state: "input-available", input: {} },
+        { type: "text", text: "Ecco come si fa: per prima", state: "done" },
+      ],
     },
   ]);
-  assert.deepEqual(text, ["Preparo le fatture.", CHAT_REFUSAL_NOTICE]);
+  assert.deepEqual(text, ["Preparo le fatture.", CHAT_REFUSAL_NOTICE, "Obiettivo salvato"]);
+  assert.doesNotMatch(list, /animate-pulse/, "nessun tool che gira per sempre");
 });
 
 test("una risposta: il testo con il grassetto, poi i tool con le loro etichette", () => {

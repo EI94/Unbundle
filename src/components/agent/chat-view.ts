@@ -153,20 +153,30 @@ export type AssistantView =
   | { kind: "refused"; notice: string; progress: ChatProgress[] }
   | { kind: "answer"; text: string; progress: ChatProgress[] };
 
-/** Il tool di una risposta come si mostra: finito (con il risultato o un errore) o in corso, con la sua etichetta. */
+/**
+ * Il tool di una risposta come si mostra: finito (con il risultato, `output-available`, o con un errore, `output-error`:
+ * gli stati di AI SDK 6) o in corso, con la sua etichetta.
+ */
 export function toolChip(part: PartLike): Extract<ChatProgress, { kind: "tool" }> {
   const name = toolNameOf(part);
-  const done = part.state === "output-available" || part.state === "error";
+  const done = part.state === "output-available" || part.state === "output-error";
   const labels = TOOL_LABELS[name];
   return { kind: "tool", label: done ? (labels?.done ?? name) : (labels?.active ?? "Elaboro..."), done };
 }
 
 /**
  * Che cosa la chat mostra di una risposta dell'assistente. Una risposta rifiutata (isRefusedReply) mostra l'avviso al
- * posto del suo testo parziale; le altre il loro testo. Sotto, le note di avanzamento e i tool, nell'ordine.
+ * posto del suo testo parziale e, sotto, solo i tool che hanno finito con un risultato nei passi prima del rifiuto,
+ * così si vede che cosa è stato fatto davvero: niente note, né tool in corso o falliti (quelli del passo rifiutato non
+ * partono, e resterebbero in corso per sempre). Le altre risposte mostrano il loro testo e, sotto, le note di
+ * avanzamento e i tool, nell'ordine.
  */
 export function assistantView(message: MessageLike, hiddenTools: ReadonlySet<string>): AssistantView {
-  const progress = progressItems(message.parts ?? [], hiddenTools).map((item) => (item.kind === "note" ? item : toolChip(item.part)));
-  if (isRefusedReply(message)) return { kind: "refused", notice: CHAT_REFUSAL_NOTICE, progress };
+  const items = progressItems(message.parts ?? [], hiddenTools);
+  if (isRefusedReply(message)) {
+    const completed = items.flatMap((item) => (item.kind === "tool" && item.part.state === "output-available" ? [toolChip(item.part)] : []));
+    return { kind: "refused", notice: CHAT_REFUSAL_NOTICE, progress: completed };
+  }
+  const progress = items.map((item) => (item.kind === "note" ? item : toolChip(item.part)));
   return { kind: "answer", text: messageText(message), progress };
 }

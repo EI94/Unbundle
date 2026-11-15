@@ -159,8 +159,35 @@ test("una risposta ancora senza testo: note e tool nell'ordine, con le etichette
   assert.ok(HIDDEN_TOOLS.has("webSearch"));
 });
 
+test("una risposta rifiutata: l'avviso e solo i tool finiti nei passi prima; niente note, niente tool in corso o falliti", () => {
+  const refusedAfterTools: ChatUIMessage = {
+    id: "r",
+    role: "assistant",
+    metadata: { finishReason: "content-filter" },
+    parts: [
+      { type: "step-start" },
+      { type: "reasoning", text: "Salvo l'obiettivo «Ridurre i tempi»." },
+      { type: "tool-saveStrategicGoal", toolCallId: "t1", state: "output-available", input: { title: "Ridurre i tempi" }, output: { success: true } },
+      { type: "tool-webSearch", toolCallId: "t2", state: "output-available", input: {}, output: {} },
+      { type: "step-start" },
+      { type: "reasoning", text: "Preparo i passaggi per entrare nel gestionale del concorrente." },
+      // Il passo rifiutato: i suoi tool non partono (in attesa per sempre), o hanno un errore (chiamata non valida).
+      { type: "tool-saveActivity", toolCallId: "t3", state: "input-available", input: {} },
+      { type: "tool-linkActivityDependency", toolCallId: "t4", state: "output-error", input: {}, errorText: "Invalid input" },
+      { type: "text", text: "Ecco come si fa: per prima", state: "done" },
+    ],
+  };
+  assert.deepEqual(assistantView(refusedAfterTools, HIDDEN_TOOLS), {
+    kind: "refused",
+    notice: CHAT_REFUSAL_NOTICE,
+    progress: [{ kind: "tool", label: "Obiettivo salvato", done: true }],
+  });
+});
+
 test("l'etichetta di un tool: «fatto» con il risultato, «in corso» prima; senza etichetta, il nome o «Elaboro...»", () => {
   assert.deepEqual(toolChip({ type: "tool-saveActivity", state: "output-available" }), { kind: "tool", label: "Attività salvata", done: true });
+  // Un tool fallito ha finito: non gira più (in AI SDK 6 lo stato è `output-error`).
+  assert.deepEqual(toolChip({ type: "tool-saveActivity", state: "output-error" }), { kind: "tool", label: "Attività salvata", done: true });
   for (const state of ["input-streaming", "input-available"]) {
     assert.deepEqual(toolChip({ type: "tool-saveActivity", state }), { kind: "tool", label: "Salvo l'attività", done: false }, state);
   }
