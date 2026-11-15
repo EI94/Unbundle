@@ -11,13 +11,19 @@ import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { fromResult, ucFailure, ucSectionAvailable, type UcActionResult } from "./uc-action-context";
 
+type WorkspaceAccess = Awaited<ReturnType<typeof requireWorkspaceAccess>>;
+
 /**
  * Il team di Lateral Space del cliente (rilascio 8.1b), dalla pagina «Agent Factory»: aggiungere una persona a tutti i
  * casi del workspace (anche a quelli che si apriranno) o toglierla. Lo fa il manager di Lateral Space del workspace;
  * nei casi lo scrivono i comandi del dossier, con i ruoli di chi agisce (`use-case-workspace-team.ts`).
+ * L'accesso al workspace lo verifica ogni azione per prima cosa (`requireWorkspaceAccess`, la regola di
+ * src/lib/auth/workspace-isolation.test.ts) e lo passa qui, per il resto dei controlli.
  */
-async function guard(workspaceId: string): Promise<{ ok: true; actorUserId: string } | { ok: false; result: UcActionResult<never> }> {
-  const { session, access } = await requireWorkspaceAccess(workspaceId);
+async function guard(
+  workspaceId: string,
+  { session, access }: WorkspaceAccess,
+): Promise<{ ok: true; actorUserId: string } | { ok: false; result: UcActionResult<never> }> {
   if (!isUseCaseHubWorkspace(workspaceId) || process.env.UC_ENABLED !== "true") return { ok: false, result: ucFailure("non_disponibile", "Non disponibile in questo workspace.") };
   const available = await ucSectionAvailable(workspaceId);
   if (!available.ok) return { ok: false, result: available };
@@ -48,7 +54,8 @@ function skippedText(r: TeamApplyResult): string {
 
 /** «Aggiungi a tutti i casi»: e-mail e ruolo. */
 export async function addWorkspaceTeamMemberAction(workspaceId: string, input: unknown): Promise<UcActionResult<{ userId: string }>> {
-  const g = await guard(workspaceId);
+  const workspace = await requireWorkspaceAccess(workspaceId);
+  const g = await guard(workspaceId, workspace);
   if (!g.ok) return g.result;
   const i = (input ?? {}) as Record<string, unknown>;
   try {
@@ -66,7 +73,8 @@ export async function addWorkspaceTeamMemberAction(workspaceId: string, input: u
 
 /** «Togli»: non entra più nei casi nuovi ed esce da quelli aperti dove ha il ruolo del team. */
 export async function removeWorkspaceTeamMemberAction(workspaceId: string, userId: string): Promise<UcActionResult<{ cases: number }>> {
-  const g = await guard(workspaceId);
+  const workspace = await requireWorkspaceAccess(workspaceId);
+  const g = await guard(workspaceId, workspace);
   if (!g.ok) return g.result;
   try {
     const result = await removeWorkspaceTeamMember(await getAppUcExecutor(), { workspaceId, actorUserId: g.actorUserId, userId, lsDomains: ucLsDomains() });
