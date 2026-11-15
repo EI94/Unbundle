@@ -60,6 +60,26 @@ test("U4: chi costruisce da fuori riceve le e-mail di chi costruisce solo se cos
   }
 });
 
+test("U4: a chi costruisce da fuori il piede dice «Email automatica di Unbundle.»; a Lateral Space resta «Email interna di Lateral Space.»", () => {
+  const all = { buildsCase: true, workspaceAck: true, grant: true };
+  const ls: DeliveryFacts = { ...external(all), recipient: { kind: "user", id: USER, email: "leo@ls.test", reachable: true, digestOptOut: false, lateralSpace: true } };
+  const footer = (facts: DeliveryFacts, tpl: string) => {
+    const plan = planDelivery(claimed(tpl), facts, OPTS);
+    assert.equal(plan.action, "send", tpl);
+    if (plan.action !== "send") return "";
+    const email = renderEmail(plan.build(null));
+    assert.ok(email.text.includes("caso d'uso"), `${tpl}: «caso d'uso» nelle e-mail`);
+    // L'ultima riga prima della firma («--»): il piede dell'e-mail.
+    return email.text.split("\n--\n")[0].trim().split("\n").at(-1) ?? "";
+  };
+  for (const tpl of BUILDER_EMAIL_TEMPLATES) {
+    const outside = footer(external(all), tpl);
+    assert.equal(outside, "Email automatica di Unbundle.", tpl);
+    assert.ok(!outside.includes("Lateral Space"), `${tpl}: mai «interna» a chi viene da fuori`);
+    assert.equal(footer(ls, tpl), "Email interna di Lateral Space.", `${tpl}: a Lateral Space come prima`);
+  }
+});
+
 test("U4: mai «da approvare», «modifica richiesta», «domanda proposta», «strumento da approvare» né il riepilogo settimanale", () => {
   const all = { buildsCase: true, workspaceAck: true, grant: true };
   for (const tpl of ["progetto_da_approvare", "strumento_da_approvare", "modifica_richiesta", "domanda_proposta"]) {

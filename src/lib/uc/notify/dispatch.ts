@@ -569,7 +569,7 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       const version = typeof n.payload.version === "number" && n.payload.version > 0 ? n.payload.version : null;
       const tools = typeof n.payload.count === "number" && n.payload.count > 0 ? n.payload.count : 0;
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/casi-duso/${c.id.toLowerCase()}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, version, tools, link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, version, tools, link, external: externalBuilder(recipient) }), after: null };
     }
     case "compito_proposto": {
       // Email interna: una al giorno per caso, senza il testo della proposta (lo legge chi decide, nel progetto).
@@ -578,7 +578,7 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       const useCase = typeof n.payload.useCase === "string" && /^[0-9a-f-]{36}$/i.test(n.payload.useCase) ? n.payload.useCase.toLowerCase() : null;
       if (!useCase) return cancel("use_case_assente");
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: "compito_proposto", link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "compito_proposto", link, external: externalBuilder(recipient) }), after: null };
     }
     case "banco_consiglio": {
       // Email interna: una al giorno per caso. Il ruolo e il modello consigliato vengono dalla coda, controllati con le
@@ -593,7 +593,7 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       // Il nome del catalogo; altrimenti l'e-mail dice «un altro modello» e rimanda al confronto nel progetto. Mai l'id.
       const name = typeof n.payload.label === "string" && NOTICE_MODEL_NAMES.has(n.payload.label) ? n.payload.label : null;
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: "banco_consiglio", role, model: name, link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "banco_consiglio", role, model: name, link, external: externalBuilder(recipient) }), after: null };
     }
     case "evals_in_calo": {
       // Email interna: una al giorno per caso. Sotto soglia, o giù rispetto alle precedenti (con il calo): dalla coda,
@@ -607,7 +607,7 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       const drop = typeof n.payload.drop === "number" && Number.isFinite(n.payload.drop) && n.payload.drop > 0 && n.payload.drop <= 1 ? n.payload.drop : null;
       if (!alert || quality === null || (alert === "in_calo" && drop === null)) return cancel("avviso_assente");
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: "evals_in_calo", alert, quality, drop: alert === "in_calo" ? drop : null, link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "evals_in_calo", alert, quality, drop: alert === "in_calo" ? drop : null, link, external: externalBuilder(recipient) }), after: null };
     }
     case "compito_chiesto":
     case "compito_passato":
@@ -623,7 +623,7 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       if (tpl !== "compiti_pronti" && !ref) return cancel("compito_assente");
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
       const responsabile = tpl === "compito_fermo" && n.payload.responsabile === true;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, ref, link, responsabile }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: tpl, ref, link, responsabile, external: externalBuilder(recipient) }), after: null };
     }
     case "pr_da_rivedere": {
       // Email interna, come quelle dei compiti. Repository e numero vengono dalla coda, controllati.
@@ -636,7 +636,7 @@ export function planDelivery(n: ClaimedNotification, f: DeliveryFacts, o: { orig
       if (!repo || !pr) return cancel("pr_assente");
       const ref = typeof n.payload.ref === "string" && /^T-[1-9][0-9]{0,3}$/.test(n.payload.ref) ? n.payload.ref : null;
       const link = `${o.origin}/dashboard/${n.workspaceId.toLowerCase()}/use-cases/${useCase}/progetto`;
-      return { action: "send", to, link: null, build: () => ({ ...base, template: "pr_da_rivedere", ref, repo, pr, link }), after: null };
+      return { action: "send", to, link: null, build: () => ({ ...base, template: "pr_da_rivedere", ref, repo, pr, link, external: externalBuilder(recipient) }), after: null };
     }
     case "domanda_proposta": {
       // Email interna: una domanda proposta da un coding agent, al responsabile del caso, che la decide in «Cosa serve».
@@ -681,6 +681,11 @@ function builderRecipient(recipient: NonNullable<DeliveryFacts["recipient"]>, f:
   if (!f.builder?.buildsCase) return cancel("destinatario_non_lateral_space");
   if (!f.builder.workspaceAck) return cancel(SUBPROCESSORS_MISSING);
   return null;
+}
+
+/** (8.0c) Un'e-mail di chi costruisce che va a chi costruisce il caso da fuori Lateral Space: il piede non dice «interna». */
+function externalBuilder(recipient: NonNullable<DeliveryFacts["recipient"]>): boolean {
+  return recipient.kind === "user" && !recipient.lateralSpace;
 }
 
 /**

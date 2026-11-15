@@ -28,6 +28,16 @@ interface CaseRef {
   /** Nome del cliente (workspace o organizzazione). */
   clientName: string;
   caseTitle: string;
+  /** (8.0c) Va a chi costruisce il caso da fuori Lateral Space: il piede non dice «interna» (`builderFooter`). */
+  external?: boolean;
+}
+
+/**
+ * (8.0c) Il piede delle e-mail di chi costruisce: a Lateral Space «Email interna di Lateral Space.», come prima; a chi
+ * costruisce il caso da fuori Lateral Space l'e-mail non è interna, e il piede dice solo da dove arriva.
+ */
+function builderFooter(input: { external?: boolean }): Block {
+  return { small: input.external === true ? "Email automatica di Unbundle." : "Email interna di Lateral Space." };
 }
 
 export interface WeeklyCaseSummary {
@@ -344,7 +354,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: `c'è ${k} del pacchetto del caso d'uso «${oneLine(input.caseTitle, 120)}»: la scheda è cambiata.` },
         { p: "Nel repository del caso lo porta «unbundle start». Fino ad allora il coding agent legge il pacchetto di prima." },
         { link: { href: link, label: "Leggi il pacchetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "domanda_proposta": {
@@ -398,7 +408,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: "Buongiorno," },
         ...t.lines.map((p) => ({ p })),
         { link: { href: link, label: "Apri il progetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "pr_da_rivedere": {
@@ -409,7 +419,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: `la pull request #${input.pr} in ${oneLine(input.repo, 140)} ${what}, nel caso d'uso «${oneLine(input.caseTitle, 120)}», è pronta da rivedere.` },
         { p: "La trovi su GitHub; la rivede qualcuno del team che non l'ha scritta. Quando si unisce, il compito è fatto da solo." },
         { link: { href: link, label: "Apri il progetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "compito_proposto": {
@@ -419,7 +429,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: `per il caso d'uso «${oneLine(input.caseTitle, 120)}» è arrivata da GitHub una proposta di compito.` },
         { p: "Da sola non diventa un compito: nei compiti del progetto la accetti (nasce il compito, da prendere) o la scarti." },
         { link: { href: link, label: "Apri il progetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "banco_consiglio": {
@@ -430,7 +440,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
         { p: `per il ruolo «${oneLine(input.role, 40)}» dell'agente del caso d'uso «${oneLine(input.caseTitle, 120)}», il banco di prova ${advice}` },
         { p: "Nel progetto, in «Evals e banco di prova», trovi il confronto (qualità, costo per 1.000 esecuzioni, tempi) e il comando per la pull request di una riga. Il modello lo cambia una persona del team, con la PR." },
         { link: { href: link, label: "Apri il progetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "evals_in_calo": {
@@ -449,7 +459,7 @@ export function renderEmail(input: EmailInput): RenderedEmail {
           p: "Prima di cambiare altro, guarda quali gruppi non passano: nel progetto, in «Evals e banco di prova», ci sono i gruppi e l'andamento; prova per prova con «npm run eval» nel repository del caso.",
         },
         { link: { href: link, label: "Apri il progetto" } },
-        { small: "Email interna di Lateral Space." },
+        builderFooter(input),
       ]);
     }
     case "cli_collegata": {
