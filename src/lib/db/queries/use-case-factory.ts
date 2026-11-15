@@ -32,6 +32,7 @@ import type { BuildSessionInput, CaseRepoInput } from "@/lib/use-cases/cli/input
 import { cast, jsonb, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import type { CaseRole } from "@/lib/uc/vocab";
+import type { FactoryRole } from "@/lib/use-cases/factory/builders";
 import { packageContent, packageFiles, packageFilesHash, packageHash, type PackageSource } from "@/lib/use-cases/factory/package";
 import { withSupersession } from "@/lib/use-cases/factory/decisions";
 import {
@@ -50,8 +51,11 @@ import { BUILDER_ROLES, hasOpenTasksSql, NOBODY, notifyTask, tasksTablesReady } 
 
 // ─── Chi agisce ──────────────────────────────────────────────────────
 
-/** Una persona con i suoi ruoli di caso, oppure uno script di Lateral Space (l'import), con il suo ruolo a parole. */
-export type FactoryActor = { kind: "persona"; userId: string; roles: readonly CaseRole[] } | { kind: "script"; authorRole: string };
+/**
+ * Una persona con i suoi ruoli della fabbrica (quelli del caso, più `builder_esterno` per chi costruisce da fuori), oppure
+ * uno script di Lateral Space (l'import), con il suo ruolo a parole.
+ */
+export type FactoryActor = { kind: "persona"; userId: string; roles: readonly FactoryRole[] } | { kind: "script"; authorRole: string };
 
 /** Lo use case e il workspace su cui si lavora. */
 export interface FactoryTarget {

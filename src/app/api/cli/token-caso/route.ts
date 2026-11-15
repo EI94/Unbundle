@@ -18,7 +18,7 @@ export async function POST(request: Request): Promise<Response> {
   const resolved = await resolveCliCase(opened.value, body.body.caso);
   if (!resolved.ok) return resolved.response;
   const c = resolved.value;
-  if (!canWriteFactory(c.access.roles)) return cliError(403, "permesso_negato", "Il token dell'MCP del caso è per il team di Lateral Space del caso.");
+  if (!canWriteFactory(c.factory.roles)) return cliError(403, "permesso_negato", "Il token dell'MCP del caso è per chi costruisce il caso.");
   const created = await createCaseCliToken(opened.value.executor, opened.value.principal, { useCaseId: c.useCase.id, label: `MCP di ${c.useCase.code}` });
   if (!created.ok) return cliError(403, created.code, created.message);
   return cliJson({ caso: c.useCase.code, token: created.value.token, scade: created.value.expiresAt });

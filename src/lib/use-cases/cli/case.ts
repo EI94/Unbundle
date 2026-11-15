@@ -4,9 +4,11 @@ import "server-only";
  *
  * - `resolveCliCase`: dal codice dello use case (`TJ-0049`) nel workspace del token al suo dossier, con i ruoli nel
  *   caso riletti adesso (`resolveCaseAccess`, come le pagine). Un token di un caso solo vede solo quel caso. Un caso
- *   che la persona non vede risponde come uno che non esiste.
- * - `requireCliWrite`: le scritture vogliono un ruolo che scrive l'Agent Factory, un caso né chiuso né in pausa e
- *   la sezione non in sola lettura, come `onFactory` delle azioni della pagina.
+ *   che la persona non vede risponde come uno che non esiste; un guasto (le tabelle dei dossier che non rispondono)
+ *   risponde 503, mai «non trovato». (8.0c) In più i ruoli della fabbrica (`CliCase.factory`): quelli del caso, più
+ *   `builder_esterno` per chi costruisce il caso da fuori Lateral Space (`loadFactoryAccess`).
+ * - `requireCliWrite`: le scritture vogliono un ruolo della fabbrica che costruisce, un caso né chiuso né in pausa e
+ *   la fabbrica non in sola lettura, come `onFactoryBuild` delle azioni della pagina.
  * - `runCliWrite`: ogni scrittura passa dal registro con la chiave di idempotenza (`use_case_mcp_requests`,
  *   `principal_key` = `cli:<token>`), come il MCP del team: la stessa richiesta ripetuta risponde come la prima,
  *   la stessa chiave con un corpo diverso è un conflitto. Un errore certo libera la chiave; uno incerto la lascia
@@ -27,23 +29,30 @@ import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
 import { logSafeError } from "@/lib/log/safe-error";
 import { cast, toStatement, ucSql } from "@/lib/uc/sql/statement";
 import type { Result } from "@/lib/uc/types";
+import { loadFactoryAccess } from "@/lib/use-cases/factory/access";
+import type { FactoryAccess } from "@/lib/use-cases/factory/builders";
 import { canReadFactory, canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { decideExistingTeamRequest } from "@/lib/use-cases/mcp/idempotency";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { cliError, cliJson, type OpenedCli } from "./route-kit";
+import { CLI_CASE_NOT_FOUND, cliCaseAccessFailure } from "./case-errors";
 
 export interface CliCase {
   useCase: { id: string; code: string; title: string };
   dossierId: string;
+  /** L'accesso al dossier, con i ruoli del caso: per il dossier e per chi approva. */
   access: CaseAccess;
+  /** (8.0c) I ruoli della fabbrica (quelli del caso, più `builder_esterno`), la sola lettura, se costruisce da fuori. */
+  factory: FactoryAccess;
+  /** Chi agisce nella fabbrica: con i ruoli della fabbrica. */
   actor: FactoryActor;
   target: FactoryTarget;
   /** Chi vede «Cosa serve» sulla scheda (`abilitiesForUseCase`): per le esigenze e il pacchetto. */
   canSeeNeeds: boolean;
 }
 
-const NOT_FOUND = "Caso non trovato in questo workspace (o non sei nel suo team).";
+const NOT_FOUND = CLI_CASE_NOT_FOUND;
 
 /** Il caso della richiesta, dal codice dello use case; la risposta d'errore se non si può. */
 export async function resolveCliCase(opened: OpenedCli, ref: unknown): Promise<{ ok: true; value: CliCase } | { ok: false; response: Response }> {
@@ -73,17 +82,23 @@ LIMIT 1`),
   try {
     caseAccess = await resolveCaseAccess({ workspaceId: principal.workspaceId, caseId: String(row.case_id), userId: principal.userId, workspaceRole: access.role });
   } catch (error) {
-    if (error instanceof UcAccessError) return { ok: false, response: cliError(404, "non_trovato", NOT_FOUND) };
+    // Un guasto (le tabelle dei dossier non pronte) non è «caso non trovato»: la CLI deve dire di riprovare.
+    if (error instanceof UcAccessError) {
+      const failure = cliCaseAccessFailure(error.code);
+      return { ok: false, response: cliError(failure.status, failure.code, failure.message, failure.headers) };
+    }
     throw error;
   }
   if (!caseAccess || !canReadFactory(caseAccess.roles)) return { ok: false, response: cliError(404, "non_trovato", NOT_FOUND) };
+  const factory = await loadFactoryAccess(executor, caseAccess);
   return {
     ok: true,
     value: {
       useCase: { id: String(row.id), code: String(row.code ?? code), title: String(row.title ?? "") },
       dossierId: String(row.case_id),
       access: caseAccess,
-      actor: { kind: "persona", userId: principal.userId, roles: caseAccess.roles },
+      factory,
+      actor: { kind: "persona", userId: principal.userId, roles: factory.roles },
       target: { workspaceId: principal.workspaceId, useCaseId: String(row.id) },
       canSeeNeeds: abilities.canSeeNeeds,
     },
@@ -98,12 +113,15 @@ export interface CliFailure {
   retryAfterSeconds?: number;
 }
 
+/** Il rifiuto di una scrittura a chi nel caso non costruisce (lo stesso testo nella CLI del modello 1.5.0). */
+export const CLI_NOT_A_BUILDER = "Nel team del caso non hai un ruolo che costruisce: te lo dà il responsabile del caso.";
+
 /** Perché nel caso non si può scrivere; null se si può. */
 export function cliWriteDenial(c: CliCase): CliFailure | null {
   if (c.access.status === "chiuso") return { status: 409, code: "caso_chiuso", message: "Il caso è chiuso: il progetto si legge soltanto." };
   if (c.access.status === "sospeso") return { status: 409, code: "caso_sospeso", message: "Il caso è in pausa: si riprende da Impostazioni del caso." };
-  if (c.access.readOnly || !canWriteFactory(c.access.roles)) {
-    return { status: 403, code: "permesso_negato", message: "Nel team del caso non hai un ruolo che scrive: serve responsabile, analista o sviluppatore di Lateral Space." };
+  if (c.factory.readOnly || !canWriteFactory(c.factory.roles)) {
+    return { status: 403, code: "permesso_negato", message: CLI_NOT_A_BUILDER };
   }
   return null;
 }

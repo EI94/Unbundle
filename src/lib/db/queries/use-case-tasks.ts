@@ -15,7 +15,7 @@ import { checkLsText } from "@/lib/db/queries/uc-cases";
 import type { FactoryTarget } from "@/lib/db/queries/use-case-factory";
 import { cast, jsonb, raw, toStatement, ucSql, type UcStatement } from "@/lib/uc/sql/statement";
 import { fail, ok, type Result } from "@/lib/uc/types";
-import type { CaseRole } from "@/lib/uc/vocab";
+import type { FactoryRole } from "@/lib/use-cases/factory/builders";
 import { overlappingTasks, planTaskImport, type TaskDraft, type TaskImportPlan, type TaskRow } from "@/lib/use-cases/factory/tasks";
 import { BUILDER_ROLES, hasOpenTasksSql, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
@@ -138,10 +138,10 @@ WHERE id = ${cast(op.id, "uuid")} AND workspace_id = ${ws} AND use_case_id = ${u
 
 // ─── Le azioni sui compiti ───────────────────────────────────────────
 
-/** Chi agisce: la persona e i suoi ruoli nel caso (chi può scrivere lo controlla chi chiama). */
+/** Chi agisce: la persona e i suoi ruoli della fabbrica nel caso (chi può scrivere lo controlla chi chiama). */
 export interface TaskActor {
   userId: string;
-  roles: readonly CaseRole[];
+  roles: readonly FactoryRole[];
 }
 
 const isLead = (a: TaskActor) => a.roles.includes("ls_lead");

@@ -5,7 +5,8 @@ import { cliError, cliJson, openCli } from "@/lib/use-cases/cli/route-kit";
 
 /**
  * `unbundle start <ID>` (rilascio 8.0b): i tre file dell'ultima versione del pacchetto, per `casi/<id>/unbundle/`.
- * Solo al team di Lateral Space del caso, come nella pagina «Progetto dell'agente». Il pacchetto non ha nomi.
+ * Solo a chi costruisce il caso (dalla 8.0c anche da fuori Lateral Space), come nella pagina «Progetto dell'agente». Il
+ * pacchetto non ha nomi.
  */
 export const runtime = "nodejs";
 
@@ -15,7 +16,7 @@ export async function GET(request: Request): Promise<Response> {
   const resolved = await resolveCliCase(opened.value, new URL(request.url).searchParams.get("caso"));
   if (!resolved.ok) return resolved.response;
   const c = resolved.value;
-  if (!canWriteFactory(c.access.roles)) return cliError(403, "permesso_negato", "Il pacchetto lo legge il team di Lateral Space del caso.");
+  if (!canWriteFactory(c.factory.roles)) return cliError(403, "permesso_negato", "Il pacchetto lo legge chi costruisce il caso.");
   const read = await readFactory(opened.value.executor, c.target, c.actor);
   if (!read.ok) return cliError(404, "non_trovato", read.message);
   const latest = read.value.latestPackage;
