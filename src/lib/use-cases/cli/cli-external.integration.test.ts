@@ -769,10 +769,20 @@ test("il responsabile toglie dal dossier la riga osservatore di chi costruisce: 
 
 // ─── Togliere ────────────────────────────────────────────────────────
 
-test("D9: la discesa a Contributore ferma le scritture subito, senza revoca; tornato Analista ricomincia", opts, async () => {
+test("D9: la discesa a Contributore ferma le scritture subito, senza revoca, e il no dice che il ruolo si cambia da Impostazioni › Persone; tornato Analista ricomincia", opts, async () => {
+  const role = "Per costruire serve almeno il ruolo di Analista nel workspace: lo cambia chi gestisce il workspace, da Impostazioni › Persone.";
   await q(`UPDATE workspace_memberships SET role = 'contributor' WHERE workspace_id = $1 AND user_id = $2`, [ids.wsA, ids.e3]);
   const denied = await post("decisioni", tokens.e3!, { caso: "NM-0002", argomento: "Prova", decisione: "Non dovrebbe passare" });
-  assert.deepEqual([denied.status, codeOf(denied)], [403, "permesso_negato"]);
+  assert.deepEqual([denied.status, codeOf(denied), (denied.json.errore as Row | undefined)?.messaggio], [403, "permesso_negato", role]);
+  const ctx = await call("context?caso=NM-0002", { token: tokens.e3 });
+  assert.deepEqual([(ctx.json.dati as Row).scrive, (ctx.json.dati as Row).perche], [false, role], "il contesto lo dice prima di toccare GitHub");
+  for (const path of ["setup?caso=NM-0002", "pacchetto?caso=NM-0002"]) {
+    const r = await call(path, { token: tokens.e3 });
+    assert.deepEqual([r.status, (r.json.errore as Row | undefined)?.messaggio], [403, role], path);
+  }
+  // Un osservatore senza concessione: il no di sempre (un login nuovo: quello di prima l'ha revocato «Togli», in D7).
+  const p = await call("context?caso=NM-0001", { token: await tokenFor("p") });
+  assert.deepEqual([(p.json.dati as Row).scrive, (p.json.dati as Row).perche], [false, "Nel team del caso non hai un ruolo che costruisce: te lo dà il responsabile del caso."]);
   const line = await import("../../db/queries/use-case-factory-line.ts");
   assert.equal(await line.factoryNavVisible(exec, { workspaceId: ids.wsA, userId: ids.e3, lsManager: false, lsDomains: ["ls.test"] }), false, "la voce sparisce");
   await q(`UPDATE workspace_memberships SET role = 'analyst' WHERE workspace_id = $1 AND user_id = $2`, [ids.wsA, ids.e3]);

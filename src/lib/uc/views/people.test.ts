@@ -26,6 +26,8 @@ import {
   personRoleText,
   requestDetailLines,
   requestTimeline,
+  MEMBER_BUILDS_CLIENT_ROLE_TEXT,
+  roleChoicesFor,
   rolesAssignableTo,
   sendButtonText,
   sendGroupText,
@@ -50,6 +52,23 @@ test("Lateral Space and client roles are never offered to the wrong side", () =>
   assert.deepEqual(rolesAssignableTo(true), ["ls_lead", "ls_analista", "ls_sviluppatore", "osservatore"]);
   assert.deepEqual(rolesAssignableTo(false), ["owner_cliente", "approvatore_privacy", "ai_board", "osservatore"]);
   assert.equal(sideLabel(true), "Lateral Space");
+});
+
+test("(8.0c) to someone who builds the case from outside, client roles show switched off, with the reason", () => {
+  const none = new Set<never>();
+  assert.deepEqual(roleChoicesFor(false, none, false), [
+    { role: "owner_cliente", disabled: false },
+    { role: "approvatore_privacy", disabled: false },
+    { role: "ai_board", disabled: false },
+    { role: "osservatore", disabled: false },
+  ]);
+  assert.deepEqual(roleChoicesFor(false, new Set(["osservatore"] as const), true), [
+    { role: "owner_cliente", disabled: true },
+    { role: "approvatore_privacy", disabled: true },
+    { role: "ai_board", disabled: true },
+  ]);
+  assert.deepEqual(roleChoicesFor(true, new Set(["ls_lead"] as const), true).map((c) => c.disabled), [false, false, false], "Lateral Space roles never switch off");
+  assert.equal(MEMBER_BUILDS_CLIENT_ROLE_TEXT, "Costruisce questo caso: non può avere anche un ruolo del cliente.");
 });
 
 test("members are grouped per person, Lateral Space first, emails only when allowed", () => {

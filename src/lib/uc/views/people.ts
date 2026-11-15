@@ -49,6 +49,19 @@ export function rolesAssignableTo(isLateralSpace: boolean): CaseRole[] {
   return isLateralSpace ? [...LS_CASE_ROLES, "osservatore"] : [...CLIENT_CASE_ROLES, "osservatore"];
 }
 
+/** (8.0c) Sotto il modulo, quando la persona scelta costruisce il caso da fuori: perché i ruoli del cliente sono spenti. */
+export const MEMBER_BUILDS_CLIENT_ROLE_TEXT = "Costruisce questo caso: non può avere anche un ruolo del cliente.";
+
+/**
+ * I ruoli da offrire a una persona in «Accesso al caso»: quelli che può avere e non ha già. (8.0c) A chi costruisce il
+ * caso da fuori (`buildsCase`) i ruoli del cliente si vedono spenti: `addCaseMember` li rifiuta (`conflitto_ruoli`).
+ */
+export function roleChoicesFor(isLateralSpace: boolean, held: ReadonlySet<CaseRole>, buildsCase: boolean): { role: CaseRole; disabled: boolean }[] {
+  return rolesAssignableTo(isLateralSpace)
+    .filter((role) => !held.has(role))
+    .map((role) => ({ role, disabled: buildsCase && (CLIENT_CASE_ROLES as readonly CaseRole[]).includes(role) }));
+}
+
 export const CONTACT_CHANNEL_LABEL: Readonly<Record<ContactChannel, string>> = {
   email: "Email",
   whatsapp_manuale: "WhatsApp (link copiato a mano)",

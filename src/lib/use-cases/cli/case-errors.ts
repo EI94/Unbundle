@@ -8,6 +8,17 @@
  */
 
 export const CLI_CASE_NOT_FOUND = "Caso non trovato in questo workspace (o non sei nel suo team).";
+
+/**
+ * (8.0c) A chi costruiva il caso da fuori ed è scesa sotto Analista nel workspace (Contributore): il ruolo nel caso c'è, è
+ * quello nel workspace che manca, e lo cambia chi gestisce il workspace.
+ */
+export const CLI_NEEDS_REVIEWER_ROLE = "Per costruire serve almeno il ruolo di Analista nel workspace: lo cambia chi gestisce il workspace, da Impostazioni › Persone.";
+
+/** Il perché di un no di chi costruisce: con il ruolo nel workspace che manca, quello; altrimenti il testo della porta. */
+export function notBuilderMessage(blocked: string | null, fallback: string): string {
+  return blocked === "ruolo_workspace" ? CLI_NEEDS_REVIEWER_ROLE : fallback;
+}
 export const CLI_CASE_UNAVAILABLE = "Unbundle non risponde per questo caso: riprova tra qualche minuto.";
 
 export interface CliCaseAccessFailure {

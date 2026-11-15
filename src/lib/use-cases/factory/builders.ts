@@ -49,9 +49,11 @@ export interface FactoryCaseAccess {
 /**
  * Perché chi potrebbe costruire il caso da fuori (`mayBeExternalBuilder`) adesso non lo fa, quando non è un no e basta:
  * - `non_disponibile`: la 0037 non è pronta (la sonda è falsa o non risponde) e la persona ha una concessione che copre il
- *   caso, o non si riesce a saperlo. La risposta è «riprova tra qualche minuto» (503), mai «non hai un ruolo» (403).
+ *   caso, o non si riesce a saperlo. La risposta è «riprova tra qualche minuto» (503), mai «non hai un ruolo» (403);
+ * - `ruolo_workspace`: tutto vero tranne il ruolo nel workspace (scesa a Contributore): il 403 dice che si cambia da
+ *   Impostazioni › Persone, non dal team del caso.
  */
-export type ExternalBuilderBlock = "non_disponibile";
+export type ExternalBuilderBlock = "non_disponibile" | "ruolo_workspace";
 
 /** I ruoli della fabbrica di una persona in un caso, e se lì scrive. */
 export interface FactoryAccess {

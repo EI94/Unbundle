@@ -88,9 +88,10 @@ function workspaceRoleSql(workspace: SqlFragment, user: SqlFragment): SqlFragmen
 
 /**
  * Chi è sviluppatore esterno del caso `c` (una riga di `uc_cases`), per la persona `u` (una riga di `users`), adesso.
- * Senza la 0037, o senza domini di Lateral Space, vale `false`.
+ * Senza la 0037, o senza domini di Lateral Space, vale `false`. `anyWorkspaceRole`: tutto il predicato tranne il ruolo
+ * da revisore nel workspace, solo per dire alle porte perché una persona scesa a Contributore non costruisce più.
  */
-export function externalBuilderSql(scope: BuilderScope, aliases: { c?: string; u?: string } = {}): SqlFragment {
+export function externalBuilderSql(scope: BuilderScope, aliases: { c?: string; u?: string } = {}, opts: { anyWorkspaceRole?: boolean } = {}): SqlFragment {
   if (!scope.externalReady || scope.lsDomains.length === 0) return raw("false");
   const caseAlias = aliases.c ?? "c";
   const userAlias = aliases.u ?? "u";
@@ -103,7 +104,7 @@ export function externalBuilderSql(scope: BuilderScope, aliases: { c?: string; u
   AND ${u}.email_verified IS NOT NULL
   AND cardinality(${domains}) > 0
   AND coalesce(lower(substring(btrim(${u}.email) FROM '@([^@]*)$')), '') <> ALL (${domains})
-  AND ${workspaceRoleSql(ref(`${caseAlias}.workspace_id`), ref(`${userAlias}.id`))} IN (${REVIEWER_ROLES_SQL}))`;
+  AND ${opts.anyWorkspaceRole ? raw("true") : ucSql`${workspaceRoleSql(ref(`${caseAlias}.workspace_id`), ref(`${userAlias}.id`))} IN (${REVIEWER_ROLES_SQL})`})`;
 }
 
 /** È sviluppatore esterno di questo caso, adesso? Falso senza la 0037 o senza domini di Lateral Space. */
@@ -131,9 +132,12 @@ export async function externalBuilderGate(
   }
   const scope: BuilderScope = { lsDomains: [...i.lsDomains], externalReady: true };
   const [rows] = await executor.batch([
-    toStatement(ucSql`SELECT ${externalBuilderSql(scope)} AS ok FROM uc_cases c JOIN users u ON u.id = ${cast(i.userId, "uuid")} WHERE c.id = ${cast(i.caseId, "uuid")}`),
+    toStatement(ucSql`SELECT ${externalBuilderSql(scope)} AS ok, ${externalBuilderSql(scope, {}, { anyWorkspaceRole: true })} AS but_role
+FROM uc_cases c JOIN users u ON u.id = ${cast(i.userId, "uuid")} WHERE c.id = ${cast(i.caseId, "uuid")}`),
   ]);
-  return { builds: rows[0]?.ok === true, blocked: null };
+  if (rows[0]?.ok === true) return { builds: true, blocked: null };
+  // Tutto vero tranne il ruolo nel workspace: le porte dicono che si cambia da Impostazioni › Persone.
+  return { builds: false, blocked: rows[0]?.but_role === true ? "ruolo_workspace" : null };
 }
 
 /**

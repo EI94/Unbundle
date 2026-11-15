@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  BLOCKED_CANDIDATE_NOTE,
+  builderCandidateGroups,
   builderStateText,
   builderWhereText,
   EXTERNAL_ROLE_HINT,
@@ -122,4 +124,26 @@ test("i testi di «Chi costruisce» non dicono il genere della persona: niente �
     assert.doesNotMatch(text, /\b(uscit|aggiunt|tolt|entrat|invitat)[ao]\b/i, text);
     assert.doesNotMatch(text, /\b(uno sviluppatore|un collaboratore|collaboratore del|osservatrice)\b/i, text);
   }
+});
+
+test("«Persona»: chi da fuori oggi «Aggiungi» rifiuterebbe c'è, ma spento, con il perché; Lateral Space e gli esterni che possono costruire si scelgono", () => {
+  const groups = builderCandidateGroups([
+    { userId: "c", name: "Carla Contributore", isLateralSpace: false, blocked: "ruolo_workspace" },
+    { userId: "e", name: "Ettore Esterno", isLateralSpace: false, blocked: null },
+    { userId: "u", name: "Ugo Da Verificare", isLateralSpace: false, blocked: "email_non_verificata" },
+    { userId: "l", name: "Leo Lateral", isLateralSpace: true, blocked: null },
+  ]);
+  assert.deepEqual(groups, [
+    { label: "Lateral Space", options: [{ value: "l", label: "Leo Lateral" }] },
+    {
+      label: "Esterni",
+      options: [
+        { value: "c", label: "Carla Contributore", disabled: true, note: "serve il ruolo di Analista" },
+        { value: "e", label: "Ettore Esterno" },
+        { value: "u", label: "Ugo Da Verificare", disabled: true, note: "serve l'e-mail verificata" },
+      ],
+    },
+  ]);
+  assert.deepEqual(builderCandidateGroups([{ userId: "x", name: "Xenia", isLateralSpace: false, blocked: "altro" }])[0].options[0].note, "non può costruire");
+  assert.deepEqual(Object.keys(BLOCKED_CANDIDATE_NOTE).sort(), ["di_lateral_space", "email_non_verificata", "non_collaboratore", "ruolo_workspace"]);
 });

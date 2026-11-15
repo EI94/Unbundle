@@ -10,10 +10,11 @@ import { addMemberAction, removeMemberAction } from "@/lib/actions/uc-cases";
 import {
   CASE_ROLE_HINT,
   CASE_ROLE_LABEL,
+  MEMBER_BUILDS_CLIENT_ROLE_TEXT,
   MEMBER_BUILDS_LABEL,
   MEMBER_BUILDS_REMOVE_TEXT,
   PERSONAL_ZONE_MEMBER_LABEL,
-  rolesAssignableTo,
+  roleChoicesFor,
   sideLabel,
   type MemberView,
 } from "@/lib/uc/views/people";
@@ -57,7 +58,10 @@ export function MembersPanel({
   const [removing, setRemoving] = useState<{ member: MemberView; role: CaseRole } | null>(null);
   const candidate = candidates.find((c) => c.userId === userId) ?? null;
   const held = useMemo(() => new Set(members.find((m) => m.userId === userId)?.roles ?? []), [members, userId]);
-  const roleOptions = candidate ? rolesAssignableTo(candidate.isLateralSpace).filter((r) => !held.has(r)) : [];
+  // (8.0c) Chi costruisce il caso da fuori: i ruoli del cliente si vedono spenti, con il perché sotto.
+  const buildsHere = candidate !== null && builderIds.includes(candidate.userId.toLowerCase());
+  const roleChoices = candidate ? roleChoicesFor(candidate.isLateralSpace, held, buildsHere) : [];
+  const roleOptions = roleChoices.filter((c) => !c.disabled).map((c) => c.role);
   const sorted = [...candidates].sort((a, b) => a.name.localeCompare(b.name, "it"));
   const builds = (member: MemberView, role: CaseRole) => role === "osservatore" && builderIds.includes(member.userId.toLowerCase());
   const roleText = (member: MemberView, role: CaseRole) => (builds(member, role) ? MEMBER_BUILDS_LABEL : CASE_ROLE_LABEL[role]);
@@ -140,7 +144,7 @@ export function MembersPanel({
               placeholder="Scegli"
               disabled={!candidate}
               onChange={(v) => setRole((roleOptions as string[]).includes(v) ? (v as CaseRole) : "")}
-              groups={[{ options: roleOptions.map((r) => ({ value: r, label: CASE_ROLE_LABEL[r] })) }]}
+              groups={[{ options: roleChoices.map((c) => ({ value: c.role, label: CASE_ROLE_LABEL[c.role], disabled: c.disabled })) }]}
             />
           </div>
           <Button type="submit" className="min-h-11 sm:min-h-8" disabled={!userId || !role || pending}>
@@ -148,6 +152,7 @@ export function MembersPanel({
             Aggiungi
           </Button>
           {role && <p className="text-xs text-muted-foreground @lg:col-span-3">{CASE_ROLE_HINT[role]}</p>}
+          {roleChoices.some((c) => c.disabled) && <p className="text-xs text-muted-foreground @lg:col-span-3">{MEMBER_BUILDS_CLIENT_ROLE_TEXT}</p>}
         </form>
       )}
 

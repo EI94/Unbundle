@@ -303,6 +303,20 @@ function externalRefusal(p: PersonFacts | undefined): ExternalRefusal | null {
   return null;
 }
 
+/**
+ * (8.0c) Per l'elenco di «Persona» in «Chi costruisce»: chi tra le persone da fuori oggi «Aggiungi» rifiuterebbe, e
+ * perché, con gli stessi controlli (`externalRefusal`). Così non si offre una scelta per poi rifiutarla.
+ */
+export async function externalRefusals(executor: UcExecutor, workspaceId: string, userIds: readonly string[], lsDomains: readonly string[]): Promise<Map<string, ExternalRefusal>> {
+  const facts = await personFacts(executor, workspaceId, userIds, lsDomains);
+  const out = new Map<string, ExternalRefusal>();
+  for (const userId of userIds) {
+    const refusal = externalRefusal(facts.get(userId));
+    if (refusal) out.set(userId, refusal);
+  }
+  return out;
+}
+
 const EXTERNAL_REFUSAL_MESSAGE: Readonly<Record<ExternalRefusal, string>> = {
   non_collaboratore: "Questa persona non fa parte del workspace: invitala prima, da Impostazioni › Persone, come Analista.",
   email_non_verificata: "Prima deve confermare la sua e-mail in Unbundle.",

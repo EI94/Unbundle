@@ -37,7 +37,7 @@ import { decideExistingTeamRequest } from "@/lib/use-cases/mcp/idempotency";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { cliError, cliJson, type OpenedCli } from "./route-kit";
-import { CLI_CASE_NOT_FOUND, CLI_CASE_UNAVAILABLE, cliCaseAccessFailure } from "./case-errors";
+import { CLI_CASE_NOT_FOUND, CLI_CASE_UNAVAILABLE, cliCaseAccessFailure, notBuilderMessage } from "./case-errors";
 
 export interface CliCase {
   useCase: { id: string; code: string; title: string };
@@ -125,7 +125,7 @@ export function cliWriteDenial(c: CliCase): CliFailure | null {
   if (c.access.status === "sospeso") return { status: 409, code: "caso_sospeso", message: "Il caso è in pausa: si riprende da Impostazioni del caso." };
   if (c.factory.blocked === "non_disponibile") return { status: 503, code: "non_disponibile", message: CLI_CASE_UNAVAILABLE, retryAfterSeconds: 60 };
   if (c.factory.readOnly || !canWriteFactory(c.factory.roles)) {
-    return { status: 403, code: "permesso_negato", message: CLI_NOT_A_BUILDER };
+    return { status: 403, code: "permesso_negato", message: notBuilderMessage(c.factory.blocked, CLI_NOT_A_BUILDER) };
   }
   return null;
 }

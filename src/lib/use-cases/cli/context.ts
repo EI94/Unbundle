@@ -10,7 +10,8 @@ import { tasksBriefLine } from "@/lib/use-cases/factory/tasks";
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { composeBrief, composeDecisionsLayer, composePackageLayer, composeProjectLayer, composeQuestionsLayer, nextStep, type ContextLayer } from "./brief";
-import type { CliCase } from "./case";
+import { CLI_NOT_A_BUILDER, type CliCase } from "./case";
+import { notBuilderMessage } from "./case-errors";
 
 export { CONTEXT_LAYERS, type ContextLayer } from "./brief";
 
@@ -32,6 +33,11 @@ export interface CliContext {
      * decide da qui, non dall'elenco dei ruoli. Lo stato del caso (chiuso, in pausa) resta a parte, in `dossier`.
      */
     scrive: boolean;
+    /**
+     * (8.0c) Con `scrive` falso, il perché, lo stesso testo del 403 di una scrittura: la CLI del modello 1.5.0 lo dice prima
+     * di toccare GitHub (per chi è scesa a Contributore: il ruolo si cambia da Impostazioni › Persone). Senza, null.
+     */
+    perche: string | null;
   };
 }
 
@@ -72,6 +78,7 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
             ? composeQuestionsLayer({ code: c.useCase.code, openNeeds: extras.openNeeds, proposals: extras.proposals, namesToHide: names })
             : composeBrief(base);
   const project = view.open ?? view.approved;
+  const scrive = !c.factory.readOnly && canWriteFactory(c.factory.roles);
   return {
     testo,
     dati: {
@@ -83,7 +90,8 @@ export async function loadCliContext(executor: UcExecutor, c: CliCase, input: { 
       repository: extras.repos,
       compiti: tasks.map((t) => ({ ref: t.ref, stato: t.status, tuo: t.holderUserId !== null && t.holderUserId === viewerId })),
       ruoli: c.factory.roles,
-      scrive: !c.factory.readOnly && canWriteFactory(c.factory.roles),
+      scrive,
+      perche: scrive ? null : notBuilderMessage(c.factory.blocked, CLI_NOT_A_BUILDER),
     },
   };
 }

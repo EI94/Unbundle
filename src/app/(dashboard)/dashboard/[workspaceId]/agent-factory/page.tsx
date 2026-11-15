@@ -15,7 +15,7 @@ import { AGENT_FACTORY_TEMPLATE_VERSION, benchFacts, compareVersions, evalsFact,
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
-import { listBuilders, listWhereChoices, type BuilderRow } from "@/lib/db/queries/use-case-workspace-team";
+import { externalRefusals, listBuilders, listWhereChoices, type BuilderRow } from "@/lib/db/queries/use-case-workspace-team";
 import { loadMemberCandidates } from "@/lib/db/queries/uc-shell";
 import { ROLE_LABEL } from "@/lib/uc/views/labels";
 import { builderStateText, builderWhereText, externalRemoveConfirm } from "@/lib/use-cases/factory/builders-text";
@@ -153,6 +153,15 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
   const [builders, candidates, choices] = lsManager
     ? await Promise.all([listBuilders(executor, workspaceId, lsDomains), loadMemberCandidates(executor, { workspaceId, lsDomains }), listWhereChoices(executor, workspaceId)])
     : [null, [], []];
+  // (8.0c) Chi da fuori oggi «Aggiungi» rifiuterebbe (Contributore, e-mail da verificare): si vede, non si sceglie.
+  const refused = lsManager
+    ? await externalRefusals(
+        executor,
+        workspaceId,
+        candidates.filter((c) => !c.isLateralSpace).map((c) => c.userId),
+        lsDomains,
+      )
+    : new Map<string, string>();
   const counts = STATIONS.map((station) => ({ station, n: view.cases.filter((c) => c.station === station).length }));
 
   return (
@@ -249,7 +258,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
             )}
             <AddBuilder
               workspaceId={workspaceId}
-              candidates={candidates.map((c) => ({ userId: c.userId, name: c.name, isLateralSpace: c.isLateralSpace }))}
+              candidates={candidates.map((c) => ({ userId: c.userId, name: c.name, isLateralSpace: c.isLateralSpace, blocked: c.isLateralSpace ? null : (refused.get(c.userId) ?? null) }))}
               choices={choices}
             />
           </SettingsSection>

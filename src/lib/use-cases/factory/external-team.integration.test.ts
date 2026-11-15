@@ -184,6 +184,20 @@ test("D10: le aggiunte rifiutate: e-mail non verificata, Lateral Space come este
   assert.deepEqual(await add("e", []).then((r) => !r.ok && r.code), "dati_non_validi");
 });
 
+test("«Persona» in «Chi costruisce»: chi «Aggiungi» rifiuterebbe è segnato con il perché, con gli stessi controlli", opts, async () => {
+  const candidates = ["e", "e2", "unverified", "contributor", "fresh"] as const;
+  const refused = await team.externalRefusals(exec, ids.ws, candidates.map((p) => ids[p]), LS);
+  assert.deepEqual(
+    Object.fromEntries(candidates.map((p) => [p, refused.get(ids[p]) ?? null])),
+    { e: null, e2: null, unverified: "email_non_verificata", contributor: "ruolo_workspace", fresh: null },
+  );
+  // Gli stessi di «Aggiungi»: chi è segnato è rifiutato con quel codice.
+  for (const person of ["unverified", "contributor"] as const) {
+    const r = await add(person, "tutti");
+    assert.deepEqual([r.ok, !r.ok && r.code], [false, refused.get(ids[person])], person);
+  }
+});
+
 test("«Aggiungi» in tutti i casi: entra nei dossier aperti dove chi agisce è responsabile; gli altri si dicono; i chiusi no", opts, async () => {
   const r = await add("e", "tutti");
   assert.ok(r.ok, r.ok ? "" : r.message);

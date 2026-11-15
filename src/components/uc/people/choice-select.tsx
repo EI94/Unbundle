@@ -11,6 +11,10 @@ import { cn } from "@/lib/utils";
 export interface ChoiceOption {
   value: string;
   label: string;
+  /** (8.0c) Si vede ma non si sceglie: chi o che cosa il server rifiuterebbe. */
+  disabled?: boolean;
+  /** (8.0c) Il perché, sotto l'etichetta, in piccolo («serve il ruolo di Analista»). */
+  note?: string;
 }
 
 export interface ChoiceGroup {
@@ -19,6 +23,17 @@ export interface ChoiceGroup {
 }
 
 const NONE = "__nessuno__";
+
+/** L'etichetta, e sotto il perché (va a capo nella larghezza del menu, anche a 390 px). */
+function OptionText({ option }: { option: ChoiceOption }) {
+  if (!option.note) return <>{option.label}</>;
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span>{option.label}</span>
+      <span className="text-xs whitespace-normal text-muted-foreground">{option.note}</span>
+    </span>
+  );
+}
 
 export function ChoiceSelect({
   id,
@@ -53,15 +68,15 @@ export function ChoiceSelect({
             <SelectGroup key={g.label}>
               <SelectLabel>{g.label}</SelectLabel>
               {g.options.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
+                <SelectItem key={o.value} value={o.value} disabled={o.disabled}>
+                  <OptionText option={o} />
                 </SelectItem>
               ))}
             </SelectGroup>
           ) : (
             g.options.map((o) => (
-              <SelectItem key={`${i}-${o.value}`} value={o.value}>
-                {o.label}
+              <SelectItem key={`${i}-${o.value}`} value={o.value} disabled={o.disabled}>
+                <OptionText option={o} />
               </SelectItem>
             ))
           ),

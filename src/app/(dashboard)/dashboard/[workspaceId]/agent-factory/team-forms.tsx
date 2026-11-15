@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { ChoiceSelect } from "@/components/uc/people/choice-select";
 import { useUcAction } from "@/components/uc/catalog/use-uc-action";
 import { addBuilderAction, removeBuilderAction } from "@/lib/actions/use-case-workspace-team";
-import { EXTERNAL_ROLE_HINT } from "@/lib/use-cases/factory/builders-text";
+import { builderCandidateGroups, EXTERNAL_ROLE_HINT, type BuilderCandidateView } from "@/lib/use-cases/factory/builders-text";
 
 const LS_ROLES = [
   { value: "ls_sviluppatore", label: "Sviluppatore" },
@@ -17,11 +17,8 @@ const LS_ROLES = [
 ] as const;
 const EXTERNAL_ROLE = { value: "builder_esterno", label: "Sviluppatore esterno" } as const;
 
-export interface BuilderCandidate {
-  userId: string;
-  name: string;
-  isLateralSpace: boolean;
-}
+/** Una persona tra cui scegliere; `blocked`: perché da fuori oggi non può costruire (si vede, non si sceglie). */
+export type BuilderCandidate = BuilderCandidateView;
 
 export interface WhereChoice {
   useCaseId: string;
@@ -39,10 +36,9 @@ export function AddBuilder({ workspaceId, candidates, choices }: { workspaceId: 
   const [role, setRole] = useState("");
   const [where, setWhere] = useState<"tutti" | "alcuni">("tutti");
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
-  const candidate = candidates.find((c) => c.userId === userId) ?? null;
+  const candidate = candidates.find((c) => c.userId === userId && !c.blocked) ?? null;
   const external = candidate !== null && !candidate.isLateralSpace;
   const roles = external ? [EXTERNAL_ROLE] : LS_ROLES;
-  const sorted = [...candidates].sort((a, b) => a.name.localeCompare(b.name, "it"));
   const ready = Boolean(candidate && role && (!external || where === "tutti" || picked.size > 0));
 
   return (
@@ -71,14 +67,11 @@ export function AddBuilder({ workspaceId, candidates, choices }: { workspaceId: 
             value={userId}
             placeholder="Scegli"
             onChange={(v) => {
-              setUserId(v);
-              const next = candidates.find((c) => c.userId === v);
+              const next = candidates.find((c) => c.userId === v && !c.blocked);
+              setUserId(next ? v : "");
               setRole(next ? (next.isLateralSpace ? "ls_sviluppatore" : EXTERNAL_ROLE.value) : "");
             }}
-            groups={[
-              { label: "Lateral Space", options: sorted.filter((c) => c.isLateralSpace).map((c) => ({ value: c.userId, label: c.name })) },
-              { label: "Esterni", options: sorted.filter((c) => !c.isLateralSpace).map((c) => ({ value: c.userId, label: c.name })) },
-            ].filter((g) => g.options.length > 0)}
+            groups={builderCandidateGroups(candidates)}
           />
           <p className="text-xs text-muted-foreground">Non la trovi? Invitala prima nel workspace, da Impostazioni › Persone, come Analista.</p>
         </div>

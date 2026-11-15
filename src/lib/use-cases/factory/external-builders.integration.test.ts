@@ -256,6 +256,14 @@ test("D1: il predicato dice sì solo con tutti i fatti veri, e le porte e gli el
   // Il ruolo si rilegge ogni volta: E sceso a Contributore smette subito, tornato Analista ricomincia.
   await q(`UPDATE workspace_memberships SET role = 'contributor' WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.e]);
   assert.equal(await builders.isExternalBuilderOfCase(exec, { caseId: ids.caseA, userId: ids.e, lsDomains: LS }), false);
+  // Alle porte il perché: manca solo il ruolo nel workspace. Agli altri no e basta.
+  assert.deepEqual(await builders.externalBuilderGate(exec, { caseId: ids.caseA, userId: ids.e, lsDomains: LS }), { builds: false, blocked: "ruolo_workspace" });
+  for (const person of ["c", "orgcontrib"] as const) {
+    assert.deepEqual(await builders.externalBuilderGate(exec, { caseId: ids.caseA, userId: ids[person], lsDomains: LS }), { builds: false, blocked: "ruolo_workspace" }, person);
+  }
+  for (const person of ["p", "e2", "norow", "client", "unverified", "lsdomain"] as const) {
+    assert.deepEqual(await builders.externalBuilderGate(exec, { caseId: ids.caseA, userId: ids[person], lsDomains: LS }), { builds: false, blocked: null }, person);
+  }
   await q(`UPDATE workspace_memberships SET role = 'analyst' WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.e]);
   assert.equal(await builders.isExternalBuilderOfCase(exec, { caseId: ids.caseA, userId: ids.e, lsDomains: LS }), true);
 });

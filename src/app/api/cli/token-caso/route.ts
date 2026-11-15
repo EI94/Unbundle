@@ -2,6 +2,7 @@ import { createCaseCliToken } from "@/lib/db/queries/use-case-cli-auth";
 import { resolveCliCase } from "@/lib/use-cases/cli/case";
 import { cliError, cliJson, openCli, readCliBody } from "@/lib/use-cases/cli/route-kit";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
+import { notBuilderMessage } from "@/lib/use-cases/cli/case-errors";
 
 /**
  * `unbundle mcp <ID>` (rilascio 8.0b): un token di un caso solo, per la configurazione MCP di un coding agent. Se
@@ -18,7 +19,7 @@ export async function POST(request: Request): Promise<Response> {
   const resolved = await resolveCliCase(opened.value, body.body.caso);
   if (!resolved.ok) return resolved.response;
   const c = resolved.value;
-  if (!canWriteFactory(c.factory.roles)) return cliError(403, "permesso_negato", "Il token dell'MCP del caso è per chi costruisce il caso.");
+  if (!canWriteFactory(c.factory.roles)) return cliError(403, "permesso_negato", notBuilderMessage(c.factory.blocked, "Il token dell'MCP del caso è per chi costruisce il caso."));
   const created = await createCaseCliToken(opened.value.executor, opened.value.principal, { useCaseId: c.useCase.id, label: `MCP di ${c.useCase.code}` });
   if (!created.ok) return cliError(403, created.code, created.message);
   return cliJson({ caso: c.useCase.code, token: created.value.token, scade: created.value.expiresAt });

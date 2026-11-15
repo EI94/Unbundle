@@ -5,6 +5,7 @@ import { SETUP_GUIDE } from "@/lib/use-cases/cli/brief";
 import { requireCliWrite, resolveCliCase, runCliWrite } from "@/lib/use-cases/cli/case";
 import { canWriteFactory } from "@/lib/use-cases/factory/permissions";
 import { cliError, cliJson, openCli, readCliBody } from "@/lib/use-cases/cli/route-kit";
+import { notBuilderMessage } from "@/lib/use-cases/cli/case-errors";
 
 /**
  * `unbundle setup <ID>` (rilascio 8.0b, standard §3): l'impostazione guidata. La guida sta in Unbundle, la skill
@@ -25,7 +26,7 @@ export async function GET(request: Request): Promise<Response> {
   const resolved = await resolveCliCase(opened.value, new URL(request.url).searchParams.get("caso"));
   if (!resolved.ok) return resolved.response;
   const c = resolved.value;
-  if (!canWriteFactory(c.factory.roles)) return cliError(403, "permesso_negato", "La guida dell'impostazione è per chi costruisce il caso.");
+  if (!canWriteFactory(c.factory.roles)) return cliError(403, "permesso_negato", notBuilderMessage(c.factory.blocked, "La guida dell'impostazione è per chi costruisce il caso."));
   const { executor, principal } = opened.value;
   const read = await readFactory(executor, c.target, c.actor);
   if (!read.ok) return cliError(404, "non_trovato", read.message);

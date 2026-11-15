@@ -118,6 +118,36 @@ export function builderStateText(i: { cli: boolean; blocked: string | null }): s
   return i.cli ? "CLI collegata" : "CLI da collegare";
 }
 
+/** Accanto al nome nell'elenco di «Persona»: perché da fuori oggi non può costruire (non si sceglie). */
+export const BLOCKED_CANDIDATE_NOTE: Readonly<Record<string, string>> = {
+  ruolo_workspace: "serve il ruolo di Analista",
+  email_non_verificata: "serve l'e-mail verificata",
+  di_lateral_space: "è di Lateral Space",
+  non_collaboratore: "non fa parte del workspace",
+};
+
+/** Una persona dell'elenco di «Persona», con il perché da fuori oggi non può costruire (null se può, o se è di Lateral Space). */
+export interface BuilderCandidateView {
+  userId: string;
+  name: string;
+  isLateralSpace: boolean;
+  blocked: string | null;
+}
+
+/**
+ * I gruppi di «Persona» in «Chi costruisce»: «Lateral Space» ed «Esterni», per nome. Chi da fuori oggi non può costruire
+ * (Contributore, e-mail da verificare) c'è, ma non si sceglie, con il perché: «Aggiungi» lo rifiuterebbe.
+ */
+export function builderCandidateGroups(candidates: readonly BuilderCandidateView[]): { label: string; options: { value: string; label: string; disabled?: boolean; note?: string }[] }[] {
+  const sorted = [...candidates].sort((a, b) => a.name.localeCompare(b.name, "it"));
+  const option = (c: BuilderCandidateView) =>
+    c.blocked ? { value: c.userId, label: c.name, disabled: true, note: BLOCKED_CANDIDATE_NOTE[c.blocked] ?? "non può costruire" } : { value: c.userId, label: c.name };
+  return [
+    { label: "Lateral Space", options: sorted.filter((c) => c.isLateralSpace).map(option) },
+    { label: "Esterni", options: sorted.filter((c) => !c.isLateralSpace).map(option) },
+  ].filter((g) => g.options.length > 0);
+}
+
 /** «tutti i casi», oppure i codici dei casi scelti (al massimo 3, poi quanti altri). */
 export function builderWhereText(where: BuilderWhere, codes: readonly string[]): string {
   if (where.all) return "tutti i casi";
