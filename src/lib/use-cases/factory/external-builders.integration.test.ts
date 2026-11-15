@@ -275,3 +275,64 @@ test("il team del dossier sa chi ha una concessione che copre il caso («Osserva
   assert.ok((await builders.caseGrantUserIds(exec, ids.caseB)).includes(ids.e2));
   assert.deepEqual(await builders.caseGrantUserIds({ batch: async () => [[{ ready: false }]] } as unknown as typeof exec, ids.caseA), [], "senza la 0037");
 });
+
+test("D8: fuori dalla fabbrica non cambia niente: con e senza concessione, per ogni ruolo del workspace, le stesse abilità sugli use case, l'ok ai sub-responsabili, «Avvia la realizzazione», l'MCP del team e la voce «Casi d'uso»", opts, async () => {
+  const { abilitiesForUseCase } = await import("../permissions.ts");
+  const { viewerFromSession } = await import("../../db/queries/use-case-hub.ts");
+  const { subprocessorDeclarerOf } = await import("../../uc/legal/subprocessors.ts");
+  const { getUcUserContext } = await import("../../db/queries/uc-access.ts");
+  const { portfolioCaseLink, ucCasesNavVisible } = await import("../../db/queries/uc-nav.ts");
+  const { authenticateTeamRequest, TEAM_MCP_READ_SCOPE } = await import("../mcp/auth.ts");
+  const { appTeamAuthDeps } = await import("../mcp/app-deps.ts");
+  const env = { UC_ENABLED: process.env.UC_ENABLED, UC_WORKSPACE_IDS: process.env.UC_WORKSPACE_IDS };
+  process.env.UC_ENABLED = "true";
+  process.env.UC_WORKSPACE_IDS = ids.ws;
+  // Uno use case senza dossier, per «Avvia la realizzazione».
+  const ucC = randomUUID();
+  await q(`INSERT INTO use_cases (id, workspace_id, title, code) VALUES ($1, $2, 'Caso C di prova, senza dossier', 'NX-0003')`, [ucC, ids.ws]);
+  // L'MCP del team: il token è finto, il ruolo e il profilo di E sono quelli del database (le dipendenze dell'app).
+  const token = `ub_team_${randomBytes(24).toString("base64url")}`;
+  const deps = { ...appTeamAuthDeps, findToken: async () => ({ id: randomUUID(), workspaceId: ids.ws, ownerUserId: ids.e, scopes: [TEAM_MCP_READ_SCOPE] }), markUsed: async () => {} };
+  const user = { id: ids.e, email: EMAIL.e, emailVerified: true };
+  const facts = async (role: string) => {
+    const team = await authenticateTeamRequest(`Bearer ${token}`, deps);
+    return {
+      abilities: abilitiesForUseCase(viewerFromSession(user, role)),
+      declarer: subprocessorDeclarerOf(await getUcUserContext(ids.e), role, LS),
+      dossier: await portfolioCaseLink({ userId: ids.e, workspaceId: ids.ws, role, useCaseId: ids.ucA, useCaseStatus: "accepted" }),
+      start: await portfolioCaseLink({ userId: ids.e, workspaceId: ids.ws, role, useCaseId: ucC, useCaseStatus: "accepted" }),
+      teamMcp: team.ok ? { ok: true, abilities: team.principal.abilities } : team,
+      casesNav: await ucCasesNavVisible({ userId: ids.e, workspaceId: ids.ws, role }),
+    };
+  };
+  const removeGrant = () => q(`DELETE FROM use_case_external_builders WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.e]);
+  try {
+    for (const role of ["exec_sponsor", "transformation_lead", "function_lead", "analyst", "contributor", "learner"]) {
+      await q(`UPDATE workspace_memberships SET role = $3::member_role WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.e, role]);
+      const withGrant = await facts(role);
+      await removeGrant();
+      const withoutGrant = await facts(role);
+      await grant("e", null);
+      assert.deepEqual(withoutGrant, withGrant, role);
+      // I fatti non sono vuoti: la prova confronta qualcosa.
+      if (role === "analyst") {
+        assert.equal(withGrant.teamMcp.ok, true);
+        assert.equal(withGrant.dossier?.existing?.id, ids.caseA);
+        assert.equal(withGrant.start?.canStart, false, "«Avvia la realizzazione» resta di Lateral Space");
+        assert.equal(withGrant.abilities.canStartRealization, false);
+        assert.equal(withGrant.casesNav, true, "è nel team del dossier A");
+      }
+      if (role === "exec_sponsor") assert.equal(withGrant.declarer, "cliente");
+      if (role === "learner") assert.deepEqual([withGrant.casesNav, withGrant.teamMcp.ok], [false, false]);
+    }
+  } finally {
+    await removeGrant();
+    await grant("e", null);
+    await q(`UPDATE workspace_memberships SET role = 'analyst'::member_role WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.e]);
+    await q(`DELETE FROM use_cases WHERE id = $1`, [ucC]);
+    for (const [key, value] of Object.entries(env)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
