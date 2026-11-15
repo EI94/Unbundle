@@ -166,9 +166,11 @@ test("un rifiuto nel passo di una chiamata di tool non valida: il giro si ferma 
 test("una risposta normale: salvata e messa nella memoria con la domanda; il browser riceve «stop» (controllo)", async (t) => {
   recordLogs(t);
   reset();
-  fakeAppClaude([sse([ev.start("msg_1"), ...ev.thinking(0, "firma-A"), ...ev.text(1, "Ogni quanto le prepari?"), ...ev.end("end_turn")])]);
+  const requests = fakeAppClaude([sse([ev.start("msg_1"), ...ev.thinking(0, "firma-A"), ...ev.text(1, "Ogni quanto le prepari?"), ...ev.end("end_turn")])]);
   const { status, chunks } = await chat(HISTORY);
   assert.equal(status, 200);
+  // Il benvenuto di una conversazione nuova resta nel browser: al modello arriva per prima la domanda.
+  assert.deepEqual(requests[0].body.messages, [{ role: "user", content: [{ type: "text", text: "Preparo le fatture dei clienti ogni mese." }] }]);
   assert.deepEqual(chunks.find((chunk) => chunk.type === "finish"), { type: "finish", finishReason: "stop", messageMetadata: { finishReason: "stop" } });
   assert.deepEqual(
     prova.saved.map(({ role, content }) => [role, content]),
@@ -298,7 +300,7 @@ test("l'ultimo turno non è dell'utente (sarebbe un prefill, 400 dall'API): 400 
   assert.deepEqual(prova.indexed, []);
 });
 
-test("la storia del browser passa da chatHistory: niente turni vuoti, niente «system», il resto com'era", async (t) => {
+test("la storia del browser passa da chatHistory: niente benvenuto in testa, niente turni vuoti, niente «system», il resto com'era", async (t) => {
   recordLogs(t);
   reset();
   const requests = fakeAppClaude([sse([ev.start("msg_1"), ...ev.text(0, "Capito."), ...ev.end("end_turn")])]);
@@ -314,8 +316,8 @@ test("la storia del browser passa da chatHistory: niente turni vuoti, niente «s
   assert.equal(status, 200);
   const [request] = requests;
   assert.deepEqual(request.body.messages, [
-    { role: "assistant", content: [{ type: "text", text: "Benvenuto: di che cosa ti occupi?" }] },
-    // I due turni dell'utente di seguito diventano un messaggio solo (l'SDK li unisce).
+    // Il benvenuto dell'interfaccia non va al modello: il primo messaggio è dell'utente (un primo messaggio
+    // dell'assistente è un 400 dell'API). I due turni dell'utente di seguito diventano un messaggio solo (l'SDK li unisce).
     {
       role: "user",
       content: [

@@ -43,6 +43,7 @@ function assertSonnet55Request(request: Captured, task: ClaudeTask) {
   const toolChoice = body.tool_choice as { type?: string } | undefined;
   assert.ok(toolChoice === undefined || toolChoice.type === "auto", `tool_choice forzato: ${JSON.stringify(toolChoice)}`);
   const messages = body.messages as Array<{ role: string }>;
+  assert.equal(messages[0].role, "user", "il primo messaggio è dell'utente: uno dell'assistente è un 400 (src/lib/ai/chat-history.ts)");
   assert.equal(messages[messages.length - 1].role === "assistant", false, "nessun prefill");
   assert.equal(body.fallbacks, settings.fallbacks ? "default" : undefined);
   assert.equal(request.betas.includes("server-side-fallback-2026-07-01"), settings.fallbacks);
@@ -242,10 +243,8 @@ test("streamText con un tool (chat): sforzo medio, 16000 token per passo, niente
     model: provider(CLAUDE_MODEL),
     ...claudeCallSettings("chat"),
     system: "Prompt di sistema della chat.",
-    messages: [
-      { role: "assistant", content: "Benvenuto: di che cosa ti occupi?" },
-      { role: "user", content: "Preparo le fatture ogni mese." },
-    ],
+    // La storia come la manda la rotta (chatHistory): senza il benvenuto dell'interfaccia in testa.
+    messages: [{ role: "user", content: "Preparo le fatture ogni mese." }],
     tools: {
       saveActivity: tool({
         description: "Salva un'attività",

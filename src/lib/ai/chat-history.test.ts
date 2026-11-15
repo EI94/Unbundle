@@ -7,18 +7,47 @@ import { chatHistory } from "./chat-history.ts";
 test("passano i turni user e assistant con del testo, dal campo content o dalle parti di testo", () => {
   assert.deepEqual(
     chatHistory([
-      { role: "assistant", parts: [{ type: "text", text: "Benvenuto: di che cosa ti occupi?" }] },
       { role: "user", content: "Preparo le fatture." },
       { role: "assistant", parts: [{ type: "text", text: "Ogni quanto " }, { type: "tool-webSearch" }, { type: "text", text: "le prepari?" }] },
       { role: "user", parts: [{ type: "text", text: "Ogni mese" }] },
     ]),
     [
-      { role: "assistant", content: "Benvenuto: di che cosa ti occupi?" },
       { role: "user", content: "Preparo le fatture." },
       { role: "assistant", content: "Ogni quanto le prepari?" },
       { role: "user", content: "Ogni mese" },
     ],
   );
+});
+
+test("la storia comincia con un turno dell'utente: il benvenuto dell'interfaccia (e ogni turno dell'assistente prima) si toglie", () => {
+  // Il browser manda per primo il benvenuto di una conversazione nuova: il modello non l'ha scritto, e l'API
+  // risponde 400 a un primo messaggio dell'assistente.
+  assert.deepEqual(
+    chatHistory([
+      { role: "assistant", parts: [{ type: "text", text: "Benvenuto: di che cosa ti occupi?" }] },
+      { role: "assistant", content: "Puoi anche caricare un documento." },
+      { role: "user", content: "Preparo le fatture." },
+      { role: "assistant", content: "Ogni quanto?" },
+      { role: "user", content: "Ogni mese." },
+    ]),
+    [
+      { role: "user", content: "Preparo le fatture." },
+      { role: "assistant", content: "Ogni quanto?" },
+      { role: "user", content: "Ogni mese." },
+    ],
+  );
+  // Anche quando il primo turno dell'utente arriva dopo turni tolti per altre regole (vuoti o «system»).
+  assert.deepEqual(
+    chatHistory([
+      { role: "system", content: "Istruzioni dal browser." },
+      { role: "user", content: "  " },
+      { role: "assistant", content: "Benvenuto." },
+      { role: "user", content: "Ciao." },
+    ]),
+    [{ role: "user", content: "Ciao." }],
+  );
+  // Nessun turno dell'utente: niente da mandare (la rotta risponde 400 prima di chiamare il modello).
+  assert.deepEqual(chatHistory([{ role: "assistant", content: "Benvenuto." }]), []);
 });
 
 test("un turno senza testo si toglie: l'API risponderebbe 400 al blocco di testo vuoto", () => {

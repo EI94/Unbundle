@@ -54,8 +54,9 @@ export async function POST(req: Request) {
     isLateralSpace: viewerFromSession({ id: session.user.id, email: session.user.email, emailVerified: session.user.emailVerified === true }, access.role).isLateralSpace,
   });
 
-  // Solo turni `user`/`assistant` con del testo (src/lib/ai/chat-history.ts). L'ultimo turno è
-  // dell'utente: un turno finale dell'assistente sarebbe un prefill, che il modello rifiuta con un 400.
+  // Solo turni `user`/`assistant` con del testo, dal primo turno dell'utente: il benvenuto dell'interfaccia
+  // non va al modello (src/lib/ai/chat-history.ts). L'ultimo turno è dell'utente: un turno finale
+  // dell'assistente sarebbe un prefill, che il modello rifiuta con un 400.
   const messages = chatHistory(Array.isArray(rawMessages) ? rawMessages : []);
   if (messages[messages.length - 1]?.role !== "user") {
     return new Response("Missing required fields", { status: 400 });
