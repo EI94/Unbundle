@@ -5,6 +5,7 @@ import { uploadedDocuments } from "@/lib/db/schema";
 import { put } from "@vercel/blob";
 import { generateText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
+import { CLAUDE_MODEL, claudeCallSettings, logClaudeStop } from "@/lib/ai/models";
 import { indexDocument } from "@/lib/ai/rag/chunker";
 
 export async function POST(req: Request) {
@@ -70,8 +71,9 @@ export async function POST(req: Request) {
     } else if (file.type === "application/pdf") {
       const arrayBuffer = await file.arrayBuffer();
       const base64 = Buffer.from(arrayBuffer).toString("base64");
-      const { text } = await generateText({
-        model: anthropic("claude-sonnet-4-20250514"),
+      const extraction = await generateText({
+        model: anthropic(CLAUDE_MODEL),
+        ...claudeCallSettings("pdfText"),
         messages: [
           {
             role: "user",
@@ -89,15 +91,24 @@ export async function POST(req: Request) {
           },
         ],
       });
-      extractedText = text;
+      // Un rifiuto dei classificatori del modello non è il testo del documento: niente testo
+      // parziale salvato o indicizzato, e chi carica lo sa.
+      if (extraction.finishReason === "content-filter") {
+        logClaudeStop("documents/upload", "pdf_rifiutato", extraction);
+        return Response.json({ error: "Non riesco a leggere il testo di questo PDF." }, { status: 422 });
+      }
+      // Oltre il limite dei token resta l'inizio del documento, come prima con il limite dell'SDK.
+      if (extraction.finishReason === "length") logClaudeStop("documents/upload", "pdf_troncato", extraction);
+      extractedText = extraction.text;
     } else {
       extractedText = `[Documento ${file.type} — testo non estratto automaticamente]`;
     }
 
     let summary = "";
     if (extractedText && extractedText.length > 100) {
-      const { text: summaryText } = await generateText({
-        model: anthropic("claude-sonnet-4-20250514"),
+      const summaryResult = await generateText({
+        model: anthropic(CLAUDE_MODEL),
+        ...claudeCallSettings("documentSummary"),
         system:
           "Sei un analista organizzativo. Riassumi il documento in massimo 5 bullet point in italiano, " +
           "focalizzandoti su: struttura organizzativa, strategia, processi, metriche, obiettivi. " +
@@ -109,7 +120,12 @@ export async function POST(req: Request) {
           },
         ],
       });
-      summary = summaryText;
+      // Un rifiuto lascia il documento senza sintesi, come un testo breve: mai una sintesi parziale.
+      if (summaryResult.finishReason === "content-filter") {
+        logClaudeStop("documents/upload", "sintesi_rifiutata", summaryResult);
+      } else {
+        summary = summaryResult.text;
+      }
     }
 
     const [doc] = await db
