@@ -354,7 +354,7 @@ test("D5: mai per E i comandi del dossier, le Impostazioni del dossier, il token
   assert.equal(readToken.ok, false, "il token dell'MCP dei dossier no");
   const started = await as("e", () => realization.startRealizationAction(ids.wsA, { useCaseId: ids.ucA3 }));
   assert.equal(started.ok, false, "«Avvia la realizzazione» no");
-  const added = await as("e", () => team.addWorkspaceTeamMemberAction(ids.wsA, { email: EMAIL.p, role: "ls_sviluppatore" }));
+  const added = await as("e", () => team.addBuilderAction(ids.wsA, { userId: ids.p, role: "builder_esterno", where: "tutti" }));
   assert.deepEqual([added.ok, !added.ok && added.code], [false, "permesso_negato"], "«Chi costruisce» no");
   // Impostazioni del dossier: la pagina vuole il responsabile, per E «non trovato» (404).
   const { assertCaseRole } = await import("../../db/queries/uc-access.ts");
@@ -544,4 +544,41 @@ test("D12: senza la 0037 gli elenchi non hanno esterni", opts, async () => {
   await exec.batch(notices.notifyTask({ workspaceId: ids.wsA, useCaseId: ids.ucA1 }, "compiti_pronti", { builders: builders.NO_EXTERNAL_BUILDERS }, notices.NOBODY, at, null));
   const rows = await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compiti_pronti' AND rome_day = '2026-12-01'`, [ids.ucA1]);
   assert.deepEqual(rows.map((r) => r.recipient_user_id), [ids.lead], "solo Lateral Space");
+});
+
+// ─── Togliere ────────────────────────────────────────────────────────
+
+test("D9: la discesa a Contributore ferma le scritture subito, senza revoca; tornato Analista ricomincia", opts, async () => {
+  await q(`UPDATE workspace_memberships SET role = 'contributor' WHERE workspace_id = $1 AND user_id = $2`, [ids.wsA, ids.e3]);
+  const denied = await post("decisioni", tokens.e3!, { caso: "NM-0002", argomento: "Prova", decisione: "Non dovrebbe passare" });
+  assert.deepEqual([denied.status, codeOf(denied)], [403, "permesso_negato"]);
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  assert.equal(await line.factoryNavVisible(exec, { workspaceId: ids.wsA, userId: ids.e3, lsManager: false, lsDomains: ["ls.test"] }), false, "la voce sparisce");
+  await q(`UPDATE workspace_memberships SET role = 'analyst' WHERE workspace_id = $1 AND user_id = $2`, [ids.wsA, ids.e3]);
+  assert.equal((await post("decisioni", tokens.e3!, { caso: "NM-0002", argomento: "Prova", decisione: "Di nuovo Analista" })).status, 200, "lo stesso token, mai revocato");
+});
+
+test("D9: dopo «Togli» lo stesso token non scrive più, i token sono revocati, i compiti tornano da prendere, la voce sparisce, le righe escono", opts, async () => {
+  const team = await import("../../actions/use-case-workspace-team.ts");
+  const caseToken = String((await post("token-caso", tokens.e!, { caso: "NM-0001" })).json.token);
+  const [held] = await q(`SELECT ref FROM use_case_tasks WHERE use_case_id = $1 AND holder_user_id = $2 AND status = 'in_corso'`, [ids.ucA1, ids.e]);
+  assert.ok(held, "E ha un compito in corso (T-2, D12)");
+  const removed = await as("lead", () => team.removeBuilderAction(ids.wsA, ids.e));
+  assert.equal(removed.ok, true, removed.ok ? "" : removed.message);
+  assert.match(removed.ok ? (removed.message ?? "") : "", /^Non costruisce più: è uscita da 3 casi\. Ricorda GitHub \(Prova\/nardi-esploso-[0-9a-f]+\) e la sua chiave dell'AI Gateway\.$/);
+  // Lo stesso token: revocato nella stessa transazione delle concessioni, ogni chiamata si ferma.
+  for (const token of [tokens.e!, caseToken]) {
+    const r = await post("decisioni", token, { caso: "NM-0001", argomento: "Prova", decisione: "Non dovrebbe passare" });
+    assert.deepEqual([r.status, codeOf(r)], [401, "token"]);
+  }
+  const [live] = await q(`SELECT count(*)::int AS n FROM workspace_integration_tokens WHERE workspace_id = $1 AND owner_user_id = $2 AND revoked_at IS NULL`, [ids.wsA, ids.e]);
+  assert.equal(live.n, 0);
+  const [task] = await q(`SELECT status, holder_user_id FROM use_case_tasks WHERE use_case_id = $1 AND ref = $2`, [ids.ucA1, held.ref]);
+  assert.deepEqual([task.status, task.holder_user_id], ["da_fare", null]);
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  assert.equal(await line.factoryNavVisible(exec, { workspaceId: ids.wsA, userId: ids.e, lsManager: false, lsDomains: ["ls.test"] }), false, "la voce sparisce");
+  const rows = await q(`SELECT count(*)::int AS n FROM uc_case_members WHERE user_id = $1 AND case_id = ANY($2::uuid[])`, [ids.e, [ids.caseA1, ids.caseA2, ids.caseA3]]);
+  assert.equal(rows[0].n, 0, "le righe osservatore sono tolte: il responsabile è chi ha agito");
+  // Con un login nuovo E non scrive (non ha più la concessione) e non vede i casi (non ha più la riga).
+  assert.deepEqual(await call("context?caso=NM-0001", { token: await tokenFor("e") }).then((r) => [r.status, codeOf(r)]), [404, "non_trovato"]);
 });

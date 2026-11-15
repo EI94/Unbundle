@@ -112,7 +112,7 @@ test("aggiungere a tutti i casi: i dossier aperti dove chi agisce è responsabil
 
 test("solo persone di Lateral Space, collaboratrici del workspace, con un ruolo di chi costruisce", opts, async () => {
   const client = await team.addWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, email: email("cliente", "cliente.test"), role: "ls_analista", lsDomains: LS });
-  assert.deepEqual([client.ok, !client.ok && client.code], [false, "non_lateral_space"]);
+  assert.deepEqual([client.ok, !client.ok && client.code], [false, "ruolo_non_ammesso"], "(8.0c) chi viene da fuori costruisce come Sviluppatore esterno");
   const stranger = await team.addWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, email: email("estraneo"), role: "ls_analista", lsDomains: LS });
   assert.deepEqual([stranger.ok, !stranger.ok && stranger.code], [false, "non_collaboratore"]);
   const role = await team.addWorkspaceTeamMember(exec, { workspaceId: ids.ws, actorUserId: ids.owner, email: email("leo"), role: "owner_cliente", lsDomains: LS });

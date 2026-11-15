@@ -4,9 +4,12 @@ import { revalidatePath } from "next/cache";
 import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
-import { addWorkspaceTeamMember, removeWorkspaceTeamMember, type TeamApplyResult } from "@/lib/db/queries/use-case-workspace-team";
+import { readExternalGrant } from "@/lib/db/queries/use-case-builders";
+import { addExternalBuilder, addWorkspaceTeamMember, removeExternalBuilder, removeWorkspaceTeamMember, type TeamApplyResult } from "@/lib/db/queries/use-case-workspace-team";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { ucLogError } from "@/lib/uc/log";
+import { EXTERNAL_BUILDER_ROLE } from "@/lib/use-cases/factory/builders";
+import { casesText as cases, externalAddedText, externalRemovedText, skippedText } from "@/lib/use-cases/factory/builders-text";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { canReviewWorkspacePortfolio } from "@/lib/workspace-permissions";
 import { fromResult, ucFailure, ucSectionAvailable, type UcActionResult } from "./uc-action-context";
@@ -14,11 +17,11 @@ import { fromResult, ucFailure, ucSectionAvailable, type UcActionResult } from "
 type WorkspaceAccess = Awaited<ReturnType<typeof requireWorkspaceAccess>>;
 
 /**
- * Il team di Lateral Space del cliente (rilascio 8.1b), dalla pagina «Agent Factory»: aggiungere una persona a tutti i
- * casi del workspace (anche a quelli che si apriranno) o toglierla. Lo fa il manager di Lateral Space del workspace;
- * nei casi lo scrivono i comandi del dossier, con i ruoli di chi agisce (`use-case-workspace-team.ts`).
- * L'accesso al workspace lo verifica ogni azione per prima cosa (`requireWorkspaceAccess`, la regola di
- * src/lib/auth/workspace-isolation.test.ts) e lo passa qui, per il resto dei controlli.
+ * «Chi costruisce» i casi del cliente (rilascio 8.1b; 8.0c anche da fuori Lateral Space), dalla pagina «Agent Factory»:
+ * aggiungere una persona, cambiarle il «Dove», toglierla. Lo fa il manager di Lateral Space del workspace; un esterno
+ * non aggiunge mai un esterno. Nei casi lo scrivono i comandi del dossier, con i ruoli di chi agisce
+ * (`use-case-workspace-team.ts`). L'accesso al workspace lo verifica ogni azione per prima cosa (`requireWorkspaceAccess`,
+ * la regola di src/lib/auth/workspace-isolation.test.ts) e lo passa qui, per il resto dei controlli.
  */
 async function guard(
   workspaceId: string,
@@ -29,61 +32,66 @@ async function guard(
   if (!available.ok) return { ok: false, result: available };
   const viewer = viewerFromSession(session.user, access.role);
   if (!(viewer.isLateralSpace && canReviewWorkspacePortfolio(access.role))) {
-    return { ok: false, result: ucFailure("permesso_negato", "Il team del cliente lo gestisce il manager di Lateral Space del workspace.") };
+    return { ok: false, result: ucFailure("permesso_negato", "Chi costruisce i casi del cliente lo decide il manager di Lateral Space del workspace.") };
   }
   return { ok: true, actorUserId: session.user.id };
 }
 
-const cases = (n: number) => (n === 1 ? "1 caso" : `${n} casi`);
-
-const REASON: Record<string, string> = {
-  attore_non_ammesso: "lì non sei responsabile",
-  ultimo_ls_lead: "è l'unico responsabile",
-  caso_chiuso: "il caso è chiuso",
-  non_collaboratore: "non è collaboratore del workspace",
-  conflitto_ruoli: "ha già un ruolo del cliente",
-};
-
-/** I casi saltati, ognuno con il suo motivo (al massimo 5 per nome). */
-function skippedText(r: TeamApplyResult): string {
-  if (!r.skipped.length) return "";
-  const shown = r.skipped.slice(0, 5).map((s) => `${s.code} (${REASON[s.reason] ?? "non riuscito"})`);
-  const more = r.skipped.length > 5 ? ` e altri ${r.skipped.length - 5}` : "";
-  return ` Saltati: ${shown.join(", ")}${more}. Si cambia dal team del dossier.`;
-}
-
-/** «Aggiungi a tutti i casi»: e-mail e ruolo. */
-export async function addWorkspaceTeamMemberAction(workspaceId: string, input: unknown): Promise<UcActionResult<{ userId: string }>> {
+/**
+ * «Aggiungi» a chi costruisce: la persona dall'elenco dei collaboratori, il ruolo, e per chi viene da fuori il «Dove»
+ * (`"tutti"` o gli use case scelti). Una persona già presente da fuori: cambia il «Dove».
+ */
+export async function addBuilderAction(workspaceId: string, input: unknown): Promise<UcActionResult<{ userId: string }>> {
   const workspace = await requireWorkspaceAccess(workspaceId);
   const g = await guard(workspaceId, workspace);
   if (!g.ok) return g.result;
   const i = (input ?? {}) as Record<string, unknown>;
   try {
-    const result = await addWorkspaceTeamMember(await getAppUcExecutor(), { workspaceId, actorUserId: g.actorUserId, email: i.email, role: i.role, lsDomains: ucLsDomains() });
+    const executor = await getAppUcExecutor();
+    const lsDomains = ucLsDomains();
+    if (i.role === EXTERNAL_BUILDER_ROLE) {
+      const result = await addExternalBuilder(executor, { workspaceId, actorUserId: g.actorUserId, userId: i.userId, where: i.where, lsDomains });
+      if (!result.ok) return fromResult(result);
+      revalidatePath(`/dashboard/${workspaceId}/agent-factory`);
+      return fromResult({ ok: true, value: { userId: result.value.userId } }, undefined, externalAddedText(result.value));
+    }
+    const result = await addWorkspaceTeamMember(executor, { workspaceId, actorUserId: g.actorUserId, userId: i.userId, role: i.role, lsDomains });
     if (!result.ok) return fromResult(result);
     revalidatePath(`/dashboard/${workspaceId}/agent-factory`);
-    const r = result.value;
-    const msg = `Nel team del cliente: entrerà anche nei casi nuovi. Aggiunta in ${cases(r.done.length)}${r.unchanged.length ? `, c'era già in ${cases(r.unchanged.length)}` : ""}.${skippedText(r)}`;
-    return fromResult({ ok: true, value: { userId: r.userId } }, undefined, msg);
+    const r: TeamApplyResult = result.value;
+    const msg = `Nel team del cliente: entrerà anche nei casi nuovi. Aggiunta in ${cases(r.done.length)}${r.unchanged.length ? `, c'era già in ${cases(r.unchanged.length)}` : ""}.${skippedText(r.skipped, " Si cambia dal team del dossier.")}`;
+    return fromResult({ ok: true, value: { userId: result.value.userId } }, undefined, msg);
   } catch (error) {
-    ucLogError({ area: "uc", op: "team_workspace_aggiungi", workspaceId }, error);
+    ucLogError({ area: "uc", op: "chi_costruisce_aggiungi", workspaceId }, error);
     return ucFailure("non_riuscito", "Non sono riuscito ad aggiungerla. Riprova tra poco.");
   }
 }
 
-/** «Togli»: non entra più nei casi nuovi ed esce da quelli aperti dove ha il ruolo del team. */
-export async function removeWorkspaceTeamMemberAction(workspaceId: string, userId: string): Promise<UcActionResult<{ cases: number }>> {
+/**
+ * «Togli» da chi costruisce. Da fuori: da subito non scrive più (concessioni, token, compiti che tornano da prendere),
+ * poi esce dai casi. Di Lateral Space: esce dai casi aperti dal ruolo del team e i suoi compiti lì tornano da prendere.
+ */
+export async function removeBuilderAction(workspaceId: string, userId: string): Promise<UcActionResult<{ cases: number }>> {
   const workspace = await requireWorkspaceAccess(workspaceId);
   const g = await guard(workspaceId, workspace);
   if (!g.ok) return g.result;
   try {
-    const result = await removeWorkspaceTeamMember(await getAppUcExecutor(), { workspaceId, actorUserId: g.actorUserId, userId, lsDomains: ucLsDomains() });
+    const executor = await getAppUcExecutor();
+    const lsDomains = ucLsDomains();
+    if (typeof userId === "string" && (await readExternalGrant(executor, workspaceId, userId))) {
+      const result = await removeExternalBuilder(executor, { workspaceId, actorUserId: g.actorUserId, userId, lsDomains });
+      if (!result.ok) return fromResult(result);
+      revalidatePath(`/dashboard/${workspaceId}/agent-factory`);
+      return fromResult({ ok: true, value: { cases: result.value.left.length } }, undefined, externalRemovedText(result.value));
+    }
+    const result = await removeWorkspaceTeamMember(executor, { workspaceId, actorUserId: g.actorUserId, userId, lsDomains });
     if (!result.ok) return fromResult(result);
     revalidatePath(`/dashboard/${workspaceId}/agent-factory`);
     const r = result.value;
-    return fromResult({ ok: true, value: { cases: r.done.length } }, undefined, `Tolta dal team del cliente: esce da ${cases(r.done.length)} e non entra nei casi nuovi.${skippedText(r)}`);
+    const tasks = r.released ? ` I compiti che aveva lì tornano da prendere (${r.released}).` : "";
+    return fromResult({ ok: true, value: { cases: r.done.length } }, undefined, `Tolta dal team del cliente: esce da ${cases(r.done.length)} e non entra nei casi nuovi.${tasks}${skippedText(r.skipped, " Si cambia dal team del dossier.")}`);
   } catch (error) {
-    ucLogError({ area: "uc", op: "team_workspace_togli", workspaceId }, error);
+    ucLogError({ area: "uc", op: "chi_costruisce_togli", workspaceId }, error);
     return ucFailure("non_riuscito", "Non sono riuscito a toglierla. Riprova tra poco.");
   }
 }
