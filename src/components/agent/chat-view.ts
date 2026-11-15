@@ -9,7 +9,7 @@ import type { UIMessage } from "ai";
 export type ChatMessageMetadata = { finishReason?: string };
 export type ChatUIMessage = UIMessage<ChatMessageMetadata>;
 
-type PartLike = { type: string; text?: string; toolName?: unknown; state?: unknown };
+type PartLike = { type: string; text?: string; toolName?: unknown; state?: unknown; output?: unknown };
 type MessageLike = { role: string; metadata?: unknown; parts?: ReadonlyArray<PartLike> };
 
 /** Al posto di una risposta che il modello ha rifiutato. */
@@ -154,32 +154,51 @@ export type AssistantView =
   | { kind: "answer"; text: string; progress: ChatProgress[] };
 
 /**
- * Il tool di una risposta come si mostra: finito (con il risultato, `output-available`, o con un errore, `output-error`:
- * gli stati di AI SDK 6) o in corso, con la sua etichetta.
+ * A che punto è il tool di una risposta (gli stati di AI SDK 6): finito con un risultato (`output-available`), fallito
+ * (`output-error`, quando l'esecuzione lancia o il modello passa un input che non rispetta lo schema; `output-denied`;
+ * o un risultato che dice `success: false`, come i dati dell'azienda senza il permesso di scriverli), o in corso.
  */
-export function toolChip(part: PartLike): Extract<ChatProgress, { kind: "tool" }> {
+export function toolOutcome(part: PartLike): "done" | "failed" | "running" {
+  if (part.state === "output-error" || part.state === "output-denied") return "failed";
+  if (part.state !== "output-available") return "running";
+  return (part.output as { success?: unknown } | null | undefined)?.success === false ? "failed" : "done";
+}
+
+/**
+ * Il tool di una risposta come si mostra: finito, con l'etichetta di quando ha finito e la spunta, o in corso. Un tool
+ * fallito non si mostra (null): la sua etichetta direbbe fatto quello che non è stato fatto, e il testo del modello dice
+ * già che non è riuscito.
+ */
+export function toolChip(part: PartLike): Extract<ChatProgress, { kind: "tool" }> | null {
+  const outcome = toolOutcome(part);
+  if (outcome === "failed") return null;
   const name = toolNameOf(part);
-  const done = part.state === "output-available" || part.state === "output-error";
   const labels = TOOL_LABELS[name];
+  const done = outcome === "done";
   return { kind: "tool", label: done ? (labels?.done ?? name) : (labels?.active ?? "Elaboro..."), done };
 }
 
 /**
  * Che cosa la chat mostra di una risposta dell'assistente. Una risposta rifiutata (isRefusedReply) mostra l'avviso al
  * posto del suo testo parziale e, sotto, solo i tool che hanno finito con un risultato nei passi prima del rifiuto,
- * così si vede che cosa è stato fatto davvero: niente note, né tool in corso o falliti (quelli del passo rifiutato non
- * partono, e resterebbero in corso per sempre). Le altre risposte mostrano il loro testo e, sotto, i tool, nell'ordine.
+ * così si vede che cosa è stato fatto davvero: niente note, né tool in corso (quelli del passo rifiutato non partono,
+ * e resterebbero in corso per sempre). Le altre risposte mostrano il loro testo e, sotto, i tool, nell'ordine.
  * Le note di avanzamento indicano che la risposta sta arrivando: si vedono, ognuna prima del tool che introduce, solo
  * finché la risposta non ha testo; poi restano i tool, come dopo il ricaricamento (si salva solo il testo finale).
+ * Un tool fallito non si mostra mai (toolChip).
  */
 export function assistantView(message: MessageLike, hiddenTools: ReadonlySet<string>): AssistantView {
   const items = progressItems(message.parts ?? [], hiddenTools);
+  const chips = (part: PartLike) => {
+    const chip = toolChip(part);
+    return chip ? [chip] : [];
+  };
   if (isRefusedReply(message)) {
-    const completed = items.flatMap((item) => (item.kind === "tool" && item.part.state === "output-available" ? [toolChip(item.part)] : []));
+    const completed = items.flatMap((item) => (item.kind === "tool" && toolOutcome(item.part) === "done" ? chips(item.part) : []));
     return { kind: "refused", notice: CHAT_REFUSAL_NOTICE, progress: completed };
   }
   const text = messageText(message);
   const answered = text.trim().length > 0;
-  const progress = items.flatMap<ChatProgress>((item) => (item.kind === "tool" ? [toolChip(item.part)] : answered ? [] : [item]));
+  const progress = items.flatMap<ChatProgress>((item) => (item.kind === "tool" ? chips(item.part) : answered ? [] : [item]));
   return { kind: "answer", text, progress };
 }

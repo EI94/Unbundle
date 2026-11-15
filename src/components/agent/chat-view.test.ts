@@ -11,6 +11,7 @@ import {
   progressItems,
   toolChip,
   toolNameOf,
+  toolOutcome,
   type ChatUIMessage,
 } from "./chat-view.ts";
 
@@ -217,10 +218,43 @@ test("quando arriva il testo della risposta le note se ne vanno; i tool restano,
   }
 });
 
+test("un tool fallito non si mostra come fatto: né con un errore, né con un risultato che dice `success: false`", () => {
+  const reply: ChatUIMessage = {
+    id: "a",
+    role: "assistant",
+    metadata: { finishReason: "stop" },
+    parts: [
+      { type: "step-start" },
+      { type: "tool-saveActivity", toolCallId: "t1", state: "output-available", input: {}, output: { success: true } },
+      // L'esecuzione ha lanciato (il database), o l'input del modello non rispettava lo schema.
+      { type: "tool-saveStrategicGoal", toolCallId: "t2", state: "output-error", input: {}, errorText: "DB down" },
+      { type: "tool-linkActivityDependency", toolCallId: "t3", state: "output-error", input: undefined, errorText: "Invalid input" },
+      // Il tool ha risposto che non ha salvato.
+      { type: "tool-saveCompanyFacts", toolCallId: "t4", state: "output-available", input: {}, output: { success: false, message: "Non salvati." } },
+      { type: "step-start" },
+      { type: "text", text: "Non sono riuscito a salvare l'obiettivo, riprovo più tardi." },
+    ],
+  };
+  assert.deepEqual(assistantView(reply, HIDDEN_TOOLS), {
+    kind: "answer",
+    text: "Non sono riuscito a salvare l'obiettivo, riprovo più tardi.",
+    progress: [{ kind: "tool", label: "Attività salvata", done: true }],
+  });
+  // Lo stesso mentre la risposta arriva: il tool fallito non resta in corso.
+  assert.deepEqual(assistantView({ ...reply, metadata: undefined, parts: reply.parts.slice(0, 5) }, HIDDEN_TOOLS).progress, [
+    { kind: "tool", label: "Attività salvata", done: true },
+  ]);
+  assert.equal(toolOutcome({ type: "tool-saveCompanyFacts", state: "output-available", output: { success: false } }), "failed");
+  assert.equal(toolOutcome({ type: "tool-saveActivity", state: "output-denied" }), "failed");
+  assert.equal(toolOutcome({ type: "tool-saveActivity", state: "output-available", output: { success: true } }), "done");
+  assert.equal(toolOutcome({ type: "tool-saveActivity", state: "output-available", output: null }), "done");
+  assert.equal(toolOutcome({ type: "tool-saveActivity", state: "input-available" }), "running");
+});
+
 test("l'etichetta di un tool: «fatto» con il risultato, «in corso» prima; senza etichetta, il nome o «Elaboro...»", () => {
   assert.deepEqual(toolChip({ type: "tool-saveActivity", state: "output-available" }), { kind: "tool", label: "Attività salvata", done: true });
-  // Un tool fallito ha finito: non gira più (in AI SDK 6 lo stato è `output-error`).
-  assert.deepEqual(toolChip({ type: "tool-saveActivity", state: "output-error" }), { kind: "tool", label: "Attività salvata", done: true });
+  // Un tool fallito non si mostra: né «fatto», né in corso per sempre (in AI SDK 6 lo stato è `output-error`).
+  assert.equal(toolChip({ type: "tool-saveActivity", state: "output-error" }), null);
   for (const state of ["input-streaming", "input-available"]) {
     assert.deepEqual(toolChip({ type: "tool-saveActivity", state }), { kind: "tool", label: "Salvo l'attività", done: false }, state);
   }

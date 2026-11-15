@@ -84,6 +84,26 @@ test("una risposta: il testo con il grassetto, poi i tool con le loro etichette;
   assert.match(list, /<strong class="font-semibold text-foreground">Quante ore<\/strong>/);
 });
 
+test("una risposta con un tool fallito: il testo del modello, e il tool fallito non compare come fatto", () => {
+  const { list, text } = render([
+    question,
+    {
+      id: "a4",
+      role: "assistant",
+      metadata: { finishReason: "stop" },
+      parts: [
+        { type: "step-start" },
+        { type: "tool-saveActivity", toolCallId: "t1", state: "output-available", input: {}, output: { success: true } },
+        { type: "tool-saveStrategicGoal", toolCallId: "t2", state: "output-error", input: {}, errorText: "DB down" },
+        { type: "step-start" },
+        { type: "text", text: "Non sono riuscito a salvare l'obiettivo, riprovo più tardi.", state: "done" },
+      ],
+    },
+  ]);
+  assert.deepEqual(text, ["Preparo le fatture.", "Non sono riuscito a salvare l'obiettivo, riprovo più tardi.", "Attività salvata"]);
+  assert.equal(list.match(/<svg/g)?.length, 1, "una sola spunta, quella del tool riuscito");
+});
+
 test("una risposta in arrivo, ancora senza testo: le note e i tool in corso, e l'attesa", () => {
   const { list, text } = render(
     [
