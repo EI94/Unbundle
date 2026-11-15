@@ -767,6 +767,38 @@ test("il responsabile toglie dal dossier la riga osservatore di chi costruisce: 
   }
 });
 
+test("la riga osservatore tolta e i compiti liberati vanno insieme: se i compiti non si liberano, la riga resta", opts, async () => {
+  const team = await import("../../db/queries/use-case-workspace-team.ts");
+  const { commandContextFor } = await import("../../db/queries/uc-cases.ts");
+  await q(`INSERT INTO use_case_tasks (use_case_id, workspace_id, ref, title, status, holder_user_id, taken_at, source) VALUES ($1, $2, 'T-93', 'Compito di prova in A2', 'in_corso', $3, now(), 'cli')`, [
+    ids.ucA2,
+    ids.wsA,
+    ids.e,
+  ]);
+  try {
+    const ctx = await commandContextFor(exec, { workspaceId: ids.wsA, caseId: ids.caseA2, userId: ids.lead, lsDomains: ["ls.test"] });
+    assert.ok(ctx.ok);
+    if (!ctx.ok) return;
+    // Un guasto quando si liberano i compiti: tutta la transazione si annulla.
+    const broken = {
+      batch: (statements: Parameters<typeof exec.batch>[0]) => (statements.some((st) => st.text.includes("INSERT INTO use_case_task_notes")) ? Promise.reject(new Error("guasto")) : exec.batch(statements)),
+    } as typeof exec;
+    await assert.rejects(team.removeCaseMemberReleasingTasks(broken, ctx.value, { userId: ids.e, role: "osservatore" }), /guasto/);
+    const rows = await q(`SELECT role FROM uc_case_members WHERE case_id = $1 AND user_id = $2`, [ids.caseA2, ids.e]);
+    assert.deepEqual(rows.map((r) => r.role), ["osservatore"], "la riga resta");
+    const [task] = await q(`SELECT status, holder_user_id FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-93'`, [ids.ucA2]);
+    assert.deepEqual([task.status, task.holder_user_id], ["in_corso", ids.e], "e il compito resta suo: si può riprovare");
+    // Senza guasto: tutte e due.
+    const removed = await team.removeCaseMemberReleasingTasks(exec, ctx.value, { userId: ids.e, role: "osservatore" });
+    assert.equal(removed.ok, true);
+    const [after] = await q(`SELECT status, holder_user_id FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-93'`, [ids.ucA2]);
+    assert.deepEqual([after.status, after.holder_user_id], ["da_fare", null]);
+  } finally {
+    await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'osservatore') ON CONFLICT DO NOTHING`, [ids.caseA2, ids.e]);
+    await q(`DELETE FROM use_case_tasks WHERE workspace_id = $1 AND ref = 'T-93'`, [ids.wsA]);
+  }
+});
+
 // ─── Togliere ────────────────────────────────────────────────────────
 
 test("D9: la discesa a Contributore ferma le scritture subito, senza revoca, e il no dice che il ruolo si cambia da Impostazioni › Persone; tornato Analista ricomincia", opts, async () => {

@@ -798,8 +798,15 @@ ON CONFLICT (case_id, user_id, role) DO NOTHING RETURNING id`,
  * Toglie un ruolo di caso (solo ls_lead; mai l'ultimo ls_lead). Se la persona
  * non ha più ruoli nel caso, i link che aveva copiato si revocano e le sue firme
  * in attesa si tolgono; senza ruoli Lateral Space perde la zona personale.
+ * `opts.after`: istruzioni di chi chiama, nella stessa transazione, dopo la riga
+ * tolta (8.0c: i compiti di chi non costruisce più il caso tornano da prendere).
  */
-export async function removeCaseMember(executor: UcExecutor, ctx: UcCommandContext, input: unknown): Promise<Result<{ userId: string; role: CaseRole }>> {
+export async function removeCaseMember(
+  executor: UcExecutor,
+  ctx: UcCommandContext,
+  input: unknown,
+  opts: { after?: (removed: { userId: string; role: CaseRole }) => Promise<readonly UcStatement[]> } = {},
+): Promise<Result<{ userId: string; role: CaseRole }>> {
   if (!can(actorRoles(ctx), "gestire_membri")) return fail("attore_non_ammesso", "Solo il Responsabile del caso gestisce i membri.");
   const parsed = MemberSchema.safeParse(input);
   if (!parsed.success) return fail("dati_non_validi", "Scegli la persona e il ruolo.");
@@ -844,6 +851,7 @@ WHERE id = ${c} AND ls_lead_user_id = ${u}`),
       }),
     ),
   );
+  if (opts.after) statements.push(...(await opts.after({ userId, role })));
   const run = await runCommand(executor, statements, CASE_MESSAGES);
   return run.ok ? ok({ userId, role }) : run;
 }

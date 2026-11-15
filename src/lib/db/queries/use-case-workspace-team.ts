@@ -593,10 +593,26 @@ export async function releaseTasksOfFormerBuilder(
   i: { workspaceId: string; userId: string; lsDomains: readonly string[]; first?: readonly UcStatement[]; caseId?: string; now?: Date },
 ): Promise<{ released: number; firstRows: Record<string, unknown>[][] }> {
   const first = [...(i.first ?? [])];
-  if (!(await tasksTablesReady(executor))) {
+  const release = await taskReleaseStatements(executor, i);
+  if (!release) {
     const rows = first.length ? await executor.batch(first) : [];
     return { released: 0, firstRows: rows };
   }
+  const rows = await executor.batch([...first, ...release]);
+  return { released: rows[first.length]?.length ?? 0, firstRows: rows.slice(0, first.length) };
+}
+
+/**
+ * Le istruzioni che liberano i compiti (`releaseTasksOfFormerBuilder`), con le letture che servono prima: la prima libera
+ * i compiti e scrive le note (restituisce i compiti liberati), le altre mandano «compiti pronti». Si mettono in una
+ * transazione dopo quello che fa smettere di costruire (concessioni tolte, riga tolta): «costruisce ancora» si legge lì
+ * dentro. null senza le tabelle dei compiti.
+ */
+async function taskReleaseStatements(
+  executor: UcExecutor,
+  i: { workspaceId: string; userId: string; lsDomains: readonly string[]; caseId?: string; now?: Date },
+): Promise<UcStatement[] | null> {
+  if (!(await tasksTablesReady(executor))) return null;
   const ws = cast(i.workspaceId, "uuid");
   const user = cast(i.userId, "uuid");
   const scope = await loadBuilderScope(executor, i.lsDomains);
@@ -628,21 +644,20 @@ RETURNING task_id`);
     const releasedNow = ucSql`EXISTS (SELECT 1 FROM use_case_task_notes n WHERE n.workspace_id = ${ws} AND n.use_case_id = ${uc} AND n.kind = 'passaggio' AND n.body = ${note} AND n.created_at = now())`;
     return notifyTask({ workspaceId: i.workspaceId, useCaseId: String(r.use_case_id) }, "compiti_pronti", { builders: scope }, i.userId, now, null, releasedNow);
   });
-  const rows = await executor.batch([...first, release, ...notices]);
-  return { released: rows[first.length]?.length ?? 0, firstRows: rows.slice(0, first.length) };
+  return [release, ...notices];
 }
 
 /**
  * (8.0c) Il responsabile toglie un ruolo dal team del dossier (`removeCaseMember`). Se era la riga `osservatore` di chi
- * costruiva il caso da fuori, da lì non costruisce più: i suoi compiti in quel caso tornano da prendere, come con «Togli».
- * Chi costruisce ancora il caso (un ruolo di Lateral Space) li tiene.
+ * costruiva il caso da fuori, da lì non costruisce più: i suoi compiti in quel caso tornano da prendere, come con «Togli»,
+ * nella stessa transazione della riga tolta (o tutte e due, o niente). Chi costruisce ancora il caso (un ruolo di
+ * Lateral Space) li tiene.
  */
 export async function removeCaseMemberReleasingTasks(executor: UcExecutor, ctx: UcCommandContext, input: unknown): Promise<Result<{ userId: string; role: CaseRole }>> {
-  const removed = await removeCaseMember(executor, ctx, input);
-  if (removed.ok && removed.value.role === "osservatore") {
-    await releaseTasksOfFormerBuilder(executor, { workspaceId: ctx.workspaceId, userId: removed.value.userId, lsDomains: ctx.lsDomains, caseId: ctx.caseId });
-  }
-  return removed;
+  return removeCaseMember(executor, ctx, input, {
+    after: async ({ userId, role }) =>
+      role === "osservatore" ? ((await taskReleaseStatements(executor, { workspaceId: ctx.workspaceId, userId, lsDomains: ctx.lsDomains, caseId: ctx.caseId })) ?? []) : [],
+  });
 }
 
 /**
