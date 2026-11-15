@@ -80,6 +80,35 @@ import type { UseCaseNoticeKind0036 } from "./use-case-hub-evals-ddl.ts";
 import type { EvalGroup, EvalRunKind } from "../use-cases/factory/benchmark.ts";
 import type { WorkspaceTeamRole } from "./use-case-hub-team-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
+import type {
+  Basis,
+  CommitmentParty,
+  CommitmentStatus,
+  ContextChannel,
+  ContextEventAction,
+  ContextSection,
+  ContextVisibility,
+  EntityType,
+  FactKind,
+  FactOrigin,
+  FactStatus,
+  GranolaConnectionStatus,
+  GranolaDecidedBy,
+  GranolaDecision,
+  ProposalEntity,
+  ProposalIssue,
+  ProposalKind,
+  ProposalRelation,
+  ProposalStatus as ContextProposalStatus,
+  QuestionOrigin,
+  QuestionStatus,
+  ReadReason,
+  ReadStatus,
+  RelationVerb,
+  SkippedCounts,
+  SourceKind as ContextSourceKind,
+  SourceOrigin,
+} from "../context/vocab.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
 import type {
   AnswerDevice,
@@ -2284,6 +2313,331 @@ export const conversationMemory = pgTable(
   (t) => [index("conversation_memory_workspace_idx").on(t.workspaceId)]
 );
 
+// ─── Contesto (drizzle/0038, rilascio 9a) ───────────────────────────
+// CHECK, indici parziali e indici GIN stanno solo nella migrazione e in context-ddl.ts (self-heal): mai drizzle-kit push.
+// `workspaces.company_value_thesis` (0038) non è dichiarata in `workspaces`: la leggono e la scrivono solo le
+// funzioni di src/lib/db/queries/value-thesis.ts (RILASCIO-9a-COSTRUZIONE.md §2.2).
+// Le tabelle `context*` le importano solo src/lib/db/queries/context-*.ts (e i test): pagine, rotte e azioni passano
+// dalle funzioni di quei moduli (src/lib/context/source-rules.test.ts).
+
+export const contextSources = pgTable(
+  "context_sources",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 12 }).$type<ContextSourceKind>().notNull(),
+    origin: varchar("origin", { length: 8 }).$type<SourceOrigin>().notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    occurredOn: date("occurred_on").notNull(),
+    participants: varchar("participants", { length: 500 }),
+    link: varchar("link", { length: 500 }),
+    body: text("body"),
+    bodyChars: integer("body_chars").notNull().default(0),
+    bodyHash: char("body_hash", { length: 64 }),
+    documentId: uuid("document_id").references(() => uploadedDocuments.id, { onDelete: "cascade" }),
+    externalId: varchar("external_id", { length: 120 }),
+    externalUpdatedAt: tz("external_updated_at"),
+    visibility: varchar("visibility", { length: 5 }).$type<ContextVisibility>().notNull().default("ls"),
+    readStatus: varchar("read_status", { length: 10 }).$type<ReadStatus>().notNull().default("da_leggere"),
+    readReason: varchar("read_reason", { length: 16 }).$type<ReadReason>(),
+    readAttempts: smallint("read_attempts").notNull().default(0),
+    readStartedAt: tz("read_started_at"),
+    readAt: tz("read_at"),
+    partsTotal: smallint("parts_total").notNull().default(1),
+    partsRead: smallint("parts_read").notNull().default(0),
+    skipped: jsonb("skipped").$type<SkippedCounts>().notNull().default({}),
+    textPurgedAt: tz("text_purged_at"),
+    addedByUserId: uuid("added_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    version: integer("version").notNull().default(1),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_sources_pkey", columns: [t.id] })]
+);
+
+export const contextFacts = pgTable(
+  "context_facts",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: varchar("kind", { length: 9 }).$type<FactKind>().notNull().default("fatto"),
+    section: varchar("section", { length: 10 }).$type<ContextSection>().notNull(),
+    statement: varchar("statement", { length: 200 }).notNull(),
+    basis: varchar("basis", { length: 7 }).$type<Basis>().notNull(),
+    visibility: varchar("visibility", { length: 5 }).$type<ContextVisibility>().notNull(),
+    status: varchar("status", { length: 8 }).$type<FactStatus>().notNull().default("attivo"),
+    origin: varchar("origin", { length: 8 }).$type<FactOrigin>().notNull(),
+    sourceId: uuid("source_id").references(() => contextSources.id, { onDelete: "set null" }),
+    quote: varchar("quote", { length: 400 }),
+    supersedesId: uuid("supersedes_id").references((): AnyPgColumn => contextFacts.id, { onDelete: "set null" }),
+    needsCheck: boolean("needs_check").notNull().default(false),
+    lastConfirmedAt: tz("last_confirmed_at").defaultNow().notNull(),
+    confirmedByUserId: uuid("confirmed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    endedAt: tz("ended_at"),
+    version: integer("version").notNull().default(1),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_facts_pkey", columns: [t.id] })]
+);
+
+export const contextEntities = pgTable(
+  "context_entities",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    type: varchar("type", { length: 10 }).$type<EntityType>().notNull(),
+    name: varchar("name", { length: 120 }).notNull(),
+    nameKey: varchar("name_key", { length: 120 }).notNull(),
+    aliases: text("aliases").array().notNull().default([]),
+    departmentId: uuid("department_id").references(() => departments.id, { onDelete: "cascade" }),
+    goalId: uuid("goal_id").references(() => strategicGoals.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").references(() => useCases.id, { onDelete: "cascade" }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_entities_pkey", columns: [t.id] }), unique("context_entities_key_unique").on(t.workspaceId, t.type, t.nameKey)]
+);
+
+export const contextFactLinks = pgTable(
+  "context_fact_links",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    factId: uuid("fact_id").notNull().references(() => contextFacts.id, { onDelete: "cascade" }),
+    useCaseId: uuid("use_case_id").references(() => useCases.id, { onDelete: "cascade" }),
+    entityId: uuid("entity_id").references(() => contextEntities.id, { onDelete: "cascade" }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_fact_links_pkey", columns: [t.id] })]
+);
+
+export const contextRelations = pgTable(
+  "context_relations",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    fromEntityId: uuid("from_entity_id").notNull().references(() => contextEntities.id, { onDelete: "cascade" }),
+    verb: varchar("verb", { length: 10 }).$type<RelationVerb>().notNull(),
+    toEntityId: uuid("to_entity_id").notNull().references(() => contextEntities.id, { onDelete: "cascade" }),
+    factId: uuid("fact_id").notNull().references(() => contextFacts.id, { onDelete: "cascade" }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_relations_pkey", columns: [t.id] }), unique("context_relations_unique").on(t.fromEntityId, t.verb, t.toEntityId, t.factId)]
+);
+
+export const contextCommitments = pgTable(
+  "context_commitments",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    statement: varchar("statement", { length: 200 }).notNull(),
+    party: varchar("party", { length: 8 }).$type<CommitmentParty>().notNull(),
+    roleLabel: varchar("role_label", { length: 80 }),
+    dueOn: date("due_on"),
+    status: varchar("status", { length: 9 }).$type<CommitmentStatus>().notNull().default("aperto"),
+    visibility: varchar("visibility", { length: 5 }).$type<ContextVisibility>().notNull(),
+    origin: varchar("origin", { length: 8 }).$type<FactOrigin>().notNull(),
+    sourceId: uuid("source_id").references(() => contextSources.id, { onDelete: "set null" }),
+    quote: varchar("quote", { length: 400 }),
+    useCaseIds: uuid("use_case_ids").array().notNull().default([]),
+    closedAt: tz("closed_at"),
+    version: integer("version").notNull().default(1),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_commitments_pkey", columns: [t.id] })]
+);
+
+export const contextQuestions = pgTable(
+  "context_questions",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    question: varchar("question", { length: 200 }).notNull(),
+    askWhom: varchar("ask_whom", { length: 80 }),
+    status: varchar("status", { length: 8 }).$type<QuestionStatus>().notNull().default("aperta"),
+    visibility: varchar("visibility", { length: 5 }).$type<ContextVisibility>().notNull(),
+    origin: varchar("origin", { length: 8 }).$type<QuestionOrigin>().notNull(),
+    sourceId: uuid("source_id").references(() => contextSources.id, { onDelete: "set null" }),
+    quote: varchar("quote", { length: 400 }),
+    useCaseIds: uuid("use_case_ids").array().notNull().default([]),
+    closedByFactId: uuid("closed_by_fact_id").references(() => contextFacts.id, { onDelete: "set null" }),
+    closedAt: tz("closed_at"),
+    version: integer("version").notNull().default(1),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_questions_pkey", columns: [t.id] })]
+);
+
+export const contextProposals = pgTable(
+  "context_proposals",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    sourceId: uuid("source_id").notNull().references(() => contextSources.id, { onDelete: "cascade" }),
+    position: smallint("position").notNull(),
+    kind: varchar("kind", { length: 10 }).$type<ProposalKind>().notNull(),
+    statement: varchar("statement", { length: 400 }).notNull(),
+    quote: varchar("quote", { length: 400 }),
+    basis: varchar("basis", { length: 7 }).$type<Basis>().notNull(),
+    section: varchar("section", { length: 10 }).$type<ContextSection>(),
+    visibility: varchar("visibility", { length: 5 }).$type<ContextVisibility>().notNull(),
+    targetFactId: uuid("target_fact_id").references(() => contextFacts.id, { onDelete: "set null" }),
+    questionId: uuid("question_id").references(() => contextQuestions.id, { onDelete: "set null" }),
+    useCaseIds: uuid("use_case_ids").array().notNull().default([]),
+    party: varchar("party", { length: 8 }).$type<CommitmentParty>(),
+    roleLabel: varchar("role_label", { length: 80 }),
+    dueOn: date("due_on"),
+    entities: jsonb("entities").$type<ProposalEntity[]>().notNull().default([]),
+    relations: jsonb("relations").$type<ProposalRelation[]>().notNull().default([]),
+    issue: varchar("issue", { length: 16 }).$type<ProposalIssue>(),
+    status: varchar("status", { length: 10 }).$type<ContextProposalStatus>().notNull().default("aperta"),
+    edited: boolean("edited").notNull().default(false),
+    resultId: uuid("result_id"),
+    decidedAt: tz("decided_at"),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    version: integer("version").notNull().default(1),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_proposals_pkey", columns: [t.id] })]
+);
+
+export const contextEvents = pgTable(
+  "context_events",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    at: tz("at").defaultNow().notNull(),
+    action: varchar("action", { length: 24 }).$type<ContextEventAction>().notNull(),
+    channel: varchar("channel", { length: 8 }).$type<ContextChannel>().notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    sourceId: uuid("source_id"),
+    factId: uuid("fact_id"),
+    commitmentId: uuid("commitment_id"),
+    questionId: uuid("question_id"),
+    detail: jsonb("detail").$type<Record<string, string | number | boolean | null>>().notNull().default({}),
+  },
+  (t) => [primaryKey({ name: "context_events_pkey", columns: [t.id] })]
+);
+
+export const contextSeen = pgTable(
+  "context_seen",
+  {
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    seenAt: tz("seen_at").defaultNow().notNull(),
+    previousSeenAt: tz("previous_seen_at"),
+  },
+  (t) => [primaryKey({ name: "context_seen_pkey", columns: [t.workspaceId, t.userId] })]
+);
+
+export const contextBriefs = pgTable(
+  "context_briefs",
+  {
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    lines: jsonb("lines").$type<string[]>().notNull(),
+    factsHash: char("facts_hash", { length: 64 }).notNull(),
+    generatedAt: tz("generated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_briefs_pkey", columns: [t.workspaceId] })]
+);
+
+export const contextGranolaConnections = pgTable(
+  "context_granola_connections",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    tokensSealed: text("tokens_sealed").notNull(),
+    accessExpiresAt: tz("access_expires_at"),
+    clientId: varchar("client_id", { length: 500 }).notNull(),
+    accountEmail: varchar("account_email", { length: 320 }),
+    plan: varchar("plan", { length: 40 }),
+    status: varchar("status", { length: 14 }).$type<GranolaConnectionStatus>().notNull().default("attiva"),
+    refreshingUntil: tz("refreshing_until"),
+    syncingUntil: tz("syncing_until"),
+    syncedThrough: tz("synced_through"),
+    lastSyncAt: tz("last_sync_at"),
+    lastSyncOkAt: tz("last_sync_ok_at"),
+    lastError: varchar("last_error", { length: 40 }),
+    unsortedCount: integer("unsorted_count").notNull().default(0),
+    connectedAt: tz("connected_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_granola_connections_pkey", columns: [t.userId] })]
+);
+
+export const contextGranolaOauthStates = pgTable(
+  "context_granola_oauth_states",
+  {
+    stateHash: char("state_hash", { length: 64 }).notNull(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    verifierSealed: text("verifier_sealed").notNull(),
+    clientId: varchar("client_id", { length: 500 }).notNull(),
+    redirectUri: varchar("redirect_uri", { length: 300 }).notNull(),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    expiresAt: tz("expires_at").notNull(),
+    usedAt: tz("used_at"),
+  },
+  (t) => [primaryKey({ name: "context_granola_oauth_states_pkey", columns: [t.stateHash] })]
+);
+
+export const contextGranolaClients = pgTable(
+  "context_granola_clients",
+  {
+    issuer: varchar("issuer", { length: 200 }).notNull(),
+    redirectUri: varchar("redirect_uri", { length: 300 }).notNull(),
+    clientId: varchar("client_id", { length: 500 }).notNull(),
+    registeredAt: tz("registered_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_granola_clients_pkey", columns: [t.issuer, t.redirectUri] })]
+);
+
+export const contextGranolaRules = pgTable(
+  "context_granola_rules",
+  {
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    emails: text("emails").array().notNull().default([]),
+    domains: text("domains").array().notNull().default([]),
+    titleWords: text("title_words").array(),
+    wantTranscript: boolean("want_transcript").notNull().default(false),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_granola_rules_pkey", columns: [t.workspaceId] })]
+);
+
+export const contextGranolaLinks = pgTable(
+  "context_granola_links",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    folderId: varchar("folder_id", { length: 120 }),
+    folderName: varchar("folder_name", { length: 200 }),
+    lastImportedAt: tz("last_imported_at"),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_granola_links_pkey", columns: [t.userId, t.workspaceId] })]
+);
+
+export const contextGranolaMeetings = pgTable(
+  "context_granola_meetings",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    meetingId: varchar("meeting_id", { length: 120 }).notNull(),
+    decision: varchar("decision", { length: 8 }).$type<GranolaDecision>().notNull(),
+    decidedBy: varchar("decided_by", { length: 8 }).$type<GranolaDecidedBy>().notNull(),
+    workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }),
+    sourceId: uuid("source_id").references(() => contextSources.id, { onDelete: "set null" }),
+    meetingUpdatedAt: tz("meeting_updated_at"),
+    blockCode: varchar("block_code", { length: 24 }),
+    decidedAt: tz("decided_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "context_granola_meetings_pkey", columns: [t.userId, t.meetingId] })]
+);
+
 // ─── Slack Installations (multi-tenant OAuth) ──────────────────────
 
 export const slackInstallations = pgTable("slack_installations", {
@@ -2718,6 +3072,13 @@ export type AgentBlueprint = typeof agentBlueprints.$inferSelect;
 export type Simulation = typeof simulations.$inferSelect;
 export type DocumentChunk = typeof documentChunks.$inferSelect;
 export type ConversationMemory = typeof conversationMemory.$inferSelect;
+export type ContextSource = typeof contextSources.$inferSelect;
+export type ContextFact = typeof contextFacts.$inferSelect;
+export type ContextProposal = typeof contextProposals.$inferSelect;
+export type ContextCommitment = typeof contextCommitments.$inferSelect;
+export type ContextQuestion = typeof contextQuestions.$inferSelect;
+export type ContextEntity = typeof contextEntities.$inferSelect;
+export type ContextGranolaConnection = typeof contextGranolaConnections.$inferSelect;
 export type SlackInstallation = typeof slackInstallations.$inferSelect;
 export type NewSlackInstallation = typeof slackInstallations.$inferInsert;
 export type SlackUseCaseDraft = typeof slackUseCaseDrafts.$inferSelect;
