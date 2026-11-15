@@ -20,8 +20,9 @@ export type PortfolioScoreSuggestion = {
 /**
  * Modello dell'auto-ranking: `PORTFOLIO_RANKING_MODEL`, altrimenti questo valore.
  * Verificato con la skill `claude-api` (ottobre 2026): `claude-sonnet-4-20250514`,
- * usato finora, è deprecato; `claude-sonnet-5-5` è il Sonnet attuale indicato al
- * suo posto (stessa fascia di costo scelta in origine).
+ * usato finora, è stato ritirato il 15/06/2026 (l'API risponde 404);
+ * `claude-sonnet-5-5` è il Sonnet attuale indicato al suo posto (stessa fascia di
+ * costo scelta in origine), lo stesso del resto dell'app (src/lib/ai/models.ts).
  */
 export const PORTFOLIO_RANKING_DEFAULT_MODEL = "claude-sonnet-5-5";
 
