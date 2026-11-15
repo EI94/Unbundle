@@ -8,6 +8,8 @@ import { getWebSearchTool } from "@/lib/ai/tools/web-search-tool";
 import { DISCOVERY_SYSTEM_PROMPT } from "@/lib/ai/prompts/discovery";
 import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mapping";
 import { withAgentReliability } from "@/lib/ai/agent-reliability";
+import { chatHistory } from "@/lib/ai/chat-history";
+import { CLAUDE_MODEL, claudeCallSettings, logClaudeStop } from "@/lib/ai/models";
 import {
   saveMessage,
   getActiveConversation,
@@ -20,17 +22,6 @@ import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/
 
 /** Vercel / Next: consenti più round LLM dopo i tool (webSearch, salvataggi DB, ecc.) */
 export const maxDuration = 120;
-
-function extractContent(msg: Record<string, unknown>): string {
-  if (typeof msg.content === "string") return msg.content;
-  if (Array.isArray(msg.parts)) {
-    return (msg.parts as Array<{ type?: string; text?: string }>)
-      .filter((p) => p.type === "text" && typeof p.text === "string")
-      .map((p) => p.text!)
-      .join("");
-  }
-  return "";
-}
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -61,10 +52,12 @@ export async function POST(req: Request) {
     isLateralSpace: viewerFromSession({ id: session.user.id, email: session.user.email, emailVerified: session.user.emailVerified === true }, access.role).isLateralSpace,
   });
 
-  const messages = rawMessages.map((m) => ({
-    role: m.role as "user" | "assistant",
-    content: extractContent(m),
-  }));
+  // Solo turni `user`/`assistant` con del testo (src/lib/ai/chat-history.ts). L'ultimo turno è
+  // dell'utente: un turno finale dell'assistente sarebbe un prefill, che il modello rifiuta con un 400.
+  const messages = chatHistory(Array.isArray(rawMessages) ? rawMessages : []);
+  if (messages[messages.length - 1]?.role !== "user") {
+    return new Response("Missing required fields", { status: 400 });
+  }
 
   const [org] = await db
     .select()
@@ -251,7 +244,9 @@ export async function POST(req: Request) {
   }
 
   const result = streamText({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic(CLAUDE_MODEL),
+    // Sforzo medio, 16000 token per passo, senza ripiego lato server (src/lib/ai/models.ts).
+    ...claudeCallSettings("chat"),
     system: withAgentReliability(systemPrompt),
     messages,
     tools: tools as Parameters<typeof streamText>[0]["tools"],
@@ -261,8 +256,12 @@ export async function POST(req: Request) {
     onError: ({ error }) => {
       console.error("[chat/route] streamText error:", error);
     },
-    onFinish: async ({ text }) => {
-      if (text) {
+    onFinish: async ({ text, finishReason, providerMetadata }) => {
+      // Un rifiuto dei classificatori del modello non è una risposta: l'eventuale testo parziale
+      // non si salva e non entra nella memoria della chat.
+      const refused = finishReason === "content-filter";
+      if (refused) logClaudeStop("chat/route", "risposta_rifiutata", { finishReason, providerMetadata });
+      if (text && !refused) {
         await saveMessage({
           conversationId: conversation.id,
           role: "assistant",
