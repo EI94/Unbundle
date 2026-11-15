@@ -13,28 +13,39 @@
  *   - un ruolo da revisore, prima nell'organizzazione poi nel workspace (`getWorkspaceAccessForUser`,
  *     `PORTFOLIO_REVIEWER_ROLES`).
  *   Si rilegge a ogni richiesta: chi scende a Contributore o perde la verifica dell'e-mail smette di costruire subito.
- * - **Senza la 0037** il frammento vale `false`: si chiude, non si apre (`BuilderScope.externalReady`).
+ * - **Senza la 0037** il frammento vale `false`: si chiude, non si apre (`BuilderScope.externalReady`). Alle porte chi ha
+ *   una concessione riceve però «riprova» (503), non «non hai un ruolo» (`externalBuilderGate`).
  *
  * Modulo senza import dell'app (`@/…`, `server-only`), come `uc-cases.ts`: lo usano anche i comandi dei casi, le
  * notifiche dei compiti e il cron. I domini di Lateral Space li passa chi chiama.
  */
-import { EXTERNAL_BUILDERS_PROBE_SQL } from "../use-case-hub-builders-ddl.ts";
+import { EXTERNAL_BUILDERS_PROBE_SQL, EXTERNAL_BUILDERS_TABLE } from "../use-case-hub-builders-ddl.ts";
 import { cast, raw, ref, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
-import { EXTERNAL_BUILDER_ROLE, FACTORY_BUILDER_ROLES, type FactoryRole } from "../../use-cases/factory/builders.ts";
+import { EXTERNAL_BUILDER_ROLE, FACTORY_BUILDER_ROLES, type ExternalBuilderBlock, type FactoryRole } from "../../use-cases/factory/builders.ts";
 import { CLIENT_CASE_ROLES } from "../../uc/vocab.ts";
 import { PORTFOLIO_REVIEWER_ROLES } from "../../workspace-permissions.ts";
 import type { UcExecutor } from "../uc-executor.ts";
 
 // ─── Sonda e ambito ──────────────────────────────────────────────────
 
-/** Vero se la 0037 è applicata (la stessa sonda di `ensureDbSchema`). */
-export async function externalBuildersReady(executor: UcExecutor): Promise<boolean> {
+/**
+ * La 0037 (la stessa sonda di `ensureDbSchema`): `pronta` (tabella, chiave e indici unici), `assente` (la sonda è falsa),
+ * `guasta` (la sonda non risponde). Finché non è pronta nessuno costruisce da fuori: si chiude, non si apre.
+ */
+export type ExternalBuildersProbe = "pronta" | "assente" | "guasta";
+
+export async function probeExternalBuilders(executor: UcExecutor): Promise<ExternalBuildersProbe> {
   try {
     const [rows] = await executor.batch([toStatement(ucSql`SELECT ${raw(EXTERNAL_BUILDERS_PROBE_SQL)} AS ready`)]);
-    return rows[0]?.ready === true;
+    return rows[0]?.ready === true ? "pronta" : "assente";
   } catch {
-    return false;
+    return "guasta";
   }
+}
+
+/** Vero se la 0037 è applicata. Una sonda che non risponde vale «no». */
+export async function externalBuildersReady(executor: UcExecutor): Promise<boolean> {
+  return (await probeExternalBuilders(executor)) === "pronta";
 }
 
 /**
@@ -103,6 +114,43 @@ export async function isExternalBuilderOfCase(executor: UcExecutor, i: { caseId:
     toStatement(ucSql`SELECT ${externalBuilderSql(scope)} AS ok FROM uc_cases c JOIN users u ON u.id = ${cast(i.userId, "uuid")} WHERE c.id = ${cast(i.caseId, "uuid")}`),
   ]);
   return rows[0]?.ok === true;
+}
+
+/**
+ * Per le porte (`loadFactoryAccess`): costruisce il caso da fuori adesso (il predicato), e se no, perché, quando le porte
+ * lo devono dire (`ExternalBuilderBlock`). Con la 0037 non pronta nessuno costruisce da fuori, ma a chi ha una concessione
+ * che copre il caso, o se non si riesce a saperlo, la risposta è «riprova» (`non_disponibile`), non «non hai un ruolo».
+ */
+export async function externalBuilderGate(
+  executor: UcExecutor,
+  i: { caseId: string; userId: string; lsDomains: readonly string[] },
+): Promise<{ builds: boolean; blocked: ExternalBuilderBlock | null }> {
+  if (i.lsDomains.length === 0 || !UUID_RE.test(i.caseId) || !UUID_RE.test(i.userId)) return { builds: false, blocked: null };
+  if ((await probeExternalBuilders(executor)) !== "pronta") {
+    return { builds: false, blocked: (await grantMaybeHeld(executor, i)) ? "non_disponibile" : null };
+  }
+  const scope: BuilderScope = { lsDomains: [...i.lsDomains], externalReady: true };
+  const [rows] = await executor.batch([
+    toStatement(ucSql`SELECT ${externalBuilderSql(scope)} AS ok FROM uc_cases c JOIN users u ON u.id = ${cast(i.userId, "uuid")} WHERE c.id = ${cast(i.caseId, "uuid")}`),
+  ]);
+  return { builds: rows[0]?.ok === true, blocked: null };
+}
+
+/**
+ * Con la 0037 non pronta: la persona può avere una concessione che copre il caso? Senza la tabella no (nessuno ne ha);
+ * con la tabella, la si legge; se la lettura non riesce, sì: meglio «riprova» che «non hai un ruolo».
+ */
+async function grantMaybeHeld(executor: UcExecutor, i: { caseId: string; userId: string }): Promise<boolean> {
+  try {
+    const [table] = await executor.batch([toStatement(ucSql`SELECT to_regclass(${cast(`public.${EXTERNAL_BUILDERS_TABLE}`, "text")}) IS NOT NULL AS present`)]);
+    if (table[0]?.present !== true) return false;
+    const [rows] = await executor.batch([
+      toStatement(ucSql`SELECT ${grantCoversCaseSql(cast(i.userId, "uuid"))} AS held FROM uc_cases c WHERE c.id = ${cast(i.caseId, "uuid")}`),
+    ]);
+    return rows[0]?.held === true;
+  } catch {
+    return true;
+  }
 }
 
 // ─── I destinatari ───────────────────────────────────────────────────

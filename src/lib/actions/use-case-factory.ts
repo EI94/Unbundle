@@ -95,6 +95,8 @@ async function onFactoryBuild<T>(
   if (!opened.ok) return opened.result;
   const o = opened.value;
   const factory = await loadFactoryAccess(o.executor, o.caseAccess);
+  // La 0037 non è pronta e la persona costruisce il caso da fuori (o non si sa): «riprova», non «non trovato».
+  if (factory.blocked === "non_disponibile") return NOT_READY;
   if (!canWriteFactory(factory.roles)) return ucFailure("non_trovato", "Caso non trovato o non accessibile.");
   if (factory.readOnly) {
     return o.caseAccess.lsConfigured

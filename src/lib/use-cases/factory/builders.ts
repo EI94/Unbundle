@@ -46,6 +46,13 @@ export interface FactoryCaseAccess {
   user: { isLateralSpace: boolean; emailVerified: boolean };
 }
 
+/**
+ * Perché chi potrebbe costruire il caso da fuori (`mayBeExternalBuilder`) adesso non lo fa, quando non è un no e basta:
+ * - `non_disponibile`: la 0037 non è pronta (la sonda è falsa o non risponde) e la persona ha una concessione che copre il
+ *   caso, o non si riesce a saperlo. La risposta è «riprova tra qualche minuto» (503), mai «non hai un ruolo» (403).
+ */
+export type ExternalBuilderBlock = "non_disponibile";
+
 /** I ruoli della fabbrica di una persona in un caso, e se lì scrive. */
 export interface FactoryAccess {
   roles: FactoryRole[];
@@ -53,6 +60,8 @@ export interface FactoryAccess {
   readOnly: boolean;
   /** Costruisce il caso da fuori Lateral Space (il predicato è vero). */
   external: boolean;
+  /** Perché da fuori adesso non costruisce, se le porte lo devono dire (`ExternalBuilderBlock`); null altrimenti. */
+  blocked: ExternalBuilderBlock | null;
 }
 
 /**
@@ -68,10 +77,11 @@ export function mayBeExternalBuilder(a: FactoryCaseAccess): boolean {
 
 /**
  * I ruoli della fabbrica: quelli del caso più `builder_esterno` se `external` (il predicato). Sola lettura con i domini
- * di Lateral Space non configurati, oppure con solo `osservatore`; per chi non è esterno, il valore di oggi.
+ * di Lateral Space non configurati, oppure con solo `osservatore`; per chi non è esterno, il valore di oggi. `blocked`:
+ * perché da fuori adesso non costruisce, se le porte lo devono dire.
  */
-export function factoryAccessOf(a: Pick<FactoryCaseAccess, "roles" | "readOnly" | "lsConfigured">, external: boolean): FactoryAccess {
-  if (!external) return { roles: [...a.roles], readOnly: a.readOnly, external: false };
+export function factoryAccessOf(a: Pick<FactoryCaseAccess, "roles" | "readOnly" | "lsConfigured">, external: boolean, blocked: ExternalBuilderBlock | null = null): FactoryAccess {
+  if (!external) return { roles: [...a.roles], readOnly: a.readOnly, external: false, blocked };
   const roles: FactoryRole[] = [...a.roles, EXTERNAL_BUILDER_ROLE];
-  return { roles, readOnly: !a.lsConfigured || roles.every((role) => role === "osservatore"), external: true };
+  return { roles, readOnly: !a.lsConfigured || roles.every((role) => role === "osservatore"), external: true, blocked: null };
 }

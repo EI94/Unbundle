@@ -424,6 +424,28 @@ test("D6: le azioni di chi costruisce sono rifiutate a chi gestisce il workspace
   assert.deepEqual(await post("decisioni", tokens.p!, { caso: "NM-0001", argomento: "Prova", decisione: "No" }).then((r) => [r.status, codeOf(r)]), [403, "permesso_negato"]);
 });
 
+test("con la 0037 non intera, chi costruisce da fuori riceve «riprova» (503) dalla CLI e dalla pagina, mai «non hai un ruolo»; gli altri come prima", opts, async () => {
+  // La tabella c'è, un indice unico no: la sonda è falsa (come una 0037 a metà).
+  await q(`ALTER INDEX use_case_external_builders_all_unique RENAME TO use_case_external_builders_all_unique_prova`);
+  try {
+    const unavailable = "Unbundle non risponde per questo caso: riprova tra qualche minuto.";
+    const ctx = await call("context?caso=NM-0001", { token: tokens.e });
+    assert.deepEqual([ctx.status, codeOf(ctx), (ctx.json.errore as Row | undefined)?.messaggio], [503, "non_disponibile", unavailable], "E: il contesto");
+    const write = await post("decisioni", tokens.e!, { caso: "NM-0001", argomento: "Prova", decisione: "Non adesso" });
+    assert.deepEqual([write.status, codeOf(write)], [503, "non_disponibile"], "E: una scrittura");
+    const web = await as("e", () => factoryActions.addDecisionAction(ids.wsA, ids.caseA1, { topic: "Prova", choice: "Non adesso" }));
+    assert.deepEqual([web.ok, !web.ok && web.code], [false, "non_disponibile"], "E: dalla pagina");
+    // Chi non ha una concessione: come sempre, legge e non scrive. Lateral Space scrive.
+    const p = await call("context?caso=NM-0001", { token: tokens.p });
+    assert.deepEqual([p.status, (p.json.dati as Row).scrive], [200, false]);
+    assert.deepEqual(await post("decisioni", tokens.p!, { caso: "NM-0001", argomento: "Prova", decisione: "No" }).then((r) => [r.status, codeOf(r)]), [403, "permesso_negato"]);
+    assert.equal((await call("context?caso=NM-0001", { token: tokens.lead })).status, 200);
+  } finally {
+    await q(`ALTER INDEX use_case_external_builders_all_unique_prova RENAME TO use_case_external_builders_all_unique`);
+  }
+  assert.equal((await call("context?caso=NM-0001", { token: tokens.e })).status, 200, "con la 0037 intera E torna a costruire");
+});
+
 // ─── Gli elenchi ─────────────────────────────────────────────────────
 
 test("D11: «passa» a chi costruisce il caso adesso: L→E, E→L, E→E2; a P o a chi costruisce in B, non trovato", opts, async () => {

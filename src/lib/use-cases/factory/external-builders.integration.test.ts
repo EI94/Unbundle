@@ -182,6 +182,35 @@ test("D13: senza la 0037 (o con la sonda che non risponde) nessuno è esterno e 
   assert.equal(off.text, "false");
 });
 
+test("la 0037 non pronta (sonda falsa o che non risponde): alle porte chi ha una concessione riceve «riprova», chi non ne ha il no di sempre", opts, async () => {
+  /** Il database vero, tranne la sonda della 0037: falsa (la tabella c'è, un indice no) oppure un errore. */
+  const probeOnly = (answer: "falsa" | "errore") =>
+    ({
+      batch: async (statements: Parameters<typeof exec.batch>[0]) => {
+        if (statements.some((st) => st.text.includes(ddl.EXTERNAL_BUILDERS_UNIQUE_INDEXES[0]))) {
+          if (answer === "errore") throw new Error("sonda");
+          return [[{ ready: false }]];
+        }
+        return exec.batch(statements);
+      },
+    }) as unknown as typeof exec;
+  const gate = (executor: typeof exec, person: Person) => builders.externalBuilderGate(executor, { caseId: ids.caseA, userId: ids[person], lsDomains: LS });
+  for (const answer of ["falsa", "errore"] as const) {
+    assert.equal(await builders.probeExternalBuilders(probeOnly(answer)), answer === "falsa" ? "assente" : "guasta");
+    assert.deepEqual(await gate(probeOnly(answer), "e"), { builds: false, blocked: "non_disponibile" }, `E, sonda ${answer}`);
+    assert.deepEqual(await gate(probeOnly(answer), "p"), { builds: false, blocked: null }, `P senza concessione, sonda ${answer}`);
+    assert.deepEqual(await gate(probeOnly(answer), "e2"), { builds: false, blocked: null }, `E2, concessione per un altro caso, sonda ${answer}`);
+  }
+  // Senza la tabella nessuno ha una concessione: il no di sempre. Se non si riesce a leggere niente: «riprova».
+  const missing = { batch: async () => [[{ ready: false }]] } as unknown as typeof exec;
+  assert.deepEqual(await gate(missing, "e"), { builds: false, blocked: null });
+  const broken = { batch: async () => Promise.reject(new Error("rete")) } as unknown as typeof exec;
+  assert.deepEqual(await gate(broken, "e"), { builds: false, blocked: "non_disponibile" });
+  // Con la 0037 pronta: il predicato, senza perché.
+  assert.deepEqual(await gate(exec, "e"), { builds: true, blocked: null });
+  assert.deepEqual(await gate(exec, "p"), { builds: false, blocked: null });
+});
+
 /** Chi costruisce il caso secondo gli elenchi (`builderMembersSql`). */
 async function listedBuilders(caseId: string, lsDomains = LS): Promise<string[]> {
   const scope = await builders.loadBuilderScope(exec, lsDomains);

@@ -158,6 +158,15 @@ export default async function AgentProjectPage({ params }: { params: Promise<{ w
   const target = { workspaceId, useCaseId: useCase.useCaseId };
   // (8.0c) I ruoli della fabbrica: quelli del caso, più `builder_esterno` per chi costruisce da fuori.
   const factory = await loadFactoryAccess(executor, caseAccess);
+  // La 0037 non è pronta e la persona costruisce il caso da fuori (o non si sa): come la fabbrica non ancora pronta.
+  if (factory.blocked === "non_disponibile") {
+    return (
+      <PageContainer>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Progetto dell&apos;agente</h1>
+        <p className="mt-4 text-sm text-muted-foreground">Non ancora disponibile: riprova tra qualche minuto.</p>
+      </PageContainer>
+    );
+  }
   const read = await readFactory(executor, target, { kind: "persona", userId: session.user.id, roles: factory.roles });
   if (!read.ok) notFound();
   const view = read.value;

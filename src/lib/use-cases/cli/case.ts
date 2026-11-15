@@ -6,7 +6,8 @@ import "server-only";
  *   caso riletti adesso (`resolveCaseAccess`, come le pagine). Un token di un caso solo vede solo quel caso. Un caso
  *   che la persona non vede risponde come uno che non esiste; un guasto (le tabelle dei dossier che non rispondono)
  *   risponde 503, mai «non trovato». (8.0c) In più i ruoli della fabbrica (`CliCase.factory`): quelli del caso, più
- *   `builder_esterno` per chi costruisce il caso da fuori Lateral Space (`loadFactoryAccess`).
+ *   `builder_esterno` per chi costruisce il caso da fuori Lateral Space (`loadFactoryAccess`). Con la 0037 non pronta, a
+ *   chi ha una concessione che copre il caso: 503 anche qui, non «non hai un ruolo».
  * - `requireCliWrite`: le scritture vogliono un ruolo della fabbrica che costruisce, un caso né chiuso né in pausa e
  *   la fabbrica non in sola lettura, come `onFactoryBuild` delle azioni della pagina.
  * - `runCliWrite`: ogni scrittura passa dal registro con la chiave di idempotenza (`use_case_mcp_requests`,
@@ -36,7 +37,7 @@ import { decideExistingTeamRequest } from "@/lib/use-cases/mcp/idempotency";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
 import { isUseCaseHubWorkspace } from "@/lib/use-cases/rollout";
 import { cliError, cliJson, type OpenedCli } from "./route-kit";
-import { CLI_CASE_NOT_FOUND, cliCaseAccessFailure } from "./case-errors";
+import { CLI_CASE_NOT_FOUND, CLI_CASE_UNAVAILABLE, cliCaseAccessFailure } from "./case-errors";
 
 export interface CliCase {
   useCase: { id: string; code: string; title: string };
@@ -91,6 +92,8 @@ LIMIT 1`),
   }
   if (!caseAccess || !canReadFactory(caseAccess.roles)) return { ok: false, response: cliError(404, "non_trovato", NOT_FOUND) };
   const factory = await loadFactoryAccess(executor, caseAccess);
+  // (8.0c) La 0037 non è pronta e la persona costruisce il caso da fuori (o non si sa): «riprova», mai «non hai un ruolo».
+  if (factory.blocked === "non_disponibile") return { ok: false, response: cliError(503, "non_disponibile", CLI_CASE_UNAVAILABLE, { "Retry-After": "60" }) };
   return {
     ok: true,
     value: {
@@ -120,6 +123,7 @@ export const CLI_NOT_A_BUILDER = "Nel team del caso non hai un ruolo che costrui
 export function cliWriteDenial(c: CliCase): CliFailure | null {
   if (c.access.status === "chiuso") return { status: 409, code: "caso_chiuso", message: "Il caso è chiuso: il progetto si legge soltanto." };
   if (c.access.status === "sospeso") return { status: 409, code: "caso_sospeso", message: "Il caso è in pausa: si riprende da Impostazioni del caso." };
+  if (c.factory.blocked === "non_disponibile") return { status: 503, code: "non_disponibile", message: CLI_CASE_UNAVAILABLE, retryAfterSeconds: 60 };
   if (c.factory.readOnly || !canWriteFactory(c.factory.roles)) {
     return { status: 403, code: "permesso_negato", message: CLI_NOT_A_BUILDER };
   }
