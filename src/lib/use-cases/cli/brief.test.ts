@@ -78,6 +78,38 @@ test("mai un nome: né nel brief né negli strati; le e-mail non ci sono perché
   }
 });
 
+test("(8.0c) gli identificativi tecnici non passano dai nomi da nascondere: codice, repository e cartelle restano interi; il testo libero no", () => {
+  // Una persona di nome Prova Esterno e una di cognome Rosa: i loro nomi stanno anche in un codice e in due repository.
+  const names = ["Prova Esterno", "Maria Rosa"];
+  const named = input({
+    code: "ROSA-0001",
+    title: "Il riordino che prepara Rosa",
+    repos: [
+      { repo: "Voltaen/prova-esterni", folder: "casi/rosa-0001" },
+      { repo: "Voltaen/topjet-rosa", folder: "casi/rosa-0001" },
+    ],
+    namesToHide: names,
+    decisions: [decision(1, { topic: "Chi approva", choice: "Lo approva Rosa ogni lunedì" })],
+    approved: project({ topics: { funzionalita: { scelta: "Prova prepara le bozze", perche: null, alternativa: null } }, changeRequest: null }),
+  });
+  const brief = composeBrief(named);
+  assert.match(brief, /^ROSA-0001 · Il riordino che prepara una persona\n/);
+  assert.match(brief, /Repository: Voltaen\/prova-esterni \(casi\/rosa-0001\), Voltaen\/topjet-rosa \(casi\/rosa-0001\)\./);
+  assert.match(brief, /Lo approva una persona ogni lunedì/);
+  const project_ = composeProjectLayer(named);
+  assert.match(project_, /^ROSA-0001 · progetto versione 1/);
+  assert.match(project_, /\nuna persona prepara le bozze\n/);
+  assert.match(composeDecisionsLayer(named), /^ROSA-0001 · decisioni che valgono \(1\)\n- .* · Lo approva una persona ogni lunedì$/);
+  const questions = composeQuestionsLayer({ code: "ROSA-0001", openNeeds: [{ title: "Il turno di Rosa", status: "aperta" }], proposals: [], namesToHide: names });
+  assert.match(questions, /^ROSA-0001 · domande\n/);
+  assert.match(questions, /- Il turno di una persona \(aperta\)/);
+  assert.match(questions, /unbundle ask ROSA-0001 /);
+  // Il nome non resta mai nel testo libero.
+  for (const text of [brief, project_, composeDecisionsLayer(named), questions]) {
+    assert.doesNotMatch(text.replace(/ROSA-0001|casi\/rosa-0001|Voltaen\/topjet-rosa|Voltaen\/prova-esterni/g, ""), /\b(Rosa|Prova)\b/i, text);
+  }
+});
+
 test("solo le decisioni che valgono: una scelta rifatta sostituisce quella di prima", () => {
   const decisions = [
     decision(1, { topicKey: "modelli", topic: "Modelli", choice: "Modello grande", decidedOn: "2026-11-09", createdAt: "2026-11-09T09:00:00.000Z" }),
