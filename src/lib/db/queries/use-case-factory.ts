@@ -49,7 +49,8 @@ import { romeToday } from "@/lib/use-cases/quarter";
 import { hasOpenTasksSql, NOBODY, notifyTask, tasksTablesReady } from "@/lib/db/queries/use-case-tasks-notices";
 import { caseRecipientsSql, loadBuilderScope, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
 import { ucLsDomains } from "@/lib/db/queries/uc-access";
-import { EXTERNAL_BUILDER_ROLE, FACTORY_BUILDER_ROLES } from "@/lib/use-cases/factory/builders";
+import { EXTERNAL_BUILDER_ROLE, FACTORY_BUILDER_ROLES, LS_BUILDER_ROLES } from "@/lib/use-cases/factory/builders";
+import { isTemplateRepo } from "@/lib/use-cases/factory/line";
 
 // ─── Chi agisce ──────────────────────────────────────────────────────
 
@@ -865,29 +866,49 @@ RETURNING id`),
   return fail("non_trovato", "Use case non trovato.");
 }
 
+/** (8.0c) Il repository modello, a chiunque lo registri. */
+export const REPO_TEMPLATE_MESSAGE = "Il repository modello non è il repository di un cliente: indica quello della famiglia del caso.";
+
 /**
- * `unbundle repo create`: registra (o aggiorna) il repository e la cartella dello use case. (8.0c) Mai un repository già
- * registrato per un altro cliente (`repo_di_altro_cliente`): il webhook di GitHub cerca i casi per repository in tutti i
- * workspace, e gli eventi di un cliente arriverebbero ai casi di un altro. In fila per repository (l'advisory lock), così
- * due clienti insieme non lo registrano tutti e due.
+ * (8.0c) A chi costruisce da fuori, lo stesso testo per un repository nuovo e per uno registrato da un altro cliente: non
+ * dice mai se un nome lo usa qualcun altro.
+ */
+export const REPO_NOT_OF_CLIENT_MESSAGE =
+  "Questo repository non è tra quelli dei casi del cliente: uno nuovo lo registra Lateral Space. Chiedilo al responsabile del caso, poi rilancia lo stesso comando.";
+
+/**
+ * `unbundle repo create`: registra (o aggiorna) il repository e la cartella dello use case. In fila per repository
+ * (l'advisory lock), così due clienti insieme non lo registrano tutti e due. (8.0c)
+ * - Mai il repository modello, per nessuno (`repo_modello`).
+ * - Mai un repository già registrato per un altro cliente (`repo_di_altro_cliente`): il webhook di GitHub cerca i casi
+ *   per repository in tutti i workspace, e gli eventi di un cliente arriverebbero ai casi di un altro.
+ * - Chi nel caso non ha un ruolo di Lateral Space che costruisce (chi costruisce da fuori) registra solo un repository
+ *   già registrato per i casi dello stesso cliente: la famiglia la crea e la registra Lateral Space, chi costruisce da
+ *   fuori ci aggiunge i casi. Un repository nuovo, o di un altro cliente, gli risponde con un testo solo
+ *   (`repo_non_del_cliente`): nessuno occupa un repository, e nessuno scopre chi usa un nome.
  */
 export async function registerCaseRepo(executor: UcExecutor, actor: FactoryActor, target: FactoryTarget, input: CaseRepoInput): Promise<Result<{ id: string; created: boolean }>> {
   if (!mayWrite(actor)) return fail("permesso_negato", DENIED);
+  if (isTemplateRepo(input.repo)) return fail("repo_modello", REPO_TEMPLATE_MESSAGE);
+  const lsBuilder = actor.kind === "script" || actor.roles.some((role) => (LS_BUILDER_ROLES as readonly string[]).includes(role));
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
   const repo = cast(input.repo, "text");
   const elsewhere = ucSql`EXISTS (SELECT 1 FROM use_case_repos o WHERE lower(o.repo) = lower(${repo}) AND o.workspace_id <> ${ws})`;
-  const [, taken, rows] = await executor.batch([
+  const known = ucSql`EXISTS (SELECT 1 FROM use_case_repos o WHERE lower(o.repo) = lower(${repo}) AND o.workspace_id = ${ws})`;
+  const [, facts, rows] = await executor.batch([
     toStatement(ucSql`SELECT pg_advisory_xact_lock(hashtext('unbundle:use-case-repo:' || lower(${repo})))`),
-    toStatement(ucSql`SELECT ${elsewhere} AS taken`),
+    toStatement(ucSql`SELECT ${elsewhere} AS taken, ${known} AS known`),
     toStatement(ucSql`INSERT INTO use_case_repos (use_case_id, workspace_id, repo, folder, profile, vercel_project, created_by_user_id)
 SELECT u.id, u.workspace_id, ${repo}, ${cast(input.folder, "text")}, ${cast(input.profile, "text")}, ${cast(input.vercelProject, "text")}, ${cast(userOf(actor), "uuid")}
-FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws} AND NOT ${elsewhere}
+FROM use_cases u WHERE u.id = ${uc} AND u.workspace_id = ${ws} AND NOT ${elsewhere} AND (${cast(lsBuilder, "boolean")} OR ${known})
 ON CONFLICT (use_case_id, repo, folder) DO UPDATE SET profile = coalesce(EXCLUDED.profile, use_case_repos.profile),
   vercel_project = coalesce(EXCLUDED.vercel_project, use_case_repos.vercel_project), updated_at = now()
 RETURNING id, (xmax = 0) AS created`),
   ]);
-  if (taken[0]?.taken === true) return fail("repo_di_altro_cliente", "Questo repository è già registrato per un altro cliente: ogni cliente ha i suoi.");
+  const taken = facts[0]?.taken === true;
+  if (!lsBuilder && (taken || facts[0]?.known !== true)) return fail("repo_non_del_cliente", REPO_NOT_OF_CLIENT_MESSAGE);
+  if (taken) return fail("repo_di_altro_cliente", "Questo repository è già registrato per un altro cliente: ogni cliente ha i suoi.");
   if (!rows[0]) return fail("non_trovato", "Use case non trovato.");
   return ok({ id: String(rows[0].id), created: rows[0].created === true });
 }

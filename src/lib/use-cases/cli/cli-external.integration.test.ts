@@ -248,7 +248,10 @@ test("D4: E costruisce dalla CLI: il contesto dice builder_esterno e scrive; imp
   const decided = await post("decisioni", tokens.e!, { caso: "NM-0001", argomento: "Lingua", decisione: "Le risposte in italiano", perche: "I tecnici leggono l'italiano" });
   assert.equal(decided.status, 200, JSON.stringify(decided.json));
   assert.equal((await post("domande", tokens.e!, { caso: "NM-0001", domanda: "Chi aggiorna l'esploso dei ricambi?" })).status, 200);
-  const repo = await post("repository", tokens.e!, { caso: "NM-0001", repository: `Prova/nardi-esploso-${suffix}`, cartella: "casi/nm-0001", profilo: "codice" });
+  // La famiglia la crea e la registra Lateral Space; chi costruisce da fuori ci aggiunge i suoi casi.
+  const family = `Prova/nardi-esploso-${suffix}`;
+  assert.equal((await post("repository", tokens.lead!, { caso: "NM-0002", repository: family, cartella: "casi/nm-0002", profilo: "codice" })).status, 200);
+  const repo = await post("repository", tokens.e!, { caso: "NM-0001", repository: family, cartella: "casi/nm-0001", profilo: "codice" });
   assert.equal(repo.status, 200, JSON.stringify(repo.json));
   const session = { caso: "NM-0001", chiaveSessione: "e".repeat(64), harness: "claude_code", modello: "claude-sonnet-4-5", tokenIngresso: 1000, tokenUscita: 200, durataSecondi: 600, esito: "commit", finitaIl: new Date().toISOString() };
   assert.equal((await post("sessioni", tokens.e!, session, null)).status, 200);
@@ -674,6 +677,38 @@ test("D15: il repository di un altro cliente si rifiuta; nello stesso cliente un
   assert.equal(count.n, 0);
   const family = await post("repository", tokens.lead!, { caso: "NM-0003", repository: repo, cartella: "casi/nm-0003" });
   assert.equal(family.status, 200, "lo stesso cliente, un altro caso della famiglia");
+});
+
+test("D15: chi costruisce da fuori registra solo un repository dei casi del cliente; per uno nuovo o di un altro cliente la stessa risposta; il modello mai, per nessuno", opts, async () => {
+  const github = await import("../../db/queries/use-case-github.ts");
+  const family = `Prova/nardi-esploso-${suffix}`;
+  const ofB = `Prova/quotazioni-${suffix}`;
+  const fresh = `Prova/mai-registrato-${suffix}`;
+  const leadInB = await tokenFor("lead", ids.wsB);
+  assert.equal((await post("repository", leadInB, { caso: "TB-0001", repository: ofB, cartella: "casi/tb-0001" })).status, 200, "Lateral Space registra un repository nuovo");
+  const refusal = { status: 403, code: "repo_non_del_cliente", message: "Questo repository non è tra quelli dei casi del cliente: uno nuovo lo registra Lateral Space. Chiedilo al responsabile del caso, poi rilancia lo stesso comando." };
+  for (const repository of [fresh, ofB, ofB.toUpperCase()]) {
+    const r = await post("repository", tokens.e!, { caso: "NM-0003", repository, cartella: "casi/nm-0003" });
+    assert.deepEqual({ status: r.status, code: codeOf(r), message: (r.json.errore as Row | undefined)?.messaggio }, refusal, repository);
+  }
+  const [count] = await q(`SELECT count(*)::int AS n FROM use_case_repos WHERE workspace_id = $1 AND lower(repo) = ANY($2::text[])`, [ids.wsA, [fresh.toLowerCase(), ofB.toLowerCase()]]);
+  assert.equal(count.n, 0, "niente registrato nel workspace A");
+  // Il repository nuovo non porta niente nei casi di A: un'issue lì si ignora.
+  const applied = await github.applyGithubEvent(exec, {
+    deliveryId: `ext-${suffix}-repo-nuovo`,
+    event: "issues",
+    parsed: { kind: "proposta", repo: fresh, number: 7, commentId: null, title: "Ruotare la chiave interna", caseCodes: [], onPullRequest: false },
+  });
+  assert.deepEqual(applied, { esito: "ignorato", motivo: "repository_non_registrato" });
+  // Il repository della famiglia di A: sì, anche per un altro caso.
+  assert.equal((await post("repository", tokens.e!, { caso: "NM-0003", repository: family, cartella: "casi/nm-0003" })).status, 200);
+  // Il repository modello: per nessuno, nemmeno per Lateral Space.
+  for (const [who, token] of [["E", tokens.e!], ["Lateral Space", tokens.lead!]] as const) {
+    for (const repository of ["Voltaen/agent-factory-modello", "voltaen/Agent-Factory-Modello.git"]) {
+      const r = await post("repository", token, { caso: "NM-0003", repository, cartella: "casi/nm-0003" });
+      assert.deepEqual([r.status, codeOf(r)], [400, "repo_modello"], `${who}: ${repository}`);
+    }
+  }
 });
 
 test("D2: «Collega questa CLI» propone solo dove si costruisce o si è nel team di un caso, e il server lo ricontrolla", opts, async () => {

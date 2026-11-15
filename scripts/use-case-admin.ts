@@ -23,6 +23,9 @@
  *   scoring-v2    [--revert]                       prima/dopo del punteggio v2, --apply e ritorno alla v1
  *   doctor                                         controlli prima dell'accensione (sola lettura)
  *   erase-referent --contact <uuid>                dati di un referente di «Chiedi al referente» (con --workspace)
+ *   factory-import --use-case <codice> --from <dir> l'impostazione della settimana zero (con --workspace)
+ *   repo-unregister --repo owner/nome [--use-case <codice>]
+ *                                                  la registrazione di un repository tolta dai casi (con --workspace)
  *
  * Regole (sul modello di `scripts/uc-case-admin.ts`):
  * - il database è solo `USE_CASE_ADMIN_DATABASE_URL`: lo script non legge file d'ambiente né
