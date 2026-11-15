@@ -71,6 +71,18 @@ test("prima di una risposta rifiutata si tolgono tutti i turni dell'utente di se
     { role: "assistant", content: "Di che cosa ti occupi?" },
     { role: "user", content: "Tre." },
   ]);
+  // Lo stesso per una risposta il cui solo testo sono spazi o a capo: chatHistory toglie anche lei (il testo, senza
+  // spazi, è vuoto), e il modello riceve unite le due domande.
+  const whitespaceOnly: ChatUIMessage = {
+    id: "a1",
+    role: "assistant",
+    parts: [{ type: "step-start" }, { type: "text", text: "\n\n" }, { type: "tool-saveActivity", toolCallId: "t1", state: "input-available", input: {} }],
+  };
+  assert.deepEqual(chatRequestMessages([user("u0", "Ciao."), answer, user("u1", "Uno."), whitespaceOnly, user("u2", "Due."), refused, user("u3", "Tre.")]), [
+    { role: "user", content: "Ciao." },
+    { role: "assistant", content: "Di che cosa ti occupi?" },
+    { role: "user", content: "Tre." },
+  ]);
   const withText: ChatUIMessage = { id: "a1", role: "assistant", parts: [{ type: "text", text: "Ogni quanto" }] };
   assert.deepEqual(chatRequestMessages([user("u1", "Uno."), withText, user("u2", "Due."), refused, user("u3", "Tre.")]), [
     { role: "user", content: "Uno." },
