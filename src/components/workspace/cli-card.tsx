@@ -18,6 +18,7 @@ export function CliCard({ workspaceId, tokens }: { workspaceId: string; tokens: 
   const [pending, start] = useTransition();
   return (
     <SettingsSection
+      id="cli"
       icon={Terminal}
       title="CLI di Unbundle"
       description="Per lavorare dai coding agent sui casi dove sei nel team. Si collega con «unbundle login» dal repository del caso; vale 90 giorni."

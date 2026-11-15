@@ -3,8 +3,9 @@
  * interna, e il giro dei compiti fermi del cron dei dossier.
  *
  * - `notifyTask`: una riga nella campanella (`use_case_notifications`) e un'e-mail in coda (`uc_notifications`),
- *   a una persona o ai ruoli del caso. Mai a chi agisce; una al giorno per persona, caso e tipo. `when` è una
- *   condizione nella stessa transazione.
+ *   a una persona, ai ruoli del caso o (8.0c) a chi costruisce il caso adesso (`{ builders }`: i ruoli di Lateral Space
+ *   salvati più chi costruisce da fuori, il predicato di `use-case-builders.ts`). Mai a chi agisce; una al giorno per
+ *   persona, caso e tipo. `when` è una condizione nella stessa transazione.
  * - `runTaskStaleSweep`: nei giorni lavorativi, per ogni compito in corso, `staleStep`.
  *   - «chiedi» lo chiede a chi ha il compito;
  *   - «responsabile» lo dice al responsabile del caso (non a chi ha il compito, se è lui);
@@ -25,9 +26,7 @@ import type { CaseRole } from "../../uc/vocab.ts";
 import { romeToday } from "../../use-cases/quarter.ts";
 import { staleStep } from "../../use-cases/factory/tasks.ts";
 import type { UcExecutor } from "../uc-executor.ts";
-
-/** I ruoli che costruiscono: a loro «ci sono compiti da prendere». */
-export const BUILDER_ROLES: readonly CaseRole[] = ["ls_lead", "ls_analista", "ls_sviluppatore"];
+import { builderMembersSql, type BuilderScope } from "./use-case-builders.ts";
 
 /** Lo use case e il workspace. */
 export interface TaskNoticeTarget {
@@ -35,7 +34,17 @@ export interface TaskNoticeTarget {
   useCaseId: string;
 }
 
-export type TaskRecipient = { userId: string } | { roles: readonly CaseRole[] };
+/**
+ * A chi va: una persona, i ruoli salvati nel caso, oppure chi costruisce il caso adesso (`builders`: con l'ambito degli
+ * esterni, i domini di Lateral Space e se la 0037 c'è, letto da chi chiama prima di costruire le istruzioni).
+ */
+export type TaskRecipient = { userId: string } | { roles: readonly CaseRole[] } | { builders: BuilderScope };
+
+/** Le persone del caso `c` a cui va la notifica (una colonna `user_id`), per i ruoli o per chi costruisce. */
+function caseRecipients(to: Exclude<TaskRecipient, { userId: string }>): SqlFragment {
+  if ("builders" in to) return builderMembersSql(to.builders);
+  return ucSql`(SELECT m.user_id FROM uc_case_members m WHERE m.case_id = c.id AND m.role = ANY (${cast([...to.roles], "text[]")}))`;
+}
 
 /**
  * I tipi che passano da qui: quelli dei compiti (0032), la PR da rivedere (0033), la proposta di compito (0034), il
@@ -81,9 +90,9 @@ SELECT ${ws}, ${uc}, ${cast(to.userId, "uuid")}, ${cast(kind, "text")}, ${day} W
 ${conflict}`);
   }
   return toStatement(ucSql`INSERT INTO use_case_notifications (workspace_id, use_case_id, recipient_user_id, kind, rome_day)
-SELECT DISTINCT c.workspace_id, c.portfolio_use_case_id, m.user_id, ${cast(kind, "text")}, ${day}
-FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id
-WHERE c.workspace_id = ${ws} AND c.portfolio_use_case_id = ${uc} AND m.role = ANY (${cast([...to.roles], "text[]")}) AND m.user_id IS DISTINCT FROM ${actorSql(actorId)} AND ${when}
+SELECT DISTINCT c.workspace_id, c.portfolio_use_case_id, r.user_id, ${cast(kind, "text")}, ${day}
+FROM uc_cases c CROSS JOIN LATERAL ${caseRecipients(to)} r
+WHERE c.workspace_id = ${ws} AND c.portfolio_use_case_id = ${uc} AND r.user_id IS DISTINCT FROM ${actorSql(actorId)} AND ${when}
 ${conflict}`);
 }
 
@@ -123,8 +132,7 @@ export function taskEmailSql(
   const prKey = extra.pr ? `pr-${createHash("sha256").update(`${extra.repo ?? ""}#${extra.pr}`).digest("hex").slice(0, 16)}` : null;
   const which = [ref, prKey].filter(Boolean).join(":") || null;
   const key = which ? ucSql`${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day} || ':' || ${cast(which, "text")}` : ucSql`${tpl} || ':' || c.id::text || ':' || r.user_id::text || ':' || ${day}`;
-  const recipients =
-    "userId" in to ? ucSql`(SELECT ${cast(to.userId, "uuid")} AS user_id)` : ucSql`(SELECT m.user_id FROM uc_case_members m WHERE m.case_id = c.id AND m.role = ANY (${cast([...to.roles], "text[]")}))`;
+  const recipients = "userId" in to ? ucSql`(SELECT ${cast(to.userId, "uuid")} AS user_id)` : caseRecipients(to);
   return toStatement(ucSql`INSERT INTO uc_notifications (workspace_id, case_id, recipient_user_id, channel, template_key, payload, status, dedupe_key, scheduled_at)
 SELECT DISTINCT ON (r.user_id) c.workspace_id, c.id, r.user_id, 'email', ${tpl}, ${payload}, 'in_coda', ${key}, now()
 FROM uc_cases c CROSS JOIN LATERAL ${recipients} r

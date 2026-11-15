@@ -9,6 +9,7 @@ import { factoryNavVisible, loadFactoryOverview, type FactoryCaseRow, type Facto
 import { factoryStoreReady } from "@/lib/db/queries/use-case-factory";
 import { cliStoreReady } from "@/lib/db/queries/use-case-cli-auth";
 import { viewerFromSession } from "@/lib/db/queries/use-case-hub";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { getAppUcExecutor } from "@/lib/db/uc-executor";
 import { AGENT_FACTORY_TEMPLATE_VERSION, benchFacts, compareVersions, evalsFact, STATION_LABEL, STATIONS, type Station } from "@/lib/use-cases/factory/line";
 import { abilitiesForUseCase } from "@/lib/use-cases/permissions";
@@ -69,6 +70,7 @@ function prLine(p: FactoryCaseRow["prs"]): string | null {
 
 function todoHref(workspaceId: string, t: FactoryTodo): string {
   if (t.href) return t.href;
+  if (t.kind === "collega") return `/dashboard/${workspaceId}/settings#cli`;
   if (t.kind === "domande") return `/dashboard/${workspaceId}/use-cases/${t.useCaseId}/proposte`;
   if (t.kind === "banco" || t.kind === "evals") return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto#banco`;
   return `/dashboard/${workspaceId}/casi-duso/${t.caseId}/progetto${t.kind === "approva" ? "" : "#compiti"}`;
@@ -109,7 +111,8 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
   const viewer = viewerFromSession(session.user, access.role);
   const lsManager = viewer.isLateralSpace && canReviewWorkspacePortfolio(access.role);
   const executor = await getAppUcExecutor();
-  if (!(await factoryNavVisible(executor, { workspaceId, userId: session.user.id, lsManager }))) notFound();
+  const lsDomains = ucLsDomains();
+  if (!(await factoryNavVisible(executor, { workspaceId, userId: session.user.id, lsManager, lsDomains }))) notFound();
   // La pagina legge le tabelle della 0030 e della 0031: finché non ci sono (il primo avvio dopo un rilascio), lo dice.
   const [factoryReady, cliReady] = await Promise.all([factoryStoreReady(executor), cliStoreReady(executor)]);
   if (!factoryReady || !cliReady) {
@@ -120,7 +123,7 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
       </PageContainer>
     );
   }
-  const view = await loadFactoryOverview(executor, { workspaceId, userId: session.user.id, seeAll: lsManager, canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds });
+  const view = await loadFactoryOverview(executor, { workspaceId, userId: session.user.id, seeAll: lsManager, canSeeNeeds: abilitiesForUseCase(viewer).canSeeNeeds, lsDomains });
   const team = lsManager && (await workspaceTeamReady(executor)) ? await listWorkspaceTeam(executor, workspaceId) : null;
   const counts = STATIONS.map((station) => ({ station, n: view.cases.filter((c) => c.station === station).length }));
 
@@ -150,9 +153,13 @@ export default async function AgentFactoryPage({ params }: { params: Promise<{ w
                   </a>
                 ) : (
                   <Link href={todoHref(workspaceId, t)} className="flex min-h-11 items-center justify-between gap-3 py-2 text-sm hover:underline">
-                    <span>
-                      <span className="font-medium tabular-nums">{t.code}</span> · {t.text}
-                    </span>
+                    {t.code ? (
+                      <span>
+                        <span className="font-medium tabular-nums">{t.code}</span> · {t.text}
+                      </span>
+                    ) : (
+                      <span>{t.text}</span>
+                    )}
                     <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
                   </Link>
                 )}

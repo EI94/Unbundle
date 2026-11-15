@@ -44,9 +44,10 @@ const SUFFIX = suffix.toUpperCase();
  * - e2: esterno, Responsabile della trasformazione in A, «solo in alcuni casi»: A2. In A1 osservatore dato a mano; gestisce
  *   il workspace, quindi negli altri casi è osservatore anche senza riga;
  * - e3: esterno, Analista in A, «solo in alcuni casi»: A2, con la sola riga di A2;
- * - p: Analista in A senza concessione, osservatore in A1; m: gestisce A (Responsabile della trasformazione), senza riga.
+ * - p: Analista in A senza concessione, osservatore in A1; m: gestisce A (Responsabile della trasformazione), senza riga;
+ * - b: esterno di B, Analista in B, costruisce B1. In A non c'è.
  */
-const people = ["lead", "e", "e2", "e3", "p", "m"] as const;
+const people = ["lead", "e", "e2", "e3", "p", "m", "b"] as const;
 type Person = (typeof people)[number];
 const ids = {
   org: randomUUID(),
@@ -71,8 +72,9 @@ const EMAIL: Record<Person, string> = {
   e3: `e3-${suffix}@gmail.test`,
   p: `p-${suffix}@cliente.test`,
   m: `m-${suffix}@cliente.test`,
+  b: `b-${suffix}@topjet.test`,
 };
-const NAME: Record<Person, string> = { lead: "Lucia Guida", e: "Ettore Esterno", e2: "Elena Seconda", e3: "Enzo Terzo", p: "Paolo Analisi", m: "Marta Gestione" };
+const NAME: Record<Person, string> = { lead: "Lucia Guida", e: "Ettore Esterno", e2: "Elena Seconda", e3: "Enzo Terzo", p: "Paolo Analisi", m: "Marta Gestione", b: "Bruno Altrove" };
 const tokens: Partial<Record<Person, string>> = {};
 let keySeq = 0;
 const key = () => `ext-${suffix}-${++keySeq}`;
@@ -159,12 +161,12 @@ before(async () => {
 
   await q(`INSERT INTO organizations (id, name, slug) VALUES ($1, 'Organizzazione A di prova esterni', $2), ($3, 'Organizzazione B di prova esterni', $4)`, [ids.org, `org-ext-a-${suffix}`, ids.orgB, `org-ext-b-${suffix}`]);
   await q(`INSERT INTO workspaces (id, organization_id, name) VALUES ($1, $2, 'Cliente A di prova'), ($3, $4, 'Cliente B di prova')`, [ids.wsA, ids.org, ids.wsB, ids.orgB]);
-  const wsRole: Record<Person, string> = { lead: "transformation_lead", e: "analyst", e2: "transformation_lead", e3: "analyst", p: "analyst", m: "transformation_lead" };
+  const wsRole: Record<Person, string> = { lead: "transformation_lead", e: "analyst", e2: "transformation_lead", e3: "analyst", p: "analyst", m: "transformation_lead", b: "analyst" };
   for (const person of people) {
     await q(`INSERT INTO users (id, email, name, email_verified) VALUES ($1, $2, $3, now())`, [ids[person], EMAIL[person], NAME[person]]);
-    await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.wsA, ids[person], wsRole[person]]);
+    if (person !== "b") await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, $3::member_role)`, [ids.wsA, ids[person], wsRole[person]]);
   }
-  await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'transformation_lead'::member_role)`, [ids.wsB, ids.lead]);
+  await q(`INSERT INTO workspace_memberships (workspace_id, user_id, role) VALUES ($1::uuid, $2::uuid, 'transformation_lead'::member_role), ($1::uuid, $3::uuid, 'analyst'::member_role)`, [ids.wsB, ids.lead, ids.b]);
   await q(
     `INSERT INTO use_cases (id, workspace_id, title, code) VALUES ($1, $5, 'Esploso di prova', 'NM-0001'), ($2, $5, 'Ricambi di prova', 'NM-0002'), ($3, $5, 'Tempi di prova', 'NM-0003'), ($4, $6, 'Quotazioni di prova', 'TB-0001')`,
     [ids.ucA1, ids.ucA2, ids.ucA3, ids.ucB1, ids.wsA, ids.wsB],
@@ -199,6 +201,8 @@ before(async () => {
   await grant("e", null);
   await grant("e2", ids.ucA2);
   await grant("e3", ids.ucA2);
+  await member(ids.caseB1, "b");
+  await q(`INSERT INTO use_case_external_builders (workspace_id, user_id, added_by_user_id) VALUES ($1, $2, $3)`, [ids.wsB, ids.b, ids.lead]);
   // M (gestisce A, nessun caso) non collega la CLI: in A non costruisce niente.
   for (const person of ["lead", "e", "e2", "e3", "p"] as const) tokens[person] = await tokenFor(person);
 });
@@ -418,4 +422,126 @@ test("D6: le azioni di chi costruisce sono rifiutate a chi gestisce il workspace
   const ctx = await call("context?caso=NM-0001", { token: tokens.p });
   assert.deepEqual([ctx.status, (ctx.json.dati as Row).ruoli, (ctx.json.dati as Row).scrive], [200, ["osservatore"], false]);
   assert.deepEqual(await post("decisioni", tokens.p!, { caso: "NM-0001", argomento: "Prova", decisione: "No" }).then((r) => [r.status, codeOf(r)]), [403, "permesso_negato"]);
+});
+
+// ─── Gli elenchi ─────────────────────────────────────────────────────
+
+test("D11: «passa» a chi costruisce il caso adesso: L→E, E→L, E→E2; a P o a chi costruisce in B, non trovato", opts, async () => {
+  const [open] = await q(`SELECT revision FROM use_case_projects WHERE use_case_id = $1 AND status = 'da_approvare'`, [ids.ucA2]);
+  const approved = await as("lead", () => factoryActions.approveProjectAction(ids.wsA, ids.caseA2, { revision: open.revision }));
+  assert.equal(approved.ok, true, approved.ok ? "" : approved.message);
+  const file = ["# NM-0002 · Compiti", "", "- [ ] T-1 Catalogo dei ricambi · 4 h · aree: casi/nm-0002/src/catalogo.ts"].join("\n");
+  assert.equal((await post("compiti", tokens.lead!, { caso: "NM-0002", azione: "importa", testo: file, cartella: "casi/nm-0002" })).status, 200);
+  const act = (person: Person, azione: string, extra: Record<string, unknown>) => post("compiti", tokens[person]!, { caso: "NM-0002", azione, ...extra });
+  const nota = "Fatto: lo schema. Da fare: i test. Dubbi: nessuno. Riprendi dal ramo.";
+  assert.equal((await act("lead", "prendi", { compito: "T-1" })).status, 200);
+  assert.equal((await act("lead", "passa", { compito: "T-1", a: EMAIL.e, nota })).status, 200, "L→E");
+  assert.equal((await act("e", "passa", { compito: "T-1", a: EMAIL.lead, nota })).status, 200, "E→L");
+  assert.equal((await act("lead", "passa", { compito: "T-1", a: EMAIL.e, nota })).status, 200);
+  assert.equal((await act("e", "passa", { compito: "T-1", a: EMAIL.e2.toUpperCase(), nota })).status, 200, "E→E2");
+  const [held] = await q(`SELECT holder_user_id FROM use_case_tasks WHERE use_case_id = $1 AND ref = 'T-1'`, [ids.ucA2]);
+  assert.equal(held.holder_user_id, ids.e2);
+  for (const to of [EMAIL.p, EMAIL.b, EMAIL.e3.replace("@", "-non-esiste@")]) {
+    const r = await act("e2", "passa", { compito: "T-1", a: to, nota });
+    assert.deepEqual([r.status, codeOf(r)], [404, "non_trovato"], to);
+    assert.equal((r.json.errore as Row).messaggio, "Questa persona non costruisce questo caso: la aggiunge Lateral Space.");
+  }
+  // Chi riceve il compito lo sa: campanella ed e-mail «ti hanno passato il compito», anche da fuori.
+  const passed = await q(`SELECT DISTINCT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compito_passato'`, [ids.ucA2]);
+  assert.deepEqual(passed.map((r) => r.recipient_user_id).sort(), [ids.e, ids.e2, ids.lead].sort());
+  const mails = await q(`SELECT DISTINCT recipient_user_id FROM uc_notifications WHERE case_id = $1 AND template_key = 'compito_passato'`, [ids.caseA2]);
+  assert.deepEqual(mails.map((r) => r.recipient_user_id).sort(), [ids.e, ids.e2, ids.lead].sort());
+});
+
+/** Quante righe della campanella (e quante e-mail in coda) ha la persona per un tipo, nei casi di A. */
+async function received(person: Person, kind: string, template = kind): Promise<{ bell: number; mail: number }> {
+  const [bell] = await q(`SELECT count(*)::int AS n FROM use_case_notifications WHERE workspace_id = $1 AND recipient_user_id = $2 AND kind = $3`, [ids.wsA, ids[person], kind]);
+  const [mail] = await q(`SELECT count(*)::int AS n FROM uc_notifications WHERE workspace_id = $1 AND recipient_user_id = $2 AND template_key = $3`, [ids.wsA, ids[person], template]);
+  return { bell: Number(bell.n), mail: Number(mail.n) };
+}
+
+test("D12: E riceve la campanella e le e-mail in coda di chi costruisce; mai quelle del responsabile e dell'AI Board", opts, async () => {
+  // Il pacchetto cambiato da L: a E campanella ed e-mail.
+  assert.equal((await as("lead", () => factoryActions.generatePackageAction(ids.wsA, ids.caseA1))).ok, true);
+  assert.deepEqual(await received("e", "pacchetto_nuovo", "pacchetto_aggiornato"), { bell: 1, mail: 1 });
+  // Il progetto approvato (D5, D11): la campanella.
+  assert.ok((await received("e", "progetto_ok")).bell >= 1);
+  // I compiti da prendere (l'import di L dopo l'approvazione, D11).
+  assert.ok((await received("e", "compiti_pronti")).bell >= 1 && (await received("e", "compiti_pronti")).mail >= 1);
+  // Un compito suo chiesto da L.
+  assert.equal((await post("compiti", tokens.e!, { caso: "NM-0001", azione: "prendi", compito: "T-2" })).status, 200);
+  assert.equal((await post("compiti", tokens.lead!, { caso: "NM-0001", azione: "chiedi", compito: "T-2" })).status, 200);
+  assert.deepEqual(await received("e", "compito_chiesto"), { bell: 1, mail: 1 });
+  // Una proposta di compito da GitHub.
+  const builders = await import("../../db/queries/use-case-builders.ts");
+  const proposals = await import("../../db/queries/use-case-task-proposals.ts");
+  const { raw } = await import("../../uc/sql/statement.ts");
+  const scope = await builders.loadBuilderScope(exec, ["ls.test"]);
+  await exec.batch(proposals.proposalStatements({ workspaceId: ids.wsA, useCaseId: ids.ucA1 }, { source: "github", externalKey: `gh:prova#${suffix}`, title: "Aggiungere i ricambi fuori produzione", link: null }, raw("true"), scope));
+  assert.deepEqual(await received("e", "compito_proposto"), { bell: 1, mail: 1 });
+  // Una PR pronta di un compito di L (dal webhook): a E, non a L che ha il compito.
+  const github = await import("../../db/queries/use-case-github.ts");
+  const at = new Date().toISOString();
+  const pr = await github.applyGithubEvent(exec, {
+    deliveryId: randomUUID(),
+    event: "pull_request",
+    parsed: { kind: "pr", repo: `Prova/nardi-esploso-${suffix}`, number: 7, branch: "nm-0001/t-3-ricerca", state: "aperta", draft: false, openedAt: at, mergedAt: null, closedAt: null, updatedAt: at, action: "opened", reopened: false, signal: true, ready: true },
+  });
+  assert.equal(pr.esito, "applicato");
+  assert.deepEqual(await received("e", "pr_da_rivedere"), { bell: 1, mail: 1 });
+  assert.equal((await received("lead", "pr_da_rivedere")).bell, 0, "mai a chi ha il compito");
+  // Il banco consiglia un altro modello e le evals di main scendono sotto soglia (mandate da L).
+  const sonnet = "anthropic/claude-sonnet-5-5";
+  const haiku = "anthropic/claude-haiku-5-5";
+  const result = (over: Record<string, unknown>) => ({ modello: haiku, attuale: true, superati: 27, totali: 28, soglieRispettate: true, gruppi: { regole: { passati: 9, totali: 9, soglia: 1, ok: true } }, costoPer1000Usd: 0.12, latenzaP50Ms: 1200, latenzaP95Ms: 2600, tokenIngressoMedi: 1900, tokenUscitaMedi: 220, errori: 0, ...over });
+  const run = { caso: "NM-0001", livello: "pull_request", ramo: "main", commit: "a1b2c3d", versioneModello: "1.5.0", modelliFinti: false, inCostruzione: false };
+  const bench = await post("evals", tokens.lead!, { ...run, tipo: "banco", ruolo: "lettura", modelli: { lettura: sonnet }, risultati: [result({ modello: sonnet, costoPer1000Usd: 1.8, latenzaP95Ms: 4100 }), result({ attuale: false })] });
+  assert.equal(bench.status, 200, JSON.stringify(bench.json));
+  assert.deepEqual(await received("e", "banco_consiglio"), { bell: 1, mail: 1 });
+  const evals = await post("evals", tokens.lead!, { ...run, tipo: "evals", modelli: { lettura: sonnet }, risultati: [result({ modello: sonnet, superati: 60, totali: 100, soglieRispettate: false })] });
+  assert.equal(evals.status, 200, JSON.stringify(evals.json));
+  assert.deepEqual(await received("e", "evals_in_calo"), { bell: 1, mail: 1 });
+
+  // Il caso A3 con uno strumento nuovo: «da approvare» al responsabile, «strumento nuovo» e «ok da rifare» all'AI Board
+  // (P), «modifica chiesta» a chi costruisce.
+  await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'ai_board')`, [ids.caseA3, ids.p]);
+  assert.equal((await post("setup", tokens.e!, { caso: "NM-0003", azione: "apri" })).status, 200);
+  for (const topic of ((await call("setup?caso=NM-0003", { token: tokens.e })).json.argomenti as Row[])) {
+    assert.equal((await post("setup", tokens.e!, { caso: "NM-0003", azione: "scelta", argomento: topic.chiave, scelta: `Scelta per ${String(topic.chiave)}` })).status, 200);
+  }
+  assert.equal((await post("setup", tokens.e!, { caso: "NM-0003", azione: "dettagli", strumentiNuovi: [{ nome: "Database dei tempi", perche: "Serve allo storico" }] })).status, 200);
+  const revision = ((await call("setup?caso=NM-0003", { token: tokens.e })).json.progetto as Row).revisione;
+  assert.equal((await post("setup", tokens.e!, { caso: "NM-0003", azione: "invia", revisione: revision })).status, 200);
+  const [pending] = await q(`SELECT revision FROM use_case_projects WHERE use_case_id = $1 AND status = 'da_approvare'`, [ids.ucA3]);
+  const change = await as("p", () => factoryActions.requestProjectChangeAction(ids.wsA, ids.caseA3, { revision: pending.revision, note: "Serve un database già approvato dal cliente" }));
+  assert.equal(change.ok, true, change.ok ? "" : change.message);
+  assert.equal((await received("e", "modifica_chiesta")).bell, 1);
+  assert.equal((await received("e", "modifica_chiesta", "modifica_richiesta")).mail, 0, "l'e-mail della modifica è del responsabile");
+  const [asked] = await q(`SELECT revision FROM use_case_projects WHERE use_case_id = $1 AND status = 'da_approvare'`, [ids.ucA3]);
+  assert.equal((await as("p", () => factoryActions.recordAiBoardOkAction(ids.wsA, ids.caseA3, { revision: asked.revision }))).ok, true);
+  const [okd] = await q(`SELECT revision FROM use_case_projects WHERE use_case_id = $1 AND status = 'da_approvare'`, [ids.ucA3]);
+  assert.equal((await as("lead", () => factoryActions.reopenProjectAction(ids.wsA, ids.caseA3, { revision: okd.revision }))).ok, true);
+  assert.equal((await received("p", "ok_decaduto")).bell, 1, "l'AI Board sa che il suo ok va rifatto");
+  assert.equal((await received("p", "strumento_nuovo")).bell, 1, "l'AI Board sa dello strumento nuovo");
+  // Una domanda proposta da un coding agent di L: al responsabile e agli analisti di Lateral Space.
+  assert.equal((await post("domande", tokens.lead!, { caso: "NM-0001", domanda: "Chi aggiorna i codici dei ricambi?" })).status, 200);
+  // Mai per E: «da approvare», «domanda di un coding agent», «strumento nuovo», «ok da rifare».
+  for (const [kind, template] of [
+    ["progetto_appr", "progetto_da_approvare"],
+    ["domanda_agente", "domanda_proposta"],
+    ["strumento_nuovo", "strumento_da_approvare"],
+    ["ok_decaduto", "ok_decaduto"],
+  ] as const) {
+    assert.deepEqual(await received("e", kind, template), { bell: 0, mail: 0 }, kind);
+  }
+  assert.ok((await received("lead", "progetto_appr")).bell >= 1, "il responsabile sì");
+});
+
+test("D12: senza la 0037 gli elenchi non hanno esterni", opts, async () => {
+  const notices = await import("../../db/queries/use-case-tasks-notices.ts");
+  const builders = await import("../../db/queries/use-case-builders.ts");
+  const at = new Date("2026-12-01T10:00:00Z");
+  await exec.batch(notices.notifyTask({ workspaceId: ids.wsA, useCaseId: ids.ucA1 }, "compiti_pronti", { builders: builders.NO_EXTERNAL_BUILDERS }, notices.NOBODY, at, null));
+  const rows = await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compiti_pronti' AND rome_day = '2026-12-01'`, [ids.ucA1]);
+  assert.deepEqual(rows.map((r) => r.recipient_user_id), [ids.lead], "solo Lateral Space");
 });

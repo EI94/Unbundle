@@ -660,7 +660,7 @@ test("il compito fermo (8.1a): dopo 2 giorni lavorativi lo chiede a chi lo ha, d
 
 test("la pagina «Agent Factory» (8.1a): chi la vede; la versione del modello dal repository; stazione, famiglie, «Da fare per te» e coda", opts, async () => {
   const line = await import("../../db/queries/use-case-factory-line.ts");
-  const nav = (userId: string, lsManager = false) => line.factoryNavVisible(exec, { workspaceId: ids.ws, userId, lsManager });
+  const nav = (userId: string, lsManager = false) => line.factoryNavVisible(exec, { workspaceId: ids.ws, userId, lsManager, lsDomains: ["ls.test"] });
   assert.deepEqual([await nav(ids.lead), await nav(ids.analyst), await nav(ids.owner), await nav(ids.outsider), await nav(ids.outsider, true)], [true, true, false, false, true]);
 
   const versione = (body: Record<string, unknown>) => post("repository", tokens.analyst!, { caso: "PX-0042", azione: "versione", ...body }, null);

@@ -83,16 +83,18 @@ export default async function WorkspaceLayout({
     ? await (await import("@/lib/db/queries/uc-nav")).ucCasesNavVisible({ userId: session.user.id, workspaceId, role: access.role })
     : false;
 
-  // (8.1a) «Agent Factory»: chi costruisce in un caso del workspace, o il manager di Lateral Space. Una lettura sola.
+  // (8.1a) «Agent Factory»: chi costruisce in un caso del workspace, o il manager di Lateral Space. (8.0c) Anche chi
+  // costruisce da fuori Lateral Space e oggi lo può fare: il predicato unico, con i domini di Lateral Space.
   let factoryAvailable = false;
   if (useCaseHub && ucOn && !learnerOnly) {
-    const [{ factoryNavVisible }, { viewerFromSession }, { getAppUcExecutor }] = await Promise.all([
+    const [{ factoryNavVisible }, { viewerFromSession }, { getAppUcExecutor }, { ucLsDomains }] = await Promise.all([
       import("@/lib/db/queries/use-case-factory-line"),
       import("@/lib/db/queries/use-case-hub"),
       import("@/lib/db/uc-executor"),
+      import("@/lib/db/queries/uc-access"),
     ]);
     const lsManager = viewerFromSession(session.user, access.role).isLateralSpace && canReviewWorkspacePortfolio(access.role);
-    factoryAvailable = await factoryNavVisible(await getAppUcExecutor(), { workspaceId, userId: session.user.id, lsManager });
+    factoryAvailable = await factoryNavVisible(await getAppUcExecutor(), { workspaceId, userId: session.user.id, lsManager, lsDomains: ucLsDomains() });
   }
 
   return (

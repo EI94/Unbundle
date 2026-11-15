@@ -4,8 +4,8 @@ import "server-only";
  *
  * - **Da dove:** un'issue di GitHub, o un commento `/compito`, nel repository di un caso (il webhook, con
  *   `proposalStatements`); più avanti da Slack. Il titolo passa lo stesso controllo dei testi del team (`checkLsText`).
- * - **Chi decide:** una persona del team che costruisce. «Accetta» fa nascere il compito T-n (da prendere, con la
- *   sorgente della proposta); «Scarta» la chiude. Una proposta si decide una volta sola.
+ * - **Chi decide:** una persona che costruisce il caso (dalla 8.0c anche da fuori Lateral Space). «Accetta» fa nascere
+ *   il compito T-n (da prendere, con la sorgente della proposta); «Scarta» la chiude. Una proposta si decide una volta sola.
  * - **Avvisi:** una proposta nuova va al team che costruisce (campanella ed e-mail, una al giorno per caso); un
  *   compito nato da una proposta dice «ci sono compiti da prendere», tranne a chi l'ha accettata.
  *
@@ -15,7 +15,9 @@ import type { UcExecutor } from "@/lib/db/uc-executor";
 import type { FactoryTarget } from "@/lib/db/queries/use-case-factory";
 import { PROPOSALS_PROBE_SQL, PROPOSAL_LIMITS, type ProposalSource, type ProposalStatus } from "@/lib/db/use-case-hub-proposals-ddl";
 import { projectApproved, projectVersionSql, tasksLock } from "@/lib/db/queries/use-case-tasks";
-import { BUILDER_ROLES, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { buildsCaseSql, loadBuilderScope, type BuilderScope } from "@/lib/db/queries/use-case-builders";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { cast, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
 import { fail, ok, type Result } from "@/lib/uc/types";
 import { cutText } from "@/lib/use-cases/factory/github";
@@ -66,13 +68,15 @@ LIMIT 100`),
 }
 
 /**
- * Gli statement di una proposta nuova: la riga (una per origine, `ON CONFLICT DO NOTHING`) e l'avviso al team, solo se
- * la riga è nata in questa transazione. `when`: una condizione in più (la consegna di GitHub è nuova).
+ * Gli statement di una proposta nuova: la riga (una per origine, `ON CONFLICT DO NOTHING`) e l'avviso a chi costruisce il
+ * caso (`builders`, letto da chi chiama), solo se la riga è nata in questa transazione. `when`: una condizione in più (la
+ * consegna di GitHub è nuova).
  */
 export function proposalStatements(
   target: FactoryTarget,
   input: { source: ProposalSource; externalKey: string; title: string; area?: string | null; link: string | null },
   when: SqlFragment,
+  builders: BuilderScope,
 ): UcStatement[] {
   const ws = cast(target.workspaceId, "uuid");
   const uc = cast(target.useCaseId, "uuid");
@@ -85,7 +89,7 @@ SELECT ${uc}, ${ws}, ${cast(input.source, "text")}, ${key}, ${cast(cutText(input
 WHERE ${when}
   AND (SELECT count(*) FROM use_case_task_proposals o WHERE o.use_case_id = ${uc} AND o.status = 'proposta') < ${cast(OPEN_PROPOSALS_MAX, "int")}
 ON CONFLICT (use_case_id, external_key) DO NOTHING`),
-    ...notifyTask(target, "compito_proposto", { roles: BUILDER_ROLES }, NOBODY, new Date(), null, created),
+    ...notifyTask(target, "compito_proposto", { builders }, NOBODY, new Date(), null, created),
   ];
 }
 
@@ -117,6 +121,7 @@ RETURNING id`);
     return rows[0] ? ok({ ref: null }) : fail("conflitto", "Questa proposta è già stata decisa.");
   }
   const accepted = ucSql`EXISTS (SELECT 1 FROM use_case_task_proposals p WHERE p.id = ${pid} AND p.status = 'accettata' AND p.decided_at = now())`;
+  const builders = await loadBuilderScope(executor, ucLsDomains());
   const results = await executor.batch([
     tasksLock(target),
     decide("accettata"),
@@ -127,19 +132,21 @@ FROM use_case_task_proposals p WHERE p.id = ${pid} AND ${accepted}
 RETURNING id, ref`),
     toStatement(ucSql`UPDATE use_case_task_proposals p SET task_id = (SELECT t.id FROM use_case_tasks t WHERE t.use_case_id = ${uc} AND t.created_at = now() ORDER BY t.created_at DESC, t.id LIMIT 1)
 WHERE p.id = ${pid} AND ${accepted}`),
-    ...notifyTask(target, "compiti_pronti", { roles: BUILDER_ROLES }, input.actorId, new Date(), null, accepted),
+    ...notifyTask(target, "compiti_pronti", { builders }, input.actorId, new Date(), null, accepted),
   ]);
   const task = results[2][0];
   if (!results[1][0] || !task) return fail("conflitto", "Questa proposta è già stata decisa.");
   return ok({ ref: String(task.ref) });
 }
 
-/** Quante proposte da decidere per use case, nei casi dove la persona costruisce («Da fare per te»). */
-export function openProposalsCountSql(workspaceId: string, userId: string): UcStatement {
+/**
+ * Quante proposte da decidere per use case, nei casi dove la persona costruisce adesso («Da fare per te»): con un ruolo
+ * di Lateral Space, o (8.0c) da fuori, con il predicato unico.
+ */
+export function openProposalsCountSql(workspaceId: string, userId: string, builders: BuilderScope): UcStatement {
   return toStatement(ucSql`SELECT p.use_case_id, count(*) AS n FROM use_case_task_proposals p
 WHERE p.workspace_id = ${cast(workspaceId, "uuid")} AND p.status = 'proposta'
-  AND EXISTS (SELECT 1 FROM uc_cases c JOIN uc_case_members m ON m.case_id = c.id
-    WHERE c.portfolio_use_case_id = p.use_case_id AND c.workspace_id = p.workspace_id AND m.user_id = ${cast(userId, "uuid")}
-      AND m.role IN ('ls_lead', 'ls_analista', 'ls_sviluppatore'))
+  AND EXISTS (SELECT 1 FROM uc_cases c
+    WHERE c.portfolio_use_case_id = p.use_case_id AND c.workspace_id = p.workspace_id AND ${buildsCaseSql(builders, cast(userId, "uuid"))})
 GROUP BY p.use_case_id`);
 }

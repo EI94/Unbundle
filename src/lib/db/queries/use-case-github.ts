@@ -29,7 +29,9 @@ import { scanPayload } from "@/lib/uc/text/scan";
 import { proposalsStoreReady, proposalStatements } from "@/lib/db/queries/use-case-task-proposals";
 import { TASKS_PROBE_SQL } from "@/lib/db/use-case-hub-tasks-ddl";
 import { tasksLock } from "@/lib/db/queries/use-case-tasks";
-import { BUILDER_ROLES, NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { NOBODY, notifyTask } from "@/lib/db/queries/use-case-tasks-notices";
+import { loadBuilderScope, NO_EXTERNAL_BUILDERS, type BuilderScope } from "@/lib/db/queries/use-case-builders";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { cast, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "@/lib/uc/sql/statement";
 import { caseCodeFromBranch, GITHUB_DELIVERY_RE, proposalUrl, pullRequestUrl, taskRefOfBranch, type GithubEvent } from "@/lib/use-cases/factory/github";
 
@@ -139,9 +141,10 @@ async function applyProposal(executor: UcExecutor, deliveryId: string, event: st
   if (target === "non_chiaro") return ignore(executor, deliveryId, event, e.repo, "caso_non_chiaro");
   if (!proposalTitleAllowed(e.title)) return ignore(executor, deliveryId, event, e.repo, "testo_non_ammesso");
   const externalKey = `gh:${e.repo.toLowerCase()}#${e.number}${e.commentId ? `:c${e.commentId}` : ""}`;
+  const builders = await loadBuilderScope(executor, ucLsDomains());
   const results = await executor.batch([
     deliveryInsert(deliveryId, event, e.repo, "applicato"),
-    ...proposalStatements(target, { source: "github", externalKey, title: e.title, link: proposalUrl(e.repo, e.number, e.commentId) }, freshSql(deliveryId)),
+    ...proposalStatements(target, { source: "github", externalKey, title: e.title, link: proposalUrl(e.repo, e.number, e.commentId) }, freshSql(deliveryId), builders),
   ]);
   if (results[0].length === 0) return { esito: "ripetuto" };
   return { esito: "applicato", casi: [{ workspaceId: target.workspaceId, useCaseId: target.useCaseId, caseId: target.caseId, compito: null, stato: "proposta" }] };
@@ -173,7 +176,7 @@ async function ignore(executor: UcExecutor, deliveryId: string, event: string, r
 }
 
 /** Gli statement di una PR per un caso: la PR, il compito, la notifica. */
-function prStatements(t: Target, task: TaskNow | null, e: Extract<GithubEvent, { kind: "pr" }>, fresh: SqlFragment): UcStatement[] {
+function prStatements(t: Target, task: TaskNow | null, e: Extract<GithubEvent, { kind: "pr" }>, fresh: SqlFragment, builders: BuilderScope): UcStatement[] {
   const ws = cast(t.workspaceId, "uuid");
   const uc = cast(t.useCaseId, "uuid");
   const repo = cast(e.repo, "text");
@@ -242,7 +245,7 @@ RETURNING t.status`),
   AND p.use_case_id = ${uc} AND p.state = 'aperta' AND NOT p.draft AND p.changed_at = now()))`;
     const holder = task ? ucSql`(SELECT x.holder_user_id FROM use_case_tasks x WHERE x.id = ${cast(task.id, "uuid")})` : NOBODY;
     out.push(
-      ...notifyTask({ workspaceId: t.workspaceId, useCaseId: t.useCaseId }, "pr_da_rivedere", { roles: BUILDER_ROLES }, holder, new Date(), task?.ref ?? null, stillReady, {
+      ...notifyTask({ workspaceId: t.workspaceId, useCaseId: t.useCaseId }, "pr_da_rivedere", { builders }, holder, new Date(), task?.ref ?? null, stillReady, {
         pr: e.number,
         repo: e.repo,
       }),
@@ -276,10 +279,12 @@ export async function applyGithubEvent(executor: UcExecutor, input: { deliveryId
   if (targets.length === 0) return ignore(executor, input.deliveryId, input.event, e.repo, "repository_non_registrato");
 
   const fresh = freshSql(input.deliveryId);
+  // (8.0c) A chi costruisce il caso adesso, anche da fuori Lateral Space: l'ambito si legge una volta per evento.
+  const builders = e.kind === "pr" && e.ready ? await loadBuilderScope(executor, ucLsDomains()) : null;
   const plan: { target: Target; task: TaskNow | null; statements: UcStatement[] }[] = [];
   for (const t of targets) {
     const task = await taskFor(executor, t, taskRefOfBranch(e.branch, t.code));
-    plan.push({ target: t, task, statements: e.kind === "pr" ? prStatements(t, task, e, fresh) : pushStatements(task, fresh) });
+    plan.push({ target: t, task, statements: e.kind === "pr" ? prStatements(t, task, e, fresh, builders ?? NO_EXTERNAL_BUILDERS) : pushStatements(task, fresh) });
   }
   // Un lock per use case, sempre nello stesso ordine; poi la consegna; poi gli effetti, solo se la consegna è nuova.
   const locks = [...plan].sort((a, b) => a.target.useCaseId.localeCompare(b.target.useCaseId)).map((p) => tasksLock(p.target));

@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { dispatchDue } from "@/lib/db/queries/uc-notifications-dispatch";
+import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { evalsStoreReady, loadEvalOverview, recordEvalRun } from "@/lib/db/queries/use-case-evals";
 import { ucLogError } from "@/lib/uc/log";
 import { ok } from "@/lib/uc/types";
@@ -70,7 +71,7 @@ export async function POST(request: Request): Promise<Response> {
     "evals",
     { caso: c.useCase.code, ...input },
     async (id) => {
-      const r = await recordEvalRun(opened.value.executor, c.target, input, { id, actorUserId: c.actor.kind === "persona" ? c.actor.userId : null });
+      const r = await recordEvalRun(opened.value.executor, c.target, input, { id, actorUserId: c.actor.kind === "persona" ? c.actor.userId : null, lsDomains: ucLsDomains() });
       if (!r.ok) return r;
       if (r.value.notified) dispatchAfter(c);
       return ok({ id: r.value.id, raccomandazione: recommendationOf(r.value.analysis), avviso: r.value.alert?.kind ?? null, link });

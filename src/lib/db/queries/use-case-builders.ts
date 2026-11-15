@@ -118,6 +118,12 @@ export function builderMembersSql(scope: BuilderScope, caseAlias = "c"): SqlFrag
   return caseRecipientsSql(FACTORY_BUILDER_ROLES, scope, caseAlias);
 }
 
+/** Vero se `user` ha nel caso `c` un ruolo di Lateral Space salvato (`uc_case_members`). */
+export function lsStoredBuilderSql(user: SqlFragment, caseAlias = "c"): SqlFragment {
+  return ucSql`EXISTS (SELECT 1 FROM uc_case_members xb_l WHERE xb_l.case_id = ${ref(caseAlias)}.id AND xb_l.user_id = ${user}
+    AND xb_l.role = ANY (${cast(FACTORY_BUILDER_ROLES.filter((r) => r !== EXTERNAL_BUILDER_ROLE), "text[]")}))`;
+}
+
 /** Vero se `user` costruisce il caso `c` adesso (ruolo di Lateral Space salvato, o il predicato). */
 export function buildsCaseSql(scope: BuilderScope, user: SqlFragment, caseAlias = "c"): SqlFragment {
   return ucSql`${user} IN ${builderMembersSql(scope, caseAlias)}`;

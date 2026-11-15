@@ -82,6 +82,7 @@ async function grant(person: Person, useCaseId: string | null) {
 
 before(async () => {
   if (!enabled) return;
+  process.env.UC_LS_EMAIL_DOMAINS = LS.join(",");
   const { neon } = await import("@neondatabase/serverless");
   const sql = neon(url!);
   q = (text, params = []) => sql.query(text, params) as Promise<Row[]>;
@@ -189,26 +190,28 @@ async function listedBuilders(caseId: string, lsDomains = LS): Promise<string[]>
   return rows.map((r) => String(r.user_id)).sort();
 }
 
+/** Per ogni fatto, chi costruisce il caso A da fuori adesso: solo E ha tutti i fatti veri. */
+const EXPECTED: Record<Person, boolean> = {
+  lead: false, // Lateral Space: costruisce con il suo ruolo, non da fuori
+  e: true,
+  e2: false, // la concessione è per un altro caso
+  p: false, // nessuna concessione
+  c: false, // Contributore
+  learner: false,
+  unverified: false,
+  lsdomain: false, // l'e-mail è di Lateral Space (anche con le maiuscole)
+  norow: false, // niente riga osservatore
+  client: false, // ha un ruolo del cliente nel caso
+  orgcontrib: false, // nell'organizzazione è Contributore: vale prima del workspace
+};
+
 test("D1: il predicato dice sì solo con tutti i fatti veri, e le porte e gli elenchi dicono lo stesso", opts, async () => {
-  const expected: Record<Person, boolean> = {
-    lead: false,
-    e: true,
-    e2: false, // la concessione è per un altro caso
-    p: false, // nessuna concessione
-    c: false, // Contributore
-    learner: false,
-    unverified: false,
-    lsdomain: false, // l'e-mail è di Lateral Space (anche con le maiuscole)
-    norow: false, // niente riga osservatore
-    client: false, // ha un ruolo del cliente nel caso
-    orgcontrib: false, // nell'organizzazione è Contributore: vale prima del workspace
-  };
   const listed = await listedBuilders(ids.caseA);
   for (const person of people) {
     const gate = await builders.isExternalBuilderOfCase(exec, { caseId: ids.caseA, userId: ids[person], lsDomains: LS });
-    assert.equal(gate, expected[person], `porta: ${person}`);
+    assert.equal(gate, EXPECTED[person], `porta: ${person}`);
     const inList = listed.includes(ids[person]);
-    assert.equal(inList, expected[person] || person === "lead", `elenco: ${person}`);
+    assert.equal(inList, EXPECTED[person] || person === "lead", `elenco: ${person}`);
   }
   // Senza domini di Lateral Space configurati nessuno è esterno.
   assert.equal(await builders.isExternalBuilderOfCase(exec, { caseId: ids.caseA, userId: ids.e, lsDomains: [] }), false);
@@ -226,4 +229,41 @@ test("D1: il predicato dice sì solo con tutti i fatti veri, e le porte e gli el
   assert.equal(await builders.isExternalBuilderOfCase(exec, { caseId: ids.caseA, userId: ids.e, lsDomains: LS }), false);
   await q(`UPDATE workspace_memberships SET role = 'analyst' WHERE workspace_id = $1 AND user_id = $2`, [ids.ws, ids.e]);
   assert.equal(await builders.isExternalBuilderOfCase(exec, { caseId: ids.caseA, userId: ids.e, lsDomains: LS }), true);
+});
+
+test("D1: la voce nella barra, «Da fare per te», la campanella, l'e-mail in coda e «passa» dicono quello che dice il predicato", opts, async () => {
+  const line = await import("../../db/queries/use-case-factory-line.ts");
+  const notices = await import("../../db/queries/use-case-tasks-notices.ts");
+  const tasks = await import("../../db/queries/use-case-tasks.ts");
+  const target = { workspaceId: ids.ws, useCaseId: ids.ucA };
+  // Il progetto approvato e un compito del responsabile, da passare.
+  await q(`INSERT INTO use_case_projects (use_case_id, workspace_id, version, status, approved_at) VALUES ($1, $2, 1, 'approvato', now())`, [ids.ucA, ids.ws]);
+  await q(
+    `INSERT INTO use_case_tasks (use_case_id, workspace_id, ref, title, status, holder_user_id, taken_at, source) VALUES ($1, $2, 'T-1', 'Lettura dell''esploso', 'in_corso', $3, now(), 'cli')`,
+    [ids.ucA, ids.ws, ids.lead],
+  );
+  const scope = await builders.loadBuilderScope(exec, LS);
+  await exec.batch(notices.notifyTask(target, "compito_proposto", { builders: scope }, notices.NOBODY, new Date(), null));
+  const bell = new Set((await q(`SELECT recipient_user_id FROM use_case_notifications WHERE use_case_id = $1 AND kind = 'compito_proposto'`, [ids.ucA])).map((r) => String(r.recipient_user_id)));
+  const mail = new Set((await q(`SELECT recipient_user_id FROM uc_notifications WHERE case_id = $1 AND template_key = 'compito_proposto'`, [ids.caseA])).map((r) => String(r.recipient_user_id)));
+  const lead = { userId: ids.lead, roles: ["ls_lead" as const] };
+  for (const person of people.filter((p) => p !== "lead")) {
+    const want = EXPECTED[person];
+    assert.equal(await line.factoryNavVisible(exec, { workspaceId: ids.ws, userId: ids[person], lsManager: false, lsDomains: LS }), want, `voce: ${person}`);
+    const view = await line.loadFactoryOverview(exec, { workspaceId: ids.ws, userId: ids[person], seeAll: false, canSeeNeeds: false, lsDomains: LS });
+    assert.equal(view.todos.some((t) => t.kind === "collega"), want, `«Collega Claude Code»: ${person}`);
+    assert.equal(bell.has(ids[person]), want, `campanella: ${person}`);
+    assert.equal(mail.has(ids[person]), want, `e-mail in coda: ${person}`);
+    const passed = await tasks.passTask(exec, target, lead, { ref: "T-1", toEmail: EMAIL[person], note: "Fatto: la lettura. Da fare: i test." });
+    assert.equal(passed.ok, want, `passa: ${person}`);
+    if (passed.ok) {
+      const back = await tasks.passTask(exec, target, { userId: ids[person], roles: ["osservatore", "builder_esterno"] }, { ref: "T-1", toEmail: EMAIL.lead, note: "Torna a te." });
+      assert.equal(back.ok, true, "e indietro al responsabile");
+    } else {
+      assert.deepEqual([passed.code, passed.message], ["non_trovato", "Questa persona non costruisce questo caso: la aggiunge Lateral Space."]);
+    }
+  }
+  assert.ok(bell.has(ids.lead) && mail.has(ids.lead), "Lateral Space come prima");
+  // Senza domini configurati, nemmeno la voce.
+  assert.equal(await line.factoryNavVisible(exec, { workspaceId: ids.ws, userId: ids.e, lsManager: false, lsDomains: [] }), false);
 });
