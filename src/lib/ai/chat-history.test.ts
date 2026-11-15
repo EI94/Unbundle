@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chatHistory } from "./chat-history.ts";
+import { chatHistory, closingQuestions, refusedQuestionIds } from "./chat-history.ts";
 
 // (Migrazione a Claude Sonnet 5.5) La storia che la chat manda al modello, da quella che arriva dal browser.
 
@@ -110,4 +110,28 @@ test("le parti di ragionamento dei turni passati si tolgono intere, mai modifica
       { role: "user", content: "Ogni mese." },
     ],
   );
+});
+
+test("le domande che chiudono la storia: il modello le riceve unite; se le rifiuta, si tolgono dai messaggi salvati", () => {
+  const user = (content: string) => ({ role: "user" as const, content });
+  const assistant = (content: string) => ({ role: "assistant" as const, content });
+  assert.equal(closingQuestions([user("Ciao."), assistant("Di che cosa ti occupi?"), user("Preparo le fatture.")]), 1);
+  // Dopo un turno interrotto (la sua domanda salvata, nessuna risposta): due domande unite.
+  assert.equal(closingQuestions(chatHistory([user("Ciao."), assistant("Di che cosa?"), user("Prima parte."), { role: "assistant", parts: [] }, user("Seconda parte.")])), 2);
+  assert.equal(closingQuestions([]), 0);
+
+  // I messaggi salvati, in ordine: la domanda del turno interrotto e quella appena salvata.
+  const saved = [
+    { id: "m1", role: "user" },
+    { id: "m2", role: "assistant" },
+    { id: "m3", role: "user" },
+    { id: "m4", role: "user" },
+  ];
+  assert.deepEqual(refusedQuestionIds(saved, "m4", 2), ["m4", "m3"]);
+  assert.deepEqual(refusedQuestionIds(saved, "m4", 1), ["m4"], "una domanda sola: solo quella appena salvata");
+  // Mai oltre una risposta, né oltre le domande che il modello ha ricevuto.
+  assert.deepEqual(refusedQuestionIds(saved, "m4", 5), ["m4", "m3"]);
+  assert.deepEqual(refusedQuestionIds([{ id: "m0", role: "user" }, ...saved], "m4", 2), ["m4", "m3"]);
+  // La domanda appena salvata si toglie anche se non è tra i messaggi letti.
+  assert.deepEqual(refusedQuestionIds(saved.slice(0, 3), "m4", 2), ["m4"]);
 });

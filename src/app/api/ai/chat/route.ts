@@ -8,12 +8,13 @@ import { getWebSearchTool } from "@/lib/ai/tools/web-search-tool";
 import { DISCOVERY_SYSTEM_PROMPT } from "@/lib/ai/prompts/discovery";
 import { ACTIVITY_MAPPING_SYSTEM_PROMPT } from "@/lib/ai/prompts/activity-mapping";
 import { withAgentReliability } from "@/lib/ai/agent-reliability";
-import { chatHistory } from "@/lib/ai/chat-history";
+import { chatHistory, closingQuestions, refusedQuestionIds } from "@/lib/ai/chat-history";
 import { CLAUDE_MODEL, chatDeadline, claudeCallSettings, lastStepRefused, logClaudeStop } from "@/lib/ai/models";
 import { logSafeError } from "@/lib/log/safe-error";
 import {
   saveMessage,
   deleteMessage,
+  getMessages,
   getActiveConversation,
   createConversation,
 } from "@/lib/db/queries/conversations";
@@ -268,13 +269,19 @@ export async function POST(req: Request) {
       // Un rifiuto dei classificatori del modello non è una risposta: l'eventuale testo parziale
       // non si salva, e il turno (domanda compresa) non entra nella memoria della chat. La domanda
       // esce anche dai messaggi salvati, come dalla storia del browser (chat-view.ts): ricaricando la
-      // pagina non tornerebbe al modello unita alla domanda dopo.
+      // pagina non tornerebbe al modello unita alla domanda dopo. Con lei escono le domande dei turni
+      // interrotti subito prima, che il modello ha ricevuto unite a lei (chat-history.ts).
       if (finishReason === "content-filter") {
         logClaudeStop("chat/route", "risposta_rifiutata", { finishReason, providerMetadata });
         if (savedQuestion) {
-          await deleteMessage(conversation.id, savedQuestion.id).catch((error: unknown) =>
-            logSafeError("chat/route", "domanda_rifiutata_non_tolta", error),
-          );
+          const question = savedQuestion;
+          const merged = closingQuestions(messages);
+          try {
+            const refused = merged > 1 ? refusedQuestionIds(await getMessages(conversation.id), question.id, merged) : [question.id];
+            for (const id of refused) await deleteMessage(conversation.id, id);
+          } catch (error) {
+            logSafeError("chat/route", "domanda_rifiutata_non_tolta", error);
+          }
         }
         return;
       }

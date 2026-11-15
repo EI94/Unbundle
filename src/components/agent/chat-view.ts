@@ -33,18 +33,21 @@ export function messageText(message: MessageLike): string {
 
 /**
  * Che cosa il browser rimanda alla rotta: un turno di testo per messaggio, senza le risposte rifiutate e senza le
- * domande che le hanno avute (i turni dell'utente subito prima). Altrimenti la domanda rifiutata tornerebbe al modello
- * unita alla domanda dopo, a ogni turno. A schermo restano tutte e due, fino al ricaricamento della pagina; la rotta
- * toglie la domanda rifiutata anche dai messaggi salvati.
+ * domande che le hanno avute: i turni dell'utente subito prima, che il modello riceve uniti (dopo un turno interrotto
+ * sono più d'uno). Una risposta senza testo tra loro non li separa: al modello non arriva (chatHistory, in
+ * src/lib/ai/chat-history.ts). Altrimenti la domanda rifiutata tornerebbe al modello unita alla domanda dopo, a ogni
+ * turno. A schermo restano tutte, fino al ricaricamento della pagina; la rotta toglie le stesse domande anche dai
+ * messaggi salvati.
  */
 export function chatRequestMessages(messages: readonly MessageLike[]): Array<{ role: string; content: string }> {
   const kept: MessageLike[] = [];
+  const mergedWithRefused = (message: MessageLike) => message.role === "user" || messageText(message).trim() === "";
   for (const message of messages) {
     if (!isRefusedReply(message)) {
       kept.push(message);
       continue;
     }
-    while (kept.length > 0 && kept[kept.length - 1].role === "user") kept.pop();
+    while (kept.length > 0 && mergedWithRefused(kept[kept.length - 1])) kept.pop();
   }
   return kept.map((message) => ({ role: message.role, content: messageText(message) }));
 }

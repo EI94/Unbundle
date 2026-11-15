@@ -37,3 +37,27 @@ export function chatHistory(rawMessages: Array<Record<string, unknown>>): ChatHi
   const firstUserTurn = turns.findIndex((m) => m.role === "user");
   return firstUserTurn === -1 ? [] : turns.slice(firstUserTurn);
 }
+
+/**
+ * Quante domande chiudono la storia di chatHistory: dopo un turno interrotto (la domanda salvata, nessuna risposta) sono
+ * più d'una, e il modello le riceve unite, come un turno solo.
+ */
+export function closingQuestions(history: readonly ChatHistoryMessage[]): number {
+  let count = 0;
+  while (count < history.length && history[history.length - 1 - count].role === "user") count += 1;
+  return count;
+}
+
+/**
+ * Le domande da togliere dai messaggi salvati quando il modello rifiuta le `count` domande che chiudono la storia
+ * (closingQuestions): quella appena salvata, `questionId`, e quelle salvate subito prima, finché non c'è una risposta.
+ * Il browser le toglie tutte dalla sua storia (chatRequestMessages in src/components/agent/chat-view.ts); ricaricando la
+ * pagina, una rimasta tornerebbe al modello unita alla domanda dopo. `saved`: i messaggi della conversazione, in ordine.
+ */
+export function refusedQuestionIds(saved: ReadonlyArray<{ id: string; role: string }>, questionId: string, count: number): string[] {
+  const ids = [questionId];
+  for (let at = saved.findIndex((m) => m.id === questionId) - 1; at >= 0 && ids.length < count && saved[at].role === "user"; at -= 1) {
+    ids.push(saved[at].id);
+  }
+  return ids;
+}

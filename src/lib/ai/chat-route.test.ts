@@ -15,12 +15,14 @@ type Prova = {
   deleted: Array<[string, string]>;
   /** Se c'è, la cancellazione fallisce con questo messaggio. */
   deleteError?: string;
+  /** Quante volte la rotta ha letto i messaggi salvati (getMessages). */
+  reads: number;
   indexed: Array<[string, string]>;
   tools: Record<string, unknown>;
   /** Con che cosa la rotta costruisce i tool della richiesta: [tool, ...argomenti]. */
   toolArgs: unknown[][];
 };
-const prova: Prova = { saved: [], deleted: [], indexed: [], tools: {}, toolArgs: [] };
+const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -49,6 +51,12 @@ await installAppModules({
     export async function deleteMessage(conversationId, messageId) {
       if (globalThis.__prova.deleteError) throw new Error(globalThis.__prova.deleteError);
       globalThis.__prova.deleted.push([conversationId, messageId]);
+    }
+    export async function getMessages() {
+      globalThis.__prova.reads += 1;
+      return globalThis.__prova.saved
+        .map((message, i) => ({ id: "msg-" + (i + 1), ...message }))
+        .filter((message) => !globalThis.__prova.deleted.some(([, id]) => id === message.id));
     }`,
   "@/lib/ai/rag/retriever": `
     export async function retrieveRelevantContext() { return []; }
@@ -88,6 +96,7 @@ function reset() {
   prova.saved = [];
   prova.deleted = [];
   delete prova.deleteError;
+  prova.reads = 0;
   prova.indexed = [];
   prova.tools = {};
   prova.toolArgs = [];
@@ -129,6 +138,47 @@ test("la domanda rifiutata non si riesce a togliere: il turno finisce lo stesso,
     '[chat/route] risposta_rifiutata {"finishReason":"content-filter","category":"general_harms"}',
     '[chat/route] domanda_rifiutata_non_tolta {"error":{"name":"Error"}}',
   ]);
+});
+
+const REFUSAL = () => sse([ev.start("msg_1"), ...ev.end("refusal", { stop_details: { type: "refusal", category: "general_harms", explanation: null } })]);
+
+test("un rifiuto dopo un turno interrotto: si tolgono dai messaggi salvati le due domande che il modello ha ricevuto unite", async (t) => {
+  const lines = recordLogs(t);
+  reset();
+  // Salvati dai turni prima: una domanda con la sua risposta, poi la domanda di un turno interrotto, senza risposta.
+  prova.saved = [
+    { conversationId: "conv-prova", role: "user", content: "Preparo le fatture dei clienti ogni mese." },
+    { conversationId: "conv-prova", role: "assistant", content: "Per quanti clienti?" },
+    { conversationId: "conv-prova", role: "user", content: "Siamo Rossi SpA, prima parte." },
+  ];
+  fakeAppClaude([REFUSAL()]);
+  const { status } = await chat([
+    ...HISTORY,
+    { role: "assistant", content: "Per quanti clienti?" },
+    { role: "user", content: "Siamo Rossi SpA, prima parte." },
+    // La risposta interrotta prima del testo: il browser la rimanda vuota, e al modello non arriva.
+    { role: "assistant", content: "" },
+    { role: "user", content: "Seconda parte." },
+  ]);
+  assert.equal(status, 200);
+  assert.deepEqual(prova.saved.at(-1), { conversationId: "conv-prova", role: "user", content: "Seconda parte." });
+  // Come il browser (chatRequestMessages): ricaricando la pagina nessuna delle due tornerebbe al modello.
+  assert.deepEqual(prova.deleted, [
+    ["conv-prova", "msg-4"],
+    ["conv-prova", "msg-3"],
+  ]);
+  assert.equal(prova.reads, 1);
+  assert.deepEqual(lines, ['[chat/route] risposta_rifiutata {"finishReason":"content-filter","category":"general_harms"}']);
+});
+
+test("un rifiuto dopo una risposta interrotta con del testo: le domande sono arrivate separate, si toglie solo l'ultima", async (t) => {
+  recordLogs(t);
+  reset();
+  prova.saved = [{ conversationId: "conv-prova", role: "user", content: "Preparo le fatture dei clienti ogni mese." }];
+  fakeAppClaude([REFUSAL()]);
+  await chat([...HISTORY, { role: "assistant", content: "Per quanti" }, { role: "user", content: "Seconda parte." }]);
+  assert.deepEqual(prova.deleted, [["conv-prova", "msg-2"]]);
+  assert.equal(prova.reads, 0, "una domanda sola: niente da leggere");
 });
 
 test("un rifiuto nel passo di una chiamata di tool non valida: il giro si ferma lì, niente secondo passo, salvato o messo nella memoria", async (t) => {

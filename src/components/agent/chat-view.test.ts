@@ -63,6 +63,20 @@ test("prima di una risposta rifiutata si tolgono tutti i turni dell'utente di se
     { role: "user", content: "Ciao." },
     { role: "assistant", content: "Di che cosa ti occupi?" },
   ]);
+  // Una risposta interrotta senza testo (solo un tool) non arriva al modello, quindi non separa le domande: il modello
+  // le ha ricevute unite, e si tolgono tutte e due. Una risposta interrotta con del testo invece arriva, e le separa.
+  const toolsOnly: ChatUIMessage = { id: "a1", role: "assistant", parts: [{ type: "step-start" }, { type: "tool-saveActivity", toolCallId: "t1", state: "input-available", input: {} }] };
+  assert.deepEqual(chatRequestMessages([user("u0", "Ciao."), answer, user("u1", "Uno."), toolsOnly, user("u2", "Due."), refused, user("u3", "Tre.")]), [
+    { role: "user", content: "Ciao." },
+    { role: "assistant", content: "Di che cosa ti occupi?" },
+    { role: "user", content: "Tre." },
+  ]);
+  const withText: ChatUIMessage = { id: "a1", role: "assistant", parts: [{ type: "text", text: "Ogni quanto" }] };
+  assert.deepEqual(chatRequestMessages([user("u1", "Uno."), withText, user("u2", "Due."), refused, user("u3", "Tre.")]), [
+    { role: "user", content: "Uno." },
+    { role: "assistant", content: "Ogni quanto" },
+    { role: "user", content: "Tre." },
+  ]);
 });
 
 test("il testo di un messaggio: solo le parti di testo", () => {
