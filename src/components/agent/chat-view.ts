@@ -110,6 +110,10 @@ export const TOOL_LABELS: Readonly<Record<string, { active: string; done: string
     active: "Classifico intent",
     done: "Intent classificato",
   },
+  saveCompanyFacts: {
+    active: "Salvo i dati dell'azienda",
+    done: "Dati dell'azienda salvati",
+  },
   saveCompanyValueThesis: {
     active: "Salvo la value thesis",
     done: "Value thesis salvata",
