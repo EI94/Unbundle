@@ -653,6 +653,40 @@ test("D2: «Collega questa CLI» propone solo dove si costruisce o si è nel tea
   await assert.rejects(as("b", () => login.confirmCliLoginAction(other.userCode, ids.wsA)), /Workspace non trovato/);
 });
 
+test("il responsabile toglie dal dossier la riga osservatore di chi costruisce: lì i suoi compiti tornano da prendere, negli altri casi restano suoi", opts, async () => {
+  const ucActions = await import("../../actions/uc-cases.ts");
+  const team = await import("../../db/queries/use-case-workspace-team.ts");
+  // Un compito in A2 (la riga che si toglie), uno in A3 (costruisce ancora), uno in uno use case senza dossier (fuori).
+  const ucA4 = randomUUID();
+  await q(`INSERT INTO use_cases (id, workspace_id, title, code) VALUES ($1, $2, 'Senza dossier di prova', 'NM-0004')`, [ucA4, ids.wsA]);
+  await q(
+    `INSERT INTO use_case_tasks (use_case_id, workspace_id, ref, title, status, holder_user_id, taken_at, source)
+     VALUES ($1, $4, 'T-90', 'Compito di prova in A2', 'in_corso', $5, now(), 'cli'), ($2, $4, 'T-91', 'Compito di prova in A3', 'in_revisione', $5, now(), 'cli'),
+            ($3, $4, 'T-92', 'Compito di prova senza dossier', 'in_corso', $5, now(), 'cli')`,
+    [ids.ucA2, ids.ucA3, ucA4, ids.wsA, ids.e],
+  );
+  try {
+    const removed = await as("lead", () => ucActions.removeMemberAction(ids.wsA, ids.caseA2, { userId: ids.e, role: "osservatore" }));
+    assert.equal(removed.ok, true, removed.ok ? "" : removed.message);
+    const tasks = await q(`SELECT ref, status, holder_user_id FROM use_case_tasks WHERE workspace_id = $1 AND ref IN ('T-90', 'T-91', 'T-92') ORDER BY ref`, [ids.wsA]);
+    assert.deepEqual(
+      tasks.map((t) => [t.ref, t.status, t.holder_user_id]),
+      [
+        ["T-90", "da_fare", null],
+        ["T-91", "in_revisione", ids.e],
+        ["T-92", "in_corso", ids.e],
+      ],
+      "in A2 torna da prendere; in A3, dove costruisce ancora, resta suo; fuori da A2 la riga tolta non tocca niente",
+    );
+    const notes = await q(`SELECT n.body FROM use_case_task_notes n JOIN use_case_tasks t ON t.id = n.task_id WHERE t.use_case_id = $1 AND t.ref = 'T-90' AND n.kind = 'passaggio'`, [ids.ucA2]);
+    assert.deepEqual(notes.map((n) => n.body), [team.RELEASED_TASK_NOTE]);
+  } finally {
+    await q(`INSERT INTO uc_case_members (case_id, user_id, role) VALUES ($1, $2, 'osservatore') ON CONFLICT DO NOTHING`, [ids.caseA2, ids.e]);
+    await q(`DELETE FROM use_case_tasks WHERE workspace_id = $1 AND ref IN ('T-90', 'T-91', 'T-92')`, [ids.wsA]);
+    await q(`DELETE FROM use_cases WHERE id = $1`, [ucA4]);
+  }
+});
+
 // ─── Togliere ────────────────────────────────────────────────────────
 
 test("D9: la discesa a Contributore ferma le scritture subito, senza revoca; tornato Analista ricomincia", opts, async () => {

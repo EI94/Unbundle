@@ -45,5 +45,5 @@ test("«Osservatore · costruisce» solo per chi ha una concessione che copre il
 
 test("i testi del pannello sono quelli della specifica", () => {
   assert.equal(MEMBER_BUILDS_LABEL, "Osservatore · costruisce");
-  assert.equal(MEMBER_BUILDS_REMOVE_TEXT, "Non costruirà più questo caso. Per tutti i casi: Agent Factory › Chi costruisce.");
+  assert.equal(MEMBER_BUILDS_REMOVE_TEXT, "Non costruirà più questo caso: i compiti che ha qui tornano da prendere. Per tutti i casi: Agent Factory › Chi costruisce.");
 });

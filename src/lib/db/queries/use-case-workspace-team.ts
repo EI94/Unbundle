@@ -52,7 +52,7 @@ import {
   type BuilderWhere,
 } from "./use-case-builders.ts";
 import { notifyTask, tasksTablesReady } from "./use-case-tasks-notices.ts";
-import { cast, jsonb, raw, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
+import { cast, jsonb, raw, ref, toStatement, ucSql, type SqlFragment, type UcStatement } from "../../uc/sql/statement.ts";
 import { fail, ok, type Result } from "../../uc/types.ts";
 import { CLIENT_CASE_ROLES, type CaseRole } from "../../uc/vocab.ts";
 import { userContextFrom } from "../../uc/lateral-space.ts";
@@ -557,10 +557,11 @@ export const RELEASED_TASK_NOTE = "Torna da prendere: chi lo aveva non costruisc
  * prendere, come con «lascia»: in corso → da fare; in revisione resta in revisione, senza persona. Una nota per compito,
  * senza nomi; «compiti pronti» a chi costruisce quei casi. `first`: istruzioni da fare prima, nella stessa transazione
  * (togliere le concessioni, revocare i token): così la persona non scrive più e i suoi compiti si liberano insieme.
+ * `caseId`: solo i compiti di quel dossier (la riga tolta nel team del dossier).
  */
 export async function releaseTasksOfFormerBuilder(
   executor: UcExecutor,
-  i: { workspaceId: string; userId: string; lsDomains: readonly string[]; first?: readonly UcStatement[]; now?: Date },
+  i: { workspaceId: string; userId: string; lsDomains: readonly string[]; first?: readonly UcStatement[]; caseId?: string; now?: Date },
 ): Promise<{ released: number; firstRows: Record<string, unknown>[][] }> {
   const first = [...(i.first ?? [])];
   if (!(await tasksTablesReady(executor))) {
@@ -570,8 +571,13 @@ export async function releaseTasksOfFormerBuilder(
   const ws = cast(i.workspaceId, "uuid");
   const user = cast(i.userId, "uuid");
   const scope = await loadBuilderScope(executor, i.lsDomains);
+  const caseId = i.caseId;
+  const ofCase = (column: string) =>
+    caseId === undefined ? raw("true") : ucSql`${ref(column)} = (SELECT d.portfolio_use_case_id FROM uc_cases d WHERE d.id = ${cast(caseId, "uuid")} AND d.workspace_id = ${ws})`;
   const [held] = await executor.batch([
-    toStatement(ucSql`SELECT DISTINCT use_case_id FROM use_case_tasks WHERE workspace_id = ${ws} AND holder_user_id = ${user} AND status IN ('in_corso', 'in_revisione')`),
+    toStatement(
+      ucSql`SELECT DISTINCT use_case_id FROM use_case_tasks WHERE workspace_id = ${ws} AND holder_user_id = ${user} AND status IN ('in_corso', 'in_revisione') AND ${ofCase("use_case_id")}`,
+    ),
   ]);
   // Costruisce ancora il caso del compito (dopo le istruzioni di `first`): un ruolo di Lateral Space, o da fuori.
   const stillBuilds = ucSql`EXISTS (SELECT 1 FROM uc_cases c JOIN users u ON u.id = ${user}
@@ -580,7 +586,7 @@ export async function releaseTasksOfFormerBuilder(
   const release = toStatement(ucSql`WITH done AS (
   UPDATE use_case_tasks t SET status = CASE WHEN t.status = 'in_revisione' THEN 'in_revisione' ELSE 'da_fare' END, holder_user_id = NULL,
     taken_at = CASE WHEN t.status = 'in_revisione' THEN t.taken_at END, stale_asked_at = NULL, stale_escalated_at = NULL, updated_at = now()
-  WHERE t.workspace_id = ${ws} AND t.holder_user_id = ${user} AND t.status IN ('in_corso', 'in_revisione') AND NOT ${stillBuilds}
+  WHERE t.workspace_id = ${ws} AND t.holder_user_id = ${user} AND t.status IN ('in_corso', 'in_revisione') AND ${ofCase("t.use_case_id")} AND NOT ${stillBuilds}
   RETURNING t.id, t.use_case_id
 )
 INSERT INTO use_case_task_notes (task_id, use_case_id, workspace_id, kind, body)
@@ -595,6 +601,19 @@ RETURNING task_id`);
   });
   const rows = await executor.batch([...first, release, ...notices]);
   return { released: rows[first.length]?.length ?? 0, firstRows: rows.slice(0, first.length) };
+}
+
+/**
+ * (8.0c) Il responsabile toglie un ruolo dal team del dossier (`removeCaseMember`). Se era la riga `osservatore` di chi
+ * costruiva il caso da fuori, da lì non costruisce più: i suoi compiti in quel caso tornano da prendere, come con «Togli».
+ * Chi costruisce ancora il caso (un ruolo di Lateral Space) li tiene.
+ */
+export async function removeCaseMemberReleasingTasks(executor: UcExecutor, ctx: UcCommandContext, input: unknown): Promise<Result<{ userId: string; role: CaseRole }>> {
+  const removed = await removeCaseMember(executor, ctx, input);
+  if (removed.ok && removed.value.role === "osservatore") {
+    await releaseTasksOfFormerBuilder(executor, { workspaceId: ctx.workspaceId, userId: removed.value.userId, lsDomains: ctx.lsDomains, caseId: ctx.caseId });
+  }
+  return removed;
 }
 
 /**

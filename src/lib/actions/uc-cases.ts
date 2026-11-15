@@ -5,13 +5,13 @@ import { requireWorkspaceAccess } from "@/lib/auth/require-workspace";
 import {
   addCaseMember,
   proposePersonalZoneAccess,
-  removeCaseMember,
   revokePersonalZoneAccess,
   setCaseSigner,
   signPersonalZoneAccess,
   transitionCase,
   updateCaseRoi,
 } from "@/lib/db/queries/uc-cases";
+import { removeCaseMemberReleasingTasks } from "@/lib/db/queries/use-case-workspace-team";
 import { updateCaseSettings } from "@/lib/db/queries/uc-people-view";
 import type { Result } from "@/lib/uc/types";
 import type { CaseRole, CaseStatus } from "@/lib/uc/vocab";
@@ -65,10 +65,13 @@ export async function addMemberAction(workspaceId: string, caseId: string, input
   return onCase({ session, access }, workspaceId, caseId, ["ls_lead"], (o) => addCaseMember(o.executor, o.ctx, input));
 }
 
-/** Toglie un ruolo di caso (mai l'ultimo Responsabile del caso). */
+/**
+ * Toglie un ruolo di caso (mai l'ultimo Responsabile del caso). (8.0c) Tolta la riga `osservatore` di chi costruiva il
+ * caso da fuori, i suoi compiti in quel caso tornano da prendere.
+ */
 export async function removeMemberAction(workspaceId: string, caseId: string, input: unknown): Promise<UcActionResult<{ userId: string; role: CaseRole }>> {
   const { session, access } = await requireWorkspaceAccess(workspaceId);
-  return onCase({ session, access }, workspaceId, caseId, ["ls_lead"], (o) => removeCaseMember(o.executor, o.ctx, input));
+  return onCase({ session, access }, workspaceId, caseId, ["ls_lead"], (o) => removeCaseMemberReleasingTasks(o.executor, o.ctx, input));
 }
 
 /** Proposta di accesso alla zona personale (dopo la scheda A.8). */
