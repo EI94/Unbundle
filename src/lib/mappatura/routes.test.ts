@@ -78,6 +78,7 @@ await installAppModules({
     export async function getAppUcExecutor() { return executor; }`,
   "@/lib/mappatura/complete": `
     export function appCompleteDeps(executor) { return { executor }; }
+    export function isCompletionRefusal(value) { return Boolean(value && "refused" in value); }
     export async function completeUnitMapping(deps, input) {
       globalThis.__prova.completions.push({ scope: input.scope, deadline: input.deadline, at: Date.now(), hasExecutor: typeof deps.executor.batch === "function", extra: Object.keys(input).sort().join(",") });
       return globalThis.__prova.outcome;
@@ -257,6 +258,10 @@ test("POST complete: maxDuration 120, la scadenza di chatDeadline (95 secondi), 
   // Senza la 0039 il completamento non ha esito: 503.
   reset({ outcome: null });
   assert.deepEqual(await post(), { status: 503, body: { code: "non_disponibile" } });
+  // Un'unità senza passi non si completa: 409, e la board non si rilegge.
+  reset({ outcome: { refused: "senza_passi" } });
+  assert.deepEqual(await post(), { status: 409, body: { code: "senza_passi" } });
+  assert.equal(prova.all.filter((statement) => statement.text.startsWith("SELECT d.id, d.name")).length, 0);
   // Chiunque sia un collaboratore può completare, come dalla chat oggi.
   reset({ outcome, roles: { [WS]: "contributor" } });
   assert.equal((await post()).status, 200);

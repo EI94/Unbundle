@@ -7,7 +7,7 @@ import { allSteps, locateStep, type MappingBoard, type StepPlace } from "@/lib/m
 import { cutLine, opsForNewStep, opsForStepPatch, type BoardOp, type StepDraft } from "@/lib/mappatura/board-ops";
 import { mappingStoreReady, readBoard, resolveProcess, saveBoardOps, type BoardActor, type BoardScope, type Rejection } from "@/lib/mappatura/board-store";
 import { linkDependencyStatement } from "@/lib/mappatura/board-sql";
-import { appCompleteDeps, completeUnitMapping, type CompleteDeps, type CompletionOutcome } from "@/lib/mappatura/complete";
+import { appCompleteDeps, completeUnitMapping, isCompletionRefusal, type CompleteDeps, type CompletionOutcome } from "@/lib/mappatura/complete";
 import { BOARD_TEXT } from "@/lib/mappatura/text";
 import { FREQUENCIES, MAPPING_LIMITS, WORK_TYPES, type Friction } from "@/lib/mappatura/vocab";
 
@@ -287,6 +287,8 @@ export function getActivityMappingTools(
           analysis: analysisPoints?.slice(0, MAPPING_LIMITS.analysisPoints),
         });
         if (!outcome) return notReady();
+        // Senza passi la mappatura non si completa: il modello lo sa e lo dice, niente campanella.
+        if (isCompletionRefusal(outcome)) return { success: false, message: BOARD_TEXT.toast.noSteps };
         return { success: true, message: completionMessage(summary, outcome) };
       },
     }),

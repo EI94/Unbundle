@@ -46,6 +46,17 @@ export type CompletionOutcome = {
   onet: "fatto" | "non_riuscito" | "niente_da_fare";
 };
 
+/**
+ * Una mappatura senza passi non si completa: né dal bottone, né da una richiesta diretta, né dalla chat. Niente
+ * «Mappatura completa», niente riga in campanella, nessuna chiamata al modello.
+ */
+export type CompletionRefusal = { refused: "senza_passi" };
+
+/** L'esito è un rifiuto (`CompletionRefusal`)? */
+export function isCompletionRefusal(value: CompletionOutcome | CompletionRefusal | null | undefined): value is CompletionRefusal {
+  return Boolean(value && "refused" in value);
+}
+
 export interface CompleteDeps {
   loadUnit(scope: BoardScope): Promise<{ unitName: string; activities: Activity[]; companyValueThesis: unknown; goals: StrategicGoal[] } | null>;
   markMapped(scope: BoardScope, signal: { title: string; description: string }): Promise<{ first: boolean }>;
@@ -170,15 +181,18 @@ export function appCompleteDeps(executor: UcExecutor): CompleteDeps {
 
 /**
  * Completa la mappatura di un'unità, o continua con quello che resta. null se l'unità non è di quel workspace o se la
- * 0039 manca. `deadline`: l'istante oltre il quale le chiamate al modello si interrompono (quello che è riuscito resta).
+ * 0039 manca; un rifiuto se l'unità non ha passi. `deadline`: l'istante oltre il quale le chiamate al modello si
+ * interrompono (quello che è riuscito resta).
  */
 export async function completeUnitMapping(
   deps: CompleteDeps,
   input: { scope: BoardScope; deadline: number; headline?: string | null; analysis?: ReadonlyArray<{ title: string; text: string }> },
-): Promise<CompletionOutcome | null> {
+): Promise<CompletionOutcome | CompletionRefusal | null> {
   const { scope, deadline } = input;
   const unit = await deps.loadUnit(scope);
   if (!unit) return null;
+  // Senza passi non si completa niente (anche `markMapped` lo controlla, nella stessa istruzione che segna l'unità).
+  if (unit.activities.length === 0) return { refused: "senza_passi" };
 
   const hours = unit.activities.reduce((sum, activity) => sum + (activity.timeSpentHoursWeek ?? 0), 0);
   const { first } = await deps.markMapped(scope, mappingCompletedSignal(unit.unitName, unit.activities.length, hours));

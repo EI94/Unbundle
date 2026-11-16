@@ -4,6 +4,7 @@ import { fakeAppClaude, hang, installAppModules, message, recordLogs, refusal, T
 import { MIN_MODEL_CALL_MS } from "../ai/models.ts";
 import type { ClassificationResult } from "../ai/classify.ts";
 import type { Activity } from "../db/schema.ts";
+import type { CompletionOutcome } from "./complete.ts";
 
 // «Completa la mappatura» (docs/mappatura/MAPPATURA-BOARD-PIANO.md §4.5): la funzione vera, con il classificatore e il
 // match O*NET veri e il Claude finto di claude-test-kit.ts; il database è finto (le dipendenze di `CompleteDeps`).
@@ -13,7 +14,13 @@ import type { Activity } from "../db/schema.ts";
 // - la sintesi si salva solo se chi chiama la porta; nei log nessun titolo.
 
 await installAppModules({});
-const { completeUnitMapping } = await import("./complete.ts");
+const { completeUnitMapping: completeOrRefuse, isCompletionRefusal } = await import("./complete.ts");
+/** Il completamento di un'unità con dei passi: mai un rifiuto (quello di un'unità vuota ha la sua prova, in fondo). */
+async function completeUnitMapping(...args: Parameters<typeof completeOrRefuse>): Promise<CompletionOutcome | null> {
+  const outcome = await completeOrRefuse(...args);
+  assert.ok(!(outcome && "refused" in outcome), "un'unità con dei passi non si rifiuta");
+  return outcome;
+}
 const { classifyActivitiesBatch } = await import("../ai/classify.ts");
 const { matchActivitiesToOnet } = await import("../ai/onet-matching.ts");
 
@@ -223,16 +230,16 @@ test("le chiamate al modello hanno il tempo che resta fino alla scadenza, contat
   assert.deepEqual([outcome?.classification, outcome?.onet, outcome?.avgExposurePct], ["fatta", "fatto", 30]);
 });
 
-test("la sintesi si salva solo se chi chiama la porta; un'unità senza passi si completa senza chiamare il modello", async (t) => {
+test("la sintesi si salva solo se chi chiama la porta; un'unità già classificata si completa senza chiamare il modello", async (t) => {
   recordLogs(t);
-  const { deps, log } = fakeStore([]);
+  const { deps, log } = fakeStore(ACTIVITIES().map((item) => ({ ...item, classification: "automate", onetTaskId: "13-1023.00" })));
   const requests = fakeAppClaude([]);
   const analysis = [{ title: "Dove va il tempo", text: "Nei solleciti. Ogni ordine ne chiede tre." }];
   const outcome = await completeUnitMapping(deps, { scope, deadline: FAR(), headline: "Il tempo va nei solleciti.", analysis });
-  assert.deepEqual(outcome, { firstCompletion: true, total: 0, classified: 0, remaining: 0, counts: { automate: 0, differentiate: 0, innovate: 0 }, classification: "niente_da_fare", matched: 0, avgExposurePct: null, onet: "niente_da_fare" });
+  assert.deepEqual(outcome, { firstCompletion: true, total: 4, classified: 0, remaining: 0, counts: { automate: 0, differentiate: 0, innovate: 0 }, classification: "niente_da_fare", matched: 0, avgExposurePct: null, onet: "niente_da_fare" });
   assert.equal(requests.length, 0);
   assert.deepEqual(log.summaries, [{ headline: "Il tempo va nei solleciti.", analysis }]);
-  assert.deepEqual(log.marked, [{ title: "Mappatura completata: Ufficio acquisti", description: "0 passi, 0 ore a settimana." }]);
+  assert.deepEqual(log.marked, [{ title: "Mappatura completata: Ufficio acquisti", description: "4 passi, 6,5 ore a settimana." }]);
   // Solo la frase, o solo i punti: si salva quello che c'è. Niente dei due (il bottone): niente.
   await completeUnitMapping(deps, { scope, deadline: FAR(), headline: "Solo la frase." });
   await completeUnitMapping(deps, { scope, deadline: FAR(), analysis: [] });
@@ -276,6 +283,16 @@ test("un'unità che non si trova: null, niente segnato, niente chiesto al modell
   const requests = fakeAppClaude([]);
   assert.equal(await completeUnitMapping(deps, { scope, deadline: FAR() }), null);
   assert.deepEqual([log.marked, requests.length], [[], 0]);
+});
+
+test("un'unità senza passi non si completa: un rifiuto, niente segnato, nessuna riga in campanella, niente chiesto al modello", async (t) => {
+  recordLogs(t);
+  const { deps, log } = fakeStore([]);
+  const requests = fakeAppClaude([]);
+  const refused = await completeOrRefuse(deps, { scope, deadline: FAR(), headline: "Una frase.", analysis: [{ title: "Un punto", text: "Un testo." }] });
+  assert.deepEqual(refused, { refused: "senza_passi" });
+  assert.deepEqual([isCompletionRefusal(refused), isCompletionRefusal(null), isCompletionRefusal(undefined)], [true, false, false]);
+  assert.deepEqual([log.marked, log.signals, log.summaries, log.classified, log.onet, log.status, requests.length], [[], 0, [], [], [], "in_progress", 0]);
 });
 
 test("se il database non salva le classificazioni: «non riuscita», l'errore nel log senza testi, e il match O*NET va avanti", async (t) => {

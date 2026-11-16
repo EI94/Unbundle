@@ -20,6 +20,12 @@ let db: Connection;
 let q: Connection["q"];
 let store: typeof import("./board-store.ts");
 let complete: typeof import("./complete.ts");
+/** Il completamento di un'unità con dei passi: mai un rifiuto (quello di un'unità vuota ha la sua prova). */
+async function completed(...args: Parameters<(typeof import("./complete.ts"))["completeUnitMapping"]>): Promise<import("./complete.ts").CompletionOutcome | null> {
+  const outcome = await complete.completeUnitMapping(...args);
+  assert.ok(!(outcome && "refused" in outcome), "un'unità con dei passi non si rifiuta");
+  return outcome;
+}
 
 const scope = () => ({ workspaceId: f.ws, departmentId: f.unit });
 const lead = () => ({ kind: "persona" as const, userId: f.lead, role: "transformation_lead" });
@@ -96,7 +102,7 @@ test("la prima chiusura: unità completa, una riga in campanella, stream e propo
   // Il match O*NET restituisce anche un id di un'altra unità, uno di un altro workspace e uno inventato.
   const onet = [match(ids.richieste, 0.2), match(ids.confronto, 0.4), match(ids.altrove, 0.9), match(ids.fuori, 0.9), match(randomUUID(), 0.9), match(ids.scelta, 0.3), match(ids.ordine, 0.1)];
   const requests = fakeAppClaude(Array.from({ length: 5 }, () => replies(onet)));
-  const outcome = await complete.completeUnitMapping(complete.appCompleteDeps(db.exec), {
+  const outcome = await completed(complete.appCompleteDeps(db.exec), {
     scope: scope(),
     deadline: FAR(),
     headline: "  Un terzo del tempo va a rincorrere richieste incomplete.  ",
@@ -142,7 +148,7 @@ test("la prima chiusura: unità completa, una riga in campanella, stream e propo
 test("la seconda chiusura non avvisa di nuovo e non ha niente da fare; un passo aggiunto dopo si classifica da solo", opts, async (t) => {
   recordLogs(t);
   const none = fakeAppClaude([]);
-  const again = await complete.completeUnitMapping(complete.appCompleteDeps(db.exec), { scope: scope(), deadline: FAR() });
+  const again = await completed(complete.appCompleteDeps(db.exec), { scope: scope(), deadline: FAR() });
   assert.deepEqual(again, { firstCompletion: false, total: 4, classified: 0, remaining: 0, counts: { automate: 0, differentiate: 0, innovate: 0 }, classification: "niente_da_fare", matched: 0, avgExposurePct: null, onet: "niente_da_fare" });
   assert.equal(none.length, 0);
   assert.equal((await signals()).length, 1);
@@ -154,7 +160,7 @@ test("la seconda chiusura non avvisa di nuovo e non ha niente da fare; un passo 
   assert.deepEqual([added.board.unit.status, step(added.board, ids.archivio).stream], ["mapped", null]);
   // «Classifica 1 passo»: una chiamata per quel passo, una per il suo codice. Nessuna riga nuova in campanella.
   const requests = fakeAppClaude([replies([match(ids.archivio, 0.5)]), replies([match(ids.archivio, 0.5)])]);
-  const outcome = await complete.completeUnitMapping(complete.appCompleteDeps(db.exec), { scope: scope(), deadline: FAR() });
+  const outcome = await completed(complete.appCompleteDeps(db.exec), { scope: scope(), deadline: FAR() });
   assert.deepEqual([outcome?.firstCompletion, outcome?.total, outcome?.classified, outcome?.remaining, outcome?.classification, outcome?.matched, outcome?.avgExposurePct], [false, 5, 1, 0, "fatta", 1, 50]);
   assert.equal(requests.length, 2);
   assert.ok(JSON.stringify(requests[0].body.messages).includes("Archivio dell'ordine") && !JSON.stringify(requests[0].body.messages).includes("Raccolta delle richieste"));
@@ -208,11 +214,11 @@ test("due giri insieme sullo stesso passo: stream, proposta e motivo restano del
       }) as never,
       matchOnet: (async () => []) as never,
     });
-    const first = complete.completeUnitMapping(deps("automate", () => secondHasRead), { scope: where, deadline: FAR() }).then((outcome) => {
+    const first = completed(deps("automate", () => secondHasRead), { scope: where, deadline: FAR() }).then((outcome) => {
       firstWrote();
       return outcome;
     });
-    const second = complete.completeUnitMapping(
+    const second = completed(
       deps("differentiate", async () => {
         secondRead();
         await firstHasWritten;
@@ -275,13 +281,42 @@ test("due chiusure insieme: una sola riga in campanella", opts, async (t) => {
     const where = { workspaceId: g.ws, departmentId: g.unit };
     await insertActivity(q, { ws: g.ws, unit: g.unit }, { title: "Raccolta delle richieste", classification: "automate", onet_task_id: "13-1023.00" });
     fakeAppClaude([]);
-    const outcomes = await Promise.all(Array.from({ length: 4 }, () => complete.completeUnitMapping(complete.appCompleteDeps(db.exec), { scope: where, deadline: FAR() })));
+    const outcomes = await Promise.all(Array.from({ length: 4 }, () => completed(complete.appCompleteDeps(db.exec), { scope: where, deadline: FAR() })));
     assert.equal(outcomes.filter((outcome) => outcome?.firstCompletion).length, 1);
     assert.equal((await signals(g.ws)).length, 1);
     // Un'unità di un altro workspace, o senza la 0039: null, niente segnato.
-    assert.equal(await complete.completeUnitMapping(complete.appCompleteDeps(db.exec), { scope: { workspaceId: g.otherWs, departmentId: g.unit }, deadline: FAR() }), null);
-    assert.equal(await complete.completeUnitMapping(complete.appCompleteDeps(db.exec), { scope: { workspaceId: g.ws, departmentId: g.foreignUnit }, deadline: FAR() }), null);
+    assert.equal(await completed(complete.appCompleteDeps(db.exec), { scope: { workspaceId: g.otherWs, departmentId: g.unit }, deadline: FAR() }), null);
+    assert.equal(await completed(complete.appCompleteDeps(db.exec), { scope: { workspaceId: g.ws, departmentId: g.foreignUnit }, deadline: FAR() }), null);
     assert.equal((await q(`SELECT mapping_status::text AS s FROM departments WHERE id = $1`, [g.foreignUnit]))[0].s, "not_started");
+  } finally {
+    await unseed(q, g);
+  }
+});
+
+test("un'unità senza passi non si completa: un rifiuto, l'unità resta com'era, nessuna riga in campanella", opts, async (t) => {
+  recordLogs(t);
+  const g = newFixture();
+  await seed(q, g, "vuota");
+  try {
+    const where = { workspaceId: g.ws, departmentId: g.unit };
+    const requests = fakeAppClaude([]);
+    assert.deepEqual(await complete.completeUnitMapping(complete.appCompleteDeps(db.exec), { scope: where, deadline: FAR(), headline: "Una frase." }), { refused: "senza_passi" });
+    assert.equal(requests.length, 0, "nessuna chiamata al modello");
+    assert.equal((await q(`SELECT mapping_status::text AS s FROM departments WHERE id = $1`, [g.unit]))[0].s, "not_started");
+    assert.deepEqual(await signals(g.ws), []);
+    // L'istruzione che segna l'unità lo garantisce da sola (i passi spariti tra la lettura e la scrittura): niente
+    // «mapped», niente ora di completamento, niente campanella.
+    const { markMapped } = await import("./board-sql.ts");
+    const [rows] = await db.exec.batch([markMapped(where, { type: "mapping_completed", title: "Mappatura completata: Ufficio acquisti", description: "0 passi, 0 ore a settimana." })]);
+    assert.equal(rows[0]?.first, false);
+    assert.equal((await q(`SELECT mapping_status::text AS s FROM departments WHERE id = $1`, [g.unit]))[0].s, "not_started");
+    assert.deepEqual(await q(`SELECT completed_at FROM mapping_boards WHERE department_id = $1`, [g.unit]), []);
+    assert.deepEqual(await signals(g.ws), []);
+    // Con un passo si completa, una volta.
+    await insertActivity(q, { ws: g.ws, unit: g.unit }, { title: "Raccolta delle richieste", classification: "automate", onet_task_id: "13-1023.00" });
+    const outcome = await completed(complete.appCompleteDeps(db.exec), { scope: where, deadline: FAR() });
+    assert.equal(outcome?.firstCompletion, true);
+    assert.equal((await signals(g.ws)).length, 1);
   } finally {
     await unseed(q, g);
   }
@@ -296,7 +331,7 @@ test("un rifiuto su un passo: gli altri si scrivono, quello resta da classificar
     const kept = await insertActivity(q, { ws: g.ws, unit: g.unit }, { title: "Raccolta delle richieste", minutesAgo: 2 });
     const refused = await insertActivity(q, { ws: g.ws, unit: g.unit }, { title: "Confronto delle offerte", minutesAgo: 1 });
     fakeAppClaude(Array.from({ length: 3 }, () => replies([match(kept, 0.3)], "Confronto delle offerte")));
-    const outcome = await complete.completeUnitMapping(complete.appCompleteDeps(db.exec), { scope: where, deadline: FAR() });
+    const outcome = await completed(complete.appCompleteDeps(db.exec), { scope: where, deadline: FAR() });
     assert.deepEqual([outcome?.classification, outcome?.classified, outcome?.remaining, outcome?.matched], ["parziale", 1, 1, 1]);
     assert.deepEqual([(await activityRow(kept)).classification, (await activityRow(refused)).classification], ["automate", null]);
     const board = await store.readBoard(db.exec, where, { userId: g.lead, role: "analyst" });

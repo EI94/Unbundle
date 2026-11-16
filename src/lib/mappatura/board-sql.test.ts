@@ -413,6 +413,8 @@ test("l'adozione non scrive in activities e non alza la revisione; il completame
 
   const mapped = markMapped(scope, { type: "mapping_completed", title: "Titolo", description: "Descrizione" }).text;
   assert.match(mapped, /SET mapping_status = 'mapped'[\s\S]*d\.mapping_status IN \('not_started', 'in_progress'\)/);
+  // Solo con almeno un passo dell'unità: senza, niente «mapped» e niente campanella, nella stessa istruzione.
+  assert.match(mapped, /d\.mapping_status IN \('not_started', 'in_progress'\)\s+AND EXISTS \(SELECT 1 FROM activities a WHERE a\.department_id = d\.id AND a\.workspace_id = d\.workspace_id\)\s+RETURNING/);
   // La riga della campanella nasce solo dalla riga che è appena passata a «mapped».
   assert.match(mapped, /INSERT INTO weekly_signals \(workspace_id, signal_type, title, description, related_entity_type, related_entity_id\)\s+SELECT done\.workspace_id, \$\d+::text, left\(\$\d+::text, 500\), \$\d+::text, 'department', done\.department_id FROM done/);
   assert.match(mapped, /SELECT EXISTS \(SELECT 1 FROM done\) AS first$/);

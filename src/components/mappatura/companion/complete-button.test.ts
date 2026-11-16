@@ -70,6 +70,7 @@ function fakeClient() {
     saveNow: async () => void calls.push(["saveNow"]),
     replace: (board: MappingBoard) => void calls.push(["replace", board.revision]),
     notify: (text: string, action?: { label: string; run(): void }) => void calls.push(["notify", text, action?.label, action?.run]),
+    pull: async () => void calls.push(["pull"]),
   };
   return { client, calls };
 }
@@ -114,6 +115,22 @@ test("se il completamento non va: senza la 0039 la frase della sola lettura; un 
       label,
     );
   }
+});
+
+test("senza passi sul server (eliminati da altri, o mai salvati): il toast lo dice, la board si rilegge, niente si sostituisce", async () => {
+  const { client, calls } = fakeClient();
+  await runCompletion({
+    workspaceId: I.workspace,
+    departmentId: I.unit,
+    client,
+    openClassification() {},
+    fetch: (async () => Response.json({ code: "senza_passi" }, { status: 409 })) as typeof fetch,
+  });
+  assert.deepEqual(
+    calls.map(([name, text]) => (name === "notify" ? [name, text] : [name])),
+    [["saveNow"], ["notify", "Aggiungi almeno un passo prima di completare la mappatura."], ["pull"]],
+  );
+  assert.equal(BOARD_TEXT.toast.noSteps, "Aggiungi almeno un passo prima di completare la mappatura.");
 });
 
 test("uno alla volta per board: un secondo clic mentre lavora non manda niente, e i bottoni delle due schede lo sanno", async () => {

@@ -6,7 +6,7 @@
  *   quando è completa e N passi sono senza stream; niente altrimenti.
  * - Che cosa fa: salva subito le modifiche in coda (i passi a schermo sono quelli che il server classifica), poi
  *   `POST …/complete`; la board che torna diventa la base (`replace`, gli use case collegati restano), e un toast dice
- *   com'è andata.
+ *   com'è andata. Se sul server l'unità non ha passi (`409`), il toast lo dice e la board si rilegge.
  * - Uno alla volta per board: lo stato «in corso» è dello store della board, così il bottone della testa di «Processi di
  *   oggi» e quello di «Classificazione» lo vedono tutti e due.
  */
@@ -104,7 +104,7 @@ function setWorking(client: object, working: boolean) {
 export interface CompletionDeps {
   workspaceId: string;
   departmentId: string;
-  client: Pick<BoardClient, "saveNow" | "replace" | "notify">;
+  client: Pick<BoardClient, "saveNow" | "replace" | "notify" | "pull">;
   fetch: typeof fetch;
   openClassification(): void;
 }
@@ -129,6 +129,12 @@ export async function runCompletion(deps: CompletionDeps): Promise<void> {
     }
     if (response.status === 503) {
       client.notify(BOARD_TEXT.storeMissing);
+      return;
+    }
+    if (response.status === 409) {
+      // Senza passi sul server (eliminati da altri, o mai salvati): niente si completa; la board mostra quello che c'è.
+      client.notify(BOARD_TEXT.toast.noSteps);
+      void client.pull();
       return;
     }
     const body = response.ok ? ((await response.json().catch(() => null)) as { outcome?: CompletionOutcome; board?: MappingBoard } | null) : null;

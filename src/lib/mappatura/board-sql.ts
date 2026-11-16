@@ -802,13 +802,16 @@ ORDER BY s.position, a.created_at, a.id`),
 }
 
 /**
- * «Mappatura completa», una volta sola: l'unità passa a `mapped` se era da iniziare o in corso; solo allora la board
- * prende l'ora, la revisione sale e nasce la riga della campanella per il workspace. `first` dice se è successo.
+ * «Mappatura completa», una volta sola: l'unità passa a `mapped` se era da iniziare o in corso e ha almeno un passo;
+ * solo allora la board prende l'ora, la revisione sale e nasce la riga della campanella per il workspace. `first` dice
+ * se è successo. (Un'unità senza passi non si completa: `completeUnitMapping` lo dice prima, qui lo garantisce la
+ * stessa istruzione, anche se i passi sono spariti nel frattempo.)
  */
 export function markMapped(scope: BoardScope, signal: { type: string; title: string; description: string }): UcStatement {
   return toStatement(ucSql`WITH done AS (
   UPDATE departments d SET mapping_status = 'mapped'
   WHERE d.id = ${U(scope.departmentId)} AND d.workspace_id = ${U(scope.workspaceId)} AND d.mapping_status IN ('not_started', 'in_progress')
+    AND EXISTS (SELECT 1 FROM activities a WHERE a.department_id = d.id AND a.workspace_id = d.workspace_id)
   RETURNING d.id AS department_id, d.workspace_id),
 board AS (
   INSERT INTO mapping_boards (department_id, workspace_id, completed_at, revision)

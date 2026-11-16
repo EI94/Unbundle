@@ -4,7 +4,7 @@ import { installAppModules } from "./claude-test-kit.ts";
 import { FIXTURE_IDS, fixtureBoard } from "../mappatura/board-fixture.ts";
 import { locateStep, type MappingBoard } from "../mappatura/board-model.ts";
 import { applyOps, type BoardOp } from "../mappatura/board-ops.ts";
-import type { CompletionOutcome } from "../mappatura/complete.ts";
+import type { CompletionOutcome, CompletionRefusal } from "../mappatura/complete.ts";
 import { MAPPING_LIMITS } from "../mappatura/vocab.ts";
 import type { UcStatement } from "../uc/sql/statement.ts";
 
@@ -31,7 +31,7 @@ type Call = [name: string, ...args: unknown[]];
  * Una board finta: la board di «Ufficio acquisti» per lo scope giusto; i salvataggi applicano le operazioni come il
  * browser (`applyOps`) e rifiutano quelle che `refuse` nomina; le istruzioni SQL rispondono con `rows`.
  */
-function fakeStore(options: { ready?: boolean; board?: MappingBoard; refuse?: (op: BoardOp) => "conflict" | "gone" | "limit" | null; saveCode?: "non_disponibile" | "non_trovata"; rows?: Array<Record<string, unknown>>; outcome?: CompletionOutcome | null } = {}) {
+function fakeStore(options: { ready?: boolean; board?: MappingBoard; refuse?: (op: BoardOp) => "conflict" | "gone" | "limit" | null; saveCode?: "non_disponibile" | "non_trovata"; rows?: Array<Record<string, unknown>>; outcome?: CompletionOutcome | CompletionRefusal | null } = {}) {
   const calls: Call[] = [];
   let board = options.board ?? fixtureBoard();
   let seq = 0;
@@ -310,6 +310,9 @@ test("markDepartmentMapped: completeUnitMapping con l'unità, la scadenza della 
   const blank = fakeStore({ outcome: null });
   assert.deepEqual(await blank.run("markDepartmentMapped", { summary: "x", headline: "  " }), { success: false, message: BOARD_NOT_READY_MESSAGE });
   assert.equal((blank.called("complete")[0][1] as { headline: unknown }).headline, null);
+  // Un'unità senza passi non si completa: il modello lo sa, con la frase del bottone.
+  const empty = fakeStore({ outcome: { refused: "senza_passi" } });
+  assert.deepEqual(await empty.run("markDepartmentMapped", { summary: "Fatto." }), { success: false, message: "Aggiungi almeno un passo prima di completare la mappatura." });
 });
 
 test("il messaggio del completamento: le frasi di sempre, esito per esito", () => {

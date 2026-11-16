@@ -51,6 +51,8 @@ export const BOARD_TEXT = Object.freeze({
     limitNotes: "Una corsia tiene al massimo 30 note.",
     limitAnalysis: "Una board tiene al massimo 6 punti di analisi.",
     copied: "Mappa copiata.",
+    /** «Completa la mappatura» su un'unità senza passi: lo dicono il bottone e l'assistente. */
+    noSteps: "Aggiungi almeno un passo prima di completare la mappatura.",
   }),
   /** Senza le tabelle della 0039: la board si legge e basta, per qualche minuto. */
   storeMissing: "La board è in sola lettura per qualche minuto: si sta aggiornando.",
