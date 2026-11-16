@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { USE_CASE_NAV_MATCH, isNavItemActive } from "./nav-active.ts";
+import { readFileSync } from "node:fs";
+import { CONTEXT_NAV_MATCH, USE_CASE_NAV_MATCH, isNavItemActive } from "./nav-active.ts";
 
 // docs/use-case/DESIGN.md §2.1 (D1): Overview solo sull'indirizzo esatto; «Use case» accesa
 // anche sulle pagine che sostituisce. Id inventati.
@@ -13,7 +14,8 @@ const at = (rest: string) => `${base}${rest}`;
 const overview = { href: base };
 const useCase = { href: `${base}/use-cases`, match: USE_CASE_NAV_MATCH };
 const discovery = { href: `${base}/setup/leadership` };
-const context = { href: `${base}/setup/context` };
+// (Rilascio 9a) La voce «Contesto» com'è nella barra: punta a `/contesto` e resta accesa sul vecchio indirizzo.
+const context = { href: `${base}/contesto`, match: CONTEXT_NAV_MATCH };
 const cases = { href: `${base}/casi-duso` };
 const learning = { href: `${base}/learning` };
 
@@ -61,10 +63,33 @@ test("«Use case»: spenta altrove, sui prefissi che non sono un segmento e negl
   }
 });
 
+test("«Contesto»: accesa su /contesto, su /contesto/conferma e sul vecchio /setup/context; spenta altrove", () => {
+  assert.deepEqual(CONTEXT_NAV_MATCH, ["contesto", "setup/context"]);
+  for (const rest of ["/contesto", "/contesto/", "/contesto?vista=appunti", "/contesto/conferma", "/contesto/conferma?fonte=00000000-0000-4000-8000-000000000a01", "/setup/context"]) {
+    assert.equal(isNavItemActive(at(rest), base, context), true, rest);
+  }
+  for (const path of [base, at("/setup/leadership"), at("/setup"), at("/contesto-vecchio"), at("/setup/context-old"), at("/settings"), `/dashboard/${OTHER_WS}/contesto`, "/contesto"]) {
+    assert.equal(isNavItemActive(path, base, context), false, path);
+  }
+  // «Discovery» non si accende sulla pagina di «Contesto», né sul vecchio indirizzo.
+  for (const rest of ["/contesto", "/contesto/conferma", "/setup/context"]) assert.equal(isNavItemActive(at(rest), base, discovery), false, rest);
+});
+
+test("la barra laterale usa quella voce: «Contesto» punta a /contesto, con l'area «Use case» accesa e spenta", () => {
+  const sidebar = readFileSync(new URL("./app-sidebar.tsx", import.meta.url), "utf8");
+  const lines = sidebar.split("\n").filter((line) => line.includes('title: "Contesto"'));
+  // Una voce sola, la stessa nei due rami (accesa: pagine annidate; spenta: solo l'indirizzo): il suo `match` non dipende dall'area.
+  assert.deepEqual(lines.map((line) => line.trim()), ['{ title: "Contesto", href: `${basePath}/contesto`, icon: Building2, match: CONTEXT_NAV_MATCH },']);
+  assert.equal(sidebar.includes("setup/context"), false, "nessun link al vecchio indirizzo");
+  assert.match(sidebar, /import \{ CONTEXT_NAV_MATCH, USE_CASE_NAV_MATCH, isNavItemActive \} from "@\/components\/dashboard\/nav-active";/);
+  // Stessa posizione: tra «Discovery» e «Strategia».
+  const titles = [...sidebar.matchAll(/\{ title: "([^"]+)", href: `\$\{basePath\}/g)].map((found) => found[1]);
+  const position = titles.indexOf("Contesto");
+  assert.deepEqual([titles[position - 1], titles[position + 1]], ["Discovery", "Strategia"]);
+});
+
 test("le altre voci: il proprio segmento come predefinito, pagine annidate comprese (niente più «nested»)", () => {
   assert.equal(isNavItemActive(at("/setup/leadership"), base, discovery), true);
-  assert.equal(isNavItemActive(at("/setup/context"), base, discovery), false);
-  assert.equal(isNavItemActive(at("/setup/context"), base, context), true);
   assert.equal(isNavItemActive(at("/setup"), base, discovery), false);
   assert.equal(isNavItemActive(at("/casi-duso/00000000-0000-4000-8000-000000000c01/domande"), base, cases), true);
   assert.equal(isNavItemActive(at("/learning/programma-1/live"), base, learning), true);

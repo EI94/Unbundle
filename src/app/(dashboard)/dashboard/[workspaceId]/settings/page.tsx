@@ -29,6 +29,7 @@ import { ucLsDomains } from "@/lib/db/queries/uc-access";
 import { isLateralSpaceEmail } from "@/lib/uc/lateral-space";
 import { CliCard } from "@/components/workspace/cli-card";
 import { SubprocessorsCard } from "@/components/workspace/subprocessors-card";
+import { GranolaCard } from "@/components/context/granola/granola-card";
 import { MessageSquare, MessageCircle, CheckCircle, Leaf, Lock, AlertTriangle } from "lucide-react";
 import { PageContainer } from "@/components/dashboard/page-container";
 import { SettingsSection } from "@/components/dashboard/settings-section";
@@ -79,7 +80,7 @@ export default async function SettingsPage({
   searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ slack?: string; slack_error?: string }>;
+  searchParams: Promise<{ slack?: string; slack_error?: string; granola?: string }>;
 }) {
 
   const { workspaceId } = await params;
@@ -331,6 +332,12 @@ export default async function SettingsPage({
               />
             </SettingsSection>
           )}
+
+          {/* (Rilascio 9a) Granola: il blocco decide da sé che cosa mostrare; a chi non è di Lateral Space niente, e
+              allora il contenitore, vuoto, non occupa spazio. */}
+          <div id="granola" className="scroll-mt-28 empty:hidden">
+            <GranolaCard workspaceId={workspaceId} workspaceName={workspace.name} userId={session.user.id} role={access.role} flash={search.granola} />
+          </div>
 
           {teamMcpCard && <TeamMcpCard workspaceId={workspaceId} data={teamMcpCard} />}
           {cliCard && <CliCard workspaceId={workspaceId} tokens={cliCard.tokens} />}

@@ -119,3 +119,69 @@ test("pagine, rotte, azioni, componenti e MCP non scrivono SQL sulle tabelle `co
     assert.equal(CONTEXT_TABLE_SQL.test(code), false, `${file}: le tabelle di «Contesto» si leggono e si scrivono dalle funzioni di context-*.ts`);
   }
 });
+
+// ─── Le rotte di «Contesto» (§3.5) ───────────────────────────────────
+
+/** Una rotta di `/api/context/…`: le rotte del cron e del ritorno da Granola stanno altrove, con il loro controllo. */
+const CONTEXT_ROUTE = /^src\/app\/api\/context\/(?:.+\/)?route\.ts$/;
+
+test("ogni rotta sotto /api/context/ comincia da chi chiama: contextActorFromSession", () => {
+  assert.ok(CONTEXT_ROUTE.test("src/app/api/context/[workspaceId]/sources/route.ts"));
+  assert.ok(CONTEXT_ROUTE.test("src/app/api/context/[workspaceId]/sources/[sourceId]/read/route.ts"));
+  assert.equal(CONTEXT_ROUTE.test("src/app/api/cron/contesto/route.ts"), false);
+  assert.equal(CONTEXT_ROUTE.test("src/app/api/context/[workspaceId]/sources/handler.ts"), false);
+  for (const file of CODE.filter((path) => CONTEXT_ROUTE.test(path))) {
+    const source = read(file);
+    assert.match(source, /\bcontextActorFromSession\(/, `${file}: senza sessione 401, senza accesso 404 (contextActorFromSession)`);
+    assert.match(source, /from "@\/lib\/context\/server\/actor"/, file);
+  }
+  // Il cron non ha una sessione: passa dal segreto, e risponde 404 nelle anteprime.
+  const cron = read("src/app/api/cron/contesto/route.ts");
+  assert.match(cron, /checkCronAuthorization\(request\.headers\.get\("authorization"\), process\.env\.CRON_SECRET\)/);
+  assert.match(cron, /process\.env\.VERCEL_ENV === "preview"/);
+  assert.equal(cron.includes("`Bearer ${process.env.CRON_SECRET}`"), false, "un segreto assente rifiuta sempre");
+});
+
+// ─── Granola: un solo posto per gli indirizzi, solo strumenti di lettura (§8.2, §8.4, §8.10) ──
+
+// Il dominio e i nomi qui sotto si compongono a pezzi: questo file non deve contenerli per intero.
+const GRANOLA_DOMAIN = ["granola", "ai"].join(".");
+const GRANOLA_ENDPOINTS_FILE = "src/lib/context/granola/endpoints.ts";
+const tool = (...words: string[]) => words.join("_");
+/** Gli strumenti dell'MCP di Granola che scrivono, o che fanno qualcosa nell'account: nel codice non hanno un nome. */
+const GRANOLA_WRITE_TOOLS = [
+  tool("update", "private", "notes"),
+  tool("create", "folder"),
+  tool("update", "folder"),
+  tool("add", "note", "to", "folder"),
+  tool("remove", "note", "from", "folder"),
+  tool("create", "meeting", "note", "from", "transcript"),
+  tool("generate", "summary"),
+  tool("give", "feedback"),
+  tool("sign", "out"),
+];
+
+test("l'indirizzo di Granola compare in un solo file di src/; nessun test usa gli indirizzi veri", () => {
+  assert.equal(GRANOLA_DOMAIN.length, 10);
+  for (const file of ALL) {
+    if (read(file).includes(GRANOLA_DOMAIN)) assert.equal(file, GRANOLA_ENDPOINTS_FILE, `${file}: l'indirizzo di Granola sta solo in ${GRANOLA_ENDPOINTS_FILE}`);
+  }
+  // I test passano gli indirizzi del server finto (127.0.0.1): mai quelli veri.
+  for (const file of ALL.filter(isTest)) {
+    for (const match of read(file).matchAll(NAMED_IMPORT)) {
+      const names = match[1].split(",").map((name) => name.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]);
+      assert.equal(names.includes("GRANOLA_ENDPOINTS"), false, `${file}: un test non importa GRANOLA_ENDPOINTS`);
+    }
+  }
+});
+
+test("gli strumenti di Granola che scrivono non hanno un nome in src/", () => {
+  assert.equal(GRANOLA_WRITE_TOOLS.length, 9);
+  assert.ok(GRANOLA_WRITE_TOOLS.every((name) => /^[a-z]+(_[a-z]+)+$/.test(name)));
+  for (const file of ALL) {
+    const source = read(file);
+    for (const name of GRANOLA_WRITE_TOOLS) {
+      assert.equal(new RegExp(`\\b${name}\\b`).test(source), false, `${file}: «${name}» è uno strumento di Granola che scrive; Unbundle legge soltanto`);
+    }
+  }
+});

@@ -21,6 +21,12 @@ export interface NavItemMatch {
 /** I segmenti della voce «Use case» con l'area accesa: le pagine che la sostituiscono restano sotto di lei. */
 export const USE_CASE_NAV_MATCH: readonly string[] = Object.freeze(["use-cases", "portfolio", "plan", "casi-duso"]);
 
+/**
+ * I segmenti della voce «Contesto» (rilascio 9a): la pagina `/contesto` con «Da confermare» sotto, e il vecchio
+ * indirizzo `/setup/context`, che reindirizza. Vale con l'area «Use case» accesa e spenta.
+ */
+export const CONTEXT_NAV_MATCH: readonly string[] = Object.freeze(["contesto", "setup/context"]);
+
 /** Senza barra finale (tranne la radice) e senza query o frammento. */
 function normalizePath(path: string): string {
   const cut = path.search(/[?#]/);
