@@ -12,13 +12,14 @@
  * - `DraftText` e `DraftPoint`: la nota e il punto di analisi appena aggiunti, con il cursore dentro (P53). Non esistono
  *   finché non hanno un testo: lasciati vuoti spariscono senza lasciare niente (P55).
  * Si salva quando la persona lascia il campo: un'operazione per modifica, dal valore che c'era quando è entrata (P52).
- * Escape lascia il campo e basta: un secondo Escape chiude il drawer.
+ * Invio salva e lascia il cursore nel campo; Escape lascia il campo al drawer (un secondo Escape lo chiude) o alla vista:
+ * il fuoco non cade mai sulla pagina (`leaveFieldKey`).
  */
-import { useState, type FocusEvent, type JSX, type KeyboardEvent } from "react";
+import { useState, type FocusEvent, type JSX } from "react";
 import { firstSentence } from "../../../lib/mappatura/board-model.ts";
 import { BOARD_TEXT } from "../../../lib/mappatura/text.ts";
 import { MoreText } from "../ui/atoms.tsx";
-import { TextInPlace, committedText, settledText, useFittedHeight } from "../ui/edit.tsx";
+import { TextInPlace, committedText, leaveFieldKey, settledText, useFittedHeight } from "../ui/edit.tsx";
 
 const cx = (...names: Array<string | false | null | undefined>) => names.filter(Boolean).join(" ");
 
@@ -28,17 +29,6 @@ const cx = (...names: Array<string | false | null | undefined>) => names.filter(
  */
 const useAutoHeight = (text: string) => useFittedHeight<HTMLTextAreaElement>(text);
 
-/** Escape lascia il campo senza chiudere il drawer; Invio (su una riga) o Cmd/Ctrl+Invio salvano. */
-function leaveKeys(event: KeyboardEvent<HTMLTextAreaElement>, singleLine: boolean) {
-  if (event.nativeEvent.isComposing) return;
-  if (event.key === "Escape") {
-    event.stopPropagation();
-    event.currentTarget.blur();
-  } else if (event.key === "Enter" && (singleLine || event.metaKey || event.ctrlKey)) {
-    event.preventDefault();
-    event.currentTarget.blur();
-  }
-}
 
 /**
  * Una riga di testo che va a capo, modificata sul posto. Si salva lasciando il campo o con Invio; `onCommit` riceve il
@@ -61,11 +51,14 @@ export function LineInPlace(p: {
   const [edit, setEdit] = useState<{ base: string; text: string } | null>(null);
   const shown = edit?.text ?? p.value;
   const area = useAutoHeight(shown);
-  const leave = (text: string) => {
+  const commit = (text: string) => {
     const base = edit?.base ?? p.value;
     setEdit(null);
     const next = committedText({ base, text }, false);
     if (next !== null) p.onCommit(next, base);
+  };
+  const leave = (text: string) => {
+    commit(text);
     p.onLeave?.();
   };
   return (
@@ -86,7 +79,11 @@ export function LineInPlace(p: {
       }}
       onChange={(event) => setEdit({ base: edit?.base ?? p.value, text: event.target.value.replace(/[\r\n]+/g, " ") })}
       onBlur={(event) => leave(event.currentTarget.value)}
-      onKeyDown={(event) => leaveKeys(event, true)}
+      onKeyDown={(event) => {
+        // Invio salva e lascia il cursore qui; Escape lascia il campo al drawer o alla vista (`leaveFieldKey`).
+        const field = event.currentTarget;
+        leaveFieldKey(event, { enter: "line", stays: true, commit: () => commit(field.value) });
+      }}
       data-b="line"
     />
   );
@@ -143,7 +140,8 @@ export function DraftText(p: { label: string; placeholder?: string; maxLength: n
       spellCheck
       onChange={(event) => setText(event.target.value)}
       onBlur={() => p.onDone(settledText(text, true) || null)}
-      onKeyDown={(event) => leaveKeys(event, false)}
+      // La nota nuova sparisce quando nasce: Escape e Cmd/Ctrl+Invio portano il fuoco al drawer, e lei nasce lasciandolo.
+      onKeyDown={(event) => leaveFieldKey(event, { enter: "modified", stays: false, commit: () => {} })}
       data-b="draft"
     />
   );
@@ -181,10 +179,7 @@ export function DraftPoint(p: { titleLabel: string; titlePlaceholder: string; te
             if (event.key === "Enter" && !event.nativeEvent.isComposing) {
               event.preventDefault();
               textArea.current?.focus();
-            } else if (event.key === "Escape") {
-              event.stopPropagation();
-              event.currentTarget.blur();
-            }
+            } else leaveFieldKey(event, { enter: "never", stays: false, commit: () => {} });
           }}
         />
       </b>
@@ -197,7 +192,7 @@ export function DraftPoint(p: { titleLabel: string; titlePlaceholder: string; te
         placeholder={p.textPlaceholder}
         maxLength={p.textMax}
         onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => leaveKeys(event, false)}
+        onKeyDown={(event) => leaveFieldKey(event, { enter: "modified", stays: false, commit: () => {} })}
       />
     </div>
   );

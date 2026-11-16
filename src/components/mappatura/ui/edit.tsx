@@ -10,8 +10,9 @@
  * le scritte di `src/lib/mappatura/text.ts` o quelle che arrivano da chi li usa. Ogni pezzo porta `data-b="<nome>"`.
  *
  * Un testo si salva quando la persona lascia il campo: un'operazione per modifica, dal valore che c'era quando ci è
- * entrata a quello che lascia (P52). Escape lascia il campo e basta: un secondo Escape chiude il drawer. Un controllo
- * spento (board in sola lettura) è spento dal primo disegno (F9).
+ * entrata a quello che lascia (P52). Invio salva e lascia il cursore nel campo; Escape lascia il campo al drawer (un
+ * secondo Escape lo chiude) o alla vista: il fuoco non cade mai sulla pagina (F1, F2). Un controllo spento (board in
+ * sola lettura) è spento dal primo disegno (F9).
  */
 import { useEffect, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { uncheckedNoteStatus, type BoardNote } from "../../../lib/mappatura/board-model.ts";
@@ -98,6 +99,53 @@ export function keepFitted(element: FittedField, env: FitEnv = browserFitEnv()):
   };
 }
 
+// ─── Lasciare un campo con un tasto ──────────────────────────────────
+
+/** Quello di un tasto premuto in un campo che serve a decidere (un evento di React, o un finto nei test). */
+export interface FieldKeyEvent {
+  key: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  nativeEvent: { isComposing: boolean };
+  currentTarget: { closest(selector: string): Element | null; blur(): void };
+  preventDefault(): void;
+  stopPropagation(): void;
+}
+
+/**
+ * Dove va il fuoco quando la persona lascia un campo con Escape: il drawer che lo tiene, o la vista della board (il suo
+ * pannello, che prende il fuoco senza entrare nel giro del Tab). Mai la pagina: il Tab dopo ripartirebbe dalla barra
+ * laterale dell'app, anche con un drawer aperto (F1, F2).
+ */
+export function fieldHolder(field: Pick<Element, "closest">): HTMLElement | null {
+  return (field.closest('[role="dialog"]') ?? field.closest('[role="tabpanel"]')) as HTMLElement | null;
+}
+
+/**
+ * I tasti che lasciano un campo sul posto. Invio (`enter`: su una riga; su più righe con Cmd/Ctrl) salva e lascia il
+ * cursore nel campo, che resta; Escape salva e lascia il campo: il fuoco va al drawer che lo tiene (un secondo Escape lo
+ * chiude, Tab resta dentro) o alla vista. Un campo che sparisce quando si salva (`stays` falso: una nota, un punto
+ * nuovi) va al drawer o alla vista anche con Invio. Il campo che perde il fuoco salva da sé (`onBlur`): una volta sola;
+ * con Invio salva `commit`. Senza drawer né vista (fuori dalla board) il campo perde il fuoco e basta. Restituisce true
+ * se il tasto è stato usato.
+ */
+export function leaveFieldKey(event: FieldKeyEvent, options: { enter: "line" | "modified" | "never"; stays: boolean; commit(): void }): boolean {
+  if (event.nativeEvent.isComposing) return false;
+  const escape = event.key === "Escape";
+  const enter = event.key === "Enter" && (options.enter === "line" || (options.enter === "modified" && (event.metaKey || event.ctrlKey)));
+  if (!escape && !enter) return false;
+  if (escape) event.stopPropagation();
+  else event.preventDefault();
+  if (enter && options.stays) {
+    options.commit();
+    return true;
+  }
+  const holder = fieldHolder(event.currentTarget);
+  if (holder) holder.focus({ preventScroll: true });
+  else event.currentTarget.blur();
+  return true;
+}
+
 /** Un `textarea` alto quanto il suo testo: misurato quando il testo cambia, e seguito quando cambia la sua larghezza. */
 export function useFittedHeight<T extends HTMLTextAreaElement>(text: string): RefObject<T | null> {
   const area = useRef<T>(null);
@@ -110,8 +158,9 @@ export function useFittedHeight<T extends HTMLTextAreaElement>(text: string): Re
 
 /**
  * Un testo che si modifica sul posto (P52): una riga (`input`) o più righe (`textarea` che cresce con il testo). Si
- * salva lasciando il campo, o con Invio su una riga, o con Cmd/Ctrl+Invio su più righe; `onCommit` riceve il testo
- * nuovo e quello che c'era quando la persona è entrata (il `prev` dell'operazione). Escape lascia il campo.
+ * salva lasciando il campo, o con Invio su una riga, o con Cmd/Ctrl+Invio su più righe (il cursore resta nel campo);
+ * `onCommit` riceve il testo nuovo e quello che c'era quando la persona è entrata (il `prev` dell'operazione). Escape
+ * lascia il campo al drawer o alla vista (`leaveFieldKey`).
  */
 export function TextInPlace(p: {
   value: string;
@@ -136,14 +185,8 @@ export function TextInPlace(p: {
     if (next !== null) p.onCommit(next, base);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    if (event.nativeEvent.isComposing) return;
-    if (event.key === "Escape") {
-      event.stopPropagation();
-      event.currentTarget.blur();
-    } else if (event.key === "Enter" && (!p.multiline || event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      event.currentTarget.blur();
-    }
+    const field = event.currentTarget;
+    leaveFieldKey(event, { enter: p.multiline ? "modified" : "line", stays: true, commit: () => leave(field.value) });
   };
   const common = {
     className: cx("b-textin", p.className),
@@ -199,13 +242,8 @@ export function NumberInput(p: {
       onChange={(event) => setEdit({ base: edit ? edit.base : p.value, text: event.target.value })}
       onBlur={(event) => leave(event.currentTarget.value)}
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.stopPropagation();
-          event.currentTarget.blur();
-        } else if (event.key === "Enter") {
-          event.preventDefault();
-          event.currentTarget.blur();
-        }
+        const field = event.currentTarget;
+        leaveFieldKey(event, { enter: "line", stays: true, commit: () => leave(field.value) });
       }}
       data-b="number"
     />
@@ -296,6 +334,8 @@ export function ChipInput(p: {
 }): JSX.Element {
   const [adding, setAdding] = useState(false);
   const [text, setText] = useState("");
+  // Escape annulla: il campo che perde il fuoco (verso il drawer) non aggiunge quello che c'era scritto.
+  const cancelled = useRef(false);
   const add = (raw: string) => {
     const next = addedChip(p.values, raw, p.max, p.maxLength);
     if (next) p.onChange(next);
@@ -326,18 +366,31 @@ export function ChipInput(p: {
               setText("");
             } else if (event.key === "Escape") {
               event.stopPropagation();
+              cancelled.current = true;
               setText("");
               setAdding(false);
+              // Il campo sparisce: il fuoco va al drawer, non alla pagina (F1, F2).
+              fieldHolder(event.currentTarget)?.focus({ preventScroll: true });
             }
           }}
           onBlur={() => {
-            add(text);
+            if (!cancelled.current) add(text);
+            cancelled.current = false;
             setText("");
             setAdding(false);
           }}
         />
       ) : null}
-      {room && !adding ? <AddButton onClick={() => setAdding(true)}>{p.addLabel}</AddButton> : null}
+      {room && !adding ? (
+        <AddButton
+          onClick={() => {
+            cancelled.current = false;
+            setAdding(true);
+          }}
+        >
+          {p.addLabel}
+        </AddButton>
+      ) : null}
     </div>
   );
 }

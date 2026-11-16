@@ -160,7 +160,8 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
           />
           <BoardMain>
             {BOARD_TABS.map((id) => (
-              <section key={id} className={cx("b-view", tab === id && "b-on")} role="tabpanel" id={boardPanelId(id)} aria-labelledby={boardTabId(id)} hidden={tab !== id} data-b={`view-${id}`}>
+              // Il pannello prende il fuoco (senza entrare nel giro del Tab) quando la persona lascia un campo con Escape.
+              <section key={id} className={cx("b-view", tab === id && "b-on")} role="tabpanel" id={boardPanelId(id)} aria-labelledby={boardTabId(id)} hidden={tab !== id} tabIndex={-1} data-b={`view-${id}`}>
                 {tab !== id ? null : id === "oggi" ? <TodayView headAction={p.headAction} onStartAssistant={() => setOpen(true, "field")} /> : p.classification}
               </section>
             ))}

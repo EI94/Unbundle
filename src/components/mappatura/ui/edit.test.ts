@@ -15,7 +15,7 @@ import type { BoardNote } from "../../../lib/mappatura/board-model.ts";
 await enableTsxImports();
 const edit = await import("./edit.tsx");
 const { BoardToastView, ChipInput, EmptyBlock, Field, InlineConfirm, LevelButtons, NoteItem, NumberInput, Segmented, TextInPlace, Votes } = edit;
-const { addedChip, committedText, nextVotes, noteToggleLabel, parsedNumber } = edit;
+const { addedChip, committedText, fieldHolder, leaveFieldKey, nextVotes, noteToggleLabel, parsedNumber } = edit;
 const { BoardProvider, useBoardClient } = await import("../store/use-board.tsx");
 
 const html = (element: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(element);
@@ -254,4 +254,81 @@ test("un campo sul posto resta alto quanto il suo testo, bordo compreso, quando 
   assert.match(source("./edit.tsx"), /const area = useFittedHeight<HTMLTextAreaElement>\(shown\);/);
   assert.match(source("../board/in-place.tsx"), /const useAutoHeight = \(text: string\) => useFittedHeight<HTMLTextAreaElement>\(text\);/);
   assert.match(source("../companion/companion.tsx"), /if \(field\.current\) fitHeight\(field\.current, FIELD_MAX_HEIGHT\);/);
+});
+
+/** Un campo finto dentro un drawer, una vista o niente, e quello che gli succede quando si preme un tasto. */
+function keyed(where: "drawer" | "vista" | "fuori", key: string, extra: { metaKey?: boolean; composing?: boolean } = {}) {
+  const calls: string[] = [];
+  const holder = (name: string) => ({ focus: (options?: { preventScroll?: boolean }) => void calls.push(`${name}.focus${options?.preventScroll ? " senza scorrere" : ""}`) });
+  const dialog = holder("drawer");
+  const panel = holder("vista");
+  const field = {
+    closest: (selector: string) => (selector === '[role="dialog"]' ? (where === "drawer" ? dialog : null) : selector === '[role="tabpanel"]' ? (where === "fuori" ? null : panel) : null) as Element | null,
+    blur: () => void calls.push("blur"),
+  };
+  const event = {
+    key,
+    metaKey: extra.metaKey ?? false,
+    ctrlKey: false,
+    nativeEvent: { isComposing: extra.composing ?? false },
+    currentTarget: field,
+    preventDefault: () => void calls.push("preventDefault"),
+    stopPropagation: () => void calls.push("stopPropagation"),
+  };
+  return { event, calls, commit: () => void calls.push("commit") };
+}
+
+test("lasciare un campo con un tasto: il fuoco non cade mai sulla pagina (F1, F2)", () => {
+  // Invio su una riga: salva, e il cursore resta nel campo (il Tab dopo va al campo seguente, dentro il drawer).
+  for (const where of ["drawer", "vista", "fuori"] as const) {
+    const enter = keyed(where, "Enter");
+    assert.equal(leaveFieldKey(enter.event, { enter: "line", stays: true, commit: enter.commit }), true);
+    assert.deepEqual(enter.calls, ["preventDefault", "commit"], where);
+  }
+  // Escape: il campo lascia il fuoco al drawer (un secondo Escape lo chiude) e salva perdendolo; fuori dal drawer alla vista.
+  const inDrawer = keyed("drawer", "Escape");
+  assert.equal(leaveFieldKey(inDrawer.event, { enter: "line", stays: true, commit: inDrawer.commit }), true);
+  assert.deepEqual(inDrawer.calls, ["stopPropagation", "drawer.focus senza scorrere"]);
+  const inView = keyed("vista", "Escape");
+  leaveFieldKey(inView.event, { enter: "line", stays: true, commit: inView.commit });
+  assert.deepEqual(inView.calls, ["stopPropagation", "vista.focus senza scorrere"]);
+  // Fuori dalla board (nessun drawer, nessuna vista): perde il fuoco, come prima.
+  const outside = keyed("fuori", "Escape");
+  leaveFieldKey(outside.event, { enter: "line", stays: true, commit: outside.commit });
+  assert.deepEqual(outside.calls, ["stopPropagation", "blur"]);
+  // Più righe: Invio va a capo; Cmd/Ctrl+Invio salva e resta.
+  const newline = keyed("drawer", "Enter");
+  assert.equal(leaveFieldKey(newline.event, { enter: "modified", stays: true, commit: newline.commit }), false);
+  assert.deepEqual(newline.calls, []);
+  const modified = keyed("drawer", "Enter", { metaKey: true });
+  leaveFieldKey(modified.event, { enter: "modified", stays: true, commit: modified.commit });
+  assert.deepEqual(modified.calls, ["preventDefault", "commit"]);
+  // Un campo che sparisce quando si salva (una nota nuova): anche Cmd/Ctrl+Invio porta il fuoco al drawer.
+  const draft = keyed("drawer", "Enter", { metaKey: true });
+  leaveFieldKey(draft.event, { enter: "modified", stays: false, commit: draft.commit });
+  assert.deepEqual(draft.calls, ["preventDefault", "drawer.focus senza scorrere"]);
+  // Mentre si compone (un accento, una lingua con l'IME) nessun tasto lascia il campo; gli altri tasti non contano.
+  const composing = keyed("drawer", "Enter", { composing: true });
+  assert.equal(leaveFieldKey(composing.event, { enter: "line", stays: true, commit: composing.commit }), false);
+  assert.equal(leaveFieldKey(keyed("drawer", "a").event, { enter: "line", stays: true, commit() {} }), false);
+  // Il drawer viene prima della vista.
+  const both = { closest: (selector: string) => ({ name: selector }) as unknown as Element };
+  assert.deepEqual(fieldHolder(both), { name: '[role="dialog"]' });
+});
+
+test("ogni campo sul posto lascia il fuoco con leaveFieldKey: nessun blur() a mano nei tasti dei campi", () => {
+  for (const file of ["./edit.tsx", "../board/in-place.tsx"]) {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    // L'unico blur() è quello di leaveFieldKey, per un campo fuori dalla board.
+    const blurs = [...source.matchAll(/\.blur\(\)/g)].length;
+    assert.equal(blurs, file === "./edit.tsx" ? 1 : 0, file);
+  }
+  const inPlace = readFileSync(new URL("../board/in-place.tsx", import.meta.url), "utf8");
+  assert.equal([...inPlace.matchAll(/leaveFieldKey\(event, \{/g)].length, 4, "la riga, la nota nuova, il titolo e il testo del punto nuovo");
+  const editSource = readFileSync(new URL("./edit.tsx", import.meta.url), "utf8");
+  assert.match(editSource, /leaveFieldKey\(event, \{ enter: p\.multiline \? "modified" : "line", stays: true, commit: \(\) => leave\(field\.value\) \}\)/, "il testo sul posto");
+  assert.match(editSource, /leaveFieldKey\(event, \{ enter: "line", stays: true, commit: \(\) => leave\(field\.value\) \}\)/, "il numero");
+  // I chip: Escape annulla e porta il fuoco al drawer, e il campo che lo perde non aggiunge niente.
+  assert.match(editSource, /cancelled\.current = true;[\s\S]*?fieldHolder\(event\.currentTarget\)\?\.focus\(\{ preventScroll: true \}\);/);
+  assert.match(editSource, /onBlur=\{\(\) => \{\s+if \(!cancelled\.current\) add\(text\);/);
 });

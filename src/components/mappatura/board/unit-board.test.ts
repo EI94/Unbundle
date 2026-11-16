@@ -61,12 +61,13 @@ test("la testata: il marchio con il link all'elenco, la pillola, «Assistente»,
 
 test("una vista per volta, legata alla sua scheda: «Processi di oggi» per default, «Classificazione» con lo slot del compagno (P4, P6)", () => {
   const html = render(fixtureBoard());
-  assert.match(html, /<section class="b-view b-on" role="tabpanel" id="b-panel-oggi" aria-labelledby="b-tab-oggi" data-b="view-oggi">.*?data-b="kpis"/);
-  assert.match(html, /<section class="b-view" role="tabpanel" id="b-panel-classificazione" aria-labelledby="b-tab-classificazione" hidden="" data-b="view-classificazione"><\/section>/);
+  // Il pannello prende il fuoco senza entrare nel giro del Tab: è dove va chi lascia un campo con Escape.
+  assert.match(html, /<section class="b-view b-on" role="tabpanel" id="b-panel-oggi" aria-labelledby="b-tab-oggi" tabindex="-1" data-b="view-oggi">.*?data-b="kpis"/);
+  assert.match(html, /<section class="b-view" role="tabpanel" id="b-panel-classificazione" aria-labelledby="b-tab-classificazione" hidden="" tabindex="-1" data-b="view-classificazione"><\/section>/);
   assert.doesNotMatch(html, /slot-classificazione/);
   const classified = render(fixtureBoard({ classified: true }), { initialTab: "classificazione" });
-  assert.match(classified, /<section class="b-view" role="tabpanel" id="b-panel-oggi" aria-labelledby="b-tab-oggi" hidden="" data-b="view-oggi"><\/section>/);
-  assert.match(classified, /<section class="b-view b-on" role="tabpanel" id="b-panel-classificazione" aria-labelledby="b-tab-classificazione" data-b="view-classificazione"><p class="slot-classificazione">classificazione<\/p><\/section>/);
+  assert.match(classified, /<section class="b-view" role="tabpanel" id="b-panel-oggi" aria-labelledby="b-tab-oggi" hidden="" tabindex="-1" data-b="view-oggi"><\/section>/);
+  assert.match(classified, /<section class="b-view b-on" role="tabpanel" id="b-panel-classificazione" aria-labelledby="b-tab-classificazione" tabindex="-1" data-b="view-classificazione"><p class="slot-classificazione">classificazione<\/p><\/section>/);
   assert.match(classified, /data-tab="classificazione" aria-selected="true"/);
 });
 

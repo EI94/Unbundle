@@ -52,6 +52,9 @@
 [data-board-root] .b-iconbtn[aria-expanded="true"] { border-color: var(--board-ink); }
 [data-board-root] .b-tabs-pill { display: flex; }
 
+/* Una vista prende il fuoco quando la persona lascia un campo con Escape: senza l'anello, come il drawer. */
+[data-board-root] .b-view:focus { outline: none; }
+
 /* ── «Processi di oggi»: la testa e il resto della vista ── */
 /* Un testo sul posto è alto quanto il suo testo già al primo disegno, prima che il codice lo misuri (dove il browser lo sa fare). */
 [data-board-root] .b-board textarea.b-textin, [data-board-root] .b-drawer textarea.b-textin { field-sizing: content; }
