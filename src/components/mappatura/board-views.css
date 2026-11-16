@@ -28,6 +28,29 @@
   [data-board-root] .b-units .b-crow-go { grid-column: 3; grid-row: 1; }
 }
 
+/* ── «Processi di oggi»: la testa e il resto della vista ── */
+/* Un campo sul posto si allinea al testo intorno: il suo margine interno sta fuori dalla colonna. */
+[data-board-root] .b-h .b-textin, [data-board-root] .b-dr-t .b-textin { margin: 0 -5px; width: calc(100% + 10px); padding: 0 4px; }
+[data-board-root] .b-notice { margin: -6px 0 18px; padding-left: 10px; border-left: 2px solid var(--board-amber); font-size: 13px; color: var(--board-graphite); }
+[data-board-root] .b-legend-note { font-family: var(--board-font-mono); font-size: 10.5px; }
+[data-board-root] .b-map-tools { margin-bottom: 10px; }
+[data-board-root] .b-roles .b-sec { padding-bottom: 0; }
+[data-board-root] .b-steprefs { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+[data-board-root] .b-stepref { appearance: none; border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; font-size: 13px; color: var(--board-ink-2); }
+[data-board-root] .b-stepref:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* I punti di analisi: ognuno è una nota, con la sua didascalia e i suoi due controlli. */
+[data-board-root] .b-points .b-point { position: relative; }
+[data-board-root] .b-point .b-textin { margin: 0 -5px; width: calc(100% + 10px); }
+[data-board-root] .b-point .b-more-w .b-textin { font-size: 13.5px; color: var(--board-ink-2); }
+[data-board-root] .b-more-edit { appearance: none; display: inline; margin: 0 -5px; padding: 0 4px; border: 1px solid transparent; border-radius: 4px; background: transparent; text-align: left; cursor: text; font-size: 13.5px; color: var(--board-graphite); }
+[data-board-root] .b-more-edit:hover { border-color: var(--board-line-strong); }
+[data-board-root] .b-point-cap { display: block; margin-top: 6px; font-family: var(--board-font-mono); font-size: 9.5px; font-style: normal; letter-spacing: .08em; color: var(--board-graphite); }
+[data-board-root] .b-point .b-point-ctl { top: -11px; right: 0; }
+[data-board-root] .b-point:hover .b-point-ctl, [data-board-root] .b-point:focus-within .b-point-ctl { opacity: 1; }
+[data-board-root] .b-add-point { margin-top: 12px; }
+[data-board-root] .b-point-draft { display: flex; flex-direction: column; gap: 4px; }
+
 /* ── La mappa che si modifica ── */
 /* L'etichetta della riga: nome e chi lo segue si scrivono sul posto, allineati alla lettera. */
 [data-board-root] .b-pm-lab .b-textin { margin: 0 -5px; width: calc(100% + 10px); }
@@ -79,7 +102,7 @@
 
 /* ── Senza mouse (telefono, tablet): i controlli che compaiono al passaggio si vedono sempre; niente trascinamento ── */
 @media (hover: none) {
-  [data-board-root] .b-row-ctl { opacity: 1; }
+  [data-board-root] .b-row-ctl, [data-board-root] .b-point .b-point-ctl { opacity: 1; }
   [data-board-root] .b-add-step { opacity: .8; }
   [data-board-root] .b-node-w > .b-grip { display: none; }
 }
