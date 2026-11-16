@@ -211,6 +211,30 @@ test("6. visibilità: un cambiamento o un conflitto su un fatto «Solo Lateral S
   assert.deepEqual(proposals.map((p) => p.visibility), ["ls", "ls", "tutti", "ls", "ls", "tutti"]);
 });
 
+test("6. la frase di un fatto «Solo Lateral Space» resta «Solo Lateral Space», anche di uno che il prompt non aveva; e non è mai preselezionata", () => {
+  // Nel prompt (appunti di Lateral Space): la stessa frase è una riconferma di quel fatto, «Solo Lateral Space».
+  const inPrompt = run([proposal({ testo: "Il contratto vale 30.000 euro.", citazione: "", visibilita: "tutti" })]).proposals;
+  assert.deepEqual(inPrompt.map((p) => [p.kind, p.visibility, p.targetFactId]), [["conferma", "ls", F.contract]]);
+  // Un documento del cliente non riceve i fatti «Solo Lateral Space»: la frase che li ripete resta «Solo Lateral Space».
+  const clientFacts = [{ ref: "F1", id: F.erp, statement: "Il gestionale è SAP Business One.", visibility: "tutti" as const }];
+  const lsFacts = [{ id: F.contract, statement: "Il contratto vale 30.000 euro." }];
+  const echoed = proposal({ testo: "Il  contratto vale 30.000 euro.", citazione: "", visibilita: "tutti" });
+  const fromDocument = run([echoed, proposal()], { facts: clientFacts, lsFacts }).proposals;
+  assert.deepEqual(
+    fromDocument.map((p) => [p.kind, p.statement, p.visibility]),
+    [
+      ["nuovo", "Il contratto vale 30.000 euro.", "ls"],
+      ["nuovo", "Gli ordini si inseriscono a mano ogni mattina.", "tutti"],
+    ],
+  );
+  // Senza l'elenco dei fatti «Solo Lateral Space» la frase passerebbe «per tutti».
+  assert.equal(run([echoed], { facts: clientFacts }).proposals[0].visibility, "tutti");
+  // La preselezione: mai per una frase di un fatto «Solo Lateral Space», mai per una proposta di un documento del cliente.
+  assert.equal(isPreselected({ basis: "detto", kind: "nuovo", issue: null }), true);
+  assert.equal(isPreselected({ basis: "detto", kind: "nuovo", issue: null, matchesLsOnly: true }), false);
+  assert.equal(isPreselected({ basis: "detto", kind: "conferma", issue: null, fromClient: true }), false);
+});
+
 test("7 e 8. sezione nulla solo per impegni e domande; un impegno ha sempre una parte, e una data vera", () => {
   const { proposals } = run([
     proposal({ tipo: "nuovo", testo: "Il magazzino è a Udine.", citazione: "", sezione: null }),

@@ -17,15 +17,16 @@ import { ClaudeRefusalError, CONTEXT_NIGHTLY_READ_TIMEOUT_MS, CONTEXT_READ_TIMEO
 import { consumeRateLimits, rateLimitBucket } from "@/lib/connector/rate-limit";
 import { liveLines } from "@/lib/context/live";
 import { generateContextRead } from "@/lib/context/read/generate";
-import { buildReadPrompt, readNonce } from "@/lib/context/read/prompt";
+import { buildReadPrompt, readNonce, untrustedPromptText } from "@/lib/context/read/prompt";
 import { addSkipped, reconcile, type DraftProposal } from "@/lib/context/read/reconcile";
 import { splitForReading } from "@/lib/context/read/split";
 import { CONTEXT_TEXT } from "@/lib/context/text";
-import type { ContextActor } from "@/lib/context/visibility";
+import { isClientSource, type ContextActor } from "@/lib/context/visibility";
 import { CONTEXT_LIMITS, type ContextChannel, type ContextSection, type ContextVisibility, type ReadReason, type ReadStatus, type SkippedCounts, type SourceKind } from "@/lib/context/vocab";
 import { db } from "@/lib/db";
 import { contextProposals } from "@/lib/db/schema";
 import { logSafeError } from "@/lib/log/safe-error";
+import { isEmailVerifiedValue, isLateralSpaceEmail, parseLsDomains } from "@/lib/uc/lateral-space";
 import type { ServiceResult } from "@/lib/use-cases/types";
 import { contextAiConsent, contextAiConsentNow } from "./context-consent";
 import { loadLiveDiscovery } from "./context-discovery";
@@ -65,6 +66,10 @@ interface ReadOptions {
 interface SourceRow {
   id: string;
   kind: SourceKind;
+  visibility: ContextVisibility;
+  /** L'e-mail di chi ha aggiunto la fonte, e se è verificata: per sapere se un documento l'ha caricato Lateral Space. */
+  added_by_email: string | null;
+  added_by_verified: unknown;
   title: string;
   occurred_on: unknown;
   body: string | null;
@@ -83,13 +88,20 @@ const skippedOf = (value: unknown): SkippedCounts => (value !== null && typeof v
 async function loadSource(workspaceId: string, sourceId: string): Promise<SourceRow | null> {
   const rows = rowsOf<SourceRow>(
     await db.execute(sql`
-      SELECT s.id, s.kind, s.title, s.occurred_on, s.body, d.extracted_text AS document_text, s.read_status, s.read_reason, s.read_attempts,
+      SELECT s.id, s.kind, s.visibility, u.email AS added_by_email, u.email_verified AS added_by_verified, s.title, s.occurred_on, s.body,
+        d.extracted_text AS document_text, s.read_status, s.read_reason, s.read_attempts,
         (s.read_started_at IS NOT NULL AND s.read_started_at > now() - make_interval(secs => ${CONTEXT_LIMITS.readLeaseSeconds})) AS lease_fresh,
         s.parts_read, s.skipped, (s.text_purged_at IS NOT NULL) AS purged
-      FROM context_sources s LEFT JOIN uploaded_documents d ON d.id = s.document_id
+      FROM context_sources s LEFT JOIN uploaded_documents d ON d.id = s.document_id LEFT JOIN users u ON u.id = s.added_by_user_id
       WHERE s.id = ${sourceId}::uuid AND s.workspace_id = ${workspaceId}::uuid`),
   );
   return rows[0] ?? null;
+}
+
+/** La fonte l'ha scritta il cliente (`isClientSource`): un documento che non è un appunto caricato da Lateral Space. */
+function fromClient(source: Pick<SourceRow, "kind" | "visibility" | "added_by_email" | "added_by_verified">): boolean {
+  const addedByLateralSpace = isLateralSpaceEmail({ email: source.added_by_email, emailVerified: isEmailVerifiedValue(source.added_by_verified) }, parseLsDomains(process.env.UC_LS_EMAIL_DOMAINS));
+  return isClientSource({ kind: source.kind, visibility: source.visibility, addedByLateralSpace });
 }
 
 async function openProposalCount(workspaceId: string, sourceId: string): Promise<number> {
@@ -140,19 +152,25 @@ interface ReadMemory {
   commitments: string[];
   already: string[];
   editedQuotes: string[];
+  /** I fatti «Solo Lateral Space» attivi, anche quelli fuori dal prompt: per le regole, mai per il modello. */
+  lsFacts: Array<{ id: string; statement: string }>;
   lastPosition: number;
 }
 
-/** La memoria di oggi e gli elenchi per il prompt, con i loro riferimenti (F1, U1, O1, D1). */
-async function loadReadMemory(reader: Reader, sourceId: string): Promise<ReadMemory | null> {
+/**
+ * La memoria di oggi e gli elenchi per il prompt, con i loro riferimenti (F1, U1, O1, D1). `clientSource`: la fonte l'ha
+ * scritta il cliente, e il prompt non riceve i fatti, gli impegni e le domande «Solo Lateral Space».
+ */
+async function loadReadMemory(reader: Reader, sourceId: string, clientSource: boolean): Promise<ReadMemory | null> {
   const ws = reader.workspaceId;
   const workspace = await getWorkspaceById(ws);
   if (!workspace) return null;
   const L = CONTEXT_LIMITS;
-  const [facts, useCases, units, goals, questions, commitments, already, live] = await Promise.all([
+  const shared = sql`(${!clientSource} OR visibility = 'tutti')`;
+  const [facts, useCases, units, goals, questions, commitments, already, live, lsFacts] = await Promise.all([
     db.execute(sql`
       SELECT id, section, visibility, statement, count(*) OVER ()::int AS total FROM context_facts
-      WHERE workspace_id = ${ws}::uuid AND status = 'attivo'
+      WHERE workspace_id = ${ws}::uuid AND status = 'attivo' AND ${shared}
       ORDER BY last_confirmed_at DESC, id LIMIT ${L.memoryFactsInPrompt}`),
     db.execute(sql`
       SELECT id, code, title FROM use_cases
@@ -162,15 +180,18 @@ async function loadReadMemory(reader: Reader, sourceId: string): Promise<ReadMem
     db.execute(sql`SELECT id, title FROM strategic_goals WHERE workspace_id = ${ws}::uuid ORDER BY created_at, id LIMIT 100`),
     db.execute(sql`
       SELECT id, question FROM context_questions
-      WHERE workspace_id = ${ws}::uuid AND status = 'aperta' ORDER BY created_at DESC, id LIMIT ${L.openItemsInPrompt}`),
+      WHERE workspace_id = ${ws}::uuid AND status = 'aperta' AND ${shared} ORDER BY created_at DESC, id LIMIT ${L.openItemsInPrompt}`),
     db.execute(sql`
       SELECT statement FROM context_commitments
-      WHERE workspace_id = ${ws}::uuid AND status = 'aperto' ORDER BY created_at DESC, id LIMIT ${L.openItemsInPrompt}`),
+      WHERE workspace_id = ${ws}::uuid AND status = 'aperto' AND ${shared} ORDER BY created_at DESC, id LIMIT ${L.openItemsInPrompt}`),
     // Le proposte di questi appunti, prima quelle decise o ancora aperte; la posizione più alta tra tutte.
     db.execute(sql`
       SELECT statement, quote, edited, status, (max(position) OVER ())::int AS last_position FROM context_proposals
       WHERE source_id = ${sourceId}::uuid AND workspace_id = ${ws}::uuid ORDER BY (status = 'superata'), position LIMIT 500`),
     loadLiveDiscovery(workspace, reader.viewer),
+    db.execute(sql`
+      SELECT id, statement FROM context_facts
+      WHERE workspace_id = ${ws}::uuid AND status = 'attivo' AND visibility = 'ls' ORDER BY last_confirmed_at DESC, id LIMIT 5000`),
   ]);
   const factRows = rowsOf<{ id: string; section: ContextSection; visibility: ContextVisibility; statement: string; total: number }>(facts);
   const total = Number(factRows[0]?.total ?? 0);
@@ -192,6 +213,7 @@ async function loadReadMemory(reader: Reader, sourceId: string): Promise<ReadMem
     already: decidedOrOpen.map((a) => a.statement),
     // Di una proposta corretta dalla persona resta la citazione: il modello la ritroverebbe con la sua frase di prima.
     editedQuotes: decidedOrOpen.flatMap((a) => (a.edited === true && a.quote ? [a.quote] : [])),
+    lsFacts: rowsOf<{ id: string; statement: string }>(lsFacts),
     lastPosition: Number(alreadyRows[0]?.last_position ?? 0),
   };
 }
@@ -322,7 +344,7 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
       return ok({ status: "limite" });
     }
 
-    const memory = await loadReadMemory(reader, sourceId);
+    const memory = await loadReadMemory(reader, sourceId, fromClient(source));
     if (!memory) {
       await release(ws, sourceId, lease, "da_leggere", null, true);
       return notFound();
@@ -345,7 +367,7 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
       questions: memory.questions,
       commitments: memory.commitments,
       already: memory.already,
-      nonce: readNonce(`${source.title}\n${part}`),
+      nonce: readNonce(untrustedPromptText({ title: source.title, text: part, useCases: memory.useCases, questions: memory.questions })),
     });
 
     const timeoutMs = opts.timeoutMs ?? CONTEXT_READ_TIMEOUT_MS;
@@ -378,6 +400,7 @@ async function readSource(reader: Reader, sourceId: string, opts: ReadOptions): 
       goals: memory.goals,
       already: memory.already,
       editedQuotes: memory.editedQuotes,
+      lsFacts: memory.lsFacts,
       occurredOn: toIsoDate(source.occurred_on),
     });
     if (reconciled.overCap > 0) console.warn(`[${LOG_SCOPE}] proposte_oltre_il_tetto`, JSON.stringify({ workspaceId: ws, sourceId, oltre: reconciled.overCap }));

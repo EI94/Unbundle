@@ -25,7 +25,7 @@ import { entityKey, entityName, normalizeStatement, oneLine } from "@/lib/contex
 import { isPreselected, realIsoDate } from "@/lib/context/read/reconcile";
 import { isHardIssue, issueMessage, scanPersonalData, scanStatement } from "@/lib/context/scan";
 import { CONTEXT_TEXT } from "@/lib/context/text";
-import { contextAbilities, stricterVisibility, type ContextActor } from "@/lib/context/visibility";
+import { contextAbilities, isClientSource, stricterVisibility, type ContextActor } from "@/lib/context/visibility";
 import {
   COMMITMENT_PARTIES,
   CONTEXT_LIMITS,
@@ -48,6 +48,7 @@ import {
   type SourceOrigin,
 } from "@/lib/context/vocab";
 import { logSafeError } from "@/lib/log/safe-error";
+import { isEmailVerifiedValue, isLateralSpaceEmail, parseLsDomains } from "@/lib/uc/lateral-space";
 import type { ServiceResult } from "@/lib/use-cases/types";
 import { bumpProposalsOnFactsStatement, ctxErrorCode, dropBriefStatement, factChainCte, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toIsoDate, uuidArray } from "./context-shared";
 import { contextStoreReady } from "./context-store";
@@ -155,13 +156,19 @@ interface ViewContext {
   heads: ReadonlyMap<string, TargetFact>;
   useCases: ReadonlyMap<string, { id: string; code: string | null; title: string }>;
   questions: ReadonlyMap<string, string>;
+  /** Le fonti scritte dal cliente (`isClientSource`): le loro proposte non sono mai preselezionate. */
+  clientSources: ReadonlySet<string>;
+  /** Le frasi (normalizzate) dei fatti «Solo Lateral Space» attivi. */
+  lsOnly: ReadonlySet<string>;
   today: string;
 }
 
 function viewOf(row: ProposalRow, ctx: ViewContext): ProposalView {
   const { kind, target } = effectiveKind(row, ctx.heads);
-  // La visibilità che la conferma scriverà: con un fatto di adesso, la più stretta delle due (una conferma non allarga).
-  const visibility = target ? stricterVisibility(row.visibility, target.visibility) : row.visibility;
+  const matchesLsOnly = ctx.lsOnly.has(normalizeStatement(row.statement));
+  // La visibilità che la conferma scriverà: con un fatto di adesso, la più stretta delle due (una conferma non allarga);
+  // la frase di un fatto «Solo Lateral Space» resta «Solo Lateral Space».
+  const visibility = matchesLsOnly ? "ls" : target ? stricterVisibility(row.visibility, target.visibility) : row.visibility;
   const question = row.questionId ? ctx.questions.get(row.questionId) : undefined;
   let before: ProposalView["before"] = null;
   if (target) {
@@ -178,7 +185,7 @@ function viewOf(row: ProposalRow, ctx: ViewContext): ProposalView {
     basis: row.basis,
     section: row.section,
     visibility,
-    preselected: isPreselected({ basis: row.basis, kind, issue: row.issue }),
+    preselected: isPreselected({ basis: row.basis, kind, issue: row.issue, fromClient: ctx.clientSources.has(row.sourceId), matchesLsOnly }),
     issue: row.issue,
     issueMessage: row.issue ? issueMessage(row.issue) : null,
     before,
@@ -193,12 +200,21 @@ function viewOf(row: ProposalRow, ctx: ViewContext): ProposalView {
   };
 }
 
-/** Use case, domande aperte e fatti citati da queste proposte, per mostrarle. */
+/** Le frasi (normalizzate) dei fatti «Solo Lateral Space» attivi del workspace. */
+async function lsOnlyStatements(workspaceId: string): Promise<Set<string>> {
+  const rows = rowsOf<{ statement: string }>(
+    await db.execute(sql`SELECT statement FROM context_facts WHERE workspace_id = ${workspaceId}::uuid AND status = 'attivo' AND visibility = 'ls' LIMIT 5000`),
+  );
+  return new Set(rows.map((r) => normalizeStatement(r.statement)).filter(Boolean));
+}
+
+/** Use case, domande aperte, fatti citati, fonti del cliente e fatti «Solo Lateral Space» di queste proposte, per mostrarle. */
 async function loadViewContext(workspaceId: string, rows: readonly ProposalRow[], now: Date = new Date()): Promise<ViewContext> {
   const useCaseIds = [...new Set(rows.flatMap((r) => r.useCaseIds))].filter(isUuid);
   const questionIds = [...new Set(rows.flatMap((r) => (r.questionId ? [r.questionId] : [])))];
   const factIds = rows.flatMap((r) => (r.targetFactId ? [r.targetFactId] : []));
-  const [heads, useCases, questions] = await Promise.all([
+  const sourceIds = [...new Set(rows.map((r) => r.sourceId))].filter(isUuid);
+  const [heads, useCases, questions, sources, lsOnly] = await Promise.all([
     resolveHeads(workspaceId, factIds),
     useCaseIds.length > 0
       ? db.execute(sql`SELECT id, code, title FROM use_cases WHERE workspace_id = ${workspaceId}::uuid AND id = ANY(${uuidArray(useCaseIds)})`)
@@ -206,11 +222,25 @@ async function loadViewContext(workspaceId: string, rows: readonly ProposalRow[]
     questionIds.length > 0
       ? db.execute(sql`SELECT id, question FROM context_questions WHERE workspace_id = ${workspaceId}::uuid AND status = 'aperta' AND id = ANY(${uuidArray(questionIds)})`)
       : Promise.resolve({ rows: [] }),
+    sourceIds.length > 0
+      ? db.execute(sql`
+          SELECT s.id, s.kind, s.visibility, u.email, u.email_verified FROM context_sources s LEFT JOIN users u ON u.id = s.added_by_user_id
+          WHERE s.workspace_id = ${workspaceId}::uuid AND s.id = ANY(${uuidArray(sourceIds)})`)
+      : Promise.resolve({ rows: [] }),
+    rows.length > 0 ? lsOnlyStatements(workspaceId) : Promise.resolve(new Set<string>()),
   ]);
+  const ls = parseLsDomains(process.env.UC_LS_EMAIL_DOMAINS);
+  const clientSources = new Set(
+    rowsOf<{ id: string; kind: SourceKind; visibility: ContextVisibility; email: string | null; email_verified: unknown }>(sources)
+      .filter((src) => isClientSource({ kind: src.kind, visibility: src.visibility, addedByLateralSpace: isLateralSpaceEmail({ email: src.email, emailVerified: isEmailVerifiedValue(src.email_verified) }, ls) }))
+      .map((src) => src.id),
+  );
   return {
     heads,
     useCases: new Map(rowsOf<{ id: string; code: string | null; title: string }>(useCases).map((u) => [u.id, { id: u.id, code: u.code, title: u.title }])),
     questions: new Map(rowsOf<{ id: string; question: string }>(questions).map((x) => [x.id, x.question])),
+    clientSources,
+    lsOnly,
     today: romeToday(now),
   };
 }
@@ -499,13 +529,16 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
     // appunti della stessa call, letti prima che qualcuno confermasse, lo propongono due volte. Si riconferma, non si
     // scrive due volte. `sameFact`: la frase (normalizzata) → il fatto attivo, del database o nato qui.
     const sameFact = new Map<string, string>();
-    if (plan.some((p) => p.kind === "nuovo" || p.kind === "decisione")) {
-      const active = rowsOf<{ id: string; statement: string }>(
-        await db.execute(sql`SELECT id, statement FROM context_facts WHERE workspace_id = ${ws}::uuid AND status = 'attivo' ORDER BY last_confirmed_at DESC, id LIMIT 5000`),
+    // Le frasi dei fatti «Solo Lateral Space» attivi: un fatto nuovo con la stessa frase nasce «Solo Lateral Space».
+    const lsOnly = new Set<string>();
+    if (plan.some((p) => p.kind !== "impegno" && p.kind !== "domanda")) {
+      const active = rowsOf<{ id: string; statement: string; visibility: ContextVisibility }>(
+        await db.execute(sql`SELECT id, statement, visibility FROM context_facts WHERE workspace_id = ${ws}::uuid AND status = 'attivo' ORDER BY last_confirmed_at DESC, id LIMIT 5000`),
       );
       for (const fact of active) {
         const key = normalizeStatement(fact.statement);
         if (key && !sameFact.has(key)) sameFact.set(key, fact.id);
+        if (key && fact.visibility === "ls") lsOnly.add(key);
       }
     }
     /** Il fatto `factId` non è più attivo dopo questa conferma: la sua frase non indica più lui. */
@@ -582,8 +615,9 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
         statement,
         basis: row.basis,
         // Una versione nuova tiene la visibilità più stretta tra la proposta e il fatto di adesso: un «cambia» letto
-        // prima che Lateral Space rendesse il fatto «Solo Lateral Space» non lo rende di nuovo pubblico.
-        visibility: head ? stricterVisibility(row.visibility, before ? before.visibility : target!.visibility) : row.visibility,
+        // prima che Lateral Space rendesse il fatto «Solo Lateral Space» non lo rende di nuovo pubblico. La frase di un
+        // fatto «Solo Lateral Space» resta «Solo Lateral Space».
+        visibility: lsOnly.has(normalizeStatement(statement)) ? "ls" : head ? stricterVisibility(row.visibility, before ? before.visibility : target!.visibility) : row.visibility,
         sourceId: row.sourceId,
         quote: row.quote,
         supersedesId: head,

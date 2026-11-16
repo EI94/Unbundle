@@ -12,7 +12,7 @@
  * Modulo puro.
  */
 import { PORTFOLIO_REVIEWER_ROLES, canManageWorkspaceSettings } from "../workspace-permissions.ts";
-import type { ContextChannel, ContextVisibility } from "./vocab.ts";
+import type { ContextChannel, ContextVisibility, SourceKind } from "./vocab.ts";
 
 /** Chi agisce, con il ruolo appena riletto. `isLateralSpace`: e-mail verificata in `UC_LS_EMAIL_DOMAINS`. */
 export interface ContextActor {
@@ -114,6 +114,16 @@ export function visibleTo(viewer: Pick<ContextActor, "isLateralSpace">, visibili
  */
 export function stricterVisibility(a: ContextVisibility, b: ContextVisibility): ContextVisibility {
   return a === "ls" || b === "ls" ? "ls" : "tutti";
+}
+
+/**
+ * Una fonte scritta dal cliente: un documento, tranne quelli che Lateral Space ha caricato come suoi appunti («Solo
+ * Lateral Space» e caricati da una persona di Lateral Space). Gli appunti li aggiunge solo Lateral Space. La lettura di
+ * una fonte del cliente non riceve i fatti, gli impegni e le domande «Solo Lateral Space», e le sue proposte non sono
+ * mai preselezionate: un documento può contenere istruzioni scritte per il modello.
+ */
+export function isClientSource(source: { kind: SourceKind; visibility: ContextVisibility; addedByLateralSpace: boolean }): boolean {
+  return source.kind === "documento" && !(source.visibility === "ls" && source.addedByLateralSpace);
 }
 
 /** «Togli» su un documento: Lateral Space; chi gestisce il workspace; chi l'ha caricato. Mai chi segue solo un corso. */

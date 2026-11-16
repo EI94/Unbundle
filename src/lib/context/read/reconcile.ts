@@ -9,7 +9,8 @@
  * 4. un riferimento a un fatto che non c'è fa della proposta un fatto nuovo;
  * 5. lo stesso testo di un fatto in memoria è una riconferma; una frase già proposta non si ripropone, e nemmeno il
  *    passaggio di una proposta che la persona ha corretto (la stessa citazione);
- * 6. un cambiamento o un conflitto su un fatto «Solo Lateral Space» resta «Solo Lateral Space» (si chiude, non si apre);
+ * 6. un cambiamento o un conflitto su un fatto «Solo Lateral Space» resta «Solo Lateral Space» (si chiude, non si apre),
+ *    e così una proposta con la frase di un fatto «Solo Lateral Space», anche di uno che il prompt non aveva;
  * 7. sezione nulla solo per impegni e domande;
  * 8. un impegno ha sempre una parte; una data è una data vera;
  * 9. codici, riferimenti ed entità che non stanno negli elenchi si scartano;
@@ -50,6 +51,11 @@ export interface ReconcileInput {
    * passaggio, già deciso, e non si ripropone.
    */
   editedQuotes?: string[];
+  /**
+   * I fatti «Solo Lateral Space» attivi del workspace, anche quelli che il prompt non aveva (la lettura di un documento
+   * del cliente non li riceve): una proposta con la stessa frase resta «Solo Lateral Space».
+   */
+  lsFacts?: Array<{ id: string; statement: string }>;
   occurredOn: string;
 }
 
@@ -80,9 +86,13 @@ export interface ReconcileResult {
   overCap: number;
 }
 
-/** «Dedotto» e conflitti non sono mai preselezionati; nemmeno una proposta da correggere. La preselezione non si salva. */
-export function isPreselected(p: { basis: Basis; kind: ProposalKind; issue: ProposalIssue | null }): boolean {
-  return p.basis === "detto" && p.kind !== "conflitto" && p.issue === null;
+/**
+ * «Dedotto» e conflitti non sono mai preselezionati; nemmeno una proposta da correggere, una proposta di una fonte del
+ * cliente (`fromClient`, `isClientSource`) o una con la frase di un fatto «Solo Lateral Space» (`matchesLsOnly`): la
+ * sceglie la persona. La preselezione non si salva.
+ */
+export function isPreselected(p: { basis: Basis; kind: ProposalKind; issue: ProposalIssue | null; fromClient?: boolean; matchesLsOnly?: boolean }): boolean {
+  return p.basis === "detto" && p.kind !== "conflitto" && p.issue === null && p.fromClient !== true && p.matchesLsOnly !== true;
 }
 
 const FACT_KINDS: readonly ProposalKind[] = ["nuovo", "cambia", "conferma", "conflitto", "decisione"];
@@ -214,6 +224,7 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
   const source = foldText(input.sourceText);
   const seen = new Set(input.already.map(normalizeStatement).filter(Boolean));
   const editedQuotes = new Set((input.editedQuotes ?? []).map(normalizeStatement).filter(Boolean));
+  const lsOnly = new Set([...input.facts.filter((f) => f.visibility === "ls"), ...(input.lsFacts ?? [])].map((f) => normalizeStatement(f.statement)).filter(Boolean));
   const skipped = { persone: 0, sanitari: 0, altri_clienti: 0, clienti_del_cliente: 0 };
   const drafts: DraftProposal[] = [];
   const confirmedFacts = new Set<string>();
@@ -266,10 +277,11 @@ export function reconcile(input: ReconcileInput): ReconcileResult {
     const seenKey = kind === "conferma" && target ? normalizeStatement(target.statement) : key;
     if (seen.has(seenKey) || (kind === "conferma" && target && confirmedFacts.has(target.id))) continue;
 
-    // 6. Visibilità: si chiude, non si apre.
+    // 6. Visibilità: si chiude, non si apre. La frase di un fatto «Solo Lateral Space» resta «Solo Lateral Space».
     let visibility: ContextVisibility = raw.visibilita === "tutti" ? "tutti" : "ls";
     if (target && target.visibility === "ls") visibility = "ls";
     if (kind === "conferma" && target) visibility = target.visibility;
+    if (lsOnly.has(key) || lsOnly.has(seenKey)) visibility = "ls";
 
     // 7. Sezione.
     const loose = kind === "impegno" || kind === "domanda";
