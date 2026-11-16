@@ -18,6 +18,7 @@ import { GITHUB_DDL, GITHUB_PROBE_SQL } from "./use-case-hub-github-ddl.ts";
 import { PROPOSALS_DDL, PROPOSALS_PROBE_SQL } from "./use-case-hub-proposals-ddl.ts";
 import { WORKSPACE_TEAM_DDL, WORKSPACE_TEAM_PROBE_SQL } from "./use-case-hub-team-ddl.ts";
 import { EVALS_DDL, EVALS_PROBE_SQL } from "./use-case-hub-evals-ddl.ts";
+import { MAPPING_BOARD_DDL, MAPPING_BOARD_PROBE_SQL } from "./mapping-board-ddl.ts";
 
 /**
  * Self-heal dello schema.
@@ -37,7 +38,7 @@ import { EVALS_DDL, EVALS_PROBE_SQL } from "./use-case-hub-evals-ddl.ts";
  */
 
 /** Incrementa ad ogni modifica a `runOnce`: così i worker warm ri-eseguono il catch-up. */
-const ENSURE_VERSION = 30;
+const ENSURE_VERSION = 31;
 
 let ensurePromise: Promise<void> | null = null;
 let ensureVersionApplied = 0;
@@ -712,6 +713,11 @@ async function runOnce(): Promise<void> {
   // Dopo la 0035 (e allarga ancora il CHECK dei tipi della campanella, sotto il lock della 0025). Non blocca il resto
   // dell'app: senza la 0036 la CLI risponde «non ancora disponibile» e le pagine non mostrano le evals (`evalsStoreReady`).
   await runEvalsDdlSafely();
+
+  // «Mappatura board»: i processi, i passi, le note e i voti dell'activity mapping (drizzle/0039_mapping_board.sql) ─────
+  // Non dipende dalle migrazioni dopo la 0036 e non blocca il resto dell'app: senza la 0039 la mappatura resta
+  // leggibile, non modificabile (`mappingStoreReady`).
+  await runMappingBoardDdlSafely();
 }
 
 /** Dopo un errore della 0024, un nuovo tentativo al massimo ogni 5 minuti per processo, mai a ogni richiesta. */
@@ -887,6 +893,20 @@ async function runEvalsDdlSafely(): Promise<void> {
   } catch (err) {
     evalsDdlFailedAt = Date.now();
     console.error("[db/ensure-schema] 0036 self-heal failed, the app keeps serving without the benchmark and the evals (apply drizzle/0036 by hand):", err);
+  }
+}
+
+/** Dopo un errore della 0039, come la 0024: un nuovo tentativo al massimo ogni 5 minuti per processo. */
+let mappingBoardDdlFailedAt: number | null = null;
+
+/** La 0039 senza far fallire `ensureDbSchema()`, come `runUseCaseReferentsDdlSafely`. */
+async function runMappingBoardDdlSafely(): Promise<void> {
+  try {
+    await runMappingBoardDdl();
+    mappingBoardDdlFailedAt = null;
+  } catch (err) {
+    mappingBoardDdlFailedAt = Date.now();
+    console.error("[db/ensure-schema] 0039 self-heal failed, the app keeps serving the mapping read only (apply drizzle/0039 by hand):", err);
   }
 }
 
@@ -1146,6 +1166,20 @@ export async function runEvalsDdl(statements: readonly string[] = EVALS_DDL): Pr
   ]);
 }
 
+/**
+ * Applica il DDL della 0039 in una sola transazione, con lo stesso advisory lock del file e `lock_timeout` di 3s, come la
+ * 0036. In produzione la applica questo self-heal, al primo avvio dopo il deploy; il file a mano resta la strada di
+ * riserva.
+ */
+export async function runMappingBoardDdl(statements: readonly string[] = MAPPING_BOARD_DDL): Promise<void> {
+  const client = db.$client;
+  await client.transaction([
+    client.query("SELECT set_config('lock_timeout', '3s', true)"),
+    client.query("SELECT pg_advisory_xact_lock(hashtext('unbundle:mapping-board-ddl'))"),
+    ...statements.map((statement) => client.query(statement)),
+  ]);
+}
+
 async function schemaLooksCurrent(): Promise<boolean> {
   try {
     const result = (await db.execute(sql`
@@ -1269,6 +1303,7 @@ async function schemaLooksCurrent(): Promise<boolean> {
         AND ${sql.raw(PROPOSALS_PROBE_SQL)}
         AND ${sql.raw(WORKSPACE_TEAM_PROBE_SQL)}
         AND ${sql.raw(EVALS_PROBE_SQL)}
+        AND ${sql.raw(MAPPING_BOARD_PROBE_SQL)}
       ) AS current;
     `)) as unknown as { rows?: Array<{ current?: unknown }> };
     return result.rows?.[0]?.current === true;
@@ -1353,6 +1388,11 @@ export async function ensureDbSchema(): Promise<void> {
     if (evalsDdlFailedAt !== null && Date.now() - evalsDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
       evalsDdlFailedAt = Date.now();
       ensurePromise = ensurePromise.then(runEvalsDdlSafely);
+    }
+    // La 0039 era fallita (non fatale): come la 0024, un tentativo alla volta, dopo la pausa.
+    if (mappingBoardDdlFailedAt !== null && Date.now() - mappingBoardDdlFailedAt >= REFERENTS_DDL_RETRY_MS) {
+      mappingBoardDdlFailedAt = Date.now();
+      ensurePromise = ensurePromise.then(runMappingBoardDdlSafely);
     }
     return ensurePromise;
   }

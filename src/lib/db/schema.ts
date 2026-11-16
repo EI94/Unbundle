@@ -78,6 +78,7 @@ import type { GithubDeliveryOutcome, PullRequestState } from "./use-case-hub-git
 import type { ProposalSource, ProposalStatus } from "./use-case-hub-proposals-ddl.ts";
 import type { UseCaseNoticeKind0036 } from "./use-case-hub-evals-ddl.ts";
 import type { EvalGroup, EvalRunKind } from "../use-cases/factory/benchmark.ts";
+import type { Lane, NoteStatus, Origin, StepStatus, Stream } from "../mappatura/vocab.ts";
 import type { WorkspaceTeamRole } from "./use-case-hub-team-ddl.ts";
 import type { Origin as UseCaseOrigin } from "../use-cases/types.ts";
 import type { ValueModel as UseCaseValueModel } from "../use-cases/value-model.ts";
@@ -1675,6 +1676,112 @@ export const useCaseEvalResults = pgTable(
     unique("use_case_eval_results_unique").on(t.runId, t.model),
     index("use_case_eval_results_case_idx").on(t.useCaseId),
     index("use_case_eval_results_workspace_idx").on(t.workspaceId),
+  ]
+);
+
+// ─── Mappatura board (drizzle/0039, docs/mappatura/MAPPATURA-BOARD-PIANO.md) ───────────
+// CHECK e chiavi esterne composte stanno solo nella migrazione e in mapping-board-ddl.ts (self-heal): mai drizzle-kit push.
+
+/** (0039) La board di un'unità: revisione, frase di sintesi, quando è stata completata. */
+export const mappingBoards = pgTable(
+  "mapping_boards",
+  {
+    departmentId: uuid("department_id").notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    revision: bigint("revision", { mode: "number" }).notNull().default(0),
+    headline: varchar("headline", { length: 300 }),
+    completedAt: tz("completed_at"),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ name: "mapping_boards_pkey", columns: [t.departmentId] })]
+);
+
+/** (0039) Un processo dell'unità: una riga della mappa. */
+export const mappingProcesses = pgTable(
+  "mapping_processes",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    departmentId: uuid("department_id").notNull(),
+    name: varchar("name", { length: 120 }).notNull(),
+    owner: varchar("owner", { length: 200 }),
+    position: doublePrecision("position").notNull().default(0),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "mapping_processes_pkey", columns: [t.id] }),
+    unique("mapping_processes_scope_unique").on(t.id, t.departmentId, t.workspaceId),
+    index("mapping_processes_unit_idx").on(t.departmentId, t.position),
+  ]
+);
+
+/** (0039) Quello che la board aggiunge a un'attività: una riga per attività, mai una colonna in `activities`. */
+export const mappingSteps = pgTable(
+  "mapping_steps",
+  {
+    activityId: uuid("activity_id").notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    departmentId: uuid("department_id").notNull(),
+    processId: uuid("process_id"),
+    position: doublePrecision("position").notNull().default(0),
+    who: jsonb("who").$type<string[]>().notNull().default([]),
+    exceptionText: text("exception_text"),
+    decisionLabel: varchar("decision_label", { length: 60 }),
+    frictionLevel: smallint("friction_level"),
+    status: varchar("status", { length: 12 }).$type<StepStatus>().notNull().default("da_validare"),
+    origin: varchar("origin", { length: 10 }).$type<Origin>().notNull().default("prima"),
+    proposedStream: varchar("proposed_stream", { length: 13 }).$type<Stream>(),
+    classificationReason: text("classification_reason"),
+    aiPotential: text("ai_potential"),
+    onetTitle: varchar("onet_title", { length: 200 }),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "mapping_steps_pkey", columns: [t.activityId] }),
+    index("mapping_steps_unit_idx").on(t.departmentId, t.processId, t.position),
+  ]
+);
+
+/** (0039) Una nota di un passo, per corsia; senza passo, un punto di analisi della board. */
+export const mappingNotes = pgTable(
+  "mapping_notes",
+  {
+    id: uuid("id").defaultRandom().notNull(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    departmentId: uuid("department_id").notNull(),
+    activityId: uuid("activity_id"),
+    lane: varchar("lane", { length: 8 }).$type<Lane>().notNull(),
+    title: varchar("title", { length: 120 }),
+    body: text("body").notNull(),
+    status: varchar("status", { length: 8 }).$type<NoteStatus>().notNull().default("validato"),
+    origin: varchar("origin", { length: 10 }).$type<Origin>().notNull().default("board"),
+    position: doublePrecision("position").notNull().default(0),
+    createdAt: tz("created_at").defaultNow().notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "mapping_notes_pkey", columns: [t.id] }),
+    index("mapping_notes_step_idx").on(t.activityId, t.lane, t.position),
+  ]
+);
+
+/** (0039) I voti di una persona su un processo: ognuno i suoi, la board mostra la somma. */
+export const mappingVotes = pgTable(
+  "mapping_votes",
+  {
+    processId: uuid("process_id").notNull(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    departmentId: uuid("department_id").notNull(),
+    votes: smallint("votes").notNull(),
+    updatedAt: tz("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "mapping_votes_pkey", columns: [t.processId, t.userId] }),
+    index("mapping_votes_user_idx").on(t.userId),
   ]
 );
 
