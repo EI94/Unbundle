@@ -113,6 +113,8 @@ const DARIO = `dario.${suffix}@rondine.test`;
 const NUOVA = `nuova.persona.${suffix}@rondine.test`;
 const COURSE_TITLE = `Corso AI generativa ${suffix}`;
 const contacts = { mario: randomUUID(), elena: randomUUID() };
+/** I codici delle carte, uno nuovo per carta: mai lo stesso nella corsa (il workspace è nuovo a ogni corsa). */
+let cardCodes = 0;
 const cards = {
   forged: randomUUID(),
   contrib: randomUUID(),
@@ -289,7 +291,7 @@ before(async () => {
     await q(
       `INSERT INTO use_cases (id, workspace_id, title, description, status, portfolio_review_status, portfolio_kind, code, source)
        VALUES ($1::uuid, $2::uuid, $3, 'Problema di prova', 'accepted', 'scored', 'use_case_ai', $4, 'web_proposed')`,
-      [card, ids.ws, `Scheda ${code}`, `RI-${String(1000 + Math.floor(Math.random() * 8000))}`],
+      [card, ids.ws, `Scheda ${code}`, `RI-${String(1000 + ++cardCodes)}`],
     );
   }
 });
