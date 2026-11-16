@@ -107,6 +107,8 @@ test("nel browser: la scheda scelta porta in cima e si ricorda; il pannello sopr
   assert.match(source, /<div className=\{cx\("b-scrim", "b-assist-scrim", overlay && "b-on"\)\} aria-hidden="true" onClick=\{close\}/);
   // «Inizia con l'assistente» apre il pannello con il cursore nel suo campo; chiuso, il fuoco torna al bottone.
   assert.match(source, /onStartAssistant=\{\(\) => setOpen\(true, "field"\)\}/);
+  // Già aperto (un'unità vuota apre il pannello da sé): «Inizia con l'assistente» porta il cursore nel campo subito.
+  assert.match(source, /if \(next === open\) \{\s+if \(focus === "field"\) focusTarget\(panel\.current\)\?\.focus\(\);\s+return;\s+\}/);
   assert.match(source, /if \(want === "field" && open\) focusTarget\(panel\.current\)\?\.focus\(\);/);
   assert.match(source, /if \(want === "toggle" && !open\) visibleOf\(headToggle\.current, tabToggle\.current\)\?\.focus\(\);/);
 });

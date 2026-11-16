@@ -100,9 +100,14 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
   }, [open]);
 
   const setOpen = (next: boolean, focus: "field" | "toggle" | null) => {
-    pendingFocus.current = focus;
     setChoice(next);
     prefs.setAssistant(next);
+    // Già nello stato chiesto (il pannello di un'unità vuota è aperto da sé): il fuoco va subito, nessun disegno da aspettare.
+    if (next === open) {
+      if (focus === "field") focusTarget(panel.current)?.focus();
+      return;
+    }
+    pendingFocus.current = focus;
   };
   const toggle = () => setOpen(!open, open ? null : "field");
   const close = () => setOpen(false, "toggle");
