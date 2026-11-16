@@ -2177,6 +2177,58 @@ test("«In breve» porta il momento in cui ha letto i fatti: un fatto nato mentr
   await q(`DELETE FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]);
 });
 
+test("una riscrittura di «In breve» e una conferma che cambia più fatti, insieme: prendono i fatti nello stesso ordine e si aspettano, senza deadlock", opts, async (t) => {
+  const lines = recordLogs(t);
+  await q(`DELETE FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]);
+  // Due fatti «Per tutti»: «low» ha l'id più basso. La conferma riconferma «high» e sostituisce «low».
+  const [low, high] = [randomUUID(), randomUUID()].sort();
+  for (const [id, statement] of [
+    [high, `Il fatto alto ${suffix} vale 1.`],
+    [low, `Il fatto basso ${suffix} vale 1.`],
+  ]) {
+    await q(`INSERT INTO context_facts (id, workspace_id, section, statement, basis, visibility, origin) VALUES ($1, $2, 'azienda', $3, 'detto', 'tutti', 'manuale')`, [id, ids.wsA, statement]);
+  }
+  const { all } = await readProposals(
+    [
+      proposal({ tipo: "cambia", testo: `Il fatto basso ${suffix} vale 2.`, citazione: "", fattoRif: "F1", sezione: "azienda" }),
+      proposal({ tipo: "conferma", testo: "x", citazione: "", fattoRif: "F2" }),
+    ],
+    `${NOTE}\nCall dei fatti alto e basso (${suffix}).`,
+  );
+  assert.deepEqual(all.map((p) => [p.kind, p.before?.factId]), [["cambia", low], ["conferma", high]]);
+
+  // Una terza connessione tiene «low» con un lock condiviso: la conferma si ferma lì, a metà.
+  const pg = (await import("pg")).default as unknown as { Client: new (o: { connectionString: string }) => { connect(): Promise<void>; query(t: string, v?: unknown[]): Promise<unknown>; end(): Promise<void> } };
+  const holder = new pg.Client({ connectionString: url! });
+  await holder.connect();
+  await holder.query("BEGIN");
+  await holder.query("SELECT id FROM context_facts WHERE id = $1 FOR SHARE", [low]);
+  const waiting = async () => Number((await q(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`))[0].n);
+  const until = async (check: () => Promise<boolean>) => {
+    for (let i = 0; i < 100 && !(await check()); i++) await new Promise((resolve) => setTimeout(resolve, 20));
+  };
+  let confirmed: Awaited<ReturnType<typeof proposals.confirmProposals>> | undefined;
+  let brief: string | undefined;
+  try {
+    const confirming = proposals.confirmProposals(actor("ls"), pick(all)).then((r) => (confirmed = r));
+    await until(async () => (await waiting()) >= 1);
+    // Intanto «In breve» si riscrive e prende i suoi fatti, «low» e «high» compresi.
+    fakeAppClaude([json({ righe: ["Il fatto basso vale 1 e quello alto pure."] })]);
+    const writing = briefs.refreshContextBrief(ids.wsA, { force: true }).then((r) => (brief = r));
+    await until(async () => brief !== undefined || (await waiting()) >= 2);
+    await holder.query("ROLLBACK");
+    await Promise.all([confirming, writing]);
+  } finally {
+    await holder.end().catch(() => undefined);
+  }
+  assert.ok(confirmed?.ok, JSON.stringify(confirmed));
+  assert.ok(brief === "aggiornato" || brief === "cambiato", `«In breve»: ${brief}\n${lines.join("\n")}`);
+  assert.equal(lines.filter((line) => /non_riuscit|40P01|deadlock/.test(line)).length, 0, lines.join("\n"));
+  // La conferma ha cambiato «low» dopo: la riga di «In breve» scritta da quello di prima non c'è più.
+  assert.equal((await q(`SELECT count(*)::int AS n FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]))[0].n, 0);
+  assert.equal((await q(`SELECT statement FROM context_facts WHERE supersedes_id = $1`, [low]))[0].statement, `Il fatto basso ${suffix} vale 2.`);
+});
+
 // ─── La notte ────────────────────────────────────────────────────────
 
 test("il giro della notte: legge gli appunti in attesa dei workspace con l'ok, senza attore nella storia; riscrive «In breve»; lascia stare chi non ha l'ok", opts, async () => {

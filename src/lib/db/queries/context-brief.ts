@@ -117,6 +117,8 @@ function factsOf(value: unknown): BriefFact[] {
  * Scrive le righe, in una transazione, solo se i fatti letti sono ancora tutti attivi, «Per tutti» e alla stessa
  * versione (presi con un lock condiviso: chi li cambia aspetta, o li ha già cambiati e allora non si scrive niente), e
  * solo se nessuna riscrittura ha letto dopo di questa (`generated_at`, il momento della lettura). Vero se ha scritto.
+ * I fatti si prendono in ordine di id, come li prende una conferma (`confirmProposals`): le due aspettano, non si
+ * bloccano a vicenda.
  */
 async function writeBrief(workspaceId: string, facts: readonly BriefFact[], clean: readonly string[], hash: string, asOf: string): Promise<boolean> {
   const expected = JSON.stringify(facts.map((f) => ({ id: f.id, version: f.version })));

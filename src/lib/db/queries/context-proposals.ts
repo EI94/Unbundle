@@ -685,6 +685,8 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
       ...reconfirmLinks.map((link) => ({ workspaceId: ws, ...link })),
     ];
     const count = (n: number) => sql`${n}`;
+    // I fatti che questa conferma riconferma o sostituisce: si prendono tutti insieme, in ordine di id, prima di toccarli.
+    const touchedFacts = [...new Set([...reconfirm, ...supersede])];
     // Un fatto «Per tutti» sostituito da una versione nuova esce da «In breve»: la riga si cancella e si riscrive dopo.
     const publicHeads = new Set([...heads.values()].filter((head) => head.visibility === "tutti").map((head) => head.id));
     const briefLosesFact = [...supersede].some((id) => publicHeads.has(id));
@@ -707,6 +709,17 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
           JOIN jsonb_to_recordset(${JSON.stringify(list.map((item) => ({ id: item.id, version: item.version })))}::jsonb) AS x(id uuid, version integer) ON x.id = l.id AND x.version = l.version
         )
         ${requireSql(sql`(SELECT count(*) FROM locked) >= 0 AND (SELECT count(*) FROM held) = ${count(list.length)}`, "versione_superata")}`),
+      // I fatti da riconfermare e da sostituire, presi in una volta sola in ordine di id, prima di ogni UPDATE: chi li prende
+      // nello stesso ordine (la riscrittura di «In breve», un'altra conferma) aspetta, invece di bloccarsi a vicenda.
+      ...(touchedFacts.length > 0
+        ? [
+            db.execute(sql`
+              SELECT f.id FROM context_facts f
+              WHERE f.workspace_id = ${ws}::uuid AND f.id = ANY(${uuidArray(touchedFacts)})
+              ORDER BY f.id
+              FOR UPDATE OF f`),
+          ]
+        : []),
       // Le altre proposte aperte su un fatto che cambia: il loro «Prima» non è più quello che si vede (`versione_superata`).
       ...(supersede.size > 0 ? [bumpProposalsOnFactsStatement(ws, [...supersede], ids)] : []),
       // I fatti riconfermati: la data si rinfresca. Devono essere ancora attivi.
