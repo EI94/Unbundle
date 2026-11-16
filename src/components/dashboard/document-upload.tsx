@@ -4,11 +4,14 @@ import { useRef, useState } from "react";
 import { Upload, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
 
+/** La risposta di `POST /api/documents/upload` (rilascio 9a): il testo estratto non torna più al browser. */
 interface UploadedDoc {
   id: string;
+  sourceId: string;
   fileName: string;
   summary: string;
-  extractedText: string;
+  textRead: boolean;
+  ai: "ok" | "ok_mancante" | "non_serve";
 }
 
 interface DocumentUploadProps {
@@ -47,12 +50,12 @@ export function DocumentUpload({
         });
 
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          toast.error(data.error ?? "Errore upload");
+          const data = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+          toast.error(data.message ?? data.error ?? "Errore upload");
           continue;
         }
 
-        const data = await res.json();
+        const data = (await res.json()) as UploadedDoc;
         setUploaded((prev) => [...prev, data.fileName]);
         toast.success(`${data.fileName} caricato e analizzato`);
         onUploaded?.(data);
@@ -70,7 +73,7 @@ export function DocumentUpload({
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf,.txt,.csv,.md,.docx,.xlsx,.pptx"
+        accept=".pdf,.docx,.xlsx,.pptx,.csv,.tsv,.txt,.md"
         multiple
         onChange={handleUpload}
         className="hidden"
