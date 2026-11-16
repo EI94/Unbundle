@@ -1,8 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Upload, Loader2, Check } from "lucide-react";
 import { toast } from "sonner";
+import { CONTEXT_TEXT } from "@/lib/context/text";
 
 /** La risposta di `POST /api/documents/upload` (rilascio 9a): il testo estratto non torna più al browser. */
 interface UploadedDoc {
@@ -12,6 +14,20 @@ interface UploadedDoc {
   summary: string;
   textRead: boolean;
   ai: "ok" | "ok_mancante" | "non_serve";
+}
+
+/**
+ * Che cosa dice il caricamento riuscito (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §6.3): senza l'ok ai sub-responsabili
+ * il documento è salvato ma non letto con l'AI, e «Apri» porta a Impostazioni, dove si dà l'ok.
+ */
+export function uploadedNotice(doc: Pick<UploadedDoc, "fileName" | "ai">, workspaceId: string): { text: string; action: { label: string; href: string } | null } {
+  if (doc.ai === "ok_mancante") {
+    return {
+      text: CONTEXT_TEXT.documents.savedNoConsent,
+      action: { label: CONTEXT_TEXT.documents.openSettings, href: `/dashboard/${encodeURIComponent(workspaceId)}/settings#sub-responsabili` },
+    };
+  }
+  return { text: `${doc.fileName} caricato e analizzato`, action: null };
 }
 
 interface DocumentUploadProps {
@@ -26,6 +42,7 @@ export function DocumentUpload({
   onUploaded,
 }: DocumentUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState<string[]>([]);
 
@@ -57,7 +74,10 @@ export function DocumentUpload({
 
         const data = (await res.json()) as UploadedDoc;
         setUploaded((prev) => [...prev, data.fileName]);
-        toast.success(`${data.fileName} caricato e analizzato`);
+        const notice = uploadedNotice(data, workspaceId);
+        const action = notice.action;
+        if (action) toast(notice.text, { action: { label: action.label, onClick: () => router.push(action.href) } });
+        else toast.success(notice.text);
         onUploaded?.(data);
       } catch {
         toast.error(`Errore durante l'upload di ${file.name}`);

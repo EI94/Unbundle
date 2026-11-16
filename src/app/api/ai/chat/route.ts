@@ -30,6 +30,8 @@ import { db } from "@/lib/db";
 import { uploadedDocuments, organizations, activities } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { retrieveRelevantContext, indexConversationMessage } from "@/lib/ai/rag/retriever";
+import { contextAiConsent } from "@/lib/db/queries/context-consent";
+import { CONTEXT_TEXT } from "@/lib/context/text";
 
 /** Vercel / Next: consenti più round LLM dopo i tool (webSearch, salvataggi DB, ecc.) */
 export const maxDuration = 120;
@@ -62,6 +64,12 @@ export async function POST(req: Request) {
     return new Response("Workspace not found", { status: 404 });
   }
   const { workspace } = access;
+  // L'ok ai sub-responsabili (rilascio 9a, docs/contesto/RILASCIO-9a-COSTRUZIONE.md §6.2): senza, nessun testo del
+  // cliente va al modello e niente si salva. La chat mostra l'avviso al posto del campo per scrivere
+  // (src/components/agent/chat-consent.ts); i messaggi di prima restano.
+  if (!(await contextAiConsent(workspaceId))) {
+    return Response.json({ error: "ok_fornitori_mancante", message: CONTEXT_TEXT.consent.title }, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
   // «Programma» (rilascio 7): dipendenti e ricavo dalla chat li scrive solo chi li scriverebbe nella pagina.
   const { canEditProgram } = await import("@/lib/db/queries/use-case-program");
   const { viewerFromSession } = await import("@/lib/db/queries/use-case-hub");

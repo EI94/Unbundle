@@ -3,6 +3,9 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
+import { AiConsentNotice } from "@/components/context/ai-consent-notice";
+import { CONTEXT_TEXT } from "@/lib/context/text";
+import { CONSENT_CHECKING, composerState, isConsentError, loadChatConsent, type ChatConsent } from "./chat-consent";
 import {
   HIDDEN_TOOLS,
   assistantView,
@@ -30,6 +33,8 @@ interface ChatInterfaceProps {
     role: "user" | "assistant";
     content: string;
   }>;
+  /** Lo stato di partenza dell'ok ai sub-responsabili (chat-consent.ts); poi lo chiede la chat al montaggio. */
+  initialConsent?: ChatConsent;
 }
 
 /** Una riga di avanzamento sotto una risposta: una nota, o un tool con la sua etichetta (chat-view.ts). */
@@ -123,9 +128,25 @@ export function ChatInterface({
   welcomeMessage,
   suggestions = [],
   initialMessages = [],
+  initialConsent = CONSENT_CHECKING,
 }: ChatInterfaceProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // L'ok ai sub-responsabili (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md §6.3): senza, l'avviso al posto del campo per
+  // scrivere; i messaggi di prima restano. Il controllo vero è della rotta (403 `ok_fornitori_mancante`).
+  const [consent, setConsent] = useState<ChatConsent>(initialConsent);
+  const checkConsent = useCallback(() => {
+    let live = true;
+    void loadChatConsent(workspaceId).then((next) => {
+      if (live) setConsent(next);
+    });
+    return () => {
+      live = false;
+    };
+  }, [workspaceId]);
+  useEffect(() => checkConsent(), [checkConsent]);
+  const composer = composerState(consent);
 
   const welcomeMessages: ChatUIMessage[] = [];
   if (initialMessages.length === 0 && welcomeMessage) {
@@ -161,6 +182,9 @@ export function ChatInterface({
   const chat = useChat({ transport, messages: seedMessages });
   const { messages, status, error } = chat;
   const isLoading = status === "streaming" || status === "submitted";
+  // La rotta ha risposto che manca l'ok (per esempio tolto dopo l'apertura): si chiede di nuovo, e torna l'avviso.
+  const refusedForConsent = isConsentError(error);
+  useEffect(() => (refusedForConsent ? checkConsent() : undefined), [refusedForConsent, checkConsent]);
 
   const isUserTurn =
     !isLoading &&
@@ -185,25 +209,25 @@ export function ChatInterface({
     async (e: React.FormEvent) => {
       e.preventDefault();
       const value = inputRef.current?.value?.trim();
-      if (!value || isLoading) return;
+      if (!value || isLoading || composer !== "aperto") return;
       if (inputRef.current) inputRef.current.value = "";
       chat.sendMessage({
         role: "user",
         parts: [{ type: "text", text: value }],
       });
     },
-    [isLoading, chat]
+    [isLoading, chat, composer]
   );
 
   const handleSuggestion = useCallback(
     (text: string) => {
-      if (isLoading) return;
+      if (isLoading || composer !== "aperto") return;
       chat.sendMessage({
         role: "user",
         parts: [{ type: "text", text }],
       });
     },
-    [isLoading, chat]
+    [isLoading, chat, composer]
   );
 
   const onKeyDown = useCallback(
@@ -252,7 +276,7 @@ export function ChatInterface({
   };
 
   const showSuggestions =
-    suggestions.length > 0 && messages.length <= 1 && !isLoading;
+    suggestions.length > 0 && messages.length <= 1 && !isLoading && composer === "aperto";
 
   return (
     <div className="flex h-full flex-col">
@@ -302,8 +326,8 @@ export function ChatInterface({
           {/* AI thinking / streaming indicator */}
           {isLoading && <WaitingStatus />}
 
-          {/* Errore */}
-          {error && (
+          {/* Errore (manca l'ok: al suo posto l'avviso, sotto) */}
+          {error && !refusedForConsent && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-start gap-2">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <div>
@@ -343,7 +367,22 @@ export function ChatInterface({
         </div>
       )}
 
-      {/* Input area */}
+      {/* Senza l'ok ai sub-responsabili: l'avviso calmo al posto del campo per scrivere */}
+      {consent.state === "missing" ? (
+        <div className="border-t border-border px-6 py-4">
+          <div className="mx-auto max-w-2xl space-y-2">
+            <AiConsentNotice
+              notice={consent.notice}
+              variant="card"
+              onGranted={() => {
+                setConsent(CONSENT_CHECKING);
+                checkConsent();
+              }}
+            />
+            <p className="text-xs text-muted-foreground">{CONTEXT_TEXT.consent.chatHint}</p>
+          </div>
+        </div>
+      ) : (
       <div className="border-t border-border px-6 py-4">
         <form
           onSubmit={handleSubmit}
@@ -360,7 +399,7 @@ export function ChatInterface({
               }
               className="w-full resize-none rounded-xl border border-border light:border-input bg-card px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[48px] max-h-[200px] disabled:opacity-30 disabled:cursor-not-allowed"
               rows={1}
-              disabled={isLoading}
+              disabled={isLoading || composer !== "aperto"}
             />
             {isLoading && (
               <div className="absolute inset-0 rounded-xl bg-card/60 flex items-center justify-center cursor-not-allowed">
@@ -372,7 +411,7 @@ export function ChatInterface({
           </div>
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || composer !== "aperto"}
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-foreground text-background hover:opacity-90 transition-opacity disabled:opacity-10 disabled:cursor-not-allowed"
           >
             {isLoading ? (
@@ -383,6 +422,7 @@ export function ChatInterface({
           </button>
         </form>
       </div>
+      )}
     </div>
   );
 }

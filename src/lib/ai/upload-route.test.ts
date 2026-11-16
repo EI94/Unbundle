@@ -26,8 +26,11 @@ type Prova = {
   deleteError?: Error;
   indexed: number;
   units: Record<string, string>;
+  /** (Rilascio 9a) L'ok ai sub-responsabili del workspace, e quante volte la rotta l'ha chiesto. */
+  consent: boolean;
+  consentAsked: number;
 };
-const prova: Prova = { email: "persona@cliente.test", ready: true, blobs: 0, deletedBlobs: [], saved: [], indexed: 0, units: {} };
+const prova: Prova = { email: "persona@cliente.test", ready: true, blobs: 0, deletedBlobs: [], saved: [], indexed: 0, units: {}, consent: true, consentAsked: 0 };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -39,6 +42,7 @@ await installAppModules({
     return { workspaceId, userId: user.id, role: access.role, isLateralSpace: String(user.email).endsWith("@ls.test"), channel: "web" };
   }`,
   "@/lib/db/queries/context-store": `export async function contextStoreReady() { return globalThis.__prova.ready; }`,
+  "@/lib/db/queries/context-consent": `export async function contextAiConsent() { globalThis.__prova.consentAsked += 1; return globalThis.__prova.consent; }`,
   "@/lib/db/queries/context-sources": `export async function saveUploadedDocument(actor, input) {
     if (globalThis.__prova.saveThrows) throw globalThis.__prova.saveThrows;
     if (globalThis.__prova.saveResult) return globalThis.__prova.saveResult;
@@ -69,7 +73,11 @@ function upload(bytes: Uint8Array, fileName: string, fields: Record<string, stri
 }
 
 function reset(over: Partial<Prova> = {}) {
-  Object.assign(prova, { email: "persona@cliente.test", ready: true, blobs: 0, deletedBlobs: [], saved: [], indexed: 0, units: { [UNIT]: WS, [OTHER_UNIT]: "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a" } }, over);
+  Object.assign(
+    prova,
+    { email: "persona@cliente.test", ready: true, blobs: 0, deletedBlobs: [], saved: [], indexed: 0, units: { [UNIT]: WS, [OTHER_UNIT]: "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a" }, consent: true, consentAsked: 0 },
+    over,
+  );
   delete prova.saveResult;
   delete prova.saveThrows;
   delete prova.deleteError;
@@ -239,6 +247,45 @@ test("una scansione troncata al limite dei token ma con del testo: 200, si tiene
   assert.equal(prova.indexed, 1);
   assert.deepEqual(prova.deletedBlobs, []);
   assert.deepEqual(lines, ['[documents/upload] pdf_troncato {"finishReason":"length","category":null}']);
+});
+
+// ─── L'ok ai sub-responsabili (rilascio 9a, §6.2) ────────────────────
+
+test("una scansione senza l'ok: nessuna richiesta al modello, salvata con il testo trovato, «non letta», ai ok_mancante", async () => {
+  reset({ consent: false });
+  const requests = fakeAppClaude([]);
+  const response = await upload(SCAN, "scansione.pdf");
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { id: "doc-prova", sourceId: "fonte-prova", fileName: "scansione.pdf", summary: "", textRead: false, ai: "ok_mancante" });
+  assert.equal(requests.length, 0, "senza l'ok il PDF non va al modello");
+  assert.equal(prova.saved.length, 1);
+  assert.match(String(prova.saved[0].extractedText), /pag\. 1/);
+});
+
+test("un testo lungo senza l'ok: salvato senza sintesi, ai ok_mancante; con l'ok la sintesi c'è (ai ok)", async () => {
+  const long = new TextEncoder().encode("Organigramma: direzione generale, amministrazione, vendite. ".repeat(4));
+  reset({ consent: false });
+  const none = fakeAppClaude([]);
+  const without = await upload(long, "organigramma.txt");
+  assert.equal(without.status, 200);
+  assert.deepEqual(await without.json(), { id: "doc-prova", sourceId: "fonte-prova", fileName: "organigramma.txt", summary: "", textRead: true, ai: "ok_mancante" });
+  assert.equal(none.length, 0);
+  assert.equal(prova.saved[0].summary, "");
+  assert.equal(prova.indexed, 1, "il testo si cerca lo stesso");
+
+  reset({ consent: true });
+  const withSummary = fakeAppClaude([SUMMARY]);
+  const granted = await upload(long, "organigramma.txt");
+  assert.equal(((await granted.json()) as { ai: string }).ai, "ok");
+  assert.equal(withSummary.length, 1);
+  assert.equal(prova.consentAsked, 1, "l'ok si legge una volta per richiesta");
+});
+
+test("un testo breve non serve al modello: l'ok non si chiede, ai non_serve", async () => {
+  reset({ consent: false });
+  const response = await upload(buildDocx(["Breve."]), "breve.docx");
+  assert.equal(((await response.json()) as { ai: string }).ai, "non_serve");
+  assert.equal(prova.consentAsked, 0);
 });
 
 // ─── Il file e la riga ───────────────────────────────────────────────

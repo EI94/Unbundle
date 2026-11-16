@@ -21,6 +21,9 @@ await installAppModules({
     state.transport = options.transport;
     return { messages: state.messages, status: state.status, error: state.error, sendMessage() {} };
   }`,
+  // (Rilascio 9a) L'avviso dell'ok ai sub-responsabili (chat-consent.test.ts): qui l'azione e il router non servono.
+  "@/lib/actions/uc-subprocessors": `export async function declareSubprocessorsAction() { return { ok: true }; }`,
+  "next/navigation": `export function useRouter() { return { refresh() {}, push() {} }; }`,
 });
 await enableTsxImports();
 const { ChatInterface } = await import("./chat-interface.tsx");

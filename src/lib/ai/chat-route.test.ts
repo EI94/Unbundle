@@ -23,8 +23,12 @@ type Prova = {
   toolArgs: unknown[][];
   /** Se vero, la ricerca web è il tool vero (src/lib/ai/tools/web-search-tool.ts), con il Claude finto. */
   realWebSearch?: boolean;
+  /** (Rilascio 9a) L'ok ai sub-responsabili del workspace: se falso, la rotta risponde 403. */
+  consent?: boolean;
+  /** I workspace di cui la rotta ha chiesto l'ok. */
+  consentAsked: string[];
 };
-const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [] };
+const prova: Prova = { saved: [], deleted: [], reads: 0, indexed: [], tools: {}, toolArgs: [], consentAsked: [] };
 (globalThis as { __prova?: Prova }).__prova = prova;
 
 await installAppModules({
@@ -64,6 +68,10 @@ await installAppModules({
   "@/lib/ai/rag/retriever": `
     export async function retrieveRelevantContext() { return []; }
     export function indexConversationMessage(conversationId, workspaceId, content, role) { globalThis.__prova.indexed.push([role, content]); return Promise.resolve(); }`,
+  "@/lib/db/queries/context-consent": `export async function contextAiConsent(workspaceId) {
+    globalThis.__prova.consentAsked.push(workspaceId);
+    return globalThis.__prova.consent !== false;
+  }`,
   "@/lib/db/schema": `export const uploadedDocuments = {}; export const organizations = {}; export const activities = {};`,
   "drizzle-orm": `export const eq = (column, value) => ({ column, value }); export const and = (...parts) => ({ and: parts });`,
   "@/lib/db": `export const db = {
@@ -104,12 +112,41 @@ function reset() {
   prova.tools = {};
   prova.toolArgs = [];
   delete prova.realWebSearch;
+  delete prova.consent;
+  prova.consentAsked = [];
 }
 
 const HISTORY = [
   { role: "assistant", content: "Benvenuto: di che cosa ti occupi?" },
   { role: "user", content: "Preparo le fatture dei clienti ogni mese." },
 ];
+
+test("(Rilascio 9a) senza l'ok ai sub-responsabili: 403 ok_fornitori_mancante, nessuna richiesta al modello, niente salvato", async () => {
+  for (const conversationType of ["leadership_setup", "activity_mapping"]) {
+    reset();
+    prova.consent = false;
+    const requests = fakeAppClaude([]);
+    const { status, raw } = await chat(HISTORY, conversationType, conversationType === "activity_mapping" ? "reparto-prova" : undefined);
+    assert.equal(status, 403, conversationType);
+    assert.deepEqual(JSON.parse(raw), { error: "ok_fornitori_mancante", message: "Serve l'ok ai fornitori di AI" });
+    assert.equal(requests.length, 0, "nessun testo al modello");
+    assert.deepEqual(prova.saved, [], "la domanda non si salva");
+    assert.deepEqual(prova.indexed, []);
+    assert.deepEqual(prova.consentAsked, ["ws-prova"], "l'ok è quello del workspace della richiesta");
+  }
+});
+
+test("(Rilascio 9a) con l'ok la chat risponde come prima", async (t) => {
+  recordLogs(t);
+  reset();
+  prova.consent = true;
+  fakeAppClaude([sse([ev.start("msg_1"), ...ev.thinking(0, "firma-A"), ...ev.text(1, "Quante fatture al mese?"), ...ev.end("end_turn")])]);
+  const { status, chunks } = await chat(HISTORY);
+  assert.equal(status, 200);
+  assert.equal(chunks.find((chunk) => chunk.type === "finish")?.finishReason, "stop");
+  assert.deepEqual(prova.consentAsked, ["ws-prova"]);
+  assert.equal(prova.saved.length, 2, "domanda e risposta");
+});
 
 test("un rifiuto a metà risposta: niente salvato dell'assistente, niente nella memoria, il browser riceve «content-filter»", async (t) => {
   const lines = recordLogs(t);

@@ -12,6 +12,7 @@ import { contextActorFor } from "@/lib/context/server/actor";
 import { CONTEXT_TEXT } from "@/lib/context/text";
 import { documentVisibilityFor } from "@/lib/context/visibility";
 import { CONTEXT_LIMITS } from "@/lib/context/vocab";
+import { contextAiConsent } from "@/lib/db/queries/context-consent";
 import { saveUploadedDocument } from "@/lib/db/queries/context-sources";
 import { contextStoreReady } from "@/lib/db/queries/context-store";
 import { getDepartmentById } from "@/lib/db/queries/workspaces";
@@ -27,7 +28,9 @@ import { getCollaboratorAccess } from "@/lib/workspace-access";
  * Nell'ordine: sessione, accesso al workspace (`getCollaboratorAccess`: non chi segue solo un corso), la 0038 (503),
  * l'unità del workspace, al massimo 4 MB, il testo senza modello (`extractDocumentText`: PDF, Word, Excel, PowerPoint,
  * CSV, TSV, testo; il tipo si riconosce dai byte, mai da quello del browser). Il modello serve solo per un PDF quasi
- * senza testo (una scansione) e per la sintesi. Poi il file nell'archivio (privato, nome con suffisso casuale) e il
+ * senza testo (una scansione) e per la sintesi, e solo con l'ok ai sub-responsabili del workspace (§6.2): senza, il
+ * documento si salva con il testo trovato e senza sintesi, e la risposta dice `ai: "ok_mancante"`. Poi il file
+ * nell'archivio (privato, nome con suffisso casuale) e il
  * documento con la sua fonte (`saveUploadedDocument`, nella stessa transazione): se non si scrive, il file si cancella.
  * La fonte nasce «da leggere»: la legge «Contesto» (la pagina o la notte), e le sue proposte vanno in «Da confermare».
  *
@@ -145,8 +148,15 @@ export async function POST(req: Request) {
     let extractedText = extracted.text;
     let textRead = extractedText.trim().length > 0 && !extracted.lowText;
     let usedModel = false;
+    let consentMissing = false;
+    // L'ok si guarda subito prima del modello, una volta sola.
+    let consent: boolean | null = null;
+    const aiAllowed = async () => (consent ??= await contextAiConsent(workspaceId));
 
-    if (extracted.via === "pdf" && extracted.lowText) {
+    if (extracted.via === "pdf" && extracted.lowText && !(await aiAllowed())) {
+      // Una scansione senza l'ok: resta il testo trovato, segnato «non letto».
+      consentMissing = true;
+    } else if (extracted.via === "pdf" && extracted.lowText) {
       // Un PDF quasi senza testo (una scansione): il testo lo legge il modello.
       usedModel = true;
       const extraction = await generateText({
@@ -180,7 +190,10 @@ export async function POST(req: Request) {
     }
 
     let summary = "";
-    if (extractedText.length > MEANINGFUL_TEXT_CHARS) {
+    if (extractedText.length > MEANINGFUL_TEXT_CHARS && !(await aiAllowed())) {
+      // Senza l'ok niente sintesi: il documento si salva lo stesso.
+      consentMissing = true;
+    } else if (extractedText.length > MEANINGFUL_TEXT_CHARS) {
       usedModel = true;
       const block = blockName(extractedText);
       const summaryResult = await generateText({
@@ -245,7 +258,7 @@ export async function POST(req: Request) {
       fileName: file.name,
       summary,
       textRead,
-      ai: usedModel ? "ok" : "non_serve",
+      ai: consentMissing ? "ok_mancante" : usedModel ? "ok" : "non_serve",
     };
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
