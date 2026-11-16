@@ -513,6 +513,25 @@ test("opsForStepPatch: solo i campi che cambiano, con il valore di adesso come p
   assert.deepEqual(opsForStepPatch(current, {}, newId), []);
 });
 
+test("opsForStepPatch: ruoli e strumenti l'assistente li aggiunge, non li toglie mai (li tolgono le persone sulla board)", () => {
+  let n = 0;
+  const newId = () => `cececece-0000-4000-8000-${String(++n).padStart(12, "0")}`;
+  const current = stepOf(fixtureBoard(), I.richieste);
+  assert.deepEqual([current.who, current.tools], [["Buyer"], ["E-mail", "Foglio di calcolo"]]);
+  // Una lista che non ripete quello che c'è: si aggiunge in fondo, quello che c'era resta, nello stesso ordine.
+  const sets = opsForStepPatch(current, { who: ["Segreteria"], tools: ["foglio di calcolo", "Gestionale"] }, newId).filter((item): item is Extract<BoardOp, { t: "step.set" }> => item.t === "step.set");
+  assert.deepEqual(sets.map((item) => [item.field, item.prev, item.next]), [
+    ["who", ["Buyer"], ["Buyer", "Segreteria"]],
+    ["tools", ["E-mail", "Foglio di calcolo"], ["E-mail", "Foglio di calcolo", "Gestionale"]],
+  ]);
+  for (const item of sets) assert.deepEqual(boardOpSchema.parse(item), item);
+  // Niente di nuovo (a meno di maiuscole e spazi): nessuna operazione.
+  assert.deepEqual(opsForStepPatch(current, { who: ["  buyer "], tools: ["E-MAIL"] }, newId), []);
+  // Mai oltre il limite: una lista piena non prende altre voci.
+  const crowded = { ...current, who: Array.from({ length: MAPPING_LIMITS.who }, (_, index) => `Ruolo ${index + 1}`) };
+  assert.deepEqual(opsForStepPatch(crowded, { who: ["Un ruolo in più"] }, newId), []);
+});
+
 test("i tagli: una riga, un testo, una lista", () => {
   assert.deepEqual([cutLine("  a \n b  ", 10), cutLine("abcdef", 3), cutLine("ab cd", 3), cutLine("   ", 3), cutLine(null, 3), cutLine(undefined, 3)], ["a b", "abc", "ab", null, null, null]);
   assert.deepEqual([cutProse(" a \r\n b ", 10), cutProse("a\n\n\n\nb", 10), cutProse("", 10)], ["a\n b", "a\n\nb", null]);

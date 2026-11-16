@@ -684,20 +684,26 @@ function cutNotes(items: readonly string[] | undefined): string[] {
   return out;
 }
 
+/** I limiti delle due liste di un passo che sono chip, non note: ruoli e strumenti. */
+const CHIP_LISTS: Partial<Record<StepField, { max: number; item: number }>> = { who: { max: L.who, item: L.whoItem }, tools: { max: L.tools, item: L.toolItem } };
+
 /**
  * Le operazioni che correggono o completano un passo già sulla board: un `step.set` per ogni campo che cambia (con il
- * valore di adesso come `prev`), una nota per ogni voce delle liste che la corsia non ha già. Le liste aggiungono
- * note, non ne tolgono mai: quello lo fanno le persone sulla board. Un campo che resterebbe vuoto non si tocca.
+ * valore di adesso come `prev`), una nota per ogni voce delle liste che la corsia non ha già. Le liste aggiungono,
+ * non tolgono mai: note nelle corsie, ruoli e strumenti in fondo a quelli che ci sono (togliere lo fanno le persone
+ * sulla board). Un campo che resterebbe vuoto non si tocca.
  */
 export function opsForStepPatch(current: BoardStep, patch: Partial<StepDraft>, newId: () => string): BoardOp[] {
   const ops: BoardOp[] = [];
   const fields = draftFields(patch);
   for (const field of ["title", ...FIELD_ORDER] as StepField[]) {
     if (!(field in fields)) continue;
-    const next = fields[field] as StepValue;
+    let next = fields[field] as StepValue;
     // L'assistente completa e corregge: non svuota un campo (per quello c'è la board).
     if (next === null || (Array.isArray(next) && next.length === 0)) continue;
     const prev = stepFieldValue(current, field);
+    const chips = CHIP_LISTS[field];
+    if (chips && Array.isArray(prev) && Array.isArray(next)) next = cutList([...prev, ...next], chips.max, chips.item);
     if (!sameValue(prev, next)) ops.push({ id: newId(), t: "step.set", stepId: current.id, field, prev, next });
   }
   for (const [key, lane] of DRAFT_LANES) {
