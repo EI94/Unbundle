@@ -28,6 +28,29 @@
   [data-board-root] .b-units .b-crow-go { grid-column: 3; grid-row: 1; }
 }
 
+/* ── S2 · La board e il pannello dell'assistente ── */
+/* La board è una riga: la colonna della board (testata e viste) e, a destra, il pannello. */
+[data-board-root] .b-board { flex: 1 1 auto; min-width: 0; display: flex; align-items: flex-start; }
+[data-board-root] .b-board-col { flex: 1 1 auto; min-width: 0; align-self: stretch; display: flex; flex-direction: column; }
+/* Più stretto di 1280 px di finestra il pannello sta sopra la pagina velata, come il drawer stretto (540 px, tutta la larghezza sul telefono). */
+[data-board-root] .b-assist { position: fixed; top: 0; right: 0; bottom: 0; z-index: 50; width: min(540px, 100%); display: flex; flex-direction: column; background: var(--board-paper); border-left: 1px solid var(--board-line-strong); padding-top: env(safe-area-inset-top, 0px); padding-right: env(safe-area-inset-right, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+[data-board-root] .b-assist[hidden] { display: none; }
+[data-board-root] .b-assist-head { display: flex; align-items: center; gap: 12px; padding: 16px 22px 12px; border-bottom: 1px solid var(--board-line); }
+[data-board-root] .b-assist-t { margin: 0; font-family: var(--board-font-serif); font-weight: 400; font-size: 26px; line-height: 1.1; }
+[data-board-root] .b-assist-head .b-x { margin-left: auto; }
+/* Il corpo è del compagno: una colonna che riempie il pannello e scorre da sé se il compagno non scorre per conto suo. */
+[data-board-root] .b-assist-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+/* Da 1280 px di finestra il pannello si aggancia: una colonna di 380 px, ferma sotto la barra del workspace, alta quanto la finestra. */
+@media (min-width: 1280px) {
+  [data-board-root] .b-assist { position: sticky; top: var(--board-shell-top); right: auto; bottom: auto; z-index: 1; flex: 0 0 380px; width: 380px; height: calc(100vh - var(--board-shell-top)); height: calc(100dvh - var(--board-shell-top)); }
+  [data-board-root] .b-assist-scrim { display: none; }
+}
+/* I due bottoni dell'assistente: contornati, con il bordo d'inchiostro quando il pannello è aperto (il pieno resta al bottone della vista). */
+[data-board-root] .b-assist-toggle[aria-expanded="true"] { border-color: var(--board-ink); }
+[data-board-root] .b-iconbtn { appearance: none; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 1px solid var(--board-line-strong); border-radius: 6px; background: var(--board-paper); color: var(--board-ink); cursor: pointer; }
+[data-board-root] .b-iconbtn[aria-expanded="true"] { border-color: var(--board-ink); }
+[data-board-root] .b-tabs-pill { display: flex; }
+
 /* ── «Processi di oggi»: la testa e il resto della vista ── */
 /* Un campo sul posto si allinea al testo intorno: il suo margine interno sta fuori dalla colonna. */
 [data-board-root] .b-h .b-textin, [data-board-root] .b-dr-t .b-textin { margin: 0 -5px; width: calc(100% + 10px); padding: 0 4px; }
