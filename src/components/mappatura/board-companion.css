@@ -33,6 +33,8 @@
 [data-board-root] .b-comp-input { flex: 1 1 auto; min-height: 38px; max-height: 200px; resize: none; overflow-y: auto; padding: 8px 10px; font-size: 13.5px; line-height: 1.45; }
 [data-board-root] .b-comp-input[disabled], [data-board-root] .b-comp-input[aria-disabled="true"] { cursor: not-allowed; }
 [data-board-root] .b-comp-form .b-btn { flex: none; height: 38px; }
+/* Il toast del pannello sopra la pagina: il suo posto è il bordo alto del campo, così il toast sta sopra di lui. */
+[data-board-root] .b-comp-form > .b-toast-dock { position: absolute; left: 0; right: 0; bottom: 100%; }
 
 /* ── «Passi dai documenti»: una riga da scegliere per proposta, e il piede del drawer con «Annulla» e il bottone pieno ── */
 [data-board-root] .b-comp-props { display: flex; flex-direction: column; gap: 8px; }

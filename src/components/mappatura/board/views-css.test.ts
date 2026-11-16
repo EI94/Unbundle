@@ -137,3 +137,24 @@ test("«+ passo» ha il suo posto in fondo a ogni riga della mappa che si modifi
   // La mappa in sola lettura non ha «+ passo»: niente posto in più (la larghezza della riga lo legge con 0 px di default).
   assert.equal(views.filter((item) => item.declarations.has("--b-after")).map((item) => item.selector).join(), "[data-board-root] .b-pm[data-adds]");
 });
+
+test("il posto del toast: in fondo alla colonna della board (fermo in fondo alla finestra), sopra il campo dell'assistente, in fondo a un drawer", () => {
+  const companion = parseCss(read("src/components/mappatura/board-companion.css"));
+  // Il posto: alto zero, sopra la pagina; nella colonna della board fermo in fondo alla finestra, e sale di --b-toast-lift.
+  const dock = rule(board, ".b-toast-dock");
+  assert.deepEqual([dock?.get("position"), dock?.get("height"), dock?.get("z-index")], ["relative", "0", "60"]);
+  const page = rule(board, ".b-board-col > .b-toast-dock");
+  assert.deepEqual([page?.get("position"), page?.get("bottom")], ["sticky", "var(--b-toast-lift, 0px)"]);
+  // Il toast nel suo posto: centrato su di lui (la regola del riferimento: left 50%, translate −50%), largo quanto il testo.
+  const inDock = rule(board, ".b-toast-dock > .b-toast");
+  assert.deepEqual([inDock?.get("position"), inDock?.get("width")], ["absolute", "max-content"]);
+  assert.deepEqual([rule(board, ".b-toast")?.get("left"), rule(board, ".b-toast")?.get("max-width")], ["50%", "calc(100% - 32px)"]);
+  // Sopra la pagina, il pannello dell'assistente: il posto è il bordo alto del campo, il toast sta sopra di lui.
+  const field = companion.find((item) => item.at === null && item.selector === "[data-board-root] .b-comp-form > .b-toast-dock")?.declarations;
+  assert.deepEqual([field?.get("position"), field?.get("bottom"), field?.get("left"), field?.get("right")], ["absolute", "100%", "0", "0"]);
+  assert.equal(companion.find((item) => item.selector === "[data-board-root] .b-comp-form")?.declarations.get("position"), "sticky", "il campo è il riferimento del suo posto");
+  // Gli strumenti della mappa (con «Evidenzia attriti») non si coprono: il toast ci sale sopra.
+  assert.match(read("src/components/mappatura/board/today-view.tsx"), /<div className="b-ctrl b-map-tools" data-b="map-tools" data-toast-avoid="">/);
+  // Il compagno mette il toast del pannello in testa al suo campo.
+  assert.match(read("src/components/mappatura/companion/companion.tsx"), /<form className="b-comp-form" onSubmit=\{onSubmit\}>\s+\{\/\*[^*]*\*\/\}\s+<PanelToast \/>/);
+});

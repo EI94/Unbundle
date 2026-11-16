@@ -240,7 +240,8 @@ export function TodayContent(p: TodayContentProps): JSX.Element {
           <LegendItem dot={<Dot tone="amber" diamond />}>{VIEW_TEXT.legend.decides}</LegendItem>
           <span className="b-legend-note">{VIEW_TEXT.legend.toValidate}</span>
         </Legend>
-        <div className="b-ctrl b-map-tools" data-b="map-tools">
+        {/* Il toast non copre mai gli strumenti della mappa («Evidenzia attriti»): ci sale sopra (data-toast-avoid). */}
+        <div className="b-ctrl b-map-tools" data-b="map-tools" data-toast-avoid="">
           <span className="b-counts">{mapCounts(board)}</span>
           <span className="b-spacer" />
           <FilterChip pressed={p.dim} onToggle={() => actions.toggleDim()}>

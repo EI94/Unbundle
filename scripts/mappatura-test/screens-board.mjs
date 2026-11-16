@@ -64,6 +64,7 @@ const CONFIGS = [
 function referenceOf(name, config) {
   if (name.startsWith("status/")) return config.dir === "1440-light" ? `ledger/${name}.png` : null;
   if (name === "02e-oggi-toast-annulla") return config.width === 1440 ? `desk/detail-2x-${config.theme}/02-toast-con-annulla.png` : null;
+  if (name === "02f-oggi-assistente-toast" || name === "02g-assistente-sopra-toast") return config.width === 1440 ? "ledger/status/6b-conflitto-toast.png" : null;
   const same = { "00-unita": "07-casi", "02-oggi": "02-oggi", "02c-oggi-drawer-passo": "02c-oggi-drawer-passo", "04-domani": "04-domani", "04b-domani-drawer-confronto": "04b-domani-drawer-confronto" }[name];
   return same ? `ledger/${config.dir}/${same}.png` : null;
 }
@@ -183,6 +184,24 @@ function measure() {
     hiddenAdds: [...document.querySelectorAll(".b-drawer .b-cell")].filter((cell) => !cell.querySelector(".b-note-w") && cell.querySelector(":scope > .b-add") && getComputedStyle(cell.querySelector(":scope > .b-add")).opacity !== "1").map((cell) => cell.dataset.lane ?? "?"),
     // Un testo sul posto è alto quanto il suo testo dal primo disegno: nessuno tagliato.
     clipped: [...document.querySelectorAll("textarea.b-textin")].filter((element) => visible(element) && element.scrollHeight > element.clientHeight + 1).map((element) => element.value.slice(0, 40)),
+    // Il toast a schermo: dove sta, rispetto all'area della board, al pannello dell'assistente e al suo campo.
+    toast: (() => {
+      const element = [...document.querySelectorAll(".b-toast.b-on")].find(visible);
+      if (!element) return null;
+      const box = (node) => {
+        if (!node || !visible(node)) return null;
+        const rect = node.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, centre: (rect.left + rect.right) / 2 };
+      };
+      const panel = q(".b-assist:not([hidden])");
+      return {
+        rect: box(element),
+        column: box(q(".b-board-col")),
+        panel: panel ? { ...box(panel), position: css(panel, "position") } : null,
+        field: box(q(".b-assist .b-comp-form")),
+        inPanel: element.closest(".b-assist") !== null,
+      };
+    })(),
     // La seconda riga di un'unità (i conteggi) comincia allo stesso punto in ogni riga.
     unitMeta: [...document.querySelectorAll(".b-units .b-crow-meta")].map((element) => {
       const first = [...element.children].find((child) => getComputedStyle(child).display !== "none") ?? element;
@@ -241,6 +260,23 @@ function check(name, config, m, expected, failures) {
     if (config.width === 390 && (m.assistant.width !== 390 || m.assistant.position !== "fixed")) fail(`assistente ${m.assistant.width} ${m.assistant.position}, atteso sopra la pagina, largo 390 px`);
   }
   if (name === "02d-oggi-assistente" && !m.assistant) fail("il pannello dell'assistente non si vede");
+  // Il toast della pagina: centrato sull'area della board (non sulla finestra), mai sopra il pannello agganciato.
+  const pageToast = ["02e-oggi-toast-annulla", "status/5b-sola-lettura-toast", "status/6b-conflitto-toast"].includes(name) || (name === "02f-oggi-assistente-toast" && config.width === 1440);
+  if (pageToast) {
+    const t = m.toast;
+    if (!t?.rect || !t.column || t.inPanel) fail("il toast della pagina non è nella colonna della board");
+    else {
+      if (Math.abs(t.rect.centre - t.column.centre) > 1) fail(`toast centrato a ${t.rect.centre}, l'area della board a ${t.column.centre}`);
+      if (t.panel && t.panel.position === "sticky" && t.rect.right > t.panel.left) fail(`il toast (fino a ${t.rect.right}) copre il pannello agganciato (da ${t.panel.left})`);
+      if (name === "02f-oggi-assistente-toast" && Math.abs(t.rect.centre - config.width / 2) < 50) fail(`il toast è centrato sulla finestra (${t.rect.centre}), non sull'area della board`);
+    }
+  }
+  // Sopra la pagina il toast sta nel pannello, sopra il campo dell'assistente: non lo copre mai.
+  if (name === "02g-assistente-sopra-toast" && config.width === 390) {
+    const t = m.toast;
+    if (!t?.rect || !t.inPanel || !t.field) fail("il toast del pannello non c'è");
+    else if (t.rect.bottom > t.field.top) fail(`il toast (fino a ${t.rect.bottom}) copre il campo dell'assistente (da ${t.field.top})`);
+  }
 }
 
 // ─── Il confronto ────────────────────────────────────────────────────
@@ -329,7 +365,8 @@ try {
       await evaluate(tab, (theme) => {
         document.documentElement.dataset.theme = theme;
       }, config.theme);
-      await evaluate(tab, "document.fonts.ready.then(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))))");
+      // Il tema cambia dopo il caricamento: le transizioni dei colori (il toast, 0,2 s) finiscono prima della foto.
+      await evaluate(tab, "document.fonts.ready.then(() => new Promise((done) => setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(done)), 300)))");
       const m = await evaluate(tab, measure);
       measures[`${config.dir}/${name}`] = m;
       if (tab.errors.length) failures.push(`${config.dir} ${name}: errori nella pagina ${tab.errors.map((error) => error.text).join(" | ")}`);

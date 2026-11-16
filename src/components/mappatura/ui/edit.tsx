@@ -14,7 +14,7 @@
  * secondo Escape lo chiude) o alla vista: il fuoco non cade mai sulla pagina (F1, F2). Un controllo spento (board in
  * sola lettura) è spento dal primo disegno (F9).
  */
-import { useEffect, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { uncheckedNoteStatus, type BoardNote } from "../../../lib/mappatura/board-model.ts";
 import { cutLine, oneLine, prose } from "../../../lib/mappatura/board-ops.ts";
 import { BOARD_TEXT, formatCount, noteCaption, votesLabel } from "../../../lib/mappatura/text.ts";
@@ -509,38 +509,123 @@ export function Field(p: { label: string; children: ReactNode }): JSX.Element {
 
 // ─── Toast, conferma, vuoto ──────────────────────────────────────────
 
+/** Un rettangolo come lo dà `getBoundingClientRect`, quanto basta per sapere se due si toccano. */
+export interface ToastRect {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/**
+ * Di quanto sale il toast perché non copra niente di quello che porta `data-toast-avoid` (gli strumenti della mappa, con
+ * «Evidenzia attriti»): sopra il più alto di quelli che toccherebbe, con `gap` px d'aria, e di nuovo se salendo ne tocca
+ * un altro. `toast`: dove sta senza salire.
+ */
+export function toastLift(toast: ToastRect, avoid: readonly ToastRect[], gap = 8): number {
+  let lift = 0;
+  for (let round = 0; round < 4; round++) {
+    const top = toast.top - lift;
+    const bottom = toast.bottom - lift;
+    const hit = avoid.filter((other) => other.left < toast.right && other.right > toast.left && other.top < bottom && other.bottom > top);
+    if (hit.length === 0) return lift;
+    lift += Math.max(...hit.map((other) => bottom - other.top + gap));
+  }
+  return lift;
+}
+
+/**
+ * Nella colonna della board: dove sta il toast senza salire (il fondo del suo posto, fermo in fondo alla finestra, meno
+ * il suo `bottom`), quanto deve salire per non coprire quello che porta `data-toast-avoid` nella colonna, e lo scrive
+ * nel posto (`--b-toast-lift`). Di nuovo quando la pagina scorre o la finestra cambia, finché il toast c'è.
+ */
+function useToastLift(dock: RefObject<HTMLDivElement | null>, shown: number | null): void {
+  useLayoutEffect(() => {
+    const element = dock.current;
+    const column = element?.parentElement;
+    if (shown === null || !element || !column?.classList.contains("b-board-col")) return;
+    let lift = 0;
+    let frame = 0;
+    const measure = () => {
+      const card = element.firstElementChild as HTMLElement | null;
+      if (!card) return;
+      const bottom = element.getBoundingClientRect().bottom + lift - (Number.parseFloat(getComputedStyle(card).bottom) || 0);
+      const across = card.getBoundingClientRect();
+      const avoid = [...column.querySelectorAll<HTMLElement>("[data-toast-avoid]")].map((other) => other.getBoundingClientRect()).filter((rect) => rect.width > 0 && rect.height > 0);
+      const next = toastLift({ left: across.left, right: across.right, top: bottom - card.offsetHeight, bottom }, avoid);
+      if (next === lift) return;
+      lift = next;
+      element.style.setProperty("--b-toast-lift", `${lift}px`);
+    };
+    const later = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    measure();
+    window.addEventListener("scroll", later, { passive: true });
+    window.addEventListener("resize", later);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", later);
+      window.removeEventListener("resize", later);
+      element.style.removeProperty("--b-toast-lift");
+    };
+  }, [dock, shown]);
+}
+
 /**
  * Il toast della board (P78): in basso al centro, d'inchiostro, uno alla volta, una regione viva educata; con
  * «Annulla» o un'altra azione quando c'è. Legge il toast dallo store. Ha un posto solo alla volta: la pagina
- * (`PAGE_TOAST_HOST`), o il drawer aperto più in alto, che passa il suo `host`.
+ * (`PAGE_TOAST_HOST`), il pannello dell'assistente sopra la pagina (`PanelToast`), o il drawer aperto più in alto, che
+ * passa il suo `host`. Sta nel suo posto (`b-toast-dock`), centrato: in fondo alla colonna della board, fermo in fondo
+ * alla finestra (centrato sull'area della board, mai sopra il pannello agganciato dell'assistente), dove sale sopra gli
+ * strumenti della mappa invece di coprirli (`toastLift`); sopra il campo dell'assistente; in fondo a un drawer.
  */
 export function BoardToastView(p: { host?: string } = {}): JSX.Element {
   const state = useOptionalBoardState();
   const current = useToastHost();
   const host = p.host ?? PAGE_TOAST_HOST;
   const toast = state?.toast && current === host ? state.toast : null;
+  const dock = useRef<HTMLDivElement>(null);
+  useToastLift(dock, toast?.key ?? null);
   return (
-    <div className={cx("b-toast", toast && "b-on")} role="status" aria-live="polite" data-b="toast">
-      {toast ? (
-        <>
-          <span key={toast.key}>{toast.text}</span>
-          {toast.action ? (
-            <button
-              type="button"
-              onClick={(event) => {
-                const button = event.currentTarget;
-                toast.action?.run();
-                // Il toast se ne va con il suo bottone: il fuoco resta nel drawer o nella vista (F1).
-                keepFocusAfter(button);
-              }}
-            >
-              {toast.action.label}
-            </button>
-          ) : null}
-        </>
-      ) : null}
+    <div className="b-toast-dock" ref={dock} data-b="toast-dock">
+      <div className={cx("b-toast", toast && "b-on")} role="status" aria-live="polite" data-b="toast">
+        {toast ? (
+          <>
+            <span key={toast.key}>{toast.text}</span>
+            {toast.action ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  const button = event.currentTarget;
+                  toast.action?.run();
+                  // Il toast se ne va con il suo bottone: il fuoco resta nel drawer o nella vista (F1).
+                  keepFocusAfter(button);
+                }}
+              >
+                {toast.action.label}
+              </button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+/** Il posto del toast nel pannello dell'assistente sopra la pagina: lo dà la board (`PanelToastHost`), lo usa il campo. */
+const PanelToastSlot = createContext<string | null>(null);
+export const PanelToastHost = PanelToastSlot.Provider;
+
+/**
+ * Il toast del pannello dell'assistente, quando il pannello sta sopra la pagina: il campo dell'assistente lo mette sopra
+ * di sé, così il toast non copre mai quello che si sta scrivendo. Agganciato, il pannello non ha toast (c'è quello della
+ * colonna della board, accanto).
+ */
+export function PanelToast(): JSX.Element | null {
+  const host = useContext(PanelToastSlot);
+  return host ? <BoardToastView host={host} /> : null;
 }
 
 /** La conferma in linea, accanto al bottone premuto (BOARD-SPEC §1.4.15): la domanda e due bottoni, nessun dialogo. */

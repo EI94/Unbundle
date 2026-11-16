@@ -15,6 +15,7 @@ import type { BoardNote } from "../../../lib/mappatura/board-model.ts";
 await enableTsxImports();
 const edit = await import("./edit.tsx");
 const { BoardToastView, ChipInput, EmptyBlock, Field, InlineConfirm, LevelButtons, NoteItem, NumberInput, Segmented, TextInPlace, Votes } = edit;
+const { toastLift } = edit;
 const { addedChip, committedText, fieldHolder, keepFocusAfter, leaveFieldKey, nextVotes, noteToggleLabel, parsedNumber } = edit;
 const { BoardProvider, useBoardClient } = await import("../store/use-board.tsx");
 
@@ -179,7 +180,7 @@ test("il campo con l'etichetta in mono; la conferma in linea; il blocco di una v
 
 test("il toast della board: una regione viva sempre presente; il testo e «Annulla» quando lo store ne ha uno, nel suo posto (P78)", () => {
   // Fuori da BoardProvider: la regione c'è, vuota.
-  assert.equal(html(h(BoardToastView)), '<div class="b-toast" role="status" aria-live="polite" data-b="toast"></div>');
+  assert.equal(html(h(BoardToastView)), '<div class="b-toast-dock" data-b="toast-dock"><div class="b-toast" role="status" aria-live="polite" data-b="toast"></div></div>');
   const board = fixtureBoard();
   function Probe(props: { host?: string }) {
     useBoardClient().notify("Mappa copiata.", { label: "Apri", run() {} });
@@ -190,10 +191,10 @@ test("il toast della board: una regione viva sempre presente; il testo e «Annul
   globalThis.setTimeout = ((run: () => void, ms?: number) => realSetTimeout(run, ms).unref()) as typeof setTimeout;
   try {
     const shown = html(h(BoardProvider, { workspaceId: board.unit.id, departmentId: board.unit.id, userId: board.unit.id, initial: board }, h(Probe, {})));
-    assert.equal(shown, '<div class="b-toast b-on" role="status" aria-live="polite" data-b="toast"><span>Mappa copiata.</span><button type="button">Apri</button></div>');
+    assert.equal(shown, '<div class="b-toast-dock" data-b="toast-dock"><div class="b-toast b-on" role="status" aria-live="polite" data-b="toast"><span>Mappa copiata.</span><button type="button">Apri</button></div></div>');
     // Un posto che non ha il toast (un drawer chiuso) non lo mostra.
     const elsewhere = html(h(BoardProvider, { workspaceId: board.unit.id, departmentId: board.unit.id, userId: board.unit.id, initial: board }, h(Probe, { host: "drawer" })));
-    assert.equal(elsewhere, '<div class="b-toast" role="status" aria-live="polite" data-b="toast"></div>');
+    assert.equal(elsewhere, '<div class="b-toast-dock" data-b="toast-dock"><div class="b-toast" role="status" aria-live="polite" data-b="toast"></div></div>');
   } finally {
     globalThis.setTimeout = realSetTimeout;
   }
@@ -349,4 +350,38 @@ test("un controllo che sparisce sotto il fuoco (il bottone del toast): il fuoco 
   assert.deepEqual(focused, ["drawer", "vista aperta"]);
   const source = readFileSync(new URL("./edit.tsx", import.meta.url), "utf8");
   assert.match(source, /toast\.action\?\.run\(\);\s+\/\/ [^\n]*\n\s+keepFocusAfter\(button\);/, "il bottone del toast lascia il fuoco al suo posto");
+});
+
+test("il toast non copre gli strumenti della mappa: sale sopra il più alto che toccherebbe, e di nuovo se salendo ne tocca un altro", () => {
+  const toast = { left: 400, right: 700, top: 840, bottom: 880 };
+  // Niente sotto il toast, o qualcosa accanto: resta dov'è.
+  assert.equal(toastLift(toast, []), 0);
+  assert.equal(toastLift(toast, [{ left: 720, right: 900, top: 830, bottom: 870 }]), 0, "accanto, non sotto");
+  assert.equal(toastLift(toast, [{ left: 400, right: 700, top: 700, bottom: 760 }]), 0, "sopra, non sotto");
+  // Gli strumenti della mappa (con «Evidenzia attriti») sotto il toast: il toast sale sopra di loro, con 8 px d'aria.
+  assert.equal(toastLift(toast, [{ left: 300, right: 1000, top: 850, bottom: 890 }]), 880 - 850 + 8);
+  // Salendo ne tocca un altro (la legenda sopra): sale ancora.
+  const twice = toastLift(toast, [{ left: 300, right: 1000, top: 850, bottom: 890 }, { left: 300, right: 1000, top: 800, bottom: 830 }]);
+  assert.equal(twice, 38 + (880 - 38 - 800 + 8));
+  assert.ok(toast.bottom - twice <= 800 - 8);
+});
+
+test("il toast del pannello sopra la pagina: c'è solo quando la board gli dà il posto (PanelToastHost), sopra il campo", () => {
+  const board = fixtureBoard();
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = ((run: () => void, ms?: number) => realSetTimeout(run, ms).unref()) as typeof setTimeout;
+  try {
+    function Probe(props: { host: string | null }) {
+      const client = useBoardClient();
+      client.notify("Mappa copiata.");
+      return h(edit.PanelToastHost, { value: props.host }, h(edit.PanelToast));
+    }
+    const render = (host: string | null) => html(h(BoardProvider, { workspaceId: board.unit.id, departmentId: board.unit.id, userId: board.unit.id, initial: board }, h(Probe, { host })));
+    // Agganciato (nessun posto): niente, il toast sta nella colonna della board.
+    assert.equal(render(null), "");
+    // Sopra la pagina: il posto e il toast vuoto (il posto attuale è la pagina finché il pannello non lo prende).
+    assert.equal(render("pannello"), '<div class="b-toast-dock" data-b="toast-dock"><div class="b-toast" role="status" aria-live="polite" data-b="toast"></div></div>');
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+  }
 });

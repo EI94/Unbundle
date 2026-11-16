@@ -22,7 +22,8 @@ test("il drawer aperto: velo, role=dialog con il titolo come nome, la riga del c
   assert.match(out, /^<div class="b-scrim b-on" data-b="scrim"><\/div><div class="b-drawer b-wide b-on" role="dialog" aria-modal="true" aria-labelledby="([^"]+)" data-b="drawer">/);
   const labelledBy = out.match(/aria-labelledby="([^"]+)"/)![1];
   assert.match(out, new RegExp(`<div class="b-dr-head"><div><div class="b-dr-sub">Dall&#x27;ordine alla consegna · A2</div><h2 class="b-dr-t" id="${labelledBy.replace(/[^\w-]/g, "\\$&")}">Raccolta delle richieste</h2></div><button type="button" class="b-btn b-x" data-b="drawer-close">Chiudi</button></div>`));
-  assert.match(out, /<div class="b-dr-body">corpo<\/div><div class="b-toast" role="status" aria-live="polite" data-b="toast"><\/div><\/div>$/);
+  // Il toast nel suo posto, in fondo al drawer.
+  assert.match(out, /<div class="b-dr-body">corpo<\/div><div class="b-toast-dock" data-b="toast-dock"><div class="b-toast" role="status" aria-live="polite" data-b="toast"><\/div><\/div><\/div>$/);
   // La forma stretta (540 px): i passi dai documenti, l'assistente sotto 1280 px, la mappa come testo.
   assert.match(html(h(DrawerStatic, { context: "Assistente", title: "Passi dai documenti" }, null)), /class="b-drawer b-on" role="dialog"/);
 });

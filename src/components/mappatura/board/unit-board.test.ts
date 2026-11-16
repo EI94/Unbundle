@@ -82,8 +82,10 @@ test("il pannello dell'assistente: lo slot del compagno sotto «Assistente» e �
   assert.match(open, /<div class="b-board" data-assistant="open" data-b="board">/);
   // Il velo dell'assistente c'è, spento: si accende solo sopra la pagina, sotto i 1280 px.
   assert.match(open, /<div class="b-scrim b-assist-scrim" aria-hidden="true" data-b="assistant-scrim"><\/div>/);
-  // Il toast della board in fondo alla pagina.
-  assert.match(open, /<div class="b-toast" role="status" aria-live="polite" data-b="toast"><\/div>$/);
+  // Il toast della board in fondo alla colonna della board (centrato sull'area della board, accanto al pannello agganciato).
+  assert.match(open, /<\/div><\/div><\/div><div class="b-toast-dock" data-b="toast-dock"><div class="b-toast" role="status" aria-live="polite" data-b="toast"><\/div><\/div><\/div><aside /);
+  assert.equal(open.match(/data-b="toast-dock"/g)?.length, 1, "un posto solo per la pagina; il pannello agganciato non ne ha");
+  assert.match(open, /<div class="b-scrim b-assist-scrim" aria-hidden="true" data-b="assistant-scrim"><\/div>$/);
 });
 
 test("sul telefono: la riga delle schede con la pillola a punto (per gli occhi) e il bottone dell'assistente (P79)", () => {
@@ -112,7 +114,9 @@ test("nel browser: la scheda scelta porta in cima e si ricorda; il pannello sopr
   assert.match(source, /document\.addEventListener\("keydown", onKeyDown\);/);
   assert.match(source, /if \(!closesOnEscape\(event, element\)\) return;/);
   assert.match(source, /useClaimToastHost\(panelToastHost, overlay\);/);
-  assert.match(source, /\{overlay \? <BoardToastView host=\{panelToastHost\} \/> : null\}/);
+  // Sopra la pagina il toast sta nel pannello, sopra il campo dell'assistente: il compagno lo mette lì (PanelToast).
+  assert.match(source, /<PanelToastHost value=\{overlay \? panelToastHost : null\}>\{p\.assistant\}<\/PanelToastHost>/);
+  assert.doesNotMatch(source, /<BoardToastView host=/);
   assert.equal(source.match(/data-focus-guard=""/g)?.length, 2);
   assert.match(source, /onFocus=\{\(\) => panel\.current && wrapFocus\(panel\.current, "start"\)\}/);
   assert.match(source, /onFocus=\{\(\) => panel\.current && wrapFocus\(panel\.current, "end"\)\}/);

@@ -33,6 +33,8 @@ export const PAGES = [
   { name: "02c-oggi-drawer-passo", viewport: true },
   { name: "02d-oggi-assistente", viewport: true },
   { name: "02e-oggi-toast-annulla", viewport: true },
+  { name: "02f-oggi-assistente-toast", viewport: true },
+  { name: "02g-assistente-sopra-toast", viewport: true },
   { name: "04-domani", viewport: false },
   { name: "04b-domani-drawer-confronto", viewport: true },
   { name: "status/0-caricamento", viewport: true, header: true },
@@ -125,6 +127,18 @@ export async function buildVetrina(out) {
     );
   /** Il toast della board a schermo: lo stesso markup di BoardToastView. */
   const toast = (text, action) => `<div class="b-toast b-on" role="status" aria-live="polite" data-b="toast"><span>${escape(text)}</span>${action ? `<button type="button">${escape(action)}</button>` : ""}</div>`;
+  /** Il toast vuoto nel suo posto, come lo disegna BoardToastView senza toast. */
+  const EMPTY_TOAST = '<div class="b-toast" role="status" aria-live="polite" data-b="toast"></div>';
+  /** Una board con il toast a schermo nel posto della pagina: in fondo alla colonna della board. */
+  const withPageToast = (markup, text, action) => {
+    if (!markup.includes(EMPTY_TOAST)) throw new Error("vetrina: il posto del toast della pagina non c'è");
+    return markup.replace(EMPTY_TOAST, toast(text, action));
+  };
+  /** Una board con il toast nel pannello dell'assistente sopra la pagina: sopra il campo, come lo mette PanelToast. */
+  const withPanelToast = (markup, text, action) => {
+    if (!markup.includes('<form class="b-comp-form">')) throw new Error("vetrina: il campo dell'assistente non c'è");
+    return markup.replace('<form class="b-comp-form">', `<form class="b-comp-form"><div class="b-toast-dock" data-b="toast-dock">${toast(text, action)}</div>`);
+  };
   /** La sola testata, in uno stato della pillola (le foto `status/` del riferimento sono la testata e basta). */
   const header = (state, savedAt, unitName = "Ufficio acquisti") =>
     html(
@@ -162,7 +176,11 @@ export async function buildVetrina(out) {
     "02-oggi-sola-lettura": unitBoard(showcaseBoard({ readOnly: true })),
     "02c-oggi-drawer-passo": unitBoard(full) + drawer,
     "02d-oggi-assistente": unitBoard(full, { assistantOpen: true }),
-    "02e-oggi-toast-annulla": unitBoard(full) + toast(BOARD_TEXT.toast.noteRemoved, BOARD_TEXT.buttons.undo),
+    "02e-oggi-toast-annulla": withPageToast(unitBoard(full), BOARD_TEXT.toast.noteRemoved, BOARD_TEXT.buttons.undo),
+    // Il toast con il pannello dell'assistente agganciato (1440): centrato sull'area della board, accanto al pannello.
+    "02f-oggi-assistente-toast": withPageToast(unitBoard(full, { assistantOpen: true }), BOARD_TEXT.toast.conflict),
+    // Il pannello sopra la pagina (390): il toast sta nel pannello, sopra il campo dell'assistente.
+    "02g-assistente-sopra-toast": withPanelToast(unitBoard(full, { assistantOpen: true }), BOARD_TEXT.toast.conflict),
     "04-domani": unitBoard(full, { tab: "classificazione" }),
     "04b-domani-drawer-confronto": unitBoard(full, { tab: "classificazione" }) + compare,
     // La cornice vera della board che si apre (loading.tsx): la stessa testata, con i nomi letti dal layout, e la pillola
@@ -175,8 +193,8 @@ export async function buildVetrina(out) {
     "status/2-modifiche-da-salvare": header("dirty", savedAt),
     "status/3-salvataggio": header("saving", savedAt),
     "status/5-sola-lettura": header("readonly", savedAt),
-    "status/5b-sola-lettura-toast": unitBoard(full) + toast(BOARD_TEXT.toast.readonly),
-    "status/6b-conflitto-toast": unitBoard(full) + toast(BOARD_TEXT.toast.conflict),
+    "status/5b-sola-lettura-toast": withPageToast(unitBoard(full), BOARD_TEXT.toast.readonly),
+    "status/6b-conflitto-toast": withPageToast(unitBoard(full), BOARD_TEXT.toast.conflict),
     "status/8-vista-locale-con-modifiche": header("local", savedAt),
   };
 

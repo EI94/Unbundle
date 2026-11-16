@@ -341,6 +341,16 @@
 /* Il titolo del drawer è un titolo vero (h2): senza i margini del browser, come il div del riferimento. */
 [data-board-root] .b-dr-head .b-dr-t { margin: 0; }
 [data-board-root] .b-drawer:focus { outline: none; }
+/* Il posto del toast (sul riferimento il toast sta in basso al centro della finestra, che lì è tutta board): in fondo alla
+   colonna della board, fermo in fondo alla finestra mentre la pagina scorre, così il toast è centrato sull'area della
+   board e non va mai sopra il pannello agganciato dell'assistente; in fondo a un drawer; sopra il campo dell'assistente
+   (board-companion.css). Il toast ci sta dentro, centrato, alla stessa distanza dal fondo; sale di `--b-toast-lift`
+   (calcolato) per non coprire gli strumenti della mappa. */
+[data-board-root] .b-toast-dock { position: relative; height: 0; z-index: 60; }
+[data-board-root] .b-board-col > .b-toast-dock { position: sticky; bottom: var(--b-toast-lift, 0px); }
+/* Largo quanto il suo testo, fino al margine del riferimento (calc(100% - 32px)): posato a metà del suo posto, senza
+   questo andrebbe a capo a metà della larghezza (sul telefono, 195 px). */
+[data-board-root] .b-toast-dock > .b-toast { position: absolute; width: max-content; }
 /* Le corsie di note: una colonna di note con «+ nota» in fondo. */
 [data-board-root] .b-cell { display: flex; flex-direction: column; gap: 7px; min-height: 34px; border-radius: 3px; transition: background .15s; }
 /* Il testo di una nota è un campo dentro il foglio della nota: il foglio ha il fuoco del riferimento (l'anello di 2 px). */

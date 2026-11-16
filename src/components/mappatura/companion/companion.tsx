@@ -19,7 +19,7 @@ import { HIDDEN_TOOLS, MAPPING_TOOL_LABELS, TOOL_LABELS, assistantView, messageT
 import type { CompanionProps } from "../contracts.ts";
 import { useBoard, useBoardClient } from "../store/use-board.tsx";
 import { BoardButton, StatusChip } from "../ui/atoms.tsx";
-import { fitHeight } from "../ui/edit.tsx";
+import { fitHeight, PanelToast } from "../ui/edit.tsx";
 import { Documents } from "./documents.tsx";
 import { Proposals } from "./proposals.tsx";
 import { openClassificationTab } from "./completion.ts";
@@ -263,6 +263,8 @@ export function Companion(p: CompanionProps): JSX.Element {
         </div>
       ) : null}
       <form className="b-comp-form" onSubmit={onSubmit}>
+        {/* Il toast della board, quando il pannello sta sopra la pagina: sopra il campo, mai sopra quello che si scrive. */}
+        <PanelToast />
         <textarea
           ref={field}
           className="b-input b-comp-input"

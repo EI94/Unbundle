@@ -24,7 +24,7 @@ import { useEffect, useEffectEvent, useId, useRef, useState, useSyncExternalStor
 import { BOARD_TABS, BOARD_TEXT, type BoardTab } from "../../../lib/mappatura/text.ts";
 import type { UnitBoardProps } from "../contracts.ts";
 import { useBoard, useBoardClient, useClaimToastHost } from "../store/use-board.tsx";
-import { BoardToastView } from "../ui/edit.tsx";
+import { BoardToastView, PanelToastHost } from "../ui/edit.tsx";
 import { BoardBrand, BoardHeader, BoardMain, BoardTabs, BoardTitle, StatusPill, boardPanelId, boardTabId } from "../ui/frame.tsx";
 import { closesOnEscape, inertOthers, wrapFocus, type InertNode } from "./modal-panel.ts";
 import { boardPrefs, subscribeWide, wideNow, wideOnServer } from "./prefs.ts";
@@ -203,6 +203,9 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
               </section>
             ))}
           </BoardMain>
+          {/* Il toast della pagina sta in fondo alla colonna della board: centrato sull'area della board, mai sopra il pannello
+              agganciato dell'assistente. */}
+          <BoardToastView />
         </div>
         <aside ref={panel} id={panelId} className="b-assist" hidden={!open} role={overlay ? "dialog" : "complementary"} aria-modal={overlay || undefined} aria-labelledby={titleId} data-b="assistant">
           {overlay ? <span tabIndex={0} data-focus-guard="" aria-hidden="true" onFocus={() => panel.current && wrapFocus(panel.current, "start")} /> : null}
@@ -214,13 +217,14 @@ export function UnitBoard(p: UnitBoardProps & { initialTab?: BoardTab }): JSX.El
               {BOARD_TEXT.buttons.close}
             </button>
           </div>
-          <div className="b-assist-body">{p.assistant}</div>
-          {overlay ? <BoardToastView host={panelToastHost} /> : null}
+          {/* Sopra la pagina il toast sta nel pannello, sopra il campo dell'assistente (PanelToast): non lo copre mai. */}
+          <div className="b-assist-body">
+            <PanelToastHost value={overlay ? panelToastHost : null}>{p.assistant}</PanelToastHost>
+          </div>
           {overlay ? <span tabIndex={0} data-focus-guard="" aria-hidden="true" onFocus={() => panel.current && wrapFocus(panel.current, "end")} /> : null}
         </aside>
       </div>
       <div className={cx("b-scrim", "b-assist-scrim", overlay && "b-on")} aria-hidden="true" onClick={close} data-b="assistant-scrim" />
-      <BoardToastView />
     </>
   );
 }
