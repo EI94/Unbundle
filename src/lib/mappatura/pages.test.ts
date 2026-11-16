@@ -22,6 +22,7 @@ const USER = "33333333-cccc-4ccc-8ccc-333333333333";
 type Call = [name: string, ...args: unknown[]];
 type Pagina = {
   calls: Call[];
+  unitName?: string | null | Error;
   board: MappingBoard | null;
   conversation: { id: string } | null;
   hasDocuments: boolean;
@@ -40,7 +41,8 @@ await installAppModules({
   "@/lib/mappatura/board-store": `export async function readBoard(executor, scope, viewer) { globalThis.__pagina.calls.push(["readBoard", executor, scope, viewer]); return globalThis.__pagina.board; }`,
   "@/lib/mappatura/units": `
     export async function listUnitBoards(executor, workspaceId) { globalThis.__pagina.calls.push(["listUnitBoards", executor, workspaceId]); return globalThis.__pagina.units; }
-    export async function unitHasDocuments(executor, scope) { globalThis.__pagina.calls.push(["unitHasDocuments", executor, scope]); return globalThis.__pagina.hasDocuments; }`,
+    export async function unitHasDocuments(executor, scope) { globalThis.__pagina.calls.push(["unitHasDocuments", executor, scope]); return globalThis.__pagina.hasDocuments; }
+    export async function unitName(executor, scope) { globalThis.__pagina.calls.push(["unitName", executor, scope]); if (globalThis.__pagina.unitName instanceof Error) throw globalThis.__pagina.unitName; return globalThis.__pagina.unitName; }`,
   "@/lib/mappatura/use-case-links": `export async function boardUseCaseLinks(workspaceId, viewer, stepIds) { globalThis.__pagina.calls.push(["boardUseCaseLinks", workspaceId, viewer, [...stepIds]]); return globalThis.__pagina.links; }`,
   "@/lib/db/queries/conversations": `
     export async function getActiveConversation(...args) { globalThis.__pagina.calls.push(["getActiveConversation", ...args]); return globalThis.__pagina.conversation; }
@@ -53,6 +55,8 @@ await installAppModules({
 await enableTsxImports();
 const unitPage = (await import("../../app/(dashboard)/dashboard/[workspaceId]/mapping/[deptId]/page.tsx")).default;
 const listPage = (await import("../../app/(dashboard)/dashboard/[workspaceId]/mapping/page.tsx")).default;
+const unitLayout = (await import("../../app/(dashboard)/dashboard/[workspaceId]/mapping/[deptId]/layout.tsx")).default;
+const { BoardLoadingNames } = await import("../../components/mappatura/board/loading-header.tsx");
 const { BoardProvider } = await import("../../components/mappatura/store/use-board.tsx");
 const { UnitBoard } = await import("../../components/mappatura/board/unit-board.tsx");
 const { UnitsView } = await import("../../components/mappatura/board/units-view.tsx");
@@ -169,4 +173,24 @@ test("l'elenco delle unità: una lettura sola per tutte, con il nome del workspa
   ]);
   assert.equal(page.type, UnitsView);
   assert.deepEqual(page.props, { workspaceId: WS, workspaceName: "Officina di prova", unitTerm: { singular: "reparto", plural: "reparti" }, units });
+});
+
+test("prima della board: il layout dell'unità legge i due nomi per la testata che carica, con il controllo della pagina", async () => {
+  const deptId = FIXTURE_IDS.unit;
+  const layout = (unitName: string | null | Error) => {
+    pagina.calls = [];
+    pagina.unitName = unitName;
+    return unitLayout({ params: Promise.resolve({ workspaceId: WS, deptId }), children: "la pagina" }) as Promise<Element>;
+  };
+  const named = await layout("Amministrazione, finanza e controllo di gestione");
+  assert.equal(named.type, BoardLoadingNames);
+  assert.deepEqual([named.props.unitName, named.props.workspaceName, named.props.children], ["Amministrazione, finanza e controllo di gestione", "Officina di prova", "la pagina"]);
+  assert.deepEqual(pagina.calls, [
+    ["requireWorkspacePage", WS],
+    ["unitName", EXECUTOR, { workspaceId: WS, departmentId: deptId }],
+  ]);
+  // Un'unità che non è del workspace non ha nome (la pagina risponde 404); una lettura non riuscita non rompe niente.
+  assert.equal((await layout(null)).props.unitName, null);
+  const failed = await layout(Object.assign(new Error("database giù, con un testo che non deve finire nei log"), { code: "57P01" }));
+  assert.deepEqual([failed.type, failed.props.unitName, failed.props.children], [BoardLoadingNames, null, "la pagina"]);
 });

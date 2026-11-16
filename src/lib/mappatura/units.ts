@@ -9,8 +9,8 @@ import "server-only";
  */
 import type { UcExecutor } from "@/lib/db/uc-executor";
 import type { UnitBoardSummary } from "./board-model";
-import { unitSummaryFromRow } from "./board-rows";
-import { unitBoards, unitDocuments, type BoardScope } from "./board-sql";
+import { text, unitSummaryFromRow } from "./board-rows";
+import { unitBoards, unitDocuments, unitNameRead, type BoardScope } from "./board-sql";
 import { mappingStoreReady } from "./board-store";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,4 +30,15 @@ export async function unitHasDocuments(executor: UcExecutor, scope: BoardScope):
   if (!UUID.test(scope.workspaceId) || !UUID.test(scope.departmentId)) return false;
   const [rows] = await executor.batch([unitDocuments(scope)]);
   return rows[0]?.has === true;
+}
+
+/**
+ * Il nome di un'unità di quel workspace, letto come lo legge la board (`readBoard`); null se l'unità non è del workspace.
+ * Per la cornice della board che si apre (`mapping/[deptId]/layout.tsx`): il titolo vero, che va a capo come quello
+ * della board che arriva, così la pagina non salta (§1.6).
+ */
+export async function unitName(executor: UcExecutor, scope: BoardScope): Promise<string | null> {
+  if (!UUID.test(scope.workspaceId) || !UUID.test(scope.departmentId)) return null;
+  const [rows] = await executor.batch([unitNameRead(scope)]);
+  return rows.length > 0 ? (text(rows[0].name) ?? "") : null;
 }

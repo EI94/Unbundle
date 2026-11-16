@@ -32,6 +32,7 @@ import {
   streamFold,
   unitBoards,
   unitDocuments,
+  unitNameRead,
   unitsToAdopt,
   type BoardActor,
   type BoardScope,
@@ -136,6 +137,7 @@ const UNIT_STATEMENTS: Record<string, UcStatement> = {
   "saveClassifications (unità)": saveClassifications(scope, [{ id: id(), stream: "automate", confidence: 0.8, reason: NASTY, potential: NASTY }], true),
   saveOnetMatches: saveOnetMatches(scope, [{ id: id(), code: "13-1023.00", title: NASTY, exposure: 0.3 }], 200),
   unitDocuments: unitDocuments(scope),
+  unitNameRead: unitNameRead(scope),
   linkDependency: linkDependencyStatement(scope, id(), id(), "input"),
 };
 /** Le istruzioni di tutto un workspace, per definizione: l'elenco delle unità e «Classifica attività». */

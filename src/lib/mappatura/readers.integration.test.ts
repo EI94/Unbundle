@@ -198,6 +198,16 @@ test("i documenti di un'unità: la pagina sa se ce ne sono, solo per l'unità e 
   }
 });
 
+test("il nome di un'unità per la testata che carica: lo stesso della board, solo per l'unità e il workspace giusti", opts, async () => {
+  const board = await store.readBoard(db.exec, scope(), { userId: f.lead, role: "transformation_lead" });
+  assert.ok(board);
+  assert.equal(await units.unitName(db.exec, scope()), board.unit.name);
+  assert.equal(await units.unitName(db.exec, scope()), "Ufficio acquisti");
+  assert.equal(await units.unitName(db.exec, { workspaceId: f.otherWs, departmentId: f.unit }), null, "la stessa unità con un altro workspace");
+  assert.equal(await units.unitName(db.exec, { workspaceId: f.ws, departmentId: f.foreignUnit }), null);
+  assert.equal(await units.unitName(db.exec, { workspaceId: "non-un-id", departmentId: f.unit }), null);
+});
+
 test("senza la 0039 l'elenco delle unità conta dalle sole attività", opts, async () => {
   const withStore = await units.listUnitBoards(db.exec, f.ws);
   await q(`DROP INDEX mapping_votes_user_idx`);

@@ -36,7 +36,9 @@ export const PAGES = [
   { name: "04-domani", viewport: false },
   { name: "04b-domani-drawer-confronto", viewport: true },
   { name: "status/0-caricamento", viewport: true, header: true },
+  { name: "status/0b-caricamento-nome-lungo", viewport: true, header: true },
   { name: "status/1-salvato", viewport: true, header: true },
+  { name: "status/1c-salvato-nome-lungo", viewport: true, header: true },
   { name: "status/1b-pronto", viewport: true, header: true },
   { name: "status/2-modifiche-da-salvare", viewport: true, header: true },
   { name: "status/3-salvataggio", viewport: true, header: true },
@@ -45,6 +47,9 @@ export const PAGES = [
   { name: "status/6b-conflitto-toast", viewport: true },
   { name: "status/8-vista-locale-con-modifiche", viewport: true, header: true },
 ];
+
+/** Il nome di un'unità che sul telefono va a capo (inventato, come tutta la vetrina). */
+export const LONG_UNIT_NAME = "Amministrazione, finanza e controllo di gestione";
 
 const escape = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
@@ -121,11 +126,11 @@ export async function buildVetrina(out) {
   /** Il toast della board a schermo: lo stesso markup di BoardToastView. */
   const toast = (text, action) => `<div class="b-toast b-on" role="status" aria-live="polite" data-b="toast"><span>${escape(text)}</span>${action ? `<button type="button">${escape(action)}</button>` : ""}</div>`;
   /** La sola testata, in uno stato della pillola (le foto `status/` del riferimento sono la testata e basta). */
-  const header = (state, savedAt) =>
+  const header = (state, savedAt, unitName = "Ufficio acquisti") =>
     html(
       h(BoardHeader, {
         brand: h(BoardBrand, { workspaceName: SHOWCASE.workspaceName, areaHref: `/dashboard/${workspaceId}/mapping` }),
-        title: h(BoardTitle, { plain: "Ufficio acquisti", accent: BOARD_TEXT.boardTitleAccent }),
+        title: h(BoardTitle, { plain: unitName, accent: BOARD_TEXT.boardTitleAccent }),
         aside: h(
           Fragment,
           null,
@@ -160,9 +165,12 @@ export async function buildVetrina(out) {
     "02e-oggi-toast-annulla": unitBoard(full) + toast(BOARD_TEXT.toast.noteRemoved, BOARD_TEXT.buttons.undo),
     "04-domani": unitBoard(full, { tab: "classificazione" }),
     "04b-domani-drawer-confronto": unitBoard(full, { tab: "classificazione" }) + compare,
-    // La cornice vera della board che si apre (loading.tsx): la stessa forma della testata, la pillola «Caricamento».
-    "status/0-caricamento": html(h(BoardLoadingHeader, { workspaceId, departmentId: FIXTURE_IDS.unit })),
+    // La cornice vera della board che si apre (loading.tsx): la stessa testata, con i nomi letti dal layout, e la pillola
+    // «Caricamento». Con un nome lungo, che sul telefono va a capo: la testata deve finire dove finirà quella della board.
+    "status/0-caricamento": html(h(BoardLoadingHeader, { workspaceId, departmentId: FIXTURE_IDS.unit, unitName: "Ufficio acquisti", workspaceName: SHOWCASE.workspaceName })),
+    "status/0b-caricamento-nome-lungo": html(h(BoardLoadingHeader, { workspaceId, departmentId: FIXTURE_IDS.unit, unitName: LONG_UNIT_NAME, workspaceName: SHOWCASE.workspaceName })),
     "status/1-salvato": header("saved", savedAt),
+    "status/1c-salvato-nome-lungo": header("saved", savedAt, LONG_UNIT_NAME),
     "status/1b-pronto": header("saved", null),
     "status/2-modifiche-da-salvare": header("dirty", savedAt),
     "status/3-salvataggio": header("saving", savedAt),

@@ -347,11 +347,17 @@ try {
   server.close();
 }
 
-// La board che si apre ha la testata alta come quella della board arrivata: la pagina non salta.
+// La board che si apre ha la testata alta come quella della board arrivata: la pagina non salta. Anche con un nome
+// d'unità lungo, che sul telefono va a capo (e lì la testata è più alta: il nome va a capo davvero).
 for (const config of CONFIGS) {
-  const loading = measures[`${config.dir}/status/0-caricamento`]?.headerBottom;
-  const loaded = measures[`${config.dir}/status/1-salvato`]?.headerBottom;
-  if (loading === undefined || loaded === undefined || Math.abs(loading - loaded) > 1) failures.push(`${config.dir}: la testata che carica finisce a ${loading}, quella della board a ${loaded}`);
+  for (const [loadingName, loadedName] of [["status/0-caricamento", "status/1-salvato"], ["status/0b-caricamento-nome-lungo", "status/1c-salvato-nome-lungo"]]) {
+    const loading = measures[`${config.dir}/${loadingName}`]?.headerBottom;
+    const loaded = measures[`${config.dir}/${loadedName}`]?.headerBottom;
+    if (loading === undefined || loaded === undefined || Math.abs(loading - loaded) > 1) failures.push(`${config.dir}: la testata che carica (${loadingName}) finisce a ${loading}, quella della board a ${loaded}`);
+  }
+  const short = measures[`${config.dir}/status/1-salvato`]?.headerBottom;
+  const long = measures[`${config.dir}/status/1c-salvato-nome-lungo`]?.headerBottom;
+  if (config.width === 390 && !(long > short)) failures.push(`${config.dir}: il nome lungo non va a capo (${long} contro ${short}): la prova del salto non prova niente`);
 }
 
 writeFileSync(join(OUT, "misure.json"), `${JSON.stringify(measures, null, 1)}\n`);

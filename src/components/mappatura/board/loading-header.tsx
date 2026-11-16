@@ -4,14 +4,16 @@
  * «Mappatura board»: la testata della board che si apre (docs/mappatura/MAPPATURA-BOARD-PIANO.md §1.6).
  *
  * Il riferimento non ha scheletri: mentre carica tiene la testata intera (marchio, titolo, schede) e cambia solo la
- * scritta della pillola. Qui la stessa forma della testata di `UnitBoard`: la riga del marchio con la pillola
- * «Caricamento» e il bottone dell'assistente, il titolo (uno spazio che tiene la sua riga), la riga delle schede con la
- * scheda che si aprirà; schede e bottoni ci sono ma non si usano ancora (`inert`). Così la pagina non salta quando
- * arriva la board. Il nome del workspace non si sa ancora: la riga del marchio lo salta, e resta alta uguale.
+ * scritta della pillola. Qui la stessa testata di `UnitBoard`: la riga del marchio con il nome del workspace, la pillola
+ * «Caricamento» e il bottone dell'assistente, il titolo vero «{unità} *board*», la riga delle schede con la scheda che si
+ * aprirà; schede e bottoni ci sono ma non si usano ancora (`inert`). I due nomi li legge il server prima della board
+ * (`mapping/[deptId]/layout.tsx`, con `BoardLoadingNames`): un nome lungo va a capo come andrà nella board, e la pagina
+ * non salta quando arriva. Senza nomi (un'unità che non si trova) la riga del marchio salta il workspace e il titolo è
+ * uno spazio che tiene la sua riga.
  */
-import { useSyncExternalStore, type JSX } from "react";
+import { createContext, useContext, useSyncExternalStore, type JSX, type ReactNode } from "react";
 import { BOARD_TABS, BOARD_TEXT, type BoardTab } from "../../../lib/mappatura/text.ts";
-import { BoardBrand, BoardHeader, BoardTabs, StatusPill } from "../ui/frame.tsx";
+import { BoardBrand, BoardHeader, BoardTabs, BoardTitle, StatusPill } from "../ui/frame.tsx";
 import { boardPrefs } from "./prefs.ts";
 import { VIEW_TEXT } from "./text.ts";
 
@@ -26,7 +28,24 @@ function AssistantIcon(): JSX.Element {
   );
 }
 
-export function BoardLoadingHeader(p: { workspaceId: string; departmentId: string }): JSX.Element {
+/** I nomi della board che si apre: l'unità (null se non si trova) e il workspace. */
+export interface BoardLoadingNamesValue {
+  unitName: string | null;
+  workspaceName: string;
+}
+
+const LoadingNames = createContext<BoardLoadingNamesValue | null>(null);
+
+/** Il layout dell'unità li mette qui, letti sul server; `loading.tsx` li legge con `useBoardLoadingNames`. */
+export function BoardLoadingNames(p: BoardLoadingNamesValue & { children: ReactNode }): JSX.Element {
+  return <LoadingNames.Provider value={{ unitName: p.unitName, workspaceName: p.workspaceName }}>{p.children}</LoadingNames.Provider>;
+}
+
+export function useBoardLoadingNames(): BoardLoadingNamesValue | null {
+  return useContext(LoadingNames);
+}
+
+export function BoardLoadingHeader(p: { workspaceId: string; departmentId: string; unitName?: string | null; workspaceName?: string }): JSX.Element {
   // La scheda che si aprirà: l'ancora, poi quella ricordata; sul server e al primo disegno, la prima (come `UnitBoard`).
   const prefs = boardPrefs();
   const fallback: BoardTab = BOARD_TABS[0];
@@ -34,8 +53,8 @@ export function BoardLoadingHeader(p: { workspaceId: string; departmentId: strin
   const tabs = BOARD_TABS.map((id) => ({ id, label: BOARD_TEXT.tabs[id] }));
   return (
     <BoardHeader
-      brand={<BoardBrand workspaceName="" areaHref={`/dashboard/${p.workspaceId}/mapping`} />}
-      title={" "}
+      brand={<BoardBrand workspaceName={p.workspaceName ?? ""} areaHref={`/dashboard/${p.workspaceId}/mapping`} />}
+      title={p.unitName ? <BoardTitle plain={p.unitName} accent={BOARD_TEXT.boardTitleAccent} /> : " "}
       aside={
         <>
           <StatusPill state="loading" savedAt={null} />

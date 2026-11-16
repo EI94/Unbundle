@@ -19,6 +19,18 @@ const I = FIXTURE_IDS;
 const h = <P extends object>(type: (props: P) => ReactNode, props: Omit<P, "children"> | null = null, ...children: ReactNode[]) =>
   createElement(type as unknown as FunctionComponent<Omit<P, "children">>, props, ...children);
 const html = renderToStaticMarkup(createElement(BoardLoadingHeader, { workspaceId: I.workspace, departmentId: I.unit }));
+/** La testata vera della board, per un'unità con quel nome, in un workspace con quel nome. */
+function loadedHeader(unitName: string, workspaceName = "Officina di prova"): string {
+  const board = fixtureBoard();
+  const real = renderToStaticMarkup(
+    h(
+      BoardProvider,
+      { workspaceId: I.workspace, departmentId: I.unit, userId: I.user, initial: { ...board, unit: { ...board.unit, name: unitName } } },
+      h(UnitBoard, { workspaceId: I.workspace, workspaceName, unitTerm: { singular: "reparto", plural: "reparti" }, assistantDefaultOpen: false, assistant: null, classification: null, headAction: null }),
+    ),
+  );
+  return real.slice(real.indexOf("<header"), real.indexOf("</header>") + "</header>".length);
+}
 
 test("la testata che carica: la pillola «Caricamento», il titolo che tiene la sua riga, le due schede e il bottone dell'assistente, fermi", () => {
   assert.match(html, /^<header class="b-top" data-b="header">/, "con le schede: niente spazio in più sotto il titolo");
@@ -56,4 +68,20 @@ test("la testata che carica ha gli stessi pezzi di quella della board, nello ste
   const after = (parts: string[]) => parts.slice(parts.indexOf("div.b-spacer."));
   assert.deepEqual(after(shape(html)), after(shape(header)));
   assert.ok(shape(html).includes("div.b-tabbar."), "la riga delle schede c'è");
+});
+
+test("con i nomi letti sul server: il marchio con il workspace e il titolo vero, gli stessi della board che arriva; un nome lungo va a capo uguale", () => {
+  const long = "Amministrazione, finanza, controllo di gestione e rapporti con le banche";
+  const loading = renderToStaticMarkup(createElement(BoardLoadingHeader, { workspaceId: I.workspace, departmentId: I.unit, unitName: long, workspaceName: "Officina di prova" }));
+  const loaded = loadedHeader(long);
+  // Il marchio e il titolo sono gli stessi, carattere per carattere: vanno a capo nello stesso punto, a ogni larghezza.
+  const brand = (markup: string) => /<div class="b-brand" data-b="brand">[\s\S]*?<\/div>/.exec(markup)?.[0];
+  const title = (markup: string) => /<h1 class="b-title"[^>]*>[\s\S]*?<\/h1>/.exec(markup)?.[0];
+  assert.equal(title(loading), `<h1 class="b-title" style="margin-top:8px"><span data-b="title">${long} <i>board</i></span></h1>`);
+  assert.equal(title(loading), title(loaded));
+  assert.equal(brand(loading), brand(loaded));
+  assert.match(loading, /<span class="b-x" aria-hidden="true">×<\/span><span>Officina di prova<\/span>/);
+  // Tutta la testata: la stessa struttura, elemento per elemento; cambiano solo la pillola e i bottoni che non si usano ancora.
+  const shape = (markup: string) => [...markup.matchAll(/<([a-z0-9]+)([^>]*)>/g)].map((match) => [match[1], /class="([^"]+)"/.exec(match[2])?.[1] ?? ""].join("."));
+  assert.deepEqual(shape(loading), shape(loaded));
 });

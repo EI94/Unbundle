@@ -592,6 +592,11 @@ export function preflight(scope: BoardScope): UcStatement[] {
   return [storeProbe(), toStatement(ucSql`SELECT d.id FROM departments d WHERE d.id = ${U(scope.departmentId)} AND d.workspace_id = ${U(scope.workspaceId)}`)];
 }
 
+/** Il nome di un'unità del workspace: la cornice della board che si apre lo mostra prima che arrivi la board. */
+export function unitNameRead(scope: BoardScope): UcStatement {
+  return toStatement(ucSql`SELECT d.name FROM departments d WHERE d.id = ${U(scope.departmentId)} AND d.workspace_id = ${U(scope.workspaceId)}`);
+}
+
 /** In quale passo e corsia stanno queste note (per sapere quali colonne di sempre ricopiare). */
 export function noteLanes(scope: BoardScope, noteIds: readonly string[]): UcStatement {
   return toStatement(ucSql`SELECT n.id, n.activity_id, n.lane FROM mapping_notes n
