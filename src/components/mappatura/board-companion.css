@@ -2,6 +2,44 @@
  * (docs/mappatura/MAPPATURA-BOARD-PIANO.md §9.3).
  *
  * Stesse regole di board.css: ogni selettore sotto `[data-board-root]`, colori solo come `var(--board-…)` (le controlla
- * src/components/theme/board-theme.test.ts).
- * Il file nasce vuoto con le fondamenta: lo riempie il pacchetto del compagno.
+ * src/components/theme/board-theme.test.ts). Il riferimento non ha una chat: l'assistente è fatto con i pezzi della
+ * board (il campo, i bottoni contornati, i chip di stato, la riga ambra), senza colori nuovi e senza animazioni.
  */
+
+/* ── L'assistente: una colonna che riempie il suo pannello; il campo resta in fondo mentre la conversazione scorre ── */
+[data-board-root] .b-comp { display: flex; flex-direction: column; gap: 12px; min-height: 100%; font-size: 13.5px; line-height: 1.5; color: var(--board-ink-2); }
+[data-board-root] .b-comp-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+[data-board-root] .b-comp-log { display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto; min-width: 0; }
+[data-board-root] .b-comp-msg { min-width: 0; overflow-wrap: anywhere; }
+[data-board-root] .b-comp-msg[data-role="user"] { align-self: flex-end; max-width: 85%; background: var(--board-bone); border: 1px solid var(--board-line-strong); border-radius: 8px; padding: 8px 11px; color: var(--board-ink); }
+[data-board-root] .b-comp-text { display: flex; flex-direction: column; gap: 2px; }
+[data-board-root] .b-comp-text p { margin: 0; min-height: 1em; }
+[data-board-root] .b-comp-text strong { font-weight: 600; color: var(--board-ink); }
+[data-board-root] .b-comp-li { display: flex; gap: 8px; padding-left: 4px; }
+[data-board-root] .b-comp-li::before { content: "—"; flex: none; color: var(--board-graphite-2); }
+/* Le righe di avanzamento: i tool come chip di stato (finito, o in corso a tratteggio), le note del modello in corsivo. */
+[data-board-root] .b-comp-progress { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+[data-board-root] .b-comp-progress .b-st-chip { display: inline-flex; align-items: center; gap: 5px; }
+[data-board-root] .b-comp-note { margin: 0; flex-basis: 100%; font-size: 12px; font-style: italic; color: var(--board-graphite); }
+[data-board-root] .b-comp-wait { margin: 0; font-family: var(--board-font-mono); font-size: 11px; color: var(--board-graphite); }
+[data-board-root] .b-comp-nudge { margin: 0; border-left: 2px solid var(--board-amber); padding: 2px 0 2px 10px; font-size: 12.5px; color: var(--board-graphite); }
+[data-board-root] .b-comp-error { display: flex; flex-direction: column; gap: 2px; border-radius: 6px; padding: 8px 11px; background: var(--board-crit-soft); color: var(--board-ink); font-size: 13px; }
+[data-board-root] .b-comp-error b { font-family: var(--board-font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; font-weight: 500; }
+[data-board-root] .b-comp-sugg { display: flex; flex-wrap: wrap; gap: 6px; }
+[data-board-root] .b-comp-sugg .b-fchip { white-space: normal; text-align: left; color: var(--board-ink-2); }
+[data-board-root] .b-comp-form { position: sticky; bottom: 0; display: flex; gap: 8px; align-items: flex-end; padding: 10px 0 2px; border-top: 1px solid var(--board-line); background: var(--board-paper); }
+[data-board-root] .b-comp-input { flex: 1 1 auto; min-height: 38px; max-height: 200px; resize: none; overflow-y: auto; padding: 8px 10px; font-size: 13.5px; line-height: 1.45; }
+[data-board-root] .b-comp-input[disabled] { cursor: not-allowed; }
+[data-board-root] .b-comp-form .b-btn { flex: none; height: 38px; }
+
+/* ── «Passi dai documenti»: una riga da scegliere per proposta, e il piede del drawer con «Annulla» e il bottone pieno ── */
+[data-board-root] .b-comp-props { display: flex; flex-direction: column; gap: 8px; }
+[data-board-root] .b-comp-prop { appearance: none; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: start; width: 100%; padding: 10px 12px; border: 1px solid var(--board-line-strong); border-radius: 7px; background: var(--board-paper); color: var(--board-ink-2); font: inherit; text-align: left; cursor: pointer; }
+[data-board-root] .b-comp-prop:hover { border-color: var(--board-graphite-3); }
+[data-board-root] .b-comp-prop[disabled] { opacity: .6; cursor: not-allowed; }
+[data-board-root] .b-comp-tick { display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid var(--board-line-strong); border-radius: 4px; background: var(--board-bone); }
+[data-board-root] .b-comp-prop[aria-pressed="true"] .b-comp-tick { border-color: var(--board-ink); background: var(--board-ink); color: var(--board-bone); }
+[data-board-root] .b-comp-prop-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 13px; }
+[data-board-root] .b-comp-prop-body b { font-size: 13.5px; font-weight: 600; color: var(--board-ink); }
+[data-board-root] .b-comp-prop-body small { font-family: var(--board-font-mono); font-size: 10.5px; color: var(--board-graphite); }
+[data-board-root] .b-comp-foot { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--board-line); background: var(--board-paper); }
