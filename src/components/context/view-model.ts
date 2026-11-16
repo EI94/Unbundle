@@ -78,19 +78,31 @@ export function isCheckable(proposal: Pick<ProposalView, "kind" | "issue">): boo
 }
 
 /**
- * La scelta di partenza: spuntate le proposte `preselected` (base «detto», non un conflitto, niente da correggere).
- * «Dedotto» e conflitti partono senza spunta; nessun conflitto ha una scelta di partenza; le riconferme sono spuntate.
+ * Le scelte della persona sopra le proposte del server: le caselle toccate a mano, la scelta di ogni conflitto, la riga
+ * delle riconferme. Le proposte arrivano sempre dal server (dopo una correzione, uno scarto, un aggiornamento): una
+ * casella mai toccata segue la preselezione della proposta di adesso.
  */
-export function initialSelection(open: Pick<OpenProposals, "proposals">): ConfirmSelection {
+export interface ConfirmChoices {
+  overrides: Readonly<Record<string, boolean>>;
+  resolutions: Readonly<Record<string, Resolution>>;
+  reconfirm: boolean;
+}
+export const NO_CHOICES: ConfirmChoices = Object.freeze({ overrides: Object.freeze({}), resolutions: Object.freeze({}), reconfirm: true });
+
+/**
+ * Le caselle a schermo: spuntate le proposte `preselected` (base «detto», non un conflitto, niente da correggere),
+ * oppure come le ha messe la persona. Una proposta da correggere o un conflitto non si spuntano mai; corretta, torna
+ * come prima (la scelta a mano resta). Nessun conflitto ha una scelta di partenza; le riconferme partono spuntate.
+ */
+export function selectionFrom(open: Pick<OpenProposals, "proposals">, choices: ConfirmChoices = NO_CHOICES): ConfirmSelection {
   const checked: Record<string, boolean> = {};
-  for (const proposal of open.proposals) checked[proposal.id] = isCheckable(proposal) && proposal.preselected;
-  return { checked, resolutions: {}, reconfirm: true };
+  for (const proposal of open.proposals) checked[proposal.id] = isCheckable(proposal) && (choices.overrides[proposal.id] ?? proposal.preselected);
+  return { checked, resolutions: choices.resolutions, reconfirm: choices.reconfirm };
 }
 
-/** Una proposta appena corretta: torna spuntata se adesso vale la preselezione, o se era già spuntata e si può ancora. */
-export function afterEdit(selection: ConfirmSelection, edited: ProposalView): ConfirmSelection {
-  const was = selection.checked[edited.id] === true;
-  return { ...selection, checked: { ...selection.checked, [edited.id]: isCheckable(edited) && (edited.preselected || was) } };
+/** La scelta di partenza: nessuna scelta della persona. */
+export function initialSelection(open: Pick<OpenProposals, "proposals">): ConfirmSelection {
+  return selectionFrom(open, NO_CHOICES);
 }
 
 /** Le voci da mandare a `confirmProposals`: le righe spuntate, i conflitti con una scelta, le riconferme se la riga è spuntata. */
@@ -119,6 +131,17 @@ export function confirmCount(open: Pick<OpenProposals, "proposals" | "reconfirme
 /** Le riconferme che entrano con la riga spuntata (una da correggere resta fuori). */
 export function reconfirmable(open: Pick<OpenProposals, "reconfirmed">): ProposalView[] {
   return open.reconfirmed.filter((proposal) => proposal.issue === null);
+}
+
+/**
+ * Dopo una conferma riuscita (§7.4): si resta se qui restano righe; se questo appunto è finito ma ce ne sono altri si
+ * passa a tutte le proposte; senza più niente da confermare si torna alla Memoria. `remaining` sono le proposte aperte
+ * del workspace, dopo la conferma.
+ */
+export function afterConfirm(i: { leftHere: number; remaining: number; filtered: boolean }): "resta" | "tutte" | "memoria" {
+  if (i.remaining <= 0) return "memoria";
+  if (i.leftHere > 0 || !i.filtered) return "resta";
+  return "tutte";
 }
 
 /** Le voci in gruppi da al massimo 75 (`confirmMax`): ogni gruppo è una conferma, tutta o niente. */

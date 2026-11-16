@@ -5,7 +5,7 @@ import type { FactView, MemorySection, MemoryView } from "../../lib/db/queries/c
 import type { OpenProposals, ProposalView } from "../../lib/db/queries/context-proposals.ts";
 import type { SourceListItem } from "../../lib/db/queries/context-sources.ts";
 import {
-  afterEdit,
+  afterConfirm,
   askSourceMeta,
   briefMaterial,
   chunkItems,
@@ -36,6 +36,7 @@ import {
   rowErrors,
   sectionLabel,
   selectedItems,
+  selectionFrom,
   sourceMeta,
   sourceOriginLabel,
   sourceReadAction,
@@ -155,19 +156,34 @@ test("«Conferma (n)»: le righe spuntate, i conflitti con una scelta, le riconf
   assert.equal(confirmCount(data, { checked: {}, resolutions: {}, reconfirm: false }), 0);
 });
 
-test("una proposta corretta torna spuntabile, e spuntata se adesso vale la preselezione", () => {
+test("le scelte a mano restano sopra le proposte del server: una correzione o un aggiornamento non le cancellano", () => {
   const named = proposal({ issue: "nome_persona", preselected: false });
-  const selection = initialSelection(open([named]));
-  assert.equal(selection.checked[named.id], false);
-  const fixed = { ...named, version: 2, issue: null, issueMessage: null, preselected: true };
-  assert.equal(afterEdit(selection, fixed).checked[named.id], true);
-  // Una «dedotto» corretta resta com'era: spuntata solo se lo era già.
+  const said = proposal();
   const inferred = proposal({ basis: "dedotto", preselected: false });
-  const s2 = initialSelection(open([inferred]));
-  assert.equal(afterEdit(s2, { ...inferred, version: 2 }).checked[inferred.id], false);
-  assert.equal(afterEdit({ ...s2, checked: { [inferred.id]: true } }, { ...inferred, version: 2 }).checked[inferred.id], true);
+  const choices = { overrides: { [said.id]: false, [inferred.id]: true, [named.id]: true }, resolutions: {}, reconfirm: true };
+  // Da correggere: non si spunta, anche se la persona l'aveva spuntata.
+  let selection = selectionFrom(open([named, said, inferred]), choices);
+  assert.deepEqual([selection.checked[named.id], selection.checked[said.id], selection.checked[inferred.id]], [false, false, true]);
+  // Il server rimanda la proposta corretta (versione nuova, senza problema): torna come l'aveva messa la persona.
+  const fixed = { ...named, version: 2, issue: null, issueMessage: null, preselected: true };
+  selection = selectionFrom(open([fixed, said, inferred]), choices);
+  assert.deepEqual([selection.checked[named.id], selection.checked[said.id], selection.checked[inferred.id]], [true, false, true]);
+  // Una casella mai toccata segue la preselezione di adesso.
+  assert.equal(selectionFrom(open([fixed]), { ...choices, overrides: {} }).checked[named.id], true);
   // Una correzione che introduce un problema toglie la spunta.
-  assert.equal(afterEdit({ ...s2, checked: { [inferred.id]: true } }, { ...inferred, issue: "lungo" }).checked[inferred.id], false);
+  assert.equal(selectionFrom(open([{ ...inferred, issue: "lungo" }]), choices).checked[inferred.id], false);
+  // Le scelte dei conflitti e la riga delle riconferme passano com'erano.
+  const conflict = proposal({ kind: "conflitto", preselected: false });
+  const withConflict = selectionFrom(open([conflict]), { overrides: { [conflict.id]: true }, resolutions: { [conflict.id]: "prima" }, reconfirm: false });
+  assert.deepEqual(withConflict, { checked: { [conflict.id]: false }, resolutions: { [conflict.id]: "prima" }, reconfirm: false });
+});
+
+test("dopo una conferma: si resta se restano righe, si passa a tutte se l'appunto è finito, si torna alla Memoria se non resta niente", () => {
+  assert.equal(afterConfirm({ leftHere: 2, remaining: 5, filtered: true }), "resta");
+  assert.equal(afterConfirm({ leftHere: 0, remaining: 5, filtered: true }), "tutte");
+  assert.equal(afterConfirm({ leftHere: 0, remaining: 3, filtered: false }), "resta", "senza filtro la pagina mostra già tutte le altre");
+  assert.equal(afterConfirm({ leftHere: 0, remaining: 0, filtered: true }), "memoria");
+  assert.equal(afterConfirm({ leftHere: 4, remaining: 0, filtered: false }), "memoria");
 });
 
 test("le voci si mandano a gruppi di al massimo 75", () => {
