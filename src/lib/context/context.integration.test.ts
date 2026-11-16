@@ -1677,6 +1677,59 @@ test("refreshContextBrief: usa solo i fatti «Per tutti»; non si riscrive se ni
   assert.equal(none.length, 0);
 });
 
+test("«In breve» non mostra mai al cliente un fatto uscito da «Per tutti»: «Solo Lateral Space», ritirato, riscritto o cambiato da una conferma", opts, async () => {
+  const clientBrief = async () => (await memory.loadContextMemory(actor("con"))).brief?.lines ?? null;
+  const version = async (id: string) => Number((await q(`SELECT version FROM context_facts WHERE id = $1`, [id]))[0].version);
+  /** «In breve» riscritto dal Claude finto; restituisce il prompt che il modello ha ricevuto. */
+  const rewrite = async (lines: string[]) => {
+    const requests = fakeAppClaude([json({ righe: lines })]);
+    assert.equal(await briefs.refreshContextBrief(ids.wsA, { force: true }), "aggiornato");
+    return JSON.stringify(requests[0].body.messages);
+  };
+  await q(`DELETE FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]);
+  const margin = okValue(await memory.writeFact(actor("ls"), { statement: `Il margine lordo B1 ${suffix} è del 12 per cento.`, section: "azienda", visibility: "tutti" })).factId;
+  const kitchens = okValue(await memory.writeFact(actor("ls"), { statement: `Produce cucine su misura B2 ${suffix}.`, section: "azienda", visibility: "tutti" })).factId;
+  const erp = okValue(await memory.writeFact(actor("ls"), { statement: `Il gestionale B3 ${suffix} è SAP Business One.`, section: "sistemi", visibility: "tutti" })).factId;
+  assert.ok((await rewrite(["Produce cucine su misura.", "Il margine lordo è del 12 per cento."])).includes(`Il margine lordo B1 ${suffix}`));
+  assert.deepEqual(await clientBrief(), ["Produce cucine su misura.", "Il margine lordo è del 12 per cento."]);
+
+  // «Solo Lateral Space»: la riga di «In breve» va via nella stessa transazione, e il riassunto dopo non lo dice più.
+  okValue(await memory.editFact(actor("ls"), margin, await version(margin), { visibility: "ls" }));
+  assert.equal(await clientBrief(), null);
+  assert.equal((await rewrite(["Produce cucine su misura."])).includes(`Il margine lordo B1 ${suffix}`), false);
+  // Ritirato.
+  okValue(await memory.retireFact(actor("ls"), kitchens, await version(kitchens)));
+  assert.equal(await clientBrief(), null);
+  await rewrite(["Usa SAP Business One."]);
+  // Riscritto (una versione nuova).
+  okValue(await memory.editFact(actor("ls"), erp, await version(erp), { statement: `Il gestionale B3 ${suffix} è SAP S/4HANA.` }));
+  assert.equal(await clientBrief(), null);
+  await rewrite(["Usa SAP S/4HANA."]);
+  // Un fatto «Solo Lateral Space» che cambia non tocca «In breve»: non c'era.
+  okValue(await memory.editFact(actor("ls"), margin, await version(margin), { statement: `Il margine lordo B1 ${suffix} è del 13 per cento.` }));
+  assert.deepEqual(await clientBrief(), ["Usa SAP S/4HANA."]);
+  // Cambiato da una conferma: la versione di prima esce da «In breve».
+  const site = await seedFact(`La sede B4 ${suffix} è a Udine.`, { section: "azienda" });
+  const { all } = await readProposals([proposal({ tipo: "cambia", testo: `La sede B4 ${suffix} è a Trieste.`, citazione: "", fattoRif: "F1", sezione: "azienda" })], `${NOTE}\nCall sulla sede B4 (${suffix}).`);
+  assert.equal(all[0].before?.factId, site);
+  await rewrite(["La sede è a Udine."]);
+  okValue(await proposals.confirmProposals(actor("ls"), pick(all)));
+  assert.equal(await clientBrief(), null);
+
+  // La notte: un fatto uscito da «Per tutti» senza che la riga sia andata via (qui con SQL, come un percorso che se ne
+  // dimenticasse) fa riscrivere «In breve», anche se nessun fatto «Per tutti» è cambiato.
+  await rewrite(["La sede è a Trieste.", "Usa SAP S/4HANA."]);
+  const head = String((await q(`SELECT id FROM context_facts WHERE supersedes_id = $1`, [erp]))[0].id);
+  await q(`UPDATE context_facts SET visibility = 'ls', updated_at = now() WHERE id = $1`, [head]);
+  const requests = fakeAppClaude([json({ righe: ["La sede è a Trieste."] })]);
+  assert.equal(await briefs.refreshStaleBriefs({ budgetMs: 200_000 }), 1);
+  assert.equal(requests.length, 1);
+  assert.equal(JSON.stringify(requests[0].body.messages).includes(`Il gestionale B3 ${suffix}`), false);
+  assert.deepEqual(await clientBrief(), ["La sede è a Trieste."]);
+  // Per la prova della notte qui sotto: «In breve» del workspace A da riscrivere.
+  await q(`DELETE FROM context_briefs WHERE workspace_id = $1`, [ids.wsA]);
+});
+
 // ─── La notte ────────────────────────────────────────────────────────
 
 test("il giro della notte: legge gli appunti in attesa dei workspace con l'ok, senza attore nella storia; riscrive «In breve»; lascia stare chi non ha l'ok", opts, async () => {

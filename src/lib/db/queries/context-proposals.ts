@@ -45,7 +45,7 @@ import {
 } from "@/lib/context/vocab";
 import { logSafeError } from "@/lib/log/safe-error";
 import type { ServiceResult } from "@/lib/use-cases/types";
-import { ctxErrorCode, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toIsoDate, uuidArray } from "./context-shared";
+import { ctxErrorCode, dropBriefStatement, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toIsoDate, uuidArray } from "./context-shared";
 import { contextStoreReady } from "./context-store";
 
 const LOG_SCOPE = "context/proposals";
@@ -584,6 +584,9 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
     }
     const useCaseLinks = [...newFacts.values()].flatMap((fact) => [...fact.useCaseIds].map((useCaseId) => ({ workspaceId: ws, factId: fact.id, useCaseId })));
     const count = (n: number) => sql`${n}`;
+    // Un fatto «Per tutti» sostituito da una versione nuova esce da «In breve»: la riga si cancella e si riscrive dopo.
+    const publicHeads = new Set([...heads.values()].filter((head) => head.visibility === "tutti").map((head) => head.id));
+    const briefLosesFact = [...supersede].some((id) => publicHeads.has(id));
 
     const statements = [
       // Le proposte, ferme e ancora come le ha viste la persona: se una è cambiata, tutto si annulla.
@@ -679,6 +682,7 @@ export async function confirmProposals(actor: ContextActor, items: readonly Conf
         INSERT INTO context_events (workspace_id, action, channel, question_id)
         SELECT ${ws}::uuid, 'domanda_chiusa', ${actor.channel}, id FROM answered`)] : []),
       db.insert(contextEvents).values(events),
+      ...(briefLosesFact ? [dropBriefStatement(ws)] : []),
       db.execute(sql`
         UPDATE context_proposals p SET status = x.status, result_id = x.result_id, decided_at = now(), decided_by_user_id = ${actor.userId}::uuid, updated_at = now(), version = p.version + 1
         FROM jsonb_to_recordset(${JSON.stringify(decided.map((d) => ({ id: d.id, status: d.status, result_id: d.resultId })))}::jsonb) AS x(id uuid, status text, result_id uuid)

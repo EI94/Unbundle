@@ -36,7 +36,7 @@ import { romeDate } from "@/lib/uc/calendar";
 import type { ServiceResult } from "@/lib/use-cases/types";
 import { loadLiveDiscovery } from "./context-discovery";
 import { resolveHeads } from "./context-proposals";
-import { ctxErrorCode, eventStatement, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toDate, toIsoDate, uuidArray } from "./context-shared";
+import { ctxErrorCode, dropBriefStatement, eventStatement, gate, invalid, isUniqueViolation, isUuid, knownUseCases, notFound, ok, requireSql, retry, romeToday, rowsOf, stale, toDate, toIsoDate, uuidArray } from "./context-shared";
 import { contextStoreReady } from "./context-store";
 import { getWorkspaceById } from "./workspaces";
 
@@ -463,11 +463,14 @@ export async function editFact(
       )
       ${requireSql(sql`(SELECT count(*) FROM old) = 1`, code)}`;
 
+    // Un fatto «Per tutti» che cambia testo o diventa «Solo Lateral Space» esce da «In breve» (`dropBriefStatement`).
+    const leavesBrief = current.visibility === "tutti" && (next.statement !== current.statement || next.visibility !== "tutti");
     if (next.statement !== current.statement) {
       // Un testo nuovo è una versione nuova, scritta a mano: quella di prima resta nella storia.
       const newId = crypto.randomUUID();
       await db.batch([
         db.execute(held()),
+        ...(leavesBrief ? [dropBriefStatement(ws)] : []),
         db.execute(sql`
           INSERT INTO context_facts (id, workspace_id, kind, section, statement, basis, visibility, origin, supersedes_id, confirmed_by_user_id)
           VALUES (${newId}::uuid, ${ws}::uuid, ${current.kind}, ${next.section}, ${next.statement}, 'detto', ${next.visibility}, 'manuale', ${factId}::uuid, ${actor.userId}::uuid)`),
@@ -492,6 +495,7 @@ export async function editFact(
           RETURNING id
         )
         ${requireSql(sql`(SELECT count(*) FROM kept) = 1`, "versione_superata")}`),
+      ...(leavesBrief ? [dropBriefStatement(ws)] : []),
       ...(next.useCaseIds !== null
         ? [
             db.execute(sql`DELETE FROM context_fact_links WHERE fact_id = ${factId}::uuid AND workspace_id = ${ws}::uuid AND use_case_id IS NOT NULL AND NOT (use_case_id = ANY(${uuidArray(next.useCaseIds)}))`),
@@ -549,6 +553,8 @@ export async function retireFact(actor: ContextActor, factId: string, expectedVe
         WHERE id = ${factId}::uuid AND workspace_id = ${ws}::uuid AND status = 'attivo' AND version = ${expectedVersion}
         RETURNING id`),
       eventStatement({ workspaceId: ws, action: "fatto_ritirato", channel: actor.channel, actorUserId: actor.userId, factId }, retired),
+      // Un fatto «Per tutti» ritirato esce da «In breve».
+      ...(current.visibility === "tutti" ? [dropBriefStatement(ws, retired)] : []),
     ]);
     return rowsOf(results[0]).length === 1 ? ok(true) : stale();
   } catch (error) {

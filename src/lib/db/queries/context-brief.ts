@@ -97,11 +97,12 @@ export async function refreshStaleBriefs(o: { budgetMs: number }): Promise<numbe
   let written = 0;
   let workspaces: Array<{ workspace_id: string }>;
   try {
-    // I workspace con un fatto «Per tutti» cambiato dopo l'ultimo riassunto, o senza riassunto.
+    // I workspace con un fatto cambiato dopo l'ultimo riassunto, o senza riassunto. Qualunque fatto: uno che è appena
+    // uscito da «Per tutti» è proprio quello che il riassunto non deve più dire. L'impronta decide se riscrivere.
     workspaces = rowsOf<{ workspace_id: string }>(
       await db.execute(sql`
         SELECT f.workspace_id FROM context_facts f LEFT JOIN context_briefs b ON b.workspace_id = f.workspace_id
-        WHERE f.visibility = 'tutti' AND (b.workspace_id IS NULL OR f.updated_at > b.generated_at)
+        WHERE b.workspace_id IS NULL OR f.updated_at > b.generated_at
         GROUP BY f.workspace_id ORDER BY max(f.updated_at) LIMIT 200`),
     );
   } catch (error) {

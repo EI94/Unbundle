@@ -18,8 +18,9 @@ import type { ServiceResult } from "@/lib/use-cases/types";
  * `permesso_mancante`), chiama la funzione condivisa, che rifà da sé il controllo dei permessi, e solo se riesce
  * aggiorna la pagina (`revalidatePath` di `/dashboard/<ws>/contesto`, con «Da confermare» sotto).
  *
- * Dopo una conferma «In breve» si riscrive con `after()`, dopo la risposta: la pagina di «Da confermare» ha
- * `maxDuration = 60`, e la chiamata al modello ne ha 40.
+ * Dopo una conferma, e dopo un fatto scritto, modificato o ritirato, «In breve» si riscrive con `after()`, dopo la
+ * risposta: la pagina di «Da confermare» ha `maxDuration = 60`, e la chiamata al modello ne ha 40. Un fatto «Per tutti»
+ * che esce da «In breve» lo toglie già da sé, nella sua transazione (`dropBriefStatement`).
  */
 
 type Patch<T> = { [K in keyof T]?: T[K] };
@@ -41,17 +42,21 @@ async function run<T>(workspaceId: string, op: string, write: (actor: ContextAct
   }
 }
 
-// ─── «Da confermare» ─────────────────────────────────────────────────
-
-/** «Conferma (n)»: tutte o nessuna. Poi, dopo la risposta, «In breve» si riscrive. */
-export async function confirmProposalsAction(workspaceId: string, items: ConfirmItem[]): Promise<ServiceResult<ConfirmResult>> {
-  const result = await run(workspaceId, "conferma", (actor) => confirmProposals(actor, Array.isArray(items) ? items : []));
+/** Se la memoria è cambiata, «In breve» si riscrive dopo la risposta (non lancia: `refreshContextBrief` non lancia). */
+function rewriteBriefAfter<T>(workspaceId: string, result: ServiceResult<T>): ServiceResult<T> {
   if (result.ok) {
     after(async () => {
       await refreshContextBrief(workspaceId, { force: true });
     });
   }
   return result;
+}
+
+// ─── «Da confermare» ─────────────────────────────────────────────────
+
+/** «Conferma (n)»: tutte o nessuna. Poi, dopo la risposta, «In breve» si riscrive. */
+export async function confirmProposalsAction(workspaceId: string, items: ConfirmItem[]): Promise<ServiceResult<ConfirmResult>> {
+  return rewriteBriefAfter(workspaceId, await run(workspaceId, "conferma", (actor) => confirmProposals(actor, Array.isArray(items) ? items : [])));
 }
 
 /** «Modifica» su una proposta: testo, sezione, chi la vede, use case; per un impegno parte, ruolo, data. */
@@ -71,22 +76,22 @@ export async function discardProposalsAction(workspaceId: string, proposalIds: s
 
 // ─── Fatti ───────────────────────────────────────────────────────────
 
-/** «Scrivi un fatto». */
+/** «Scrivi un fatto». Poi «In breve» si riscrive. */
 export async function writeFactAction(
   workspaceId: string,
   input: { statement: string; section: ContextSection; visibility: ContextVisibility; useCaseIds?: string[] },
 ): Promise<ServiceResult<{ factId: string }>> {
-  return run(workspaceId, "fatto_scritto", (actor) => writeFact(actor, input));
+  return rewriteBriefAfter(workspaceId, await run(workspaceId, "fatto_scritto", (actor) => writeFact(actor, input)));
 }
 
-/** «Modifica» su un fatto, e «Per tutti / Solo Lateral Space». */
+/** «Modifica» su un fatto, e «Per tutti / Solo Lateral Space». Poi «In breve» si riscrive. */
 export async function editFactAction(
   workspaceId: string,
   factId: string,
   expectedVersion: number,
   patch: Patch<{ statement: string; section: ContextSection; visibility: ContextVisibility; useCaseIds: string[] }>,
 ): Promise<ServiceResult<{ factId: string }>> {
-  return run(workspaceId, "fatto_modificato", (actor) => editFact(actor, factId, expectedVersion, patch ?? {}));
+  return rewriteBriefAfter(workspaceId, await run(workspaceId, "fatto_modificato", (actor) => editFact(actor, factId, expectedVersion, patch ?? {})));
 }
 
 /** «Ancora vero». */
@@ -94,9 +99,9 @@ export async function reconfirmFactAction(workspaceId: string, factId: string): 
   return run(workspaceId, "fatto_riconfermato", (actor) => reconfirmFact(actor, factId));
 }
 
-/** «Non più vero». */
+/** «Non più vero». Poi «In breve» si riscrive. */
 export async function retireFactAction(workspaceId: string, factId: string, expectedVersion: number): Promise<ServiceResult<true>> {
-  return run(workspaceId, "fatto_ritirato", (actor) => retireFact(actor, factId, expectedVersion));
+  return rewriteBriefAfter(workspaceId, await run(workspaceId, "fatto_ritirato", (actor) => retireFact(actor, factId, expectedVersion)));
 }
 
 // ─── Impegni e domande ───────────────────────────────────────────────

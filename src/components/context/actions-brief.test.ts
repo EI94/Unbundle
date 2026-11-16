@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { installAppModules, recordLogs } from "../../lib/ai/claude-test-kit.ts";
 
 // Le azioni della pagina «Contesto» quando la funzione condivisa riesce o no (rilascio 9a, RILASCIO-9a-COSTRUZIONE.md
-// §3.5, §11.3): `confirmProposalsAction` programma «In breve» dopo la risposta (`after`), con `force`; ogni azione
-// riuscita aggiorna la pagina (`revalidatePath` di /contesto, con «Da confermare» sotto); una non riuscita non
-// aggiorna niente e non programma niente; un errore inatteso risponde «riprova» e nei log non porta testi.
+// §3.5, §11.3): la conferma e le azioni che cambiano un fatto (scritto, modificato, ritirato) programmano «In breve» dopo
+// la risposta (`after`), con `force`; ogni azione riuscita aggiorna la pagina (`revalidatePath` di /contesto, con «Da
+// confermare» sotto); una non riuscita non aggiorna niente e non programma niente; un errore inatteso risponde
+// «riprova» e nei log non porta testi.
 // Chi chiama e le funzioni condivise sono finti.
 
 type Call = { fn: string; args: unknown[] };
@@ -88,14 +89,35 @@ test("una conferma non riuscita (versione superata, dati non validi): niente pag
   }
 });
 
+test("scrivere, modificare o ritirare un fatto: la pagina si aggiorna e «In breve» si riscrive dopo la risposta; se non riesce, niente", async () => {
+  const cases: Array<[string, () => Promise<unknown>, string, unknown[]]> = [
+    ["writeFactAction", () => actions.writeFactAction(WS, { statement: "Il gestionale è SAP.", section: "sistemi", visibility: "tutti" }), "writeFact", [{ statement: "Il gestionale è SAP.", section: "sistemi", visibility: "tutti" }]],
+    // «Solo Lateral Space» su un fatto che «In breve» dice: il cliente non deve continuare a leggerlo lì.
+    ["editFactAction", () => actions.editFactAction(WS, ID, 4, { visibility: "ls" }), "editFact", [ID, 4, { visibility: "ls" }]],
+    ["retireFactAction", () => actions.retireFactAction(WS, ID, 2), "retireFact", [ID, 2]],
+  ];
+  for (const [name, run, fn, args] of cases) {
+    Object.assign(prova, { calls: [], revalidated: [], afterTasks: [], briefs: [], result: { ok: true, value: { factId: ID } } });
+    await run();
+    assert.equal(prova.calls[0]?.fn, fn, name);
+    assert.deepEqual(prova.calls[0].args.slice(1), args, name);
+    assert.deepEqual(prova.revalidated, [`/dashboard/${WS}/contesto|layout`], name);
+    assert.equal(prova.afterTasks.length, 1, `${name}: «In breve» programmato`);
+    assert.deepEqual(prova.briefs, [], `${name}: non durante la risposta`);
+    await prova.afterTasks[0]();
+    assert.deepEqual(prova.briefs, [{ workspaceId: WS, opts: { force: true } }], name);
+    // Non riuscita: niente pagina aggiornata, niente «In breve».
+    Object.assign(prova, { revalidated: [], afterTasks: [], briefs: [], result: { ok: false, error: "versione_superata", message: "Qualcuno l'ha appena cambiato. Aggiorna la pagina e riprova." } });
+    await run();
+    assert.deepEqual([prova.revalidated, prova.afterTasks.length], [[], 0], name);
+  }
+});
+
 test("le altre azioni: la funzione giusta, con i suoi argomenti; se riesce la pagina si aggiorna, «In breve» no", async () => {
   const cases: Array<[string, () => Promise<unknown>, string, unknown[]]> = [
     ["editProposalAction", () => actions.editProposalAction(WS, ID, 3, { section: "sistemi" }), "editProposal", [ID, 3, { section: "sistemi" }]],
     ["discardProposalsAction", () => actions.discardProposalsAction(WS, [ID]), "discardProposals", [[ID]]],
-    ["writeFactAction", () => actions.writeFactAction(WS, { statement: "Il gestionale è SAP.", section: "sistemi", visibility: "tutti" }), "writeFact", [{ statement: "Il gestionale è SAP.", section: "sistemi", visibility: "tutti" }]],
-    ["editFactAction", () => actions.editFactAction(WS, ID, 4, { visibility: "ls" }), "editFact", [ID, 4, { visibility: "ls" }]],
     ["reconfirmFactAction", () => actions.reconfirmFactAction(WS, ID), "reconfirmFact", [ID]],
-    ["retireFactAction", () => actions.retireFactAction(WS, ID, 2), "retireFact", [ID, 2]],
     ["closeCommitmentAction", () => actions.closeCommitmentAction(WS, ID, 1), "closeCommitment", [ID, 1]],
     ["reopenCommitmentAction", () => actions.reopenCommitmentAction(WS, ID, 2), "reopenCommitment", [ID, 2]],
     ["closeQuestionAction", () => actions.closeQuestionAction(WS, ID, 1), "closeQuestion", [ID, 1]],
