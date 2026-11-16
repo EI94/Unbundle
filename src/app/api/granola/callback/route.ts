@@ -18,7 +18,8 @@ function redirectTo(url: URL): Response {
  * 0. Con Granola spento (§8.1): 404, come le altre rotte di Granola.
  * 1. Senza sessione: a `/login` (senza il codice nell'indirizzo).
  * 2. Lo stato vale una volta sola, e solo per chi l'ha creato: sconosciuto, scaduto, già usato o di un'altra persona →
- *    `/dashboard?granola=scaduto`, e niente altro.
+ *    alle Impostazioni del workspace da cui la persona ha cominciato il suo ultimo collegamento, con `?granola=scaduto`
+ *    (la riga lo dice), e niente altro; senza traccia di un collegamento, `/dashboard?granola=scaduto`.
  * 3. Poi alle Impostazioni del workspace da cui era partito il collegamento, all'ancora `#granola`, con
  *    `?granola=collegato`, `annullato` (`error` di Granola o codice mancante) o `errore` (i token non sono arrivati).
  * Il reindirizzamento resta sull'origine della richiesta: così il cookie della sessione e l'host restano gli stessi.
@@ -37,7 +38,7 @@ export async function GET(request: Request): Promise<Response> {
     code: url.searchParams.get("code"),
     error: url.searchParams.get("error"),
   });
-  if (outcome.status === "scaduto") return redirectTo(new URL("/dashboard?granola=scaduto", url.origin));
+  if (outcome.status === "scaduto" && !outcome.workspaceId) return redirectTo(new URL("/dashboard?granola=scaduto", url.origin));
   const target = new URL(`/dashboard/${outcome.workspaceId}/settings`, url.origin);
   target.searchParams.set("granola", outcome.status);
   target.hash = "granola";

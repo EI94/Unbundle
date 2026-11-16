@@ -41,6 +41,12 @@ test("vercel.json: nessuna anteprima per i rami della 9a (le anteprime usano il 
   assert.equal(vercel.git.deploymentEnabled["codex/m1-ux-refinements"], false);
 });
 
+test("la lista dei workspace dice quando il ritorno da Granola è scaduto senza un workspace da cui ripartire", () => {
+  const page = read("src/app/(dashboard)/dashboard/page.tsx");
+  assert.match(page, /searchParams\?: Promise<\{[^}]*granola\?: string[^}]*\}>/);
+  assert.match(page, /\{sp\.granola === "scaduto" \? \([\s\S]*?\{CONTEXT_TEXT\.granola\.stateExpiredSomewhere\}[\s\S]*?\) : null\}/);
+});
+
 // ─── Gli script dei test ─────────────────────────────────────────────
 
 const scripts = (JSON.parse(read("package.json")) as { scripts: Record<string, string> }).scripts;

@@ -261,6 +261,7 @@ export const CONTEXT_TEXT = Object.freeze({
     connected: "Granola collegato.",
     connectFailed: "Granola non ha completato il collegamento. Riprova.",
     stateExpired: "Il collegamento è scaduto prima di finire. Riprova.",
+    stateExpiredSomewhere: "Il collegamento con Granola è scaduto prima di finire. Riprova dalle Impostazioni del workspace.",
     rulesTitle: (company: string) => `Quali call sono di ${company}`,
     folder: "Cartella di Granola",
     folderNone: "Nessuna cartella",

@@ -142,7 +142,11 @@ test("il ritorno da Granola: senza sessione al login; poi dove dice l'esito, sen
     prova.results.complete = { status, workspaceId: WS };
     assert.equal(where(await back("error=access_denied&state=s")), `https://www.unbundle.test/dashboard/${WS}/settings?granola=${status}#granola`);
   }
-  prova.results.complete = { status: "scaduto" };
+  // Uno stato che non vale più: alle Impostazioni del workspace dell'ultimo collegamento, dove la riga lo dice.
+  prova.results.complete = { status: "scaduto", workspaceId: WS };
+  assert.equal(where(await back("state=s")), `https://www.unbundle.test/dashboard/${WS}/settings?granola=scaduto#granola`);
+  // Senza traccia di un collegamento: la lista dei workspace, con la riga.
+  prova.results.complete = { status: "scaduto", workspaceId: null };
   assert.equal(where(await back("state=s")), "https://www.unbundle.test/dashboard?granola=scaduto");
   // Con Granola spento la rotta non c'è: 404, e lo stato non si tocca.
   prova.available = false;

@@ -240,8 +240,28 @@ export async function startGranolaConnect(actor: ContextActor): Promise<ServiceR
   }
 }
 
-/** Com'è andato il ritorno da Granola: dove porta la rotta di ritorno, e con quale riga (`?granola=…`). */
-export type GranolaConnectOutcome = { status: "collegato" | "annullato" | "errore"; workspaceId: string } | { status: "scaduto" };
+/**
+ * Com'è andato il ritorno da Granola: dove porta la rotta di ritorno, e con quale riga (`?granola=…`). Per `scaduto`
+ * il workspace è quello da cui la persona ha cominciato il suo ultimo collegamento (null se non ce n'è più traccia).
+ */
+export type GranolaConnectOutcome = { status: "collegato" | "annullato" | "errore"; workspaceId: string } | { status: "scaduto"; workspaceId: string | null };
+
+/**
+ * Lo stato non vale (sconosciuto, scaduto, già usato, di un'altra persona): la persona torna alle Impostazioni del
+ * workspace da cui ha cominciato il suo ultimo collegamento, dove la riga dice che è scaduto. Lo stato della richiesta
+ * non conta: solo le righe di chi ha fatto l'accesso. Nessun token si chiede.
+ */
+async function expiredOutcome(userId: string): Promise<GranolaConnectOutcome> {
+  try {
+    const [last] = rowsOf<{ workspace_id: string }>(
+      await db.execute(sql`SELECT workspace_id FROM context_granola_oauth_states WHERE user_id = ${userId}::uuid ORDER BY created_at DESC LIMIT 1`),
+    );
+    return { status: "scaduto", workspaceId: last ? String(last.workspace_id) : null };
+  } catch (error) {
+    logSafeError(LOG_SCOPE, "stato_non_letto", error);
+    return { status: "scaduto", workspaceId: null };
+  }
+}
 
 /**
  * Il ritorno da Granola (`GET /api/granola/callback`). Nell'ordine: lo stato si prende una volta sola, e solo da chi
@@ -249,18 +269,19 @@ export type GranolaConnectOutcome = { status: "collegato" | "annullato" | "error
  * mancante: `annullato`; il codice in cambio dei token; l'account (e-mail e piano, se si leggono); i token cifrati.
  */
 export async function completeGranolaConnect(i: { userId: string; state: string | null; code: string | null; error: string | null }): Promise<GranolaConnectOutcome> {
-  if (!isUuid(i?.userId) || !isStateShape(i?.state)) return { status: "scaduto" };
+  if (!isUuid(i?.userId)) return { status: "scaduto", workspaceId: null };
   // Preso lo stato, un guasto riporta comunque la persona alle Impostazioni del suo workspace, con «errore».
   let workspaceId: string | null = null;
   try {
-    if (!(await contextStoreReady())) return { status: "scaduto" };
+    if (!(await contextStoreReady())) return { status: "scaduto", workspaceId: null };
+    if (!isStateShape(i.state)) return await expiredOutcome(i.userId);
     const [taken] = rowsOf<{ workspace_id: string; verifier_sealed: string; client_id: string; redirect_uri: string }>(
       await db.execute(sql`
         UPDATE context_granola_oauth_states SET used_at = now()
         WHERE state_hash = ${stateHash(i.state)} AND user_id = ${i.userId}::uuid AND used_at IS NULL AND expires_at > now()
         RETURNING workspace_id, verifier_sealed, client_id, redirect_uri`),
     );
-    if (!taken) return { status: "scaduto" };
+    if (!taken) return await expiredOutcome(i.userId);
     workspaceId = String(taken.workspace_id);
     if (i.error || !i.code || i.code.length > 2_000) return { status: "annullato", workspaceId };
     const cfg = config();
@@ -298,7 +319,7 @@ export async function completeGranolaConnect(i: { userId: string; state: string 
     return { status: "collegato", workspaceId };
   } catch (error) {
     logSafeError(LOG_SCOPE, "collegamento_non_finito", error);
-    return workspaceId ? { status: "errore", workspaceId } : { status: "scaduto" };
+    return workspaceId ? { status: "errore", workspaceId } : { status: "scaduto", workspaceId: null };
   }
 }
 

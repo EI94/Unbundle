@@ -238,8 +238,9 @@ test("collegare: lo stato vale una volta e solo per chi l'ha creato, scade a 10 
   assert.equal(done.status, 303);
   assert.equal(done.headers.get("cache-control"), "no-store");
   assert.equal(location(done).href, `${ORIGIN}/dashboard/${ids.wsN}/settings?granola=collegato#granola`);
-  // Lo stesso ritorno una seconda volta: lo stato è già usato.
-  assert.equal(location(await callbackRoute.GET(new Request(back.toString()))).search, "?granola=scaduto");
+  // Lo stesso ritorno una seconda volta: lo stato è già usato. Si torna alle Impostazioni del workspace dell'ultimo
+  // collegamento, dove la riga dice che è scaduto.
+  assert.equal(location(await callbackRoute.GET(new Request(back.toString()))).href, `${ORIGIN}/dashboard/${ids.wsN}/settings?granola=scaduto#granola`);
 
   const row = await connection("ls");
   assert.equal(row.status, "attiva");
@@ -262,7 +263,11 @@ test("collegare: lo stato vale una volta e solo per chi l'ha creato, scade a 10 
   const late = value(await granola.startGranolaConnect(actor("ls")));
   const lateBack = await fake.consent(late.url);
   await q(`UPDATE context_granola_oauth_states SET expires_at = now() - interval '1 second' WHERE user_id = $1 AND used_at IS NULL`, [ids.ls]);
-  assert.equal(location(await callbackRoute.GET(new Request(lateBack.toString()))).search, "?granola=scaduto");
+  assert.equal(location(await callbackRoute.GET(new Request(lateBack.toString()))).href, `${ORIGIN}/dashboard/${ids.wsN}/settings?granola=scaduto#granola`);
+  // Uno stato che Unbundle non conosce, da chi un collegamento l'ha cominciato: lo stesso.
+  const unknown = new URL(lateBack.toString());
+  unknown.searchParams.set("state", randomBytes(32).toString("hex"));
+  assert.equal(location(await callbackRoute.GET(new Request(unknown.toString()))).href, `${ORIGIN}/dashboard/${ids.wsN}/settings?granola=scaduto#granola`);
   // Senza sessione: al login, e lo stato non si tocca.
   signIn(null);
   const anonymous = await callbackRoute.GET(new Request(lateBack.toString(), { headers: { cookie: "__session=vecchio" } }));
