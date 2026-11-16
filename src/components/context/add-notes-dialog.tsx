@@ -15,11 +15,10 @@ import { cn } from "@/lib/utils";
 import { AiConsentNotice } from "./ai-consent-notice";
 import { Field } from "./fields";
 import { readUntilDone, saveNote, uploadDocument } from "./read-client";
-import { ACCEPTED_FILES, droppedFileKind, fileSizeText, noteDraftErrors, proposedTitle, readOutcomeMessage, titleFromFileName, type ReadMessage } from "./view-model";
+import { ACCEPTED_FILES, addNotesClose, droppedFileKind, fileSizeText, noteDraftErrors, proposedTitle, readOutcomeMessage, titleFromFileName, type AddNotesPhase, type ReadMessage } from "./view-model";
 
 const T = CONTEXT_TEXT;
 
-type Phase = "modulo" | "salvo" | "leggo" | "fatto";
 interface Draft {
   body: string;
   title: string;
@@ -65,10 +64,12 @@ export function AddNotesDialog({
   const [file, setFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failure, setFailure] = useState<string | null>(null);
-  const [phase, setPhase] = useState<Phase>("modulo");
+  const [phase, setPhase] = useState<AddNotesPhase>("modulo");
   const [progress, setProgress] = useState<{ partsRead: number; partsTotal: number } | null>(null);
   const [ending, setEnding] = useState<Ending | null>(null);
   const running = useRef<AbortController | null>(null);
+  // Ogni chiusura dopo il salvataggio apre un giro nuovo: una risposta del giro di prima non tocca più la finestra.
+  const round = useRef(0);
   const fileInput = useRef<HTMLInputElement | null>(null);
   const busy = phase === "salvo" || phase === "leggo";
 
@@ -84,10 +85,13 @@ export function AddNotesDialog({
   };
 
   const close = () => {
-    // «Chiudi» non ferma la lettura sul server: la finisce lì, o la riprende la pagina o la notte.
-    running.current = null;
     onOpenChange(false);
-    if (phase !== "modulo") router.refresh();
+    const then = addNotesClose(phase);
+    if (then.keepDraft) return;
+    // «Chiudi» non ferma la lettura sul server: la finisce lì, o la riprende la pagina o la notte.
+    round.current += 1;
+    running.current = null;
+    if (then.refresh) router.refresh();
     reset();
   };
 
@@ -152,10 +156,12 @@ export function AddNotesDialog({
     setErrors({ ...local });
     setFailure(null);
     if (Object.keys(local).length > 0) return;
+    const mine = round.current;
     setPhase("salvo");
     let sourceId: string;
     if (file) {
       const uploaded = await uploadDocument(fetch, { workspaceId, file, origine: "appunti", occurredOn: draft.occurredOn, title: draft.title, participants: draft.participants, link: draft.link }).catch(() => null);
+      if (round.current !== mine) return;
       if (!uploaded || !uploaded.ok) {
         setPhase("modulo");
         setFailure(uploaded ? uploaded.message : T.errors.retry);
@@ -164,6 +170,7 @@ export function AddNotesDialog({
       sourceId = uploaded.value.sourceId;
     } else {
       const saved = await saveNote(fetch, workspaceId, draft).catch(() => null);
+      if (round.current !== mine) return;
       if (!saved || !saved.ok) {
         setPhase("modulo");
         if (saved && Object.keys(saved.fieldErrors).length > 0) setErrors(saved.fieldErrors);

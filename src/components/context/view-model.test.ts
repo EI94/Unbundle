@@ -5,6 +5,7 @@ import type { FactView, MemorySection, MemoryView } from "../../lib/db/queries/c
 import type { OpenProposals, ProposalView } from "../../lib/db/queries/context-proposals.ts";
 import type { SourceListItem } from "../../lib/db/queries/context-sources.ts";
 import {
+  addNotesClose,
   afterConfirm,
   askSourceMeta,
   briefMaterial,
@@ -431,6 +432,11 @@ test("i controlli prima di salvare: gli stessi limiti del server, i messaggi di 
   assert.deepEqual(noteDraftErrors({ ...ok, occurredOn: "14/11/2026" }), { occurredOn: T.add.dateMissing });
   assert.deepEqual(noteDraftErrors({ ...ok, link: "http://esempio.it" }), { link: T.add.linkInvalid });
   assert.deepEqual(noteDraftErrors({ ...ok, link: "https://esempio.it/nota" }), {});
+});
+
+test("«Chiudi» su «Aggiungi appunti»: prima di salvare tiene il testo; dopo aggiorna la pagina e riparte vuota", () => {
+  assert.deepEqual(addNotesClose("modulo"), { keepDraft: true, refresh: false });
+  for (const phase of ["salvo", "leggo", "fatto"] as const) assert.deepEqual(addNotesClose(phase), { keepDraft: false, refresh: true }, phase);
 });
 
 // ─── La lettura ──────────────────────────────────────────────────────

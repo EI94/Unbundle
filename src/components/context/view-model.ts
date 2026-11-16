@@ -435,6 +435,17 @@ export function noteDraftErrors(draft: { body: string; title: string; occurredOn
   return errors;
 }
 
+/** Le fasi di «Aggiungi appunti»: il modulo, il salvataggio, la lettura, l'esito. */
+export type AddNotesPhase = "modulo" | "salvo" | "leggo" | "fatto";
+/**
+ * Che cosa fa «Chiudi» (o un clic fuori, o Esc) su «Aggiungi appunti»: prima di salvare tiene quello che è scritto per
+ * la prossima apertura; dopo il salvataggio la pagina si aggiorna (l'appunto c'è) e la finestra riparte vuota, e una
+ * risposta arrivata dopo non la tocca più.
+ */
+export function addNotesClose(phase: AddNotesPhase): { keepDraft: boolean; refresh: boolean } {
+  return phase === "modulo" ? { keepDraft: true, refresh: false } : { keepDraft: false, refresh: true };
+}
+
 // ─── La lettura ──────────────────────────────────────────────────────
 
 /** A che punto è la lettura, a schermo. `retry`: c'è «Riprova» (non dopo un rifiuto: non si riprova da soli). */
